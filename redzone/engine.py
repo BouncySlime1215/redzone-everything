@@ -25,6 +25,7 @@ from redzone.scoring.engine import Personal, Scored, Scorer
 from redzone.sources import espn, leagues
 from redzone.sources.http import Fetcher
 from redzone.sources.merge import Merger
+from redzone.recorder import Recorder
 from redzone.store import Store
 
 log = logging.getLogger(__name__)
@@ -54,33 +55,95 @@ class Engine:
         self._tick = 0
         self.started = time.time()
         self.summaries: dict[str, dict] = {}  # latest raw summary per live game (for the detail sheet)
+        self.recorder = Recorder()
+        self._last_snapshot = 0.0
 
     # ------------------------------------------------------------------ loop
 
     async def run(self) -> None:
+        """Three loops: data (adaptive 3-10s), decisions (every second), housekeeping."""
         await self.control.start()
+        await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop())
+
+    async def _poll_loop(self) -> None:
         while True:
             t0 = time.time()
             try:
-                await self.tick()
+                await self.poll()
             except Exception:
-                log.exception("tick failed")
+                log.exception("poll failed")
                 self.decider.note_error()
             live = any(g.phase == Phase.LIVE for g in self.merger.games.values())
             soon = any(g.phase == Phase.PRE and g.start_time and 0 < g.start_time - time.time() < 900
                        for g in self.merger.games.values())
             self._keep_awake(live)
-            interval = self.cfg.get("polling.live_s") if (live or soon) else self.cfg.get("polling.idle_s")
+            if live:
+                interval = self.cfg.get("polling.hot_s", 3)
+            else:
+                interval = self.cfg.get("polling.live_s") if soon else self.cfg.get("polling.idle_s")
             await asyncio.sleep(max(1.0, interval - (time.time() - t0)))
 
+    async def _decide_loop(self) -> None:
+        """Decide every second: gates open and close within seconds, so a 10s cadence
+        would miss the moment a play ends on screen or a big play becomes catchable."""
+        last_push = 0.0
+        while True:
+            try:
+                changed = self.decide()
+                if changed or time.time() - last_push > 5:
+                    self.broadcast()
+                    last_push = time.time()
+            except Exception:
+                log.exception("decide failed")
+                self.decider.note_error()
+            await asyncio.sleep(1.0)
+
+    async def _links_loop(self) -> None:
+        """Every 5 minutes: find exact Prime Video / ESPN+ event links for today's games."""
+        from redzone.sources import eventlinks
+        while True:
+            try:
+                await self.refresh_links(eventlinks)
+            except Exception:
+                log.exception("event links failed")
+            await asyncio.sleep(300)
+
+    async def refresh_links(self, eventlinks) -> int:
+        today = datetime.now(ET).strftime("%Y-%m-%d")
+        links = await eventlinks.fetch_event_links(self.fetcher._client, today)
+        mine = set().union(*[set(v) for v in (self.cfg.get("teams") or {}).values()])
+        n = 0
+        for g in list(self.merger.games.values()):
+            if g.phase == Phase.POST:
+                continue
+            names_a = {g.away.abbr, g.away.name}
+            names_h = {g.home.abbr, g.home.name}
+            found = eventlinks.match(links, g.league.value, names_a, names_h, espn_event_id=g.game_id)
+            if found:
+                self.channels.apply_links(g, found, mine)
+                n += 1
+        if n:
+            self.channels.save()
+        return n
+
+    async def _house_loop(self) -> None:
+        while True:
+            await asyncio.sleep(10)
+            try:
+                await self.control.keepalive()
+                self._tick += 1
+                if self._tick % 360 == 0:
+                    self.store.prune()
+            except Exception:
+                log.exception("housekeeping failed")
+
     async def tick(self) -> None:
+        """One full cycle (used by tests and one-shot tools)."""
         self._tick += 1
         await self.poll()
         await self.control.keepalive()
         self.decide()
         self.broadcast()
-        if self._tick % 360 == 0:
-            self.store.prune()
 
     # ------------------------------------------------------------------ data
 
@@ -99,15 +162,21 @@ class Engine:
                 self.merger.update("espn_scoreboard", g)
         live = [g for g in self.merger.games.values() if g.phase == Phase.LIVE and g.league in lgs]
         sem = asyncio.Semaphore(6)
+        hot = self._hot_games(live)
 
         async def one(g: GameState):
+            every = self.cfg.get("polling.hot_s", 3) if g.game_id in hot else self.cfg.get("polling.live_s", 10)
             async with sem:
-                data = await self.fetcher.get_json(espn.summary_url(g.league, g.game_id))
+                data = await self.fetcher.get_json(espn.summary_url(g.league, g.game_id), min_interval=every - 0.5)
             if not data:
                 self.merger.record_error("espn_summary")
                 return
+            if data is self.summaries.get(g.game_id):
+                return  # cached copy, nothing new
             try:
-                s = espn.parse_summary(g.league, data)
+                plays = espn.flatten_plays(g.league, data)
+                s = espn.parse_summary(g.league, data, plays=plays)
+                self.recorder.plays(g, plays, "espn_summary")
             except Exception:
                 log.exception("summary parse failed %s", g.game_id)
                 s = None
@@ -117,9 +186,34 @@ class Engine:
         await asyncio.gather(*(one(g) for g in live))
         await self._league_feeds(live)
         self._source_health()
+        self.recorder.race(self.merger)
+        await self._archive_finished()
         for g in self.merger.games.values():
             if g.phase == Phase.LIVE:
                 self.decider.timeline(g.game_id, g.league).observe(g)
+
+    async def _archive_finished(self) -> None:
+        """A game we watched just ended: save its final play-by-play for future backtests."""
+        for gid in [gid for gid in self.summaries
+                    if self.merger.games.get(gid) and self.merger.games[gid].phase == Phase.POST]:
+            g = self.merger.games[gid]
+            data = await self.fetcher.get_json(espn.summary_url(g.league, gid), min_interval=0)
+            if data:
+                try:
+                    self.recorder.archive(g, data)
+                except OSError:
+                    log.exception("archive failed")
+            self.summaries.pop(gid, None)
+
+    def _hot_games(self, live: list[GameState]) -> set[str]:
+        """Games worth polling every few seconds: what's on, what's next, anything tense or personal."""
+        dec = self.decider
+        hot = {dec.current, dec.home_break_visit, dec.user.focus_game} - {None}
+        ranked = sorted((self.scored[g.game_id] for g in live if g.game_id in self.scored),
+                        key=lambda s: -s.score)
+        hot |= {s.game_id for s in ranked[:4]}
+        hot |= {s.game_id for s in ranked if s.lock or s.pre_moment or s.personal > 0}
+        return hot
 
     async def _scoreboard(self, lg: League) -> list[GameState] | None:
         data = await self.fetcher.get_json(espn.scoreboard_url(lg), min_interval=8)
@@ -178,7 +272,7 @@ class Engine:
                 labels[g.game_id] = betlib.label(g, b)
         return Personal(my_teams=teams, bet_sweat=sweat, bet_labels=labels, boosted=set(self.boosted))
 
-    def decide(self) -> None:
+    def decide(self) -> bool:
         now = time.time()
         for gid, until in list(self.skipped.items()):
             if now >= until:
@@ -207,15 +301,18 @@ class Engine:
         before = self.decider.current
         d = self.decider.decide(cands)
         self.last_decision = d
-        if d.reason != self._last_logged_reason or d.action != "stay":
+        changed = d.reason != self._last_logged_reason or d.action != "stay"
+        if changed:
             self.store.decision(d)
             self._last_logged_reason = d.reason
         if d.action in ("switch", "replay") and d.target:
             self._act(d, before, cands)
-        if self._tick % 6 == 0:
+        if time.time() - self._last_snapshot > 60:
+            self._last_snapshot = time.time()
             self.store.snapshot([(time.time(), gid, s.league.value, s.score, s.moment, s.reason,
                                   "now" if gid == self.decider.current else "")
                                  for gid, s in self.scored.items() if s.raw > 0])
+        return changed
 
     def _act(self, d, before, cands) -> None:
         target = cands[d.target].target if d.target in cands else None

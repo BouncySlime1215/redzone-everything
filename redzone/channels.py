@@ -68,6 +68,8 @@ class ChannelMap:
         self.team_rules: dict[str, str] = {}   # "nfl:WSH" -> target (sticky preferences)
         self.prime_gti: dict[str, str] = {}    # game_id -> Prime GTI
         self.st_slots: dict[str, str] = {}     # game_id -> Sunday Ticket slot code
+        self.espn_ids: dict[str, str] = {}     # game_id -> ESPN watch id (ESPN+ events)
+        self.link_notes: dict[str, str] = {}   # game_id -> "blacked out here" etc.
         self.load()
 
     def load(self) -> None:
@@ -81,13 +83,15 @@ class ChannelMap:
             self.team_rules = d.get("team_rules", {})
             self.prime_gti = d.get("prime_gti", {})
             self.st_slots = d.get("st_slots", {})
+            self.espn_ids = d.get("espn_ids", {})
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps({"codes": self.codes, "overrides": self.overrides,
                                    "team_rules": self.team_rules, "prime_gti": self.prime_gti,
-                                   "st_slots": self.st_slots, "saved": time.time()}, indent=1))
+                                   "st_slots": self.st_slots, "espn_ids": self.espn_ids,
+                                   "saved": time.time()}, indent=1))
         tmp.replace(self.path)
 
     # --- user input -----------------------------------------------------------
@@ -158,7 +162,36 @@ class ChannelMap:
     def _espnplus(self, g: GameState) -> Where:
         if g.game_id in self.st_slots:
             return Where(f"youtubetv:ev:{self.st_slots[g.game_id]}", "ESPN+ · YouTube TV", "sure", True)
-        return Where("youtubetv:espnplus", "ESPN+ · YouTube TV (event link needed)", "likely", False)
+        if g.game_id in self.espn_ids:
+            return Where(f"espn:{self.espn_ids[g.game_id]}", "ESPN+ · ESPN app", "likely", True)
+        return Where("youtubetv:espnplus", "ESPN+ (event link not found yet)", "likely", False)
+
+    def apply_links(self, g: GameState, found: dict, my_teams: set[str]) -> None:
+        """Event links found online (Prime GTIs, ESPN+ watch ids) for one game."""
+        prime = found.get("prime")
+        if prime and prime.get("gti"):
+            feeds = [f for f in [prime] + list(prime.get("alts") or []) if f.get("gti")]
+            # Apple's per-IP "playable here" flag is only a hint (it judges wherever the Mac is right
+            # now, and it's been wrong both ways), so it ranks feeds but never blocks one on its own.
+            # Real blackouts for your market are certain, though: local teams' games.
+            local = (g.home.abbr in LOCAL_TEAMS.get(g.league, set())
+                     or g.away.abbr in LOCAL_TEAMS.get(g.league, set()))
+            if local and g.league == League.NBA:
+                self.link_notes[g.game_id] = "blacked out here (local team) — on your regional channel"
+                return
+            ok = [f for f in feeds if f.get("geo_ok") is not False] or feeds
+            side = "home" if g.home.abbr in my_teams else "away" if g.away.abbr in my_teams else None
+            # Your team's game: prefer your team's own broadcast (e.g. the Wizards' Monumental feed).
+            pick = next((f for f in ok if side and f.get("feed") == side), ok[0])
+            self.prime_gti[g.game_id] = pick["gti"]
+            if all(f.get("geo_ok") is False for f in feeds):
+                self.link_notes[g.game_id] = "may be blacked out — check on the TV"
+            else:
+                self.link_notes.pop(g.game_id, None)
+        for prov in ("espnplus", "espn"):
+            it = found.get(prov)
+            if it and it.get("play_id") and g.game_id not in self.espn_ids:
+                self.espn_ids[g.game_id] = str(it["play_id"])
 
     def _yttv(self, ch: str, conf: str = "sure") -> Where:
         t = f"youtubetv:{ch}"
@@ -166,8 +199,11 @@ class ChannelMap:
 
     def _prime(self, g: GameState, ch: str, label: str, conf: str) -> Where:
         gti = self.prime_gti.get(g.game_id)
+        note = self.link_notes.get(g.game_id)
         if gti:
-            return Where(f"prime:{gti}", label, conf, True)
+            return Where(f"prime:{gti}", f"{label} — {note}" if note else label, "likely" if note else "sure", True)
+        if note:
+            return Where(None, f"{label} — {note}", "likely", False)
         return Where(f"prime:{ch}", label + " (event link not found yet)", conf, False)
 
     def _tunable(self, target: str) -> bool:
@@ -178,6 +214,8 @@ class ChannelMap:
             return rest in self.codes
         if app == "prime":
             return rest.startswith("amzn1.")
+        if app == "espn":
+            return bool(rest)
         return False
 
     def yttv_code(self, target: str) -> str | None:
@@ -221,6 +259,8 @@ def describe(target: str | None) -> str:
         return f"{PRETTY.get(rest, rest.upper())} · YouTube TV"
     if app == "prime":
         return {"leaguepass": "NBA League Pass · Prime", "monumental": "Monumental · Prime"}.get(rest, "Prime Video")
+    if app == "espn":
+        return "ESPN+ · ESPN app"
     return target
 
 

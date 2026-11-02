@@ -11,8 +11,9 @@ FruitDeepLinks project):
               Pass feeds and Prime's own games), Peacock, DAZN, NBA app, NFL+ ...
    Apple's punchout `aiv://aiv/detail?gti=<content>&broadcast=<GTI>` becomes
    https://app.primevideo.com/detail?gti=<broadcast GTI>.  `geo_ok` is Apple's
-   isGeoRestricted flag for the caller's IP (a weak hint for choosing among the ~7 League
-   Pass feeds of a game: True-restricted feeds are local/blackout-able; often all are).
+   isGeoRestricted flag for the caller's IP.  It is only a weak hint for choosing among
+   the ~7 League Pass feeds of a game, and can disagree with Amazon's own page (see
+   prime_page_info), so verify the one you are about to tune.
 2. ESPN Watch Graph (what espn.com/watch uses), public web apiKey, one POST per day:
    every ESPN+ / ESPN-network airing with its watch id, feed (home/away/national) and
    ESPN event id.  URL: https://www.espn.com/watch/player/_/id/<id>, also openable as
@@ -416,21 +417,33 @@ def match(links, league, away_names: set[str], home_names: set[str], *,
         return {}
 
 
-# --- optional: name the Prime feeds (needs a browser-like TLS stack) --------------
+# --- optional: inspect a Prime detail page (needs a browser-like TLS stack) -------
 
 _CARD = re.compile(
     r'data-card-title="([^"]+)"\s+data-card-entity-type="LIVE_EVENT_ITEM"', re.I)
 _GTI = re.compile(r"amzn1\.dv\.gti\.[0-9a-f-]{36}")
+_BENEFIT = re.compile(r"benefitId=([A-Za-z0-9_.\-]+)")
+_BENEFITS = {"amzn1.dv.channel.7a36cb2b-40e6-40c7-809f-a6cf9b9f0859": "nba_league_pass",
+             "prime_included": "prime"}
 
 
-def _parse_feed_cards(html: str) -> dict[str, str]:
-    """{gti: 'Wizards Broadcast'} from a Prime detail page's feed picker."""
-    out: dict[str, str] = {}
-    for m in _CARD.finditer(html or ""):
+def _text_of(html: str, attr: str) -> str:
+    m = re.search(rf'data-(?:testid|automation-id)="{attr}"[^>]*>(.*?)</', html, re.S)
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", m.group(1))).strip() if m else ""
+
+
+def _parse_prime_page(html: str) -> dict:
+    labels: dict[str, str] = {}
+    for m in _CARD.finditer(html):
         g = _GTI.search(html, m.end(), m.end() + 6000)
         if g:
-            out.setdefault(g.group(0), m.group(1).replace("&#x27;", "'"))
-    return out
+            labels.setdefault(g.group(0), m.group(1).replace("&#x27;", "'"))
+    ben = _BENEFIT.search(html)
+    msg = _text_of(html, "buy-box-msg")
+    return {"labels": labels, "message": msg, "benefit": _BENEFITS.get(
+                ben.group(1), ben.group(1)) if ben else None,
+            "entitlement": _text_of(html, "entitlement-message"),
+            "unavailable": "unavailable" in msg.lower()}
 
 
 async def _curl_html(url: str) -> str:
@@ -444,13 +457,15 @@ async def _curl_html(url: str) -> str:
     return out.decode("utf-8", "replace")
 
 
-async def prime_feed_labels(client: httpx.AsyncClient, gti: str) -> dict[str, str]:
-    """Best-effort names of every Prime feed of one game ('Wizards Broadcast', 'Magic
-    Broadcast', 'Mobile Broadcast'), parsed from the public detail page of any one GTI.
+async def prime_page_info(client: httpx.AsyncClient, gti: str) -> dict:
+    """What Amazon's public detail page says about one GTI: {"labels": {gti: 'Wizards
+    Broadcast', ...} (the game's feed picker), "benefit" ('nba_league_pass' | 'prime' |
+    raw id), "entitlement" ('Free trial of NBA League Pass'), "message", "unavailable"
+    (True when the buy box says 'unavailable ... regional restrictions' for this IP)}.
 
     Amazon serves a bot wall to httpx's TLS fingerprint, so this falls back to the system
-    `curl`.  Scrapes a consumer web page: call it only for the game you are about to tune.
-    Returns {} on any failure; unlabeled GTIs are the generic/national League Pass feeds.
+    `curl`.  It scrapes a consumer page: call it only for the game you are about to tune.
+    Returns {} on any failure.
     """
     try:
         url = f"https://www.amazon.com/gp/video/detail/{gti}"
@@ -462,12 +477,17 @@ async def prime_feed_labels(client: httpx.AsyncClient, gti: str) -> dict[str, st
             html = r.text if r.status_code == 200 else ""
         except Exception:
             pass
-        if "data-card-title" not in html:
+        if len(html) < 50_000:  # the bot-wall stub is ~4 KB; a real page is ~1 MB
             html = await _curl_html(url)
-        return _parse_feed_cards(html)
+        return _parse_prime_page(html) if len(html) >= 50_000 else {}
     except Exception as e:
-        log.debug("prime_feed_labels failed: %s", e)
+        log.debug("prime_page_info failed: %s", e)
         return {}
+
+
+async def prime_feed_labels(client: httpx.AsyncClient, gti: str) -> dict[str, str]:
+    """{gti: 'Wizards Broadcast' | 'Magic Broadcast' | 'Mobile Broadcast'} for the game."""
+    return (await prime_page_info(client, gti)).get("labels") or {}
 
 
 def _feed_kind(label: str | None, it: dict) -> str:
@@ -540,11 +560,11 @@ async def _main(date: str) -> None:
                     print(f"   {prov}: {it['url']}  geo_ok={it['geo_ok']} feed={it['feed_name'] or it['feed']}")
         wiz = match(links, "nba", {"WSH"}, {"ORL"}).get("prime")
         if wiz:
-            labels = await prime_feed_labels(client, wiz["gti"])
-            print("Prime feed labels for Wizards @ Magic:", labels or "(unavailable)")
+            info = await prime_page_info(client, wiz["gti"])
+            print("Prime page for", wiz["gti"], "->", info or "(unavailable)")
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+    logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
     _d = sys.argv[1] if len(sys.argv) > 1 else dt.datetime.now(ET).date().isoformat()
     asyncio.run(_main(_d))

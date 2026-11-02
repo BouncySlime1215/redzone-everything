@@ -23,6 +23,7 @@ YTTV_PACKAGES = ["com.amazon.firetv.youtube.tv", "com.google.android.youtube.tvu
 PRIME_PACKAGES = ["com.amazon.firebat", "com.amazon.avod.thirdpartyclient", "com.amazon.amazonvideo.livingroom",
                   "com.amazon.avod"]
 YOUTUBE_PACKAGES = ["com.amazon.firetv.youtube", "com.google.android.youtube.tv"]
+ESPN_PACKAGES = ["com.espn.gtv", "com.espn.score_center", "com.espn.androidtv", "com.espn.espnplus"]
 
 # Model code -> (name, os). From Amazon's device table; Vega sticks can't be controlled.
 MODELS = {
@@ -123,8 +124,11 @@ class Stick:
                 self.os = lines[2].split("(")[0].strip()
         pk = await self.shell("pm list packages", timeout=10)
         installed = set(re.findall(r"package:([\w.]+)", pk.out))
-        for role, cands in (("youtubetv", YTTV_PACKAGES), ("prime", PRIME_PACKAGES), ("youtube", YOUTUBE_PACKAGES)):
+        for role, cands in (("youtubetv", YTTV_PACKAGES), ("prime", PRIME_PACKAGES), ("youtube", YOUTUBE_PACKAGES),
+                            ("espn", ESPN_PACKAGES)):
             hit = next((p for p in cands if p in installed), None)
+            if hit is None and role == "espn":
+                hit = next((p for p in sorted(installed) if "espn" in p), None)
             if hit:
                 self.packages[role] = hit
 

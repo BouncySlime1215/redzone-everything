@@ -1,0 +1,95 @@
+"""Flight recorder: the real-world numbers the simulator needs.
+
+For every play, when it happened (feed wallclock) vs when THIS app first saw it, per source.
+That's the true feed lag, which decides how much head start we get on the stream. Also logs
+the source race (who reported each score first). Small JSONL files, one per day:
+
+    data/recordings/2026-11-02/plays.jsonl   {"t","league","game","play","type","wall","lag","source","text"}
+    data/recordings/2026-11-02/race.jsonl    {"t","game","label","first","others"}
+
+Finished games' full play-by-play is also saved to data/archive/<league>/ for backtesting.
+"""
+from __future__ import annotations
+
+import json
+import time
+from datetime import datetime
+from pathlib import Path
+
+from redzone.models import GameState
+from redzone.sources import espn
+
+ROOT = Path(__file__).resolve().parent.parent / "data"
+
+
+class Recorder:
+    def __init__(self, root: Path = ROOT):
+        self.root = root
+        self._seen: dict[str, set[str]] = {}
+        self._race_n = 0
+        self._archived: set[str] = set()
+
+    def _day(self) -> Path:
+        d = self.root / "recordings" / datetime.now().strftime("%Y-%m-%d")
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _write(self, name: str, rows: list[dict]) -> None:
+        if not rows:
+            return
+        with open(self._day() / name, "a") as f:
+            for r in rows:
+                f.write(json.dumps(r, separators=(",", ":")) + "\n")
+
+    def plays(self, g: GameState, plays: list[dict], source: str) -> None:
+        now = time.time()
+        seen = self._seen.setdefault(g.game_id, set())
+        first = not seen
+        rows = []
+        for p in plays:
+            pid = str(p.get("id") or "")
+            if not pid or pid in seen:
+                continue
+            seen.add(pid)
+            if first:
+                continue  # plays that existed before we started watching don't tell us the lag
+            wall = espn._ts(p.get("wallclock"))
+            rows.append({"t": round(now, 2), "league": g.league.value, "game": g.game_id, "play": pid,
+                         "type": espn._get(p, "type", "text"), "wall": wall,
+                         "lag": round(now - wall, 2) if wall else None, "source": source,
+                         "text": (p.get("text") or "")[:80]})
+        self._write("plays.jsonl", rows)
+
+    def race(self, merger) -> None:
+        new = merger.race[self._race_n:]
+        self._race_n = len(merger.race)
+        self._write("race.jsonl", [{"t": round(e.first_at, 2), "game": e.game_id, "label": e.label,
+                                    "first": e.first_source, "others": e.others} for e in new])
+
+    def archive(self, g: GameState, summary: dict) -> None:
+        """Keep a finished game's full play-by-play for future backtests (NBA/NHL/MLB too)."""
+        if g.game_id in self._archived:
+            return
+        self._archived.add(g.game_id)
+        d = self.root / "archive" / g.league.value
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"summary_{g.game_id}.json").write_text(json.dumps(summary))
+
+    def lag_stats(self, day: str | None = None) -> dict:
+        """Median/p90 feed lag per league and source from the plays log."""
+        f = (self.root / "recordings" / (day or datetime.now().strftime("%Y-%m-%d")) / "plays.jsonl")
+        if not f.exists():
+            return {}
+        by: dict[str, list[float]] = {}
+        for line in f.read_text().splitlines():
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if r.get("lag") is not None and 0 <= r["lag"] < 600:
+                by.setdefault(f"{r['league']}:{r['source']}", []).append(r["lag"])
+        out = {}
+        for k, v in by.items():
+            v.sort()
+            out[k] = {"n": len(v), "median": v[len(v) // 2], "p90": v[int(len(v) * 0.9)]}
+        return out

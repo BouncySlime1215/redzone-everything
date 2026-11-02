@@ -19,7 +19,8 @@ teams:                     # your teams: biggest boost
   mlb: [WSH]
 
 polling:
-  live_s: 10               # poll every N seconds while any game is live
+  hot_s: 3                 # what's on, what's next, and tense games: every N seconds
+  live_s: 10               # every other live game
   idle_s: 300              # poll every N seconds when nothing is live
 
 score:

@@ -113,4 +113,14 @@ class PrimeTuner(Tuner):
         return await super()._confirm(stick, pkg, steps)
 
 
-TUNERS: dict[str, Tuner] = {"youtubetv": YouTubeTVTuner(), "prime": PrimeTuner()}
+class EspnTuner(Tuner):
+    """ESPN+ events in the ESPN app (experimental: verify on the stick first)."""
+    app = "espn"
+    role = "espn"
+    confirm_timeout = 20.0
+
+    def url(self, ref: str) -> str:
+        return f"https://www.espn.com/watch/player/_/id/{ref}"
+
+
+TUNERS: dict[str, Tuner] = {"youtubetv": YouTubeTVTuner(), "prime": PrimeTuner(), "espn": EspnTuner()}
