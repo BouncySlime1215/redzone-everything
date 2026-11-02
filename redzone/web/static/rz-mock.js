@@ -2,9 +2,9 @@
    shifts timestamps to "now", and gently simulates a live night (clocks run, scores tick,
    heat moves, the TV switches games) so every animation can be seen. ?mock=1&still=1 freezes it. */
 
-import { Q, num, nowS } from "./rz-core.js?v=26";
+import { Q, num, nowS } from "./rz-core.js?v=28";
 
-const J = (p) => fetch(`/static/${p}?v=26`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+const J = (p) => fetch(`/static/${p}?v=28`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 let STATE = null, GAMES = null, TEAMS = null, ROSTERS = null, H = null;
 let lastSwitch = 0;
 
@@ -232,7 +232,7 @@ function action(b) {
     case "replay": {
       const q = STATE.queue.find((x) => x.play_id === String(b.value));
       if (!q) return { ok: false, message: "That replay isn't available anymore" };
-      switchTo(q.game_id, "replay", `catch-up replay: ${q.label}`);
+      switchTo(q.game_id, "replay", `catch-up: ${q.label}`);
       STATE.now.kind = "replay";
       STATE.now.replay = { label: q.label, game_id: q.game_id, play_id: q.play_id };
       STATE.queue = STATE.queue.filter((x) => x !== q);

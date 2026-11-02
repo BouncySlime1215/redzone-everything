@@ -3,9 +3,9 @@
 import {
   app, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, isDark, whereLabel, whereUnknown,
   leaderLabel, winner, teamBy, fmtDur, nowS, fmtCountdown, imgSrc, games, hex,
-} from "./rz-core.js?v=26";
-import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=26";
-import { situation, wpBar } from "./rz-viz.js?v=26";
+} from "./rz-core.js?v=28";
+import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=28";
+import { situation, wpBar } from "./rz-viz.js?v=28";
 
 /* ---------- chips ---------- */
 export function whereChip(g, { onDark = false } = {}) {
@@ -114,14 +114,14 @@ export function gameCard(g, { key = true } = {}) {
 
 /* ---------- hero scoreboard (Now) ---------- */
 function replayInfo(n, reason) {
-  const m = reason.match(/^(catch-up|instant replay)\s*:\s*(.+)$/i);
+  const m = reason.match(/^(catch-up(?: replay)?|instant replay)\s*:\s*(.+)$/i);
   if (n.kind !== "replay" && !m) return null;
   const label = (n.replay && n.replay.label) || (m && m[2]) || "";
   if (!label && n.kind !== "replay") return null;
-  return { label: label || "Replaying a big play", prefix: m ? m[1].toLowerCase() : "catch-up", fromReason: !!m };
+  return { label: label || "Replaying a big play", prefix: m && /instant/i.test(m[1]) ? "instant replay" : "catch-up", fromReason: !!m };
 }
 export function heroKind(n, g, mode) {
-  if (n.kind === "replay" || /^(catch-up|instant replay)\s*:/i.test(String(n.reason || ""))) return "replay";
+  if (n.kind === "replay" || /^(catch-up(?: replay)?|instant replay)\s*:/i.test(String(n.reason || ""))) return "replay";
   if (mode.paused) return "paused";
   if (mode.state === "break" || (g && g.is_break)) return "break";
   if (mode.locked_game && mode.locked_game === n.game_id) return "locked";

@@ -7,7 +7,7 @@
    - [data-flip] containers glide keyed children to their new positions (FLIP) and fade exits
    - focused inputs are never overwritten; scroll position is untouched */
 
-import { reduceMotion, settleImages, SPRING, EASE_OUT } from "./rz-core.js?v=26";
+import { reduceMotion, settleImages, SPRING, EASE_OUT } from "./rz-core.js?v=28";
 
 const tpl = document.createElement("template");
 const keyOf = (n) => (n.nodeType === 1 ? n.getAttribute("data-key") : null);
@@ -105,7 +105,7 @@ function syncSelect(a, b) {
 
 /* ---------- FLIP ---------- */
 function measureFlips(root) {
-  if (reduceMotion()) return null;
+  if (reduceMotion() || document.hidden) return null;
   const conts = root.matches && root.matches("[data-flip]") ? [root] : [];
   conts.push(...root.querySelectorAll("[data-flip]"));
   const out = [];
@@ -151,6 +151,7 @@ function ghostOut(el, r, box, c) {
   const a = el.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.96)" }],
     { duration: 260, easing: "ease-in", fill: "forwards" });
   a.onfinish = () => el.remove();
+  setTimeout(() => el.remove(), 600);
 }
 
 /* ---------- hydrate: odometers + image settle ---------- */

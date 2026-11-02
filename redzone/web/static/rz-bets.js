@@ -1,11 +1,11 @@
 /* RedZone Everything — Bets: sweat meters, add-bet flow (sheet), delete with confirm. */
 
-import { app, ACTIONS, INPUTS, hooks, attr, esc, num, get, arr, games, gameById, status, pairInks, fmtStart, vibrate } from "./rz-core.js?v=26";
-import { patch } from "./rz-dom.js?v=26";
-import { icon, logo, empty, sec, seg, screenHead, meter, odo } from "./rz-ui.js?v=26";
-import { fantasyCard } from "./rz-cards.js?v=26";
-import { openSheet, closeSheet, sheetById, confirmSheet, toast } from "./rz-sheet.js?v=26";
-import { api } from "./rz-api.js?v=26";
+import { app, ACTIONS, INPUTS, hooks, attr, esc, num, get, arr, games, gameById, status, pairInks, fmtStart, vibrate } from "./rz-core.js?v=28";
+import { patch } from "./rz-dom.js?v=28";
+import { icon, logo, empty, sec, seg, screenHead, meter, odo } from "./rz-ui.js?v=28";
+import { fantasyCard } from "./rz-cards.js?v=28";
+import { openSheet, closeSheet, sheetById, confirmSheet, toast } from "./rz-sheet.js?v=28";
+import { api } from "./rz-api.js?v=28";
 
 const ui = app.ui;
 ui.bet = ui.bet || { game: null, kind: "spread", team: null, line: "", side: "over", note: "" };

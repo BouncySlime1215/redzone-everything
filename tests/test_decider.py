@@ -376,6 +376,7 @@ def test_your_team_crunch_is_held_through_its_stoppages(dec, clock):
 
 def test_neutral_crunch_held_through_two_minute_warning_but_not_a_timeout(dec, clock):
     calibrate(dec, "youtubetv:a")
+    dec.timeline("b", League.NFL)   # every live game has a timeline (it's how we know b can be left)
     start_on(dec, clock, "a", {})
     on_break_now(dec, clock, "a", "two_minute_warning")
     d = dec.decide(cands(a=csc("a", 60, is_break=True), b=80))
@@ -430,3 +431,23 @@ def test_crunch_hops_are_not_flip_flopping(dec, clock):
         clock.t += 25
         dec._commit(g, kind="crunch")
     assert dec.frozen_until <= clock.t
+
+
+def test_my_teams_break_never_strands_me_in_another_basketball_game(dec, clock):
+    """Wizards timeout -> a visit to another NBA game can only be left at a whistle, which can take
+    minutes; that cost 6 crunch plays in a backtest. Visit only places with frequent clean exits."""
+    from redzone.decider.screen import Event as Ev
+    for g in ("w", "o", "f"):
+        calibrate(dec, f"youtubetv:{g}")
+    dec.timeline("o", League.NBA)
+    dec.timeline("f", League.NFL)
+    start_on(dec, clock, "w", {})
+    dec.timeline("w", League.NBA).events.append(Ev(clock.t, "stop_start", "timeout"))
+    clock.t += 50
+    mine = Scored("w", League.NBA, 60, 60, 60, 1.0, 20.0, "WSH game", ["WSH"], True, None, None, 1.0)
+    other_nba = sc("o", 70, league=League.NBA)
+    nfl_game = sc("f", 40)
+    cs = {"w": Candidate(mine, "youtubetv:w"), "o": Candidate(other_nba, "youtubetv:o"),
+          "f": Candidate(nfl_game, "youtubetv:f")}
+    d = dec.decide(cs)
+    assert d.action == "switch" and d.target == "f"   # the football game, not the better NBA game

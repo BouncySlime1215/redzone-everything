@@ -55,7 +55,12 @@ export function get(o, path, d) {
 export const arr = (v) => (Array.isArray(v) ? v.filter((x) => x !== null && x !== undefined) : []);
 export const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 export const isDark = () => !matchMedia("(prefers-color-scheme: light)").matches;
-export function vibrate(ms = 10) { try { navigator.vibrate && navigator.vibrate(ms); } catch { /* iOS */ } }
+export function vibrate(ms = 10) {
+  try {
+    const ua = navigator.userActivation;
+    if (navigator.vibrate && (!ua || ua.isActive)) navigator.vibrate(ms);
+  } catch { /* iOS has no vibration API */ }
+}
 export const SPRING = (() => {
   try {
     if (CSS.supports("transition-timing-function", "linear(0, 1)")) {

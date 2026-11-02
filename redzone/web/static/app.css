@@ -439,7 +439,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: var(--sp-3) var(--gutter
 .board-team .tm { display: flex; align-items: baseline; gap: 6px; margin-top: 6px; }
 .board-team .ab { font: 800 19px/1 var(--font-display); letter-spacing: .06em; }
 .board-team .rc { font: 600 11.5px/1 var(--font-ui); color: var(--text-3); }
-.board-team .pts { margin-top: 6px; font: 800 var(--fd-hero)/1 var(--font-display); letter-spacing: -.01em; text-shadow: 0 6px 30px rgba(0, 0, 0, .5); transition: opacity var(--t-3); }
+.board-team .pts { margin-top: 6px; font: 800 var(--fd-hero)/1 var(--font-display); letter-spacing: -.01em; filter: drop-shadow(0 6px 22px rgba(0, 0, 0, .45)); transition: opacity var(--t-3); }
 .board-team .pts.trail { opacity: .5; }
 .board-team .poss { height: 14px; margin-top: 2px; display: flex; align-items: center; gap: 4px; font: 700 10px/1 var(--font-ui); letter-spacing: .12em; color: var(--text-2); text-transform: uppercase; }
 .board-team .poss .ico { width: 13px; height: 13px; color: var(--mine); }

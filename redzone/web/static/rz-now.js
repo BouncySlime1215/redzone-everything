@@ -4,12 +4,12 @@
 import {
   app, ACTIONS, hooks, attr, esc, num, get, arr, games, gameById, phase, status, teamVars, pairInks, fmtAgo, fmtTime,
   fmtStart, nowS, reduceMotion, SPRING, EASE_OUT, raw, ink, teamBy, whereLabel,
-} from "./rz-core.js?v=26";
-import { patch } from "./rz-dom.js?v=26";
-import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=26";
-import { heroCard, fantasyCard } from "./rz-cards.js?v=26";
-import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=26";
-import { act } from "./rz-api.js?v=26";
+} from "./rz-core.js?v=28";
+import { patch } from "./rz-dom.js?v=28";
+import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=28";
+import { heroCard, fantasyCard } from "./rz-cards.js?v=28";
+import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=28";
+import { act } from "./rz-api.js?v=28";
 
 const STATE_LABEL = { idle: "Idle", watching: "Watching", locked: "Locked in", break: "On a break", paused: "Paused",
   frozen: "Holding still", safe: "Safe mode", replay: "Replay" };
@@ -184,7 +184,7 @@ function timeline(S) {
 function heroSwitch(root, ghost) {
   const wrap = root.querySelector(".hero-wrap");
   const hero = wrap && wrap.querySelector(".hero");
-  if (!wrap || !hero || reduceMotion()) return;
+  if (!wrap || !hero || reduceMotion() || document.hidden) return;
   ghost.setAttribute("data-ghost", "");
   ghost.removeAttribute("data-key");
   ghost.classList.add("hero-ghost");
@@ -192,6 +192,7 @@ function heroSwitch(root, ghost) {
   wrap.appendChild(ghost);
   ghost.animate([{ opacity: 1, transform: "none", filter: "blur(0)" }, { opacity: 0, transform: "translateX(-28px) scale(.97)", filter: "blur(4px)" }],
     { duration: 420, easing: "cubic-bezier(.55,0,1,.45)", fill: "forwards" }).onfinish = () => ghost.remove();
+  setTimeout(() => ghost.remove(), 900);
   hero.animate([{ opacity: 0, transform: "translateX(26px) scale(.985)" }, { opacity: 1, transform: "none" }], { duration: 620, easing: EASE_OUT, delay: 120, fill: "backwards" });
   const sweep = hero.querySelector(".hero-sweep");
   if (sweep) sweep.animate([{ opacity: 0.95, transform: "translateX(-110%)" }, { opacity: 0.95, transform: "translateX(110%)", offset: 0.85 }, { opacity: 0, transform: "translateX(120%)" }],

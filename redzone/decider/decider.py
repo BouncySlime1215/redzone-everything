@@ -29,8 +29,9 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 
-from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, PLAY_LEN_S, DelayBook, Event, Gate, Timeline,
-                                    break_on_arrival, catchable, final_play_aired, leave_gate, resume_play)
+from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, PLAY_LEN_S, DelayBook, Event, Gate,
+                                    Timeline, break_on_arrival, catchable, final_play_aired, leave_gate,
+                                    resume_play)
 from redzone.models import League
 from redzone.scoring.engine import Scored
 
@@ -898,11 +899,32 @@ class Decider:
         return max(options)[1] if options else None
 
     def _break_destination(self, watchable, exclude) -> str | None:
-        best = self._best(watchable, exclude)
-        if best and watchable[best].scored.score >= self.cfg.get("decider.break_destination_min"):
+        """Where to spend the home game's break. If home is a game you can't afford to miss the
+        resume of (your team, a bet, your focus game, crunch time), only go somewhere you can
+        ALWAYS leave in time: basketball/hockey only have clean exits at whistles, and a visit
+        there stranded us for 3 minutes of a Wizards crunch (backtest, Oct 26)."""
+        options = watchable
+        if exclude and self._sticky_home(exclude, watchable):
+            options = {gid: x for gid, x in watchable.items() if gid == REDZONE or self._exits_often(gid)}
+        best = self._best(options, exclude)
+        if best and options[best].scored.score >= self.cfg.get("decider.break_destination_min"):
             return best
         # RedZone never shows a commercial: any break is better spent there than on an ad.
         return REDZONE if REDZONE in watchable and exclude != REDZONE else None
+
+    def _sticky_home(self, gid: str, watchable) -> bool:
+        """A game whose next play you must be back for."""
+        x = watchable.get(gid)
+        if x is None:
+            return gid == self.user.focus_game
+        s = x.scored
+        return (gid == self.user.focus_game or s.crunch or s.lock is not None
+                or s.personal >= self.cfg.get("decider.crunch.hold_personal", 5))
+
+    def _exits_often(self, gid: str) -> bool:
+        """Discrete sports (football, baseball) have a clean gap between every play."""
+        tl = self.timelines.get(gid)
+        return tl is not None and tl.league not in CONTINUOUS
 
     def _cost(self, target: str | None) -> float:
         app = (target or "").split(":", 1)[0]

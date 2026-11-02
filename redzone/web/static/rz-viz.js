@@ -1,8 +1,8 @@
 /* RedZone Everything — sports graphics: NFL field, MLB diamond, NHL rink, period progress,
    win-probability bar + sparkline, linescore. All inline SVG/HTML, sized by the container. */
 
-import { attr, esc, num, clamp, get, arr, ordinal, raw, pairInks, teamBy } from "./rz-core.js?v=26";
-import { logo, icon } from "./rz-ui.js?v=26";
+import { attr, esc, num, clamp, get, arr, ordinal, raw, pairInks, teamBy } from "./rz-core.js?v=28";
+import { logo, icon } from "./rz-ui.js?v=28";
 
 const REG = { nfl: 4, nba: 4, nhl: 3, mlb: 9 };
 const PERIOD_MIN = { nfl: 15, nba: 12, nhl: 20 };
