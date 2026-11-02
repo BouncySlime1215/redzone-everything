@@ -2,6 +2,7 @@
 - a cold YouTube TV tune confirms on the channel name in the app's metadata (was ~20 s);
 - sticks reconnect within one keepalive tick, even after a flaky `adb version` at startup;
 - the hidden stick is never woken by a failed power read; a lost TV input recovers from CEC."""
+import asyncio
 import time
 
 import pytest
@@ -215,3 +216,55 @@ async def test_two_sticks_both_claiming_active_source_changes_nothing(two):
     two.active, two.input_unknown = 0, True
     assert not await two.sync_active_from_cec()
     assert two.active == 0 and two.input_unknown
+
+
+# --- after a HOME flip the relaunched app must really be playing --------------------------
+
+from test_hot_standby import two as hot_two  # noqa: E402,F401  (fixture)
+
+
+async def test_home_flip_that_resumes_is_left_alone(hot_two, monkeypatch):
+    monkeypatch.setattr(ctl, "RESUME_WAIT_S", 0.3)
+    c, tuner = hot_two
+    c.on_target = "youtubetv:fox"
+    out = await c.execute("youtubetv:espn", may_cut=lambda: True)
+    assert out.ok and c._resume_task is not None
+    await c._resume_task
+    assert tuner.calls == [("b:5555", "youtubetv:espn")]      # no re-tune
+    assert c.on_target == "youtubetv:espn" and c.main.tuned["target"] == "youtubetv:espn"
+
+
+async def test_home_flip_that_lands_on_the_app_home_reloads_the_game(hot_two, monkeypatch):
+    monkeypatch.setattr(ctl, "RESUME_WAIT_S", 0.3)
+    c, tuner = hot_two
+    c.on_target = "youtubetv:fox"
+    c.sticks[1].playing = "none"                              # relaunch opened the app's home page
+    orig = tuner.tune
+
+    async def tune(stick, ref, target, may_cut=None):
+        if len(tuner.calls) == 0:
+            res = await orig(stick, ref, target, may_cut)        # the hidden-stick tune before the flip
+            return res
+        stick.playing = "playing"
+        return await orig(stick, ref, target, may_cut)
+    monkeypatch.setattr(tuner, "tune", tune)
+    c.sticks[1].playing = "playing"
+    out = await c.execute("youtubetv:espn", may_cut=lambda: True)
+    assert out.ok
+    c.sticks[1].playing = "none"
+    await c._resume_task
+    assert tuner.calls[-1] == ("b:5555", "youtubetv:espn") and len(tuner.calls) == 2
+    assert c.on_target == "youtubetv:espn"
+
+
+async def test_a_new_switch_cancels_the_resume_check(hot_two, monkeypatch):
+    monkeypatch.setattr(ctl, "RESUME_WAIT_S", 5.0)
+    c, _ = hot_two
+    c.on_target = "youtubetv:fox"
+    await c.execute("youtubetv:espn", may_cut=lambda: True)
+    c.sticks[1].playing = "none"
+    task = c._resume_task
+    c.submit("youtubetv:fox", may_cut=lambda: True)
+    await asyncio.sleep(0)
+    assert task.cancelled() or task.done()
+    await c._task
