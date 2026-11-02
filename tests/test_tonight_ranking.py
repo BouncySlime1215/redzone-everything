@@ -68,6 +68,23 @@ def test_sticky_home_break_only_visits_games_we_can_leave(cfg, clock):
     assert dec._break_destination(watchable, "h") == "n"         # switchable off from config
 
 
+def test_vanished_basketball_game_is_held_longer_than_football(cfg, clock):
+    from redzone.decider.decider import GONE_MAX_HOLD_CONTINUOUS_S, GONE_MAX_HOLD_S
+    from redzone.decider.screen import Event
+    dec = Decider(cfg, DelayBook({"youtubetv": 40}, 15, clock=clock), clock=clock)
+    assert dec.decide({"a": _c("a", League.NBA, 80), "b": _c("b", League.NBA, 50)}).target == "a"
+    tl = dec.timeline("a", League.NBA)
+    tl.fresh_at = clock.t
+    tl.events.append(Event(clock.t - 5, "play", "jumper"))
+    clock.t += 30
+    b = {"b": _c("b", League.NBA, 50)}                           # "a" dropped out of the feed (rollover)
+    assert dec.decide(b).action == "stay"
+    clock.t += GONE_MAX_HOLD_S + 1
+    assert dec.decide(b).action == "stay"                         # football would leave blind here
+    clock.t += GONE_MAX_HOLD_CONTINUOUS_S
+    assert dec.decide(b).action == "switch"
+
+
 def test_start_waits_for_your_team_instead_of_an_inescapable_neutral_game(cfg, clock):
     dec = Decider(cfg, DelayBook({"youtubetv": 40}, 15, clock=clock), clock=clock)
     nhl = {"det": _c("det", League.NHL, 70)}

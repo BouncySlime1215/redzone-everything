@@ -38,6 +38,9 @@ from redzone.models import League, Stoppage
 from redzone.scoring.engine import Scored
 
 GONE_MAX_HOLD_S = 90.0  # [mid-play guard] a game that vanished without a final: don't wait on a dead feed forever
+# Basketball/hockey have no between-play gap to prove, so a vanished game (late West Coast games at the
+# ESPN scoreboard rollover after midnight) is held longer before leaving blind.
+GONE_MAX_HOLD_CONTINUOUS_S = 300.0
 REDZONE = "redzone"
 # Locks where every snap matters, not just the big ones (scoring/engine.py names them).
 CRUNCH_LOCKS = {"final two minutes", "crunch time", "overtime", "empty net"}
@@ -780,7 +783,8 @@ class Decider:
         if cur is None:  # vanished without a final
             if self._gone is None or self._gone[0] != (gid, self.since):
                 self._gone = ((gid, self.since), now)
-            if now - self._gone[1] >= GONE_MAX_HOLD_S:
+            cap = GONE_MAX_HOLD_CONTINUOUS_S if tl.league in CONTINUOUS else GONE_MAX_HOLD_S
+            if now - self._gone[1] >= cap:
                 return None
             return f"lost this game's data — leaving at the next safe gap ({gate.why})"
         return f"leaving at the next gap ({gate.why})"
