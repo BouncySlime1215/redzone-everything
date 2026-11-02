@@ -517,11 +517,13 @@ def _link_source(g: GameState, prov: str, app: str, rec: dict) -> Source | None:
     ref = _link_ref(app, rec)
     target = f"{app}:{ref}" if ref else None
     alt = bool(rec.get("alt")) or (rec.get("lang") not in (None, "en")) \
-        or bool(_ALT_TITLE_RX.search(" ".join(str(rec.get(k) or "") for k in ("title", "feed_name")).lower()))
+        or bool(_ALT_TITLE_RX.search(" ".join(str(rec.get(k) or "") for k in ("title", "feed_name", "network")).lower()))
     feed = "alt" if alt else rec.get("feed")
     team = g.home.abbr if feed == "home" else g.away.abbr if feed == "away" else None
     tunable = bool(ref) and app in TUNER_APPS
     sure = tunable and rec.get("geo_ok") is not False and not alt
+    if app == "prime" and g.league == League.NHL and "prime" not in _nets(g):
+        sure = False   # usually a paid Prime Video Channel (NESN, Scripps), not Prime's own game
     return Source(app, target, _link_label(prov, app, rec), tunable, "event", feed=feed, team=team,
                   geo_ok=rec.get("geo_ok"), confidence="sure" if sure else "likely",
                   note="" if tunable else "no tuner for this app yet")

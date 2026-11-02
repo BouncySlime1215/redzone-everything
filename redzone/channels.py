@@ -154,7 +154,13 @@ class ChannelMap:
         # National cable first: it's never blacked out.
         for n in nets:
             if n not in BROADCAST and n in NETWORKS.values() and APP_FOR.get(n, "youtubetv") == "youtubetv":
-                return self._yttv(n)
+                w = self._yttv(n)
+                if not w.tunable and lg == League.NHL and n == "nhlnetwork":
+                    # No YouTube TV code for NHL Network: the out-of-market ESPN+ feed if we have it.
+                    e = self._espnplus(g)
+                    if e.tunable:
+                        return e
+                return w
         for n in nets:
             if APP_FOR.get(n) == "prime":
                 return self._prime(g, n, describe(f"prime:{n}"), "sure" if n == "prime" else "likely")

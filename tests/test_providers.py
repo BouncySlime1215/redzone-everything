@@ -732,3 +732,19 @@ def test_peacock_alt_camera_feeds_rank_as_alternates():
         s = prov._link_source(g, "peacock", "peacock", {"ref": "x", "title": title})
         assert s.feed == "alt", title
     assert prov._link_source(g, "peacock", "peacock", {"ref": "x", "title": "Thunder vs. Cavaliers"}).feed is None
+    mnf = game("SEA", "CHI", league=League.NFL, broadcasts=["ESPN"])
+    assert prov._link_source(mnf, "espn", "espn", {"play_id": "1", "network": "ESPN Deportes"}).feed == "alt"
+    assert prov._link_source(mnf, "espn", "espn", {"play_id": "1", "title": "En Español: Bears vs. Seahawks"}
+                             ).feed == "alt"
+
+
+def test_nhl_network_without_a_code_uses_espn_plus_and_prime_channels_are_not_sure(tmp_path):
+    cm = ChannelMap(tmp_path / "ch.json")
+    g = game("BOS", "VGK", league=League.NHL, gid="g5", broadcasts=["NHL Net", "NESN"])
+    assert cm.where(g).target == "youtubetv:nhlnetwork"     # nothing better known yet
+    cm.espn_ids[g.game_id] = "abc"
+    assert cm.where(g).target == "espn:abc"
+    cm.codes["nhlnetwork"] = "CODE"
+    assert cm.where(g).target == "youtubetv:nhlnetwork"
+    s = prov._link_source(g, "prime", "prime", {"gti": "amzn1.x", "geo_ok": True, "title": "Golden Knights vs. Bruins"})
+    assert s.confidence == "likely"
