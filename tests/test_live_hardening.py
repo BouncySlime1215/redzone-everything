@@ -228,46 +228,55 @@ async def test_home_flip_that_resumes_is_left_alone(hot_two, monkeypatch):
     c, tuner = hot_two
     c.on_target = "youtubetv:fox"
     out = await c.execute("youtubetv:espn", may_cut=lambda: True)
-    assert out.ok and c._resume_task is not None
-    await c._resume_task
+    assert out.ok and out.resumed is True and out.flip_s is not None and out.resume_s is not None
     assert tuner.calls == [("b:5555", "youtubetv:espn")]      # no re-tune
     assert c.on_target == "youtubetv:espn" and c.main.tuned["target"] == "youtubetv:espn"
 
 
-async def test_home_flip_that_lands_on_the_app_home_reloads_the_game(hot_two, monkeypatch):
+async def test_home_flip_that_lands_on_the_app_home_reloads_the_game_before_success(hot_two, monkeypatch):
+    """The relaunch opened the app's home page: the switch re-loads the game BEFORE it reports."""
     monkeypatch.setattr(ctl, "RESUME_WAIT_S", 0.3)
+    monkeypatch.setattr(ctl, "RESUME_POLL_S", 0.02)
     c, tuner = hot_two
     c.on_target = "youtubetv:fox"
-    c.sticks[1].playing = "none"                              # relaunch opened the app's home page
+    b = c.sticks[1]
     orig = tuner.tune
 
     async def tune(stick, ref, target, may_cut=None):
-        if len(tuner.calls) == 0:
-            res = await orig(stick, ref, target, may_cut)        # the hidden-stick tune before the flip
-            return res
         stick.playing = "playing"
         return await orig(stick, ref, target, may_cut)
     monkeypatch.setattr(tuner, "tune", tune)
-    c.sticks[1].playing = "playing"
+    real_shell = b.shell
+
+    async def shell(cmd, timeout=8.0):
+        if "KEYCODE_HOME" in cmd:
+            b.playing = "none"                                  # HOME, relaunch -> app home page
+        return await real_shell(cmd, timeout)
+    b.shell = shell
     out = await c.execute("youtubetv:espn", may_cut=lambda: True)
-    assert out.ok
-    c.sticks[1].playing = "none"
-    await c._resume_task
+    assert out.ok and out.resumed is True and "relink" in out.detail
     assert tuner.calls[-1] == ("b:5555", "youtubetv:espn") and len(tuner.calls) == 2
     assert c.on_target == "youtubetv:espn"
 
 
-async def test_a_new_switch_cancels_the_resume_check(hot_two, monkeypatch):
-    monkeypatch.setattr(ctl, "RESUME_WAIT_S", 5.0)
+async def test_a_new_switch_waits_for_the_resume_instead_of_cancelling_it(hot_two, monkeypatch):
+    """Cancelling mid-resume would leave the screen unknown (and the engine in safe mode)."""
+    monkeypatch.setattr(ctl, "RESUME_WAIT_S", 0.3)
+    monkeypatch.setattr(ctl, "RESUME_POLL_S", 0.02)
     c, _ = hot_two
     c.on_target = "youtubetv:fox"
-    await c.execute("youtubetv:espn", may_cut=lambda: True)
-    c.sticks[1].playing = "none"
-    task = c._resume_task
-    c.submit("youtubetv:fox", may_cut=lambda: True)
-    await asyncio.sleep(0)
-    assert task.cancelled() or task.done()
-    await c._task
+    c.sticks[1].playing = "playing"
+    outs = []
+    c.submit("youtubetv:espn", on_done=outs.append, may_cut=lambda: True)
+    for _ in range(200):
+        await asyncio.sleep(0.005)
+        if c._flipping:
+            break
+    first = c._task
+    c.submit("youtubetv:fox", on_done=outs.append, may_cut=lambda: True)
+    await asyncio.gather(first, c._task, return_exceptions=True)
+    assert outs and outs[0].ok and outs[0].target == "youtubetv:espn"
+    assert not first.cancelled()
 
 
 async def test_event_link_confirms_when_the_channel_in_the_metadata_changes():

@@ -46,7 +46,7 @@ from typing import Callable
 
 from redzone.channels import ChannelMap
 from redzone.tuners.adb import Stick, adb_available, playback_ready
-from redzone.tuners.tuners import TUNERS, TuneResult
+from redzone.tuners.tuners import TUNERS, TuneResult, channel_matcher
 from redzone.tv import SamsungTV
 
 log = logging.getLogger(__name__)
@@ -58,7 +58,19 @@ MIN_PRELOAD_GAP_S = 5.0    # never start preloads back to back faster than this
 CEC_RETRY_S = 600.0        # a stick whose CEC flip failed goes straight to the TV remote this long
 CEC_SYNC_S = 30.0          # re-ask the sticks which one is on screen this often (when idle)
 RESUME_WAIT_S = 6.0        # after a HOME flip, the relaunched app must be playing again within this
-TWO_STICK_RETRY_S = 300.0 # a failed flip turns two-stick mode off this long (once the input is known again)
+RESUME_PLAY_WAIT_S = 3.0   # ...else MEDIA_PLAY (a paused player) and wait this long
+RELINK_MAX_S = 25.0        # ...else one fresh deep link of the target, capped at this
+RESUME_POLL_S = 0.25       # "playing the game again?" this often while resuming
+FLIP_POLL_S = 0.12         # after HOME: ask the stick "are you the active source?" this often...
+FLIP_DEADLINE_S = 4.5      # ...for at most this long (it normally answers in well under a second)
+RELAUNCH_AFTER_S = 0.6     # the app is relaunched no sooner than this after HOME (the launcher must draw)
+TWO_STICK_RETRY_S = 120.0  # a failed flip turns two-stick mode off this long (once the input is known again)
+REASSERT_FIRST_S = 15.0    # input unknown: first HOME re-assert on the intended stick no sooner than this
+REASSERT_GAP_S = 60.0      # ...then at most once a minute
+REASSERT_MAX = 3           # ...and at most this many per episode (a TV someone turned off stays off)
+REASSERT_BOTH_S = 120.0    # both sticks claim the TV and the engine gave no safe moment: re-assert after this
+VISIBLE_STALL_S = 8.0      # the stick on screen not playing this long, outside a switch -> resume it
+VISIBLE_FIX_GAP_S = 30.0   # ...at most once per this (a deep link that keeps failing isn't hammered)
 AWAKE_TRUST_S = 120.0      # a stick seen playing this recently is awake: skip the sleep check
 REFRESH_POLL_S = 0.5       # after a flip: how often the refresh of the game we left checks for a free moment
 REFRESH_TRIES = 40         # ...and how many times (~20s) before it leaves the standby to the planner
@@ -68,7 +80,8 @@ SEEK_LATE_OK_S = 1.0       # a rewind may land this far past its target (Missed.
 
 LATENCY_KEEP = 15
 # What a real measurement can look like; outside this it's a glitch (a fake, a hung adb), not a switch.
-PLAUSIBLE = {"flip": (0.02, 30.0), "seek": (0.05, 60.0)}
+PLAUSIBLE = {"flip": (0.02, 30.0), "seek": (0.05, 60.0), "resume": (0.02, 60.0)}
+ACTIVE_SOURCE_CMD = "dumpsys hdmi_control | grep -E -c 'mIsActiveSource: true'"
 TUNE_PLAUSIBLE = (0.3, 90.0)
 
 
@@ -83,6 +96,9 @@ class Outcome:
     path: str = ""             # "preloaded" | "parked replay" | "tuned" | "single" | "already"
     waited: float = 0.0        # seconds held for a safe moment before the flip
     screen_unchanged: bool = False  # rejected before any possible visible mutation
+    flip_s: float | None = None     # HOME -> the stick is the TV's active source (the input changed)
+    resume_s: float | None = None   # active source -> the relaunched app is playing the game again
+    resumed: bool | None = None     # after a HOME flip: the game was confirmed playing again
 
 
 @dataclass
@@ -196,6 +212,18 @@ class Controller:
         self._refresh_task: asyncio.Task | None = None   # after a flip: reload the game we left (see _refresh_left)
         self._refreshing: str | None = None      # the target the running preload is refreshing, if it is a refresh
         self._exit_check = None
+        self._flip_s: float | None = None       # HOME -> active source, of the last flip
+        self.last_flip: dict | None = None       # the phone's latency book: flip_s / resume_s of the last flip
+        self._visible_bad_since: float | None = None   # the stick on screen stopped playing at (watchdog)
+        self._visible_fix_at = 0.0               # last watchdog repair (rate limit)
+        self._unknown_since = 0.0                # input became unknown at
+        self._unknown_target: str | None = None  # what the intended stick was showing when it did
+        self._reasserts = 0                      # HOME re-asserts on the intended stick this episode
+        self._reassert_at = 0.0                  # next re-assert allowed at
+        self.cec_view = "unknown"                # last CEC read: one | none | both | unknown
+        # The engine's "nothing live on the visible game right now" (optional). Gates the HOME
+        # re-assert when both sticks claim the TV, since then one of them IS on screen.
+        self.safe_moment: Callable[[], bool] | None = None
 
     # --- devices -----------------------------------------------------------------
 
@@ -236,15 +264,22 @@ class Controller:
         (The TV itself isn't reachable on the network, so ask the sticks.) Acts only on an
         unambiguous answer: exactly one stick says it's on screen. Returns True if it changed
         which stick we think is on screen, or cleared an unknown TV input."""
-        on, gen = [], self._flip_gen
+        on, gen, asked = [], self._flip_gen, 0
         for i, s in enumerate(self.sticks):
             if not s.controllable:
                 continue
-            r = await s.shell("dumpsys hdmi_control | grep -E -c 'mIsActiveSource: true'", timeout=5)
+            r = await s.shell(ACTIVE_SOURCE_CMD, timeout=5)
+            if r.ok:
+                asked += 1
             if r.ok and r.out.strip().startswith("1"):
                 on.append(i)
-        if len(on) != 1 or gen != self._flip_gen or self._flipping or self._busy():
+        if gen != self._flip_gen or self._flipping or self._busy():
             return False   # a switch flipped (or is flipping) while we read: these answers are stale
+        self.cec_view = "one" if len(on) == 1 else ("both" if len(on) > 1 else ("none" if asked else "unknown"))
+        if len(on) != 1:
+            # Neither (TV off or on another input, CEC dropped) or both (a race, or a stick that
+            # never heard the other's <Active Source>): no guess. keepalive re-asserts if it lasts.
+            return False
         i = on[0]
         changed = self.active != i or self.input_unknown
         if changed:
@@ -255,8 +290,23 @@ class Controller:
                 self.on_target = None
                 self._set_hidden(None, False)
             self.active = i
-            self.input_unknown = False
+            self._input_known()
         return changed
+
+    def _mark_input_unknown(self, intended_target: str | None) -> None:
+        """We no longer know which input the TV shows. Remember what the stick we meant to be on
+        screen was playing, so a re-assert can put exactly that back."""
+        if not self.input_unknown:
+            self._unknown_since = time.time()
+            self._unknown_target = intended_target
+            self._reasserts = 0
+            self._reassert_at = time.time() + REASSERT_FIRST_S
+        self.input_unknown = True
+
+    def _input_known(self) -> None:
+        self.input_unknown = False
+        self._reasserts = 0
+        self._unknown_target = None
 
     async def close(self) -> None:
         """App shutdown: close each stick's always-open adb shell."""
@@ -492,7 +542,12 @@ class Controller:
         """For the phone's Health card: what we measured, and what the decider is planning with."""
         return {"measured": self.latency.view(), "preloaded": self.latency.preloaded_view(),
                 "cost": dict(self.cfg.get("decider.switch_cost") or {}),
-                "path": "flip" if self.two_stick else "tune"}
+                "path": "flip" if self.two_stick else "tune",
+                # The input change and the picture coming back, measured separately (medians + last).
+                "flip_s": self.latency.median("flip"), "resume_s": self.latency.median("resume"),
+                "last_flip": dict(self.last_flip) if self.last_flip else None,
+                "input": {"unknown": self.input_unknown, "cec": self.cec_view, "reasserts": self._reasserts,
+                          "two_stick_ok": self.two_stick_ok}}
 
     # --- actions -----------------------------------------------------------------
 
@@ -768,7 +823,7 @@ class Controller:
             self._set_hidden(None, False)
             self.note = f"Two-stick mode off: couldn't switch TV input ({self.tv.last_error or 'unknown'})"
             log.warning(self.note)
-            self.input_unknown = True
+            self._mark_input_unknown(self.on_target)
             self.on_target = None
             return Outcome(False, target, time.time() - t0, self.note + "; visible input is unconfirmed", False,
                            path=path)
@@ -776,28 +831,58 @@ class Controller:
         self.active = self.sticks.index(hid)
         self._flip_gen += 1
         self.on_target = None if replay else target
+        self._visible_bad_since = None
         # The stick we just left pauses its app when it loses the TV input (seen on both Fire TV
         # sticks), so it isn't a ready standby. Reload that game at the live edge in the background:
         # "back"/"home" is then one flip again, and nobody comes back to a stream minutes behind.
+        # Nothing ever presses HOME or WAKEUP on it (either could pull the TV back to it).
         self._set_hidden(old_target, False)
         self._cancel_refresh()
-        if old_target and not replay:
-            self._refresh_task = asyncio.create_task(self._refresh_left(old_target))
         if old_stick is not None:
             self._awake_at[old_stick.host] = time.time()
+        flip_s, took = self._flip_s, work + (time.time() - t1)
+        detail = f"flipped to {self.hdmi.get(hid.host)} ({path})"
+        resume_s, how = None, None
+        home = self._home_flipped and not replay
+        if home:
+            # HOME backgrounded the app and it was relaunched: the TV already shows this stick, so
+            # nothing is left to protect. Confirm the game is playing again BEFORE reporting success
+            # (MEDIA_PLAY, then one fresh deep link if it landed on its home page). Not cancellable,
+            # like the flip: a newer command waits for this instead of leaving the screen unknown.
+            r0 = time.monotonic()
+            self._flipping = True
+            self.stage.update(stage="resuming", reason="confirming the game is playing after the input change")
+            try:
+                how = await self._resume_playback(hid, target, RESUME_WAIT_S)
+            except Exception:
+                log.exception("resume check after the flip crashed")
+            finally:
+                self._flipping = False
+            resume_s = time.monotonic() - r0
+            if how is None:
+                # The input DID change (that's the cut); the picture isn't confirmed. The visible-stick
+                # watchdog keeps retrying, and the next switch re-tunes instead of trusting it.
+                detail += "; game not confirmed playing yet (watchdog will retry)"
+                self._visible_bad_since = time.time()
+            elif how != "auto":
+                detail += f"; resumed by {how.replace('_', ' ')}"
+        self._book_flip(hid, target, flip_s, resume_s, how)
+        if old_target and not replay:
+            self._refresh_task = asyncio.create_task(self._refresh_left(old_target))
         self._verified_at = time.time() - self._verify_every() + VERIFY_SOON_S
-        if self._home_flipped and not replay:
-            self._check_resumed_soon(hid, target)
-        return Outcome(True, target, work + (time.time() - t1), f"flipped to {self.hdmi.get(hid.host)} ({path})",
-                       False, time.time(), path=path, waited=waited)
+        return Outcome(True, target, took, detail, False, time.time(), path=path, waited=waited,
+                       flip_s=None if flip_s is None else round(flip_s, 2),
+                       resume_s=None if resume_s is None else round(resume_s, 2),
+                       resumed=(how is not None) if home else None)
 
     async def _flip_to(self, stick: Stick) -> bool:
-        """Make the TV show this stick. CEC one-touch-play from the stick first (no tokens needed),
-        then the TV's own network remote, then SmartThings. A stick whose CEC just failed goes
-        straight to the TV for a while: no wasted round trip on every flip."""
+        """Make the TV show this stick. HOME on the stick first (it announces <Active Source> over
+        CEC and the TV follows; no tokens needed), then the TV's own network remote, then SmartThings.
+        Records self._flip_s (HOME -> active source) when the HOME path worked."""
         t0 = time.monotonic()
         self.stage.update(stage="verifying_input", reason="requesting and verifying the display input")
         self._home_flipped = False
+        self._flip_s = None
         ok = False
         requested = self.hdmi.get(stick.host)
         if not requested:
@@ -808,12 +893,12 @@ class Controller:
             return False
         # Fire OS has no shell CEC command and blocks the system call (HDMI_CEC permission),
         # but HOME makes the stick announce <Active Source> over the HDMI cable, and the TV
-        # follows. HOME backgrounds the preloaded app, so bring it straight back: it resumes
-        # the stream it was already playing (measured on the 4K/4K Plus: ~2.5s to video).
+        # follows. HOME backgrounds the preloaded app, so it is relaunched right after; the
+        # caller then confirms the game is really playing again (_resume_playback).
         # Always tried first: it's the only path that works on these sticks, so a rejected
         # onetouchplay below must never bar it (that turned one slow flip into ~10 min of failures).
-        if await self._home_flip(stick) or await self._active_source(stick, tries=6):
-            self.latency.record("flip", time.monotonic() - t0)
+        if await self._home_flip(stick):
+            self.latency.record("flip", self._flip_s if self._flip_s is not None else time.monotonic() - t0)
             self._awake_at[stick.host] = time.time()
             self._home_flipped = True
             return True
@@ -840,67 +925,125 @@ class Controller:
                 return False
             ok = await self.tv.set_input(requested)
         if ok:
-            self.latency.record("flip", time.monotonic() - t0)
+            self._flip_s = time.monotonic() - t0
+            self.latency.record("flip", self._flip_s)
             self._awake_at[stick.host] = time.time()
         return ok
 
-    def _check_resumed_soon(self, stick: Stick, target: str) -> None:
-        """After a HOME flip the app was relaunched; make sure it really resumed the game. Runs as
-        background work, so the switch reports at once; any newer command cancels it."""
-        if self._resume_task and not self._resume_task.done():
-            self._resume_task.cancel()
-        self._resume_task = asyncio.create_task(self._check_resumed(stick, target))
+    async def _is_active_source(self, stick: Stick) -> bool | None:
+        """Does this stick say it is the TV's HDMI-CEC active source? None = couldn't ask."""
+        r = await stick.shell(ACTIVE_SOURCE_CMD, timeout=3)
+        if not r.ok and not r.out.strip():
+            return None
+        return r.out.strip().startswith("1")
 
-    async def _check_resumed(self, stick: Stick, target: str) -> None:
-        async with self._lock:
-            if self.main is not stick or self.on_target != target:
-                return
-            pkg = self._package(stick, target)
-            end = time.monotonic() + RESUME_WAIT_S
-            while time.monotonic() < end:
-                pb = await stick.playback(pkg)
-                if playback_ready(pb):
-                    stick.remember(target, pb)   # resumed the stream we confirmed before the flip
-                    return
-                await asyncio.sleep(0.5)
-            # On screen and not playing (stuck on the app's home page, a profile picker...):
-            # nothing to protect any more, so load the game again.
-            log.warning("after the flip %s didn't resume %s; loading it again", stick.host, target)
-            self.on_target = None
-            res = await self._tune(stick, target)
-            if res.ok and self.main is stick:
-                self.on_target = target
-            else:
-                log.warning("re-load after the flip failed: %s", res.error)
+    async def _await_active_source(self, stick: Stick, t0: float, deadline_s: float) -> float | None:
+        """Poll fast until the stick is the active source. Seconds since t0 when it was, else None."""
+        while True:
+            if await self._is_active_source(stick):
+                return time.monotonic() - t0
+            if time.monotonic() - t0 >= deadline_s:
+                return None
+            await asyncio.sleep(FLIP_POLL_S)
 
-    async def _active_source(self, stick: Stick, tries: int) -> bool:
-        """A slow HOME flip: is the stick on screen after all? (~0.25 s per try)"""
-        for _ in range(tries):
-            st = await stick.shell("dumpsys hdmi_control | grep -E -c 'mIsActiveSource: true'", timeout=5)
-            if st.ok and st.out.strip().startswith("1"):
-                return True
-            await asyncio.sleep(0.25)
-        return False
+    async def _relaunch(self, stick: Stick, pkg: str | None, home_at: float) -> None:
+        """Bring the app HOME backgrounded back to the front (it resumes what it was playing)."""
+        if not pkg:
+            return
+        wait = RELAUNCH_AFTER_S - (time.monotonic() - home_at)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        await stick.shell(f"am start -n $(cmd package resolve-activity --brief {pkg} | tail -1) >/dev/null 2>&1",
+                          timeout=8)
 
-    async def _home_flip(self, stick: Stick) -> bool:
-        """HOME -> <Active Source> -> TV switches to this stick; then resume its app.
-        Verified on the stick's own CEC state (the TV isn't reachable over Wi-Fi)."""
-        app = (self.hidden_target or "").split(":", 1)[0] if stick is self.hidden else None
-        pkg = stick.packages.get(app or "") if app else None
-        resume = f"; sleep 0.6; am start -n $(cmd package resolve-activity --brief {pkg} | tail -1) >/dev/null 2>&1" \
-            if pkg else ""
-        before = await stick.shell("dumpsys hdmi_control | grep -c 'Active Source> '", timeout=5)
-        r = await stick.shell(f"input keyevent KEYCODE_HOME{resume}", timeout=8)
+    async def _home_flip(self, stick: Stick, target: str | None = None) -> bool:
+        """HOME -> <Active Source> -> TV switches to this stick; then relaunch its app.
+        Verified on the stick's own CEC state (the TV isn't reachable over Wi-Fi), polled every
+        ~0.12 s so a fast TV isn't held to a fixed wait. self._flip_s = HOME -> active source."""
+        if target is None:
+            target = self.hidden_target if stick is self.hidden else self.on_target
+        pkg = self._package(stick, target) if target else None
+        home_at = time.monotonic()
+        r = await stick.shell("input keyevent KEYCODE_HOME", timeout=8)
         if not r.ok:
+            # Unsent or unknown: the app may already be in the background, so put it back.
+            await self._relaunch(stick, pkg, home_at)
             return False
-        for _ in range(12):
-            st = await stick.shell("dumpsys hdmi_control | grep -E -c 'mIsActiveSource: true'", timeout=5)
-            if st.out.strip().startswith("1"):
-                return True
-            await asyncio.sleep(0.25)
-        log.warning("HOME flip on %s: stick never became active source (before=%s)", stick.host,
-                    before.out.strip())
-        return False
+        took = await self._await_active_source(stick, home_at, FLIP_DEADLINE_S)
+        await self._relaunch(stick, pkg, home_at)
+        if took is None:
+            log.warning("HOME flip on %s: stick never became active source within %.1fs", stick.host,
+                        FLIP_DEADLINE_S)
+            return False
+        self._flip_s = took
+        return True
+
+    # --- after the flip: is the game playing again? ----------------------------------------
+
+    def _plays_target(self, stick: Stick, target: str, pb: dict, pkg: str | None) -> bool:
+        """Is this report the target's stream, moving? Same app, playing with a positive speed, and
+        no sign it's something else (YouTube TV names its channel; a remembered title that changed
+        means a hero preview or trailer autoplaying on the app's home page)."""
+        if not playback_ready(pb):
+            return False
+        if pkg and pb.get("pkg") and pb.get("pkg") != pkg:
+            return False
+        match = channel_matcher(target)
+        verdict = match(pb) if match else None
+        if verdict is not None:
+            return verdict
+        t = stick.tuned or {}
+        title = ((t.get("report") or {}).get("title") or "").strip() if t.get("target") == target else ""
+        now = (pb.get("title") or "").strip()
+        return not (title and now and title != now)
+
+    async def _await_playing(self, stick: Stick, target: str, pkg: str | None, wait_s: float) -> dict | None:
+        end = time.monotonic() + wait_s
+        while True:
+            pb = await stick.playback(pkg)
+            if self._plays_target(stick, target, pb, pkg):
+                return pb
+            if time.monotonic() >= end:
+                return None
+            await asyncio.sleep(RESUME_POLL_S)
+
+    async def _resume_playback(self, stick: Stick, target: str, first_wait_s: float) -> str | None:
+        """Make the stick on screen play `target` again: wait for it, then MEDIA_PLAY (a paused
+        player), then one fresh deep link. Returns how it came back ("auto", "media_play",
+        "relink"), or None if it didn't. Only ever for the stick the TV is showing."""
+        pkg = self._package(stick, target)
+        pb = await self._await_playing(stick, target, pkg, first_wait_s)
+        if pb is not None:
+            stick.remember(target, pb)
+            return "auto"
+        last = await stick.playback(pkg)
+        if last.get("state") == "paused" and (not pkg or last.get("pkg") in (None, pkg)):
+            log.info("%s: %s is paused on screen; pressing play", stick.host, target)
+            await stick.key("KEYCODE_MEDIA_PLAY")
+            pb = await self._await_playing(stick, target, pkg, RESUME_PLAY_WAIT_S)
+            if pb is not None:
+                stick.remember(target, pb)
+                return "media_play"
+        log.warning("%s isn't playing %s (%s); loading it again", stick.host, target, last.get("state"))
+        try:
+            res = await asyncio.wait_for(self._tune(stick, target), RELINK_MAX_S)
+        except asyncio.TimeoutError:
+            log.warning("re-loading %s on %s timed out", target, stick.host)
+            return None
+        if res.ok:
+            return "relink"
+        log.warning("re-load of %s on %s failed: %s", target, stick.host, res.error)
+        return None
+
+    def _book_flip(self, stick: Stick, target: str | None, flip_s: float | None, resume_s: float | None,
+                   how: str | None) -> None:
+        """The latency book for the phone: input change and picture-back, measured separately."""
+        if resume_s is not None and how is not None:
+            self.latency.record("resume", resume_s)
+        self.last_flip = {"at": time.time(), "stick": stick.host, "hdmi": self.hdmi.get(stick.host),
+                          "target": target, "flip_s": None if flip_s is None else round(flip_s, 2),
+                          "resume_s": None if resume_s is None else round(resume_s, 2),
+                          "resumed": how is not None, "how": how or "unconfirmed"}
 
     # --- the hidden stick between switches ---------------------------------------------
 
