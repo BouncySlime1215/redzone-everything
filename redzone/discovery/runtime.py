@@ -16,6 +16,12 @@ from redzone.tuners.tuners import TUNERS
 
 log = logging.getLogger(__name__)
 
+# Outcomes where no tune of the target ran (or it isn't the link's fault): learning from
+# them would skip a good link, e.g. two "no safe moment" holds making MNF untunable.
+NOT_A_TUNE = ("no safe moment", "safe exit window closed", "switch cancelled", "tv input is unknown",
+              "tv control was disabled", "no channel for this game", "standby stream is no longer confirmed",
+              "replay seek failed", "replay resume failed", "two-stick mode off", "crashed:")
+
 
 class DiscoveryRuntime:
     def __init__(self, engine):
@@ -28,6 +34,8 @@ class DiscoveryRuntime:
         self._device_suspended = False
         register(TUNERS)
         self.configure_profiles()
+        if hasattr(engine.control, "on_preload_fail"):
+            engine.control.on_preload_fail = self.on_preload_fail
 
     def configure_profiles(self):
         profiles = self.engine.cfg.get("providers.profiles", {}) or {}
@@ -37,9 +45,13 @@ class DiscoveryRuntime:
             stick.preferred_profiles = dict(profiles)
 
     async def run(self):
-        await self.autonomy.start()
+        started = False
         while True:
             try:
+                if not started:
+                    # A failure here (e.g. a corrupt state file) must not kill the whole engine.
+                    await self.autonomy.start()
+                    started = True
                 self.configure_profiles()
                 if not self.device_suspended and self.engine.cfg.get("autonomy.enabled", True):
                     self._device_iteration = asyncio.create_task(self._step())
@@ -96,11 +108,23 @@ class DiscoveryRuntime:
     def on_outcome(self, outcome, game_id=None, replay=False):
         if outcome.dry_run:
             return
+        if not outcome.ok and (outcome.detail or "").lower().startswith(NOT_A_TUNE):
+            return
         note = self.book.learn(outcome.target, outcome.ok, outcome.detail, game_id)
         if note:
             self.engine.toast(note, "info")
         if outcome.ok:
             self.autonomy.on_tune(outcome.target, replay)
+
+    def on_preload_fail(self, target, detail):
+        """A standby preload that failed is a real tune: learn from it like a switch, so a dead
+        standby link isn't retuned every 2 minutes all night."""
+        try:
+            note = self.book.learn(target, False, detail, self.book.game_for(target))
+            if note:
+                self.engine.toast(note, "info")
+        except Exception:
+            log.exception("learning from a failed preload")
 
     def status(self):
         return {

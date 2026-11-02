@@ -28,7 +28,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from redzone.channels import APP_FOR, MONUMENTAL_TEAMS, NETWORKS, PRETTY, ChannelMap, Where
+from redzone.channels import APP_FOR, LOCAL_TEAMS, MONUMENTAL_TEAMS, NETWORKS, PRETTY, ChannelMap, Where
 from redzone.models import GameState, League
 
 log = logging.getLogger(__name__)
@@ -175,7 +175,10 @@ def _rx(*phrases: str) -> re.Pattern:
 _BLACKOUT_RX = _rx(r"blackout", r"blacked out", r"regional restrictions?", r"due to league restrictions",
                    r"not available in your (?:location|area|region)", r"outside (?:of )?your (?:home )?area",
                    r"(?:isn't|is not|not) available (?:in your area|where you are|here)",
-                   r"unavailable in your (?:area|region|location)", r"geographic(?:al)? restrictions?")
+                   r"unavailable in your (?:area|region|location)", r"geographic(?:al)? restrictions?",
+                   r"unavailable to watch in your (?:location|area|region)",
+                   r"currently unavailable in your (?:location|area|region)",
+                   r"not available to watch in your (?:location|area|region)")
 _UPGRADE_RX = _rx(r"upgrade(?: now| your plan| to [a-z+ ]+)?", r"change your plan",
                   r"(?:choose|select|pick) (?:a|your) plan", r"(?:not|isn't) (?:included|part of) (?:in )?your plan",
                   r"requires? (?:a )?(?:premium|subscription|an upgrade)", r"subscription required",
@@ -188,7 +191,7 @@ _TRIAL_RX = _rx(r"start (?:your )?free trial", r"free trial", r"try (?:it )?free
                 r"join now", r"subscribe(?: now)?", r"get started", r"create (?:an )?account",
                 r"see plans", r"view plans")
 _ERROR_RX = _rx(r"something went wrong", r"error code", r"playback error", r"unable to play",
-                r"can't play this", r"cannot play", r"try again later", r"video (?:is )?unavailable",
+                r"can't play this", r"cannot play", r"try again later", r"video (?:is )?(?:currently )?unavailable",
                 r"content (?:is )?unavailable")
 # Anything that could cost money if OK were pressed.  Deliberately broad: when in doubt, don't.
 _PURCHASE_RX = re.compile(
@@ -502,16 +505,25 @@ def _link_label(prov: str, app: str, rec: dict) -> str:
     return f"{base} — {extra}" if extra else base
 
 
+# Alternate camera / alt-cast feeds of the same game (Peacock "Performance View", "Action
+# Cams", iso cams, ManningCast, Spanish): rank last, never as the main broadcast.
+_ALT_TITLE_RX = _rx(r"performance view", r"action cams?", r"cam:", r"iso(?: cams?)?", r"alt(?:ernate)? ?cast",
+                    r"en espa[nñ]ol", r"manningcast", r"with peyton", r"deportes")
+
+
 def _link_source(g: GameState, prov: str, app: str, rec: dict) -> Source | None:
     if not isinstance(rec, dict):
         return None
     ref = _link_ref(app, rec)
     target = f"{app}:{ref}" if ref else None
-    alt = bool(rec.get("alt")) or (rec.get("lang") not in (None, "en"))
+    alt = bool(rec.get("alt")) or (rec.get("lang") not in (None, "en")) \
+        or bool(_ALT_TITLE_RX.search(" ".join(str(rec.get(k) or "") for k in ("title", "feed_name", "network")).lower()))
     feed = "alt" if alt else rec.get("feed")
     team = g.home.abbr if feed == "home" else g.away.abbr if feed == "away" else None
     tunable = bool(ref) and app in TUNER_APPS
     sure = tunable and rec.get("geo_ok") is not False and not alt
+    if app == "prime" and g.league == League.NHL and "prime" not in _nets(g):
+        sure = False   # usually a paid Prime Video Channel (NESN, Scripps), not Prime's own game
     return Source(app, target, _link_label(prov, app, rec), tunable, "event", feed=feed, team=team,
                   geo_ok=rec.get("geo_ok"), confidence="sure" if sure else "likely",
                   note="" if tunable else "no tuner for this app yet")
@@ -561,6 +573,12 @@ def gather_sources(g: GameState, base: Where | None, links: Mapping[str, list[di
     channel fallbacks.  Duplicate targets are merged; learned skips are applied to all."""
     found = sources_from_links(g, links or {}, skips)
     first = source_from_where(base, g)
+    if first and first.provider == "prime" and first.feed in ("home", "away"):
+        # "Monumental" comes from the listing, not the chosen GTI: only call it your team's own
+        # broadcast when that feed's link record agrees.
+        rec = next((c for c in found if c.target == first.target), None)
+        if rec is not None and rec.feed != first.feed and "monumental" not in rec.label.lower():
+            first = replace(first, feed=rec.feed, team=rec.team, label=first.label + " — feed unverified")
     cands = ([first] if first else []) + found
     if channel_map is not None:
         # A mixed listing (e.g. ESPN+ and ABC) must not hide another usable
@@ -579,7 +597,42 @@ def gather_sources(g: GameState, base: Where | None, links: Mapping[str, list[di
     for c in cands:
         key = c.target or f"{c.provider}:?"
         out[key] = _merge(out[key], c) if key in out else c
-    return [apply_skip(c, skips) for c in out.values()]
+    return [_game_skip(g, apply_skip(c, skips), skips) for c in out.values()]
+
+
+LEAGUE_PASS_APPS = frozenset({"prime", "nba", "dazn"})
+ESPNPLUS_SKIP = "espn:tier:espnplus"   # skips key: the ESPN app's ESPN+ tier isn't subscribed
+
+
+def _local_blackout(g: GameState) -> bool:
+    """A local team's NBA game on League Pass is always blacked out here (unless Prime itself
+    is the national broadcaster)."""
+    local = LOCAL_TEAMS.get(g.league, set())
+    return (g.league == League.NBA and (g.home.abbr in local or g.away.abbr in local)
+            and "prime" not in _nets(g))
+
+
+def game_skip_key(app: str, game_id: str) -> str:
+    return f"{app}:game:{game_id}"
+
+
+def _game_skip(g: GameState, s: Source, skips: Mapping[str, dict] | None) -> Source:
+    """Skips learned for one app's feeds of this game apply to all its event feeds: a blacked-out
+    game is blacked out on every GTI, and after a failed tune the feeds Apple already flagged
+    as not playable here are not worth trying one by one."""
+    if s.kind != "event" or not s.target:
+        return s
+    plus = (skips or {}).get(ESPNPLUS_SKIP) or {}
+    if plus.get("kind") == "upsell" and s.provider == "espn" and s.label.startswith("ESPN+"):
+        return replace(s, tunable=False, note=str(plus.get("why") or "ESPN+ not subscribed"))
+    if s.provider in LEAGUE_PASS_APPS and _local_blackout(g):
+        return replace(s, blackout=True, note="blacked out here (local team)")
+    skip = (skips or {}).get(game_skip_key(s.provider, g.game_id)) or {}
+    if skip.get("kind") == "blackout":
+        return replace(s, blackout=True)
+    if skip.get("kind") == "failed" and s.geo_ok is False:
+        return replace(s, tunable=False, note="likely blacked out (Apple flag + a failed tune)")
+    return s
 
 
 # --- the book: installed apps, subscriptions, learned skips, per-game links ------------
@@ -732,6 +785,9 @@ class ProviderBook:
         dropped = (self.skips.get(target) or {}).get("kind") in ("failed", "upsell")
         if dropped:
             self.skips.pop(target, None)
+        if app == "espn" and ESPNPLUS_SKIP in self.skips and self._is_espnplus(target):
+            self.skips.pop(ESPNPLUS_SKIP, None)
+            dropped = True
         rec = self.subs.get(app)
         if isinstance(rec, dict) and rec.get("by") == "auto" and rec.get("subscribed") is False:
             self.subs.pop(app, None)
@@ -759,7 +815,20 @@ class ProviderBook:
         if app not in MULTI_TIER and len(walls) >= 2:
             self._mark(app, "upsell", why)
             return f"{_name(app)} doesn't seem to be subscribed — skipping it for now"
+        if app == "espn" and self._is_espnplus(target) \
+                and len({t for t in walls if self._is_espnplus(t)}) >= 2:
+            # ESPN+ is its own tier inside the ESPN app: two walls = no ESPN+, skip every ESPN+ feed.
+            self.skips[ESPNPLUS_SKIP] = {"kind": "upsell", "why": "ESPN+ isn't subscribed — " + why,
+                                         "at": self._now(), "game": None}
+            self.save()
+            return "ESPN+ doesn't seem to be subscribed — skipping ESPN+ games for now"
         return f"{_name(app)} asked to subscribe for this game — using another source"
+
+    def _is_espnplus(self, target: str) -> bool:
+        ref = target.partition(":")[2]
+        return any(isinstance(r, dict) and _link_ref("espn", r) == ref
+                   for rec in self.links.values() if isinstance(rec, dict)
+                   for r in ((rec.get("providers") or {}).get("espnplus") or []))
 
     def _mark(self, app: str, kind: str, why: str) -> None:
         self.subs[app] = {"subscribed": False, "kind": kind, "why": why, "at": self._now(), "by": "auto"}
@@ -767,6 +836,11 @@ class ProviderBook:
 
     def _skip(self, target: str, kind: str, why: str, game_id: str | None) -> None:
         self.skips[target] = {"kind": kind, "why": why, "at": self._now(), "game": game_id}
+        if game_id and kind in ("blackout", "failed"):
+            # Per game too: a League Pass game has 6-8 GTIs; don't burn 2 tunes on each.
+            app = target.partition(":")[0]
+            self.skips[game_skip_key(app, game_id)] = {"kind": kind, "why": why, "at": self._now(),
+                                                       "game": game_id}
         self.save()
 
     def active_skips(self) -> dict[str, dict]:
@@ -796,6 +870,19 @@ class ProviderBook:
         self.links = {gid: v for gid, v in self.links.items()
                       if not isinstance(v, dict) or not v.get("start") or now - float(v["start"]) < LINKS_KEEP_S}
         self.skips = self.active_skips()
+
+    def game_for(self, target: str | None) -> str | None:
+        """The game whose stored event link is this target (None for channels / unknown)."""
+        app, _, ref = (target or "").partition(":")
+        if not ref:
+            return None
+        for gid, rec in self.links.items():
+            provs = (rec or {}).get("providers") if isinstance(rec, dict) else None
+            for prov, recs in (provs or {}).items():
+                if LINK_APPS.get(prov) == app and any(isinstance(r, dict) and _link_ref(app, r) == ref
+                                                      for r in recs or []):
+                    return gid
+        return None
 
     def sources(self, g: GameState, base: Where | None = None,
                 channel_map: ChannelMap | None = None, sunday_ticket: bool = True) -> list[Source]:

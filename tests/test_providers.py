@@ -346,6 +346,8 @@ def test_register_adds_tuners_and_wraps_builtins_once():
     ("Blackout: this game is unavailable in your area", "blackout"),
     ("Sign in | Due to league restrictions this game isn't available here", "blackout"),
     ("Something went wrong. Error code 1004", "error"),
+    ("This video is currently unavailable to watch in your location.", "blackout"),   # Prime's geo wall
+    ("This video is currently unavailable", "error"),
     ("Who's watching? | Nick", None),
     ("Live | Thunder vs. Cavaliers | Play", None),
     ("Current game | Subscribed | Parental controls", None),       # no "rent"/"subscribe" false hits
@@ -650,3 +652,115 @@ def test_choose_survives_garbage_records(tmp_path):
     book.links["g1"] = {"providers": {"peacock": ["junk", None, {"ref": None}], "mystery": [{"ref": "x"}]}}
     p = book.choose(game(gid="g1"), Where("youtubetv:espn", "ESPN · YouTube TV", "sure", True))
     assert p.target == "youtubetv:espn"
+
+
+def test_outcomes_without_a_tune_teach_nothing(tmp_path):
+    from types import SimpleNamespace
+    from redzone.control import Outcome
+    from redzone.discovery.runtime import DiscoveryRuntime
+    rt = DiscoveryRuntime.__new__(DiscoveryRuntime)
+    rt.book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
+    rt.engine = SimpleNamespace(toast=lambda *a: None)
+    for detail in ("no safe moment to cut — kept the current game", "safe exit window closed during preparation",
+                   "switch cancelled; playback not confirmed", "TV input is unknown; verify the visible stick"):
+        rt.on_outcome(Outcome(False, "youtubetv:espn", 0.0, detail, False), "mnf")
+        rt.on_outcome(Outcome(False, "youtubetv:espn", 0.0, detail, False, screen_unchanged=True), "mnf")
+    assert "youtubetv:espn" not in rt.book.skips and not rt.book._fails
+    rt.on_outcome(Outcome(False, "youtubetv:espn", 0.0, "video never started", False, path="tuned",
+                          screen_unchanged=True), "mnf")
+    assert rt.book._fails.get("youtubetv:espn")             # a hidden-stick tune that failed still counts
+
+
+def test_local_nba_game_is_blacked_out_on_every_league_pass_feed(tmp_path):
+    book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
+    g = game("CHA", "DET", gid="401909908")
+    book.links[g.game_id] = {"providers": {"prime": [{"gti": f"amzn1.dv.gti.{i}", "geo_ok": False}
+                                                     for i in range(7)]}}
+    assert all(s.blackout for s in book.sources(g) if s.provider == "prime")
+    assert book.choose(g).target is None
+
+
+def test_blackout_or_failure_skips_the_whole_game_on_that_app(tmp_path):
+    book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
+    g = game("IND", "ATL", gid="g9")
+    book.links[g.game_id] = {"providers": {"prime": [{"gti": "a", "geo_ok": False}, {"gti": "b", "geo_ok": False},
+                                                     {"gti": "c", "geo_ok": True}]}}
+    book.learn("prime:a", False, "video never started", g.game_id)
+    book.learn("prime:a", False, "video never started", g.game_id)
+    by = {s.target: s for s in book.sources(g)}
+    assert not by["prime:b"].tunable and by["prime:c"].tunable    # Apple-flagged feeds dropped, others kept
+    book.learn("prime:c", False, prov.Verdict("blackout", "unavailable to watch in your location")
+               .message("Prime Video"), g.game_id)
+    assert all(s.blackout for s in book.sources(g) if s.provider == "prime")
+    assert all(s.tunable for s in book.sources(game("IND", "ATL", gid="other")))
+
+
+def test_failed_preloads_teach_the_book(tmp_path):
+    from types import SimpleNamespace
+    from redzone.discovery.runtime import DiscoveryRuntime
+    rt = DiscoveryRuntime.__new__(DiscoveryRuntime)
+    rt.book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
+    toasts = []
+    rt.engine = SimpleNamespace(toast=lambda *a: toasts.append(a))
+    g = game("CLE", "OKC", gid="g7")
+    rt.book.links[g.game_id] = {"providers": {"peacock": [{"ref": "main"}]}}
+    assert rt.book.game_for("peacock:main") == "g7" and rt.book.game_for("youtubetv:espn") is None
+    rt.on_preload_fail("peacock:main", "video never started")
+    rt.on_preload_fail("peacock:main", "video never started")
+    assert rt.book.skips["peacock:main"]["kind"] == "failed" and toasts
+    rt.on_preload_fail(None, "x")                            # never raises
+
+
+def test_wizards_feed_is_only_called_their_own_when_the_link_says_so(tmp_path):
+    cm = ChannelMap(tmp_path / "ch.json")
+    g = game("ORL", "WSH", gid="g8", broadcasts=["Monumental", "FanDuel SN FL"])
+    feeds = [{"gti": "orl", "geo_ok": True}, {"gti": "wiz", "geo_ok": True, "feed_name": "Monumental Sports Network"}]
+    cm.apply_links(g, {"prime": {**feeds[0], "alts": feeds[1:]}}, {"WSH"})
+    assert cm.prime_gti[g.game_id] == "wiz"                  # the feed that says Monumental
+    book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
+    book.links[g.game_id] = {"providers": {"prime": feeds}}
+    first = book.sources(g, Where("prime:wiz", "Monumental (Prime Video)", "likely", True))[0]
+    assert first.feed == "away"
+    book.links[g.game_id] = {"providers": {"prime": [{"gti": "wiz", "geo_ok": True}]}}
+    first = book.sources(g, Where("prime:wiz", "Monumental (Prime Video)", "likely", True))[0]
+    assert first.feed is None and "unverified" in first.label
+
+
+def test_two_espn_plus_walls_skip_every_espn_plus_game_but_not_espn(tmp_path):
+    book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
+    nhl = [game("FLA", "DET", league=League.NHL, gid=f"n{i}") for i in range(3)]
+    for i, g in enumerate(nhl):
+        book.links[g.game_id] = {"providers": {"espnplus": [{"play_id": f"p{i}"}]}}
+    mnf = game("SEA", "CHI", league=League.NFL, gid="mnf")
+    book.links["mnf"] = {"providers": {"espn": [{"play_id": "m"}]}}
+    wall = prov.Verdict("upsell", "subscribe to watch").message("ESPN app")
+    assert "for this game" in book.learn("espn:p0", False, wall, "n0")
+    assert "ESPN+ doesn't seem" in book.learn("espn:p1", False, wall, "n1")
+    assert not book.sources(nhl[2])[0].tunable
+    assert book.sources(mnf)[0].tunable                       # the ESPN app's own games are fine
+    book.learn("espn:p2", True)
+    assert book.sources(nhl[2])[0].tunable
+
+
+def test_peacock_alt_camera_feeds_rank_as_alternates():
+    g = okc_cle()
+    for title in ("Thunder vs. Cavaliers: Performance View", "Action Cams", "ISO Cam: Shai"):
+        s = prov._link_source(g, "peacock", "peacock", {"ref": "x", "title": title})
+        assert s.feed == "alt", title
+    assert prov._link_source(g, "peacock", "peacock", {"ref": "x", "title": "Thunder vs. Cavaliers"}).feed is None
+    mnf = game("SEA", "CHI", league=League.NFL, broadcasts=["ESPN"])
+    assert prov._link_source(mnf, "espn", "espn", {"play_id": "1", "network": "ESPN Deportes"}).feed == "alt"
+    assert prov._link_source(mnf, "espn", "espn", {"play_id": "1", "title": "En Español: Bears vs. Seahawks"}
+                             ).feed == "alt"
+
+
+def test_nhl_network_without_a_code_uses_espn_plus_and_prime_channels_are_not_sure(tmp_path):
+    cm = ChannelMap(tmp_path / "ch.json")
+    g = game("BOS", "VGK", league=League.NHL, gid="g5", broadcasts=["NHL Net", "NESN"])
+    assert cm.where(g).target == "youtubetv:nhlnetwork"     # nothing better known yet
+    cm.espn_ids[g.game_id] = "abc"
+    assert cm.where(g).target == "espn:abc"
+    cm.codes["nhlnetwork"] = "CODE"
+    assert cm.where(g).target == "youtubetv:nhlnetwork"
+    s = prov._link_source(g, "prime", "prime", {"gti": "amzn1.x", "geo_ok": True, "title": "Golden Knights vs. Bruins"})
+    assert s.confidence == "likely"

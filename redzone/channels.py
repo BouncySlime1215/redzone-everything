@@ -54,6 +54,14 @@ LOCAL_TEAMS = {League.NFL: {"CAR"}, League.NBA: {"CHA"}, League.NHL: {"CAR"}, Le
 MONUMENTAL_TEAMS = {League.NBA: {"WSH", "WAS"}, League.NHL: {"WSH"}}
 
 
+def _names_monumental(feed: dict, g: GameState) -> bool:
+    """A Prime feed with no home/away tag that says it's the Monumental (Wizards/Caps) feed."""
+    if not (MONUMENTAL_TEAMS.get(g.league, set()) & {g.home.abbr, g.away.abbr}):
+        return False
+    text = f"{feed.get('feed_name') or ''} {feed.get('title') or ''} {feed.get('network') or ''}".lower()
+    return "monumental" in text
+
+
 @dataclass
 class Where:
     target: str | None      # None = unknown
@@ -146,7 +154,13 @@ class ChannelMap:
         # National cable first: it's never blacked out.
         for n in nets:
             if n not in BROADCAST and n in NETWORKS.values() and APP_FOR.get(n, "youtubetv") == "youtubetv":
-                return self._yttv(n)
+                w = self._yttv(n)
+                if not w.tunable and lg == League.NHL and n == "nhlnetwork":
+                    # No YouTube TV code for NHL Network: the out-of-market ESPN+ feed if we have it.
+                    e = self._espnplus(g)
+                    if e.tunable:
+                        return e
+                return w
         for n in nets:
             if APP_FOR.get(n) == "prime":
                 return self._prime(g, n, describe(f"prime:{n}"), "sure" if n == "prime" else "likely")
@@ -199,7 +213,8 @@ class ChannelMap:
             ok = [f for f in feeds if f.get("geo_ok") is not False] or feeds
             side = "home" if g.home.abbr in my_teams else "away" if g.away.abbr in my_teams else None
             # Your team's game: prefer your team's own broadcast (e.g. the Wizards' Monumental feed).
-            pick = next((f for f in ok if side and f.get("feed") == side), ok[0])
+            pick = next((f for f in ok if side and f.get("feed") == side), None) or next(
+                (f for f in ok if side and _names_monumental(f, g)), ok[0])
             self.prime_gti[g.game_id] = pick["gti"]
             if all(f.get("geo_ok") is False for f in feeds):
                 self.link_notes[g.game_id] = "may be blacked out — check on the TV"
