@@ -175,7 +175,10 @@ def _rx(*phrases: str) -> re.Pattern:
 _BLACKOUT_RX = _rx(r"blackout", r"blacked out", r"regional restrictions?", r"due to league restrictions",
                    r"not available in your (?:location|area|region)", r"outside (?:of )?your (?:home )?area",
                    r"(?:isn't|is not|not) available (?:in your area|where you are|here)",
-                   r"unavailable in your (?:area|region|location)", r"geographic(?:al)? restrictions?")
+                   r"unavailable in your (?:area|region|location)", r"geographic(?:al)? restrictions?",
+                   r"unavailable to watch in your (?:location|area|region)",
+                   r"currently unavailable in your (?:location|area|region)",
+                   r"not available to watch in your (?:location|area|region)")
 _UPGRADE_RX = _rx(r"upgrade(?: now| your plan| to [a-z+ ]+)?", r"change your plan",
                   r"(?:choose|select|pick) (?:a|your) plan", r"(?:not|isn't) (?:included|part of) (?:in )?your plan",
                   r"requires? (?:a )?(?:premium|subscription|an upgrade)", r"subscription required",
@@ -188,7 +191,7 @@ _TRIAL_RX = _rx(r"start (?:your )?free trial", r"free trial", r"try (?:it )?free
                 r"join now", r"subscribe(?: now)?", r"get started", r"create (?:an )?account",
                 r"see plans", r"view plans")
 _ERROR_RX = _rx(r"something went wrong", r"error code", r"playback error", r"unable to play",
-                r"can't play this", r"cannot play", r"try again later", r"video (?:is )?unavailable",
+                r"can't play this", r"cannot play", r"try again later", r"video (?:is )?(?:currently )?unavailable",
                 r"content (?:is )?unavailable")
 # Anything that could cost money if OK were pressed.  Deliberately broad: when in doubt, don't.
 _PURCHASE_RX = re.compile(

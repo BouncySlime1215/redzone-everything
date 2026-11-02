@@ -346,6 +346,8 @@ def test_register_adds_tuners_and_wraps_builtins_once():
     ("Blackout: this game is unavailable in your area", "blackout"),
     ("Sign in | Due to league restrictions this game isn't available here", "blackout"),
     ("Something went wrong. Error code 1004", "error"),
+    ("This video is currently unavailable to watch in your location.", "blackout"),   # Prime's geo wall
+    ("This video is currently unavailable", "error"),
     ("Who's watching? | Nick", None),
     ("Live | Thunder vs. Cavaliers | Play", None),
     ("Current game | Subscribed | Parental controls", None),       # no "rent"/"subscribe" false hits
@@ -650,3 +652,20 @@ def test_choose_survives_garbage_records(tmp_path):
     book.links["g1"] = {"providers": {"peacock": ["junk", None, {"ref": None}], "mystery": [{"ref": "x"}]}}
     p = book.choose(game(gid="g1"), Where("youtubetv:espn", "ESPN · YouTube TV", "sure", True))
     assert p.target == "youtubetv:espn"
+
+
+def test_outcomes_without_a_tune_teach_nothing(tmp_path):
+    from types import SimpleNamespace
+    from redzone.control import Outcome
+    from redzone.discovery.runtime import DiscoveryRuntime
+    rt = DiscoveryRuntime.__new__(DiscoveryRuntime)
+    rt.book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
+    rt.engine = SimpleNamespace(toast=lambda *a: None)
+    for detail in ("no safe moment to cut — kept the current game", "safe exit window closed during preparation",
+                   "switch cancelled; playback not confirmed", "TV input is unknown; verify the visible stick"):
+        rt.on_outcome(Outcome(False, "youtubetv:espn", 0.0, detail, False), "mnf")
+        rt.on_outcome(Outcome(False, "youtubetv:espn", 0.0, detail, False, screen_unchanged=True), "mnf")
+    assert "youtubetv:espn" not in rt.book.skips and not rt.book._fails
+    rt.on_outcome(Outcome(False, "youtubetv:espn", 0.0, "video never started", False, path="tuned",
+                          screen_unchanged=True), "mnf")
+    assert rt.book._fails.get("youtubetv:espn")             # a hidden-stick tune that failed still counts
