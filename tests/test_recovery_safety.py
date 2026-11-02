@@ -378,3 +378,21 @@ async def test_idle_snapshot_does_not_invent_a_channel_delay(cfg, tmp_path):
         assert s['delays'] == []
     assert e.delays.book == before
     await e.close()
+
+
+async def test_broadcast_bug_does_not_count_toward_safe_mode(cfg, tmp_path):
+    engine = Engine(cfg, Store(tmp_path / 'test.db'))
+    ticks = []
+    engine.decide = lambda: True
+    def boom():
+        raise RuntimeError('snapshot bug')
+    engine.broadcast = boom
+    async def tick(seconds):
+        ticks.append(seconds)
+        if len(ticks) >= 4:
+            raise asyncio.CancelledError
+    engine._next_tick = tick
+    with pytest.raises(asyncio.CancelledError):
+        await engine._decide_loop()
+    assert not engine.decider.errors and not engine.decider.safe_mode
+    await engine.close()

@@ -131,12 +131,17 @@ class Engine:
             try:
                 self._mic_calibrate()
                 changed = self.decide()
-                if changed or time.time() - last_push > 5:
-                    self.broadcast()
-                    last_push = time.time()
             except Exception:
                 log.exception("decide failed")
                 self.decider.note_error()
+                changed = False
+            try:
+                if changed or time.time() - last_push > 5:
+                    last_push = time.time()
+                    self.broadcast()
+            except Exception:
+                # A phone-view bug is not a switching error: it must not put the TV in safe mode.
+                log.exception("broadcast failed")
             await self._next_tick(DECIDE_EVERY_S)
 
     async def _next_tick(self, seconds: float) -> None:
