@@ -80,7 +80,7 @@ SEEK_LATE_OK_S = 1.0       # a rewind may land this far past its target (Missed.
 
 LATENCY_KEEP = 15
 # What a real measurement can look like; outside this it's a glitch (a fake, a hung adb), not a switch.
-PLAUSIBLE = {"flip": (0.02, 30.0), "seek": (0.05, 60.0), "resume": (0.02, 60.0)}
+PLAUSIBLE = {"flip": (0.02, 30.0), "seek": (0.05, 60.0), "resume": (0.0, 60.0)}
 ACTIVE_SOURCE_CMD = "dumpsys hdmi_control | grep -E -c 'mIsActiveSource: true'"
 TUNE_PLAUSIBLE = (0.3, 90.0)
 
@@ -224,6 +224,8 @@ class Controller:
         # The engine's "nothing live on the visible game right now" (optional). Gates the HOME
         # re-assert when both sticks claim the TV, since then one of them IS on screen.
         self.safe_moment: Callable[[], bool] | None = None
+        # The engine's "the visible-stick watchdog may act" (optional; e.g. off during a recorded session).
+        self.visible_watch_ok: Callable[[], bool] | None = None
 
     # --- devices -----------------------------------------------------------------
 
@@ -336,12 +338,134 @@ class Controller:
                 self.input_unknown or time.time() - self._cec_synced_at >= CEC_SYNC_S):
             self._cec_synced_at = time.time()
             await self.sync_active_from_cec()
+        if self.input_unknown:
+            await self._maybe_reassert()
         if not self.two_stick_ok and time.time() >= self._two_stick_retry_at and not self.input_unknown:
             self.two_stick_ok = True
+            self.note = ""
             log.info("Two-stick mode back on (the TV input is known again)")
         await self._stick_watchdog()
         await self.verify_standby()
+        await self._watch_visible()
         self._maybe_reseek()
+
+    async def _maybe_reassert(self) -> None:
+        """The TV input is unknown (a flip that wasn't confirmed, someone's remote, CEC lost).
+        If no stick claims the TV (TV on another input, or off) or both do (a race), press HOME on
+        the stick we MEAN to be on screen: it announces <Active Source>, the TV follows, and its
+        app is relaunched and confirmed playing. Never on the other stick. With neither claiming,
+        nothing of ours is on screen, so no play can be cut; with both claiming, one of them is on
+        screen, so it waits for the engine's safe moment (or 2 minutes without one). At most 3
+        tries per episode, a minute apart: a TV someone turned off isn't turned on all night."""
+        now = time.time()
+        if (self._busy() or self._flipping or not self.live_control or self._reasserts >= REASSERT_MAX
+                or now < self._reassert_at or self.cec_view not in ("none", "both")):
+            return
+        stick = self.main
+        if stick is None or stick.host not in self.hdmi:
+            return
+        if self.cec_view == "both":
+            gate = self.safe_moment
+            try:
+                ok = gate() if gate is not None else now - self._unknown_since >= REASSERT_BOTH_S
+            except Exception:
+                log.exception("safe_moment check failed")
+                ok = False
+            if not ok:
+                return
+        self._reasserts += 1
+        self._reassert_at = now + REASSERT_GAP_S
+        target = self._unknown_target
+        log.warning("TV input unknown (CEC: %s); re-asserting %s with HOME (try %d/%d)", self.cec_view,
+                    stick.host, self._reasserts, REASSERT_MAX)
+        async with self._lock:
+            if not self.input_unknown or self.main is not stick:
+                return
+            self._flipping = True
+            try:
+                self._flip_s = None
+                flipped = await self._home_flip(stick, target)
+                self._flip_gen += 1
+                if not flipped:
+                    self.note = (f"TV input unknown: {stick.host} couldn't take the TV "
+                                 f"(try {self._reasserts}/{REASSERT_MAX})")
+                    return
+                self.latency.record("flip", self._flip_s or 0.0)
+                self._awake_at[stick.host] = time.time()
+                self._cec_synced_at = time.time()
+                log.info("TV is showing %s again (re-asserted)", stick.host)
+                self._input_known()
+                self.note = ""
+                self._set_hidden(None, False)   # what the other stick shows is unconfirmed
+                self.on_target = None
+                if target:
+                    r0 = time.monotonic()
+                    how = await self._resume_playback(stick, target, RESUME_WAIT_S)
+                    self._book_flip(stick, target, self._flip_s, time.monotonic() - r0, how)
+                    self.on_target = target if how else None
+            finally:
+                self._flipping = False
+
+    async def _watch_visible(self) -> None:
+        """The stick on screen should be playing what we put there. An "are you still watching?"
+        pause, the app crashing to the Fire TV home, or an app update stopping it all leave the
+        screen dead while the decider happily "stays". Not playing for 8 s outside a switch ->
+        MEDIA_PLAY (a paused player), then a fresh deep link of the current target. It only ever
+        acts on a screen that is already not playing, so it can't interrupt a live play."""
+        if (not self.live_control or self.input_unknown or self._busy() or self._flipping
+                or (self.visible_watch_ok is not None and not self.visible_watch_ok())):
+            return
+        stick, target = self.main, self.on_target
+        if stick is None or not target:
+            self._visible_bad_since = None
+            return
+        pb = await stick.playback(self._package(stick, target))
+        if (self._busy() or self._flipping or self.main is not stick or self.on_target != target
+                or pb.get("read_ok") is False):
+            return
+        now = time.time()
+        if pb.get("state") in ("playing", "buffering", "connecting"):
+            self._visible_bad_since = None
+            return
+        if self._visible_bad_since is None:
+            self._visible_bad_since = now
+            log.info("%s (on screen) is %s, not playing %s; checking again in %.0fs", stick.host,
+                     pb.get("state"), target, VISIBLE_STALL_S)
+            self._schedule_visible_check(VISIBLE_STALL_S)
+            return
+        if now - self._visible_bad_since < VISIBLE_STALL_S:
+            self._schedule_visible_check(VISIBLE_STALL_S - (now - self._visible_bad_since))
+            return
+        if now - self._visible_fix_at < VISIBLE_FIX_GAP_S:
+            return
+        self._visible_fix_at = now
+        async with self._lock:
+            if self.main is not stick or self.on_target != target or self.input_unknown:
+                return
+            self.stage = {"stage": "resuming", "target": target, "reason": "the screen stopped playing; resuming it"}
+            r0 = time.monotonic()
+            how = await self._resume_playback(stick, target, 0.0)
+            took = time.monotonic() - r0
+            if how:
+                log.info("watchdog: %s playing again on %s (%s, %.1fs)", target, stick.host, how, took)
+                self.latency.record("resume", took)
+                self._visible_bad_since = None
+                self.note = ""
+                self.stage = {"stage": "confirmed", "target": target, "reason": f"resumed by {how.replace('_', ' ')}"}
+            else:
+                self.note = f"The TV stopped playing {target}; couldn't restart it yet (retrying)"
+                self.stage = {"stage": "failed", "target": target, "reason": self.note}
+
+    def _schedule_visible_check(self, delay: float) -> None:
+        """Re-check the stick on screen after `delay`, not at the next ~10 s keepalive. A switch
+        (submit) or Pause cancels it."""
+        if self._resume_task and not self._resume_task.done():
+            return
+
+        async def later():
+            await asyncio.sleep(max(0.0, delay) + 0.05)
+            await self._watch_visible()
+        self._resume_task = asyncio.create_task(later())
 
     async def _stick_watchdog(self) -> None:
         """Nobody touches the remote, so Fire OS would start its screensaver after 5 min and sleep
@@ -364,7 +488,10 @@ class Controller:
             elif state in ("Asleep", "Dozing") and s is self.main:
                 log.info("%s (on screen) fell asleep: waking it", s.host)
                 await s.key("KEYCODE_WAKEUP")
-                self.on_target = None   # it may have stopped the stream: next switch re-tunes
+                # It may have stopped the stream: the visible-stick watchdog restarts it if it
+                # isn't playing again shortly (keeping on_target tells it what to restart).
+                if self._visible_bad_since is None:
+                    self._visible_bad_since = time.time()
 
     async def _reconnect(self, s: Stick) -> None:
         if s.state == "connected" and time.time() - s.last_ok <= 60:
@@ -503,7 +630,8 @@ class Controller:
         m = self.latency.median("flip")
         if m is None:
             return self._default_cost("hdmi_flip")
-        return m + float(self.cfg.get("two_stick.input_settle_s", 1.0))
+        # Since flip_s is HOME -> active source only, the picture coming back (resume_s) is added.
+        return m + (self.latency.median("resume") or 0.0) + float(self.cfg.get("two_stick.input_settle_s", 1.0))
 
     def switch_costs(self) -> dict[str, float]:
         """Expected seconds from "switch" to the new game on screen, per app, on the path we'd use now.
@@ -1176,6 +1304,10 @@ class Controller:
 
         async with self._lock:
             if not allowed():
+                return found
+            if stick is self.hidden and await self._sleeping(stick):
+                # The tuner would press WAKEUP, and a Fire TV that wakes grabs the TV input over CEC.
+                log.info("Sunday Ticket scan skipped: the hidden stick %s is asleep", stick.host)
                 return found
             try:
                 for code in codes:
