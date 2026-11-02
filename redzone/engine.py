@@ -783,6 +783,7 @@ class Engine:
 
     async def close(self) -> None:
         self._keep_awake(False)
+        await self.control.close()
         await self.fetcher.close()
 
 

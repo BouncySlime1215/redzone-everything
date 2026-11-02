@@ -140,6 +140,7 @@ async def main() -> None:
         vega = "Vega" in st.os
         say(BAD if vega else OK, f"{h}: {st.name or st.model} — {st.os}" +
             (" — Vega OS can't be controlled; RedZone will use single-stick mode" if vega else ""))
+        say(OK if st.session_status().startswith("working") else WARN, f"    fast commands: {st.session_status()}")
         for role in ("youtubetv", "prime", "youtube"):
             pkg = st.packages.get(role)
             say(OK if pkg else WARN, f"    {role}: {pkg or 'not installed'}")
@@ -147,6 +148,7 @@ async def main() -> None:
         say(OK, f"    playing now: {pb['state']}" + (f" ({pb['pkg']})" if pb.get("pkg") else ""))
         port = await st.hdmi_port()
         say(OK if port else WARN, f"    TV input: {port or 'unknown (turn on Anynet+/HDMI-CEC on the TV, or tell me the HDMI number)'}")
+        await st.close()   # its always-open adb shell
         sticks.append({"host": st.host, "name": st.name, "model": st.model, "os": st.os,
                        "packages": st.packages, "controllable": not vega, "hdmi": port})
 

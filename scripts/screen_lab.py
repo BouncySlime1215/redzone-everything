@@ -36,6 +36,13 @@ async def record() -> None:
     st.packages = s0.get("packages", {})
     if not await st.connect():
         sys.exit(f"can't reach {st.host} ({st.state}) — run scripts/doctor.py")
+    try:
+        await _record(st)
+    finally:
+        await st.close()   # its always-open adb shell
+
+
+async def _record(st: Stick) -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     print(f"Recording to {OUT}. Tap labels on the phone's Lab tab. Ctrl-C to stop.")
     n, last_text = 0, 0.0

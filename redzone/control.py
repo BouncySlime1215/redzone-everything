@@ -67,6 +67,8 @@ class Controller:
     # --- devices -----------------------------------------------------------------
 
     def load_devices(self) -> None:
+        for s in self.sticks:
+            s.drop_session()   # each stick keeps an adb shell open; don't leave the old ones running
         self.sticks, self.hdmi = [], {}
         d = {}
         if DEVICES.exists():
@@ -86,6 +88,11 @@ class Controller:
         self.adb_ok = await adb_available()
         self.load_devices()
         await self.keepalive()
+
+    async def close(self) -> None:
+        """App shutdown: close each stick's always-open adb shell."""
+        for s in self.sticks:
+            await s.close()
 
     async def keepalive(self) -> None:
         """Reconnect any stick that dropped (reboots, Wi-Fi blips). Called every ~10s."""
