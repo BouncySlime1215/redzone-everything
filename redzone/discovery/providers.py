@@ -601,6 +601,7 @@ def gather_sources(g: GameState, base: Where | None, links: Mapping[str, list[di
 
 
 LEAGUE_PASS_APPS = frozenset({"prime", "nba", "dazn"})
+ESPNPLUS_SKIP = "espn:tier:espnplus"   # skips key: the ESPN app's ESPN+ tier isn't subscribed
 
 
 def _local_blackout(g: GameState) -> bool:
@@ -621,6 +622,9 @@ def _game_skip(g: GameState, s: Source, skips: Mapping[str, dict] | None) -> Sou
     as not playable here are not worth trying one by one."""
     if s.kind != "event" or not s.target:
         return s
+    plus = (skips or {}).get(ESPNPLUS_SKIP) or {}
+    if plus.get("kind") == "upsell" and s.provider == "espn" and s.label.startswith("ESPN+"):
+        return replace(s, tunable=False, note=str(plus.get("why") or "ESPN+ not subscribed"))
     if s.provider in LEAGUE_PASS_APPS and _local_blackout(g):
         return replace(s, blackout=True, note="blacked out here (local team)")
     skip = (skips or {}).get(game_skip_key(s.provider, g.game_id)) or {}
@@ -781,6 +785,9 @@ class ProviderBook:
         dropped = (self.skips.get(target) or {}).get("kind") in ("failed", "upsell")
         if dropped:
             self.skips.pop(target, None)
+        if app == "espn" and ESPNPLUS_SKIP in self.skips and self._is_espnplus(target):
+            self.skips.pop(ESPNPLUS_SKIP, None)
+            dropped = True
         rec = self.subs.get(app)
         if isinstance(rec, dict) and rec.get("by") == "auto" and rec.get("subscribed") is False:
             self.subs.pop(app, None)
@@ -808,7 +815,20 @@ class ProviderBook:
         if app not in MULTI_TIER and len(walls) >= 2:
             self._mark(app, "upsell", why)
             return f"{_name(app)} doesn't seem to be subscribed — skipping it for now"
+        if app == "espn" and self._is_espnplus(target) \
+                and len({t for t in walls if self._is_espnplus(t)}) >= 2:
+            # ESPN+ is its own tier inside the ESPN app: two walls = no ESPN+, skip every ESPN+ feed.
+            self.skips[ESPNPLUS_SKIP] = {"kind": "upsell", "why": "ESPN+ isn't subscribed — " + why,
+                                         "at": self._now(), "game": None}
+            self.save()
+            return "ESPN+ doesn't seem to be subscribed — skipping ESPN+ games for now"
         return f"{_name(app)} asked to subscribe for this game — using another source"
+
+    def _is_espnplus(self, target: str) -> bool:
+        ref = target.partition(":")[2]
+        return any(isinstance(r, dict) and _link_ref("espn", r) == ref
+                   for rec in self.links.values() if isinstance(rec, dict)
+                   for r in ((rec.get("providers") or {}).get("espnplus") or []))
 
     def _mark(self, app: str, kind: str, why: str) -> None:
         self.subs[app] = {"subscribed": False, "kind": kind, "why": why, "at": self._now(), "by": "auto"}

@@ -726,6 +726,22 @@ def test_wizards_feed_is_only_called_their_own_when_the_link_says_so(tmp_path):
     assert first.feed is None and "unverified" in first.label
 
 
+def test_two_espn_plus_walls_skip_every_espn_plus_game_but_not_espn(tmp_path):
+    book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
+    nhl = [game("FLA", "DET", league=League.NHL, gid=f"n{i}") for i in range(3)]
+    for i, g in enumerate(nhl):
+        book.links[g.game_id] = {"providers": {"espnplus": [{"play_id": f"p{i}"}]}}
+    mnf = game("SEA", "CHI", league=League.NFL, gid="mnf")
+    book.links["mnf"] = {"providers": {"espn": [{"play_id": "m"}]}}
+    wall = prov.Verdict("upsell", "subscribe to watch").message("ESPN app")
+    assert "for this game" in book.learn("espn:p0", False, wall, "n0")
+    assert "ESPN+ doesn't seem" in book.learn("espn:p1", False, wall, "n1")
+    assert not book.sources(nhl[2])[0].tunable
+    assert book.sources(mnf)[0].tunable                       # the ESPN app's own games are fine
+    book.learn("espn:p2", True)
+    assert book.sources(nhl[2])[0].tunable
+
+
 def test_peacock_alt_camera_feeds_rank_as_alternates():
     g = okc_cle()
     for title in ("Thunder vs. Cavaliers: Performance View", "Action Cams", "ISO Cam: Shai"):
