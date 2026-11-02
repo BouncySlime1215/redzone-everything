@@ -14,6 +14,7 @@ import time
 from dataclasses import dataclass, field
 
 from redzone.models import REAL_BREAKS, GameState, League, Phase, Stoppage
+from redzone.scoring import garbage
 
 # --- closeness: how competitive the score is, 0..1 --------------------------
 
@@ -56,6 +57,8 @@ class History:
     swing_at: float | None = None
     shown: float = 0.0
     shown_at: float = 0.0
+    garbage: bool = False
+    comeback_at: float | None = None
 
     def observe(self, g: GameState, now: float, wp_threshold: float) -> None:
         hs, as_ = g.home.score, g.away.score
@@ -111,6 +114,7 @@ class Scored:
     lock: str | None        # a moment the decider shouldn't cut out of
     pre_moment: str | None  # a big moment about to start: worth pre-switching to
     closeness: float
+    garbage: bool = False   # decided game (bets/fantasy can still keep it interesting)
 
     @property
     def display(self) -> int:
@@ -148,9 +152,22 @@ class Scorer:
 
         fn = {League.NFL: _nfl, League.NBA: _nba, League.NHL: _nhl, League.MLB: _mlb}[g.league]
         m, parts, lock, pre = fn(g, h, k, now, c)
+        # Garbage time: decided games stop competing for the TV — your team's included.
+        was = h.garbage
+        h.garbage = garbage.is_garbage(g, was)
+        if was and not h.garbage and g.phase == Phase.LIVE:
+            h.comeback_at = now  # it got close again: that's a story worth seeing
+        if h.garbage:
+            m *= c.get("score.garbage.moment_mult", 0.12)
+            lock = pre = None
+        comeback = _fade(h.comeback_at, now, c.get("score.garbage.comeback_s", 240)) * \
+            c.get("score.garbage.comeback_boost", 12)
+        if comeback > 0:
+            m += comeback
+            parts.append((comeback + 25, "comeback — it's close again"))
         m = max(0.0, min(100.0, m))
         s = self._stakes(g)
-        p, tags = self._personal(g, me, k)
+        p, tags = self._personal(g, me, k, h.garbage)
 
         raw = min(100.0, c.get("score.neutral_cap", 0.9) * min(100.0, m * s) + p)
         # Fast attack, slow release: jump up instantly, drift down with a half-life.
@@ -160,8 +177,11 @@ class Scorer:
         h.shown, h.shown_at = shown, now
 
         reason = _reason(g, parts, is_break)
+        if h.garbage:
+            reason = f"garbage time — {reason}"
+            tags = tags + ["garbage time"]
         return Scored(g.game_id, g.league, shown, raw, m, s, p, reason, tags,
-                      is_break, None if is_break else lock, pre, k)
+                      is_break, None if is_break else lock, pre, k, h.garbage)
 
     def _stakes(self, g: GameState) -> float:
         c = self.cfg
@@ -181,12 +201,13 @@ class Scorer:
             s += c.get("score.stakes.national_tv", 0)
         return max(c.get("score.stakes.min"), min(c.get("score.stakes.max"), s))
 
-    def _personal(self, g: GameState, me: Personal, k: float) -> tuple[float, list[str]]:
+    def _personal(self, g: GameState, me: Personal, k: float, garbage_time: bool = False) -> tuple[float, list[str]]:
         c = self.cfg
         p, tags = 0.0, []
         mine = me.my_teams.get(g.league, set())
         if g.involves(mine):
-            p += c.get("score.personal.my_team") * k
+            # Your team still gets the tag, but no boost once the game is decided.
+            p += 0.0 if garbage_time else c.get("score.personal.my_team") * k
             tags.append(next(t for t in (g.home.abbr, g.away.abbr) if t in mine))
         sweat = me.bet_sweat.get(g.game_id, 0.0)
         if sweat > 0:

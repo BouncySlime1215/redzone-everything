@@ -39,6 +39,10 @@ score:
     national_tv: 0.03
     min: 0.8
     max: 1.2
+  garbage:                 # decided games stop competing for the TV (your team's too); bets/fantasy still count
+    moment_mult: 0.12
+    comeback_boost: 12     # when a blowout gets close again
+    comeback_s: 240
   personal:
     my_team: 25            # scaled by how competitive the game is (0 in a blowout)
     bet_max: 20

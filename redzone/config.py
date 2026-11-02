@@ -29,6 +29,8 @@ LIMITS: dict[str, tuple[float, float]] = {
     "score.personal_cap": (0, 60),
     "score.stakes.min": (0.5, 1.0),
     "score.stakes.max": (1.0, 1.5),
+    "score.garbage.moment_mult": (0.0, 1.0),
+    "score.garbage.comeback_s": (0, 1800),
     "decider.min_dwell_s": (10, 600),
     "decider.min_gap_s": (5, 300),
     "decider.max_switches_per_5min": (1, 20),

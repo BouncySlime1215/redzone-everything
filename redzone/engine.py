@@ -59,6 +59,7 @@ class Engine:
         self._last_snapshot = 0.0
         self.mic = None
         self.fantasy = None   # latest fantasy.Matchup
+        self._suspended_focus: tuple | None = None   # (game, mode) paused for garbage time
         self._mic_used: set[tuple[str, float]] = set()
         self._last_mic = 0.0
 
@@ -227,6 +228,30 @@ class Engine:
                     log.exception("archive failed")
             self.summaries.pop(gid, None)
 
+    def _garbage_focus(self) -> None:
+        """Focused game turned into a blowout: roam instead (even for your team), and come back
+        automatically if it gets close again. A game you LOCKED stays locked — that was explicit."""
+        u = self.decider.user
+        if self._suspended_focus:
+            gid, mode = self._suspended_focus
+            if u.focus_game != gid or u.focus_mode != FocusMode.AUTOPILOT:
+                self._suspended_focus = None  # you changed focus yourself meanwhile
+                return
+            g, s = self.merger.games.get(gid), self.scored.get(gid)
+            if g is None or g.phase != Phase.LIVE:
+                self._suspended_focus = None
+            elif s and not s.garbage:
+                u.focus_mode = mode
+                self._suspended_focus = None
+                self.toast(f"It's close again — back to focusing on {self._name(gid)}")
+            return
+        gid = u.focus_game
+        s = self.scored.get(gid or "")
+        if gid and u.focus_mode != FocusMode.AUTOPILOT and s and s.garbage:
+            self._suspended_focus = (gid, u.focus_mode)
+            u.focus_mode = FocusMode.AUTOPILOT
+            self.toast(f"{self._name(gid)} is garbage time — roaming until it's close again")
+
     def _hot_games(self, live: list[GameState]) -> set[str]:
         """Games worth polling every few seconds: what's on, what's next, anything tense or personal."""
         dec = self.decider
@@ -328,6 +353,7 @@ class Engine:
             # In dry run, "likely" targets count so you can see what it would do.
             target = w.target if (w.tunable or dry) else None
             cands[gid] = Candidate(sc, target, stale=self.merger.is_stale(gid))
+        self._garbage_focus()
         before = self.decider.current
         d = self.decider.decide(cands)
         self.last_decision = d
@@ -378,6 +404,7 @@ class Engine:
             self.mic.stop()
             self.mic = None
         self.fantasy = None   # latest fantasy.Matchup
+        self._suspended_focus: tuple | None = None   # (game, mode) paused for garbage time
         return True, "Microphone off"
 
     def _mic_calibrate(self) -> None:
