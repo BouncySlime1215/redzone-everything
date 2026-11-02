@@ -1,9 +1,10 @@
 import pytest
 
-from redzone.decider.decider import Candidate, Decider, FocusMode, State
-from redzone.decider.screen import DelayBook, Event
-from redzone.models import League
+from redzone.decider.decider import Candidate, Decider, FocusMode, Missed, State
+from redzone.decider.screen import DelayBook, Event, Timeline
+from redzone.models import League, Play
 from redzone.scoring.engine import Scored
+from tests.conftest import nfl
 
 
 def sc(gid, score, lock=None, is_break=False, league=League.NFL):
@@ -208,3 +209,81 @@ def test_manual_pick_holds(dec, clock):
     dec.manual_switch("b")
     assert dec.current == "b"
     assert dec.decide(cands(a=99, b=10)).state == State.PAUSED
+
+
+# ----- catch-up replays --------------------------------------------------------
+
+def big(tl, t, pid, kind="td"):
+    tl.events.append(Event(t, "play", f"{kind} {pid}", big=True, pid=pid, play_kind=kind))
+
+
+def test_final_play_of_a_finished_game_is_still_replayed(dec, clock):
+    for g in "ab":
+        calibrate(dec, f"youtubetv:{g}")
+    start_on(dec, clock, "a", {"b": 30})
+    # b's walk-off FG is in the data, then b is final (gone from the candidates) before it airs.
+    big(dec.timeline("b", League.NFL), clock.t, "fg1", "fg")
+    for _ in range(6):
+        clock.t += 10
+        dec.decide(cands(a=60))
+    assert [m.pid for m in dec.queue] == ["fg1"]
+    # a ends too: nothing live, so catch up on b's FG.
+    d = dec.decide({})
+    assert d.action == "replay" and d.target == "b" and d.replay.pid == "fg1"
+    assert dec.target_of("b") == "youtubetv:b"  # the engine still knows where to tune
+
+
+def test_play_only_partly_on_screen_counts_as_missed(dec, clock):
+    for g in "ab":
+        calibrate(dec, f"youtubetv:{g}")
+    start_on(dec, clock, "a", {"b": 20})
+    # b's TD is already airing when we tune there: we catch its last few seconds, not the snap.
+    big(dec.timeline("b", League.NFL), clock.t - 32, "td1")
+    dec.manual_switch("b")
+    clock.t += 20
+    dec.decide(cands(a=20, b=20))
+    assert [m.pid for m in dec.queue] == ["td1"]
+
+
+def test_last_chance_replay_jumps_the_queue(dec, clock):
+    now = clock.t
+    fresh_td = Missed("a", "td1", "TD", "td", now - 60, 75)
+    old_fg = Missed("b", "fg1", "FG", "fg", now - 1700, 35)
+    dec.queue = [fresh_td, old_fg]
+    cs = cands(a=10, b=10)
+    assert dec._best_replay(cs, now, None, False) is old_fg      # 100s left: show it now
+    old_fg.t = now - 300
+    assert dec._best_replay(cs, now, None, False) is fresh_td    # plenty of time: value first
+
+
+@pytest.mark.parametrize("lock, action", [(None, "replay"), ("final two minutes", "switch")])
+def test_game_over_catch_up_never_skips_a_locked_moment(dec, clock, lock, action):
+    for g in "ab":
+        calibrate(dec, f"youtubetv:{g}")
+    start_on(dec, clock, "a", {"b": 20})
+    dec.queue = [Missed("b", "td1", "TD", "td", clock.t - 100, 75)]
+    d = dec.decide(cands(b=sc("b", 50, lock=lock)))  # a is final
+    assert d.action == action
+
+
+def test_game_over_catch_up_waits_for_the_last_play_to_air(dec, clock):
+    for g in "ab":
+        calibrate(dec, f"youtubetv:{g}")
+    start_on(dec, clock, "a", {"b": 20})
+    dec.timeline("a", League.NFL).events.append(Event(clock.t, "play", "kneel", pid="k"))
+    dec.queue = [Missed("b", "td1", "TD", "td", clock.t - 100, 75)]
+    clock.t += 10
+    d = dec.decide(cands(b=20))  # a is final in the data, but the kneel hasn't aired yet
+    assert d.action == "stay" and "last play" in d.reason
+    clock.t += 50
+    d = dec.decide(cands(b=20))
+    assert d.action == "replay" and d.replay.pid == "td1"
+
+
+def test_first_poll_keeps_a_play_that_has_not_aired_yet(clock):
+    tl = Timeline(League.NFL, clock=clock)
+    g = nfl(hs=7)
+    g.recent_plays = [Play("old", "run for 3", "rush", wallclock=clock.t - 900),
+                      Play("ko", "kickoff return, TOUCHDOWN", "td", True, wallclock=clock.t - 15)]
+    tl.observe(g)
+    assert [(e.pid, e.big) for e in tl.events if e.kind == "play"] == [("ko", True)]

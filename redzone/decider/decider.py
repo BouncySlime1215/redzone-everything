@@ -22,7 +22,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 
-from redzone.decider.screen import DelayBook, Timeline, catchable, leave_gate
+from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, PLAY_LEN_S, DelayBook, Event, Timeline, catchable,
+                                    leave_gate)
 from redzone.models import League
 from redzone.scoring.engine import Scored
 
@@ -78,6 +79,8 @@ class Missed:
 
 
 REPLAY_BASE = {"td": 75, "goal": 75, "safety": 70, "turnover": 65, "hr": 60, "fg": 35}
+TUNE_SLACK_S = 3.0  # a tune can stay black this much longer than its estimated cost
+URGENT_BONUS = 40.0  # added (ramping up) to a missed play's value as it nears replay.max_age_s
 
 
 @dataclass
@@ -121,9 +124,12 @@ class Decider:
         self.replaying: Missed | None = None
         self.replay_until = 0.0
         self.after_replay = False
-        self._screen_log: deque[tuple[float, str]] = deque(maxlen=400)  # (on-screen from, game | "replay")
+        self._screen_log: deque[tuple[float, str | None]] = deque(maxlen=400)  # (from, game | "replay" | None=black)
         self._judged: set[tuple[str, str]] = set()
         self._target_of: dict[str, str] = {}
+        # Last known candidate per game. A final drops out of the live candidates, but its last
+        # plays still air (and stay on the DVR) for a while: keep them judgeable and replayable.
+        self._known: dict[str, Candidate] = {}
 
     # ----- inputs -----------------------------------------------------------
 
@@ -154,6 +160,7 @@ class Decider:
 
     def decide(self, cands: dict[str, Candidate]) -> Decision:
         now = self._clock()
+        self._known.update({gid: x for gid, x in cands.items() if x.target})
         self._scan_missed(cands, now)
         if self.replaying and now >= self.replay_until:
             self.done_replays.append(self.replaying)
@@ -173,12 +180,18 @@ class Decider:
 
     # ----- catch-up replays ---------------------------------------------------
 
+    def target_of(self, game_id: str) -> str | None:
+        """Where a game is on, remembered after it ends (its last plays can still be replayed)."""
+        x = self._known.get(game_id)
+        return x.target if x else None
+
     def _replayable(self, x: Candidate | None) -> bool:
         if x is None or not x.target:
             return False
         return x.target.split(":", 1)[0] in self.cfg.get("replay.apps", ["youtubetv"])
 
     def on_screen_at(self, t: float) -> str | None:
+        """What the screen showed at t: a game id, "replay", or None (black, mid-tune)."""
         cur = None
         for at, g in self._screen_log:
             if at <= t:
@@ -187,16 +200,29 @@ class Decider:
                 break
         return cur
 
+    def _saw(self, gid: str, start: float, end: float) -> bool:
+        """Was this game on screen for the whole stretch? Partly seen counts as missed."""
+        if self.on_screen_at(start) != gid:
+            return False
+        return all(g == gid for at, g in self._screen_log if start < at <= end)
+
+    def _replay_pool(self, cands: dict[str, Candidate]) -> dict[str, Candidate]:
+        """Games you can rewind: everything live, plus games that just ended (still on the DVR)."""
+        return {**self._known, **cands}
+
     def _scan_missed(self, cands: dict[str, Candidate], now: float) -> None:
         """After each big play has aired, note whether you saw it. If not, queue a replay."""
         if not self.cfg.get("replay.enabled", True):
             return
         max_age = self.cfg.get("replay.max_age_s", 1800)
+        pool = self._replay_pool(cands)
         for gid, tl in self.timelines.items():
-            x = cands.get(gid)
+            # Finals too: a game is over in the data ~a minute before its last plays air.
+            x = pool.get(gid)
             if x is None:
                 continue
             d = self.delays.get(x.target or "unknown")
+            play_len = PLAY_LEN_S.get(tl.league) or 8.0
             for e in tl.events:
                 if e.kind != "play" or not e.big or (gid, e.pid or e.label) in self._judged:
                     continue
@@ -204,7 +230,8 @@ class Decider:
                 if now < air_end + 3:
                     continue
                 self._judged.add((gid, e.pid or e.label))
-                seen = self.on_screen_at(air_end - 3) == gid
+                # Seen only if the screen showed this game from the snap to the whistle.
+                seen = self._saw(gid, air_end - play_len, air_end)
                 if now - e.seen > max_age:
                     continue
                 kind = e.play_kind if e.play_kind in REPLAY_BASE else ("td" if "touchdown" in e.label.lower() else
@@ -215,19 +242,31 @@ class Decider:
                     self.done_replays.append(m)  # eligible only as an "instant replay" when all else is dead
                 elif self._replayable(x):
                     self.queue.append(m)
-        self.queue = [m for m in self.queue if not m.replayed and now - m.t <= max_age and m.game_id in cands]
+        self.queue = [m for m in self.queue if not m.replayed and now - m.t <= max_age and m.game_id in pool]
+
+    def _urgency(self, m: Missed, now: float) -> float:
+        """0 while there's time; ramps to 1 as a missed play nears the end of its replay window."""
+        urgent = self.cfg.get("replay.urgent_s", 1200)
+        if m.seen_live or urgent <= 0:
+            return 0.0
+        left = self.cfg.get("replay.max_age_s", 1800) - (now - m.t)
+        return max(0.0, min(1.0, 1.0 - left / urgent))
 
     def _replay_value(self, m: Missed, now: float) -> float:
         age = now - m.t
         fresh = 1.0 - 0.5 * min(1.0, age / self.cfg.get("replay.max_age_s", 1800))
-        return m.value * fresh * (0.5 if m.seen_live else 1.0)
+        # Last chance to see it: it climbs past dull live play.
+        return m.value * fresh * (0.5 if m.seen_live else 1.0) + URGENT_BONUS * self._urgency(m, now)
 
     def _replay_cost(self, m: Missed, cands) -> float:
-        x = cands.get(m.game_id)
+        x = self._replay_pool(cands).get(m.game_id)
         return self._cost(x.target if x else None) + self.cfg.get("replay.seek_s", 6) + self.cfg.get("replay.clip_s", 15)
 
-    def _best_replay(self, cands, now: float, budget: float | None, allow_seen: bool) -> Missed | None:
-        pool = [m for m in self.queue if m.game_id in cands and self._replayable(cands[m.game_id])]
+    def _best_replay(self, cands, now: float, budget: float | None, allow_seen: bool,
+                     top: float | None = None, margin: float | None = None) -> Missed | None:
+        """The replay to show next. With top: only one worth leaving live play scored top for."""
+        games = self._replay_pool(cands)
+        pool = [m for m in self.queue if self._replayable(games.get(m.game_id))]
         if allow_seen and not pool:
             recent = now - self.cfg.get("replay.instant_window_s", 900)
             done_ids = {(d.game_id, d.pid) for d in self.done_replays if d.replayed}
@@ -236,7 +275,14 @@ class Decider:
                     and self._replayable(cands[m.game_id])]
         if budget is not None:
             pool = [m for m in pool if self._replay_cost(m, cands) <= budget]
-        return max(pool, key=lambda m: self._replay_value(m, now), default=None)
+        if top is not None:
+            margin = self.cfg.get("decider.switch_margin") if margin is None else margin
+            pool = [m for m in pool if self._replay_value(m, now) >= top + margin]
+
+        def rank(m: Missed) -> tuple:
+            # Earliest deadline first among last chances (a fresh TD can wait; they can't), else value.
+            return (1, -m.t) if self._urgency(m, now) > 0 else (0, self._replay_value(m, now))
+        return max(pool, key=rank, default=None)
 
     def _break_remaining(self, gid: str, cands, now: float) -> float:
         """Seconds of break left on screen for this game (estimate)."""
@@ -294,11 +340,18 @@ class Decider:
         if self.after_replay:
             return self._after_replay(cands, watchable, now)
         if not watchable:
+            # Every game is over (or untunable): the perfect time to catch up on what you missed.
+            catch_up = self._catch_up(cands, now, None, "nothing live")
+            if catch_up:
+                return catch_up
             return Decision(now, "stay", self.current, "nothing live that I know how to tune", State.IDLE)
 
         # Current game is over, gone, or muted: go to the best thing (a final can't be "mid-play").
         if cur is None or self.current not in live or self.current in u.muted:
             best = self._best(watchable, exclude=None)
+            catch_up = self._catch_up(cands, now, best, "game over")
+            if catch_up:
+                return catch_up
             if best is None:
                 return Decision(now, "stay", self.current, "nothing live", State.IDLE)
             kind = "start" if self.current is None else "ended"
@@ -398,24 +451,16 @@ class Decider:
         # Chase: a big play just happened somewhere and hasn't aired yet. Go now, see it live.
         if gate_ok and not s_cur.lock and now - self.since >= c.get("decider.chase_min_dwell_s") \
                 and self._rate_ok(now):
-            chases = []
-            for gid, x in watchable.items():
-                # Don't skip games "in a break": the play that caused the break hasn't aired yet.
-                if gid == self.current or gid not in self.timelines:
-                    continue
-                ev = catchable(self.timelines[gid], self.delays.get(x.target), now,
-                               tune_s=self._cost(x.target) + 3)
-                if ev and x.scored.score >= s_cur.score - c.get("decider.chase_max_deficit"):
-                    chases.append((x.scored.score, gid, ev))
-            if chases:
-                _, gid, ev = max(chases, key=lambda z: z[0])
+            hit = self._chase(watchable, now, self.current, s_cur.score - c.get("decider.chase_max_deficit"))
+            if hit:
+                gid, ev = hit
                 return Decision(now, "switch", gid, f"catch it live — {ev.label} · {cands[gid].scored.reason}",
                                 state, gate_txt, kind="chase")
 
         # Catch-up between plays: a missed big play is worth more than this ordinary moment.
         if gate_ok and not s_cur.lock and dwell_ok and self._rate_ok(now):
-            rp = self._best_replay(cands, now, None, allow_seen=False)
-            if rp and self._replay_value(rp, now) >= max(s_cur.score, b.scored.score) + margin:
+            rp = self._best_replay(cands, now, None, False, top=max(s_cur.score, b.scored.score), margin=margin)
+            if rp:
                 return self._replay_decision(rp, state, gate_txt, now)
 
         # Go back to where we were if this moment is over and that game is about as good.
@@ -449,11 +494,33 @@ class Decider:
             return None
         back_cost = self._cost(self._target_of.get(self.current)) + 6
         budget = self._break_remaining(self.current, cands, now) - back_cost
-        rp = self._best_replay(cands, now, budget, allow_seen=dest is None)
+        # A break costs nothing to leave: no switch margin, and you can still visit dest afterwards.
+        dest_score = cands[dest].scored.score if dest else -1.0
+        return self._best_replay(cands, now, budget, allow_seen=dest is None, top=dest_score, margin=0.0)
+
+    def _catch_up(self, cands, now: float, best: str | None, why: str) -> Decision | None:
+        """We're leaving the current game anyway (it ended, or nothing's live): replay first?
+        Never instead of a locked moment (crunch time, red zone) we could be watching live."""
+        live = cands[best].scored if best else None
+        if self.current is None or (live and live.lock):
+            return None
+        rp = self._best_replay(cands, now, None, False, top=live.score if live else 0.0)
         if rp is None:
             return None
-        dest_score = cands[dest].scored.score if dest else -1.0
-        return rp if self._replay_value(rp, now) >= dest_score else None
+        if self._final_airing(self.current, now):
+            return Decision(now, "stay", self.current, "letting the last play finish, then a catch-up",
+                            State.WATCHING, "a play is on screen")
+        return self._replay_decision(rp, State.REPLAY, why, now)
+
+    def _final_airing(self, gid: str, now: float) -> bool:
+        """The data says it's over, but your screen may still be showing the last play."""
+        tl = self.timelines.get(gid)
+        x = self._known.get(gid)
+        last = tl.last("play") if tl else None
+        if last is None or x is None:
+            return False
+        d = self.delays.get(x.target or "unknown")
+        return now <= last.seen + d.mu + 2 * d.current_sigma(now) + AFTER_PLAY_BUFFER_S
 
     def _replay_decision(self, rp: Missed, state, gate_txt: str, now: float) -> Decision:
         name = "instant replay" if rp.seen_live else "catch-up"
@@ -483,13 +550,35 @@ class Decider:
             best = max(watchable, key=lambda g: watchable[g].scored.score, default=None)
             if best is None:
                 return Decision(now, "stay", self.current, "nothing live", State.IDLE)
-        rp = self._best_replay(cands, now, None, allow_seen=False)
-        if rp and self._replay_value(rp, now) >= cands[best].scored.score + self.cfg.get("decider.switch_margin"):
+        live = cands[best].scored
+        rp = None if live.lock else self._best_replay(cands, now, None, False, top=live.score)
+        if rp:
             return self._replay_decision(rp, State.REPLAY, "replay finished", now)
+        # Heading back to live anyway: land where a big play is about to air, if there is one.
+        hit = self._chase(watchable, now, None, live.score - self.cfg.get("decider.chase_max_deficit"))
+        if hit:
+            gid, ev = hit
+            return Decision(now, "switch", gid, f"catch it live — {ev.label} · {cands[gid].scored.reason}",
+                            State.WATCHING, "replay finished", kind="live")
         return Decision(now, "switch", best, self._why(cands[best], "back to live"), State.WATCHING,
                         "replay finished", kind="live")
 
     # ----- helpers ----------------------------------------------------------
+
+    def _chase(self, watchable, now: float, exclude: str | None, floor: float) -> tuple[str, Event] | None:
+        """The best game (scoring at least floor) with a big play in the data that hasn't aired yet."""
+        chases = []
+        for gid, x in watchable.items():
+            # Don't skip games "in a break": the play that caused the break hasn't aired yet.
+            if gid == exclude or gid not in self.timelines:
+                continue
+            ev = catchable(self.timelines[gid], self.delays.get(x.target), now, tune_s=self._cost(x.target) + 3)
+            if ev and x.scored.score >= floor:
+                chases.append((x.scored.score, gid, ev))
+        if not chases:
+            return None
+        _, gid, ev = max(chases, key=lambda z: z[0])
+        return gid, ev
 
     def _best(self, watchable: dict[str, Candidate], exclude: str | None) -> str | None:
         options = [(x.scored.score, gid) for gid, x in watchable.items()
@@ -535,7 +624,10 @@ class Decider:
         self.current = target
         self.since = now
         self.history.append((now, target, kind))
-        self._screen_log.append((now + self._cost(None if target is None else self._target_of.get(target)), target))
+        # Black while the tuner works; padded so "did you see it?" errs toward "no" (-> replay).
+        tune = self._cost(None if target is None else self._target_of.get(target)) + TUNE_SLACK_S
+        self._screen_log.append((now, None))
+        self._screen_log.append((now + tune, target))
         self._check_ping_pong(now)
 
     def _check_ping_pong(self, now: float) -> None:
