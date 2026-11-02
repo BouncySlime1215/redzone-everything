@@ -1,0 +1,113 @@
+# RedZone Everything — default settings.
+# Your edits live in data/config.yaml (made on first run). Every save from the
+# phone is checked against the limits in config.py and versioned so it can be undone.
+
+mode:
+  dry_run: true            # true = show what it WOULD do, never touch the TV
+  leagues: {nfl: true, nba: true, nhl: true, mlb: true}
+
+sunday_ticket: true        # you have NFL Sunday Ticket (+ RedZone) on YouTube TV
+market: raleigh-durham
+
+server:
+  port: 8765
+
+teams:                     # your teams: biggest boost
+  nfl: [WSH]
+  nba: [WSH]
+  nhl: [WSH]
+  mlb: [WSH]
+
+polling:
+  live_s: 10               # poll every N seconds while any game is live
+  idle_s: 300              # poll every N seconds when nothing is live
+
+score:
+  neutral_cap: 0.9         # a neutral game tops out at 90; 90-100 is reserved for games you care about
+  personal_cap: 30
+  smoothing_half_life_s: 30
+  stakes:
+    both_good_pct: 0.600
+    both_good: 0.08
+    both_bad_pct: 0.350
+    both_bad: -0.10
+    close_spread: 3.0
+    close_spread_bonus: 0.05
+    big_spread: 10.0
+    big_spread_penalty: -0.05
+    national_tv: 0.03
+    min: 0.8
+    max: 1.2
+  personal:
+    my_team: 25            # scaled by how competitive the game is (0 in a blowout)
+    bet_max: 20
+    fantasy_mine: 12
+    fantasy_opponent: 8
+    manual_boost: 15
+  nfl:
+    time: {q1: 5, q2: 10, q2_two_min: 25, q3: 15, q4_early: 25, q4_mid: 35, q4_late: 55, ot: 60}
+    field: {own: 5, opp_mid: 12, opp_deep: 20, red_zone: 30, inside_10: 38, goal_to_go: 7}
+    down: {third_short: 6, fourth_go: 15}
+    two_minute_drill: 15
+    uncertainty: 15
+    wp_swing: {threshold: 0.15, points: 15, fade_s: 120}
+    player_going_off: 8
+  nba:
+    time: {early: 8, q3: 12, q4: 25, q4_5min: 45, q4_2min: 58, q4_30s: 68, ot: 65}
+    last_shot: 15
+    run_10: 15
+    run_14: 20
+    run_fade_s: 120
+    comeback: 12
+    uncertainty: 10
+    player_going_off: 12
+  nhl:
+    time: {p1: 8, p2: 12, p3_early: 20, p3_mid: 30, p3_5min: 42, p3_2min: 52, ot: 70, shootout: 75}
+    power_play: 15
+    five_on_three: 25
+    power_play_p3_close: 22
+    empty_net: 30
+    penalty_shot: 40
+  mlb:
+    leverage_scale: 2.2
+    inning_mult: {early: 0.85, mid: 1.0, eighth: 1.1, ninth_plus: 1.2}
+    walk_off_spot: 15
+    no_hitter: {through_6: 25, through_7: 35, ninth: 50}
+
+decider:
+  min_dwell_s: 45
+  switch_margin: 10
+  switch_cost: {youtubetv: 3, prime: 8, hdmi_flip: 1}
+  max_switches_per_5min: 4
+  min_gap_s: 20
+  return_tolerance: 5      # go back to the previous game if it's within this many points
+  break_destination_min: 25   # anything at least this good beats watching a commercial
+  chase_min_dwell_s: 20
+  chase_max_deficit: 15
+  must_see_score: 92
+  must_see_lead: 20
+  locked_override_lead: 20
+  ping_pong_freeze_s: 300
+  manual_pause_s: 60
+  uncalibrated_sigma_s: 8  # above this delay uncertainty, only leave at official stoppages
+  redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
+
+replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
+  enabled: true
+  apps: [youtubetv]        # apps where rewinding live TV works
+  max_age_s: 1800          # don't replay anything older than this
+  clip_s: 15               # how long each replay plays
+  seek_s: 6                # time spent rewinding to the play
+  instant_window_s: 900    # when everything's on a break, re-show great plays from the last 15 min
+  seek_key: KEYCODE_MEDIA_REWIND
+  seek_step_s: 10          # seconds per rewind press (measure on your stick in the Screen Lab)
+
+delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
+  default: {youtubetv: 45, prime: 40}
+  sigma_default: 15
+
+break_lengths_s:           # typical commercial lengths used to plan catch-ups
+  nfl: {timeout: 75, tv_timeout: 120, score_break: 150, end_period: 120, two_minute_warning: 120, halftime: 780}
+  nba: {timeout: 90, end_period: 130, halftime: 900}
+  nhl: {timeout: 120, end_period: 1080}
+  mlb: {end_period: 130, pitching_change: 150}

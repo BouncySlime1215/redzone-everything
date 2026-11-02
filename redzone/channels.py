@@ -1,0 +1,231 @@
+"""Where can you actually watch a game? Map each game to a tuner target.
+
+Targets look like  "youtubetv:espn"  or  "prime:<gti>"  or  "youtubetv:st"  (Sunday Ticket slot TBD).
+
+Rules (Raleigh-Durham market, YouTube TV + Sunday Ticket + Prime):
+- National cable (ESPN, ESPN2, FS1, NFL Network, TNT, truTV, NBA TV, NHL Network, MLB Network, USA)
+  -> that YouTube TV channel.
+- Broadcast networks: national windows (MNF on ABC, SNF on NBC, national CBS/FOX) -> local affiliate.
+- Sunday-afternoon NFL on CBS/FOX: Panthers games and anything shown locally -> local CBS/FOX;
+  everything else -> Sunday Ticket. Which games air locally isn't in any free feed, so those are
+  marked "likely" and you can correct them on the phone. Corrections are remembered.
+- Prime Video, NBA League Pass (via Prime), Monumental (Wizards/Caps local) -> Prime.
+- Anything else -> unknown (shown on the phone so you can set it by hand).
+"""
+from __future__ import annotations
+
+import json
+import re
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+from redzone.models import GameState, League
+
+DATA = Path(__file__).resolve().parent.parent / "data"
+
+# ESPN broadcast name (lowercased) -> our channel key
+NETWORKS = {
+    "espn": "espn", "espn2": "espn2", "espnu": "espnu", "espnews": "espnews", "abc": "abc",
+    "espn+": "espnplus", "espn unlimited": "espnplus",
+    "fox": "fox", "fs1": "fs1", "fs2": "fs2", "cbs": "cbs", "nbc": "nbc", "cbssn": "cbssn",
+    "nfl net": "nflnetwork", "nfl network": "nflnetwork", "nfln": "nflnetwork",
+    "tnt": "tnt", "trutv": "trutv", "tbs": "tbs", "nba tv": "nbatv", "nbatv": "nbatv",
+    "nhl net": "nhlnetwork", "nhl network": "nhlnetwork", "mlb net": "mlbnetwork", "mlb network": "mlbnetwork",
+    "usa net": "usa", "usa": "usa", "nbcsn": "nbcsn", "nbc sports network": "nbcsn",
+    "prime video": "prime", "amazon prime video": "prime", "prime": "prime",
+    "nba league pass": "leaguepass", "league pass": "leaguepass",
+    "monumental": "monumental", "monumental sports network": "monumental", "msn": "monumental",
+    "peacock": "peacock", "netflix": "netflix", "apple tv": "appletv", "max": "max", "hbo max": "max",
+}
+# Where each channel key is watchable for you.
+APP_FOR = {
+    "prime": "prime", "leaguepass": "prime", "monumental": "prime",
+    "peacock": None, "netflix": None, "appletv": None, "max": None, "espnplus": "youtubetv_event",
+}
+# Regional sports networks: blacked out here, so out-of-market games go to League Pass (NBA) / ESPN+ (NHL).
+RSN_HINTS = ("sn", "sports net", "sportsnet", "fanduel", "nesn", "msg", "scripps", "dsn", "marquee", "yes",
+             "spectrum", "altitude", "root", "bally", "chsn", "kunpd", "victory", "kcop", "kmcc", "gulf coast")
+BROADCAST = {"cbs", "fox", "nbc", "abc"}
+LOCAL_TEAMS = {League.NFL: {"CAR"}, League.NBA: {"CHA"}, League.NHL: {"CAR"}, League.MLB: set()}
+# Wizards/Caps local games are on Monumental, which you watch through Prime Video Channels.
+MONUMENTAL_TEAMS = {League.NBA: {"WSH", "WAS"}, League.NHL: {"WSH"}}
+
+
+@dataclass
+class Where:
+    target: str | None      # None = unknown
+    label: str              # "ESPN on YouTube TV", "Sunday Ticket", ...
+    confidence: str         # "sure" | "likely" | "unknown" | "you set it"
+    tunable: bool           # can the TV actually be sent there right now?
+
+
+class ChannelMap:
+    def __init__(self, path: Path = DATA / "channels.json"):
+        self.path = path
+        self.codes: dict[str, str] = {}        # channel key -> YouTube TV watch code
+        self.overrides: dict[str, str] = {}    # game_id -> target
+        self.team_rules: dict[str, str] = {}   # "nfl:WSH" -> target (sticky preferences)
+        self.prime_gti: dict[str, str] = {}    # game_id -> Prime GTI
+        self.st_slots: dict[str, str] = {}     # game_id -> Sunday Ticket slot code
+        self.load()
+
+    def load(self) -> None:
+        if self.path.exists():
+            try:
+                d = json.loads(self.path.read_text())
+            except ValueError:
+                d = {}
+            self.codes = d.get("codes", {})
+            self.overrides = d.get("overrides", {})
+            self.team_rules = d.get("team_rules", {})
+            self.prime_gti = d.get("prime_gti", {})
+            self.st_slots = d.get("st_slots", {})
+
+    def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"codes": self.codes, "overrides": self.overrides,
+                                   "team_rules": self.team_rules, "prime_gti": self.prime_gti,
+                                   "st_slots": self.st_slots, "saved": time.time()}, indent=1))
+        tmp.replace(self.path)
+
+    # --- user input -----------------------------------------------------------
+
+    def set_code_from_link(self, channel: str, link: str) -> str:
+        """Paste a YouTube TV link (tv.youtube.com/watch/XXXXXXXXXXX?...) for a channel."""
+        code = parse_yttv_link(link)
+        if not code:
+            raise ValueError("That doesn't look like a YouTube TV watch link")
+        self.codes[channel] = code
+        self.save()
+        return code
+
+    def set_override(self, game_id: str, target: str | None) -> None:
+        if target:
+            self.overrides[game_id] = target
+        else:
+            self.overrides.pop(game_id, None)
+        self.save()
+
+    # --- lookup -----------------------------------------------------------------
+
+    def where(self, g: GameState, sunday_ticket: bool = True) -> Where:
+        if g.game_id in self.overrides:
+            t = self.overrides[g.game_id]
+            return Where(t, describe(t), "you set it", self._tunable(t))
+        nets = [NETWORKS.get(b.lower().strip()) for b in g.broadcasts]
+        nets = [n for n in nets if n]
+        lg = g.league
+        teams = {g.home.abbr, g.away.abbr}
+
+        if lg in MONUMENTAL_TEAMS and teams & MONUMENTAL_TEAMS[lg] and not (set(nets) - {"leaguepass", "monumental"}):
+            return self._prime(g, "monumental", "Monumental (Prime Video)", "likely")
+
+        # National cable first: it's never blacked out.
+        for n in nets:
+            if n not in BROADCAST and n in NETWORKS.values() and APP_FOR.get(n, "youtubetv") == "youtubetv":
+                return self._yttv(n)
+        for n in nets:
+            if APP_FOR.get(n) == "prime":
+                return self._prime(g, n, describe(f"prime:{n}"), "sure" if n == "prime" else "likely")
+        if "espnplus" in nets or (lg == League.NHL and not nets):
+            return self._espnplus(g)
+
+        if lg == League.NFL and set(nets) & {"cbs", "fox"} and _is_sunday_afternoon(g):
+            if teams & LOCAL_TEAMS[League.NFL]:
+                return self._yttv(next(n for n in nets if n in ("cbs", "fox")), "likely")
+            if sunday_ticket:
+                slot = self.st_slots.get(g.game_id)
+                if slot:
+                    return Where(f"youtubetv:st:{slot}", "Sunday Ticket", "sure", True)
+                return Where("youtubetv:st", "Sunday Ticket (channel not matched yet)", "likely", False)
+            return Where(None, "not on in your area", "likely", False)
+
+        for n in nets:
+            if n in BROADCAST:
+                return self._yttv(n)
+        if lg == League.NBA:
+            # Out-of-market NBA with no national TV: League Pass through Prime.
+            return self._prime(g, "leaguepass", describe("prime:leaguepass"), "likely")
+        if lg == League.NHL:
+            # Out-of-market NHL with only regional TV: ESPN+ (linked into YouTube TV).
+            return self._espnplus(g)
+        if any(APP_FOR.get(n, "x") is None for n in nets):
+            return Where(None, f"only on {', '.join(g.broadcasts)} (not set up)", "sure", False)
+        return Where(None, "unknown — set it on the phone", "unknown", False)
+
+    def _espnplus(self, g: GameState) -> Where:
+        if g.game_id in self.st_slots:
+            return Where(f"youtubetv:ev:{self.st_slots[g.game_id]}", "ESPN+ · YouTube TV", "sure", True)
+        return Where("youtubetv:espnplus", "ESPN+ · YouTube TV (event link needed)", "likely", False)
+
+    def _yttv(self, ch: str, conf: str = "sure") -> Where:
+        t = f"youtubetv:{ch}"
+        return Where(t, describe(t), conf, self._tunable(t))
+
+    def _prime(self, g: GameState, ch: str, label: str, conf: str) -> Where:
+        gti = self.prime_gti.get(g.game_id)
+        if gti:
+            return Where(f"prime:{gti}", label, conf, True)
+        return Where(f"prime:{ch}", label + " (event link not found yet)", conf, False)
+
+    def _tunable(self, target: str) -> bool:
+        app, _, rest = target.partition(":")
+        if app == "youtubetv":
+            if rest.startswith(("st:", "ev:")):
+                return True
+            return rest in self.codes
+        if app == "prime":
+            return rest.startswith("amzn1.")
+        return False
+
+    def yttv_code(self, target: str) -> str | None:
+        app, _, rest = target.partition(":")
+        if app != "youtubetv":
+            return None
+        if rest.startswith(("st:", "ev:")):
+            return rest[3:]
+        return self.codes.get(rest)
+
+
+YTTV_LINK = re.compile(r"tv\.youtube\.com/watch/([A-Za-z0-9_-]{11})")
+
+
+def parse_yttv_link(link: str) -> str | None:
+    m = YTTV_LINK.search(link or "")
+    if m:
+        return m.group(1)
+    link = (link or "").strip()
+    return link if re.fullmatch(r"[A-Za-z0-9_-]{11}", link) else None
+
+
+PRETTY = {"espn": "ESPN", "espn2": "ESPN2", "espnu": "ESPNU", "abc": "ABC", "fox": "FOX", "fs1": "FS1",
+          "cbs": "CBS", "nbc": "NBC", "nflnetwork": "NFL Network", "tnt": "TNT", "trutv": "truTV",
+          "tbs": "TBS", "nbatv": "NBA TV", "nhlnetwork": "NHL Network", "mlbnetwork": "MLB Network",
+          "usa": "USA", "redzone": "NFL RedZone", "st": "Sunday Ticket", "cbssn": "CBS Sports Net",
+          "fs2": "FS2", "espnews": "ESPNews", "nbcsn": "NBCSN"}
+
+# Channels to ask for in the setup helper, most useful first.
+SETUP_CHANNELS = ["espn", "espn2", "abc", "cbs", "fox", "nbc", "nflnetwork", "redzone", "nbcsn", "tnt", "trutv",
+                  "tbs", "nbatv", "nhlnetwork", "fs1", "mlbnetwork", "usa", "espnu", "cbssn"]
+
+
+def describe(target: str | None) -> str:
+    if not target:
+        return "unknown"
+    app, _, rest = target.partition(":")
+    if app == "youtubetv":
+        if rest.startswith("st"):
+            return "Sunday Ticket"
+        return f"{PRETTY.get(rest, rest.upper())} · YouTube TV"
+    if app == "prime":
+        return {"leaguepass": "NBA League Pass · Prime", "monumental": "Monumental · Prime"}.get(rest, "Prime Video")
+    return target
+
+
+def _is_sunday_afternoon(g: GameState) -> bool:
+    if not g.start_time:
+        return False
+    lt = time.localtime(g.start_time)
+    return lt.tm_wday == 6 and 12 <= lt.tm_hour < 19

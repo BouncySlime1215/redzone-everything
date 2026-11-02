@@ -1,0 +1,180 @@
+"""Phase 0 setup checker. Run it any time something seems off:
+
+    .venv/bin/python scripts/doctor.py            # check everything, find devices
+    .venv/bin/python scripts/doctor.py --ip 192.168.1.42   # add a stick by IP if the scan misses it
+
+It only reads and connects; it never changes settings on your Mac, sticks, or TV.
+Results are saved to data/devices.json for the app to use.
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import ipaddress
+import json
+import platform
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import httpx
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from redzone.tuners.adb import MODELS, Stick, adb_available  # noqa: E402
+
+DEVICES = ROOT / "data" / "devices.json"
+OK, WARN, BAD = "✅", "⚠️ ", "❌"
+
+
+def say(icon: str, text: str) -> None:
+    print(f"  {icon} {text}")
+
+
+def local_network() -> tuple[str | None, ipaddress.IPv4Network | None, str]:
+    """IP, subnet and interface of the Mac's main connection."""
+    try:
+        route = subprocess.run(["route", "-n", "get", "default"], capture_output=True, text=True, timeout=5).stdout
+        iface = re.search(r"interface: (\S+)", route).group(1)
+        ifc = subprocess.run(["ifconfig", iface], capture_output=True, text=True, timeout=5).stdout
+        m = re.search(r"inet (\d+\.\d+\.\d+\.\d+) netmask (0x[0-9a-f]+)", ifc)
+        ip, mask = m.group(1), int(m.group(2), 16)
+        prefix = bin(mask).count("1")
+        return ip, ipaddress.ip_network(f"{ip}/{prefix}", strict=False), iface
+    except Exception:
+        return None, None, ""
+
+
+async def port_open(host: str, port: int, timeout: float = 0.6) -> bool:
+    try:
+        _, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout)
+        w.close()
+        return True
+    except (OSError, asyncio.TimeoutError):
+        return False
+
+
+async def scan(net: ipaddress.IPv4Network, port: int) -> list[str]:
+    hosts = list(net.hosts())[:1024]
+    sem = asyncio.Semaphore(128)
+
+    async def one(h):
+        async with sem:
+            return str(h) if await port_open(str(h), port) else None
+    return [h for h in await asyncio.gather(*(one(h) for h in hosts)) if h]
+
+
+async def samsung_info(ip: str) -> dict | None:
+    try:
+        async with httpx.AsyncClient(timeout=3) as c:
+            r = await c.get(f"http://{ip}:8001/api/v2/")
+            if r.status_code == 200:
+                d = r.json().get("device", {})
+                return {"ip": ip, "name": d.get("name"), "model": d.get("modelName"),
+                        "os": d.get("OS"), "token_auth": d.get("TokenAuthSupport"),
+                        "power": d.get("PowerState"), "wifi_mac": d.get("wifiMac")}
+    except Exception:
+        return None
+    return None
+
+
+async def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--ip", action="append", default=[], help="Fire TV stick IP to add (repeatable)")
+    ap.add_argument("--no-scan", action="store_true")
+    a = ap.parse_args()
+
+    print("\nRedZone Everything — setup check\n")
+    print("1. Your Mac")
+    v = sys.version_info
+    say(OK if v >= (3, 12) else BAD, f"Python {v.major}.{v.minor} " + ("" if v >= (3, 12) else "(need 3.12+)"))
+    say(OK if shutil.which("brew") else WARN, "Homebrew " + ("found" if shutil.which("brew") else "not found"))
+    adb = await adb_available()
+    say(OK if adb else BAD, "adb " + ("found" if adb else "missing — run: brew install --cask android-platform-tools"))
+    say(OK, f"macOS {platform.mac_ver()[0]}")
+
+    print("\n2. Network")
+    ip, net, iface = local_network()
+    if not ip:
+        say(BAD, "Couldn't find your network connection")
+        return
+    say(OK, f"Mac is {ip} on {iface} ({net})")
+    if ipaddress.ip_address(ip) in ipaddress.ip_network("100.64.0.0/10"):
+        say(WARN, "This looks like a campus/hotspot/apartment network, not a home router. "
+                  "The sticks and TV must be on this same Wi-Fi, and some of these networks block "
+                  "devices from talking to each other.")
+    vpn = subprocess.run(["scutil", "--nc", "list"], capture_output=True, text=True).stdout
+    for line in vpn.splitlines():
+        if "(Connected)" in line:
+            name = re.search(r'"([^"]+)"', line)
+            say(WARN, f"VPN connected: {name.group(1) if name else line.strip()} — if devices aren't found, "
+                      "turn it off while you use RedZone (Tailscale is usually fine).")
+
+    print("\n3. Fire TV sticks (ADB on port 5555)")
+    hosts = list(a.ip)
+    if not a.no_scan and net is not None:
+        print(f"     scanning {net} … (about 10 seconds)")
+        hosts += [h for h in await scan(net, 5555) if h not in hosts]
+    sticks = []
+    if not hosts:
+        say(WARN, "No sticks found with ADB on. On each stick: Settings → My Fire TV → About → click the "
+                  "device name 7 times → back → Developer Options → ADB Debugging ON. Then run this again.")
+    for h in hosts:
+        st = Stick(h if ":" in h else f"{h}:5555")
+        if not adb:
+            break
+        ok = await st.connect()
+        if st.state == "unauthorized" or not ok:
+            await asyncio.sleep(1)
+            ok = await st.connect()
+        if st.state == "unauthorized":
+            say(WARN, f"{h}: waiting for you — on the TV, pick 'Always allow from this computer' → OK, then rerun.")
+            continue
+        if not ok:
+            say(BAD, f"{h}: couldn't connect ({st.state})")
+            continue
+        await st.identify()
+        vega = "Vega" in st.os
+        say(BAD if vega else OK, f"{h}: {st.name or st.model} — {st.os}" +
+            (" — Vega OS can't be controlled; RedZone will use single-stick mode" if vega else ""))
+        for role in ("youtubetv", "prime", "youtube"):
+            pkg = st.packages.get(role)
+            say(OK if pkg else WARN, f"    {role}: {pkg or 'not installed'}")
+        pb = await st.playback()
+        say(OK, f"    playing now: {pb['state']}" + (f" ({pb['pkg']})" if pb.get("pkg") else ""))
+        sticks.append({"host": st.host, "name": st.name, "model": st.model, "os": st.os,
+                       "packages": st.packages, "controllable": not vega})
+
+    print("\n4. Samsung TV")
+    tvs = []
+    if net is not None and not a.no_scan:
+        cand = await scan(net, 8001)
+        for h in cand:
+            info = await samsung_info(h)
+            if info:
+                tvs.append(info)
+                say(OK, f"{info['name']} ({info['model']}) at {h} — {info['os']}, power {info['power']}")
+    if not tvs:
+        say(WARN, "No Samsung TV found (it must be on, same Wi-Fi). Only needed for two-stick mode.")
+
+    print("\n5. NFL Sunday Ticket")
+    say(OK, "Sunday Ticket + RedZone: yes (set in settings)")
+
+    DEVICES.parent.mkdir(parents=True, exist_ok=True)
+    old = json.loads(DEVICES.read_text()) if DEVICES.exists() else {}
+    if sticks:
+        controllable = [s for s in sticks if s["controllable"]]
+        old["sticks"] = controllable + [s for s in sticks if not s["controllable"]]
+    if tvs:
+        old["tv"] = tvs[0]
+    DEVICES.write_text(json.dumps(old, indent=1))
+    n = len([s for s in sticks if s["controllable"]])
+    print(f"\nSaved to data/devices.json. Controllable sticks: {n} → "
+          f"{'two-stick hot standby possible' if n >= 2 else 'single-stick mode' if n == 1 else 'none yet'}.\n")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

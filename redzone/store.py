@@ -1,0 +1,96 @@
+"""SQLite log of everything the app decides and everything you tell it.
+
+This is the training lab's raw material: every switch with three timestamps
+(data event, command sent, playback confirmed), every 👍/👎, every calibration,
+every screen-lab label, and the source race.
+"""
+from __future__ import annotations
+
+import json
+import sqlite3
+import threading
+import time
+from pathlib import Path
+
+DB = Path(__file__).resolve().parent.parent / "data" / "redzone.db"
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS decisions (ts REAL, action TEXT, game TEXT, kind TEXT, state TEXT, gate TEXT, reason TEXT);
+CREATE TABLE IF NOT EXISTS switches (ts REAL, frm TEXT, to_game TEXT, target TEXT, kind TEXT, reason TEXT,
+    event_ts REAL, cmd_ts REAL, confirmed_ts REAL, ok INTEGER, dry_run INTEGER, detail TEXT);
+CREATE TABLE IF NOT EXISTS feedback (ts REAL, game TEXT, vote INTEGER, note TEXT, context TEXT);
+CREATE TABLE IF NOT EXISTS calibrations (ts REAL, target TEXT, sample REAL, mu REAL, sigma REAL);
+CREATE TABLE IF NOT EXISTS labels (ts REAL, label TEXT, game TEXT, signals TEXT);
+CREATE TABLE IF NOT EXISTS snapshots (ts REAL, game TEXT, league TEXT, score REAL, moment REAL, reason TEXT, state TEXT);
+CREATE TABLE IF NOT EXISTS bets (id INTEGER PRIMARY KEY AUTOINCREMENT, created REAL, game TEXT, kind TEXT,
+    team TEXT, line REAL, side TEXT, note TEXT, active INTEGER DEFAULT 1);
+CREATE INDEX IF NOT EXISTS idx_dec_ts ON decisions(ts);
+CREATE INDEX IF NOT EXISTS idx_snap_ts ON snapshots(ts);
+"""
+
+
+class Store:
+    def __init__(self, path: Path = DB):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
+        self._db.execute("PRAGMA journal_mode=WAL")
+        self._db.executescript(SCHEMA)
+        self._lock = threading.Lock()
+
+    def _x(self, sql: str, args: tuple = ()):
+        with self._lock:
+            return self._db.execute(sql, args)
+
+    def decision(self, d) -> None:
+        self._x("INSERT INTO decisions VALUES (?,?,?,?,?,?,?)",
+                (d.at, d.action, d.target, d.kind, d.state.value, d.gate, d.reason))
+
+    def switch(self, **kw) -> int:
+        cur = self._x("INSERT INTO switches VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (
+            kw.get("ts", time.time()), kw.get("frm"), kw.get("to_game"), kw.get("target"), kw.get("kind"),
+            kw.get("reason"), kw.get("event_ts"), kw.get("cmd_ts"), kw.get("confirmed_ts"),
+            int(bool(kw.get("ok"))), int(bool(kw.get("dry_run"))), json.dumps(kw.get("detail") or {})))
+        return cur.lastrowid
+
+    def feedback(self, game: str | None, vote: int, note: str = "", context: dict | None = None) -> None:
+        self._x("INSERT INTO feedback VALUES (?,?,?,?,?)", (time.time(), game, vote, note, json.dumps(context or {})))
+
+    def calibration(self, target: str, sample: float, mu: float, sigma: float) -> None:
+        self._x("INSERT INTO calibrations VALUES (?,?,?,?,?)", (time.time(), target, sample, mu, sigma))
+
+    def label(self, label: str, game: str | None, signals: dict) -> None:
+        self._x("INSERT INTO labels VALUES (?,?,?,?)", (time.time(), label, game, json.dumps(signals)))
+
+    def snapshot(self, rows: list[tuple]) -> None:
+        with self._lock:
+            self._db.executemany("INSERT INTO snapshots VALUES (?,?,?,?,?,?,?)", rows)
+
+    def recent_switches(self, n: int = 50) -> list[dict]:
+        cur = self._x("SELECT ts, frm, to_game, target, kind, reason, event_ts, cmd_ts, confirmed_ts, ok, dry_run, detail "
+                      "FROM switches ORDER BY ts DESC LIMIT ?", (n,))
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    def feedback_counts(self) -> dict:
+        cur = self._x("SELECT vote, COUNT(*) FROM feedback GROUP BY vote")
+        return {("up" if v > 0 else "down"): n for v, n in cur.fetchall()}
+
+    # bets
+    def add_bet(self, game: str, kind: str, team: str, line: float | None, side: str, note: str) -> int:
+        cur = self._x("INSERT INTO bets (created, game, kind, team, line, side, note) VALUES (?,?,?,?,?,?,?)",
+                      (time.time(), game, kind, team, line, side, note))
+        return cur.lastrowid
+
+    def bets(self, active_only: bool = True) -> list[dict]:
+        cur = self._x("SELECT id, created, game, kind, team, line, side, note, active FROM bets"
+                      + (" WHERE active=1" if active_only else "") + " ORDER BY created DESC")
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    def remove_bet(self, bet_id: int) -> None:
+        self._x("UPDATE bets SET active=0 WHERE id=?", (bet_id,))
+
+    def prune(self, keep_days: int = 60) -> None:
+        cutoff = time.time() - keep_days * 86400
+        for t in ("decisions", "snapshots"):
+            self._x(f"DELETE FROM {t} WHERE ts < ?", (cutoff,))

@@ -1,0 +1,509 @@
+"""Excitement score, 0-100, with a plain-English reason.
+
+    final = min(100, neutral_cap * min(100, M * S) + P)
+
+M = live moment (0-100), S = stakes (0.8-1.2), P = personal boosts (capped).
+A neutral game tops out at 90; only games you care about reach 90-100.
+
+Every input is optional. Missing data lowers confidence, never crashes.
+"""
+from __future__ import annotations
+
+import math
+import time
+from dataclasses import dataclass, field
+
+from redzone.models import REAL_BREAKS, GameState, League, Phase, Stoppage
+
+# --- closeness: how competitive the score is, 0..1 --------------------------
+
+_K = {
+    # (max deficit, late value, early value)
+    League.NFL: [(3, 1.0, 1.0), (8, 0.9, 0.9), (16, 0.6, 0.85), (24, 0.3, 0.6), (999, 0.1, 0.1)],
+    League.NBA: [(3, 1.0, 1.0), (5, 0.95, 0.95), (8, 0.8, 0.8), (12, 0.55, 0.85), (20, 0.3, 0.65), (999, 0.05, 0.05)],
+    League.NHL: [(0, 1.0, 1.0), (1, 0.9, 0.9), (2, 0.5, 0.8), (999, 0.15, 0.5)],
+    League.MLB: [(1, 1.0, 1.0), (2, 0.85, 0.85), (3, 0.65, 0.65), (5, 0.35, 0.35), (999, 0.1, 0.1)],
+}
+
+
+def is_late(g: GameState) -> bool:
+    p = g.period or 0
+    return {League.NFL: p >= 4, League.NBA: p >= 4, League.NHL: p >= 3, League.MLB: p >= 7}[g.league]
+
+
+def closeness(g: GameState) -> float:
+    d = g.score_diff
+    if d is None:
+        return 0.7
+    late = is_late(g)
+    for limit, late_v, early_v in _K[g.league]:
+        if abs(d) <= limit:
+            return late_v if late else early_v
+    return 0.1
+
+
+# --- per-game memory (runs, WP swings, smoothing) ---------------------------
+
+@dataclass
+class History:
+    last_home: int | None = None
+    last_away: int | None = None
+    run_team: str | None = None
+    run_pts: int = 0
+    run_at: float | None = None
+    max_deficit: dict[str, int] = field(default_factory=dict)
+    last_wp: float | None = None
+    swing_at: float | None = None
+    shown: float = 0.0
+    shown_at: float = 0.0
+
+    def observe(self, g: GameState, now: float, wp_threshold: float) -> None:
+        hs, as_ = g.home.score, g.away.score
+        if hs is not None and as_ is not None:
+            if self.last_home is not None and self.last_away is not None:
+                dh, da = hs - self.last_home, as_ - self.last_away
+                if dh > 0 and da == 0:
+                    self._run(g.home.abbr, dh, now)
+                elif da > 0 and dh == 0:
+                    self._run(g.away.abbr, da, now)
+                elif dh > 0 and da > 0:
+                    self.run_team, self.run_pts = None, 0
+            self.last_home, self.last_away = hs, as_
+            diff = hs - as_
+            if diff < 0:
+                self.max_deficit[g.home.abbr] = max(self.max_deficit.get(g.home.abbr, 0), -diff)
+            elif diff > 0:
+                self.max_deficit[g.away.abbr] = max(self.max_deficit.get(g.away.abbr, 0), diff)
+        wp = g.home_win_prob
+        if wp is not None:
+            if self.last_wp is not None and abs(wp - self.last_wp) >= wp_threshold:
+                self.swing_at = now
+            self.last_wp = wp
+
+    def _run(self, team: str, pts: int, now: float) -> None:
+        if self.run_team == team:
+            self.run_pts += pts
+        else:
+            self.run_team, self.run_pts = team, pts
+        self.run_at = now
+
+
+def _fade(at: float | None, now: float, fade_s: float) -> float:
+    if at is None:
+        return 0.0
+    return max(0.0, 1.0 - (now - at) / fade_s)
+
+
+# --- result ------------------------------------------------------------------
+
+@dataclass
+class Scored:
+    game_id: str
+    league: League
+    score: float            # what the decider uses (smoothed, unrounded)
+    raw: float              # this poll's value before smoothing
+    moment: float
+    stakes: float
+    personal: float
+    reason: str
+    tags: list[str]
+    is_break: bool
+    lock: str | None        # a moment the decider shouldn't cut out of
+    pre_moment: str | None  # a big moment about to start: worth pre-switching to
+    closeness: float
+
+    @property
+    def display(self) -> int:
+        return int(round(self.score))
+
+
+@dataclass
+class Personal:
+    """Boost inputs that come from you, not the feeds."""
+    my_teams: dict[League, set[str]] = field(default_factory=dict)
+    bet_sweat: dict[str, float] = field(default_factory=dict)       # game_id -> 0..1
+    bet_labels: dict[str, str] = field(default_factory=dict)
+    fantasy: dict[str, tuple[float, str]] = field(default_factory=dict)  # game_id -> (points, label)
+    boosted: set[str] = field(default_factory=set)
+
+
+class Scorer:
+    def __init__(self, cfg, clock=time.time):
+        self.cfg = cfg
+        self._clock = clock
+        self.hist: dict[str, History] = {}
+
+    def score(self, g: GameState, me: Personal | None = None) -> Scored:
+        me = me or Personal()
+        now = self._clock()
+        c = self.cfg
+        h = self.hist.setdefault(g.game_id, History())
+        h.observe(g, now, c.get("score.nfl.wp_swing.threshold", 0.15))
+
+        k = closeness(g)
+        is_break = g.stoppage in REAL_BREAKS
+        if g.phase != Phase.LIVE:
+            return Scored(g.game_id, g.league, 0.0, 0.0, 0.0, 1.0, 0.0,
+                          _phase_reason(g), [], True, None, None, k)
+
+        fn = {League.NFL: _nfl, League.NBA: _nba, League.NHL: _nhl, League.MLB: _mlb}[g.league]
+        m, parts, lock, pre = fn(g, h, k, now, c)
+        m = max(0.0, min(100.0, m))
+        s = self._stakes(g)
+        p, tags = self._personal(g, me, k)
+
+        raw = min(100.0, c.get("score.neutral_cap", 0.9) * min(100.0, m * s) + p)
+        # Fast attack, slow release: jump up instantly, drift down with a half-life.
+        hl = c.get("score.smoothing_half_life_s", 30)
+        decayed = h.shown * 0.5 ** ((now - h.shown_at) / hl) if h.shown_at else 0.0
+        shown = max(raw, decayed)
+        h.shown, h.shown_at = shown, now
+
+        reason = _reason(g, parts, is_break)
+        return Scored(g.game_id, g.league, shown, raw, m, s, p, reason, tags,
+                      is_break, None if is_break else lock, pre, k)
+
+    def _stakes(self, g: GameState) -> float:
+        c = self.cfg
+        s = 1.0
+        hp, ap = g.home.win_pct, g.away.win_pct
+        if hp is not None and ap is not None:
+            if hp >= c.get("score.stakes.both_good_pct") and ap >= c.get("score.stakes.both_good_pct"):
+                s += c.get("score.stakes.both_good")
+            if hp <= c.get("score.stakes.both_bad_pct") and ap <= c.get("score.stakes.both_bad_pct"):
+                s += c.get("score.stakes.both_bad")
+        if g.spread is not None:
+            if abs(g.spread) <= c.get("score.stakes.close_spread"):
+                s += c.get("score.stakes.close_spread_bonus")
+            elif abs(g.spread) >= c.get("score.stakes.big_spread"):
+                s += c.get("score.stakes.big_spread_penalty")
+        if g.national_tv:
+            s += c.get("score.stakes.national_tv", 0)
+        return max(c.get("score.stakes.min"), min(c.get("score.stakes.max"), s))
+
+    def _personal(self, g: GameState, me: Personal, k: float) -> tuple[float, list[str]]:
+        c = self.cfg
+        p, tags = 0.0, []
+        mine = me.my_teams.get(g.league, set())
+        if g.involves(mine):
+            p += c.get("score.personal.my_team") * k
+            tags.append(next(t for t in (g.home.abbr, g.away.abbr) if t in mine))
+        sweat = me.bet_sweat.get(g.game_id, 0.0)
+        if sweat > 0:
+            p += c.get("score.personal.bet_max") * max(0.0, min(1.0, sweat))
+            tags.append(me.bet_labels.get(g.game_id, "your bet"))
+        if g.game_id in me.fantasy:
+            pts, label = me.fantasy[g.game_id]
+            p += pts
+            tags.append(label)
+        if g.game_id in me.boosted:
+            p += c.get("score.personal.manual_boost")
+            tags.append("boosted")
+        return min(p, c.get("score.personal_cap")), tags
+
+
+# --- league moment models ------------------------------------------------------
+# Each returns (M, parts, lock, pre_moment). parts = [(points, phrase)] for the reason.
+
+def _clock_str(s: float | None) -> str:
+    if s is None:
+        return ""
+    s = max(0, int(s))
+    return f"{s // 60}:{s % 60:02d}"
+
+
+def _nfl(g, h, k, now, c):
+    q = g.period or 0
+    clk = g.clock_s
+    w = c.get("score.nfl.time")
+    if q >= 5:
+        t = w["ot"]
+    elif q == 4:
+        t = w["q4_early"] if (clk is None or clk > 480) else w["q4_mid"] if clk > 120 else w["q4_late"]
+    elif q == 3:
+        t = w["q3"]
+    elif q == 2:
+        t = w["q2_two_min"] if clk is not None and clk <= 120 else w["q2"]
+    else:
+        t = w["q1"]
+
+    sit = g.situation
+    fw = c.get("score.nfl.field")
+    f = 0.0
+    ytg = sit.yards_to_goal
+    if ytg is not None and sit.possession:
+        f = (fw["own"] if ytg > 50 else fw["opp_mid"] if ytg > 35 else fw["opp_deep"] if ytg > 20
+             else fw["red_zone"] if ytg > 10 else fw["inside_10"])
+        if sit.goal_to_go:
+            f += fw["goal_to_go"]
+
+    # Score from the offense's point of view.
+    off_diff = None
+    if g.score_diff is not None and sit.possession:
+        off_diff = g.score_diff if sit.possession == g.home.abbr else -g.score_diff
+
+    dw = c.get("score.nfl.down")
+    d = 0.0
+    if sit.down == 3 and sit.distance is not None and sit.distance <= 3:
+        d = dw["third_short"]
+    elif sit.down == 4:
+        go = (ytg is not None and ytg < 50 and (sit.distance or 99) <= 2) or (
+            q >= 4 and off_diff is not None and off_diff < 0)
+        if go:
+            d = dw["fourth_go"]
+
+    drill = 0.0
+    if q >= 4 and clk is not None and clk <= 120 and off_diff is not None and -8 <= off_diff < 0:
+        drill = c.get("score.nfl.two_minute_drill")
+
+    wp = g.home_win_prob
+    u_scale = 1.0 if q >= 4 else 0.5
+    u = c.get("score.nfl.uncertainty") * (1 - abs(2 * wp - 1) if wp is not None else k * 0.6) * u_scale
+    sw = c.get("score.nfl.wp_swing")
+    wsw = sw["points"] * _fade(h.swing_at, now, sw["fade_s"])
+    gp = c.get("score.nfl.player_going_off") if g.player_flags else 0.0
+
+    m = k * (t + f + d + drill) + u + wsw + gp
+
+    parts = []
+    if sit.down and sit.possession and ytg is not None:
+        if sit.goal_to_go:
+            spot = f"{_ordinal(sit.down)} & goal at the {ytg}"
+        else:
+            where = f"opp {ytg}" if ytg < 50 else ("midfield" if ytg == 50 else f"own {100 - ytg}")
+            spot = f"{_ordinal(sit.down)} & {sit.distance} at {where}"
+        parts.append((f + d + 1, f"{sit.possession} {spot}"))
+    if off_diff is not None:
+        parts.append((t, _margin_phrase(off_diff, "")))
+    elif g.score_diff is not None:
+        parts.append((t, _lead_phrase(g)))
+    parts.append((t, f"{_clock_str(clk)} left in {'OT' if q >= 5 else f'Q{q}'}" if clk is not None else f"Q{q}"))
+    if drill:
+        parts.append((drill + 20, "two-minute drill"))
+    if wsw > 5:
+        parts.append((wsw, "big momentum swing"))
+    for flag in g.player_flags[:1]:
+        parts.append((gp, flag))
+
+    lock = pre = None
+    if sit.possession and ytg is not None and ytg <= 20 and k >= 0.6:
+        lock = "red zone drive"
+    if q >= 4 and clk is not None and clk <= 120 and k >= 0.9:
+        lock = "final two minutes"
+    if sit.down == 4 and d:
+        pre = "4th down"
+    if sit.goal_to_go and sit.down in (3, 4):
+        pre = f"{_ordinal(sit.down)} & goal"
+    if q >= 4 and clk is not None and clk <= 60 and k >= 0.9:
+        pre = "final minute, one score"
+    return m, parts, lock, pre
+
+
+def _nba(g, h, k, now, c):
+    q = g.period or 0
+    clk = g.clock_s
+    w = c.get("score.nba.time")
+    if q >= 5:
+        t = w["ot"]
+    elif q == 4:
+        t = (w["q4"] if clk is None or clk > 300 else w["q4_5min"] if clk > 120
+             else w["q4_2min"] if clk > 30 else w["q4_30s"])
+    elif q == 3:
+        t = w["q3"]
+    else:
+        t = w["early"]
+    diff = g.score_diff
+    last = c.get("score.nba.last_shot") if (q >= 4 and clk is not None and clk <= 24
+                                            and diff is not None and abs(diff) <= 3) else 0.0
+    run = 0.0
+    if h.run_pts >= 14:
+        run = c.get("score.nba.run_14")
+    elif h.run_pts >= 10:
+        run = c.get("score.nba.run_10")
+    run *= _fade(h.run_at, now, c.get("score.nba.run_fade_s"))
+    comeback = 0.0
+    comeback_team = None
+    if q >= 4 and diff is not None and abs(diff) <= 5:
+        trailing = g.home.abbr if diff < 0 else g.away.abbr if diff > 0 else None
+        for team, deficit in h.max_deficit.items():
+            if deficit >= 10 and (trailing is None or team == trailing):
+                comeback, comeback_team = c.get("score.nba.comeback"), team
+    wp = g.home_win_prob
+    u = c.get("score.nba.uncertainty") * ((1 - abs(2 * wp - 1)) if wp is not None else k * 0.6) * (
+        1.0 if q >= 4 else 0.5)
+    gp = c.get("score.nba.player_going_off") if g.player_flags else 0.0
+    m = k * (t + last) + run + comeback + u + gp
+
+    parts = [(t, _lead_phrase(g)),
+             (t, f"{_clock_str(clk)} left in {'OT' if q >= 5 else f'Q{q}'}" if clk is not None else f"Q{q}")]
+    if run:
+        parts.append((run + 10, f"{h.run_team} on a {h.run_pts}-0 run"))
+    if comeback:
+        parts.append((comeback + 10, f"{comeback_team} came back from {h.max_deficit[comeback_team]} down"))
+    if last:
+        parts.append((last + 30, "last-shot possession"))
+    for flag in g.player_flags[:1]:
+        parts.append((gp + 5, flag))
+    lock = "crunch time" if q >= 4 and clk is not None and clk <= 120 and k >= 0.95 else None
+    pre = "final minute, one possession" if q >= 4 and clk is not None and clk <= 60 and diff is not None and abs(diff) <= 3 else None
+    return m, parts, lock, pre
+
+
+def _nhl(g, h, k, now, c):
+    p = g.period or 0
+    clk = g.clock_s
+    w = c.get("score.nhl.time")
+    if g.period_type == "SO":
+        t = w["shootout"]
+    elif p >= 4:
+        t = w["ot"]
+    elif p == 3:
+        t = (w["p3_early"] if clk is None or clk > 600 else w["p3_mid"] if clk > 300
+             else w["p3_5min"] if clk > 120 else w["p3_2min"])
+    elif p == 2:
+        t = w["p2"]
+    else:
+        t = w["p1"]
+    sit = g.situation
+    diff = g.score_diff
+    pp = 0.0
+    if sit.power_play:
+        pp = c.get("score.nhl.power_play")
+        if p == 3 and diff is not None and abs(diff) <= 1:
+            pp = c.get("score.nhl.power_play_p3_close")
+        if sit.strength in ("5v3", "3v5"):
+            pp = max(pp, c.get("score.nhl.five_on_three"))
+    en = c.get("score.nhl.empty_net") if sit.empty_net else 0.0
+    m = k * t + pp + en + (8.0 if g.player_flags else 0.0)
+
+    if g.period_type == "SO":
+        when = "shootout"
+    elif p >= 4:
+        when = f"{_clock_str(clk)} left in OT" if clk is not None else "OT"
+    else:
+        when = f"{_clock_str(clk)} left in P{p}" if clk is not None else f"P{p}"
+    parts = [(t, _lead_phrase(g)), (t, when)]
+    if sit.power_play:
+        parts.append((pp + 20, f"{sit.power_play} power play" + (" (5-on-3)" if sit.strength in ("5v3", "3v5") else "")))
+    if sit.empty_net:
+        parts.append((en + 20, f"{sit.empty_net} pulled the goalie"))
+    for flag in g.player_flags[:1]:
+        parts.append((10, flag))
+    lock = None
+    if sit.empty_net:
+        lock = "empty net"
+    elif sit.power_play and k >= 0.5:
+        lock = "power play"
+    elif g.period_type == "SO" or (p >= 4 and k >= 0.9):
+        lock = "overtime"
+    pre = "power play" if sit.power_play else ("empty net" if sit.empty_net else None)
+    return m, parts, lock, pre
+
+
+def estimate_li(inning: int, diff_for_batting: int, outs: int, runners: tuple[bool, bool, bool]) -> float:
+    """Crude leverage index when the feed doesn't give one. ~1.0 is average."""
+    base = 0.9 + 0.2 * runners[0] + 0.45 * runners[1] + 0.45 * runners[2]
+    ad = abs(diff_for_batting)
+    close = 1.7 if ad <= 1 else 1.2 if ad == 2 else 0.9 if ad == 3 else 0.4 if ad <= 5 else 0.15
+    late = 1 + max(0, inning - 5) * 0.25
+    outs_f = 1.1 if outs == 2 else 1.0
+    return min(6.0, base * close * late * outs_f)
+
+
+def _mlb(g, h, k, now, c):
+    inning = g.period or 1
+    sit = g.situation
+    runners = sit.runners or (False, False, False)
+    outs = sit.outs if sit.outs is not None else 0
+    diff = g.score_diff or 0
+    batting_home = g.half == "bottom"
+    diff_bat = diff if batting_home else -diff
+    li = sit.leverage_index
+    if li is None:
+        li = estimate_li(inning, diff_bat, outs, runners)
+    im = c.get("score.mlb.inning_mult")
+    mult = im["early"] if inning <= 5 else im["mid"] if inning <= 7 else im["eighth"] if inning == 8 else im["ninth_plus"]
+    base = mult * 100 * (1 - math.exp(-li / c.get("score.mlb.leverage_scale")))
+    on = sum(runners)
+    walkoff = c.get("score.mlb.walk_off_spot") if (
+        batting_home and inning >= 9 and diff <= 0 and -diff <= on + 1) else 0.0
+    nh = 0.0
+    nhw = c.get("score.mlb.no_hitter")
+    if sit.no_hitter_for:
+        nh = nhw["ninth"] if inning >= 9 else nhw["through_7"] if inning >= 8 else nhw["through_6"] if inning >= 7 else 0.0
+    m = base + walkoff + nh + (10.0 if g.player_flags else 0.0)
+
+    half = "Bot" if batting_home else "Top"
+    bases = _bases_phrase(runners)
+    parts = [(base, _lead_phrase(g)), (base, f"{half} {_ordinal(inning)}, {outs} out" + (f", {bases}" if bases else ""))]
+    if walkoff:
+        parts.append((walkoff + 40, "walk-off spot"))
+    if nh:
+        parts.append((nh + 30, f"{sit.no_hitter_for} no-hitter watch"))
+    for flag in g.player_flags[:1]:
+        parts.append((15, flag))
+    lock = "high-leverage at-bat" if li >= 2.0 and on >= 1 else None
+    pre = "bases loaded, late" if on == 3 and inning >= 7 and li >= 2.5 else None
+    if walkoff:
+        pre = "walk-off spot"
+    return m, parts, lock, pre
+
+
+# --- reason text -------------------------------------------------------------
+
+def _ordinal(n: int) -> str:
+    return {1: "1st", 2: "2nd", 3: "3rd"}.get(n, f"{n}th")
+
+
+def _bases_phrase(r: tuple[bool, bool, bool]) -> str:
+    if all(r):
+        return "bases loaded"
+    names = [n for on, n in zip(r, ("1st", "2nd", "3rd")) if on]
+    return ("runners on " + " & ".join(names)) if len(names) > 1 else (f"runner on {names[0]}" if names else "")
+
+
+def _margin_phrase(diff: int, who: str) -> str:
+    if diff == 0:
+        return "tied"
+    return f"{who}{'up' if diff > 0 else 'down'} {abs(diff)}".strip()
+
+
+def _lead_phrase(g: GameState) -> str:
+    d = g.score_diff
+    if d is None:
+        return g.matchup
+    if d == 0:
+        return f"tied {g.home.score}-{g.away.score}"
+    leader, trailer = (g.home, g.away) if d > 0 else (g.away, g.home)
+    return f"{leader.abbr} up {abs(d)} ({leader.score}-{trailer.score})"
+
+
+def _phase_reason(g: GameState) -> str:
+    return {Phase.PRE: "not started", Phase.POST: "final"}.get(g.phase, "status unknown")
+
+
+_BREAK_TEXT = {
+    Stoppage.TIMEOUT: "timeout", Stoppage.TWO_MINUTE_WARNING: "two-minute warning",
+    Stoppage.END_PERIOD: "break between periods", Stoppage.HALFTIME: "halftime",
+    Stoppage.REVIEW: "under review", Stoppage.INJURY: "injury stoppage",
+    Stoppage.PITCHING_CHANGE: "pitching change", Stoppage.SCORE_BREAK: "break after a score",
+    Stoppage.WHISTLE: "whistle",
+}
+
+
+def _reason(g: GameState, parts: list[tuple[float, str]], is_break: bool) -> str:
+    # Situation first (the most specific phrase), then the two most important others.
+    seen, out = set(), []
+    if parts:
+        first = parts[0]
+        rest = sorted(parts[1:], key=lambda p: -p[0])
+        for _, text in [first] + rest:
+            if text and text not in seen:
+                seen.add(text)
+                out.append(text)
+            if len(out) == 3:
+                break
+    text = " · ".join(out)
+    if is_break:
+        text = f"{_BREAK_TEXT.get(g.stoppage, 'break')} — {text}"
+    return text

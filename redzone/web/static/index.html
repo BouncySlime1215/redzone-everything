@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f4f5f8" media="(prefers-color-scheme: light)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="RedZone">
+  <title>RedZone Everything</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ff2d3d'/%3E%3Ctext x='32' y='43' font-family='Helvetica,Arial' font-weight='900' font-size='30' text-anchor='middle' fill='white'%3ERZ%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css?v=3">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="mark">RZ</span>
+      <span class="name">RedZone <em>Everything</em></span>
+    </div>
+    <div class="top-right">
+      <span id="state-chip" class="chip chip-state" hidden></span>
+      <span id="conn" class="conn conn-wait"><i></i><span>Connecting</span></span>
+    </div>
+  </header>
+
+  <div id="banners"></div>
+
+  <main id="main">
+    <section id="tab-now" class="tab" data-tab="now"></section>
+    <section id="tab-games" class="tab" data-tab="games" hidden></section>
+    <section id="tab-bets" class="tab" data-tab="bets" hidden></section>
+    <section id="tab-lab" class="tab" data-tab="lab" hidden></section>
+    <section id="tab-settings" class="tab" data-tab="settings" hidden></section>
+  </main>
+
+  <nav class="tabbar" role="tablist">
+    <button data-go="now" role="tab" aria-label="Now">
+      <svg viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="13" rx="2.5"/><path d="M8 21h8M10 10.2v3.6l3.2-1.8z"/></svg>
+      <span>Now</span>
+    </button>
+    <button data-go="games" role="tab" aria-label="Games">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="19" cy="18" r="2"/></svg>
+      <span>Games</span>
+    </button>
+    <button data-go="bets" role="tab" aria-label="Bets">
+      <svg viewBox="0 0 24 24"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="M12 8v8M9.5 10.2c0-1 1.1-1.7 2.5-1.7s2.5.7 2.5 1.6c0 2.3-5 1.3-5 3.7 0 .9 1.1 1.7 2.5 1.7s2.5-.7 2.5-1.7"/></svg>
+      <span>Bets</span>
+    </button>
+    <button data-go="lab" role="tab" aria-label="Lab">
+      <svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6.2L4.6 18.4A1.8 1.8 0 0 0 6.2 21h11.6a1.8 1.8 0 0 0 1.6-2.6L14 9.2V3"/><path d="M7.5 15h9"/></svg>
+      <span>Lab</span>
+    </button>
+    <button data-go="settings" role="tab" aria-label="Settings">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      <span>Settings</span>
+    </button>
+  </nav>
+
+  <div id="sheet-scrim" class="scrim" hidden></div>
+  <div id="sheet" class="sheet" role="dialog" aria-modal="true" hidden></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script src="/static/app.js?v=3"></script>
+</body>
+</html>

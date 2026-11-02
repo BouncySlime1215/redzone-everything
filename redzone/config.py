@@ -1,0 +1,146 @@
+"""Config: defaults + user overrides, validated, versioned, and undoable.
+
+Guardrails:
+- Every edit is checked against LIMITS before it's saved; bad values are rejected with a reason.
+- Every save writes a timestamped copy to data/config_history/, so `rollback()` can undo it.
+- Unknown keys are rejected so a typo can't silently do nothing.
+"""
+from __future__ import annotations
+
+import copy
+import time
+from pathlib import Path
+
+import yaml
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULTS = Path(__file__).with_name("default_config.yaml")
+DATA = ROOT / "data"
+USER = DATA / "config.yaml"
+HISTORY = DATA / "config_history"
+
+# (min, max) for numeric settings, matched by dotted-path prefix; most specific wins.
+LIMITS: dict[str, tuple[float, float]] = {
+    "server.port": (1024, 65535),
+    "polling.live_s": (5, 60),
+    "polling.idle_s": (30, 3600),
+    "score.neutral_cap": (0.5, 1.0),
+    "score.personal_cap": (0, 60),
+    "score.stakes.min": (0.5, 1.0),
+    "score.stakes.max": (1.0, 1.5),
+    "decider.min_dwell_s": (10, 600),
+    "decider.min_gap_s": (5, 300),
+    "decider.max_switches_per_5min": (1, 20),
+    "delay": (0, 180),
+    "replay": (0, 7200),
+    "break_lengths_s": (0, 1800),
+    "score": (-100, 100),
+    "decider": (0, 1000),
+}
+
+
+class ConfigError(ValueError):
+    pass
+
+
+def _deep_merge(base: dict, over: dict) -> dict:
+    out = copy.deepcopy(base)
+    for k, v in over.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _limit_for(path: str) -> tuple[float, float] | None:
+    best = None
+    for prefix, rng in LIMITS.items():
+        if path == prefix or path.startswith(prefix + "."):
+            if best is None or len(prefix) > len(best[0]):
+                best = (prefix, rng)
+    return best[1] if best else None
+
+
+def validate(cfg: dict, defaults: dict, path: str = "") -> None:
+    for k, v in cfg.items():
+        p = f"{path}.{k}" if path else k
+        if k not in defaults:
+            # Team lists and league toggles are open-ended; everything else must exist.
+            if not path.startswith(("teams", "mode.leagues", "replay.apps")):
+                raise ConfigError(f"Unknown setting '{p}'")
+            continue
+        d = defaults[k]
+        if isinstance(d, dict):
+            if not isinstance(v, dict):
+                raise ConfigError(f"'{p}' must be a group of settings")
+            validate(v, d, p)
+        elif isinstance(d, bool):
+            if not isinstance(v, bool):
+                raise ConfigError(f"'{p}' must be on or off")
+        elif isinstance(d, (int, float)):
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise ConfigError(f"'{p}' must be a number")
+            rng = _limit_for(p)
+            if rng and not (rng[0] <= v <= rng[1]):
+                raise ConfigError(f"'{p}' must be between {rng[0]} and {rng[1]} (got {v})")
+        elif isinstance(d, str):
+            if not isinstance(v, str):
+                raise ConfigError(f"'{p}' must be text")
+        elif isinstance(d, list):
+            if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+                raise ConfigError(f"'{p}' must be a list of names")
+
+
+class Config:
+    def __init__(self, user_path: Path = USER, history_dir: Path = HISTORY):
+        self.user_path = user_path
+        self.history_dir = history_dir
+        self.defaults = yaml.safe_load(DEFAULTS.read_text())
+        self.overrides: dict = {}
+        if user_path.exists():
+            loaded = yaml.safe_load(user_path.read_text()) or {}
+            try:
+                validate(loaded, self.defaults)
+                self.overrides = loaded
+            except ConfigError:
+                # A broken file never takes the app down: fall back to defaults.
+                self.overrides = {}
+        self.data = _deep_merge(self.defaults, self.overrides)
+
+    def get(self, dotted: str, default=None):
+        node = self.data
+        for part in dotted.split("."):
+            if not isinstance(node, dict) or part not in node:
+                return default
+            node = node[part]
+        return node
+
+    def update(self, changes: dict) -> dict:
+        """Apply a partial change (nested dict). Raises ConfigError if invalid."""
+        new_over = _deep_merge(self.overrides, changes)
+        validate(new_over, self.defaults)
+        self._save(new_over)
+        return self.data
+
+    def rollback(self) -> bool:
+        versions = sorted(self.history_dir.glob("*.yaml")) if self.history_dir.exists() else []
+        if len(versions) < 2:
+            self._save({}, record=False)
+            return bool(versions)
+        versions[-1].unlink()
+        prev = yaml.safe_load(versions[-2].read_text()) or {}
+        self._save(prev, record=False)
+        return True
+
+    def _save(self, over: dict, record: bool = True) -> None:
+        self.user_path.parent.mkdir(parents=True, exist_ok=True)
+        text = yaml.safe_dump(over, sort_keys=False)
+        tmp = self.user_path.with_suffix(".tmp")
+        tmp.write_text(text)
+        tmp.replace(self.user_path)  # atomic: a crash mid-save can't corrupt the file
+        if record:
+            self.history_dir.mkdir(parents=True, exist_ok=True)
+            (self.history_dir / f"{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns() % 10**6:06d}.yaml").write_text(text)
+        self.overrides = over
+        self.data = _deep_merge(self.defaults, over)
