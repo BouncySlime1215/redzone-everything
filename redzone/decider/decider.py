@@ -29,10 +29,10 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 
-from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, PLAY_LEN_S, DelayBook, Event, Gate,
+from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S, PLAY_LEN_S, DelayBook, Event, Gate,
                                     Timeline, break_on_arrival, catchable, final_play_aired, leave_gate,
                                     resume_play)
-from redzone.models import League
+from redzone.models import League, Stoppage
 from redzone.scoring.engine import Scored
 
 GONE_MAX_HOLD_S = 90.0  # [mid-play guard] a game that vanished without a final: don't wait on a dead feed forever
@@ -40,6 +40,11 @@ REDZONE = "redzone"
 # Locks where every snap matters, not just the big ones (scoring/engine.py names them).
 CRUNCH_LOCKS = {"final two minutes", "crunch time", "overtime", "empty net"}
 UNSEEN_PLAY_LAG_S = 10.0  # a play this recent may not be in the feed yet
+# Halftime / intermission visits: return this long before the break could end on screen.
+LONG_BREAKS = {"halftime", "intermission"}
+LONG_VISIT_MIN_S = 240.0            # only plan a visit if at least this much break is guaranteed
+RETURN_BUFFER_S = 60.0              # visiting football/baseball/RedZone: a clean gap is never far away
+RETURN_BUFFER_CONTINUOUS_S = 180.0  # visiting basketball/hockey: allow time to reach a whistle
 KICKOFF_TO_SNAP_S = 25.0  # kickoff logged -> next scrimmage play logged, at the quickest
 
 
@@ -131,6 +136,7 @@ class Decider:
         self.since: float = 0.0
         self.stack: deque[str] = deque(maxlen=3)   # where we came from, for "go back"
         self.home_break_visit: str | None = None   # game we left only for its break
+        self.home_return_at: float | None = None    # long break: head back at this time at the latest
         self.history: deque[tuple[float, str, str]] = deque(maxlen=50)
         self.frozen_until = 0.0
         self.margin_bump_until = 0.0
@@ -451,6 +457,9 @@ class Decider:
                 return Decision(now, "stay", self.current, "away from focus game until this moment ends",
                                 state, gate_txt)
             if on_break:
+                planned = self._long_break_visit(watchable, cands, focus, gate_ok, state, gate_txt, now)
+                if planned:
+                    return planned
                 dest = self._break_destination(watchable, exclude=focus)
                 rp = self._replay_option(cands, dest, now)
                 if rp:
@@ -481,6 +490,9 @@ class Decider:
             if chase:
                 self.home_break_visit = visit_home
                 return self._chase_decision(chase, cands, state, gate_txt, now)
+            planned = self._long_break_visit(watchable, cands, self.current, gate_ok, state, gate_txt, now)
+            if planned:
+                return planned
             dest = self._break_destination(watchable, exclude=self.current)
             rp = self._replay_option(cands, dest, now)
             if rp:
@@ -866,6 +878,8 @@ class Decider:
         end_ev = htl.last("stop_end") if htl else None
         start_ev = htl.last("stop_start") if htl else None
         resumed = end_ev is not None and (start_ev is None or end_ev.seen >= start_ev.seen)
+        if self.home_return_at is not None and now >= self.home_return_at:
+            return True   # long break: planned trip back, early enough to find a clean exit
         if not resumed:
             return not x.scored.is_break
         hd = self.delays.get(x.target or "unknown")
@@ -912,6 +926,41 @@ class Decider:
         # RedZone never shows a commercial: any break is better spent there than on an ad.
         return REDZONE if REDZONE in watchable and exclude != REDZONE else None
 
+    def _long_break_left(self, gid: str, now: float) -> float | None:
+        """Seconds until a halftime/intermission now on screen could possibly end on screen
+        (shortest measured length, early side of the delay). None if not in one."""
+        tl = self.timelines.get(gid)
+        if tl is None:
+            return None
+        start, end = tl.last("stop_start"), tl.last("stop_end")
+        if start is None or start.label not in LONG_BREAKS or (end is not None and end.seen >= start.seen):
+            return None
+        d = self.delays.get(self._target_of.get(gid) or "unknown")
+        floor = MIN_BREAK_S.get(Stoppage(start.label), 0.0)
+        return start.seen + floor + d.mu - 2 * d.current_sigma(now) - now
+
+    def _long_break_visit(self, watchable, cands, home: str | None, gate_ok: bool, state, gate_txt: str,
+                          now: float) -> Decision | None:
+        """Halftime / intermission: 15-19 minutes of ads. Any live game beats that, even a dull one
+        or one we can only leave at a whistle — we plan the trip back early enough to find one."""
+        if not home or not gate_ok:
+            return None
+        left = self._long_break_left(home, now)
+        if left is None or left < LONG_VISIT_MIN_S:
+            return None
+        options = {gid: x for gid, x in watchable.items() if gid != home and not x.scored.is_break
+                   and gid not in self._screen_break}
+        if not options:
+            return None
+        dest = max(options, key=lambda g: options[g].scored.score)
+        buffer = RETURN_BUFFER_S if self._exits_often(dest) or dest == REDZONE else RETURN_BUFFER_CONTINUOUS_S
+        if left < buffer + 60:
+            return None
+        self.home_break_visit = home
+        self.home_return_at = now + left - buffer
+        return Decision(now, "switch", dest, self._why(options[dest], f"{_short(cands[home].scored)} at the break → "),
+                        state, gate_txt, kind="break_visit")
+
     def _sticky_home(self, gid: str, watchable) -> bool:
         """A game whose next play you must be back for."""
         x = watchable.get(gid)
@@ -955,6 +1004,7 @@ class Decider:
             self.stack.pop()
         if kind == "home" and target == self.home_break_visit:
             self.home_break_visit = None
+            self.home_return_at = None
         if kind == "user":
             self.home_break_visit = None
         self.current = target

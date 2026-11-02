@@ -451,3 +451,19 @@ def test_my_teams_break_never_strands_me_in_another_basketball_game(dec, clock):
           "f": Candidate(nfl_game, "youtubetv:f")}
     d = dec.decide(cs)
     assert d.action == "switch" and d.target == "f"   # the football game, not the better NBA game
+
+
+def test_halftime_visit_plans_its_trip_back(dec, clock):
+    """Halftime: visit a live game, and head back well before the break can end on screen."""
+    from redzone.decider.screen import Event as Ev
+    for g in ("h", "o"):
+        calibrate(dec, f"youtubetv:{g}")
+        dec.timeline(g, League.NBA)
+    start_on(dec, clock, "h", {})
+    dec.timeline("h", League.NBA).events.append(Ev(clock.t, "stop_start", "halftime"))
+    clock.t += 60   # halftime is on screen
+    cs = {"h": Candidate(sc("h", 30, is_break=True, league=League.NBA), "youtubetv:h"),
+          "o": Candidate(sc("o", 12, league=League.NBA), "youtubetv:o")}   # dull, but live
+    d = dec.decide(cs)
+    assert d.action == "switch" and d.target == "o" and d.kind == "break_visit"
+    assert dec.home_return_at is not None and dec.home_return_at - clock.t > 400

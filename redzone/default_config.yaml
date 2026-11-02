@@ -135,5 +135,5 @@ delay:                     # seconds your screen runs behind real life, per app;
 break_lengths_s:           # typical commercial lengths used to plan catch-ups
   nfl: {timeout: 75, tv_timeout: 120, score_break: 150, end_period: 120, two_minute_warning: 150, halftime: 780}
   nba: {timeout: 90, end_period: 130, halftime: 900}
-  nhl: {timeout: 120, end_period: 1080}
+  nhl: {timeout: 120, end_period: 150, intermission: 1130}
   mlb: {end_period: 130, pitching_change: 150}

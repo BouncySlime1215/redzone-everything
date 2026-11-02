@@ -3,13 +3,13 @@
 import {
   app, ACTIONS, hooks, store, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, raw, onColor, lum,
   gameById, games, fmtStart, whereLabel, teamBy, imgSrc, vibrate,
-} from "./rz-core.js?v=31";
-import { icon, logo, leagueImg, avatar, empty, skel, stateBadge, chip } from "./rz-ui.js?v=31";
-import { situation, wpBar, sparkline, linescore } from "./rz-viz.js?v=31";
-import { board, gameCard } from "./rz-cards.js?v=31";
-import { openSheet, sheetById, closeSheet, confirmSheet, toast, updateSheets } from "./rz-sheet.js?v=31";
-import { api, act } from "./rz-api.js?v=31";
-import { pop } from "./rz-dom.js?v=31";
+} from "./rz-core.js?v=32";
+import { icon, logo, leagueImg, avatar, empty, skel, stateBadge, chip } from "./rz-ui.js?v=32";
+import { situation, wpBar, sparkline, linescore } from "./rz-viz.js?v=32";
+import { board, gameCard } from "./rz-cards.js?v=32";
+import { openSheet, sheetById, closeSheet, confirmSheet, toast, updateSheets } from "./rz-sheet.js?v=32";
+import { api, act } from "./rz-api.js?v=32";
+import { pop } from "./rz-dom.js?v=32";
 
 /* ====================================================================== game detail */
 async function loadDetail(gid, force = false) {

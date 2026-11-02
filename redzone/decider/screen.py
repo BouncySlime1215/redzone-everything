@@ -34,7 +34,10 @@ ORDER_SLACK_S = 120.0      # plays can reach us this far out of real-time order
 # Official breaks that always last at least this long (stoppage entry -> next snap). From 270 archived
 # NFL games: end of quarter p1 171 s, halftime p1 816 s, two-minute warning p1 55 s. Timeouts and
 # score breaks can be 5-15 s in the data, so they get no floor. Used only when we can't see the resume.
-MIN_BREAK_S = {Stoppage.END_PERIOD: 120.0, Stoppage.HALFTIME: 600.0, Stoppage.TWO_MINUTE_WARNING: 50.0}
+MIN_BREAK_S = {Stoppage.END_PERIOD: 120.0, Stoppage.HALFTIME: 800.0, Stoppage.TWO_MINUTE_WARNING: 50.0,
+               # NHL 1st/2nd intermission: 5th percentile 1120 s over 190 archived intermissions.
+               Stoppage.INTERMISSION: 1080.0}
+# NFL halftime p5 829 s (200 games), NBA halftime p5 931 s (92 games): HALFTIME 800 is safe for both.
 
 
 @dataclass

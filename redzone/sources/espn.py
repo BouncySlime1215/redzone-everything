@@ -344,7 +344,8 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
                 return Stoppage.REVIEW
             return Stoppage.WHISTLE
         if t in ("period end", "end of game", "game end"):
-            return Stoppage.END_PERIOD
+            per = _int(_get(p, "period", "number")) or 0
+            return Stoppage.INTERMISSION if t == "period end" and per in (1, 2) else Stoppage.END_PERIOD
         if t == "goal":
             return Stoppage.SCORE_BREAK
         if t in ("hooking", "holding", "tripping", "roughing", "interference", "slashing", "high-sticking",

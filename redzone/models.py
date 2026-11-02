@@ -30,7 +30,8 @@ class Stoppage(str, Enum):
     TIMEOUT = "timeout"            # team or TV timeout
     TWO_MINUTE_WARNING = "two_minute_warning"
     END_PERIOD = "end_period"      # end of quarter / period / half-inning
-    HALFTIME = "halftime"          # also NHL intermission
+    HALFTIME = "halftime"
+    INTERMISSION = "intermission"  # NHL break after the 1st/2nd period (~18 min)
     REVIEW = "review"
     INJURY = "injury"
     PITCHING_CHANGE = "pitching_change"
@@ -41,6 +42,7 @@ class Stoppage(str, Enum):
 
 # Stoppages long enough to go watch something else during.
 REAL_BREAKS = {Stoppage.TIMEOUT, Stoppage.TWO_MINUTE_WARNING, Stoppage.END_PERIOD, Stoppage.HALFTIME,
+               Stoppage.INTERMISSION,
                Stoppage.REVIEW, Stoppage.INJURY, Stoppage.PITCHING_CHANGE, Stoppage.SCORE_BREAK}
 
 

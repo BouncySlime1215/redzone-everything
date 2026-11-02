@@ -84,7 +84,7 @@ def enrich_nhl(g: GameState, score_game: dict, pbp: dict | None = None) -> GameS
     if secs is not None:
         out.clock_s = float(secs)
     if _get(score_game, "clock", "inIntermission"):
-        out.stoppage = Stoppage.END_PERIOD
+        out.stoppage = Stoppage.INTERMISSION if (out.period or 0) in (1, 2) else Stoppage.END_PERIOD
     code = score_game.get("situationCode") or _get(score_game, "situation", "situationCode")
     if pbp:
         plays = pbp.get("plays") or []
@@ -98,7 +98,7 @@ def enrich_nhl(g: GameState, score_game: dict, pbp: dict | None = None) -> GameS
             elif kind == "goal":
                 out.stoppage = Stoppage.SCORE_BREAK
             elif kind == "period-end":
-                out.stoppage = Stoppage.END_PERIOD
+                out.stoppage = Stoppage.INTERMISSION if (out.period or 0) in (1, 2) else Stoppage.END_PERIOD
             elif kind in ("penalty", "delayed-penalty"):
                 out.stoppage = Stoppage.WHISTLE if kind == "penalty" else out.stoppage
             elif kind and _get(score_game, "clock", "running"):

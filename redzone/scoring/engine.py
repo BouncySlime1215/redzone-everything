@@ -543,7 +543,7 @@ _BREAK_TEXT = {
     Stoppage.END_PERIOD: "break between periods", Stoppage.HALFTIME: "halftime",
     Stoppage.REVIEW: "under review", Stoppage.INJURY: "injury stoppage",
     Stoppage.PITCHING_CHANGE: "pitching change", Stoppage.SCORE_BREAK: "break after a score",
-    Stoppage.WHISTLE: "whistle",
+    Stoppage.WHISTLE: "whistle", Stoppage.INTERMISSION: "intermission",
 }
 
 
