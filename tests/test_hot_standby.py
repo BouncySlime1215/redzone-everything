@@ -483,7 +483,7 @@ def test_engine_cues_a_replay_when_the_game_on_screen_is_about_to_break(eng):
     e.scored["cur"] = sc("cur", 50, is_break=True)       # the data says break; your screen is ~45s behind
     e.decider.queue = [Missed("x", "p1", "TD pass", "td", time.time() - 60, 80.0)]
     cands = {"cur": Candidate(sc("cur", 50, is_break=True), "youtubetv:espn"),
-             "x": Candidate(sc("x", 40), "youtubetv:fox"), "y": Candidate(sc("y", 90), "youtubetv:cbs")}
+             "x": Candidate(sc("x", 40), "youtubetv:fox"), "y": Candidate(sc("y", 70), "youtubetv:cbs")}
     e._preload_standby(cands)
     target, back, rid = calls[0]
     # rewound to 3s before the snap: 60s ago + 8s play (league unknown) + 3s lead, minus the screen's delay

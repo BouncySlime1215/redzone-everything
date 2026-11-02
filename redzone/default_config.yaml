@@ -139,7 +139,7 @@ autonomy:
 two_stick:
   cec_flip: true           # flip inputs by HOME -> HDMI-CEC Active Source (no TV network or SmartThings needed)
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment
-  hold_s: 35               # keep the hidden stick on a game at least this long before re-tuning it...
+  hold_s: 20               # keep the hidden stick on a game at least this long before re-tuning it...
   min_gain: 8              # ...and then only for one this many points better (your game's return and
                            # a replay about to play take it right away)
   verify_s: 15             # check the hidden stick is still playing this often
