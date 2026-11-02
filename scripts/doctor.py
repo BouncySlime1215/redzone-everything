@@ -145,8 +145,10 @@ async def main() -> None:
             say(OK if pkg else WARN, f"    {role}: {pkg or 'not installed'}")
         pb = await st.playback()
         say(OK, f"    playing now: {pb['state']}" + (f" ({pb['pkg']})" if pb.get("pkg") else ""))
+        port = await st.hdmi_port()
+        say(OK if port else WARN, f"    TV input: {port or 'unknown (turn on Anynet+/HDMI-CEC on the TV, or tell me the HDMI number)'}")
         sticks.append({"host": st.host, "name": st.name, "model": st.model, "os": st.os,
-                       "packages": st.packages, "controllable": not vega})
+                       "packages": st.packages, "controllable": not vega, "hdmi": port})
 
     print("\n4. Samsung TV")
     tvs = []

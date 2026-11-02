@@ -19,7 +19,7 @@ from redzone.channels import SETUP_CHANNELS, ChannelMap, describe
 from redzone.config import Config
 from redzone.control import Controller
 from redzone.decider.decider import Candidate, Decider, FocusMode, Missed
-from redzone.decider.screen import PLAY_LEN_S, DelayBook
+from redzone.decider.screen import PLAY_LEN_S, DelayBook, leave_gate
 from redzone.models import GameState, League, Phase
 from redzone.scoring.engine import Personal, Scored, Scorer
 from redzone.sources import espn, leagues
@@ -307,6 +307,8 @@ class Engine:
             self._last_logged_reason = d.reason
         if d.action in ("switch", "replay") and d.target:
             self._act(d, before, cands)
+        else:
+            self._preload_standby(cands)
         if time.time() - self._last_snapshot > 60:
             self._last_snapshot = time.time()
             self.store.snapshot([(time.time(), gid, s.league.value, s.score, s.moment, s.reason,
@@ -331,7 +333,27 @@ class Engine:
                 self.decider.note_error()
                 self.toast(f"Couldn't switch: {out.detail[:80]}", "error")
             self.broadcast()
-        self.control.submit(target, back, done)
+        self.control.submit(target, back, done, may_cut=lambda: self.safe_to_leave(before))
+
+    def safe_to_leave(self, gid: str | None) -> bool:
+        """Re-checked right before a two-stick input flip: is a play on screen in the game we're leaving?"""
+        if not gid or gid not in self.decider.timelines:
+            return True
+        if self.decider._ending_still_airing(gid, time.time()) > 0:
+            return False
+        target = getattr(self.where.get(gid), "target", None) or "unknown"
+        gate = leave_gate(self.decider.timelines[gid], self.delays.get(target), time.time(),
+                          self.cfg.get("decider.uncalibrated_sigma_s"))
+        return gate.safe
+
+    def _preload_standby(self, cands: dict) -> None:
+        """Two sticks: keep the hidden one on the most likely next game."""
+        cur = self.decider.current
+        best = max((x for gid, x in cands.items() if gid != cur and x.target and not x.stale
+                    and gid not in self.decider.user.muted and not x.scored.is_break),
+                   key=lambda x: x.scored.score, default=None)
+        if best:
+            self.control.preload(best.target)
 
     # ------------------------------------------------------------------ user actions
 
@@ -517,8 +539,9 @@ class Engine:
                      "safe": dec.safe_mode, "frozen_until": dec.frozen_until or None,
                      "focus_game": dec.user.focus_game, "focus_mode": dec.user.focus_mode.value,
                      "locked_game": dec.user.locked_game, "state": d.state.value if d else "idle",
-                     "tv_control": self.control.live_control, "announcer_hint": ""},
-            "now": now, "next": nxt, "standby": None, "games": games,
+                     "tv_control": self.control.live_control, "two_stick": self.control.two_stick,
+                     "control_note": self.control.note, "announcer_hint": ""},
+            "now": now, "next": nxt, "standby": self._standby_view(), "games": games,
             "queue": [{"game_id": m.game_id, "matchup": self._name(m.game_id), "play_id": m.pid,
                        "label": m.label, "at": m.t, "kind": m.kind}
                       for m in sorted(dec.queue, key=lambda m: -m.value)[:10]],
@@ -531,6 +554,13 @@ class Engine:
                        "adb": self.control.adb_ok},
             "bets": self.bets_view(), "feedback": self.store.feedback_counts(),
         }
+
+    def _standby_view(self) -> dict | None:
+        t = self.control.hidden_target
+        if not (self.control.two_stick and t):
+            return None
+        gid = next((g for g, w in self.where.items() if getattr(w, "target", None) == t), None)
+        return {"game_id": gid, "matchup": self._name(gid), "where": describe(t), "ready": self.control.hidden_ready}
 
     def _log(self) -> list[dict]:
         out = []

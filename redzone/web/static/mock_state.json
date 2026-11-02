@@ -1,5 +1,5 @@
 {
- "ts": 1765735800,
+ "ts": 1793669400.0,
  "mode": {
   "dry_run": true,
   "paused": false,
@@ -9,336 +9,877 @@
   "focus_mode": "autopilot",
   "locked_game": null,
   "state": "locked",
+  "tv_control": false,
   "announcer_hint": ""
  },
  "now": {
-  "game_id": "401772795",
-  "matchup": "BUF @ NE",
+  "id": "401772717",
   "league": "nfl",
-  "where": "CBS \u00b7 YouTube TV",
-  "reason": "BUF 1st & goal at the 6 \u00b7 down 4 \u00b7 4:12 left in Q3",
-  "since": 1765735717,
-  "score": 82,
+  "league_logo": "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png",
+  "matchup": "CHI @ WSH",
+  "phase": "live",
+  "status_text": "12:14 - 4th",
+  "home": {
+   "id": "28",
+   "abbr": "WSH",
+   "name": "Commanders",
+   "score": 17,
+   "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/wsh.png",
+   "color": "5a1414",
+   "alt_color": "ffb612",
+   "record": "2-4-1"
+  },
+  "away": {
+   "id": "3",
+   "abbr": "CHI",
+   "name": "Bears",
+   "score": 16,
+   "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/chi.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/chi.png",
+   "color": "0b1c3a",
+   "alt_color": "e64100",
+   "record": "5-2"
+  },
+  "period": 4,
+  "clock": "12:14",
+  "score": 93,
+  "moment": 88,
+  "stakes": 1.0,
+  "personal": 25,
+  "reason": "Your team in the red zone \u2014 WSH 2nd & goal at the 6, up 1 with 12:14 left",
+  "tags": [
+   "WSH"
+  ],
+  "is_break": false,
+  "lock": "red zone drive",
+  "pre_moment": "goal to go",
+  "where": "FOX \u00b7 YouTube TV",
+  "odds": "",
+  "mine": true,
+  "boosted": false,
+  "muted": false,
+  "focus": false,
+  "stale": false,
+  "start_time": 1793661000.0,
+  "on_now": true,
+  "wp": 0.7648,
+  "situation": {
+   "possession": "WSH",
+   "down": 2,
+   "distance": 6,
+   "yards_to_goal": 6,
+   "goal_to_go": true,
+   "power_play": null,
+   "strength": null,
+   "empty_net": null,
+   "outs": null,
+   "runners": null,
+   "half": null,
+   "timeouts_home": 2,
+   "timeouts_away": 3,
+   "text": "WSH \u00b7 2nd & goal at the 6"
+  },
+  "leaders": [
+   {
+    "label": "Passing Yards",
+    "name": "Jayden Daniels",
+    "short": "J. Daniels",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426348.png",
+    "stat": "19/26, 211 YDS, 3 TD, 1 INT",
+    "team": "WSH",
+    "id": "4426348"
+   },
+   {
+    "label": "Passing Yards",
+    "name": "Caleb Williams",
+    "short": "C. Williams",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4431611.png",
+    "stat": "17/29, 252 YDS, 1 TD",
+    "team": "CHI",
+    "id": "4431611"
+   },
+   {
+    "label": "Rushing Yards",
+    "name": "Jacory Croskey-Merritt",
+    "short": "J. Croskey-Merritt",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4575131.png",
+    "stat": "17 CAR, 61 YDS",
+    "team": "WSH",
+    "id": "4575131"
+   }
+  ],
+  "spotlight": {
+   "name": "Jayden Daniels",
+   "short": "J. Daniels",
+   "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426348.png",
+   "team": "WSH",
+   "text": "Daniels drops a 37-yard dime to Jaylin Lane at the CHI 7.",
+   "play_id": "4017727171133"
+  },
+  "venue": {
+   "id": "3719",
+   "name": "Northwest Stadium",
+   "city": "Landover, MD",
+   "image": "https://a.espncdn.com/i/venues/nfl/day/3719.jpg",
+   "indoor": null
+  },
+  "game_id": "401772717",
+  "since": 1793669317.0,
   "kind": "live",
   "replay": null
  },
  "next": {
-  "game_id": "401772905",
-  "matchup": "WSH @ NYG",
-  "reason": "WSH 3rd & 2 at opp 9 \u00b7 up 7 \u00b7 6:40 left in Q3",
+  "game_id": "401909990",
+  "matchup": "BOS @ WSH",
+  "reason": "BOS @ WSH \u00b7 WSH up 3 \u00b7 5:12 left in Q4",
   "why_waiting": "a play is on screen \u2014 leaving right after it"
  },
  "standby": null,
  "games": [
   {
-   "id": "401772795",
+   "id": "401772717",
    "league": "nfl",
-   "matchup": "BUF @ NE",
+   "league_logo": "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png",
+   "matchup": "CHI @ WSH",
    "phase": "live",
-   "status_text": "Q3 4:12",
+   "status_text": "12:14 - 4th",
    "home": {
-    "abbr": "NE",
-    "name": "Patriots",
-    "score": 21,
-    "color": "002244",
-    "record": "10-3",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/ne.png"
-   },
-   "away": {
-    "abbr": "BUF",
-    "name": "Bills",
-    "score": 17,
-    "color": "00338d",
-    "record": "9-4",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/buf.png"
-   },
-   "score": 82,
-   "moment": 82,
-   "stakes": 1.0,
-   "personal": 14,
-   "reason": "BUF 1st & goal at the 6 \u00b7 down 4 \u00b7 4:12 left in Q3",
-   "tags": [
-    "your bet: BUF +3.5 \u00b7 covering"
-   ],
-   "is_break": false,
-   "lock": "red zone drive",
-   "pre_moment": null,
-   "where": {
-    "label": "CBS \u00b7 YouTube TV",
-    "confidence": "likely",
-    "tunable": true,
-    "target": "youtubetv:cbs"
-   },
-   "odds": "NE -3.5 \u00b7 O/U 47.5",
-   "mine": false,
-   "boosted": false,
-   "muted": false,
-   "focus": false,
-   "stale": false,
-   "start_time": 1765730400,
-   "on_now": true
-  },
-  {
-   "id": "401772905",
-   "league": "nfl",
-   "matchup": "WSH @ NYG",
-   "phase": "live",
-   "status_text": "Q3 6:40",
-   "home": {
-    "abbr": "NYG",
-    "name": "Giants",
-    "score": 13,
-    "color": "0b2265",
-    "record": "3-10",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png"
-   },
-   "away": {
+    "id": "28",
     "abbr": "WSH",
     "name": "Commanders",
-    "score": 20,
+    "score": 17,
+    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/wsh.png",
     "color": "5a1414",
-    "record": "7-6",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png"
+    "alt_color": "ffb612",
+    "record": "2-4-1"
    },
-   "score": 74,
-   "moment": 74,
+   "away": {
+    "id": "3",
+    "abbr": "CHI",
+    "name": "Bears",
+    "score": 16,
+    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/chi.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/chi.png",
+    "color": "0b1c3a",
+    "alt_color": "e64100",
+    "record": "5-2"
+   },
+   "period": 4,
+   "clock": "12:14",
+   "score": 93,
+   "moment": 88,
    "stakes": 1.0,
    "personal": 25,
-   "reason": "WSH 3rd & 2 at opp 9 \u00b7 up 7 \u00b7 6:40 left in Q3",
+   "reason": "WSH 2nd & goal at the 6 \u00b7 up 1 \u00b7 12:14 left in Q4",
    "tags": [
     "WSH"
    ],
    "is_break": false,
-   "lock": null,
-   "pre_moment": "3rd & goal",
+   "lock": "red zone drive",
+   "pre_moment": "goal to go",
    "where": {
     "label": "FOX \u00b7 YouTube TV",
     "confidence": "sure",
     "tunable": true,
     "target": "youtubetv:fox"
    },
-   "odds": "WSH -6.5 \u00b7 O/U 44.5",
+   "odds": "",
    "mine": true,
    "boosted": false,
    "muted": false,
    "focus": false,
    "stale": false,
-   "start_time": 1765730400,
-   "on_now": false
+   "start_time": 1793661000.0,
+   "on_now": true,
+   "wp": 0.7648,
+   "situation": {
+    "possession": "WSH",
+    "down": 2,
+    "distance": 6,
+    "yards_to_goal": 6,
+    "goal_to_go": true,
+    "power_play": null,
+    "strength": null,
+    "empty_net": null,
+    "outs": null,
+    "runners": null,
+    "half": null,
+    "timeouts_home": 2,
+    "timeouts_away": 3,
+    "text": "WSH \u00b7 2nd & goal at the 6"
+   },
+   "leaders": [
+    {
+     "label": "Passing Yards",
+     "name": "Jayden Daniels",
+     "short": "J. Daniels",
+     "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426348.png",
+     "stat": "19/26, 211 YDS, 3 TD, 1 INT",
+     "team": "WSH",
+     "id": "4426348"
+    },
+    {
+     "label": "Passing Yards",
+     "name": "Caleb Williams",
+     "short": "C. Williams",
+     "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4431611.png",
+     "stat": "17/29, 252 YDS, 1 TD",
+     "team": "CHI",
+     "id": "4431611"
+    },
+    {
+     "label": "Rushing Yards",
+     "name": "Jacory Croskey-Merritt",
+     "short": "J. Croskey-Merritt",
+     "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4575131.png",
+     "stat": "17 CAR, 61 YDS",
+     "team": "WSH",
+     "id": "4575131"
+    }
+   ],
+   "spotlight": {
+    "name": "Jayden Daniels",
+    "short": "J. Daniels",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426348.png",
+    "team": "WSH",
+    "text": "Daniels drops a 37-yard dime to Jaylin Lane at the CHI 7.",
+    "play_id": "4017727171133"
+   },
+   "venue": {
+    "id": "3719",
+    "name": "Northwest Stadium",
+    "city": "Landover, MD",
+    "image": "https://a.espncdn.com/i/venues/nfl/day/3719.jpg",
+    "indoor": null
+   }
   },
   {
-   "id": "401772904",
-   "league": "nfl",
-   "matchup": "CLE @ CHI",
+   "id": "401909990",
+   "league": "nba",
+   "league_logo": "https://a.espncdn.com/i/teamlogos/leagues/500/nba.png",
+   "matchup": "BOS @ WSH",
    "phase": "live",
-   "status_text": "Q3 2:58",
+   "status_text": "5:12 - 4th",
    "home": {
-    "abbr": "CHI",
-    "name": "Bears",
-    "score": 24,
-    "color": "0b162a",
-    "record": "10-3",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/chi.png"
+    "id": "27",
+    "abbr": "WSH",
+    "name": "Wizards",
+    "score": 101,
+    "logo": "https://a.espncdn.com/i/teamlogos/nba/500/wsh.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nba/500-dark/wsh.png",
+    "color": "e31837",
+    "alt_color": "002b5c",
+    "record": "3-3"
    },
    "away": {
-    "abbr": "CLE",
-    "name": "Browns",
-    "score": 10,
-    "color": "311d00",
-    "record": "3-10",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/cle.png"
+    "id": "2",
+    "abbr": "BOS",
+    "name": "Celtics",
+    "score": 98,
+    "logo": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nba/500-dark/bos.png",
+    "color": "008348",
+    "alt_color": "ffffff",
+    "record": "5-1"
    },
-   "score": 31,
-   "moment": 31,
+   "period": 4,
+   "clock": "5:12",
+   "score": 88,
+   "moment": 80,
    "stakes": 1.0,
-   "personal": 0,
-   "reason": "CHI 2nd & 7 at own 38 \u00b7 up 14 \u00b7 2:58 left in Q3",
-   "tags": [],
-   "is_break": true,
+   "personal": 25,
+   "reason": "WSH up 3 \u00b7 5:12 left in Q4 \u00b7 BOS on an 8-0 run",
+   "tags": [
+    "WSH"
+   ],
+   "is_break": false,
+   "lock": null,
+   "pre_moment": "clutch time",
+   "where": {
+    "label": "Monumental (Prime Video)",
+    "confidence": "likely",
+    "tunable": true,
+    "target": "prime:monumental"
+   },
+   "odds": "WSH +4.5 \u00b7 O/U 231.5",
+   "mine": true,
+   "boosted": false,
+   "muted": false,
+   "focus": false,
+   "stale": false,
+   "start_time": 1793662800.0,
+   "on_now": false,
+   "wp": 0.61,
+   "situation": {
+    "possession": "BOS",
+    "down": null,
+    "distance": null,
+    "yards_to_goal": null,
+    "goal_to_go": null,
+    "power_play": null,
+    "strength": null,
+    "empty_net": null,
+    "outs": null,
+    "runners": null,
+    "half": null,
+    "timeouts_home": 3,
+    "timeouts_away": 2,
+    "text": ""
+   },
+   "leaders": [
+    {
+     "label": "PTS",
+     "name": "Trae Young",
+     "short": "T. Young",
+     "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4277905.png",
+     "stat": "31",
+     "team": "WSH",
+     "id": "4277905"
+    },
+    {
+     "label": "PTS",
+     "name": "Jayson Tatum",
+     "short": "J. Tatum",
+     "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4065648.png",
+     "stat": "27",
+     "team": "BOS",
+     "id": "4065648"
+    },
+    {
+     "label": "REB",
+     "name": "Anthony Davis",
+     "short": "A. Davis",
+     "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/6583.png",
+     "stat": "14",
+     "team": "WSH",
+     "id": "6583"
+    }
+   ],
+   "spotlight": {
+    "name": "Trae Young",
+    "short": "T. Young",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4277905.png",
+    "team": "WSH",
+    "text": "Trae Young pulls up from 30 feet \u2014 splash. Wizards by 3.",
+    "play_id": "401909990457"
+   },
+   "venue": {
+    "id": "1823",
+    "name": "Capital One Arena",
+    "city": "Washington, DC",
+    "image": "https://a.espncdn.com/i/venues/nba/day/1823.jpg",
+    "indoor": true
+   }
+  },
+  {
+   "id": "401892990",
+   "league": "nhl",
+   "league_logo": "https://a.espncdn.com/i/teamlogos/leagues/500/nhl.png",
+   "matchup": "WSH @ PIT",
+   "phase": "live",
+   "status_text": "8:22 - 3rd",
+   "home": {
+    "id": "16",
+    "abbr": "PIT",
+    "name": "Penguins",
+    "score": 3,
+    "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/pit.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nhl/500-dark/pit.png",
+    "color": "000000",
+    "alt_color": "fdb71a",
+    "record": "5-7-2"
+   },
+   "away": {
+    "id": "23",
+    "abbr": "WSH",
+    "name": "Capitals",
+    "score": 3,
+    "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/wsh.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nhl/500-dark/wsh.png",
+    "color": "d71830",
+    "alt_color": "0b1f41",
+    "record": "8-5-1"
+   },
+   "period": 3,
+   "clock": "8:22",
+   "score": 86,
+   "moment": 79,
+   "stakes": 1.0,
+   "personal": 25,
+   "reason": "Tied 3-3 \u00b7 WSH power play (5v4) \u00b7 8:22 left in the 3rd",
+   "tags": [
+    "WSH"
+   ],
+   "is_break": false,
+   "lock": null,
+   "pre_moment": "power play",
+   "where": {
+    "label": "Monumental (Prime Video)",
+    "confidence": "likely",
+    "tunable": true,
+    "target": "prime:monumental"
+   },
+   "odds": "PIT -120 \u00b7 O/U 6.5",
+   "mine": true,
+   "boosted": false,
+   "muted": false,
+   "focus": false,
+   "stale": false,
+   "start_time": 1793661600.0,
+   "on_now": false,
+   "wp": 0.44,
+   "situation": {
+    "possession": null,
+    "down": null,
+    "distance": null,
+    "yards_to_goal": null,
+    "goal_to_go": null,
+    "power_play": "WSH",
+    "strength": "5v4",
+    "empty_net": null,
+    "outs": null,
+    "runners": null,
+    "half": null,
+    "timeouts_home": null,
+    "timeouts_away": null,
+    "text": "WSH power play (5v4)"
+   },
+   "leaders": [
+    {
+     "label": "G",
+     "name": "Alex Ovechkin",
+     "short": "A. Ovechkin",
+     "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3101.png",
+     "stat": "2",
+     "team": "WSH",
+     "id": "3101"
+    },
+    {
+     "label": "PTS",
+     "name": "Sidney Crosby",
+     "short": "S. Crosby",
+     "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3114.png",
+     "stat": "1G 1A",
+     "team": "PIT",
+     "id": "3114"
+    },
+    {
+     "label": "A",
+     "name": "Dylan Strome",
+     "short": "D. Strome",
+     "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3899933.png",
+     "stat": "2",
+     "team": "WSH",
+     "id": "3899933"
+    }
+   ],
+   "spotlight": {
+    "name": "Alex Ovechkin",
+    "short": "A. Ovechkin",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3101.png",
+    "team": "WSH",
+    "text": "Ovechkin one-timer from the left circle \u2014 his 2nd of the night.",
+    "play_id": "401892990211"
+   },
+   "venue": {
+    "id": "1837",
+    "name": "PPG Paints Arena",
+    "city": "Pittsburgh, PA",
+    "image": "https://a.espncdn.com/i/venues/nhl/day/1837.jpg",
+    "indoor": true
+   }
+  },
+  {
+   "id": "401908990",
+   "league": "mlb",
+   "league_logo": "https://a.espncdn.com/i/teamlogos/leagues/500/mlb.png",
+   "matchup": "NYM @ WSH",
+   "phase": "live",
+   "status_text": "Bot 8th",
+   "home": {
+    "id": "20",
+    "abbr": "WSH",
+    "name": "Nationals",
+    "score": 3,
+    "logo": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/mlb/500-dark/wsh.png",
+    "color": "ab0003",
+    "alt_color": "11225b",
+    "record": "77-85"
+   },
+   "away": {
+    "id": "21",
+    "abbr": "NYM",
+    "name": "Mets",
+    "score": 4,
+    "logo": "https://a.espncdn.com/i/teamlogos/mlb/500/nym.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/mlb/500-dark/nym.png",
+    "color": "002d72",
+    "alt_color": "ff5910",
+    "record": "74-88"
+   },
+   "period": 8,
+   "clock": "",
+   "score": 77,
+   "moment": 70,
+   "stakes": 1.0,
+   "personal": 25,
+   "reason": "WSH down 1 \u00b7 Bot 8th \u00b7 runners on 1st & 3rd \u00b7 2 out",
+   "tags": [
+    "WSH"
+   ],
+   "is_break": false,
    "lock": null,
    "pre_moment": null,
    "where": {
-    "label": "Sunday Ticket",
+    "label": "MASN \u00b7 YouTube TV",
     "confidence": "likely",
     "tunable": true,
-    "target": "youtubetv:st:3"
+    "target": "youtubetv:masn"
    },
-   "odds": "",
-   "mine": false,
+   "odds": "NYM -135 \u00b7 O/U 8.5",
+   "mine": true,
    "boosted": false,
    "muted": false,
    "focus": false,
    "stale": false,
-   "start_time": 1765730400,
-   "on_now": false
+   "start_time": 1793660000.0,
+   "on_now": false,
+   "wp": 0.38,
+   "situation": {
+    "possession": null,
+    "down": null,
+    "distance": null,
+    "yards_to_goal": null,
+    "goal_to_go": null,
+    "power_play": null,
+    "strength": null,
+    "empty_net": null,
+    "outs": 2,
+    "runners": [
+     true,
+     false,
+     true
+    ],
+    "half": "bottom",
+    "timeouts_home": null,
+    "timeouts_away": null,
+    "text": "Bottom 8th \u00b7 2 out"
+   },
+   "leaders": [
+    {
+     "label": "HR",
+     "name": "James Wood",
+     "short": "J. Wood",
+     "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4918256.png",
+     "stat": "1 HR, 2 RBI",
+     "team": "WSH",
+     "id": "4918256"
+    },
+    {
+     "label": "H",
+     "name": "Juan Soto",
+     "short": "J. Soto",
+     "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/36969.png",
+     "stat": "2-3, HR",
+     "team": "NYM",
+     "id": "36969"
+    },
+    {
+     "label": "H",
+     "name": "CJ Abrams",
+     "short": "C. Abrams",
+     "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/42402.png",
+     "stat": "2-4, SB",
+     "team": "WSH",
+     "id": "42402"
+    }
+   ],
+   "spotlight": {
+    "name": "Juan Soto",
+    "short": "J. Soto",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/36969.png",
+    "team": "NYM",
+    "text": "Juan Soto homers to deep right (412 ft). Mets take a 4-3 lead.",
+    "play_id": "401908990611"
+   },
+   "venue": {
+    "id": "89",
+    "name": "Nationals Park",
+    "city": "Washington, DC",
+    "image": "https://a.espncdn.com/i/venues/mlb/day/89.jpg",
+    "indoor": false
+   }
   },
   {
-   "id": "401772796",
+   "id": "401772694",
    "league": "nfl",
-   "matchup": "BAL @ CIN",
+   "league_logo": "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png",
+   "matchup": "KC @ DAL",
    "phase": "live",
-   "status_text": "Q3 0:51",
+   "status_text": "2:12 - 3rd",
    "home": {
-    "abbr": "CIN",
-    "name": "Bengals",
-    "score": 24,
-    "color": "fb4f14",
-    "record": "5-8",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/cin.png"
+    "id": "6",
+    "abbr": "DAL",
+    "name": "Cowboys",
+    "score": 20,
+    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/dal.png",
+    "color": "002a5c",
+    "alt_color": "b0b7bc",
+    "record": "3-5"
    },
    "away": {
-    "abbr": "BAL",
-    "name": "Ravens",
-    "score": 27,
-    "color": "241773",
-    "record": "8-5",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/bal.png"
-   },
-   "score": 66,
-   "moment": 66,
-   "stakes": 1.0,
-   "personal": 0,
-   "reason": "BAL 4th & 1 at opp 34 \u00b7 up 3 \u00b7 0:51 left in Q3",
-   "tags": [],
-   "is_break": false,
-   "lock": null,
-   "pre_moment": "4th down",
-   "where": {
-    "label": "Sunday Ticket",
-    "confidence": "likely",
-    "tunable": true,
-    "target": "youtubetv:st:3"
-   },
-   "odds": "",
-   "mine": false,
-   "boosted": false,
-   "muted": false,
-   "focus": false,
-   "stale": false,
-   "start_time": 1765730400,
-   "on_now": false
-  },
-  {
-   "id": "401772798",
-   "league": "nfl",
-   "matchup": "LAC @ KC",
-   "phase": "live",
-   "status_text": "Q3 8:20",
-   "home": {
+    "id": "12",
     "abbr": "KC",
     "name": "Chiefs",
-    "score": 10,
-    "color": "e31837",
-    "record": "6-7",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/kc.png"
-   },
-   "away": {
-    "abbr": "LAC",
-    "name": "Chargers",
-    "score": 13,
-    "color": "0080c6",
-    "record": "9-4",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/lac.png"
-   },
-   "score": 48,
-   "moment": 48,
-   "stakes": 1.0,
-   "personal": 0,
-   "reason": "KC 1st & 10 at opp 41 \u00b7 down 3 \u00b7 8:20 left in Q3",
-   "tags": [],
-   "is_break": false,
-   "lock": null,
-   "pre_moment": null,
-   "where": {
-    "label": "Sunday Ticket",
-    "confidence": "likely",
-    "tunable": true,
-    "target": "youtubetv:st:3"
-   },
-   "odds": "",
-   "mine": false,
-   "boosted": false,
-   "muted": false,
-   "focus": false,
-   "stale": false,
-   "start_time": 1765730400,
-   "on_now": false
-  },
-  {
-   "id": "401772906",
-   "league": "nfl",
-   "matchup": "LV @ PHI",
-   "phase": "live",
-   "status_text": "Q3 5:02",
-   "home": {
-    "abbr": "PHI",
-    "name": "Eagles",
-    "score": 31,
-    "color": "004c54",
-    "record": "9-4",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/phi.png"
-   },
-   "away": {
-    "abbr": "LV",
-    "name": "Raiders",
-    "score": 3,
-    "color": "a5acaf",
-    "record": "2-11",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/lv.png"
-   },
-   "score": 9,
-   "moment": 9,
-   "stakes": 1.0,
-   "personal": 0,
-   "reason": "PHI 2nd & 4 at own 30 \u00b7 up 28 \u00b7 5:02 left in Q3",
-   "tags": [],
-   "is_break": false,
-   "lock": null,
-   "pre_moment": null,
-   "where": {
-    "label": "Sunday Ticket",
-    "confidence": "likely",
-    "tunable": true,
-    "target": "youtubetv:st:3"
-   },
-   "odds": "",
-   "mine": false,
-   "boosted": false,
-   "muted": false,
-   "focus": false,
-   "stale": false,
-   "start_time": 1765730400,
-   "on_now": false
-  },
-  {
-   "id": "401772797",
-   "league": "nfl",
-   "matchup": "NYJ @ JAX",
-   "phase": "live",
-   "status_text": "Q3 1:44",
-   "home": {
-    "abbr": "JAX",
-    "name": "Jaguars",
-    "score": 17,
-    "color": "006778",
-    "record": "9-4",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/jax.png"
-   },
-   "away": {
-    "abbr": "NYJ",
-    "name": "Jets",
     "score": 14,
-    "color": "125740",
-    "record": "3-10",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyj.png"
+    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/kc.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/kc.png",
+    "color": "e31837",
+    "alt_color": "ffb612",
+    "record": "5-2"
    },
-   "score": 44,
-   "moment": 44,
+   "period": 3,
+   "clock": "2:12",
+   "score": 71,
+   "moment": 64,
+   "stakes": 1.0,
+   "personal": 14,
+   "reason": "KC 1st & 10 at the DAL 22 \u00b7 down 6 \u00b7 2:12 left in Q3",
+   "tags": [
+    "your bet: KC +3.5 \u00b7 needs 2.5"
+   ],
+   "is_break": false,
+   "lock": null,
+   "pre_moment": null,
+   "where": {
+    "label": "CBS \u00b7 YouTube TV",
+    "confidence": "sure",
+    "tunable": true,
+    "target": "youtubetv:cbs"
+   },
+   "odds": "",
+   "mine": false,
+   "boosted": false,
+   "muted": false,
+   "focus": false,
+   "stale": false,
+   "start_time": 1793661000.0,
+   "on_now": false,
+   "wp": 0.53,
+   "situation": {
+    "possession": "KC",
+    "down": 1,
+    "distance": 10,
+    "yards_to_goal": 22,
+    "goal_to_go": false,
+    "power_play": null,
+    "strength": null,
+    "empty_net": null,
+    "outs": null,
+    "runners": null,
+    "half": null,
+    "timeouts_home": null,
+    "timeouts_away": null,
+    "text": "KC \u00b7 1st & 10 at OPP 22"
+   },
+   "leaders": [
+    {
+     "label": "Passing Yards",
+     "name": "Dak Prescott",
+     "short": "D. Prescott",
+     "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2577417.png",
+     "stat": "27/39, 320 YDS, 2 TD, 1 INT",
+     "team": "DAL",
+     "id": "2577417"
+    },
+    {
+     "label": "Passing Yards",
+     "name": "Patrick Mahomes",
+     "short": "P. Mahomes",
+     "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3139477.png",
+     "stat": "23/34, 261 YDS, 4 TD",
+     "team": "KC",
+     "id": "3139477"
+    },
+    {
+     "label": "Rushing Yards",
+     "name": "Javonte Williams",
+     "short": "J. Williams",
+     "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361579.png",
+     "stat": "17 CAR, 59 YDS",
+     "team": "DAL",
+     "id": "4361579"
+    }
+   ],
+   "spotlight": {
+    "name": "Brandon Aubrey",
+    "short": "",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3953687.png",
+    "team": "DAL",
+    "text": " B.Aubrey 36 yard field goal is GOOD, Center-T.Sieg, Holder-B.Anger.",
+    "play_id": "4017726943002"
+   },
+   "venue": {
+    "id": "3687",
+    "name": "AT&T Stadium",
+    "city": "Arlington, TX",
+    "image": "https://a.espncdn.com/i/venues/nfl/day/3687.jpg",
+    "indoor": null
+   }
+  },
+  {
+   "id": "401909991",
+   "league": "nba",
+   "league_logo": "https://a.espncdn.com/i/teamlogos/leagues/500/nba.png",
+   "matchup": "LAL @ DEN",
+   "phase": "live",
+   "status_text": "3:10 - 2nd",
+   "home": {
+    "id": "7",
+    "abbr": "DEN",
+    "name": "Nuggets",
+    "score": 55,
+    "logo": "https://a.espncdn.com/i/teamlogos/nba/500/den.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nba/500-dark/den.png",
+    "color": "0e2240",
+    "alt_color": "fec524",
+    "record": "3-2"
+   },
+   "away": {
+    "id": "13",
+    "abbr": "LAL",
+    "name": "Lakers",
+    "score": 51,
+    "logo": "https://a.espncdn.com/i/teamlogos/nba/500/lal.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nba/500-dark/lal.png",
+    "color": "552583",
+    "alt_color": "fdb927",
+    "record": "5-2"
+   },
+   "period": 2,
+   "clock": "3:10",
+   "score": 46,
+   "moment": 46,
    "stakes": 1.0,
    "personal": 0,
-   "reason": "JAX 3rd & 6 at opp 44 \u00b7 up 3 \u00b7 1:44 left in Q3",
-   "tags": [],
+   "reason": "DEN up 4 \u00b7 3:10 left in Q2 \u00b7 Luka has 24 already",
+   "tags": [
+    "Doncic 24 pts"
+   ],
    "is_break": false,
+   "lock": null,
+   "pre_moment": null,
+   "where": {
+    "label": "ESPN \u00b7 YouTube TV",
+    "confidence": "sure",
+    "tunable": true,
+    "target": "youtubetv:espn"
+   },
+   "odds": "DEN -4.5 \u00b7 O/U 236.5",
+   "mine": false,
+   "boosted": false,
+   "muted": false,
+   "focus": false,
+   "stale": false,
+   "start_time": 1793665200.0,
+   "on_now": false,
+   "wp": 0.57,
+   "situation": {
+    "possession": null,
+    "down": null,
+    "distance": null,
+    "yards_to_goal": null,
+    "goal_to_go": null,
+    "power_play": null,
+    "strength": null,
+    "empty_net": null,
+    "outs": null,
+    "runners": null,
+    "half": null,
+    "timeouts_home": null,
+    "timeouts_away": null,
+    "text": ""
+   },
+   "leaders": [
+    {
+     "label": "PTS",
+     "name": "Luka Doncic",
+     "short": "L. Doncic",
+     "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3945274.png",
+     "stat": "24",
+     "team": "LAL",
+     "id": "3945274"
+    },
+    {
+     "label": "PTS",
+     "name": "Nikola Jokic",
+     "short": "N. Jokic",
+     "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3112335.png",
+     "stat": "18",
+     "team": "DEN",
+     "id": "3112335"
+    },
+    {
+     "label": "AST",
+     "name": "Jamal Murray",
+     "short": "J. Murray",
+     "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3936299.png",
+     "stat": "6",
+     "team": "DEN",
+     "id": "3936299"
+    }
+   ],
+   "spotlight": null,
+   "venue": {
+    "id": "892",
+    "name": "Ball Arena",
+    "city": "Denver, CO",
+    "image": "https://a.espncdn.com/i/venues/nba/day/892.jpg",
+    "indoor": true
+   }
+  },
+  {
+   "id": "401772731",
+   "league": "nfl",
+   "league_logo": "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png",
+   "matchup": "CIN @ MIN",
+   "phase": "live",
+   "status_text": "6:00 - 3rd",
+   "home": {
+    "id": "16",
+    "abbr": "MIN",
+    "name": "Vikings",
+    "score": 41,
+    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/min.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/min.png",
+    "color": "4f2683",
+    "alt_color": "ffc62f",
+    "record": "4-3"
+   },
+   "away": {
+    "id": "4",
+    "abbr": "CIN",
+    "name": "Bengals",
+    "score": 3,
+    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/cin.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/cin.png",
+    "color": "fb4f14",
+    "alt_color": "000000",
+    "record": "2-5"
+   },
+   "period": 3,
+   "clock": "6:00",
+   "score": 8,
+   "moment": 8,
+   "stakes": 1.0,
+   "personal": 0,
+   "reason": "MIN up 38 \u00b7 6:00 left in Q3 \u2014 not close",
+   "tags": [],
+   "is_break": true,
    "lock": null,
    "pre_moment": null,
    "where": {
@@ -353,224 +894,187 @@
    "muted": false,
    "focus": false,
    "stale": false,
-   "start_time": 1765730400,
-   "on_now": false
-  },
-  {
-   "id": "401772903",
-   "league": "nfl",
-   "matchup": "ARI @ HOU",
-   "phase": "live",
-   "status_text": "Halftime",
-   "home": {
-    "abbr": "HOU",
-    "name": "Texans",
-    "score": 23,
-    "color": "03202f",
-    "record": "8-5",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png"
+   "start_time": 1793661000.0,
+   "on_now": false,
+   "wp": 0.9967,
+   "situation": {
+    "possession": "MIN",
+    "down": null,
+    "distance": null,
+    "yards_to_goal": null,
+    "goal_to_go": null,
+    "power_play": null,
+    "strength": null,
+    "empty_net": null,
+    "outs": null,
+    "runners": null,
+    "half": null,
+    "timeouts_home": null,
+    "timeouts_away": null,
+    "text": ""
    },
-   "away": {
-    "abbr": "ARI",
-    "name": "Cardinals",
-    "score": 7,
-    "color": "97233f",
-    "record": "3-10",
-    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/ari.png"
-   },
-   "score": 12,
-   "moment": 12,
-   "stakes": 1.0,
-   "personal": 0,
-   "reason": "halftime \u2014 HOU up 16 (23-7)",
-   "tags": [],
-   "is_break": true,
-   "lock": null,
-   "pre_moment": null,
-   "where": {
-    "label": "Sunday Ticket",
-    "confidence": "likely",
-    "tunable": true,
-    "target": "youtubetv:st:3"
-   },
-   "odds": "",
-   "mine": false,
-   "boosted": false,
-   "muted": false,
-   "focus": false,
-   "stale": false,
-   "start_time": 1765730400,
-   "on_now": false
-  },
-  {
-   "id": "401809991",
-   "league": "nba",
-   "matchup": "BOS @ WSH",
-   "phase": "pre",
-   "status_text": "6:00 PM",
-   "home": {
-    "abbr": "WSH",
-    "name": "Wizards",
-    "score": null,
-    "color": "002b5c",
-    "record": "6-19",
-    "logo": "https://a.espncdn.com/i/teamlogos/nba/500/wsh.png"
-   },
-   "away": {
-    "abbr": "BOS",
-    "name": "Celtics",
-    "score": null,
-    "color": "007a33",
-    "record": "17-8",
-    "logo": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png"
-   },
-   "score": 0,
-   "moment": 0,
-   "stakes": 1.0,
-   "personal": 0,
-   "reason": "",
-   "tags": [
-    "WSH"
+   "leaders": [
+    {
+     "label": "Passing Yards",
+     "name": "Carson Wentz",
+     "short": "C. Wentz",
+     "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2573079.png",
+     "stat": "14/20, 173 YDS, 2 TD",
+     "team": "MIN",
+     "id": "2573079"
+    },
+    {
+     "label": "Passing Yards",
+     "name": "Jake Browning",
+     "short": "J. Browning",
+     "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3886812.png",
+     "stat": "19/27, 140 YDS, 1 TD, 2 INT",
+     "team": "CIN",
+     "id": "3886812"
+    },
+    {
+     "label": "Rushing Yards",
+     "name": "Jordan Mason",
+     "short": "J. Mason",
+     "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4360569.png",
+     "stat": "16 CAR, 116 YDS, 2 TD",
+     "team": "MIN",
+     "id": "4360569"
+    }
    ],
-   "is_break": false,
-   "lock": null,
-   "pre_moment": null,
-   "where": {
-    "label": "Monumental (Prime Video)",
-    "confidence": "likely",
-    "tunable": false,
-    "target": "prime:monumental"
+   "spotlight": {
+    "name": "Jordan Mason",
+    "short": "",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4360569.png",
+    "team": "MIN",
+    "text": "J.Mason up the middle for 4 yards, TOUCHDOWN. W.Reichard extra point is GOOD, Center-A.DePaola, Holder-R.Wright.",
+    "play_id": "4017727312912"
    },
-   "odds": "BOS -9.5 \u00b7 O/U 231.5",
-   "mine": true,
-   "boosted": false,
-   "muted": false,
-   "focus": false,
-   "stale": false,
-   "start_time": 1765743000,
-   "on_now": false
+   "venue": {
+    "id": "5239",
+    "name": "U.S. Bank Stadium",
+    "city": "Minneapolis, MN",
+    "image": "https://a.espncdn.com/i/venues/nfl/day/interior/5239.jpg",
+    "indoor": null
+   }
   },
   {
-   "id": "401809992",
-   "league": "nba",
-   "matchup": "LAL @ DEN",
-   "phase": "pre",
-   "status_text": "8:30 PM",
-   "home": {
-    "abbr": "DEN",
-    "name": "Nuggets",
-    "score": null,
-    "color": "0e2240",
-    "record": "17-8",
-    "logo": "https://a.espncdn.com/i/teamlogos/nba/500/den.png"
-   },
-   "away": {
-    "abbr": "LAL",
-    "name": "Lakers",
-    "score": null,
-    "color": "552583",
-    "record": "15-10",
-    "logo": "https://a.espncdn.com/i/teamlogos/nba/500/lal.png"
-   },
-   "score": 0,
-   "moment": 0,
-   "stakes": 1.0,
-   "personal": 0,
-   "reason": "",
-   "tags": [],
-   "is_break": false,
-   "lock": null,
-   "pre_moment": null,
-   "where": {
-    "label": "ABC \u00b7 YouTube TV",
-    "confidence": "sure",
-    "tunable": true,
-    "target": "youtubetv:abc"
-   },
-   "odds": "DEN -4 \u00b7 O/U 236",
-   "mine": false,
-   "boosted": false,
-   "muted": false,
-   "focus": false,
-   "stale": false,
-   "start_time": 1765752000,
-   "on_now": false
-  },
-  {
-   "id": "401892700",
+   "id": "401892991",
    "league": "nhl",
-   "matchup": "WSH @ PIT",
-   "phase": "pre",
-   "status_text": "7:00 PM",
-   "home": {
-    "abbr": "PIT",
-    "name": "Penguins",
-    "score": null,
-    "color": "000000",
-    "record": "13-13-4",
-    "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/pit.png"
-   },
-   "away": {
-    "abbr": "WSH",
-    "name": "Capitals",
-    "score": null,
-    "color": "c8102e",
-    "record": "18-9-3",
-    "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/wsh.png"
-   },
-   "score": 0,
-   "moment": 0,
-   "stakes": 1.0,
-   "personal": 0,
-   "reason": "",
-   "tags": [
-    "WSH"
-   ],
-   "is_break": false,
-   "lock": null,
-   "pre_moment": null,
-   "where": {
-    "label": "Monumental (Prime Video)",
-    "confidence": "likely",
-    "tunable": false,
-    "target": "prime:monumental"
-   },
-   "odds": "WSH -135 \u00b7 O/U 6.5",
-   "mine": true,
-   "boosted": false,
-   "muted": false,
-   "focus": false,
-   "stale": false,
-   "start_time": 1765746600,
-   "on_now": false
-  },
-  {
-   "id": "401892701",
-   "league": "nhl",
+   "league_logo": "https://a.espncdn.com/i/teamlogos/leagues/500/nhl.png",
    "matchup": "TOR @ CAR",
-   "phase": "post",
-   "status_text": "Final/OT",
+   "phase": "pre",
+   "status_text": "11/2 - 9:00 PM EST",
    "home": {
+    "id": "7",
     "abbr": "CAR",
     "name": "Hurricanes",
-    "score": 3,
-    "color": "cc0000",
-    "record": "19-9-1",
-    "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/car.png"
+    "score": 0,
+    "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/car.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nhl/500-dark/car.png",
+    "color": "e30426",
+    "alt_color": "000000",
+    "record": "10-3-0"
    },
    "away": {
+    "id": "21",
     "abbr": "TOR",
     "name": "Maple Leafs",
-    "score": 4,
-    "color": "00205b",
-    "record": "16-11-2",
-    "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/tor.png"
+    "score": 0,
+    "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/tor.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nhl/500-dark/tor.png",
+    "color": "003e7e",
+    "alt_color": "ffffff",
+    "record": "7-6-1"
    },
+   "period": null,
+   "clock": "",
    "score": 0,
    "moment": 0,
    "stakes": 1.0,
    "personal": 0,
-   "reason": "",
+   "reason": "not started",
+   "tags": [],
+   "is_break": false,
+   "lock": null,
+   "pre_moment": null,
+   "where": {
+    "label": "ESPN+ \u00b7 YouTube TV",
+    "confidence": "likely",
+    "tunable": false,
+    "target": null
+   },
+   "odds": "CAR -150 \u00b7 O/U 6",
+   "mine": false,
+   "boosted": false,
+   "muted": false,
+   "focus": false,
+   "stale": false,
+   "start_time": 1793671200.0,
+   "on_now": false,
+   "wp": null,
+   "situation": {
+    "possession": null,
+    "down": null,
+    "distance": null,
+    "yards_to_goal": null,
+    "goal_to_go": null,
+    "power_play": null,
+    "strength": null,
+    "empty_net": null,
+    "outs": null,
+    "runners": null,
+    "half": null,
+    "timeouts_home": null,
+    "timeouts_away": null,
+    "text": ""
+   },
+   "leaders": [],
+   "spotlight": null,
+   "venue": {
+    "id": "999",
+    "name": "Lenovo Center",
+    "city": "Raleigh, NC",
+    "image": "https://a.espncdn.com/i/venues/nhl/day/999.jpg",
+    "indoor": true
+   }
+  },
+  {
+   "id": "401873036",
+   "league": "nfl",
+   "league_logo": "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png",
+   "matchup": "CHI @ SEA",
+   "phase": "pre",
+   "status_text": "11/2 - 9:30 PM EST",
+   "home": {
+    "id": "26",
+    "abbr": "SEA",
+    "name": "Seahawks",
+    "score": 0,
+    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/sea.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/scoreboard/sea.png",
+    "color": "002a5c",
+    "alt_color": "69be28",
+    "record": "4-3"
+   },
+   "away": {
+    "id": "3",
+    "abbr": "CHI",
+    "name": "Bears",
+    "score": 0,
+    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/chi.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/scoreboard/chi.png",
+    "color": "0b1c3a",
+    "alt_color": "e64100",
+    "record": "5-2"
+   },
+   "period": null,
+   "clock": "",
+   "score": 0,
+   "moment": 0,
+   "stakes": 1.0,
+   "personal": 0,
+   "reason": "not started",
    "tags": [],
    "is_break": false,
    "lock": null,
@@ -581,114 +1085,335 @@
     "tunable": true,
     "target": "youtubetv:espn"
    },
+   "odds": "SEA -3 \u00b7 O/U 46.5",
+   "mine": false,
+   "boosted": false,
+   "muted": false,
+   "focus": false,
+   "stale": false,
+   "start_time": 1793673000.0,
+   "on_now": false,
+   "wp": null,
+   "situation": {
+    "possession": null,
+    "down": null,
+    "distance": null,
+    "yards_to_goal": null,
+    "goal_to_go": null,
+    "power_play": null,
+    "strength": null,
+    "empty_net": null,
+    "outs": null,
+    "runners": null,
+    "half": null,
+    "timeouts_home": null,
+    "timeouts_away": null,
+    "text": ""
+   },
+   "leaders": [
+    {
+     "label": "PASS",
+     "name": "Sam Darnold",
+     "short": "S. Darnold",
+     "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3912547.png",
+     "stat": "110/177, 1290 YDS, 8 TD, 8 INT",
+     "team": "SEA",
+     "id": "3912547"
+    },
+    {
+     "label": "PASS",
+     "name": "Caleb Williams",
+     "short": "C. Williams",
+     "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4431611.png",
+     "stat": "88/124, 1020 YDS, 5 TD, 1 INT",
+     "team": "CHI",
+     "id": "4431611"
+    },
+    {
+     "label": "RUSH",
+     "name": "Emanuel Wilson",
+     "short": "E. Wilson",
+     "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4887558.png",
+     "stat": "111 CAR, 403 YDS, 3 TD",
+     "team": "SEA",
+     "id": "4887558"
+    }
+   ],
+   "spotlight": null,
+   "venue": {
+    "id": "3673",
+    "name": "Lumen Field",
+    "city": "Seattle, WA",
+    "image": "https://a.espncdn.com/i/venues/nfl/day/3673.jpg",
+    "indoor": false
+   }
+  },
+  {
+   "id": "401873990",
+   "league": "nfl",
+   "league_logo": "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png",
+   "matchup": "LV @ PHI",
+   "phase": "post",
+   "status_text": "Final",
+   "home": {
+    "id": "21",
+    "abbr": "PHI",
+    "name": "Eagles",
+    "score": 30,
+    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/phi.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/phi.png",
+    "color": "06424d",
+    "alt_color": "000000",
+    "record": "6-2"
+   },
+   "away": {
+    "id": "13",
+    "abbr": "LV",
+    "name": "Raiders",
+    "score": 13,
+    "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/lv.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/lv.png",
+    "color": "000000",
+    "alt_color": "a5acaf",
+    "record": "2-5"
+   },
+   "period": 4,
+   "clock": "",
+   "score": 0,
+   "moment": 0,
+   "stakes": 1.0,
+   "personal": 0,
+   "reason": "final",
+   "tags": [],
+   "is_break": false,
+   "lock": null,
+   "pre_moment": null,
+   "where": {
+    "label": "Sunday Ticket",
+    "confidence": "likely",
+    "tunable": true,
+    "target": "youtubetv:st"
+   },
    "odds": "",
    "mine": false,
    "boosted": false,
    "muted": false,
    "focus": false,
    "stale": false,
-   "start_time": 1765721400,
-   "on_now": false
+   "start_time": 1793644200.0,
+   "on_now": false,
+   "wp": null,
+   "situation": {
+    "possession": null,
+    "down": null,
+    "distance": null,
+    "yards_to_goal": null,
+    "goal_to_go": null,
+    "power_play": null,
+    "strength": null,
+    "empty_net": null,
+    "outs": null,
+    "runners": null,
+    "half": null,
+    "timeouts_home": null,
+    "timeouts_away": null,
+    "text": ""
+   },
+   "leaders": [],
+   "spotlight": null,
+   "venue": {}
+  },
+  {
+   "id": "401909992",
+   "league": "nba",
+   "league_logo": "https://a.espncdn.com/i/teamlogos/leagues/500/nba.png",
+   "matchup": "MIA @ ORL",
+   "phase": "post",
+   "status_text": "Final",
+   "home": {
+    "id": "19",
+    "abbr": "ORL",
+    "name": "Magic",
+    "score": 112,
+    "logo": "https://a.espncdn.com/i/teamlogos/nba/500/orl.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nba/500-dark/orl.png",
+    "color": "0150b5",
+    "alt_color": "9ca0a3",
+    "record": "3-4"
+   },
+   "away": {
+    "id": "14",
+    "abbr": "MIA",
+    "name": "Heat",
+    "score": 108,
+    "logo": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png",
+    "logo_dark": "https://a.espncdn.com/i/teamlogos/nba/500-dark/mia.png",
+    "color": "98002e",
+    "alt_color": "000000",
+    "record": "3-4"
+   },
+   "period": 4,
+   "clock": "",
+   "score": 0,
+   "moment": 0,
+   "stakes": 1.0,
+   "personal": 0,
+   "reason": "final",
+   "tags": [],
+   "is_break": false,
+   "lock": null,
+   "pre_moment": null,
+   "where": {
+    "label": "NBA League Pass \u00b7 Prime",
+    "confidence": "likely",
+    "tunable": true,
+    "target": "prime:leaguepass"
+   },
+   "odds": "",
+   "mine": false,
+   "boosted": false,
+   "muted": false,
+   "focus": false,
+   "stale": false,
+   "start_time": 1793658600.0,
+   "on_now": false,
+   "wp": null,
+   "situation": {
+    "possession": null,
+    "down": null,
+    "distance": null,
+    "yards_to_goal": null,
+    "goal_to_go": null,
+    "power_play": null,
+    "strength": null,
+    "empty_net": null,
+    "outs": null,
+    "runners": null,
+    "half": null,
+    "timeouts_home": null,
+    "timeouts_away": null,
+    "text": ""
+   },
+   "leaders": [],
+   "spotlight": null,
+   "venue": {
+    "id": "3432",
+    "name": "Kia Center",
+    "city": "Orlando, FL",
+    "image": "https://a.espncdn.com/i/venues/nba/day/3432.jpg",
+    "indoor": true
+   }
   }
  ],
  "queue": [
   {
-   "game_id": "401772904",
-   "matchup": "CLE @ CHI",
-   "play_id": "4017729041201",
-   "label": "C.Williams 22-yd TD pass to D.Moore",
-   "at": 1765735660,
-   "kind": "td"
+   "game_id": "401892990",
+   "matchup": "WSH @ PIT",
+   "play_id": "401892990211",
+   "label": "Ovechkin power-play one-timer \u2014 WSH ties it 2-2... then leads 3-2",
+   "at": 1793668990.0,
+   "kind": "goal"
   },
   {
-   "game_id": "401772798",
-   "matchup": "LAC @ KC",
-   "play_id": "4017727981033",
-   "label": "Mahomes intercepted at the KC 22",
-   "at": 1765735490,
-   "kind": "turnover"
+   "game_id": "401908990",
+   "matchup": "NYM @ WSH",
+   "play_id": "401908990611",
+   "label": "Juan Soto 412-ft homer to right puts the Mets up 4-3",
+   "at": 1793669140.0,
+   "kind": "hr"
+  },
+  {
+   "game_id": "401772694",
+   "matchup": "KC @ DAL",
+   "play_id": "4017726941140",
+   "label": "Prescott to Ferguson, 13-yd TD on 3rd & 3",
+   "at": 1793668800.0,
+   "kind": "td"
   }
  ],
  "log": [
   {
-   "ts": 1765735717,
+   "ts": 1793669317.0,
    "kind": "chase",
-   "to": "401772795",
-   "matchup": "BUF @ NE",
-   "reason": "catch it live \u2014 Allen 41-yd strike \u00b7 BUF 1st & goal at the 6",
+   "to": "401772717",
+   "matchup": "CHI @ WSH",
+   "reason": "catch it live \u2014 Daniels 37-yd strike to Lane sets up 1st & goal",
    "dry_run": true,
-   "ok": null,
-   "took": null
+   "ok": true,
+   "took": 2.4,
+   "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png"
   },
   {
-   "ts": 1765735540,
+   "ts": 1793669060.0,
+   "kind": "break_visit",
+   "to": "401909990",
+   "matchup": "BOS @ WSH",
+   "reason": "FOX in commercial \u2014 WSH-BOS is close late",
+   "dry_run": true,
+   "ok": true,
+   "took": 3.1,
+   "logo": "https://a.espncdn.com/i/teamlogos/nba/500/wsh.png"
+  },
+  {
+   "ts": 1793668880.0,
    "kind": "home",
-   "to": "401772905",
-   "matchup": "WSH @ NYG",
+   "to": "401772717",
+   "matchup": "CHI @ WSH",
    "reason": "back to your game before the next play",
    "dry_run": true,
-   "ok": null,
-   "took": null
+   "ok": true,
+   "took": 2.2,
+   "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png"
   },
   {
-   "ts": 1765735390,
-   "kind": "break_visit",
-   "to": "401772796",
-   "matchup": "BAL @ CIN",
-   "reason": "your game on a break \u2192 BAL 3rd & 3 at opp 8 \u00b7 up 3",
-   "dry_run": true,
-   "ok": null,
-   "took": null
-  },
-  {
-   "ts": 1765735160,
-   "kind": "better",
-   "to": "401772905",
-   "matchup": "WSH @ NYG",
-   "reason": "better game: WSH 1st & goal at the 4 \u00b7 tied \u00b7 9:12 left in Q3 \u00b7 WSH",
-   "dry_run": true,
-   "ok": null,
-   "took": null
-  },
-  {
-   "ts": 1765734900,
+   "ts": 1793668700.0,
    "kind": "must_see",
-   "to": "401772798",
-   "matchup": "LAC @ KC",
-   "reason": "must-see: KC 4th & 2 at opp 30 \u00b7 down 3",
+   "to": "401892990",
+   "matchup": "WSH @ PIT",
+   "reason": "must-see: Caps power play, tied in the 3rd",
    "dry_run": true,
-   "ok": null,
-   "took": null
+   "ok": true,
+   "took": 2.9,
+   "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/pit.png"
   },
   {
-   "ts": 1765734600,
-   "kind": "start",
-   "to": "401772905",
-   "matchup": "WSH @ NYG",
-   "reason": "best game on: WSH 1st & 10 at own 33 \u00b7 tied \u00b7 15:00 left in Q1 \u00b7 WSH",
+   "ts": 1793668220.0,
+   "kind": "better",
+   "to": "401772694",
+   "matchup": "KC @ DAL",
+   "reason": "better game \u2014 KC driving, your bet is live",
    "dry_run": true,
-   "ok": null,
-   "took": null
+   "ok": false,
+   "took": null,
+   "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png"
   }
  ],
+ "server_time": 1793669400.0,
  "delays": [
   {
-   "target": "youtubetv:cbs",
-   "label": "CBS \u00b7 YouTube TV",
+   "target": "youtubetv:fox",
+   "label": "FOX \u00b7 YouTube TV",
    "mu": 44.0,
    "sigma": 3.0,
    "calibrated": true
   },
   {
-   "target": "youtubetv:fox",
-   "label": "FOX \u00b7 YouTube TV",
+   "target": "youtubetv:cbs",
+   "label": "CBS \u00b7 YouTube TV",
    "mu": 47.0,
    "sigma": 4.0,
    "calibrated": true
   },
   {
-   "target": "youtubetv:st",
-   "label": "Sunday Ticket",
+   "target": "prime:monumental",
+   "label": "Monumental (Prime Video)",
+   "mu": 38.0,
+   "sigma": 15.0,
+   "calibrated": false
+  },
+  {
+   "target": "youtubetv:espn",
+   "label": "ESPN \u00b7 YouTube TV",
    "mu": 45.0,
    "sigma": 15.0,
    "calibrated": false
@@ -697,35 +1422,28 @@
  "health": {
   "sources": [
    {
-    "name": "ESPN scoreboard",
+    "name": "espn_scoreboard",
     "ok": true,
-    "age_s": 4,
+    "age_s": 3,
     "errors": 0,
     "benched": false
    },
    {
-    "name": "ESPN play-by-play",
+    "name": "espn_summary",
     "ok": true,
     "age_s": 2,
     "errors": 1,
     "benched": false
    },
    {
-    "name": "ESPN Fastcast (push)",
+    "name": "nhl",
     "ok": true,
-    "age_s": 1,
+    "age_s": 9,
     "errors": 0,
     "benched": false
    },
    {
-    "name": "NHL feed",
-    "ok": true,
-    "age_s": 12,
-    "errors": 0,
-    "benched": false
-   },
-   {
-    "name": "NBA feed",
+    "name": "nba",
     "ok": false,
     "age_s": 95,
     "errors": 3,
@@ -735,7 +1453,7 @@
   "sticks": [
    {
     "host": "192.168.1.41:5555",
-    "name": "Fire TV Stick 4K Plus",
+    "name": "Fire TV Stick 4K Max",
     "os": "Fire OS 8",
     "state": "connected",
     "role": "main"
@@ -745,44 +1463,57 @@
    "state": "on"
   },
   "race": {
-   "espn_fastcast": {
+   "espn_summary": {
     "first": 31,
     "avg_lag_s": 0.0
    },
-   "espn_summary": {
-    "first": 9,
-    "avg_lag_s": 3.4
-   },
    "espn_scoreboard": {
-    "first": 2,
-    "avg_lag_s": 8.1
+    "first": 9,
+    "avg_lag_s": 6.2
+   },
+   "nhl": {
+    "first": 4,
+    "avg_lag_s": 1.8
    }
-  }
+  },
+  "adb": true
  },
  "bets": [
   {
    "id": 1,
-   "game_id": "401772795",
-   "matchup": "BUF @ NE",
+   "game_id": "401772694",
+   "matchup": "KC @ DAL",
    "kind": "spread",
-   "team": "BUF",
+   "team": "KC",
    "line": 3.5,
-   "side": "over",
+   "side": "",
    "note": "",
-   "label": "your bet: BUF +3.5 \u00b7 covering",
-   "sweat": 0.78
+   "label": "your bet: KC +3.5 \u00b7 needs 2.5",
+   "sweat": 0.74
   },
   {
    "id": 2,
-   "game_id": "401772905",
-   "matchup": "WSH @ NYG",
+   "game_id": "401772717",
+   "matchup": "CHI @ WSH",
    "kind": "total",
-   "team": null,
+   "team": "",
    "line": 44.5,
    "side": "over",
    "note": "",
    "label": "your bet: Over 44.5 \u00b7 needs 11.5",
-   "sweat": 0.31
+   "sweat": 0.41
+  },
+  {
+   "id": 3,
+   "game_id": "401909990",
+   "matchup": "BOS @ WSH",
+   "kind": "moneyline",
+   "team": "WSH",
+   "line": null,
+   "side": "",
+   "note": "",
+   "label": "your bet: WSH ML \u00b7 winning",
+   "sweat": 0.66
   }
  ],
  "feedback": {

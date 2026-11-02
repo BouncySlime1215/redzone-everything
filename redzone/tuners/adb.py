@@ -165,6 +165,15 @@ class Stick:
         texts = re.findall(r'(?:text|content-desc)="([^"]+)"', r.out)
         return " | ".join(t for t in texts if t.strip())
 
+    async def hdmi_port(self) -> str | None:
+        """Which TV input this stick is plugged into, from its HDMI-CEC physical address
+        (1.0.0.0 = HDMI1, 2.0.0.0 = HDMI2...). None if CEC is off or the stick won't say."""
+        r = await self.shell("dumpsys hdmi_control | grep -i -m3 -E 'physical ?address'", timeout=6)
+        m = re.search(r"(?:0x)?([1-9])[0.]?0{2,3}\b|\b([1-9])\.0\.0\.0\b", r.out)
+        if not m:
+            return None
+        return f"HDMI{m.group(1) or m.group(2)}"
+
     async def key(self, *codes: str) -> None:
         for c in codes:
             await self.shell(f"input keyevent {c}", timeout=4)

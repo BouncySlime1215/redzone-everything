@@ -100,6 +100,9 @@ class PrimeTuner(Tuner):
                 steps.append("playing")
                 return True
             text = (await stick.screen_text()).lower()
+            if "regional restriction" in text or "not available in your location" in text or "blackout" in text:
+                steps.append("blackout: this game isn't available in your area on Prime")
+                return False
             pressed = False
             for prompt, keys in PROMPTS.items():
                 if prompt in text:
