@@ -120,13 +120,13 @@ def test_better_game_does_not_wait_for_a_viewing_quota(dec, clock):
 
 
 def _visit_then_resume(dec, clock, home_lock=None):
-    """Leave "a" for its timeout, then the data shows the snap that ends it."""
+    """Leave "a" for its quarter break, then the data shows the snap that ends it."""
     calibrate(dec, "youtubetv:a")
     calibrate(dec, "youtubetv:b")
     start_on(dec, clock, "a", {})
     tla = dec.timeline("a", League.NFL)
     dec.timeline("b", League.NFL)
-    tla.events.append(Event(clock.t, "stop_start", "timeout"))
+    tla.events.append(Event(clock.t, "stop_start", "end_period"))
     clock.t += 50
     d = dec.decide(cands(a=sc("a", 70, is_break=True), b=55))
     assert d.kind == "break_visit" and d.target == "b"
