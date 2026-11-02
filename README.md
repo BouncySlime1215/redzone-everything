@@ -12,6 +12,24 @@ replays of the big plays you missed. Your phone is the remote and the dashboard.
 
 ---
 
+## 0. First night checklist (stick arrives → games tonight)
+
+**When the stick arrives (~20 minutes):**
+1. Plug the Fire TV Stick 4K Plus into the TV, finish Amazon's setup, sign in to YouTube TV and Prime Video once.
+2. On the stick: Settings → My Fire TV → About → click the name 7 times → back → Developer Options → ADB Debugging **ON**.
+3. On the Mac: `.venv/bin/python scripts/doctor.py` → on the TV pick **Always allow** → run it again until it shows the stick's model, OS and apps.
+4. Test a tune (dry run off for this one command only): `.venv/bin/python scripts/rz.py now` then `scripts/rz.py tune espn`.
+5. Speed check: `.venv/bin/python scripts/rz.py bench`.
+6. DRM check: `.venv/bin/python scripts/rz.py screencap` (black = expected; the app uses the stick's playback reports instead).
+
+**Tonight (7:00 NBA/NHL, 8:15 MNF):**
+1. Start it: `.venv/bin/python -m redzone`, open the phone page from the QR code.
+2. Leave **Dry run on** for the first 15 minutes: watch what it *would* do and why.
+3. Tap **"I just saw it"** right as plays end, 3–4 times per app (YouTube TV, Prime). That measures your real delay.
+4. Turn TV control on (Settings → confirm). Tap 👍/👎 whenever it does something you like or hate.
+5. Optional: `.venv/bin/python scripts/screen_lab.py` in a second window while you tap Game / Commercial / Loading in the Lab tab — this teaches the app what the stick's signals mean.
+6. Everything is recorded (feed speed per source, every decision) for tomorrow's tuning.
+
 ## 1. Setup (Phase 0 — about 30 minutes, once)
 
 1. **Mac tools** (already done on this Mac): Python 3.12, Homebrew, `adb`.
