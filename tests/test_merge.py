@@ -84,3 +84,54 @@ def test_level_but_staler_source_does_not_flip_the_state():
     clk.t += 2
     m.update("espn_summary", _g(4, 321, 20, 17, last_play=Play("b", wallclock=130.0), stoppage=Stoppage.TIMEOUT))
     assert m.games["1"].updated_at == clk.t                      # caught up: level again, takes its turn
+
+
+def test_score_correction_at_same_clock_is_accepted_not_a_regression():
+    """An overturned goal / reversed TD drops the score at the same clock: show the fix, no bench."""
+    clk = FakeClock()
+    m = Merger(clock=clk)
+    for _ in range(4):
+        m.update("espn_summary", _g(3, 412, 3, 2))
+        clk.t += 3
+        m.update("espn_summary", _g(3, 412, 2, 2))   # goal overturned on review
+        assert m.games["1"].home.score == 2
+        assert m.health["espn_summary"].regressions == 0
+        assert not m.health["espn_summary"].benched
+        clk.t += 3
+
+
+def test_partial_payload_without_scores_is_ignored_not_a_correction():
+    m = Merger(clock=FakeClock())
+    m.update("fast", _g(3, 412, 3, 2))
+    m.update("fast", _g(3, 412, None, None))
+    assert m.games["1"].home.score == 3 and m.health["fast"].regressions == 0
+
+
+def test_bench_is_per_game_and_expires():
+    clk = FakeClock()
+    m = Merger(clock=clk)
+    m.update("bad", _g(4, 60, 30, 17))
+    other = _g(2, 500, 7, 7)
+    other.game_id = "2"
+    m.update("bad", other)
+    for _ in range(3):
+        m.update("bad", _g(1, 900, 0, 0))
+    assert m.health["bad"].benched
+    nxt = _g(2, 480, 10, 7)
+    nxt.game_id = "2"
+    assert m.update("bad", nxt).home.score == 10          # other games unaffected
+    clk.t += 301
+    m.update("bad", _g(4, 50, 33, 17))
+    assert not m.health["bad"].benched
+    assert m.games["1"].home.score == 33                  # back in service after the bench
+
+
+def test_old_regressions_decay():
+    clk = FakeClock()
+    m = Merger(clock=clk)
+    m.update("s", _g(4, 300, 10, 10))
+    for _ in range(5):
+        m.update("s", _g(4, 301, 10, 10))                 # clock set back a second (review)
+        clk.t += 400
+        m.update("s", _g(4, 300, 10, 10))
+    assert not m.health["s"].benched
