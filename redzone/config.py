@@ -34,6 +34,8 @@ LIMITS: dict[str, tuple[float, float]] = {
     "decider.max_switches_per_5min": (1, 20),
     "delay": (0, 180),
     "replay": (0, 7200),
+    "fantasy.team_id": (0, 100),
+    "fantasy.season": (2020, 2100),
     "break_lengths_s": (0, 1800),
     "score": (-100, 100),
     "decider": (0, 1000),

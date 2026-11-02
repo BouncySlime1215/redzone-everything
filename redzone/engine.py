@@ -58,6 +58,7 @@ class Engine:
         self.recorder = Recorder()
         self._last_snapshot = 0.0
         self.mic = None
+        self.fantasy = None   # latest fantasy.Matchup
         self._mic_used: set[tuple[str, float]] = set()
         self._last_mic = 0.0
 
@@ -68,7 +69,8 @@ class Engine:
         await self.control.start()
         if self.cfg.get("screen.mic_calibration", False):
             self.set_mic(True)
-        await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop())
+        await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
+                             self._fantasy_loop())
 
     async def _poll_loop(self) -> None:
         while True:
@@ -131,6 +133,20 @@ class Engine:
         if n:
             self.channels.save()
         return n
+
+    async def _fantasy_loop(self) -> None:
+        """ESPN fantasy lineup + live matchup score, every 5 minutes (only if a league is set)."""
+        from redzone import fantasy
+        while True:
+            lid = str(self.cfg.get("fantasy.league_id", "") or "").strip()
+            if lid:
+                try:
+                    tid = self.cfg.get("fantasy.team_id", 0) or None
+                    self.fantasy = await fantasy.fetch(self.fetcher._client, lid,
+                                                       int(self.cfg.get("fantasy.season", 2026)), tid)
+                except Exception:
+                    log.exception("fantasy failed")
+            await asyncio.sleep(300)
 
     async def _house_loop(self) -> None:
         while True:
@@ -276,7 +292,15 @@ class Engine:
             if s >= sweat.get(g.game_id, 0):
                 sweat[g.game_id] = s
                 labels[g.game_id] = betlib.label(g, b)
-        return Personal(my_teams=teams, bet_sweat=sweat, bet_labels=labels, boosted=set(self.boosted))
+        fan = {}
+        if self.fantasy is not None and not self.fantasy.error:
+            from redzone import fantasy
+            for g in self.merger.games.values():
+                b = fantasy.boosts(self.fantasy, g, self.cfg.get("score.personal.fantasy_mine"),
+                                   self.cfg.get("score.personal.fantasy_opponent"))
+                if b:
+                    fan[g.game_id] = b
+        return Personal(my_teams=teams, bet_sweat=sweat, bet_labels=labels, fantasy=fan, boosted=set(self.boosted))
 
     def decide(self) -> bool:
         now = time.time()
@@ -352,6 +376,7 @@ class Engine:
         if not on and self.mic is not None:
             self.mic.stop()
             self.mic = None
+        self.fantasy = None   # latest fantasy.Matchup
         return True, "Microphone off"
 
     def _mic_calibrate(self) -> None:
@@ -604,6 +629,11 @@ class Engine:
                        "tv": {"state": "unknown"}, "race": self.merger.race_summary(),
                        "adb": self.control.adb_ok},
             "bets": self.bets_view(), "feedback": self.store.feedback_counts(),
+            "fantasy": None if self.fantasy is None else {
+                "me": self.fantasy.me, "opponent": self.fantasy.opponent, "my_points": self.fantasy.my_points,
+                "opp_points": self.fantasy.opp_points, "error": self.fantasy.error,
+                "starters": [{"name": x.name, "pos": x.pos, "team": x.team, "mine": x.mine}
+                             for x in self.fantasy.starters]},
         }
 
     def _standby_view(self) -> dict | None:

@@ -93,6 +93,11 @@ decider:
   uncalibrated_sigma_s: 8  # above this delay uncertainty, only leave at official stoppages
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
 
+fantasy:                   # ESPN fantasy football (leave league_id empty to turn off)
+  league_id: ""
+  team_id: 0               # 0 = figure it out from your ESPN_SWID cookie
+  season: 2026
+
 screen:
   mic_calibration: false   # let the Mac's mic hear crowd roars to measure your delay (nothing is recorded)
 
