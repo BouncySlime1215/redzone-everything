@@ -11,6 +11,7 @@ rebuilds the game exactly as it stood after play i.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from redzone.models import GameState, League, Phase, Play, Situation, Stoppage, Team
@@ -323,7 +324,12 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
             return Stoppage.HALFTIME if per == 2 and t == "end period" else Stoppage.END_PERIOD
         if "challenge" in t or "review" in t:
             return Stoppage.REVIEW
-        if "foul" in t or "violation" in t or "free throw" in t or "out of bounds" in t or "jumpball" in t:
+        if "free throw" in t:
+            # The ball is dead between free throws; after the LAST one play resumes
+            # (made: quick inbound; missed: live rebound), so that one ends the whistle.
+            return Stoppage.NONE if _last_free_throw(t) else Stoppage.WHISTLE
+        if ("foul" in t or "violation" in t or "out of bounds" in t or "substitution" in t
+                or "kicked ball" in t or "delay" in t):
             return Stoppage.WHISTLE
         return Stoppage.NONE
     if league == League.NHL:
@@ -350,6 +356,14 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
             return Stoppage.WHISTLE  # between plate appearances
         return Stoppage.NONE
     return Stoppage.NONE
+
+
+def _last_free_throw(t: str) -> bool:
+    """'free throw - 2 of 2' is the last one; technicals/flagrants keep the ball dead (inbound after)."""
+    if "technical" in t or "flagrant" in t:
+        return False
+    m = re.search(r"(\d) of (\d)", t)
+    return bool(m) and m.group(1) == m.group(2)
 
 
 def parse_summary(league: League, data: dict, upto: int | None = None,

@@ -77,7 +77,13 @@ class DelayBook:
 
 
 _MARKERS = ("timeout", "end_", "two-minute", "period_end", "period_start", "start_inning",
-            "start_batter", "end_batter", "coin_toss", "end_game", "end_period", "stoppage")
+            "start_batter", "end_batter", "coin_toss", "end_game", "end_period", "stoppage",
+            # Dead-ball entries that happen DURING a whistle, not action that ends it. Without these,
+            # every free throw "ended" the stoppage and NBA whistles became too short to ever cut in.
+            "foul", "substitution", "violation", "kicked_ball", "technical", "flagrant", "delay",
+            "free_throw_-_1_of_2", "free_throw_-_1_of_3", "free_throw_-_2_of_3",
+            "hooking", "holding", "tripping", "roughing", "interference", "slashing", "high-sticking",
+            "fighting", "unsportsmanlike", "cross-checking", "too_many")
 
 
 def _is_marker(kind: str) -> bool:
