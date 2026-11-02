@@ -3,9 +3,9 @@
 import {
   app, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, isDark, whereLabel, whereUnknown,
   leaderLabel, winner, teamBy, fmtDur, nowS, fmtCountdown, imgSrc, games, hex,
-} from "./rz-core.js?v=20";
-import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=20";
-import { situation, wpBar } from "./rz-viz.js?v=20";
+} from "./rz-core.js?v=22";
+import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=22";
+import { situation, wpBar } from "./rz-viz.js?v=22";
 
 /* ---------- chips ---------- */
 export function whereChip(g, { onDark = false } = {}) {
@@ -169,6 +169,7 @@ export function heroCard(n, g, S) {
   const rawReason = String(n.reason || game.reason || "");
   const rp = replayInfo(n, rawReason);
   const reason = rp && rp.fromReason ? (rp.prefix === "instant replay" ? "Instant replay while the game is on a break." : "Catch-up replay of a play you missed — back to live right after.") : cleanReason(rawReason);
+  const sitHtml = situation(game);
   const hold = rawReason.match(/letting the last play finish[^()]*\((\d+)\s*s\)/i);
   const tags = arr(game.tags);
   const chips = [
@@ -177,7 +178,7 @@ export function heroCard(n, g, S) {
     hold ? `<span class="chip chip--break">${icon("hourglass")}<span>Finishing play · ${esc(hold[1])}s</span></span>` : "",
     isComeback(game) ? `<span class="chip chip--hot">${icon("trend")}<span>Comeback</span></span>` : "",
     game.lock ? `<span class="chip chip--locked">${icon("lock")}<span>${esc(game.lock)}</span></span>` : "",
-    game.pre_moment ? `<span class="chip">${icon("zap")}<span>${esc(game.pre_moment)}</span></span>` : "",
+    game.pre_moment && !sitHtml ? `<span class="chip">${icon("zap")}<span>${esc(game.pre_moment)}</span></span>` : "",
     tags.length ? tagChips(game, { max: 3 }) : "",
   ].join("");
   const since = num(n.since, 0);
@@ -185,11 +186,11 @@ export function heroCard(n, g, S) {
     <div class="hero-bg">${venue ? `<img src="${attr(imgUrl(venue))}" data-src="${attr(imgUrl(venue))}" data-orig="${attr(venue)}" alt="" decoding="async" fetchpriority="high">` : ""}</div>
     <i class="hero-fx"></i><i class="hero-sweep"></i>
     <div class="hero-in">
-      <div class="hero-top"><div class="left">${stateBadge(kind)}${leagueImg(game.league, { dark: true })}${game.mine ? `<span class="chip chip--mine" style="height:24px">${icon("star", "ico--fill")}<span>Your team</span></span>` : ""}</div>
+      <div class="hero-top"><div class="left">${stateBadge(kind)}${leagueImg(game.league, { dark: true })}</div>
         <span class="on-for">${icon("clock")}on for <b data-since="${since}" data-own>${since ? fmtDur(nowS() - since) : "—"}</b></span></div>
       ${board(game)}
       ${wpBar(game)}
-      ${situation(game)}
+      ${sitHtml}
       ${kind === "replay" && rp ? `<div class="hero-replay">${icon("replay")}<span class="grow"><b>${esc(rp.prefix === "instant replay" ? "Instant replay" : "Catch-up replay")}</b>${esc(rp.label)}</span></div>` : ""}
       <p class="hero-reason">${esc(reason, "Watching the best game on.")}</p>
       <div class="hero-chips">${chips}</div>

@@ -2,7 +2,7 @@
 
 import {
   attr, esc, num, clamp, hex, initials, imgTag, isDark, teamLogoUrl, leagueLogoUrl, LEAGUE_NAME, heatColor, ink,
-} from "./rz-core.js?v=20";
+} from "./rz-core.js?v=22";
 
 export const icon = (name, cls = "") => `<svg class="ico ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 

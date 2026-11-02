@@ -16,7 +16,7 @@ class _Scripted:
         self.script = list(script)
         self.current = None
 
-    def decide(self, cands):
+    def decide(self, cands, redzone=None):
         d = self.script.pop(0) if self.script else Decision(0, "stay", self.current, "", State.WATCHING)
         if d.action in ("switch", "replay"):
             self.current = d.target

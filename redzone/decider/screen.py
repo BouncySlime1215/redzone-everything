@@ -248,6 +248,23 @@ class Gate:
     on_screen_break: bool = False
 
 
+def _stoppage_reached(tl: Timeline, start: Event, mu: float, margin: float) -> float:
+    """From when the screen has nothing left to show before this stoppage.
+
+    The stoppage itself airs at start + delay, but a timeout is often logged well after the
+    play before it. Once that last play has surely finished airing, no action can reach the
+    screen until the stoppage ends (the feed is ~35s ahead), so waiting longer only shows
+    the huddle and then the ad. Not in continuous sports: the ball is live between logged plays.
+    """
+    reached = start.seen + mu + margin
+    if tl.league in CONTINUOUS:
+        return reached
+    last = next((e.seen for e in reversed(tl.events) if e.kind == "play" and e.seen <= start.seen), None)
+    if last is not None:
+        reached = min(reached, last + mu + margin + AFTER_PLAY_BUFFER_S)
+    return reached
+
+
 def leave_gate(tl: Timeline, delay: Delay, now: float, uncalibrated_sigma: float,
                tune_s: float = 6.0) -> Gate:
     """Is it safe to cut away from this game *as your screen shows it right now*?"""
@@ -265,7 +282,7 @@ def leave_gate(tl: Timeline, delay: Delay, now: float, uncalibrated_sigma: float
     ahead = mu - margin - play_len - tl.lag_est()   # how far our data runs ahead of your screen
     covered = age <= ahead
 
-    # 1. Is an official stoppage showing on screen?
+    # 1. Is an official stoppage showing on screen (or is the screen done with action before it)?
     start, end = tl.last("stop_start"), tl.last("stop_end")
     in_break = False
     if start is not None:
@@ -278,9 +295,16 @@ def leave_gate(tl: Timeline, delay: Delay, now: float, uncalibrated_sigma: float
                 resume = e.lo - lead if resume is None else min(resume, e.lo - lead)
             elif e.seen < start.seen - ORDER_SLACK_S:
                 break
-        aired_start = now >= start.seen + mu + margin             # break has definitely started on screen
+        # The break is on screen once the play before it has surely finished airing — waiting for
+        # the stoppage entry itself to air only shows the huddle and then the ad.
+        aired_start = now >= _stoppage_reached(tl, start, mu, margin)
         if resume is not None:
-            not_ended = now <= resume + mu - margin - tune_s      # resume hasn't reached the screen
+            safe_until = resume + mu - margin                     # the snap that ends it can't be on screen yet
+            not_ended = now <= safe_until - tune_s
+            if aired_start and not not_ended and now <= safe_until and tl.league not in CONTINUOUS:
+                # Still safe to cut (it's the break you're seeing), just too late to visit and come back.
+                # Not in continuous sports: play resumes before the first logged event after it.
+                return Gate(True, "break ending on screen")
         else:
             # No resume in the data: trust that only if the data covers your screen, or this kind
             # of break always runs long enough that it can't have ended on screen yet.
@@ -315,6 +339,35 @@ def leave_gate(tl: Timeline, delay: Delay, now: float, uncalibrated_sigma: float
         if end_air + margin + AFTER_PLAY_BUFFER_S + ORDER_SLACK_S < now:
             break  # older plays have all aired
     return Gate(True, "between plays on screen")
+
+
+_REAL = {b.value for b in REAL_BREAKS}
+
+
+def resume_play(tl: Timeline) -> Event | None:
+    """The snap that ended the latest stoppage (None while it's still stopped)."""
+    start, end = tl.last("stop_start"), tl.last("stop_end")
+    if end is None or (start is not None and end.seen < start.seen):
+        return None
+    return next((e for e in tl.events if e.kind == "play" and e.seen > end.seen), None)
+
+
+def break_on_arrival(tl: Timeline, delay: Delay, now: float, at: float) -> bool:
+    """Would you land in a commercial if the picture came up at `at`?
+
+    A break fills the screen from when the play before it has aired until the first snap
+    after it has aired: landing during that snap still shows mostly ad and a huddle."""
+    start, end = tl.last("stop_start"), tl.last("stop_end")
+    if start is None or start.label not in _REAL:
+        return False
+    margin = 2 * delay.current_sigma(now)
+    if at < min(start.seen + delay.mu - margin, _stoppage_reached(tl, start, delay.mu, margin)):
+        return False
+    if end is None or end.seen < start.seen:
+        return True
+    snap = resume_play(tl)
+    snap_end = snap.seen if snap else end.seen + PLAY_LEN_S.get(tl.league, 8.0) + 2.0
+    return at < snap_end + delay.mu
 
 
 def catchable(tl: Timeline, delay: Delay, now: float, tune_s: float) -> Event | None:

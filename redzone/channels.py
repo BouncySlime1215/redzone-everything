@@ -18,9 +18,11 @@ import json
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-from redzone.models import GameState, League
+from redzone.models import GameState, League, Phase
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 
@@ -284,6 +286,23 @@ def _is_sunday_afternoon(g: GameState) -> bool:
         return False
     lt = time.localtime(g.start_time)
     return lt.tm_wday == 6 and 12 <= lt.tm_hour < 19
+
+
+ET = ZoneInfo("America/New_York")
+REDZONE_TARGET = "youtubetv:redzone"
+
+
+def in_redzone_window(g: GameState) -> bool:
+    """RedZone covers the Sunday 1pm and 4pm ET NFL windows, not night games or London mornings."""
+    if g.league != League.NFL or not g.start_time:
+        return False
+    kick = datetime.fromtimestamp(g.start_time, tz=ET)
+    return kick.weekday() == 6 and 12 <= kick.hour < 17
+
+
+def redzone_on(games) -> bool:
+    """NFL RedZone is worth tuning only while it whips around: two or more afternoon games live."""
+    return sum(1 for g in games if g.phase == Phase.LIVE and in_redzone_window(g)) >= 2
 
 
 def _team_words(t) -> set[str]:

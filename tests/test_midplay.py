@@ -320,3 +320,19 @@ def test_baseball_foul_ball_is_a_live_pitch_not_a_dead_ball():
     assert not _is_marker("foul_ball", League.MLB)        # a pitch: you can't cut during it
     assert _is_marker("personal_foul", League.NBA)        # a whistle in basketball
     assert not _is_marker("foul_ball", None) and _is_marker("full_timeout", League.MLB)
+
+
+def test_silent_feed_is_not_nothing_live(dec, clock):
+    """A drop made the only game 'stale', the decider saw nothing watchable and started a catch-up
+    replay mid-play. The game on screen must still pass the leave gate."""
+    from redzone.decider.decider import Missed
+    calibrate(dec, "youtubetv:a")
+    start_on(dec, clock, "a", {})
+    tl = dec.timeline("a", League.NFL)
+    feed(tl, clock, [P(1, w=clock.t - 5)])
+    dec.queue = [Missed("a", "old", "TD earlier", "td", clock.t - 300, 75)]
+    clock.t += 30   # the feed has been silent: candidate is stale
+    cs = cands(a=40)
+    cs["a"].stale = True
+    d = dec.decide(cs)
+    assert d.action == "stay"

@@ -22,8 +22,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from redzone.channels import REDZONE_TARGET, redzone_on
 from redzone.config import Config
-from redzone.decider.decider import Candidate, Decider, FocusMode
+from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode
 from redzone.decider.screen import DelayBook
 from redzone.models import REAL_BREAKS, League, Phase
 from redzone.scoring.engine import Personal, Scorer
@@ -102,6 +103,7 @@ class Report:
     crunch_live: int = 0
     my_crunch: int = 0
     my_crunch_live: int = 0
+    dead_causes: dict[str, float] = field(default_factory=dict)  # seconds of dead air by cause
 
     @property
     def summary(self) -> dict:
@@ -234,8 +236,10 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     watching: list[tuple[float, str | None]] = []  # (time cut happens on screen, game)
     idx = {r.gid: -1 for r in replays}
     clock.t = t0
+    rz_ok = bool(cfg.get("sunday_ticket", False))
     while clock.t <= t1:
         cands = {}
+        states = {}
         for r in replays:
             f = feeds[r.gid]
             silent = any(a <= clock.t < b for a, b in f.drops)
@@ -259,29 +263,52 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
                 continue
             # parse_summary already stamps plays with their real wallclock.
             dec.timeline(r.gid, r.league).observe(g)
+            states[r.gid] = g
             if g.phase != Phase.LIVE:
                 continue
             cands[r.gid] = Candidate(scorer.score(g, me), (targets or {}).get(r.gid, f"youtubetv:{r.gid}"),
                                      stale=clock.t - f.fresh_at > 60)
         before = dec.current
-        decision = dec.decide(cands)
+        decision = dec.decide(cands, REDZONE_TARGET if rz_ok and redzone_on(states.values()) else None)
         decisions.append(decision)
-        # Any "switch" that survives decide() is a real tune. One back to the same game after a replay
-        # (kind "home"/"break_visit", not just "live") used to go unlogged: the grader then thought the
-        # replay ran on forever AND skipped mid-play checks on the next cut from that game.
-        if decision.action == "switch" and decision.target:
-            switches.append(SwitchLog(clock.t, before, decision.target, decision.kind, decision.reason))
-            watching.append((clock.t, decision.target))
-        elif decision.action == "replay" and decision.replay:
-            switches.append(SwitchLog(clock.t, before, decision.target, "replay", decision.reason))
-            watching.append((clock.t, f"replay:{decision.target}"))
-            replayed.add((decision.target, round(decision.replay.t)))
+        _record(decision, before, clock.t, switches, watching, replayed)
         clock.t += step
 
     rep = _grade(replays, switches, watching, my_teams, lag_true, play_len, tune_s, t0, t1, replayed)
     rep.decisions = decisions
     rep.replayed, rep.t0, rep.t1, rep.lag_total = replayed, t0, t1, lag_total
     return rep
+
+
+def _record(decision, before: str | None, t: float, switches: list[SwitchLog],
+            watching: list[tuple[float, str | None]], replayed: set[tuple[str, int]]) -> None:
+    """Log what the TV did. Any "switch" that survives decide() is a real tune — including one back
+    to the same game after a replay (kind "home"/"break_visit"/"live"): when that went unlogged the
+    grader thought the replay ran on forever AND skipped mid-play checks on the next cut."""
+    if decision.action == "switch" and decision.target:
+        switches.append(SwitchLog(t, before, decision.target, decision.kind, decision.reason))
+        watching.append((t, decision.target))
+    elif decision.action == "replay" and decision.replay:
+        switches.append(SwitchLog(t, before, decision.target, "replay", decision.reason))
+        watching.append((t, f"replay:{decision.target}"))
+        replayed.add((decision.target, round(decision.replay.t)))
+
+
+def _poll(replays: list[Replay], idx: dict[str, int], now: float, feed_lag: float, dec: Decider) -> dict:
+    """One poll of every feed: what the app knows `feed_lag` seconds after each play happened."""
+    states = {}
+    for r in replays:
+        i = idx[r.gid]
+        while i + 1 < len(r.plays) and r.wall[i + 1] + feed_lag <= now:
+            i += 1
+        idx[r.gid] = i
+        g = r.state_at(i) if i >= 0 else None
+        if g is None:
+            continue
+        # parse_summary already stamps plays with their real wallclock.
+        dec.timeline(r.gid, r.league).observe(g)
+        states[r.gid] = g
+    return states
 
 
 def _on_screen_game(watching: list[tuple[float, str | None]], t: float, tune_s: float) -> str | None:
@@ -357,10 +384,16 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
                 my_crunch_live += on
 
     dead = watched = 0.0
+    causes: dict[str, float] = {}
     t = t0
     while t <= t1:
         g = _on_screen_game(watching, t, tune_s)
-        if g and (g.startswith("replay:") or g == "redzone"):
+        cause = None
+        if g == REDZONE:
+            # Commercial-free, but only while it's on the air; parked on a dead channel is dead air.
+            watched += 10
+            cause = None if _redzone_on_screen(replays, t - lag_total) else "RedZone off the air"
+        elif g and g.startswith("replay:"):
             watched += 10
         elif g:
             r = by_id[g]
@@ -370,12 +403,50 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             if st and st.phase == Phase.LIVE:
                 watched += 10
                 if st.stoppage in REAL_BREAKS:
-                    dead += 10
+                    cause = _dead_cause(replays, r, i, t, switches, watching, lag_total, tune_s)
+        if cause:
+            dead += 10
+            causes[cause] = causes.get(cause, 0.0) + 10
         t += 10
     rep = Report(switches, cuts, big, live, mine, mine_live, dead, watched, (t1 - t0) / 3600, missed)
+    rep.dead_causes = causes
     rep.big_plays_caught = caught
     rep.crunch, rep.crunch_live, rep.my_crunch, rep.my_crunch_live = crunch, crunch_live, my_crunch, my_crunch_live
     return rep
+
+
+def _dead_cause(replays, r: Replay, i: int, t: float, switches, watching, lag_total: float, tune_s: float) -> str:
+    """Why is this break on screen? Bookkeeping only: it never changes what counts as dead."""
+    screen_t = t - lag_total
+    others = [x.state_at(j) for x in replays if x is not r and (j := _bisect(x.wall, screen_t)) >= 0]
+    if not _redzone_on_screen(replays, screen_t) and not any(
+            o and o.phase == Phase.LIVE and o.stoppage not in REAL_BREAKS for o in others):
+        return "alone: one game on, nothing else to show"
+    arrived = max((k for k, (at, _) in enumerate(watching) if at <= t), default=None)
+    brk_on, brk_off = _break_span(r, i)
+    brk_on, brk_off = brk_on + lag_total, brk_off + lag_total
+    if arrived is not None and watching[arrived][0] + tune_s > brk_on:
+        return f"landed in it ({switches[arrived].kind})"
+    left = arrived is not None and any(t < s.t < brk_off for s in switches[arrived + 1:])
+    return "slow to leave (delay margin)" if left else "sat through it"
+
+
+def _break_span(r: Replay, i: int) -> tuple[float, float]:
+    """Wallclock span of the run of breaks around play i (score -> timeout -> ... -> next snap)."""
+    def brk(k):
+        return espn.stoppage_for(r.league, r.plays[k]) in REAL_BREAKS
+    a, b = i, i + 1
+    while a > 0 and brk(a - 1):
+        a -= 1
+    while b < len(r.plays) and brk(b):
+        b += 1
+    return r.wall[a], (r.wall[b] if b < len(r.wall) else 1e18)
+
+
+def _redzone_on_screen(replays: list[Replay], screen_t: float) -> bool:
+    """Was RedZone on the air at this (screen) time? Same rule the decider is fed."""
+    states = [r.state_at(i) for r in replays if (i := _bisect(r.wall, screen_t)) >= 0]
+    return redzone_on(g for g in states if g)
 
 
 def _bisect(wall: list[float], t: float) -> int:

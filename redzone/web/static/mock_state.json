@@ -10,7 +10,10 @@
   "locked_game": null,
   "state": "locked",
   "tv_control": false,
-  "announcer_hint": ""
+  "announcer_hint": "",
+  "two_stick": true,
+  "control_note": "",
+  "mic": false
  },
  "now": {
   "id": "401772717",
@@ -135,7 +138,12 @@
   "reason": "BOS @ WSH \u00b7 WSH up 3 \u00b7 5:12 left in Q4",
   "why_waiting": "a play is on screen \u2014 leaving right after it"
  },
- "standby": null,
+ "standby": {
+  "game_id": "401909990",
+  "matchup": "BOS @ WSH",
+  "where": "Monumental (Prime Video) \u00b7 stick 2",
+  "ready": true
+ },
  "games": [
   {
    "id": "401772717",
@@ -766,7 +774,7 @@
    "moment": 46,
    "stakes": 1.0,
    "personal": 0,
-   "reason": "DEN up 4 \u00b7 3:10 left in Q2 \u00b7 Luka has 24 already",
+   "reason": "comeback \u2014 it's close again \u00b7 DEN up 4 \u00b7 3:10 left in Q2",
    "tags": [
     "Doncic 24 pts"
    ],
@@ -877,8 +885,10 @@
    "moment": 8,
    "stakes": 1.0,
    "personal": 0,
-   "reason": "MIN up 38 \u00b7 6:00 left in Q3 \u2014 not close",
-   "tags": [],
+   "reason": "garbage time \u2014 MIN up 38 \u00b7 6:00 left in Q3",
+   "tags": [
+    "garbage time"
+   ],
    "is_break": true,
    "lock": null,
    "pre_moment": null,
@@ -1305,6 +1315,51 @@
    }
   }
  ],
+ "fantasy": {
+  "me": "Nick's Nightmare",
+  "opponent": "Tua Tango & Cash",
+  "my_points": 87.4,
+  "opp_points": 79.2,
+  "error": null,
+  "starters": [
+   {
+    "name": "Jayden Daniels",
+    "pos": "QB",
+    "team": "WSH",
+    "mine": true
+   },
+   {
+    "name": "Terry McLaurin",
+    "pos": "WR",
+    "team": "WSH",
+    "mine": true
+   },
+   {
+    "name": "CeeDee Lamb",
+    "pos": "WR",
+    "team": "DAL",
+    "mine": true
+   },
+   {
+    "name": "Patrick Mahomes",
+    "pos": "QB",
+    "team": "KC",
+    "mine": false
+   },
+   {
+    "name": "Travis Kelce",
+    "pos": "TE",
+    "team": "KC",
+    "mine": false
+   },
+   {
+    "name": "D'Andre Swift",
+    "pos": "RB",
+    "team": "CHI",
+    "mine": false
+   }
+  ]
+ },
  "queue": [
   {
    "game_id": "401892990",

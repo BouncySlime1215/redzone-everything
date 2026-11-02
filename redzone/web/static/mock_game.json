@@ -1350,8 +1350,10 @@
     "moment": 8,
     "stakes": 1.0,
     "personal": 0,
-    "reason": "MIN up 38 \u00b7 6:00 left in Q3 \u2014 not close",
-    "tags": [],
+    "reason": "garbage time \u2014 MIN up 38 \u00b7 6:00 left in Q3",
+    "tags": [
+     "garbage time"
+    ],
     "is_break": true,
     "lock": null,
     "pre_moment": null,
@@ -3459,7 +3461,7 @@
     "moment": 46,
     "stakes": 1.0,
     "personal": 0,
-    "reason": "DEN up 4 \u00b7 3:10 left in Q2 \u00b7 Luka has 24 already",
+    "reason": "comeback \u2014 it's close again \u00b7 DEN up 4 \u00b7 3:10 left in Q2",
     "tags": [
      "Doncic 24 pts"
     ],

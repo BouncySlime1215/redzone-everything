@@ -94,7 +94,8 @@ def test_min_dwell(dec, clock):
     assert d.action == "stay" and "giving it a moment" in d.reason
 
 
-def test_break_visit_then_return_when_home_resumes(dec, clock):
+def _visit_then_resume(dec, clock, home_lock=None):
+    """Leave "a" for its timeout, then the data shows the snap that ends it."""
     calibrate(dec, "youtubetv:a")
     calibrate(dec, "youtubetv:b")
     start_on(dec, clock, "a", {})
@@ -104,15 +105,31 @@ def test_break_visit_then_return_when_home_resumes(dec, clock):
     clock.t += 50
     d = dec.decide(cands(a=sc("a", 70, is_break=True), b=55))
     assert d.kind == "break_visit" and d.target == "b"
-    # Home's break ends in the data. Stay away until just before the resume airs, then go back.
     clock.t += 60
     tla.events.append(Event(clock.t, "stop_end"))
-    d = dec.decide(cands(a=70, b=55))
+    tla.events.append(Event(clock.t + 12, "play", "run for 3"))
+    d = dec.decide(cands(a=sc("a", 70, lock=home_lock), b=55))
     assert d.action == "stay" and "heading back" not in d.reason
+    return lambda: dec.decide(cands(a=sc("a", 70, lock=home_lock), b=55))
+
+
+def test_break_visit_returns_just_before_a_crunch_snap(dec, clock):
+    # Every snap counts in the final two minutes: go back just before it airs.
+    again = _visit_then_resume(dec, clock, home_lock="final two minutes")
     clock.t += 30
-    d = dec.decide(cands(a=70, b=55))
+    d = again()
     assert d.action == "switch" and d.target == "a" and d.kind == "home"
     assert dec.home_break_visit is None
+
+
+def test_break_visit_skips_the_ad_tail_before_a_routine_snap(dec, clock):
+    # A routine snap isn't worth half a minute of commercial: come back once it has aired.
+    again = _visit_then_resume(dec, clock)
+    clock.t += 30
+    assert again().action == "stay"
+    clock.t += 30
+    d = again()
+    assert d.action == "switch" and d.target == "a" and d.kind == "home"
 
 
 def test_focus_stays_through_live_action(dec, clock):

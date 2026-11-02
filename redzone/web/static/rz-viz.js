@@ -1,8 +1,8 @@
 /* RedZone Everything — sports graphics: NFL field, MLB diamond, NHL rink, period progress,
    win-probability bar + sparkline, linescore. All inline SVG/HTML, sized by the container. */
 
-import { attr, esc, num, clamp, get, arr, ordinal, raw, pairInks, teamBy } from "./rz-core.js?v=20";
-import { logo, icon } from "./rz-ui.js?v=20";
+import { attr, esc, num, clamp, get, arr, ordinal, raw, pairInks, teamBy } from "./rz-core.js?v=22";
+import { logo, icon } from "./rz-ui.js?v=22";
 
 const REG = { nfl: 4, nba: 4, nhl: 3, mlb: 9 };
 const PERIOD_MIN = { nfl: 15, nba: 12, nhl: 20 };
@@ -62,9 +62,9 @@ function nflField(g) {
           ${fd ? `<rect x="${(fd - 1.4).toFixed(1)}" y="10" width="2.8" height="52" fill="#ffd400"/>` : ""}
           ${goal ? `<rect x="${W - EZ - 1.4}" y="10" width="2.8" height="52" fill="#ffd400" opacity=".9"/>` : ""}
         </g>
-        <g transform="translate(${(los - 7).toFixed(1)} 36)" style="animation:ball-bob 1.6s ease-in-out infinite">
+        <g transform="translate(${(los - 7).toFixed(1)} 36)"><g style="animation:ball-bob 1.6s ease-in-out infinite">
           <ellipse rx="7" ry="4.2" fill="#8a4b1f" stroke="#fff" stroke-width=".8"/><path d="M-3 0h6M-1.5-1.3v2.6M0-1.3v2.6M1.5-1.3v2.6" stroke="#fff" stroke-width=".7"/>
-        </g>
+        </g></g>
         <path d="M${(los + 4).toFixed(1)} 30l7 6-7 6z" fill="${offInk}" opacity=".95"/>
       </svg>
       <span class="ball-pin" style="left:${pct.toFixed(2)}%">${logo(off, { size: 22, dark: true })}</span>

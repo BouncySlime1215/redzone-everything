@@ -4,12 +4,12 @@
 import {
   app, ACTIONS, hooks, attr, esc, num, get, arr, games, gameById, phase, status, teamVars, pairInks, fmtAgo, fmtTime,
   fmtStart, nowS, reduceMotion, SPRING, EASE_OUT, raw, ink, teamBy, whereLabel,
-} from "./rz-core.js?v=20";
-import { patch } from "./rz-dom.js?v=20";
-import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=20";
-import { heroCard, fantasyCard } from "./rz-cards.js?v=20";
-import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=20";
-import { act } from "./rz-api.js?v=20";
+} from "./rz-core.js?v=22";
+import { patch } from "./rz-dom.js?v=22";
+import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=22";
+import { heroCard, fantasyCard } from "./rz-cards.js?v=22";
+import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=22";
+import { act } from "./rz-api.js?v=22";
 
 const STATE_LABEL = { idle: "Idle", watching: "Watching", locked: "Locked in", break: "On a break", paused: "Paused",
   frozen: "Holding still", safe: "Safe mode", replay: "Replay" };
@@ -102,11 +102,13 @@ function nextUp(S) {
   return `<div class="next" data-key="next" style="--a-ink:${ai};--h-ink:${hi}" ${g ? `data-act="open-game" data-gid="${attr(g.id)}" role="button"` : ""}>
     ${g ? `<div class="logo-pair">${logo(g.away, { size: 30 })}${logo(g.home, { size: 30 })}</div>` : `<span class="pick-ic" style="width:40px;height:40px;background:color-mix(in srgb,var(--info) 14%,transparent);color:var(--info-ink)">${icon("arrow-right")}</span>`}
     <div class="grow"><div class="lbl">Next up${g ? ` · ${esc(g.matchup)}` : nx.matchup ? ` · ${esc(nx.matchup)}` : ""}</div>
-      <div class="what">${esc(nx.reason)}</div>
+      <div class="what">${esc(stripMatchup(nx.reason, g ? g.matchup : nx.matchup))}</div>
       ${nx.why_waiting ? `<div class="why">Waiting: ${esc(nx.why_waiting)}</div>` : ""}</div>
     <span class="wait-ring" aria-hidden="true"></span>
   </div>`;
 }
+
+const stripMatchup = (r, m) => { const s = String(r || ""); return m && s.startsWith(m) ? s.slice(m.length).replace(/^\s*[·:—-]\s*/, "") : s; };
 
 /* nothing on the TV yet: illustrated card + countdown to the first game + tonight's slate */
 function idle(S) {
@@ -162,8 +164,8 @@ function queue(S) {
 
 function timeline(S) {
   const log = arr(S.log).slice(0, 12);
-  const dry = !!get(S, "mode.dry_run");
-  const head = sec("Recent switches", { key: "sec-log", aside: dry && log.length ? "Dry run · nothing changed on the TV" : "" });
+  const allDry = log.length && log.every((l) => l.dry_run);
+  const head = sec("Recent switches", { key: "sec-log", aside: allDry ? "Dry run" : "" });
   if (!log.length) return `${head}<div class="card" data-key="log-empty">${empty("timeline", "No switches yet", "Every channel change shows up here with the reason it made it.", "", "empty--sm", "tl")}</div>`;
   return `${head}<div class="card tl" data-key="log" data-flip>${log.map((l) => {
     const g = gameById(l.to);
@@ -173,7 +175,7 @@ function timeline(S) {
       <div style="min-width:0">
         <div class="tl-top">${g ? `<span class="logo-pair">${logo(g.away, { size: 20 })}${logo(g.home, { size: 20 })}</span>` : ""}<span class="m ell">${esc(l.matchup || (g && g.matchup))}</span><span class="t">${esc(fmtTime(l.ts))}</span></div>
         <div class="tl-why">${esc(l.reason)}</div>
-        <div class="tl-tags"><span class="tag tag--kind">${esc(kname)}</span>${l.dry_run ? `<span class="tag tag--would">Would switch</span>` : ""}${l.ok === false && !l.dry_run ? `<span class="tag tag--fail">Failed</span>` : ""}${l.took ? `<span class="tag">${num(l.took).toFixed(1)}s</span>` : ""}</div>
+        <div class="tl-tags"><span class="tag tag--kind">${esc(kname)}</span>${l.dry_run && !allDry ? `<span class="tag tag--would">Would switch</span>` : ""}${l.ok === false && !l.dry_run ? `<span class="tag tag--fail">Failed</span>` : ""}${l.took ? `<span class="tag">${num(l.took).toFixed(1)}s</span>` : ""}</div>
       </div></div>`;
   }).join("")}</div>`;
 }
