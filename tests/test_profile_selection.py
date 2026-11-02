@@ -118,3 +118,24 @@ async def test_discovery_never_blindly_clears_profile_or_account_picker(text):
     st = FakeStick([picker()], text=text)
     assert not await clear_prompt(st, [])
     assert not st.keys and not st.reads
+
+
+def system_picker(focus="Guest", names=("Guest", "Nick")):
+    return picker(focus, names).replace("<hierarchy>", '<hierarchy><node package="com.amazon.tv.launcher"/>', 1)
+
+
+async def test_fire_tv_system_picker_never_uses_the_apps_profile_name():
+    st = FakeStick([system_picker(names=("Guest", "Serge"))], text="Who's watching? | Guest | Serge")
+    steps = []
+    with pytest.raises(ProfileSelectionRequired, match="Fire TV system profile picker"):
+        await select_profile(st, st.text, "Serge", steps)
+    assert st.keys == []
+
+
+async def test_fire_tv_system_picker_uses_its_own_configured_profile():
+    st = FakeStick([system_picker(), system_picker("Nick")], text="Who's watching? | Guest | Nick")
+    st.preferred_profiles = {"firetv": "Nick"}
+    steps = []
+    assert await select_profile(st, st.text, "Serge", steps)
+    assert st.keys == ["KEYCODE_DPAD_RIGHT", "KEYCODE_DPAD_CENTER"]
+    assert any("'firetv' profile" in s for s in steps) and "Nick" in steps[-1]
