@@ -171,7 +171,9 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         before = dec.current
         decision = dec.decide(cands)
         decisions.append(decision)
-        if decision.action == "switch" and (decision.target != before or decision.kind == "live"):
+        # Leaving a replay is a real tune even when it goes back to the game just replayed.
+        from_replay = bool(watching) and str(watching[-1][1]).startswith("replay:")
+        if decision.action == "switch" and (decision.target != before or decision.kind == "live" or from_replay):
             switches.append(SwitchLog(clock.t, before, decision.target, decision.kind, decision.reason))
             watching.append((clock.t, decision.target))
         elif decision.action == "replay" and decision.replay:

@@ -108,6 +108,7 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   enabled: true
   apps: [youtubetv]        # apps where rewinding live TV works
   max_age_s: 1800          # don't replay anything older than this
+  urgent_s: 1200           # in its last N seconds a missed play jumps the queue and beats dull live play
   clip_s: 15               # how long each replay plays
   seek_s: 6                # time spent rewinding to the play
   instant_window_s: 900    # when everything's on a break, re-show great plays from the last 15 min

@@ -347,7 +347,8 @@ class Engine:
         return changed
 
     def _act(self, d, before, cands) -> None:
-        target = cands[d.target].target if d.target in cands else None
+        # A catch-up replay can be of a game that just ended (no longer a live candidate).
+        target = cands[d.target].target if d.target in cands else self.decider.target_of(d.target)
         back = None
         if d.action == "replay" and d.replay:
             delay = self.delays.get(target or "unknown")

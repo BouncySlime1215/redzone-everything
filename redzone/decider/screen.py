@@ -23,6 +23,7 @@ CONTINUOUS = {League.NBA, League.NHL}
 FEED_LAG_GUESS_S = 6.0  # used only when a feed gives no wallclock
 PLAY_LEN_S = {League.NFL: 10.0, League.MLB: 8.0, League.NBA: 0.0, League.NHL: 0.0}
 AFTER_PLAY_BUFFER_S = 3.0
+FIRST_POLL_RECENT_S = 60.0  # on a game's first poll, plays newer than this may not have aired yet
 
 
 @dataclass
@@ -121,11 +122,14 @@ class Timeline:
         new = [p for p in plays if p.id and p.id not in self._seen_ids]
         first_poll = not self._seen_ids
         action = [p for p in new if not _is_marker(p.kind)]
-        if not first_poll:
-            for p in action:
-                # In basketball every basket "scores"; only flag true highlights there.
-                big = p.kind in ("td", "turnover", "goal", "hr") or (p.scoring and self.league != League.NBA)
-                self.events.append(Event(_t(p, now), "play", (p.text or p.kind)[:80], big, p.id, p.kind))
+        for p in action:
+            # First poll: skip history, but keep plays recent enough to still be airing
+            # (an opening-kickoff return TD is in the very first poll of a game).
+            if first_poll and _t(p, now) < now - FIRST_POLL_RECENT_S:
+                continue
+            # In basketball every basket "scores"; only flag true highlights there.
+            big = p.kind in ("td", "turnover", "goal", "hr") or (p.scoring and self.league != League.NBA)
+            self.events.append(Event(_t(p, now), "play", (p.text or p.kind)[:80], big, p.id, p.kind))
         for p in new:
             self._seen_ids.append(p.id)
         if not new and self._last_score is not None and score != self._last_score and None not in score:
