@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import re
 import secrets
@@ -56,7 +57,7 @@ PLAYBACK_STATES = {3: "playing", 2: "paused", 6: "buffering", 8: "connecting", 1
 _STATE_RE = re.compile(r"state=PlaybackState \{state=(?:[A-Z_]+\()?(\d+)\)?, position=(-?\d+)")
 _UPDATED_RE = re.compile(r"\bupdated=(-?\d+)")
 # Only the lines the playback parser reads: ~1 KB instead of a 20-60 KB dump.
-PLAYBACK_CMD = "dumpsys media_session | grep -E 'package=|state=PlaybackState'"
+PLAYBACK_CMD = "dumpsys media_session | grep -E 'package=|state=PlaybackState|metadata:.*description='"
 
 
 @dataclass
@@ -74,6 +75,7 @@ class Stick:
     os: str = ""
     packages: dict[str, str] = field(default_factory=dict)  # role -> package
     state: str = "unknown"         # connected | offline | unauthorized | unknown
+    connect_error: str = ""         # last failed connection/probe, kept separate from playback status
     last_ok: float = 0.0
     _next_retry: float = 0.0
     _backoff: float = 10.0
@@ -181,15 +183,22 @@ class Stick:
             return self.state == "connected"
         r = await _adb("connect", self.host, timeout=6)
         text = r.out.lower()
+        detail = r.out.strip()
         if "connected to" in text or "already connected" in text:
             if self._session is not None:
                 self._session.retry_at = 0.0   # the stick is back: give the always-open shell another go now
             probe = await self.shell("echo ok", timeout=5)
             if probe.ok and "ok" in probe.out:
                 self.state = "connected"
+                self.connect_error = ""
                 self._backoff = 10.0
                 return True
-        if "unauthorized" in text:
+            # adb connect can succeed before its shell is authorized. Keep the
+            # actual probe failure instead of replacing it with generic offline.
+            detail = probe.out.strip()
+            text = detail.lower()
+        self.connect_error = detail[:300] or "ADB did not establish a usable shell"
+        if "unauthorized" in text or "failed to authenticate" in text:
             self.state = "unauthorized"
         else:
             self.state = "offline"
@@ -226,8 +235,11 @@ class Stick:
     async def playback(self, package: str | None = None) -> dict:
         """What the stick says is playing: {state: playing|paused|buffering|stopped|none, pkg, position,
         updated}. `updated` is the stick's clock (ms since boot) when the app last changed that state."""
+        started = time.monotonic()
         r = await self.shell(PLAYBACK_CMD, timeout=4)
-        return parse_playback(r.out, package)
+        report = parse_playback(r.out if r.ok else "", package)
+        report.update(read_ok=r.ok, read_started=started, read_finished=time.monotonic())
+        return report
 
     async def foreground(self) -> str:
         r = await self.shell("dumpsys activity activities | grep -m1 -E 'mResumedActivity|topResumedActivity'",
@@ -247,11 +259,8 @@ class Stick:
     async def hdmi_port(self) -> str | None:
         """Which TV input this stick is plugged into, from its HDMI-CEC physical address
         (1.0.0.0 = HDMI1, 2.0.0.0 = HDMI2...). None if CEC is off or the stick won't say."""
-        r = await self.shell("dumpsys hdmi_control | grep -i -m3 -E 'physical ?address'", timeout=6)
-        m = re.search(r"(?:0x)?([1-9])[0.]?0{2,3}\b|\b([1-9])\.0\.0\.0\b", r.out)
-        if not m:
-            return None
-        return f"HDMI{m.group(1) or m.group(2)}"
+        r = await self.shell("dumpsys hdmi_control | grep -i -m3 -E 'physical[ _]?address'", timeout=6)
+        return hdmi_port_from_dump(r.out) if r.ok else None
 
     async def key(self, *codes: str) -> RunResult:
         result = RunResult(True, "", 0.0)
@@ -302,8 +311,26 @@ class Stick:
         """Provably still on `target`, live: we tuned it there, nothing has been pressed or launched
         since, and the app's playback clock shows no pause, seek or new stream since our tune."""
         t = self.tuned
-        return bool(t and t["target"] == target and report.get("state") == "playing"
+        return bool(t and t["target"] == target and playback_ready(report)
                     and report.get("pkg") == t["pkg"] and same_stream(t["report"], report) is True)
+
+
+def hdmi_port_from_dump(text: str) -> str | None:
+    """Read a direct HDMI topology address, not active-source history or a device ID.
+
+    Fire OS emits physical_address; other Android builds use physicalAddress or
+    physical address. This identifies a port, not the monitor's selected input.
+    Conflicting or invalid addresses remain unknown.
+    """
+    values = re.findall(r"physical[ _]?address\s*[:=]\s*(0x[0-9a-f]{4}|[0-9a-f](?:\.[0-9a-f]){3}|[0-9a-f]{4})\b",
+                        text, re.IGNORECASE)
+    ports = set()
+    for value in values:
+        digits = value.lower().removeprefix("0x").replace(".", "")
+        if len(digits) != 4 or digits[0] == "0" or digits[1:] != "000":
+            continue
+        ports.add(int(digits[0], 16))
+    return f"HDMI{next(iter(ports))}" if len(ports) == 1 else None
 
 
 # --- the always-open shell ---------------------------------------------------------------
@@ -504,21 +531,54 @@ def _adb_problem(text: str) -> str | None:
 
 def parse_playback(text: str, package: str | None = None) -> dict:
     """Read `dumpsys media_session` (full or grep'd). A playing session wins; otherwise the last one."""
-    best = {"state": "none", "pkg": None, "position": None, "updated": None}
-    block_pkg = None
+    empty = {"state": "none", "pkg": None, "position": None, "updated": None}
+    blocks, current = [], None
     for line in text.splitlines():
         m = re.search(r"package=([\w.]+)", line)
         if m:
-            block_pkg = m.group(1)
+            current = dict(empty, pkg=m.group(1))
+            blocks.append(current)
+        if current is None:
+            continue
         m = _STATE_RE.search(line)
-        if m and (package is None or block_pkg == package):
+        if m:
             code = int(m.group(1))
             u = _UPDATED_RE.search(line)
-            best = {"state": PLAYBACK_STATES.get(code, f"state{code}"), "pkg": block_pkg,
-                    "position": int(m.group(2)), "updated": int(u.group(1)) if u else None}
-            if best["state"] == "playing":
-                break
-    return best
+            current.update(state=PLAYBACK_STATES.get(code, f"state{code}"),
+                           position=int(m.group(2)), updated=int(u.group(1)) if u else None)
+            speed = re.search(r"\bspeed=(-?\d+(?:\.\d+)?)", line)
+            if speed:
+                current["speed"] = float(speed.group(1))
+        metadata = re.search(r"metadata:\s*size=\d+,\s*description=(.*)$", line)
+        if metadata:
+            # Android MediaDescription renders title, subtitle, description in that
+            # order. Keep the title attached to its own session even when metadata
+            # occurs after PlaybackState, and never borrow another app's title.
+            fields = metadata.group(1).rsplit(", ", 2)
+            fields += [""] * (3 - len(fields))
+            for key, value in zip(("title", "subtitle", "description"), fields):
+                current[key] = "" if value.strip().lower() == "null" else value.strip()
+    eligible = [b for b in blocks if (package is None or b["pkg"] == package)
+                and b["position"] is not None]
+    return next((b for b in eligible if b["state"] == "playing"), eligible[-1] if eligible else empty)
+
+
+def playback_ready(report: dict) -> bool:
+    """A usable moving-playback report, not proof of frames or game identity.
+
+    Fire OS can report PLAYING with speed=0 while a player reloads. Missing
+    speed remains compatible with providers that omit it; explicit invalid,
+    stationary, or reverse transport must not confirm readiness.
+    """
+    if report.get("state") != "playing" or report.get("read_ok") is False:
+        return False
+    speed = report.get("speed")
+    if speed is None:
+        return True
+    try:
+        return math.isfinite(float(speed)) and float(speed) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 def same_stream(a: dict, b: dict, slack_ms: int = 3000) -> bool | None:

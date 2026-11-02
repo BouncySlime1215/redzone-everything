@@ -3,9 +3,9 @@
 import {
   app, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, isDark, whereLabel, whereUnknown,
   leaderLabel, winner, teamBy, fmtDur, nowS, fmtCountdown, imgSrc, games,
-} from "./rz-core.js?v=36";
-import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=36";
-import { situation, wpBar } from "./rz-viz.js?v=36";
+} from "./rz-core.js?v=38";
+import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=38";
+import { situation, wpBar } from "./rz-viz.js?v=38";
 
 /* ---------- chips ---------- */
 export function whereChip(g, { onDark = false } = {}) {

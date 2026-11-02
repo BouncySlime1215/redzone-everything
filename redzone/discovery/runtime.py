@@ -24,19 +24,62 @@ class DiscoveryRuntime:
         root = Path(user_path).parent if user_path else Path(__file__).resolve().parents[2] / "data"
         self.book = ProviderBook(root / "providers.json")
         self.autonomy = Autonomy.for_engine(engine, paths=Paths.under(root))
+        self._device_iteration = None
+        self._device_suspended = False
         register(TUNERS)
+        self.configure_profiles()
+
+    def configure_profiles(self):
+        profiles = self.engine.cfg.get("providers.profiles", {}) or {}
+        for key, tuner in TUNERS.items():
+            tuner.preferred_profile = profiles.get(key, "")
+        for stick in self.engine.control.usable:
+            stick.preferred_profiles = dict(profiles)
 
     async def run(self):
         await self.autonomy.start()
         while True:
             try:
-                if self.engine.cfg.get("autonomy.enabled", True):
-                    if not self.engine.cfg.get("mode.dry_run", True):
-                        await self.book.refresh_sticks(self.engine.control.usable)
-                    await self.autonomy.step()
+                self.configure_profiles()
+                if not self.device_suspended and self.engine.cfg.get("autonomy.enabled", True):
+                    self._device_iteration = asyncio.create_task(self._step())
+                    try:
+                        await self._device_iteration
+                    except asyncio.CancelledError:
+                        # A recorded session cancels just the device iteration.
+                        # Cancellation of this parent loop must still shut down.
+                        if asyncio.current_task().cancelling() or not self.device_suspended:
+                            raise
+                    finally:
+                        self._device_iteration = None
             except Exception:
                 log.exception("Background discovery failed; retrying later")
             await asyncio.sleep(15)
+
+    @property
+    def device_suspended(self):
+        return self._device_suspended or bool(getattr(getattr(self.engine, "recorded", None), "active", False))
+
+    async def _step(self):
+        if self.device_suspended:
+            return
+        if not self.engine.cfg.get("mode.dry_run", True):
+            await self.book.refresh_sticks(self.engine.control.usable)
+        if not self.device_suspended:
+            await self.autonomy.step()
+
+    async def suspend_device_work(self):
+        """Drain device maintenance before a dedicated recorded-playback session."""
+        self._device_suspended = True
+        task = self._device_iteration
+        if task is not None and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        await self.autonomy.close()
+
+    def resume_device_work(self):
+        """Called only after recorded mode exits back to paused dry run."""
+        self._device_suspended = False
 
     def remember(self, game, links):
         return self.book.remember(game, links)
@@ -47,7 +90,8 @@ class DiscoveryRuntime:
         self.autonomy.links_refreshed(count, error)
 
     def choose(self, game, base):
-        return self.book.choose(game, base, self.engine.cfg.get("teams"))
+        return self.book.choose(game, base, self.engine.cfg.get("teams"), self.engine.channels,
+                                sunday_ticket=self.engine.cfg.get("sunday_ticket", True))
 
     def on_outcome(self, outcome, game_id=None, replay=False):
         if outcome.dry_run:
@@ -65,7 +109,8 @@ class DiscoveryRuntime:
                            "why": s.why_not()} for key, s in self.book.states().items()],
             "setup": self.autonomy.steps,
             "dry_run": self.engine.cfg.get("mode.dry_run", True),
+            "device_work_suspended": self.device_suspended,
         }
 
     async def close(self):
-        await self.autonomy.close()
+        await self.suspend_device_work()

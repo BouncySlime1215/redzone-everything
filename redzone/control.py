@@ -675,8 +675,20 @@ class Controller:
             if self._exit_check is not None and not self._exit_check():
                 self.tv.last_error = "safe exit window closed before CEC command"
                 return False
+            # Fire OS has no shell CEC command and blocks the system call (HDMI_CEC permission),
+            # but HOME makes the stick announce <Active Source> over the HDMI cable, and the TV
+            # follows. HOME backgrounds the preloaded app, so bring it straight back: it resumes
+            # the stream it was already playing (measured on the 4K/4K Plus: ~2.5s to video).
+            if await self._home_flip(stick):
+                self.latency.record("flip", time.monotonic() - t0)
+                self._awake_at[stick.host] = time.time()
+                return True
             r = await stick.shell("cmd hdmi_control onetouchplay", timeout=5)
-            rejected = "unknown command" in r.out.lower() or "error" in r.out.lower()
+            # Fire OS can return exit 0 while explaining it has no shell
+            # implementation. That is a definite no-op, not a sent CEC request.
+            # Generic errors/timeouts remain ambiguous and must not be retried.
+            rejected = any(marker in r.out.lower() for marker in
+                           ("unknown command", "no shell command implementation"))
             if not rejected:
                 # Success acknowledges a request, not which input the display
                 # actually shows. A lost reply also forbids a second mutation.
@@ -696,6 +708,26 @@ class Controller:
             self.latency.record("flip", time.monotonic() - t0)
             self._awake_at[stick.host] = time.time()
         return ok
+
+    async def _home_flip(self, stick: Stick) -> bool:
+        """HOME -> <Active Source> -> TV switches to this stick; then resume its app.
+        Verified on the stick's own CEC state (the TV isn't reachable over Wi-Fi)."""
+        app = (self.hidden_target or "").split(":", 1)[0] if stick is self.hidden else None
+        pkg = stick.packages.get(app or "") if app else None
+        resume = f"; sleep 0.6; am start -n $(cmd package resolve-activity --brief {pkg} | tail -1) >/dev/null 2>&1" \
+            if pkg else ""
+        before = await stick.shell("dumpsys hdmi_control | grep -c 'Active Source> '", timeout=5)
+        r = await stick.shell(f"input keyevent KEYCODE_HOME{resume}", timeout=8)
+        if not r.ok:
+            return False
+        for _ in range(12):
+            st = await stick.shell("dumpsys hdmi_control | grep -E -c 'mIsActiveSource: true'", timeout=5)
+            if st.out.strip().startswith("1"):
+                return True
+            await asyncio.sleep(0.25)
+        log.warning("HOME flip on %s: stick never became active source (before=%s)", stick.host,
+                    before.out.strip())
+        return False
 
     # --- the hidden stick between switches ---------------------------------------------
 
@@ -797,7 +829,7 @@ class Controller:
             log.info("standby %s is %s, not %s — it'll be reloaded", target, state, "/".join(expect))
             self._set_hidden(None, False)
 
-    async def scan_sunday_ticket(self, codes: list[str], games: list, on_found=None) -> dict[str, str]:
+    async def scan_sunday_ticket(self, codes: list[str], games: list, on_found=None, *, may_run=None) -> dict[str, str]:
         """Flip through the Sunday Ticket channels and read each one's game title off the screen.
         Uses the hidden stick in two-stick mode (you never see it), else the main stick (you will)."""
         from redzone.channels import match_title
@@ -806,26 +838,43 @@ class Controller:
         if stick is None or not codes:
             return found
         tuner = TUNERS["youtubetv"]
+
+        def allowed():
+            return not self.cfg.get("mode.dry_run", True) and (may_run is None or may_run())
+
         async with self._lock:
-            for code in codes:
-                res = await tuner.tune(stick, code, f"youtubetv:st:{code}")
-                text = ""
-                for keys in ((), ("KEYCODE_DPAD_DOWN",)):  # the title shows with the player overlay
-                    if keys:
-                        await stick.key(*keys)
-                        await asyncio.sleep(1.0)
-                    text = await stick.screen_text()
-                    g = match_title(text, games)
-                    if g:
-                        found[g.game_id] = code
-                        if on_found:
-                            on_found(g, code)
+            if not allowed():
+                return found
+            try:
+                for code in codes:
+                    if not allowed():
                         break
-                log.info("ST scan %s -> %s (%s)", code, found and list(found)[-1], "ok" if res.ok else res.error)
-            if stick is self.hidden:
-                self._set_hidden(None, False)
-            else:
-                self.on_target = None
+                    res = await tuner.tune(stick, code, f"youtubetv:st:{code}", may_cut=allowed)
+                    if not allowed():
+                        break
+                    if not res.ok:
+                        continue
+                    for keys in ((), ("KEYCODE_DPAD_DOWN",)):  # title shown by the player overlay
+                        if not allowed():
+                            break
+                        if keys:
+                            await stick.key(*keys)
+                            await asyncio.sleep(1.0)
+                        text = await stick.screen_text()
+                        if not allowed():
+                            break
+                        g = match_title(text, games)
+                        if g:
+                            found[g.game_id] = code
+                            if on_found:
+                                on_found(g, code)
+                            break
+                    log.info("ST scan %s -> %s (%s)", code, found and list(found)[-1], "ok" if res.ok else res.error)
+            finally:
+                if stick is self.hidden:
+                    self._set_hidden(None, False)
+                else:
+                    self.on_target = None
         return found
 
     def _blackout_check(self, target: str, res: TuneResult) -> None:

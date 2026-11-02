@@ -1,6 +1,6 @@
-"""Every streaming app, automatically: what's installed, what's subscribed, which one to use.
+"""Provider candidates: installed apps, learned access failures, and per-game routes.
 
-Nothing to set up:
+Discovery after the owner selects and signs into their devices:
 1. Installed?   One `pm list packages` per stick (every 30 min) says which provider apps
                 exist (roles_from_packages).  Package names are looked up, never assumed.
 2. Subscribed?  Assumed yes when the app is installed.  When a tune lands on a sign-in or
@@ -28,7 +28,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from redzone.channels import MONUMENTAL_TEAMS, NETWORKS, PRETTY, Where
+from redzone.channels import APP_FOR, MONUMENTAL_TEAMS, NETWORKS, PRETTY, ChannelMap, Where
 from redzone.models import GameState, League
 
 log = logging.getLogger(__name__)
@@ -375,11 +375,11 @@ def _why_pick(s: Source, side: str | None) -> str:
     if side and s.feed == side:
         return "your team's own broadcast"
     if s.provider == "youtubetv":
-        return "YouTube TV tunes fastest and can rewind for catch-up replays"
+        return "preferred provider for channel playback and configured rewind support"
     if s.feed == "national":
         return "the national broadcast"
     if s.kind == "event":
-        return f"{_name(s.provider)} has this exact game"
+        return f"a matched event link was found for {_name(s.provider)}"
     return f"{_name(s.provider)} carries this channel"
 
 
@@ -555,12 +555,25 @@ def _merge(o: Source, c: Source) -> Source:
 
 
 def gather_sources(g: GameState, base: Where | None, links: Mapping[str, list[dict]] | None = None,
-                   skips: Mapping[str, dict] | None = None) -> list[Source]:
+                   skips: Mapping[str, dict] | None = None,
+                   channel_map: ChannelMap | None = None, sunday_ticket: bool = True) -> list[Source]:
     """Every candidate for one game: ChannelMap's answer first, then event links, then
     channel fallbacks.  Duplicate targets are merged; learned skips are applied to all."""
     found = sources_from_links(g, links or {}, skips)
     first = source_from_where(base, g)
     cands = ([first] if first else []) + found
+    if channel_map is not None:
+        # A mixed listing (e.g. ESPN+ and ABC) must not hide another usable
+        # channel behind ChannelMap.where's first answer. Reuse its per-game
+        # market/Sunday Ticket rules rather than assuming every local affiliate
+        # carries every game listed on that network.
+        for broadcast in g.broadcasts:
+            net = NETWORKS.get(broadcast.lower().strip())
+            if net and APP_FOR.get(net, "youtubetv") == "youtubetv":
+                route = channel_map.where(replace(g, broadcasts=[broadcast]), sunday_ticket=sunday_ticket)
+                candidate = source_from_where(route, g)
+                if candidate:
+                    cands.append(candidate)
     cands += channel_sources(g, have={c.provider for c in cands if c.target})
     out: dict[str, Source] = {}
     for c in cands:
@@ -784,14 +797,16 @@ class ProviderBook:
                       if not isinstance(v, dict) or not v.get("start") or now - float(v["start"]) < LINKS_KEEP_S}
         self.skips = self.active_skips()
 
-    def sources(self, g: GameState, base: Where | None = None) -> list[Source]:
+    def sources(self, g: GameState, base: Where | None = None,
+                channel_map: ChannelMap | None = None, sunday_ticket: bool = True) -> list[Source]:
         rec = self.links.get(g.game_id) or {}
-        return gather_sources(g, base, rec.get("providers") or {}, self.active_skips())
+        return gather_sources(g, base, rec.get("providers") or {}, self.active_skips(), channel_map, sunday_ticket)
 
-    def choose(self, g: GameState, base: Where | None = None, my_teams=None) -> Pick:
+    def choose(self, g: GameState, base: Where | None = None, my_teams=None,
+               channel_map: ChannelMap | None = None, sunday_ticket: bool = True) -> Pick:
         """The one call per game: ChannelMap's answer + every event link + fallbacks, ranked."""
         try:
-            return best_source(g, self.sources(g, base), self.states(), my_teams)
+            return best_source(g, self.sources(g, base, channel_map, sunday_ticket), self.states(), my_teams)
         except Exception:  # a bad record must never cost us the game: fall back to ChannelMap
             log.exception("choose failed for %s", g.game_id)
             if base is None:

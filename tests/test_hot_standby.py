@@ -34,6 +34,16 @@ class FakeStick(Stick):
 
     async def shell(self, cmd, timeout=8.0):
         self.log.append(cmd)
+        if "mIsActiveSource" in cmd:   # the HOME flip's verification read
+            on = getattr(type(self), "last_input_host", None) == self.host or getattr(self, "_active", False)
+            return RunResult(True, "1" if on else "0", 0.01)
+        if "Active Source> " in cmd:
+            return RunResult(True, "0", 0.01)
+        if "KEYCODE_HOME" in cmd:      # HOME makes a Fire TV announce itself as the active source
+            if not self.cec_ok:
+                return RunResult(False, "", 0.01)   # CEC off on this TV: HOME switches nothing
+            self.log.append("onetouchplay(home)")
+            cmd = "onetouchplay"
         if "onetouchplay" in cmd:
             await asyncio.sleep(0.03)   # a real adb round trip is never instant
             if self.cec_ok:
@@ -528,7 +538,7 @@ class ConfirmStick(Stick):
 
     async def screen_text(self):
         self.texts += 1
-        return "Who's watching?"
+        return "Are you still watching? | Continue"
 
     async def key(self, *codes):
         self.keys.extend(codes)

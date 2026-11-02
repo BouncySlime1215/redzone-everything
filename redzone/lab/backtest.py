@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 from zoneinfo import ZoneInfo
 
 from redzone.channels import REDZONE_TARGET, redzone_on
@@ -203,7 +204,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         focus: str | None = None, start: float | None = None, end: float | None = None,
         targets: dict[str, str] | None = None,
         true_delay: float | None = None, sigma: float = 3.0, lag_jitter: tuple[float, float] | None = None,
-        drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0) -> Report:
+        drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
+        on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
       true_delay    the stream's real delay; `delay` is only the app's estimate of it
@@ -212,6 +214,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
       drop          source goes silent 60-120 s, this many times per game-minute on average
       late_plays    fraction of plays that arrive one poll late (so out of order)
       no_wallclock  fraction of plays delivered without a wallclock
+      on_tick       optional read-only lab observer (historical time, decider), before selection
     """
     step = step or cfg.get("polling.live_s", 10)
     clock = _Clock()
@@ -273,6 +276,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             cands[r.gid] = Candidate(scorer.score(g, me), (targets or {}).get(r.gid, f"youtubetv:{r.gid}"),
                                      stale=clock.t - f.fresh_at > 60)
         before = dec.current
+        if on_tick is not None:
+            on_tick(clock.t, dec)
         decision = dec.decide(cands, REDZONE_TARGET if rz_ok and redzone_on(states.values()) else None)
         decisions.append(decision)
         _record(decision, before, clock.t, switches, watching, replayed)

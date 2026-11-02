@@ -167,6 +167,17 @@ class Config:
         tmp.replace(self.user_path)  # atomic: a crash mid-save can't corrupt the file
         if record:
             self.history_dir.mkdir(parents=True, exist_ok=True)
-            (self.history_dir / f"{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns() % 10**6:06d}.yaml").write_text(text)
+            # Keep revisions ordered across rapid saves, clock corrections and reloads.
+            # The prefix sorts after legacy timestamp names, which remain undoable.
+            revisions = [int(p.stem[3:]) for p in self.history_dir.glob("v2-*.yaml")
+                         if p.stem[3:].isdigit()]
+            revision = max(time.time_ns(), max(revisions, default=0) + 1)
+            while True:
+                try:
+                    with (self.history_dir / f"v2-{revision:020d}.yaml").open("x") as version:
+                        version.write(text)
+                    break
+                except FileExistsError:
+                    revision += 1
         self.overrides = over
         self.data = _deep_merge(self.defaults, over)

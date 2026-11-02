@@ -1,11 +1,12 @@
 /* RedZone Everything — Lab: Screen Lab labeling, stream delay + "I just saw it", auto-tuner, backtests, votes. */
 
-import { app, ACTIONS, hooks, attr, esc, num, get, arr, clamp, reduceMotion, SPRING, vibrate } from "./rz-core.js?v=36";
-import { patch } from "./rz-dom.js?v=36";
-import { icon, empty, sec, screenHead, skel, odo } from "./rz-ui.js?v=36";
-import { toast } from "./rz-sheet.js?v=36";
-import { api, act } from "./rz-api.js?v=36";
-import { screenEvidence } from "./rz-evidence.js?v=36";
+import { app, ACTIONS, hooks, attr, esc, num, get, arr, clamp, reduceMotion, SPRING, vibrate } from "./rz-core.js?v=38";
+import { patch } from "./rz-dom.js?v=38";
+import { icon, empty, sec, screenHead, skel, odo } from "./rz-ui.js?v=38";
+import { toast } from "./rz-sheet.js?v=38";
+import { api, act } from "./rz-api.js?v=38";
+import { screenEvidence } from "./rz-evidence.js?v=38";
+import { recordedPanel } from "./rz-recorded.js?v=38";
 
 let loading = null;
 export async function loadLab(force = false) {
@@ -34,7 +35,7 @@ export function renderLab(root) {
   const delays = arr(S.delays);
   const delay = `<div class="card card-pad" data-key="delay">${delays.length ? `<div data-flip>${delays.map(delayRow).join("")}</div>`
       : `<p class="muted" style="margin:0;font-size:13px">No channels measured yet. Tap the button as a play finishes on the live broadcast to estimate your stream delay.</p>`}
-    <button class="saw-btn" data-act="saw-it">${icon("zap")}I just saw it</button>
+    <button class="saw-btn" data-act="saw-it" ${S.recorded_playback?.active ? "disabled" : ""}>${icon("zap")}I just saw it</button>
     <p class="dim" style="margin:10px 2px 0;font-size:12.5px;line-height:1.4">Tap as the play finishes: the tackle is complete or the basket or goal goes in. Use the live broadcast, not a replay. Take several measurements; buffering can change the delay.</p></div>`;
   const f = S.feedback || get(app.lab, "feedback", {}) || {};
   const up = num(f.up), down = num(f.down);
@@ -42,6 +43,7 @@ export function renderLab(root) {
     <span class="v up">${icon("thumb-up")}${odo(up)}</span><div class="bar ${up + down ? "" : "bar--empty"}" style="--p:${up + down ? Math.round((up / (up + down)) * 100) : 50}"><i></i></div><span class="v down">${odo(down)}${icon("thumb-down")}</span></div>
     <p class="dim" style="margin:10px 0 0;font-size:12.5px">Your 👍 / 👎 on switches train the auto-tuner.</p></div>`;
   patch(root, `${screenHead("Lab", "Teach it · measure it · tune it")}
+    ${recordedPanel(S, true)}
     ${sec("Screen estimate", { key: "s-evidence" })}${screenEvidence(S, "lab-evidence")}
     ${sec("Screen Lab", { key: "s-pad", aside: "What's on your TV?" })}${pad}
     ${sec("Stream delay", { key: "s-delay", aside: "How far behind live you are" })}${delay}

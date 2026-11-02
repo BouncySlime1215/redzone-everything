@@ -879,8 +879,14 @@ class DeviceHealer:
                 parts.append(f"{_stick_name(s)}: approve the prompt on the TV")
             elif s.host in self.offline_since:
                 parts.append(f"{_stick_name(s)} offline {dur_text(now - self.offline_since[s.host])}")
-        if self.tv_saved:
-            parts.append({"on": "TV on", "standby": "TV in standby"}.get(self.tv_power or "", "TV off or not answering"))
+        # Dry-run deliberately never probes devices. Saved configuration is still
+        # known locally; an unperformed network check must not erase that fact.
+        saved_tv = bool((read_devices(self.path).get("tv") or {}).get("ip"))
+        if saved_tv:
+            if not math.isfinite(self.tv_checked):
+                parts.append("TV saved; connection not checked")
+            else:
+                parts.append({"on": "TV on", "standby": "TV in standby"}.get(self.tv_power or "", "TV saved; not answering"))
         else:
             parts.append("no TV saved yet")
         if self.notes:

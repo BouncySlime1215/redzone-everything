@@ -34,6 +34,7 @@ import copy
 import datetime as dt
 import json
 import logging
+import math
 import re
 import shutil
 import sys
@@ -473,27 +474,85 @@ def _rank(it: dict) -> tuple:
             0 if it.get("lang") in (None, "en") else 1, it.get("start") or 0)
 
 
+def _match_start(value) -> float | None:
+    """Matching uses absolute epoch seconds, never the machine's local timezone."""
+    try:
+        if isinstance(value, bool):
+            return None
+        value = float(value)
+        return value if math.isfinite(value) and value > 0 else None
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
 def match(links, league, away_names: set[str], home_names: set[str], *,
-          espn_event_id: str | int | None = None) -> dict[str, dict]:
+          espn_event_id: str | int | None = None,
+          expected_start: float | None = None,
+          start_tolerance_s: float = 90 * 60) -> dict[str, dict]:
     """provider -> best item for one game (case-insensitive; abbr, nickname or full name).
 
-    Best = playable from this IP first (geo_ok), then national > home > away feed, then
-    English.  The chosen dict is a copy with `alts` = the other candidates for that
-    provider (e.g. the other League Pass / ESPN+ feeds).  Never raises.
+    An explicit conflicting ESPN ID never falls back to team names. Exact IDs rank
+    first; otherwise expected_start (epoch seconds) bounds the scheduled airing time.
+    The 90-minute tolerance accommodates pregame airings, not a live-delay estimate.
+    Multiple source event IDs surviving that window are ambiguous and are withheld.
+    Within one event rank geo_ok, national > home > away feed, then English. The
+    chosen dict is a copy with `alts` containing only eligible broadcast alternatives.
+    Without expected_start, an exact-ID airing can supply the time anchor. Callers
+    should always pass the game start when known. Never raises.
     """
     try:
         lg = str(getattr(league, "value", league) or "").lower()
         an, hn = _norm_set(away_names), _norm_set(home_names)
-        by_provider: dict[str, list[dict]] = {}
+        target_id = str(espn_event_id).strip() if espn_event_id is not None else ""
+        candidates: list[tuple[dict, bool]] = []
         for it in links or []:
             if not isinstance(it, dict) or it.get("league") != lg:
                 continue
-            by_id = espn_event_id is not None and it.get("espn_event_id") == str(espn_event_id)
+            candidate_id = str(it.get("espn_event_id") or "").strip()
+            if target_id and candidate_id and candidate_id != target_id:
+                continue
+            by_id = bool(target_id and candidate_id == target_id)
             if by_id or (_side_hit(it, "away", an) and _side_hit(it, "home", hn)):
-                by_provider.setdefault(it.get("provider") or "other", []).append(it)
+                candidates.append((it, by_id))
+        anchor = _match_start(expected_start)
+        tolerance = _match_start(start_tolerance_s)
+        if tolerance is None:
+            return {}
+        if expected_start is None:
+            exact_starts = [_match_start(it.get("start")) for it, exact in candidates if exact]
+            exact_starts = [s for s in exact_starts if s is not None]
+            if exact_starts and max(exact_starts) - min(exact_starts) <= tolerance:
+                anchor = min(exact_starts)
+        eligible: list[tuple[dict, bool]] = []
+        for it, exact in candidates:
+            start = _match_start(it.get("start"))
+            if not exact and (anchor is not None or expected_start is not None):
+                if anchor is None or start is None or abs(start - anchor) > tolerance:
+                    continue
+            eligible.append((it, exact))
+        # Apple event IDs are shared by every provider/feed for an event. Do not
+        # mistake two games with the same teams for home/away broadcast alternatives.
+        event_ids: dict[str, set[str]] = {}
+        for it, exact in eligible:
+            if not exact:
+                eid = it.get("event_id") or it.get("espn_event_id")
+                if eid:
+                    event_ids.setdefault(str(it.get("source") or "unknown"), set()).add(str(eid))
+        ambiguous_sources = {source for source, ids in event_ids.items() if len(ids) > 1}
+        # Missing source event IDs must not defeat the repeated-matchup check.
+        starts = [_match_start(it.get("start")) for it, exact in eligible if not exact]
+        starts = [s for s in starts if s is not None]
+        ambiguous_times = anchor is None and starts and max(starts) - min(starts) > tolerance
+        by_provider: dict[str, list[dict]] = {}
+        for it, exact in eligible:
+            if not exact and (ambiguous_times or str(it.get("source") or "unknown") in ambiguous_sources):
+                continue
+            by_provider.setdefault(it.get("provider") or "other", []).append(it)
         out: dict[str, dict] = {}
         for prov, items in by_provider.items():
-            items = sorted(items, key=_rank)
+            items = sorted(items, key=lambda it: (
+                0 if target_id and str(it.get("espn_event_id") or "").strip() == target_id else 1,
+                _rank(it)))
             best = dict(items[0])
             best["alts"] = [dict(i) for i in items[1:]]
             out[prov] = best

@@ -130,6 +130,40 @@ def test_new_stream_rules():
     assert not w.check(dict(old), now=1002.0)              # failed query is not a transition
 
 
+def test_fire_os_reload_playing_with_zero_speed_does_not_confirm():
+    old = {"state": "playing", "speed": 1.0, "position": 46801268, "updated": 860547,
+           "title": "Philadelphia Eagles at Washington Commanders"}
+    watch = NewStream(old)
+    assert not watch.check({"state": "paused", "speed": 0.0})
+    for _ in range(4):
+        assert not watch.check({"state": "playing", "speed": 0.0, "position": 0,
+                                "updated": 900000, "title": ""})
+    assert watch.report is None
+    ready = {"state": "playing", "speed": 1.0, "position": 100, "updated": 904000,
+             "title": old["title"]}
+    assert watch.check(ready)
+    assert watch.report == ready
+
+
+@pytest.mark.parametrize("report", [
+    {"state": "playing", "speed": 0.0},
+    {"state": "playing", "speed": -1.0},
+    {"state": "playing", "speed": float("nan")},
+    {"state": "playing", "speed": "unknown"},
+    {"state": "playing", "speed": 1.0, "read_ok": False},
+    {"state": "paused", "speed": 1.0},
+])
+def test_not_ready_transport_never_confirms_from_idle(report):
+    assert not NewStream({"state": "none"}).check(report)
+
+
+def test_remembered_target_is_not_ready_when_explicitly_stationary():
+    stick = Stick("fake:5555")
+    report = {"state": "playing", "speed": 1.0, "pkg": YT, "position": 1000, "updated": 5000}
+    stick.remember("youtubetv:espn", report)
+    assert not stick.still_on("youtubetv:espn", dict(report, speed=0.0))
+
+
 async def test_wakeup_only_when_asleep():
     asleep = ScriptedStick(after=[yt(3, 100, 5000)], wake="Asleep")
     awake = ScriptedStick(after=[yt(3, 100, 5000)], wake="Awake")
@@ -176,7 +210,7 @@ async def test_screen_is_read_only_when_its_slow():
 
 
 async def test_a_blank_screen_read_was_too_early_so_look_again():
-    screens = ["", "", "Who's watching? | Nick | Guest"]
+    screens = ["", "", "Are you still watching? | Continue"]
 
     def on_key(stick, key):
         stick.after = [yt(6), yt(3, 100, 5000)]
@@ -188,7 +222,7 @@ async def test_a_blank_screen_read_was_too_early_so_look_again():
     st.screen_text = screen_text
     res = await quick(reread_s=0.01, confirm_timeout=2).tune(st, "CODE", "youtubetv:espn")
     assert res.ok and st.screen_reads == 3 and st.keys() == ["KEYCODE_DPAD_CENTER"]
-    assert any("who's watching" in s for s in res.steps)
+    assert any("are you still watching" in s for s in res.steps)
 
 
 async def test_loading_gets_longer_grace_before_reading_the_screen():

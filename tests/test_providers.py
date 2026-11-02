@@ -235,12 +235,13 @@ async def test_generic_live_label_does_not_authorize_a_selection():
     assert not res.ok and "KEYCODE_DPAD_CENTER" not in st.keys
 
 
-async def test_tune_clears_profile_picker_then_plays():
+async def test_tune_stops_at_profile_picker_without_configured_identity():
     clock = Clock()
     st = FakeStick({"fubo": "com.fubo.firetv.screen"}, screen="Who’s watching? | Nick | Guest",
                    playing=lambda s: "KEYCODE_DPAD_CENTER" in s.keys)
     res = await tuner(more.FuboTuner, clock).tune(st, "10179", "fubo:10179")
-    assert res.ok and any("who's watching" in s for s in res.steps)
+    assert not res.ok and "no preferred profile configured" in res.error
+    assert "KEYCODE_DPAD_CENTER" not in st.keys and len(st.launches) == 1
 
 
 @pytest.mark.parametrize("screen,kind,err", [

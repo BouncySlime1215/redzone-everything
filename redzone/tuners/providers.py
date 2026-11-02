@@ -40,6 +40,7 @@ from urllib.parse import quote, urlsplit
 
 from redzone.discovery.providers import BY_KEY, Verdict, classify_screen, is_purchase_screen, normalize_text
 from redzone.tuners.adb import Stick
+from redzone.tuners.profiles import preference, select_profile
 from redzone.tuners.tuners import PROMPTS, Tuner, TuneResult, NewStream, require_cut
 
 log = logging.getLogger(__name__)
@@ -173,6 +174,10 @@ class AppTuner(Tuner):
         if verdict is not None and verdict.stops:
             steps.append(verdict.step)
             return verdict
+        selected = await select_profile(stick, text, preference(stick, self.app, self.preferred_profile),
+                                        steps, lambda: require_cut(may_cut, steps, mutating=True))
+        if selected is not None:
+            return None
         keys, why = self._keys_for(text, scheduled)
         if not keys:
             return None
@@ -327,6 +332,14 @@ class DiagnosingTuner:
 
     def __getattr__(self, attr):
         return getattr(self.inner, attr)
+
+    @property
+    def preferred_profile(self):
+        return self.inner.preferred_profile
+
+    @preferred_profile.setter
+    def preferred_profile(self, value):
+        self.inner.preferred_profile = value
 
     async def tune(self, stick: Stick, ref: str, target: str, may_cut=None) -> TuneResult:
         res = await self.inner.tune(stick, ref, target, may_cut=may_cut) if may_cut is not None \

@@ -114,6 +114,21 @@ fantasy:                   # ESPN fantasy football (leave league_id empty to tur
 screen:
   mic_calibration: false   # let the Mac's mic hear crowd roars to measure your delay (nothing is recorded)
 
+providers:
+  profiles:               # Exact names; an unreadable picker requires manual selection.
+    youtubetv: ""
+    prime: ""
+    espn: ""
+    peacock: ""
+    fubo: ""
+    paramount: ""
+    max: ""
+    netflix: ""
+    nflplus: ""
+    nba: ""
+    appletv: ""
+    dazn: ""
+
 autonomy:
   enabled: true
   discover_devices: false # first select your own TV/sticks with scripts/doctor.py

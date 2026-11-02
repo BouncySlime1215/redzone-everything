@@ -339,7 +339,16 @@ async def check_code(stick, entry: Entry, code: str, table: Table, *, style: str
     before = await stickio.read_evidence(stick, pkg, with_screen=False)
     await stickio.stop_playback(stick, pkg, sleep=sleep)
     _ok, steps = await stickio.tune(stick, code, pkg, style=style, timeout=timeout, sleep=sleep)
-    ev = await stickio.read_evidence(stick, pkg)
+    # YouTube TV first reports PLAYING at speed 0 while the live stream loads, then speed 1 a second
+    # or two later: one read right after the tune marked every working channel "dead".
+    ev = await stickio.read_evidence(stick, pkg, with_screen=False)
+    for _ in range(8):
+        if ev.playing and ev.meta_text and ev.meta_text != before.meta_text:
+            break
+        await sleep(1.0)
+        ev = await stickio.read_evidence(stick, pkg, with_screen=False)
+    if not ev.meta_text:
+        ev = await stickio.read_evidence(stick, pkg)
     if lounge and ev.playing:
         ev.lounge_id = await safe_lounge(lounge, stick)
     return CheckResult(code, judge(entry, ev, table, code=code, before=before), ev, steps, style)

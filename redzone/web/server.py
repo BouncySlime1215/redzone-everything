@@ -131,6 +131,16 @@ def build_app(engine: Engine) -> FastAPI:
         engine.broadcast()
         return {"ok": ok, "message": msg}
 
+    @app.post("/api/recorded/start")
+    async def recorded_start(body: dict):
+        ok, message = await engine.recorded.start(body)
+        return {"ok": ok, "message": message, "recorded_playback": engine.recorded.snapshot()}
+
+    @app.post("/api/recorded/stop")
+    async def recorded_stop():
+        ok, message = await engine.recorded.stop()
+        return {"ok": ok, "message": message, "recorded_playback": engine.recorded.snapshot()}
+
     @app.get("/api/settings")
     async def get_settings():
         return {"config": engine.cfg.data, "limits": {k: list(v) for k, v in LIMITS.items()}}
@@ -141,6 +151,8 @@ def build_app(engine: Engine) -> FastAPI:
             engine.cfg.update(body.get("changes") or {})
         except ConfigError as e:
             return {"ok": False, "message": str(e)}
+        if engine.recorded.active and engine.cfg.get("mode.dry_run", True):
+            engine.recorded.cancel_navigation()
         engine.broadcast()
         return {"ok": True, "message": "Saved"}
 

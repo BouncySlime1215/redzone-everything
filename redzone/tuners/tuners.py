@@ -22,15 +22,14 @@ import re
 import time
 from dataclasses import dataclass, field
 
-from redzone.tuners.adb import Stick, same_stream
+from redzone.tuners.adb import Stick, playback_ready, same_stream
+from redzone.tuners.profiles import ProfileSelectionRequired, preference, select_profile
 
 PROMPTS = {
     # on-screen text (lowercase)       -> keys that clear it
     "are you still watching": ["KEYCODE_DPAD_CENTER"],
     "still there": ["KEYCODE_DPAD_CENTER"],
     "continue watching": ["KEYCODE_DPAD_CENTER"],
-    "who's watching": ["KEYCODE_DPAD_CENTER"],
-    "choose a profile": ["KEYCODE_DPAD_CENTER"],
     "watch live": ["KEYCODE_DPAD_CENTER"],
 }
 LOADING = ("buffering", "connecting")
@@ -88,13 +87,13 @@ class NewStream:
     report: dict | None = None     # the report that confirmed it
 
     def check(self, pb: dict, now: float | None = None) -> bool:
-        if pb.get("state") != "playing":
+        if not playback_ready(pb):
             # Missing session data can also mean the query failed. Only a reported
             # playback state is evidence of a transition.
             self.gap = self.gap or pb.get("state") in ("buffering", "connecting", "stopped", "paused")
             return False
         continuity = same_stream(self.before, pb)
-        if (self.before.get("state") != "playing" or continuity is False
+        if (not playback_ready(self.before) or continuity is False
                 or (self.gap and continuity is None)):
             self.report = pb
             return True
@@ -104,6 +103,7 @@ class NewStream:
 class Tuner:
     app = ""
     role = ""
+    preferred_profile = ""
     confirm_timeout = 15.0   # per deep-link attempt
     poll_s = 0.25            # "playing yet?" this often while confirming
     prompt_grace_s = 3.0     # not playing this long after the link -> read the screen for a prompt
@@ -124,6 +124,8 @@ class Tuner:
             return result
         except CutWindowClosed as exc:
             return TuneResult(False, target, time.monotonic() - started, exc.steps, str(exc), guard.changed)
+        except ProfileSelectionRequired as exc:
+            return TuneResult(False, target, time.monotonic() - started, exc.steps, str(exc), guard.changed)
 
     async def _tune(self, stick: Stick, ref: str, target: str, may_cut=None) -> TuneResult:
         t0 = time.monotonic()
@@ -135,7 +137,7 @@ class Tuner:
         if stick.still_on(target, before):
             steps.append("already on it (the stick is still playing it, uninterrupted)")
             return TuneResult(True, target, time.monotonic() - t0, steps)
-        if before["state"] == "playing":
+        if playback_ready(before):
             stick.mark_awake()   # playing video, so it's awake: skip asking
         require_cut(may_cut, steps)
         woke = await stick.ensure_awake(may_cut=lambda: require_cut(may_cut, steps, mutating=True)) if may_cut is not None \
@@ -206,6 +208,10 @@ class Tuner:
         if is_purchase_screen(text) or (verdict and verdict.stops):
             steps.append("stopped at an account, payment, or unavailable-content screen")
             return False
+        selected = await select_profile(stick, text, preference(stick, self.app, self.preferred_profile),
+                                        steps, lambda: require_cut(may_cut, steps, mutating=True))
+        if selected is not None:
+            return selected
         for prompt, keys in PROMPTS.items():
             if prompt in text:
                 require_cut(may_cut, steps, mutating=True)
@@ -261,6 +267,7 @@ class PrimeTuner(Tuner):
                        may_cut=None) -> bool:
         watch = watch or NewStream({"state": "none"})
         # Prime opens a detail page; press through profile picker and "Watch Live".
+        blind_pressed = False
         for _ in range(3):
             if await self._watch_for(stick, pkg, watch, self.page_wait_s):
                 steps.append("playing")
@@ -269,7 +276,16 @@ class PrimeTuner(Tuner):
             if "regional restriction" in text or "not available in your location" in text or "blackout" in text:
                 steps.append("blackout: this game isn't available in your area on Prime")
                 return False
-            await self._press_prompt(stick, text, steps, "pressed through", may_cut)
+            pressed = await self._press_prompt(stick, text, steps, "pressed through", may_cut)
+            if not pressed and not text.strip() and not blind_pressed:
+                # Prime's page doesn't expose its text to the stick's screen reader (seen on the 4K
+                # and 4K Plus). On a live event's detail page the focused first button is
+                # "Watch Live" (screenshot, Nov 2), so press it once. Purchases always need further
+                # confirmation screens, so a stray press can't buy anything.
+                require_cut(may_cut, steps, mutating=True)
+                steps.append("pressed the focused button (Watch Live) on an unreadable Prime page")
+                await stick.key("KEYCODE_DPAD_CENTER")
+                blind_pressed = True
         return await super()._confirm(stick, pkg, steps, watch, may_cut)
 
 

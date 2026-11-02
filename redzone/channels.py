@@ -284,8 +284,8 @@ def describe(target: str | None) -> str:
 def _is_sunday_afternoon(g: GameState) -> bool:
     if not g.start_time:
         return False
-    lt = time.localtime(g.start_time)
-    return lt.tm_wday == 6 and 12 <= lt.tm_hour < 19
+    kickoff = datetime.fromtimestamp(g.start_time, tz=ZoneInfo("America/New_York"))
+    return kickoff.weekday() == 6 and 12 <= kickoff.hour < 19
 
 
 ET = ZoneInfo("America/New_York")

@@ -77,6 +77,10 @@ class Engine:
         self._fastcast_task = None
         self._fastcast_games = {}
         self._fresh = asyncio.Event()
+        self._house_device_task = None
+        self._st_scan_task = None
+        from redzone.recorded import RecordedPlayback
+        self.recorded = RecordedPlayback(self)
         from redzone.discovery.runtime import DiscoveryRuntime
         self.discovery = DiscoveryRuntime(self)
 
@@ -157,7 +161,8 @@ class Engine:
                 continue
             names_a = {g.away.abbr, g.away.name}
             names_h = {g.home.abbr, g.home.name}
-            found = eventlinks.match(links, g.league.value, names_a, names_h, espn_event_id=g.game_id)
+            found = eventlinks.match(links, g.league.value, names_a, names_h,
+                                     espn_event_id=g.game_id, expected_start=g.start_time)
             if found:
                 self.channels.apply_links(g, found, mine)
                 self.discovery.remember(g, found)
@@ -185,7 +190,7 @@ class Engine:
         while True:
             await asyncio.sleep(10)
             try:
-                await self.control.keepalive()
+                await self._device_keepalive()
                 self._tick += 1
                 if self._tick % 360 == 0:
                     self.store.prune()
@@ -196,9 +201,21 @@ class Engine:
         """One full cycle (used by tests and one-shot tools)."""
         self._tick += 1
         await self.poll()
-        await self.control.keepalive()
+        await self._device_keepalive()
         self.decide()
         self.broadcast()
+
+    async def _device_keepalive(self):
+        if self.recorded.active:
+            return
+        self._house_device_task = asyncio.create_task(self.control.keepalive())
+        try:
+            await self._house_device_task
+        except asyncio.CancelledError:
+            if asyncio.current_task().cancelling() or not self.recorded.active:
+                raise
+        finally:
+            self._house_device_task = None
 
     # ------------------------------------------------------------------ data
 
@@ -424,6 +441,8 @@ class Engine:
         return Personal(my_teams=teams, bet_sweat=sweat, bet_labels=labels, fantasy=fan, boosted=set(self.boosted))
 
     def decide(self) -> bool:
+        if self.recorded.active:
+            return False
         now = time.time()
         for gid, until in list(self.skipped.items()):
             if now >= until:
@@ -555,6 +574,10 @@ class Engine:
         return not break_on_arrival(tl, delay, now, now + remaining)
 
     def _start_st_scan(self) -> tuple[bool, str]:
+        if self.recorded.active:
+            return False, "Stop the recorded session before scanning live channels"
+        if self._st_scan_task and not self._st_scan_task.done():
+            return False, "Sunday Ticket scan is already running"
         codes = self.channels.st_codes
         if not codes:
             return False, "Paste your Sunday Ticket channel links in Settings → Channels first"
@@ -562,15 +585,23 @@ class Engine:
             return False, "Turn on TV control first (the scan uses the stick)"
         games = [g for g in self.merger.games.values() if g.league == League.NFL and g.phase != Phase.POST]
 
+        def allowed():
+            return not self.recorded.active and not self.cfg.get("mode.dry_run", True)
+
         def found(g, code):
+            if not allowed():
+                return
             self.channels.st_slots[g.game_id] = code
             self.channels.save()
             self.toast(f"Sunday Ticket: {g.matchup} found")
 
         async def run():
-            got = await self.control.scan_sunday_ticket(codes, games, found)
-            self.toast(f"Sunday Ticket scan done: matched {len(got)} games")
-        asyncio.create_task(run())
+            if not allowed():
+                return
+            got = await self.control.scan_sunday_ticket(codes, games, found, may_run=allowed)
+            if allowed():
+                self.toast(f"Sunday Ticket scan done: matched {len(got)} games")
+        self._st_scan_task = asyncio.create_task(run())
         where = "on the hidden stick" if self.control.two_stick else "— your TV will flip channels for ~2 minutes"
         return True, f"Scanning {len(codes)} Sunday Ticket channels {where}"
 
@@ -636,7 +667,7 @@ class Engine:
     def _preload_standby(self, cands: dict, redzone: str | None = None) -> None:
         """Two sticks: keep the hidden one on what the next switch most likely needs, so that switch
         is a 1-2s input flip instead of a 5-10s tune. What and when: redzone/standby.py."""
-        if not self.control.two_stick:
+        if not self.control.two_stick or self.decider.user.paused:
             return
         pick = self.planner.plan(self._standby_options(cands, redzone), self.control.standby)
         if pick:
@@ -714,6 +745,10 @@ class Engine:
     # ------------------------------------------------------------------ user actions
 
     def action(self, action: str, game_id: str | None = None, value=None) -> tuple[bool, str]:
+        if self.recorded.active and action not in {"pause", "dry_run", "label", "vote"}:
+            return False, "Stop the recorded session before using live controls"
+        if self.recorded.active and action == "dry_run" and not value:
+            return False, "Recorded device control is managed by the recorded session"
         dec, u = self.decider, self.decider.user
         gid = game_id or dec.current
         if action == "focus":
@@ -743,6 +778,8 @@ class Engine:
             u.paused = True
             dec.abort_replay()
             self.control.cancel_pending()
+            if self._st_scan_task and not self._st_scan_task.done():
+                self._st_scan_task.cancel()
             return True, "Auto-switching paused"
         if action == "resume":
             dec.resume()
@@ -776,6 +813,10 @@ class Engine:
             if value:
                 dec.abort_replay()
                 self.control.cancel_pending()
+                if self._st_scan_task and not self._st_scan_task.done():
+                    self._st_scan_task.cancel()
+                if self.recorded.active:
+                    self.recorded.cancel_navigation()
             elif was_dry:
                 # A simulated current game is not evidence of a physical stream.
                 dec.abort_replay()
@@ -943,6 +984,7 @@ class Engine:
             "queue": [self._queue_item(m) for m in sorted(dec.queue, key=lambda m: -m.value)[:10]],
             "log": self._log(),
             "server_time": time.time(),
+            "recorded_playback": self.recorded.snapshot(),
             "delays": [{"target": t, "label": describe(t), "mu": round(x.mu, 1), "sigma": round(x.sigma, 1),
                         "calibrated": x.calibrated_at is not None} for t, x in self.delays.book.items()],
             "health": {"sources": list(self.source_status.values()), "sticks": self.control.status(),
@@ -959,6 +1001,12 @@ class Engine:
         }
 
     def screen_evidence(self) -> dict:
+        if self.recorded.active:
+            return {"status": "unknown", "mode": "recorded", "game_id": None,
+                    "identity": "unverified", "media_state": "unknown", "safe_to_leave": False,
+                    "reason": "Recorded content: live-feed timing and delay calibration do not apply",
+                    "delay_s": None, "delay_margin_s": None, "calibrated": False,
+                    "switch": dict(self.control.stage), "mic_suggestion": None}
         dec, ctl = self.decider, self.control
         gid = dec.current
         target = getattr(self.where.get(gid or ""), "target", None) or "unknown"
@@ -1067,6 +1115,10 @@ class Engine:
             self._caffeinate = None
 
     async def close(self) -> None:
+        if self._st_scan_task and not self._st_scan_task.done():
+            self._st_scan_task.cancel()
+            await asyncio.gather(self._st_scan_task, return_exceptions=True)
+        await self.recorded.close()
         self._keep_awake(False)
         task = self._fastcast_task
         self._stop_fastcast()

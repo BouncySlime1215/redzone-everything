@@ -1,11 +1,12 @@
 """Regression checks for recovery: a wrong channel/device must never become confirmed."""
 import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from redzone.autonomy import Autonomy, Hooks, Job, JobResult, Paths, Scheduler, quiet_plan, same_tv
+from redzone.autonomy import Autonomy, DeviceHealer, Hooks, Job, JobResult, Paths, Scheduler, quiet_plan, same_tv
 from redzone.channels import ChannelMap
-from redzone.discovery.stickio import Evidence, parse_media_sessions
+from redzone.discovery.stickio import Evidence, parse_media_sessions, read_evidence
 from redzone.discovery.search import RecipeBlocked, run_step
 from redzone.discovery.yttv import (Candidate, Entry, Table, Verdict, VerifyState, apply_verified,
                                     judge, sunday_ticket_codes, verify_codes)
@@ -19,6 +20,21 @@ def channel_table():
         "st1": Entry("st1", "Sunday Ticket 1", kind="sunday_ticket", slot=1,
                      candidates=[Candidate("CCCCCCCCCCC")]),
     }, {}, [])
+
+
+def test_saved_tv_summary_is_honest_without_device_probe(tmp_path):
+    path = tmp_path / "devices.json"
+    path.write_text(json.dumps({"tv": {"ip": "192.0.2.10"}}))
+    stick = SimpleNamespace(host="selected:5555", state="unknown")
+    hooks = SimpleNamespace(controller=SimpleNamespace(sticks=[stick]))
+    net = SimpleNamespace(samsung=AsyncMock())
+    healer = DeviceHealer(hooks, path, net)
+    assert "TV saved; connection not checked" in healer.summary()[1]
+    net.samsung.assert_not_called()
+    healer.tv_checked = 1
+    assert "TV saved; not answering" in healer.summary()[1]
+    path.write_text(json.dumps({"tv": {}}))
+    assert "no TV saved yet" in healer.summary()[1]
 
 
 def test_unidentified_playback_does_not_become_a_tunable_channel(tmp_path):
@@ -59,6 +75,16 @@ def test_modern_android_playback_format_is_read():
                                     "state=PlaybackState {state=PLAYING(3), position=100\n"
                                     "metadata: size=3, description=ESPN, SportsCenter, Live")
     assert sessions[0].state == "playing" and sessions[0].title == "ESPN"
+
+
+async def test_stationary_playing_session_cannot_verify_channel(tmp_path):
+    stick = SimpleNamespace(shell=AsyncMock(return_value=SimpleNamespace(ok=True, out=(
+        "package=com.amazon.firetv.youtube.tv\n"
+        "state=PlaybackState {state=3, position=0, speed=0.0, updated=123}\n"
+        "metadata: size=3, description=ESPN, SportsCenter, Live"))))
+    evidence = await read_evidence(stick, with_screen=False)
+    assert evidence.state == "playing" and not evidence.playing
+    assert judge(channel_table().channels["espn"], evidence, channel_table()).status != "verified"
 
 
 async def test_verification_rechecks_ownership_after_waiting_for_controller(tmp_path):

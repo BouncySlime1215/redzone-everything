@@ -4,13 +4,14 @@
 import {
   app, ACTIONS, attr, esc, num, get, arr, games, gameById, status, pairInks, fmtAgo, fmtTime, fmtStart, nowS,
   reduceMotion, SPRING, EASE_OUT, ink, teamBy, whereLabel,
-} from "./rz-core.js?v=36";
-import { patch } from "./rz-dom.js?v=36";
-import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=36";
-import { heroCard, fantasyCard } from "./rz-cards.js?v=36";
-import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=36";
-import { act } from "./rz-api.js?v=36";
-import { screenEvidence } from "./rz-evidence.js?v=36";
+} from "./rz-core.js?v=38";
+import { patch } from "./rz-dom.js?v=38";
+import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=38";
+import { heroCard, fantasyCard } from "./rz-cards.js?v=38";
+import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=38";
+import { act } from "./rz-api.js?v=38";
+import { screenEvidence } from "./rz-evidence.js?v=38";
+import { recordedPanel } from "./rz-recorded.js?v=38";
 
 const STATE_LABEL = { idle: "Idle", watching: "Watching", locked: "Locked in", break: "On a break", paused: "Paused",
   frozen: "Holding still", safe: "Safe mode", replay: "Replay" };
@@ -26,6 +27,10 @@ export function renderNow(root) {
     return;
   }
   const n = S.now;
+  if (S.recorded_playback?.active) {
+    patch(root, recordedPanel(S) + screenEvidence(S));
+    return;
+  }
   const g = n ? gameById(n.game_id) : null;
   const before = root.querySelector(".hero");
   const ghost = before && n && before.dataset.gid !== n.game_id ? before.cloneNode(true) : null;

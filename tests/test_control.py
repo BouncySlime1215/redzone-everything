@@ -21,6 +21,16 @@ class FakeStick(Stick):
 
     async def shell(self, cmd, timeout=8.0):
         self.log.append(cmd)
+        if "mIsActiveSource" in cmd:   # the HOME flip's verification read
+            on = getattr(type(self), "last_input_host", None) == self.host or getattr(self, "_active", False)
+            return RunResult(True, "1" if on else "0", 0.01)
+        if "Active Source> " in cmd:
+            return RunResult(True, "0", 0.01)
+        if "KEYCODE_HOME" in cmd:      # HOME makes a Fire TV announce itself as the active source
+            if not self.cec_ok:
+                return RunResult(False, "", 0.01)   # CEC off on this TV: HOME switches nothing
+            self.log.append("onetouchplay(home)")
+            cmd = "onetouchplay"
         if "onetouchplay" in cmd:
             if self.cec_ok and self.display is not None:
                 self.display["input"] = self.hdmi
@@ -155,6 +165,40 @@ def test_cec_ack_without_input_readback_never_claims_success_or_retries(two, mon
     again = run(c.execute("youtubetv:fox", may_cut=lambda: True))
     assert not again.ok and "input is unknown" in again.detail
     assert len(tuner.calls) == 1
+
+
+def test_fire_os_no_shell_implementation_is_explicit_noop(two, monkeypatch):
+    c, _ = two
+    fallbacks = []
+    async def unsupported(command, timeout):
+        return RunResult(True, 'No shell command implementation.', 0.01)
+    async def verified_input(hdmi):
+        fallbacks.append(hdmi)
+        return True
+    async def must_not_read_cec_ack():
+        raise AssertionError('there was no CEC command to confirm')
+    monkeypatch.setattr(c.hidden, 'shell', unsupported)
+    monkeypatch.setattr(c.tv, 'set_input', verified_input)
+    monkeypatch.setattr(c.tv, 'input_status', must_not_read_cec_ack)
+    assert run(c._flip_to(c.hidden))
+    assert fallbacks == ['HDMI2'] and c.hidden.host in c._cec_bad
+
+
+def test_generic_cec_timeout_error_is_not_a_definite_noop(two, monkeypatch):
+    c, _ = two
+    fallbacks = []
+    async def timed_out(command, timeout):
+        return RunResult(False, 'Error: HDMI request timed out', 5)
+    async def unreadable():
+        return None
+    async def must_not_retry(hdmi):
+        fallbacks.append(hdmi)
+        return True
+    monkeypatch.setattr(c.hidden, 'shell', timed_out)
+    monkeypatch.setattr(c.tv, 'input_status', unreadable)
+    monkeypatch.setattr(c.tv, 'set_input', must_not_retry)
+    assert not run(c._flip_to(c.hidden))
+    assert not fallbacks
 
 
 def test_cached_ready_flag_cannot_flip_buffering_standby(two):

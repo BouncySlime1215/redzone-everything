@@ -1,6 +1,6 @@
 /* Screen timing is an estimate. Transport playback never proves live action on the TV. */
-import { ACTIONS, attr, esc } from "./rz-core.js?v=36";
-import { icon } from "./rz-ui.js?v=36";
+import { ACTIONS, attr, esc } from "./rz-core.js?v=38";
+import { icon } from "./rz-ui.js?v=38";
 
 const STATUS = {
   unknown: "Screen timing unknown",
@@ -22,9 +22,10 @@ ACTIONS["evidence-toggle"] = (el) => {
 
 export function screenEvidence(S, key = "screen-evidence") {
   const e = S.screen_evidence || {};
+  const recorded = e.mode === "recorded";
   const simulation = e.mode === "simulation" || S.mode?.dry_run !== false;
   const stage = e.switch || {};
-  const title = STATUS[e.status] || STATUS.unknown;
+  const title = recorded ? "Recorded playback · live timing unavailable" : STATUS[e.status] || STATUS.unknown;
   const delay = seconds(e.delay_s);
   const margin = seconds(e.delay_margin_s);
   const rows = [
@@ -36,7 +37,7 @@ export function screenEvidence(S, key = "screen-evidence") {
   ];
   return `<section class="card evidence" data-key="${attr(key)}" aria-label="Screen timing evidence">
     <div class="evidence-head">${icon(e.safe_to_leave ? "clock" : "lock")}<div class="grow"><b>${esc(title)}</b>
-      <small>${simulation ? "Simulation · TV control is off" : e.safe_to_leave ? "An exit window is estimated" : "Holding until timing is clearer"}</small></div></div>
+      <small>${recorded ? "Automatic live switching is paused" : simulation ? "Simulation · TV control is off" : e.safe_to_leave ? "An exit window is estimated" : "Holding until timing is clearer"}</small></div></div>
     <p>${esc(e.reason || "Waiting for a game and stream timing evidence.")}</p>
     <div class="evidence-stage">${icon("arrow-right", "ico--xs")}<span>${esc(STAGE[stage.stage] || STAGE.idle)}${stage.reason ? ` · ${esc(stage.reason)}` : ""}</span></div>
     <details class="adv"${expanded.has(key) ? " open" : ""}><summary data-act="evidence-toggle" data-evidence="${attr(key)}">What this is based on${icon("chevron-down")}</summary>

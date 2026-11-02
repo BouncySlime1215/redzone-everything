@@ -21,6 +21,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
+from redzone.tuners.adb import playback_ready
 
 log = logging.getLogger(__name__)
 
@@ -37,9 +38,6 @@ STATES = {3: "playing", 2: "paused", 6: "buffering", 8: "connecting", 1: "stoppe
 
 # Screens that block playback and the keys that clear them (YouTube TV + ADBTuner's list).
 PROMPTS = {
-    "who's watching": ["KEYCODE_DPAD_CENTER"],
-    "choose an account": ["KEYCODE_DPAD_CENTER"],
-    "edit profiles": ["KEYCODE_DPAD_CENTER"],
     "are you still watching": ["KEYCODE_DPAD_CENTER"],
     "still there": ["KEYCODE_DPAD_CENTER"],
     "continue watching": ["KEYCODE_DPAD_CENTER"],
@@ -64,6 +62,7 @@ class Session:
     description: str = ""
     meta_raw: str = ""
     ids: list[str] = field(default_factory=list)   # any video-id-looking fields in the block
+    speed: float | None = None
 
 
 @dataclass
@@ -136,6 +135,9 @@ def parse_media_sessions(out: str) -> list[Session]:
         if m:
             cur.state = STATES.get(int(m.group(1)), f"state{m.group(1)}")
             cur.position = int(m.group(2))
+            speed = re.search(r"\bspeed=(-?\d+(?:\.\d+)?)", line)
+            if speed:
+                cur.speed = float(speed.group(1))
         m = re.search(r"\bactive=(true|false)", line)
         if m:
             cur.active = m.group(1) == "true"
@@ -152,7 +154,8 @@ def pick_session(sessions: list[Session], pkg: str | None) -> Session | None:
     mine = [s for s in sessions if pkg is None or s.package == pkg]
     if not mine:
         return None
-    return next((s for s in mine if s.state == "playing"), next((s for s in mine if s.active), mine[0]))
+    return next((s for s in mine if playback_ready({"state": s.state, "speed": s.speed})),
+                next((s for s in mine if s.active), mine[0]))
 
 
 def codes_in(text: str) -> list[str]:
@@ -204,7 +207,8 @@ async def read_evidence(stick, pkg: str | None = None, *, with_screen: bool = Tr
     s = pick_session(parse_media_sessions(out), pkg)
     ev = Evidence(read_ok=bool(out))
     if s:
-        ev.playing, ev.state, ev.package = s.state == "playing", s.state, s.package
+        ev.playing = playback_ready({"state": s.state, "speed": s.speed})
+        ev.state, ev.package = s.state, s.package
         ev.title, ev.subtitle, ev.description, ev.ids = s.title, s.subtitle, s.description, list(s.ids)
     if with_screen:
         ev.screen = await screen_text(stick)
@@ -252,6 +256,13 @@ async def clear_prompt(stick, steps: list[str]) -> bool:
     if is_purchase_screen(text) or (verdict and verdict.stops):
         steps.append("account or purchase prompt requires the owner")
         return False
+    from redzone.tuners.profiles import ProfileSelectionRequired, preference, select_profile
+    try:
+        selected = await select_profile(stick, text, preference(stick, "youtubetv"), steps)
+    except ProfileSelectionRequired:
+        return False
+    if selected is not None:
+        return selected
     for prompt, keys in PROMPTS.items():
         if prompt in text:
             steps.append(f"cleared prompt: {prompt}")
