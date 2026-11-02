@@ -34,7 +34,8 @@ PROMPTS = {
     # on-screen text (lowercase)       -> keys that clear it
     "are you still watching": ["KEYCODE_DPAD_CENTER"],
     "still there": ["KEYCODE_DPAD_CENTER"],
-    "continue watching": ["KEYCODE_DPAD_CENTER"],
+    # Not "continue watching": that's a row header on Prime / YTTV / ESPN / Peacock home pages, and
+    # OK there starts whatever tile has focus (an unrelated show that then reads as "playing").
     "watch live": ["KEYCODE_DPAD_CENTER"],
 }
 LOADING = ("buffering", "connecting")

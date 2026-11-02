@@ -353,3 +353,9 @@ async def test_background_link_retry_rechecks_cut_permission_after_launch():
     result = await quick().tune(st, "CODE", "youtubetv:fox", may_cut=lambda: not st.linked)
     assert not result.ok and "window closed" in result.error
     assert len(st.links()) == 1
+
+
+async def test_a_continue_watching_row_on_an_app_home_page_is_never_pressed():
+    st = ScriptedStick(after=[yt(1)], screen="Home | Continue watching | The Office | Recommended for you")
+    res = await quick().tune(st, "CODE", "youtubetv:espn")
+    assert not res.ok and st.keys() == []           # OK there would start whatever tile has focus
