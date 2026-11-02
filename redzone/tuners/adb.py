@@ -254,8 +254,12 @@ class Stick:
         """All visible text in the current UI (menus, buttons, prompts). Video itself isn't text.
         Slow (1-3 s), so it runs as its own adb process: the always-open shell stays free for the
         quick "playing yet?" checks that run alongside it."""
-        r = await self.run("shell", "uiautomator dump /sdcard/rz_ui.xml >/dev/null 2>&1; cat /sdcard/rz_ui.xml",
-                           timeout=12)
+        # Remove the previous dump first: a failed dump (common while video plays: "could not get
+        # idle state") must never hand back an earlier screen's text.
+        r = await self.run("shell", "rm -f /sdcard/rz_ui.xml && uiautomator dump /sdcard/rz_ui.xml >/dev/null 2>&1"
+                           " && cat /sdcard/rz_ui.xml", timeout=12)
+        if not r.ok or "<hierarchy" not in r.out:
+            return ""
         texts = re.findall(r'(?:text|content-desc)="([^"]+)"', r.out)
         return " | ".join(t for t in texts if t.strip())
 

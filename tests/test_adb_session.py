@@ -297,3 +297,29 @@ def test_same_stream_uses_the_apps_own_clock():
     assert same_stream(a, {"position": 10_000, "updated": 60_000}) is False    # paused for 10s
     assert same_stream(a, {"position": 0, "updated": 54_000}) is None          # live stream, no positions
     assert same_stream(a, {"position": None, "updated": None}) is None
+
+
+async def test_screen_text_never_returns_a_stale_dump(monkeypatch):
+    from redzone.tuners.adb import RunResult
+    st = new_stick()
+    sent = []
+
+    async def run(*args, timeout=8.0):
+        sent.append(args)
+        return RunResult(False, '<?xml?><hierarchy><node text="Watch Live"/></hierarchy>', 0.1)
+
+    monkeypatch.setattr(st, "run", run)
+    assert await st.screen_text() == ""          # the dump failed: old file's text is not used
+    assert "rm -f /sdcard/rz_ui.xml &&" in sent[0][-1]
+
+    async def run_ok(*args, timeout=8.0):
+        return RunResult(True, '<?xml?><hierarchy><node text="Watch Live" content-desc=" "/></hierarchy>', 0.1)
+
+    monkeypatch.setattr(st, "run", run_ok)
+    assert await st.screen_text() == "Watch Live"
+
+    async def run_garbage(*args, timeout=8.0):
+        return RunResult(True, "ERROR: could not get idle state.", 0.1)
+
+    monkeypatch.setattr(st, "run", run_garbage)
+    assert await st.screen_text() == ""
