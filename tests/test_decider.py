@@ -58,7 +58,9 @@ def test_uncalibrated_delay_waits_for_official_break(dec, clock):
     d = dec.decide(cands(a=30, b=80))
     assert d.action == "stay" and "calibrated" in d.reason
     tl = dec.timeline("a", League.NFL)
-    tl.events.append(Event(clock.t, "stop_start", "timeout"))
+    # End of quarter, not a timeout: with sigma 15 the screen could be 10 s behind, and a timeout can
+    # end in 15 s, so only breaks that always run long are provably still on screen (test_midplay).
+    tl.events.append(Event(clock.t, "stop_start", "end_period"))
     clock.t += 40 + 30 + 1  # mu + 2*sigma
     d = dec.decide(cands(a=sc("a", 30, is_break=True), b=80))
     assert d.action == "switch" and d.kind == "break_visit"
@@ -171,9 +173,14 @@ def test_safe_mode_and_pause(dec, clock):
     assert dec.decide(cands(a=10, b=99)).state == State.PAUSED
 
 
-def test_game_ending_moves_on_even_without_gate(dec, clock):
+def test_game_ending_moves_on_once_its_last_play_has_aired(dec, clock):
     start_on(dec, clock, "a", {})
-    d = dec.decide(cands(b=50))  # "a" vanished (final)
+    tl = dec.timeline("a", League.NFL)
+    tl.final_at, tl.end_t = clock.t, clock.t - 5  # final in the data; last play 5 s ago (test_midplay)
+    d = dec.decide(cands(b=50))  # "a" left the candidates (final)
+    assert d.action == "stay"    # its last play hasn't reached your screen yet
+    clock.t += 40 + 30 + 3       # mu + 2*sigma + buffer
+    d = dec.decide(cands(b=50))
     assert d.action == "switch" and d.target == "b" and d.kind == "ended"
 
 

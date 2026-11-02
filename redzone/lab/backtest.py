@@ -14,7 +14,10 @@ Report card (what "good" means):
 from __future__ import annotations
 
 import json
+import random
+import zlib
 from dataclasses import dataclass, field
+from dataclasses import replace as dc_replace
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -124,13 +127,90 @@ def _is_big(p: dict) -> bool:
         or bool(p.get("isTurnover"))
 
 
+@dataclass
+class _Feed:
+    """How one game's data reaches the app in a backtest (the realism knobs, per game)."""
+    arrive: list[float]                                       # when each play shows up in the feed
+    drops: list[tuple[float, float]] = field(default_factory=list)  # windows where the source is silent
+    no_wall: set[int] = field(default_factory=set)            # plays delivered without a wallclock
+    late: list[int] = field(default_factory=list)             # plays that can arrive out of order
+    fresh_at: float = 0.0                                     # last time this game's data was fresh
+
+    def __post_init__(self):
+        self.late_set = set(self.late)
+
+
+def _feed(r: Replay, rng: random.Random, feed_lag: float, step: float, lag_jitter, drop: float,
+          late_plays: float, no_wallclock: float, t0: float, t1: float) -> _Feed:
+    if lag_jitter:
+        lo, hi = lag_jitter
+        arrive, prev = [], float("-inf")
+        for w in r.wall:
+            prev = max(prev, w + rng.uniform(lo, hi))   # feeds deliver in order, at a varying lag
+            arrive.append(prev)
+    else:
+        arrive = [w + feed_lag for w in r.wall]
+    late = []
+    if late_plays:
+        for i in range(len(arrive)):
+            if rng.random() < late_plays:
+                arrive[i] += step      # a poll late: later plays can now land before it
+                late.append(i)
+    drops = []
+    if drop:
+        t = t0
+        while True:
+            t += rng.expovariate(drop / 60.0)   # `drop` = silences per game-minute
+            if t >= t1:
+                break
+            dur = rng.uniform(60.0, 120.0)
+            drops.append((t, t + dur))
+            t += dur
+    no_wall = {i for i in range(len(arrive)) if no_wallclock and rng.random() < no_wallclock}
+    return _Feed(arrive, drops, no_wall, late)
+
+
+def _deliver(r: Replay, f: _Feed, i: int, now: float):
+    """The state the app would see: plays not yet arrived are missing, some lack a wallclock."""
+    g = r.state_at(i)
+    if g is None:
+        return None
+    missing = {j for j in f.late if j <= i and f.arrive[j] > now}
+    strip = f.no_wall
+    if missing or strip:
+        lo = max(0, i - 7)                       # parse_summary keeps the last 8 plays
+        ids = {str(r.plays[j].get("id")): j for j in range(lo, i + 1)}
+
+        def fix(p):
+            j = ids.get(p.id)
+            if j is not None and j in strip:
+                return dc_replace(p, wallclock=None, seen_at=None)
+            return p
+        recent = [fix(p) for p in g.recent_plays if ids.get(p.id) not in missing]
+        last = fix(g.last_play) if g.last_play else None
+        g = dc_replace(g, recent_plays=recent, last_play=last)
+    g.updated_at = f.fresh_at
+    return g
+
+
 def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: float = 8.0,
         delay: float = 35.0, play_len: float = 7.0, tune_s: float = 5.0, step: float | None = None,
-        focus: str | None = None, start: float | None = None, end: float | None = None) -> Report:
+        focus: str | None = None, start: float | None = None, end: float | None = None,
+        true_delay: float | None = None, sigma: float = 3.0, lag_jitter: tuple[float, float] | None = None,
+        drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0) -> Report:
+    """Realism knobs (all off by default, so the scorecard is unchanged):
+      true_delay    the stream's real delay; `delay` is only the app's estimate of it
+      sigma         the uncertainty the app states for that estimate (seconds)
+      lag_jitter    (lo, hi): each play reaches the feed lo..hi s after it happened (seeded)
+      drop          source goes silent 60-120 s, this many times per game-minute on average
+      late_plays    fraction of plays that arrive one poll late (so out of order)
+      no_wallclock  fraction of plays delivered without a wallclock
+    """
     step = step or cfg.get("polling.live_s", 10)
     clock = _Clock()
-    lag_total = feed_lag + delay   # real life -> your screen
-    delays = DelayBook({"youtubetv": lag_total}, sigma_default=3.0, clock=clock)
+    lag_total = feed_lag + delay   # real life -> your screen, as the app believes it
+    lag_true = feed_lag + (delay if true_delay is None else true_delay)  # ...and as it really is
+    delays = DelayBook({"youtubetv": lag_total}, sigma_default=sigma, clock=clock)
     scorer = Scorer(cfg, clock=clock)
     dec = Decider(cfg, delays, clock=clock)
     me = Personal(my_teams={League.NFL: my_teams})
@@ -142,7 +222,9 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     for r in replays:
         d = delays.get(f"youtubetv:{r.gid}")
         d.calibrated_at = t0
-        d.sigma = 3.0
+        d.sigma = sigma
+    feeds = {r.gid: _feed(r, random.Random(seed * 1_000_003 + zlib.crc32(r.gid.encode())), feed_lag, step,
+                          lag_jitter, drop, late_plays, no_wallclock, t0, t1) for r in replays}
 
     switches: list[SwitchLog] = []
     decisions = []
@@ -153,24 +235,39 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     while clock.t <= t1:
         cands = {}
         for r in replays:
+            f = feeds[r.gid]
+            silent = any(a <= clock.t < b for a, b in f.drops)
             i = idx[r.gid]
-            while i + 1 < len(r.plays) and r.wall[i + 1] + feed_lag <= clock.t:
-                i += 1
+            if not silent:
+                f.fresh_at = clock.t
+                # Newest play that has arrived. A late play doesn't hold back the ones after it
+                # (out-of-order delivery); _deliver leaves it out until it lands.
+                k = i + 1
+                while k < len(r.plays):
+                    if f.arrive[k] <= clock.t:
+                        i = k
+                    elif k not in f.late_set:
+                        break
+                    k += 1
             idx[r.gid] = i
             if i < 0:
                 continue
-            g = r.state_at(i)
+            g = _deliver(r, f, i, f.fresh_at)
             if g is None:
                 continue
             # parse_summary already stamps plays with their real wallclock.
             dec.timeline(r.gid, r.league).observe(g)
             if g.phase != Phase.LIVE:
                 continue
-            cands[r.gid] = Candidate(scorer.score(g, me), f"youtubetv:{r.gid}")
+            cands[r.gid] = Candidate(scorer.score(g, me), f"youtubetv:{r.gid}",
+                                     stale=clock.t - f.fresh_at > 60)
         before = dec.current
         decision = dec.decide(cands)
         decisions.append(decision)
-        if decision.action == "switch" and (decision.target != before or decision.kind == "live"):
+        # Any "switch" that survives decide() is a real tune. One back to the same game after a replay
+        # (kind "home"/"break_visit", not just "live") used to go unlogged: the grader then thought the
+        # replay ran on forever AND skipped mid-play checks on the next cut from that game.
+        if decision.action == "switch" and decision.target:
             switches.append(SwitchLog(clock.t, before, decision.target, decision.kind, decision.reason))
             watching.append((clock.t, decision.target))
         elif decision.action == "replay" and decision.replay:
@@ -179,7 +276,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             replayed.add((decision.target, round(decision.replay.t)))
         clock.t += step
 
-    rep = _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t0, t1, replayed)
+    rep = _grade(replays, switches, watching, my_teams, lag_true, play_len, tune_s, t0, t1, replayed)
     rep.decisions = decisions
     return rep
 

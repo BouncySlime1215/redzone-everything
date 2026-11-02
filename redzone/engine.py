@@ -115,7 +115,9 @@ class Engine:
         await self._league_feeds(live)
         self._source_health()
         for g in self.merger.games.values():
-            if g.phase == Phase.LIVE:
+            # [mid-play guard] Also the polls after a game we were following goes Final, so the decider
+            # knows it ENDED (and stays for the last play to air) instead of seeing it vanish.
+            if g.phase == Phase.LIVE or (g.phase == Phase.POST and g.game_id in self.decider.timelines):
                 self.decider.timeline(g.game_id, g.league).observe(g)
 
     async def _scoreboard(self, lg: League) -> list[GameState] | None:
