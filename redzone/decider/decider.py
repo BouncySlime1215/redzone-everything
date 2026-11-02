@@ -27,6 +27,8 @@ from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, PLAY_LEN_S, DelayBook, 
 from redzone.models import League
 from redzone.scoring.engine import Scored
 
+GONE_MAX_HOLD_S = 90.0  # [mid-play guard] a game that vanished without a final: don't wait on a dead feed forever
+
 
 def _short(s: Scored) -> str:
     return "your game"
@@ -130,6 +132,9 @@ class Decider:
         # Last known candidate per game. A final drops out of the live candidates, but its last
         # plays still air (and stay on the DVR) for a while: keep them judgeable and replayable.
         self._known: dict[str, Candidate] = {}
+        # [mid-play guard] state for leaving a game that ended or dropped out of the feed
+        self._known_target: dict[str, str] = {}
+        self._gone: tuple | None = None   # ((game, arrived at), when it vanished without a final)
 
     # ----- inputs -----------------------------------------------------------
 
@@ -299,12 +304,27 @@ class Decider:
         typical = self.cfg.get(f"break_lengths_s.{tl.league.value}.{start.label}", 120)
         return start.seen + d.mu + typical - now
 
+    def _replay_overrun(self, m: Missed, cands, now: float) -> float:
+        """[mid-play guard] The replay's end is a cut too: play on until the replayed play has ended.
+
+        The rewind is whole seek_step_s presses (control.py rounds UP), so the clip can start up
+        to one step early, and if the screen runs 2σ further behind than we think, 2σ earlier
+        still. clip_s alone (15 s from 3 s before the snap) can end mid-play. (Padding by the
+        exact overshoot instead measured worse on the scorecard, so: the worst case.)"""
+        x = cands.get(m.game_id)
+        d = self.delays.get((x.target if x else None) or self._known_target.get(m.game_id) or "unknown")
+        tl = self.timelines.get(m.game_id)
+        play_len = PLAY_LEN_S.get(tl.league, 8.0) if tl else 8.0
+        need = play_len + 3.0 + self.cfg.get("replay.seek_step_s", 10) + 2 * d.current_sigma(now) \
+            + AFTER_PLAY_BUFFER_S          # 3.0 = Missed.back_s lead_s
+        return max(0.0, need - self.cfg.get("replay.clip_s", 15))
+
     def _start_replay(self, m: Missed, cands, now: float) -> None:
         m.replayed = True
         if m in self.queue:
             self.queue.remove(m)
         self.replaying = m
-        self.replay_until = now + self._replay_cost(m, cands)
+        self.replay_until = now + self._replay_cost(m, cands) + self._replay_overrun(m, cands, now)
         if self.current and self.current != m.game_id and self.current != self.home_break_visit:
             self.stack.append(self.current)
         self.current = m.game_id
@@ -334,6 +354,7 @@ class Decider:
         if now < self.frozen_until:
             return Decision(now, "stay", self.current, "holding still: it was flip-flopping", State.FROZEN)
         self._target_of.update({gid: x.target for gid, x in cands.items() if x.target})
+        self._known_target.update(self._target_of)  # [mid-play guard] remembered after a game drops out
         if self.replaying:
             return Decision(now, "stay", self.current, f"replay: {self.replaying.label}", State.REPLAY,
                             kind="replay", replay=self.replaying)
@@ -349,13 +370,12 @@ class Decider:
         # Current game is over, gone, or muted: go to the best thing — but a game that just went
         # final in the DATA is still playing its last seconds on SCREEN (~delay behind). Leaving
         # the moment the feed says "final" cut off game-winners in backtests (30 cuts in 92 NBA
-        # games). Stay until the last play has aired, then move.
+        # games, 2 NFL kneel-downs). Stay until the last play has aired, then move.
         if cur is None or self.current not in live or self.current in u.muted:
-            if self.current and self.current not in u.muted:
-                left = self._ending_still_airing(self.current, now)
-                if left > 0:
-                    return Decision(now, "stay", self.current, f"letting the last play finish on screen ({left:.0f}s)",
-                                    State.LOCKED, "ending on screen")
+            # [mid-play guard] ...but not while its last play is still on your screen (see _gone_hold).
+            hold = self._gone_hold(cur, now)
+            if hold:
+                return Decision(now, "stay", self.current, hold, State.WATCHING, hold)
             best = self._best(watchable, exclude=None)
             catch_up = self._catch_up(cands, now, best, "game over")
             if catch_up:
@@ -583,6 +603,38 @@ class Decider:
                             State.WATCHING, "replay finished", kind="live")
         return Decision(now, "switch", best, self._why(cands[best], "back to live"), State.WATCHING,
                         "replay finished", kind="live")
+
+    # ----- [mid-play guard] leaving a game that ended or dropped out -------------
+
+    def _gone_hold(self, cur: Candidate | None, now: float) -> str | None:
+        """Why we can't leave the current game yet though it's over / gone / scoring zero (None = go).
+
+        A final in the DATA arrives ~35 s before your screen shows the last play (often the
+        game-winner): stay until that has aired. A game that merely vanished from the feed may
+        still be live: leave only at a gap the gate can prove, or after GONE_MAX_HOLD_S of flying
+        blind. Muting it yourself is an instruction, not a guess: go now."""
+        gid = self.current
+        if gid is None or gid in self.user.muted:
+            return None
+        tl = self.timelines.get(gid)
+        if tl is None:
+            return None
+        d = self.delays.get((cur.target if cur else None) or self._known_target.get(gid) or "unknown")
+        if tl.final_at is not None:
+            until = tl.end_t + d.mu + 2 * d.current_sigma(now) + AFTER_PLAY_BUFFER_S
+            if now < until:
+                return f"game over — staying for the last play to air ({until - now:.0f}s)"
+            return None
+        gate = leave_gate(tl, d, now, self.cfg.get("decider.uncalibrated_sigma_s"))
+        if gate.safe:
+            return None
+        if cur is None:  # vanished without a final
+            if self._gone is None or self._gone[0] != (gid, self.since):
+                self._gone = ((gid, self.since), now)
+            if now - self._gone[1] >= GONE_MAX_HOLD_S:
+                return None
+            return f"lost this game's data — leaving at the next safe gap ({gate.why})"
+        return f"leaving at the next gap ({gate.why})"
 
     # ----- helpers ----------------------------------------------------------
 
