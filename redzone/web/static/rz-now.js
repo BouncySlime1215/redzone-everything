@@ -2,14 +2,14 @@
    fantasy, catch-up queue, recent switches. Plus the Focus and More sheets. */
 
 import {
-  app, ACTIONS, hooks, attr, esc, num, get, arr, games, gameById, phase, status, teamVars, pairInks, fmtAgo, fmtTime,
-  fmtStart, nowS, reduceMotion, SPRING, EASE_OUT, raw, ink, teamBy, whereLabel,
-} from "./rz-core.js?v=28";
-import { patch } from "./rz-dom.js?v=28";
-import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=28";
-import { heroCard, fantasyCard } from "./rz-cards.js?v=28";
-import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=28";
-import { act } from "./rz-api.js?v=28";
+  app, ACTIONS, attr, esc, num, get, arr, games, gameById, status, pairInks, fmtAgo, fmtTime, fmtStart, nowS,
+  reduceMotion, SPRING, EASE_OUT, ink, teamBy, whereLabel,
+} from "./rz-core.js?v=31";
+import { patch } from "./rz-dom.js?v=31";
+import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=31";
+import { heroCard, fantasyCard } from "./rz-cards.js?v=31";
+import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=31";
+import { act } from "./rz-api.js?v=31";
 
 const STATE_LABEL = { idle: "Idle", watching: "Watching", locked: "Locked in", break: "On a break", paused: "Paused",
   frozen: "Holding still", safe: "Safe mode", replay: "Replay" };
@@ -286,4 +286,3 @@ ACTIONS["more-act"] = async (el) => {
   if (r && r.ok !== false && action !== "saw_it") closeSheet(sheetById("more"));
 };
 
-export { teamVars, raw, ink, phase, whereLabel };

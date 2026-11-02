@@ -1,8 +1,8 @@
 /* RedZone Everything — bottom sheets (stacked, drag-to-dismiss, spring) and toasts. */
 
-import { esc, reduceMotion, SPRING } from "./rz-core.js?v=28";
-import { patch } from "./rz-dom.js?v=28";
-import { icon } from "./rz-ui.js?v=28";
+import { esc, reduceMotion, SPRING } from "./rz-core.js?v=31";
+import { patch } from "./rz-dom.js?v=31";
+import { icon } from "./rz-ui.js?v=31";
 
 const stack = [];
 const host = () => document.getElementById("sheets");

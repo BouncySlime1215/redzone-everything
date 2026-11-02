@@ -92,8 +92,19 @@ _MARKERS = ("timeout", "end_", "two-minute", "period_end", "period_start", "star
 # Dead-ball entries that happen DURING a whistle, not action that ends it. Without these, every
 # free throw "ended" the stoppage and NBA whistles became too short to ever cut in. Per league on
 # purpose: "foul" in baseball is a live pitch ("foul ball") — matching it everywhere caused a cut.
+# Basketball: after a timeout/inbound the ball is live with nothing logged until the next shot,
+# foul or turnover — up to a full shot clock. Play may have resumed that long before the first
+# logged event (backtests: assuming 2s caused 7 cuts once break visits got more frequent).
+SILENT_LIVE_S = {League.NBA: 24.0}
+
+
+def resume_lead(league: League) -> float:
+    """How long before the first logged event after a stoppage play may already have restarted."""
+    return PLAY_LEN_S.get(league, 0.0) + 2.0 + SILENT_LIVE_S.get(league, 0.0)
+
+
 _DEAD_BALL = {
-    League.NBA: ("foul", "substitution", "violation", "kicked_ball", "technical", "flagrant", "delay",
+    League.NBA: ("foul", "substitution", "violation", "kicked_ball", "technical", "flagrant", "delay", "team_rebound",
                  "free_throw_-_1_of_2", "free_throw_-_1_of_3", "free_throw_-_2_of_3"),
     League.NHL: ("hooking", "holding", "tripping", "roughing", "interference", "slashing", "high-sticking",
                  "fighting", "unsportsmanlike", "cross-checking", "too_many", "delay"),
@@ -201,7 +212,7 @@ class Timeline:
             self.events.append(Event(hi, "play", "score change", True, spread=hi - lo))
         self._last_score = score
 
-        lead = PLAY_LEN_S.get(self.league, 0.0) + 2.0  # a play starts before it's logged
+        lead = resume_lead(self.league)  # play restarts before the first logged event after a stoppage
         last_start = self.last("stop_start")
         # Real action after a stoppage means the stoppage ended, even if a new one started since
         # (timeout -> touchdown -> break). Missing this once caused a mid-play cut in backtests.
@@ -279,7 +290,8 @@ def leave_gate(tl: Timeline, delay: Delay, now: float, uncalibrated_sigma: float
     # If the feed is slow (lag), quiet (dropped source) or the delay is uncertain, "no play in the
     # data" stops meaning "no play on screen".
     age = max(0.0, now - tl.fresh_at) if tl.fresh_at is not None else 0.0
-    ahead = mu - margin - play_len - tl.lag_est()   # how far our data runs ahead of your screen
+    # how far our data runs ahead of your screen (basketball can be live ~a shot clock with no event)
+    ahead = mu - margin - play_len - SILENT_LIVE_S.get(tl.league, 0.0) - tl.lag_est()
     covered = age <= ahead
 
     # 1. Is an official stoppage showing on screen (or is the screen done with action before it)?
@@ -289,7 +301,7 @@ def leave_gate(tl: Timeline, delay: Delay, now: float, uncalibrated_sigma: float
         resume = end.seen if end is not None and end.seen >= start.seen else None
         # [mid-play guard] A play logged after the stoppage began proves play resumed, even if the
         # stop_end was mistimed or never recorded (late / out-of-order plays, missing wallclock).
-        lead = play_len + 2.0
+        lead = resume_lead(tl.league)
         for e in reversed(tl.events):
             if e.kind == "play" and e.seen > start.seen:
                 resume = e.lo - lead if resume is None else min(resume, e.lo - lead)

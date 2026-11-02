@@ -14,12 +14,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from redzone.decider.screen import CONTINUOUS
+from redzone.decider.screen import CONTINUOUS, _is_marker
 from redzone.models import REAL_BREAKS, League, Stoppage
 from redzone.sources import espn
 
 PLAY_LEN = {League.NFL: 7.0, League.MLB: 6.0, League.NBA: 0.0, League.NHL: 0.0}
-RESUME_LEAD = {League.NBA: 5.0, League.NHL: 5.0}
+RESUME_LEAD = {League.NBA: 26.0, League.NHL: 5.0}   # play can restart this long before the next logged action
 
 
 @dataclass
@@ -138,7 +138,12 @@ def _clean_cut(league: League, wall: list[float], plays: list[dict], screen_t: f
         if i < 0:
             return True, ""
         last = plays[i]
-        nxt = wall[i + 1] if i + 1 < len(wall) else float("inf")
+        # The dead ball lasts until play restarts, which can be well before the next ACTION is logged
+        # (basketball: up to a shot clock after an inbound). Free throws, subs, team rebounds in
+        # between are part of the same dead ball.
+        nxt = next((wall[j] for j in range(i + 1, len(wall))
+                    if espn.stoppage_for(league, plays[j]) == Stoppage.NONE
+                    and not _is_marker(espn._kind(league, plays[j]), league)), float("inf"))
         dead = espn.stoppage_for(league, last) != Stoppage.NONE or (
             last.get("scoringPlay") and screen_t - wall[i] <= 4.0)
         if dead and screen_t < nxt - RESUME_LEAD[league]:

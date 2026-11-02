@@ -185,7 +185,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: var(--sp-3) var(--gutter
 .screen-head h1 { margin: 0; font: 800 34px/0.95 var(--font-display); letter-spacing: .005em; text-transform: uppercase; }
 .screen-head .sub { font: 600 var(--fs-foot)/1.2 var(--font-ui); color: var(--text-3); margin-top: 4px; }
 .sec { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin: var(--sp-7) 2px var(--sp-3); }
-.sec:first-child { margin-top: var(--sp-2); }
+.screen > .sec:first-child { margin-top: var(--sp-2); }
 .sec h2 { margin: 0; display: flex; align-items: center; gap: 8px; font: 800 17px/1 var(--font-display); letter-spacing: .09em; text-transform: uppercase; color: var(--text-1); }
 .sec h2 .n { font: 700 13px/1 var(--font-ui); letter-spacing: 0; color: var(--text-3); padding: 3px 7px; border-radius: 99px; background: var(--surface-2); }
 .sec .aside { font: 600 var(--fs-caption)/1.2 var(--font-ui); color: var(--text-3); text-align: right; }
@@ -734,6 +734,12 @@ main { max-width: var(--maxw); margin: 0 auto; padding: var(--sp-3) var(--gutter
 .pick .tick .ico { width: 14px; height: 14px; stroke-width: 3; opacity: 0; transform: scale(.4); transition: transform var(--t-3) var(--ease-spring), opacity var(--t-2); }
 .pick[aria-pressed="true"] .tick { background: var(--brand); border-color: var(--brand); }
 .pick[aria-pressed="true"] .tick .ico { opacity: 1; transform: none; }
+.pick--compact { min-height: 52px; padding: 7px 12px 7px 8px; }
+.pick--compact .pick-ic { width: 36px; height: 36px; border-radius: 11px; }
+.pick--compact .pick-ic .ico { width: 18px; height: 18px; }
+.pick--compact .t1 { font-size: 14px; }
+.pick--compact .t2 { font-size: 12px; margin-top: 1px; }
+.lead--game { display: flex; align-items: center; gap: 10px; }
 .pick-ic { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: color-mix(in srgb, var(--brand) 14%, transparent); color: var(--brand); flex: none; }
 
 /* game detail sheet */
@@ -925,6 +931,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: var(--sp-3) var(--gutter
 .votes .down .ico { color: var(--danger-ink); }
 .votes .bar { flex: 1; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--danger) 50%, var(--surface-3)); overflow: hidden; }
 .votes .bar i { display: block; height: 100%; background: var(--success); width: calc(var(--p, 50) * 1%); transition: width var(--t-5) var(--ease-out); }
+.votes .bar--empty, .votes .bar--empty i { background: var(--surface-3); }
 
 /* ------------------------------------------------------------------ 12. Settings */
 .set { padding: 4px 14px; }

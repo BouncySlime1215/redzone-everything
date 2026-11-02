@@ -278,6 +278,8 @@ _SCORE_KINDS = ("touchdown", "field goal good", "safety")
 
 def _kind(league: League, p: dict) -> str:
     t = (_get(p, "type", "text") or "").lower()
+    if league == League.NBA and "team rebound" in (p.get("text") or "").lower():
+        return "team_rebound"  # ball out of bounds / between free throws: a dead ball, not live play
     if league == League.NFL:
         if "touchdown" in t:
             return "td"
@@ -324,6 +326,8 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
             return Stoppage.HALFTIME if per == 2 and t == "end period" else Stoppage.END_PERIOD
         if "challenge" in t or "review" in t:
             return Stoppage.REVIEW
+        if "team rebound" in (p.get("text") or "").lower():
+            return Stoppage.WHISTLE
         if "free throw" in t:
             # The ball is dead between free throws; after the LAST one play resumes
             # (made: quick inbound; missed: live rebound), so that one ends the whistle.

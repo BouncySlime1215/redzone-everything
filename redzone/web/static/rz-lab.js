@@ -1,10 +1,10 @@
 /* RedZone Everything — Lab: Screen Lab labeling, stream delay + "I just saw it", auto-tuner, backtests, votes. */
 
-import { app, ACTIONS, hooks, attr, esc, num, get, arr, clamp, reduceMotion, SPRING, vibrate } from "./rz-core.js?v=28";
-import { patch } from "./rz-dom.js?v=28";
-import { icon, empty, sec, screenHead, skel, odo } from "./rz-ui.js?v=28";
-import { toast } from "./rz-sheet.js?v=28";
-import { api, act } from "./rz-api.js?v=28";
+import { app, ACTIONS, hooks, attr, esc, num, get, arr, clamp, reduceMotion, SPRING, vibrate } from "./rz-core.js?v=31";
+import { patch } from "./rz-dom.js?v=31";
+import { icon, empty, sec, screenHead, skel, odo } from "./rz-ui.js?v=31";
+import { toast } from "./rz-sheet.js?v=31";
+import { api, act } from "./rz-api.js?v=31";
 
 let loading = null;
 export async function loadLab(force = false) {
@@ -38,7 +38,7 @@ export function renderLab(root) {
   const f = S.feedback || get(app.lab, "feedback", {}) || {};
   const up = num(f.up), down = num(f.down);
   const votes = `<div class="card card-pad" data-key="votes"><div class="votes">
-    <span class="v up">${icon("thumb-up")}${odo(up)}</span><div class="bar" style="--p:${up + down ? Math.round((up / (up + down)) * 100) : 50}"><i></i></div><span class="v down">${odo(down)}${icon("thumb-down")}</span></div>
+    <span class="v up">${icon("thumb-up")}${odo(up)}</span><div class="bar ${up + down ? "" : "bar--empty"}" style="--p:${up + down ? Math.round((up / (up + down)) * 100) : 50}"><i></i></div><span class="v down">${odo(down)}${icon("thumb-down")}</span></div>
     <p class="dim" style="margin:10px 0 0;font-size:12.5px">Your 👍 / 👎 on switches train the auto-tuner.</p></div>`;
   patch(root, `${screenHead("Lab", "Teach it · measure it · tune it")}
     ${sec("Screen Lab", { key: "s-pad", aside: "What's on your TV?" })}${pad}

@@ -1,15 +1,15 @@
 /* RedZone Everything — detail sheets: game detail, team + roster, set-channel; teams directory data. */
 
 import {
-  app, ACTIONS, hooks, store, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, raw, onColor, lum, hex,
-  gameById, games, fmtStart, fmtTime, nowS, whereLabel, teamBy, LEAGUE_NAME, imgSrc, vibrate,
-} from "./rz-core.js?v=28";
-import { icon, logo, leagueImg, avatar, empty, skel, stateBadge, chip } from "./rz-ui.js?v=28";
-import { situation, wpBar, sparkline, linescore } from "./rz-viz.js?v=28";
-import { board, gameCard, whereChip, leaderMini } from "./rz-cards.js?v=28";
-import { openSheet, sheetById, closeSheet, confirmSheet, toast, updateSheets } from "./rz-sheet.js?v=28";
-import { api, act } from "./rz-api.js?v=28";
-import { pop } from "./rz-dom.js?v=28";
+  app, ACTIONS, hooks, store, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, raw, onColor, lum,
+  gameById, games, fmtStart, whereLabel, teamBy, imgSrc, vibrate,
+} from "./rz-core.js?v=31";
+import { icon, logo, leagueImg, avatar, empty, skel, stateBadge, chip } from "./rz-ui.js?v=31";
+import { situation, wpBar, sparkline, linescore } from "./rz-viz.js?v=31";
+import { board, gameCard } from "./rz-cards.js?v=31";
+import { openSheet, sheetById, closeSheet, confirmSheet, toast, updateSheets } from "./rz-sheet.js?v=31";
+import { api, act } from "./rz-api.js?v=31";
+import { pop } from "./rz-dom.js?v=31";
 
 /* ====================================================================== game detail */
 async function loadDetail(gid, force = false) {
@@ -84,7 +84,7 @@ function gameSheet(gid) {
   const series = arr(det && det.wp_series);
   const [aInk, hInk] = pairInks(g.away, g.home, true);
   const lastWp = series.length ? series[series.length - 1] : num(g.wp, NaN);
-  const wpSec = series.length > 1 ? `<div class="sheet-sec"><h4>Win probability</h4><small>${ph === "post" ? "How it played out" : "Since kickoff"}</small></div>
+  const wpSec = series.length > 1 ? `<div class="sheet-sec"><h4>Win probability</h4><small>${ph === "post" ? "How it played out" : `Since ${({ nfl: "kickoff", nba: "tip-off", nhl: "puck drop", mlb: "first pitch" })[g.league] || "the start"}`}</small></div>
     <div class="panel on-dark">
       <div class="spark-head"><span class="spark-team" style="color:${hInk}">${logo(g.home, { size: 22, dark: true })}${esc(get(g, "home.abbr"))} <b>${Number.isFinite(lastWp) ? Math.round(lastWp * 100) + "%" : ""}</b></span>
       <span class="spark-team" style="color:${aInk}"><b>${Number.isFinite(lastWp) ? Math.round((1 - lastWp) * 100) + "%" : ""}</b> ${esc(get(g, "away.abbr"))}${logo(g.away, { size: 22, dark: true })}</span></div>
@@ -178,11 +178,11 @@ function channelSheet(gid) {
   const g = gameById(gid);
   const cur = get(g, "where.target", "");
   const chs = arr(get(app.channels, "channels"));
-  const row = (target, ic, t1, t2) => `<button class="pick" data-act="set-target" data-target="${attr(target)}" data-gid="${attr(gid)}" aria-pressed="${!!target && cur === target}">
-    <span class="pick-ic" style="width:40px;height:40px;border-radius:12px">${icon(ic)}</span><span class="grow"><span class="t1" style="display:block">${esc(t1)}</span>${t2 ? `<span class="t2" style="display:block">${t2}</span>` : ""}</span><span class="tick">${icon("check")}</span></button>`;
-  return `<h3>Where's it on?</h3><p class="lead">${g ? `${logo(g.away, { size: 20 })}` : ""} ${esc(g ? g.matchup : "This game")} — pick the channel and it'll remember.</p>
+  const row = (target, ic, t1, t2) => `<button class="pick pick--compact" data-act="set-target" data-target="${attr(target)}" data-gid="${attr(gid)}" aria-pressed="${!!target && cur === target}">
+    <span class="pick-ic">${icon(ic)}</span><span class="grow"><span class="t1" style="display:block">${esc(t1)}</span>${t2 ? `<span class="t2" style="display:block">${t2}</span>` : ""}</span><span class="tick">${icon("check")}</span></button>`;
+  return `<h3>Where's it on?</h3><p class="lead lead--game">${g ? `<span class="logo-pair">${logo(g.away, { size: 24 })}${logo(g.home, { size: 24 })}</span>` : ""}<span>${esc(g ? g.matchup : "This game")} — pick the channel and it'll remember.</span></p>
     <div class="pick-list" style="margin-top:16px">
-      ${!app.channels ? skel("row", 3) : chs.map((c) => row(`youtubetv:${c.key}`, "tv", c.label || c.key, c.code ? `<span style="color:var(--success-ink)">Link set</span>` : "Link not set yet — add it in Settings")).join("")}
+      ${!app.channels ? skel("row", 3) : chs.map((c) => row(`youtubetv:${c.key}`, "tv", c.label || c.key, c.code ? `<span style="color:var(--success-ink)">Linked</span>` : "No link yet")).join("")}
       ${row("youtubetv:st", "football", "Sunday Ticket", "NFL out-of-market games")}
       ${row("prime:leaguepass", "play", "Prime Video", "NBA League Pass, Monumental, TNF")}
     </div>
@@ -300,4 +300,3 @@ function teamSheet(lg, id) {
 }
 ACTIONS["open-team"] = (el) => openTeam(el.dataset.lg, el.dataset.id);
 
-export { leaderMini, whereChip, hex, LEAGUE_NAME, fmtTime, nowS };

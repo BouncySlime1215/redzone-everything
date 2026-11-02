@@ -146,13 +146,13 @@ const BG_DARK = 0.0035, BG_LIGHT = 0.88;
 export function ink(team, dark = isDark()) {
   const p = hex(team && team.color), a = hex(team && team.alt_color);
   const bg = dark ? BG_DARK : BG_LIGHT;
-  const ok = (c) => c && contrast(lum(c), bg) >= 2.6 && !(dark ? lum(c) > 0.85 : lum(c) < 0.02);
+  const ok = (c) => c && contrast(lum(c), bg) >= 3.2 && !(dark ? lum(c) > 0.85 : lum(c) < 0.02);
   if (ok(p)) return p;
   if (ok(a)) return a;
   const base = p || a || "#6f778a";
   for (let t = 0.15; t <= 1; t += 0.1) {
     const c = mixHex(base, dark ? "#ffffff" : "#000000", t);
-    if (contrast(lum(c), bg) >= 2.6) return c;
+    if (contrast(lum(c), bg) >= 3.2) return c;
   }
   return dark ? "#c9ced8" : "#4a5266";
 }

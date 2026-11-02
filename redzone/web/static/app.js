@@ -1,22 +1,22 @@
 /* RedZone Everything — phone UI entry point.
    Vanilla ES modules, no build step. Live state arrives over SSE every ~10s; every screen renders an HTML
    string that rz-dom.js patch()es into the live DOM by key, so animations, scroll and open sheets survive.
-   Cache-busting: every import uses ?v=20 — bump it everywhere (index.html + *.js) when shipping changes. */
+   Cache-busting: index.html and every import carry the same ?v=N — bump them all together when shipping changes. */
 
 import {
   app, ACTIONS, CHANGES, INPUTS, hooks, store, MOCK, Q, esc, num, get, arr, gameById, nowS, fmtDur, fmtCountdown,
-  installImages, reduceMotion, pairInks, teamBy, markMine,
-} from "./rz-core.js?v=28";
-import { patch, flash } from "./rz-dom.js?v=28";
-import { icon } from "./rz-ui.js?v=28";
-import { startStream } from "./rz-api.js?v=28";
-import { updateSheets, topSheet, closeSheet } from "./rz-sheet.js?v=28";
-import { renderNow, countdown } from "./rz-now.js?v=28";
-import { renderGames } from "./rz-games.js?v=28";
-import { renderBets } from "./rz-bets.js?v=28";
-import { renderLab, loadLab } from "./rz-lab.js?v=28";
-import { renderSettings, announce } from "./rz-settings.js?v=28";
-import { loadTeams } from "./rz-detail.js?v=28";
+  installImages, reduceMotion, pairInks, markMine,
+} from "./rz-core.js?v=31";
+import { patch, flash } from "./rz-dom.js?v=31";
+import { icon } from "./rz-ui.js?v=31";
+import { startStream, act } from "./rz-api.js?v=31";
+import { updateSheets, topSheet, closeSheet } from "./rz-sheet.js?v=31";
+import { renderNow, countdown } from "./rz-now.js?v=31";
+import { renderGames } from "./rz-games.js?v=31";
+import { renderBets } from "./rz-bets.js?v=31";
+import { renderLab, loadLab } from "./rz-lab.js?v=31";
+import { renderSettings, announce } from "./rz-settings.js?v=31";
+import { loadTeams } from "./rz-detail.js?v=31";
 
 const TABS = ["now", "games", "bets", "lab", "settings"];
 const SCREENS = { now: renderNow, games: renderGames, bets: renderBets, lab: renderLab, settings: renderSettings };
@@ -193,10 +193,7 @@ function installEvents() {
   }, { passive: true });
 }
 
-ACTIONS["banner-resume"] = async (el) => {
-  const { act } = await import("./rz-api.js?v=28");
-  act("resume", {}, el);
-};
+ACTIONS["banner-resume"] = (el) => act("resume", {}, el);
 
 /* ---------- boot ---------- */
 installImages();

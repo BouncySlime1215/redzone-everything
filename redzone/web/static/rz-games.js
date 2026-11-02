@@ -1,10 +1,10 @@
 /* RedZone Everything — Games screen: Scores (live / up next / final) and Teams (every team, star yours). */
 
-import { app, ACTIONS, store, attr, esc, num, games, phase, LEAGUES, LEAGUE_NAME, raw, lum, onColor, todayLabel } from "./rz-core.js?v=28";
-import { patch } from "./rz-dom.js?v=28";
-import { icon, logo, leagueImg, empty, skel, seg, screenHead } from "./rz-ui.js?v=28";
-import { gameCard } from "./rz-cards.js?v=28";
-import { loadTeams, teamList } from "./rz-detail.js?v=28";
+import { app, ACTIONS, store, attr, esc, num, games, LEAGUES, LEAGUE_NAME, raw, lum, onColor, todayLabel, fmtTime } from "./rz-core.js?v=31";
+import { patch } from "./rz-dom.js?v=31";
+import { icon, logo, leagueImg, empty, skel, seg, screenHead } from "./rz-ui.js?v=31";
+import { gameCard } from "./rz-cards.js?v=31";
+import { loadTeams, teamList } from "./rz-detail.js?v=31";
 
 const ui = app.ui;
 ui.gview = store.get("gview", "scores");
@@ -39,7 +39,7 @@ function scores(all) {
   const f = ui.league;
   const shown = all.filter((g) => f === "all" || (f === "mine" ? g.mine : g.league === f));
   const live = shown.filter((g) => g.phase === "live").sort((a, b) => (b.on_now - a.on_now) || num(b.score) - num(a.score));
-  const pre = shown.filter((g) => g.phase === "pre" || g.phase === "unknown").sort((a, b) => (b.mine - a.mine) * 0 || num(a.start_time, 9e12) - num(b.start_time, 9e12));
+  const pre = shown.filter((g) => g.phase === "pre" || g.phase === "unknown").sort((a, b) => num(a.start_time, 9e12) - num(b.start_time, 9e12));
   const post = shown.filter((g) => g.phase === "post").sort((a, b) => (b.mine - a.mine) || num(b.start_time) - num(a.start_time));
   if (!app.S) return `<div class="list">${skel("card", 3)}</div>`;
   if (!shown.length) {
@@ -49,7 +49,7 @@ function scores(all) {
   const out = [];
   const head = (k, title, n, extra = "") => out.push(`<div class="sec" data-key="h:${k}"><h2>${k === "live" ? '<i class="live-dot"></i>' : ""}${esc(title)}<span class="n">${n}</span></h2>${extra}</div>`);
   if (live.length) { head("live", "Live", live.length, `<span class="aside">Hottest first</span>`); live.forEach((g) => out.push(gameCard(g))); }
-  else if (pre.length) out.push(`<div class="card idle-lite" data-key="nolive"><div class="row" style="gap:12px">${icon("clock", "ico--lg")}<div><b>Nothing live yet</b><div class="t2">Next up: ${esc(pre[0].matchup)} · ${esc(pre[0].start_time ? new Date((pre[0].start_time - app.skew) * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "soon")}</div></div></div></div>`);
+  else if (pre.length) out.push(`<div class="card idle-lite" data-key="nolive"><div class="row" style="gap:12px">${icon("clock", "ico--lg")}<div><b>Nothing live yet</b><div class="t2">Next up: ${esc(pre[0].matchup)} · ${esc(pre[0].start_time ? fmtTime(pre[0].start_time) : "soon")}</div></div></div></div>`);
   if (pre.length) { head("pre", "Up next", pre.length); pre.forEach((g) => out.push(gameCard(g))); }
   if (post.length) { head("post", "Final", post.length); post.forEach((g) => out.push(gameCard(g))); }
   return `<div class="list" data-key="glist" data-flip>${out.join("")}</div>`;

@@ -2,10 +2,10 @@
 
 import {
   app, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, isDark, whereLabel, whereUnknown,
-  leaderLabel, winner, teamBy, fmtDur, nowS, fmtCountdown, imgSrc, games, hex,
-} from "./rz-core.js?v=28";
-import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=28";
-import { situation, wpBar } from "./rz-viz.js?v=28";
+  leaderLabel, winner, teamBy, fmtDur, nowS, fmtCountdown, imgSrc, games,
+} from "./rz-core.js?v=31";
+import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=31";
+import { situation, wpBar } from "./rz-viz.js?v=31";
 
 /* ---------- chips ---------- */
 export function whereChip(g, { onDark = false } = {}) {
@@ -238,4 +238,3 @@ function avatarInit(p, ring) {
   return `<span class="avatar" style="--s:28px;--ring:${ring}"><b class="on" style="font-size:11px">${esc((String(p.name || "").split(/\s+/).map((w) => w[0]).join("").slice(0, 2) || "?").toUpperCase())}</b></span>`;
 }
 
-export { pickLeaders, ink };
