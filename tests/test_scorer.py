@@ -177,3 +177,75 @@ def test_crunch_flag_per_sport(cfg, clock):
     assert not _score(cfg, clock, game(League.NHL, 4, 2, 3, 100)).crunch
     assert _score(cfg, clock, game(League.MLB, 3, 2, 9)).crunch
     assert not _score(cfg, clock, game(League.MLB, 6, 2, 9)).crunch
+
+
+# --- context variables (cross-league) ------------------------------------------
+
+from redzone.scoring.engine import game_progress  # noqa: E402
+
+
+def _g(lg, hs, as_, per, clk=None, wp=None, spread=None, gid="c", half=None):
+    return GameState(league=lg, game_id=gid, home=Team("H", score=hs), away=Team("A", score=as_),
+                     phase=Phase.LIVE, period=per, clock_s=clk, home_win_prob=wp, spread=spread, half=half)
+
+
+def test_game_progress_runs_zero_to_one():
+    assert game_progress(_g(League.NBA, 0, 0, 1, 720)) == 0.0
+    assert abs(game_progress(_g(League.NBA, 0, 0, 3, 720)) - 0.5) < 1e-9
+    assert game_progress(_g(League.NHL, 0, 0, 3, 0)) == 1.0
+    assert game_progress(_g(League.NHL, 0, 0, 4, 300)) == 1.0          # OT
+    assert game_progress(_g(League.MLB, 0, 0, 9, half="bottom")) > game_progress(_g(League.MLB, 0, 0, 9))
+
+
+def test_nhl_coin_flip_late_beats_coin_flip_early(cfg, clock):
+    early = Scorer(cfg, clock=clock).score(_g(League.NHL, 1, 1, 1, 900, wp=0.5), Personal())
+    late = Scorer(cfg, clock=clock).score(_g(League.NHL, 1, 1, 3, 400, wp=0.5), Personal())
+    assert late.factors.get("wp_leverage", 0) > early.factors.get("wp_leverage", 0) >= 0
+    lopsided = Scorer(cfg, clock=clock).score(_g(League.NHL, 1, 1, 3, 400, wp=0.9), Personal())
+    assert lopsided.factors["wp_leverage"] < late.factors["wp_leverage"]
+
+
+def test_nhl_lead_changes_are_counted_and_boost(cfg, clock):
+    sc = Scorer(cfg, clock=clock)
+    for hs, as_ in [(0, 0), (1, 0), (1, 1), (1, 2), (2, 2), (3, 2)]:
+        s = sc.score(_g(League.NHL, hs, as_, 3, 500), Personal())
+    assert sc.hist["c"].lead_changes == 2      # H led -> tied, A led -> tied; going ahead from a tie is not
+    assert s.factors["lead_changes"] > 0
+
+
+def test_nba_upset_brewing_names_the_underdog(cfg, clock):
+    # Home is a 9-point underdog (spread +9) and leads late.
+    s = Scorer(cfg, clock=clock).score(_g(League.NBA, 98, 95, 4, 200, spread=9.0), Personal())
+    assert s.factors.get("upset", 0) > 0
+    assert "upset brewing: H" in s.reason or s.factor.startswith("upset brewing")
+    # The favorite leading is not an upset.
+    fav = Scorer(cfg, clock=clock).score(_g(League.NBA, 95, 98, 4, 200, spread=9.0), Personal())
+    assert "upset" not in fav.factors
+
+
+def test_upset_is_off_for_nfl_by_default(cfg, clock):
+    s = Scorer(cfg, clock=clock).score(_g(League.NFL, 17, 14, 4, 300, spread=7.0), Personal())
+    assert "upset" not in s.factors
+
+
+def test_context_never_lifts_garbage_time(cfg, clock):
+    # Blowout late with an "upset" spread: garbage time still wins.
+    s = Scorer(cfg, clock=clock).score(_g(League.NBA, 120, 90, 4, 100, spread=12.0, wp=0.5), Personal())
+    assert s.garbage and s.factor == "garbage time" and s.score < 25
+
+
+def test_overtime_factor_and_top_factor_string(cfg, clock):
+    s = Scorer(cfg, clock=clock).score(_g(League.NHL, 2, 2, 4, 200, wp=0.5), Personal())
+    assert s.factors.get("overtime", 0) > 0
+    assert isinstance(s.factor, str) and s.factor
+
+
+def test_late_one_score_windows(cfg, clock):
+    nhl_late = Scorer(cfg, clock=clock).score(_g(League.NHL, 2, 1, 3, 240), Personal())
+    nhl_mid = Scorer(cfg, clock=clock).score(_g(League.NHL, 2, 1, 3, 700), Personal())
+    nhl_two = Scorer(cfg, clock=clock).score(_g(League.NHL, 3, 1, 3, 240), Personal())
+    assert nhl_late.factors.get("late_one_score", 0) > 0
+    assert "late_one_score" not in nhl_mid.factors and "late_one_score" not in nhl_two.factors
+    nba = Scorer(cfg, clock=clock).score(_g(League.NBA, 100, 95, 4, 150), Personal())
+    nba_far = Scorer(cfg, clock=clock).score(_g(League.NBA, 100, 90, 4, 150), Personal())
+    assert nba.factors.get("late_one_score", 0) > 0 and "late_one_score" not in nba_far.factors
