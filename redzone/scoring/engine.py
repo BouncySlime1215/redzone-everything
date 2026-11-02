@@ -463,10 +463,13 @@ def _mlb(g, h, k, now, c):
         parts.append((nh + 30, f"{sit.no_hitter_for} no-hitter watch"))
     for flag in g.player_flags[:1]:
         parts.append((15, flag))
-    lock = "high-leverage at-bat" if li >= 2.0 and on >= 1 else None
+    inning_over = outs >= 3  # the half-inning is done: nothing to lock onto until the next one
+    lock = "high-leverage at-bat" if li >= 2.0 and on >= 1 and not inning_over else None
     pre = "bases loaded, late" if on == 3 and inning >= 7 and li >= 2.5 else None
-    if walkoff:
+    if walkoff and not inning_over:
         pre = "walk-off spot"
+    if inning_over:
+        pre = None
     return m, parts, lock, pre
 
 

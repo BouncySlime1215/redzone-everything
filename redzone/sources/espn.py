@@ -395,7 +395,11 @@ def parse_summary(league: League, data: dict, upto: int | None = None,
     else:
         cut = plays[: upto + 1]
         last_t = (_get(cut[-1], "type", "text") or "").lower() if cut else ""
-        g.phase = Phase.POST if last_t in ("end of game", "end game") else Phase.LIVE if cut else Phase.PRE
+        # Baseball often has no "end of game" entry (e.g. home team leads after the top of the 9th),
+        # so the last play of a game the header says is over also counts as the end.
+        over = last_t in ("end of game", "end game") or (
+            upto >= len(plays) - 1 and _get(status, "type", "state") == "post")
+        g.phase = Phase.POST if over else Phase.LIVE if cut else Phase.PRE
     if not cut:
         if upto is None and live_phase == Phase.LIVE:
             g.period = _int(status.get("period"))
