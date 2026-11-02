@@ -42,9 +42,9 @@ def on(dec, clock, gid, **others):
     clock.t += 100
 
 
-def timeout_on_screen(dec, clock, gid="a"):
-    """A timeout that's now showing on `gid`'s screen."""
-    dec.timelines[gid].events.append(Event(clock.t, "stop_start", "timeout"))
+def break_on_screen(dec, clock, gid="a", label="end_period"):
+    """A break that's now showing on `gid`'s screen (a quarter break: long enough to visit)."""
+    dec.timelines[gid].events.append(Event(clock.t, "stop_start", label))
     clock.t += 50
 
 
@@ -71,22 +71,39 @@ def test_redzone_needs_two_live_afternoon_games():
 
 def test_break_goes_to_redzone_when_nothing_else_is_worth_it(dec, clock):
     on(dec, clock, "a", b=10)
-    timeout_on_screen(dec, clock)
+    break_on_screen(dec, clock)
     d = dec.decide(cands(a=sc("a", 60, is_break=True), b=10), REDZONE_TARGET)
     assert d.action == "switch" and d.target == REDZONE and d.kind == "break_visit"
     assert dec.home_break_visit == "a"
 
 
+def test_routine_timeout_is_ridden_out_at_home(dec, clock):
+    """[pacing] A routine timeout is over before a RedZone visit pays off (median 20 s in the
+    backtest): tuning away and straight back is the frantic flip-flop. Stay put."""
+    on(dec, clock, "a", b=10)
+    break_on_screen(dec, clock, label="timeout")
+    d = dec.decide(cands(a=sc("a", 60, is_break=True), b=10), REDZONE_TARGET)
+    assert d.action == "stay" and dec.home_break_visit is None
+
+
+def test_crunch_timeout_still_visits(dec, clock):
+    """In the final two minutes a timeout is still worth a quick look elsewhere."""
+    on(dec, clock, "a", b=10)
+    break_on_screen(dec, clock, label="timeout")
+    d = dec.decide(cands(a=sc("a", 60, is_break=True, lock="final two minutes"), b=10), REDZONE_TARGET)
+    assert d.action == "switch" and d.target == REDZONE
+
+
 def test_without_redzone_on_the_air_you_wait_out_the_ad(dec, clock):
     on(dec, clock, "a", b=10)
-    timeout_on_screen(dec, clock)
+    break_on_screen(dec, clock)
     assert dec.decide(cands(a=sc("a", 60, is_break=True), b=10)).action == "stay"
 
 
 def test_redzone_switched_off_in_settings_is_never_used(dec, clock):
     dec.cfg.update({"decider": {"redzone_channel": False}})
     on(dec, clock, "a", b=10)
-    timeout_on_screen(dec, clock)
+    break_on_screen(dec, clock)
     assert dec.decide(cands(a=sc("a", 60, is_break=True), b=10), REDZONE_TARGET).action == "stay"
 
 

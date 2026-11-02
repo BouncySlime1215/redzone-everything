@@ -48,6 +48,10 @@ LONG_VISIT_MIN_S = 240.0            # only plan a visit if at least this much br
 RETURN_BUFFER_S = 60.0              # visiting football/baseball/RedZone: a clean gap is never far away
 RETURN_BUFFER_CONTINUOUS_S = 180.0  # visiting basketball/hockey: allow time to reach a whistle
 KICKOFF_TO_SNAP_S = 25.0  # kickoff logged -> next scrimmage play logged, at the quickest
+# [pacing] Stoppages that usually end before a plain break visit pays off: in the NFL backtest
+# the median such visit lasted 20 s (tune away, tune straight back) and they were the biggest
+# source of A->B->A flips. Ride them out at home; chases, catch-ups and crunch moves still go.
+SHORT_STOPS = {"timeout", "injury", "review"}
 
 
 def _short(s: Scored) -> str:
@@ -567,7 +571,7 @@ class Decider:
             if rp:
                 self.home_break_visit = visit_home
                 return self._replay_decision(rp, state, gate_txt, now)
-            if dest and gate_ok:
+            if dest and gate_ok and not self._short_stop(self.current, s_cur):
                 self.home_break_visit = visit_home
                 return Decision(now, "switch", dest, self._why(cands[dest], f"{_short(s_cur)} on a break → "),
                                 state, gate_txt, kind="break_visit")
@@ -948,6 +952,15 @@ class Decider:
         if self._must_see_resume(home, x):
             return now >= end_ev.seen + hd.mu - 2 * hd.current_sigma(now) - self._deadline_cost(x.target) - 6
         return not break_on_arrival(htl, hd, now, now + self._deadline_cost(x.target))
+
+    def _short_stop(self, gid: str | None, s: Scored) -> bool:
+        """[pacing] Is this football game in a kind of break that ends before a visit pays off?
+        Not in crunch time: there a timeout is the moment to check the other close game."""
+        tl = self.timelines.get(gid) if gid else None
+        if tl is None or s.league != League.NFL or s.crunch or s.lock in CRUNCH_LOCKS:
+            return False
+        start, end = tl.last("stop_start"), tl.last("stop_end")
+        return start is not None and start.label in SHORT_STOPS and (end is None or end.seen < start.lo)
 
     def _routine_tail(self, cur: Candidate, gate: Gate | None, watchable, now: float) -> bool:
         """The ad is still on screen but the break is too far along to visit a game and get back.
