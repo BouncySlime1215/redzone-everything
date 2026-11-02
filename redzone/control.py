@@ -190,6 +190,7 @@ class Controller:
         self._home_flipped = False               # the last flip pressed HOME (its app was relaunched)
         self._resume_task: asyncio.Task | None = None   # "did the relaunched app resume?" after a HOME flip
         self._cec_synced_at = 0.0
+        self._refresh_task: asyncio.Task | None = None
         self._exit_check = None
 
     # --- devices -----------------------------------------------------------------
@@ -367,6 +368,17 @@ class Controller:
         return not self.cfg.get("mode.dry_run", True) and self.main is not None
 
     # --- what the hidden stick has -----------------------------------------------
+
+    async def _refresh_left(self, target: str) -> None:
+        """After a flip: put the game we just left back on the hidden stick, live (see _execute_two)."""
+        for _ in range(40):
+            await asyncio.sleep(0.5)
+            if self.hidden_target != target or self.hidden_ready:
+                return   # something else was loaded there meanwhile
+            if not self._busy():
+                self._last_preload = 0.0
+                self.preload(target)
+                return
 
     def _set_hidden(self, target: str | None, ready: bool, parked: Parked | None = None) -> None:
         self.hidden_target, self.hidden_ready, self.parked = target, ready, parked
@@ -750,9 +762,12 @@ class Controller:
         old_target, old_stick = self.on_target, self.main
         self.active = self.sticks.index(hid)
         self.on_target = None if replay else target
-        # Flip-back: the stick we just left is still playing its game live, so "back"/"home" is one
-        # more flip. Checked again in a few seconds: losing the input can pause a stick over CEC.
-        self._set_hidden(old_target, old_target is not None)
+        # The stick we just left pauses its app when it loses the TV input (seen on both Fire TV
+        # sticks), so it isn't a ready standby. Reload that game at the live edge in the background:
+        # "back"/"home" is then one flip again, and nobody comes back to a stream minutes behind.
+        self._set_hidden(old_target, False)
+        if old_target and not replay:
+            self._refresh_task = asyncio.create_task(self._refresh_left(old_target))
         if old_stick is not None:
             self._awake_at[old_stick.host] = time.time()
         self._verified_at = time.time() - self._verify_every() + VERIFY_SOON_S

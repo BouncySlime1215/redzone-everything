@@ -91,9 +91,9 @@ async def main() -> None:
             live = [g for g in st.get("games") or [] if g.get("phase") == "live" and g.get("id") != shown]
             nxt = (st.get("next") or {}).get("game_id") or (
                 max(live, key=lambda g: g.get("score") or 0)["id"] if live else None)
-            if nxt and nxt != shown and nxt != preloaded:
-                preloaded = nxt
-                ctl.preload(stand.target(nxt))
+            if nxt and nxt != shown and nxt != preloaded and ctl.preload(stand.target(nxt)):
+                preloaded = nxt   # refused (busy, too soon): try again next poll
+                print(f"     preloading {stand.target(nxt)} on the hidden stick")
             await asyncio.sleep(0.5)
     finally:
         keep.cancel()
