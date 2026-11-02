@@ -3,9 +3,9 @@
 import {
   app, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, isDark, whereLabel, whereUnknown,
   leaderLabel, winner, teamBy, fmtDur, nowS, fmtCountdown, imgSrc, games, hex,
-} from "./rz-core.js?v=22";
-import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=22";
-import { situation, wpBar } from "./rz-viz.js?v=22";
+} from "./rz-core.js?v=24";
+import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=24";
+import { situation, wpBar } from "./rz-viz.js?v=24";
 
 /* ---------- chips ---------- */
 export function whereChip(g, { onDark = false } = {}) {
@@ -65,12 +65,12 @@ export function leaderMini(l, g, { size = 34, dark = isDark() } = {}) {
 function possessionFor(g, t) {
   const s = (g && g.situation) || {};
   if (g.phase !== "live" || !t) return "";
-  if ((g.league === "nfl" || g.league === "nba") && s.possession === t.abbr) return icon("football", "pss");
+  if ((g.league === "nfl" || g.league === "nba") && s.possession === t.abbr) return icon(g.league === "nba" ? "basketball" : "football", "pss");
   if (g.league === "nhl" && s.power_play === t.abbr) return `<span class="pp-tag">PP</span>`;
   if (g.league === "nhl" && s.empty_net === t.abbr) return `<span class="pp-tag">EN</span>`;
   if (g.league === "mlb" && s.half) {
     const bats = /^top/i.test(s.half) ? g.away : g.home;
-    if (bats === t) return icon("activity", "pss");
+    if (bats === t) return icon("baseball", "pss");
   }
   return "";
 }
@@ -107,7 +107,7 @@ export function gameCard(g, { key = true } = {}) {
     <div class="gc-teams">${teamRow(g, "a", ai)}${teamRow(g, "h", hi)}</div>
     ${ph === "live" ? `<div class="gc-meter">${meter(g.score)}</div>` : ""}
     ${reason ? `<p class="gc-reason ${ph === "live" && isComeback(g) ? "gc-reason--hot" : ""}">${esc(reason)}</p>` : ""}
-    <footer class="gc-foot"><div class="chips">${chips}</div>${ph !== "post" ? whereChip(g) : ""}</footer>
+    ${chips || ph !== "post" ? `<footer class="gc-foot">${chips}${ph !== "post" ? whereChip(g) : ""}</footer>` : ""}
     ${leaders.length ? `<div class="gc-lead">${leaders.map((l) => leaderMini(l, g)).join("")}</div>` : ""}
   </article>`;
 }
@@ -134,10 +134,10 @@ function boardTeam(g, side) {
   const s = g.situation || {};
   let poss = "";
   if (g.phase === "live") {
-    if ((g.league === "nfl" || g.league === "nba") && s.possession && s.possession === t.abbr) poss = `${icon("football")}Ball`;
+    if ((g.league === "nfl" || g.league === "nba") && s.possession && s.possession === t.abbr) poss = `${icon(g.league === "nba" ? "basketball" : "football")}Ball`;
     else if (g.league === "nhl" && s.power_play === t.abbr) poss = `${icon("zap")}Power play`;
     else if (g.league === "nhl" && s.empty_net === t.abbr) poss = `${icon("alert")}Empty net`;
-    else if (g.league === "mlb" && s.half && ((/^top/i.test(s.half) && side === "a") || (/^bot/i.test(s.half) && side === "h"))) poss = `${icon("activity")}At bat`;
+    else if (g.league === "mlb" && s.half && ((/^top/i.test(s.half) && side === "a") || (/^bot/i.test(s.half) && side === "h"))) poss = `${icon("baseball")}At bat`;
   }
   return `<div class="board-team ${side === "h" ? "board-team--h" : ""}">
     ${logo(t, { size: 64, dark: true, eager: true, cls: "logo--shadow" })}

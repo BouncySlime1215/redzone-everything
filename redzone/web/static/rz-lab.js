@@ -1,10 +1,10 @@
 /* RedZone Everything — Lab: Screen Lab labeling, stream delay + "I just saw it", auto-tuner, backtests, votes. */
 
-import { app, ACTIONS, hooks, attr, esc, num, get, arr, clamp, reduceMotion, SPRING, vibrate } from "./rz-core.js?v=22";
-import { patch } from "./rz-dom.js?v=22";
-import { icon, empty, sec, screenHead, skel, odo } from "./rz-ui.js?v=22";
-import { toast } from "./rz-sheet.js?v=22";
-import { api, act } from "./rz-api.js?v=22";
+import { app, ACTIONS, hooks, attr, esc, num, get, arr, clamp, reduceMotion, SPRING, vibrate } from "./rz-core.js?v=24";
+import { patch } from "./rz-dom.js?v=24";
+import { icon, empty, sec, screenHead, skel, odo } from "./rz-ui.js?v=24";
+import { toast } from "./rz-sheet.js?v=24";
+import { api, act } from "./rz-api.js?v=24";
 
 let loading = null;
 export async function loadLab(force = false) {
@@ -80,9 +80,16 @@ function tuner() {
   return `${sec("Auto-tuner", { key: "s-tune", aside: opt.slates ? `${num(opt.slates)} slates replayed` : "" })}
     <div class="card card-pad" data-key="tune"><div class="cmp-h"><span>Metric</span><span>Now</span><span>Best found</span></div><div class="cmp">${body}</div>
     ${changed.length ? `<div class="overline" style="margin-top:14px">What it would change</div><div class="param-list">${changed.map((k) =>
-      `<span class="chip">${icon("wand")}<span>${esc(k.split(".").pop().replace(/_/g, " "))} ${esc(pc[k] ?? "—")} → <b style="color:var(--text-1)">${esc(pb[k])}</b></span></span>`).join("")}</div>` : ""}</div>`;
+      `<span class="chip">${icon("wand")}<span>${paramChip(k, pc[k], pb[k])}</span></span>`).join("")}</div>` : ""}</div>`;
 }
 
+function paramChip(k, a, b) {
+  const leaf = k.split(".").pop();
+  const secs = /_s$/.test(leaf);
+  const name = leaf.replace(/_s$/, "").replace(/_/g, " ");
+  const v = (x) => (x === undefined || x === null ? "—" : `${x}${secs ? "s" : ""}`);
+  return `${esc(name)} ${esc(v(a))} → <b style="color:var(--text-1)">${esc(v(b))}</b>`;
+}
 function backtests() {
   const bts = arr(get(app.lab, "backtests"));
   if (!app.lab || app.lab.error) return "";

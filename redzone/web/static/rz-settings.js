@@ -3,13 +3,13 @@
 
 import {
   app, ACTIONS, CHANGES, INPUTS, hooks, store, attr, esc, num, get, arr, LEAGUES, LEAGUE_NAME, gameById, matchupWords, vibrate,
-} from "./rz-core.js?v=22";
-import { patch } from "./rz-dom.js?v=22";
-import { icon, logo, leagueImg, empty, sec, screenHead, skel } from "./rz-ui.js?v=22";
-import { confirmSheet, toast } from "./rz-sheet.js?v=22";
-import { api, act } from "./rz-api.js?v=22";
-import { loadTeams, teamList } from "./rz-detail.js?v=22";
-import { showTeams } from "./rz-games.js?v=22";
+} from "./rz-core.js?v=24";
+import { patch } from "./rz-dom.js?v=24";
+import { icon, logo, leagueImg, empty, sec, screenHead, skel } from "./rz-ui.js?v=24";
+import { confirmSheet, toast } from "./rz-sheet.js?v=24";
+import { api, act } from "./rz-api.js?v=24";
+import { loadTeams, teamList } from "./rz-detail.js?v=24";
+import { showTeams } from "./rz-games.js?v=24";
 
 const ui = app.ui;
 ui.pending = ui.pending || {};
@@ -135,18 +135,20 @@ function channels() {
   const set = chs.filter((c) => c.code).length;
   return `${sec("YouTube TV channels", { key: "s-ch", aside: chs.length ? `${set} of ${chs.length} linked` : "" })}<div class="card card-pad" data-key="channels">
     <div class="howto"><b>${icon("info", "ico--sm")}Get a channel link</b><ol><li>On a computer, open tv.youtube.com → Live.</li><li>Right-click a channel → Copy link.</li><li>Paste it next to that channel here.</li></ol></div>
-    ${chs.length ? chs.map((c) => `<div class="chan"><div class="chan-top"><b>${esc(c.label || c.key)}</b><span class="chan-st ${c.code ? "chan-st--ok" : "chan-st--no"}">${c.code ? `${icon("check", "ico--xs")}Linked` : "Not set"}</span></div>
-      <div class="chan-paste"><input class="input" data-chan="${attr(c.key)}" placeholder="${c.code ? "Paste a new link to replace" : "tv.youtube.com/watch/…"}" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <button class="btn btn--sm" data-act="chan-save" data-key="${attr(c.key)}">Save</button></div></div>`).join("") : `<p class="dim" style="font-size:13px;margin:12px 0 0">No channels listed.</p>`}</div>`;
+    ${chs.length ? `<div class="chan-list">${chs.map((c) => `<div class="chan" data-key="ch:${attr(c.key)}"><div class="chan-top"><span class="chan-ic ${c.code ? "on" : ""}">${icon("tv")}</span><b>${esc(c.label || c.key)}</b>
+        <span class="chan-st ${c.code ? "chan-st--ok" : "chan-st--no"}">${c.code ? `${icon("check", "ico--xs")}Linked` : "Not set"}</span>
+        <button class="btn btn--sm ${c.code ? "btn--ghost" : ""}" data-act="chan-open" data-key="${attr(c.key)}" aria-expanded="${ui.chanOpen === c.key}">${ui.chanOpen === c.key ? "Cancel" : c.code ? "Replace" : "Add link"}</button></div>
+      ${ui.chanOpen === c.key ? `<div class="chan-paste"><input class="input" data-chan="${attr(c.key)}" placeholder="tv.youtube.com/watch/…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button class="btn btn--sm btn--primary" data-act="chan-save" data-key="${attr(c.key)}">Save</button></div>` : ""}</div>`).join("")}</div>` : `<p class="dim" style="font-size:13px;margin:12px 0 0">No channels listed.</p>`}</div>`;
 }
 
 function sundayTicket() {
   return `${sec("Sunday Ticket", { key: "s-st", aside: "16 game channels" })}<div class="card card-pad" data-key="st">
     <label class="overline" for="st-links" style="display:block;margin-bottom:8px">Paste all 16 Sunday Ticket channel links</label>
     <textarea id="st-links" class="input" rows="4" style="height:auto;padding:12px 14px;resize:vertical;font-size:14px" placeholder="One link per line — tv.youtube.com/watch/…" autocapitalize="off" spellcheck="false"></textarea>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px">
       <button class="btn" data-act="st-save">${icon("link")}Save links</button>
-      <button class="btn" data-act="st-scan">${icon("wand")}Scan channels</button></div>
+      <button class="btn" data-act="st-scan">${icon("wand")}Scan now</button></div>
     <p class="dim" style="margin:10px 2px 0;font-size:12.5px;line-height:1.4">Scanning flips through the Sunday Ticket channels on the TV to learn which game is on which.</p></div>`;
 }
 
@@ -270,7 +272,7 @@ ACTIONS["chan-save"] = async (el) => {
   try {
     const r = await api("/api/channels", { body: { channel: key, link } });
     toast((r && r.message) || "Saved", r && r.ok === false ? "warn" : "ok");
-    if (!r || r.ok !== false) { if (inp) inp.value = ""; app.channels = await api("/api/channels").catch(() => app.channels); rerender(); }
+    if (!r || r.ok !== false) { if (inp) inp.value = ""; ui.chanOpen = null; app.channels = await api("/api/channels").catch(() => app.channels); rerender(); }
   } catch (e) { toast(e.message, "error"); }
   finally { el.removeAttribute("aria-busy"); }
 };
@@ -287,6 +289,11 @@ ACTIONS["st-save"] = async (el) => {
   finally { el.removeAttribute("aria-busy"); }
 };
 ACTIONS["st-scan"] = (el) => act("scan_st", {}, el);
+ACTIONS["chan-open"] = (el) => {
+  ui.chanOpen = ui.chanOpen === el.dataset.key ? null : el.dataset.key;
+  rerender();
+  if (ui.chanOpen) setTimeout(() => { const i = document.querySelector(`[data-chan="${CSS.escape(ui.chanOpen)}"]`); if (i) i.focus(); }, 30);
+};
 
 /* ---------- announcer: short ORIGINAL callouts in a generic system voice ---------- */
 const SPEAK = [

@@ -1,11 +1,11 @@
 /* RedZone Everything — Bets: sweat meters, add-bet flow (sheet), delete with confirm. */
 
-import { app, ACTIONS, INPUTS, hooks, attr, esc, num, get, arr, games, gameById, status, pairInks, fmtStart, vibrate } from "./rz-core.js?v=22";
-import { patch } from "./rz-dom.js?v=22";
-import { icon, logo, empty, sec, seg, screenHead, meter, odo } from "./rz-ui.js?v=22";
-import { fantasyCard } from "./rz-cards.js?v=22";
-import { openSheet, closeSheet, sheetById, confirmSheet, toast } from "./rz-sheet.js?v=22";
-import { api } from "./rz-api.js?v=22";
+import { app, ACTIONS, INPUTS, hooks, attr, esc, num, get, arr, games, gameById, status, pairInks, fmtStart, vibrate } from "./rz-core.js?v=24";
+import { patch } from "./rz-dom.js?v=24";
+import { icon, logo, empty, sec, seg, screenHead, meter, odo } from "./rz-ui.js?v=24";
+import { fantasyCard } from "./rz-cards.js?v=24";
+import { openSheet, closeSheet, sheetById, confirmSheet, toast } from "./rz-sheet.js?v=24";
+import { api } from "./rz-api.js?v=24";
 
 const ui = app.ui;
 ui.bet = ui.bet || { game: null, kind: "spread", team: null, line: "", side: "over", note: "" };
@@ -100,7 +100,8 @@ function betSheet() {
       <div class="val"><input id="bet-line" inputmode="decimal" autocomplete="off" value="${attr(b.line)}" placeholder="${b.kind === "total" ? "47.5" : "+3.5"}" data-sync data-input="bet-line" aria-label="Line"><small>${b.kind === "total" ? "points" : "points · + for underdog"}</small></div>
       <button class="btn btn--icon" data-act="bet-step" data-d="0.5" aria-label="Plus half a point">${icon("plus")}</button></div></div>` : ""}
     ${b.kind === "prop" ? `<div class="step"><div class="step-lbl">${n(step++)}What's the prop?</div><input id="bet-note" class="input" placeholder="e.g. McLaurin 70+ receiving yards" value="${attr(b.note)}" data-input="bet-note" autocomplete="off"></div>` : ""}`;
-  const summary = g ? `${esc(g.matchup)} · ${esc(describeBet({ ...b, line: b.line || "—" }))}` : "Pick a game";
+  const missing = !g ? "Pick a game" : needsTeam && !b.team ? "Pick a team" : needsLine && !String(b.line || "").trim() ? "Set the line" : b.kind === "prop" && !String(b.note || "").trim() ? "Describe the prop" : "";
+  const summary = g ? `${esc(g.matchup)} · ${missing ? `<span style="color:var(--text-3)">${missing}</span>` : esc(describeBet(b))}` : "Pick a game";
   const foot = `<div class="row" style="gap:12px"><div class="grow"><div class="overline" style="margin-bottom:4px">Your bet</div><div class="ell" style="font:800 18px/1.1 var(--font-display);letter-spacing:.04em">${summary}</div></div>
     <button class="btn btn--primary btn--lg" data-act="bet-save">${icon("check")}Add bet</button></div>`;
   return { body, foot };

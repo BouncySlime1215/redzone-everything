@@ -370,6 +370,15 @@ def break_on_arrival(tl: Timeline, delay: Delay, now: float, at: float) -> bool:
     return at < snap_end + delay.mu
 
 
+def final_play_aired(tl: Timeline, delay: Delay, now: float) -> bool:
+    """A finished game is safe to leave once its last play has finished on screen: the data
+    says "final" a full stream delay before your screen shows the last kneel-down."""
+    for e in reversed(tl.events):
+        if e.kind == "play":
+            return now > e.seen + delay.mu + 2 * delay.current_sigma(now) + AFTER_PLAY_BUFFER_S
+    return True
+
+
 def catchable(tl: Timeline, delay: Delay, now: float, tune_s: float) -> Event | None:
     """A big play that already happened in the data but hasn't aired yet:
     switch now and you'll see it live."""

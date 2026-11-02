@@ -6,17 +6,17 @@
 import {
   app, ACTIONS, CHANGES, INPUTS, hooks, store, MOCK, Q, esc, num, get, arr, gameById, nowS, fmtDur, fmtCountdown,
   installImages, reduceMotion, pairInks, teamBy,
-} from "./rz-core.js?v=22";
-import { patch, flash } from "./rz-dom.js?v=22";
-import { icon } from "./rz-ui.js?v=22";
-import { startStream } from "./rz-api.js?v=22";
-import { updateSheets, topSheet, closeSheet } from "./rz-sheet.js?v=22";
-import { renderNow, countdown } from "./rz-now.js?v=22";
-import { renderGames } from "./rz-games.js?v=22";
-import { renderBets } from "./rz-bets.js?v=22";
-import { renderLab, loadLab } from "./rz-lab.js?v=22";
-import { renderSettings, announce } from "./rz-settings.js?v=22";
-import "./rz-detail.js?v=22";
+} from "./rz-core.js?v=24";
+import { patch, flash } from "./rz-dom.js?v=24";
+import { icon } from "./rz-ui.js?v=24";
+import { startStream } from "./rz-api.js?v=24";
+import { updateSheets, topSheet, closeSheet } from "./rz-sheet.js?v=24";
+import { renderNow, countdown } from "./rz-now.js?v=24";
+import { renderGames } from "./rz-games.js?v=24";
+import { renderBets } from "./rz-bets.js?v=24";
+import { renderLab, loadLab } from "./rz-lab.js?v=24";
+import { renderSettings, announce } from "./rz-settings.js?v=24";
+import "./rz-detail.js?v=24";
 
 const TABS = ["now", "games", "bets", "lab", "settings"];
 const SCREENS = { now: renderNow, games: renderGames, bets: renderBets, lab: renderLab, settings: renderSettings };
@@ -193,7 +193,7 @@ function installEvents() {
 }
 
 ACTIONS["banner-resume"] = async (el) => {
-  const { act } = await import("./rz-api.js?v=22");
+  const { act } = await import("./rz-api.js?v=24");
   act("resume", {}, el);
 };
 

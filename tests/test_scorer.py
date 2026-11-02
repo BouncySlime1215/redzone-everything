@@ -131,3 +131,40 @@ def test_bet_sweat_boosts(cfg, clock):
     base = _score(cfg, clock, g, Personal())
     me = Personal(bet_sweat={"x": 1.0}, bet_labels={"x": "your bet: BUF +3.5"})
     assert _score(cfg, clock, g, me).score - base.score >= 19
+
+
+# --- crunch time ---------------------------------------------------------------
+
+def test_crunch_time_is_final_two_minutes_of_one_score_game_or_ot(cfg, clock):
+    def crunch(**kw):
+        return _score(cfg, clock, nfl("c", "KC", "BUF", **kw)).crunch
+    assert crunch(hs=20, as_=13, q=4, clock=120)                 # 7 points, 2:00 left
+    assert crunch(hs=20, as_=12, q=4, clock=5)                   # 8 is still one score
+    assert not crunch(hs=21, as_=12, q=4, clock=60)              # 9 is two scores
+    assert not crunch(hs=20, as_=17, q=4, clock=121)             # not yet
+    assert not crunch(hs=20, as_=17, q=2, clock=60)              # end of the half isn't crunch
+    assert crunch(hs=30, as_=20, q=5, clock=500)                 # any overtime
+
+
+def test_crunch_survives_the_two_minute_warning(cfg, clock):
+    g = nfl("c", "KC", "WSH", 20, 16, q=4, clock=120, pos="WSH", down=1, dist=10, ytg=60,
+            stoppage=Stoppage.TWO_MINUTE_WARNING)
+    s = _score(cfg, clock, g)
+    # A break: nothing to lock into, but it's exactly when to get there.
+    assert s.is_break and s.lock is None and s.crunch
+    assert s.pre_moment == "two-minute warning, one score"
+    half = _score(cfg, clock, nfl("h", "KC", "WSH", 20, 16, q=2, clock=120, stoppage=Stoppage.TWO_MINUTE_WARNING))
+    assert half.pre_moment is None and not half.crunch
+
+
+def test_tied_game_final_two_minutes_is_a_two_minute_drill(cfg, clock):
+    # Driving to win counts as much as driving to tie; only a team that's ahead is just running clock.
+    tied = _score(cfg, clock, nfl("t", "KC", "BUF", 17, 17, q=4, clock=90, pos="BUF", down=1, dist=10, ytg=60))
+    ahead = _score(cfg, clock, nfl("a", "KC", "BUF", 17, 20, q=4, clock=90, pos="BUF", down=1, dist=10, ytg=60))
+    assert tied.moment - ahead.moment >= cfg.get("score.nfl.two_minute_drill")
+
+
+def test_other_sports_have_no_nfl_crunch_flag(cfg, clock):
+    g = GameState(league=League.NBA, game_id="n", home=Team("BOS", score=100), away=Team("NYK", score=99),
+                  phase=Phase.LIVE, period=4, clock_s=30, stoppage=Stoppage.NONE)
+    assert not _score(cfg, clock, g).crunch

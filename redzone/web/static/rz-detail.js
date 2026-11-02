@@ -3,13 +3,13 @@
 import {
   app, ACTIONS, hooks, store, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, raw, onColor, lum, hex,
   gameById, games, fmtStart, fmtTime, nowS, whereLabel, teamBy, LEAGUE_NAME, imgSrc, vibrate,
-} from "./rz-core.js?v=22";
-import { icon, logo, leagueImg, avatar, empty, skel, stateBadge, chip } from "./rz-ui.js?v=22";
-import { situation, wpBar, sparkline, linescore } from "./rz-viz.js?v=22";
-import { board, gameCard, whereChip, leaderMini } from "./rz-cards.js?v=22";
-import { openSheet, sheetById, closeSheet, confirmSheet, toast, updateSheets } from "./rz-sheet.js?v=22";
-import { api, act } from "./rz-api.js?v=22";
-import { pop } from "./rz-dom.js?v=22";
+} from "./rz-core.js?v=24";
+import { icon, logo, leagueImg, avatar, empty, skel, stateBadge, chip } from "./rz-ui.js?v=24";
+import { situation, wpBar, sparkline, linescore } from "./rz-viz.js?v=24";
+import { board, gameCard, whereChip, leaderMini } from "./rz-cards.js?v=24";
+import { openSheet, sheetById, closeSheet, confirmSheet, toast, updateSheets } from "./rz-sheet.js?v=24";
+import { api, act } from "./rz-api.js?v=24";
+import { pop } from "./rz-dom.js?v=24";
 
 /* ====================================================================== game detail */
 async function loadDetail(gid, force = false) {
@@ -65,7 +65,8 @@ function gameSheet(gid) {
   const locked = mode.locked_game === gid, focused = mode.focus_game === gid;
   const mini = (a, ic, label, pressed = false) => `<button class="mini-act" data-act="game-act" data-a="${a}" data-gid="${attr(gid)}" aria-pressed="${pressed}">${icon(ic)}${esc(label)}</button>`;
   const actions = `<div class="gs-actions">
-    <button class="btn btn--primary btn--lg" data-act="game-act" data-a="watch" data-gid="${attr(gid)}" ${ph === "live" ? "" : "disabled"}>${icon("play", "ico--fill")}${g.on_now ? "On your TV now" : ph === "live" ? "Watch now" : ph === "pre" ? `Starts ${esc(st.clk || "later")}` : "Game over"}</button>
+    ${g.on_now ? `<button class="btn btn--good btn--lg" style="grid-column:1/-1" data-act="open-more">${icon("check")}On your TV now</button>`
+      : `<button class="btn btn--primary btn--lg" data-act="game-act" data-a="watch" data-gid="${attr(gid)}" ${ph === "live" ? "" : "disabled"}>${icon("play", "ico--fill")}${ph === "live" ? "Watch now" : ph === "pre" ? `Starts ${esc(st.clk || "later")}` : "Game over"}</button>`}
     ${mini(focused ? "autopilot" : "focus", "target", focused ? "Focused" : "Focus", focused)}
     ${mini(g.boosted ? "unboost" : "boost", "flame", g.boosted ? "Boosted" : "Boost", !!g.boosted)}
     ${mini(g.muted ? "unmute" : "mute", g.muted ? "sound" : "mute", g.muted ? "Muted" : "Mute", !!g.muted)}

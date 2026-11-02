@@ -4,12 +4,12 @@
 import {
   app, ACTIONS, hooks, attr, esc, num, get, arr, games, gameById, phase, status, teamVars, pairInks, fmtAgo, fmtTime,
   fmtStart, nowS, reduceMotion, SPRING, EASE_OUT, raw, ink, teamBy, whereLabel,
-} from "./rz-core.js?v=22";
-import { patch } from "./rz-dom.js?v=22";
-import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=22";
-import { heroCard, fantasyCard } from "./rz-cards.js?v=22";
-import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=22";
-import { act } from "./rz-api.js?v=22";
+} from "./rz-core.js?v=24";
+import { patch } from "./rz-dom.js?v=24";
+import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=24";
+import { heroCard, fantasyCard } from "./rz-cards.js?v=24";
+import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=24";
+import { act } from "./rz-api.js?v=24";
 
 const STATE_LABEL = { idle: "Idle", watching: "Watching", locked: "Locked in", break: "On a break", paused: "Paused",
   frozen: "Holding still", safe: "Safe mode", replay: "Replay" };
