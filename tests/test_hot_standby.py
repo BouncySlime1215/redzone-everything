@@ -95,6 +95,14 @@ def two(cfg, tmp_path, monkeypatch):
     return c, tuner
 
 
+async def refreshed(c):
+    """Let the post-flip refresh of the game we left run to the end (preload included)."""
+    if c._refresh_task:
+        await asyncio.wait_for(asyncio.gather(c._refresh_task, return_exceptions=True), 2)
+    if c._preload_task:
+        await asyncio.wait_for(asyncio.gather(c._preload_task, return_exceptions=True), 2)
+
+
 def flips(stick):
     return [x for x in stick.log if "onetouchplay" in x]
 
@@ -105,17 +113,31 @@ def rewind_presses(stick):
 
 # --- flip-back ------------------------------------------------------------------------------
 
-async def test_flip_back_makes_going_back_a_flip_not_a_tune(two):
+async def test_flip_back_makes_going_back_a_flip_not_a_tune(two, monkeypatch):
+    """The stick we leave pauses when it loses the TV input, so the game we left is reloaded live
+    on it in the background; once that's done, going back is one flip."""
+    monkeypatch.setattr(ctl, "REFRESH_POLL_S", 0.01)
     c, tuner = two
     c.on_target = "youtubetv:fox"                       # stick a is showing FOX live
     c.main.remember(c.on_target, await c.main.playback('yttv.pkg'))
     out = await c.execute("youtubetv:espn", may_cut=lambda: True)
     assert out.ok and out.path == "tuned" and c.main.host == "b:5555"
-    assert c.standby == ("youtubetv:fox", None)         # a still has FOX, live
+    assert c.standby == ("youtubetv:fox", None) and not c.hidden_ready   # a has FOX, paused
+    await refreshed(c)
+    assert c.hidden_ready and tuner.calls[-1] == ("a:5555", "youtubetv:fox")   # reloaded live
     out = await c.execute("youtubetv:fox", may_cut=lambda: True)
     assert out.ok and out.path == "preloaded" and c.main.host == "a:5555"
-    assert tuner.calls == [("b:5555", "youtubetv:espn")]   # going back cost no tune
-    assert c.standby == ("youtubetv:espn", None)        # ...and ESPN is now one flip away
+    assert tuner.calls == [("b:5555", "youtubetv:espn"), ("a:5555", "youtubetv:fox")]   # no tune at the switch
+    assert c.standby == ("youtubetv:espn", None)        # ...and ESPN is being reloaded on b
+
+
+async def test_going_back_before_the_refresh_is_a_tune_not_a_flip_to_a_paused_stream(two):
+    c, tuner = two
+    c.on_target = "youtubetv:fox"
+    c.main.remember(c.on_target, await c.main.playback('yttv.pkg'))
+    await c.execute("youtubetv:espn", may_cut=lambda: True)
+    out = await c.execute("youtubetv:fox", may_cut=lambda: True)   # right away: a is still paused
+    assert out.ok and out.path == "tuned" and tuner.calls[-1] == ("a:5555", "youtubetv:fox")
 
 
 async def test_retuning_the_hidden_stick_forgets_the_flip_back(two):
@@ -137,10 +159,13 @@ async def test_already_on_it_does_nothing(two):
     assert out.ok and out.path == "already" and tuner.calls == [] and not flips(c.sticks[1])
 
 
-async def test_verify_drops_a_flip_back_that_stopped_playing(two):
+async def test_verify_drops_a_flip_back_that_stopped_playing(two, monkeypatch):
+    monkeypatch.setattr(ctl, "REFRESH_POLL_S", 0.01)
     c, _ = two
     c.on_target = "youtubetv:fox"
     await c.execute("youtubetv:espn", may_cut=lambda: True)
+    await refreshed(c)
+    assert c.standby == ("youtubetv:fox", None) and c.hidden_ready
     c.hidden.playing = "paused"                         # CEC paused the stick that lost the input
     c._verified_at = 0
     await c.verify_standby()
@@ -439,7 +464,8 @@ def test_engine_keeps_your_game_on_the_hidden_stick_during_a_break_visit(eng):
 async def test_break_visit_end_to_end_the_way_home_is_one_flip(tmp_path, monkeypatch):
     """Your game breaks, we visit another, the hidden stick keeps YOUR game live through every
     decision tick (the old policy re-tuned it to the best other game after 30s), and going home
-    when play resumes is a flip — no tune."""
+    when play resumes is a flip. Leaving your game pauses its stick, so it's reloaded live there
+    once in the background (the refresh); the switch home itself costs no tune."""
     from conftest import FakeClock
     from redzone import standby
     cfg = Config(user_path=tmp_path / "config.yaml", history_dir=tmp_path / "hist")
@@ -457,6 +483,7 @@ async def test_break_visit_end_to_end_the_way_home_is_one_flip(tmp_path, monkeyp
     monkeypatch.setattr(c.tv, 'input_status', input_status)
     tuner = FakeTuner()
     monkeypatch.setitem(ctl.TUNERS, "youtubetv", tuner)
+    monkeypatch.setattr(ctl, "REFRESH_POLL_S", 0.01)
     clock = FakeClock()
     e.planner = standby.Planner(cfg, clock=clock)
     c.on_target = "youtubetv:espn"                       # watching your game on stick a
@@ -470,11 +497,13 @@ async def test_break_visit_end_to_end_the_way_home_is_one_flip(tmp_path, monkeyp
     for _ in range(150):                                 # 150 decision ticks across the break
         clock.t += 1
         e._preload_standby(cands)
-        await asyncio.sleep(0)
-    assert c.standby == ("youtubetv:espn", None) and tuner.calls == [("b:5555", "youtubetv:fox")]
+        await asyncio.sleep(0.002)
+    await refreshed(c)
+    assert c.standby == ("youtubetv:espn", None) and c.hidden_ready
+    assert tuner.calls == [("b:5555", "youtubetv:fox"), ("a:5555", "youtubetv:espn")]   # the refresh
     out = await c.execute("youtubetv:espn", may_cut=lambda: True)  # play resumes: home
     assert out.ok and out.path == "preloaded" and c.main.host == "a:5555"
-    assert len(tuner.calls) == 1                         # the whole round trip cost one tune
+    assert len(tuner.calls) == 2                         # no tune at either switch
 
 
 def test_engine_cues_a_replay_when_the_game_on_screen_is_about_to_break(eng):
@@ -564,3 +593,82 @@ async def test_tuner_still_clears_a_prompt_when_nothing_is_loading(fast_confirm)
     st = ConfirmStick(["none"] * 3 + ["playing"])
     res = await tuners.YouTubeTVTuner().tune(st, "AAAAAAAAAAA", "youtubetv:espn")
     assert res.ok and st.texts == 1 and "KEYCODE_DPAD_CENTER" in st.keys
+
+
+# --- refreshing the game we left after a flip ----------------------------------------------
+
+async def flipped_away(c, monkeypatch, poll=0.01):
+    monkeypatch.setattr(ctl, "REFRESH_POLL_S", poll)
+    c.on_target = "youtubetv:fox"
+    c.main.remember(c.on_target, await c.main.playback('yttv.pkg'))
+    out = await c.execute("youtubetv:espn", may_cut=lambda: True)
+    assert out.ok and c._refresh_task is not None and not c._refresh_task.done()
+
+
+async def test_close_cancels_the_refresh(two, monkeypatch):
+    c, tuner = two
+    await flipped_away(c, monkeypatch, poll=5.0)
+    task = c._refresh_task
+    await c.close()
+    assert task.cancelled() and tuner.calls == [("b:5555", "youtubetv:espn")]
+
+
+async def test_a_new_switch_cancels_the_refresh(two, monkeypatch):
+    c, tuner = two
+    await flipped_away(c, monkeypatch, poll=0.2)
+    task = c._refresh_task
+    done = asyncio.Event()
+    c.submit("youtubetv:cbs", on_done=lambda o: done.set(), may_cut=lambda: True)
+    await asyncio.wait_for(done.wait(), 2)
+    await asyncio.sleep(0.3)
+    assert task.cancelled()
+    assert ("a:5555", "youtubetv:fox") not in tuner.calls    # the switch decided; no stale reload
+
+
+async def test_the_planners_pick_wins_over_a_refresh_mid_tune(two, monkeypatch):
+    c, tuner = two
+    tuner.slow = {"youtubetv:fox": 5.0}
+    await flipped_away(c, monkeypatch)
+    for _ in range(100):
+        if c._refreshing:
+            break
+        await asyncio.sleep(0.01)
+    assert c._refreshing == "youtubetv:fox"             # the refresh is tuning FOX on a (slowly)
+    refresh = c._preload_task
+    assert c.preload("youtubetv:cbs")                   # the planner wants CBS there instead
+    await asyncio.wait_for(c._preload_task, 2)
+    assert refresh.cancelled()
+    assert c.standby == ("youtubetv:cbs", None) and c.hidden_ready and c._refreshing is None
+
+
+async def test_the_planners_preload_cancels_a_waiting_refresh(two, monkeypatch):
+    c, tuner = two
+    await flipped_away(c, monkeypatch, poll=0.2)
+    task = c._refresh_task
+    assert c.preload("youtubetv:cbs")                   # no gap used up by the refresh
+    await c._preload_task
+    await asyncio.sleep(0.3)
+    assert task.cancelled() and c.standby == ("youtubetv:cbs", None)
+    assert ("a:5555", "youtubetv:fox") not in tuner.calls
+
+
+async def test_a_refresh_doesnt_use_up_the_planners_preload_gap(two, monkeypatch):
+    c, tuner = two
+    await flipped_away(c, monkeypatch)
+    await refreshed(c)
+    assert tuner.calls[-1] == ("a:5555", "youtubetv:fox")
+    assert c.preload("youtubetv:cbs")                   # the planner can change it straight away
+
+
+async def test_a_refresh_never_wakes_a_sleeping_stick_or_presses_home(two, monkeypatch):
+    c, tuner = two
+    await flipped_away(c, monkeypatch)
+    left = c.hidden
+    left.power = "Asleep"                               # the stick we left dozed off
+    c._awake_at.pop(left.host, None)
+    before = len(left.log)
+    await refreshed(c)
+    new = left.log[before:]
+    assert tuner.calls == [("b:5555", "youtubetv:espn")]
+    assert not any("WAKEUP" in x or "HOME" in x or "onetouchplay" in x for x in new)
+    assert c.main.host == "b:5555" and FakeStick.last_input_host == "b:5555"

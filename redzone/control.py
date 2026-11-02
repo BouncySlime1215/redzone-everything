@@ -60,6 +60,8 @@ CEC_SYNC_S = 30.0          # re-ask the sticks which one is on screen this often
 RESUME_WAIT_S = 6.0        # after a HOME flip, the relaunched app must be playing again within this
 TWO_STICK_RETRY_S = 300.0 # a failed flip turns two-stick mode off this long (once the input is known again)
 AWAKE_TRUST_S = 120.0      # a stick seen playing this recently is awake: skip the sleep check
+REFRESH_POLL_S = 0.5       # after a flip: how often the refresh of the game we left checks for a free moment
+REFRESH_TRIES = 40         # ...and how many times (~20s) before it leaves the standby to the planner
 ASLEEP_RECHECK_S = 60.0    # a sleeping hidden stick: don't ask again (or preload) for this long
 VERIFY_SOON_S = 3.0        # after a flip, check the stick we left within a few seconds
 SEEK_LATE_OK_S = 1.0       # a rewind may land this far past its target (Missed.back_s leads the snap by 3s)
@@ -190,7 +192,8 @@ class Controller:
         self._home_flipped = False               # the last flip pressed HOME (its app was relaunched)
         self._resume_task: asyncio.Task | None = None   # "did the relaunched app resume?" after a HOME flip
         self._cec_synced_at = 0.0
-        self._refresh_task: asyncio.Task | None = None
+        self._refresh_task: asyncio.Task | None = None   # after a flip: reload the game we left (see _refresh_left)
+        self._refreshing: str | None = None      # the target the running preload is refreshing, if it is a refresh
         self._exit_check = None
 
     # --- devices -----------------------------------------------------------------
@@ -256,7 +259,8 @@ class Controller:
 
     async def close(self) -> None:
         """App shutdown: close each stick's always-open adb shell."""
-        tasks = [t for t in (self._task, self._preload_task, self._resume_task) if t and not t.done()]
+        tasks = [t for t in (self._task, self._preload_task, self._resume_task, self._refresh_task)
+                 if t and not t.done()]
         for task in tasks:
             task.cancel()
         if tasks:
@@ -370,15 +374,21 @@ class Controller:
     # --- what the hidden stick has -----------------------------------------------
 
     async def _refresh_left(self, target: str) -> None:
-        """After a flip: put the game we just left back on the hidden stick, live (see _execute_two)."""
-        for _ in range(40):
-            await asyncio.sleep(0.5)
-            if self.hidden_target != target or self.hidden_ready:
-                return   # something else was loaded there meanwhile
+        """After a flip: put the game we just left back on the hidden stick, live (see _execute_two).
+        Waits for a free moment and never competes with real work: a switch (submit) or the
+        planner's own preload cancels it, and the planner can displace it mid-tune (preload).
+        It goes through preload, so a sleeping stick is never woken and HOME is never pressed."""
+        for _ in range(REFRESH_TRIES):
+            await asyncio.sleep(REFRESH_POLL_S)
+            if self.hidden_target != target or self.hidden_ready or self.on_target == target:
+                return   # something else was loaded there meanwhile, or we already went back
             if not self._busy():
-                self._last_preload = 0.0
-                self.preload(target)
+                self.preload(target, refresh=True)
                 return
+
+    def _cancel_refresh(self) -> None:
+        if self._refresh_task and not self._refresh_task.done() and self._refresh_task is not asyncio.current_task():
+            self._refresh_task.cancel()
 
     def _set_hidden(self, target: str | None, ready: bool, parked: Parked | None = None) -> None:
         self.hidden_target, self.hidden_ready, self.parked = target, ready, parked
@@ -496,6 +506,7 @@ class Controller:
             self._task.cancel()
         if self._resume_task and not self._resume_task.done():
             self._resume_task.cancel()
+        self._cancel_refresh()   # the new switch decides what the hidden stick gets; a flip starts a new refresh
         want = (target, replay_id if replay_back_s else None)
         if self._preload_task and not self._preload_task.done() and self._preloading != want:
             self._preload_task.cancel()
@@ -530,6 +541,7 @@ class Controller:
             self._preload_task.cancel()
         if self._resume_task and not self._resume_task.done():
             self._resume_task.cancel()
+        self._cancel_refresh()
 
     def _ref(self, target: str) -> tuple[str, str]:
         app, _, ref = target.partition(":")
@@ -766,6 +778,7 @@ class Controller:
         # sticks), so it isn't a ready standby. Reload that game at the live edge in the background:
         # "back"/"home" is then one flip again, and nobody comes back to a stream minutes behind.
         self._set_hidden(old_target, False)
+        self._cancel_refresh()
         if old_target and not replay:
             self._refresh_task = asyncio.create_task(self._refresh_left(old_target))
         if old_stick is not None:
@@ -878,10 +891,14 @@ class Controller:
 
     # --- the hidden stick between switches ---------------------------------------------
 
-    def preload(self, target: str | None, back_s: float | None = None, replay_id: str | None = None) -> bool:
+    def preload(self, target: str | None, back_s: float | None = None, replay_id: str | None = None,
+                *, refresh: bool = False) -> bool:
         """Put the hidden stick on `target`: live, or parked on a replay (back_s from the live edge,
         replay_id). Returns True if a preload started. WHAT to preload is the engine's call
-        (standby.Planner); this only refuses what can't or shouldn't happen right now."""
+        (standby.Planner); this only refuses what can't or shouldn't happen right now.
+        refresh=True is _refresh_left reloading the game we just left: it skips the preload gap and
+        doesn't use it up, and the planner wins over it — a planner preload of another target
+        cancels it, even mid-tune."""
         if not (self.live_control and self.two_stick and target):
             return False
         if replay_id is None and (target == self.on_target or self._live_on_hidden(target)):
@@ -889,11 +906,22 @@ class Controller:
         if replay_id is not None and self._parked_for(target, replay_id):
             return False
         now = time.time()
-        if self._busy() or now < self._asleep_until or now - self._last_preload < MIN_PRELOAD_GAP_S \
-                or not self.can_tune(target):
+        displace = None
+        if not refresh and self._refreshing not in (None, target) and self._preload_task \
+                and not self._preload_task.done():
+            displace = self._preload_task   # a refresh of the game we left: the planner's pick wins
+        busy = bool(self._task and not self._task.done()) if displace else self._busy()
+        if busy or now < self._asleep_until or not self.can_tune(target) \
+                or (not refresh and now - self._last_preload < MIN_PRELOAD_GAP_S):
             return False
-        self._last_preload = now
+        if displace is not None:
+            log.info("planner wants %s on the hidden stick: dropping the refresh of %s", target, self._refreshing)
+            displace.cancel()
+        if not refresh:
+            self._last_preload = now
+            self._cancel_refresh()
         self._preloading = (target, replay_id)
+        self._refreshing = target if refresh else None
         self._preload_task = asyncio.create_task(self._preload(target, back_s, replay_id, now))
         return True
 
@@ -926,7 +954,8 @@ class Controller:
             self._set_hidden(None, False)   # stopped mid-tune: we don't know what it's showing
             raise
         finally:
-            self._preloading = None
+            if self._preload_task is asyncio.current_task():   # not a preload that displaced this one
+                self._preloading, self._refreshing = None, None
 
     def _maybe_reseek(self) -> None:
         """A parked replay that didn't hold still drifts forward: pull it back every ~20s (from
