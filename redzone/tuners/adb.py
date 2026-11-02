@@ -2,7 +2,7 @@
 
 Guardrails:
 - Every command has a timeout; a hung adb never freezes the app.
-- Lost connection -> reconnect with backoff (10s, 20s, ... 60s), forever, quietly.
+- Lost connection -> reconnect at every keepalive tick (~10s), forever, quietly.
 - "unauthorized" -> stop and tell you to approve the prompt on the TV.
 - Package names are discovered with `pm list packages`, never assumed.
 - Speed: each stick keeps ONE `adb shell` open and sends commands down it (~10-40 ms each)
@@ -33,6 +33,7 @@ LOCK_WAIT_S = 0.15     # shell busy longer than this (a slow command) -> this on
 HANDSHAKE_S = 3.0      # a fresh shell must answer `echo ok` this fast (normally ~0.1 s), cleanly, or we don't use it
 MAX_REPLY = 32 << 20   # biggest reply we'll buffer (a full UI dump is ~100 KB)
 AWAKE_TTL_S = 60.0     # trust "the stick is awake" this long before asking again
+CONNECT_RETRY_MAX_S = 9.0   # a failed connect is retried at the next ~10 s keepalive tick, never later
 
 YTTV_PACKAGES = ["com.amazon.firetv.youtube.tv", "com.google.android.youtube.tvunplugged"]
 PRIME_PACKAGES = ["com.amazon.firebat", "com.amazon.avod.thirdpartyclient", "com.amazon.amazonvideo.livingroom",
@@ -202,8 +203,10 @@ class Stick:
             self.state = "unauthorized"
         else:
             self.state = "offline"
-        self._next_retry = now + self._backoff
-        self._backoff = min(60.0, self._backoff * 2)
+        # Retry on the next keepalive tick (~10 s), always: `adb connect` is cheap, and a longer
+        # backoff left a stick that was reachable again unconnected for up to a minute.
+        self._next_retry = now + min(self._backoff, CONNECT_RETRY_MAX_S)
+        self._backoff = CONNECT_RETRY_MAX_S
         return False
 
     async def identify(self) -> None:
@@ -615,5 +618,11 @@ async def _adb(*args: str, timeout: float = 8.0) -> RunResult:
 
 
 async def adb_available() -> bool:
-    r = await _adb("version", timeout=5)
-    return r.ok
+    """Is the adb tool here? Judged by what it prints: asyncio can lose a child's exit code
+    ("Unknown child process pid N, will report returncode 255", seen at a launchd restart), and
+    a busy Mac can make the first run slow. Tries twice."""
+    for timeout in (5, 10):
+        r = await _adb("version", timeout=timeout)
+        if r.ok or "android debug bridge" in r.out.lower():
+            return True
+    return False
