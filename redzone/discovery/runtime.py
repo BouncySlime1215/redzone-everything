@@ -34,6 +34,8 @@ class DiscoveryRuntime:
         self._device_suspended = False
         register(TUNERS)
         self.configure_profiles()
+        if hasattr(engine.control, "on_preload_fail"):
+            engine.control.on_preload_fail = self.on_preload_fail
 
     def configure_profiles(self):
         profiles = self.engine.cfg.get("providers.profiles", {}) or {}
@@ -109,6 +111,16 @@ class DiscoveryRuntime:
             self.engine.toast(note, "info")
         if outcome.ok:
             self.autonomy.on_tune(outcome.target, replay)
+
+    def on_preload_fail(self, target, detail):
+        """A standby preload that failed is a real tune: learn from it like a switch, so a dead
+        standby link isn't retuned every 2 minutes all night."""
+        try:
+            note = self.book.learn(target, False, detail, self.book.game_for(target))
+            if note:
+                self.engine.toast(note, "info")
+        except Exception:
+            log.exception("learning from a failed preload")
 
     def status(self):
         return {

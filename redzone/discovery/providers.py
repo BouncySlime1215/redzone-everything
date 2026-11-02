@@ -843,6 +843,19 @@ class ProviderBook:
                       if not isinstance(v, dict) or not v.get("start") or now - float(v["start"]) < LINKS_KEEP_S}
         self.skips = self.active_skips()
 
+    def game_for(self, target: str | None) -> str | None:
+        """The game whose stored event link is this target (None for channels / unknown)."""
+        app, _, ref = (target or "").partition(":")
+        if not ref:
+            return None
+        for gid, rec in self.links.items():
+            provs = (rec or {}).get("providers") if isinstance(rec, dict) else None
+            for prov, recs in (provs or {}).items():
+                if LINK_APPS.get(prov) == app and any(isinstance(r, dict) and _link_ref(app, r) == ref
+                                                      for r in recs or []):
+                    return gid
+        return None
+
     def sources(self, g: GameState, base: Where | None = None,
                 channel_map: ChannelMap | None = None, sunday_ticket: bool = True) -> list[Source]:
         rec = self.links.get(g.game_id) or {}

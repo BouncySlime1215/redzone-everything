@@ -177,6 +177,7 @@ class Controller:
         self._preloading: tuple[str, str | None] | None = None   # (target, replay_id) being loaded
         self._last_preload = 0.0
         self._failed: dict[str, float] = {}      # target -> don't preload before
+        self.on_preload_fail: Callable[[str, str], None] | None = None   # (target, detail): teach discovery
         self._cec_bad: dict[str, float] = {}     # stick host -> skip CEC until
         self._awake_at: dict[str, float] = {}    # stick host -> last seen awake
         self._asleep_until = 0.0
@@ -956,6 +957,8 @@ class Controller:
                         self._set_hidden(None, False)
                         self._failed[target] = time.time() + PRELOAD_BACKOFF_S
                         self._blackout_check(target, res)
+                        if self.on_preload_fail:
+                            self.on_preload_fail(target, res.error + " | " + "; ".join(res.steps[-3:]))
                         return
                     self._set_hidden(target, True)
                 if replay_id is not None:

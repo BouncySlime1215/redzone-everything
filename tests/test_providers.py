@@ -695,6 +695,22 @@ def test_blackout_or_failure_skips_the_whole_game_on_that_app(tmp_path):
     assert all(s.tunable for s in book.sources(game("IND", "ATL", gid="other")))
 
 
+def test_failed_preloads_teach_the_book(tmp_path):
+    from types import SimpleNamespace
+    from redzone.discovery.runtime import DiscoveryRuntime
+    rt = DiscoveryRuntime.__new__(DiscoveryRuntime)
+    rt.book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
+    toasts = []
+    rt.engine = SimpleNamespace(toast=lambda *a: toasts.append(a))
+    g = game("CLE", "OKC", gid="g7")
+    rt.book.links[g.game_id] = {"providers": {"peacock": [{"ref": "main"}]}}
+    assert rt.book.game_for("peacock:main") == "g7" and rt.book.game_for("youtubetv:espn") is None
+    rt.on_preload_fail("peacock:main", "video never started")
+    rt.on_preload_fail("peacock:main", "video never started")
+    assert rt.book.skips["peacock:main"]["kind"] == "failed" and toasts
+    rt.on_preload_fail(None, "x")                            # never raises
+
+
 def test_peacock_alt_camera_feeds_rank_as_alternates():
     g = okc_cle()
     for title in ("Thunder vs. Cavaliers: Performance View", "Action Cams", "ISO Cam: Shai"):
