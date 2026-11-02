@@ -326,7 +326,16 @@ def context(g: GameState, h: History, k: float, now: float, c) -> tuple[float, l
             size = min(1.0, abs(g.spread) / c.get("score.context.upset_full_spread", 10))
             f["upset"] = c.get(f"score.context.{lg}.upset", {"nfl": 0}.get(lg, 8)) * size * (0.5 + 0.5 * late) * k
 
-    # 4. Overtime / extras: sudden death or close to it, every league.
+    # 4. Late one-score windows the base clock buckets don't single out: NHL within a goal in the
+    #    last 5:00 of the 3rd (the extra-attacker window), NBA within 6 under 3:00.
+    p, clk = g.period or 0, g.clock_s
+    if d is not None and clk is not None:
+        if g.league == League.NHL and p == 3 and clk <= 300 and abs(d) <= 1:
+            f["late_one_score"] = c.get("score.context.nhl.late_one_goal", 10)
+        elif g.league == League.NBA and p == 4 and clk <= 180 and abs(d) <= 6:
+            f["late_one_score"] = c.get("score.context.nba.late_within_6", 4)
+
+    # 5. Overtime / extras: sudden death or close to it, every league.
     reg = _LATE_FRAC[g.league]
     if (g.period or 0) > reg:
         f["overtime"] = c.get("score.context.overtime", 4)

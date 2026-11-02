@@ -238,3 +238,14 @@ def test_overtime_factor_and_top_factor_string(cfg, clock):
     s = Scorer(cfg, clock=clock).score(_g(League.NHL, 2, 2, 4, 200, wp=0.5), Personal())
     assert s.factors.get("overtime", 0) > 0
     assert isinstance(s.factor, str) and s.factor
+
+
+def test_late_one_score_windows(cfg, clock):
+    nhl_late = Scorer(cfg, clock=clock).score(_g(League.NHL, 2, 1, 3, 240), Personal())
+    nhl_mid = Scorer(cfg, clock=clock).score(_g(League.NHL, 2, 1, 3, 700), Personal())
+    nhl_two = Scorer(cfg, clock=clock).score(_g(League.NHL, 3, 1, 3, 240), Personal())
+    assert nhl_late.factors.get("late_one_score", 0) > 0
+    assert "late_one_score" not in nhl_mid.factors and "late_one_score" not in nhl_two.factors
+    nba = Scorer(cfg, clock=clock).score(_g(League.NBA, 100, 95, 4, 150), Personal())
+    nba_far = Scorer(cfg, clock=clock).score(_g(League.NBA, 100, 90, 4, 150), Personal())
+    assert nba.factors.get("late_one_score", 0) > 0 and "late_one_score" not in nba_far.factors
