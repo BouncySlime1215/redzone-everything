@@ -61,6 +61,29 @@ def _shell_url(url: str) -> str:
     return re.sub(r"['\r\n]", "", url)
 
 
+async def _not_in_front(stick: Stick, app: str, steps: list[str]) -> bool:
+    """True only when the stick says another app (e.g. the Fire TV launcher after a crash) is in
+    front, so the screen text isn't this app's.  Unknown -> False (judge the screen as before)."""
+    pkg = getattr(stick, "packages", {}).get(app)
+    if not pkg:
+        return False
+    try:
+        fg = await stick.foreground()
+    except Exception:   # a check that can't run never blocks the old behavior
+        return False
+    ours = {pkg, *(BY_KEY[app].packages if app in BY_KEY else ())}   # Prime's player can be another of its packages
+    front = fg.split("/")[0]
+    if front and front not in ours:
+        steps.append(f"app was not in front ({front}; crashed to home?)")
+        return True
+    return False
+
+
+def _fresh(cmd: str) -> str:
+    """The same `am start`, launched as a new task (NEW_TASK|CLEAR_TOP)."""
+    return cmd.replace("am start -W ", "am start -W -f 0x14000000 ", 1)
+
+
 class AppTuner(Tuner):
     """Deep link -> wait for new video, clearing known prompts; stop at account walls."""
     app = ""
@@ -136,7 +159,13 @@ class AppTuner(Tuner):
                     continue
                 return TuneResult(False, target, self._clock() - t0, steps, "deep link failed; playback is unconfirmed")
             if "brought to the front" in r.out.lower():
-                return TuneResult(False, target, self._clock() - t0, steps, "the app did not accept the game link")
+                # The app was in the background (the stick just left after a HOME flip): resend the
+                # link once as a fresh task (NEW_TASK|CLEAR_TOP) so it actually opens it.
+                require_cut(may_cut, steps, mutating=True)
+                r = await stick.shell(_fresh(self.command(ref, pkg, use_comp)), timeout=15)
+                steps.append("app was in the background: resent the link as a new task")
+                if not r.ok or "error" in r.out.lower()[:400]:   # the warning repeats even when it works
+                    return TuneResult(False, target, self._clock() - t0, steps, "the app did not accept the game link")
             watch = NewStream(before)
             out = await self._watch(stick, pkg, steps, watch, may_cut)
             if out == "playing":
@@ -172,6 +201,8 @@ class AppTuner(Tuner):
         text = normalize_text(await stick.screen_text())
         verdict = classify_screen(text)
         if verdict is not None and verdict.stops:
+            if await _not_in_front(stick, self.role, steps):
+                return None
             steps.append(verdict.step)
             return verdict
         selected = await select_profile(stick, text, preference(stick, self.app, self.preferred_profile),
@@ -184,6 +215,8 @@ class AppTuner(Tuner):
         if is_purchase_screen(text):
             # Guardrail: OK here could buy something.  Wait instead; the tune may time out.
             steps.append("didn't press OK: this screen offers a purchase, trial or plan")
+            return None
+        if await _not_in_front(stick, self.role, steps):
             return None
         require_cut(may_cut, steps, mutating=True)
         await stick.key(*keys)
@@ -352,6 +385,8 @@ class DiagnosingTuner:
             return res
         v = classify_screen(text)
         if v is not None and v.stops:
+            if await _not_in_front(stick, self.role, res.steps):
+                return res   # the launcher's promo rows say "free trial" / "sign in": not this app's wall
             name = BY_KEY[self.app].name if self.app in BY_KEY else self.app
             res.steps.append(v.step)
             res.error = f"{v.message(name)} | {res.error}" if res.error else v.message(name)

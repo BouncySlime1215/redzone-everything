@@ -15,6 +15,7 @@ _PICKERS = ("who's watching", "who is watching", "choose a profile", "choose you
 _MANAGEMENT = ("edit profiles", "manage profiles", "edit profile", "manage account")
 _BOUNDS = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]")
 _SENT = "profile selection sent: "
+_SYSTEM = "com.amazon.tv."   # Fire OS launcher / system profile picker packages
 
 
 class ProfileSelectionRequired(RuntimeError):
@@ -92,6 +93,14 @@ async def select_profile(stick, text: str, configured: str, steps: list[str], be
             raise
         except Exception:
             stop("profile controls are not readable")
+        if any(n.get("package", "").startswith(_SYSTEM) for n in root.iter()):
+            # Fire OS's own "who's watching" (after a wake): the app's profile name means nothing here.
+            system = preference(stick, "firetv")
+            if not system:
+                stop("Fire TV system profile picker (set a 'firetv' profile to pick it automatically)")
+            if normalize_text(system).strip() != wanted:
+                wanted, configured = normalize_text(system).strip(), system
+                steps.append("Fire TV system profile picker: using the 'firetv' profile")
         fresh = " | ".join(_labels(root))
         verdict = classify_screen(fresh)
         if is_purchase_screen(fresh) or (verdict and verdict.stops):

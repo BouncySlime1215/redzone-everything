@@ -353,3 +353,45 @@ async def test_background_link_retry_rechecks_cut_permission_after_launch():
     result = await quick().tune(st, "CODE", "youtubetv:fox", may_cut=lambda: not st.linked)
     assert not result.ok and "window closed" in result.error
     assert len(st.links()) == 1
+
+
+async def test_a_continue_watching_row_on_an_app_home_page_is_never_pressed():
+    st = ScriptedStick(after=[yt(1)], screen="Home | Continue watching | The Office | Recommended for you")
+    res = await quick().tune(st, "CODE", "youtubetv:espn")
+    assert not res.ok and st.keys() == []           # OK there would start whatever tile has focus
+
+
+async def test_prime_presses_watch_live_only_once_per_deep_link():
+    # The player is slow (pre-roll) and the detail page still reads "Watch Live" under it.
+    st = ScriptedStick(after=[media(PRIME, 1)], screen="Thursday Night Football | Watch Live | Details")
+    res = await quick(PrimeTuner, page_wait_s=0.01, confirm_timeout=0.2).tune(st, "GTI", "prime:GTI")
+    assert not res.ok
+    # one press per deep link (2 attempts), never a second CENTER on the same link
+    assert len(st.links()) == 2 and st.keys().count("KEYCODE_DPAD_CENTER") == 2
+
+
+async def test_prime_never_presses_once_the_stream_is_loading():
+    def on_key(stick, key):
+        stick.after = [media(PRIME, 6)]          # buffering from here on
+    st = ScriptedStick(after=[media(PRIME, 6)], screen="Thursday Night Football | Watch Live | Details",
+                       on_key=on_key)
+    res = await quick(PrimeTuner, page_wait_s=0.01, confirm_timeout=0.05).tune(st, "GTI", "prime:GTI")
+    assert not res.ok and st.keys() == []
+
+
+async def test_prime_slow_cold_start_is_watched_not_failed_or_resent():
+    def on_key(stick, key):
+        if key == "KEYCODE_DPAD_CENTER":
+            stick.after = [media(PRIME, 6), media(PRIME, 3, 50, 6000)]
+    st = ScriptedStick(after=[media(PRIME, 1)], screen="Thursday Night Football | Watch Live | Details",
+                       on_key=on_key)
+    st.am_ok, st.am_reply = False, "timeout/error: no reply in 30s"
+    res = await quick(PrimeTuner, page_wait_s=0.01).tune(st, "GTI", "prime:GTI")
+    assert res.ok and len(st.links()) == 1
+
+
+async def test_prime_slow_cold_start_that_never_plays_is_not_resent():
+    st = ScriptedStick(after=[media(PRIME, 1)], screen="")
+    st.am_ok, st.am_reply = False, "timeout/error: no reply in 30s"
+    res = await quick(PrimeTuner, page_wait_s=0.01, confirm_timeout=0.05).tune(st, "GTI", "prime:GTI")
+    assert not res.ok and len(st.links()) == 1 and st.tuned is None

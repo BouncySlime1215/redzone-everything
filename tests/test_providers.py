@@ -764,3 +764,55 @@ def test_nhl_network_without_a_code_uses_espn_plus_and_prime_channels_are_not_su
     assert cm.where(g).target == "youtubetv:nhlnetwork"
     s = prov._link_source(g, "prime", "prime", {"gti": "amzn1.x", "geo_ok": True, "title": "Golden Knights vs. Bruins"})
     assert s.confidence == "likely"
+FRONT = "Warning: Activity not started, its current task has been brought to the front"
+
+
+async def test_backgrounded_app_gets_the_link_resent_as_a_fresh_task():
+    st = FakeStick({"peacock": "com.peacock.peacockfiretv"},
+                   launch_out=lambda cmd: "Status: ok\n" + ("" if "0x14000000" in cmd else FRONT),
+                   playing=lambda s: any("0x14000000" in c for c in s.launches))
+    res = await tuner(more.PeacockTuner, Clock()).tune(st, OKC_CLE_MAIN, "peacock:x")
+    assert res.ok and len(st.launches) == 2
+    assert st.launches[1].startswith("am start -W -f 0x14000000 -n com.peacock.peacockfiretv/")
+    assert any("resent the link as a new task" in s for s in res.steps)
+
+
+async def test_backgrounded_app_fresh_launch_failure_is_reported():
+    st = FakeStick({"fubo": "com.fubo.firetv.screen"},
+                   launch_out=lambda cmd: "Error: boom" if "0x14000000" in cmd else FRONT)
+    res = await tuner(more.FuboTuner, Clock()).tune(st, "10179", "fubo:10179")
+    assert not res.ok and res.error == "the app did not accept the game link" and len(st.launches) == 2
+
+
+async def test_launcher_promo_text_is_not_read_as_the_apps_wall():
+    class Inner:
+        app = role = "youtubetv"
+
+        async def tune(self, stick, ref, target):
+            return TuneResult(False, target, 1.0, ["deep link #1: ok"], "video never started")
+
+    st = FakeStick({"youtubetv": "com.amazon.firetv.youtube.tv"}, screen="Start your free trial | Sign in | Subscribe")
+
+    async def launcher():
+        return "com.amazon.tv.launcher/.ui.HomeActivity"
+    st.foreground = launcher
+    res = await more.DiagnosingTuner(Inner()).tune(st, "AAAAAAAAAAA", "youtubetv:espn")
+    assert res.error == "video never started" and prov.parse_verdict(res.error) is None
+    assert any("not in front" in s for s in res.steps)
+
+    async def yttv():
+        return "com.amazon.firetv.youtube.tv/dev.cobalt.app.MainActivity"
+    st.foreground = yttv
+    res = await more.DiagnosingTuner(Inner()).tune(st, "AAAAAAAAAAA", "youtubetv:espn")
+    assert res.error.startswith("YouTube TV: signed out")      # the app's own wall is still named
+
+
+async def test_app_tuner_never_stops_or_presses_on_the_launcher():
+    st = FakeStick({"peacock": "com.peacock.peacockfiretv"}, screen="Start your free trial | Sign In | Watch Live")
+
+    async def launcher():
+        return "com.amazon.tv.launcher/.ui.HomeActivity"
+    st.foreground = launcher
+    res = await tuner(more.PeacockTuner, Clock()).tune(st, OKC_CLE_MAIN, "peacock:x")
+    assert not res.ok and prov.parse_verdict(res.error) is None and not st.keys[1:]
+    assert any("not in front" in s for s in res.steps)

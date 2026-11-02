@@ -34,7 +34,8 @@ PROMPTS = {
     # on-screen text (lowercase)       -> keys that clear it
     "are you still watching": ["KEYCODE_DPAD_CENTER"],
     "still there": ["KEYCODE_DPAD_CENTER"],
-    "continue watching": ["KEYCODE_DPAD_CENTER"],
+    # Not "continue watching": that's a row header on Prime / YTTV / ESPN / Peacock home pages, and
+    # OK there starts whatever tile has focus (an unrelated show that then reads as "playing").
     "watch live": ["KEYCODE_DPAD_CENTER"],
 }
 LOADING = ("buffering", "connecting")
@@ -240,6 +241,12 @@ class Tuner:
                 return TuneResult(False, target, time.monotonic() - t0, steps, f"{self.app} couldn't open the link")
             steps.append(f"deep link #{attempt}: {'ok' if r.ok else r.out[:80]}")
             if not r.ok:
+                if self.wait_for_launch and "timeout" in r.out.lower():
+                    # `-W` gave up on a slow cold start (Prime on the 2018 stick): the link was sent and
+                    # the page usually appears a moment later. Watch for it; never send it a second time.
+                    if await self._confirm(stick, pkg, steps, watch, may_cut):
+                        stick.remember(target, watch.report or {})
+                        return TuneResult(True, target, time.monotonic() - t0, steps)
                 return TuneResult(False, target, time.monotonic() - t0, steps,
                                   "deep link failed; playback is unconfirmed")
             if "brought to the front" in r.out.lower():
@@ -365,8 +372,21 @@ class PrimeTuner(Tuner):
             if "regional restriction" in text or "not available in your location" in text or "blackout" in text:
                 steps.append("blackout: this game isn't available in your area on Prime")
                 return False
+            if (await stick.playback(pkg)).get("state") in LOADING:
+                # The stream is already loading (pre-roll, promo slate): a CENTER now pauses the player.
+                break
             await self._press_prompt(stick, text, steps, "pressed through", may_cut)
         return await super()._confirm(stick, pkg, steps, watch, may_cut)
+
+    async def _press_prompt(self, stick: Stick, text: str, steps: list[str], verb: str, may_cut=None) -> bool:
+        # "Watch Live" gets one press per deep link. A later read still showing it (the detail page under a
+        # loading player) must not press again: in the player that's pause, on the page it can hit
+        # "Watch from beginning" if focus moved.
+        link = max((i for i, s in enumerate(steps) if s.startswith("deep link #")), default=-1)
+        if any(s.endswith(": watch live") for s in steps[link + 1:]):
+            from redzone.discovery.providers import normalize_text
+            text = normalize_text(text).replace("watch live", "")
+        return await super()._press_prompt(stick, text, steps, verb, may_cut)
 
 
 class EspnTuner(Tuner):
