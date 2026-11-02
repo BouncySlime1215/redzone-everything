@@ -3,7 +3,7 @@ TV control, two sticks, RedZone, skip, mute/boost, calibration)."""
 import dataclasses
 import time
 
-from tests.test_app import client, engine  # noqa: F401  (fixtures)
+from test_app import client, engine  # noqa: F401  (fixtures)
 
 from redzone.decider.decider import REDZONE, Decision, State
 from redzone.models import Phase
