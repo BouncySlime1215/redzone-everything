@@ -3,13 +3,13 @@
 
 import {
   app, ACTIONS, CHANGES, INPUTS, hooks, store, attr, esc, num, get, arr, LEAGUES, LEAGUE_NAME, gameById, matchupWords, vibrate,
-} from "./rz-core.js?v=38";
-import { patch } from "./rz-dom.js?v=38";
-import { icon, logo, leagueImg, empty, sec, screenHead, skel } from "./rz-ui.js?v=38";
-import { confirmSheet, toast } from "./rz-sheet.js?v=38";
-import { api, act } from "./rz-api.js?v=38";
-import { loadTeams, teamList } from "./rz-detail.js?v=38";
-import { showTeams } from "./rz-games.js?v=38";
+} from "./rz-core.js?v=39";
+import { patch } from "./rz-dom.js?v=39";
+import { icon, logo, leagueImg, empty, sec, screenHead, skel } from "./rz-ui.js?v=39";
+import { confirmSheet, toast } from "./rz-sheet.js?v=39";
+import { api, act } from "./rz-api.js?v=39";
+import { loadTeams, teamList } from "./rz-detail.js?v=39";
+import { showTeams } from "./rz-games.js?v=39";
 
 const ui = app.ui;
 ui.pending = ui.pending || {};
@@ -268,6 +268,7 @@ ACTIONS["settings-undo"] = async () => {
 ACTIONS["settings-reload"] = () => { app.settings = null; loadSettings(true); };
 ACTIONS["edit-teams"] = (el) => { showTeams(el.dataset.lg); hooks.go("games"); };
 ACTIONS["go-fantasy"] = () => { hooks.go("settings"); setTimeout(() => { const f = document.getElementById("fantasy"); if (f) f.scrollIntoView({ behavior: "smooth", block: "center" }); }, 350); };
+ACTIONS["go-priorities"] = () => { hooks.go("settings"); setTimeout(() => { const f = document.querySelector('[data-key="pick"]'); if (f) f.scrollIntoView({ behavior: "smooth", block: "start" }); }, 350); };
 ACTIONS["go-tv"] = () => { hooks.go("settings"); setTimeout(() => { const f = document.getElementById("tv-control"); if (f) f.scrollIntoView({ behavior: "smooth", block: "start" }); }, 350); };
 ACTIONS["fan-save"] = async (el) => {
   const league = (document.getElementById("fan-league") || {}).value || "";

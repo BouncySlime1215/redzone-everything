@@ -2,9 +2,9 @@
    shifts timestamps to "now", and gently simulates a live night (clocks run, scores tick,
    heat moves, the TV switches games) so every animation can be seen. ?mock=1&still=1 freezes it. */
 
-import { Q, num, nowS } from "./rz-core.js?v=38";
+import { Q, num, nowS } from "./rz-core.js?v=39";
 
-const J = (p) => fetch(`/static/${p}?v=38`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+const J = (p) => fetch(`/static/${p}?v=39`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 let STATE = null, GAMES = null, TEAMS = null, ROSTERS = null, H = null;
 let lastSwitch = 0;
 
@@ -215,7 +215,17 @@ function action(b) {
     case "mute": case "unmute": if (g) g.muted = a === "mute"; msg = `${a === "mute" ? "Muted" : "Unmuted"} ${g ? g.matchup : ""}`; break;
     case "lock": M.locked_game = gid; M.state = "locked"; msg = `Staying on ${g ? g.matchup : "this game"}`; break;
     case "unlock": M.locked_game = null; M.state = "watching"; msg = "Unlocked"; break;
-    case "watch": if (g) switchTo(gid, "user", "you picked this game"); msg = `Switching to ${g ? g.matchup : "that game"}`; break;
+    case "watch": case "hold": {
+      if (!g || g.phase !== "live") return { ok: false, message: "That game isn't live" };
+      M.paused = false; M.locked_game = gid; M.state = "locked";
+      M.hold = { game_id: gid, matchup: g.matchup, since: nowS(), auto_resume: M.hold ? M.hold.auto_resume : true, resume_at: null, why: "", force: false, on: true, waiting: false };
+      if (STATE.now.game_id !== gid) switchTo(gid, "user", "you selected this game");
+      msg = `On ${g.matchup} — holding here`; break;
+    }
+    case "release": M.hold = null; M.locked_game = null; M.paused = false; M.focus_game = null; M.focus_mode = "autopilot"; M.state = "watching"; msg = "Back on autopilot"; break;
+    case "hold_auto": if (!M.hold) return { ok: false, message: "Nothing is held" }; M.hold.auto_resume = !!b.value; M.hold.resume_at = null; msg = b.value ? "I'll hand back to autopilot when it's over or a blowout" : "Staying until you tap Resume auto"; break;
+    case "two_stick": M.two_stick_enabled = !!b.value; M.two_stick = !!b.value; msg = b.value ? "Two-stick mode on" : "Two-stick mode off: one stick does everything"; break;
+    case "redzone": return { ok: false, message: "NFL RedZone isn't on the air (or its channel isn't set)" };
     case "skip": {
       const cur = STATE.now && byId(STATE.now.game_id);
       if (cur) cur.muted = true;
