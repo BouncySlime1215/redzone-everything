@@ -377,3 +377,21 @@ async def test_prime_never_presses_once_the_stream_is_loading():
                        on_key=on_key)
     res = await quick(PrimeTuner, page_wait_s=0.01, confirm_timeout=0.05).tune(st, "GTI", "prime:GTI")
     assert not res.ok and st.keys() == []
+
+
+async def test_prime_slow_cold_start_is_watched_not_failed_or_resent():
+    def on_key(stick, key):
+        if key == "KEYCODE_DPAD_CENTER":
+            stick.after = [media(PRIME, 6), media(PRIME, 3, 50, 6000)]
+    st = ScriptedStick(after=[media(PRIME, 1)], screen="Thursday Night Football | Watch Live | Details",
+                       on_key=on_key)
+    st.am_ok, st.am_reply = False, "timeout/error: no reply in 30s"
+    res = await quick(PrimeTuner, page_wait_s=0.01).tune(st, "GTI", "prime:GTI")
+    assert res.ok and len(st.links()) == 1
+
+
+async def test_prime_slow_cold_start_that_never_plays_is_not_resent():
+    st = ScriptedStick(after=[media(PRIME, 1)], screen="")
+    st.am_ok, st.am_reply = False, "timeout/error: no reply in 30s"
+    res = await quick(PrimeTuner, page_wait_s=0.01, confirm_timeout=0.05).tune(st, "GTI", "prime:GTI")
+    assert not res.ok and len(st.links()) == 1 and st.tuned is None

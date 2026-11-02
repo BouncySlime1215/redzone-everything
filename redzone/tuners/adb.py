@@ -287,7 +287,7 @@ class Stick:
         w = "-W " if wait else ""
         f = "-f 0x14000000 " if fresh else ""
         return await self.shell(f"am start {w}{f}-a android.intent.action.VIEW -d '{url}' {package}",
-                                timeout=15 if wait else 8)
+                                timeout=30 if wait else 8)   # -W: a cold start on the 2018 stick can top 15 s
 
     # --- awake / what's on -----------------------------------------------------------
 

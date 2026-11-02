@@ -241,6 +241,12 @@ class Tuner:
                 return TuneResult(False, target, time.monotonic() - t0, steps, f"{self.app} couldn't open the link")
             steps.append(f"deep link #{attempt}: {'ok' if r.ok else r.out[:80]}")
             if not r.ok:
+                if self.wait_for_launch and "timeout" in r.out.lower():
+                    # `-W` gave up on a slow cold start (Prime on the 2018 stick): the link was sent and
+                    # the page usually appears a moment later. Watch for it; never send it a second time.
+                    if await self._confirm(stick, pkg, steps, watch, may_cut):
+                        stick.remember(target, watch.report or {})
+                        return TuneResult(True, target, time.monotonic() - t0, steps)
                 return TuneResult(False, target, time.monotonic() - t0, steps,
                                   "deep link failed; playback is unconfirmed")
             if "brought to the front" in r.out.lower():
