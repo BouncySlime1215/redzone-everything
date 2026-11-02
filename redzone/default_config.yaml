@@ -95,6 +95,8 @@ decider:
   locked_override_lead: 20
   manual_pause_s: 60
   uncalibrated_sigma_s: 8  # above this delay uncertainty, only leave at official stoppages
+  sticky_visit_needs_calibration: true  # your game's break: only visit games whose delay is calibrated (else no way back until their own break)
+  wait_for_my_team_s: 1800  # your team tips within this: don't start on a basketball/hockey game we can't leave (uncalibrated)
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
   redzone_score: 45        # RedZone vs a game (0-100): stay on it unless a game beats this; any break goes there
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
@@ -162,7 +164,7 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   seek_step_s: 10          # seconds per rewind press (measure on your stick in the Screen Lab)
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
-  default: {youtubetv: 45, prime: 40}
+  default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
   sigma_default: 15
 
 break_lengths_s:           # typical commercial lengths used to plan catch-ups

@@ -198,6 +198,16 @@ class Timeline:
         """How far behind real life this game's feed runs (recent worst case)."""
         return max(self._lags) if self._lags else LAG_EST_DEFAULT_S
 
+    def _nba_clutch(self, p, g: GameState) -> bool:
+        """NBA highlight: a field goal in the last 2:00 of Q4/OT within 5 (what the scorecard counts).
+        ESPN's NBA kinds are never "turnover"/"td", so without this no NBA play was ever big."""
+        if self.league != League.NBA or not p.scoring or "free_throw" in (p.kind or ""):
+            return False
+        if (g.period or 0) < 4 or g.clock_s is None or g.clock_s > 120:
+            return False
+        hs, as_ = self._last_score or (g.home.score, g.away.score)
+        return hs is not None and as_ is not None and abs(hs - as_) <= 5
+
     def observe(self, g: GameState) -> None:
         now = self._clock()
         prev_fresh = self.fresh_at
@@ -216,7 +226,8 @@ class Timeline:
             if first_poll and _t(p, now) < now - FIRST_POLL_RECENT_S:
                 continue
             # In basketball every basket "scores"; only flag true highlights there.
-            big = p.kind in ("td", "turnover", "goal", "hr") or (p.scoring and self.league != League.NBA)
+            big = p.kind in ("td", "turnover", "goal", "hr") or (p.scoring and self.league != League.NBA) \
+                or self._nba_clutch(p, g)
             lo, hi = _bounds(p, now, prev_fresh)
             self.events.append(Event(hi, "play", (p.text or p.kind)[:80], big, p.id, p.kind, hi - lo))
             if p.wallclock and prev_fresh is not None and not first_poll:
