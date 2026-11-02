@@ -142,6 +142,9 @@ class Decider:
         # average costs are useful for ranking, but cannot promise a deadline.
         # Offline simulations intentionally keep their configured timing model.
         self.deadline_cost: Callable[[str | None], float] | None = None
+        # Scheduled start (epoch s) of the next not-yet-started game with your team, if the
+        # engine knows one. None = unknown, and the 'wait for your team' rule stays off.
+        self.my_tip_at: Callable[[], float | None] | None = None
         self.user = UserState()
         self.current: str | None = None
         self.since: float = 0.0
@@ -495,6 +498,9 @@ class Decider:
                     return catch_up
             if best is None:
                 return Decision(now, "stay", self.current, "nothing live", State.IDLE)
+            wait = None if hot else self._wait_for_my_tip(cands[best], now)
+            if wait:
+                return Decision(now, "stay", self.current, wait, State.IDLE)
             kind = "start" if self.current is None else "ended"
             return Decision(now, "switch", best, self._why(cands[best], "crunch time" if hot else "best game on"),
                             State.WATCHING, kind=kind)
@@ -1051,6 +1057,24 @@ class Decider:
         s = x.scored
         return (gid == self.user.focus_game or s.crunch or s.lock is not None
                 or s.personal >= self.cfg.get("decider.crunch.hold_personal", 5))
+
+    def _wait_for_my_tip(self, x: Candidate, now: float) -> str | None:
+        """Your team tips soon: don't start on a neutral basketball/hockey game we couldn't leave.
+        Uncalibrated, its gate opens only at its own halftime/intermission, so a 7:00 pick held us
+        past a 7:30 tip (risk sweep, Nov 2). A discrete-sport or calibrated pick is fine."""
+        if self.my_tip_at is None:
+            return None
+        try:
+            tip = self.my_tip_at()
+        except Exception:
+            return None
+        within = float(self.cfg.get("decider.wait_for_my_team_s", 1800))
+        if tip is None or not 0 < tip - now <= within:
+            return None
+        if x.scored.personal >= self.cfg.get("decider.crunch.hold_personal", 5) \
+                or x.scored.league not in CONTINUOUS or self._exit_provable(x, now):
+            return None
+        return f"waiting for your team (tips in {max(1, round((tip - now) / 60))} min)"
 
     def _visit_needs_exit(self, home: str, watchable) -> bool:
         """Your game, a bet or your focus game on a break: only visit where we can surely get back

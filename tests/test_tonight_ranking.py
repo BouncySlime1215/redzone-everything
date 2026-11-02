@@ -66,3 +66,21 @@ def test_sticky_home_break_only_visits_games_we_can_leave(cfg, clock):
     cfg.update({"decider": {"sticky_visit_needs_calibration": False}})
     dec.delays.book.clear()
     assert dec._break_destination(watchable, "h") == "n"         # switchable off from config
+
+
+def test_start_waits_for_your_team_instead_of_an_inescapable_neutral_game(cfg, clock):
+    dec = Decider(cfg, DelayBook({"youtubetv": 40}, 15, clock=clock), clock=clock)
+    nhl = {"det": _c("det", League.NHL, 70)}
+    d = dec.decide(nhl, commit=False)
+    assert d.action == "switch" and d.target == "det"            # no hook: unchanged
+    dec.my_tip_at = lambda: clock.t + 1800                       # WSH tips at 7:30
+    d = dec.decide(nhl, commit=False)
+    assert d.action == "stay" and d.reason.startswith("waiting for your team")
+    dec.my_tip_at = lambda: clock.t + 3600                       # tip is far off: start normally
+    assert dec.decide(nhl, commit=False).action == "switch"
+    dec.my_tip_at = lambda: clock.t + 600
+    nfl = {"mnf": _c("mnf", League.NFL, 70)}                     # a discrete game can be left any gap
+    assert dec.decide(nfl, commit=False).action == "switch"
+    for s in (40.0, 41.0):
+        dec.delays.calibrate("youtubetv:det", s)                 # calibrated: whistles are exits
+    assert dec.decide(nhl, commit=False).action == "switch"
