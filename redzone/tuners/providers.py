@@ -61,6 +61,11 @@ def _shell_url(url: str) -> str:
     return re.sub(r"['\r\n]", "", url)
 
 
+def _fresh(cmd: str) -> str:
+    """The same `am start`, launched as a new task (NEW_TASK|CLEAR_TOP)."""
+    return cmd.replace("am start -W ", "am start -W -f 0x14000000 ", 1)
+
+
 class AppTuner(Tuner):
     """Deep link -> wait for new video, clearing known prompts; stop at account walls."""
     app = ""
@@ -136,7 +141,13 @@ class AppTuner(Tuner):
                     continue
                 return TuneResult(False, target, self._clock() - t0, steps, "deep link failed; playback is unconfirmed")
             if "brought to the front" in r.out.lower():
-                return TuneResult(False, target, self._clock() - t0, steps, "the app did not accept the game link")
+                # The app was in the background (the stick just left after a HOME flip): resend the
+                # link once as a fresh task (NEW_TASK|CLEAR_TOP) so it actually opens it.
+                require_cut(may_cut, steps, mutating=True)
+                r = await stick.shell(_fresh(self.command(ref, pkg, use_comp)), timeout=15)
+                steps.append("app was in the background: resent the link as a new task")
+                if not r.ok or "error" in r.out.lower()[:400]:   # the warning repeats even when it works
+                    return TuneResult(False, target, self._clock() - t0, steps, "the app did not accept the game link")
             watch = NewStream(before)
             out = await self._watch(stick, pkg, steps, watch, may_cut)
             if out == "playing":

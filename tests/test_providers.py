@@ -650,3 +650,23 @@ def test_choose_survives_garbage_records(tmp_path):
     book.links["g1"] = {"providers": {"peacock": ["junk", None, {"ref": None}], "mystery": [{"ref": "x"}]}}
     p = book.choose(game(gid="g1"), Where("youtubetv:espn", "ESPN · YouTube TV", "sure", True))
     assert p.target == "youtubetv:espn"
+
+
+FRONT = "Warning: Activity not started, its current task has been brought to the front"
+
+
+async def test_backgrounded_app_gets_the_link_resent_as_a_fresh_task():
+    st = FakeStick({"peacock": "com.peacock.peacockfiretv"},
+                   launch_out=lambda cmd: "Status: ok\n" + ("" if "0x14000000" in cmd else FRONT),
+                   playing=lambda s: any("0x14000000" in c for c in s.launches))
+    res = await tuner(more.PeacockTuner, Clock()).tune(st, OKC_CLE_MAIN, "peacock:x")
+    assert res.ok and len(st.launches) == 2
+    assert st.launches[1].startswith("am start -W -f 0x14000000 -n com.peacock.peacockfiretv/")
+    assert any("resent the link as a new task" in s for s in res.steps)
+
+
+async def test_backgrounded_app_fresh_launch_failure_is_reported():
+    st = FakeStick({"fubo": "com.fubo.firetv.screen"},
+                   launch_out=lambda cmd: "Error: boom" if "0x14000000" in cmd else FRONT)
+    res = await tuner(more.FuboTuner, Clock()).tune(st, "10179", "fubo:10179")
+    assert not res.ok and res.error == "the app did not accept the game link" and len(st.launches) == 2
