@@ -669,3 +669,35 @@ def test_outcomes_without_a_tune_teach_nothing(tmp_path):
     rt.on_outcome(Outcome(False, "youtubetv:espn", 0.0, "video never started", False, path="tuned",
                           screen_unchanged=True), "mnf")
     assert rt.book._fails.get("youtubetv:espn")             # a hidden-stick tune that failed still counts
+
+
+def test_local_nba_game_is_blacked_out_on_every_league_pass_feed(tmp_path):
+    book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
+    g = game("CHA", "DET", gid="401909908")
+    book.links[g.game_id] = {"providers": {"prime": [{"gti": f"amzn1.dv.gti.{i}", "geo_ok": False}
+                                                     for i in range(7)]}}
+    assert all(s.blackout for s in book.sources(g) if s.provider == "prime")
+    assert book.choose(g).target is None
+
+
+def test_blackout_or_failure_skips_the_whole_game_on_that_app(tmp_path):
+    book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
+    g = game("IND", "ATL", gid="g9")
+    book.links[g.game_id] = {"providers": {"prime": [{"gti": "a", "geo_ok": False}, {"gti": "b", "geo_ok": False},
+                                                     {"gti": "c", "geo_ok": True}]}}
+    book.learn("prime:a", False, "video never started", g.game_id)
+    book.learn("prime:a", False, "video never started", g.game_id)
+    by = {s.target: s for s in book.sources(g)}
+    assert not by["prime:b"].tunable and by["prime:c"].tunable    # Apple-flagged feeds dropped, others kept
+    book.learn("prime:c", False, prov.Verdict("blackout", "unavailable to watch in your location")
+               .message("Prime Video"), g.game_id)
+    assert all(s.blackout for s in book.sources(g) if s.provider == "prime")
+    assert all(s.tunable for s in book.sources(game("IND", "ATL", gid="other")))
+
+
+def test_peacock_alt_camera_feeds_rank_as_alternates():
+    g = okc_cle()
+    for title in ("Thunder vs. Cavaliers: Performance View", "Action Cams", "ISO Cam: Shai"):
+        s = prov._link_source(g, "peacock", "peacock", {"ref": "x", "title": title})
+        assert s.feed == "alt", title
+    assert prov._link_source(g, "peacock", "peacock", {"ref": "x", "title": "Thunder vs. Cavaliers"}).feed is None

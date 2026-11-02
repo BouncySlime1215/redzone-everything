@@ -28,7 +28,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from redzone.channels import APP_FOR, MONUMENTAL_TEAMS, NETWORKS, PRETTY, ChannelMap, Where
+from redzone.channels import APP_FOR, LOCAL_TEAMS, MONUMENTAL_TEAMS, NETWORKS, PRETTY, ChannelMap, Where
 from redzone.models import GameState, League
 
 log = logging.getLogger(__name__)
@@ -505,12 +505,19 @@ def _link_label(prov: str, app: str, rec: dict) -> str:
     return f"{base} — {extra}" if extra else base
 
 
+# Alternate camera / alt-cast feeds of the same game (Peacock "Performance View", "Action
+# Cams", iso cams, ManningCast, Spanish): rank last, never as the main broadcast.
+_ALT_TITLE_RX = _rx(r"performance view", r"action cams?", r"cam:", r"iso(?: cams?)?", r"alt(?:ernate)? ?cast",
+                    r"en espa[nñ]ol", r"manningcast", r"with peyton", r"deportes")
+
+
 def _link_source(g: GameState, prov: str, app: str, rec: dict) -> Source | None:
     if not isinstance(rec, dict):
         return None
     ref = _link_ref(app, rec)
     target = f"{app}:{ref}" if ref else None
-    alt = bool(rec.get("alt")) or (rec.get("lang") not in (None, "en"))
+    alt = bool(rec.get("alt")) or (rec.get("lang") not in (None, "en")) \
+        or bool(_ALT_TITLE_RX.search(" ".join(str(rec.get(k) or "") for k in ("title", "feed_name")).lower()))
     feed = "alt" if alt else rec.get("feed")
     team = g.home.abbr if feed == "home" else g.away.abbr if feed == "away" else None
     tunable = bool(ref) and app in TUNER_APPS
@@ -582,7 +589,38 @@ def gather_sources(g: GameState, base: Where | None, links: Mapping[str, list[di
     for c in cands:
         key = c.target or f"{c.provider}:?"
         out[key] = _merge(out[key], c) if key in out else c
-    return [apply_skip(c, skips) for c in out.values()]
+    return [_game_skip(g, apply_skip(c, skips), skips) for c in out.values()]
+
+
+LEAGUE_PASS_APPS = frozenset({"prime", "nba", "dazn"})
+
+
+def _local_blackout(g: GameState) -> bool:
+    """A local team's NBA game on League Pass is always blacked out here (unless Prime itself
+    is the national broadcaster)."""
+    local = LOCAL_TEAMS.get(g.league, set())
+    return (g.league == League.NBA and (g.home.abbr in local or g.away.abbr in local)
+            and "prime" not in _nets(g))
+
+
+def game_skip_key(app: str, game_id: str) -> str:
+    return f"{app}:game:{game_id}"
+
+
+def _game_skip(g: GameState, s: Source, skips: Mapping[str, dict] | None) -> Source:
+    """Skips learned for one app's feeds of this game apply to all its event feeds: a blacked-out
+    game is blacked out on every GTI, and after a failed tune the feeds Apple already flagged
+    as not playable here are not worth trying one by one."""
+    if s.kind != "event" or not s.target:
+        return s
+    if s.provider in LEAGUE_PASS_APPS and _local_blackout(g):
+        return replace(s, blackout=True, note="blacked out here (local team)")
+    skip = (skips or {}).get(game_skip_key(s.provider, g.game_id)) or {}
+    if skip.get("kind") == "blackout":
+        return replace(s, blackout=True)
+    if skip.get("kind") == "failed" and s.geo_ok is False:
+        return replace(s, tunable=False, note="likely blacked out (Apple flag + a failed tune)")
+    return s
 
 
 # --- the book: installed apps, subscriptions, learned skips, per-game links ------------
@@ -770,6 +808,11 @@ class ProviderBook:
 
     def _skip(self, target: str, kind: str, why: str, game_id: str | None) -> None:
         self.skips[target] = {"kind": kind, "why": why, "at": self._now(), "game": game_id}
+        if game_id and kind in ("blackout", "failed"):
+            # Per game too: a League Pass game has 6-8 GTIs; don't burn 2 tunes on each.
+            app = target.partition(":")[0]
+            self.skips[game_skip_key(app, game_id)] = {"kind": kind, "why": why, "at": self._now(),
+                                                       "game": game_id}
         self.save()
 
     def active_skips(self) -> dict[str, dict]:
