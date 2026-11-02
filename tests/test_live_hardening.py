@@ -268,3 +268,30 @@ async def test_a_new_switch_cancels_the_resume_check(hot_two, monkeypatch):
     await asyncio.sleep(0)
     assert task.cancelled() or task.done()
     await c._task
+
+
+async def test_event_link_confirms_when_the_channel_in_the_metadata_changes():
+    """ev:/st: targets have no channel name to expect. YouTube TV's live position runs on with the
+    clock across channels, so only a change of channel (the subtitle) shows the new stream fast."""
+    old = yt(3, 46_801_268, 860_547, meta="SportsCenter, ESPN, null")
+    new = yt(3, 46_803_300, 862_600, meta="Monday Night Football, ABC 11, null")
+    st = ScriptedStick(now=old, after=[old, new])
+    res = await quick(confirm_timeout=5.0).tune(st, "CODE", "youtubetv:ev:CODEcodeCOD")
+    assert res.ok and len(st.links()) == 1
+
+
+async def test_without_metadata_rules_the_clock_alone_cannot_tell_yttv_channels_apart():
+    """Why the 17:30 ESPN switch took 20.8 s: same wall-clock-like position on both channels."""
+    old = yt(3, 46_801_268, 860_547, meta="SportsCenter, ESPN2, null")
+    new = yt(3, 46_803_300, 862_600, meta="SportsCenter, ESPN, null")
+    w = NewStream(adb.parse_playback(old))
+    assert not w.check(adb.parse_playback(new))
+    w = NewStream(adb.parse_playback(old), expect=channel_matcher("youtubetv:espn"))
+    assert w.check(adb.parse_playback(new))
+
+
+def test_top_of_the_hour_title_change_on_the_old_channel_is_not_a_new_stream():
+    old = {"state": "playing", "speed": 1.0, "position": 46_801_268, "updated": 860_547,
+           "title": "SportsCenter", "subtitle": "ESPN"}
+    w = NewStream(old, channel_change=True)
+    assert not w.check(dict(old, title="NFL Countdown", position=46_803_300, updated=862_579))

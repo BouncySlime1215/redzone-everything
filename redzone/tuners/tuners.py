@@ -85,6 +85,15 @@ def _same_metadata(a: dict, b: dict) -> bool:
     return any(ka) and ka == kb
 
 
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
+
+
+def _channel_changed(a: dict, b: dict) -> bool:
+    sa, sb = _norm((a or {}).get("subtitle") or ""), _norm((b or {}).get("subtitle") or "")
+    return bool(sa and sb and sa != sb)
+
+
 class CutWindowClosed(RuntimeError):
     def __init__(self, steps):
         self.steps = list(steps)
@@ -142,6 +151,7 @@ class NewStream:
     report: dict | None = None     # the report that confirmed it
     expect: Callable[[dict], bool | None] | None = None
     by_name: bool = False          # confirmed by the channel name in the app's metadata
+    channel_change: bool = False   # the app's subtitle is its channel (YouTube TV): a new one = new stream
 
     def check(self, pb: dict, now: float | None = None) -> bool:
         if not playback_ready(pb):
@@ -149,6 +159,7 @@ class NewStream:
             # playback state is evidence of a transition.
             self.gap = self.gap or pb.get("state") in ("buffering", "connecting", "stopped", "paused")
             return False
+        named = None
         if self.expect is not None:
             named = self.expect(pb)
             if named is True and self.expect(self.before) is not True:
@@ -156,6 +167,12 @@ class NewStream:
                 return True
             if named is False and _same_metadata(self.before, pb):
                 return False   # still the old stream: same title, same (other) channel
+        if self.channel_change and named is None and _channel_changed(self.before, pb):
+            # YouTube TV's subtitle is the channel; a stream never changes channel by itself (its
+            # title can, at the top of the hour, so only the channel counts). For targets with no
+            # channel name to expect (event links, Sunday Ticket codes).
+            self.report, self.by_name = pb, True
+            return True
         continuity = same_stream(self.before, pb)
         if (not playback_ready(self.before) or continuity is False
                 or (self.gap and continuity is None)):
@@ -175,6 +192,7 @@ class Tuner:
     reread_s = 1.5           # a blank screen read was too early (app still opening): look again this soon
     max_reads = 3            # screen reads per deep link, at most
     wait_for_launch = False  # `am start -W`: only for apps whose next step needs the page fully drawn
+    subtitle_is_channel = False  # the media session's subtitle names the channel (see NewStream)
 
     def url(self, ref: str) -> str:
         raise NotImplementedError
@@ -213,7 +231,7 @@ class Tuner:
             # first attempt must not confirm an unchanged stream after the second.
             if attempt > 1:
                 before = await stick.playback(pkg)
-            watch = NewStream(before, expect=channel_matcher(target))
+            watch = NewStream(before, expect=channel_matcher(target), channel_change=self.subtitle_is_channel)
             require_cut(may_cut, steps, mutating=True)
             r = await stick.view(self.url(ref), pkg, wait=self.wait_for_launch)
             if _cant_open(r.out):
@@ -316,6 +334,7 @@ def _cant_open(out: str) -> bool:
 class YouTubeTVTuner(Tuner):
     app = "youtubetv"
     role = "youtubetv"
+    subtitle_is_channel = True   # "SportsCenter, ESPN, null" (seen on the stick, Nov 2)
 
     def url(self, ref: str) -> str:
         return f"https://tv.youtube.com/watch/{ref}"
