@@ -1,6 +1,6 @@
 import pytest
 
-from redzone.decider.decider import Candidate, Decider, FocusMode, State
+from redzone.decider.decider import Candidate, Decider, FocusMode, Missed, State
 from redzone.decider.screen import DelayBook, Event
 from redzone.models import League
 from redzone.scoring.engine import Scored
@@ -208,3 +208,118 @@ def test_manual_pick_holds(dec, clock):
     dec.manual_switch("b")
     assert dec.current == "b"
     assert dec.decide(cands(a=99, b=10)).state == State.PAUSED
+
+
+# --- crunch time: final 2:00 of a one-score game, or OT ------------------------------
+
+def csc(gid, score, personal=0.0, is_break=False, closeness=1.0):
+    return Scored(gid, League.NFL, score, score, score, 1.0, personal, f"reason {gid}", [], is_break,
+                  None, None, closeness, crunch=True)
+
+
+def on_break_now(dec, clock, gid, label="timeout"):
+    """Put gid's stoppage on screen (mu 40 + 2 sigma)."""
+    dec.timeline(gid, League.NFL).events.append(Event(clock.t, "stop_start", label))
+    clock.t += 45
+
+
+def test_a_final_is_not_left_while_its_last_play_still_airs(dec, clock):
+    calibrate(dec, "youtubetv:a")
+    start_on(dec, clock, "a", {})
+    dec.timeline("a", League.NFL).events.append(Event(clock.t, "play", "kneel"))
+    clock.t += 10
+    d = dec.decide(cands(b=50))  # "a" went final in the data; the kneel airs in ~30s
+    assert d.action == "stay" and "final play" in d.reason
+    clock.t += 40
+    d = dec.decide(cands(b=50))
+    assert d.action == "switch" and d.target == "b" and d.kind == "ended"
+
+
+def test_game_over_goes_to_crunch_time_even_mid_two_minute_warning(dec, clock):
+    start_on(dec, clock, "a", {})
+    d = dec.decide(cands(b=60, w=csc("w", 50, personal=22.5, is_break=True)))
+    assert d.action == "switch" and d.target == "w" and "crunch time" in d.reason
+
+
+def test_gets_to_crunch_time_at_the_first_safe_gap(dec, clock):
+    calibrate(dec, "youtubetv:a")
+    start_on(dec, clock, "a", {})
+    on_break_now(dec, clock, "a")
+    # Without crunch time this would be a break visit to b; crunch time elsewhere wins, even mid-stoppage.
+    d = dec.decide(cands(a=sc("a", 60, is_break=True), b=80, c=csc("c", 40, is_break=True)))
+    assert d.action == "switch" and d.target == "c" and d.kind == "crunch"
+
+
+def test_waits_for_a_gap_to_get_to_crunch_time(dec, clock):
+    calibrate(dec, "youtubetv:a")
+    start_on(dec, clock, "a", {})
+    dec.timeline("a", League.NFL).events.append(Event(clock.t, "play", "run for 4"))
+    clock.t += 35
+    d = dec.decide(cands(a=30, c=csc("c", 40)))
+    assert d.action == "stay" and d.reason.startswith("want crunch time")
+
+
+def test_your_team_crunch_is_held_through_its_stoppages(dec, clock):
+    calibrate(dec, "youtubetv:w")
+    start_on(dec, clock, "w", {})
+    on_break_now(dec, clock, "w")
+    d = dec.decide(cands(w=csc("w", 70, personal=22.5, is_break=True), b=89, c=csc("c", 80)))
+    assert d.action == "stay" and d.reason.startswith("crunch time")
+
+
+def test_neutral_crunch_held_through_two_minute_warning_but_not_a_timeout(dec, clock):
+    calibrate(dec, "youtubetv:a")
+    start_on(dec, clock, "a", {})
+    on_break_now(dec, clock, "a", "two_minute_warning")
+    d = dec.decide(cands(a=csc("a", 60, is_break=True), b=80))
+    assert d.action == "stay" and d.reason.startswith("crunch time")
+    on_break_now(dec, clock, "a", "timeout")
+    d = dec.decide(cands(a=csc("a", 60, is_break=True), b=80))
+    assert d.action == "switch" and d.kind == "break_visit"
+
+
+def test_overlapping_crunch_hops_while_this_one_is_stopped(dec, clock):
+    calibrate(dec, "youtubetv:a")
+    start_on(dec, clock, "a", {})
+    on_break_now(dec, clock, "a")
+    d = dec.decide(cands(a=csc("a", 60, is_break=True), b=csc("b", 55)))
+    assert d.action == "switch" and d.target == "b" and d.kind == "crunch"
+
+
+def test_your_team_crunch_wins_an_overlap(dec, clock):
+    calibrate(dec, "youtubetv:a")
+    start_on(dec, clock, "a", {})
+    on_break_now(dec, clock, "a")
+    d = dec.decide(cands(a=csc("a", 80, is_break=True), w=csc("w", 50, personal=22.5, is_break=True)))
+    assert d.action == "switch" and d.target == "w"
+
+
+def test_after_a_replay_go_straight_to_crunch_time(dec, clock):
+    start_on(dec, clock, "a", {})
+    dec.replaying = Missed("b", "p1", "TD", "td", clock.t - 100, 75)
+    dec.replay_until = clock.t - 1
+    dec.current = "b"
+    d = dec.decide(cands(a=70, b=50, c=csc("c", 40, is_break=True)))
+    assert d.action == "switch" and d.target == "c"
+
+
+def test_next_snap_estimate(dec, clock):
+    calibrate(dec, "youtubetv:a")
+    start_on(dec, clock, "a", {})
+    cs = cands(a=csc("a", 60, is_break=True))
+    tl = dec.timeline("a", League.NFL)
+    tl.events.append(Event(clock.t, "stop_start", "two_minute_warning"))
+    # No play yet: at least the warning's shortest length, then the delay (minus its error bars).
+    assert dec._next_snap_s("a", cs, clock.t) == pytest.approx(150 + 40 - 4 - 10, abs=0.5)
+    tl.events.append(Event(clock.t + 5, "play", "kickoff", play_kind="kickoff"))
+    assert dec._next_snap_s("a", cs, clock.t) == pytest.approx(5 + 25 + 26, abs=0.5)
+    tl.events.append(Event(clock.t + 6, "play", "run for 2"))
+    assert dec._next_snap_s("a", cs, clock.t) == pytest.approx(6 + 26, abs=0.5)
+
+
+def test_crunch_hops_are_not_flip_flopping(dec, clock):
+    start_on(dec, clock, "a", {})
+    for g in "baba":
+        clock.t += 25
+        dec._commit(g, kind="crunch")
+    assert dec.frozen_until <= clock.t

@@ -42,6 +42,20 @@ def closeness(g: GameState) -> float:
     return 0.1
 
 
+ONE_SCORE = {League.NFL: 8}
+
+
+def crunch_time(g: GameState) -> bool:
+    """The final 2:00 of a one-score game, or overtime, stoppages included (the two-minute
+    warning itself is the last natural stoppage before the first crunch snap). NFL only."""
+    if g.league not in ONE_SCORE or g.phase != Phase.LIVE:
+        return False
+    q, d, clk = g.period or 0, g.score_diff, g.clock_s
+    if q >= 5:
+        return True
+    return q == 4 and d is not None and clk is not None and clk <= 120 and abs(d) <= ONE_SCORE[g.league]
+
+
 # --- per-game memory (runs, WP swings, smoothing) ---------------------------
 
 @dataclass
@@ -111,6 +125,7 @@ class Scored:
     lock: str | None        # a moment the decider shouldn't cut out of
     pre_moment: str | None  # a big moment about to start: worth pre-switching to
     closeness: float
+    crunch: bool = False    # crunch time (see crunch_time); unlike lock, kept through breaks
 
     @property
     def display(self) -> int:
@@ -161,7 +176,7 @@ class Scorer:
 
         reason = _reason(g, parts, is_break)
         return Scored(g.game_id, g.league, shown, raw, m, s, p, reason, tags,
-                      is_break, None if is_break else lock, pre, k)
+                      is_break, None if is_break else lock, pre, k, crunch_time(g))
 
     def _stakes(self, g: GameState) -> float:
         c = self.cfg
@@ -253,7 +268,7 @@ def _nfl(g, h, k, now, c):
             d = dw["fourth_go"]
 
     drill = 0.0
-    if q >= 4 and clk is not None and clk <= 120 and off_diff is not None and -8 <= off_diff < 0:
+    if q >= 4 and clk is not None and clk <= 120 and off_diff is not None and -8 <= off_diff <= 0:
         drill = c.get("score.nfl.two_minute_drill")
 
     wp = g.home_win_prob
@@ -296,6 +311,8 @@ def _nfl(g, h, k, now, c):
         pre = f"{_ordinal(sit.down)} & goal"
     if q >= 4 and clk is not None and clk <= 60 and k >= 0.9:
         pre = "final minute, one score"
+    if q >= 4 and g.stoppage == Stoppage.TWO_MINUTE_WARNING and k >= 0.9:
+        pre = "two-minute warning, one score"  # the last natural stoppage before crunch: get there now
     return m, parts, lock, pre
 
 
