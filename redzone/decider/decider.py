@@ -354,7 +354,7 @@ class Decider:
             if self.current and self.current not in u.muted:
                 left = self._ending_still_airing(self.current, now)
                 if left > 0:
-                    return Decision(now, "stay", self.current, f"final seconds still airing ({left:.0f}s)",
+                    return Decision(now, "stay", self.current, f"letting the last play finish on screen ({left:.0f}s)",
                                     State.LOCKED, "ending on screen")
             best = self._best(watchable, exclude=None)
             catch_up = self._catch_up(cands, now, best, "game over")
