@@ -696,15 +696,14 @@ class Engine:
         return standby.options(cands, current=dec.current, home=home, back_to=dec.stack[-1] if dec.stack else None,
                                muted=u.muted, games=self.merger.games, my_teams=self._my_teams(), replay=replay,
                                tunable=self.control.can_tune, save_s=self.control.tune_estimate,
-                               return_bonus=float(self.cfg.get("decider.switch_margin", 10)))
+                               return_bonus=float(self.cfg.get("decider.switch_margin", 10)),
+                               want=getattr(self.last_decision, "want", None))
 
     def _replay_standby(self, cands: dict) -> standby.Option | None:
         """(b) A catch-up is queued and the game on screen is about to break: cue it on the hidden stick."""
         dec = self.decider
         cur = dec.current
         if not self.cfg.get("replay.enabled", True) or not dec.queue or not cur:
-            return None
-        if not standby.break_soon(self.merger.games.get(cur), self.scored.get(cur)):
             return None
         now = time.time()
         m = standby.likely_replay(dec.queue, now, float(self.cfg.get("replay.max_age_s", 1800)))

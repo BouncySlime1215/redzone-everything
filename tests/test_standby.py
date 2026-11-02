@@ -36,7 +36,7 @@ def test_home_game_takes_the_slot_even_during_its_break():
 
 def test_replay_beats_moments_but_not_your_game():
     cs = pool(cand("home", 40, is_break=True), cand("hot", 95, pre="4th & goal"))
-    rp = Option("x", "youtubetv:x", REPLAY, 75, "replay ready", back_s=60, replay_id="p1")
+    rp = Option("x", "youtubetv:x", REPLAY, 99, "replay ready", back_s=60, replay_id="p1")
     assert standby.options(cs, current="cur", replay=rp)[0].replay_id == "p1"
     assert standby.options(cs, current="cur", home="home", replay=rp)[0].kind == "home"
 
@@ -94,10 +94,12 @@ def test_holds_a_game_then_moves_only_for_a_clear_gain(cfg):
     clock = FakeClock()
     p = standby.Planner(cfg, clock=clock)
     held = ("youtubetv:a", None)
-    assert p.plan([opt("b", 90), opt("a", 60)], held) is None      # just loaded: hold it
-    clock.t += 20
-    assert p.plan([opt("b", 90), opt("a", 60)], held) is None      # still inside hold_s (35)
-    clock.t += 20
+    assert p.plan([opt("b", 72), opt("a", 60)], held) is None      # just loaded: hold it
+    clock.t += 10
+    assert p.plan([opt("b", 72), opt("a", 60)], held) is None      # still inside hold_s (20)
+    much = opt("b", 90)
+    assert p.plan([much, opt("a", 60)], held) is much              # ...unless much better (2x min_gain)
+    clock.t += 15
     assert p.plan([opt("b", 65), opt("a", 60)], held) is None      # +5 is noise (min_gain 8)
     b = opt("b", 70)
     assert p.plan([b, opt("a", 60)], held) is b                     # +10 after the hold: move
@@ -170,3 +172,37 @@ def test_likely_replay_is_the_most_valuable_fresh_one():
     done = Missed("g3", "p3", "TD", "td", now - 10, 99, replayed=True)
     assert standby.likely_replay([old_big, fresh, done], now, 1800).pid == "p2"
     assert standby.likely_replay([done], now, 1800) is None
+
+
+# --- the decider's own next pick, and the replay it would really play --------------------------
+
+def test_the_switch_the_decider_already_wants_takes_the_slot_over_everything():
+    cs = pool(cand("home", 40, is_break=True), cand("hot", 95, pre="4th & goal"), cand("next", 30))
+    rp = Option("x", "youtubetv:x", REPLAY, 99, "replay ready", back_s=60, replay_id="p1")
+    opts = standby.options(cs, current="visit", home="home", replay=rp, want="next")
+    assert (opts[0].game_id, opts[0].kind) == ("next", "next")
+
+
+def test_a_wanted_switch_never_waits_for_the_hold(cfg):
+    p = standby.Planner(cfg, clock=FakeClock())
+    nxt = opt("n", 10, standby.NEXT)
+    assert p.plan([nxt, opt("a", 80)], ("youtubetv:a", None)) is nxt
+
+
+def test_a_replay_the_decider_would_skip_for_a_better_live_game_is_not_cued():
+    cs = pool(cand("live", 80))
+    rp = Option("x", "youtubetv:x", REPLAY, 60, "replay ready", back_s=60, replay_id="p1")
+    assert standby.options(cs, current="cur", replay=rp)[0].game_id == "live"
+    rp.value = 90
+    assert standby.options(cs, current="cur", replay=rp)[0].replay_id == "p1"
+
+
+def test_shadow_stick_counts_flips_to_a_ready_preload_as_hits():
+    s = standby.ShadowStick(tune_s=7)
+    s.preload("youtubetv:a", None, 100)
+    assert not s.switch("youtubetv:a", None, "youtubetv:cur", 103)   # still tuning
+    assert s.standby == ("youtubetv:cur", None)                       # the stick we left reloads it
+    assert s.switch("youtubetv:cur", None, "youtubetv:a", 120)        # going back: a flip
+    s.preload("youtubetv:x", "p1", 130)
+    assert not s.switch("youtubetv:x", None, "youtubetv:a", 140)      # parked replay != live
+    assert s.card() == {"switches": 3, "hits": 1, "hit_rate": 33.3, "still_loading": 1, "preloads": 2}

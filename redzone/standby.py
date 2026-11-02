@@ -13,6 +13,9 @@ see. So the options are ranked by what the next switch most likely needs, highes
              in a lull 20+ points behind the best game) — never in garbage time, your team's included.
   d) BEST    the best other live game. The game we just left counts extra: going back is common.
 
+Above all of them, NEXT is the decider's own word, not a guess: a switch it already wants and only
+waits on a safe moment for (Decision.want), e.g. the trip home at the end of a break visit.
+
 Within a class, value = excitement score + the seconds a preload would save (a Prime game, slow
 to tune, is worth holding over a YouTube TV game a few points better).
 
@@ -28,8 +31,8 @@ from typing import Callable
 
 from redzone.models import GameState, League, Phase
 
-HOME, REPLAY, MOMENT, BEST = 0, 1, 2, 3
-KIND = {HOME: "home", REPLAY: "replay", MOMENT: "moment", BEST: "best"}
+NEXT, HOME, REPLAY, MOMENT, BEST = -1, 0, 1, 2, 3
+KIND = {NEXT: "next", HOME: "home", REPLAY: "replay", MOMENT: "moment", BEST: "best"}
 RETURN_BONUS = 10.0   # the decider goes back to the game it left over one up to switch_margin better
 
 
@@ -120,7 +123,8 @@ def _moment(s, g: GameState | None, my_teams: dict) -> str:
 def options(cands: dict, *, current: str | None, home: str | None = None, back_to: str | None = None,
             muted=frozenset(), games: dict | None = None, my_teams: dict | None = None,
             replay: Option | None = None, tunable: Callable[[str], bool] = lambda t: True,
-            save_s: Callable[[str], float] = lambda t: 0.0, return_bonus: float = RETURN_BONUS) -> list[Option]:
+            save_s: Callable[[str], float] = lambda t: 0.0, return_bonus: float = RETURN_BONUS,
+            want: str | None = None) -> list[Option]:
     """Every game the hidden stick could usefully hold, best first.
 
     Never: what's on screen, a muted game, a stale feed, a channel we can't tune (no link, app not
@@ -135,6 +139,10 @@ def options(cands: dict, *, current: str | None, home: str | None = None, back_t
               default=0.0)
     for gid, x in ok.items():
         s = x.scored
+        if gid == want:
+            # The decider already picked it and only waits on a safe moment: not a guess.
+            out.append(Option(gid, x.target, NEXT, s.score, "next up — waiting on a safe moment to switch"))
+            continue
         if gid == home:
             out.append(Option(gid, x.target, HOME, s.score, "your game — back the moment its break ends"))
             continue
@@ -149,6 +157,10 @@ def options(cands: dict, *, current: str | None, home: str | None = None, back_t
         else:
             lead = "the game you just left" if gid == back_to else "next best"
             out.append(Option(gid, x.target, BEST, value, f"{lead}: {s.reason}"))
+    if replay is not None and replay.value < top:
+        # The decider only spends a break on a replay that beats the best live game there
+        # (Decider._replay_option): otherwise the break goes to that game, so cue it instead.
+        out = [o for o in out if o is not replay]
     out.sort(key=lambda o: (o.cls, -o.value))
     return out
 
@@ -179,14 +191,62 @@ class Planner:
         target, parked = standby
         if (want.target, want.replay_id) == (target, parked):
             return None
-        if want.cls in (HOME, REPLAY):
-            return want   # your game's return, or a replay about to be needed: can't wait
+        if want.cls in (NEXT, HOME, REPLAY):
+            return want   # a switch already decided, your game's return, a replay about to play: can't wait
         # Parked replay footage is no use for a live switch.
         have = None if parked else next((o for o in opts if o.target == target and o.replay_id is None), None)
         if have is None:
             return want
-        if now - self._since < float(self.cfg.get("two_stick.hold_s", 35)):
-            return None
-        if want.cls < have.cls or want.value >= have.value + float(self.cfg.get("two_stick.min_gain", 8)):
+        gain = float(self.cfg.get("two_stick.min_gain", 8))
+        if now - self._since < float(self.cfg.get("two_stick.hold_s", 20)):
+            # Churn guard: a re-tune blinds the hidden stick for 5-10s. Only a big moment about to
+            # start (it's where the decider chases next) or a much better game moves it this soon.
+            soon = want.cls == MOMENT and want.why.startswith("about to happen") and have.cls > MOMENT
+            return want if soon or want.value >= have.value + 2 * gain else None
+        if want.cls < have.cls or want.value >= have.value + gain:
             return want
         return None
+
+
+class ShadowStick:
+    """The hidden stick, modeled, for replays and backtests: what a preload would have ready when the
+    decider switches. A tune takes tune_s; after every switch the stick we left holds the game we left
+    (control re-tunes it in the background: a stick that loses the TV input pauses its app).
+
+    Hit rate = switches that landed on a stick already playing the destination (a 1-3s flip)."""
+
+    def __init__(self, tune_s: float = 7.0):
+        self.tune_s = tune_s
+        self.target: str | None = None
+        self.replay_id: str | None = None
+        self.ready_at = 0.0
+        self.preloads = 0
+        self.hits = 0
+        self.loading = 0   # right target, still tuning: faster than cold, not yet a clean flip
+        self.misses: list[tuple[float, str | None, str | None]] = []   # (when, wanted, had)
+
+    @property
+    def standby(self) -> tuple[str | None, str | None]:
+        return (self.target, self.replay_id)
+
+    def preload(self, target: str | None, replay_id: str | None, now: float) -> None:
+        if not target or (target, replay_id) == self.standby:
+            return
+        self.target, self.replay_id, self.ready_at = target, replay_id, now + self.tune_s
+        self.preloads += 1
+
+    def switch(self, to: str | None, replay_id: str | None, left: str | None, now: float) -> bool:
+        hit = bool(to) and (to, replay_id) == self.standby and now >= self.ready_at
+        if hit:
+            self.hits += 1
+        else:
+            if to and (to, replay_id) == self.standby:
+                self.loading += 1
+            self.misses.append((now, to, self.target))
+        self.target, self.replay_id, self.ready_at = left, None, now + self.tune_s
+        return hit
+
+    def card(self) -> dict:
+        n = self.hits + len(self.misses)
+        return {"switches": n, "hits": self.hits, "hit_rate": round(100 * self.hits / max(1, n), 1),
+                "still_loading": self.loading, "preloads": self.preloads}
