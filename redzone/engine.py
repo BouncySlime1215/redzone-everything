@@ -392,6 +392,26 @@ class Engine:
             self.broadcast()
         self.control.submit(target, back, done, may_cut=lambda: self.safe_to_leave(before))
 
+    def _start_st_scan(self) -> tuple[bool, str]:
+        codes = self.channels.st_codes
+        if not codes:
+            return False, "Paste your Sunday Ticket channel links in Settings → Channels first"
+        if not self.control.live_control:
+            return False, "Turn on TV control first (the scan uses the stick)"
+        games = [g for g in self.merger.games.values() if g.league == League.NFL and g.phase != Phase.POST]
+
+        def found(g, code):
+            self.channels.st_slots[g.game_id] = code
+            self.channels.save()
+            self.toast(f"Sunday Ticket: {g.matchup} found")
+
+        async def run():
+            got = await self.control.scan_sunday_ticket(codes, games, found)
+            self.toast(f"Sunday Ticket scan done: matched {len(got)} games")
+        asyncio.create_task(run())
+        where = "on the hidden stick" if self.control.two_stick else "— your TV will flip channels for ~2 minutes"
+        return True, f"Scanning {len(codes)} Sunday Ticket channels {where}"
+
     def set_mic(self, on: bool) -> tuple[bool, str]:
         from redzone.screen.audio import MicWatcher
         if on and self.mic is None:
@@ -526,6 +546,8 @@ class Engine:
                               time.time())
             self._act_manual(m.game_id, replay=m)
             return True, f"Replaying: {m.label[:60]}"
+        if action == "scan_st":
+            return self._start_st_scan()
         if action == "mic":
             ok, msg = self.set_mic(bool(value))
             if ok:

@@ -122,3 +122,15 @@ def test_bet_sweat():
     assert "covering" in bets.label(g, {"kind": "spread", "team": "BUF", "line": 3.5})
     over_cashed = bets.sweat(g, {"kind": "total", "line": 30, "side": "over"})
     assert over_cashed == 0
+
+
+def test_sunday_ticket_codes_and_title_matching(tmp_path):
+    from redzone.channels import match_title
+    cm = ChannelMap(tmp_path / "ch.json")
+    text = "1 https://tv.youtube.com/watch/AAAAAAAAAAA?x=1\n2 https://tv.youtube.com/watch/BBBBBBBBBBB junk"
+    assert cm.set_st_codes(text) == ["AAAAAAAAAAA", "BBBBBBBBBBB"]
+    bills = GameState(league=League.NFL, game_id="1", home=Team("NE", name="Patriots"), away=Team("BUF", name="Bills"))
+    wsh = GameState(league=League.NFL, game_id="2", home=Team("NYG", name="Giants"), away=Team("WSH", name="Commanders"))
+    assert match_title("NFL Sunday Ticket 3 | Bills at Patriots | LIVE", [bills, wsh]).game_id == "1"
+    assert match_title("Commanders vs. Giants", [bills, wsh]).game_id == "2"
+    assert match_title("Bills Mafia pregame", [bills, wsh]) is None   # one team isn't enough

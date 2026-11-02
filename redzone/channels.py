@@ -69,6 +69,7 @@ class ChannelMap:
         self.prime_gti: dict[str, str] = {}    # game_id -> Prime GTI
         self.st_slots: dict[str, str] = {}     # game_id -> Sunday Ticket slot code
         self.espn_ids: dict[str, str] = {}     # game_id -> ESPN watch id (ESPN+ events)
+        self.st_codes: list[str] = []          # YouTube TV codes of "NFL Sunday Ticket 1..16" (fixed)
         self.link_notes: dict[str, str] = {}   # game_id -> "blacked out here" etc.
         self.load()
 
@@ -84,6 +85,7 @@ class ChannelMap:
             self.prime_gti = d.get("prime_gti", {})
             self.st_slots = d.get("st_slots", {})
             self.espn_ids = d.get("espn_ids", {})
+            self.st_codes = d.get("st_codes", [])
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -91,6 +93,7 @@ class ChannelMap:
         tmp.write_text(json.dumps({"codes": self.codes, "overrides": self.overrides,
                                    "team_rules": self.team_rules, "prime_gti": self.prime_gti,
                                    "st_slots": self.st_slots, "espn_ids": self.espn_ids,
+                                   "st_codes": self.st_codes,
                                    "saved": time.time()}, indent=1))
         tmp.replace(self.path)
 
@@ -104,6 +107,18 @@ class ChannelMap:
         self.codes[channel] = code
         self.save()
         return code
+
+    def set_st_codes(self, text: str) -> list[str]:
+        """Paste the Sunday Ticket channel links (1..16, any order/format); codes kept in paste order."""
+        codes = []
+        for m in YTTV_LINK.finditer(text or ""):
+            if m.group(1) not in codes:
+                codes.append(m.group(1))
+        if not codes:
+            raise ValueError("No YouTube TV links found — copy them from tv.youtube.com's Live guide")
+        self.st_codes = codes[:20]
+        self.save()
+        return self.st_codes
 
     def set_override(self, game_id: str, target: str | None) -> None:
         if target:
@@ -269,3 +284,25 @@ def _is_sunday_afternoon(g: GameState) -> bool:
         return False
     lt = time.localtime(g.start_time)
     return lt.tm_wday == 6 and 12 <= lt.tm_hour < 19
+
+
+def _team_words(t) -> set[str]:
+    words = {t.abbr.lower()}
+    for part in (t.name or "").lower().replace(".", "").split():
+        if len(part) > 2:
+            words.add(part)
+    return words
+
+
+def match_title(text: str, games: list[GameState]) -> GameState | None:
+    """Which game is this on-screen title about? Both teams must be mentioned; best score wins."""
+    import re as _re
+    words = set(_re.findall(r"[a-z0-9]+", (text or "").lower()))
+    best, best_score = None, 0
+    for g in games:
+        h, a = _team_words(g.home) & words, _team_words(g.away) & words
+        if h and a:
+            score = len(h) + len(a)
+            if score > best_score:
+                best, best_score = g, score
+    return best

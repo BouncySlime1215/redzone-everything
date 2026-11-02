@@ -134,6 +134,14 @@ def build_app(engine: Engine) -> FastAPI:
             return {"ok": False, "message": str(e)}
         return {"ok": True, "message": f"Saved ({code})"}
 
+    @app.post("/api/channels/sunday-ticket")
+    async def set_st(body: dict):
+        try:
+            codes = engine.channels.set_st_codes(str(body.get("links", "")))
+        except ValueError as e:
+            return {"ok": False, "message": str(e)}
+        return {"ok": True, "message": f"Saved {len(codes)} Sunday Ticket channels"}
+
     @app.post("/api/override")
     async def override(body: dict):
         target = body.get("target")

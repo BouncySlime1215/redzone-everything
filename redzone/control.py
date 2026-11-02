@@ -252,6 +252,37 @@ class Controller:
             res = await self._tune(hid, target, None)
             self.hidden_ready = res.ok
 
+    async def scan_sunday_ticket(self, codes: list[str], games: list, on_found=None) -> dict[str, str]:
+        """Flip through the Sunday Ticket channels and read each one's game title off the screen.
+        Uses the hidden stick in two-stick mode (you never see it), else the main stick (you will)."""
+        from redzone.channels import match_title
+        stick = self.hidden or self.main
+        found: dict[str, str] = {}
+        if stick is None or not codes:
+            return found
+        tuner = TUNERS["youtubetv"]
+        async with self._lock:
+            for code in codes:
+                res = await tuner.tune(stick, code, f"youtubetv:st:{code}")
+                text = ""
+                for keys in ((), ("KEYCODE_DPAD_DOWN",)):  # the title shows with the player overlay
+                    if keys:
+                        await stick.key(*keys)
+                        await asyncio.sleep(1.0)
+                    text = await stick.screen_text()
+                    g = match_title(text, games)
+                    if g:
+                        found[g.game_id] = code
+                        if on_found:
+                            on_found(g, code)
+                        break
+                log.info("ST scan %s -> %s (%s)", code, found and list(found)[-1], "ok" if res.ok else res.error)
+            if stick is self.hidden:
+                self.hidden_target, self.hidden_ready = None, False
+            else:
+                self.on_target = None
+        return found
+
     def _blackout_check(self, target: str, res: TuneResult) -> None:
         text = " ".join(res.steps).lower() + res.error.lower()
         if "regional" in text or "blackout" in text or "not available in your location" in text:
