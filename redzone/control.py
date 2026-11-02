@@ -677,9 +677,12 @@ class Controller:
         no_moment = "no safe moment to cut — kept the current game"
         if replay and self._parked_for(target, replay_id):
             path = "parked replay"
-        elif not replay and self._live_on_hidden(target):
+        elif not replay and self._live_on_hidden(target) and hid.still_on(
+                target, await hid.playback(self._package(hid, target))):
             path = "preloaded"
         else:
+            # A standby that stopped (a stick that lost the TV input can pause its app) gets tuned
+            # again here instead of failing the switch at flip time.
             path = "tuned"
             sleeping = await self._sleeping(hid)
             if sleeping:

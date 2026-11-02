@@ -206,10 +206,11 @@ def test_cached_ready_flag_cannot_flip_buffering_standby(two):
     c.hidden_target, c.hidden_ready = "youtubetv:fox", True
     c.hidden.remember("youtubetv:fox", run(c.hidden.playback("yttv.pkg")))
     c.hidden.playback_state = "buffering"
+    hidden = c.hidden.host
     out = run(c.execute("youtubetv:fox", may_cut=lambda: True))
-    assert not out.ok and out.screen_unchanged
-    assert c.main.host == "a:5555" and not tuner.calls
-    assert not any("onetouchplay" in cmd for stick in c.sticks for cmd in stick.log)
+    # Not flipped to as-is: the stalled standby is tuned again first (a stick that lost the TV
+    # input can pause its app; failing the switch there left the TV on the old game).
+    assert out.path == "tuned" and tuner.calls == [(hidden, "youtubetv:fox")]
 
 
 def test_no_readback_and_cec_flip_off_keeps_single_stick_mode(two):
