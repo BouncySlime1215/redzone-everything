@@ -339,3 +339,17 @@ async def test_a_retry_requires_its_own_playback_transition():
     st = ScriptedStick(now=old, after=[yt(6), old])
     res = await quick(confirm_timeout=0.03).tune(st, "CODE", "youtubetv:fox")
     assert not res.ok and st.tuned is None and len(st.links()) == 2
+
+
+async def test_prime_unreadable_page_never_guesses_focused_watch_button():
+    st = ScriptedStick(after=[media(PRIME, 1)], screen="")
+    result = await quick(PrimeTuner, page_wait_s=.001, confirm_timeout=.01).tune(st, "GTI", "prime:GTI")
+    assert not result.ok and not st.keys()
+
+
+async def test_background_link_retry_rechecks_cut_permission_after_launch():
+    st = ScriptedStick(after=[yt(1)])
+    st.am_reply = "Warning: Activity not started, its current task has been brought to the front"
+    result = await quick().tune(st, "CODE", "youtubetv:fox", may_cut=lambda: not st.linked)
+    assert not result.ok and "window closed" in result.error
+    assert len(st.links()) == 1

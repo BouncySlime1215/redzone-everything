@@ -18,9 +18,10 @@ PORT=8778 .venv/bin/python -m redzone
 ```
 
 The app prints a LAN address and QR code. Keep the Mac awake and on the same network as the
-phone. Do not install the login service from a temporary checkout; once the project location
-is settled, `scripts/install_service.sh` installs it and `scripts/install_service.sh remove`
-removes it. Local runtime data and logs are under `data/` and are not committed.
+phone. `scripts/install_service.sh check` performs a read-only service readiness check;
+it does not start anything. A separately installed login service can run without Codex open.
+See [unattended operation](docs/service-operation.md) for installation, enforced dry-run,
+restart behavior, logs, credentials and sleep limits. Local runtime data is under `data/`.
 
 ## What the engine knows
 

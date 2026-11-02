@@ -163,6 +163,7 @@ class Tuner:
             if "brought to the front" in r.out.lower():
                 # The app was in the background (e.g. the hidden stick after a HOME flip): resend
                 # the link as a fresh task so it actually opens it.
+                require_cut(may_cut, steps, mutating=True)
                 r = await stick.view(self.url(ref), pkg, wait=self.wait_for_launch, fresh=True)
                 steps.append("app was in the background: resent the link as a new task")
                 if not r.ok:   # Android prints the same warning even when the fresh launch works
@@ -272,7 +273,6 @@ class PrimeTuner(Tuner):
                        may_cut=None) -> bool:
         watch = watch or NewStream({"state": "none"})
         # Prime opens a detail page; press through profile picker and "Watch Live".
-        blind_pressed = False
         for _ in range(3):
             if await self._watch_for(stick, pkg, watch, self.page_wait_s):
                 steps.append("playing")
@@ -281,16 +281,7 @@ class PrimeTuner(Tuner):
             if "regional restriction" in text or "not available in your location" in text or "blackout" in text:
                 steps.append("blackout: this game isn't available in your area on Prime")
                 return False
-            pressed = await self._press_prompt(stick, text, steps, "pressed through", may_cut)
-            if not pressed and not text.strip() and not blind_pressed:
-                # Prime's page doesn't expose its text to the stick's screen reader (seen on the 4K
-                # and 4K Plus). On a live event's detail page the focused first button is
-                # "Watch Live" (screenshot, Nov 2), so press it once. Purchases always need further
-                # confirmation screens, so a stray press can't buy anything.
-                require_cut(may_cut, steps, mutating=True)
-                steps.append("pressed the focused button (Watch Live) on an unreadable Prime page")
-                await stick.key("KEYCODE_DPAD_CENTER")
-                blind_pressed = True
+            await self._press_prompt(stick, text, steps, "pressed through", may_cut)
         return await super()._confirm(stick, pkg, steps, watch, may_cut)
 
 

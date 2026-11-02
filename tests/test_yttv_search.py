@@ -43,7 +43,7 @@ def player_frame():
                             TextBox("0:02 / 3:30:45", 1, .87, .05, .10, .03)), 1920, 1080)
 
 
-async def finish_trial(frames, *, speed=1, stale_at=None, failed_key=None, unchanged=False):
+async def finish_trial(frames, *, speed=1, stale_at=None, failed_key=None, unchanged=False, revoke_at=None, delay_at=None):
     class PlaybackStick(Stick):
         calls = 0
 
@@ -66,12 +66,14 @@ async def finish_trial(frames, *, speed=1, stale_at=None, failed_key=None, uncha
         previous = next(iterator, previous)
         now += .1
         sequence += 1
+        if sequence == delay_at:
+            now += 46
         return CapturedScreen(previous, sequence - 1 if sequence == stale_at else sequence, now)
 
     result = await finish_yttv_watch(st, observe, home_aliases=("Washington", "Commanders", "WAS"),
         away_aliases=("Philadelphia Eagles", "Eagles", "PHI"), requested=WANTED, observed_on=date(2026, 11, 2),
         recent_recording_caption="New 19 hours ago • Watch Nov 1... Washington Commanders",
-        sleep=sleep, clock=lambda: now)
+        sleep=sleep, clock=lambda: now, may_run=lambda: sequence != revoke_at)
     return st, result
 
 
@@ -288,3 +290,37 @@ async def test_profile_picker_without_configuration_sends_no_guess():
     profile = menu("Who's watching?", query="Eagles Commanders")
     st, result = await trial([profile])
     assert "no preferred profile configured" in result.reason and not st.keys
+
+
+@pytest.mark.parametrize("options,reason", [({"revoke_at": 2}, "authorization changed"),
+                                           ({"delay_at": 2}, "time budget")])
+async def test_watch_confirmation_cannot_outlive_authorization_or_deadline(options, reason):
+    st, result = await finish_trial(replay_frames(), **options)
+    assert result.status == "stopped" and reason in result.reason and not st.keys
+
+
+async def test_search_with_revoked_authorization_never_wakes_or_launches():
+    class InertStick(Stick):
+        async def ensure_awake(self):
+            raise AssertionError("wake must not be called")
+
+    st = InertStick()
+    result = await run_yttv_search(st, None, query="Eagles Commanders", home="Commanders", away="Eagles",
+                                   requested=WANTED, may_run=lambda: False)
+    assert "authorization changed" in result.reason and not st.urls and not st.keys
+
+
+async def test_search_revoked_during_wake_read_cannot_send_wakeup():
+    authorized = True
+
+    class WakeRaceStick(Stick):
+        async def ensure_awake(self, may_cut=None):
+            nonlocal authorized
+            authorized = False  # power read completed after owner revoked control
+            if may_cut():
+                raise AssertionError("wake must not be permitted")
+
+    st = WakeRaceStick()
+    result = await run_yttv_search(st, None, query="Eagles Commanders", home="Commanders", away="Eagles",
+                                   requested=WANTED, may_run=lambda: authorized)
+    assert "authorization changed" in result.reason and not st.urls and not st.keys

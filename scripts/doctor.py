@@ -157,7 +157,10 @@ async def main() -> None:
             await st.close()
             continue
         if not ok:
-            say(BAD, f"{h}: couldn't connect ({st.state})")
+            say(BAD, f"{h}: couldn't connect ({st.state}) — {st.connect_error}")
+            if "refused" in st.connect_error.lower():
+                say(WARN, "    TCP was refused before ADB authorization. Check the current IP, debugging "
+                          "service and network communication; an approval prompt cannot appear yet.")
             await st.close()
             continue
         await st.identify()
@@ -171,12 +174,14 @@ async def main() -> None:
         pb = await st.playback()
         say(OK, f"    playing now: {pb['state']}" + (f" ({pb['pkg']})" if pb.get("pkg") else ""))
         port = await st.hdmi_port()
-        say(OK if port else WARN, f"    TV input: {port or 'unknown (turn on Anynet+/HDMI-CEC on the TV, or tell me the HDMI number)'}")
+        say(OK if port else WARN, f"    HDMI topology port: {port or 'unknown'} (does not prove the selected display input)")
         await st.close()   # its always-open adb shell
         sticks.append({"host": st.host, "name": st.name, "model": st.model, "os": st.os,
                        "packages": st.packages, "controllable": not vega, "hdmi": port})
 
-    print("\n4. Samsung TV")
+    print("\n4. Display")
+    if a.display_type == "monitor" or old.get("display_type") == "monitor":
+        say(OK, "Monitor selected. Use its manually selected HDMI input; Samsung control is disabled.")
     tvs = []
     cand = [a.tv_ip] if a.tv_ip else []
     if net is not None and not a.no_scan and a.display_type != "monitor":
@@ -186,7 +191,7 @@ async def main() -> None:
         if info:
             tvs.append(info)
             say(OK, f"{info['name']} ({info['model']}) at {h} — {info['os']}, power {info['power']}")
-    if not tvs:
+    if not tvs and a.display_type != "monitor" and old.get("display_type") != "monitor":
         say(WARN, "No Samsung TV found (it must be on, same Wi-Fi). Only needed for two-stick mode.")
     selected = select_tv(tvs, old.get("tv"), a.tv_ip)
     if selected:

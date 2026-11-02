@@ -1,5 +1,36 @@
 # Resume state — 2026-11-02
 
+## Latest checkpoint
+
+The Samsung has physically switched to the older stick after Home. Home also leaves the
+player; a measured YouTube TV restore took 9.642 seconds to fresh playing/speed-1 metadata,
+and Prime paused while hidden. Stick-side Active Source is not selected-TV readback. The
+resumed review removed automatic Home success based solely on that flag and removed blind
+Prime Select presses on unreadable pages. Unknown input blocks automatic device navigation.
+
+Both saved Fire OS sticks are ADB-authorized and reachable. The user-supplied Samsung network
+address remains unreachable on the relevant remote-control ports; actual addresses and
+profiles are kept only in ignored local configuration. The user confirmed the same Wi-Fi
+passkey. Do not send them to create a WhiteSky account: their property-specific instructions
+use the leasing-office passkey per device. The reason for the failed TV connection is unknown.
+The ordinary Quick Settings proxy did not produce a switch; direct Quick Settings activity
+launch was denied by Fire OS. No permission changes, root access or DRM bypass were attempted.
+
+The login job on port 8778 was independently changed to `--allow-live` before this resumed
+work. Saved dry-run was explicitly enabled and auto-switching paused for isolated tests.
+The service can run independently of Codex, but unattended hardware readiness is incomplete.
+Inspect the actual service/config state before any device actions; another session may
+change it. Do not race another controller or disrupt the user's active computer work.
+
+Prime replay navigation has bounded device proofs for two November 1 NBA matchups. The
+recorded-session UI is Prime-only. YouTube TV's dated-Watch finisher is a standalone helper;
+arbitrary Library navigation is not integrated. Protected video frames are unavailable, so
+metadata and menu proofs do not establish picture continuity or good-moment switching.
+See `docs/device-trial-2026-11-02.md`, `docs/provider-routing-readiness.md`, and
+`docs/service-operation.md` for the measured results and limitations.
+
+## Original recovery baseline
+
 The Claude session was recovered into an isolated Codex checkout, preserving the original
 project and snapshots of its unfinished worktrees. Do not merge stale worktree branches or
 restart old workflows over this tree. The original session may auto-resume independently.

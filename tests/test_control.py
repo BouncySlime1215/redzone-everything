@@ -229,8 +229,227 @@ def test_unknown_channel_is_a_clear_error(two):
     assert not out.ok and "not set up" in out.detail
 
 
-def test_cec_flip_gives_two_stick_mode_without_a_network_tv(two):
-    """The TV isn't on the network (Nov 2): HOME -> HDMI-CEC Active Source flips inputs instead."""
+def test_cec_flip_cannot_enable_two_stick_mode_without_display_readback(two):
+    """A stick claiming Active Source does not prove the TV accepted the input."""
     c, _ = two
     c.tv.st_device = None
-    assert c.two_stick and c.hidden is not None
+    assert not c.two_stick and c.hidden is None
+
+
+class HomeTrialStick(Stick):
+    """Keep production shell invalidation; only the transport is replaced."""
+    def __init__(self):
+        super().__init__("trial:5555", os="Fire OS 8")
+        self.state = "connected"
+        self.packages = {"youtubetv": "yttv.pkg"}
+        self.commands = []
+        self.home_result = RunResult(True, "", 0.0)
+        self.home_sent = False
+        self.restore_sent = False
+        self.after = "paused"
+        self.updated = 5000
+
+    async def _shell(self, command, timeout=8):
+        self.commands.append(command)
+        if "KEYCODE_HOME" in command:
+            self.home_sent = True
+            return self.home_result
+        if command.startswith("am start"):
+            self.restore_sent = True
+        if "mIsActiveSource" in command:
+            return RunResult(True, "1", 0.0)
+        if "onetouchplay" in command:
+            return RunResult(True, "No shell command implementation.", 0.0)
+        return RunResult(True, "", 0.0)
+
+    async def playback(self, package=None):
+        state = self.after if self.home_sent else "playing"
+        self.updated += 1
+        return {"pkg": package, "state": state, "speed": 1 if state == "playing" else 0,
+                "position": self.updated - 4000, "updated": self.updated,
+                "read_ok": True, "read_started": ctl.time.monotonic()}
+
+    async def foreground(self):
+        return "yttv.pkg/.Player"
+
+
+def prepare_home_trial(c):
+    stick = HomeTrialStick()
+    c.sticks = [stick]
+    c.hdmi = {stick.host: "HDMI2"}
+    stick.remember("youtubetv:espn", run(stick.playback("yttv.pkg")))
+    return stick
+
+
+def test_automatic_flip_never_uses_destructive_home(two, monkeypatch):
+    c, _ = two
+    stick = prepare_home_trial(c)
+    selected = []
+
+    async def set_input(hdmi):
+        selected.append(hdmi)
+        return True
+
+    monkeypatch.setattr(c.tv, "set_input", set_input)
+    assert run(c._flip_to(stick))
+    assert selected == ["HDMI2"]
+    assert not stick.home_sent
+
+
+def test_home_trial_does_not_trust_stick_active_source(two, monkeypatch):
+    c, _ = two
+    stick = prepare_home_trial(c)
+    stick.after = "playing"
+    assert not run(c._home_flip(stick))  # the selected TV continues reporting HDMI1
+    assert stick.home_sent and stick.restore_sent
+    assert stick.tuned is None
+
+
+def test_home_trial_refuses_unknown_input_before_any_key(two, monkeypatch):
+    c, _ = two
+    stick = prepare_home_trial(c)
+
+    async def unknown():
+        return None
+
+    monkeypatch.setattr(c.tv, "input_status", unknown)
+    assert not run(c._home_flip(stick))
+    assert not stick.commands
+
+
+def test_home_trial_rechecks_safe_exit_after_slow_readback(two, monkeypatch):
+    c, _ = two
+    stick = prepare_home_trial(c)
+    gap = {"open": True}
+
+    async def closing_read():
+        gap["open"] = False
+        return "HDMI1"
+
+    c._exit_check = lambda: gap["open"]
+    monkeypatch.setattr(c.tv, "input_status", closing_read)
+    assert not run(c._home_flip(stick))
+    assert not stick.commands
+
+
+def test_uncertain_home_is_not_followed_by_restore_or_fallback(two):
+    c, _ = two
+    stick = prepare_home_trial(c)
+    stick.home_result = RunResult(False, "timeout", 8)
+    assert not run(c._home_flip(stick))
+    assert stick.commands == ["input keyevent KEYCODE_HOME"]
+    assert stick.tuned is None
+
+
+def test_home_trial_requires_restored_transport_not_just_tv_input(two, monkeypatch):
+    c, _ = two
+    stick = prepare_home_trial(c)
+
+    async def input_status():
+        return "HDMI2" if stick.home_sent else "HDMI1"
+
+    async def no_wait(_):
+        pass
+
+    monkeypatch.setattr(c.tv, "input_status", input_status)
+    monkeypatch.setattr(ctl.asyncio, "sleep", no_wait)
+    assert not run(c._home_flip(stick))  # Home left the player paused
+    assert stick.tuned is None
+
+
+def test_home_trial_restores_memory_only_after_fresh_transport_and_tv_readback(two, monkeypatch):
+    c, _ = two
+    stick = prepare_home_trial(c)
+    stick.after = "playing"
+
+    async def input_status():
+        return "HDMI2" if stick.home_sent else "HDMI1"
+
+    monkeypatch.setattr(c.tv, "input_status", input_status)
+    assert run(c._home_flip(stick))
+    assert stick.tuned["target"] == "youtubetv:espn"
+    assert stick.tuned["report"]["updated"] > 5002
+
+
+def test_startup_input_uses_selected_tv_not_stick_claim(two, monkeypatch):
+    c, _ = two
+    c.sticks[0]._active = True
+
+    async def selected_tv():
+        return "HDMI2"
+
+    monkeypatch.setattr(c.tv, "input_status", selected_tv)
+    run(c.sync_active_from_display())
+    assert c.active == 1 and not c.input_unknown
+    assert not any("mIsActiveSource" in cmd for stick in c.sticks for cmd in stick.log)
+
+
+def test_startup_unreadable_tv_does_not_guess_visible_stick(two, monkeypatch):
+    c, _ = two
+    c.sticks[0]._active = True
+
+    async def unknown():
+        return None
+
+    monkeypatch.setattr(c.tv, "input_status", unknown)
+    run(c.sync_active_from_display())
+    assert c.input_unknown
+    out = run(c.execute("youtubetv:espn"))
+    assert not out.ok and "input is unknown" in out.detail
+    assert not any("input keyevent" in cmd for stick in c.sticks for cmd in stick.log)
+
+
+@pytest.mark.parametrize("state,speed", [("playing", 0.0), ("playing", 1.0)])
+def test_home_trial_cannot_reuse_stationary_or_stale_playback(two, monkeypatch, state, speed):
+    c, _ = two
+    stick = prepare_home_trial(c)
+    original = stick.playback
+    before = run(original("yttv.pkg"))
+
+    async def playback(package=None):
+        if not stick.home_sent:
+            return before
+        # First case: fresh but zero-speed reload. Second: ready-looking stale session.
+        return dict(before, state=state, speed=speed,
+                    updated=before["updated"] + (1 if speed == 0 else 0),
+                    read_started=ctl.time.monotonic())
+
+    async def selected_tv():
+        return "HDMI2" if stick.home_sent else "HDMI1"
+
+    async def no_wait(_):
+        pass
+
+    monkeypatch.setattr(stick, "playback", playback)
+    monkeypatch.setattr(c.tv, "input_status", selected_tv)
+    monkeypatch.setattr(ctl.asyncio, "sleep", no_wait)
+    assert not run(c._home_flip(stick))
+    assert stick.tuned is None
+
+
+def test_dry_run_start_preserves_unknown_input_until_live_readback(two, monkeypatch):
+    c, _ = two
+    c.cfg.update({"mode": {"dry_run": True}})
+
+    async def adb_available():
+        return True
+
+    monkeypatch.setattr(ctl, "adb_available", adb_available)
+    monkeypatch.setattr(c, "load_devices", lambda: None)
+    run(c.start())
+    assert c.input_unknown
+    c.cfg.update({"mode": {"dry_run": False}})
+    for stick in c.sticks:
+        stick.last_ok = ctl.time.time()
+    run(c.keepalive())
+    assert not c.input_unknown and c.active == 0
+
+
+
+def test_unknown_input_blocks_preload_and_sunday_ticket_scan(two):
+    c, tuner = two
+    c.input_unknown = True
+    assert not c.preload("youtubetv:espn")
+    assert run(c.scan_sunday_ticket(["AAAAAAAAAAA"], [])) == {}
+    assert tuner.calls == []
+    assert not c.sticks[1].log

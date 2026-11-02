@@ -178,6 +178,7 @@ class Controller:
         self._verified_at = 0.0
         self._flipping = False                   # inside the flip: not cancellable
         self.adb_ok = False
+        self._watchdog_applied = False
         self.last: Outcome | None = None
         self.note = ""
         self.stage = {"stage": "idle", "target": None, "reason": ""}
@@ -247,8 +248,32 @@ class Controller:
                         await s.identify()
                     if was != "connected":
                         self._forget(s)
+        await self._stick_watchdog()
         await self.verify_standby()
         self._maybe_reseek()
+
+    async def _stick_watchdog(self) -> None:
+        """Nobody touches the remote, so Fire OS would start its screensaver after 5 min and sleep
+        after 20. Screensaver: back out of it (BACK never makes the TV switch inputs). The stick on
+        screen asleep: wake it (it IS the TV's input, so its <Active Source> changes nothing). The
+        hidden stick asleep: leave it — waking it would pull the TV to it mid-game."""
+        if not self._watchdog_applied:
+            self._watchdog_applied = True
+            for s in self.usable:
+                await s.shell("settings put secure screensaver_enabled 0; "
+                              "settings put secure screensaver_activate_on_sleep 0; "
+                              "settings put secure sleep_timeout 86400000; "
+                              "settings put system screen_off_timeout 86400000", timeout=6)
+        for s in self.usable:
+            r = await s.shell("dumpsys power | grep -m1 mWakefulness=", timeout=5)
+            state = r.out.strip().split("=")[-1] if r.ok else ""
+            if state == "Dreaming":
+                log.info("%s was in its screensaver: dismissing", s.host)
+                await s.key("KEYCODE_BACK")
+            elif state in ("Asleep", "Dozing") and s is self.main:
+                log.info("%s (on screen) fell asleep: waking it", s.host)
+                await s.key("KEYCODE_WAKEUP")
+                self.on_target = None   # it may have stopped the stream: next switch re-tunes
 
     def _forget(self, stick: Stick) -> None:
         """A stick came back from a drop (maybe a reboot): whatever we thought it showed is stale."""

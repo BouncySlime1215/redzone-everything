@@ -370,7 +370,7 @@ async def test_queued_manual_channel_scan_is_canceled_before_recorded_runner(cfg
 async def test_channel_scan_rechecks_permission_after_waiting_for_controller_lock(cfg, monkeypatch):
     cfg.update({"mode": {"dry_run": False}})
     stick = NS(key=AsyncMock(), screen_text=AsyncMock())
-    controller = NS(hidden=None, main=stick, cfg=cfg, _lock=asyncio.Lock(), on_target="old")
+    controller = NS(hidden=None, main=stick, cfg=cfg, _lock=asyncio.Lock(), on_target="old", input_unknown=False)
     tune = AsyncMock(return_value=NS(ok=True))
     monkeypatch.setitem(__import__("redzone.control", fromlist=["TUNERS"]).TUNERS,
                         "youtubetv", NS(tune=tune))
@@ -388,7 +388,7 @@ async def test_channel_scan_rechecks_permission_after_waiting_for_controller_loc
 async def test_channel_scan_cannot_press_overlay_key_after_authorization_changes(cfg, monkeypatch):
     cfg.update({"mode": {"dry_run": False}})
     stick = NS(key=AsyncMock(), screen_text=AsyncMock())
-    controller = NS(hidden=None, main=stick, cfg=cfg, _lock=asyncio.Lock(), on_target="old")
+    controller = NS(hidden=None, main=stick, cfg=cfg, _lock=asyncio.Lock(), on_target="old", input_unknown=False)
     allowed = True
 
     async def tune(*args, may_cut):

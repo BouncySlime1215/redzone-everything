@@ -115,7 +115,7 @@ def dated_watch_evidence(label: str, *, home_aliases: tuple[str, ...], away_alia
 async def finish_yttv_watch(stick, observe, *, home_aliases: tuple[str, ...], away_aliases: tuple[str, ...],
                             requested: date, observed_on: date, recent_recording_caption: str,
                             sleep=asyncio.sleep, clock=time.monotonic,
-                            proof: YTTVSearchProof | None = None) -> YTTVSearchProof:
+                            proof: YTTVSearchProof | None = None, may_run=None) -> YTTVSearchProof:
     """Complete the observed dated-Watch -> full-replay chooser path, once.
 
     The caller reaches the Library action first. This function never guesses a
@@ -130,14 +130,20 @@ async def finish_yttv_watch(stick, observe, *, home_aliases: tuple[str, ...], aw
     def record(action, detail=""):
         result.steps.append({"at_s": round(clock() - started, 3), "action": action, "detail": detail})
 
-    async def read(empty=False):
-        nonlocal last_sequence
+    def allowed():
+        if may_run is not None and not may_run():
+            raise RuntimeError("recorded playback authorization changed; no further device commands")
         if clock() - started > 45:
             raise RuntimeError("replay verification time budget exhausted")
+
+    async def read(empty=False):
+        nonlocal last_sequence
+        allowed()
         try:
-            frame = await asyncio.wait_for(observe(), timeout=12)
+            frame = await asyncio.wait_for(observe(), timeout=max(.001, min(12, 45 - (clock() - started))))
         except asyncio.TimeoutError:
             raise RuntimeError("fresh replay capture timed out") from None
+        allowed()
         if (not isinstance(frame, CapturedScreen) or frame.sequence <= last_sequence
                 or not last_mutation <= frame.captured_at <= clock() or clock() - frame.captured_at > 10):
             raise RuntimeError("replay capture is stale or out of order")
@@ -155,8 +161,7 @@ async def finish_yttv_watch(stick, observe, *, home_aliases: tuple[str, ...], aw
 
     async def key(code):
         nonlocal last_mutation
-        if clock() - started > 45:
-            raise RuntimeError("replay time budget exhausted; no further keys sent")
+        allowed()
         sent = await stick.key(code)
         last_mutation = clock()
         record("key", code)
@@ -308,7 +313,7 @@ def _purchase(text):
 async def run_yttv_search(stick, observe, *, query: str, home: str, away: str,
                           requested: date, allow_select: bool = False, max_cards: int = 8,
                           sleep=asyncio.sleep, clock=time.monotonic,
-                          proof: YTTVSearchProof | None = None) -> YTTVSearchProof:
+                          proof: YTTVSearchProof | None = None, may_run=None) -> YTTVSearchProof:
     """Inspect search/library cards; optionally select one with explicit event proof.
 
     ``observe`` must return fresh CapturedScreen envelopes. A team-only query may
@@ -326,8 +331,11 @@ async def run_yttv_search(stick, observe, *, query: str, home: str, away: str,
         result.steps.append({"at_s": round(clock() - started, 3), "action": action, "detail": detail})
 
     def within_budget():
+        if may_run is not None and not may_run():
+            raise RuntimeError("recorded playback authorization changed; no further device commands")
         if clock() - started > 60:
             raise RuntimeError("navigation time budget exhausted; no further keys sent")
+        return True
 
     async def read():
         nonlocal last_sequence
@@ -386,12 +394,14 @@ async def run_yttv_search(stick, observe, *, query: str, home: str, away: str,
         pkg = stick.packages.get("youtubetv")
         if not pkg:
             raise RuntimeError("YouTube TV package is not identified on the selected stick")
-        woke = await stick.ensure_awake()
+        within_budget()
+        woke = await stick.ensure_awake(may_cut=within_budget) if may_run is not None else await stick.ensure_awake()
         last_mutation = clock()
         record("wake", "WAKEUP sent" if woke else "already awake")
         power = await stick.shell("dumpsys power | grep -m1 'mWakefulness='", timeout=4)
         if not power.ok or not re.search(r"mWakefulness=Awake\b", power.out):
             raise RuntimeError("stick did not confirm Awake; search not sent")
+        within_budget()
         launched = await stick.view("https://tv.youtube.com/search?q=" + quote(query, safe=""), pkg, wait=True)
         last_mutation = clock()
         record("open_search", f"ok={launched.ok}")
