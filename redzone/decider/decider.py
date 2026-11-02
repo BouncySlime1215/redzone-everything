@@ -994,7 +994,10 @@ class Decider:
         there stranded us for 3 minutes of a Wizards crunch (backtest, Oct 26)."""
         options = watchable
         if exclude and self._sticky_home(exclude, watchable):
-            options = {gid: x for gid, x in watchable.items() if gid == REDZONE or self._exits_often(gid)}
+            now = self._clock()
+            strict = self._visit_needs_exit(exclude, watchable)
+            options = {gid: x for gid, x in watchable.items()
+                       if gid == REDZONE or (self._exits_often(gid) and (not strict or self._exit_provable(x, now)))}
         best = self._best(options, exclude)
         if best and options[best].scored.score >= self.cfg.get("decider.break_destination_min"):
             return best
@@ -1025,6 +1028,10 @@ class Decider:
             return None
         options = {gid: x for gid, x in watchable.items() if gid != home and not x.scored.is_break
                    and gid not in self._screen_break}
+        if self._visit_needs_exit(home, watchable):
+            # [return trip] Uncalibrated, a visited game's gate opens only at its own long breaks:
+            # a WSH halftime visit to an NBA game stranded us through WSH's 3rd quarter and crunch.
+            options = {gid: x for gid, x in options.items() if gid == REDZONE or self._exit_provable(x, now)}
         if not options:
             return None
         dest = max(options, key=lambda g: options[g].scored.score)
@@ -1044,6 +1051,21 @@ class Decider:
         s = x.scored
         return (gid == self.user.focus_game or s.crunch or s.lock is not None
                 or s.personal >= self.cfg.get("decider.crunch.hold_personal", 5))
+
+    def _visit_needs_exit(self, home: str, watchable) -> bool:
+        """Your game, a bet or your focus game on a break: only visit where we can surely get back
+        from. (Neutral crunch homes keep the old rule: there a filtered visit became a 'better' switch.)"""
+        if not self.cfg.get("decider.sticky_visit_needs_calibration", True):
+            return False
+        x = watchable.get(home)
+        return home == self.user.focus_game or (
+            x is not None and x.scored.personal >= self.cfg.get("decider.crunch.hold_personal", 5))
+
+    def _exit_provable(self, x: Candidate, now: float) -> bool:
+        """Is this game's delay known well enough that its leave gate opens between plays/at
+        whistles? Above decider.uncalibrated_sigma_s it opens only at official (long) breaks."""
+        sig = self.delays.get(x.target or "unknown").current_sigma(now)
+        return sig <= float(self.cfg.get("decider.uncalibrated_sigma_s", 8))
 
     def _exits_often(self, gid: str) -> bool:
         """Discrete sports (football, baseball) have a clean gap between every play."""

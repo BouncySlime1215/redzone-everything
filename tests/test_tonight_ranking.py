@@ -3,7 +3,8 @@ from pathlib import Path
 
 import yaml
 
-from redzone.decider.decider import Decider
+from redzone.decider.decider import Candidate, Decider
+from redzone.scoring.engine import Scored
 from redzone.decider.screen import DelayBook, Timeline
 from redzone.models import GameState, League, Phase, Play, Team
 
@@ -46,3 +47,22 @@ def test_espn_plus_has_an_explicit_delay_default():
     root = Path(__file__).resolve().parent.parent
     d = yaml.safe_load((root / "redzone/default_config.yaml").read_text())["delay"]["default"]
     assert d["espn"] == 40
+
+
+def _c(gid, league, score, personal=0.0):
+    return Candidate(Scored(gid, league, score, score, score, 1.0, personal, "x", [], False, None, None, 1.0),
+                     f"youtubetv:{gid}")
+
+
+def test_sticky_home_break_only_visits_games_we_can_leave(cfg, clock):
+    dec = Decider(cfg, DelayBook({"youtubetv": 40}, 15, clock=clock), clock=clock)
+    dec.timeline("n", League.NFL)
+    dec.timeline("h", League.NBA)
+    watchable = {"h": _c("h", League.NBA, 60, personal=25), "n": _c("n", League.NFL, 80)}
+    assert dec._break_destination(watchable, "h") is None       # uncalibrated: no clean way back
+    for s in (40.0, 41.0):
+        dec.delays.calibrate("youtubetv:n", s)
+    assert dec._break_destination(watchable, "h") == "n"
+    cfg.update({"decider": {"sticky_visit_needs_calibration": False}})
+    dec.delays.book.clear()
+    assert dec._break_destination(watchable, "h") == "n"         # switchable off from config

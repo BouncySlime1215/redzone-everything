@@ -95,6 +95,7 @@ decider:
   locked_override_lead: 20
   manual_pause_s: 60
   uncalibrated_sigma_s: 8  # above this delay uncertainty, only leave at official stoppages
+  sticky_visit_needs_calibration: true  # your game's break: only visit games whose delay is calibrated (else no way back until their own break)
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
   redzone_score: 45        # RedZone vs a game (0-100): stay on it unless a game beats this; any break goes there
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
