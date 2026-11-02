@@ -5,8 +5,10 @@ each game we keep the state with the most *game progress*, and we keep a race
 log of which source reported each score change first. The race log is how we
 learn which feed is actually fastest for each league instead of guessing.
 
-Guardrail: a source that jumps *backwards* (score drops, period goes back) is
-ignored for that update, and repeated regressions mark it unhealthy.
+Guardrail: a source that jumps *backwards* (period or clock goes back) is ignored
+for that update, and repeated regressions bench it for that game for a few minutes.
+A score that drops at the same period and clock is a correction (overturned goal,
+a 3 rescored as a 2, a reversed TD), not a regression: it is accepted.
 """
 from __future__ import annotations
 
@@ -18,7 +20,9 @@ from dataclasses import dataclass, field
 from redzone.models import GameState, Phase
 
 STALE_AFTER_S = 60.0       # a live game with no fresh data this long is "stale"
-UNHEALTHY_REGRESSIONS = 3  # backwards jumps before a source is benched
+UNHEALTHY_REGRESSIONS = 3  # backwards jumps (per game, within REGRESSION_WINDOW_S) before benching
+REGRESSION_WINDOW_S = 300.0
+BENCH_S = 300.0            # a bench is temporary: the source re-baselines for that game after this
 
 
 def progress_key(g: GameState) -> tuple:
@@ -30,6 +34,11 @@ def progress_key(g: GameState) -> tuple:
     total = (g.home.score or 0) + (g.away.score or 0)
     plays = len(g.recent_plays)
     return (phase_rank, period, half, clock, total, plays)
+
+
+def _position(key: tuple) -> tuple:
+    """progress_key without the score total and play count: where the game is."""
+    return key[:4]
 
 
 @dataclass
@@ -58,6 +67,8 @@ class Merger:
         self.health: dict[str, SourceHealth] = defaultdict(SourceHealth)
         self.race: list[RaceEvent] = []
         self._race_open: dict[tuple[str, str], RaceEvent] = {}
+        self._regress_at: dict[tuple[str, str], list[float]] = defaultdict(list)
+        self._bench_until: dict[tuple[str, str], float] = {}
 
     def record_error(self, source: str) -> None:
         self.health[source].errors += 1
@@ -65,21 +76,39 @@ class Merger:
     def update(self, source: str, g: GameState) -> GameState:
         now = self._clock()
         h = self.health[source]
+        bkey = (source, g.game_id)
+        self._expire_bench(source, now)
         prev_same = self._per_source[source].get(g.game_id)
-        if prev_same is not None and progress_key(g) < progress_key(prev_same):
-            h.regressions += 1
-            if h.regressions >= UNHEALTHY_REGRESSIONS:
-                h.benched = True
-            return self.games.get(g.game_id, prev_same)
+        correction = False
+        if prev_same is not None:
+            kg, kp = progress_key(g), progress_key(prev_same)
+            if _position(kg) < _position(kp):
+                h.regressions += 1
+                hits = [t for t in self._regress_at[bkey] if now - t < REGRESSION_WINDOW_S]
+                hits.append(now)
+                self._regress_at[bkey] = hits
+                if len(hits) >= UNHEALTHY_REGRESSIONS:
+                    self._bench_until[bkey] = now + BENCH_S
+                    h.benched = True
+                return self.games.get(g.game_id, prev_same)
+            if kg < kp:
+                # Same period and clock, lower score or fewer plays. A score drop with both
+                # scores known is a correction; anything else (a partial payload) is ignored.
+                if (g.home.score is None or g.away.score is None
+                        or kg[4] >= kp[4]):
+                    return self.games.get(g.game_id, prev_same)
+                correction = True
         h.updates += 1
         h.last_ok = now
         self._per_source[source][g.game_id] = g
         self._note_race(source, g, now)
 
         cur = self.games.get(g.game_id)
-        if h.benched and cur is not None:
+        if bkey in self._bench_until and cur is not None:
             return cur
-        if cur is None or _takes_over(g, cur):
+        takes = (cur is None or _takes_over(g, cur)
+                 or (correction and _position(progress_key(g)) >= _position(progress_key(cur))))
+        if takes:
             merged = g
             if cur is not None:
                 merged = _fill_gaps(g, cur)
@@ -92,6 +121,18 @@ class Merger:
         _fill_gaps(cur, g)
         cur.sources[source] = now
         return cur
+
+    def _expire_bench(self, source: str, now: float) -> None:
+        """Lift benches older than BENCH_S. The source re-baselines for that game, so a feed
+        whose clock was legitimately set back (a review) is judged afresh."""
+        for key, until in list(self._bench_until.items()):
+            if until <= now:
+                del self._bench_until[key]
+                self._regress_at.pop(key, None)
+                self._per_source[key[0]].pop(key[1], None)
+        h = self.health.get(source)
+        if h is not None:
+            h.benched = any(k[0] == source for k in self._bench_until)
 
     def _note_race(self, source: str, g: GameState, now: float) -> None:
         if g.home.score is None or g.away.score is None:

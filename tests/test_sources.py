@@ -134,3 +134,32 @@ def test_sunday_ticket_codes_and_title_matching(tmp_path):
     assert match_title("NFL Sunday Ticket 3 | Bills at Patriots | LIVE", [bills, wsh]).game_id == "1"
     assert match_title("Commanders vs. Giants", [bills, wsh]).game_id == "2"
     assert match_title("Bills Mafia pregame", [bills, wsh]) is None   # one team isn't enough
+
+
+def _status_board(period, detail):
+    status = {"period": period, "displayClock": "0:00",
+              "type": {"state": "in", "detail": detail, "shortDetail": detail}}
+    comp = {"competitors": [{"homeAway": "home", "team": {"id": "1", "abbreviation": "WSH"}, "score": "1"},
+                            {"homeAway": "away", "team": {"id": "2", "abbreviation": "NYR"}, "score": "0"}],
+            "status": status}
+    return {"events": [{"id": "9", "competitions": [comp], "status": status}]}
+
+
+def test_nhl_end_of_1st_and_2nd_is_intermission_not_period_end():
+    for per, detail, want in ((1, "End of 1st", Stoppage.INTERMISSION),
+                              (2, "2nd Intermission", Stoppage.INTERMISSION),
+                              (3, "End of 3rd", Stoppage.END_PERIOD)):
+        g = espn.parse_scoreboard(League.NHL, _status_board(per, detail))[0]
+        assert g.stoppage == want, (per, detail, g.stoppage)
+    g = espn.parse_scoreboard(League.NBA, _status_board(1, "End of 1st Quarter"))[0]
+    assert g.stoppage == Stoppage.END_PERIOD
+
+
+def test_live_overrides_never_downgrade_a_proven_intermission():
+    g = GameState(league=League.NHL, game_id="9", home=Team("WSH"), away=Team("NYR"), period=3)
+    g.stoppage = Stoppage.INTERMISSION
+    espn._live_overrides(g, {}, {"status": {"type": {"detail": "End of 3rd"}}}, {})
+    assert g.stoppage == Stoppage.INTERMISSION
+    g.period, g.stoppage = 1, Stoppage.NONE
+    espn._live_overrides(g, {}, {"status": {"type": {"detail": "End of 1st"}}}, {})
+    assert g.stoppage == Stoppage.INTERMISSION
