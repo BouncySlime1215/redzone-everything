@@ -27,7 +27,14 @@ Guardrails:
 - A sleeping hidden stick is never woken by a preload: a Fire TV that wakes grabs the TV input
   (CEC one-touch play) and would cut the game you're watching. A real switch wakes it, and only
   at a safe moment.
-- Two-stick mode drops to single-stick automatically if an input flip fails.
+- Two-stick mode drops to single-stick automatically if an input flip fails (retried after 2 min).
+- A flip is HOME -> active source (polled every ~0.12 s), then the relaunched app must be playing
+  the game (MEDIA_PLAY, then one fresh deep link) before the switch reports; flip_s and resume_s
+  are booked separately for the phone.
+- TV input unknown with neither / both sticks claiming it: a bounded HOME re-assert on the stick
+  meant to be on screen (never the other one), at most 3 per episode.
+- The stick we left never gets HOME or WAKEUP (either could pull the TV back to it).
+- The stick on screen not playing for 8 s outside a switch: MEDIA_PLAY, then a fresh deep link.
 - No stick reachable -> behaves like dry-run and says so on the phone.
 """
 from __future__ import annotations
@@ -1108,8 +1115,13 @@ class Controller:
             # Unsent or unknown: the app may already be in the background, so put it back.
             await self._relaunch(stick, pkg, home_at)
             return False
-        took = await self._await_active_source(stick, home_at, FLIP_DEADLINE_S)
-        await self._relaunch(stick, pkg, home_at)
+        # The relaunch runs alongside the poll (as before, ~0.6 s after HOME), so a TV that is slow
+        # to follow doesn't also delay the picture coming back.
+        relaunch = asyncio.create_task(self._relaunch(stick, pkg, home_at))
+        try:
+            took = await self._await_active_source(stick, home_at, FLIP_DEADLINE_S)
+        finally:
+            await asyncio.gather(relaunch, return_exceptions=True)
         if took is None:
             log.warning("HOME flip on %s: stick never became active source within %.1fs", stick.host,
                         FLIP_DEADLINE_S)
