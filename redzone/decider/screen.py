@@ -31,6 +31,10 @@ FIRST_POLL_RECENT_S = 60.0  # on a game's first poll, plays newer than this may 
 FEED_LAG_MIN_S = 2.0
 FEED_LAG_MAX_S = 30.0
 LAG_EST_DEFAULT_S = 10.0   # feed lag assumed until we've measured some
+# The least doubt "I just saw it" taps can earn. Taps that agree to the second still share a bias
+# (reaction time, the feed's wallclock rounding): stated 2 s, a real 6 s error cut 3 plays mid-play
+# (eval.py --sigma 2 --true-delay 41); 4 s held 0 cuts out to 8 s of error for ~0.3 pt dead air.
+MIN_TAP_SIGMA_S = 4.0
 STALE_DATA_S = 20.0        # older than this, "no play in the data" no longer means "no play on screen"
 # Conservative break durations used by the model (stoppage entry -> next snap). From 270 archived
 # NFL games: end of quarter p1 171 s, halftime p1 816 s, two-minute warning p1 55 s. Timeouts and
@@ -90,7 +94,7 @@ class DelayBook:
         # Contradictory observations must widen the protected interval, not be
         # clipped into a falsely precise estimate. Both observed extremes fit
         # within the 2*sigma timing margin even when the median is near one end.
-        d.sigma = max(2.0, spread)
+        d.sigma = max(MIN_TAP_SIGMA_S, spread)
         d.calibrated_at = self._clock()
         return d
 

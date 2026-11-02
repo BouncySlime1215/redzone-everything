@@ -1,7 +1,7 @@
 import pytest
 
 from redzone.decider.decider import Candidate, Decider, FocusMode, Missed, State
-from redzone.decider.screen import DelayBook, Event, Timeline
+from redzone.decider.screen import MIN_TAP_SIGMA_S, DelayBook, Event, Timeline
 from redzone.models import League, Play
 from redzone.scoring.engine import Scored
 from tests.conftest import nfl
@@ -359,7 +359,7 @@ def test_a_final_is_not_left_while_its_last_play_still_airs(dec, clock):
     clock.t += 10
     d = dec.decide(cands(b=50))  # "a" went final in the data; the kneel airs in ~30s
     assert d.action == "stay" and "last play" in d.reason
-    clock.t += 40
+    clock.t += 45   # kneel seen + 40 s delay + 2*sigma (tap floor) + buffer has passed
     d = dec.decide(cands(b=50))
     assert d.action == "switch" and d.target == "b" and d.kind == "ended"
 
@@ -445,11 +445,11 @@ def test_next_snap_estimate(dec, clock):
     tl = dec.timeline("a", League.NFL)
     tl.events.append(Event(clock.t, "stop_start", "two_minute_warning"))
     # No play yet: at least the warning's shortest length, then the delay (minus its error bars).
-    assert dec._next_snap_s("a", cs, clock.t) == pytest.approx(150 + 40 - 4 - 10, abs=0.5)
+    assert dec._next_snap_s("a", cs, clock.t) == pytest.approx(150 + 40 - 2 * MIN_TAP_SIGMA_S - 10, abs=0.5)
     tl.events.append(Event(clock.t + 5, "play", "kickoff", play_kind="kickoff"))
-    assert dec._next_snap_s("a", cs, clock.t) == pytest.approx(5 + 25 + 26, abs=0.5)
+    assert dec._next_snap_s("a", cs, clock.t) == pytest.approx(5 + 25 + 40 - 2 * MIN_TAP_SIGMA_S - 10, abs=0.5)
     tl.events.append(Event(clock.t + 6, "play", "run for 2"))
-    assert dec._next_snap_s("a", cs, clock.t) == pytest.approx(6 + 26, abs=0.5)
+    assert dec._next_snap_s("a", cs, clock.t) == pytest.approx(6 + 40 - 2 * MIN_TAP_SIGMA_S - 10, abs=0.5)
 
 
 def test_crunch_hops_are_not_flip_flopping(dec, clock):
