@@ -6,6 +6,7 @@ so even if a port were ever forwarded by mistake, the internet can't drive your 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import ipaddress
 import json
 from pathlib import Path
@@ -22,6 +23,9 @@ from redzone.engine import Engine
 
 STATIC = Path(__file__).with_name("static")
 ROOT = Path(__file__).resolve().parent.parent.parent
+IMG_CACHE = ROOT / "data" / "imgcache"
+IMG_PATH = re.compile(r"[A-Za-z0-9_/.\-]{3,200}\.(png|jpg|jpeg|svg|webp)")
+IMG_TYPES = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "svg": "image/svg+xml", "webp": "image/webp"}
 
 
 def _private(host: str | None) -> bool:
@@ -186,6 +190,43 @@ def build_app(engine: Engine) -> FastAPI:
             except ValueError:
                 pass
         return out
+
+    @app.get("/api/game/{game_id}")
+    async def game(game_id: str):
+        d = await engine.game_detail(game_id)
+        if d is None:
+            return JSONResponse({"ok": False, "message": "game not found"}, status_code=404)
+        return JSONResponse(json.loads(json.dumps(d, default=str)))
+
+    @app.get("/api/teams")
+    async def teams():
+        return await engine.teams()
+
+    @app.get("/api/teams/{league}/{team_id}")
+    async def team(league: str, team_id: str):
+        if league not in ("nfl", "nba", "nhl", "mlb") or not team_id.isdigit():
+            return JSONResponse({"ok": False, "message": "unknown team"}, status_code=404)
+        return JSONResponse(json.loads(json.dumps(await engine.team_detail(league, team_id), default=str)))
+
+    @app.get("/img/{path:path}")
+    async def img(path: str):
+        """Logos, headshots and stadium photos from ESPN's CDN, cached on disk.
+        Only a.espncdn.com, only image-looking paths: this can't be used to fetch anything else."""
+        if not IMG_PATH.fullmatch(path) or ".." in path:
+            return JSONResponse({"ok": False}, status_code=404)
+        key = hashlib.sha1(path.encode()).hexdigest()
+        ext = path.rsplit(".", 1)[-1].lower()
+        f = IMG_CACHE / f"{key}.{ext}"
+        if not f.exists():
+            got = await engine.fetcher.get_bytes(f"https://a.espncdn.com/{path}")
+            if not got or not got[1].startswith("image/"):
+                return JSONResponse({"ok": False}, status_code=404)
+            IMG_CACHE.mkdir(parents=True, exist_ok=True)
+            tmp = f.with_suffix(".tmp")
+            tmp.write_bytes(got[0])
+            tmp.replace(f)
+        return FileResponse(f, media_type=IMG_TYPES.get(ext, "image/png"),
+                            headers={"Cache-Control": "public, max-age=604800, immutable"})
 
     @app.get("/api/health")
     async def health():

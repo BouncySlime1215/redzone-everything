@@ -101,6 +101,22 @@ class Fetcher:
             self._reset(host)
             return body
 
+    async def get_bytes(self, url: str, max_bytes: int = 4_000_000) -> tuple[bytes, str] | None:
+        """Raw bytes (images). Same backoff rules; no in-memory cache (callers cache on disk)."""
+        if self.backing_off(url):
+            return None
+        try:
+            r = await self._client.get(url)
+        except (httpx.HTTPError, OSError):
+            self._bump(urlparse(url).netloc)
+            return None
+        if r.status_code in (403, 429) or r.status_code >= 500:
+            self._bump(urlparse(url).netloc, r.headers.get("Retry-After"))
+            return None
+        if r.status_code != 200 or len(r.content) > max_bytes:
+            return None
+        return r.content, r.headers.get("content-type", "application/octet-stream")
+
     def _bump(self, host: str, retry_after: str | None = None) -> None:
         b = self._backoff.setdefault(host, _Backoff())
         b.delay = min(MAX_BACKOFF_S, max(5.0, b.delay * 2))

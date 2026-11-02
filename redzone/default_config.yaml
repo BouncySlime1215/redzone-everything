@@ -10,7 +10,7 @@ sunday_ticket: true        # you have NFL Sunday Ticket (+ RedZone) on YouTube T
 market: raleigh-durham
 
 server:
-  port: 8765
+  port: 8777
 
 teams:                     # your teams: biggest boost
   nfl: [WSH]

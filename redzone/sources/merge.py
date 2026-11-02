@@ -10,6 +10,7 @@ ignored for that update, and repeated regressions mark it unhealthy.
 """
 from __future__ import annotations
 
+import copy
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -141,9 +142,16 @@ def _fill_gaps(dst: GameState, src: GameState) -> GameState:
             setattr(dst, attr, getattr(src, attr))
     if not dst.broadcasts and src.broadcasts:
         dst.broadcasts = list(src.broadcasts)
+    for attr in ("leaders", "venue_info", "odds_text", "status_text", "venue"):
+        if not getattr(dst, attr) and getattr(src, attr):
+            setattr(dst, attr, copy.copy(getattr(src, attr)))
+    if dst.spotlight is None and src.spotlight is not None:
+        dst.spotlight = src.spotlight
+    if dst.start_time is None:
+        dst.start_time = src.start_time
     dst.national_tv = dst.national_tv or src.national_tv
     for t_dst, t_src in ((dst.home, src.home), (dst.away, src.away)):
-        for attr in ("wins", "losses", "ties", "name"):
+        for attr in ("wins", "losses", "ties", "name", "logo", "logo_dark", "color", "alt_color", "id"):
             if not getattr(t_dst, attr) and getattr(t_src, attr):
                 setattr(t_dst, attr, getattr(t_src, attr))
     ds, ss = dst.situation, src.situation

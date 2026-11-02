@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
 import socket
 import subprocess
@@ -41,7 +42,7 @@ async def main() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     cfg = Config()
     engine = Engine(cfg)
-    port = int(cfg.get("server.port", 8765))
+    port = int(os.environ.get("PORT") or cfg.get("server.port", 8777))
     url = phone_url(port)
     print("\n  RedZone Everything is running.")
     print(f"  On your phone (same Wi-Fi): {url}")

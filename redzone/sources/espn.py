@@ -98,9 +98,12 @@ def _team(league: League, comp: dict) -> Team:
     abbr = t.get("abbreviation") or "?"
     w, l, ties = _record(comp)
     logo = t.get("logo") or _get(t, "logos", 0, "href") or logo_url(league, abbr)
+    dark = t.get("logoDark") or next((x.get("href") for x in t.get("logos") or []
+                                      if "dark" in (x.get("rel") or [])), "") or logo.replace("/500/", "/500-dark/")
     return Team(abbr=abbr, name=t.get("shortDisplayName") or t.get("name") or t.get("displayName") or abbr,
                 score=_int(comp.get("score")), id=str(t.get("id") or ""), logo=logo,
-                color=t.get("color") or "", wins=w, losses=l, ties=ties)
+                color=t.get("color") or "", wins=w, losses=l, ties=ties, logo_dark=dark,
+                alt_color=t.get("alternateColor") or "")
 
 
 def _phase(state: str | None) -> Phase:
@@ -122,6 +125,53 @@ def _broadcasts(comp: dict) -> tuple[list[str], bool]:
         if _get(gb, "market", "type") == "National":
             national = True
     return names, national
+
+
+# --- pictures: headshots, leaders, venues ----------------------------------------
+
+def headshot_url(league: League, athlete_id) -> str:
+    return f"https://a.espncdn.com/i/headshots/{league.value}/players/full/{athlete_id}.png"
+
+
+def venue_image(league: League, venue_id) -> str:
+    return f"https://a.espncdn.com/i/venues/{league.value}/day/{venue_id}.jpg" if venue_id else ""
+
+
+def _leader(league: League, cat: dict, entry: dict, team_abbr: str) -> dict | None:
+    a = entry.get("athlete") or {}
+    if not a.get("id"):
+        return None
+    hs = a.get("headshot")
+    hs = hs.get("href") if isinstance(hs, dict) else hs
+    return {"label": cat.get("shortDisplayName") or cat.get("abbreviation") or cat.get("displayName") or "",
+            "name": a.get("displayName") or a.get("fullName") or "", "short": a.get("shortName") or "",
+            "headshot": hs or headshot_url(league, a["id"]), "stat": entry.get("displayValue") or "",
+            "team": team_abbr, "id": str(a["id"])}
+
+
+def _leaders_from(league: League, per_team: list[tuple[str, list]], limit: int = 3) -> list[dict]:
+    """Top performers: each team's first category leader, then second categories, up to `limit`."""
+    out: list[dict] = []
+    for rank in range(3):
+        for abbr, cats in per_team:
+            cat = cats[rank] if isinstance(cats, list) and rank < len(cats) else None
+            entry = _get(cat, "leaders", 0) if cat else None
+            if entry:
+                ld = _leader(league, cat, entry, abbr)
+                if ld and all(x["id"] != ld["id"] for x in out):
+                    out.append(ld)
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def _venue(league: League, v: dict | None) -> dict:
+    if not v:
+        return {}
+    img = _get(v, "images", 0, "href") or venue_image(league, v.get("id"))
+    return {"id": str(v.get("id") or ""), "name": v.get("fullName") or "",
+            "city": ", ".join(x for x in (_get(v, "address", "city"), _get(v, "address", "state")) if x),
+            "image": img, "indoor": v.get("indoor")}
 
 
 # --- scoreboard ----------------------------------------------------------------
@@ -154,6 +204,9 @@ def _parse_event(league: League, ev: dict) -> GameState | None:
     g.status_text = _get(status, "type", "shortDetail") or _get(status, "type", "detail") or ""
     g.start_time = _ts(ev.get("date"))
     g.venue = _get(comp, "venue", "fullName") or ""
+    g.venue_info = _venue(league, comp.get("venue"))
+    g.leaders = _leaders_from(league, [(g.home.abbr, home.get("leaders") or []),
+                                       (g.away.abbr, away.get("leaders") or [])])
     g.broadcasts, g.national_tv = _broadcasts(comp)
     odds = _get(comp, "odds", 0) or {}
     g.spread = _float(odds.get("spread"))
@@ -371,7 +424,89 @@ def parse_summary(league: League, data: dict, upto: int | None = None,
             break
     if upto is None:
         _live_overrides(g, data, comp, ids)
+    g.venue_info = _venue(league, _get(data, "gameInfo", "venue"))
+    g.venue = g.venue_info.get("name", "")
+    by_team = {str(_get(x, "team", "id") or ""): x.get("leaders") or [] for x in data.get("leaders") or []}
+    g.leaders = _leaders_from(league, [(g.home.abbr, by_team.get(g.home.id, [])),
+                                       (g.away.abbr, by_team.get(g.away.id, []))])
+    g.spotlight = spotlight(league, data, cut, ids)
     return g
+
+
+def athletes(league: League, data: dict) -> dict[str, dict]:
+    """Every player in the box score: id -> {name, short, headshot, team}."""
+    out = {}
+    for side in _get(data, "boxscore", "players") or []:
+        abbr = _get(side, "team", "abbreviation") or ""
+        for stat in side.get("statistics") or []:
+            for a in stat.get("athletes") or []:
+                ath = a.get("athlete") or {}
+                if ath.get("id") and ath["id"] not in out:
+                    hs = ath.get("headshot")
+                    out[str(ath["id"])] = {"name": ath.get("displayName") or "", "short": ath.get("shortName") or "",
+                                           "headshot": (hs.get("href") if isinstance(hs, dict) else hs)
+                                           or headshot_url(league, ath["id"]), "team": abbr}
+    return out
+
+
+def play_athlete(league: League, p: dict, roster: dict[str, dict]) -> dict | None:
+    """Who made this play? Uses participants when the feed has them, else names in the text."""
+    for part in p.get("participants") or []:
+        aid = str(_get(part, "athlete", "id") or "")
+        if aid in roster:
+            return roster[aid]
+    text = p.get("text") or ""
+    if not text or not roster:
+        return None
+    squashed = text.replace(" ", "")
+    hits = []
+    for a in roster.values():
+        key = (a.get("short") or "").replace(" ", "") or _pbp_name(a.get("name") or "")
+        if len(key) > 3:
+            i = squashed.find(key)
+            if i >= 0:
+                hits.append((i, a))
+    if not hits:
+        return None
+    hits.sort(key=lambda x: x[0])
+    up = squashed.upper()
+    if "INTERCEPTEDBY" in up:
+        cut = up.index("INTERCEPTEDBY")
+        after = [a for i, a in hits if i > cut]
+        return after[0] if after else hits[-1][1]
+    if "TOUCHDOWN" in up:
+        cut = up.index("TOUCHDOWN")
+        before = [a for i, a in hits if i < cut]
+        return before[-1] if before else hits[0][1]
+    return hits[0][1]
+
+
+_SUFFIXES = {"jr.", "jr", "sr.", "sr", "ii", "iii", "iv", "v"}
+
+
+def _pbp_name(full: str) -> str:
+    """'Bo Nix' -> 'B.Nix', 'Marvin Harrison Jr.' -> 'M.Harrison' (how NFL play text names players)."""
+    parts = [x for x in full.split() if x.lower() not in _SUFFIXES]
+    if len(parts) < 2:
+        return ""
+    return f"{parts[0][0]}.{''.join(parts[1:])}"
+
+
+def spotlight(league: League, data: dict, cut: list[dict], ids: dict) -> dict | None:
+    """The player behind the latest big play (score or turnover) in the last 15 plays."""
+    roster = athletes(league, data)
+    for p in reversed(cut[-15:]):
+        t = (_get(p, "type", "text") or "").lower()
+        big = p.get("scoringPlay") or "interception" in t or "fumble recovery (opponent)" in t or t == "goal" \
+            or "home run" in t
+        if league == League.NBA:
+            big = bool(p.get("scoringPlay")) and (_int(p.get("scoreValue")) or 0) >= 3
+        if not big:
+            continue
+        a = play_athlete(league, p, roster)
+        if a:
+            return {**a, "text": (p.get("text") or "")[:140], "play_id": str(p.get("id") or "")}
+    return None
 
 
 def _nfl_situation(g: GameState, p: dict, ids: dict) -> None:

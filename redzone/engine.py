@@ -14,6 +14,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from redzone import bets as betlib
+from redzone import views
 from redzone.channels import SETUP_CHANNELS, ChannelMap, describe
 from redzone.config import Config
 from redzone.control import Controller
@@ -52,6 +53,7 @@ class Engine:
         self._last_logged_reason = ""
         self._tick = 0
         self.started = time.time()
+        self.summaries: dict[str, dict] = {}  # latest raw summary per live game (for the detail sheet)
 
     # ------------------------------------------------------------------ loop
 
@@ -110,6 +112,7 @@ class Engine:
                 log.exception("summary parse failed %s", g.game_id)
                 s = None
             if s and s.game_id:
+                self.summaries[s.game_id] = data
                 self.merger.update("espn_summary", s)
         await asyncio.gather(*(one(g) for g in live))
         await self._league_feeds(live)
@@ -345,42 +348,68 @@ class Engine:
 
     # ------------------------------------------------------------------ phone
 
+    def game_item(self, gid: str) -> dict | None:
+        g = self.merger.games.get(gid)
+        if g is None:
+            return None
+        dec = self.decider
+        s = self.scored.get(gid)
+        w = self.where.get(gid)
+        live = g.phase == Phase.LIVE
+        return {
+            "id": gid, "league": g.league.value, "league_logo": views.LEAGUE_LOGO.format(g.league.value),
+            "matchup": g.matchup, "phase": g.phase.value,
+            "status_text": g.status_text or _status(g), "home": views.team(g.home), "away": views.team(g.away),
+            "period": g.period, "clock": views.clock_text(g) if live else "",
+            "score": s.display if s else 0, "moment": round(s.moment) if s else 0,
+            "stakes": round(s.stakes, 2) if s else 1.0, "personal": round(s.personal) if s else 0,
+            "reason": s.reason if s else "", "tags": s.tags if s else [],
+            "is_break": bool(s and s.is_break and live),
+            "lock": s.lock if s and live else None, "pre_moment": s.pre_moment if s and live else None,
+            "where": {"label": getattr(w, "label", "unknown"), "confidence": getattr(w, "confidence", "unknown"),
+                      "tunable": getattr(w, "tunable", False), "target": getattr(w, "target", None)},
+            "odds": g.odds_text, "mine": bool(s and any(t in (s.tags or []) for t in (g.home.abbr, g.away.abbr))),
+            "boosted": gid in self.boosted, "muted": gid in dec.user.muted, "focus": gid == dec.user.focus_game,
+            "stale": self.merger.is_stale(gid), "start_time": g.start_time, "on_now": gid == dec.current,
+            "wp": g.home_win_prob, "situation": views.situation(g), "leaders": g.leaders,
+            "spotlight": g.spotlight, "venue": g.venue_info,
+        }
+
+    async def game_detail(self, gid: str) -> dict | None:
+        g = self.merger.games.get(gid)
+        if g is None:
+            return None
+        summary = self.summaries.get(gid)
+        if summary is None:
+            summary = await self.fetcher.get_json(espn.summary_url(g.league, gid), min_interval=60)
+        return views.game_detail(g, summary, self.game_item(gid))
+
+    async def teams(self) -> dict:
+        return await views.teams(self.fetcher, self.cfg.get("teams") or {})
+
+    async def team_detail(self, league: str, team_id: str) -> dict:
+        lg = League(league)
+        gid = next((x.game_id for x in self.merger.games.values()
+                    if x.league == lg and team_id in (x.home.id, x.away.id)), None)
+        return await views.team_detail(self.fetcher, lg, team_id, self.cfg.get("teams") or {},
+                                       self.game_item(gid) if gid else None)
+
     def snapshot(self) -> dict:
         dec = self.decider
         d = self.last_decision
-        games = []
-        for gid, g in self.merger.games.items():
-            if g.league not in self._leagues():
-                continue
-            s = self.scored.get(gid)
-            w = self.where.get(gid)
-            games.append({
-                "id": gid, "league": g.league.value, "matchup": g.matchup, "phase": g.phase.value,
-                "status_text": g.status_text or _status(g), "home": _team(g.home), "away": _team(g.away),
-                "score": s.display if s else 0, "moment": round(s.moment) if s else 0,
-                "stakes": round(s.stakes, 2) if s else 1.0, "personal": round(s.personal) if s else 0,
-                "reason": s.reason if s else "", "tags": s.tags if s else [], "is_break": bool(s and s.is_break),
-                "lock": s.lock if s else None, "pre_moment": s.pre_moment if s else None,
-                "where": {"label": getattr(w, "label", "unknown"), "confidence": getattr(w, "confidence", "unknown"),
-                          "tunable": getattr(w, "tunable", False), "target": getattr(w, "target", None)},
-                "odds": g.odds_text, "mine": bool(s and any(t in (s.tags or []) for t in (g.home.abbr, g.away.abbr))),
-                "boosted": gid in self.boosted, "muted": gid in dec.user.muted, "focus": gid == dec.user.focus_game,
-                "stale": self.merger.is_stale(gid), "start_time": g.start_time, "on_now": gid == dec.current,
-            })
+        games = [self.game_item(gid) for gid, g in self.merger.games.items() if g.league in self._leagues()]
         order = {"live": 0, "pre": 1, "unknown": 2, "post": 3}
         games.sort(key=lambda x: (order.get(x["phase"], 2), -x["score"], x["start_time"] or 0))
         cur = self.merger.games.get(dec.current or "")
         now = None
         if cur:
             s = self.scored.get(cur.game_id)
-            now = {"game_id": cur.game_id, "matchup": cur.matchup, "league": cur.league.value,
+            now = {**self.game_item(cur.game_id), "game_id": cur.game_id,
                    "where": getattr(self.where.get(cur.game_id), "label", ""),
                    "reason": (d.reason if d and d.action != "stay" else (s.reason if s else "")) or "",
-                   "since": dec.since, "score": s.display if s else 0,
-                   "kind": "replay" if dec.replaying else "live",
+                   "since": dec.since, "kind": "replay" if dec.replaying else "live",
                    "replay": {"label": dec.replaying.label, "game_id": dec.replaying.game_id,
-                              "play_id": dec.replaying.pid} if dec.replaying else None,
-                   "home": _team(cur.home), "away": _team(cur.away), "status_text": cur.status_text}
+                              "play_id": dec.replaying.pid} if dec.replaying else None}
         nxt = None
         if d and d.action == "stay" and d.reason.startswith("want "):
             nxt = {"game_id": None, "matchup": "", "reason": d.reason[5:].split(" — waiting")[0],
@@ -397,6 +426,7 @@ class Engine:
                        "label": m.label, "at": m.t, "kind": m.kind}
                       for m in sorted(dec.queue, key=lambda m: -m.value)[:10]],
             "log": self._log(),
+            "server_time": time.time(),
             "delays": [{"target": t, "label": describe(t), "mu": round(x.mu, 1), "sigma": round(x.sigma, 1),
                         "calibrated": x.calibrated_at is not None} for t, x in self.delays.book.items()],
             "health": {"sources": list(self.source_status.values()), "sticks": self.control.status(),

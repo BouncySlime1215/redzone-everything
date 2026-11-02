@@ -52,6 +52,8 @@ class Team:
     id: str = ""
     logo: str = ""
     color: str = ""
+    logo_dark: str = ""
+    alt_color: str = ""
     wins: int | None = None
     losses: int | None = None
     ties: int | None = None        # NFL ties / NHL OT losses
@@ -123,6 +125,9 @@ class GameState:
     start_time: float | None = None  # scheduled start (epoch s)
     status_text: str = ""           # "Q4 1:12", "Halftime", "Final/OT"
     odds_text: str = ""             # "SEA -3 · O/U 46.5"
+    leaders: list[dict] = field(default_factory=list)   # top performers: label, name, short, headshot, stat, team
+    spotlight: dict | None = None   # player in the latest big play: name, short, headshot, team, text
+    venue_info: dict = field(default_factory=dict)      # id, name, city, image, indoor
     last_play: Play | None = None
     recent_plays: list[Play] = field(default_factory=list)
     updated_at: float = 0.0        # when we last got fresh data (epoch s)
