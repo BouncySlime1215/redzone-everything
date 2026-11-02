@@ -571,6 +571,12 @@ def gather_sources(g: GameState, base: Where | None, links: Mapping[str, list[di
     channel fallbacks.  Duplicate targets are merged; learned skips are applied to all."""
     found = sources_from_links(g, links or {}, skips)
     first = source_from_where(base, g)
+    if first and first.provider == "prime" and first.feed in ("home", "away"):
+        # "Monumental" comes from the listing, not the chosen GTI: only call it your team's own
+        # broadcast when that feed's link record agrees.
+        rec = next((c for c in found if c.target == first.target), None)
+        if rec is not None and rec.feed != first.feed and "monumental" not in rec.label.lower():
+            first = replace(first, feed=rec.feed, team=rec.team, label=first.label + " — feed unverified")
     cands = ([first] if first else []) + found
     if channel_map is not None:
         # A mixed listing (e.g. ESPN+ and ABC) must not hide another usable

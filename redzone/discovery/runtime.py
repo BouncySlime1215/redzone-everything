@@ -45,9 +45,13 @@ class DiscoveryRuntime:
             stick.preferred_profiles = dict(profiles)
 
     async def run(self):
-        await self.autonomy.start()
+        started = False
         while True:
             try:
+                if not started:
+                    # A failure here (e.g. a corrupt state file) must not kill the whole engine.
+                    await self.autonomy.start()
+                    started = True
                 self.configure_profiles()
                 if not self.device_suspended and self.engine.cfg.get("autonomy.enabled", True):
                     self._device_iteration = asyncio.create_task(self._step())

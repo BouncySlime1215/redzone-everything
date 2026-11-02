@@ -711,6 +711,21 @@ def test_failed_preloads_teach_the_book(tmp_path):
     rt.on_preload_fail(None, "x")                            # never raises
 
 
+def test_wizards_feed_is_only_called_their_own_when_the_link_says_so(tmp_path):
+    cm = ChannelMap(tmp_path / "ch.json")
+    g = game("ORL", "WSH", gid="g8", broadcasts=["Monumental", "FanDuel SN FL"])
+    feeds = [{"gti": "orl", "geo_ok": True}, {"gti": "wiz", "geo_ok": True, "feed_name": "Monumental Sports Network"}]
+    cm.apply_links(g, {"prime": {**feeds[0], "alts": feeds[1:]}}, {"WSH"})
+    assert cm.prime_gti[g.game_id] == "wiz"                  # the feed that says Monumental
+    book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1_800_000_000.0))
+    book.links[g.game_id] = {"providers": {"prime": feeds}}
+    first = book.sources(g, Where("prime:wiz", "Monumental (Prime Video)", "likely", True))[0]
+    assert first.feed == "away"
+    book.links[g.game_id] = {"providers": {"prime": [{"gti": "wiz", "geo_ok": True}]}}
+    first = book.sources(g, Where("prime:wiz", "Monumental (Prime Video)", "likely", True))[0]
+    assert first.feed is None and "unverified" in first.label
+
+
 def test_peacock_alt_camera_feeds_rank_as_alternates():
     g = okc_cle()
     for title in ("Thunder vs. Cavaliers: Performance View", "Action Cams", "ISO Cam: Shai"):
