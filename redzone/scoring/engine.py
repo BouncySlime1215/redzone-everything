@@ -88,6 +88,9 @@ class History:
     shown_at: float = 0.0
     garbage: bool = False
     comeback_at: float | None = None
+    leader: int | None = None          # +1 home, -1 away, 0 tied (last seen)
+    lead_changes: int = 0              # lead changes + ties-from-behind this game
+    lead_change_at: float | None = None
 
     def observe(self, g: GameState, now: float, wp_threshold: float) -> None:
         hs, as_ = g.home.score, g.away.score
@@ -102,6 +105,12 @@ class History:
                     self.run_team, self.run_pts = None, 0
             self.last_home, self.last_away = hs, as_
             diff = hs - as_
+            lead = (diff > 0) - (diff < 0)
+            # A lead change, or the trailing team tying it: both are "anyone's game" moments.
+            if self.leader is not None and self.leader != 0 and lead != self.leader:
+                self.lead_changes += 1
+                self.lead_change_at = now
+            self.leader = lead
             if diff < 0:
                 self.max_deficit[g.home.abbr] = max(self.max_deficit.get(g.home.abbr, 0), -diff)
             elif diff > 0:
@@ -145,6 +154,8 @@ class Scored:
     closeness: float
     garbage: bool = False   # decided game (bets/fantasy can still keep it interesting)
     crunch: bool = False    # crunch time (see crunch_time); unlike lock, kept through breaks
+    factor: str = ""        # short human reason for the single biggest factor right now
+    factors: dict[str, float] = field(default_factory=dict)  # context points by name (debug/UI)
 
     @property
     def display(self) -> int:
@@ -182,6 +193,9 @@ class Scorer:
 
         fn = {League.NFL: _nfl, League.NBA: _nba, League.NHL: _nhl, League.MLB: _mlb}[g.league]
         m, parts, lock, pre = fn(g, h, k, now, c)
+        ctx, ctx_parts, factors = context(g, h, k, now, c)
+        m += ctx
+        parts.extend(ctx_parts)
         # Garbage time: decided games stop competing for the TV — your team's included.
         was = h.garbage
         h.garbage = garbage.is_garbage(g, was)
@@ -207,11 +221,13 @@ class Scorer:
         h.shown, h.shown_at = shown, now
 
         reason = _reason(g, parts, is_break)
+        factor = _top_factor(parts)
         if h.garbage:
             reason = f"garbage time — {reason}"
             tags = tags + ["garbage time"]
         return Scored(g.game_id, g.league, shown, raw, m, s, p, reason, tags,
-                      is_break, None if is_break else lock, pre, k, garbage=h.garbage, crunch=crunch_time(g))
+                      is_break, None if is_break else lock, pre, k, garbage=h.garbage, crunch=crunch_time(g),
+                      factor="garbage time" if h.garbage else factor, factors=factors)
 
     def _stakes(self, g: GameState) -> float:
         c = self.cfg
@@ -251,6 +267,89 @@ class Scorer:
             p += c.get("score.personal.manual_boost")
             tags.append("boosted")
         return min(p, c.get("score.personal_cap")), tags
+
+
+# --- cross-league context: more variables, all from data the feeds already carry -------------
+# Each term is small, only fires when the game is competitive (k), and is scaled by how late it
+# is, so it reorders close games without ever lifting a blowout. Garbage time still multiplies
+# the whole moment down afterwards.
+
+_LATE_FRAC = {League.NFL: 4, League.NBA: 4, League.NHL: 3, League.MLB: 9}
+
+
+def game_progress(g: GameState) -> float:
+    """0 at kickoff/tip/puck drop/first pitch, 1 at the end of regulation (OT stays 1)."""
+    p = g.period or 0
+    reg = _LATE_FRAC[g.league]
+    if p <= 0:
+        return 0.0
+    if p > reg:
+        return 1.0
+    if g.league == League.MLB:
+        return min(1.0, (p - 1 + (0.5 if g.half == "bottom" else 0.0)) / reg)
+    length = {League.NFL: 900, League.NBA: 720, League.NHL: 1200}[g.league]
+    clk = g.clock_s if g.clock_s is not None else length / 2
+    return min(1.0, max(0.0, (p - 1 + (1 - min(clk, length) / length)) / reg))
+
+
+def context(g: GameState, h: History, k: float, now: float, c) -> tuple[float, list, dict]:
+    """Extra moment points shared by every league: (points, reason parts, factors by name)."""
+    f: dict[str, float] = {}
+    prog = game_progress(g)
+    late = prog ** 2  # most of the weight in the last third
+    lg = g.league.value.lower() if hasattr(g.league, "value") else str(g.league).lower()
+
+    # 1. Win-probability leverage: a coin flip late is worth more than a coin flip early.
+    #    (NFL/NBA already have an uncertainty term, so NHL/MLB get the bigger share.)
+    wp = g.home_win_prob
+    if wp is not None:
+        coin = 1 - abs(2 * wp - 1)
+        f["wp_leverage"] = c.get(f"score.context.{lg}.wp_leverage",
+                                 {"nfl": 0, "nba": 0, "nhl": 15, "mlb": 6}.get(lg, 4)) * coin * late
+
+    # 2. Lead changes / ties: a back-and-forth game is more watchable, and one that JUST flipped
+    #    is the freshest story on the board.
+    if h.lead_changes:
+        f["lead_changes"] = min(c.get("score.context.lead_change_cap", 8),
+                                c.get(f"score.context.{lg}.lead_change_each", {"nhl": 2.0}.get(lg, 0)) * h.lead_changes) * k
+    flip = _fade(h.lead_change_at, now, c.get("score.context.lead_change_fade_s", 150))
+    if flip > 0:
+        f["fresh_flip"] = c.get("score.context.fresh_flip", 0) * flip * (0.4 + 0.6 * late) * k
+
+    # 3. Upset brewing: the pregame underdog is leading (or tied) in the second half.
+    d = g.score_diff
+    if g.spread is not None and d is not None and abs(g.spread) >= c.get("score.context.upset_min_spread", 3) \
+            and prog >= 0.5:
+        dog_home = g.spread > 0  # home spread positive = home is the underdog
+        dog_margin = d if dog_home else -d
+        if dog_margin >= 0:
+            size = min(1.0, abs(g.spread) / c.get("score.context.upset_full_spread", 10))
+            f["upset"] = c.get(f"score.context.{lg}.upset", {"nfl": 0}.get(lg, 8)) * size * (0.5 + 0.5 * late) * k
+
+    # 4. Overtime / extras: sudden death or close to it, every league.
+    reg = _LATE_FRAC[g.league]
+    if (g.period or 0) > reg:
+        f["overtime"] = c.get("score.context.overtime", 4)
+
+    pts = sum(f.values())
+    parts = []
+    if f.get("fresh_flip", 0) >= 3:
+        parts.append((f["fresh_flip"] + 18, "lead just changed hands"))
+    elif f.get("lead_changes", 0) >= 4.5:
+        parts.append((f["lead_changes"] + 6, f"{h.lead_changes} lead changes"))
+    if f.get("upset", 0) >= 3:
+        dog = g.home.abbr if g.spread > 0 else g.away.abbr
+        parts.append((f["upset"] + 12, f"upset brewing: {dog} (+{abs(g.spread):g}) "
+                                       f"{'tied' if d == 0 else 'leading'}"))
+    return pts, parts, {n: round(v, 1) for n, v in f.items() if v}
+
+
+def _top_factor(parts: list[tuple[float, str]]) -> str:
+    """The single heaviest phrase (the situation line is parts[0] and is usually not a 'why')."""
+    rest = [p for p in parts[1:] if p[1]]
+    if not rest:
+        return parts[0][1] if parts else ""
+    return max(rest, key=lambda p: p[0])[1]
 
 
 # --- league moment models ------------------------------------------------------
