@@ -589,7 +589,7 @@ class Decider:
             return Decision(now, "stay", self.current, s_cur.reason, state, gate_txt)
         b = cands[best]
         margin = c.get("decider.switch_margin")
-        cost = self._cost(b.target)
+        cost = self._rank_cost(b.target)
         lead = b.scored.score - s_cur.score
 
         # Catch-up between plays: a missed big play is worth more than this ordinary moment.
@@ -1053,6 +1053,12 @@ class Decider:
     def _cost(self, target: str | None) -> float:
         app = (target or "").split(":", 1)[0]
         return float(self.cfg.get(f"decider.switch_cost.{app}", 5))
+
+    def _rank_cost(self, target: str | None) -> float:
+        """Ranking cost: the provider's typical switch, or less when the target is already
+        playing on the hidden stick (a ~6 s HDMI flip, not a full tune)."""
+        cost = self._cost(target)
+        return min(cost, self._deadline_cost(target)) if self.deadline_cost is not None else cost
 
     def _deadline_cost(self, target: str | None) -> float:
         """Conservative cost for this target's present path, separate from ranking cost."""

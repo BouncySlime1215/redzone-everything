@@ -162,7 +162,7 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   seek_step_s: 10          # seconds per rewind press (measure on your stick in the Screen Lab)
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
-  default: {youtubetv: 45, prime: 40}
+  default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
   sigma_default: 15
 
 break_lengths_s:           # typical commercial lengths used to plan catch-ups

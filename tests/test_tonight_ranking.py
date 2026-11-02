@@ -1,0 +1,48 @@
+"""Tonight's ranking / big-play / delay-default fixes (risk sweep, Nov 2)."""
+from pathlib import Path
+
+import yaml
+
+from redzone.decider.decider import Decider
+from redzone.decider.screen import DelayBook, Timeline
+from redzone.models import GameState, League, Phase, Play, Team
+
+
+def nba(period, clock_s, hs, as_, plays):
+    return GameState(league=League.NBA, game_id="g", home=Team("WSH", score=hs), away=Team("ORL", score=as_),
+                     phase=Phase.LIVE, period=period, clock_s=clock_s, recent_plays=plays,
+                     last_play=plays[-1] if plays else None, updated_at=1000.0)
+
+
+def _big_after(period, clock_s, before, after, kind):
+    tl = Timeline(League.NBA, clock=lambda: 1000.0)
+    tl.observe(nba(period, clock_s, *before, [Play("p0", "jumper", "jump_shot", True, wallclock=990.0)]))
+    tl.observe(nba(period, clock_s, *after, [Play("p1", "shot", kind, True, wallclock=998.0)]))
+    return [e.big for e in tl.events if e.pid == "p1"]
+
+
+def test_nba_clutch_field_goal_is_big():
+    assert _big_after(4, 90.0, (100, 98), (100, 101), "three") == [True]
+
+
+def test_nba_routine_baskets_and_free_throws_are_not_big():
+    assert _big_after(2, 90.0, (50, 48), (50, 51), "three") == [False]       # not late
+    assert _big_after(4, 400.0, (100, 98), (100, 101), "three") == [False]   # not the last 2:00
+    assert _big_after(4, 90.0, (110, 90), (110, 93), "three") == [False]     # not close
+    assert _big_after(4, 90.0, (100, 98), (100, 99), "free_throw_-_2_of_2") == [False]
+
+
+def test_ranking_cost_drops_to_a_flip_when_the_target_is_preloaded(cfg, clock):
+    cfg.update({"decider": {"switch_cost": {"youtubetv": 15.5}}})
+    dec = Decider(cfg, DelayBook({"youtubetv": 40}, 1, clock=clock), clock=clock)
+    assert dec._rank_cost("youtubetv:mnf") == 15.5          # no live estimate: static cost
+    dec.deadline_cost = lambda t: 7.0 if t == "youtubetv:mnf" else 30.0
+    assert dec._rank_cost("youtubetv:mnf") == 7.0           # preloaded on the hidden stick
+    assert dec._rank_cost("youtubetv:cold") == 15.5         # cold: never more than the static cost
+    assert dec._cost("youtubetv:mnf") == 15.5               # _cost itself is unchanged
+
+
+def test_espn_plus_has_an_explicit_delay_default():
+    root = Path(__file__).resolve().parent.parent
+    d = yaml.safe_load((root / "redzone/default_config.yaml").read_text())["delay"]["default"]
+    assert d["espn"] == 40
