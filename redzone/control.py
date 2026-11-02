@@ -210,6 +210,20 @@ class Controller:
         if self.latency_path:
             self.latency.load(self.latency_path)
         await self.keepalive()
+        await self.sync_active_from_cec()
+
+    async def sync_active_from_cec(self) -> None:
+        """Which stick is the TV showing? Each stick knows if it's the HDMI-CEC active source.
+        (The TV itself isn't reachable on the network, so ask the sticks.)"""
+        for i, s in enumerate(self.sticks):
+            if not s.controllable:
+                continue
+            r = await s.shell("dumpsys hdmi_control | grep -E -c 'mIsActiveSource: true'", timeout=5)
+            if r.ok and r.out.strip().startswith("1"):
+                if self.active != i:
+                    log.info("TV is showing %s (CEC active source)", s.host)
+                self.active = i
+                return
 
     async def close(self) -> None:
         """App shutdown: close each stick's always-open adb shell."""
@@ -265,7 +279,7 @@ class Controller:
     def two_stick(self) -> bool:
         u = self.usable
         return (self.cfg.get("two_stick.enabled", True) and self.two_stick_ok and len(u) >= 2
-                and bool(self.tv.st_device)
+                and (bool(self.tv.st_device) or self.cfg.get("two_stick.cec_flip", True))
                 and all(s.host in self.hdmi for s in u[:2]))
 
     @property

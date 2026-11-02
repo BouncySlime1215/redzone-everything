@@ -212,9 +212,10 @@ def test_cached_ready_flag_cannot_flip_buffering_standby(two):
     assert not any("onetouchplay" in cmd for stick in c.sticks for cmd in stick.log)
 
 
-def test_no_readback_capable_display_keeps_single_stick_mode(two):
+def test_no_readback_and_cec_flip_off_keeps_single_stick_mode(two):
     c, tuner = two
     c.tv.st_device = None
+    c.cfg.update({"two_stick": {"cec_flip": False}})
     assert not c.two_stick and c.hidden is None
     out = run(c.execute("youtubetv:espn", may_cut=lambda: True))
     assert out.ok and out.path == "single"
@@ -226,3 +227,10 @@ def test_unknown_channel_is_a_clear_error(two):
     c, _ = two
     out = run(c.execute("youtubetv:nbatv", may_cut=lambda: True))
     assert not out.ok and "not set up" in out.detail
+
+
+def test_cec_flip_gives_two_stick_mode_without_a_network_tv(two):
+    """The TV isn't on the network (Nov 2): HOME -> HDMI-CEC Active Source flips inputs instead."""
+    c, _ = two
+    c.tv.st_device = None
+    assert c.two_stick and c.hidden is not None
