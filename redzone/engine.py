@@ -57,12 +57,17 @@ class Engine:
         self.summaries: dict[str, dict] = {}  # latest raw summary per live game (for the detail sheet)
         self.recorder = Recorder()
         self._last_snapshot = 0.0
+        self.mic = None
+        self._mic_used: set[tuple[str, float]] = set()
+        self._last_mic = 0.0
 
     # ------------------------------------------------------------------ loop
 
     async def run(self) -> None:
         """Three loops: data (adaptive 3-10s), decisions (every second), housekeeping."""
         await self.control.start()
+        if self.cfg.get("screen.mic_calibration", False):
+            self.set_mic(True)
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop())
 
     async def _poll_loop(self) -> None:
@@ -89,6 +94,7 @@ class Engine:
         last_push = 0.0
         while True:
             try:
+                self._mic_calibrate()
                 changed = self.decide()
                 if changed or time.time() - last_push > 5:
                     self.broadcast()
@@ -335,6 +341,46 @@ class Engine:
             self.broadcast()
         self.control.submit(target, back, done, may_cut=lambda: self.safe_to_leave(before))
 
+    def set_mic(self, on: bool) -> tuple[bool, str]:
+        from redzone.screen.audio import MicWatcher
+        if on and self.mic is None:
+            m = MicWatcher()
+            if not m.start():
+                return False, f"Couldn't use the microphone: {m.error}"
+            self.mic = m
+            return True, "Listening for crowd noise to measure your delay (nothing is recorded)"
+        if not on and self.mic is not None:
+            self.mic.stop()
+            self.mic = None
+        return True, "Microphone off"
+
+    def _mic_calibrate(self) -> None:
+        """Every few seconds: match recent big plays in the game on screen to loudness surges."""
+        from redzone.screen.audio import match_delay
+        now = time.time()
+        if self.mic is None or now - self._last_mic < 5 or self.decider.replaying:
+            return
+        self._last_mic = now
+        gid = self.decider.current
+        tl = self.decider.timelines.get(gid or "")
+        target = getattr(self.where.get(gid or ""), "target", None)
+        if not tl or not target:
+            return
+        d = self.delays.get(target)
+        for e in tl.events:
+            key = (gid, e.seen)
+            if e.kind != "play" or not e.big or key in self._mic_used or not (now - 150 < e.seen < now - 25):
+                continue
+            # Only plays we were actually watching when they aired.
+            if self.decider.on_screen_at(e.seen + d.mu) != gid:
+                continue
+            sample = match_delay(e.seen, self.mic.surges(e.seen), expected=d.mu)
+            if sample is not None and now > e.seen + sample + 3:
+                self._mic_used.add(key)
+                d = self.delays.calibrate(target, sample)
+                self.store.calibration(target, sample, d.mu, d.sigma)
+                log.info("mic calibration %s: %.1fs -> %.1f±%.1f", target, sample, d.mu, d.sigma)
+
     def safe_to_leave(self, gid: str | None) -> bool:
         """Re-checked right before a two-stick input flip: is a play on screen in the game we're leaving?"""
         if not gid or gid not in self.decider.timelines:
@@ -427,6 +473,11 @@ class Engine:
                               time.time())
             self._act_manual(m.game_id, replay=m)
             return True, f"Replaying: {m.label[:60]}"
+        if action == "mic":
+            ok, msg = self.set_mic(bool(value))
+            if ok:
+                self.cfg.update({"screen": {"mic_calibration": bool(value) and self.mic is not None}})
+            return ok, msg
         if action == "label":
             self.store.label(str(value), dec.current, {"decision": getattr(self.last_decision, "reason", "")})
             return True, f"Labeled: {value}"
@@ -540,7 +591,7 @@ class Engine:
                      "focus_game": dec.user.focus_game, "focus_mode": dec.user.focus_mode.value,
                      "locked_game": dec.user.locked_game, "state": d.state.value if d else "idle",
                      "tv_control": self.control.live_control, "two_stick": self.control.two_stick,
-                     "control_note": self.control.note, "announcer_hint": ""},
+                     "control_note": self.control.note, "mic": self.mic is not None, "announcer_hint": ""},
             "now": now, "next": nxt, "standby": self._standby_view(), "games": games,
             "queue": [{"game_id": m.game_id, "matchup": self._name(m.game_id), "play_id": m.pid,
                        "label": m.label, "at": m.t, "kind": m.kind}

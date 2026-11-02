@@ -93,6 +93,9 @@ decider:
   uncalibrated_sigma_s: 8  # above this delay uncertainty, only leave at official stoppages
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
 
+screen:
+  mic_calibration: false   # let the Mac's mic hear crowd roars to measure your delay (nothing is recorded)
+
 two_stick:
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment
 
