@@ -121,8 +121,81 @@ async def test_failed_live_tune_keeps_current_and_enters_recovery(cfg, tmp_path)
     assert engine.decider.current == 'old' and engine._pending_decision is d
     callbacks[0](ctl.Outcome(False, None, 1, 'launch failed', False))
     assert engine.decider.current == 'old'
-    assert engine.decider.safe_mode and engine._pending_decision is None
+    # One app hiccup is an error, not safe mode: the 3-in-5-minutes rule decides.
+    assert not engine.decider.safe_mode and engine._pending_decision is None
+    for _ in range(2):
+        engine._act(d, 'old', {})
+        callbacks[-1](ctl.Outcome(False, None, 1, 'launch failed', False))
+    assert engine.decider.safe_mode
     await engine.close()
+
+
+async def test_failed_switch_cools_the_target_down(cfg, tmp_path):
+    cfg.update({'mode': {'dry_run': False}})
+    engine = Engine(cfg, Store(tmp_path / 'test.db'))
+    engine.decider.current = 'old'
+    callbacks = []
+    engine.control.submit = lambda *args, **kwargs: callbacks.append(args[2])
+    engine.decider.target_of = lambda gid: 'peacock:new'
+    d = Decision(1, 'switch', 'new', 'better game', State.WATCHING)
+    engine._act(d, 'old', {})
+    callbacks[0](ctl.Outcome(False, 'peacock:new', 30, 'deep link failed', False, screen_unchanged=True))
+    assert 'peacock:new' in engine._fail_cool
+    # A closed safe window is not the target's fault: no cooldown.
+    engine.decider.target_of = lambda gid: 'espn:x'
+    engine._act(d, 'old', {})
+    callbacks[1](ctl.Outcome(False, 'espn:x', 1, 'no safe moment to cut — kept the current game', False,
+                             screen_unchanged=True))
+    assert 'espn:x' not in engine._fail_cool
+    await engine.close()
+
+
+async def test_cancelled_switch_is_not_an_error(cfg, tmp_path):
+    cfg.update({'mode': {'dry_run': False}})
+    engine = Engine(cfg, Store(tmp_path / 'test.db'))
+    engine.decider.current = 'old'
+    callbacks = []
+    engine.control.submit = lambda *args, **kwargs: callbacks.append(args[2])
+    seen = []
+    engine.discovery.on_outcome = lambda *a, **k: seen.append(a)
+    d = Decision(1, 'switch', 'new', 'better game', State.WATCHING)
+    for _ in range(3):
+        engine._act(d, 'old', {})
+        callbacks[-1](ctl.Outcome(False, 'yt:new', 0.0, 'switch cancelled; playback not confirmed', False))
+    assert not engine.decider.safe_mode and not engine.decider.errors
+    assert not engine._fail_cool and not seen and engine._pending_decision is None
+    await engine.close()
+
+
+async def test_hung_switch_gives_up_after_deadline(cfg, tmp_path):
+    cfg.update({'mode': {'dry_run': False}})
+    engine = Engine(cfg, Store(tmp_path / 'test.db'))
+    engine.decider.current = 'old'
+    engine.control.submit = lambda *args, **kwargs: None   # never reports back
+    cancelled = []
+    engine.control.cancel_pending = lambda: cancelled.append(True)
+    d = Decision(1, 'switch', 'new', 'better game', State.WATCHING)
+    engine._act(d, 'old', {})
+    engine._switch_deadline(engine._pending_since + 10)
+    assert engine._pending_decision is d and not cancelled
+    engine._switch_deadline(engine._pending_since + 151)
+    assert engine._pending_decision is None and cancelled
+    assert engine.decider.current == 'old' and len(engine.decider.errors) == 1
+    await engine.close()
+
+
+def test_safe_mode_auto_resumes_after_ten_quiet_minutes(cfg, clock):
+    dec = Decider(cfg, DelayBook(cfg.get("delay.default"), cfg.get("delay.sigma_default")), clock=clock)
+    dec.user.paused = True
+    for _ in range(3):
+        dec.note_error()
+    assert dec.safe_mode
+    clock.t += 300
+    dec.note_error()   # more errors while safe don't restart the clock
+    assert not dec.auto_resume(600)
+    clock.t += 301
+    assert dec.auto_resume(600) and not dec.safe_mode and not dec.errors
+    assert dec.user.paused   # your own pause is never lifted by the timer
 
 
 async def test_cancel_waiting_on_controller_lock_reports_completion(cfg, tmp_path):

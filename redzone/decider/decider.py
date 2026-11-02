@@ -154,6 +154,7 @@ class Decider:
         self.margin_bump_until = 0.0
         self.errors: deque[float] = deque(maxlen=10)
         self.safe_mode = False
+        self.safe_since = 0.0   # when safe mode last turned on (for the timed auto-resume)
         self.timelines: dict[str, Timeline] = {}
         self.log: deque[Decision] = deque(maxlen=500)
         self._screen_break: set[str] = set()
@@ -187,8 +188,20 @@ class Decider:
         now = self._clock()
         self.errors.append(now)
         recent = [t for t in self.errors if now - t < 300]
-        if len(recent) >= 3:
+        if len(recent) >= 3 and not self.safe_mode:
             self.safe_mode = True
+            self.safe_since = now
+
+    def auto_resume(self, after_s: float) -> bool:
+        """Leave safe mode on its own once it has been on for after_s seconds: nobody is in the
+        room to tap Resume, and a transient app hiccup must not end auto-switching for the night.
+        Only safe mode is cleared; a pause you set stays. A fault that is still there trips it
+        again within three errors."""
+        if not self.safe_mode or self._clock() - self.safe_since < after_s:
+            return False
+        self.safe_mode = False
+        self.errors.clear()
+        return True
 
     def resume(self) -> None:
         self.safe_mode = False

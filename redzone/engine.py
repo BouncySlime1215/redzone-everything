@@ -17,7 +17,7 @@ from redzone import bets as betlib
 from redzone import standby, views
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
 from redzone.config import Config, ConfigError
-from redzone.control import Controller
+from redzone.control import Controller, Outcome
 from redzone.decider.decider import REDZONE, Candidate, Decider, Decision, FocusMode, Missed, State
 from redzone.decider.screen import (PLAY_LEN_S, Delay, DelayBook, break_on_arrival, catchable,
                                    leave_gate, leave_window, screen_evidence)
@@ -33,6 +33,10 @@ log = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
 FASTCAST_SYNC_S = 2.0
 DECIDE_EVERY_S = 0.5
+# Outcomes that say nothing about the target itself: a closed safe window, a cancel, an unknown
+# TV input. They neither cool the target down nor count against it.
+NOT_THE_TARGETS_FAULT = ("no safe moment", "safe exit window closed", "switch cancelled",
+                         "TV input is unknown", "TV control was disabled", "no channel")
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
@@ -74,6 +78,9 @@ class Engine:
         self._mic_used: set[tuple[str, float]] = set()
         self._last_mic = 0.0
         self._pending_decision = None
+        self._pending_since = 0.0
+        self._pending_done = None          # the in-flight switch's done callback (for the deadline)
+        self._fail_cool: dict[str, float] = {}   # tuner target -> no retry before this time
         self.mic_suggestion = None
         self.fastcast = None
         self._fastcast_task = None
@@ -450,6 +457,15 @@ class Engine:
             if now >= until:
                 self.skipped.pop(gid)
                 self.decider.user.muted.discard(gid)
+        for tgt, until in list(self._fail_cool.items()):
+            if now >= until:
+                self._fail_cool.pop(tgt)
+        self._switch_deadline(now)
+        if (self._pending_decision is None and not self.control.input_unknown
+                and self.decider.auto_resume(self.cfg.get("decider.safe_auto_resume_s", 600))):
+            log.warning("safe mode: auto-resumed after %ss with no Resume tap",
+                        self.cfg.get("decider.safe_auto_resume_s", 600))
+            self.toast("Safe mode ended on its own; auto-switching again", "info")
         me = self.personal()
         cands: dict[str, Candidate] = {}
         dry = self.cfg.get("mode.dry_run", True)
@@ -469,6 +485,8 @@ class Engine:
                 continue
             # In dry run, "likely" targets count so you can see what it would do.
             target = w.target if (w.tunable or dry) else None
+            if target in self._fail_cool:
+                target = None   # failed a moment ago: don't hammer it every tick
             cands[gid] = Candidate(sc, target, stale=self.merger.is_stale(gid))
         self._garbage_focus()
         self._hold_check()
@@ -513,6 +531,7 @@ class Engine:
         replay_exit = max(self.decider.replay_until, self.decider.replay_exit_after) \
             if (self.decider.replaying or self.decider.after_replay) else None
         self._pending_decision = d
+        self._pending_since = time.time()
         if deferred:
             # Conservatively mark the transition unknown until observed; never
             # mark a big play seen because a command merely was submitted.
@@ -524,6 +543,8 @@ class Engine:
             if self._pending_decision is not d:
                 return
             self._pending_decision = None
+            self._pending_done = None
+            cancelled = out.detail.startswith("switch cancelled")
             if deferred:
                 if out.ok and not out.dry_run:
                     self.decider.confirm(d, cands)
@@ -537,17 +558,22 @@ class Engine:
                         # The proposal expired without a visible command. The
                         # old stream remains the current game; keep planning.
                         self.decider._screen_log.append((time.time(), "replay" if replay_exit is not None else before))
-                    elif not out.dry_run:
-                        self.decider.safe_mode = True
+                    # A visible failure counts as an error below (3 in 5 minutes -> safe mode),
+                    # not straight to safe mode: one app hiccup must not end the night.
+            if (not out.ok and not out.dry_run and d.action == "switch" and d.kind != "user" and target
+                    and not out.detail.startswith(NOT_THE_TARGETS_FAULT)):
+                self._fail_cool[target] = time.time() + self.cfg.get("decider.fail_cooldown_s", 90)
             self.store.switch(ts=cmd_ts, frm=before, to_game=d.target, target=target, kind=d.kind, reason=d.reason,
                               event_ts=event_ts, cmd_ts=cmd_ts, confirmed_ts=out.confirmed_at, ok=out.ok,
                               dry_run=out.dry_run, detail={"took": out.took, "detail": out.detail,
                                                            "path": out.path, "waited": round(out.waited, 1)})
-            self.discovery.on_outcome(out, d.target, replay=d.action == "replay")
-            if not out.ok and not out.dry_run and not out.screen_unchanged:
+            if not cancelled:   # a cancel (pause, your tap, a newer command) says nothing about the target
+                self.discovery.on_outcome(out, d.target, replay=d.action == "replay")
+            if not out.ok and not out.dry_run and not out.screen_unchanged and not cancelled:
                 self.decider.note_error()
                 self.toast(f"Couldn't switch: {out.detail[:80]}", "error")
             self.broadcast()
+        self._pending_done = done
         self.control.submit(target, back, done, may_cut=lambda: (
                             not self.decider.user.paused and not self.cfg.get("mode.dry_run", True)
                             and ((d.kind == "user" and (not self._hold_waits(d) or self.safe_to_leave(before, required_s=8.0)))
@@ -555,6 +581,20 @@ class Engine:
                                  and (time.time() >= replay_exit if replay_exit is not None
                                       else self.safe_to_leave(before, required_s=8.0))))),
                             replay_id=d.replay.pid if d.replay else None)
+
+    def _switch_deadline(self, now: float) -> None:
+        """A switch that never reports back (a hung tuner path) would block every decision,
+        preload and recovery: give up on it after control.max_switch_s."""
+        d, done = self._pending_decision, self._pending_done
+        if d is None or done is None:
+            return
+        limit = self.cfg.get("control.max_switch_s", 150)
+        if now - self._pending_since < limit:
+            return
+        log.warning("switch to %s still running after %.0fs: giving up on it", d.target, now - self._pending_since)
+        self.control.cancel_pending()
+        done(Outcome(False, None, now - self._pending_since,
+                     f"switch timed out after {limit:.0f}s; playback not confirmed", False))
 
     def _entry_valid(self, d: Decision, target: str | None) -> bool:
         """Refresh the destination just before any visible mutation, not just at planning time."""
