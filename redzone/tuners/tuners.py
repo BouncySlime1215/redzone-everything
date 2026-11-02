@@ -366,8 +366,21 @@ class PrimeTuner(Tuner):
             if "regional restriction" in text or "not available in your location" in text or "blackout" in text:
                 steps.append("blackout: this game isn't available in your area on Prime")
                 return False
+            if (await stick.playback(pkg)).get("state") in LOADING:
+                # The stream is already loading (pre-roll, promo slate): a CENTER now pauses the player.
+                break
             await self._press_prompt(stick, text, steps, "pressed through", may_cut)
         return await super()._confirm(stick, pkg, steps, watch, may_cut)
+
+    async def _press_prompt(self, stick: Stick, text: str, steps: list[str], verb: str, may_cut=None) -> bool:
+        # "Watch Live" gets one press per deep link. A later read still showing it (the detail page under a
+        # loading player) must not press again: in the player that's pause, on the page it can hit
+        # "Watch from beginning" if focus moved.
+        link = max((i for i, s in enumerate(steps) if s.startswith("deep link #")), default=-1)
+        if any(s.endswith(": watch live") for s in steps[link + 1:]):
+            from redzone.discovery.providers import normalize_text
+            text = normalize_text(text).replace("watch live", "")
+        return await super()._press_prompt(stick, text, steps, verb, may_cut)
 
 
 class EspnTuner(Tuner):
