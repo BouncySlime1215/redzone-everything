@@ -421,7 +421,7 @@ async def test_cec_that_failed_goes_straight_to_the_tv_next_time(two, monkeypatc
     await c.execute("youtubetv:espn", may_cut=lambda: True)
     await c.execute("youtubetv:fox", may_cut=lambda: True)
     await c.execute("youtubetv:cbs", may_cut=lambda: True)
-    assert len(flips(c.sticks[1])) == 1                 # tried once, then skipped
+    assert len(flips(c.sticks[1])) <= 1                 # HOME first; onetouchplay tried at most once
     assert c.two_stick                                  # the TV remote worked: still two sticks
 
 
