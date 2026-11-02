@@ -623,7 +623,7 @@ class Engine:
             "lock": s.lock if s and live else None, "pre_moment": s.pre_moment if s and live else None,
             "where": {"label": getattr(w, "label", "unknown"), "confidence": getattr(w, "confidence", "unknown"),
                       "tunable": getattr(w, "tunable", False), "target": getattr(w, "target", None)},
-            "odds": g.odds_text, "mine": bool(s and any(t in (s.tags or []) for t in (g.home.abbr, g.away.abbr))),
+            "odds": g.odds_text, "mine": g.involves(set((self.cfg.get("teams") or {}).get(g.league.value, []))),
             "boosted": gid in self.boosted, "muted": gid in dec.user.muted, "focus": gid == dec.user.focus_game,
             "stale": self.merger.is_stale(gid), "start_time": g.start_time, "on_now": gid == dec.current,
             "wp": g.home_win_prob, "situation": views.situation(g), "leaders": g.leaders,
@@ -671,9 +671,13 @@ class Engine:
                    "reason": d.reason if d else "", "since": dec.since, "score": 0, "kind": "live",
                    "replay": None, "home": None, "away": None, "status_text": "Every score, no commercials"}
         nxt = None
-        if d and d.action == "stay" and d.reason.startswith("want "):
-            nxt = {"game_id": None, "matchup": "", "reason": d.reason[5:].split(" — waiting")[0],
-                   "why_waiting": d.gate}
+        if d and d.action == "stay" and getattr(d, "want", None):
+            wg = self.merger.games.get(d.want)
+            reason = d.reason.split(" — waiting")[0]
+            reason = reason[5:] if reason.startswith("want ") else reason
+            nxt = {"game_id": d.want, "matchup": wg.matchup if wg else self._name(d.want),
+                   "reason": reason, "why_waiting": d.gate,
+                   "home": views.team(wg.home) if wg else None, "away": views.team(wg.away) if wg else None}
         return {
             "ts": time.time(),
             "mode": {"dry_run": self.cfg.get("mode.dry_run", True), "paused": dec.user.paused,
@@ -683,9 +687,7 @@ class Engine:
                      "tv_control": self.control.live_control, "two_stick": self.control.two_stick,
                      "control_note": self.control.note, "mic": self.mic is not None, "announcer_hint": ""},
             "now": now, "next": nxt, "standby": self._standby_view(), "games": games,
-            "queue": [{"game_id": m.game_id, "matchup": self._name(m.game_id), "play_id": m.pid,
-                       "label": m.label, "at": m.t, "kind": m.kind}
-                      for m in sorted(dec.queue, key=lambda m: -m.value)[:10]],
+            "queue": [self._queue_item(m) for m in sorted(dec.queue, key=lambda m: -m.value)[:10]],
             "log": self._log(),
             "server_time": time.time(),
             "delays": [{"target": t, "label": describe(t), "mu": round(x.mu, 1), "sigma": round(x.sigma, 1),
@@ -700,6 +702,23 @@ class Engine:
                 "starters": [{"name": x.name, "pos": x.pos, "team": x.team, "mine": x.mine}
                              for x in self.fantasy.starters]},
         }
+
+    def _queue_item(self, m) -> dict:
+        """A catch-up replay card: who made the play (headshot) and for which team."""
+        item = {"game_id": m.game_id, "matchup": self._name(m.game_id), "play_id": m.pid,
+                "label": m.label, "at": m.t, "kind": m.kind, "team": None, "headshot": None, "player": None}
+        g, summary = self.merger.games.get(m.game_id), self.summaries.get(m.game_id)
+        if g is None or summary is None:
+            return item
+        try:
+            p = next((x for x in espn.flatten_plays(g.league, summary) if str(x.get("id")) == m.pid), None)
+            if p:
+                a = espn.play_athlete(g.league, p, espn.athletes(g.league, summary))
+                if a:
+                    item.update(headshot=a["headshot"], player=a["name"], team=a.get("team"))
+        except Exception:
+            log.debug("queue item enrich failed", exc_info=True)
+        return item
 
     def _standby_view(self) -> dict | None:
         t = self.control.hidden_target

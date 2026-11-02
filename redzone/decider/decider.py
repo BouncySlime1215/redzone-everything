@@ -85,6 +85,7 @@ class Decision:
     gate: str = ""
     kind: str = ""            # "better", "break_visit", "return", "chase", "must_see", "ended", "start", "replay", "crunch"
     replay: "Missed | None" = None
+    want: str | None = None   # the game it wants to switch to while it waits for a safe moment
 
 
 @dataclass
@@ -446,7 +447,7 @@ class Decider:
                     return Decision(now, "switch", home, "back to your game before the next play",
                                     state, gate_txt, kind="home")
                 return Decision(now, "stay", self.current, f"heading back to your game at the next gap ({gate_txt})",
-                                state, gate_txt)
+                                state, gate_txt, want=home)
 
         # --- focus modes ---
         focus = u.focus_game if u.focus_game in cands else None
@@ -545,7 +546,7 @@ class Decider:
             return Decision(now, "stay", self.current, s_cur.reason, state, gate_txt)
         if not gate_ok:
             return Decision(now, "stay", self.current, f"want {b.scored.reason} — waiting: {gate_txt}",
-                            state, gate_txt)
+                            state, gate_txt, want=best)
         if not dwell_ok:
             return Decision(now, "stay", self.current, "just got here — giving it a moment", state, gate_txt)
         if not self._rate_ok(now):
@@ -769,7 +770,8 @@ class Decider:
                                 kind="crunch")
             if not s_cur.crunch:
                 return Decision(now, "stay", self.current,
-                                f"want crunch time: {cands[pick].scored.reason} — waiting: {gate_txt}", state, gate_txt)
+                                f"want crunch time: {cands[pick].scored.reason} — waiting: {gate_txt}", state, gate_txt,
+                                want=pick)
         if not s_cur.crunch or not self._crunch_holds(s_cur):
             return None
         # Hold. A visit elsewhere can strand you there (late in a slate the only safe gaps are
