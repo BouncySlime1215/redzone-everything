@@ -5,18 +5,18 @@
 
 import {
   app, ACTIONS, CHANGES, INPUTS, hooks, store, MOCK, Q, esc, num, get, arr, gameById, nowS, fmtDur, fmtCountdown,
-  installImages, reduceMotion, pairInks, teamBy,
-} from "./rz-core.js?v=24";
-import { patch, flash } from "./rz-dom.js?v=24";
-import { icon } from "./rz-ui.js?v=24";
-import { startStream } from "./rz-api.js?v=24";
-import { updateSheets, topSheet, closeSheet } from "./rz-sheet.js?v=24";
-import { renderNow, countdown } from "./rz-now.js?v=24";
-import { renderGames } from "./rz-games.js?v=24";
-import { renderBets } from "./rz-bets.js?v=24";
-import { renderLab, loadLab } from "./rz-lab.js?v=24";
-import { renderSettings, announce } from "./rz-settings.js?v=24";
-import "./rz-detail.js?v=24";
+  installImages, reduceMotion, pairInks, teamBy, markMine,
+} from "./rz-core.js?v=26";
+import { patch, flash } from "./rz-dom.js?v=26";
+import { icon } from "./rz-ui.js?v=26";
+import { startStream } from "./rz-api.js?v=26";
+import { updateSheets, topSheet, closeSheet } from "./rz-sheet.js?v=26";
+import { renderNow, countdown } from "./rz-now.js?v=26";
+import { renderGames } from "./rz-games.js?v=26";
+import { renderBets } from "./rz-bets.js?v=26";
+import { renderLab, loadLab } from "./rz-lab.js?v=26";
+import { renderSettings, announce } from "./rz-settings.js?v=26";
+import { loadTeams } from "./rz-detail.js?v=26";
 
 const TABS = ["now", "games", "bets", "lab", "settings"];
 const SCREENS = { now: renderNow, games: renderGames, bets: renderBets, lab: renderLab, settings: renderSettings };
@@ -30,6 +30,7 @@ function renderScreen(tab) {
   try { SCREENS[tab](root); } catch (e) { console.error(`render ${tab}`, e); }
 }
 function render() {
+  markMine(app.S);
   chrome();
   renderScreen(app.tab);
   updateSheets();
@@ -193,7 +194,7 @@ function installEvents() {
 }
 
 ACTIONS["banner-resume"] = async (el) => {
-  const { act } = await import("./rz-api.js?v=24");
+  const { act } = await import("./rz-api.js?v=26");
   act("resume", {}, el);
 };
 
@@ -204,6 +205,7 @@ const first = (location.hash || "").slice(1) || (Q.get("tab") || "") || store.ge
 go(TABS.includes(first) ? first : "now", { initial: true });
 render();
 startStream({ state: applyState, conn });
+setTimeout(() => loadTeams().then(() => render()), 1500);
 conn(MOCK ? "mock" : "wait");
 setInterval(tick, 1000);
 window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (TABS.includes(t) && t !== app.tab) go(t); });

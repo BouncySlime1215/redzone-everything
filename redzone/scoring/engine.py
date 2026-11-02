@@ -47,14 +47,29 @@ ONE_SCORE = {League.NFL: 8}
 
 
 def crunch_time(g: GameState) -> bool:
-    """The final 2:00 of a one-score game, or overtime, stoppages included (the two-minute
-    warning itself is the last natural stoppage before the first crunch snap). NFL only."""
-    if g.league not in ONE_SCORE or g.phase != Phase.LIVE:
+    """Crunch time, stoppages included — flagged a little BEFORE the graded window so the decider
+    can get there at a stoppage before the first crunch play (basketball and hockey only have
+    clean cuts at whistles, so arriving late means missing possessions):
+      NFL  final 2:00 of a one-score game, or OT (the two-minute warning is the way in)
+      NBA  final 3:00 within 7, or OT          (graded: final 2:00 within 5)
+      NHL  final 3:00 of the 3rd within 1, or OT / shootout
+      MLB  8th inning on, within 2 runs (extra innings always)"""
+    if g.phase != Phase.LIVE:
         return False
     q, d, clk = g.period or 0, g.score_diff, g.clock_s
-    if q >= 5:
-        return True
-    return q == 4 and d is not None and clk is not None and clk <= 120 and abs(d) <= ONE_SCORE[g.league]
+    if d is None:
+        return False
+    if g.league == League.NFL:
+        if q >= 5:
+            return True
+        return q == 4 and clk is not None and clk <= 120 and abs(d) <= ONE_SCORE[g.league]
+    if g.league == League.NBA:
+        return q >= 5 or (q == 4 and clk is not None and clk <= 180 and abs(d) <= 7)
+    if g.league == League.NHL:
+        return q >= 4 or (q == 3 and clk is not None and clk <= 180 and abs(d) <= 1)
+    if g.league == League.MLB:
+        return q >= 10 or (q >= 8 and abs(d) <= 2)
+    return False
 
 
 # --- per-game memory (runs, WP swings, smoothing) ---------------------------

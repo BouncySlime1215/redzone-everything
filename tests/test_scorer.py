@@ -164,7 +164,16 @@ def test_tied_game_final_two_minutes_is_a_two_minute_drill(cfg, clock):
     assert tied.moment - ahead.moment >= cfg.get("score.nfl.two_minute_drill")
 
 
-def test_other_sports_have_no_nfl_crunch_flag(cfg, clock):
-    g = GameState(league=League.NBA, game_id="n", home=Team("BOS", score=100), away=Team("NYK", score=99),
-                  phase=Phase.LIVE, period=4, clock_s=30, stoppage=Stoppage.NONE)
-    assert not _score(cfg, clock, g).crunch
+def test_crunch_flag_per_sport(cfg, clock):
+    def game(lg, hs, as_, per, clk=None):
+        return GameState(league=lg, game_id=lg.value, home=Team("H", score=hs), away=Team("A", score=as_),
+                         phase=Phase.LIVE, period=per, clock_s=clk, stoppage=Stoppage.NONE)
+    assert _score(cfg, clock, game(League.NBA, 100, 99, 4, 30)).crunch          # one possession, final minute
+    assert _score(cfg, clock, game(League.NBA, 100, 94, 4, 170)).crunch         # flagged early: get there in time
+    assert not _score(cfg, clock, game(League.NBA, 100, 90, 4, 100)).crunch     # 10 down isn't crunch
+    assert not _score(cfg, clock, game(League.NBA, 100, 99, 3, 30)).crunch      # end of the 3rd isn't
+    assert _score(cfg, clock, game(League.NHL, 2, 2, 4, 200)).crunch            # overtime
+    assert _score(cfg, clock, game(League.NHL, 3, 2, 3, 150)).crunch
+    assert not _score(cfg, clock, game(League.NHL, 4, 2, 3, 100)).crunch
+    assert _score(cfg, clock, game(League.MLB, 3, 2, 9)).crunch
+    assert not _score(cfg, clock, game(League.MLB, 6, 2, 9)).crunch

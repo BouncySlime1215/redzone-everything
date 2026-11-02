@@ -3,13 +3,13 @@
 
 import {
   app, ACTIONS, CHANGES, INPUTS, hooks, store, attr, esc, num, get, arr, LEAGUES, LEAGUE_NAME, gameById, matchupWords, vibrate,
-} from "./rz-core.js?v=24";
-import { patch } from "./rz-dom.js?v=24";
-import { icon, logo, leagueImg, empty, sec, screenHead, skel } from "./rz-ui.js?v=24";
-import { confirmSheet, toast } from "./rz-sheet.js?v=24";
-import { api, act } from "./rz-api.js?v=24";
-import { loadTeams, teamList } from "./rz-detail.js?v=24";
-import { showTeams } from "./rz-games.js?v=24";
+} from "./rz-core.js?v=26";
+import { patch } from "./rz-dom.js?v=26";
+import { icon, logo, leagueImg, empty, sec, screenHead, skel } from "./rz-ui.js?v=26";
+import { confirmSheet, toast } from "./rz-sheet.js?v=26";
+import { api, act } from "./rz-api.js?v=26";
+import { loadTeams, teamList } from "./rz-detail.js?v=26";
+import { showTeams } from "./rz-games.js?v=26";
 
 const ui = app.ui;
 ui.pending = ui.pending || {};

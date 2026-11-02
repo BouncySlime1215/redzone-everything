@@ -127,7 +127,7 @@ svg { display: block; }
 .ico { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .ico--fill { fill: currentColor; stroke: none; }
 .ico--sm { width: 16px; height: 16px; }
-.ico--xs { width: 13px; height: 13px; stroke-width: 2.4; }
+.ico--xs { width: 13px; height: 13px; stroke-width: 2.4; display: inline-block; vertical-align: -1px; }
 .ico--lg { width: 24px; height: 24px; }
 .tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 .display { font-family: var(--font-display); }
@@ -457,6 +457,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: var(--sp-3) var(--gutter
 .hero-reason { margin: 14px 0 0; font: 650 18px/1.3 var(--font-ui); letter-spacing: -.012em; text-wrap: pretty; }
 .hero-chips { display: flex; flex-wrap: nowrap; gap: 6px; margin: 12px -16px 0; padding: 0 16px 2px; overflow-x: auto; scrollbar-width: none; }
 .hero-chips::-webkit-scrollbar { display: none; }
+.hero-chips { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
 .hero-chips .chip { flex: none; }
 .hero-chips .chip { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .14); color: #fff; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .hero-chips .chip--mine { background: color-mix(in srgb, var(--mine) 22%, transparent); color: var(--mine-ink); border-color: color-mix(in srgb, var(--mine) 40%, transparent); }
@@ -720,9 +721,9 @@ main { max-width: var(--maxw); margin: 0 auto; padding: var(--sp-3) var(--gutter
 .confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: var(--sp-5); }
 
 /* focus picker */
-.pick-list { display: grid; gap: 8px; }
+.pick-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .pick {
-  width: 100%; min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; text-align: left;
+  width: 100%; min-width: 0; min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; text-align: left;
   background: var(--surface-1); border: 1px solid var(--line-2); transition: border-color var(--t-2), background-color var(--t-2), transform var(--t-1) var(--ease-out);
 }
 .pick:active { transform: scale(.98); }

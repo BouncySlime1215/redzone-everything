@@ -1,10 +1,10 @@
 /* RedZone Everything — Lab: Screen Lab labeling, stream delay + "I just saw it", auto-tuner, backtests, votes. */
 
-import { app, ACTIONS, hooks, attr, esc, num, get, arr, clamp, reduceMotion, SPRING, vibrate } from "./rz-core.js?v=24";
-import { patch } from "./rz-dom.js?v=24";
-import { icon, empty, sec, screenHead, skel, odo } from "./rz-ui.js?v=24";
-import { toast } from "./rz-sheet.js?v=24";
-import { api, act } from "./rz-api.js?v=24";
+import { app, ACTIONS, hooks, attr, esc, num, get, arr, clamp, reduceMotion, SPRING, vibrate } from "./rz-core.js?v=26";
+import { patch } from "./rz-dom.js?v=26";
+import { icon, empty, sec, screenHead, skel, odo } from "./rz-ui.js?v=26";
+import { toast } from "./rz-sheet.js?v=26";
+import { api, act } from "./rz-api.js?v=26";
 
 let loading = null;
 export async function loadLab(force = false) {

@@ -228,6 +228,24 @@ export const leagueLogoUrl = (lg, dark = isDark()) =>
 export const games = () => arr(app.S && app.S.games);
 export const gameById = (id) => (id ? games().find((g) => g.id === id) || null : null);
 export const phase = (g) => (g && ["live", "pre", "post"].includes(g.phase) ? g.phase : "unknown");
+/** Your teams per league: the Teams directory if loaded, else the saved config. */
+export function myAbbrs(lg) {
+  if (app.teams && Array.isArray(app.teams[lg])) return new Set(app.teams[lg].filter((t) => t.mine).map((t) => t.abbr));
+  const c = get(app.settings, `config.teams.${lg}`);
+  return new Set(Array.isArray(c) ? c : []);
+}
+/** The server only flags `mine` once the scorer tags a game; fill it in from your teams so pregame works too. */
+export function markMine(S) {
+  if (!S) return;
+  const mark = (g) => {
+    if (!g || typeof g !== "object") return;
+    if (g._mine0 === undefined) g._mine0 = !!g.mine;
+    const mine = myAbbrs(g.league);
+    g.mine = g._mine0 || mine.has(get(g, "home.abbr")) || mine.has(get(g, "away.abbr"));
+  };
+  arr(S.games).forEach(mark);
+  mark(S.now);
+}
 export function teamName(t) { return (t && (t.name || t.abbr)) || "—"; }
 
 const SPECIAL = /half|end of|intermission|delay|postpon|suspend|cancel|shootout/i;
