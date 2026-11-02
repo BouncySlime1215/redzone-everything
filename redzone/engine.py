@@ -32,7 +32,8 @@ from redzone.store import Store
 log = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
 FASTCAST_SYNC_S = 2.0
-DECIDE_EVERY_S = 0.5   # decision tick (cheap: re-scores ~40 games and runs the decider)
+DECIDE_EVERY_S = 0.5
+HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
 class Engine:
@@ -69,6 +70,7 @@ class Engine:
         self.mic = None
         self.fantasy = None   # latest fantasy.Matchup
         self._suspended_focus: tuple | None = None   # (game, mode) paused for garbage time
+        self.hold: dict | None = None   # "Watch this" from the phone: a manual hold until "Resume auto"
         self._mic_used: set[tuple[str, float]] = set()
         self._last_mic = 0.0
         self._pending_decision = None
@@ -469,6 +471,7 @@ class Engine:
             target = w.target if (w.tunable or dry) else None
             cands[gid] = Candidate(sc, target, stale=self.merger.is_stale(gid))
         self._garbage_focus()
+        self._hold_check()
         if self._pending_decision is not None:
             return False  # score/feed updates continue; don't race a tune in flight
         before = self.decider.current
@@ -547,7 +550,8 @@ class Engine:
             self.broadcast()
         self.control.submit(target, back, done, may_cut=lambda: (
                             not self.decider.user.paused and not self.cfg.get("mode.dry_run", True)
-                            and (d.kind == "user" or (self._entry_valid(d, target)
+                            and ((d.kind == "user" and (not self._hold_waits(d) or self.safe_to_leave(before, required_s=8.0)))
+                                 or (d.kind != "user" and self._entry_valid(d, target)
                                  and (time.time() >= replay_exit if replay_exit is not None
                                       else self.safe_to_leave(before, required_s=8.0))))),
                             replay_id=d.replay.pid if d.replay else None)
@@ -751,6 +755,25 @@ class Engine:
             return False, "Recorded device control is managed by the recorded session"
         dec, u = self.decider, self.decider.user
         gid = game_id or dec.current
+        if action in ("hold", "watch"):
+            return self._hold(gid, force=value == "force")
+        if action == "release":
+            return self._release_hold("Back on autopilot")
+        if action == "hold_auto":
+            if not self.hold:
+                return False, "Nothing is held"
+            self.hold.update(auto_resume=bool(value), resume_at=None, why="")
+            return True, ("I'll hand back to autopilot when it's over or a blowout" if value
+                          else f"Staying on {self._name(self.hold['game_id'])} until you tap Resume auto")
+        if action == "redzone":
+            target = self._redzone_target(self.cfg.get("sunday_ticket", True), self.cfg.get("mode.dry_run", True))
+            if not target:
+                return False, "NFL RedZone isn't on the air (or its channel isn't set)"
+            dec._target_of[REDZONE] = target
+            return self._hold(REDZONE, force=value == "force")
+        if action == "two_stick":
+            self.cfg.update({"two_stick": {"enabled": bool(value)}})
+            return True, "Two-stick mode on" if value else "Two-stick mode off: one stick does everything"
         if action == "focus":
             if not gid:
                 return False, "Pick a game to focus on"
@@ -773,6 +796,7 @@ class Engine:
             return True, f"Staying on {self._name(gid)}"
         if action == "unlock":
             u.locked_game = None
+            self.hold = None
             return True, "Unlocked"
         if action == "pause":
             u.paused = True
@@ -788,6 +812,8 @@ class Engine:
             if not dec.current:
                 return False, "Nothing to skip"
             self.skipped[dec.current] = time.time() + 300
+            if self.hold and self.hold["game_id"] == dec.current:
+                self.hold, u.locked_game = None, None
             u.muted.add(dec.current)
             dec.user.manual_until = 0
             return True, f"Skipping {self._name(dec.current)} for 5 minutes"
@@ -844,6 +870,92 @@ class Engine:
             self.store.label(str(value), dec.current, {"decision": getattr(self.last_decision, "reason", "")})
             return True, f"Labeled: {value}"
         return False, f"Unknown action {action}"
+
+    def _hold(self, gid: str | None, force: bool = False) -> tuple[bool, str]:
+        """"Watch this": go there at the next safe moment (never mid-play) and stay until
+        "Resume auto". Tapping it again while it waits cuts over right away."""
+        if not gid:
+            return False, "Pick a game"
+        dec, u = self.decider, self.decider.user
+        g = self.merger.games.get(gid)
+        if gid != REDZONE and (g is None or g.phase != Phase.LIVE):
+            return False, f"{self._name(gid)} isn't live"
+        name = self._name(gid)
+        p = self._pending_decision
+        waiting = bool(self.hold and self.hold["game_id"] == gid and p is not None and p.target == gid)
+        prev = self.hold if self.hold and self.hold["game_id"] == gid else None
+        self.hold = {"game_id": gid, "since": prev["since"] if prev else time.time(),
+                     "auto_resume": prev["auto_resume"] if prev else True,
+                     "resume_at": None, "why": "", "force": force or waiting}
+        u.locked_game = gid
+        u.paused = False   # holding IS the pause: autopilot won't switch away
+        if waiting:
+            return True, f"Switching to {name} now"
+        if dec.current == gid:
+            return True, f"Holding on {name} — tap Resume auto to hand back"
+        self._act_manual(gid)
+        if force or self.cfg.get("mode.dry_run", True):
+            return True, f"On {name} — holding here"
+        return True, f"Switching to {name} at the next safe moment (tap again to go now)"
+
+    def _hold_waits(self, d: Decision) -> bool:
+        """A switch to the held game honors the never-cut-mid-play rule unless you forced it."""
+        h = self.hold
+        return bool(h and d.action == "switch" and d.target == h["game_id"] and not h.get("force"))
+
+    def _release_hold(self, msg: str) -> tuple[bool, str]:
+        dec, u = self.decider, self.decider.user
+        h, self.hold = self.hold, None
+        u.locked_game = None
+        u.focus_game, u.focus_mode = None, FocusMode.AUTOPILOT
+        self._suspended_focus = None
+        u.manual_until = 0.0
+        dec.resume()
+        p = self._pending_decision
+        if h and p is not None and p.kind == "user" and p.target == h["game_id"]:
+            self.control.cancel_pending()   # still waiting for a safe moment: don't go after all
+        return True, msg
+
+    def _hold_check(self) -> None:
+        """A held game ended or turned into a blowout: count down, then autopilot takes over."""
+        h, u = self.hold, self.decider.user
+        if not h:
+            return
+        gid = h["game_id"]
+        if u.locked_game != gid:
+            self.hold = None   # unlocked or re-locked elsewhere
+            return
+        if self.decider.current == gid:
+            h["force"] = False
+        if gid == REDZONE:
+            over, garbage = not redzone_on(self.merger.games.values()), False
+        else:
+            g, s = self.merger.games.get(gid), self.scored.get(gid)
+            over, garbage = g is None or g.phase == Phase.POST, bool(s and s.garbage)
+        why = "is over" if over else "is garbage time" if garbage else ""
+        if not (h["auto_resume"] and why):
+            if h["resume_at"] and not why:
+                self.toast(f"{self._name(gid)} is close again — staying")
+            h.update(resume_at=None, why="")
+            return
+        now = time.time()
+        if h["resume_at"] is None:
+            wait = 5.0 if over else HOLD_RESUME_S
+            h.update(resume_at=now + wait, why=why)
+            self.toast(f"{self._name(gid)} {why} — autopilot takes over in {wait:.0f}s")
+        elif now >= h["resume_at"]:
+            self._release_hold("")
+            self.toast(f"{self._name(gid)} {why} — autopilot is back")
+
+    def _hold_view(self) -> dict | None:
+        h = self.hold
+        if not h:
+            return None
+        p = self._pending_decision
+        return {"game_id": h["game_id"], "matchup": self._name(h["game_id"]), "since": h["since"],
+                "auto_resume": h["auto_resume"], "resume_at": h["resume_at"], "why": h["why"],
+                "force": bool(h.get("force")), "on": self.decider.current == h["game_id"],
+                "waiting": bool(p is not None and p.target == h["game_id"] and self._hold_waits(p))}
 
     def _act_manual(self, gid: str, replay: Missed | None = None) -> None:
         w = self.where.get(gid)
@@ -977,6 +1089,9 @@ class Engine:
                      "safe": dec.safe_mode, "frozen_until": dec.frozen_until or None,
                      "focus_game": dec.user.focus_game, "focus_mode": dec.user.focus_mode.value,
                      "locked_game": dec.user.locked_game, "state": d.state.value if d else "idle",
+                     "hold": self._hold_view(), "two_stick_enabled": bool(self.cfg.get("two_stick.enabled", True)),
+                     "redzone_on": bool(self._redzone_target(self.cfg.get("sunday_ticket", True),
+                                                             self.cfg.get("mode.dry_run", True))),
                      "tv_control": self.control.live_control, "two_stick": self.control.two_stick,
                      "control_note": self.control.note, "mic": self.mic is not None, "announcer_hint": ""},
             "now": now, "next": nxt, "standby": self._standby_view(), "games": games,

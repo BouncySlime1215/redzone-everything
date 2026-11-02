@@ -1,10 +1,10 @@
 /* RedZone Everything — Games screen: Scores (live / up next / final) and Teams (every team, star yours). */
 
-import { app, ACTIONS, store, attr, esc, num, games, LEAGUES, LEAGUE_NAME, raw, lum, onColor, todayLabel, fmtTime } from "./rz-core.js?v=38";
-import { patch } from "./rz-dom.js?v=38";
-import { icon, logo, leagueImg, empty, skel, seg, screenHead } from "./rz-ui.js?v=38";
-import { gameCard } from "./rz-cards.js?v=38";
-import { loadTeams, teamList } from "./rz-detail.js?v=38";
+import { app, ACTIONS, store, attr, esc, num, games, LEAGUES, LEAGUE_NAME, raw, lum, onColor, todayLabel, fmtTime } from "./rz-core.js?v=39";
+import { patch } from "./rz-dom.js?v=39";
+import { icon, logo, leagueImg, empty, skel, seg, screenHead } from "./rz-ui.js?v=39";
+import { gameCard } from "./rz-cards.js?v=39";
+import { loadTeams, teamList } from "./rz-detail.js?v=39";
 
 const ui = app.ui;
 ui.gview = store.get("gview", "scores");

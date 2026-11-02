@@ -3,9 +3,9 @@
 import {
   app, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, isDark, whereLabel, whereUnknown,
   leaderLabel, winner, teamBy, fmtDur, nowS, fmtCountdown, imgSrc, games,
-} from "./rz-core.js?v=38";
-import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=38";
-import { situation, wpBar } from "./rz-viz.js?v=38";
+} from "./rz-core.js?v=39";
+import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=39";
+import { situation, wpBar } from "./rz-viz.js?v=39";
 
 /* ---------- chips ---------- */
 export function whereChip(g, { onDark = false } = {}) {
@@ -86,6 +86,17 @@ function teamRow(g, side, inkc) {
     <div class="pts">${possessionFor(g, t)}${showScore ? odo(t.score ?? "—") : ""}</div>
   </div>`;
 }
+/* "Watch this": put the TV on this game at the next safe moment and hold it there.
+   While that switch waits, the same button becomes "Go now" (cuts immediately). */
+export function watchBtn(g) {
+  const h = get(app.S, "mode.hold");
+  const gid = attr(g.id);
+  if (h && h.game_id === g.id && h.waiting) return `<button class="chip chip--btn chip--watch chip--watch-go" data-act="hold" data-gid="${gid}" data-force="1">${icon("zap")}<span>Go now</span></button>`;
+  if (h && h.game_id === g.id) return `<span class="chip chip--locked">${icon("lock")}<span>Holding</span></span>`;
+  if (g.on_now) return "";
+  return `<button class="chip chip--btn chip--watch" data-act="hold" data-gid="${gid}" aria-label="Watch ${attr(g.matchup || "this game")} now">${icon("play", "ico--fill")}<span>Watch this</span></button>`;
+}
+
 export function gameCard(g, { key = true } = {}) {
   const ph = phase(g);
   const st = status(g);
@@ -99,6 +110,7 @@ export function gameCard(g, { key = true } = {}) {
     : ph === "pre" ? `<div class="start"><b>${esc(st.clk || "TBD")}</b>${g.start_time && g.start_time - nowS() < 6 * 3600 && g.start_time > nowS() ? `<small>in <span data-countdown="${num(g.start_time)}" data-own>${esc(fmtCountdown(g.start_time))}</span></small>` : ""}</div>`
     : "";
   const chips = stateChips(g) + tagChips(g);
+  const watch = ph === "live" ? watchBtn(g) : "";
   const leaders = pickLeaders(g);
   const reason = ph === "live" ? cleanReason(g.reason) : ph === "pre" ? g.odds : "";
   return `<article class="${cls}" ${key ? `data-key="g:${attr(g.id)}"` : ""} data-act="open-game" data-gid="${attr(g.id)}" role="button" tabindex="0" aria-label="${attr(`${g.matchup || ""}, ${st.text}`)}" style="${teamVars(g.away, g.home)}">
@@ -107,7 +119,7 @@ export function gameCard(g, { key = true } = {}) {
     <div class="gc-teams">${teamRow(g, "a", ai)}${teamRow(g, "h", hi)}</div>
     ${ph === "live" ? `<div class="gc-meter">${meter(g.score)}</div>` : ""}
     ${reason ? `<p class="gc-reason ${ph === "live" && isComeback(g) ? "gc-reason--hot" : ""}">${esc(reason)}</p>` : ""}
-    ${chips || ph !== "post" ? `<footer class="gc-foot">${chips}${ph !== "post" ? whereChip(g) : ""}</footer>` : ""}
+    ${chips || ph !== "post" ? `<footer class="gc-foot">${chips}${ph !== "post" ? whereChip(g) : ""}${watch}</footer>` : ""}
     ${leaders.length ? `<div class="gc-lead">${leaders.map((l) => leaderMini(l, g)).join("")}</div>` : ""}
   </article>`;
 }

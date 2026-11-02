@@ -1,8 +1,8 @@
 /* Recorded-device sessions are separate from live switching and delay calibration. */
-import { app, ACTIONS, INPUTS, CHANGES, hooks, attr, esc, arr } from "./rz-core.js?v=38";
-import { api, loadOnce } from "./rz-api.js?v=38";
-import { toast } from "./rz-sheet.js?v=38";
-import { icon, sec } from "./rz-ui.js?v=38";
+import { app, ACTIONS, INPUTS, CHANGES, hooks, attr, esc, arr } from "./rz-core.js?v=39";
+import { api, loadOnce } from "./rz-api.js?v=39";
+import { toast } from "./rz-sheet.js?v=39";
+import { icon, sec } from "./rz-ui.js?v=39";
 
 const draft = app.ui.recordedDraft || (app.ui.recordedDraft = { host: "", query: "", home: "", away: "", date: "" });
 const STAGES = {

@@ -2,16 +2,16 @@
    fantasy, catch-up queue, recent switches. Plus the Focus and More sheets. */
 
 import {
-  app, ACTIONS, attr, esc, num, get, arr, games, gameById, status, pairInks, fmtAgo, fmtTime, fmtStart, nowS,
+  app, ACTIONS, CHANGES, attr, esc, num, get, arr, games, gameById, status, pairInks, fmtAgo, fmtTime, fmtStart, nowS,
   reduceMotion, SPRING, EASE_OUT, ink, teamBy, whereLabel,
-} from "./rz-core.js?v=38";
-import { patch } from "./rz-dom.js?v=38";
-import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=38";
-import { heroCard, fantasyCard } from "./rz-cards.js?v=38";
-import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=38";
-import { act } from "./rz-api.js?v=38";
-import { screenEvidence } from "./rz-evidence.js?v=38";
-import { recordedPanel } from "./rz-recorded.js?v=38";
+} from "./rz-core.js?v=39";
+import { patch } from "./rz-dom.js?v=39";
+import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=39";
+import { heroCard, fantasyCard } from "./rz-cards.js?v=39";
+import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=39";
+import { act } from "./rz-api.js?v=39";
+import { screenEvidence } from "./rz-evidence.js?v=39";
+import { recordedPanel } from "./rz-recorded.js?v=39";
 
 const STATE_LABEL = { idle: "Idle", watching: "Watching", locked: "Locked in", break: "On a break", paused: "Paused",
   frozen: "Holding still", safe: "Safe mode", replay: "Replay" };
@@ -38,9 +38,10 @@ export function renderNow(root) {
     modeRow(S),
     n ? `<div class="hero-wrap" data-key="hero-wrap">${heroCard(n, g, S)}</div>` : idle(S),
     screenEvidence(S),
+    calibrate(S),
     dock(S),
-    standby(S),
-    nextUp(S),
+    plan(S),
+    controlPanel(S),
     S.fantasy ? `<div data-key="fantasy">${sec("Fantasy", { key: "sec-fantasy" })}${fantasyCard(S.fantasy)}</div>` : "",
     queue(S),
     timeline(S),
@@ -78,6 +79,61 @@ function dock(S) {
   </div>`;
 }
 
+/* "I just saw it" is how it learns your stream delay: big and obvious right after a game
+   comes on (or while this channel's delay is still a guess), tucked into More otherwise. */
+function calibrate(S) {
+  const n = S.now;
+  if (!n || n.kind === "replay" || n.game_id === "redzone") return "";
+  const d = arr(S.delays).find((x) => x.label && x.label === n.where);
+  const fresh = num(n.since) && nowS() - num(n.since) < 600;
+  if (d && d.calibrated && !fresh) return "";
+  const dry = !!get(S, "mode.dry_run");
+  return `<div class="actions-grid calib" data-key="calib">
+    <button class="act-tile act-tile--wide act-tile--accent" data-act="now-act" data-a="saw_it" ${dry ? "disabled" : ""}>${icon("eye", "ico--lg")}<span>I just saw it<small>${dry
+      ? "Works once TV control is on: tap the instant a play ends on your TV."
+      : d && d.calibrated ? `Delay ${num(d.mu).toFixed(0)}s on ${esc(n.where)}. Tap as a play ends to keep it sharp.`
+      : `Tap the instant a play ends on your TV. It learns ${esc(n.where || "this channel")}'s delay so it never cuts mid-play.`}</small></span></button>
+  </div>`;
+}
+
+/* What it's doing: on now (why), what's waiting on the hidden stick, the next planned switch. */
+function plan(S) {
+  const m = S.mode || {};
+  const sb = standby(S), nx = nextUp(S);
+  const head = sec("What it's doing", { key: "sec-plan", aside: m.dry_run ? "Dry run" : "" });
+  const state = m.hold ? `Holding on ${m.hold.matchup} until you tap Resume auto${m.hold.auto_resume ? " (or it's over)" : ""}`
+    : m.paused ? "Paused: staying put until you resume"
+    : S.now ? `Staying on ${S.now.matchup || "this game"}: ${S.now.reason || "best thing on"}`
+    : "Waiting for the first game";
+  const stay = sb || nx ? "" : `<div class="next" data-key="plan-stay"><span class="pick-ic" style="width:40px;height:40px">${icon(m.hold ? "lock" : m.paused ? "pause" : "autopilot")}</span>
+    <div class="grow"><div class="lbl">No switch planned</div><div class="what">${esc(state)}</div></div></div>`;
+  return `<div data-key="plan">${head}${sb}${nx}${stay}</div>`;
+}
+
+/* One place to run everything from the phone. Every control is a real /api/action. */
+function controlPanel(S) {
+  const m = S.mode || {};
+  const n = S.now;
+  const g = n ? gameById(n.game_id) : null;
+  const auto = !m.paused && !m.hold;
+  const row = (ic, cls, t1, t2, ctl) => `<div class="set-r"><span class="ic ${cls}">${icon(ic)}</span><div class="grow"><div class="t1">${t1}</div><div class="t2">${t2}</div></div>${ctl}</div>`;
+  const sw = (change, on, label, danger = false) => `<label class="switch ${danger ? "switch--danger" : ""}"><input type="checkbox" data-change="${change}" ${on ? "checked" : ""} aria-label="${attr(label)}"><span></span></label>`;
+  const quick = (a, ic, label, pressed, dis) => `<button class="mini-act" data-act="now-act" data-a="${a}" aria-pressed="${!!pressed}" ${dis ? "disabled" : ""}>${icon(ic)}${esc(label)}</button>`;
+  return `${sec("Control", { key: "sec-control" })}<div class="card set" data-key="control">
+    ${row("autopilot", "ic--red", "Autopilot", m.hold ? `Holding ${esc(m.hold.matchup)}: turning this on resumes auto` : auto ? "Picks the best game and switches by itself" : "Paused: it stays on this channel", sw("autopilot", auto, "Autopilot"))}
+    ${row("power", "", "Control the TV", m.dry_run ? "Dry run: shows what it would do, TV untouched" : "Live: changes channels on your Fire TV", sw("tv-control", !m.dry_run, "Control the TV", true))}
+    ${row("swap", "", "Two sticks", m.two_stick ? "Hidden stick pre-tunes the next game for instant flips" : m.two_stick_enabled === false ? "Off: one stick does everything" : "On, but only one stick is ready", sw("two-stick", m.two_stick_enabled !== false, "Two sticks"))}
+    ${m.redzone_on ? row("football", "ic--red", "NFL RedZone", "Every score, no commercials", `<button class="btn btn--sm" data-act="go-redzone">${icon("play", "ico--fill")}Watch</button>`) : ""}
+    ${row("sliders", "", "Priorities", "Your teams, bets, closeness, big moments", `<button class="btn btn--sm" data-act="go-priorities">Tune${icon("chevron-right")}</button>`)}
+    <div class="ctl-quick">
+      ${quick(g && g.boosted ? "unboost" : "boost", "flame", g && g.boosted ? "Boosted" : "Boost", g && g.boosted, !g)}
+      ${quick("mute", "mute", "Mute", false, !g)}
+      ${quick("skip", "skip", "Leave now", false, !n)}
+      ${quick("back", "back", "Go back", false, false)}
+    </div>
+  </div>`;
+}
+
 function standby(S) {
   const sb = S.standby;
   if (!sb || !sb.game_id) return "";
@@ -86,7 +142,7 @@ function standby(S) {
   return `<div class="next next--deck" data-key="standby" style="--a-ink:${ai};--h-ink:${hi}">
     ${g ? `<div class="logo-pair">${logo(g.away, { size: 30 })}${logo(g.home, { size: 30 })}</div>` : `<span class="pick-ic" style="width:40px;height:40px">${icon("tv")}</span>`}
     <div class="grow"><div class="lbl" style="color:var(--success-ink)">On deck · hidden stick</div>
-      <div class="what ell">${esc(sb.matchup || (g && g.matchup))}</div><div class="why ell">${esc(sb.where, "Tuning the second stick")}</div></div>
+      <div class="what ell">${esc(sb.matchup || (g && g.matchup))}</div><div class="why ell">${esc(sb.where, "Tuning the second stick")}${sb.why ? ` · ${esc(sb.why)}` : ""}</div></div>
     ${sb.ready ? `<span class="ready">${icon("check")}Ready</span>` : `<span class="wait-ring" aria-label="Getting ready"></span>`}
   </div>`;
 }
@@ -214,8 +270,23 @@ function heroSwitch(root, ghost) {
 ACTIONS["now-act"] = async (el) => {
   const a = el.dataset.a;
   const gid = get(app.S, "now.game_id");
-  await act(a, gid && a !== "back" ? { game_id: gid } : {}, el);
+  if (a === "mute") {
+    const ok = await confirmSheet({ title: "Never show this game?", body: "Autopilot leaves it and won't switch back. Unmute it from its game card any time.", ok: "Mute it", danger: true, ic: "mute" });
+    if (!ok) return;
+  }
+  await act(a, gid && a !== "back" && a !== "saw_it" ? { game_id: gid } : {}, el);
 };
+ACTIONS["hold"] = (el, e) => {
+  e && e.stopPropagation();
+  act("hold", { game_id: el.dataset.gid, ...(el.dataset.force ? { value: "force" } : {}) }, el);
+};
+ACTIONS["go-redzone"] = (el) => act("redzone", {}, el);
+CHANGES["autopilot"] = async (el) => {
+  const m = get(app.S, "mode") || {};
+  const r = await act(el.checked ? (m.hold ? "release" : "resume") : "pause", {}, el);
+  if (!r || r.ok === false) el.checked = !el.checked;
+};
+CHANGES["two-stick"] = async (el) => { const r = await act("two_stick", { value: el.checked }, el); if (!r || r.ok === false) el.checked = !el.checked; };
 ACTIONS["replay"] = (el, e) => { e && e.stopPropagation(); act("replay", { game_id: el.dataset.gid, value: el.dataset.play }, el); };
 
 /* ---------- Focus sheet ---------- */
