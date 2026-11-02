@@ -192,6 +192,7 @@ class Controller:
         self._home_flipped = False               # the last flip pressed HOME (its app was relaunched)
         self._resume_task: asyncio.Task | None = None   # "did the relaunched app resume?" after a HOME flip
         self._cec_synced_at = 0.0
+        self._flip_gen = 0                       # bumped on every flip: a CEC read that spans one is stale
         self._refresh_task: asyncio.Task | None = None   # after a flip: reload the game we left (see _refresh_left)
         self._refreshing: str | None = None      # the target the running preload is refreshing, if it is a refresh
         self._exit_check = None
@@ -235,15 +236,15 @@ class Controller:
         (The TV itself isn't reachable on the network, so ask the sticks.) Acts only on an
         unambiguous answer: exactly one stick says it's on screen. Returns True if it changed
         which stick we think is on screen, or cleared an unknown TV input."""
-        on = []
+        on, gen = [], self._flip_gen
         for i, s in enumerate(self.sticks):
             if not s.controllable:
                 continue
             r = await s.shell("dumpsys hdmi_control | grep -E -c 'mIsActiveSource: true'", timeout=5)
             if r.ok and r.out.strip().startswith("1"):
                 on.append(i)
-        if len(on) != 1:
-            return False
+        if len(on) != 1 or gen != self._flip_gen or self._flipping or self._busy():
+            return False   # a switch flipped (or is flipping) while we read: these answers are stale
         i = on[0]
         changed = self.active != i or self.input_unknown
         if changed:
@@ -773,6 +774,7 @@ class Controller:
                            path=path)
         old_target, old_stick = self.on_target, self.main
         self.active = self.sticks.index(hid)
+        self._flip_gen += 1
         self.on_target = None if replay else target
         # The stick we just left pauses its app when it loses the TV input (seen on both Fire TV
         # sticks), so it isn't a ready standby. Reload that game at the live edge in the background:
@@ -801,19 +803,21 @@ class Controller:
         if not requested:
             self.tv.last_error = "no input configured for this stick"
             return False
+        if self._exit_check is not None and not self._exit_check():
+            self.tv.last_error = "safe exit window closed before CEC command"
+            return False
+        # Fire OS has no shell CEC command and blocks the system call (HDMI_CEC permission),
+        # but HOME makes the stick announce <Active Source> over the HDMI cable, and the TV
+        # follows. HOME backgrounds the preloaded app, so bring it straight back: it resumes
+        # the stream it was already playing (measured on the 4K/4K Plus: ~2.5s to video).
+        # Always tried first: it's the only path that works on these sticks, so a rejected
+        # onetouchplay below must never bar it (that turned one slow flip into ~10 min of failures).
+        if await self._home_flip(stick) or await self._active_source(stick, tries=6):
+            self.latency.record("flip", time.monotonic() - t0)
+            self._awake_at[stick.host] = time.time()
+            self._home_flipped = True
+            return True
         if time.time() >= self._cec_bad.get(stick.host, 0.0):
-            if self._exit_check is not None and not self._exit_check():
-                self.tv.last_error = "safe exit window closed before CEC command"
-                return False
-            # Fire OS has no shell CEC command and blocks the system call (HDMI_CEC permission),
-            # but HOME makes the stick announce <Active Source> over the HDMI cable, and the TV
-            # follows. HOME backgrounds the preloaded app, so bring it straight back: it resumes
-            # the stream it was already playing (measured on the 4K/4K Plus: ~2.5s to video).
-            if await self._home_flip(stick):
-                self.latency.record("flip", time.monotonic() - t0)
-                self._awake_at[stick.host] = time.time()
-                self._home_flipped = True
-                return True
             r = await stick.shell("cmd hdmi_control onetouchplay", timeout=5)
             # Fire OS can return exit 0 while explaining it has no shell
             # implementation. That is a definite no-op, not a sent CEC request.
@@ -868,6 +872,15 @@ class Controller:
                 self.on_target = target
             else:
                 log.warning("re-load after the flip failed: %s", res.error)
+
+    async def _active_source(self, stick: Stick, tries: int) -> bool:
+        """A slow HOME flip: is the stick on screen after all? (~0.25 s per try)"""
+        for _ in range(tries):
+            st = await stick.shell("dumpsys hdmi_control | grep -E -c 'mIsActiveSource: true'", timeout=5)
+            if st.ok and st.out.strip().startswith("1"):
+                return True
+            await asyncio.sleep(0.25)
+        return False
 
     async def _home_flip(self, stick: Stick) -> bool:
         """HOME -> <Active Source> -> TV switches to this stick; then resume its app.
