@@ -287,7 +287,7 @@ class Decider:
             return Decision(now, "stay", self.current, "you just picked this — hands off for a minute", State.PAUSED)
         if now < self.frozen_until:
             return Decision(now, "stay", self.current, "holding still: it was flip-flopping", State.FROZEN)
-        self._target_of = {gid: x.target for gid, x in cands.items() if x.target}
+        self._target_of.update({gid: x.target for gid, x in cands.items() if x.target})
         if self.replaying:
             return Decision(now, "stay", self.current, f"replay: {self.replaying.label}", State.REPLAY,
                             kind="replay", replay=self.replaying)
@@ -296,8 +296,16 @@ class Decider:
         if not watchable:
             return Decision(now, "stay", self.current, "nothing live that I know how to tune", State.IDLE)
 
-        # Current game is over, gone, or muted: go to the best thing (a final can't be "mid-play").
+        # Current game is over, gone, or muted: go to the best thing — but a game that just went
+        # final in the DATA is still playing its last seconds on SCREEN (~delay behind). Leaving
+        # the moment the feed says "final" cut off game-winners in backtests (30 cuts in 92 NBA
+        # games). Stay until the last play has aired, then move.
         if cur is None or self.current not in live or self.current in u.muted:
+            if self.current and self.current not in u.muted:
+                left = self._ending_still_airing(self.current, now)
+                if left > 0:
+                    return Decision(now, "stay", self.current, f"final seconds still airing ({left:.0f}s)",
+                                    State.LOCKED, "ending on screen")
             best = self._best(watchable, exclude=None)
             if best is None:
                 return Decision(now, "stay", self.current, "nothing live", State.IDLE)
@@ -440,6 +448,19 @@ class Decider:
         if not self._rate_ok(now):
             return Decision(now, "stay", self.current, "switch limit — slowing down", state, gate_txt)
         return Decision(now, "switch", best, self._why(b, "better game"), state, gate_txt, kind="better")
+
+    def _ending_still_airing(self, gid: str, now: float, cap_s: float = 150.0) -> float:
+        """Seconds until the last thing we saw in this game has aired on screen (0 = done).
+        Capped so a game that silently vanished from the feed can't hold us forever."""
+        tl = self.timelines.get(gid)
+        if tl is None or not tl.events:
+            return 0.0
+        last = max(e.seen for e in tl.events)
+        d = self.delays.get(self._target_of.get(gid) or "unknown")
+        until = last + d.mu + 2 * d.current_sigma(now) + 5.0
+        if now - last > cap_s + d.mu:
+            return 0.0
+        return max(0.0, until - now)
 
     # ----- replay helpers -----------------------------------------------------
 

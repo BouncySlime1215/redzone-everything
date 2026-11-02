@@ -126,14 +126,15 @@ def _is_big(p: dict) -> bool:
 
 def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: float = 8.0,
         delay: float = 35.0, play_len: float = 7.0, tune_s: float = 5.0, step: float | None = None,
-        focus: str | None = None, start: float | None = None, end: float | None = None) -> Report:
+        focus: str | None = None, start: float | None = None, end: float | None = None,
+        targets: dict[str, str] | None = None) -> Report:
     step = step or cfg.get("polling.live_s", 10)
     clock = _Clock()
     lag_total = feed_lag + delay   # real life -> your screen
     delays = DelayBook({"youtubetv": lag_total}, sigma_default=3.0, clock=clock)
     scorer = Scorer(cfg, clock=clock)
     dec = Decider(cfg, delays, clock=clock)
-    me = Personal(my_teams={League.NFL: my_teams})
+    me = Personal(my_teams={lg: set(my_teams) for lg in League})
     if focus:
         dec.user.focus_game, dec.user.focus_mode = focus, FocusMode.FOCUS
     t0 = start or min(r.wall[0] for r in replays) - 60
@@ -166,7 +167,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             dec.timeline(r.gid, r.league).observe(g)
             if g.phase != Phase.LIVE:
                 continue
-            cands[r.gid] = Candidate(scorer.score(g, me), f"youtubetv:{r.gid}")
+            cands[r.gid] = Candidate(scorer.score(g, me), (targets or {}).get(r.gid, f"youtubetv:{r.gid}"))
         before = dec.current
         decision = dec.decide(cands)
         decisions.append(decision)
@@ -181,6 +182,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
 
     rep = _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t0, t1, replayed)
     rep.decisions = decisions
+    rep.replayed, rep.t0, rep.t1, rep.lag_total = replayed, t0, t1, lag_total
     return rep
 
 

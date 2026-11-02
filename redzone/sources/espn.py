@@ -318,9 +318,9 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
     if league == League.NBA:
         if "timeout" in t:
             return Stoppage.TIMEOUT
-        if t == "end period":
+        if t in ("end period", "end game", "end of game"):
             per = _int(_get(p, "period", "number")) or 0
-            return Stoppage.HALFTIME if per == 2 else Stoppage.END_PERIOD
+            return Stoppage.HALFTIME if per == 2 and t == "end period" else Stoppage.END_PERIOD
         if "challenge" in t or "review" in t:
             return Stoppage.REVIEW
         if "foul" in t or "violation" in t or "free throw" in t or "out of bounds" in t or "jumpball" in t:
@@ -333,7 +333,7 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
             if "challenge" in text or "review" in text:
                 return Stoppage.REVIEW
             return Stoppage.WHISTLE
-        if t == "period end":
+        if t in ("period end", "end of game", "game end"):
             return Stoppage.END_PERIOD
         if t == "goal":
             return Stoppage.SCORE_BREAK
