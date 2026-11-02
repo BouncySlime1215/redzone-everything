@@ -14,6 +14,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+import re
+
+from redzone.channels import parse_yttv_link
 from redzone.config import LIMITS, ConfigError
 from redzone.engine import Engine
 
@@ -33,6 +36,15 @@ def _private(host: str | None) -> bool:
     if ip.version == 6 and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
     return ip.is_private or ip.is_loopback or ip.is_link_local or ip in ipaddress.ip_network("100.64.0.0/10")
+
+
+def _target_from_link(link: str) -> str | None:
+    """A pasted YouTube TV or Prime Video link -> tuner target."""
+    code = parse_yttv_link(link)
+    if code:
+        return f"youtubetv:ev:{code}"
+    m = re.search(r"gti=(amzn1\.dv\.gti\.[0-9a-fA-F-]+)", link)
+    return f"prime:{m.group(1)}" if m else None
 
 
 def build_app(engine: Engine) -> FastAPI:
@@ -120,7 +132,12 @@ def build_app(engine: Engine) -> FastAPI:
 
     @app.post("/api/override")
     async def override(body: dict):
-        engine.channels.set_override(str(body.get("game_id")), body.get("target"))
+        target = body.get("target")
+        if isinstance(target, str) and ("://" in target or "gti=" in target):
+            target = _target_from_link(target)
+            if not target:
+                return {"ok": False, "message": "Couldn't read that link — paste a tv.youtube.com/watch/… or Prime link"}
+        engine.channels.set_override(str(body.get("game_id")), target)
         engine.decide()
         engine.broadcast()
         return {"ok": True, "message": "Saved — I'll remember this"}

@@ -464,7 +464,7 @@
       const sw = Math.max(0, Math.min(1, num(b.sweat)));
       return `<div class="card"><div class="bet">
         <div class="logos">${g ? logo(g.away, 30, g.league) + logo(g.home, 30, g.league) : ""}</div>
-        <div class="grow"><div class="lbl ellipsis">${esc(b.label || describeBet(b))}</div>
+        <div class="grow"><div class="lbl ellipsis">${esc(String(b.label || describeBet(b)).replace(/^your bet:\s*/i, ""))}</div>
           <div class="small muted ellipsis">${esc(b.matchup || (g && g.matchup))}${g ? " · " + esc(g.status_text) : ""}</div></div>
         <button class="btn btn-sm btn-ghost btn-danger" data-delbet="${escRaw(b.id)}" aria-label="Delete bet">✕</button></div>
         <div class="sweat-wrap"><div class="row between"><span>Sweat</span><span class="tnum">${sw >= 0.66 ? "🔥 on the edge" : sw >= 0.33 ? "getting tense" : sw > 0 ? "calm" : "decided / not live"}</span></div>
@@ -691,7 +691,9 @@
     }).join("")}
       <details class="acc" style="margin-top:12px"><summary>Advanced — every weight</summary>${advancedHtml(cfg)}</details></div>`;
 
-    html += `<div class="savebar"><button class="btn btn-soft" id="undo-btn">↶ Undo last save</button><button class="btn btn-primary" id="save-btn" ${Object.keys(ui.pending).length ? "" : "disabled"}>Save${Object.keys(ui.pending).length ? ` (${Object.keys(ui.pending).length})` : ""}</button></div>`;
+    const np = Object.keys(ui.pending).length;
+    html += `<div class="savebar" id="savebar" ${np ? "" : "hidden"}><button class="btn btn-soft" id="discard-btn">Discard</button><button class="btn btn-primary" id="save-btn">Save ${np ? `(${np})` : ""}</button></div>
+      <button class="btn btn-ghost btn-block" id="undo-btn" style="margin-top:6px">↶ Undo last save</button>`;
 
     html += `<div class="section-title">YouTube TV channels</div><div class="card">
       <div class="howto"><b>How to get a channel link</b><ol><li>Open tv.youtube.com on your computer and go to Live.</li><li>Hover a channel, right-click it → Copy link.</li><li>Paste it next to that channel here.</li></ol></div>
@@ -761,12 +763,10 @@
     const orig = get(ui.settings && ui.settings.config, path);
     if (JSON.stringify(orig) === JSON.stringify(value)) delete ui.pending[path];
     else ui.pending[path] = value;
-    const btn = $("#save-btn");
-    if (btn) {
-      const n = Object.keys(ui.pending).length;
-      btn.disabled = !n;
-      btn.textContent = n ? `Save (${n})` : "Save";
-    }
+    const btn = $("#save-btn"), bar = $("#savebar");
+    const n = Object.keys(ui.pending).length;
+    if (bar) bar.hidden = !n;
+    if (btn) btn.textContent = n ? `Save (${n})` : "Save";
   }
   function nestedChanges() {
     const out = {};
@@ -1036,6 +1036,7 @@
       setPending(`teams.${lgk}`, list); renderSettings(); return;
     }
     if (t.closest("#save-btn")) { saveSettings(t.closest("#save-btn")); return; }
+    if (t.closest("#discard-btn")) { ui.pending = {}; renderSettings(); toast("Changes discarded"); return; }
     if (t.closest("#undo-btn")) {
       const ok = await confirmSheet("Undo your last save?", "Settings go back to how they were before it.", "Undo");
       if (!ok) return;
