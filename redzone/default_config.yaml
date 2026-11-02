@@ -91,6 +91,7 @@ decider:
   manual_pause_s: 60
   uncalibrated_sigma_s: 8  # above this delay uncertainty, only leave at official stoppages
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
+  redzone_score: 45        # RedZone vs a game (0-100): stay on it unless a game beats this; any break goes there
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true

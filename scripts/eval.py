@@ -2,6 +2,7 @@
 
     .venv/bin/python scripts/eval.py            # totals
     .venv/bin/python scripts/eval.py --slates   # plus per-slate lines
+    .venv/bin/python scripts/eval.py --dead     # plus dead air by cause (attack the biggest)
 
 Targets: mid_play_cuts 0 (hard), dead_air_pct -> 0, big_seen_pct -> 100,
 crunch_live_pct as high as physically possible, your_team_crunch_live_pct 100.
@@ -33,12 +34,14 @@ def eval_set(n=16):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--slates", action="store_true")
+    ap.add_argument("--dead", action="store_true", help="print dead air by cause")
     ap.add_argument("--n", type=int, default=16)
     a = ap.parse_args()
     cfg = Config(user_path=ROOT / "data/config.yaml")
     t0 = time.time()
     tot = dict(big=0, seen=0, live=0, cuts=0, dead=0.0, watched=0.0, crunch=0, crunch_live=0,
                my_crunch=0, my_crunch_live=0, switches=0, hours=0.0, my_big=0, my_seen=0)
+    causes: dict[str, float] = {}
     for reps in eval_set(a.n):
         r = run(reps, cfg, set(cfg.get("teams.nfl")))
         tot["big"] += r.big_plays; tot["seen"] += r.big_plays_caught; tot["live"] += r.big_plays_live
@@ -47,6 +50,8 @@ def main():
         tot["my_crunch"] += r.my_crunch; tot["my_crunch_live"] += r.my_crunch_live
         tot["switches"] += len(r.switches); tot["hours"] += r.hours
         tot["my_big"] += r.my_big_plays; tot["my_seen"] += r.my_big_plays_live
+        for k, v in r.dead_causes.items():
+            causes[k] = causes.get(k, 0.0) + v
         if a.slates:
             print(" ", reps[0].matchup, f"+{len(reps)-1}", json.dumps(r.summary))
     pct = lambda x, y: round(100 * x / max(1, y), 1)
@@ -58,6 +63,10 @@ def main():
            "switches_per_hour": round(tot["switches"] / max(0.1, tot["hours"]), 1),
            "big_plays": tot["big"], "crunch_plays": tot["crunch"], "seconds": round(time.time() - t0)}
     print(json.dumps(out, indent=1))
+    if a.dead:
+        print("dead air by cause (points of dead_air_pct):")
+        for k, v in sorted(causes.items(), key=lambda kv: -kv[1]):
+            print(f"  {pct(v, tot['watched']):5.1f}  {k}")
 
 
 if __name__ == "__main__":

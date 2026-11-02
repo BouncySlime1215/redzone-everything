@@ -14,6 +14,11 @@ Hard rules, in order:
   2. Never leave a LOCKED moment except for a much bigger one, and only at a gate.
   3. Stay at least min_dwell_s; at most N switches per 5 minutes.
   4. Only switch for a clear margin that also pays for the switch's dead air.
+
+NFL RedZone (Sunday afternoons, with Sunday Ticket) is a pseudo-game "redzone": commercial-free,
+so it's the place to wait out a break when nothing better is live, and home base when nothing
+is close. It has no plays of its own to cut out of, so leaving it needs no gate. Plays it shows
+are never counted as "seen": we can't tell which ones it showed.
 """
 from __future__ import annotations
 
@@ -22,13 +27,24 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 
-from redzone.decider.screen import DelayBook, Timeline, catchable, leave_gate
+from redzone.decider.screen import (DelayBook, Event, Gate, Timeline, break_on_arrival, catchable,
+                                    leave_gate, resume_play)
 from redzone.models import League
 from redzone.scoring.engine import Scored
+
+REDZONE = "redzone"
+# Locks where every snap matters, not just the big ones (scoring/engine.py names them).
+CRUNCH_LOCKS = {"final two minutes", "crunch time", "overtime", "empty net"}
 
 
 def _short(s: Scored) -> str:
     return "your game"
+
+
+def redzone_scored(score: float) -> Scored:
+    """RedZone as a candidate: never on a break, never locked, always worth `score`."""
+    return Scored(REDZONE, League.NFL, score, score, score, 1.0, 0.0,
+                  "NFL RedZone: every score, no commercials", [], False, None, None, 1.0)
 
 
 class State(str, Enum):
@@ -152,8 +168,10 @@ class Decider:
 
     # ----- the decision -----------------------------------------------------
 
-    def decide(self, cands: dict[str, Candidate]) -> Decision:
+    def decide(self, cands: dict[str, Candidate], redzone: str | None = None) -> Decision:
+        """`redzone` is the RedZone channel's tuner target while it's on the air, else None."""
         now = self._clock()
+        cands = self._with_redzone(cands, redzone)
         self._scan_missed(cands, now)
         if self.replaying and now >= self.replay_until:
             self.done_replays.append(self.replaying)
@@ -270,7 +288,7 @@ class Decider:
         c = self.cfg
         u = self.user
         live = {gid: x for gid, x in cands.items()
-                if x.scored.raw > 0 or x.scored.moment > 0 or x.scored.is_break}
+                if x.scored.raw > 0 or x.scored.moment > 0 or x.scored.is_break or gid == REDZONE}
         cur = cands.get(self.current) if self.current else None
         watchable = {gid: x for gid, x in live.items()
                      if x.target and not x.stale and gid not in u.muted}
@@ -288,6 +306,7 @@ class Decider:
         if now < self.frozen_until:
             return Decision(now, "stay", self.current, "holding still: it was flip-flopping", State.FROZEN)
         self._target_of = {gid: x.target for gid, x in cands.items() if x.target}
+        self._mark_screen_breaks(watchable, now)
         if self.replaying:
             return Decision(now, "stay", self.current, f"replay: {self.replaying.label}", State.REPLAY,
                             kind="replay", replay=self.replaying)
@@ -304,19 +323,8 @@ class Decider:
             kind = "start" if self.current is None else "ended"
             return Decision(now, "switch", best, self._why(cands[best], "best game on"), State.WATCHING, kind=kind)
 
-        # A game whose break is still showing on screen is a bad destination even if the data
-        # says play resumed: you'd land in the tail of a commercial.
-        self._screen_break = set()
-        for gid, x in watchable.items():
-            gtl = self.timelines.get(gid)
-            if gid != self.current and gtl is not None and leave_gate(
-                    gtl, self.delays.get(x.target), now, 99.0).on_screen_break:
-                self._screen_break.add(gid)
-
         s_cur = cur.scored
-        tl = self.timelines.get(self.current)
-        delay = self.delays.get(cur.target or "unknown")
-        gate = leave_gate(tl, delay, now, c.get("decider.uncalibrated_sigma_s")) if tl else None
+        gate = self._gate(cur, now)
         gate_ok = bool(gate and gate.safe)
         gate_txt = gate.why if gate else "no timeline"
         on_break = bool(gate and gate.on_screen_break)
@@ -329,16 +337,7 @@ class Decider:
                 cands[home].scored.score + c.get("decider.switch_margin") < s_cur.score:
             self.home_break_visit = home = None   # what we're on now is clearly better: stay
         if home and home != self.current and home in watchable:
-            htl = self.timelines.get(home)
-            end_ev = htl.last("stop_end") if htl else None
-            start_ev = htl.last("stop_start") if htl else None
-            resumed = end_ev is not None and (start_ev is None or end_ev.seen >= start_ev.seen)
-            due = True
-            if resumed:
-                # Stay away as long as possible: go back just before the resume airs on screen.
-                hd = self.delays.get(cands[home].target or "unknown")
-                due = now >= end_ev.seen + hd.mu - 2 * hd.current_sigma(now) - self._cost(cands[home].target) - 6
-            if (resumed and due) or (not resumed and not cands[home].scored.is_break):
+            if self._home_due(home, cands[home], now):
                 if gate_ok:
                     return Decision(now, "switch", home, "back to your game before the next play",
                                     state, gate_txt, kind="home")
@@ -375,16 +374,30 @@ class Decider:
             return Decision(now, "stay", self.current, "focused: " + s_cur.reason, state, gate_txt)
 
         # --- autopilot ---
+        chase = self._chase(watchable, s_cur, now) if gate_ok and not s_cur.lock and self._rate_ok(now) else None
+        visit_home = self.current if s_cur.score >= c.get("decider.break_destination_min") else None
         if on_break:
+            if chase:
+                self.home_break_visit = visit_home
+                return self._chase_decision(chase, cands, state, gate_txt, now)
             dest = self._break_destination(watchable, exclude=self.current)
             rp = self._replay_option(cands, dest, now)
             if rp:
-                self.home_break_visit = self.current if s_cur.score >= c.get("decider.break_destination_min") else None
+                self.home_break_visit = visit_home
                 return self._replay_decision(rp, state, gate_txt, now)
             if dest and gate_ok and self._rate_ok(now):
-                self.home_break_visit = self.current if s_cur.score >= c.get("decider.break_destination_min") else None
+                self.home_break_visit = visit_home
                 return Decision(now, "switch", dest, self._why(cands[dest], f"{_short(s_cur)} on a break → "),
                                 state, gate_txt, kind="break_visit")
+        elif self._routine_tail(cur, gate, watchable, now) and self._rate_ok(now):
+            self.home_break_visit = visit_home
+            return Decision(now, "switch", REDZONE, "break's ending on a routine snap → NFL RedZone",
+                            state, gate_txt, kind="break_visit")
+
+        # Chase: a big play just happened somewhere and hasn't aired yet. Go now, see it live.
+        settled = self.current == REDZONE or now - self.since >= c.get("decider.chase_min_dwell_s")
+        if chase and settled:
+            return self._chase_decision(chase, cands, state, gate_txt, now)
 
         best = self._best(watchable, exclude=self.current)
         if best is None:
@@ -395,27 +408,11 @@ class Decider:
         cost = self._cost(b.target)
         lead = b.scored.score - s_cur.score
 
-        # Chase: a big play just happened somewhere and hasn't aired yet. Go now, see it live.
-        if gate_ok and not s_cur.lock and now - self.since >= c.get("decider.chase_min_dwell_s") \
-                and self._rate_ok(now):
-            chases = []
-            for gid, x in watchable.items():
-                # Don't skip games "in a break": the play that caused the break hasn't aired yet.
-                if gid == self.current or gid not in self.timelines:
-                    continue
-                ev = catchable(self.timelines[gid], self.delays.get(x.target), now,
-                               tune_s=self._cost(x.target) + 3)
-                if ev and x.scored.score >= s_cur.score - c.get("decider.chase_max_deficit"):
-                    chases.append((x.scored.score, gid, ev))
-            if chases:
-                _, gid, ev = max(chases, key=lambda z: z[0])
-                return Decision(now, "switch", gid, f"catch it live — {ev.label} · {cands[gid].scored.reason}",
-                                state, gate_txt, kind="chase")
-
         # Catch-up between plays: a missed big play is worth more than this ordinary moment.
         if gate_ok and not s_cur.lock and dwell_ok and self._rate_ok(now):
             rp = self._best_replay(cands, now, None, allow_seen=False)
-            if rp and self._replay_value(rp, now) >= max(s_cur.score, b.scored.score) + margin:
+            if rp and self._replay_value(rp, now) >= max(self._vs_replay(self.current, cands),
+                                                         self._vs_replay(best, cands)) + margin:
                 return self._replay_decision(rp, state, gate_txt, now)
 
         # Go back to where we were if this moment is over and that game is about as good.
@@ -441,6 +438,28 @@ class Decider:
             return Decision(now, "stay", self.current, "switch limit — slowing down", state, gate_txt)
         return Decision(now, "switch", best, self._why(b, "better game"), state, gate_txt, kind="better")
 
+    # ----- chase helpers ------------------------------------------------------
+
+    def _chase(self, watchable: dict[str, Candidate], s_cur: Scored, now: float) -> tuple[str, Event] | None:
+        """A big play that's in the data but not on screen yet: (game, play) to go see it live.
+
+        From RedZone any game qualifies: RedZone's score isn't a moment you'd be giving up."""
+        floor = -1.0 if self.current == REDZONE else s_cur.score - self.cfg.get("decider.chase_max_deficit")
+        best = None
+        for gid, x in watchable.items():
+            # Don't skip games "in a break": the play that caused the break hasn't aired yet.
+            if gid == self.current or gid not in self.timelines or x.scored.score < floor:
+                continue
+            ev = catchable(self.timelines[gid], self.delays.get(x.target), now, tune_s=self._cost(x.target) + 3)
+            if ev and (best is None or x.scored.score > best[0]):
+                best = (x.scored.score, gid, ev)
+        return (best[1], best[2]) if best else None
+
+    def _chase_decision(self, chase: tuple[str, Event], cands, state, gate_txt: str, now: float) -> Decision:
+        gid, ev = chase
+        return Decision(now, "switch", gid, f"catch it live — {ev.label} · {cands[gid].scored.reason}",
+                        state, gate_txt, kind="chase")
+
     # ----- replay helpers -----------------------------------------------------
 
     def _replay_option(self, cands, dest: str | None, now: float) -> Missed | None:
@@ -452,8 +471,13 @@ class Decider:
         rp = self._best_replay(cands, now, budget, allow_seen=dest is None)
         if rp is None:
             return None
-        dest_score = cands[dest].scored.score if dest else -1.0
+        dest_score = self._vs_replay(dest, cands) if dest else -1.0
         return rp if self._replay_value(rp, now) >= dest_score else None
+
+    def _vs_replay(self, gid: str, cands) -> float:
+        """What a catch-up replay has to beat to replace this. RedZone is only filler next to a
+        play you actually missed, so any replay beats it."""
+        return 0.0 if gid == REDZONE else cands[gid].scored.score
 
     def _replay_decision(self, rp: Missed, state, gate_txt: str, now: float) -> Decision:
         name = "instant replay" if rp.seen_live else "catch-up"
@@ -468,7 +492,8 @@ class Decider:
             rp = self._best_replay(cands, now, remaining, allow_seen=False)
             if rp and remaining > 0:
                 return self._replay_decision(rp, State.REPLAY, "replay finished", now)
-            if remaining > 25:
+            # Long break left, or only a routine snap to come back for: don't land in the ad.
+            if remaining > 25 or not self._home_due(home, cands[home], now):
                 dest = self._break_destination(watchable, exclude=home)
                 if dest:
                     return Decision(now, "switch", dest, self._why(cands[dest], "your game is still on a break → "),
@@ -484,12 +509,85 @@ class Decider:
             if best is None:
                 return Decision(now, "stay", self.current, "nothing live", State.IDLE)
         rp = self._best_replay(cands, now, None, allow_seen=False)
-        if rp and self._replay_value(rp, now) >= cands[best].scored.score + self.cfg.get("decider.switch_margin"):
+        if rp and self._replay_value(rp, now) >= self._vs_replay(best, cands) + self.cfg.get("decider.switch_margin"):
             return self._replay_decision(rp, State.REPLAY, "replay finished", now)
         return Decision(now, "switch", best, self._why(cands[best], "back to live"), State.WATCHING,
                         "replay finished", kind="live")
 
     # ----- helpers ----------------------------------------------------------
+
+    def _with_redzone(self, cands: dict[str, Candidate], target: str | None) -> dict[str, Candidate]:
+        """Add RedZone as a candidate while it's on the air and you have it turned on."""
+        if not target or not self.cfg.get("decider.redzone_channel", False):
+            return cands
+        return {**cands, REDZONE: Candidate(redzone_scored(self.cfg.get("decider.redzone_score", 45)), target)}
+
+    def target_of(self, gid: str | None) -> str | None:
+        """The tuner target last seen for a game (or RedZone)."""
+        return self._target_of.get(gid or "")
+
+    def _gate(self, cur: Candidate, now: float) -> Gate | None:
+        """Can we leave what's on screen? RedZone is a whip-around: there's no play of ours to cut."""
+        if self.current == REDZONE:
+            return Gate(True, "on RedZone: nothing to cut out of")
+        tl = self.timelines.get(self.current)
+        if tl is None:
+            return None
+        return leave_gate(tl, self.delays.get(cur.target or "unknown"), now,
+                          self.cfg.get("decider.uncalibrated_sigma_s"))
+
+    def _mark_screen_breaks(self, watchable: dict[str, Candidate], now: float) -> None:
+        """A game whose break is still showing on screen is a bad destination even if the data
+        says play resumed: you'd land in the tail of a commercial. Fresh every tick: a stale set
+        once hid the only live game for the rest of a slate."""
+        self._screen_break = set()
+        for gid, x in watchable.items():
+            gtl = self.timelines.get(gid)
+            if gid == self.current or gtl is None:
+                continue
+            d = self.delays.get(x.target)
+            if self._must_see_resume(gid, x):
+                # Worth landing a few seconds early to see the snap that ends the break.
+                dead = leave_gate(gtl, d, now, 99.0).on_screen_break
+            else:
+                dead = break_on_arrival(gtl, d, now, now + self._cost(x.target))
+            if dead:
+                self._screen_break.add(gid)
+
+    def _home_due(self, home: str, x: Candidate, now: float) -> bool:
+        """Time to head back to the game we left for its break? Stay away as long as possible:
+        just before the snap that ends the break airs if that snap is worth seeing, else once
+        it has aired (a routine snap isn't worth half a minute of the ad's tail)."""
+        htl = self.timelines.get(home)
+        end_ev = htl.last("stop_end") if htl else None
+        start_ev = htl.last("stop_start") if htl else None
+        resumed = end_ev is not None and (start_ev is None or end_ev.seen >= start_ev.seen)
+        if not resumed:
+            return not x.scored.is_break
+        hd = self.delays.get(x.target or "unknown")
+        if self._must_see_resume(home, x):
+            return now >= end_ev.seen + hd.mu - 2 * hd.current_sigma(now) - self._cost(x.target) - 6
+        return not break_on_arrival(htl, hd, now, now + self._cost(x.target))
+
+    def _routine_tail(self, cur: Candidate, gate: Gate | None, watchable, now: float) -> bool:
+        """The ad is still on screen but the break is too far along to visit a game and get back.
+        If what ends it is a routine snap, RedZone beats the ad's tail; we return once it airs."""
+        if not gate or not gate.safe or gate.on_screen_break or REDZONE not in watchable \
+                or self.current == REDZONE:
+            return False
+        tl = self.timelines.get(self.current)
+        return tl is not None and break_on_arrival(tl, self.delays.get(cur.target or "unknown"), now, now) \
+            and not self._must_see_resume(self.current, cur)
+
+    def _must_see_resume(self, gid: str, x: Candidate) -> bool:
+        """Is the first snap after this game's break worth a few seconds of ad to see live?
+        Yes in crunch time (every snap matters) or when that snap is a big play. Always outside
+        football: there the first logged event comes well after play has resumed."""
+        if x.scored.league != League.NFL:
+            return True
+        tl = self.timelines.get(gid)
+        snap = resume_play(tl) if tl else None
+        return bool(x.scored.lock in CRUNCH_LOCKS or (snap and snap.big))
 
     def _best(self, watchable: dict[str, Candidate], exclude: str | None) -> str | None:
         options = [(x.scored.score, gid) for gid, x in watchable.items()
@@ -500,7 +598,8 @@ class Decider:
         best = self._best(watchable, exclude)
         if best and watchable[best].scored.score >= self.cfg.get("decider.break_destination_min"):
             return best
-        return None
+        # RedZone never shows a commercial: any break is better spent there than on an ad.
+        return REDZONE if REDZONE in watchable and exclude != REDZONE else None
 
     def _cost(self, target: str | None) -> float:
         app = (target or "").split(":", 1)[0]

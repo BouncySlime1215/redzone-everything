@@ -87,3 +87,15 @@ def test_lan_only():
     assert _private("192.168.1.20") and _private("10.0.0.5") and _private("127.0.0.1")
     assert _private("100.110.165.130")       # carrier-grade/campus range used by this network
     assert not _private("8.8.8.8") and not _private(None)
+
+
+def test_redzone_on_screen_shows_on_the_phone(client, engine):
+    from redzone.decider.decider import REDZONE
+    engine.decider.current = REDZONE
+    now = client.get("/api/state").json()["now"]
+    assert now["game_id"] == REDZONE and now["matchup"] == "NFL RedZone"
+
+
+def test_redzone_only_offered_when_on_the_air(engine):
+    # The fixture's slate is a Monday: RedZone isn't on, whatever the settings say.
+    assert engine._redzone_target(sunday_ticket=True, dry=True) is None

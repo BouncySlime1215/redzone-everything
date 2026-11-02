@@ -14,10 +14,10 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from redzone import bets as betlib
-from redzone.channels import SETUP_CHANNELS, ChannelMap, describe
+from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
 from redzone.config import Config
 from redzone.control import Controller
-from redzone.decider.decider import Candidate, Decider, FocusMode, Missed
+from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode, Missed
 from redzone.decider.screen import PLAY_LEN_S, DelayBook
 from redzone.models import GameState, League, Phase
 from redzone.scoring.engine import Personal, Scored, Scorer
@@ -202,7 +202,7 @@ class Engine:
             target = w.target if (w.tunable or dry) else None
             cands[gid] = Candidate(sc, target, stale=self.merger.is_stale(gid))
         before = self.decider.current
-        d = self.decider.decide(cands)
+        d = self.decider.decide(cands, self._redzone_target(st, dry))
         self.last_decision = d
         if d.reason != self._last_logged_reason or d.action != "stay":
             self.store.decision(d)
@@ -214,8 +214,14 @@ class Engine:
                                   "now" if gid == self.decider.current else "")
                                  for gid, s in self.scored.items() if s.raw > 0])
 
+    def _redzone_target(self, sunday_ticket: bool, dry: bool) -> str | None:
+        """NFL RedZone's tuner target while it's on the air (and you've pasted its link)."""
+        if not sunday_ticket or not redzone_on(self.merger.games.values()):
+            return None
+        return REDZONE_TARGET if dry or self.channels.yttv_code(REDZONE_TARGET) else None
+
     def _act(self, d, before, cands) -> None:
-        target = cands[d.target].target if d.target in cands else None
+        target = cands[d.target].target if d.target in cands else self.decider.target_of(d.target)
         back = None
         if d.action == "replay" and d.replay:
             delay = self.delays.get(target or "unknown")
@@ -340,6 +346,8 @@ class Engine:
         return True, f"Delay {d.mu:.0f}s (±{d.sigma:.0f}) for {describe(target)}"
 
     def _name(self, gid: str | None) -> str:
+        if gid == REDZONE:
+            return "NFL RedZone"
         g = self.merger.games.get(gid or "")
         return g.matchup if g else "that game"
 
@@ -381,6 +389,10 @@ class Engine:
                    "replay": {"label": dec.replaying.label, "game_id": dec.replaying.game_id,
                               "play_id": dec.replaying.pid} if dec.replaying else None,
                    "home": _team(cur.home), "away": _team(cur.away), "status_text": cur.status_text}
+        if dec.current == REDZONE:
+            now = {"game_id": REDZONE, "matchup": "NFL RedZone", "league": "nfl", "where": describe(REDZONE_TARGET),
+                   "reason": d.reason if d else "", "since": dec.since, "score": 0, "kind": "live",
+                   "replay": None, "home": None, "away": None, "status_text": "Every score, no commercials"}
         nxt = None
         if d and d.action == "stay" and d.reason.startswith("want "):
             nxt = {"game_id": None, "matchup": "", "reason": d.reason[5:].split(" — waiting")[0],
