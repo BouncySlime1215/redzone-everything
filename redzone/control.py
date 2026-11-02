@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import Callable
 
 from redzone.channels import ChannelMap
-from redzone.tuners.adb import Stick, adb_available
+from redzone.tuners.adb import Stick, adb_available, playback_ready
 from redzone.tuners.tuners import TUNERS, TuneResult
 from redzone.tv import SamsungTV
 
@@ -56,6 +56,9 @@ SAFE_POLL_S = 0.2          # re-check for that moment this often (a cheap local 
 PRELOAD_BACKOFF_S = 120.0  # a preload that failed isn't retried for this long
 MIN_PRELOAD_GAP_S = 5.0    # never start preloads back to back faster than this
 CEC_RETRY_S = 600.0        # a stick whose CEC flip failed goes straight to the TV remote this long
+CEC_SYNC_S = 30.0          # re-ask the sticks which one is on screen this often (when idle)
+RESUME_WAIT_S = 6.0        # after a HOME flip, the relaunched app must be playing again within this
+TWO_STICK_RETRY_S = 300.0 # a failed flip turns two-stick mode off this long (once the input is known again)
 AWAKE_TRUST_S = 120.0      # a stick seen playing this recently is awake: skip the sleep check
 ASLEEP_RECHECK_S = 60.0    # a sleeping hidden stick: don't ask again (or preload) for this long
 VERIFY_SOON_S = 3.0        # after a flip, check the stick we left within a few seconds
@@ -183,6 +186,10 @@ class Controller:
         self.note = ""
         self.stage = {"stage": "idle", "target": None, "reason": ""}
         self.input_unknown = False
+        self._two_stick_retry_at = 0.0           # after a failed flip: two-stick mode stays off until then
+        self._home_flipped = False               # the last flip pressed HOME (its app was relaunched)
+        self._resume_task: asyncio.Task | None = None   # "did the relaunched app resume?" after a HOME flip
+        self._cec_synced_at = 0.0
         self._exit_check = None
 
     # --- devices -----------------------------------------------------------------
@@ -207,28 +214,48 @@ class Controller:
 
     async def start(self) -> None:
         self.adb_ok = await adb_available()
+        if not self.adb_ok:
+            log.warning("adb didn't answer at startup; asking again at every keepalive")
         self.load_devices()
         if self.latency_path:
             self.latency.load(self.latency_path)
-        await self.keepalive()
-        await self.sync_active_from_cec()
+        # Startup must never die on a device hiccup: the 10 s keepalive picks up whatever failed here.
+        try:
+            await self.keepalive()
+            await self.sync_active_from_cec()
+        except Exception:
+            log.exception("stick startup check failed; keepalive will retry")
 
-    async def sync_active_from_cec(self) -> None:
+    async def sync_active_from_cec(self) -> bool:
         """Which stick is the TV showing? Each stick knows if it's the HDMI-CEC active source.
-        (The TV itself isn't reachable on the network, so ask the sticks.)"""
+        (The TV itself isn't reachable on the network, so ask the sticks.) Acts only on an
+        unambiguous answer: exactly one stick says it's on screen. Returns True if it changed
+        which stick we think is on screen, or cleared an unknown TV input."""
+        on = []
         for i, s in enumerate(self.sticks):
             if not s.controllable:
                 continue
             r = await s.shell("dumpsys hdmi_control | grep -E -c 'mIsActiveSource: true'", timeout=5)
             if r.ok and r.out.strip().startswith("1"):
-                if self.active != i:
-                    log.info("TV is showing %s (CEC active source)", s.host)
-                self.active = i
-                return
+                on.append(i)
+        if len(on) != 1:
+            return False
+        i = on[0]
+        changed = self.active != i or self.input_unknown
+        if changed:
+            log.info("TV is showing %s (CEC active source)%s", self.sticks[i].host,
+                     "; TV input known again" if self.input_unknown else "")
+            if self.active != i:
+                # What we thought each stick showed no longer lines up: let them be re-tuned.
+                self.on_target = None
+                self._set_hidden(None, False)
+            self.active = i
+            self.input_unknown = False
+        return changed
 
     async def close(self) -> None:
         """App shutdown: close each stick's always-open adb shell."""
-        tasks = [t for t in (self._task, self._preload_task) if t and not t.done()]
+        tasks = [t for t in (self._task, self._preload_task, self._resume_task) if t and not t.done()]
         for task in tasks:
             task.cancel()
         if tasks:
@@ -238,16 +265,24 @@ class Controller:
 
     async def keepalive(self) -> None:
         """Reconnect any stick that dropped (reboots, Wi-Fi blips), then check the standby. Every ~10s."""
-        if not self.adb_ok or self.cfg.get("mode.dry_run", True):
+        if self.cfg.get("mode.dry_run", True):
             return
-        for s in self.sticks:
-            if s.state != "connected" or time.time() - s.last_ok > 60:
-                was = s.state
-                if await s.connect():
-                    if not s.packages:
-                        await s.identify()
-                    if was != "connected":
-                        self._forget(s)
+        if not self.adb_ok:
+            # One flaky `adb version` at startup used to disable the sticks until the next restart.
+            self.adb_ok = await adb_available()
+            if not self.adb_ok:
+                return
+        # Both sticks at once: a stick that times out (~6 s) mustn't hold up the other one.
+        await asyncio.gather(*(self._reconnect(s) for s in self.sticks))
+        # Which stick is on screen? Right away when a flip left it unknown; otherwise every ~30 s
+        # (someone used the TV remote; both sticks can't be "on screen" in our books for long).
+        if not self._busy() and not self._flipping and (
+                self.input_unknown or time.time() - self._cec_synced_at >= CEC_SYNC_S):
+            self._cec_synced_at = time.time()
+            await self.sync_active_from_cec()
+        if not self.two_stick_ok and time.time() >= self._two_stick_retry_at and not self.input_unknown:
+            self.two_stick_ok = True
+            log.info("Two-stick mode back on (the TV input is known again)")
         await self._stick_watchdog()
         await self.verify_standby()
         self._maybe_reseek()
@@ -274,6 +309,19 @@ class Controller:
                 log.info("%s (on screen) fell asleep: waking it", s.host)
                 await s.key("KEYCODE_WAKEUP")
                 self.on_target = None   # it may have stopped the stream: next switch re-tunes
+
+    async def _reconnect(self, s: Stick) -> None:
+        if s.state == "connected" and time.time() - s.last_ok <= 60:
+            return
+        was = s.state
+        try:
+            if await s.connect():
+                if not s.packages:
+                    await s.identify()
+                if was != "connected":
+                    self._forget(s)
+        except Exception:
+            log.exception("reconnecting %s failed; trying again next tick", s.host)
 
     def _forget(self, stick: Stick) -> None:
         """A stick came back from a drop (maybe a reboot): whatever we thought it showed is stale."""
@@ -434,6 +482,8 @@ class Controller:
         # it isn't. The flip takes ~1s; the new command just waits for it.
         if self._task and not self._task.done() and not self._flipping:
             self._task.cancel()
+        if self._resume_task and not self._resume_task.done():
+            self._resume_task.cancel()
         want = (target, replay_id if replay_back_s else None)
         if self._preload_task and not self._preload_task.done() and self._preloading != want:
             self._preload_task.cancel()
@@ -466,6 +516,8 @@ class Controller:
             self._task.cancel()
         if self._preload_task and not self._preload_task.done():
             self._preload_task.cancel()
+        if self._resume_task and not self._resume_task.done():
+            self._resume_task.cancel()
 
     def _ref(self, target: str) -> tuple[str, str]:
         app, _, ref = target.partition(":")
@@ -543,6 +595,7 @@ class Controller:
     async def _sleeping(self, stick: Stick) -> bool:
         """Is this stick asleep? Only asked when we haven't seen it playing lately (it costs a round trip)."""
         if time.time() - self._awake_at.get(stick.host, 0.0) < AWAKE_TRUST_S:
+            stick.mark_awake()
             return False
         r = await stick.shell("dumpsys power | grep -m1 mWakefulness=", timeout=4)
         # An unreadable power state is not evidence it is safe to wake a
@@ -550,6 +603,9 @@ class Controller:
         asleep = not bool(r.ok and re.search(r"mWakefulness=Awake\b", r.out))
         if r.ok and not asleep:
             self._awake_at[stick.host] = time.time()
+            # The tuner's own wake check trusts this, so a slow or failed second power read
+            # can't make it press WAKEUP on the hidden stick (WAKEUP can grab the TV over CEC).
+            stick.mark_awake()
         return asleep
 
     async def _wait_safe(self, may_cut: Callable[[], bool] | None) -> float | None:
@@ -680,6 +736,7 @@ class Controller:
             self._flipping = False
         if not flipped:
             self.two_stick_ok = False
+            self._two_stick_retry_at = time.time() + TWO_STICK_RETRY_S
             self._set_hidden(None, False)
             self.note = f"Two-stick mode off: couldn't switch TV input ({self.tv.last_error or 'unknown'})"
             log.warning(self.note)
@@ -696,6 +753,8 @@ class Controller:
         if old_stick is not None:
             self._awake_at[old_stick.host] = time.time()
         self._verified_at = time.time() - self._verify_every() + VERIFY_SOON_S
+        if self._home_flipped and not replay:
+            self._check_resumed_soon(hid, target)
         return Outcome(True, target, work + (time.time() - t1), f"flipped to {self.hdmi.get(hid.host)} ({path})",
                        False, time.time(), path=path, waited=waited)
 
@@ -705,6 +764,7 @@ class Controller:
         straight to the TV for a while: no wasted round trip on every flip."""
         t0 = time.monotonic()
         self.stage.update(stage="verifying_input", reason="requesting and verifying the display input")
+        self._home_flipped = False
         ok = False
         requested = self.hdmi.get(stick.host)
         if not requested:
@@ -721,6 +781,7 @@ class Controller:
             if await self._home_flip(stick):
                 self.latency.record("flip", time.monotonic() - t0)
                 self._awake_at[stick.host] = time.time()
+                self._home_flipped = True
                 return True
             r = await stick.shell("cmd hdmi_control onetouchplay", timeout=5)
             # Fire OS can return exit 0 while explaining it has no shell
@@ -747,6 +808,35 @@ class Controller:
             self.latency.record("flip", time.monotonic() - t0)
             self._awake_at[stick.host] = time.time()
         return ok
+
+    def _check_resumed_soon(self, stick: Stick, target: str) -> None:
+        """After a HOME flip the app was relaunched; make sure it really resumed the game. Runs as
+        background work, so the switch reports at once; any newer command cancels it."""
+        if self._resume_task and not self._resume_task.done():
+            self._resume_task.cancel()
+        self._resume_task = asyncio.create_task(self._check_resumed(stick, target))
+
+    async def _check_resumed(self, stick: Stick, target: str) -> None:
+        async with self._lock:
+            if self.main is not stick or self.on_target != target:
+                return
+            pkg = self._package(stick, target)
+            end = time.monotonic() + RESUME_WAIT_S
+            while time.monotonic() < end:
+                pb = await stick.playback(pkg)
+                if playback_ready(pb):
+                    stick.remember(target, pb)   # resumed the stream we confirmed before the flip
+                    return
+                await asyncio.sleep(0.5)
+            # On screen and not playing (stuck on the app's home page, a profile picker...):
+            # nothing to protect any more, so load the game again.
+            log.warning("after the flip %s didn't resume %s; loading it again", stick.host, target)
+            self.on_target = None
+            res = await self._tune(stick, target)
+            if res.ok and self.main is stick:
+                self.on_target = target
+            else:
+                log.warning("re-load after the flip failed: %s", res.error)
 
     async def _home_flip(self, stick: Stick) -> bool:
         """HOME -> <Active Source> -> TV switches to this stick; then resume its app.

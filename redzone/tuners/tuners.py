@@ -18,12 +18,17 @@ only counts once it's provably the new stream (see NewStream).
 from __future__ import annotations
 
 import asyncio
+import functools
+import logging
 import re
 import time
 from dataclasses import dataclass, field
+from typing import Callable
 
 from redzone.tuners.adb import Stick, playback_ready, same_stream
 from redzone.tuners.profiles import ProfileSelectionRequired, preference, select_profile
+
+log = logging.getLogger(__name__)
 
 PROMPTS = {
     # on-screen text (lowercase)       -> keys that clear it
@@ -33,6 +38,60 @@ PROMPTS = {
     "watch live": ["KEYCODE_DPAD_CENTER"],
 }
 LOADING = ("buffering", "connecting")
+
+
+@functools.lru_cache(maxsize=1)
+def _yttv_table():
+    from redzone.discovery.yttv import load_table
+    return load_table()
+
+
+def channel_matcher(target: str) -> Callable[[dict], bool | None] | None:
+    """For a YouTube TV channel target ("youtubetv:espn"): a check of a playback report's
+    metadata. YouTube TV puts the channel in the subtitle ("SportsCenter, ESPN, null"), and it
+    changes to the new channel as soon as the new stream starts: a faster, stronger signal than
+    waiting on the playback clock. The check returns True (names this channel and no other),
+    False (names another channel), None (no channel name to go on). channel_matcher returns None
+    for targets without a channel name (Sunday Ticket slots share a generic name; event links)."""
+    app, _, rest = (target or "").partition(":")
+    if app != "youtubetv" or not rest:
+        return None
+    try:
+        from redzone.discovery.yttv import _scores
+        table = _yttv_table()
+    except Exception:   # a bad table must never break tuning: fall back to the playback-clock rules
+        log.exception("yttv channel table unavailable")
+        return None
+    entry = table.channels.get(rest)
+    if entry is None or entry.kind == "sunday_ticket":
+        return None
+
+    def match(report: dict) -> bool | None:
+        text = (report or {}).get("subtitle") or ""
+        if not text.strip():
+            return None
+        scores = _scores(text, table)
+        top = max((sc for sc, _hit in scores.values()), default=0)
+        if top <= 0:
+            return None
+        return [k for k, (sc, _hit) in scores.items() if sc == top] == [rest]
+
+    return match
+
+
+def _same_metadata(a: dict, b: dict) -> bool:
+    ka = ((a or {}).get("title") or "", (a or {}).get("subtitle") or "")
+    kb = ((b or {}).get("title") or "", (b or {}).get("subtitle") or "")
+    return any(ka) and ka == kb
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
+
+
+def _channel_changed(a: dict, b: dict) -> bool:
+    sa, sb = _norm((a or {}).get("subtitle") or ""), _norm((b or {}).get("subtitle") or "")
+    return bool(sa and sb and sa != sb)
 
 
 class CutWindowClosed(RuntimeError):
@@ -79,12 +138,20 @@ class NewStream:
       - the app wasn't playing before the link (so it can't be the old stream), or
       - we've seen it stop / buffer since the link (the switch happened), or
       - its playback clock jumped (a different stream), or
+      - (with `expect`) the app's metadata now names the channel we asked for and the old report
+        didn't (YouTube TV: "SportsCenter, ESPN"). Confirms in ~1-2 s; the clock rules alone can
+        take a whole attempt (15 s) on a live stream with no usable positions.
     An unchanged old playback report never confirms a new target, however long we wait.
+    With `expect`, a report carrying exactly the old report's title and channel, where that
+    channel is a different one, is the old stream and never confirms either.
     This detects a playback transition; actual game identity still needs device validation.
     """
     before: dict
     gap: bool = False
     report: dict | None = None     # the report that confirmed it
+    expect: Callable[[dict], bool | None] | None = None
+    by_name: bool = False          # confirmed by the channel name in the app's metadata
+    channel_change: bool = False   # the app's subtitle is its channel (YouTube TV): a new one = new stream
 
     def check(self, pb: dict, now: float | None = None) -> bool:
         if not playback_ready(pb):
@@ -92,6 +159,20 @@ class NewStream:
             # playback state is evidence of a transition.
             self.gap = self.gap or pb.get("state") in ("buffering", "connecting", "stopped", "paused")
             return False
+        named = None
+        if self.expect is not None:
+            named = self.expect(pb)
+            if named is True and self.expect(self.before) is not True:
+                self.report, self.by_name = pb, True
+                return True
+            if named is False and _same_metadata(self.before, pb):
+                return False   # still the old stream: same title, same (other) channel
+        if self.channel_change and named is None and _channel_changed(self.before, pb):
+            # YouTube TV's subtitle is the channel; a stream never changes channel by itself (its
+            # title can, at the top of the hour, so only the channel counts). For targets with no
+            # channel name to expect (event links, Sunday Ticket codes).
+            self.report, self.by_name = pb, True
+            return True
         continuity = same_stream(self.before, pb)
         if (not playback_ready(self.before) or continuity is False
                 or (self.gap and continuity is None)):
@@ -111,6 +192,7 @@ class Tuner:
     reread_s = 1.5           # a blank screen read was too early (app still opening): look again this soon
     max_reads = 3            # screen reads per deep link, at most
     wait_for_launch = False  # `am start -W`: only for apps whose next step needs the page fully drawn
+    subtitle_is_channel = False  # the media session's subtitle names the channel (see NewStream)
 
     def url(self, ref: str) -> str:
         raise NotImplementedError
@@ -149,7 +231,7 @@ class Tuner:
             # first attempt must not confirm an unchanged stream after the second.
             if attempt > 1:
                 before = await stick.playback(pkg)
-            watch = NewStream(before)
+            watch = NewStream(before, expect=channel_matcher(target), channel_change=self.subtitle_is_channel)
             require_cut(may_cut, steps, mutating=True)
             r = await stick.view(self.url(ref), pkg, wait=self.wait_for_launch)
             if _cant_open(r.out):
@@ -184,7 +266,8 @@ class Tuner:
             while time.monotonic() - start < self.confirm_timeout:
                 pb = await stick.playback(pkg)
                 if watch.check(pb):
-                    steps.append(f"playing (confirmed by stick) after {time.monotonic() - start:.1f}s")
+                    how = f" ('{pb.get('subtitle')}' named in the app's metadata)" if watch.by_name else ""
+                    steps.append(f"playing (confirmed by stick) after {time.monotonic() - start:.1f}s{how}")
                     return True
                 now = time.monotonic()
                 if screen is not None and screen.done():
@@ -252,6 +335,7 @@ def _cant_open(out: str) -> bool:
 class YouTubeTVTuner(Tuner):
     app = "youtubetv"
     role = "youtubetv"
+    subtitle_is_channel = True   # "SportsCenter, ESPN, null" (seen on the stick, Nov 2)
 
     def url(self, ref: str) -> str:
         return f"https://tv.youtube.com/watch/{ref}"
