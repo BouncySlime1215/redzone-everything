@@ -375,7 +375,8 @@ class Controller:
                 return
         self._reasserts += 1
         self._reassert_at = now + REASSERT_GAP_S
-        target = self._unknown_target
+        # What to relaunch after HOME: what it showed when the input got lost, else its last confirmed tune.
+        target = self._unknown_target or (stick.tuned or {}).get("target")
         log.warning("TV input unknown (CEC: %s); re-asserting %s with HOME (try %d/%d)", self.cec_view,
                     stick.host, self._reasserts, REASSERT_MAX)
         async with self._lock:
@@ -402,7 +403,9 @@ class Controller:
                     r0 = time.monotonic()
                     how = await self._resume_playback(stick, target, RESUME_WAIT_S)
                     self._book_flip(stick, target, self._flip_s, time.monotonic() - r0, how)
-                    self.on_target = target if how else None
+                    # Not back yet: keep the target so the visible-stick watchdog keeps trying.
+                    self.on_target = target
+                    self._visible_bad_since = None if how else time.time()
             finally:
                 self._flipping = False
 
@@ -437,6 +440,12 @@ class Controller:
             self._schedule_visible_check(VISIBLE_STALL_S - (now - self._visible_bad_since))
             return
         if now - self._visible_fix_at < VISIBLE_FIX_GAP_S:
+            return
+        if asyncio.current_task() is not self._resume_task:
+            # Repair in its own task (up to ~30 s with a deep link), so a real switch (submit) or
+            # Pause can cancel it instead of queueing behind it on the lock.
+            if not (self._resume_task and not self._resume_task.done()):
+                self._resume_task = asyncio.create_task(self._watch_visible())
             return
         self._visible_fix_at = now
         async with self._lock:
@@ -630,8 +639,9 @@ class Controller:
         m = self.latency.median("flip")
         if m is None:
             return self._default_cost("hdmi_flip")
-        # Since flip_s is HOME -> active source only, the picture coming back (resume_s) is added.
-        return m + (self.latency.median("resume") or 0.0) + float(self.cfg.get("two_stick.input_settle_s", 1.0))
+        # flip_s is HOME -> active source (the cut). The picture coming back (resume_s) is booked
+        # separately and deliberately NOT added here: it would shift tonight's decider costs.
+        return m + float(self.cfg.get("two_stick.input_settle_s", 1.0))
 
     def switch_costs(self) -> dict[str, float]:
         """Expected seconds from "switch" to the new game on screen, per app, on the path we'd use now.
@@ -872,6 +882,7 @@ class Controller:
                 return Outcome(False, target, time.time() - t0, "replay seek failed; position unknown", False,
                                path="single")
         self.on_target = None if replay_back_s else target
+        self._visible_bad_since = None
         return Outcome(True, target, time.time() - t0, "; ".join(res.steps[-2:]), False, time.time(), path="single")
 
     async def _execute_two(self, target, replay_back_s, may_cut, t0, replay_id=None, back_at=None) -> Outcome | None:

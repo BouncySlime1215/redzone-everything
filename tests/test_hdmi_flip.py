@@ -320,8 +320,9 @@ async def test_watchdog_relinks_an_app_that_crashed_to_the_fire_tv_home(two, mon
         stick.playing = "playing"
         return await orig(stick, ref, target, may_cut)
     monkeypatch.setattr(tuner, "tune", tune)
-    await c._watch_visible()
-    await c._watch_visible()
+    await c._watch_visible()                              # first look
+    await c._watch_visible()                              # stalled: the repair runs as its own task
+    await asyncio.wait_for(asyncio.gather(c._resume_task, return_exceptions=True), 2)
     assert tuner.calls == [("a:5555", "youtubetv:fox")] and c._visible_bad_since is None
     assert not keys(c.sticks[1], "KEYCODE_HOME", "WAKEUP")
 
@@ -339,7 +340,28 @@ async def test_watchdog_stays_out_of_a_switch_and_can_be_switched_off(two, monke
     c.visible_watch_ok = lambda: False                    # e.g. a recorded session
     await c._watch_visible()
     await c._watch_visible()
+    if c._resume_task:
+        await asyncio.gather(c._resume_task, return_exceptions=True)
     assert tuner.calls == [] and not keys(c.main, "MEDIA_PLAY")
+
+
+async def test_a_switch_cancels_a_running_watchdog_repair(two, monkeypatch):
+    """A repair (deep link, up to ~30 s) must never make a real switch queue behind it."""
+    monkeypatch.setattr(ctl, "VISIBLE_STALL_S", 0.0)
+    c, tuner = two
+    live(c)
+    c.on_target = "youtubetv:fox"
+    c.main.playing = "none"
+    tuner.slow = {"youtubetv:fox": 5.0}
+    await c._watch_visible()
+    await c._watch_visible()
+    repair = c._resume_task
+    await asyncio.sleep(0.05)                             # mid deep link
+    outs = []
+    t0 = time.monotonic()
+    c.submit("youtubetv:espn", on_done=outs.append, may_cut=lambda: True)
+    await asyncio.wait_for(asyncio.gather(c._task, return_exceptions=True), 2)
+    assert repair.cancelled() and outs and time.monotonic() - t0 < 1.5
 
 
 async def test_a_switch_cancels_the_watchdog_follow_up(two, monkeypatch):
