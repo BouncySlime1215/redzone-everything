@@ -214,10 +214,9 @@ def _parse_event(league: League, ev: dict) -> GameState | None:
     if odds.get("details"):
         g.odds_text = odds["details"] + (f" · O/U {odds['overUnder']}" if odds.get("overUnder") else "")
     detail = (_get(status, "type", "detail") or "").lower()
-    if "halftime" in detail:
-        g.stoppage = Stoppage.HALFTIME
-    elif "end of" in detail or "intermission" in detail or detail.startswith("end "):
-        g.stoppage = Stoppage.END_PERIOD
+    brk = _status_break(league, g.period, detail)
+    if brk is not None:
+        g.stoppage = brk
     elif g.phase == Phase.LIVE:
         g.stoppage = Stoppage.UNKNOWN
 
@@ -583,7 +582,20 @@ def _live_overrides(g: GameState, data: dict, comp: dict, ids: dict) -> None:
     if clock is not None and g.league != League.MLB and g.phase == Phase.LIVE:
         g.clock_s = clock
     detail = (_get(status, "type", "detail") or "").lower()
+    brk = _status_break(g.league, g.period, detail, allow_bare_end=False)
+    # Never downgrade a long break the play-by-play already proved (halftime, NHL intermission).
+    if brk is not None and g.stoppage not in (Stoppage.HALFTIME, Stoppage.INTERMISSION):
+        g.stoppage = brk
+
+
+def _status_break(league: League, period: int | None, detail: str,
+                  allow_bare_end: bool = True) -> Stoppage | None:
+    """The break a status detail ('Halftime', 'End of 1st', '2nd Intermission') describes.
+    NHL ends of the 1st and 2nd are the ~18-minute intermissions, not a short period break."""
     if "halftime" in detail:
-        g.stoppage = Stoppage.HALFTIME
-    elif "end of" in detail or "intermission" in detail:
-        g.stoppage = Stoppage.END_PERIOD
+        return Stoppage.HALFTIME
+    if "end of" in detail or "intermission" in detail or (allow_bare_end and detail.startswith("end ")):
+        if league == League.NHL and (period or 0) in (1, 2):
+            return Stoppage.INTERMISSION
+        return Stoppage.END_PERIOD
+    return None
