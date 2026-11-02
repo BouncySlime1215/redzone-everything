@@ -121,3 +121,18 @@ def test_guaranteed_break_budget_uses_earliest_uncertain_start(dec, clock):
     tl.events.append(Event(clock.t - 50, 'stop_start', 'end_period', spread=40))
     # Start could be90s ago, minimum120s, screen delay40±2s =>68s guaranteed left.
     assert dec._break_remaining('game', {'game': candidate('game')}, clock.t) == 68
+
+
+def test_agreeing_taps_cannot_shrink_delay_doubt_below_the_tap_floor():
+    """Tonight's case: three "I just saw it" taps a second apart. They share a bias the spread
+    can't see, so the stated sigma stays >= MIN_TAP_SIGMA_S (2*sigma covers an 8 s real error)."""
+    from redzone.decider.screen import MIN_TAP_SIGMA_S, DelayBook
+    book = DelayBook({"espn": 40.0}, sigma_default=15.0, clock=lambda: 1000.0)
+    for v in (52.0, 53.0, 52.5):
+        d = book.calibrate("espn:mnf", v)
+    assert d.mu == 52.5
+    assert d.sigma == MIN_TAP_SIGMA_S >= 4.0
+    # A real disagreement still widens it past the floor.
+    for v in (40.0, 64.0):
+        d = book.calibrate("espn:mnf", v)
+    assert d.sigma == 12.0
