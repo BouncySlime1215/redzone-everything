@@ -270,12 +270,16 @@ class Stick:
                 break
         return result
 
-    async def view(self, url: str, package: str, wait: bool = False) -> RunResult:
+    async def view(self, url: str, package: str, wait: bool = False, fresh: bool = False) -> RunResult:
         """Send a deep link. Plain `am start` returns as soon as the app has the link (~0.1 s);
-        wait=True adds `-W`: return only once the app has finished opening (1-3 s)."""
+        wait=True adds `-W`: return only once the app has finished opening (1-3 s).
+        fresh=True launches it as a new task (NEW_TASK|CLEAR_TOP), for an app sitting in the
+        background (the hidden stick after a HOME flip), where Android otherwise just
+        "brings it to the front" without handing it the link."""
         url = url.replace("'", "")
         w = "-W " if wait else ""
-        return await self.shell(f"am start {w}-a android.intent.action.VIEW -d '{url}' {package}",
+        f = "-f 0x14000000 " if fresh else ""
+        return await self.shell(f"am start {w}{f}-a android.intent.action.VIEW -d '{url}' {package}",
                                 timeout=15 if wait else 8)
 
     # --- awake / what's on -----------------------------------------------------------

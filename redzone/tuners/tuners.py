@@ -161,8 +161,13 @@ class Tuner:
                 return TuneResult(False, target, time.monotonic() - t0, steps,
                                   "deep link failed; playback is unconfirmed")
             if "brought to the front" in r.out.lower():
-                return TuneResult(False, target, time.monotonic() - t0, steps,
-                                  "the app did not accept the game link")
+                # The app was in the background (e.g. the hidden stick after a HOME flip): resend
+                # the link as a fresh task so it actually opens it.
+                r = await stick.view(self.url(ref), pkg, wait=self.wait_for_launch, fresh=True)
+                steps.append("app was in the background: resent the link as a new task")
+                if not r.ok:   # Android prints the same warning even when the fresh launch works
+                    return TuneResult(False, target, time.monotonic() - t0, steps,
+                                      "the app did not accept the game link")
             if await self._confirm(stick, pkg, steps, watch, may_cut):
                 stick.remember(target, watch.report or {})
                 return TuneResult(True, target, time.monotonic() - t0, steps)

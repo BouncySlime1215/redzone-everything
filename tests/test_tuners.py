@@ -320,10 +320,10 @@ async def test_a_link_android_didnt_deliver_fails_without_remembering_wrong_game
     old = yt(3, 1000, 5000)
     st = ScriptedStick(now=old, after=[old])
     st.am_reply = "Warning: Activity not started, its current task has been brought to the front"
-    t0 = time.monotonic()
     res = await quick().tune(st, "CODE", "youtubetv:fox")
-    assert not res.ok and time.monotonic() - t0 < 0.3
-    assert st.tuned is None and len(st.links()) == 1
+    # A backgrounded app gets the link resent as a fresh task; if video still never starts, fail.
+    assert not res.ok and any("resent the link as a new task" in x for x in res.steps)
+    assert st.tuned is None
 
 
 async def test_failed_launch_never_confirms_or_repeats_uncertain_command():
