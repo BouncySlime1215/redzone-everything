@@ -88,19 +88,22 @@ class DelayBook:
 
 
 _MARKERS = ("timeout", "end_", "two-minute", "period_end", "period_start", "start_inning",
-            "start_batter", "end_batter", "coin_toss", "end_game", "end_period", "stoppage",
-            # Dead-ball entries that happen DURING a whistle, not action that ends it. Without these,
-            # every free throw "ended" the stoppage and NBA whistles became too short to ever cut in.
-            "foul", "substitution", "violation", "kicked_ball", "technical", "flagrant", "delay",
-            "free_throw_-_1_of_2", "free_throw_-_1_of_3", "free_throw_-_2_of_3",
-            "hooking", "holding", "tripping", "roughing", "interference", "slashing", "high-sticking",
-            "fighting", "unsportsmanlike", "cross-checking", "too_many")
+            "start_batter", "end_batter", "coin_toss", "end_game", "end_period", "stoppage")
+# Dead-ball entries that happen DURING a whistle, not action that ends it. Without these, every
+# free throw "ended" the stoppage and NBA whistles became too short to ever cut in. Per league on
+# purpose: "foul" in baseball is a live pitch ("foul ball") — matching it everywhere caused a cut.
+_DEAD_BALL = {
+    League.NBA: ("foul", "substitution", "violation", "kicked_ball", "technical", "flagrant", "delay",
+                 "free_throw_-_1_of_2", "free_throw_-_1_of_3", "free_throw_-_2_of_3"),
+    League.NHL: ("hooking", "holding", "tripping", "roughing", "interference", "slashing", "high-sticking",
+                 "fighting", "unsportsmanlike", "cross-checking", "too_many", "delay"),
+}
 
 
-def _is_marker(kind: str) -> bool:
-    """Bookkeeping entries in play-by-play (timeouts, period ends), not action on the field."""
+def _is_marker(kind: str, league: League | None = None) -> bool:
+    """Bookkeeping entries in play-by-play (timeouts, period ends, dead-ball entries), not action."""
     k = (kind or "").lower()
-    return any(m in k for m in _MARKERS)
+    return any(m in k for m in _MARKERS) or any(m in k for m in _DEAD_BALL.get(league, ()))
 
 
 def _t(p, now: float) -> float:
@@ -177,7 +180,7 @@ class Timeline:
             plays.append(g.last_play)
         new = [p for p in plays if p.id and p.id not in self._seen_ids]
         first_poll = not self._seen_ids
-        action = [p for p in new if not _is_marker(p.kind)]
+        action = [p for p in new if not _is_marker(p.kind, self.league)]
         for p in action:
             # First poll: skip history, but keep plays recent enough to still be airing
             # (an opening-kickoff return TD is in the very first poll of a game).

@@ -313,3 +313,10 @@ def test_backtest_knobs_are_seeded(slates, real_cfg):
     a = _cuts(slates, real_cfg, "ARI @ SEA", **kw).summary
     b = _cuts(slates, real_cfg, "ARI @ SEA", **kw).summary
     assert a == b
+
+
+def test_baseball_foul_ball_is_a_live_pitch_not_a_dead_ball():
+    from redzone.decider.screen import _is_marker
+    assert not _is_marker("foul_ball", League.MLB)        # a pitch: you can't cut during it
+    assert _is_marker("personal_foul", League.NBA)        # a whistle in basketball
+    assert not _is_marker("foul_ball", None) and _is_marker("full_timeout", League.MLB)
