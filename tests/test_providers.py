@@ -670,3 +670,37 @@ async def test_backgrounded_app_fresh_launch_failure_is_reported():
                    launch_out=lambda cmd: "Error: boom" if "0x14000000" in cmd else FRONT)
     res = await tuner(more.FuboTuner, Clock()).tune(st, "10179", "fubo:10179")
     assert not res.ok and res.error == "the app did not accept the game link" and len(st.launches) == 2
+
+
+async def test_launcher_promo_text_is_not_read_as_the_apps_wall():
+    class Inner:
+        app = role = "youtubetv"
+
+        async def tune(self, stick, ref, target):
+            return TuneResult(False, target, 1.0, ["deep link #1: ok"], "video never started")
+
+    st = FakeStick({"youtubetv": "com.amazon.firetv.youtube.tv"}, screen="Start your free trial | Sign in | Subscribe")
+
+    async def launcher():
+        return "com.amazon.tv.launcher/.ui.HomeActivity"
+    st.foreground = launcher
+    res = await more.DiagnosingTuner(Inner()).tune(st, "AAAAAAAAAAA", "youtubetv:espn")
+    assert res.error == "video never started" and prov.parse_verdict(res.error) is None
+    assert any("not in front" in s for s in res.steps)
+
+    async def yttv():
+        return "com.amazon.firetv.youtube.tv/dev.cobalt.app.MainActivity"
+    st.foreground = yttv
+    res = await more.DiagnosingTuner(Inner()).tune(st, "AAAAAAAAAAA", "youtubetv:espn")
+    assert res.error.startswith("YouTube TV: signed out")      # the app's own wall is still named
+
+
+async def test_app_tuner_never_stops_or_presses_on_the_launcher():
+    st = FakeStick({"peacock": "com.peacock.peacockfiretv"}, screen="Start your free trial | Sign In | Watch Live")
+
+    async def launcher():
+        return "com.amazon.tv.launcher/.ui.HomeActivity"
+    st.foreground = launcher
+    res = await tuner(more.PeacockTuner, Clock()).tune(st, OKC_CLE_MAIN, "peacock:x")
+    assert not res.ok and prov.parse_verdict(res.error) is None and not st.keys[1:]
+    assert any("not in front" in s for s in res.steps)
