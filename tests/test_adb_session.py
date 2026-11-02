@@ -304,6 +304,10 @@ async def test_screen_text_never_returns_a_stale_dump(monkeypatch):
     st = new_stick()
     sent = []
 
+    async def no_ocr():
+        return ""
+    monkeypatch.setattr(st, "ocr_text", no_ocr)
+
     async def run(*args, timeout=8.0):
         sent.append(args)
         return RunResult(False, '<?xml?><hierarchy><node text="Watch Live"/></hierarchy>', 0.1)
@@ -322,4 +326,33 @@ async def test_screen_text_never_returns_a_stale_dump(monkeypatch):
         return RunResult(True, "ERROR: could not get idle state.", 0.1)
 
     monkeypatch.setattr(st, "run", run_garbage)
+    assert await st.screen_text() == ""
+
+
+async def test_unreadable_app_ui_falls_back_to_ocr_only_for_known_prompts(monkeypatch):
+    from redzone.tuners.adb import RunResult
+    st = new_stick()
+    ocr = {"text": ""}
+
+    async def run(*args, timeout=8.0):          # Cobalt: a valid dump with no text in it
+        return RunResult(True, '<?xml?><hierarchy><node text="" bounds="[0,0][1,1]"/></hierarchy>', 0.1)
+
+    async def ocr_text():
+        return ocr["text"]
+    monkeypatch.setattr(st, "run", run)
+    monkeypatch.setattr(st, "ocr_text", ocr_text)
+    ocr["text"] = "Who’s watching? | Serge | Nick | Add profile"
+    assert "Serge" in await st.screen_text()
+    ocr["text"] = "Are you still watching? | Yes"
+    assert "still watching" in await st.screen_text()
+    ocr["text"] = "SportsCenter | Continue watching | Watch live"   # never hand arbitrary OCR text to the tuners
+    assert await st.screen_text() == ""
+
+    async def broken():
+        raise OSError("no adb")
+    monkeypatch.setattr(st, "ocr_text", broken)
+    assert await st.screen_text() == ""
+    monkeypatch.setattr(adb, "OCR_FALLBACK", False)
+    monkeypatch.setattr(st, "ocr_text", ocr_text)
+    ocr["text"] = "Who's watching? | Serge"
     assert await st.screen_text() == ""
