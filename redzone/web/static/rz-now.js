@@ -4,12 +4,13 @@
 import {
   app, ACTIONS, attr, esc, num, get, arr, games, gameById, status, pairInks, fmtAgo, fmtTime, fmtStart, nowS,
   reduceMotion, SPRING, EASE_OUT, ink, teamBy, whereLabel,
-} from "./rz-core.js?v=32";
-import { patch } from "./rz-dom.js?v=32";
-import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=32";
-import { heroCard, fantasyCard } from "./rz-cards.js?v=32";
-import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=32";
-import { act } from "./rz-api.js?v=32";
+} from "./rz-core.js?v=36";
+import { patch } from "./rz-dom.js?v=36";
+import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=36";
+import { heroCard, fantasyCard } from "./rz-cards.js?v=36";
+import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=36";
+import { act } from "./rz-api.js?v=36";
+import { screenEvidence } from "./rz-evidence.js?v=36";
 
 const STATE_LABEL = { idle: "Idle", watching: "Watching", locked: "Locked in", break: "On a break", paused: "Paused",
   frozen: "Holding still", safe: "Safe mode", replay: "Replay" };
@@ -31,6 +32,7 @@ export function renderNow(root) {
   const html = [
     modeRow(S),
     n ? `<div class="hero-wrap" data-key="hero-wrap">${heroCard(n, g, S)}</div>` : idle(S),
+    screenEvidence(S),
     dock(S),
     standby(S),
     nextUp(S),
@@ -117,7 +119,7 @@ function idle(S) {
   const first = up.find((g) => g.mine) && up[0] && up.find((g) => g.mine).start_time - up[0].start_time < 1800 ? up.find((g) => g.mine) : up[0];
   const liveN = all.filter((g) => g.phase === "live").length;
   const title = liveN ? "Picking a game" : up.length ? "Nothing live yet" : "Quiet night";
-  const body = liveN ? "Autopilot is lining up the best game on." : up.length ? "Autopilot takes over the moment the first game starts." : "No games on the schedule right now.";
+  const body = S.mode?.dry_run ? "Dry run previews the choices without changing your TV." : liveN ? "Autopilot is lining up the best game on." : up.length ? "Autopilot takes over when a game starts and TV control is ready." : "No games on the schedule right now.";
   const nextCard = first ? `<div class="idle-next" data-act="open-game" data-gid="${attr(first.id)}" role="button">
       <div>${logo(first.away, { size: 52, dark: true })}<div class="ab">${esc(get(first, "away.abbr"))}</div></div>
       <div><div class="cd" data-clockdown="${num(first.start_time)}" data-own>${esc(countdown(first.start_time))}</div><div class="when">${esc(fmtStart(first.start_time))}${first.league ? ` · ${first.league.toUpperCase()}` : ""}</div></div>

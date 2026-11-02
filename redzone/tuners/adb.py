@@ -253,9 +253,13 @@ class Stick:
             return None
         return f"HDMI{m.group(1) or m.group(2)}"
 
-    async def key(self, *codes: str) -> None:
+    async def key(self, *codes: str) -> RunResult:
+        result = RunResult(True, "", 0.0)
         for c in codes:
-            await self.shell(f"input keyevent {c}", timeout=4)
+            result = await self.shell(f"input keyevent {c}", timeout=4)
+            if not result.ok:
+                break
+        return result
 
     async def view(self, url: str, package: str, wait: bool = False) -> RunResult:
         """Send a deep link. Plain `am start` returns as soon as the app has the link (~0.1 s);
@@ -270,7 +274,7 @@ class Stick:
     def mark_awake(self) -> None:
         self._awake_at = time.monotonic()
 
-    async def ensure_awake(self) -> bool:
+    async def ensure_awake(self, may_cut=None) -> bool:
         """Press WAKEUP only if the stick is really asleep (or dozing / screensaver). Asking costs
         ~50 ms and the answer is trusted for a minute; a key press costs ~300 ms because Android
         starts a small program for each one. Can't tell -> press it anyway (the old, safe behavior).
@@ -281,6 +285,10 @@ class Stick:
         m = re.search(r"mWakefulness=(\w+)", r.out)
         asleep = not (m and m.group(1) == "Awake")
         if asleep:
+            # The power query can take seconds; a safe gap checked by the caller
+            # before that read may have closed. Waking can steal HDMI via CEC.
+            if may_cut is not None and not may_cut():
+                return False
             await self.key("KEYCODE_WAKEUP")
         self.mark_awake()
         return asleep
@@ -391,8 +399,13 @@ class AdbShell:
             proc.stdin.write(line.encode())
             await proc.stdin.drain()
         except (ConnectionError, OSError) as e:
-            self._kill()                   # nothing was reading: the command never ran
-            return NOT_SENT, RunResult(False, f"adb shell closed ({e})", time.monotonic() - t0)
+            # write/drain may fail AFTER bytes reached adb. Retrying a mutation
+            # here could launch twice, rewind twice, or flip the input twice.
+            self._kill()
+            return LOST, RunResult(False, f"adb shell outcome unknown ({e})", time.monotonic() - t0)
+        except BaseException:
+            self._kill()  # cancellation during drain must not leave a live command behind
+            raise
         end = f"\n{marker} ".encode()
         try:
             async with asyncio.timeout(timeout):

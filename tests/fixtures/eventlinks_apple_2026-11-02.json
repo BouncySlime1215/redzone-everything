@@ -1,0 +1,763 @@
+{
+ "_about": "Apple TV UTS responses saved 2026-11-02, trimmed to the fields eventlinks reads. shelves[term] = shelves/uts.col.search.SE?searchTerm=<term>; events[id] = sporting-events/<id>.",
+ "shelves": {
+  "nba": {
+   "data": {
+    "shelf": {
+     "items": [
+      {
+       "id": "umc.cse.1xkb26oj1fnifcpnmf5r15w14",
+       "type": "SportingEvent",
+       "leagueAbbreviation": "nba",
+       "title": "Oklahoma City Thunder at Cleveland Cavaliers",
+       "url": "https://tv.apple.com/us/sporting-event/oklahoma-city-thunder-at-cleveland-cavaliers/umc.cse.1xkb26oj1fnifcpnmf5r15w14",
+       "eventTime": {
+        "gameKickOffStartTime": 1793664000000
+       },
+       "competitors": [
+        {
+         "name": "Oklahoma City Thunder",
+         "nickname": "Thunder",
+         "shortName": "Thunder",
+         "abbreviation": "OKC",
+         "isHome": false
+        },
+        {
+         "name": "Cleveland Cavaliers",
+         "nickname": "Cavaliers",
+         "shortName": "Cavaliers",
+         "abbreviation": "CLE",
+         "isHome": true
+        }
+       ]
+      },
+      {
+       "id": "umc.cse.4vtmy8md3rfeo8x2iqwtrul0y",
+       "type": "SportingEvent",
+       "leagueAbbreviation": "nba",
+       "title": "Washington Wizards at Orlando Magic",
+       "url": "https://tv.apple.com/us/sporting-event/washington-wizards-at-orlando-magic/umc.cse.4vtmy8md3rfeo8x2iqwtrul0y",
+       "eventTime": {
+        "gameKickOffStartTime": 1793665800000
+       },
+       "competitors": [
+        {
+         "name": "Washington Wizards",
+         "nickname": "Wizards",
+         "shortName": "Wizards",
+         "abbreviation": "WAS",
+         "isHome": false
+        },
+        {
+         "name": "Orlando Magic",
+         "nickname": "Magic",
+         "shortName": "Magic",
+         "abbreviation": "ORL",
+         "isHome": true
+        }
+       ],
+       "playables": [
+        {
+         "id": "tvs.sbd.1000310:0022600162:81686b6c",
+         "channelId": "tvs.sbd.1000310",
+         "serviceName": "NBA",
+         "externalServiceId": "com.apple.nba.int.service.US",
+         "externalId": "0022600162",
+         "punchoutUrls": {
+          "play": "gametime://game/0022600162?source=atv-search"
+         },
+         "isGeoRestricted": true,
+         "title": "Wizards at Magic"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "nfl": {
+   "data": {
+    "shelf": {
+     "items": [
+      {
+       "id": "umc.cse.6nas56cfxa5vl6v3zc61r6wnf",
+       "type": "SportingEvent",
+       "leagueAbbreviation": "nfl",
+       "title": "Chicago Bears at Seattle Seahawks",
+       "url": "https://tv.apple.com/us/sporting-event/chicago-bears-at-seattle-seahawks/umc.cse.6nas56cfxa5vl6v3zc61r6wnf",
+       "eventTime": {
+        "gameKickOffStartTime": 1793668500000
+       },
+       "competitors": [
+        {
+         "name": "Chicago Bears",
+         "nickname": "Bears",
+         "shortName": "Bears",
+         "abbreviation": "CHI",
+         "isHome": false
+        },
+        {
+         "name": "Seattle Seahawks",
+         "nickname": "Seahawks",
+         "shortName": "Seahawks",
+         "abbreviation": "SEA",
+         "isHome": true
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "nhl": {
+   "data": {
+    "shelf": {
+     "items": [
+      {
+       "id": "umc.cse.4zs9l3macrlw6c1k5eioz4awm",
+       "type": "SportingEvent",
+       "leagueAbbreviation": "nhl",
+       "title": "Detroit Red Wings at Florida Panthers",
+       "url": "https://tv.apple.com/us/sporting-event/detroit-red-wings-at-florida-panthers/umc.cse.4zs9l3macrlw6c1k5eioz4awm",
+       "eventTime": {
+        "gameKickOffStartTime": 1793664000000
+       },
+       "competitors": [
+        {
+         "name": "Detroit Red Wings",
+         "nickname": "Red Wings",
+         "shortName": "Red Wings",
+         "abbreviation": "DET",
+         "isHome": false
+        },
+        {
+         "name": "Florida Panthers",
+         "nickname": "Panthers",
+         "shortName": "Panthers",
+         "abbreviation": "FLA",
+         "isHome": true
+        }
+       ]
+      },
+      {
+       "id": "umc.cse.49l8i4km2xo1a7s3zshtcuc8p",
+       "type": "SportingEvent",
+       "leagueAbbreviation": "nhl",
+       "title": "Chicago Blackhawks at Florida Panthers",
+       "url": "https://tv.apple.com/us/sporting-event/chicago-blackhawks-at-florida-panthers/umc.cse.49l8i4km2xo1a7s3zshtcuc8p",
+       "eventTime": {
+        "gameKickOffStartTime": 1793838600000
+       },
+       "competitors": [
+        {
+         "name": "Chicago Blackhawks",
+         "nickname": "Blackhawks",
+         "shortName": "Blackhawks",
+         "abbreviation": "CHI",
+         "isHome": false
+        },
+        {
+         "name": "Florida Panthers",
+         "nickname": "Panthers",
+         "shortName": "Panthers",
+         "abbreviation": "FLA",
+         "isHome": true
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "mlb": {
+   "data": {
+    "shelf": {
+     "items": []
+    }
+   }
+  }
+ },
+ "events": {
+  "umc.cse.1xkb26oj1fnifcpnmf5r15w14": {
+   "data": {
+    "content": {
+     "id": "umc.cse.1xkb26oj1fnifcpnmf5r15w14",
+     "type": "SportingEvent",
+     "leagueAbbreviation": "nba",
+     "title": "Oklahoma City Thunder at Cleveland Cavaliers",
+     "url": "https://tv.apple.com/us/sporting-event/oklahoma-city-thunder-at-cleveland-cavaliers/umc.cse.1xkb26oj1fnifcpnmf5r15w14",
+     "eventTime": {
+      "gameKickOffStartTime": 1793664000000
+     },
+     "competitors": [
+      {
+       "name": "Oklahoma City Thunder",
+       "nickname": "Thunder",
+       "shortName": "Thunder",
+       "abbreviation": "OKC",
+       "isHome": false
+      },
+      {
+       "name": "Cleveland Cavaliers",
+       "nickname": "Cavaliers",
+       "shortName": "Cavaliers",
+       "abbreviation": "CLE",
+       "isHome": true
+      }
+     ]
+    },
+    "playables": {
+     "tvs.sbd.1000371:46b781f7-2e6b-30fc-83a4-65d6975379b5:f037239a": {
+      "id": "tvs.sbd.1000371:46b781f7-2e6b-30fc-83a4-65d6975379b5:f037239a",
+      "channelId": "tvs.sbd.1000371",
+      "serviceName": "Peacock Sports 2 US",
+      "externalServiceId": "com.peacock.availability.us.sports2",
+      "externalId": "46b781f7-2e6b-30fc-83a4-65d6975379b5",
+      "punchoutUrls": {
+       "open": "https://www.peacocktv.com/deeplink?deeplinkData=%7B%22pvid%22%3A%2246b781f7-2e6b-30fc-83a4-65d6975379b5%22%2C%22type%22%3A%22SLE%22%2C%22action%22%3A%22PDP%22%7D",
+       "play": "https://www.peacocktv.com/deeplink?deeplinkData=%7B%22pvid%22%3A%2246b781f7-2e6b-30fc-83a4-65d6975379b5%22%2C%22type%22%3A%22SLE%22%2C%22action%22%3A%22PLAY%22%7D"
+      },
+      "isGeoRestricted": false,
+      "title": "Performance View: OKC vs. CLE"
+     },
+     "tvs.sbd.1000371:fb28161e-3214-32be-ab33-3dff8f648c84:f037239a": {
+      "id": "tvs.sbd.1000371:fb28161e-3214-32be-ab33-3dff8f648c84:f037239a",
+      "channelId": "tvs.sbd.1000371",
+      "serviceName": "Peacock Sports 2 US",
+      "externalServiceId": "com.peacock.availability.us.sports2",
+      "externalId": "fb28161e-3214-32be-ab33-3dff8f648c84",
+      "punchoutUrls": {
+       "open": "https://www.peacocktv.com/deeplink?deeplinkData=%7B%22pvid%22%3A%22fb28161e-3214-32be-ab33-3dff8f648c84%22%2C%22type%22%3A%22SLE%22%2C%22action%22%3A%22PDP%22%7D",
+       "play": "https://www.peacocktv.com/deeplink?deeplinkData=%7B%22pvid%22%3A%22fb28161e-3214-32be-ab33-3dff8f648c84%22%2C%22type%22%3A%22SLE%22%2C%22action%22%3A%22PLAY%22%7D"
+      },
+      "isGeoRestricted": false,
+      "title": "Thunder vs. Cavaliers"
+     },
+     "tvs.sbd.12962:amzn1.dv.gti.b1bbd56d-e59e-4b26-a791-9f633d0695e9:ab29672e": {
+      "id": "tvs.sbd.12962:amzn1.dv.gti.b1bbd56d-e59e-4b26-a791-9f633d0695e9:ab29672e",
+      "channelId": "tvs.sbd.12962",
+      "serviceName": "Amazon Prime Video Sports US",
+      "externalServiceId": "com.amazon.video.vod.sports.US",
+      "externalId": "amzn1.dv.gti.b1bbd56d-e59e-4b26-a791-9f633d0695e9",
+      "punchoutUrls": {
+       "open": "aiv://aiv/detail?gti=amzn1.dv.gti.0c2a4014-3879-491d-aaea-487fe6898f62&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.b1bbd56d-e59e-4b26-a791-9f633d0695e9&refMarker=atv_dvm_liv_apl_us_bd_l_src_av",
+       "play": "aiv://aiv/detail?gti=amzn1.dv.gti.0c2a4014-3879-491d-aaea-487fe6898f62&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.b1bbd56d-e59e-4b26-a791-9f633d0695e9&refMarker=atv_dvm_liv_apl_us_bd_l_src_av"
+      },
+      "isGeoRestricted": true,
+      "title": "Thunder vs. Cavaliers"
+     },
+     "tvs.sbd.1000371:560c6bf9-da8d-3426-8d59-7ff3d5ad1647:81f6cfdc": {
+      "id": "tvs.sbd.1000371:560c6bf9-da8d-3426-8d59-7ff3d5ad1647:81f6cfdc",
+      "channelId": "tvs.sbd.1000371",
+      "serviceName": "Peacock Sports 2 US",
+      "externalServiceId": "com.peacock.availability.us.sports2",
+      "externalId": "560c6bf9-da8d-3426-8d59-7ff3d5ad1647",
+      "punchoutUrls": {
+       "open": "https://www.peacocktv.com/deeplink?deeplinkData=%7B%22pvid%22%3A%22560c6bf9-da8d-3426-8d59-7ff3d5ad1647%22%2C%22type%22%3A%22SLE%22%2C%22action%22%3A%22PDP%22%7D",
+       "play": "https://www.peacocktv.com/deeplink?deeplinkData=%7B%22pvid%22%3A%22560c6bf9-da8d-3426-8d59-7ff3d5ad1647%22%2C%22type%22%3A%22SLE%22%2C%22action%22%3A%22PLAY%22%7D"
+      },
+      "isGeoRestricted": false,
+      "title": "Action Cams: OKC vs. CLE"
+     },
+     "tvs.sbd.12962:amzn1.dv.gti.1e817e68-405c-4ce2-b16c-7de01e5893ec:ab29672e": {
+      "id": "tvs.sbd.12962:amzn1.dv.gti.1e817e68-405c-4ce2-b16c-7de01e5893ec:ab29672e",
+      "channelId": "tvs.sbd.12962",
+      "serviceName": "Amazon Prime Video Sports US",
+      "externalServiceId": "com.amazon.video.vod.sports.US",
+      "externalId": "amzn1.dv.gti.1e817e68-405c-4ce2-b16c-7de01e5893ec",
+      "punchoutUrls": {
+       "open": "aiv://aiv/detail?gti=amzn1.dv.gti.0c2a4014-3879-491d-aaea-487fe6898f62&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.1e817e68-405c-4ce2-b16c-7de01e5893ec&refMarker=atv_dvm_liv_apl_us_bd_l_src_av",
+       "play": "aiv://aiv/detail?gti=amzn1.dv.gti.0c2a4014-3879-491d-aaea-487fe6898f62&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.1e817e68-405c-4ce2-b16c-7de01e5893ec&refMarker=atv_dvm_liv_apl_us_bd_l_src_av"
+      },
+      "isGeoRestricted": false,
+      "title": "Thunder vs. Cavaliers"
+     }
+    },
+    "channels": {
+     "tvs.sbd.1000371": {
+      "name": "Peacock",
+      "appName": "Peacock TV: Stream TV & Movies",
+      "appBundleIds": [
+       "com.peacocktv.peacock"
+      ]
+     },
+     "tvs.sbd.12962": {
+      "name": "Prime Video",
+      "appName": "Amazon Prime Video",
+      "appBundleIds": [
+       "com.amazon.aiv.AIVApp"
+      ]
+     }
+    }
+   }
+  },
+  "umc.cse.4vtmy8md3rfeo8x2iqwtrul0y": {
+   "data": {
+    "content": {
+     "id": "umc.cse.4vtmy8md3rfeo8x2iqwtrul0y",
+     "type": "SportingEvent",
+     "leagueAbbreviation": "nba",
+     "title": "Washington Wizards at Orlando Magic",
+     "url": "https://tv.apple.com/us/sporting-event/washington-wizards-at-orlando-magic/umc.cse.4vtmy8md3rfeo8x2iqwtrul0y",
+     "eventTime": {
+      "gameKickOffStartTime": 1793665800000
+     },
+     "competitors": [
+      {
+       "name": "Washington Wizards",
+       "nickname": "Wizards",
+       "shortName": "Wizards",
+       "abbreviation": "WAS",
+       "isHome": false
+      },
+      {
+       "name": "Orlando Magic",
+       "nickname": "Magic",
+       "shortName": "Magic",
+       "abbreviation": "ORL",
+       "isHome": true
+      }
+     ]
+    },
+    "playables": {
+     "tvs.sbd.12962:amzn1.dv.gti.d58d10d8-85b5-47b3-a708-325b211bab7d:7ee04876": {
+      "id": "tvs.sbd.12962:amzn1.dv.gti.d58d10d8-85b5-47b3-a708-325b211bab7d:7ee04876",
+      "channelId": "tvs.sbd.12962",
+      "serviceName": "Amazon Prime Video Sports US",
+      "externalServiceId": "com.amazon.video.vod.sports.US",
+      "externalId": "amzn1.dv.gti.d58d10d8-85b5-47b3-a708-325b211bab7d",
+      "punchoutUrls": {
+       "open": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.d58d10d8-85b5-47b3-a708-325b211bab7d&refMarker=atv_dvm_liv_apl_us_bd_l_src_av",
+       "play": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.d58d10d8-85b5-47b3-a708-325b211bab7d&refMarker=atv_dvm_liv_apl_us_bd_l_src_av"
+      },
+      "isGeoRestricted": true,
+      "title": "Wizards vs. Magic"
+     },
+     "tvs.sbd.11280:nw6wwnseh1ek1gg9pimxtwe39:a522e043": {
+      "id": "tvs.sbd.11280:nw6wwnseh1ek1gg9pimxtwe39:a522e043",
+      "channelId": "tvs.sbd.11280",
+      "serviceName": "DAZN US",
+      "externalServiceId": "com.dazn.service.us",
+      "externalId": "nw6wwnseh1ek1gg9pimxtwe39",
+      "punchoutUrls": {
+       "open": "open.dazn.com://media/open/nw6wwnseh1ek1gg9pimxtwe39",
+       "play": "open.dazn.com://media/open/nw6wwnseh1ek1gg9pimxtwe39"
+      },
+      "isGeoRestricted": true,
+      "title": "Wizards @ Magic"
+     },
+     "tvs.sbd.12962:amzn1.dv.gti.e2f3cfb0-b415-4748-b124-315f78a1b939:7ee04876": {
+      "id": "tvs.sbd.12962:amzn1.dv.gti.e2f3cfb0-b415-4748-b124-315f78a1b939:7ee04876",
+      "channelId": "tvs.sbd.12962",
+      "serviceName": "Amazon Prime Video Sports US",
+      "externalServiceId": "com.amazon.video.vod.sports.US",
+      "externalId": "amzn1.dv.gti.e2f3cfb0-b415-4748-b124-315f78a1b939",
+      "punchoutUrls": {
+       "open": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.e2f3cfb0-b415-4748-b124-315f78a1b939&refMarker=atv_dvm_liv_apl_us_bd_l_src_av",
+       "play": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.e2f3cfb0-b415-4748-b124-315f78a1b939&refMarker=atv_dvm_liv_apl_us_bd_l_src_av"
+      },
+      "isGeoRestricted": false,
+      "title": "Wizards vs. Magic"
+     },
+     "tvs.sbd.11280:1jezff8i6m38u1tyhbb40o2mgy:a522e043": {
+      "id": "tvs.sbd.11280:1jezff8i6m38u1tyhbb40o2mgy:a522e043",
+      "channelId": "tvs.sbd.11280",
+      "serviceName": "DAZN US",
+      "externalServiceId": "com.dazn.service.us",
+      "externalId": "1jezff8i6m38u1tyhbb40o2mgy",
+      "punchoutUrls": {
+       "open": "open.dazn.com://media/open/1jezff8i6m38u1tyhbb40o2mgy",
+       "play": "open.dazn.com://media/open/1jezff8i6m38u1tyhbb40o2mgy"
+      },
+      "isGeoRestricted": true,
+      "title": "Wizards @ Magic"
+     },
+     "tvs.sbd.12962:amzn1.dv.gti.b6cc540c-fe92-4868-899f-3305290f7a49:7ee04876": {
+      "id": "tvs.sbd.12962:amzn1.dv.gti.b6cc540c-fe92-4868-899f-3305290f7a49:7ee04876",
+      "channelId": "tvs.sbd.12962",
+      "serviceName": "Amazon Prime Video Sports US",
+      "externalServiceId": "com.amazon.video.vod.sports.US",
+      "externalId": "amzn1.dv.gti.b6cc540c-fe92-4868-899f-3305290f7a49",
+      "punchoutUrls": {
+       "open": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.b6cc540c-fe92-4868-899f-3305290f7a49&refMarker=atv_dvm_liv_apl_us_bd_l_src_av",
+       "play": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.b6cc540c-fe92-4868-899f-3305290f7a49&refMarker=atv_dvm_liv_apl_us_bd_l_src_av"
+      },
+      "isGeoRestricted": true,
+      "title": "Wizards vs. Magic"
+     },
+     "tvs.sbd.1000310:0022600162:81686b6c": {
+      "id": "tvs.sbd.1000310:0022600162:81686b6c",
+      "channelId": "tvs.sbd.1000310",
+      "serviceName": "NBA",
+      "externalServiceId": "com.apple.nba.int.service.US",
+      "externalId": "0022600162",
+      "punchoutUrls": {
+       "play": "gametime://game/0022600162?source=atv-search"
+      },
+      "isGeoRestricted": true,
+      "title": "Wizards at Magic"
+     },
+     "tvs.sbd.12962:amzn1.dv.gti.bb55385e-bfe3-406c-b9f0-3312eb361657:7ee04876": {
+      "id": "tvs.sbd.12962:amzn1.dv.gti.bb55385e-bfe3-406c-b9f0-3312eb361657:7ee04876",
+      "channelId": "tvs.sbd.12962",
+      "serviceName": "Amazon Prime Video Sports US",
+      "externalServiceId": "com.amazon.video.vod.sports.US",
+      "externalId": "amzn1.dv.gti.bb55385e-bfe3-406c-b9f0-3312eb361657",
+      "punchoutUrls": {
+       "open": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.bb55385e-bfe3-406c-b9f0-3312eb361657&refMarker=atv_dvm_liv_apl_us_bd_l_src_av",
+       "play": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.bb55385e-bfe3-406c-b9f0-3312eb361657&refMarker=atv_dvm_liv_apl_us_bd_l_src_av"
+      },
+      "isGeoRestricted": true,
+      "title": "Wizards vs. Magic"
+     },
+     "tvs.sbd.12962:amzn1.dv.gti.7eb1c305-b9e7-4860-97d6-cabc0e8215e1:7ee04876": {
+      "id": "tvs.sbd.12962:amzn1.dv.gti.7eb1c305-b9e7-4860-97d6-cabc0e8215e1:7ee04876",
+      "channelId": "tvs.sbd.12962",
+      "serviceName": "Amazon Prime Video Sports US",
+      "externalServiceId": "com.amazon.video.vod.sports.US",
+      "externalId": "amzn1.dv.gti.7eb1c305-b9e7-4860-97d6-cabc0e8215e1",
+      "punchoutUrls": {
+       "open": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.7eb1c305-b9e7-4860-97d6-cabc0e8215e1&refMarker=atv_dvm_liv_apl_us_bd_l_src_av",
+       "play": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.7eb1c305-b9e7-4860-97d6-cabc0e8215e1&refMarker=atv_dvm_liv_apl_us_bd_l_src_av"
+      },
+      "isGeoRestricted": true,
+      "title": "Wizards vs. Magic"
+     },
+     "tvs.sbd.12962:amzn1.dv.gti.8f582809-9859-4f9a-98e8-eb5bf5ed2710:7ee04876": {
+      "id": "tvs.sbd.12962:amzn1.dv.gti.8f582809-9859-4f9a-98e8-eb5bf5ed2710:7ee04876",
+      "channelId": "tvs.sbd.12962",
+      "serviceName": "Amazon Prime Video Sports US",
+      "externalServiceId": "com.amazon.video.vod.sports.US",
+      "externalId": "amzn1.dv.gti.8f582809-9859-4f9a-98e8-eb5bf5ed2710",
+      "punchoutUrls": {
+       "open": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.8f582809-9859-4f9a-98e8-eb5bf5ed2710&refMarker=atv_dvm_liv_apl_us_bd_l_src_av",
+       "play": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.8f582809-9859-4f9a-98e8-eb5bf5ed2710&refMarker=atv_dvm_liv_apl_us_bd_l_src_av"
+      },
+      "isGeoRestricted": true,
+      "title": "Wizards vs. Magic"
+     },
+     "tvs.sbd.12962:amzn1.dv.gti.67792d8e-57b9-4eac-bdee-30f831641ec1:7ee04876": {
+      "id": "tvs.sbd.12962:amzn1.dv.gti.67792d8e-57b9-4eac-bdee-30f831641ec1:7ee04876",
+      "channelId": "tvs.sbd.12962",
+      "serviceName": "Amazon Prime Video Sports US",
+      "externalServiceId": "com.amazon.video.vod.sports.US",
+      "externalId": "amzn1.dv.gti.67792d8e-57b9-4eac-bdee-30f831641ec1",
+      "punchoutUrls": {
+       "open": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.67792d8e-57b9-4eac-bdee-30f831641ec1&refMarker=atv_dvm_liv_apl_us_bd_l_src_av",
+       "play": "aiv://aiv/detail?gti=amzn1.dv.gti.5795a4fa-30cc-4907-8eff-eb30b2c71cd3&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.67792d8e-57b9-4eac-bdee-30f831641ec1&refMarker=atv_dvm_liv_apl_us_bd_l_src_av"
+      },
+      "isGeoRestricted": true,
+      "title": "Wizards vs. Magic"
+     }
+    },
+    "channels": {
+     "tvs.sbd.1000310": {
+      "name": "NBA",
+      "appName": "NBA: Live Games & Scores",
+      "appBundleIds": [
+       "com.nbaimd.gametime.universal"
+      ]
+     },
+     "tvs.sbd.12962": {
+      "name": "Prime Video",
+      "appName": "Amazon Prime Video",
+      "appBundleIds": [
+       "com.amazon.aiv.AIVApp"
+      ]
+     },
+     "tvs.sbd.11280": {
+      "name": "DAZN",
+      "appName": "DAZN: Stream Live Sports",
+      "appBundleIds": [
+       "com.dazn.theApp"
+      ]
+     }
+    }
+   }
+  },
+  "umc.cse.6nas56cfxa5vl6v3zc61r6wnf": {
+   "data": {
+    "content": {
+     "id": "umc.cse.6nas56cfxa5vl6v3zc61r6wnf",
+     "type": "SportingEvent",
+     "leagueAbbreviation": "nfl",
+     "title": "Chicago Bears at Seattle Seahawks",
+     "url": "https://tv.apple.com/us/sporting-event/chicago-bears-at-seattle-seahawks/umc.cse.6nas56cfxa5vl6v3zc61r6wnf",
+     "eventTime": {
+      "gameKickOffStartTime": 1793668500000
+     },
+     "competitors": [
+      {
+       "name": "Chicago Bears",
+       "nickname": "Bears",
+       "shortName": "Bears",
+       "abbreviation": "CHI",
+       "isHome": false
+      },
+      {
+       "name": "Seattle Seahawks",
+       "nickname": "Seahawks",
+       "shortName": "Seahawks",
+       "abbreviation": "SEA",
+       "isHome": true
+      }
+     ]
+    },
+    "playables": {
+     "tvs.sbd.30061:08bf581a-3e32-4d07-8a81-12536229d2ee:74d85cac": {
+      "id": "tvs.sbd.30061:08bf581a-3e32-4d07-8a81-12536229d2ee:74d85cac",
+      "channelId": "tvs.sbd.30061",
+      "serviceName": "ESPN",
+      "externalServiceId": "com.espn.service.linear.espn1",
+      "externalId": "08bf581a-3e32-4d07-8a81-12536229d2ee",
+      "punchoutUrls": {
+       "play": "sportscenter://x-callback-url/showWatchStream?playChannel=espn1&x-source=AppleUMC"
+      },
+      "isGeoRestricted": false,
+      "title": "Chicago Bears vs. Seattle Seahawks"
+     },
+     "tvs.sbd.12962:amzn1.dv.gti.b216f25d-9419-4991-be93-c34540199f0a:f38d279a": {
+      "id": "tvs.sbd.12962:amzn1.dv.gti.b216f25d-9419-4991-be93-c34540199f0a:f38d279a",
+      "channelId": "tvs.sbd.12962",
+      "serviceName": "Amazon Prime Video Sports US",
+      "externalServiceId": "com.amazon.video.vod.sports.US",
+      "externalId": "amzn1.dv.gti.b216f25d-9419-4991-be93-c34540199f0a",
+      "punchoutUrls": {
+       "open": "aiv://aiv/detail?gti=amzn1.dv.gti.e2530461-2da0-4ffe-b395-78ee1dbcd412&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.b216f25d-9419-4991-be93-c34540199f0a&refMarker=atv_dvm_liv_apl_us_bd_l_src_av",
+       "play": "aiv://aiv/detail?gti=amzn1.dv.gti.e2530461-2da0-4ffe-b395-78ee1dbcd412&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.b216f25d-9419-4991-be93-c34540199f0a&refMarker=atv_dvm_liv_apl_us_bd_l_src_av"
+      },
+      "isGeoRestricted": true,
+      "title": "Bears vs. Seahawks"
+     },
+     "tvs.sbd.1000384:7IKaFG9TlUYw2YH7xLTDkA:3ccfe0eb": {
+      "id": "tvs.sbd.1000384:7IKaFG9TlUYw2YH7xLTDkA:3ccfe0eb",
+      "channelId": "tvs.sbd.1000384",
+      "serviceName": "National Event Availability",
+      "externalServiceId": "com.nfl.availability",
+      "externalId": "7IKaFG9TlUYw2YH7xLTDkA",
+      "punchoutUrls": {
+       "open": "nflctv://livestream/ab37feaa-4feb-11f1-abca-2c54536568a9?provider=lura",
+       "play": "nflctv://livestream/ab37feaa-4feb-11f1-abca-2c54536568a9?provider=lura"
+      },
+      "isGeoRestricted": false,
+      "title": "Chicago Bears at Seattle Seahawks"
+     },
+     "tvs.sbd.30061:d5550085-6938-45dc-8901-b01bbf1a1aec:faf1cea3": {
+      "id": "tvs.sbd.30061:d5550085-6938-45dc-8901-b01bbf1a1aec:faf1cea3",
+      "channelId": "tvs.sbd.30061",
+      "serviceName": "ESPN Deportes",
+      "externalServiceId": "com.espn.service.linear.espndeportes",
+      "externalId": "d5550085-6938-45dc-8901-b01bbf1a1aec",
+      "punchoutUrls": {
+       "play": "sportscenter://x-callback-url/showWatchStream?playChannel=espndeportes&x-source=AppleUMC"
+      },
+      "isGeoRestricted": false,
+      "title": "En Español-Chicago Bears vs. Seattle Seahawks"
+     }
+    },
+    "channels": {
+     "tvs.sbd.1000384": {
+      "name": "NFL",
+      "appName": "NFL",
+      "appBundleIds": [
+       "com.nfl.gamecenter"
+      ]
+     },
+     "tvs.sbd.12962": {
+      "name": "Prime Video",
+      "appName": "Amazon Prime Video",
+      "appBundleIds": [
+       "com.amazon.aiv.AIVApp"
+      ]
+     },
+     "tvs.sbd.30061": {
+      "name": "ESPN",
+      "appName": "ESPN: Live Sports & Scores",
+      "appBundleIds": [
+       "com.espn.ScoreCenter"
+      ]
+     }
+    }
+   }
+  },
+  "umc.cse.4zs9l3macrlw6c1k5eioz4awm": {
+   "data": {
+    "content": {
+     "id": "umc.cse.4zs9l3macrlw6c1k5eioz4awm",
+     "type": "SportingEvent",
+     "leagueAbbreviation": "nhl",
+     "title": "Detroit Red Wings at Florida Panthers",
+     "url": "https://tv.apple.com/us/sporting-event/detroit-red-wings-at-florida-panthers/umc.cse.4zs9l3macrlw6c1k5eioz4awm",
+     "eventTime": {
+      "gameKickOffStartTime": 1793664000000
+     },
+     "competitors": [
+      {
+       "name": "Detroit Red Wings",
+       "nickname": "Red Wings",
+       "shortName": "Red Wings",
+       "abbreviation": "DET",
+       "isHome": false
+      },
+      {
+       "name": "Florida Panthers",
+       "nickname": "Panthers",
+       "shortName": "Panthers",
+       "abbreviation": "FLA",
+       "isHome": true
+      }
+     ]
+    },
+    "playables": {
+     "tvs.sbd.30061:28c6a5be-d824-425b-baf6-5352ad520fb2:928355d4": {
+      "id": "tvs.sbd.30061:28c6a5be-d824-425b-baf6-5352ad520fb2:928355d4",
+      "channelId": "tvs.sbd.30061",
+      "serviceName": "ESPN+ V2",
+      "externalServiceId": "com.espn.service.vod.bam_dtc-v2",
+      "externalId": "28c6a5be-d824-425b-baf6-5352ad520fb2",
+      "punchoutUrls": {
+       "open": "sportscenter://x-callback-url/showWatchStream?playID=deec9a00-afa6-4439-ae00-1db49e05eb17&x-source=AppleUMC",
+       "play": "sportscenter://x-callback-url/showWatchStream?playID=deec9a00-afa6-4439-ae00-1db49e05eb17&x-source=AppleUMC"
+      },
+      "isGeoRestricted": true,
+      "title": "Detroit Red Wings vs. Florida Panthers"
+     },
+     "tvs.sbd.30061:68957f2f-f09a-46db-bfc5-7b7d4bce9b93:928355d4": {
+      "id": "tvs.sbd.30061:68957f2f-f09a-46db-bfc5-7b7d4bce9b93:928355d4",
+      "channelId": "tvs.sbd.30061",
+      "serviceName": "ESPN+ V2",
+      "externalServiceId": "com.espn.service.vod.bam_dtc-v2",
+      "externalId": "68957f2f-f09a-46db-bfc5-7b7d4bce9b93",
+      "punchoutUrls": {
+       "open": "sportscenter://x-callback-url/showWatchStream?playID=251eff58-0d49-4443-9774-f7edb3bbd1c0&x-source=AppleUMC",
+       "play": "sportscenter://x-callback-url/showWatchStream?playID=251eff58-0d49-4443-9774-f7edb3bbd1c0&x-source=AppleUMC"
+      },
+      "isGeoRestricted": true,
+      "title": "Detroit Red Wings vs. Florida Panthers"
+     }
+    },
+    "channels": {
+     "tvs.sbd.30061": {
+      "name": "ESPN",
+      "appName": "ESPN: Live Sports & Scores",
+      "appBundleIds": [
+       "com.espn.ScoreCenter"
+      ]
+     }
+    }
+   }
+  },
+  "umc.cse.49l8i4km2xo1a7s3zshtcuc8p": {
+   "data": {
+    "content": {
+     "id": "umc.cse.49l8i4km2xo1a7s3zshtcuc8p",
+     "type": "SportingEvent",
+     "leagueAbbreviation": "nhl",
+     "title": "Chicago Blackhawks at Florida Panthers",
+     "url": "https://tv.apple.com/us/sporting-event/chicago-blackhawks-at-florida-panthers/umc.cse.49l8i4km2xo1a7s3zshtcuc8p",
+     "eventTime": {
+      "gameKickOffStartTime": 1793838600000
+     },
+     "competitors": [
+      {
+       "name": "Chicago Blackhawks",
+       "nickname": "Blackhawks",
+       "shortName": "Blackhawks",
+       "abbreviation": "CHI",
+       "isHome": false
+      },
+      {
+       "name": "Florida Panthers",
+       "nickname": "Panthers",
+       "shortName": "Panthers",
+       "abbreviation": "FLA",
+       "isHome": true
+      }
+     ]
+    },
+    "playables": {
+     "tvs.sbd.1000566:d07e2dc3-9c68-5019-9f99-481f39bebaf6:8a0102a9": {
+      "id": "tvs.sbd.1000566:d07e2dc3-9c68-5019-9f99-481f39bebaf6:8a0102a9",
+      "channelId": "tvs.sbd.1000566",
+      "serviceName": "WarnerMedia Global Digital Service US",
+      "externalServiceId": "com.wbd.availability.US.sports",
+      "externalId": "d07e2dc3-9c68-5019-9f99-481f39bebaf6",
+      "punchoutUrls": {
+       "open": "https://play.hbomax.com/sport/d07e2dc3-9c68-5019-9f99-481f39bebaf6?utm_source=generic_apple",
+       "play": "https://play.hbomax.com/sport/d07e2dc3-9c68-5019-9f99-481f39bebaf6?utm_source=generic_apple"
+      },
+      "isGeoRestricted": false,
+      "title": "Blackhawks at Panthers"
+     },
+     "tvs.sbd.11220:2600940:e7521aba": {
+      "id": "tvs.sbd.11220:2600940:e7521aba",
+      "channelId": "tvs.sbd.11220",
+      "serviceName": "TNTEast",
+      "externalServiceId": "TNTEast",
+      "externalId": "2600940",
+      "punchoutUrls": {
+       "play": "watchtnt://play?stream=east&campaign=universal-search&section=livestream&auth=true&source=tvos-search"
+      },
+      "isGeoRestricted": false,
+      "title": "Chicago Blackhawks at Florida Panthers"
+     },
+     "tvs.sbd.12962:amzn1.dv.gti.17efa72c-14bf-494c-9941-9112bb30092f:76ff25f1": {
+      "id": "tvs.sbd.12962:amzn1.dv.gti.17efa72c-14bf-494c-9941-9112bb30092f:76ff25f1",
+      "channelId": "tvs.sbd.12962",
+      "serviceName": "Amazon Prime Video Sports US",
+      "externalServiceId": "com.amazon.video.vod.sports.US",
+      "externalId": "amzn1.dv.gti.17efa72c-14bf-494c-9941-9112bb30092f",
+      "punchoutUrls": {
+       "open": "aiv://aiv/detail?gti=amzn1.dv.gti.1e87e4ac-c6bb-43ef-8b8b-7ab86fc68374&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.17efa72c-14bf-494c-9941-9112bb30092f&refMarker=atv_dvm_liv_apl_us_bd_l_src_av",
+       "play": "aiv://aiv/detail?gti=amzn1.dv.gti.1e87e4ac-c6bb-43ef-8b8b-7ab86fc68374&action=watch&type=live&territory=US&time=live&broadcast=amzn1.dv.gti.17efa72c-14bf-494c-9941-9112bb30092f&refMarker=atv_dvm_liv_apl_us_bd_l_src_av"
+      },
+      "isGeoRestricted": false,
+      "title": "Blackhawks vs. Panthers"
+     },
+     "tvs.sbd.11880:2600940:62de74bb": {
+      "id": "tvs.sbd.11880:2600940:62de74bb",
+      "channelId": "tvs.sbd.11880",
+      "serviceName": "truTV East",
+      "externalServiceId": "TruTVEast",
+      "externalId": "2600940",
+      "punchoutUrls": {
+       "play": "watchtru://play?stream=east&campaign=universal-search&section=livestream&auth=true&source=tvos-search"
+      },
+      "isGeoRestricted": false,
+      "title": "Chicago Blackhawks at Florida Panthers"
+     }
+    },
+    "channels": {
+     "tvs.sbd.11880": {
+      "name": "truTV",
+      "appName": "truTV",
+      "appBundleIds": [
+       "com.turner.truTV"
+      ]
+     },
+     "tvs.sbd.11220": {
+      "name": "TNT",
+      "appName": "Watch TNT",
+      "appBundleIds": [
+       "com.turner.TNT"
+      ]
+     },
+     "tvs.sbd.12962": {
+      "name": "Prime Video",
+      "appName": "Amazon Prime Video",
+      "appBundleIds": [
+       "com.amazon.aiv.AIVApp"
+      ]
+     },
+     "tvs.sbd.1000566": {
+      "name": "HBO Max",
+      "appName": "HBO Max: Stream Movies & TV",
+      "appBundleIds": [
+       "com.wbd.stream"
+      ]
+     }
+    }
+   }
+  }
+ }
+}

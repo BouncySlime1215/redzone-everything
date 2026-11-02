@@ -10,6 +10,7 @@ from redzone.decider.screen import DelayBook, Event, Timeline, break_on_arrival,
 from redzone.lab import backtest as bt
 from redzone.models import GameState, League, Phase, Stoppage, Team
 from redzone.scoring.engine import Scored
+from tests.test_decider import with_fresh_timing
 
 ET = ZoneInfo("America/New_York")
 SUN_1PM = datetime(2025, 11, 2, 13, 0, tzinfo=ET).timestamp()
@@ -31,6 +32,7 @@ def dec(cfg, clock):
         for v in (39, 40, 41):
             d.delays.calibrate(f"youtubetv:{g}", v)
         d.timeline(g, League.NFL)
+    with_fresh_timing(d, clock)
     return d
 
 
@@ -109,7 +111,10 @@ def test_from_redzone_any_big_play_is_worth_chasing(dec, clock):
 def test_a_missed_play_beats_redzone_as_break_filler(dec, clock):
     on(dec, clock, "a", b=10)
     dec.queue.append(Missed("b", "fg1", "41-yard field goal", "fg", clock.t - 60, value=35))
-    timeout_on_screen(dec, clock)
+    # A quarter break has a measured minimum; an ordinary timeout's typical
+    # duration cannot guarantee enough time to replay and get back.
+    dec.timelines["a"].events.append(Event(clock.t, "stop_start", "end_period"))
+    clock.t += 50
     d = dec.decide(cands(a=sc("a", 60, is_break=True), b=10), REDZONE_TARGET)
     assert d.action == "replay" and d.target == "b"
 
@@ -145,14 +150,17 @@ def calibrated(mu=40.0):
 def test_leave_once_the_play_before_a_timeout_has_aired():
     # The timeout is logged 20s after the play; it airs at 60. The play is done airing by 47.
     tl = tl_with(League.NFL, Event(0, "play", "run for 2"), Event(20, "stop_start", "timeout"))
+    tl.fresh_at = 44.0
     d = calibrated()
     assert not leave_gate(tl, d, 44.0, 8.0).safe
+    tl.fresh_at = 48.0
     g = leave_gate(tl, d, 48.0, 8.0)
     assert g.safe and g.on_screen_break
 
 
 def test_continuous_sports_wait_for_the_stoppage_itself():
     tl = tl_with(League.NBA, Event(0, "play", "layup"), Event(20, "stop_start", "timeout"))
+    tl.fresh_at = 48.0
     assert not leave_gate(tl, calibrated(), 48.0, 8.0).on_screen_break
 
 
@@ -194,4 +202,4 @@ def test_leaving_a_replay_for_the_same_game_is_logged():
                "b", 10.0, sw, watching, replayed)
     bt._record(type("D", (), dict(action="switch", target="a", kind="home", reason="", replay=None))(),
                "a", 40.0, sw, watching, replayed)
-    assert watching == [(10.0, "replay:a"), (40.0, "a")] and replayed == {("a", 100)}
+    assert watching == [(10.0, "replay:a"), (40.0, "a")] and not replayed  # command is not completion

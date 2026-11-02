@@ -23,6 +23,10 @@ polling:
   live_s: 10               # every other live game
   idle_s: 300              # poll every N seconds when nothing is live
 
+sources:
+  fastcast: false          # ESPN's push feed: new plays the moment ESPN publishes them. Runs NEXT TO polling
+                           # (polling never stops). Off until the live check passes: see redzone/sources/fastcast.py
+
 score:
   neutral_cap: 0.9         # a neutral game tops out at 90; 90-100 is reserved for games you care about
   personal_cap: 30
@@ -80,19 +84,15 @@ score:
     no_hitter: {through_6: 25, through_7: 35, ninth: 50}
 
 decider:
-  min_dwell_s: 45
   switch_margin: 10
-  switch_cost: {youtubetv: 3, prime: 8, hdmi_flip: 1}
-  max_switches_per_5min: 4
-  min_gap_s: 20
+  switch_cost: {youtubetv: 3, prime: 8, espn: 7, hdmi_flip: 1}   # seconds to the new picture; replaced by
+                           # measured times as you use it (see switch_speed)
   return_tolerance: 5      # go back to the previous game if it's within this many points
   break_destination_min: 25   # anything at least this good beats watching a commercial
-  chase_min_dwell_s: 20
   chase_max_deficit: 15
   must_see_score: 92
   must_see_lead: 20
   locked_override_lead: 20
-  ping_pong_freeze_s: 300
   manual_pause_s: 60
   uncalibrated_sigma_s: 8  # above this delay uncertainty, only leave at official stoppages
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
@@ -114,8 +114,25 @@ fantasy:                   # ESPN fantasy football (leave league_id empty to tur
 screen:
   mic_calibration: false   # let the Mac's mic hear crowd roars to measure your delay (nothing is recorded)
 
+autonomy:
+  enabled: true
+  discover_devices: false # first select your own TV/sticks with scripts/doctor.py
+  busy_score: 75          # postpone maintenance during an important game
+  selftest_may_wake: false
+  test_targets: {youtubetv: "", prime: "", espn: ""}
+
 two_stick:
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment
+  hold_s: 35               # keep the hidden stick on a game at least this long before re-tuning it...
+  min_gain: 8              # ...and then only for one this many points better (your game's return and
+                           # a replay about to play take it right away)
+  verify_s: 15             # check the hidden stick is still playing this often
+  input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
+  park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long
+
+switch_speed:              # every real tune and input flip is timed; the decider plans with the medians
+  learn: true              # keep decider.switch_cost up to date from those measurements
+  sync_every_s: 300        # at most this often (sooner when two-stick mode turns on or off)
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true

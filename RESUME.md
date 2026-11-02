@@ -1,15 +1,33 @@
-# Resume notes (usage pause, 2026-11-02 ~1:30pm ET)
+# Resume state — 2026-11-02
 
-State of `main`: all logic agents merged, 158 tests passing, 0 mid-play cuts in all 4 leagues.
+The Claude session was recovered into an isolated Codex checkout, preserving the original
+project and snapshots of its unfinished worktrees. Do not merge stale worktree branches or
+restart old workflows over this tree. The original session may auto-resume independently.
 
-Running when paused (agent workflows; finished agents are cached, in-flight ones restart):
-- Wave A — speed (ADB fast path, standby strategy, ESPN Fastcast): run `wf_cde53586-7a8`
-- Wave C — autonomy (YouTube TV channel discovery, all providers, self-healing ops): run `wf_ba485a48-6c9`
-- Wave B — per-league logic (MLB, NBA/NHL dead air, NFL crunch, cross-league red team): run `wf_556372b1-832`
-Their work lives on `worktree-agent-*` branches under `.claude/worktrees/` (not pushed).
+Recovered/integrated: persistent ADB transport, standby planning, optional Fastcast parser,
+provider discovery, autonomy scheduling and diagnostics. Additional reviews corrected false
+playback success, unsafe command retry, transaction commits before confirmation, stale input
+assumptions, per-sport break timing, uncertain calibration, replay completion accounting and
+scorecard blind spots. Four focused investigators reviewed screen evidence, switch lifecycle,
+latency and measurement. User explicitly removed arbitrary switch-rate/dwell limits.
 
-On resume:
-1. Check each workflow's result; resume unfinished ones with `resumeFromRunId`.
-2. Merge order: Wave A → Wave C (wire INTEGRATION hooks) → Wave B. After each: pytest + `scripts/eval.py` (+ stress flags) + `scripts/eval_sports.py nba|nhl` + `mlb --nights 40`. Cuts must stay 0.
-3. Phase 0 with the stick (`scripts/doctor.py`), then tonight's live dry run (README "First night checklist").
-4. Push `main` to GitHub.
+See README and docs/verification-2026-11-02.md for current behavior and results. The latest
+source tests and scorecards supersede the earlier 158-test/zero-cut claims and local optimizer
+reports. Those earlier reports describe a different build and weaker measurement.
+
+Hardware remains the next validation boundary. Nick reports the existing stick is live and
+is setting up another on a monitor. Exact model/OS/IPs and monitor input capability are pending.
+No Fire Stick pairing, network scan, login, tune or HDMI change was performed during recovery.
+Use only explicitly identified devices. An ordinary monitor has no supported automatic input
+readback adapter yet; keep single-stick operation unless verified control becomes available.
+Current app uses ADB, not Vega VDA. Never fall back to a previously saved unrelated Samsung.
+
+Keep dry-run enabled until selected-device validation. Check real app/channel identity,
+stream delay bounds, seek step, playback continuity through HDMI changes, blackout/login prompts,
+command timeout recovery and actual visible switching latency. Provider playback is not proof
+that a sports play is on screen. Timing is inferred from feeds plus delay, not TV pixels.
+
+The isolated git origin originally points at the local Claude checkout. Never push to that
+remote. GitHub backup must target the existing private BouncySlime1215/redzone-everything repo
+explicitly, with no .env, runtime data, device tokens, local transcripts or virtual environment.
+User previously authorized posting the finished work to that private repository.

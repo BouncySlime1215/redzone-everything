@@ -9,7 +9,7 @@ Report card (what "good" means):
   mid_play_cuts      cut away while a play was on screen       -> must be 0
   big_plays_live     TDs/turnovers you saw live, all games      -> higher is better
   dead_air_pct       time spent watching a break on screen      -> lower is better
-  switches_per_hour  how busy it felt                           -> 8-20 feels like RedZone
+  switches_per_hour  observed switch frequency; no arbitrary cap or target
 """
 from __future__ import annotations
 
@@ -104,6 +104,7 @@ class Report:
     my_crunch: int = 0
     my_crunch_live: int = 0
     dead_causes: dict[str, float] = field(default_factory=dict)  # seconds of dead air by cause
+    tuning_blackout_s: float = 0.0  # modelled single-stick tuning time, separate from commercials
 
     @property
     def summary(self) -> dict:
@@ -118,6 +119,8 @@ class Report:
             "crunch_live": f"{self.crunch_live}/{self.crunch}",
             "your_team_crunch_live": f"{self.my_crunch_live}/{self.my_crunch}",
             "dead_air_pct": round(100 * self.dead_air_s / max(1, self.watched_s), 1),
+            "tuning_blackout_s": round(self.tuning_blackout_s, 1),
+            "tuning_blackout_pct": round(100 * self.tuning_blackout_s / max(1, self.hours * 3600), 1),
             "switches_per_hour": round(len(self.switches) / max(0.1, self.hours), 1),
             "switches": len(self.switches),
         }
@@ -233,6 +236,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     switches: list[SwitchLog] = []
     decisions = []
     replayed: set[tuple[str, int]] = set()
+    replay_windows: list[tuple[str, int, float, float]] = []
     watching: list[tuple[float, str | None]] = []  # (time cut happens on screen, game)
     idx = {r.gid: -1 for r in replays}
     clock.t = t0
@@ -272,11 +276,16 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         decision = dec.decide(cands, REDZONE_TARGET if rz_ok and redzone_on(states.values()) else None)
         decisions.append(decision)
         _record(decision, before, clock.t, switches, watching, replayed)
+        if decision.action == "replay" and decision.replay and getattr(dec, "replay_until", None) is not None:
+            replay_windows.append((decision.target, round(decision.replay.t), clock.t, dec.replay_until))
+        _credit_completed_replays(replay_windows, watching, clock.t, replayed)
         clock.t += step
 
+    _credit_completed_replays(replay_windows, watching, t1, replayed)
     rep = _grade(replays, switches, watching, my_teams, lag_true, play_len, tune_s, t0, t1, replayed)
     rep.decisions = decisions
     rep.replayed, rep.t0, rep.t1, rep.lag_total = replayed, t0, t1, lag_total
+    rep.lag_true = lag_true
     return rep
 
 
@@ -291,7 +300,22 @@ def _record(decision, before: str | None, t: float, switches: list[SwitchLog],
     elif decision.action == "replay" and decision.replay:
         switches.append(SwitchLog(t, before, decision.target, "replay", decision.reason))
         watching.append((t, f"replay:{decision.target}"))
-        replayed.add((decision.target, round(decision.replay.t)))
+
+
+def _credit_completed_replays(windows: list[tuple[str, int, float, float]],
+                              watching: list[tuple[float, str | None]], now: float,
+                              replayed: set[tuple[str, int]]) -> None:
+    """A replay request earns no credit until its modeled clip finishes without another tune.
+
+    This is simulation credit, not evidence that a physical player's seek landed correctly.
+    A new switch exactly at the scheduled end is allowed; an earlier interruption is not.
+    """
+    for gid, event, start, end in windows[:]:
+        if end > now:
+            continue
+        if not any(start < at < end for at, _ in watching):
+            replayed.add((gid, event))
+        windows.remove((gid, event, start, end))
 
 
 def _poll(replays: list[Replay], idx: dict[str, int], now: float, feed_lag: float, dec: Decider) -> dict:
@@ -323,6 +347,20 @@ def _on_screen_game(watching: list[tuple[float, str | None]], t: float, tune_s: 
     return cur
 
 
+def watched_whole(watching: list[tuple[float, str | None]], gid: str, start: float, end: float,
+                  tune_s: float, horizon: float) -> bool:
+    """Full observed play interval, including no retune away and back during the play."""
+    return (end <= horizon and _on_screen_game(watching, start, tune_s) == gid
+            and not any(start < at <= end for at, _ in watching))
+
+
+def tuning_blackout_seconds(watching: list[tuple[float, str | None]], tune_s: float,
+                           t0: float, t1: float) -> float:
+    """Union of modeled tuning intervals; don't hide them in the commercial denominator."""
+    return sum(max(0.0, min(at + tune_s, watching[i + 1][0] if i + 1 < len(watching) else t1, t1)
+                   - max(at, t0)) for i, (at, _) in enumerate(watching))
+
+
 def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t0, t1, replayed) -> Report:
     by_id = {r.gid: r for r in replays}
     cuts = []
@@ -351,7 +389,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
                 continue
             big += 1
             air = w + lag_total
-            on = _on_screen_game(watching, air - play_len, tune_s) == r.gid
+            on = watched_whole(watching, r.gid, air - play_len, air, tune_s, t1)
             live += on
             rep_seen = (r.gid, round(w)) in replayed
             caught += on or rep_seen
@@ -377,7 +415,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             if not ((per == 4 and clk is not None and clk <= 120 and close) or per >= 5):
                 continue
             crunch += 1
-            on = _on_screen_game(watching, w + lag_total - play_len, tune_s) == r.gid
+            on = watched_whole(watching, r.gid, w + lag_total - play_len, w + lag_total, tune_s, t1)
             crunch_live += on
             if any(a in my_teams for a in r.matchup.replace("@", " ").split()):
                 my_crunch += 1
@@ -410,6 +448,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
         t += 10
     rep = Report(switches, cuts, big, live, mine, mine_live, dead, watched, (t1 - t0) / 3600, missed)
     rep.dead_causes = causes
+    rep.tuning_blackout_s = tuning_blackout_seconds(watching, tune_s, t0, t1)
     rep.big_plays_caught = caught
     rep.crunch, rep.crunch_live, rep.my_crunch, rep.my_crunch_live = crunch, crunch_live, my_crunch, my_crunch_live
     return rep

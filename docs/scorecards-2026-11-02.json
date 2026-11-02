@@ -1,0 +1,136 @@
+{
+  "nfl": {
+    "baseline": {
+      "mid_play_cuts": 0,
+      "dead_air_pct": 7.4,
+      "big_seen_pct": 93.7,
+      "big_live_pct": 31.5,
+      "crunch_live_pct": 68.1,
+      "your_team_crunch_live_pct": 100.0,
+      "your_team_big_seen_pct": 100.0,
+      "switches_per_hour": 34.8,
+      "tuning_blackout_s": 9445.0,
+      "tuning_blackout_pct": 4.8,
+      "big_plays": 951,
+      "crunch_plays": 524,
+      "seconds": 13
+    },
+    "stress": {
+      "mid_play_cuts": 0,
+      "dead_air_pct": 38.3,
+      "big_seen_pct": 31.0,
+      "big_live_pct": 18.1,
+      "crunch_live_pct": 51.1,
+      "your_team_crunch_live_pct": 76.2,
+      "your_team_big_seen_pct": 51.7,
+      "switches_per_hour": 9.3,
+      "tuning_blackout_s": 2510.0,
+      "tuning_blackout_pct": 1.3,
+      "big_plays": 951,
+      "crunch_plays": 524,
+      "seconds": 16
+    }
+  },
+  "nba": {
+    "baseline": {
+      "league": "nba",
+      "games": 92,
+      "mid_play_cuts": 0,
+      "dead_air_pct": 19.2,
+      "big_seen_pct": 89.7,
+      "big_live_pct": 89.7,
+      "crunch_live_pct": 95.3,
+      "your_team_crunch_live_pct": 100.0,
+      "tuning_blackout_s": 630.0,
+      "tuning_blackout_pct": 0.2,
+      "switches_per_hour": 1.5,
+      "big_plays": 87,
+      "crunch_plays": 957,
+      "seconds": 18
+    },
+    "stress": {
+      "league": "nba",
+      "games": 92,
+      "mid_play_cuts": 0,
+      "dead_air_pct": 23.6,
+      "big_seen_pct": 66.7,
+      "big_live_pct": 66.7,
+      "crunch_live_pct": 74.9,
+      "your_team_crunch_live_pct": 100.0,
+      "tuning_blackout_s": 330.0,
+      "tuning_blackout_pct": 0.1,
+      "switches_per_hour": 0.8,
+      "big_plays": 87,
+      "crunch_plays": 957,
+      "seconds": 22
+    }
+  },
+  "nhl": {
+    "baseline": {
+      "league": "nhl",
+      "games": 95,
+      "mid_play_cuts": 0,
+      "dead_air_pct": 23.1,
+      "big_seen_pct": 99.5,
+      "big_live_pct": 43.7,
+      "crunch_live_pct": 85.0,
+      "your_team_crunch_live_pct": 100.0,
+      "tuning_blackout_s": 4325.0,
+      "tuning_blackout_pct": 1.3,
+      "switches_per_hour": 5.1,
+      "big_plays": 631,
+      "crunch_plays": 771,
+      "seconds": 15
+    },
+    "stress": {
+      "league": "nhl",
+      "games": 95,
+      "mid_play_cuts": 0,
+      "dead_air_pct": 30.5,
+      "big_seen_pct": 58.6,
+      "big_live_pct": 39.8,
+      "crunch_live_pct": 68.5,
+      "your_team_crunch_live_pct": 100.0,
+      "tuning_blackout_s": 1910.0,
+      "tuning_blackout_pct": 0.6,
+      "switches_per_hour": 1.4,
+      "big_plays": 631,
+      "crunch_plays": 771,
+      "seconds": 17
+    }
+  },
+  "mlb": {
+    "baseline": {
+      "league": "mlb",
+      "games": 40,
+      "mid_play_cuts": 0,
+      "dead_air_pct": 25.7,
+      "big_seen_pct": 67.2,
+      "big_live_pct": 62.1,
+      "crunch_live_pct": 72.6,
+      "your_team_crunch_live_pct": 77.0,
+      "tuning_blackout_s": 595.0,
+      "tuning_blackout_pct": 0.2,
+      "switches_per_hour": 1.3,
+      "big_plays": 338,
+      "crunch_plays": 1596,
+      "seconds": 9
+    },
+    "stress": {
+      "league": "mlb",
+      "games": 40,
+      "mid_play_cuts": 0,
+      "dead_air_pct": 28.0,
+      "big_seen_pct": 60.1,
+      "big_live_pct": 59.5,
+      "crunch_live_pct": 78.3,
+      "your_team_crunch_live_pct": 100.0,
+      "tuning_blackout_s": 170.0,
+      "tuning_blackout_pct": 0.1,
+      "switches_per_hour": 0.4,
+      "big_plays": 338,
+      "crunch_plays": 1596,
+      "seconds": 9
+    }
+  }
+}

@@ -278,6 +278,11 @@ _SCORE_KINDS = ("touchdown", "field goal good", "safety")
 
 def _kind(league: League, p: dict) -> str:
     t = (_get(p, "type", "text") or "").lower()
+    if league == League.MLB and (_get(p, "alternativeType", "type") == "lineup-change"
+                                or (_get(p, "alternativeType", "text") or "").lower() == "lineup change"):
+        # ESPN wraps between-innings fielding substitutions in "Play Result".
+        # They are bookkeeping, not a pitch that can be cut off mid-flight.
+        return "lineup_change"
     if league == League.NBA and "team rebound" in (p.get("text") or "").lower():
         return "team_rebound"  # ball out of bounds / between free throws: a dead ball, not live play
     if league == League.NFL:

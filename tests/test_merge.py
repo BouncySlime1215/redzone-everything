@@ -64,3 +64,23 @@ def test_missing_scores_do_not_crash():
     g = GameState(league=League.NBA, game_id="2", home=Team("WAS"), away=Team("BOS"))
     m.update("espn", g)
     assert m.is_stale("2") is False  # not live, so not stale
+
+
+def test_level_but_staler_source_does_not_flip_the_state():
+    """Stopped clock: the push feed has the timeout, a staler poll still shows the play before it.
+    Same clock and score, so only the newer last play decides; the state must not flip back."""
+    from redzone.models import Play, Stoppage
+    clk = FakeClock()
+    m = Merger(clock=clk)
+    m.update("espn_summary", _g(4, 321, 20, 17, last_play=Play("a", wallclock=100.0), stoppage=Stoppage.NONE))
+    m.update("espn_fastcast", _g(4, 321, 20, 17, last_play=Play("b", wallclock=130.0),
+                                 stoppage=Stoppage.TIMEOUT))
+    assert m.games["1"].last_play.id == "b"
+    clk.t += 2
+    m.update("espn_summary", _g(4, 321, 20, 17, last_play=Play("a", wallclock=100.0), stoppage=Stoppage.NONE))
+    assert m.games["1"].last_play.id == "b" and m.games["1"].stoppage == Stoppage.TIMEOUT
+    assert m.games["1"].updated_at == 1000.0                    # behind: not fresh data
+    assert not m.health["espn_summary"].benched and m.health["espn_summary"].regressions == 0
+    clk.t += 2
+    m.update("espn_summary", _g(4, 321, 20, 17, last_play=Play("b", wallclock=130.0), stoppage=Stoppage.TIMEOUT))
+    assert m.games["1"].updated_at == clk.t                      # caught up: level again, takes its turn

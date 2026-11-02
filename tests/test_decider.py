@@ -16,7 +16,28 @@ def sc(gid, score, lock=None, is_break=False, league=League.NFL):
 def dec(cfg, clock):
     delays = DelayBook({"youtubetv": 40.0, "prime": 35.0}, sigma_default=15.0, clock=clock)
     d = Decider(cfg, delays, clock=clock)
+    with_fresh_timing(d, clock)
     return d
+
+
+def with_fresh_timing(dec, clock):
+    """These selection unit tests model continuously polled games, not feed outages.
+
+    Supply that observation explicitly. Outage/no-evidence behavior is covered
+    by test_midplay and test_play_evidence, which do not use this fixture wrapper.
+    """
+    decide = dec.decide
+
+    def observed(candidates, *args, **kwargs):
+        for gid, candidate in candidates.items():
+            dec.timeline(gid, candidate.scored.league)
+        for timeline in dec.timelines.values():
+            timeline.fresh_at = clock.t
+            if not timeline.events:
+                timeline.events.append(Event(clock.t - 120, "play", "previous observed play"))
+        return decide(candidates, *args, **kwargs)
+
+    dec.decide = observed
 
 
 def calibrate(dec, target="youtubetv:a", mu=40.0):
@@ -37,6 +58,10 @@ def start_on(dec, clock, gid, others):
     d = dec.decide(cands(**{gid: 99, **others}))
     assert d.action == "switch" and d.target == gid
     clock.t += 100  # past dwell
+    timeline = dec.timeline(gid, League.NFL)
+    timeline.fresh_at = clock.t
+    if not timeline.events:
+        timeline.events.append(Event(clock.t - 120, "play", "previous observed play"))
 
 
 def test_never_cuts_while_a_play_is_on_screen(dec, clock):
@@ -83,7 +108,7 @@ def test_small_lead_is_not_enough(dec, clock):
     assert dec.decide(cands(a=50, b=64)).action == "switch"
 
 
-def test_min_dwell(dec, clock):
+def test_better_game_does_not_wait_for_a_viewing_quota(dec, clock):
     calibrate(dec, "youtubetv:a")
     calibrate(dec, "youtubetv:b")
     dec.timeline("b", League.NFL)
@@ -91,7 +116,7 @@ def test_min_dwell(dec, clock):
     assert dec.decide(cands(a=40, b=70)).target == "b"
     clock.t += 30
     d = dec.decide(cands(a=40, b=50, c=90))
-    assert d.action == "stay" and "giving it a moment" in d.reason
+    assert d.action == "switch" and d.target == "c"
 
 
 def _visit_then_resume(dec, clock, home_lock=None):
@@ -149,7 +174,7 @@ def test_focus_must_see_leaves_for_huge_moment(dec, clock):
     assert d.action == "switch" and d.kind == "must_see"
 
 
-def test_ping_pong_freezes(dec, clock):
+def test_changing_game_evidence_does_not_trigger_a_blind_freeze(dec, clock):
     for g in "ab":
         calibrate(dec, f"youtubetv:{g}")
     start_on(dec, clock, "a", {})
@@ -158,14 +183,13 @@ def test_ping_pong_freezes(dec, clock):
     for expect, sc_ in seq:
         clock.t += 50
         d = dec.decide(cands(**sc_))
-        if d.action == "switch":
-            assert d.target == expect
-    assert dec.frozen_until > clock.t
+        assert d.action == "switch" and d.target == expect
+    assert dec.frozen_until == 0
     clock.t += 50
-    assert dec.decide(cands(a=10, b=99)).state == State.FROZEN
+    assert dec.decide(cands(a=10, b=99)).action == "switch"
 
 
-def test_rate_limit(dec, clock):
+def test_no_hard_number_of_switches_per_five_minutes(dec, clock):
     for g in "abcdef":
         calibrate(dec, f"youtubetv:{g}")
         dec.timeline(g, League.NFL)
@@ -178,7 +202,7 @@ def test_rate_limit(dec, clock):
         scores[g] = 50 + 10 * i
         if dec.decide(cands(**scores)).action == "switch":
             switches += 1
-    assert switches <= 4
+    assert switches == 5
 
 
 def test_safe_mode_and_pause(dec, clock):
@@ -390,6 +414,9 @@ def test_overlapping_crunch_hops_while_this_one_is_stopped(dec, clock):
     calibrate(dec, "youtubetv:a")
     start_on(dec, clock, "a", {})
     on_break_now(dec, clock, "a")
+    # The resume has reached the feed, but is still a stream-delay ahead of TV.
+    # An average timeout duration alone cannot promise room for the round trip.
+    dec.timeline("a", League.NFL).events.append(Event(clock.t, "stop_end"))
     d = dec.decide(cands(a=csc("a", 60, is_break=True), b=csc("b", 55)))
     assert d.action == "switch" and d.target == "b" and d.kind == "crunch"
 

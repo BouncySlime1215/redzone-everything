@@ -10,6 +10,8 @@
     .venv/bin/python scripts/rz.py bench              # how fast is the stick? (ends with a real tune)
     .venv/bin/python scripts/rz.py bench espn         # ...tuning to this linked channel
     RZ_ADB_SESSION=0 .venv/bin/python scripts/rz.py bench   # same, the old way (one adb process per command)
+    .venv/bin/python scripts/rz.py flipcheck 3 espn   # two sticks: time real input flips, and check the
+                                                      # stick you leave keeps playing (instant "go back")
 """
 from __future__ import annotations
 
@@ -112,6 +114,41 @@ async def _bench_tune(st: Stick, ch: ChannelMap, args: list[str]) -> None:
     again = await TUNERS["youtubetv"].tune(st, code, target)
     print(f"  Same channel again: {again.took * 1000:.0f} ms — {again.steps[0] if again.steps else ''}")
     print(f"  (the stick's report when it confirmed: {st.tuned['report'] if st.tuned else 'none'})\n")
+async def flipcheck(rounds: int, channel: str | None) -> None:
+    """Two sticks: the things only the real hardware can answer for hot standby.
+    1. Is either stick asleep? (Waking one makes it grab the TV input, so the app never does that mid-game.)
+    2. How long does an input flip take? (The app adds two_stick.input_settle_s for the picture.)
+    3. Does the stick you flip AWAY from keep playing? If yes, "go back" is a 1-2s flip."""
+    from redzone.control import Controller
+    c = Controller(Config(), ChannelMap())
+    await c.start()
+    u = c.usable[:2]
+    if len(u) < 2 or not all(s.host in c.hdmi for s in u):
+        sys.exit("Needs two connected sticks with their TV inputs saved — run scripts/doctor.py first.")
+    for s in u:
+        print(f"{s.name or s.host} ({c.hdmi[s.host]}): {'ASLEEP' if await c._sleeping(s) else 'awake'}")
+    if channel:   # put both on a live channel, so "still playing?" means something
+        for s in u:
+            res = await c._tune(s, f"youtubetv:{channel}")
+            print(f"  tuned {s.name or s.host}: {'playing' if res.ok else res.error} in {res.took:.1f}s")
+    stopped = 0
+    for _ in range(rounds):
+        for s, other in ((u[1], u[0]), (u[0], u[1])):
+            t0 = time.monotonic()
+            ok = await c._flip_to(s)
+            how = "TV remote (CEC didn't work)" if s.host in c._cec_bad else "CEC"
+            print(f"flip to {c.hdmi[s.host]}: {'ok' if ok else 'FAILED: ' + c.tv.last_error} in "
+                  f"{time.monotonic() - t0:.2f}s via {how} — stopwatch how long until the picture shows")
+            await asyncio.sleep(6)
+            state = (await other.playback()).get("state")
+            stopped += state != "playing"
+            print(f"   the stick you left ({other.name or other.host}) is {state}")
+    med = c.latency.median("flip")
+    print(f"\nflip command median: {med:.2f}s" if med is not None else "\nno successful flips")
+    print("Set two_stick.input_settle_s (now "
+          f"{c.cfg.get('two_stick.input_settle_s')}s) to how long the picture took after that.")
+    print("The stick you leave stops playing: going back reloads it first (a few seconds slower)."
+          if stopped else "The stick you leave keeps playing: going back is just a flip.")
 
 
 async def main(argv: list[str]) -> None:
@@ -123,6 +160,9 @@ async def main(argv: list[str]) -> None:
     if cmd == "link":
         code = ch.set_code_from_link(args[0], args[1])
         print(f"Saved {args[0]} = {code}")
+        return
+    if cmd == "flipcheck":
+        await flipcheck(int(args[0]) if args else 2, args[1] if len(args) > 1 else None)
         return
     st = await stick()
     try:

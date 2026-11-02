@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import datetime as dt
+import json
 import logging
 import re
 import shutil
@@ -131,7 +132,40 @@ def _iso_epoch(s) -> float | None:
         return None
 
 
-def _provider_for(service: str, punch: str) -> str:
+# Apple TV "brand" (a playable's channelId) -> our provider key.  Brand ids are stable while
+# service names drift ("Peacock Sports 2 US", "WarnerMedia Global Digital Service US"), so
+# they are the fallback for any service the name rules above don't know.
+_BRANDS = {
+    "tvs.sbd.12962": "prime", "tvs.sbd.30061": "espn", "tvs.sbd.1000371": "peacock",
+    "tvs.sbd.10120": "paramount", "tvs.sbd.1000566": "max", "tvs.sbd.1000384": "nflplus",
+    "tvs.sbd.1000310": "nba", "tvs.sbd.11280": "dazn", "tvs.sbd.1000024": "nbcsports",
+    "tvs.sbd.1000188": "cbssports", "tvs.sbd.11220": "tnt", "tvs.sbd.11880": "trutv",
+    "tvs.sbd.1000580": "marquee", "tvs.sbd.4000": "appletv",
+}
+# Punchout scheme / https host -> provider, for rows that arrive without a known brand.
+_SCHEMES = {
+    "aiv": "prime", "sportscenter": "espn", "pplus": "paramount", "nflctv": "nflplus",
+    "gametime": "nba", "open.dazn.com": "dazn", "nbcsportstve": "nbcsports",
+    "cbssportsapp": "cbssports", "watchtnt": "tnt", "watchtru": "trutv", "marquee": "marquee",
+}
+_HOSTS = {"peacocktv.com": "peacock", "hbomax.com": "max", "max.com": "max",
+          "paramountplus.com": "paramount", "tv.apple.com": "appletv"}
+# Titles of feeds that are NOT the main game broadcast (alt-casts, camera feeds, shows).
+_ALT_TITLE = re.compile(
+    r"(?i)\b(performance view|action cams?|above the rim|field pass|with peyton and eli|"
+    r"manningcast|layup lines|alt ?cast|bet ?cast|skycast|player cam|en espa[ñn]ol|"
+    r"pre-?game|post-?game|countdown)\b")
+
+
+def _provider_from_url(punch: str) -> str | None:
+    scheme, _, rest = (punch or "").partition("://")
+    if scheme.lower() in ("http", "https"):
+        host = rest.split("/", 1)[0].lower()
+        return next((p for h, p in _HOSTS.items() if host == h or host.endswith("." + h)), None)
+    return _SCHEMES.get(scheme.lower())
+
+
+def _provider_for(service: str, punch: str, brand: str = "") -> str:
     s = (service or "").lower()
     if "amazon" in s or "prime video" in s:
         return "prime"
@@ -147,7 +181,42 @@ def _provider_for(service: str, punch: str) -> str:
         return "nba"
     if punch.startswith("nflctv:"):
         return "nflplus"
+    known = _BRANDS.get(brand or "") or _provider_from_url(punch)
+    if known:
+        return known
     return re.sub(r"[^a-z0-9]+", "_", s).strip("_") or "other"
+
+
+def _peacock_pvid(q: dict) -> str | None:
+    """Peacock's punchout carries its id inside URL-encoded JSON: deeplinkData={"pvid": ...}."""
+    try:
+        data = json.loads(q.get("deeplinkData") or "{}")
+        pvid = data.get("pvid") if isinstance(data, dict) else None
+        return str(pvid) if pvid else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _ref_for(provider: str, punch: str, q: dict, ext: str) -> str | None:
+    """The one id each provider's tuner needs (see redzone/tuners/providers.py)."""
+    path = urlsplit(punch).path if punch else ""
+    if provider == "peacock":
+        return _peacock_pvid(q) or (ext or None)
+    if provider == "max":
+        m = re.search(r"/(?:sport|watch-sport|event)/([0-9a-f-]{36})", path)
+        return m.group(1) if m else (ext or None)
+    if provider == "paramount":
+        m = re.search(r"/live-tv/stream/(.+?)/?$", path)
+        return m.group(1) if m else (ext or None)
+    if provider == "nflplus":
+        if "nflredzone" in punch:
+            return "redzone"
+        m = re.search(r"livestream/([0-9a-f-]{36})", punch)
+        return m.group(1) if m else None
+    if provider in ("nba", "dazn", "nbcsports", "cbssports", "marquee"):
+        m = re.search(r"/([A-Za-z0-9_-]+)/?$", path)
+        return m.group(1) if m else (ext or None)
+    return ext or None
 
 
 # --- Apple TV UTS ----------------------------------------------------------------
@@ -190,6 +259,7 @@ def _apple_meta(ev: dict) -> dict | None:
         "home": home.get("name") or home.get("shortName") or "",
         "away_names": _team_aliases(away), "home_names": _team_aliases(home),
         "start": int(ms / 1000) if isinstance(ms, (int, float)) else None,
+        "event_url": ev.get("url"),  # tv.apple.com page (what the Apple TV app opens)
     }
 
 
@@ -197,7 +267,8 @@ def _apple_item(meta: dict, p: dict) -> dict | None:
     punch = _get(p, "punchoutUrls", "play") or _get(p, "punchoutUrls", "open") or ""
     q = {k: v[0] for k, v in parse_qs(urlsplit(punch).query).items()} if punch else {}
     ext = str(p.get("externalId") or "")
-    provider = _provider_for(p.get("serviceName") or "", punch)
+    brand = str(p.get("channelId") or "")
+    provider = _provider_for(p.get("serviceName") or "", punch, brand)
     gti = url = play_id = None
     if provider == "prime":
         gti = q.get("broadcast") or (ext if ext.startswith("amzn1.dv.gti.") else None) \
@@ -213,13 +284,20 @@ def _apple_item(meta: dict, p: dict) -> dict | None:
     if not (gti or url):
         return None
     geo = p.get("isGeoRestricted")
+    title = p.get("title") or ""
+    ref = gti if provider == "prime" else play_id if provider in ("espn", "espnplus") \
+        else _ref_for(provider, punch, q, ext)
     return {
         **meta, "provider": provider, "gti": gti, "url": url,
-        "title": p.get("title") or "", "source": "apple",
+        "title": title, "source": "apple",
         "geo_ok": (not geo) if isinstance(geo, bool) else None,
         "feed": None, "feed_name": None, "network": p.get("serviceName"),
         "lang": None, "play_id": play_id, "program_id": ext or None,
         "espn_event_id": None, "raw": punch or None,
+        # what each provider's tuner needs; Apple brand id; ESPN linear channel (playChannel);
+        # True for alt-casts / camera feeds / studio shows that aren't the main broadcast
+        "ref": ref, "brand": brand or None, "channel": q.get("playChannel"),
+        "alt": bool(_ALT_TITLE.search(title)),
     }
 
 
@@ -308,6 +386,8 @@ async def _espn_links(client, day: dt.date, aliases: dict[str, set[str]]) -> lis
                 "program_id": _get(a, "program", "id"),
                 "espn_event_id": _get(a, "competition", "id"),
                 "raw": f"sportscenter://x-callback-url/showWatchStream?playID={pid}",
+                "ref": pid, "brand": None, "channel": net.get("id"), "event_url": None,
+                "alt": feed == "alt" or bool(_ALT_TITLE.search(a.get("name") or "")),
             })
         except Exception as e:  # one malformed airing must not lose the rest
             log.debug("skip airing: %s", e)
@@ -325,6 +405,12 @@ async def fetch_event_links(client: httpx.AsyncClient, date: str, *,
     "nflplus" ...), gti (Prime broadcast GTI), url, title.  Extras: away_names/home_names
     (aliases incl. abbreviations), geo_ok (True = playable from this IP, per Apple),
     feed ("national"|"home"|"away"|"alt"), feed_name, espn_event_id, play_id, raw, source.
+    Per-provider extras: ref (the id that provider's tuner needs: Prime GTI, ESPN play id,
+    Peacock pvid, HBO Max sport id, Paramount+ "<slug>/<id>", NFL+ livestream id, NBA game
+    id, DAZN id ...), alt (True = alt-cast/camera feed/show, not the main broadcast),
+    channel (ESPN network id / Apple playChannel), brand (Apple channel id), event_url
+    (tv.apple.com page; Apple rows only).  Providers also seen: "max", "paramount",
+    "nbcsports", "cbssports", "tnt", "trutv", "marquee".
     Never raises; returns [] when nothing could be fetched.
     """
     try:

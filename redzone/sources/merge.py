@@ -79,7 +79,7 @@ class Merger:
         cur = self.games.get(g.game_id)
         if h.benched and cur is not None:
             return cur
-        if cur is None or progress_key(g) >= progress_key(cur):
+        if cur is None or _takes_over(g, cur):
             merged = g
             if cur is not None:
                 merged = _fill_gaps(g, cur)
@@ -133,6 +133,19 @@ class Merger:
                 "avg_lag_s": round(sum(ls) / len(ls), 1) if ls else 0.0,
             }
         return out
+
+
+def _takes_over(g: GameState, cur: GameState) -> bool:
+    """g replaces the merged state if it's further along, or level and not missing cur's
+    latest play. The tie-break matters on a stopped clock (free throws, timeouts, between
+    downs): a push feed and a few-seconds-staler poll sit at the same clock and score, and
+    without it they'd take turns, flipping the last play and stoppage back and forth."""
+    kg, kc = progress_key(g), progress_key(cur)
+    if kg != kc:
+        return kg > kc
+    a = g.last_play.wallclock if g.last_play else None
+    b = cur.last_play.wallclock if cur.last_play else None
+    return a is None or b is None or a >= b
 
 
 def _fill_gaps(dst: GameState, src: GameState) -> GameState:

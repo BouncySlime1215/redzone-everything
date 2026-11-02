@@ -3,9 +3,9 @@
 import {
   app, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, isDark, whereLabel, whereUnknown,
   leaderLabel, winner, teamBy, fmtDur, nowS, fmtCountdown, imgSrc, games,
-} from "./rz-core.js?v=32";
-import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=32";
-import { situation, wpBar } from "./rz-viz.js?v=32";
+} from "./rz-core.js?v=36";
+import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=36";
+import { situation, wpBar } from "./rz-viz.js?v=36";
 
 /* ---------- chips ---------- */
 export function whereChip(g, { onDark = false } = {}) {
@@ -15,7 +15,7 @@ export function whereChip(g, { onDark = false } = {}) {
   }
   const label = whereLabel(g).replace(/\s*\((event link|channel)[^)]*\)\s*/gi, " ").trim();
   const needs = g && g.where && typeof g.where === "object" && g.where.tunable === false;
-  return `<button class="chip chip--where chip--btn where" data-act="set-channel" data-gid="${gid}" aria-label="Playing on ${attr(label)}. Change channel">${icon("tv")}<span>${esc(label)}</span>${needs ? `<i class="needs" title="Link not set"></i>` : ""}</button>`;
+  return `<button class="chip chip--where chip--btn where" data-act="set-channel" data-gid="${gid}" aria-label="Source: ${attr(label)}. Change channel">${icon("tv")}<span>${esc(label)}</span>${needs ? `<i class="needs" title="Link not set"></i>` : ""}</button>`;
 }
 export const isGarbage = (g) => arr(g && g.tags).some((t) => /garbage/i.test(String(t))) || /^garbage time/i.test(String((g && g.reason) || ""));
 export const isComeback = (g) => /comeback/i.test(String((g && g.reason) || ""));
@@ -186,7 +186,7 @@ export function heroCard(n, g, S) {
     <div class="hero-bg">${venue ? `<img src="${attr(imgUrl(venue))}" data-src="${attr(imgUrl(venue))}" data-orig="${attr(venue)}" alt="" decoding="async" fetchpriority="high">` : ""}</div>
     <i class="hero-fx"></i><i class="hero-sweep"></i>
     <div class="hero-in">
-      <div class="hero-top"><div class="left">${stateBadge(kind)}${leagueImg(game.league, { dark: true })}</div>
+      <div class="hero-top"><div class="left">${stateBadge(kind, mode.dry_run ? "Simulation" : undefined)}${leagueImg(game.league, { dark: true })}</div>
         <span class="on-for">${icon("clock")}on for <b data-since="${since}" data-own>${since ? fmtDur(nowS() - since) : "—"}</b></span></div>
       ${board(game)}
       ${wpBar(game)}

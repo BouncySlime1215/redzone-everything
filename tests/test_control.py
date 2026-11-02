@@ -1,4 +1,4 @@
-"""The TV machine with fake sticks: single stick, two-stick hot standby, safe flips, fallbacks."""
+"""The TV machine: confirmed input changes, safe exits, and uncertain-command recovery."""
 import asyncio
 
 import pytest
@@ -10,29 +10,43 @@ from redzone.tuners.tuners import TuneResult
 
 
 class FakeStick(Stick):
-    def __init__(self, host, cec_ok=True):
+    def __init__(self, host, cec_ok=True, display=None, hdmi=None):
         super().__init__(host, name=host, os="Fire OS 8")
         self.state = "connected"
         self.packages = {"youtubetv": "yttv.pkg", "prime": "prime.pkg"}
         self.log = []
         self.cec_ok = cec_ok
+        self.display, self.hdmi = display, hdmi
+        self.playback_state = "playing"
 
     async def shell(self, cmd, timeout=8.0):
         self.log.append(cmd)
         if "onetouchplay" in cmd:
+            if self.cec_ok and self.display is not None:
+                self.display["input"] = self.hdmi
             return RunResult(self.cec_ok, "" if self.cec_ok else "Error: unknown command", 0.01)
+        if "mWakefulness" in cmd:
+            return RunResult(True, "mWakefulness=Awake", 0.01)
         return RunResult(True, "", 0.01)
 
     async def key(self, *codes):
         self.log.extend(codes)
+        return RunResult(True, "", 0.01)
+
+    async def playback(self, package=None):
+        return {"state": self.playback_state, "pkg": package, "position": 1000, "updated": 1000}
 
 
 class FakeTuner:
     def __init__(self, ok=True):
         self.ok, self.calls = ok, []
 
-    async def tune(self, stick, ref, target):
+    async def tune(self, stick, ref, target, may_cut=None):
+        if may_cut is not None and not may_cut():
+            return TuneResult(False, target, 0.0, [], "safe switching window closed", screen_changed=False)
         self.calls.append((stick.host, target))
+        if self.ok:
+            stick.remember(target, await stick.playback(stick.packages[target.split(":")[0]]))
         return TuneResult(self.ok, target, 0.01, ["playing"], "" if self.ok else "video never started")
 
 
@@ -42,8 +56,15 @@ def two(cfg, tmp_path, monkeypatch):
     ch = ChannelMap(tmp_path / "ch.json")
     ch.codes.update({"espn": "AAAAAAAAAAA", "fox": "BBBBBBBBBBB"})
     c = ctl.Controller(cfg, ch)
-    c.sticks = [FakeStick("a:5555"), FakeStick("b:5555")]
+    display = {"input": "HDMI1"}
+    c.sticks = [FakeStick("a:5555", display=display, hdmi="HDMI1"),
+                FakeStick("b:5555", display=display, hdmi="HDMI2")]
     c.hdmi = {"a:5555": "HDMI1", "b:5555": "HDMI2"}
+    c.tv.st_device = "selected-test-display"
+
+    async def input_status():
+        return display["input"]
+    monkeypatch.setattr(c.tv, "input_status", input_status)
     tuner = FakeTuner()
     monkeypatch.setitem(ctl.TUNERS, "youtubetv", tuner)
     return c, tuner
@@ -73,6 +94,7 @@ def test_two_stick_tunes_hidden_then_flips(two):
 def test_preloaded_standby_flips_instantly(two):
     c, tuner = two
     c.hidden_target, c.hidden_ready = "youtubetv:fox", True
+    c.hidden.remember("youtubetv:fox", run(c.hidden.playback("yttv.pkg")))
     out = run(c.execute("youtubetv:fox", may_cut=lambda: True))
     assert out.ok and tuner.calls == []                         # no tuning needed
 
@@ -97,7 +119,7 @@ def test_never_flips_mid_play(two, monkeypatch):
     assert c.main.host == "a:5555"                              # still on the original stick
 
 
-def test_failed_flip_falls_back_to_single_stick(two, monkeypatch):
+def test_unconfirmed_flip_stops_without_single_stick_fallback(two, monkeypatch):
     c, tuner = two
     for s in c.sticks:
         s.cec_ok = False
@@ -106,9 +128,54 @@ def test_failed_flip_falls_back_to_single_stick(two, monkeypatch):
         return False
     monkeypatch.setattr(c.tv, "set_input", no_tv)
     out = run(c.execute("youtubetv:espn", may_cut=lambda: True))
-    assert out.ok                                               # single-stick tune still happened
+    assert not out.ok and c.input_unknown
     assert not c.two_stick and "Two-stick mode off" in c.note
-    assert tuner.calls[-1] == ("a:5555", "youtubetv:espn")
+    assert tuner.calls == [("b:5555", "youtubetv:espn")]
+    assert c.main.host == "a:5555" and c.on_target is None
+
+
+def test_cec_ack_without_input_readback_never_claims_success_or_retries(two, monkeypatch):
+    c, tuner = two
+    fallback_calls = []
+
+    async def unreadable():
+        return None
+
+    async def no_retry(hdmi):
+        fallback_calls.append(hdmi)
+        return True
+
+    monkeypatch.setattr(c.tv, "input_status", unreadable)
+    monkeypatch.setattr(c.tv, "set_input", no_retry)
+    out = run(c.execute("youtubetv:espn", may_cut=lambda: True))
+    assert not out.ok and out.confirmed_at is None
+    assert c.input_unknown and c.on_target is None and not fallback_calls
+    assert tuner.calls == [("b:5555", "youtubetv:espn")]
+    # A later command also cannot tune an assumed visible stick while input is unknown.
+    again = run(c.execute("youtubetv:fox", may_cut=lambda: True))
+    assert not again.ok and "input is unknown" in again.detail
+    assert len(tuner.calls) == 1
+
+
+def test_cached_ready_flag_cannot_flip_buffering_standby(two):
+    c, tuner = two
+    c.hidden_target, c.hidden_ready = "youtubetv:fox", True
+    c.hidden.remember("youtubetv:fox", run(c.hidden.playback("yttv.pkg")))
+    c.hidden.playback_state = "buffering"
+    out = run(c.execute("youtubetv:fox", may_cut=lambda: True))
+    assert not out.ok and out.screen_unchanged
+    assert c.main.host == "a:5555" and not tuner.calls
+    assert not any("onetouchplay" in cmd for stick in c.sticks for cmd in stick.log)
+
+
+def test_no_readback_capable_display_keeps_single_stick_mode(two):
+    c, tuner = two
+    c.tv.st_device = None
+    assert not c.two_stick and c.hidden is None
+    out = run(c.execute("youtubetv:espn", may_cut=lambda: True))
+    assert out.ok and out.path == "single"
+    assert tuner.calls == [("a:5555", "youtubetv:espn")]
+    assert not any("onetouchplay" in cmd for stick in c.sticks for cmd in stick.log)
 
 
 def test_unknown_channel_is_a_clear_error(two):

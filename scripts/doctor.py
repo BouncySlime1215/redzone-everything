@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import ipaddress
+import itertools
 import json
 import platform
 import re
@@ -58,7 +59,7 @@ async def port_open(host: str, port: int, timeout: float = 0.6) -> bool:
 
 
 async def scan(net: ipaddress.IPv4Network, port: int) -> list[str]:
-    hosts = list(net.hosts())[:1024]
+    hosts = list(itertools.islice(net.hosts(), 1024))
     sem = asyncio.Semaphore(128)
 
     async def one(h):
@@ -81,11 +82,32 @@ async def samsung_info(ip: str) -> dict | None:
     return None
 
 
+def select_tv(tvs: list[dict], previous: dict | None, explicit_ip: str | None) -> dict | None:
+    """A discovered TV is not consent to select it (another may belong to the Xbox)."""
+    if explicit_ip:
+        return next((tv for tv in tvs if tv["ip"] == explicit_ip), None)
+    if previous:
+        mac = previous.get("wifi_mac")
+        return next((tv for tv in tvs if (mac and tv.get("wifi_mac") == mac)
+                     or (not mac and tv["ip"] == previous.get("ip"))), None)
+    return None
+
+
 async def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ip", action="append", default=[], help="Fire TV stick IP to add (repeatable)")
+    ap.add_argument("--tv-ip", type=lambda s: str(ipaddress.IPv4Address(s)),
+                    help="Explicitly select this Samsung TV; other TVs are ignored")
+    ap.add_argument("--display-type", choices=("monitor", "samsung"),
+                    help="Select monitor to clear a previously saved Samsung target")
     ap.add_argument("--no-scan", action="store_true")
     a = ap.parse_args()
+    old = json.loads(DEVICES.read_text()) if DEVICES.exists() else {}
+    if a.display_type == "monitor":
+        old.pop("tv", None)
+        old["display_type"] = "monitor"
+        if a.tv_ip:
+            ap.error("--display-type monitor cannot select a Samsung --tv-ip")
 
     print("\nRedZone Everything — setup check\n")
     print("1. Your Mac")
@@ -132,14 +154,16 @@ async def main() -> None:
             ok = await st.connect()
         if st.state == "unauthorized":
             say(WARN, f"{h}: waiting for you — on the TV, pick 'Always allow from this computer' → OK, then rerun.")
+            await st.close()
             continue
         if not ok:
             say(BAD, f"{h}: couldn't connect ({st.state})")
+            await st.close()
             continue
         await st.identify()
         vega = "Vega" in st.os
         say(BAD if vega else OK, f"{h}: {st.name or st.model} — {st.os}" +
-            (" — Vega OS can't be controlled; RedZone will use single-stick mode" if vega else ""))
+            (" — Vega OS is unsupported by this app's ADB controller" if vega else ""))
         say(OK if st.session_status().startswith("working") else WARN, f"    fast commands: {st.session_status()}")
         for role in ("youtubetv", "prime", "youtube"):
             pkg = st.packages.get(role)
@@ -154,30 +178,39 @@ async def main() -> None:
 
     print("\n4. Samsung TV")
     tvs = []
-    if net is not None and not a.no_scan:
-        cand = await scan(net, 8001)
-        for h in cand:
-            info = await samsung_info(h)
-            if info:
-                tvs.append(info)
-                say(OK, f"{info['name']} ({info['model']}) at {h} — {info['os']}, power {info['power']}")
+    cand = [a.tv_ip] if a.tv_ip else []
+    if net is not None and not a.no_scan and a.display_type != "monitor":
+        cand += [h for h in await scan(net, 8001) if h not in cand]
+    for h in cand:
+        info = await samsung_info(h)
+        if info:
+            tvs.append(info)
+            say(OK, f"{info['name']} ({info['model']}) at {h} — {info['os']}, power {info['power']}")
     if not tvs:
         say(WARN, "No Samsung TV found (it must be on, same Wi-Fi). Only needed for two-stick mode.")
+    selected = select_tv(tvs, old.get("tv"), a.tv_ip)
+    if selected:
+        say(OK, f"Selected TV: {selected['name']} at {selected['ip']}")
+    elif tvs or a.tv_ip:
+        say(WARN, "TV selection unchanged. Rerun with --tv-ip ADDRESS for the TV with your Fire Stick; "
+                  "discovered TVs are never selected automatically.")
 
     print("\n5. NFL Sunday Ticket")
-    say(OK, "Sunday Ticket + RedZone: yes (set in settings)")
+    say(WARN, "Sunday Ticket + RedZone is configured, but account access must be verified on your selected stick")
 
     DEVICES.parent.mkdir(parents=True, exist_ok=True)
-    old = json.loads(DEVICES.read_text()) if DEVICES.exists() else {}
     if sticks:
         controllable = [s for s in sticks if s["controllable"]]
         old["sticks"] = controllable + [s for s in sticks if not s["controllable"]]
-    if tvs:
-        old["tv"] = tvs[0]
-    DEVICES.write_text(json.dumps(old, indent=1))
+    if selected:
+        old["tv"] = selected
+        old["display_type"] = "samsung"
+    tmp = DEVICES.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(old, indent=1))
+    tmp.replace(DEVICES)
     n = len([s for s in sticks if s["controllable"]])
     print(f"\nSaved to data/devices.json. Controllable sticks: {n} → "
-          f"{'two-stick hot standby possible' if n >= 2 else 'single-stick mode' if n == 1 else 'none yet'}.\n")
+          f"{'single-stick available; dual-stick requires verified display input control' if n >= 2 else 'single-stick available' if n == 1 else 'none yet'}.\n")
 
 
 if __name__ == "__main__":

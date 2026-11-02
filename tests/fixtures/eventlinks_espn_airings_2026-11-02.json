@@ -1,0 +1,179 @@
+{
+ "_about": "ESPN Watch Graph Airings response for 2026-11-02 (saved that day), trimmed to a few rows.",
+ "data": {
+  "airings": [
+   {
+    "id": "071155db-8293-4b71-927b-b4026114bcac",
+    "name": "Chicago Bears vs. Seattle Seahawks",
+    "startDateTime": "2026-11-03T01:15:00Z",
+    "feedName": null,
+    "feedType": "NATIONAL_FEED",
+    "language": "en",
+    "isReAir": false,
+    "network": {
+     "id": "espn1",
+     "name": "ESPN"
+    },
+    "league": {
+     "name": "NFL"
+    },
+    "competition": {
+     "id": "401873036"
+    },
+    "program": {
+     "id": "08bf581a-3e32-4d07-8a81-12536229d2ee"
+    }
+   },
+   {
+    "id": "afe5d47a-15e3-49c1-aa5f-e433a293f657",
+    "name": "MNF with Peyton and Eli-Chicago Bears vs. Seattle Seahawks",
+    "startDateTime": "2026-11-03T01:15:00Z",
+    "feedName": null,
+    "feedType": "ALTERNATE",
+    "language": "en",
+    "isReAir": false,
+    "network": {
+     "id": "espn2",
+     "name": "ESPN2"
+    },
+    "league": {
+     "name": "NFL"
+    },
+    "competition": {
+     "id": "401873036"
+    },
+    "program": {
+     "id": "30137b9e-992b-43fa-93a6-e16551e9bce7"
+    }
+   },
+   {
+    "id": "08f33b84-699d-426b-9756-2fda8a91c4e5",
+    "name": "En Español-Chicago Bears vs. Seattle Seahawks",
+    "startDateTime": "2026-11-03T01:00:00Z",
+    "feedName": null,
+    "feedType": "NATIONAL_FEED",
+    "language": "es",
+    "isReAir": false,
+    "network": {
+     "id": "espndeportes",
+     "name": "ESPN Deportes"
+    },
+    "league": {
+     "name": "NFL"
+    },
+    "competition": {
+     "id": "401873036"
+    },
+    "program": {
+     "id": "d5550085-6938-45dc-8901-b01bbf1a1aec"
+    }
+   },
+   {
+    "id": "deec9a00-afa6-4439-ae00-1db49e05eb17",
+    "name": "Detroit Red Wings vs. Florida Panthers",
+    "startDateTime": "2026-11-02T23:30:00Z",
+    "feedName": "Panthers Broadcast",
+    "feedType": "HOME",
+    "language": "en",
+    "isReAir": false,
+    "network": {
+     "id": "bam_dtc",
+     "name": "ESPN+"
+    },
+    "league": {
+     "name": "NHL"
+    },
+    "competition": {
+     "id": "401892630"
+    },
+    "program": {
+     "id": "28c6a5be-d824-425b-baf6-5352ad520fb2"
+    }
+   },
+   {
+    "id": "251eff58-0d49-4443-9774-f7edb3bbd1c0",
+    "name": "Detroit Red Wings vs. Florida Panthers",
+    "startDateTime": "2026-11-02T23:30:00Z",
+    "feedName": "Red Wings Broadcast",
+    "feedType": "AWAY",
+    "language": "en",
+    "isReAir": false,
+    "network": {
+     "id": "bam_dtc",
+     "name": "ESPN+"
+    },
+    "league": {
+     "name": "NHL"
+    },
+    "competition": {
+     "id": "401892630"
+    },
+    "program": {
+     "id": "68957f2f-f09a-46db-bfc5-7b7d4bce9b93"
+    }
+   },
+   {
+    "id": "ec031d5b-3b54-4315-a1f3-1ca67cf9f752",
+    "name": "Monday Night Countdown Presented by DraftKings Sportsbook",
+    "startDateTime": "2026-11-02T23:00:00Z",
+    "feedName": null,
+    "feedType": "NATIONAL_FEED",
+    "language": "en",
+    "isReAir": false,
+    "network": {
+     "id": "espn1",
+     "name": "ESPN"
+    },
+    "league": {
+     "name": "NFL"
+    },
+    "competition": null,
+    "program": {
+     "id": "5e29234b-a3a4-4ab9-a0e9-a53b495405d6"
+    }
+   },
+   {
+    "id": "d5549ffc-1ade-4f9e-9f21-9bfe731b4a67",
+    "name": "Monday Night Countdown Presented by DraftKings Sportsbook",
+    "startDateTime": "2026-11-02T23:00:00Z",
+    "feedName": null,
+    "feedType": "NATIONAL_FEED",
+    "language": "en",
+    "isReAir": false,
+    "network": {
+     "id": "nfl_network_domestic",
+     "name": "NFL Network"
+    },
+    "league": {
+     "name": "NFL"
+    },
+    "competition": null,
+    "program": {
+     "id": "5e29234b-a3a4-4ab9-a0e9-a53b495405d6"
+    }
+   },
+   {
+    "id": "51a49542-cb5f-4cab-a8db-6abdaf64d316",
+    "name": "Philadelphia Eagles vs. Washington Commanders",
+    "startDateTime": "2026-11-02T07:30:00Z",
+    "feedName": null,
+    "feedType": "NATIONAL_FEED",
+    "language": "en",
+    "isReAir": true,
+    "network": {
+     "id": "nfl_network_domestic",
+     "name": "NFL Network"
+    },
+    "league": {
+     "name": "NFL"
+    },
+    "competition": {
+     "id": "401873035"
+    },
+    "program": {
+     "id": "4f7d1232-6401-4c19-aae1-ab2eda55d62b"
+    }
+   }
+  ]
+ }
+}

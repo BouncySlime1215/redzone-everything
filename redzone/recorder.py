@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent / "data"
 class Recorder:
     def __init__(self, root: Path = ROOT):
         self.root = root
-        self._seen: dict[str, set[str]] = {}
+        self._seen: dict[tuple[str, str], set[str]] = {}   # (game, source) -> play ids
         self._race_n = 0
         self._archived: set[str] = set()
 
@@ -43,7 +43,9 @@ class Recorder:
 
     def plays(self, g: GameState, plays: list[dict], source: str) -> None:
         now = time.time()
-        seen = self._seen.setdefault(g.game_id, set())
+        # Per source, so each feed's lag is measured on its own: the slower feed's copy of a
+        # play still gets a row, and the gap between the two rows is what the race is about.
+        seen = self._seen.setdefault((g.game_id, source), set())
         first = not seen
         rows = []
         for p in plays:

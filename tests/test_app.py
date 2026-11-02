@@ -58,11 +58,11 @@ def test_actions(client, engine):
 
 
 def test_settings_validate_and_rollback(client):
-    bad = client.post("/api/settings", json={"changes": {"decider": {"min_dwell_s": 99999}}}).json()
+    bad = client.post("/api/settings", json={"changes": {"decider": {"manual_pause_s": 99999}}}).json()
     assert not bad["ok"] and "between" in bad["message"]
-    ok = client.post("/api/settings", json={"changes": {"decider": {"min_dwell_s": 50}}}).json()
+    ok = client.post("/api/settings", json={"changes": {"decider": {"manual_pause_s": 50}}}).json()
     assert ok["ok"]
-    assert client.get("/api/settings").json()["config"]["decider"]["min_dwell_s"] == 50
+    assert client.get("/api/settings").json()["config"]["decider"]["manual_pause_s"] == 50
     assert client.post("/api/settings/rollback").json()["ok"]
 
 
@@ -99,3 +99,22 @@ def test_redzone_on_screen_shows_on_the_phone(client, engine):
 def test_redzone_only_offered_when_on_the_air(engine):
     # The fixture's slate is a Monday: RedZone isn't on, whatever the settings say.
     assert engine._redzone_target(sunday_ticket=True, dry=True) is None
+
+
+def test_external_page_cannot_control_tv(client, engine):
+    assert not engine.decider.user.paused
+    r = client.post('/api/action', json={'action': 'pause'}, headers={'Origin': 'https://unrelated.example'})
+    assert r.status_code == 403 and not engine.decider.user.paused
+    r = client.post('/api/action', content='{"action":"pause"}', headers={'Content-Type': 'text/plain'})
+    assert r.status_code == 415 and not engine.decider.user.paused
+    r = client.post('/api/action', json={'action': 'pause'}, headers={'Origin': 'http://testserver'})
+    assert r.status_code == 200 and r.json()['ok']
+
+
+def test_dns_rebinding_host_is_rejected(client):
+    assert client.get('/api/state', headers={'Host': 'unrelated.example'}).status_code == 403
+
+
+def test_external_page_cannot_send_bodyless_mutation(client):
+    r = client.post('/api/settings/rollback', headers={'Origin': 'https://unrelated.example'})
+    assert r.status_code == 403

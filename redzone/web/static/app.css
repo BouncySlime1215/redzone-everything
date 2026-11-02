@@ -1064,6 +1064,23 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .fan-p > span.ell > small { display: block; font: 700 11px/1.2 var(--font-display); letter-spacing: .08em; color: var(--text-3); }
 .fan-p > span.ell { min-width: 0; }
 
+/* Estimated screen timing and the separate transport confirmation. */
+.evidence { padding: 15px 16px; margin-top: 14px; }
+.evidence-head { display: flex; align-items: center; gap: 10px; }
+.evidence-head > .ico { color: var(--info-ink); flex: 0 0 auto; }
+.evidence-head b { display: block; font: 700 14px/1.3 var(--font-ui); }
+.evidence-head small { display: block; color: var(--text-3); font-size: 12px; margin-top: 3px; }
+.evidence p { color: var(--text-2); font-size: 12.5px; line-height: 1.45; margin: 10px 0; }
+.evidence-stage { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: var(--text-2); }
+.evidence-stage > .ico { flex: 0 0 auto; }
+.evidence details.adv { margin-top: 12px; }
+.evidence details.adv > summary { min-height: 40px; font-size: 12.5px; }
+.evidence dl { margin: 0; }
+.evidence dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 12px; padding: 6px 0; font-size: 12px; }
+.evidence dt { color: var(--text-3); }
+.evidence dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.evidence .evidence-note { font-size: 12px; margin-bottom: 0; }
+
 /* ------------------------------------------------------------------ 14. motion */
 @keyframes screen-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
 @keyframes screen-in-back { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }

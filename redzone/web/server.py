@@ -9,7 +9,9 @@ import asyncio
 import hashlib
 import ipaddress
 import json
+import socket
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -58,6 +60,31 @@ def build_app(engine: Engine) -> FastAPI:
     async def lan_only(request: Request, call_next):
         if not _private(request.client.host if request.client else None):
             return JSONResponse({"ok": False, "message": "home network only"}, status_code=403)
+        # A malicious internet page can send a simple POST to a LAN address
+        # even without CORS permission. Check its origin BEFORE handling a TV
+        # command, and reject internet Host names (DNS rebinding).
+        host = request.url.hostname or ""
+        local_names = {"localhost", socket.gethostname().lower(), socket.gethostname().split(".")[0].lower()}
+        trusted_host = _private(host) or host.lower() in local_names or host.lower().endswith(".local")
+        if request.client and request.client.host == "testclient" and host == "testserver":
+            trusted_host = True
+        if not trusted_host:
+            return JSONResponse({"ok": False, "message": "use the Mac's local address"}, status_code=403)
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            origin = request.headers.get("origin")
+            if origin:
+                try:
+                    parsed = urlsplit(origin)
+                    same = parsed.scheme in {"http", "https"} and parsed.netloc.lower() == request.url.netloc.lower()
+                except ValueError:
+                    same = False
+                if not same:
+                    return JSONResponse({"ok": False, "message": "open the local phone page to control the TV"}, status_code=403)
+            if request.headers.get("sec-fetch-site") == "cross-site":
+                return JSONResponse({"ok": False, "message": "cross-site commands are not allowed"}, status_code=403)
+            has_body = request.headers.get("content-length", "0") != "0" or "transfer-encoding" in request.headers
+            if has_body and request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+                return JSONResponse({"ok": False, "message": "commands require application/json"}, status_code=415)
         resp = await call_next(request)
         if request.url.path.startswith("/api"):
             resp.headers["Cache-Control"] = "no-store"

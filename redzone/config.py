@@ -31,9 +31,6 @@ LIMITS: dict[str, tuple[float, float]] = {
     "score.stakes.max": (1.0, 1.5),
     "score.garbage.moment_mult": (0.0, 1.0),
     "score.garbage.comeback_s": (0, 1800),
-    "decider.min_dwell_s": (10, 600),
-    "decider.min_gap_s": (5, 300),
-    "decider.max_switches_per_5min": (1, 20),
     "delay": (0, 180),
     "replay": (0, 7200),
     "fantasy.team_id": (0, 100),
@@ -41,7 +38,28 @@ LIMITS: dict[str, tuple[float, float]] = {
     "break_lengths_s": (0, 1800),
     "score": (-100, 100),
     "decider": (0, 1000),
+    "two_stick.min_gain": (0, 100),
+    "two_stick.input_settle_s": (0, 10),
+    "two_stick.park_max_s": (30, 1800),
+    "two_stick": (0, 3600),
+    "switch_speed.sync_every_s": (60, 3600),
+    "autonomy.busy_score": (0, 100),
 }
+
+# Former rate/dwell limits are deliberately inactive. Old saved files and lab
+# recommendations can still load; preserve their other preferences while dropping these.
+RETIRED_SETTINGS = frozenset({"decider.min_dwell_s", "decider.chase_min_dwell_s",
+                              "decider.max_switches_per_5min", "decider.min_gap_s",
+                              "decider.ping_pong_freeze_s"})
+
+
+def without_retired(cfg: dict, path: str = "") -> dict:
+    out = {}
+    for key, value in cfg.items():
+        dotted = f"{path}.{key}" if path else key
+        if dotted not in RETIRED_SETTINGS:
+            out[key] = without_retired(value, dotted) if isinstance(value, dict) else copy.deepcopy(value)
+    return out
 
 
 class ConfigError(ValueError):
@@ -104,7 +122,7 @@ class Config:
         self.defaults = yaml.safe_load(DEFAULTS.read_text())
         self.overrides: dict = {}
         if user_path.exists():
-            loaded = yaml.safe_load(user_path.read_text()) or {}
+            loaded = without_retired(yaml.safe_load(user_path.read_text()) or {})
             try:
                 validate(loaded, self.defaults)
                 self.overrides = loaded
@@ -121,11 +139,13 @@ class Config:
             node = node[part]
         return node
 
-    def update(self, changes: dict) -> dict:
-        """Apply a partial change (nested dict). Raises ConfigError if invalid."""
-        new_over = _deep_merge(self.overrides, changes)
+    def update(self, changes: dict, record: bool = True) -> dict:
+        """Apply a partial change (nested dict). Raises ConfigError if invalid.
+        record=False is for values the app measured itself (switch times): they're validated and
+        saved like any edit, but kept out of the undo history so Undo still undoes YOUR last change."""
+        new_over = without_retired(_deep_merge(self.overrides, changes))
         validate(new_over, self.defaults)
-        self._save(new_over)
+        self._save(new_over, record=record)
         return self.data
 
     def rollback(self) -> bool:
@@ -139,6 +159,7 @@ class Config:
         return True
 
     def _save(self, over: dict, record: bool = True) -> None:
+        over = without_retired(over)
         self.user_path.parent.mkdir(parents=True, exist_ok=True)
         text = yaml.safe_dump(over, sort_keys=False)
         tmp = self.user_path.with_suffix(".tmp")

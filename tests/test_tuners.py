@@ -28,12 +28,13 @@ class ScriptedStick(Stick):
         self.cmds: list[str] = []
         self.screen_reads = 0
         self.am_reply = "Starting: Intent { act=android.intent.action.VIEW }"
+        self.am_ok = True
 
     async def _shell(self, cmd, timeout=8.0):
         self.cmds.append(cmd)
         if cmd.startswith("am start"):
             self.linked = True
-            return RunResult(True, self.am_reply, 0.0)
+            return RunResult(self.am_ok, self.am_reply, 0.0)
         if "media_session" in cmd:
             if self.linked and self.after:
                 self.now = self.after.pop(0) if len(self.after) > 1 else self.after[0]
@@ -64,7 +65,7 @@ class ScriptedStick(Stick):
 def quick(cls=YouTubeTVTuner, **kw):
     """A tuner with the same logic and test-sized waits."""
     t = cls()
-    t.poll_s, t.prompt_grace_s, t.loading_grace_s, t.settle_s, t.confirm_timeout = 0.002, 0.05, 0.3, 5.0, 0.4
+    t.poll_s, t.prompt_grace_s, t.loading_grace_s, t.confirm_timeout = 0.002, 0.05, 0.3, 0.4
     for k, v in kw.items():
         setattr(t, k, v)
     return t
@@ -108,24 +109,25 @@ async def test_a_jump_in_the_playback_clock_means_a_new_stream():
     assert res.ok and st.tuned["report"]["position"] == 900_000
 
 
-async def test_no_gap_and_no_jump_still_confirms_after_settling():
+async def test_ignored_link_does_not_confirm_unchanged_old_stream():
     old = yt(3, 1000, 5000)
     st = ScriptedStick(now=old, after=[old])
-    t0 = time.monotonic()
-    res = await quick(settle_s=0.1).tune(st, "CODE", "youtubetv:fox")
-    assert res.ok and time.monotonic() - t0 >= 0.1
+    res = await quick(confirm_timeout=0.05).tune(st, "CODE", "youtubetv:fox")
+    assert not res.ok and st.tuned is None
 
 
 def test_new_stream_rules():
-    w = NewStream({"state": "none"}, settle_s=10, sent_at=0.0)
+    w = NewStream({"state": "none"})
     assert w.check({"state": "playing"}, now=0.1)          # wasn't playing before: any playing is new
     old = {"state": "playing", "position": 1000, "updated": 5000}
-    w = NewStream(old, settle_s=10, sent_at=0.0)
+    w = NewStream(old)
     assert not w.check(dict(old), now=0.1)
     assert not w.check({"state": "buffering"}, now=0.2)
-    assert w.check(dict(old), now=0.3)                     # after a gap, playing is the new stream
-    w = NewStream(old, settle_s=10, sent_at=0.0)
-    assert not w.check(dict(old), now=9.9) and w.check(dict(old), now=10.0)
+    assert not w.check(dict(old), now=0.3)                 # old channel may simply have buffered
+    w = NewStream(old)
+    assert not w.check(dict(old), now=9.9) and not w.check(dict(old), now=1000.0)
+    assert not w.check({"state": "none"}, now=1001.0)
+    assert not w.check(dict(old), now=1002.0)              # failed query is not a transition
 
 
 async def test_wakeup_only_when_asleep():
@@ -160,7 +162,7 @@ async def test_unknown_wakefulness_presses_wakeup_to_be_safe():
 
 
 async def test_already_playing_skips_the_wake_check():
-    st = ScriptedStick(now=yt(3, 1000, 5000), after=[yt(6), yt(3, 5, 7000)])
+    st = ScriptedStick(now=yt(3, 1000, 5000), after=[yt(6), yt(3, 5, 9000)])
     assert (await quick().tune(st, "CODE", "youtubetv:fox")).ok
     assert st.asked("dumpsys power") == 0
 
@@ -280,10 +282,26 @@ async def test_replay_of_the_game_on_screen_skips_the_retune(one_stick):
     assert len(st.links()) == 2
 
 
-async def test_a_link_android_didnt_deliver_confirms_right_away():
+async def test_a_link_android_didnt_deliver_fails_without_remembering_wrong_game():
     old = yt(3, 1000, 5000)
     st = ScriptedStick(now=old, after=[old])
     st.am_reply = "Warning: Activity not started, its current task has been brought to the front"
     t0 = time.monotonic()
-    res = await quick(settle_s=10).tune(st, "CODE", "youtubetv:fox")
-    assert res.ok and time.monotonic() - t0 < 0.3   # nothing will change, so don't wait to "settle"
+    res = await quick().tune(st, "CODE", "youtubetv:fox")
+    assert not res.ok and time.monotonic() - t0 < 0.3
+    assert st.tuned is None and len(st.links()) == 1
+
+
+async def test_failed_launch_never_confirms_or_repeats_uncertain_command():
+    st = ScriptedStick(after=[yt(3, 100, 5000)])
+    st.am_ok = False
+    st.am_reply = "timeout/error: no reply"
+    res = await quick().tune(st, "CODE", "youtubetv:fox")
+    assert not res.ok and st.tuned is None and len(st.links()) == 1
+
+
+async def test_a_retry_requires_its_own_playback_transition():
+    old = yt(3, 1000, 5000)
+    st = ScriptedStick(now=old, after=[yt(6), old])
+    res = await quick(confirm_timeout=0.03).tune(st, "CODE", "youtubetv:fox")
+    assert not res.ok and st.tuned is None and len(st.links()) == 2

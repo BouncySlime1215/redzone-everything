@@ -14,15 +14,16 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from redzone import bets as betlib
-from redzone import views
+from redzone import standby, views
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
-from redzone.config import Config
+from redzone.config import Config, ConfigError
 from redzone.control import Controller
-from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode, Missed
-from redzone.decider.screen import PLAY_LEN_S, DelayBook, leave_gate
+from redzone.decider.decider import REDZONE, Candidate, Decider, Decision, FocusMode, Missed, State
+from redzone.decider.screen import (PLAY_LEN_S, Delay, DelayBook, break_on_arrival, catchable,
+                                   leave_gate, leave_window, screen_evidence)
 from redzone.models import GameState, League, Phase
 from redzone.scoring.engine import Personal, Scored, Scorer
-from redzone.sources import espn, leagues
+from redzone.sources import espn, fastcast, leagues
 from redzone.sources.http import Fetcher
 from redzone.sources.merge import Merger
 from redzone.recorder import Recorder
@@ -30,6 +31,8 @@ from redzone.store import Store
 
 log = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
+FASTCAST_SYNC_S = 2.0
+DECIDE_EVERY_S = 0.5   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
 class Engine:
@@ -42,7 +45,13 @@ class Engine:
         self.scorer = Scorer(self.cfg)
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"))
         self.decider = Decider(self.cfg, self.delays)
-        self.control = Controller(self.cfg, self.channels)
+        data_dir = getattr(self.cfg, "user_path", None)
+        self.control = Controller(self.cfg, self.channels,
+                                  latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
+        self.decider.deadline_cost = self.control.deadline_cost
+        self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
+        self._cost_mode: bool | None = None         # two-stick mode when switch costs were last synced
+        self._cost_synced = 0.0
         self.boosted: set[str] = set()
         self.skipped: dict[str, float] = {}   # game -> skip expires at
         self.scored: dict[str, Scored] = {}
@@ -62,6 +71,14 @@ class Engine:
         self._suspended_focus: tuple | None = None   # (game, mode) paused for garbage time
         self._mic_used: set[tuple[str, float]] = set()
         self._last_mic = 0.0
+        self._pending_decision = None
+        self.mic_suggestion = None
+        self.fastcast = None
+        self._fastcast_task = None
+        self._fastcast_games = {}
+        self._fresh = asyncio.Event()
+        from redzone.discovery.runtime import DiscoveryRuntime
+        self.discovery = DiscoveryRuntime(self)
 
     # ------------------------------------------------------------------ loop
 
@@ -71,7 +88,7 @@ class Engine:
         if self.cfg.get("screen.mic_calibration", False):
             self.set_mic(True)
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
-                             self._fantasy_loop())
+                             self._fantasy_loop(), self._fastcast_loop(), self.discovery.run())
 
     async def _poll_loop(self) -> None:
         while True:
@@ -92,8 +109,10 @@ class Engine:
             await asyncio.sleep(max(1.0, interval - (time.time() - t0)))
 
     async def _decide_loop(self) -> None:
-        """Decide every second: gates open and close within seconds, so a 10s cadence
-        would miss the moment a play ends on screen or a big play becomes catchable."""
+        """Decide twice a second: gates open and close within seconds, so a 10s cadence would
+        miss the moment a play ends on screen or a big play becomes catchable — and with a
+        preloaded second stick the flip follows the decision at once, so every tick of lag is
+        on screen (1s ticks = 0.5s late on average; 0.5s ticks = 0.25s)."""
         last_push = 0.0
         while True:
             try:
@@ -105,7 +124,18 @@ class Engine:
             except Exception:
                 log.exception("decide failed")
                 self.decider.note_error()
-            await asyncio.sleep(1.0)
+            await self._next_tick(DECIDE_EVERY_S)
+
+    async def _next_tick(self, seconds: float) -> None:
+        """Sleep until the next decision, or less when pushed data just arrived: a big play
+        from the push feed is acted on now, not up to a second later. Without the push feed
+        nothing sets _fresh, so this is exactly the old 1s sleep."""
+        try:
+            await asyncio.wait_for(self._fresh.wait(), seconds)
+            await asyncio.sleep(0.05)   # let a burst of pushed updates land together
+        except asyncio.TimeoutError:
+            pass
+        self._fresh.clear()
 
     async def _links_loop(self) -> None:
         """Every 5 minutes: find exact Prime Video / ESPN+ event links for today's games."""
@@ -130,9 +160,11 @@ class Engine:
             found = eventlinks.match(links, g.league.value, names_a, names_h, espn_event_id=g.game_id)
             if found:
                 self.channels.apply_links(g, found, mine)
+                self.discovery.remember(g, found)
                 n += 1
         if n:
             self.channels.save()
+        self.discovery.links_refreshed(n)
         return n
 
     async def _fantasy_loop(self) -> None:
@@ -306,10 +338,72 @@ class Engine:
                                         "age_s": round(now - h.last_ok) if h.last_ok else None,
                                         "errors": h.errors, "benched": h.benched}
 
+    # ------------------------------------------------------------------ push feed
+
+    async def _fastcast_loop(self) -> None:
+        """ESPN's push feed (sources.fastcast), next to polling, never instead of it. The setting
+        is re-read every few seconds, so turning it on or off needs no restart."""
+        while True:
+            try:
+                self.sync_fastcast()
+            except Exception:
+                log.exception("fastcast sync failed")
+            await asyncio.sleep(FASTCAST_SYNC_S)
+
+    def sync_fastcast(self) -> None:
+        """Match the setting; subscribe to every live game, drop games that went final."""
+        if not self.cfg.get("sources.fastcast", False):
+            self._stop_fastcast()
+            return
+        if self.fastcast is None:
+            self.fastcast = fastcast.FastcastClient(self._on_fastcast, http=self.fetcher._client)
+            self._fastcast_task = asyncio.get_running_loop().create_task(self.fastcast.run())
+        lgs = self._leagues()
+        self._fastcast_games = {
+            fastcast.game_topic(g.league, g.game_id, self.summaries.get(g.game_id)): (g.league, g.game_id)
+            for g in self.merger.games.values() if g.phase == Phase.LIVE and g.league in lgs}
+        self.fastcast.set_topics(self._fastcast_games)
+
+    def _stop_fastcast(self) -> None:
+        if self.fastcast is not None:
+            self.fastcast.stop()
+            self.fastcast = None
+        if self._fastcast_task is not None:
+            self._fastcast_task.cancel()
+            self._fastcast_task = None
+        self._fastcast_games = {}
+
+    def _on_fastcast(self, topic: str, doc, received_at: float, published_at: float | None) -> None:
+        """A pushed game update takes the same path as a polled summary (merge, flight recorder,
+        timeline). If it moved the game (new play, score, stoppage), the decision loop wakes now.
+        Errors propagate to the client, which logs them; the polled sources are untouched."""
+        game = self._fastcast_games.get(topic)
+        if game is None:
+            return   # unsubscribed a moment ago
+        league, gid = game
+        try:
+            g, plays = fastcast.to_game_state(league, doc, expect_id=gid)
+        except Exception:
+            self.merger.record_error("espn_fastcast")
+            raise
+        if not fastcast.usable(g):   # wrong game, or a shape we can't fully read: polling covers it
+            self.merger.record_error("espn_fastcast")
+            return
+        self.recorder.plays(g, plays, "espn_fastcast")
+        before = _game_fingerprint(self.merger.games.get(gid))
+        merged = self.merger.update("espn_fastcast", g)
+        if merged.phase == Phase.LIVE or (merged.phase == Phase.POST and gid in self.decider.timelines):
+            self.decider.timeline(gid, league).observe(merged)
+        if _game_fingerprint(merged) != before:
+            self._fresh.set()   # most pushes are odds/stat tweaks every 10s: those don't wake it
+
     # ------------------------------------------------------------------ decide
 
+    def _my_teams(self) -> dict[League, set[str]]:
+        return {League(k): set(v) for k, v in (self.cfg.get("teams") or {}).items() if k in League._value2member_map_}
+
     def personal(self) -> Personal:
-        teams = {League(k): set(v) for k, v in (self.cfg.get("teams") or {}).items() if k in League._value2member_map_}
+        teams = self._my_teams()
         sweat, labels = {}, {}
         for b in self.store.bets():
             g = self.merger.games.get(b["game"])
@@ -348,7 +442,7 @@ class Engine:
                 log.exception("score failed %s", gid)
                 continue
             self.scored[gid] = sc
-            w = self.channels.where(g, sunday_ticket=st)
+            w = self.discovery.choose(g, self.channels.where(g, sunday_ticket=st))
             self.where[gid] = w
             if g.phase != Phase.LIVE:
                 continue
@@ -356,8 +450,11 @@ class Engine:
             target = w.target if (w.tunable or dry) else None
             cands[gid] = Candidate(sc, target, stale=self.merger.is_stale(gid))
         self._garbage_focus()
+        if self._pending_decision is not None:
+            return False  # score/feed updates continue; don't race a tune in flight
         before = self.decider.current
-        d = self.decider.decide(cands, self._redzone_target(st, dry))
+        redzone = self._redzone_target(st, dry)
+        d = self.decider.decide(cands, redzone, commit=dry)
         self.last_decision = d
         changed = d.reason != self._last_logged_reason or d.action != "stay"
         if changed:
@@ -366,7 +463,8 @@ class Engine:
         if d.action in ("switch", "replay") and d.target:
             self._act(d, before, cands)
         else:
-            self._preload_standby(cands)
+            self._preload_standby(cands, redzone)
+        self._sync_switch_costs()
         if time.time() - self._last_snapshot > 60:
             self._last_snapshot = time.time()
             self.store.snapshot([(time.time(), gid, s.league.value, s.score, s.moment, s.reason,
@@ -389,16 +487,72 @@ class Engine:
             back = d.replay.back_s(time.time(), delay.mu, PLAY_LEN_S.get(self.merger.games[d.target].league, 8))
         cmd_ts = time.time()
         event_ts = d.replay.t if d.replay else None
+        deferred = not self.cfg.get("mode.dry_run", True)
+        replay_exit = max(self.decider.replay_until, self.decider.replay_exit_after) \
+            if (self.decider.replaying or self.decider.after_replay) else None
+        self._pending_decision = d
+        if deferred:
+            # Conservatively mark the transition unknown until observed; never
+            # mark a big play seen because a command merely was submitted.
+            self.decider._screen_log.append((cmd_ts, None))
+            if self.decider.replaying:
+                self.decider.abort_replay()
 
         def done(out):
+            if self._pending_decision is not d:
+                return
+            self._pending_decision = None
+            if deferred:
+                if out.ok and not out.dry_run:
+                    self.decider.confirm(d, cands)
+                    if d.kind == "user":
+                        self.decider.user.manual_until = time.time() + self.cfg.get("decider.manual_pause_s")
+                else:
+                    self.decider.reject(d)
+                    # Playback can be unknown after a failed launch. Hold for
+                    # recovery instead of making new decisions from a fiction.
+                    if out.screen_unchanged:
+                        # The proposal expired without a visible command. The
+                        # old stream remains the current game; keep planning.
+                        self.decider._screen_log.append((time.time(), "replay" if replay_exit is not None else before))
+                    elif not out.dry_run:
+                        self.decider.safe_mode = True
             self.store.switch(ts=cmd_ts, frm=before, to_game=d.target, target=target, kind=d.kind, reason=d.reason,
                               event_ts=event_ts, cmd_ts=cmd_ts, confirmed_ts=out.confirmed_at, ok=out.ok,
-                              dry_run=out.dry_run, detail={"took": out.took, "detail": out.detail})
-            if not out.ok and not out.dry_run:
+                              dry_run=out.dry_run, detail={"took": out.took, "detail": out.detail,
+                                                           "path": out.path, "waited": round(out.waited, 1)})
+            self.discovery.on_outcome(out, d.target, replay=d.action == "replay")
+            if not out.ok and not out.dry_run and not out.screen_unchanged:
                 self.decider.note_error()
                 self.toast(f"Couldn't switch: {out.detail[:80]}", "error")
             self.broadcast()
-        self.control.submit(target, back, done, may_cut=lambda: self.safe_to_leave(before))
+        self.control.submit(target, back, done, may_cut=lambda: (
+                            not self.decider.user.paused and not self.cfg.get("mode.dry_run", True)
+                            and (d.kind == "user" or (self._entry_valid(d, target)
+                                 and (time.time() >= replay_exit if replay_exit is not None
+                                      else self.safe_to_leave(before, required_s=8.0))))),
+                            replay_id=d.replay.pid if d.replay else None)
+
+    def _entry_valid(self, d: Decision, target: str | None) -> bool:
+        """Refresh the destination just before any visible mutation, not just at planning time."""
+        if d.action == "replay":
+            return bool(d.replay and not d.replay.replayed)
+        if d.target == REDZONE:
+            return redzone_on(self.merger.games.values())
+        g = self.merger.games.get(d.target or "")
+        if not g or g.phase != Phase.LIVE or self.merger.is_stale(g.game_id):
+            return False
+        if getattr(self.where.get(g.game_id), "target", None) != target:
+            return False
+        tl = self.decider.timelines.get(g.game_id)
+        if tl is None:
+            return False
+        now = time.time()
+        delay = self.delays.get(target or "unknown")
+        remaining = self.control.deadline_cost(target)
+        if d.kind == "chase" and catchable(tl, delay, now, remaining) is None:
+            return False
+        return not break_on_arrival(tl, delay, now, now + remaining)
 
     def _start_st_scan(self) -> tuple[bool, str]:
         codes = self.channels.st_codes
@@ -427,19 +581,19 @@ class Engine:
             if not m.start():
                 return False, f"Couldn't use the microphone: {m.error}"
             self.mic = m
-            return True, "Listening for crowd noise to measure your delay (nothing is recorded)"
+            return True, "Listening for possible delay hints; confirm timing with a known play (nothing is recorded)"
         if not on and self.mic is not None:
             self.mic.stop()
             self.mic = None
-        self.fantasy = None   # latest fantasy.Matchup
-        self._suspended_focus: tuple | None = None   # (game, mode) paused for garbage time
+        self.mic_suggestion = None
         return True, "Microphone off"
 
     def _mic_calibrate(self) -> None:
         """Every few seconds: match recent big plays in the game on screen to loudness surges."""
         from redzone.screen.audio import match_delay
         now = time.time()
-        if self.mic is None or now - self._last_mic < 5 or self.decider.replaying:
+        if (self.mic is None or now - self._last_mic < 5 or self.decider.replaying
+                or self._pending_decision is not None or self.cfg.get("mode.dry_run", True)):
             return
         self._last_mic = now
         gid = self.decider.current
@@ -450,7 +604,7 @@ class Engine:
         d = self.delays.get(target)
         for e in tl.events:
             key = (gid, e.seen)
-            if e.kind != "play" or not e.big or key in self._mic_used or not (now - 150 < e.seen < now - 25):
+            if e.kind != "play" or e.spread > 0 or not e.big or key in self._mic_used or not (now - 150 < e.seen < now - 25):
                 continue
             # Only plays we were actually watching when they aired.
             if self.decider.on_screen_at(e.seen + d.mu) != gid:
@@ -458,29 +612,104 @@ class Engine:
             sample = match_delay(e.seen, self.mic.surges(e.seen), expected=d.mu)
             if sample is not None and now > e.seen + sample + 3:
                 self._mic_used.add(key)
-                d = self.delays.calibrate(target, sample)
-                self.store.calibration(target, sample, d.mu, d.sigma)
-                log.info("mic calibration %s: %.1fs -> %.1f±%.1f", target, sample, d.mu, d.sigma)
+                # A volume surge may be an ad, commentary, or another sound.
+                # It cannot identify a play, so it never changes trusted timing.
+                self.mic_suggestion = {"target": target, "delay_s": round(sample, 1),
+                                       "play_id": e.pid, "label": e.label, "at": now,
+                                       "verified": False}
 
-    def safe_to_leave(self, gid: str | None) -> bool:
+    def safe_to_leave(self, gid: str | None, required_s: float = 0.0) -> bool:
         """Re-checked right before a two-stick input flip: is a play on screen in the game we're leaving?"""
-        if not gid or gid not in self.decider.timelines:
+        if not gid or gid == REDZONE:
             return True
+        if self.decider.replaying or self.decider.after_replay:
+            return time.time() >= max(self.decider.replay_until, self.decider.replay_exit_after)
+        if gid not in self.decider.timelines:
+            return False  # no screen timing evidence is not an open cutting window
         if self.decider._ending_still_airing(gid, time.time()) > 0:
             return False
         target = getattr(self.where.get(gid), "target", None) or "unknown"
-        gate = leave_gate(self.decider.timelines[gid], self.delays.get(target), time.time(),
-                          self.cfg.get("decider.uncalibrated_sigma_s"))
+        gate = leave_window(self.decider.timelines[gid], self.delays.get(target), time.time(),
+                            self.cfg.get("decider.uncalibrated_sigma_s"), required_s)
         return gate.safe
 
-    def _preload_standby(self, cands: dict) -> None:
-        """Two sticks: keep the hidden one on the most likely next game."""
-        cur = self.decider.current
-        best = max((x for gid, x in cands.items() if gid != cur and x.target and not x.stale
-                    and gid not in self.decider.user.muted and not x.scored.is_break),
-                   key=lambda x: x.scored.score, default=None)
-        if best:
-            self.control.preload(best.target)
+    def _preload_standby(self, cands: dict, redzone: str | None = None) -> None:
+        """Two sticks: keep the hidden one on what the next switch most likely needs, so that switch
+        is a 1-2s input flip instead of a 5-10s tune. What and when: redzone/standby.py."""
+        if not self.control.two_stick:
+            return
+        pick = self.planner.plan(self._standby_options(cands, redzone), self.control.standby)
+        if pick:
+            self.control.preload(pick.target, back_s=pick.back_s, replay_id=pick.replay_id)
+
+    def _standby_options(self, cands: dict, redzone: str | None = None) -> list[standby.Option]:
+        dec, u = self.decider, self.decider.user
+        if redzone and self.cfg.get("decider.redzone_channel", False):
+            # NFL RedZone is where Sunday breaks go and home base when nothing's close: rank it the
+            # way the decider does (decider.redzone_score), so those switches can be flips too.
+            rz = float(self.cfg.get("decider.redzone_score", 45))
+            cands = {**cands, REDZONE: Candidate(Scored(
+                game_id=REDZONE, league=League.NFL, score=rz, raw=rz, moment=rz, stakes=1.0, personal=0.0,
+                reason="NFL RedZone", tags=[], is_break=False, lock=None, pre_moment=None, closeness=1.0), redzone)}
+        home = dec.home_break_visit
+        if home is None and u.focus_game and u.focus_mode != FocusMode.AUTOPILOT:
+            home = u.focus_game   # away from your focus game: it's where we go back to
+        if home == dec.current:
+            home = None
+        # Your game's return outranks a replay, and a replay already rolling needs nothing cued.
+        replay = None if (home or dec.replaying) else self._replay_standby(cands)
+        return standby.options(cands, current=dec.current, home=home, back_to=dec.stack[-1] if dec.stack else None,
+                               muted=u.muted, games=self.merger.games, my_teams=self._my_teams(), replay=replay,
+                               tunable=self.control.can_tune, save_s=self.control.tune_estimate,
+                               return_bonus=float(self.cfg.get("decider.switch_margin", 10)))
+
+    def _replay_standby(self, cands: dict) -> standby.Option | None:
+        """(b) A catch-up is queued and the game on screen is about to break: cue it on the hidden stick."""
+        dec = self.decider
+        cur = dec.current
+        if not self.cfg.get("replay.enabled", True) or not dec.queue or not cur:
+            return None
+        if not standby.break_soon(self.merger.games.get(cur), self.scored.get(cur)):
+            return None
+        now = time.time()
+        m = standby.likely_replay(dec.queue, now, float(self.cfg.get("replay.max_age_s", 1800)))
+        if m is None:
+            return None
+        # A replay can be of a game that just ended (no longer a live candidate).
+        target = cands[m.game_id].target if m.game_id in cands else dec.target_of(m.game_id)
+        if not target or target.split(":", 1)[0] not in self.cfg.get("replay.apps", ["youtubetv"]):
+            return None
+        g = self.merger.games.get(m.game_id)
+        back = m.back_s(now, self.delays.get(target).mu, PLAY_LEN_S.get(g.league, 8.0) if g else 8.0)
+        return standby.Option(m.game_id, target, standby.REPLAY, m.value, f"replay ready: {m.label[:60]}",
+                              back_s=back, replay_id=m.pid)
+
+    def _sync_switch_costs(self) -> None:
+        """Hand measured switch times to the decider, which plans with decider.switch_cost.<app>
+        (dead air, how early to head home, which plays are still catchable live).
+
+        Only through validated settings, only on a real change (>= 0.5s and 10%), at most every
+        switch_speed.sync_every_s — or at once when two-stick mode turns on or off (a flip is ~1-2s,
+        a tune 5-10s: the right number changes completely)."""
+        now = time.time()
+        mode = self.control.two_stick
+        if mode == self._cost_mode and now - self._cost_synced < float(self.cfg.get("switch_speed.sync_every_s", 300)):
+            return
+        self._cost_mode, self._cost_synced = mode, now
+        self.control.save_latency()
+        if not self.cfg.get("switch_speed.learn", True):
+            return
+        known = set((getattr(self.cfg, "defaults", {}).get("decider") or {}).get("switch_cost") or {})
+        cur = self.cfg.get("decider.switch_cost") or {}
+        changes = {app: v for app, v in self.control.switch_costs().items() if app in known and _moved(cur.get(app), v)}
+        if not changes:
+            return
+        try:
+            # Learned, not your edit: kept out of the undo history.
+            self.cfg.update({"decider": {"switch_cost": changes}}, record=False)
+            log.info("switch costs now %s (%s)", changes, "two sticks" if mode else "one stick")
+        except ConfigError as e:
+            log.warning("couldn't save learned switch costs: %s", e)
 
     # ------------------------------------------------------------------ user actions
 
@@ -493,7 +722,6 @@ class Engine:
             u.focus_game = gid
             u.focus_mode = FocusMode(value or "focus")
             if dec.current != gid:
-                dec.manual_switch(gid)
                 self._act_manual(gid)
             return True, f"Focused on {self._name(gid)}"
         if action == "autopilot":
@@ -513,6 +741,8 @@ class Engine:
             return True, "Unlocked"
         if action == "pause":
             u.paused = True
+            dec.abort_replay()
+            self.control.cancel_pending()
             return True, "Auto-switching paused"
         if action == "resume":
             dec.resume()
@@ -527,31 +757,39 @@ class Engine:
         if action == "back":
             if not dec.stack:
                 return False, "Nowhere to go back to"
-            prev = dec.stack.pop()
-            dec.manual_switch(prev)
+            prev = dec.stack[-1]
             self._act_manual(prev)
             return True, f"Back to {self._name(prev)}"
         if action == "watch":
             if not gid:
                 return False, "Pick a game"
-            dec.manual_switch(gid)
             self._act_manual(gid)
             return True, f"Switching to {self._name(gid)}"
         if action == "saw_it":
-            return self._calibrate()
+            return self._calibrate(str(value) if value else None)
         if action == "vote":
             self.store.feedback(dec.current, int(value or 0), context={"reason": getattr(self.last_decision, "reason", "")})
             return True, "Thanks — logged for training"
         if action == "dry_run":
+            was_dry = self.cfg.get("mode.dry_run", True)
             self.cfg.update({"mode": {"dry_run": bool(value)}})
+            if value:
+                dec.abort_replay()
+                self.control.cancel_pending()
+            elif was_dry:
+                # A simulated current game is not evidence of a physical stream.
+                dec.abort_replay()
+                dec.current = None
+                dec._screen_log.clear()
+                dec._arrival_until = 0.0
+                dec.after_replay = False
+                dec.replay_exit_after = 0.0
+                self.control.on_target = None
             return True, "Dry run on: the TV won't be touched" if value else "TV control ON"
         if action == "replay":
             m = next((m for m in dec.queue if m.pid == str(value)), None)
             if not m:
                 return False, "That replay isn't available anymore"
-            x = self.where.get(m.game_id)
-            dec._start_replay(m, {m.game_id: Candidate(self.scored[m.game_id], getattr(x, "target", None))},
-                              time.time())
             self._act_manual(m.game_id, replay=m)
             return True, f"Replaying: {m.label[:60]}"
         if action == "scan_st":
@@ -569,15 +807,22 @@ class Engine:
     def _act_manual(self, gid: str, replay: Missed | None = None) -> None:
         w = self.where.get(gid)
         target = getattr(w, "target", None)
-        back = None
-        if replay:
-            d = self.delays.get(target or "unknown")
-            back = replay.back_s(time.time(), d.mu, PLAY_LEN_S.get(self.merger.games[gid].league, 8))
-        self.control.submit(target, back, lambda out: self.broadcast())
+        before = self.decider.current
+        cands = {gid: Candidate(self.scored[gid], target)} if gid in self.scored else {}
+        d = Decision(time.time(), "replay" if replay else "switch", gid,
+                     "you selected this replay" if replay else "you selected this game", State.PAUSED,
+                     kind="user", replay=replay)
+        if self.cfg.get("mode.dry_run", True):
+            self.decider.confirm(d, cands)
+            self.decider.user.manual_until = time.time() + self.cfg.get("decider.manual_pause_s")
+        self._act(d, before, cands)
 
-    def _calibrate(self) -> tuple[bool, str]:
+    def _calibrate(self, play_id: str | None = None) -> tuple[bool, str]:
         """You tapped "I just saw it": match the tap to the play that just aired on your screen."""
         dec = self.decider
+        if (self.cfg.get("mode.dry_run", True) or self._pending_decision is not None
+                or dec.replaying or dec.after_replay or dec.safe_mode):
+            return False, "Calibrate only while watching a confirmed live stream, outside a switch or replay"
         gid = dec.current
         tl = dec.timelines.get(gid or "")
         w = self.where.get(gid or "")
@@ -586,14 +831,21 @@ class Engine:
             return False, "Nothing on to calibrate against"
         tap = time.time() - 0.7  # typical reaction time
         d = self.delays.get(target)
-        plays = [e for e in tl.events if e.kind == "play" and tap - 150 < e.seen < tap - 3]
+        plays = [e for e in tl.events if e.kind == "play" and e.spread == 0
+                 and tap - 150 < e.seen < tap - 3 and (not play_id or e.pid == play_id)]
         if not plays:
             return False, "No recent play to match — tap right as a play ends"
         e = min(plays, key=lambda e: abs(e.seen + d.mu - tap))
+        if not play_id:
+            ranked = sorted(plays, key=lambda p: abs(p.seen + d.mu - tap))
+            if (abs(e.seen + d.mu - tap) > max(10, 2 * d.sigma)
+                    or (len(ranked) > 1 and abs(ranked[1].seen + d.mu - tap)
+                        - abs(e.seen + d.mu - tap) < 3)):
+                return False, "Several plays could match that tap; choose the exact play before calibrating"
         sample = tap - e.seen
         d = self.delays.calibrate(target, sample)
         self.store.calibration(target, sample, d.mu, d.sigma)
-        return True, f"Delay {d.mu:.0f}s (±{d.sigma:.0f}) for {describe(target)}"
+        return True, f"Matched {e.label[:60]}; delay {d.mu:.0f}s (±{2*d.sigma:.0f}) for {describe(target)}"
 
     def _name(self, gid: str | None) -> str:
         if gid == REDZONE:
@@ -687,6 +939,7 @@ class Engine:
                      "tv_control": self.control.live_control, "two_stick": self.control.two_stick,
                      "control_note": self.control.note, "mic": self.mic is not None, "announcer_hint": ""},
             "now": now, "next": nxt, "standby": self._standby_view(), "games": games,
+            "screen_evidence": self.screen_evidence(),
             "queue": [self._queue_item(m) for m in sorted(dec.queue, key=lambda m: -m.value)[:10]],
             "log": self._log(),
             "server_time": time.time(),
@@ -694,7 +947,9 @@ class Engine:
                         "calibrated": x.calibrated_at is not None} for t, x in self.delays.book.items()],
             "health": {"sources": list(self.source_status.values()), "sticks": self.control.status(),
                        "tv": {"state": "unknown"}, "race": self.merger.race_summary(),
-                       "adb": self.control.adb_ok},
+                       "adb": self.control.adb_ok, "switch_times": self.control.switch_times(),
+                       "fastcast": self.fastcast.status() if self.fastcast else None,
+                       "discovery": self.discovery.status()},
             "bets": self.bets_view(), "feedback": self.store.feedback_counts(),
             "fantasy": None if self.fantasy is None else {
                 "me": self.fantasy.me, "opponent": self.fantasy.opponent, "my_points": self.fantasy.my_points,
@@ -702,6 +957,29 @@ class Engine:
                 "starters": [{"name": x.name, "pos": x.pos, "team": x.team, "mine": x.mine}
                              for x in self.fantasy.starters]},
         }
+
+    def screen_evidence(self) -> dict:
+        dec, ctl = self.decider, self.control
+        gid = dec.current
+        target = getattr(self.where.get(gid or ""), "target", None) or "unknown"
+        now = time.time()
+        delay = self.delays.get(target) if target != "unknown" else Delay(0, self.cfg.get("delay.sigma_default"))
+        evidence = screen_evidence(dec.timelines.get(gid or ""), delay, now,
+                                   self.cfg.get("decider.uncalibrated_sigma_s"))
+        if target == "unknown":
+            evidence.update(delay_s=None, delay_margin_s=None, calibrated=False)
+        dry = bool(self.cfg.get("mode.dry_run", True))
+        if not dry and (self._pending_decision is not None or ctl.input_unknown or dec.safe_mode
+                        or dec.on_screen_at(now) != gid or dec.replaying or dec.after_replay):
+            evidence.update(status="unknown", safe_to_leave=False,
+                            reason="replay or display transition: live-feed timing does not describe this picture")
+        stage = dict(ctl.stage)
+        if self._pending_decision is None and stage["stage"] not in ("confirmed", "failed"):
+            stage = {"stage": "idle", "target": None, "reason": ""}
+        evidence.update(mode="simulation" if dry else "live", game_id=gid,
+                        identity="unverified", media_state="unknown", switch=stage,
+                        mic_suggestion=self.mic_suggestion)
+        return evidence
 
     def _queue_item(self, m) -> dict:
         """A catch-up replay card: who made the play (headshot) and for which team."""
@@ -721,11 +999,18 @@ class Engine:
         return item
 
     def _standby_view(self) -> dict | None:
-        t = self.control.hidden_target
-        if not (self.control.two_stick and t):
+        c = self.control
+        t = c.hidden_target
+        if not (c.two_stick and t):
             return None
         gid = next((g for g, w in self.where.items() if getattr(w, "target", None) == t), None)
-        return {"game_id": gid, "matchup": self._name(gid), "where": describe(t), "ready": self.control.hidden_ready}
+        parked = c.parked_id
+        pick = next((o for o in self.planner.last if o.target == t and o.replay_id == parked), None)
+        return {"game_id": pick.game_id if pick else gid, "matchup": self._name(pick.game_id if pick else gid),
+                "where": describe(t), "ready": c.hidden_ready,
+                "kind": pick.kind if pick else ("replay" if parked else "back"),
+                "why": pick.why if pick else "the game you just left, still live",
+                "flip_s": round(c.flip_estimate(), 1)}
 
     def _log(self) -> list[dict]:
         out = []
@@ -783,6 +1068,12 @@ class Engine:
 
     async def close(self) -> None:
         self._keep_awake(False)
+        task = self._fastcast_task
+        self._stop_fastcast()
+        if task:
+            await asyncio.gather(task, return_exceptions=True)
+        await self.discovery.close()
+        self.control.save_latency()
         await self.control.close()
         await self.fetcher.close()
 
@@ -790,6 +1081,13 @@ class Engine:
 def _team(t) -> dict:
     rec = f"{t.wins}-{t.losses}" + (f"-{t.ties}" if t.ties else "") if t.wins is not None and t.losses is not None else ""
     return {"abbr": t.abbr, "name": t.name, "score": t.score, "logo": t.logo, "color": t.color, "record": rec}
+
+
+def _moved(old, new: float) -> bool:
+    """Worth rewriting a switch cost? Not for jitter: at least half a second and 10%."""
+    if not isinstance(old, (int, float)) or isinstance(old, bool):
+        return True
+    return abs(new - old) >= max(0.5, 0.1 * abs(old))
 
 
 def _logo_of(g: GameState | None) -> str:
@@ -800,3 +1098,10 @@ def _status(g: GameState) -> str:
     if g.phase == Phase.PRE and g.start_time:
         return datetime.fromtimestamp(g.start_time, ET).strftime("%-I:%M %p")
     return g.phase.value
+
+
+def _game_fingerprint(g: GameState | None) -> tuple | None:
+    """What the decider reacts to. A copy of the values: the Merger edits games in place."""
+    if g is None:
+        return None
+    return (g.last_play.id if g.last_play else None, g.home.score, g.away.score, g.stoppage, g.phase, g.period)
