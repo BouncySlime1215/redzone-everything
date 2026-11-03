@@ -401,16 +401,26 @@ class PrimeTuner(Tuner):
                 break
             if not await self._press_prompt(stick, text, steps, "pressed through", may_cut):
                 link = max((i for i, s in enumerate(steps) if s.startswith("deep link #")), default=-1)
-                if not any(s == "pressed: watch (focused button)" or s.endswith(": watch live")
-                           for s in steps[link + 1:]):
-                    # A live event's detail page opens with its play button focused, but it says just
-                    # "Watch" on Monumental+/League Pass (seen tonight) and uiautomator often can't read
-                    # Prime's page at all. One press per deep link; a second could pause the player.
+                done = [s for s in steps[link + 1:] if s.startswith("pressed: watch")]
+                live_pressed = any(s.endswith(": watch live") for s in steps[link + 1:])
+                # A live event's detail page opens with its play button focused, but it says just
+                # "Watch" on Monumental+/League Pass, and that opens a "Watch Live / Resume" panel with
+                # Watch Live focused (Nov 2): two presses. uiautomator often can't read either screen,
+                # so the second press only happens while the detail page (not the player) is in front;
+                # in the player a CENTER would pause it.
+                if len(done) < 2 and not (live_pressed and not done) and await self._on_detail_page(stick):
                     if may_cut is not None and not may_cut():
                         break
                     await stick.key("KEYCODE_DPAD_CENTER")
-                    steps.append("pressed: watch (focused button)")
+                    steps.append("pressed: watch (focused button)" if not done else "pressed: watch live (panel)")
         return await super()._confirm(stick, pkg, steps, watch, may_cut)
+
+    async def _on_detail_page(self, stick: Stick) -> bool:
+        """Prime's detail page/panel is in front (LandingActivity), not its player (Ignition/Playback)."""
+        r = await stick.shell("dumpsys activity activities | grep -m1 mResumedActivity", timeout=5)
+        if not r.ok or "com.amazon.firebat" not in r.out:
+            return False
+        return not any(p in r.out for p in ("IgnitionActivity", "PlaybackActivity"))
 
     async def _press_prompt(self, stick: Stick, text: str, steps: list[str], verb: str, may_cut=None) -> bool:
         # "Watch Live" gets one press per deep link. A later read still showing it (the detail page under a

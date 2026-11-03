@@ -1203,15 +1203,30 @@ class Controller:
                 return None
             await asyncio.sleep(FLIP_POLL_S)
 
-    async def _relaunch(self, stick: Stick, pkg: str | None, home_at: float) -> None:
-        """Bring the app HOME backgrounded back to the front (it resumes what it was playing)."""
+    async def _relaunch(self, stick: Stick, pkg: str | None, home_at: float, target: str | None = None) -> None:
+        """Bring the app HOME backgrounded back to the front, showing what it was playing.
+        Re-sending the game's own link (no task flags) brings its existing task forward with the
+        player on top ("current task has been brought to the front"). Launching the app's main
+        screen instead opened Prime's home page, not the game (Nov 2)."""
         if not pkg:
             return
         wait = RELAUNCH_AFTER_S - (time.monotonic() - home_at)
         if wait > 0:
             await asyncio.sleep(wait)
-        await stick.shell(f"am start -n $(cmd package resolve-activity --brief {pkg} | tail -1) >/dev/null 2>&1",
-                          timeout=8)
+        url = None
+        if target:
+            app, ref = self._ref(target)
+            tuner = TUNERS.get(app)
+            if tuner is not None and ref:
+                try:
+                    url = tuner.url(ref)
+                except Exception:
+                    url = None
+        if url:
+            await stick.shell(f"am start -a android.intent.action.VIEW -d '{url}' {pkg} >/dev/null 2>&1", timeout=8)
+        else:
+            await stick.shell(f"am start -n $(cmd package resolve-activity --brief {pkg} | tail -1) >/dev/null 2>&1",
+                              timeout=8)
 
     async def _home_flip(self, stick: Stick, target: str | None = None) -> bool:
         """HOME -> <Active Source> -> TV switches to this stick; then relaunch its app.
@@ -1224,11 +1239,11 @@ class Controller:
         r = await stick.shell("input keyevent KEYCODE_HOME", timeout=8)
         if not r.ok:
             # Unsent or unknown: the app may already be in the background, so put it back.
-            await self._relaunch(stick, pkg, home_at)
+            await self._relaunch(stick, pkg, home_at, target)
             return False
         # The relaunch runs alongside the poll (as before, ~0.6 s after HOME), so a TV that is slow
         # to follow doesn't also delay the picture coming back.
-        relaunch = asyncio.create_task(self._relaunch(stick, pkg, home_at))
+        relaunch = asyncio.create_task(self._relaunch(stick, pkg, home_at, target))
         try:
             took = await self._await_active_source(stick, home_at, FLIP_DEADLINE_S)
         finally:
