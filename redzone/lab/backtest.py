@@ -560,7 +560,10 @@ def hot_drive_plays(r: "Replay") -> list[int]:
     drive scored, or reached the red zone. What RedZone exists to show; a punt-fest has none."""
     if r.league.base != League.NFL:
         return []
-    drives = list(espn._get(r.data, "drives", "previous") or [])
+    data = getattr(r, "data", None)
+    if not data:
+        return []   # a replay without its raw summary (test fakes, partial archives): no drive data
+    drives = list(espn._get(data, "drives", "previous") or [])
     cur = espn._get(r.data, "drives", "current")
     if cur:
         drives.append(cur)
