@@ -13,6 +13,24 @@ There are no secrets or tokens in it. The notebook needs nothing else.
 
 To run the next round, add the previous version's output as an input and run it again. The teacher resumes where it stopped.
 
+## Round 2 and later: upload only the code pack
+
+`rz_code.tar.gz` (3.5 MB) is the round-2 code. You don't need to re-upload the data pack.
+
+1. Create a new private dataset, for example **redzone-code**, holding just `rz_code.tar.gz`. For later rounds, upload a new version of that dataset.
+2. In the notebook (File, then Import Notebook, then `teacher_distill.ipynb` from this branch), use Add Input to attach three things:
+   - **redzone-distill**, the data pack as before
+   - **redzone-code**
+   - the **previous version's output** (Notebook Output Files): its teacher answers carry forward, and so does the multi-season build
+3. Settings: **GPU T4 x2**, Internet **On**. Then Save Version, then **Save & Run All**. It takes about 11 h.
+4. Download **out.zip**.
+
+Inside Kaggle, round 2 runs these steps:
+- It downloads 3 seasons plus the current one of NFL, CFB, NBA, men's college basketball, NHL and MLB from ESPN's public API, on the CPUs. It builds every live play into a labeled moment, split by fixed dates (`agent/distill/split.py` BIG_CUTS). Locked nights are never downloaded.
+- At the same time, the 32B teacher takes the hardest 9,000 requests and the 14B teacher takes the easier tail.
+- The student trains on a weighted pick from the millions: NFL first, with crunch and your-team moments up-weighted.
+- Grading reports per-league results, the train/valid/test gap, slices and the calibrated "I don't know" cut.
+
 ## Split, by time and by whole nights
 
 | league | train | valid | dev-test | locked (NOT in this dataset) |
