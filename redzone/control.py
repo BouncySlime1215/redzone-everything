@@ -1238,6 +1238,8 @@ class Controller:
         if target is None:
             target = self.hidden_target if stick is self.hidden else self.on_target
         pkg = self._package(stick, target) if target else None
+        if target and target.startswith("prime:"):
+            return await self._home_flip_prime(stick, pkg, target)
         home_at = time.monotonic()
         r = await stick.shell("input keyevent KEYCODE_HOME", timeout=8)
         if not r.ok:
@@ -1254,6 +1256,33 @@ class Controller:
         if took is None:
             log.warning("HOME flip on %s: stick never became active source within %.1fs", stick.host,
                         FLIP_DEADLINE_S)
+            return False
+        self._flip_s = took
+        return True
+
+    async def _home_flip_prime(self, stick: Stick, pkg: str | None, target: str) -> bool:
+        """Prime (measured on the sticks, Nov 2): the first HOME can be swallowed by its player, and
+        bringing the app back before the TV has switched cancels the switch. Re-sending a link opens
+        the game's page (Watch + Watch Live again, ~30 s). So: HOME (twice if the first didn't
+        switch the TV), wait for <Active Source>, THEN bring the player's own screen to the front
+        (REORDER_TO_FRONT): the game is still playing there."""
+        r = await stick.shell("dumpsys activity activities | grep -m1 mResumedActivity", timeout=5)
+        m = re.search(r"u0 (com\.amazon\.firebat/[\w.$]+)", r.out if r.ok else "")
+        comp = m.group(1) if m else None
+        home_at = time.monotonic()
+        took = None
+        for attempt in range(2):
+            if not (await stick.shell("input keyevent KEYCODE_HOME", timeout=8)).ok:
+                break
+            took = await self._await_active_source(stick, home_at, 2.5 if attempt == 0 else FLIP_DEADLINE_S)
+            if took is not None:
+                break
+        if comp:
+            await stick.shell(f"am start -f 0x00020000 -n {comp} >/dev/null 2>&1", timeout=8)
+        else:
+            await self._relaunch(stick, pkg, home_at, target)
+        if took is None:
+            log.warning("HOME flip on %s (Prime): stick never became active source", stick.host)
             return False
         self._flip_s = took
         return True
