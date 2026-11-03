@@ -341,10 +341,12 @@ async def test_a_retry_requires_its_own_playback_transition():
     assert not res.ok and st.tuned is None and len(st.links()) == 2
 
 
-async def test_prime_unreadable_page_never_guesses_focused_watch_button():
+async def test_prime_unreadable_page_presses_the_focused_watch_button_once_per_link():
+    # Live Monumental+/League Pass pages say just "Watch" (focused) and often can't be read at all
+    # (WSH@ORL, Nov 2): without one press the game never starts.
     st = ScriptedStick(after=[media(PRIME, 1)], screen="")
     result = await quick(PrimeTuner, page_wait_s=.001, confirm_timeout=.01).tune(st, "GTI", "prime:GTI")
-    assert not result.ok and not st.keys()
+    assert not result.ok and st.keys().count("KEYCODE_DPAD_CENTER") == len(st.links())
 
 
 async def test_background_link_retry_rechecks_cut_permission_after_launch():

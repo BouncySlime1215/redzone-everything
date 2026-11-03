@@ -375,7 +375,17 @@ class PrimeTuner(Tuner):
             if (await stick.playback(pkg)).get("state") in LOADING:
                 # The stream is already loading (pre-roll, promo slate): a CENTER now pauses the player.
                 break
-            await self._press_prompt(stick, text, steps, "pressed through", may_cut)
+            if not await self._press_prompt(stick, text, steps, "pressed through", may_cut):
+                link = max((i for i, s in enumerate(steps) if s.startswith("deep link #")), default=-1)
+                if not any(s == "pressed: watch (focused button)" or s.endswith(": watch live")
+                           for s in steps[link + 1:]):
+                    # A live event's detail page opens with its play button focused, but it says just
+                    # "Watch" on Monumental+/League Pass (seen tonight) and uiautomator often can't read
+                    # Prime's page at all. One press per deep link; a second could pause the player.
+                    if may_cut is not None and not may_cut():
+                        break
+                    await stick.key("KEYCODE_DPAD_CENTER")
+                    steps.append("pressed: watch (focused button)")
         return await super()._confirm(stick, pkg, steps, watch, may_cut)
 
     async def _press_prompt(self, stick: Stick, text: str, steps: list[str], verb: str, may_cut=None) -> bool:
