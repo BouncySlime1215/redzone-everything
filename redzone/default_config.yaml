@@ -196,17 +196,22 @@ switch_speed:              # every real tune and input flip is timed; the decide
   learn: true              # keep decider.switch_cost up to date from those measurements
   sync_every_s: 300        # at most this often (sooner when two-stick mode turns on or off)
 
-redzone_mode:              # whip-around like NFL RedZone (scoring/drive.py, decider nfl_priority, the catch-up reel)
+redzone_mode:              # whip-around like NFL RedZone (scoring/drive.py; decider _drive_takeover, _nfl_priority)
   enabled: true
-  heat_points: 8           # an NFL game gains up to this many points while its drive is alive (field position, yards, explosive plays)
-  dead_damp: 0.25          # ...and loses up to this share of its score to punt-fest signs (punt coming, 3rd & long deep, empty drives)
-  nfl_priority: true       # while an NFL drive is hot, other sports' non-crunch moments rank below it (your teams, crunch exempt)
-  hot_heat: 0.5            # drive heat (0-1) that counts as "a drive is alive"
+  hot_heat: 0.5            # drive heat (0-1, scoring/drive.py) that counts as "a drive is alive": ~a moving drive past midfield
+  takeover_heat: 0.65      # ...a drive this hot is worth leaving the whip-around for (see drive_over_redzone)
+  drive_over_redzone: true # on the RedZone channel and a game we can tune has a live drive: watch that drive ourselves
+  min_redzone_s: 20        # ...but only after this long on the channel: no bouncing on every poll
+  redzone_lift: 8          # RedZone gains up to this many points with the hottest drive (it's showing it), vs ordinary games
+  nfl_priority: true       # while an NFL drive is live, other sports' non-crunch moments rank below it (your teams,
+                           # crunch, your focus game, and leagues you rank above the NFL in score.league_weight exempt)
   priority_gap: 15         # ...those other games are held this many points under the hottest drive
-  live_first_heat: 0.75    # an NFL drive this hot (scoring position) and live: no catch-up replay until it's over
+  heat_points: 0           # NFL game score lift per unit of heat. 8 cost big plays and your-team plays on the NFL scorecard
+  dead_damp: 0             # share of score lost to punt-fest signs. 0.25 cost big plays on the NFL scorecard
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
+  yours_first: true        # your team's missed big plays: replayed before other games' and over ordinary live play
   apps: [youtubetv]        # apps where rewinding live TV works
   max_age_s: 1800          # don't replay anything older than this
   urgent_s: 1200           # in its last N seconds a missed play jumps the queue and beats dull live play

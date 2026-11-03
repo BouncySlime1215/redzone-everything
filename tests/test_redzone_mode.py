@@ -137,15 +137,69 @@ def test_redzone_channel_gets_the_hottest_drives_lift(cfg, clock):
     d = _dec(cfg, clock)
     c = {"nfl": Candidate(_sc("nfl", 55, heat=0.5), "youtubetv:nfl")}
     out = d._with_redzone(c, "youtubetv:redzone")
-    assert out[REDZONE].scored.score == cfg.get("decider.redzone_score") + 0.5 * cfg.get("redzone_mode.heat_points")
+    assert out[REDZONE].scored.score == cfg.get("decider.redzone_score") + 0.5 * cfg.get("redzone_mode.redzone_lift")
 
 
-def test_no_catch_up_while_a_drive_is_in_scoring_position(cfg, clock):
+def test_a_league_you_rank_above_the_nfl_is_not_held_under_a_drive(cfg, clock):
     d = _dec(cfg, clock)
-    m = Missed("old", "p", "TD", "td", clock.t - 60, 80)
-    d.queue.append(m)
-    c = {"old": Candidate(_sc("old", 30), "youtubetv:old"),
-         "rz": Candidate(_sc("rz", 50, heat=0.9), "youtubetv:rz")}
-    assert d._best_replay(c, clock.t, None, False) is None
-    c["rz"] = Candidate(_sc("rz", 50, heat=0.9, is_break=True), "youtubetv:rz")
-    assert d._best_replay(c, clock.t, None, False) is m      # its drive is in a break: catch up now
+    nba = replace(_sc("nba", 70, League.NBA), factors={"league": 1.0})
+    nhl = replace(_sc("nhl", 70, League.NHL), factors={"league": 0.8})
+    hot = replace(_sc("nfl", 55, heat=0.8), factors={"drive_heat": 0.8, "league": 0.9})
+    out = d._nfl_priority({"nfl": Candidate(hot, "youtubetv:nfl"), "nba": Candidate(nba, "youtubetv:nba"),
+                           "nhl": Candidate(nhl, "youtubetv:nhl")})
+    assert out["nba"].scored.score == 70                     # NBA weighted above the NFL: untouched
+    assert out["nhl"].scored.score == 55 - cfg.get("redzone_mode.priority_gap")
+
+
+def test_a_drive_on_a_break_does_not_hold_other_sports_down(cfg, clock):
+    d = _dec(cfg, clock)
+    c = {"nfl": Candidate(_sc("nfl", 55, heat=0.9, is_break=True), "youtubetv:nfl"),
+         "nba": Candidate(_sc("nba", 70, League.NBA), "youtubetv:nba")}
+    assert d._nfl_priority(c)["nba"].scored.score == 70
+
+
+def test_on_redzone_a_live_drive_takes_over(cfg, clock):
+    d = _dec(cfg, clock)
+    d.current, d.since = REDZONE, clock.t - 300
+    c = {"a": Candidate(_sc("a", 40, heat=0.7), "youtubetv:a"),
+         "b": Candidate(_sc("b", 35, heat=0.9), "youtubetv:b"),
+         "cold": Candidate(_sc("cold", 60, heat=0.1), "youtubetv:cold")}
+    dec = d._drive_takeover(c, True, None, "", clock.t)
+    assert dec and dec.action == "switch" and dec.target == "b"      # the hottest drive, not the best score
+    c["b"] = Candidate(_sc("b", 35, heat=0.9, is_break=True), "youtubetv:b")
+    assert d._drive_takeover(c, True, None, "", clock.t).target == "a"   # a drive in a break waits
+    d.since = clock.t                                                # ...and a drive we just left RedZone for
+    assert d._drive_takeover(c, True, None, "", clock.t) is None      # doesn't bounce us back on the next poll
+    d.since = clock.t - 300
+    assert d._drive_takeover(c, False, None, "", clock.t) is None     # never mid-play on our screen
+    d.current = "cold"
+    assert d._drive_takeover(c, True, None, "", clock.t) is None     # only RedZone is left for a drive
+    d.current = REDZONE
+    cfg.data["redzone_mode"]["drive_over_redzone"] = False
+    assert d._drive_takeover(c, True, None, "", clock.t) is None
+
+
+def test_redzone_never_wins_back_the_drive_we_are_watching(cfg, clock):
+    d = _dec(cfg, clock)
+    d.current = "nfl"
+    c = {"nfl": Candidate(_sc("nfl", 30, heat=0.9), "youtubetv:nfl")}
+    assert d._with_redzone(c, "youtubetv:redzone")[REDZONE].scored.score == 30
+    # Its drive is in a break: the whip-around is the better picture again.
+    c["nfl"] = Candidate(_sc("nfl", 30, heat=0.9, is_break=True), "youtubetv:nfl")
+    assert d._with_redzone(c, "youtubetv:redzone")[REDZONE].scored.score > 30
+
+
+def test_your_teams_missed_play_goes_first_and_clears_the_bar(cfg, clock):
+    d = _dec(cfg, clock)
+    d._yours.add("wsh")
+    td = Missed("other", "p1", "TD", "td", clock.t - 60, 80)
+    yours = Missed("wsh", "p2", "fumble", "turnover", clock.t - 60, 55, mine=True)
+    d.queue += [td, yours]
+    c = {"other": Candidate(_sc("other", 30), "youtubetv:other"), "wsh": Candidate(_sc("wsh", 30), "youtubetv:wsh")}
+    assert d._best_replay(c, clock.t, None, False) is yours
+    # Against live play scored 70 only the TD would clear the bar, but your team's play still goes.
+    assert d._best_replay(c, clock.t, None, False, top=70, margin=5) is yours
+    # ...except while your team's own game is on screen: its live snaps beat its old ones.
+    assert d._best_replay(c, clock.t, None, False, top=70, margin=5, yours=False) is td
+    cfg.data["replay"]["yours_first"] = False
+    assert d._best_replay(c, clock.t, None, False) is td
