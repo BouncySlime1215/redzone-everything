@@ -12,6 +12,7 @@ import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=
 import { act } from "./rz-api.js?v=40";
 import { screenEvidence } from "./rz-evidence.js?v=40";
 import { recordedPanel } from "./rz-recorded.js?v=40";
+import { tonightCard } from "./rz-plan.js?v=40";
 
 const STATE_LABEL = { idle: "Idle", watching: "Watching", locked: "Locked in", break: "On a break", paused: "Paused",
   frozen: "Holding still", safe: "Safe mode", replay: "Replay" };
@@ -41,6 +42,7 @@ export function renderNow(root) {
     calibrate(S),
     dock(S),
     plan(S),
+    tonightCard(S),
     controlPanel(S),
     S.fantasy ? `<div data-key="fantasy">${sec("Fantasy", { key: "sec-fantasy" })}${fantasyCard(S.fantasy)}</div>` : "",
     queue(S),
@@ -188,7 +190,7 @@ function idle(S) {
       <div>${logo(first.home, { size: 52, dark: true })}<div class="ab">${esc(get(first, "home.abbr"))}</div></div>
     </div>` : "";
   const mineFirst = [...up].sort((a, b) => (b.mine - a.mine) || a.start_time - b.start_time).slice(0, 8);
-  const tonight = mineFirst.length ? `${sec("Tonight", { n: up.length, key: "sec-tonight", aside: up.length > 8 ? "Your teams first" : "" })}
+  const tonight = mineFirst.length && !(S.tonight && arr(S.tonight.games).length) ? `${sec("Tonight", { n: up.length, key: "sec-tonight", aside: up.length > 8 ? "Your teams first" : "" })}
     <div class="card rows" data-key="tonight" data-flip>${mineFirst.map((g) => `<div class="r r--tap" data-key="t:${attr(g.id)}" data-act="open-game" data-gid="${attr(g.id)}" role="button">
       <span class="logo-pair">${logo(g.away, { size: 30 })}${logo(g.home, { size: 30 })}</span>
       <div class="grow"><div class="t1">${esc(g.matchup)}${g.mine ? ` ${icon("star", "ico--fill ico--xs")}` : ""}</div><div class="t2 ell">${esc(whereLabel(g) || "Channel not set")}</div></div>

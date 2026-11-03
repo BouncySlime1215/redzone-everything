@@ -49,9 +49,30 @@ export async function startMock(handlers) {
   if (!s) { H.conn("wait"); return; }
   shiftTimes(s);
   STATE = s; GAMES = g || { games: {} }; TEAMS = t || {}; ROSTERS = r || {};
+  if (!STATE.tonight) STATE.tonight = mockTonight(STATE.games || []);
   lastSwitch = nowS();
   emit();
   if (!Q.has("still")) setInterval(simulate, 9000);
+}
+
+/* "Tonight's plan" (redzone/plan.py Tonight.view) for the mock slate: a mix of every row state. */
+function mockTonight(games) {
+  const fmt = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const states = [["ready", "verified", "played in 6s"], ["ready", "pending", ""], ["needs setup", "n/a", ""],
+    ["ready", "failed", "video never started"], ["ready", "pending", ""], ["blackout", "n/a", ""]];
+  const rows = games.filter((g) => g.start_time).sort((a, b) => a.start_time - b.start_time).map((g, i) => {
+    const [status, check, detail] = states[i % states.length];
+    return { game_id: g.id, league: g.league, matchup: g.matchup, start: g.start_time, start_et: fmt(g.start_time),
+      mine: !!g.mine, status, why: status === "blackout" ? "Prime Video: blacked out here" : status === "needs setup" ? "TNT · YouTube TV" : "",
+      source: status === "blackout" ? "" : (g.where && g.where.label) || "ESPN · YouTube TV", fallbacks: ["Prime Video (2 feeds)"],
+      check, check_detail: detail, gaps: status === "needs setup" ? ["No YouTube TV code for TNT: paste its link in Settings"] : [] };
+  });
+  const next = rows.find((r) => r.start > nowS());
+  return { day: "", games: rows, gaps: ["No YouTube TV code for TNT: paste its link in Settings", "Peacock is signed in on one stick only (4K 2023)"],
+    note: "", checking: null, checking_games: rows.filter((r) => r.check === "pending").slice(0, 1).map((r) => r.game_id),
+    counts: { games: rows.length, ready: rows.filter((r) => r.status === "ready").length,
+      verified: rows.filter((r) => r.check === "verified").length, failed: rows.filter((r) => r.check === "failed").length },
+    next_window: next ? { start: next.start, start_et: next.start_et, games: [next.game_id] } : null };
 }
 
 /* ---------- live-looking simulation ---------- */
