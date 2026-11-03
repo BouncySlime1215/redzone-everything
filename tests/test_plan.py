@@ -255,3 +255,25 @@ async def test_engine_marks_games_that_started_unchecked(eng):
     await e.tonight.step()
     wiz = by_id(e.tonight.plan)["wiz"]
     assert wiz["check"]["state"] == "not checked" and "dry run" in wiz["check"]["detail"]
+
+
+async def test_plan_tonight_script_writes_the_plan_without_touching_engine_files(tmp_path, monkeypatch, capsys):
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location(
+        "plan_tonight", Path(__file__).resolve().parent.parent / "scripts" / "plan_tonight.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    (tmp_path / "channels.json").write_text(json.dumps({"codes": {"espn": "AAAAAAAAAAA"}}))
+    before = (tmp_path / "channels.json").read_text()
+
+    async def fake_slate(fetcher, day, leagues):
+        return slate()
+    monkeypatch.setattr(mod, "slate", fake_slate)
+    monkeypatch.setattr(mod.time, "time", lambda: at(12))
+    assert await mod.main(["--data", str(tmp_path), "--no-links", "--date", "2026-11-02"]) == 0
+    out = capsys.readouterr().out
+    assert "BOS @ NYK" in out and "ESPN · YouTube TV" in out and "gap: No YouTube TV code for TNT" in out
+    saved = json.loads(P.path_for(DAY, tmp_path).read_text())
+    assert {e["game_id"] for e in saved["games"]} == {"espn", "tnt", "wiz", "lp", "pea"}
+    assert (tmp_path / "channels.json").read_text() == before

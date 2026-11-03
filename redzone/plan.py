@@ -230,6 +230,15 @@ def load(day: date, data_dir: Path = DATA) -> dict | None:
     return d if isinstance(d, dict) and isinstance(d.get("games"), list) else None
 
 
+def fallback_labels(e: dict) -> list[str]:
+    """Fallbacks for people: one line per distinct label ("Prime Video (3 feeds)")."""
+    seen: dict[str, list[dict]] = {}
+    for f in e.get("fallbacks") or []:
+        seen.setdefault(f["label"], []).append(f)
+    return [f"{label}{f' ({len(fs)} feeds)' if len(fs) > 1 else ''}"
+            f"{'' if any(f['tunable'] for f in fs) else ' (not tunable yet)'}" for label, fs in seen.items()]
+
+
 def text(plan: dict) -> str:
     """The plan as plain lines (scripts/plan_tonight.py)."""
     lines = [f"Tonight's plan · {plan['day']} · {len(plan['games'])} games"]
@@ -238,8 +247,8 @@ def text(plan: dict) -> str:
         star = " *" if e["mine"] else ""
         lines.append(f"  {e['start_et']:>8}  {e['league'].upper():3}  {e['matchup']}{star}  ->  {src}"
                      f"  [{e['status']}{', ' + e['check']['state'] if e['check']['state'] != 'n/a' else ''}]")
-        for f in e["fallbacks"]:
-            lines.append(f"{'':16}fallback: {f['label']}{'' if f['tunable'] else ' (not tunable yet)'}")
+        for f in fallback_labels(e):
+            lines.append(f"{'':16}fallback: {f}")
         if e["why"] and e["status"] != "ready":
             lines.append(f"{'':16}why: {e['why']}")
         for gp in e["gaps"]:
@@ -383,7 +392,7 @@ class Tonight:
         rows = [{"game_id": e["game_id"], "league": e["league"], "matchup": e["matchup"], "start": e["start"],
                  "start_et": e["start_et"], "mine": e["mine"], "status": e["status"], "why": e["why"],
                  "source": e["source"]["label"] if e["source"] else "",
-                 "fallbacks": [f["label"] for f in e["fallbacks"]][:2],
+                 "fallbacks": fallback_labels(e)[:2],
                  "check": e["check"]["state"], "check_detail": e["check"]["detail"],
                  "gaps": e["gaps"][:2]} for e in p["games"]]
         count = lambda k, v: sum(1 for e in p["games"] if e[k] == v)  # noqa: E731
