@@ -822,6 +822,11 @@ class Engine:
         self._hold_check()
         if self._pending_decision is not None:
             return False  # score/feed updates continue; don't race a tune in flight
+        if not dry and self.control.input_unknown and getattr(self.control, "live_control", False):
+            # Input recovery owns the TV (Controller._maybe_reassert, the supervisor): every switch
+            # would be refused at once ("TV input is unknown"). Submitting anyway flooded the
+            # switches table, ~240 rows in 2 minutes on the e2e night test. Decide again once it's known.
+            return False
         before = self.decider.current
         redzone = self._redzone_target(st, dry)
         d = self.decider.decide(cands, redzone, commit=dry, reel=self._reel_target())

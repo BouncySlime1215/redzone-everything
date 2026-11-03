@@ -1703,11 +1703,12 @@ class Decider:
     def _commit(self, target: str, kind: str = "") -> None:
         now = self._clock()
         self.replay_exit_after = 0.0   # a live switch replaces the old replay picture
-        if self.current and self.current != target:
-            if kind == "return" and self.stack and self.stack[-1] == target:
-                self.stack.pop()
-            elif kind not in ("return", "home"):
-                self.stack.append(self.current)
+        if kind == "return" and self.stack and self.stack[-1] == target:
+            # Popped even when we're already on it (a "return" confirmed as "already on it"): left on
+            # the stack, the same return was proposed again every tick, 348 times on the e2e night test.
+            self.stack.pop()
+        elif self.current and self.current != target and kind not in ("return", "home"):
+            self.stack.append(self.current)
         if kind == "home" and self.stack and self.stack[-1] == target:
             self.stack.pop()
         if kind == "home" and target == self.home_break_visit:
