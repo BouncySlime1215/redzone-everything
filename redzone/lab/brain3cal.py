@@ -19,9 +19,7 @@ import json
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
-from redzone.lab.brain3data import TRAINING3_DIR, TYPES
 from redzone.scoring import brain3 as B3
 from redzone.scoring.brain import MODEL_DIR
 
@@ -30,11 +28,16 @@ ALPHA = 0.05            # a cautious budget overruns into the restart at most th
 MIN_ROWS = 40           # fewer calibration rows than this: the slice takes its type's (or 1.0)
 FOLDS = 5
 CAL_PATH = MODEL_DIR / "entry_cal_v3.json"
-CODE = {t: TYPES.index(t) for t in CAL_TYPES}
+# brain3data.TYPES codes (kept here so the runtime-side helpers import without pandas)
+CODE = {"tv_timeout": 1, "score_break": 6}
 
 
-def _rows(table: str, league: str, nights_ok) -> pd.DataFrame:
+def _rows(table: str, league: str, nights_ok):
     """Break-start rows of the cal types with a known restart, scored by the shipped model."""
+    import pandas as pd
+
+    from redzone.lab.brain3data import TRAINING3_DIR, TYPES
+    assert all(TYPES[c] == t for t, c in CODE.items())
     m = B3.load(MODEL_DIR / f"{league}.v3.npz")
     d = pd.read_parquet(TRAINING3_DIR / f"{table}.parquet")
     d = d[d.start_type.isin(list(CODE.values())) & d.entry_s.notna() & nights_ok(d)].copy()
@@ -60,7 +63,7 @@ def fit_scale(y: np.ndarray, p10: np.ndarray, alpha: float = ALPHA) -> float:
     return float(min(1.0, max(0.05, s)))
 
 
-def fit(d: pd.DataFrame, alpha: float = ALPHA) -> dict:
+def fit(d, alpha: float = ALPHA) -> dict:
     """{type: {"all": s, "crunch": s, "early": s}}; a thin slice falls back to its type's scale."""
     out = {}
     for t in CAL_TYPES:
@@ -75,12 +78,12 @@ def fit(d: pd.DataFrame, alpha: float = ALPHA) -> dict:
     return out
 
 
-def apply(d: pd.DataFrame, scales: dict) -> np.ndarray:
+def apply(d, scales: dict) -> np.ndarray:
     s = np.array([scales.get(t, {}).get("crunch" if c else "early", 1.0) for t, c in zip(d.type, d.crunch)])
     return s * d.p10.to_numpy()
 
 
-def grade(d: pd.DataFrame, safe: np.ndarray) -> dict:
+def grade(d, safe: np.ndarray) -> dict:
     y = d.entry_s.to_numpy()
     out = {"n": int(len(d)), "overrun": round(float((y < safe).mean()), 4) if len(d) else None,
            "overrun_p10": round(float((y < d.p10.to_numpy()).mean()), 4) if len(d) else None,
@@ -89,7 +92,7 @@ def grade(d: pd.DataFrame, safe: np.ndarray) -> dict:
     return out
 
 
-def slices(d: pd.DataFrame, safe: np.ndarray) -> dict:
+def slices(d, safe: np.ndarray) -> dict:
     out = {}
     for t in CAL_TYPES:
         for name, mask in (("crunch", d.crunch), ("early", ~d.crunch), ("close", d.abs_diff.fillna(99) <= 8),
@@ -100,7 +103,7 @@ def slices(d: pd.DataFrame, safe: np.ndarray) -> dict:
     return out
 
 
-def forward_cv(d: pd.DataFrame, alpha: float = ALPHA, folds: int = FOLDS) -> dict:
+def forward_cv(d, alpha: float = ALPHA, folds: int = FOLDS) -> dict:
     """Nights in time order cut into folds+1 blocks; fold k fits on blocks < k, grades block k."""
     nights = np.sort(d.night.unique())
     blocks = np.array_split(nights, folds + 1)
