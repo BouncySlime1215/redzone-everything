@@ -210,6 +210,7 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
 reel:                      # catch-up reel: 5+ plays you missed, back to back, 30-60 s (redzone/reel.py)
   enabled: true            # find, download and trim clips as they post (ESPN's in-game highlights)
   play: false              # put reels on the TV (off until the Fire TV player is checked on the stick)
+  score: 40                # how the reel ranks as a break destination (live games >= break_destination_min win)
   min_clips: 5
   min_s: 30
   max_s: 60

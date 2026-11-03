@@ -608,4 +608,32 @@ class EspnTuner(Tuner):
         return f"https://www.espn.com/watch/player/_/id/{ref}"
 
 
-TUNERS: dict[str, Tuner] = {"youtubetv": YouTubeTVTuner(), "prime": PrimeTuner(), "espn": EspnTuner()}
+class ReelTuner(Tuner):
+    """The catch-up reel (redzone/reel.py), served by this Mac at /reel.mp4, played by VLC or Silk.
+    Experimental until checked on the stick (reel.play: false by default). The ref is the reel's
+    build time, so each new reel is a new URL (no stale cached copy)."""
+    app = "reel"
+    role = "reel"
+    confirm_timeout = 10.0
+
+    def url(self, ref: str) -> str:
+        return f"{reel_base_url()}/reel.mp4?v={ref}"
+
+
+def reel_base_url() -> str:
+    """http://<this Mac's LAN address>:<port>, as the sticks on the same Wi-Fi reach it."""
+    import os
+    import socket
+    port = os.environ.get("PORT") or "8777"
+    ip = "127.0.0.1"
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sk:
+            sk.connect(("10.255.255.255", 1))   # no packet is sent: this just picks the LAN interface
+            ip = sk.getsockname()[0]
+    except OSError:
+        pass
+    return f"http://{ip}:{port}"
+
+
+TUNERS: dict[str, Tuner] = {"youtubetv": YouTubeTVTuner(), "prime": PrimeTuner(), "espn": EspnTuner(),
+                            "reel": ReelTuner()}

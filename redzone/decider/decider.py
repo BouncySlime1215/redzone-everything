@@ -43,6 +43,8 @@ GONE_MAX_HOLD_S = 90.0  # [mid-play guard] a game that vanished without a final:
 # ESPN scoreboard rollover after midnight) is held longer before leaving blind.
 GONE_MAX_HOLD_CONTINUOUS_S = 300.0
 REDZONE = "redzone"
+REEL = "reel"                 # the catch-up reel (redzone/reel.py): a break filler, never a game
+PSEUDO = (REDZONE, REEL)      # not games: no play to cut, no timeline, no entry timing
 # Locks where every snap matters, not just the big ones (scoring/engine.py names them).
 CRUNCH_LOCKS = {"final two minutes", "crunch time", "overtime", "empty net"}
 UNSEEN_PLAY_LAG_S = 10.0  # a play this recent may not be in the feed yet
@@ -86,6 +88,14 @@ VISIT_MIN_S = 90.0
 
 def _short(s: Scored) -> str:
     return "your game"
+
+
+def reel_scored(score: float, seconds: float, over: bool = False) -> Scored:
+    """The catch-up reel as a candidate. Once it has played through it reads as a break (nothing
+    left to see), so the decider moves on by its usual rules."""
+    sc = 0.0 if over else score
+    return Scored(REEL, League.NFL, sc, sc, sc, 1.0, 0.0, f"catch-up reel: plays you missed ({seconds:.0f} s)",
+                  [], over, None, None, 1.0)
 
 
 def redzone_scored(score: float) -> Scored:
@@ -205,6 +215,7 @@ class Decider:
         self._screen_log: deque[tuple[float, str | None]] = deque(maxlen=400)  # (from, game | "replay" | None=black)
         self._judged: set[tuple[str, str]] = set()
         self._target_of: dict[str, str] = {}
+        self.reel_s = 0.0   # seconds of the catch-up reel ready (or playing)
         # Last known candidate per game. A final drops out of the live candidates, but its last
         # plays still air (and stay on the DVR) for a while: keep them judgeable and replayable.
         self._known: dict[str, Candidate] = {}
@@ -256,11 +267,14 @@ class Decider:
 
     # ----- the decision -----------------------------------------------------
 
-    def decide(self, cands: dict[str, Candidate], redzone: str | None = None, *, commit: bool = True) -> Decision:
-        """`redzone` is the RedZone channel's tuner target while it's on the air, else None."""
+    def decide(self, cands: dict[str, Candidate], redzone: str | None = None, *, commit: bool = True,
+               reel: tuple[str, float] | None = None) -> Decision:
+        """`redzone` is the RedZone channel's tuner target while it's on the air, else None.
+        `reel` is (tuner target, seconds) of a ready catch-up reel, else None."""
         now = self._clock()
         self._known.update({gid: x for gid, x in cands.items() if x.target})
         cands = self._with_redzone(cands, redzone)
+        cands = self._with_reel(cands, reel)
         self._scan_missed(cands, now)
         if self.replaying:
             if self.safe_mode or self.user.paused or self.on_screen_at(now) != "replay":
@@ -513,7 +527,7 @@ class Decider:
                    urgent: bool = False) -> EntryPlan | None:
         """How to come into gid right now (None: no timing evidence, e.g. RedZone or no timeline)."""
         c = self.cfg
-        if gid == REDZONE or not c.get("decider.entry.enabled", True):
+        if gid in PSEUDO or not c.get("decider.entry.enabled", True):
             return None
         tl = self.timelines.get(gid)
         x = cands.get(gid) or self._known.get(gid)
@@ -628,7 +642,7 @@ class Decider:
         c = self.cfg
         u = self.user
         live = {gid: x for gid, x in cands.items()
-                if x.scored.raw > 0 or x.scored.moment > 0 or x.scored.is_break or gid == REDZONE}
+                if x.scored.raw > 0 or x.scored.moment > 0 or x.scored.is_break or gid in PSEUDO}
         cur = cands.get(self.current) if self.current else None
         watchable = {gid: x for gid, x in live.items()
                      if x.target and not x.stale and gid not in u.muted}
@@ -850,7 +864,7 @@ class Decider:
         """A big play that's in the data but not on screen yet: (game, play) to go see it live.
 
         From RedZone any game qualifies: RedZone's score isn't a moment you'd be giving up."""
-        floor = -1.0 if self.current == REDZONE else s_cur.score - self.cfg.get("decider.chase_max_deficit")
+        floor = -1.0 if self.current in PSEUDO else s_cur.score - self.cfg.get("decider.chase_max_deficit")
         best = None
         for gid, x in watchable.items():
             # Don't skip games "in a break": the play that caused the break hasn't aired yet.
@@ -905,7 +919,7 @@ class Decider:
     def _vs_replay(self, gid: str, cands) -> float:
         """What a catch-up replay has to beat to replace this. RedZone is only filler next to a
         play you actually missed, so any replay beats it."""
-        return 0.0 if gid == REDZONE else cands[gid].scored.score
+        return 0.0 if gid in PSEUDO else cands[gid].scored.score
 
     def _replay_decision(self, rp: Missed, state, gate_txt: str, now: float) -> Decision:
         name = "instant replay" if rp.seen_live else "catch-up"
@@ -1130,6 +1144,8 @@ class Decider:
         """Can we leave what's on screen? RedZone is a whip-around: there's no play of ours to cut."""
         if self.current == REDZONE:
             return Gate(True, "on RedZone: nothing to cut out of")
+        if self.current == REEL:
+            return Gate(True, "on the catch-up reel: nothing live to cut")
         tl = self.timelines.get(self.current)
         if tl is None:
             return None
@@ -1212,7 +1228,7 @@ class Decider:
 
     def _best(self, watchable: dict[str, Candidate], exclude: str | None) -> str | None:
         options = [(x.scored.score, gid) for gid, x in watchable.items()
-                   if gid != exclude and not x.scored.is_break and gid not in self._screen_break]
+                   if gid != exclude and gid != REEL and not x.scored.is_break and gid not in self._screen_break]
         return max(options)[1] if options else None
 
     def _break_destination(self, watchable, exclude, home: str | None = None) -> str | None:
@@ -1226,12 +1242,39 @@ class Decider:
             now = self._clock()
             strict = self._visit_needs_exit(anchor, watchable)
             options = {gid: x for gid, x in watchable.items()
-                       if gid == REDZONE or (self._exits_often(gid) and (not strict or self._exit_provable(x, now)))}
+                       if gid in PSEUDO or (self._exits_often(gid) and (not strict or self._exit_provable(x, now)))}
         best = self._best(options, exclude)
         if best and options[best].scored.score >= self.cfg.get("decider.break_destination_min"):
             return best
+        # Nothing live worth a visit: the catch-up reel, if it fits in the break with the trip back.
+        if REEL in watchable and exclude != REEL and anchor and self._reel_fits(anchor, watchable):
+            return REEL
         # RedZone never shows a commercial: any break is better spent there than on an ad.
         return REDZONE if REDZONE in watchable and exclude != REDZONE else None
+
+    def _reel_fits(self, home: str, watchable) -> bool:
+        if self.reel_s <= 0 or not watchable[REEL].target or watchable[REEL].scored.is_break:
+            return False
+        now = self._clock()
+        pool = {**self._known, **watchable}
+        left = self._break_remaining(home, pool, now)
+        trip = self._deadline_cost(watchable[REEL].target) + self._deadline_cost(self._target_of.get(home))
+        return left >= self.reel_s + trip + 5.0
+
+    def _with_reel(self, cands: dict[str, Candidate], reel: tuple[str, float] | None) -> dict[str, Candidate]:
+        """Add the catch-up reel while one is ready and putting it on the TV is turned on."""
+        if self.current != REEL:
+            self.reel_s = reel[1] if reel else 0.0
+        if not self.cfg.get("reel.play", False):
+            return cands
+        if self.current == REEL:
+            target = self._target_of.get(REEL) or (reel[0] if reel else None)
+            over = self._clock() - self.since >= self.reel_s
+            return {**cands, REEL: Candidate(reel_scored(self.cfg.get("reel.score", 40), self.reel_s, over), target)}
+        if not reel:
+            return cands
+        self._target_of[REEL] = reel[0]
+        return {**cands, REEL: Candidate(reel_scored(self.cfg.get("reel.score", 40), reel[1]), reel[0])}
 
     def _long_break_left(self, gid: str, now: float) -> float | None:
         """Seconds until a halftime/intermission now on screen could possibly end on screen
@@ -1260,11 +1303,11 @@ class Decider:
         if self._visit_needs_exit(home, watchable):
             # [return trip] Uncalibrated, a visited game's gate opens only at its own long breaks:
             # a WSH halftime visit to an NBA game stranded us through WSH's 3rd quarter and crunch.
-            options = {gid: x for gid, x in options.items() if gid == REDZONE or self._exit_provable(x, now)}
+            options = {gid: x for gid, x in options.items() if gid in PSEUDO or self._exit_provable(x, now)}
         if not options:
             return None
         dest = max(options, key=lambda g: options[g].scored.score)
-        buffer = RETURN_BUFFER_S if self._exits_often(dest) or dest == REDZONE else RETURN_BUFFER_CONTINUOUS_S
+        buffer = RETURN_BUFFER_S if self._exits_often(dest) or dest in PSEUDO else RETURN_BUFFER_CONTINUOUS_S
         if left < buffer + 60:
             return None
         self.home_break_visit = home

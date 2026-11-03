@@ -16,10 +16,11 @@ from zoneinfo import ZoneInfo
 
 from redzone import bets as betlib
 from redzone import reel, standby, userstate, views
+from redzone.reel import REEL_DIR
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
 from redzone.config import Config, ConfigError
 from redzone.control import Controller, Outcome
-from redzone.decider.decider import REDZONE, Candidate, Decider, Decision, FocusMode, Missed, State
+from redzone.decider.decider import REDZONE, REEL, Candidate, Decider, Decision, FocusMode, Missed, State
 from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
                                    leave_gate, leave_window, screen_evidence)
 from redzone.models import GameState, League, Phase
@@ -748,7 +749,7 @@ class Engine:
             return False  # score/feed updates continue; don't race a tune in flight
         before = self.decider.current
         redzone = self._redzone_target(st, dry)
-        d = self.decider.decide(cands, redzone, commit=dry)
+        d = self.decider.decide(cands, redzone, commit=dry, reel=self._reel_target())
         self.last_decision = d
         changed = d.reason != self._last_logged_reason or d.action != "stay"
         if changed:
@@ -766,6 +767,13 @@ class Engine:
                                  for gid, s in self.scored.items() if s.raw > 0])
         return changed
 
+    def _reel_target(self) -> tuple[str, float] | None:
+        """(tuner target, seconds) of the ready catch-up reel, when reels may go on the TV."""
+        r = self.reeler.current
+        if r is None or not self.cfg.get("reel.play", False) or not r.path.exists():
+            return None
+        return f"reel:{int(r.built_at)}", r.seconds
+
     def _redzone_target(self, sunday_ticket: bool, dry: bool) -> str | None:
         """NFL RedZone's tuner target while it's on the air (and you've pasted its link)."""
         if not sunday_ticket or not redzone_on(self.merger.games.values()):
@@ -773,6 +781,9 @@ class Engine:
         return REDZONE_TARGET if dry or self.channels.yttv_code(REDZONE_TARGET) else None
 
     def _act(self, d, before, cands) -> None:
+        if d.target == REEL and self.reeler.current is not None:
+            # Its plays count as seen from here; the next reel is built from what's left.
+            self.reeler.played(self.reeler.current)
         # A catch-up replay can be of a game that just ended (no longer a live candidate).
         target = cands[d.target].target if d.target in cands else self.decider.target_of(d.target)
         back = None
@@ -864,6 +875,8 @@ class Engine:
             return bool(d.replay and not d.replay.replayed)
         if d.target == REDZONE:
             return redzone_on(self.merger.games.values())
+        if d.target == REEL:
+            return bool(target and target.startswith("reel:")) and (REEL_DIR / "reel.mp4").exists()
         g = self.merger.games.get(d.target or "")
         if not g or g.phase != Phase.LIVE or self.merger.is_stale(g.game_id):
             return False

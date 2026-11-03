@@ -37,6 +37,8 @@ MAX_REPLY = 32 << 20   # biggest reply we'll buffer (a full UI dump is ~100 KB)
 AWAKE_TTL_S = 60.0     # trust "the stick is awake" this long before asking again
 CONNECT_RETRY_MAX_S = 9.0   # a failed connect is retried at the next ~10 s keepalive tick, never later
 
+# Catch-up reel player: VLC if it's installed (plays a URL straight away), else Fire TV's Silk browser.
+REEL_PACKAGES = ["org.videolan.vlc", "com.amazon.cloud9"]
 YTTV_PACKAGES = ["com.amazon.firetv.youtube.tv", "com.google.android.youtube.tvunplugged"]
 PRIME_PACKAGES = ["com.amazon.firebat", "com.amazon.avod.thirdpartyclient", "com.amazon.amazonvideo.livingroom",
                   "com.amazon.avod"]
@@ -244,7 +246,7 @@ class Stick:
         pk = await self.shell("pm list packages", timeout=10)
         installed = set(re.findall(r"package:([\w.]+)", pk.out))
         for role, cands in (("youtubetv", YTTV_PACKAGES), ("prime", PRIME_PACKAGES), ("youtube", YOUTUBE_PACKAGES),
-                            ("espn", ESPN_PACKAGES)):
+                            ("espn", ESPN_PACKAGES), ("reel", REEL_PACKAGES)):
             hit = next((p for p in cands if p in installed), None)
             if hit is None and role == "espn":
                 hit = next((p for p in sorted(installed) if "espn" in p), None)

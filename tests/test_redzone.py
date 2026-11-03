@@ -220,3 +220,42 @@ def test_leaving_a_replay_for_the_same_game_is_logged():
     bt._record(type("D", (), dict(action="switch", target="a", kind="home", reason="", replay=None))(),
                "a", 40.0, sw, watching, replayed)
     assert watching == [(10.0, "replay:a"), (40.0, "a")] and not replayed  # command is not completion
+
+
+# ----- the catch-up reel -------------------------------------------------------------------
+
+REEL_T = ("reel:1", 45.0)
+
+
+def test_a_long_break_with_nothing_live_plays_the_catch_up_reel(dec, clock):
+    from redzone.decider.decider import REEL
+    dec.cfg.update({"reel": {"play": True}})
+    on(dec, clock, "a", b=10)
+    break_on_screen(dec, clock)
+    d = dec.decide(cands(a=sc("a", 60, is_break=True), b=10), reel=REEL_T)
+    assert d.action == "switch" and d.target == REEL and d.kind == "break_visit"
+
+
+def test_reel_is_never_a_reason_to_leave_live_play(dec, clock):
+    from redzone.decider.decider import REEL
+    dec.cfg.update({"reel": {"play": True}})
+    on(dec, clock, "a", b=10)
+    assert dec.decide(cands(a=5, b=10), reel=REEL_T).target != REEL
+
+
+def test_reel_off_in_settings_or_too_long_for_the_break(dec, clock):
+    from redzone.decider.decider import REEL
+    on(dec, clock, "a", b=10)
+    break_on_screen(dec, clock)
+    assert dec.decide(cands(a=sc("a", 60, is_break=True), b=10), reel=REEL_T).target != REEL   # play: false
+    dec.cfg.update({"reel": {"play": True}})
+    assert dec.decide(cands(a=sc("a", 60, is_break=True), b=10), reel=("reel:1", 900.0)).target != REEL
+
+
+def test_live_game_worth_a_visit_beats_the_reel(dec, clock):
+    from redzone.decider.decider import REEL
+    dec.cfg.update({"reel": {"play": True}})
+    on(dec, clock, "a", b=10)
+    break_on_screen(dec, clock)
+    d = dec.decide(cands(a=sc("a", 60, is_break=True), b=70), reel=REEL_T)
+    assert d.target == "b"
