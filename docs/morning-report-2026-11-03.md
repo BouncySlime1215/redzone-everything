@@ -26,6 +26,8 @@ with 0 mid-play cuts and nothing important getting worse. Anything mixed stays o
 - **Cut timing for NBA/NHL**: it cost NBA big plays seen (95.4 → 90.8) and NHL crunch live (87.5 → 82.7), so it's switched on for NFL only.
 - **RedZone mode** (NFL drive priority and catch-up highlight reels): on top of cut timing, NFL big plays seen 95.0 → 93.4 and your team's 100 → 93.1. The reels kept it behind live 18% of the time. Needs a rework: shorter reels, and only during real dead time.
 - **Most of miss-fixes**: compared on the same settings, it's neutral on NBA and slightly worse on NFL (big plays seen 94.4 → 92.8, crunch live 70.0 → 67.9) and NHL (crunch 87.5 → 86.8). I first reported an NBA "your team's crunch 58 → 100%" gain, but that came from the settings drift described below, not the code.
+- **Break-visit trip budget** (skip a visit when the trip there and back doesn't fit inside the break): NFL crunch live 70.0 → 71.4%, but big plays seen 95.4 → 93.9% and your team's big plays 100 → 93.1%. Nearly all of the loss is one Sunday (CLE @ CHI), where today's code shows 14 minutes of catch-up replays and the branch stays on a live drive instead. Mixed, so it stays on branch `fv-review`.
+- **NBA/NHL entry timing with a wait cap** (branch `entry-wait-cap`): 0, 8, 15 and 25 s caps all score the same. Turning NBA timing on changes only one of 14 nights (Oct 26): +5.7 points of NBA big plays seen, but it leaves the Wizards at 0:22, down 7, and they cut it back to 5. One night isn't enough evidence to merge.
 - **Hype v2** (learned key-moment score): NFL big plays seen **live** 29.9% → **39.5%**, which is big, but your team's NFL big plays fell 100 → 93.1, NBA big plays seen 95.4 → 90.8, and NHL crunch 87.5 → 83.8. Capping non-crunch scores didn't fix it. Not merged. Its chained-visit fix *was* merged on its own.
 
 ## A scorecard pitfall, fixed
@@ -39,6 +41,7 @@ Scorecards now read a pinned `data/eval_config.yaml` when it exists, so before/a
 - **Today's code enters NBA games mid-play 50 times and NHL 163 times** across the test nights (the new `entries_mid_play` scorecard). This is the "cuts in mid-play" you saw, and it's the top item for the next round.
   - With cut timing on everywhere, mid-play entries dropped to **0**, but it held switches for about 69 s of dead time per entry, and that cost crunch plays elsewhere.
   - Most NBA games are on **Prime (League Pass), which can't rewind live**, so it can't back up to the free throw the way YouTube TV can. Short rewinds only (20 s or less, never waiting) never found a clean landing.
+  - A test for the Prime pause idea (a, below) is written and ready to run tonight with a live Prime game on the off-screen stick. It checks whether pause works on live Prime, whether play resumes from the paused point, and how fast.
   - Next ideas: (a) on Prime, pause the loaded game on the off-screen stick at the dead ball, then press play when switching to it (needs a hardware test with live games); (b) time a preloaded 3–5 s flip into free throws and timeouts once the delay is measured tightly.
 - A cut-timing check could have blocked NBA/NHL switches live. It now runs for the NFL only.
 
