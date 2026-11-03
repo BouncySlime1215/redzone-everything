@@ -939,6 +939,13 @@ class Decider:
                     return Decision(now, "switch", prev, self._why(cands[prev], "moment's over, back to"),
                                     state, gate_txt, kind="return")
 
+        # Crunch time is only given up for crunch time (handled above) or your focus game: with
+        # learned hype, your team's late floor (85) outscored a neutral crunch at its timeout, and
+        # we left BKN @ CLE with 0:26 left for WSH up 11 (Oct 24: 10 crunch plays missed).
+        if s_cur.crunch and not b.scored.crunch and best != self.user.focus_game \
+                and c.get("decider.crunch.keep_over_noncrunch", False):
+            return Decision(now, "stay", self.current, f"crunch time: {s_cur.reason}", state, gate_txt)
+
         needed = margin + cost
         if s_cur.lock and not self._mine_late(b.scored):
             # A moment here (a power play...) holds the TV, but never against your team late and close.
@@ -1686,6 +1693,10 @@ class Decider:
         if not self.cfg.get("decider.sticky_visit_needs_calibration", True):
             return False
         x = watchable.get(home)
+        if x is not None and x.scored.crunch and self.cfg.get("decider.crunch.visit_needs_exit", False):
+            # A crunch home's break (a score with 0:33 left): an uncalibrated visit can only be left
+            # at an official break, and we sat out NYG @ CHI's whole final 1:41 on one (Oct 2025 slate).
+            return True
         return home == self.user.focus_game or (
             x is not None and x.scored.personal >= self.cfg.get("decider.crunch.hold_personal", 5))
 
