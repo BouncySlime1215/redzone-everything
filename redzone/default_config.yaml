@@ -108,7 +108,7 @@ brain:                     # learned models (redzone/scoring/brain.py, trained b
   version: 3               # 3 = Brain v3 (brain_models/<league>.v3.npz: stoppage odds/type/length, entry point,
                            # big plays) where a league has one, else v2; 2 = v2 only
   v3_lengths: true         # v3's time-to-restart replaces the fixed break-length table (breaks.LEN)
-  v3_entry: false          # v3's time-to-restart is the expected end of a stoppage the data hasn't closed
+  v3_entry: true           # v3's time-to-restart is the expected end of a stoppage the data hasn't closed
   hot_points: 0            # moment points at game flow 100 (minus at 0; 50 = a median moment adds nothing)
   key_points: 6            # moment points when a key moment in the next few minutes is a sure thing
   break_weight: 0.5        # how much the brain's break odds count against the hand-written break rules
