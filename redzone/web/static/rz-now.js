@@ -4,7 +4,7 @@
 import {
   app, ACTIONS, CHANGES, attr, esc, num, get, arr, games, gameById, status, pairInks, fmtAgo, fmtTime, fmtStart, nowS,
   reduceMotion, SPRING, EASE_OUT, ink, teamBy, whereLabel,
-} from "./rz-core.js?v=40";
+} from "./rz-core.js?v=41";
 import { patch } from "./rz-dom.js?v=40";
 import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=40";
 import { heroCard, fantasyCard } from "./rz-cards.js?v=40";

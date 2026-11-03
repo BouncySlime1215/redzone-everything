@@ -12,6 +12,14 @@ from redzone.models import REGULATION, GameState, League, Phase
 from redzone.sources import espn
 
 LEAGUE_LOGO = "https://a.espncdn.com/i/teamlogos/leagues/500/{}.png"
+COLLEGE_LOGO = {"cbb": "https://a.espncdn.com/i/espn/misc_logos/500/ncaa.png",
+                "wcbb": "https://a.espncdn.com/i/espn/misc_logos/500/ncaa.png",
+                "cfb": "https://a.espncdn.com/i/espn/misc_logos/500/ncaa_football.png"}
+
+
+def league_logo(lg: str) -> str:
+    """ESPN has no per-league logo for college: the NCAA mark (football gets its own)."""
+    return COLLEGE_LOGO.get(lg) or LEAGUE_LOGO.format(lg)
 TEAMS_URL = "https://site.api.espn.com/apis/site/v2/sports/{}/teams"
 TEAM_URL = "https://site.api.espn.com/apis/site/v2/sports/{}/teams/{}"
 ROSTER_URL = "https://site.api.espn.com/apis/site/v2/sports/{}/teams/{}/roster"
@@ -22,7 +30,8 @@ def team(t) -> dict:
     if t.wins is not None and t.losses is not None:
         rec = f"{t.wins}-{t.losses}" + (f"-{t.ties}" if t.ties else "")
     return {"id": t.id, "abbr": t.abbr, "name": t.name, "score": t.score, "logo": t.logo,
-            "logo_dark": t.logo_dark or t.logo, "color": t.color, "alt_color": t.alt_color, "record": rec}
+            "logo_dark": t.logo_dark or t.logo, "color": t.color, "alt_color": t.alt_color, "record": rec,
+            "rank": t.rank}
 
 
 def clock_text(g: GameState) -> str:

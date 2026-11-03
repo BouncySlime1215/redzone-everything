@@ -3,7 +3,7 @@
 
 import {
   app, ACTIONS, CHANGES, INPUTS, hooks, store, attr, esc, num, get, arr, LEAGUES, LEAGUE_NAME, gameById, matchupWords, vibrate,
-} from "./rz-core.js?v=40";
+} from "./rz-core.js?v=41";
 import { patch } from "./rz-dom.js?v=40";
 import { icon, logo, leagueImg, empty, sec, screenHead, skel } from "./rz-ui.js?v=40";
 import { confirmSheet, toast } from "./rz-sheet.js?v=40";

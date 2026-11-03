@@ -3,7 +3,7 @@
 import {
   app, ACTIONS, hooks, store, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, raw, onColor, lum,
   gameById, games, fmtStart, whereLabel, teamBy, imgSrc, vibrate,
-} from "./rz-core.js?v=40";
+} from "./rz-core.js?v=41";
 import { icon, logo, leagueImg, avatar, empty, skel, stateBadge, chip } from "./rz-ui.js?v=40";
 import { situation, wpBar, sparkline, linescore } from "./rz-viz.js?v=40";
 import { board, gameCard } from "./rz-cards.js?v=40";
@@ -84,7 +84,7 @@ function gameSheet(gid) {
   const series = arr(det && det.wp_series);
   const [aInk, hInk] = pairInks(g.away, g.home, true);
   const lastWp = series.length ? series[series.length - 1] : num(g.wp, NaN);
-  const wpSec = series.length > 1 ? `<div class="sheet-sec"><h4>Win probability</h4><small>${ph === "post" ? "How it played out" : `Since ${({ nfl: "kickoff", nba: "tip-off", nhl: "puck drop", mlb: "first pitch" })[g.league] || "the start"}`}</small></div>
+  const wpSec = series.length > 1 ? `<div class="sheet-sec"><h4>Win probability</h4><small>${ph === "post" ? "How it played out" : `Since ${({ nfl: "kickoff", cfb: "kickoff", nba: "tip-off", cbb: "tip-off", wcbb: "tip-off", nhl: "puck drop", mlb: "first pitch" })[g.league] || "the start"}`}</small></div>
     <div class="panel on-dark">
       <div class="spark-head"><span class="spark-team" style="color:${hInk}">${logo(g.home, { size: 22, dark: true })}${esc(get(g, "home.abbr"))} <b>${Number.isFinite(lastWp) ? Math.round(lastWp * 100) + "%" : ""}</b></span>
       <span class="spark-team" style="color:${aInk}"><b>${Number.isFinite(lastWp) ? Math.round((1 - lastWp) * 100) + "%" : ""}</b> ${esc(get(g, "away.abbr"))}${logo(g.away, { size: 22, dark: true })}</span></div>
@@ -160,6 +160,7 @@ function periodShort(g, p) {
   p = num(p);
   if (g.league === "mlb") return `Inn ${p}`;
   if (g.league === "nhl") return p <= 3 ? `P${p}` : p === 4 ? "OT" : "SO";
+  if (g.league === "cbb") return p <= 2 ? `H${p}` : "OT";
   return p <= 4 ? `Q${p}` : "OT";
 }
 

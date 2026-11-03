@@ -3,7 +3,7 @@
 import {
   app, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, isDark, whereLabel, whereUnknown,
   leaderLabel, winner, teamBy, fmtDur, nowS, fmtCountdown, imgSrc, games,
-} from "./rz-core.js?v=40";
+} from "./rz-core.js?v=41";
 import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=40";
 import { situation, wpBar } from "./rz-viz.js?v=40";
 
@@ -65,7 +65,8 @@ export function leaderMini(l, g, { size = 34, dark = isDark() } = {}) {
 function possessionFor(g, t) {
   const s = (g && g.situation) || {};
   if (g.phase !== "live" || !t) return "";
-  if ((g.league === "nfl" || g.league === "nba") && s.possession === t.abbr) return icon(g.league === "nba" ? "basketball" : "football", "pss");
+  const ball = { nfl: "football", cfb: "football", nba: "basketball", cbb: "basketball", wcbb: "basketball" }[g.league];
+  if (ball && s.possession === t.abbr) return icon(ball, "pss");
   if (g.league === "nhl" && s.power_play === t.abbr) return `<span class="pp-tag">PP</span>`;
   if (g.league === "nhl" && s.empty_net === t.abbr) return `<span class="pp-tag">EN</span>`;
   if (g.league === "mlb" && s.half) {
@@ -146,7 +147,8 @@ function boardTeam(g, side) {
   const s = g.situation || {};
   let poss = "";
   if (g.phase === "live") {
-    if ((g.league === "nfl" || g.league === "nba") && s.possession && s.possession === t.abbr) poss = `${icon(g.league === "nba" ? "basketball" : "football")}Ball`;
+    const ball = { nfl: "football", cfb: "football", nba: "basketball", cbb: "basketball", wcbb: "basketball" }[g.league];
+    if (ball && s.possession && s.possession === t.abbr) poss = `${icon(ball)}Ball`;
     else if (g.league === "nhl" && s.power_play === t.abbr) poss = `${icon("zap")}Power play`;
     else if (g.league === "nhl" && s.empty_net === t.abbr) poss = `${icon("alert")}Empty net`;
     else if (g.league === "mlb" && s.half && ((/^top/i.test(s.half) && side === "a") || (/^bot/i.test(s.half) && side === "h"))) poss = `${icon("baseball")}At bat`;

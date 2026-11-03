@@ -1,5 +1,5 @@
 /* Screen timing is an estimate. Transport playback never proves live action on the TV. */
-import { ACTIONS, attr, esc } from "./rz-core.js?v=40";
+import { ACTIONS, attr, esc } from "./rz-core.js?v=41";
 import { icon } from "./rz-ui.js?v=40";
 
 const STATUS = {

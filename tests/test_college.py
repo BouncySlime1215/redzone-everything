@@ -66,6 +66,16 @@ def test_college_scoreboard_urls_add_conference_groups():
     assert espn.scoreboard_urls(League.CFB, ["1"], "20261107")[1].endswith("scoreboard?dates=20261107&groups=1")
 
 
+def test_phone_gets_college_league_logo_rank_and_labels():
+    from redzone import views
+    assert views.league_logo("cbb").endswith("/misc_logos/500/ncaa.png")
+    assert views.league_logo("cfb").endswith("/misc_logos/500/ncaa_football.png")
+    assert views.league_logo("nba") == "https://a.espncdn.com/i/teamlogos/leagues/500/nba.png"
+    assert views.team(Team("UVA", rank=9))["rank"] == 9
+    core = (Path(__file__).parent.parent / "redzone/web/static/rz-core.js").read_text()
+    assert '"cbb", "cfb", "wcbb"' in core and 'cbb: "NCAAM"' in core
+
+
 def test_college_logo_fallback_uses_team_id():
     assert espn.logo_url(League.CFB, "UNC", "153").endswith("/teamlogos/ncaa/500/153.png")
     assert espn.logo_url(League.NBA, "WSH") == "https://a.espncdn.com/i/teamlogos/nba/500/wsh.png"

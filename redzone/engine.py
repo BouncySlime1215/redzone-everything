@@ -1187,7 +1187,7 @@ class Engine:
         w = self.where.get(gid)
         live = g.phase == Phase.LIVE
         return {
-            "id": gid, "league": g.league.value, "league_logo": views.LEAGUE_LOGO.format(g.league.value),
+            "id": gid, "league": g.league.value, "league_logo": views.league_logo(g.league.value),
             "matchup": g.matchup, "phase": g.phase.value,
             "status_text": g.status_text or _status(g), "home": views.team(g.home), "away": views.team(g.away),
             "period": g.period, "clock": views.clock_text(g) if live else "",

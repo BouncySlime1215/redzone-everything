@@ -1,6 +1,6 @@
 /* RedZone Everything — server API + live stream (SSE with backoff). ?mock=1 swaps in rz-mock.js. */
 
-import { MOCK, vibrate } from "./rz-core.js?v=40";
+import { MOCK, vibrate } from "./rz-core.js?v=41";
 import { toast } from "./rz-sheet.js?v=40";
 
 let mock = null;

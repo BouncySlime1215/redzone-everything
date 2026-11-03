@@ -7,7 +7,7 @@
    - [data-flip] containers glide keyed children to their new positions (FLIP) and fade exits
    - focused inputs are never overwritten; scroll position is untouched */
 
-import { reduceMotion, settleImages, SPRING, EASE_OUT } from "./rz-core.js?v=40";
+import { reduceMotion, settleImages, SPRING, EASE_OUT } from "./rz-core.js?v=41";
 
 const tpl = document.createElement("template");
 const keyOf = (n) => (n.nodeType === 1 ? n.getAttribute("data-key") : null);

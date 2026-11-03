@@ -2,7 +2,7 @@
    shifts timestamps to "now", and gently simulates a live night (clocks run, scores tick,
    heat moves, the TV switches games) so every animation can be seen. ?mock=1&still=1 freezes it. */
 
-import { Q, num, nowS } from "./rz-core.js?v=40";
+import { Q, num, nowS } from "./rz-core.js?v=41";
 
 const J = (p) => fetch(`/static/${p}?v=40`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 let STATE = null, GAMES = null, TEAMS = null, ROSTERS = null, H = null;

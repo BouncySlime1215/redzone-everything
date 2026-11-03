@@ -1,6 +1,6 @@
 /* RedZone Everything — Lab: Screen Lab labeling, stream delay + "I just saw it", auto-tuner, backtests, votes. */
 
-import { app, ACTIONS, hooks, attr, esc, num, get, arr, clamp, reduceMotion, SPRING, vibrate } from "./rz-core.js?v=40";
+import { app, ACTIONS, hooks, attr, esc, num, get, arr, clamp, reduceMotion, SPRING, vibrate } from "./rz-core.js?v=41";
 import { patch } from "./rz-dom.js?v=40";
 import { icon, empty, sec, screenHead, skel, odo } from "./rz-ui.js?v=40";
 import { toast } from "./rz-sheet.js?v=40";

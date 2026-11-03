@@ -3,8 +3,11 @@
 
 export const Q = new URLSearchParams(location.search);
 export const MOCK = Q.has("mock");
-export const LEAGUES = ["nfl", "nba", "nhl", "mlb"];
-export const LEAGUE_NAME = { nfl: "NFL", nba: "NBA", nhl: "NHL", mlb: "MLB" };
+export const LEAGUES = ["nfl", "nba", "nhl", "mlb", "cbb", "cfb", "wcbb"];
+export const LEAGUE_NAME = { nfl: "NFL", nba: "NBA", nhl: "NHL", mlb: "MLB", cbb: "NCAAM", cfb: "NCAAF", wcbb: "NCAAW" };
+/** Which ball a league plays with (college leagues play by the pro rules). */
+export const SPORT = { nfl: "football", cfb: "football", nba: "basketball", cbb: "basketball", wcbb: "basketball", nhl: "hockey", mlb: "baseball" };
+const COLLEGE_LOGO = { cbb: "i/espn/misc_logos/500/ncaa.png", wcbb: "i/espn/misc_logos/500/ncaa.png", cfb: "i/espn/misc_logos/500/ncaa_football.png" };
 
 /* ---------- shared app state ---------- */
 export const app = {
@@ -227,7 +230,8 @@ export function settleImages(root) {
 }
 export const teamLogoUrl = (t, dark = isDark()) => (t ? (dark ? t.logo_dark || t.logo : t.logo || t.logo_dark) : "") || "";
 export const leagueLogoUrl = (lg, dark = isDark()) =>
-  LEAGUES.includes(lg) ? `https://a.espncdn.com/i/teamlogos/leagues/${dark ? "500-dark" : "500"}/${lg}.png` : "";
+  COLLEGE_LOGO[lg] ? `https://a.espncdn.com/${COLLEGE_LOGO[lg]}`
+  : LEAGUES.includes(lg) ? `https://a.espncdn.com/i/teamlogos/leagues/${dark ? "500-dark" : "500"}/${lg}.png` : "";
 
 /* ---------- game helpers ---------- */
 export const games = () => arr(app.S && app.S.games);
@@ -264,6 +268,7 @@ export function periodLabel(g) {
     return `${h} ${ordinal(p)}`.trim();
   }
   if (lg === "nhl") return p <= 3 ? ordinal(p) : p === 4 ? "OT" : "SO";
+  if (lg === "cbb") return p <= 2 ? `${ordinal(p)} Half` : p === 3 ? "OT" : `${p - 2}OT`;
   if (p <= 4) return `Q${p}`;
   return p === 5 ? "OT" : `${p - 4}OT`;
 }
