@@ -279,6 +279,7 @@ class Decider:
         self._proposal_home: tuple | None = None
         self.start_fails = 0            # start picks in a row that didn't land
         self.start_retry_at = 0.0       # ...so the next start pick waits until then
+        self._entry_wait: tuple | None = None   # (target, waiting since, last tick) for a whistle wait
         # [core] Every soft choice (which game, visit or not, reel, replay vs live, go back) is scored by
         # the one expected-value function in core.py; the rules left in here are the hard guards.
         self.core = DecisionCore(Knobs.from_cfg(cfg))
@@ -667,6 +668,18 @@ class Decider:
         if x is not None and x.scored.league.base.value in (self.cfg.get("decider.entry.no_wait_leagues") or []):
             # Continuous play: holding a switch for a dead ball missed more than it saved (scorecards,
             # Nov 3); enter live unless a rewind lands it clean (decided above).
+            return d
+        # [core] A whistle wait can be bounded (decider.entry.max_wait_s.<league>, off by default) where
+        # waiting costs the most: a finished game on screen, or a final period. In basketball the next
+        # dead ball can be minutes away (NBA Oct 23: a 3.5-minute wait on a final game into crunch time).
+        lg = x.scored.league.base.value if x is not None else ""
+        cap = self.cfg.get(f"decider.entry.max_wait_s.{lg}")
+        w = self._entry_wait
+        if w is None or w[0] != d.target or now - w[2] > 3 * float(self.cfg.get("polling.live_s", 10)):
+            w = (d.target, now, now)
+        self._entry_wait = (d.target, w[1], now)
+        if cap is not None and now - w[1] >= float(cap) and (
+                d.kind == "ended" or (x is not None and getattr(x.scored, "late", False))):
             return d
         # Not yet: whatever the switch planned (a visit's way home) waits with it.
         self.home_break_visit, self.home_return_at = home_before
