@@ -13,10 +13,14 @@ The objective is the scorecards themselves, summed over NFL, NBA and NHL (NFL we
 Hard constraints, as a barrier no reward can buy back: 0 mid-play cuts; mid-play entries, plays
 missed on entry and dead air not up; big plays seen and your team's plays not down.
 
-No overfitting: the project's held-out slice (docs/architecture.md section 7: NFL `eval.py --n 2`,
-NBA/NHL Oct 29 - Nov 1, the Nov 1 demo) is never read while tuning. The remaining nights split in
-two by date (alternating). The optimizer only ever sees TRAIN; `report` grades the winner on TEST
-and on the HOLDOUT. The demo day is graded separately (python -m redzone.demo 20261101).
+No overfitting (the user's rule, docs/architecture.md):
+- the LOCKED test nights (section 7: NFL `eval.py --n 2`, NBA/NHL Oct 29 - Nov 1, the Nov 1 demo)
+  are never read here; the release gate scores them once per release candidate;
+- the remaining nights are split BY TIME into 6 blocks of whole nights, oldest first;
+- 5 forward-chaining folds: fold k tunes on blocks 1..k and is scored on the newer block k+1.
+  The report gives every fold's train and valid gain, the mean and the WORST fold, the
+  train/valid gap, per-league slices, and the candidate again under noisy conditions;
+- `ship` is true only if no fold breaks a constraint on its valid block and every fold gains.
 
 Every run is a plain backtest.run on a config overlay, so nothing touches your live settings.
 The live app (two Fire TV sticks, hidden-stick standby) is not modelled by the backtest, so the
@@ -137,19 +141,31 @@ HOLDOUT_NFL_N = 2                                        # scripts/eval.py --n 2
 TUNE_NIGHTS = 30                                         # NBA/NHL nights loaded before the holdout
 
 
-def split(items: list, night_of, held=lambda i: False) -> dict[str, list]:
-    """TRAIN / TEST by night, after taking out the project's HOLDOUT: the remaining sorted nights
-    alternate, so each half spans the window and a night (an NFL 1 PM and 4 PM slate, say) never
-    sits on both sides. HOLDOUT is only ever graded by `report`."""
-    # A held-out slate's whole night stays out of tuning (an NFL 4 PM slate shares its 1 PM night).
+FOLDS = 5   # forward-chaining folds: tune on blocks 1..k, validate on block k+1
+
+
+def split(items: list, night_of, held=lambda i: False, n_blocks: int = FOLDS + 1) -> dict:
+    """Time-ordered blocks of whole nights, oldest first, after taking out the LOCKED test nights.
+
+    Nothing is split by row: a game, and a night (an NFL 1 PM and 4 PM slate), is in exactly one
+    block. A held-out slate takes its whole night out of tuning. `locked` is never graded here: it
+    is the release gate's (docs/architecture.md section 7)."""
     held_nights = {night_of(i) for i in items if held(i)}
     pool = [i for i in items if night_of(i) not in held_nights]
     nights = sorted({night_of(i) for i in pool})
-    side = {n: ("train" if j % 2 == 0 else "test") for j, n in enumerate(nights)}
-    out = {"train": [], "test": [], "holdout": [i for i in items if held(i)], "all": list(items)}
+    chunks = [list(c) for c in np.array_split(np.array(nights, dtype=object), min(n_blocks, len(nights)))]
+    block_of = {n: k for k, c in enumerate(chunks) for n in c}
+    blocks = [[] for _ in chunks]
     for i in pool:
-        out[side[night_of(i)]].append(i)
-    return out
+        blocks[block_of[night_of(i)]].append(i)
+    return {"blocks": blocks, "locked": [i for i in items if held(i)], "all": list(items)}
+
+
+def fold(halves: dict, k: int) -> tuple[dict, dict]:
+    """Fold k (1..FOLDS): TRAIN = blocks before k, VALID = block k (always newer than all of TRAIN)."""
+    train = {lg: [i for b in h["blocks"][:k] for i in b] for lg, h in halves.items()}
+    valid = {lg: list(h["blocks"][k]) if k < len(h["blocks"]) else [] for lg, h in halves.items()}
+    return train, valid
 
 
 def load_units() -> dict[str, list]:
@@ -184,9 +200,9 @@ def _pinned() -> Config:
     return Config(user_path=pinned if pinned.exists() else ROOT / "data/config.yaml")
 
 
-def grade_unit(job: tuple[dict, str, int]) -> dict:
+def grade_unit(job: tuple[dict, str, int, dict]) -> dict:
     """Raw counts for one slate / night under params (summed later; percentages at the end)."""
-    params, lg, i = job
+    params, lg, i, knobs = job
     cfg = _Overlay(_BASE, to_overrides(params))
     _, reps, targets, _held = _UNITS[lg][i]
     for r in reps:
@@ -194,7 +210,7 @@ def grade_unit(job: tuple[dict, str, int]) -> dict:
             r._cache.clear()
     if lg == "nfl":
         mine = set(cfg.get("teams.nfl") or [])
-        r = run(reps, cfg, mine)
+        r = run(reps, cfg, mine, **knobs)
         c = r.cut
         return dict(big=r.big_plays, seen=r.big_plays_caught, live=r.big_plays_live, cuts=len(r.mid_play_cuts),
                     dead=r.dead_air_s, watched=r.watched_s, crunch=r.crunch, crunch_live=r.crunch_live,
@@ -203,7 +219,7 @@ def grade_unit(job: tuple[dict, str, int]) -> dict:
                     switches=len(r.switches), hours=r.hours, entries=c.entries, mid_entries=c.entries_mid_play,
                     wait=c.entry_wait_s, missed=c.plays_missed_entry)
     mine = set(cfg.get(f"teams.{lg}") or ["WSH"])
-    rep = run(reps, cfg, mine, targets=targets)
+    rep = run(reps, cfg, mine, targets=targets, **knobs)
     k = sportsgrade.grade(reps, rep.switches, mine, rep.lag_true, 5.0, rep.t0, rep.t1, rep.replayed)
     return dict(big=k.big, seen=k.big_seen, live=k.big_live, cuts=len(k.cuts), dead=k.dead, watched=k.watched,
                 crunch=k.crunch, crunch_live=k.crunch_live, my_crunch=k.my_crunch, my_crunch_live=k.my_crunch_live,
@@ -318,18 +334,24 @@ def _pool(workers: int):
     return mp.get_context("fork").Pool(workers)   # forked after loading: the archive is shared
 
 
-def evaluate_many(pool, params_list: list[dict], side: str, halves: dict) -> list[dict]:
+# Robustness (user rule 8): the same nights with the stream 3 s further behind than the app believes,
+# plays reaching the feed 3-25 s late, and feed dropouts. A stick going down isn't modelled here.
+NOISE = {"true_delay": 38.0, "lag_jitter": (3.0, 25.0), "drop": 0.1, "seed": 1}
+
+
+def evaluate_many(pool, params_list: list[dict], sel: dict, knobs: dict | None = None) -> list[dict]:
+    """Scorecard metrics per league for each params, over the units in sel (league -> indices)."""
     jobs, where = [], []
     for c, p in enumerate(params_list):
         for lg in LEAGUES:
-            for i in halves[lg][side]:
-                jobs.append((p, lg, i))
+            for i in sel.get(lg, []):
+                jobs.append((p, lg, i, knobs or {}))
                 where.append((c, lg))
     rows = pool.map(grade_unit, jobs, chunksize=1)
     out = [{lg: [] for lg in LEAGUES} for _ in params_list]
     for (c, lg), r in zip(where, rows):
         out[c][lg].append(r)
-    return [{lg: metrics(v) for lg, v in o.items()} for o in out]
+    return [{lg: metrics(v) for lg, v in o.items() if v} for o in out]
 
 
 def setup() -> tuple[dict, dict]:
@@ -341,77 +363,102 @@ def setup() -> tuple[dict, dict]:
     return _UNITS, halves
 
 
-def tune(gens: int = 24, lam: int = 12, sigma: float = 0.1, workers: int | None = None, seed: int = 7,
-         log=print, resume: bool = False) -> dict:
-    """`resume`: pick up from data/lab/tune.json. With a saved CMA state it continues exactly; an
-    older checkpoint that only has its best point restarts the search centred there."""
-    units, halves = setup()
-    workers = workers or os.cpu_count() or 2
-    today = defaults(_BASE)
-    with _pool(workers) as pool:
-        base = evaluate_many(pool, [today], "train", halves)[0]
-        log("baseline (train): " + json.dumps({lg: base[lg] for lg in LEAGUES}))
-        es = CMA(encode(today), sigma, lam, seed)
-        best = {"params": today, "fit": (0.0, 0.0), "train": base}
-        history = []
-        saved = json.loads(OUT.read_text()) if resume and OUT.exists() else {}
-        if saved.get("best") and saved.get("today") == today and saved.get("baseline_train") != base:
-            # The code under test moved (a merge changed the decider): scores against the old
-            # baseline mean nothing now. Keep only where the search was, as a starting point.
-            es.mean = encode(saved["best"]["params"])
-            log("baseline moved since the checkpoint: restarting the search centred on its best point")
-        elif saved.get("best") and saved.get("today") == today:
-            best = saved["best"] | {"fit": tuple(saved["best"]["fit"])}
-            history = saved.get("history", [])
-            if saved.get("cma"):
-                es.load(saved["cma"])
-            else:
-                es.mean = encode(best["params"])
-            log(f"resumed at gen {len(history)}: best gain {-best['fit'][1]:+.2f} (viol {best['fit'][0]:.2f})")
-        t0 = time.time()
-        for g in range(len(history), len(history) + gens):
-            xs = es.ask()
-            ps = [decode(x) for x in xs]
-            res = evaluate_many(pool, ps, "train", halves)
-            fits = [fitness(r, base) for r in res]
-            # CMA ranks on a blend so it can walk back into the feasible region along a gradient;
-            # the winner is still picked feasibility-first (best["fit"] is lexicographic).
-            order = sorted(range(len(xs)), key=lambda i: fits[i][1] + PENALTY * fits[i][0])
-            es.tell([np.clip(x, 0, 1) for x in xs], order)
-            i = order[0]
-            for j in range(len(xs)):
-                if fits[j] < best["fit"]:
-                    best = {"params": ps[j], "fit": fits[j], "train": res[j]}
-            why = {lg: round(violation(res[i][lg], base[lg]), 2) for lg in LEAGUES}
-            history.append({"gen": g, "best_fit": fits[i], "sigma": round(es.sigma, 4),
-                            "feasible": sum(f[0] == 0 for f in fits)})
-            log(f"gen {g:2d}  {time.time() - t0:5.0f}s  best viol {fits[i][0]:.2f} gain {-fits[i][1]:+.2f}"
-                f" {why}  overall gain {-best['fit'][1]:+.2f} (viol {best['fit'][0]:.2f})  sigma {es.sigma:.3f}")
-            _save({"today": today, "baseline_train": base, "best": best, "history": history, "cma": es.state(),
-                   "halves": {lg: {k: [units[lg][j][0] for j in v] for k, v in h.items() if k != "all"}
-                              for lg, h in halves.items()}})
-    return best
+def search(pool, today: dict, train: dict, gens: int, lam: int, sigma: float, seed: int, log,
+           ckpt: Path, resume: bool) -> dict:
+    """CMA-ES on TRAIN only. Checkpoints its whole state to ckpt every generation."""
+    base = evaluate_many(pool, [today], train)[0]
+    es = CMA(encode(today), sigma, lam, seed)
+    best = {"params": today, "fit": (0.0, 0.0), "train": base}
+    history = []
+    saved = json.loads(ckpt.read_text()) if resume and ckpt.exists() else {}
+    if saved.get("today") == today and saved.get("baseline_train") == json.loads(json.dumps(base)):
+        best = saved["best"] | {"fit": tuple(saved["best"]["fit"])}
+        history = saved.get("history", [])
+        es.load(saved["cma"])
+        log(f"  resumed at gen {len(history)}")
+    elif saved.get("best"):
+        # The code under test moved (a merge changed the decider): old scores mean nothing now.
+        es.mean = encode(saved["best"]["params"])
+        log("  baseline moved since the checkpoint: restarting centred on its best point")
+    t0 = time.time()
+    for g in range(len(history), gens):
+        xs = es.ask()
+        ps = [decode(x) for x in xs]
+        res = evaluate_many(pool, ps, train)
+        fits = [fitness(r, base) for r in res]
+        # CMA ranks on a blend so it can walk back into the feasible region along a gradient;
+        # the winner is still picked feasibility-first (best["fit"] is lexicographic).
+        order = sorted(range(len(xs)), key=lambda i: fits[i][1] + PENALTY * fits[i][0])
+        es.tell([np.clip(x, 0, 1) for x in xs], order)
+        for j in range(len(xs)):
+            if fits[j] < best["fit"]:
+                best = {"params": ps[j], "fit": fits[j], "train": res[j]}
+        i = order[0]
+        history.append({"gen": g, "fit": fits[i], "sigma": round(es.sigma, 4),
+                        "feasible": sum(f[0] == 0 for f in fits)})
+        log(f"  gen {g:2d} {time.time() - t0:5.0f}s  this gen: viol {fits[i][0]:.2f} gain {-fits[i][1]:+.2f}"
+            f"  best: gain {-best['fit'][1]:+.2f} viol {best['fit'][0]:.2f}  sigma {es.sigma:.3f}")
+        _save(ckpt, {"today": today, "baseline_train": base, "best": best, "history": history,
+                     "cma": es.state()})
+    return {"best": best, "baseline_train": base, "history": history}
 
 
-def report(params: dict | None = None, workers: int | None = None) -> dict:
-    """Today vs the winner on TRAIN, on TEST, and on the project's HOLDOUT nights."""
+def cv(gens_fold: int = 10, gens_final: int = 24, lam: int = 12, sigma: float = 0.1,
+       workers: int | None = None, seed: int = 7, log=print, resume: bool = False) -> dict:
+    """Forward-chaining cross-validation (user rule 4). Fold k tunes on blocks 1..k and is scored
+    on block k+1; the last fold, with the most data and the most generations, is the candidate.
+    Reports every fold's TRAIN and VALID gain, the mean and the WORST fold, the train/valid gap,
+    per-league slices, and the candidate under noisy conditions."""
     units, halves = setup()
-    saved = json.loads(OUT.read_text()) if OUT.exists() else {}
-    params = params or saved["best"]["params"]
     today = defaults(_BASE)
+    nights = {lg: [[units[lg][i][0] for i in b] for b in h["blocks"]] for lg, h in halves.items()}
+    log("blocks (oldest first): " + json.dumps(nights))
+    folds = []
     with _pool(workers or os.cpu_count() or 2) as pool:
-        out = {}
-        for side in ("train", "test", "holdout"):
-            a, b = evaluate_many(pool, [today, params], side, halves)
-            out[side] = {"today": a, "tuned": b, "fit": fitness(b, a)}
-    saved["report"] = out
-    saved["best"] = saved.get("best") or {"params": params}
-    _save(saved)
-    return out
+        for k in range(1, FOLDS + 1):
+            train, valid = fold(halves, k)
+            done = OUT.with_name(f"tune_fold{k}.done.json")
+            if resume and done.exists():
+                f = json.loads(done.read_text())
+                if f.get("today") == today:
+                    folds.append(f)
+                    log(f"fold {k}: done earlier (valid gain {f['valid_gain']:+.2f})")
+                    continue
+            log(f"fold {k}: tune on blocks 1-{k}, validate on block {k + 1}")
+            r = search(pool, today, train, gens_final if k == FOLDS else gens_fold, lam, sigma, seed + k, log,
+                       OUT.with_name(f"tune_fold{k}.json"), resume)
+            a, b = evaluate_many(pool, [today, r["best"]["params"]], valid)
+            vv, vg = fitness(b, a)
+            f = {"fold": k, "today": today, "params": r["best"]["params"],
+                 "train_gain": round(-r["best"]["fit"][1], 2), "train_viol": round(r["best"]["fit"][0], 2),
+                 "valid_gain": round(-vg, 2), "valid_viol": round(vv, 2),
+                 "valid_viol_by_league": {lg: round(violation(b[lg], a[lg]), 2) for lg in b},
+                 "valid_today": a, "valid_tuned": b, "train_today": r["baseline_train"],
+                 "train_tuned": r["best"]["train"],
+                 "nights": {"train": {lg: [units[lg][i][0] for i in v] for lg, v in train.items()},
+                            "valid": {lg: [units[lg][i][0] for i in v] for lg, v in valid.items()}}}
+            _save(done, f)
+            folds.append(f)
+            log(f"fold {k}: train gain {f['train_gain']:+.2f}  VALID gain {f['valid_gain']:+.2f}"
+                f" viol {f['valid_viol']:.2f} {f['valid_viol_by_league']}")
+        final = folds[-1]
+        _, valid = fold(halves, FOLDS)
+        a, b = evaluate_many(pool, [today, final["params"]], valid, NOISE)
+        nv, ng = fitness(b, a)
+    vg = [f["valid_gain"] for f in folds]
+    summary = {"params": final["params"], "today": today,
+               "valid_gain_mean": round(float(np.mean(vg)), 2), "valid_gain_worst": min(vg),
+               "folds_with_valid_violations": [f["fold"] for f in folds if f["valid_viol"] > 0],
+               "gap_train_minus_valid": round(final["train_gain"] - final["valid_gain"], 2),
+               "noisy_valid": {"gain": round(-ng, 2), "viol": round(nv, 2), "today": a, "tuned": b},
+               "ship": all(f["valid_viol"] == 0 for f in folds) and min(vg) > 0 and nv == 0,
+               "folds": folds}
+    _save(OUT, summary)
+    return summary
 
 
-def _save(obj: dict) -> None:
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    tmp = OUT.with_suffix(".tmp")
+def _save(path: Path, obj: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(obj, indent=1, default=str))
-    tmp.replace(OUT)
+    tmp.replace(path)

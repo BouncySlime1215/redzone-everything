@@ -10,14 +10,24 @@ def test_landed_dead_pct_counts_entries_not_mid_play():
     assert cutgrade.CutCard().summary()["landed_dead_pct"] == 100.0   # no entries: nothing landed badly
 
 
-def test_split_is_by_night_and_never_straddles():
-    items = ["20261020a", "20261020b", "20261021a", "20261022a", "20261023a", "20261023b"]
+def test_split_is_by_time_and_never_straddles_a_night():
+    items = [f"202610{d:02d}{x}" for d in range(10, 22) for x in "ab"]
     h = tune.split(items, lambda s: s[:8])
-    assert sorted(h["train"] + h["test"]) == sorted(items)
-    train_n = {s[:8] for s in h["train"]}
-    test_n = {s[:8] for s in h["test"]}
-    assert not train_n & test_n
-    assert train_n == {"20261020", "20261022"} and test_n == {"20261021", "20261023"}
+    nights = [sorted({i[:8] for i in b}) for b in h["blocks"]]
+    assert len(h["blocks"]) == tune.FOLDS + 1
+    flat = [n for b in nights for n in b]
+    assert flat == sorted(flat) and len(flat) == len(set(flat))   # oldest first, each night once
+    assert sorted(i for b in h["blocks"] for i in b) == sorted(items)
+
+
+def test_forward_chaining_folds_validate_on_newer_nights():
+    items = [f"202610{d:02d}" for d in range(10, 22)]
+    halves = {"nba": tune.split(items, lambda s: s)}
+    for k in range(1, tune.FOLDS + 1):
+        train, valid = tune.fold(halves, k)
+        assert train["nba"] and valid["nba"]
+        assert max(train["nba"]) < min(valid["nba"])
+        assert not set(train["nba"]) & set(valid["nba"])
 
 
 def test_encode_decode_round_trip_and_entry_modes():
@@ -73,16 +83,17 @@ def test_cma_state_round_trips():
     assert np.allclose(a.ask(), b.ask())
 
 
-def test_holdout_never_in_train_or_test():
-    items = [f"202610{d:02d}" for d in range(20, 32)] + ["20261101"]
+def test_locked_nights_never_in_any_block():
+    items = [f"202610{d:02d}" for d in range(10, 32)] + ["20261101"]
     h = tune.split(items, lambda s: s, lambda s: s >= "20261029")
-    assert h["holdout"] == ["20261029", "20261030", "20261031", "20261101"]
-    assert not set(h["holdout"]) & set(h["train"] + h["test"])
-    assert sorted(h["train"] + h["test"] + h["holdout"]) == sorted(items)
+    assert h["locked"] == ["20261029", "20261030", "20261031", "20261101"]
+    tuned = {i for b in h["blocks"] for i in b}
+    assert not tuned & set(h["locked"])
+    assert sorted(tuned | set(h["locked"])) == sorted(items)
 
 
 def test_a_held_out_slate_takes_its_whole_night_out_of_tuning():
     items = ["20251102a", "20251102b", "20251109a", "20251116a"]
     h = tune.split(items, lambda s: s[:8], lambda s: s == "20251102b")
-    assert h["holdout"] == ["20251102b"]
-    assert "20251102a" not in h["train"] + h["test"]
+    assert h["locked"] == ["20251102b"]
+    assert "20251102a" not in [i for b in h["blocks"] for i in b]
