@@ -29,6 +29,7 @@ def capture(user, hold: dict | None) -> dict:
         "focus_game": user.focus_game,
         "focus_mode": getattr(user.focus_mode, "value", user.focus_mode),
         "hold": {k: hold.get(k) for k in HOLD_KEYS} if hold else None,
+        "muted": sorted(getattr(user, "muted", set()) or ()),
     }
 
 
@@ -70,6 +71,7 @@ def load(path: Path, now: float | None = None) -> dict | None:
 def apply(state: dict, user, focus_mode_type) -> dict | None:
     """Put a loaded state back on the decider's UserState; returns the engine's hold dict."""
     user.paused = bool(state.get("paused"))
+    user.muted = set(state.get("muted") or ())
     user.locked_game = state.get("locked_game")
     user.focus_game = state.get("focus_game")
     try:

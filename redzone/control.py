@@ -464,7 +464,8 @@ class Controller:
                 self.on_target = None
                 if target:
                     r0 = time.monotonic()
-                    how = await self._resume_playback(stick, target, RESUME_WAIT_S)
+                    # Prime's player takes longer to report again after it is brought back (Nov 2).
+                    how = await self._resume_playback(stick, target, 15.0 if target.startswith("prime:") else RESUME_WAIT_S)
                     self._book_flip(stick, target, self._flip_s, time.monotonic() - r0, how)
                     # Not back yet: keep the target so the visible-stick watchdog keeps trying.
                     self.on_target = target
