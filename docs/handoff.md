@@ -58,11 +58,12 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-03 4:48 PM ET.** Live service: this MORNING's code (deploy tonight).
-- **integration/next:** green, last merge #33 FastCast check. Open PRs: #13 #16 #18 #20 #23 #24 #26 #30 #34 #35. `integration/release` isn't cut yet (due by 7 PM).
-- **Kaggle round 1, V2:** running ~1 h 55 m; teacher at 5,120 of 81,372. ETA ~1 AM.
-- **Kaggle round 2:** rz_code.tar.gz was refreshed on kaggle-inputs. Re-upload it as a new version of nickmatta/redzone-code right before round 2.
-- **Usage:** 45%, on pace (<=55% by 10 PM, ~89% at 5 PM Wed).
+- **2026-11-03 5:05 PM ET.** Live service: this MORNING's code (deploy tonight).
+- **integration/next:** green, last merge #33. Open PRs: #13 #16 #18 #20 #23 #24 #26 #30 #34 #35 #36. `integration/release` isn't cut yet (due by 7 PM).
+- **Kaggle round 1, V2:** running 2 h 05 m (the teacher was at ~5,100 of 81,372 at the last read). ETA ~1 AM.
+- **Kaggle round 2:** re-upload the refreshed rz_code.tar.gz as a new version of nickmatta/redzone-code before starting.
+- **Usage:** 45%, on pace.
+- **RedZone teacher:** legal sources only (Nick's YTTV recordings + RedZone's public rules). Waiting on Nick's OK to add "NFL RedZone" + "NFL RedZone Replay" to the YTTV library. Unofficial YouTube uploads are declined.
 - **Waiting on Nick tonight:** docs/tonight-checklist.md. **Wed 5 PM:** new account (docs/new-environment.md).
 <!-- STATUS:END -->
 
