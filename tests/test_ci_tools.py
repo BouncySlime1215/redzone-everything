@@ -19,6 +19,14 @@ def test_last_json_skips_the_demo_timeline():
         ci_scorecard.last_json("Traceback ...\nboom")
 
 
+@pytest.fixture(autouse=True)
+def _no_ci_env(monkeypatch):
+    """CI sets these for the real run (RZ_SCORECARD_FULL=1 on integration/next): the tests pin
+    their own sizes."""
+    for k in ("RZ_SCORECARD_FULL", "RZ_SMOKE_NFL_N", "RZ_SMOKE_NIGHTS", "RZ_SMOKE_DEMO_DAY"):
+        monkeypatch.delenv(k, raising=False)
+
+
 def _fake_root(tmp_path, nfl_body: str):
     """A checkout whose scorecards are stand-ins, with the data folders they need."""
     (tmp_path / "scripts").mkdir()
