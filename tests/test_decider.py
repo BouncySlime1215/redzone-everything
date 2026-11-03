@@ -2,7 +2,7 @@ import pytest
 
 from redzone.decider.decider import Candidate, Decider, FocusMode, Missed, State
 from redzone.decider.screen import MIN_TAP_SIGMA_S, DelayBook, Event, Timeline
-from redzone.models import League, Play
+from redzone.models import League, Play, Stoppage
 from redzone.scoring.engine import Scored
 from tests.conftest import nfl
 
@@ -494,6 +494,137 @@ def test_halftime_visit_plans_its_trip_back(dec, clock):
     d = dec.decide(cs)
     assert d.action == "switch" and d.target == "o" and d.kind == "break_visit"
     assert dec.home_return_at is not None and dec.home_return_at - clock.t > 400
+
+
+def _nba_short_timeout(dec, clock, dest_cost, dest_score=40):
+    """Home NBA game in its 3rd timeout of the period (~107 s of ads); another NBA game is live on Prime."""
+    from redzone.decider.screen import Event as Ev
+    for g in ("h", "o"):
+        calibrate(dec, f"youtubetv:{g}", mu=60.0)
+        dec.timeline(g, League.NBA)
+    start_on(dec, clock, "h", {})
+    dec.timeline("h", League.NBA).period_timeouts = 3
+    dec.deadline_cost = lambda t: dest_cost if t == "youtubetv:o" else 6.0
+    dec.return_cost = lambda t: 6.0   # two sticks: home keeps playing on the stick we leave
+    tl = dec.timeline("h", League.NBA)
+    tl.events.append(Ev(clock.t, "stop_start", "timeout"))
+    tl.stoppage = Stoppage.TIMEOUT
+    clock.t += 75   # on screen now: ~92 s of it left
+    return dec.decide({"h": Candidate(sc("h", 50, is_break=True, league=League.NBA), "youtubetv:h"),
+                       "o": Candidate(sc("o", dest_score, league=League.NBA), "youtubetv:o")})
+
+
+def test_short_timeout_is_not_spent_on_a_cold_prime_tune(dec, clock):
+    """A 76 s cold Prime tune (measured p90 + flip) and the flip back don't fit a ~107 s timeout."""
+    d = _nba_short_timeout(dec, clock, dest_cost=76.0)
+    assert d.action == "stay"
+
+
+def test_same_short_timeout_visits_a_preloaded_stick(dec, clock):
+    d = _nba_short_timeout(dec, clock, dest_cost=6.0)
+    assert d.action == "switch" and d.target == "o" and d.kind == "break_visit"
+
+
+def test_trip_budget_skips_no_game_we_would_stay_on(dec, clock):
+    """NHL Oct 20 scorecard: a goal break with 15 s left was skipped as "can't fit" for WPG @ STL
+    (up 1, 3:57 left), which the old code visited and kept. A destination clearly better than home
+    is no round trip (decide() releases home there), so the trip back never has to fit."""
+    assert _nba_short_timeout(dec, clock, dest_cost=76.0).action == "stay"   # o at 40: no trip
+    watchable = {"h": Candidate(sc("h", 50, is_break=True, league=League.NBA), "youtubetv:h"),
+                 "o": Candidate(sc("o", 80, league=League.NBA), "youtubetv:o")}
+    assert dec._break_destination(watchable, exclude="h") == "o"
+
+
+def _routine_snap_break(dec, clock, end_ago, snap_ago):
+    """NFL home h in a timeout whose resume (stop_end) and routine snap are already in the data."""
+    calibrate(dec, "youtubetv:h", mu=40.0)
+    start_on(dec, clock, "h", {"o": 50})
+    tl = dec.timeline("h", League.NFL)
+    dec.deadline_cost = lambda t: 6.0
+    tl.events.append(Event(clock.t - 90, "stop_start", "timeout"))
+    tl.events.append(Event(clock.t - end_ago, "stop_end"))
+    tl.events.append(Event(clock.t - snap_ago, "play", "routine snap"))
+    return dec._visit_watch("h", "o", clock.t)
+
+
+def test_routine_snap_visit_is_budgeted_to_when_we_really_come_back(dec, clock):
+    """CLE @ CHI scorecard: the resume of a routine-snap break was logged 40 s ago and its snap
+    15 s ago, so the snap airs in ~25 s and _home_due brings us back only once it has. Budgeting
+    the visit to the early edge of the resume instead called it negative and skipped it."""
+    assert dec._visit_watch is not None
+    assert _routine_snap_break(dec, clock, end_ago=40, snap_ago=15) > 0
+
+
+def test_routine_snap_visit_that_cant_show_anything_is_still_skipped(dec, clock):
+    # The snap has already aired at home: a visit would land after we're due back.
+    assert _routine_snap_break(dec, clock, end_ago=70, snap_ago=60) < 0
+
+
+def test_nba_timeouts_are_counted_per_period(clock):
+    from redzone.models import GameState, Phase, Stoppage as St, Team
+    tl = Timeline(League.NBA, clock=clock)
+
+    def poll(pid, kind, stop):
+        p = Play(id=pid, text=kind, kind=kind, wallclock=clock.t - 8)
+        g = GameState(league=League.NBA, game_id="g", home=Team("WAS", score=0), away=Team("BOS", score=0),
+                      phase=Phase.LIVE, period=1, clock_s=600.0, stoppage=stop, last_play=p, recent_plays=[p])
+        tl.observe(g)
+        clock.t += 10
+    poll("1", "jump_ball", St.NONE)
+    for i in range(3):
+        poll(f"t{i}", "full_timeout", St.TIMEOUT)
+        assert tl.period_timeouts == i + 1 and tl.break_kind == "full_timeout"
+        poll(f"p{i}", "jump_shot", St.NONE)
+    poll("e", "end_period", St.END_PERIOD)
+    assert tl.period_timeouts == 0
+
+
+def _timeout_two_dests(dec, clock, c_scored, c_cost):
+    """Home NBA game in the period's 1st timeout; c (behind `c_cost` s) vs neutral o (preloaded, 6 s)."""
+    for g in ("h", "c", "o"):
+        calibrate(dec, f"youtubetv:{g}", mu=60.0)
+        dec.timeline(g, League.NBA)
+    dec.decide({"h": Candidate(sc("h", 99, league=League.NBA), "youtubetv:h")})
+    clock.t += 100
+    tl = dec.timeline("h", League.NBA)
+    tl.period_timeouts = 1
+    dec.deadline_cost = lambda t: c_cost if t == "youtubetv:c" else 6.0
+    dec.return_cost = lambda t: 6.0
+    tl.events.append(Event(clock.t, "stop_start", "timeout"))
+    tl.stoppage = Stoppage.TIMEOUT
+    clock.t += 80
+    return dec.decide({"h": Candidate(sc("h", 50, is_break=True, league=League.NBA), "youtubetv:h"),
+                       "c": Candidate(c_scored, "youtubetv:c"),
+                       "o": Candidate(sc("o", 40, league=League.NBA), "youtubetv:o")})
+
+
+def _nba(gid, score, personal=0.0, lock=None, crunch=False):
+    return Scored(gid, League.NBA, score, score, score, 1.0, personal, f"reason {gid}", [], False,
+                  lock, None, 1.0, crunch=crunch)
+
+
+@pytest.mark.parametrize("c_cost", [40.0, 76.0])
+def test_break_visit_never_trades_your_team_for_a_preloaded_neutral_game(dec, clock, c_cost):
+    """Review blocker (break-visit-costs): score x watch let a preloaded neutral game beat the
+    user's team (WSH/UNC) behind a cold Prime tune. The break visit is how the viewer reaches a
+    Prime team game at all (the switch cost blocks the ordinary 'better' switch)."""
+    d = _timeout_two_dests(dec, clock, _nba("c", 60, personal=8), c_cost)
+    assert d.action == "switch" and d.target == "c" and d.kind == "break_visit"
+
+
+@pytest.mark.parametrize("c_cost", [40.0, 76.0])
+@pytest.mark.parametrize("how", ["lock", "flag"])
+def test_break_visit_crunch_destination_outranks_a_preloaded_game(dec, clock, c_cost, how):
+    """Review blocker: the fit filter let crunch through 'whatever is left', then the ranking
+    multiplied its score by a small or negative watch time and a preloaded non-crunch game won."""
+    c = _nba("c", 70, lock="crunch time") if how == "lock" else _nba("c", 70, crunch=True)
+    d = _timeout_two_dests(dec, clock, c, c_cost)
+    assert d.action == "switch" and d.target == "c" and d.kind in ("break_visit", "crunch")
+
+
+def test_break_visit_still_prefers_the_preloaded_stick_among_neutral_games(dec, clock):
+    d = _timeout_two_dests(dec, clock, _nba("c", 45), 76.0)
+    assert d.action == "switch" and d.target == "o" and d.kind == "break_visit"
 
 
 def test_your_team_late_and_close_is_never_left_for_a_lesser_game():
