@@ -725,6 +725,8 @@ class Engine:
                               event_ts=event_ts, cmd_ts=cmd_ts, confirmed_ts=out.confirmed_at, ok=out.ok,
                               dry_run=out.dry_run, detail={"took": out.took, "detail": out.detail,
                                                            "path": out.path, "waited": round(out.waited, 1)})
+            if not out.ok and not out.dry_run:
+                log.warning("switch to %s failed after %.1fs (%s): %s", d.target, out.took, out.path, out.detail[:300])
             if not cancelled:   # a cancel (pause, your tap, a newer command) says nothing about the target
                 self.discovery.on_outcome(out, d.target, replay=d.action == "replay")
             if not out.ok and not out.dry_run and not out.screen_unchanged and not cancelled:
