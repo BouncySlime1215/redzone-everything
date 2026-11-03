@@ -11,6 +11,10 @@ All current work is on branch `codex/resume-redzone` (`main` is stale): check it
 - Run the BASELINE on the unchanged branch first, then your change, on the same window.
 - Use `data/eval_config.yaml` if present.
 - $0 budget: ask before anything that costs money.
+- The Mac has ~5 GB free disk and 8 GB RAM. Never run heavy jobs on it, and never write big files to it:
+  no copies of `data/archive`, no bundles, no tarballs over ~50 MB, nothing outside `.xfer/`. Run
+  `scripts/disk_guard.py` first; if it says the disk is low, stop and say so. Delete what you put in
+  `.xfer/` when your thread is done. Prefer the pinned eval dataset over copying the archive.
 - Commits end with "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>".
 - Open a PR into `codex/resume-redzone`, never main. Don't merge it.
 

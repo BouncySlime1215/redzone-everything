@@ -29,6 +29,7 @@ from datetime import datetime
 from pathlib import Path
 
 from agent.policy import SYSTEM, Obs, Verdict, guard, known, parse_answer, rules
+from redzone.governor import Governor, free_mlx_cache, load_options
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -41,6 +42,8 @@ WINDOW_S = 900.0
 NOTIFY_QUIET_S = 3600.0      # the same note at most once an hour
 RECONNECT_EVERY_S = 600.0
 MODEL_CACHE_S = 1800.0       # the same set of unknown errors is asked about at most every 30 min
+MODEL_IDLE_S = 900.0         # the local model is dropped after 15 idle minutes (~1 GB back to the Mac)
+MEMORY_CHECKS = 3            # the app over its memory cap this many checks in a row: act
 ADB = shutil.which("adb") or "/opt/homebrew/bin/adb"
 
 log = logging.getLogger("redzone.agent")
@@ -92,7 +95,8 @@ def fetch_state(timeout: float = 6.0) -> dict | None:
 
 
 class Watchdog:
-    def __init__(self, dry_run: bool = False, use_model: bool = True, clock=time.time):
+    def __init__(self, dry_run: bool = False, use_model: bool = True, clock=time.time,
+                 governor: Governor | None = None):
         self.dry_run = dry_run
         self.use_model = use_model
         self._clock = clock
@@ -103,6 +107,10 @@ class Watchdog:
         self.reconnected: dict[str, float] = {}
         self.asked: dict[tuple, tuple[float, Verdict]] = {}
         self._model = None
+        self._model_used = 0.0
+        self.mem_streak = 0
+        # The resource governor (redzone/governor.py): memory caps, and no model while the Mac is critical.
+        self.gov = governor or Governor(load_options(ROOT), root=DATA if DATA.exists() else ROOT, clock=clock)
 
     # ---- seeing ----------------------------------------------------------------------------
     def observe(self) -> Obs:
@@ -119,6 +127,7 @@ class Watchdog:
         except OSError:
             pass
         o.restarts_last_hour = sum(1 for t in self.restarts if now - t < 3600)
+        self.gov.refresh()
         o.errors = recent_errors(now=now)
         if st:
             games = st.get("games") or []
@@ -141,16 +150,54 @@ class Watchdog:
         if self._model is None:
             from agent.llm import ADAPTER, DEFAULT_MODEL, LocalModel
             self._model = LocalModel(DEFAULT_MODEL, ADAPTER)
+        self._model_used = self._clock()
         return self._model
+
+    def drop_model(self, why: str) -> bool:
+        """Free the local model's memory (it reloads in a few seconds the next time it's needed)."""
+        if self._model is None:
+            return False
+        self._model = None
+        import gc
+        gc.collect()
+        free_mlx_cache()
+        log.info("agent: dropped the local model (%s)", why)
+        return True
+
+    def memory_verdict(self, o: Obs) -> Verdict | None:
+        """The governor's memory caps. Kept out of policy.rules() on purpose: Obs.text() is the
+        model's prompt, and the trained adapter expects its fields as they are."""
+        opts = self.gov.opts
+        if not opts["enabled"]:
+            return None
+        cap = float(opts["models_mb"])
+        models = self.gov.models_mb()
+        if models > cap:
+            if self.drop_model(f"model processes at {models:.0f} MB, cap {cap:.0f}"):
+                return None   # measured again at the next check
+            return Verdict("notify", f"the local model server is using {models:.0f} MB (cap {cap:.0f} MB)",
+                           source="governor")
+        svc = self.gov.service_mb()
+        hard, soft = float(opts["service_hard_mb"]), float(opts["service_soft_mb"])
+        self.mem_streak = self.mem_streak + 1 if svc is not None and svc > hard else 0
+        if self.mem_streak >= MEMORY_CHECKS:
+            return Verdict("restart_service", f"the app is using {svc:.0f} MB of memory (cap {hard:.0f} MB)",
+                           source="governor")
+        if svc is not None and svc > soft:
+            return Verdict("notify", f"the app is using {svc:.0f} MB of memory (warning at {soft:.0f} MB)",
+                           source="governor")
+        return None
 
     def decide(self, o: Obs) -> Verdict:
         v = rules(o)
+        if v is None or v.action == "none":
+            v = self.memory_verdict(o) or v
         if v is None:
             unknown = tuple(sorted(s for s in o.errors if known(s) is None))
             hit = self.asked.get(unknown)
             if hit and self._clock() - hit[0] < MODEL_CACHE_S:
                 v = hit[1]
-            elif self.use_model:
+            elif self.use_model and self.gov.allow("llm"):
                 try:
                     ans = self.model().chat([{"role": "system", "content": SYSTEM},
                                              {"role": "user", "content": o.text()}])
@@ -160,7 +207,7 @@ class Watchdog:
                     log.warning("agent: model unavailable: %s", e)
                     v = Verdict("notify", f"new error: {unknown[0][:120]}", source="guard")
                 self.asked[unknown] = (self._clock(), v)
-            else:
+            else:   # no model, or the Mac is critical (hot, low battery, out of memory): rules only
                 v = Verdict("notify", f"new error: {unknown[0][:120]}", source="guard")
         return guard(v, o)
 
@@ -179,6 +226,7 @@ class Watchdog:
             return f"dry run: would {v.action}"
         if v.action == "restart_service":
             self.restarts.append(self._clock())
+            self.mem_streak = 0
             try:
                 r = subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{LABEL}"],
                                    capture_output=True, text=True, timeout=30)
@@ -212,6 +260,11 @@ class Watchdog:
                 log.info("agent: push failed: %s", e)
 
     def tick(self) -> dict:
+        if self._model is not None:
+            if self._clock() - self._model_used > MODEL_IDLE_S:
+                self.drop_model("idle")
+            elif not self.gov.allow("llm"):
+                self.drop_model(f"the Mac is {self.gov.level}: {self.gov.why()}")
         o = self.observe()
         v = self.decide(o)
         done = self.act(v, o)
@@ -219,7 +272,8 @@ class Watchdog:
                "why": v.why, "target": v.target, "result": done,
                "obs": {"api_ok": o.api_ok, "live": o.live_games, "crunch": o.crunch_on_screen,
                        "log_age_s": o.log_age_s, "disk_mb": o.disk_free_mb, "offline": o.sticks_offline,
-                       "errors": len(o.errors)}}
+                       "errors": len(o.errors), "governor": self.gov.level,
+                       "app_mb": self.gov.service_mb(), "models_mb": round(self.gov.models_mb())}}
         if v.action != "none" or int(self._clock()) % 900 < CHECK_S:   # quiet checks: one row per 15 min
             _journal(row)
         return row

@@ -116,6 +116,9 @@ class Engine:
         from redzone.discovery.runtime import DiscoveryRuntime
         self.discovery = DiscoveryRuntime(self)
         self.tonight = Tonight(self)   # today's plan + pre-game checks on the hidden stick
+        from redzone.governor import Governor
+        # Backs optional work off when the Mac is busy, hot, on battery or short of disk (redzone/governor.py).
+        self.governor = Governor.from_config(self.cfg, **({"root": data_dir.parent} if data_dir else {}))
         from redzone.supervisor import DATA as SUPERVISOR_DATA, Supervisor
         # Watches the live system and fixes what it can on its own (redzone/supervisor.py).
         self.supervisor = Supervisor(self, root=data_dir.parent if data_dir else SUPERVISOR_DATA)
@@ -157,7 +160,7 @@ class Engine:
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
                              self._boundary_loop(), self._scorebug_loop(), self.tonight.run(),
-                             self.supervisor.run())
+                             self.supervisor.run(), self.governor.run())
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)
@@ -205,6 +208,11 @@ class Engine:
                     self.scorebug.reset()
                     wait = 5.0
                 else:
+                    if not self.governor.allow("ocr"):   # the Mac is critical: no OCR for now
+                        self.scorebug.reset()
+                        await asyncio.sleep(10.0)
+                        continue
+                    wait = scorebug.EVERY_S * self.governor.scale("ocr")
                     frames = await self.control.scorebug_frames(bool(self.cfg.get("delay.scorebug_hidden", False)))
                     if not frames:
                         self.scorebug.reset()
@@ -265,13 +273,19 @@ class Engine:
                 interval = self.cfg.get("polling.hot_s", 3)
             else:
                 interval = self.cfg.get("polling.live_s") if soon else self.cfg.get("polling.idle_s")
+                if not soon:   # nothing live or about to start: idle polling may slow down...
+                    slow = interval * self.governor.scale("idle_poll")
+                    # ...but never past the moment the next known game enters its 15-minute "soon" window
+                    lead = min((g.start_time - time.time() - 900 for g in self.merger.games.values()
+                                if g.phase == Phase.PRE and g.start_time), default=None)
+                    interval = slow if lead is None else max(interval, min(slow, lead))
             await asyncio.sleep(max(1.0, interval - (time.time() - t0)))
 
     def _reel_tick(self) -> None:
         """Feed new clips to the catch-up reel and rebuild it in the background. Never blocks the
         poll loop, never raises: a reel is a bonus, the live switching is the job."""
         try:
-            if not self.reeler.enabled():
+            if not self.reeler.enabled() or not self.governor.allow("reel"):
                 return
             leagues = {gid: g.league.value for gid, g in self.merger.games.items()}
             mine = {lg.value: teams for lg, teams in self._my_teams().items()}
@@ -1515,7 +1529,8 @@ class Engine:
                        "tv": {"state": "unknown"}, "race": self.merger.race_summary(),
                        "adb": self.control.adb_ok, "switch_times": self.control.switch_times(),
                        "fastcast": self.fastcast.status() if self.fastcast else None,
-                       "discovery": self.discovery.status(), "supervisor": self.supervisor.status()},
+                       "discovery": self.discovery.status(), "supervisor": self.supervisor.status(),
+                       "governor": self.governor.view()},
             "bets": self.bets_view(), "feedback": self.store.feedback_counts(),
             "fantasy": None if self.fantasy is None else {
                 "me": self.fantasy.me, "opponent": self.fantasy.opponent, "my_points": self.fantasy.my_points,

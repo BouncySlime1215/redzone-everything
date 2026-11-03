@@ -1128,9 +1128,8 @@ def archive_result(results: list[DayResult]) -> JobResult:
 async def run_lab_search(root: Path = ROOT) -> dict:
     """redzone.lab.optimize.search() in its own low-priority process: it's minutes of CPU, and a
     separate process can be killed cleanly by the time box (a thread can't be)."""
-    cmd = [sys.executable, "-c", LAB_CODE]
-    if shutil.which("nice"):
-        cmd = ["nice", "-n", "10", *cmd]
+    from redzone.governor import background_cmd
+    cmd = background_cmd([sys.executable, "-c", LAB_CODE])   # efficiency cores, throttled I/O
     try:
         proc = await asyncio.create_subprocess_exec(*cmd, cwd=str(root), stdin=subprocess.DEVNULL,
                                                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
@@ -1448,9 +1447,9 @@ class Autonomy:
             Job("yttv_codes", "YouTube TV channel check", self._yttv_codes, (At(4, 20),), window_s=2 * hour,
                 timeout_s=15 * mins, retry_s=15 * mins, guard=self._night_guard, group="sticks"),
             Job("archive", "Game archive for the lab", self._archive, (At(5, 0),), window_s=6 * hour,
-                timeout_s=20 * mins, retry_s=30 * mins, attempts=3),
+                timeout_s=20 * mins, retry_s=30 * mins, attempts=3, guard=self._archive_guard),
             Job("autotune", "Weekly lab tune-up", self._autotune, (At(4, 40, (TUE,)),), window_s=4 * hour,
-                timeout_s=45 * mins, retry_s=30 * mins, guard=self._night_guard),
+                timeout_s=45 * mins, retry_s=30 * mins, guard=self._lab_guard),
             Job("event_links", "Game links (Prime Video, ESPN+)", None),
         ]
 
@@ -1651,6 +1650,20 @@ class Autonomy:
         """Overnight chores wait for every game to end (the owner may be up watching a late game)."""
         live = self._live()
         return f"{_games_text(live)} still on" if live else None
+
+    def _governor_says(self, kind: str) -> str | None:
+        """The resource governor (redzone/governor.py) holds heavy chores while the Mac is busy, hot,
+        on battery or short of disk. No governor (tests, tools): never holds."""
+        gov = getattr(getattr(self.hooks, "engine", None), "governor", None)
+        if gov is None or gov.allow(kind):
+            return None
+        return f"the Mac needs a break ({gov.why()})"
+
+    async def _archive_guard(self) -> str | None:
+        return self._governor_says("archive")
+
+    async def _lab_guard(self) -> str | None:
+        return await self._night_guard() or self._governor_says("lab")
 
     async def _quiet_guard(self) -> str | None:
         """Jobs that drive the sticks also need TV control on and a stick connected."""

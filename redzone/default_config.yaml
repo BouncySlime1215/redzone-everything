@@ -178,6 +178,20 @@ supervisor:                # watches the live system and fixes what it can on it
   enabled: true
   ntfy_topic: ""           # optional: push the nightly report to the free ntfy app (pick a hard-to-guess topic)
 
+governor:                  # keeps the Mac cool and its disk free (redzone/governor.py); live switching is never slowed
+  enabled: true
+  every_s: 30              # look at the Mac this often
+  calm_s: 180              # a busy/hot/battery state must clear this long before work resumes
+  busy_load: 0.85          # 5-min load per CPU core above this: the Mac is busy (eco)
+  battery_eco: true        # on battery: eco (no reel downloads/lab/archive, slower OCR and idle polling)
+  battery_low_pct: 20      # on battery under this: critical (also no OCR, no local model)
+  swap_eco_mb: 1500        # swap in use above this: eco
+  disk_low_mb: 3000        # free disk under this: eco (no new downloads)
+  disk_critical_mb: 1500   # free disk under this: critical
+  service_soft_mb: 700     # the app's memory: shown as a warning above this
+  service_hard_mb: 1200    # ...the watchdog restarts the app above this (never during crunch time)
+  models_mb: 1500          # all local model processes together (watchdog + game reasoner)
+
 two_stick:
   cec_flip: true           # flip inputs by HOME -> HDMI-CEC Active Source (no TV network or SmartThings needed)
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment

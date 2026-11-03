@@ -235,8 +235,9 @@ def _helper(compile_timeout: float) -> Path:
     with tempfile.TemporaryDirectory(prefix="build-", dir=cache) as build:
         output = Path(build) / "vision"
         modules = Path(build) / "modules"
-        result = subprocess.run(["/usr/bin/swiftc", "-O", "-module-cache-path", str(modules),
-                                 str(source), "-o", str(output)], capture_output=True,
+        from redzone.governor import background_cmd   # a one-time compile: keep it off the fast cores
+        result = subprocess.run(background_cmd(["/usr/bin/swiftc", "-O", "-module-cache-path", str(modules),
+                                 str(source), "-o", str(output)]), capture_output=True,
                                 timeout=compile_timeout, check=False)
         if result.returncode != 0:
             raise RuntimeError("local Vision helper compilation failed")
