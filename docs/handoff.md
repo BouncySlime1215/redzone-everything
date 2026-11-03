@@ -58,13 +58,11 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-03 5:20 PM ET.** Live service: this MORNING's code. **Release candidate 1 is cut: `integration/release` 9e859b7.** RC1 is in CI ("integration/next into codex/resume-redzone"). Nick deploys tonight with docs/tonight-checklist.md.
+- **2026-11-03 5:35 PM ET.** Live service: this MORNING's code. RC1 (`integration/release` 9e859b7) FAILED CI; newer merges #38 (your team's missed plays first) and #39 (NBA whistle-wait cap 180 s) are green on integration/next. The director asked for RC2 to be re-cut from green, due by 7 PM.
 - **Open PRs:** #13 #16 #18 #20 #23 #24 #26 #30 #36 #37.
-- **Kaggle round 1, V2:** running 2 h 16 m; teacher at 6,400 of 81,372 (~79 tok/s, slowing). ETA ~1 AM.
-- **Kaggle round 2:** re-upload the refreshed rz_code.tar.gz as a new version of nickmatta/redzone-code before starting.
-- **Usage:** 45%, on pace (<=55% by 10 PM).
-- **RedZone teacher:** legal sources only. Nick to add "NFL RedZone" + "NFL RedZone Replay" to the YTTV library himself (Chrome froze mid-add). Unofficial uploads are declined.
-- **Wed 5 PM:** new account (docs/new-environment.md).
+- **Kaggle round 1, V2:** running ~2 h 30 m; teacher ~6,400+ of 81,372. ETA ~1 AM.
+- **Usage:** 46%, on pace (<=55% by 10 PM).
+- **Waiting on Nick:** add NFL RedZone + RedZone Replay to the YTTV library. Tonight: docs/tonight-checklist.md. **Wed 5 PM:** new account.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
