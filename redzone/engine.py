@@ -1295,6 +1295,7 @@ class Engine:
                      "safe": dec.safe_mode, "frozen_until": dec.frozen_until or None,
                      "focus_game": dec.user.focus_game, "focus_mode": dec.user.focus_mode.value,
                      "locked_game": dec.user.locked_game, "state": d.state.value if d else "idle",
+                     "decision": f"{d.action}: {d.reason}"[:200] if d else "",
                      "hold": self._hold_view(), "two_stick_enabled": bool(self.cfg.get("two_stick.enabled", True)),
                      "redzone_on": bool(self._redzone_target(self.cfg.get("sunday_ticket", True),
                                                              self.cfg.get("mode.dry_run", True))),
