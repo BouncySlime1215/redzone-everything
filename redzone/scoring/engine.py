@@ -214,7 +214,9 @@ class Scorer:
         parts.extend(ctx_parts)
         reading = self.brain.read(g) if self.brain_on() else None
         if reading is not None and reading.hotness is not None:
-            pts, part = brain_points(reading, c, g.league.base.value)
+            # College leagues get their own settings when set (never silently the pro league's).
+            key = g.league.value if c.get(f"brain.{g.league.value}") is not None else g.league.base.value
+            pts, part = brain_points(reading, c, key)
             m += pts
             factors["brain"] = round(pts, 1)
             if part:

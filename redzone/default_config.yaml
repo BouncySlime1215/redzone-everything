@@ -105,6 +105,10 @@ brain:                     # learned models (redzone/scoring/brain.py, trained b
   nba: {hot_points: 0, key_points: 12}
   nhl: {hot_points: 0, key_points: 6}
   mlb: {hot_points: 0, key_points: 6}
+  # College: no replay-tested tuning yet, so the brain only shows its numbers there.
+  cbb: {hot_points: 0, key_points: 0}
+  wcbb: {hot_points: 0, key_points: 0}
+  cfb: {hot_points: 0, key_points: 0}
 
 decider:
   switch_margin: 10
