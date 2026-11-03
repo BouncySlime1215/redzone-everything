@@ -20,7 +20,8 @@ log = logging.getLogger(__name__)
 # them would skip a good link, e.g. two "no safe moment" holds making MNF untunable.
 NOT_A_TUNE = ("no safe moment", "safe exit window closed", "switch cancelled", "tv input is unknown",
               "tv control was disabled", "no channel for this game", "standby stream is no longer confirmed",
-              "replay seek failed", "replay resume failed", "two-stick mode off", "crashed:")
+              "replay seek failed", "replay resume failed", "two-stick mode off", "crashed:",
+              "stick not responding")
 
 
 class DiscoveryRuntime:

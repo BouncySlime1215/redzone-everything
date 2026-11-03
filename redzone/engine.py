@@ -39,10 +39,12 @@ log = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
 FASTCAST_SYNC_S = 2.0
 DECIDE_EVERY_S = 0.5
+CLOCK_JUMP_S = 5.0     # wall clock moved this much more (or less) than time.monotonic(): it jumped
 # Outcomes that say nothing about the target itself: a closed safe window, a cancel, an unknown
 # TV input. They neither cool the target down nor count against it.
 NOT_THE_TARGETS_FAULT = ("no safe moment", "safe exit window closed", "switch cancelled",
-                         "TV input is unknown", "TV control was disabled", "no channel")
+                         "TV input is unknown", "TV control was disabled", "no channel",
+                         "stick not responding")
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
@@ -113,6 +115,7 @@ class Engine:
         self._last_mic = 0.0
         self._pending_decision = None
         self._pending_since = 0.0
+        self._pending_mono = 0.0   # the same moment on time.monotonic(): wall-clock jumps can't age a switch
         self._pending_done = None          # the in-flight switch's done callback (for the deadline)
         self._fail_cool: dict[str, float] = {}   # tuner target -> no retry before this time
         self.mic_suggestion = None
@@ -848,6 +851,7 @@ class Engine:
             if (self.decider.replaying or self.decider.after_replay) else None
         self._pending_decision = d
         self._pending_since = time.time()
+        self._pending_mono = time.monotonic()
         before_target = getattr(self.control, "on_target", None) or getattr(self.where.get(before or ""), "target", None)
         if deferred:
             # Conservatively mark the transition unknown until observed; never
@@ -912,6 +916,19 @@ class Engine:
                             replay_id=d.replay.pid if d.replay else None,
                             entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0)
 
+    def pending_age(self, now: float) -> float:
+        """Seconds the pending switch has been running, as of wall-clock `now`. If the wall clock
+        jumped since the switch started (NTP fix, laptop waking), the jump is taken back out using
+        time.monotonic(), so a healthy 1 s-old switch is never declared hung (fault drill: clock_skew)."""
+        if not self._pending_since:
+            return 0.0
+        age = now - self._pending_since
+        if self._pending_mono:
+            jump = (time.time() - self._pending_since) - (time.monotonic() - self._pending_mono)
+            if abs(jump) > CLOCK_JUMP_S:
+                age -= jump
+        return max(0.0, age)
+
     def _trace_labels(self, *gids: str | None) -> dict:
         out = {}
         for gid in gids:
@@ -932,11 +949,12 @@ class Engine:
         limit = self.cfg.get("control.max_switch_s", 150)
         if d.kind == "start":   # nothing confirmed on screen yet: a hung first pick is retried sooner
             limit = min(limit, self.cfg.get("control.max_start_switch_s", 75))
-        if now - self._pending_since < limit:
+        age = self.pending_age(now)
+        if age < limit:
             return
-        log.warning("switch to %s still running after %.0fs: giving up on it", d.target, now - self._pending_since)
+        log.warning("switch to %s still running after %.0fs: giving up on it", d.target, age)
         self.control.cancel_pending()
-        done(Outcome(False, None, now - self._pending_since,
+        done(Outcome(False, None, age,
                      f"switch timed out after {limit:.0f}s; playback not confirmed", False))
 
     def _entry_valid(self, d: Decision, target: str | None) -> bool:

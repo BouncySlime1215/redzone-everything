@@ -124,10 +124,12 @@ LIMITS = {
 # Switch outcomes that say nothing about the target (same idea as engine.NOT_THE_TARGETS_FAULT).
 NOT_THE_TARGET = ("no safe moment", "safe exit window closed", "switch cancelled", "tv input is unknown",
                   "tv control was disabled", "no channel", "standby stream is no longer confirmed", "dry run",
-                  "replay seek failed", "replay resume failed", "two-stick mode off", "crashed:")
+                  "replay seek failed", "replay resume failed", "two-stick mode off", "crashed:",
+                  "stick not responding")
 
 # Failure detail -> a short cause name for the nightly report. First match wins.
 CAUSES = (
+    ("stick not responding", "stick hung"),
     ("replay seek", "replay seek"), ("replay resume", "replay seek"), ("two-stick mode off", "TV input"),
     ("timed out", "timed out"), ("timeout", "timed out"), ("never started", "never started playing"),
     ("couldn't open the link", "link rejected"), ("did not accept", "link rejected"),
@@ -453,7 +455,8 @@ class Supervisor:
         limit = float(e.cfg.get("control.max_switch_s", 150)) + float(self.opt("stuck_grace_s"))
         p = getattr(e, "_pending_decision", None)
         if p is not None:
-            age = now - float(getattr(e, "_pending_since", now) or now)
+            age = (e.pending_age(now) if hasattr(e, "pending_age")
+                   else now - float(getattr(e, "_pending_since", now) or now))
             if age < limit:
                 return
             self.observe("stuck_switch", f"switch to {p.target} stuck {age:.0f}s")
