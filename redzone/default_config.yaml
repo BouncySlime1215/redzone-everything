@@ -41,6 +41,14 @@ score:
   neutral_cap: 0.9         # a neutral game tops out at 90; 90-100 is reserved for games you care about
   personal_cap: 30
   smoothing_half_life_s: 30
+  v2:                      # learned hype (redzone/scoring/hype_model.json; retrain: scripts/train_hype.py)
+    enabled: true
+    blend: 1.0             # 1 = the model's score, 0 = the old hand-tuned score
+    crunch_floor: true     # crunch time never scores below the old crunch value
+    crunch_min: 60         # ...and is lifted into [crunch_min, 100] (crunch time first)
+    noncrunch_cap: 100     # ...and nothing outside crunch time scores above this
+    quiet_grace_s: {nfl: 240, nba: 150, nhl: 180, mlb: 300}  # a feed showing nothing new this long
+    quiet_fade_s: 300      # (outside a long break) fades out over this long: stuck feed or unlogged stoppage
   stakes:
     both_good_pct: 0.600
     both_good: 0.08
@@ -59,6 +67,9 @@ score:
     comeback_s: 240
   personal:
     my_team: 25            # scaled by how competitive the game is (0 in a blowout)
+    my_team_floor: 50      # hype v2: your team's live game never scores below this (garbage time excepted)...
+    my_team_late_floor: 85 # ...nor below this late (Q4/P3/H2/7th+) while still competitive
+    my_team_late_k: 0.55   # "competitive" = closeness at least this (NBA within 12, NFL within 16, NHL within 2)
     bet_max: 20
     fantasy_mine: 12
     fantasy_opponent: 8

@@ -597,15 +597,24 @@ class Decider:
         if crunch:
             return crunch
         chase = self._chase(watchable, s_cur, now) if gate_ok and not s_cur.lock else None
-        visit_home = self.current if s_cur.score >= c.get("decider.break_destination_min") else None
+        # [chained visit] Already away from home on a break visit: the game we're visiting can hit its
+        # own break. Never let that become the new "home" — a WSH halftime visit to MIN@CLE chained
+        # into an OKC visit at CLE's halftime and lost the way back to WSH for 2 hours (Oct 26 replay).
+        away_home = home if (home and home != self.current and home in watchable) else None
+        visit_home = away_home or (self.current if s_cur.score >= c.get("decider.break_destination_min") else None)
+        if on_break and away_home and gate_ok and not cands[away_home].scored.is_break \
+                and away_home not in self._screen_break:
+            return Decision(now, "switch", away_home, "this game's on a break — back to your game",
+                            state, gate_txt, kind="home")
         if on_break:
             if chase:
                 self.home_break_visit = visit_home
                 return self._chase_decision(chase, cands, state, gate_txt, now)
-            planned = self._long_break_visit(watchable, cands, self.current, gate_ok, state, gate_txt, now)
+            planned = None if away_home else self._long_break_visit(watchable, cands, self.current, gate_ok,
+                                                                     state, gate_txt, now)
             if planned:
                 return planned
-            dest = self._break_destination(watchable, exclude=self.current)
+            dest = self._break_destination(watchable, exclude=self.current, home=away_home)
             rp = self._replay_option(cands, dest, now)
             if rp:
                 self.home_break_visit = visit_home
@@ -1027,15 +1036,16 @@ class Decider:
                    if gid != exclude and not x.scored.is_break and gid not in self._screen_break]
         return max(options)[1] if options else None
 
-    def _break_destination(self, watchable, exclude) -> str | None:
+    def _break_destination(self, watchable, exclude, home: str | None = None) -> str | None:
         """Where to spend the home game's break. If home is a game you can't afford to miss the
         resume of (your team, a bet, your focus game, crunch time), only go somewhere you can
         ALWAYS leave in time: basketball/hockey only have clean exits at whistles, and a visit
         there stranded us for 3 minutes of a Wizards crunch (backtest, Oct 26)."""
         options = watchable
-        if exclude and self._sticky_home(exclude, watchable):
+        anchor = home or exclude   # on a chained visit, the game we must get back to is the real home
+        if anchor and self._sticky_home(anchor, watchable):
             now = self._clock()
-            strict = self._visit_needs_exit(exclude, watchable)
+            strict = self._visit_needs_exit(anchor, watchable)
             options = {gid: x for gid, x in watchable.items()
                        if gid == REDZONE or (self._exits_often(gid) and (not strict or self._exit_provable(x, now)))}
         best = self._best(options, exclude)

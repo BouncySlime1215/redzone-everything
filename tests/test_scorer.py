@@ -70,8 +70,9 @@ def test_reason_reads_like_a_broadcaster(cfg, clock):
 
 def test_smoothing_fast_attack_slow_release(cfg, clock):
     sc = Scorer(cfg, clock=clock)
-    hot = nfl("x", "KC", "BUF", 20, 17, q=4, clock=60, pos="BUF", down=1, dist=10, ytg=8)
-    cold = nfl("x", "KC", "BUF", 20, 17, q=4, clock=55, pos="KC", down=1, dist=10, ytg=80)
+    # Outside crunch time (crunch time is lifted into its own band, so it barely moves there).
+    hot = nfl("x", "KC", "BUF", 20, 17, q=3, clock=60, pos="BUF", down=1, dist=10, ytg=8)
+    cold = nfl("x", "KC", "BUF", 20, 17, q=3, clock=55, pos="KC", down=1, dist=10, ytg=80)
     high = sc.score(hot).score
     clock.t += 10
     after = sc.score(cold)
