@@ -116,32 +116,106 @@ async def test_prime_flip_waits_for_its_player_instead_of_relinking(prime, monke
     assert c.last_flip["how"] == "auto" and tuner.calls == []    # no re-link
 
 
-async def test_a_paused_prime_player_gets_play_without_waiting_out_its_grace(prime, monkeypatch):
-    monkeypatch.setattr(ctl, "PRIME_RESUME_WAIT_S", 5.0)
+def stale_paused_prime(b, resume_after_s):
+    """The older stick's Prime (device trial, Nov 2): it pauses when its stick loses the TV input,
+    keeps reporting that stale "paused" after HOME + REORDER_TO_FRONT, ignores MEDIA_PLAY, and plays
+    again by itself ~10 s later (`resume_after_s` here)."""
+    real = b.shell
+    b.resume_at = None
+
+    async def shell(cmd, timeout=8.0):
+        if "KEYCODE_HOME" in cmd:
+            b.pause()
+            b.resume_at = time.monotonic() + resume_after_s
+        return await real(cmd, timeout)
+    b.shell = shell
+
+    async def key(*codes):
+        b.log.extend(codes)                       # MEDIA_PLAY goes unanswered
+        return RunResult(True, "", 0.01)
+    b.key = key
+    read = b.playback
+
+    async def playback(package=None):
+        if b.resume_at is not None and time.monotonic() >= b.resume_at:
+            b.playing, b.frozen, b.resume_at = "playing", None, None
+        return await read(package)
+    b.playback = playback
+
+
+async def test_a_stale_paused_prime_after_a_flip_waits_out_its_grace(prime, monkeypatch):
+    """Review blocker (control-return-home): a 2 s "paused" shortcut sent MEDIA_PLAY to the VISIBLE
+    stick, waited 3 s and re-linked on a stale read: a 33-55 s on-screen Prime tune or the 75 s
+    switch failure, instead of the ~10 s self-resume. Prime gets no shortcut and no MEDIA_PLAY
+    inside its grace, and no re-link."""
+    monkeypatch.setattr(ctl, "PRIME_RESUME_WAIT_S", 1.5)
     monkeypatch.setattr(ctl, "RESUME_PAUSED_S", 0.05)
     c, tuner, _ = prime
     await on_screen(c, tuner, PRIME_FOX)
     assert c.preload(PRIME_CBS)
     await c._preload_task
+    tuner.calls.clear()
     b = c.hidden
-    real = b.shell
-
-    async def shell(cmd, timeout=8.0):
-        if "KEYCODE_HOME" in cmd:
-            b.pause()
-        return await real(cmd, timeout)
-    b.shell = shell
-
-    async def key(*codes):
-        b.log.extend(codes)
-        if "KEYCODE_MEDIA_PLAY" in codes:
-            b.playing, b.frozen = "playing", None
-        return RunResult(True, "", 0.01)
-    b.key = key
+    stale_paused_prime(b, resume_after_s=0.8)       # well past RESUME_PAUSED_S, inside the grace
     t0 = time.monotonic()
     out = await c.execute(PRIME_CBS, may_cut=lambda: True)
-    assert out.ok and c.last_flip["how"] == "media_play"
-    assert time.monotonic() - t0 < 2.0                   # not the 5 s grace
+    assert out.ok and out.path == "preloaded" and out.resumed is True
+    assert c.last_flip["how"] == "auto"
+    assert time.monotonic() - t0 >= 0.8             # it waited for the player
+    assert "KEYCODE_MEDIA_PLAY" not in b.log        # no play press on the visible stick
+    assert tuner.calls == []                        # no re-link
+
+
+async def test_prime_reasserted_resume_also_skips_the_paused_shortcut(prime, monkeypatch):
+    """The re-assert path (TV input re-taken) shares _resume_playback with Prime's full grace."""
+    monkeypatch.setattr(ctl, "PRIME_RESUME_WAIT_S", 1.5)
+    monkeypatch.setattr(ctl, "RESUME_PAUSED_S", 0.05)
+    c, tuner, _ = prime
+    await on_screen(c, tuner, PRIME_FOX)
+    a = c.main
+    stale_paused_prime(a, resume_after_s=0.6)
+    await a.shell("input keyevent KEYCODE_HOME")
+    how = await c._resume_playback(a, PRIME_FOX, c._resume_wait(PRIME_FOX))
+    assert how == "auto" and "KEYCODE_MEDIA_PLAY" not in a.log and tuner.calls == []
+
+
+async def test_playback_is_read_again_before_any_relink(prime, monkeypatch):
+    """The re-link decision used the read taken before MEDIA_PLAY and the screenshot check. A
+    player that came back meanwhile must not be re-tuned on screen."""
+    monkeypatch.setattr(ctl, "PRIME_RESUME_WAIT_S", 0.1)
+    c, tuner, _ = prime
+    await on_screen(c, tuner, PRIME_FOX)
+    a = c.main
+    a.pause()
+
+    async def key(*codes):                            # MEDIA_PLAY unanswered
+        a.log.extend(codes)
+        return RunResult(True, "", 0.01)
+    a.key = key
+
+    async def prompt_check(stick, target, pkg):       # the ~2 s screenshot read: no prompt found,
+        a.playing, a.frozen = "playing", None         # but the player came back meanwhile
+        return False
+    monkeypatch.setattr(c, "_clear_screen_prompt", prompt_check)
+    how = await c._resume_playback(a, PRIME_FOX, c._resume_wait(PRIME_FOX))
+    assert how == "auto" and tuner.calls == []      # no re-link on a stale read
+
+
+async def test_youtube_tv_paused_after_the_grace_still_gets_media_play(prime, monkeypatch):
+    """Unchanged for the other apps: a paused player after its grace gets MEDIA_PLAY."""
+    c, tuner, _ = prime
+    a = c.main
+    a.playing, a.frozen = "paused", (1, 1)
+
+    async def key(*codes):
+        a.log.extend(codes)
+        if "KEYCODE_MEDIA_PLAY" in codes:
+            a.playing, a.frozen = "playing", None
+        return RunResult(True, "", 0.01)
+    a.key = key
+    monkeypatch.setattr(c, "_plays_target", lambda stick, target, pb, pkg: pb.get("state") == "playing")
+    how = await c._resume_playback(a, "youtubetv:espn", 0.1)
+    assert how == "media_play"
 
 
 async def test_youtube_tv_keeps_its_short_grace(two, monkeypatch):

@@ -1447,8 +1447,13 @@ class Controller:
         player), then a prompt read from a screenshot, then one fresh deep link. Returns how it came
         back ("auto", "media_play", "prompt", "relink"), or None if it didn't. Only ever for the stick the TV is showing."""
         pkg = self._package(stick, target)
-        pb = await self._await_playing(stick, target, pkg, first_wait_s,
-                                       RESUME_PAUSED_S if first_wait_s > RESUME_WAIT_S else None)
+        # Never the "paused" shortcut for Prime: the older stick's Prime pauses on input loss, keeps
+        # reporting that stale "paused" after REORDER_TO_FRONT and plays again by itself at ~10 s,
+        # while MEDIA_PLAY on it went unanswered and led to a re-link (19:59 and 23:16 on Nov 2;
+        # the 23:16 one became a 75 s switch failure). It waits out its whole grace.
+        prime = target.startswith("prime:")
+        paused_s = RESUME_PAUSED_S if first_wait_s > RESUME_WAIT_S and not prime else None
+        pb = await self._await_playing(stick, target, pkg, first_wait_s, paused_s)
         if pb is not None:
             stick.remember(target, pb)
             return "auto"
@@ -1467,7 +1472,12 @@ class Controller:
             if pb is not None:
                 stick.remember(target, pb)
                 return "prompt"
-            last = await stick.playback(pkg)
+        # Read playback again right before a re-link (never act on a stale read): a player that
+        # came back by itself meanwhile must not be torn down for a ~33 s re-tune on screen.
+        last = await stick.playback(pkg)
+        if self._plays_target(stick, target, last, pkg):
+            stick.remember(target, last)
+            return "auto"
         log.warning("%s isn't playing %s (%s); loading it again", stick.host, target, last.get("state"))
         try:
             # Prime needs its page, "Watch" and "Watch Live" before video: ~33 s on these sticks (Nov 2).
