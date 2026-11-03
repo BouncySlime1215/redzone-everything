@@ -161,7 +161,11 @@ def test_imminent_goal_chances(cfg, clock):
     assert nhl_goal_imminent(g, History(), cfg)
     g.clock_s = 300
     assert not nhl_goal_imminent(g, History(), cfg)
-    # ...and it stays "imminent" on the scored game for a while after (the goal kills the power play)
+    # Off by default (0 mid-play entries on every measure): the skip never fires.
+    sc = Scorer(cfg, clock=clock)
+    assert not sc.score(_nhl(1, 1, 2, 900, "PIT")).imminent
+    # Turned on, it stays "imminent" on the scored game for a while after (the goal kills the power play)
+    cfg.update({"score": {"nhl": {"imminent_hold_s": 30}}}, record=False)
     sc = Scorer(cfg, clock=clock)
     assert sc.score(_nhl(1, 1, 2, 900, "PIT")).imminent
     clock.t += 20

@@ -268,7 +268,7 @@ class Scorer:
                       factor="garbage time" if h.garbage else factor, factors=factors,
                       crunch_now=crunch_window(g),
                       imminent=h.imminent_at is not None
-                      and now - h.imminent_at <= c.get("score.nhl.imminent_hold_s", 30),
+                      and now - h.imminent_at <= c.get("score.nhl.imminent_hold_s", -1),
                       brain=reading.as_dict() if reading is not None and reading.hotness is not None else {})
 
     LEAGUE_LIVE_S = 300.0   # a league counts as "on tonight" this long after its last live game
