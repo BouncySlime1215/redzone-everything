@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.redzone.agent</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone/.venv-agent/bin/python</string>
+		<string>-u</string>
+		<string>-m</string>
+		<string>agent.watchdog</string>
+		<string>--no-model</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>30</integer>
+	<!-- Low impact: efficiency cores, lowest priority, background disk I/O. -->
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>Nice</key>
+	<integer>15</integer>
+	<key>LowPriorityIO</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone/data/agent.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone/data/agent.log</string>
+</dict>
+</plist>

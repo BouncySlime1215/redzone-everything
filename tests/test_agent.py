@@ -64,3 +64,17 @@ def test_notes_are_not_repeated_within_the_hour(monkeypatch):
 def test_dry_run_never_restarts():
     w = watchdog.Watchdog(dry_run=True, use_model=False)
     assert w.act(Verdict("restart_service", "x"), Obs()).startswith("dry run")
+
+
+def test_stick_reconnects_are_rate_limited_and_never_crash(monkeypatch):
+    import subprocess
+    t = [1000.0]
+    w = watchdog.Watchdog(use_model=False, clock=lambda: t[0])
+
+    def hang(*a, **k):
+        raise subprocess.TimeoutExpired(a[0], 15)
+    monkeypatch.setattr(watchdog.subprocess, "run", hang)
+    v = Verdict("reconnect_stick", "x", "h:5555")
+    assert "likely powered off" in w.act(v, Obs(sticks_offline=["h:5555"]))
+    t[0] += 60
+    assert w.act(v, Obs(sticks_offline=["h:5555"])) == "reconnected recently; waiting"

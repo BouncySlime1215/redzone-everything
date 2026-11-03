@@ -39,6 +39,7 @@ LABEL = "com.redzone.everything"
 CHECK_S = 60.0
 WINDOW_S = 900.0
 NOTIFY_QUIET_S = 3600.0      # the same note at most once an hour
+RECONNECT_EVERY_S = 600.0
 MODEL_CACHE_S = 1800.0       # the same set of unknown errors is asked about at most every 30 min
 ADB = shutil.which("adb") or "/opt/homebrew/bin/adb"
 
@@ -99,6 +100,7 @@ class Watchdog:
         self.restarts: list[float] = []
         self.offline_since: dict[str, float] = {}
         self.notified: dict[str, float] = {}
+        self.reconnected: dict[str, float] = {}
         self.asked: dict[tuple, tuple[float, Verdict]] = {}
         self._model = None
 
@@ -177,14 +179,24 @@ class Watchdog:
             return f"dry run: would {v.action}"
         if v.action == "restart_service":
             self.restarts.append(self._clock())
-            r = subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{LABEL}"],
-                               capture_output=True, text=True, timeout=30)
+            try:
+                r = subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{LABEL}"],
+                                   capture_output=True, text=True, timeout=30)
+            except (subprocess.TimeoutExpired, OSError) as e:
+                return f"restart failed: {e}"
             self._push(f"restarted the app: {v.why}")
             return "restarted" if r.returncode == 0 else f"restart failed: {r.stderr.strip()[:120]}"
         if v.action == "reconnect_stick" and v.target:
-            subprocess.run([ADB, "disconnect", v.target], capture_output=True, timeout=10)
-            r = subprocess.run([ADB, "connect", v.target], capture_output=True, text=True, timeout=15)
-            return (r.stdout or r.stderr).strip()[:120]
+            # The app's supervisor reconnects too: from here, one try per stick per 10 minutes.
+            if self._clock() - self.reconnected.get(v.target, -1e9) < RECONNECT_EVERY_S:
+                return "reconnected recently; waiting"
+            self.reconnected[v.target] = self._clock()
+            try:
+                subprocess.run([ADB, "disconnect", v.target], capture_output=True, timeout=10)
+                r = subprocess.run([ADB, "connect", v.target], capture_output=True, text=True, timeout=15)
+                return (r.stdout or r.stderr).strip()[:120]
+            except (subprocess.TimeoutExpired, OSError) as e:
+                return f"no answer from {v.target} ({type(e).__name__}): likely powered off"
         if v.action == "prune_disk":
             return f"freed {prune_caches()} MB"
         return "unknown action skipped"
