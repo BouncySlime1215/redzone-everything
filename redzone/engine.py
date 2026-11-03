@@ -1039,9 +1039,12 @@ class Engine:
         e = min(plays, key=lambda e: abs(e.seen + d.mu - tap))
         if not play_id:
             ranked = sorted(plays, key=lambda p: abs(p.seen + d.mu - tap))
+            # Once a tap has measured this stream, the nearest play wins unless a second one is
+            # practically as close (free throws a few seconds apart no longer bounce the tap).
+            margin = 1.5 if d.samples else 3
             if (abs(e.seen + d.mu - tap) > max(10, 2 * d.sigma)
                     or (len(ranked) > 1 and abs(ranked[1].seen + d.mu - tap)
-                        - abs(e.seen + d.mu - tap) < 3)):
+                        - abs(e.seen + d.mu - tap) < margin)):
                 return False, "Several plays could match that tap; choose the exact play before calibrating"
         sample = tap - e.seen
         d = self.delays.calibrate(target, sample)
