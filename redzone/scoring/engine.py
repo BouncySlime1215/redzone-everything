@@ -197,7 +197,7 @@ class Scorer:
         self._live_leagues: dict[str, float] = {}   # league -> last time one of its games was live
         # The learned brain (redzone/scoring/brain.py): read every poll while brain.enabled is on;
         # with it off or a league unmodeled, scores are the hand-written ones, unchanged.
-        self.brain = brain if brain is not None else Brain()
+        self.brain = brain if brain is not None else Brain(version=int(cfg.get("brain.version", 3) or 3))
 
     def brain_on(self) -> bool:
         return bool(self.cfg.get("brain.enabled", False))

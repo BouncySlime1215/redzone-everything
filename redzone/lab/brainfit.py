@@ -228,7 +228,7 @@ def live_eval(league: str, archive: Path | None = None, cfg=None, max_games: int
         clock = {"t": 0.0}
         # The rules' own numbers: a scorer that never sees a model, whatever brain.enabled says.
         scorer = Scorer(cfg, clock=lambda: clock["t"], brain=B.Brain(enabled=False))
-        brain = B.Brain()
+        brain = B.Brain(version=2)
         book = breaks.BreakBook(clock=lambda: clock["t"])
         last_t = 0.0
         for i in range(len(plays)):
