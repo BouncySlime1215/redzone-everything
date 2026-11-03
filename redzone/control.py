@@ -770,6 +770,8 @@ class Controller:
 
     async def _run(self, target, replay_back_s, on_done, may_cut, replay_id=None, issued_at=None) -> None:
         async with self._lock:
+            if replay_back_s:
+                self._adopt_once = False   # a rewound picture must never be adopted as live
             self.stage = {"stage": "tuning", "target": target, "reason": "confirming the requested stream"}
             try:
                 out = await self.execute(target, replay_back_s, may_cut, replay_id, issued_at)
@@ -865,7 +867,25 @@ class Controller:
     async def _still_on_visible(self, target: str) -> bool:
         if self.main is None:
             return False
-        if self.on_target is None and self._adopt_once and not target.startswith("youtubetv:"):
+        if self.on_target is None and self._adopt_once and target.startswith("youtubetv:"):
+            # Just restarted and YouTube TV is already playing: adopt it when its media session
+            # names this channel (the same evidence a tune is confirmed by). A different or
+            # missing channel name keeps the chance for the next switch (a live tune lands on the live
+            # edge, so a match later is still live); a replay ends it (see _run): a rewound
+            # picture is never taken for live.
+            pkg = self._package(self.main, target)
+            match = channel_matcher(target)
+            if not pkg or match is None:
+                return False
+            pb = await self.main.playback(pkg)
+            if pb.get("pkg") == pkg and playback_ready(pb) and match(pb) is True:
+                self._adopt_once = False
+                log.info("adopting YouTube TV on screen after a restart: %s (%s)", target, pb.get("subtitle"))
+                self.main.remember(target, pb)
+                self.on_target = target
+                return True
+            return False
+        if self.on_target is None and self._adopt_once:
             # Just restarted: the screen may already be playing this game (in an app whose deep
             # links we can't tell apart by channel). Re-tuning it would cut the game mid-play, and a
             # stick that isn't signed in to that app would fail the switch outright.

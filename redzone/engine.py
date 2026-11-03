@@ -14,7 +14,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from redzone import bets as betlib
-from redzone import standby, views
+from redzone import standby, userstate, views
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
 from redzone.config import Config, ConfigError
 from redzone.control import Controller, Outcome
@@ -103,6 +103,32 @@ class Engine:
         self.recorded = RecordedPlayback(self)
         from redzone.discovery.runtime import DiscoveryRuntime
         self.discovery = DiscoveryRuntime(self)
+        # Pause / "Watch this" / focus / lock survive a service restart (redzone/userstate.py).
+        self._user_state_path = data_dir.parent / "user_state.json" if data_dir else None
+        self._user_state_saved = userstate.capture(self.decider.user, self.hold)   # defaults: nothing to write
+        self._restore_user_state()
+
+    def _restore_user_state(self) -> None:
+        if self._user_state_path is None:
+            return
+        try:
+            state = userstate.load(self._user_state_path)
+            if state is None:
+                return
+            self.hold = userstate.apply(state, self.decider.user, FocusMode)
+            self._user_state_saved = userstate.capture(self.decider.user, self.hold)
+            log.info("restored after restart: %s", self._user_state_saved)
+        except Exception:
+            log.exception("could not restore pause/hold/focus/lock")
+
+    def _save_user_state(self) -> None:
+        """Written when it changes (checked every decision tick, so within half a second of a tap)."""
+        if self._user_state_path is None or self.recorded.active:
+            return
+        state = userstate.capture(self.decider.user, self.hold)
+        if state != self._user_state_saved:
+            userstate.save(self._user_state_path, state)
+            self._user_state_saved = state
 
     # ------------------------------------------------------------------ loop
 
@@ -236,6 +262,10 @@ class Engine:
                 log.exception("decide failed")
                 self.decider.note_error()
                 changed = False
+            try:
+                self._save_user_state()
+            except Exception:
+                log.exception("could not save pause/hold/focus/lock")
             try:
                 if changed or time.time() - last_push > 5:
                     last_push = time.time()
@@ -695,6 +725,8 @@ class Engine:
         if d is None or done is None:
             return
         limit = self.cfg.get("control.max_switch_s", 150)
+        if d.kind == "start":   # nothing confirmed on screen yet: a hung first pick is retried sooner
+            limit = min(limit, self.cfg.get("control.max_start_switch_s", 75))
         if now - self._pending_since < limit:
             return
         log.warning("switch to %s still running after %.0fs: giving up on it", d.target, now - self._pending_since)
@@ -1078,7 +1110,9 @@ class Engine:
             over, garbage = not redzone_on(self.merger.games.values()), False
         else:
             g, s = self.merger.games.get(gid), self.scored.get(gid)
-            over, garbage = g is None or g.phase == Phase.POST, bool(s and s.garbage)
+            # Before the first poll after a restart no game is known yet: a restored hold isn't "over".
+            over = (g is None and bool(self.merger.games)) or (g is not None and g.phase == Phase.POST)
+            garbage = bool(s and s.garbage)
         why = "is over" if over else "is garbage time" if garbage else ""
         if not (h["auto_resume"] and why):
             if h["resume_at"] and not why:

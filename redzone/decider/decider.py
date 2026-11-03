@@ -55,6 +55,11 @@ KICKOFF_TO_SNAP_S = 25.0  # kickoff logged -> next scrimmage play logged, at the
 # the median such visit lasted 20 s (tune away, tune straight back) and they were the biggest
 # source of A->B->A flips. Ride them out at home; chases, catch-ups and crunch moves still go.
 SHORT_STOPS = {"timeout", "injury", "review"}
+# The first pick after a (re)start that didn't land (cancelled, timed out, no safe moment, a failed
+# tune): try again after 3 s, then 6, 12, 24... capped at a minute. Never give up: with nothing
+# confirmed on screen there is nothing to wait for but the next try.
+START_RETRY_S = 3.0
+START_RETRY_MAX_S = 60.0
 
 
 def _short(s: Scored) -> str:
@@ -182,6 +187,8 @@ class Decider:
         self._gone: tuple | None = None   # ((game, arrived at), when it vanished without a final)
         self._last_target = self._known_target   # (crunch-time code's name for the same memory)
         self._proposal_home: tuple | None = None
+        self.start_fails = 0            # start picks in a row that didn't land
+        self.start_retry_at = 0.0       # ...so the next start pick waits until then
 
     # ----- inputs -----------------------------------------------------------
 
@@ -278,6 +285,10 @@ class Decider:
     def reject(self, d: Decision) -> None:
         if self._proposal_home and self._proposal_home[0] is d:
             self._proposal_home = None
+        if d.kind in ("start", "user") and self.current is None:   # a first pick, or a lock/hold restored at start
+            self.start_fails += 1
+            wait = min(START_RETRY_MAX_S, START_RETRY_S * 2 ** (self.start_fails - 1))
+            self.start_retry_at = self._clock() + wait
 
     # ----- catch-up replays ---------------------------------------------------
 
@@ -470,6 +481,9 @@ class Decider:
             return Decision(now, "stay", self.current, "auto-switching paused", State.PAUSED)
         if u.locked_game and u.locked_game in cands:
             if self.current != u.locked_game:
+                if self.current is None and now < self.start_retry_at:
+                    return Decision(now, "stay", None, f"couldn't get to your locked game yet — trying again in "
+                                    f"{math.ceil(self.start_retry_at - now)}s", State.PAUSED, want=u.locked_game)
                 return Decision(now, "switch", u.locked_game, "you locked this game", State.PAUSED, kind="user")
             return Decision(now, "stay", self.current, "locked here by you", State.PAUSED)
         if now < u.manual_until:
@@ -518,6 +532,9 @@ class Decider:
             if wait:
                 return Decision(now, "stay", self.current, wait, State.IDLE)
             kind = "start" if self.current is None else "ended"
+            if kind == "start" and now < self.start_retry_at:
+                return Decision(now, "stay", None, f"couldn't start yet — trying again in "
+                                f"{math.ceil(self.start_retry_at - now)}s", State.WATCHING, want=best)
             return Decision(now, "switch", best, self._why(cands[best], "crunch time" if hot else "best game on"),
                             State.WATCHING, kind=kind)
 
@@ -1155,6 +1172,7 @@ class Decider:
             self.home_break_visit = None
         self.current = target
         self.since = now
+        self.start_fails, self.start_retry_at = 0, 0.0
         self.history.append((now, target, kind))
         # Black while the tuner works; padded so "did you see it?" errs toward "no" (-> replay).
         tune = self._deadline_cost(None if target is None else self._target_of.get(target)) + TUNE_SLACK_S
