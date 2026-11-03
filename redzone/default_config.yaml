@@ -124,15 +124,18 @@ reasoner:                  # live game reasoner (redzone/reasoner): lock_in per 
   max_points: 12
   yield_to_your_team: true # while your team's game is live and not decided, other games get no lock_in points
   break_discount: 0        # scale lock_in points down by the brain's break odds (0 = off)
+  by_odds: 0               # 1 = points grow with the head's odds above odds_floor (crunch counts as sure)
+  odds_floor: 0.5
   during_breaks: false     # lock_in points while the game is in a real break (off: they only bought commercials)
   model: true              # ask the local model (agent/llm_server.py, adapter game-reasoner) for the phone text
   decide_with: head        # head (scorecard-tested) or model: whose lock_in the score uses
   server_url: http://127.0.0.1:8779
   min_interval_s: 20       # at most one model call per hot game this often (a score asks sooner)
   max_tokens: 160
-  nfl: {must_points: 8, watch_points: 3}
-  nba: {must_points: 8, watch_points: 3}
-  nhl: {must_points: 8, watch_points: 3}
+  # Best measured so far (cross-fitted, Nov 3; see docs/reasoner.md). Off until the PR is reviewed.
+  nfl: {must_points: 15, watch_points: 0, by_odds: 1, odds_floor: 0.5}
+  nba: {must_points: 0, watch_points: 0}      # no gain on the NBA scorecard: storyline only
+  nhl: {must_points: 4, watch_points: 0}
 
 decider:
   switch_margin: 10
