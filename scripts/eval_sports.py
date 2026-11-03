@@ -79,6 +79,7 @@ def main():
     ap.add_argument("--slates", action="store_true")
     ap.add_argument("--step", type=float, default=None)
     ap.add_argument("--end", default=None, help="last night to grade (YYYYMMDD); default eval.<league>_end")
+    ap.add_argument("--reels", action="store_true", help="[highlight jump] reels on the TV (reel.play), simulated")
     stress_args(ap)
     a = ap.parse_args()
     lg = League(a.league)
@@ -91,11 +92,17 @@ def main():
         # scorecard on silent defaults compares the wrong thing.
         sys.exit(f"{pinned} has settings the app rejects ({cfg.rejected}): refusing to grade on a partial config")
     mine = set(cfg.get(f"teams.{lg.value}") or ["WSH"])
+    if a.reels:
+        cfg.data["reel"]["play"] = True   # in memory only: never rewrites the pinned config
+    from redzone.lab.reelsim import ReelCard
+    reel = ReelCard()
     total = sportsgrade.Card(lg.value)
     t0 = time.time()
     end = a.end or EVAL_END
     for day, reps, targets in nights(lg, a.nights, end):
-        rep = run(reps, cfg, mine, targets=targets, step=a.step, **knobs(a))
+        rep = run(reps, cfg, mine, targets=targets, step=a.step, reels=a.reels, **knobs(a))
+        if rep.reel is not None:
+            reel.add(rep.reel)
         # [xleague] Grade against what the screen REALLY showed (true delay), not the app's belief.
         card = sportsgrade.grade(reps, rep.switches, mine, rep.lag_true, 5.0, rep.t0, rep.t1, rep.replayed)
         total.add(card)
@@ -106,6 +113,8 @@ def main():
             for t, kind, what in card.cut.mid_entries[:3]:
                 print("     MID-PLAY ENTRY", round(t), kind, what)
     out = total.summary()
+    if a.reels:
+        out.update(reel.summary())
     out["seconds"] = round(time.time() - t0)
     print(json.dumps(out, indent=1))
 

@@ -229,6 +229,21 @@ reel:                      # catch-up reel: 5+ plays you missed, back to back, 3
   parallel: 2              # clips prepared at once (download + trim, ~3 s CPU each)
   cache_mb: 400            # trimmed clips kept on disk
   min_free_mb: 1500        # never download with less free disk than this
+  jump:                    # [highlight jump] leave the game on screen for the reel at a dead ball (needs play: true)
+    enabled: true
+    margin_s:              # spare seconds on top of reel + both switches inside the dead ball's cautious length
+      default: 8.0         # (fit offline per league by redzone/lab/reeljump.py on archive nights)
+      nfl: 8.0
+      nba: 8.0
+      nhl: 8.0
+    key_ratio: 1.5         # the brain's chance of a key moment soon this many times the league's usual rate: stay
+    key_p_no_rate: 0.8     # ...or, when the usual rate isn't known, at least this likely
+    tail_p: 0.10           # chance the dead ball ends before its cautious length (p10)
+    min_gain: 5.0          # the reel must beat staying by this much (0-100 scale)
+    p10_s:                 # cautious (p10) on-screen length per league and break kind, s (fit by redzone/lab/reeljump.py
+                           # on the scorecard nights, 2-fold by night; the break model's quantiles replace these)
+      nfl: {end_period: 176.1, halftime: 823.6, injury: 31.0, review: 109.0, score_break: 105.0, timeout: 33.0, two_minute_warning: 147.6}
+      nhl: {end_period: 136.2, intermission: 1123.0, review: 119.0, score_break: 41.0, timeout: 137.0}
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback

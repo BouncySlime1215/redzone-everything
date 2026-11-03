@@ -782,7 +782,7 @@ class Engine:
         r = self.reeler.current
         if r is None or not self.cfg.get("reel.play", False) or not r.path.exists():
             return None
-        return f"reel:{int(r.built_at)}", r.seconds
+        return self.reeler.offer(f"reel:{int(r.built_at)}") or (f"reel:{int(r.built_at)}", r.seconds)
 
     def _redzone_target(self, sunday_ticket: bool, dry: bool) -> str | None:
         """NFL RedZone's tuner target while it's on the air (and you've pasted its link)."""
@@ -793,7 +793,8 @@ class Engine:
     def _act(self, d, before, cands) -> None:
         if d.target == REEL and self.reeler.current is not None:
             # Its plays count as seen from here; the next reel is built from what's left.
-            self.reeler.played(self.reeler.current)
+            j = self.decider.reel_jump
+            self.reeler.played(self.reeler.current, j.n_clips if j and j.ok and j.n_clips else None)
         # A catch-up replay can be of a game that just ended (no longer a live candidate).
         target = cands[d.target].target if d.target in cands else self.decider.target_of(d.target)
         back = None

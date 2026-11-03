@@ -248,8 +248,8 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
     t = t0
     while t <= t1:
         g, o = on_screen(watching, offs, t, tune_s)
-        if g and g.startswith("replay:"):
-            card.watched += 10
+        if g and (g.startswith("replay:") or g == "reel"):
+            card.watched += 10   # a replay or the catch-up reel: watched, never a commercial
         elif g and g in by_id:
             r = by_id[g]
             st = t - lag_total - o

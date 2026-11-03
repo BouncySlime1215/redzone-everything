@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 
 from redzone.channels import REDZONE_TARGET, redzone_on
 from redzone.config import Config
-from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode
+from redzone.decider.decider import REDZONE, REEL, Candidate, Decider, FocusMode
 from redzone.decider.screen import DelayBook
 from redzone.models import REAL_BREAKS, League, Phase
 from redzone.scoring.engine import Personal, Scorer
@@ -115,6 +115,8 @@ class Report:
     drive_plays_live: int = 0        # ...of those, watched live start to finish
     drive_plays_other_sport: int = 0  # ...of those, missed while another sport was on screen
     drive_plays_on_redzone: int = 0  # ...of those, aired while the RedZone channel was on (it may have shown them)
+    reel: object = None              # reelsim.ReelCard when reels were simulated
+    reel_real_games: int = 0         # games whose clips came from the archive's own ESPN videos
 
     @property
     def summary(self) -> dict:
@@ -219,7 +221,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         targets: dict[str, str] | None = None,
         true_delay: float | None = None, sigma: float = 3.0, lag_jitter: tuple[float, float] | None = None,
         drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
-        on_tick: Callable | None = None) -> Report:
+        on_tick: Callable | None = None, reels: bool = False) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
       true_delay    the stream's real delay; `delay` is only the app's estimate of it
@@ -229,6 +231,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
       late_plays    fraction of plays that arrive one poll late (so out of order)
       no_wallclock  fraction of plays delivered without a wallclock
       on_tick       optional read-only lab observer (historical time, decider), before selection
+      reels         [highlight jump] simulate the catch-up reel (reel.play must be on too): the
+                    archive's own ESPN clips, or one per big play (redzone/lab/reelsim.py)
     """
     step = step or cfg.get("polling.live_s", 10)
     clock = _Clock()
@@ -259,6 +263,11 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     idx = {r.gid: -1 for r in replays}
     clock.t = t0
     rz_ok = bool(cfg.get("sunday_ticket", False))
+    reel_homes: dict[float, str | None] = {}   # [highlight jump] reel switch time -> the game it stood in for
+    sim = None
+    if reels and cfg.get("reel.play", False):
+        from redzone.lab.reelsim import SimReels
+        sim = SimReels(replays, cfg, my_teams)
     while clock.t <= t1:
         cands = {}
         states = {}
@@ -293,7 +302,20 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         before = dec.current
         if on_tick is not None:
             on_tick(clock.t, dec)
-        decision = dec.decide(cands, REDZONE_TARGET if rz_ok and redzone_on(states.values()) else None)
+        offer = sim.offer(clock.t, dec) if sim is not None and dec.current != REEL else None
+        decision = dec.decide(cands, REDZONE_TARGET if rz_ok and redzone_on(states.values()) else None,
+                              reel=offer)
+        if sim is not None and decision.action == "switch" and decision.target == REEL and before != REEL:
+            j = dec.reel_jump
+            n = j.n_clips if j and j.ok and j.n_clips else None
+            # Like a replay: a clip's play counts as caught once the reel has played through it.
+            at = clock.t + tune_s
+            for c in (sim.plan if n is None else sim.plan[:n]):
+                at += c.seg
+                if c.play_at is not None:
+                    replay_windows.append((c.game_id, round(c.play_at), clock.t, at))
+            sim.played(n)
+            reel_homes[clock.t] = dec.home_break_visit or before
         decisions.append(decision)
         _record(decision, before, clock.t, switches, watching, replayed)
         if decision.action == "replay" and decision.replay and getattr(dec, "replay_until", None) is not None:
@@ -306,6 +328,10 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     rep.decisions = decisions
     rep.replayed, rep.t0, rep.t1, rep.lag_total = replayed, t0, t1, lag_total
     rep.lag_true = lag_true
+    if sim is not None:
+        from redzone.lab import reelsim
+        rep.reel = reelsim.grade(replays, switches, lag_true, tune_s, t1, len(sim.shown), reel_homes)
+        rep.reel_real_games = sim.real_games
     return rep
 
 
@@ -513,6 +539,8 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             cause = None if _redzone_on_screen(replays, t - lag_total) else "RedZone off the air"
         elif g and g.startswith("replay:"):
             watched += 10
+        elif g == REEL:
+            watched += 10   # [highlight jump] the reel: watched, never a commercial
         elif g:
             r = by_id[g]
             screen_t = t - lag_total - o

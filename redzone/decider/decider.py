@@ -36,6 +36,7 @@ from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S
                                     resume_lead, resume_play)
 from redzone.decider.cuts import EntryPlan, plan_entry
 from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
+from redzone.reel import JumpPolicy, JumpWindow, ReelJump, ReelOffer, StayView, jump_value, reel_rate
 from redzone.scoring.engine import Scored
 
 GONE_MAX_HOLD_S = 90.0  # [mid-play guard] a game that vanished without a final: don't wait on a dead feed forever
@@ -263,6 +264,12 @@ class Decider:
         self._judged: set[tuple[str, str]] = set()
         self._target_of: dict[str, str] = {}
         self.reel_s = 0.0   # seconds of the catch-up reel ready (or playing)
+        self.reel_offer: ReelOffer | None = None   # the ready reel, clip by clip
+        self.reel_jump: ReelJump | None = None     # the last jump/stay answer (shown, and the plan we act on)
+        self.reel_plan: ReelJump | None = None     # the reel now on screen: how many clips, how long
+        self.reel_end_at = 0.0                     # when the planned part of it has played
+        # (now, home, StayView, JumpWindow, ReelJump) for each jump/stay answer: the lab and Trace.
+        self.reel_trace: Callable | None = None
         # Last known candidate per game. A final drops out of the live candidates, but its last
         # plays still air (and stay on the DVR) for a while: keep them judgeable and replayable.
         self._known: dict[str, Candidate] = {}
@@ -315,9 +322,10 @@ class Decider:
     # ----- the decision -----------------------------------------------------
 
     def decide(self, cands: dict[str, Candidate], redzone: str | None = None, *, commit: bool = True,
-               reel: tuple[str, float] | None = None) -> Decision:
+               reel: "tuple[str, float] | ReelOffer | None" = None) -> Decision:
         """`redzone` is the RedZone channel's tuner target while it's on the air, else None.
-        `reel` is (tuner target, seconds) of a ready catch-up reel, else None."""
+        `reel` is the ready catch-up reel: a ReelOffer (clip by clip, so it can be cut to fit a dead
+        ball), or just (tuner target, seconds); None when there isn't one."""
         now = self._clock()
         self._known.update({gid: x for gid, x in cands.items() if x.target})
         cands = self._with_redzone(cands, redzone)
@@ -372,6 +380,8 @@ class Decider:
             self._screen_log.append((self._clock(), d.target))
             self._arrival_until = 0.0
             self.after_replay = False
+            if d.target == REEL:
+                self._plan_reel_return(self._clock())
 
     def reject(self, d: Decision) -> None:
         if self._proposal_home and self._proposal_home[0] is d:
@@ -777,7 +787,7 @@ class Decider:
         # --- returning home after a break visit (live budget) ---
         home = self.home_break_visit
         focus_on = bool(u.focus_game and u.focus_mode != FocusMode.AUTOPILOT)
-        if home and not focus_on and home in watchable and (
+        if home and not focus_on and home in watchable and self.current != REEL and (
                 cands[home].scored.score + c.get("decider.switch_margin") < s_cur.score
                 or self._crunch_outranks(s_cur, cands[home].scored)):
             self.home_break_visit = home = None   # what we're on now is clearly better: stay
@@ -848,7 +858,8 @@ class Decider:
             if rp:
                 self.home_break_visit = visit_home
                 return self._replay_decision(rp, state, gate_txt, now)
-            if dest and gate_ok and not self._short_stop(self.current, s_cur):
+            # A reel was already sized to this stop by jump_value; a short stop only rules out visits.
+            if dest and gate_ok and (dest == REEL or not self._short_stop(self.current, s_cur)):
                 self.home_break_visit = visit_home
                 return Decision(now, "switch", dest, self._why(cands[dest], f"{_short(s_cur)} on a break → "),
                                 state, gate_txt, kind="break_visit")
@@ -948,6 +959,12 @@ class Decider:
         budget = self._break_remaining(self.current, cands, now) - back_cost
         # A break costs nothing to leave: no switch margin, and you can still visit dest afterwards.
         dest_score = self._vs_replay(dest, cands) if dest else -1.0
+        if dest == REEL and self.reel_jump is not None:
+            # [highlight jump] One replay vs a reel of 5+ missed plays: compare value per second of
+            # the break they'd use. A typical replay takes its tune, seek and clip.
+            per_s = reel_rate(self.reel_jump, self.reel_offer)
+            dest_score = per_s * (self._deadline_cost(None) + self.cfg.get("replay.seek_s", 6)
+                                  + self.cfg.get("replay.clip_s", 15))
         return self._best_replay(cands, now, budget, allow_seen=dest is None, top=dest_score, margin=0.0)
 
     def _catch_up(self, cands, now: float, best: str | None, why: str) -> Decision | None:
@@ -977,6 +994,8 @@ class Decider:
     def _vs_replay(self, gid: str, cands) -> float:
         """What a catch-up replay has to beat to replace this. RedZone is only filler next to a
         play you actually missed, so any replay beats it."""
+        if gid == REEL:
+            return self.reel_jump.ev_reel if self.reel_jump and self.reel_jump.ok else 0.0
         return 0.0 if gid in PSEUDO else cands[gid].scored.score
 
     def _replay_decision(self, rp: Missed, state, gate_txt: str, now: float) -> Decision:
@@ -999,7 +1018,17 @@ class Decider:
                             "replay finished", kind="home")
         if home and home in watchable:
             remaining = self._break_remaining(home, cands, now) - self._deadline_cost(self._target_of.get(home)) - 6
-            rp = self._best_replay(cands, now, remaining, allow_seen=False)
+            # [highlight jump] A reel that fits the rest of the break beats another single replay
+            # unless that replay is worth more per second of the break (same rule as on the way out).
+            reel = REEL in watchable and self._break_destination(watchable, exclude=home) == REEL
+            top = None
+            if reel:
+                top = reel_rate(self.reel_jump, self.reel_offer) * (
+                    self._deadline_cost(None) + self.cfg.get("replay.seek_s", 6) + self.cfg.get("replay.clip_s", 15))
+            rp = self._best_replay(cands, now, remaining, allow_seen=False, top=top, margin=0.0)
+            if reel and rp is None:
+                return Decision(now, "switch", REEL, self._why(watchable[REEL], "your game is still on a break → "),
+                                State.BREAK, "replay finished", kind="break_visit")
             if rp and remaining > 0:
                 return self._replay_decision(rp, State.REPLAY, "replay finished", now)
             # Long break left, or only a routine snap to come back for: don't land in the ad.
@@ -1243,7 +1272,9 @@ class Decider:
         if not resumed:
             return not x.scored.is_break
         hd = self.delays.get(x.target or "unknown")
-        if self._must_see_resume(home, x):
+        # [highlight jump] From the reel, always back for the restart itself: the reel's plays are
+        # already caught up, so there is nothing to gain by sitting out a routine snap.
+        if self._must_see_resume(home, x) or self.current == REEL:
             return now >= end_ev.seen + hd.mu - 2 * hd.current_sigma(now) - self._deadline_cost(x.target) - 6
         return not break_on_arrival(htl, hd, now, now + self._deadline_cost(x.target))
 
@@ -1345,16 +1376,24 @@ class Decider:
                 if gid != exclude and gid != REEL and not x.scored.is_break and gid not in self._screen_break]
         top = max((fits[g].scored.score for g in pool), default=None)
         floor = self.cfg.get("decider.break_destination_min")
+        best = None
         if top is not None and top >= floor:
             worth = [g for g in pool if fits[g].scored.score >= floor]
             # Crunch first, then the user's team, and only then score x seconds on screen: a
             # preloaded neutral game must never pull the viewer away from crunch time or from
             # their own team behind a cold (e.g. Prime) tune.
-            return max(worth, key=lambda g: (crunch(fits[g]), fits[g].scored.personal >= hold,
+            best = max(worth, key=lambda g: (crunch(fits[g]), fits[g].scored.personal >= hold,
                                              fits[g].scored.score * (watch[g] or 1.0), fits[g].scored.score))
-        # Nothing live worth a visit: the catch-up reel, if it fits in the break with the trip back.
-        if REEL in watchable and exclude != REEL and anchor and self._reel_fits(anchor, watchable):
-            return REEL
+        # [highlight jump] The catch-up reel, when it fits this dead ball with both switches and is
+        # worth more than staying and than the best live visit: reel.jump_value decides (the same
+        # function the scorecards and the offline fit use). Crunch time or your team elsewhere is
+        # never traded for a reel.
+        if REEL in watchable and exclude != REEL and anchor and not (
+                best and (crunch(fits[best]) or fits[best].scored.personal >= hold)):
+            if self._reel_jump(anchor, watchable, fits[best].scored.score if best else -1.0).ok:
+                return REEL
+        if best:
+            return best
         # RedZone never shows a commercial: any break is better spent there than on an ad.
         if REDZONE in watchable and exclude != REDZONE and REDZONE in fits:
             return REDZONE
@@ -1448,29 +1487,98 @@ class Decider:
             return cost if math.isfinite(cost) and cost >= 0 else float("inf")
         return self._deadline_cost(target)
 
-    def _reel_fits(self, home: str, watchable) -> bool:
-        if self.reel_s <= 0 or not watchable[REEL].target or watchable[REEL].scored.is_break:
-            return False
+    def _reel_jump(self, home: str, watchable, best_visit: float = -1.0) -> ReelJump:
+        """[highlight jump] Leave `home` (on a dead ball) for the catch-up reel? Builds the three
+        inputs of reel.jump_value from what the decider knows and remembers the answer: it is the
+        plan we act on (how many clips, when to head home)."""
         now = self._clock()
         pool = {**self._known, **watchable}
-        left = self._break_remaining(home, pool, now)
-        trip = self._deadline_cost(watchable[REEL].target) + self._deadline_cost(self._target_of.get(home))
-        return left >= self.reel_s + trip + 5.0
+        x, r = pool.get(home), watchable.get(REEL)
+        if x is None or r is None or not r.target or r.scored.is_break or self.reel_offer is None \
+                or not self.cfg.get("reel.jump.enabled", True):
+            self.reel_jump = ReelJump(0.0, 0.0, 0.0, False, "no reel ready")
+            return self.reel_jump
+        s, c = x.scored, self.cfg
+        lg = s.league.base.value
+        margin = c.get(f"reel.jump.margin_s.{lg}")
+        window = JumpWindow(dead_s=max(self._break_remaining(home, pool, now), self._p10_left(home, now)),
+                            out_s=self._deadline_cost(r.target),
+                            back_s=self._return_cost(home),
+                            margin_s=float(margin if margin is not None else c.get("reel.jump.margin_s.default", 8.0)))
+        b = s.brain or {}
+        world = StayView(live_value=s.score, key_soon_p=b.get("key_soon_p"), key_rate=b.get("key_rate"),
+                         crunch=bool(s.crunch or s.lock in CRUNCH_LOCKS), mine_late=self._mine_late(s),
+                         must_see=s.score >= float(c.get("decider.must_see_score", 92)),
+                         best_visit=best_visit)
+        policy = JumpPolicy(key_ratio=float(c.get("reel.jump.key_ratio", 1.5)),
+                            key_p_no_rate=float(c.get("reel.jump.key_p_no_rate", 0.8)),
+                            tail_p=float(c.get("reel.jump.tail_p", 0.10)),
+                            min_gain=float(c.get("reel.jump.min_gain", 5.0)))
+        self.reel_jump = jump_value(world, self.reel_offer, window, policy)
+        if self.reel_trace is not None:
+            try:
+                self.reel_trace(now, home, world, window, self.reel_jump)
+            except Exception:
+                pass   # a trace never changes a decision
+        return self.reel_jump
 
-    def _with_reel(self, cands: dict[str, Candidate], reel: tuple[str, float] | None) -> dict[str, Candidate]:
+    def _p10_left(self, home: str, now: float) -> float:
+        """[highlight jump] The cautious end (p10) of the break now on screen in `home`: how long that
+        kind of break runs on screen (reel.jump.p10_s, fit on archive nights by redzone/lab/reeljump.py;
+        the break model's own quantile replaces it once it has one), from the earliest it can have
+        started, less the delay's 2 sigma. 0 when the data already shows the restart (then the exact
+        estimate rules) or the kind has no fitted length."""
+        tl = self.timelines.get(home)
+        start = tl.last("stop_start") if tl else None
+        if start is None:
+            return 0.0
+        end = tl.last("stop_end")
+        if end is not None and end.seen >= start.lo:
+            return 0.0
+        p10 = self.cfg.get(f"reel.jump.p10_s.{tl.league.base.value}.{start.label}")
+        if not p10:
+            return 0.0
+        d = self.delays.get(self._target_of.get(home) or "unknown")
+        return start.lo + float(p10) + d.mu - 2 * d.current_sigma(now) - now
+
+    def _plan_reel_return(self, start: float) -> None:
+        """The reel goes on screen at `start`: play the planned clips, then home for the restart."""
+        j = self.reel_jump if self.reel_jump and self.reel_jump.ok else None
+        self.reel_plan = j
+        self.reel_end_at = start + (j.reel_s if j else self.reel_s)
+        if self.home_break_visit and j:
+            self.home_return_at = self.reel_end_at
+        # Its plays are caught up now: don't queue them again as single replays.
+        o = self.reel_offer
+        shown = o.plays[:j.n_clips] if (o and j) else (o.plays if o else ())
+        for gid, at in shown:
+            if at is None:
+                continue
+            for m in list(self.queue):
+                if m.game_id == gid and abs(m.t - at) <= 30:
+                    m.replayed = True
+                    self.queue.remove(m)
+                    self.done_replays.append(m)
+
+    def _with_reel(self, cands: dict[str, Candidate], reel) -> dict[str, Candidate]:
         """Add the catch-up reel while one is ready and putting it on the TV is turned on."""
+        offer = reel if isinstance(reel, ReelOffer) or reel is None else \
+            ReelOffer.whole(reel[0], reel[1], float(self.cfg.get("reel.score", 40)))
         if self.current != REEL:
-            self.reel_s = reel[1] if reel else 0.0
+            self.reel_offer = offer
+            self.reel_s = offer.seconds if offer else 0.0
         if not self.cfg.get("reel.play", False):
             return cands
+        score = float(self.cfg.get("reel.score", 40))
         if self.current == REEL:
-            target = self._target_of.get(REEL) or (reel[0] if reel else None)
-            over = self._clock() - self.since >= self.reel_s
-            return {**cands, REEL: Candidate(reel_scored(self.cfg.get("reel.score", 40), self.reel_s, over), target)}
-        if not reel:
+            target = self._target_of.get(REEL) or (offer.target if offer else None)
+            secs = self.reel_plan.reel_s if self.reel_plan else self.reel_s
+            over = self._clock() >= self.reel_end_at
+            return {**cands, REEL: Candidate(reel_scored(score, secs, over), target)}
+        if not offer:
             return cands
-        self._target_of[REEL] = reel[0]
-        return {**cands, REEL: Candidate(reel_scored(self.cfg.get("reel.score", 40), reel[1]), reel[0])}
+        self._target_of[REEL] = offer.target
+        return {**cands, REEL: Candidate(reel_scored(score, offer.seconds), offer.target)}
 
     def _long_break_left(self, gid: str, now: float) -> float | None:
         """Seconds until a halftime/intermission now on screen could possibly end on screen
@@ -1624,3 +1732,5 @@ class Decider:
         self._arrival_until = now + tune
         self._screen_log.append((now, None))
         self._screen_log.append((now + tune, target))
+        if target == REEL:
+            self._plan_reel_return(now + tune)

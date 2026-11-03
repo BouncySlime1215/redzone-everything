@@ -21,6 +21,7 @@ the reel is built from what's ready, and none at all is fine (the decider just d
 from __future__ import annotations
 
 import asyncio
+import math
 import logging
 import re
 import shutil
@@ -538,7 +539,10 @@ class Reeler:
         self._sig = sig
         self.current = Reel(dst, round(sum(s for _, s in parts), 1),
                             [{"id": c.id, "game_id": c.game_id, "league": c.league, "headline": c.headline,
-                              "seconds": c.seg, "mine": c.mine} for c in plan], self._clock())
+                              "seconds": c.seg, "mine": c.mine, "play_at": c.play_at,
+                              "value": clip_value(c, self._clock(), float(self._c("max_age_s", 1800)),
+                                                  self.cfg.get("score.league_weight") or {})}
+                             for c in plan], self._clock())
         return self.current
 
     def _shave(self, plan: list[Clip], ready: dict) -> list[tuple[Path, float]]:
@@ -555,8 +559,177 @@ class Reeler:
                 out.append((src, full))
         return out
 
-    def played(self, reel: Reel) -> None:
-        """A reel aired: its plays are seen now and won't come back."""
-        self.shown.update(c["id"] for c in reel.clips)
+    def offer(self, target: str) -> "ReelOffer | None":
+        """The current reel as a ReelOffer (clip by clip, so the decider can cut it to fit)."""
+        r = self.current
+        if r is None or not r.clips:
+            return None
+        return ReelOffer(target, tuple((float(c["seconds"]), float(c.get("value", self._c("score", 40))))
+                                       for c in r.clips),
+                         int(self._c("min_clips", 5)), float(self._c("min_s", 30)),
+                         tuple((c["game_id"], c.get("play_at")) for c in r.clips))
+
+    def played(self, reel: Reel, n: int | None = None) -> None:
+        """A reel aired: its plays (the first n, when it was cut to fit) are seen now and won't come back."""
+        self.shown.update(c["id"] for c in (reel.clips if n is None else reel.clips[:n]))
         self._sig = ()
         self.current = None
+
+
+# --- when to jump to the reel, and when to stay ------------------------------------------------
+#
+# A pure function of what it's handed: no decider, no clock, no I/O. The decider (and later the one
+# decision core) builds the three inputs and acts on the answer; the scorecards and the offline
+# policy fit (redzone/lab/reeljump.py) call the same function, so what's measured is what runs.
+
+@dataclass(frozen=True)
+class ReelOffer:
+    """A ready reel. clips: (seconds, value 0-100) per clip in play order, most need-to-see first,
+    so any prefix is the best reel of that length (the player stops at a clip boundary: no re-encode
+    is needed to cut it down). value = importance x freshness on the scorer's 0-100 scale."""
+    target: str
+    clips: tuple[tuple[float, float], ...]
+    min_clips: int = 5
+    min_s: float = 30.0
+    plays: tuple[tuple[str, float | None], ...] = ()   # (game_id, when the play happened) per clip, if known
+
+    @property
+    def seconds(self) -> float:
+        return round(sum(s for s, _ in self.clips), 2)
+
+    @classmethod
+    def whole(cls, target: str, seconds: float, value: float) -> "ReelOffer":
+        """A reel known only by its length (one block, can't be cut down)."""
+        return cls(target, ((float(seconds), float(value)),), 1, 0.0)
+
+
+@dataclass(frozen=True)
+class JumpWindow:
+    """The dead ball we'd leave in. dead_s is the cautious end of its remaining length on screen
+    (the p10 quantile once the break model has one; today the floor-based estimate with the delay's
+    2 sigma taken off); the two switch costs are this path's (seconds of black each way)."""
+    dead_s: float
+    out_s: float
+    back_s: float
+    margin_s: float = 8.0
+
+    @property
+    def room_s(self) -> float:
+        return self.dead_s - self.out_s - self.back_s - self.margin_s
+
+
+@dataclass(frozen=True)
+class StayView:
+    """What staying is worth. live_value: the game on screen (0-100). key_soon_p / key_rate: the
+    brain's chance of a key moment soon and the league's usual rate (None = no reading).
+    best_visit: the best live game a break visit could go to instead (-1 = none worth it)."""
+    live_value: float
+    key_soon_p: float | None = None
+    key_rate: float | None = None
+    crunch: bool = False
+    mine_late: bool = False
+    must_see: bool = False
+    best_visit: float = -1.0
+
+
+@dataclass(frozen=True)
+class ReelJump:
+    ev_reel: float      # what the reel is worth (0-100, per second of the window)
+    ev_stay: float      # what staying is worth over the same window
+    cost_s: float       # seconds of black (both switches)
+    ok: bool            # jump now
+    reason: str
+    n_clips: int = 0    # how many clips of the offer to play
+    reel_s: float = 0.0  # ...and how long that is
+
+
+@dataclass(frozen=True)
+class JumpPolicy:
+    """The tunable part (reel.jump.* in the config; fit offline by redzone/lab/reeljump.py)."""
+    key_ratio: float = 1.5      # a key moment this many times likelier than the league's usual rate: stay
+    key_p_no_rate: float = 0.8  # ...or, with no usual rate to compare against, at least this likely
+    tail_p: float = 0.10        # chance the dead ball ends before the cautious estimate (p10)
+    min_gain: float = 5.0       # the reel must beat staying by this much
+
+
+def fit_reel(offer: ReelOffer, room_s: float) -> tuple[int, float]:
+    """The longest prefix of the offer that fits room_s: (clips, seconds); (0, 0) when no prefix
+    has min_clips clips and min_s seconds."""
+    n, total = 0, 0.0
+    for s, _ in offer.clips:
+        if total + s > room_s + 1e-6:
+            break
+        n, total = n + 1, total + s
+    if n < max(1, offer.min_clips) or total < offer.min_s:
+        return 0, 0.0
+    return n, round(total, 2)
+
+
+def jump_value(world: StayView, offer: ReelOffer | None, window: JumpWindow,
+               policy: JumpPolicy = JumpPolicy()) -> ReelJump:
+    """Jump to the reel now, or stay?
+
+    Hard stays first (crunch time, your team late, must-see, a big moment likely soon), then the reel
+    has to fit the dead ball's cautious remaining length with both switches and a margin, then it has
+    to be worth more than staying (the live picture is a dead ball, so staying is worth the chance the
+    restart comes early times the game's value) and at least as much as the best live visit."""
+    cost = max(0.0, window.out_s) + max(0.0, window.back_s)
+
+    def no(why: str, ev_r: float = 0.0, ev_s: float = 0.0) -> ReelJump:
+        return ReelJump(round(ev_r, 1), round(ev_s, 1), round(cost, 1), False, why)
+
+    if offer is None or not offer.clips:
+        return no("no reel ready")
+    if world.crunch:
+        return no("crunch time: staying")
+    if world.mine_late:
+        return no("your team, late and close: staying")
+    if world.must_see:
+        return no("must-see moment: staying")
+    p = world.key_soon_p
+    bar = min(0.95, policy.key_ratio * world.key_rate) if world.key_rate else policy.key_p_no_rate
+    if p is not None and p >= bar:
+        return no(f"a big moment is likely soon here ({p:.0%}): staying")
+    if not (math.isfinite(window.dead_s) and math.isfinite(cost)):
+        return no("no timing for this dead ball")
+    n, secs = fit_reel(offer, window.room_s)
+    if n == 0:
+        return no(f"reel doesn't fit the dead ball ({max(0.0, window.dead_s):.0f}s left, "
+                  f"{cost:.0f}s of switching, {window.margin_s:.0f}s margin)")
+    used = offer.clips[:n]
+    ev_reel = sum(s * v for s, v in used) / max(1e-6, secs)
+    risk = policy.tail_p * (1.0 + (p or 0.0))
+    ev_stay = risk * max(0.0, world.live_value)
+    if ev_reel < ev_stay + policy.min_gain:
+        return no("staying is worth more than the reel", ev_reel, ev_stay)
+    if world.best_visit >= 0 and world.best_visit > ev_reel:
+        return no("a live game is worth more than the reel", ev_reel, ev_stay)
+    return ReelJump(round(ev_reel, 1), round(ev_stay, 1), round(cost, 1), True,
+                    f"catch-up reel: {n} plays you missed ({secs:.0f}s) in a {window.dead_s:.0f}s dead ball",
+                    n, secs)
+
+
+def reel_rate(j: ReelJump, offer: ReelOffer | None) -> float:
+    """Value per second of a planned reel (all its clips' values over its time incl. both switches):
+    what a single catch-up replay must beat, per second, to be shown instead."""
+    if not j.ok or offer is None or j.n_clips <= 0:
+        return 0.0
+    return sum(v for _, v in offer.clips[:j.n_clips]) / max(1.0, j.reel_s + j.cost_s)
+
+
+def clip_value(c: Clip, now: float, max_age_s: float = 1800.0, league_weight: dict | None = None) -> float:
+    """A clip on the scorer's 0-100 scale: headline points (a TD is 30, a game-winner 40+) x 2.5,
+    times freshness (halves over max_age_s) and the league's weight; your team's plays +15."""
+    age = max(0.0, now - c.published)
+    fresh = 1.0 - 0.5 * min(1.0, age / max(1.0, max_age_s))
+    v = min(100.0, 2.5 * c.points) * fresh * float((league_weight or {}).get(c.league, 1.0))
+    return round(min(100.0, v + (15.0 if c.mine else 0.0)), 1)
+
+
+def offer_of(target: str, plan: list[Clip], now: float, *, min_clips: int = 5, min_s: float = 30.0,
+             max_age_s: float = 1800.0, league_weight: dict | None = None) -> ReelOffer | None:
+    """The ReelOffer for a planned reel (plan_reel order: your team first, then value)."""
+    if not plan:
+        return None
+    return ReelOffer(target, tuple((float(c.seg), clip_value(c, now, max_age_s, league_weight)) for c in plan),
+                     min_clips, min_s, tuple((c.game_id, c.play_at) for c in plan))

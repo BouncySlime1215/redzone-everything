@@ -532,7 +532,7 @@ class Reading:
     def as_dict(self) -> dict:
         r = lambda x, n=3: None if x is None else round(x, n)  # noqa: E731
         return {"break_soon_p": r(self.break_soon_p), "key_soon_p": r(self.key_soon_p),
-                "hotness": r(self.hotness, 1), "reasons": self.reasons, "break_reasons": self.break_reasons}
+                "key_rate": r(self.key_rate), "hotness": r(self.hotness, 1), "reasons": self.reasons, "break_reasons": self.break_reasons}
 
 
 EMPTY = Reading()

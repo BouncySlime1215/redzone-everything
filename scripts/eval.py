@@ -55,6 +55,7 @@ def main():
     ap.add_argument("--late-plays", type=float, nargs="?", const=0.15, default=0.0)
     ap.add_argument("--no-wallclock", type=float, nargs="?", const=0.5, default=0.0)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--reels", action="store_true", help="[highlight jump] reels on the TV (reel.play), simulated")
     a = ap.parse_args()
     knobs = dict(true_delay=a.true_delay, sigma=a.sigma, lag_jitter=(3.0, 25.0) if a.lag_jitter else None,
                  drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed)
@@ -66,6 +67,10 @@ def main():
         # Config falls back to defaults when a file doesn't validate (an unknown key, say): a
         # scorecard on silent defaults compares the wrong thing.
         sys.exit(f"{pinned} has settings the app rejects ({cfg.rejected}): refusing to grade on a partial config")
+    if a.reels:
+        cfg.data["reel"]["play"] = True   # in memory only: never rewrites the pinned config
+    from redzone.lab.reelsim import ReelCard
+    reel = ReelCard()
     t0 = time.time()
     tot = dict(big=0, seen=0, live=0, cuts=0, dead=0.0, watched=0.0, crunch=0, crunch_live=0,
                my_crunch=0, my_crunch_live=0, switches=0, hours=0.0, my_big=0, my_seen=0, blackout=0.0,
@@ -73,7 +78,9 @@ def main():
     causes: dict[str, float] = {}
     cut = CutCard()
     for reps in eval_set(a.n):
-        r = run(reps, cfg, set(cfg.get("teams.nfl")), **knobs)
+        r = run(reps, cfg, set(cfg.get("teams.nfl")), reels=a.reels, **knobs)
+        if r.reel is not None:
+            reel.add(r.reel)
         tot["big"] += r.big_plays; tot["seen"] += r.big_plays_caught; tot["live"] += r.big_plays_live
         tot["cuts"] += len(r.mid_play_cuts); tot["dead"] += r.dead_air_s; tot["watched"] += r.watched_s
         tot["crunch"] += r.crunch; tot["crunch_live"] += r.crunch_live
@@ -105,6 +112,7 @@ def main():
            "behind_live_pct": pct(tot["behind"], tot["hours"] * 3600),
            "big_missed_on_replay": tot["on_replay"],
            "big_plays": tot["big"], "crunch_plays": tot["crunch"], **cut.summary(),
+           **(reel.summary() if a.reels else {}),
            "seconds": round(time.time() - t0)}
     print(json.dumps(out, indent=1))
     if a.dead:
