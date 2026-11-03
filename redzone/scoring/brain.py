@@ -317,6 +317,10 @@ def _skaters(g: GameState) -> tuple[float, float]:
     return float(a), float(b)
 
 
+JOINED_LATE_S = 180.0   # a tracker whose first play is this far into the game joined it late
+WARMUP_EVENTS = 40      # ...and stays quiet for this many plays
+
+
 class Tracker:
     """One game's running feature state (mirrors sportsdata.derive for the newest row)."""
 
@@ -589,6 +593,11 @@ class Brain:
             log.exception("brain: feature update failed for %s", g.game_id)
             return EMPTY
         if tr.row is None:
+            return EMPTY
+        if tr.first_t is not None and tr.first_t > JOINED_LATE_S and tr.n < WARMUP_EVENTS:
+            # Joined mid-game (a service restart): run, lead-change and time-since-break features
+            # start from zero, which biased break odds up by ~0.2 and game flow by 10-20 points for
+            # the first plays (review, Nov 3). The rules carry on until the tracker has caught up.
             return EMPTY
         hit = self._cache.get(g.game_id)
         if hit is not None and hit[0] == tr.n:

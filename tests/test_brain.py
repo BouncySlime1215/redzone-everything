@@ -135,7 +135,8 @@ def test_committed_models_read_a_real_game_fast_and_keep_a_timeline():
     assert b.read(seq[-1]) is r
 
 
-def test_scorer_carries_the_brain_reading_when_enabled(cfg):
+def test_scorer_carries_the_brain_reading_when_enabled(cfg, monkeypatch):
+    monkeypatch.setattr(B, "WARMUP_EVENTS", 0)   # single late-game states: no warm-up
     if not B.Brain().available("nba"):
         pytest.skip("no trained NBA model")
     clock = FakeClock(1000.0)
@@ -178,8 +179,9 @@ def test_brain_settings_are_validated(cfg):
         cfg.update({"brain": {"break_weight": 3}}, record=False)
 
 
-def test_a_model_that_fails_to_predict_is_logged_once_then_skipped():
+def test_a_model_that_fails_to_predict_is_logged_once_then_skipped(monkeypatch):
     """A loadable but broken model used to log a traceback on every poll of every game."""
+    monkeypatch.setattr(B, "WARMUP_EVENTS", 0)   # single late-game states: no warm-up
     b = B.Brain()
     b.enabled = True
     calls = {"n": 0}
@@ -194,3 +196,20 @@ def test_a_model_that_fails_to_predict_is_logged_once_then_skipped():
     for i in range(4):
         assert b.read(live(pid=str(i), clock=100.0 - i)) is B.EMPTY
     assert calls["n"] == 1
+
+
+def test_a_game_joined_late_stays_quiet_until_warmed_up(monkeypatch):
+    """After a restart mid-game the run/lead-change/break-gap features start from zero (biased)."""
+    b = B.Brain()
+    b.enabled = True
+
+    class Ok:
+        features, rates = [], {}
+
+        def predict(self, *a, **k):
+            return {"key": (0.2, None)}
+    b.models = lambda lg: Ok()
+    first = b.read(live(pid="0", period=4, clock=300.0))
+    assert first is B.EMPTY
+    monkeypatch.setattr(B, "WARMUP_EVENTS", 1)
+    assert b.read(live(pid="1", period=4, clock=290.0)) is not B.EMPTY
