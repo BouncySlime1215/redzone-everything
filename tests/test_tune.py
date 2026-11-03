@@ -71,3 +71,18 @@ def test_cma_state_round_trips():
     b = tune.CMA(np.zeros(3), 0.5, 6, seed=99)
     b.load(json.loads(json.dumps(a.state())))
     assert np.allclose(a.ask(), b.ask())
+
+
+def test_holdout_never_in_train_or_test():
+    items = [f"202610{d:02d}" for d in range(20, 32)] + ["20261101"]
+    h = tune.split(items, lambda s: s, lambda s: s >= "20261029")
+    assert h["holdout"] == ["20261029", "20261030", "20261031", "20261101"]
+    assert not set(h["holdout"]) & set(h["train"] + h["test"])
+    assert sorted(h["train"] + h["test"] + h["holdout"]) == sorted(items)
+
+
+def test_a_held_out_slate_takes_its_whole_night_out_of_tuning():
+    items = ["20251102a", "20251102b", "20251109a", "20251116a"]
+    h = tune.split(items, lambda s: s[:8], lambda s: s == "20251102b")
+    assert h["holdout"] == ["20251102b"]
+    assert "20251102a" not in h["train"] + h["test"]

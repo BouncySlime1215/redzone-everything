@@ -13,8 +13,10 @@ The objective is the scorecards themselves, summed over NFL, NBA and NHL (NFL we
 Hard constraints, as a barrier no reward can buy back: 0 mid-play cuts; mid-play entries, plays
 missed on entry and dead air not up; big plays seen and your team's plays not down.
 
-No overfitting: nights are split in two by date (alternating, so both halves cover the whole
-window). The optimizer only ever sees TRAIN; `report` grades the winner on TEST.
+No overfitting: the project's held-out slice (docs/architecture.md section 7: NFL `eval.py --n 2`,
+NBA/NHL Oct 29 - Nov 1, the Nov 1 demo) is never read while tuning. The remaining nights split in
+two by date (alternating). The optimizer only ever sees TRAIN; `report` grades the winner on TEST
+and on the HOLDOUT. The demo day is graded separately (python -m redzone.demo 20261101).
 
 Every run is a plain backtest.run on a config overlay, so nothing touches your live settings.
 The live app (two Fire TV sticks, hidden-stick standby) is not modelled by the backtest, so the
@@ -129,19 +131,31 @@ def _night(reps) -> str:
     return dt.datetime.fromtimestamp(t, dt.timezone.utc).strftime("%Y%m%d")
 
 
-def split(items: list, night_of) -> dict[str, list]:
-    """TRAIN / TEST halves by night: sorted nights alternate, so each half spans the window and a
-    night (an NFL 1 PM and 4 PM slate, say) never sits on both sides."""
-    nights = sorted({night_of(i) for i in items})
+# The project's held-out slice (docs/architecture.md section 7): never read while tuning.
+HOLDOUT_FROM = {"nba": "20261029", "nhl": "20261029"}   # these nights and later
+HOLDOUT_NFL_N = 2                                        # scripts/eval.py --n 2's slates
+TUNE_NIGHTS = 30                                         # NBA/NHL nights loaded before the holdout
+
+
+def split(items: list, night_of, held=lambda i: False) -> dict[str, list]:
+    """TRAIN / TEST by night, after taking out the project's HOLDOUT: the remaining sorted nights
+    alternate, so each half spans the window and a night (an NFL 1 PM and 4 PM slate, say) never
+    sits on both sides. HOLDOUT is only ever graded by `report`."""
+    # A held-out slate's whole night stays out of tuning (an NFL 4 PM slate shares its 1 PM night).
+    held_nights = {night_of(i) for i in items if held(i)}
+    pool = [i for i in items if night_of(i) not in held_nights]
+    nights = sorted({night_of(i) for i in pool})
     side = {n: ("train" if j % 2 == 0 else "test") for j, n in enumerate(nights)}
-    out = {"train": [], "test": [], "all": list(items)}
-    for i in items:
+    out = {"train": [], "test": [], "holdout": [i for i in items if held(i)], "all": list(items)}
+    for i in pool:
         out[side[night_of(i)]].append(i)
     return out
 
 
 def load_units() -> dict[str, list]:
-    """Each league's scorecard set, exactly as scripts/eval.py and eval_sports.py pick it."""
+    """(night, replays, targets, held_out) per slate/night. NFL: the scorecard's 16 slates, the two
+    of `eval.py --n 2` held out. NBA/NHL: up to TUNE_NIGHTS archived nights through EVAL_END, the
+    nights from HOLDOUT_FROM on held out."""
     import importlib.util
     units = {}
     for name in ("eval", "eval_sports"):
@@ -149,10 +163,13 @@ def load_units() -> dict[str, list]:
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         if name == "eval":
-            units["nfl"] = [(_night(reps), reps, None) for reps in mod.eval_set(16)]
+            held = {frozenset(r.gid for r in reps) for reps in mod.eval_set(HOLDOUT_NFL_N)}
+            units["nfl"] = [(_night(reps), reps, None, frozenset(r.gid for r in reps) in held)
+                            for reps in mod.eval_set(16)]
         else:
             for lg in ("nba", "nhl"):
-                units[lg] = list(mod.nights(League(lg), 14, mod.EVAL_END))
+                units[lg] = [(day, reps, targets, day >= HOLDOUT_FROM[lg])
+                             for day, reps, targets in mod.nights(League(lg), TUNE_NIGHTS, mod.EVAL_END)]
     return units
 
 
@@ -171,7 +188,7 @@ def grade_unit(job: tuple[dict, str, int]) -> dict:
     """Raw counts for one slate / night under params (summed later; percentages at the end)."""
     params, lg, i = job
     cfg = _Overlay(_BASE, to_overrides(params))
-    _, reps, targets = _UNITS[lg][i]
+    _, reps, targets, _held = _UNITS[lg][i]
     for r in reps:
         if len(r._cache) > 5000:
             r._cache.clear()
@@ -319,7 +336,8 @@ def setup() -> tuple[dict, dict]:
     global _BASE, _UNITS
     _BASE = _pinned()
     _UNITS = load_units()
-    halves = {lg: split(list(range(len(u))), lambda i, u=u: u[i][0]) for lg, u in _UNITS.items()}
+    halves = {lg: split(list(range(len(u))), lambda i, u=u: u[i][0], lambda i, u=u: u[i][3])
+              for lg, u in _UNITS.items()}
     return _UNITS, halves
 
 
@@ -337,7 +355,12 @@ def tune(gens: int = 24, lam: int = 12, sigma: float = 0.1, workers: int | None 
         best = {"params": today, "fit": (0.0, 0.0), "train": base}
         history = []
         saved = json.loads(OUT.read_text()) if resume and OUT.exists() else {}
-        if saved.get("best") and saved.get("today") == today:
+        if saved.get("best") and saved.get("today") == today and saved.get("baseline_train") != base:
+            # The code under test moved (a merge changed the decider): scores against the old
+            # baseline mean nothing now. Keep only where the search was, as a starting point.
+            es.mean = encode(saved["best"]["params"])
+            log("baseline moved since the checkpoint: restarting the search centred on its best point")
+        elif saved.get("best") and saved.get("today") == today:
             best = saved["best"] | {"fit": tuple(saved["best"]["fit"])}
             history = saved.get("history", [])
             if saved.get("cma"):
@@ -371,14 +394,14 @@ def tune(gens: int = 24, lam: int = 12, sigma: float = 0.1, workers: int | None 
 
 
 def report(params: dict | None = None, workers: int | None = None) -> dict:
-    """Today vs the winner on TRAIN and on the held-out TEST nights."""
+    """Today vs the winner on TRAIN, on TEST, and on the project's HOLDOUT nights."""
     units, halves = setup()
     saved = json.loads(OUT.read_text()) if OUT.exists() else {}
     params = params or saved["best"]["params"]
     today = defaults(_BASE)
     with _pool(workers or os.cpu_count() or 2) as pool:
         out = {}
-        for side in ("train", "test"):
+        for side in ("train", "test", "holdout"):
             a, b = evaluate_many(pool, [today, params], side, halves)
             out[side] = {"today": a, "tuned": b, "fit": fitness(b, a)}
     saved["report"] = out
