@@ -188,6 +188,7 @@ class Scorer:
         self.cfg = cfg
         self._clock = clock
         self.hist: dict[str, History] = {}
+        self._live_leagues: dict[str, float] = {}   # league -> last time one of its games was live
         # The learned brain (redzone/scoring/brain.py): read every poll while brain.enabled is on;
         # with it off or a league unmodeled, scores are the hand-written ones, unchanged.
         self.brain = brain if brain is not None else Brain()
@@ -239,7 +240,9 @@ class Scorer:
         s = self._stakes(g)
         p, tags = self._personal(g, me, k, h.garbage)
 
-        raw = min(100.0, c.get("score.neutral_cap", 0.9) * min(100.0, m * s) + p)
+        lw = self._league_weight(g.league, now)
+        factors["league"] = lw
+        raw = min(100.0, c.get("score.neutral_cap", 0.9) * min(100.0, m * s * lw) + p)
         # Fast attack, slow release: jump up instantly, drift down with a half-life.
         hl = c.get("score.smoothing_half_life_s", 30)
         decayed = h.shown * 0.5 ** ((now - h.shown_at) / hl) if h.shown_at else 0.0
@@ -256,6 +259,24 @@ class Scorer:
                       late=is_late(g),
                       factor="garbage time" if h.garbage else factor, factors=factors,
                       brain=reading.as_dict() if reading is not None and reading.hotness is not None else {})
+
+    LEAGUE_LIVE_S = 300.0   # a league counts as "on tonight" this long after its last live game
+
+    def _league_weight(self, league: League, now: float) -> float:
+        """Your league order, relative to the other leagues live right now. The best league on is
+        1.0, so a night of one sport is scored exactly as without an order; a lower league only
+        gives way when a league you like more is actually on."""
+        self._live_leagues[league.value] = now
+        weights = self.cfg.get("score.league_weight") or {}
+
+        def w(name: str) -> float:
+            try:
+                return max(0.5, min(1.5, float(weights.get(name, 1.0))))
+            except (TypeError, ValueError):
+                return 1.0
+        on = [n for n, t in self._live_leagues.items() if now - t <= self.LEAGUE_LIVE_S]
+        top = max((w(n) for n in on), default=w(league.value))
+        return w(league.value) / top if top > 0 else 1.0
 
     def _stakes(self, g: GameState) -> float:
         c = self.cfg
@@ -281,7 +302,8 @@ class Scorer:
         mine = me.my_teams.get(g.league, set())
         if g.involves(mine):
             # Your team still gets the tag, but no boost once the game is decided.
-            p += 0.0 if garbage_time else c.get("score.personal.my_team") * k
+            rank = float(c.get(f"score.personal.my_team_league.{g.league.value}", 1.0))
+            p += 0.0 if garbage_time else c.get("score.personal.my_team") * rank * k
             tags.append(next(t for t in (g.home.abbr, g.away.abbr) if t in mine))
         sweat = me.bet_sweat.get(g.game_id, 0.0)
         if sweat > 0:

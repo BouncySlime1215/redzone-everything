@@ -62,10 +62,10 @@ def main():
     # pinned copy when one exists, so a before/after comparison isn't moved by the live night.
     pinned = ROOT / "data/eval_config.yaml"
     cfg = Config(user_path=pinned if pinned.exists() else ROOT / "data/config.yaml")
-    if pinned.exists() and not cfg.overrides:
+    if pinned.exists() and (cfg.rejected or not cfg.overrides):
         # Config falls back to defaults when a file doesn't validate (an unknown key, say): a
         # scorecard on silent defaults compares the wrong thing.
-        sys.exit(f"{pinned} didn't validate (unknown key?): refusing to grade on defaults")
+        sys.exit(f"{pinned} has settings the app rejects ({cfg.rejected}): refusing to grade on a partial config")
     t0 = time.time()
     tot = dict(big=0, seen=0, live=0, cuts=0, dead=0.0, watched=0.0, crunch=0, crunch_live=0,
                my_crunch=0, my_crunch_live=0, switches=0, hours=0.0, my_big=0, my_seen=0, blackout=0.0,

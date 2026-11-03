@@ -39,6 +39,10 @@ sources:
 
 score:
   neutral_cap: 0.9         # a neutral game tops out at 90; 90-100 is reserved for games you care about
+  # Your league order (NFL > CFB > NBA > NCAA hoops > NHL > MLB): a game's live moment is multiplied
+  # by its league's weight, so a dull game stays dull but an equal moment goes to the league you
+  # like more. Your teams and bets have their own boosts below.
+  league_weight: {nfl: 1.15, cfb: 1.10, nba: 1.05, cbb: 1.0, nhl: 0.95, mlb: 0.9, wcbb: 0.9}
   personal_cap: 30
   smoothing_half_life_s: 30
   stakes:
@@ -59,6 +63,9 @@ score:
     comeback_s: 240
   personal:
     my_team: 25            # scaled by how competitive the game is (0 in a blowout)
+    # ...times this per league, in your order: Commanders > UNC football > Wizards > UNC hoops >
+    # Capitals > Nationals.
+    my_team_league: {nfl: 1.0, cfb: 0.92, nba: 0.84, cbb: 0.78, wcbb: 0.6, nhl: 0.72, mlb: 0.64}
     bet_max: 20
     fantasy_mine: 12
     fantasy_opponent: 8

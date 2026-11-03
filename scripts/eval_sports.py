@@ -86,10 +86,10 @@ def main():
     # pinned copy when one exists, so a before/after comparison isn't moved by the live night.
     pinned = ROOT / "data/eval_config.yaml"
     cfg = Config(user_path=pinned if pinned.exists() else ROOT / "data/config.yaml")
-    if pinned.exists() and not cfg.overrides:
+    if pinned.exists() and (cfg.rejected or not cfg.overrides):
         # Config falls back to defaults when a file doesn't validate (an unknown key, say): a
         # scorecard on silent defaults compares the wrong thing.
-        sys.exit(f"{pinned} didn't validate (unknown key?): refusing to grade on defaults")
+        sys.exit(f"{pinned} has settings the app rejects ({cfg.rejected}): refusing to grade on a partial config")
     mine = set(cfg.get(f"teams.{lg.value}") or ["WSH"])
     total = sportsgrade.Card(lg.value)
     t0 = time.time()

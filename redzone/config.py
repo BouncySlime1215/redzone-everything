@@ -8,10 +8,13 @@ Guardrails:
 from __future__ import annotations
 
 import copy
+import logging
 import time
 from pathlib import Path
 
 import yaml
+
+log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTS = Path(__file__).with_name("default_config.yaml")
@@ -38,6 +41,8 @@ LIMITS: dict[str, tuple[float, float]] = {
     "fantasy.team_id": (0, 100),
     "fantasy.season": (2020, 2100),
     "break_lengths_s": (0, 1800),
+    "score.league_weight": (0.5, 1.5),
+    "score.personal.my_team_league": (0.0, 1.5),
     "score": (-100, 100),
     "decider": (0, 1000),
     "two_stick.min_gain": (0, 100),
@@ -120,20 +125,49 @@ def validate(cfg: dict, defaults: dict, path: str = "") -> None:
                 raise ConfigError(f"'{p}' must be a list of names")
 
 
+def prune(cfg: dict, defaults: dict, path: str = "") -> tuple[dict, list[str]]:
+    """The valid part of cfg, and why each dropped setting was dropped. One bad setting (a typo, an
+    old key, a value out of range) costs only that setting, never the rest of your file."""
+    kept, dropped = {}, []
+    for k, v in cfg.items():
+        p = f"{path}.{k}" if path else k
+        d = defaults.get(k) if isinstance(defaults, dict) else None
+        if isinstance(d, dict) and isinstance(v, dict):
+            sub, why = prune(v, d, p)
+            kept[k] = sub
+            dropped += why
+            continue
+        try:
+            validate({k: v}, defaults, path)
+        except ConfigError as e:
+            dropped.append(str(e))
+            continue
+        kept[k] = v
+    return kept, dropped
+
+
 class Config:
     def __init__(self, user_path: Path = USER, history_dir: Path = HISTORY):
         self.user_path = user_path
         self.history_dir = history_dir
         self.defaults = yaml.safe_load(DEFAULTS.read_text())
         self.overrides: dict = {}
+        self.rejected: list[str] = []   # settings dropped at load (the scorecards refuse to grade on these)
         if user_path.exists():
-            loaded = without_retired(yaml.safe_load(user_path.read_text()) or {})
             try:
-                validate(loaded, self.defaults)
-                self.overrides = loaded
-            except ConfigError:
-                # A broken file never takes the app down: fall back to defaults.
-                self.overrides = {}
+                raw = yaml.safe_load(user_path.read_text()) or {}
+                if not isinstance(raw, dict):
+                    raise ConfigError(f"{user_path.name} isn't a group of settings")
+            except (yaml.YAMLError, ConfigError, OSError) as e:
+                # An unreadable file never takes the app down: defaults, and say so.
+                log.error("config: %s unreadable, using defaults: %s", user_path, e)
+                raw, self.rejected = {}, [f"unreadable: {e}"]
+            loaded = without_retired(raw)
+            # A broken setting never takes the app down, and never takes your other settings with it.
+            self.overrides, dropped = prune(loaded, self.defaults)
+            self.rejected += dropped
+            for why in dropped:
+                log.warning("config: ignoring a setting in %s: %s", user_path.name, why)
         self.data = _deep_merge(self.defaults, self.overrides)
 
     def get(self, dotted: str, default=None):
