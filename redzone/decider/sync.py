@@ -304,3 +304,41 @@ def clock_sample(bug_clock_s: float, frame_wall: float, plays: list[tuple[float,
         d = frame_wall - wall
         return d if 2.0 <= d <= 180.0 else None
     return None
+
+
+class KalmanSync:
+    """[contracts] SyncModel over the delay book with its Kalman filters attached (DelayBook.attach_sync).
+
+    estimate(): the delay book's figure for the channel (the filter's when it has the channel, else
+    the per-channel predictor's), with the filter's uncertain flag. observe(): taps / score bug /
+    show changes go to both the book and the filter; clock and mic samples to the filter only (a mic
+    surge can't identify a play, so it never becomes a book sample)."""
+
+    def __init__(self, book):
+        if book.sync is None:
+            book.attach_sync()
+        self.book = book
+
+    def estimate(self, target: str, now: float):
+        from redzone.contracts.sync import SyncEstimate
+        d = self.book.get(target)
+        f = self.book.sync.filters.get(target)
+        src = d.source if d.source in ("tap", "screen", "app", "boundary", "predicted", "default", "sync") else "default"
+        return SyncEstimate(target, float(d.mu), float(d.current_sigma(now)), src, d.calibrated_at,
+                            float(d.behind), bool(f is not None and f.uncertain(now)))
+
+    def observe(self, target: str, sample_s: float, kind: str, at: float) -> None:
+        s = self.book.sync
+        if kind == "tap":
+            s.measure(target, sample_s, "tap", t=at)
+            self.book.calibrate(target, sample_s)
+        elif kind == "boundary":
+            s.measure(target, sample_s, "flip", t=at)
+            self.book.boundary(target, sample_s, at)
+        elif kind == "screen":
+            s.measure(target, sample_s, "score", t=at)
+            self.book.screen(target, sample_s, at)
+        elif kind in ("clock", "mic"):
+            s.measure(target, sample_s, kind, t=at)
+        else:
+            raise ValueError(f"KalmanSync can't take {kind!r} samples")

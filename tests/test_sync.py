@@ -195,3 +195,27 @@ def test_sync_log_rows(tmp_path):
     assert [r["kind"] for r in rows] == ["tune", "score"] and rows[1]["used"] and "sd" in rows[1]
     from redzone.lab.syncsim import log_summary
     assert log_summary(tmp_path / "sync.jsonl")["prime:x"]["tunes"] == 1
+
+
+def test_kalman_sync_meets_the_sync_model_contract():
+    import pytest
+    from redzone import contracts as c
+    from redzone.decider.sync import KalmanSync
+    clk = Clock()
+    s = KalmanSync(DelayBook({"youtubetv": 45.0}, 15.0, clock=clk))
+    assert isinstance(s, c.SyncModel)
+    e = s.estimate("prime:x", clk.t)
+    assert e.source == "default" and not e.calibrated and not e.uncertain
+    for _ in range(8):
+        clk.t += 20
+        s.observe("prime:x", 33.0, "clock", clk.t)
+    e = s.estimate("prime:x", clk.t)
+    assert e.source == "sync" and e.calibrated and abs(e.delay_s - 33.0) < 1.0 and e.sigma_s >= 4.0
+    clk.t += 20
+    s.observe("prime:x", 70.0, "clock", clk.t)                   # disagrees: flagged
+    assert s.estimate("prime:x", clk.t).uncertain
+    s.observe("youtubetv:espn", 26.0, "tap", clk.t)
+    assert s.estimate("youtubetv:espn", clk.t).source in ("tap", "sync")
+    with pytest.raises(ValueError):
+        s.observe("prime:x", 1.0, "nonsense", clk.t)
+    assert c.sync_view(s.estimate("prime:x", clk.t)).delay_s > 0
