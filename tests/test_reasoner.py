@@ -259,3 +259,40 @@ def test_strange_feed_never_raises(cfg, clock):
     assert out is EMPTY or out.lock_in in ("none", "watch", "must_see")
     assert json.dumps(out.as_dict())
     assert not math.isnan(0.0)
+
+
+def test_redzone_gets_the_best_nfl_lock_in(cfg, clock):
+    """A lock-in on one NFL broadcast is never a reason to leave RedZone (it shows that play, no ads)."""
+    from redzone.decider.decider import REDZONE, Candidate, Decider
+    from redzone.decider.screen import DelayBook
+    cfg.data["decider"]["redzone_channel"] = True
+    d = Decider(cfg, DelayBook({"youtubetv": 40}, 3.0, clock=clock), clock=clock)
+    on(cfg)
+    s = Scorer(cfg, clock=clock, reasoner=Reasoner(cfg, head=FixedHead(0.99)))
+    cfg.data["reasoner"]["nfl"].update(must_points=10, by_odds=0)
+    g = nfl("g", "KC", "BUF", 7, 10, q=2, clock=500, pos="KC", down=1, dist=10, ytg=50, wp=0.4)
+    sc = s.score(g, Personal())
+    assert sc.factors.get("reasoner") == 10
+    base = cfg.get("decider.redzone_score", 45)
+    rz = d._with_redzone({"g": Candidate(sc, "youtubetv:g")}, "youtubetv:rz")[REDZONE]
+    assert rz.scored.score == pytest.approx(base + 10)
+    cfg.data["reasoner"]["redzone_share"] = 0.5
+    rz = d._with_redzone({"g": Candidate(sc, "youtubetv:g")}, "youtubetv:rz")[REDZONE]
+    assert rz.scored.score == pytest.approx(base + 5)
+    sc.factors.pop("reasoner")
+    rz = d._with_redzone({"g": Candidate(sc, "youtubetv:g")}, "youtubetv:rz")[REDZONE]
+    assert rz.scored.score == pytest.approx(base)
+
+
+def test_other_games_yield_to_your_team(cfg, clock):
+    on(cfg)
+    cfg.data["reasoner"]["nfl"].update(must_points=10, by_odds=0)
+    s = Scorer(cfg, clock=clock, reasoner=Reasoner(cfg, head=FixedHead(0.99)))
+    mine = nfl("w", "WSH", "NYG", 7, 7, q=2, clock=600, pos="WSH", down=1, dist=10, ytg=40, wp=0.5)
+    other = nfl("o", "KC", "BUF", 7, 10, q=2, clock=500, pos="KC", down=1, dist=10, ytg=50, wp=0.4)
+    assert "reasoner" in s.score(other, ME).factors
+    s.score(mine, ME)
+    clock.t += 5
+    assert "reasoner" not in s.score(other, ME).factors     # your team is on: no pull away from it
+    clock.t += 120
+    assert "reasoner" in s.score(other, ME).factors          # your game hasn't been seen for 2 min

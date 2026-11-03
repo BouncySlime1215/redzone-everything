@@ -131,7 +131,10 @@ def target(r: dict, head_p: float) -> dict:
         stay = int(min(900, max(60, tk if math.isfinite(tk) else 300)) // 15 * 15)
     elif lock == "watch":
         stay = 60
-    return {"lock_in": lock, "safe_to_leave": "no" if lock == "must_see" else "yes",
+    # Ship gate (Nov 3, PR #13): "zero missed big plays first": yes only when no big play followed
+    # within H in hindsight (and never in crunch time or a must_see), even if that means staying longer.
+    unsafe = lock == "must_see" or r["crunch"] or (tb <= H and not r["garbage"])
+    return {"lock_in": lock, "safe_to_leave": "no" if unsafe else "yes",
             "confidence": round(head_p if lock != "none" else 1 - head_p, 2),
             "storyline": storyline(r), "why": ", ".join(why[:3]), "next": nxt, "stay_s": stay}
 

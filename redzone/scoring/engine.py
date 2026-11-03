@@ -243,6 +243,8 @@ class Scorer:
                 pts, part = 0.0, None   # a break is the break logic's call: points here only buy commercials
             if mine and not rctx.garbage:
                 self._mine_live[g.game_id] = now
+                if len(self._mine_live) > 50:
+                    self._mine_live = {k: t for k, t in self._mine_live.items() if now - t <= self.MINE_LIVE_S}
             elif pts and c.get("reasoner.yield_to_your_team", True) and any(
                     now - t <= self.MINE_LIVE_S for k, t in self._mine_live.items() if k != g.game_id):
                 pts, part = 0.0, None   # your team is on: a reasoner call never pulls you off it

@@ -1167,7 +1167,14 @@ class Decider:
         """Add RedZone as a candidate while it's on the air and you have it turned on."""
         if not target or not self.cfg.get("decider.redzone_channel", False):
             return cands
-        return {**cands, REDZONE: Candidate(redzone_scored(self.cfg.get("decider.redzone_score", 45)), target)}
+        base = self.cfg.get("decider.redzone_score", 45)
+        # The reasoner's lock_in points on an NFL game also go to RedZone: RedZone whips to that
+        # game's big play anyway, with no commercials, so a lock-in is never a reason to leave it
+        # for one broadcast (Nov 3: MIN @ SEA slate, +370 s of commercials from exactly that).
+        lock = max((x.scored.factors.get("reasoner", 0.0) for x in cands.values()
+                    if x.scored.league.base == League.NFL and not x.scored.garbage), default=0.0)
+        share = max(0.0, min(1.0, float(self.cfg.get("reasoner.redzone_share", 1.0))))
+        return {**cands, REDZONE: Candidate(redzone_scored(base + share * lock), target)}
 
     def _gate(self, cur: Candidate, now: float) -> Gate | None:
         """Can we leave what's on screen? RedZone is a whip-around: there's no play of ours to cut."""
