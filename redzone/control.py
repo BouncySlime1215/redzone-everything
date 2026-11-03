@@ -65,6 +65,8 @@ MIN_PRELOAD_GAP_S = 5.0    # never start preloads back to back faster than this
 CEC_RETRY_S = 600.0        # a stick whose CEC flip failed goes straight to the TV remote this long
 CEC_SYNC_S = 30.0          # re-ask the sticks which one is on screen this often (when idle)
 RESUME_WAIT_S = 6.0        # after a HOME flip, the relaunched app must be playing again within this
+PRIME_RESUME_WAIT_S = 15.0  # ...Prime's player takes longer to report again after REORDER_TO_FRONT (Nov 2)
+RESUME_PAUSED_S = 2.0      # ...but a player that says "paused" this long gets MEDIA_PLAY without waiting it out
 RESUME_PLAY_WAIT_S = 3.0   # ...else MEDIA_PLAY (a paused player) and wait this long
 RELINK_MAX_S = 25.0        # ...else one fresh deep link of the target, capped at this
 RESUME_POLL_S = 0.25       # "playing the game again?" this often while resuming
@@ -464,8 +466,7 @@ class Controller:
                 self.on_target = None
                 if target:
                     r0 = time.monotonic()
-                    # Prime's player takes longer to report again after it is brought back (Nov 2).
-                    how = await self._resume_playback(stick, target, 15.0 if target.startswith("prime:") else RESUME_WAIT_S)
+                    how = await self._resume_playback(stick, target, self._resume_wait(target))
                     self._book_flip(stick, target, self._flip_s, time.monotonic() - r0, how)
                     # Not back yet: keep the target so the visible-stick watchdog keeps trying.
                     self.on_target = target
@@ -1114,7 +1115,9 @@ class Controller:
             self._flipping = True
             self.stage.update(stage="resuming", reason="confirming the game is playing after the input change")
             try:
-                how = await self._resume_playback(hid, target, RESUME_WAIT_S)
+                # Prime's player needs ~15 s to report again: at 6 s it read "none" and was re-linked
+                # (page + Watch + Watch Live, ~33 s; 22:41 and 22:45 on Nov 2, one switch timed out at 75 s).
+                how = await self._resume_playback(hid, target, self._resume_wait(target))
             except Exception:
                 log.exception("resume check after the flip crashed")
             finally:
@@ -1307,13 +1310,29 @@ class Controller:
         now = (pb.get("title") or "").strip()
         return not (title and now and title != now)
 
-    async def _await_playing(self, stick: Stick, target: str, pkg: str | None, wait_s: float) -> dict | None:
-        end = time.monotonic() + wait_s
+    @staticmethod
+    def _resume_wait(target: str) -> float:
+        """How long a relaunched app gets to play again on its own after a HOME flip."""
+        return PRIME_RESUME_WAIT_S if target.startswith("prime:") else RESUME_WAIT_S
+
+    async def _await_playing(self, stick: Stick, target: str, pkg: str | None, wait_s: float,
+                             paused_s: float | None = None) -> dict | None:
+        """The target playing within wait_s, else None. With paused_s: also None once the player has
+        said "paused" that long (pressing play beats waiting out a long grace)."""
+        t0 = time.monotonic()
+        end, paused_at = t0 + wait_s, None
         while True:
             pb = await stick.playback(pkg)
             if self._plays_target(stick, target, pb, pkg):
                 return pb
-            if time.monotonic() >= end:
+            now = time.monotonic()
+            if pb.get("state") == "paused" and (not pkg or pb.get("pkg") in (None, pkg)):
+                paused_at = now if paused_at is None else paused_at
+                if paused_s is not None and now - paused_at >= paused_s:
+                    return None
+            else:
+                paused_at = None
+            if now >= end:
                 return None
             await asyncio.sleep(RESUME_POLL_S)
 
@@ -1338,7 +1357,8 @@ class Controller:
         player), then a prompt read from a screenshot, then one fresh deep link. Returns how it came
         back ("auto", "media_play", "prompt", "relink"), or None if it didn't. Only ever for the stick the TV is showing."""
         pkg = self._package(stick, target)
-        pb = await self._await_playing(stick, target, pkg, first_wait_s)
+        pb = await self._await_playing(stick, target, pkg, first_wait_s,
+                                       RESUME_PAUSED_S if first_wait_s > RESUME_WAIT_S else None)
         if pb is not None:
             stick.remember(target, pb)
             return "auto"
