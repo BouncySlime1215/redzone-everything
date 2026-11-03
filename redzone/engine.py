@@ -27,6 +27,7 @@ from redzone.sources import espn, fastcast, leagues
 from redzone.sources.http import Fetcher
 from redzone.sources.merge import Merger
 from redzone.recorder import Recorder
+from redzone.screen import boundary
 from redzone.store import Store
 
 log = logging.getLogger(__name__)
@@ -58,6 +59,10 @@ class Engine:
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
+        # Stream delay measured from YouTube TV show changes on the quarter hour (no taps needed).
+        self.boundary = boundary.BoundaryWatcher(estimate=self._delay_estimate, on_sample=self._boundary_sample,
+                                                 on_live=self.delays.set_live)
+        self.control.on_playback = self.boundary.observe_stick
         self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
         self._cost_mode: bool | None = None         # two-stick mode when switch costs were last synced
         self._cost_synced = 0.0
@@ -105,7 +110,39 @@ class Engine:
         if self.cfg.get("screen.mic_calibration", False):
             self.set_mic(True)
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
-                             self._fantasy_loop(), self._fastcast_loop(), self.discovery.run())
+                             self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
+                             self._boundary_loop())
+
+    def _delay_estimate(self, target: str) -> tuple[float, float]:
+        d = self.delays.get(target)
+        return d.mu, d.current_sigma(time.time())
+
+    def _boundary_sample(self, s) -> None:
+        d = self.delays.boundary(s.target, s.sample, s.flip_wall)
+        try:
+            self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="boundary")
+        except Exception:
+            log.exception("could not save a boundary delay sample")
+
+    async def _boundary_loop(self) -> None:
+        """Read the YouTube TV sticks every ~0.5 s for 3 minutes either side of each quarter hour (as it
+        reaches the screen), so a show change times the stream delay to about a quarter second.
+        Outside those windows the watcher still sees the controller's own reads."""
+        if not self.cfg.get("delay.boundary", True):
+            return
+        while True:
+            now = time.time()
+            wait = boundary.READ_EVERY_S
+            try:
+                mu = max((d.mu for t, d in self.delays.book.items() if t.startswith("youtubetv:")), default=45.0)
+                if self.cfg.get("mode.dry_run", True) or not boundary.in_window(now, min(mu, 60.0)):
+                    wait = 10.0
+                elif not await self.control.boundary_reads():
+                    wait = 2.0
+            except Exception:
+                log.exception("boundary read failed")
+                wait = 10.0
+            await asyncio.sleep(max(0.1, wait - (time.time() - now)))
 
     async def _poll_loop(self) -> None:
         while True:
@@ -1155,7 +1192,10 @@ class Engine:
             "recorded_playback": self.recorded.snapshot(),
             "delays": [{"target": t, "label": describe(t), "mu": round(x.mu, 1), "sigma": round(x.sigma, 1),
                         "calibrated": x.calibrated_at is not None, "source": x.source,
-                        "settled": self.delays.settled(self.delays.app(t))} for t, x in self.delays.book.items()],
+                        "settled": self.delays.settled(self.delays.app(t)),
+                        "boundary_samples": self.delays.boundary_count(self.delays.app(t)),
+                        "live": x.live is not None} for t, x in self.delays.book.items()],
+            "delay_watch": self.boundary.status(),
             "health": {"sources": list(self.source_status.values()), "sticks": self.control.status(),
                        "tv": {"state": "unknown"}, "race": self.merger.race_summary(),
                        "adb": self.control.adb_ok, "switch_times": self.control.switch_times(),

@@ -235,6 +235,8 @@ class Controller:
         self.safe_moment: Callable[[], bool] | None = None
         # The engine's "the visible-stick watchdog may act" (optional; e.g. off during a recorded session).
         self.visible_watch_ok: Callable[[], bool] | None = None
+        # Every playback report from any stick (the engine's show-change delay watcher), optional.
+        self.on_playback: Callable[[Stick, dict], None] | None = None
 
     # --- devices -----------------------------------------------------------------
 
@@ -251,10 +253,25 @@ class Controller:
         for s in d.get("sticks", []):
             st = Stick(s["host"], name=s.get("name", ""), model=s.get("model", ""), os=s.get("os", ""))
             st.packages = s.get("packages", {})
+            st.observer = self._observe_playback
             self.sticks.append(st)
             if s.get("hdmi"):
                 self.hdmi[st.host] = s["hdmi"]
         self.tv = SamsungTV.from_devices()
+
+    def _observe_playback(self, stick: Stick, report: dict) -> None:
+        if self.on_playback is not None:
+            self.on_playback(stick, report)
+
+    async def boundary_reads(self) -> int:
+        """One playback read of each stick showing YouTube TV, for the show-change delay watcher.
+        Never during a switch, a flip or a preload: those reads would queue behind (or delay) it."""
+        if not self.live_control or self._busy() or self._flipping or self.input_unknown:
+            return 0
+        sticks = [s for s in self.usable() if str((s.tuned or {}).get("target") or "").startswith("youtubetv:")]
+        for s in sticks:
+            await s.playback(self._package(s, s.tuned["target"]))
+        return len(sticks)
 
     async def start(self) -> None:
         self.adb_ok = await adb_available()

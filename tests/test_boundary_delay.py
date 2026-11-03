@@ -265,3 +265,39 @@ def test_store_migrates_an_old_calibrations_table(tmp_path):
     con.commit()
     con.close()
     assert Store(db).calibrations() == [(1.0, "youtubetv:espn", 30.0, "tap")]
+
+
+# ------------------------------------------------------------------ wiring
+
+def test_engine_saves_boundary_samples_and_reloads_them(tmp_path):
+    from redzone.config import Config
+    from redzone.engine import Engine
+    from redzone.screen.boundary import Sample
+    store = Store(tmp_path / "rz.db")
+    eng = Engine(Config(user_path=tmp_path / "config.yaml", history_dir=tmp_path / "hist"), store)
+    assert eng.control.on_playback == eng.boundary.observe_stick
+    for x in (22.0, 23.0):
+        eng.boundary.on_sample(Sample("youtubetv:trutv", x, at(19, 0), at(19, 0, x), 0.1, "A", "B"))
+    assert [r[3] for r in store.calibrations()] == ["boundary", "boundary"]
+    again = Engine(Config(user_path=tmp_path / "config.yaml", history_dir=tmp_path / "hist"), store)
+    d = again.delays.get("youtubetv:espn")
+    assert d.source == "boundary" and d.mu in (22.0, 23.0)
+    row = next(x for x in again.snapshot()["delays"] if x["target"] == "youtubetv:espn")
+    assert row["boundary_samples"] == 2 and row["source"] == "boundary"
+
+
+def test_stick_playback_reports_reach_the_observer():
+    import asyncio
+
+    from redzone.tuners.adb import RunResult, Stick
+    seen = []
+    st = Stick("1.2.3.4:5555", observer=lambda s, r: seen.append((s, r)))
+
+    async def shell(cmd, timeout=8.0):
+        return RunResult(True, "package=com.amazon.firetv.youtube.tv\n"
+                         "state=PlaybackState {state=3, position=47089971, buffered position=0, speed=1.0, "
+                         "updated=9000000, actions=0}\n"
+                         "metadata: size=3, description=CBB Hall of Fame Series Pregame, truTV, null\n", 0.01)
+    st.shell = shell
+    r = asyncio.run(st.playback("com.amazon.firetv.youtube.tv"))
+    assert seen and seen[0][1] is r and r["title"] == "CBB Hall of Fame Series Pregame" and r["subtitle"] == "truTV"

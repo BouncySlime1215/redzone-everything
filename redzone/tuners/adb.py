@@ -14,6 +14,8 @@ Guardrails:
 """
 from __future__ import annotations
 
+from typing import Callable
+
 import asyncio
 import logging
 import math
@@ -96,6 +98,8 @@ class Stick:
     tuned: dict | None = field(default=None, repr=False, compare=False)
     _awake_at: float = field(default=-1e9, repr=False, compare=False)
     _session: AdbShell | None = field(default=None, repr=False, compare=False)
+    # Sees every playback report this stick gives (the boundary watcher times show changes with them).
+    observer: Callable[["Stick", dict], None] | None = field(default=None, repr=False, compare=False)
 
     @property
     def controllable(self) -> bool:
@@ -253,6 +257,11 @@ class Stick:
         r = await self.shell(PLAYBACK_CMD, timeout=4)
         report = parse_playback(r.out if r.ok else "", package)
         report.update(read_ok=r.ok, read_started=started, read_finished=time.monotonic())
+        if self.observer is not None:
+            try:
+                self.observer(self, report)
+            except Exception:   # an observer must never break a playback read
+                log.exception("playback observer failed")
         return report
 
     async def foreground(self) -> str:

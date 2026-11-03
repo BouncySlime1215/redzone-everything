@@ -59,8 +59,17 @@ function delayRow(d) {
     <div class="nm"><span class="hdot ${d.calibrated ? "hdot--g" : "hdot--y"}"></span><span class="ell">${esc(d.label || d.target)}</span></div>
     <div class="v">${Number.isFinite(mu) ? odo(Math.round(mu)) : "—"}<small>s ±${Math.round(sg)}</small></div>
     <div class="ruler" style="--c:${c};--lo:${pct(mu - sg)};--hi:${pct(mu + sg)};--mu:${pct(mu)}"><span class="rng"></span><span class="mk"></span></div>
-    <div class="dim" style="grid-column:1/-1;font-size:11.5px;margin-top:-2px">${!d.calibrated ? "Guess — not measured yet" : d.source === "app" ? "From your taps on other channels of this app" : "Measured"}${d.settled ? " · learned, no more taps needed" : ""}</div>
+    <div class="dim" style="grid-column:1/-1;font-size:11.5px;margin-top:-2px">${delayBasis(d)}${d.settled ? " · learned, no more taps needed" : ""}</div>
   </div>`;
+}
+
+/* Where a channel's delay comes from: a guess, your taps, or show changes timed automatically. */
+function delayBasis(d) {
+  const n = num(d.boundary_samples, 0);
+  const auto = `measured automatically from show changes (${n} sample${n === 1 ? "" : "s"})`;
+  if (d.source === "boundary") return `M${auto.slice(1)}${d.live ? " · timed for this tune" : ""}`;
+  if (!d.calibrated) return n ? `Guess — ${auto}; needs 2 that agree` : "Guess — not measured yet";
+  return d.source === "app" ? "From your taps on other channels of this app" : "Measured";
 }
 
 function tuner() {
