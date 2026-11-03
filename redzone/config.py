@@ -59,6 +59,9 @@ LIMITS: dict[str, tuple[float, float]] = {
     "brain.break_weight": (0.0, 1.0),
     "brain.hot_reason_min": (50, 100),
     "brain": (0, 30),
+    "reasoner.min_interval_s": (5, 600),
+    "reasoner.max_tokens": (32, 400),
+    "reasoner": (0, 15),
 }
 
 # Former rate/dwell limits are deliberately inactive. Old saved files and lab

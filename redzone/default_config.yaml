@@ -117,6 +117,23 @@ brain:                     # learned models (redzone/scoring/brain.py, trained b
   wcbb: {hot_points: 0, key_points: 0}
   cfb: {hot_points: 0, key_points: 0}
 
+reasoner:                  # live game reasoner (redzone/reasoner): lock_in per live game, rebuilt each play
+  enabled: false           # add lock_in points to the score (the fast head decides; scorecards in the PR)
+  must_points: 8           # moment points for must_see (never more than max_points; hard cap 15)
+  watch_points: 3          # moment points for watch
+  max_points: 12
+  yield_to_your_team: true # while your team's game is live and not decided, other games get no lock_in points
+  break_discount: 0        # scale lock_in points down by the brain's break odds (0 = off)
+  during_breaks: false     # lock_in points while the game is in a real break (off: they only bought commercials)
+  model: true              # ask the local model (agent/llm_server.py, adapter game-reasoner) for the phone text
+  decide_with: head        # head (scorecard-tested) or model: whose lock_in the score uses
+  server_url: http://127.0.0.1:8779
+  min_interval_s: 20       # at most one model call per hot game this often (a score asks sooner)
+  max_tokens: 160
+  nfl: {must_points: 8, watch_points: 3}
+  nba: {must_points: 8, watch_points: 3}
+  nhl: {must_points: 8, watch_points: 3}
+
 decider:
   switch_margin: 10
   entry:

@@ -747,6 +747,7 @@ class Engine:
             if target in self._fail_cool:
                 target = None   # failed a moment ago: don't hammer it every tick
             cands[gid] = Candidate(sc, target, stale=self.merger.is_stale(gid))
+        self._narrate()
         self._garbage_focus()
         self._hold_check()
         if self._pending_decision is not None:
@@ -770,6 +771,37 @@ class Engine:
                                   "now" if gid == self.decider.current else "")
                                  for gid, s in self.scored.items() if s.raw > 0])
         return changed
+
+    def _narrate(self) -> None:
+        """Ask the local model for each hot game's storyline (background, event-driven, rate-limited)
+        and keep the model server loaded while games are live. Never raises, never blocks a poll."""
+        r = getattr(self.scorer, "reasoner", None)
+        if r is None or not r.on() or not self.cfg.get("reasoner.model", True):
+            return
+        try:
+            if r.client is None:
+                from redzone.reasoner.reasoner import Client
+                r.client = Client(str(self.cfg.get("reasoner.server_url", "http://127.0.0.1:8779")))
+            from redzone.reasoner import brief as rbrief
+            cur = self.decider.current
+            cur_g = self.merger.games.get(cur or "")
+            live = [g for g in self.merger.games.values() if g.phase == Phase.LIVE]
+            for g in live:
+                rr = r.cached(g.game_id)
+                if rr is None:
+                    continue
+                f = rr.facts
+                ctx = rbrief.Context(mine=bool(f.get("mine")), garbage=bool(f.get("garbage")),
+                                     crunch=bool(f.get("crunch")), late=bool(f.get("late")),
+                                     on_screen=g.game_id == cur,
+                                     screen_game=cur_g.matchup if cur_g is not None and g.game_id != cur else "")
+                r.narrate(g, rr, ctx)
+            now = time.time()
+            if live and now - getattr(self, "_llm_keepalive_at", 0.0) >= 60:
+                self._llm_keepalive_at = now
+                r.keepalive(len(live))
+        except Exception:  # noqa: BLE001 - the phone text is never worth a failed poll
+            log.exception("reasoner: narration step failed")
 
     def _reel_target(self) -> tuple[str, float] | None:
         """(tuner target, seconds) of the ready catch-up reel, when reels may go on the TV."""
@@ -1431,6 +1463,7 @@ class Engine:
             "wp": g.home_win_prob, "situation": views.situation(g), "leaders": g.leaders,
             "spotlight": g.spotlight, "venue": g.venue_info,
             "brain": (s.brain or None) if s and live else None,
+            "reasoner": (s.reasoner or None) if s and live else None,
         }
 
     async def game_detail(self, gid: str) -> dict | None:
