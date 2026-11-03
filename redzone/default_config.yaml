@@ -179,13 +179,16 @@ supervisor:                # watches the live system and fixes what it can on it
   ntfy_topic: ""           # optional: push the nightly report to the free ntfy app (pick a hard-to-guess topic)
 
 two_stick:
-  cec_flip: true           # flip inputs by HOME -> HDMI-CEC Active Source (no TV network or SmartThings needed)
+  cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,
+                           # set up by scripts/tv_setup.py, goes first when it's proven)
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment
   hold_s: 20               # keep the hidden stick on a game at least this long before re-tuning it...
   min_gain: 8              # ...and then only for one this many points better (your game's return and
                            # a replay about to play take it right away)
   verify_s: 15             # check the hidden stick is still playing this often
   input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
+  keep_cec_off: true       # a stick whose HDMI-CEC you turned off (scripts/stick_cec.py) gets it back on only
+                           # for a HOME fallback onto it, then off again (so losing the input never pauses it)
   park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long
 
 plan:                      # tonight's plan (data/plan_YYYYMMDD.json, the phone's "Tonight's plan" card)
