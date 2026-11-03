@@ -452,3 +452,14 @@ def test_unknown_input_blocks_preload_reseek_and_sunday_ticket_scan(two):
     assert run(c.scan_sunday_ticket(["AAAAAAAAAAA"], [])) == {}
     assert tuner.calls == []
     assert not c.sticks[1].log
+
+
+def test_entry_rewind_lands_the_live_switch_behind_on_purpose(two):
+    """[cut timing] A live switch planned to come up on the dead ball before the current play:
+    flip, then whole rewind presses; the game stays the live target (only its delay grows)."""
+    c, tuner = two
+    out = run(c.execute("youtubetv:espn", may_cut=lambda: True, entry_rewind_s=20.0))
+    assert out.ok and "rewound 20s to the dead ball" in out.detail
+    presses = sum(cmd.count("KEYCODE_MEDIA_REWIND") for cmd in c.main.log if isinstance(cmd, str))
+    assert presses == 2 and "KEYCODE_MEDIA_PLAY" in c.main.log
+    assert c.on_target == "youtubetv:espn"

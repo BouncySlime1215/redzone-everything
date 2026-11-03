@@ -836,7 +836,8 @@ class Controller:
     # --- actions -----------------------------------------------------------------
 
     def submit(self, target: str | None, replay_back_s: float | None = None, on_done=None,
-               may_cut: Callable[[], bool] | None = None, replay_id: str | None = None) -> None:
+               may_cut: Callable[[], bool] | None = None, replay_id: str | None = None,
+               entry_rewind_s: float = 0.0) -> None:
         """Fire-and-forget; the newest command wins. A preload of some OTHER target is cancelled
         (queueing behind a tune we no longer want would add up to 10s); one loading this very
         target is kept, and the switch picks it up the moment it's ready."""
@@ -850,20 +851,23 @@ class Controller:
         want = (target, replay_id if replay_back_s else None)
         if self._preload_task and not self._preload_task.done() and self._preloading != want:
             self._preload_task.cancel()
-        self._task = asyncio.create_task(self._run(target, replay_back_s, on_done, may_cut, replay_id, time.time()))
+        self._task = asyncio.create_task(self._run(target, replay_back_s, on_done, may_cut, replay_id, time.time(),
+                                                   entry_rewind_s))
         if on_done:
             self._task.add_done_callback(lambda task: on_done(
                 Outcome(False, target, 0.0, "switch cancelled; playback not confirmed", False)
             ) if task.cancelled() else None)
 
-    async def _run(self, target, replay_back_s, on_done, may_cut, replay_id=None, issued_at=None) -> None:
+    async def _run(self, target, replay_back_s, on_done, may_cut, replay_id=None, issued_at=None,
+                   entry_rewind_s: float = 0.0) -> None:
         async with self._lock:
             if replay_back_s:
                 self._adopt_once = False   # a rewound picture must never be adopted as live
             self.stage = {"stage": "tuning", "target": target, "reason": "confirming the requested stream"}
             try:
                 self._tuned_on = None
-                out = await self.execute(target, replay_back_s, may_cut, replay_id, issued_at)
+                out = await self.execute(target, replay_back_s, may_cut, replay_id, issued_at,
+                                         entry_rewind_s=entry_rewind_s)
                 if out.stick is None:
                     out.stick = self._tuned_on
             except asyncio.CancelledError:
@@ -1044,9 +1048,24 @@ class Controller:
 
     async def execute(self, target: str | None, replay_back_s: float | None = None,
                       may_cut: Callable[[], bool] | None = None, replay_id: str | None = None,
-                      issued_at: float | None = None) -> Outcome:
+                      issued_at: float | None = None, entry_rewind_s: float = 0.0) -> Outcome:
         """replay_back_s is "rewind this far from the live edge" as of issued_at (the decision);
-        every second since (queued, tuning, waiting) is added so the replay still lands before the snap."""
+        every second since (queued, tuning, waiting) is added so the replay still lands before the snap.
+
+        entry_rewind_s [cut timing]: a LIVE switch whose picture should come up this far behind the
+        live edge (whole seek steps), on the dead ball before the play it would otherwise join
+        mid-way. The game stays the live target; only its delay grows by that much."""
+        out = await self._execute(target, replay_back_s, may_cut, replay_id, issued_at)
+        if entry_rewind_s and out.ok and not out.dry_run and not replay_back_s and self.main is not None:
+            if not await self._rewind(self.main, entry_rewind_s):
+                return Outcome(False, target, out.took, "entry rewind failed; position unknown", False,
+                               path=out.path)
+            out.detail += f"; rewound {entry_rewind_s:.0f}s to the dead ball"
+        return out
+
+    async def _execute(self, target: str | None, replay_back_s: float | None = None,
+                       may_cut: Callable[[], bool] | None = None, replay_id: str | None = None,
+                       issued_at: float | None = None) -> Outcome:
         t0 = time.time()
         back_at = issued_at or t0
         self._exit_check = may_cut
