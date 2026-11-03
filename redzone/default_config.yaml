@@ -45,6 +45,15 @@ score:
   league_weight: {nfl: 1.15, cfb: 1.10, nba: 1.05, cbb: 1.0, nhl: 0.95, mlb: 0.9, wcbb: 0.9}
   personal_cap: 30
   smoothing_half_life_s: 30
+  v2:                      # learned hype (redzone/scoring/hype_model.json; retrain: scripts/train_hype.py)
+    enabled: true
+    leagues: [nfl, nba]    # leagues scored by v2 (base leagues: nba covers college hoops, nfl covers CFB)
+    blend: {nfl: 1.0, nba: 0.5, nhl: 0.5, mlb: 1.0}  # per league: 1 = the model's score, 0 = the old hand-tuned score
+    crunch_floor: true     # crunch time never scores below the old crunch value
+    crunch_min: 60         # ...and is lifted into [crunch_min, 100] (crunch time first)
+    noncrunch_cap: 100     # ...and nothing outside crunch time scores above this
+    quiet_grace_s: {nfl: 240, nba: null, nhl: 180, mlb: 300}  # a feed showing nothing new this long (null: never)
+    quiet_fade_s: 300      # (outside a long break) fades out over this long: stuck feed or unlogged stoppage
   stakes:
     both_good_pct: 0.600
     both_good: 0.08
@@ -66,6 +75,9 @@ score:
     # ...times this per league, in your order: Commanders > UNC football > Wizards > UNC hoops >
     # Capitals > Nationals.
     my_team_league: {nfl: 1.0, cfb: 0.92, nba: 0.84, cbb: 0.78, wcbb: 0.6, nhl: 0.72, mlb: 0.64}
+    my_team_floor: 50      # hype v2: your team's live game never scores below this (garbage time excepted)...
+    my_team_late_floor: 85 # ...nor below this late (Q4/P3/H2/7th+) while still competitive
+    my_team_late_k: 0.55   # "competitive" = closeness at least this (NBA within 12, NFL within 16, NHL within 2)
     bet_max: 20
     fantasy_mine: 12
     fantasy_opponent: 8
@@ -141,6 +153,8 @@ decider:
     personal_lead: 5       # your team / bet wins an overlap when its boost is this much bigger
     hop_min_break_s: 20    # hop to another live crunch only if this one's stoppage has this much left
     replays: true          # replays from other games during crunch stoppages, if surely back for the snap
+    visit_needs_exit: true # a crunch game's break: only visit games whose delay is calibrated
+    keep_over_noncrunch: true  # a crunch game is never left by a "better game" switch for a non-crunch one
     shortest_break_s:      # ~10th pct, stoppage -> next scrimmage play logged, late Q4/OT, 2025 games
       {timeout: 30, injury: 27, review: 80, score_break: 110, two_minute_warning: 150, end_period: 180}
 
@@ -204,6 +218,9 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   clip_s: 15               # how long each replay plays
   seek_s: 6                # time spent rewinding to the play
   instant_window_s: 900    # when everything's on a break, re-show great plays from the last 15 min
+  mine_bonus: 25          # your team's (or bet's) missed play is worth this much more, close game or not...
+  mine_bonus_leagues: [nfl]  # ...in these leagues (in hockey it cost neutral crunch time)
+  mine_first: true         # ...and goes ahead of neutral catch-ups in the queue
   seek_key: KEYCODE_MEDIA_REWIND
   seek_step_s: 10          # seconds per rewind press (measure on your stick in the Screen Lab)
 

@@ -172,6 +172,7 @@ class Missed:
     value: float              # how much you'd want to see it (0-100)
     seen_live: bool = False   # True = "instant replay" of something you did see
     replayed: bool = False
+    mine: bool = False        # your team's (or bet's) game: shown before neutral catch-ups
 
     def back_s(self, now: float, delay_mu: float, play_len: float, lead_s: float = 3.0) -> float:
         """How far to rewind from the live edge (which shows real time now - delay)."""
@@ -422,8 +423,12 @@ class Decider:
                     continue
                 kind = e.play_kind if e.play_kind in REPLAY_BASE else ("td" if "touchdown" in e.label.lower() else
                                                              "turnover" if "intercept" in e.label.lower() else "other")
-                value = REPLAY_BASE.get(kind, 40) + min(25.0, x.scored.personal)
-                m = Missed(gid, e.pid or e.label, e.label, kind, e.seen, value, seen_live=seen)
+                # Your team's (or bet's) missed play keeps its full boost even when the game isn't
+                # close: the boost scales with closeness, but you still want to see your team score.
+                mine = self.cfg.get("replay.mine_bonus", 25.0) if x.scored.tags and x.scored.league.base.value \
+                    in (self.cfg.get("replay.mine_bonus_leagues") or []) else 0.0
+                value = REPLAY_BASE.get(kind, 40) + max(min(25.0, x.scored.personal), mine)
+                m = Missed(gid, e.pid or e.label, e.label, kind, e.seen, value, seen_live=seen, mine=bool(mine))
                 if seen:
                     self.done_replays.append(m)  # eligible only as an "instant replay" when all else is dead
                 elif self._replayable(x):
@@ -469,7 +474,10 @@ class Decider:
 
         def rank(m: Missed) -> tuple:
             # Earliest deadline first among last chances (a fresh TD can wait; they can't), else value.
-            return (1, -m.t) if self._urgency(m, now) > 0 else (0, self._replay_value(m, now))
+            # Your team's missed plays go first: a stale neutral field goal shouldn't push your
+            # team's touchdown out of the window (CLE @ CHI: two WSH plays lost that way).
+            mine = 1 if m.mine and not m.seen_live and self.cfg.get("replay.mine_first", True) else 0
+            return (mine, 1, -m.t) if self._urgency(m, now) > 0 else (mine, 0, self._replay_value(m, now))
         return max(pool, key=rank, default=None)
 
     def _break_remaining(self, gid: str, cands, now: float) -> float:
@@ -863,6 +871,13 @@ class Decider:
                         cands[prev].scored.score >= b.scored.score - margin:
                     return Decision(now, "switch", prev, self._why(cands[prev], "moment's over, back to"),
                                     state, gate_txt, kind="return")
+
+        # Crunch time is only given up for crunch time (handled above) or your focus game: with
+        # learned hype, your team's late floor (85) outscored a neutral crunch at its timeout, and
+        # we left BKN @ CLE with 0:26 left for WSH up 11 (Oct 24: 10 crunch plays missed).
+        if s_cur.crunch and not b.scored.crunch and best != self.user.focus_game \
+                and c.get("decider.crunch.keep_over_noncrunch", True):
+            return Decision(now, "stay", self.current, f"crunch time: {s_cur.reason}", state, gate_txt)
 
         needed = margin + cost
         if s_cur.lock:
@@ -1517,6 +1532,10 @@ class Decider:
         if not self.cfg.get("decider.sticky_visit_needs_calibration", True):
             return False
         x = watchable.get(home)
+        if x is not None and x.scored.crunch and self.cfg.get("decider.crunch.visit_needs_exit", True):
+            # A crunch home's break (a score with 0:33 left): an uncalibrated visit can only be left
+            # at an official break, and we sat out NYG @ CHI's whole final 1:41 on one (Oct 2025 slate).
+            return True
         return home == self.user.focus_game or (
             x is not None and x.scored.personal >= self.cfg.get("decider.crunch.hold_personal", 5))
 

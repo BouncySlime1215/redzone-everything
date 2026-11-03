@@ -640,3 +640,28 @@ def test_your_team_late_and_close_is_never_left_for_a_lesser_game():
     assert not d._mine_late(NS(late=False, garbage=False, personal=25.0, closeness=1.0))   # not late yet
     assert not d._mine_late(NS(late=True, garbage=True, personal=25.0, closeness=0.1))     # garbage time
     assert not d._mine_late(NS(late=True, garbage=False, personal=0.0, closeness=0.9))     # not your team
+
+
+def test_your_teams_missed_play_goes_before_neutral_catch_ups(dec, clock):
+    # CLE @ CHI slate: stale neutral field goals (urgent, about to expire) pushed WSH's fumble and
+    # touchdown out of the catch-up window. Your team's missed play now goes first.
+    now = clock.t
+    mine = Missed("w", "td1", "TD", "td", now - 60, 100, mine=True)
+    old_fg = Missed("b", "fg1", "FG", "fg", now - 1700, 35)
+    dec.queue = [old_fg, mine]
+    assert dec._best_replay(cands(w=10, b=10), now, None, False) is mine
+    dec.cfg.data["replay"]["mine_first"] = False
+    assert dec._best_replay(cands(w=10, b=10), now, None, False) is old_fg
+
+
+def test_crunch_time_is_not_left_for_a_higher_scoring_non_crunch_game(dec, clock):
+    for g in "ab":
+        calibrate(dec, f"youtubetv:{g}")
+    crunch = sc("a", 60)
+    crunch.crunch = True
+    start_on(dec, clock, "a", {"b": 10})
+    d = dec.decide(cands(a=crunch, b=95))   # b: your team late, floored at 85+, but not crunch
+    assert d.action == "stay" and d.target == "a", d
+    dec.cfg.data["decider"]["crunch"]["keep_over_noncrunch"] = False
+    d = dec.decide(cands(a=crunch, b=95))
+    assert d.action == "switch" and d.target == "b", d   # the old rule: a big enough lead wins

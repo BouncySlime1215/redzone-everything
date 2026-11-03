@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from redzone.models import PERIOD_S, REAL_BREAKS, REGULATION, ByLeague, GameState, League, Phase, Stoppage, pro_period
 from redzone.scoring import garbage
+from redzone.scoring.features import LONG_BREAKS, Tracker, features
+from redzone.scoring.hype import HypeModel, top_phrases
 from redzone.scoring.brain import Brain
 
 # --- closeness: how competitive the score is, 0..1 --------------------------
@@ -79,6 +81,31 @@ def crunch_time(g: GameState) -> bool:
     if g.league == League.MLB:
         return q >= 10 or (q >= 8 and abs(d) <= 2)
     return False
+
+
+def _per_league(v, league: League, default: float) -> float | None:
+    """A setting given as one number or per league ({nfl: 1.0, nba: 0.5}; a league not listed
+    gets `default`). An explicit null means "off" (None); a value that isn't a number is ignored
+    (default), so one bad setting can't break scoring."""
+    if isinstance(v, dict):
+        if league.base.value in v and v[league.base.value] is None:
+            return None
+        v = v.get(league.base.value, v.get("default", default))
+    if v is None:
+        return default
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def normalize(g: GameState) -> GameState:
+    """College halftime can arrive as "period 2, 0:00" (OSU@BYU, Nov 2): that is the END OF THE 1ST
+    HALF, not the end of the game. Scoring it as the final buzzer made it 90 "last-shot possession"."""
+    if (g.stoppage == Stoppage.HALFTIME and REGULATION[g.league] == 2 and (g.period or 0) == 2
+            and not g.clock_s):
+        return replace(g, period=1, clock_s=0.0)
+    return g
 
 
 # --- per-game memory (runs, WP swings, smoothing) ---------------------------
@@ -166,6 +193,8 @@ class Scored:
     crunch: bool = False    # crunch time (see crunch_time); unlike lock, kept through breaks
     factor: str = ""        # short human reason for the single biggest factor right now
     factors: dict[str, float] = field(default_factory=dict)  # context points by name (debug/UI)
+    hype_p: float | None = None  # v2: chance of a key moment in the next ~2 min (None = model off)
+    legacy: float | None = None  # the hand-tuned moment score v2 replaced (debug/compare)
     brain: dict = field(default_factory=dict)  # learned brain's reading (hotness, key/break odds, reasons)
 
     @property
@@ -189,6 +218,9 @@ class Scorer:
         self._clock = clock
         self.hist: dict[str, History] = {}
         self._live_leagues: dict[str, float] = {}   # league -> last time one of its games was live
+        self.track: dict[str, Tracker] = {}
+        self.moments: dict = {}   # game_id -> contracts.moment.MomentPrediction from the last v2 score
+        self.v2: HypeModel | None = HypeModel.load() if cfg.get("score.v2.enabled", True) else None
         # The learned brain (redzone/scoring/brain.py): read every poll while brain.enabled is on;
         # with it off or a league unmodeled, scores are the hand-written ones, unchanged.
         self.brain = brain if brain is not None else Brain()
@@ -199,6 +231,7 @@ class Scorer:
     def score(self, g: GameState, me: Personal | None = None) -> Scored:
         me = me or Personal()
         now = self._clock()
+        g = normalize(g)
         c = self.cfg
         h = self.hist.setdefault(g.game_id, History())
         h.observe(g, now, c.get("score.nfl.wp_swing.threshold", 0.15))
@@ -242,7 +275,29 @@ class Scorer:
 
         lw = self._league_weight(g.league, now)
         factors["league"] = lw
-        raw = min(100.0, c.get("score.neutral_cap", 0.9) * min(100.0, m * s * lw) + p)
+        hype = min(100.0, m * s)
+        hype_p = legacy = None
+        # Hype v2 per league: a league not in score.v2.leagues gets the old score, floors and all off.
+        v2_on = self.v2 is not None and g.league.base.value in (c.get("score.v2.leagues") or [])
+        if v2_on:
+            hype, hype_p, legacy, why = self._v2(g, h, hype, now)
+            for w, phrase in why:
+                # The model's top drivers join the reason, ranked just under the hand-written
+                # story phrases (comeback, upset, last shot) so those still lead when present.
+                parts.append((12 + 4 * min(w, 1.4), phrase))
+                factors[f"v2:{phrase}"] = round(w, 2)
+            # Your league order applies to the learned score too (after its crunch/garbage rules).
+            hype = min(100.0, hype * lw)
+        else:
+            hype = min(100.0, m * s * lw)
+        raw = min(100.0, c.get("score.neutral_cap", 0.9) * hype + p)
+        if v2_on and not h.garbage and g.involves(me.my_teams.get(g.league, set())):
+            # Your team comes first unless the game is decided: a floor, not just a boost, so a
+            # coin-flip neutral game can't take the TV from a live your-team game (crunch time
+            # elsewhere still can early on, and the decider still visits others at your breaks).
+            late_close = is_late(g) and k >= c.get("score.personal.my_team_late_k", 0.55)
+            raw = max(raw, c.get("score.personal.my_team_late_floor", 85) if late_close
+                      else c.get("score.personal.my_team_floor", 50))
         # Fast attack, slow release: jump up instantly, drift down with a half-life.
         hl = c.get("score.smoothing_half_life_s", 30)
         decayed = h.shown * 0.5 ** ((now - h.shown_at) / hl) if h.shown_at else 0.0
@@ -258,6 +313,7 @@ class Scorer:
                       is_break, None if is_break else lock, pre, k, garbage=h.garbage, crunch=crunch_time(g),
                       late=is_late(g),
                       factor="garbage time" if h.garbage else factor, factors=factors,
+                      hype_p=hype_p, legacy=legacy,
                       brain=reading.as_dict() if reading is not None and reading.hotness is not None else {})
 
     LEAGUE_LIVE_S = 300.0   # a league counts as "on tonight" this long after its last live game
@@ -277,6 +333,46 @@ class Scorer:
         on = [n for n, t in self._live_leagues.items() if now - t <= self.LEAGUE_LIVE_S]
         top = max((w(n) for n in on), default=w(league.value))
         return w(league.value) / top if top > 0 else 1.0
+
+    def _v2(self, g: GameState, h: History, legacy: float, now: float):
+        """The learned score: (hype 0-100, key-moment probability, legacy score, top drivers).
+        Hard rules stay on top of the model: garbage time can only lower a game (a decided game
+        never climbs back on the model's say-so), and crunch time never scores below the old
+        crunch value (the decider's crunch logic keys off it)."""
+        c = self.cfg
+        tr = self.track.setdefault(g.game_id, Tracker())
+        tr.observe(g, now)
+        x = features(g, tr, now, is_garbage=h.garbage, legacy=legacy)
+        prob, contrib = self.v2.predict(g.league, x)
+        model = self.v2.to_score(prob, g.league)
+        a = _per_league(c.get("score.v2.blend", 1.0), g.league, 1.0)
+        a = 1.0 if a is None else max(0.0, min(1.0, a))
+        hype = a * model + (1 - a) * legacy
+        if h.garbage:
+            hype = min(hype, legacy)
+        elif c.get("score.v2.crunch_floor", True) and crunch_time(g):
+            # Crunch time first: lifted into [crunch_min, 100], keeping the order WITHIN crunch time
+            # (the ball at the 8 still beats the ball at your own 20).
+            lo = c.get("score.v2.crunch_min", 0)
+            hype = lo + (100.0 - lo) * max(hype, legacy) / 100.0
+        else:
+            # Crunch time first: nothing outside crunch time outranks the crunch floor.
+            hype = min(hype, c.get("score.v2.noncrunch_cap", 100))
+        # Decay a game whose feed has gone quiet outside a long break (stuck feed, unlogged delay).
+        quiet = now - (tr.changed_at or now)
+        grace = _per_league(c.get("score.v2.quiet_grace_s"), g.league, 240.0)
+        # grace null = no fade in that league (NBA: the fade on its own cost 1 crunch big play
+        # and 10 crunch plays on the 14-night card; basketball feeds log every possession anyway).
+        if grace is not None and quiet > grace and g.stoppage not in LONG_BREAKS:
+            hype *= max(0.1, 1 - (quiet - grace) / c.get("score.v2.quiet_fade_s", 300))
+        why = [] if h.garbage else top_phrases(contrib, x)
+        hype = max(0.0, min(100.0, hype))
+        from redzone.contracts.moment import MomentPrediction
+        self.moments[g.game_id] = MomentPrediction(
+            g.game_id, now, hotness=round(hype, 1), key_soon_p=round(prob, 4), break_soon_p=None,
+            horizon_s=float(self.v2.horizon_s), home_wp=g.home_win_prob,
+            reasons=tuple(p for _, p in why), model_version=f"hype-v{self.v2.data.get('version', 2)}")
+        return hype, round(prob, 4), round(legacy, 1), why
 
     def _stakes(self, g: GameState) -> float:
         c = self.cfg
