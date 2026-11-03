@@ -61,7 +61,7 @@ _STATE_RE = re.compile(r"state=PlaybackState \{state=(?:[A-Z_]+\()?(\d+)\)?, pos
 _UPDATED_RE = re.compile(r"\bupdated=(-?\d+)")
 OCR_FALLBACK = os.environ.get("RZ_OCR_FALLBACK", "1").strip().lower() not in ("0", "off", "false", "no")
 _OCR_PROMPTS = ("who's watching", "who is watching", "choose a profile", "choose your profile",
-                "select a profile", "select your profile", "are you still watching")
+                "select a profile", "select your profile", "are you still watching", "still there")
 
 
 def _ocr_prompt(text: str) -> bool:
@@ -100,6 +100,9 @@ class Stick:
     _session: AdbShell | None = field(default=None, repr=False, compare=False)
     # Sees every playback report this stick gives (the boundary watcher times show changes with them).
     observer: Callable[["Stick", dict], None] | None = field(default=None, repr=False, compare=False)
+    # Where the last screen_text() came from: "ui" (uiautomator) or "ocr" (a screenshot: the app
+    # draws its own UI, so its controls can only be read and driven from pixels).
+    screen_source: str = field(default="", repr=False, compare=False)
 
     @property
     def controllable(self) -> bool:
@@ -290,11 +293,13 @@ class Stick:
                 log.debug("OCR fallback failed on %s", self.name or self.host, exc_info=True)
                 seen = ""
             if _ocr_prompt(seen):
+                self.screen_source = "ocr"
                 return seen
+        self.screen_source = "ui"
         return text
 
-    async def ocr_text(self) -> str:
-        """Text in a fresh screenshot, by the Mac's local Vision OCR. '' if it can't be read."""
+    async def screenshot(self, path: str) -> bool:
+        """Save a PNG of the screen to `path` (read-only: screencap never changes the screen)."""
         proc = await asyncio.create_subprocess_exec(
             ADB, "-s", self.host, "exec-out", "screencap", "-p",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
@@ -304,13 +309,19 @@ class Stick:
             _close_proc(proc)
             raise
         if proc.returncode or not png.startswith(b"\x89PNG\r\n\x1a\n"):
-            return ""
+            return False
+        with open(path, "wb") as f:
+            f.write(png)
+        return True
+
+    async def ocr_text(self) -> str:
+        """Text in a fresh screenshot, by the Mac's local Vision OCR. '' if it can't be read."""
         import tempfile
         from redzone.screen_ocr import recognize
         with tempfile.TemporaryDirectory(prefix="rz-ocr-") as d:
             path = os.path.join(d, "screen.png")
-            with open(path, "wb") as f:
-                f.write(png)
+            if not await self.screenshot(path):
+                return ""
             result = await asyncio.to_thread(recognize, path, timeout=8.0)
         return " | ".join(row.text for row in result.observations) if result.read_ok else ""
 
