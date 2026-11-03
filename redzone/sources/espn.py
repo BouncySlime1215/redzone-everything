@@ -58,6 +58,12 @@ def _int(v) -> int | None:
         return None
 
 
+def _play_score(p: dict) -> tuple[int, int] | None:
+    """(home, away) after this play, as the play-by-play logs it."""
+    hs, as_ = _int(p.get("homeScore")), _int(p.get("awayScore"))
+    return None if hs is None or as_ is None else (hs, as_)
+
+
 def _ts(iso: str | None) -> float | None:
     if not iso:
         return None
@@ -434,9 +440,9 @@ def parse_summary(league: League, data: dict, upto: int | None = None,
 
     seen = _ts(p.get("wallclock"))
     g.last_play = Play(str(p.get("id") or len(cut)), p.get("text") or _get(p, "type", "text") or "",
-                       _kind(league, p), bool(p.get("scoringPlay")), seen, seen, "espn")
+                       _kind(league, p), bool(p.get("scoringPlay")), seen, seen, "espn", score=_play_score(p))
     g.recent_plays = [Play(str(x.get("id")), x.get("text") or "", _kind(league, x), bool(x.get("scoringPlay")),
-                           _ts(x.get("wallclock"))) for x in cut[-8:]]
+                           _ts(x.get("wallclock")), score=_play_score(x)) for x in cut[-8:]]
 
     if league == League.NFL:
         _nfl_situation(g, p, ids)

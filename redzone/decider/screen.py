@@ -71,6 +71,11 @@ SETTLED_DRIFT_S = 4.0          # settled delays proved stable: doubt grows to at
 # late. Each sample counts with this sigma; one alone never narrows the interval below the default.
 BOUNDARY_SIGMA_S = 6.0
 BOUNDARY_MIN_SAMPLES = 2
+# Delay measured from the broadcast's own score bug (redzone/screen/scorebug.py): the first frame
+# showing a new score, against the feed wallclock of the play that made it. Frame-accurate to half
+# the ~2 s capture gap, so stronger than a tap: this many agreeing samples (pooled with any taps)
+# lower the floor to SCREEN_SIGMA_S and settle the app on their own.
+SCREEN_SIGMA_S = 3.0
 
 
 @dataclass
@@ -79,7 +84,7 @@ class Delay:
     sigma: float
     calibrated_at: float | None = None
     samples: deque = field(default_factory=lambda: deque(maxlen=TAP_KEEP))
-    source: str = "default"    # "tap" (this channel) | "app" (another channel of the same app) | "boundary" | "default"
+    source: str = "default"    # "tap" | "screen" (this channel) | "app" (another channel of the same app) | "boundary" | "default"
     drift_cap: float = 6.0
     live: float | None = None  # this tune's own delay from the channel's stream origin (boundary.py)
 
@@ -121,6 +126,7 @@ class DelayBook:
         self.book: dict[str, Delay] = {}
         self.taps: dict[str, list[tuple[float, float]]] = {}   # target -> [(ts, sample)]
         self.bounds: dict[str, list[tuple[float, float]]] = {}  # target -> [(ts, sample)] from show changes
+        self.screens: dict[str, list[tuple[float, float]]] = {}  # target -> [(ts, sample)] from the score bug
         self.live: dict[str, float] = {}                         # target -> this tune's delay (origin model)
 
     @staticmethod
@@ -128,7 +134,17 @@ class DelayBook:
         return target.split(":", 1)[0]
 
     def _app_taps(self, app: str) -> list[tuple[float, float]]:
-        return [x for t, v in self.taps.items() if self.app(t) == app for x in v]
+        """Direct measurements for this app: taps and score-bug samples, all its channels."""
+        return [x for d in (self.taps, self.screens) for t, v in d.items() if self.app(t) == app for x in v]
+
+    def _own(self, target: str) -> list[tuple[float, float]]:
+        return (self.taps.get(target) or []) + (self.screens.get(target) or [])
+
+    def _floor(self, pool: list[tuple[float, float]]) -> float:
+        """The tap floor, or the score-bug floor once enough of the recent pool came from the bug."""
+        screen = {x for v in self.screens.values() for x in v}
+        n = sum(1 for x in sorted(pool)[-TAP_KEEP:] if x in screen)
+        return SCREEN_SIGMA_S if n >= SETTLED_SAMPLES else MIN_TAP_SIGMA_S
 
     def get(self, target: str) -> Delay:
         if target not in self.book:
@@ -138,20 +154,20 @@ class DelayBook:
 
     def _refresh(self, target: str) -> None:
         d, now = self.book[target], self._clock()
-        own = self.taps.get(target) or []
+        own = self._own(target)
         taps = own or self._app_taps(self.app(target))
         if not taps:
             self._refresh_boundary(target)   # taps win; without any, show changes may measure it
             return
         mu, spread, newest = _estimate(taps, now)
-        sigma = max(MIN_TAP_SIGMA_S, spread)   # contradicting taps widen the interval
+        sigma = max(self._floor(taps), spread)   # contradicting taps widen the interval
         age = now - newest
         if age > STALE_TAP_S:
             sigma += STALE_MARGIN_S
         elif not own or age > CROSS_NIGHT_S:
             sigma += SHARED_MARGIN_S
         d.mu, d.sigma, d.calibrated_at = mu, sigma, newest
-        d.source = "tap" if own else "app"
+        d.source = ("tap" if self.taps.get(target) else "screen") if own else "app"
         d.samples.clear()
         d.samples.extend(x for _, x in sorted(taps)[-TAP_KEEP:])
         d.drift_cap = SETTLED_DRIFT_S if self.settled(self.app(target)) else 6.0
@@ -199,6 +215,14 @@ class DelayBook:
         self._refresh_app(self.app(target))
         return d
 
+    def screen(self, target: str, sample_s: float, ts: float | None = None) -> Delay:
+        """One delay sample from the score bug: a new score's first frame minus its play's wallclock."""
+        d = self.get(target)
+        if not self._add(target, self._clock() if ts is None else ts, sample_s, self.screens):
+            return d
+        self._refresh_app(self.app(target))
+        return d
+
     def set_live(self, target: str, delay_s: float | None) -> None:
         """This tune's own delay from the channel's stream origin, or None when it's unknown."""
         if delay_s is None:
@@ -215,7 +239,7 @@ class DelayBook:
                 self._refresh(t)
 
     def settled(self, app: str) -> bool:
-        """Enough recent, agreeing taps for this app that asking for more is just nagging."""
+        """Enough recent, agreeing taps (or score-bug samples) for this app that asking for more is nagging."""
         taps = sorted(self._app_taps(app))[-TAP_KEEP:]
         if len(taps) < SETTLED_SAMPLES or self._clock() - taps[-1][0] > STALE_TAP_S:
             return False
@@ -224,7 +248,7 @@ class DelayBook:
 
     def measured(self, target: str) -> bool:
         """This channel was tapped itself, or its app is settled: no need to ask for a tap."""
-        return bool(self.taps.get(target)) or self.settled(self.app(target))
+        return bool(self._own(target)) or self.settled(self.app(target))
 
     def _add(self, target: str, ts: float, sample_s: float, into: dict | None = None) -> bool:
         into = self.taps if into is None else into
@@ -236,15 +260,16 @@ class DelayBook:
 
     def load(self, rows) -> int:
         """Samples remembered from earlier runs: (ts, target, sample[, kind]) rows from the store.
-        kind 'tap' ("I just saw it"; older rows have none) or 'boundary' (a show change)."""
+        kind 'tap' ("I just saw it"; older rows have none), 'boundary' (a show change) or 'screen'
+        (the score bug)."""
         cutoff, n = self._clock() - TAP_HISTORY_S, 0
         for row in rows:
             ts, target, sample = row[:3]
             kind = (row[3] if len(row) > 3 else None) or "tap"
-            into = {"tap": self.taps, "boundary": self.bounds}.get(kind)
+            into = {"tap": self.taps, "boundary": self.bounds, "screen": self.screens}.get(kind)
             if into is not None and ts is not None and ts >= cutoff and target and sample is not None:
                 n += self._add(str(target), float(ts), float(sample), into)
-        for app in {self.app(t) for t in (*self.taps, *self.bounds)}:
+        for app in {self.app(t) for t in (*self.taps, *self.bounds, *self.screens)}:
             self._refresh_app(app)
         return n
 
@@ -329,6 +354,7 @@ class Event:
     pid: str = ""
     play_kind: str = ""
     spread: float = 0.0  # unsure by this much: it happened in [seen - spread, seen]
+    score: tuple[int, int] | None = None  # "score" events: (home, away) right after the play
 
     @property
     def lo(self) -> float:
@@ -342,6 +368,7 @@ class Timeline:
         self.league = league
         self._clock = clock
         self.events: deque[Event] = deque(maxlen=200)
+        self.scores: deque[Event] = deque(maxlen=60)   # score changes (kind "score"), oldest first
         self._seen_ids: deque[str] = deque(maxlen=400)
         self._last_score: tuple | None = None
         self._stopped = False
@@ -378,6 +405,7 @@ class Timeline:
         new = [p for p in plays if p.id and p.id not in self._seen_ids]
         first_poll = not self._seen_ids
         action = [p for p in new if not _is_marker(p.kind, self.league)]
+        scorers = [p for p in new if p.scoring]
         for p in action:
             # First poll: skip history, but keep plays recent enough to still be airing
             # (an opening-kickoff return TD is in the very first poll of a game).
@@ -391,6 +419,16 @@ class Timeline:
             if p.wallclock and prev_fresh is not None and not first_poll:
                 # It wasn't in the data at the last fresh poll, so the feed ran at least this far behind.
                 self._lags.append(min(45.0, max(0.0, prev_fresh - p.wallclock)))
+        for p in scorers:
+            # Every score change with its feed time, free throws included (they're dead-ball markers
+            # above), for timing the broadcast's score bug (redzone/screen/scorebug.py).
+            sc = p.score
+            if sc is None and len(scorers) == 1 and None not in score:
+                sc = score   # the poll's only new score: the game's score is what it made
+            if sc is not None and not (first_poll and _t(p, now) < now - FIRST_POLL_RECENT_S):
+                lo, hi = _bounds(p, now, prev_fresh)
+                self.scores.append(Event(hi, "score", (p.text or p.kind)[:80], pid=p.id, play_kind=p.kind,
+                                         spread=hi - lo, score=tuple(sc)))
         for p in new:
             self._seen_ids.append(p.id)
         if not new and self._last_score is not None and score != self._last_score and None not in score:

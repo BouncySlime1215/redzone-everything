@@ -80,6 +80,7 @@ class Play:
     wallclock: float | None = None # when it happened, per the feed (epoch s)
     seen_at: float | None = None
     source: str = ""
+    score: tuple[int, int] | None = None  # (home, away) right after this play, when the feed says
 
 
 @dataclass

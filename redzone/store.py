@@ -36,7 +36,7 @@ class Store:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.executescript(SCHEMA)
         cols = {r[1] for r in self._db.execute("PRAGMA table_info(calibrations)")}
-        if "kind" not in cols:   # 'tap' ("I just saw it") | 'boundary' (a show change, measured automatically)
+        if "kind" not in cols:   # 'tap' ("I just saw it") | 'boundary' (a show change) | 'screen' (the score bug)
             self._db.execute("ALTER TABLE calibrations ADD COLUMN kind TEXT DEFAULT 'tap'")
         self._lock = threading.Lock()
 
