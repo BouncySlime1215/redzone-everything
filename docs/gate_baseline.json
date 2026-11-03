@@ -1,0 +1,171 @@
+{
+ "note": "Today = codex/resume-redzone 5f0e6a1 on the held-out slice of eval-data-v1 (scripts/ci_scorecard.py --nfl-n 2 --nights 4). The release gate never lets entries mid-play rise above these.",
+ "cards": {
+  "nfl": {
+   "metrics": {
+    "mid_play_cuts": 0,
+    "dead_air_pct": 10.7,
+    "big_seen_pct": 97.4,
+    "big_live_pct": 24.0,
+    "crunch_live_pct": 69.9,
+    "your_team_crunch_live_pct": 0.0,
+    "your_team_big_seen_pct": 100.0,
+    "switches_per_hour": 38.5,
+    "tuning_blackout_s": 1370.0,
+    "tuning_blackout_pct": 5.3,
+    "nfl_drive_live_pct": 12.7,
+    "behind_live_pct": 31.8,
+    "big_missed_on_replay": 48,
+    "big_plays": 192,
+    "crunch_plays": 83,
+    "entries": 72,
+    "entries_mid_play": 0,
+    "entries_in_break": 25,
+    "entry_wait_s": 23.1,
+    "plays_missed_entry": 0,
+    "plays_missed_per_entry": 0.0,
+    "leaves": 73,
+    "leaves_in_dead_pct": 79.5,
+    "leaves_between_plays": 15,
+    "entry_rewinds": 35,
+    "entry_rewind_s": 31.1,
+    "seconds": 7
+   }
+  },
+  "nba": {
+   "metrics": {
+    "league": "nba",
+    "games": 24,
+    "mid_play_cuts": 0,
+    "dead_air_pct": 24.6,
+    "big_seen_pct": 100.0,
+    "big_live_pct": 100.0,
+    "crunch_live_pct": 94.4,
+    "your_team_crunch_live_pct": 0.0,
+    "tuning_blackout_s": 135.0,
+    "tuning_blackout_pct": 0.1,
+    "switches_per_hour": 1.0,
+    "big_plays": 16,
+    "crunch_plays": 179,
+    "entries": 20,
+    "entries_mid_play": 10,
+    "entries_in_break": 8,
+    "entry_wait_s": 61.9,
+    "plays_missed_entry": 3,
+    "plays_missed_per_entry": 0.15,
+    "leaves": 23,
+    "leaves_in_dead_pct": 100.0,
+    "leaves_between_plays": 0,
+    "entry_rewinds": 0,
+    "entry_rewind_s": 0.0,
+    "seconds": 10
+   }
+  },
+  "nhl": {
+   "metrics": {
+    "league": "nhl",
+    "games": 29,
+    "mid_play_cuts": 0,
+    "dead_air_pct": 26.4,
+    "big_seen_pct": 99.0,
+    "big_live_pct": 42.3,
+    "crunch_live_pct": 91.1,
+    "your_team_crunch_live_pct": 100.0,
+    "tuning_blackout_s": 1395.0,
+    "tuning_blackout_pct": 1.2,
+    "switches_per_hour": 4.6,
+    "big_plays": 208,
+    "crunch_plays": 235,
+    "entries": 140,
+    "entries_mid_play": 2,
+    "entries_in_break": 68,
+    "entry_wait_s": 79.7,
+    "plays_missed_entry": 0,
+    "plays_missed_per_entry": 0.0,
+    "leaves": 140,
+    "leaves_in_dead_pct": 100.0,
+    "leaves_between_plays": 0,
+    "entry_rewinds": 69,
+    "entry_rewind_s": 44.5,
+    "seconds": 11
+   }
+  },
+  "demo_20261101": {
+   "metrics": {
+    "window": "12:52 PM \u2013 11:36 PM ET",
+    "mid_play_cuts": 0,
+    "mid_play_cut_list": [],
+    "commercial_pct": 15.7,
+    "nfl_big_plays": {
+     "seen": "137/137 (100%)",
+     "live": 72,
+     "replay": 65,
+     "on_redzone": 0
+    },
+    "nhl_goals": {
+     "seen": "36/36 (100%)",
+     "live": 11,
+     "replay": 25
+    },
+    "crunch_live": "104/137 (76%)",
+    "your_teams_crunch": {
+     "Commanders": "no crunch time (not close late) \u00b7 PHI @ WSH",
+     "Wizards": "no game that day",
+     "Capitals": "no crunch time (not close late) \u00b7 MIN @ WSH"
+    },
+    "replays": 102,
+    "nfl_drive_live": "198/859 (23%)",
+    "nfl_drive_missed_on_other_sport": 49,
+    "nfl_drive_on_redzone": 193,
+    "behind_live_min": 70.3,
+    "behind_live_pct": 10.9,
+    "big_missed_on_replay": 16,
+    "switches": 392,
+    "switches_per_hour": 36.5,
+    "preload": {
+     "switches": 392,
+     "hits": 191,
+     "hit_rate": 48.7,
+     "still_loading": 3,
+     "preloads": 426,
+     "breaks_filled": "65/158",
+     "break_fill_rate": 41.1,
+     "seconds_to_picture": {
+      "prime": {
+       "switches": 8,
+       "mean_s": 4.2,
+       "instant": 6
+      },
+      "youtubetv": {
+       "switches": 384,
+       "mean_s": 3.0,
+       "instant": 384
+      }
+     }
+    },
+    "cut_timing": {
+     "entries": 183,
+     "entries_mid_play": 2,
+     "entries_in_break": 77,
+     "entry_wait_s": 21.1,
+     "plays_missed_entry": 0,
+     "plays_missed_per_entry": 0.0,
+     "leaves": 183,
+     "leaves_in_dead_pct": 68.9,
+     "leaves_between_plays": 57,
+     "entry_rewinds": 84,
+     "entry_rewind_s": 38.0
+    },
+    "dead_air_causes": {
+     "sat through it": "28 min",
+     "slow to leave (delay margin)": "19 min",
+     "alone: one game on, nothing else to show": "17 min",
+     "landed in it (home)": "16 min",
+     "landed in it (chase)": "6 min",
+     "landed in it (crunch)": "5 min",
+     "landed in it (live)": "1 min"
+    }
+   }
+  }
+ }
+}

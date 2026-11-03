@@ -303,7 +303,7 @@ class Scorer:
                       factor="garbage time" if h.garbage else factor, factors=factors,
                       crunch_now=crunch_window(g),
                       imminent=h.imminent_at is not None
-                      and now - h.imminent_at <= c.get("score.nhl.imminent_hold_s", 30),
+                      and now - h.imminent_at <= c.get("score.nhl.imminent_hold_s", -1),
                       brain=reading.as_dict() if reading is not None and reading.hotness is not None else {},
                       reasoner=rr.as_dict() if rr is not None and rr.p is not None else {})
 

@@ -162,6 +162,10 @@ class BoundaryWatcher:
     estimate: Callable[[str], tuple[float, float]]
     on_sample: Callable[[Sample], None] = lambda s: None
     on_live: Callable[[str, float | None], None] = lambda t, d: None
+    # [auto sync] every playing read with the stick clock pinned: (target, wall, stream position s, sd);
+    # and a new tune or a seek on a stick: (target, wall). Both feed the per-channel filter (sync.py).
+    on_position: Callable[[str, float, float, float], None] = lambda t, w, p, sd: None
+    on_tune: Callable[[str, float], None] = lambda t, w: None
     clock: Callable[[], float] = time.time
     mono: Callable[[], float] = time.monotonic
     last: dict = field(default_factory=dict)        # stick key -> last Read
@@ -183,6 +187,7 @@ class BoundaryWatcher:
         clk = self.clocks.setdefault(key, StickClock())
         clk.note(prev, cur)
         self.last[key] = cur
+        self._sync(prev, cur, clk)
         out = None
         if prev is not None and is_show_change(prev.title, cur.title):
             out = self._flip(prev, cur, clk)
@@ -232,6 +237,24 @@ class BoundaryWatcher:
                  a.title, b.title)
         self.on_sample(s)
         return s
+
+    def _sync(self, prev: "Read | None", cur: Read, clk: StickClock) -> None:
+        """[auto sync] Tell the filter about a new tune / a seek, and hand it this read's position."""
+        if not cur.playing:
+            return
+        try:
+            if prev is None or prev.tune is not cur.tune or prev.target != cur.target or (
+                    prev.playing and not _continuous(prev, cur)):
+                self.on_tune(cur.target, cur.wall_hi)
+            off = clk.offset_ms()
+            pos = cur.position_at(cur.wall_hi, off)
+            if pos is None:
+                return
+            # doubt: the clock pin's half width plus half the read's own duration
+            sd = max(0.05, (clk.hi - clk.lo) / 2000.0 + (cur.wall_hi - cur.wall_lo) / 2.0)
+            self.on_position(cur.target, cur.wall_hi, pos, sd)
+        except Exception:
+            log.exception("sync hand-off failed for %s", cur.target)
 
     def _live(self, cur: Read, clk: StickClock, new_tune: bool) -> None:
         origin = self.origins.get(cur.target)

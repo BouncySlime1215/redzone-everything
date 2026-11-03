@@ -52,7 +52,7 @@ from pathlib import Path
 from typing import Callable
 
 from redzone.channels import ChannelMap
-from redzone.tuners.adb import Stick, adb_available, playback_ready, same_stream
+from redzone.tuners.adb import STICK_HUNG, Stick, adb_available, playback_ready, same_stream
 from redzone.tuners.tuners import TUNERS, TuneResult, channel_matcher
 from redzone.tv import SamsungTV
 
@@ -918,8 +918,17 @@ class Controller:
         tuner = TUNERS.get(app)
         if tuner is None or not ref:
             return TuneResult(False, target, 0.0, [], "channel link not set up yet" if tuner else f"no tuner for {app}")
+        br = getattr(stick, "breaker", None)
+        if br is not None and br.is_open:
+            # Hung stick: fail now (nothing sent) instead of waiting out every adb timeout again.
+            return TuneResult(False, target, 0.0, [], f"{STICK_HUNG}: {stick.host}, retry in {br.retry_in():.0f}s",
+                              screen_changed=False)
         self._tuned_on = stick.host
         res = await tuner.tune(stick, ref, target, **({"may_cut": may_cut} if may_cut is not None else {}))
+        if not res.ok and br is not None and br.state != "closed" and not res.error.startswith(STICK_HUNG):
+            # The tune died because the stick hung, not because of the channel: say so, so the
+            # target isn't cooled down or marked unplayable for a stick fault.
+            res.error = f"{STICK_HUNG}: {res.error}"
         if res.ok:
             self.latency.record(app, res.took)
             self._awake_at[stick.host] = time.time()
@@ -1161,6 +1170,12 @@ class Controller:
             # A standby that stopped (a stick that lost the TV input can pause its app) gets tuned
             # again here instead of failing the switch at flip time.
             path = "tuned"
+            br = getattr(hid, "breaker", None)
+            if br is not None and br.is_open:
+                # Hung hidden stick: nothing is sent, so the screen is untouched (not an error toward
+                # safe mode); the breaker paces the retries.
+                return Outcome(False, target, time.time() - t0, f"{STICK_HUNG}: {hid.host}, retry in "
+                               f"{br.retry_in():.0f}s", False, path=path, screen_unchanged=True)
             sleeping = await self._sleeping(hid)
             if sleeping:
                 # Waking a Fire TV makes it take the TV input (CEC): only ever at a safe moment.
@@ -1725,6 +1740,8 @@ class Controller:
                     res = await self._tune(hid, target)
                     if not res.ok:
                         self._set_hidden(None, False)
+                        if res.error.startswith(STICK_HUNG):
+                            return   # the stick's fault, not the channel's: the breaker paces retries
                         self._failed[target] = time.time() + PRELOAD_BACKOFF_S
                         self._blackout_check(target, res)
                         if self.on_preload_fail:

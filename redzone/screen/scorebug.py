@@ -29,6 +29,7 @@ EVERY_S = 2.0             # capture cadence while a Prime game is on screen
 LOWER_FROM = 2 / 3        # the score bug lives in the lower third
 MIN_SAMPLE_S = 5.0
 MAX_SAMPLE_S = 120.0
+PENDING_S = 120.0         # [auto sync] a change / clock read waits this long for the feed to have its play
 AMBIGUOUS_S = 10.0        # two feed scores this close: can't tell which one the bug showed
 MAX_GAP_S = 9.0           # frames further apart than this time a change too loosely (HDMI1 stick: ~7 s per frame)
 UNIFORM_BYTES_PER_PX = 0.03   # a PNG this compressible is black / near-uniform (DRM-blanked video)
@@ -39,6 +40,30 @@ _NUM = re.compile(r"\d{1,3}")
 _PERIOD = re.compile(r"\b(HALFTIME|HALF|FINAL(?:/OT)?|END OF (?:THE )?(?:1ST|2ND|3RD|4TH|Q[1-4]|OT)"
                      r"|[1-4](?:ST|ND|RD|TH)|Q[1-4]|\d?OT)\b")
 _CLOCK = re.compile(r"\b(\d{1,2}:\d{2}|\d{1,2}\.\d)\b")
+
+
+def clock_seconds(text: str) -> float | None:
+    """'12:34' -> 754.0, '45.6' (under a minute) -> 45.6, else None."""
+    m = _CLOCK.fullmatch((text or "").strip())
+    if not m:
+        return None
+    t = m.group(1)
+    if ":" in t:
+        a, b = t.split(":")
+        return int(a) * 60 + int(b)
+    return float(t)
+
+
+def period_number(text: str, clocks=()) -> int | None:
+    """'2ND' / 'Q2' / '2' -> 2; 'OT' -> the feed's current period when it is past regulation."""
+    t = (text or "").upper()
+    m = re.search(r"\d", t)
+    if m and "OT" not in t:
+        return int(m.group())
+    if "OT" in t:
+        latest = max((p for _, p, _ in clocks if p is not None), default=None)
+        return latest if latest is not None and latest >= 4 else None
+    return None
 
 
 def png_size(png: bytes) -> tuple[int, int] | None:
@@ -163,7 +188,17 @@ class ScoreBugWatcher:
     on_sample(Sample) is called for each accepted sample. observe() gets one frame per call: the
     stick, the Prime target and tune it shows, the game (home/away Teams) and its timeline."""
     on_sample: Callable[[Sample], None] = lambda s: None
+    # [auto sync] a new Prime tune on a stick: (target, wall); a delay sample from the bug's game clock
+    # against the feed's play clocks: (target, frame wall, delay s). Both feed the filter (sync.py).
+    on_tune: Callable[[str, float], None] = lambda t, w: None
+    on_clock: Callable[[str, float, float], None] = lambda t, w, d: None
+    clock_every_s: float = 10.0                   # at most one clock sample per target this often
     last: dict = field(default_factory=dict)      # stick key -> (tune, [Frame...])
+    _clock_prev: dict = field(default_factory=dict)   # stick key -> (wall, clock s, period) of the last read
+    _clock_at: dict = field(default_factory=dict)     # target -> wall of the last clock sample
+    # [auto sync] changes / clock reads the feed hadn't caught up with yet (its plays arrive 35-80 s
+    # after they happen, often after the screen showed them): retried each frame for PENDING_S
+    pending: list = field(default_factory=list)       # (kind, target, created wall, payload...)
     samples: list = field(default_factory=list)
     rejected: int = 0
     frames: int = 0
@@ -187,6 +222,14 @@ class ScoreBugWatcher:
         if held is None or held[0] is not tune or held[1] != target:
             held = (tune, target, [])
             self.last[key] = held
+            self._clock_prev.pop(key, None)
+            try:
+                self.on_tune(target, wall)
+            except Exception:
+                log.exception("sync hand-off failed for %s", target)
+        if bug is not None:
+            self._clock(key, target, wall, bug, timeline)
+        self._retry(target, wall, timeline)
         frames: list[Frame] = held[2]
         if bug is not None:
             self.read += 1
@@ -209,22 +252,98 @@ class ScoreBugWatcher:
         onset = b.wall - gap / 2.0
         e, why = match_change(getattr(timeline, "scores", ()) if timeline else (), a.score, b.score, onset)
         if e is None:
+            if why == "no feed play made that score":
+                # [auto sync] the feed may simply not have it yet: try again as frames come in
+                self.pending.append(("score", target, wall, a.score, b.score, onset, gap))
+                del self.pending[:-20]
+                return None
             self.rejected += 1
             log.info("score bug %s -> %s on %s not timed: %s", a.score, b.score, target, why)
             return None
+        return self._accept(target, e, onset, gap, a.score, b.score)
+
+    def _retry(self, target: str, wall: float, timeline) -> None:
+        """[auto sync] Pending score changes and clock reads for this target, now the feed may have them."""
+        from redzone.decider.sync import clock_sample
+        keep = []
+        for p in self.pending:
+            if p[1] != target:
+                keep.append(p)
+                continue
+            if wall - p[2] > PENDING_S:
+                if p[0] == "score":
+                    self.rejected += 1
+                    log.info("score bug %s -> %s on %s not timed: the feed never had it", p[3], p[4], target)
+                continue
+            if p[0] == "score":
+                _, _, _, prev, new, onset, gap = p
+                e, why = match_change(getattr(timeline, "scores", ()) if timeline else (), prev, new, onset)
+                if e is None and why == "no feed play made that score":
+                    keep.append(p)
+                elif e is None:
+                    self.rejected += 1
+                    log.info("score bug %s -> %s on %s not timed: %s", prev, new, target, why)
+                else:
+                    self._accept(target, e, onset, gap, prev, new)
+            else:
+                _, _, _, frame_wall, c, per = p
+                plays = sorted((w, cl) for w, pp, cl in (getattr(timeline, "clocks", ()) or ())
+                               if pp == per and cl is not None)
+                d = clock_sample(c, frame_wall, plays)
+                if d is None and (not plays or plays[-1][1] >= c):
+                    keep.append(p)        # the feed's clock hasn't passed this reading yet
+                elif d is not None and MIN_SAMPLE_S <= d <= MAX_SAMPLE_S:
+                    self._clock_at[target] = frame_wall
+                    try:
+                        self.on_clock(target, frame_wall, d)
+                    except Exception:
+                        log.exception("sync hand-off failed for %s", target)
+        self.pending = keep
+
+    def _accept(self, target: str, e, onset: float, gap: float, prev, new) -> Sample | None:
+        a_score, b_score = prev, new
         sample = onset - e.seen
         if not MIN_SAMPLE_S <= sample <= MAX_SAMPLE_S:
             self.rejected += 1
-            log.info("score bug %s -> %s on %s: %.1fs behind is out of range; ignored", a.score, b.score,
+            log.info("score bug %s -> %s on %s: %.1fs behind is out of range; ignored", a_score, b_score,
                      target, sample)
             return None
-        s = Sample(target, sample, e.seen, onset, gap / 2.0, b.score, e.label)
+        s = Sample(target, sample, e.seen, onset, gap / 2.0, b_score, e.label)
         self.samples.append(s)
         del self.samples[:-50]
         log.info("delay %.1fs (±%.1f) on %s from the score bug %s -> %s (%s)", sample, s.error_s, target,
-                 a.score, b.score, e.label[:40])
+                 a_score, b_score, e.label[:40])
         self.on_sample(s)
         return s
+
+    def _clock(self, key: str, target: str, wall: float, bug: Bug, timeline) -> None:
+        """[auto sync] The bug's game clock, running on screen, against the feed's running clock."""
+        from redzone.decider.sync import clock_sample
+        c = clock_seconds(bug.clock)
+        per = period_number(bug.period, getattr(timeline, "clocks", ()) if timeline else ())
+        prev = self._clock_prev.get(key)
+        self._clock_prev[key] = (wall, c, per)
+        if c is None or per is None or prev is None or prev[1] is None or prev[2] != per:
+            return
+        ran, took = prev[1] - c, wall - prev[0]
+        if ran <= 0 or abs(ran - took) > 2.5:          # stopped, or the frames aren't one running clock
+            return
+        if wall - self._clock_at.get(target, float("-inf")) < self.clock_every_s:
+            return
+        plays = sorted((w, cl) for w, p, cl in (getattr(timeline, "clocks", ()) or ()) if p == per and cl is not None)
+        d = clock_sample(c, wall, plays)
+        if d is None and (not plays or plays[-1][1] >= c) and not any(
+                p[0] == "clock" and p[1] == target for p in self.pending):
+            self.pending.append(("clock", target, wall, wall, c, per))   # the feed is behind: later
+            self._clock_at[target] = wall
+            return
+        if d is None or not MIN_SAMPLE_S <= d <= MAX_SAMPLE_S:
+            return
+        self._clock_at[target] = wall
+        try:
+            self.on_clock(target, wall, d)
+        except Exception:
+            log.exception("sync hand-off failed for %s", target)
 
     def status(self) -> dict:
         last = self.samples[-1] if self.samples else None

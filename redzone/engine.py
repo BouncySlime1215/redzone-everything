@@ -26,6 +26,7 @@ from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook,
 from redzone.models import GameState, League, Phase
 from redzone.plan import Tonight
 from redzone.scoring import breaks
+from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal, Scored, Scorer
 from redzone.sources import espn, fastcast, leagues
 from redzone.sources.http import Fetcher
@@ -38,10 +39,12 @@ log = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
 FASTCAST_SYNC_S = 2.0
 DECIDE_EVERY_S = 0.5
+CLOCK_JUMP_S = 5.0     # wall clock moved this much more (or less) than time.monotonic(): it jumped
 # Outcomes that say nothing about the target itself: a closed safe window, a cancel, an unknown
 # TV input. They neither cool the target down nor count against it.
 NOT_THE_TARGETS_FAULT = ("no safe moment", "safe exit window closed", "switch cancelled",
-                         "TV input is unknown", "TV control was disabled", "no channel")
+                         "TV input is unknown", "TV control was disabled", "no channel",
+                         "stick not responding")
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
@@ -52,14 +55,22 @@ class Engine:
         self.channels = ChannelMap()
         self.fetcher = Fetcher()
         self.merger = Merger()
-        self.scorer = Scorer(self.cfg)
-        self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"))
+        self.scorer = DriveScorer(self.cfg)
+        self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"),
+                                model=self.cfg.get("delay.model", "channel"))
         try:   # every "I just saw it" from the last 30 days: a restart keeps tonight's taps
             self.delays.load(self.store.calibrations(since=time.time() - TAP_HISTORY_S))
         except Exception as e:
             log.warning("could not reload delay calibrations: %s", e)
         self.decider = Decider(self.cfg, self.delays)
         data_dir = getattr(self.cfg, "user_path", None)
+        # [auto sync] every channel's delay tracked by a Kalman filter from the automatic signals
+        # (redzone/decider/sync.py); every signal is logged to data/sync.jsonl for scripts/eval_sync.py.
+        self.sync = None
+        if self.cfg.get("delay.sync.enabled", True):
+            self.sync = self.delays.attach_sync(
+                min_sigma_s=float(self.cfg.get("delay.sync.min_sigma_s", 4.0)),
+                log_path=data_dir.parent / "sync.jsonl" if data_dir and self.cfg.get("delay.sync.log", True) else None)
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
@@ -69,10 +80,12 @@ class Engine:
                                               else self.control.deadline_cost(t))
         # Stream delay measured from YouTube TV show changes on the quarter hour (no taps needed).
         self.boundary = boundary.BoundaryWatcher(estimate=self._delay_estimate, on_sample=self._boundary_sample,
-                                                 on_live=self.delays.set_live)
+                                                 on_live=self.delays.set_live, on_position=self._sync_position,
+                                                 on_tune=self._sync_tune)
         self.control.on_playback = self.boundary.observe_stick
         # Stream delay measured from the broadcast score bug in Prime screenshots (not DRM-blanked).
-        self.scorebug = scorebug.ScoreBugWatcher(on_sample=self._scorebug_sample)
+        self.scorebug = scorebug.ScoreBugWatcher(on_sample=self._scorebug_sample, on_tune=self._sync_tune,
+                                                 on_clock=self._sync_clock)
         self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
         # owed TV timeouts per game: when a break is coming (+ the learned brain, when brain.enabled)
         self.breaks = breaks.BreakBook(brain=self._break_brain)
@@ -102,6 +115,7 @@ class Engine:
         self._last_mic = 0.0
         self._pending_decision = None
         self._pending_since = 0.0
+        self._pending_mono = 0.0   # the same moment on time.monotonic(): wall-clock jumps can't age a switch
         self._pending_done = None          # the in-flight switch's done callback (for the deadline)
         self._fail_cool: dict[str, float] = {}   # tuner target -> no retry before this time
         self.mic_suggestion = None
@@ -169,7 +183,35 @@ class Engine:
         d = self.delays.get(target)
         return d.mu, d.current_sigma(time.time())
 
+    # ------------------------------------------------------------------ [auto sync] signals -> filter
+    def _sync_measure(self, target: str, z: float, kind: str, t: float, sd: float | None = None) -> None:
+        if self.sync is None:
+            return
+        try:
+            self.sync.measure(target, z, kind, t=t, sd=sd)
+        except Exception:
+            log.exception("sync: could not use a %s sample on %s", kind, target)
+
+    def _sync_position(self, target: str, wall: float, position_s: float, sd: float) -> None:
+        if self.sync is not None:
+            try:
+                self.sync.position(target, position_s, t=wall, sd=sd)
+            except Exception:
+                log.exception("sync: could not use a position read on %s", target)
+
+    def _sync_tune(self, target: str, wall: float) -> None:
+        if self.sync is not None:
+            try:
+                self.sync.tuned(target, wall)
+            except Exception:
+                log.exception("sync: could not re-sync %s", target)
+
+    def _sync_clock(self, target: str, wall: float, delay_s: float) -> None:
+        self._sync_measure(target, delay_s, "clock", wall)
+
     def _boundary_sample(self, s) -> None:
+        from redzone.decider.sync import SIGMA
+        self._sync_measure(s.target, s.sample, "flip", s.flip_wall, max(SIGMA["flip"], s.error_s))
         d = self.delays.boundary(s.target, s.sample, s.flip_wall)
         try:
             self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="boundary")
@@ -177,6 +219,8 @@ class Engine:
             log.exception("could not save a boundary delay sample")
 
     def _scorebug_sample(self, s) -> None:
+        from redzone.decider.sync import SIGMA
+        self._sync_measure(s.target, s.sample, "score", s.onset, max(SIGMA["score"], s.error_s))
         d = self.delays.screen(s.target, s.sample, s.onset)
         try:
             self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="screen")
@@ -839,6 +883,7 @@ class Engine:
             if (self.decider.replaying or self.decider.after_replay) else None
         self._pending_decision = d
         self._pending_since = time.time()
+        self._pending_mono = time.monotonic()
         before_target = getattr(self.control, "on_target", None) or getattr(self.where.get(before or ""), "target", None)
         if deferred:
             # Conservatively mark the transition unknown until observed; never
@@ -903,6 +948,19 @@ class Engine:
                             replay_id=d.replay.pid if d.replay else None,
                             entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0)
 
+    def pending_age(self, now: float) -> float:
+        """Seconds the pending switch has been running, as of wall-clock `now`. If the wall clock
+        jumped since the switch started (NTP fix, laptop waking), the jump is taken back out using
+        time.monotonic(), so a healthy 1 s-old switch is never declared hung (fault drill: clock_skew)."""
+        if not self._pending_since:
+            return 0.0
+        age = now - self._pending_since
+        if self._pending_mono:
+            jump = (time.time() - self._pending_since) - (time.monotonic() - self._pending_mono)
+            if abs(jump) > CLOCK_JUMP_S:
+                age -= jump
+        return max(0.0, age)
+
     def _trace_labels(self, *gids: str | None) -> dict:
         out = {}
         for gid in gids:
@@ -923,11 +981,12 @@ class Engine:
         limit = self.cfg.get("control.max_switch_s", 150)
         if d.kind == "start":   # nothing confirmed on screen yet: a hung first pick is retried sooner
             limit = min(limit, self.cfg.get("control.max_start_switch_s", 75))
-        if now - self._pending_since < limit:
+        age = self.pending_age(now)
+        if age < limit:
             return
-        log.warning("switch to %s still running after %.0fs: giving up on it", d.target, now - self._pending_since)
+        log.warning("switch to %s still running after %.0fs: giving up on it", d.target, age)
         self.control.cancel_pending()
-        done(Outcome(False, None, now - self._pending_since,
+        done(Outcome(False, None, age,
                      f"switch timed out after {limit:.0f}s; playback not confirmed", False))
 
     def _entry_valid(self, d: Decision, target: str | None) -> bool:
@@ -1450,6 +1509,7 @@ class Engine:
                         - abs(e.seen + d.mu - tap) < margin)):
                 return False, "Several plays could match that tap; choose the exact play before calibrating"
         sample = tap - e.seen
+        self._sync_measure(target, sample, "tap", time.time())
         d = self.delays.calibrate(target, sample)
         self.store.calibration(target, sample, d.mu, d.sigma)
         return True, f"Matched {e.label[:60]}; delay {d.mu:.0f}s (±{2*d.sigma:.0f}) for {describe(target)}"
@@ -1567,6 +1627,7 @@ class Engine:
                         "settled": self.delays.settled(self.delays.app(t)),
                         "boundary_samples": self.delays.boundary_count(self.delays.app(t)),
                         "live": x.live is not None} for t, x in self.delays.book.items()],
+            "sync": self.sync.status() if self.sync is not None else [],   # [auto sync] estimate +- error per channel
             "delay_watch": self.boundary.status(),
             "scorebug_watch": self.scorebug.status(),
             "health": {"sources": list(self.source_status.values()), "sticks": self._sticks_view(),
