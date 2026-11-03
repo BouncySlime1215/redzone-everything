@@ -63,6 +63,10 @@ class Engine:
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
+        # Break visits: the game we leave keeps playing on the other stick, so the trip back is one
+        # flip; with one stick it's a full tune of that game.
+        self.decider.return_cost = lambda t: (self.control.flip_estimate() if self.control.two_stick
+                                              else self.control.deadline_cost(t))
         # Stream delay measured from YouTube TV show changes on the quarter hour (no taps needed).
         self.boundary = boundary.BoundaryWatcher(estimate=self._delay_estimate, on_sample=self._boundary_sample,
                                                  on_live=self.delays.set_live)
