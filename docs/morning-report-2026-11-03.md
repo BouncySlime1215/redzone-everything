@@ -19,6 +19,7 @@ with 0 mid-play cuts and nothing important getting worse. Anything mixed stays o
 | Brain only logs a broken model once; it waits about 40 plays before predicting after a restart | Tests |
 | Safe mode isn't triggered by "TV input unknown" refusals; crunch-time games stay preloaded through their timeouts | Tests |
 | **Your team late and close is never abandoned**: in its final period and not garbage time, your team (or bet) only gives up the TV to crunch time elsewhere | The Oct 26 Wizards finish went from **0 of 13 crunch plays to 13 of 13**. NBA your-team crunch live 58% → **100%**, crunch live 95.7 → 96.3%. Cost: 3 neutral NBA big plays (95.4 → 92.0% seen). NFL and NHL identical |
+| **NBA short timeouts are watched through** (5:55 AM): like football, a short NBA stop isn't spent on a quick visit elsewhere when timing data shows it ends within 90 s | NBA mid-play entries 44 → 36, dead air 19.1 → 19.4%, everything else identical. NFL, NHL and the mixed Nov 1 replay unchanged |
 | **No chained break visits**: while visiting another game during your game's break, that game's own break sends you home instead of on to a third game (the Wizards case) | NFL big plays seen 95.0 → 95.4, everything else identical |
 
 ## Built but not merged (and why)
@@ -27,18 +28,36 @@ with 0 mid-play cuts and nothing important getting worse. Anything mixed stays o
 - **RedZone mode** (NFL drive priority and catch-up highlight reels): on top of cut timing, NFL big plays seen 95.0 → 93.4 and your team's 100 → 93.1. The reels kept it behind live 18% of the time. Needs a rework: shorter reels, and only during real dead time.
 - **Most of miss-fixes**: compared on the same settings, it's neutral on NBA and slightly worse on NFL (big plays seen 94.4 → 92.8, crunch live 70.0 → 67.9) and NHL (crunch 87.5 → 86.8). I first reported an NBA "your team's crunch 58 → 100%" gain, but that came from the settings drift described below, not the code.
 - **Break-visit trip budget** (skip a visit when the trip there and back doesn't fit inside the break): NFL crunch live 70.0 → 71.4%, but big plays seen 95.4 → 93.9% and your team's big plays 100 → 93.1%. Nearly all of the loss is one Sunday (CLE @ CHI), where today's code shows 14 minutes of catch-up replays and the branch stays on a live drive instead. Mixed, so it stays on branch `fv-review`.
-- **NBA/NHL entry timing with a wait cap** (branch `entry-wait-cap`): 0, 8, 15 and 25 s caps all score the same. Turning NBA timing on changes only one of 14 nights (Oct 26): +5.7 points of NBA big plays seen, but it leaves the Wizards at 0:22, down 7, and they cut it back to 5. One night isn't enough evidence to merge.
+- **NBA entry timing**: with or without a wait cap, it costs NBA crunch time (96.3 → 95.8% with an 8 s cap, 91.8% when crunch switches are exempt). Off.
 - **Hype v2** (learned key-moment score): NFL big plays seen **live** 29.9% → **39.5%**, which is big, but your team's NFL big plays fell 100 → 93.1, NBA big plays seen 95.4 → 90.8, and NHL crunch 87.5 → 83.8. Capping non-crunch scores didn't fix it. Not merged. Its chained-visit fix *was* merged on its own.
 
-## A scorecard pitfall, fixed
+## Your call: fix NHL mid-play entries?
+
+On branch `entry-wait-cap`: in hockey, when switching to a game, wait for the next whistle before the picture comes up, except when switching into crunch time (never delayed).
+
+| NHL, 14 nights | Today | With it |
+|---|---|---|
+| Entries in mid-play | 165 | **15** (fewer on every night) |
+| Crunch time seen live | 87.5% | 88.3% |
+| Dead air | 24.8% | 24.6% |
+| Big plays seen | 99.7% | 99.2% (3 of 631 lost, one each on 3 nights) |
+| Big plays seen live | 41.5% | 40.6% |
+
+It isn't a clear win under tonight's rule (nothing important worse), so it's not merged. Say "merge NHL entry timing" and I'll build it properly behind a setting and ship it.
+
+## Scorecard pitfalls, fixed
 
 The live service saves newly measured switch times into `data/config.yaml`, and the scorecards read the same
 file. At 3:39 AM that moved the baseline by itself (NFL your-team big plays 100 → 93.1 with no code change).
 Scorecards now read a pinned `data/eval_config.yaml` when it exists, so before/after comparisons stay fair.
 
+Two more at 5:40 AM:
+- If that file has a setting the app doesn't know, the app throws out the whole file and quietly uses defaults. Three of my late-night experiment results came from that, not from the code. The scorecards now stop with an error instead, and I redid those experiments. The live app's own config was always valid.
+- The 5 AM archive job adds the newest night, which slid the NBA/NHL 14-night window mid-comparison. The window is now pinned to Oct 20–Nov 1.
+
 ## Found and fixed tonight
 
-- **Today's code enters NBA games mid-play 50 times and NHL 163 times** across the test nights (the new `entries_mid_play` scorecard). This is the "cuts in mid-play" you saw, and it's the top item for the next round.
+- **Today's code enters NBA games mid-play 50 times and NHL 163 times** across the test nights (the new `entries_mid_play` scorecard). This is the "cuts in mid-play" you saw, and it's the top item for the next round. As of 5:55 AM it's NBA 36 (see "Live now"), and NHL could be 15 (see "Your call").
   - With cut timing on everywhere, mid-play entries dropped to **0**, but it held switches for about 69 s of dead time per entry, and that cost crunch plays elsewhere.
   - Most NBA games are on **Prime (League Pass), which can't rewind live**, so it can't back up to the free throw the way YouTube TV can. Short rewinds only (20 s or less, never waiting) never found a clean landing.
   - A test for the Prime pause idea (a, below) is written and ready to run tonight with a live Prime game on the off-screen stick. It checks whether pause works on live Prime, whether play resumes from the paused point, and how fast.
