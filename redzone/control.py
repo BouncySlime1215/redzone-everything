@@ -222,6 +222,7 @@ class Controller:
         self._resume_task: asyncio.Task | None = None   # "did the relaunched app resume?" after a HOME flip
         self._cec_synced_at = 0.0
         self._adopt_once = True                  # first switch after start may adopt the screen
+        self.target_names: Callable[[str], list[str]] | None = None   # engine: team names for a target
         self._flip_gen = 0                       # bumped on every flip: a CEC read that spans one is stale
         self._refresh_task: asyncio.Task | None = None   # after a flip: reload the game we left (see _refresh_left)
         self._refreshing: str | None = None      # the target the running preload is refreshing, if it is a refresh
@@ -904,6 +905,23 @@ class Controller:
                 self.main.remember(target, pb)
                 self.on_target = target
                 return True
+            return False
+        if self.on_target is None and self._adopt_once and target.startswith("prime:") and self.target_names:
+            # Just restarted with Prime on screen: Prime names no game, but its picture is readable,
+            # so the broadcast score bug says which teams are playing (Nov 2: a restart re-tuned the
+            # game already on screen and then fell back to a blowout).
+            pkg = self._package(self.main, target)
+            pb = await self.main.playback(pkg)
+            if pkg and pb.get("pkg") == pkg and playback_ready(pb):
+                text = (await self.main.ocr_text()).lower()
+                names = [n.lower() for n in self.target_names(target) if n and len(n) >= 3]
+                hits = {n for n in names if n in text}
+                if len(hits) >= 2:
+                    self._adopt_once = False
+                    log.info("adopting Prime on screen after a restart: %s (score bug shows %s)", target, sorted(hits))
+                    self.main.remember(target, pb)
+                    self.on_target = target
+                    return True
             return False
         if self.on_target is None and self._adopt_once:
             # Just restarted: the screen may already be playing this game (in an app whose deep

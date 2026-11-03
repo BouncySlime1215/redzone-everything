@@ -105,6 +105,7 @@ class Engine:
         from redzone.discovery.runtime import DiscoveryRuntime
         self.discovery = DiscoveryRuntime(self)
         self.tonight = Tonight(self)   # today's plan + pre-game checks on the hidden stick
+        self.control.target_names = self._target_names
         # Pause / "Watch this" / focus / lock survive a service restart (redzone/userstate.py).
         self._user_state_path = data_dir.parent / "user_state.json" if data_dir else None
         self._user_state_saved = userstate.capture(self.decider.user, self.hold)   # defaults: nothing to write
@@ -854,6 +855,16 @@ class Engine:
                 self.mic_suggestion = {"target": target, "delay_s": round(sample, 1),
                                        "play_id": e.pid, "label": e.label, "at": now,
                                        "verified": False}
+
+    def _target_names(self, target: str) -> list[str]:
+        """Team names/abbreviations of the game(s) routed to this target (for reading a score bug)."""
+        out = []
+        for gid, w in self.where.items():
+            g = self.merger.games.get(gid)
+            if g is not None and getattr(w, "target", None) == target:
+                for t in (g.home, g.away):
+                    out += [t.abbr, t.name, (t.name or "").split()[-1] if t.name else ""]
+        return [x for x in out if x]
 
     def safe_to_leave(self, gid: str | None, required_s: float = 0.0) -> bool:
         """Re-checked right before a two-stick input flip: is a play on screen in the game we're leaving?"""
