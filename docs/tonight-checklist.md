@@ -93,6 +93,12 @@ they're merged.
 - [ ] **Stick tuning and preflight:** `.venv/bin/python scripts/stick_tune.py preflight`. It
       reports signal strength, free memory, CEC and app versions, and changes nothing.
 
+- [ ] **FastCast check (after the first games):** nothing to start. While `sources.fastcast` is
+      off, the app quietly compares FastCast with normal polling on up to 4 live games and never
+      uses it. After the first games, run `.venv/bin/python scripts/fastcast_check.py --live`
+      (exit 0 = pass, 1 = fail, 2 = not decided yet). Turn FastCast on **only on PASS**, with the
+      exact command it prints. Tonight has no NFL, so a pass covers NBA, NHL and college only.
+
 ## If something looks wrong
 
 - Undo the deploy: `.venv/bin/python scripts/deploy.py rollback`
