@@ -179,8 +179,10 @@ def test_limiter_gap_and_hourly_cap():
 
 def test_frames_verdict():
     assert frames_verdict(b"", b"x") is None
-    assert frames_verdict(b"same", b"same") == "still"
-    assert frames_verdict(b"a", b"b") == "moving"
+    # Undecodable pixels: tiny PNGs are DRM-black players (never "still"); big ones are unknown.
+    assert frames_verdict(b"same", b"same") == "black"
+    assert frames_verdict(b"x" * 50_000, b"x" * 50_000) is None
+    assert frames_verdict(b"x" * 50_000, b"y" * 50_000) is None
     page = np.full((4, 4), 120.0)
     luma = {b"p1": page, b"p2": page + 0.1, b"v": page + 40, b"k": np.zeros((4, 4))}.get
     assert frames_verdict(b"p1", b"p2", luma) == "still"
@@ -347,15 +349,18 @@ def fail_row(ts, target, detail="playback never started"):
     return {"ts": ts, "target": target, "ok": 0, "dry_run": 0, "detail": json.dumps({"detail": detail})}
 
 
+BLACKOUT = "blacked out here (local team)"
+
+
 async def test_two_failures_back_off_three_mute_for_the_night(world):
     w = world
     st = w.e.store
-    st.rows += [fail_row(w.clock() + 1, "prime:x"), fail_row(w.clock() + 2, "prime:x")]
+    st.rows += [fail_row(w.clock() + 1, "prime:x", BLACKOUT), fail_row(w.clock() + 2, "prime:x", BLACKOUT)]
     w.clock.t += 5
     await w.s.rule_failures(w.clock())
     assert w.e._fail_cool["prime:x"] == pytest.approx(w.clock() + 600)
     assert not w.s.muted("prime:x")
-    st.rows.append(fail_row(w.clock() + 1, "prime:x"))
+    st.rows.append(fail_row(w.clock() + 1, "prime:x", BLACKOUT))
     w.clock.t += 5
     await w.s.rule_failures(w.clock())
     assert w.s.muted("prime:x") and w.e._fail_cool["prime:x"] == sup.night_end(w.clock())
@@ -700,3 +705,13 @@ async def test_controller_restore_visible_relinks_or_resumes(tmp_path, cfg, monk
     assert await c.restore_visible("youtubetv:fs1") == "media_play" and resumed == ["youtubetv:fs1"]
     c.input_unknown = True
     assert await c.restore_visible("youtubetv:espn", relink=True) is None and len(tuned) == 1
+
+
+async def test_timeouts_only_back_off_never_mute_for_the_night(world):
+    # Timeouts / streams that didn't start can be Wi-Fi or the stick: back off, never mute (Nov 2 review).
+    w = world
+    w.e.store.rows += [fail_row(w.clock() + i, "prime:x", "switch timed out after 75s") for i in range(1, 8)]
+    w.clock.t += 10
+    await w.s.rule_failures(w.clock())
+    assert not w.s.muted("prime:x") and not w.s.muted_apps
+    assert w.e._fail_cool["prime:x"] == pytest.approx(w.clock() + 600)

@@ -1498,6 +1498,19 @@ class Controller:
         playing there, so no live play can be cut. Returns how it came back, or None."""
         if not self.live_control or self.input_unknown or self._flipping:
             return None
+        # Runs as the controller's resume task: any real switch (submit) or Pause cancels it, so a
+        # restore can never hold the controller for its whole 25-55 s relink.
+        if self._resume_task and not self._resume_task.done():
+            return None
+        self._resume_task = asyncio.create_task(self._restore_visible(target, relink, why))
+        try:
+            return await asyncio.shield(self._resume_task)
+        except asyncio.CancelledError:
+            if self._resume_task.cancelled():
+                return None
+            raise
+
+    async def _restore_visible(self, target: str, relink: bool, why: str) -> str | None:
         async with self._lock:
             stick = self.main
             if stick is None or self.input_unknown:

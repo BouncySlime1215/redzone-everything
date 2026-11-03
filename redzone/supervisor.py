@@ -129,6 +129,12 @@ CAUSES = (
 )
 
 
+# Failures that say something about the SOURCE (this link/app can't play here). Everything else
+# (timeouts, a stream that didn't start, TV input, no safe moment) can be Wi-Fi, the stick or the
+# controller: those only back a target off for a while, never mute it or its app for the night.
+SOURCE_CAUSES = {"link rejected", "signed out", "not subscribed", "blackout", "no tuner", "channel link"}
+
+
 def failure_cause(detail: str | None) -> str:
     d = (detail or "").lower()
     for needle, name in CAUSES:
@@ -200,7 +206,12 @@ def frames_verdict(a: bytes, b: bytes, luma: Callable[[bytes], Any] | None = Non
             return "moving"
         except Exception:
             pass
-    return "still" if a == b else "moving"
+    # Pixels unreadable: never call it a frozen page from bytes alone. Identical frames are what a
+    # DRM-blacked player (YouTube TV, Peacock) always returns while the game plays fine (a 1080p
+    # black PNG is ~10 KB), and treating that as "still" would press keys on the playing stick.
+    if a and b and max(len(a), len(b)) < 40_000:
+        return "black"
+    return None
 
 
 def png_luma_bytes(png: bytes):
@@ -478,7 +489,7 @@ class Supervisor:
         b = await stick.screencap()
         verdict = frames_verdict(a, b, self.luma)
         activity = fg.split("/", 1)[1] if "/" in fg else ""
-        if verdict == "still" or (verdict is None and PAGE_RX.search(activity)):
+        if verdict == "still" or (verdict in (None, "black") and PAGE_RX.search(activity)):
             return "app_page", fg
         return None, fg
 
@@ -583,12 +594,13 @@ class Supervisor:
         win = float(self.opt("fail_window_s"))
         recent = [(t, tg, c) for t, tg, c in self.failures if now - t < win]
         by_target = Counter(tg for _, tg, _ in recent)
+        source_fails = Counter(tg for _, tg, c in recent if c in SOURCE_CAUSES)
         cool = getattr(self.e, "_fail_cool", None)
         until = night_end(now)
         for target, n in by_target.items():
             if self.muted_targets.get(target, 0) > now:
                 continue
-            if n >= int(self.opt("mute_after")):
+            if source_fails[target] >= int(self.opt("mute_after")):
                 def mute(target=target, n=n):
                     self.muted_targets[target] = until
                     if cool is not None:
@@ -605,7 +617,7 @@ class Supervisor:
         for t, until_t in self.muted_targets.items():
             if until_t > now:
                 by_app[self.app(t)].add(t)
-        app_fails = Counter(self.app(tg) for _, tg, _ in recent)
+        app_fails = Counter(self.app(tg) for _, tg, c in recent if c in SOURCE_CAUSES)
         for app in set(by_app) | set(app_fails):
             if self.muted_apps.get(app, 0) > now:
                 continue
