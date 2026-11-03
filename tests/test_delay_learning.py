@@ -120,3 +120,50 @@ def test_settled_delay_stays_usable_but_never_below_the_tap_floor():
     b2.calibrate("youtubetv:espn", 40.0)                               # one tap: doubt grows as before
     c.t += 3 * 3600
     assert b2.get("youtubetv:espn").current_sigma(c()) == 6.0 + 6.0
+
+
+class Hooks:
+    def __init__(self, delays, on_screen):
+        self.delays, self.on_screen, self.toasts = delays, on_screen, []
+
+    def mic_on(self):
+        return False
+
+    def current_target(self):
+        return self.on_screen
+
+    def toast(self, msg, level="info"):
+        self.toasts.append(msg)
+
+
+def test_phone_stops_asking_once_the_app_is_settled():
+    from redzone.autonomy import Calibrator
+    c = Clock()
+    b = book(c)
+    hooks = Hooks(b, "youtubetv:espn")
+    cal = Calibrator(hooks, {}, clock=c)
+    assert cal.on_tune("youtubetv:espn") == "tap" and len(hooks.toasts) == 1   # first night: ask
+    b.calibrate("youtubetv:espn", 40.0)
+    cal.poll()
+    assert "40s behind live" in hooks.toasts[-1]
+    c.t += 3600
+    hooks.on_screen = "youtubetv:tnt"
+    assert cal.on_tune("youtubetv:tnt") == "tap"            # one tap isn't settled yet: ask on a new channel
+    for t, s in (("youtubetv:tnt", 42.0), ("youtubetv:fox", 41.0)):
+        b.calibrate(t, s)
+    cal.poll()
+    hooks.on_screen = "youtubetv:nbc"
+    n = len(hooks.toasts)
+    assert cal.on_tune("youtubetv:nbc") is None and len(hooks.toasts) == n   # settled: never nag again
+    hooks.on_screen = "prime:tnf"
+    assert cal.on_tune("prime:tnf") == "tap"                                 # other apps still learn
+
+
+def test_engine_start_reloads_taps_from_the_store(tmp_path):
+    from redzone.config import Config
+    from redzone.engine import Engine
+    store = Store(tmp_path / "rz.db")
+    store.calibration("prime:tnf", 37.0, 37.0, 6.0)
+    eng = Engine(Config(user_path=tmp_path / "config.yaml", history_dir=tmp_path / "hist"), store)
+    d = eng.delays.get("prime:nba")
+    assert d.source == "app" and d.mu == 37.0 and d.sigma == 6.0 + SHARED_MARGIN_S

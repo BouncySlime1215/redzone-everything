@@ -59,7 +59,7 @@ function delayRow(d) {
     <div class="nm"><span class="hdot ${d.calibrated ? "hdot--g" : "hdot--y"}"></span><span class="ell">${esc(d.label || d.target)}</span></div>
     <div class="v">${Number.isFinite(mu) ? odo(Math.round(mu)) : "—"}<small>s ±${Math.round(sg)}</small></div>
     <div class="ruler" style="--c:${c};--lo:${pct(mu - sg)};--hi:${pct(mu + sg)};--mu:${pct(mu)}"><span class="rng"></span><span class="mk"></span></div>
-    <div class="dim" style="grid-column:1/-1;font-size:11.5px;margin-top:-2px">${d.calibrated ? "Measured" : "Guess — not measured yet"}</div>
+    <div class="dim" style="grid-column:1/-1;font-size:11.5px;margin-top:-2px">${!d.calibrated ? "Guess — not measured yet" : d.source === "app" ? "From your taps on other channels of this app" : "Measured"}${d.settled ? " · learned, no more taps needed" : ""}</div>
   </div>`;
 }
 

@@ -80,13 +80,14 @@ function dock(S) {
 }
 
 /* "I just saw it" is how it learns your stream delay: big and obvious right after a game
-   comes on (or while this channel's delay is still a guess), tucked into More otherwise. */
+   comes on (or while this channel's delay is still a guess), tucked into More otherwise, and
+   never on Now once the app's delay is settled (3+ agreeing taps). */
 function calibrate(S) {
   const n = S.now;
   if (!n || n.kind === "replay" || n.game_id === "redzone") return "";
   const d = arr(S.delays).find((x) => x.label && x.label === n.where);
   const fresh = num(n.since) && nowS() - num(n.since) < 600;
-  if (d && d.calibrated && !fresh) return "";
+  if (d && (d.settled || (d.calibrated && !fresh))) return "";   // settled: learned, stop asking (still in More)
   const dry = !!get(S, "mode.dry_run");
   return `<div class="actions-grid calib" data-key="calib">
     <button class="act-tile act-tile--wide act-tile--accent" data-act="now-act" data-a="saw_it" ${dry ? "disabled" : ""}>${icon("eye", "ico--lg")}<span>I just saw it<small>${dry
