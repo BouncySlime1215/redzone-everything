@@ -1,49 +1,37 @@
-# Big teacher, small student
+# Big teacher, small students (Kaggle)
 
-The Mac runs one small model (Qwen3-1.7B 4-bit, ~1 GB, `agent/llm_server.py`) with one LoRA adapter
-per job (`watchdog`, `game-reasoner`). It can't run anything bigger inside the 1.5 GB budget, so a
-big open model teaches it offline: it writes the words and judgments, the small one learns them.
+Everything trains on Kaggle's free 2x T4. Nothing heavy runs on the Mac.
 
-No paid APIs. The cloud sessions have no GPU and can't reach Hugging Face, so the teacher and the
-student training run on a free Kaggle GPU notebook (2x T4, 30 GPU-hours a week) that Nick starts.
+## Flow
 
-## The loop
+1. `agent/kaggle/pack_data.py` runs in the cloud and builds the `kaggle-inputs` branch, which becomes the private Kaggle dataset `redzone-distill` (under 500 MB, no secrets). It writes:
+   - (a) every moment, with Nick's rules applied (`agent/distill/gold.py`), plus jump-or-stay dead balls (`agent/distill/jump.py`)
+   - (b) the teacher queue, ranked hardest and most important first
+   - (c) 500 lock-in and 500 jump-or-stay gold labels
+   - the watchdog data
+   - the pipeline code itself
+2. `agent/kaggle/teacher_distill.ipynb` (source: `teacher_distill.py`; rebuild it with `agent/kaggle/build_notebook.py`) runs these steps:
+   - `run_teacher.py`: Qwen3-32B-AWQ on vLLM, with fallbacks. It is resumable and stops at its GPU-hour budget.
+   - `run_students.py`: PEFT LoRA (r 8, last 8 layers) on the Mac's own base, `mlx-community/Qwen3-1.7B-4bit`, dequantized exactly (`dequant.py`). It trains one job per T4 and converts with `agent/train/peft_to_mlx.py`.
+   - `grade.py`: today vs head vs teacher vs student, on dev-test nights, with the gates.
+   - writes `out.zip`
+3. To run the next round, attach the previous version's output. The teacher resumes, and the students retrain.
 
-| step | where | command / file | output |
-|---|---|---|---|
-| 0. briefs + hindsight | anywhere | `scripts/export_reasoner_llm.py` (reasoner thread) | `rows_*.jsonl`, `chat_*.jsonl` |
-| 1. teacher requests | anywhere | `scripts/distill.py requests --rows-dir … --watchdog` | `data/distill/teacher_requests.jsonl` |
-| 2. teacher | Kaggle | `agent/distill/kaggle/teacher_kaggle.ipynb` | `teacher_out.jsonl`, `run_report.json` |
-| 3. student data | anywhere | `scripts/distill.py student-bundle --answers teacher_out.jsonl --watchdog-data agent/train/data` | `data/distill/student-input/` |
-| 3b. watchdog wordings | anywhere | `scripts/distill.py wordings --answers teacher_out.jsonl` | `agent/train/wordings_teacher.json` |
-| 4. students | Kaggle | `agent/distill/kaggle/student_kaggle.ipynb` | `adapters/<job>/` (PEFT), `<job>_test_out.jsonl` |
-| 5. to the Mac | anywhere | `agent/train/peft_to_mlx.py` (watchdog thread) | `agent/model/<job>/adapters.safetensors` |
-| 6. grade | anywhere | `scripts/distill.py eval --teacher … --student game-reasoner_test_out.jsonl` | today / head / teacher / student table |
+## No-overfitting rules (Nick, 2026-11-03)
 
-## What the teacher does, and what it never decides
+`agent/distill/split.py` splits the data by time, in whole nights, per league:
+- **locked**: the §7 held-out nights, widened to at least 25% of nights. They are left out of `kaggle-inputs` entirely and scored only for the release PR.
+- **train**: the oldest nights, then **valid**, then **dev-test** (the newest nights before locked).
 
-* **Game reasoner, held-out nights (blind).** The teacher answers the exact question the student gets
-  (same system prompt + brief). Only used to grade the teacher against today and the student.
-* **Game reasoner, train/valid nights (grounded).** The teacher sees the brief *and* what actually
-  happened next, and writes `storyline` / `why` / `next` as a forecast a sharp viewer could have made
-  from the brief alone. `lock_in`, `safe_to_leave`, `stay_s` and `confidence` stay exactly as the
-  export wrote them from hindsight and the decider's rules: that is what gets graded, and a teacher
-  never overrides it. Answers that quote the future ("in hindsight", "what happened next") are dropped.
-* **Watchdog.** New wordings of each error kind (only the TRAIN wordings are shown as examples, never
-  the held-out ones), each checked by a second blind teacher pass that must name the same kind. Only
-  agreements go to `agent/train/wordings_teacher.json`; the watchdog's `make_data.py` adds them to
-  TRAIN only after its own leak check. Labels still come from `agent/policy.py` rules and
-  `teach_novel`, so the action a line maps to is never the teacher's call.
-* **Jump vs stay.** Prompt and parser are in place (`jump_requests`, `clean_jump`); they run once the
-  highlight-jump thread exports dead-ball rows with a `jump` context.
+Checks that run at pack time and in the tests:
+- no game spans two splits
+- the splits are ordered in time
+- hindsight (grounded) teacher requests use train nights only
+- gold rows outside train are never used for training
 
-Held-out = whole nights: the export's `test` split is the nights the scorecards grade; nothing from
-those nights is ever trained on (`student.build` refuses test rows).
+Every round reports train vs valid vs dev-test, plus nights after the training cutoff. The 95% gates are judged only on the locked set plus fresh nights.
 
-## Grading (`agent/distill/evaluate.py`)
+## Gates
 
-All sources are scored against hindsight on the test nights. `today` = the brain's "key soon" odds in
-the brief and `head` = the reasoner thread's fast lock-in head, each mapped to lock-in levels with cuts
-fitted per league on valid nights. Lines: must_see precision / recall / lift over the base rate of
-big plays, lock-in accuracy, unsafe leaves (said safe, a big play followed), over-cautious stays, and
-the error of the time named in `next`.
+- **Reasoner:** usable JSON 100%, lock_in at least 95% vs gold, unsafe leaves at most 0.5%.
+- **Watchdog:** at least 95% correct, every kind at least 90%, 0 unsafe actions.

@@ -1,6 +1,6 @@
 """Turn a ``# %%`` percent-format script into a Kaggle/Jupyter notebook. Stdlib only.
 
-    python agent/distill/kaggle/build_notebook.py   # teacher_kaggle.py -> teacher_kaggle.ipynb
+    python agent/kaggle/build_notebook.py   # teacher_distill.py -> teacher_distill.ipynb
 """
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ def build(src: Path, dst: Path) -> None:
 
 
 if __name__ == "__main__":
-    names = sys.argv[1:] or ["teacher_kaggle"]
+    names = sys.argv[1:] or ["teacher_distill"]
     for n in names:
         build(HERE / f"{n}.py", HERE / f"{n}.ipynb")
         print("wrote", HERE / f"{n}.ipynb")

@@ -127,7 +127,15 @@ WD_CLASSIFY_SYSTEM = (
 # ---------------------------------------------------------------------------------------------- io
 
 def read_jsonl(path: str | Path) -> list[dict]:
-    with open(path) as f:
+    """Rows of a .jsonl or .jsonl.gz file (the Kaggle dataset ships the big ones gzipped)."""
+    p = Path(path)
+    if not p.exists() and Path(str(p) + ".gz").exists():
+        p = Path(str(p) + ".gz")
+    if p.suffix == ".gz":
+        import gzip
+        with gzip.open(p, "rt") as f:
+            return [json.loads(line) for line in f if line.strip()]
+    with open(p) as f:
         return [json.loads(line) for line in f if line.strip()]
 
 
@@ -202,14 +210,17 @@ def reasoner_requests(rows: Iterable[dict], system: str = STUDENT_SYSTEM, ground
 
 
 def jump_requests(rows: Iterable[dict], splits=("train", "valid", "test")) -> list[dict]:
-    """Blind jump/stay questions for rows that carry a ``jump`` context (dead balls only)."""
+    """Blind jump/stay questions for rows that carry a ``jump`` context (dead balls only).
+
+    The teacher sees the brief and the reel/switch context, never the real break length or the label.
+    """
     out = []
     for r in rows:
         j = r.get("jump")
         if not j or r.get("split", "train") not in splits:
             continue
-        ctx = j.get("text") or json.dumps({k: v for k, v in j.items() if k != "label"})
-        out.append(_req(f"{r['id']}|jump", "jump_blind", JUMP_SYSTEM, f"{r['brief']}\n\nREEL / SWITCH:\n{ctx}", 120))
+        out.append(_req(f"{r['id']}|jump", "jump_blind", JUMP_SYSTEM,
+                        f"{r['brief']}\n\nREEL / SWITCH:\n{j['text']}", 120))
     return out
 
 

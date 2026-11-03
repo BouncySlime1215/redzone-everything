@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import json
+import pytest
 
 from agent.distill import evaluate, student, teacher
-from agent.distill.kaggle import build_notebook
+from agent.kaggle import build_notebook
 
 
 SYSTEM = teacher.STUDENT_SYSTEM
@@ -178,15 +179,15 @@ def test_compare_fits_baselines_on_valid_and_scores_test_only():
 # -------------------------------------------------------------------------------------- notebook
 
 def test_notebook_cells_compile_and_match_the_script():
-    src = (build_notebook.HERE / "teacher_kaggle.py").read_text()
+    src = (build_notebook.HERE / "teacher_distill.py").read_text()
     cells = build_notebook.cells_of(src)
     code = [c for c in cells if c["cell_type"] == "code"]
     assert cells[0]["cell_type"] == "markdown" and len(code) >= 4
     for c in code:
         compile("".join(c["source"]), "cell", "exec")
-    nb = json.loads((build_notebook.HERE / "teacher_kaggle.ipynb").read_text())
+    nb = json.loads((build_notebook.HERE / "teacher_distill.ipynb").read_text())
     assert [c["source"] for c in nb["cells"]] == [c["source"] for c in cells], \
-        "teacher_kaggle.ipynb is stale: run python agent/distill/kaggle/build_notebook.py"
+        "teacher_distill.ipynb is stale: run python agent/kaggle/build_notebook.py"
 
 
 def test_watchdog_novel_is_read_without_importing_make_data(tmp_path):
@@ -202,6 +203,29 @@ def test_watchdog_novel_is_read_without_importing_make_data(tmp_path):
 
 
 def test_ship_gate_needs_perfect_json_and_near_zero_unsafe_leaves():
-    assert evaluate.gate({"usable_json_pct": 100.0, "unsafe_leave_pct": 0.3}) == []
-    assert len(evaluate.gate({"usable_json_pct": 99.9, "unsafe_leave_pct": 2.0})) == 2
-    assert evaluate.gate({"usable_json_pct": 100.0, "unsafe_leave_pct": None})     # no leaves said: can't pass blind
+    assert evaluate.gate({"usable_json_pct": 100.0, "lock_acc": 95.0, "unsafe_leave_pct": 0.3}) == []
+    assert len(evaluate.gate({"usable_json_pct": 99.9, "lock_acc": 94.9, "unsafe_leave_pct": 2.0})) == 3
+    assert evaluate.gate({"usable_json_pct": 100.0, "lock_acc": 99.0, "unsafe_leave_pct": None})     # no leaves said: can't pass blind
+
+
+def test_time_split_keeps_held_out_nights_locked_and_games_whole():
+    from agent.distill import split
+    rows = []
+    for lg, nights in {"nba": [f"202610{d:02d}" for d in range(20, 32)] + ["20261101"],
+                       "nfl": ["20250907", "20250914", "20250921", "20250928", "20251005", "20251012",
+                               "20251019", "20260104", "20261101"]}.items():
+        for k, n in enumerate(nights):
+            for i in range(3):
+                rows.append({"id": f"{lg}:{k}:{i}", "league": lg, "night": n})
+    split.assign(rows)
+    by = {(r["league"], r["night"]): r["split"] for r in rows}
+    for n in ("20261029", "20261030", "20261031", "20261101"):
+        assert by[("nba", n)] == "locked"
+    assert by[("nfl", "20261101")] == by[("nfl", "20260104")] == "locked"
+    assert by[("nba", "20261020")] == by[("nfl", "20250907")] == "train"
+    for lg in ("nba", "nfl"):
+        ns = {n for (l2, n) in by if l2 == lg}
+        assert sum(by[(lg, n)] == "locked" for n in ns) >= 0.25 * len(ns)
+    rows[0]["split"] = "test"           # one play of a train game moved: the leakage check catches it
+    with pytest.raises(AssertionError):
+        split.check(rows)

@@ -156,9 +156,11 @@ def table(res: dict, league: str = "all") -> str:
     return "\n".join(out)
 
 
-# Ship gate (Nick, Nov 3: "100% no errors"): the hard lines must be perfect, and a missed big play
-# after a "safe to leave" must be ~0 on held-out nights. Everything else is maximized, not gated.
-GATE = {"usable_json_pct": ("min", 100.0), "unsafe_leave_pct": ("max", 0.5)}
+# Ship gate (Nick, Nov 3, approved): valid answers 100%, lock_in >= 95% against the gold labels
+# (Nick's rules applied exactly, agent/distill/gold.py), and a missed big play after "safe to leave"
+# at most 0.5% on held-out nights.
+GATE = {"usable_json_pct": ("min", 100.0), "lock_acc": ("min", 95.0), "unsafe_leave_pct": ("max", 0.5)}
+WATCHDOG_GATE = 95.0
 
 
 def gate(s: dict, rules: dict = GATE) -> list[str]:
