@@ -124,6 +124,28 @@ This round predates the rule and falls short of it:
 Next round: a time-ordered split, 5 forward-chaining folds (mean and worst fold), the gap report,
 slices, and the locked test set left untouched.
 
+## Hype v2 (#4), folded in, off by default
+
+Hype v2's code (`redzone/scoring/hype.py`, `features.py`, `hype_model.json`, `score.v2.*`) is merged.
+Against integration/next f7f8d67:
+
+| variant | NFL dead air | NFL crunch | NBA dead air | NBA mid-play | NBA missed | NHL / demo |
+|---|---|---|---|---|---|---|
+| baseline | 9.7 | 73.5 | 19.4 | 38 | 18 | = |
+| #4 as shipped (NFL + NBA, both crunch rules) | 11.3 | 70.2 | 19.7 | 30 | 15 | = |
+| hype off, crunch rules on | 9.8 | 71.4 | 19.4 | 38 | 18 | = |
+| NBA hype only, crunch rules on | 9.8 | 71.4 | 19.7 | 30 | 15 | = |
+| **NBA hype only, crunch rules off** | 9.7 | 73.5 | 19.7 | 30 | 15 | = |
+| shipped here (`score.v2.leagues: []`) | 9.7 | 73.5 | 19.4 | 38 | 18 | = |
+
+- NFL hype costs dead air and crunch, so it stays off.
+- `decider.crunch.visit_needs_exit` costs NFL crunch (73.5 → 71.4), and `keep_over_noncrunch` changes
+  nothing, so both ship off.
+- #4's your-team catch-up fix is superseded by integration/next's `replay.yours_first`, so it was dropped.
+- NBA hype trades +0.3 pts of dead air for 8 fewer mid-play entries and 3 fewer missed plays. Its blend
+  was picked on these same nights, so it stays off until it wins on unseen nights, or until the user turns
+  it on (`score.v2.leagues: [nba]`).
+
 ## Cautious restart bound (`V3.safe_entry`, for the decision core's break budget)
 
 When the core's break budget used plain p10, replays overran into crunch snaps. On NFL held-out
