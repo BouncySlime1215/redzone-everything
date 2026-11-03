@@ -126,6 +126,8 @@ decider:
   switch_margin: 10
   entry:
     hold_only: [nhl]       # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
+    rewind_only: [nba]        # leagues whose entries land on a dead ball with a rewind when one fits, never wait
+    crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
   switch_cost: {youtubetv: 3, prime: 8, espn: 7, hdmi_flip: 1}   # seconds to the new picture; replaced by
                            # measured times as you use it (see switch_speed)

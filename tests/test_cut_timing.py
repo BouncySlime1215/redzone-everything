@@ -226,8 +226,9 @@ def test_hockey_waits_for_a_whistle_on_the_way_in_but_never_into_crunch(cfg, clo
     def d(kind):
         return Decision(0.0, "switch", "b", "r", State.WATCHING, "", kind=kind)
     assert dec._entry_only(x(League.NHL), d("better"))
-    assert not dec._entry_only(x(League.NHL, crunch=True, now=True), d("better"))
-    assert not dec._entry_only(x(League.NHL, crunch=True, now=True), d("crunch"))
+    # The last 2:00 plans a rewind landing on the last whistle but never waits (decider.entry.crunch_now)
+    assert dec._crunch_entry_mode() == "rewind"
+    assert dec._entry_only(x(League.NHL, crunch=True, now=True), d("crunch"))
     assert dec._entry_only(x(League.NHL, crunch=True), d("crunch"))           # the run-up waits
     assert not dec._entry_only(x(League.NHL), d("start"))      # nothing on screen to protect
-    assert not dec._entry_only(x(League.NBA), d("better"))
+    assert dec._entry_only(x(League.NBA), d("better"))   # planned for a rewind landing; never waits (rewind_only)

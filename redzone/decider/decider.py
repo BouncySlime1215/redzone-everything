@@ -628,16 +628,26 @@ class Decider:
         scorecards Nov 3: mid-play entries 165 -> 15, crunch live 87.5 -> 88.3%, big plays seen
         99.7 -> 99.5%. The rest of cut timing (holding for a big play, stretching a stoppage) cost
         hockey crunch time, so it stays football-only."""
-        if x is None or d.kind == "start" or x.scored.crunch_now:
+        if x is None or d.kind == "start":
+            return False
+        if x.scored.crunch_now and self._crunch_entry_mode() == "live":
             return False
         if x.scored.crunch and not x.scored.crunch_now and \
                 not self.cfg.get("decider.entry.hold_crunch_runup", True):
             return False
+        if x.scored.league.base.value in (self.cfg.get("decider.entry.rewind_only") or []):
+            return True    # plan the landing; _time_entry never waits for these (see there)
         if d.kind == "chase" and x.scored.imminent:
             # A chase for a goal off a 5-on-3, a fresh power play, a late empty net or a penalty
             # shot: waiting for a whistle misses it. Every other chase waits like any entry.
             return False
         return x.scored.league.base.value in (self.cfg.get("decider.entry.hold_only") or [])
+
+    def _crunch_entry_mode(self) -> str:
+        """[nhl crunch entry] Coming into hockey inside crunch's last 2:00 / OT: "live" (go now),
+        "rewind" (land on the last whistle with a rewind when one fits, else go now), or "wait"
+        (rewind or wait for a whistle, like any entry)."""
+        return str(self.cfg.get("decider.entry.crunch_now", "live"))
 
     def _time_entry(self, d: Decision, cands, now: float, home_before) -> Decision:
         """Hold a switch until its picture would come up on a dead ball, or land it with a rewind."""
@@ -658,6 +668,9 @@ class Decider:
         if plan.ok:
             d.rewind_s = plan.rewind_s
             return d
+        if x is not None and (x.scored.crunch_now and self._crunch_entry_mode() == "rewind"
+                              or x.scored.league.base.value in (self.cfg.get("decider.entry.rewind_only") or [])):
+            return d   # no clean landing in reach: crunch time (and rewind-only leagues) don't wait
         if x is not None and x.scored.league.base.value in (self.cfg.get("decider.entry.no_wait_leagues") or []):
             # Continuous play: holding a switch for a dead ball missed more than it saved (scorecards,
             # Nov 3); enter live unless a rewind lands it clean (decided above).
