@@ -70,6 +70,11 @@ RESUME_PAUSED_S = 2.0      # ...but a player that says "paused" this long gets M
 RESUME_PLAY_WAIT_S = 3.0   # ...else MEDIA_PLAY (a paused player) and wait this long
 RELINK_MAX_S = 25.0        # ...else one fresh deep link of the target, capped at this
 RESUME_POLL_S = 0.25       # "playing the game again?" this often while resuming
+STANDBY_REREADS = 3        # right before a flip: a standby whose session is missing is re-read this often...
+STANDBY_REREAD_S = 0.5     # ...this far apart, before the switch is given up
+PRIME_PAGE_AFTER_S = 1.0  # ...its session gone this long -> read the screen for the detail page
+PRIME_PAGE_CHECKS = 3      # ...at most this many screen reads per resume
+PRIME_LIVE_WAIT_S = 8.0    # ...after pressing through: the stream starts in ~3.5 s (Nov 2)
 FLIP_POLL_S = 0.12         # after HOME: ask the stick "are you the active source?" this often...
 FLIP_DEADLINE_S = 4.5      # ...for at most this long (it normally answers in well under a second)
 RELAUNCH_AFTER_S = 0.6     # the app is relaunched no sooner than this after HOME (the launcher must draw)
@@ -1156,6 +1161,15 @@ class Controller:
                 # Cached readiness is not proof the stream survived a pause,
                 # app error, or a user change on the hidden stick.
                 pb = await hid.playback(self._package(hid, target))
+                for _ in range(STANDBY_REREADS):
+                    # Prime's session can be missing from one read without the player stopping
+                    # (soak, Nov 2: a fresh tune read "none" once at flip time and the whole switch
+                    # failed). Only a missing session / failed read is re-asked; a paused or
+                    # different stream is believed at once.
+                    if hid.still_on(target, pb) or not (pb.get("read_ok") is False or pb.get("state") == "none"):
+                        break
+                    await asyncio.sleep(STANDBY_REREAD_S)
+                    pb = await hid.playback(self._package(hid, target))
                 if not hid.still_on(target, pb):
                     self._set_hidden(None, False)
                     return Outcome(False, target, time.time() - t0, "standby stream is no longer confirmed", False,
@@ -1357,9 +1371,10 @@ class Controller:
     async def _home_flip_prime(self, stick: Stick, pkg: str | None, target: str) -> bool:
         """Prime (measured on the sticks, Nov 2): the first HOME can be swallowed by its player, and
         bringing the app back before the TV has switched cancels the switch. Re-sending a link opens
-        the game's page (Watch + Watch Live again, ~30 s). So: HOME (twice if the first didn't
-        switch the TV), wait for <Active Source>, THEN bring the player's own screen to the front
-        (REORDER_TO_FRONT): the game is still playing there."""
+        the game's page (Watch + Watch Live again, ~30 s). So: HOME (twice if the first didn't switch
+        the TV), wait for <Active Source>, THEN bring Prime's screen back to the front
+        (REORDER_TO_FRONT, or the game's link where that is refused). Prime usually shows the
+        game's detail page there, not the player: _resume_playback presses through it."""
         r = await stick.shell("dumpsys activity activities | grep -m1 mResumedActivity", timeout=5)
         m = re.search(r"u0 (com\.amazon\.firebat/[\w.$]+)", r.out if r.ok else "")
         comp = m.group(1) if m else None
@@ -1368,12 +1383,25 @@ class Controller:
         for attempt in range(2):
             if not (await stick.shell("input keyevent KEYCODE_HOME", timeout=8)).ok:
                 break
-            took = await self._await_active_source(stick, home_at, 2.5 if attempt == 0 else FLIP_DEADLINE_S)
+            # The second HOME gets a full window of its own: measured from the first press it had
+            # only ~2 s, and a TV a beat slow to follow failed the flip -> two-stick mode off and an
+            # unknown input (22:16, 22:20, 22:31 on Nov 2). flip_s still counts from the first HOME.
+            limit = 2.5 if attempt == 0 else (time.monotonic() - home_at) + FLIP_DEADLINE_S
+            took = await self._await_active_source(stick, home_at, limit)
             if took is not None:
                 break
+        reordered = False
         if comp:
-            await stick.shell(f"am start -f 0x00020000 -n {comp} >/dev/null 2>&1", timeout=8)
-        else:
+            r = await stick.shell(f"am start -f 0x00020000 -n {comp} 2>&1", timeout=8)
+            # Prime's in-app PlaybackActivity (the 4K Plus stick) is not exported: the reorder is
+            # refused ("Permission Denial ... not exported") and the TV sat on the Fire TV home
+            # screen until a full re-link (soak, Nov 3). The game's link brings Prime's task back
+            # (its detail page, then pressed through by _resume_playback).
+            reordered = r.ok and not any(m in r.out for m in ("Permission Denial", "not exported", "Error"))
+            if not reordered:
+                log.info("%s: Prime's player screen can't be brought back (%s); re-opening the game's page",
+                         stick.host, (r.out.strip().splitlines() or ["no reply"])[-1][:100])
+        if not reordered:
             await self._relaunch(stick, pkg, home_at, target)
         if took is None:
             log.warning("HOME flip on %s (Prime): stick never became active source", stick.host)
@@ -1442,16 +1470,59 @@ class Controller:
             log.info("%s: %s", stick.host, "; ".join(steps))
         return how is not None
 
+    async def _resume_prime(self, stick: Stick, target: str, pkg: str, wait_s: float) -> str | None:
+        """Prime after a HOME flip (soak, Nov 2): REORDER_TO_FRONT lands on the game's detail page
+        with no session ("none") and it never plays again by itself; the old answer (wait 6 s, then
+        a fresh deep link) left ~50 s of a static page on screen. Now: the moment the session has
+        been gone PRIME_PAGE_AFTER_S, read the screen and press through Watch -> Watch Live (~5 s).
+        A player that does come back by itself (or pauses and resumes) is just waited for."""
+        tuner = TUNERS.get("prime")
+        press = getattr(tuner, "resume_from_page", None)
+        t0 = time.monotonic()
+        gone_since, checks, pressed = None, 0, False
+        while True:
+            pb = await stick.playback(pkg)
+            if self._plays_target(stick, target, pb, pkg):
+                stick.remember(target, pb)
+                return "watch_live" if pressed else "auto"
+            now = time.monotonic()
+            if now - t0 >= wait_s:
+                return None
+            gone = pb.get("read_ok") is not False and pb.get("state") in ("none", "stopped")
+            gone_since = (gone_since or now) if gone else None
+            if (press is not None and not pressed and gone_since is not None
+                    and now - gone_since >= PRIME_PAGE_AFTER_S and checks < PRIME_PAGE_CHECKS):
+                checks += 1
+                steps: list[str] = []
+                try:
+                    pressed = await press(stick, pkg, steps)
+                except Exception:   # a screen read must never break the resume
+                    log.exception("Prime press-through after the flip failed on %s", stick.host)
+                if steps:
+                    log.info("%s: %s", stick.host, "; ".join(steps))
+                if pressed:
+                    # The stream needs ~3.5 s after Watch Live: give it that long past the deadline.
+                    wait_s = max(wait_s, time.monotonic() - t0 + PRIME_LIVE_WAIT_S)
+                gone_since = None
+            await asyncio.sleep(RESUME_POLL_S)
+
     async def _resume_playback(self, stick: Stick, target: str, first_wait_s: float) -> str | None:
         """Make the stick on screen play `target` again: wait for it, then MEDIA_PLAY (a paused
         player), then a prompt read from a screenshot, then one fresh deep link. Returns how it came
         back ("auto", "media_play", "prompt", "relink"), or None if it didn't. Only ever for the stick the TV is showing."""
         pkg = self._package(stick, target)
+        prime = target.startswith("prime:")
+        if prime and pkg:
+            # Prime after a HOME flip: wait for it (a stale "paused" that plays again by itself is
+            # waited out, never pressed), and press through the detail page it lands on (soak, Nov 2).
+            how = await self._resume_prime(stick, target, pkg, max(first_wait_s, PRIME_RESUME_WAIT_S))
+            if how:
+                return how
+            first_wait_s = 0.0
         # Never the "paused" shortcut for Prime: the older stick's Prime pauses on input loss, keeps
         # reporting that stale "paused" after REORDER_TO_FRONT and plays again by itself at ~10 s,
         # while MEDIA_PLAY on it went unanswered and led to a re-link (19:59 and 23:16 on Nov 2;
         # the 23:16 one became a 75 s switch failure). It waits out its whole grace.
-        prime = target.startswith("prime:")
         paused_s = RESUME_PAUSED_S if first_wait_s > RESUME_WAIT_S and not prime else None
         pb = await self._await_playing(stick, target, pkg, first_wait_s, paused_s)
         if pb is not None:
