@@ -1072,16 +1072,26 @@ class Decider:
         # stick beats a slightly better game behind a 40 s cold tune.
         watch = {gid: self._visit_watch(exclude, gid, now) for gid in options}
         need = VISIT_MIN_WATCH_S if self._visit_due_by_break_end(exclude) else 0.0
-        # Crunch time elsewhere is worth the trip whatever is left of this break.
+        hold = self.cfg.get("decider.crunch.hold_personal", 5)
+
+        def crunch(x: Candidate) -> bool:
+            return bool(x.scored.crunch or x.scored.lock in CRUNCH_LOCKS)
+
+        # Crunch time elsewhere, and the user's own team, are worth the trip whatever is left of
+        # this break.
         fits = {gid: x for gid, x in options.items()
-                if watch[gid] is None or watch[gid] > need or x.scored.crunch or x.scored.lock in CRUNCH_LOCKS}
+                if watch[gid] is None or watch[gid] > need or crunch(x) or x.scored.personal >= hold}
         pool = [gid for gid, x in fits.items()
                 if gid != exclude and not x.scored.is_break and gid not in self._screen_break]
         top = max((fits[g].scored.score for g in pool), default=None)
         floor = self.cfg.get("decider.break_destination_min")
         if top is not None and top >= floor:
             worth = [g for g in pool if fits[g].scored.score >= floor]
-            return max(worth, key=lambda g: (fits[g].scored.score * (watch[g] or 1.0), fits[g].scored.score))
+            # Crunch first, then the user's team, and only then score x seconds on screen: a
+            # preloaded neutral game must never pull the viewer away from crunch time or from
+            # their own team behind a cold (e.g. Prime) tune.
+            return max(worth, key=lambda g: (crunch(fits[g]), fits[g].scored.personal >= hold,
+                                             fits[g].scored.score * (watch[g] or 1.0), fits[g].scored.score))
         # RedZone never shows a commercial: any break is better spent there than on an ad.
         if REDZONE in watchable and exclude != REDZONE and REDZONE in fits:
             return REDZONE

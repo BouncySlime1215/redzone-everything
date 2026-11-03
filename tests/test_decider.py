@@ -542,3 +542,51 @@ def test_nba_timeouts_are_counted_per_period(clock):
         poll(f"p{i}", "jump_shot", St.NONE)
     poll("e", "end_period", St.END_PERIOD)
     assert tl.period_timeouts == 0
+
+
+def _timeout_two_dests(dec, clock, c_scored, c_cost):
+    """Home NBA game in the period's 1st timeout; c (behind `c_cost` s) vs neutral o (preloaded, 6 s)."""
+    for g in ("h", "c", "o"):
+        calibrate(dec, f"youtubetv:{g}", mu=60.0)
+        dec.timeline(g, League.NBA)
+    dec.decide({"h": Candidate(sc("h", 99, league=League.NBA), "youtubetv:h")})
+    clock.t += 100
+    tl = dec.timeline("h", League.NBA)
+    tl.period_timeouts = 1
+    dec.deadline_cost = lambda t: c_cost if t == "youtubetv:c" else 6.0
+    dec.return_cost = lambda t: 6.0
+    tl.events.append(Event(clock.t, "stop_start", "timeout"))
+    tl.stoppage = Stoppage.TIMEOUT
+    clock.t += 80
+    return dec.decide({"h": Candidate(sc("h", 50, is_break=True, league=League.NBA), "youtubetv:h"),
+                       "c": Candidate(c_scored, "youtubetv:c"),
+                       "o": Candidate(sc("o", 40, league=League.NBA), "youtubetv:o")})
+
+
+def _nba(gid, score, personal=0.0, lock=None, crunch=False):
+    return Scored(gid, League.NBA, score, score, score, 1.0, personal, f"reason {gid}", [], False,
+                  lock, None, 1.0, crunch=crunch)
+
+
+@pytest.mark.parametrize("c_cost", [40.0, 76.0])
+def test_break_visit_never_trades_your_team_for_a_preloaded_neutral_game(dec, clock, c_cost):
+    """Review blocker (break-visit-costs): score x watch let a preloaded neutral game beat the
+    user's team (WSH/UNC) behind a cold Prime tune. The break visit is how the viewer reaches a
+    Prime team game at all (the switch cost blocks the ordinary 'better' switch)."""
+    d = _timeout_two_dests(dec, clock, _nba("c", 60, personal=8), c_cost)
+    assert d.action == "switch" and d.target == "c" and d.kind == "break_visit"
+
+
+@pytest.mark.parametrize("c_cost", [40.0, 76.0])
+@pytest.mark.parametrize("how", ["lock", "flag"])
+def test_break_visit_crunch_destination_outranks_a_preloaded_game(dec, clock, c_cost, how):
+    """Review blocker: the fit filter let crunch through 'whatever is left', then the ranking
+    multiplied its score by a small or negative watch time and a preloaded non-crunch game won."""
+    c = _nba("c", 70, lock="crunch time") if how == "lock" else _nba("c", 70, crunch=True)
+    d = _timeout_two_dests(dec, clock, c, c_cost)
+    assert d.action == "switch" and d.target == "c" and d.kind in ("break_visit", "crunch")
+
+
+def test_break_visit_still_prefers_the_preloaded_stick_among_neutral_games(dec, clock):
+    d = _timeout_two_dests(dec, clock, _nba("c", 45), 76.0)
+    assert d.action == "switch" and d.target == "o" and d.kind == "break_visit"
