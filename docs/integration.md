@@ -14,7 +14,8 @@ decision (contracts, CI) merges whenever it is ready.
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 0 | base 5f0e6a1 | 5f0e6a1 | 1228 pass / 0 fail | pending | 29.9 / 95.4 (prior run) | 70.0 | 100 | 8.6 | 41.7 | 11 / 1 | 96.3 | 38 | pending | baseline |
 | 1 | #1 trip budget | dbb33cc | 1241 pass / 0 fail | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | approved by the user; scorecards pending the archive |
-| 1a | decision-core interface (23f30d0) + contracts v1 | (this commit) | 1263 pass / 0 fail | no decision change | | | | | | | | | | infrastructure |
+| 1a | decision-core interface (23f30d0) + contracts v1 | 418ffc5 | 1263 pass / 0 fail | no decision change | | | | | | | | | | infrastructure |
+| 1b | #7 CI on every PR + d0c775a SwitchPath fields | 48b5948 | 1271 pass / 0 fail, ruff clean | no decision change | | | | | | | | | | infrastructure; CI scorecards need the `eval-data-v1` release |
 
 Scorecard numbers marked "prior run" come from the threads' own runs on the same window. Every
 pending cell gets filled from the pinned archive.
