@@ -194,6 +194,7 @@ class Tuner:
     max_reads = 3            # screen reads per deep link, at most
     wait_for_launch = False  # `am start -W`: only for apps whose next step needs the page fully drawn
     subtitle_is_channel = False  # the media session's subtitle names the channel (see NewStream)
+    screenshot_prompts = False   # its prompts can be read and cleared from a screenshot (screen_prompts)
 
     def url(self, ref: str) -> str:
         raise NotImplementedError
@@ -300,6 +301,14 @@ class Tuner:
     async def _press_prompt(self, stick: Stick, text: str, steps: list[str], verb: str, may_cut=None) -> bool:
         from redzone.discovery.providers import classify_screen, is_purchase_screen, normalize_text
         text = normalize_text(text)
+        if self.screenshot_prompts and getattr(stick, "screen_source", "") == "ocr":
+            # The app draws its own UI (YouTube TV): uiautomator can't see the picker's focus, so
+            # read and drive it from a fresh screenshot instead (screen_prompts has the rules).
+            from redzone.tuners import screen_prompts
+            cleared = await screen_prompts.clear_prompt(
+                stick, preference(stick, self.app, self.preferred_profile), steps,
+                lambda: require_cut(may_cut, steps, mutating=True), package=stick.packages.get(self.role, ""))
+            return cleared is not None
         verdict = classify_screen(text)
         if is_purchase_screen(text) or (verdict and verdict.stops):
             steps.append("stopped at an account, payment, or unavailable-content screen")
@@ -315,6 +324,20 @@ class Tuner:
                 await stick.key(*keys)
                 return True
         return False
+
+    async def clear_screen_prompt(self, stick: Stick, pkg: str, steps: list[str], may_cut=None) -> str | None:
+        """For the visible-stick watchdog: the app is in front but not playing. Clear a profile
+        picker or "still watching?" read from a screenshot. Returns "profile" / "still_watching",
+        or None (nothing cleared, not this kind of app, or evidence too unclear to press)."""
+        if not self.screenshot_prompts:
+            return None
+        from redzone.tuners import screen_prompts
+        try:
+            return await screen_prompts.clear_prompt(
+                stick, preference(stick, self.app, self.preferred_profile), steps,
+                lambda: require_cut(may_cut, steps, mutating=True), package=pkg)
+        except (ProfileSelectionRequired, CutWindowClosed):
+            return None
 
     async def _watch_for(self, stick: Stick, pkg: str, watch: NewStream, seconds: float) -> bool:
         """Ask "playing yet?" every poll_s for up to `seconds` (instead of sleeping, then asking once)."""
@@ -343,6 +366,7 @@ class YouTubeTVTuner(Tuner):
     app = "youtubetv"
     role = "youtubetv"
     subtitle_is_channel = True   # "SportsCenter, ESPN, null" (seen on the stick, Nov 2)
+    screenshot_prompts = True    # Cobalt: invisible to uiautomator, visible in screencap (Nov 2)
 
     def url(self, ref: str) -> str:
         return f"https://tv.youtube.com/watch/{ref}"

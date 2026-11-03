@@ -1269,10 +1269,26 @@ class Controller:
                 return None
             await asyncio.sleep(RESUME_POLL_S)
 
+    async def _clear_screen_prompt(self, stick: Stick, target: str, pkg: str | None) -> bool:
+        """A "Who's watching?" / "Still watching?" the stick's UI dump can't see (YouTube TV):
+        cleared from a screenshot by the tuner (redzone/tuners/screen_prompts.py)."""
+        clear = getattr(TUNERS.get(target.split(":", 1)[0]), "clear_screen_prompt", None)
+        if clear is None or not pkg:
+            return False
+        steps: list[str] = []
+        try:
+            how = await clear(stick, pkg, steps)
+        except Exception:   # a screenshot read must never break the watchdog
+            log.exception("screen prompt check failed on %s", stick.host)
+            return False
+        if steps:
+            log.info("%s: %s", stick.host, "; ".join(steps))
+        return how is not None
+
     async def _resume_playback(self, stick: Stick, target: str, first_wait_s: float) -> str | None:
         """Make the stick on screen play `target` again: wait for it, then MEDIA_PLAY (a paused
-        player), then one fresh deep link. Returns how it came back ("auto", "media_play",
-        "relink"), or None if it didn't. Only ever for the stick the TV is showing."""
+        player), then a prompt read from a screenshot, then one fresh deep link. Returns how it came
+        back ("auto", "media_play", "prompt", "relink"), or None if it didn't. Only ever for the stick the TV is showing."""
         pkg = self._package(stick, target)
         pb = await self._await_playing(stick, target, pkg, first_wait_s)
         if pb is not None:
@@ -1286,6 +1302,14 @@ class Controller:
             if pb is not None:
                 stick.remember(target, pb)
                 return "media_play"
+        # The app may be up but behind its own prompt (YouTube TV's "Who's watching?" after a
+        # restart, "Still watching?"). Only after the quick fixes: a screenshot read takes ~2 s.
+        if await self._clear_screen_prompt(stick, target, pkg):
+            pb = await self._await_playing(stick, target, pkg, RESUME_PLAY_WAIT_S)
+            if pb is not None:
+                stick.remember(target, pb)
+                return "prompt"
+            last = await stick.playback(pkg)
         log.warning("%s isn't playing %s (%s); loading it again", stick.host, target, last.get("state"))
         try:
             res = await asyncio.wait_for(self._tune(stick, target), RELINK_MAX_S)
