@@ -92,6 +92,8 @@ function gameSheet(gid) {
       <div class="sit-row" style="margin-top:10px"><span>Start</span><span>${esc(get(g, "home.abbr"))} above · ${esc(get(g, "away.abbr"))} below</span><span>${ph === "post" ? "Final" : "Now"}</span></div>
     </div>` : "";
 
+  const flowSec = momentumBlock(g, det);
+
   const ls = det && det.linescore ? linescore(det.linescore, g) : "";
   const lsSec = ls ? `<div class="sheet-sec"><h4>Scoring</h4></div><div class="panel">${ls}</div>` : "";
 
@@ -105,8 +107,43 @@ function gameSheet(gid) {
     g.start_time ? infoRow("calendar", ph === "pre" ? "Starts" : "Started", esc(`${fmtStart(g.start_time)}`)) : "",
   ].join("");
 
-  return `${hero}${actions}${live}${wpSec}${lsSec}${leadersSec}${playsSec}
+  return `${hero}${actions}${live}${flowSec}${wpSec}${lsSec}${leadersSec}${playsSec}
     <div class="sheet-sec"><h4>Game info</h4></div><div class="panel info-rows">${info}</div>`;
+}
+
+/* Momentum graph, like ESPN's game flow: the learned brain's 0-100 hotness after every play
+   (taller and redder = hotter), white dots on big moments; plus what it expects next. */
+const HEAT = ["#3b82f6", "#22d3ee", "#34d399", "#facc15", "#fb923c", "#ff3b47"];
+function heat(v) { return HEAT[Math.min(HEAT.length - 1, Math.max(0, Math.floor(num(v, 0) / 100 * HEAT.length)))]; }
+export function momentumBlock(g, det) {
+  const b = g && g.brain;
+  const pts = arr(det && det.momentum).filter((p) => Number.isFinite(num(p.hot, NaN)));
+  if (!b && pts.length < 2) return "";
+  const W = 300, H = 96;
+  const n = pts.length;
+  const bw = n ? Math.max(1.2, Math.min(6, (W / n) * 0.8)) : 0;
+  let lastX = -1;
+  const bars = pts.map((p, i) => {
+    const f = num(p.frac, NaN);
+    let x = Number.isFinite(f) ? Math.min(1, Math.max(0, f)) * (W - bw) : (i / Math.max(1, n - 1)) * (W - bw);
+    x = Math.max(x, lastX + 0.01); lastX = x;
+    const h = Math.max(2, (num(p.hot, 0) / 100) * (H - 6));
+    const dot = p.big ? `<circle cx="${(x + bw / 2).toFixed(1)}" cy="${(H - h - 4).toFixed(1)}" r="2.6" fill="#fff"><title>${esc(p.label || "big moment")}</title></circle>` : "";
+    return `<rect x="${x.toFixed(1)}" y="${(H - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1" fill="${heat(p.hot)}" opacity=".9"/>${dot}`;
+  }).join("");
+  const graph = n >= 2 ? `<svg class="flow" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Game flow: how hot the game has been, play by play">
+      <line x1="0" y1="${H / 2}" x2="${W}" y2="${H / 2}" stroke="rgba(255,255,255,.22)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>${bars}</svg>
+    <div class="sit-row"><span>Start</span><span>dashed line = a typical moment</span><span>End</span></div>`
+    : `<p class="flow-note">The graph fills in as plays come in.</p>`;
+  const pct = (v) => Number.isFinite(num(v, NaN)) ? `${Math.round(num(v) * 100)}%` : "–";
+  const hot = b && Number.isFinite(num(b.hotness, NaN)) ? Math.round(num(b.hotness)) : null;
+  const stats = b ? `<div class="flow-stats">
+      <div class="flow-stat"><b style="color:${hot != null ? heat(hot) : "inherit"}">${hot != null ? hot : "–"}</b><span>Flow now</span></div>
+      <div class="flow-stat"><b>${pct(b.key_soon_p)}</b><span>Big moment soon</span></div>
+      <div class="flow-stat"><b>${pct(b.break_soon_p)}</b><span>Break within a minute</span></div></div>` : "";
+  const why = b && arr(b.reasons).length ? `<div class="flow-why">${arr(b.reasons).slice(0, 3).map((r) => chip(r, { ic: "flame" })).join("")}</div>` : "";
+  return `<div class="sheet-sec"><h4>Game flow</h4><small>How hot it is, play by play</small></div>
+    <div class="panel on-dark">${stats}${graph}${why}</div>`;
 }
 
 function infoRow(ic, k, v) { return `<div class="info-r">${icon(ic)}<div class="grow"><div class="k">${esc(k)}</div><div class="v">${v}</div></div></div>`; }

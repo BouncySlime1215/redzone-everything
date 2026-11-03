@@ -68,7 +68,8 @@ class Engine:
         # Stream delay measured from the broadcast score bug in Prime screenshots (not DRM-blanked).
         self.scorebug = scorebug.ScoreBugWatcher(on_sample=self._scorebug_sample)
         self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
-        self.breaks = breaks.BreakBook()           # owed TV timeouts per game: when a break is coming
+        # owed TV timeouts per game: when a break is coming (+ the learned brain, when brain.enabled)
+        self.breaks = breaks.BreakBook(brain=self._break_brain)
         self._cost_mode: bool | None = None         # two-stick mode when switch costs were last synced
         self._cost_synced = 0.0
         self.boosted: set[str] = set()
@@ -946,6 +947,12 @@ class Engine:
                                want=getattr(self.last_decision, "want", None), brk=brk, brk_why=why,
                                replay_sure=sure)
 
+    def _break_brain(self):
+        """(brain, blend weight) for the break forecast, or (None, 0) with the brain off."""
+        if not self.cfg.get("brain.enabled", False):
+            return None, 0.0
+        return self.scorer.brain, float(self.cfg.get("brain.break_weight", 0.5))
+
     def _break_standby(self, cands: dict) -> tuple[str | None, str, standby.Option | None]:
         """The game on screen is about to break (redzone/scoring/breaks.py): where the decider will
         spend it, asked the way it will ask (its own destination and catch-up rules), so the hidden
@@ -1323,6 +1330,7 @@ class Engine:
             "stale": self.merger.is_stale(gid), "start_time": g.start_time, "on_now": gid == dec.current,
             "wp": g.home_win_prob, "situation": views.situation(g), "leaders": g.leaders,
             "spotlight": g.spotlight, "venue": g.venue_info,
+            "brain": (s.brain or None) if s and live else None,
         }
 
     async def game_detail(self, gid: str) -> dict | None:
@@ -1332,7 +1340,10 @@ class Engine:
         summary = self.summaries.get(gid)
         if summary is None:
             summary = await self.fetcher.get_json(espn.summary_url(g.league, gid), min_interval=60)
-        return views.game_detail(g, summary, self.game_item(gid))
+        out = views.game_detail(g, summary, self.game_item(gid))
+        # The momentum graph (ESPN-style game flow): the brain's hotness per play, live games only.
+        out["momentum"] = self.scorer.brain.timeline(gid) if self.cfg.get("brain.enabled", False) else []
+        return out
 
     async def teams(self) -> dict:
         return await views.teams(self.fetcher, self.cfg.get("teams") or {})
