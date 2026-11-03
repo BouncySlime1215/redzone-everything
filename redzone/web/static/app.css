@@ -1139,3 +1139,9 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .calib { margin-top: var(--sp-3); }
 .ctl-quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 12px 0 14px; border-top: 1px solid var(--line-1); }
 .ctl-quick .mini-act:disabled { opacity: .4; }
+
+/* live game reasoner storyline on a game card */
+.gc-story{margin:2px 0 0;font-size:12.5px;line-height:1.35;opacity:.92}
+.gc-story .gc-next{opacity:.7}
+.gc-lock{font-size:10px;letter-spacing:.06em;padding:1px 5px;border-radius:4px;background:rgba(255,255,255,.14)}
+.gc-lock--must{background:#ff3b47;color:#fff}

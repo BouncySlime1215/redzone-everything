@@ -1330,6 +1330,13 @@ class Decider:
             heat = max((x.scored.factors.get("drive_heat", 0.0) for x in cands.values()
                         if x.scored.league.base == League.NFL and not x.scored.garbage), default=0.0)
             score += float(self.cfg.get("redzone_mode.redzone_lift", 8)) * heat
+        # The reasoner's lock_in points on an NFL game also go to RedZone: RedZone whips to that
+        # game's big play anyway, with no commercials, so a lock-in is never a reason to leave it
+        # for one broadcast (Nov 3: MIN @ SEA slate, +370 s of commercials from exactly that).
+        lock = max((x.scored.factors.get("reasoner", 0.0) for x in cands.values()
+                    if x.scored.league.base == League.NFL and not x.scored.garbage), default=0.0)
+        score += max(0.0, min(1.0, float(self.cfg.get("reasoner.redzone_share", 1.0)))) * lock
+        if self.cfg.get("redzone_mode.enabled", True):
             # ...but once we ARE on a live drive, RedZone's lift is for that same drive: letting it
             # win here only bounces us back and forth across one drive (the whip-around's producers
             # will cut away from it; we won't). Hold it under what we're watching.

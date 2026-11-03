@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from redzone.models import PERIOD_S, REAL_BREAKS, REGULATION, ByLeague, GameState, League, Phase, Stoppage, pro_period
 from redzone.scoring import garbage
 from redzone.scoring.brain import Brain
+from redzone.reasoner import brief as rbrief
+from redzone.reasoner.reasoner import Reasoner, lock_points
 
 # --- closeness: how competitive the score is, 0..1 --------------------------
 
@@ -173,6 +175,7 @@ class Scored:
     factor: str = ""        # short human reason for the single biggest factor right now
     factors: dict[str, float] = field(default_factory=dict)  # context points by name (debug/UI)
     brain: dict = field(default_factory=dict)  # learned brain's reading (hotness, key/break odds, reasons)
+    reasoner: dict = field(default_factory=dict)  # live game reasoner: lock_in, odds, the model's storyline
 
     @property
     def display(self) -> int:
@@ -190,7 +193,7 @@ class Personal:
 
 
 class Scorer:
-    def __init__(self, cfg, clock=time.time, brain=None):
+    def __init__(self, cfg, clock=time.time, brain=None, reasoner=None):
         self.cfg = cfg
         self._clock = clock
         self.hist: dict[str, History] = {}
@@ -200,6 +203,9 @@ class Scorer:
         self.brain = brain if brain is not None else Brain(version=int(cfg.get("brain.version", 3) or 3),
                                                            v3_score=cfg.get("brain.v3_score", None),
                                                            v3_break_odds=cfg.get("brain.v3_break_odds", None))
+        # The live game reasoner (redzone/reasoner): bounded lock_in points while reasoner.enabled is on.
+        self.reasoner = reasoner if reasoner is not None else Reasoner(cfg, clock=clock)
+        self._mine_live: dict[str, float] = {}   # your team's live, not-decided games -> last seen
 
     def brain_on(self) -> bool:
         return bool(self.cfg.get("brain.enabled", False))
@@ -233,6 +239,30 @@ class Scorer:
             factors["brain"] = round(pts, 1)
             if part:
                 parts.append(part)
+        rr = None
+        r_pts = 0.0
+        if self.reasoner is not None and self.reasoner.on():
+            tr = self.brain._track.get(g.game_id)
+            mine = g.involves(set(me.my_teams.get(g.league, set())))
+            rctx = rbrief.Context(mine=mine, garbage=garbage.is_garbage(g, h.garbage), crunch=crunch_time(g),
+                                  late=is_late(g), bet=me.bet_labels.get(g.game_id, ""))
+            rr = self.reasoner.read(g, tr.row if tr is not None else None, reading, rctx)
+            key = g.league.value if c.get(f"reasoner.{g.league.value}") is not None else g.league.base.value
+            pts, part = lock_points(rr, c, key)
+            if is_break and not c.get("reasoner.during_breaks", False):
+                pts, part = 0.0, None   # a break is the break logic's call: points here only buy commercials
+            if mine and not rctx.garbage:
+                self._mine_live[g.game_id] = now
+                if len(self._mine_live) > 50:
+                    self._mine_live = {k: t for k, t in self._mine_live.items() if now - t <= self.MINE_LIVE_S}
+            elif pts and c.get("reasoner.yield_to_your_team", True) and any(
+                    now - t <= self.MINE_LIVE_S for k, t in self._mine_live.items() if k != g.game_id):
+                pts, part = 0.0, None   # your team is on: a reasoner call never pulls you off it
+            if pts:
+                r_pts = pts             # added after smoothing (below): never lingers into a break
+                factors["reasoner"] = round(pts, 1)
+                if part:
+                    parts.append(part)
         # Garbage time: decided games stop competing for the TV — your team's included.
         was = h.garbage
         h.garbage = garbage.is_garbage(g, was)
@@ -258,6 +288,11 @@ class Scorer:
         decayed = h.shown * 0.5 ** ((now - h.shown_at) / hl) if h.shown_at else 0.0
         shown = max(raw, decayed)
         h.shown, h.shown_at = shown, now
+        if r_pts:
+            # lock_in points ride on top of the smoothed score, unsmoothed: they're there while the
+            # reasoner says so and gone the poll it stops (a break, garbage time, the moment passed)
+            shown = min(100.0, shown + r_pts)
+            raw = min(100.0, raw + r_pts)
 
         reason = _reason(g, parts, is_break)
         factor = _top_factor(parts)
@@ -271,8 +306,10 @@ class Scorer:
                       crunch_now=crunch_window(g),
                       imminent=h.imminent_at is not None
                       and now - h.imminent_at <= c.get("score.nhl.imminent_hold_s", -1),
-                      brain=reading.as_dict() if reading is not None and reading.hotness is not None else {})
+                      brain=reading.as_dict() if reading is not None and reading.hotness is not None else {},
+                      reasoner=rr.as_dict() if rr is not None and rr.p is not None else {})
 
+    MINE_LIVE_S = 60.0      # your team's game counts as on this long after its last live, close poll
     LEAGUE_LIVE_S = 300.0   # a league counts as "on tonight" this long after its last live game
 
     def _league_weight(self, league: League, now: float) -> float:

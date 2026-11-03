@@ -120,6 +120,7 @@ export function gameCard(g, { key = true } = {}) {
     <div class="gc-teams">${teamRow(g, "a", ai)}${teamRow(g, "h", hi)}</div>
     ${ph === "live" ? `<div class="gc-meter">${meter(g.score)}</div>` : ""}
     ${reason ? `<p class="gc-reason ${ph === "live" && isComeback(g) ? "gc-reason--hot" : ""}">${esc(reason)}</p>` : ""}
+    ${ph === "live" ? storyLine(g) : ""}
     ${chips || ph !== "post" ? `<footer class="gc-foot">${chips}${ph !== "post" ? whereChip(g) : ""}${watch}</footer>` : ""}
     ${leaders.length ? `<div class="gc-lead">${leaders.map((l) => leaderMini(l, g)).join("")}</div>` : ""}
   </article>`;
@@ -252,3 +253,16 @@ function avatarInit(p, ring) {
   return `<span class="avatar" style="--s:28px;--ring:${ring}"><b class="on" style="font-size:11px">${esc((String(p.name || "").split(/\s+/).map((w) => w[0]).join("").slice(0, 2) || "?").toUpperCase())}</b></span>`;
 }
 
+
+/* The live game reasoner's one-line storyline (from the local model) and its lock-in call. */
+export function storyLine(g) {
+  const r = g && g.reasoner;
+  if (!r) return "";
+  const n = r.narration || null;
+  const lock = String(r.lock_in || "none");
+  const text = n && n.storyline ? n.storyline : "";
+  if (!text && lock === "none") return "";
+  const badge = lock === "must_see" ? `<b class="gc-lock gc-lock--must">MUST SEE</b> ` : lock === "watch" ? `<b class="gc-lock">WATCH</b> ` : "";
+  const next = n && n.next ? ` <span class="gc-next">· ${esc(n.next)}</span>` : "";
+  return `<p class="gc-story">${badge}${esc(text || (lock === "must_see" ? "big moment likely" : "worth a look"))}${next}</p>`;
+}
