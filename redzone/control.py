@@ -911,7 +911,10 @@ class Controller:
             self._adopt_once = False
             pkg = self._package(self.main, target)
             pb = await self.main.playback(pkg)
-            if pkg and pb.get("pkg") == pkg and playback_ready(pb) and (pb.get("title") or pb.get("description")):
+            title = (pb.get("title") or pb.get("description") or "").strip()
+            # Prime reports only "PrimeVideo": that can't tell one game from another, so never adopt it.
+            if (pkg and pb.get("pkg") == pkg and playback_ready(pb) and title
+                    and title.lower() not in {"primevideo", "prime video", "null"}):
                 log.info("adopting what's on screen after a restart: %s (%s)", target, pb.get("title") or pb.get("description"))
                 self.main.remember(target, pb)
                 self.on_target = target

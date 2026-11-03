@@ -411,6 +411,10 @@ class PrimeTuner(Tuner):
                 if len(done) < 2 and not (live_pressed and not done) and await self._on_detail_page(stick):
                     if may_cut is not None and not may_cut():
                         break
+                    # The detail page is in front, so whatever was playing is gone from the screen.
+                    # Prime reports every live game as the same "PrimeVideo" session on a wall-clock
+                    # position, so without this a stick already on a Prime game never confirms the next.
+                    watch.gap = True
                     await stick.key("KEYCODE_DPAD_CENTER")
                     steps.append("pressed: watch (focused button)" if not done else "pressed: watch live (panel)")
         return await super()._confirm(stick, pkg, steps, watch, may_cut)
