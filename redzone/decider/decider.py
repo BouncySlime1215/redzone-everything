@@ -285,7 +285,7 @@ class Decider:
     def reject(self, d: Decision) -> None:
         if self._proposal_home and self._proposal_home[0] is d:
             self._proposal_home = None
-        if d.kind == "start" and self.current is None:
+        if d.kind in ("start", "user") and self.current is None:   # a first pick, or a lock/hold restored at start
             self.start_fails += 1
             wait = min(START_RETRY_MAX_S, START_RETRY_S * 2 ** (self.start_fails - 1))
             self.start_retry_at = self._clock() + wait
@@ -481,6 +481,9 @@ class Decider:
             return Decision(now, "stay", self.current, "auto-switching paused", State.PAUSED)
         if u.locked_game and u.locked_game in cands:
             if self.current != u.locked_game:
+                if self.current is None and now < self.start_retry_at:
+                    return Decision(now, "stay", None, f"couldn't get to your locked game yet — trying again in "
+                                    f"{math.ceil(self.start_retry_at - now)}s", State.PAUSED, want=u.locked_game)
                 return Decision(now, "switch", u.locked_game, "you locked this game", State.PAUSED, kind="user")
             return Decision(now, "stay", self.current, "locked here by you", State.PAUSED)
         if now < u.manual_until:
