@@ -52,7 +52,7 @@ from pathlib import Path
 from typing import Callable
 
 from redzone.channels import ChannelMap
-from redzone.tuners.adb import Stick, adb_available, playback_ready
+from redzone.tuners.adb import Stick, adb_available, playback_ready, same_stream
 from redzone.tuners.tuners import TUNERS, TuneResult, channel_matcher
 from redzone.tv import SamsungTV
 
@@ -83,6 +83,8 @@ VISIBLE_FIX_GAP_S = 30.0   # ...at most once per this (a deep link that keeps fa
 AWAKE_TRUST_S = 120.0      # a stick seen playing this recently is awake: skip the sleep check
 REFRESH_POLL_S = 0.5       # after a flip: how often the refresh of the game we left checks for a free moment
 REFRESH_TRIES = 40         # ...and how many times (~20s) before it leaves the standby to the planner
+PRIME_KEEP_WAIT_S = 15.0   # after a flip: the Prime game we left gets this long to show it kept playing...
+KEEP_CONFIRM_S = 2.0       # ...on two reads this far apart (a player that pauses a beat late isn't "ready")
 ASLEEP_RECHECK_S = 60.0    # a sleeping hidden stick: don't ask again (or preload) for this long
 VERIFY_SOON_S = 3.0        # after a flip, check the stick we left within a few seconds
 SEEK_LATE_OK_S = 1.0       # a rewind may land this far past its target (Missed.back_s leads the snap by 3s)
@@ -625,11 +627,16 @@ class Controller:
 
     # --- what the hidden stick has -----------------------------------------------
 
-    async def _refresh_left(self, target: str) -> None:
+    async def _refresh_left(self, target: str, stick: Stick | None = None) -> None:
         """After a flip: put the game we just left back on the hidden stick, live (see _execute_two).
+        Prime keeps its player when its stick loses the TV input, so a Prime game that is still
+        playing live there is simply kept (_kept_playing): no re-tune (~33 s).
+        Otherwise (YouTube TV / Peacock pause on input loss) it's reloaded at the live edge.
         Waits for a free moment and never competes with real work: a switch (submit) or the
         planner's own preload cancels it, and the planner can displace it mid-tune (preload).
         It goes through preload, so a sleeping stick is never woken and HOME is never pressed."""
+        if target.startswith("prime:") and await self._kept_playing(target, stick or self.hidden):
+            return
         for _ in range(REFRESH_TRIES):
             await asyncio.sleep(REFRESH_POLL_S)
             if self.hidden_target != target or self.hidden_ready or self.on_target == target:
@@ -637,6 +644,59 @@ class Controller:
             if not self._busy():
                 self.preload(target, refresh=True)
                 return
+
+    async def _kept_playing(self, target: str, stick: Stick | None) -> bool:
+        """Is the game we left still playing live on the stick we left? Then it's the ready standby
+        as is. Only reads playback: no key, no tune, no WAKEUP. Two reads KEEP_CONFIRM_S apart must
+        both be the stream we tuned there, running on the stick's own clock (Stick.still_on: Prime's
+        wall-clock position runs ~1% fast; 2% is allowed). True = nothing left to do (kept, or
+        something else took the stick meanwhile); False = it paused, changed or never showed
+        itself within PRIME_KEEP_WAIT_S: reload it."""
+        if stick is None:
+            return True
+        pkg = self._package(stick, target)
+        end, first = time.monotonic() + PRIME_KEEP_WAIT_S, None
+
+        def moved_on() -> bool:
+            return (self.hidden is not stick or self.hidden_target != target or self.hidden_ready
+                    or self.on_target == target)
+        while time.monotonic() < end:
+            await asyncio.sleep(REFRESH_POLL_S)
+            if moved_on():
+                return True
+            if self._busy() or self._flipping:
+                continue   # a switch or the planner's preload is using the stick: don't read under it
+            pb = await stick.playback(pkg)
+            if moved_on():
+                return True
+            if self._busy() or self._flipping or pb.get("read_ok") is False:
+                continue
+            if stick.still_on(target, pb):
+                first = time.monotonic() if first is None else first
+                if time.monotonic() - first >= KEEP_CONFIRM_S:
+                    self._set_hidden(target, True)
+                    self._verified_at = time.time()
+                    self._awake_at[stick.host] = time.time()
+                    log.info("standby %s kept playing on %s after the flip: kept, no reload", target, stick.host)
+                    return True
+                continue
+            first = None
+            if pb.get("state") in ("paused", "stopped") or self._jumped(stick, target, pb):
+                log.info("standby %s on %s is %s after the flip: reloading it", target, stick.host,
+                         "paused" if pb.get("state") != "playing" else "behind or a different stream")
+                return False
+        return False
+
+    @staticmethod
+    def _jumped(stick: Stick, target: str, pb: dict) -> bool:
+        """Provably NOT the live stream we tuned: playing, but its position broke from the stick's
+        clock (a pause, a seek, a new stream) by more than the drift still_on allows."""
+        t = stick.tuned or {}
+        if t.get("target") != target or not playback_ready(pb):
+            return False
+        ref = t.get("report") or {}
+        elapsed = max(0, (pb.get("updated") or 0) - (ref.get("updated") or 0))
+        return same_stream(ref, pb, slack_ms=3000 + int(0.02 * elapsed)) is False
 
     def _cancel_refresh(self) -> None:
         if self._refresh_task and not self._refresh_task.done() and self._refresh_task is not asyncio.current_task():
@@ -1094,9 +1154,11 @@ class Controller:
         self._flip_gen += 1
         self.on_target = None if replay else target
         self._visible_bad_since = None
-        # The stick we just left pauses its app when it loses the TV input (seen on both Fire TV
-        # sticks), so it isn't a ready standby. Reload that game at the live edge in the background:
-        # "back"/"home" is then one flip again, and nobody comes back to a stream minutes behind.
+        # The stick we just left pauses YouTube TV / Peacock when it loses the TV input (seen on both
+        # Fire TV sticks), so it isn't a ready standby yet. Reload that game at the live edge in the
+        # background: "back"/"home" is then one flip again, and nobody comes back to a stream minutes
+        # behind. Prime keeps its player: a Prime game still playing live there is kept as is
+        # (_refresh_left -> _kept_playing), so going back is HOME + REORDER_TO_FRONT, not a ~33 s tune.
         # Nothing ever presses HOME or WAKEUP on it (either could pull the TV back to it).
         self._set_hidden(old_target, False)
         self._cancel_refresh()
@@ -1132,7 +1194,7 @@ class Controller:
                 detail += f"; resumed by {how.replace('_', ' ')}"
         self._book_flip(hid, target, flip_s, resume_s, how)
         if old_target and not replay:
-            self._refresh_task = asyncio.create_task(self._refresh_left(old_target))
+            self._refresh_task = asyncio.create_task(self._refresh_left(old_target, old_stick))
         self._verified_at = time.time() - self._verify_every() + VERIFY_SOON_S
         return Outcome(True, target, took, detail, False, time.time(), path=path, waited=waited,
                        flip_s=None if flip_s is None else round(flip_s, 2),

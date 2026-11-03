@@ -148,3 +148,89 @@ async def test_youtube_tv_keeps_its_short_grace(two, monkeypatch):
     monkeypatch.setattr(ctl, "RESUME_WAIT_S", 0.2)
     assert ctl.Controller._resume_wait("youtubetv:espn") == 0.2
     assert ctl.Controller._resume_wait(PRIME_FOX) == ctl.PRIME_RESUME_WAIT_S
+
+
+# --- leaving a Prime game: keep it, don't re-tune it ---------------------------------------------
+
+@pytest.fixture
+def keep_fast(monkeypatch):
+    monkeypatch.setattr(ctl, "KEEP_CONFIRM_S", 0.05)
+    monkeypatch.setattr(ctl, "PRIME_KEEP_WAIT_S", 0.5)
+
+
+async def left_prime(c, tuner):
+    """Watching Prime FOX on a; switch to Prime CBS (tuned on b). a now holds FOX, unconfirmed."""
+    await on_screen(c, tuner, PRIME_FOX)
+    out = await c.execute(PRIME_CBS, may_cut=lambda: True)
+    assert out.ok and c.main.host == "b:5555"
+    assert c.standby == (PRIME_FOX, None) and not c.hidden_ready
+    return c.sticks[0]
+
+
+async def test_a_prime_game_we_left_that_keeps_playing_is_kept_not_retuned(prime, keep_fast):
+    c, tuner, _ = prime
+    a = await left_prime(c, tuner)
+    await refreshed(c)
+    assert c.standby == (PRIME_FOX, None) and c.hidden_ready
+    assert tuner.calls == [("b:5555", PRIME_CBS)]              # no ~33 s reload of FOX on a
+    assert not any("HOME" in x or "WAKEUP" in x for x in a.log)
+    assert c.deadline_cost(PRIME_FOX) < c.deadline_cost("prime:amzn1.dv.gti.nbc")   # the decider plans a flip
+    out = await c.execute(PRIME_FOX, may_cut=lambda: True)       # back: one flip
+    assert out.ok and out.path == "preloaded" and c.main is a
+    assert tuner.calls == [("b:5555", PRIME_CBS)]
+
+
+async def test_a_prime_game_we_left_that_paused_is_reloaded_in_the_background(prime, keep_fast):
+    c, tuner, _ = prime
+    a = await left_prime(c, tuner)
+    a.pause()                                                    # it did pause this time
+    await refreshed(c)
+    assert tuner.calls[-1] == ("a:5555", PRIME_FOX) and c.hidden_ready
+    assert not any("HOME" in x or "WAKEUP" in x for x in a.log)
+
+
+async def test_a_prime_game_we_left_that_fell_behind_is_reloaded(prime, keep_fast):
+    c, tuner, _ = prime
+    a = await left_prime(c, tuner)
+    a.seek_back(30)                                              # playing, but 30 s behind where it was
+    await refreshed(c)
+    assert tuner.calls[-1] == ("a:5555", PRIME_FOX)
+
+
+async def test_a_prime_game_we_left_that_never_reports_is_reloaded_after_its_grace(prime, keep_fast):
+    c, tuner, _ = prime
+    a = await left_prime(c, tuner)
+    a.playing = "none"
+    await refreshed(c)
+    assert tuner.calls[-1] == ("a:5555", PRIME_FOX)
+
+
+async def test_one_failed_read_doesnt_cost_a_reload(prime, keep_fast):
+    c, tuner, _ = prime
+    a = await left_prime(c, tuner)
+    a.fail_reads = 3                                             # adb hiccups, then normal reads
+    await refreshed(c)
+    assert c.hidden_ready and tuner.calls == [("b:5555", PRIME_CBS)]
+
+
+async def test_the_planners_pick_wins_over_keeping_the_prime_game(prime, keep_fast, monkeypatch):
+    monkeypatch.setattr(ctl, "KEEP_CONFIRM_S", 5.0)              # still confirming when the planner asks
+    c, tuner, _ = prime
+    await left_prime(c, tuner)
+    task = c._refresh_task
+    assert c.preload("prime:amzn1.dv.gti.nbc")
+    await c._preload_task
+    await asyncio.gather(task, return_exceptions=True)
+    assert c.standby == ("prime:amzn1.dv.gti.nbc", None) and c.hidden_ready
+    assert ("a:5555", PRIME_FOX) not in tuner.calls
+
+
+async def test_youtube_tv_we_left_is_still_reloaded(two, monkeypatch):
+    """YouTube TV pauses on input loss: the old refresh, unchanged (no keep check for it)."""
+    monkeypatch.setattr(ctl, "REFRESH_POLL_S", 0.01)
+    c, tuner = two
+    c.on_target = "youtubetv:fox"
+    c.main.remember(c.on_target, await c.main.playback("yttv.pkg"))
+    await c.execute("youtubetv:espn", may_cut=lambda: True)
+    await refreshed(c)
+    assert tuner.calls[-1] == ("a:5555", "youtubetv:fox") and c.hidden_ready
