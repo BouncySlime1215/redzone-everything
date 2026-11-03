@@ -148,6 +148,10 @@ two_stick:
   input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
   park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long
 
+plan:                      # tonight's plan (data/plan_YYYYMMDD.json, the phone's "Tonight's plan" card)
+  verify: true             # before each start window, play each planned source on the HIDDEN stick (never the one on screen)
+  verify_lead_min: 20      # ...starting this many minutes before the window, while autopilot is idle
+
 switch_speed:              # every real tune and input flip is timed; the decider plans with the medians
   learn: true              # keep decider.switch_cost up to date from those measurements
   sync_every_s: 300        # at most this often (sooner when two-stick mode turns on or off)
