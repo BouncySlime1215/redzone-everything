@@ -250,12 +250,20 @@ class ChannelMap:
         if app == "youtubetv":
             if rest.startswith(("st:", "ev:")):
                 return True
-            return rest in self.codes
+            return rest in self.codes or rest in SEARCH_CHANNELS
         if app == "prime":
             return rest.startswith("amzn1.")
         if app == "espn":
             return bool(rest)
         return False
+
+    def yttv_search_key(self, target: str) -> str | None:
+        """A YouTube TV channel we have no watch code for but can reach by in-app search
+        (SEARCH_CHANNELS): its channel key, else None."""
+        app, _, rest = target.partition(":")
+        if app != "youtubetv" or rest.startswith(("st:", "ev:")) or rest in self.codes:
+            return None
+        return rest if rest in SEARCH_CHANNELS else None
 
     def yttv_code(self, target: str) -> str | None:
         app, _, rest = target.partition(":")
@@ -265,6 +273,11 @@ class ChannelMap:
             return rest[3:]
         return self.codes.get(rest)
 
+
+# YouTube TV channels with no known watch code that tune by in-app search instead (~15-20 s):
+# search -> the channel (or its network page -> Live -> the live tile), confirmed by the media
+# session naming the channel. NBCSN proved by hand on the 4K Plus, Nov 3.
+SEARCH_CHANNELS = frozenset({"nbcsn"})   # proven on the stick. Not yet: WRAL/NBC (search shows WRAL news, not the channel), NHL Network (lineup unknown)
 
 YTTV_LINK = re.compile(r"tv\.youtube\.com/watch/([A-Za-z0-9_-]{11})")
 

@@ -901,6 +901,9 @@ class Controller:
         app, _, ref = target.partition(":")
         if app == "youtubetv":
             ref = self.channels.yttv_code(target) or ""
+            if not ref:
+                key = self.channels.yttv_search_key(target)
+                ref = f"search:{key}" if key else ""
         return app, ref
 
     def _package(self, stick: Stick, target: str) -> str | None:
