@@ -64,9 +64,9 @@ depends on has merged into `integration/next`.
 
 ## Latest numbers vs targets
 
-All numbers come from the full scorecards on pinned  (every card reports
-). "Today" is  5f0e6a1, and "now" is
- after #1, #3, #7, #10, #11, #12, #14, #2 and #8.
+All numbers come from the full scorecards on pinned `eval-data-v1` (every card reports
+`"eval_data": "eval-data-v1"`). "Today" is `codex/resume-redzone` 5f0e6a1, and "now" is
+`integration/next` after #1, #3, #7, #10, #11, #12, #14, #2 and #8.
 
 The target is the user's "100 % on every measure, no errors". Where 100 % is physically
 impossible, the feasible ceiling is computed from the data and the gap is measured against it.

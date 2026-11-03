@@ -27,6 +27,8 @@ import shutil
 import time
 from dataclasses import dataclass, field
 
+from redzone.platform.breaker import Breaker
+
 log = logging.getLogger(__name__)
 
 ADB = shutil.which("adb") or "/opt/homebrew/bin/adb"
@@ -35,6 +37,7 @@ LOCK_WAIT_S = 0.15     # shell busy longer than this (a slow command) -> this on
 HANDSHAKE_S = 3.0      # a fresh shell must answer `echo ok` this fast (normally ~0.1 s), cleanly, or we don't use it
 MAX_REPLY = 32 << 20   # biggest reply we'll buffer (a full UI dump is ~100 KB)
 AWAKE_TTL_S = 60.0     # trust "the stick is awake" this long before asking again
+STICK_HUNG = "stick not responding"   # detail prefix while a stick's breaker is open (not the target's fault)
 CONNECT_RETRY_MAX_S = 9.0   # a failed connect is retried at the next ~10 s keepalive tick, never later
 
 # Catch-up reel player: VLC if it's installed (plays a URL straight away), else Fire TV's Silk browser.
@@ -105,6 +108,12 @@ class Stick:
     # Where the last screen_text() came from: "ui" (uiautomator) or "ocr" (a screenshot: the app
     # draws its own UI, so its controls can only be read and driven from pixels).
     screen_source: str = field(default="", repr=False, compare=False)
+    # Fails commands at once while this stick keeps hanging (redzone/platform/breaker.py).
+    breaker: Breaker | None = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.breaker is None:
+            self.breaker = Breaker(f"stick:{self.host}")
 
     @property
     def controllable(self) -> bool:
@@ -138,9 +147,25 @@ class Stick:
         return RunResult(ok, text, time.monotonic() - t0)
 
     async def shell(self, cmd: str, timeout: float = 8.0) -> RunResult:
+        if not self.breaker.allow():
+            # Not sent, so nothing on screen changed: safe for any caller to treat as "didn't run".
+            return RunResult(False, f"{STICK_HUNG}: {self.host} hung {self.breaker.hangs}x, "
+                             f"retry in {self.breaker.retry_in():.0f}s", 0.0)
         if _changes_screen(cmd):
             self.tuned = None
-        return await self._shell(cmd, timeout)
+        try:
+            r = await self._shell(cmd, timeout)
+        except BaseException:
+            self.breaker.release()
+            raise
+        if not r.ok and r.out.startswith("timeout/error"):
+            self.breaker.hang()
+            if self.breaker.is_open:
+                log.warning("%s: %d adb commands hung in a row; failing fast for %.0fs",
+                            self.host, self.breaker.hangs, self.breaker.retry_in())
+        else:
+            self.breaker.success()
+        return r
 
     async def _shell(self, cmd: str, timeout: float) -> RunResult:
         """Always-open shell first; one adb process when it can't be used for this command."""
@@ -208,6 +233,7 @@ class Stick:
         if "connected to" in text or "already connected" in text:
             if self._session is not None:
                 self._session.retry_at = 0.0   # the stick is back: give the always-open shell another go now
+            self.breaker.probe_now()           # ...and let this probe through even if it hung before
             probe = await self.shell("echo ok", timeout=5)
             if probe.ok and "ok" in probe.out:
                 self.state = "connected"
