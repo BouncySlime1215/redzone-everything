@@ -11,6 +11,7 @@ Free tier only: the repo is public, so GitHub-hosted Ubuntu runners cost nothing
 | data | downloads the pinned eval dataset (release `eval-data-v1`, asset `eval-archive.tgz`), checks its sha256, keeps it in the Actions cache | the checksum does not match |
 | test | Python 3.12 and 3.13: `tests/test_e2e*.py` first as its own step, then the whole suite with the pinned data unpacked (so archive-backed tests run) | any test fails |
 | scorecard | NFL/NBA/NHL scorecards and the Nov 1 mixed demo, on the PR **and** on its base, same data | the PR adds mid-play cuts, or a scorecard crashes on the PR |
+| memory | `scripts/check_memory.py`: links in `CLAUDE.md` and `docs/memory/` resolve; a change to `redzone/default_config.yaml`, `docs/gate_baseline.json` or `scripts/release_gate.py` also changes `docs/memory/decisions.md` | a broken link, or a default/gate change with no decision line |
 | report | one PR comment (updated on every push) with tests, lint and the PR-vs-base table | never |
 
 **Scorecard size.** PRs into `integration/next`, pushes to it, and manual runs grade the full merge

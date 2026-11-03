@@ -30,6 +30,7 @@ from pathlib import Path
 
 from agent.policy import SYSTEM, Obs, Verdict, guard, known, parse_answer, rules
 from redzone.governor import Governor, free_mlx_cache, load_options
+from redzone.memory import Memory, worked
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -95,6 +96,10 @@ def fetch_state(timeout: float = 6.0) -> dict | None:
 
 
 class Watchdog:
+    # Project memory (redzone/memory.py): lessons before acting, a pending lesson after a fix.
+    # Set by main() only, so a watchdog built in a test never writes to data/.
+    memory: Memory | None = None
+
     def __init__(self, dry_run: bool = False, use_model: bool = True, clock=time.time,
                  governor: Governor | None = None):
         self.dry_run = dry_run
@@ -201,9 +206,12 @@ class Watchdog:
             if hit and self._clock() - hit[0] < MODEL_CACHE_S:
                 v = hit[1]
             elif self.use_model and self.gov.allow("llm"):
+                msgs = [{"role": "system", "content": SYSTEM}]
+                hint = self.memory.hints(unknown) if self.memory else ""
+                if hint:   # only when a lesson matches: the usual prompt stays exactly as trained
+                    msgs.append({"role": "system", "content": hint})
                 try:
-                    ans = self.model().chat([{"role": "system", "content": SYSTEM},
-                                             {"role": "user", "content": o.text()}])
+                    ans = self.model().chat(msgs + [{"role": "user", "content": o.text()}])
                     v = parse_answer(ans) or Verdict("notify", f"new error the model couldn't judge: {unknown[0][:120]}",
                                                      source="guard")
                 except Exception as e:   # no model, out of memory...: a person hears about the new error
@@ -211,7 +219,9 @@ class Watchdog:
                     v = Verdict("notify", f"new error: {unknown[0][:120]}", source="guard")
                 self.asked[unknown] = (self._clock(), v)
             else:   # no model, or the Mac is critical (hot, low battery, out of memory): rules only
-                v = Verdict("notify", f"new error: {unknown[0][:120]}", source="guard")
+                seen = self.memory.titles(unknown) if self.memory else []
+                tip = f" (lesson: {seen[0][:60]})" if seen else ""
+                v = Verdict("notify", f"new error: {unknown[0][:120]}{tip}", source="guard")
         return guard(v, o)
 
     # ---- doing ----------------------------------------------------------------------------
@@ -279,6 +289,12 @@ class Watchdog:
                        "log_age_s": o.log_age_s, "disk_mb": o.disk_free_mb, "offline": o.sticks_offline,
                        "errors": len(o.errors), "governor": self.gov.level,
                        "app_mb": self.gov.service_mb(), "models_mb": round(self.gov.models_mb())}}
+        if self.memory is not None and not self.dry_run and worked(v.action, done):
+            try:   # a fix that worked becomes a pending lesson; it reaches lessons.md by PR
+                sig = max(o.errors, key=o.errors.get) if o.errors else ""
+                self.memory.record(sig, v.action, done, why=v.why)
+            except Exception as e:   # memory must never stop the watchdog
+                log.warning("agent: memory record failed: %s", e)
         if v.action != "none" or int(self._clock()) % 900 < CHECK_S:   # quiet checks: one row per 15 min
             _journal(row)
         return row
@@ -336,6 +352,7 @@ def main() -> None:
     ap.add_argument("--no-model", action="store_true")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    Watchdog.memory = Memory(ROOT)
     w = Watchdog(dry_run=a.dry_run, use_model=not a.no_model)
     while True:
         t0 = time.time()
