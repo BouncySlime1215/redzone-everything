@@ -173,6 +173,7 @@ class Scored:
     pre_moment: str | None  # a big moment about to start: worth pre-switching to
     closeness: float
     garbage: bool = False   # decided game (bets/fantasy can still keep it interesting)
+    late: bool = False      # final period (NFL/NBA Q4+, NHL P3+, MLB 7th+): your team here is never left for a lesser game
     crunch: bool = False    # crunch time (see crunch_time); unlike lock, kept through breaks
     factor: str = ""        # short human reason for the single biggest factor right now
     factors: dict[str, float] = field(default_factory=dict)  # context points by name (debug/UI)
@@ -284,6 +285,7 @@ class Scorer:
             tags = tags + ["garbage time"]
         return Scored(g.game_id, g.league, shown, raw, m, s, p, reason, tags,
                       is_break, None if is_break else lock, pre, k, garbage=h.garbage, crunch=crunch_time(g),
+                      late=is_late(g),
                       factor="garbage time" if h.garbage else factor, factors=factors,
                       hype_p=hype_p, legacy=legacy,
                       brain=reading.as_dict() if reading is not None and reading.hotness is not None else {})

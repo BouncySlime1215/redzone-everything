@@ -279,6 +279,7 @@ class DemoEngine(Engine):
         self.switches: list[backtest.SwitchLog] = []
         self.watching: list[tuple[float, str | None]] = []
         self.replayed: set[tuple[str, int]] = set()
+        self.replay_windows: list[tuple[str, int, float, float]] = []  # (game, play time, start, planned end)
         self.timeline: list[str] = []
         self.quiet = False
         self.calibrated = calibrated
@@ -359,7 +360,12 @@ class DemoEngine(Engine):
                 brk = d.kind == "break_visit" or (d.kind in ("replay", "chase") and on_break)
                 self.shadow.switch(self._target(d.target), rid, self._target(before), self.clock(), brk=brk)
                 backtest._record(d, before, self.clock(), self.switches, self.watching, self.replayed)
+                if d.action == "replay" and d.replay and self.decider.replay_until:
+                    # [redzone mode] the same credit rule as the backtest: a replay counts once its
+                    # clip has run to the end without another tune (it never counted here before).
+                    self.replay_windows.append((d.target, round(d.replay.t), self.clock(), self.decider.replay_until))
                 self._narrate(d)
+            backtest._credit_completed_replays(self.replay_windows, self.watching, self.clock(), self.replayed)
             return changed
 
     def _target(self, gid: str | None) -> str | None:
@@ -435,6 +441,7 @@ class DemoEngine(Engine):
         t0 = start or self.t0
         t1 = min(end or self.t1, self.clock())
         lag = float((self.cfg.get("delay.default") or {}).get("youtubetv", 45))
+        backtest._credit_completed_replays(self.replay_windows, self.watching, t1, self.replayed)
         rep = backtest._grade(self.replays, self.switches, self.watching, self.my_teams, lag, PLAY_LEN_S,
                               TUNE_S, t0, t1, self.replayed)
         sw = [x for x in self.switches if t0 <= x.t <= t1]
@@ -451,6 +458,7 @@ class DemoEngine(Engine):
 
         # Big plays: NFL TDs/FGs/turnovers, NHL goals (every NBA bucket is a "scoring play": left out).
         big = {}
+        on_replay = 0   # NFL big plays / NHL goals that aired while we sat on a replay
         for lg in (League.NFL, League.NHL):
             n = live = rz = rp = 0
             for r in (x for x in self.replays if x.league == lg):
@@ -459,6 +467,7 @@ class DemoEngine(Engine):
                         continue
                     n += 1
                     on = backtest._on_screen_game(self.watching, w + lag - PLAY_LEN_S, TUNE_S)
+                    on_replay += (on or "").startswith("replay:")
                     if backtest.shows(self.watching, offs, r.gid, w + lag - PLAY_LEN_S, TUNE_S):
                         on = r.gid
                     if on == r.gid:
@@ -500,6 +509,14 @@ class DemoEngine(Engine):
             "crunch_live": pct(cl, cn),
             "your_teams_crunch": mine,
             "replays": sum(1 for x in sw if x.kind == "replay"),
+            # [redzone mode] drives that scored or reached the red zone: their plays seen live (and
+            # how many of the misses were spent on another sport); time on catch-up replays.
+            "nfl_drive_live": pct(rep.drive_plays_live, rep.drive_plays),
+            "nfl_drive_missed_on_other_sport": rep.drive_plays_other_sport,
+            "nfl_drive_on_redzone": rep.drive_plays_on_redzone,
+            "behind_live_min": round(rep.behind_live_s / 60, 1),
+            "behind_live_pct": round(100 * rep.behind_live_s / max(1, (t1 - t0)), 1),
+            "big_missed_on_replay": on_replay,
             "switches": len(sw),
             "switches_per_hour": round(len(sw) / hours, 1),
             "preload": self.shadow.card(),
@@ -519,7 +536,11 @@ def report_text(card: dict) -> str:
              f"  NHL goals seen         {nhl['seen']}  — {nhl['live']} live, {nhl['replay']} as replays",
              f"  Crunch time live       {card['crunch_live']}",
              f"  Switches               {card['switches']}  ({card['switches_per_hour']}/hour), "
-             f"{card['replays']} of them catch-up replays"]
+             f"{card['replays']} of them catch-up replays",
+             f"  NFL drives live        {card['nfl_drive_live']} plays of scoring/red-zone drives"
+             f" ({card['nfl_drive_missed_on_other_sport']} missed on another sport)",
+             f"  Behind live            {card['behind_live_min']} min on catch-up replays"
+             f" ({card['behind_live_pct']}%), {card['big_missed_on_replay']} big plays missed meanwhile"]
     if card.get("preload"):
         p = card["preload"]
         lines.append(f"  Preload hit rate       {p['hits']}/{p['switches']} ({p['hit_rate']}%) switches were a"

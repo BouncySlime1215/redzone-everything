@@ -56,6 +56,9 @@ KICKOFF_TO_SNAP_S = 25.0  # kickoff logged -> next scrimmage play logged, at the
 # the median such visit lasted 20 s (tune away, tune straight back) and they were the biggest
 # source of A->B->A flips. Ride them out at home; chases, catch-ups and crunch moves still go.
 SHORT_STOPS = {"timeout", "injury", "review"}
+# Leagues where a short stop isn't spent on a visit. NBA too (scorecards, Nov 3): mid-play entries
+# 44 -> 36 with everything else the same; NHL changed nothing.
+SHORT_STOP_LEAGUES = {League.NFL, League.NBA}
 # The first pick after a (re)start that didn't land (cancelled, timed out, no safe moment, a failed
 # tune): try again after 3 s, then 6, 12, 24... capped at a minute. Never give up: with nothing
 # confirmed on screen there is nothing to wait for but the next try.
@@ -557,6 +560,10 @@ class Decider:
         if plan.ok:
             d.rewind_s = plan.rewind_s
             return d
+        if x is not None and x.scored.league.base.value in (self.cfg.get("decider.entry.no_wait_leagues") or []):
+            # Continuous play: holding a switch for a dead ball missed more than it saved (scorecards,
+            # Nov 3); enter live unless a rewind lands it clean (decided above).
+            return d
         # Not yet: whatever the switch planned (a visit's way home) waits with it.
         self.home_break_visit, self.home_return_at = home_before
         state = State.REPLAY if self.after_replay else d.state
@@ -788,6 +795,12 @@ class Decider:
                                    margin=margin)
             if rp:
                 return self._replay_decision(rp, state, gate_txt, now)
+
+        # Your team late and close: never left for a lesser game (Oct 26 replay: WSH @ CHA, down 8 with
+        # 8:23 left, was left for a neutral comeback; we got back with 0:33 left and saw 0 of its 13
+        # crunch plays). Only crunch time elsewhere takes the TV, and that's decided before this.
+        if self._mine_late(s_cur):
+            return Decision(now, "stay", self.current, f"your team, late and close — {s_cur.reason}", state, gate_txt)
 
         # Go back to where we were if this moment is over and that game is about as good.
         if self.stack and not s_cur.lock and gate_ok:
@@ -1149,13 +1162,15 @@ class Decider:
         return not break_on_arrival(htl, hd, now, now + self._deadline_cost(x.target))
 
     def _short_stop(self, gid: str | None, s: Scored) -> bool:
-        """[pacing] Is this football game in a kind of break that ends before a visit pays off?
+        """[pacing] Is this football/basketball game in a kind of break that ends before a visit pays off?
         Not in crunch time: there a timeout is the moment to check the other close game."""
         tl = self.timelines.get(gid) if gid else None
-        if tl is None or s.league.base != League.NFL or s.crunch or s.lock in CRUNCH_LOCKS:
+        if tl is None or s.league.base not in SHORT_STOP_LEAGUES or s.crunch or s.lock in CRUNCH_LOCKS:
             return False
         start, end = tl.last("stop_start"), tl.last("stop_end")
         short = start is not None and start.label in SHORT_STOPS and (end is None or end.seen < start.lo)
+        if short and s.league.base == League.NBA and not tl.dead.marks:
+            return False   # no timing data, no proof it's short: an NBA TV timeout runs minutes
         if not short or not tl.dead.marks:
             return short
         # [cut timing] Which kind of stop is it? A team timeout (median 43 s) is over before a visit
@@ -1246,6 +1261,12 @@ class Decider:
         self.home_return_at = now + left - buffer
         return Decision(now, "switch", dest, self._why(options[dest], f"{_short(cands[home].scored)} at the break → "),
                         state, gate_txt, kind="break_visit")
+
+    def _mine_late(self, s) -> bool:
+        """Your team (or your bet) in its final period, not decided and still competitive."""
+        return bool(getattr(s, "late", False) and not s.garbage
+                    and s.personal >= self.cfg.get("decider.crunch.hold_personal", 5)
+                    and s.closeness >= self.cfg.get("decider.mine_late_closeness", 0.2))
 
     def _sticky_home(self, gid: str, watchable) -> bool:
         """A game whose next play you must be back for."""

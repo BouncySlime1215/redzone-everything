@@ -371,6 +371,56 @@ class YouTubeTVTuner(Tuner):
     def url(self, ref: str) -> str:
         return f"https://tv.youtube.com/watch/{ref}"
 
+    async def tune(self, stick: Stick, ref: str, target: str, may_cut=None) -> TuneResult:
+        if ref.startswith("search:"):
+            return await self._tune_by_search(stick, ref.split(":", 1)[1], target, may_cut)
+        return await super().tune(stick, ref, target, may_cut)
+
+    async def _tune_by_search(self, stick: Stick, key: str, target: str, may_cut=None) -> TuneResult:
+        """A channel with no watch code (NBCSN, NHL Network, the local NBC): in-app search, select its
+        tile (or its network page -> Live -> the live tile), confirmed by the media session naming
+        the channel. Every key goes through the cut window like a deep link would."""
+        import tempfile
+        from redzone.screen_ocr import recognize
+        from redzone.tuners.prime_search import CapturedScreen
+        from redzone.tuners.yttv_search import hunt_channel
+        t0 = time.monotonic()
+        steps: list[str] = []
+        pkg = stick.packages.get(self.role)
+        if not pkg:
+            return TuneResult(False, target, 0.0, steps, f"{self.app} app not found on {stick.name or stick.host}")
+        before = await stick.playback(pkg)
+        if stick.still_on(target, before):
+            steps.append("already on it (the stick is still playing it, uninterrupted)")
+            return TuneResult(True, target, time.monotonic() - t0, steps)
+        try:
+            require_cut(may_cut, steps, mutating=True)
+        except CutWindowClosed as exc:
+            return TuneResult(False, target, time.monotonic() - t0, exc.steps, str(exc))
+        seq = [0]
+
+        async def observe():
+            seq[0] += 1
+            png = await stick.screencap(timeout=15)
+            with tempfile.TemporaryDirectory(prefix="rz-yts-") as d:
+                path = f"{d}/s.png"
+                with open(path, "wb") as f:
+                    f.write(png or b"")
+                result = await asyncio.to_thread(recognize, path, timeout=8.0)
+            return CapturedScreen(result, seq[0], time.monotonic())
+
+        from redzone.channels import SEARCH_QUERY
+        hunt = await hunt_channel(stick, observe, key=key, table=_yttv_table(), query=SEARCH_QUERY.get(key, ""),
+                                  profile=getattr(self, "preferred_profile", "") or "", collect_codes=False)
+        steps += [f"{x['action']}: {x['detail'][:60]}" for x in hunt.steps[-6:]]
+        if hunt.status != "confirmed":
+            return TuneResult(False, target, time.monotonic() - t0, steps, f"search tune: {hunt.reason}")
+        pb = await stick.playback(pkg)
+        if playback_ready(pb):
+            stick.remember(target, pb)
+        steps.append(f"playing by search: {hunt.description}")
+        return TuneResult(True, target, time.monotonic() - t0, steps)
+
 
 class PrimeTuner(Tuner):
     app = "prime"

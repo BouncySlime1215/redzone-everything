@@ -553,6 +553,14 @@ def loose_codes_in(text: str) -> list[str]:
     return out
 
 
+def _same_focus(a, b, tol: float = 0.012) -> bool:
+    """The same focused tile in two reads: the ring's box moves a pixel or two between screenshots
+    (Nov 3, the NBCSN tile), so positions match within tol; confidence and text may differ."""
+    if a is None or b is None:
+        return False
+    return all(abs(getattr(a, k) - getattr(b, k)) <= tol for k in ("x", "y", "width", "height"))
+
+
 def _center(box) -> tuple[float, float]:
     return box.x + box.width / 2, box.y + box.height / 2
 
@@ -615,7 +623,7 @@ def step_toward(focus, target) -> str:
 
 async def hunt_channel(stick, observe, *, key: str, table, query: str = "", profile: str = "",
                        sleep=asyncio.sleep, clock=time.monotonic, max_moves: int = 14,
-                       budget_s: float = HUNT_BUDGET_S, lounge=None) -> ChannelHunt:
+                       budget_s: float = HUNT_BUDGET_S, lounge=None, collect_codes: bool = True) -> ChannelHunt:
     """Search YouTube TV for one channel, select its live tile, confirm it plays, collect code candidates.
 
     ``observe`` returns a fresh CapturedScreen (screencap + Vision OCR). ``lounge`` is an optional
@@ -680,7 +688,7 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
             nx = _center(names[0])[0]
             if focus.x - .01 <= nx <= focus.x + focus.width + .01:
                 again = await read()
-                if unique_focus(again) != focus:
+                if not _same_focus(unique_focus(again), focus):
                     raise RuntimeError("profile focus changed before selection")
                 await press("KEYCODE_DPAD_CENTER")
                 record("profile", f"selected {profile}")
@@ -690,8 +698,26 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
             frame = await read()
         raise RuntimeError("profile focus did not reach the configured profile")
 
+    async def open_network_live(frame) -> bool:
+        """The tile opened the channel's NETWORK page (NBCSN: a hero carousel, then Live / Upcoming /
+        Series / News with the live tile beside Live), not the channel (Nov 3, by hand on the 4K Plus):
+        DOWN to the Live row, RIGHT onto its live tile, Select."""
+        t = normalize_text(frame.text)
+        # NBCSN: Live / Upcoming / Series / News. NBC (local WRAL): Live / Series / Popular / ...
+        # with the station's NOW tile beside Live.
+        menu = sum(w in t for w in ("upcoming", "series", "news", "popular"))
+        if not ("live" in t and menu >= 2):
+            return False
+        await press("KEYCODE_DPAD_DOWN")
+        await sleep(.8)
+        await press("KEYCODE_DPAD_RIGHT")
+        await sleep(.8)
+        await press("KEYCODE_DPAD_CENTER")
+        record("network_page", "Live row -> live tile")
+        return True
+
     async def wait_confirmed(before, seconds=16.0):
-        pressed_watch = False
+        pressed_watch = pressed_network = False
         t0 = clock()
         while clock() - t0 < seconds:
             ev = await stickio.read_evidence(stick, pkg, with_screen=False)
@@ -701,6 +727,13 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
                 return ev
             if verdict.status == "wrong_channel":
                 raise RuntimeError(f"selected tile plays another channel ({verdict.detail})")
+            if not ev.playing and not pressed_network and clock() - t0 >= 3:
+                frame = await read()
+                if await open_network_live(frame):
+                    pressed_network = True
+                    t0 = clock()   # the live tile gets its own full wait
+                    await sleep(1.0)
+                    continue
             if not ev.playing and not pressed_watch and clock() - t0 >= 4:
                 # A channel/detail page instead of playback: one Select, on a readable Watch button only.
                 frame = await read()
@@ -737,7 +770,7 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
             here = focus_text(frame, focus)
             if focus is not None and names_channel(here, key, table) and not _purchase(here):
                 again = await read()
-                if unique_focus(again) != focus or not names_channel(focus_text(again, focus), key, table):
+                if not _same_focus(unique_focus(again), focus) or not names_channel(focus_text(again, focus), key, table):
                     raise RuntimeError("focused tile changed before selection")
                 hunt.tile = focus_text(again, focus)
                 await press("KEYCODE_DPAD_CENTER")
@@ -764,6 +797,8 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
             raise RuntimeError("selected the tile, but the media session never named the channel")
         hunt.description = ev.meta_text
         hunt.status, hunt.reason = "confirmed", f"media session says {ev.meta_text!r}"
+        if not collect_codes:
+            return hunt   # tuning by search: the channel is on, no code hunt needed
 
         found: list[dict] = []
 

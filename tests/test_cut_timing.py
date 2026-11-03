@@ -190,3 +190,21 @@ def test_team_timeout_is_ridden_out_but_a_tv_timeout_is_worth_a_visit(cfg, clock
         dec._known["b"] = _cands("youtubetv:b")["b"]
         clock.t = 1050.0      # the screen (40 s behind) shows real 1010: ten seconds into the stop
         assert dec._short_stop("b", s) is short
+
+
+def test_short_stops_are_ridden_out_in_basketball_but_not_hockey(cfg, clock):
+    """NBA joins the NFL (scorecards, Nov 3: mid-play entries 44 -> 36, nothing else changed);
+    hockey's whistles still get a visit."""
+    from redzone.decider.screen import Event
+    from redzone.scoring.engine import Scored
+    for league, short in ((League.NBA, True), (League.NHL, False)):
+        dec = _decider(cfg, clock)
+        tl = dec.timeline("b", league)
+        tl.dead.add("1", 1000, 1000, "jumpshot", "makes 18-foot jumper", "Jump Shot", None, 1)
+        tl.dead.add("2", 1002, 1002, "timeout", "timeout", "Timeout", None, 1)
+        tl.dead.seen(1010, 8)
+        tl.events.append(Event(1002, "stop_start", "timeout"))
+        dec._known["b"] = _cands("youtubetv:b")["b"]
+        clock.t = 1050.0
+        s = Scored("b", league, 50, 50, 50, 1.0, 0.0, "r", [], True, None, None, 1.0)
+        assert dec._short_stop("b", s) is short

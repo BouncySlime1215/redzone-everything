@@ -29,9 +29,17 @@ from redzone.models import League  # noqa: E402
 from redzone.sources import espn  # noqa: E402
 
 
-def nights(league: League, n: int):
+# The graded window ends here. The service archives each new night at 5 AM (and refreshes the last
+# scoreboards), so an open window slides under any before/after comparison. Move it on purpose.
+EVAL_END = "20261101"
+
+
+def nights(league: League, n: int, end: str | None = None):
+    """The last n archived nights, up to `end` (YYYYMMDD) when given: the service archives every
+    new night at 5 AM, and an unpinned window would slide under a before/after comparison."""
     arch = ROOT / "data/archive" / league.value
-    for sb in sorted(arch.glob("scoreboard_*.json"))[-n:]:
+    sbs = sorted(sb for sb in arch.glob("scoreboard_*.json") if not end or sb.stem.split("_")[1] <= str(end))
+    for sb in sbs[-n:]:
         evs = json.loads(sb.read_text()).get("events", [])
         reps, targets = [], {}
         for e in evs:
@@ -70,14 +78,23 @@ def main():
     ap.add_argument("--nights", type=int, default=14)
     ap.add_argument("--slates", action="store_true")
     ap.add_argument("--step", type=float, default=None)
+    ap.add_argument("--end", default=None, help="last night to grade (YYYYMMDD); default eval.<league>_end")
     stress_args(ap)
     a = ap.parse_args()
     lg = League(a.league)
-    cfg = Config(user_path=ROOT / "data/config.yaml")
+    # The live service rewrites data/config.yaml (measured switch costs, taps): scorecards read a
+    # pinned copy when one exists, so a before/after comparison isn't moved by the live night.
+    pinned = ROOT / "data/eval_config.yaml"
+    cfg = Config(user_path=pinned if pinned.exists() else ROOT / "data/config.yaml")
+    if pinned.exists() and not cfg.overrides:
+        # Config falls back to defaults when a file doesn't validate (an unknown key, say): a
+        # scorecard on silent defaults compares the wrong thing.
+        sys.exit(f"{pinned} didn't validate (unknown key?): refusing to grade on defaults")
     mine = set(cfg.get(f"teams.{lg.value}") or ["WSH"])
     total = sportsgrade.Card(lg.value)
     t0 = time.time()
-    for day, reps, targets in nights(lg, a.nights):
+    end = a.end or EVAL_END
+    for day, reps, targets in nights(lg, a.nights, end):
         rep = run(reps, cfg, mine, targets=targets, step=a.step, **knobs(a))
         # [xleague] Grade against what the screen REALLY showed (true delay), not the app's belief.
         card = sportsgrade.grade(reps, rep.switches, mine, rep.lag_true, 5.0, rep.t0, rep.t1, rep.replayed)
