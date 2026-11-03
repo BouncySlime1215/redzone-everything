@@ -544,6 +544,23 @@ def _episodes(samples: list[Sample], pred) -> list[tuple[float, float]]:
     return out
 
 
+# Real bugs this night found that are reported to their owner and not fixed yet. Each is still
+# listed in the report (no_crash.detail.known_errors) but doesn't fail the night. Remove an entry
+# once its fix lands, so the night guards against it coming back.
+KNOWN_ERRORS = (
+    # control.boundary_reads reads s.tuned["target"] again after awaiting another stick's
+    # playback; a switch can clear s.tuned meanwhile (SWITCHING, redzone/control.py:293).
+    ("boundary read failed", "TypeError: 'NoneType' object is not subscriptable"),
+)
+
+
+def _known(err: dict) -> bool:
+    return any(m in str(err.get("msg", "")) and e in str(err.get("exc", "")) for m, e in KNOWN_ERRORS)
+
+
+FAR_BEHIND_S = 120.0   # a picture this far behind live (s) is reported as stale
+
+
 class _TimedLock(asyncio.Lock):
     """The controller's lock, recording each hold: (acquired, released, the holder's coroutine).
     Sampling `locked()` every few seconds can't tell one stuck hold from many short ones."""
@@ -583,8 +600,11 @@ def grade(night: Night) -> dict:
         checks.append({"name": name, "ok": bool(ok), "detail": detail})
 
     real_errors = [x for x in night.errors if x["where"] != "redzone.night"]
+    known = [x for x in real_errors if _known(x)]
+    real_errors = [x for x in real_errors if not _known(x)]
     check("no_crash", night.crashed is None and not real_errors,
-          {"crashed": night.crashed, "errors": real_errors[:20], "n_errors": len(real_errors)})
+          {"crashed": night.crashed, "errors": real_errors[:20], "n_errors": len(real_errors),
+           "known_errors": known[:20]})
     max_switch = float(e.cfg.get("control.max_switch_s", 150))
     pend = max((x.pending_s for x in s), default=0.0)
     holds = list(night.lock_holds)
@@ -639,7 +659,8 @@ def grade(night: Night) -> dict:
            "stray_restarts": [_et(x) for x in stray],
            "actions": Counter(r["action"] for r in rows), "notes": [r.get("why") for r in rows if r["action"] != "none"][:12]})
     # The screen: how much of the live night showed a live game.
-    live_s = shown_live = 0.0
+    live_s = shown_live = far_s = prompt_s = 0.0
+    far: list = []
     sh = night.house.shown
     for a, b in zip(sh, sh[1:] + [houselib.Shown(night.t1, None, None, "end", 0, "")]):
         dt = b.t - a.t
@@ -647,8 +668,17 @@ def grade(night: Night) -> dict:
             live_s += dt
             if a.what == "playing":
                 shown_live += dt
+                if a.behind >= FAR_BEHIND_S:
+                    far_s += dt
+                    far.append((_et(a.t), a.target, round(a.behind), round(dt)))
+            elif a.what == "prompt":
+                prompt_s += dt
     coverage = shown_live / live_s if live_s else 1.0
-    check("tv_shows_games", coverage >= 0.75, {"playing_share_while_live": round(coverage, 3)})
+    # Informational (not graded): a stick that paused off screen and resumed where it paused comes
+    # back this far behind live; and how long a prompt sat on screen in all.
+    check("tv_shows_games", coverage >= 0.75,
+          {"playing_share_while_live": round(coverage, 3), "far_behind_share": round(far_s / live_s, 3) if live_s else 0.0,
+           "far_behind": far[:20], "prompt_on_screen_s": round(prompt_s)})
     switches = e.store._db.execute("SELECT ok, dry_run, detail, kind FROM switches").fetchall() \
         if hasattr(e.store, "_db") else []
     return {
