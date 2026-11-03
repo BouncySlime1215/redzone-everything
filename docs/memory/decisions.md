@@ -7,6 +7,12 @@ enforces it in CI. Gate changes in architecture.md §7 need a line too (by hand)
 
 Format: `- YYYY-MM-DD: **decision.** Why.`
 
+## Release candidate 1 (integration/release, Nov 3)
+
+- 2026-11-03: **Brain features ship off in RC 1 (`brain.enabled: false`).** The brain models were trained on seasons that include the locked test nights, so their numbers are optimistic. With the brain off, the locked NFL/NBA/NHL cards are identical, so no gate row depends on a leaky model. It turns back on after the time-cutoff retrain if the gate holds.
+- 2026-11-03: **NBA entries wait for a whistle, capped at 120 s (#21, over #28's rewind-only).** On the full NBA card, entries mid-play drop 30 → 14 and missed on entry 14 → 9, while dead air goes 19.4 → 19.9 %.
+- 2026-11-03: **The release gate is judged on the locked test split plus robustness cards** (sync ±3 s, a 10 s stale feed), with `docs/gate_baseline.json` rebuilt from 5f0e6a1 on that split (the no-overfitting rule).
+
 ## Process and budget
 
 - 2026-11-04 (planned): **Move to a new Claude account Wed 5 PM.** Everything an AI needs lives
