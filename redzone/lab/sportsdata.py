@@ -387,6 +387,7 @@ def norm_espn_archive(league: str, archive: Path) -> pd.DataFrame:
         wpm = {str(w.get("playId")): w.get("homeWinPercentage") for w in data.get("winprobability") or []}
         gid = f.stem.split("_")[-1]
         season = espn._int(espn._get(data, "header", "season", "year")) or 0
+        skaters = _espn_nhl_skaters(data, plays) if lg == League.NHL else None
         for i, p in enumerate(plays):
             per = espn._int(espn._get(p, "period", "number")) or 0
             clock = espn._clock_s(espn._get(p, "clock", "displayValue"))
@@ -404,6 +405,7 @@ def norm_espn_archive(league: str, archive: Path) -> pd.DataFrame:
                 half_bottom=(1.0 if "bottom" in (espn._get(p, "period", "type") or "").lower() else 0.0)
                 if lg == League.MLB else np.nan,
                 outs=espn._int(p.get("outs")) if lg == League.MLB else np.nan,
+                **({"home_skaters": skaters[i][0], "away_skaters": skaters[i][1]} if skaters else {}),
             ))
         if rows and rows[-1]["game_id"] == gid:
             rows[-1]["stoppage"] = "game_end"
@@ -425,6 +427,27 @@ def norm_espn_archive(league: str, archive: Path) -> pd.DataFrame:
     if lg == League.MLB:
         e["outs"] = e.outs.astype(float)
     return _blank(e)
+
+
+def _espn_nhl_skaters(data: dict, plays: list[dict]) -> list[tuple[float, float]]:
+    """[nhl pp] Skaters after each play exactly as the live service reads them from ESPN alone
+    (espn.nhl_power_play, brain._skaters): known on a power play, unknown (NaN) otherwise."""
+    from redzone.sources import espn
+
+    comps = espn._get(data, "header", "competitions", 0, "competitors") or []
+    side = {c.get("homeAway"): c for c in comps}
+    abbr = lambda c: espn._get(c, "team", "abbreviation") or ""
+    home, away = abbr(side.get("home") or {}), abbr(side.get("away") or {})
+    ids = {str(espn._get(c, "team", "id")): abbr(c) for c in comps}
+    out = []
+    for i in range(len(plays)):
+        pp, strength = espn.nhl_power_play(plays[: i + 1], ids, home, away)
+        if not pp:
+            out.append((np.nan, np.nan))
+            continue
+        a, b = (float(x) for x in strength.split("v"))
+        out.append((a, b) if pp == home else (b, a))
+    return out
 
 
 def _espn_big(lg, t: str, p: dict) -> bool:

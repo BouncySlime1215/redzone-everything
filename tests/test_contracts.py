@@ -68,6 +68,12 @@ def test_legacy_sync_wraps_delaybook():
         s.observe("youtubetv:espn", 26.0, "mic", 1000.0)
 
 
+def test_sync_estimate_v2_fields_default_safely():
+    e = c.SyncEstimate("prime:x", 33.0, 4.0, "sync", 100.0)
+    assert e.calibrated and not e.uncertain
+    assert c.SyncEstimate("prime:x", 33.0, 9.0, "sync", 100.0, uncertain=True).uncertain
+
+
 def test_legacy_breaks_quantiles_are_ordered():
     from redzone.scoring.breaks import BreakBook
     b = legacy.LegacyBreaks(BreakBook(clock=lambda: 0.0))
@@ -121,6 +127,8 @@ def test_trace_timings():
         t.emit(c.TraceEvent("sw1", stage, at, "test"))
     assert t.timings("sw1") == pytest.approx({"decided": 0.0, "command": 0.2, "picture": 4.0})
     assert '"stage":"picture"' in t.events[-1].jsonl()
+    order = [x.value for x in c.Stage]
+    assert order.index("guarded") < order.index("rechecked") < order.index("command")
 
 
 def _world(screen_game="g1"):

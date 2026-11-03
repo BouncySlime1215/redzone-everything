@@ -112,6 +112,24 @@ ENTRY_MAX_REWIND_S = 120.0
 # A stop expected to run at least this much longer on screen is worth a visit (breaks.VISIT_MIN_S).
 VISIT_MIN_S = 90.0
 
+def _nhl_ot(s: Scored) -> bool:
+    """[nhl pp] NHL overtime / shootout: never left except for crunch time elsewhere."""
+    return s.league.base == League.NHL and s.lock == "overtime"
+
+
+def _holds_replays(s: Scored) -> bool:
+    """A live moment that a catch-up replay must not be shown instead of. A power play only holds
+    the TV once you're on it: on the way somewhere else it competes on score with the replay, or a
+    night of power plays would cut every catch-up chain short (Oct 20 replay: 5 goals never seen)."""
+    return bool(s.lock) and s.lock != "power play"
+
+
+def _nhl_close_third(s: Scored) -> bool:
+    """[nhl pp] A one-goal NHL 3rd period: crunch time is coming, and a visit to a game with no
+    clean exit can strand you through it (Oct 31 replay: STL @ DET at 7:34 left, back at 1:09)."""
+    return s.league.base == League.NHL and s.late and not s.garbage and s.closeness >= 0.9
+
+
 def _short(s: Scored) -> str:
     return "your game"
 
@@ -593,7 +611,14 @@ class Decider:
         scorecards Nov 3: mid-play entries 165 -> 15, crunch live 87.5 -> 88.3%, big plays seen
         99.7 -> 99.5%. The rest of cut timing (holding for a big play, stretching a stoppage) cost
         hockey crunch time, so it stays football-only."""
-        if x is None or d.kind in ("crunch", "start") or x.scored.crunch:
+        if x is None or d.kind == "start" or x.scored.crunch_now:
+            return False
+        if x.scored.crunch and not x.scored.crunch_now and \
+                not self.cfg.get("decider.entry.hold_crunch_runup", True):
+            return False
+        if d.kind == "chase" and x.scored.imminent:
+            # A chase for a goal off a 5-on-3, a fresh power play, a late empty net or a penalty
+            # shot: waiting for a whistle misses it. Every other chase waits like any entry.
             return False
         return x.scored.league.base.value in (self.cfg.get("decider.entry.hold_only") or [])
 
@@ -606,7 +631,10 @@ class Decider:
             return d
         if d.target == self.current and not self.after_replay:
             return d
-        urgent = d.kind == "crunch" or (x is not None and (x.scored.crunch or self._sticky_home(d.target, cands)))
+        # [nhl pp] A power play or a close 3rd makes a game sticky for break visits, but is no reason
+        # to come in on a tighter margin: that only buys mid-play entries.
+        urgent = d.kind == "crunch" or (x is not None and (x.scored.crunch or
+                                                           self._sticky_home(d.target, cands, entry=True)))
         plan = self.entry_plan(d.target, cands, now, urgent=urgent)
         if plan is None:
             return d
@@ -865,7 +893,8 @@ class Decider:
                                     state, gate_txt, kind="return")
 
         needed = margin + cost
-        if s_cur.lock:
+        if s_cur.lock and not self._mine_late(b.scored):
+            # A moment here (a power play...) holds the TV, but never against your team late and close.
             needed = max(needed, c.get("decider.locked_override_lead"))
         if lead < needed:
             return Decision(now, "stay", self.current, s_cur.reason, state, gate_txt)
@@ -925,7 +954,7 @@ class Decider:
         """We're leaving the current game anyway (it ended, or nothing's live): replay first?
         Never instead of a locked moment (crunch time, red zone) we could be watching live."""
         live = cands[best].scored if best else None
-        if self.current is None or (live and live.lock):
+        if self.current is None or (live and _holds_replays(live)):
             return None
         rp = self._best_replay(cands, now, None, False, top=self._vs_replay(best, cands) if best else 0.0)
         if rp is None:
@@ -995,7 +1024,7 @@ class Decider:
             if best is None:
                 return Decision(now, "stay", self.current, "nothing live", State.IDLE)
         live = cands[best].scored
-        rp = None if live.lock else self._best_replay(cands, now, None, False, top=self._vs_replay(best, cands))
+        rp = None if _holds_replays(live) else self._best_replay(cands, now, None, False, top=self._vs_replay(best, cands))
         if rp:
             return self._replay_decision(rp, State.REPLAY, "replay finished", now)
         # Heading back to live anyway: land where a big play is about to air, if there is one.
@@ -1076,6 +1105,8 @@ class Decider:
         two-minute warning, the way in; every stoppage held is commercials on screen."""
         if s_cur.personal >= self.cfg.get("decider.crunch.hold_personal", 5):
             return True
+        if _nhl_ot(s_cur):
+            return True   # [nhl pp] sudden death: the next goal ends it, whenever it comes
         tl = self.timelines.get(self.current)
         start = tl.last("stop_start") if tl else None
         return start is not None and start.label in self.cfg.get("decider.crunch.hold_neutral_breaks", [])
@@ -1103,7 +1134,7 @@ class Decider:
             return None
         # Hold. A visit elsewhere can strand you there (late in a slate the only safe gaps are
         # official breaks) while this game snaps; only a replay that surely ends first is worth it.
-        if on_break and gate_ok:
+        if on_break and gate_ok and not _nhl_ot(s_cur):
             rp = self._crunch_replay(cands, now, self.current)
             if rp:
                 self.home_break_visit = self.current
@@ -1265,7 +1296,16 @@ class Decider:
     def _best(self, watchable: dict[str, Candidate], exclude: str | None) -> str | None:
         options = [(x.scored.score, gid) for gid, x in watchable.items()
                    if gid != exclude and gid != REEL and not x.scored.is_break and gid not in self._screen_break]
-        return max(options)[1] if options else None
+        if not options:
+            return None
+        best = max(options)[1]
+        if watchable[best].scored.lock == "power play":
+            # [nhl pp] A power play is always worth a look, but never over your team late and close
+            # (Oct 29 replay: back from a catch-up onto NYI @ MIN's power play instead of WSH, tied late).
+            mine = [o for o in options if self._mine_late(watchable[o[1]].scored)]
+            if mine:
+                return max(mine)[1]
+        return best
 
     def _break_destination(self, watchable, exclude, home: str | None = None) -> str | None:
         """Where to spend the home game's break. If home is a game you can't afford to miss the
@@ -1491,14 +1531,18 @@ class Decider:
                     and s.personal >= self.cfg.get("decider.crunch.hold_personal", 5)
                     and s.closeness >= self.cfg.get("decider.mine_late_closeness", 0.2))
 
-    def _sticky_home(self, gid: str, watchable) -> bool:
-        """A game whose next play you must be back for."""
+    def _sticky_home(self, gid: str, watchable, entry: bool = False) -> bool:
+        """A game whose next play you must be back for. entry=True: one worth an urgent (tighter)
+        entry, which a power play or a close NHL 3rd alone is not."""
         x = watchable.get(gid)
         if x is None:
             return gid == self.user.focus_game
         s = x.scored
-        return (gid == self.user.focus_game or s.crunch or s.lock is not None
-                or s.personal >= self.cfg.get("decider.crunch.hold_personal", 5))
+        soft = s.lock == "power play" or _nhl_close_third(s)
+        return (gid == self.user.focus_game or s.crunch
+                or (s.lock is not None and not (entry and s.lock == "power play"))
+                or s.personal >= self.cfg.get("decider.crunch.hold_personal", 5)
+                or (not entry and soft))
 
     def _wait_for_my_tip(self, x: Candidate, now: float) -> str | None:
         """Your team tips soon: don't start on a neutral basketball/hockey game we couldn't leave.

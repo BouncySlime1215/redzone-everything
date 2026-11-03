@@ -26,6 +26,8 @@ class Obs:
     crunch_on_screen: bool = False    # crunch time / your team late is on the TV right now
     sticks_offline: list[str] = field(default_factory=list)
     offline_min: float = 0.0          # how long the longest-offline stick has been gone
+    away: bool = False                # the Mac isn't on the home network: sticks can't answer, not a fault
+    route_issue: str = ""             # at home, but traffic to the sticks goes into a tunnel (Tailscale)
     disk_free_mb: float = 99999.0
     restarts_last_hour: int = 0
     errors: dict[str, int] = field(default_factory=dict)   # error signature -> count, last 15 min
@@ -97,7 +99,9 @@ def rules(o: Obs) -> Verdict | None:
             cats[k[0]] = cats.get(k[0], 0) + n
     if cats.get("disk"):
         return Verdict("prune_disk", "the app hit 'no space left on device'")
-    if o.sticks_offline:
+    if o.route_issue:
+        return Verdict("notify", o.route_issue)
+    if o.sticks_offline and not o.away:
         if o.offline_min >= 10:
             return Verdict("notify", f"stick {o.sticks_offline[0]} has been offline {int(o.offline_min)} min: "
                            "check its power (wall adapter, not the TV's USB)", o.sticks_offline[0])
@@ -131,6 +135,8 @@ def guard(v: Verdict, o: Obs) -> Verdict:
                            f"{o.restarts_last_hour}x this hour", source="guard")
         if o.crunch_on_screen and o.api_ok:
             return Verdict("notify", f"wanted a restart ({v.why}) but crunch time is on screen", source="guard")
+    if v.action == "reconnect_stick" and (o.away or o.route_issue):
+        return Verdict("none", "away from home or routes broken: reconnecting a stick can't help", source="guard")
     if v.action == "reconnect_stick" and v.target not in o.sticks_offline:
         if not o.sticks_offline:
             return Verdict("none", "no stick is offline", source="guard")

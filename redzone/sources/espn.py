@@ -504,6 +504,8 @@ def parse_summary(league: League, data: dict, upto: int | None = None,
         _nfl_situation(g, p, ids)
     elif league == League.MLB:
         _mlb_situation(g, p, cut)
+    elif league == League.NHL:
+        _nhl_situation(g, cut, ids)
 
     wp_by_play = {w.get("playId"): w.get("homeWinPercentage") for w in data.get("winprobability") or []}
     for x in reversed(cut[-20:]):
@@ -609,6 +611,59 @@ def _nfl_situation(g: GameState, p: dict, ids: dict) -> None:
         s.goal_to_go = s.distance is not None and s.distance >= ytg
     elif team:
         s.possession = team
+
+
+# ESPN NHL event types that are not penalties (everything else with a team is an infraction).
+_NHL_EVENT_TYPES = {"502", "503", "505", "506", "507", "508", "516", "518", "519", "520", "521", "522",
+                    "1401", "1402"}
+# Infractions that don't put anyone on the power play (offsetting by nature, or a penalty shot).
+_NHL_NO_PP = ("misconduct", "fighting", "instigator", "ps-")
+NHL_PP_SCAN = 60   # plays to look back: a minor is 2:00 of game time, well under 60 logged events
+
+
+def nhl_power_play(cut: list[dict], ids: dict, home: str, away: str) -> tuple[str | None, str | None]:
+    """[nhl pp] (team on the power play, strength) after the last play in `cut`, from ESPN's own
+    play-by-play (the NHL feed's situationCode isn't always there, and backtests never have it).
+    `ids` maps ESPN team id -> abbreviation.
+
+    Each ESPN play carries the strength of the team that made it ("power-play" / "short-handed" /
+    "even-strength"), so the newest such label says who is up a man. The label lags the call:
+    the penalty itself and the whistle after it are still "even-strength", and only the faceoff
+    that restarts play says "power-play". So a penalty logged after the newest label starts the
+    power play right away for the other team; one against each team at once cancels out."""
+    pp = None
+    pen: dict[str, int] = {}   # team -> penalties called on them since the newest strength label
+    for x in cut[-NHL_PP_SCAN:]:
+        team = ids.get(str(_get(x, "team", "id") or ""))
+        typ = str(_get(x, "type", "id") or "")
+        if team and typ and typ not in _NHL_EVENT_TYPES:
+            if not any(k in (_get(x, "type", "text") or "").lower() for k in _NHL_NO_PP):
+                pen[team] = pen.get(team, 0) + 1
+            continue
+        strength = _get(x, "strength", "abbreviation")
+        if team and strength:
+            other = away if team == home else home
+            pp = team if strength == "power-play" else other if strength == "short-handed" else None
+            if typ == "505" and strength == "power-play":
+                pp = None   # a power-play goal ends a minor
+            pen = {}
+    net = pen.get(away, 0) - pen.get(home, 0)   # > 0: the away team is down a man since the last label
+    strength = "5v4"
+    if net:
+        up = home if net > 0 else away
+        if pp is None:
+            pp, strength = up, "5v3" if abs(net) >= 2 else "5v4"
+        elif pp == up:
+            strength = "5v3"   # the short-handed team took another one
+        else:
+            pp = None          # the team on the power play took one: 4-on-4
+    return (pp, strength) if pp else (None, None)
+
+
+def _nhl_situation(g: GameState, cut: list[dict], ids: dict) -> None:
+    pp, strength = nhl_power_play(cut, ids, g.home.abbr, g.away.abbr)
+    if pp:
+        g.situation.power_play, g.situation.strength = pp, strength
 
 
 def _mlb_situation(g: GameState, p: dict, cut: list[dict]) -> None:

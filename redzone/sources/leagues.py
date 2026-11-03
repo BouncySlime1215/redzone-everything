@@ -104,8 +104,11 @@ def enrich_nhl(g: GameState, score_game: dict, pbp: dict | None = None) -> GameS
                 out.stoppage = Stoppage.WHISTLE if kind == "penalty" else out.stoppage
             elif kind and _get(score_game, "clock", "running"):
                 out.stoppage = Stoppage.NONE
-    pp, strength, empty = parse_situation_code(code, out.home.abbr, out.away.abbr)
-    out.situation.power_play, out.situation.strength, out.situation.empty_net = pp, strength, empty
+    if code and re.fullmatch(r"\d{4}", str(code)):
+        # The NHL feed's on-ice code is the truth when it's there; without one, keep what ESPN's
+        # play-by-play already said (espn._nhl_situation) rather than wiping it.
+        pp, strength, empty = parse_situation_code(code, out.home.abbr, out.away.abbr)
+        out.situation.power_play, out.situation.strength, out.situation.empty_net = pp, strength, empty
     out.updated_at = time.time()
     return out
 

@@ -47,7 +47,7 @@ import re
 import statistics
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -117,6 +117,7 @@ class Outcome:
     resume_s: float | None = None   # active source -> the relaunched app is playing the game again
     resumed: bool | None = None     # after a HOME flip: the game was confirmed playing again
     stick: str | None = None        # host of the stick that tuned (None = no tune ran)
+    marks: list = field(default_factory=list)  # [(step, wallclock)] for the switch trace (redzone/trace.py)
 
 
 @dataclass
@@ -226,6 +227,7 @@ class Controller:
         self.last: Outcome | None = None
         self.note = ""
         self.stage = {"stage": "idle", "target": None, "reason": ""}
+        self._marks: list | None = None          # steps of the switch now running (redzone/trace.py)
         self.input_unknown = False
         self._two_stick_retry_at = 0.0           # after a failed flip: two-stick mode stays off until then
         self._home_flipped = False               # the last flip pressed HOME (its app was relaunched)
@@ -1063,13 +1065,27 @@ class Controller:
         entry_rewind_s [cut timing]: a LIVE switch whose picture should come up this far behind the
         live edge (whole seek steps), on the dead ball before the play it would otherwise join
         mid-way. The game stays the live target; only its delay grows by that much."""
-        out = await self._execute(target, replay_back_s, may_cut, replay_id, issued_at)
-        if entry_rewind_s and out.ok and not out.dry_run and not replay_back_s and self.main is not None:
-            if not await self._rewind(self.main, entry_rewind_s):
-                return Outcome(False, target, out.took, "entry rewind failed; position unknown", False,
-                               path=out.path)
-            out.detail += f"; rewound {entry_rewind_s:.0f}s to the dead ball"
+        marks = self._marks = [("started", time.time())]
+        try:
+            out = await self._execute(target, replay_back_s, may_cut, replay_id, issued_at)
+            if entry_rewind_s and out.ok and not out.dry_run and not replay_back_s and self.main is not None:
+                if not await self._rewind(self.main, entry_rewind_s):
+                    out = Outcome(False, target, out.took, "entry rewind failed; position unknown", False,
+                                  path=out.path)
+                else:
+                    self._mark("rewind_done")
+                    out.detail += f"; rewound {entry_rewind_s:.0f}s to the dead ball"
+        finally:
+            self._marks = None
+        marks.append(("done", time.time()))
+        out.marks = marks
         return out
+
+    def _mark(self, step: str) -> None:
+        """Stamp one step of the switch now running (the trace). Preloads and the watchdogs don't mark."""
+        marks = getattr(self, "_marks", None)
+        if marks is not None:
+            marks.append((step, time.time()))
 
     async def _execute(self, target: str | None, replay_back_s: float | None = None,
                        may_cut: Callable[[], bool] | None = None, replay_id: str | None = None,
@@ -1091,9 +1107,11 @@ class Controller:
                 return out
         # Recheck after waiting for the controller lock and after a failed
         # HDMI attempt: the safe gap may have closed during those operations.
+        self._mark("safe_start")
         if await self._wait_safe(may_cut) is None:
             return Outcome(False, target, time.time() - t0,
                            "no safe moment to cut — kept the current game", False, screen_unchanged=True)
+        self._mark("safe_done")
         if not self.live_control:
             return Outcome(False, target, 0.0, "TV control was disabled", True)
         return await self._execute_one(target, replay_back_s, t0, back_at)
@@ -1103,7 +1121,9 @@ class Controller:
             return Outcome(True, target, 0.0, "already on it", False, time.time(), path="already")
         main = self.main
         self.on_target = None   # unknown until this tune is confirmed (a cancelled tune leaves it unknown)
+        self._mark("tune_start")
         res = await self._tune(main, target, self._exit_check)
+        self._mark("tune_done")
         if not res.ok:
             self._blackout_check(target, res)
             return Outcome(False, target, time.time() - t0, res.error + " | " + "; ".join(res.steps[-3:]), False,
@@ -1149,7 +1169,9 @@ class Controller:
                                    waited=MAX_SAFE_WAIT_S, screen_unchanged=True)
                 visible_untouched = False  # waking can already change the TV input via CEC
             self._set_hidden(target, False)
+            self._mark("tune_start")
             res = await self._tune(hid, target, may_cut if sleeping else None)
+            self._mark("tune_done")
             if not res.ok:
                 self._set_hidden(None, False)
                 self._blackout_check(target, res)
@@ -1161,14 +1183,17 @@ class Controller:
                 if not await self._park(hid, target, replay_back_s + (time.time() - (back_at or t0)), replay_id or ""):
                     return Outcome(False, target, time.time() - t0, "replay seek failed; kept current game", False,
                                    path=path, screen_unchanged=visible_untouched)
+                self._mark("park_done")
         self.latency.note_preloaded(target.split(":", 1)[0], path != "tuned")
         work = time.time() - t0
         # Wait for a safe moment on what's visible, THEN flip. This is where "never mid-play" is enforced
         # to the second, because the cut happens at the flip.
+        self._mark("safe_start")
         waited = await self._wait_safe(may_cut)
         if waited is None:
             return Outcome(False, target, work, no_moment, False, path=path, waited=MAX_SAFE_WAIT_S,
                            screen_unchanged=visible_untouched)
+        self._mark("safe_done")
         if not self.live_control:
             return Outcome(False, target, work, "TV control was disabled", True, path=path)
         t1 = time.time()
@@ -1200,7 +1225,9 @@ class Controller:
             if may_cut is not None and not may_cut():
                 return Outcome(False, target, time.time() - t0, "safe exit window closed during preparation", False,
                                path=path, screen_unchanged=visible_untouched)
+            self._mark("flip_start")
             flipped = await self._flip_to(hid)
+            self._mark("flip_done")
         finally:
             self._flipping = False
         if not flipped:
@@ -1249,6 +1276,8 @@ class Controller:
             finally:
                 self._flipping = False
             resume_s = time.monotonic() - r0
+            if how is not None:
+                self._mark("resume_done")
             if how is None:
                 # The input DID change (that's the cut); the picture isn't confirmed. The visible-stick
                 # watchdog keeps retrying, and the next switch re-tunes instead of trusting it.
