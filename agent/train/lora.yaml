@@ -1,20 +1,22 @@
-# LoRA fine-tune of the watchdog model (mlx_lm lora -c agent/train/lora.yaml). Sized for an 8 GB M2
-# with the RedZone service running beside it: batch 2, 512 tokens, grad checkpointing.
+# LoRA fine-tune of the watchdog model. Light enough for the 8 GB M2 with the service running, but
+# still heavy: run it alone, overnight, at low priority:
+#   nice -n 15 .venv-agent/bin/python -m mlx_lm lora -c agent/train/lora.yaml
+# (Nov 3 run at batch 2 / 16 layers: loss 5.5 -> 0.14 by step 75, but ~30 s/step and it starved the Mac.)
 model: mlx-community/Qwen3-1.7B-4bit
 train: true
 data: agent/train/data
 adapter_path: agent/model/adapter
 fine_tune_type: lora
 mask_prompt: true          # learn the answer, not the prompt
-num_layers: 16
-batch_size: 2
-iters: 300
+num_layers: 8
+batch_size: 1
+iters: 150
 learning_rate: 1.0e-4
 steps_per_report: 25
-steps_per_eval: 100
+steps_per_eval: 75
 val_batches: 10
-save_every: 100
-max_seq_length: 768
+save_every: 25
+max_seq_length: 512
 grad_checkpoint: true
 seed: 7
 lora_parameters:

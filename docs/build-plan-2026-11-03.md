@@ -149,3 +149,28 @@ Sunday it broke, CLE @ CHI). Merge only if NFL big plays seen stays at 95.4% or 
 **Not today (needs you home):** Prime pause test (15 min), Silk reel test (10 min), plugging HDMI1 into
 wall power (2 min). Nothing is deployed to the live service while you're out unless the scorecards are
 a clear win, and the service is restarted only when no games are on.
+
+---
+
+## Status at midday (built today, nothing deployed to the live service yet)
+
+| Done | Proof |
+|---|---|
+| NHL entry timing merged | NHL mid-play entries 165 → 11 |
+| League order (NFL > CFB > NBA > NCAA > NHL > MLB) + team order | Single-sport nights unchanged; mixed Nov 1: NFL drives missed on another sport 56 → 49 |
+| One bad setting no longer wipes the whole config | Tests |
+| **Catch-up reel engine**: 5+ missed plays, 30–60 s, live angle only | Real clips: 8 plays (NFL/NBA/NHL) in 59 s; reel builds in 0.14 s |
+| Replay model knows Prime takes ~30 s; seconds-to-picture per app | Scorecard line |
+| **Watchdog agent** (separate process, rules + local Qwen3 model) | 8 tests; off-the-shelf model 22.8% on new errors, so training is required |
+
+**Stopped:** the model fine-tune (it was slowing the Mac). Settings are now lighter; it runs overnight only.
+
+### Needs you home
+1. **Both sticks show offline right now** (.150 and .181). Check power/Wi-Fi when you're back (2 min).
+2. Prime probe: `scripts/prime_flip_probe.py` with a live Prime game, service paused (15 min).
+3. Reel on the TV: check the stick can play `/reel.mp4` (10 min), then `reel.play: true`.
+
+### Still to build (light work, one heavy job at a time)
+- Reel as a break destination in the decider (after the TV check).
+- Finish the watchdog model training overnight, grade it, then install the watchdog service.
+- Deploy today's merged work to the live service before tonight's games (a restart while nothing's live).
