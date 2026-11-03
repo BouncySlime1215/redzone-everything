@@ -408,7 +408,11 @@ class PrimeTuner(Tuner):
                 # Watch Live focused (Nov 2): two presses. uiautomator often can't read either screen,
                 # so the second press only happens while the detail page (not the player) is in front;
                 # in the player a CENTER would pause it.
-                if len(done) < 2 and not (live_pressed and not done) and await self._on_detail_page(stick):
+                on_page = await self._on_detail_page(stick)
+                if on_page:
+                    self._saw_page = getattr(self, "_saw_page", {})
+                    self._saw_page[stick.host] = True
+                if len(done) < 2 and not (live_pressed and not done) and on_page:
                     if may_cut is not None and not may_cut():
                         break
                     await stick.key("KEYCODE_DPAD_CENTER")
@@ -436,6 +440,10 @@ class PrimeTuner(Tuner):
         self._before_player[stick.host] = await self._player_token(stick)
         self._pressed = getattr(self, "_pressed", {})
         self._pressed[stick.host] = False
+        self._saw_page = getattr(self, "_saw_page", {})
+        self._saw_page[stick.host] = False
+        self._link_at = getattr(self, "_link_at", {})
+        self._link_at[stick.host] = time.monotonic()
         return await super().tune(stick, ref, target, **kw)
 
     async def _watch_for(self, stick: Stick, pkg: str, watch: NewStream, seconds: float) -> bool:
@@ -449,6 +457,14 @@ class PrimeTuner(Tuner):
                 # A new player screen, or (when the page opened inside the old player) our press
                 # followed by a screen that no longer shows the page.
                 if token and (token != before or (pressed and not await self._on_detail_page(stick))):
+                    watch.report = pb
+                    return True
+                # A link to the game the player is already showing is ignored by Prime: no page ever
+                # comes up and the same player keeps playing it (seen after a service restart, Nov 2).
+                waited = time.monotonic() - getattr(self, "_link_at", {}).get(stick.host, time.monotonic())
+                if (token and token == before and not pressed and waited >= 6.0
+                        and not getattr(self, "_saw_page", {}).get(stick.host)
+                        and not await self._on_detail_page(stick)):
                     watch.report = pb
                     return True
             if time.monotonic() >= end:
