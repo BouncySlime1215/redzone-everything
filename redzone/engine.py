@@ -27,7 +27,7 @@ from redzone.sources import espn, fastcast, leagues
 from redzone.sources.http import Fetcher
 from redzone.sources.merge import Merger
 from redzone.recorder import Recorder
-from redzone.screen import boundary
+from redzone.screen import boundary, scorebug
 from redzone.store import Store
 
 log = logging.getLogger(__name__)
@@ -63,6 +63,8 @@ class Engine:
         self.boundary = boundary.BoundaryWatcher(estimate=self._delay_estimate, on_sample=self._boundary_sample,
                                                  on_live=self.delays.set_live)
         self.control.on_playback = self.boundary.observe_stick
+        # Stream delay measured from the broadcast score bug in Prime screenshots (not DRM-blanked).
+        self.scorebug = scorebug.ScoreBugWatcher(on_sample=self._scorebug_sample)
         self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
         self._cost_mode: bool | None = None         # two-stick mode when switch costs were last synced
         self._cost_synced = 0.0
@@ -111,7 +113,7 @@ class Engine:
             self.set_mic(True)
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
-                             self._boundary_loop())
+                             self._boundary_loop(), self._scorebug_loop())
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)
@@ -123,6 +125,64 @@ class Engine:
             self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="boundary")
         except Exception:
             log.exception("could not save a boundary delay sample")
+
+    def _scorebug_sample(self, s) -> None:
+        d = self.delays.screen(s.target, s.sample, s.onset)
+        try:
+            self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="screen")
+        except Exception:
+            log.exception("could not save a score-bug delay sample")
+
+    def _game_on(self, target: str, visible: bool) -> str | None:
+        """The game the engine thinks this target shows (the current one first, for the visible stick)."""
+        cur = self.decider.current
+        if visible and cur and getattr(self.where.get(cur), "target", None) == target:
+            return cur
+        hits = [gid for gid, w in self.where.items() if getattr(w, "target", None) == target]
+        return hits[0] if len(hits) == 1 else None
+
+    async def _scorebug_loop(self) -> None:
+        """While a Prime game is on screen (and, with delay.scorebug_hidden, on the live hidden stick):
+        a screenshot every ~2 s, the score bug read by local OCR, each score change timed against the
+        feed (redzone/screen/scorebug.py). Never presses a key; stops at once for a switch or flip."""
+        if not self.cfg.get("delay.scorebug", True):
+            return
+        from redzone.screen_ocr import recognize
+        while True:
+            t = time.time()
+            wait = scorebug.EVERY_S
+            try:
+                frames = []
+                if (self.cfg.get("mode.dry_run", True) or self._pending_decision is not None
+                        or self.decider.replaying or self.decider.after_replay):
+                    self.scorebug.reset()
+                    wait = 5.0
+                elif not self.control.scorebug_sticks(bool(self.cfg.get("delay.scorebug_hidden", False))):
+                    self.scorebug.reset()
+                    wait = 5.0
+                else:
+                    frames = await self.control.scorebug_frames(bool(self.cfg.get("delay.scorebug_hidden", False)))
+                    if not frames:
+                        self.scorebug.reset()
+                for f in frames:
+                    gid = self._game_on(f["target"], f["visible"])
+                    g = self.merger.games.get(gid or "")
+                    tl = self.decider.timelines.get(gid or "")
+                    bug = None
+                    if g is not None and tl is not None:
+                        bug = await asyncio.to_thread(scorebug.read_png, f["png"], g.home, g.away, recognize)
+                    # The pipeline (switch/flip) may have moved while OCR ran: those frames don't count.
+                    if self._pending_decision is not None or not any(
+                            s is f["stick"] and tgt == f["target"] for s, tgt, _ in self.control.scorebug_sticks(
+                                bool(self.cfg.get("delay.scorebug_hidden", False)))):
+                        self.scorebug.reset()
+                        break
+                    self.scorebug.observe(f["stick"].host, f["target"], f["tune"], f["t0"], bug, tl)
+            except Exception:
+                log.exception("score bug read failed")
+                self.scorebug.reset()
+                wait = 10.0
+            await asyncio.sleep(max(0.2, wait - (time.time() - t)))
 
     async def _boundary_loop(self) -> None:
         """Read the YouTube TV sticks every ~0.5 s for 3 minutes either side of each quarter hour (as it
@@ -1196,6 +1256,7 @@ class Engine:
                         "boundary_samples": self.delays.boundary_count(self.delays.app(t)),
                         "live": x.live is not None} for t, x in self.delays.book.items()],
             "delay_watch": self.boundary.status(),
+            "scorebug_watch": self.scorebug.status(),
             "health": {"sources": list(self.source_status.values()), "sticks": self.control.status(),
                        "tv": {"state": "unknown"}, "race": self.merger.race_summary(),
                        "adb": self.control.adb_ok, "switch_times": self.control.switch_times(),

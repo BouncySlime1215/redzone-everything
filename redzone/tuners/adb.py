@@ -293,17 +293,24 @@ class Stick:
                 return seen
         return text
 
-    async def ocr_text(self) -> str:
-        """Text in a fresh screenshot, by the Mac's local Vision OCR. '' if it can't be read."""
+    async def screencap(self, timeout: float = 8.0) -> bytes:
+        """A fresh PNG screenshot (no key pressed, nothing changes on screen). b'' if it failed."""
         proc = await asyncio.create_subprocess_exec(
             ADB, "-s", self.host, "exec-out", "screencap", "-p",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         try:
-            png, _ = await asyncio.wait_for(proc.communicate(), 8)
+            png, _ = await asyncio.wait_for(proc.communicate(), timeout)
         except BaseException:
             _close_proc(proc)
             raise
         if proc.returncode or not png.startswith(b"\x89PNG\r\n\x1a\n"):
+            return b""
+        return png
+
+    async def ocr_text(self) -> str:
+        """Text in a fresh screenshot, by the Mac's local Vision OCR. '' if it can't be read."""
+        png = await self.screencap()
+        if not png:
             return ""
         import tempfile
         from redzone.screen_ocr import recognize

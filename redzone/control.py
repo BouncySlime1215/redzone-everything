@@ -273,6 +273,38 @@ class Controller:
             await s.playback(self._package(s, s.tuned["target"]))
         return len(sticks)
 
+    def scorebug_sticks(self, hidden: bool = False) -> list[tuple[Stick, str, bool]]:
+        """(stick, target, visible) for each stick showing a live Prime game we tuned ourselves: the
+        visible one, and with `hidden` the hidden one when its preload is live. Empty during a switch,
+        a flip or a preload, and in dry run. Reads nothing from the sticks."""
+        if not self.live_control or self._busy() or self._flipping or self.input_unknown:
+            return []
+        out = []
+        main, t = self.main, self.on_target
+        if main is not None and t and t.startswith("prime:") and (main.tuned or {}).get("target") == t:
+            out.append((main, t, True))
+        h, ht = self.hidden, self.hidden_target
+        if (hidden and h is not None and ht and ht.startswith("prime:") and self._live_on_hidden(ht)
+                and (h.tuned or {}).get("target") == ht):
+            out.append((h, ht, False))
+        return out
+
+    async def scorebug_frames(self, hidden: bool = False) -> list[dict]:
+        """One screenshot of each stick scorebug_sticks() names: {stick, target, visible, tune, png,
+        t0, t1}. Never presses a key. All dropped if a switch or flip started while capturing."""
+        gen, out = self._flip_gen, []
+        for s, target, visible in self.scorebug_sticks(hidden):
+            tune = s.tuned
+            t0 = time.time()
+            png = await s.screencap(timeout=6)
+            t1 = time.time()
+            if gen != self._flip_gen or self._flipping or self._busy() or s.tuned is not tune:
+                return []
+            if png:
+                out.append({"stick": s, "target": target, "visible": visible, "tune": tune, "png": png,
+                            "t0": t0, "t1": t1})
+        return out
+
     async def start(self) -> None:
         self.adb_ok = await adb_available()
         if not self.adb_ok:
