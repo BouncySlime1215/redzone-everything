@@ -206,6 +206,8 @@ def test_nba_entries_plan_a_rewind_landing(dec):  # noqa: F811
     from redzone.decider.decider import Decision, State
     d = Decision(0, "switch", "b", "better game", State.WATCHING, kind="better")
     x = Candidate(Scored("b", League.NBA, 50, 50, 50, 1.0, 0.0, "r", [], False, None, None, 1.0), "youtubetv:b")
-    assert dec._entry_only(x, d)
+    assert dec._entry_only(x, d)          # default: NBA waits for a whistle (hold_only, capped by max_wait_s)
+    dec.cfg.update({"decider": {"entry": {"hold_only": ["nhl"], "rewind_only": ["nba"]}}}, record=False)
+    assert dec._entry_only(x, d)          # rewind-only still plans a dead-ball landing
     dec.cfg.update({"decider": {"entry": {"rewind_only": []}}}, record=False)
     assert not dec._entry_only(x, d)
