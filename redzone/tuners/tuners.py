@@ -412,6 +412,8 @@ class PrimeTuner(Tuner):
                     if may_cut is not None and not may_cut():
                         break
                     await stick.key("KEYCODE_DPAD_CENTER")
+                    self._pressed = getattr(self, "_pressed", {})
+                    self._pressed[stick.host] = True
                     steps.append("pressed: watch (focused button)" if not done else "pressed: watch live (panel)")
         return await super()._confirm(stick, pkg, steps, watch, may_cut)
 
@@ -432,6 +434,8 @@ class PrimeTuner(Tuner):
         # would confirm the OLD game. A new game is a new player screen (a new ActivityRecord).
         self._before_player = getattr(self, "_before_player", {})
         self._before_player[stick.host] = await self._player_token(stick)
+        self._pressed = getattr(self, "_pressed", {})
+        self._pressed[stick.host] = False
         return await super().tune(stick, ref, target, **kw)
 
     async def _watch_for(self, stick: Stick, pkg: str, watch: NewStream, seconds: float) -> bool:
@@ -441,19 +445,29 @@ class PrimeTuner(Tuner):
             pb = await stick.playback(pkg)
             if playback_ready(pb):
                 token = await self._player_token(stick)
-                if token and token != before:
+                pressed = getattr(self, "_pressed", {}).get(stick.host)
+                # A new player screen, or (when the page opened inside the old player) our press
+                # followed by a screen that no longer shows the page.
+                if token and (token != before or (pressed and not await self._on_detail_page(stick))):
                     watch.report = pb
                     return True
             if time.monotonic() >= end:
                 return False
             await asyncio.sleep(self.poll_s)
 
+    _DETAIL_WORDS = ("watchlist", "watch live", "more purchase options", "included with", "resume")
+
     async def _on_detail_page(self, stick: Stick) -> bool:
-        """Prime's detail page/panel is in front (LandingActivity), not its player (Ignition/Playback)."""
+        """Prime's detail page or its Watch Live / Resume panel is in front, not a playing game.
+        The page can live inside the player activity (a League Pass page opened over the last game,
+        Nov 2) and uiautomator reads it as blank, so a player activity is checked with a screenshot."""
         r = await stick.shell("dumpsys activity activities | grep -m1 mResumedActivity", timeout=5)
         if not r.ok or "com.amazon.firebat" not in r.out:
             return False
-        return not any(p in r.out for p in ("IgnitionActivity", "PlaybackActivity"))
+        if not any(p in r.out for p in self._PLAYERS):
+            return True
+        text = (await stick.ocr_text()).lower()
+        return any(w in text for w in self._DETAIL_WORDS)
 
     async def _press_prompt(self, stick: Stick, text: str, steps: list[str], verb: str, may_cut=None) -> bool:
         # "Watch Live" gets one press per deep link. A later read still showing it (the detail page under a
