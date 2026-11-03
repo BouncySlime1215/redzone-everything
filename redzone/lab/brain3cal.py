@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
+from redzone.lab import heldout as H
 from redzone.scoring import brain3 as B3
 from redzone.scoring.brain import MODEL_DIR
 
@@ -133,17 +134,17 @@ def run(leagues=("nfl", "nba", "nhl"), alpha: float = ALPHA) -> dict:
     for lg in leagues:
         pub, arch = SOURCES[lg]
         held = _rows(pub, lg, lambda d: d.split.isin(["valid", "test"]))
-        fresh = _rows(arch, lg, (lambda d: d.split != "train") if lg == "nhl" else (lambda d: d.split.notna()))
+        # Nights after the training cutoff: our archive, never its locked nights (release PR only). For
+        # NHL (whose entry head trained on the archive's train nights) only the dev-test nights are fresh,
+        # and nothing is left to fit on, so NHL keeps p10.
+        fresh = _rows(arch, lg, lambda d: d.night.astype(str).map(
+            (lambda n: H.dev_test(lg, n)) if lg == "nhl" else (lambda n: not H.locked(lg, n))))
         if lg == "nhl":
-            # NHL's public feed has no wall clock: its entry head (and so this scale) lives on the archive.
-            # Time-ordered: the earlier half of its held-out nights fits, the later half grades.
-            nights = np.sort(fresh.night.unique())
-            cut = nights[len(nights) // 2] if len(nights) else 0
-            held, fresh = fresh[fresh.night < cut], fresh[fresh.night >= cut]
+            held = fresh.iloc[0:0]
         cv = forward_cv(held, alpha) if held.night.nunique() > FOLDS else None
-        sc = fit(held, alpha)
+        sc = fit(held, alpha) if len(held) else {}
         rep = {"calibration_rows": int(len(held)), "calibration_nights": int(held.night.nunique()),
-               "cv": cv, "fit_on_all_held_out": grade(held, apply(held, sc)),
+               "cv": cv, "fit_on_all_held_out": grade(held, apply(held, sc)) if len(held) else None,
                "after_cutoff": grade(fresh, apply(fresh, sc)) if len(fresh) else None,
                "after_cutoff_nights": int(fresh.night.nunique()),
                "after_cutoff_slices": slices(fresh, apply(fresh, sc)) if len(fresh) else None}

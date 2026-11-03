@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from redzone.lab import brain3data as D
+from redzone.lab import heldout as H
 from redzone.lab.brainfit import auc, binary_report, calib
 from redzone.scoring import brain3 as B3
 
@@ -58,6 +59,12 @@ def train_league(league: str, root: Path | None = None, out_dir: Path | None = N
     root = root or D.TRAINING3_DIR
     feats = B3.features_for(league)
     pub = pd.read_parquet(root / f"{league}.parquet")
+    # No-overfitting rule: nothing from a held-out (valid / dev-test / locked) night or later, from any
+    # source (redzone/lab/heldout.py). The public tables already end before the archive window.
+    n0 = len(pub)
+    pub = pub[pub.night.astype(str).map(lambda n: H.allowed(league, n))].copy()
+    if len(pub) < n0:
+        log(f"  {league}: dropped {n0 - len(pub)} public rows on or after {H.cutoff(league)}")
     espn_p = root / f"espn_{league}.parquet"
     espn = pd.read_parquet(espn_p) if espn_p.exists() else None
     rng = np.random.default_rng(7)
@@ -78,10 +85,12 @@ def train_league(league: str, root: Path | None = None, out_dir: Path | None = N
         nonlocal slot
         d = data[data[label].notna()]
         tr, va, te = d[d.split == "train"], d[d.split == "valid"], d[d.split == "test"]
-        if src == "espn":  # NHL lengths: our archive (15 nights): 60/40 by night, the 40 graded
-            sp = d.night.map(lambda n: D.night_split(n, valid=0.2, test=0.2))
-            tr, te = d[sp == "train"], d[sp != "train"]
-            va = te
+        if src == "espn":  # NHL lengths: our archive, train nights only (heldout.py), in time order:
+            # the newest train night stops early; the dev-test nights grade; locked nights never.
+            ok = d[d.night.astype(str).map(lambda n: H.allowed(league, n))]
+            last = sorted(ok.night.astype(str).unique())[-1:]
+            tr, va = ok[~ok.night.astype(str).isin(last)], ok[ok.night.astype(str).isin(last)]
+            te = d[d.night.astype(str).map(lambda n: H.dev_test(league, n))]
         tr = _sample(tr, MAX_ROWS, rng)
         params = dict(PARAMS)
         if kind == "binary":
@@ -139,7 +148,7 @@ def train_league(league: str, root: Path | None = None, out_dir: Path | None = N
     fit("hot", "regression", pub, "hotness")
     # which types are commercial-length (median >= 90 s), for long_p
     if league == "nhl":   # lengths from the archive's train nights only (see fit(src="espn"))
-        ldata = ldata[ldata.night.map(lambda n: D.night_split(n, valid=0.2, test=0.2)) == "train"].assign(split="train")
+        ldata = ldata[ldata.night.astype(str).map(lambda n: H.allowed(league, n))].assign(split="train")
     type_len = _type_lengths(ldata)
     type_q = {t: [_type_lengths(ldata, 0.1).get(t, v), v, _type_lengths(ldata, 0.9).get(t, v)]
               for t, v in type_len.items()}
@@ -148,7 +157,8 @@ def train_league(league: str, root: Path | None = None, out_dir: Path | None = N
     meta.update(nslots=slot, heads=meta_heads,
                 info={"league": league, "trained": time.strftime("%Y-%m-%d"), "split": "night",
                       "type_names": type_names, "long_types": long_types, "type_len": type_len, "type_q": type_q,
-                      "clock": "game" if league == "nhl" else "wall", "nights": report["nights"]})
+                      "clock": "game" if league == "nhl" else "wall", "nights": report["nights"],
+                      "train_nights": _train_nights(league, pub, espn)})
     out = (out_dir or B3_MODEL_DIR()) / f"{league}.v3.npz"
     B3.save(out, arrays, meta)
     report["file_kb"] = round(out.stat().st_size / 1024, 1)
@@ -181,8 +191,16 @@ def _long_types(lengths: dict[str, float]) -> list[str]:
 
 
 def _nhl_heldout(night: str) -> bool:
-    """The archive nights NHL's length / entry heads did NOT train on (see fit(src="espn"))."""
-    return D.night_split(night, valid=0.2, test=0.2) != "train"
+    """The archive nights NHL's length / entry heads did NOT train on, minus the locked ones."""
+    return H.dev_test("nhl", night)
+
+
+def _train_nights(league: str, pub, espn) -> dict:
+    """Every night any head trained on, by source (checked by tests/test_leakage.py)."""
+    out = {"public": [str(pub.night.min()), str(pub.night.max())], "cutoff": H.cutoff(league)}
+    if league == "nhl" and espn is not None:
+        out["espn"] = sorted(str(n) for n in espn.night.unique() if H.allowed(league, n))
+    return out
 
 
 def B3_MODEL_DIR() -> Path:
@@ -270,6 +288,7 @@ def live_eval3(league: str, root: Path | None = None, archive: Path | None = Non
     lg = League(league)
     archive = archive or (D.datasets.ROOT / "data" / "archive" / league)
     lab = pd.read_parquet(root / f"espn_{league}.parquet")
+    lab = lab[~lab.night.astype(str).map(lambda n: H.locked(league, n))]   # locked: release PR only
     gids = list(dict.fromkeys(lab.game_id))[: max_games or None]
     lab = lab.set_index(["game_id", "seq"]).sort_index()
     rows = []

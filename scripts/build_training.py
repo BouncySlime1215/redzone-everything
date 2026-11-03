@@ -23,14 +23,15 @@ sys.path.insert(0, str(ROOT))
 
 import requests  # noqa: E402
 
-from redzone.lab import datasets, sportsdata  # noqa: E402
+from redzone.lab import datasets, heldout, sportsdata  # noqa: E402
 
 NFLV = "https://github.com/nflverse/nflverse-data/releases/download"
 SDV = "https://github.com/sportsdataverse/sportsdataverse-data/releases/download"
 
 SOURCES = {
     "nfl": dict(name="nflverse play-by-play (nflfastR model WP/EPA)", license="CC-BY 4.0 (nflverse data)",
-                files={f"nfl_{y}.parquet": f"{NFLV}/pbp/play_by_play_{y}.parquet" for y in (2023, 2024, 2025)}),
+                # 2025 left out: that season's games are eval-data-v1's held-out NFL nights (redzone/lab/heldout.py)
+                files={f"nfl_{y}.parquet": f"{NFLV}/pbp/play_by_play_{y}.parquet" for y in (2023, 2024)}),
     "cfb": dict(name="cfbfastR play-by-play via sportsdataverse-data (ESPN feed + cfbfastR WP/EPA)",
                 license="MIT (cfbfastR); underlying ESPN data for personal/non-commercial use",
                 files={"cfb_2025.parquet": f"{SDV}/cfbfastR_cfb_pbp/play_by_play_2025.parquet"}),
@@ -102,6 +103,12 @@ def main() -> int:
         if SOURCES[lg]["files"]:
             fetch(lg, raw)
         df, knots = sportsdata.build(lg, raw, archive_dir=ROOT / "data" / "archive", max_games=MAX_GAMES.get(lg))
+        if not lg.startswith("espn_"):
+            # No-overfitting rule: a public season that reaches a held-out night never trains the brain.
+            bad = sorted(int(x) for x in df.season.unique() if not heldout.season_allowed(lg, int(x)))
+            if bad:
+                print(f"  dropping {lg} seasons {bad}: they reach {heldout.cutoff(lg)} (held out)", flush=True)
+                df = df[~df.season.isin(bad)].reset_index(drop=True)
         path = datasets.path_for(lg, out)
         df.to_parquet(path, compression="zstd", index=False)
         if not args.keep_raw:
