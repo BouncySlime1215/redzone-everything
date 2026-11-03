@@ -30,7 +30,7 @@ LOWER_FROM = 2 / 3        # the score bug lives in the lower third
 MIN_SAMPLE_S = 5.0
 MAX_SAMPLE_S = 120.0
 AMBIGUOUS_S = 10.0        # two feed scores this close: can't tell which one the bug showed
-MAX_GAP_S = 6.0           # frames further apart than this time a change too loosely
+MAX_GAP_S = 9.0           # frames further apart than this time a change too loosely (HDMI1 stick: ~7 s per frame)
 UNIFORM_BYTES_PER_PX = 0.03   # a PNG this compressible is black / near-uniform (DRM-blanked video)
 PRIME = "prime"
 
