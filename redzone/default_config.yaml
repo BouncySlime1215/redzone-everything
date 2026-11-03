@@ -150,6 +150,16 @@ decider:
     shortest_break_s:      # ~10th pct, stoppage -> next scrimmage play logged, late Q4/OT, 2025 games
       {timeout: 30, injury: 27, review: 80, score_break: 110, two_minute_warning: 150, end_period: 180}
 
+core:                      # the decision core's expected-value knobs (redzone/decider/core.py); the
+                           # auto-tuner searches these plus decider.switch_margin / break_destination_min /
+                           # locked_override_lead / return_tolerance. Defaults = the rules the core replaced.
+  points_per_switch_s: 1.0 # each second of black screen costs this many points of lead
+  dead_air_penalty: 0.0    # points per second a commercial on screen costs
+  break_value_frac: 1.0    # share of an on-break game's value that still counts
+  break_risk: 0.0          # 0..1: discount a destination by the brain's chance it goes to break soon
+  lock_in_step: 10.0       # friction added per reasoner lock_in level to leave a game
+  reel_margin_s: 5.0       # the catch-up reel must fit its break with this much to spare
+
 fantasy:                   # ESPN fantasy football (leave league_id empty to turn off)
   league_id: ""
   team_id: 0               # 0 = figure it out from your ESPN_SWID cookie

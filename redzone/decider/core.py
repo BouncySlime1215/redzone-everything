@@ -63,6 +63,7 @@ class MomentView:
     personal: float = 0.0
     must_see: bool = False
     lock_in: int = 0
+    mine_late: bool = False    # your team (or bet) late and close: a hard rule, never left for less
 
 
 @dataclass(frozen=True)
@@ -171,10 +172,12 @@ class Action:
     return_at: float | None = None
     kind: str = ""               # the Decider's finer label ("better", "break_visit", "chase"...)
     terms: dict[str, float] = field(default_factory=dict)   # the ev's parts, for the trace
+    # ev - ev_stay, computed in the order the replaced rule compared (so float ties land the same way)
+    margin: float | None = None
 
     @property
     def gain(self) -> float:
-        return self.ev - self.ev_stay
+        return self.ev - self.ev_stay if self.margin is None else self.margin
 
 
 # --------------------------------------------------------------------------- the one function
@@ -190,33 +193,51 @@ class Knobs:
     lock_in_step: float = 10.0         # each reasoner lock_in level adds this much friction to leave
     locked_override_lead: float = 20.0
     reel_margin_s: float = 5.0         # reel must fit with this much to spare (both trips included)
+    break_value_frac: float = 1.0      # how much of an on-break game's value still counts
+    return_tolerance: float = 5.0      # decider.return_tolerance: go back if within this many points
 
     @classmethod
     def from_cfg(cls, cfg) -> "Knobs":
+        """Knobs that existed before the core keep their decider.* key (one key per knob, so old
+        overrides still apply); the new ones live under core.*."""
         g = cfg.get
-        return cls(switch_margin=float(g("core.switch_margin", g("decider.switch_margin", 10))),
-                   points_per_switch_s=float(g("core.points_per_switch_s", 1.0)),
-                   dead_air_penalty=float(g("core.dead_air_penalty", 0.0)),
-                   visit_min=float(g("core.visit_min", g("decider.break_destination_min", 25))),
-                   break_risk=float(g("core.break_risk", 0.0)),
-                   lock_in_step=float(g("core.lock_in_step", 10.0)),
-                   locked_override_lead=float(g("core.locked_override_lead", g("decider.locked_override_lead", 20))),
-                   reel_margin_s=float(g("core.reel_margin_s", 5.0)))
+        d = cls()
+        return cls(switch_margin=float(g("decider.switch_margin", d.switch_margin)),
+                   points_per_switch_s=float(g("core.points_per_switch_s", d.points_per_switch_s)),
+                   dead_air_penalty=float(g("core.dead_air_penalty", d.dead_air_penalty)),
+                   visit_min=float(g("decider.break_destination_min", d.visit_min)),
+                   break_risk=float(g("core.break_risk", d.break_risk)),
+                   lock_in_step=float(g("core.lock_in_step", d.lock_in_step)),
+                   locked_override_lead=float(g("decider.locked_override_lead", d.locked_override_lead)),
+                   reel_margin_s=float(g("core.reel_margin_s", d.reel_margin_s)),
+                   break_value_frac=float(g("core.break_value_frac", d.break_value_frac)),
+                   return_tolerance=float(g("decider.return_tolerance", d.return_tolerance)))
 
 
 def rate(o: Option, k: Knobs) -> float:
     """Points per second this option is worth on screen over the window.
 
-    A game on a break shows a commercial: -dead_air_penalty. A live game that may go to break inside
-    the window is discounted by that chance (break_risk scales how much the core trusts the forecast)."""
+    A game on a break keeps break_value_frac of its value (1.0: the scorer has already priced the
+    break in) less dead_air_penalty per second. A live game that may go to break inside the window
+    is discounted by that chance (break_risk scales how much the core trusts the forecast)."""
     if o.value_override is not None:
         return o.value_override
-    if o.brk.on_break:
-        return -k.dead_air_penalty
     v = o.moment.value * o.priority.weight
+    if o.brk.on_break:
+        return v * k.break_value_frac - k.dead_air_penalty
     if k.break_risk and o.brk.break_soon_p > 0:
         v -= k.break_risk * o.brk.break_soon_p * (v + k.dead_air_penalty)
     return v
+
+
+def window_value(o: Option, k: Knobs, seconds: float) -> float:
+    """Points this option shows over `seconds` on screen (a visit's watch time after both trips)."""
+    return rate(o, k) * seconds
+
+
+def rank(o: Option, k: Knobs) -> tuple:
+    """Order destinations by rate (ties by id, as the rules it replaced did)."""
+    return (rate(o, k), o.id)
 
 
 def friction(o: Option, cur: Option | None, k: Knobs, cost_s: float | None = None) -> float:
@@ -224,28 +245,41 @@ def friction(o: Option, cur: Option | None, k: Knobs, cost_s: float | None = Non
     c = o.best_path().cost_s if cost_s is None else cost_s
     f = k.switch_margin + c * k.points_per_switch_s
     if cur is not None:
-        if cur.moment.lock:
+        if cur.moment.lock and not o.moment.mine_late:   # a lock never holds against your team late
             f = max(f, k.locked_override_lead)
         f += k.lock_in_step * max(0, cur.moment.lock_in)
     return f
 
 
 def ev(state: CoreState, verb: str, target: str | None, k: Knobs, cost_s: float | None = None) -> Action:
-    """THE expected-value function. Every candidate action of every subsystem is scored here."""
+    """THE expected-value function. Every candidate action of every subsystem is scored here.
+
+    stay / switch / return: the target's rate against what's on screen now, less the friction.
+    visit / reel: the home game is on a break, so the alternative is the commercial itself
+    (-dead_air_penalty); the bar is visit_min ("worth leaving a commercial for").
+    replay: the replay's own value (value_override) against the live option it replaces."""
     cur = state.options.get(state.current) if state.current else None
     stay = rate(cur, k) if cur is not None else 0.0
-    if verb == "stay" or target is None or target == state.current:
+    # A visit is scored against the commercial whoever is on screen (a chained visit can list the game
+    # we're on); a switch or return to what's already on is just staying.
+    if verb == "stay" or target is None or (target == state.current and verb in ("switch", "return")):
         return Action("stay", state.current, stay, stay, terms={"rate": stay})
     o = state.options[target]
     r = rate(o, k)
-    if verb in ("visit", "reel") or (cur is not None and cur.brk.on_break and verb != "replay"):
-        # Leaving a commercial costs nothing you'd want to see: no margin, only the destination's bar.
-        fr = k.visit_min
-    elif verb == "replay":
-        fr = 0.0
+    if verb in ("visit", "reel"):
+        base = -k.dead_air_penalty
+        return Action(verb, target, r - k.visit_min, base, margin=r - (base + k.visit_min),
+                      terms={"rate": r, "friction": k.visit_min, "stay": base})
+    if verb == "return":
+        fr = -k.return_tolerance   # going back where you came from is cheaper than a fresh switch
+        return Action(verb, target, r - fr, stay, margin=r - (stay + fr),
+                      terms={"rate": r, "friction": fr, "stay": stay})
+    if verb == "replay":
+        fr = k.switch_margin if cost_s is None else cost_s   # replay: cost_s carries the margin to use
     else:
         fr = friction(o, cur, k, cost_s)
-    return Action(verb, target, r - fr, stay, terms={"rate": r, "friction": fr, "stay": stay})
+    return Action(verb, target, r - fr, stay, margin=(r - stay) - fr,
+                  terms={"rate": r, "friction": fr, "stay": stay})
 
 
 def best(state: CoreState, verb: str, targets: Iterable[str], k: Knobs,
