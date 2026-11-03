@@ -58,11 +58,11 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-03 5:35 PM ET.** Live service: this MORNING's code. RC1 (`integration/release` 9e859b7) FAILED CI; newer merges #38 (your team's missed plays first) and #39 (NBA whistle-wait cap 180 s) are green on integration/next. The director asked for RC2 to be re-cut from green, due by 7 PM.
-- **Open PRs:** #13 #16 #18 #20 #23 #24 #26 #30 #36 #37.
-- **Kaggle round 1, V2:** running ~2 h 30 m; teacher ~6,400+ of 81,372. ETA ~1 AM.
-- **Usage:** 46%, on pace (<=55% by 10 PM).
-- **Waiting on Nick:** add NFL RedZone + RedZone Replay to the YTTV library. Tonight: docs/tonight-checklist.md. **Wed 5 PM:** new account.
+- **2026-11-03 6:41 PM ET.** Live service: this MORNING's code. `integration/release` is still RC1 9e859b7 (failed CI). The director pushed for RC2 from green integration/next (after #39) by 7 PM.
+- **Open PRs:** #13 #16 #18 #20 #23 #24 #26 #30 #37.
+- **Kaggle round 1, V2:** running 4 h; teacher at 11,264 of 81,372 (~61 tok/s). It stops at its 7 h budget (~9:50 PM), then trains the students; ETA ~1 AM.
+- **Usage:** 46% (slightly behind the pace curve; up to 3 threads allowed).
+- **Waiting on Nick:** add NFL RedZone + RedZone Replay to the YTTV library. Tonight: docs/tonight-checklist.md (deploy once RC2 is green). **Wed 5 PM:** new account.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
