@@ -33,7 +33,10 @@ def test_one_tap_calibrates_every_channel_of_the_app_with_a_wider_sigma():
     espn, fox = b.get("youtubetv:espn"), b.get("youtubetv:fox")
     assert espn.mu == tnt.mu == fox.mu == 30.0
     assert espn.source == "tap" and tnt.source == fox.source == "app"
-    assert tnt.sigma == fox.sigma == espn.sigma + SHARED_MARGIN_S
+    # [per-channel delay] another channel's tap says nothing about how far this channel differs:
+    # the interval also covers the channel-to-channel spread (8 s prior, the real spread is ~10 s)
+    assert tnt.sigma == fox.sigma > espn.sigma + SHARED_MARGIN_S
+    assert tnt.mu - 2 * tnt.sigma <= 30.0 - 20 and tnt.mu + 2 * tnt.sigma >= 30.0 + 20   # 20 s apart still fits
     assert tnt.calibrated_at is not None
     assert b.get("prime:tnf").mu == 40.0 and b.get("prime:tnf").calibrated_at is None   # other apps untouched
 
@@ -99,7 +102,11 @@ def test_settled_after_three_consistent_taps_only():
         b.calibrate("youtubetv:espn", s)
     assert not b.settled("youtubetv")
     b.calibrate("youtubetv:tnt", 44.0)
-    assert b.settled("youtubetv") and b.measured("youtubetv:fox")
+    assert b.settled("youtubetv") and b.measured("youtubetv:tnt")
+    # [per-channel delay] two channels agreeing don't yet show the app's channels all run alike
+    assert not b.measured("youtubetv:fox")
+    b.calibrate("youtubetv:nbc", 43.0)
+    assert b.measured("youtubetv:fox")
     assert not b.settled("prime")
     b.calibrate("youtubetv:fox", 70.0)                                 # a contradiction un-settles it
     assert not b.settled("youtubetv")
@@ -166,4 +173,4 @@ def test_engine_start_reloads_taps_from_the_store(tmp_path):
     store.calibration("prime:tnf", 37.0, 37.0, 6.0)
     eng = Engine(Config(user_path=tmp_path / "config.yaml", history_dir=tmp_path / "hist"), store)
     d = eng.delays.get("prime:nba")
-    assert d.source == "app" and d.mu == 37.0 and d.sigma == 6.0 + SHARED_MARGIN_S
+    assert d.source == "app" and d.mu == 37.0 and d.sigma > 6.0 + SHARED_MARGIN_S   # another channel: wider

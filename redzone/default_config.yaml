@@ -94,7 +94,9 @@ score:
     power_play_p3_close: 22
     power_play_lock_within: 2   # a power play holds the TV (and is worth a visit) within this many goals
     imminent_pp_s: 30           # a power play's first N s of game clock count as an imminent goal chance
-    imminent_hold_s: 30         # ...and stay "imminent" this long after (a chase skips the whistle hold only then)
+    # ...and stay "imminent" this long after: a chase skips the whistle hold only then. -1 = off: the
+    # skip added 2 mid-play entries to the Nov 1 demo (WPG @ CAR, UTA @ PHI) and caught no extra goal.
+    imminent_hold_s: -1
     empty_net: 30
     penalty_shot: 40
   mlb:
@@ -248,6 +250,11 @@ reel:                      # catch-up reel: 5+ plays you missed, back to back, 3
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
   sigma_default: 15
+  model: channel           # channel: predict each channel (channels of one app differ, truTV 22 s vs FS1 42 s); legacy: one figure per app
+  sync:                    # every channel's delay found automatically (redzone/decider/sync.py), no taps
+    enabled: true          # Kalman filter per channel: show flips, score bug (score + clock), stick position, taps
+    min_sigma_s: 4         # a synced channel's stated doubt never goes below this (the gates' tested floor)
+    log: true              # every signal + estimate to data/sync.jsonl (scripts/eval_sync.py --log grades it)
 
 break_lengths_s:           # typical commercial lengths used to plan catch-ups
   nfl: {timeout: 75, tv_timeout: 120, score_break: 150, end_period: 120, two_minute_warning: 150, halftime: 780}
