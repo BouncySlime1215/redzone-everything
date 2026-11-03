@@ -15,6 +15,10 @@ ADAPTER = Path(__file__).resolve().parent / "model" / "adapter"
 class LocalModel:
     def __init__(self, model: str = DEFAULT_MODEL, adapter: str | Path | None = None, max_tokens: int = 96):
         from mlx_lm import load
+
+        from redzone.governor import apply_mlx_limits, load_options
+        # Cap MLX before the weights load: the RAM budget for local models (governor.models_mb).
+        apply_mlx_limits(float(load_options()["models_mb"]))
         self.max_tokens = max_tokens
         if adapter is not None and not (Path(adapter) / "adapters.safetensors").exists():
             adapter = None
