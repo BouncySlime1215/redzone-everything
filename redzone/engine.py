@@ -19,7 +19,7 @@ from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describ
 from redzone.config import Config, ConfigError
 from redzone.control import Controller, Outcome
 from redzone.decider.decider import REDZONE, Candidate, Decider, Decision, FocusMode, Missed, State
-from redzone.decider.screen import (PLAY_LEN_S, Delay, DelayBook, break_on_arrival, catchable,
+from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
                                    leave_gate, leave_window, screen_evidence)
 from redzone.models import GameState, League, Phase
 from redzone.scoring.engine import Personal, Scored, Scorer
@@ -49,6 +49,10 @@ class Engine:
         self.merger = Merger()
         self.scorer = Scorer(self.cfg)
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"))
+        try:   # every "I just saw it" from the last 30 days: a restart keeps tonight's taps
+            self.delays.load(self.store.calibrations(since=time.time() - TAP_HISTORY_S))
+        except Exception as e:
+            log.warning("could not reload delay calibrations: %s", e)
         self.decider = Decider(self.cfg, self.delays)
         data_dir = getattr(self.cfg, "user_path", None)
         self.control = Controller(self.cfg, self.channels,
@@ -1145,7 +1149,8 @@ class Engine:
             "server_time": time.time(),
             "recorded_playback": self.recorded.snapshot(),
             "delays": [{"target": t, "label": describe(t), "mu": round(x.mu, 1), "sigma": round(x.sigma, 1),
-                        "calibrated": x.calibrated_at is not None} for t, x in self.delays.book.items()],
+                        "calibrated": x.calibrated_at is not None, "source": x.source,
+                        "settled": self.delays.settled(self.delays.app(t))} for t, x in self.delays.book.items()],
             "health": {"sources": list(self.source_status.values()), "sticks": self.control.status(),
                        "tv": {"state": "unknown"}, "race": self.merger.race_summary(),
                        "adb": self.control.adb_ok, "switch_times": self.control.switch_times(),

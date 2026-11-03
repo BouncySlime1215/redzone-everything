@@ -1284,6 +1284,9 @@ class Calibrator:
         self.dirty = False
 
     def calibrated(self, target: str) -> bool:
+        measured = getattr(self.hooks.delays, "measured", None)   # own tap, or its app is settled
+        if measured is not None:
+            return measured(target)
         d = getattr(self.hooks.delays, "book", {}).get(target)
         return d is not None and d.calibrated_at is not None
 

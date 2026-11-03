@@ -52,50 +52,141 @@ MIN_BREAK_S = {
 # NFL halftime p5 829 s (200 games), NBA halftime p5 931 s (92 games): HALFTIME 800 is safe for both.
 
 
+# Remembered taps ("I just saw it"), shared across channels and nights. A tap times one tune of one
+# channel; another channel of the same app, or the same channel another night, lands a few seconds
+# differently behind the live edge, so those estimates carry an extra margin. Too LOW a delay cuts
+# plays mid-play, so stale or disagreeing taps always widen the interval, never narrow it.
+TAP_HISTORY_S = 30 * 86400     # taps older than this are forgotten
+TAP_HALF_LIFE_S = 7 * 86400    # a week-old tap counts half as much as tonight's
+TAP_KEEP = 12                  # most recent taps used per channel / per app
+CROSS_NIGHT_S = 6 * 3600       # newest tap older than this: it was measured on another night
+STALE_TAP_S = 7 * 86400        # newest tap older than this: stale
+SHARED_MARGIN_S = 2.0          # app-level or another night's estimate
+STALE_MARGIN_S = 4.0           # stale estimate
+SETTLED_SAMPLES = 3            # this many taps for an app ...
+SETTLED_SPREAD_S = 6.0         # ... agreeing within this (half the range): stop asking for taps
+SETTLED_DRIFT_S = 2.0          # settled delays proved stable: doubt grows to at most this
+
+
 @dataclass
 class Delay:
     mu: float
     sigma: float
     calibrated_at: float | None = None
-    samples: deque = field(default_factory=lambda: deque(maxlen=12))
+    samples: deque = field(default_factory=lambda: deque(maxlen=TAP_KEEP))
+    source: str = "default"    # "tap" (this channel) | "app" (another channel of the same app) | "default"
+    drift_cap: float = 6.0
 
     def current_sigma(self, now: float) -> float:
         if self.calibrated_at is None:
             return self.sigma
         # Stream delay is stable unless the stream buffers (see buffered()); doubt grows slowly.
-        drift = min(6.0, max(0.0, now - self.calibrated_at) / 900.0)
+        drift = min(self.drift_cap, max(0.0, now - self.calibrated_at) / 900.0)
         return self.sigma + drift
 
 
+def _estimate(taps: list[tuple[float, float]], now: float) -> tuple[float, float, float]:
+    """(mu, spread, newest ts) of the most recent taps: recency-weighted upper median (one sloppy
+    tap can't wreck it; ties lean late, the safe side) and half the range they cover."""
+    recent = sorted(taps)[-TAP_KEEP:]
+    w = {i: 0.5 ** (max(0.0, now - ts) / TAP_HALF_LIFE_S) for i, (ts, _) in enumerate(recent)}
+    order = sorted(range(len(recent)), key=lambda i: recent[i][1])
+    half, acc, mu = sum(w.values()) / 2, 0.0, recent[order[-1]][1]
+    for i in order:
+        acc += w[i]
+        if acc > half:
+            mu = recent[i][1]
+            break
+    vals = [x for _, x in recent]
+    spread = (max(vals) - min(vals)) / 2 if len(vals) > 1 else 6.0
+    return mu, spread, recent[-1][0]
+
+
 class DelayBook:
-    """Per-channel delay estimates. Key is the tuner target, e.g. 'youtubetv:espn'."""
+    """Per-channel delay estimates. Key is the tuner target, e.g. 'youtubetv:espn'.
+
+    Each channel uses its own taps; with none, the pooled taps of its app (all 'youtubetv:*'); with
+    none of those, the config default. Taps persist in the store and are reloaded at start (load)."""
 
     def __init__(self, defaults: dict[str, float], sigma_default: float, clock=time.time):
         self._defaults = defaults
         self._sigma_default = sigma_default
         self._clock = clock
         self.book: dict[str, Delay] = {}
+        self.taps: dict[str, list[tuple[float, float]]] = {}   # target -> [(ts, sample)]
+
+    @staticmethod
+    def app(target: str) -> str:
+        return target.split(":", 1)[0]
+
+    def _app_taps(self, app: str) -> list[tuple[float, float]]:
+        return [x for t, v in self.taps.items() if self.app(t) == app for x in v]
 
     def get(self, target: str) -> Delay:
         if target not in self.book:
-            app = target.split(":", 1)[0]
-            self.book[target] = Delay(self._defaults.get(app, 40.0), self._sigma_default)
+            self.book[target] = Delay(self._defaults.get(self.app(target), 40.0), self._sigma_default)
+            self._refresh(target)
         return self.book[target]
+
+    def _refresh(self, target: str) -> None:
+        d, now = self.book[target], self._clock()
+        own = self.taps.get(target) or []
+        taps = own or self._app_taps(self.app(target))
+        if not taps:
+            return
+        mu, spread, newest = _estimate(taps, now)
+        sigma = max(MIN_TAP_SIGMA_S, spread)   # contradicting taps widen the interval
+        age = now - newest
+        if age > STALE_TAP_S:
+            sigma += STALE_MARGIN_S
+        elif not own or age > CROSS_NIGHT_S:
+            sigma += SHARED_MARGIN_S
+        d.mu, d.sigma, d.calibrated_at = mu, sigma, newest
+        d.source = "tap" if own else "app"
+        d.samples.clear()
+        d.samples.extend(x for _, x in sorted(taps)[-TAP_KEEP:])
+        d.drift_cap = SETTLED_DRIFT_S if self.settled(self.app(target)) else 6.0
+
+    def _refresh_app(self, app: str) -> None:
+        for t in self.book:
+            if self.app(t) == app:
+                self._refresh(t)
+
+    def settled(self, app: str) -> bool:
+        """Enough recent, agreeing taps for this app that asking for more is just nagging."""
+        taps = sorted(self._app_taps(app))[-TAP_KEEP:]
+        if len(taps) < SETTLED_SAMPLES or self._clock() - taps[-1][0] > STALE_TAP_S:
+            return False
+        vals = [x for _, x in taps]
+        return (max(vals) - min(vals)) / 2 <= SETTLED_SPREAD_S
+
+    def measured(self, target: str) -> bool:
+        """This channel was tapped itself, or its app is settled: no need to ask for a tap."""
+        return bool(self.taps.get(target)) or self.settled(self.app(target))
+
+    def _add(self, target: str, ts: float, sample_s: float) -> bool:
+        if not 2.0 <= sample_s <= 180.0 or ":" not in target:
+            return False
+        self.taps.setdefault(target, []).append((ts, sample_s))
+        self.taps[target] = sorted(self.taps[target])[-TAP_KEEP:]
+        return True
+
+    def load(self, rows) -> int:
+        """Taps remembered from earlier runs: (ts, target, sample) rows from the store."""
+        cutoff, n = self._clock() - TAP_HISTORY_S, 0
+        for ts, target, sample in rows:
+            if ts is not None and ts >= cutoff and target and sample is not None:
+                n += self._add(str(target), float(ts), float(sample))
+        for app in {self.app(t) for t in self.taps}:
+            self._refresh_app(app)
+        return n
 
     def calibrate(self, target: str, sample_s: float) -> Delay:
         """One "I just saw it" measurement. Outliers are clipped, not trusted blindly."""
         d = self.get(target)
-        if not 2.0 <= sample_s <= 180.0:
+        if not self._add(target, self._clock(), sample_s):
             return d
-        d.samples.append(sample_s)
-        s = sorted(d.samples)
-        d.mu = s[len(s) // 2]  # median: one sloppy tap can't wreck it
-        spread = (s[-1] - s[0]) / 2 if len(s) > 1 else 6.0
-        # Contradictory observations must widen the protected interval, not be
-        # clipped into a falsely precise estimate. Both observed extremes fit
-        # within the 2*sigma timing margin even when the median is near one end.
-        d.sigma = max(MIN_TAP_SIGMA_S, spread)
-        d.calibrated_at = self._clock()
+        self._refresh_app(self.app(target))   # every channel of this app without its own taps learns too
         return d
 
     def buffered(self, target: str) -> None:
