@@ -230,4 +230,5 @@ def test_hockey_waits_for_a_whistle_on_the_way_in_but_never_into_crunch(cfg, clo
     assert not dec._entry_only(x(League.NHL, crunch=True, now=True), d("crunch"))
     assert dec._entry_only(x(League.NHL, crunch=True), d("crunch"))           # the run-up waits
     assert not dec._entry_only(x(League.NHL), d("start"))      # nothing on screen to protect
-    assert not dec._entry_only(x(League.NBA), d("better"))
+    assert dec._entry_only(x(League.NBA), d("better"))         # NBA waits too since Nov 3 (capped: max_wait_s)
+    assert not dec._entry_only(x(League.MLB), d("better"))
