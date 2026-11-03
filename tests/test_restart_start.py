@@ -89,6 +89,7 @@ async def test_hung_start_pick_gives_up_sooner_than_a_normal_switch(eng):
     eng.decide()
     assert eng._pending_decision is not None
     eng._pending_since = time.time() - 80   # 80 s: under the 150 s switch deadline, over the start one
+    eng._pending_mono = time.monotonic() - 80   # ...on both clocks (a real 80 s, not a wall-clock jump)
     eng.decide()
     assert eng._pending_decision is None
     assert eng.decider.start_fails == 1 and eng.decider.start_retry_at > eng.decider._clock()
@@ -103,6 +104,7 @@ async def test_hung_normal_switch_keeps_the_long_deadline(eng):
     if eng._pending_decision is None:
         pytest.skip("no switch away from the old game in this slate")
     eng._pending_since = time.time() - 80
+    eng._pending_mono = time.monotonic() - 80
     eng.decide()
     assert eng._pending_decision is not None
 

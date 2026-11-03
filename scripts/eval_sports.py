@@ -23,14 +23,15 @@ sys.path.insert(0, str(ROOT))
 
 from redzone.channels import ChannelMap  # noqa: E402
 from redzone.config import Config  # noqa: E402
-from redzone.lab import sportsgrade  # noqa: E402
+from redzone.lab import evaldata, sportsgrade  # noqa: E402
 from redzone.lab.backtest import Replay, run  # noqa: E402
 from redzone.models import League  # noqa: E402
 from redzone.sources import espn  # noqa: E402
 
 
 # The graded window ends here. The service archives each new night at 5 AM (and refreshes the last
-# scoreboards), so an open window slides under any before/after comparison. Move it on purpose.
+# scoreboards), so an open window slides under any before/after comparison. Move it on purpose:
+# the pinned eval dataset (eval-data.lock.json) wins; this is the fallback without one.
 EVAL_END = "20261101"
 
 
@@ -100,7 +101,7 @@ def main():
     mine = set(cfg.get(f"teams.{lg.value}") or ["WSH"])
     total = sportsgrade.Card(lg.value)
     t0 = time.time()
-    end = a.end or EVAL_END
+    end = a.end or evaldata.window_end(lg.value, EVAL_END)
     for day, reps, targets in nights(lg, a.nights, end):
         rep = run(reps, cfg, mine, targets=targets, step=a.step, **knobs(a))
         # [xleague] Grade against what the screen REALLY showed (true delay), not the app's belief.
@@ -114,6 +115,8 @@ def main():
                 print("     MID-PLAY ENTRY", round(t), kind, what)
     out = total.summary()
     out["seconds"] = round(time.time() - t0)
+    out["eval_data"] = evaldata.stamp()
+    out["eval_end"] = end
     print(json.dumps(out, indent=1))
 
 

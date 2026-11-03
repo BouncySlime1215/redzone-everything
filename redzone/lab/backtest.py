@@ -28,7 +28,8 @@ from redzone.config import Config
 from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode
 from redzone.decider.screen import DelayBook
 from redzone.models import REAL_BREAKS, League, Phase
-from redzone.scoring.engine import Personal, Scorer
+from redzone.scoring.drive import DriveScorer
+from redzone.scoring.engine import Personal
 from redzone.sources import espn
 
 ET = ZoneInfo("America/New_York")
@@ -301,7 +302,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         sigma_book = sigma
     delays = DelayBook({"youtubetv": lag_total}, sigma_default=sigma_book,
                        clock=clock, model=model)
-    scorer = Scorer(cfg, clock=clock)
+    scorer = DriveScorer(cfg, clock=clock)
     dec = Decider(cfg, delays, clock=clock)
     dec.entry_cost = lambda target: tune_s   # [cut timing] this simulator's picture is up tune_s after a switch
     me = Personal(my_teams={lg: set(my_teams) for lg in League})
@@ -677,7 +678,7 @@ def hot_drive_plays(r: "Replay") -> list[int]:
     if not data:
         return []   # a replay without its raw summary (test fakes, partial archives): no drive data
     drives = list(espn._get(data, "drives", "previous") or [])
-    cur = espn._get(r.data, "drives", "current")
+    cur = espn._get(data, "drives", "current")
     if cur:
         drives.append(cur)
     hot_ids: set[str] = set()

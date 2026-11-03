@@ -1,0 +1,214 @@
+"""Fault drill: run the real Controller / Fetcher / Engine against injected faults and score them.
+
+Nothing touches real sticks, the TV or the network (redzone/platform/faults.py fakes them). Every
+scenario reports:
+  ok             the switch (or feed read) still worked
+  wall_s         seconds of wall time the scenario took (how long a fault holds the system up)
+  mid_play_cuts  picture changes while the visible game was live (must be 0, always)
+  stuck          a switch or lock still held after the scenario finished
+  flagged        the fault was reported with a cause (switches) / the feed was flagged stale (feeds)
+  detail         what the code reported
+
+    python scripts/fault_drill.py              # table
+    python scripts/fault_drill.py --json       # machine-readable, for the PR before/after table
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from redzone import control as ctl  # noqa: E402
+from redzone.channels import ChannelMap  # noqa: E402
+from redzone.config import Config  # noqa: E402
+from redzone.platform.faults import FaultStick, FaultTuner, FaultTV, SkewClock, World, failing_transport  # noqa: E402
+
+# A play runs from 0.3 s to 1.5 s into every scenario: a switch that is ready early must wait.
+PLAY = (0.3, 1.5)
+
+
+def _safe(t: float) -> bool:
+    return not (PLAY[0] <= t < PLAY[1])
+
+
+def _controller(tmp: Path, world: World) -> tuple[ctl.Controller, FaultStick, FaultStick, FaultTV]:
+    cfg = Config(user_path=tmp / "config.yaml", history_dir=tmp / "hist")
+    cfg.update({"mode": {"dry_run": False}})
+    ch = ChannelMap(tmp / "ch.json")
+    ch.codes.update({"espn": "AAAAAAAAAAA", "fox": "BBBBBBBBBBB", "cbs": "CCCCCCCCCCC"})
+    c = ctl.Controller(cfg, ch)
+    a, b = FaultStick("a:5555", world), FaultStick("b:5555", world)
+    c.sticks = [a, b]
+    c.hdmi = {"a:5555": "HDMI1", "b:5555": "HDMI2"}
+    tv = FaultTV(world, c.hdmi)
+    c.tv.set_input = tv.set_input
+    c.tv.input_status = tv.input_status
+    c.tv.st_device = "drill"
+    world.input_to("a:5555")
+    world.cuts.clear()
+    c.on_target = "youtubetv:fox"
+    a.remember(c.on_target, {"state": "playing", "pkg": "yttv.pkg", "position": 0, "updated": 0})
+    return c, a, b, tv
+
+
+def _stuck(c: ctl.Controller) -> bool:
+    return bool(c._lock.locked() or c._flipping or (c._task and not c._task.done()))
+
+
+async def _switch(fault_on: str | None, fault: str | None, tv_fail: bool = False, repeats: int = 1) -> dict:
+    with tempfile.TemporaryDirectory() as d:
+        world = World(safe=_safe)
+        c, a, b, tv = _controller(Path(d), world)
+        ctl.TUNERS["youtubetv"] = FaultTuner()
+        stick = {"visible": a, "hidden": b}.get(fault_on or "")
+        if stick is not None:
+            stick.fault = fault
+        tv.fail = tv_fail
+        t0 = time.monotonic()
+        outs = []
+        targets = ["youtubetv:espn", "youtubetv:cbs", "youtubetv:espn"]
+        for i in range(repeats):
+            world.t0 = time.monotonic()     # every attempt meets the same live play
+            outs.append(await c.execute(targets[i % len(targets)], may_cut=world.is_safe))
+        wall = time.monotonic() - t0
+        tasks = [t for t in (c._refresh_task, c._preload_task, c._resume_task) if t and not t.done()]
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        out = outs[-1]
+        return {"ok": out.ok, "wall_s": round(wall, 2), "mid_play_cuts": world.mid_play_cuts,
+                "stuck": _stuck(c), "flagged": bool(out.ok or out.detail),
+                "per_try_s": [round(o.took, 2) for o in outs] if repeats > 1 else None,
+                "timeouts": getattr(stick, "timeouts", 0),
+                "breaker": getattr(getattr(stick, "breaker", None), "state", None),
+                "errors_toward_safe_mode": sum(not o.ok and not o.screen_unchanged for o in outs),
+                "detail": out.detail[:90]}
+
+
+async def _feed_5xx() -> dict:
+    """ESPN answers 503 for 30 s, then recovers. Polled every 3 s (polling.hot_s). How long until the
+    system KNOWS the feed is stale, and how long after recovery until it has fresh data again?"""
+    from redzone.sources.http import Fetcher
+    from redzone.sources.merge import Merger
+    from redzone.models import GameState, League, Phase, Team
+    now = [1000.0]
+    clock = lambda: now[0]  # noqa: E731
+    down = [False]
+    fetcher = Fetcher(client=__import__("httpx").AsyncClient(
+        transport=failing_transport(lambda: 503 if down[0] else 200)), clock=clock)
+    merger = Merger(clock=clock)
+    url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=1"
+    g = GameState(league=League.NFL, game_id="1", home=Team("A", score=0), away=Team("B", score=0),
+                  phase=Phase.LIVE, period=1, clock_s=900.0)
+    merger.update("espn_summary", g)
+    await fetcher.get_json(url)
+    fail_at, detect_at, back_at, fresh_at = 1003.0, None, 1033.0, None
+    t = 1000.0
+    while t < 1200.0:
+        now[0] = t
+        down[0] = fail_at <= t < back_at
+        await fetcher.get_json(url, min_interval=2.5)
+        stale = merger.is_stale("1") or not fetcher.is_fresh(url, max_age_s=_stale_s())
+        if down[0] and detect_at is None and stale:
+            detect_at = t
+        if not down[0] and t >= back_at and fresh_at is None and fetcher.is_fresh(url, 1.0):
+            fresh_at = t
+        t += 3.0
+    await fetcher.close()
+    return {"ok": fresh_at is not None, "wall_s": None, "mid_play_cuts": 0, "stuck": False,
+            "flagged": detect_at is not None,
+            "detect_s": None if detect_at is None else round(detect_at - fail_at, 1),
+            "recover_s": None if fresh_at is None else round(fresh_at - back_at, 1),
+            "detail": "stale flag = merger.is_stale or fetch not fresh"}
+
+
+def _stale_s() -> float:
+    try:
+        from redzone.sources import http
+        return float(getattr(http, "FEED_STALE_S"))
+    except (AttributeError, TypeError, ValueError):
+        return float("inf")   # no fetch-level staleness: only the merger's 60 s no-progress rule
+
+
+async def _clock_skew() -> dict:
+    """The wall clock jumps forward 3 minutes mid-switch (NTP correction, laptop lid). The switch is
+    healthy and only 1 s old: it must not be declared hung and cancelled."""
+    from redzone.decider.decider import Decision, State
+    from redzone.engine import Engine
+    from redzone.store import Store
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        cfg = Config(user_path=tmp / "config.yaml", history_dir=tmp / "hist")
+        cfg.update({"mode": {"dry_run": False}})
+        engine = Engine(cfg, Store(tmp / "t.db"))
+        engine.decider.current = "old"
+        engine.control.submit = lambda *a, **k: None
+        cancelled = []
+        engine.control.cancel_pending = lambda: cancelled.append(True)
+        engine._act(Decision(1, "switch", "new", "better game", State.WATCHING), "old", {})
+        skew = SkewClock(time.time)
+        real = time.time
+        time.time = skew          # every wall-clock read in the process sees the jump, as on the Mac
+        try:
+            skew.jump(180.0)
+            engine._switch_deadline(time.time())
+            errors = len(engine.decider.errors)
+        finally:
+            time.time = real
+        await engine.close()
+    return {"ok": not cancelled, "wall_s": None, "mid_play_cuts": 0, "stuck": False, "flagged": True,
+            "detail": "cancelled a healthy switch as hung" if cancelled else "kept the switch",
+            "spurious_errors": errors}
+
+
+SCENARIOS = {
+    "baseline":            lambda: _switch(None, None),
+    "adb_drop_hidden":     lambda: _switch("hidden", "adb_drop"),
+    "adb_drop_visible":    lambda: _switch("visible", "adb_drop"),
+    "adb_hang_hidden":     lambda: _switch("hidden", "adb_hang"),
+    "adb_hang_hidden_x3":  lambda: _switch("hidden", "adb_hang", repeats=3),
+    "app_crash_hidden":    lambda: _switch("hidden", "app_crash"),
+    "prompt_screen":       lambda: _switch("hidden", "prompt_screen"),
+    "tv_flip_fail":        lambda: _switch("hidden", "tv_flip_fail", tv_fail=True),
+    "feed_5xx":            _feed_5xx,
+    "clock_skew":          _clock_skew,
+}
+
+
+async def run(names: list[str]) -> dict:
+    # Test-sized waits where the drill isn't measuring them (same knobs the unit tests use).
+    ctl.REFRESH_POLL_S = 0.01
+    out = {}
+    for n in names:
+        out[n] = await SCENARIOS[n]()
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser()
+    p.add_argument("--json", action="store_true")
+    p.add_argument("only", nargs="*")
+    a = p.parse_args(argv)
+    logging.basicConfig(level=logging.ERROR)
+    res = asyncio.run(run(a.only or list(SCENARIOS)))
+    if a.json:
+        print(json.dumps(res, indent=1))
+    else:
+        print(f"{'scenario':22} {'ok':5} {'wall_s':>7} {'cuts':>4} {'stuck':5} {'flag':5} detail")
+        for n, r in res.items():
+            extra = {k: v for k, v in r.items() if k not in ("ok", "wall_s", "mid_play_cuts", "stuck", "flagged", "detail")}
+            print(f"{n:22} {str(r['ok']):5} {str(r['wall_s']):>7} {r['mid_play_cuts']:>4} {str(r['stuck']):5} "
+                  f"{str(r['flagged']):5} {r['detail']} {extra or ''}")
+    cuts = sum(r["mid_play_cuts"] for r in res.values())
+    return 1 if cuts else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
