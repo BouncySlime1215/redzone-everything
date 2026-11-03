@@ -157,3 +157,15 @@ def test_an_offline_stick_is_a_fault_at_home_but_not_away():
     assert codes(h) == {"stick_offline"}
     e.network = SimpleNamespace(away=True)          # the Mac is at school: sticks look offline
     assert codes(h) == set()
+
+
+async def test_a_dark_feed_on_a_real_engine_is_a_stale_feed_fault(cfg, tmp_path):
+    from redzone.engine import Engine
+    from redzone.models import GameState, League, Phase, Team
+    from redzone.store import Store
+    e = Engine(cfg, Store(tmp_path / "t.db"))
+    e.merger.update("espn_summary", GameState(league=League.NFL, game_id="9", home=Team("A", score=0),
+                                              away=Team("B", score=0), phase=Phase.LIVE, period=1, clock_s=900.0))
+    e.feed_book.stale = lambda gid, now=None: True
+    assert "stale_feed" in {code for code, _, _ in e.supervisor.health.conditions()}
+    await e.close()
