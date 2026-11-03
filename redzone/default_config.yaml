@@ -229,6 +229,11 @@ supervisor:                # watches the live system and fixes what it can on it
     dead_air_pct: 10       # ...and this % of cuts may be slow
     safe_mode_min: 10      # minutes in safe mode a night
 
+autofix:                   # the watchdog files problems it can't fix as GitHub issues for Claude (docs/auto-fix.md)
+  enabled: true            # kill switch on the Mac side (the repo variable AUTOFIX_ENABLED=false stops the GitHub side)
+  max_per_day: 3           # at most this many issues a day
+  refile_days: 7           # the same error is filed at most once per this many days
+  repo: ""                 # owner/name; empty = this checkout's origin
 governor:                  # keeps the Mac cool and its disk free (redzone/governor.py); live switching is never slowed
   enabled: true
   every_s: 30              # look at the Mac this often

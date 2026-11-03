@@ -30,6 +30,7 @@ from pathlib import Path
 
 from agent.policy import SYSTEM, Obs, Verdict, guard, known, parse_answer, rules
 from redzone.governor import Governor, free_mlx_cache, load_options
+from redzone.platform.autofix import Filer
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -111,11 +112,15 @@ class Watchdog:
         self.mem_streak = 0
         # The resource governor (redzone/governor.py): memory caps, and no model while the Mac is critical.
         self.gov = governor or Governor(load_options(ROOT), root=DATA if DATA.exists() else ROOT, clock=clock)
+        # Problems the rules and the local model can't fix go to Claude as a GitHub issue (docs/auto-fix.md).
+        # Set by main() only: a watchdog built in a test never files real issues.
+        self.state: dict | None = None
+        self.autofix: Filer | None = None
 
     # ---- seeing ----------------------------------------------------------------------------
     def observe(self) -> Obs:
         now = self._clock()
-        st = fetch_state()
+        st = self.state = fetch_state()
         self.fail_streak = 0 if st is not None else self.fail_streak + 1
         o = Obs(api_ok=st is not None, api_fail_streak=self.fail_streak)
         try:
@@ -273,6 +278,14 @@ class Watchdog:
         o = self.observe()
         v = self.decide(o)
         done = self.act(v, o)
+        if self.autofix is not None and not self.dry_run:
+            try:
+                filed = self.autofix.consider(o, sorted(s for s in o.errors if known(s) is None))
+            except Exception as e:   # filing must never stop the watchdog
+                log.warning("agent: auto-fix filing failed: %s", e)
+                filed = None
+            if filed:
+                _journal({**filed, "ts": round(self._clock(), 1), "kind": "autofix", "trigger": filed.get("kind")})
         row = {"ts": round(self._clock(), 1), "kind": "check", "action": v.action, "source": v.source,
                "why": v.why, "target": v.target, "result": done,
                "obs": {"api_ok": o.api_ok, "live": o.live_games, "crunch": o.crunch_on_screen,
@@ -337,6 +350,7 @@ def main() -> None:
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     w = Watchdog(dry_run=a.dry_run, use_model=not a.no_model)
+    w.autofix = Filer(ROOT, health=lambda: (w.state or {}).get("health"), notify=w._push)
     while True:
         t0 = time.time()
         try:
