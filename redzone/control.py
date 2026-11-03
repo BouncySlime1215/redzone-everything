@@ -268,7 +268,7 @@ class Controller:
         Never during a switch, a flip or a preload: those reads would queue behind (or delay) it."""
         if not self.live_control or self._busy() or self._flipping or self.input_unknown:
             return 0
-        sticks = [s for s in self.usable() if str((s.tuned or {}).get("target") or "").startswith("youtubetv:")]
+        sticks = [s for s in self.usable if str((s.tuned or {}).get("target") or "").startswith("youtubetv:")]
         for s in sticks:
             await s.playback(self._package(s, s.tuned["target"]))
         return len(sticks)
