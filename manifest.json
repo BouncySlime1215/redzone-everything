@@ -1,0 +1,272 @@
+{
+ "built_s": 17,
+ "split": {
+  "nfl": {
+   "train": {
+    "nights": 40,
+    "first": "20250905",
+    "last": "20251110",
+    "rows": 26497
+   },
+   "valid": {
+    "nights": 8,
+    "first": "20251111",
+    "last": "20251124",
+    "rows": 5133
+   },
+   "test": {
+    "nights": 8,
+    "first": "20251125",
+    "last": "20251208",
+    "rows": 5361
+   },
+   "locked": {
+    "nights": 19,
+    "first": "20251209",
+    "last": "20261101",
+    "rows": 13727
+   }
+  },
+  "nba": {
+   "train": {
+    "nights": 7,
+    "first": "20261020",
+    "last": "20261026",
+    "rows": 26780
+   },
+   "valid": {
+    "nights": 1,
+    "first": "20261027",
+    "last": "20261027",
+    "rows": 2097
+   },
+   "test": {
+    "nights": 1,
+    "first": "20261028",
+    "last": "20261028",
+    "rows": 5915
+   },
+   "locked": {
+    "nights": 4,
+    "first": "20261029",
+    "last": "20261101",
+    "rows": 11890
+   }
+  },
+  "nhl": {
+   "train": {
+    "nights": 6,
+    "first": "20261019",
+    "last": "20261024",
+    "rows": 13708
+   },
+   "valid": {
+    "nights": 2,
+    "first": "20261025",
+    "last": "20261026",
+    "rows": 2510
+   },
+   "test": {
+    "nights": 2,
+    "first": "20261027",
+    "last": "20261028",
+    "rows": 4751
+   },
+   "locked": {
+    "nights": 4,
+    "first": "20261029",
+    "last": "20261101",
+    "rows": 8965
+   }
+  }
+ },
+ "locked_rows_left_out": 34582,
+ "counts": {
+  "reasoner_train": 66985,
+  "reasoner_valid": 9740,
+  "reasoner_test": 16027,
+  "jump_rows": 10281,
+  "watchdog": {
+   "train.jsonl": 6548,
+   "valid.jsonl": 275,
+   "test.jsonl": 686
+  },
+  "teacher_requests": 81372
+ },
+ "teacher_by_task": {
+  "reasoner_blind": 4002,
+  "wd_paraphrase": 104,
+  "jump_blind": 10281,
+  "reasoner_grounded": 66985
+ },
+ "gold_rule_changes": {
+  "nfl_drives_first": 3489,
+  "never_miss_big": 4387,
+  "your_team_late": 853,
+  "nhl_power_play": 1754
+ },
+ "gold": {
+  "lock": 500,
+  "jump": 500,
+  "lock_by_split": {
+   "train": 360,
+   "valid": 53,
+   "test": 87
+  },
+  "jump_by_split": {
+   "train": 360,
+   "valid": 66,
+   "test": 74
+  }
+ },
+ "grade_ids": 4002,
+ "jump_labels": {
+  "too_short_predicted": 5844,
+  "not_worth_it": 1359,
+  "must_see": 240,
+  "crunch_first": 282,
+  "jump": 2456,
+  "never_mid_play": 45,
+  "your_team_late": 51,
+  "big_right_after": 4
+ },
+ "files": {
+  "code/agent/__init__.py": {
+   "bytes": 0,
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "code/agent/distill/__init__.py": {
+   "bytes": 693,
+   "sha256": "14afc83af0aff9484e5fd38330f4f7a97b0afe90927c50c1a951f916062ace7e"
+  },
+  "code/agent/distill/evaluate.py": {
+   "bytes": 8751,
+   "sha256": "817041f131a379d6dc92b2890296dcd1c3ab6ecb8fb30163001d8803cd4a5c57"
+  },
+  "code/agent/distill/gold.py": {
+   "bytes": 4746,
+   "sha256": "0102efd272f582bf3deb54939e5c127fc21dc78aef9178ad27828be40c5bd764"
+  },
+  "code/agent/distill/jump.py": {
+   "bytes": 13904,
+   "sha256": "b4ac384164bfe75c90b11f6724aed9076b777d72664bf5e3c9a9c05099cb6185"
+  },
+  "code/agent/distill/split.py": {
+   "bytes": 4558,
+   "sha256": "126d044934c2786a64495126620dce5c3c251d69b082e3824ffb0a1323b5c2c4"
+  },
+  "code/agent/distill/student.py": {
+   "bytes": 5904,
+   "sha256": "5a9fd0e097a7ccd2fd6fe0a76d136c5a21674c3b3dc08736887602da7728a41a"
+  },
+  "code/agent/distill/teacher.py": {
+   "bytes": 19901,
+   "sha256": "45906f0dcb5b134e71f19fd54b468d3ee7ed852d1d42d19f124ac13bb5443c6e"
+  },
+  "code/agent/kaggle/__init__.py": {
+   "bytes": 0,
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "code/agent/kaggle/dequant.py": {
+   "bytes": 3148,
+   "sha256": "435edc16a3d3f700adf6baf4ac2926b8cf275a8a4b8562834925153c773f3fcf"
+  },
+  "code/agent/kaggle/grade.py": {
+   "bytes": 7267,
+   "sha256": "e925b9b30073f3255d1733ae4c1be00a1e0957bb6219d6c3ba51743c2877f548"
+  },
+  "code/agent/kaggle/pack_data.py": {
+   "bytes": 10006,
+   "sha256": "451de3a94e82d7de05c708bf1b225f13fe5a1e1ad3c11d5c36d531e58c00fbb4"
+  },
+  "code/agent/kaggle/run_students.py": {
+   "bytes": 10796,
+   "sha256": "947e8739943b50581ee94308646def51ac5e13709de3f290edcf08d7ae0e5da5"
+  },
+  "code/agent/kaggle/run_teacher.py": {
+   "bytes": 9419,
+   "sha256": "549bdd44de24daf1ed353dcf858def31214a10a264c40ea27b6ca7716741a140"
+  },
+  "code/agent/kaggle/student_data.py": {
+   "bytes": 5397,
+   "sha256": "6d342fe92b1e8ddc37bd3f3dff3c104fba8b756fad89707b5af456ad8093e8c5"
+  },
+  "code/agent/policy.py": {
+   "bytes": 11340,
+   "sha256": "32989ba8df089d111cd2f81e87bba55d7e7a376e8018c2d1f901c7f330cb1c15"
+  },
+  "code/agent/train/__init__.py": {
+   "bytes": 0,
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "code/agent/train/peft_to_mlx.py": {
+   "bytes": 5834,
+   "sha256": "32df81e581913dfe46aa311b0719e1dba2844985cfab91ef61c3458f5407df10"
+  },
+  "data/gold/jump_gold.jsonl": {
+   "bytes": 658823,
+   "sha256": "0e281b1206a73a0020a971751bd16e4a0a3b4895472a248f30499130d2a6de71"
+  },
+  "data/gold/lock_gold.jsonl": {
+   "bytes": 552085,
+   "sha256": "36e72dbaaa1133b2c7faf198b41e1cd3e51324cd3f2ac8847a8f219d1c801136"
+  },
+  "data/grade_ids.json": {
+   "bytes": 82407,
+   "sha256": "d140963a78e80da14773f18e6638a7031e6966f144096b3706729b05188a64e1"
+  },
+  "data/jump_rows.jsonl.gz": {
+   "bytes": 2371333,
+   "sha256": "b2f5d7140075dca5810e802786518e68592a59f1226b2dfc3cfada5db96a462a"
+  },
+  "data/reasoner/rows_test.jsonl.gz": {
+   "bytes": 1091973,
+   "sha256": "37d579fd4d02fa85273acb160f13abce59370e2a6d106d167fbc9c70448d0403"
+  },
+  "data/reasoner/rows_train.jsonl.gz": {
+   "bytes": 4672983,
+   "sha256": "ecb6cb731e3f052f87a0d6cdc91b349d2b6ce03a385779c0795d74be53aec640"
+  },
+  "data/reasoner/rows_valid.jsonl.gz": {
+   "bytes": 739682,
+   "sha256": "a57b7f3e984ade7976935e236884e9a51ecd4b805e28324e23912f2d50672153"
+  },
+  "data/reasoner/system.txt": {
+   "bytes": 516,
+   "sha256": "f0800949bddbc9563a36646b4ecf86ae485b3a5b81dcc4c335084997444c92dc"
+  },
+  "data/watchdog/novel.json": {
+   "bytes": 38685,
+   "sha256": "3b16ca096e7ae25ec91379a8bd5a49e987b8474c590f73e047a0d7f9fa902e1a"
+  },
+  "data/watchdog/test.jsonl": {
+   "bytes": 1218945,
+   "sha256": "92d2ac5c14b62b6828b23df4c5a4dd65e9a5dc3de238fe44c0fcdad3ca1fd125"
+  },
+  "data/watchdog/test.labels.jsonl": {
+   "bytes": 42744,
+   "sha256": "1296ecd54341d1e5da22f56e92b9647009beee9066d1558f35cb45fbdcc76d9f"
+  },
+  "data/watchdog/train.jsonl": {
+   "bytes": 11588446,
+   "sha256": "1c6e375427e9a10f1773670d67f7098b985619bebdf67cab51a5a7d4ca98fca0"
+  },
+  "data/watchdog/valid.jsonl": {
+   "bytes": 480680,
+   "sha256": "017cdf25ab1ab54c1cb2c80cd717d68c3f285d19f8cfa101467dc257a09d5457"
+  },
+  "data/watchdog/valid.labels.jsonl": {
+   "bytes": 16738,
+   "sha256": "bcce3f2cabb607ff7470cb9fe1dfee337e40958bd3dc5f527edf7be60d85e6f4"
+  },
+  "teacher_distill.ipynb": {
+   "bytes": 7696,
+   "sha256": "7fee736f2337913339cf05d26b4bb25c4867ff7ee584691945338bc1c1c98e7b"
+  },
+  "teacher_requests.jsonl.gz": {
+   "bytes": 10818958,
+   "sha256": "b9ebc9edd1f0840bcbcf6f0efc396ccae8ed070bb42d45b935025e6e67bb021d"
+  }
+ },
+ "total_mb": 34.5
+}
