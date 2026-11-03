@@ -756,7 +756,10 @@ class Engine:
                 log.warning("switch to %s failed after %.1fs (%s): %s", d.target, out.took, out.path, out.detail[:300])
             if not cancelled:   # a cancel (pause, your tap, a newer command) says nothing about the target
                 self.discovery.on_outcome(out, d.target, replay=d.action == "replay")
-            if not out.ok and not out.dry_run and not out.screen_unchanged and not cancelled:
+            # 'TV input is unknown' is a refusal by the input-recovery state, which has its own
+            # watchdog: counting it too put the TV in safe mode at 21:07 on Nov 2.
+            unknown_input = out.detail.startswith("TV input is unknown")
+            if not out.ok and not out.dry_run and not out.screen_unchanged and not cancelled and not unknown_input:
                 self.decider.note_error()
                 self.toast(f"Couldn't switch: {out.detail[:80]}", "error")
             self.broadcast()
