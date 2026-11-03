@@ -40,14 +40,20 @@ NHL (integration/next):
 |---|---|---|---|---|---|---|
 | off | 11 | 1 | 24.3 | 42.0 | 87.5 | 100 |
 | 2 | 8 | 2 | 24.4 | 42.2 | 87.8 | 100 |
-| **4 (default when on)** | **5** | 1 | 24.4 | 42.0 | 87.3 | 100 |
+| 4 | **5** | 1 | 24.4 | 42.0 | 87.3 | 100 |
 | 8 by odds | 7 | 3 | 24.3 | 42.0 | 88.2 | 100 |
+
+After integration/next merged the NHL whistle-hold fix (PR #3), the base already has 5 mid-play
+entries. NHL 4 points there: entries 5 -> 4, dead air 24.1 -> 24.2, big live 41.5 -> 40.9. Not a
+win, so **NHL points are off too**.
 
 NBA: no gain (plays missed on entry 18 -> 19 at 8 points), so points are off and it shows the storyline only.
 
 With `reasoner.enabled: false` (the default) every scorecard equals integration/next exactly.
 
 ## Next steps
-1. Decide on NHL points (halves mid-play entries; dead air +0.1, crunch -0.2).
+1. Lock-in points are off in every league: on today's decider they never beat it on every line.
+   The head still runs (cheap) and feeds the brief/storyline. Next lever: a lock-in that holds
+   a game through a short stoppage (contracts.ReasonerView.lock_in) once the decision core reads it.
 2. When PR #13's adapter lands: held-out model eval and peak RSS with both adapters via llm_server.
 3. Move the scorer hook behind `contracts.Reasoner.view()` once the decision core reads it.

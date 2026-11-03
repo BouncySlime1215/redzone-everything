@@ -140,7 +140,7 @@ reasoner:                  # live game reasoner (redzone/reasoner): lock_in per 
   # raised big plays live also raised commercials (it pulled the TV off RedZone), so storyline only.
   nfl: {must_points: 0, watch_points: 0}
   nba: {must_points: 0, watch_points: 0}      # no gain on the NBA scorecard: storyline only
-  nhl: {must_points: 4, watch_points: 0}      # entries mid-play 11 -> 5
+  nhl: {must_points: 0, watch_points: 0}      # after PR #3 (entries mid-play 11 -> 5 already): 4 pts gave 5 -> 4 but big live -0.6
 
 decider:
   switch_margin: 10
