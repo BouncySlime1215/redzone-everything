@@ -30,6 +30,7 @@ with 0 mid-play cuts and nothing important getting worse. Anything mixed stays o
 - **Break-visit trip budget** (skip a visit when the trip there and back doesn't fit inside the break): NFL crunch live 70.0 → 71.4%, but big plays seen 95.4 → 93.9% and your team's big plays 100 → 93.1%. Nearly all of the loss is one Sunday (CLE @ CHI), where today's code shows 14 minutes of catch-up replays and the branch stays on a live drive instead. Mixed, so it stays on branch `fv-review`.
 - **NBA entry timing**: with or without a wait cap, it costs NBA crunch time (96.3 → 95.8% with an 8 s cap, 91.8% when crunch switches are exempt). Off.
 - **Hype v2** (learned key-moment score): NFL big plays seen **live** 29.9% → **39.5%**, which is big, but your team's NFL big plays fell 100 → 93.1, NBA big plays seen 95.4 → 90.8, and NHL crunch 87.5 → 83.8. Capping non-crunch scores didn't fix it. Not merged. Its chained-visit fix *was* merged on its own.
+  - Re-tested at 6 AM on today's code: same result. A 50/50 mix with the old score gets NFL live 34.0% with 1 your-team play lost. Testing each part separately shows the NBA loss comes from the learned model's own NBA rankings. The fix is retraining that part, a bigger job for another day.
 
 ## Your call: fix NHL mid-play entries?
 
