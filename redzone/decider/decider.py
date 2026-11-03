@@ -155,7 +155,7 @@ class Decision:
     reason: str
     state: State
     gate: str = ""
-    kind: str = ""            # "better", "break_visit", "return", "chase", "must_see", "ended", "start", "replay", "crunch"
+    kind: str = ""            # "better", "break_visit", "return", "chase", "must_see", "ended", "start", "replay", "crunch", "drive"
     replay: "Missed | None" = None
     want: str | None = None   # the game it wants to switch to while it waits for a safe moment
     rewind_s: float = 0.0     # [cut timing] land this far behind live (whole seek steps) on a dead ball
@@ -1211,11 +1211,16 @@ class Decider:
             return None
         if now - self.since < float(self.cfg.get("redzone_mode.min_redzone_s", 20)):
             return None     # just arrived: give the whip-around a moment before chasing a drive
-        gid = self._hot_live(watchable, self.cfg.get("redzone_mode.takeover_heat"))
+        # A broadcast that is in a break, or about to go to one (the break forecast: a field goal try,
+        # a punt coming, the two-minute warning, a score still on its way to the screen), is a
+        # commercial waiting to land on us. Stay on RedZone and take the drive over once it's live.
+        cap = float(self.cfg.get("redzone_mode.takeover_break_p", 0.5))
+        calm = {g: x for g, x in watchable.items() if x.scored.factors.get("break_p", 0.0) < cap}
+        gid = self._hot_live(calm, self.cfg.get("redzone_mode.takeover_heat"))
         if gid is None:
             return None
         return Decision(now, "switch", gid, self._why(watchable[gid], "live drive →"),
-                        state, gate_txt, kind="better")
+                        state, gate_txt, kind="drive")
 
     def _nfl_priority(self, cands: dict[str, Candidate]) -> dict[str, Candidate]:
         """[redzone mode] While an NFL drive is alive (Scored.factors["drive_heat"], scoring/drive.py),

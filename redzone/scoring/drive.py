@@ -26,6 +26,7 @@ import time
 from dataclasses import dataclass, field, replace
 
 from redzone.models import GameState, League, Phase
+from redzone.scoring import breaks
 from redzone.scoring.engine import Personal, Scored, Scorer
 
 # Expected points by yards to the goal line (piecewise linear). Rough nflfastR/Burke values.
@@ -175,13 +176,20 @@ class DriveScorer(Scorer):
     def __init__(self, cfg, clock=time.time):
         super().__init__(cfg, clock=clock)
         self.drives = DriveBook(clock=clock)
+        # The break forecast for each NFL game (scoring/breaks.py), so the decider can tell a drive
+        # it's about to tune to from one about to go to commercial. Its hold keeps a break that has
+        # left the data (the kickoff after the TD's ads) forecast until it has reached the screen.
+        self.breaks = breaks.BreakBook(clock=clock)
 
     def score(self, g: GameState, me: Personal | None = None) -> Scored:
         s = super().score(g, me)
         if g.league.base != League.NFL or g.phase != Phase.LIVE or not self.cfg.get("redzone_mode.enabled", True):
             return s
         h = self.drives.observe(g)
-        return apply_heat(s, h, self.cfg)
+        self.breaks.observe(g)
+        f = self.breaks.forecast(g)
+        s = apply_heat(s, h, self.cfg)
+        return replace(s, factors={**s.factors, "break_p": round(f.p, 2), "break_s": round(f.expect_s)})
 
 
 def apply_heat(s: Scored, h: Heat, cfg) -> Scored:

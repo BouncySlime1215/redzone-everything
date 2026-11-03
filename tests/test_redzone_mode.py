@@ -179,6 +179,25 @@ def test_on_redzone_a_live_drive_takes_over(cfg, clock):
     assert d._drive_takeover(c, True, None, "", clock.t) is None
 
 
+def test_takeover_waits_while_the_destination_is_about_to_go_to_commercial(cfg, clock):
+    d = _dec(cfg, clock)
+    d.current, d.since = REDZONE, clock.t - 300
+    fg = replace(_sc("fg", 40, heat=0.9), factors={"drive_heat": 0.9, "break_p": 0.55})   # 4th down in range
+    c = {"fg": Candidate(fg, "youtubetv:fg")}
+    assert d._drive_takeover(c, True, None, "", clock.t) is None          # wait on RedZone
+    c["fg"] = Candidate(replace(fg, factors={"drive_heat": 0.9, "break_p": 0.0}), "youtubetv:fg")
+    dec = d._drive_takeover(c, True, None, "", clock.t)
+    assert dec and dec.target == "fg" and dec.kind == "drive"             # live again: take it over
+
+
+def test_drive_scorer_reports_the_break_forecast(cfg, clock):
+    sc = DriveScorer(cfg, clock=clock)
+    s = sc.score(nfl(gid="f", q=2, clock=600, pos="WSH", down=4, dist=3, ytg=22, hs=7, as_=3, last_play=_play("1")))
+    assert s.factors["break_p"] >= 0.5 and s.factors["break_s"] > 0       # a field goal try means a break
+    s = sc.score(nfl(gid="g", q=2, clock=600, pos="WSH", down=1, dist=10, ytg=40, hs=7, as_=3, last_play=_play("2")))
+    assert s.factors["break_p"] == 0.0
+
+
 def test_redzone_never_wins_back_the_drive_we_are_watching(cfg, clock):
     d = _dec(cfg, clock)
     d.current = "nfl"

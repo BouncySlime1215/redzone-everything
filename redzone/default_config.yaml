@@ -201,6 +201,7 @@ redzone_mode:              # whip-around like NFL RedZone (scoring/drive.py; dec
   hot_heat: 0.5            # drive heat (0-1, scoring/drive.py) that counts as "a drive is alive": ~a moving drive past midfield
   takeover_heat: 0.65      # ...a drive this hot is worth leaving the whip-around for (see drive_over_redzone)
   drive_over_redzone: true # on the RedZone channel and a game we can tune has a live drive: watch that drive ourselves
+  takeover_break_p: 0.5    # ...and only when its break forecast (scoring/breaks.py) is under this: no tuning into a commercial
   min_redzone_s: 20        # ...but only after this long on the channel: no bouncing on every poll
   redzone_lift: 8          # RedZone gains up to this many points with the hottest drive (it's showing it), vs ordinary games
   nfl_priority: true       # while an NFL drive is live, other sports' non-crunch moments rank below it (your teams,
