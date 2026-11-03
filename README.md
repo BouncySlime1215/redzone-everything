@@ -158,6 +158,46 @@ NHL api-web (power plays, empty nets), MLB statsapi (leverage), ESPN Fastcast (p
 Watch event listings (Prime Video and ESPN+ event links). Real Sports is not used: it requires a login
 and its terms forbid automated access.
 
+### Training data (for the learned break / key-moment / game-flow models)
+
+```
+.venv/bin/python -m pip install pandas pyarrow     # once, ~150 MB
+.venv/bin/python scripts/build_training.py         # about 1 minute plus downloads; ~500 MB peak, 223 MB kept
+```
+
+This writes one snapshot table per league to `data/training/<league>.parquet` (git-ignored) plus
+`data/training/manifest.json` (rows, label rates, sources, hotness percentile knots). Raw downloads go
+to `data/training/raw/` and are deleted after each league. Load it with `redzone.lab.datasets`:
+`datasets.load("nba")`, `datasets.splits(df, "break_soon")` (train/valid/test split by game).
+
+| League | Source (free) | License / terms | Seasons |
+|---|---|---|---|
+| nfl | [nflverse-data](https://github.com/nflverse/nflverse-data) `pbp` release (nflfastR WP/EPA) | CC-BY 4.0 | 2023–2025 |
+| cfb | [sportsdataverse-data](https://github.com/sportsdataverse/sportsdataverse-data) `cfbfastR_cfb_pbp` (cfbfastR WP/EPA) | MIT code; ESPN data, personal use | 2025 |
+| nba | sportsdataverse-data `espn_nba_pbp` (hoopR) | MIT code; ESPN data, personal use | 2024-25, 2025-26 |
+| cbb / wcbb | sportsdataverse-data `espn_mens_/womens_college_basketball_pbp` (hoopR / wehoop), 3,500 games each | MIT code; ESPN data, personal use | 2025-26 |
+| nhl | sportsdataverse-data `nhl_pbp_full` (fastRhockey, from the NHL public API) | MIT code; NHL data, personal use | 2024-25, 2025-26 |
+| mlb | sportsdataverse-data `mlb_pbp` + `mlb_pitches` (MLB Stats API) | MLBAM terms, personal use | 2025 |
+| espn_* | our own `data/archive` ESPN summaries, classified by the live code (`espn.stoppage_for`) | ESPN data, personal use | recent |
+
+One row = the game right after one logged event. Features: score/diff, period, clock, time left,
+wall clock, win probability with its recent change and volatility, lead changes, ties, scoring runs,
+possession, down/distance/field position, timeouts left, team fouls/bonus, skaters (power play),
+outs/runners/count, the current stoppage type, time since the last break, crunch flag. Labels:
+
+- `break_soon`: a real break (timeout, TV timeout, end of period, review, injury, pitching change,
+  post-score break, two-minute warning) starts within 60 s of game clock (MLB: wall clock).
+  `break_soon_wall` is the same on the wall clock where the feed has timestamps.
+- `key_soon` / `key_now`: a key moment (TD, turnover, 20+ yd play, goal, score in crunch time, late
+  lead change, 3 or dunk in crunch, home run in a close late game, any play that swings win
+  probability by 10%+ (15% college football)) within the next 2–5 minutes / on this event.
+- `hotness`: 0–100 game flow, like ESPN's game-flow chart: win-probability movement over the
+  surrounding window plus how close and late the game is, smoothed, as a percentile within the league.
+
+Win probability comes from the source for NFL/CFB (and ESPN where it has one); NBA/college basketball
+use a spread-plus-normal model fit to ESPN's WP, NHL a Poisson model with power plays, MLB run
+expectancy. These are personal-use datasets: don't redistribute the ESPN, NHL or MLB-derived files.
+
 ## 8. Project layout
 
 ```
@@ -172,9 +212,9 @@ redzone/
   channels.py      which channel/app each game is on (your market, Sunday Ticket, overrides)
   bets.py fantasy.py  personal boosts
   recorder.py      flight recorder: real feed lag per source
-  lab/             backtests, graders, optimizer
+  lab/             backtests, graders, optimizer, training data (sportsdata.py builds, datasets.py loads)
   web/             FastAPI server + phone page
-scripts/           doctor, rz (stick tools), screen_lab, eval, backtest, downloads, service install
+scripts/           doctor, rz (stick tools), screen_lab, eval, backtest, downloads, build_training, service install
 tests/             pytest (scorer, decider, sources, control, app, audio, fantasy)
 ```
 
