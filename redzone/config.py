@@ -25,6 +25,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "polling.live_s": (5, 60),
     "polling.hot_s": (2, 30),
     "polling.idle_s": (30, 3600),
+    "plan.verify_lead_min": (5, 90),
     "score.neutral_cap": (0.5, 1.0),
     "score.personal_cap": (0, 60),
     "score.stakes.min": (0.5, 1.0),

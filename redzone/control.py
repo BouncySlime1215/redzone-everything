@@ -1348,6 +1348,45 @@ class Controller:
             log.info("standby %s is %s, not %s — it'll be reloaded", target, state, "/".join(expect))
             self._set_hidden(None, False)
 
+    def verify_hidden(self, target: str | None) -> asyncio.Task | None:
+        """Pre-game check (redzone/plan.py): tune `target` on the HIDDEN stick and report whether it
+        played. Never the stick on screen; runs as a preload, so any switch cancels it. None = it
+        can't run now (dry run, one stick, busy, asleep, no link). The task's result is the
+        TuneResult, or None when the hidden stick was asleep (it is never woken for a check)."""
+        if not (self.live_control and self.two_stick and target) or self.hidden is None or self.input_unknown:
+            return None
+        if self._busy() or time.time() < self._asleep_until or not self.can_tune(target):
+            return None
+        self._cancel_refresh()
+        self._preloading, self._refreshing = (target, None), None
+        self._preload_task = asyncio.create_task(self._verify_hidden(target))
+        return self._preload_task
+
+    async def _verify_hidden(self, target: str) -> TuneResult | None:
+        try:
+            async with self._lock:
+                hid = self.hidden
+                if hid is None:
+                    return TuneResult(False, target, 0.0, [], "two-stick mode off")
+                if await self._sleeping(hid):
+                    self._asleep_until = time.time() + ASLEEP_RECHECK_S
+                    return None
+                self._set_hidden(target, False)
+                res = await self._tune(hid, target)
+                if res.ok:
+                    self._set_hidden(target, True)
+                else:
+                    self._set_hidden(None, False)
+                    self._blackout_check(target, res)
+                self._verified_at = time.time()
+                return res
+        except asyncio.CancelledError:
+            self._set_hidden(None, False)   # stopped mid-tune: we don't know what it's showing
+            raise
+        finally:
+            if self._preload_task is asyncio.current_task():
+                self._preloading, self._refreshing = None, None
+
     async def scan_sunday_ticket(self, codes: list[str], games: list, on_found=None, *, may_run=None) -> dict[str, str]:
         """Flip through the Sunday Ticket channels and read each one's game title off the screen.
         Uses the hidden stick in two-stick mode (you never see it), else the main stick (you will)."""

@@ -22,6 +22,7 @@ from redzone.decider.decider import REDZONE, Candidate, Decider, Decision, Focus
 from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
                                    leave_gate, leave_window, screen_evidence)
 from redzone.models import GameState, League, Phase
+from redzone.plan import Tonight
 from redzone.scoring.engine import Personal, Scored, Scorer
 from redzone.sources import espn, fastcast, leagues
 from redzone.sources.http import Fetcher
@@ -101,6 +102,7 @@ class Engine:
         self.recorded = RecordedPlayback(self)
         from redzone.discovery.runtime import DiscoveryRuntime
         self.discovery = DiscoveryRuntime(self)
+        self.tonight = Tonight(self)   # today's plan + pre-game checks on the hidden stick
 
     # ------------------------------------------------------------------ loop
 
@@ -111,7 +113,7 @@ class Engine:
             self.set_mic(True)
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
-                             self._boundary_loop())
+                             self._boundary_loop(), self.tonight.run())
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)
@@ -1185,6 +1187,7 @@ class Engine:
                      "tv_control": self.control.live_control, "two_stick": self.control.two_stick,
                      "control_note": self.control.note, "mic": self.mic is not None, "announcer_hint": ""},
             "now": now, "next": nxt, "standby": self._standby_view(), "games": games,
+            "tonight": self.tonight.view(),
             "screen_evidence": self.screen_evidence(),
             "queue": [self._queue_item(m) for m in sorted(dec.queue, key=lambda m: -m.value)[:10]],
             "log": self._log(),
