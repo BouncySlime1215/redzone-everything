@@ -58,11 +58,11 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-03 6:45 PM ET.** Live service: this MORNING's code. `integration/next` 35ca936 is green (#39 merged). `integration/release` is still RC1 9e859b7 (failed CI). The coordinator got the RC2 directive at 6:41, due 7 PM.
+- **2026-11-03 6:54 PM ET.** Live service: this MORNING's code. **RC2 has been cut:** `integration/release` = `integration/next` = 5c7727e. CI is running on both (full scorecards + gate report). Deploy only once that run is green.
 - **Open PRs:** #13 #16 #18 #20 #23 #24 #26 #30 #37.
-- **Kaggle round 1, V2:** running 4 h 03 m; teacher at 11,520 of 81,372 (~61 tok/s). It stops at its 7 h budget (~9:50 PM); ETA ~1 AM. The round-2 notebook fix (auto-extracted code/) is in progress on the #13 thread.
-- **Usage:** 47% (on pace; up to 3 threads allowed).
-- **Waiting on Nick:** add NFL RedZone + RedZone Replay to the YTTV library. Tonight: docs/tonight-checklist.md (deploy once RC2 is green). **Wed 5 PM:** new account.
+- **Kaggle round 1, V2:** running 4 h 12 m; teacher at 12,032 of 81,372 (~60 tok/s). It stops at its 7 h budget (~9:50 PM); ETA ~1 AM. The round-2 notebook (handles the auto-extracted code/) is ready on kaggle-inputs. The director runs round 2, not Nick.
+- **Usage:** 47% (on pace).
+- **Waiting on Nick:** add NFL RedZone + RedZone Replay to the YTTV library. Tonight: docs/tonight-checklist.md once RC2 CI is green. **Wed 5 PM:** new account.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
