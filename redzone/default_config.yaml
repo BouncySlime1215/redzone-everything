@@ -207,8 +207,23 @@ switch_speed:              # every real tune and input flip is timed; the decide
   learn: true              # keep decider.switch_cost up to date from those measurements
   sync_every_s: 300        # at most this often (sooner when two-stick mode turns on or off)
 
+redzone_mode:              # whip-around like NFL RedZone (scoring/drive.py; decider _drive_takeover, _nfl_priority)
+  enabled: true
+  hot_heat: 0.5            # drive heat (0-1, scoring/drive.py) that counts as "a drive is alive": ~a moving drive past midfield
+  takeover_heat: 0.65      # ...a drive this hot is worth leaving the whip-around for (see drive_over_redzone)
+  drive_over_redzone: true # on the RedZone channel and a game we can tune has a live drive: watch that drive ourselves
+  takeover_break_p: 0.5    # ...and only when its break forecast (scoring/breaks.py) is under this: no tuning into a commercial
+  min_redzone_s: 20        # ...but only after this long on the channel: no bouncing on every poll
+  redzone_lift: 8          # RedZone gains up to this many points with the hottest drive (it's showing it), vs ordinary games
+  nfl_priority: true       # while an NFL drive is live, other sports' non-crunch moments rank below it (your teams,
+                           # crunch, your focus game, and leagues you rank above the NFL in score.league_weight exempt)
+  priority_gap: 15         # ...those other games are held this many points under the hottest drive
+  heat_points: 0           # NFL game score lift per unit of heat. 8 cost big plays and your-team plays on the NFL scorecard
+  dead_damp: 0             # share of score lost to punt-fest signs. 0.25 cost big plays on the NFL scorecard
+
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
+  yours_first: true        # your team's missed big plays: replayed before other games' and over ordinary live play
   apps: [youtubetv]        # apps where rewinding live TV works
   max_age_s: 1800          # don't replay anything older than this
   urgent_s: 1200           # in its last N seconds a missed play jumps the queue and beats dull live play
@@ -249,6 +264,11 @@ reel:                      # catch-up reel: 5+ plays you missed, back to back, 3
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
   sigma_default: 15
+  model: channel           # channel: predict each channel (channels of one app differ, truTV 22 s vs FS1 42 s); legacy: one figure per app
+  sync:                    # every channel's delay found automatically (redzone/decider/sync.py), no taps
+    enabled: true          # Kalman filter per channel: show flips, score bug (score + clock), stick position, taps
+    min_sigma_s: 4         # a synced channel's stated doubt never goes below this (the gates' tested floor)
+    log: true              # every signal + estimate to data/sync.jsonl (scripts/eval_sync.py --log grades it)
 
 break_lengths_s:           # typical commercial lengths used to plan catch-ups
   nfl: {timeout: 75, tv_timeout: 120, score_break: 150, end_period: 120, two_minute_warning: 150, halftime: 780}

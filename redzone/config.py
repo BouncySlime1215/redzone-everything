@@ -36,6 +36,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "score.stakes.max": (1.0, 1.5),
     "score.garbage.moment_mult": (0.0, 1.0),
     "score.garbage.comeback_s": (0, 1800),
+    "delay.sync.min_sigma_s": (1, 15),   # [auto sync] below ~1 s the gates would trust a filter more than any signal can be
     "delay": (0, 180),
     "replay": (0, 7200),
     "reel.min_clips": (1, 12),
@@ -49,6 +50,9 @@ LIMITS: dict[str, tuple[float, float]] = {
     "reel.jump.margin_s": (0.0, 120.0),
     "reel.jump.p10_s": (0.0, 1800.0),
     "reel": (0, 100000),
+    "redzone_mode.hot_heat": (0.0, 1.0),
+    "redzone_mode.dead_damp": (0.0, 1.0),
+    "redzone_mode": (0, 100),
     "fantasy.team_id": (0, 100),
     "fantasy.season": (2020, 2100),
     "break_lengths_s": (0, 1800),

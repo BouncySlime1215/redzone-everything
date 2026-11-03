@@ -23,14 +23,15 @@ sys.path.insert(0, str(ROOT))
 
 from redzone.channels import ChannelMap  # noqa: E402
 from redzone.config import Config  # noqa: E402
-from redzone.lab import sportsgrade  # noqa: E402
+from redzone.lab import evaldata, sportsgrade  # noqa: E402
 from redzone.lab.backtest import Replay, run  # noqa: E402
 from redzone.models import League  # noqa: E402
 from redzone.sources import espn  # noqa: E402
 
 
 # The graded window ends here. The service archives each new night at 5 AM (and refreshes the last
-# scoreboards), so an open window slides under any before/after comparison. Move it on purpose.
+# scoreboards), so an open window slides under any before/after comparison. Move it on purpose:
+# the pinned eval dataset (eval-data.lock.json) wins; this is the fallback without one.
 EVAL_END = "20261101"
 
 
@@ -65,11 +66,16 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--late-plays", type=float, nargs="?", const=0.15, default=0.0)
     ap.add_argument("--no-wallclock", type=float, nargs="?", const=0.5, default=0.0)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--channel-spread", type=float, default=0.0)   # [per-channel delay] see scripts/eval.py
+    ap.add_argument("--history", type=float, default=0.0)
+    ap.add_argument("--delay-model", choices=("channel", "legacy"), default=None)
 
 
 def knobs(a: argparse.Namespace) -> dict:
     return dict(true_delay=a.true_delay, sigma=a.sigma, lag_jitter=(3.0, 25.0) if a.lag_jitter else None,
-                drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed)
+                drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed,
+                channel_spread=getattr(a, "channel_spread", 0.0), history=getattr(a, "history", 0.0),
+                delay_model=getattr(a, "delay_model", None))
 
 
 def main():
@@ -98,7 +104,7 @@ def main():
     reel = ReelCard()
     total = sportsgrade.Card(lg.value)
     t0 = time.time()
-    end = a.end or EVAL_END
+    end = a.end or evaldata.window_end(lg.value, EVAL_END)
     for day, reps, targets in nights(lg, a.nights, end):
         rep = run(reps, cfg, mine, targets=targets, step=a.step, reels=a.reels, **knobs(a))
         if rep.reel is not None:
@@ -117,6 +123,8 @@ def main():
     if a.reels:
         out.update(reel.summary())
     out["seconds"] = round(time.time() - t0)
+    out["eval_data"] = evaldata.stamp()
+    out["eval_end"] = end
     print(json.dumps(out, indent=1))
 
 

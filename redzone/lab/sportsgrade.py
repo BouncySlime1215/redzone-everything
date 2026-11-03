@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from redzone.decider.screen import CONTINUOUS, _is_marker
 from redzone.lab import cutgrade
-from redzone.lab.backtest import leave_offsets, offsets_of, on_screen, tuning_blackout_seconds, watched_whole
+from redzone.lab.backtest import lag_of, leave_offsets, offsets_of, on_screen, tuning_blackout_seconds, watched_whole
 from redzone.models import REAL_BREAKS, League, Stoppage
 from redzone.sources import espn
 
@@ -217,7 +217,7 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
         r = by_id.get(s.frm or "")
         if r is None or was_replay:
             continue
-        ok, what = _clean_cut(league, r.wall, r.plays, s.t - lag_total - lo)
+        ok, what = _clean_cut(league, r.wall, r.plays, s.t - lag_of(lag_total, r.gid) - lo)
         if not ok:
             card.cuts.append((s.t, f"{r.matchup}: {what}"))
 
@@ -226,8 +226,9 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
         mine = bool({r.matchup.split(" @ ")[0], r.matchup.split(" @ ")[-1]} & my_teams)
         prev = None
         for w, p in zip(r.wall, r.plays):
-            air = w + lag_total - PLAY_LEN[league]
-            on = watched_whole(watching, r.gid, air, w + lag_total, tune_s, t1, offs)
+            lag = lag_of(lag_total, r.gid)
+            air = w + lag - PLAY_LEN[league]
+            on = watched_whole(watching, r.gid, air, w + lag, tune_s, t1, offs)
             if is_pp_goal(league, p):
                 card.pp_goals += 1
                 card.pp_goals_live += on
@@ -255,7 +256,7 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
                 card.dead += 10 if reel_over(reel_ends, t) else 0   # ...until its planned clips have played
         elif g and g in by_id:
             r = by_id[g]
-            st = t - lag_total - o
+            st = t - lag_of(lag_total, g) - o
             i = max(0, max((k for k, w in enumerate(r.wall) if w <= st), default=0))
             if r.wall[0] <= st <= r.wall[-1]:
                 card.watched += 10
