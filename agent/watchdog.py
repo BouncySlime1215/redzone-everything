@@ -178,6 +178,8 @@ class Watchdog:
         if self.dry_run:
             return f"dry run: would {v.action}"
         if v.action == "restart_service":
+            if deploy_in_progress(self._clock()):
+                return "deploy in progress: scripts/deploy.py is restarting and watching the app"
             self.restarts.append(self._clock())
             try:
                 r = subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{LABEL}"],
@@ -223,6 +225,15 @@ class Watchdog:
         if v.action != "none" or int(self._clock()) % 900 < CHECK_S:   # quiet checks: one row per 15 min
             _journal(row)
         return row
+
+
+def deploy_in_progress(now: float) -> bool:
+    """scripts/deploy.py writes this marker while it restarts the app and watches its health."""
+    try:
+        m = json.loads((DATA / "deploy" / "in_progress.json").read_text())
+        return float(m.get("until", 0)) > now
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
 
 
 def _ntfy_topic() -> str:
