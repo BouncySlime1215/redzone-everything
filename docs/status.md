@@ -18,8 +18,8 @@ scorecard must report `"eval_data": "eval-data-v1"`. Nobody copies archives from
 2. Run the full scorecards (NFL/NBA/NHL + the Nov 1 demo) on the base and on `integration/next`,
    and fill the pending cells in `docs/integration.md`. Revert any merge that made the
    combination worse.
-3. Merge #2 when its dead-air setting is final (its PR title now says 8.6 → 9.7 % "accepted":
-   confirm the user accepted it). Then #4 is re-measured.
+3. Merge #2 right after #14, and keep it inside the scorecard checks. The user chose "Keep drive
+   gain, 9.7 % dead air" on #2's decision card at 17:06. Then re-measure #4.
 4. Merge #11 → #8 (sync, after the DECISION review of screen.py), then #5, #6, #9.
 5. Engine glue: build `WorldState` in `Engine.decide` and fill `Screen.switch_in_flight` with
    `trace.switch_id(cmd_ts)` (from #10).
@@ -28,6 +28,7 @@ scorecard must report `"eval_data": "eval-data-v1"`. Nobody copies archives from
 
 - 2026-11-03: **PR #4 (Hype v2) is held** until PR #2's dead-air fix lands. Then it is re-measured on `integration/next`.
 - 2026-11-03: **PR #8 (sync predictor): its NBA trade (124 → 132) is accepted.** It is recorded as the measured reason, so it does not block the merge.
+- 2026-11-03 17:06: **PR #2 ships as "Keep drive gain, 9.7 % dead air".** Drives live 13.1 → 19.6 % and big plays live 29.9 → 33.6 %, while NFL dead air goes 8.6 → 9.7 % (on demo day, commercials drop 15.7 → 15.6 %). This is the measured reason the merge rule needs.
 - 2026-11-03: PR #1 is approved as it is. Order: #1, then #3 after its entry fix, then #2 after its dead-air fix.
 
 ## Thread cap and queue
