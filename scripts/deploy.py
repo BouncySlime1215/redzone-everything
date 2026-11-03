@@ -12,11 +12,14 @@ Deploy steps, in order. Nothing on the running checkout changes before step 5.
  1. Lock (one deploy at a time) and refuse if a previous deploy never finished its health watch.
  2. `git fetch origin integration/release`; nothing to do if HEAD is already there.
  3. Refuse if tracked files are edited, or requirements.txt changed (install deps by hand first).
+    Untracked files (data/, agent/model/, .venv-agent/, local docs) never block a deploy.
  4. Run the test suite on the new commit in a separate worktree (data/deploy/stage), at background
     priority (`taskpolicy -b` on the Mac, `nice` elsewhere). Fail -> stop, nothing touched.
  5. Wait until no game is live and none starts inside the watch window (or give up, exit 2).
  6. Save config + models (content-addressed, deduplicated), check out the new commit (detached),
-    restart the launchd service, then the watchdog so it runs the new code too.
+    restart the launchd service, then the watchdog so it runs the new code too. A local untracked
+    file at a path the new commit tracks is removed if identical, else moved to
+    data/deploy/untracked/<commit>/ (and put back on a rollback).
  7. Watch health for 10 minutes against the old version's last 10 minutes: API up, no crash loop,
     no burst of new errors or switch failures, feeds and sticks no worse. The watchdog leaves
     restarts to this script while the deploy marker is present.
@@ -557,7 +560,70 @@ class Deployer:
             self.journal("waiting", msg=why)
             self.sys.sleep(min(self.s.live_poll_s, max(1.0, deadline - self.sys.now())))
 
+    # Untracked files in the way --------------------------------------------------------------------
+    # The Mac's checkout carries local, untracked files (data/, agent/model/, .venv-agent/, docs
+    # copied in by hand). Most are never touched. But git refuses to check out a commit that tracks
+    # a path the checkout has as an untracked file, even one with the same bytes. So before a
+    # switch: an identical copy is removed (the checkout puts the same bytes back); a different one
+    # is moved to data/deploy/untracked/<commit>/ and put back if we roll away from that commit.
+
+    def _aside_dir(self, commit: str) -> Path:
+        return self.dir / "untracked" / commit[:12]
+
+    def clear_way(self, commit: str) -> list[str]:
+        """Make room for `commit`'s files; returns the paths moved aside (different local copies)."""
+        incoming = self.sys.git("diff", "--name-only", "--no-renames", "--diff-filter=A", "-z",
+                                "HEAD", commit).stdout.split("\0")
+        moved: list[str] = []
+        for rel in filter(None, incoming):
+            p = self.root / rel
+            if not (p.is_file() or p.is_symlink()):
+                continue
+            ours = self.sys.git("hash-object", "--", rel).stdout.strip() if p.is_file() else ""
+            theirs = self.sys.git("rev-parse", f"{commit}:{rel}").stdout.strip()
+            if ours and ours == theirs:
+                p.unlink()
+                continue
+            dst = self._aside_dir(commit) / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(p), str(dst))
+            moved.append(rel)
+        if moved:
+            mf = self._aside_dir(commit) / "moved.json"
+            _atomic_json(mf, sorted(set(moved) | set(json.loads(mf.read_text()) if mf.exists() else [])))
+            self.journal("moved_aside", msg=f"{len(moved)} local untracked file(s) differ from {commit[:9]}; "
+                                            f"kept in {self._aside_dir(commit).relative_to(self.root)}",
+                         files=moved[:50])
+        return moved
+
+    def put_back(self, leaving: str) -> list[str]:
+        """After rolling away from `leaving`, put back the local files moved aside for it."""
+        d = self._aside_dir(leaving)
+        mf = d / "moved.json"
+        if not mf.exists():
+            return []
+        back = []
+        for rel in json.loads(mf.read_text()):
+            src, dst = d / rel, self.root / rel
+            if src.exists() and not dst.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(src), str(dst))
+                back.append(rel)
+        shutil.rmtree(d, ignore_errors=True)
+        if back:
+            self.journal("put_back", msg=f"{len(back)} local untracked file(s) restored", files=back[:50])
+        return back
+
+    def put_back_all(self, but: str) -> None:
+        """Rolling back (also after a checkout that failed half-way): every local file moved aside
+        for another commit goes back, unless the commit we're on now tracks that path."""
+        root = self.dir / "untracked"
+        for d in sorted(root.iterdir()) if root.is_dir() else ():
+            if d.is_dir() and not but.startswith(d.name):
+                self.put_back(d.name)
+
     def switch_to(self, commit: str) -> bool:
+        self.clear_way(commit)
         self.sys.git("checkout", "--quiet", "--detach", commit)
         ok = self.sys.restart(SERVICE_LABEL)
         self.sys.restart(AGENT_LABEL)   # the watchdog should run the same code; fine if not installed
@@ -602,6 +668,7 @@ class Deployer:
         self.journal("rollback", msg=f"to {commit[:9]}: {why}", commit=commit, snapshot=snapshot)
         try:
             self.sys.git("checkout", "--quiet", "--force", "--detach", commit)
+            self.put_back_all(but=commit)
             if snapshot:
                 changed = self.snaps.restore(snapshot)
                 self.journal("restored", msg=f"{len(changed)} config/model file(s)", files=changed[:50])

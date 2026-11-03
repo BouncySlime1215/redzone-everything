@@ -285,11 +285,14 @@ def test_feed_failing_only_on_the_new_version_rolls_back(world):
     assert any("feed" in r for r in state(w)["history"][-1]["reasons"])
 
 
-def test_failed_checkout_is_rolled_back_not_left_half_done(world):
+def test_failed_checkout_is_rolled_back_not_left_half_done(world, monkeypatch):
     w = world
     c = w.push_commit("new\n", "data_seed.txt")
-    (w.mac / "data_seed.txt").write_text("untracked local file in the way\n")
-    assert w.deployer().deploy(skip_tests=True) == D.EXIT_ROLLED_BACK
+    dep = w.deployer()
+    real = dep.sys.git
+    monkeypatch.setattr(dep.sys, "git", lambda *a, **k: (_ for _ in ()).throw(D.DeployError("checkout failed"))
+                        if a[:1] == ("checkout",) and "--force" not in a else real(*a, **k))
+    assert dep.deploy(skip_tests=True) == D.EXIT_ROLLED_BACK
     assert w.fake.head() == w.a and c != w.a
     assert any("deploy step failed" in r for r in state(w)["history"][-1]["reasons"])
 
@@ -568,3 +571,64 @@ def test_snapshots_referenced_by_state_survive_pruning(world):
     w.deployer().snaps.prune(w.deployer()._protected(state(w)))
     assert w.deployer().rollback() == D.EXIT_OK            # previous's snapshot is still there
     assert (w.mac / "data/config.yaml").read_text() == "teams: {nfl: [WSH]}\n"
+
+
+# ---- the Mac's real checkout: untracked local files ----------------------------------------------
+
+def test_untracked_local_files_never_block_and_collisions_are_handled(world):
+    """The Mac's checkout has untracked data/, agent/model/, .venv-agent/ and docs copied in by
+    hand. None of that refuses a deploy; a local copy of a file the new commit starts tracking is
+    removed if identical and moved aside (then put back on rollback) if different."""
+    w = world
+    for name, text in (("docs/build-plan-2026-11-03.md", "plan\n"), ("scripts/tool.py", "new tool\n")):
+        (w.dev / name).parent.mkdir(parents=True, exist_ok=True)
+        (w.dev / name).write_text(text)
+    target = w.push_commit("v3\n")
+    (w.mac / ".venv-agent").mkdir()
+    (w.mac / ".venv-agent/pyvenv.cfg").write_text("home = x\n")
+    (w.mac / "docs").mkdir()
+    (w.mac / "docs/build-plan-2026-11-03.md").write_text("plan\n")           # same bytes as the commit
+    (w.mac / "docs/build-plan-notes.md").write_text("mine\n")                # not in the commit
+    (w.mac / "scripts").mkdir()
+    (w.mac / "scripts/tool.py").write_text("my local tool\n")                # differs from the commit
+    assert w.deployer().deploy(skip_tests=True) == D.EXIT_OK
+    assert w.fake.head() == target
+    assert (w.mac / "scripts/tool.py").read_text() == "new tool\n"
+    aside = w.mac / "data/deploy/untracked" / target[:12] / "scripts/tool.py"
+    assert aside.read_text() == "my local tool\n"
+    for keep in (".venv-agent/pyvenv.cfg", "docs/build-plan-notes.md", "data/config.yaml",
+                 "agent/model/adapter/adapters.safetensors"):
+        assert (w.mac / keep).exists(), keep
+    assert w.deployer().rollback() == D.EXIT_OK
+    assert w.fake.head() == w.a
+    assert (w.mac / "scripts/tool.py").read_text() == "my local tool\n"
+    assert not (w.mac / "docs/build-plan-2026-11-03.md").exists()           # it was identical: git had it
+    assert (w.mac / "docs/build-plan-notes.md").read_text() == "mine\n"
+
+
+def test_failed_switch_puts_moved_files_back(world, monkeypatch):
+    w = world
+    (w.dev / "scripts").mkdir()
+    (w.dev / "scripts/tool.py").write_text("new tool\n")
+    w.push_commit("v3\n")
+    (w.mac / "scripts").mkdir()
+    (w.mac / "scripts/tool.py").write_text("my local tool\n")
+    dep = w.deployer()
+    real = dep.sys.git
+
+    def git(*a, **k):
+        if a[:1] == ("checkout",) and "--force" not in a:
+            raise D.DeployError("checkout failed")
+        return real(*a, **k)
+    monkeypatch.setattr(dep.sys, "git", git)
+    assert dep.deploy(skip_tests=True) == D.EXIT_ROLLED_BACK
+    assert (w.mac / "scripts/tool.py").read_text() == "my local tool\n"
+
+
+def test_edited_tracked_files_still_refuse_with_untracked_around(world):
+    w = world
+    (w.mac / "docs").mkdir()
+    (w.mac / "docs/build-plan.md").write_text("x\n")
+    (w.mac / "app.txt").write_text("local edit\n")
+    with pytest.raises(D.DeployError, match="app.txt"):
+        w.deployer().deploy(skip_tests=True)
