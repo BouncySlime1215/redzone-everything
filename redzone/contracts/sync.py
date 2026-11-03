@@ -13,8 +13,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
-SampleKind = Literal["tap", "screen", "boundary", "mic", "predicted"]
-SyncSource = Literal["tap", "screen", "app", "boundary", "predicted", "default"]
+# "clock": the score bug's running game clock against the feed's play clock (scorebug.py)
+SampleKind = Literal["tap", "screen", "boundary", "mic", "predicted", "clock"]
+# "sync": the per-channel Kalman filter (redzone/decider/sync.py) has this channel, from automatic signals
+SyncSource = Literal["tap", "screen", "app", "boundary", "predicted", "default", "sync"]
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,9 @@ class SyncEstimate:
     source: SyncSource       # where the number came from
     calibrated_at: float | None = None   # epoch s of the newest sample used, None = never
     behind_s: float = 0.0    # extra rewind applied on entry (already included in delay_s)
+    # The channel's signals disagree right now (one was off by > 3 sigma): trust sigma_s, and expect a
+    # re-sync. The core should treat an uncertain channel like an uncalibrated one for tight timing.
+    uncertain: bool = False
 
     @property
     def calibrated(self) -> bool:

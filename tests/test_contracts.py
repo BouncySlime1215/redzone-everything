@@ -68,6 +68,12 @@ def test_legacy_sync_wraps_delaybook():
         s.observe("youtubetv:espn", 26.0, "mic", 1000.0)
 
 
+def test_sync_estimate_v2_fields_default_safely():
+    e = c.SyncEstimate("prime:x", 33.0, 4.0, "sync", 100.0)
+    assert e.calibrated and not e.uncertain
+    assert c.SyncEstimate("prime:x", 33.0, 9.0, "sync", 100.0, uncertain=True).uncertain
+
+
 def test_legacy_breaks_quantiles_are_ordered():
     from redzone.scoring.breaks import BreakBook
     b = legacy.LegacyBreaks(BreakBook(clock=lambda: 0.0))

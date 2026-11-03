@@ -124,10 +124,19 @@ async def main() -> None:
         say(BAD, "Couldn't find your network connection")
         return
     say(OK, f"Mac is {ip} on {iface} ({net})")
-    if ipaddress.ip_address(ip) in ipaddress.ip_network("100.64.0.0/10"):
-        say(WARN, "This looks like a campus/hotspot/apartment network, not a home router. "
-                  "The sticks and TV must be on this same Wi-Fi, and some of these networks block "
-                  "devices from talking to each other.")
+    # 100.64.0.0/10 alone proves nothing: Nick's home router hands out 100.110.165.x. Compare with the
+    # saved home network instead, and check that Tailscale isn't taking the routes to it.
+    from redzone.network import Probe, assess, home_from_devices
+    nst = assess(Probe(), home_from_devices(old))
+    if nst.where == "away":
+        say(WARN, nst.message + " Run this check from home.")
+    elif nst.routes_broken:
+        say(BAD, nst.message)
+    elif nst.where == "home":
+        say(OK, nst.message)
+    elif ipaddress.ip_address(ip) in ipaddress.ip_network("100.64.0.0/10") and nst.tailscale:
+        say(WARN, "This network uses 100.64.0.0/10 addresses, the same range as Tailscale. If devices "
+                  "aren't found, check `.venv/bin/python -m redzone.network`.")
     vpn = subprocess.run(["scutil", "--nc", "list"], capture_output=True, text=True).stdout
     for line in vpn.splitlines():
         if "(Connected)" in line:

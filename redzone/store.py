@@ -88,6 +88,11 @@ class Store:
         cols = [c[0] for c in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
+    def last_snapshot_between(self, t0: float, t1: float) -> float | None:
+        """When the last live-games snapshot in [t0, t1) was taken (the night report's "screen on until")."""
+        row = self._x("SELECT MAX(ts) FROM snapshots WHERE ts >= ? AND ts < ?", (t0, t1)).fetchone()
+        return float(row[0]) if row and row[0] is not None else None
+
     def checkpoint(self) -> None:
         """Fold the write-ahead log back into the database file so it can't grow without bound."""
         self._x("PRAGMA wal_checkpoint(TRUNCATE)")

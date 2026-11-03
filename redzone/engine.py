@@ -15,7 +15,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from redzone import bets as betlib
-from redzone import reel, standby, userstate, views
+from redzone import reel, standby, trace, userstate, views
 from redzone.reel import REEL_DIR
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
 from redzone.config import Config, ConfigError
@@ -118,8 +118,14 @@ class Engine:
         self.recorded = RecordedPlayback(self)
         from redzone.discovery.runtime import DiscoveryRuntime
         self.discovery = DiscoveryRuntime(self)
+        from redzone.network import NetWatch
+        # Home / away from home / Tailscale stealing the home routes (redzone/network.py). Read-only.
+        self.network = NetWatch(self.discovery.autonomy.paths.devices)
         self.tonight = Tonight(self)   # today's plan + pre-game checks on the hidden stick
         from redzone.supervisor import DATA as SUPERVISOR_DATA, Supervisor
+        # Per-switch TraceEvents (redzone/contracts/trace.py): data/traces.jsonl; in memory without a data dir.
+        self.trace_sink = (trace.JsonlTrace(data_dir.parent / "traces.jsonl") if data_dir
+                           else trace.MemoryTrace())
         # Watches the live system and fixes what it can on its own (redzone/supervisor.py).
         self.supervisor = Supervisor(self, root=data_dir.parent if data_dir else SUPERVISOR_DATA)
         self.control.target_names = self._target_names
@@ -160,7 +166,7 @@ class Engine:
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
                              self._boundary_loop(), self._scorebug_loop(), self.tonight.run(),
-                             self.supervisor.run())
+                             self.supervisor.run(), self.network.run())
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)
@@ -805,6 +811,7 @@ class Engine:
         self._pending_decision = d
         self._pending_since = time.time()
         self._pending_mono = time.monotonic()
+        before_target = getattr(self.control, "on_target", None) or getattr(self.where.get(before or ""), "target", None)
         if deferred:
             # Conservatively mark the transition unknown until observed; never
             # mark a big play seen because a command merely was submitted.
@@ -836,10 +843,17 @@ class Engine:
             if (not out.ok and not out.dry_run and d.action == "switch" and d.kind != "user" and target
                     and not out.detail.startswith(NOT_THE_TARGETS_FAULT)):
                 self._fail_cool[target] = time.time() + self.cfg.get("decider.fail_cooldown_s", 90)
+            detail = {"took": out.took, "detail": out.detail, "path": out.path, "waited": round(out.waited, 1)}
+            try:
+                detail["trace"] = trace.build(d, before, target, out, cmd_ts, delays=self.delays,
+                                              before_target=before_target, labels=self._trace_labels(before, d.target),
+                                              from_replay=replay_exit is not None)
+                trace.emit(self.trace_sink, detail["trace"])
+            except Exception:   # a trace must never cost the switch its row
+                log.exception("switch trace failed")
             self.store.switch(ts=cmd_ts, frm=before, to_game=d.target, target=target, kind=d.kind, reason=d.reason,
                               event_ts=event_ts, cmd_ts=cmd_ts, confirmed_ts=out.confirmed_at, ok=out.ok,
-                              dry_run=out.dry_run, detail={"took": out.took, "detail": out.detail,
-                                                           "path": out.path, "waited": round(out.waited, 1)})
+                              dry_run=out.dry_run, detail=detail)
             if not out.ok and not out.dry_run:
                 log.warning("switch to %s failed after %.1fs (%s): %s", d.target, out.took, out.path, out.detail[:300])
             if not cancelled:   # a cancel (pause, your tap, a newer command) says nothing about the target
@@ -873,6 +887,17 @@ class Engine:
             if abs(jump) > CLOCK_JUMP_S:
                 age -= jump
         return max(0.0, age)
+
+    def _trace_labels(self, *gids: str | None) -> dict:
+        out = {}
+        for gid in gids:
+            g = self.merger.games.get(gid or "")
+            if g is not None:
+                try:
+                    out[gid] = g.matchup
+                except Exception:
+                    pass
+        return out
 
     def _switch_deadline(self, now: float) -> None:
         """A switch that never reports back (a hung tuner path) would block every decision,
@@ -1529,7 +1554,8 @@ class Engine:
                         "live": x.live is not None} for t, x in self.delays.book.items()],
             "delay_watch": self.boundary.status(),
             "scorebug_watch": self.scorebug.status(),
-            "health": {"sources": list(self.source_status.values()), "sticks": self.control.status(),
+            "health": {"sources": list(self.source_status.values()), "sticks": self._sticks_view(),
+                       "network": self.network.view(),
                        "tv": {"state": "unknown"}, "race": self.merger.race_summary(),
                        "adb": self.control.adb_ok, "switch_times": self.control.switch_times(),
                        "fastcast": self.fastcast.status() if self.fastcast else None,
@@ -1541,6 +1567,16 @@ class Engine:
                 "starters": [{"name": x.name, "pos": x.pos, "team": x.team, "mine": x.mine}
                              for x in self.fantasy.starters]},
         }
+
+    def _sticks_view(self) -> list[dict]:
+        """Stick rows for the phone. Away from home a stick that can't answer is "away", not "offline"
+        (the watchdog only reconnects "offline" ones)."""
+        rows = self.control.status()
+        if self.network.away:
+            for r in rows:
+                if r.get("state") != "connected":
+                    r["state"] = "away"
+        return rows
 
     def screen_evidence(self) -> dict:
         if self.recorded.active:

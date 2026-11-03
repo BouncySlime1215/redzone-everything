@@ -17,6 +17,9 @@ decision (contracts, CI) merges whenever it is ready.
 | 1a | decision-core interface (23f30d0) + contracts v1 | 418ffc5 | 1263 pass / 0 fail | no decision change | | | | | | | | | | infrastructure |
 | 1b | #7 CI on every PR + d0c775a SwitchPath fields | 48b5948 | 1271 pass / 0 fail, ruff clean | no decision change | | | | | | | | | | infrastructure; CI scorecards need the `eval-data-v1` release |
 | 2 | #3 NHL (entry fix e21a0b0) | (merge) | 1285 pass / 0 fail, ruff clean | pending | pending | pending | pending | pending | pending | 5 / 0 (thread's run) | pending | pending | pending | merged clean (no conflicts with #1 in decider.py; reviewed the overlap by hand); crunch trade stated in #3; scorecards on the combination pending the archive, and it is reverted if the combination is worse |
+| 2a | #11 SyncEstimate v2 | 0ed7a1b | 1286 pass / 0 fail | no decision change | | | | | | | | | | contract, additive |
+| 2b | #10 traces + nightly report | fe02385 | 1309 pass / 0 fail | pending | | | | | | | | | | merged clean; touches engine/control/supervisor |
+| 2c | #12 network awareness | 565767e | 1339 pass / 0 fail | pending | | | | | | | | | | merged clean |
 
 Scorecard numbers marked "prior run" or "thread's run" come from the threads' own runs on the same window. Every
 pending cell gets filled from the pinned archive.

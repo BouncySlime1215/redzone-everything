@@ -59,6 +59,12 @@ LIMITS: dict[str, tuple[float, float]] = {
     "brain.break_weight": (0.0, 1.0),
     "brain.hot_reason_min": (50, 100),
     "brain": (0, 30),
+    "supervisor.budget.window_nights": (1, 60),
+    "supervisor.budget.failure_pct": (0, 100),
+    "supervisor.budget.mid_play_cuts": (0, 100),
+    "supervisor.budget.dead_air_s": (1, 300),
+    "supervisor.budget.dead_air_pct": (0, 100),
+    "supervisor.budget.safe_mode_min": (0, 1440),
 }
 
 # Former rate/dwell limits are deliberately inactive. Old saved files and lab
