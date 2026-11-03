@@ -141,11 +141,13 @@ def train_league(league: str, root: Path | None = None, out_dir: Path | None = N
     if league == "nhl":   # lengths from the archive's train nights only (see fit(src="espn"))
         ldata = ldata[ldata.night.map(lambda n: D.night_split(n, valid=0.2, test=0.2)) == "train"].assign(split="train")
     type_len = _type_lengths(ldata)
+    type_q = {t: [_type_lengths(ldata, 0.1).get(t, v), v, _type_lengths(ldata, 0.9).get(t, v)]
+              for t, v in type_len.items()}
     long_types = _long_types(type_len)
     arrays, meta = B3.flatten(heads, feats)
     meta.update(nslots=slot, heads=meta_heads,
                 info={"league": league, "trained": time.strftime("%Y-%m-%d"), "split": "night",
-                      "type_names": type_names, "long_types": long_types, "type_len": type_len,
+                      "type_names": type_names, "long_types": long_types, "type_len": type_len, "type_q": type_q,
                       "clock": "game" if league == "nhl" else "wall", "nights": report["nights"]})
     out = (out_dir or B3_MODEL_DIR()) / f"{league}.v3.npz"
     B3.save(out, arrays, meta)
@@ -162,13 +164,14 @@ def train_league(league: str, root: Path | None = None, out_dir: Path | None = N
     return report
 
 
-def _type_lengths(ldata) -> dict[str, float]:
-    """Median dead time (s) of each stoppage type, from the train nights' stoppage starts."""
+def _type_lengths(ldata, q: float = 0.5) -> dict[str, float]:
+    """A quantile (default the median) of each stoppage type's dead time (s), from the train nights'
+    stoppage starts."""
     d = ldata[(ldata.split == "train") & ldata.len_s.notna() & (ldata.start_type.fillna(0) > 0)]
     out = {}
     for c, v in d.groupby(d.start_type.astype(int)).len_s:
         if len(v) >= 30:
-            out[D.TYPES[int(c)]] = round(float(v.median()), 1)
+            out[D.TYPES[int(c)]] = round(float(v.quantile(q)), 1)
     return out
 
 

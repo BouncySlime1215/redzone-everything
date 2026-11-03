@@ -273,6 +273,7 @@ class V3:
     hot: float | None = None
     clock: str = "wall"                   # "game" for leagues trained on the game clock
     type_len: dict[str, float] = field(default_factory=dict)   # median length (s) of each type
+    type_q: dict[str, list[float]] = field(default_factory=dict)  # (p10, p50, p90) length of each type
 
     def expected_len(self, long_only: bool = True) -> float | None:
         """Expected length of the stoppage coming within 60 s, weighted by its likely type."""
@@ -282,6 +283,20 @@ class V3:
         return sum(p * v for p, v in items) / w if w > 0 else None
 
     long: tuple = ("tv_timeout", "period_end")
+
+    def expected_q(self, long_only: bool = True) -> tuple[float, float, float] | None:
+        """(p10, p50, p90) length of the stoppage coming within 60 s: the likely types' quantiles,
+        probability-weighted (a mixture's quantiles approximated by averaging; enough for planning)."""
+        items = [(p, self.type_q.get(t) or ([self.type_len[t]] * 3 if t in self.type_len else None))
+                 for t, p in self.types.items() if not long_only or t in self.long]
+        items = [(p, q) for p, q in items if q]
+        w = sum(p for p, _ in items)
+        if w <= 0:
+            return None
+        return tuple(sum(p * q[i] for p, q in items) / w for i in range(3))
+
+    def top_type(self) -> str:
+        return max(self.types.items(), key=lambda kv: kv[1])[0] if self.types else "none"
 
     def as_dict(self) -> dict:
         r = lambda x: None if x is None else round(float(x), 3)  # noqa: E731
@@ -313,4 +328,97 @@ def reading_from(pred: dict, forest: Forest3, at: float | None) -> V3:
               big={60: b60, 180: max(b180, b60)},
               hot=max(0.0, min(100.0, float(pred["hot"]))) if "hot" in pred else None,
               clock=forest.info.get("clock", "wall"), type_len=dict(forest.info.get("type_len", {})),
+              type_q={k: list(v) for k, v in (forest.info.get("type_q") or {}).items()},
               long=tuple(long_types))
+
+
+# ----------------------------------------------------------------------------- contracts
+
+def break_kind(type_name: str, period_long: bool = False):
+    """A v3 stoppage type as the contract's BreakKind."""
+    from redzone.contracts.breaks import BreakKind
+    return {"tv_timeout": BreakKind.COMMERCIAL, "score_break": BreakKind.COMMERCIAL,
+            "team_timeout": BreakKind.TEAM_TIMEOUT, "review": BreakKind.REVIEW, "injury": BreakKind.REVIEW,
+            "free_throws": BreakKind.NONE, "other": BreakKind.COMMERCIAL,
+            "period_end": BreakKind.HALFTIME if period_long else BreakKind.QUARTER}.get(type_name, BreakKind.NONE)
+
+
+class MomentV3:
+    """MomentModel (redzone.contracts.moment) over the Brain: v3 where a league has a v3 model, v2
+    otherwise (model_version says which). key_soon_p = P(big play within 60 s), break_soon_p =
+    P(a commercial-length stoppage starts within 60 s). `detail(game_id)` returns the full brain3.V3
+    (15/30/60 s stoppage odds and type, length and entry quantiles, big plays in 1 and 3 min)."""
+
+    def __init__(self, brain):
+        self.brain = brain
+        self._last: dict[str, V3] = {}
+
+    def predict(self, g: GameState, now: float):
+        from redzone.contracts.moment import MomentPrediction, empty
+        if self.brain is None or g is None or not self.brain.available(g.league):
+            return empty(getattr(g, "game_id", ""), now)
+        r = self.brain.read(g)
+        v = r.v3
+        tr = self.brain._track.get(g.game_id)
+        wp = (tr.row or {}).get("wp_home") if tr is not None else None
+        if v is not None:
+            self._last[g.game_id] = v
+            return MomentPrediction(g.game_id, now, r.hotness, v.big[60], v.long_p, 60.0,
+                                    None if wp is None else float(wp), tuple(r.break_reasons), "brain-v3")
+        if r.hotness is None and r.key_soon_p is None:
+            return empty(g.game_id, now)
+        return MomentPrediction(g.game_id, now, r.hotness, r.key_soon_p, r.break_soon_p, 60.0,
+                                None if wp is None else float(wp), tuple(r.reasons), "brain-v2")
+
+    def detail(self, game_id: str) -> V3 | None:
+        return self._last.get(game_id)
+
+    def forget(self, game_id: str) -> None:
+        self._last.pop(game_id, None)
+        if self.brain is not None:
+            self.brain.forget(game_id)
+
+
+class BreaksV3:
+    """BreakModel (redzone.contracts.breaks) over the rules' BreakBook plus Brain v3 quantiles.
+
+    A break in the data: lengths = v3's time-to-restart quantiles from that play (q10 cautious end),
+    next_restart_at = its wallclock + the median. A break coming: p_start = the blended forecast,
+    lengths = the likely types' quantiles. No v3 reading (or halftime / intermission, which keep the
+    rules' table): the legacy 0.6x / 1.6x of the table median."""
+
+    def __init__(self, book, brain=None):
+        self.book = book
+        self.brain = brain
+
+    def observe(self, g: GameState) -> None:
+        self.book.observe(g)
+
+    def forecast(self, g: GameState, now: float):
+        from redzone.contracts.breaks import BreakForecast
+        from redzone.contracts.legacy import Q10_MULT, Q90_MULT, _break_kind
+        f = self.book.forecast(g)
+        m = float(f.expect_s)
+        kind = _break_kind(f.why, m)
+        q = (m * Q10_MULT, m, m * Q90_MULT)
+        restart = None
+        v = None
+        if self.brain is not None and g is not None and self.brain.available(g.league):
+            v = self.brain.read(g).v3
+        if v is not None and m < 600:
+            from redzone.scoring.breaks import _about_now
+            if f.now and _about_now(v, g):
+                q = v.entry
+                restart = v.resume_at(50)
+            elif not f.now and f.p > 0:
+                eq = v.expected_q()
+                if eq is not None:
+                    q = tuple(sorted(eq))
+                if kind.value == "none":
+                    kind = break_kind(v.top_type())
+        p = 1.0 if f.now else float(f.p)
+        if p <= 0:
+            from redzone.contracts.breaks import NO_BREAK
+            return BreakForecast(g.game_id, now, **NO_BREAK)
+        return BreakForecast(g.game_id, now, p, kind, bool(f.now), float(q[0]), float(q[1]), float(q[2]),
+                             restart, f.why)

@@ -701,14 +701,20 @@ class Decider:
     def _learn_entries(self, cands: dict[str, Candidate]) -> None:
         """Brain v3's entry point (seconds to the restart) for each game's newest event, for the
         expected end of a stoppage the data hasn't closed yet (cuts.DeadTracker.resume_eta)."""
-        if not self.cfg.get("brain.v3_entry", True):
+        on = self.cfg.get("brain.v3_entry", ["nfl", "nba", "nhl"])
+        if not on:
             return
         for gid, x in cands.items():
             tl = self.timelines.get(gid)
             v = (getattr(x.scored, "brain", None) or {}).get("v3") if x is not None else None
             if tl is None or not v:
                 continue
+            if isinstance(on, (list, tuple, set)) and x.scored.league.value not in on \
+                    and x.scored.league.base.value not in on:
+                continue
             try:
+                tl.dead.learned_q = 0 if int(self.cfg.get("brain.v3_entry_q", 50)) <= 10 else 1
+                tl.dead.learned_cap = bool(self.cfg.get("brain.v3_entry_cap", True))
                 tl.dead.learn(v.get("at"), v.get("entry_q"))
             except Exception:  # noqa: BLE001 - a bad reading only loses the learned estimate
                 log.exception("brain v3 entry for %s", gid)

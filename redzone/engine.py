@@ -1118,7 +1118,7 @@ class Engine:
         if not self.cfg.get("brain.enabled", False):
             return None, 0.0, False
         return (self.scorer.brain, float(self.cfg.get("brain.break_weight", 0.5)),
-                bool(self.cfg.get("brain.v3_lengths", True)))
+                self.cfg.get("brain.v3_lengths", ["nfl", "nba"]))
 
     def _break_standby(self, cands: dict) -> tuple[str | None, str, standby.Option | None]:
         """The game on screen is about to break (redzone/scoring/breaks.py): where the decider will

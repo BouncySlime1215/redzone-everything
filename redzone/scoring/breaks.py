@@ -97,6 +97,13 @@ def blend(f: Forecast, p: float | None, g: GameState, w: float = 0.5, why: list[
     return Forecast(q, length if length and 0 < length < 1500 else BRAIN_LEN.get(g.league.base, 150.0), reason)
 
 
+def _league_in(setting, g: GameState) -> bool:
+    """A per-league switch: a list of leagues (a game's own league or its pro base), or a bool."""
+    if isinstance(setting, (list, tuple, set)):
+        return g.league.value in setting or g.league.base.value in setting
+    return bool(setting)
+
+
 def _about_now(v3, g: GameState) -> bool:
     """The v3 reading is about the play now in the data (not an older one)."""
     lp = g.last_play
@@ -284,7 +291,7 @@ class BreakBook:
         if self._brain is not None and g.phase == Phase.LIVE:
             got = self._brain()
             b, w = got[0], got[1]
-            lengths = bool(got[2]) if len(got) > 2 else True
+            lengths = _league_in(got[2], g) if len(got) > 2 else True
             if b is not None and (not f.now or lengths):
                 r = b.read(g)
                 f = blend(f, r.break_soon_p, g, w, r.break_reasons, v3=r.v3, lengths=lengths)

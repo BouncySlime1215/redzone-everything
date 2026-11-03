@@ -263,6 +263,8 @@ class DeadTracker:
         # restart). Used only for the EXPECTED restart of a window the data hasn't closed yet; the
         # "surely dead until" floors that gate cuts and landings never read it.
         self.learned: tuple[float, tuple[float, float, float]] | None = None
+        self.learned_q = 1          # which quantile the expected restart uses (0 = p10, 1 = p50)
+        self.learned_cap = True     # never later than the table's median (a learned estimate only shortens)
 
     # ---- input
     def add(self, pid: str, lo: float, hi: float, kind: str, text: str, type_text: str,
@@ -312,7 +314,7 @@ class DeadTracker:
         newest = self._order()[-1].hi if self.marks else None
         if newest is None or abs(newest - at) > 1.0 or at + 1.0 < w.start - AFTER_PLAY_S:
             return None
-        return at + q[1]
+        return at + q[self.learned_q]
 
     def seen(self, fresh_at: float, lag: float) -> None:
         self.fresh_at, self.lag = fresh_at, lag
@@ -409,10 +411,11 @@ class DeadTracker:
                 continue
             if w.end is not None:
                 return max(x, w.end)
+            table = w.start + MEDIAN_S.get(_lg(self.league), {}).get(w.kind, 30.0)
             learned = self._learned_end(w)
             if learned is not None:
-                return max(x, learned)
-            return max(x, w.start + MEDIAN_S.get(_lg(self.league), {}).get(w.kind, 30.0))
+                return max(x, min(learned, table) if self.learned_cap else learned)
+            return max(x, table)
         return x
 
     def landing(self, x0: float, x1: float) -> Landing:

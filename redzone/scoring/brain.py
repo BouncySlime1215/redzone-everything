@@ -545,10 +545,15 @@ EMPTY = Reading()
 class Brain:
     """Loads per-league models; keeps one Tracker and a hotness timeline per game."""
 
-    def __init__(self, model_dir: Path | None = None, enabled: bool = True, version: int = 3):
+    def __init__(self, model_dir: Path | None = None, enabled: bool = True, version: int = 3,
+                 v3_score=None):
         self.model_dir = model_dir or MODEL_DIR
         self.enabled = enabled
         self.version = int(version)
+        # Leagues whose score fields (key_soon_p, hotness: what the Scorer adds points for) come from
+        # v3; elsewhere they stay v2's while v3 still supplies the stoppage / entry outputs. None = all.
+        self.v3_score = None if v3_score is None else {str(x) for x in v3_score}
+        self._v2: "Brain | None" = None
         self._models: dict[str, Forest | None] = {}
         self._v3: dict[str, object | None] = {}
         self.info: dict[str, dict] = {}
@@ -561,7 +566,8 @@ class Brain:
     def from_config(cls, cfg) -> "Brain":
         if cfg is None:
             return cls(enabled=False)
-        return cls(enabled=bool(cfg.get("brain.enabled", False)), version=int(cfg.get("brain.version", 3) or 3))
+        return cls(enabled=bool(cfg.get("brain.enabled", False)), version=int(cfg.get("brain.version", 3) or 3),
+                   v3_score=cfg.get("brain.v3_score", None))
 
     def model3(self, league: str):
         """Brain v3's forest for this league (brain_models/<league>.v3.npz), or None: then v2 runs."""
@@ -684,6 +690,11 @@ class Brain:
         top = max(v.types.items(), key=lambda kv: kv[1])[0] if v.types else ""
         out = Reading(break_soon_p=v.long_p, key_soon_p=v.big[180], hotness=v.hot, events=tr.n, key_rate=rate,
                       v3=v, break_reasons=[f"{top.replace('_', ' ')} likely"] if top and v.stop[60] >= 0.3 else [])
+        if self.v3_score is not None and lg not in self.v3_score:
+            if self._v2 is None:
+                self._v2 = Brain(model_dir=self.model_dir, enabled=self.enabled, version=2)
+            r2 = self._v2.read(g)
+            out.key_soon_p, out.hotness, out.key_rate, out.reasons = r2.key_soon_p, r2.hotness, r2.key_rate, r2.reasons
         self._cache[g.game_id] = (tr.n, out)
         self._note(g, tr, out)
         return out
@@ -715,3 +726,5 @@ class Brain:
     def forget(self, game_id: str) -> None:
         for d in (self._track, self._cache, self._timeline):
             d.pop(game_id, None)
+        if self._v2 is not None:
+            self._v2.forget(game_id)

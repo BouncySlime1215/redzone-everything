@@ -248,3 +248,42 @@ def test_learned_entry_ignored_when_stale_or_broken():
         assert dt2.learned is None and dt2.resume_eta(1010.0) == base
     dt.learn(None, (1, 2, 3))
     assert dt.resume_eta(1010.0) == base
+
+
+def test_contract_adapters_are_the_contract_types():
+    from redzone import contracts as c
+    from redzone.scoring.breaks import BreakBook
+    m = B3.MomentV3(B.Brain(version=3))
+    assert isinstance(m, c.MomentModel)
+    b = B3.BreaksV3(BreakBook(clock=lambda: 0.0), B.Brain(version=3))
+    assert isinstance(b, c.BreakModel)
+    assert B3.MomentV3(None).predict(live(), 1.0).available is False
+
+
+def test_contract_break_in_the_data_carries_v3_quantiles_and_restart(monkeypatch):
+    from redzone.scoring.breaks import BreakBook
+    g = live(league=League.NBA, stoppage=Stoppage.TIMEOUT, pid="9")
+    brain = B.Brain(version=3)
+    v = _v3(g.last_play.wallclock, entry=(40.0, 95.0, 210.0))
+    monkeypatch.setattr(brain, "available", lambda lg: True)
+    monkeypatch.setattr(brain, "read", lambda g: B.Reading(break_soon_p=0.5, v3=v))
+    f = B3.BreaksV3(BreakBook(clock=lambda: 0.0), brain).forecast(g, 5.0)
+    assert f.in_data_now and f.p_start == 1.0
+    assert (f.length_q10_s, f.length_q50_s, f.length_q90_s) == (40.0, 95.0, 210.0)
+    assert f.next_restart_at == pytest.approx(g.last_play.wallclock + 95.0)
+
+
+def test_contract_break_coming_uses_type_quantiles(monkeypatch):
+    from redzone.scoring.breaks import BreakBook
+    g = live(league=League.NBA, period=1, clock=600.0, pid="4")
+    g.last_play.type_text, g.last_play.kind = "Jump Shot", "jump_shot"
+    brain = B.Brain(version=3)
+    v = _v3(g.last_play.wallclock)
+    v.type_q.update({"tv_timeout": [120.0, 150.0, 200.0]})
+    monkeypatch.setattr(brain, "available", lambda lg: True)
+    monkeypatch.setattr(brain, "read", lambda g: B.Reading(break_soon_p=0.8, v3=v, break_reasons=[]))
+    book = BreakBook(clock=lambda: 0.0, brain=lambda: (brain, 0.5, True))
+    f = B3.BreaksV3(book, brain).forecast(g, 5.0)
+    assert not f.in_data_now and f.p_start == pytest.approx(0.4)
+    assert (f.length_q10_s, f.length_q50_s, f.length_q90_s) == pytest.approx((120.0, 150.0, 200.0))
+    assert f.kind.value == "commercial"
