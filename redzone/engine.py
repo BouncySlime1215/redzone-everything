@@ -805,10 +805,11 @@ class Engine:
         remaining = self.control.deadline_cost(target)
         if d.kind == "chase" and catchable(tl, delay, now, remaining) is None:
             return False
-        if d.action == "switch" and d.kind != "user":
+        cands1 = {d.target: Candidate(self.scored[d.target], target)} if d.target in self.scored else {}
+        if d.action == "switch" and d.kind != "user" and self.decider._cut_timed(d.target, cands1):
             # [cut timing] the picture must still come up on a dead ball, with the planned rewind
-            plan = self.decider.entry_plan(d.target, {d.target: Candidate(self.scored[d.target], target)}
-                                           if d.target in self.scored else {}, now, remaining,
+            # (only where cut timing is on: decider.entry.leagues)
+            plan = self.decider.entry_plan(d.target, cands1, now, remaining,
                                            urgent=d.kind == "crunch")
             if plan is not None and (not plan.ok or plan.rewind_s != getattr(d, "rewind_s", 0.0)):
                 return False
