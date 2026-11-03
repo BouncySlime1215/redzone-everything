@@ -14,7 +14,9 @@ from redzone.decider.core import SwitchPath
 
 # core.SwitchPath.kind values
 TV_FLIP, HOME_FLIP, IN_APP_TUNE, REPLAY_SEEK, NONE = "tv_flip", "home_flip", "in_app_tune", "replay_seek", "none"
-KINDS = (TV_FLIP, HOME_FLIP, IN_APP_TUNE, REPLAY_SEEK, NONE)
+# A tile of a YouTube TV multiview expanded to full screen (redzone/tuners/multiview.py; flag multiview.enabled).
+MULTIVIEW = "multiview_expand"
+KINDS = (TV_FLIP, HOME_FLIP, IN_APP_TUNE, REPLAY_SEEK, MULTIVIEW, NONE)
 
 
 @runtime_checkable
