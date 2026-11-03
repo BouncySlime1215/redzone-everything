@@ -635,6 +635,8 @@ class Engine:
         if d is None or done is None:
             return
         limit = self.cfg.get("control.max_switch_s", 150)
+        if d.kind == "start":   # nothing confirmed on screen yet: a hung first pick is retried sooner
+            limit = min(limit, self.cfg.get("control.max_start_switch_s", 75))
         if now - self._pending_since < limit:
             return
         log.warning("switch to %s still running after %.0fs: giving up on it", d.target, now - self._pending_since)

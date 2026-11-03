@@ -91,7 +91,9 @@ def test_unconfirmed_plan_does_not_become_watched_game(cfg, clock):
     assert dec.current is None and not dec.history and not dec._screen_log
     dec.reject(d)
     assert dec.current is None
+    clock.t += 3   # a rejected start pick is retried after a short backoff (test_restart_start.py)
     d = dec.decide(cands, commit=False)
+    assert d.action == 'switch'
     clock.t += 12
     dec.confirm(d, cands)
     assert dec.current == '1' and dec.since == clock.t
