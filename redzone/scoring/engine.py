@@ -631,12 +631,12 @@ def _nhl(g, h, k, now, c):
     for flag in g.player_flags[:1]:
         parts.append((10, flag))
     lock = None
-    if sit.empty_net:
+    if g.period_type == "SO" or p >= 4:
+        lock = "overtime"      # [nhl pp] sudden death: only crunch time elsewhere takes the TV (decider)
+    elif sit.empty_net:
         lock = "empty net"
-    elif sit.power_play and k >= 0.5:
-        lock = "power play"
-    elif g.period_type == "SO" or (p >= 4 and k >= 0.9):
-        lock = "overtime"
+    elif sit.power_play and diff is not None and abs(diff) <= c.get("score.nhl.power_play_lock_within", 2):
+        lock = "power play"    # [nhl pp] within 2 goals; garbage time clears it (score())
     pre = "power play" if sit.power_play else ("empty net" if sit.empty_net else None)
     return m, parts, lock, pre
 
