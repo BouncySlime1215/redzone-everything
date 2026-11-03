@@ -284,3 +284,19 @@ def test_prepare_timeout_is_not_ready(monkeypatch):
         raise subprocess.TimeoutExpired("swiftc", 1)
     monkeypatch.setattr(ocr, "_helper", expired)
     assert ocr.prepare().status == "timeout"
+
+
+def test_a_word_a_hair_past_the_frame_edge_is_clamped_not_fatal():
+    """Vision placed text cut at the left border at x = -0.0015 and the whole screen was rejected."""
+    import json as _json
+    from redzone import screen_ocr as so
+    payload = {"status": "ok", "coordinate_system": "normalized_top_left", "width": 1920, "height": 1080,
+               "focus_candidates": [],
+               "observations": [{"text": "INDIANA", "confidence": 1,
+                                 "box": {"x": -0.0015, "y": 0.27, "width": 0.0456, "height": 0.038}},
+                                {"text": "NBCSN", "confidence": 1,
+                                 "box": {"x": 0.08, "y": 0.2, "width": 0.05, "height": 0.03}}]}
+    r = so.parse_result(_json.dumps(payload))
+    assert r.read_ok
+    texts = {o.text: o for o in r.observations}
+    assert set(texts) == {"INDIANA", "NBCSN"} and texts["INDIANA"].x == 0.0

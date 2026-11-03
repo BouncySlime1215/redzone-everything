@@ -771,6 +771,12 @@ main { max-width: var(--maxw); margin: 0 auto; padding: var(--sp-3) var(--gutter
 .ls tr.win td.tot { color: var(--text-1); }
 .ls tr.lose td.tot { color: var(--text-3); }
 .spark { width: 100%; height: 120px; display: block; overflow: visible; }
+.flow { width: 100%; height: 104px; display: block; overflow: visible; margin-top: 6px; }
+.flow-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.flow-stat b { display: block; font: 800 24px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.flow-stat span { display: block; margin-top: 4px; font: 700 10px/1.2 var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.flow-why { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.flow-note { margin: 6px 0 0; color: var(--text-3); font: 600 13px/1.3 var(--font-ui); }
 .spark-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .spark-team { display: flex; align-items: center; gap: 6px; font: 800 16px/1 var(--font-display); letter-spacing: .05em; }
 .spark-team .logo { --s: 22px; }

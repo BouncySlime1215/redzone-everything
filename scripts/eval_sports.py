@@ -73,7 +73,10 @@ def main():
     stress_args(ap)
     a = ap.parse_args()
     lg = League(a.league)
-    cfg = Config(user_path=ROOT / "data/config.yaml")
+    # The live service rewrites data/config.yaml (measured switch costs, taps): scorecards read a
+    # pinned copy when one exists, so a before/after comparison isn't moved by the live night.
+    pinned = ROOT / "data/eval_config.yaml"
+    cfg = Config(user_path=pinned if pinned.exists() else ROOT / "data/config.yaml")
     mine = set(cfg.get(f"teams.{lg.value}") or ["WSH"])
     total = sportsgrade.Card(lg.value)
     t0 = time.time()
@@ -86,6 +89,8 @@ def main():
             print(" ", day, json.dumps(card.summary()))
             for t, what in card.cuts[:3]:
                 print("     CUT", round(t), what)
+            for t, kind, what in card.cut.mid_entries[:3]:
+                print("     MID-PLAY ENTRY", round(t), kind, what)
     out = total.summary()
     out["seconds"] = round(time.time() - t0)
     print(json.dumps(out, indent=1))

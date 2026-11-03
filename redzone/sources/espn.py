@@ -363,7 +363,7 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
             return Stoppage.END_PERIOD
         if p.get("scoringPlay") or any(k in t for k in _SCORE_KINDS):
             return Stoppage.SCORE_BREAK
-        if "challenged" in text or "review" in text:
+        if any(k in text for k in ("challenged", "review", "replay official", "reversed", "upheld")):
             return Stoppage.REVIEW
         if "injur" in text:
             return Stoppage.INJURY
@@ -414,6 +414,17 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
             return Stoppage.WHISTLE  # between plate appearances
         return Stoppage.NONE
     return Stoppage.NONE
+
+
+def _play_clock(league: League, p: dict) -> dict:
+    """[cut timing] Clock (seconds LEFT in the period), period and raw type of one entry."""
+    per = _int(_get(p, "period", "number"))
+    clock = _clock_s(_get(p, "clock", "displayValue"))
+    if league == League.NHL and clock is not None:
+        length = OT_S[league] if (per or 0) >= 4 else PERIOD_S[league]
+        clock = max(0.0, length - clock)  # ESPN NHL play clocks count up
+    return {"clock": clock if league != League.MLB else None, "period": per,
+            "type_text": _get(p, "type", "text") or ""}
 
 
 def _last_free_throw(t: str) -> bool:
@@ -483,9 +494,11 @@ def parse_summary(league: League, data: dict, upto: int | None = None,
 
     seen = _ts(p.get("wallclock"))
     g.last_play = Play(str(p.get("id") or len(cut)), p.get("text") or _get(p, "type", "text") or "",
-                       _kind(league, p), bool(p.get("scoringPlay")), seen, seen, "espn", score=_play_score(p))
+                       _kind(league, p), bool(p.get("scoringPlay")), seen, seen, "espn", score=_play_score(p),
+                       **_play_clock(league, p))
     g.recent_plays = [Play(str(x.get("id")), x.get("text") or "", _kind(league, x), bool(x.get("scoringPlay")),
-                           _ts(x.get("wallclock")), score=_play_score(x)) for x in cut[-8:]]
+                           _ts(x.get("wallclock")), score=_play_score(x), **_play_clock(league, x))
+                      for x in cut[-8:]]
 
     if league.base == League.NFL:
         _nfl_situation(g, p, ids)

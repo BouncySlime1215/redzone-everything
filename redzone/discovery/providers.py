@@ -617,13 +617,20 @@ def peacock_on_yttv(g: GameState, channel_map: ChannelMap | None, have=()) -> li
     ones whose channel codes we have), so Peacock stays the last resort."""
     if channel_map is None or "peacock" not in _nets(g):
         return []
-    out = []
+    out, searched = [], []
     for ch in PEACOCK_ON_YTTV:
         t = f"youtubetv:{ch}"
-        if t not in have and channel_map.yttv_code(t):
+        if t in have:
+            continue
+        note = f"Peacock games air on {PRETTY.get(ch, ch)}"
+        if channel_map.yttv_code(t):
             out.append(Source("youtubetv", t, describe(t), True, "channel", feed="national",
-                              confidence="likely", note=f"Peacock games air on {PRETTY.get(ch, ch)}"))
-    return out
+                              confidence="likely", note=note))
+        elif channel_map.yttv_search_key(t):
+            # No code, but reachable by in-app search (~15-20 s): after every channel with a code.
+            searched.append(Source("youtubetv", t, describe(t), True, "channel", feed="national",
+                                   confidence="likely", note=note + " (tuned by search)"))
+    return out + searched
 
 
 LEAGUE_PASS_APPS = frozenset({"prime", "nba", "dazn"})

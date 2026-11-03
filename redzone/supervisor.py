@@ -1,0 +1,1204 @@
+"""Supervisor: the live system watches itself, so nobody has to.
+
+Every ~10 s it checks a short list of things that have gone wrong on real nights and fixes the
+ones it can, on its own. Each rule waits until a problem has lasted long enough to be real, every
+fix is rate-limited (a minimum gap and a cap per hour), and every observation and fix is written
+to data/supervisor.jsonl.
+
+Rules (name: what it notices -> what it does):
+  screen_not_game   The TV shows the Fire TV home screen, or the app's own home/detail page,
+                    instead of the game (foreground activity + two screenshots) -> resume the
+                    game on the stick on screen (home screen: a fresh deep link). The ONLY rule
+                    that presses keys on the visible stick, and only when the game is clearly
+                    not playing there.
+  stuck_switch      A switch still "in flight" well past control.max_switch_s -> cancel it and
+                    report it failed, so decisions start again.
+  idle_with_live    Live, tunable games but the decider has nothing on for minutes -> clear the
+                    start back-off and short failure cool-downs; then refresh the feeds.
+  repeat_failures   The same target fails again and again -> back off 10 min after 2 failures,
+                    mute it for the night after 3, mute the whole app after 2 muted targets
+                    (or 5 failures), and route each game to another source when one exists.
+  safe_mode         Safe mode for 3+ minutes -> mute the target behind the errors (if one is),
+                    then leave safe mode (at most 3 times an hour; after that it stays and says so).
+  stale_feeds       Live games whose data stopped moving -> drop the fetch back-off; later a fresh
+                    HTTP client and push-feed restart.
+  adb               A stick offline 2+ min -> drop its adb transport and reconnect it; adb itself
+                    down -> start the adb server. Never presses a key.
+  delay_doubt       A channel's delay uncertainty stays wide for 15 min -> rebuild it from its
+                    samples, or fall back to the safe defaults (config delay.default/sigma_default).
+  finished_hold     "Watch this" / lock / focus left on a game that ended -> hand back to autopilot.
+  log_growth        Logs, JSONL files, the image cache and the database WAL kept under their caps.
+
+Plus: key moments (big plays from play-by-play) judged seen/missed as they air, and a nightly
+report at data/reports/YYYY-MM-DD.md (switches, failures by cause, key moments, delays measured,
+what it fixed). Optional phone push through ntfy.sh (no account) when supervisor.ntfy_topic is set.
+
+Read-only report from the saved data:  .venv/bin/python -m redzone.supervisor report [YYYY-MM-DD]
+"""
+from __future__ import annotations
+
+import asyncio
+import inspect
+import json
+import logging
+import os
+import re
+import shutil
+import statistics
+import time
+from collections import Counter, defaultdict, deque
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import Any, Callable
+from zoneinfo import ZoneInfo
+
+log = logging.getLogger(__name__)
+
+ET = ZoneInfo("America/New_York")
+ROOT = Path(__file__).resolve().parent.parent
+DATA = ROOT / "data"
+NIGHT_STARTS_H = 6          # a "night" runs 6:00 AM ET to 6:00 AM ET the next day, named by its first date
+REPORT_AFTER_S = 300.0      # ...and its report is written 5 minutes after it ends
+
+PLAYING = ("playing", "buffering", "connecting")
+# Fire OS's own screens: the launcher, settings, the app store, profiles, screensaver.
+HOME_PREFIXES = ("com.amazon.tv.", "com.amazon.venezia", "com.amazon.firetv.screensaver", "com.amazon.vizzini")
+# An app's non-player screens, from the activity name (used only together with a still screen).
+PAGE_RX = re.compile(r"(browse|home|detail|landing|main|launch|search|guide|library|profile|splash)", re.I)
+APP_PACKAGES = {
+    "youtubetv": ("com.amazon.firetv.youtube.tv", "com.google.android.youtube.tvunplugged"),
+    "prime": ("com.amazon.firebat", "com.amazon.avod.thirdpartyclient", "com.amazon.amazonvideo.livingroom",
+              "com.amazon.avod"),
+    "espn": ("com.espn.gtv", "com.espn.score_center", "com.espn.androidtv", "com.espn.espnplus"),
+}
+
+# Defaults (each can be overridden under `supervisor:` in the config).
+DEFAULTS = {
+    "enabled": True,
+    "every_s": 10.0,
+    "screen_confirm_s": 20.0,      # the TV must look wrong on two checks this far apart
+    "screen_frame_gap_s": 2.0,     # two screenshots this far apart: identical = a still page, not video
+    "screen_after_fix_s": 45.0,    # the controller's own watchdog repaired something this recently: wait
+    "stuck_grace_s": 30.0,         # a switch older than control.max_switch_s + this is stuck
+    "idle_s": 180.0,
+    "fail_window_s": 1800.0,
+    "backoff_after": 2, "backoff_s": 600.0,
+    "mute_after": 3, "app_mute_targets": 2, "app_mute_failures": 5,
+    "safe_s": 180.0, "safe_resumes_per_hour": 3,
+    "stale_s": 120.0, "stale_hard_s": 420.0,
+    "adb_offline_s": 120.0, "adb_server_s": 60.0,
+    "doubt_s": 900.0,              # delay doubt wider than doubt_max_s for this long -> reset
+    "doubt_max_s": None,           # None = delay.sigma_default + 5
+    "finished_hold_s": 180.0,
+    "log_every_s": 600.0, "max_log_bytes": 20 * 1024 ** 2, "keep_log_bytes": 2 * 1024 ** 2,
+    "max_jsonl_bytes": 10 * 1024 ** 2, "keep_jsonl_lines": 20000,
+    "max_imgcache_bytes": 200 * 1024 ** 2, "keep_imgcache_bytes": 150 * 1024 ** 2,
+    "max_wal_bytes": 64 * 1024 ** 2,
+    "ntfy_topic": "",              # set to push the nightly summary to the ntfy app (ntfy.sh/<topic>)
+    "ntfy_server": "https://ntfy.sh",
+}
+
+# How often each fix may run: (minimum gap in seconds, at most this many per hour), per key.
+LIMITS = {
+    "screen_not_game": (90.0, 6), "stuck_switch": (60.0, 6), "idle_with_live": (300.0, 4),
+    "idle_refresh": (600.0, 3), "repeat_failures": (0.0, 30), "safe_mode": (600.0, 3),
+    "stale_feeds": (300.0, 4), "stale_feeds_hard": (900.0, 2), "adb": (300.0, 6), "adb_server": (900.0, 2),
+    "delay_doubt": (1800.0, 2), "finished_hold": (60.0, 10), "log_growth": (600.0, 6),
+}
+
+# Switch outcomes that say nothing about the target (same idea as engine.NOT_THE_TARGETS_FAULT).
+NOT_THE_TARGET = ("no safe moment", "safe exit window closed", "switch cancelled", "tv input is unknown",
+                  "tv control was disabled", "no channel", "standby stream is no longer confirmed", "dry run",
+                  "replay seek failed", "replay resume failed", "two-stick mode off", "crashed:")
+
+# Failure detail -> a short cause name for the nightly report. First match wins.
+CAUSES = (
+    ("replay seek", "replay seek"), ("replay resume", "replay seek"), ("two-stick mode off", "TV input"),
+    ("timed out", "timed out"), ("timeout", "timed out"), ("never started", "never started playing"),
+    ("couldn't open the link", "link rejected"), ("did not accept", "link rejected"),
+    ("signed out", "signed out"), ("sign in", "signed out"), ("not subscribed", "not subscribed"),
+    ("blacked out", "blackout"), ("blackout", "blackout"),
+    ("profile", "profile picker"), ("still watching", "still-watching prompt"),
+    ("no safe moment", "no safe moment"), ("safe exit window", "no safe moment"),
+    ("cancelled", "cancelled"), ("input", "TV input"), ("flip", "TV input"),
+    ("not playing", "never started playing"), ("playback not confirmed", "never started playing"),
+    ("not confirmed", "never started playing"), ("restore", "screen restore failed"),
+    ("crashed", "app/tuner crash"), ("no tuner", "no tuner"), ("link", "channel link"),
+    ("offline", "stick offline"), ("unauthorized", "stick offline"),
+)
+
+
+# Failures that say something about the SOURCE (this link/app can't play here). Everything else
+# (timeouts, a stream that didn't start, TV input, no safe moment) can be Wi-Fi, the stick or the
+# controller: those only back a target off for a while, never mute it or its app for the night.
+SOURCE_CAUSES = {"link rejected", "signed out", "not subscribed", "blackout", "no tuner", "channel link"}
+
+
+def failure_cause(detail: str | None) -> str:
+    d = (detail or "").lower()
+    for needle, name in CAUSES:
+        if needle in d:
+            return name
+    return "other"
+
+
+def night_of(ts: float) -> date:
+    """The night a moment belongs to: 1:30 AM on the 3rd is still the night of the 2nd."""
+    return (datetime.fromtimestamp(ts, ET) - timedelta(hours=NIGHT_STARTS_H)).date()
+
+
+def night_window(night: date) -> tuple[float, float]:
+    start = datetime(night.year, night.month, night.day, NIGHT_STARTS_H, tzinfo=ET)
+    return start.timestamp(), (start + timedelta(days=1)).timestamp()
+
+
+def night_end(ts: float) -> float:
+    """When tonight's mutes expire: the end of the night `ts` is in."""
+    return night_window(night_of(ts))[1]
+
+
+def append_jsonl(path: Path, rec: dict) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a") as f:
+            f.write(json.dumps(rec, default=str) + "\n")
+    except OSError:
+        log.exception("could not write %s", path)
+
+
+def read_jsonl(path: Path, t0: float = 0.0, t1: float = float("inf")) -> list[dict]:
+    out = []
+    try:
+        with open(path) as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(rec, dict) and t0 <= float(rec.get("ts") or 0) < t1:
+                    out.append(rec)
+    except OSError:
+        pass
+    return out
+
+
+# --- screenshots ------------------------------------------------------------------------
+
+def frames_verdict(a: bytes, b: bytes, luma: Callable[[bytes], Any] | None = None) -> str | None:
+    """Two screenshots a couple of seconds apart: "still" (a page, not video), "black" (DRM video or
+    nothing), "moving" (video), or None (no screenshot). Identical bytes = identical pixels."""
+    if not a or not b:
+        return None
+    la = lb = None
+    if luma is not None:
+        try:
+            la, lb = luma(a), luma(b)
+        except Exception:
+            la = lb = None
+    if la is not None and lb is not None:
+        try:
+            mean_a, mean_b = float(la.mean()), float(lb.mean())
+            if max(mean_a, mean_b) < 12.0:
+                return "black"
+            if la.shape == lb.shape and float(abs(la - lb).mean()) < 0.8:
+                return "still"
+            return "moving"
+        except Exception:
+            pass
+    # Pixels unreadable: never call it a frozen page from bytes alone. Identical frames are what a
+    # DRM-blacked player (YouTube TV, Peacock) always returns while the game plays fine (a 1080p
+    # black PNG is ~10 KB), and treating that as "still" would press keys on the playing stick.
+    if a and b and max(len(a), len(b)) < 40_000:
+        return "black"
+    return None
+
+
+def png_luma_bytes(png: bytes):
+    """Luminance of a PNG (macOS sips). None if it can't be decoded."""
+    import tempfile
+    from redzone.tuners.screen_prompts import png_luma
+    with tempfile.TemporaryDirectory(prefix="rz-sup-") as d:
+        p = os.path.join(d, "f.png")
+        with open(p, "wb") as f:
+            f.write(png)
+        return png_luma(p)
+
+
+# --- rate limiting --------------------------------------------------------------------------
+
+class Limiter:
+    """A fix may run once per `gap` seconds and `per_hour` times an hour, per key."""
+
+    def __init__(self, clock: Callable[[], float]):
+        self.clock = clock
+        self.hist: dict[str, deque] = defaultdict(lambda: deque(maxlen=64))
+
+    def allow(self, key: str, gap: float, per_hour: int) -> bool:
+        now = self.clock()
+        h = self.hist[key]
+        if h and now - h[-1] < gap:
+            return False
+        return sum(1 for t in h if now - t < 3600) < per_hour
+
+    def note(self, key: str) -> None:
+        self.hist[key].append(self.clock())
+
+
+@dataclass
+class Fix:
+    rule: str
+    key: str
+    action: str
+    ok: bool
+    detail: str = ""
+
+
+class Supervisor:
+    def __init__(self, engine: Any, root: Path | None = None, clock: Callable[[], float] = time.time,
+                 sleep: Callable[[float], Any] = asyncio.sleep, luma: Callable[[bytes], Any] | None = png_luma_bytes,
+                 push: Callable[[str, str], Any] | None = None):
+        self.e = engine
+        self.root = Path(root) if root else DATA
+        self.log_path = self.root / "supervisor.jsonl"
+        self.moments_path = self.root / "supervisor_moments.jsonl"
+        self.reports = self.root / "reports"
+        self.clock = clock
+        self.sleep = sleep
+        self.luma = luma
+        self.push = push
+        self.limiter = Limiter(clock)
+        self.since: dict[str, float] = {}               # condition -> first seen at
+        self.fixes: deque[Fix] = deque(maxlen=200)
+        self.counts: Counter = Counter()                # rule -> fixes tonight (status)
+        self.muted_targets: dict[str, float] = {}        # target -> muted until
+        self.muted_apps: dict[str, float] = {}           # app -> muted until
+        self.failures: deque[tuple[float, str, str]] = deque(maxlen=500)   # (ts, target, cause)
+        self._sw_seen = clock()                          # switches before start were judged last run
+        self._screen_obs: tuple[str, str, float] | None = None   # (kind, target, first seen)
+        self._routed: dict[str, str] = {}                # game -> alternate target we routed it to
+        self._judged: set[tuple[str, str]] = set()
+        self._last_logs = 0.0
+        self._limited: set[str] = set()                  # fixes whose rate limit we already logged
+        self._observed: dict[str, str] = {}              # condition -> last logged observation
+        self._report_checked: date | None = None
+        self.last_step = 0.0
+        self.running = False
+
+    # --- config / helpers -------------------------------------------------------------
+
+    def opt(self, key: str) -> Any:
+        v = None
+        try:
+            v = self.e.cfg.get(f"supervisor.{key}", None)
+        except Exception:
+            v = None
+        return DEFAULTS.get(key) if v is None else v
+
+    def _held(self, key: str, cond: bool, now: float) -> float:
+        """How long `cond` has been true without a break (0 when false; resets on false)."""
+        if not cond:
+            self.since.pop(key, None)
+            self._observed.pop(key, None)
+            return 0.0
+        return now - self.since.setdefault(key, now)
+
+    def _record(self, rec: dict) -> None:
+        rec = {"ts": round(self.clock(), 3), **rec}
+        append_jsonl(self.log_path, rec)
+
+    def observe(self, key: str, what: str, **extra) -> None:
+        """Log a condition once (until it clears), not every 10 s."""
+        if self._observed.get(key) == what:
+            return
+        self._observed[key] = what
+        self._record({"kind": "observe", "rule": key.split(":")[0], "key": key, "what": what, **extra})
+
+    async def fix(self, rule: str, key: str, action: str, fn: Callable[[], Any], limit: str | None = None) -> bool | None:
+        """Run one fix if its rate limit allows. None = rate-limited (not run)."""
+        gap, per_hour = LIMITS.get(limit or rule, (60.0, 6))
+        lk = f"{limit or rule}:{key}"
+        if not self.limiter.allow(lk, gap, per_hour):
+            if lk not in self._limited:
+                self._limited.add(lk)
+                self._record({"kind": "limited", "rule": rule, "key": key, "action": action})
+            return None
+        self._limited.discard(lk)
+        self.limiter.note(lk)
+        ok, detail = True, ""
+        try:
+            res = fn()
+            if inspect.isawaitable(res):
+                res = await res
+            if isinstance(res, tuple):
+                res, detail = res[0], str(res[1])
+            ok = res is not False   # None (a fix with nothing to report) counts as done
+        except Exception as ex:   # a fix must never take the supervisor down
+            log.exception("supervisor fix %s failed", rule)
+            ok, detail = False, f"crashed: {ex}"
+        f = Fix(rule, key, action, bool(ok), detail)
+        self.fixes.append(f)
+        self.counts[rule] += 1
+        self._record({"kind": "fix", "rule": rule, "key": key, "action": action, "ok": bool(ok), "detail": detail})
+        (log.info if ok else log.warning)("supervisor %s: %s (%s)%s", rule, action, key,
+                                          f" -> {detail}" if detail else "")
+        return bool(ok)
+
+    def _dry(self) -> bool:
+        return bool(self.e.cfg.get("mode.dry_run", True))
+
+    def _games(self) -> dict:
+        return getattr(getattr(self.e, "merger", None), "games", {}) or {}
+
+    def _live(self) -> list:
+        from redzone.models import Phase
+        try:
+            lgs = set(self.e._leagues())
+        except Exception:
+            lgs = None
+        return [g for g in self._games().values() if g.phase == Phase.LIVE and (lgs is None or g.league in lgs)]
+
+    @staticmethod
+    def app(target: str | None) -> str:
+        return (target or "").split(":", 1)[0]
+
+    def muted(self, target: str | None, now: float | None = None) -> bool:
+        if not target:
+            return False
+        now = self.clock() if now is None else now
+        return self.muted_targets.get(target, 0) > now or self.muted_apps.get(self.app(target), 0) > now
+
+    def _toast(self, text: str, level: str = "info") -> None:
+        try:
+            self.e.toast(text, level)
+        except Exception:
+            pass
+
+    # --- loop ------------------------------------------------------------------------------
+
+    async def run(self) -> None:
+        self.running = True
+        while True:
+            try:
+                await self.step()
+            except Exception:
+                log.exception("supervisor step failed")
+            await self.sleep(float(self.opt("every_s")))
+
+    RULES = ("rule_stuck_switch", "rule_screen", "rule_failures", "rule_safe_mode", "rule_idle", "rule_feeds",
+             "rule_adb", "rule_delay_doubt", "rule_finished_hold", "rule_logs", "track_moments", "maybe_report")
+
+    async def step(self) -> None:
+        if not self.opt("enabled"):
+            return
+        rec = getattr(self.e, "recorded", None)
+        if rec is not None and getattr(rec, "active", False):
+            return   # a recorded session drives the screen itself
+        self.last_step = self.clock()
+        for name in self.RULES:
+            try:
+                await getattr(self, name)(self.clock())
+            except Exception:
+                log.exception("supervisor rule %s failed", name)
+
+    # --- routing hook (engine.decide) -------------------------------------------------------
+
+    def route(self, gid: str, where: Any) -> Any:
+        """A game whose source is muted tonight goes to another way to watch it, when one exists."""
+        target = getattr(where, "target", None)
+        if not self.muted(target):
+            self._routed.pop(gid, None)
+            return where
+        for alt in getattr(where, "alternates", None) or ():
+            t = getattr(alt, "target", None)
+            if t and t != target and getattr(alt, "tunable", False) and not getattr(alt, "blackout", False) \
+                    and not self.muted(t):
+                if self._routed.get(gid) != t:
+                    self._routed[gid] = t
+                    self._record({"kind": "fix", "rule": "repeat_failures", "key": gid,
+                                  "action": f"route {target} -> {t}", "ok": True, "detail": ""})
+                try:
+                    from redzone.discovery.providers import Pick
+                    return Pick(t, getattr(alt, "label", t), getattr(alt, "confidence", "likely"), True,
+                                provider=getattr(alt, "provider", self.app(t)),
+                                reasons=[f"{target} keeps failing tonight; using {getattr(alt, 'label', t)}"])
+                except Exception:
+                    from redzone.channels import Where
+                    return Where(t, getattr(alt, "label", t), getattr(alt, "confidence", "likely"), True)
+        return where
+
+    # --- rules ----------------------------------------------------------------------------
+
+    async def rule_stuck_switch(self, now: float) -> None:
+        e, ctl = self.e, self.e.control
+        limit = float(e.cfg.get("control.max_switch_s", 150)) + float(self.opt("stuck_grace_s"))
+        p = getattr(e, "_pending_decision", None)
+        if p is not None:
+            age = now - float(getattr(e, "_pending_since", now) or now)
+            if age < limit:
+                return
+            self.observe("stuck_switch", f"switch to {p.target} stuck {age:.0f}s")
+
+            def unstick():
+                from redzone.control import Outcome
+                ctl.cancel_pending()
+                done = getattr(e, "_pending_done", None)
+                if done is not None:
+                    done(Outcome(False, None, age, f"switch timed out after {age:.0f}s (supervisor); "
+                                 "playback not confirmed", False))
+                if getattr(e, "_pending_decision", None) is p:
+                    e._pending_decision = None
+                    e._pending_done = None
+                return True, f"gave up on the switch to {p.target} after {age:.0f}s"
+            await self.fix("stuck_switch", str(p.target), "cancel stuck switch", unstick)
+            return
+        task = getattr(ctl, "_task", None)
+        running = task is not None and not task.done() and not getattr(ctl, "_flipping", False)
+        if self._held("ctl_task", running, now) >= limit:
+            await self.fix("stuck_switch", "controller", "cancel stuck controller command",
+                           lambda: (ctl.cancel_pending(), True)[1])
+            self.since.pop("ctl_task", None)
+
+    async def _screen_kind(self, stick: Any, target: str) -> tuple[str | None, str]:
+        """("home" | "app_page" | "foreign" | "ok" | None, foreground)."""
+        ctl = self.e.control
+        fg = await stick.foreground()
+        front = fg.split("/")[0] if fg else ""
+        if not front:
+            return None, fg
+        if front.startswith(HOME_PREFIXES):
+            return "home", fg
+        pkg = ctl._package(stick, target) if hasattr(ctl, "_package") else None
+        app = self.app(target)
+        ours = {p for p in (pkg, *APP_PACKAGES.get(app, ())) if p}
+        try:
+            from redzone.tuners.providers import BY_KEY
+            if app in BY_KEY:
+                ours |= set(BY_KEY[app].packages)
+        except Exception:
+            pass
+        if front not in ours:
+            return "foreign", fg
+        pb = await stick.playback(pkg)
+        if pb.get("read_ok") is False:
+            return None, fg
+        if pb.get("state") in PLAYING:
+            return "ok", fg
+        a = await stick.screencap()
+        await self.sleep(float(self.opt("screen_frame_gap_s")))
+        b = await stick.screencap()
+        verdict = frames_verdict(a, b, self.luma)
+        activity = fg.split("/", 1)[1] if "/" in fg else ""
+        if verdict == "still" or (verdict in (None, "black") and PAGE_RX.search(activity)):
+            return "app_page", fg
+        return None, fg
+
+    def _screen_blocked(self) -> str | None:
+        e, ctl, dec = self.e, self.e.control, self.e.decider
+        if self._dry():
+            return "dry run"
+        if not getattr(ctl, "live_control", False):
+            return "no TV control"
+        if getattr(ctl, "input_unknown", False):
+            return "TV input unknown"
+        if ctl._busy() or getattr(ctl, "_flipping", False):
+            return "controller busy"
+        if getattr(e, "_pending_decision", None) is not None:
+            return "switch in flight"
+        if getattr(dec, "replaying", None) or getattr(dec, "after_replay", False):
+            return "replay"
+        rt = getattr(ctl, "_resume_task", None)
+        if rt is not None and not rt.done():
+            return "controller watchdog working"
+        if self.clock() - float(getattr(ctl, "_visible_fix_at", 0.0) or 0.0) < float(self.opt("screen_after_fix_s")):
+            return "controller watchdog just acted"
+        return None
+
+    async def rule_screen(self, now: float) -> None:
+        from redzone.models import Phase
+        e, ctl, dec = self.e, self.e.control, self.e.decider
+        if self._screen_blocked():
+            self._screen_obs = None
+            return
+        stick, target = ctl.main, ctl.on_target
+        g = self._games().get(getattr(dec, "current", None) or "")
+        if stick is None or not target or g is None or g.phase != Phase.LIVE:
+            self._screen_obs = None
+            return
+        kind, fg = await self._screen_kind(stick, target)
+        if kind not in ("home", "app_page"):
+            if kind == "foreign":
+                self.observe("screen_not_game", f"another app in front: {fg}")
+            self._screen_obs = None
+            return
+        obs = self._screen_obs
+        if obs is None or obs[1] != target:
+            self._screen_obs = (kind, target, now)
+            self.observe("screen_not_game", f"{kind} on screen instead of {target}", foreground=fg)
+            return
+        if now - obs[2] < float(self.opt("screen_confirm_s")):
+            return
+        # The reads above awaited: re-check nothing started meanwhile before touching the stick.
+        if self._screen_blocked() or ctl.main is not stick or ctl.on_target != target:
+            self._screen_obs = None
+            return
+        use = target
+        if self.muted(target):   # decide() already routed the game elsewhere: restore THAT source
+            alt = getattr((getattr(e, "where", {}) or {}).get(dec.current), "target", None)
+            use = alt if alt and not self.muted(alt) else target
+        relink = kind == "home"
+
+        async def restore():
+            how = await ctl.restore_visible(use, relink=relink, why=f"{kind} on screen instead of the game")
+            return (bool(how), how or "still not playing")
+        ok = await self.fix("screen_not_game", use, f"restore {use} ({'deep link' if relink else 'resume'}; {kind})",
+                            restore)
+        if ok is False:
+            self.note_failure(use, "screen restore failed", now)
+        if ok is not None:
+            self._screen_obs = None
+
+    def note_failure(self, target: str, cause: str, now: float | None = None) -> None:
+        now = self.clock() if now is None else now
+        self.failures.append((now, target, cause))
+
+    def _ingest_switches(self) -> None:
+        store = getattr(self.e, "store", None)
+        if store is None:
+            return
+        try:
+            rows = store.recent_switches(50)
+        except Exception:
+            return
+        newest = self._sw_seen
+        for r in rows:
+            ts = float(r.get("ts") or 0)
+            if ts <= self._sw_seen:
+                continue
+            newest = max(newest, ts)
+            if r.get("ok") or r.get("dry_run") or not r.get("target"):
+                continue
+            detail = r.get("detail") or ""
+            if isinstance(detail, str):
+                try:
+                    detail = json.loads(detail).get("detail", "") if detail.startswith("{") else detail
+                except ValueError:
+                    pass
+            if str(detail).lower().startswith(NOT_THE_TARGET):
+                continue
+            self.failures.append((ts, r["target"], failure_cause(str(detail))))
+        self._sw_seen = newest
+
+    async def rule_failures(self, now: float) -> None:
+        self._ingest_switches()
+        win = float(self.opt("fail_window_s"))
+        recent = [(t, tg, c) for t, tg, c in self.failures if now - t < win]
+        by_target = Counter(tg for _, tg, _ in recent)
+        source_fails = Counter(tg for _, tg, c in recent if c in SOURCE_CAUSES)
+        cool = getattr(self.e, "_fail_cool", None)
+        until = night_end(now)
+        for target, n in by_target.items():
+            if self.muted_targets.get(target, 0) > now:
+                continue
+            if source_fails[target] >= int(self.opt("mute_after")):
+                def mute(target=target, n=n):
+                    self.muted_targets[target] = until
+                    if cool is not None:
+                        cool[target] = until
+                    self._toast(f"{target} failed {n} times — skipping it for the rest of the night")
+                    return True, f"{n} failures in {win / 60:.0f} min"
+                await self.fix("repeat_failures", target, "mute target for the night", mute)
+            elif n >= int(self.opt("backoff_after")) and cool is not None and cool.get(target, 0) < now + 60:
+                def back_off(target=target):
+                    cool[target] = max(cool.get(target, 0), now + float(self.opt("backoff_s")))
+                    return True, f"no retry for {float(self.opt('backoff_s')) / 60:.0f} min"
+                await self.fix("repeat_failures", f"backoff:{target}", "back off target", back_off)
+        by_app: dict[str, set] = defaultdict(set)
+        for t, until_t in self.muted_targets.items():
+            if until_t > now:
+                by_app[self.app(t)].add(t)
+        app_fails = Counter(self.app(tg) for _, tg, c in recent if c in SOURCE_CAUSES)
+        for app in set(by_app) | set(app_fails):
+            if self.muted_apps.get(app, 0) > now:
+                continue
+            if len(by_app.get(app, ())) >= int(self.opt("app_mute_targets")) or \
+                    app_fails[app] >= int(self.opt("app_mute_failures")):
+                def mute_app(app=app):
+                    self.muted_apps[app] = until
+                    if cool is not None:
+                        for w in (getattr(self.e, "where", {}) or {}).values():
+                            t = getattr(w, "target", None)
+                            if t and self.app(t) == app:
+                                cool[t] = until
+                    self._toast(f"{app} keeps failing — using other apps for the rest of the night")
+                    return True, f"{app_fails[app]} failures, {len(by_app.get(app, ()))} muted targets"
+                await self.fix("repeat_failures", f"app:{app}", "mute app for the night", mute_app)
+
+    async def rule_safe_mode(self, now: float) -> None:
+        dec = self.e.decider
+        held = self._held("safe_mode", bool(getattr(dec, "safe_mode", False)), now)
+        if (held < float(self.opt("safe_s")) or getattr(self.e, "_pending_decision", None) is not None
+                or getattr(self.e.control, "input_unknown", False)):
+            return   # a switch in flight or an unknown TV input: let those settle first
+        recent = Counter(tg for t, tg, _ in self.failures if now - t < 600)
+        culprit = next((tg for tg, n in recent.most_common(1) if n >= 2), None)
+        if not self.limiter.allow("safe_mode:night", 0, int(self.opt("safe_resumes_per_hour"))):
+            self.observe("safe_mode", "safe mode keeps coming back — leaving it on; needs a look")
+            return
+
+        def leave():
+            if culprit and not self.muted(culprit):
+                self.muted_targets[culprit] = night_end(now)
+                cool = getattr(self.e, "_fail_cool", None)
+                if cool is not None:
+                    cool[culprit] = night_end(now)
+            dec.auto_resume(0)
+            self._toast("Safe mode cleared on its own" + (f" (skipping {culprit} tonight)" if culprit else ""))
+            return True, f"after {held:.0f}s" + (f"; muted {culprit}" if culprit else "")
+        if await self.fix("safe_mode", "decider", "leave safe mode", leave):
+            self.limiter.note("safe_mode:night")
+            self.since.pop("safe_mode", None)
+
+    def _watchable(self, now: float) -> list[str]:
+        e = self.e
+        muted_by_user = getattr(getattr(e.decider, "user", None), "muted", set()) or set()
+        dry = self._dry()
+        out = []
+        for g in self._live():
+            w = (getattr(e, "where", {}) or {}).get(g.game_id)
+            t = getattr(w, "target", None)
+            if not t or not (getattr(w, "tunable", False) or dry):
+                continue
+            if t in (getattr(e, "_fail_cool", {}) or {}) or self.muted(t, now) or g.game_id in muted_by_user:
+                continue
+            try:
+                if e.merger.is_stale(g.game_id):
+                    continue
+            except Exception:
+                pass
+            out.append(g.game_id)
+        return out
+
+    async def rule_idle(self, now: float) -> None:
+        from redzone.decider.decider import State
+        e, dec = self.e, self.e.decider
+        u = dec.user
+        busy = (u.paused or u.locked_game or getattr(e, "hold", None) or dec.safe_mode
+                or getattr(e, "_pending_decision", None) is not None)
+        d = getattr(e, "last_decision", None)
+        nothing_on = dec.current is None or (d is not None and getattr(d, "state", None) == State.IDLE)
+        if d is not None and str(getattr(d, "reason", "")).startswith("waiting for your team"):
+            nothing_on = False   # idle on purpose: your game tips soon
+        watchable = self._watchable(now) if not busy and nothing_on else []
+        held = self._held("idle_with_live", bool(watchable), now)
+        if held < float(self.opt("idle_s")):
+            return
+        self.observe("idle_with_live", f"{len(watchable)} watchable live games but nothing on",
+                     reason=getattr(d, "reason", ""))
+
+        def unstick():
+            dec.start_retry_at = 0.0
+            dec.start_fails = 0
+            cool = getattr(e, "_fail_cool", None)
+            cleared = 0
+            if cool is not None:
+                for t in [t for t in cool if not self.muted(t, now)]:
+                    cool.pop(t, None)
+                    cleared += 1
+            failed = getattr(e.control, "_failed", None)
+            if isinstance(failed, dict):
+                failed.clear()
+            return True, f"start back-off reset, {cleared} cool-downs cleared"
+        await self.fix("idle_with_live", "decider", "clear start back-off and cool-downs", unstick)
+        if held >= 2 * float(self.opt("idle_s")) and hasattr(e, "reset_feeds"):
+            await self.fix("idle_with_live", "feeds", "refresh feeds", lambda: e.reset_feeds(hard=False),
+                           limit="idle_refresh")
+
+    async def rule_feeds(self, now: float) -> None:
+        e = self.e
+        live = self._live()
+        try:
+            stale = [g.game_id for g in live if e.merger.is_stale(g.game_id)]
+        except Exception:
+            stale = []
+        cur = getattr(e.decider, "current", None)
+        bad = bool(live) and (len(stale) == len(live) or (cur in stale))
+        held = self._held("stale_feeds", bad, now)
+        if held < float(self.opt("stale_s")) or not hasattr(e, "reset_feeds"):
+            return
+        self.observe("stale_feeds", f"{len(stale)}/{len(live)} live games stale")
+        if held >= float(self.opt("stale_hard_s")):
+            await self.fix("stale_feeds", "http", "new HTTP client + push feed restart",
+                           lambda: e.reset_feeds(hard=True), limit="stale_feeds_hard")
+        else:
+            await self.fix("stale_feeds", "backoff", "drop fetch back-off", lambda: e.reset_feeds(hard=False))
+
+    async def rule_adb(self, now: float) -> None:
+        ctl = self.e.control
+        if self._dry():
+            return
+        from redzone.tuners import adb as adbmod
+        if self._held("adb_server", not getattr(ctl, "adb_ok", False) and bool(getattr(ctl, "sticks", [])),
+                      now) >= float(self.opt("adb_server_s")):
+            async def start_server():
+                await adbmod._adb("start-server", timeout=10)
+                ctl.adb_ok = await adbmod.adb_available()
+                return ctl.adb_ok, "adb answering" if ctl.adb_ok else "adb still not answering"
+            await self.fix("adb", "server", "start adb server", start_server, limit="adb_server")
+            return
+        for s in list(getattr(ctl, "sticks", []) or []):
+            state = getattr(s, "state", "unknown")
+            held = self._held(f"adb:{s.host}", state != "connected", now)
+            if state == "unauthorized" and held:
+                self.observe(f"adb:{s.host}", "stick needs the adb prompt approved on the TV")
+                continue
+            if held < float(self.opt("adb_offline_s")):
+                continue
+
+            async def reconnect(s=s):
+                s.drop_session()
+                s._next_retry = 0.0
+                await adbmod._adb("disconnect", s.host, timeout=6)
+                ok = await s.connect()
+                if ok:
+                    if not s.packages:
+                        await s.identify()
+                    forget = getattr(ctl, "_forget", None)
+                    if forget is not None:
+                        forget(s)   # it may have rebooted: what it showed is unknown
+                return ok, s.state
+            await self.fix("adb", s.host, "drop adb transport and reconnect", reconnect)
+
+    def _doubt_max(self) -> float:
+        v = self.opt("doubt_max_s")
+        if v is not None:
+            return float(v)
+        return float(self.e.cfg.get("delay.sigma_default", 15) or 15) + 5.0
+
+    async def rule_delay_doubt(self, now: float) -> None:
+        delays = getattr(self.e, "delays", None)
+        if delays is None:
+            return
+        cap = self._doubt_max()
+        for target, d in list(delays.book.items()):
+            try:
+                sig = d.current_sigma(now)
+            except Exception:
+                continue
+            held = self._held(f"delay_doubt:{target}", sig > cap, now)
+            if held < float(self.opt("doubt_s")):
+                continue
+
+            def reset(target=target, old=(d.mu, sig)):
+                delays.book.pop(target, None)
+                nd = delays.get(target)   # rebuilt from its samples (taps / score bug / show changes)
+                how = "rebuilt from samples"
+                if nd.current_sigma(now) > cap:
+                    defaults = self.e.cfg.get("delay.default", {}) or {}
+                    nd.mu = float(defaults.get(self.app(target), 40.0))
+                    nd.sigma = float(self.e.cfg.get("delay.sigma_default", 15) or 15)
+                    nd.calibrated_at, nd.source, nd.live = None, "default", None
+                    how = "safe defaults"
+                return True, f"{old[0]:.0f}±{old[1]:.0f}s -> {nd.mu:.0f}±{nd.sigma:.0f}s ({how})"
+            if await self.fix("delay_doubt", target, "reset delay estimate", reset):
+                self.since.pop(f"delay_doubt:{target}", None)
+
+    async def rule_finished_hold(self, now: float) -> None:
+        from redzone.models import Phase
+        from redzone.decider.decider import REDZONE, FocusMode
+        e, u = self.e, self.e.decider.user
+        games = self._games()
+
+        def over(gid: str | None) -> bool:
+            if not gid:
+                return False
+            if gid == REDZONE:
+                try:
+                    from redzone.channels import redzone_on
+                    return not redzone_on(games.values())
+                except Exception:
+                    return False
+            g = games.get(gid)
+            return (g is None and bool(games)) or (g is not None and g.phase == Phase.POST)
+
+        h = getattr(e, "hold", None)
+        gid = h.get("game_id") if isinstance(h, dict) else None
+        wait = float(self.opt("finished_hold_s"))
+        if self._held("finished_hold:hold", over(gid), now) >= wait:
+            def release():
+                e._release_hold("")
+                self._toast("That game is over — autopilot is back")
+                return True, f"released hold on {gid}"
+            await self.fix("finished_hold", f"hold:{gid}", "release hold on finished game", release)
+            return
+        if not gid and self._held("finished_hold:lock", over(u.locked_game), now) >= wait:
+            def unlock():
+                was, u.locked_game = u.locked_game, None
+                return True, f"unlocked {was}"
+            await self.fix("finished_hold", f"lock:{u.locked_game}", "clear lock on finished game", unlock)
+        if self._held("finished_hold:focus", over(u.focus_game), now) >= wait:
+            def unfocus():
+                was = u.focus_game
+                u.focus_game, u.focus_mode = None, FocusMode.AUTOPILOT
+                return True, f"focus on {was} -> autopilot"
+            await self.fix("finished_hold", f"focus:{u.focus_game}", "clear focus on finished game", unfocus)
+
+    async def rule_logs(self, now: float) -> None:
+        if now - self._last_logs < float(self.opt("log_every_s")):
+            return
+        self._last_logs = now
+        done = []
+        for f in sorted(self.root.glob("*.log")):
+            if _size(f) > int(self.opt("max_log_bytes")):
+                done.append(("log", f))
+        for f in sorted(self.root.glob("*.jsonl")):
+            if _size(f) > int(self.opt("max_jsonl_bytes")):
+                done.append(("jsonl", f))
+        cache = self.root / "imgcache"
+        if cache.is_dir() and _dir_size(cache) > int(self.opt("max_imgcache_bytes")):
+            done.append(("imgcache", cache))
+        wal = self.root / "redzone.db-wal"
+        if _size(wal) > int(self.opt("max_wal_bytes")):
+            done.append(("wal", wal))
+        for kind, path in done:
+            if kind == "log":
+                fn = lambda path=path: rotate_log(path, int(self.opt("keep_log_bytes")))
+            elif kind == "jsonl":
+                fn = lambda path=path: trim_jsonl(path, int(self.opt("keep_jsonl_lines")))
+            elif kind == "imgcache":
+                fn = lambda path=path: prune_dir(path, int(self.opt("keep_imgcache_bytes")))
+            else:
+                fn = self._checkpoint
+            await self.fix("log_growth", path.name, f"shrink {path.name}", fn)
+        try:
+            free = shutil.disk_usage(self.root if self.root.exists() else ROOT).free
+        except OSError:
+            free = None
+        if free is not None and free < 1024 ** 3:
+            self.observe("disk", f"only {free / 1024 ** 3:.1f} GB free on the disk")
+
+    def _checkpoint(self):
+        store = getattr(self.e, "store", None)
+        if store is None or not hasattr(store, "checkpoint"):
+            return False, "no store"
+        store.checkpoint()
+        return True, f"WAL now {_size(self.root / 'redzone.db-wal') / 1024 ** 2:.1f} MB"
+
+    # --- key moments + nightly report -----------------------------------------------------
+
+    async def track_moments(self, now: float) -> None:
+        """Each big play, once it has aired: did the screen show it (seen) or not (missed)?"""
+        from redzone.decider.screen import PLAY_LEN_S
+        dec, e = self.e.decider, self.e
+        for gid, tl in list(getattr(dec, "timelines", {}).items()):
+            w = (getattr(e, "where", {}) or {}).get(gid)
+            target = getattr(w, "target", None) or getattr(dec, "_known_target", {}).get(gid) or "unknown"
+            try:
+                mu = e.delays.get(target).mu
+            except Exception:
+                mu = 40.0
+            play_len = PLAY_LEN_S.get(tl.league) or 8.0
+            for ev in list(tl.events):
+                if ev.kind != "play" or not ev.big:
+                    continue
+                key = (gid, ev.pid or ev.label)
+                air_end = ev.seen + mu
+                if key in self._judged or now < air_end + 3:
+                    continue
+                self._judged.add(key)
+                seen = bool(dec._saw(gid, air_end - play_len, air_end))
+                g = self._games().get(gid)
+                append_jsonl(self.moments_path, {
+                    "ts": round(ev.seen, 2), "game": gid, "matchup": getattr(g, "matchup", gid),
+                    "league": getattr(tl.league, "value", str(tl.league)), "label": ev.label[:160],
+                    "kind": ev.play_kind, "seen": seen, "on_screen": dec.on_screen_at(air_end),
+                    "dry_run": self._dry()})
+        if len(self._judged) > 5000:
+            self._judged = set(list(self._judged)[-2000:])
+
+    async def maybe_report(self, now: float) -> None:
+        prev = night_of(now) - timedelta(days=1)
+        if self._report_checked == prev:
+            return
+        if now < night_window(prev)[1] + REPORT_AFTER_S:
+            return
+        self._report_checked = prev
+        path = self.reports / f"{prev.isoformat()}.md"
+        if path.exists():
+            return
+        text, summary = build_report(prev, getattr(self.e, "store", None), self.root, now=now)
+        write_report(path, text)
+        self._record({"kind": "report", "rule": "report", "key": prev.isoformat(), "path": str(path)})
+        await self.send_push(f"RedZone night of {prev.isoformat()}", summary)
+
+    async def send_push(self, title: str, body: str) -> bool:
+        topic = str(self.opt("ntfy_topic") or "").strip()
+        if not topic:
+            return False
+        try:
+            if self.push is not None:
+                res = self.push(title, body)
+                if inspect.isawaitable(res):
+                    await res
+                return True
+            import httpx
+            async with httpx.AsyncClient(timeout=8) as c:
+                r = await c.post(f"{str(self.opt('ntfy_server')).rstrip('/')}/{topic}", content=body.encode(),
+                                 headers={"Title": title, "Tags": "tv"})
+            return r.status_code < 300
+        except Exception as ex:
+            log.warning("push failed: %s", ex)
+            return False
+
+    def status(self) -> dict:
+        now = self.clock()
+        return {"running": self.running, "last_step": self.last_step or None,
+                "fixes_tonight": dict(self.counts),
+                "recent": [{"rule": f.rule, "action": f.action, "ok": f.ok, "detail": f.detail}
+                           for f in list(self.fixes)[-5:]],
+                "muted_targets": sorted(t for t, u in self.muted_targets.items() if u > now),
+                "muted_apps": sorted(a for a, u in self.muted_apps.items() if u > now),
+                "watching": sorted(k for k in self.since)}
+
+
+# --- file housekeeping ----------------------------------------------------------------------
+
+def _size(p: Path) -> int:
+    try:
+        return p.stat().st_size
+    except OSError:
+        return 0
+
+
+def _dir_size(d: Path) -> int:
+    total = 0
+    for root, _, files in os.walk(d):
+        for f in files:
+            total += _size(Path(root) / f)
+    return total
+
+
+def rotate_log(path: Path, keep_bytes: int) -> tuple[bool, str]:
+    """Keep the last keep_bytes in <name>.1 and empty the log in place (writers append, so they
+    simply continue at the new end)."""
+    size = _size(path)
+    with open(path, "rb") as f:
+        f.seek(max(0, size - keep_bytes))
+        tail = f.read()
+    old = path.with_name(path.name + ".1")
+    old.write_bytes(tail)
+    with open(path, "r+b") as f:
+        f.truncate(0)
+    return True, f"{size / 1024 ** 2:.1f} MB -> 0 (last {len(tail) / 1024 ** 2:.1f} MB in {old.name})"
+
+
+def trim_jsonl(path: Path, keep_lines: int) -> tuple[bool, str]:
+    lines = path.read_bytes().splitlines(keepends=True)
+    kept = lines[-keep_lines:]
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_bytes(b"".join(kept))
+    tmp.replace(path)
+    return True, f"{len(lines)} -> {len(kept)} lines"
+
+
+def prune_dir(d: Path, keep_bytes: int) -> tuple[bool, str]:
+    files = []
+    for root, _, names in os.walk(d):
+        for n in names:
+            p = Path(root) / n
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            files.append((st.st_mtime, st.st_size, p))
+    total = sum(s for _, s, _ in files)
+    removed = 0
+    for _, s, p in sorted(files):
+        if total <= keep_bytes:
+            break
+        try:
+            p.unlink()
+            total -= s
+            removed += 1
+        except OSError:
+            pass
+    return True, f"removed {removed} oldest files; {total / 1024 ** 2:.0f} MB left"
+
+
+# --- the nightly report -----------------------------------------------------------------------
+
+def _switch_rows(store: Any, t0: float, t1: float) -> list[dict]:
+    if store is None:
+        return []
+    try:
+        if hasattr(store, "switches_between"):
+            return store.switches_between(t0, t1)
+        return [r for r in store.recent_switches(5000) if t0 <= float(r.get("ts") or 0) < t1]
+    except Exception:
+        log.exception("could not read switches for the report")
+        return []
+
+
+def _detail(r: dict) -> dict:
+    d = r.get("detail")
+    if isinstance(d, dict):
+        return d
+    try:
+        v = json.loads(d or "{}")
+        return v if isinstance(v, dict) else {"detail": str(v)}
+    except ValueError:
+        return {"detail": str(d)}
+
+
+def _short(target: str) -> str:
+    """prime:amzn1.dv.gti.1e64e9b4-...-8d1f6cc07a42 -> prime:amzn1.dv.gt…6cc07a42 (readable in a table)."""
+    return target if len(target) <= 30 else f"{target[:18]}…{target[-8:]}"
+
+
+def _clock_et(ts: float) -> str:
+    return datetime.fromtimestamp(ts, ET).strftime("%-I:%M %p")
+
+
+def build_report(night: date, store: Any, root: Path, now: float | None = None) -> tuple[str, str]:
+    """(markdown, one-paragraph summary) for one night."""
+    t0, t1 = night_window(night)
+    rows = _switch_rows(store, t0, t1)
+    live_rows = [r for r in rows if not r.get("dry_run")]
+    dry_rows = [r for r in rows if r.get("dry_run")]
+    ok = [r for r in live_rows if r.get("ok")]
+    failed = [r for r in live_rows if not r.get("ok")]
+    held = [r for r in failed if str(_detail(r).get("detail") or "").lower().startswith(NOT_THE_TARGET)]
+    causes = Counter(failure_cause(_detail(r).get("detail")) for r in failed)
+    cause_targets: dict[str, Counter] = defaultdict(Counter)
+    for r in failed:
+        cause_targets[failure_cause(_detail(r).get("detail"))][r.get("target") or "?"] += 1
+    took = [float(_detail(r).get("took") or 0) for r in ok if _detail(r).get("took")]
+    kinds = Counter(r.get("kind") or "?" for r in rows)
+
+    moments = read_jsonl(root / "supervisor_moments.jsonl", t0, t1)
+    seen = [m for m in moments if m.get("seen")]
+    missed = [m for m in moments if not m.get("seen")]
+
+    cals = []
+    if store is not None:
+        try:
+            cals = [c for c in store.calibrations(since=t0) if c[0] < t1]
+        except Exception:
+            cals = []
+    by_target: dict[str, list[tuple[float, str]]] = defaultdict(list)
+    for ts, target, sample, kind in cals:
+        by_target[target].append((float(sample), kind or "tap"))
+
+    events = read_jsonl(root / "supervisor.jsonl", t0, t1)
+    fixes = [x for x in events if x.get("kind") == "fix"]
+    fix_rules = Counter(x.get("rule") for x in fixes)
+    fix_fail = Counter(x.get("rule") for x in fixes if not x.get("ok"))
+    limited = [x for x in events if x.get("kind") == "limited"]
+    observed = [x for x in events if x.get("kind") == "observe"]
+
+    lines = [f"# RedZone night report: {night.isoformat()}", ""]
+    summary = (f"{len(live_rows)} switches ({len(failed) - len(held)} failed"
+               + (f", {len(held)} held back or cancelled" if held else "") + ")"
+               + (f", {len(dry_rows)} dry-run" if dry_rows else "")
+               + f"; key moments seen {len(seen)}/{len(moments)}"
+               + f"; {len(fixes)} auto-fixes"
+               + (f"; {len(by_target)} delays measured" if by_target else ""))
+    lines += [f"**{summary}.**", "",
+              f"Window: {_clock_et(t0)} {night.isoformat()} to {_clock_et(t1)} the next day (ET).", ""]
+
+    lines += ["## Switches", ""]
+    if not rows:
+        lines += ["None.", ""]
+    else:
+        lines += [f"- Live: {len(live_rows)} ({len(ok)} ok, {len(failed) - len(held)} failed, "
+                  f"{len(held)} held back/cancelled: not the source's fault)",
+                  f"- Dry run: {len(dry_rows)}"]
+        if took:
+            lines.append(f"- Time to picture: median {statistics.median(took):.1f}s, worst {max(took):.1f}s")
+        lines.append("- By kind: " + ", ".join(f"{k} {n}" for k, n in kinds.most_common(5)))
+        lines.append("")
+
+    lines += ["## Failures by cause", ""]
+    if not causes:
+        lines += ["None.", ""]
+    else:
+        lines += ["| Cause | Count | Worst targets |", "|---|---|---|"]
+        for cause, n in causes.most_common(5):
+            tg = ", ".join(f"{_short(t)} ({c})" for t, c in cause_targets[cause].most_common(3))
+            lines.append(f"| {cause} | {n} | {tg} |")
+        lines.append("")
+
+    lines += ["## Key moments", ""]
+    if not moments:
+        lines += ["No big plays tracked.", ""]
+    else:
+        lines.append(f"Seen live: {len(seen)} of {len(moments)}.")
+        if missed:
+            lines += ["", "Missed (most recent first):"]
+            for m in sorted(missed, key=lambda m: -float(m.get("ts") or 0))[:5]:
+                lines.append(f"- {_clock_et(float(m['ts']))} {m.get('matchup', '')}: {m.get('label', '')}")
+        if seen:
+            lines += ["", "Seen:"]
+            for m in sorted(seen, key=lambda m: -float(m.get("ts") or 0))[:5]:
+                lines.append(f"- {_clock_et(float(m['ts']))} {m.get('matchup', '')}: {m.get('label', '')}")
+        lines.append("")
+
+    lines += ["## Delays measured", ""]
+    if not by_target:
+        lines += ["None tonight.", ""]
+    else:
+        lines += ["| Channel | Samples | Median | How |", "|---|---|---|---|"]
+        for target, xs in sorted(by_target.items(), key=lambda kv: -len(kv[1]))[:5]:
+            how = ", ".join(f"{k} {n}" for k, n in Counter(k for _, k in xs).most_common())
+            lines.append(f"| {_short(target)} | {len(xs)} | {statistics.median(s for s, _ in xs):.1f}s | {how} |")
+        lines.append("")
+
+    lines += ["## What it fixed on its own", ""]
+    if not fixes:
+        lines += ["Nothing needed fixing.", ""]
+    else:
+        for rule, n in fix_rules.most_common(5):
+            last = next(x for x in reversed(fixes) if x.get("rule") == rule)
+            bad = f", {fix_fail[rule]} didn't work" if fix_fail[rule] else ""
+            lines.append(f"- {rule}: {n}{bad} (last: {last.get('action')}"
+                         + (f" -> {last.get('detail')}" if last.get("detail") else "") + ")")
+        lines.append("")
+
+    needs = []
+    for x in observed:
+        w = str(x.get("what", ""))
+        if "approved on the TV" in w or "needs a look" in w or "GB free" in w:
+            needs.append(w)
+    if limited:
+        needs.append(f"{len(limited)} fixes hit their rate limit (problem kept coming back): "
+                     + ", ".join(sorted({str(x.get('rule')) for x in limited})[:5]))
+    lines += ["## Needs you", ""]
+    lines += ([f"- {w}" for w in list(dict.fromkeys(needs))[:5]] or ["Nothing."]) + [""]
+    return "\n".join(lines), summary
+
+
+def write_report(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text)
+    tmp.replace(path)
+
+
+def main(argv: list[str] | None = None) -> int:
+    import sys
+    args = list(sys.argv[1:] if argv is None else argv)
+    if not args or args[0] != "report":
+        print("usage: python -m redzone.supervisor report [YYYY-MM-DD]")
+        return 2
+    night = date.fromisoformat(args[1]) if len(args) > 1 else night_of(time.time()) - timedelta(days=1)
+    from redzone.store import Store
+    text, _ = build_report(night, Store(), DATA)
+    path = DATA / "reports" / f"{night.isoformat()}.md"
+    write_report(path, text)
+    print(text)
+    print(f"\nSaved {path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

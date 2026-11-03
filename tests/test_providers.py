@@ -567,6 +567,9 @@ async def test_shelf_fallback_when_a_detail_call_fails(monkeypatch):
 
 # --- 7. the book: end to end with today's links -----------------------------------------------
 
+import redzone.channels as channels_mod
+
+
 async def test_choose_end_to_end_okc_cle(monkeypatch, tmp_path):
     links = await _links(monkeypatch)
     g = okc_cle()
@@ -575,13 +578,16 @@ async def test_choose_end_to_end_okc_cle(monkeypatch, tmp_path):
     book = prov.ProviderBook(tmp_path / "p.json", clock=Clock(1793836800.0))
     assert book.remember(g, found) == 5
     cm = ChannelMap(tmp_path / "ch.json")
-    pick = book.choose(g, cm.where(g))
-    assert pick.target == f"peacock:{OKC_CLE_MAIN}"        # ...the chooser takes the main broadcast
-    assert pick.tunable and pick.confidence == "sure" and pick.provider == "peacock"
-    cm.codes["nbcsn"] = "AAAAAAAAAAA"                        # once YouTube TV's NBCSN channel is known
+    # NBCSN on YouTube TV (tuned by search, no code needed) beats Peacock: the owner never needs it.
     assert book.choose(g, cm.where(g)).target == "youtubetv:nbcsn"
-    book.saw_apps("10.0.0.5:5555", {"youtubetv": "com.amazon.firetv.youtube.tv", "prime": "com.amazon.firebat"})
+    cm.codes["nbcsn"] = "AAAAAAAAAAA"                        # once YouTube TV's NBCSN channel code is known
+    assert book.choose(g, cm.where(g)).target == "youtubetv:nbcsn"
     cm.codes.clear()
+    monkeypatch.setattr(channels_mod, "SEARCH_CHANNELS", frozenset())   # no YouTube TV route at all:
+    pick = book.choose(g, cm.where(g))
+    assert pick.target == f"peacock:{OKC_CLE_MAIN}"        # ...the chooser takes Peacock's main broadcast
+    assert pick.tunable and pick.confidence == "sure" and pick.provider == "peacock"
+    book.saw_apps("10.0.0.5:5555", {"youtubetv": "com.amazon.firetv.youtube.tv", "prime": "com.amazon.firebat"})
     pick = book.choose(g, cm.where(g))                     # Peacock not on the sticks: say so
     assert pick.provider == "prime" and "may be blacked out" in pick.label
     assert "Peacock isn't installed on your Fire TV sticks." in pick.reasons

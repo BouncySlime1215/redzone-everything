@@ -81,6 +81,17 @@ class Store:
         cols = [c[0] for c in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
+    def switches_between(self, t0: float, t1: float) -> list[dict]:
+        """Every switch with t0 <= ts < t1, oldest first (the supervisor's nightly report)."""
+        cur = self._x("SELECT ts, frm, to_game, target, kind, reason, event_ts, cmd_ts, confirmed_ts, ok, dry_run, detail "
+                      "FROM switches WHERE ts >= ? AND ts < ? ORDER BY ts", (t0, t1))
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    def checkpoint(self) -> None:
+        """Fold the write-ahead log back into the database file so it can't grow without bound."""
+        self._x("PRAGMA wal_checkpoint(TRUNCATE)")
+
     def feedback_counts(self) -> dict:
         cur = self._x("SELECT vote, COUNT(*) FROM feedback GROUP BY vote")
         return {("up" if v > 0 else "down"): n for v, n in cur.fetchall()}

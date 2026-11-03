@@ -130,7 +130,15 @@ def test_peacock_is_only_used_when_no_youtube_tv_code_exists(tmp_path):
     assert prov.best_source(g, srcs).target == "youtubetv:nbc"       # NBCSN has no code: NBC
     cm.codes.clear()
     srcs = prov.gather_sources(g, cm.where(g), {"peacock": [{"ref": "main"}]}, channel_map=cm)
-    assert prov.best_source(g, srcs).target == "peacock:main"        # last resort, still played
+    assert prov.best_source(g, srcs).target == "youtubetv:nbcsn"     # no codes: NBCSN by search
+    import redzone.channels as channels_mod
+    old_search = channels_mod.SEARCH_CHANNELS
+    channels_mod.SEARCH_CHANNELS = frozenset()
+    try:
+        srcs = prov.gather_sources(g, cm.where(g), {"peacock": [{"ref": "main"}]}, channel_map=cm)
+        assert prov.best_source(g, srcs).target == "peacock:main"    # last resort, still played
+    finally:
+        channels_mod.SEARCH_CHANNELS = old_search
     assert not prov.peacock_on_yttv(game(broadcasts=["ESPN"]), cm)
 
 

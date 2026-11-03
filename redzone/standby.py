@@ -153,15 +153,20 @@ def options(cands: dict, *, current: str | None, home: str | None = None, back_t
         if gid == home:
             out.append(Option(gid, x.target, HOME, s.score, "your game — back the moment its break ends"))
             continue
-        if x.stale or s.is_break:
+        # Crunch time and your team late and close are where the decider goes even mid-stoppage
+        # (a timeout is the way in): keep them eligible through their breaks.
+        hot = bool(s.crunch or (getattr(x, "mine_late", False) and not s.garbage))
+        if x.stale or (s.is_break and not hot):
             continue
         if gid == brk:
             out.append(Option(gid, x.target, BREAK, s.score, f"break coming ({brk_why}): spend it here"))
             continue
         value = s.score + save_s(x.target) + (return_bonus if gid == back_to else 0.0)
         why = _moment(s, games.get(gid), my_teams)
-        if why == YOUR_TEAM and s.score < top - 2 * return_bonus:
-            why = ""
+        if why == YOUR_TEAM and s.score < top - 2 * return_bonus and not getattr(x, "mine_late", False):
+            why = ""   # (late and close, your team is the decider's hard tier: never a lull)
+        if not why and hot:
+            why = "crunch time" if s.crunch else "your team, late and close"
         if why:
             out.append(Option(gid, x.target, MOMENT, value, why))
         else:

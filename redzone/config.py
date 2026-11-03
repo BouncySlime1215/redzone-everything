@@ -46,6 +46,9 @@ LIMITS: dict[str, tuple[float, float]] = {
     "two_stick": (0, 3600),
     "switch_speed.sync_every_s": (60, 3600),
     "autonomy.busy_score": (0, 100),
+    "brain.break_weight": (0.0, 1.0),
+    "brain.hot_reason_min": (50, 100),
+    "brain": (0, 30),
 }
 
 # Former rate/dwell limits are deliberately inactive. Old saved files and lab

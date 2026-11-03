@@ -48,7 +48,8 @@ TEAM_NAMES = {"nfl": "Commanders", "nba": "Wizards", "nhl": "Capitals"}
 
 def _crunch_counts(r: Replay, watching, lag_total: float, play_len: float, tune_s: float,
                    last_period: int = 4, margin: int = 8, period_len: float | None = None,
-                   window: tuple[float, float] | None = None) -> tuple[int, int]:
+                   window: tuple[float, float] | None = None,
+                   offsets: list[float] | None = None) -> tuple[int, int]:
     """One game's crunch-time plays (final 2:00 of a one-score game, or OT): (how many, how many live).
     Uses backtest.crunch_counts when the backtest has it."""
     if hasattr(backtest, "crunch_counts"):
@@ -71,7 +72,7 @@ def _crunch_counts(r: Replay, watching, lag_total: float, play_len: float, tune_
         if not ((per == last_period and clk is not None and clk <= 120 and close) or per > last_period):
             continue
         n += 1
-        live += backtest._on_screen_game(watching, w + lag_total - play_len, tune_s) == r.gid
+        live += backtest.shows(watching, offsets, r.gid, w + lag_total - play_len, tune_s)
     return n, live
 
 
@@ -257,6 +258,7 @@ class DemoEngine(Engine):
         self.scorer = Scorer(self.cfg, clock=clock)
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"), clock=clock)
         self.decider = Decider(self.cfg, self.delays, clock=clock)
+        self.decider.entry_cost = lambda target: TUNE_S   # [cut timing] the replay's picture is up TUNE_S after a switch
         self.control = InertController(self.cfg, self.channels, clock)
         # The hidden stick, modeled: what the real standby Planner would have had ready at each switch.
         self.planner = standby.Planner(self.cfg, clock=clock)
@@ -277,6 +279,7 @@ class DemoEngine(Engine):
         self.switches: list[backtest.SwitchLog] = []
         self.watching: list[tuple[float, str | None]] = []
         self.replayed: set[tuple[str, int]] = set()
+        self.replay_windows: list[tuple[str, int, float, float]] = []  # (game, play time, start, planned end)
         self.timeline: list[str] = []
         self.quiet = False
         self.calibrated = calibrated
@@ -357,7 +360,12 @@ class DemoEngine(Engine):
                 brk = d.kind == "break_visit" or (d.kind in ("replay", "chase") and on_break)
                 self.shadow.switch(self._target(d.target), rid, self._target(before), self.clock(), brk=brk)
                 backtest._record(d, before, self.clock(), self.switches, self.watching, self.replayed)
+                if d.action == "replay" and d.replay and self.decider.replay_until:
+                    # [redzone mode] the same credit rule as the backtest: a replay counts once its
+                    # clip has run to the end without another tune (it never counted here before).
+                    self.replay_windows.append((d.target, round(d.replay.t), self.clock(), self.decider.replay_until))
                 self._narrate(d)
+            backtest._credit_completed_replays(self.replay_windows, self.watching, self.clock(), self.replayed)
             return changed
 
     def _target(self, gid: str | None) -> str | None:
@@ -433,6 +441,7 @@ class DemoEngine(Engine):
         t0 = start or self.t0
         t1 = min(end or self.t1, self.clock())
         lag = float((self.cfg.get("delay.default") or {}).get("youtubetv", 45))
+        backtest._credit_completed_replays(self.replay_windows, self.watching, t1, self.replayed)
         rep = backtest._grade(self.replays, self.switches, self.watching, self.my_teams, lag, PLAY_LEN_S,
                               TUNE_S, t0, t1, self.replayed)
         sw = [x for x in self.switches if t0 <= x.t <= t1]
@@ -440,13 +449,16 @@ class DemoEngine(Engine):
         cuts = [(t, w) for t, w in rep.mid_play_cuts if t0 <= t <= t1]
         win = (t0, t1)
 
+        offs = backtest.offsets_of(self.switches)
+
         def crunch(r):
             hockey = r.league == League.NHL
             return _crunch_counts(r, self.watching, lag, PLAY_LEN_S, TUNE_S, 3 if hockey else 4,
-                                          1 if hockey else 8, 1200.0 if hockey else None, win)
+                                  1 if hockey else 8, 1200.0 if hockey else None, win, offs)
 
         # Big plays: NFL TDs/FGs/turnovers, NHL goals (every NBA bucket is a "scoring play": left out).
         big = {}
+        on_replay = 0   # NFL big plays / NHL goals that aired while we sat on a replay
         for lg in (League.NFL, League.NHL):
             n = live = rz = rp = 0
             for r in (x for x in self.replays if x.league == lg):
@@ -455,6 +467,9 @@ class DemoEngine(Engine):
                         continue
                     n += 1
                     on = backtest._on_screen_game(self.watching, w + lag - PLAY_LEN_S, TUNE_S)
+                    on_replay += (on or "").startswith("replay:")
+                    if backtest.shows(self.watching, offs, r.gid, w + lag - PLAY_LEN_S, TUNE_S):
+                        on = r.gid
                     if on == r.gid:
                         live += 1
                     elif (r.gid, round(w)) in self.replayed:
@@ -494,9 +509,18 @@ class DemoEngine(Engine):
             "crunch_live": pct(cl, cn),
             "your_teams_crunch": mine,
             "replays": sum(1 for x in sw if x.kind == "replay"),
+            # [redzone mode] drives that scored or reached the red zone: their plays seen live (and
+            # how many of the misses were spent on another sport); time on catch-up replays.
+            "nfl_drive_live": pct(rep.drive_plays_live, rep.drive_plays),
+            "nfl_drive_missed_on_other_sport": rep.drive_plays_other_sport,
+            "nfl_drive_on_redzone": rep.drive_plays_on_redzone,
+            "behind_live_min": round(rep.behind_live_s / 60, 1),
+            "behind_live_pct": round(100 * rep.behind_live_s / max(1, (t1 - t0)), 1),
+            "big_missed_on_replay": on_replay,
             "switches": len(sw),
             "switches_per_hour": round(len(sw) / hours, 1),
             "preload": self.shadow.card(),
+            "cut_timing": rep.cut.summary() if rep.cut is not None else {},
             "dead_air_causes": {k: f"{v / 60:.0f} min" for k, v in sorted(rep.dead_causes.items(),
                                                                            key=lambda kv: -kv[1]) if v >= 60},
         }
@@ -512,11 +536,21 @@ def report_text(card: dict) -> str:
              f"  NHL goals seen         {nhl['seen']}  — {nhl['live']} live, {nhl['replay']} as replays",
              f"  Crunch time live       {card['crunch_live']}",
              f"  Switches               {card['switches']}  ({card['switches_per_hour']}/hour), "
-             f"{card['replays']} of them catch-up replays"]
+             f"{card['replays']} of them catch-up replays",
+             f"  NFL drives live        {card['nfl_drive_live']} plays of scoring/red-zone drives"
+             f" ({card['nfl_drive_missed_on_other_sport']} missed on another sport)",
+             f"  Behind live            {card['behind_live_min']} min on catch-up replays"
+             f" ({card['behind_live_pct']}%), {card['big_missed_on_replay']} big plays missed meanwhile"]
     if card.get("preload"):
         p = card["preload"]
         lines.append(f"  Preload hit rate       {p['hits']}/{p['switches']} ({p['hit_rate']}%) switches were a"
                      f" flip to a ready hidden stick")
+    ct = card.get("cut_timing") or {}
+    if ct:
+        lines.append(f"  Entries landing mid-play {ct['entries_mid_play']}/{ct['entries']} (must be 0); "
+                     f"{ct['entries_in_break']} into a commercial, {ct['entry_wait_s']}s dead time after landing")
+        lines.append(f"  Leaves in a dead window {ct['leaves_in_dead_pct']}% of {ct['leaves']}; "
+                     f"plays missed at the start of a visit {ct['plays_missed_entry']}")
     for nick, v in card["your_teams_crunch"].items():
         lines.append(f"  {nick:<22} {v}")
     for c in card.get("mid_play_cut_list") or []:
