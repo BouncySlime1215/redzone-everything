@@ -183,3 +183,33 @@ outs/runners/count, the current stoppage type, time since the last break, crunch
 Win probability comes from the source for NFL/CFB (and ESPN where it has one); NBA/college basketball
 use a spread-plus-normal model fit to ESPN's WP, NHL a Poisson model with power plays, MLB run
 expectancy. These are personal-use datasets: don't redistribute the ESPN, NHL or MLB-derived files.
+
+## The brain (learned models)
+
+`redzone/scoring/brain.py` gives every live game three numbers, from small per-league gradient-boosted
+tree models trained on the tables above (`scripts/train_brain.py`, about 3 minutes on an M2; 120-420 KB per
+league in `redzone/scoring/brain_models/`, read with plain numpy, about 0.3 ms per game state):
+
+- `break_soon_p`: chance a real break starts within a minute. Blended 50/50 with the hand-written rules
+  in `breaks.py` (`brain.break_weight`); a break already in the data is never second-guessed.
+- `key_soon_p`: chance of a big moment in the next 2-5 minutes. Adds up to `brain.<league>.key_points`
+  to the excitement score when it's likelier than usual for that league.
+- `hotness`: 0-100 game flow, like ESPN's game-flow chart. The game sheet on the phone draws it play by
+  play ("Game flow"), with the top reasons (win probability swinging, close game, late, ...).
+
+Training split is by time: older seasons train, the newest season is split by schedule (valid, then test).
+The live-path test replays our own recorded ESPN games (`data/archive`, all after the training data) one play
+at a time through the real code (`scripts/eval_brain.py`), against the rules on the same plays:
+
+| league | games | break AUC rules / brain / blend | key AUC scorer / brain | game-flow ρ scorer / brain |
+|---|---|---|---|---|
+| nfl | 285 | 0.682 / 0.748 / 0.841 | 0.621 / 0.675 | 0.624 / 0.945 |
+| nba | 104 | 0.648 / 0.819 / 0.825 | 0.947 / 0.967 | 0.763 / 0.980 |
+| nhl | 99 | 0.621 / 0.680 / 0.665 | 0.542 / 0.539 | 0.528 / 0.851 |
+| mlb | 54 | 0.774 / 0.814 / 0.820 | 0.629 / 0.666 | 0.398 / 0.668 |
+
+`brain.enabled` is on: the scorecards stay at 0 mid-play cuts with no metric worse (NBA dead air 19.3 -> 19.0,
+NHL goals live 42.3 -> 42.5, NHL crunch live 87.0 -> 87.5; NFL unchanged: its key points are 0 because any
+nudge cost crunch time there). Turn it off in settings to get the rules alone. No model file for a league, or
+a broken one, means that league just uses the rules. Retrain: `pip install lightgbm`, then
+`scripts/build_training.py`, `scripts/train_brain.py`, `scripts/eval_brain.py --save`.

@@ -214,7 +214,7 @@ class Scorer:
         parts.extend(ctx_parts)
         reading = self.brain.read(g) if self.brain_on() else None
         if reading is not None and reading.hotness is not None:
-            pts, part = brain_points(reading, c)
+            pts, part = brain_points(reading, c, g.league.base.value)
             m += pts
             factors["brain"] = round(pts, 1)
             if part:
@@ -377,21 +377,25 @@ def context(g: GameState, h: History, k: float, now: float, c) -> tuple[float, l
     return pts, parts, {n: round(v, 1) for n, v in f.items() if v}
 
 
-def brain_points(r, c) -> tuple[float, tuple[float, str] | None]:
+def brain_points(r, c, league: str = "") -> tuple[float, tuple[float, str] | None]:
     """Moment points from the learned brain: game flow above/below a median moment, plus how much
     likelier than usual (for this league) a key moment is in the next few minutes.
     (points, reason part or None)"""
-    hot = (r.hotness - 50.0) / 50.0 * c.get("brain.hot_points", 8)
+    def knob(name: str, default: float) -> float:   # brain.<league>.<name> beats brain.<name>
+        v = c.get(f"brain.{league}.{name}") if league else None
+        return float(v if v is not None else c.get(f"brain.{name}", default))
+
+    hot = (r.hotness - 50.0) / 50.0 * knob("hot_points", 0)
     base = r.key_rate if r.key_rate is not None else 0.3
     lift = max(0.0, ((r.key_soon_p or 0.0) - base) / max(1e-6, 1 - base))
-    key = lift * c.get("brain.key_points", 8)
+    key = lift * knob("key_points", 6)
     pts = hot + key
     part = None
     if r.hotness >= c.get("brain.hot_reason_min", 85):
         why = f": {r.reasons[0]}" if r.reasons else ""
-        part = (pts + 14, f"game flow {round(r.hotness)}/100{why}")
+        part = (max(pts, 0) + 6, f"game flow {round(r.hotness)}/100{why}")
     elif key >= 3:
-        part = (pts + 12, "big moment likely soon")
+        part = (key, "big moment likely soon")   # ranks below the specific reasons (upset, run, ...)
     return pts, part
 
 

@@ -94,11 +94,17 @@ score:
     no_hitter: {through_6: 25, through_7: 35, ninth: 50}
 
 brain:                     # learned models (redzone/scoring/brain.py, trained by scripts/train_brain.py)
-  enabled: false           # feed the brain's game flow / key-moment / break odds into the score and break forecast
-  hot_points: 8            # moment points at game flow 100 (minus at 0; 50 = a median moment adds nothing)
-  key_points: 8            # moment points when a key moment in the next few minutes is a sure thing
+  enabled: true            # feed the brain's game flow / key-moment / break odds into the score and break forecast
+  hot_points: 0            # moment points at game flow 100 (minus at 0; 50 = a median moment adds nothing)
+  key_points: 6            # moment points when a key moment in the next few minutes is a sure thing
   break_weight: 0.5        # how much the brain's break odds count against the hand-written break rules
   hot_reason_min: 85       # game flow at least this hot shows up in the reason line
+  # Per league (tuned on scripts/eval.py + eval_sports.py, Nov 3 2026): NFL's hand-tuned crunch logic
+  # did best untouched (the brain only shows its numbers and helps the break forecast there).
+  nfl: {hot_points: 0, key_points: 0}
+  nba: {hot_points: 0, key_points: 12}
+  nhl: {hot_points: 0, key_points: 6}
+  mlb: {hot_points: 0, key_points: 6}
 
 decider:
   switch_margin: 10

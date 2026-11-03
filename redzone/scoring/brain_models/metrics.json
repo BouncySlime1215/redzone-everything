@@ -224,7 +224,64 @@
     "frac_left"
    ]
   },
-  "file_kb": 221.0
+  "file_kb": 221.0,
+  "live": {
+   "league": "nba",
+   "games": 104,
+   "rows": 52420,
+   "brain_ms_per_state": 0.326,
+   "break": {
+    "rules": {
+     "n": 50589,
+     "rate": 0.3156,
+     "auc": 0.6485,
+     "brier": 0.2267,
+     "brier_skill": -0.0497,
+     "logloss": 3.0842,
+     "ece": 0.241
+    },
+    "brain": {
+     "n": 50589,
+     "rate": 0.3156,
+     "auc": 0.8193,
+     "brier": 0.1452,
+     "brier_skill": 0.3279,
+     "logloss": 0.4478,
+     "ece": 0.0114
+    },
+    "blend": {
+     "n": 50589,
+     "rate": 0.3156,
+     "auc": 0.8248,
+     "brier": 0.1628,
+     "brier_skill": 0.2465,
+     "logloss": 0.507,
+     "ece": 0.1236
+    }
+   },
+   "key": {
+    "rules_auc": 0.9466,
+    "brain": {
+     "n": 52420,
+     "rate": 0.0853,
+     "auc": 0.9671,
+     "brier": 0.0545,
+     "brier_skill": 0.3021,
+     "logloss": 0.1672,
+     "ece": 0.0679
+    }
+   },
+   "hot": {
+    "rules_spearman": 0.763,
+    "brain": {
+     "n": 52420,
+     "mae": 8.85,
+     "rmse": 11.58,
+     "r2": 0.8388,
+     "spearman": 0.9803
+    }
+   }
+  }
  },
  "nfl": {
   "league": "nfl",
@@ -456,7 +513,64 @@
     "abs_diff"
    ]
   },
-  "file_kb": 186.0
+  "file_kb": 186.0,
+  "live": {
+   "league": "nfl",
+   "games": 285,
+   "rows": 51259,
+   "brain_ms_per_state": 0.287,
+   "break": {
+    "rules": {
+     "n": 39414,
+     "rate": 0.4169,
+     "auc": 0.6816,
+     "brier": 0.2765,
+     "brier_skill": -0.1375,
+     "logloss": 3.4411,
+     "ece": 0.2729
+    },
+    "brain": {
+     "n": 39414,
+     "rate": 0.4169,
+     "auc": 0.7479,
+     "brier": 0.1942,
+     "brier_skill": 0.2013,
+     "logloss": 0.5872,
+     "ece": 0.0966
+    },
+    "blend": {
+     "n": 39414,
+     "rate": 0.4169,
+     "auc": 0.8414,
+     "brier": 0.1894,
+     "brier_skill": 0.221,
+     "logloss": 0.577,
+     "ece": 0.169
+    }
+   },
+   "key": {
+    "rules_auc": 0.6206,
+    "brain": {
+     "n": 51259,
+     "rate": 0.5075,
+     "auc": 0.6753,
+     "brier": 0.2228,
+     "brier_skill": 0.1087,
+     "logloss": 0.6325,
+     "ece": 0.0229
+    }
+   },
+   "hot": {
+    "rules_spearman": 0.6239,
+    "brain": {
+     "n": 51259,
+     "mae": 6.53,
+     "rmse": 9.94,
+     "r2": 0.881,
+     "spearman": 0.9447
+    }
+   }
+  }
  },
  "cfb": {
   "league": "cfb",
@@ -910,7 +1024,64 @@
     "ties"
    ]
   },
-  "file_kb": 119.9
+  "file_kb": 119.9,
+  "live": {
+   "league": "nhl",
+   "games": 99,
+   "rows": 31059,
+   "brain_ms_per_state": 0.274,
+   "break": {
+    "rules": {
+     "n": 29844,
+     "rate": 0.1911,
+     "auc": 0.6212,
+     "brier": 0.2758,
+     "brier_skill": -0.784,
+     "logloss": 1.4264,
+     "ece": 0.3167
+    },
+    "brain": {
+     "n": 29844,
+     "rate": 0.1911,
+     "auc": 0.6798,
+     "brier": 0.1303,
+     "brier_skill": 0.1573,
+     "logloss": 0.4252,
+     "ece": 0.0384
+    },
+    "blend": {
+     "n": 29844,
+     "rate": 0.1911,
+     "auc": 0.6647,
+     "brier": 0.1595,
+     "brier_skill": -0.0316,
+     "logloss": 0.504,
+     "ece": 0.1536
+    }
+   },
+   "key": {
+    "rules_auc": 0.5418,
+    "brain": {
+     "n": 31059,
+     "rate": 0.2799,
+     "auc": 0.5388,
+     "brier": 0.1979,
+     "brier_skill": 0.018,
+     "logloss": 0.585,
+     "ece": 0.0234
+    }
+   },
+   "hot": {
+    "rules_spearman": 0.5285,
+    "brain": {
+     "n": 31059,
+     "mae": 12.07,
+     "rmse": 16.0,
+     "r2": 0.6907,
+     "spearman": 0.8512
+    }
+   }
+  }
  },
  "mlb": {
   "league": "mlb",
@@ -1125,7 +1296,64 @@
     "t_game"
    ]
   },
-  "file_kb": 262.1
+  "file_kb": 262.1,
+  "live": {
+   "league": "mlb",
+   "games": 54,
+   "rows": 30205,
+   "brain_ms_per_state": 0.34,
+   "break": {
+    "rules": {
+     "n": 29308,
+     "rate": 0.1707,
+     "auc": 0.7741,
+     "brier": 0.1607,
+     "brier_skill": -0.1357,
+     "logloss": 0.4443,
+     "ece": 0.1541
+    },
+    "brain": {
+     "n": 29308,
+     "rate": 0.1707,
+     "auc": 0.8142,
+     "brier": 0.1398,
+     "brier_skill": 0.0121,
+     "logloss": 0.4023,
+     "ece": 0.1236
+    },
+    "blend": {
+     "n": 29308,
+     "rate": 0.1707,
+     "auc": 0.8197,
+     "brier": 0.1437,
+     "brier_skill": -0.0154,
+     "logloss": 0.4032,
+     "ece": 0.1305
+    }
+   },
+   "key": {
+    "rules_auc": 0.6294,
+    "brain": {
+     "n": 30205,
+     "rate": 0.2891,
+     "auc": 0.6663,
+     "brier": 0.228,
+     "brier_skill": -0.1094,
+     "logloss": 0.7352,
+     "ece": 0.188
+    }
+   },
+   "hot": {
+    "rules_spearman": 0.3975,
+    "brain": {
+     "n": 30205,
+     "mae": 16.87,
+     "rmse": 22.35,
+     "r2": 0.3994,
+     "spearman": 0.6681
+    }
+   }
+  }
  },
  "cbb": {
   "league": "cbb",
