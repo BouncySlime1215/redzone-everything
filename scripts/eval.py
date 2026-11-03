@@ -12,6 +12,11 @@ Real-world messiness (all off by default; see backtest.run):
     --late-plays [FRAC]  this fraction of plays arrive a poll late / out of order (0.15)
     --no-wallclock [FRAC]  this fraction of plays come without a wallclock (0.5)
     --seed N             which random draw of the above
+    --channel-spread 8   [per-channel delay] each channel really runs its own delay (sd 8 s around the
+                         default); the app starts uncalibrated and learns from --history only
+    --history 0.6        fraction of channels measured on earlier nights (taps; half as many again
+                         with show changes only)
+    --delay-model M      channel (default, delay.model) | legacy (one figure per app, the old book)
 
 Targets: mid_play_cuts 0 (hard), dead_air_pct -> 0, big_seen_pct -> 100,
 crunch_live_pct as high as physically possible, your_team_crunch_live_pct 100.
@@ -55,9 +60,13 @@ def main():
     ap.add_argument("--late-plays", type=float, nargs="?", const=0.15, default=0.0)
     ap.add_argument("--no-wallclock", type=float, nargs="?", const=0.5, default=0.0)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--channel-spread", type=float, default=0.0)
+    ap.add_argument("--history", type=float, default=0.0)
+    ap.add_argument("--delay-model", choices=("channel", "legacy"), default=None)
     a = ap.parse_args()
     knobs = dict(true_delay=a.true_delay, sigma=a.sigma, lag_jitter=(3.0, 25.0) if a.lag_jitter else None,
-                 drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed)
+                 drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed,
+                 channel_spread=a.channel_spread, history=a.history, delay_model=a.delay_model)
     # The live service rewrites data/config.yaml (measured switch costs, taps): scorecards read a
     # pinned copy when one exists, so a before/after comparison isn't moved by the live night.
     pinned = ROOT / "data/eval_config.yaml"

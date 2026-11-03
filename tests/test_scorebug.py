@@ -160,3 +160,75 @@ def test_screen_samples_settle_an_app_on_their_own_and_persist():
     # Taps still count alongside.
     b2.calibrate("prime:abc", 26.0)
     assert b2.settled("prime") and b2.get("prime:abc").source == "tap"
+
+
+# ------------------------------------------------------------------ [auto sync]
+
+def test_a_change_the_feed_hasnt_got_yet_is_timed_when_it_arrives():
+    """The feed runs 35-80 s behind real life, so the bug often changes before the feed has the play."""
+    tl = type("TL", (), {})()
+    tl.scores = _scores(("57-58", 900.0, 0))
+    w = ScoreBugWatcher()
+    got = []
+    w.on_sample = got.append
+    tune = object()
+    for t, bug in ((1020.0, Bug(57, 58)), (1022.0, Bug(59, 60)), (1024.0, Bug(59, 60))):
+        w.observe("stick", "prime:abc", tune, t, bug, tl)
+    assert not got and w.rejected == 0 and len(w.pending) == 1
+    tl.scores = _scores(("57-58", 900.0, 0), ("59-60", 1000.0, 0))          # the play lands in the feed
+    w.observe("stick", "prime:abc", tune, 1060.0, Bug(59, 60), tl)
+    assert len(got) == 1 and got[0].sample == pytest.approx(21.0) and not w.pending
+
+
+def test_a_pending_change_is_dropped_after_two_minutes():
+    tl = type("TL", (), {})()
+    tl.scores = _scores(("57-58", 900.0, 0))
+    w = ScoreBugWatcher()
+    tune = object()
+    for t, bug in ((1020.0, Bug(57, 58)), (1022.0, Bug(59, 60)), (1024.0, Bug(59, 60))):
+        w.observe("stick", "prime:abc", tune, t, bug, tl)
+    w.observe("stick", "prime:abc", tune, 1200.0, Bug(59, 60), tl)
+    assert not w.pending and w.rejected == 1
+
+
+def test_running_bug_clock_against_the_feed_clock_gives_a_sample():
+    tl = type("TL", (), {})()
+    tl.scores = []
+    # the feed: the clock ran from 10:00 (wall 1000) to 9:00 (wall 1060), period 2
+    tl.clocks = [(1000.0, 2, 600.0), (1060.0, 2, 540.0)]
+    w = ScoreBugWatcher()
+    got = []
+    w.on_clock = lambda target, wall, d: got.append((target, wall, d))
+    tune = object()
+    # screen 30 s behind: 9:50 on the bug at wall 1040, 9:48 at 1042 (running)
+    w.observe("s", "prime:abc", tune, 1040.0, Bug(1, 1, "2ND", "9:50"), tl)
+    w.observe("s", "prime:abc", tune, 1042.0, Bug(1, 1, "2ND", "9:48"), tl)
+    assert got == [("prime:abc", 1042.0, pytest.approx(30.0))]
+    # a stopped clock on screen gives nothing
+    w.observe("s", "prime:abc", tune, 1060.0, Bug(1, 1, "2ND", "9:40"), tl)
+    w.observe("s", "prime:abc", tune, 1062.0, Bug(1, 1, "2ND", "9:40"), tl)
+    assert len(got) == 1
+
+
+def test_bug_clock_waits_for_the_feed_to_pass_it():
+    tl = type("TL", (), {})()
+    tl.scores = []
+    tl.clocks = [(1000.0, 2, 600.0)]                    # the feed only has 10:00 so far
+    w = ScoreBugWatcher()
+    got = []
+    w.on_clock = lambda target, wall, d: got.append(d)
+    tune = object()
+    w.observe("s", "prime:abc", tune, 1040.0, Bug(1, 1, "2ND", "9:50"), tl)
+    w.observe("s", "prime:abc", tune, 1042.0, Bug(1, 1, "2ND", "9:48"), tl)
+    assert not got and w.pending
+    tl.clocks.append((1060.0, 2, 540.0))
+    w.observe("s", "prime:abc", tune, 1080.0, Bug(1, 1, "2ND", "8:50"), tl)
+    assert got and got[0] == pytest.approx(30.0)
+
+
+def test_clock_and_period_parsing():
+    assert scorebug.clock_seconds("12:34") == 754 and scorebug.clock_seconds("45.6") == 45.6
+    assert scorebug.clock_seconds("") is None and scorebug.clock_seconds("HALF") is None
+    assert scorebug.period_number("2ND") == 2 and scorebug.period_number("Q3") == 3
+    assert scorebug.period_number("OT", [(0, 5, 100.0)]) == 5 and scorebug.period_number("OT", []) is None
+    assert scorebug.period_number("HALFTIME") is None

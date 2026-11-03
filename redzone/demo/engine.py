@@ -256,7 +256,8 @@ class DemoEngine(Engine):
         self.channels = DemoChannels(path=work / "channels.json")
         self.merger = Merger(clock=clock)
         self.scorer = Scorer(self.cfg, clock=clock)
-        self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"), clock=clock)
+        self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"), clock=clock,
+                                model=self.cfg.get("delay.model", "channel"))
         self.decider = Decider(self.cfg, self.delays, clock=clock)
         self.decider.entry_cost = lambda target: TUNE_S   # [cut timing] the replay's picture is up TUNE_S after a switch
         self.control = InertController(self.cfg, self.channels, clock)
