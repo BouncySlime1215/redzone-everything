@@ -90,7 +90,7 @@ FUBO_CHANNELS = {"espn": "10179", "espn2": "12444", "espnews": "16485", "espnu":
 NATIONAL_NETS = frozenset({"espn", "espn2", "espnu", "espnews", "abc", "tnt", "trutv", "tbs", "nbc",
                            "nbcsn", "peacock", "prime", "fox", "fs1", "fs2", "cbs", "cbssn",
                            "nflnetwork", "nbatv", "nhlnetwork", "mlbnetwork", "usa", "netflix",
-                           "appletv", "max"})
+                           "appletv", "max", "accn", "secn", "btn", "cw"})
 # Broadcast-only apps (no event link found yet): say where it is even if we can't tune it.
 LABEL_ONLY = {"peacock": "Peacock", "netflix": "Netflix", "appletv": "Apple TV", "max": "HBO Max"}
 
