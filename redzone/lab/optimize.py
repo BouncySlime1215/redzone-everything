@@ -33,9 +33,12 @@ SPACE = {
 }
 
 
-def load_slates(arch: Path = ROOT / "data/archive/nfl") -> list[list[Replay]]:
+def load_slates(arch: Path = ROOT / "data/archive/nfl", end: str | None = None) -> list[list[Replay]]:
+    """Every 1 pm / 4 pm ET NFL slate with 2+ games, oldest first; only nights <= `end` (YYYYMMDD)."""
     slates = []
     for sb_path in sorted(arch.glob("scoreboard_*.json")):
+        if end and sb_path.stem.split("_")[-1] > str(end):
+            continue
         sb = json.loads(sb_path.read_text())
         for hh in ("18:", "21:"):
             ids = [e["id"] for e in sb.get("events", []) if hh in e.get("date", "")]
