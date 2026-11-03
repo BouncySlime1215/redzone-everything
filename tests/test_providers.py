@@ -387,7 +387,7 @@ def test_youtube_tv_wins_when_it_can_tune():
     assert [a.provider for a in p.alternates] == ["espn", "peacock", "prime"]  # League Pass blackout risk
 
 
-def test_provider_order_prime_espn_peacock_fubo():
+def test_provider_order_prime_espn_fubo_and_peacock_last():
     g = game()
     order = ["fubo", "peacock", "espn", "prime", "max"]
     picks = []
@@ -396,7 +396,7 @@ def test_provider_order_prime_espn_peacock_fubo():
         best = prov.best_source(g, cands).provider
         picks.append(best)
         cands = [c for c in cands if c.provider != best]
-    assert picks == ["prime", "espn", "peacock", "fubo", "max"]
+    assert picks == ["prime", "espn", "fubo", "max", "peacock"]   # Peacock: last resort
 
 
 def test_tunable_beats_better_app_that_cannot_tune_yet():

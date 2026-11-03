@@ -28,7 +28,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from redzone.channels import APP_FOR, LOCAL_TEAMS, MONUMENTAL_TEAMS, NETWORKS, PRETTY, ChannelMap, Where
+from redzone.channels import APP_FOR, LOCAL_TEAMS, MONUMENTAL_TEAMS, NETWORKS, PRETTY, ChannelMap, Where, describe
 from redzone.models import GameState, League
 
 log = logging.getLogger(__name__)
@@ -91,6 +91,13 @@ NATIONAL_NETS = frozenset({"espn", "espn2", "espnu", "espnews", "abc", "tnt", "t
                            "nbcsn", "peacock", "prime", "fox", "fs1", "fs2", "cbs", "cbssn",
                            "nflnetwork", "nbatv", "nhlnetwork", "mlbnetwork", "usa", "netflix",
                            "appletv", "max"})
+# Apps used only when nothing else that isn't risky can play the game.  Everything on Peacock
+# is simulcast on NBC / NBCSN, which YouTube TV carries (and can rewind): the owner never
+# needs Peacock, so it is the last resort.
+LAST_RESORT = frozenset({"peacock"})
+# YouTube TV channels that carry Peacock's games, best guess first (NBCSN carries Peacock's
+# NBA/NHL nights since its Nov 2025 relaunch; NBC the big ones).
+PEACOCK_ON_YTTV = ("nbcsn", "nbc")
 # Broadcast-only apps (no event link found yet): say where it is even if we can't tune it.
 LABEL_ONLY = {"peacock": "Peacock", "netflix": "Netflix", "appletv": "Apple TV", "max": "HBO Max"}
 
@@ -278,6 +285,7 @@ class ProviderState:
     why: str = ""                   # plain English reason when not usable
     package: str | None = None
     sticks: tuple[str, ...] = ()
+    blocked: tuple[str, ...] = ()   # sticks where it's signed out / not subscribed (others may work)
 
     @property
     def usable(self) -> bool:
@@ -357,7 +365,8 @@ def _risky(s: Source, g: GameState, side: str | None) -> bool:
 
 
 def _rank_key(s: Source, g: GameState, side: str | None) -> tuple:
-    return (0 if s.tunable else 1, 1 if _risky(s, g, side) else 0, _feed_rank(s, side),
+    return (0 if s.tunable else 1, 1 if _risky(s, g, side) else 0,
+            1 if s.provider in LAST_RESORT else 0, _feed_rank(s, side),
             RANK.get(s.provider, len(RANK)), 0 if s.kind == "event" else 1)
 
 
@@ -377,6 +386,8 @@ def _states(available) -> dict[str, ProviderState]:
 def _why_pick(s: Source, side: str | None) -> str:
     if side and s.feed == side:
         return "your team's own broadcast"
+    if s.provider == "youtubetv" and s.note.startswith("Peacock"):
+        return s.note
     if s.provider == "youtubetv":
         return "preferred provider for channel playback and configured rewind support"
     if s.feed == "national":
@@ -592,12 +603,27 @@ def gather_sources(g: GameState, base: Where | None, links: Mapping[str, list[di
                 candidate = source_from_where(route, g)
                 if candidate:
                     cands.append(candidate)
+    cands += peacock_on_yttv(g, channel_map, {c.target for c in cands if c.target})
     cands += channel_sources(g, have={c.provider for c in cands if c.target})
     out: dict[str, Source] = {}
     for c in cands:
         key = c.target or f"{c.provider}:?"
         out[key] = _merge(out[key], c) if key in out else c
     return [_game_skip(g, apply_skip(c, skips), skips) for c in out.values()]
+
+
+def peacock_on_yttv(g: GameState, channel_map: ChannelMap | None, have=()) -> list[Source]:
+    """A game on Peacock is also on NBC / NBCSN: offer those YouTube TV channels (only the
+    ones whose channel codes we have), so Peacock stays the last resort."""
+    if channel_map is None or "peacock" not in _nets(g):
+        return []
+    out = []
+    for ch in PEACOCK_ON_YTTV:
+        t = f"youtubetv:{ch}"
+        if t not in have and channel_map.yttv_code(t):
+            out.append(Source("youtubetv", t, describe(t), True, "channel", feed="national",
+                              confidence="likely", note=f"Peacock games air on {PRETTY.get(ch, ch)}"))
+    return out
 
 
 LEAGUE_PASS_APPS = frozenset({"prime", "nba", "dazn"})
@@ -661,6 +687,10 @@ class ProviderBook:
         self.subs: dict[str, dict] = {}                   # provider -> {subscribed, kind, why, at, by}
         self.skips: dict[str, dict] = {}                  # target -> {kind, why, at, game}
         self.links: dict[str, dict] = {}                  # game id -> {start, providers: {prov: [rec]}}
+        # Per stick: one stick can be signed out of an app the other plays fine (Peacock).
+        self.stick_subs: dict[str, dict] = {}             # host -> {provider: {kind, why, at}}
+        self.stick_skips: dict[str, dict] = {}            # host -> {target: {kind, why, at, game}}
+        self.worked: dict[str, dict] = {}                 # provider -> {host: last time video played}
         self._fails: dict[str, list[float]] = {}
         self.load()
 
@@ -678,6 +708,9 @@ class ProviderBook:
         self.subs = _dict(d.get("subs"))
         self.skips = _dict(d.get("skips"))
         self.links = _dict(d.get("links"))
+        self.stick_subs = {h: _dict(v) for h, v in _dict(d.get("stick_subs")).items()}
+        self.stick_skips = {h: _dict(v) for h, v in _dict(d.get("stick_skips")).items()}
+        self.worked = {k: _dict(v) for k, v in _dict(d.get("worked")).items()}
 
     def save(self) -> None:
         """Atomic write; a full disk or permissions problem is logged, never raised."""
@@ -686,6 +719,8 @@ class ProviderBook:
             tmp = self.path.with_suffix(".tmp")
             tmp.write_text(json.dumps({"installed": self.installed, "scanned": self.scanned,
                                        "subs": self.subs, "skips": self.skips, "links": self.links,
+                                       "stick_subs": self.stick_subs, "stick_skips": self.stick_skips,
+                                       "worked": self.worked,
                                        "saved": self._now()}, indent=1))
             tmp.replace(self.path)
         except OSError as e:
@@ -738,8 +773,57 @@ class ProviderBook:
             inst = (len(hosts) > 0) if self.installed else None
             pkg = self.installed[hosts[0]][p.key] if hosts else None
             sub, why = self._sub(p.key, now)
-            out[p.key] = ProviderState(p.key, inst, sub, why, pkg, hosts)
+            have = self._hosts(p.key)
+            blocked = tuple(h for h in have if self._stick_mark(h, p.key, now))
+            if sub is None and blocked and len(blocked) == len(have):
+                # Walled on every stick that has it: the app itself is out for now.
+                sub, why = False, str(self._stick_mark(blocked[0], p.key, now).get("why") or "")
+            out[p.key] = ProviderState(p.key, inst, sub, why, pkg, hosts, blocked)
         return out
+
+    # -- per stick ---------------------------------------------------------------------
+
+    def _hosts(self, app: str) -> list[str]:
+        """Sticks that have this app: the scans' answer, else every stick we've heard about."""
+        if self.installed:
+            return sorted(h for h, roles in self.installed.items() if app in (roles or {}))
+        return sorted(set(self.worked.get(app) or {}) | {h for h, m in self.stick_subs.items() if app in m})
+
+    def _stick_mark(self, host: str, app: str, now: float | None = None) -> dict:
+        rec = (self.stick_subs.get(host) or {}).get(app)
+        if not isinstance(rec, dict):
+            return {}
+        now = self._now() if now is None else now
+        if now - float(rec.get("at") or 0) > RECHECK_S.get(rec.get("kind"), 86400.0):
+            return {}  # stale: give that stick another try
+        return rec
+
+    def can_play(self, host: str | None, target: str | None) -> bool:
+        """Can this stick play this target, as far as we've learned?  False only when this
+        stick hit a sign-in or subscribe wall for the app (or this link) recently, or its
+        app scan says the app isn't there.  Unknown = yes.  Never raises."""
+        try:
+            if not host or not target:
+                return True
+            app = target.partition(":")[0]
+            if app in BY_KEY and host in self.installed and app not in (self.installed.get(host) or {}):
+                return False
+            if self._stick_mark(host, app):
+                return False
+            skip = (self.stick_skips.get(host) or {}).get(target)
+            return not (isinstance(skip, dict)
+                        and self._now() - float(skip.get("at") or 0) < SKIP_S.get(skip.get("kind"), 0))
+        except Exception:  # a bad record must never block a tune
+            log.exception("can_play %s %s", host, target)
+            return True
+
+    def _others(self, target: str, host: str) -> list[str]:
+        """Other sticks that have this target's app and aren't walled off from it (or it)."""
+        return [h for h in self._hosts(target.partition(":")[0]) if h != host and self.can_play(h, target)]
+
+    def _mark_stick(self, host: str, app: str, kind: str, why: str) -> None:
+        self.stick_subs.setdefault(host, {})[app] = {"kind": kind, "why": why, "at": self._now()}
+        self.save()
 
     def _sub(self, key: str, now: float) -> tuple[bool | None, str]:
         rec = self.subs.get(key)
@@ -760,20 +844,33 @@ class ProviderBook:
 
     # -- learning from tunes ---------------------------------------------------------------
 
-    def learn(self, target: str | None, ok: bool, detail: str = "", game_id: str | None = None) -> str:
+    def learn(self, target: str | None, ok: bool, detail: str = "", game_id: str | None = None,
+              host: str | None = None) -> str:
         """Feed every real (not dry-run) tune outcome here.  Returns a plain-English note
-        when something was learned ("" otherwise), e.g. for a toast on the phone."""
+        when something was learned ("" otherwise), e.g. for a toast on the phone.
+
+        host = the stick that tuned (None = unknown).  A sign-in or subscribe wall on one
+        stick never marks the whole app out while another stick that has it isn't walled:
+        that stick plays the app's games instead (Controller.can_play)."""
         if not target:
             return ""
         app = target.partition(":")[0]
         if ok:
-            return self._learn_ok(app, target)
+            note = self._learn_ok(app, target)
+            if host:
+                self.worked.setdefault(app, {})[host] = self._now()
+                (self.stick_subs.get(host) or {}).pop(app, None)
+                (self.stick_skips.get(host) or {}).pop(target, None)
+                self.save()
+            return note
         v = parse_verdict(detail)
         if v is None:
             return self._learn_fail(target, game_id)
         if v.kind == "blackout":
             self._skip(target, "blackout", f"{_name(app)}: blacked out here", game_id)
             return f"{_name(app)} is blacked out for this game — using another source"
+        if host and v.kind in ("signin", "upsell") and self._others(target, host):
+            return self._learn_stick_wall(app, target, v, game_id, host)
         if v.kind == "signin":
             self._mark(app, "signin", f"{_name(app)} is signed out — sign in on the TV once")
             return f"{_name(app)} looks signed out — sign in on the TV; using other apps meanwhile"
@@ -796,6 +893,29 @@ class ProviderBook:
         if dropped:
             self.save()
         return ""
+
+    def _learn_stick_wall(self, app: str, target: str, v: Verdict, game_id: str | None, host: str) -> str:
+        """A wall on one stick while another stick has the app: learn it for this stick only.
+        A sign-in wall, or any wall in a single-tier app that has played on another stick (the
+        account is fine, so this stick is signed out: Peacock's "Pick a plan / Sign in"), marks
+        this stick out of the app.  Otherwise (maybe a per-game add-on) just this link on this
+        stick; two such links in a single-tier app mark the stick too."""
+        name = _name(app)
+        played_elsewhere = any(h != host for h in self.worked.get(app) or {})
+        if v.kind == "signin" or (played_elsewhere and app not in MULTI_TIER):
+            self._mark_stick(host, app, v.kind, f"{name} is signed out on {host} — it showed “{v.phrase}”")
+            return f"{name} is signed out on one stick ({host}) — playing {name} on the other stick"
+        now = self._now()
+        walls = self.stick_skips.setdefault(host, {})
+        walls[target] = {"kind": "upsell", "why": f"{name}: not available on {host} — “{v.phrase}”",
+                         "at": now, "game": game_id}
+        mine = {t for t, s in walls.items() if t.startswith(app + ":") and isinstance(s, dict)
+                and s.get("kind") == "upsell" and now - float(s.get("at") or 0) < SKIP_S["upsell"]}
+        if app not in MULTI_TIER and len(mine) >= 2:
+            self._mark_stick(host, app, "upsell", f"{name} isn't available on {host} — it showed “{v.phrase}”")
+            return f"{name} doesn't play on one stick ({host}) — using the other stick for {name}"
+        self.save()
+        return f"{name} asked to subscribe on one stick ({host}) — trying the other stick"
 
     def _learn_fail(self, target: str, game_id: str | None) -> str:
         now = self._now()
