@@ -36,6 +36,8 @@ class DiscoveryRuntime:
         self.configure_profiles()
         if hasattr(engine.control, "on_preload_fail"):
             engine.control.on_preload_fail = self.on_preload_fail
+        if hasattr(engine.control, "can_play"):
+            engine.control.can_play = self.book.can_play   # per-stick sign-in walls route games
 
     def configure_profiles(self):
         profiles = self.engine.cfg.get("providers.profiles", {}) or {}
@@ -110,17 +112,18 @@ class DiscoveryRuntime:
             return
         if not outcome.ok and (outcome.detail or "").lower().startswith(NOT_A_TUNE):
             return
-        note = self.book.learn(outcome.target, outcome.ok, outcome.detail, game_id)
+        note = self.book.learn(outcome.target, outcome.ok, outcome.detail, game_id,
+                               host=getattr(outcome, "stick", None))
         if note:
             self.engine.toast(note, "info")
         if outcome.ok:
             self.autonomy.on_tune(outcome.target, replay)
 
-    def on_preload_fail(self, target, detail):
+    def on_preload_fail(self, target, detail, host=None):
         """A standby preload that failed is a real tune: learn from it like a switch, so a dead
-        standby link isn't retuned every 2 minutes all night."""
+        standby link isn't retuned every 2 minutes all night.  host = the stick it failed on."""
         try:
-            note = self.book.learn(target, False, detail, self.book.game_for(target))
+            note = self.book.learn(target, False, detail, self.book.game_for(target), host=host)
             if note:
                 self.engine.toast(note, "info")
         except Exception:
@@ -130,7 +133,8 @@ class DiscoveryRuntime:
         return {
             "jobs": self.autonomy.status(),
             "providers": [{"key": key, "installed": s.installed, "subscribed": s.subscribed,
-                           "why": s.why_not()} for key, s in self.book.states().items()],
+                           "why": s.why_not(), "blocked_on": list(s.blocked)}
+                          for key, s in self.book.states().items()],
             "setup": self.autonomy.steps,
             "dry_run": self.engine.cfg.get("mode.dry_run", True),
             "device_work_suspended": self.device_suspended,

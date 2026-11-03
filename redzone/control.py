@@ -106,6 +106,7 @@ class Outcome:
     flip_s: float | None = None     # HOME -> the stick is the TV's active source (the input changed)
     resume_s: float | None = None   # active source -> the relaunched app is playing the game again
     resumed: bool | None = None     # after a HOME flip: the game was confirmed playing again
+    stick: str | None = None        # host of the stick that tuned (None = no tune ran)
 
 
 @dataclass
@@ -200,7 +201,11 @@ class Controller:
         self._preloading: tuple[str, str | None] | None = None   # (target, replay_id) being loaded
         self._last_preload = 0.0
         self._failed: dict[str, float] = {}      # target -> don't preload before
-        self.on_preload_fail: Callable[[str, str], None] | None = None   # (target, detail): teach discovery
+        self.on_preload_fail: Callable[..., None] | None = None   # (target, detail, host=): teach discovery
+        # Discovery's per-stick answer (host, target) -> bool: one stick can be signed out of an
+        # app the other plays (Peacock on .181 only). None = every stick can play every app.
+        self.can_play: Callable[[str, str], bool] | None = None
+        self._tuned_on: str | None = None        # host of the last stick a switch tuned
         self._cec_bad: dict[str, float] = {}     # stick host -> skip CEC until
         self._awake_at: dict[str, float] = {}    # stick host -> last seen awake
         self._asleep_until = 0.0
@@ -675,8 +680,18 @@ class Controller:
         tuner = TUNERS.get(app)
         if tuner is None or not ref:
             return False
-        stick = self.hidden or self.main
-        return stick is None or bool(stick.packages.get(getattr(tuner, "role", app)))
+        sticks = [s for s in (self.hidden, self.main) if s is not None]
+        return not sticks or any(self._plays(s, target) for s in sticks)
+
+    def _plays(self, stick: Stick | None, target: str) -> bool:
+        """Has this stick the app, and hasn't discovery seen it walled (signed out) there?"""
+        if stick is None or not self._package(stick, target):
+            return False
+        try:
+            return self.can_play is None or bool(self.can_play(stick.host, target))
+        except Exception:  # discovery must never block a switch
+            log.exception("can_play failed")
+            return True
 
     # --- learned switch times ------------------------------------------------------
 
@@ -774,7 +789,10 @@ class Controller:
                 self._adopt_once = False   # a rewound picture must never be adopted as live
             self.stage = {"stage": "tuning", "target": target, "reason": "confirming the requested stream"}
             try:
+                self._tuned_on = None
                 out = await self.execute(target, replay_back_s, may_cut, replay_id, issued_at)
+                if out.stick is None:
+                    out.stick = self._tuned_on
             except asyncio.CancelledError:
                 if not self.hidden_ready:
                     self._set_hidden(None, False)   # stopped mid-tune: we don't know what it shows
@@ -813,6 +831,7 @@ class Controller:
         tuner = TUNERS.get(app)
         if tuner is None or not ref:
             return TuneResult(False, target, 0.0, [], "channel link not set up yet" if tuner else f"no tuner for {app}")
+        self._tuned_on = stick.host
         res = await tuner.tune(stick, ref, target, **({"may_cut": may_cut} if may_cut is not None else {}))
         if res.ok:
             self.latency.record(app, res.took)
@@ -987,6 +1006,12 @@ class Controller:
         if not replay and await self._still_on_visible(target):
             return Outcome(True, target, 0.0, "already on it", False, time.time(), path="already")
         no_moment = "no safe moment to cut — kept the current game"
+        if not (replay and self._parked_for(target, replay_id)) and not self._live_on_hidden(target) \
+                and not self._plays(hid, target) and self._plays(self.main, target):
+            # The hidden stick can't play this app (e.g. signed out of Peacock there) but the
+            # visible one can: tune the visible stick at a safe moment instead of failing.
+            log.info("%s can't play %s: tuning the visible stick instead", hid.host, target)
+            return None
         if replay and self._parked_for(target, replay_id):
             path = "parked replay"
         elif not replay and self._live_on_hidden(target) and hid.still_on(
@@ -1304,7 +1329,7 @@ class Controller:
                 and not self._preload_task.done():
             displace = self._preload_task   # a refresh of the game we left: the planner's pick wins
         busy = bool(self._task and not self._task.done()) if displace else self._busy()
-        if busy or now < self._asleep_until or not self.can_tune(target) \
+        if busy or now < self._asleep_until or not self.can_tune(target) or not self._plays(self.hidden, target) \
                 or (not refresh and now - self._last_preload < MIN_PRELOAD_GAP_S):
             return False
         if displace is not None:
@@ -1337,7 +1362,8 @@ class Controller:
                         self._failed[target] = time.time() + PRELOAD_BACKOFF_S
                         self._blackout_check(target, res)
                         if self.on_preload_fail:
-                            self.on_preload_fail(target, res.error + " | " + "; ".join(res.steps[-3:]))
+                            self.on_preload_fail(target, res.error + " | " + "; ".join(res.steps[-3:]),
+                                                 host=hid.host)
                         return
                     self._set_hidden(target, True)
                 if replay_id is not None:
