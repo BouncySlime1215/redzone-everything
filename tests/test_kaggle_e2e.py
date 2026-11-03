@@ -122,6 +122,6 @@ def test_notebook_end_to_end_on_cpu(tmp_path):
         blog = (work / "build.log").read_text()[-3000:] if (work / "build.log").exists() else ""
         assert f in names, (f, sorted(names), log[-2000:], blog)
     plan = json.loads(z.read("split_plan.json"))
-    assert all("locked" in m.values() for m in plan.values())
+    assert all("locked" in m.values() and "train" in m.values() for m in plan.values() if m)
     build = json.loads(z.read("build_report.json"))
     assert build["total_rows"] > 0

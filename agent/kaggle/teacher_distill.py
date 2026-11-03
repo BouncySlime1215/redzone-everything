@@ -210,6 +210,10 @@ for f in ("teacher_out.jsonl", "teacher_report.json", "teacher_report_32b.json",
 for f in ("build_report.json", "split_plan.json"):
     if os.path.exists(os.path.join(MOMENTS, f)):
         shutil.copy(os.path.join(MOMENTS, f), keep)
+if os.path.exists(f"{KW}/build.log"):
+    shutil.copy(f"{KW}/build.log", keep)
+    if ROUND2 and not os.path.exists(f"{MOMENTS}/DONE"):
+        print("WARNING: the multi-season build did not finish; students trained on the pack only. See build.log")
 for job in ("game-reasoner", "watchdog"):
     src = os.path.join(WORK, "students", job)
     if not os.path.exists(src):
