@@ -87,7 +87,8 @@ def enrich_nhl(g: GameState, score_game: dict, pbp: dict | None = None) -> GameS
         out.stoppage = Stoppage.INTERMISSION if (out.period or 0) in (1, 2) else Stoppage.END_PERIOD
     code = score_game.get("situationCode") or _get(score_game, "situation", "situationCode")
     if pbp:
-        plays = pbp.get("plays") or []
+        # The NHL play-by-play body is usually {"plays": [...]}, but some games return a bare list.
+        plays = (pbp if isinstance(pbp, list) else pbp.get("plays")) or []
         if plays:
             last = plays[-1]
             code = last.get("situationCode") or code
