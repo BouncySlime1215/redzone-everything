@@ -24,6 +24,7 @@ are never counted as "seen": we can't tell which ones it showed.
 """
 from __future__ import annotations
 
+import logging
 import time
 import math
 from collections import deque
@@ -37,6 +38,8 @@ from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S
 from redzone.decider.cuts import EntryPlan, plan_entry
 from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
 from redzone.scoring.engine import Scored
+
+log = logging.getLogger(__name__)
 
 GONE_MAX_HOLD_S = 90.0  # [mid-play guard] a game that vanished without a final: don't wait on a dead feed forever
 # Basketball/hockey have no between-play gap to prove, so a vanished game (late West Coast games at the
@@ -329,6 +332,7 @@ class Decider:
         cands = self._with_redzone(cands, redzone)
         cands = self._with_reel(cands, reel)
         cands = self._nfl_priority(cands)
+        self._learn_entries(cands)
         self._scan_missed(cands, now)
         if self.replaying:
             if self.safe_mode or self.user.paused or self.on_screen_at(now) != "replay":
@@ -693,6 +697,27 @@ class Decider:
         self.home_break_visit, self.home_return_at = home_before
         return Decision(now, "stay", self.current, f"staying for it to air here ({until - now:.0f}s): {label}",
                         d.state, d.gate, want=d.target)
+
+    def _learn_entries(self, cands: dict[str, Candidate]) -> None:
+        """Brain v3's entry point (seconds to the restart) for each game's newest event, for the
+        expected end of a stoppage the data hasn't closed yet (cuts.DeadTracker.resume_eta)."""
+        on = self.cfg.get("brain.v3_entry", [])
+        if not on:
+            return
+        for gid, x in cands.items():
+            tl = self.timelines.get(gid)
+            v = (getattr(x.scored, "brain", None) or {}).get("v3") if x is not None else None
+            if tl is None or not v:
+                continue
+            if isinstance(on, (list, tuple, set)) and x.scored.league.value not in on \
+                    and x.scored.league.base.value not in on:
+                continue
+            try:
+                tl.dead.learned_q = 0 if int(self.cfg.get("brain.v3_entry_q", 50)) <= 10 else 1
+                tl.dead.learned_cap = bool(self.cfg.get("brain.v3_entry_cap", True))
+                tl.dead.learn(v.get("at"), v.get("entry_q"))
+            except Exception:  # noqa: BLE001 - a bad reading only loses the learned estimate
+                log.exception("brain v3 entry for %s", gid)
 
     def _resume_eta(self, gid: str, cands, now: float) -> float:
         """Wall time play should be back on screen in gid if we tuned there now."""

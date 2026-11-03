@@ -62,6 +62,8 @@ LIMITS: dict[str, tuple[float, float]] = {
     "autonomy.busy_score": (0, 100),
     "brain.break_weight": (0.0, 1.0),
     "brain.hot_reason_min": (50, 100),
+    "brain.version": (2, 3),
+    "brain.v3_entry_q": (10, 50),
     "brain": (0, 30),
     "supervisor.budget.window_nights": (1, 60),
     "supervisor.budget.failure_pct": (0, 100),

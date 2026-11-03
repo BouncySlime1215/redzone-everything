@@ -107,6 +107,20 @@ score:
 
 brain:                     # learned models (redzone/scoring/brain.py, trained by scripts/train_brain.py)
   enabled: true            # feed the brain's game flow / key-moment / break odds into the score and break forecast
+  version: 3               # 3 = Brain v3 (brain_models/<league>.v3.npz: stoppage odds/type/length, entry point,
+                           # big plays) where a league has one, else v2; 2 = v2 only
+  # Which leagues use each v3 part (scorecards + held-out nights, Nov 3; see docs/brain3/REPORT.md):
+  v3_score: [nfl]               # v3's big-play odds / game flow feed the score (else v2's). NBA/NHL stay on
+                                # v2's: v3 there cost NBA +2 missed plays and NHL +1 mid-play entry
+  v3_break_odds: []             # v3's long-break odds in the break forecast (else v2's, which are better
+                                # calibrated on held-out nights: NFL ECE 0.10 vs 0.26, NBA AUC 0.82 vs 0.77)
+  v3_lengths: [nfl, nba]        # v3's time-to-restart replaces the fixed break-length table (breaks.LEN);
+                                # NHL keeps the table (its median was measured on the same archive)
+  v3_entry: []                  # v3's time-to-restart as the expected end of a stoppage the data hasn't closed.
+                                # Off: uncapped it cost NFL your-team big plays and NBA mid-play entries, p10
+                                # cost NFL dead air, and p50 capped changed nothing. For the decision core to use
+  v3_entry_q: 50                # ...its 10th or 50th percentile
+  v3_entry_cap: true            # ...never later than the measured table median (it can only shorten a stop)
   hot_points: 0            # moment points at game flow 100 (minus at 0; 50 = a median moment adds nothing)
   key_points: 6            # moment points when a key moment in the next few minutes is a sure thing
   break_weight: 0.5        # how much the brain's break odds count against the hand-written break rules
