@@ -16,5 +16,4 @@ Next:
 4. The llm_server functional test on MLX CPU (adapter swap, /score, unload) still needs to finish.
 5. RESULTS.md, self-review, draft PR into integration/next. A Kaggle GPU run from the distill thread
    (#13) may supply the adapter instead.
-Waiting on Nick: whether to add POST /api/agent/fix to the app (refresh_feed, restart_component,
-retune_stick fall back to a notify until it exists).
+POST /api/agent/fix is in (approved by Nick 2026-11-03): refresh feeds, restart feeds/control, re-tune a stick.

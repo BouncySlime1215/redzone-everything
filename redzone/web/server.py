@@ -312,4 +312,50 @@ def build_app(engine: Engine) -> FastAPI:
     async def health():
         return engine.snapshot()["health"]
 
+    @app.post("/api/agent/fix")
+    async def agent_fix(body: dict, request: Request):
+        """The watchdog (agent/watchdog.py, same Mac) asking for a fix only the app itself can do.
+        Localhost only; every call is already guarded and rate-limited on the watchdog's side."""
+        host = request.client.host if request.client else ""
+        if host not in ("127.0.0.1", "::1", "localhost"):
+            return JSONResponse({"ok": False, "message": "local only"}, status_code=403)
+        try:
+            ok, msg = await agent_fix_run(engine, str(body.get("fix", "")), str(body.get("target", "") or ""))
+        except Exception as e:  # a fix that fails must never take the server down
+            ok, msg = False, f"fix failed: {type(e).__name__}: {e}"
+        return {"ok": ok, "message": msg}
+
     return app
+
+
+async def agent_fix_run(engine, fix: str, target: str) -> tuple[bool, str]:
+    """refresh_feeds: new HTTP client + push-feed restart (the supervisor's hard stale-feed fix).
+    restart <part>: feeds -> the same; control -> cancel whatever switch is stuck in flight.
+    Other parts (screen, reel, supervisor) run inside the app's main task group and can't be
+    restarted alone yet: the answer says so and the watchdog tells the user instead.
+    retune <stick>: the stick on screen gets a fresh deep link to what it should show (only when
+    the controller is idle); the standby stick is marked not-ready so the standby keeper re-tunes it."""
+    ctl = engine.control
+    if fix == "refresh_feeds" or (fix == "restart" and target == "feeds"):
+        r = engine.reset_feeds(hard=True)
+        return (bool(r[0]), str(r[1])) if isinstance(r, tuple) else (True, "feeds reset")
+    if fix == "restart":
+        if target == "control":
+            ctl.cancel_pending()
+            return True, "cancelled the pending switch"
+        return False, f"{target or '?'} can't be restarted on its own yet"
+    if fix == "retune":
+        if engine.cfg.get("mode.dry_run", True):
+            return False, "dry run: sticks left alone"
+        main = getattr(ctl, "main", None)
+        if main is not None and getattr(main, "host", None) == target:
+            if not ctl.on_target:
+                return False, "nothing to re-tune on the stick on screen"
+            how = await ctl.restore_visible(ctl.on_target, relink=True, why="watchdog: picture stuck")
+            return (True, f"re-tuned {target}: {how}") if how else (False, "controller busy or not live; not re-tuned")
+        if getattr(ctl, "two_stick", False) and any(getattr(s, "host", None) == target for s in ctl.sticks):
+            ctl.hidden_ready = False
+            ctl.hidden_target = None
+            return True, f"standby stick {target} marked for a fresh tune"
+        return False, f"unknown stick {target!r}"
+    return False, f"unknown fix {fix!r}"

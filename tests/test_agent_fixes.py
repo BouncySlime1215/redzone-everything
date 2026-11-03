@@ -181,3 +181,58 @@ def test_observe_reads_sticks_safe_mode_and_feed_age(monkeypatch, tmp_path):
     assert (o.on_screen, o.standby, o.safe_mode, o.feed_stale_s) == (A, B, True, 400.0)
     t[0] += 240
     assert wd.observe().safe_min == 4.0
+
+
+# ---- the app side: POST /api/agent/fix ----------------------------------------------------
+class FakeCtl:
+    def __init__(self):
+        self.main = type("S", (), {"host": A})()
+        self.sticks = [self.main, type("S", (), {"host": B})()]
+        self.on_target = "yttv:espn"
+        self.two_stick = True
+        self.hidden_ready, self.hidden_target = True, "prime:tnf"
+        self.cancelled = 0
+        self.restored = []
+
+    def cancel_pending(self):
+        self.cancelled += 1
+
+    async def restore_visible(self, target, relink=False, why=""):
+        self.restored.append((target, relink))
+        return "deep link"
+
+
+class FakeEngine:
+    def __init__(self, dry=False):
+        self.control = FakeCtl()
+        self.cfg = type("C", (), {"get": lambda self, k, d=None: dry if k == "mode.dry_run" else d})()
+        self.resets = []
+
+    def reset_feeds(self, hard=False):
+        self.resets.append(hard)
+        return True, "fresh client"
+
+
+def run_fix(e, fix, target=""):
+    import asyncio
+    from redzone.web.server import agent_fix_run
+    return asyncio.run(agent_fix_run(e, fix, target))
+
+
+def test_app_fix_refresh_and_restart():
+    e = FakeEngine()
+    assert run_fix(e, "refresh_feeds", "feeds") == (True, "fresh client")
+    assert run_fix(e, "restart", "feeds")[0] and e.resets == [True, True]
+    assert run_fix(e, "restart", "control")[0] and e.control.cancelled == 1
+    ok, msg = run_fix(e, "restart", "screen")
+    assert not ok and "can't be restarted" in msg          # honest: the watchdog then tells the user
+    assert run_fix(e, "format", "")[0] is False
+
+
+def test_app_fix_retune_on_screen_and_standby():
+    e = FakeEngine()
+    assert run_fix(e, "retune", A)[0] and e.control.restored == [("yttv:espn", True)]
+    assert run_fix(e, "retune", B)[0]
+    assert (e.control.hidden_ready, e.control.hidden_target) == (False, None)
+    assert run_fix(e, "retune", "9.9.9.9:5555")[0] is False
+    assert run_fix(FakeEngine(dry=True), "retune", A)[0] is False   # dry run never touches a stick
