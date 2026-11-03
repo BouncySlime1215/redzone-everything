@@ -301,7 +301,7 @@ class Controller:
         for s, target, visible in self.scorebug_sticks(hidden):
             tune = s.tuned
             t0 = time.time()
-            png = await s.screencap(timeout=6)
+            png = await s.screencap(timeout=15)   # a 1080p frame from the 4K (2023) stick: ~6.5 s over Wi-Fi
             t1 = time.time()
             if gen != self._flip_gen or self._flipping or self._busy() or s.tuned is not tune:
                 return []
