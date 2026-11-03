@@ -48,6 +48,28 @@ jobs:
       - name: fail on lint errors
         run: test "$(cat lint-status.txt)" = 0
 
+  memory:
+    # CLAUDE.md and docs/memory/ links resolve; a PR that changes a default or a gate also adds a
+    # dated line to docs/memory/decisions.md (scripts/check_memory.py, CLAUDE.md "Memory").
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: memory links and decisions log
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            python scripts/check_memory.py --base "origin/$BASE_REF"
+          else
+            python scripts/check_memory.py
+          fi
+
   data:
     # Fetch the pinned dataset once per tag, verify its sha256, and keep it in the Actions cache.
     runs-on: ubuntu-latest
