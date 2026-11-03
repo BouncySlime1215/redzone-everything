@@ -1,0 +1,60 @@
+{
+ "about": "SYNTHETIC: layout modeled on tonight's notes (YTTV UI visible in screencap, profile picker with Serge focused); not captured from a stick; NHL Network is not in the lineup, so search shows no channel tile",
+ "channel": "nhlnetwork",
+ "start_scene": "search",
+ "known_codes": {
+  "espn": "ferg3lVdMOg"
+ },
+ "scenes": {
+  "search": {
+   "boxes": [
+    [
+     "NHL Network",
+     0.08,
+     0.16,
+     0.3,
+     0.05
+    ],
+    [
+     "Top picks",
+     0.08,
+     0.36,
+     0.1,
+     0.03
+    ],
+    [
+     "NHL on TNT",
+     0.05,
+     0.61,
+     0.17,
+     0.03
+    ],
+    [
+     "Upcoming",
+     0.05,
+     0.645,
+     0.17,
+     0.03
+    ],
+    [
+     "Hockey Night",
+     0.27,
+     0.61,
+     0.17,
+     0.03
+    ]
+   ],
+   "keys": {},
+   "focus": [
+    0.05,
+    0.4,
+    0.2,
+    0.2,
+    "neutral_rectangle_border"
+   ]
+  }
+ },
+ "expect": {
+  "stopped": "no tile naming"
+ }
+}
