@@ -1330,7 +1330,9 @@ class Controller:
             last = await stick.playback(pkg)
         log.warning("%s isn't playing %s (%s); loading it again", stick.host, target, last.get("state"))
         try:
-            res = await asyncio.wait_for(self._tune(stick, target), RELINK_MAX_S)
+            # Prime needs its page, "Watch" and "Watch Live" before video: ~33 s on these sticks (Nov 2).
+            limit = 55.0 if target.startswith("prime:") else RELINK_MAX_S
+            res = await asyncio.wait_for(self._tune(stick, target), limit)
         except asyncio.TimeoutError:
             log.warning("re-loading %s on %s timed out", target, stick.host)
             return None
