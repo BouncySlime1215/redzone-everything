@@ -33,8 +33,8 @@ from typing import Callable
 
 from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S, PLAY_LEN_S, DelayBook, Event, Gate,
                                     Timeline, break_on_arrival, catchable, final_play_aired, leave_gate,
-                                    resume_play)
-from redzone.models import League, Stoppage
+                                    resume_lead, resume_play)
+from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
 from redzone.scoring.engine import Scored
 
 GONE_MAX_HOLD_S = 90.0  # [mid-play guard] a game that vanished without a final: don't wait on a dead feed forever
@@ -50,6 +50,32 @@ LONG_BREAKS = {"halftime", "intermission"}
 LONG_VISIT_MIN_S = 240.0            # only plan a visit if at least this much break is guaranteed
 RETURN_BUFFER_S = 60.0              # visiting football/baseball/RedZone: a clean gap is never far away
 RETURN_BUFFER_CONTINUOUS_S = 180.0  # visiting basketball/hockey: allow time to reach a whistle
+# [break visits] How long each kind of break runs on screen: the archive medians (ESPN, Oct-Nov 2026:
+# break event -> next live play, minus game clock that ran). Planning only: does a visit pay for its
+# trip there AND back? The trip home is still started by the data (the resume shows up about a
+# stream delay before it airs), so a break that runs short costs a shorter visit, never a strand;
+# no leave gate reads these numbers.
+BREAK_LEN_S = ByLeague({
+    # official (TV) timeout 143-160 s after a punt/score/turnover; a team timeout ~50 s, usually no ads.
+    # A score break is the most reliable ad slot (score -> PAT -> ~2:40 of ads -> kickoff).
+    League.NFL: {"official_timeout": 150.0, "timeout": 50.0, "two_minute_warning": 167.0,
+                 "end_period": 202.0, "halftime": 857.0, "score_break": 150.0, "review": 60.0, "injury": 60.0},
+    # timeouts #1-2 of a period are the long TV ones (median 188 s, n=697); #3+ median 107 s (n=261)
+    League.NBA: {"tv_timeout": 188.0, "timeout": 107.0, "end_period": 171.0, "halftime": 933.0, "review": 60.0},
+    # official TV timeout median 184 s (n=40); team timeouts median 84 s
+    League.CBB: {"tv_timeout": 184.0, "timeout": 84.0, "end_period": 171.0, "halftime": 980.0, "review": 60.0},
+    League.WCBB: {"tv_timeout": 174.0, "timeout": 84.0, "end_period": 185.0, "halftime": 983.0, "review": 60.0},
+    # TV timeout median 149 s (n=300); after a goal (no TV timeout) median 48 s
+    League.NHL: {"timeout": 149.0, "score_break": 48.0, "intermission": 1131.0, "end_period": 60.0,
+                 "review": 60.0},
+    # half-inning median 175 s (n=733); mid-inning pitching change median 178 s (p10 83)
+    League.MLB: {"end_period": 175.0, "pitching_change": 178.0},
+})
+VISIT_MIN_WATCH_S = 0.0    # a break visit must show more than this much of the other game
+# Time to find a clean exit from the visited game on the way back: discrete sports have a gap
+# between every play; basketball/hockey need a whistle; RedZone has nothing to cut out of.
+VISIT_EXIT_S = 10.0
+VISIT_EXIT_CONTINUOUS_S = 25.0
 KICKOFF_TO_SNAP_S = 25.0  # kickoff logged -> next scrimmage play logged, at the quickest
 # [pacing] Stoppages that usually end before a plain break visit pays off: in the NFL backtest
 # the median such visit lasted 20 s (tune away, tune straight back) and they were the biggest
@@ -150,6 +176,9 @@ class Decider:
         # average costs are useful for ranking, but cannot promise a deadline.
         # Offline simulations intentionally keep their configured timing model.
         self.deadline_cost: Callable[[str | None], float] | None = None
+        # Seconds to get BACK to a game we're leaving right now (two sticks: it keeps playing on
+        # the stick we leave, so one flip). None: plan the trip home like any other switch.
+        self.return_cost: Callable[[str | None], float] | None = None
         # Scheduled start (epoch s) of the next not-yet-started game with your team, if the
         # engine knows one. None = unknown, and the 'wait for your team' rule stays off.
         self.my_tip_at: Callable[[], float | None] | None = None
@@ -1033,16 +1062,99 @@ class Decider:
         ALWAYS leave in time: basketball/hockey only have clean exits at whistles, and a visit
         there stranded us for 3 minutes of a Wizards crunch (backtest, Oct 26)."""
         options = watchable
+        now = self._clock()
         if exclude and self._sticky_home(exclude, watchable):
-            now = self._clock()
             strict = self._visit_needs_exit(exclude, watchable)
             options = {gid: x for gid, x in watchable.items()
                        if gid == REDZONE or (self._exits_often(gid) and (not strict or self._exit_provable(x, now)))}
-        best = self._best(options, exclude)
-        if best and options[best].scored.score >= self.cfg.get("decider.break_destination_min"):
-            return best
+        # [break visits] Only where the trip there and back leaves something worth watching; and
+        # of those, the one that shows the most (score x seconds on screen): an already-loaded
+        # stick beats a slightly better game behind a 40 s cold tune.
+        watch = {gid: self._visit_watch(exclude, gid, now) for gid in options}
+        need = VISIT_MIN_WATCH_S if self._visit_due_by_break_end(exclude) else 0.0
+        # Crunch time elsewhere is worth the trip whatever is left of this break.
+        fits = {gid: x for gid, x in options.items()
+                if watch[gid] is None or watch[gid] > need or x.scored.crunch or x.scored.lock in CRUNCH_LOCKS}
+        pool = [gid for gid, x in fits.items()
+                if gid != exclude and not x.scored.is_break and gid not in self._screen_break]
+        top = max((fits[g].scored.score for g in pool), default=None)
+        floor = self.cfg.get("decider.break_destination_min")
+        if top is not None and top >= floor:
+            worth = [g for g in pool if fits[g].scored.score >= floor]
+            return max(worth, key=lambda g: (fits[g].scored.score * (watch[g] or 1.0), fits[g].scored.score))
         # RedZone never shows a commercial: any break is better spent there than on an ad.
-        return REDZONE if REDZONE in watchable and exclude != REDZONE else None
+        if REDZONE in watchable and exclude != REDZONE and REDZONE in fits:
+            return REDZONE
+        return None
+
+    def _break_len(self, gid: str) -> float | None:
+        """Typical (low side) on-screen length of the break this game is in now, by kind."""
+        tl = self.timelines.get(gid)
+        start = tl.last("stop_start") if tl else None
+        if start is None:
+            return None
+        known = self._known.get(gid)
+        league = known.scored.league if known else tl.league
+        label = tl.stoppage.value if tl.stoppage in REAL_BREAKS else start.label
+        if label == Stoppage.TIMEOUT.value:
+            if league.base == League.NFL and tl.break_kind == "official_timeout":
+                label = "official_timeout"
+            elif league == League.NBA and tl.period_timeouts in (1, 2):
+                label = "tv_timeout"   # NBA: a period's first two timeouts carry the long ad break
+            elif league.college and league.base == League.NBA and "officialtv" in tl.break_kind:
+                label = "tv_timeout"
+        return BREAK_LEN_S.get(league, {}).get(label)
+
+    def _visit_left(self, home: str, now: float) -> float | None:
+        """Seconds of home's break still to air: when the data shows the resume, exactly that;
+        before, its typical length from when it started on screen. None = no idea."""
+        tl = self.timelines.get(home)
+        start = tl.last("stop_start") if tl else None
+        if start is None:
+            return None
+        d = self.delays.get(self._target_of.get(home) or "unknown")
+        end = tl.last("stop_end")
+        if end is not None and end.seen >= start.lo:
+            return end.seen + d.mu - 2 * d.current_sigma(now) - now
+        length = self._break_len(home)
+        if length is None:
+            return None
+        # An expectation, not a deadline: the trip home is triggered by the resume in the data.
+        # A break that outlasts its typical length is still on for as long as the data says so:
+        # play can't air before the newest data plus the delay (less a quiet restart, 2 sigma).
+        typical = start.seen + d.mu + length - now
+        floor = d.mu - tl.lag_est() - resume_lead(tl.league) - 2 * d.current_sigma(now)
+        return max(typical, floor)
+
+    def _visit_watch(self, home: str | None, dest: str, now: float) -> float | None:
+        """Seconds of `dest` a visit during home's break would show: the break left on screen,
+        minus the trip there (preloaded: a flip; else a full tune), the trip back, and the time to
+        find a clean exit there. None = no budget known (home's break length is unknown)."""
+        if not home or home == REDZONE:
+            return None
+        left = self._visit_left(home, now)
+        if left is None:
+            return None
+        there = self._deadline_cost(self._target_of.get(dest))
+        if not self._visit_due_by_break_end(home):
+            # A routine snap ends it: we come back once that has aired (_home_due), so the trip
+            # home doesn't have to fit inside the break, and any of the other game beats the ad.
+            return left - there
+        exit_s = 0.0 if dest == REDZONE else VISIT_EXIT_S if self._exits_often(dest) else VISIT_EXIT_CONTINUOUS_S
+        return left - there - self._return_cost(home) - exit_s
+
+    def _visit_due_by_break_end(self, home: str | None) -> bool:
+        """Must a visit be back before home's break ends on screen? Yes unless a routine football
+        snap ends it (then we return once it has aired, see _home_due)."""
+        x = self._known.get(home) if home else None
+        return x is None or self._must_see_resume(home, x)
+
+    def _return_cost(self, home: str) -> float:
+        target = self._target_of.get(home)
+        if self.return_cost is not None:
+            cost = float(self.return_cost(target))
+            return cost if math.isfinite(cost) and cost >= 0 else float("inf")
+        return self._deadline_cost(target)
 
     def _long_break_left(self, gid: str, now: float) -> float | None:
         """Seconds until a halftime/intermission now on screen could possibly end on screen
@@ -1074,12 +1186,19 @@ class Decider:
             options = {gid: x for gid, x in options.items() if gid == REDZONE or self._exit_provable(x, now)}
         if not options:
             return None
-        dest = max(options, key=lambda g: options[g].scored.score)
-        buffer = RETURN_BUFFER_S if self._exits_often(dest) or dest == REDZONE else RETURN_BUFFER_CONTINUOUS_S
-        if left < buffer + 60:
+        back = self._return_cost(home)
+
+        def watch(g: str) -> float:   # [break visits] what the visit shows after both trips
+            buf = RETURN_BUFFER_S if self._exits_often(g) or g == REDZONE else RETURN_BUFFER_CONTINUOUS_S
+            return left - buf - back - self._deadline_cost(self._target_of.get(g))
+        options = {g: x for g, x in options.items() if watch(g) >= 60}
+        if not options:
             return None
+        dest = max(options, key=lambda g: (options[g].scored.score * watch(g), options[g].scored.score))
+        buffer = RETURN_BUFFER_S if self._exits_often(dest) or dest == REDZONE else RETURN_BUFFER_CONTINUOUS_S
         self.home_break_visit = home
-        self.home_return_at = now + left - buffer
+        # Head back early enough to find a clean exit AND finish the trip before the break ends.
+        self.home_return_at = now + left - buffer - back
         return Decision(now, "switch", dest, self._why(options[dest], f"{_short(cands[home].scored)} at the break → "),
                         state, gate_txt, kind="break_visit")
 

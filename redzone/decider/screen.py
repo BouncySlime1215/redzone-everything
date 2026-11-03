@@ -378,6 +378,9 @@ class Timeline:
         self._lags: deque[float] = deque(maxlen=12)
         self.final_at: float | None = None    # when we first saw it Final
         self.end_t: float | None = None       # latest real time the game could have ended
+        # Break-length hints for planning break visits (Decider only; no leave gate reads these).
+        self.break_kind = ""                  # ESPN kind of the play that started the current break
+        self.period_timeouts: int | None = None  # timeouts this period so far; None = joined mid-period
 
     def lag_est(self) -> float:
         """How far behind real life this game's feed runs (recent worst case)."""
@@ -462,6 +465,7 @@ class Timeline:
             t_end = (prev_fresh or now) - self.lag_est() - lead
             self.events.append(Event(max(t_end, last_start.lo) if last_start else t_end, "stop_end"))
         self._stopped = stopped if g.stoppage != Stoppage.UNKNOWN else self._stopped
+        self._note_break(g, lp, first_poll)
         self.stoppage = g.stoppage
 
         if g.phase == Phase.POST and self.final_at is None:
@@ -471,6 +475,20 @@ class Timeline:
             ends = [_bounds(p, now, prev_fresh)[1] for p in new if _is_game_end(p.kind)]
             known = [e.seen for e in self.events if e.kind == "play"]
             self.end_t = max(ends + known + ([] if ends else [now - FEED_LAG_MIN_S]))
+
+    def _note_break(self, g: GameState, lp, first_poll: bool) -> None:
+        """What kind of break this is, for guessing how long it runs (NBA: the first two timeouts
+        of a period are the ~3 min TV breaks, later ones ~1.5 min; NFL: an official timeout is a
+        commercial, a team timeout usually isn't). A timeout called during a whistle counts too."""
+        if first_poll and (g.period or 0) <= 1:
+            self.period_timeouts = 0
+        if g.stoppage == self.stoppage or g.stoppage not in REAL_BREAKS:
+            return
+        self.break_kind = lp.kind if lp else ""
+        if g.stoppage == Stoppage.TIMEOUT and self.period_timeouts is not None:
+            self.period_timeouts += 1
+        elif g.stoppage in (Stoppage.END_PERIOD, Stoppage.HALFTIME, Stoppage.INTERMISSION):
+            self.period_timeouts = 0
 
     def last(self, kind: str) -> Event | None:
         for e in reversed(self.events):
