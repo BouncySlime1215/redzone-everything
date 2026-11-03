@@ -125,8 +125,8 @@ brain:                     # learned models (redzone/scoring/brain.py, trained b
 decider:
   switch_margin: 10
   entry:
-    hold_only: [nhl]       # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
-    max_wait_s: {}         # per league, e.g. {nba: 120}: a whistle wait into a final period / off a finished game goes live after this
+    hold_only: [nhl, nba]  # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
+    max_wait_s: {nba: 120} # per league: a whistle wait into a final period / off a finished game goes live after this
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
   switch_cost: {youtubetv: 3, prime: 8, espn: 7, hdmi_flip: 1}   # seconds to the new picture; replaced by
                            # measured times as you use it (see switch_speed)
