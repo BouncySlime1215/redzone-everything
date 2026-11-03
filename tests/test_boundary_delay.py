@@ -203,7 +203,7 @@ def test_two_agreeing_samples_measure_the_app_with_the_boundary_sigma():
     d = b.get("youtubetv:trutv")
     assert d.source == "boundary" and d.calibrated_at is not None
     assert d.sigma == BOUNDARY_SIGMA_S + SHARED_MARGIN_S > MIN_TAP_SIGMA_S     # pooled across channels
-    assert d.mu in (22.0, 24.0)
+    assert 22.0 <= d.mu <= 24.0          # its own 22, pulled a little toward ESPN's 24
     b.boundary("youtubetv:trutv", 23.0)
     assert b.get("youtubetv:trutv").sigma == BOUNDARY_SIGMA_S                  # own two: no shared margin
     assert b.boundary_count("youtubetv") == 3
@@ -222,8 +222,28 @@ def test_taps_still_win():
     for s in (22.0, 23.0):
         b.boundary("youtubetv:trutv", s)
     b.calibrate("youtubetv:espn", 30.0)
+    assert b.get("youtubetv:espn").source == "tap"
+    assert b.get("youtubetv:fox").source == "app" and b.get("youtubetv:fox").mu == 30.0   # a tap beats show changes
+    b.calibrate("youtubetv:trutv", 25.0)
+    assert b.get("youtubetv:trutv").source == "tap" and b.get("youtubetv:trutv").mu == 25.0
+
+
+def test_own_show_changes_beat_another_channels_tap():
+    """[per-channel delay] The real case: truTV measured at 22 s by its own show change, FS1 tapped
+    at 42 s. The old book told truTV 42 +-16 (26..58): its real 22 fell outside."""
+    b = book(Clock())
+    for s in (22.0, 23.0):
+        b.boundary("youtubetv:trutv", s)
+    b.calibrate("youtubetv:fs1", 42.0)
     d = b.get("youtubetv:trutv")
-    assert d.source == "app" and d.mu == 30.0
+    assert d.source == "boundary" and 22.0 <= d.mu <= 27.0
+    assert d.mu - 2 * d.sigma <= 22.0 and d.sigma >= BOUNDARY_SIGMA_S
+    legacy = DelayBook({"youtubetv": 45.0}, 15.0, clock=Clock(), model="legacy")
+    for s in (22.0, 23.0):
+        legacy.boundary("youtubetv:trutv", s)
+    legacy.calibrate("youtubetv:fs1", 42.0)
+    old = legacy.get("youtubetv:trutv")
+    assert old.mu == 42.0 and old.mu - 2 * old.sigma > 22.0                 # the bug this fixes
 
 
 def test_live_origin_delay_recentres_but_never_narrows():
@@ -253,7 +273,8 @@ def test_boundary_samples_persist_and_reload(tmp_path):
     b2 = book(c)
     assert b2.load([r for r in rows if r[3] == "boundary"]) == 2
     assert b2.get("youtubetv:trutv").source == "boundary"
-    assert b2.load(rows[2:]) == 1 and b2.get("youtubetv:trutv").source == "app"     # a tap wins
+    assert b2.load(rows[2:]) == 1 and b2.get("youtubetv:espn").source == "tap"
+    assert b2.get("youtubetv:trutv").source == "boundary"     # its own show changes, with ESPN's tap as prior
 
 
 def test_store_migrates_an_old_calibrations_table(tmp_path):
