@@ -23,6 +23,7 @@ from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook,
                                    leave_gate, leave_window, screen_evidence)
 from redzone.models import GameState, League, Phase
 from redzone.plan import Tonight
+from redzone.scoring import breaks
 from redzone.scoring.engine import Personal, Scored, Scorer
 from redzone.sources import espn, fastcast, leagues
 from redzone.sources.http import Fetcher
@@ -67,6 +68,7 @@ class Engine:
         # Stream delay measured from the broadcast score bug in Prime screenshots (not DRM-blanked).
         self.scorebug = scorebug.ScoreBugWatcher(on_sample=self._scorebug_sample)
         self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
+        self.breaks = breaks.BreakBook()           # owed TV timeouts per game: when a break is coming
         self._cost_mode: bool | None = None         # two-stick mode when switch costs were last synced
         self._cost_synced = 0.0
         self.boosted: set[str] = set()
@@ -907,13 +909,53 @@ class Engine:
             home = u.focus_game   # away from your focus game: it's where we go back to
         if home == dec.current:
             home = None
+        for g in self.merger.games.values():
+            self.breaks.observe(g)
         # Your game's return outranks a replay, and a replay already rolling needs nothing cued.
-        replay = None if (home or dec.replaying) else self._replay_standby(cands)
+        brk, why, replay = (None, "", None) if (home or dec.replaying) else self._break_standby(cands)
+        sure = replay is not None
+        if replay is None and not (home or dec.replaying):
+            replay = self._replay_standby(cands)
         return standby.options(cands, current=dec.current, home=home, back_to=dec.stack[-1] if dec.stack else None,
                                muted=u.muted, games=self.merger.games, my_teams=self._my_teams(), replay=replay,
                                tunable=self.control.can_tune, save_s=self.control.tune_estimate,
                                return_bonus=float(self.cfg.get("decider.switch_margin", 10)),
-                               want=getattr(self.last_decision, "want", None))
+                               want=getattr(self.last_decision, "want", None), brk=brk, brk_why=why,
+                               replay_sure=sure)
+
+    def _break_standby(self, cands: dict) -> tuple[str | None, str, standby.Option | None]:
+        """The game on screen is about to break (redzone/scoring/breaks.py): where the decider will
+        spend it, asked the way it will ask (its own destination and catch-up rules), so the hidden
+        stick already plays it. (dest, why, replay option) — all None when no break is coming."""
+        dec = self.decider
+        cur = dec.current
+        if not cur or cur == REDZONE or dec.after_replay:
+            return None, "", None
+        f = self.breaks.forecast(self.merger.games.get(cur))
+        if f.p < float(self.cfg.get("two_stick.break_p", 0.5)) or not f.visit:
+            return None, "", None
+        u = dec.user
+        live = {gid: x for gid, x in cands.items()
+                if x.scored.raw > 0 or x.scored.moment > 0 or x.scored.is_break or gid == REDZONE}
+        watchable = {gid: x for gid, x in live.items() if x.target and not x.stale and gid not in u.muted}
+        try:
+            if f.expect_s >= 600:
+                # Halftime / intermission: the decider visits the best live game (_long_break_visit).
+                pool = {gid: x for gid, x in watchable.items()
+                        if gid != cur and not x.scored.is_break and gid not in dec._screen_break}
+                dest = max(pool, key=lambda gid: pool[gid].scored.score, default=None)
+            else:
+                dest = dec._break_destination(watchable, exclude=cur)
+            m = None
+            if f.expect_s >= 600 and self.cfg.get("replay.enabled", True):
+                back = dec._deadline_cost(dec._target_of.get(cur)) + 6
+                m = dec._best_replay(cands, time.time(), 800.0 - back, allow_seen=dest is None,
+                                     top=dec._vs_replay(dest, cands) if dest else -1.0, margin=0.0)
+        except Exception:
+            log.exception("break standby")
+            return None, "", None
+        rp = self._replay_option(m, cands) if m is not None else None
+        return dest, f.why, rp
 
     def _replay_standby(self, cands: dict) -> standby.Option | None:
         """(b) A catch-up is queued and the game on screen is about to break: cue it on the hidden stick."""
@@ -923,8 +965,11 @@ class Engine:
             return None
         now = time.time()
         m = standby.likely_replay(dec.queue, now, float(self.cfg.get("replay.max_age_s", 1800)))
-        if m is None:
-            return None
+        return self._replay_option(m, cands) if m is not None else None
+
+    def _replay_option(self, m: Missed, cands: dict) -> standby.Option | None:
+        """A replay cued on the hidden stick: its channel, rewound to the play and held there."""
+        dec, now = self.decider, time.time()
         # A replay can be of a game that just ended (no longer a live candidate).
         target = cands[m.game_id].target if m.game_id in cands else dec.target_of(m.game_id)
         if not target or target.split(":", 1)[0] not in self.cfg.get("replay.apps", ["youtubetv"]):

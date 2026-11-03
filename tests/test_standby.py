@@ -205,4 +205,5 @@ def test_shadow_stick_counts_flips_to_a_ready_preload_as_hits():
     assert s.switch("youtubetv:cur", None, "youtubetv:a", 120)        # going back: a flip
     s.preload("youtubetv:x", "p1", 130)
     assert not s.switch("youtubetv:x", None, "youtubetv:a", 140)      # parked replay != live
-    assert s.card() == {"switches": 3, "hits": 1, "hit_rate": 33.3, "still_loading": 1, "preloads": 2}
+    assert s.card() == {"switches": 3, "hits": 1, "hit_rate": 33.3, "still_loading": 1, "preloads": 2,
+                        "breaks_filled": "0/0", "break_fill_rate": 0.0}
