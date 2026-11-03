@@ -296,3 +296,11 @@ def test_other_games_yield_to_your_team(cfg, clock):
     assert "reasoner" not in s.score(other, ME).factors     # your team is on: no pull away from it
     clock.t += 120
     assert "reasoner" in s.score(other, ME).factors          # your game hasn't been seen for 2 min
+
+
+def test_engine_narration_hook_does_not_shadow_subclasses():
+    """The demo engine has its own _narrate(d); the reasoner's hook must not collide with it."""
+    from redzone.demo.engine import DemoEngine
+    from redzone.engine import Engine
+    assert hasattr(Engine, "_reasoner_narrate")
+    assert getattr(DemoEngine, "_reasoner_narrate") is getattr(Engine, "_reasoner_narrate")

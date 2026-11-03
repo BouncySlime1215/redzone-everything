@@ -753,7 +753,7 @@ class Engine:
             if target in self._fail_cool:
                 target = None   # failed a moment ago: don't hammer it every tick
             cands[gid] = Candidate(sc, target, stale=self.merger.is_stale(gid))
-        self._narrate()
+        self._reasoner_narrate()
         self._garbage_focus()
         self._hold_check()
         if self._pending_decision is not None:
@@ -778,7 +778,7 @@ class Engine:
                                  for gid, s in self.scored.items() if s.raw > 0])
         return changed
 
-    def _narrate(self) -> None:
+    def _reasoner_narrate(self) -> None:
         """Ask the local model for each hot game's storyline (background, event-driven, rate-limited)
         and keep the model server loaded while games are live. Never raises, never blocks a poll."""
         r = getattr(self.scorer, "reasoner", None)
