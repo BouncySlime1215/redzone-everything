@@ -56,6 +56,9 @@ KICKOFF_TO_SNAP_S = 25.0  # kickoff logged -> next scrimmage play logged, at the
 # the median such visit lasted 20 s (tune away, tune straight back) and they were the biggest
 # source of A->B->A flips. Ride them out at home; chases, catch-ups and crunch moves still go.
 SHORT_STOPS = {"timeout", "injury", "review"}
+# Leagues where a short stop isn't spent on a visit. NBA too (scorecards, Nov 3): mid-play entries
+# 44 -> 36 with everything else the same; NHL changed nothing.
+SHORT_STOP_LEAGUES = {League.NFL, League.NBA}
 # The first pick after a (re)start that didn't land (cancelled, timed out, no safe moment, a failed
 # tune): try again after 3 s, then 6, 12, 24... capped at a minute. Never give up: with nothing
 # confirmed on screen there is nothing to wait for but the next try.
@@ -1159,13 +1162,15 @@ class Decider:
         return not break_on_arrival(htl, hd, now, now + self._deadline_cost(x.target))
 
     def _short_stop(self, gid: str | None, s: Scored) -> bool:
-        """[pacing] Is this football game in a kind of break that ends before a visit pays off?
+        """[pacing] Is this football/basketball game in a kind of break that ends before a visit pays off?
         Not in crunch time: there a timeout is the moment to check the other close game."""
         tl = self.timelines.get(gid) if gid else None
-        if tl is None or s.league.base != League.NFL or s.crunch or s.lock in CRUNCH_LOCKS:
+        if tl is None or s.league.base not in SHORT_STOP_LEAGUES or s.crunch or s.lock in CRUNCH_LOCKS:
             return False
         start, end = tl.last("stop_start"), tl.last("stop_end")
         short = start is not None and start.label in SHORT_STOPS and (end is None or end.seen < start.lo)
+        if short and s.league.base == League.NBA and not tl.dead.marks:
+            return False   # no timing data, no proof it's short: an NBA TV timeout runs minutes
         if not short or not tl.dead.marks:
             return short
         # [cut timing] Which kind of stop is it? A team timeout (median 43 s) is over before a visit
