@@ -7,3 +7,7 @@ __pycache__/
 .claude/
 data/training/
 .venv-agent/
+.xfer/
+.rz_tmp/
+.claude-xfer/
+.rz.bundle

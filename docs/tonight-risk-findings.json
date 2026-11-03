@@ -1,0 +1,422 @@
+[
+ {
+  "severity": "critical",
+  "where": "~/Library/LaunchAgents/com.redzone.everything.plist (job state); scripts/service.py:176",
+  "scenario": "Checked at 18:14: `launchctl print gui/501/com.redzone.everything` returns 'Could not find service' and nothing listens on 8778. The plist file is present (with --allow-live and PORT=8778) but the job is not loaded, so nothing will run tonight. `service.py install` cannot fix this: line 176 raises 'A service already exists' whenever the plist path exists, so the documented install path refuses.",
+  "fix": "Operator: `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.redzone.everything.plist`, then check `scripts/service.py status` shows state = running and `lsof -iTCP:8778 -sTCP:LISTEN`. Code: add a `start` action to service.py that bootstraps an existing definition when `path.exists() and not job_loaded(domain)`, instead of making install refuse."
+ },
+ {
+  "severity": "critical",
+  "where": "Host power (pmset -g batt); redzone/engine.py:1106-1115",
+  "scenario": "At 18:14 the Mac was on battery at 42%, discharging, about 54 minutes left. It will die or force-sleep around 19:10, during the first NBA/NHL games. `caffeinate -s` (engine.py:1110 and the external `caffeinate -dimsu`) only prevents system sleep on AC power, and closing the lid sleeps the Mac regardless. All adb control and the dashboard stop.",
+  "fix": "Plug in AC power and leave the lid open (or use clamshell mode with an external display). Code: in _keep_awake, log a WARNING and send a toast when `pmset -g batt` reports 'Battery Power' while games are live, and add a readiness warning in service.py check() for the same condition."
+ },
+ {
+  "severity": "high",
+  "where": "pmset (sleep 1, standby 1, networkoversleep 0); redzone/engine.py:1108-1115",
+  "scenario": "System sleep is set to 1 minute. The engine only holds caffeinate while some game is Phase.LIVE, so before 19:00 tip and in gaps (all games final or PRE) the Mac stays awake only because of an external `caffeinate -dimsu -t 28800` (pid 74316, started about 18:12, expires about 02:12) and the Claude app's Electron assertion. If that caffeinate is killed or the Claude app quits, the Mac sleeps within 1 minute while no game is LIVE (for example 18:15-19:00, or when a game has ended and the next is still PRE). The poll loop and the CEC keepalive freeze, and the first tip-off is missed.",
+  "fix": "Code: in _poll_loop call `self._keep_awake(live or soon or any_pre_tonight)`, holding caffeinate whenever any game today is PRE/LIVE; or in service_runtime.main spawn `caffeinate -i -s -w <own pid>` for the service's lifetime. Ops: `sudo pmset -c sleep 0` for tonight."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/control.py:283-286, 249-255, 757",
+  "scenario": "After any failed flip, line 757 sets input_unknown=True. Two-stick mode is re-enabled (283-286) only when `not self.input_unknown`, and input_unknown is cleared only in sync_active_from_cec when exactly one stick reports `mIsActiveSource: true`. If after a failed HOME/CEC flip neither stick reports active source (TV on Samsung home or another input, CEC dropped, or both report true during a race), input_unknown stays True forever. Two-stick mode stays off all night, and every later switch is a slow single-stick retune.",
+  "fix": "In keepalive, after TWO_STICK_RETRY_S, if input_unknown persists, recover: send HOME on self.main to force it Active Source, then re-run sync_active_from_cec. Or clear input_unknown when `len(on)==0` for N consecutive syncs and assume self.main. Log each attempt."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/control.py:197-213; data/devices.json sticks[].host",
+  "scenario": "Sticks are addressed by fixed IP (100.110.165.150/.181:5555) on a campus-style /26 DHCP network (Mac en0 100.110.165.130/26). If either stick's DHCP lease changes overnight (stick reboot or Wi-Fi drop and re-associate), Stick.connect() retries the old IP every 10 s forever. devices.json stores serial and MAC, but nothing rediscovers by them, so that stick is lost for the night and two-stick mode turns off (len(usable) < 2 is not even detected, because controllable stays True).",
+  "fix": "In _reconnect, after N consecutive offline connects, scan the /26 (or `arp -an`) for the saved MAC, `adb connect ip:5555`, check `getprop ro.serialno` == saved serial, then update the host in memory and in devices.json (atomic write). Separately, set DHCP reservations for both MACs on the router if possible."
+ },
+ {
+  "severity": "high",
+  "where": "Host routing (utun7 Tailscale 100.127.26.82) vs sticks on 100.110.165.x",
+  "scenario": "The LAN uses addresses inside 100.64.0.0/10, which is the Tailscale CGNAT range, and Tailscale is up (utun7). Today `route get 100.110.165.150` goes via en0, but if Tailscale reconnects or re-applies its routes overnight (for example after a Wi-Fi blip), traffic to 100.110.165.0/26 can be routed into utun7. Every adb connect then times out and both sticks go offline at once.",
+  "fix": "Quit Tailscale for tonight, or disable 'Use Tailscale subnets/accept routes'. Code: in service.py check(), warn when `route -n get <stick ip>` interface is not the default LAN interface, and log the interface in Stick.connect when it fails."
+ },
+ {
+  "severity": "high",
+  "where": "scripts/service_runtime.py:87-90 + plist KeepAlive/ThrottleInterval 15",
+  "scenario": "Any readiness error (for example something already listening on 8778, data/config.yaml invalid after a dashboard save, or an invalid devices.json) makes main() return 1 before the app starts. launchd KeepAlive=true then restarts it every 15 s all night, with no dashboard and no TV control. The only trace is a 'ERROR: ...' line repeated in service.log, which nobody watches. A crash inside the app does the same, and each restart resets on_target/hidden state and re-runs control.start().",
+  "fix": "In service_runtime.main, on readiness errors write a small data/service_failed.json with the reason and count. After 3 consecutive failures, start a minimal uvicorn page on the port that shows the error, or sleep 300 s before exiting so the log isn't flooded. For a stale port holder, log `lsof -t` PIDs/commands."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/control.py:296-302",
+  "scenario": "_watchdog_applied is set True before the settings shells run, and their results are never checked. If a stick is offline or unauthorized at the first keepalive (one stick slow to answer adb at a launchd restart), screensaver_enabled=0 and sleep_timeout are never pushed to it for the life of the process. That hidden stick then drops into Daydream after 5 min or sleeps after 20 min. The watchdog deliberately leaves a sleeping hidden stick alone, so every flip to it needs a wake (a CEC input grab) and a full retune.",
+  "fix": "Track applied hosts: `self._watchdog_applied: set[str]`. For each s in usable not in the set, run the settings shell and add s.host only if r.ok. Also re-apply in _forget(s) when a stick comes back from a drop or reboot."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/control.py:303-312",
+  "scenario": "The watchdog only wakes self.main. If the TV input changed (someone's remote, a CEC glitch) so that self.main is stale, the stick actually on screen may be the one we call hidden. It sleeps after the screen-off timeout and is never woken, so the TV shows 'no signal' until the next real switch. sync_active_from_cec cannot fix this because a sleeping stick does not report active source.",
+  "fix": "When both sticks report Asleep/Dozing and input_unknown or the last CEC sync found 0 active sources, wake self.main (send KEYCODE_WAKEUP then HOME) so the TV input is known again, and log it."
+ },
+ {
+  "severity": "medium",
+  "where": "scripts/service.py:121-126",
+  "scenario": "The 'no SmartThings input-readback device' and 'SMARTTHINGS_TOKEN absent' warnings fire every start. They do not disable two-stick mode, because control.py:353-357 accepts cec_flip=true. But no .env file exists at all, and devices.json tv has network_verified=false. These permanent warnings hide real new warnings in the same log block, and nothing verifies the TV input after a flip except CEC.",
+  "fix": "In check(), skip both SmartThings warnings when cfg two_stick.cec_flip is true; print a single OK 'Two-stick uses HDMI-CEC flip (no SmartThings)'. That keeps WARN lines for real problems only."
+ },
+ {
+  "severity": "medium",
+  "where": "scripts/service.py:87 vs plist EnvironmentVariables PORT=8778",
+  "scenario": "The service runs on 8778 only because the installed plist sets PORT. Running `scripts/service.py check` from a terminal (no PORT env) checks port 8777 (default_config server.port), so a stale listener on 8778 is not caught. Then the launchd start fails readiness and crash-loops (see restart finding). Any reinstall without PORT exported would also move the dashboard back to 8777, breaking the phone bookmark and QR.",
+  "fix": "Write `server: {port: 8778}` into data/config.yaml (validated key) so all paths agree, or have check() read PORT from the installed plist's EnvironmentVariables when present."
+ },
+ {
+  "severity": "medium",
+  "where": "scripts/service_runtime.py:84-85, plist StandardOutPath/StandardErrorPath",
+  "scenario": "LogStream only redirects Python-level sys.stdout/stderr. Child processes spawned by the service (the adb server started on first `adb connect`, and caffeinate) inherit fds 1/2, which go to data/service-bootstrap.log with no rotation. adb's daemon output and any C-level faulthandler/segfault trace land there and never in service.log, so a crash-loop cause can be invisible in the log people read. Disk is also 98% full (12 GiB free), so unbounded logs are a risk on a multi-day run.",
+  "fix": "Pass stdout=DEVNULL/stderr=PIPE (logged) to subprocess.Popen(['caffeinate',...]) in engine.py:1110 and to adb spawns. Point the plist Std paths at a file that service_runtime truncates at start when it is larger than 5 MB."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/engine.py:1110",
+  "scenario": "caffeinate is spawned without `-w <pid>`. If the service crashes (launchd restarts it), the old process's caffeinate child becomes an orphan holding a no-sleep assertion indefinitely, and each crash-loop iteration during live games adds another. That is harmless for tonight's wakefulness but leaks processes. Conversely, engine.close() never terminates it on a clean stop.",
+  "fix": "Use `subprocess.Popen(['caffeinate','-i','-s','-w',str(os.getpid())], stdout=DEVNULL, stderr=DEVNULL)` so it dies with the service."
+ },
+ {
+  "severity": "medium",
+  "where": "scripts/service.py, scripts/service_runtime.py (git status: untracked)",
+  "scenario": "The launchd job executes scripts/service_runtime.py, which imports scripts/service.py, and both files are untracked ('??' in git status). Concurrent agent sessions are editing this same checkout (a .claude/worktrees dir lives inside it, and pytest/test edits were running at 18:13). A `git stash -u`, `git clean`, or branch switch during the night removes or changes the files. The next KeepAlive restart then fails with ImportError and crash-loops every 15 s with no dashboard.",
+  "fix": "Commit both scripts on codex/resume-redzone before the night. Point the plist at a frozen copy (separate worktree or directory not touched by agents) rather than the live working checkout."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/control.py:267-276 (keepalive returns when dry_run)",
+  "scenario": "The last recorded service run (17:51) logged 'Mode: DRY RUN (TV not touched)' despite --allow-live, because data/config.yaml then had dry_run true. It was changed to false at 18:12, but the service has not run since, so live mode under launchd has never been confirmed. If the dashboard or a rollback rewrites mode.dry_run=true, keepalive returns at its first line: no reconnects, no CEC sync, no watchdog. The sticks then fall into screensaver/sleep and the dashboard looks healthy.",
+  "fix": "After bootstrapping, confirm service.log shows 'Mode: TV CONTROL ON'. Code: in engine, broadcast a persistent banner and log a WARNING every 10 min while running with --allow-live but cfg mode.dry_run is true."
+ },
+ {
+  "severity": "critical",
+  "where": "redzone/engine.py:537-538 and redzone/decider/decider.py:182-187 (no auto-recovery; only exit is the user tapping Resume at engine.py:785)",
+  "scenario": "Safe mode is permanent until someone taps Resume, and nobody will be touching the system tonight. It turns on in two ways. (1) Any live switch whose Outcome is not ok and not screen_unchanged sets safe_mode=True immediately. That covers a Prime launch failure, a refused preload, a 'crashed:' tuner exception (control.py:519), the 'TV input is unknown' outcome (control.py:649), and the cancel callback's Outcome (control.py:504-506). (2) note_error() is called on every poll or decide exception, and 3 errors in 300s also turn it on. A deterministic exception in decide() or broadcast()/snapshot() repeats every 0.5s, so it reaches safe mode in about 1.5s. After that, every decision is 'stay' with 'safe mode: too many errors \u2014 tap Resume' for the rest of the night.",
+  "fix": "Add a timed auto-resume. In Decider, store self.safe_since when safe_mode is set. In Engine._house_loop (every 10s): if dec.safe_mode and time.time()-dec.safe_since > cfg.get('decider.safe_auto_resume_s', 180) and not self.control.input_unknown and self._pending_decision is None, call dec.resume(), log it, and send a toast. In engine.py:537, call self.decider.note_error() for a single failure instead of setting safe_mode=True directly. Separately, catch exceptions inside broadcast() so a snapshot bug does not count as a decide error."
+ },
+ {
+  "severity": "critical",
+  "where": "redzone/sources/merge.py:67-72 and 81-82",
+  "scenario": "SourceHealth.regressions never decays and benched is never cleared. Any update with a lower progress_key counts as a regression. That includes a score that drops at the same clock: an NHL goal overturned on a coach's challenge, an NBA 3 corrected to a 2 during a stoppage, or an NFL TD reversed on review in MNF. Across 15 NBA games, 4 NHL games and MNF, 3 such corrections in one night are very likely. After the third, 'espn_summary' or 'espn_scoreboard' is benched globally. From then on update() returns cur, so that source can never become the merged state again for any game. The corrected score is also rejected, so the wrong, higher score stays on screen until the clock moves. MNF can lose its play-by-play source for the rest of the game.",
+  "fix": "Treat a score drop at the same phase/period/clock as a correction, not a regression. Compare progress_key without `total` (or accept g when only total and plays differ). Make benching time-limited: store h.benched_at and clear benched/regressions after 300s. Count regressions per game (keyed by (source, game_id)), not globally."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/sources/http.py:82-85 and 120-125",
+  "scenario": "Backoff is per host and doubles on every failure, including concurrent ones. poll() runs up to 6 summary GETs to site.api.espn.com at once (engine.py:237, Semaphore(6)). A single Wi-Fi blip or an ESPN slow patch times out all 6 in flight: _bump runs 6 times, giving 5\u219210\u219220\u219240\u219280\u2192160s. All of ESPN (4 scoreboards and every summary) is then skipped for ~2.7 minutes. One more failure on the first retry makes it 320s, then 600s. Load with ~20 live games is roughly 250 requests/min (hot games every 3s), so a 429 or 403 from ESPN is also plausible, and it backs off every league at once. Live decisions run on cached data, and games go stale (>60s), so it cannot switch.",
+  "fix": "In _bump, only escalate when not already backing off: `if b.until > now: return` before doubling, so a burst of concurrent failures counts once. Raise the starting delay only after 2 consecutive failures, and cap ESPN backoff at about 60s (MAX_BACKOFF_S=60 for site.api.espn.com) so the live feed recovers within a minute."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/sources/merge.py:74-75; redzone/engine.py:226-235, 316-320",
+  "scenario": "When ESPN is unreachable or in backoff, Fetcher.get_json returns the cached scoreboard body (http.py:74,85,93). _scoreboard re-parses it every poll and merger.update('espn_scoreboard', ...) sets h.last_ok=now (it is not a regression). The phone's health panel (engine._source_health, ok if last_ok<120s) therefore shows ESPN scoreboards as OK during a full outage, and the user has no sign that data is frozen. For a game whose merged state has no recent_plays (e.g. its summary parse failed), the cached copy also ties on progress_key, wins _takes_over, and refreshes updated_at. merger.is_stale() then never fires, and Timeline.fresh_at (screen.py:200) treats old data as fresh.",
+  "fix": "Have Fetcher return a freshness flag, e.g. get_json(..., with_meta=True) -> (body, fresh: bool), or expose last fetched_at. In Engine._scoreboard, return None (and call merger.record_error) when the body did not come from a fresh 200/304 in this cycle. Do the same for the summary identity check at engine.py:247, which currently returns silently without recording an error."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/engine.py:472-473 (with control.py:502-523)",
+  "scenario": "While _pending_decision is set, decide() returns False before calling the decider. It is cleared only by the done() callback. execute() has no overall deadline: _execute_two, tuner confirm loops and the YTTV/Prime confirms each have per-command adb timeouts but no outer cap. A hung tuner path (stick reconnect loop, CEC recovery, Prime search retries) therefore leaves _pending_decision set indefinitely. For that whole time there are no new decisions, no preloads, and no recovery, and the phone shows a frozen 'tuning' stage.",
+  "fix": "Wrap the call: in Controller._run, `out = await asyncio.wait_for(self.execute(...), timeout=cfg.get('control.max_switch_s', 60))` and turn TimeoutError into Outcome(False, ..., 'switch timed out', False). Also add an engine-side watchdog in _house_loop: if _pending_decision has been set for more than 90s, cancel control._task and clear it."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/control.py:503-506 with redzone/engine.py:529-538",
+  "scenario": "If the switch task is cancelled (control.submit for a user/manual action, cancel_pending on pause or dry-run toggle, or recorded-session start), the done-callback sends Outcome(False, target, 0.0, 'switch cancelled; playback not confirmed', False) with screen_unchanged=False. Engine.done() then runs decider.reject() and sets safe_mode=True, even when the cancel happened while waiting in _wait_safe, before any visible mutation. One user tap during a pending autonomous switch freezes the system for the night.",
+  "fix": "In Controller._run's CancelledError branch, record whether a visible mutation was attempted (e.g. a self._mutated flag set just before the flip/launch). Pass screen_unchanged=not mutated in the cancel Outcome, so engine.py:534 takes the 'keep planning' branch."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/engine.py:239-254 and 322-350",
+  "scenario": "The poll stages are serial. Scoreboards are gathered first, then all summaries (6 at a time, 8s timeout each), then NHL score plus a sequential NHL PBP fetch per game, then the NBA scoreboard, then _archive_finished. Around 9:30-10:30pm several NBA games end close together, and _archive_finished does a fresh (min_interval=0) multi-MB summary GET for each one, sequentially and inside poll(). With ~20 live games and ESPN responding in 3-8s, one cycle takes 20-40s, so the 3s 'hot' cadence becomes 30s+ and the merger's 60s stale threshold is easily crossed for the current game.",
+  "fix": "Move _archive_finished out of poll() into a fire-and-forget task (asyncio.create_task with its own try/except), and run the NHL PBP fetches with asyncio.gather. Wrap the summary stage in asyncio.wait_for(..., timeout=hot_s*2) so the hot games are not held up by slow cold ones. Alternatively, start summaries for hot games first and the others in a separate, lower-priority gather."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/engine.py:957-984 (snapshot) via broadcast at 1094-1097 and _queue_item 1033-1047",
+  "scenario": "broadcast() rebuilds the full snapshot whenever decide() reports changed (reason text changed or any non-stay action), which can happen every 0.5s tick with 20 live games. Each snapshot calls _queue_item for up to 10 queued replays, and each _queue_item runs espn.flatten_plays and espn.athletes over a full NBA summary (~400-500 plays). It also runs a SQLite recent_switches(25) query and race_summary over up to 2000 race events. All of this is synchronous on the event loop shared with polling, the decide tick and the HTTP server, so tick latency and SSE delivery slow down over the night as the replay queue and race log fill.",
+  "fix": "Cache the queue item enrichment per (game_id, pid), filled once when the Missed entry is created, and memoize race_summary and _log for about 5s. Throttle broadcast to at most once per second unless d.action != 'stay'."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/engine.py:1099-1101 and redzone/web/server.py:103-120",
+  "scenario": "toast() calls put_nowait on every subscriber queue with no size check; broadcast() checks qsize>5 but toast does not. When the phone locks, iOS suspends Safari without closing the TCP connection. The SSE generator then blocks on a send (or is_disconnected never becomes true) and its queue is never drained. Every toast for the rest of the night ('Couldn't switch', garbage-time roaming, standby notices) accumulates in that queue. Each dead tab also stays in engine.subscribers, so broadcast() keeps serializing snapshots for it. Several lock/unlock cycles leave several zombie subscribers.",
+  "fix": "In toast(), skip any queue with q.qsize() > 20, the same way broadcast() does. Create the SSE queue with asyncio.Queue(maxsize=50) and drop events on QueueFull. In gen(), track the last successful yield time and break after 60s with no successful write."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/engine.py:87-95 (run) and redzone/discovery/runtime.py:39-40",
+  "scenario": "Engine.run() uses asyncio.gather on 7 loops. discovery.run() calls `await self.autonomy.start()` outside its try block. _poll_loop's _keep_awake/interval math and _house_loop's asyncio.sleep are also outside try. If any of these raises (e.g. autonomy.start() fails on a corrupt data/autonomy_state.json, or cfg.get('polling.live_s') returns None and max() raises TypeError), the whole producer dies. run_services then raises 'Producer stopped unexpectedly' and launchd restarts the app 15s later (ThrottleInterval). Every restart drops the delay book state, timelines, replay queue and the decider's current game, and re-runs readiness checks. If the cause is persistent, this becomes a crash loop every ~15-20s for the whole night.",
+  "fix": "Wrap autonomy.start() in try/except inside the loop and retry it. Give the cfg.get('polling.live_s', 10) and cfg.get('polling.idle_s', 300) calls defaults. Put the post-poll section of _poll_loop inside the try. Optionally replace gather with per-loop supervision: restart an individual loop after an exception with a log line instead of tearing everything down."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/engine.py:360-378 (sync_fastcast)",
+  "scenario": "If sources.fastcast is turned on, the FastcastClient.run() task is created once and never checked again. sync_fastcast only tests `self.fastcast is None`. If run() raises or returns (websocket auth change, an unhandled exception in _on_fastcast, which deliberately re-raises at engine.py:396-398), the task is done but self.fastcast is still set. Topics keep being 'set', health shows the last status, and no push updates arrive for the rest of the night, with nothing logged beyond the single traceback in the task.",
+  "fix": "In sync_fastcast: `if self._fastcast_task is not None and self._fastcast_task.done(): log the exception (task.exception()) and call self._stop_fastcast()` before the `if self.fastcast is None` check, so the next 2s sync recreates the client."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/engine.py:155 (refresh_links) and 323 (_league_feeds NHL date)",
+  "scenario": "Both use datetime.now(ET) as 'today'. Tonight the 03:00Z (10pm ET) NBA games (PHX@GS, TOR@LAC, MIA@LAL, League Pass via Prime) run past midnight ET. After 00:00 ET, refresh_links asks eventlinks for 2026-11-03 and stops getting Nov 2 games' Prime GTIs and ESPN+ play ids. Any game whose link changes or first appears late (a Prime event that only publishes its GTI near tip, or a re-tune after a stale link) can no longer be matched, so its target stays 'likely' or untunable. NHL enrichment would also query the wrong day, but the last NHL game (CGY@SJ, 02:00Z) should end before midnight.",
+  "fix": "Derive the date from the games themselves. In refresh_links, collect {datetime.fromtimestamp(g.start_time, ET).date() for live/pre games} and fetch links for each of those dates (usually 1, at most 2 after midnight). In _league_feeds, use the NHL game's start_time date rather than now."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/engine.py:243-249",
+  "scenario": "`if data is self.summaries.get(g.game_id): return` treats a cached body as 'nothing new'. A cached body is also what get_json returns on timeout, 5xx, 429 or backoff. So summary failures for games with an earlier good copy are never passed to merger.record_error('espn_summary'), and the health panel's error count stays at 0 during a summary outage. The only signal is last_ok ageing past 120s, and the scoreboard (see the stale-health finding) still looks OK, so the phone shows no clear 'feed down' warning.",
+  "fix": "Have Fetcher report fetch status, e.g. keep self.last_status[url] = 'ok'|'cached'|'error'. In one(), call record_error when the status is 'error' and only take the early return for a 304 or min_interval cache hit."
+ },
+ {
+  "severity": "critical",
+  "where": "redzone/engine.py:533-538 (done callback) + redzone/decider/decider.py:448 (safe_mode only cleared by resume() at :193)",
+  "scenario": "Any failed switch whose Outcome is not screen_unchanged turns on decider.safe_mode at once, with no 3-errors-in-5-min threshold. Example: a single-stick tune fails because YTTV shows its profile picker or Prime never presses Watch Live. Another: a flip fails, and every flip-failure Outcome in _execute_two omits screen_unchanged. Another: an app crash during a tune. After that, every decision is 'stay ... tap Resume'. Nothing clears safe_mode automatically, so with nobody in the room, auto-switching is dead for the rest of the night after the first app hiccup.",
+  "fix": "Use decider.note_error() (the 3-in-5-min rule) here instead of setting safe_mode directly, and auto-recover. In Controller.keepalive (or the engine tick): if dec.safe_mode, the last error was more than 120 s ago, ctl.input_unknown is False and playback_ready(await main.playback()) is true, call dec.resume() and log it. Also pass screen_unchanged=visible_untouched on the flip-failure Outcomes where HOME wasn't acknowledged."
+ },
+ {
+  "severity": "critical",
+  "where": "redzone/tuners/adb.py:257 (Stick.screen_text) + docs/device-trial-2026-11-02.md ('Both returned empty UI text in all four accessibility reads')",
+  "scenario": "YouTube TV (Cobalt) and Prime's player return empty uiautomator text. So the YTTV 'Who's watching' picker (profile Serge), 'Are you still watching?' and Prime's player prompts are invisible to Tuner._confirm, _press_prompt and select_profile. When YTTV cold-starts (after a crash, an overnight app auto-update, or a low-memory kill on the hidden stick), the deep link lands on the picker. reads<3 blank reads, nothing is pressed, both 15 s attempts time out with 'video never started', and ProviderBook._learn_fail skips the target after 2 failures. MNF on ESPN via YTTV becomes untunable until a human picks a profile.",
+  "fix": "In Stick.screen_text, when the uiautomator text is under 20 chars, fall back to the existing local OCR (scripts/vision_ocr.swift on an `adb exec-out screencap -p`) and return its text. For YTTV specifically, if foreground() is the YTTV package and OCR shows 'who's watching' with 'serge', press DPAD_CENTER only when OCR shows the focus ring on Serge. Otherwise surface ProfileSelectionRequired immediately, not after 30 s of 'video never started'."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/tuners/adb.py:257",
+  "scenario": "screen_text runs `uiautomator dump /sdcard/rz_ui.xml >/dev/null 2>&1; cat /sdcard/rz_ui.xml`. It never deletes the old file, so a failed dump returns the previous screen's XML. A failed dump is common while video is playing ('could not get idle state'). Stale text from an earlier Prime detail page ('Watch Live'), Fire TV home ('free trial') or a picker then drives decisions. _press_prompt presses DPAD_CENTER on a stale 'watch live' while the player is now up, which pauses the game. DiagnosingTuner classifies a stale 'free trial' as an upsell and skips the target for 24 h. profiles.py:86 already fixed this for its own dump, but this path was missed.",
+  "fix": "Use `rm -f /sdcard/rz_ui.xml && uiautomator dump /sdcard/rz_ui.xml >/dev/null 2>&1 && cat /sdcard/rz_ui.xml`, and return '' when r.ok is false or the output doesn't contain '<hierarchy'."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/control.py:854-870 (_check_resumed)",
+  "scenario": "After a HOME flip, any playback_ready(pb) report within 6 s is accepted, and stick.remember(target, pb) labels it as the game. If the relaunched app lands on its home page with an autoplaying hero preview (YTTV home, Prime trailer or promo), that preview reads as 'playing'. It is remembered as the target and on_target stays set, so the TV shows a muted promo and nothing ever re-tunes. The opposite case: a YTTV resume that rebuffers for more than 6 s (common on the 2018 AFTMM) is judged 'didn't resume'. A full _tune of the same channel then runs on the visible screen while holding self._lock (up to about 30-80 s), which blocks the next switch.",
+  "fix": "Before the HOME press, capture `pre = stick.tuned['report']`. In _check_resumed, accept only when same_stream(pre, pb) is not False, or for youtubetv when channel_matcher(target)(pb) is not False. Treat state buffering or connecting as progress and extend the wait to 15 s. Run the reload outside `async with self._lock`, or with may_cut=self._exit_check."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/control.py:999-1020 (verify_standby) / keepalive: there is no check of the visible stick",
+  "scenario": "Only the hidden stick is ever re-verified. Over 5 hours the visible stick can hit YTTV, Prime or ESPN 'Are you still watching?' (playback pauses), an app crash to the Fire TV home, or an Appstore auto-update that force-stops the app. The decider keeps 'staying' on dec.current, and on_target is still set, so nothing re-tunes. When the watchdog wakes a sleeping main stick (control.py:315-317), it only sets on_target=None and the TV sits on the Fire TV home. For example, late MNF alone on screen stays frozen on a prompt or the home screen until the decider happens to choose a different game.",
+  "fix": "Add verify_visible() to keepalive, run when not _busy() and not _flipping. Read main.playback(pkg) every 15 s. If not playback_ready for 2 consecutive reads (about 30 s), set on_target=None and call self.submit(current_target, may_cut=None) (or have the engine resubmit dec.current whenever control.on_target is None and no decision is pending). The re-tune path then clears 'still watching' through PROMPTS, once OCR makes prompts readable."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/tuners/providers.py:344-358 (DiagnosingTuner.tune) and providers.py:171-176 (AppTuner._read_screen) -> discovery/providers.py:753-770, 589-590",
+  "scenario": "After any failed tune, the screen text is classified without checking which app is in front. If the app crashed back to the Fire TV launcher (native and readable), its promo rows contain 'Start your free trial', 'Subscribe' or 'Sign in'. classify_screen returns upsell or signin. For upsell, _skip(target, 'upsell') blocks that game for 24 h, which could drop WSH@ORL (your team) for the night. For 'sign in' (signin has no MULTI_TIER exemption), _mark(app, 'signin') disables the whole app for 6 h (RECHECK_S), for example all YTTV including MNF.",
+  "fix": "In DiagnosingTuner.tune and AppTuner._read_screen, first run `fg = await stick.foreground()` and only call classify_screen when fg starts with the tuner's package (stick.packages.get(self.role)). Otherwise append 'app was not in front (crashed to home?)' and return the plain failure, which falls into _learn_fail's 15-minute skip."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/tuners/tuners.py:37 (PROMPTS 'continue watching') used by tuners.py:304-309, providers.py:193-197, stickio.py:266",
+  "scenario": "'continue watching' is the header of a home-screen row on Prime, YTTV, ESPN and Peacock. When a deep link lands on the app's home page (the app crashed and restarted, a League Pass link was not accepted, or a HOME relaunch landed on home), the substring matches and DPAD_CENTER is pressed on whatever tile has focus. That starts an unrelated show or replay, which then reads as 'playing'. NewStream can confirm it as the game, because before wasn't playing, so the wrong content is marked tuned.",
+  "fix": "Delete the 'continue watching' entry. If YTTV's dialog wording needs it, match the full prompt ('are you still watching' / 'continue watching?' with the '?') and only after confirming foreground() is the tuner's package and the screen has no row or grid layout."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/tuners/providers.py:129-139 (AppTuner._tune, 'brought to the front')",
+  "scenario": "AppTuner (Peacock for NBCSN OKC@CLE, Fubo for NHL Network) sends `am start -W -n pkg/comp ...` without NEW_TASK|CLEAR_TOP. When that app is already in the background on the stick, Android replies 'Warning: Activity not started, its current task has been brought to the front'. That is exactly the stick just left after a HOME flip, which _refresh_left reloads. The tune returns failure immediately without delivering the link. Every refresh of a Peacock or Fubo game on the stick it was just on fails. After 2 failures the target is skipped for 15 min, and 'back to the previous game' always takes the slow path or fails.",
+  "fix": "Mirror Tuner._tune. On 'brought to the front', resend once with `-f 0x14000000` added to command() (`am start -W -f 0x14000000 -n ...`) behind require_cut(mutating=True). Only return 'did not accept the game link' if the fresh launch also fails."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/tuners/tuners.py:356-369 (PrimeTuner._confirm)",
+  "scenario": "The press-through loop runs 3 times: wait 3 s, read the screen, then _press_prompt, which presses DPAD_CENTER on any 'watch live' text. There is no check of which button has focus and no 'already pressed' guard. Prime League Pass shows pre-roll ads or a promo slate before tip and is often still loading 3 s after the first CENTER. A second read that still contains 'Watch Live' (the detail page under the player, or a stale dump, see the adb.py:257 finding) triggers another CENTER. In the player that toggles pause, or on the detail page it can activate 'Watch from beginning' if focus moved. Super()._confirm (25 s) can then press again.",
+  "fix": "Track `pressed_live = any(s.startswith('pressed through: watch live') for s in steps)` and never press again once it is set or once playback reported buffering or connecting (watch.gap). Before pressing, verify focus the way prime_search.unique_focus does: the single focused node's label must equal 'watch live', otherwise stop."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/control.py:300-307 (_stick_watchdog settings)",
+  "scenario": "_watchdog_applied is set True before the loop, and the screensaver and sleep settings are written only to sticks that are `usable` on the first keepalive, with the result unchecked. A stick that is offline or unauthorized at service start, or one that reconnects later (Wi-Fi blip), never gets screensaver_enabled=0 or sleep_timeout. The hidden stick, paused after losing the input, then screensavers after 5 min and sleeps after 20. _preload refuses a sleeping standby (60 s rechecks forever), so every switch to it becomes a slow wake plus tune.",
+  "fix": "Track applied hosts in a set instead of a bool. Apply on each keepalive for any usable stick not in the set, and add it only when r.ok. Also re-apply in _reconnect when `was != 'connected'`, since a rebooted stick may have reset the settings."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/control.py:309-314 (_stick_watchdog, Dreaming -> KEYCODE_BACK)",
+  "scenario": "The wakefulness read and the BACK key are separate round trips. If the screensaver ended in between, which is common since dreams end on media or session activity, BACK reaches the app. On the hidden stick, BACK exits the Prime or YTTV player to the detail page or guide. It also clears stick.tuned through _changes_screen, so the preload is lost silently, and hidden_ready stays True until verify_standby's next read. If main is ever 'Dreaming', BACK exits the visible game while on_target stays set.",
+  "fix": "Send one shell command that checks and acts atomically: `dumpsys power | grep -q 'mWakefulness=Dreaming' && input keyevent KEYCODE_WAKEUP`. WAKEUP from Dreaming ends the dream without delivering a key to the app. Afterwards, for the hidden stick call self._set_hidden(None, False), and for main set on_target=None so the game is re-verified."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/control.py:888-893 (_home_flip resume via `am start -n $(cmd package resolve-activity --brief pkg | tail -1)`)",
+  "scenario": "The resume launches the app's LAUNCHER activity. If Fire OS killed the backgrounded player task, the old 1.5 GB AFTMM does this under memory pressure from two apps and a 5-hour session. The launcher then cold-starts to YTTV's profile picker or Prime's home, not the game. Combined with blind prompt reading, _check_resumed's re-tune then fails (picker unreadable). The visible TV sits on a picker or home page with on_target=None and the failure only in a log.",
+  "fix": "Resume with the game's deep link instead of the launcher: build it from TUNERS[app].url(ref) (from self._ref(self.hidden_target)) and send `am start -f 0x14000000 -a android.intent.action.VIEW -d '<url>' <pkg>`, which resumes or reloads the exact game. If _check_resumed's reload fails, push a toast or set self.note so the failure is visible."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/tuners/adb.py:276-286 (Stick.view with wait=True, timeout 15) used by PrimeTuner",
+  "scenario": "Prime uses `am start -W` with a 15 s timeout. A Prime cold start (after a crash, an auto-update or a memory kill) on the 2018 stick can take more than 15 s to draw the detail page. The always-open shell then returns TIMED_OUT, so r.ok is False, and Tuner._tune returns 'deep link failed; playback is unconfirmed' without confirming or retrying, even though the page usually appears a second later. Each such failure counts toward _learn_fail. On the visible path it also counts as screen changed, which trips safe_mode (see the engine finding).",
+  "fix": "Raise the -W timeout to 30 s for Prime. On a TIMED_OUT with 'timeout' in r.out, don't return. Fall through to self._confirm (no second launch) so the page that does appear is handled."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/tuners/profiles.py:70-79 + redzone/tuners/tuners.py:300-303",
+  "scenario": "is_profile_screen matches 'who's watching', 'choose a profile' and so on from any readable screen. The Fire OS system-level profile picker (Fire OS 8 sticks with multiple Fire TV profiles show it after waking from sleep) is native and readable, so it matches. select_profile then looks for the app's preference ('Serge' for youtubetv, 'Nick' for prime) in the system picker. If that name isn't a Fire TV profile, ProfileSelectionRequired aborts the tune. Every switch after a sleep and wake fails until someone picks a profile, and that failure trips safe_mode.",
+  "fix": "Check `await stick.foreground()` in select_profile (or the caller). If the picker belongs to the launcher (com.amazon.tv.launcher / com.amazon.firebat.profile...), use a separate preference key 'firetv' from providers.profiles, and stop with a clear 'Fire TV system profile picker' message instead of matching the app's name."
+ },
+ {
+  "severity": "critical",
+  "where": "redzone/decider/screen.py:313-354 with redzone/default_config.yaml:164-166 (delay.sigma_default 15) and :97 (decider.uncalibrated_sigma_s 8); data/redzone.db calibrations table is EMPTY",
+  "scenario": "No stream delay is calibrated (I read the calibrations table and it has 0 rows; mic_calibration is false; Calibrator only shows a phone toast asking for a tap, autonomy.py:1305-1315, and nobody will tap). Every target therefore runs with sigma 15, so margin = 30s. For NBA, ahead = mu - 30 - 0 - 24 (SILENT_LIVE) - lag(>=10) < 0, so `covered` is never true. NBA has no MIN_BREAK_S floor for timeout, whistle or end_period, so not_ended = now <= start+mu-36 (+4..+9s) while aired_start = start+mu+30 (+70..+75s). I simulated leave_gate at 1s steps with data 3s old. Result: NBA timeout, end_period and whistle = NEVER safe at mu 40 (Prime) and mu 45. Only NBA halftime is safe (+70..+804s). Tonight that means whichever NBA game it lands on, it cannot leave until that game's halftime, which is at least 45 minutes. scripts/eval_sports.py nba --slates (Oct 31 / Nov 1 slates) agrees: 0.7-1.4 switches/hour and 20-31% dead air.",
+  "fix": "Add conservative floors so a stoppage can be proven without calibration, in screen.py MIN_BREAK_S: League.NBA: {TIMEOUT: 90.0, END_PERIOD: 110.0, HALFTIME: 800.0}. For any floor F, not_ended lasts to start+F+mu-36, which is after aired_start (+75). Also change default_config delay.sigma_default from 15 to 7 for youtubetv only, and only if a measured mu exists. The real fix is to seed the calibrations table with tonight's measured delays before 7pm."
+ },
+ {
+  "severity": "critical",
+  "where": "redzone/decider/screen.py:313 (ahead uses tl.lag_est()) + screen.py:78 DelayBook.get fallback 40.0 for app 'espn' + MIN_BREAK_S has no NHL TIMEOUT/END_PERIOD",
+  "scenario": "The NHL ESPN+ games (DET@FLA 7:00, COL@CHI 8:00, CGY@SJ 9:00) get target 'espn:<id>', and delay.default has no 'espn' key, so mu falls back to 40. Then ahead = 40-30-0-0-lag_est(>=10) <= 0, so `covered` needs data age <= 0. With no floor, NHL TV timeouts and end_period come out NEVER safe; I simulated mu 40 with data 3s old. At 7:00 the only tunable live game is DET@FLA: OKC@CLE is on NBCSN and VGK@BOS on NHL Network, and YTTV has codes for neither. So it starts on DET@FLA (kind 'start'). When WSH@ORL tips at 7:30 it logs 'want ... waiting: play is live (only leave at a stoppage)' and can never leave. The intermission is mislabelled too (next finding), so it stays on DET@FLA until the final, around 9:30, and misses the whole WSH game.",
+  "fix": "Add 'espn: 40' explicitly to default_config delay.default. Add NHL floors in screen.py MIN_BREAK_S: League.NHL: {TIMEOUT: 90.0, END_PERIOD: 1000.0, INTERMISSION: 1080.0}. In _decide's 'start' branch (decider.py:486-496), do not start on a game whose leave gate can't open (sigma > uncalibrated and league in CONTINUOUS) when a personal game tips within 45 min. Simplest version: skip start picks with personal==0 when a PRE game with my_team starts within 1800s."
+ },
+ {
+  "severity": "critical",
+  "where": "redzone/sources/espn.py:587-589 (_live_overrides) and espn.py:217-220 (parse_scoreboard)",
+  "scenario": "During an NHL 1st/2nd intermission, stoppage_for correctly returns INTERMISSION from the 'period end' play. In live mode, though, _live_overrides then sees status.type.detail 'End of 1st' (or '... Intermission'). That matches 'end of' or 'intermission', so it overwrites the stoppage with END_PERIOD. The scoreboard path does the same. Effects: LONG_BREAKS no longer matches, so _long_break_left returns None and no intermission visit is planned. MIN_BREAK_S has no NHL END_PERIOD floor, so the gate can't prove the break, and from an ESPN+ NHL game the 18-minute intermission is not even an exit. Backtests parse with upto (no _live_overrides), so they still see INTERMISSION and hide this.",
+  "fix": "In both places map NHL periods 1-2 to INTERMISSION: `elif 'intermission' in detail or (g.league == League.NHL and 'end of' in detail and (g.period or 0) in (1, 2)): g.stoppage = Stoppage.INTERMISSION`. Keep END_PERIOD for everything else. In _live_overrides, never downgrade INTERMISSION or HALFTIME that stoppage_for already set."
+ },
+ {
+  "severity": "critical",
+  "where": "redzone/decider/decider.py:1004-1024 (_long_break_visit) + decider.py:512-518 (home return needs gate_ok on the visited game)",
+  "scenario": "At WSH halftime (around 8:35) _long_break_visit picks the highest-scoring non-break game, likely MNF or another NBA game, and sets home_return_at = now + left - buffer (60s NFL / 180s NBA). The trip back requires gate_ok on the visited game. Uncalibrated, an NBA destination never opens except at its own halftime, and MNF opens only at end_period (a 57s window) or halftime. I simulated NFL at sigma 15: timeout, two_minute_warning, score_break, injury and review are all NEVER. So it shows 'heading back to your game at the next gap' through WSH's whole 3rd quarter. With an NBA destination it can be stuck there to that game's final. WSH crunch time (~9:40) is then lost too, because _crunch_time's 'want crunch time' also waits on the same gate.",
+  "fix": "In _long_break_visit, only choose a destination whose exit is provable: skip candidates where self.delays.get(x.target).current_sigma(now) > cfg 'decider.uncalibrated_sigma_s' (continuous sports, or NFL), unless the destination is itself in a long break that outlasts home's. If nothing qualifies, return None (stay on the halftime). Apply the same filter in _break_destination when _sticky_home(exclude)."
+ },
+ {
+  "severity": "critical",
+  "where": "redzone/decider/decider.py:795-806 (_crunch_go) and 824-836 (_crunch_time)",
+  "scenario": "Tonight about 16 NBA games end between ~9:15 and ~12:30, with many overlapping 4th quarters. For a neutral crunch the decider says 'want crunch time ... waiting' until gate_ok, which never comes from an uncalibrated NBA game. A crunch-to-crunch hop also needs on_break, and on_screen_break is never true for NBA timeouts while uncalibrated. Result: no crunch-time switching at all among NBA games. From MNF, the WSH crunch (personal) also waits for an NFL gate, which opens only at quarter end or halftime.",
+  "fix": "Covered by the MIN_BREAK_S NBA/NHL floors above. In addition, let _crunch_go for a personal crunch (dp >= personal_lead) use leave_gate with tune_s=0 on any REAL_BREAKS stop_start older than 2*sigma+mu. Concretely, in _gate, when sig > uncalibrated and the league is CONTINUOUS, accept a stop_start whose label is in REAL_BREAKS once now >= start.seen + mu + 2*sig and the stoppage is still unresolved in data that is fresh (age < 10s)."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/decider/screen.py:470-479 (catchable) with sigma 15",
+  "scenario": "MNF chase ('catch it live') needs now + tune(15.5+3) + 2\u03c3(30) < e.lo + mu(45) - 10. That means the play would have to be logged ~13s in the future, so it is impossible. Chase is dead all night for MNF TDs and NHL goals. Even at sigma 6 it needs the play in the data within ~5s of happening, against a feed lag of ~10s or more. NBA never produces big plays at all (next finding).",
+  "fix": "Unfixable without calibration. Note that _chase is effectively off tonight; seed calibrations (see the first finding)."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/decider/screen.py:215 (Timeline.observe big flag) + redzone/sources/espn.py:296-299 (_kind)",
+  "scenario": "For NBA, big = p.kind in ('td','turnover','goal','hr'), with scoring excluded for NBA. _kind returns 'three' or raw type strings such as 'bad_pass_turnover', never 'turnover'. So no NBA play is ever big: no catch-up replay queue, no chase, no 'instant replay' filler. The eval agrees: big_plays 1-2 across 11 NBA games. With 15 NBA games, the only replay/chase content all night is MNF.",
+  "fix": "In observe: `big = p.kind in (...) or (p.scoring and self.league != League.NBA) or (self.league == League.NBA and p.kind == 'three' and abs(score diff) <= 3 and period >= 4)`, or have _kind map NBA 'turnover' substrings to 'turnover'. A replay would still need a replayable app (next finding)."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/default_config.yaml:155 (replay.apps: [youtubetv]) + decider.py:267-270 (_replayable)",
+  "scenario": "Only YouTube TV targets can replay. All 15 NBA League Pass games on Prime and the ESPN+ NHL games are never replayable, so missed plays there are dropped in _scan_missed (decider.py:322). When several games break at once, _best excludes every is_break game. The only fillers are another live game or (YTTV only) a replay, so with MNF also in a break the screen sits on commercials. Prime's live rewind support is unverified, so do not add it blind.",
+  "fix": "Leave replay.apps alone tonight. Accept that the filler is only 'other live game'; make sure _break_destination can pick a non-break NBA game, which needs the gate floors above. If Prime's live rewind gets verified, add 'prime' to replay.apps and calibrate replay.seek_step_s for it."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/decider/decider.py:1040-1042 (_cost) + data/config.yaml decider.switch_cost.youtubetv 15.5",
+  "scenario": "Ranking cost ignores the two-stick standby. Switching to MNF (youtubetv) needs lead >= switch_margin 10 + 15.5 = 25.5 points, even when MNF is already preloaded on the hidden stick and the switch is a ~6s hdmi_flip. In MNF Q1/Q2 against an NBA Q2 game, MNF rarely leads by 25 points, so it hardly ever switches to MNF on value. WSH (+25 personal) is not the issue; this is about the neutral NBA games.",
+  "fix": "Use the live estimate: `cost = self._deadline_cost(b.target)` for ranking when self.deadline_cost is set (the engine already knows whether the target is preloaded). Alternatively, lower decider.switch_cost.youtubetv in data/config.yaml to the measured flip time when two_stick is enabled."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/decider/decider.py:486-496 ('start' branch) at 7:00-7:30",
+  "scenario": "At 7:00 the start pick uses only the current score and ignores that the user's team tips at 7:30. Whatever it lands on at 7:00 (DET@FLA on ESPN+ if that tunes) becomes a trap for the reasons above. Even when the gate eventually allows a leave, 'better' needs WSH to lead by margin+cost (10+8 for Prime). WSH personal is 25*closeness at tip, so it usually clears that, but only at a gate.",
+  "fix": "In the start/ended branch, if a PRE game involving my team starts within 30 min and the best live pick is in a CONTINUOUS league with an uncalibrated delay, stay IDLE (or pick a discrete-sport game) until it tips: `if self._my_team_soon(now, 1800) and cands[best].scored.personal == 0 and self.timelines.get(best) and self.timelines[best].league in CONTINUOUS: return Decision(now, 'stay', self.current, 'waiting for your team', State.IDLE)`."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/decider/decider.py:368-386 (_break_remaining) and 655-663 (_replay_option)",
+  "scenario": "During MNF breaks, NFL timeout and score_break have no MIN_BREAK_S floor, so _break_remaining = 0 and the budget is negative, and _replay_option never offers a catch-up. Even MNF's YTTV-replayable missed TDs (missed while stuck on NBA) are shown only at MNF quarter ends or halftime, or via _catch_up when a game ends. Many of them age past replay.max_age_s 1800 and expire.",
+  "fix": "Use break_lengths_s (the typical lengths already in config) minus 2\u03c3 as a soft floor for score_break/timeout in _break_remaining. score_break 150 - 30 leaves a 120s budget, which covers clip 15 + seek 6 + cost."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/decider/decider.py:748-776 (_gone_hold) for NBA/NHL that vanish without a final",
+  "scenario": "If ESPN briefly drops a late game from the candidate set (summary error, or the scoreboard rollover after midnight for the 10pm West games PHX@GS / TOR@LAC / MIA@LAL), cur is None. leave_gate for NBA is never safe uncalibrated, so it holds GONE_MAX_HOLD_S 90s and then leaves mid-play, which for a game that is actually still live means a cut. The gate cannot help here.",
+  "fix": "When cur is None but tl.fresh_at is within 60s and tl.final_at is None, treat it as a stale-feed blip: stay (no 90s cap) for up to 300s before leaving."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/engine.py:323 (_league_feeds today = ET date)",
+  "scenario": "After midnight ET, NHL_SCORE is fetched for 2026-11-03, so any NHL game still live past midnight (CGY@SJ in OT/SO) loses NHL-API enrichment. The NBA CDN todaysScoreboard also eventually rolls. The ESPN path still works, so this is degraded timing, not an outage.",
+  "fix": "Query both today and yesterday when now(ET).hour < 6, or use each game's g.start_time date: `datetime.fromtimestamp(g.start_time, ET).strftime('%Y-%m-%d')`."
+ },
+ {
+  "severity": "medium",
+  "where": "scripts/eval_sports.py:54 and redzone/lab/backtest.py:206,223 (sigma default 3.0, upto parsing skips _live_overrides)",
+  "scenario": "The scorecards used to sign off tonight run with sigma 3 (calibrated) and with backtest summaries that keep INTERMISSION. Production tonight runs sigma 15 with END_PERIOD intermissions. 'mid_play_cuts 0 / big_seen 100%' does not describe tonight's behaviour: the live system will basically not switch inside NBA/NHL games.",
+  "fix": "Run the evals with --sigma 15, and apply _live_overrides in the backtest path (parse_summary with upto) so stoppage labels match live."
+ },
+ {
+  "severity": "critical",
+  "where": "redzone/engine.py:533-538 (with control.py:668-672, control.py:647-648)",
+  "scenario": "Any non-dry tune failure whose Outcome.screen_unchanged is False sets decider.safe_mode = True at once. The 3-errors-in-5-minutes rule in decider.note_error never gets a chance, and nothing clears safe_mode except Resume (engine.py:785). This happens on the single-stick path, where every failed deep link has screen_changed=True: whenever two-stick mode is off after a flip failure (control.py:752-760). It also happens for the 'TV input is unknown' outcome, whose screen_unchanged defaults to False, and when the hidden stick had to be woken. Example: two-stick drops at 9pm, and the next switch is DET@CHA (blacked-out Prime GTI) or a Peacock sign-in wall. The visible TV is left on the error page and the decider returns 'safe mode: too many errors \u2014 tap Resume' for the rest of the night.",
+  "fix": "Delete the direct `self.decider.safe_mode = True` at engine.py:538 and let note_error's 3-in-300s threshold decide. Also add auto-recovery: in decide(), call `dec.resume()` if safe_mode has been on for more than 10 minutes and `not ctl.input_unknown`. Set screen_unchanged=True on the input_unknown early return in control.execute (no command was sent)."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/discovery/runtime.py:96-99 -> redzone/discovery/providers.py:710-751",
+  "scenario": "on_outcome passes every non-dry outcome to ProviderBook.learn, including ones where no tune happened: 'no safe moment to cut \u2014 kept the current game' (control.py:647/692/704), 'safe exit window closed during preparation', 'switch cancelled; playback not confirmed', 'TV input is unknown'. Two of these within 15 minutes skip the target as 'failed'. I checked this by simulation on tonight's data: after 2 'no safe moment' outcomes, MNF's youtubetv:espn becomes untunable for 15 minutes, and the pick moves to espn:071155db (ESPN app, TV-provider sign-in) and then fubo:10179 (Fubo sign-in unknown).",
+  "fix": "In DiscoveryRuntime.on_outcome, return early when `outcome.screen_unchanged and outcome.path != 'tuned'` or when outcome.detail starts with one of ('no safe moment', 'safe exit window closed', 'switch cancelled', 'TV input is unknown', 'TV control was disabled'). Better: add an `Outcome.tune_ran: bool` set only where _tune() actually ran, and learn only when it is True."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/discovery/providers.py:557-599 (gather_sources) vs redzone/channels.py:194-198",
+  "scenario": "DET@CHA (401909908, 7:30, Hornets = LOCAL_TEAMS NBA, certain League Pass blackout in Raleigh). ChannelMap.apply_links correctly sets the note 'blacked out here (local team)', and where() returns target None. But ProviderBook.choose still builds sources from the 7 stored Prime GTIs (all geo_ok False). These are only 'risky', not blackout, so the pick is prime:amzn1.dv.gti.1d12b75d\u2026 'Prime Video \u2014 may be blacked out', tunable=True (checked by simulation). The engine will tune a guaranteed blackout whenever DET@CHA scores best or is chosen as standby.",
+  "fix": "In _link_source (or apply_skip), mark `blackout=True` on prime/nba/dazn sources when `g.league == League.NBA and (g.home.abbr in LOCAL_TEAMS[League.NBA] or g.away.abbr in LOCAL_TEAMS[League.NBA])`. Alternatively pass channel_map.link_notes into gather_sources and set blackout for any game whose note contains 'blacked out here'."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/discovery/providers.py:576-751 (_learn_fail / _skip per target), SKIP_S['failed']=900",
+  "scenario": "Skips are per target, not per game. A League Pass game has 6-8 Prime GTIs, so a blacked-out or unplayable game costs 2 tunes per GTI before it is given up. Simulated for DET@CHA: 14 failed tunes, and all the 'failed' skips expire after 15 minutes, so the whole cycle repeats every 15 minutes all night. The same applies to OKC@CLE's 2 Prime GTIs, and in two-stick mode it ties up the hidden stick for about 30-45s per tune.",
+  "fix": "In _skip, when kind in ('blackout','failed') and game_id is set, also record a per-game app skip, e.g. `self.skips[f'{app}:game:{game_id}'] = {...}`. In apply_skip/gather_sources, treat every source of that app for that game as skipped. Alternatively, on a 'blackout' verdict for one prime GTI, skip all prime:* targets with the same game id for 36h."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/discovery/providers.py:176-179 (_BLACKOUT_RX)",
+  "scenario": "Prime Video's geo/blackout message, 'This video is currently unavailable to watch in your location.', does not match any pattern: classify_screen returns None (tested). Also, 'video (?:is )?unavailable' in _ERROR_RX misses 'video is currently unavailable'. A League Pass blackout on Prime (OKC@CLE during the NBCSN exclusive, DET@CHA, any geo_ok False feed) is therefore learned as a generic 'failed' (15-minute skip) instead of 'blackout' (36h), and gets retried 4 times an hour.",
+  "fix": "Add patterns to _BLACKOUT_RX: `r\"unavailable to watch in your (?:location|area|region)\"`, `r\"currently unavailable in your (?:location|area|region)\"`, `r\"not available to watch in your (?:location|area)\"`. Add `r\"video is currently unavailable\"` to _ERROR_RX."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/control.py:950-958 (_preload failure) + redzone/engine.py:667-674",
+  "scenario": "Standby preload failures are never sent to ProviderBook.learn; they only set control._failed[target] for PRELOAD_BACKOFF_S=120s. When the planner's standby choice is a dead target (DET@CHA's blacked-out GTI, a Peacock link behind a sign-in wall, or an ESPN+ link behind an ESPN+ upsell), the hidden stick retunes it every 2 minutes all night. ProviderBook never moves to another source because it never hears about the failures. Each preload also holds control._lock and delays real switches.",
+  "fix": "Give Controller an `on_preload_outcome` callback. Engine sets it to `lambda t, ok, detail: self.discovery.on_outcome(Outcome(ok, t, 0, detail, False))` and calls it from _preload with res.error/res.steps. Or at least double PRELOAD_BACKOFF_S per consecutive failure of the same target (cap at 30 minutes)."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/engine.py:520-543 + redzone/decider/decider.py:255-258 (reject), DECIDE_EVERY_S=0.5",
+  "scenario": "After a failed switch with screen_unchanged=True (the normal two-stick hidden-tune failure), decider.reject only clears _proposal_home. There is no per-game or per-target cooldown, so the next 0.5s tick picks the same game and target and submits again right away. With the 2-fails-then-15-minutes rule, a dead target is hit twice back to back, then again every 15 minutes, and each attempt is 2 deep-link attempts of 15s plus a screen read. This cycle repeats for every unplayable 'best' game, e.g. OKC@CLE on Peacock if signed out.",
+  "fix": "In done() on failure, set `self.skipped[d.target] = time.time() + 120` and add d.target to decider.user.muted (both are already cleared by decide() at engine.py:447-450). Or keep a `self._switch_fail_until[target]` dict and drop the candidate's target while it is cooling down."
+ },
+ {
+  "severity": "high",
+  "where": "redzone/discovery/providers.py:505-517 (_link_source alt detection) + ranking 356-358",
+  "scenario": "OKC@CLE (NBCSN only; no YTTV code for nbcsn). The pick is peacock:fb28161e 'Thunder vs. Cavaliers' (Peacock sign-in unknown). Its alternates are the Peacock 'Performance View' and 'Action Cams' iso feeds, then 2 Prime GTIs that are League Pass during a national exclusive (blacked out). If the main Peacock link generic-fails twice, the engine tunes an iso camera feed for the game, because alt feeds (rank 5) still outrank the 'risky' Prime GTIs. If Peacock is signed out, the next choice is prime:1e817e68 'may be blacked out', which feeds the blackout retry cycle.",
+  "fix": "In _link_source, also set alt when the title matches `re.search(r\"performance view|action cam|cam:|iso|alt(?:ernate)? cast|en espa[n\u00f1]ol|manningcast|with peyton\", title, re.I)`. In _risky/best_source, set blackout=True (not just risky) for prime NBA event sources when _national_elsewhere(g) and the feed is not the user's team, so the game becomes untunable instead of cycling into the blackout."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/channels.py:147-149 + redzone/discovery/providers.py:86-88 (FUBO_CHANNELS) / 520-535",
+  "scenario": "VGK@BOS (7:00, 'NHL Net','Scripps Sports','NESN'): where() returns youtubetv:nhlnetwork with tunable=False (no code), and there is no Fubo station id for nhlnetwork or nbcsn. The national-cable branch returns before the NHL\u2192ESPN+ fallback. The only tunable source is an unverified Prime GTI 'Golden Knights vs. Bruins' (network 'Amazon Prime Video Sports US', probably a NESN or Scripps Prime Video Channel), labelled 'Prime Video' with confidence 'sure'. If it hits an upsell, the game becomes unwatchable. If it plays, it may be a paid-channel trial page; purchase screens are guarded, but this still costs a failed visible switch.",
+  "fix": "In ChannelMap.where's national-cable loop, skip channels with no YTTV code: `if ... and (f\"youtubetv:{n}\" and self._tunable(f'youtubetv:{n}') or n not in ('nhlnetwork','nbcsn'))`. More simply, after the loop, for NHL with an untunable national net, fall through to self._espnplus(g). In source_from_where/_link_source, downgrade a prime NHL source to confidence 'likely' unless its title or network shows it is Prime's own game."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/discovery/providers.py:525-529 (channel_sources Fubo) + 280-281 (usable)",
+  "scenario": "Fubo sources for ESPN (MNF) are added as tunable=True, confidence 'likely', and Fubo's subscribed state is None (assumed yes). Once youtubetv:espn is skipped (see the learn-on-non-tune finding), MNF moves to the ESPN app, then fubo:10179, then the ESPN Deportes feed (espn:08f33b84; lang is unset, so it is not marked alt). Each fallback is one more failed tune in the Bears-Seahawks game, the only NFL game tonight, and a Spanish broadcast is possible.",
+  "fix": "In channel_sources, add Fubo only when the provider state has subscribed True (set by an earlier successful tune or by the owner), i.e. pass book.states() in and require `states['fubo'].subscribed is True`. Mark ESPN links whose title starts with 'En Espa\u00f1ol' or whose network contains 'Deportes' as feed='alt'."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/discovery/providers.py:93 (MULTI_TIER includes 'espn') + 753-762",
+  "scenario": "ESPN+ NHL games (DET@FLA 7:00, COL@CHI 8:00, CGY@SJ 9:00) route to espn:<play_id> in the ESPN app; ESPN+ entitlement is unknown, and every stored espnplus link has geo_ok False. If the ESPN app shows 'Subscribe to ESPN+', the upsell is recorded per target only (espn is MULTI_TIER, so it is never marked app-wide). Each game then tries its home feed, then its away feed: 6 failed visible or hidden tunes across the night before ESPN+ is given up, with each cycle resetting after 24h but also feeding the safe-mode trap on the single-stick path.",
+  "fix": "In _learn_upsell, for app 'espn', treat targets whose game is NHL or NBA (ESPN+ events) as their own tier: after 2 distinct upsell walls on espn ESPN+ targets, `self._mark('espnplus', 'upsell', why)`. In sources_from_links, give prov 'espnplus' its own provider key 'espnplus' so it is skipped as a group."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/channels.py:199-203 + redzone/discovery/providers.py:463-466",
+  "scenario": "WSH@ORL (the user's team): all 7 stored Prime feeds have feed=None (no home/away metadata), so apply_links' 'prefer your team's broadcast' cannot work. It takes ok[0], the only geo_ok True GTI (e2f3cfb0), which may be the Magic's FanDuel SN FL feed or a generic feed. source_from_where then labels it 'Monumental (Prime Video)' with feed='away', ranking it as 'your team's own broadcast'. The user may get the Orlando broadcast, and if that GTI fails, the next 6 (geo False) are tried one by one.",
+  "fix": "In apply_links, when no feed has a 'feed' field, prefer a feed whose feed_name or title contains 'Monumental' or 'Wizards'. In source_from_where, set feed from the Monumental label only when the chosen GTI's link record has feed == side; otherwise leave feed None and say in the label that it is unverified."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/engine.py:154-160 (refresh_links today = datetime.now(ET))",
+  "scenario": "TOR@LAC (401909920, 11:00pm ET) has no Prime link yet; its target is the untunable prime:leaguepass. Links are refreshed for the ET calendar day only. If Apple/Prime has not listed the GTI by midnight ET, every later refresh queries 2026-11-03 and never matches the still-live Nov 2 late games. TOR@LAC (and any late game whose link changes) stays unwatchable until it ends.",
+  "fix": "In refresh_links, also query yesterday's date while any non-POST game has a start_time before today's ET midnight: `days = {today} | {datetime.fromtimestamp(g.start_time, ET).strftime('%Y-%m-%d') for g in games if g.phase != Phase.POST and g.start_time}`, fetching and merging links for each."
+ },
+ {
+  "severity": "medium",
+  "where": "redzone/discovery/providers.py:346-353 (_risky) / redzone/channels.py:204-205",
+  "scenario": "Most League Pass games tonight (ATL@IND, SAC@DAL, NO@MEM, MIL@MIN, BOS@HOU, UTAH@SA, POR@DEN, PHX@GS, MIA@LAL) have only geo_ok False Prime feeds, so their picks are labelled 'may be blacked out' but stay tunable with nothing safer. As 'sure'-ranked crunch candidates, they will be switched to. With the Prime blackout phrase unrecognized and the skips per target, any real blackout among them triggers the 14-tunes-per-game cycle described above.",
+  "fix": "Once one GTI of a game fails, stop treating geo_ok False as only a hint: in best_source, if any source of the same app and game has an active 'failed' or 'blackout' skip and the remaining sources are all geo_ok False, mark them tunable=False with note 'likely blacked out (Apple flag + a failed tune)'."
+ }
+]
