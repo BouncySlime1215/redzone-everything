@@ -32,7 +32,8 @@ from redzone.engine import Engine
 from redzone.lab import backtest
 from redzone.lab.backtest import Replay, _deliver, _feed
 from redzone.models import League, Phase
-from redzone.scoring.engine import Scorer
+from redzone.scoring.drive import DriveScorer
+from redzone.sources.feeds import FeedBook
 from redzone.sources import espn
 from redzone.sources.merge import Merger
 from redzone.store import Store
@@ -255,8 +256,12 @@ class DemoEngine(Engine):
         clock = self.clock
         self.channels = DemoChannels(path=work / "channels.json")
         self.merger = Merger(clock=clock)
-        self.scorer = Scorer(self.cfg, clock=clock)
-        self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"), clock=clock)
+        # Engine.feeds (contracts Feeds) must read THIS merger on the sim clock; the replayed plays
+        # themselves are self.replay_feeds (never fetched by URL, so the merger's rule decides).
+        self.feeds = FeedBook(self.merger, self.fetcher, self._feed_urls, self._feed_cadence, clock=clock)
+        self.scorer = DriveScorer(self.cfg, clock=clock)
+        self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"), clock=clock,
+                                model=self.cfg.get("delay.model", "channel"))
         self.decider = Decider(self.cfg, self.delays, clock=clock)
         self.decider.entry_cost = lambda target: TUNE_S   # [cut timing] the replay's picture is up TUNE_S after a switch
         self.control = InertController(self.cfg, self.channels, clock)
@@ -274,7 +279,7 @@ class DemoEngine(Engine):
         self.t0 = min(r.wall[0] for r in replays) - 600
         self.t1 = max(r.wall[-1] for r in replays) + 300
         self.clock.t = self.t0
-        self.feeds = {r.gid: _feed(r, random.Random(zlib.crc32(r.gid.encode())), FEED_LAG_S, step,
+        self.replay_feeds = {r.gid: _feed(r, random.Random(zlib.crc32(r.gid.encode())), FEED_LAG_S, step,
                                    None, 0.0, 0.0, 0.0, self.t0, self.t1) for r in replays}
         self.idx = {r.gid: -1 for r in replays}
         self.switches: list[backtest.SwitchLog] = []
@@ -294,7 +299,7 @@ class DemoEngine(Engine):
     def _feed_games(self) -> None:
         now = self.clock()
         for r in self.replays:
-            f = self.feeds[r.gid]
+            f = self.replay_feeds[r.gid]
             f.fresh_at = now
             i = self.idx[r.gid]
             while i + 1 < len(r.plays) and f.arrive[i + 1] <= now:

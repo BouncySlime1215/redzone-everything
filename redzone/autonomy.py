@@ -51,6 +51,7 @@ import httpx
 
 from redzone.channels import describe
 from redzone.models import League, Phase
+from redzone.network import arp_table, find_by_mac, norm_mac  # noqa: F401  (re-exported)
 from redzone.tuners.adb import YTTV_PACKAGES, Stick, adb_available
 from redzone.tuners.tuners import TUNERS
 
@@ -434,16 +435,6 @@ class Scheduler:
 # ============================================================================ the home network
 
 
-def norm_mac(mac: Any) -> str:
-    """'4C:EF:C0:2:34:56' -> '4c:ef:c0:02:34:56' ('' if it isn't a MAC). macOS's arp drops leading zeros."""
-    parts = re.split(r"[:-]", str(mac or "").strip().lower())
-    try:
-        vals = [int(p, 16) for p in parts]
-    except ValueError:
-        return ""
-    return ":".join(f"{v:02x}" for v in vals) if len(vals) == 6 and all(0 <= v <= 255 for v in vals) else ""
-
-
 def local_network() -> ipaddress.IPv4Network | None:
     """This Mac's home subnet from its default route, clamped to the 1,024 addresses around the Mac
     (campus networks are huge). None when offline."""
@@ -456,18 +447,6 @@ def local_network() -> ipaddress.IPv4Network | None:
         return ipaddress.ip_network(f"{m.group(1)}/{max(prefix, 22)}", strict=False)
     except (OSError, subprocess.SubprocessError, AttributeError, ValueError):
         return None
-
-
-ARP_LINE = re.compile(r"\((\d+\.\d+\.\d+\.\d+)\) at ([0-9a-fA-F:]+)")
-
-
-def arp_table() -> dict[str, str]:
-    """IP -> MAC for devices this Mac has talked to recently (a scan fills it in)."""
-    try:
-        out = subprocess.run(["arp", "-an"], capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.SubprocessError):
-        return {}
-    return {ip: m for ip, mac in ARP_LINE.findall(out) if (m := norm_mac(mac))}
 
 
 async def port_open(host: str, port: int, timeout: float = 0.6) -> bool:
@@ -523,6 +502,10 @@ class Net:
 
     async def samsung(self, ip: str) -> dict | None:
         return await samsung_info(ip)
+
+    async def find_mac(self, mac: str, subnet: Any, sweep: bool = True, prefer: str = "") -> str | None:
+        """Where a device with this MAC is right now (ARP, then one UDP nudge of the home /24)."""
+        return await find_by_mac(mac, subnet, sweep=sweep, prefer=prefer)
 
     def stick(self, host: str) -> Stick:
         return Stick(host)
@@ -591,6 +574,11 @@ def same_tv(saved: dict, seen: dict) -> bool:
         return a == b
     # Two identical TVs are common. A model name never proves device identity.
     return bool(saved.get("ip")) and saved.get("ip") == seen.get("ip")
+
+
+def _tv_macs(tv: dict) -> list[str]:
+    """The TV's MACs to look for: its Wi-Fi MAC from its status page and/or one you saved as "mac"."""
+    return list(dict.fromkeys(m for m in (norm_mac(tv.get("mac")), norm_mac(tv.get("wifi_mac"))) if m))
 
 
 def _point_tv(controller: Any, ip: str) -> None:
@@ -662,6 +650,7 @@ class DeviceHealer:
         self.learned: dict[str, float] = {}       # host -> last time we tried to learn its identity
         self.notes: list[str] = []
         self.last_check: float | None = None
+        self.tv_on_lan = False                    # the TV's MAC is on the network, but its control port is shut
         self._busy = False
         self._dirty = False
 
@@ -682,11 +671,48 @@ class DeviceHealer:
         finally:
             self._busy = False
 
+    @property
+    def network(self) -> Any:
+        """The app's NetWatch (redzone/network.py), or None (tests, older engines): then behave as before."""
+        return getattr(self.hooks, "network", None)
+
+    def _net_state(self) -> Any:
+        nw = self.network
+        return getattr(nw, "state", None) if nw is not None else None
+
+    def _home_subnet(self) -> ipaddress.IPv4Network | None:
+        st = self._net_state()
+        if st is None or st.where != "home" or not st.home_subnet:
+            return None
+        try:
+            return ipaddress.ip_network(st.home_subnet, strict=False)
+        except ValueError:
+            return None
+
     async def _check(self) -> list[str]:
         d = read_devices(self.path)
+        nw = self.network
+        st = await nw.refresh() if nw is not None else None
+        if st is not None and st.away:
+            # Not a fault: nothing here can answer. Don't scan someone else's network, and start the
+            # "missing for 2 minutes" clocks fresh when we're back.
+            self.offline_since.clear()
+            self.tv_lost_since, self.tv_power, self.tv_on_lan = None, None, False
+            self.last_check = self.clock()
+            return []
         notes = await self._learn(d)
+        if st is not None and st.routes_broken:
+            # The Mac sends home traffic into a tunnel: a scan would find nothing and back off for an hour.
+            self.last_check = self.clock()
+            return notes
         notes += await self._follow_sticks(d)
         notes += await self._follow_tv(d)
+        if nw is not None:
+            up = [s.host for s in self.controller.sticks if s.state == "connected"]
+            if nw.learn_into(d, up):
+                self._dirty = True
+                self._save(d)
+                notes.append(f"Learned your home network ({d['home'].get('subnet')}) and its router")
         for n in notes:
             log.info("Devices: %s", n)
         self.notes = (notes + self.notes)[:5]
@@ -743,9 +769,14 @@ class DeviceHealer:
         lost = [s for s in list(self.controller.sticks) if self._lost(s, now)]
         if not lost or not self.sticks_scan.ready(now) or not getattr(self.controller, "adb_ok", True):
             return []
-        hosts = await self.net.scan(await self.net.network(), 5555)
-        arp = await self.net.arp()
         mine = {s.host for s in self.controller.sticks}
+        by_mac, all_by_mac = await self._sticks_by_mac(d, lost, mine)
+        subnet = self._home_subnet()
+        # Every lost stick found by its MAC: no port scan needed. Otherwise scan the HOME network (not
+        # whatever /22 the Mac is on) for adb, and try the MAC hits first.
+        hosts = by_mac if all_by_mac else \
+            list(dict.fromkeys(by_mac + await self.net.scan(subnet or await self.net.network(), 5555)))
+        arp = await self.net.arp()
         cands = [f"{h}:5555" for h in hosts if f"{h}:5555" not in mine and self.strangers.get(f"{h}:5555", 0) <= now]
         notes, moved = [], 0
         for s in lost:
@@ -757,6 +788,25 @@ class DeviceHealer:
         (self.sticks_scan.found if moved else self.sticks_scan.failed)(now)
         self._save(d)
         return notes
+
+    async def _sticks_by_mac(self, d: dict, lost: list[Stick], mine: set[str]) -> tuple[list[str], bool]:
+        """Addresses the lost sticks' saved MACs have right now: ARP first, then (once) a UDP nudge of the
+        home /24. Returns (new addresses, whether every lost stick was found this way)."""
+        subnet = self._home_subnet()
+        macs = [norm_mac((_entry(d, s.host) or {}).get("mac")) for s in lost]
+        if subnet is None or not all(macs):
+            return [], False
+        found: list[str] = []
+        swept = False
+        for s, mac in zip(lost, macs):
+            ip = await self.net.find_mac(mac, subnet, sweep=False)
+            if ip is None and not swept:
+                swept = True
+                ip = await self.net.find_mac(mac, subnet, sweep=True)
+            if ip is None or f"{ip}:5555" in mine:
+                return found, False   # not on the network, or it kept its address (adb itself is down)
+            found.append(ip)
+        return found, True
 
     async def _find(self, saved: dict, cands: list[str], arp: dict, notes: list[str]) -> tuple | None:
         """Connect to candidates — the one with the saved MAC first — until one proves to be this stick."""
@@ -818,22 +868,57 @@ class DeviceHealer:
         """Read the TV's status page every 2 min (power state; still at this address?). Gone 2+ minutes:
         scan port 8001 for it. Usually it's just off and the scan finds nothing, hence the backoff."""
         now, tv = self.clock(), d.get("tv") or {}
+        macs = _tv_macs(tv)
         self.tv_saved = bool(tv.get("ip"))
-        if not self.tv_saved or now - self.tv_checked < TV_CHECK_S:
+        if not (self.tv_saved or macs) or now - self.tv_checked < TV_CHECK_S:
             return []
         self.tv_checked = now
-        info = await self.net.samsung(tv["ip"])
+        info = await self.net.samsung(tv["ip"]) if self.tv_saved else None
         if info and same_tv(tv, info):
-            self.tv_power, self.tv_lost_since = info.get("power") or "on", None
+            self.tv_power, self.tv_lost_since, self.tv_on_lan = info.get("power") or "on", None, False
             self._learn_tv(d, tv, info)
             return []
         self.tv_power = None
         self.tv_lost_since = self.tv_lost_since or now
-        if now - self.tv_lost_since < LOST_AFTER_S or not self.tv_scan.ready(now):
+        lost = now - self.tv_lost_since >= LOST_AFTER_S
+        moved = await self._tv_by_mac(d, tv, macs, sweep=lost and self.tv_scan.ready(now), now=now)
+        if moved is not None:
+            return moved
+        if not self.tv_saved or not lost or not self.tv_scan.ready(now):
             return []
-        hosts = await self.net.scan(await self.net.network(), 8001)
+        hosts = await self.net.scan(self._home_subnet() or await self.net.network(), 8001)
         found = [i for i in [await self.net.samsung(h) for h in hosts] if i]
         return self._move_tv(d, tv, found, now)
+
+    async def _tv_by_mac(self, d: dict, tv: dict, macs: list[str], sweep: bool, now: float) -> list[str] | None:
+        """The TV's MAC at a new address -> follow it there, even when its control port (8001) is shut
+        (that's how a wrong saved IP gets corrected). None when there's nothing to do."""
+        subnet = self._home_subnet()
+        if subnet is None or not macs:
+            return None
+        ip = None
+        for mac in macs:
+            ip = await self.net.find_mac(mac, subnet, sweep=sweep, prefer=tv.get("ip", ""))
+            if ip:
+                break
+        if sweep and not ip and not tv.get("ip"):
+            self.tv_scan.failed(now)   # with a saved address, the port-8001 scan below backs off for both
+        self.tv_on_lan = bool(ip) and ip == tv.get("ip")
+        if not ip or ip == tv.get("ip"):
+            return None
+        old, tv["ip"] = tv.get("ip"), ip
+        d["tv"] = tv
+        self._dirty = True
+        info = await self.net.samsung(ip)
+        if info and same_tv(tv, info):
+            self.tv_power, self.tv_lost_since = info.get("power") or "on", None
+            self._learn_tv(d, tv, info)
+        self._save(d)
+        self.tv_saved = True
+        _point_tv(self.controller, ip)
+        self.tv_scan.found(now)
+        return [f"The TV moved from {old} to {ip} (found by its MAC) — following it" if old
+                else f"Found the TV at {ip} by its MAC"]
 
     def _move_tv(self, d: dict, tv: dict, found: list[dict], now: float) -> list[str]:
         hits = [i for i in found if same_tv(tv, i)]
@@ -870,6 +955,11 @@ class DeviceHealer:
     def summary(self) -> tuple[bool | None, str]:
         """One line for the phone: what's connected, what's missing, what changed last."""
         sticks, now = list(self.controller.sticks), self.clock()
+        st = self._net_state()
+        if st is not None and st.away:
+            return None, st.message   # not a fault, and not "offline"
+        if st is not None and st.routes_broken:
+            return False, st.message
         if not sticks:
             return None, "No Fire TV sticks saved yet"
         up = [s for s in sticks if s.state == "connected"]
@@ -886,7 +976,9 @@ class DeviceHealer:
             if not math.isfinite(self.tv_checked):
                 parts.append("TV saved; connection not checked")
             else:
-                parts.append({"on": "TV on", "standby": "TV in standby"}.get(self.tv_power or "", "TV saved; not answering"))
+                parts.append({"on": "TV on", "standby": "TV in standby"}.get(
+                    self.tv_power or "", "TV on the network, but its control port isn't answering"
+                    if self.tv_on_lan else "TV saved; not answering"))
         else:
             parts.append("no TV saved yet")
         if self.notes:
@@ -1128,9 +1220,8 @@ def archive_result(results: list[DayResult]) -> JobResult:
 async def run_lab_search(root: Path = ROOT) -> dict:
     """redzone.lab.optimize.search() in its own low-priority process: it's minutes of CPU, and a
     separate process can be killed cleanly by the time box (a thread can't be)."""
-    cmd = [sys.executable, "-c", LAB_CODE]
-    if shutil.which("nice"):
-        cmd = ["nice", "-n", "10", *cmd]
+    from redzone.governor import background_cmd
+    cmd = background_cmd([sys.executable, "-c", LAB_CODE])   # efficiency cores, throttled I/O
     try:
         proc = await asyncio.create_subprocess_exec(*cmd, cwd=str(root), stdin=subprocess.DEVNULL,
                                                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
@@ -1368,6 +1459,7 @@ class Hooks:
     toast: Callable[..., None] = lambda text, level="info": None
     mic_on: Callable[[], bool] = lambda: False
     current_target: Callable[[], str | None] = lambda: None
+    network: Any = None   # redzone.network.NetWatch; None = don't know where we are (old behavior)
 
 
 class EngineHooks:
@@ -1382,6 +1474,7 @@ class EngineHooks:
     cfg = property(lambda self: self.engine.cfg)
     delays = property(lambda self: self.engine.delays)
     store = property(lambda self: self.engine.store)
+    network = property(lambda self: getattr(self.engine, "network", None))
 
     def games(self) -> list:
         return list(self.engine.merger.games.values())
@@ -1448,9 +1541,9 @@ class Autonomy:
             Job("yttv_codes", "YouTube TV channel check", self._yttv_codes, (At(4, 20),), window_s=2 * hour,
                 timeout_s=15 * mins, retry_s=15 * mins, guard=self._night_guard, group="sticks"),
             Job("archive", "Game archive for the lab", self._archive, (At(5, 0),), window_s=6 * hour,
-                timeout_s=20 * mins, retry_s=30 * mins, attempts=3),
+                timeout_s=20 * mins, retry_s=30 * mins, attempts=3, guard=self._archive_guard),
             Job("autotune", "Weekly lab tune-up", self._autotune, (At(4, 40, (TUE,)),), window_s=4 * hour,
-                timeout_s=45 * mins, retry_s=30 * mins, guard=self._night_guard),
+                timeout_s=45 * mins, retry_s=30 * mins, guard=self._lab_guard),
             Job("event_links", "Game links (Prime Video, ESPN+)", None),
         ]
 
@@ -1651,6 +1744,20 @@ class Autonomy:
         """Overnight chores wait for every game to end (the owner may be up watching a late game)."""
         live = self._live()
         return f"{_games_text(live)} still on" if live else None
+
+    def _governor_says(self, kind: str) -> str | None:
+        """The resource governor (redzone/governor.py) holds heavy chores while the Mac is busy, hot,
+        on battery or short of disk. No governor (tests, tools): never holds."""
+        gov = getattr(getattr(self.hooks, "engine", None), "governor", None)
+        if gov is None or gov.allow(kind):
+            return None
+        return f"the Mac needs a break ({gov.why()})"
+
+    async def _archive_guard(self) -> str | None:
+        return self._governor_says("archive")
+
+    async def _lab_guard(self) -> str | None:
+        return await self._night_guard() or self._governor_says("lab")
 
     async def _quiet_guard(self) -> str | None:
         """Jobs that drive the sticks also need TV control on and a stick connected."""

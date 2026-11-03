@@ -23,7 +23,7 @@ def test_last_json_skips_the_demo_timeline():
 def _no_ci_env(monkeypatch):
     """CI sets these for the real run (RZ_SCORECARD_FULL=1 on integration/next): the tests pin
     their own sizes."""
-    for k in ("RZ_SCORECARD_FULL", "RZ_SMOKE_NFL_N", "RZ_SMOKE_NIGHTS", "RZ_SMOKE_DEMO_DAY"):
+    for k in ("RZ_SCORECARD_FULL", "RZ_SMOKE_NFL_N", "RZ_SMOKE_NIGHTS", "RZ_SMOKE_DEMO_DAY", "RZ_SCORECARD_RESYNC"):
         monkeypatch.delenv(k, raising=False)
 
 
@@ -44,7 +44,7 @@ def test_scorecard_runner_records_each_card_and_survives_a_crash(tmp_path):
     out = tmp_path / "out.json"
     assert ci_scorecard.main(["--root", str(root), "--out", str(out), "--demo-day", "", "--nights", "2"]) == 0
     res = json.loads(out.read_text())
-    assert set(res["cards"]) == {"nfl", "nba", "nhl"}
+    assert set(res["cards"]) == {"nfl", "nba", "nhl", "nfl_resync", "nba_resync", "nhl_resync"}
     assert "eval_config rejected" in res["cards"]["nfl"]["error"]
     assert res["cards"]["nba"]["metrics"] == {"league": "nba", "mid_play_cuts": 0, "nights": 2}
     assert res["cards"]["nhl"]["error"].startswith(ci_report.MISSING)
@@ -57,6 +57,17 @@ def test_full_mode_uses_the_merge_scorecard_sizes(tmp_path):
     res = json.loads(out.read_text())
     assert res["slice"]["full"] and res["cards"]["nfl"]["metrics"] == {"n": "16"}
     assert res["cards"]["nba"]["metrics"]["nights"] == 14
+
+
+def test_resync_cards_run_the_same_slice_with_the_flag_and_can_be_turned_off(tmp_path):
+    root = _fake_root(tmp_path, "import json, sys\nprint(json.dumps({'argv': sys.argv[1:]}, indent=1))\n")
+    out = tmp_path / "out.json"
+    ci_scorecard.main(["--root", str(root), "--out", str(out), "--demo-day", ""])
+    res = json.loads(out.read_text())
+    assert res["cards"]["nfl_resync"]["metrics"]["argv"] == res["cards"]["nfl"]["metrics"]["argv"] + ["--resync"]
+    ci_scorecard.main(["--root", str(root), "--out", str(out), "--demo-day", "", "--no-resync"])
+    assert set(json.loads(out.read_text())["cards"]) == {"nfl", "nba", "nhl"}
+    assert ci_report.card_kind("nhl_resync") == "nhl" and ci_report.card_kind("demo_20261101") == "demo"
 
 
 def test_scalar_reads_demo_fraction_strings():

@@ -1,0 +1,18 @@
+# scripts/deploy.py settings. Every key is optional; unknown keys are an error.
+branch: integration/release
+remote: origin
+api: http://127.0.0.1:8778
+watch_s: 600            # the new version must stay healthy this long
+sample_s: 30
+startup_grace_s: 120    # the API must answer this soon after the restart
+baseline_s: 600         # the old version's log window it is compared with
+soon_s: 900             # a game starting this soon counts as live
+live_wait_s: 0          # 0 = defer at once while a game is live (`--wait MIN` overrides)
+min_free_mb: 1500       # disk guard; the Mac has ~5 GB free
+keep_releases: 5
+# Not in git, so versioned by deploy.py itself (content-addressed under data/deploy/store).
+managed:
+  - data/config.yaml
+  - agent/model
+# Tests that need hardware the Mac doesn't have attached. Node ids, as pytest prints them.
+deselect: []

@@ -7,10 +7,13 @@ every screen-lab label, and the source race.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 import time
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 DB = Path(__file__).resolve().parent.parent / "data" / "redzone.db"
 
@@ -32,13 +35,32 @@ CREATE INDEX IF NOT EXISTS idx_snap_ts ON snapshots(ts);
 class Store:
     def __init__(self, path: Path = DB):
         path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self._open(path)
+        except sqlite3.DatabaseError as e:
+            # A database the app can't open (disk filled mid-write, a bad copy) must not stop the
+            # service from starting: set it aside, untouched, and start a fresh one. Only for a file
+            # that isn't a usable database: "locked" / "unable to open" (OperationalError) is a
+            # healthy file we can't use right now, and is never moved.
+            if isinstance(e, sqlite3.OperationalError):
+                raise
+            aside = _set_aside(path)
+            log.error("store: %s can't be opened (%s); moved it to %s and started a fresh database",
+                      path, e, aside)
+            self._open(path)
+        self._lock = threading.Lock()
+
+    def _open(self, path: Path) -> None:
         self._db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
-        self._db.execute("PRAGMA journal_mode=WAL")
-        self._db.executescript(SCHEMA)
+        try:
+            self._db.execute("PRAGMA journal_mode=WAL")
+            self._db.executescript(SCHEMA)
+        except sqlite3.DatabaseError:
+            self._db.close()
+            raise
         cols = {r[1] for r in self._db.execute("PRAGMA table_info(calibrations)")}
         if "kind" not in cols:   # 'tap' ("I just saw it") | 'boundary' (a show change) | 'screen' (the score bug)
             self._db.execute("ALTER TABLE calibrations ADD COLUMN kind TEXT DEFAULT 'tap'")
-        self._lock = threading.Lock()
 
     def _x(self, sql: str, args: tuple = ()):
         with self._lock:
@@ -88,6 +110,11 @@ class Store:
         cols = [c[0] for c in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
+    def last_snapshot_between(self, t0: float, t1: float) -> float | None:
+        """When the last live-games snapshot in [t0, t1) was taken (the night report's "screen on until")."""
+        row = self._x("SELECT MAX(ts) FROM snapshots WHERE ts >= ? AND ts < ?", (t0, t1)).fetchone()
+        return float(row[0]) if row and row[0] is not None else None
+
     def checkpoint(self) -> None:
         """Fold the write-ahead log back into the database file so it can't grow without bound."""
         self._x("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -115,3 +142,14 @@ class Store:
         cutoff = time.time() - keep_days * 86400
         for t in ("decisions", "snapshots"):
             self._x(f"DELETE FROM {t} WHERE ts < ?", (cutoff,))
+
+
+def _set_aside(path: Path) -> Path:
+    """Rename a database that can't be opened (and its -wal/-shm files) to *.corrupt-<time>. Never deletes."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    aside = path.with_name(f"{path.name}.corrupt-{stamp}")
+    for suffix in ("", "-wal", "-shm"):
+        src = path.with_name(path.name + suffix)
+        if src.exists():
+            src.replace(aside.with_name(aside.name + suffix))
+    return aside

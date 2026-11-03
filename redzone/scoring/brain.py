@@ -528,11 +528,15 @@ class Reading:
     break_reasons: list[str] = field(default_factory=list)  # why a break looks near
     events: int = 0
     key_rate: float | None = None   # the league's usual key_soon rate (what "likely" is measured against)
+    v3: object | None = None        # brain3.V3 (stoppage odds/type/length, entry point, big plays) or None
 
     def as_dict(self) -> dict:
         r = lambda x, n=3: None if x is None else round(x, n)  # noqa: E731
-        return {"break_soon_p": r(self.break_soon_p), "key_soon_p": r(self.key_soon_p),
-                "hotness": r(self.hotness, 1), "reasons": self.reasons, "break_reasons": self.break_reasons}
+        out = {"break_soon_p": r(self.break_soon_p), "key_soon_p": r(self.key_soon_p),
+               "hotness": r(self.hotness, 1), "reasons": self.reasons, "break_reasons": self.break_reasons}
+        if self.v3 is not None:
+            out["v3"] = self.v3.as_dict()
+        return out
 
 
 EMPTY = Reading()
@@ -541,10 +545,20 @@ EMPTY = Reading()
 class Brain:
     """Loads per-league models; keeps one Tracker and a hotness timeline per game."""
 
-    def __init__(self, model_dir: Path | None = None, enabled: bool = True):
+    def __init__(self, model_dir: Path | None = None, enabled: bool = True, version: int = 3,
+                 v3_score=None, v3_break_odds=None):
         self.model_dir = model_dir or MODEL_DIR
         self.enabled = enabled
+        self.version = int(version)
+        # Leagues whose score fields (key_soon_p, hotness: what the Scorer adds points for) come from
+        # v3; elsewhere they stay v2's while v3 still supplies the stoppage / entry outputs. None = all.
+        self.v3_score = None if v3_score is None else {str(x) for x in v3_score}
+        # Leagues whose break odds (break_soon_p: what breaks.blend mixes with the rules) come from v3's
+        # long-break head; elsewhere v2's (better calibrated on held-out nights). None = all.
+        self.v3_break_odds = None if v3_break_odds is None else {str(x) for x in v3_break_odds}
+        self._v2: "Brain | None" = None
         self._models: dict[str, Forest | None] = {}
+        self._v3: dict[str, object | None] = {}
         self.info: dict[str, dict] = {}
         self._track: dict[str, Tracker] = {}
         self._broken: set[str] = set()     # leagues whose model failed to predict: rules only from then on
@@ -553,7 +567,30 @@ class Brain:
 
     @classmethod
     def from_config(cls, cfg) -> "Brain":
-        return cls(enabled=bool(cfg.get("brain.enabled", False)) if cfg is not None else False)
+        if cfg is None:
+            return cls(enabled=False)
+        return cls(enabled=bool(cfg.get("brain.enabled", False)), version=int(cfg.get("brain.version", 3) or 3),
+                   v3_score=cfg.get("brain.v3_score", None), v3_break_odds=cfg.get("brain.v3_break_odds", None))
+
+    def model3(self, league: str):
+        """Brain v3's forest for this league (brain_models/<league>.v3.npz), or None: then v2 runs."""
+        if self.version < 3:
+            return None
+        if league not in self._v3:
+            from redzone.scoring import brain3
+            p = self.model_dir / f"{league}.v3.npz"
+            m = None
+            if p.exists():
+                try:
+                    m = brain3.load(p)
+                    if m.features != brain3.features_for(league):
+                        log.error("brain v3: %s was trained on other features; using v2", p)
+                        m = None
+                except Exception:  # noqa: BLE001 - a bad model file means v2 / heuristics, never a crash
+                    log.exception("brain v3: could not load %s", p)
+                    m = None
+            self._v3[league] = m
+        return self._v3[league]
 
     def models(self, league: str) -> Forest | None:
         if league not in self._models:
@@ -570,7 +607,8 @@ class Brain:
         return self._models[league]
 
     def available(self, league: League | str) -> bool:
-        return self.enabled and self.models(getattr(league, "value", league)) is not None
+        lg = getattr(league, "value", league)
+        return self.enabled and (self.model3(lg) is not None or self.models(lg) is not None)
 
     def read(self, g: GameState | None) -> Reading:
         """Predictions for this game's current state (EMPTY when off, unmodeled or not live)."""
@@ -579,11 +617,14 @@ class Brain:
         lg = g.league.value
         if lg in self._broken:
             return EMPTY
+        m3 = self.model3(lg) if lg + ":v3" not in self._broken else None
+        if m3 is not None:
+            return self._read3(g, lg, m3)
         ms = self.models(lg)
         if ms is None:
             return EMPTY
         tr = self._track.get(g.game_id)
-        if tr is None:
+        if tr is None or type(tr) is not Tracker:
             tr = self._track[g.game_id] = Tracker(lg)
             while len(self._track) > MAX_GAMES:
                 self.forget(next(iter(self._track)))
@@ -623,6 +664,50 @@ class Brain:
         self._note(g, tr, out)
         return out
 
+    def _read3(self, g: GameState, lg: str, m3) -> Reading:
+        from redzone.scoring import brain3
+        tr = self._track.get(g.game_id)
+        if tr is None or not isinstance(tr, brain3.Tracker3):
+            tr = self._track[g.game_id] = brain3.Tracker3(lg)
+            while len(self._track) > MAX_GAMES:
+                self.forget(next(iter(self._track)))
+        try:
+            tr.observe(g)
+        except Exception:  # noqa: BLE001
+            log.exception("brain v3: feature update failed for %s", g.game_id)
+            return EMPTY
+        if tr.row is None:
+            return EMPTY
+        if tr.first_t is not None and tr.first_t > JOINED_LATE_S and tr.n < WARMUP_EVENTS:
+            return EMPTY   # joined mid-game: see read()
+        hit = self._cache.get(g.game_id)
+        if hit is not None and hit[0] == tr.n:
+            return hit[1]
+        try:
+            v = brain3.reading_from(m3.predict(tr.vector(m3.features)), m3, tr.at, league=lg,
+                                   crunch=bool((tr.row or {}).get("crunch", 0)))
+        except Exception:  # noqa: BLE001
+            log.exception("brain v3: prediction failed for %s; using v2 for %s from now on", g.game_id, lg)
+            self._broken.add(lg + ":v3")
+            return EMPTY
+        rate = m3.heads.get("big180", {}).get("rate")
+        top = max(v.types.items(), key=lambda kv: kv[1])[0] if v.types else ""
+        out = Reading(break_soon_p=v.long_p, key_soon_p=v.big[180], hotness=v.hot, events=tr.n, key_rate=rate,
+                      v3=v, break_reasons=[f"{top.replace('_', ' ')} likely"] if top and v.stop[60] >= 0.3 else [])
+        v2_score = self.v3_score is not None and lg not in self.v3_score
+        v2_odds = self.v3_break_odds is not None and lg not in self.v3_break_odds
+        if v2_score or v2_odds:
+            if self._v2 is None:
+                self._v2 = Brain(model_dir=self.model_dir, enabled=self.enabled, version=2)
+            r2 = self._v2.read(g)
+            if v2_score:
+                out.key_soon_p, out.hotness, out.key_rate, out.reasons = r2.key_soon_p, r2.hotness, r2.key_rate, r2.reasons
+            if v2_odds and r2.break_soon_p is not None:
+                out.break_soon_p, out.break_reasons = r2.break_soon_p, r2.break_reasons
+        self._cache[g.game_id] = (tr.n, out)
+        self._note(g, tr, out)
+        return out
+
     def _note(self, g: GameState, tr: Tracker, r: Reading) -> None:
         tl = self._timeline.setdefault(g.game_id, [])
         row = tr.row or {}
@@ -650,3 +735,5 @@ class Brain:
     def forget(self, game_id: str) -> None:
         for d in (self._track, self._cache, self._timeline):
             d.pop(game_id, None)
+        if self._v2 is not None:
+            self._v2.forget(game_id)

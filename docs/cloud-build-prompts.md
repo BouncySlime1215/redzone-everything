@@ -7,10 +7,14 @@ Paste the **shared rules** plus ONE task into each session.
 All current work is on branch `codex/resume-redzone` (`main` is stale): check it out and branch from it.
 - Merge rule: the full test suite passes (`python -m pytest -q`). A few tests need a Mac or the sticks; note which ones fail, and compare against the unchanged branch.
 - The scorecards must show a clear win: 0 mid-play cuts and nothing important worse.
-- Scorecards are `scripts/eval.py` (NFL) and `scripts/eval_sports.py nba|nhl`. They read `data/archive/<league>/`, which is NOT in git. Rebuild it with `scripts/download_recent.py` / `scripts/download_season.py` (free ESPN API).
+- Scorecards are `scripts/eval.py` (NFL) and `scripts/eval_sports.py nba|nhl`. They read `data/archive/<league>/`, which is NOT in git. Get it with `python scripts/fetch_eval_data.py` (the pinned snapshot, see docs/eval-data.md); don't re-download from ESPN, which gives each session different nights. Every scorecard must print `"eval_data": "eval-data-v1"` (or whatever tag `eval-data.lock.json` names).
 - Run the BASELINE on the unchanged branch first, then your change, on the same window.
-- Use `data/eval_config.yaml` if present.
+- `data/eval_config.yaml` comes with the pinned snapshot.
 - $0 budget: ask before anything that costs money.
+- The Mac has ~5 GB free disk and 8 GB RAM. Never run heavy jobs on it, and never write big files to it:
+  no copies of `data/archive`, no bundles, no tarballs over ~50 MB, nothing outside `.xfer/`. Run
+  `scripts/disk_guard.py` first; if it says the disk is low, stop and say so. Delete what you put in
+  `.xfer/` when your thread is done. Prefer the pinned eval dataset over copying the archive.
 - Commits end with "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>".
 - Open a PR into `codex/resume-redzone`, never main. Don't merge it.
 

@@ -13,7 +13,8 @@ from typing import Protocol, runtime_checkable
 
 class Stage(str, Enum):
     DECIDED = "decided"            # DecisionCore produced the action
-    GUARDED = "guarded"            # Guard allowed / replaced it
+    GUARDED = "guarded"            # the decision's guards allowed / replaced it (contracts.guard.traced)
+    RECHECKED = "rechecked"        # the controller's final safe-moment re-check just before the command
     COMMAND = "command"            # first command sent to stick/TV
     PICTURE = "picture"            # picture confirmed (playback transition / input readback)
     ABORTED = "aborted"            # cancelled before picture

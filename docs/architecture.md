@@ -157,7 +157,9 @@ the start of the landing window.
 
 ### SyncModel (`sync.py`). Owner: SYNC
 `estimate(target, now) -> SyncEstimate(target, delay_s, sigma_s, source, calibrated_at,
-behind_s)`, `observe(target, sample_s, kind: tap|screen|boundary|mic|predicted, at)`.
+behind_s, uncertain)`, `observe(target, sample_s, kind: tap|screen|boundary|mic|predicted|clock, at)`.
+- `source` may be `sync` (the per-channel Kalman filter has the channel from automatic signals);
+  `uncertain` is True while the channel's signals disagree (treat it like uncalibrated for tight timing).
 - `screen = feed + delay_s`, and `sigma_s` grows between calibrations.
 - Estimates are read once per target per tick. Samples are written whenever they arrive.
 
@@ -178,9 +180,9 @@ The supervisor runs about every 10 s and the watchdog about every 60 s. Both rep
 shapes. `redzone/platform/faults.py` imports them and does not redefine them.
 
 ### Trace (`trace.py`). Owner: PLATFORM
-One trace per switch: `TraceEvent(switch_id, stage: decided|guarded|command|picture|aborted|failed,
+One trace per switch: `TraceEvent(switch_id, stage: decided|guarded|rechecked|command|picture|aborted|failed,
 at, component, detail)`, sent to a `TraceSink.emit`. It writes to `data/traces.jsonl`, and
-`MemoryTrace` collects events in tests. The nightly report and the error budget read traces.
+`MemoryTrace` collects events in tests. `guarded` is the decision's guard pass and comes once per decision. `rechecked` is the controller's final safe-moment check just before the command. Each stage appears at most once per switch, so `timings()` is unambiguous. The nightly report and the error budget read traces.
 Nothing on the decision path reads them.
 
 ## 3. Shared building blocks
@@ -272,3 +274,43 @@ measurements instead.
 - The end state is one release PR from `integration/next` into `codex/resume-redzone`.
 - Before opening any PR, run a self-review for edge cases, races, exceptions, config validation,
   and tests that would fail without the fix, and list known risks in the PR.
+
+## 7. Release gate: "95% good minimum" (the user's rule, 2026-11-03)
+
+Nothing goes live unless it clears these gates on **held-out nights** and in the end-to-end
+night test. `scripts/release_gate.py` checks them, and CI runs it on every PR, reporting the
+result in the run summary. It **fails** the release PR (`integration/next` →
+`codex/resume-redzone`).
+
+A part that can't reach its gate ships **OFF** behind its feature flag (`flags.*`, so today's
+behavior stays), and the release PR says exactly how far short it is and why. A gate that can't
+be measured yet is **PENDING**, and pending never counts as passing.
+
+| Gate | Target |
+|---|---|
+| Mid-play cuts | 0 (hard) |
+| Switches landing at a dead ball | ≥ 95 % of entries |
+| Entries mid-play | ≤ 5 % of entries, and never above today (`docs/gate_baseline.json`) |
+| Crunch-time plays seen live | ≥ 95 % where any feasible schedule allows it; the feasible ceiling is shown next to it. Conflicts follow the user's league order **NFL > CFB > NBA > the rest (NHL, MLB)**: the winning game must be 100 % live, and a lower-priority overlap that gets a catch-up replay is not a miss. |
+| Your-team crunch live | 100 % |
+| Your-team big plays seen | 100 % |
+| Big plays seen (live + catch-up) | ≥ 95 % per league |
+| Reels | ≥ 95 % played in dead time, 0 live big plays missed while on a reel |
+| Game reasoner | ≥ 95 % agreement with gold labels on lock_in and safe_to_leave, unsafe leaves ≤ 0.5 %, 100 % valid JSON |
+| Watchdog | ≥ 95 % correct actions on held-out errors, every kind ≥ 90 %, 0 unsafe actions (the guard blocks them) |
+| Sync | delay error < 2 s on ≥ 95 % of samples |
+| Switch speed | ≥ 95 % of preloaded switches under 3 s (once the TV path works) |
+| Uptime, fault-injection night test | ≥ 95 % of minutes with a correct picture, and every fault recovered automatically |
+
+**Held-out split of `eval-data-v1`**: the newest nights of the pinned window, never used for
+tuning. Auto-tune, threshold picks and model training read only the earlier nights.
+
+| League | Held-out nights | Command |
+|---|---|---|
+| NFL | the last 2 slates up to 2026-11-01 | `scripts/eval.py --n 2` |
+| NBA | 2026-10-29 to 2026-11-01 | `scripts/eval_sports.py nba --nights 4` |
+| NHL | 2026-10-29 to 2026-11-01 | `scripts/eval_sports.py nhl --nights 4` |
+| Demo | the Nov 1 mixed demo day | `python -m redzone.demo 20261101` |
+
+`scripts/ci_scorecard.py --nfl-n 2 --nights 4` runs the whole slice. When `eval-data-v2` adds
+Nov 2+ nights, those become the held-out set and Nov 1 moves into tuning.

@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from redzone.models import PERIOD_S, REAL_BREAKS, REGULATION, ByLeague, GameState, League, Phase, Stoppage, pro_period
 from redzone.scoring import garbage
 from redzone.scoring.brain import Brain
+from redzone.reasoner import brief as rbrief
+from redzone.reasoner.reasoner import Reasoner, lock_points
 
 # --- closeness: how competitive the score is, 0..1 --------------------------
 
@@ -100,6 +102,10 @@ class History:
     leader: int | None = None          # +1 home, -1 away, 0 tied (last seen)
     lead_changes: int = 0              # lead changes + ties-from-behind this game
     lead_change_at: float | None = None
+    pp_team: str | None = None         # [nhl chase] the power play we're tracking...
+    pp_start_clock: float | None = None  # ...and the game clock (period, seconds left) it started at
+    pp_start_period: int | None = None
+    imminent_at: float | None = None   # last poll a goal chance was imminent (see nhl_goal_imminent)
 
     def observe(self, g: GameState, now: float, wp_threshold: float) -> None:
         hs, as_ = g.home.score, g.away.score
@@ -164,9 +170,12 @@ class Scored:
     garbage: bool = False   # decided game (bets/fantasy can still keep it interesting)
     late: bool = False      # final period (NFL/NBA Q4+, NHL P3+, MLB 7th+): your team here is never left for a lesser game
     crunch: bool = False    # crunch time (see crunch_time); unlike lock, kept through breaks
+    crunch_now: bool = False  # inside the graded crunch window itself (NHL: last 2:00, not the 3:00 run-up)
+    imminent: bool = False  # [nhl chase] a goal chance was imminent here within the last ~half minute
     factor: str = ""        # short human reason for the single biggest factor right now
     factors: dict[str, float] = field(default_factory=dict)  # context points by name (debug/UI)
     brain: dict = field(default_factory=dict)  # learned brain's reading (hotness, key/break odds, reasons)
+    reasoner: dict = field(default_factory=dict)  # live game reasoner: lock_in, odds, the model's storyline
 
     @property
     def display(self) -> int:
@@ -184,14 +193,19 @@ class Personal:
 
 
 class Scorer:
-    def __init__(self, cfg, clock=time.time, brain=None):
+    def __init__(self, cfg, clock=time.time, brain=None, reasoner=None):
         self.cfg = cfg
         self._clock = clock
         self.hist: dict[str, History] = {}
         self._live_leagues: dict[str, float] = {}   # league -> last time one of its games was live
         # The learned brain (redzone/scoring/brain.py): read every poll while brain.enabled is on;
         # with it off or a league unmodeled, scores are the hand-written ones, unchanged.
-        self.brain = brain if brain is not None else Brain()
+        self.brain = brain if brain is not None else Brain(version=int(cfg.get("brain.version", 3) or 3),
+                                                           v3_score=cfg.get("brain.v3_score", None),
+                                                           v3_break_odds=cfg.get("brain.v3_break_odds", None))
+        # The live game reasoner (redzone/reasoner): bounded lock_in points while reasoner.enabled is on.
+        self.reasoner = reasoner if reasoner is not None else Reasoner(cfg, clock=clock)
+        self._mine_live: dict[str, float] = {}   # your team's live, not-decided games -> last seen
 
     def brain_on(self) -> bool:
         return bool(self.cfg.get("brain.enabled", False))
@@ -211,6 +225,8 @@ class Scorer:
 
         fn = {League.NFL: _nfl, League.NBA: _nba, League.NHL: _nhl, League.MLB: _mlb}[g.league.base]
         m, parts, lock, pre = fn(g, h, k, now, c)
+        if g.league.base == League.NHL and nhl_goal_imminent(g, h, c):
+            h.imminent_at = now
         ctx, ctx_parts, factors = context(g, h, k, now, c)
         m += ctx
         parts.extend(ctx_parts)
@@ -223,6 +239,30 @@ class Scorer:
             factors["brain"] = round(pts, 1)
             if part:
                 parts.append(part)
+        rr = None
+        r_pts = 0.0
+        if self.reasoner is not None and self.reasoner.on():
+            tr = self.brain._track.get(g.game_id)
+            mine = g.involves(set(me.my_teams.get(g.league, set())))
+            rctx = rbrief.Context(mine=mine, garbage=garbage.is_garbage(g, h.garbage), crunch=crunch_time(g),
+                                  late=is_late(g), bet=me.bet_labels.get(g.game_id, ""))
+            rr = self.reasoner.read(g, tr.row if tr is not None else None, reading, rctx)
+            key = g.league.value if c.get(f"reasoner.{g.league.value}") is not None else g.league.base.value
+            pts, part = lock_points(rr, c, key)
+            if is_break and not c.get("reasoner.during_breaks", False):
+                pts, part = 0.0, None   # a break is the break logic's call: points here only buy commercials
+            if mine and not rctx.garbage:
+                self._mine_live[g.game_id] = now
+                if len(self._mine_live) > 50:
+                    self._mine_live = {k: t for k, t in self._mine_live.items() if now - t <= self.MINE_LIVE_S}
+            elif pts and c.get("reasoner.yield_to_your_team", True) and any(
+                    now - t <= self.MINE_LIVE_S for k, t in self._mine_live.items() if k != g.game_id):
+                pts, part = 0.0, None   # your team is on: a reasoner call never pulls you off it
+            if pts:
+                r_pts = pts             # added after smoothing (below): never lingers into a break
+                factors["reasoner"] = round(pts, 1)
+                if part:
+                    parts.append(part)
         # Garbage time: decided games stop competing for the TV — your team's included.
         was = h.garbage
         h.garbage = garbage.is_garbage(g, was)
@@ -248,6 +288,11 @@ class Scorer:
         decayed = h.shown * 0.5 ** ((now - h.shown_at) / hl) if h.shown_at else 0.0
         shown = max(raw, decayed)
         h.shown, h.shown_at = shown, now
+        if r_pts:
+            # lock_in points ride on top of the smoothed score, unsmoothed: they're there while the
+            # reasoner says so and gone the poll it stops (a break, garbage time, the moment passed)
+            shown = min(100.0, shown + r_pts)
+            raw = min(100.0, raw + r_pts)
 
         reason = _reason(g, parts, is_break)
         factor = _top_factor(parts)
@@ -258,8 +303,13 @@ class Scorer:
                       is_break, None if is_break else lock, pre, k, garbage=h.garbage, crunch=crunch_time(g),
                       late=is_late(g),
                       factor="garbage time" if h.garbage else factor, factors=factors,
-                      brain=reading.as_dict() if reading is not None and reading.hotness is not None else {})
+                      crunch_now=crunch_window(g),
+                      imminent=h.imminent_at is not None
+                      and now - h.imminent_at <= c.get("score.nhl.imminent_hold_s", -1),
+                      brain=reading.as_dict() if reading is not None and reading.hotness is not None else {},
+                      reasoner=rr.as_dict() if rr is not None and rr.p is not None else {})
 
+    MINE_LIVE_S = 60.0      # your team's game counts as on this long after its last live, close poll
     LEAGUE_LIVE_S = 300.0   # a league counts as "on tonight" this long after its last live game
 
     def _league_weight(self, league: League, now: float) -> float:
@@ -631,14 +681,45 @@ def _nhl(g, h, k, now, c):
     for flag in g.player_flags[:1]:
         parts.append((10, flag))
     lock = None
-    if sit.empty_net:
+    if g.period_type == "SO" or p >= 4:
+        lock = "overtime"      # [nhl pp] sudden death: only crunch time elsewhere takes the TV (decider)
+    elif sit.empty_net:
         lock = "empty net"
-    elif sit.power_play and k >= 0.5:
-        lock = "power play"
-    elif g.period_type == "SO" or (p >= 4 and k >= 0.9):
-        lock = "overtime"
+    elif sit.power_play and diff is not None and abs(diff) <= c.get("score.nhl.power_play_lock_within", 2):
+        lock = "power play"    # [nhl pp] within 2 goals; garbage time clears it (score())
     pre = "power play" if sit.power_play else ("empty net" if sit.empty_net else None)
     return m, parts, lock, pre
+
+
+def crunch_window(g: GameState) -> bool:
+    """The graded crunch window. Same as crunch_time except NHL, whose flag goes up at 3:00 so we
+    can get there at a stoppage: inside 2:00 (or OT) every second counts, before it a whistle is
+    worth waiting for on the way in."""
+    if not crunch_time(g):
+        return False
+    if g.league != League.NHL or _q(g) >= 4:
+        return True
+    return g.clock_s is not None and g.clock_s <= 120
+
+
+def nhl_goal_imminent(g, h: History, c) -> bool:
+    """[nhl chase] Is a goal chance imminent right now? A 5-on-3, the first 30 s (game clock) of
+    a power play, an empty net in the last 2:00, or a penalty shot. Only then may a chase into
+    hockey skip the whistle hold on the way in: anywhere else, landing mid-play costs more than
+    the goal it might catch (PR #3 review: mid-play entries 11 -> 14)."""
+    sit = g.situation
+    p, clk = g.period or 0, g.clock_s
+    if sit.power_play != h.pp_team:
+        h.pp_team = sit.power_play
+        h.pp_start_period, h.pp_start_clock = (p, clk) if sit.power_play else (None, None)
+    if sit.power_play and sit.strength in ("5v3", "3v5"):
+        return True
+    if sit.power_play and h.pp_start_clock is not None and clk is not None and h.pp_start_period == p \
+            and h.pp_start_clock - clk <= c.get("score.nhl.imminent_pp_s", 30):
+        return True
+    if sit.empty_net and p >= 3 and clk is not None and clk <= 120:
+        return True
+    return any((x.kind or "").startswith("ps-") for x in (g.recent_plays or [])[-3:])
 
 
 def estimate_li(inning: int, diff_for_batting: int, outs: int, runners: tuple[bool, bool, bool]) -> float:

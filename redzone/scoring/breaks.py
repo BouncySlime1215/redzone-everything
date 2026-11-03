@@ -70,12 +70,22 @@ NONE = Forecast(0.0, 0.0, "")
 BRAIN_LEN = {League.NFL: 150.0, League.NBA: 180.0, League.NHL: LEN["nhl_tv"], League.MLB: LEN["mlb_inning"]}
 
 
-def blend(f: Forecast, p: float | None, g: GameState, w: float = 0.5, why: list[str] | None = None) -> Forecast:
+def blend(f: Forecast, p: float | None, g: GameState, w: float = 0.5, why: list[str] | None = None,
+          v3=None, lengths: bool = True) -> Forecast:
     """Mix the rules' forecast with the brain's chance of a break in the next minute.
 
-    A break already in the data (f.now) is kept as is. When the rules see nothing coming, the
-    brain alone can raise one (with the league's median long-break length)."""
-    if p is None or f.now:
+    A break already in the data (f.now) keeps its odds; with Brain v3 (`v3`, a brain3.V3 about the
+    newest play) its length becomes the model's time to the restart instead of the fixed LEN table
+    (halftime / intermission keep the table: the decider plans those trips by it). When the rules
+    see nothing coming, the brain alone can raise one, with v3's type-weighted length (else the
+    league's median long break)."""
+    if f.now:
+        if v3 is not None and lengths and f.expect_s < 600 and _about_now(v3, g):
+            e50 = v3.entry[1]
+            if 0 < e50 < 600:
+                return Forecast(f.p, e50, f.why, True)
+        return f
+    if p is None:
         return f
     q = w * p + (1 - w) * f.p
     if f.p > 0:
@@ -83,7 +93,22 @@ def blend(f: Forecast, p: float | None, g: GameState, w: float = 0.5, why: list[
     if q <= 0:
         return f
     reason = "the model expects a break soon" + (f" ({why[0]})" if why else "")
-    return Forecast(q, BRAIN_LEN.get(g.league.base, 150.0), reason)
+    length = v3.expected_len() if v3 is not None and lengths else None
+    return Forecast(q, length if length and 0 < length < 1500 else BRAIN_LEN.get(g.league.base, 150.0), reason)
+
+
+def _league_in(setting, g: GameState) -> bool:
+    """A per-league switch: a list of leagues (a game's own league or its pro base), or a bool."""
+    if isinstance(setting, (list, tuple, set)):
+        return g.league.value in setting or g.league.base.value in setting
+    return bool(setting)
+
+
+def _about_now(v3, g: GameState) -> bool:
+    """The v3 reading is about the play now in the data (not an older one)."""
+    lp = g.last_play
+    at = getattr(v3, "at", None)
+    return at is not None and lp is not None and lp.wallclock is not None and abs(float(lp.wallclock) - at) <= 1.0
 
 
 def _long_break_play(league: League, kind: str, text: str) -> bool:
@@ -263,11 +288,13 @@ class BreakBook:
         if g is None:
             return NONE
         f, now = forecast(g, self.clocks(g.game_id, g.period)), self._clock()
-        if self._brain is not None and g.phase == Phase.LIVE and not f.now:
-            b, w = self._brain()
-            if b is not None:
+        if self._brain is not None and g.phase == Phase.LIVE:
+            got = self._brain()
+            b, w = got[0], got[1]
+            lengths = _league_in(got[2], g) if len(got) > 2 else True
+            if b is not None and (not f.now or lengths):
                 r = b.read(g)
-                f = blend(f, r.break_soon_p, g, w, r.break_reasons)
+                f = blend(f, r.break_soon_p, g, w, r.break_reasons, v3=r.v3, lengths=lengths)
         held = self._last.get(g.game_id)
         if held is not None and now - held[0] < HOLD_S and held[1].p > f.p and g.phase == Phase.LIVE:
             return held[1]

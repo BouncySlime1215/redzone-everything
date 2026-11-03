@@ -121,3 +121,29 @@ Lid closure, power loss, logout and macOS privacy restrictions can interrupt ope
 In particular, a checkout under Documents may require access permission in the launchd
 context even when Codex can read it. That must be tested after an authorized installation.
 Do not claim unattended hardware readiness from the software tests alone.
+
+## Updating the running service (scripts/deploy.py)
+
+`scripts/deploy.py deploy` updates the checkout the login service runs from, without a
+person watching. It fetches `integration/release`, runs the test suite on that commit in a
+separate worktree (`data/deploy/stage`) at background priority (`taskpolicy -b`), and only
+then waits for a quiet moment: no game live and none starting within 15 minutes. It saves
+`data/config.yaml` and `agent/model/` (content-addressed under `data/deploy/store`), checks
+out the new commit detached, restarts this job and the watchdog, and watches health for
+10 minutes against the old version's last 10 minutes of log. A crash loop, a dead API,
+a burst of new errors or switch failures, or a feed/stick that is down only on the new
+version rolls code, config and models back to the last good commit and pushes a notice
+to the phone. While it watches, the watchdog leaves restarts to the deploy.
+
+```sh
+.venv/bin/python scripts/deploy.py deploy --dry-run   # fetch + tests + live check only
+.venv/bin/python scripts/deploy.py deploy --wait 240  # wait up to 4 h for games to end
+.venv/bin/python scripts/deploy.py status
+.venv/bin/python scripts/deploy.py rollback           # undo the last deploy by hand
+```
+
+Exit codes: 0 deployed or current, 1 refused, 2 deferred for a live game, 3 tests failed
+(nothing changed), 4 rolled back, 5 rollback failed (the app may be down; look at it).
+It refuses to run with edited tracked files, a changed `requirements.txt` (install first,
+then `--deps-ok`), under 1.5 GB of free disk, or while an earlier deploy's watch never
+finished (`rollback` or `confirm` clears that). Settings live in `deploy/deploy.yaml`.

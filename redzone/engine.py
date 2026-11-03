@@ -15,7 +15,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from redzone import bets as betlib
-from redzone import reel, standby, userstate, views
+from redzone import reel, standby, trace, userstate, views
 from redzone.reel import REEL_DIR
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
 from redzone.config import Config, ConfigError
@@ -26,9 +26,11 @@ from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook,
 from redzone.models import GameState, League, Phase
 from redzone.plan import Tonight
 from redzone.scoring import breaks
+from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal, Scored, Scorer
 from redzone.sources import espn, fastcast, leagues
 from redzone.sources.http import Fetcher
+from redzone.sources.feeds import FeedBook
 from redzone.sources.merge import Merger
 from redzone.recorder import Recorder
 from redzone.screen import boundary, scorebug
@@ -38,10 +40,12 @@ log = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
 FASTCAST_SYNC_S = 2.0
 DECIDE_EVERY_S = 0.5
+CLOCK_JUMP_S = 5.0     # wall clock moved this much more (or less) than time.monotonic(): it jumped
 # Outcomes that say nothing about the target itself: a closed safe window, a cancel, an unknown
 # TV input. They neither cool the target down nor count against it.
 NOT_THE_TARGETS_FAULT = ("no safe moment", "safe exit window closed", "switch cancelled",
-                         "TV input is unknown", "TV control was disabled", "no channel")
+                         "TV input is unknown", "TV control was disabled", "no channel",
+                         "stick not responding")
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
@@ -52,14 +56,24 @@ class Engine:
         self.channels = ChannelMap()
         self.fetcher = Fetcher()
         self.merger = Merger()
-        self.scorer = Scorer(self.cfg)
-        self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"))
+        self._poll_every: dict[str, float] = {}   # game id -> the poll interval it was last fetched at
+        self.feeds = FeedBook(self.merger, self.fetcher, self._feed_urls, self._feed_cadence)
+        self.scorer = DriveScorer(self.cfg)
+        self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"),
+                                model=self.cfg.get("delay.model", "channel"))
         try:   # every "I just saw it" from the last 30 days: a restart keeps tonight's taps
             self.delays.load(self.store.calibrations(since=time.time() - TAP_HISTORY_S))
         except Exception as e:
             log.warning("could not reload delay calibrations: %s", e)
         self.decider = Decider(self.cfg, self.delays)
         data_dir = getattr(self.cfg, "user_path", None)
+        # [auto sync] every channel's delay tracked by a Kalman filter from the automatic signals
+        # (redzone/decider/sync.py); every signal is logged to data/sync.jsonl for scripts/eval_sync.py.
+        self.sync = None
+        if self.cfg.get("delay.sync.enabled", True):
+            self.sync = self.delays.attach_sync(
+                min_sigma_s=float(self.cfg.get("delay.sync.min_sigma_s", 4.0)),
+                log_path=data_dir.parent / "sync.jsonl" if data_dir and self.cfg.get("delay.sync.log", True) else None)
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
@@ -69,10 +83,12 @@ class Engine:
                                               else self.control.deadline_cost(t))
         # Stream delay measured from YouTube TV show changes on the quarter hour (no taps needed).
         self.boundary = boundary.BoundaryWatcher(estimate=self._delay_estimate, on_sample=self._boundary_sample,
-                                                 on_live=self.delays.set_live)
+                                                 on_live=self.delays.set_live, on_position=self._sync_position,
+                                                 on_tune=self._sync_tune)
         self.control.on_playback = self.boundary.observe_stick
         # Stream delay measured from the broadcast score bug in Prime screenshots (not DRM-blanked).
-        self.scorebug = scorebug.ScoreBugWatcher(on_sample=self._scorebug_sample)
+        self.scorebug = scorebug.ScoreBugWatcher(on_sample=self._scorebug_sample, on_tune=self._sync_tune,
+                                                 on_clock=self._sync_clock)
         self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
         # owed TV timeouts per game: when a break is coming (+ the learned brain, when brain.enabled)
         self.breaks = breaks.BreakBook(brain=self._break_brain)
@@ -102,6 +118,7 @@ class Engine:
         self._last_mic = 0.0
         self._pending_decision = None
         self._pending_since = 0.0
+        self._pending_mono = 0.0   # the same moment on time.monotonic(): wall-clock jumps can't age a switch
         self._pending_done = None          # the in-flight switch's done callback (for the deadline)
         self._fail_cool: dict[str, float] = {}   # tuner target -> no retry before this time
         self.mic_suggestion = None
@@ -115,8 +132,17 @@ class Engine:
         self.recorded = RecordedPlayback(self)
         from redzone.discovery.runtime import DiscoveryRuntime
         self.discovery = DiscoveryRuntime(self)
+        from redzone.network import NetWatch
+        # Home / away from home / Tailscale stealing the home routes (redzone/network.py). Read-only.
+        self.network = NetWatch(self.discovery.autonomy.paths.devices)
         self.tonight = Tonight(self)   # today's plan + pre-game checks on the hidden stick
+        from redzone.governor import Governor
+        # Backs optional work off when the Mac is busy, hot, on battery or short of disk (redzone/governor.py).
+        self.governor = Governor.from_config(self.cfg, **({"root": data_dir.parent} if data_dir else {}))
         from redzone.supervisor import DATA as SUPERVISOR_DATA, Supervisor
+        # Per-switch TraceEvents (redzone/contracts/trace.py): data/traces.jsonl; in memory without a data dir.
+        self.trace_sink = (trace.JsonlTrace(data_dir.parent / "traces.jsonl") if data_dir
+                           else trace.MemoryTrace())
         # Watches the live system and fixes what it can on its own (redzone/supervisor.py).
         self.supervisor = Supervisor(self, root=data_dir.parent if data_dir else SUPERVISOR_DATA)
         self.control.target_names = self._target_names
@@ -157,13 +183,41 @@ class Engine:
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
                              self._boundary_loop(), self._scorebug_loop(), self.tonight.run(),
-                             self.supervisor.run())
+                             self.supervisor.run(), self.network.run(), self.governor.run())
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)
         return d.mu, d.current_sigma(time.time())
 
+    # ------------------------------------------------------------------ [auto sync] signals -> filter
+    def _sync_measure(self, target: str, z: float, kind: str, t: float, sd: float | None = None) -> None:
+        if self.sync is None:
+            return
+        try:
+            self.sync.measure(target, z, kind, t=t, sd=sd)
+        except Exception:
+            log.exception("sync: could not use a %s sample on %s", kind, target)
+
+    def _sync_position(self, target: str, wall: float, position_s: float, sd: float) -> None:
+        if self.sync is not None:
+            try:
+                self.sync.position(target, position_s, t=wall, sd=sd)
+            except Exception:
+                log.exception("sync: could not use a position read on %s", target)
+
+    def _sync_tune(self, target: str, wall: float) -> None:
+        if self.sync is not None:
+            try:
+                self.sync.tuned(target, wall)
+            except Exception:
+                log.exception("sync: could not re-sync %s", target)
+
+    def _sync_clock(self, target: str, wall: float, delay_s: float) -> None:
+        self._sync_measure(target, delay_s, "clock", wall)
+
     def _boundary_sample(self, s) -> None:
+        from redzone.decider.sync import SIGMA
+        self._sync_measure(s.target, s.sample, "flip", s.flip_wall, max(SIGMA["flip"], s.error_s))
         d = self.delays.boundary(s.target, s.sample, s.flip_wall)
         try:
             self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="boundary")
@@ -171,6 +225,8 @@ class Engine:
             log.exception("could not save a boundary delay sample")
 
     def _scorebug_sample(self, s) -> None:
+        from redzone.decider.sync import SIGMA
+        self._sync_measure(s.target, s.sample, "score", s.onset, max(SIGMA["score"], s.error_s))
         d = self.delays.screen(s.target, s.sample, s.onset)
         try:
             self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="screen")
@@ -205,6 +261,11 @@ class Engine:
                     self.scorebug.reset()
                     wait = 5.0
                 else:
+                    if not self.governor.allow("ocr"):   # the Mac is critical: no OCR for now
+                        self.scorebug.reset()
+                        await asyncio.sleep(10.0)
+                        continue
+                    wait = scorebug.EVERY_S * self.governor.scale("ocr")
                     frames = await self.control.scorebug_frames(bool(self.cfg.get("delay.scorebug_hidden", False)))
                     if not frames:
                         self.scorebug.reset()
@@ -265,13 +326,19 @@ class Engine:
                 interval = self.cfg.get("polling.hot_s", 3)
             else:
                 interval = self.cfg.get("polling.live_s") if soon else self.cfg.get("polling.idle_s")
+                if not soon:   # nothing live or about to start: idle polling may slow down...
+                    slow = interval * self.governor.scale("idle_poll")
+                    # ...but never past the moment the next known game enters its 15-minute "soon" window
+                    lead = min((g.start_time - time.time() - 900 for g in self.merger.games.values()
+                                if g.phase == Phase.PRE and g.start_time), default=None)
+                    interval = slow if lead is None else max(interval, min(slow, lead))
             await asyncio.sleep(max(1.0, interval - (time.time() - t0)))
 
     def _reel_tick(self) -> None:
         """Feed new clips to the catch-up reel and rebuild it in the background. Never blocks the
         poll loop, never raises: a reel is a bonus, the live switching is the job."""
         try:
-            if not self.reeler.enabled():
+            if not self.reeler.enabled() or not self.governor.allow("reel"):
                 return
             leagues = {gid: g.league.value for gid, g in self.merger.games.items()}
             mine = {lg.value: teams for lg, teams in self._my_teams().items()}
@@ -488,6 +555,9 @@ class Engine:
             every = self.cfg.get("polling.hot_s", 3) if g.game_id in hot else self.cfg.get("polling.live_s", 10)
             async with sem:
                 data = await self.fetcher.get_json(espn.summary_url(g.league, g.game_id), min_interval=every - 0.5)
+            # Recorded after the fetch: a game that just turned hot keeps its slower rate until it has
+            # been polled at the new one, so it isn't flagged stale (and unenterable) for that moment.
+            self._poll_every[g.game_id] = float(every)
             if not data:
                 self.merger.record_error("espn_summary")
                 return
@@ -615,6 +685,17 @@ class Engine:
                             self.merger.update("nba", leagues.enrich_nba(self.merger.games[g.game_id], gm))
                         except Exception:
                             log.exception("nba enrich")
+
+    def _feed_urls(self, g: GameState) -> list[str]:
+        """The URLs a game's state comes from: its summary and its league's scoreboard(s)."""
+        if g.league.college:
+            boards = espn.scoreboard_urls(g.league, (self.cfg.get("college.groups") or {}).get(g.league.value) or [])
+        else:
+            boards = [espn.scoreboard_url(g.league)]
+        return [espn.summary_url(g.league, g.game_id), *boards]
+
+    def _feed_cadence(self, gid: str) -> float:
+        return self._poll_every.get(gid, float(self.cfg.get("polling.live_s", 10)))
 
     def _source_health(self) -> None:
         now = time.time()
@@ -746,11 +827,21 @@ class Engine:
             target = w.target if (w.tunable or dry) else None
             if target in self._fail_cool:
                 target = None   # failed a moment ago: don't hammer it every tick
-            cands[gid] = Candidate(sc, target, stale=self.merger.is_stale(gid))
+            # A dark feed (sources/feeds.py, flagged within 5 s) blocks ENTERING a game, never leaving
+            # the one on screen: for that one only the merger's old 60 s no-progress rule applies, so
+            # an ESPN blip can't empty the watchable set and send you to a catch-up reel.
+            stale = self.merger.is_stale(gid) if gid == self.decider.current else self.feeds.stale(gid)
+            cands[gid] = Candidate(sc, target, stale=stale)
+        self._reasoner_narrate()
         self._garbage_focus()
         self._hold_check()
         if self._pending_decision is not None:
             return False  # score/feed updates continue; don't race a tune in flight
+        if not dry and self.control.input_unknown and getattr(self.control, "live_control", False):
+            # Input recovery owns the TV (Controller._maybe_reassert, the supervisor): every switch
+            # would be refused at once ("TV input is unknown"). Submitting anyway flooded the
+            # switches table, ~240 rows in 2 minutes on the e2e night test. Decide again once it's known.
+            return False
         before = self.decider.current
         redzone = self._redzone_target(st, dry)
         d = self.decider.decide(cands, redzone, commit=dry, reel=self._reel_target())
@@ -770,6 +861,37 @@ class Engine:
                                   "now" if gid == self.decider.current else "")
                                  for gid, s in self.scored.items() if s.raw > 0])
         return changed
+
+    def _reasoner_narrate(self) -> None:
+        """Ask the local model for each hot game's storyline (background, event-driven, rate-limited)
+        and keep the model server loaded while games are live. Never raises, never blocks a poll."""
+        r = getattr(self.scorer, "reasoner", None)
+        if r is None or not r.on() or not self.cfg.get("reasoner.model", True):
+            return
+        try:
+            if r.client is None:
+                from redzone.reasoner.reasoner import Client
+                r.client = Client(str(self.cfg.get("reasoner.server_url", "http://127.0.0.1:8779")))
+            from redzone.reasoner import brief as rbrief
+            cur = self.decider.current
+            cur_g = self.merger.games.get(cur or "")
+            live = [g for g in self.merger.games.values() if g.phase == Phase.LIVE]
+            for g in live:
+                rr = r.cached(g.game_id)
+                if rr is None:
+                    continue
+                f = rr.facts
+                ctx = rbrief.Context(mine=bool(f.get("mine")), garbage=bool(f.get("garbage")),
+                                     crunch=bool(f.get("crunch")), late=bool(f.get("late")),
+                                     on_screen=g.game_id == cur,
+                                     screen_game=cur_g.matchup if cur_g is not None and g.game_id != cur else "")
+                r.narrate(g, rr, ctx)
+            now = time.time()
+            if live and now - getattr(self, "_llm_keepalive_at", 0.0) >= 60:
+                self._llm_keepalive_at = now
+                r.keepalive(len(live))
+        except Exception:  # noqa: BLE001 - the phone text is never worth a failed poll
+            log.exception("reasoner: narration step failed")
 
     def _reel_target(self) -> tuple[str, float] | None:
         """(tuner target, seconds) of the ready catch-up reel, when reels may go on the TV."""
@@ -801,6 +923,8 @@ class Engine:
             if (self.decider.replaying or self.decider.after_replay) else None
         self._pending_decision = d
         self._pending_since = time.time()
+        self._pending_mono = time.monotonic()
+        before_target = getattr(self.control, "on_target", None) or getattr(self.where.get(before or ""), "target", None)
         if deferred:
             # Conservatively mark the transition unknown until observed; never
             # mark a big play seen because a command merely was submitted.
@@ -832,10 +956,17 @@ class Engine:
             if (not out.ok and not out.dry_run and d.action == "switch" and d.kind != "user" and target
                     and not out.detail.startswith(NOT_THE_TARGETS_FAULT)):
                 self._fail_cool[target] = time.time() + self.cfg.get("decider.fail_cooldown_s", 90)
+            detail = {"took": out.took, "detail": out.detail, "path": out.path, "waited": round(out.waited, 1)}
+            try:
+                detail["trace"] = trace.build(d, before, target, out, cmd_ts, delays=self.delays,
+                                              before_target=before_target, labels=self._trace_labels(before, d.target),
+                                              from_replay=replay_exit is not None)
+                trace.emit(self.trace_sink, detail["trace"])
+            except Exception:   # a trace must never cost the switch its row
+                log.exception("switch trace failed")
             self.store.switch(ts=cmd_ts, frm=before, to_game=d.target, target=target, kind=d.kind, reason=d.reason,
                               event_ts=event_ts, cmd_ts=cmd_ts, confirmed_ts=out.confirmed_at, ok=out.ok,
-                              dry_run=out.dry_run, detail={"took": out.took, "detail": out.detail,
-                                                           "path": out.path, "waited": round(out.waited, 1)})
+                              dry_run=out.dry_run, detail=detail)
             if not out.ok and not out.dry_run:
                 log.warning("switch to %s failed after %.1fs (%s): %s", d.target, out.took, out.path, out.detail[:300])
             if not cancelled:   # a cancel (pause, your tap, a newer command) says nothing about the target
@@ -857,6 +988,30 @@ class Engine:
                             replay_id=d.replay.pid if d.replay else None,
                             entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0)
 
+    def pending_age(self, now: float) -> float:
+        """Seconds the pending switch has been running, as of wall-clock `now`. If the wall clock
+        jumped since the switch started (NTP fix, laptop waking), the jump is taken back out using
+        time.monotonic(), so a healthy 1 s-old switch is never declared hung (fault drill: clock_skew)."""
+        if not self._pending_since:
+            return 0.0
+        age = now - self._pending_since
+        if self._pending_mono:
+            jump = (time.time() - self._pending_since) - (time.monotonic() - self._pending_mono)
+            if abs(jump) > CLOCK_JUMP_S:
+                age -= jump
+        return max(0.0, age)
+
+    def _trace_labels(self, *gids: str | None) -> dict:
+        out = {}
+        for gid in gids:
+            g = self.merger.games.get(gid or "")
+            if g is not None:
+                try:
+                    out[gid] = g.matchup
+                except Exception:
+                    pass
+        return out
+
     def _switch_deadline(self, now: float) -> None:
         """A switch that never reports back (a hung tuner path) would block every decision,
         preload and recovery: give up on it after control.max_switch_s."""
@@ -866,11 +1021,12 @@ class Engine:
         limit = self.cfg.get("control.max_switch_s", 150)
         if d.kind == "start":   # nothing confirmed on screen yet: a hung first pick is retried sooner
             limit = min(limit, self.cfg.get("control.max_start_switch_s", 75))
-        if now - self._pending_since < limit:
+        age = self.pending_age(now)
+        if age < limit:
             return
-        log.warning("switch to %s still running after %.0fs: giving up on it", d.target, now - self._pending_since)
+        log.warning("switch to %s still running after %.0fs: giving up on it", d.target, age)
         self.control.cancel_pending()
-        done(Outcome(False, None, now - self._pending_since,
+        done(Outcome(False, None, age,
                      f"switch timed out after {limit:.0f}s; playback not confirmed", False))
 
     def _entry_valid(self, d: Decision, target: str | None) -> bool:
@@ -882,7 +1038,7 @@ class Engine:
         if d.target == REEL:
             return bool(target and target.startswith("reel:")) and (REEL_DIR / "reel.mp4").exists()
         g = self.merger.games.get(d.target or "")
-        if not g or g.phase != Phase.LIVE or self.merger.is_stale(g.game_id):
+        if not g or g.phase != Phase.LIVE or self.feeds.stale(g.game_id):
             return False
         if getattr(self.where.get(g.game_id), "target", None) != target:
             return False
@@ -1050,8 +1206,9 @@ class Engine:
     def _break_brain(self):
         """(brain, blend weight) for the break forecast, or (None, 0) with the brain off."""
         if not self.cfg.get("brain.enabled", False):
-            return None, 0.0
-        return self.scorer.brain, float(self.cfg.get("brain.break_weight", 0.5))
+            return None, 0.0, False
+        return (self.scorer.brain, float(self.cfg.get("brain.break_weight", 0.5)),
+                self.cfg.get("brain.v3_lengths", ["nfl", "nba"]))
 
     def _break_standby(self, cands: dict) -> tuple[str | None, str, standby.Option | None]:
         """The game on screen is about to break (redzone/scoring/breaks.py): where the decider will
@@ -1393,6 +1550,7 @@ class Engine:
                         - abs(e.seen + d.mu - tap) < margin)):
                 return False, "Several plays could match that tap; choose the exact play before calibrating"
         sample = tap - e.seen
+        self._sync_measure(target, sample, "tap", time.time())
         d = self.delays.calibrate(target, sample)
         self.store.calibration(target, sample, d.mu, d.sigma)
         return True, f"Matched {e.label[:60]}; delay {d.mu:.0f}s (±{2*d.sigma:.0f}) for {describe(target)}"
@@ -1427,10 +1585,11 @@ class Engine:
                       "tunable": getattr(w, "tunable", False), "target": getattr(w, "target", None)},
             "odds": g.odds_text, "mine": g.involves(set((self.cfg.get("teams") or {}).get(g.league.value, []))),
             "boosted": gid in self.boosted, "muted": gid in dec.user.muted, "focus": gid == dec.user.focus_game,
-            "stale": self.merger.is_stale(gid), "start_time": g.start_time, "on_now": gid == dec.current,
+            "stale": self.feeds.stale(gid), "start_time": g.start_time, "on_now": gid == dec.current,
             "wp": g.home_win_prob, "situation": views.situation(g), "leaders": g.leaders,
             "spotlight": g.spotlight, "venue": g.venue_info,
             "brain": (s.brain or None) if s and live else None,
+            "reasoner": (s.reasoner or None) if s and live else None,
         }
 
     async def game_detail(self, gid: str) -> dict | None:
@@ -1509,13 +1668,16 @@ class Engine:
                         "settled": self.delays.settled(self.delays.app(t)),
                         "boundary_samples": self.delays.boundary_count(self.delays.app(t)),
                         "live": x.live is not None} for t, x in self.delays.book.items()],
+            "sync": self.sync.status() if self.sync is not None else [],   # [auto sync] estimate +- error per channel
             "delay_watch": self.boundary.status(),
             "scorebug_watch": self.scorebug.status(),
-            "health": {"sources": list(self.source_status.values()), "sticks": self.control.status(),
+            "health": {"sources": list(self.source_status.values()), "sticks": self._sticks_view(),
+                       "network": self.network.view(),
                        "tv": {"state": "unknown"}, "race": self.merger.race_summary(),
                        "adb": self.control.adb_ok, "switch_times": self.control.switch_times(),
                        "fastcast": self.fastcast.status() if self.fastcast else None,
-                       "discovery": self.discovery.status(), "supervisor": self.supervisor.status()},
+                       "discovery": self.discovery.status(), "supervisor": self.supervisor.status(),
+                       "governor": self.governor.view()},
             "bets": self.bets_view(), "feedback": self.store.feedback_counts(),
             "fantasy": None if self.fantasy is None else {
                 "me": self.fantasy.me, "opponent": self.fantasy.opponent, "my_points": self.fantasy.my_points,
@@ -1523,6 +1685,16 @@ class Engine:
                 "starters": [{"name": x.name, "pos": x.pos, "team": x.team, "mine": x.mine}
                              for x in self.fantasy.starters]},
         }
+
+    def _sticks_view(self) -> list[dict]:
+        """Stick rows for the phone. Away from home a stick that can't answer is "away", not "offline"
+        (the watchdog only reconnects "offline" ones)."""
+        rows = self.control.status()
+        if self.network.away:
+            for r in rows:
+                if r.get("state") != "connected":
+                    r["state"] = "away"
+        return rows
 
     def screen_evidence(self) -> dict:
         if self.recorded.active:

@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from redzone.decider.screen import CONTINUOUS, _is_marker
 from redzone.lab import cutgrade
-from redzone.lab.backtest import leave_offsets, offsets_of, on_screen, tuning_blackout_seconds, watched_whole
+from redzone.lab.backtest import lag_of, leave_offsets, offsets_of, on_screen, tuning_blackout_seconds, watched_whole
 from redzone.models import REAL_BREAKS, League, Stoppage
 from redzone.sources import espn
 
@@ -42,6 +42,9 @@ class Card:
     dead: float = 0.0
     watched: float = 0.0
     tuning_blackout_s: float = 0.0
+    pp_goals: int = 0          # [nhl pp] goals scored on a power play
+    pp_goals_live: int = 0     # ...of those, watched live start to finish
+    pp_screen_s: float = 0.0   # seconds of power play (live play, not intermission) on screen
     cut: cutgrade.CutCard = field(default_factory=cutgrade.CutCard)
 
     def add(self, o: "Card") -> None:
@@ -62,7 +65,11 @@ class Card:
                 "tuning_blackout_s": round(self.tuning_blackout_s, 1),
                 "tuning_blackout_pct": pct(self.tuning_blackout_s, self.hours * 3600),
                 "switches_per_hour": round(self.switches / max(0.1, self.hours), 1),
-                "big_plays": self.big, "crunch_plays": self.crunch, **self.cut.summary()}
+                "big_plays": self.big, "crunch_plays": self.crunch,
+                **({"pp_minutes_on_screen": round(self.pp_screen_s / 60, 1),
+                    "pp_goals_live_pct": pct(self.pp_goals_live, self.pp_goals),
+                    "pp_goals": self.pp_goals} if self.league == League.NHL.value else {}),
+                **self.cut.summary()}
 
 
 def _type(p: dict) -> str:
@@ -117,6 +124,27 @@ def is_crunch(league: League, p: dict) -> bool:
     if league == League.MLB:
         return per >= 8 and d <= 2
     return False
+
+
+def power_play_after(league: League, plays: list[dict]) -> list[bool]:
+    """[nhl pp] Was a power play on after each play? The grader may look ahead: ESPN labels every
+    team play (penalties too) with that team's strength before it, so the next labelled play says
+    what was in effect."""
+    out = [False] * len(plays)
+    if league != League.NHL:
+        return out
+    nxt = False
+    for i in range(len(plays) - 1, -1, -1):
+        out[i] = nxt
+        p = plays[i]
+        st = espn._get(p, "strength", "abbreviation")
+        if p.get("team") and st:
+            nxt = st in ("power-play", "short-handed")
+    return out
+
+
+def is_pp_goal(league: League, p: dict) -> bool:
+    return league == League.NHL and _type(p) == "goal" and espn._get(p, "strength", "abbreviation") == "power-play"
 
 
 def _marker(t: str) -> bool:
@@ -189,7 +217,7 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
         r = by_id.get(s.frm or "")
         if r is None or was_replay:
             continue
-        ok, what = _clean_cut(league, r.wall, r.plays, s.t - lag_total - lo)
+        ok, what = _clean_cut(league, r.wall, r.plays, s.t - lag_of(lag_total, r.gid) - lo)
         if not ok:
             card.cuts.append((s.t, f"{r.matchup}: {what}"))
 
@@ -198,8 +226,12 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
         mine = bool({r.matchup.split(" @ ")[0], r.matchup.split(" @ ")[-1]} & my_teams)
         prev = None
         for w, p in zip(r.wall, r.plays):
-            air = w + lag_total - PLAY_LEN[league]
-            on = watched_whole(watching, r.gid, air, w + lag_total, tune_s, t1, offs)
+            lag = lag_of(lag_total, r.gid)
+            air = w + lag - PLAY_LEN[league]
+            on = watched_whole(watching, r.gid, air, w + lag, tune_s, t1, offs)
+            if is_pp_goal(league, p):
+                card.pp_goals += 1
+                card.pp_goals_live += on
             if is_big(league, p, prev):
                 card.big += 1
                 card.big_live += on
@@ -213,6 +245,7 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
                     card.my_crunch_live += on
             prev = p
 
+    pp_after = {r.gid: power_play_after(league, r.plays) for r in replays}
     t = t0
     while t <= t1:
         g, o = on_screen(watching, offs, t, tune_s)
@@ -220,11 +253,13 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
             card.watched += 10
         elif g and g in by_id:
             r = by_id[g]
-            st = t - lag_total - o
+            st = t - lag_of(lag_total, g) - o
             i = max(0, max((k for k, w in enumerate(r.wall) if w <= st), default=0))
             if r.wall[0] <= st <= r.wall[-1]:
                 card.watched += 10
                 if espn.stoppage_for(league, r.plays[i]) in REAL_BREAKS:
                     card.dead += 10
+                elif pp_after[g][i]:
+                    card.pp_screen_s += 10
         t += 10
     return card
