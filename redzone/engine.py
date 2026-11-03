@@ -28,7 +28,7 @@ from redzone.plan import Tonight
 from redzone.scoring import breaks
 from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal, Scored, Scorer
-from redzone.sources import espn, fastcast, leagues
+from redzone.sources import espn, fastcast, fastcast_check, leagues
 from redzone.sources.http import Fetcher
 from redzone.sources.feeds import FeedBook
 from redzone.sources.merge import Merger
@@ -125,6 +125,11 @@ class Engine:
         self.fastcast = None
         self._fastcast_task = None
         self._fastcast_games = {}
+        self._fastcast_mode = None          # "merge" (sources.fastcast) | "shadow" (the live check) | None
+        # [fastcast live check] FastCast in shadow next to polling until it proves faster and consistent
+        self.fc_check = fastcast_check.FastcastCheck(
+            path=data_dir.parent / "fastcast_check.json" if data_dir else None)
+        self._fc_graded = 0.0
         self._fresh = asyncio.Event()
         self._house_device_task = None
         self._st_scan_task = None
@@ -567,6 +572,8 @@ class Engine:
                 plays = espn.flatten_plays(g.league, data)
                 s = espn.parse_summary(g.league, data, plays=plays)
                 self.recorder.plays(g, plays, "espn_summary")
+                if self._fastcast_mode == "shadow":
+                    self.fc_check.saw(fastcast_check.POLLED, g.game_id, plays)
             except Exception:
                 log.exception("summary parse failed %s", g.game_id)
                 s = None
@@ -717,18 +724,56 @@ class Engine:
             await asyncio.sleep(FASTCAST_SYNC_S)
 
     def sync_fastcast(self) -> None:
-        """Match the setting; subscribe to every live game, drop games that went final."""
-        if not self.cfg.get("sources.fastcast", False):
+        """Match the setting; subscribe to every live game, drop games that went final. With FastCast
+        off, the live check (sources.fastcast_check) runs it in shadow on a few live games instead."""
+        mode = "merge" if self.cfg.get("sources.fastcast", False) else (
+            "shadow" if self.cfg.get("sources.fastcast_check", True) and not self.fc_check.done else None)
+        if mode != self._fastcast_mode:
             self._stop_fastcast()
+        if mode is None:
             return
         if self.fastcast is None:
-            self.fastcast = fastcast.FastcastClient(self._on_fastcast, http=self.fetcher._client)
+            cb = self._on_fastcast if mode == "merge" else self._on_fastcast_shadow
+            self.fastcast = fastcast.FastcastClient(cb, http=self.fetcher._client)
             self._fastcast_task = asyncio.get_running_loop().create_task(self.fastcast.run())
+            self._fastcast_mode = mode
         lgs = self._leagues()
+        live = [g for g in self.merger.games.values() if g.phase == Phase.LIVE and g.league in lgs]
+        if mode == "shadow":
+            # a few games, keeping the ones already subscribed (their pairing is under way)
+            have = {gid for _, gid in self._fastcast_games.values()}
+            live.sort(key=lambda g: (g.game_id not in have, g.game_id))
+            live = live[:fastcast_check.MAX_TOPICS]
         self._fastcast_games = {
             fastcast.game_topic(g.league, g.game_id, self.summaries.get(g.game_id)): (g.league, g.game_id)
-            for g in self.merger.games.values() if g.phase == Phase.LIVE and g.league in lgs}
+            for g in live}
         self.fastcast.set_topics(self._fastcast_games)
+        if mode == "shadow" and time.time() - self._fc_graded >= 60:
+            self._grade_fastcast()
+
+    def _grade_fastcast(self) -> None:
+        self._fc_graded = time.time()
+        v = self.fc_check.tick()
+        if v["result"] == "pass" and self.cfg.get("sources.fastcast_auto_enable", False):
+            log.warning("fastcast live check passed: turning FastCast on (sources.fastcast_auto_enable)")
+            self.cfg.update({"sources": {"fastcast": True}})
+
+    def _on_fastcast_shadow(self, topic: str, doc, received_at: float, published_at: float | None) -> None:
+        """[fastcast live check] Parsed and logged, never merged: nothing on screen can change."""
+        game = self._fastcast_games.get(topic)
+        if game is None:
+            return
+        league, gid = game
+        try:
+            g, plays = fastcast.to_game_state(league, doc, expect_id=gid)
+        except Exception:
+            self.fc_check.unusable()
+            raise
+        if not fastcast.usable(g):
+            self.fc_check.unusable()
+            return
+        self.recorder.plays(g, plays, "espn_fastcast")
+        self.fc_check.saw(fastcast_check.PUSHED, gid, plays, received_at)
 
     def _stop_fastcast(self) -> None:
         if self.fastcast is not None:
@@ -738,6 +783,7 @@ class Engine:
             self._fastcast_task.cancel()
             self._fastcast_task = None
         self._fastcast_games = {}
+        self._fastcast_mode = None
 
     def _on_fastcast(self, topic: str, doc, received_at: float, published_at: float | None) -> None:
         """A pushed game update takes the same path as a polled summary (merge, flight recorder,
@@ -1671,6 +1717,7 @@ class Engine:
                        "tv": {"state": "unknown"}, "race": self.merger.race_summary(),
                        "adb": self.control.adb_ok, "switch_times": self.control.switch_times(),
                        "fastcast": self.fastcast.status() if self.fastcast else None,
+                       "fastcast_check": self.fc_check.verdict,
                        "discovery": self.discovery.status(), "supervisor": self.supervisor.status(),
                        "governor": self.governor.view()},
             "bets": self.bets_view(), "feedback": self.store.feedback_counts(),

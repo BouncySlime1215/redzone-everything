@@ -36,6 +36,9 @@ polling:
 sources:
   fastcast: false          # ESPN's push feed: new plays the moment ESPN publishes them. Runs NEXT TO polling
                            # (polling never stops). Off until the live check passes: see redzone/sources/fastcast.py
+  fastcast_check: true     # with fastcast off: run it in SHADOW on a few live games (logged, never merged) and grade
+                           # it against polling -> data/fastcast_check.json (redzone/sources/fastcast_check.py)
+  fastcast_auto_enable: false  # turn fastcast on by itself once that check passes
 
 score:
   neutral_cap: 0.9         # a neutral game tops out at 90; 90-100 is reserved for games you care about

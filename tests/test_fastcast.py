@@ -810,6 +810,7 @@ async def test_engine_is_inert_when_off(engine, monkeypatch):
     monkeypatch.setattr(fc, "FastcastClient", FakeClient)
     _live(engine)
     assert engine.cfg.get("sources.fastcast") is False            # off by default
+    engine.cfg.update({"sources": {"fastcast_check": False}})     # and the live check off too
     engine.sync_fastcast()
     assert FakeClient.made == [] and engine.fastcast is None and engine._fastcast_task is None
     assert engine.snapshot()["health"]["fastcast"] is None
@@ -840,9 +841,52 @@ async def test_engine_subscribes_live_games_and_drops_finished(engine, monkeypat
     b.phase = Phase.POST                                          # final: unsubscribe
     engine.sync_fastcast()
     assert client.topics == {f"gp-basketball-nba-{a.game_id}"} and len(FakeClient.made) == 1
-    engine.cfg.update({"sources": {"fastcast": False}})            # off again, no restart needed
+    engine.cfg.update({"sources": {"fastcast": False, "fastcast_check": False}})   # off again, no restart
     engine.sync_fastcast()
     assert client.stopped and engine.fastcast is None
+
+
+async def test_off_runs_the_live_check_in_shadow_and_never_merges(engine, monkeypatch):
+    from redzone.sources import fastcast_check as fcc
+    FakeClient.made = []
+    monkeypatch.setattr(fc, "FastcastClient", FakeClient)
+    monkeypatch.setattr(fcc, "MAX_TOPICS", 1)
+    a, b = _live(engine)
+    assert engine.cfg.get("sources.fastcast_check") is True       # on by default while fastcast is off
+    engine.sync_fastcast()
+    client = FakeClient.made[0]
+    assert engine._fastcast_mode == "shadow" and len(client.topics) == 1     # a few games only
+    assert client.on_update == engine._on_fastcast_shadow
+    engine.sync_fastcast()
+    assert len(FakeClient.made) == 1 and client.topics == set(engine._fastcast_games)   # same game kept
+    engine.cfg.update({"sources": {"fastcast": True}})            # turned on: the shadow client is replaced
+    engine.sync_fastcast()
+    assert client.stopped and engine._fastcast_mode == "merge" and len(FakeClient.made[-1].topics) == 2
+    engine.cfg.update({"sources": {"fastcast": False}})
+    engine.sync_fastcast()
+    assert engine._fastcast_mode == "shadow"
+    engine.fc_check.verdict = {"result": "fail"}                  # a verdict ends the shadow
+    engine.sync_fastcast()
+    assert engine.fastcast is None and engine._fastcast_mode is None
+
+
+async def test_shadow_updates_are_graded_not_merged(engine, monkeypatch):
+    FakeClient.made = []
+    monkeypatch.setattr(fc, "FastcastClient", FakeClient)
+    summary = json.loads((FIX / "espn_nba_summary_401909906.json").read_text())
+    doc = _normalize(League.NBA, summary)
+    doc["header"]["competitions"][0]["status"]["type"]["state"] = "in"
+    g0 = GameState(league=League.NBA, game_id="401909906", home=Team("LAL"), away=Team("MEM"), phase=Phase.LIVE)
+    engine.merger.update("espn_scoreboard", g0)
+    engine.sync_fastcast()
+    topic = "gp-basketball-nba-401909906"
+    assert topic in FakeClient.made[0].topics
+    engine._on_fastcast_shadow(topic, doc, 1000.0, 999.9)
+    assert "espn_fastcast" not in engine.merger.games["401909906"].sources and not engine._fresh.is_set()
+    assert engine.fc_check.updates == 1 and ("espn_fastcast", "401909906") in engine.fc_check.primed
+    engine._on_fastcast_shadow(topic, {"header": {"competitions": [{"competitors": []}]}}, 1001.0, None)
+    assert engine.fc_check.errors == 1
+    assert engine.snapshot()["health"]["fastcast_check"]["result"] == "pending"
 
 
 async def test_engine_takes_pushed_updates_like_a_poll(engine, monkeypatch):
