@@ -68,7 +68,8 @@ class Engine:
         # Stream delay measured from the broadcast score bug in Prime screenshots (not DRM-blanked).
         self.scorebug = scorebug.ScoreBugWatcher(on_sample=self._scorebug_sample)
         self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
-        self.breaks = breaks.BreakBook()           # owed TV timeouts per game: when a break is coming
+        # owed TV timeouts per game: when a break is coming (+ the learned brain, when brain.enabled)
+        self.breaks = breaks.BreakBook(brain=self._break_brain)
         self._cost_mode: bool | None = None         # two-stick mode when switch costs were last synced
         self._cost_synced = 0.0
         self.boosted: set[str] = set()
@@ -107,6 +108,9 @@ class Engine:
         from redzone.discovery.runtime import DiscoveryRuntime
         self.discovery = DiscoveryRuntime(self)
         self.tonight = Tonight(self)   # today's plan + pre-game checks on the hidden stick
+        from redzone.supervisor import DATA as SUPERVISOR_DATA, Supervisor
+        # Watches the live system and fixes what it can on its own (redzone/supervisor.py).
+        self.supervisor = Supervisor(self, root=data_dir.parent if data_dir else SUPERVISOR_DATA)
         self.control.target_names = self._target_names
         # Pause / "Watch this" / focus / lock survive a service restart (redzone/userstate.py).
         self._user_state_path = data_dir.parent / "user_state.json" if data_dir else None
@@ -144,7 +148,8 @@ class Engine:
             self.set_mic(True)
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
-                             self._boundary_loop(), self._scorebug_loop(), self.tonight.run())
+                             self._boundary_loop(), self._scorebug_loop(), self.tonight.run(),
+                             self.supervisor.run())
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)
@@ -290,6 +295,25 @@ class Engine:
         except asyncio.TimeoutError:
             pass
         self._fresh.clear()
+
+    def reset_feeds(self, hard: bool = False) -> tuple[bool, str]:
+        """Supervisor: live data stopped moving. Soft: forget every host's fetch back-off and poll
+        now. Hard: also a fresh HTTP client (a wedged connection pool) and a push-feed restart."""
+        self.fetcher._backoff.clear()
+        if not hard:
+            self._fresh.set()
+            return True, "fetch back-off cleared"
+        import httpx
+        old = self.fetcher._client
+        self._stop_fastcast()   # it holds the old client; the fastcast loop restarts it with the new one
+        self.fetcher._client = httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=4.0), follow_redirects=True,
+                                                 headers=dict(old.headers), http2=False)
+        try:
+            asyncio.get_running_loop().create_task(old.aclose())
+        except RuntimeError:
+            pass
+        self._fresh.set()
+        return True, "new HTTP client; push feed restarting"
 
     async def _links_loop(self) -> None:
         """Every 5 minutes: find exact Prime Video / ESPN+ event links for today's games."""
@@ -640,7 +664,7 @@ class Engine:
                 log.exception("score failed %s", gid)
                 continue
             self.scored[gid] = sc
-            w = self.discovery.choose(g, self.channels.where(g, sunday_ticket=st))
+            w = self.supervisor.route(gid, self.discovery.choose(g, self.channels.where(g, sunday_ticket=st)))
             self.where[gid] = w
             if g.phase != Phase.LIVE:
                 continue
@@ -932,6 +956,12 @@ class Engine:
                                return_bonus=float(self.cfg.get("decider.switch_margin", 10)),
                                want=getattr(self.last_decision, "want", None), brk=brk, brk_why=why,
                                replay_sure=sure)
+
+    def _break_brain(self):
+        """(brain, blend weight) for the break forecast, or (None, 0) with the brain off."""
+        if not self.cfg.get("brain.enabled", False):
+            return None, 0.0
+        return self.scorer.brain, float(self.cfg.get("brain.break_weight", 0.5))
 
     def _break_standby(self, cands: dict) -> tuple[str | None, str, standby.Option | None]:
         """The game on screen is about to break (redzone/scoring/breaks.py): where the decider will
@@ -1310,6 +1340,7 @@ class Engine:
             "stale": self.merger.is_stale(gid), "start_time": g.start_time, "on_now": gid == dec.current,
             "wp": g.home_win_prob, "situation": views.situation(g), "leaders": g.leaders,
             "spotlight": g.spotlight, "venue": g.venue_info,
+            "brain": (s.brain or None) if s and live else None,
         }
 
     async def game_detail(self, gid: str) -> dict | None:
@@ -1319,7 +1350,10 @@ class Engine:
         summary = self.summaries.get(gid)
         if summary is None:
             summary = await self.fetcher.get_json(espn.summary_url(g.league, gid), min_interval=60)
-        return views.game_detail(g, summary, self.game_item(gid))
+        out = views.game_detail(g, summary, self.game_item(gid))
+        # The momentum graph (ESPN-style game flow): the brain's hotness per play, live games only.
+        out["momentum"] = self.scorer.brain.timeline(gid) if self.cfg.get("brain.enabled", False) else []
+        return out
 
     async def teams(self) -> dict:
         return await views.teams(self.fetcher, self.cfg.get("teams") or {})
@@ -1390,7 +1424,7 @@ class Engine:
                        "tv": {"state": "unknown"}, "race": self.merger.race_summary(),
                        "adb": self.control.adb_ok, "switch_times": self.control.switch_times(),
                        "fastcast": self.fastcast.status() if self.fastcast else None,
-                       "discovery": self.discovery.status()},
+                       "discovery": self.discovery.status(), "supervisor": self.supervisor.status()},
             "bets": self.bets_view(), "feedback": self.store.feedback_counts(),
             "fantasy": None if self.fantasy is None else {
                 "me": self.fantasy.me, "opponent": self.fantasy.opponent, "my_points": self.fantasy.my_points,

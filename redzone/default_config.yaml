@@ -93,6 +93,23 @@ score:
     walk_off_spot: 15
     no_hitter: {through_6: 25, through_7: 35, ninth: 50}
 
+brain:                     # learned models (redzone/scoring/brain.py, trained by scripts/train_brain.py)
+  enabled: true            # feed the brain's game flow / key-moment / break odds into the score and break forecast
+  hot_points: 0            # moment points at game flow 100 (minus at 0; 50 = a median moment adds nothing)
+  key_points: 6            # moment points when a key moment in the next few minutes is a sure thing
+  break_weight: 0.5        # how much the brain's break odds count against the hand-written break rules
+  hot_reason_min: 85       # game flow at least this hot shows up in the reason line
+  # Per league (tuned on scripts/eval.py + eval_sports.py, Nov 3 2026): NFL's hand-tuned crunch logic
+  # did best untouched (the brain only shows its numbers and helps the break forecast there).
+  nfl: {hot_points: 0, key_points: 0}
+  nba: {hot_points: 0, key_points: 12}
+  nhl: {hot_points: 0, key_points: 6}
+  mlb: {hot_points: 0, key_points: 6}
+  # College: no replay-tested tuning yet, so the brain only shows its numbers there.
+  cbb: {hot_points: 0, key_points: 0}
+  wcbb: {hot_points: 0, key_points: 0}
+  cfb: {hot_points: 0, key_points: 0}
+
 decider:
   switch_margin: 10
   switch_cost: {youtubetv: 3, prime: 8, espn: 7, hdmi_flip: 1}   # seconds to the new picture; replaced by
@@ -147,6 +164,10 @@ autonomy:
   busy_score: 75          # postpone maintenance during an important game
   selftest_may_wake: false
   test_targets: {youtubetv: "", prime: "", espn: ""}
+
+supervisor:                # watches the live system and fixes what it can on its own (redzone/supervisor.py)
+  enabled: true
+  ntfy_topic: ""           # optional: push the nightly report to the free ntfy app (pick a hard-to-guess topic)
 
 two_stick:
   cec_flip: true           # flip inputs by HOME -> HDMI-CEC Active Source (no TV network or SmartThings needed)
