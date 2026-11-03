@@ -10,6 +10,7 @@ Lines (what Nick asked for: does must_see precede real big plays, and is leaving
   must_see_recall      P(must_see | a big play came within the window)
   must_see_lift        precision / base rate of big plays
   lock_acc             exact lock_in match vs the hindsight label
+  leave_allowed_pct    how often it says leaving is safe (the freedom the decider gets)
   unsafe_leave_pct     said safe_to_leave but a big play followed (the costly mistake: missed live)
   over_cautious_pct    said not safe but nothing big followed
   eta_mae_s            |time named in 'next' - actual seconds to the next big play| where both exist
@@ -117,6 +118,7 @@ def score(rows: list[dict], preds: dict[str, dict | None]) -> dict:
         "must_see_recall": pct(sum(p["lock_in"] == "must_see" for _, p in big), len(big)),
         "must_see_lift": round(prec / (base / n), 2) if (prec is not None and base) else None,
         "lock_acc": pct(sum(p["lock_in"] == truth_lock(r) for r, p in usable), len(usable)),
+        "leave_allowed_pct": pct(len(safe_said), len(usable)),
         "unsafe_leave_pct": pct(sum(not truth_safe(r) for r in safe_said), len(safe_said)),
         "over_cautious_pct": pct(sum(truth_safe(r) for r in stay_said), len(stay_said)),
         "eta_mae_s": round(sum(errs) / len(errs), 1) if errs else None,
@@ -147,8 +149,23 @@ def table(res: dict, league: str = "all") -> str:
     """Markdown table (rows = lines, columns = sources) for the PR."""
     srcs = [k for k in res if k not in ("thresholds", "test_nights")]
     keys = ["n", "answered_pct", "usable_json_pct", "big_base_rate_pct", "must_see_pct", "must_see_precision", "must_see_recall",
-            "must_see_lift", "lock_acc", "unsafe_leave_pct", "over_cautious_pct", "eta_mae_s"]
+            "must_see_lift", "lock_acc", "leave_allowed_pct", "unsafe_leave_pct", "over_cautious_pct", "eta_mae_s"]
     out = ["| line | " + " | ".join(srcs) + " |", "|---|" + "---|" * len(srcs)]
     for k in keys:
         out.append(f"| {k} | " + " | ".join(str(res[s].get(league, {}).get(k, "")) for s in srcs) + " |")
     return "\n".join(out)
+
+
+# Ship gate (Nick, Nov 3: "100% no errors"): the hard lines must be perfect, and a missed big play
+# after a "safe to leave" must be ~0 on held-out nights. Everything else is maximized, not gated.
+GATE = {"usable_json_pct": ("min", 100.0), "unsafe_leave_pct": ("max", 0.5)}
+
+
+def gate(s: dict, rules: dict = GATE) -> list[str]:
+    """Lines of one score that fail the ship gate (empty = ships)."""
+    bad = []
+    for k, (kind, lim) in rules.items():
+        v = s.get(k)
+        if v is None or (kind == "min" and v < lim) or (kind == "max" and v > lim):
+            bad.append(f"{k}={v} (needs {'>=' if kind == 'min' else '<='} {lim})")
+    return bad

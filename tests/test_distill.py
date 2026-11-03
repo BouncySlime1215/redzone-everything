@@ -199,3 +199,9 @@ def test_watchdog_novel_is_read_without_importing_make_data(tmp_path):
     f.write_text("from agent.policy import DOES_NOT_EXIST\nNOVEL: dict = {'paused': {'test': ['t'], 'valid': [], 'train': ['x']}}\n")
     assert cli.novel(str(f)) == {"paused": {"test": ["t"], "valid": [], "train": ["x"]}}
     assert cli.novel(None)          # this checkout's make_data.py
+
+
+def test_ship_gate_needs_perfect_json_and_near_zero_unsafe_leaves():
+    assert evaluate.gate({"usable_json_pct": 100.0, "unsafe_leave_pct": 0.3}) == []
+    assert len(evaluate.gate({"usable_json_pct": 99.9, "unsafe_leave_pct": 2.0})) == 2
+    assert evaluate.gate({"usable_json_pct": 100.0, "unsafe_leave_pct": None})     # no leaves said: can't pass blind
