@@ -30,6 +30,7 @@ from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal, Scored, Scorer
 from redzone.sources import espn, fastcast, leagues
 from redzone.sources.http import Fetcher
+from redzone.sources.feeds import FeedBook
 from redzone.sources.merge import Merger
 from redzone.recorder import Recorder
 from redzone.screen import boundary, scorebug
@@ -55,6 +56,8 @@ class Engine:
         self.channels = ChannelMap()
         self.fetcher = Fetcher()
         self.merger = Merger()
+        self._poll_every: dict[str, float] = {}   # game id -> the poll interval it was last fetched at
+        self.feeds = FeedBook(self.merger, self.fetcher, self._feed_urls, self._feed_cadence)
         self.scorer = DriveScorer(self.cfg)
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"),
                                 model=self.cfg.get("delay.model", "channel"))
@@ -538,6 +541,9 @@ class Engine:
             every = self.cfg.get("polling.hot_s", 3) if g.game_id in hot else self.cfg.get("polling.live_s", 10)
             async with sem:
                 data = await self.fetcher.get_json(espn.summary_url(g.league, g.game_id), min_interval=every - 0.5)
+            # Recorded after the fetch: a game that just turned hot keeps its slower rate until it has
+            # been polled at the new one, so it isn't flagged stale (and unenterable) for that moment.
+            self._poll_every[g.game_id] = float(every)
             if not data:
                 self.merger.record_error("espn_summary")
                 return
@@ -665,6 +671,17 @@ class Engine:
                             self.merger.update("nba", leagues.enrich_nba(self.merger.games[g.game_id], gm))
                         except Exception:
                             log.exception("nba enrich")
+
+    def _feed_urls(self, g: GameState) -> list[str]:
+        """The URLs a game's state comes from: its summary and its league's scoreboard(s)."""
+        if g.league.college:
+            boards = espn.scoreboard_urls(g.league, (self.cfg.get("college.groups") or {}).get(g.league.value) or [])
+        else:
+            boards = [espn.scoreboard_url(g.league)]
+        return [espn.summary_url(g.league, g.game_id), *boards]
+
+    def _feed_cadence(self, gid: str) -> float:
+        return self._poll_every.get(gid, float(self.cfg.get("polling.live_s", 10)))
 
     def _source_health(self) -> None:
         now = time.time()
@@ -796,7 +813,11 @@ class Engine:
             target = w.target if (w.tunable or dry) else None
             if target in self._fail_cool:
                 target = None   # failed a moment ago: don't hammer it every tick
-            cands[gid] = Candidate(sc, target, stale=self.merger.is_stale(gid))
+            # A dark feed (sources/feeds.py, flagged within 5 s) blocks ENTERING a game, never leaving
+            # the one on screen: for that one only the merger's old 60 s no-progress rule applies, so
+            # an ESPN blip can't empty the watchable set and send you to a catch-up reel.
+            stale = self.merger.is_stale(gid) if gid == self.decider.current else self.feeds.stale(gid)
+            cands[gid] = Candidate(sc, target, stale=stale)
         self._garbage_focus()
         self._hold_check()
         if self._pending_decision is not None:
@@ -966,7 +987,7 @@ class Engine:
         if d.target == REEL:
             return bool(target and target.startswith("reel:")) and (REEL_DIR / "reel.mp4").exists()
         g = self.merger.games.get(d.target or "")
-        if not g or g.phase != Phase.LIVE or self.merger.is_stale(g.game_id):
+        if not g or g.phase != Phase.LIVE or self.feeds.stale(g.game_id):
             return False
         if getattr(self.where.get(g.game_id), "target", None) != target:
             return False
@@ -1512,7 +1533,7 @@ class Engine:
                       "tunable": getattr(w, "tunable", False), "target": getattr(w, "target", None)},
             "odds": g.odds_text, "mine": g.involves(set((self.cfg.get("teams") or {}).get(g.league.value, []))),
             "boosted": gid in self.boosted, "muted": gid in dec.user.muted, "focus": gid == dec.user.focus_game,
-            "stale": self.merger.is_stale(gid), "start_time": g.start_time, "on_now": gid == dec.current,
+            "stale": self.feeds.stale(gid), "start_time": g.start_time, "on_now": gid == dec.current,
             "wp": g.home_win_prob, "situation": views.situation(g), "leaders": g.leaders,
             "spotlight": g.spotlight, "venue": g.venue_info,
             "brain": (s.brain or None) if s and live else None,

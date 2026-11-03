@@ -93,32 +93,46 @@ async def _switch(fault_on: str | None, fault: str | None, tv_fail: bool = False
 
 
 async def _feed_5xx() -> dict:
-    """ESPN answers 503 for 30 s, then recovers. Polled every 3 s (polling.hot_s). How long until the
-    system KNOWS the feed is stale, and how long after recovery until it has fresh data again?"""
+    """ESPN answers 503 for 2 minutes, then recovers. A hot game is polled every 3 s (polling.hot_s).
+    How long until the system KNOWS the feed is stale, and how long after ESPN is back until the
+    game counts as fresh again? (Stale games are never entered.)"""
+    import httpx
+    from redzone.models import GameState, League, Phase, Team
     from redzone.sources.http import Fetcher
     from redzone.sources.merge import Merger
-    from redzone.models import GameState, League, Phase, Team
+    try:
+        from redzone.sources.feeds import FeedBook
+    except ImportError:
+        FeedBook = None
     now = [1000.0]
     clock = lambda: now[0]  # noqa: E731
     down = [False]
-    fetcher = Fetcher(client=__import__("httpx").AsyncClient(
-        transport=failing_transport(lambda: 503 if down[0] else 200)), clock=clock)
+    fetcher = Fetcher(client=httpx.AsyncClient(transport=failing_transport(lambda: 503 if down[0] else 200)),
+                      clock=clock)
     merger = Merger(clock=clock)
     url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=1"
     g = GameState(league=League.NFL, game_id="1", home=Team("A", score=0), away=Team("B", score=0),
                   phase=Phase.LIVE, period=1, clock_s=900.0)
-    merger.update("espn_summary", g)
-    await fetcher.get_json(url)
-    fail_at, detect_at, back_at, fresh_at = 1003.0, None, 1033.0, None
+    if FeedBook is not None:
+        book = FeedBook(merger, fetcher, lambda _g: [url], lambda _gid: 3.0, clock=clock)
+        stale = lambda: book.stale("1")  # noqa: E731
+    else:
+        stale = lambda: merger.is_stale("1")  # noqa: E731   (before: the merger's rule only)
+    fail_at, back_at = 1003.0, 1123.0
+    detect_at = fresh_at = None
     t = 1000.0
-    while t < 1200.0:
+    while t < 1300.0:
         now[0] = t
         down[0] = fail_at <= t < back_at
-        await fetcher.get_json(url, min_interval=2.5)
-        stale = merger.is_stale("1") or not fetcher.is_fresh(url, max_age_s=_stale_s())
-        if down[0] and detect_at is None and stale:
+        body = await fetcher.get_json(url, min_interval=2.5)
+        if body is not None:
+            if fetcher.fetched_at(url) == t:          # fresh data: the game moved on (clock runs)
+                g = GameState(league=League.NFL, game_id="1", home=Team("A", score=0), away=Team("B", score=0),
+                              phase=Phase.LIVE, period=1, clock_s=max(0.0, 900.0 - (t - 1000.0)))
+            merger.update("espn_summary", g)          # ...else the poll loop re-feeds the cached copy
+        if down[0] and detect_at is None and stale():
             detect_at = t
-        if not down[0] and t >= back_at and fresh_at is None and fetcher.is_fresh(url, 1.0):
+        if t >= back_at and fresh_at is None and not stale():
             fresh_at = t
         t += 3.0
     await fetcher.close()
@@ -126,15 +140,7 @@ async def _feed_5xx() -> dict:
             "flagged": detect_at is not None,
             "detect_s": None if detect_at is None else round(detect_at - fail_at, 1),
             "recover_s": None if fresh_at is None else round(fresh_at - back_at, 1),
-            "detail": "stale flag = merger.is_stale or fetch not fresh"}
-
-
-def _stale_s() -> float:
-    try:
-        from redzone.sources import http
-        return float(getattr(http, "FEED_STALE_S"))
-    except (AttributeError, TypeError, ValueError):
-        return float("inf")   # no fetch-level staleness: only the merger's 60 s no-progress rule
+            "detail": "2-minute ESPN 503 outage, hot game polled every 3 s"}
 
 
 async def _clock_skew() -> dict:

@@ -32,7 +32,7 @@ async def test_concurrent_failures_back_off_once():
     await f.close()
 
 
-async def test_espn_backoff_is_capped_at_a_minute():
+async def test_espn_outage_backoff_is_capped_at_ten_seconds():
     clk = Clock()
 
     def handler(req):
@@ -62,4 +62,15 @@ async def test_cached_copy_during_outage_is_not_fresh():
     clk.t += 30
     assert await f.get_json(URL) == {"events": []}       # callers still get the last good copy
     assert not f.is_fresh(URL, 10) and f.fetched_at(URL) == 1000.0
+    await f.close()
+
+
+async def test_espn_saying_too_many_requests_still_backs_off_a_minute():
+    from redzone.sources.http import LIVE_LIMITED_BACKOFF_S
+    clk = Clock()
+    f = _fetcher(lambda req: httpx.Response(429), clk)
+    for _ in range(12):
+        await f.get_json(URL)
+        clk.t = f._backoff["site.api.espn.com"].until
+    assert f._backoff["site.api.espn.com"].delay == LIVE_LIMITED_BACKOFF_S == 60.0
     await f.close()
