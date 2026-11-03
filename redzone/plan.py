@@ -398,6 +398,8 @@ class Tonight:
         count = lambda k, v: sum(1 for e in p["games"] if e[k] == v)  # noqa: E731
         return {"day": p["day"], "games": rows, "gaps": p["gaps"][:5], "note": p.get("note", ""),
                 "checking": self._checking,
+                "checking_games": [e["game_id"] for e in p["games"]
+                                   if self._checking and e["check"]["state"] == "pending" and _target(e) == self._checking],
                 "counts": {"games": len(rows), "ready": count("status", "ready"),
                            "verified": sum(1 for e in p["games"] if e["check"]["state"] == "verified"),
                            "failed": sum(1 for e in p["games"] if e["check"]["state"] == "failed")},
