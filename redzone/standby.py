@@ -231,8 +231,11 @@ class ShadowStick:
 
     Hit rate = switches that landed on a stick already playing the destination (a 1-3s flip)."""
 
-    def __init__(self, tune_s: float = 7.0):
+    def __init__(self, tune_s: float = 7.0, keep_s: float = 2.5):
         self.tune_s = tune_s
+        # A Prime game we leave keeps playing live on its stick (control._kept_playing): ready again
+        # once two playback reads confirm it, not after a re-tune.
+        self.keep_s = keep_s
         self.target: str | None = None
         self.replay_id: str | None = None
         self.ready_at = 0.0
@@ -264,7 +267,8 @@ class ShadowStick:
             if to and (to, replay_id) == self.standby:
                 self.loading += 1
             self.misses.append((now, to, self.target))
-        self.target, self.replay_id, self.ready_at = left, None, now + self.tune_s
+        kept = bool(left) and left.startswith("prime:")
+        self.target, self.replay_id, self.ready_at = left, None, now + (self.keep_s if kept else self.tune_s)
         return hit
 
     def card(self) -> dict:

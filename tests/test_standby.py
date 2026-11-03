@@ -207,3 +207,13 @@ def test_shadow_stick_counts_flips_to_a_ready_preload_as_hits():
     assert not s.switch("youtubetv:x", None, "youtubetv:a", 140)      # parked replay != live
     assert s.card() == {"switches": 3, "hits": 1, "hit_rate": 33.3, "still_loading": 1, "preloads": 2,
                         "breaks_filled": "0/0", "break_fill_rate": 0.0}
+
+
+def test_shadow_stick_prime_game_left_keeps_playing():
+    """Prime keeps its player when its stick loses the TV input: going back is a flip within seconds,
+    while YouTube TV pauses and has to be reloaded at the live edge."""
+    s = standby.ShadowStick(tune_s=7, keep_s=2.5)
+    s.preload("youtubetv:a", None, 100)
+    assert s.switch("youtubetv:a", None, "prime:p", 110)
+    assert s.switch("prime:p", None, "youtubetv:a", 113)        # 3 s later: Prime is still live there
+    assert not s.switch("youtubetv:a", None, "prime:p", 116)    # 3 s later: YouTube TV is still reloading
