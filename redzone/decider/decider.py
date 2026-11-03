@@ -24,8 +24,9 @@ are never counted as "seen": we can't tell which ones it showed.
 """
 from __future__ import annotations
 
-import time
 import math
+import re
+import time
 from collections import deque
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -113,13 +114,15 @@ class Missed:
     value: float              # how much you'd want to see it (0-100)
     seen_live: bool = False   # True = "instant replay" of something you did see
     replayed: bool = False
+    mine: bool = False        # [redzone mode] your team / bet: first in the reel
 
     def back_s(self, now: float, delay_mu: float, play_len: float, lead_s: float = 3.0) -> float:
         """How far to rewind from the live edge (which shows real time now - delay)."""
         return max(0.0, (now - delay_mu) - (self.t - play_len - lead_s))
 
 
-REPLAY_BASE = {"td": 75, "goal": 75, "safety": 70, "turnover": 65, "hr": 60, "fg": 35}
+REPLAY_BASE = {"td": 75, "goal": 75, "safety": 70, "turnover": 65, "hr": 60, "big_play": 40, "fg": 35}
+_YARDS = re.compile(r"for (\d+) yards?")
 TUNE_SLACK_S = 3.0  # a tune can stay black this much longer than its estimated cost
 URGENT_BONUS = 40.0  # added (ramping up) to a missed play's value as it nears replay.max_age_s
 
@@ -173,6 +176,9 @@ class Decider:
         self.queue: list[Missed] = []
         self.done_replays: deque[Missed] = deque(maxlen=200)
         self.replaying: Missed | None = None
+        # [redzone mode] the current "what you missed" reel: clips shown since the screen was last live
+        self.reel_n = 0
+        self.reel_t0 = 0.0
         self.replay_until = 0.0
         self.replay_exit_after = 0.0   # retained if interrupted: old footage may still be mid-play
         self.after_replay = False
@@ -330,6 +336,7 @@ class Decider:
             return
         max_age = self.cfg.get("replay.max_age_s", 1800)
         pool = self._replay_pool(cands)
+        big_yds = int(self.cfg.get("redzone_mode.reel_big_play_yds", 0) or 0)
         for gid, tl in self.timelines.items():
             # Finals too: a game is over in the data ~a minute before its last plays air.
             x = pool.get(gid)
@@ -338,7 +345,10 @@ class Decider:
             d = self.delays.get(x.target or "unknown")
             play_len = PLAY_LEN_S.get(tl.league) or 8.0
             for e in tl.events:
-                if e.kind != "play" or not e.big or (gid, e.pid or e.label) in self._judged:
+                if e.kind != "play" or not (e.big or big_yds) or (gid, e.pid or e.label) in self._judged:
+                    continue
+                gain = 0 if e.big or not big_yds else self._explosive(tl, e, big_yds)
+                if not e.big and not gain:
                     continue
                 air_end = e.seen + d.mu
                 if now < air_end + 3:
@@ -350,8 +360,15 @@ class Decider:
                     continue
                 kind = e.play_kind if e.play_kind in REPLAY_BASE else ("td" if "touchdown" in e.label.lower() else
                                                              "turnover" if "intercept" in e.label.lower() else "other")
+                if gain:
+                    kind = "big_play"
                 value = REPLAY_BASE.get(kind, 40) + min(25.0, x.scored.personal)
-                m = Missed(gid, e.pid or e.label, e.label, kind, e.seen, value, seen_live=seen)
+                label = e.label
+                if self._lead_change(tl, e):
+                    value += float(self.cfg.get("redzone_mode.lead_change_bonus", 0))
+                    label = f"lead change: {label}"
+                m = Missed(gid, e.pid or e.label, label, kind, e.seen, value, seen_live=seen,
+                           mine=x.scored.personal >= self.cfg.get("decider.crunch.hold_personal", 5))
                 if seen:
                     self.done_replays.append(m)  # eligible only as an "instant replay" when all else is dead
                 elif self._replayable(x):
@@ -385,7 +402,13 @@ class Decider:
         show the live drive and catch up when nothing hot is live."""
         hot = live_first and self._hot_live(cands)
         games = self._replay_pool(cands)
-        pool = [m for m in self.queue if m.game_id != exclude and self._replayable(games.get(m.game_id))]
+        pool = [m for m in self.queue if m.game_id != exclude and self._replayable(games.get(m.game_id))
+                and not self._crunch_now(cands, m.game_id)]
+        if self.reel_n and not self._reel_room(now) and self._live_worth(cands):
+            # [redzone mode] the reel is long enough: back to live before more old footage (your
+            # team's plays excepted: they're never left on the floor).
+            pool = [m for m in pool if m.mine]
+            allow_seen = False
         if hot:
             # Only a last chance (its replay window is closing) still goes ahead of a live drive.
             pool = [m for m in pool if self._urgency(m, now) > 0]
@@ -403,9 +426,55 @@ class Decider:
             pool = [m for m in pool if self._replay_value(m, now) >= top + margin]
 
         def rank(m: Missed) -> tuple:
-            # Earliest deadline first among last chances (a fresh TD can wait; they can't), else value.
-            return (1, -m.t) if self._urgency(m, now) > 0 else (0, self._replay_value(m, now))
+            # Earliest deadline first among last chances (a fresh TD can wait; they can't), then your
+            # teams' plays, then value.
+            return (1, 0, -m.t) if self._urgency(m, now) > 0 else (0, m.mine, self._replay_value(m, now))
         return max(pool, key=rank, default=None)
+
+    def _reel_room(self, now: float) -> bool:
+        """[redzone mode] Can the running "what you missed" reel take another clip? Capped by clips and
+        seconds (Prime's Rapid Recap: ~13 clips, under 2 minutes) so we never sit far behind live."""
+        c = self.cfg
+        return (self.reel_n < int(c.get("redzone_mode.reel_max_clips", 4))
+                and now - self.reel_t0 + c.get("replay.clip_s", 15) <= float(c.get("redzone_mode.reel_max_s", 150)))
+
+    def _live_worth(self, cands) -> bool:
+        """[redzone mode] Is any live action worth going back for (else the reel may run on)?"""
+        floor = self.cfg.get("decider.break_destination_min", 25)
+        return any(x.target and not x.stale and not x.scored.is_break and x.scored.score >= floor
+                   and gid not in self.user.muted for gid, x in cands.items())
+
+    def _crunch_now(self, cands, gid: str) -> bool:
+        """[redzone mode] A clip from a game now in crunch time is skipped: go watch it live instead."""
+        x = cands.get(gid)
+        return bool(x and x.scored.crunch and self.cfg.get("redzone_mode.reel_skip_crunch", True))
+
+    def _lead_change(self, tl: Timeline, e: Event) -> bool:
+        """Did this scoring play put the other team ahead (or erase a lead)?"""
+        if not e.pid:
+            return False
+        scores = list(tl.scores)
+        for i, s in enumerate(scores):
+            if s.pid == e.pid and s.score:
+                prev = scores[i - 1].score if i else (0, 0)
+                if not prev:
+                    return False
+                before = (prev[0] > prev[1]) - (prev[0] < prev[1])
+                after = (s.score[0] > s.score[1]) - (s.score[0] < s.score[1])
+                return before != after and (before != 0 or i > 0)
+        return False
+
+    def _explosive(self, tl: Timeline, e: Event, yds: int) -> int:
+        """[redzone mode] An NFL gain of redzone_mode.reel_big_play_yds+ that wasn't a score or turnover:
+        reel material (lower value than a TD). 0 if not one, or if the feature is off."""
+        if tl.league.base != League.NFL:
+            return 0
+        t = e.label.lower()
+        if "penalty" in t or "no play" in t or "punt" in t or "kick" in t:
+            return 0
+        mt = _YARDS.search(t)
+        n = int(mt.group(1)) if mt else 0
+        return n if n >= yds else 0
 
     def _break_remaining(self, gid: str, cands, now: float) -> float:
         """Conservative break budget, never a typical ad length treated as a deadline."""
@@ -472,6 +541,9 @@ class Decider:
         self.current = m.game_id
         self.since = now
         self.history.append((now, m.game_id, "replay"))
+        if not self.reel_n:
+            self.reel_t0 = now
+        self.reel_n += 1
         self._screen_log.append((now, "replay"))
 
     def _decide(self, cands: dict[str, Candidate], now: float) -> Decision:
@@ -1233,6 +1305,7 @@ class Decider:
         self.current = target
         self.since = now
         self.start_fails, self.start_retry_at = 0, 0.0
+        self.reel_n = 0   # back on live: the next replay starts a new reel
         self.history.append((now, target, kind))
         # Black while the tuner works; padded so "did you see it?" errs toward "no" (-> replay).
         tune = self._deadline_cost(None if target is None else self._target_of.get(target)) + TUNE_SLACK_S

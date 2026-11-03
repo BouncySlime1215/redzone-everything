@@ -174,6 +174,10 @@ redzone_mode:              # whip-around like NFL RedZone (scoring/drive.py, dec
   hot_heat: 0.5            # drive heat (0-1) that counts as "a drive is alive"
   priority_gap: 15         # ...those other games are held this many points under the hottest drive
   live_first_heat: 0.75    # an NFL drive this hot (scoring position) and live: no catch-up replay until it's over
+  reel_max_clips: 4        # "what you missed": at most this many catch-up clips in a row before going back live
+  reel_max_s: 150          # ...or this many seconds of old footage in a row
+  lead_change_bonus: 0     # extra reel value for a missed score that changed the lead (labelled either way; 10 cost NHL crunch 87.0->86.6)
+  reel_big_play_yds: 0     # also queue NFL gains this long (0 = off: only scores and turnovers)
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true

@@ -18,6 +18,8 @@ import sys
 import time
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -57,6 +59,8 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--late-plays", type=float, nargs="?", const=0.15, default=0.0)
     ap.add_argument("--no-wallclock", type=float, nargs="?", const=0.5, default=0.0)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    help="override a config value for this run, e.g. redzone_mode.enabled=false")
 
 
 def knobs(a: argparse.Namespace) -> dict:
@@ -74,6 +78,13 @@ def main():
     a = ap.parse_args()
     lg = League(a.league)
     cfg = Config(user_path=ROOT / "data/config.yaml")
+    for kv in a.set:
+        key, _, val = kv.partition("=")
+        node = cfg.data
+        *path, last = key.split(".")
+        for part in path:
+            node = node.setdefault(part, {})
+        node[last] = yaml.safe_load(val)
     mine = set(cfg.get(f"teams.{lg.value}") or ["WSH"])
     total = sportsgrade.Card(lg.value)
     t0 = time.time()

@@ -149,3 +149,42 @@ def test_no_catch_up_while_a_drive_is_in_scoring_position(cfg, clock):
     assert d._best_replay(c, clock.t, None, False) is None
     c["rz"] = Candidate(_sc("rz", 50, heat=0.9, is_break=True), "youtubetv:rz")
     assert d._best_replay(c, clock.t, None, False) is m      # its drive is in a break: catch up now
+
+
+# --- the "what you missed" reel ------------------------------------------------------------------
+
+def _queue(d, *ms):
+    d.queue.extend(ms)
+    return {m.game_id: Candidate(_sc(m.game_id, 20), f"youtubetv:{m.game_id}") for m in ms}
+
+
+def test_reel_is_capped_then_goes_live_but_your_teams_plays_still_show(cfg, clock):
+    d = _dec(cfg, clock)
+    a, b, w = (Missed("a", "1", "TD a", "td", clock.t - 60, 75), Missed("b", "2", "TD b", "td", clock.t - 50, 75),
+               Missed("w", "3", "TD w", "td", clock.t - 40, 60, mine=True))
+    c = _queue(d, a, b, w)
+    c["live"] = Candidate(_sc("live", 60), "youtubetv:live")
+    assert d._best_replay(c, clock.t, None, False) is w          # your team first
+    d.reel_n, d.reel_t0 = cfg.get("redzone_mode.reel_max_clips"), clock.t - 30
+    assert d._best_replay(c, clock.t, None, False) is w          # past the cap: only your team's
+    d.queue.remove(w)
+    assert d._best_replay(c, clock.t, None, False) is None       # ...else back to live
+    del c["live"]
+    assert d._best_replay(c, clock.t, None, False) is not None   # nothing live worth it: keep catching up
+    d._commit("a")
+    assert d.reel_n == 0
+
+
+def test_reel_skips_a_game_now_in_crunch_time(cfg, clock):
+    d = _dec(cfg, clock)
+    m = Missed("a", "1", "TD a", "td", clock.t - 60, 75)
+    c = _queue(d, m)
+    c["a"] = Candidate(_sc("a", 80, crunch=True), "youtubetv:a")
+    assert d._best_replay(c, clock.t, None, False) is None
+
+
+def test_standby_cues_your_teams_clip_first(clock):
+    from redzone.standby import likely_replay
+    a = Missed("a", "1", "TD a", "td", clock.t - 60, 90)
+    w = Missed("w", "3", "FG w", "fg", clock.t - 40, 40, mine=True)
+    assert likely_replay([a, w], clock.t, 1800) is w

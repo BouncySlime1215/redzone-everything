@@ -100,7 +100,9 @@ def likely_replay(queue, now: float, max_age: float):
     """The queued replay the decider will most likely play next: the most valuable, discounted
     for age the way the decider does. A wrong guess only means a normal tune when it comes."""
     pool = [m for m in queue if not m.replayed and now - m.t <= max_age]
-    return max(pool, key=lambda m: m.value * (1.0 - 0.5 * min(1.0, (now - m.t) / max_age)), default=None)
+    # [redzone mode] the reel shows your team's plays first (Decider._best_replay): cue those first too.
+    return max(pool, key=lambda m: (getattr(m, "mine", False),
+                                    m.value * (1.0 - 0.5 * min(1.0, (now - m.t) / max_age))), default=None)
 
 
 YOUR_TEAM = "your team"
