@@ -485,8 +485,10 @@ class PrimeTuner(Tuner):
         text = (await stick.ocr_text()).lower()
         return any(w in text for w in self._DETAIL_WORDS)
 
-    _PAGE_WORDS = ("watchlist", "more purchase options", "included with")
+    # OCR splits rows ("More purchase | options") and the 4K Plus page shows Watchlist as a bare "+".
+    _PAGE_WORDS = ("watchlist", "more purchase", "included with")
     PANEL_WAIT_S = 3.0       # after "Watch": the Watch Live / Resume panel is up within ~1 s (Nov 2)
+    PANEL_BLIND_S = 1.5      # ...so "Watch Live" is pressed this long after "Watch" if nothing started
 
     async def resume_from_page(self, stick: Stick, pkg: str, steps: list[str]) -> bool:
         """After a HOME flip, REORDER_TO_FRONT brings Prime back to the game's DETAIL PAGE, not the
@@ -510,18 +512,23 @@ class PrimeTuner(Tuner):
             return False
         await stick.key("KEYCODE_DPAD_CENTER")
         steps.append("pressed: watch (detail page after the flip)")
-        end = time.monotonic() + self.PANEL_WAIT_S
-        while time.monotonic() < end:
-            await asyncio.sleep(0.4)
+        # The panel opens with "Watch Live" focused within ~1 s. A screen read can take seconds on a
+        # busy Mac (the soak saw the panel missed by OCR and a ~45 s re-link follow), so it's not
+        # required: once PANEL_BLIND_S has passed with nothing playing or loading, the second press
+        # goes anyway. With no session there is no stream to pause; on the page itself a CENTER is
+        # "Watch" again, which just opens the panel.
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < self.PANEL_WAIT_S:
+            await asyncio.sleep(0.3)
             pb = await stick.playback(pkg)
             if pb.get("state") in LOADING or playback_ready(pb):
                 return True   # this page went straight to the stream
-            if "watch live" in (await stick.ocr_text()).lower():
-                if not await self._idle(stick, pkg):
-                    return True
-                await stick.key("KEYCODE_DPAD_CENTER")
-                steps.append("pressed: watch live (panel)")
-                return True
+            if time.monotonic() - t0 >= self.PANEL_BLIND_S:
+                break
+        if not await self._idle(stick, pkg):
+            return True
+        await stick.key("KEYCODE_DPAD_CENTER")
+        steps.append("pressed: watch live (panel)")
         return True
 
     @staticmethod

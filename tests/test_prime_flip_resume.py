@@ -75,6 +75,7 @@ def controller(cfg, tmp_path, monkeypatch, stick):
     monkeypatch.setattr(ctl, "RESUME_POLL_S", 0.0)
     monkeypatch.setattr(ctl, "PRIME_PAGE_AFTER_S", 0.0)
     monkeypatch.setattr(tn.PrimeTuner, "PANEL_WAIT_S", 0.5)
+    monkeypatch.setattr(tn.PrimeTuner, "PANEL_BLIND_S", 0.0)
     real_sleep = asyncio.sleep
     monkeypatch.setattr(tn.asyncio, "sleep", lambda s: real_sleep(0))
 
@@ -168,3 +169,49 @@ def test_second_prime_home_gets_a_full_window(cfg, tmp_path, monkeypatch):
     assert asyncio.run(c._home_flip_prime(stick, "com.amazon.firebat", T))
     assert len(stick.homes) == 2
     assert c._flip_s is not None and c._flip_s >= 5.5   # counted from the first HOME
+
+
+class NotExportedStick(Stick):
+    """4K Plus: Prime's player is the non-exported PlaybackActivity, so the reorder is refused."""
+
+    def __init__(self):
+        super().__init__("n:5555", os="Fire OS 8")
+        self.state = "connected"
+        self.packages = {"prime": "com.amazon.firebat"}
+        self.commands = []
+
+    async def _shell(self, command, timeout=8):
+        self.commands.append(command)
+        if "mIsActiveSource" in command:
+            return RunResult(True, "1", 0.0)
+        if "mResumedActivity" in command:
+            return RunResult(True, "mResumedActivity: ActivityRecord{1 u0 com.amazon.firebat/"
+                                   "com.amazon.firebatcore.playback.inappplayback.PlaybackActivity t1}", 0.0)
+        if command.startswith("am start -f 0x00020000"):
+            return RunResult(True, "java.lang.SecurityException: Permission Denial: starting Intent "
+                                   "... not exported from uid 10142", 0.0)
+        return RunResult(True, "", 0.0)
+
+
+def test_refused_prime_reorder_reopens_the_game_page(cfg, tmp_path, monkeypatch):
+    cfg.update({"mode": {"dry_run": False}})
+    c = ctl.Controller(cfg, ChannelMap(tmp_path / "ch.json"))
+    stick = NotExportedStick()
+    c.sticks = [stick]
+    c.hdmi = {stick.host: "HDMI2"}
+    monkeypatch.setattr(ctl, "RELAUNCH_AFTER_S", 0.0)
+    assert asyncio.run(c._home_flip_prime(stick, "com.amazon.firebat", T))
+    links = [x for x in stick.commands if "android.intent.action.VIEW" in x]
+    assert len(links) == 1 and "detail?gti=amzn1.dv.gti.test" in links[0]
+
+
+def test_page_is_recognised_when_ocr_splits_the_button_row(cfg, tmp_path, monkeypatch):
+    stick = PrimeStick("page")
+    stick.ocr_text = _ocr_split
+    c, relink = controller(cfg, tmp_path, monkeypatch, stick)
+    assert asyncio.run(c._resume_playback(stick, T, ctl.RESUME_WAIT_S)) == "watch_live"
+    assert relink.calls == 0
+
+
+async def _ocr_split():
+    return "League Pass | Heat vs. Lakers | Watch | More purchase | options | +"

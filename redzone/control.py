@@ -70,7 +70,9 @@ RESUME_PAUSED_S = 2.0      # ...but a player that says "paused" this long gets M
 RESUME_PLAY_WAIT_S = 3.0   # ...else MEDIA_PLAY (a paused player) and wait this long
 RELINK_MAX_S = 25.0        # ...else one fresh deep link of the target, capped at this
 RESUME_POLL_S = 0.25       # "playing the game again?" this often while resuming
-PRIME_PAGE_AFTER_S = 1.0   # ...its session gone this long -> read the screen for the detail page
+STANDBY_REREADS = 3        # right before a flip: a standby whose session is missing is re-read this often...
+STANDBY_REREAD_S = 0.5     # ...this far apart, before the switch is given up
+PRIME_PAGE_AFTER_S = 1.0  # ...its session gone this long -> read the screen for the detail page
 PRIME_PAGE_CHECKS = 3      # ...at most this many screen reads per resume
 PRIME_LIVE_WAIT_S = 8.0    # ...after pressing through: the stream starts in ~3.5 s (Nov 2)
 FLIP_POLL_S = 0.12         # after HOME: ask the stick "are you the active source?" this often...
@@ -1159,6 +1161,15 @@ class Controller:
                 # Cached readiness is not proof the stream survived a pause,
                 # app error, or a user change on the hidden stick.
                 pb = await hid.playback(self._package(hid, target))
+                for _ in range(STANDBY_REREADS):
+                    # Prime's session can be missing from one read without the player stopping
+                    # (soak, Nov 2: a fresh tune read "none" once at flip time and the whole switch
+                    # failed). Only a missing session / failed read is re-asked; a paused or
+                    # different stream is believed at once.
+                    if hid.still_on(target, pb) or not (pb.get("read_ok") is False or pb.get("state") == "none"):
+                        break
+                    await asyncio.sleep(STANDBY_REREAD_S)
+                    pb = await hid.playback(self._package(hid, target))
                 if not hid.still_on(target, pb):
                     self._set_hidden(None, False)
                     return Outcome(False, target, time.time() - t0, "standby stream is no longer confirmed", False,
@@ -1378,9 +1389,18 @@ class Controller:
             took = await self._await_active_source(stick, home_at, limit)
             if took is not None:
                 break
+        reordered = False
         if comp:
-            await stick.shell(f"am start -f 0x00020000 -n {comp} >/dev/null 2>&1", timeout=8)
-        else:
+            r = await stick.shell(f"am start -f 0x00020000 -n {comp} 2>&1", timeout=8)
+            # Prime's in-app PlaybackActivity (the 4K Plus stick) is not exported: the reorder is
+            # refused ("Permission Denial ... not exported") and the TV sat on the Fire TV home
+            # screen until a full re-link (soak, Nov 3). The game's link brings Prime's task back
+            # (its detail page, then pressed through by _resume_playback).
+            reordered = r.ok and not any(m in r.out for m in ("Permission Denial", "not exported", "Error"))
+            if not reordered:
+                log.info("%s: Prime's player screen can't be brought back (%s); re-opening the game's page",
+                         stick.host, (r.out.strip().splitlines() or ["no reply"])[-1][:100])
+        if not reordered:
             await self._relaunch(stick, pkg, home_at, target)
         if took is None:
             log.warning("HOME flip on %s (Prime): stick never became active source", stick.host)
