@@ -23,7 +23,7 @@ class LegacySync:
 
     def estimate(self, target: str, now: float) -> SyncEstimate:
         d = self.book.get(target)
-        src = d.source if d.source in ("tap", "screen", "app", "boundary", "predicted", "default") else "default"
+        src = d.source if d.source in ("tap", "screen", "app", "boundary", "predicted", "default", "sync") else "default"
         return SyncEstimate(target, float(d.mu), float(d.current_sigma(now)), src, d.calibrated_at,
                             float(getattr(d, "behind", 0.0)))
 
