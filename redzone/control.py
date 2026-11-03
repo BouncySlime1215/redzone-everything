@@ -84,6 +84,7 @@ AWAKE_TRUST_S = 120.0      # a stick seen playing this recently is awake: skip t
 REFRESH_POLL_S = 0.5       # after a flip: how often the refresh of the game we left checks for a free moment
 REFRESH_TRIES = 40         # ...and how many times (~20s) before it leaves the standby to the planner
 PRIME_KEEP_WAIT_S = 15.0   # after a flip: the Prime game we left gets this long to show it kept playing...
+PLANNER_WISH_S = 3.0       # a refresh holds off while the planner asked for another game this recently
 KEEP_CONFIRM_S = 2.0       # ...on two reads this far apart (a player that pauses a beat late isn't "ready")
 ASLEEP_RECHECK_S = 60.0    # a sleeping hidden stick: don't ask again (or preload) for this long
 VERIFY_SOON_S = 3.0        # after a flip, check the stick we left within a few seconds
@@ -229,6 +230,7 @@ class Controller:
         self._flip_gen = 0                       # bumped on every flip: a CEC read that spans one is stale
         self._refresh_task: asyncio.Task | None = None   # after a flip: reload the game we left (see _refresh_left)
         self._refreshing: str | None = None      # the target the running preload is refreshing, if it is a refresh
+        self._wish: tuple[str, float] | None = None   # the planner's latest preload ask (target, at), even if refused
         self._standby_miss: str | None = None    # a Prime standby whose last check found no session (one more read)
         self._exit_check = None
         self._flip_s: float | None = None       # HOME -> active source, of the last flip
@@ -628,7 +630,7 @@ class Controller:
 
     # --- what the hidden stick has -----------------------------------------------
 
-    async def _refresh_left(self, target: str, stick: Stick | None = None) -> None:
+    async def _refresh_left(self, target: str, stick: Stick | None = None, since: float | None = None) -> None:
         """After a flip: put the game we just left back on the hidden stick, live (see _execute_two).
         Prime keeps its player when its stick loses the TV input, so a Prime game that is still
         playing live there is simply kept (_kept_playing): no re-tune (~33 s).
@@ -636,12 +638,19 @@ class Controller:
         Waits for a free moment and never competes with real work: a switch (submit) or the
         planner's own preload cancels it, and the planner can displace it mid-tune (preload).
         It goes through preload, so a sleeping stick is never woken and HOME is never pressed."""
+        started = since if since is not None else time.time()   # the flip
         if target.startswith("prime:") and await self._kept_playing(target, stick or self.hidden):
             return
         for _ in range(REFRESH_TRIES):
             await asyncio.sleep(REFRESH_POLL_S)
             if self.hidden_target != target or self.hidden_ready or self.on_target == target:
                 return   # something else was loaded there meanwhile, or we already went back
+            w = self._wish
+            if w and w[0] != target and w[1] >= started and time.time() - w[1] <= PLANNER_WISH_S:
+                # Since the flip the planner asked for another game on this stick (refused only for
+                # now: the preload gap, a switch running). Its preload is coming and would cancel
+                # this reload mid-tune, so don't start one.
+                continue
             if not self._busy():
                 self.preload(target, refresh=True)
                 return
@@ -1195,7 +1204,7 @@ class Controller:
                 detail += f"; resumed by {how.replace('_', ' ')}"
         self._book_flip(hid, target, flip_s, resume_s, how)
         if old_target and not replay:
-            self._refresh_task = asyncio.create_task(self._refresh_left(old_target, old_stick))
+            self._refresh_task = asyncio.create_task(self._refresh_left(old_target, old_stick, time.time()))
         self._verified_at = time.time() - self._verify_every() + VERIFY_SOON_S
         return Outcome(True, target, took, detail, False, time.time(), path=path, waited=waited,
                        flip_s=None if flip_s is None else round(flip_s, 2),
@@ -1481,6 +1490,8 @@ class Controller:
         if replay_id is not None and self._parked_for(target, replay_id):
             return False
         now = time.time()
+        if not refresh and self.can_tune(target) and self._plays(self.hidden, target):
+            self._wish = (target, now)   # what the planner wants there, even if refused just now
         displace = None
         if not refresh and self._refreshing not in (None, target) and self._preload_task \
                 and not self._preload_task.done():

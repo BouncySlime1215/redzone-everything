@@ -317,3 +317,41 @@ async def test_a_youtube_tv_standby_with_no_session_is_still_dropped_at_once(two
     c.hidden.playing = "none"
     await verify(c)
     assert c.standby == (None, None)
+
+
+# --- YouTube TV: the reload waits while the planner wants the stick ------------------------------
+
+async def test_a_refresh_holds_off_while_the_planner_wants_another_game(two, monkeypatch):
+    monkeypatch.setattr(ctl, "REFRESH_POLL_S", 0.01)
+    c, tuner = two
+    c.on_target = "youtubetv:fox"
+    await c.execute("youtubetv:espn", may_cut=lambda: True)
+    c._last_preload = time.time()                       # the planner's preload gap isn't over yet...
+    assert not c.preload("youtubetv:cbs")               # ...so its pick is refused for now
+    await refreshed(c)
+    assert ("a:5555", "youtubetv:fox") not in tuner.calls   # no reload it would cancel mid-tune
+    c._last_preload = 0
+    assert c.preload("youtubetv:cbs")                   # the planner's next tick gets the stick
+    await c._preload_task
+    assert c.standby == ("youtubetv:cbs", None) and c.hidden_ready
+
+
+async def test_a_wish_from_before_the_flip_doesnt_hold_the_refresh(two, monkeypatch):
+    monkeypatch.setattr(ctl, "REFRESH_POLL_S", 0.01)
+    c, tuner = two
+    c.on_target = "youtubetv:fox"
+    c._wish = ("youtubetv:cbs", time.time())            # asked before this switch
+    await c.execute("youtubetv:espn", may_cut=lambda: True)
+    await refreshed(c)
+    assert tuner.calls[-1] == ("a:5555", "youtubetv:fox") and c.hidden_ready
+
+
+async def test_a_wish_the_hidden_stick_cant_play_doesnt_hold_the_refresh(two, monkeypatch):
+    monkeypatch.setattr(ctl, "REFRESH_POLL_S", 0.01)
+    c, tuner = two
+    c.on_target = "youtubetv:fox"
+    await c.execute("youtubetv:espn", may_cut=lambda: True)
+    c._failed["youtubetv:cbs"] = time.time() + 60       # CBS failed lately: can't be preloaded
+    assert not c.preload("youtubetv:cbs")
+    await refreshed(c)
+    assert tuner.calls[-1] == ("a:5555", "youtubetv:fox") and c.hidden_ready
