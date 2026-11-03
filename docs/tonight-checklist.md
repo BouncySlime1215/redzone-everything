@@ -1,10 +1,11 @@
 # Tonight at home (about 30 minutes, mostly waiting)
 
-Do these in order, **before the first game**. Everything runs in Terminal from the repo folder.
+Do these in order, **before the first game**. Everything runs in Terminal from the repo folder
+(the Mac's checkout, on branch `codex/resume-redzone`). Every command below assumes you're in it.
 Steps marked ⏳ run by themselves; you can walk away.
 
 ```sh
-cd ~/redzone-everything        # or wherever the repo lives on the Mac
+cd /Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone
 ```
 
 ## 1. Power and network (2 min)
@@ -42,11 +43,18 @@ just stops and says so (exit 2), and nothing changes. It:
 4. watches its health for 10 minutes
 5. rolls everything back by itself if things got worse
 
+Your local untracked files (`data/`, `agent/model/`, `.venv-agent/`, `docs/build-plan*.md`) are
+fine and stay put. Only an edited *tracked* file stops it. To check first,
+`git status --short --untracked-files=no` should print nothing. If a local copy of a file the
+release now tracks has different contents, the release's version is used and yours is kept in
+`data/deploy/untracked/`; a rollback puts yours back. After the deploy, the checkout sits on the
+release commit (detached), not on `codex/resume-redzone`. That's expected.
+
 The Mac still runs this morning's code, which doesn't have the deploy script yet. So the first
 time, this one command fetches the script and runs it (copy the whole line):
 
 ```sh
-git fetch origin integration/release && git show FETCH_HEAD:scripts/deploy.py > /tmp/rz_deploy.py && .venv/bin/python -c "import sys,pathlib; sys.path.insert(0,'/tmp'); import rz_deploy as d; sys.exit(d.main(['deploy','--wait','60'], root=pathlib.Path.cwd()))"
+cd /Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone && git fetch origin integration/release && git show FETCH_HEAD:scripts/deploy.py > /tmp/rz_deploy.py && .venv/bin/python -c "import sys,pathlib; sys.path.insert(0,'/tmp'); import rz_deploy as d; sys.exit(d.main(['deploy','--wait','60'], root=pathlib.Path.cwd()))"
 ```
 
 From tomorrow on it's just `.venv/bin/python scripts/deploy.py deploy`.
