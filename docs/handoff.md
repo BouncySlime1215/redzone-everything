@@ -58,13 +58,13 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-03 5:05 PM ET.** Live service: this MORNING's code (deploy tonight).
-- **integration/next:** green, last merge #33. Open PRs: #13 #16 #18 #20 #23 #24 #26 #30 #34 #35 #36. `integration/release` isn't cut yet (due by 7 PM).
-- **Kaggle round 1, V2:** running 2 h 05 m (the teacher was at ~5,100 of 81,372 at the last read). ETA ~1 AM.
+- **2026-11-03 5:20 PM ET.** Live service: this MORNING's code. **Release candidate 1 is cut: `integration/release` 9e859b7.** RC1 is in CI ("integration/next into codex/resume-redzone"). Nick deploys tonight with docs/tonight-checklist.md.
+- **Open PRs:** #13 #16 #18 #20 #23 #24 #26 #30 #36 #37.
+- **Kaggle round 1, V2:** running 2 h 16 m; teacher at 6,400 of 81,372 (~79 tok/s, slowing). ETA ~1 AM.
 - **Kaggle round 2:** re-upload the refreshed rz_code.tar.gz as a new version of nickmatta/redzone-code before starting.
-- **Usage:** 45%, on pace.
-- **RedZone teacher:** legal sources only (Nick's YTTV recordings + RedZone's public rules). Waiting on Nick's OK to add "NFL RedZone" + "NFL RedZone Replay" to the YTTV library. Unofficial YouTube uploads are declined.
-- **Waiting on Nick tonight:** docs/tonight-checklist.md. **Wed 5 PM:** new account (docs/new-environment.md).
+- **Usage:** 45%, on pace (<=55% by 10 PM).
+- **RedZone teacher:** legal sources only. Nick to add "NFL RedZone" + "NFL RedZone Replay" to the YTTV library himself (Chrome froze mid-add). Unofficial uploads are declined.
+- **Wed 5 PM:** new account (docs/new-environment.md).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
