@@ -268,6 +268,7 @@ class Fix:
     action: str
     ok: bool
     detail: str = ""
+    at: float = 0.0
 
 
 class Supervisor:
@@ -304,6 +305,11 @@ class Supervisor:
         self._safe_on: bool | None = None                # last safe-mode state recorded as an episode
         self.last_step = 0.0
         self.running = False
+        # Runtime invariants + the contract's HealthReport (redzone/platform/health.py): sees, never fixes.
+        from redzone.platform.health import PlatformHealth
+        self.health = PlatformHealth(engine, fixes=self.contract_fixes, data_dir=self.root)
+        self._faults_logged: set[tuple[str, str]] = set()
+        self.last_faults: list = []
 
     # --- config / helpers -------------------------------------------------------------
 
@@ -356,7 +362,7 @@ class Supervisor:
         except Exception as ex:   # a fix must never take the supervisor down
             log.exception("supervisor fix %s failed", rule)
             ok, detail = False, f"crashed: {ex}"
-        f = Fix(rule, key, action, bool(ok), detail)
+        f = Fix(rule, key, action, bool(ok), detail, self.clock())
         self.fixes.append(f)
         self.counts[rule] += 1
         self._record({"kind": "fix", "rule": rule, "key": key, "action": action, "ok": bool(ok), "detail": detail})
@@ -407,7 +413,7 @@ class Supervisor:
 
     RULES = ("rule_stuck_switch", "rule_screen", "rule_failures", "rule_safe_mode", "rule_idle", "rule_feeds",
              "rule_adb", "rule_delay_doubt", "rule_finished_hold", "rule_logs", "track_moments", "track_episodes",
-             "grade_cuts", "maybe_report")
+             "grade_cuts", "maybe_report", "rule_invariants")
 
     async def step(self) -> None:
         if not self.opt("enabled"):
@@ -1006,6 +1012,32 @@ class Supervisor:
             return False
         return await push_ntfy(str(self.opt("ntfy_server")), topic, title, body, priority, tags, self.push)
 
+    async def rule_invariants(self, now: float) -> None:
+        """Check the runtime invariants; log each fault once when it appears and once when it clears."""
+        faults = self.health.faults(now)
+        self.last_faults = faults
+        keys = {(f.code, f.component) for f in faults}
+        for f in faults:
+            if (f.code, f.component) not in self._faults_logged:
+                self._faults_logged.add((f.code, f.component))
+                self._record({"kind": "invariant", "code": f.code, "severity": f.severity.value,
+                              "component": f.component, "detail": f.detail})
+                if f.severity.value in ("error", "critical"):
+                    log.warning("invariant broken: %s (%s): %s", f.code, f.component, f.detail)
+        for k in sorted(self._faults_logged - keys):
+            self._faults_logged.discard(k)
+            self._record({"kind": "invariant_cleared", "code": k[0], "component": k[1]})
+
+    def contract_fixes(self) -> list:
+        """Tonight's fixes in the contract's shape (contracts/health.py Fix)."""
+        from redzone.contracts.health import Fix as HFix
+        return [HFix(fault_code=f.rule, action=f.action, target=f.key, ok=f.ok, at=f.at, source="supervisor",
+                     note=f.detail) for f in self.fixes]
+
+    def report(self, now: float | None = None):
+        """contracts.health.Health.report: faults (invariants), fixes, safe mode, two-stick, away, RAM, disk."""
+        return self.health.report(self.clock() if now is None else now)
+
     def status(self) -> dict:
         now = self.clock()
         return {"running": self.running, "last_step": self.last_step or None,
@@ -1014,7 +1046,9 @@ class Supervisor:
                            for f in list(self.fixes)[-5:]],
                 "muted_targets": sorted(t for t, u in self.muted_targets.items() if u > now),
                 "muted_apps": sorted(a for a, u in self.muted_apps.items() if u > now),
-                "watching": sorted(k for k in self.since)}
+                "watching": sorted(k for k in self.since),
+                "faults": [{"code": f.code, "severity": f.severity.value, "component": f.component,
+                            "detail": f.detail} for f in self.last_faults]}
 
 
 # --- file housekeeping ----------------------------------------------------------------------

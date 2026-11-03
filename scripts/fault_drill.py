@@ -83,7 +83,15 @@ async def _switch(fault_on: str | None, fault: str | None, tv_fail: bool = False
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         out = outs[-1]
-        return {"ok": out.ok, "wall_s": round(wall, 2), "mid_play_cuts": world.mid_play_cuts,
+        try:   # which runtime invariants are broken once the dust settles (redzone/platform/health.py)
+            from types import SimpleNamespace
+            from redzone.platform.health import PlatformHealth
+            eng = SimpleNamespace(control=c, cfg=c.cfg, _pending_decision=None,
+                                  decider=SimpleNamespace(current="fox", replaying=None, after_replay=False))
+            broken = sorted({code for code, _, _ in PlatformHealth(eng).conditions()})
+        except ImportError:
+            broken = None
+        return {"invariants": broken, "ok": out.ok, "wall_s": round(wall, 2), "mid_play_cuts": world.mid_play_cuts,
                 "stuck": _stuck(c), "flagged": bool(out.ok or out.detail),
                 "per_try_s": [round(o.took, 2) for o in outs] if repeats > 1 else None,
                 "timeouts": getattr(stick, "timeouts", 0),
