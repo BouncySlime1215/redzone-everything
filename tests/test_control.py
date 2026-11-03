@@ -452,3 +452,46 @@ def test_unknown_input_blocks_preload_reseek_and_sunday_ticket_scan(two):
     assert run(c.scan_sunday_ticket(["AAAAAAAAAAA"], [])) == {}
     assert tuner.calls == []
     assert not c.sticks[1].log
+
+
+def test_entry_rewind_lands_the_live_switch_behind_on_purpose(two):
+    """[cut timing] A live switch planned to come up on the dead ball before the current play:
+    flip, then whole rewind presses; the game stays the live target (only its delay grows)."""
+    c, tuner = two
+    out = run(c.execute("youtubetv:espn", may_cut=lambda: True, entry_rewind_s=20.0))
+    assert out.ok and "rewound 20s to the dead ball" in out.detail
+    presses = sum(cmd.count("KEYCODE_MEDIA_REWIND") for cmd in c.main.log if isinstance(cmd, str))
+    assert presses == 2 and "KEYCODE_MEDIA_PLAY" in c.main.log
+    assert c.on_target == "youtubetv:espn"
+
+
+def _flaky_standby(c, monkeypatch, bad):
+    """The preloaded standby's playback; read #2 (the flip-time check) and later go through `bad`."""
+    monkeypatch.setattr(ctl, "STANDBY_REREAD_S", 0.0)
+    c.hidden_target, c.hidden_ready = "youtubetv:fox", True
+    hid = c.hidden
+    hid.remember("youtubetv:fox", run(hid.playback("yttv.pkg")))
+    real, reads = hid.playback, {"n": 0}
+
+    async def playback(package=None):
+        reads["n"] += 1
+        return bad(reads["n"], await real(package))
+    hid.playback = playback
+    return reads
+
+
+def test_one_missing_session_read_at_flip_time_is_asked_again(two, monkeypatch):
+    """Soak, Nov 2: a fresh Prime standby read "none" once right at the flip and the whole switch
+    failed. A missing session is re-read before the switch is given up."""
+    c, tuner = two
+    _flaky_standby(c, monkeypatch, lambda n, pb: {"state": "none", "pkg": None, "position": None,
+                                                  "updated": None} if n == 2 else pb)
+    out = run(c.execute("youtubetv:fox", may_cut=lambda: True))
+    assert out.ok and out.path == "preloaded" and tuner.calls == []
+
+
+def test_paused_standby_at_flip_time_is_not_reread(two, monkeypatch):
+    c, tuner = two
+    reads = _flaky_standby(c, monkeypatch, lambda n, pb: dict(pb, state="paused") if n >= 2 else pb)
+    out = run(c.execute("youtubetv:fox", may_cut=lambda: True))
+    assert not out.ok and out.detail == "standby stream is no longer confirmed" and reads["n"] == 2

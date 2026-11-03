@@ -8,8 +8,8 @@ import { patch } from "./rz-dom.js?v=40";
 import { icon, logo, leagueImg, empty, sec, screenHead, skel } from "./rz-ui.js?v=40";
 import { confirmSheet, toast } from "./rz-sheet.js?v=40";
 import { api, act } from "./rz-api.js?v=40";
-import { loadTeams, teamList } from "./rz-detail.js?v=40";
-import { showTeams } from "./rz-games.js?v=40";
+import { loadTeams, teamList } from "./rz-detail.js?v=41";
+import { showTeams } from "./rz-games.js?v=41";
 
 const ui = app.ui;
 ui.pending = ui.pending || {};

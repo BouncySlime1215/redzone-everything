@@ -15,7 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from redzone.decider.screen import CONTINUOUS, _is_marker
-from redzone.lab.backtest import tuning_blackout_seconds, watched_whole
+from redzone.lab import cutgrade
+from redzone.lab.backtest import leave_offsets, offsets_of, on_screen, tuning_blackout_seconds, watched_whole
 from redzone.models import REAL_BREAKS, League, Stoppage
 from redzone.sources import espn
 
@@ -41,10 +42,13 @@ class Card:
     dead: float = 0.0
     watched: float = 0.0
     tuning_blackout_s: float = 0.0
+    cut: cutgrade.CutCard = field(default_factory=cutgrade.CutCard)
 
     def add(self, o: "Card") -> None:
         for k, v in vars(o).items():
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
+            if isinstance(v, cutgrade.CutCard):
+                self.cut.add(v)
+            elif isinstance(v, (int, float)) and not isinstance(v, bool):
                 setattr(self, k, getattr(self, k) + v)
             elif isinstance(v, list):
                 getattr(self, k).extend(v)
@@ -58,7 +62,7 @@ class Card:
                 "tuning_blackout_s": round(self.tuning_blackout_s, 1),
                 "tuning_blackout_pct": pct(self.tuning_blackout_s, self.hours * 3600),
                 "switches_per_hour": round(self.switches / max(0.1, self.hours), 1),
-                "big_plays": self.big, "crunch_plays": self.crunch}
+                "big_plays": self.big, "crunch_plays": self.crunch, **self.cut.summary()}
 
 
 def _type(p: dict) -> str:
@@ -176,14 +180,16 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
     card.replays = sum(1 for s in switches if s.kind == "replay")
     by_id = {r.gid: r for r in replays}
     card.tuning_blackout_s = tuning_blackout_seconds(watching, tune_s, t0, t1)
+    card.cut = cutgrade.grade(replays, switches, lag_total, tune_s)
 
     prev_kind = None
-    for s in switches:
+    offs = offsets_of(switches)
+    for s, lo in zip(switches, leave_offsets(switches)):
         was_replay, prev_kind = prev_kind == "replay", s.kind
         r = by_id.get(s.frm or "")
         if r is None or was_replay:
             continue
-        ok, what = _clean_cut(league, r.wall, r.plays, s.t - lag_total)
+        ok, what = _clean_cut(league, r.wall, r.plays, s.t - lag_total - lo)
         if not ok:
             card.cuts.append((s.t, f"{r.matchup}: {what}"))
 
@@ -193,7 +199,7 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
         prev = None
         for w, p in zip(r.wall, r.plays):
             air = w + lag_total - PLAY_LEN[league]
-            on = watched_whole(watching, r.gid, air, w + lag_total, tune_s, t1)
+            on = watched_whole(watching, r.gid, air, w + lag_total, tune_s, t1, offs)
             if is_big(league, p, prev):
                 card.big += 1
                 card.big_live += on
@@ -209,12 +215,12 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
 
     t = t0
     while t <= t1:
-        g = _on_screen(watching, t, tune_s)
+        g, o = on_screen(watching, offs, t, tune_s)
         if g and g.startswith("replay:"):
             card.watched += 10
         elif g and g in by_id:
             r = by_id[g]
-            st = t - lag_total
+            st = t - lag_total - o
             i = max(0, max((k for k, w in enumerate(r.wall) if w <= st), default=0))
             if r.wall[0] <= st <= r.wall[-1]:
                 card.watched += 10

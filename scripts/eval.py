@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT))
 
 from redzone.config import Config  # noqa: E402
 from redzone.lab.backtest import fmt_time, run  # noqa: E402
+from redzone.lab.cutgrade import CutCard  # noqa: E402
 from redzone.lab.optimize import load_slates  # noqa: E402
 
 
@@ -60,6 +61,7 @@ def main():
     tot = dict(big=0, seen=0, live=0, cuts=0, dead=0.0, watched=0.0, crunch=0, crunch_live=0,
                my_crunch=0, my_crunch_live=0, switches=0, hours=0.0, my_big=0, my_seen=0, blackout=0.0)
     causes: dict[str, float] = {}
+    cut = CutCard()
     for reps in eval_set(a.n):
         r = run(reps, cfg, set(cfg.get("teams.nfl")), **knobs)
         tot["big"] += r.big_plays; tot["seen"] += r.big_plays_caught; tot["live"] += r.big_plays_live
@@ -69,12 +71,15 @@ def main():
         tot["switches"] += len(r.switches); tot["hours"] += r.hours
         tot["blackout"] += r.tuning_blackout_s
         tot["my_big"] += r.my_big_plays; tot["my_seen"] += r.my_big_plays_live
+        cut.add(r.cut)
         for k, v in r.dead_causes.items():
             causes[k] = causes.get(k, 0.0) + v
         if a.slates:
             print(" ", reps[0].matchup, f"+{len(reps)-1}", json.dumps(r.summary))
             for t, what in r.mid_play_cuts:
                 print("     cut:", fmt_time(t), what)
+            for t, kind, what in r.cut.mid_entries:
+                print("     mid-play entry:", fmt_time(t), kind, what)
     pct = lambda x, y: round(100 * x / max(1, y), 1)
     out = {"mid_play_cuts": tot["cuts"], "dead_air_pct": pct(tot["dead"], tot["watched"]),
            "big_seen_pct": pct(tot["seen"], tot["big"]), "big_live_pct": pct(tot["live"], tot["big"]),
@@ -84,7 +89,8 @@ def main():
            "switches_per_hour": round(tot["switches"] / max(0.1, tot["hours"]), 1),
            "tuning_blackout_s": round(tot["blackout"], 1),
            "tuning_blackout_pct": pct(tot["blackout"], tot["hours"] * 3600),
-           "big_plays": tot["big"], "crunch_plays": tot["crunch"], "seconds": round(time.time() - t0)}
+           "big_plays": tot["big"], "crunch_plays": tot["crunch"], **cut.summary(),
+           "seconds": round(time.time() - t0)}
     print(json.dumps(out, indent=1))
     if a.dead:
         print("dead air by cause (points of dead_air_pct):")
