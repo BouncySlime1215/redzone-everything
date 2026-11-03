@@ -174,3 +174,19 @@ def test_decider_waits_for_a_dead_ball_where_it_cannot_rewind(cfg, clock):
     clock.t = 1095.0        # now it lands at real 1060: the huddle after the 1040 snap
     d = dec.decide(_cands("prime:b"))
     assert d.action == "switch" and d.target == "b" and d.rewind_s == 0.0
+
+
+def test_team_timeout_is_ridden_out_but_a_tv_timeout_is_worth_a_visit(cfg, clock):
+    from redzone.decider.screen import Event
+    from redzone.scoring.engine import Scored
+    s = Scored("b", League.NFL, 50, 50, 50, 1.0, 0.0, "r", [], True, None, None, 1.0)
+    for ttext, text, short in (("Timeout", "Timeout #1 by MIN", True), ("Official Timeout", "Timeout", False)):
+        dec = _decider(cfg, clock)
+        tl = dec.timeline("b", League.NFL)
+        tl.dead.add("1", 1000, 1000, "rush", "run for 3", "Rush", None, 1)
+        tl.dead.add("2", 1002, 1002, "timeout", text, ttext, None, 1)
+        tl.dead.seen(1010, 8)
+        tl.events.append(Event(1002, "stop_start", "timeout"))
+        dec._known["b"] = _cands("youtubetv:b")["b"]
+        clock.t = 1050.0      # the screen (40 s behind) shows real 1010: ten seconds into the stop
+        assert dec._short_stop("b", s) is short

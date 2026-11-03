@@ -78,6 +78,8 @@ ENTRY_URGENT_S = 2.0
 # The furthest an entry rewinds to reach a dead ball (YouTube TV): hockey can run a minute and more
 # between whistles; RedZone itself airs touchdowns ~16 s late.
 ENTRY_MAX_REWIND_S = 120.0
+# A stop expected to run at least this much longer on screen is worth a visit (breaks.VISIT_MIN_S).
+VISIT_MIN_S = 90.0
 
 def _short(s: Scored) -> str:
     return "your game"
@@ -1126,7 +1128,15 @@ class Decider:
         if tl is None or s.league.base != League.NFL or s.crunch or s.lock in CRUNCH_LOCKS:
             return False
         start, end = tl.last("stop_start"), tl.last("stop_end")
-        return start is not None and start.label in SHORT_STOPS and (end is None or end.seen < start.lo)
+        short = start is not None and start.label in SHORT_STOPS and (end is None or end.seen < start.lo)
+        if not short or not tl.dead.marks:
+            return short
+        # [cut timing] Which kind of stop is it? A team timeout (median 43 s) is over before a visit
+        # pays off; an official TV timeout (147 s) or a replay review (217 s) is worth the trip.
+        x = self._known.get(gid)
+        d = self.delays.get((x.target if x else None) or self._known_target.get(gid) or "unknown")
+        screen = self._clock() - d.mu
+        return tl.dead.resume_eta(screen) - screen < float(self.cfg.get("decider.entry.visit_min_s", VISIT_MIN_S))
 
     def _routine_tail(self, cur: Candidate, gate: Gate | None, watchable, now: float) -> bool:
         """The ad is still on screen but the break is too far along to visit a game and get back.

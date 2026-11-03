@@ -363,7 +363,7 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
             return Stoppage.END_PERIOD
         if p.get("scoringPlay") or any(k in t for k in _SCORE_KINDS):
             return Stoppage.SCORE_BREAK
-        if "challenged" in text or "review" in text:
+        if any(k in text for k in ("challenged", "review", "replay official", "reversed", "upheld")):
             return Stoppage.REVIEW
         if "injur" in text:
             return Stoppage.INJURY
