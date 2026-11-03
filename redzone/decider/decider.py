@@ -622,6 +622,14 @@ class Decider:
         lg = x.scored.league.base.value
         return lg in (self.cfg.get("decider.entry.leagues") or ["nfl"])
 
+    def _timed_entry(self, gid: str | None, cands) -> bool:
+        """[highlight jump] Is a switch into gid held for a dead ball (cut timing, or hold-only)?"""
+        x = cands.get(gid) if gid else None
+        if x is None:
+            return False
+        lg = x.scored.league.base.value
+        return self._cut_timed(gid, cands) or lg in (self.cfg.get("decider.entry.hold_only") or [])
+
     def _entry_only(self, x: Candidate | None, d: Decision) -> bool:
         """Leagues whose switches wait for a whistle on the way IN only (decider.entry.hold_only),
         never into crunch time or as the night's first pick (nothing on screen to protect). Hockey,
@@ -856,11 +864,18 @@ class Decider:
             if chase:
                 self.home_break_visit = visit_home
                 return self._chase_decision(chase, cands, state, gate_txt, now)
-            planned = None if away_home else self._long_break_visit(watchable, cands, self.current, gate_ok,
-                                                                     state, gate_txt, now)
+            # From a finished reel the break is still home's: plan its long-break visit like at home.
+            planned = self._long_break_visit(watchable, cands, away_home, gate_ok, state, gate_txt, now) \
+                if self.current == REEL and away_home else \
+                None if away_home else self._long_break_visit(watchable, cands, self.current, gate_ok,
+                                                              state, gate_txt, now)
             if planned:
                 return planned
             dest = self._break_destination(watchable, exclude=self.current, home=away_home)
+            if self.current == REEL and dest not in PSEUDO and not self._timed_entry(dest, cands):
+                # [highlight jump] A finished reel never starts a visit we can't land on a dead ball
+                # (basketball: no entry timing). Scorecards: NBA entries mid-play +3 without this.
+                dest = None
             rp = self._replay_option(cands, dest, now)
             if rp:
                 self.home_break_visit = visit_home
@@ -870,7 +885,7 @@ class Decider:
                 self.home_break_visit = visit_home
                 return Decision(now, "switch", dest, self._why(cands[dest], f"{_short(s_cur)} on a break → "),
                                 state, gate_txt, kind="break_visit")
-            if self.current == REEL and away_home:
+            if self.current == REEL and away_home and self._timed_entry(away_home, cands):
                 # [highlight jump] The reel is done and nothing else fills the rest of the break: wait
                 # it out at home, already there for the restart.
                 return Decision(now, "switch", away_home, "catch-up done — back to your game for the restart",
@@ -1407,7 +1422,11 @@ class Decider:
         # never traded for a reel.
         if REEL in watchable and exclude != REEL and anchor and not (
                 best and (crunch(fits[best]) or fits[best].scored.personal >= hold)):
-            if self._reel_jump(anchor, watchable, fits[best].scored.score if best else -1.0).ok:
+            rival = fits[best].scored.score if best else -1.0
+            if REDZONE in watchable and exclude != REDZONE and REDZONE in fits:
+                # RedZone is already commercial-free and live: the reel has to beat it too.
+                rival = max(rival, fits[REDZONE].scored.score)
+            if self._reel_jump(anchor, watchable, rival).ok:
                 return REEL
         if best:
             return best
