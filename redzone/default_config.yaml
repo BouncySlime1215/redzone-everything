@@ -92,6 +92,9 @@ score:
     power_play: 15
     five_on_three: 25
     power_play_p3_close: 22
+    power_play_lock_within: 2   # a power play holds the TV (and is worth a visit) within this many goals
+    imminent_pp_s: 30           # a power play's first N s of game clock count as an imminent goal chance
+    imminent_hold_s: 30         # ...and stay "imminent" this long after (a chase skips the whistle hold only then)
     empty_net: 30
     penalty_shot: 40
   mlb:
@@ -120,7 +123,8 @@ brain:                     # learned models (redzone/scoring/brain.py, trained b
 decider:
   switch_margin: 10
   entry:
-    hold_only: [nhl]       # switches IN wait for a whistle (never into crunch); [] turns it off
+    hold_only: [nhl]       # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
+    hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
   switch_cost: {youtubetv: 3, prime: 8, espn: 7, hdmi_flip: 1}   # seconds to the new picture; replaced by
                            # measured times as you use it (see switch_speed)
   return_tolerance: 5      # go back to the previous game if it's within this many points

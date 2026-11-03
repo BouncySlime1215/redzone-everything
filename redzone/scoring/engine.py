@@ -100,6 +100,10 @@ class History:
     leader: int | None = None          # +1 home, -1 away, 0 tied (last seen)
     lead_changes: int = 0              # lead changes + ties-from-behind this game
     lead_change_at: float | None = None
+    pp_team: str | None = None         # [nhl chase] the power play we're tracking...
+    pp_start_clock: float | None = None  # ...and the game clock (period, seconds left) it started at
+    pp_start_period: int | None = None
+    imminent_at: float | None = None   # last poll a goal chance was imminent (see nhl_goal_imminent)
 
     def observe(self, g: GameState, now: float, wp_threshold: float) -> None:
         hs, as_ = g.home.score, g.away.score
@@ -164,6 +168,8 @@ class Scored:
     garbage: bool = False   # decided game (bets/fantasy can still keep it interesting)
     late: bool = False      # final period (NFL/NBA Q4+, NHL P3+, MLB 7th+): your team here is never left for a lesser game
     crunch: bool = False    # crunch time (see crunch_time); unlike lock, kept through breaks
+    crunch_now: bool = False  # inside the graded crunch window itself (NHL: last 2:00, not the 3:00 run-up)
+    imminent: bool = False  # [nhl chase] a goal chance was imminent here within the last ~half minute
     factor: str = ""        # short human reason for the single biggest factor right now
     factors: dict[str, float] = field(default_factory=dict)  # context points by name (debug/UI)
     brain: dict = field(default_factory=dict)  # learned brain's reading (hotness, key/break odds, reasons)
@@ -211,6 +217,8 @@ class Scorer:
 
         fn = {League.NFL: _nfl, League.NBA: _nba, League.NHL: _nhl, League.MLB: _mlb}[g.league.base]
         m, parts, lock, pre = fn(g, h, k, now, c)
+        if g.league.base == League.NHL and nhl_goal_imminent(g, h, c):
+            h.imminent_at = now
         ctx, ctx_parts, factors = context(g, h, k, now, c)
         m += ctx
         parts.extend(ctx_parts)
@@ -258,6 +266,9 @@ class Scorer:
                       is_break, None if is_break else lock, pre, k, garbage=h.garbage, crunch=crunch_time(g),
                       late=is_late(g),
                       factor="garbage time" if h.garbage else factor, factors=factors,
+                      crunch_now=crunch_window(g),
+                      imminent=h.imminent_at is not None
+                      and now - h.imminent_at <= c.get("score.nhl.imminent_hold_s", 30),
                       brain=reading.as_dict() if reading is not None and reading.hotness is not None else {})
 
     LEAGUE_LIVE_S = 300.0   # a league counts as "on tonight" this long after its last live game
@@ -631,14 +642,45 @@ def _nhl(g, h, k, now, c):
     for flag in g.player_flags[:1]:
         parts.append((10, flag))
     lock = None
-    if sit.empty_net:
+    if g.period_type == "SO" or p >= 4:
+        lock = "overtime"      # [nhl pp] sudden death: only crunch time elsewhere takes the TV (decider)
+    elif sit.empty_net:
         lock = "empty net"
-    elif sit.power_play and k >= 0.5:
-        lock = "power play"
-    elif g.period_type == "SO" or (p >= 4 and k >= 0.9):
-        lock = "overtime"
+    elif sit.power_play and diff is not None and abs(diff) <= c.get("score.nhl.power_play_lock_within", 2):
+        lock = "power play"    # [nhl pp] within 2 goals; garbage time clears it (score())
     pre = "power play" if sit.power_play else ("empty net" if sit.empty_net else None)
     return m, parts, lock, pre
+
+
+def crunch_window(g: GameState) -> bool:
+    """The graded crunch window. Same as crunch_time except NHL, whose flag goes up at 3:00 so we
+    can get there at a stoppage: inside 2:00 (or OT) every second counts, before it a whistle is
+    worth waiting for on the way in."""
+    if not crunch_time(g):
+        return False
+    if g.league != League.NHL or _q(g) >= 4:
+        return True
+    return g.clock_s is not None and g.clock_s <= 120
+
+
+def nhl_goal_imminent(g, h: History, c) -> bool:
+    """[nhl chase] Is a goal chance imminent right now? A 5-on-3, the first 30 s (game clock) of
+    a power play, an empty net in the last 2:00, or a penalty shot. Only then may a chase into
+    hockey skip the whistle hold on the way in: anywhere else, landing mid-play costs more than
+    the goal it might catch (PR #3 review: mid-play entries 11 -> 14)."""
+    sit = g.situation
+    p, clk = g.period or 0, g.clock_s
+    if sit.power_play != h.pp_team:
+        h.pp_team = sit.power_play
+        h.pp_start_period, h.pp_start_clock = (p, clk) if sit.power_play else (None, None)
+    if sit.power_play and sit.strength in ("5v3", "3v5"):
+        return True
+    if sit.power_play and h.pp_start_clock is not None and clk is not None and h.pp_start_period == p \
+            and h.pp_start_clock - clk <= c.get("score.nhl.imminent_pp_s", 30):
+        return True
+    if sit.empty_net and p >= 3 and clk is not None and clk <= 120:
+        return True
+    return any((x.kind or "").startswith("ps-") for x in (g.recent_plays or [])[-3:])
 
 
 def estimate_li(inning: int, diff_for_batting: int, outs: int, runners: tuple[bool, bool, bool]) -> float:
