@@ -29,12 +29,18 @@ sys.path.insert(0, str(ROOT))
 
 from redzone.config import Config  # noqa: E402
 from redzone.lab.backtest import fmt_time, run  # noqa: E402
+from redzone.lab import evaldata  # noqa: E402
 from redzone.lab.cutgrade import CutCard  # noqa: E402
 from redzone.lab.optimize import load_slates  # noqa: E402
 
 
-def eval_set(n=16):
-    slates = load_slates(ROOT / "data/archive/nfl")
+# The last NFL night graded. Without it the slate set grows with every archived Sunday and the
+# "same 16 slates" drift between sessions. The pinned eval dataset (eval-data.lock.json) wins.
+EVAL_END = "20261101"
+
+
+def eval_set(n=16, end=None):
+    slates = load_slates(ROOT / "data/archive/nfl", end=end or evaldata.window_end("nfl", EVAL_END))
     # Every slate with Washington in it, then an even spread of the rest.
     wsh = [s for s in slates if any("WSH" in r.matchup.split() for r in s)]
     rest = [s for s in slates if s not in wsh]
@@ -105,7 +111,8 @@ def main():
            "behind_live_pct": pct(tot["behind"], tot["hours"] * 3600),
            "big_missed_on_replay": tot["on_replay"],
            "big_plays": tot["big"], "crunch_plays": tot["crunch"], **cut.summary(),
-           "seconds": round(time.time() - t0)}
+           "seconds": round(time.time() - t0),
+           "eval_data": evaldata.stamp(), "eval_end": evaldata.window_end("nfl", EVAL_END)}
     print(json.dumps(out, indent=1))
     if a.dead:
         print("dead air by cause (points of dead_air_pct):")
