@@ -1491,6 +1491,41 @@ class Controller:
         log.warning("re-load of %s on %s failed: %s", target, stick.host, res.error)
         return None
 
+    async def restore_visible(self, target: str, relink: bool = False, why: str = "") -> str | None:
+        """The supervisor saw the stick on screen showing the Fire TV home screen or an app page
+        instead of the game, twice, 20 s apart. Put the game back: a fresh deep link (relink, for
+        the home screen) or the usual resume ladder. Only called when the game is clearly NOT
+        playing there, so no live play can be cut. Returns how it came back, or None."""
+        if not self.live_control or self.input_unknown or self._flipping:
+            return None
+        async with self._lock:
+            stick = self.main
+            if stick is None or self.input_unknown:
+                return None
+            self.stage = {"stage": "resuming", "target": target, "reason": why or "the screen isn't showing the game"}
+            self._visible_fix_at = time.time()
+            r0 = time.monotonic()
+            how: str | None
+            if relink:
+                try:
+                    limit = 55.0 if target.startswith("prime:") else RELINK_MAX_S
+                    res = await asyncio.wait_for(self._tune(stick, target), limit)
+                    how = "relink" if res.ok else None
+                except asyncio.TimeoutError:
+                    how = None
+            else:
+                how = await self._resume_playback(stick, target, 0.0)
+            if how:
+                self.on_target = target
+                self._visible_bad_since = None
+                self.latency.record("resume", time.monotonic() - r0)
+                self.note = ""
+                self.stage = {"stage": "confirmed", "target": target, "reason": f"restored by {how}"}
+            else:
+                self.note = f"The TV isn't showing {target}; couldn't restore it yet"
+                self.stage = {"stage": "failed", "target": target, "reason": self.note}
+            return how
+
     def _book_flip(self, stick: Stick, target: str | None, flip_s: float | None, resume_s: float | None,
                    how: str | None) -> None:
         """The latency book for the phone: input change and picture-back, measured separately."""

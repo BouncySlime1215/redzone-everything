@@ -115,6 +115,15 @@ dry-run, selected devices, unknown power state and controller locks. A sleeping/
 is not woken merely to preload. The server rejects non-LAN clients and cross-origin mutation
 requests; it is intended for a trusted home network, not public deployment.
 
+The supervisor (`redzone/supervisor.py`) checks the live system every ~10 s and fixes what it can:
+the TV on the Fire TV home or an app page instead of the game, a stuck switch, idle with live
+games on, a target/app that keeps failing (back off, mute for the night, use another source),
+safe mode, stale feeds, adb drops, delay doubt that never narrows, a hold on a finished game, and
+log growth. Every fix is rate-limited and logged to `data/supervisor.jsonl`. Each morning it
+writes `data/reports/YYYY-MM-DD.md` (switches, failures by cause, key moments seen/missed, delays
+measured, what it fixed). Set `supervisor.ntfy_topic` to get that summary on your phone through
+the free ntfy app. Any night by hand: `.venv/bin/python -m redzone.supervisor report 2026-11-02`.
+
 ## Verification
 
 ```bash

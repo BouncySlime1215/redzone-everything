@@ -148,6 +148,10 @@ autonomy:
   selftest_may_wake: false
   test_targets: {youtubetv: "", prime: "", espn: ""}
 
+supervisor:                # watches the live system and fixes what it can on its own (redzone/supervisor.py)
+  enabled: true
+  ntfy_topic: ""           # optional: push the nightly report to the free ntfy app (pick a hard-to-guess topic)
+
 two_stick:
   cec_flip: true           # flip inputs by HOME -> HDMI-CEC Active Source (no TV network or SmartThings needed)
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment
