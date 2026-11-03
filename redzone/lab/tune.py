@@ -321,7 +321,7 @@ def tune(gens: int = 24, lam: int = 12, sigma: float = 0.1, workers: int | None 
     today = defaults(_BASE)
     with _pool(workers) as pool:
         base = evaluate_many(pool, [today], "train", halves)[0]
-        log(f"baseline (train): " + json.dumps({lg: base[lg] for lg in LEAGUES}))
+        log("baseline (train): " + json.dumps({lg: base[lg] for lg in LEAGUES}))
         es = CMA(encode(today), sigma, lam, seed)
         best = {"params": today, "fit": (0.0, 0.0), "train": base}
         history = []
