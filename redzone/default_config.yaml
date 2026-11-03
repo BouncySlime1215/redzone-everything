@@ -207,6 +207,17 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   seek_key: KEYCODE_MEDIA_REWIND
   seek_step_s: 10          # seconds per rewind press (measure on your stick in the Screen Lab)
 
+reel:                      # catch-up reel: 5+ plays you missed, back to back, 30-60 s (redzone/reel.py)
+  enabled: true            # find, download and trim clips as they post (ESPN's in-game highlights)
+  play: false              # put reels on the TV (off until the Fire TV player is checked on the stick)
+  min_clips: 5
+  min_s: 30
+  max_s: 60
+  max_age_s: 1800          # plays older than this don't make a reel
+  parallel: 2              # clips prepared at once (download + trim, ~3 s CPU each)
+  cache_mb: 400            # trimmed clips kept on disk
+  min_free_mb: 1500        # never download with less free disk than this
+
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
   sigma_default: 15

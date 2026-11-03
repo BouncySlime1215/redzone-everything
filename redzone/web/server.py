@@ -96,6 +96,18 @@ def build_app(engine: Engine) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
+    @app.get("/reel.mp4")
+    def reel_file():
+        r = engine.reeler.current
+        if r is None or not r.path.exists():
+            return JSONResponse({"error": "no reel ready"}, status_code=404)
+        # Range requests work (Starlette), so a TV player can seek and resume.
+        return FileResponse(r.path, media_type="video/mp4", headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/reel")
+    def reel_info():
+        return engine.reel_view() or {"seconds": 0, "clips": []}
+
     @app.get("/api/state")
     async def state():
         return JSONResponse(json.loads(json.dumps(engine.snapshot(), default=str)))

@@ -14,7 +14,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from redzone import bets as betlib
-from redzone import standby, userstate, views
+from redzone import reel, standby, userstate, views
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
 from redzone.config import Config, ConfigError
 from redzone.control import Controller, Outcome
@@ -84,6 +84,8 @@ class Engine:
         self._tick = 0
         self.started = time.time()
         self.summaries: dict[str, dict] = {}  # latest raw summary per live game (for the detail sheet)
+        self.reeler = reel.Reeler(self.cfg)   # catch-up reel kept ready from the summaries' clips
+        self._reel_task: asyncio.Task | None = None
         self.recorder = Recorder()
         self._last_snapshot = 0.0
         self.mic = None
@@ -248,6 +250,7 @@ class Engine:
             except Exception:
                 log.exception("poll failed")
                 self.decider.note_error()
+            self._reel_tick()
             live = any(g.phase == Phase.LIVE for g in self.merger.games.values())
             soon = any(g.phase == Phase.PRE and g.start_time and 0 < g.start_time - time.time() < 900
                        for g in self.merger.games.values())
@@ -257,6 +260,41 @@ class Engine:
             else:
                 interval = self.cfg.get("polling.live_s") if soon else self.cfg.get("polling.idle_s")
             await asyncio.sleep(max(1.0, interval - (time.time() - t0)))
+
+    def _reel_tick(self) -> None:
+        """Feed new clips to the catch-up reel and rebuild it in the background. Never blocks the
+        poll loop, never raises: a reel is a bonus, the live switching is the job."""
+        try:
+            if not self.reeler.enabled():
+                return
+            leagues = {gid: g.league.value for gid, g in self.merger.games.items()}
+            mine = {lg.value: teams for lg, teams in self._my_teams().items()}
+            self.reeler.ingest(self.summaries, leagues, mine)
+            if self._reel_task is None or self._reel_task.done():
+                self._reel_task = asyncio.create_task(self._reel_refresh())
+        except Exception:
+            log.exception("reel tick failed")
+
+    async def _reel_refresh(self) -> None:
+        try:
+            await self.reeler.refresh(seen=self._reel_seen)
+        except Exception:
+            log.exception("reel refresh failed")
+
+    def _reel_seen(self, c) -> bool:
+        """You saw this play live: its game was on screen when the play reached the screen."""
+        if c.play_at is None:
+            return False
+        target = self.decider.target_of(c.game_id) or ""
+        mu = self.delays.get(target).mu if target else 45.0
+        return self.decider._saw(c.game_id, c.play_at + mu - 3, c.play_at + mu + 6)
+
+    def reel_view(self) -> dict | None:
+        r = self.reeler.current
+        if r is None:
+            return None
+        return {"seconds": r.seconds, "clips": r.clips, "built_at": r.built_at, "url": "/reel.mp4",
+                "play": bool(self.cfg.get("reel.play", False))}
 
     async def _decide_loop(self) -> None:
         """Decide twice a second: gates open and close within seconds, so a 10s cadence would
@@ -1411,6 +1449,7 @@ class Engine:
                      "tv_control": self.control.live_control, "two_stick": self.control.two_stick,
                      "control_note": self.control.note, "mic": self.mic is not None, "announcer_hint": ""},
             "now": now, "next": nxt, "standby": self._standby_view(), "games": games,
+            "reel": self.reel_view(),
             "tonight": self.tonight.view(),
             "screen_evidence": self.screen_evidence(),
             "queue": [self._queue_item(m) for m in sorted(dec.queue, key=lambda m: -m.value)[:10]],
