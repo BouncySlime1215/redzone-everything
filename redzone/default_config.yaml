@@ -93,6 +93,13 @@ score:
     walk_off_spot: 15
     no_hitter: {through_6: 25, through_7: 35, ninth: 50}
 
+brain:                     # learned models (redzone/scoring/brain.py, trained by scripts/train_brain.py)
+  enabled: false           # feed the brain's game flow / key-moment / break odds into the score and break forecast
+  hot_points: 8            # moment points at game flow 100 (minus at 0; 50 = a median moment adds nothing)
+  key_points: 8            # moment points when a key moment in the next few minutes is a sure thing
+  break_weight: 0.5        # how much the brain's break odds count against the hand-written break rules
+  hot_reason_min: 85       # game flow at least this hot shows up in the reason line
+
 decider:
   switch_margin: 10
   switch_cost: {youtubetv: 3, prime: 8, espn: 7, hdmi_flip: 1}   # seconds to the new picture; replaced by

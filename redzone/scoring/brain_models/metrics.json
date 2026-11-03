@@ -1,0 +1,1582 @@
+{
+ "nba": {
+  "league": "nba",
+  "features": [
+   "period",
+   "clock_s",
+   "t_game",
+   "frac_left",
+   "is_ot",
+   "wall_s",
+   "score_home",
+   "score_away",
+   "score_diff",
+   "abs_diff",
+   "wp_home",
+   "wp_lev",
+   "wp_delta",
+   "wp_vol_8",
+   "wp_vol_w",
+   "lead_changes",
+   "ties",
+   "run_home",
+   "run_away",
+   "pts_w",
+   "stoppage",
+   "in_break",
+   "s_since_break",
+   "ev_since_break",
+   "wall_since_break",
+   "crunch"
+  ],
+  "games": {
+   "train": 1324,
+   "valid": 662,
+   "test": 663
+  },
+  "seasons": [
+   2025,
+   2026
+  ],
+  "break": {
+   "n": 265099,
+   "rate": 0.3177,
+   "auc": 0.8305,
+   "brier": 0.1405,
+   "brier_skill": 0.3517,
+   "logloss": 0.4351,
+   "ece": 0.0043,
+   "calibration": [
+    [
+     0.066,
+     0.068,
+     0.215
+    ],
+    [
+     0.145,
+     0.143,
+     0.239
+    ],
+    [
+     0.248,
+     0.253,
+     0.169
+    ],
+    [
+     0.346,
+     0.351,
+     0.123
+    ],
+    [
+     0.445,
+     0.445,
+     0.069
+    ],
+    [
+     0.545,
+     0.56,
+     0.039
+    ],
+    [
+     0.647,
+     0.659,
+     0.022
+    ],
+    [
+     0.749,
+     0.763,
+     0.019
+    ],
+    [
+     0.852,
+     0.879,
+     0.023
+    ],
+    [
+     0.989,
+     0.991,
+     0.082
+    ]
+   ],
+   "trees": 134,
+   "train_rows": 524419,
+   "train_s": 2.9,
+   "numpy_vs_lgb_max_diff": 7.238005916843093e-09,
+   "predict_us": 92.9,
+   "valid": {
+    "n": 269987,
+    "rate": 0.3268,
+    "auc": 0.8277,
+    "brier": 0.1437,
+    "brier_skill": 0.3469,
+    "logloss": 0.4426,
+    "ece": 0.0088
+   },
+   "top_features": [
+    "clock_s",
+    "s_since_break",
+    "wp_lev",
+    "t_game",
+    "frac_left",
+    "ev_since_break"
+   ]
+  },
+  "key": {
+   "n": 275979,
+   "rate": 0.1343,
+   "auc": 0.9748,
+   "brier": 0.0433,
+   "brier_skill": 0.6278,
+   "logloss": 0.1344,
+   "ece": 0.004,
+   "calibration": [
+    [
+     0.006,
+     0.005,
+     0.761
+    ],
+    [
+     0.147,
+     0.136,
+     0.036
+    ],
+    [
+     0.247,
+     0.24,
+     0.023
+    ],
+    [
+     0.351,
+     0.33,
+     0.02
+    ],
+    [
+     0.449,
+     0.431,
+     0.021
+    ],
+    [
+     0.552,
+     0.532,
+     0.024
+    ],
+    [
+     0.652,
+     0.64,
+     0.035
+    ],
+    [
+     0.74,
+     0.707,
+     0.02
+    ],
+    [
+     0.853,
+     0.813,
+     0.013
+    ],
+    [
+     0.965,
+     0.965,
+     0.046
+    ]
+   ],
+   "trees": 82,
+   "train_rows": 546323,
+   "train_s": 2.3,
+   "numpy_vs_lgb_max_diff": 1.1119513476653964e-08,
+   "predict_us": 73.0,
+   "valid": {
+    "n": 281221,
+    "rate": 0.1646,
+    "auc": 0.9734,
+    "brier": 0.0485,
+    "brier_skill": 0.6472,
+    "logloss": 0.1506,
+    "ece": 0.0037
+   },
+   "top_features": [
+    "abs_diff",
+    "wp_vol_w",
+    "t_game",
+    "frac_left",
+    "wp_lev",
+    "wp_home"
+   ]
+  },
+  "hot": {
+   "n": 275979,
+   "mae": 3.94,
+   "rmse": 5.78,
+   "r2": 0.9607,
+   "spearman": 0.9812,
+   "trees": 230,
+   "train_rows": 546323,
+   "train_s": 6.1,
+   "numpy_vs_lgb_max_diff": 1.8185632981726485e-06,
+   "predict_us": 139.5,
+   "top_features": [
+    "wp_vol_w",
+    "wp_lev",
+    "score_away",
+    "pts_w",
+    "wp_vol_8",
+    "frac_left"
+   ]
+  },
+  "file_kb": 221.0
+ },
+ "nfl": {
+  "league": "nfl",
+  "features": [
+   "period",
+   "clock_s",
+   "t_game",
+   "frac_left",
+   "is_ot",
+   "wall_s",
+   "score_home",
+   "score_away",
+   "score_diff",
+   "abs_diff",
+   "wp_home",
+   "wp_lev",
+   "wp_delta",
+   "wp_vol_8",
+   "wp_vol_w",
+   "lead_changes",
+   "ties",
+   "run_home",
+   "run_away",
+   "pts_w",
+   "stoppage",
+   "in_break",
+   "s_since_break",
+   "ev_since_break",
+   "wall_since_break",
+   "crunch",
+   "possession_home",
+   "yardline_100",
+   "down",
+   "ydstogo"
+  ],
+  "games": {
+   "train": 570,
+   "valid": 142,
+   "test": 143
+  },
+  "seasons": [
+   2023,
+   2024,
+   2025
+  ],
+  "break": {
+   "n": 20320,
+   "rate": 0.334,
+   "auc": 0.8569,
+   "brier": 0.1246,
+   "brier_skill": 0.4398,
+   "logloss": 0.3992,
+   "ece": 0.017,
+   "calibration": [
+    [
+     0.074,
+     0.09,
+     0.262
+    ],
+    [
+     0.139,
+     0.153,
+     0.319
+    ],
+    [
+     0.243,
+     0.235,
+     0.086
+    ],
+    [
+     0.346,
+     0.321,
+     0.045
+    ],
+    [
+     0.448,
+     0.473,
+     0.033
+    ],
+    [
+     0.55,
+     0.556,
+     0.031
+    ],
+    [
+     0.651,
+     0.629,
+     0.036
+    ],
+    [
+     0.75,
+     0.718,
+     0.04
+    ],
+    [
+     0.853,
+     0.884,
+     0.037
+    ],
+    [
+     0.975,
+     0.996,
+     0.11
+    ]
+   ],
+   "trees": 132,
+   "train_rows": 83765,
+   "train_s": 1.4,
+   "numpy_vs_lgb_max_diff": 7.951990788068741e-09,
+   "predict_us": 99.0,
+   "valid": {
+    "n": 20353,
+    "rate": 0.3301,
+    "auc": 0.8558,
+    "brier": 0.1249,
+    "brier_skill": 0.4353,
+    "logloss": 0.3997,
+    "ece": 0.014
+   },
+   "top_features": [
+    "clock_s",
+    "frac_left",
+    "yardline_100",
+    "t_game",
+    "period",
+    "wp_lev"
+   ]
+  },
+  "key": {
+   "n": 24256,
+   "rate": 0.515,
+   "auc": 0.6821,
+   "brier": 0.2214,
+   "brier_skill": 0.1134,
+   "logloss": 0.6294,
+   "ece": 0.014,
+   "calibration": [
+    [
+     0.066,
+     0.02,
+     0.004
+    ],
+    [
+     0.151,
+     0.12,
+     0.007
+    ],
+    [
+     0.253,
+     0.217,
+     0.01
+    ],
+    [
+     0.371,
+     0.355,
+     0.187
+    ],
+    [
+     0.445,
+     0.435,
+     0.334
+    ],
+    [
+     0.546,
+     0.524,
+     0.177
+    ],
+    [
+     0.651,
+     0.637,
+     0.129
+    ],
+    [
+     0.741,
+     0.739,
+     0.072
+    ],
+    [
+     0.846,
+     0.831,
+     0.027
+    ],
+    [
+     0.962,
+     0.946,
+     0.052
+    ]
+   ],
+   "trees": 107,
+   "train_rows": 98587,
+   "train_s": 1.7,
+   "numpy_vs_lgb_max_diff": 3.078252097665768e-09,
+   "predict_us": 131.4,
+   "valid": {
+    "n": 24230,
+    "rate": 0.518,
+    "auc": 0.6786,
+    "brier": 0.2207,
+    "brier_skill": 0.1161,
+    "logloss": 0.6262,
+    "ece": 0.0218
+   },
+   "top_features": [
+    "wp_lev",
+    "crunch",
+    "yardline_100",
+    "t_game",
+    "frac_left",
+    "clock_s"
+   ]
+  },
+  "hot": {
+   "n": 24256,
+   "mae": 5.08,
+   "rmse": 7.17,
+   "r2": 0.9371,
+   "spearman": 0.9659,
+   "trees": 140,
+   "train_rows": 98587,
+   "train_s": 1.9,
+   "numpy_vs_lgb_max_diff": 2.0175934736244017e-06,
+   "predict_us": 147.0,
+   "top_features": [
+    "wp_vol_w",
+    "wp_lev",
+    "wp_vol_8",
+    "t_game",
+    "frac_left",
+    "abs_diff"
+   ]
+  },
+  "file_kb": 186.0
+ },
+ "cfb": {
+  "league": "cfb",
+  "features": [
+   "period",
+   "clock_s",
+   "t_game",
+   "frac_left",
+   "is_ot",
+   "wall_s",
+   "score_home",
+   "score_away",
+   "score_diff",
+   "abs_diff",
+   "wp_home",
+   "wp_lev",
+   "wp_delta",
+   "wp_vol_8",
+   "wp_vol_w",
+   "lead_changes",
+   "ties",
+   "run_home",
+   "run_away",
+   "pts_w",
+   "stoppage",
+   "in_break",
+   "s_since_break",
+   "ev_since_break",
+   "wall_since_break",
+   "crunch",
+   "possession_home",
+   "yardline_100",
+   "down",
+   "ydstogo"
+  ],
+  "games": {
+   "train": 1159,
+   "valid": 249,
+   "test": 249
+  },
+  "seasons": [
+   2025
+  ],
+  "break": {
+   "n": 37947,
+   "rate": 0.221,
+   "auc": 0.8814,
+   "brier": 0.0963,
+   "brier_skill": 0.4404,
+   "logloss": 0.3202,
+   "ece": 0.0245,
+   "calibration": [
+    [
+     0.053,
+     0.042,
+     0.437
+    ],
+    [
+     0.142,
+     0.118,
+     0.231
+    ],
+    [
+     0.243,
+     0.215,
+     0.086
+    ],
+    [
+     0.346,
+     0.282,
+     0.042
+    ],
+    [
+     0.447,
+     0.37,
+     0.029
+    ],
+    [
+     0.55,
+     0.45,
+     0.028
+    ],
+    [
+     0.65,
+     0.559,
+     0.026
+    ],
+    [
+     0.751,
+     0.713,
+     0.028
+    ],
+    [
+     0.847,
+     0.827,
+     0.026
+    ],
+    [
+     0.972,
+     0.972,
+     0.068
+    ]
+   ],
+   "trees": 292,
+   "train_rows": 179824,
+   "train_s": 4.5,
+   "numpy_vs_lgb_max_diff": 1.2655022418872619e-08,
+   "predict_us": 240.4,
+   "valid": {
+    "n": 38291,
+    "rate": 0.1792,
+    "auc": 0.8908,
+    "brier": 0.0826,
+    "brier_skill": 0.4385,
+    "logloss": 0.2827,
+    "ece": 0.0345
+   },
+   "top_features": [
+    "clock_s",
+    "t_game",
+    "frac_left",
+    "yardline_100",
+    "s_since_break",
+    "period"
+   ]
+  },
+  "key": {
+   "n": 43110,
+   "rate": 0.6653,
+   "auc": 0.7812,
+   "brier": 0.1739,
+   "brier_skill": 0.2191,
+   "logloss": 0.5169,
+   "ece": 0.0085,
+   "calibration": [
+    [
+     0.074,
+     0.079,
+     0.005
+    ],
+    [
+     0.155,
+     0.109,
+     0.022
+    ],
+    [
+     0.255,
+     0.241,
+     0.034
+    ],
+    [
+     0.355,
+     0.355,
+     0.057
+    ],
+    [
+     0.454,
+     0.447,
+     0.112
+    ],
+    [
+     0.55,
+     0.538,
+     0.139
+    ],
+    [
+     0.651,
+     0.657,
+     0.146
+    ],
+    [
+     0.751,
+     0.762,
+     0.17
+    ],
+    [
+     0.849,
+     0.847,
+     0.165
+    ],
+    [
+     0.952,
+     0.962,
+     0.149
+    ]
+   ],
+   "trees": 263,
+   "train_rows": 205426,
+   "train_s": 5.7,
+   "numpy_vs_lgb_max_diff": 8.555583574931802e-09,
+   "predict_us": 150.0,
+   "valid": {
+    "n": 43251,
+    "rate": 0.628,
+    "auc": 0.7656,
+    "brier": 0.1859,
+    "brier_skill": 0.2042,
+    "logloss": 0.5457,
+    "ece": 0.01
+   },
+   "top_features": [
+    "wp_vol_w",
+    "t_game",
+    "wall_s",
+    "clock_s",
+    "wp_lev",
+    "wp_vol_8"
+   ]
+  },
+  "hot": {
+   "n": 43110,
+   "mae": 7.0,
+   "rmse": 9.93,
+   "r2": 0.8658,
+   "spearman": 0.9153,
+   "trees": 300,
+   "train_rows": 205426,
+   "train_s": 4.2,
+   "numpy_vs_lgb_max_diff": 1.916279295244294e-06,
+   "predict_us": 149.5,
+   "top_features": [
+    "wp_vol_w",
+    "wp_lev",
+    "wp_vol_8",
+    "abs_diff",
+    "t_game",
+    "frac_left"
+   ]
+  },
+  "file_kb": 417.4
+ },
+ "nhl": {
+  "league": "nhl",
+  "features": [
+   "period",
+   "clock_s",
+   "t_game",
+   "frac_left",
+   "is_ot",
+   "wall_s",
+   "score_home",
+   "score_away",
+   "score_diff",
+   "abs_diff",
+   "wp_home",
+   "wp_lev",
+   "wp_delta",
+   "wp_vol_8",
+   "wp_vol_w",
+   "lead_changes",
+   "ties",
+   "run_home",
+   "run_away",
+   "pts_w",
+   "stoppage",
+   "in_break",
+   "s_since_break",
+   "ev_since_break",
+   "wall_since_break",
+   "crunch",
+   "home_skaters",
+   "away_skaters"
+  ],
+  "games": {
+   "train": 1398,
+   "valid": 697,
+   "test": 697
+  },
+  "seasons": [
+   2025,
+   2026
+  ],
+  "break": {
+   "n": 212501,
+   "rate": 0.1594,
+   "auc": 0.694,
+   "brier": 0.1045,
+   "brier_skill": 0.2198,
+   "logloss": 0.3584,
+   "ece": 0.0035,
+   "calibration": [
+    [
+     0.084,
+     0.089,
+     0.274
+    ],
+    [
+     0.129,
+     0.131,
+     0.648
+    ],
+    [
+     0.248,
+     0.246,
+     0.017
+    ],
+    [
+     0.345,
+     0.337,
+     0.013
+    ],
+    [
+     0.448,
+     0.458,
+     0.007
+    ],
+    [
+     0.543,
+     0.5,
+     0.004
+    ],
+    [
+     0.629,
+     0.583,
+     0.001
+    ],
+    [
+     0.744,
+     0.774,
+     0.0
+    ],
+    [
+     0.819,
+     0.952,
+     0.0
+    ],
+    [
+     0.993,
+     1.0,
+     0.036
+    ]
+   ],
+   "trees": 79,
+   "train_rows": 433697,
+   "train_s": 4.7,
+   "numpy_vs_lgb_max_diff": 1.3904714546431052e-08,
+   "predict_us": 561.7,
+   "valid": {
+    "n": 212222,
+    "rate": 0.1602,
+    "auc": 0.6962,
+    "brier": 0.105,
+    "brier_skill": 0.2192,
+    "logloss": 0.3595,
+    "ece": 0.0043
+   },
+   "top_features": [
+    "clock_s",
+    "wp_lev",
+    "period",
+    "t_game",
+    "frac_left",
+    "wp_vol_8"
+   ]
+  },
+  "key": {
+   "n": 219913,
+   "rate": 0.2742,
+   "auc": 0.5786,
+   "brier": 0.1901,
+   "brier_skill": 0.0449,
+   "logloss": 0.5673,
+   "ece": 0.0064,
+   "calibration": [
+    [
+     0.062,
+     0.06,
+     0.009
+    ],
+    [
+     0.161,
+     0.225,
+     0.018
+    ],
+    [
+     0.248,
+     0.251,
+     0.859
+    ],
+    [
+     0.328,
+     0.332,
+     0.059
+    ],
+    [
+     0.451,
+     0.433,
+     0.015
+    ],
+    [
+     0.549,
+     0.59,
+     0.012
+    ],
+    [
+     0.651,
+     0.707,
+     0.019
+    ],
+    [
+     0.734,
+     0.809,
+     0.009
+    ],
+    [
+     0.808,
+     0.96,
+     0.0
+    ]
+   ],
+   "trees": 46,
+   "train_rows": 448316,
+   "train_s": 3.9,
+   "numpy_vs_lgb_max_diff": 1.244788211396397e-08,
+   "predict_us": 158.0,
+   "valid": {
+    "n": 219699,
+    "rate": 0.2742,
+    "auc": 0.5838,
+    "brier": 0.1903,
+    "brier_skill": 0.0441,
+    "logloss": 0.5675,
+    "ece": 0.0078
+   },
+   "top_features": [
+    "wp_lev",
+    "crunch",
+    "t_game",
+    "frac_left",
+    "clock_s",
+    "wp_vol_w"
+   ]
+  },
+  "hot": {
+   "n": 219913,
+   "mae": 11.25,
+   "rmse": 14.36,
+   "r2": 0.7535,
+   "spearman": 0.8642,
+   "trees": 108,
+   "train_rows": 448316,
+   "train_s": 5.0,
+   "numpy_vs_lgb_max_diff": 1.9737729815005878e-06,
+   "predict_us": 272.9,
+   "top_features": [
+    "wp_vol_w",
+    "wp_lev",
+    "abs_diff",
+    "frac_left",
+    "t_game",
+    "ties"
+   ]
+  },
+  "file_kb": 119.9
+ },
+ "mlb": {
+  "league": "mlb",
+  "features": [
+   "period",
+   "t_game",
+   "frac_left",
+   "is_ot",
+   "wall_s",
+   "score_home",
+   "score_away",
+   "score_diff",
+   "abs_diff",
+   "wp_home",
+   "wp_lev",
+   "wp_delta",
+   "wp_vol_8",
+   "wp_vol_w",
+   "lead_changes",
+   "ties",
+   "run_home",
+   "run_away",
+   "pts_w",
+   "stoppage",
+   "in_break",
+   "s_since_break",
+   "ev_since_break",
+   "wall_since_break",
+   "crunch",
+   "outs",
+   "on_1b",
+   "on_2b",
+   "on_3b",
+   "half_bottom"
+  ],
+  "games": {
+   "train": 1733,
+   "valid": 372,
+   "test": 372
+  },
+  "seasons": [
+   2025
+  ],
+  "break": {
+   "n": 101887,
+   "rate": 0.1475,
+   "auc": 0.8821,
+   "brier": 0.0889,
+   "brier_skill": 0.2928,
+   "logloss": 0.2786,
+   "ece": 0.0054,
+   "calibration": [
+    [
+     0.024,
+     0.022,
+     0.634
+    ],
+    [
+     0.145,
+     0.141,
+     0.114
+    ],
+    [
+     0.223,
+     0.248,
+     0.008
+    ],
+    [
+     0.376,
+     0.396,
+     0.031
+    ],
+    [
+     0.45,
+     0.46,
+     0.163
+    ],
+    [
+     0.53,
+     0.556,
+     0.05
+    ],
+    [
+     0.622,
+     0.545,
+     0.001
+    ]
+   ],
+   "trees": 92,
+   "train_rows": 472357,
+   "train_s": 12.2,
+   "numpy_vs_lgb_max_diff": 1.7405949903626095e-08,
+   "predict_us": 253.5,
+   "valid": {
+    "n": 101300,
+    "rate": 0.145,
+    "auc": 0.8765,
+    "brier": 0.0896,
+    "brier_skill": 0.2774,
+    "logloss": 0.281,
+    "ece": 0.0026
+   },
+   "top_features": [
+    "outs",
+    "wp_delta",
+    "ev_since_break",
+    "s_since_break",
+    "period",
+    "t_game"
+   ]
+  },
+  "key": {
+   "n": 108945,
+   "rate": 0.1011,
+   "auc": 0.8005,
+   "brier": 0.0754,
+   "brier_skill": 0.1703,
+   "logloss": 0.2623,
+   "ece": 0.0095,
+   "calibration": [
+    [
+     0.04,
+     0.037,
+     0.604
+    ],
+    [
+     0.14,
+     0.131,
+     0.264
+    ],
+    [
+     0.241,
+     0.209,
+     0.066
+    ],
+    [
+     0.342,
+     0.287,
+     0.03
+    ],
+    [
+     0.443,
+     0.39,
+     0.012
+    ],
+    [
+     0.549,
+     0.516,
+     0.007
+    ],
+    [
+     0.645,
+     0.626,
+     0.005
+    ],
+    [
+     0.752,
+     0.757,
+     0.004
+    ],
+    [
+     0.861,
+     0.814,
+     0.006
+    ],
+    [
+     0.93,
+     0.941,
+     0.003
+    ]
+   ],
+   "trees": 145,
+   "train_rows": 504988,
+   "train_s": 15.5,
+   "numpy_vs_lgb_max_diff": 1.9764915315523268e-08,
+   "predict_us": 171.5,
+   "valid": {
+    "n": 108259,
+    "rate": 0.1055,
+    "auc": 0.8068,
+    "brier": 0.0765,
+    "brier_skill": 0.1895,
+    "logloss": 0.2645,
+    "ece": 0.0057
+   },
+   "top_features": [
+    "wp_lev",
+    "frac_left",
+    "abs_diff",
+    "period",
+    "on_1b",
+    "outs"
+   ]
+  },
+  "hot": {
+   "n": 108945,
+   "mae": 6.7,
+   "rmse": 9.3,
+   "r2": 0.8917,
+   "spearman": 0.9416,
+   "trees": 299,
+   "train_rows": 504988,
+   "train_s": 14.3,
+   "numpy_vs_lgb_max_diff": 1.6740965982364742e-06,
+   "predict_us": 594.5,
+   "top_features": [
+    "wp_vol_w",
+    "wp_lev",
+    "abs_diff",
+    "frac_left",
+    "period",
+    "t_game"
+   ]
+  },
+  "file_kb": 262.1
+ },
+ "cbb": {
+  "league": "cbb",
+  "features": [
+   "period",
+   "clock_s",
+   "t_game",
+   "frac_left",
+   "is_ot",
+   "wall_s",
+   "score_home",
+   "score_away",
+   "score_diff",
+   "abs_diff",
+   "wp_home",
+   "wp_lev",
+   "wp_delta",
+   "wp_vol_8",
+   "wp_vol_w",
+   "lead_changes",
+   "ties",
+   "run_home",
+   "run_away",
+   "pts_w",
+   "stoppage",
+   "in_break",
+   "s_since_break",
+   "ev_since_break",
+   "wall_since_break",
+   "crunch"
+  ],
+  "games": {
+   "train": 2450,
+   "valid": 525,
+   "test": 525
+  },
+  "seasons": [
+   2026
+  ],
+  "break": {
+   "n": 163773,
+   "rate": 0.3363,
+   "auc": 0.8728,
+   "brier": 0.1305,
+   "brier_skill": 0.4154,
+   "logloss": 0.4114,
+   "ece": 0.0071,
+   "calibration": [
+    [
+     0.056,
+     0.053,
+     0.285
+    ],
+    [
+     0.142,
+     0.135,
+     0.234
+    ],
+    [
+     0.243,
+     0.246,
+     0.085
+    ],
+    [
+     0.347,
+     0.382,
+     0.046
+    ],
+    [
+     0.451,
+     0.462,
+     0.042
+    ],
+    [
+     0.551,
+     0.566,
+     0.05
+    ],
+    [
+     0.652,
+     0.656,
+     0.058
+    ],
+    [
+     0.752,
+     0.752,
+     0.082
+    ],
+    [
+     0.842,
+     0.826,
+     0.075
+    ],
+    [
+     0.969,
+     0.974,
+     0.044
+    ]
+   ],
+   "trees": 226,
+   "train_rows": 700000,
+   "train_s": 8.5,
+   "numpy_vs_lgb_max_diff": 8.352387781407344e-09,
+   "predict_us": 135.5,
+   "valid": {
+    "n": 167997,
+    "rate": 0.3227,
+    "auc": 0.8709,
+    "brier": 0.129,
+    "brier_skill": 0.4098,
+    "logloss": 0.4076,
+    "ece": 0.007
+   },
+   "top_features": [
+    "clock_s",
+    "s_since_break",
+    "t_game",
+    "wp_lev",
+    "frac_left",
+    "ev_since_break"
+   ]
+  },
+  "key": {
+   "n": 171541,
+   "rate": 0.207,
+   "auc": 0.9554,
+   "brier": 0.0679,
+   "brier_skill": 0.5866,
+   "logloss": 0.2098,
+   "ece": 0.0051,
+   "calibration": [
+    [
+     0.009,
+     0.01,
+     0.631
+    ],
+    [
+     0.148,
+     0.131,
+     0.045
+    ],
+    [
+     0.249,
+     0.259,
+     0.039
+    ],
+    [
+     0.349,
+     0.33,
+     0.036
+    ],
+    [
+     0.453,
+     0.464,
+     0.057
+    ],
+    [
+     0.538,
+     0.53,
+     0.06
+    ],
+    [
+     0.651,
+     0.622,
+     0.018
+    ],
+    [
+     0.751,
+     0.728,
+     0.019
+    ],
+    [
+     0.853,
+     0.874,
+     0.022
+    ],
+    [
+     0.963,
+     0.968,
+     0.073
+    ]
+   ],
+   "trees": 94,
+   "train_rows": 700000,
+   "train_s": 5.1,
+   "numpy_vs_lgb_max_diff": 6.287619938594169e-10,
+   "predict_us": 107.1,
+   "valid": {
+    "n": 175612,
+    "rate": 0.1822,
+    "auc": 0.9609,
+    "brier": 0.061,
+    "brier_skill": 0.5908,
+    "logloss": 0.1883,
+    "ece": 0.0046
+   },
+   "top_features": [
+    "abs_diff",
+    "wp_vol_w",
+    "frac_left",
+    "t_game",
+    "crunch",
+    "wp_lev"
+   ]
+  },
+  "hot": {
+   "n": 171541,
+   "mae": 4.58,
+   "rmse": 6.8,
+   "r2": 0.9444,
+   "spearman": 0.9722,
+   "trees": 297,
+   "train_rows": 700000,
+   "train_s": 7.3,
+   "numpy_vs_lgb_max_diff": 1.703108728712266e-06,
+   "predict_us": 137.4,
+   "top_features": [
+    "wp_vol_w",
+    "wp_lev",
+    "abs_diff",
+    "score_away",
+    "score_diff",
+    "frac_left"
+   ]
+  },
+  "file_kb": 300.8
+ },
+ "wcbb": {
+  "league": "wcbb",
+  "features": [
+   "period",
+   "clock_s",
+   "t_game",
+   "frac_left",
+   "is_ot",
+   "wall_s",
+   "score_home",
+   "score_away",
+   "score_diff",
+   "abs_diff",
+   "wp_home",
+   "wp_lev",
+   "wp_delta",
+   "wp_vol_8",
+   "wp_vol_w",
+   "lead_changes",
+   "ties",
+   "run_home",
+   "run_away",
+   "pts_w",
+   "stoppage",
+   "in_break",
+   "s_since_break",
+   "ev_since_break",
+   "wall_since_break",
+   "crunch"
+  ],
+  "games": {
+   "train": 2450,
+   "valid": 525,
+   "test": 525
+  },
+  "seasons": [
+   2026
+  ],
+  "break": {
+   "n": 167745,
+   "rate": 0.2928,
+   "auc": 0.8911,
+   "brier": 0.1053,
+   "brier_skill": 0.4914,
+   "logloss": 0.345,
+   "ece": 0.0083,
+   "calibration": [
+    [
+     0.055,
+     0.057,
+     0.397
+    ],
+    [
+     0.14,
+     0.146,
+     0.235
+    ],
+    [
+     0.243,
+     0.258,
+     0.082
+    ],
+    [
+     0.345,
+     0.371,
+     0.04
+    ],
+    [
+     0.447,
+     0.481,
+     0.025
+    ],
+    [
+     0.552,
+     0.606,
+     0.022
+    ],
+    [
+     0.65,
+     0.691,
+     0.027
+    ],
+    [
+     0.754,
+     0.76,
+     0.039
+    ],
+    [
+     0.849,
+     0.859,
+     0.041
+    ],
+    [
+     0.984,
+     0.985,
+     0.093
+    ]
+   ],
+   "trees": 180,
+   "train_rows": 700000,
+   "train_s": 8.5,
+   "numpy_vs_lgb_max_diff": 1.0295798325010708e-08,
+   "predict_us": 148.6,
+   "valid": {
+    "n": 169294,
+    "rate": 0.2714,
+    "auc": 0.8908,
+    "brier": 0.0994,
+    "brier_skill": 0.4974,
+    "logloss": 0.3291,
+    "ece": 0.0043
+   },
+   "top_features": [
+    "clock_s",
+    "s_since_break",
+    "t_game",
+    "wp_lev",
+    "frac_left",
+    "ev_since_break"
+   ]
+  },
+  "key": {
+   "n": 174471,
+   "rate": 0.1574,
+   "auc": 0.9593,
+   "brier": 0.0574,
+   "brier_skill": 0.5675,
+   "logloss": 0.1783,
+   "ece": 0.0047,
+   "calibration": [
+    [
+     0.008,
+     0.007,
+     0.691
+    ],
+    [
+     0.148,
+     0.146,
+     0.044
+    ],
+    [
+     0.248,
+     0.239,
+     0.043
+    ],
+    [
+     0.352,
+     0.348,
+     0.04
+    ],
+    [
+     0.452,
+     0.424,
+     0.068
+    ],
+    [
+     0.546,
+     0.524,
+     0.013
+    ],
+    [
+     0.647,
+     0.606,
+     0.014
+    ],
+    [
+     0.756,
+     0.734,
+     0.014
+    ],
+    [
+     0.856,
+     0.878,
+     0.016
+    ],
+    [
+     0.953,
+     0.948,
+     0.056
+    ]
+   ],
+   "trees": 66,
+   "train_rows": 700000,
+   "train_s": 5.8,
+   "numpy_vs_lgb_max_diff": 2.4348268019835917e-10,
+   "predict_us": 80.3,
+   "valid": {
+    "n": 175965,
+    "rate": 0.16,
+    "auc": 0.9573,
+    "brier": 0.0587,
+    "brier_skill": 0.5631,
+    "logloss": 0.1832,
+    "ece": 0.0032
+   },
+   "top_features": [
+    "abs_diff",
+    "frac_left",
+    "t_game",
+    "wp_vol_w",
+    "crunch",
+    "wp_lev"
+   ]
+  },
+  "hot": {
+   "n": 174471,
+   "mae": 4.62,
+   "rmse": 6.91,
+   "r2": 0.9427,
+   "spearman": 0.9708,
+   "trees": 226,
+   "train_rows": 700000,
+   "train_s": 7.2,
+   "numpy_vs_lgb_max_diff": 1.8415753473277618e-06,
+   "predict_us": 293.9,
+   "top_features": [
+    "wp_vol_w",
+    "wp_lev",
+    "abs_diff",
+    "score_away",
+    "wp_vol_8",
+    "score_diff"
+   ]
+  },
+  "file_kb": 234.3
+ }
+}

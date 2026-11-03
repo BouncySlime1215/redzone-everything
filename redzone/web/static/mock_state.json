@@ -261,7 +261,8 @@
     "city": "Landover, MD",
     "image": "https://a.espncdn.com/i/venues/nfl/day/3719.jpg",
     "indoor": null
-   }
+   },
+   "brain": {"break_soon_p":0.178,"key_soon_p":0.813,"hotness":99.0,"reasons":["win probability swinging","late in the game","close game"],"break_reasons":["late in the game","the score"]}
   },
   {
    "id": "401909990",
@@ -379,7 +380,8 @@
     "city": "Washington, DC",
     "image": "https://a.espncdn.com/i/venues/nba/day/1823.jpg",
     "indoor": true
-   }
+   },
+   "brain": {"break_soon_p":0.215,"key_soon_p":0.015,"hotness":11.4,"reasons":["a while since the last break","the score","the clock"],"break_reasons":["late in the game","time of game"]}
   },
   {
    "id": "401892990",
@@ -497,7 +499,8 @@
     "city": "Pittsburgh, PA",
     "image": "https://a.espncdn.com/i/venues/nhl/day/1837.jpg",
     "indoor": true
-   }
+   },
+   "brain": {"break_soon_p":0.107,"key_soon_p":0.247,"hotness":8.3,"reasons":["a stoppage","late in the game","the score"],"break_reasons":["the score","win probability swinging"]}
   },
   {
    "id": "401908990",
@@ -619,7 +622,8 @@
     "city": "Washington, DC",
     "image": "https://a.espncdn.com/i/venues/mlb/day/89.jpg",
     "indoor": false
-   }
+   },
+   "brain": {"break_soon_p":0.581,"key_soon_p":0.199,"hotness":97.7,"reasons":["win probability swinging","late in the game","close game"],"break_reasons":["the outs","the inning"]}
   },
   {
    "id": "401772694",
@@ -737,7 +741,8 @@
     "city": "Arlington, TX",
     "image": "https://a.espncdn.com/i/venues/nfl/day/3687.jpg",
     "indoor": null
-   }
+   },
+   "brain": {"break_soon_p":0.178,"key_soon_p":0.813,"hotness":99.0,"reasons":["win probability swinging","late in the game","close game"],"break_reasons":["late in the game","the score"]}
   },
   {
    "id": "401909991",
@@ -848,7 +853,8 @@
     "city": "Denver, CO",
     "image": "https://a.espncdn.com/i/venues/nba/day/892.jpg",
     "indoor": true
-   }
+   },
+   "brain": {"break_soon_p":0.215,"key_soon_p":0.015,"hotness":11.4,"reasons":["a while since the last break","the score","the clock"],"break_reasons":["late in the game","time of game"]}
   },
   {
    "id": "401772731",
@@ -966,7 +972,8 @@
     "city": "Minneapolis, MN",
     "image": "https://a.espncdn.com/i/venues/nfl/day/interior/5239.jpg",
     "indoor": null
-   }
+   },
+   "brain": {"break_soon_p":0.178,"key_soon_p":0.813,"hotness":99.0,"reasons":["win probability swinging","late in the game","close game"],"break_reasons":["late in the game","the score"]}
   },
   {
    "id": "401892991",

@@ -21,6 +21,10 @@ break to the next live play, restart included):
 
 BreakBook keeps the per-period list of long breaks each game has had (so it knows which
 NBA/college/NHL mark is still owed); forecast() is pure given that list.
+
+With the learned brain on (brain.enabled), a forecast that isn't already in the data blends in
+the brain's break_soon_p (redzone/scoring/brain.py): blend() below. A break already in the data
+is never second-guessed.
 """
 from __future__ import annotations
 
@@ -61,6 +65,25 @@ class Forecast:
 
 
 NONE = Forecast(0.0, 0.0, "")
+
+# What a learned-only forecast expects a break to last (median long break, per pro league).
+BRAIN_LEN = {League.NFL: 150.0, League.NBA: 180.0, League.NHL: LEN["nhl_tv"], League.MLB: LEN["mlb_inning"]}
+
+
+def blend(f: Forecast, p: float | None, g: GameState, w: float = 0.5, why: list[str] | None = None) -> Forecast:
+    """Mix the rules' forecast with the brain's chance of a break in the next minute.
+
+    A break already in the data (f.now) is kept as is. When the rules see nothing coming, the
+    brain alone can raise one (with the league's median long-break length)."""
+    if p is None or f.now:
+        return f
+    q = w * p + (1 - w) * f.p
+    if f.p > 0:
+        return Forecast(q, f.expect_s, f.why)
+    if q <= 0:
+        return f
+    reason = "the model expects a break soon" + (f" ({why[0]})" if why else "")
+    return Forecast(q, BRAIN_LEN.get(g.league.base, 150.0), reason)
 
 
 def _long_break_play(league: League, kind: str, text: str) -> bool:
@@ -210,8 +233,10 @@ class BreakBook:
     (the kickoff after the TD's ads is already logged) is still on its way to the screen: a
     forecast holds for HOLD_S unless a stronger one replaces it."""
 
-    def __init__(self, clock=None):
+    def __init__(self, clock=None, brain=None):
+        """brain: a callable returning (brain, weight) to blend in, or (None, 0) when off."""
         self._clock = clock or (lambda: time.time())
+        self._brain = brain
         self._last: dict[str, tuple[float, Forecast]] = {}
         self._seen: dict[str, set[str]] = {}
         self._period: dict[str, int | None] = {}
@@ -238,6 +263,11 @@ class BreakBook:
         if g is None:
             return NONE
         f, now = forecast(g, self.clocks(g.game_id, g.period)), self._clock()
+        if self._brain is not None and g.phase == Phase.LIVE and not f.now:
+            b, w = self._brain()
+            if b is not None:
+                r = b.read(g)
+                f = blend(f, r.break_soon_p, g, w, r.break_reasons)
         held = self._last.get(g.game_id)
         if held is not None and now - held[0] < HOLD_S and held[1].p > f.p and g.phase == Phase.LIVE:
             return held[1]

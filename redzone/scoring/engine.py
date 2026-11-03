@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 from redzone.models import PERIOD_S, REAL_BREAKS, REGULATION, ByLeague, GameState, League, Phase, Stoppage, pro_period
 from redzone.scoring import garbage
+from redzone.scoring.brain import Brain
 
 # --- closeness: how competitive the score is, 0..1 --------------------------
 
@@ -164,6 +165,7 @@ class Scored:
     crunch: bool = False    # crunch time (see crunch_time); unlike lock, kept through breaks
     factor: str = ""        # short human reason for the single biggest factor right now
     factors: dict[str, float] = field(default_factory=dict)  # context points by name (debug/UI)
+    brain: dict = field(default_factory=dict)  # learned brain's reading (hotness, key/break odds, reasons)
 
     @property
     def display(self) -> int:
@@ -181,10 +183,16 @@ class Personal:
 
 
 class Scorer:
-    def __init__(self, cfg, clock=time.time):
+    def __init__(self, cfg, clock=time.time, brain=None):
         self.cfg = cfg
         self._clock = clock
         self.hist: dict[str, History] = {}
+        # The learned brain (redzone/scoring/brain.py): read every poll while brain.enabled is on;
+        # with it off or a league unmodeled, scores are the hand-written ones, unchanged.
+        self.brain = brain if brain is not None else Brain()
+
+    def brain_on(self) -> bool:
+        return bool(self.cfg.get("brain.enabled", False))
 
     def score(self, g: GameState, me: Personal | None = None) -> Scored:
         me = me or Personal()
@@ -204,6 +212,13 @@ class Scorer:
         ctx, ctx_parts, factors = context(g, h, k, now, c)
         m += ctx
         parts.extend(ctx_parts)
+        reading = self.brain.read(g) if self.brain_on() else None
+        if reading is not None and reading.hotness is not None:
+            pts, part = brain_points(reading, c)
+            m += pts
+            factors["brain"] = round(pts, 1)
+            if part:
+                parts.append(part)
         # Garbage time: decided games stop competing for the TV — your team's included.
         was = h.garbage
         h.garbage = garbage.is_garbage(g, was)
@@ -235,7 +250,8 @@ class Scorer:
             tags = tags + ["garbage time"]
         return Scored(g.game_id, g.league, shown, raw, m, s, p, reason, tags,
                       is_break, None if is_break else lock, pre, k, garbage=h.garbage, crunch=crunch_time(g),
-                      factor="garbage time" if h.garbage else factor, factors=factors)
+                      factor="garbage time" if h.garbage else factor, factors=factors,
+                      brain=reading.as_dict() if reading is not None and reading.hotness is not None else {})
 
     def _stakes(self, g: GameState) -> float:
         c = self.cfg
@@ -359,6 +375,24 @@ def context(g: GameState, h: History, k: float, now: float, c) -> tuple[float, l
         parts.append((f["upset"] + 12, f"upset brewing: {dog} (+{abs(g.spread):g}) "
                                        f"{'tied' if d == 0 else 'leading'}"))
     return pts, parts, {n: round(v, 1) for n, v in f.items() if v}
+
+
+def brain_points(r, c) -> tuple[float, tuple[float, str] | None]:
+    """Moment points from the learned brain: game flow above/below a median moment, plus how much
+    likelier than usual (for this league) a key moment is in the next few minutes.
+    (points, reason part or None)"""
+    hot = (r.hotness - 50.0) / 50.0 * c.get("brain.hot_points", 8)
+    base = r.key_rate if r.key_rate is not None else 0.3
+    lift = max(0.0, ((r.key_soon_p or 0.0) - base) / max(1e-6, 1 - base))
+    key = lift * c.get("brain.key_points", 8)
+    pts = hot + key
+    part = None
+    if r.hotness >= c.get("brain.hot_reason_min", 85):
+        why = f": {r.reasons[0]}" if r.reasons else ""
+        part = (pts + 14, f"game flow {round(r.hotness)}/100{why}")
+    elif key >= 3:
+        part = (pts + 12, "big moment likely soon")
+    return pts, part
 
 
 def _top_factor(parts: list[tuple[float, str]]) -> str:
