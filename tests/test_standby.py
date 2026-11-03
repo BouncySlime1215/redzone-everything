@@ -205,8 +205,20 @@ def test_shadow_stick_counts_flips_to_a_ready_preload_as_hits():
     assert s.switch("youtubetv:cur", None, "youtubetv:a", 120)        # going back: a flip
     s.preload("youtubetv:x", "p1", 130)
     assert not s.switch("youtubetv:x", None, "youtubetv:a", 140)      # parked replay != live
-    assert s.card() == {"switches": 3, "hits": 1, "hit_rate": 33.3, "still_loading": 1, "preloads": 2,
-                        "breaks_filled": "0/0", "break_fill_rate": 0.0}
+    card = s.card()
+    assert card.pop("seconds_to_picture")["youtubetv"]["switches"] == 3
+    assert card == {"switches": 3, "hits": 1, "hit_rate": 33.3, "still_loading": 1, "preloads": 2,
+                    "breaks_filled": "0/0", "break_fill_rate": 0.0}
+
+
+def test_shadow_stick_knows_prime_is_slow_to_tune():
+    s = standby.ShadowStick(app_s={"prime": 30.0, "youtubetv": 4.5})
+    s.preload("prime:a", None, 100)
+    assert not s.switch("prime:a", None, "youtubetv:x", 110)     # 10 s in: still loading
+    s.preload("prime:b", None, 200)
+    assert s.switch("prime:b", None, "youtubetv:x", 231)         # 31 s in: ready, a flip
+    pic = s.card()["seconds_to_picture"]["prime"]
+    assert pic["switches"] == 2 and pic["instant"] == 1
 
 
 def test_shadow_stick_prime_game_left_keeps_playing():

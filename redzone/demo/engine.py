@@ -262,7 +262,8 @@ class DemoEngine(Engine):
         self.control = InertController(self.cfg, self.channels, clock)
         # The hidden stick, modeled: what the real standby Planner would have had ready at each switch.
         self.planner = standby.Planner(self.cfg, clock=clock)
-        self.shadow = standby.ShadowStick()
+        self.shadow = standby.ShadowStick(app_s={a: float(v) for a, v in (self.cfg.get("decider.switch_cost") or {}).items()
+                                                 if a != "hdmi_flip"})
         self.started = 0.0
         self.replays = replays
         self.tv = tv
@@ -545,6 +546,8 @@ def report_text(card: dict) -> str:
         p = card["preload"]
         lines.append(f"  Preload hit rate       {p['hits']}/{p['switches']} ({p['hit_rate']}%) switches were a"
                      f" flip to a ready hidden stick")
+        for app, x in (p.get("seconds_to_picture") or {}).items():
+            lines.append(f"    {app:<10} {x['instant']}/{x['switches']} instant, {x['mean_s']} s to picture on average")
     ct = card.get("cut_timing") or {}
     if ct:
         lines.append(f"  Entries landing mid-play {ct['entries_mid_play']}/{ct['entries']} (must be 0); "

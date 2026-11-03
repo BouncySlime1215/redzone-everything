@@ -231,8 +231,13 @@ class ShadowStick:
 
     Hit rate = switches that landed on a stick already playing the destination (a 1-3s flip)."""
 
-    def __init__(self, tune_s: float = 7.0, keep_s: float = 2.5):
+    FLIP_S = 3.0   # an input flip to a ready stick (measured median ~2.9 s)
+
+    def __init__(self, tune_s: float = 7.0, keep_s: float = 2.5, app_s: dict[str, float] | None = None):
         self.tune_s = tune_s
+        # Per-app tune seconds (Prime ~30 s, YouTube TV ~5 s): a model where every tune is 7 s can't
+        # see what a Prime preload is worth.
+        self.app_s = dict(app_s or {})
         # A Prime game we leave keeps playing live on its stick (control._kept_playing): ready again
         # once two playback reads confirm it, not after a re-tune.
         self.keep_s = keep_s
@@ -245,6 +250,11 @@ class ShadowStick:
         self.misses: list[tuple[float, str | None, str | None]] = []   # (when, wanted, had)
         self.breaks = 0       # switches that spent a break somewhere else (visit, catch-up, chase)
         self.break_hits = 0   # ... onto a stick already playing it
+        self.by_app: dict[str, list[float]] = {}   # app -> seconds to picture, per switch
+
+    def tune_for(self, target: str | None) -> float:
+        app = (target or "").split(":", 1)[0]
+        return float(self.app_s.get(app, self.tune_s))
 
     @property
     def standby(self) -> tuple[str | None, str | None]:
@@ -253,7 +263,7 @@ class ShadowStick:
     def preload(self, target: str | None, replay_id: str | None, now: float) -> None:
         if not target or (target, replay_id) == self.standby:
             return
-        self.target, self.replay_id, self.ready_at = target, replay_id, now + self.tune_s
+        self.target, self.replay_id, self.ready_at = target, replay_id, now + self.tune_for(target)
         self.preloads += 1
 
     def switch(self, to: str | None, replay_id: str | None, left: str | None, now: float,
@@ -263,12 +273,18 @@ class ShadowStick:
         self.break_hits += brk and hit
         if hit:
             self.hits += 1
+            secs = self.FLIP_S
         else:
             if to and (to, replay_id) == self.standby:
                 self.loading += 1
+                secs = max(self.FLIP_S, self.ready_at - now)
+            else:
+                secs = self.tune_for(to)   # tuned on screen, cold
             self.misses.append((now, to, self.target))
+        if to:
+            self.by_app.setdefault(to.split(":", 1)[0], []).append(secs)
         kept = bool(left) and left.startswith("prime:")
-        self.target, self.replay_id, self.ready_at = left, None, now + (self.keep_s if kept else self.tune_s)
+        self.target, self.replay_id, self.ready_at = left, None, now + (self.keep_s if kept else self.tune_for(left))
         return hit
 
     def card(self) -> dict:
@@ -276,4 +292,7 @@ class ShadowStick:
         return {"switches": n, "hits": self.hits, "hit_rate": round(100 * self.hits / max(1, n), 1),
                 "still_loading": self.loading, "preloads": self.preloads,
                 "breaks_filled": f"{self.break_hits}/{self.breaks}",
-                "break_fill_rate": round(100 * self.break_hits / max(1, self.breaks), 1)}
+                "break_fill_rate": round(100 * self.break_hits / max(1, self.breaks), 1),
+                "seconds_to_picture": {a: {"switches": len(v), "mean_s": round(sum(v) / len(v), 1),
+                                           "instant": sum(x <= self.FLIP_S for x in v)}
+                                       for a, v in sorted(self.by_app.items()) if v}}
