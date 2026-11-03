@@ -54,7 +54,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from redzone.channels import ChannelMap
 from redzone.tuners.adb import STICK_HUNG, Stick, adb_available, playback_ready, same_stream
@@ -98,6 +98,7 @@ REASSERT_MAX = 3           # ...and at most this many per episode (a TV someone 
 REASSERT_BOTH_S = 120.0    # both sticks claim the TV and the engine gave no safe moment: re-assert after this
 VISIBLE_STALL_S = 8.0      # the stick on screen not playing this long, outside a switch -> resume it
 VISIBLE_FIX_GAP_S = 30.0   # ...at most once per this (a deep link that keeps failing isn't hammered)
+WAIT_SCREEN_LOOK_S = 4.0  # a switch waiting for a safe moment looks at the screen this often (stalled player)
 AWAKE_TRUST_S = 120.0      # a stick seen playing this recently is awake: skip the sleep check
 REFRESH_POLL_S = 0.5       # after a flip: how often the refresh of the game we left checks for a free moment
 REFRESH_TRIES = 40         # ...and how many times (~20s) before it leaves the standby to the planner
@@ -253,6 +254,7 @@ class Controller:
         self._adopt_once = True                  # first switch after start may adopt the screen
         self.target_names: Callable[[str], list[str]] | None = None   # engine: team names for a target
         self._flip_gen = 0                       # bumped on every flip: a CEC read that spans one is stale
+        self._replay_shown: tuple[str, Any, int] | None = None   # (target, stick, flip gen) of a replay put on screen
         self._refresh_task: asyncio.Task | None = None   # after a flip: reload the game we left (see _refresh_left)
         self._refreshing: str | None = None      # the target the running preload is refreshing, if it is a refresh
         self._wish: tuple[str, float] | None = None   # the planner's latest preload ask (target, at), even if refused
@@ -313,10 +315,13 @@ class Controller:
         Never during a switch, a flip or a preload: those reads would queue behind (or delay) it."""
         if not self.live_control or self._busy() or self._flipping or self.input_unknown:
             return 0
-        sticks = [s for s in self.usable if str((s.tuned or {}).get("target") or "").startswith("youtubetv:")]
-        for s in sticks:
-            await s.playback(self._package(s, s.tuned["target"]))
-        return len(sticks)
+        # Take each target now: a switch can clear s.tuned while we await another stick's read
+        # (e2e night test: TypeError 'NoneType' object is not subscriptable).
+        reads = [(s, t) for s in self.usable
+                 if str(t := (s.tuned or {}).get("target") or "").startswith("youtubetv:")]
+        for s, target in reads:
+            await s.playback(self._package(s, target))
+        return len(reads)
 
     def scorebug_sticks(self, hidden: bool = False) -> list[tuple[Stick, str, bool]]:
         """(stick, target, visible) for each stick showing a live Prime game we tuned ourselves: the
@@ -1164,15 +1169,84 @@ class Controller:
         return asleep
 
     async def _wait_safe(self, may_cut: Callable[[], bool] | None) -> float | None:
-        """Hold until nothing's on screen in the game we're leaving. Seconds waited; None = gave up."""
+        """Hold until nothing's on screen in the game we're leaving. Seconds waited; None = gave up.
+
+        While a switch waits here it holds the lock, which blocks the visible-stick watchdog. So it
+        looks at the screen itself every few seconds and clears a stalled player ("Still watching?",
+        a crash to home): e2e night test, seed 2, a prompt sat on screen 96 s through four ~25 s
+        "no safe moment" waits in a row."""
         t0 = time.monotonic()
+        look_at = t0 + WAIT_SCREEN_LOOK_S
         while may_cut is not None and not may_cut():
-            if self._task is asyncio.current_task():
+            mine = self._task is asyncio.current_task()
+            if mine:
                 self.stage.update(stage="waiting_safe_exit", reason="waiting for the current screen's safe exit window")
             if time.monotonic() - t0 >= MAX_SAFE_WAIT_S:
                 return None
+            if mine and time.monotonic() >= look_at:
+                look_at = time.monotonic() + WAIT_SCREEN_LOOK_S
+                try:
+                    await self._unstall_visible()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:   # a repair must never break the switch that is waiting
+                    log.exception("screen check while waiting for a safe moment failed")
             await asyncio.sleep(SAFE_POLL_S)
         return time.monotonic() - t0
+
+    async def _unstall_visible(self) -> None:
+        """The visible-stick watchdog's check and repair (_watch_visible), run inside a switch that
+        holds the lock while it waits for a safe moment. It only acts on a screen that is already not
+        playing, so it can't cut a live play; the switch's own safe-moment wait is unchanged.
+
+        During a catch-up replay on_target is None by design (the picture is behind live), and that
+        is where the e2e night's prompt came up: then only the on-screen prompt is cleared (read from
+        a screenshot, CENTER only when a prompt is seen), never MEDIA_PLAY or a re-link to live."""
+        stick = self.main
+        if (stick is None or not self.live_control or self.input_unknown or self._flipping
+                or (self.visible_watch_ok is not None and not self.visible_watch_ok())):
+            return
+        replay = self.on_target is None
+        target = self.on_target or self._replay_target(stick)
+        if not target:
+            return
+        pkg = self._package(stick, target)
+        pb = await stick.playback(pkg)
+        if self.main is not stick or (self.on_target or self._replay_target(stick)) != target \
+                or pb.get("read_ok") is False:
+            return
+        now = time.time()
+        if pb.get("state") in ("playing", "buffering", "connecting"):
+            self._visible_bad_since = None
+            return
+        if self._visible_bad_since is None:
+            self._visible_bad_since = now
+            log.info("%s (on screen) is %s, not playing %s, while a switch waits; checking again",
+                     stick.host, pb.get("state"), target)
+            return
+        if now - self._visible_bad_since < VISIBLE_STALL_S or now - self._visible_fix_at < VISIBLE_FIX_GAP_S:
+            return
+        self._visible_fix_at = now
+        r0 = time.monotonic()
+        if replay:
+            how = "prompt" if await self._clear_screen_prompt(stick, target, pkg) else None
+        else:
+            how = await self._resume_playback(stick, target, 0.0)
+        if how:
+            log.info("watchdog (during a switch wait): %s playing again on %s (%s, %.1fs)", target,
+                     stick.host, how, time.monotonic() - r0)
+            self.latency.record("resume", time.monotonic() - r0)
+            self._visible_bad_since = None
+            self.note = ""
+        elif not replay:
+            self.note = f"The TV stopped playing {target}; couldn't restart it yet (retrying)"
+
+    def _replay_target(self, stick: Any) -> str | None:
+        """The target of the catch-up replay this stick was flipped to, while nothing has flipped since."""
+        r = self._replay_shown
+        if r is None or r[1] is not stick or r[2] != self._flip_gen or self.on_target is not None:
+            return None
+        return r[0]
 
     async def execute(self, target: str | None, replay_back_s: float | None = None,
                       may_cut: Callable[[], bool] | None = None, replay_id: str | None = None,
@@ -1368,6 +1442,7 @@ class Controller:
         self.active = self.sticks.index(hid)
         self._flip_gen += 1
         self.on_target = None if replay else target
+        self._replay_shown = (target, hid, self._flip_gen) if replay else None
         self._visible_bad_since = None
         # The stick we just left pauses YouTube TV / Peacock when it loses the TV input (seen on both
         # Fire TV sticks), so it isn't a ready standby yet. Reload that game at the live edge in the
