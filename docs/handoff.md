@@ -58,23 +58,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- 2026-11-03 ~4:15 PM ET. Live service: this MORNING's code (not deployed yet).
-- **integration/next:** green. Merged so far:
-  - trip budget (#1), NHL (#3/#22/#27), NFL drive priority (#2), sync (#8/#25), CI (#7)
-  - pinned eval data (#14), traces (#10), network awareness (#12), platform (#15/#20/#23/#24)
-  - instant switching (#5, off until TV setup), deploy (#9/#29), governor (#6)
-  - Brain v3 (#26, acting parts off), reasoner plumbing (#17, off), e2e night (#19/#28)
-  - tonight checklist (#31), multiview path (#32, off), fastcast check (#33)
-  - Decision core #21 merging.
-- **Kaggle round 1, Version 2:** running since ~2:47 PM. The teacher (Qwen3-32B-AWQ) was at 4,352 of
-  81,372 labels (~45–65/min), then the students, grading, and `out.zip`. ETA ~1 AM.
-  - Version 1 failed: `run_teacher.py` read the `.gz` as text. Fixed in the notebook and in the repo.
-- **Kaggle round 2:** ready on branch `kaggle-inputs` (millions of moments built from ESPN inside
-  Kaggle). It starts after V2 finishes and needs the notebook fix for the auto-extracted `code/`.
-- **Usage:** 44% weekly (Nov 3, 4 PM). The cap pauses the project at 88%.
-- **Waiting on Nick tonight (about 30 min):** `docs/tonight-checklist.md`: wall power for the
-  sticks, quit Tailscale, TV settings (Anynet+, IP Remote), the deploy command, `tv_setup.py`
-  (press Allow), the Multiview probe.
+
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
