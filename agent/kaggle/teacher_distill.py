@@ -12,7 +12,7 @@
 #    with the ship gates. The locked test nights are not in this dataset at all.
 # 5. Everything goes into `/kaggle/working/out.zip`.
 #
-# **Run:** Add Input -> your private dataset `redzone-distill`. Settings: Accelerator **GPU T4 x2**,
+# **Run:** Add Input -> your private dataset `redzone-distill` (the folder, or its rz_pack.part*.bin pieces). Settings: Accelerator **GPU T4 x2**,
 # Internet **On**. Then **Save Version -> Save & Run All (Commit)**. It runs in the background,
 # ~10.5 h, and uses ~10.5 of the 30 free GPU-hours a week. When it's done: open the version,
 # Output, download **out.zip**.
@@ -35,7 +35,20 @@ ROUND = time.strftime("%Y%m%d-%H%M")
 WORK = "/kaggle/working/rz"
 T0 = time.time()
 
-manifests = sorted(glob.glob("/kaggle/input/**/manifest.json", recursive=True))
+# The web upload caps files at 10 MB, so the pack arrives as rz_pack.part{aa,ab,..}.bin (one tar.gz, split):
+# cat the parts back together in name order and unpack into /kaggle/working/pack. A plain folder upload works too.
+parts = sorted(glob.glob("/kaggle/input/**/rz_pack.part*.bin", recursive=True), key=os.path.basename)
+if parts and not os.path.exists("/kaggle/working/pack/manifest.json"):
+    os.makedirs("/kaggle/working/pack", exist_ok=True)
+    with open("/kaggle/working/rz_pack.tar.gz", "wb") as f:
+        for p in parts:
+            with open(p, "rb") as part:
+                shutil.copyfileobj(part, f)
+    subprocess.run(["tar", "-xzf", "/kaggle/working/rz_pack.tar.gz", "-C", "/kaggle/working/pack",
+                    "--strip-components=1"], check=True)
+    os.remove("/kaggle/working/rz_pack.tar.gz")
+manifests = sorted(glob.glob("/kaggle/working/pack/**/manifest.json", recursive=True)) + \
+    sorted(glob.glob("/kaggle/input/**/manifest.json", recursive=True))
 PACK = next(os.path.dirname(m) for m in manifests if os.path.exists(os.path.join(os.path.dirname(m), "code")))
 print("pack:", PACK)
 os.makedirs(WORK, exist_ok=True)
@@ -108,5 +121,6 @@ json.dump({"round": ROUND, "wall_h": round((time.time() - T0) / 3600, 2)}, open(
 shutil.make_archive("/kaggle/working/out", "zip", keep)
 # keep the version output small: the 3.4 GB dequantized base is rebuilt next session in ~2 min
 shutil.rmtree(os.path.join(WORK, "students", "base-deq"), ignore_errors=True)
+shutil.rmtree("/kaggle/working/pack", ignore_errors=True)
 print(open(os.path.join(WORK, "report.md")).read())
 print("download: /kaggle/working/out.zip", os.path.getsize("/kaggle/working/out.zip") // 1_000_000, "MB")

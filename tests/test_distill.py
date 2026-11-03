@@ -229,3 +229,21 @@ def test_time_split_keeps_held_out_nights_locked_and_games_whole():
     rows[0]["split"] = "test"           # one play of a train game moved: the leakage check catches it
     with pytest.raises(AssertionError):
         split.check(rows)
+
+
+def test_pack_parts_reassemble_exactly(tmp_path):
+    import subprocess
+    from agent.kaggle.pack_data import split_parts
+    pack = tmp_path / "kin"
+    (pack / "code").mkdir(parents=True)
+    (pack / "manifest.json").write_text("{}")
+    (pack / "big.bin").write_bytes(__import__("os").urandom(120_000))
+    names = split_parts(pack, tmp_path / "parts", part_bytes=50_000)
+    assert names[0] == "rz_pack.partaa.bin" and len(names) >= 2
+    assert all((tmp_path / "parts" / n).stat().st_size <= 50_000 for n in names)
+    joined = tmp_path / "j.tar.gz"
+    joined.write_bytes(b"".join((tmp_path / "parts" / n).read_bytes() for n in sorted(names)))
+    (tmp_path / "out").mkdir()
+    subprocess.run(["tar", "-xzf", str(joined), "-C", str(tmp_path / "out"), "--strip-components=1"], check=True)
+    assert (tmp_path / "out" / "big.bin").read_bytes() == (pack / "big.bin").read_bytes()
+    assert (tmp_path / "out" / "manifest.json").exists()

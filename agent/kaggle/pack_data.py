@@ -80,6 +80,8 @@ def main() -> None:
     ap.add_argument("--watchdog-src", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--wd-per-kind", type=int, default=8)
+    ap.add_argument("--parts", help="also write the pack as rz_pack.part{aa,ab,..}.bin here (tar.gz split "
+                                    "into < PART_MB pieces: the Kaggle web upload caps files at 10 MB)")
     a = ap.parse_args()
     t0 = time.time()
     out = Path(a.out)
@@ -189,6 +191,33 @@ def main() -> None:
     info["total_mb"] = round(sum(v["bytes"] for v in files.values()) / 1e6, 1)
     (out / "manifest.json").write_text(json.dumps(info, indent=1))
     print(json.dumps({k: v for k, v in info.items() if k != "files"}, indent=1))
+    if a.parts:
+        print("parts:", split_parts(out, Path(a.parts)))
+
+
+PART_MB = 9.5
+
+
+def split_parts(pack: Path, dest: Path, part_bytes: int = int(PART_MB * 1_000_000)) -> list[str]:
+    """tar.gz the pack (top folder ``pack/``) and split it into rz_pack.partaa.bin, partab.bin, ...;
+    the notebook's first cell cats them back together in name order."""
+    import io
+    import string
+    import tarfile
+    dest.mkdir(parents=True, exist_ok=True)
+    for old in dest.glob("rz_pack.part*.bin"):
+        old.unlink()
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=6) as t:
+        t.add(pack, arcname="pack")
+    data = buf.getvalue()
+    names = []
+    for k in range(0, len(data), part_bytes):
+        i = k // part_bytes
+        name = f"rz_pack.part{string.ascii_lowercase[i // 26]}{string.ascii_lowercase[i % 26]}.bin"
+        (dest / name).write_bytes(data[k:k + part_bytes])
+        names.append(name)
+    return names
 
 
 def _first_system(path: Path) -> str:
