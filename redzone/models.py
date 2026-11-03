@@ -135,6 +135,11 @@ class Play:
     seen_at: float | None = None
     source: str = ""
     score: tuple[int, int] | None = None  # (home, away) right after this play, when the feed says
+    # [cut timing] the game clock (seconds LEFT in the period) and period at this entry, and the
+    # feed's raw type text: basketball's restart is worked back from the first clock-moving event.
+    clock: float | None = None
+    period: int | None = None
+    type_text: str = ""
 
 
 @dataclass

@@ -48,7 +48,8 @@ TEAM_NAMES = {"nfl": "Commanders", "nba": "Wizards", "nhl": "Capitals"}
 
 def _crunch_counts(r: Replay, watching, lag_total: float, play_len: float, tune_s: float,
                    last_period: int = 4, margin: int = 8, period_len: float | None = None,
-                   window: tuple[float, float] | None = None) -> tuple[int, int]:
+                   window: tuple[float, float] | None = None,
+                   offsets: list[float] | None = None) -> tuple[int, int]:
     """One game's crunch-time plays (final 2:00 of a one-score game, or OT): (how many, how many live).
     Uses backtest.crunch_counts when the backtest has it."""
     if hasattr(backtest, "crunch_counts"):
@@ -71,7 +72,7 @@ def _crunch_counts(r: Replay, watching, lag_total: float, play_len: float, tune_
         if not ((per == last_period and clk is not None and clk <= 120 and close) or per > last_period):
             continue
         n += 1
-        live += backtest._on_screen_game(watching, w + lag_total - play_len, tune_s) == r.gid
+        live += backtest.shows(watching, offsets, r.gid, w + lag_total - play_len, tune_s)
     return n, live
 
 
@@ -257,6 +258,7 @@ class DemoEngine(Engine):
         self.scorer = Scorer(self.cfg, clock=clock)
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"), clock=clock)
         self.decider = Decider(self.cfg, self.delays, clock=clock)
+        self.decider.entry_cost = lambda target: TUNE_S   # [cut timing] the replay's picture is up TUNE_S after a switch
         self.control = InertController(self.cfg, self.channels, clock)
         # The hidden stick, modeled: what the real standby Planner would have had ready at each switch.
         self.planner = standby.Planner(self.cfg, clock=clock)
@@ -440,10 +442,12 @@ class DemoEngine(Engine):
         cuts = [(t, w) for t, w in rep.mid_play_cuts if t0 <= t <= t1]
         win = (t0, t1)
 
+        offs = backtest.offsets_of(self.switches)
+
         def crunch(r):
             hockey = r.league == League.NHL
             return _crunch_counts(r, self.watching, lag, PLAY_LEN_S, TUNE_S, 3 if hockey else 4,
-                                          1 if hockey else 8, 1200.0 if hockey else None, win)
+                                  1 if hockey else 8, 1200.0 if hockey else None, win, offs)
 
         # Big plays: NFL TDs/FGs/turnovers, NHL goals (every NBA bucket is a "scoring play": left out).
         big = {}
@@ -455,6 +459,8 @@ class DemoEngine(Engine):
                         continue
                     n += 1
                     on = backtest._on_screen_game(self.watching, w + lag - PLAY_LEN_S, TUNE_S)
+                    if backtest.shows(self.watching, offs, r.gid, w + lag - PLAY_LEN_S, TUNE_S):
+                        on = r.gid
                     if on == r.gid:
                         live += 1
                     elif (r.gid, round(w)) in self.replayed:

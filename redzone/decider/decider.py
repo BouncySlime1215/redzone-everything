@@ -34,6 +34,7 @@ from typing import Callable
 from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S, PLAY_LEN_S, DelayBook, Event, Gate,
                                     Timeline, break_on_arrival, catchable, final_play_aired, leave_gate,
                                     resume_play)
+from redzone.decider.cuts import EntryPlan, plan_entry
 from redzone.models import League, Stoppage
 from redzone.scoring.engine import Scored
 
@@ -60,6 +61,20 @@ SHORT_STOPS = {"timeout", "injury", "review"}
 # confirmed on screen there is nothing to wait for but the next try.
 START_RETRY_S = 3.0
 START_RETRY_MAX_S = 60.0
+# [cut timing] Every live entry lands on a dead ball (cuts.plan_entry): as is, with a short DVR rewind
+# to the dead ball before the play we'd otherwise join mid-way, or after waiting for one. Only a
+# switch you made by hand goes straight in.
+ENTRY_EXEMPT = {"user"}
+ENTRY_SLACK_S = 2.0       # the tune's own timing doubt, on top of the delay's 2 sigma
+# Once the delay's doubt grows (sigma drifts up between calibrations) no landing fits a 30 s huddle
+# with the full margin: then centre it in the dead window with this much doubt. A miss here joins a
+# play a few seconds late; it is never a cut.
+ENTRY_RELAXED_S = 8.0
+# The picture can come up as soon as this after the command (a flip to a ready hidden stick), or as
+# late as the target's estimated cost: the whole stretch must land on a dead ball.
+ENTRY_FASTEST_S = 4.0
+# Crunch time or your team: landing on the dead ball the data shows, with only this much doubt.
+ENTRY_URGENT_S = 2.0
 
 
 def _short(s: Scored) -> str:
@@ -100,6 +115,7 @@ class Decision:
     kind: str = ""            # "better", "break_visit", "return", "chase", "must_see", "ended", "start", "replay", "crunch"
     replay: "Missed | None" = None
     want: str | None = None   # the game it wants to switch to while it waits for a safe moment
+    rewind_s: float = 0.0     # [cut timing] land this far behind live (whole seek steps) on a dead ball
 
 
 @dataclass
@@ -150,6 +166,9 @@ class Decider:
         # average costs are useful for ranking, but cannot promise a deadline.
         # Offline simulations intentionally keep their configured timing model.
         self.deadline_cost: Callable[[str | None], float] | None = None
+        # [cut timing] When the picture of a switch comes up (seconds after the command), if known
+        # better than deadline_cost: a simulator states its own tune model here.
+        self.entry_cost: Callable[[str | None], float] | None = None
         # Scheduled start (epoch s) of the next not-yet-started game with your team, if the
         # engine knows one. None = unknown, and the 'wait for your team' rule stays off.
         self.my_tip_at: Callable[[], float | None] | None = None
@@ -246,6 +265,8 @@ class Decider:
                 self.after_replay = True
         home_before = (self.home_break_visit, self.home_return_at)
         d = self._decide(cands, now)
+        d = self._hold_for_big(d, cands, now, home_before)
+        d = self._time_entry(d, cands, now, home_before)
         if not commit and d.action in ("switch", "replay"):
             # The simulator can commit synchronously. A real TV must confirm
             # the command first: a proposal is not a watched game or replay.
@@ -258,6 +279,7 @@ class Decider:
                 d = Decision(now, "stay", self.current, "already here", d.state)
             else:
                 self._commit(d.target, kind=d.kind)
+                self._land_behind(d.target, d.rewind_s)
                 self.after_replay = False
         elif d.action == "replay" and d.replay:
             self._start_replay(d.replay, cands, now)
@@ -274,6 +296,7 @@ class Decider:
         elif d.target:
             self.abort_replay()
             self._commit(d.target, kind=d.kind)
+            self._land_behind(d.target, d.rewind_s)
             # _commit's future estimate is for offline simulation. The TV
             # already confirmed: don't fabricate an extra tune or watched time.
             self._screen_log.pop()
@@ -448,6 +471,7 @@ class Decider:
 
     def _start_replay(self, m: Missed, cands, now: float, *, confirmed: bool = False) -> None:
         self.abort_replay()
+        self._land_behind(None, 0.0)   # the replay seeks from the live edge; nothing stays behind
         if m in self.queue:
             self.queue.remove(m)
         self.replaying = m
@@ -465,6 +489,86 @@ class Decider:
         self.since = now
         self.history.append((now, m.game_id, "replay"))
         self._screen_log.append((now, "replay"))
+
+    # ----- [cut timing] entering on a dead ball ------------------------------------
+
+    def entry_plan(self, gid: str, cands: dict[str, Candidate], now: float, cost: float | None = None,
+                   urgent: bool = False) -> EntryPlan | None:
+        """How to come into gid right now (None: no timing evidence, e.g. RedZone or no timeline)."""
+        c = self.cfg
+        if gid == REDZONE or not c.get("decider.entry.enabled", True):
+            return None
+        tl = self.timelines.get(gid)
+        x = cands.get(gid) or self._known.get(gid)
+        if tl is None or x is None or not x.target or not tl.dead.marks:
+            return None
+        d = self.delays.get(x.target)
+        base_mu = d.mu - d.behind     # a fresh tune lands on the live edge
+        margin = 2 * d.current_sigma(now) + ENTRY_SLACK_S
+        if cost is None:
+            cost = self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target)
+        if not math.isfinite(cost):
+            return None
+        can = bool(c.get("decider.entry.rewind", True)) and self._replayable(x)
+        return plan_entry(tl.dead, base_mu, margin, now, cost, can_rewind=can,
+                          step=float(c.get("replay.seek_step_s", 10)),
+                          max_back=float(c.get("decider.entry.max_rewind_s", 60)),
+                          relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
+                          cost_lo=min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S))),
+                          urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None)
+
+    def _time_entry(self, d: Decision, cands, now: float, home_before) -> Decision:
+        """Hold a switch until its picture would come up on a dead ball, or land it with a rewind."""
+        if d.action != "switch" or not d.target or d.kind in ENTRY_EXEMPT:
+            return d
+        if d.target == self.current and not self.after_replay:
+            return d
+        x = cands.get(d.target)
+        urgent = d.kind == "crunch" or (x is not None and (x.scored.crunch or self._sticky_home(d.target, cands)))
+        plan = self.entry_plan(d.target, cands, now, urgent=urgent)
+        if plan is None:
+            return d
+        if plan.ok:
+            d.rewind_s = plan.rewind_s
+            return d
+        # Not yet: whatever the switch planned (a visit's way home) waits with it.
+        self.home_break_visit, self.home_return_at = home_before
+        state = State.REPLAY if self.after_replay else d.state
+        return Decision(now, "stay", self.current, f"{plan.why}: {d.reason}", state, d.gate,
+                        want=d.target)
+
+    def _hold_for_big(self, d: Decision, cands, now: float, home_before) -> Decision:
+        """[cut timing] A big play is in the data but hasn't finished airing here yet: stay for it.
+        The data runs a stream delay ahead of the screen (more after a rewind on entry), so "the
+        moment's over" in the data can still be the touchdown on its way to your screen."""
+        if d.action not in ("switch", "replay") or d.kind in ("user", "crunch") or not self.current \
+                or self.replaying or self.after_replay or d.target == self.current:
+            return d
+        tl = self.timelines.get(self.current)
+        x = cands.get(self.current)
+        if tl is None or x is None or not x.target:
+            return d
+        dl = self.delays.get(x.target)
+        until = None
+        for e in reversed(tl.events):
+            if e.kind == "play" and e.big and now < e.seen + dl.mu + 2 * dl.current_sigma(now) + AFTER_PLAY_BUFFER_S:
+                until = e.seen + dl.mu + 2 * dl.current_sigma(now) + AFTER_PLAY_BUFFER_S
+                label = e.label
+                break
+        if until is None:
+            return d
+        self.home_break_visit, self.home_return_at = home_before
+        return Decision(now, "stay", self.current, f"staying for it to air here ({until - now:.0f}s): {label}",
+                        d.state, d.gate, want=d.target)
+
+    def _land_behind(self, gid: str | None, rewind_s: float) -> None:
+        """The tune now on screen runs rewind_s behind live; every other tune is fresh again."""
+        mine = self.target_of(gid) if gid else None
+        for t, dl in list(self.delays.book.items()):
+            if dl.behind and t != mine:
+                self.delays.set_behind(t, 0.0)
+        if mine:
+            self.delays.set_behind(mine, rewind_s)
 
     def _decide(self, cands: dict[str, Candidate], now: float) -> Decision:
         c = self.cfg

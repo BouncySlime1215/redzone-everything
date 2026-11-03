@@ -18,6 +18,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 
+from redzone.decider.cuts import DeadTracker
 from redzone.models import REAL_BREAKS, ByLeague, GameState, League, Phase, Stoppage, pro_period
 
 # Leagues where the ball/puck is live continuously; only official stoppages are gaps.
@@ -87,6 +88,9 @@ class Delay:
     source: str = "default"    # "tap" | "screen" (this channel) | "app" (another channel of the same app) | "boundary" | "default"
     drift_cap: float = 6.0
     live: float | None = None  # this tune's own delay from the channel's stream origin (boundary.py)
+    # [cut timing] this tune was rewound this far behind the live edge on entry (YouTube TV DVR) so
+    # the picture came up on a dead ball; already included in mu. A fresh tune clears it.
+    behind: float = 0.0
 
     def current_sigma(self, now: float) -> float:
         if self.calibrated_at is None:
@@ -166,7 +170,7 @@ class DelayBook:
             sigma += STALE_MARGIN_S
         elif not own or age > CROSS_NIGHT_S:
             sigma += SHARED_MARGIN_S
-        d.mu, d.sigma, d.calibrated_at = mu, sigma, newest
+        d.mu, d.sigma, d.calibrated_at = mu + d.behind, sigma, newest
         d.source = ("tap" if self.taps.get(target) else "screen") if own else "app"
         d.samples.clear()
         d.samples.extend(x for _, x in sorted(taps)[-TAP_KEEP:])
@@ -191,7 +195,7 @@ class DelayBook:
             sigma += STALE_MARGIN_S
         elif pool is not own or age > CROSS_NIGHT_S:
             sigma += SHARED_MARGIN_S
-        d.mu, d.sigma, d.calibrated_at = mu, sigma, newest
+        d.mu, d.sigma, d.calibrated_at = mu + d.behind, sigma, newest
         d.source = "boundary"
         d.samples.clear()
         d.samples.extend(x for _, x in sorted(pool)[-TAP_KEEP:])
@@ -201,7 +205,7 @@ class DelayBook:
         live = self.live.get(target)
         d.live = live if live is not None and abs(live - mu) <= 2 * sigma else None
         if d.live is not None:
-            d.mu = d.live
+            d.mu = d.live + d.behind
 
     def boundary_count(self, app: str) -> int:
         """Show-change samples remembered for this app (all its channels)."""
@@ -280,6 +284,14 @@ class DelayBook:
             return d
         self._refresh_app(self.app(target))   # every channel of this app without its own taps learns too
         return d
+
+    def set_behind(self, target: str, behind_s: float) -> None:
+        """[cut timing] This tune now runs behind_s further behind the live edge (a rewind on entry),
+        or 0 again (a fresh tune, a jump back to live)."""
+        d = self.get(target)
+        behind_s = max(0.0, behind_s)
+        d.mu += behind_s - d.behind
+        d.behind = behind_s
 
     def buffered(self, target: str) -> None:
         """The stream stalled: it's now further behind, and we're less sure by how much."""
@@ -377,6 +389,7 @@ class Timeline:
         self.fresh_at: float | None = None    # when this game's data was last fresh
         self._lags: deque[float] = deque(maxlen=12)
         self.final_at: float | None = None    # when we first saw it Final
+        self.dead = DeadTracker(league)       # [cut timing] dead windows: where to leave, where to land
         self.end_t: float | None = None       # latest real time the game could have ended
 
     def lag_est(self) -> float:
@@ -431,6 +444,9 @@ class Timeline:
                                          spread=hi - lo, score=tuple(sc)))
         for p in new:
             self._seen_ids.append(p.id)
+            lo, hi = _bounds(p, now, prev_fresh)
+            self.dead.add(p.id, lo, hi, p.kind, p.text, getattr(p, "type_text", ""),
+                          getattr(p, "clock", None), getattr(p, "period", None))
         if not new and self._last_score is not None and score != self._last_score and None not in score:
             # No play-by-play from this source: a score change is still a play (time unknown: bound it).
             lo, hi = (prev_fresh or now) - FEED_LAG_MAX_S, now - FEED_LAG_MIN_S
@@ -463,6 +479,7 @@ class Timeline:
             self.events.append(Event(max(t_end, last_start.lo) if last_start else t_end, "stop_end"))
         self._stopped = stopped if g.stoppage != Stoppage.UNKNOWN else self._stopped
         self.stoppage = g.stoppage
+        self.dead.seen(self.fresh_at, self.lag_est())
 
         if g.phase == Phase.POST and self.final_at is None:
             # [mid-play guard] Final in the data. The last play hasn't necessarily aired yet; remember the

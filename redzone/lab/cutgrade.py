@@ -41,6 +41,8 @@ class CutCard:
     leaves: int = 0
     leaves_in_dead: int = 0
     leaves_between_plays: int = 0
+    rewinds: int = 0            # entries that came up behind live on purpose (DVR rewind to a dead ball)
+    rewind_s: float = 0.0
     mid_entries: list = field(default_factory=list)
 
     def add(self, o: "CutCard") -> None:
@@ -58,7 +60,9 @@ class CutCard:
                 "plays_missed_entry": self.plays_missed_entry,
                 "plays_missed_per_entry": round(self.plays_missed_entry / max(1, self.entries), 2),
                 "leaves": self.leaves, "leaves_in_dead_pct": pct(self.leaves_in_dead, self.leaves),
-                "leaves_between_plays": self.leaves_between_plays}
+                "leaves_between_plays": self.leaves_between_plays,
+                "entry_rewinds": self.rewinds,
+                "entry_rewind_s": round(self.rewind_s / max(1, self.rewinds), 1)}
 
 
 def _base(league: League) -> League:
@@ -155,15 +159,17 @@ def _dead_at(league: League, wall: list[float], plays: list[dict], st: float) ->
 def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
     """Both ends of every live switch. `switches` are backtest SwitchLogs, in time order."""
     card = CutCard()
+    from redzone.lab.backtest import leave_offsets
     by_id = {r.gid: r for r in replays}
     prev_kind = None
+    left_off = leave_offsets(switches)
     for n, s in enumerate(switches):
         was_replay, prev_kind = prev_kind == "replay", s.kind
         # ---- leaving
         src = by_id.get(s.frm or "")
         if src is not None and not was_replay:
             card.leaves += 1
-            st = s.t - lag_true
+            st = s.t - lag_true - left_off[n]
             dead, _, _ = _dead_at(src.league, src.wall, src.plays, st)
             i = _idx(src.wall, st)
             stopped = 0 <= i and (espn.stoppage_for(src.league, src.plays[i]) != Stoppage.NONE or st > src.wall[-1])
@@ -178,7 +184,10 @@ def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
         if dst is None:
             continue
         arrive = s.t + tune_s
-        st = arrive - lag_true
+        off = getattr(s, "offset", 0.0) or 0.0
+        st = arrive - lag_true - off
+        card.rewinds += off > 0
+        card.rewind_s += off
         if st < dst.wall[0] or st > dst.wall[-1]:
             continue   # before the game started or after it ended on screen
         nxt = switches[n + 1].t if n + 1 < len(switches) else float("inf")
@@ -191,7 +200,7 @@ def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
         card.entry_wait_s += min(wait, max(0.0, nxt - arrive))
         # plays that started airing while the screen was black, or were under way when it came up
         plen = _plen(dst.league)
-        lo, hi = s.t - lag_true, st
+        lo, hi = s.t - lag_true - off, st
         for k in range(max(0, _idx(dst.wall, lo)), len(dst.wall)):
             w, p = dst.wall[k], dst.plays[k]
             if w - plen > hi:

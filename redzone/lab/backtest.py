@@ -84,6 +84,7 @@ class SwitchLog:
     to: str
     kind: str
     reason: str
+    offset: float = 0.0   # [cut timing] the picture came up this far behind live (a rewind on entry)
 
 
 @dataclass
@@ -225,6 +226,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     delays = DelayBook({"youtubetv": lag_total}, sigma_default=sigma, clock=clock)
     scorer = Scorer(cfg, clock=clock)
     dec = Decider(cfg, delays, clock=clock)
+    dec.entry_cost = lambda target: tune_s   # [cut timing] this simulator's picture is up tune_s after a switch
     me = Personal(my_teams={lg: set(my_teams) for lg in League})
     if focus:
         dec.user.focus_game, dec.user.focus_mode = focus, FocusMode.FOCUS
@@ -302,7 +304,8 @@ def _record(decision, before: str | None, t: float, switches: list[SwitchLog],
     to the same game after a replay (kind "home"/"break_visit"/"live"): when that went unlogged the
     grader thought the replay ran on forever AND skipped mid-play checks on the next cut."""
     if decision.action == "switch" and decision.target:
-        switches.append(SwitchLog(t, before, decision.target, decision.kind, decision.reason))
+        switches.append(SwitchLog(t, before, decision.target, decision.kind, decision.reason,
+                                  getattr(decision, "rewind_s", 0.0) or 0.0))
         watching.append((t, decision.target))
     elif decision.action == "replay" and decision.replay:
         switches.append(SwitchLog(t, before, decision.target, "replay", decision.reason))
@@ -355,10 +358,65 @@ def _on_screen_game(watching: list[tuple[float, str | None]], t: float, tune_s: 
 
 
 def watched_whole(watching: list[tuple[float, str | None]], gid: str, start: float, end: float,
-                  tune_s: float, horizon: float) -> bool:
-    """Full observed play interval, including no retune away and back during the play."""
-    return (end <= horizon and _on_screen_game(watching, start, tune_s) == gid
-            and not any(start < at <= end for at, _ in watching))
+                  tune_s: float, horizon: float, offsets: list[float] | None = None) -> bool:
+    """Full observed play interval, including no retune away and back during the play.
+
+    offsets (aligned with watching): a visit that came up `o` s behind live (a rewind on entry)
+    shows this play `o` s later than the live edge would."""
+    if not offsets or not any(offsets):
+        return (end <= horizon and _on_screen_game(watching, start, tune_s) == gid
+                and not any(start < at <= end for at, _ in watching))
+    for i, (at, g) in enumerate(watching):
+        if g != gid:
+            continue
+        o = offsets[i] if i < len(offsets) else 0.0
+        nxt = watching[i + 1][0] if i + 1 < len(watching) else float("inf")
+        if end + o <= horizon and at + tune_s <= start + o and end + o < nxt:
+            return True
+    return False
+
+
+def on_screen(watching: list[tuple[float, str | None]], offsets: list[float] | None, t: float,
+              tune_s: float) -> tuple[str | None, float]:
+    """(what the screen shows at t, how far behind live that visit runs)."""
+    cur, off = None, 0.0
+    for i, (at, g) in enumerate(watching):
+        if at + tune_s <= t:
+            cur, off = g, (offsets[i] if offsets and i < len(offsets) else 0.0)
+        elif at <= t:
+            cur, off = None, 0.0
+        else:
+            break
+    return cur, off
+
+
+def shows(watching: list[tuple[float, str | None]], offsets: list[float] | None, gid: str, t: float,
+          tune_s: float) -> bool:
+    """Does the screen show game gid's live-edge moment t (= wallclock + stream delay) at some point,
+    counting a visit that runs `o` s behind live as showing it at t + o?"""
+    if not offsets or not any(offsets):
+        return _on_screen_game(watching, t, tune_s) == gid
+    for i, (at, g) in enumerate(watching):
+        if g != gid:
+            continue
+        o = offsets[i] if i < len(offsets) else 0.0
+        nxt = watching[i + 1][0] if i + 1 < len(watching) else float("inf")
+        if at + tune_s <= t + o < nxt:
+            return True
+    return False
+
+
+def offsets_of(switches) -> list[float]:
+    return [getattr(s, "offset", 0.0) or 0.0 for s in switches]
+
+
+def leave_offsets(switches) -> list[float]:
+    """For each switch: how far behind live the picture it leaves was running."""
+    out, cur, off = [], None, 0.0
+    for s in switches:
+        out.append(off if s.frm is not None and s.frm == cur else 0.0)
+        cur, off = s.to, (getattr(s, "offset", 0.0) or 0.0)
+    return out
 
 
 def tuning_blackout_seconds(watching: list[tuple[float, str | None]], tune_s: float,
@@ -372,13 +430,15 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
     by_id = {r.gid: r for r in replays}
     cuts = []
     prev_kind = None
-    for s in switches:
+    offs = offsets_of(switches) if len(switches) == len(watching) else None
+    left_off = leave_offsets(switches)
+    for s, lo in zip(switches, left_off):
         r = by_id.get(s.frm or "")
         was_replay = prev_kind == "replay"
         prev_kind = s.kind
         if not r or was_replay:
             continue
-        screen_t = s.t - lag_total  # game time showing on screen when we cut
+        screen_t = s.t - lag_total - lo  # game time showing on screen when we cut
         for w, p in zip(r.wall, r.plays):
             t = (espn._get(p, "type", "text") or "").lower()
             if t in ("timeout", "official timeout", "end period", "end of half", "two-minute warning",
@@ -396,7 +456,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
                 continue
             big += 1
             air = w + lag_total
-            on = watched_whole(watching, r.gid, air - play_len, air, tune_s, t1)
+            on = watched_whole(watching, r.gid, air - play_len, air, tune_s, t1, offs)
             live += on
             rep_seen = (r.gid, round(w)) in replayed
             caught += on or rep_seen
@@ -422,7 +482,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             if not ((per == 4 and clk is not None and clk <= 120 and close) or per >= 5):
                 continue
             crunch += 1
-            on = watched_whole(watching, r.gid, w + lag_total - play_len, w + lag_total, tune_s, t1)
+            on = watched_whole(watching, r.gid, w + lag_total - play_len, w + lag_total, tune_s, t1, offs)
             crunch_live += on
             if any(a in my_teams for a in r.matchup.replace("@", " ").split()):
                 my_crunch += 1
@@ -432,7 +492,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
     causes: dict[str, float] = {}
     t = t0
     while t <= t1:
-        g = _on_screen_game(watching, t, tune_s)
+        g, o = on_screen(watching, offs, t, tune_s)
         cause = None
         if g == REDZONE:
             # Commercial-free, but only while it's on the air; parked on a dead channel is dead air.
@@ -442,7 +502,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             watched += 10
         elif g:
             r = by_id[g]
-            screen_t = t - lag_total
+            screen_t = t - lag_total - o
             i = max(0, _bisect(r.wall, screen_t))
             st = r.state_at(i)
             if st and st.phase == Phase.LIVE:
