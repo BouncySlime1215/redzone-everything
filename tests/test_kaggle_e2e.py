@@ -49,14 +49,22 @@ def tiny_base(d: Path) -> Path:
     return d
 
 
+def _day(start: str, plus: int) -> str:
+    import datetime as dt
+    return (dt.datetime.strptime(start, "%Y%m%d") + dt.timedelta(days=plus)).strftime("%Y%m%d")
+
+
 def archive(d: Path) -> Path:
+    from agent.distill.split import BIG_CUTS
     """Fixture summaries copied over 12 nights per league, so the time split has train/valid/test."""
     for j, lg in enumerate(("nfl", "nba", "nhl")):
         src = sorted(FIX.glob(f"espn_{lg}_summary_*.json"))[0]
         (d / lg).mkdir(parents=True)
-        for k in range(12):
+        v, t, lk = BIG_CUTS[lg]
+        nights = [_day(v, -40 + 3 * i) for i in range(5)] + [_day(v, 2 + i) for i in range(3)] + \
+            [_day(t, 2 + i) for i in range(3)] + [_day(lk, 1)]          # train, valid, test, locked
+        for k, night in enumerate(nights):
             gid = str(9_000_000 + 100 * j + k)
-            night = f"202510{k + 1:02d}"
             shutil.copy(src, d / lg / f"summary_{gid}.json")
             (d / lg / f"scoreboard_{night}.json").write_text(json.dumps({"events": [{"id": gid}]}))
     return d
@@ -111,7 +119,8 @@ def test_notebook_end_to_end_on_cpu(tmp_path):
     names = set(z.namelist())
     for f in ("report.md", "teacher_out.jsonl", "build_report.json", "split_plan.json",
               "game-reasoner/mlx/adapters.safetensors", "watchdog/mlx/adapters.safetensors"):
-        assert f in names, (f, sorted(names), log[-3000:])
+        blog = (work / "build.log").read_text()[-3000:] if (work / "build.log").exists() else ""
+        assert f in names, (f, sorted(names), log[-2000:], blog)
     plan = json.loads(z.read("split_plan.json"))
     assert all("locked" in m.values() for m in plan.values())
     build = json.loads(z.read("build_report.json"))

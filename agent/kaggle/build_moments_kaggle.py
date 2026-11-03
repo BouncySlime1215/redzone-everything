@@ -54,6 +54,12 @@ GROUPS = {"cfb": "80", "cbb": "50"}           # FBS, Division I (else ESPN lists
 WINDOW = {"nfl": ("0901", "0215", True), "cfb": ("0820", "0125", True), "nba": ("1001", "0625", True),
           "cbb": ("1101", "0410", True), "nhl": ("1001", "0625", True), "mlb": ("0315", "1110", False)}
 SEASONS = 3
+# The shipped brain models trained on seasons that overlap the dev-test and locked blocks (brain
+# thread, 2026-11-03), so until they are retrained before split.BIG_CUTS' test_start, round 2 leaves
+# every brain-model output out of the head's features, the brief and the targets: nothing graded can
+# leak through the brain. (The live brief must drop its "brain:" line too before this student ships.)
+BRAIN_FEATS = ("brain_key", "brain_break", "brain_hot")
+NO_BRAIN = os.environ.get("RZ_KEEP_BRAIN") != "1"
 UA = {"User-Agent": "RedZoneEverything/1.0 (public archive replay)"}
 
 
@@ -230,7 +236,7 @@ def train_head(lg: str, raw_dir: Path, plan: dict[str, str]) -> tuple[dict, dict
     import numpy as np
     from redzone.lab.reasoner_data import fold_of
     from redzone.reasoner import brief
-    feats = brief.features_for(lg)
+    feats = [f for f in brief.features_for(lg) if not (NO_BRAIN and f in BRAIN_FEATS)]
     keys, X, y, sp, fold = [], [], [], [], []
     for f in sorted(raw_dir.glob(f"{lg}_*.jsonl.gz")):
         with gzip.open(f, "rt") as fh:
@@ -253,6 +259,8 @@ def train_head(lg: str, raw_dir: Path, plan: dict[str, str]) -> tuple[dict, dict
     tr = sp == "train"
     va = sp == "valid"
     p = np.zeros(len(y))
+    if tr.sum() < 100 or len(set(y[tr].tolist())) < 2:          # nothing to learn from: odds stay 0
+        return dict(zip(keys, p.tolist())), {"rows": int(len(y)), "note": "too few train rows for a head"}
     # rounds picked on valid nights (newer than every train night), then OOF by night inside train
     dtr = lgb.Dataset(X[tr], y[tr], feature_name=feats)
     if va.any():
@@ -298,6 +306,9 @@ def export(lg: str, raw_dir: Path, plan: dict[str, str], head: dict, out_dir: Pa
                 p = float(head.get(f"{r['gid']}:{r['i']}", 0.0))
                 for k in ("t_big", "t_break"):
                     r[k] = math.inf if r[k] is None else r[k]
+                if NO_BRAIN:
+                    r["facts"] = {k: v for k, v in r["facts"].items() if k not in BRAIN_FEATS}
+                    r["brief"] = "\n".join(ln for ln in r["brief"].splitlines() if not ln.startswith("brain: "))
                 tgt = target({**r, "league": base}, p)
                 row = {"id": f"{lg}:{r['gid']}:{r['i']}", "game_id": r["gid"], "night": r["night"], "split": s,
                        "league": lg, "i": r["i"], "brief": brief_with(r, p, on_screen=rng.random() < 0.3),
@@ -419,7 +430,7 @@ def main() -> None:
     print("rows built:", json.dumps(stats), flush=True)
 
     # 4 + 5: head (gap report) and export
-    report = {"today": str(today), "nights": summary, "build": dict(stats), "stopped_early": stopped,
+    report = {"today": str(today), "brain_features": "excluded (leak)" if NO_BRAIN else "kept", "nights": summary, "build": dict(stats), "stopped_early": stopped,
               "locked_v1_games_excluded": {k: len(v) for k, v in locked_games.items()}, "head": {}, "rows": {}}
     for lg in a.leagues:
         head, gap = train_head(lg, raw, plan[lg])
