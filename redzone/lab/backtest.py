@@ -106,6 +106,13 @@ class Report:
     my_crunch_live: int = 0
     dead_causes: dict[str, float] = field(default_factory=dict)  # seconds of dead air by cause
     tuning_blackout_s: float = 0.0  # modelled single-stick tuning time, separate from commercials
+    # [redzone mode] what a whip-around show is judged by
+    behind_live_s: float = 0.0       # time the screen showed a catch-up replay (behind live)
+    big_missed_on_replay: int = 0    # big plays that aired (anywhere) while we sat on a replay
+    drive_plays: int = 0             # NFL scrimmage plays on drives that scored or reached the red zone
+    drive_plays_live: int = 0        # ...of those, watched live start to finish
+    drive_plays_other_sport: int = 0  # ...of those, missed while another sport was on screen
+    drive_plays_on_redzone: int = 0  # ...of those, aired while the RedZone channel was on (it may have shown them)
 
     @property
     def summary(self) -> dict:
@@ -124,6 +131,10 @@ class Report:
             "tuning_blackout_pct": round(100 * self.tuning_blackout_s / max(1, self.hours * 3600), 1),
             "switches_per_hour": round(len(self.switches) / max(0.1, self.hours), 1),
             "switches": len(self.switches),
+            "nfl_drive_live": f"{self.drive_plays_live}/{self.drive_plays}"
+                              f" ({100 * self.drive_plays_live / max(1, self.drive_plays):.0f}%)",
+            "behind_live_pct": round(100 * self.behind_live_s / max(1, self.hours * 3600), 1),
+            "big_missed_on_replay": self.big_missed_on_replay,
         }
 
 
@@ -386,7 +397,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
                 cuts.append((s.t, f"{r.matchup}: {(p.get('text') or '')[:70]}"))
                 break
 
-    big = live = mine = mine_live = caught = 0
+    big = live = mine = mine_live = caught = missed_on_replay = 0
     missed = []
     for r in replays:
         for w, p in zip(r.wall, r.plays):
@@ -402,6 +413,8 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             if ours:
                 mine += 1
                 mine_live += on or rep_seen
+            if not on and (_on_screen_game(watching, air - play_len, tune_s) or "").startswith("replay:"):
+                missed_on_replay += 1   # aired while we sat on a replay: live was given up for old footage
             if not (on or rep_seen):
                 missed.append((air, r.matchup, (p.get("text") or "")[:90]))
 
@@ -454,9 +467,75 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
     rep = Report(switches, cuts, big, live, mine, mine_live, dead, watched, (t1 - t0) / 3600, missed)
     rep.dead_causes = causes
     rep.tuning_blackout_s = tuning_blackout_seconds(watching, tune_s, t0, t1)
+    rep.behind_live_s = behind_live_seconds(watching, t0, t1)
+    rep.big_missed_on_replay = missed_on_replay
+    rep.drive_plays, rep.drive_plays_live, rep.drive_plays_other_sport, rep.drive_plays_on_redzone = drive_coverage(
+        replays, watching, lag_total, play_len, tune_s, t1)
     rep.big_plays_caught = caught
     rep.crunch, rep.crunch_live, rep.my_crunch, rep.my_crunch_live = crunch, crunch_live, my_crunch, my_crunch_live
     return rep
+
+
+def behind_live_seconds(watching: list[tuple[float, str | None]], t0: float, t1: float) -> float:
+    """[redzone mode] Seconds the screen showed a catch-up replay: time spent behind live."""
+    out = 0.0
+    for i, (at, g) in enumerate(watching):
+        if not (g or "").startswith("replay:"):
+            continue
+        end = watching[i + 1][0] if i + 1 < len(watching) else t1
+        out += max(0.0, min(end, t1) - max(at, t0))
+    return out
+
+
+_NOT_SCRIMMAGE = ("timeout", "end period", "end of half", "two-minute", "end of regulation", "end of game",
+                  "coin toss", "kickoff", "penalty", "extra point", "two-point")
+
+
+def hot_drive_plays(r: "Replay") -> list[int]:
+    """[redzone mode] Indexes (into r.plays) of the scrimmage plays on NFL drives worth seeing: the
+    drive scored, or reached the red zone. What RedZone exists to show; a punt-fest has none."""
+    if r.league.base != League.NFL:
+        return []
+    drives = list(espn._get(r.data, "drives", "previous") or [])
+    cur = espn._get(r.data, "drives", "current")
+    if cur:
+        drives.append(cur)
+    hot_ids: set[str] = set()
+    for dr in drives:
+        plays = dr.get("plays") or []
+        deep = any((espn._int(espn._get(p, "start", "yardsToEndzone")) or 99) <= 20 for p in plays)
+        if dr.get("isScore") or deep:
+            hot_ids.update(str(p.get("id")) for p in plays)
+    out = []
+    for i, p in enumerate(r.plays):
+        t = (espn._get(p, "type", "text") or "").lower()
+        if str(p.get("id")) not in hot_ids or any(k in t for k in _NOT_SCRIMMAGE):
+            continue
+        if not espn._int(espn._get(p, "start", "down")):
+            continue
+        out.append(i)
+    return out
+
+
+def drive_coverage(replays, watching, lag_total: float, play_len: float, tune_s: float,
+                   t1: float) -> tuple[int, int, int, int]:
+    """[redzone mode] (hot-drive plays, watched live, missed while another sport was on screen,
+    aired while on the RedZone channel)."""
+    by_id = {r.gid: r for r in replays}
+    n = live = other = rz = 0
+    for r in replays:
+        for i in hot_drive_plays(r):
+            air = r.wall[i] + lag_total
+            n += 1
+            if watched_whole(watching, r.gid, air - play_len, air, tune_s, t1):
+                live += 1
+                continue
+            g = _on_screen_game(watching, air - play_len, tune_s)
+            o = by_id.get(g or "")
+            if o is not None and o.league.base != League.NFL:
+                other += 1
+            rz += g == REDZONE
+    return n, live, other, rz
 
 
 def _dead_cause(replays, r: Replay, i: int, t: float, switches, watching, lag_total: float, tune_s: float) -> str:

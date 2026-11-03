@@ -15,6 +15,8 @@ Real-world messiness (all off by default; see backtest.run):
 
 Targets: mid_play_cuts 0 (hard), dead_air_pct -> 0, big_seen_pct -> 100,
 crunch_live_pct as high as physically possible, your_team_crunch_live_pct 100.
+RedZone mode: nfl_drive_live_pct (plays of drives that scored or reached the red zone, seen live)
+up; behind_live_pct (screen time on catch-up replays) bounded; big_missed_on_replay -> 0.
 """
 import argparse
 import json
@@ -58,7 +60,8 @@ def main():
     cfg = Config(user_path=ROOT / "data/config.yaml")
     t0 = time.time()
     tot = dict(big=0, seen=0, live=0, cuts=0, dead=0.0, watched=0.0, crunch=0, crunch_live=0,
-               my_crunch=0, my_crunch_live=0, switches=0, hours=0.0, my_big=0, my_seen=0, blackout=0.0)
+               my_crunch=0, my_crunch_live=0, switches=0, hours=0.0, my_big=0, my_seen=0, blackout=0.0,
+               behind=0.0, on_replay=0, drive=0, drive_live=0)
     causes: dict[str, float] = {}
     for reps in eval_set(a.n):
         r = run(reps, cfg, set(cfg.get("teams.nfl")), **knobs)
@@ -68,6 +71,8 @@ def main():
         tot["my_crunch"] += r.my_crunch; tot["my_crunch_live"] += r.my_crunch_live
         tot["switches"] += len(r.switches); tot["hours"] += r.hours
         tot["blackout"] += r.tuning_blackout_s
+        tot["behind"] += r.behind_live_s; tot["on_replay"] += r.big_missed_on_replay
+        tot["drive"] += r.drive_plays; tot["drive_live"] += r.drive_plays_live
         tot["my_big"] += r.my_big_plays; tot["my_seen"] += r.my_big_plays_live
         for k, v in r.dead_causes.items():
             causes[k] = causes.get(k, 0.0) + v
@@ -84,6 +89,9 @@ def main():
            "switches_per_hour": round(tot["switches"] / max(0.1, tot["hours"]), 1),
            "tuning_blackout_s": round(tot["blackout"], 1),
            "tuning_blackout_pct": pct(tot["blackout"], tot["hours"] * 3600),
+           "nfl_drive_live_pct": pct(tot["drive_live"], tot["drive"]),
+           "behind_live_pct": pct(tot["behind"], tot["hours"] * 3600),
+           "big_missed_on_replay": tot["on_replay"],
            "big_plays": tot["big"], "crunch_plays": tot["crunch"], "seconds": round(time.time() - t0)}
     print(json.dumps(out, indent=1))
     if a.dead:
