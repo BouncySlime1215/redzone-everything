@@ -767,7 +767,8 @@ class Engine:
                                  or (d.kind != "user" and self._entry_valid(d, target)
                                  and (time.time() >= replay_exit if replay_exit is not None
                                       else self.safe_to_leave(before, required_s=8.0))))),
-                            replay_id=d.replay.pid if d.replay else None)
+                            replay_id=d.replay.pid if d.replay else None,
+                            entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0)
 
     def _switch_deadline(self, now: float) -> None:
         """A switch that never reports back (a hung tuner path) would block every decision,
@@ -804,6 +805,15 @@ class Engine:
         remaining = self.control.deadline_cost(target)
         if d.kind == "chase" and catchable(tl, delay, now, remaining) is None:
             return False
+        if d.action == "switch" and d.kind != "user":
+            # [cut timing] the picture must still come up on a dead ball, with the planned rewind
+            plan = self.decider.entry_plan(d.target, {d.target: Candidate(self.scored[d.target], target)}
+                                           if d.target in self.scored else {}, now, remaining,
+                                           urgent=d.kind == "crunch")
+            if plan is not None and (not plan.ok or plan.rewind_s != getattr(d, "rewind_s", 0.0)):
+                return False
+            if plan is not None and plan.rewind_s:
+                return True   # landing before the snap on purpose: the break's tail is the line-up
         return not break_on_arrival(tl, delay, now, now + remaining)
 
     def _start_st_scan(self) -> tuple[bool, str]:

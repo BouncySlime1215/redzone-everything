@@ -86,6 +86,8 @@ def main():
             print(" ", day, json.dumps(card.summary()))
             for t, what in card.cuts[:3]:
                 print("     CUT", round(t), what)
+            for t, kind, what in card.cut.mid_entries[:3]:
+                print("     MID-PLAY ENTRY", round(t), kind, what)
     out = total.summary()
     out["seconds"] = round(time.time() - t0)
     print(json.dumps(out, indent=1))
