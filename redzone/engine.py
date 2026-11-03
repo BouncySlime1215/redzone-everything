@@ -863,6 +863,9 @@ class Engine:
             return False  # no screen timing evidence is not an open cutting window
         if self.decider._ending_still_airing(gid, time.time()) > 0:
             return False
+        g = self.merger.games.get(gid)
+        if g is not None and g.phase == Phase.POST:
+            return True   # its last play has aired (checked above): there's nothing left to cut
         target = getattr(self.where.get(gid), "target", None) or "unknown"
         gate = leave_window(self.decider.timelines[gid], self.delays.get(target), time.time(),
                             self.cfg.get("decider.uncalibrated_sigma_s"), required_s)
