@@ -22,14 +22,55 @@ preloaded switch has no tune; a single-stick switch has no flip).
 tune on one. The supervisor grades it against the feed ~90 s later (was a play on screen in the game
 we left? did we land mid-play?) and the nightly report rolls the traces up.
 
+Contract (redzone/contracts/trace.py, docs/architecture.md "Trace"): each trace also becomes a few
+TraceEvents, emitted to the engine's TraceSink (JsonlTrace -> data/traces.jsonl) when the switch
+reports back. switch_id is trace.switch_id(submitted_at), the same `id` the stored trace carries:
+
+    decided   the decider picked it                       (Decision.at; component "decider")
+    guarded   the safe-moment guard let it through        (safe_done; "guard", rule "no mid-play cut").
+              Once the engine runs core guards through contracts.guard.traced(), that emits
+              `guarded` for the decision itself; this one stays as the controller's last re-check.
+    command   the first command that changes the screen   (flip_start on two sticks, else tune_start; "control")
+    picture   the new picture is confirmed                (Outcome.confirmed_at; "control")
+    aborted   held back, not the target's fault: no safe moment, cancelled, input unknown, dry run
+    failed    anything else that didn't end on a confirmed picture (incl. ok-but-unconfirmed)
+
     .venv/bin/python -m redzone.trace [N]      the last N traces, one line each
 """
 from __future__ import annotations
 
 import json
+import logging
 import statistics
 import time
+from pathlib import Path
 from typing import Any
+
+from redzone.contracts.trace import MemoryTrace, Stage, TraceEvent, TraceSink
+
+__all__ = ["JsonlTrace", "MemoryTrace", "Stage", "TraceEvent", "TraceSink", "build", "emit", "events",
+           "of_row", "switch_id"]
+
+log = logging.getLogger(__name__)
+
+
+class JsonlTrace:
+    """The contract's file sink: one TraceEvent per line in data/traces.jsonl (the supervisor's
+    log_growth rule keeps every data/*.jsonl under its size cap)."""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+
+    def emit(self, ev: TraceEvent) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.path, "a") as f:
+            f.write(ev.jsonl() + "\n")
+
+
+def switch_id(submitted_at: float) -> str:
+    """The id every component tags this switch's events with (ms since epoch, hex)."""
+    return f"{int(submitted_at * 1000):x}"
+
 
 VERSION = 1
 
@@ -98,7 +139,7 @@ def build(d: Any, before: str | None, target: str | None, out: Any, submitted_at
     labels = labels or {}
     rec = {
         "v": VERSION,
-        "id": f"{int(submitted_at * 1000):x}",
+        "id": switch_id(submitted_at),
         "action": getattr(d, "action", ""), "kind": getattr(d, "kind", ""), "reason": str(getattr(d, "reason", ""))[:200],
         "from": before, "from_label": labels.get(before) if before else None, "from_target": before_target,
         "from_replay": bool(from_replay),
@@ -106,7 +147,8 @@ def build(d: Any, before: str | None, target: str | None, out: Any, submitted_at
         "rewind_s": _r(getattr(d, "rewind_s", 0.0) or 0.0),
         "ok": bool(getattr(out, "ok", False)), "dry_run": bool(getattr(out, "dry_run", False)),
         "path": path, "stick": getattr(out, "stick", None),
-        "picture_confirmed": bool(picture is not None and resumed is not False),
+        "picture_confirmed": bool(picture is not None and resumed is not False
+                                  and not getattr(out, "dry_run", False)),
         "detail": str(getattr(out, "detail", ""))[:300],
         "decided_at": _r(decided), "submitted_at": _r(submitted_at), "cut_at": _r(cut),
         "picture_at": _r(picture), "done_at": _r(now),
@@ -126,7 +168,59 @@ def build(d: Any, before: str | None, target: str | None, out: Any, submitted_at
         "leave_delay": _delay(delays, before_target),
         "enter_delay": _delay(delays, target),
     }
+    rec["stages"] = [[e.stage.value, _r(e.at)] for e in events(rec)]
     return rec
+
+
+def events(t: dict) -> list:
+    """The contract's TraceEvents for one trace, in time order (redzone/contracts/trace.py)."""
+    sid = str(t.get("id") or "")
+    steps = {n: (t.get("decided_at") or 0) + (off or 0) for n, off in (t.get("steps") or [])}
+    sp = t.get("spans") or {}
+    out = []
+
+    def add(stage, at, component, **detail):
+        if at is not None:
+            out.append(TraceEvent(sid, Stage(stage), float(at), component,
+                                  {k: v for k, v in detail.items() if v is not None}))
+
+    add("decided", t.get("decided_at"), "decider", kind=t.get("kind"), action=t.get("action"),
+        frm=t.get("from"), to=t.get("to"), target=t.get("target"), reason=t.get("reason"))
+    from redzone.supervisor import NOT_THE_TARGET   # held back / cancelled / refused: not a failure
+    held = bool(t.get("dry_run")) or (not t.get("ok") and
+                                      str(t.get("detail") or "").lower().startswith(NOT_THE_TARGET))
+    if steps.get("safe_done") is not None:
+        add("guarded", steps["safe_done"], "guard", rule="no mid-play cut", safe_wait_s=sp.get("safe_wait"),
+            queued_s=sp.get("queued"))
+    cmd = steps.get("flip_start") if steps.get("flip_start") is not None else (
+        steps.get("tune_start") if t.get("path") == "single" else None)
+    add("command", cmd, "control", path=t.get("path"), stick=t.get("stick"), tune_s=sp.get("tune"),
+        flip_s=sp.get("flip"))
+    end = t.get("done_at")
+    if t.get("picture_confirmed"):
+        add("picture", t.get("picture_at"), "control", to_picture_s=sp.get("to_picture"),
+            dead_air_s=sp.get("dead_air"), resume_s=sp.get("resume"))
+    elif held:
+        add("aborted", end, "control", why=t.get("detail"))
+    else:
+        add("failed", end, "control", why=t.get("detail"), picture_at=t.get("picture_at"))
+    out.sort(key=lambda e: e.at)
+    return out
+
+
+def emit(sink: Any, t: dict) -> int:
+    """Send one trace's events to a TraceSink; a broken sink never breaks the switch. Events sent."""
+    if sink is None:
+        return 0
+    n = 0
+    for ev in events(t):
+        try:
+            sink.emit(ev)
+            n += 1
+        except Exception:
+            log.exception("trace sink failed")
+            break
+    return n
 
 
 def of_row(row: dict) -> dict | None:

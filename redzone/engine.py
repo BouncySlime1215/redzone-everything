@@ -117,6 +117,9 @@ class Engine:
         self.discovery = DiscoveryRuntime(self)
         self.tonight = Tonight(self)   # today's plan + pre-game checks on the hidden stick
         from redzone.supervisor import DATA as SUPERVISOR_DATA, Supervisor
+        # Per-switch TraceEvents (redzone/contracts/trace.py): data/traces.jsonl; in memory without a data dir.
+        self.trace_sink = (trace.JsonlTrace(data_dir.parent / "traces.jsonl") if data_dir
+                           else trace.MemoryTrace())
         # Watches the live system and fixes what it can on its own (redzone/supervisor.py).
         self.supervisor = Supervisor(self, root=data_dir.parent if data_dir else SUPERVISOR_DATA)
         self.control.target_names = self._target_names
@@ -838,6 +841,7 @@ class Engine:
                 detail["trace"] = trace.build(d, before, target, out, cmd_ts, delays=self.delays,
                                               before_target=before_target, labels=self._trace_labels(before, d.target),
                                               from_replay=replay_exit is not None)
+                trace.emit(self.trace_sink, detail["trace"])
             except Exception:   # a trace must never cost the switch its row
                 log.exception("switch trace failed")
             self.store.switch(ts=cmd_ts, frm=before, to_game=d.target, target=target, kind=d.kind, reason=d.reason,

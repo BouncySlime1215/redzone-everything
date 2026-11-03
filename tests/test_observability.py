@@ -371,3 +371,71 @@ def test_cli_push_test_explains_how_to_set_a_topic(monkeypatch, capsys):
     assert sup.main(["push-test"]) == 1
     assert "ntfy_topic: redzone-" in capsys.readouterr().out
     assert sup.main(["nonsense"]) == 2
+
+
+# --- the contract's stages -------------------------------------------------------------------
+
+def _stages(t):
+    return [e.stage.value for e in trace.events(t)]
+
+
+def test_stages_line_up_with_the_contract():
+    marks = [("started", T + 0.1), ("tune_start", T + 0.2), ("tune_done", T + 4), ("safe_start", T + 4),
+             ("safe_done", T + 5), ("flip_start", T + 5.1), ("flip_done", T + 6)]
+    ok = trace.build(_d(), "g1", "x", _out(path="tuned", confirmed_at=T + 6, marks=marks), T, now=T + 6)
+    assert _stages(ok) == ["decided", "guarded", "command", "picture"] and ok["stages"][0][0] == "decided"
+    ev = trace.events(ok)
+    assert {e.switch_id for e in ev} == {ok["id"]} and ev[2].at == round(T + 5.1, 2) and ev[2].component == "control"
+    held = trace.build(_d(), "g1", "x", _out(ok=False, detail="no safe moment to cut — kept the current game",
+                                            marks=[("started", T)]), T, now=T + 1)
+    assert _stages(held) == ["decided", "aborted"]
+    dry = trace.build(_d(), "g1", "x", _out(dry_run=True, confirmed_at=T), T, now=T)
+    assert _stages(dry)[-1] == "aborted"
+    bad = trace.build(_d(), "g1", "x", _out(ok=False, path="tuned", detail="video never started",
+                                           marks=marks[:3]), T, now=T + 4)
+    assert _stages(bad) == ["decided", "failed"]
+    unconfirmed = trace.build(_d(), "g1", "x", _out(path="preloaded", confirmed_at=T + 6, resumed=False,
+                                                   marks=marks), T, now=T + 6)
+    assert _stages(unconfirmed)[-1] == "failed"
+
+
+def test_emit_survives_a_broken_sink():
+    t = trace.build(_d(), "g1", "x", _out(confirmed_at=T + 1), T, now=T + 1)
+    sink = trace.MemoryTrace()
+    assert trace.emit(sink, t) == len(sink.events) == 2
+
+    class Broken:
+        def emit(self, ev):
+            raise RuntimeError("disk full")
+    assert trace.emit(Broken(), t) == 0 and trace.emit(None, t) == 0
+
+
+async def test_engine_emits_trace_events(cfg, tmp_path):
+    cfg.update({"mode": {"dry_run": False}})
+    engine = Engine(cfg, Store(tmp_path / "t.db"))
+    callbacks = []
+    engine.control.submit = lambda *args, **kwargs: callbacks.append(args[2])
+    engine.decider.target_of = lambda gid: "youtubetv:espn"
+    engine._act(Decision(T, "switch", "new", "x", State.WATCHING, kind="better"), "old", {})
+    callbacks[0](_out(path="preloaded", confirmed_at=T + 3, marks=[("flip_start", T + 2), ("flip_done", T + 3)]))
+    sink = engine.trace_sink
+    if isinstance(sink, trace.JsonlTrace):
+        got = [json.loads(x) for x in sink.path.read_text().splitlines()]
+    else:
+        got = [{"stage": e.stage.value, "switch_id": e.switch_id} for e in sink.events]
+    assert [g["stage"] for g in got] == ["decided", "command", "picture"]
+    stored = trace.of_row(engine.store.recent_switches(1)[0])
+    assert {g["switch_id"] for g in got} == {stored["id"]}         # the same id in the file and the DB row
+    await engine.close()
+
+
+def test_jsonl_sink_writes_one_contract_line_per_event(tmp_path):
+    sink = trace.JsonlTrace(tmp_path / "d" / "traces.jsonl")
+    assert isinstance(sink, trace.TraceSink)                       # the contract's runtime-checkable Protocol
+    t = trace.build(_d(), "g1", "x", _out(confirmed_at=T + 1), T, now=T + 1)
+    trace.emit(sink, t)
+    rows = [json.loads(x) for x in sink.path.read_text().splitlines()]
+    assert [r["stage"] for r in rows] == ["decided", "picture"] and rows[0]["switch_id"] == t["id"]
+    mem = trace.MemoryTrace()
+    trace.emit(mem, t)
+    assert set(mem.timings(t["id"])) == {"decided", "picture"}
