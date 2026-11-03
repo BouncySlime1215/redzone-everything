@@ -102,11 +102,18 @@ def data_pack(d: Path) -> Path:
     return d
 
 
-def test_notebook_end_to_end_on_cpu(tmp_path):
+@pytest.mark.parametrize("upload", ["tarball", "kaggle-extracted"])
+def test_notebook_end_to_end_on_cpu(tmp_path, upload):
+    import tarfile
     from agent.kaggle.pack_data import code_pack
     inp, work = tmp_path / "input", tmp_path / "working"
     data_pack(inp / "redzone-distill")
     code_pack(ROOT, inp / "rz-code" / "rz_code.tar.gz")
+    if upload == "kaggle-extracted":     # Kaggle unpacks an uploaded .tar.gz into a folder by itself
+        tgz = inp / "rz-code" / "rz_code.tar.gz"
+        with tarfile.open(tgz) as t:
+            t.extractall(inp / "rz-code" / "rz_code", filter="data")
+        tgz.unlink()
     work.mkdir()
     env = {**os.environ, "RZ_KAGGLE_INPUT": str(inp), "RZ_KAGGLE_WORKING": str(work), "RZ_SMOKE": "1",
            "RZ_FAKE_TEACHER": "1", "RZ_BASE_DIR": str(tiny_base(tmp_path / "base")),
@@ -115,6 +122,7 @@ def test_notebook_end_to_end_on_cpu(tmp_path):
                        capture_output=True, text=True, timeout=1700)
     log = p.stdout + p.stderr
     assert p.returncode == 0, log[-4000:]
+    assert "| code: pack" not in log, "the notebook fell back to round-1 code"
     z = zipfile.ZipFile(work / "out.zip")
     names = set(z.namelist())
     for f in ("report.md", "teacher_out.jsonl", "build_report.json", "split_plan.json",

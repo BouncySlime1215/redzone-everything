@@ -69,12 +69,33 @@ os.makedirs(WORK, exist_ok=True)
 CODE = os.path.join(WORK, "code")
 if os.path.exists(CODE):
     shutil.rmtree(CODE)
+
+
+
+def extracted_code():
+    """Kaggle unpacks an uploaded .tar.gz by itself: the round-2 code pack then shows up as a folder
+    (.../code/{agent,redzone,scripts}), not as rz_code.tar.gz. Find that folder; skip the round-1
+    pack's code and the copies inside an attached previous output (.../rz/code)."""
+    for hit in sorted(glob.glob(f"{INP}/**/agent/kaggle/build_moments_kaggle.py", recursive=True)):
+        root = hit[: -len("agent/kaggle/build_moments_kaggle.py")].rstrip("/")
+        if root.startswith(PACK) or root.endswith("/rz/code"):
+            continue
+        if os.path.isdir(os.path.join(root, "redzone")) and os.path.exists(os.path.join(root, "scripts/export_reasoner_llm.py")):
+            return root
+    return None
+
+
 if unpack(f"{INP}/**/rz_code.tar.gz", f"{KW}/code_new"):
+    CODE_SRC = "rz_code.tar.gz"
     shutil.copytree(f"{KW}/code_new", CODE, ignore=shutil.ignore_patterns(".unpacked"))   # round 2+ code
+elif extracted_code():
+    CODE_SRC = extracted_code()
+    shutil.copytree(CODE_SRC, CODE)                                # round 2+ code, unpacked by Kaggle
 else:
+    CODE_SRC = "pack (round 1 code)"
     shutil.copytree(os.path.join(PACK, "code"), CODE)
 sys.path.insert(0, CODE)
-print("pack:", PACK, "| code:", "rz_code.tar.gz" if os.path.exists(f"{KW}/code_new") else "pack")
+print("pack:", PACK, "| code:", CODE_SRC)
 PREV = [p for p in glob.glob(f"{INP}/**/teacher_out.jsonl", recursive=True) if not p.startswith(PACK)]
 print("resume teacher from:", PREV)
 # resume the multi-season build from the previous version's output (games already built are skipped)
