@@ -112,6 +112,8 @@ brain:                     # learned models (redzone/scoring/brain.py, trained b
 
 decider:
   switch_margin: 10
+  entry:
+    hold_only: [nhl]       # switches IN wait for a whistle (never into crunch); [] turns it off
   switch_cost: {youtubetv: 3, prime: 8, espn: 7, hdmi_flip: 1}   # seconds to the new picture; replaced by
                            # measured times as you use it (see switch_speed)
   return_tolerance: 5      # go back to the previous game if it's within this many points

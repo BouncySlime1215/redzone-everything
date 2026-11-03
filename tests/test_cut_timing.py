@@ -208,3 +208,21 @@ def test_short_stops_are_ridden_out_in_basketball_but_not_hockey(cfg, clock):
         clock.t = 1050.0
         s = Scored("b", league, 50, 50, 50, 1.0, 0.0, "r", [], True, None, None, 1.0)
         assert dec._short_stop("b", s) is short
+
+
+def test_hockey_waits_for_a_whistle_on_the_way_in_but_never_into_crunch(cfg, clock):
+    from types import SimpleNamespace as NS
+    from redzone.decider.decider import Decision, State
+    from redzone.scoring.engine import Scored
+    dec = _decider(cfg, clock)
+
+    def x(league, crunch=False):
+        return NS(scored=Scored("b", league, 50, 50, 50, 1.0, 0.0, "r", [], False, None, None, 1.0, crunch=crunch))
+
+    def d(kind):
+        return Decision(0.0, "switch", "b", "r", State.WATCHING, "", kind=kind)
+    assert dec._entry_only(x(League.NHL), d("better"))
+    assert not dec._entry_only(x(League.NHL, crunch=True), d("better"))
+    assert not dec._entry_only(x(League.NHL), d("crunch"))
+    assert not dec._entry_only(x(League.NHL), d("start"))      # nothing on screen to protect
+    assert not dec._entry_only(x(League.NBA), d("better"))
