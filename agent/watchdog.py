@@ -7,6 +7,13 @@ has written a rule for), and acts within a fixed, guarded set:
     none · notify (data/agent.jsonl, shown on the phone; ntfy push if a topic is set)
     restart_service (launchctl kickstart) · reconnect_stick (adb disconnect + connect)
     prune_disk (only caches the app rebuilds: catch-up clips, logo images)
+    resume_player (adb MEDIA_PLAY, which never pauses a playing player)
+    clear_prompt (adb OK on the "still watching?" button, then MEDIA_PLAY)
+    retune_stick · refresh_feed · restart_component (the app's POST /api/agent/fix; when the app
+        has no such endpoint, or the fix just ran and didn't help, it becomes a notify)
+    safe_mode_off (the app's own Resume, only when safe mode is on and nobody paused it)
+
+Every fix has its own rate limit (FIX_LIMITS) on top of policy.guard().
 
 It runs as its own launchd job (com.redzone.agent), so it still works when the app is hung or
 crashed. Every observation, verdict and action goes to data/agent.jsonl.
@@ -23,6 +30,7 @@ import re
 import shutil
 import subprocess
 import time
+import urllib.error
 import urllib.request
 from collections import Counter
 from datetime import datetime
@@ -41,6 +49,10 @@ WINDOW_S = 900.0
 NOTIFY_QUIET_S = 3600.0      # the same note at most once an hour
 RECONNECT_EVERY_S = 600.0
 MODEL_CACHE_S = 1800.0       # the same set of unknown errors is asked about at most every 30 min
+# fix -> (minimum seconds between two on the same target, max per hour on the same target)
+FIX_LIMITS = {"resume_player": (120.0, 6), "clear_prompt": (120.0, 6), "retune_stick": (600.0, 3),
+              "refresh_feed": (600.0, 3), "restart_component": (600.0, 3), "safe_mode_off": (600.0, 3)}
+KEY_OK, KEY_PLAY = "23", "126"   # KEYCODE_DPAD_CENTER, KEYCODE_MEDIA_PLAY (play only, never toggles)
 ADB = shutil.which("adb") or "/opt/homebrew/bin/adb"
 
 log = logging.getLogger("redzone.agent")
@@ -101,6 +113,8 @@ class Watchdog:
         self.offline_since: dict[str, float] = {}
         self.notified: dict[str, float] = {}
         self.reconnected: dict[str, float] = {}
+        self.fixes: dict[tuple[str, str], list[float]] = {}
+        self.safe_since: float | None = None
         self.asked: dict[tuple, tuple[float, Verdict]] = {}
         self._model = None
 
@@ -134,6 +148,21 @@ class Watchdog:
                     del self.offline_since[h]
             o.sticks_offline = sorted(off, key=lambda h: self.offline_since[h])
             o.offline_min = round((now - min((self.offline_since[h] for h in off), default=now)) / 60, 1)
+            for s in sticks:
+                if s.get("role") in ("on screen", "main") and s.get("host") and not o.on_screen:
+                    o.on_screen = s["host"]
+                elif s.get("role") == "standby" and s.get("host"):
+                    o.standby = s["host"]
+            mode = st.get("mode") or {}
+            o.safe_mode, o.paused = bool(mode.get("safe")), bool(mode.get("paused"))
+            ages = [x.get("age_s") for x in ((st.get("health") or {}).get("sources") or [])
+                    if isinstance(x, dict) and not x.get("benched") and isinstance(x.get("age_s"), (int, float))]
+            o.feed_stale_s = float(max(ages)) if ages and o.live_games else 0.0
+        if o.safe_mode:
+            self.safe_since = self.safe_since if self.safe_since is not None else now
+            o.safe_min = round((now - self.safe_since) / 60, 1)
+        else:
+            self.safe_since = None
         return o
 
     # ---- deciding ----------------------------------------------------------------------------
@@ -199,7 +228,60 @@ class Watchdog:
                 return f"no answer from {v.target} ({type(e).__name__}): likely powered off"
         if v.action == "prune_disk":
             return f"freed {prune_caches()} MB"
+        if v.action in FIX_LIMITS:
+            return self.fix(v, o)
         return "unknown action skipped"
+
+    # ---- fixes (v2) ------------------------------------------------------------------------
+    def _allowed(self, action: str, target: str) -> bool:
+        gap, per_hour = FIX_LIMITS[action]
+        now = self._clock()
+        done = [t for t in self.fixes.get((action, target), []) if now - t < 3600]
+        self.fixes[(action, target)] = done
+        return not (done and now - done[-1] < gap) and len(done) < per_hour
+
+    def _tell(self, why: str) -> str:
+        return self.act(Verdict("notify", why, source="guard"), Obs())
+
+    def fix(self, v: Verdict, o: Obs) -> str:
+        target = v.target or ("feeds" if v.action == "refresh_feed" else "app")
+        if not self._allowed(v.action, target):
+            return self._tell(f"{v.action} on {target} already tried recently and the problem is back: {v.why}")
+        self.fixes.setdefault((v.action, target), []).append(self._clock())
+        if v.action == "resume_player":
+            return self._adb_keys(target, KEY_PLAY)
+        if v.action == "clear_prompt":
+            return self._adb_keys(target, KEY_OK, KEY_PLAY)
+        if v.action == "safe_mode_off":
+            st = fetch_state() or {}
+            mode = st.get("mode") or {}
+            if not mode.get("safe"):
+                return "safe mode already off"
+            if mode.get("paused"):
+                return "paused by a person: left alone"
+            r = _post("/api/action", {"action": "resume"})
+            return "left safe mode" if r and r.get("ok") else self._tell(f"couldn't leave safe mode: {v.why}")
+        body = {"retune_stick": {"fix": "retune", "target": target},
+                "refresh_feed": {"fix": "refresh_feeds", "target": "feeds"},
+                "restart_component": {"fix": "restart", "target": target}}[v.action]
+        r = _post("/api/agent/fix", body)
+        if r and r.get("ok"):
+            return str(r.get("message") or f"{v.action} {target}: done")[:160]
+        return self._tell(f"{v.why} (couldn't {v.action.replace('_', ' ')} from here: "
+                          f"{(r or {}).get('message', 'the app has no fix endpoint')})")
+
+    def _adb_keys(self, host: str, *keys: str) -> str:
+        try:
+            for i, k in enumerate(keys):
+                if i:
+                    time.sleep(1.0)
+                r = subprocess.run([ADB, "-s", host, "shell", "input", "keyevent", k],
+                                   capture_output=True, text=True, timeout=10)
+                if r.returncode != 0:
+                    return f"adb keyevent {k} on {host} failed: {(r.stderr or r.stdout).strip()[:100]}"
+        except (subprocess.TimeoutExpired, OSError) as e:
+            return f"no answer from {host} ({type(e).__name__})"
+        return f"pressed {'+'.join(keys)} on {host}"
 
     def _push(self, text: str) -> None:
         topic = os.environ.get("REDZONE_NTFY_TOPIC") or _ntfy_topic()
@@ -223,6 +305,19 @@ class Watchdog:
         if v.action != "none" or int(self._clock()) % 900 < CHECK_S:   # quiet checks: one row per 15 min
             _journal(row)
         return row
+
+
+def _post(path: str, body: dict, timeout: float = 10.0) -> dict | None:
+    """POST to the app's local API; None when it doesn't answer, {"ok": False} on an HTTP error."""
+    try:
+        req = urllib.request.Request(f"{API}{path}", data=json.dumps(body).encode(), method="POST",
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "message": f"HTTP {e.code}"}
+    except Exception:
+        return None
 
 
 def _ntfy_topic() -> str:
