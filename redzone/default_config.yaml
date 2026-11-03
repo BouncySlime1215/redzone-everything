@@ -228,3 +228,20 @@ break_lengths_s:           # typical commercial lengths used to plan catch-ups
   nba: {timeout: 90, end_period: 130, halftime: 900}
   nhl: {timeout: 120, end_period: 150, intermission: 1130}
   mlb: {end_period: 130, pitching_change: 150}
+
+flags:                       # kill switches, one per subsystem (redzone/contracts/flags.py). On = allowed to run
+  brain_v3: true             # (the subsystem's own setting still decides if it's enabled). Off = its degraded mode.
+  hype_v2: true
+  break_model: true
+  reasoner: true
+  watchdog_model: true
+  reel: true
+  highlight_jump: true
+  drive_priority: true
+  trip_budget: true
+  nhl_rules: true
+  tv_flip: true
+  preload: true
+  sync_predictor: true
+  auto_tune: true
+  fastcast: true

@@ -1,0 +1,20 @@
+# Integration train
+
+`integration/next` starts at `codex/resume-redzone` 5f0e6a1. Finished PRs merge ONE AT A TIME in
+the user's order. After each merge, the full test suite and ALL scorecards (NFL, NBA, NHL and the
+Nov 1 mixed demo) run on the pinned archive. A PR that makes the combination worse is dropped,
+even if it won alone. Conflicts in `decider.py`/`engine.py` are resolved by hand, never with "take
+ours". The end state is one release PR, `integration/next` → `codex/resume-redzone`.
+
+Order: #1 trip budget → #3 NHL (after its entry fix) → #2 drive priority (after its dead-air fix)
+→ Hype v2 → Brain v3 → auto-tune → sync → reasoner/watchdog. Infrastructure that changes no
+decision (contracts, CI) merges whenever it is ready.
+
+| Step | Merged | Commit | Tests | Mid-play cuts | NFL big live / seen | NFL crunch live | NFL your-team | NFL dead air | NHL goals live | NHL entries mid-play / missed on entry | NBA crunch live | NBA entries mid-play | Nov 1 demo | Verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | base 5f0e6a1 | 5f0e6a1 | 1228 pass / 0 fail | pending | 29.9 / 95.4 (prior run) | 70.0 | 100 | 8.6 | 41.7 | 11 / 1 | 96.3 | 38 | pending | baseline |
+| 1 | #1 trip budget | dbb33cc | 1241 pass / 0 fail | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | approved by the user; scorecards pending the archive |
+| 1a | decision-core interface (23f30d0) + contracts v1 | (this commit) | 1263 pass / 0 fail | no decision change | | | | | | | | | | infrastructure |
+
+Scorecard numbers marked "prior run" come from the threads' own runs on the same window. Every
+pending cell gets filled from the pinned archive.
