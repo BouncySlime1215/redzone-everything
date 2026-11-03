@@ -58,6 +58,10 @@ class Store:
     def calibration(self, target: str, sample: float, mu: float, sigma: float) -> None:
         self._x("INSERT INTO calibrations VALUES (?,?,?,?,?)", (time.time(), target, sample, mu, sigma))
 
+    def calibrations(self, since: float = 0.0) -> list[tuple[float, str, float]]:
+        """Every "I just saw it" tap since `since`, oldest first: (ts, target, sample)."""
+        return self._x("SELECT ts, target, sample FROM calibrations WHERE ts >= ? ORDER BY ts", (since,)).fetchall()
+
     def label(self, label: str, game: str | None, signals: dict) -> None:
         self._x("INSERT INTO labels VALUES (?,?,?,?)", (time.time(), label, game, json.dumps(signals)))
 
