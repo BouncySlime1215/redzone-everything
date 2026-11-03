@@ -61,6 +61,9 @@ def crunch_time(g: GameState) -> bool:
       MLB  8th inning on, within 2 runs (extra innings always)"""
     if g.phase != Phase.LIVE:
         return False
+    if g.stoppage == Stoppage.HALFTIME:
+        # College halftime can arrive as "period 2, 0:00" (OSU@BYU, Nov 2): never the end of a game.
+        return False
     q, d, clk = _q(g), g.score_diff, g.clock_s
     if d is None:
         return False
