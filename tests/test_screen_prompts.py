@@ -3,7 +3,6 @@
 The profile picker is cleared only by walking the lit-up (focused) name to the configured one,
 one DPAD step per fresh screenshot, then CENTER. Signed-out, unclear, or moved-on screens stop
 without a guessed key."""
-import platform
 import struct
 import zlib
 from types import SimpleNamespace
@@ -218,7 +217,7 @@ def test_bmp_luma_reads_rows_top_down(bottom_up):
     assert sp.bmp_luma(b"not a bmp") is None
 
 
-@pytest.mark.skipif(platform.system() != "Darwin", reason="sips is macOS-only")
+@pytest.mark.mac_only  # sips is macOS-only
 def test_png_luma_decodes_a_screencap_png(tmp_path):
     path = tmp_path / "s.png"
     path.write_bytes(_png(_image()))
