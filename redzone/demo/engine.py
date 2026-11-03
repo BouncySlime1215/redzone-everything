@@ -32,7 +32,7 @@ from redzone.engine import Engine
 from redzone.lab import backtest
 from redzone.lab.backtest import Replay, _deliver, _feed
 from redzone.models import League, Phase
-from redzone.scoring.engine import Scorer
+from redzone.scoring.drive import DriveScorer
 from redzone.sources import espn
 from redzone.sources.merge import Merger
 from redzone.store import Store
@@ -255,7 +255,7 @@ class DemoEngine(Engine):
         clock = self.clock
         self.channels = DemoChannels(path=work / "channels.json")
         self.merger = Merger(clock=clock)
-        self.scorer = Scorer(self.cfg, clock=clock)
+        self.scorer = DriveScorer(self.cfg, clock=clock)
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"), clock=clock)
         self.decider = Decider(self.cfg, self.delays, clock=clock)
         self.decider.entry_cost = lambda target: TUNE_S   # [cut timing] the replay's picture is up TUNE_S after a switch
