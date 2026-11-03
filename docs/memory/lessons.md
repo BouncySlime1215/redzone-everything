@@ -7,6 +7,12 @@ auto-fix brain and the watchdog read this file before acting
 Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words that point to it
 (comma separated); the watchdog matches them against error signatures, so keep them literal.
 
+## Your team's missed TD lost every replay slot to other games' last chances
+- **Symptom:** release gate `nfl_stale` (10 s stale feed): your-team big plays seen 95.2 % (20/21). The TD was queued for a replay and never shown.
+- **Cause:** `Decider._best_replay` ranked any urgent play (in its last `replay.urgent_s`) above everything else, so with a stale feed's extra misses there was always another game's last chance ahead of your team's TD until its window closed.
+- **Fix:** rank your team's missed plays first (`replay.yours_first`), then earliest deadline, then value.
+- **Signals:** your_team_big_seen, nfl_stale, replay queue, yours_first
+
 ## Kaggle auto-extracts uploaded archives
 - **Symptom:** round-2 notebook can't find `rz_code.tar.gz`; the files sit under `code/` instead.
 - **Cause:** Kaggle unpacks .zip and .tar.gz datasets on upload.

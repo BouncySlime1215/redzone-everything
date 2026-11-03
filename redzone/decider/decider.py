@@ -509,13 +509,17 @@ class Decider:
             yours = yours and self.cfg.get("replay.yours_first", True)
             pool = [m for m in pool if self._replay_value(m, now) >= top + margin or (yours and m.mine)]
 
+        yours_first = self.cfg.get("replay.yours_first", True)
+
         def rank(m: Missed) -> tuple:
-            # Earliest deadline first among last chances (a fresh TD can wait; they can't), else value.
-            # Then your team's plays: a busier screen (RedZone mode chases more live drives) must
-            # not push your own team's catch-up out of its replay window.
+            # Your team's missed plays first (replay.yours_first), even against other games' last
+            # chances: other games' plays that went urgent used to win every time, so your team's
+            # TD could wait out its whole window. Then earliest deadline first among last chances
+            # (a fresh TD can wait; they can't), else value.
+            mine = int(m.mine and yours_first)
             if self._urgency(m, now) > 0:
-                return (1, 0, -m.t)
-            return (0, int(m.mine and self.cfg.get("replay.yours_first", True)), self._replay_value(m, now))
+                return (mine, 1, 0, -m.t)
+            return (mine, 0, 0, self._replay_value(m, now))
         return max(pool, key=rank, default=None)
 
     def _break_remaining(self, gid: str, cands, now: float) -> float:
