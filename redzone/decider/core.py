@@ -91,6 +91,9 @@ class SwitchPath:
     cost_s: float              # median seconds of black/garbage before the picture is up
     cost_p90_s: float = 0.0    # deadline side (0 = same as cost_s)
     preloaded: bool = False    # already playing on the hidden stick
+    stick: str | None = None   # which stick this path uses (None: the one on screen / unknown)
+    fastest_s: float = 0.0     # quickest the picture has come up this way (entry guard: earliest landing)
+    samples: int = 0           # measurements behind cost_s (0 = a configured default, not measured)
 
 
 @dataclass(frozen=True)
