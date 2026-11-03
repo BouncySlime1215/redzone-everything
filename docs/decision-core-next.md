@@ -1,20 +1,32 @@
-# Decision core: where it stands (paused 2026-11-03 17:10Z for the usage reset)
+# Decision core: findings and next steps (2026-11-03)
 
-Branch `claude/decision-core`, on top of integration/next d0c775a.
+## Where NFL dead air comes from (integration/next d702565, 16 slates, 14,890 s of dead air)
+By stoppage on screen: team/official timeouts ~6,300 s, after a score (TD/FG -> kickoff) ~4,970 s,
+two-minute warning ~1,460 s, end of period / injury the rest.
+By the decision in force at the time:
+- ~3,000 s: the gate says "delay not calibrated, official breaks only". The simulator calibrates each
+  channel once at kickoff and lets sigma drift 3 -> 9 s; live, Kalman sync (PR #8) keeps it near its 4 s floor.
+- ~2,400 s: "want RedZone / a play is on screen": the 2-sigma + 3 s safety margin after the last play.
+- ~2,000 s: nothing else on (no other live game, no RedZone) and no replay fits the cautious break budget.
+- ~1,800 s: landing back home / at crunch before the ad ends (crunch returns come 2 sigma + cost early).
+- Grader detail: a break counts as dead until the WALLCLOCK of the next play, which is that play's end,
+  so the first snap after every break (~7-10 s) is billed as commercial.
 
-Done
-- `redzone/decider/core.py`: the views (MomentView, BreakView, SwitchPath, SyncView, EntryView, ReelView,
-  Priority), Option/CoreState/Action, the one `ev()` function, guards, `Knobs` (decider.* + core.* config).
-- decider.py routes `_best`, the better-game margin, go-back, break-visit worth + ranking (trip budget's
-  score x watch seconds is now `core.window_value`), the halftime pick and the reel fit through the core.
-- Scorecards are bit-identical to integration/next (NFL, NBA, NHL, Nov 1 demo). Gotcha found: a "visit" to
-  the game on screen must still be scored against the commercial (chained visits list it).
+## Same decider with the delay held at the sync floor (sigma 4 s, no drift)
+big live 29.7 -> 54.6, big seen 95.4 -> 98.3, crunch 71.4 -> 72.7, your team 100/100, 0 cuts,
+0 mid-play entries, 0 missed on entry; dead air 8.6 -> 9.7 (more visits, more live).
 
-Next (in order)
-1. TOP: NFL commercial time on screen -> 0 (Nick, 17:08Z). Baseline 8.6% on eval-data-v1. Use the
-   break forecasts (BreakView: remaining p10, break_soon_p) so visits never land in a break, leave right
-   after a scoring play airs, and fill all-games-in-commercial stretches with replays. No mid-play rule
-   still holds. Knobs to try: core.dead_air_penalty, core.break_risk, core.break_value_frac.
-2. Move hard rules into guards (crunch, your team late, garbage time, user pause/lock), delete duplicates.
-3. Unit tests for core.py (tests/test_core.py), then the auto-tune SPACE on the core.* knobs.
-4. Draft PR into integration/next with the before/after table.
+## Knob probes (not shipped; defaults unchanged)
+| knobs | dead air | big seen | big live | crunch |
+|---|---|---|---|---|
+| defaults | 8.6 | 95.4 | 29.7 | 71.4 |
+| core.dead_air_penalty=40 | 8.0 | 94.6 | 29.7 | 70.0 |
+| core.break_value_frac=0 | 8.0 | 94.8 | 29.7 | 70.0 |
+| sync-floor sim + dead_air_penalty=40 | 9.3 | 98.5 | 56.3 | 72.3 |
+
+## Next
+1. Commercials -> 0: crunch returns by DVR rewind instead of arriving early; fill "nothing else on" with
+   replays/reel; consume reasoner must_see / p_big_soon in rate() with break awareness (PR #17).
+2. Crunch overlaps: core.league_priority (NFL > CFB > NBA > NHL > MLB), live -> catch-up reel -> rejoin plan.
+3. NBA: 38 mid-play entries / 18 missed on entry.
+4. Hard rules into guards; auto-tune SPACE on core.* knobs.
