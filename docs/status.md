@@ -1,66 +1,46 @@
 # Status board
 
-Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-03 17:00 UTC,
-`integration/next` = 5f0e6a1 + #1 (trip budget) + the decision-core interface (23f30d0) +
-contracts v1 + #7 (CI) + d0c775a (`core.SwitchPath` gains `stick`, `fastest_s`, `samples`) +
-#3 (NHL, with the entry fix) + #11 (SyncEstimate v2) + #10 (traces + nightly report) + #12 (network
-awareness). Tests: 1339 passed, 20 skipped, 0 failed; ruff clean. Resumed 18:01 UTC; #14, #2 and #8 merged since, tests 1417 pass.
+Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-03 21:50 UTC.
+`integration/next` has #1, #2, #3, #5, #6, #7, #8, #9, #10, #11, #12, #14, #15, #17 (reasoner, off), #19, #20,
+#21, #22, #23, #24, #25, #26 (Brain v3), #27, #28, #29, #31, #32, #33, #34, #35 and the no-overfitting gate. Tests: 1704 passed, 0 failed (one e2e test is
+timing-sensitive under parallel load and passes alone); ruff clean. **Tonight's release candidate is
+`integration/release`** (cut from it, gate report in `docs/gate-report-rc1.md`).
 
-## Pinned eval data
+## Usage rules from the user (hard)
 
-Every owner fetches the pinned archive with `python scripts/fetch_eval_data.py` once PR #14 is
-merged. It downloads release `eval-data-v1` into `data/archive` + `data/eval_config.yaml`. Every
-scorecard must report `"eval_data": "eval-data-v1"`. Nobody copies archives from the Mac anymore.
+- **All RedZone work stops at 90 % of the user's weekly Claude usage.** The last 10 % is for school.
+  The user pauses the project at 88-89 %. Kaggle runs need no Claude usage and continue during a pause.
+- From 75 %: no new threads; finish and merge what's open; keep this file current so a pause is resumable.
+- Pacing (Nov 3, 4:30 PM ET, at ~44 %): reach ~90 % at 5 PM ET Wed. Checkpoints: <= 55 % at 10 PM,
+  <= 62 % at 8 AM, <= 78 % at 1 PM, ~89 % at 5 PM. **Max 2 working threads (1 overnight, midnight-8 AM).**
+  Lean turns: scorecards only for the leagues a change touches, no idle polling.
+- Spend order: (1) tonight's release + checklist; (2) decision core merge (done); (3) Memory systems
+  (#36, lands before 5 PM Wed); (4) Kaggle round-2 notebook fix; then the queue below.
 
-## Next steps for the integration train (resume here)
+## Board
 
-1. Merge #14 (fetch_eval_data) so CI's scorecards grade.
-2. Run the full scorecards (NFL/NBA/NHL + the Nov 1 demo) on the base and on `integration/next`,
-   and fill the pending cells in `docs/integration.md`. Revert any merge that made the
-   combination worse.
-3. Merge #2 right after #14, and keep it inside the scorecard checks. The user chose "Keep drive
-   gain, 9.7 % dead air" on #2's decision card at 17:06. Then re-measure #4.
-4. Merge #8 (sync; rebased on f2a494d, green at 163c61c, 1385 tests, scorecards identical to base) once the DECISION review of screen.py is done. Then #15 (platform; green, scorecards unchanged), #5, #6 and #9.
-5. Engine glue: build `WorldState` in `Engine.decide` and fill `Screen.switch_in_flight` with
-   `trace.switch_id(cmd_ts)` (from #10).
+| State | Work |
+|---|---|
+| Working | INTEGRATION (release cut, then #36 after 23:00 UTC); Memory systems (#36) |
+| Waiting on the user | TV setup tonight with `docs/tonight-checklist.md` (deploy line, TV, multiview probe, FastCast check) |
+| Paused, resumes when | auto-tune #16: decision core merged, so on the queue; highlight jump #18: Brain v3 break-length quantiles land; reasoner (#17 merged, off): the Kaggle adapter returns |
+| Folded | Hype v2 #4 into Brain v3 #26; watchdog model into distill (#13) |
+| Merged | see the list above and `docs/integration.md` |
 
-## Decisions from the user
+## Queue (in order; at most 2 working threads)
 
-- 2026-11-03: **PR #4 (Hype v2) is held** until PR #2's dead-air fix lands. Then it is re-measured on `integration/next`.
-- 2026-11-03: **PR #8 (sync predictor): its NBA trade (124 → 132) is accepted.** It is recorded as the measured reason, so it does not block the merge.
-- 2026-11-03 17:06: **PR #2 ships as "Keep drive gain, 9.7 % dead air".** Drives live 13.1 → 19.6 % and big plays live 29.9 → 33.6 %, while NFL dead air goes 8.6 → 9.7 % (on demo day, commercials drop 15.7 → 15.6 %). This is the measured reason the merge rule needs.
-- 2026-11-03: PR #1 is approved as it is. Order: #1, then #3 after its entry fix, then #2 after its dead-air fix.
-
-## Thread cap and queue
-
-Once the threads running now finish, **at most 5 threads run at once**. The rest wait here in
-dependency order (see `docs/architecture.md` §5). A thread starts only when everything it
-depends on has merged into `integration/next`.
-
-| # | Queued work | Owner | Waits on |
+| # | Work | Owner | Resume point |
 |---|---|---|---|
-| 1 | Pinned eval dataset (`eval-data-v1` release + `data/eval_config.yaml`) | INTEGRATION | nothing; this blocks every scorecard |
-| 2 | Golden nights in CI (contract tests already run in CI with #7) | INTEGRATION | pinned data |
-| 3 | Decider builds `CoreState` from `WorldState`; H3/H4 move into core guards | DECISION | contracts v1 (done) |
-| 4 | BreakModel quantiles (q10/q50/q90) behind `BreakModel` | MOMENT/BREAK | contracts v1 (done) |
-| 5 | SwitchPaths native implementation (measured p90, `fastest_s`; fields added in d0c775a) | SWITCHING | #5 merged |
-| 6 | Health/Trace emitters (`redzone/platform/faults.py`, `data/traces.jsonl`) | PLATFORM | contracts v1 (done) |
-| 7 | End-to-end replayed night test (fake sticks/TV, degraded modes) | INTEGRATION | 3, 5, 6 |
-| 8 | Highlight jump as `ReelJumper` | DECISION | 3 |
-| 9 | Reasoner lock-in via `ReasonerView` | LOCAL AI | 3, LLM server RAM budget |
-| 10 | Deploy + rollback, nightly report, error budget | PLATFORM | 6, 7 |
-
-## Owners
-
-| Owner | Done | Next | Blocked |
-|---|---|---|---|
-| DECISION | #1 trip budget and #3 NHL merged here (NHL entries mid-play 11 → 5, missed on entry 1 → 0; crunch 87.5 → 86.3 standard, 85.9 → 87.2 with randomized arrival, per the thread). Core interface (`core.py`) is in. | #2 dead-air fix (≤ 8.6 %); build `CoreState` from `WorldState` | #2 waits on the user's dead-air setting |
-| MOMENT/BREAK | Hype v2 retrain PR #4 open, **held until #2's fix lands** (retarget to `integration/next`) | BreakModel quantiles; Brain v3 behind `MomentModel` | pinned data |
-| LOCAL AI | watchdog rules + policy guard on the branch | reasoner `ReasonerView`; one LLM server ≤ 1.5 GB | none |
-| SWITCHING | PR #5 instant input switching open | native `SwitchPaths`; `fastest_s` interface request | none |
-| SYNC | #11 contract v2 merged; #8 delay predictor open, NBA trade 124 → 132 accepted | move `DelayBook` into `redzone/sync/` behind `SyncModel` | none |
-| PLATFORM | #10 traces + nightly report and #12 network awareness merged here; #6 governor and #9 deploy open | merge #6, #9 | none |
-| INTEGRATION | `integration/next`, contracts v1, architecture doc; merged #1, #3, #7, #10, #11, #12 | the steps above, then golden nights and the e2e night test | scorecards wait on #14 |
+| 1 | Memory systems #36 (CLAUDE.md, docs/memory/, context_pack.py) | Memory | merge after the release cut; afterwards every PR that changes `default_config.yaml`, `gate_baseline.json` or `release_gate.py` adds a dated line to `docs/memory/decisions.md` |
+| 2 | Kaggle round-2 notebook fix + round-2 data builder | Distill (#13) | teacher run healthy (2,048/81,372 at 55 min) |
+| 3 | Brain leak-fix retrain (train only before the locked cutoff), then `brain.enabled` back on if the gate holds | MOMENT/BREAK | brain (v2 + v3, #26 merged) ships off in RC 1 |
+| 4 | Follow-up commits on #20 / #23 / #24 (feed staleness, health, crash-safe) since they merged, and the stale-feed gate rows | PLATFORM | branches have 3 / 5 / 6 new commits; retarget them as one PR on integration/next |
+| 5 | #30 auto-fix loop | PLATFORM | green; config conflict with integration/next; after #36, also add the memory steps to `.github/auto-fix/prompt.md` and a decisions.md line |
+| 6 | Watchdog model, step-400 checkpoint | LOCAL AI | branch agent-training d9d1813; checkpoint in /mnt/project-files/watchdog/run1/ (PEFT + MLX); next: grade step 400, verify conversion on 20 prompts, MLX server test, peak RSS on the Mac, RESULTS.md, draft PR (agent/train/NEXT.md). Watch any run until it finishes: the container restarts when idle |
+| 7 | Stick roles (D) and stick tuning | SWITCHING | after the user's TV setup tonight |
+| 8 | **RedZone as teacher** (legal: only the user's own YouTube TV, live or DVR; no downloaded episodes, no DRM workaround, no mic) | DECISION + SYNC | **Gate: a 5-minute check this Sunday — are YTTV screenshots DRM-black on the sticks? If yes, report and stop.** Then (1) `scripts/redzone_logger.py`: the hidden stick plays RedZone when not needed, every ~2 s score-bug OCR (vision_ocr/scorebug) logs which game is on; (2) align with ESPN PBP into labeled decisions; (3) imitation dataset + "RedZone agreement %" scorecard line (our gates still win: your teams, no commercials); (4) now: encode RedZone's public principles as gold rules (every TD live, red-zone drives, 2-minute drill, never commercials, whip-around at scores); (5) the same for whip-around specials (NHL Frozen Frenzy, NBA whip-arounds) |
+| 9 | Auto-tune #16, highlight jump #18, reasoner on | DECISION / LOCAL AI | see Board |
+| 10 | Crunch feasible ceiling (NFL > CFB > NBA > rest), golden nights in CI, eval-data-v2 (GitHub Actions on the eval-data branch) | INTEGRATION | after the queue above |
 
 ## Latest numbers vs targets
 
@@ -96,7 +76,7 @@ counts and must be 100 % live, and a lower-priority overlap that gets a replay i
 | RAM, service + LLM | | | ≤ 1.5 GB for models | | LOCAL AI / PLATFORM |
 | Tests | 1228 pass | 1417 pass, 0 fail, ruff clean | 0 fail | | INTEGRATION |
 
-## Release gate on held-out nights (scripts/release_gate.py, now)
+## Release gate (older held-out slice; RC 1 on the locked set is in docs/gate-report-rc1.md)
 
 | gate | scope | status | value |
 |---|---|---|---|

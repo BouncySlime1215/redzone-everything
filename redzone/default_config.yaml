@@ -109,7 +109,7 @@ score:
     no_hitter: {through_6: 25, through_7: 35, ninth: 50}
 
 brain:                     # learned models (redzone/scoring/brain.py, trained by scripts/train_brain.py)
-  enabled: true            # feed the brain's game flow / key-moment / break odds into the score and break forecast
+  enabled: false           # feed the brain's game flow / key-moment / break odds into the score and break forecast
   version: 3               # 3 = Brain v3 (brain_models/<league>.v3.npz: stoppage odds/type/length, entry point,
                            # big plays) where a league has one, else v2; 2 = v2 only
   # Which leagues use each v3 part (scorecards + held-out nights, Nov 3; see docs/brain3/REPORT.md):
