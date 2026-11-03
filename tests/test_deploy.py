@@ -355,6 +355,22 @@ def test_snapshots_dedupe_restore_exactly_and_prune(tmp_path):
     assert set(sn.restore(second)) == {"data/config.yaml", "-agent/model/stray.bin"}
 
 
+def test_snapshot_order_never_depends_on_the_clock_or_directory_order(tmp_path, monkeypatch):
+    """CI on integration/next (after #9): two snapshots in the same second sorted by directory
+    order, so prune kept the wrong one. Order is a per-store counter now."""
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data/config.yaml").write_text("a: 1\n")
+    sn = D.Snapshots(tmp_path, ["data/config.yaml"], keep=2)
+    real_glob = Path.glob
+    monkeypatch.setattr(Path, "glob", lambda self, pat: reversed(sorted(real_glob(self, pat))))
+    ids = [sn.save("a" * 40, T0) for _ in range(3)]
+    ids.append(sn.save("b" * 40, T0 - 3600))              # the clock went BACK an hour: still newest
+    assert len(set(ids)) == 4
+    assert [r["id"] for r in sn.list()] == ids
+    sn.prune(protect=set())
+    assert [r["id"] for r in sn.list()] == ids[-2:]
+
+
 def test_missing_config_in_a_snapshot_is_removed_on_restore(tmp_path):
     sn = D.Snapshots(tmp_path, ["data/config.yaml"])
     rid = sn.save("c" * 40, T0)
