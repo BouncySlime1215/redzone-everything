@@ -58,7 +58,9 @@ class Engine:
         self.merger = Merger()
         self._poll_every: dict[str, float] = {}   # game id -> the poll interval it was last fetched at
         # Not "feeds": the replay demo engine (redzone/demo/engine.py) uses that name for its own dict.
-        self.feed_book = FeedBook(self.merger, self.fetcher, self._feed_urls, self._feed_cadence)
+        # Lazy merger/fetcher/clock: the demo swaps in its own merger and a simulated time.time().
+        self.feed_book = FeedBook(lambda: self.merger, lambda: self.fetcher, self._feed_urls, self._feed_cadence,
+                                  clock=lambda: time.time())
         self.scorer = DriveScorer(self.cfg)
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"),
                                 model=self.cfg.get("delay.model", "channel"))

@@ -158,3 +158,15 @@ async def test_a_dark_feed_never_makes_the_game_on_screen_unwatchable(cfg, tmp_p
     assert "1" in cands and not cands["1"].stale
     assert "2" in cands and cands["2"].stale
     await e.close()
+
+
+async def test_a_subclass_that_swaps_in_its_own_merger_is_followed(cfg, tmp_path):
+    """The replay demo replaces engine.merger after Engine.__init__ (CI caught every demo game
+    reading stale: 201 entries -> 14)."""
+    from redzone.engine import Engine
+    from redzone.store import Store
+    e = Engine(cfg, Store(tmp_path / "t.db"))
+    e.merger = Merger()
+    e.merger.update("espn_summary", game())
+    assert not e.feed_book.stale("1")
+    await e.close()
