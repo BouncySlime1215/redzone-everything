@@ -1240,8 +1240,8 @@ class Controller:
         refresh=True is _refresh_left reloading the game we just left: it skips the preload gap and
         doesn't use it up, and the planner wins over it — a planner preload of another target
         cancels it, even mid-tune."""
-        if not (self.live_control and self.two_stick and target):
-            return False
+        if not (self.live_control and self.two_stick and target) or self.input_unknown:
+            return False   # unknown input: the "hidden" stick may be the one on screen
         if replay_id is None and (target == self.on_target or self._live_on_hidden(target)):
             return False
         if replay_id is not None and self._parked_for(target, replay_id):
@@ -1305,7 +1305,7 @@ class Controller:
         keepalive), so the fix-up at the flip is a press or two, not a long run of rewinds."""
         p = self.parked
         step = float(self.cfg.get("replay.seek_step_s", 10))
-        if not (self.live_control and self.two_stick) or p is None or p.paused or self._busy() \
+        if not (self.live_control and self.two_stick) or self.input_unknown or p is None or p.paused or self._busy() \
                 or time.time() - p.at < 2 * step or not self._parked_for(p.target, p.replay_id):
             return
         self._preloading = (p.target, p.replay_id)
@@ -1359,7 +1359,9 @@ class Controller:
         tuner = TUNERS["youtubetv"]
 
         def allowed():
-            return not self.cfg.get("mode.dry_run", True) and (may_run is None or may_run())
+            # Unknown input: the stick we'd scan on may be the one on screen.
+            return (not self.cfg.get("mode.dry_run", True) and not self.input_unknown
+                    and (may_run is None or may_run()))
 
         async with self._lock:
             if not allowed():
