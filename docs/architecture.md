@@ -157,7 +157,9 @@ the start of the landing window.
 
 ### SyncModel (`sync.py`). Owner: SYNC
 `estimate(target, now) -> SyncEstimate(target, delay_s, sigma_s, source, calibrated_at,
-behind_s)`, `observe(target, sample_s, kind: tap|screen|boundary|mic|predicted, at)`.
+behind_s, uncertain)`, `observe(target, sample_s, kind: tap|screen|boundary|mic|predicted|clock, at)`.
+- `source` may be `sync` (the per-channel Kalman filter has the channel from automatic signals);
+  `uncertain` is True while the channel's signals disagree (treat it like uncalibrated for tight timing).
 - `screen = feed + delay_s`, and `sigma_s` grows between calibrations.
 - Estimates are read once per target per tick. Samples are written whenever they arrive.
 
