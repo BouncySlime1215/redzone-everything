@@ -65,7 +65,7 @@ SHARED_MARGIN_S = 2.0          # app-level or another night's estimate
 STALE_MARGIN_S = 4.0           # stale estimate
 SETTLED_SAMPLES = 3            # this many taps for an app ...
 SETTLED_SPREAD_S = 6.0         # ... agreeing within this (half the range): stop asking for taps
-SETTLED_DRIFT_S = 2.0          # settled delays proved stable: doubt grows to at most this
+SETTLED_DRIFT_S = 4.0          # settled delays proved stable: doubt grows to at most this
 
 
 @dataclass
