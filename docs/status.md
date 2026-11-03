@@ -3,7 +3,26 @@
 Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-03 17:00 UTC,
 `integration/next` = 5f0e6a1 + #1 (trip budget) + the decision-core interface (23f30d0) +
 contracts v1 + #7 (CI) + d0c775a (`core.SwitchPath` gains `stick`, `fastest_s`, `samples`) +
-#3 (NHL, with the entry fix).
+#3 (NHL, with the entry fix) + #11 (SyncEstimate v2) + #10 (traces + nightly report) + #12 (network
+awareness). Tests: 1339 passed, 20 skipped, 0 failed; ruff clean. **Paused for usage at 17:10 UTC.**
+
+## Pinned eval data
+
+Every owner fetches the pinned archive with `python scripts/fetch_eval_data.py` once PR #14 is
+merged. It downloads release `eval-data-v1` into `data/archive` + `data/eval_config.yaml`. Every
+scorecard must report `"eval_data": "eval-data-v1"`. Nobody copies archives from the Mac anymore.
+
+## Next steps for the integration train (resume here)
+
+1. Merge #14 (fetch_eval_data) so CI's scorecards grade.
+2. Run the full scorecards (NFL/NBA/NHL + the Nov 1 demo) on the base and on `integration/next`,
+   and fill the pending cells in `docs/integration.md`. Revert any merge that made the
+   combination worse.
+3. Merge #2 when its dead-air setting is final (its PR title now says 8.6 → 9.7 % "accepted":
+   confirm the user accepted it). Then #4 is re-measured.
+4. Merge #11 → #8 (sync, after the DECISION review of screen.py), then #5, #6, #9.
+5. Engine glue: build `WorldState` in `Engine.decide` and fill `Screen.switch_in_flight` with
+   `trace.switch_id(cmd_ts)` (from #10).
 
 ## Decisions from the user
 
@@ -38,9 +57,9 @@ depends on has merged into `integration/next`.
 | MOMENT/BREAK | Hype v2 retrain PR #4 open, **held until #2's fix lands** (retarget to `integration/next`) | BreakModel quantiles; Brain v3 behind `MomentModel` | pinned data |
 | LOCAL AI | watchdog rules + policy guard on the branch | reasoner `ReasonerView`; one LLM server ≤ 1.5 GB | none |
 | SWITCHING | PR #5 instant input switching open | native `SwitchPaths`; `fastest_s` interface request | none |
-| SYNC | PR #8 delay predictor open; NBA trade 124 → 132 accepted (retarget to `integration/next`) | move `DelayBook` into `redzone/sync/` behind `SyncModel` | none |
-| PLATFORM | PR #6 resource governor open | faults/trace emitters, network awareness, deploy | none |
-| INTEGRATION | `integration/next`, contracts v1 + 22 contract tests, architecture doc, #7 CI merged | pinned data, golden nights, e2e night test | eval archive (waiting on the Mac connection or the `eval-data-v1` release) |
+| SYNC | #11 contract v2 merged; #8 delay predictor open, NBA trade 124 → 132 accepted | move `DelayBook` into `redzone/sync/` behind `SyncModel` | none |
+| PLATFORM | #10 traces + nightly report and #12 network awareness merged here; #6 governor and #9 deploy open | merge #6, #9 | none |
+| INTEGRATION | `integration/next`, contracts v1, architecture doc; merged #1, #3, #7, #10, #11, #12 | the steps above, then golden nights and the e2e night test | scorecards wait on #14 |
 
 ## Latest numbers (baseline to protect)
 
@@ -62,4 +81,4 @@ and the table in `docs/integration.md` has the per-merge history.
 | Switch seconds (median, per path) | not measured yet (SWITCHING) | |
 | Sync error (median abs, s) | not measured yet (SYNC) | |
 | RAM, service + LLM | ≤ 1.5 GB budget for models (LOCAL AI / PLATFORM) | |
-| Tests | 1228 passed, 20 skipped, 0 failed | 1285 passed, 20 skipped, 0 failed; ruff clean |
+| Tests | 1228 passed, 20 skipped, 0 failed | 1339 passed, 20 skipped, 0 failed; ruff clean |
