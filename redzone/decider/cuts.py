@@ -182,6 +182,7 @@ CLOCK_RESUME_MARGIN_S = 3.0  # a restart worked back from the game clock: wallcl
 # Basketball: after an inbound the ball can be live for a full shot clock with nothing logged.
 SILENT_S = {League.NBA: 24.0}
 FROZEN_HOLD_S = 300.0        # after a frozen-wallclock stretch, distrust windows this long
+LEARNED_MAX_S = 1800.0       # a learned restart further out than this is a broken reading
 # How long before play resumes the picture should come up: the line-up / set / faceoff circle.
 LEAD_S = {League.NFL: 6.0, League.NBA: 4.0, League.NHL: 5.0, League.MLB: 4.0}
 
@@ -258,6 +259,12 @@ class DeadTracker:
         self._timeouts: dict[int | None, int] = {}
         self._last_stamp: tuple | None = None
         self.frozen_until: float = float("-inf")
+        # Brain v3's entry point for the newest event: (event wallclock, (p10, p50, p90) seconds to the
+        # restart). Used only for the EXPECTED restart of a window the data hasn't closed yet; the
+        # "surely dead until" floors that gate cuts and landings never read it.
+        self.learned: tuple[float, tuple[float, float, float]] | None = None
+        self.learned_q = 1          # which quantile the expected restart uses (0 = p10, 1 = p50)
+        self.learned_cap = True     # never later than the table's median (a learned estimate only shortens)
 
     # ---- input
     def add(self, pid: str, lo: float, hi: float, kind: str, text: str, type_text: str,
@@ -287,6 +294,27 @@ class DeadTracker:
             for m in self._order()[:200]:
                 self.marks.pop(m.pid, None)
             self._sorted = None
+
+    def learn(self, at: float | None, entry_q) -> None:
+        """Brain v3's (p10, p50, p90) seconds from the event stamped `at` until play resumes."""
+        try:
+            q = tuple(float(x) for x in entry_q)
+        except (TypeError, ValueError):
+            return
+        if at is None or len(q) != 3 or not all(math.isfinite(x) and 0 <= x <= LEARNED_MAX_S for x in q):
+            return
+        self.learned = (float(at), q)
+
+    def _learned_end(self, w: Window) -> float | None:
+        """The model's expected restart for an open window, if its reading is about this window's
+        newest event (an older reading says nothing about a stoppage that started since)."""
+        if self.learned is None:
+            return None
+        at, q = self.learned
+        newest = self._order()[-1].hi if self.marks else None
+        if newest is None or abs(newest - at) > 1.0 or at + 1.0 < w.start - AFTER_PLAY_S:
+            return None
+        return at + q[self.learned_q]
 
     def seen(self, fresh_at: float, lag: float) -> None:
         self.fresh_at, self.lag = fresh_at, lag
@@ -383,7 +411,11 @@ class DeadTracker:
                 continue
             if w.end is not None:
                 return max(x, w.end)
-            return max(x, w.start + MEDIAN_S.get(_lg(self.league), {}).get(w.kind, 30.0))
+            table = w.start + MEDIAN_S.get(_lg(self.league), {}).get(w.kind, 30.0)
+            learned = self._learned_end(w)
+            if learned is not None:
+                return max(x, min(learned, table) if self.learned_cap else learned)
+            return max(x, table)
         return x
 
     def landing(self, x0: float, x1: float) -> Landing:

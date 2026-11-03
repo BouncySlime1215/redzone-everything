@@ -101,7 +101,7 @@ def test_numpy_trees_match_lightgbm_including_missing_values(tmp_path):
 
 
 def test_no_model_means_no_reading_and_unchanged_scores(cfg, tmp_path):
-    empty = B.Brain(model_dir=tmp_path)
+    empty = B.Brain(model_dir=tmp_path, version=2)
     assert empty.read(live()) is B.EMPTY
     cfg.update({"brain": {"enabled": True}}, record=False)
     clock = FakeClock(1000.0)
@@ -113,11 +113,11 @@ def test_no_model_means_no_reading_and_unchanged_scores(cfg, tmp_path):
 
 def test_a_broken_model_file_is_ignored(tmp_path):
     (tmp_path / "nba.npz").write_bytes(b"not a model")
-    assert B.Brain(model_dir=tmp_path).read(live()) is B.EMPTY
+    assert B.Brain(model_dir=tmp_path, version=2).read(live()) is B.EMPTY
 
 
 def test_committed_models_read_a_real_game_fast_and_keep_a_timeline():
-    b = B.Brain()
+    b = B.Brain(version=2)
     if not b.available("nba"):
         pytest.skip("no trained NBA model")
     seq = [g for g in states(League.NBA, "espn_nba_summary_401909906.json") if g and g.phase == Phase.LIVE]
@@ -137,7 +137,7 @@ def test_committed_models_read_a_real_game_fast_and_keep_a_timeline():
 
 def test_scorer_carries_the_brain_reading_when_enabled(cfg, monkeypatch):
     monkeypatch.setattr(B, "WARMUP_EVENTS", 0)   # single late-game states: no warm-up
-    if not B.Brain().available("nba"):
+    if not B.Brain(version=2).available("nba"):
         pytest.skip("no trained NBA model")
     clock = FakeClock(1000.0)
     cfg.update({"brain": {"enabled": True}}, record=False)
@@ -182,7 +182,7 @@ def test_brain_settings_are_validated(cfg):
 def test_a_model_that_fails_to_predict_is_logged_once_then_skipped(monkeypatch):
     """A loadable but broken model used to log a traceback on every poll of every game."""
     monkeypatch.setattr(B, "WARMUP_EVENTS", 0)   # single late-game states: no warm-up
-    b = B.Brain()
+    b = B.Brain(version=2)
     b.enabled = True
     calls = {"n": 0}
 
@@ -200,7 +200,7 @@ def test_a_model_that_fails_to_predict_is_logged_once_then_skipped(monkeypatch):
 
 def test_a_game_joined_late_stays_quiet_until_warmed_up(monkeypatch):
     """After a restart mid-game the run/lead-change/break-gap features start from zero (biased)."""
-    b = B.Brain()
+    b = B.Brain(version=2)
     b.enabled = True
 
     class Ok:
