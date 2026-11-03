@@ -434,6 +434,8 @@ class Decider:
             return 0.0
         d = self.delays.get(x.target or "unknown")
         old = self._stoppage_remaining(tl, d, now)
+        if x.scored.league.base.value not in (self.cfg.get("decider.entry.leagues") or ["nfl"]):
+            return old
         # [cut timing] The dead window the screen is in, ended at the real restart (the game clock,
         # the faceoff, the next snap) or, still open, at the shortest that kind has ever run.
         m = 2 * d.current_sigma(now)
@@ -529,9 +531,21 @@ class Decider:
                           cost_lo=min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S))),
                           urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None)
 
+    def _cut_timed(self, gid: str | None, cands) -> bool:
+        """Cut timing is on for this game's league (decider.entry.leagues). Scorecards, Nov 3: NFL
+        big plays live 24.5 -> 29.9% and crunch live +1.3 points, but NBA big plays seen 95.4 -> 90.8%
+        and NHL crunch live 87.5 -> 82.7%: football only until the basketball/hockey timing improves."""
+        x = cands.get(gid) if gid else None
+        if x is None:
+            return False
+        lg = x.scored.league.base.value
+        return lg in (self.cfg.get("decider.entry.leagues") or ["nfl"])
+
     def _time_entry(self, d: Decision, cands, now: float, home_before) -> Decision:
         """Hold a switch until its picture would come up on a dead ball, or land it with a rewind."""
         if d.action != "switch" or not d.target or d.kind in ENTRY_EXEMPT:
+            return d
+        if not self._cut_timed(d.target, cands):
             return d
         if d.target == self.current and not self.after_replay:
             return d
@@ -555,6 +569,8 @@ class Decider:
         moment's over" in the data can still be the touchdown on its way to your screen."""
         if d.action not in ("switch", "replay") or d.kind in ("user", "crunch") or not self.current \
                 or self.replaying or self.after_replay or d.target == self.current:
+            return d
+        if not self._cut_timed(self.current, cands):
             return d
         tl = self.timelines.get(self.current)
         x = cands.get(self.current)
@@ -897,8 +913,10 @@ class Decider:
                 return self._replay_decision(rp, State.REPLAY, "everything's on a break", now)
             # [cut timing] Everything's on a break: land where play resumes soonest, not in the
             # longest commercial (an intermission after a replay sat 18 minutes in the ad).
-            best = min(watchable, key=lambda g: (self._resume_eta(g, watchable, now), -watchable[g].scored.score),
-                       default=None)
+            timed = self.cfg.get("decider.entry.leagues") or ["nfl"]
+            best = min(watchable, key=lambda g: (self._resume_eta(g, watchable, now)
+                                                 if watchable[g].scored.league.base.value in timed else 1e9,
+                                                 -watchable[g].scored.score), default=None)
             if best is None:
                 return Decision(now, "stay", self.current, "nothing live", State.IDLE)
         live = cands[best].scored
