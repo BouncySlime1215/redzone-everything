@@ -351,7 +351,11 @@ class DemoEngine(Engine):
             d = self.last_decision
             if d is not None and d.action in ("switch", "replay") and d.target:
                 rid = d.replay.pid if d.action == "replay" and d.replay else None
-                self.shadow.switch(self._target(d.target), rid, self._target(before), self.clock())
+                # A break filled: a visit, or a catch-up / chase that leaves a game on a break.
+                left = self.scored.get(before) if before else None
+                on_break = bool(left and left.is_break) or before in self.decider._screen_break
+                brk = d.kind == "break_visit" or (d.kind in ("replay", "chase") and on_break)
+                self.shadow.switch(self._target(d.target), rid, self._target(before), self.clock(), brk=brk)
                 backtest._record(d, before, self.clock(), self.switches, self.watching, self.replayed)
                 self._narrate(d)
             return changed

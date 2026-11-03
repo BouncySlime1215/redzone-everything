@@ -8,6 +8,9 @@ see. So the options are ranked by what the next switch most likely needs, highes
              hidden stick, so going back is a flip at the exact moment its play resumes.
   b) REPLAY  a catch-up replay is queued and the game on screen is about to break: load that
              channel, rewind to the play and hold it there, so the replay starts the instant we flip.
+  b2) BREAK  the game on screen is about to go to a commercial (redzone/scoring/breaks.py: a
+             punt or score, an owed NBA/college/NHL TV timeout, the end of a quarter): hold where
+             the decider will spend that break, so the break visit is a flip.
   c) MOMENT  a big moment is about to start (4th & goal, power play, bases loaded late, final
              minute of a one-possession game), crunch time is coming, or it's your team (unless it's
              in a lull 20+ points behind the best game) — never in garbage time, your team's included.
@@ -31,8 +34,8 @@ from typing import Callable
 
 from redzone.models import ByLeague, GameState, League, Phase, pro_period
 
-NEXT, HOME, REPLAY, MOMENT, BEST = -1, 0, 1, 2, 3
-KIND = {NEXT: "next", HOME: "home", REPLAY: "replay", MOMENT: "moment", BEST: "best"}
+NEXT, HOME, REPLAY, BREAK, MOMENT, BEST = -1, 0, 1, 2, 3, 4
+KIND = {NEXT: "next", HOME: "home", REPLAY: "replay", BREAK: "break", MOMENT: "moment", BEST: "best"}
 RETURN_BONUS = 10.0   # the decider goes back to the game it left over one up to switch_margin better
 
 
@@ -124,13 +127,17 @@ def options(cands: dict, *, current: str | None, home: str | None = None, back_t
             muted=frozenset(), games: dict | None = None, my_teams: dict | None = None,
             replay: Option | None = None, tunable: Callable[[str], bool] = lambda t: True,
             save_s: Callable[[str], float] = lambda t: 0.0, return_bonus: float = RETURN_BONUS,
-            want: str | None = None) -> list[Option]:
+            want: str | None = None, brk: str | None = None, brk_why: str = "",
+            replay_sure: bool = False) -> list[Option]:
     """Every game the hidden stick could usefully hold, best first.
 
     Never: what's on screen, a muted game, a stale feed, a channel we can't tune (no link, app not
     installed, just failed). Games on a break are skipped (nobody goes there until it resumes),
     except your game in (a): its break is exactly why we're away. Your team only counts as (c)
-    while it's within reach of the best game: in a lull 20+ points behind, it's not where we go next."""
+    while it's within reach of the best game: in a lull 20+ points behind, it's not where we go next.
+
+    brk: where the decider will spend the break the game on screen is about to take (BREAK).
+    replay_sure: the replay is the decider's own pick for that break, not a guess: keep it."""
     games, my_teams = games or {}, my_teams or {}
     out = [replay] if replay is not None and tunable(replay.target) else []
     ok = {gid: x for gid, x in cands.items()
@@ -148,6 +155,9 @@ def options(cands: dict, *, current: str | None, home: str | None = None, back_t
             continue
         if x.stale or s.is_break:
             continue
+        if gid == brk:
+            out.append(Option(gid, x.target, BREAK, s.score, f"break coming ({brk_why}): spend it here"))
+            continue
         value = s.score + save_s(x.target) + (return_bonus if gid == back_to else 0.0)
         why = _moment(s, games.get(gid), my_teams)
         if why == YOUR_TEAM and s.score < top - 2 * return_bonus:
@@ -157,7 +167,7 @@ def options(cands: dict, *, current: str | None, home: str | None = None, back_t
         else:
             lead = "the game you just left" if gid == back_to else "next best"
             out.append(Option(gid, x.target, BEST, value, f"{lead}: {s.reason}"))
-    if replay is not None and replay.value < top:
+    if replay is not None and replay.value < top and not replay_sure:
         # The decider only spends a break on a replay that beats the best live game there
         # (Decider._replay_option): otherwise the break goes to that game, so cue it instead.
         out = [o for o in out if o is not replay]
@@ -191,8 +201,9 @@ class Planner:
         target, parked = standby
         if (want.target, want.replay_id) == (target, parked):
             return None
-        if want.cls in (NEXT, HOME, REPLAY):
-            return want   # a switch already decided, your game's return, a replay about to play: can't wait
+        if want.cls in (NEXT, HOME, REPLAY, BREAK):
+            # A switch already decided, your game's return, a replay or a break about to start: can't wait.
+            return want
         # Parked replay footage is no use for a live switch.
         have = None if parked else next((o for o in opts if o.target == target and o.replay_id is None), None)
         if have is None:
@@ -224,6 +235,8 @@ class ShadowStick:
         self.hits = 0
         self.loading = 0   # right target, still tuning: faster than cold, not yet a clean flip
         self.misses: list[tuple[float, str | None, str | None]] = []   # (when, wanted, had)
+        self.breaks = 0       # switches that spent a break somewhere else (visit, catch-up, chase)
+        self.break_hits = 0   # ... onto a stick already playing it
 
     @property
     def standby(self) -> tuple[str | None, str | None]:
@@ -235,8 +248,11 @@ class ShadowStick:
         self.target, self.replay_id, self.ready_at = target, replay_id, now + self.tune_s
         self.preloads += 1
 
-    def switch(self, to: str | None, replay_id: str | None, left: str | None, now: float) -> bool:
+    def switch(self, to: str | None, replay_id: str | None, left: str | None, now: float,
+               brk: bool = False) -> bool:
         hit = bool(to) and (to, replay_id) == self.standby and now >= self.ready_at
+        self.breaks += brk
+        self.break_hits += brk and hit
         if hit:
             self.hits += 1
         else:
@@ -249,4 +265,6 @@ class ShadowStick:
     def card(self) -> dict:
         n = self.hits + len(self.misses)
         return {"switches": n, "hits": self.hits, "hit_rate": round(100 * self.hits / max(1, n), 1),
-                "still_loading": self.loading, "preloads": self.preloads}
+                "still_loading": self.loading, "preloads": self.preloads,
+                "breaks_filled": f"{self.break_hits}/{self.breaks}",
+                "break_fill_rate": round(100 * self.break_hits / max(1, self.breaks), 1)}
