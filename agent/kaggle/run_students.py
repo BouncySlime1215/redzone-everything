@@ -35,6 +35,8 @@ SMOKE = os.environ.get("RZ_SMOKE") == "1"     # CPU smoke test: tiny model, few 
 
 def base_dir(work: Path) -> Path:
     """Download the Mac's 4-bit base and dequantize it once (float16 HF checkpoint)."""
+    if os.environ.get("RZ_BASE_DIR"):                  # CPU smoke tests: a tiny local model
+        return Path(os.environ["RZ_BASE_DIR"])
     out = work / "base-deq"
     if (out / "model.safetensors").exists():
         return out
@@ -72,7 +74,7 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
         f = tok(full.rstrip("\n"), add_special_tokens=False)["input_ids"][:MAX_LEN]
         return f, [-100] * min(len(p), len(f)) + f[len(p):]
 
-    train = [encode(r) for r in rd("train.jsonl")][:64 if SMOKE else None]
+    train = [encode(r) for r in rd("train.jsonl")[:64 if SMOKE else None]]
     valid = [encode(r) for r in rd("valid.jsonl")][:400]
     train = [x for x in train if any(v != -100 for v in x[1])]      # an answer cut off by MAX_LEN teaches nothing
 
@@ -197,19 +199,31 @@ def main() -> None:
     ap.add_argument("--teacher-out", default=None)
     ap.add_argument("--out", required=True)
     ap.add_argument("--job", help="(internal) train this one job on the visible GPU")
+    ap.add_argument("--moments", default=None, help="round 2+: the multi-season build (build_moments_kaggle.py)")
+    ap.add_argument("--prepare-only", action="store_true", help="write the training/test data and stop")
+    ap.add_argument("--prepared", action="store_true", help="the data is already written: train only")
     a = ap.parse_args()
     out = Path(a.out)
     root = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(root))
     if a.job:
-        train_job(a.job, out / "data" / a.job, out / "base-deq", out / a.job)
+        train_job(a.job, out / "data" / a.job, base_dir(out), out / a.job)
         return
     from agent.distill.teacher import read_jsonl
-    from agent.kaggle.student_data import jobs, write
-    answers = read_jsonl(a.teacher_out) if a.teacher_out and os.path.exists(a.teacher_out) else []
-    info = write(jobs(Path(a.pack), answers), out / "data")
-    print("student data:", json.dumps(info), flush=True)
-    json.dump(info, open(out / "student_data.json", "w"), indent=1)
+    from agent.kaggle.student_data import jobs, jobs_big, write
+    if a.prepared and (out / "student_data.json").exists():
+        info = json.load(open(out / "student_data.json"))
+    else:
+        answers = read_jsonl(a.teacher_out) if a.teacher_out and os.path.exists(a.teacher_out) else []
+        moments = Path(a.moments) if a.moments else None
+        big = moments is not None and (moments / "DONE").exists()
+        info = write(jobs_big(Path(a.pack), moments, answers) if big else jobs(Path(a.pack), answers), out / "data")
+        info["_mode"] = "multi-season build" if big else "pack only"
+        print("student data:", json.dumps(info), flush=True)
+        json.dump(info, open(out / "student_data.json", "w"), indent=1)
+    if a.prepare_only:
+        return
+    info = {k: v for k, v in info.items() if not k.startswith("_")}
     base_dir(out)
     import torch
     n_gpu = max(1, torch.cuda.device_count())

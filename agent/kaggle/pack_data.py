@@ -75,14 +75,21 @@ def grade_sample(test: list[dict], keep: set[str], n: int, seed: int = 7) -> lis
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--reasoner-dir", required=True)
+    ap.add_argument("--code-pack", help="only write rz_code.tar.gz here (round 2+) and stop")
+    ap.add_argument("--serving-src", default=str(ROOT), help="checkout whose redzone/ + scripts go in the code pack")
+    ap.add_argument("--reasoner-dir")
     ap.add_argument("--archive", default=str(ROOT / "data" / "archive"))
-    ap.add_argument("--watchdog-src", required=True)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--watchdog-src")
+    ap.add_argument("--out")
     ap.add_argument("--wd-per-kind", type=int, default=8)
     ap.add_argument("--parts", help="also write the pack as rz_pack.part{aa,ab,..}.bin here (tar.gz split "
                                     "into < PART_MB pieces: the Kaggle web upload caps files at 10 MB)")
     a = ap.parse_args()
+    if a.code_pack:
+        print(code_pack(Path(a.serving_src), Path(a.code_pack), overlay=ROOT))
+        return
+    if not (a.reasoner_dir and a.watchdog_src and a.out):
+        ap.error("--reasoner-dir, --watchdog-src and --out are required to build the data pack")
     t0 = time.time()
     out = Path(a.out)
     if out.exists():
@@ -196,6 +203,44 @@ def main() -> None:
 
 
 PART_MB = 9.5
+CODE_PACK_FILES = ["agent", "redzone", "scripts/export_reasoner_llm.py", "scripts/download_recent.py",
+                   "scripts/train_reasoner.py", "scripts/build_reasoner_data.py", "data/eval_config.yaml",
+                   "pyproject.toml"]
+
+
+def code_pack(src: Path, dest: Path, overlay: Path | None = None) -> dict:
+    """Round 2+: the small code pack (rz_code.tar.gz, top folder ``code/``) the notebook unpacks
+    instead of the pack's code: the serving code (redzone/, the exporter, the downloader) from
+    ``src`` (an integration/next checkout) with agent/{distill,kaggle,train} from ``overlay``.
+    No data, no secrets: the notebook downloads everything else from ESPN inside Kaggle."""
+    import io
+    import re
+    import tarfile
+    skip = re.compile(r"(__pycache__|\.pyc$|/models?/.*\.(gguf|safetensors)$|\.env|secret|token)", re.I)
+    buf = io.BytesIO()
+    names = []
+    with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=9) as t:
+        def add(path: Path, arc: str):
+            for p in ([path] if path.is_file() else sorted(path.rglob("*"))):
+                rel = arc if path.is_file() else f"{arc}/{p.relative_to(path)}"
+                if p.is_file() and not skip.search(rel):
+                    t.add(p, arcname=f"code/{rel}")
+                    names.append(rel)
+        for f in CODE_PACK_FILES:
+            top = f.split("/")[0]
+            if overlay is not None and top == "agent":
+                continue
+            if (src / f).exists():
+                add(src / f, f)
+        if overlay is not None:
+            for sub in ("agent",):
+                add(overlay / sub, sub)
+            for f in CODE_PACK_FILES:
+                if f.startswith("data/") and (overlay / f).exists() and not (src / f).exists():
+                    add(overlay / f, f)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(buf.getvalue())
+    return {"files": len(names), "bytes": dest.stat().st_size}
 
 
 def split_parts(pack: Path, dest: Path, part_bytes: int = int(PART_MB * 1_000_000)) -> list[str]:

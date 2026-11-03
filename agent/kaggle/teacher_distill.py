@@ -1,25 +1,25 @@
 # %% [markdown]
 # # RedZone: big teacher -> small students (free Kaggle GPU)
 #
-# One notebook, one dataset (`redzone-distill`, built by `agent/kaggle/pack_data.py`). It runs, in order:
+# Inputs:
+# * the private dataset `redzone-distill` (round 1's pack: the folder, or its rz_pack.part*.bin pieces);
+# * round 2+: the small code pack `rz_code.tar.gz` (any dataset), which replaces the pack's code;
+# * optional: the previous version's output (teacher answers + the multi-season build to resume).
 #
-# 1. **Teacher** (Qwen3-32B-AWQ on both T4s, falls back to 14B): works down the ranked queue in
-#    `teacher_requests.jsonl.gz` (hardest and most important first) until `TEACHER_BUDGET_H` runs out.
-# 2. **Students**: one LoRA per job (`game-reasoner`, `watchdog`) on the Mac's own base
-#    (mlx-community/Qwen3-1.7B-4bit, dequantized), the two jobs in parallel, one per T4.
-# 3. **Convert** each adapter to mlx_lm format (agent/train/peft_to_mlx.py).
-# 4. **Grade** today vs teacher vs student on the dev-test nights (newest before the locked set),
-#    with the ship gates. The locked test nights are not in this dataset at all.
-# 5. Everything goes into `/kaggle/working/out.zip`.
+# Round 2+ runs, in one session (~11 h of the 12 h cap):
+# 1. **Multi-season build** on the CPUs (`build_moments_kaggle.py`): ESPN public API, NFL, CFB, NBA,
+#    men's college basketball, NHL and MLB, 3 seasons + the current one, every live play, labeled
+#    from what happened next, split by time; the locked nights are never downloaded.
+# 2. **Teacher** on both T4s at the same time: Qwen3-32B-AWQ on the hardest + gold-adjacent head of
+#    the queue, then Qwen3-14B-AWQ (~3x faster) on the easier tail; the queue is filtered by the
+#    build's time split (hindsight only on train nights, nothing locked).
+# 3. **Teacher, blind** on the dev-test grading sample (so the teacher is graded like the student).
+# 4. **Students**: a weighted pick from the millions (NFL first, crunch and your-team up), one LoRA per
+#    job on the Mac's own 4-bit base (dequantized), one job per T4; mlx_lm adapters.
+# 5. **Grade** on dev-test nights: per league, train/valid/test gap, slices, calibrated "I don't know".
 #
-# **Run:** Add Input -> your private dataset `redzone-distill` (the folder, or its rz_pack.part*.bin pieces). Settings: Accelerator **GPU T4 x2**,
-# Internet **On**. Then **Save Version -> Save & Run All (Commit)**. It runs in the background,
-# ~10.5 h, and uses ~10.5 of the 30 free GPU-hours a week. When it's done: open the version,
-# Output, download **out.zip**.
-#
-# **Next round (resume):** Add Input -> this notebook's previous version output (it holds
-# `rz/teacher_out.jsonl`), then Save & Run All again. Answered requests are skipped, the teacher
-# continues down the queue, and the students retrain on everything so far.
+# **Run:** Accelerator **GPU T4 x2**, Internet **On**, inputs attached, **Save & Run All (Commit)**.
+# Download **out.zip** from the version's Output. Next round: attach this version's output too.
 
 # %%
 import glob
@@ -30,36 +30,59 @@ import subprocess
 import sys
 import time
 
-TEACHER_BUDGET_H = 7.0      # per session; students + grading take ~3 h more, inside Kaggle's 12 h limit
+TEACHER_BUDGET_H = 2.5      # the 32B on the hardest + gold-adjacent head of the queue
+BIG_N = 9000                # how many open requests the 32B gets (round 1 measured ~65/min)
+FAST_BUDGET_H = 3.0         # then the 14B (~3x faster) on the easier tail
+BUILD_BUDGET_H = 4.5        # stop downloading new games after this (the head + export follow)
+BLIND_BUDGET_H = 0.5        # teacher on the dev-test grading sample
 ROUND = time.strftime("%Y%m%d-%H%M")
-WORK = "/kaggle/working/rz"
+KW = os.environ.get("RZ_KAGGLE_WORKING", "/kaggle/working")        # overridable for the CPU smoke test
+INP = os.environ.get("RZ_KAGGLE_INPUT", "/kaggle/input")
+WORK = f"{KW}/rz"
+MOMENTS = f"{KW}/moments"
 T0 = time.time()
 
-# The web upload caps files at 10 MB, so the pack arrives as rz_pack.part{aa,ab,..}.bin (one tar.gz, split):
-# cat the parts back together in name order and unpack into /kaggle/working/pack. A plain folder upload works too.
-parts = sorted(glob.glob("/kaggle/input/**/rz_pack.part*.bin", recursive=True), key=os.path.basename)
-if parts and not os.path.exists("/kaggle/working/pack/manifest.json"):
-    os.makedirs("/kaggle/working/pack", exist_ok=True)
-    with open("/kaggle/working/rz_pack.tar.gz", "wb") as f:
+
+def unpack(parts_glob, dest, strip=1):
+    """Cat split parts (name order) or one tarball into dest."""
+    parts = sorted(glob.glob(parts_glob, recursive=True), key=os.path.basename)
+    if not parts or os.path.exists(os.path.join(dest, ".unpacked")):
+        return bool(parts)
+    os.makedirs(dest, exist_ok=True)
+    tgz = dest + ".tar.gz"
+    with open(tgz, "wb") as f:
         for p in parts:
             with open(p, "rb") as part:
                 shutil.copyfileobj(part, f)
-    subprocess.run(["tar", "-xzf", "/kaggle/working/rz_pack.tar.gz", "-C", "/kaggle/working/pack",
-                    "--strip-components=1"], check=True)
-    os.remove("/kaggle/working/rz_pack.tar.gz")
-manifests = sorted(glob.glob("/kaggle/working/pack/**/manifest.json", recursive=True)) + \
-    sorted(glob.glob("/kaggle/input/**/manifest.json", recursive=True))
-PACK = next(os.path.dirname(m) for m in manifests if os.path.exists(os.path.join(os.path.dirname(m), "code")))
-print("pack:", PACK)
+    subprocess.run(["tar", "-xzf", tgz, "-C", dest, f"--strip-components={strip}"], check=True)
+    os.remove(tgz)
+    open(os.path.join(dest, ".unpacked"), "w").close()
+    return True
+
+
+# The web upload caps files at 10 MB: the pack may arrive as rz_pack.part{aa,ab,..}.bin
+unpack(f"{INP}/**/rz_pack.part*.bin", f"{KW}/pack")
+manifests = sorted(glob.glob(f"{KW}/pack/**/manifest.json", recursive=True)) + \
+    sorted(glob.glob(f"{INP}/**/manifest.json", recursive=True))
+PACK = next(os.path.dirname(m) for m in manifests if os.path.isdir(os.path.join(os.path.dirname(m), "data")))
 os.makedirs(WORK, exist_ok=True)
 CODE = os.path.join(WORK, "code")
 if os.path.exists(CODE):
     shutil.rmtree(CODE)
-shutil.copytree(os.path.join(PACK, "code"), CODE)
+if unpack(f"{INP}/**/rz_code.tar.gz", f"{KW}/code_new"):
+    shutil.copytree(f"{KW}/code_new", CODE, ignore=shutil.ignore_patterns(".unpacked"))   # round 2+ code
+else:
+    shutil.copytree(os.path.join(PACK, "code"), CODE)
 sys.path.insert(0, CODE)
-# answers from an earlier round, if its output is attached
-PREV = [p for p in glob.glob("/kaggle/input/**/teacher_out.jsonl", recursive=True) if not p.startswith(PACK)]
-print("resume from:", PREV)
+print("pack:", PACK, "| code:", "rz_code.tar.gz" if os.path.exists(f"{KW}/code_new") else "pack")
+PREV = [p for p in glob.glob(f"{INP}/**/teacher_out.jsonl", recursive=True) if not p.startswith(PACK)]
+print("resume teacher from:", PREV)
+# resume the multi-season build from the previous version's output (games already built are skipped)
+prev_m = [os.path.dirname(p) for p in glob.glob(f"{INP}/**/moments/split_plan.json", recursive=True)]
+if prev_m and not os.path.exists(MOMENTS):
+    shutil.copytree(prev_m[0], MOMENTS, ignore=shutil.ignore_patterns("DONE", "rows"))
+    print("resume build from:", prev_m[0])
+ROUND2 = os.path.exists(os.path.join(CODE, "agent/kaggle/build_moments_kaggle.py"))
 print(json.dumps(json.load(open(os.path.join(PACK, "manifest.json")))["counts"], indent=1))
 
 
@@ -73,22 +96,97 @@ def run(args, env=None):
         raise RuntimeError(f"{args[0]} failed with exit code {p.returncode}")
 
 
-# %%
-subprocess.run([sys.executable, "-m", "pip", "install", "-q", "vllm", "peft", "accelerate", "bitsandbytes",
-                "huggingface_hub", "safetensors"], check=False)
+def tail(path, n=20):
+    return "".join(open(path).readlines()[-n:]) if os.path.exists(path) else ""
+
 
 # %%
-# Phase 1: teacher (its own process, so vLLM's GPU memory is freed for the students)
-run(["agent/kaggle/run_teacher.py", "--requests", os.path.join(PACK, "teacher_requests.jsonl.gz"),
-     "--out", WORK, "--budget-h", str(TEACHER_BUDGET_H), "--resume-from", *PREV])
+if not os.environ.get("RZ_SMOKE"):
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "vllm", "peft", "accelerate", "bitsandbytes",
+                    "huggingface_hub", "safetensors", "lightgbm", "httpx", "pyyaml"], check=False)
 
 # %%
-# Phase 2 + 3: students on both T4s, then mlx_lm adapters
-run(["agent/kaggle/run_students.py", "--pack", PACK, "--teacher-out", os.path.join(WORK, "teacher_out.jsonl"),
-     "--out", os.path.join(WORK, "students")])
+# Phase 0 (round 2+): start the multi-season build on the CPUs; it writes its time split first.
+build = None
+if ROUND2:
+    blog = open(f"{KW}/build.log", "a")
+    build = subprocess.Popen([sys.executable, "agent/kaggle/build_moments_kaggle.py", "--out", MOMENTS,
+                              "--budget-h", str(BUILD_BUDGET_H), "--workers", "3",
+                              *(["--archive", os.environ["RZ_BUILD_ARCHIVE"]] if os.environ.get("RZ_BUILD_ARCHIVE") else [])],
+                             cwd=CODE, env={**os.environ, "PYTHONPATH": CODE}, stdout=blog, stderr=subprocess.STDOUT)
+    while build.poll() is None and not os.path.exists(f"{MOMENTS}/split_plan.json") and time.time() - T0 < 3600:
+        time.sleep(30)
+    print(tail(f"{KW}/build.log"))
+    if not os.path.exists(f"{MOMENTS}/split_plan.json"):
+        print("build has no split plan (see build.log): this round runs on the pack only")
 
 # %%
-# Phase 4: grade on held-out nights, and the teacher's new watchdog wordings
+# Phase 1: the teacher (own process; vLLM's GPU memory is freed after). Round 2+: its queue is
+# filtered by the build's time split, so hindsight is used on train nights only and nothing locked
+# is ever asked.
+queue = os.path.join(PACK, "teacher_requests.jsonl.gz")
+if not os.path.exists(queue):
+    queue = os.path.join(PACK, "teacher_requests.jsonl")
+if os.path.exists(f"{MOMENTS}/split_plan.json"):
+    from agent.distill.teacher import read_jsonl, write_jsonl
+    plan = json.load(open(f"{MOMENTS}/split_plan.json"))
+    where = {}
+    for f in glob.glob(os.path.join(PACK, "data/reasoner/rows_*.jsonl*")) + glob.glob(os.path.join(PACK, "data/jump_rows.jsonl*")):
+        for r in read_jsonl(f.replace(".gz", "")):
+            where[r["id"]] = plan.get(r["league"], {}).get(str(r["night"]), "locked")
+    keep = []
+    for q in read_jsonl(queue.replace(".gz", "")):
+        rid = q["id"].split("|")[0]
+        s = where.get(rid)
+        if q["task"].startswith("wd_"):
+            keep.append(q)
+        elif s is None or s == "locked":
+            continue
+        elif q["task"] == "reasoner_grounded" and s != "train":
+            continue
+        elif q["task"] == "reasoner_blind":
+            continue                  # round 2+ grades on the build's dev-test sample (phase 3)
+        else:
+            keep.append(q)
+    queue = f"{WORK}/teacher_requests_r2.jsonl"
+    write_jsonl(queue, keep)
+    print("teacher queue after the time split:", len(keep))
+run(["agent/kaggle/run_teacher.py", "--requests", queue, "--out", WORK, "--budget-h", str(TEACHER_BUDGET_H),
+     "--limit", str(BIG_N), "--resume-from", *PREV])
+shutil.copy(f"{WORK}/teacher_report.json", f"{WORK}/teacher_report_32b.json")
+run(["agent/kaggle/run_teacher.py", "--requests", queue, "--out", WORK, "--budget-h", str(FAST_BUDGET_H), "--fast"])
+shutil.copy(f"{WORK}/teacher_report.json", f"{WORK}/teacher_report_14b.json")
+
+# %%
+# Phase 2: wait for the build, then write the student data (weighted pick from the millions)
+if build is not None:
+    while build.poll() is None:
+        time.sleep(60)
+    print(tail(f"{KW}/build.log", 40))
+student_args = ["--pack", PACK, "--teacher-out", os.path.join(WORK, "teacher_out.jsonl"),
+                "--out", os.path.join(WORK, "students")]
+if os.path.exists(f"{MOMENTS}/DONE"):
+    student_args += ["--moments", MOMENTS]
+run(["agent/kaggle/run_students.py", *student_args, "--prepare-only"])
+
+# %%
+# Phase 3: the teacher answers the dev-test grading sample blind (graded exactly like the student)
+gr = os.path.join(WORK, "students/data/game-reasoner/grade_rows.jsonl")
+if os.path.exists(gr):
+    from agent.distill.teacher import read_jsonl, reasoner_requests, write_jsonl
+    rows = [r for r in read_jsonl(gr) if r["split"] == "test"]
+    system = open(os.path.join(PACK, "data/reasoner/system.txt")).read()
+    reqs = reasoner_requests(rows, system, grounded_splits=(), blind_splits=("test",))
+    write_jsonl(f"{WORK}/teacher_blind_r2.jsonl", reqs)
+    run(["agent/kaggle/run_teacher.py", "--requests", f"{WORK}/teacher_blind_r2.jsonl", "--out", WORK,
+         "--budget-h", str(BLIND_BUDGET_H)])
+
+# %%
+# Phase 4: students on both T4s, then mlx_lm adapters
+run(["agent/kaggle/run_students.py", *student_args, "--prepared"])
+
+# %%
+# Phase 5: grade, and the teacher's new watchdog wordings
 run(["agent/kaggle/grade.py", "--pack", PACK, "--work", WORK])
 from agent.distill.teacher import read_jsonl, watchdog_wordings  # noqa: E402
 
@@ -99,14 +197,19 @@ json.dump(w, open(os.path.join(WORK, "wordings_teacher.json"), "w"), indent=1)
 print("teacher wordings per kind:", {k: len(v) for k, v in w.items()})
 
 # %%
-# Phase 5: out.zip (adapters for the Mac, answers, reports). The base model is not included.
-keep = os.path.join("/kaggle/working", "out")
+# Phase 6: out.zip (adapters for the Mac, answers, reports). The base model and the millions of rows
+# are not in it; the rows stay in this version's output for the next round to resume from.
+keep = os.path.join(KW, "out")
 if os.path.exists(keep):
     shutil.rmtree(keep)
 os.makedirs(keep)
-for f in ("teacher_out.jsonl", "teacher_report.json", "report.json", "report.md", "wordings_teacher.json"):
+for f in ("teacher_out.jsonl", "teacher_report.json", "teacher_report_32b.json", "teacher_report_14b.json",
+          "report.json", "report.md", "wordings_teacher.json"):
     if os.path.exists(os.path.join(WORK, f)):
         shutil.copy(os.path.join(WORK, f), keep)
+for f in ("build_report.json", "split_plan.json"):
+    if os.path.exists(os.path.join(MOMENTS, f)):
+        shutil.copy(os.path.join(MOMENTS, f), keep)
 for job in ("game-reasoner", "watchdog"):
     src = os.path.join(WORK, "students", job)
     if not os.path.exists(src):
@@ -117,10 +220,15 @@ for job in ("game-reasoner", "watchdog"):
     for f in ("test_out.jsonl", "test_out_base.jsonl", "train_report.json", "train.log"):
         if os.path.exists(os.path.join(src, f)):
             shutil.copy(os.path.join(src, f), os.path.join(keep, job, f))
+gdir = os.path.join(WORK, "students/data/game-reasoner")
+for f in ("grade_rows.jsonl", "jump_rows.jsonl"):
+    if os.path.exists(os.path.join(gdir, f)):
+        os.makedirs(os.path.join(keep, "graded"), exist_ok=True)
+        shutil.copy(os.path.join(gdir, f), os.path.join(keep, "graded", f))
 json.dump({"round": ROUND, "wall_h": round((time.time() - T0) / 3600, 2)}, open(os.path.join(keep, "round.json"), "w"))
-shutil.make_archive("/kaggle/working/out", "zip", keep)
+shutil.make_archive(f"{KW}/out", "zip", keep)
 # keep the version output small: the 3.4 GB dequantized base is rebuilt next session in ~2 min
 shutil.rmtree(os.path.join(WORK, "students", "base-deq"), ignore_errors=True)
-shutil.rmtree("/kaggle/working/pack", ignore_errors=True)
+shutil.rmtree(f"{KW}/pack", ignore_errors=True)
 print(open(os.path.join(WORK, "report.md")).read())
-print("download: /kaggle/working/out.zip", os.path.getsize("/kaggle/working/out.zip") // 1_000_000, "MB")
+print("download: /kaggle/working/out.zip", os.path.getsize(f"{KW}/out.zip") // 1_000_000, "MB")

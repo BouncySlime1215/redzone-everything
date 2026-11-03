@@ -103,3 +103,35 @@ def check(rows: list[dict]) -> None:
         sp = sorted(lo, key=order.get)
         for x, y in zip(sp, sp[1:]):
             assert lo[x][1] < lo[y][0], f"{lg}: {x} ends {lo[x][1]} after {y} starts {lo[y][0]}"
+
+
+# Fixed date cutoffs for the multi-season build (ET nights, inclusive starts), so every thread can
+# apply the same split without downloading anything: brain/head training may use nights before
+# test_start only (train + valid); dev-test is [test_start, locked_start); locked is >= locked_start
+# (about the newest 25% of each league's nights over the last 3 seasons + the current one, and
+# every eval-data-v1 locked night). Locked nights are never downloaded by the build.
+BIG_CUTS = {            # league: (valid_start, test_start, locked_start)
+    "nfl": ("20241201", "20250901", "20251120"),
+    "cfb": ("20241115", "20250820", "20251015"),
+    "nba": ("20251020", "20251201", "20260201"),
+    "cbb": ("20251101", "20251210", "20260120"),
+    "nhl": ("20251007", "20251201", "20260201"),
+    "mlb": ("20250601", "20250801", "20260315"),
+}
+
+
+def big_split_of(league: str, night: str, locked_v1: dict[str, list[str]] | None = None) -> str:
+    v, t, lk = BIG_CUTS[league]
+    if night in set((locked_v1 or {}).get(league, ())) or night >= lk:
+        return "locked"
+    return "test" if night >= t else "valid" if night >= v else "train"
+
+
+def plan_big(nights_by_league: dict[str, list[str]], locked_v1: dict[str, list[str]]) -> dict[str, dict[str, str]]:
+    """{league: {night: split}} for the multi-season build, by BIG_CUTS (see above)."""
+    out = {}
+    for lg, nights in nights_by_league.items():
+        m = {n: big_split_of(lg, n, locked_v1) for n in sorted(set(nights))}
+        assert all(m[n] == "locked" for n in locked_v1.get(lg, ()) if n in m), f"{lg}: v1 locked night unlocked"
+        out[lg] = m
+    return out

@@ -147,7 +147,7 @@ def compare(rows: Iterable[dict], sources: dict[str, dict[str, dict] | None]) ->
 
 def table(res: dict, league: str = "all") -> str:
     """Markdown table (rows = lines, columns = sources) for the PR."""
-    srcs = [k for k in res if k not in ("thresholds", "test_nights")]
+    srcs = [k for k in res if isinstance(res[k], dict) and "all" in res[k]]
     keys = ["n", "answered_pct", "usable_json_pct", "big_base_rate_pct", "must_see_pct", "must_see_precision", "must_see_recall",
             "must_see_lift", "lock_acc", "leave_allowed_pct", "unsafe_leave_pct", "over_cautious_pct", "eta_mae_s"]
     out = ["| line | " + " | ".join(srcs) + " |", "|---|" + "---|" * len(srcs)]

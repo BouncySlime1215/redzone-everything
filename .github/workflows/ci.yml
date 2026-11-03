@@ -130,6 +130,22 @@ jobs:
           name: pytest-${{ matrix.python }}
           path: pytest-${{ matrix.python }}.xml
 
+  kaggle-smoke:
+    # Every Kaggle script, end to end on a tiny CPU sample (fixtures as the ESPN archive, an echo
+    # teacher, a tiny random Qwen3 student), so packaging bugs fail here instead of on Kaggle GPU time.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pytest pyyaml lightgbm
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install "transformers>=4.51" peft safetensors tokenizers
+      - name: Kaggle scripts end to end (CPU)
+        run: python -m pytest -q -rs -p no:cacheprovider tests/test_kaggle_smoke.py tests/test_kaggle_e2e.py
+
   scorecard:
     needs: data
     if: needs.data.outputs.available == 'true'
