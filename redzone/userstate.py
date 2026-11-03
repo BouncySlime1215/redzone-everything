@@ -65,6 +65,9 @@ def load(path: Path, now: float | None = None) -> dict | None:
                 out[k] = d[k]
         if isinstance(d.get("focus_mode"), str):
             out["focus_mode"] = d["focus_mode"]
+    # Muted games stay muted all night (games that can't play here, the user's own mutes).
+    if now - saved <= 12 * 3600 and isinstance(d.get("muted"), list):
+        out["muted"] = [g for g in d["muted"] if isinstance(g, str)]
     return out
 
 
