@@ -17,3 +17,11 @@ Next:
 5. RESULTS.md, self-review, draft PR into integration/next. A Kaggle GPU run from the distill thread
    (#13) may supply the adapter instead.
 POST /api/agent/fix is in (approved by Nick 2026-11-03): refresh feeds, restart feeds/control, re-tune a stick.
+
+## Paused 2026-11-03 21:25 UTC (usage pacing)
+Run 1 reached step 400/819 (valid loss 4.83 -> 0.072; train loss 0.075), ~13 s/step, RSS 8-11 GB
+(batch 4 x accum 2, malloc_trim each step; batch 8 got OOM-killed at 14 GB). Checkpoint saved at
+/mnt/project-files/watchdog/run1/peft_step400 (+ mlx_step400, converted; loads in mlx_lm).
+The cloud container restarts when the session goes idle, so a run must be watched to finish.
+Resume: either finish run 1 from scratch (no optimizer state saved) or just grade step400:
+  evaluate.py --backend torch --split valid --model <deq> --adapter /mnt/project-files/watchdog/run1/peft_step400

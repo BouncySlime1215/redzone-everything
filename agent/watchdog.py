@@ -295,6 +295,12 @@ class Watchdog:
 
     def tick(self) -> dict:
         o = self.observe()
+        if self._model is not None and o.live_games:
+            try:   # keeps the shared local model loaded through a live night (agent/llm_server.py)
+                from agent import llm_server
+                llm_server.call("/keepalive", {"live_games": o.live_games}, timeout=2)
+            except Exception:
+                pass
         v = self.decide(o)
         done = self.act(v, o)
         row = {"ts": round(self._clock(), 1), "kind": "check", "action": v.action, "source": v.source,

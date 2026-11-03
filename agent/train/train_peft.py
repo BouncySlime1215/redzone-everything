@@ -172,6 +172,16 @@ def loss_on(split: Split, data, group: list[int], cache: Path, name: str) -> tup
     return torch.nn.functional.cross_entropy(logits, torch.tensor(targets)), len(targets)
 
 
+def _trim() -> None:
+    """Give freed memory back to the OS: varying sequence lengths fragment glibc's heap, and
+    without this the process grows ~0.3 GB a minute until it is killed."""
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
+
+
 def save(pm, named, masters, d: Path) -> None:
     """A standard PEFT adapter directory, with the fp32 master weights."""
     from safetensors.torch import save_file
@@ -192,7 +202,8 @@ def main() -> None:
     ap.add_argument("--dropout", type=float, default=0.05)
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--epochs", type=float, default=2.0)
-    ap.add_argument("--batch", type=int, default=8)
+    ap.add_argument("--batch", type=int, default=4)
+    ap.add_argument("--accum", type=int, default=2, help="micro-batches per optimizer step (memory)")
     ap.add_argument("--eval-every", type=int, default=200)
     ap.add_argument("--threads", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--seed", type=int, default=7)
@@ -233,7 +244,7 @@ def main() -> None:
     opt = torch.optim.AdamW(masters, lr=a.lr, weight_decay=0.0)
     rng = random.Random(a.seed)
     lens = [len(s) for s, _ in train]
-    steps_per_epoch = math.ceil(len(train) / a.batch)
+    steps_per_epoch = math.ceil(len(train) / (a.batch * a.accum))
     total = int(steps_per_epoch * a.epochs)
     warm = max(1, total // 20)
     sched = torch.optim.lr_scheduler.LambdaLR(
@@ -258,13 +269,18 @@ def main() -> None:
     pm.train()
     step, t0, run = 0, time.time(), 0.0
     while step < total:
-        for g in batches(list(range(len(train))), lens, a.batch, rng):
+        bs = batches(list(range(len(train))), lens, a.batch, rng)
+        for k in range(0, len(bs) - a.accum + 1, a.accum):
             if step >= total:
                 break
-            l, _ = loss_on(split, train, g, cache, "train")
             for p in params:
                 p.grad = None
-            l.backward()
+            lsum = 0.0
+            for g in bs[k:k + a.accum]:
+                l, _ = loss_on(split, train, g, cache, "train")
+                (l / a.accum).backward()
+                lsum += l.item() / a.accum
+                del l
             for p, m in zip(params, masters):
                 m.grad = p.grad.float()
             torch.nn.utils.clip_grad_norm_(masters, 1.0)
@@ -274,7 +290,8 @@ def main() -> None:
                     p.copy_(m)
             sched.step()
             step += 1
-            run = 0.9 * run + 0.1 * l.item() if step > 1 else l.item()
+            _trim()
+            run = 0.9 * run + 0.1 * lsum if step > 1 else lsum
             if step % 25 == 0:
                 print(f"step {step}/{total}  loss {run:.4f}  lr {sched.get_last_lr()[0]:.2e}  "
                       f"{(time.time() - t0) / step:.1f} s/step", flush=True)
