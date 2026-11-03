@@ -256,14 +256,18 @@ class Snapshots:
                     shutil.copyfile(f, tmp)
                     os.replace(tmp, blob)
                 files[f.relative_to(self.root).as_posix()] = digest
+        # seq: a per-store counter, so order never depends on wall-clock seconds (two snapshots in the
+        # same second used to sort by directory order, and prune could drop the newer one).
+        seq = max((r.get("seq", 0) for r in self.list()), default=0) + 1
         stamp = datetime.fromtimestamp(now).strftime("%Y%m%d-%H%M%S")
-        rid = f"{stamp}-{commit[:9]}" + (f"-{label}" if label else "")
+        rid = f"{stamp}-{seq:04d}-{commit[:9]}" + (f"-{label}" if label else "")
         n = 1
-        while (self.releases / f"{rid}.json").exists():
+        while (self.releases / f"{rid}.json").exists():   # a hand-copied release folder: still unique
             n += 1
-            rid = f"{stamp}-{commit[:9]}-{label or 'v'}{n}"
+            rid = f"{stamp}-{seq:04d}-{commit[:9]}-{label or 'v'}{n}"
         _atomic_json(self.releases / f"{rid}.json",
-                     {"id": rid, "commit": commit, "created": now, "managed": list(self.managed), "files": files})
+                     {"id": rid, "seq": seq, "commit": commit, "created": now, "managed": list(self.managed),
+                      "files": files})
         return rid
 
     def get(self, rid: str) -> dict:
@@ -278,7 +282,8 @@ class Snapshots:
         if not self.releases.exists():
             return []
         rows = [json.loads(p.read_text()) for p in self.releases.glob("*.json")]
-        return sorted(rows, key=lambda r: r["created"])
+        # Oldest first, by seq (snapshots from before seq existed sort first, by time, then id).
+        return sorted(rows, key=lambda r: (r.get("seq", 0), r["created"], r["id"]))
 
     def restore(self, rid: str) -> list[str]:
         snap = self.get(rid)
