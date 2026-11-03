@@ -715,3 +715,34 @@ async def test_timeouts_only_back_off_never_mute_for_the_night(world):
     await w.s.rule_failures(w.clock())
     assert not w.s.muted("prime:x") and not w.s.muted_apps
     assert w.e._fail_cool["prime:x"] == pytest.approx(w.clock() + 600)
+
+
+async def test_adb_rule_waits_while_away_from_home(world, fake_adb):
+    """Away from home (Mac at school) a stick that can't answer isn't broken: no reconnect churn,
+    one plain observation, and the 2-minute clock starts fresh once back home."""
+    w = world
+    w.e.network = SimpleNamespace(state=SimpleNamespace(away=True, routes_broken=False,
+                                                        message="Away from home: this Mac is on 10.23.4.5"))
+    w.stick.state = "offline"
+    await w.s.rule_adb(w.clock())
+    w.clock.t += 500
+    await w.s.rule_adb(w.clock())
+    assert fake_adb == [] and w.stick.calls == []
+    assert [r["what"] for r in records(w, "observe") if r["rule"] == "network"] == \
+        ["Away from home: this Mac is on 10.23.4.5"]
+    w.e.network.state.away = False           # home again: a fresh 2 minutes before reconnecting
+    await w.s.rule_adb(w.clock())
+    assert fake_adb == []
+    w.clock.t += 121
+    await w.s.rule_adb(w.clock())
+    assert ("disconnect", w.stick.host) in fake_adb
+
+
+async def test_adb_rule_does_not_reconnect_when_tailscale_steals_routes(world, fake_adb):
+    w = world
+    w.e.network = SimpleNamespace(state=SimpleNamespace(away=False, routes_broken=True, message="Tailscale is ..."))
+    w.stick.state = "offline"
+    await w.s.rule_adb(w.clock())
+    w.clock.t += 500
+    await w.s.rule_adb(w.clock())
+    assert fake_adb == []
