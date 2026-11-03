@@ -198,7 +198,7 @@ def _clean_cut(league: League, wall: list[float], plays: list[dict], screen_t: f
 
 
 def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float, t0: float, t1: float,
-          replayed: set[tuple[str, int]] | None = None) -> Card:
+          replayed: set[tuple[str, int]] | None = None, reel_ends: dict | None = None) -> Card:
     league = replays[0].league
     card = Card(league.value, games=len(replays), hours=(t1 - t0) / 3600)
     watching: list[tuple[float, str]] = []
@@ -249,7 +249,10 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
     while t <= t1:
         g, o = on_screen(watching, offs, t, tune_s)
         if g and (g.startswith("replay:") or g == "reel"):
-            card.watched += 10   # a replay or the catch-up reel: watched, never a commercial
+            card.watched += 10   # a replay or the catch-up reel: watched, never a commercial...
+            if g == "reel":
+                from redzone.lab.backtest import reel_over
+                card.dead += 10 if reel_over(reel_ends, t) else 0   # ...until its planned clips have played
         elif g and g in by_id:
             r = by_id[g]
             st = t - lag_total - o

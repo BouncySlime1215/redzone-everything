@@ -264,6 +264,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     clock.t = t0
     rz_ok = bool(cfg.get("sunday_ticket", False))
     reel_homes: dict[float, str | None] = {}   # [highlight jump] reel switch time -> the game it stood in for
+    reel_ends: dict[float, float] = {}           # ...-> when its planned clips have played (after that: dead air)
     sim = None
     if reels and cfg.get("reel.play", False):
         from redzone.lab.reelsim import SimReels
@@ -302,20 +303,30 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         before = dec.current
         if on_tick is not None:
             on_tick(clock.t, dec)
-        offer = sim.offer(clock.t, dec) if sim is not None and dec.current != REEL else None
-        decision = dec.decide(cands, REDZONE_TARGET if rz_ok and redzone_on(states.values()) else None,
-                              reel=offer)
+        rz = REDZONE_TARGET if rz_ok and redzone_on(states.values()) else None
+        if sim is None:
+            decision = dec.decide(cands, rz)
+        else:
+            decision = dec.decide(cands, rz, reel=sim.offer(clock.t, dec) if dec.current != REEL else None)
+        if sim is not None and before == REEL and decision.action in ("switch", "replay") and decision.target != REEL:
+            sim.played(dec.reel_played_n)   # only the clips that played through: a cut-off one comes back
         if sim is not None and decision.action == "switch" and decision.target == REEL and before != REEL:
             j = dec.reel_jump
             n = j.n_clips if j and j.ok and j.n_clips else None
             # Like a replay: a clip's play counts as caught once the reel has played through it.
             at = clock.t + tune_s
+            by_gid = {r.gid: r for r in replays}
             for c in (sim.plan if n is None else sim.plan[:n]):
                 at += c.seg
-                if c.play_at is not None:
-                    replay_windows.append((c.game_id, round(c.play_at), clock.t, at))
-            sim.played(n)
+                r = by_gid.get(c.game_id)
+                if c.play_at is None or r is None:
+                    continue
+                # Credit the play it shows: the archive play nearest its time (the decider's 30 s rule).
+                w = min(r.wall, key=lambda x: abs(x - c.play_at))
+                if abs(w - c.play_at) <= 30:
+                    replay_windows.append((c.game_id, round(w), clock.t, at))
             reel_homes[clock.t] = dec.home_break_visit or before
+            reel_ends[clock.t] = dec.reel_end_at
         decisions.append(decision)
         _record(decision, before, clock.t, switches, watching, replayed)
         if decision.action == "replay" and decision.replay and getattr(dec, "replay_until", None) is not None:
@@ -324,7 +335,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         clock.t += step
 
     _credit_completed_replays(replay_windows, watching, t1, replayed)
-    rep = _grade(replays, switches, watching, my_teams, lag_true, play_len, tune_s, t0, t1, replayed)
+    rep = _grade(replays, switches, watching, my_teams, lag_true, play_len, tune_s, t0, t1, replayed, reel_ends)
+    rep.reel_ends = reel_ends
     rep.decisions = decisions
     rep.replayed, rep.t0, rep.t1, rep.lag_total = replayed, t0, t1, lag_total
     rep.lag_true = lag_true
@@ -463,7 +475,16 @@ def tuning_blackout_seconds(watching: list[tuple[float, str | None]], tune_s: fl
                    - max(at, t0)) for i, (at, _) in enumerate(watching))
 
 
-def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t0, t1, replayed) -> Report:
+def reel_over(reel_ends: dict | None, t: float) -> bool:
+    """[highlight jump] Is the reel on screen at t past its planned clips (a finished reel = dead air)?"""
+    if not reel_ends:
+        return False
+    started = max((s for s in reel_ends if s <= t), default=None)
+    return started is not None and t >= reel_ends[started]
+
+
+def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t0, t1, replayed,
+           reel_ends: dict | None = None) -> Report:
     by_id = {r.gid: r for r in replays}
     cuts = []
     prev_kind = None
@@ -540,7 +561,8 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
         elif g and g.startswith("replay:"):
             watched += 10
         elif g == REEL:
-            watched += 10   # [highlight jump] the reel: watched, never a commercial
+            watched += 10   # [highlight jump] the reel: watched, never a commercial...
+            cause = "reel over" if reel_over(reel_ends, t) else None   # ...until its clips have played
         elif g:
             r = by_id[g]
             screen_t = t - lag_total - o

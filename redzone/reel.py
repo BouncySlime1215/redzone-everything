@@ -559,19 +559,27 @@ class Reeler:
                 out.append((src, full))
         return out
 
-    def offer(self, target: str) -> "ReelOffer | None":
-        """The current reel as a ReelOffer (clip by clip, so the decider can cut it to fit)."""
+    def offer(self, target: str) -> "ReelClips | None":
+        """The current reel as a ReelClips (clip by clip, so the decider can cut it to fit)."""
         r = self.current
         if r is None or not r.clips:
             return None
-        return ReelOffer(target, tuple((float(c["seconds"]), float(c.get("value", self._c("score", 40))))
+        return ReelClips(target, tuple((float(c["seconds"]), float(c.get("value", self._c("score", 40))))
                                        for c in r.clips),
                          int(self._c("min_clips", 5)), float(self._c("min_s", 30)),
                          tuple((c["game_id"], c.get("play_at")) for c in r.clips))
 
-    def played(self, reel: Reel, n: int | None = None) -> None:
-        """A reel aired: its plays (the first n, when it was cut to fit) are seen now and won't come back."""
-        self.shown.update(c["id"] for c in (reel.clips if n is None else reel.clips[:n]))
+    def ready(self, now: float):
+        """ReelProvider.ready (redzone/contracts/reel.py): the ready reel as a contract ReelOffer."""
+        r = self.current
+        o = self.offer(f"reel:{int(r.built_at)}") if r is not None else None
+        return contract_offer(o, r.built_at, tuple(c["id"] for c in r.clips)) if o else None
+
+    def played(self, reel, n: int | None = None) -> None:
+        """A reel aired: its plays (the first n, when it was cut to fit) are seen now and won't come back.
+        reel: a Reel, or the contract's ReelOffer (its clip_ids)."""
+        ids = [c["id"] for c in reel.clips] if isinstance(reel, Reel) else list(getattr(reel, "clip_ids", ()))
+        self.shown.update(ids if n is None else ids[:n])
         self._sig = ()
         self.current = None
 
@@ -583,7 +591,7 @@ class Reeler:
 # policy fit (redzone/lab/reeljump.py) call the same function, so what's measured is what runs.
 
 @dataclass(frozen=True)
-class ReelOffer:
+class ReelClips:
     """A ready reel. clips: (seconds, value 0-100) per clip in play order, most need-to-see first,
     so any prefix is the best reel of that length (the player stops at a clip boundary: no re-encode
     is needed to cut it down). value = importance x freshness on the scorer's 0-100 scale."""
@@ -598,7 +606,7 @@ class ReelOffer:
         return round(sum(s for s, _ in self.clips), 2)
 
     @classmethod
-    def whole(cls, target: str, seconds: float, value: float) -> "ReelOffer":
+    def whole(cls, target: str, seconds: float, value: float) -> "ReelClips":
         """A reel known only by its length (one block, can't be cut down)."""
         return cls(target, ((float(seconds), float(value)),), 1, 0.0)
 
@@ -633,9 +641,9 @@ class StayView:
 
 
 @dataclass(frozen=True)
-class ReelJump:
-    ev_reel: float      # what the reel is worth (0-100, per second of the window)
-    ev_stay: float      # what staying is worth over the same window
+class JumpVerdict:
+    ev_reel: float      # average points per second on screen over the window (switches count as 0)
+    ev_stay: float      # the same for staying on the game we'd leave
     cost_s: float       # seconds of black (both switches)
     ok: bool            # jump now
     reason: str
@@ -652,7 +660,7 @@ class JumpPolicy:
     min_gain: float = 5.0       # the reel must beat staying by this much
 
 
-def fit_reel(offer: ReelOffer, room_s: float) -> tuple[int, float]:
+def fit_reel(offer: ReelClips, room_s: float) -> tuple[int, float]:
     """The longest prefix of the offer that fits room_s: (clips, seconds); (0, 0) when no prefix
     has min_clips clips and min_s seconds."""
     n, total = 0, 0.0
@@ -665,8 +673,8 @@ def fit_reel(offer: ReelOffer, room_s: float) -> tuple[int, float]:
     return n, round(total, 2)
 
 
-def jump_value(world: StayView, offer: ReelOffer | None, window: JumpWindow,
-               policy: JumpPolicy = JumpPolicy()) -> ReelJump:
+def jump_value(world: StayView, offer: ReelClips | None, window: JumpWindow,
+               policy: JumpPolicy = JumpPolicy()) -> JumpVerdict:
     """Jump to the reel now, or stay?
 
     Hard stays first (crunch time, your team late, must-see, a big moment likely soon), then the reel
@@ -675,8 +683,8 @@ def jump_value(world: StayView, offer: ReelOffer | None, window: JumpWindow,
     restart comes early times the game's value) and at least as much as the best live visit."""
     cost = max(0.0, window.out_s) + max(0.0, window.back_s)
 
-    def no(why: str, ev_r: float = 0.0, ev_s: float = 0.0) -> ReelJump:
-        return ReelJump(round(ev_r, 1), round(ev_s, 1), round(cost, 1), False, why)
+    def no(why: str, ev_r: float = 0.0, ev_s: float = 0.0) -> JumpVerdict:
+        return JumpVerdict(round(ev_r, 1), round(ev_s, 1), round(cost, 1), False, why)
 
     if offer is None or not offer.clips:
         return no("no reel ready")
@@ -697,19 +705,19 @@ def jump_value(world: StayView, offer: ReelOffer | None, window: JumpWindow,
         return no(f"reel doesn't fit the dead ball ({max(0.0, window.dead_s):.0f}s left, "
                   f"{cost:.0f}s of switching, {window.margin_s:.0f}s margin)")
     used = offer.clips[:n]
-    ev_reel = sum(s * v for s, v in used) / max(1e-6, secs)
+    ev_reel = sum(s * v for s, v in used) / max(1e-6, secs + cost)   # the window: there, reel, back
     risk = policy.tail_p * (1.0 + (p or 0.0))
     ev_stay = risk * max(0.0, world.live_value)
     if ev_reel < ev_stay + policy.min_gain:
         return no("staying is worth more than the reel", ev_reel, ev_stay)
     if world.best_visit >= 0 and world.best_visit > ev_reel:
         return no("a live game is worth more than the reel", ev_reel, ev_stay)
-    return ReelJump(round(ev_reel, 1), round(ev_stay, 1), round(cost, 1), True,
+    return JumpVerdict(round(ev_reel, 1), round(ev_stay, 1), round(cost, 1), True,
                     f"catch-up reel: {n} plays you missed ({secs:.0f}s) in a {window.dead_s:.0f}s dead ball",
                     n, secs)
 
 
-def reel_rate(j: ReelJump, offer: ReelOffer | None) -> float:
+def reel_rate(j: JumpVerdict, offer: ReelClips | None) -> float:
     """Value per second of a planned reel (all its clips' values over its time incl. both switches):
     what a single catch-up replay must beat, per second, to be shown instead."""
     if not j.ok or offer is None or j.n_clips <= 0:
@@ -727,9 +735,29 @@ def clip_value(c: Clip, now: float, max_age_s: float = 1800.0, league_weight: di
 
 
 def offer_of(target: str, plan: list[Clip], now: float, *, min_clips: int = 5, min_s: float = 30.0,
-             max_age_s: float = 1800.0, league_weight: dict | None = None) -> ReelOffer | None:
-    """The ReelOffer for a planned reel (plan_reel order: your team first, then value)."""
+             max_age_s: float = 1800.0, league_weight: dict | None = None) -> ReelClips | None:
+    """The ReelClips for a planned reel (plan_reel order: your team first, then value)."""
     if not plan:
         return None
-    return ReelOffer(target, tuple((float(c.seg), clip_value(c, now, max_age_s, league_weight)) for c in plan),
+    return ReelClips(target, tuple((float(c.seg), clip_value(c, now, max_age_s, league_weight)) for c in plan),
                      min_clips, min_s, tuple((c.game_id, c.play_at) for c in plan))
+
+
+# --- the contract (redzone/contracts/reel.py) -------------------------------------------------------
+
+def reel_jump_value(world: StayView, offer: ReelClips | None, window: JumpWindow,
+                    policy: JumpPolicy = JumpPolicy()) -> dict:
+    """ReelJumper.jump_value as the contract reads it (contracts.ReelJump.from_dict): ev_reel, ev_stay,
+    cost, ok, reason, plus how much of the reel to play (n_clips, reel_s)."""
+    j = jump_value(world, offer, window, policy)
+    return {"ev_reel": j.ev_reel, "ev_stay": j.ev_stay, "cost": j.cost_s, "ok": j.ok, "reason": j.reason,
+            "n_clips": j.n_clips, "reel_s": j.reel_s}
+
+
+def contract_offer(clips: ReelClips, built_at: float, clip_ids: tuple[str, ...] = ()):
+    """ReelClips -> contracts.ReelOffer (target, seconds, value, built_at, clip_ids); value is the
+    clips' time-weighted mean."""
+    from redzone.contracts.reel import ReelOffer
+    secs = clips.seconds
+    value = sum(s * v for s, v in clips.clips) / secs if secs > 0 else 0.0
+    return ReelOffer(clips.target, secs, round(value, 1), built_at, tuple(clip_ids))

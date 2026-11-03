@@ -84,7 +84,7 @@ class SimReels:
         v = self.cfg.get(f"reel.{k}", default)
         return default if v is None else v
 
-    def offer(self, now: float, dec) -> R.ReelOffer | None:
+    def offer(self, now: float, dec) -> R.ReelClips | None:
         if not self.cfg.get("reel.play", False):
             return None
         max_age = float(self._c("max_age_s", 1800))

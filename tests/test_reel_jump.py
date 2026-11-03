@@ -4,10 +4,10 @@ from redzone.decider.screen import Event
 from redzone.lab import reelsim
 from redzone.lab.backtest import SwitchLog
 from redzone.models import League
-from redzone.reel import JumpPolicy, JumpWindow, ReelOffer, StayView, fit_reel, jump_value, reel_rate
+from redzone.reel import JumpPolicy, JumpWindow, ReelClips, StayView, fit_reel, jump_value, reel_rate
 from tests.test_redzone import break_on_screen, cands, dec, on, sc  # noqa: F401  (fixtures)
 
-SIX = ReelOffer("reel:1", ((9.0, 70.0), (9.0, 65.0), (8.0, 60.0), (8.0, 60.0), (8.0, 55.0), (8.0, 50.0)),
+SIX = ReelClips("reel:1", ((9.0, 70.0), (9.0, 65.0), (8.0, 60.0), (8.0, 60.0), (8.0, 55.0), (8.0, 50.0)),
                 5, 30.0, (("x", 100.0), ("x", 200.0), ("y", 300.0), ("y", 400.0), ("z", 500.0), ("z", 600.0)))
 CALM = StayView(live_value=60.0)
 ROOMY = JumpWindow(dead_s=120.0, out_s=5.0, back_s=5.0, margin_s=8.0)
@@ -46,7 +46,7 @@ def test_a_big_moment_likely_soon_means_stay_measured_against_the_leagues_usual_
 
 def test_a_better_live_visit_or_a_thin_reel_loses():
     assert not jump_value(StayView(60.0, best_visit=90.0), SIX, ROOMY).ok
-    dull = ReelOffer("reel:1", tuple((8.0, 3.0) for _ in range(6)), 5, 30.0)
+    dull = ReelClips("reel:1", tuple((8.0, 3.0) for _ in range(6)), 5, 30.0)
     assert not jump_value(CALM, dull, ROOMY).ok              # under staying's risk + min_gain
     assert not jump_value(CALM, None, ROOMY).ok
 
@@ -82,8 +82,8 @@ def test_jumps_to_the_reel_at_a_dead_ball_and_comes_back_for_the_restart(dec, cl
     d = dec.decide(cands(a=sc("a", 60, is_break=True), b=10), reel=SIX)
     assert d.action == "switch" and d.target == REEL
     assert dec.reel_plan is not None and dec.reel_plan.n_clips >= 5
-    assert dec.home_break_visit == "a" and dec.home_return_at == dec.reel_end_at
-    clock.t = dec.reel_end_at + 0.1
+    assert dec.home_break_visit == "a"
+    clock.t = dec.reel_end_at + 0.1                   # reel done, break still on, nothing else to fill it
     d = dec.decide(cands(a=sc("a", 60, is_break=True), b=10))
     assert d.action == "switch" and d.target == "a" and d.kind == "home"
 
@@ -134,16 +134,28 @@ def test_fitted_break_length_opens_the_window(dec, clock):
     assert d.target == REEL
 
 
-def test_reel_plays_are_not_replayed_again(dec, clock):
+def _reel_with_missed_td(dec, clock):
     reel_on(dec)
     on(dec, clock, "a", b=10)
     dec.queue.append(Missed("b", "p1", "TD", "td", clock.t - 200, 75.0))
     dec.cfg.data["replay"]["enabled"] = False      # (keep _scan_missed from re-judging the fake queue)
-    offer = ReelOffer(SIX.target, SIX.clips, 5, 30.0, (("b", clock.t - 190),) + SIX.plays[1:])
+    offer = ReelClips(SIX.target, SIX.clips, 5, 30.0, (("b", clock.t - 190),) + SIX.plays[1:])
     break_on_screen(dec, clock)
-    d = dec.decide(cands(a=sc("a", 60, is_break=True), b=10), reel=offer)
-    assert d.target == REEL
-    assert not dec.queue and dec.done_replays[-1].pid == "p1"
+    assert dec.decide(cands(a=sc("a", 60, is_break=True), b=10), reel=offer).target == REEL
+
+
+def test_reel_plays_that_played_are_not_replayed_again(dec, clock):
+    _reel_with_missed_td(dec, clock)
+    clock.t = dec.reel_end_at + 0.1
+    assert dec.decide(cands(a=sc("a", 60, is_break=True), b=10)).target == "a"
+    assert not dec.queue and dec.done_replays[-1].pid == "p1" and dec.reel_played_n == 6
+
+
+def test_a_play_the_reel_never_reached_stays_missed(dec, clock):
+    _reel_with_missed_td(dec, clock)
+    clock.t += 2                                   # still black: the first clip hasn't played
+    dec.manual_switch("a")
+    assert dec.queue and dec.queue[0].pid == "p1" and dec.reel_played_n == 0
 
 
 def test_trace_sees_every_answer_and_never_breaks_a_decision(dec, clock):
@@ -161,7 +173,7 @@ def test_off_means_off(dec, clock):
     break_on_screen(dec, clock)
     assert dec.decide(cands(a=sc("a", 60, is_break=True), b=10), reel=SIX).target != REEL   # play: false
     reel_on(dec)
-    dec.cfg.data["reel"]["jump"]["enabled"] = False
+    dec.cfg.data["flags"]["reel"] = False
     assert dec.decide(cands(a=sc("a", 60, is_break=True), b=10), reel=SIX).target != REEL
 
 
@@ -186,3 +198,30 @@ def test_reel_card_counts_dead_time_and_big_plays_missed_while_on_it():
     late = [SwitchLog(55.0, "g", "reel", "reel", ""), SwitchLog(260.0, "reel", "g", "home", "")]
     s = reelsim.grade([r], late, lag, 5.0, 1000.0).summary()
     assert s["reel_home_big_missed"] == 1 and s["reel_home_late_s"] > 0
+
+
+def test_highlight_jump_off_means_filler_only(dec, clock):
+    reel_on(dec)
+    dec.cfg.data["flags"]["highlight_jump"] = False
+    on(dec, clock, "a", b=10)
+    break_on_screen(dec, clock)
+    d = dec.decide(cands(a=sc("a", 60, is_break=True), b=10), reel=SIX)
+    assert d.target == REEL and dec.reel_plan.n_clips == 1    # the whole reel, as a filler
+
+
+def test_highlight_jump_off_puts_a_live_game_first(dec, clock):
+    reel_on(dec)
+    dec.cfg.data["flags"]["highlight_jump"] = False
+    on(dec, clock, "a", b=10)
+    break_on_screen(dec, clock)
+    assert dec.decide(cands(a=sc("a", 60, is_break=True), b=50), reel=SIX).target == "b"
+
+
+def test_contract_shapes():
+    from redzone.contracts.reel import ReelJump, ReelOffer as ContractOffer
+    from redzone.reel import contract_offer, reel_jump_value
+    d = reel_jump_value(CALM, SIX, ROOMY)
+    j = ReelJump.from_dict(d)
+    assert j.ok and j.cost_s == 10.0 and d["n_clips"] == 6 and j.ev_reel > j.ev_stay
+    o = contract_offer(SIX, 123.0, ("a", "b"))
+    assert isinstance(o, ContractOffer) and o.seconds == 50.0 and 50 < o.value < 70 and o.clip_ids == ("a", "b")

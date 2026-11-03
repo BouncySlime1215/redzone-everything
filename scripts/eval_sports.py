@@ -104,7 +104,8 @@ def main():
         if rep.reel is not None:
             reel.add(rep.reel)
         # [xleague] Grade against what the screen REALLY showed (true delay), not the app's belief.
-        card = sportsgrade.grade(reps, rep.switches, mine, rep.lag_true, 5.0, rep.t0, rep.t1, rep.replayed)
+        card = sportsgrade.grade(reps, rep.switches, mine, rep.lag_true, 5.0, rep.t0, rep.t1, rep.replayed,
+                                 getattr(rep, "reel_ends", None))
         total.add(card)
         if a.slates:
             print(" ", day, json.dumps(card.summary()))
