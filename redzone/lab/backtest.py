@@ -106,6 +106,7 @@ class Report:
     my_crunch_live: int = 0
     dead_causes: dict[str, float] = field(default_factory=dict)  # seconds of dead air by cause
     tuning_blackout_s: float = 0.0  # modelled single-stick tuning time, separate from commercials
+    cut: object = None              # cutgrade.CutCard: where each switch left and landed
 
     @property
     def summary(self) -> dict:
@@ -124,6 +125,7 @@ class Report:
             "tuning_blackout_pct": round(100 * self.tuning_blackout_s / max(1, self.hours * 3600), 1),
             "switches_per_hour": round(len(self.switches) / max(0.1, self.hours), 1),
             "switches": len(self.switches),
+            **(self.cut.summary() if self.cut is not None else {}),
         }
 
 
@@ -454,6 +456,8 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
     rep = Report(switches, cuts, big, live, mine, mine_live, dead, watched, (t1 - t0) / 3600, missed)
     rep.dead_causes = causes
     rep.tuning_blackout_s = tuning_blackout_seconds(watching, tune_s, t0, t1)
+    from redzone.lab import cutgrade
+    rep.cut = cutgrade.grade(replays, switches, lag_total, tune_s)
     rep.big_plays_caught = caught
     rep.crunch, rep.crunch_live, rep.my_crunch, rep.my_crunch_live = crunch, crunch_live, my_crunch, my_crunch_live
     return rep
