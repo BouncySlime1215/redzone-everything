@@ -327,7 +327,13 @@ class Stick:
         from redzone.screen_ocr import recognize
         with tempfile.TemporaryDirectory(prefix="rz-ocr-") as d:
             path = os.path.join(d, "screen.png")
-            if not await self.screenshot(path):
+            try:
+                if not await self.screenshot(path):
+                    return ""
+            except asyncio.TimeoutError:
+                # A screencap can take >8 s on a busy stick/Mac (soak, Nov 3): no text, not a crash
+                # in the middle of a resume or a prompt check.
+                log.info("screenshot on %s timed out: no screen text this time", self.name or self.host)
                 return ""
             result = await asyncio.to_thread(recognize, path, timeout=8.0)
         return " | ".join(row.text for row in result.observations) if result.read_ok else ""

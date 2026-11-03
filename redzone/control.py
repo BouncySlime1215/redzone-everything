@@ -72,6 +72,7 @@ RELINK_MAX_S = 25.0        # ...else one fresh deep link of the target, capped a
 RESUME_POLL_S = 0.25       # "playing the game again?" this often while resuming
 STANDBY_REREADS = 3        # right before a flip: a standby whose session is missing is re-read this often...
 STANDBY_REREAD_S = 0.5     # ...this far apart, before the switch is given up
+PRIME_HOME_GAP_S = 0.3     # Prime: the second HOME this soon after the first (the player eats one)
 PRIME_PAGE_AFTER_S = 1.0  # ...its session gone this long -> read the screen for the detail page
 PRIME_PAGE_CHECKS = 3      # ...at most this many screen reads per resume
 PRIME_LIVE_WAIT_S = 8.0    # ...after pressing through: the stream starts in ~3.5 s (Nov 2)
@@ -1371,9 +1372,10 @@ class Controller:
     async def _home_flip_prime(self, stick: Stick, pkg: str | None, target: str) -> bool:
         """Prime (measured on the sticks, Nov 2): the first HOME can be swallowed by its player, and
         bringing the app back before the TV has switched cancels the switch. Re-sending a link opens
-        the game's page (Watch + Watch Live again, ~30 s). So: HOME (twice if the first didn't
-        switch the TV), wait for <Active Source>, THEN bring the player's own screen to the front
-        (REORDER_TO_FRONT): the game is still playing there."""
+        the game's page (Watch + Watch Live again, ~30 s). So: HOME twice, wait for <Active Source>
+        (one more HOME if it didn't come), THEN bring Prime's screen back to the front
+        (REORDER_TO_FRONT, or the game's link where that is refused). Prime usually shows the
+        game's detail page there, not the player: _resume_playback presses through it."""
         r = await stick.shell("dumpsys activity activities | grep -m1 mResumedActivity", timeout=5)
         m = re.search(r"u0 (com\.amazon\.firebat/[\w.$]+)", r.out if r.ok else "")
         comp = m.group(1) if m else None
@@ -1382,6 +1384,13 @@ class Controller:
         for attempt in range(2):
             if not (await stick.shell("input keyevent KEYCODE_HOME", timeout=8)).ok:
                 break
+            if attempt == 0:
+                # Prime's player swallows the first HOME more often than not (soak, Nov 3: 6 of 10
+                # flips needed the second one, ~2.5 s later). A HOME on the launcher is a no-op, so
+                # the second goes right away; the retry below stays for a TV that is slow to follow.
+                await asyncio.sleep(PRIME_HOME_GAP_S)
+                if not (await stick.shell("input keyevent KEYCODE_HOME", timeout=8)).ok:
+                    break
             # The second HOME gets a full window of its own: measured from the first press it had
             # only ~2 s, and a TV a beat slow to follow failed the flip -> two-stick mode off and an
             # unknown input (22:16, 22:20, 22:31 on Nov 2). flip_s still counts from the first HOME.

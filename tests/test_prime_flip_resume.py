@@ -134,7 +134,7 @@ def test_press_through_refuses_while_a_stream_is_paused(monkeypatch):
 
 
 class SlowCecStick(Stick):
-    """The TV follows the SECOND HOME, ~3 s after it (the first is swallowed by Prime's player)."""
+    """The TV follows only the retry HOME (the third: the up-front pair was swallowed), ~3 s after it."""
 
     def __init__(self):
         super().__init__("s:5555", os="Fire OS 8")
@@ -147,7 +147,7 @@ class SlowCecStick(Stick):
         if "KEYCODE_HOME" in command:
             self.homes.append(now)
         if "mIsActiveSource" in command:
-            on = len(self.homes) >= 2 and now - self.homes[1] >= 3.0
+            on = len(self.homes) >= 3 and now - self.homes[2] >= 3.0
             return RunResult(True, "1" if on else "0", 0.0)
         if "mResumedActivity" in command:
             return RunResult(True, "mResumedActivity: ActivityRecord{1 u0 com.amazon.firebat/com.amazon.pyrocore.IgnitionActivity t1}", 0.0)
@@ -167,7 +167,8 @@ def test_second_prime_home_gets_a_full_window(cfg, tmp_path, monkeypatch):
         clock["t"] += max(s, 0.1)
     monkeypatch.setattr(ctl.asyncio, "sleep", fake_sleep)
     assert asyncio.run(c._home_flip_prime(stick, "com.amazon.firebat", T))
-    assert len(stick.homes) == 2
+    assert len(stick.homes) == 3
+    assert stick.homes[1] - stick.homes[0] < 0.5          # the second HOME goes right away
     assert c._flip_s is not None and c._flip_s >= 5.5   # counted from the first HOME
 
 
@@ -211,6 +212,15 @@ def test_page_is_recognised_when_ocr_splits_the_button_row(cfg, tmp_path, monkey
     c, relink = controller(cfg, tmp_path, monkeypatch, stick)
     assert asyncio.run(c._resume_playback(stick, T, ctl.RESUME_WAIT_S)) == "watch_live"
     assert relink.calls == 0
+
+
+def test_screen_text_is_empty_not_a_crash_when_screencap_times_out():
+    s = Stick("t:5555")
+
+    async def slow(timeout=8.0):
+        raise asyncio.TimeoutError
+    s.screencap = slow
+    assert asyncio.run(s.ocr_text()) == ""
 
 
 async def _ocr_split():
