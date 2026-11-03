@@ -1,7 +1,8 @@
 """The watchdog's judgment: what's wrong and what (if anything) to do. Stdlib only.
 
 Two layers:
-  rules()      hard cases with one right answer (service down, disk full, a known error) — no model
+  rules()      hard cases with one right answer (service down, disk full, a known error, safe
+               mode left on after its cause went away, a stale feed) — no model
   ask_model()  an error nobody has seen before: the local model (agent/llm.py) picks from the same
                fixed action set, and guard() still has the last word.
 
@@ -14,7 +15,13 @@ import json
 import re
 from dataclasses import asdict, dataclass, field
 
-ACTIONS = ("none", "notify", "restart_service", "reconnect_stick", "prune_disk")
+ACTIONS = ("none", "notify", "restart_service", "reconnect_stick", "prune_disk",
+           # fixes (v2): each one is narrow, guarded below and rate-limited in agent/watchdog.py
+           "resume_player", "clear_prompt", "retune_stick", "refresh_feed", "restart_component",
+           "safe_mode_off")
+STICK_ACTIONS = ("reconnect_stick", "resume_player", "clear_prompt", "retune_stick")
+# Parts of the app that can be restarted on their own (POST /api/agent/fix), without a full restart.
+COMPONENTS = ("feeds", "screen", "reel", "control", "supervisor")
 
 
 @dataclass
@@ -29,6 +36,13 @@ class Obs:
     disk_free_mb: float = 99999.0
     restarts_last_hour: int = 0
     errors: dict[str, int] = field(default_factory=dict)   # error signature -> count, last 15 min
+    # v2 (defaults keep older callers working)
+    on_screen: str = ""               # host of the stick the TV shows
+    standby: str = ""                 # host of the hidden (standby) stick in two-stick mode
+    safe_mode: bool = False           # the app stopped auto-switching after repeated errors
+    safe_min: float = 0.0             # ... for this many minutes
+    paused: bool = False              # a person paused auto-switching (never undo that)
+    feed_stale_s: float = 0.0         # oldest live score source: seconds since it last answered
 
     def text(self) -> str:
         """Compact, model-friendly description (also the training prompt)."""
@@ -70,6 +84,8 @@ KNOWN: list[tuple[str, str, str]] = [
 STALE_LOG_S = 240.0       # a live night with no log line this long: the service is hung
 LOW_DISK_MB = 1200.0
 MAX_RESTARTS_HOUR = 3
+SAFE_STALE_MIN = 3.0      # safe mode on this long with no errors left: leave it
+STALE_FEED_S = 180.0      # a live score source silent this long: refresh the feed
 
 
 def known(sig: str) -> tuple[str, str] | None:
@@ -116,6 +132,11 @@ def rules(o: Obs) -> Verdict | None:
     if cats.get("source", 0) >= 50:
         return Verdict("notify", "NHL's extra feed has failed all night")
     if not unknown:
+        if o.safe_mode and o.safe_min >= SAFE_STALE_MIN and not o.paused:
+            return Verdict("safe_mode_off", f"safe mode has been on {int(o.safe_min)} min and its errors are gone")
+        if o.live_games and o.feed_stale_s >= STALE_FEED_S:
+            return Verdict("refresh_feed", f"live games but the score feed hasn't answered in {int(o.feed_stale_s)} s",
+                           "feeds")
         return Verdict("none", "nothing needs doing" if not cats else "only known, harmless errors")
     return None
 
@@ -135,15 +156,39 @@ def guard(v: Verdict, o: Obs) -> Verdict:
         if not o.sticks_offline:
             return Verdict("none", "no stick is offline", source="guard")
         v = Verdict("reconnect_stick", v.why, o.sticks_offline[0], v.source)
+    if v.action in ("resume_player", "clear_prompt", "retune_stick"):
+        known_sticks = [h for h in (o.on_screen, o.standby) if h]
+        if v.target not in known_sticks:
+            if not known_sticks:
+                return Verdict("notify", f"wanted to {v.action} ({v.why}) but no stick is known", source="guard")
+            v = Verdict(v.action, v.why, known_sticks[0], v.source)
+        if v.target in o.sticks_offline:
+            return Verdict("reconnect_stick", f"{v.why}; the stick is offline, so reconnect first", v.target, "guard")
+        if v.action == "retune_stick" and o.crunch_on_screen and v.target == o.on_screen:
+            return Verdict("notify", f"wanted to re-tune the stick on screen ({v.why}) but crunch time is on",
+                           source="guard")
+    if v.action == "restart_component" and v.target not in COMPONENTS:
+        return Verdict("notify", f"wanted to restart {v.target!r} ({v.why}), which isn't a restartable part",
+                       source="guard")
+    if v.action == "safe_mode_off":
+        if not o.safe_mode:
+            return Verdict("none", "safe mode isn't on", source="guard")
+        if o.paused:
+            return Verdict("none", "a person paused auto-switching; leaving it paused", source="guard")
     return v
 
 
 SYSTEM = (
     "You watch over RedZone Everything, a Mac app that switches a TV between live games. "
-    "Given the app's status as JSON, pick ONE action: none, notify, restart_service, reconnect_stick, prune_disk. "
-    "restart_service only when the app is down, hung, or an error will keep breaking switching; "
-    "notify when a person must do something or should know; reconnect_stick for a stick that stopped answering; "
-    "prune_disk when disk space is the problem; none for harmless noise. "
+    "Given the app's status as JSON, pick ONE action. "
+    "none: harmless noise or a one-off that recovers. notify: a person must do something or should know. "
+    "restart_service: the whole app is down, hung, or keeps crashing. "
+    "restart_component: one part keeps failing (target feeds, screen, reel, control or supervisor). "
+    "reconnect_stick: a stick stopped answering. retune_stick: a stick's picture is frozen or stuck. "
+    "resume_player: a stick's player paused by itself. clear_prompt: an 'Are you still watching?' style prompt. "
+    "refresh_feed: a score feed is stale or broken while the internet works. "
+    "prune_disk: disk space is the problem. safe_mode_off: safe mode is on and its cause is gone. "
+    "Stick actions target a stick host from the status. "
     'Answer with JSON only: {"action": "...", "target": "", "why": "<one short sentence>"}'
 )
 
