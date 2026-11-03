@@ -107,6 +107,7 @@ def test_live_game_scoring_zero_still_waits_for_the_gate(dec, clock):
     start_on(dec, clock, "a", {})
     dec.timeline("a", League.NFL).events.append(Event(clock.t, "play", "run"))
     clock.t += 35
+    dec.timeline("a", League.NFL).fresh_at = clock.t
     zero = sc("a", 0)
     zero.raw = zero.moment = 0.0
     d = dec.decide({"a": Candidate(zero, "youtubetv:a"), **cands(b=60)})
@@ -126,6 +127,7 @@ def test_play_after_a_break_ends_it_even_if_stop_end_is_late(clock):
     tl.events.append(Event(T, "stop_start", "timeout"))
     tl.events.append(Event(T + 100, "stop_end"))          # recorded far too late
     tl.events.append(Event(T + 30, "play", "first snap after the timeout"))
+    tl.fresh_at = T + 30 + 40 - 5
     g = leave_gate(tl, D, T + 30 + 40 - 5, 8.0)            # that play is on screen
     assert not g.safe and not g.on_screen_break
 
@@ -183,6 +185,7 @@ def test_long_official_break_is_trusted_even_when_uncertain(clock):
     (end of quarter, halftime, two-minute warning) still count."""
     tl = Timeline(League.NFL, clock)
     T = clock.t
+    tl.fresh_at = T
     big = Delay(40.0, 15.0)                                 # uncalibrated: could be 10..70 s
     tl.events.append(Event(T, "stop_start", Stoppage.TIMEOUT.value))
     assert not leave_gate(tl, big, T + 75, 8.0).safe       # a timeout can be 15 s long
@@ -212,6 +215,7 @@ def test_out_of_order_play_does_not_hide_a_newer_one(clock):
     T = 1000.0
     tl.events.append(Event(T + 10, "play", "B (arrived on time)"))
     tl.events.append(Event(T, "play", "A (arrived a poll late)"))
+    tl.fresh_at = T + 49
     assert not leave_gate(tl, D, T + 49, 8.0).safe          # A has aired, B is on screen
 
 

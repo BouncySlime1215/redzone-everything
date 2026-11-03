@@ -39,19 +39,34 @@ NETWORKS = {
     "nba league pass": "leaguepass", "league pass": "leaguepass",
     "monumental": "monumental", "monumental sports network": "monumental", "msn": "monumental",
     "peacock": "peacock", "netflix": "netflix", "apple tv": "appletv", "max": "max", "hbo max": "max",
+    # College: conference networks are YouTube TV channels; ACC Network Extra / SEC Network+ are
+    # ESPN+ streams (ESPN app, lowest tier); FloSports and B1G+ aren't set up.
+    "acc network": "accn", "accn": "accn", "sec network": "secn", "secn": "secn",
+    "big ten network": "btn", "btn": "btn", "b1g network": "btn", "cbs sports network": "cbssn",
+    "accnx": "espnplus", "acc network extra": "espnplus", "secn+": "espnplus", "sec network+": "espnplus",
+    "cw": "cw", "the cw": "cw", "flosports": "flosports", "b1g+": "bigtenplus",
 }
 # Where each channel key is watchable for you.
 APP_FOR = {
     "prime": "prime", "leaguepass": "prime", "monumental": "prime",
     "peacock": None, "netflix": None, "appletv": None, "max": None, "espnplus": "youtubetv_event",
+    "flosports": None, "bigtenplus": None,
 }
 # Regional sports networks: blacked out here, so out-of-market games go to League Pass (NBA) / ESPN+ (NHL).
 RSN_HINTS = ("sn", "sports net", "sportsnet", "fanduel", "nesn", "msg", "scripps", "dsn", "marquee", "yes",
              "spectrum", "altitude", "root", "bally", "chsn", "kunpd", "victory", "kcop", "kmcc", "gulf coast")
-BROADCAST = {"cbs", "fox", "nbc", "abc"}
+BROADCAST = {"cbs", "fox", "nbc", "abc", "cw"}
 LOCAL_TEAMS = {League.NFL: {"CAR"}, League.NBA: {"CHA"}, League.NHL: {"CAR"}, League.MLB: set()}
 # Wizards/Caps local games are on Monumental, which you watch through Prime Video Channels.
 MONUMENTAL_TEAMS = {League.NBA: {"WSH", "WAS"}, League.NHL: {"WSH"}}
+
+
+def _names_monumental(feed: dict, g: GameState) -> bool:
+    """A Prime feed with no home/away tag that says it's the Monumental (Wizards/Caps) feed."""
+    if not (MONUMENTAL_TEAMS.get(g.league, set()) & {g.home.abbr, g.away.abbr}):
+        return False
+    text = f"{feed.get('feed_name') or ''} {feed.get('title') or ''} {feed.get('network') or ''}".lower()
+    return "monumental" in text
 
 
 @dataclass
@@ -146,7 +161,13 @@ class ChannelMap:
         # National cable first: it's never blacked out.
         for n in nets:
             if n not in BROADCAST and n in NETWORKS.values() and APP_FOR.get(n, "youtubetv") == "youtubetv":
-                return self._yttv(n)
+                w = self._yttv(n)
+                if not w.tunable and lg == League.NHL and n == "nhlnetwork":
+                    # No YouTube TV code for NHL Network: the out-of-market ESPN+ feed if we have it.
+                    e = self._espnplus(g)
+                    if e.tunable:
+                        return e
+                return w
         for n in nets:
             if APP_FOR.get(n) == "prime":
                 return self._prime(g, n, describe(f"prime:{n}"), "sure" if n == "prime" else "likely")
@@ -199,7 +220,8 @@ class ChannelMap:
             ok = [f for f in feeds if f.get("geo_ok") is not False] or feeds
             side = "home" if g.home.abbr in my_teams else "away" if g.away.abbr in my_teams else None
             # Your team's game: prefer your team's own broadcast (e.g. the Wizards' Monumental feed).
-            pick = next((f for f in ok if side and f.get("feed") == side), ok[0])
+            pick = next((f for f in ok if side and f.get("feed") == side), None) or next(
+                (f for f in ok if side and _names_monumental(f, g)), ok[0])
             self.prime_gti[g.game_id] = pick["gti"]
             if all(f.get("geo_ok") is False for f in feeds):
                 self.link_notes[g.game_id] = "may be blacked out — check on the TV"
@@ -259,11 +281,13 @@ PRETTY = {"espn": "ESPN", "espn2": "ESPN2", "espnu": "ESPNU", "abc": "ABC", "fox
           "cbs": "CBS", "nbc": "NBC", "nflnetwork": "NFL Network", "tnt": "TNT", "trutv": "truTV",
           "tbs": "TBS", "nbatv": "NBA TV", "nhlnetwork": "NHL Network", "mlbnetwork": "MLB Network",
           "usa": "USA", "redzone": "NFL RedZone", "st": "Sunday Ticket", "cbssn": "CBS Sports Net",
-          "fs2": "FS2", "espnews": "ESPNews", "nbcsn": "NBCSN"}
+          "fs2": "FS2", "espnews": "ESPNews", "nbcsn": "NBCSN", "accn": "ACC Network",
+          "secn": "SEC Network", "btn": "Big Ten Network", "cw": "The CW"}
 
 # Channels to ask for in the setup helper, most useful first.
 SETUP_CHANNELS = ["espn", "espn2", "abc", "cbs", "fox", "nbc", "nflnetwork", "redzone", "nbcsn", "tnt", "trutv",
-                  "tbs", "nbatv", "nhlnetwork", "fs1", "mlbnetwork", "usa", "espnu", "cbssn"]
+                  "tbs", "nbatv", "nhlnetwork", "fs1", "mlbnetwork", "usa", "espnu", "cbssn",
+                  "accn", "secn", "btn"]
 
 
 def describe(target: str | None) -> str:
@@ -284,8 +308,8 @@ def describe(target: str | None) -> str:
 def _is_sunday_afternoon(g: GameState) -> bool:
     if not g.start_time:
         return False
-    lt = time.localtime(g.start_time)
-    return lt.tm_wday == 6 and 12 <= lt.tm_hour < 19
+    kickoff = datetime.fromtimestamp(g.start_time, tz=ZoneInfo("America/New_York"))
+    return kickoff.weekday() == 6 and 12 <= kickoff.hour < 19
 
 
 ET = ZoneInfo("America/New_York")

@@ -1,164 +1,150 @@
 # RedZone Everything
 
-Your own RedZone for every sport. A program on your Mac watches every live NFL, NBA, NHL and MLB
-game through free data feeds, scores how exciting each one is right now (0–100, with a plain-English
-reason), and switches your TV to the best moment — **never in the middle of a play** — prioritizing
-your Washington teams, your bets and your fantasy players. Commercials get filled with catch-up
-replays of the big plays you missed. Your phone is the remote and the dashboard.
+A local sports director for NFL, NBA, NHL and MLB. It ranks live games using the moment,
+Washington teams, bets and fantasy interests, then proposes or performs a switch when the
+estimated screen timing permits it. Your phone is the dashboard and remote.
 
-- Dry-run by default: it shows what it **would** do until you turn TV control on.
-- $0: free data sources and free tools only.
-- Runs on your Mac; portable to a Raspberry Pi later (no Mac-only code in the core).
+**Current status:** software recovery and safety review are complete; physical Fire Stick,
+provider, replay-position and display-input validation are still required. The app starts in
+**dry-run**. No paid data service is required; viewing games still requires your own provider
+access. It does not record or rebroadcast stream video.
 
----
-
-## 0. First night checklist (stick arrives → games tonight)
-
-**When the stick arrives (~20 minutes):**
-1. Plug the Fire TV Stick 4K Plus into the TV, finish Amazon's setup, sign in to YouTube TV and Prime Video once.
-2. On the stick: Settings → My Fire TV → About → click the name 7 times → back → Developer Options → ADB Debugging **ON**.
-3. On the Mac: `.venv/bin/python scripts/doctor.py` → on the TV pick **Always allow** → run it again until it shows the stick's model, OS and apps.
-4. Test a tune (dry run off for this one command only): `.venv/bin/python scripts/rz.py now` then `scripts/rz.py tune espn`.
-5. Speed check: `.venv/bin/python scripts/rz.py bench`.
-6. DRM check: `.venv/bin/python scripts/rz.py screencap` (black = expected; the app uses the stick's playback reports instead).
-
-**Tonight (7:00 NBA/NHL, 8:15 MNF):**
-1. Start it: `.venv/bin/python -m redzone`, open the phone page from the QR code.
-2. Leave **Dry run on** for the first 15 minutes: watch what it *would* do and why.
-3. Tap **"I just saw it"** right as plays end, 3–4 times per app (YouTube TV, Prime). That measures your real delay.
-4. Turn TV control on (Settings → confirm). Tap 👍/👎 whenever it does something you like or hate.
-5. Optional: `.venv/bin/python scripts/screen_lab.py` in a second window while you tap Game / Commercial / Loading in the Lab tab — this teaches the app what the stick's signals mean.
-6. Everything is recorded (feed speed per source, every decision) for tomorrow's tuning.
-
-## 1. Setup (Phase 0 — about 30 minutes, once)
-
-1. **Mac tools** (already done on this Mac): Python 3.12, Homebrew, `adb`.
-   ```bash
-   brew install --cask android-platform-tools
-   ```
-2. **Turn on ADB on each Fire TV stick** (with the TV remote):
-   1. Settings → My Fire TV → About → click the device name **7 times** ("You are now a developer").
-   2. Back → Developer Options → **ADB Debugging: ON**.
-   3. Keep the TV on — the first connection shows "Allow USB debugging?" → choose **Always allow** → OK.
-3. **Same Wi-Fi:** the Mac, both sticks and the TV must be on your home Wi-Fi. If a VPN is on, turn it off
-   while using RedZone (Tailscale is usually fine).
-4. **Run the setup checker** — it finds your sticks and TV, reads each stick's model and OS (Vega OS sticks
-   can't be controlled, so you'd get single-stick mode), finds the app package names, and which HDMI port
-   each stick is on:
-   ```bash
-   .venv/bin/python scripts/doctor.py
-   ```
-   If a stick isn't found, add it by IP (Settings → My Fire TV → About → Network on the stick):
-   ```bash
-   .venv/bin/python scripts/doctor.py --ip 192.168.1.42
-   ```
-5. **Link your YouTube TV channels** (≈10 minutes, once): on your computer open tv.youtube.com → Live,
-   hover a channel → right-click → Copy link → paste it in the phone page under Settings → Channels
-   (or `scripts/rz.py link espn "<link>"`). Do ESPN, ESPN2, ABC, CBS, FOX, NBC, NFL Network, NFL RedZone,
-   TNT, truTV, TBS, NBA TV, NHL Network, FS1. Sunday Ticket games and Prime/ESPN+ events are found
-   automatically each day.
-6. **Optional — ESPN fantasy:** put your league ID in Settings → Fantasy. Private league: copy the
-   `espn_s2` and `SWID` cookies from fantasy.espn.com into `.env` (see `.env.example`).
-7. **Optional — two-stick mode:** needs both sticks on Fire OS and the TV's HDMI-CEC (Anynet+) on.
-   If input switching over CEC doesn't work on your TV, add a SmartThings token to `.env`.
-
-## 2. Running it
+## Run locally
 
 ```bash
 .venv/bin/python -m redzone
+# Use another port if an older session is still running:
+PORT=8778 .venv/bin/python -m redzone
 ```
-It prints your phone address (`http://<your-mac>.local:8777`) and a QR code. Open it on your iPhone.
 
-Start automatically at login (and restart if it ever crashes):
+The app prints a LAN address and QR code. Keep the Mac awake and on the same network as the
+phone. `scripts/install_service.sh check` performs a read-only service readiness check;
+it does not start anything. A separately installed login service can run without Codex open.
+See [unattended operation](docs/service-operation.md) for installation, enforced dry-run,
+restart behavior, logs, credentials and sleep limits. Local runtime data is under `data/`.
+
+## What the engine knows
+
+Sports feeds describe events on the field. Fire TV media reports describe playback transport.
+Neither directly identifies whether the TV currently shows a live play, an editorial replay,
+an ad, or a loading screen. The Screen timing panel keeps those facts separate.
+
+- Play-by-play timestamps plus a per-channel delay estimate produce **estimated** play, break
+  and gap intervals. Missing timestamps, stale feeds and conflicting calibration widen
+  uncertainty; absent evidence holds automatic switching.
+- A safe exit must cover the command's full latency interval. The engine checks again after
+  preparation and immediately before wake, launch, retry and input commands.
+- Destination timing is refreshed before entry. A missed opportunity is abandoned; a failed
+  command does not become the watched game.
+- A new stream transition or uninterrupted known stream is required for tune confirmation.
+  This is stronger than a timer or “app opened,” but still does not independently prove the
+  exact matchup displayed. Provider links and game-title mappings need device validation.
+- A display input command being accepted does not prove the input changed. An uncertain
+  result stops further mutations until the visible input is established.
+
+There is **no arbitrary switch quota, minimum dwell, cooldown or switch-count freeze**.
+Selection considers the content, actual switching cost, explicit user focus/locks and timing
+evidence. An operation already in flight is not duplicated. Zero mid-play cuts and complete
+highlight coverage are goals, not guarantees from these public feeds.
+
+## Device setup
+
+First confirm the exact model and OS, finish the device's normal setup, and sign in to the
+streaming apps yourself. Current control uses Fire OS/Android ADB. Vega devices have different
+Amazon developer tooling and are **unsupported by this app's current controller**.
+
+For a known Fire OS stick, enable ADB debugging through its developer settings. Use its IP
+from the device's Network page. Only approve a debugging prompt on the intended device for
+this Mac. The setup checker can connect and trigger that prompt; it is not a dry-run command.
+
 ```bash
-scripts/install_service.sh          # install
-scripts/install_service.sh remove   # uninstall
+# Target only the intended stick; do not scan unrelated devices.
+.venv/bin/python scripts/doctor.py --no-scan --ip STICK_IP --display-type monitor
+# A second intended stick can be supplied with another --ip.
 ```
-Logs: `data/redzone.log`.
 
-**Keep the MacBook lid open** (or plugged into a display): closing the lid puts the Mac to sleep and
-the TV stops switching. While games are live the app runs `caffeinate`, so the Mac won't idle-sleep; when
-nothing is live it lets the Mac sleep normally.
+The monitor option clears a previously saved Samsung target. A newly discovered Samsung is
+never selected automatically. For an intended Samsung, select it explicitly with `--tv-ip TV_IP`.
 
-## 3. Using the phone page
+**One stick:** the app can change its streaming app/channel after playback validation.
+**Two sticks:** hot standby additionally requires supported, verified display-input control.
+The current readback adapter is for an explicitly selected Samsung SmartThings device;
+a normal monitor is not assumed to support it. Without readback, use one stick and select
+its HDMI input manually. Do not point the app at an unrelated TV to make dual-stick mode appear ready.
 
-- **Now** — what's on and why, the Focus dropdown, Go back · Skip · Pause, and More (Lock, Mute, Boost,
-  👍/👎, "I just saw it").
-- **Focus** — *Autopilot* (best game anywhere), *Focus on a game* (stay on it during action; visit other
-  games/replays only during its breaks, back before the next snap), *Focus + must-see* (also leave for
-  something huge elsewhere).
-- **"I just saw it"** — tap the instant a play ends on your TV. That measures your stream delay, which is
-  how the app knows what your screen is showing. Do it 3–4 times on each app the first night.
-- **👍/👎** — every vote is training data for the tuner.
-- **Bets** — add a bet in ~20 seconds; games where your bet is sweating get boosted.
-- **Lab** — backtest report cards, the auto-tuner, and the Screen Lab buttons.
+Provider subscriptions, local channels, blackouts and stream delay must be checked on the
+actual device. Settings → Channels accepts manual channel links/corrections; verified discovery
+preserves those corrections. Automatic device discovery is opt-in and disabled in dry-run.
+Account, purchase and sign-in screens stop automated discovery instead of being clicked through.
 
-## 4. How it decides (plain English)
+After setup, validate a user-selected channel, playback continuity, actual delay, pause/resume,
+rewind step and recovery before enabling unattended switching. The CLI `scripts/rz.py` has
+explicit device diagnostics (`now`, `tune`, `bench`, `flipcheck`); tune/bench/flipcheck change
+playback or display inputs and should only be run when ready. The separate `screencap` diagnostic
+captures a device screenshot; the normal engine does not use video capture.
 
-1. **Score every game every second.** Score = how much the game matters (records, spread, rivalry,
-   your teams, bets, fantasy) × how intense this moment is (field position, down & distance, time, score,
-   power plays, leverage, runs, comebacks). Neutral games top out at 90; 90–100 is for games you care
-   about. Blowouts and stoppages score low.
-2. **Know what your screen shows.** Feeds report each play ~5–10 s after it happens; your stream shows it
-   ~35–60 s after it happens. The app tracks that delay per channel, so it knows when a play is airing on
-   *your* screen.
-3. **Hard rules:** never cut while a play is on screen; never leave a locked moment (red-zone drive, power
-   play, final two minutes of a close game) except for something much bigger; stay at least ~45 s; switch
-   only for a clear margin; at most a few switches per 5 minutes; freeze if it starts flip-flopping.
-4. **Commercials:** when your game goes to break, visit the best live moment elsewhere or play catch-up
-   replays of big plays you missed, then come back just before your game resumes.
-5. **Catch it live:** when a big play happens in another game, the app has a ~30 s head start before it
-   airs — if it's safe to leave, it goes there so you see it live.
+## Phone controls
 
-## 5. Tuning the weights
+- **Now:** current proposal or confirmed stream, reasons, screen evidence, Focus, Back, Skip and Pause.
+- **Focus:** prefer one game during meaningful action, with other games/replays during estimated breaks.
+  Garbage-time handling can release a home-team preference.
+- **Bets/Fantasy:** personalize scoring. Fantasy credentials stay in local `.env`; never commit them.
+- **“I just saw it”:** match an exact-timestamp play while watching a confirmed live stream.
+  Ambiguous taps, unknown timestamps, simulations and replays cannot establish precise delay.
+  The action also accepts an explicit play ID. Microphone crowd-noise matches are advisory only.
+- **Lab:** archived simulations and stored user observations. Labels/votes are observations for
+  later analysis; they do not establish a trained visual classifier.
+- **Pause:** stops automatic actions. Unknown outcomes require establishing the actual screen
+  before resuming. Dry-run simulates decisions without device discovery or control.
 
-Everything lives in `redzone/default_config.yaml`; your changes are saved to `data/config.yaml`
-(validated, versioned, one-tap undo). Edit from the phone (Settings → Advanced) or the file.
+Catch-up replay uses provider seek controls. Failed seek commands do not count as successful
+replays. Completion is modeled only after an uninterrupted clip interval; exact footage and
+seek behavior still need real-device validation. When no bounded break budget exists, the
+engine does not invent time for a replay.
 
-Most useful knobs:
+## Data and resilience
 
-| Setting | What it does |
-|---|---|
-| `score.personal.my_team` | Washington boost (default 25) |
-| `score.personal.bet_max` | how much a sweating bet adds (20) |
-| `decider.switch_margin` | how much better another game must be to switch (10) |
-| `decider.min_dwell_s` | minimum time on a game (45 s) |
-| `decider.max_switches_per_5min` | busy-ness cap (4) |
-| `decider.break_destination_min` | what's worth visiting during a commercial |
-| `replay.*` | catch-up replays: window, clip length, rewind step |
-| `delay.default.*` | starting stream delay per app before you calibrate |
+The project includes ESPN public scoreboards/play-by-play, NBA/NHL/MLB sources, source merging,
+and provider event-link discovery. These unofficial endpoints can change or fail. Polling uses
+caching/backoff; the recorder keeps feed observations and command outcomes, not stream video.
+Optional ESPN Fastcast push has protocol/fixture coverage and remains **off by default** until
+validated against current major-league events; polling remains the fallback.
 
-**Test a change before it touches your TV** — replay real past games through the brain:
+Background jobs handle source refresh, verified provider discovery and recovery. They respect
+dry-run, selected devices, unknown power state and controller locks. A sleeping/unknown standby
+is not woken merely to preload. The server rejects non-LAN clients and cross-origin mutation
+requests; it is intended for a trusted home network, not public deployment.
+
+## Verification
+
 ```bash
-.venv/bin/python scripts/eval.py --slates          # NFL: 16 real 2025 Sundays
-.venv/bin/python scripts/eval_sports.py nba        # NBA: every archived night
-.venv/bin/python scripts/eval_sports.py nhl
-.venv/bin/python scripts/backtest.py 20251214      # one slate, with a "would have switched" timeline
-.venv/bin/python -m redzone.lab.optimize           # auto-tuner (search settings on past games)
+.venv/bin/python -m pytest -q
+.venv/bin/python scripts/eval.py
+.venv/bin/python scripts/eval_sports.py nba --nights 999
+.venv/bin/python scripts/eval_sports.py nhl --nights 999
+.venv/bin/python scripts/eval_sports.py mlb --nights 999
+# Combined feed/delay faults (same flags work with eval.py):
+.venv/bin/python scripts/eval_sports.py mlb --nights 999 \
+  --true-delay 41 --sigma 5 --lag-jitter --drop --late-plays --no-wallclock
 ```
-Report cards grade: mid-play cuts (must be 0), commercial time, big plays seen (live or replay),
-crunch-time plays seen live, your team's crunch time, switches per hour.
 
-## 6. Safety rails
+See [verification notes](docs/verification-2026-11-02.md) for measured software results and limits.
+Report cards separate modeled stoppage time from modeled tuning blackout. NFL/MLB live credit
+requires the whole modeled play interval; replay credit requires modeled completion. NBA/NHL
+coverage is event coverage, not proof that an entire possession was viewed. Some archived NFL
+timestamps are estimated and archives are not video ground truth. Do not equate a scorecard
+with real-TV validation, or an old optimizer report with the current build.
 
-- Dry-run default; TV control needs a confirmed tap.
-- LAN only: the server refuses anything not on your home network. Secrets live in `.env` (git-ignored).
-- Kill switch: Pause. Safe mode kicks in after 3 errors in 5 minutes and holds still until you tap Resume.
-- Every tune is confirmed by the stick's own playback report; a failed tune retries once, then reports.
-- Config edits are validated against limits and versioned; a broken file falls back to defaults.
-- Feeds: polite polling, caching, backoff on 403/429; a source that goes backwards gets benched.
-- Two-stick mode flips the TV input only at a safe moment, and drops to single-stick if a flip fails.
-- Nothing records, saves, or rebroadcasts stream video. Optional microphone calibration keeps only
-  loudness numbers in memory.
+## Code map
 
-## 7. Data sources (all free, unofficial — they can change without notice)
+`engine.py` coordinates feeds, scoring, decisions, commands and phone state. `decider/` models
+screen timing and selection. `control.py`, `tuners/` and `tv.py` handle device transactions.
+`standby.py` plans the hidden stick. `discovery/` and `autonomy.py` coordinate provider checks.
+`sources/` contains public feeds and parsing; `lab/` contains simulations and grading;
+`web/` contains the LAN API and phone UI. Configuration defaults are in
+`redzone/default_config.yaml`; validated local overrides are in `data/config.yaml`.
 
-ESPN site API (scoreboards, play-by-play with timestamps, win probability), NBA liveData (S3 mirror),
-NHL api-web (power plays, empty nets), MLB statsapi (leverage), ESPN Fastcast (push), Apple TV / ESPN
-Watch event listings (Prime Video and ESPN+ event links). Real Sports is not used: it requires a login
-and its terms forbid automated access.
-
-### Training data (for the learned break / key-moment / game-flow models)
+## Training data (for the learned break / key-moment / game-flow models)
 
 ```
 .venv/bin/python -m pip install pandas pyarrow     # once, ~150 MB
@@ -197,31 +183,3 @@ outs/runners/count, the current stoppage type, time since the last break, crunch
 Win probability comes from the source for NFL/CFB (and ESPN where it has one); NBA/college basketball
 use a spread-plus-normal model fit to ESPN's WP, NHL a Poisson model with power plays, MLB run
 expectancy. These are personal-use datasets: don't redistribute the ESPN, NHL or MLB-derived files.
-
-## 8. Project layout
-
-```
-redzone/
-  engine.py        the producer loop (poll → merge → score → decide → act → phone)
-  scoring/engine.py   0–100 excitement + reasons
-  decider/         switch brain (decider.py) and "what's on my screen" (screen.py)
-  sources/         ESPN, league feeds, merge/race, event links, http
-  tuners/          adb Stick + per-app tuners (YouTube TV, Prime Video, ESPN)
-  control.py       single-stick and two-stick hot standby
-  tv.py            Samsung input + volume
-  channels.py      which channel/app each game is on (your market, Sunday Ticket, overrides)
-  bets.py fantasy.py  personal boosts
-  recorder.py      flight recorder: real feed lag per source
-  lab/             backtests, graders, optimizer, training data (sportsdata.py builds, datasets.py loads)
-  web/             FastAPI server + phone page
-scripts/           doctor, rz (stick tools), screen_lab, eval, backtest, downloads, build_training, service install
-tests/             pytest (scorer, decider, sources, control, app, audio, fantasy)
-```
-
-## 9. Troubleshooting
-
-- **Phone page won't load:** same Wi-Fi? Try the Mac's IP instead of the `.local` name.
-- **"unauthorized" stick:** approve the prompt on the TV (pick Always allow), rerun `scripts/doctor.py`.
-- **Wrong game/channel:** tap the game → Set channel. The app remembers your correction.
-- **It cut mid-play:** tap 👎 right away, then calibrate with "I just saw it" a few times.
-- **Prime says unavailable in your region:** that game is blacked out for your area; the app marks it.

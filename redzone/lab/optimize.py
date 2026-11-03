@@ -1,7 +1,10 @@
 """Training lab: search decider settings against real past slates.
 
 Objective (higher is better), with a hard rule that mid-play cuts must be zero:
-    big-play % live  -  0.5 x dead-air %  -  penalty if it switches more than ~20x/hour
+    big-play % seen + 0.3 x big-play % live - 0.7 x modeled commercial time %
+
+Switch frequency is reported, not capped or penalized. A safe opportunity can be taken
+as soon as the controller and screen evidence permit it.
 
 Random search, then a local polish around the best. Writes the winner and a
 leaderboard to data/lab/. Nothing changes in your live settings until you apply it.
@@ -14,21 +17,17 @@ import random
 import time
 from pathlib import Path
 
-from redzone.config import Config, _deep_merge
+from redzone.config import Config, _deep_merge, without_retired
 from redzone.lab.backtest import Replay, run
 from redzone.models import League
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 SPACE = {
     "decider.switch_margin": [6, 8, 10, 12, 15],
-    "decider.min_dwell_s": [25, 35, 45, 60],
-    "decider.chase_min_dwell_s": [10, 15, 20, 30],
     "decider.chase_max_deficit": [10, 15, 25, 40],
     "decider.break_destination_min": [10, 20, 25, 35],
     "decider.return_tolerance": [0, 5, 10],
     "decider.locked_override_lead": [15, 20, 30],
-    "decider.max_switches_per_5min": [3, 4, 5, 6],
-    "decider.min_gap_s": [15, 20, 30],
     "replay.clip_s": [12, 15, 20],
     "replay.max_age_s": [900, 1800, 2700],
 }
@@ -60,7 +59,7 @@ class _Overlay(Config):
             for p in parts[:-1]:
                 node = node.setdefault(p, {})
             node[parts[-1]] = v
-        self.data = _deep_merge(base.data, nested)
+        self.data = without_retired(_deep_merge(base.data, nested))
 
 
 def evaluate(base: Config, params: dict, slates, my_teams: set[str]) -> dict:
@@ -83,7 +82,7 @@ def evaluate(base: Config, params: dict, slates, my_teams: set[str]) -> dict:
     dead_pct = 100 * dead / max(1, watched)
     sph = switches / max(0.1, hours)
     seen_pct = 100 * tot_seen / max(1, tot_big)
-    score = seen_pct + 0.3 * live_pct - 0.7 * dead_pct - max(0.0, sph - 40) - cuts * 1000
+    score = seen_pct + 0.3 * live_pct - 0.7 * dead_pct - cuts * 1000
     return {"score": round(score, 2), "big_seen_pct": round(seen_pct, 1), "big_live_pct": round(live_pct, 1), "dead_air_pct": round(dead_pct, 1),
             "switches_per_hour": round(sph, 1), "mid_play_cuts": cuts, "params": params}
 

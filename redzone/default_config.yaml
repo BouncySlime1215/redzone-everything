@@ -4,7 +4,7 @@
 
 mode:
   dry_run: true            # true = show what it WOULD do, never touch the TV
-  leagues: {nfl: true, nba: true, nhl: true, mlb: true}
+  leagues: {nfl: true, nba: true, nhl: true, mlb: true, cbb: true, cfb: true, wcbb: true}
 
 sunday_ticket: true        # you have NFL Sunday Ticket (+ RedZone) on YouTube TV
 market: raleigh-durham
@@ -17,11 +17,25 @@ teams:                     # your teams: biggest boost
   nba: [WSH]
   nhl: [WSH]
   mlb: [WSH]
+  cbb: [UNC]               # college: ESPN abbreviations (North Carolina = UNC, ESPN team id 153)
+  cfb: [UNC]
+  wcbb: [UNC]
+
+college:                   # college boards are huge: only your teams' games and ranked games are followed
+  groups:                  # ESPN conference ids to also poll, so an unranked team of yours still shows
+    cbb: ["2"]             # ACC (men's basketball)
+    cfb: ["1"]             # ACC (football)
+    wcbb: ["2"]            # ACC (women's basketball)
+  top_n: 25                # follow games with a team ranked this high or better
 
 polling:
   hot_s: 3                 # what's on, what's next, and tense games: every N seconds
   live_s: 10               # every other live game
   idle_s: 300              # poll every N seconds when nothing is live
+
+sources:
+  fastcast: false          # ESPN's push feed: new plays the moment ESPN publishes them. Runs NEXT TO polling
+                           # (polling never stops). Off until the live check passes: see redzone/sources/fastcast.py
 
 score:
   neutral_cap: 0.9         # a neutral game tops out at 90; 90-100 is reserved for games you care about
@@ -80,21 +94,19 @@ score:
     no_hitter: {through_6: 25, through_7: 35, ninth: 50}
 
 decider:
-  min_dwell_s: 45
   switch_margin: 10
-  switch_cost: {youtubetv: 3, prime: 8, hdmi_flip: 1}
-  max_switches_per_5min: 4
-  min_gap_s: 20
+  switch_cost: {youtubetv: 3, prime: 8, espn: 7, hdmi_flip: 1}   # seconds to the new picture; replaced by
+                           # measured times as you use it (see switch_speed)
   return_tolerance: 5      # go back to the previous game if it's within this many points
   break_destination_min: 25   # anything at least this good beats watching a commercial
-  chase_min_dwell_s: 20
   chase_max_deficit: 15
   must_see_score: 92
   must_see_lead: 20
   locked_override_lead: 20
-  ping_pong_freeze_s: 300
   manual_pause_s: 60
   uncalibrated_sigma_s: 8  # above this delay uncertainty, only leave at official stoppages
+  sticky_visit_needs_calibration: true  # your game's break: only visit games whose delay is calibrated (else no way back until their own break)
+  wait_for_my_team_s: 1800  # your team tips within this: don't start on a basketball/hockey game we can't leave (uncalibrated)
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
   redzone_score: 45        # RedZone vs a game (0-100): stay on it unless a game beats this; any break goes there
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
@@ -114,8 +126,45 @@ fantasy:                   # ESPN fantasy football (leave league_id empty to tur
 screen:
   mic_calibration: false   # let the Mac's mic hear crowd roars to measure your delay (nothing is recorded)
 
+providers:
+  profiles:               # Exact names; an unreadable picker requires manual selection.
+    youtubetv: ""
+    prime: ""
+    espn: ""
+    peacock: ""
+    fubo: ""
+    paramount: ""
+    max: ""
+    netflix: ""
+    nflplus: ""
+    nba: ""
+    appletv: ""
+    dazn: ""
+
+autonomy:
+  enabled: true
+  discover_devices: false # first select your own TV/sticks with scripts/doctor.py
+  busy_score: 75          # postpone maintenance during an important game
+  selftest_may_wake: false
+  test_targets: {youtubetv: "", prime: "", espn: ""}
+
 two_stick:
+  cec_flip: true           # flip inputs by HOME -> HDMI-CEC Active Source (no TV network or SmartThings needed)
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment
+  hold_s: 20               # keep the hidden stick on a game at least this long before re-tuning it...
+  min_gain: 8              # ...and then only for one this many points better (your game's return and
+                           # a replay about to play take it right away)
+  verify_s: 15             # check the hidden stick is still playing this often
+  input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
+  park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long
+
+plan:                      # tonight's plan (data/plan_YYYYMMDD.json, the phone's "Tonight's plan" card)
+  verify: true             # before each start window, play each planned source on the HIDDEN stick (never the one on screen)
+  verify_lead_min: 20      # ...starting this many minutes before the window, while autopilot is idle
+
+switch_speed:              # every real tune and input flip is timed; the decider plans with the medians
+  learn: true              # keep decider.switch_cost up to date from those measurements
+  sync_every_s: 300        # at most this often (sooner when two-stick mode turns on or off)
 
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
@@ -129,7 +178,7 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   seek_step_s: 10          # seconds per rewind press (measure on your stick in the Screen Lab)
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
-  default: {youtubetv: 45, prime: 40}
+  default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
   sigma_default: 15
 
 break_lengths_s:           # typical commercial lengths used to plan catch-ups

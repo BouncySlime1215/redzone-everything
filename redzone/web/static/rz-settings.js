@@ -3,13 +3,13 @@
 
 import {
   app, ACTIONS, CHANGES, INPUTS, hooks, store, attr, esc, num, get, arr, LEAGUES, LEAGUE_NAME, gameById, matchupWords, vibrate,
-} from "./rz-core.js?v=32";
-import { patch } from "./rz-dom.js?v=32";
-import { icon, logo, leagueImg, empty, sec, screenHead, skel } from "./rz-ui.js?v=32";
-import { confirmSheet, toast } from "./rz-sheet.js?v=32";
-import { api, act } from "./rz-api.js?v=32";
-import { loadTeams, teamList } from "./rz-detail.js?v=32";
-import { showTeams } from "./rz-games.js?v=32";
+} from "./rz-core.js?v=41";
+import { patch } from "./rz-dom.js?v=40";
+import { icon, logo, leagueImg, empty, sec, screenHead, skel } from "./rz-ui.js?v=40";
+import { confirmSheet, toast } from "./rz-sheet.js?v=40";
+import { api, act } from "./rz-api.js?v=40";
+import { loadTeams, teamList } from "./rz-detail.js?v=40";
+import { showTeams } from "./rz-games.js?v=40";
 
 const ui = app.ui;
 ui.pending = ui.pending || {};
@@ -37,9 +37,8 @@ const SIMPLE = [
   ["score.personal.my_team", "Your-team boost", "How far your teams jump the line", 0, 60, 1],
   ["score.personal.bet_max", "Bet boost", "Extra priority while a bet is sweating", 0, 60, 1],
   ["decider.switch_margin", "Switch margin", "How much better a game must be to switch", 0, 30, 1],
-  ["decider.min_dwell_s", "Minimum stay", "Seconds before it may leave a game", 10, 180, 5],
-  ["decider.max_switches_per_5min", "Max switches / 5 min", "Hard cap on channel flipping", 1, 12, 1],
 ];
+const RETIRED_LIMITS = new Set(["decider.min_dwell_s", "decider.chase_min_dwell_s", "decider.max_switches_per_5min", "decider.min_gap_s", "decider.ping_pong_freeze_s"]);
 
 export function renderSettings(root) {
   if (!app.settings) loadSettings();
@@ -52,10 +51,10 @@ export function renderSettings(root) {
     <div class="set-r"><span class="ic ic--red">${icon("power")}</span><div class="grow"><div class="t1">Control the TV</div>
       <div class="t2">${dry ? "Dry run: it shows what it <i>would</i> do. The TV isn't touched." : "Live: it changes channels on your Fire TV by itself."}</div></div>
       <label class="switch switch--danger"><input type="checkbox" data-change="tv-control" ${dry ? "" : "checked"} aria-label="Control the TV"><span></span></label></div>
-    <div class="set-r"><span class="ic">${icon("tv")}</span><div class="grow"><div class="t1">Status</div><div class="t2">${m.two_stick ? "Two sticks: the hidden one pre-tunes the next game for instant flips." : "One stick."}${m.tv_control ? " Connected to the TV." : ""}</div></div>
+    <div class="set-r"><span class="ic">${icon("tv")}</span><div class="grow"><div class="t1">Status</div><div class="t2">${!arr(get(S, "health.sticks")).length ? "No Fire Stick configured yet. Finish the device setup first." : m.two_stick ? "Two sticks: the hidden one pre-tunes the next game for instant flips." : "One stick configured."}${m.tv_control ? " Connected to the TV." : ""}</div></div>
       <span class="tv-state ${dry ? "tv-state--off" : "tv-state--on"}"><i></i>${dry ? "Dry run" : "On air"}</span></div>
     <div class="set-r"><span class="ic ic--purple">${icon("mic")}</span><div class="grow"><div class="t1">Microphone calibration</div>
-      <div class="t2">Listens for crowd roars to measure your delay; nothing is recorded.</div></div>
+      <div class="t2">Crowd noise can suggest a delay for you to check. Audio isn't saved.</div></div>
       <label class="switch"><input type="checkbox" data-change="mic" ${m.mic ? "checked" : ""} aria-label="Microphone calibration"><span></span></label></div>
     <div class="set-r"><span class="ic">${icon("sound")}</span><div class="grow"><div class="t1">Announcer</div>
       <div class="t2">A short spoken callout on this phone whenever the TV switches.</div></div>
@@ -118,6 +117,7 @@ function advanced() {
     (function walk(o, p) {
       for (const [k, v] of Object.entries(o || {})) {
         const path = p ? `${p}.${k}` : k;
+        if (RETIRED_LIMITS.has(path)) continue;
         if (v && typeof v === "object" && !Array.isArray(v)) walk(v, path);
         else if (typeof v === "number") leaves.push(path);
       }
@@ -134,7 +134,7 @@ function channels() {
   const chs = arr(get(app.channels, "channels"));
   const set = chs.filter((c) => c.code).length;
   return `${sec("YouTube TV channels", { key: "s-ch", aside: chs.length ? `${set} of ${chs.length} linked` : "" })}<div class="card card-pad" data-key="channels">
-    <div class="howto"><b>${icon("info", "ico--sm")}Get a channel link</b><ol><li>On a computer, open tv.youtube.com → Live.</li><li>Right-click a channel → Copy link.</li><li>Paste it next to that channel here.</li></ol></div>
+    <div class="howto"><b>${icon("info", "ico--sm")}Automatic channel checks</b><p>Once a stick is connected, channels are checked when the TV can be left undisturbed. Unconfirmed channels stay unlinked. You can add or correct a link below.</p><details><summary>Add a link manually</summary><ol><li>On a computer, open tv.youtube.com → Live.</li><li>Right-click a channel → Copy link.</li><li>Paste it next to that channel here.</li></ol></details></div>
     ${chs.length ? `<div class="chan-list">${chs.map((c) => `<div class="chan" data-key="ch:${attr(c.key)}"><div class="chan-top"><span class="chan-ic ${c.code ? "on" : ""}">${icon("tv")}</span><b>${esc(c.label || c.key)}</b>
         <span class="chan-st ${c.code ? "chan-st--ok" : "chan-st--no"}">${c.code ? `${icon("check", "ico--xs")}Linked` : "Not set"}</span>
         <button class="btn btn--sm ${c.code ? "btn--ghost" : ""}" data-act="chan-open" data-key="${attr(c.key)}" aria-expanded="${ui.chanOpen === c.key}">${ui.chanOpen === c.key ? "Cancel" : c.code ? "Replace" : "Add link"}</button></div>
@@ -153,6 +153,7 @@ function sundayTicket() {
 }
 
 const SRC_NAME = { espn_scoreboard: "ESPN scoreboard", espn_summary: "ESPN play-by-play", nhl: "NHL feed", nba: "NBA feed", espn_fastcast: "ESPN push" };
+const SWITCH_NAME = { youtubetv: "YouTube TV", prime: "Prime", espn: "ESPN", flip: "input flip", seek: "rewind" };
 function healthSec(S) {
   const h = S.health || {};
   const rows = [];
@@ -168,7 +169,7 @@ function healthSec(S) {
       <span class="meta">${esc(st.state === "unauthorized" ? "Approve on TV" : st.state)}</span></div>`);
   }
   if (h.tv) {
-    const ok = /on|connected|ok/i.test(h.tv.state || "");
+    const ok = ["on", "connected", "ok"].includes(String(h.tv.state || "").toLowerCase());
     rows.push(`<div class="health-r"><span class="hdot ${ok ? "hdot--g" : h.tv.state && h.tv.state !== "unknown" ? "hdot--y" : ""}"></span><div class="grow"><div class="t1">TV</div></div><span class="meta">${esc(h.tv.state)}</span></div>`);
   }
   if (h.adb !== undefined) rows.push(`<div class="health-r"><span class="hdot ${h.adb ? "hdot--g" : "hdot--r"}"></span><div class="grow"><div class="t1">ADB (stick control)</div></div><span class="meta">${h.adb ? "ready" : "missing"}</span></div>`);
@@ -176,6 +177,22 @@ function healthSec(S) {
   if (race.length) {
     rows.push(`<div class="health-r"><span class="hdot"></span><div class="grow"><div class="t1">Fastest feed</div><div class="t2">${race.sort((a, b) => num(get(b[1], "first")) - num(get(a[1], "first")))
       .map(([k, v]) => `${esc(SRC_NAME[k] || k)}: first ${num(get(v, "first"))}× · +${num(get(v, "avg_lag_s")).toFixed(1)}s`).join("<br>")}</div></div></div>`);
+  }
+  // Measured switch times (median of the last 15 real ones): what the decider plans with.
+  const sw = h.switch_times || {};
+  const meas = Object.entries(sw.measured || {}).filter(([, v]) => num(get(v, "n")) > 0);
+  if (meas.length) {
+    rows.push(`<div class="health-r"><span class="hdot hdot--g"></span><div class="grow"><div class="t1">Switch speed</div><div class="t2">${meas
+      .map(([k, v]) => `${esc(SWITCH_NAME[k] || k)} ${num(get(v, "median_s")).toFixed(1)}s`).join(" · ")}</div></div>
+      <span class="meta">${sw.path === "flip" ? "two sticks" : "one stick"}</span></div>`);
+  }
+  const discovery = h.discovery || {};
+  for (const step of arr(discovery.setup)) {
+    rows.push(`<div class="health-r"><span class="hdot hdot--y"></span><div class="grow"><div class="t1">Device setup</div><div class="t2">${esc(step)}</div></div></div>`);
+  }
+  if (discovery.jobs) {
+    const jobs = arr(discovery.jobs);
+    rows.push(`<div class="health-r"><span class="hdot ${discovery.dry_run ? "" : "hdot--g"}"></span><div class="grow"><div class="t1">Automatic maintenance</div><div class="t2">${discovery.dry_run ? "Device checks wait while dry run is on." : "Channel verification runs only when it can leave the TV undisturbed."}</div><details style="margin-top:8px"><summary>View checks and streaming apps</summary><div class="t2" style="margin-top:8px">${jobs.map(j => `<div>${esc(j.label)}: ${esc(j.running ? "running" : j.message)}</div>`).join("")}${arr(discovery.providers).map(p => `<div>${esc(SWITCH_NAME[p.key] || p.key)}: ${esc(p.why || (p.installed == null ? "not checked on a stick yet" : "installed; access verified when tuned"))}</div>`).join("")}</div></details></div></div>`);
   }
   return `${sec("Health", { key: "s-health" })}<div class="card set" data-key="health">${rows.join("") || `<div class="health-r"><span class="hdot"></span><span class="muted" style="font-size:13px">Waiting for the first health report…</span></div>`}</div>`;
 }
@@ -251,6 +268,7 @@ ACTIONS["settings-undo"] = async () => {
 ACTIONS["settings-reload"] = () => { app.settings = null; loadSettings(true); };
 ACTIONS["edit-teams"] = (el) => { showTeams(el.dataset.lg); hooks.go("games"); };
 ACTIONS["go-fantasy"] = () => { hooks.go("settings"); setTimeout(() => { const f = document.getElementById("fantasy"); if (f) f.scrollIntoView({ behavior: "smooth", block: "center" }); }, 350); };
+ACTIONS["go-priorities"] = () => { hooks.go("settings"); setTimeout(() => { const f = document.querySelector('[data-key="pick"]'); if (f) f.scrollIntoView({ behavior: "smooth", block: "start" }); }, 350); };
 ACTIONS["go-tv"] = () => { hooks.go("settings"); setTimeout(() => { const f = document.getElementById("tv-control"); if (f) f.scrollIntoView({ behavior: "smooth", block: "start" }); }, 350); };
 ACTIONS["fan-save"] = async (el) => {
   const league = (document.getElementById("fan-league") || {}).value || "";

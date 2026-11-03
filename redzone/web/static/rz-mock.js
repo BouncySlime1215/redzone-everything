@@ -2,9 +2,9 @@
    shifts timestamps to "now", and gently simulates a live night (clocks run, scores tick,
    heat moves, the TV switches games) so every animation can be seen. ?mock=1&still=1 freezes it. */
 
-import { Q, num, nowS } from "./rz-core.js?v=32";
+import { Q, num, nowS } from "./rz-core.js?v=41";
 
-const J = (p) => fetch(`/static/${p}?v=32`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+const J = (p) => fetch(`/static/${p}?v=40`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 let STATE = null, GAMES = null, TEAMS = null, ROSTERS = null, H = null;
 let lastSwitch = 0;
 
@@ -49,9 +49,30 @@ export async function startMock(handlers) {
   if (!s) { H.conn("wait"); return; }
   shiftTimes(s);
   STATE = s; GAMES = g || { games: {} }; TEAMS = t || {}; ROSTERS = r || {};
+  if (!STATE.tonight) STATE.tonight = mockTonight(STATE.games || []);
   lastSwitch = nowS();
   emit();
   if (!Q.has("still")) setInterval(simulate, 9000);
+}
+
+/* "Tonight's plan" (redzone/plan.py Tonight.view) for the mock slate: a mix of every row state. */
+function mockTonight(games) {
+  const fmt = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const states = [["ready", "verified", "played in 6s"], ["ready", "pending", ""], ["needs setup", "n/a", ""],
+    ["ready", "failed", "video never started"], ["ready", "pending", ""], ["blackout", "n/a", ""]];
+  const rows = games.filter((g) => g.start_time).sort((a, b) => a.start_time - b.start_time).map((g, i) => {
+    const [status, check, detail] = states[i % states.length];
+    return { game_id: g.id, league: g.league, matchup: g.matchup, start: g.start_time, start_et: fmt(g.start_time),
+      mine: !!g.mine, status, why: status === "blackout" ? "Prime Video: blacked out here" : status === "needs setup" ? "TNT · YouTube TV" : "",
+      source: status === "blackout" ? "" : (g.where && g.where.label) || "ESPN · YouTube TV", fallbacks: ["Prime Video (2 feeds)"],
+      check, check_detail: detail, gaps: status === "needs setup" ? ["No YouTube TV code for TNT: paste its link in Settings"] : [] };
+  });
+  const next = rows.find((r) => r.start > nowS());
+  return { day: "", games: rows, gaps: ["No YouTube TV code for TNT: paste its link in Settings", "Peacock is signed in on one stick only (4K 2023)"],
+    note: "", checking: null, checking_games: rows.filter((r) => r.check === "pending").slice(0, 1).map((r) => r.game_id),
+    counts: { games: rows.length, ready: rows.filter((r) => r.status === "ready").length,
+      verified: rows.filter((r) => r.check === "verified").length, failed: rows.filter((r) => r.check === "failed").length },
+    next_window: next ? { start: next.start, start_et: next.start_et, games: [next.game_id] } : null };
 }
 
 /* ---------- live-looking simulation ---------- */
@@ -215,7 +236,17 @@ function action(b) {
     case "mute": case "unmute": if (g) g.muted = a === "mute"; msg = `${a === "mute" ? "Muted" : "Unmuted"} ${g ? g.matchup : ""}`; break;
     case "lock": M.locked_game = gid; M.state = "locked"; msg = `Staying on ${g ? g.matchup : "this game"}`; break;
     case "unlock": M.locked_game = null; M.state = "watching"; msg = "Unlocked"; break;
-    case "watch": if (g) switchTo(gid, "user", "you picked this game"); msg = `Switching to ${g ? g.matchup : "that game"}`; break;
+    case "watch": case "hold": {
+      if (!g || g.phase !== "live") return { ok: false, message: "That game isn't live" };
+      M.paused = false; M.locked_game = gid; M.state = "locked";
+      M.hold = { game_id: gid, matchup: g.matchup, since: nowS(), auto_resume: M.hold ? M.hold.auto_resume : true, resume_at: null, why: "", force: false, on: true, waiting: false };
+      if (STATE.now.game_id !== gid) switchTo(gid, "user", "you selected this game");
+      msg = `On ${g.matchup} — holding here`; break;
+    }
+    case "release": M.hold = null; M.locked_game = null; M.paused = false; M.focus_game = null; M.focus_mode = "autopilot"; M.state = "watching"; msg = "Back on autopilot"; break;
+    case "hold_auto": if (!M.hold) return { ok: false, message: "Nothing is held" }; M.hold.auto_resume = !!b.value; M.hold.resume_at = null; msg = b.value ? "I'll hand back to autopilot when it's over or a blowout" : "Staying until you tap Resume auto"; break;
+    case "two_stick": M.two_stick_enabled = !!b.value; M.two_stick = !!b.value; msg = b.value ? "Two-stick mode on" : "Two-stick mode off: one stick does everything"; break;
+    case "redzone": return { ok: false, message: "NFL RedZone isn't on the air (or its channel isn't set)" };
     case "skip": {
       const cur = STATE.now && byId(STATE.now.game_id);
       if (cur) cur.muted = true;

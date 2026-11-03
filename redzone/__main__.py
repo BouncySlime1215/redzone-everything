@@ -37,10 +37,10 @@ def print_qr(url: str) -> None:
         pass
 
 
-async def main() -> None:
+async def main(cfg: Config | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    cfg = Config()
+    cfg = cfg if cfg is not None else Config()
     engine = Engine(cfg)
     port = int(os.environ.get("PORT") or cfg.get("server.port", 8777))
     url = phone_url(port)
@@ -53,12 +53,43 @@ async def main() -> None:
     stop = asyncio.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
-    tasks = [asyncio.create_task(server.serve()), asyncio.create_task(engine.run())]
-    await stop.wait()
-    server.should_exit = True
-    for t in tasks[1:]:
-        t.cancel()
-    await engine.close()
+    await run_services(server, engine, stop)
+
+
+async def run_services(server, engine, stop: asyncio.Event) -> None:
+    """A failed producer must not leave a healthy-looking frozen dashboard.
+
+    Exit so launchd can restart the whole app, and always release device shells,
+    HTTP clients and the keep-awake process after the loops have stopped.
+    """
+    async def serve():
+        try:
+            await server.serve()
+        except SystemExit as exc:
+            raise RuntimeError(f"Phone server could not start (exit {exc.code})") from exc
+
+    web = asyncio.create_task(serve())
+    producer = asyncio.create_task(engine.run())
+    stopped = asyncio.create_task(stop.wait())
+    try:
+        done, _ = await asyncio.wait({web, producer, stopped}, return_when=asyncio.FIRST_COMPLETED)
+        for task in (web, producer):
+            if task in done:
+                task.result()  # surface a crash instead of hiding it behind stop.wait()
+                if not stop.is_set():
+                    name = "Producer" if task is producer else "Phone server"
+                    raise RuntimeError(f"{name} stopped unexpectedly")
+    finally:
+        server.should_exit = True
+        producer.cancel()
+        stopped.cancel()
+        await asyncio.gather(producer, stopped, return_exceptions=True)
+        await engine.close()
+        try:
+            await asyncio.wait_for(web, 5)
+        except (Exception, asyncio.CancelledError):
+            web.cancel()
+            await asyncio.gather(web, return_exceptions=True)
 
 
 if __name__ == "__main__":

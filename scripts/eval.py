@@ -58,7 +58,7 @@ def main():
     cfg = Config(user_path=ROOT / "data/config.yaml")
     t0 = time.time()
     tot = dict(big=0, seen=0, live=0, cuts=0, dead=0.0, watched=0.0, crunch=0, crunch_live=0,
-               my_crunch=0, my_crunch_live=0, switches=0, hours=0.0, my_big=0, my_seen=0)
+               my_crunch=0, my_crunch_live=0, switches=0, hours=0.0, my_big=0, my_seen=0, blackout=0.0)
     causes: dict[str, float] = {}
     for reps in eval_set(a.n):
         r = run(reps, cfg, set(cfg.get("teams.nfl")), **knobs)
@@ -67,6 +67,7 @@ def main():
         tot["crunch"] += r.crunch; tot["crunch_live"] += r.crunch_live
         tot["my_crunch"] += r.my_crunch; tot["my_crunch_live"] += r.my_crunch_live
         tot["switches"] += len(r.switches); tot["hours"] += r.hours
+        tot["blackout"] += r.tuning_blackout_s
         tot["my_big"] += r.my_big_plays; tot["my_seen"] += r.my_big_plays_live
         for k, v in r.dead_causes.items():
             causes[k] = causes.get(k, 0.0) + v
@@ -81,6 +82,8 @@ def main():
            "your_team_crunch_live_pct": pct(tot["my_crunch_live"], tot["my_crunch"]),
            "your_team_big_seen_pct": pct(tot["my_seen"], tot["my_big"]),
            "switches_per_hour": round(tot["switches"] / max(0.1, tot["hours"]), 1),
+           "tuning_blackout_s": round(tot["blackout"], 1),
+           "tuning_blackout_pct": pct(tot["blackout"], tot["hours"] * 3600),
            "big_plays": tot["big"], "crunch_plays": tot["crunch"], "seconds": round(time.time() - t0)}
     print(json.dumps(out, indent=1))
     if a.dead:

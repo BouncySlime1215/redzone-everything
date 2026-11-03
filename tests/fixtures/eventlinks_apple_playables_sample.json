@@ -1,0 +1,266 @@
+{
+ "_about": "One real Apple TV UTS playable per streaming service (saved 2026-11-02), trimmed.",
+ "samples": [
+  {
+   "league": "mlb",
+   "event": "Arizona Diamondbacks at Cincinnati Reds",
+   "playable": {
+    "id": "tvs.sbd.4000:824507_NATIONAL:2bba0bdb",
+    "channelId": "tvs.sbd.4000",
+    "serviceName": "L2V US",
+    "externalId": "824507_NATIONAL",
+    "isGeoRestricted": false,
+    "title": "Full Replay"
+   }
+  },
+  {
+   "league": "cfb",
+   "event": "#22 New Mexico Lobos at Nevada Wolf Pack",
+   "playable": {
+    "id": "tvs.sbd.1000188:LET-211534712:99b95784",
+    "channelId": "tvs.sbd.1000188",
+    "serviceName": "CBS Sports Non-linear Availability Feed (NATIONAL)",
+    "externalServiceId": "com.cbs.cbssports.ebs",
+    "externalId": "LET-211534712",
+    "punchoutUrls": {
+     "open": "cbssportsapp://home/open/LET-211534712?source=tvapp",
+     "play": "cbssportsapp://home/watch/LET-211534712?source=tvapp"
+    },
+    "isGeoRestricted": false,
+    "title": "College Football - #22 New Mexico vs. Nevada"
+   }
+  },
+  {
+   "league": "nfl",
+   "event": "Jacksonville Jaguars at Tennessee Titans",
+   "playable": {
+    "id": "tvs.sbd.1000384:jVNAvzMYmijvTS0IFEPL2g:c76de075",
+    "channelId": "tvs.sbd.1000384",
+    "serviceName": "National Event Availability",
+    "externalServiceId": "com.nfl.availability",
+    "externalId": "jVNAvzMYmijvTS0IFEPL2g",
+    "punchoutUrls": {
+     "open": "nflctv://livestream/ab789e15-4feb-11f1-abca-2c54536568a9?provider=lura",
+     "play": "nflctv://livestream/ab789e15-4feb-11f1-abca-2c54536568a9?provider=lura"
+    },
+    "isGeoRestricted": false,
+    "title": "Jacksonville Jaguars at Tennessee Titans"
+   }
+  },
+  {
+   "league": "epl",
+   "event": "Crystal Palace vs. Liverpool FC",
+   "playable": {
+    "id": "tvs.sbd.1000371:ba794e0d-8780-362b-8584-90ec8c7d9313:d73d2d30",
+    "channelId": "tvs.sbd.1000371",
+    "serviceName": "Peacock Sports 2 US",
+    "externalServiceId": "com.peacock.availability.us.sports2",
+    "externalId": "ba794e0d-8780-362b-8584-90ec8c7d9313",
+    "punchoutUrls": {
+     "open": "https://www.peacocktv.com/deeplink?deeplinkData=%7B%22pvid%22%3A%22ba794e0d-8780-362b-8584-90ec8c7d9313%22%2C%22type%22%3A%22SLE%22%2C%22action%22%3A%22PDP%22%7D",
+     "play": "https://www.peacocktv.com/deeplink?deeplinkData=%7B%22pvid%22%3A%22ba794e0d-8780-362b-8584-90ec8c7d9313%22%2C%22type%22%3A%22SLE%22%2C%22action%22%3A%22PLAY%22%7D"
+    },
+    "isGeoRestricted": false,
+    "title": "Crystal Palace v. Liverpool"
+   }
+  },
+  {
+   "league": "nba",
+   "event": "Milwaukee Bucks at Boston Celtics",
+   "playable": {
+    "id": "tvs.sbd.1000310:0022600175:1a10c5a5",
+    "channelId": "tvs.sbd.1000310",
+    "serviceName": "NBA",
+    "externalServiceId": "com.apple.nba.int.service.US",
+    "externalId": "0022600175",
+    "punchoutUrls": {
+     "play": "gametime://game/0022600175?source=atv-search"
+    },
+    "isGeoRestricted": true,
+    "title": "Bucks at Celtics"
+   }
+  },
+  {
+   "league": "nba",
+   "event": "Charlotte Hornets at Brooklyn Nets",
+   "playable": {
+    "id": "tvs.sbd.11280:1axjor1jwx4ns11s2p1q759hen:a7fdfddf",
+    "channelId": "tvs.sbd.11280",
+    "serviceName": "DAZN US",
+    "externalServiceId": "com.dazn.service.us",
+    "externalId": "1axjor1jwx4ns11s2p1q759hen",
+    "punchoutUrls": {
+     "open": "open.dazn.com://media/open/1axjor1jwx4ns11s2p1q759hen",
+     "play": "open.dazn.com://media/open/1axjor1jwx4ns11s2p1q759hen"
+    },
+    "isGeoRestricted": true,
+    "title": "Hornets @ Nets"
+   }
+  },
+  {
+   "league": "nfl",
+   "event": "Buffalo Bills at Minnesota Vikings",
+   "playable": {
+    "id": "tvs.sbd.30061:caf4265c-1b0c-44e3-9799-a904bb1f5818:99a9dd3d",
+    "channelId": "tvs.sbd.30061",
+    "serviceName": "ESPN2",
+    "externalServiceId": "com.espn.service.linear.espn2",
+    "externalId": "caf4265c-1b0c-44e3-9799-a904bb1f5818",
+    "punchoutUrls": {
+     "play": "sportscenter://x-callback-url/showWatchStream?playChannel=espn2&x-source=AppleUMC"
+    },
+    "isGeoRestricted": false,
+    "title": "MNF Field Pass with The Pat McAfee Show: Buffalo Bills vs. Minnesota Vikings"
+   }
+  },
+  {
+   "league": "cfb",
+   "event": "Florida State Seminoles at Boston College Eagles",
+   "playable": {
+    "id": "tvs.sbd.30061:6e6fbddd-e955-4e8e-97d7-656db9ff34e8:42d74bf1",
+    "channelId": "tvs.sbd.30061",
+    "serviceName": "ACC Network",
+    "externalServiceId": "com.espn.service.linear.acc",
+    "externalId": "6e6fbddd-e955-4e8e-97d7-656db9ff34e8",
+    "punchoutUrls": {
+     "play": "sportscenter://x-callback-url/showWatchStream?playChannel=acc&x-source=AppleUMC"
+    },
+    "isGeoRestricted": false,
+    "title": "Florida State vs. Boston College"
+   }
+  },
+  {
+   "league": "scot",
+   "event": "Aberdeen FC vs. Hibernian FC",
+   "playable": {
+    "id": "tvs.sbd.10120:80269d4b-7ee4-4f4f-9745-e1c006dd9a34:78b8e510",
+    "channelId": "tvs.sbd.10120",
+    "serviceName": "US Digital Sports",
+    "externalServiceId": "com.CBS.CBSTV.US.ebs.sub-v3",
+    "externalId": "80269d4b-7ee4-4f4f-9745-e1c006dd9a34",
+    "punchoutUrls": {
+     "open": "pplus://www.paramountplus.com/live-tv/stream/scottish-professional-football-league/80269d4b-7ee4-4f4f-9745-e1c006dd9a34?searchReferral=appleatv&source=spotlight#open",
+     "play": "pplus://www.paramountplus.com/live-tv/stream/scottish-professional-football-league/80269d4b-7ee4-4f4f-9745-e1c006dd9a34?searchReferral=appleatv&source=spotlight"
+    },
+    "isGeoRestricted": false,
+    "title": "Aberdeen vs. Hibernian"
+   }
+  },
+  {
+   "league": "nfl",
+   "event": "Tampa Bay Buccaneers at Chicago Bears",
+   "playable": {
+    "id": "tvs.sbd.1000580:lxyqo320261110ev50:ab3ef745",
+    "channelId": "tvs.sbd.1000580",
+    "serviceName": "Marquee",
+    "externalServiceId": "com.ebs.marquee.v2",
+    "externalId": "lxyqo320261110ev50",
+    "punchoutUrls": {
+     "open": "marquee://video/lxyqo320261110ev50?type=LIVE",
+     "play": "marquee://video/lxyqo320261110ev50?type=LIVE"
+    },
+    "isGeoRestricted": false,
+    "title": "The Official Bears Postgame Show (11/08/2026)"
+   }
+  },
+  {
+   "league": "nfl",
+   "event": "Tampa Bay Buccaneers at Chicago Bears",
+   "playable": {
+    "id": "tvs.sbd.1000024:30000392:7a42069f",
+    "channelId": "tvs.sbd.1000024",
+    "serviceName": "NBC v2  (NBC Sports)",
+    "externalServiceId": "com.ebs.nbcsports.NBC.v2",
+    "externalId": "30000392",
+    "punchoutUrls": {
+     "play": "nbcsportstve://watch/30000392"
+    },
+    "isGeoRestricted": false,
+    "title": "Buccaneers vs. Bears"
+   }
+  },
+  {
+   "league": "cfb",
+   "event": "#7 BYU Cougars at #3 Utah Utes",
+   "playable": {
+    "id": "tvs.sbd.30061:ba31d3f1-ef3d-458f-b7e4-fc3ad676dab1:2dce19f8",
+    "channelId": "tvs.sbd.30061",
+    "serviceName": "ESPN on ABC",
+    "externalServiceId": "com.espn.service.vod.espn_on_abc_events-v2",
+    "externalId": "ba31d3f1-ef3d-458f-b7e4-fc3ad676dab1",
+    "punchoutUrls": {
+     "open": "sportscenter://x-callback-url/showWatchStream?playID=4309305a-6c93-458e-8800-f0a9746da9da&x-source=AppleUMC",
+     "play": "sportscenter://x-callback-url/showWatchStream?playID=4309305a-6c93-458e-8800-f0a9746da9da&x-source=AppleUMC"
+    },
+    "isGeoRestricted": false,
+    "title": "#7 BYU vs. #3 Utah"
+   }
+  },
+  {
+   "league": "nba",
+   "event": "Philadelphia 76ers at Detroit Pistons",
+   "playable": {
+    "id": "tvs.sbd.30061:d8029064-dcce-4b5f-8b18-8b6b6d7c335b:70a47781",
+    "channelId": "tvs.sbd.30061",
+    "serviceName": "ESPN Unlimited",
+    "externalServiceId": "com.espn.service.vod.espn_unlimited_events-v2",
+    "externalId": "d8029064-dcce-4b5f-8b18-8b6b6d7c335b",
+    "punchoutUrls": {
+     "open": "sportscenter://x-callback-url/showWatchStream?playID=38b7ba40-8616-437b-8493-4b60fabb5c30&x-source=AppleUMC",
+     "play": "sportscenter://x-callback-url/showWatchStream?playID=38b7ba40-8616-437b-8493-4b60fabb5c30&x-source=AppleUMC"
+    },
+    "isGeoRestricted": false,
+    "title": "Above the Rim: Philadelphia 76ers vs. Detroit Pistons"
+   }
+  },
+  {
+   "league": "nhl",
+   "event": "Chicago Blackhawks at Florida Panthers",
+   "playable": {
+    "id": "tvs.sbd.1000566:d07e2dc3-9c68-5019-9f99-481f39bebaf6:8a0102a9",
+    "channelId": "tvs.sbd.1000566",
+    "serviceName": "WarnerMedia Global Digital Service US",
+    "externalServiceId": "com.wbd.availability.US.sports",
+    "externalId": "d07e2dc3-9c68-5019-9f99-481f39bebaf6",
+    "punchoutUrls": {
+     "open": "https://play.hbomax.com/sport/d07e2dc3-9c68-5019-9f99-481f39bebaf6?utm_source=generic_apple",
+     "play": "https://play.hbomax.com/sport/d07e2dc3-9c68-5019-9f99-481f39bebaf6?utm_source=generic_apple"
+    },
+    "isGeoRestricted": false,
+    "title": "Blackhawks at Panthers"
+   }
+  },
+  {
+   "league": "nhl",
+   "event": "Chicago Blackhawks at Florida Panthers",
+   "playable": {
+    "id": "tvs.sbd.11220:2600940:e7521aba",
+    "channelId": "tvs.sbd.11220",
+    "serviceName": "TNTEast",
+    "externalServiceId": "TNTEast",
+    "externalId": "2600940",
+    "punchoutUrls": {
+     "play": "watchtnt://play?stream=east&campaign=universal-search&section=livestream&auth=true&source=tvos-search"
+    },
+    "isGeoRestricted": false,
+    "title": "Chicago Blackhawks at Florida Panthers"
+   }
+  },
+  {
+   "league": "nhl",
+   "event": "Chicago Blackhawks at Florida Panthers",
+   "playable": {
+    "id": "tvs.sbd.11880:2600940:62de74bb",
+    "channelId": "tvs.sbd.11880",
+    "serviceName": "truTV East",
+    "externalServiceId": "TruTVEast",
+    "externalId": "2600940",
+    "punchoutUrls": {
+     "play": "watchtru://play?stream=east&campaign=universal-search&section=livestream&auth=true&source=tvos-search"
+    },
+    "isGeoRestricted": false,
+    "title": "Chicago Blackhawks at Florida Panthers"
+   }
+  }
+ ]
+}

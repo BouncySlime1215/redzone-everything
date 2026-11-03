@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from redzone.decider.screen import CONTINUOUS, _is_marker
+from redzone.lab.backtest import tuning_blackout_seconds, watched_whole
 from redzone.models import REAL_BREAKS, League, Stoppage
 from redzone.sources import espn
 
@@ -39,6 +40,7 @@ class Card:
     my_crunch_live: int = 0
     dead: float = 0.0
     watched: float = 0.0
+    tuning_blackout_s: float = 0.0
 
     def add(self, o: "Card") -> None:
         for k, v in vars(o).items():
@@ -53,11 +55,16 @@ class Card:
                 "dead_air_pct": pct(self.dead, self.watched), "big_seen_pct": pct(self.big_seen, self.big),
                 "big_live_pct": pct(self.big_live, self.big), "crunch_live_pct": pct(self.crunch_live, self.crunch),
                 "your_team_crunch_live_pct": pct(self.my_crunch_live, self.my_crunch),
+                "tuning_blackout_s": round(self.tuning_blackout_s, 1),
+                "tuning_blackout_pct": pct(self.tuning_blackout_s, self.hours * 3600),
                 "switches_per_hour": round(self.switches / max(0.1, self.hours), 1),
                 "big_plays": self.big, "crunch_plays": self.crunch}
 
 
 def _type(p: dict) -> str:
+    if (espn._get(p, "alternativeType", "type") == "lineup-change"
+            or (espn._get(p, "alternativeType", "text") or "").lower() == "lineup change"):
+        return "lineup_change"
     return (espn._get(p, "type", "text") or "").lower()
 
 
@@ -110,7 +117,7 @@ def is_crunch(league: League, p: dict) -> bool:
 
 def _marker(t: str) -> bool:
     return any(k in t for k in ("timeout", "end ", "end of", "two-minute", "coin toss", "period start",
-                                "start inning", "start batter", "end batter", "end inning"))
+                                "start inning", "start batter", "end batter", "end inning", "lineup_change"))
 
 
 def _on_screen(watching: list[tuple[float, str]], t: float, tune_s: float) -> str | None:
@@ -168,6 +175,7 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
     card.switches = sum(1 for s in switches if s.kind != "replay")
     card.replays = sum(1 for s in switches if s.kind == "replay")
     by_id = {r.gid: r for r in replays}
+    card.tuning_blackout_s = tuning_blackout_seconds(watching, tune_s, t0, t1)
 
     prev_kind = None
     for s in switches:
@@ -185,7 +193,7 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
         prev = None
         for w, p in zip(r.wall, r.plays):
             air = w + lag_total - PLAY_LEN[league]
-            on = _on_screen(watching, air, tune_s) == r.gid
+            on = watched_whole(watching, r.gid, air, w + lag_total, tune_s, t1)
             if is_big(league, p, prev):
                 card.big += 1
                 card.big_live += on

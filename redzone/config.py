@@ -23,17 +23,16 @@ HISTORY = DATA / "config_history"
 LIMITS: dict[str, tuple[float, float]] = {
     "server.port": (1024, 65535),
     "polling.live_s": (5, 60),
+    "college.top_n": (1, 25),
     "polling.hot_s": (2, 30),
     "polling.idle_s": (30, 3600),
+    "plan.verify_lead_min": (5, 90),
     "score.neutral_cap": (0.5, 1.0),
     "score.personal_cap": (0, 60),
     "score.stakes.min": (0.5, 1.0),
     "score.stakes.max": (1.0, 1.5),
     "score.garbage.moment_mult": (0.0, 1.0),
     "score.garbage.comeback_s": (0, 1800),
-    "decider.min_dwell_s": (10, 600),
-    "decider.min_gap_s": (5, 300),
-    "decider.max_switches_per_5min": (1, 20),
     "delay": (0, 180),
     "replay": (0, 7200),
     "fantasy.team_id": (0, 100),
@@ -41,7 +40,28 @@ LIMITS: dict[str, tuple[float, float]] = {
     "break_lengths_s": (0, 1800),
     "score": (-100, 100),
     "decider": (0, 1000),
+    "two_stick.min_gain": (0, 100),
+    "two_stick.input_settle_s": (0, 10),
+    "two_stick.park_max_s": (30, 1800),
+    "two_stick": (0, 3600),
+    "switch_speed.sync_every_s": (60, 3600),
+    "autonomy.busy_score": (0, 100),
 }
+
+# Former rate/dwell limits are deliberately inactive. Old saved files and lab
+# recommendations can still load; preserve their other preferences while dropping these.
+RETIRED_SETTINGS = frozenset({"decider.min_dwell_s", "decider.chase_min_dwell_s",
+                              "decider.max_switches_per_5min", "decider.min_gap_s",
+                              "decider.ping_pong_freeze_s"})
+
+
+def without_retired(cfg: dict, path: str = "") -> dict:
+    out = {}
+    for key, value in cfg.items():
+        dotted = f"{path}.{key}" if path else key
+        if dotted not in RETIRED_SETTINGS:
+            out[key] = without_retired(value, dotted) if isinstance(value, dict) else copy.deepcopy(value)
+    return out
 
 
 class ConfigError(ValueError):
@@ -104,7 +124,7 @@ class Config:
         self.defaults = yaml.safe_load(DEFAULTS.read_text())
         self.overrides: dict = {}
         if user_path.exists():
-            loaded = yaml.safe_load(user_path.read_text()) or {}
+            loaded = without_retired(yaml.safe_load(user_path.read_text()) or {})
             try:
                 validate(loaded, self.defaults)
                 self.overrides = loaded
@@ -121,11 +141,13 @@ class Config:
             node = node[part]
         return node
 
-    def update(self, changes: dict) -> dict:
-        """Apply a partial change (nested dict). Raises ConfigError if invalid."""
-        new_over = _deep_merge(self.overrides, changes)
+    def update(self, changes: dict, record: bool = True) -> dict:
+        """Apply a partial change (nested dict). Raises ConfigError if invalid.
+        record=False is for values the app measured itself (switch times): they're validated and
+        saved like any edit, but kept out of the undo history so Undo still undoes YOUR last change."""
+        new_over = without_retired(_deep_merge(self.overrides, changes))
         validate(new_over, self.defaults)
-        self._save(new_over)
+        self._save(new_over, record=record)
         return self.data
 
     def rollback(self) -> bool:
@@ -139,6 +161,7 @@ class Config:
         return True
 
     def _save(self, over: dict, record: bool = True) -> None:
+        over = without_retired(over)
         self.user_path.parent.mkdir(parents=True, exist_ok=True)
         text = yaml.safe_dump(over, sort_keys=False)
         tmp = self.user_path.with_suffix(".tmp")
@@ -146,6 +169,17 @@ class Config:
         tmp.replace(self.user_path)  # atomic: a crash mid-save can't corrupt the file
         if record:
             self.history_dir.mkdir(parents=True, exist_ok=True)
-            (self.history_dir / f"{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns() % 10**6:06d}.yaml").write_text(text)
+            # Keep revisions ordered across rapid saves, clock corrections and reloads.
+            # The prefix sorts after legacy timestamp names, which remain undoable.
+            revisions = [int(p.stem[3:]) for p in self.history_dir.glob("v2-*.yaml")
+                         if p.stem[3:].isdigit()]
+            revision = max(time.time_ns(), max(revisions, default=0) + 1)
+            while True:
+                try:
+                    with (self.history_dir / f"v2-{revision:020d}.yaml").open("x") as version:
+                        version.write(text)
+                    break
+                except FileExistsError:
+                    revision += 1
         self.overrides = over
         self.data = _deep_merge(self.defaults, over)

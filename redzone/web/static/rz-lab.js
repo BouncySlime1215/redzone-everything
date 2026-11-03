@@ -1,10 +1,12 @@
 /* RedZone Everything — Lab: Screen Lab labeling, stream delay + "I just saw it", auto-tuner, backtests, votes. */
 
-import { app, ACTIONS, hooks, attr, esc, num, get, arr, clamp, reduceMotion, SPRING, vibrate } from "./rz-core.js?v=32";
-import { patch } from "./rz-dom.js?v=32";
-import { icon, empty, sec, screenHead, skel, odo } from "./rz-ui.js?v=32";
-import { toast } from "./rz-sheet.js?v=32";
-import { api, act } from "./rz-api.js?v=32";
+import { app, ACTIONS, hooks, attr, esc, num, get, arr, clamp, reduceMotion, SPRING, vibrate } from "./rz-core.js?v=41";
+import { patch } from "./rz-dom.js?v=40";
+import { icon, empty, sec, screenHead, skel, odo } from "./rz-ui.js?v=40";
+import { toast } from "./rz-sheet.js?v=40";
+import { api, act } from "./rz-api.js?v=40";
+import { screenEvidence } from "./rz-evidence.js?v=40";
+import { recordedPanel } from "./rz-recorded.js?v=40";
 
 let loading = null;
 export async function loadLab(force = false) {
@@ -27,20 +29,22 @@ const LABELS = [
 export function renderLab(root) {
   if (!app.lab) loadLab();
   const S = app.S || {};
-  const pad = `<div class="card card-pad" data-key="pad"><p class="muted" style="margin:0 0 12px;font-size:13px;line-height:1.45">Tap what your TV is showing right now. Each tap is matched to what the app thinks is on, so it learns your delay and how to spot commercials.</p>
+  const pad = `<div class="card card-pad" data-key="pad"><p class="muted" style="margin:0 0 12px;font-size:13px;line-height:1.45">Tap what your TV is showing right now. These observations are saved alongside the app's prediction for accuracy checks. Use “I just saw it” below to measure stream delay.</p>
     <div class="labpad">${LABELS.map((l) => `<button class="labbtn ${l.cls}" data-act="lab-label" data-v="${l.v}">
       <span class="ic">${icon(l.ic, l.v === "game" ? "ico--fill" : "")}</span><span><b>${esc(l.t)}</b><small>${esc(l.sub)}</small></span><span class="done">${icon("check")}</span></button>`).join("")}</div></div>`;
   const delays = arr(S.delays);
   const delay = `<div class="card card-pad" data-key="delay">${delays.length ? `<div data-flip>${delays.map(delayRow).join("")}</div>`
-      : `<p class="muted" style="margin:0;font-size:13px">No channels measured yet. Tap the button the moment a score or big play shows on your TV.</p>`}
-    <button class="saw-btn" data-act="saw-it">${icon("zap")}I just saw it</button>
-    <p class="dim" style="margin:10px 2px 0;font-size:12.5px;line-height:1.4">Tap the instant a big play appears on your TV. About three taps per channel is plenty.</p></div>`;
+      : `<p class="muted" style="margin:0;font-size:13px">No channels measured yet. Tap the button as a play finishes on the live broadcast to estimate your stream delay.</p>`}
+    <button class="saw-btn" data-act="saw-it" ${S.recorded_playback?.active ? "disabled" : ""}>${icon("zap")}I just saw it</button>
+    <p class="dim" style="margin:10px 2px 0;font-size:12.5px;line-height:1.4">Tap as the play finishes: the tackle is complete or the basket or goal goes in. Use the live broadcast, not a replay. Take several measurements; buffering can change the delay.</p></div>`;
   const f = S.feedback || get(app.lab, "feedback", {}) || {};
   const up = num(f.up), down = num(f.down);
   const votes = `<div class="card card-pad" data-key="votes"><div class="votes">
     <span class="v up">${icon("thumb-up")}${odo(up)}</span><div class="bar ${up + down ? "" : "bar--empty"}" style="--p:${up + down ? Math.round((up / (up + down)) * 100) : 50}"><i></i></div><span class="v down">${odo(down)}${icon("thumb-down")}</span></div>
     <p class="dim" style="margin:10px 0 0;font-size:12.5px">Your 👍 / 👎 on switches train the auto-tuner.</p></div>`;
   patch(root, `${screenHead("Lab", "Teach it · measure it · tune it")}
+    ${recordedPanel(S, true)}
+    ${sec("Screen estimate", { key: "s-evidence" })}${screenEvidence(S, "lab-evidence")}
     ${sec("Screen Lab", { key: "s-pad", aside: "What's on your TV?" })}${pad}
     ${sec("Stream delay", { key: "s-delay", aside: "How far behind live you are" })}${delay}
     ${sec("Your votes", { key: "s-votes" })}${votes}
@@ -55,8 +59,17 @@ function delayRow(d) {
     <div class="nm"><span class="hdot ${d.calibrated ? "hdot--g" : "hdot--y"}"></span><span class="ell">${esc(d.label || d.target)}</span></div>
     <div class="v">${Number.isFinite(mu) ? odo(Math.round(mu)) : "—"}<small>s ±${Math.round(sg)}</small></div>
     <div class="ruler" style="--c:${c};--lo:${pct(mu - sg)};--hi:${pct(mu + sg)};--mu:${pct(mu)}"><span class="rng"></span><span class="mk"></span></div>
-    <div class="dim" style="grid-column:1/-1;font-size:11.5px;margin-top:-2px">${d.calibrated ? "Measured" : "Guess — not measured yet"}</div>
+    <div class="dim" style="grid-column:1/-1;font-size:11.5px;margin-top:-2px">${delayBasis(d)}${d.settled ? " · learned, no more taps needed" : ""}</div>
   </div>`;
+}
+
+/* Where a channel's delay comes from: a guess, your taps, or show changes timed automatically. */
+function delayBasis(d) {
+  const n = num(d.boundary_samples, 0);
+  const auto = `measured automatically from show changes (${n} sample${n === 1 ? "" : "s"})`;
+  if (d.source === "boundary") return `M${auto.slice(1)}${d.live ? " · timed for this tune" : ""}`;
+  if (!d.calibrated) return n ? `Guess — ${auto}; needs 2 that agree` : "Guess — not measured yet";
+  return d.source === "app" ? "From your taps on other channels of this app" : "Measured";
 }
 
 function tuner() {
@@ -67,7 +80,7 @@ function tuner() {
   if (!opt || (!opt.current && !opt.best)) return "";
   const cur = opt.current || {}, best = opt.best || {};
   const rows = [["Score", "score", 1], ["Big plays seen", "big_seen_pct", 1, "%"], ["Big plays live", "big_live_pct", 1, "%"],
-    ["Commercials on screen", "dead_air_pct", -1, "%"], ["Switches / hour", "switches_per_hour", 0], ["Mid-play cuts", "mid_play_cuts", -1]];
+    ["Modeled dead time", "dead_air_pct", -1, "%"], ["Switches / hour", "switches_per_hour", 0], ["Mid-play cuts", "mid_play_cuts", -1]];
   const body = rows.filter(([, k]) => cur[k] !== undefined || best[k] !== undefined).map(([label, k, dir, unit = ""]) => {
     const a = num(cur[k], NaN), b = num(best[k], NaN);
     const d = Number.isFinite(a) && Number.isFinite(b) ? b - a : NaN;
@@ -76,9 +89,10 @@ function tuner() {
     return `<div class="cmp-r"><span class="k">${esc(label)}</span><span class="a">${fmt(a)}</span><span class="b ${good}">${fmt(b)}${Number.isFinite(d) && Math.abs(d) > 1e-9 ? `<span class="d">${d > 0 ? "▲" : "▼"} ${fmt(Math.abs(d))}</span>` : ""}</span></div>`;
   }).join("");
   const pc = cur.params || {}, pb = best.params || {};
-  const changed = Object.keys(pb).filter((k) => JSON.stringify(pc[k]) !== JSON.stringify(pb[k]));
-  return `${sec("Auto-tuner", { key: "s-tune", aside: opt.slates ? `${num(opt.slates)} slates replayed` : "" })}
-    <div class="card card-pad" data-key="tune"><div class="cmp-h"><span>Metric</span><span>Now</span><span>Best found</span></div><div class="cmp">${body}</div>
+  const retired = new Set(["decider.min_dwell_s", "decider.chase_min_dwell_s", "decider.max_switches_per_5min", "decider.min_gap_s", "decider.ping_pong_freeze_s"]);
+  const changed = Object.keys(pb).filter((k) => !retired.has(k) && JSON.stringify(pc[k]) !== JSON.stringify(pb[k]));
+  return `${sec("Saved optimizer report", { key: "s-tune", aside: opt.slates ? `${num(opt.slates)} slates replayed` : "" })}
+    <div class="card card-pad" data-key="tune"><p class="dim" style="font-size:12.5px;margin:0 0 12px">This saved comparison may predate the current engine. Results model recorded feeds; actual TV playback has not been measured.</p><div class="cmp-h"><span>Metric</span><span>Baseline</span><span>Best found</span></div><div class="cmp">${body}</div>
     ${changed.length ? `<div class="overline" style="margin-top:14px">What it would change</div><div class="param-list">${changed.map((k) =>
       `<span class="chip">${icon("wand")}<span>${paramChip(k, pc[k], pb[k])}</span></span>`).join("")}</div>` : ""}</div>`;
 }
@@ -95,7 +109,7 @@ function backtests() {
   if (!app.lab || app.lab.error) return "";
   const head = sec("Backtests", { n: bts.length || "", key: "s-bt" });
   if (!bts.length) return `${head}<div class="card">${empty("timeline", "No backtests yet", "Run scripts/backtest.py on the Mac to replay a past slate.", "", "empty--sm", "bt")}</div>`;
-  const nice = { mid_play_cuts: "Mid-play cuts", big_plays_live: "Big plays live", your_team_big_plays_live: "Your team, live", dead_air_pct: "Commercials %", switches_per_hour: "Switches / hr", switches: "Switches" };
+  const nice = { mid_play_cuts: "Modeled mid-play cuts", big_plays_live: "Big plays live", your_team_big_plays_live: "Your team, live", dead_air_pct: "Modeled dead time %", switches_per_hour: "Switches / hr", switches: "Switches" };
   return head + bts.map((b, i) => `<div class="card card-pad" data-key="bt:${i}"><div style="font:800 18px/1.1 var(--font-display);letter-spacing:.04em">${esc(b.title)}</div>
     <div class="bt-tiles">${Object.entries(b.summary || {}).map(([k, v]) => {
       const cls = k === "mid_play_cuts" ? (num(v) === 0 ? "good" : "bad") : "";

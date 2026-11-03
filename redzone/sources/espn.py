@@ -14,13 +14,38 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from redzone.models import GameState, League, Phase, Play, Situation, Stoppage, Team
+from redzone.models import PERIOD_S, REGULATION, GameState, League, Phase, Play, Situation, Stoppage, Team
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports"
 PATH = {League.NFL: "football/nfl", League.NBA: "basketball/nba",
-        League.NHL: "hockey/nhl", League.MLB: "baseball/mlb"}
-PERIOD_S = {League.NFL: 900, League.NBA: 720, League.NHL: 1200, League.MLB: 0}
-OT_S = {League.NFL: 600, League.NBA: 300, League.NHL: 300, League.MLB: 0}
+        League.NHL: "hockey/nhl", League.MLB: "baseball/mlb",
+        League.CBB: "basketball/mens-college-basketball",
+        League.WCBB: "basketball/womens-college-basketball",
+        League.CFB: "football/college-football"}
+OT_S = {League.NFL: 600, League.NBA: 300, League.NHL: 300, League.MLB: 0,
+        League.CBB: 300, League.WCBB: 300, League.CFB: 0}  # college football OT is untimed
+# ESPN's image-path name for the college leagues (headshots).
+IMG = {League.CBB: "mens-college-basketball", League.WCBB: "womens-college-basketball",
+       League.CFB: "college-football"}
+TOP_N = 25  # college: follow ranked teams down to this poll rank
+
+
+def scoreboard_urls(league: League, groups: list[str] | None = None, date: str | None = None) -> list[str]:
+    """Scoreboards to poll for a league. Pro leagues: the one board. College: ESPN's default board
+    (the ranked/featured games, never the whole of Division I) plus one board per conference you
+    follow (ESPN `groups`, e.g. ACC = 2 in basketball, 1 in football) so your unranked team is there."""
+    base = scoreboard_url(league, date)
+    if not league.college:
+        return [base]
+    sep = "&" if "?" in base else "?"
+    return [base] + [f"{base}{sep}groups={g}" for g in groups or []]
+
+
+def keep_college(g: GameState, mine: set[str], top_n: int = TOP_N) -> bool:
+    """College boards are big: keep your teams' games and games with a ranked team, nothing else."""
+    if g.involves(mine):
+        return True
+    return any(t.rank is not None and t.rank <= top_n for t in (g.home, g.away))
 
 
 def scoreboard_url(league: League, date: str | None = None) -> str:
@@ -32,7 +57,9 @@ def summary_url(league: League, event_id: str) -> str:
     return f"{BASE}/{PATH[league]}/summary?event={event_id}"
 
 
-def logo_url(league: League, abbr: str) -> str:
+def logo_url(league: League, abbr: str, team_id: str = "") -> str:
+    if league.college:  # college logos are filed by ESPN team id (UNC = 153)
+        return f"https://a.espncdn.com/i/teamlogos/ncaa/500/{team_id or abbr.lower()}.png"
     return f"https://a.espncdn.com/i/teamlogos/{league.value}/500/{abbr.lower()}.png"
 
 
@@ -56,6 +83,12 @@ def _int(v) -> int | None:
         return int(float(v))
     except (TypeError, ValueError):
         return None
+
+
+def _play_score(p: dict) -> tuple[int, int] | None:
+    """(home, away) after this play, as the play-by-play logs it."""
+    hs, as_ = _int(p.get("homeScore")), _int(p.get("awayScore"))
+    return None if hs is None or as_ is None else (hs, as_)
 
 
 def _ts(iso: str | None) -> float | None:
@@ -98,13 +131,19 @@ def _team(league: League, comp: dict) -> Team:
     t = comp.get("team") or {}
     abbr = t.get("abbreviation") or "?"
     w, l, ties = _record(comp)
-    logo = t.get("logo") or _get(t, "logos", 0, "href") or logo_url(league, abbr)
+    logo = t.get("logo") or _get(t, "logos", 0, "href") or logo_url(league, abbr, str(t.get("id") or ""))
     dark = t.get("logoDark") or next((x.get("href") for x in t.get("logos") or []
                                       if "dark" in (x.get("rel") or [])), "") or logo.replace("/500/", "/500-dark/")
     return Team(abbr=abbr, name=t.get("shortDisplayName") or t.get("name") or t.get("displayName") or abbr,
                 score=_int(comp.get("score")), id=str(t.get("id") or ""), logo=logo,
                 color=t.get("color") or "", wins=w, losses=l, ties=ties, logo_dark=dark,
-                alt_color=t.get("alternateColor") or "")
+                alt_color=t.get("alternateColor") or "", rank=_rank(comp))
+
+
+def _rank(comp: dict) -> int | None:
+    """College poll rank; ESPN sends 99 for unranked."""
+    r = _int(_get(comp, "curatedRank", "current"))
+    return r if r and 0 < r <= 25 else None
 
 
 def _phase(state: str | None) -> Phase:
@@ -131,10 +170,12 @@ def _broadcasts(comp: dict) -> tuple[list[str], bool]:
 # --- pictures: headshots, leaders, venues ----------------------------------------
 
 def headshot_url(league: League, athlete_id) -> str:
-    return f"https://a.espncdn.com/i/headshots/{league.value}/players/full/{athlete_id}.png"
+    return f"https://a.espncdn.com/i/headshots/{IMG.get(league, league.value)}/players/full/{athlete_id}.png"
 
 
 def venue_image(league: League, venue_id) -> str:
+    if league.college:
+        return ""  # no stock venue photos for college; the summary's own image is used when sent
     return f"https://a.espncdn.com/i/venues/{league.value}/day/{venue_id}.jpg" if venue_id else ""
 
 
@@ -214,15 +255,14 @@ def _parse_event(league: League, ev: dict) -> GameState | None:
     if odds.get("details"):
         g.odds_text = odds["details"] + (f" · O/U {odds['overUnder']}" if odds.get("overUnder") else "")
     detail = (_get(status, "type", "detail") or "").lower()
-    if "halftime" in detail:
-        g.stoppage = Stoppage.HALFTIME
-    elif "end of" in detail or "intermission" in detail or detail.startswith("end "):
-        g.stoppage = Stoppage.END_PERIOD
+    brk = _status_break(league, g.period, detail)
+    if brk is not None:
+        g.stoppage = brk
     elif g.phase == Phase.LIVE:
         g.stoppage = Stoppage.UNKNOWN
 
     sit = comp.get("situation") or {}
-    if league == League.NFL and sit:
+    if league.base == League.NFL and sit:
         poss_id = str(sit.get("possession") or "")
         g.situation.possession = (g.home.abbr if poss_id == g.home.id else
                                   g.away.abbr if poss_id == g.away.id else None)
@@ -260,7 +300,7 @@ def _float(v) -> float | None:
 # --- summary / play-by-play ---------------------------------------------------
 
 def flatten_plays(league: League, data: dict) -> list[dict]:
-    if league == League.NFL:
+    if league.base == League.NFL:
         plays = []
         for dr in _get(data, "drives", "previous") or []:
             plays.extend(dr.get("plays") or [])
@@ -278,9 +318,17 @@ _SCORE_KINDS = ("touchdown", "field goal good", "safety")
 
 def _kind(league: League, p: dict) -> str:
     t = (_get(p, "type", "text") or "").lower()
-    if league == League.NBA and "team rebound" in (p.get("text") or "").lower():
+    if league == League.MLB and (_get(p, "alternativeType", "type") == "lineup-change"
+                                or (_get(p, "alternativeType", "text") or "").lower() == "lineup change"):
+        # ESPN wraps between-innings fielding substitutions in "Play Result".
+        # They are bookkeeping, not a pitch that can be cut off mid-flight.
+        return "lineup_change"
+    if league.college and league.base == League.NBA and "freethrow" in t.replace(" ", ""):
+        m = re.search(r"(\d) of (\d)", p.get("text") or "")  # NBA-style kind, so dead-ball rules match
+        return f"free_throw_-_{m.group(1)}_of_{m.group(2)}" if m else "free_throw"
+    if league.base == League.NBA and "team rebound" in (p.get("text") or "").lower():
         return "team_rebound"  # ball out of bounds / between free throws: a dead ball, not live play
-    if league == League.NFL:
+    if league.base == League.NFL:
         if "touchdown" in t:
             return "td"
         if "field goal good" in t:
@@ -293,7 +341,7 @@ def _kind(league: League, p: dict) -> str:
         return "goal"
     if league == League.MLB and "home run" in t:
         return "hr"
-    if league == League.NBA and p.get("scoringPlay") and (_int(p.get("scoreValue")) or 0) == 3:
+    if league.base == League.NBA and p.get("scoringPlay") and (_int(p.get("scoreValue")) or 0) == 3:
         return "three"
     return t.replace(" ", "_")[:30]
 
@@ -302,13 +350,15 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
     """What the game is doing right AFTER this play."""
     t = (_get(p, "type", "text") or "").lower()
     text = (p.get("text") or "").lower()
-    if league == League.NFL:
+    if league.base == League.NFL:
         if t in ("timeout", "official timeout"):
             return Stoppage.TIMEOUT
         if t.startswith("two-minute warning"):
             return Stoppage.TWO_MINUTE_WARNING
         if t == "end of half":
             return Stoppage.HALFTIME
+        if t == "end period" and league.college and (_int(_get(p, "period", "number")) or 0) == 2:
+            return Stoppage.HALFTIME  # college logs halftime as "End Period: End of 2nd quarter."
         if t in ("end period", "end of regulation"):
             return Stoppage.END_PERIOD
         if p.get("scoringPlay") or any(k in t for k in _SCORE_KINDS):
@@ -318,20 +368,23 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
         if "injur" in text:
             return Stoppage.INJURY
         return Stoppage.NONE
-    if league == League.NBA:
+    if league.base == League.NBA:
         if "timeout" in t:
             return Stoppage.TIMEOUT
         if t in ("end period", "end game", "end of game"):
             per = _int(_get(p, "period", "number")) or 0
-            return Stoppage.HALFTIME if per == 2 and t == "end period" else Stoppage.END_PERIOD
+            half = REGULATION[league] // 2  # men's college plays halves: halftime ends period 1
+            return Stoppage.HALFTIME if per == half and t == "end period" else Stoppage.END_PERIOD
         if "challenge" in t or "review" in t:
             return Stoppage.REVIEW
         if "team rebound" in (p.get("text") or "").lower():
             return Stoppage.WHISTLE
-        if "free throw" in t:
+        if "free throw" in t or "freethrow" in t:
             # The ball is dead between free throws; after the LAST one play resumes
             # (made: quick inbound; missed: live rebound), so that one ends the whistle.
-            return Stoppage.NONE if _last_free_throw(t) else Stoppage.WHISTLE
+            # College types are bare ("MadeFreeThrow"): the "1 of 2" is in the play text.
+            ft = t if re.search(r"\d of \d", t) else f"{t} {text}"
+            return Stoppage.NONE if _last_free_throw(ft) else Stoppage.WHISTLE
         if ("foul" in t or "violation" in t or "out of bounds" in t or "substitution" in t
                 or "kicked ball" in t or "delay" in t):
             return Stoppage.WHISTLE
@@ -425,16 +478,16 @@ def parse_summary(league: League, data: dict, upto: int | None = None,
     g.stoppage = stoppage_for(league, p)
     if league == League.NHL and (g.period or 0) >= 5:
         g.period_type = "SO"
-    elif league in (League.NHL, League.NBA, League.NFL) and (g.period or 0) > (4 if league != League.NHL else 3):
+    elif league.base in (League.NHL, League.NBA, League.NFL) and (g.period or 0) > REGULATION[league]:
         g.period_type = "OT"
 
     seen = _ts(p.get("wallclock"))
     g.last_play = Play(str(p.get("id") or len(cut)), p.get("text") or _get(p, "type", "text") or "",
-                       _kind(league, p), bool(p.get("scoringPlay")), seen, seen, "espn")
+                       _kind(league, p), bool(p.get("scoringPlay")), seen, seen, "espn", score=_play_score(p))
     g.recent_plays = [Play(str(x.get("id")), x.get("text") or "", _kind(league, x), bool(x.get("scoringPlay")),
-                           _ts(x.get("wallclock"))) for x in cut[-8:]]
+                           _ts(x.get("wallclock")), score=_play_score(x)) for x in cut[-8:]]
 
-    if league == League.NFL:
+    if league.base == League.NFL:
         _nfl_situation(g, p, ids)
     elif league == League.MLB:
         _mlb_situation(g, p, cut)
@@ -522,7 +575,7 @@ def spotlight(league: League, data: dict, cut: list[dict], ids: dict) -> dict | 
         t = (_get(p, "type", "text") or "").lower()
         big = p.get("scoringPlay") or "interception" in t or "fumble recovery (opponent)" in t or t == "goal" \
             or "home run" in t
-        if league == League.NBA:
+        if league.base == League.NBA:
             big = bool(p.get("scoringPlay")) and (_int(p.get("scoreValue")) or 0) >= 3
         if not big:
             continue
@@ -560,7 +613,7 @@ def _live_overrides(g: GameState, data: dict, comp: dict, ids: dict) -> None:
     """Live summaries carry a richer `situation` and current possession; prefer them."""
     sit = data.get("situation") or {}
     s = g.situation
-    if g.league == League.NFL and sit:
+    if g.league.base == League.NFL and sit:
         down = _int(sit.get("down"))
         ytg = _int(sit.get("yardsToEndzone") or (100 - _int(sit.get("yardLine")) if _int(sit.get("yardLine")) else None))
         if down and down > 0:
@@ -578,7 +631,20 @@ def _live_overrides(g: GameState, data: dict, comp: dict, ids: dict) -> None:
     if clock is not None and g.league != League.MLB and g.phase == Phase.LIVE:
         g.clock_s = clock
     detail = (_get(status, "type", "detail") or "").lower()
+    brk = _status_break(g.league, g.period, detail, allow_bare_end=False)
+    # Never downgrade a long break the play-by-play already proved (halftime, NHL intermission).
+    if brk is not None and g.stoppage not in (Stoppage.HALFTIME, Stoppage.INTERMISSION):
+        g.stoppage = brk
+
+
+def _status_break(league: League, period: int | None, detail: str,
+                  allow_bare_end: bool = True) -> Stoppage | None:
+    """The break a status detail ('Halftime', 'End of 1st', '2nd Intermission') describes.
+    NHL ends of the 1st and 2nd are the ~18-minute intermissions, not a short period break."""
     if "halftime" in detail:
-        g.stoppage = Stoppage.HALFTIME
-    elif "end of" in detail or "intermission" in detail:
-        g.stoppage = Stoppage.END_PERIOD
+        return Stoppage.HALFTIME
+    if "end of" in detail or "intermission" in detail or (allow_bare_end and detail.startswith("end ")):
+        if league == League.NHL and (period or 0) in (1, 2):
+            return Stoppage.INTERMISSION
+        return Stoppage.END_PERIOD
+    return None

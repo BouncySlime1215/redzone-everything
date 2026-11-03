@@ -1,0 +1,244 @@
+{
+ "about": "SYNTHETIC: layout modeled on tonight's notes (YTTV UI visible in screencap, profile picker with Serge focused); not captured from a stick; NBCSN tile is second in Top picks, its code leaks in Cobalt logcat",
+ "channel": "nbcsn",
+ "profile": "Serge",
+ "start_scene": "profile",
+ "search_scene_after_profile": "search",
+ "known_codes": {
+  "espn": "ferg3lVdMOg"
+ },
+ "watch": {
+  "ferg3lVdMOg": "SportsCenter, null, ESPN",
+  "Nb7cSnLive1": "Premier League: ARS v CHE, null, NBCSN"
+ },
+ "scenes": {
+  "profile": {
+   "boxes": [
+    [
+     "Who's watching?",
+     0.4,
+     0.2,
+     0.2,
+     0.05
+    ],
+    [
+     "Nick",
+     0.2,
+     0.55,
+     0.06,
+     0.03
+    ],
+    [
+     "Serge",
+     0.38,
+     0.55,
+     0.07,
+     0.03
+    ],
+    [
+     "Gabe",
+     0.56,
+     0.55,
+     0.06,
+     0.03
+    ],
+    [
+     "Laureen",
+     0.74,
+     0.55,
+     0.09,
+     0.03
+    ]
+   ],
+   "focus": [
+    0.36,
+    0.35,
+    0.12,
+    0.25,
+    "neutral_rectangle_border"
+   ],
+   "keys": {
+    "KEYCODE_DPAD_CENTER": "after_profile"
+   }
+  },
+  "after_profile": {
+   "boxes": [
+    [
+     "Home",
+     0.1,
+     0.05,
+     0.05,
+     0.03
+    ],
+    [
+     "Live",
+     0.2,
+     0.05,
+     0.05,
+     0.03
+    ],
+    [
+     "Library",
+     0.3,
+     0.05,
+     0.07,
+     0.03
+    ]
+   ],
+   "focus": [
+    0.09,
+    0.04,
+    0.07,
+    0.05,
+    "neutral_filled_button",
+    "Home"
+   ]
+  },
+  "search": {
+   "boxes": [
+    [
+     "NBC Sports Network",
+     0.08,
+     0.16,
+     0.3,
+     0.05
+    ],
+    [
+     "Top picks",
+     0.08,
+     0.36,
+     0.1,
+     0.03
+    ],
+    [
+     "Sunday Night Football",
+     0.05,
+     0.61,
+     0.17,
+     0.03
+    ],
+    [
+     "Peacock",
+     0.05,
+     0.645,
+     0.17,
+     0.03
+    ],
+    [
+     "LIVE",
+     0.28,
+     0.42,
+     0.04,
+     0.025
+    ],
+    [
+     "NBCSN",
+     0.27,
+     0.61,
+     0.17,
+     0.03
+    ],
+    [
+     "Premier League",
+     0.27,
+     0.645,
+     0.17,
+     0.03
+    ],
+    [
+     "Football Night in America",
+     0.49,
+     0.61,
+     0.17,
+     0.03
+    ]
+   ],
+   "keys": {
+    "KEYCODE_DPAD_RIGHT": "search_on_nbcsn"
+   },
+   "focus": [
+    0.05,
+    0.4,
+    0.2,
+    0.2,
+    "neutral_rectangle_border"
+   ]
+  },
+  "search_on_nbcsn": {
+   "boxes": [
+    [
+     "NBC Sports Network",
+     0.08,
+     0.16,
+     0.3,
+     0.05
+    ],
+    [
+     "Top picks",
+     0.08,
+     0.36,
+     0.1,
+     0.03
+    ],
+    [
+     "Sunday Night Football",
+     0.05,
+     0.61,
+     0.17,
+     0.03
+    ],
+    [
+     "Peacock",
+     0.05,
+     0.645,
+     0.17,
+     0.03
+    ],
+    [
+     "LIVE",
+     0.28,
+     0.42,
+     0.04,
+     0.025
+    ],
+    [
+     "NBCSN",
+     0.27,
+     0.61,
+     0.17,
+     0.03
+    ],
+    [
+     "Premier League",
+     0.27,
+     0.645,
+     0.17,
+     0.03
+    ],
+    [
+     "Football Night in America",
+     0.49,
+     0.61,
+     0.17,
+     0.03
+    ]
+   ],
+   "keys": {
+    "KEYCODE_DPAD_CENTER": "play:Nb7cSnLive1"
+   },
+   "focus": [
+    0.27,
+    0.4,
+    0.2,
+    0.2,
+    "neutral_rectangle_border"
+   ]
+  }
+ },
+ "probes": {
+  "logcat": "11-02 20:01:01.100 I cobalt: Navigate to https://tv.youtube.com/watch/ferg3lVdMOg\n11-02 20:05:12.300 I cobalt: [player] load videoId=Nb7cSnLive1 cpn=AbCdEf\n"
+ },
+ "expect": {
+  "code": "Nb7cSnLive1"
+ }
+}

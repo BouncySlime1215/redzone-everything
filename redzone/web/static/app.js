@@ -6,17 +6,17 @@
 import {
   app, ACTIONS, CHANGES, INPUTS, hooks, store, MOCK, Q, esc, num, get, arr, gameById, nowS, fmtDur, fmtCountdown,
   installImages, reduceMotion, pairInks, markMine,
-} from "./rz-core.js?v=32";
-import { patch, flash } from "./rz-dom.js?v=32";
-import { icon } from "./rz-ui.js?v=32";
-import { startStream, act } from "./rz-api.js?v=32";
-import { updateSheets, topSheet, closeSheet } from "./rz-sheet.js?v=32";
-import { renderNow, countdown } from "./rz-now.js?v=32";
-import { renderGames } from "./rz-games.js?v=32";
-import { renderBets } from "./rz-bets.js?v=32";
-import { renderLab, loadLab } from "./rz-lab.js?v=32";
-import { renderSettings, announce } from "./rz-settings.js?v=32";
-import { loadTeams } from "./rz-detail.js?v=32";
+} from "./rz-core.js?v=41";
+import { patch, flash } from "./rz-dom.js?v=40";
+import { icon } from "./rz-ui.js?v=40";
+import { startStream, act } from "./rz-api.js?v=40";
+import { updateSheets, topSheet, closeSheet } from "./rz-sheet.js?v=40";
+import { renderNow, countdown } from "./rz-now.js?v=40";
+import { renderGames } from "./rz-games.js?v=40";
+import { renderBets } from "./rz-bets.js?v=40";
+import { renderLab, loadLab } from "./rz-lab.js?v=40";
+import { renderSettings, announce } from "./rz-settings.js?v=40";
+import { loadTeams } from "./rz-detail.js?v=40";
 
 const TABS = ["now", "games", "bets", "lab", "settings"];
 const SCREENS = { now: renderNow, games: renderGames, bets: renderBets, lab: renderLab, settings: renderSettings };
@@ -59,6 +59,18 @@ function banners(S, m) {
   const b = (kind, ic, title, body, btn = "") => `<div class="banner banner--${kind}" data-key="b:${kind}">${icon(ic)}<div class="grow"><b>${esc(title)}</b>${body}</div>${btn}</div>`;
   const resume = `<button class="btn btn--sm" data-act="banner-resume">Resume</button>`;
   if (S) {
+    const h = m.hold;
+    if (h) {
+      const body = h.waiting ? "Never mid-play: it cuts over at the next safe moment. Go now cuts immediately."
+        : h.resume_at ? `${esc(h.matchup)} ${esc(h.why)} — autopilot back in <span data-clockdown="${num(h.resume_at)}" data-own>${esc(countdown(h.resume_at))}</span>.`
+        : h.auto_resume ? "Autopilot won't switch away. It takes back over when this game ends or turns into a blowout."
+        : "Autopilot won't switch away until you tap Resume auto.";
+      const keep = h.resume_at ? `<button class="btn btn--sm" data-act="hold-auto" data-v="0">${icon("lock")}Keep it</button>`
+        : `<button class="btn btn--sm btn--ghost" data-act="hold-auto" data-v="${h.auto_resume ? 0 : 1}" aria-pressed="${!!h.auto_resume}">${icon(h.auto_resume ? "clock" : "lock")}${h.auto_resume ? "Auto-return on" : "Auto-return off"}</button>`;
+      out.push(`<div class="banner banner--hold" data-key="b:hold">${icon(h.waiting ? "hourglass" : "target")}<div class="grow"><b>${h.waiting ? "Switching soon" : "Holding"} · ${esc(h.matchup)}</b>${body}</div>
+        <div class="hold-btns">${h.waiting ? `<button class="btn btn--sm" data-act="hold-force" data-gid="${esc(h.game_id)}">${icon("zap")}Go now</button>` : keep}
+        <button class="btn btn--primary btn--lg hold-resume" data-act="hold-release">${icon("autopilot")}Resume auto</button></div></div>`);
+    }
     if (m.safe) out.push(b("safe", "shield", "Safe mode", "Too many errors in a row, so it stopped switching. Check Health in Settings.", resume));
     else if (m.frozen_until && num(m.frozen_until) > nowS()) out.push(b("frozen", "snow", "Holding still", `It caught itself flip-flopping. Back to normal in <span data-clockdown="${num(m.frozen_until)}" data-own>${esc(countdown(m.frozen_until))}</span>.`, resume));
     else if (m.paused) out.push(b("paused", "pause", "Auto-switching paused", "It'll stay right here until you resume.", resume));
@@ -156,7 +168,8 @@ function conn(state) {
   const el = $("conn");
   if (el.dataset.state === state) return;
   el.dataset.state = state;
-  el.querySelector("span").textContent = { live: "Live", wait: "Reconnecting", mock: "Preview" }[state] || "Connecting";
+  el.querySelector("span").textContent = { live: "Connected", wait: "Reconnecting", mock: "Preview" }[state] || "Connecting";
+  el.title = state === "live" ? "Connected to the RedZone app on your Mac" : "";
 }
 
 /* ---------- one delegated listener per event type ---------- */
@@ -194,6 +207,9 @@ function installEvents() {
 }
 
 ACTIONS["banner-resume"] = (el) => act("resume", {}, el);
+ACTIONS["hold-release"] = (el) => act("release", {}, el);
+ACTIONS["hold-force"] = (el) => act("hold", { game_id: el.dataset.gid, value: "force" }, el);
+ACTIONS["hold-auto"] = (el) => act("hold_auto", { value: el.dataset.v === "1" }, el);
 
 /* ---------- boot ---------- */
 installImages();

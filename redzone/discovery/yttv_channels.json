@@ -1,0 +1,172 @@
+{
+ "version": 1,
+ "updated": "2026-11-02",
+ "about": [
+  "Default YouTube TV watch codes (https://tv.youtube.com/watch/<code>) for the channels RedZone needs.",
+  "Every code here was copied from a public post or file listed under 'sources'. Nothing is guessed: a channel with no published code has an empty 'codes' list and is found by in-app search on the stick.",
+  "Codes are per channel, not per account, but they do change now and then, and East/West feeds have different codes. Raleigh-Durham is Eastern, so East codes come first.",
+  "Each code is only a candidate until 'python -m redzone.discovery.yttv --verify' has played it on a stick and seen the right channel name. Results go to data/yttv_verified.json."
+ ],
+ "sources": {
+  "techpro2004-2025-04": {"date": "2025-04-15", "author": "techpro2004", "what": "'YTTV East' ADBTuner channel list (Channels community topic 43450 post 7; JSON copy on pastebin)", "url": "https://pastebin.com/MmiF6FLC", "thread": "https://community.getchannels.com/t/adbtuner-youtube-tv-guide/43450"},
+  "cyoungers-2024-07": {"date": "2024-07-15", "author": "cyoungers", "what": "'YTTV adbtuner JSON for the pacific TZ' (West feeds for channels that have East/West versions)", "url": "https://community.getchannels.com/t/adbtuner-a-channel-tuning-application-for-networked-google-tv-android-tv-devices/36822/1354"},
+  "cyberskier-2024-09": {"date": "2024-09-14", "author": "cyberskier", "what": "Philadelphia-area M3U of YouTube TV links ('may be particular to my region')", "url": "https://community.getchannels.com/t/with-tve-seemingly-going-away-what-are-the-options-given-my-setup/41160/32"},
+  "ha-2024-07": {"date": "2024-07-11", "author": "TarheelGrad1998 (Raleigh-Durham YouTube TV user)", "what": "Home Assistant sensor attributes showing the USA code", "url": "https://community.home-assistant.io/t/youtubetv-channel-with-adb-channel-codes/284593/28"},
+  "ha-2021-02": {"date": "2021-02-26", "author": "rccoleman / TarheelGrad1998", "what": "Home Assistant thread: 'ESPN is https://tv.youtube.com/watch/bj3v-DQPnNs' (post 11), used in an adb example (post 16)", "url": "https://community.home-assistant.io/t/youtubetv-channel-with-adb-channel-codes/284593/11"},
+  "turtletank-2023-07": {"date": "2023-07-06", "author": "turtletank (ADBTuner author)", "what": "Example channel in the ADBTuner announcement post", "url": "https://community.getchannels.com/t/adbtuner-a-channel-tuning-application-for-networked-google-tv-android-tv-devices/36822/1"},
+  "ah4c-2023-07": {"date": "2023-07-18", "author": "bnhf", "what": "ah4c project m3u/youtubetv.m3u", "url": "https://github.com/bnhf/ah4c/blob/main/m3u/youtubetv.m3u"},
+  "boukmandutty-2023-05": {"date": "2023-05-10", "author": "boukmandutty", "what": "adb tuning script ('#USA')", "url": "https://community.getchannels.com/t/hdmi-for-channels/36302/31"},
+  "krazijoe-2023-11": {"date": "2023-11-15", "author": "krazijoe", "what": "'This is what I have for YouTube TV USA West'", "url": "https://community.getchannels.com/t/adbtuner-without-hardware-encoder-possible/38148/10"},
+  "roku-bridge-2025-08": {"date": "2025-08-22", "author": "Bobby_Vaughn", "what": "TNT used as the worked example in a tuner how-to (may be illustrative)", "url": "https://community.getchannels.com/t/roku-tuner-bridge-official-release/44302/25"},
+  "st-thread-2023": {"date": "2023-10-15", "author": "johnofcamas / nschaffner", "what": "NFL Sunday Ticket 1-15 codes with Gracenote call signs YNFLS1-16 (slots 8 and 16 never aired in 2023)", "url": "https://community.getchannels.com/t/nfl-sunday-ticket-with-adbtuner-hdmi-channels/37346/26"},
+  "st-thread-2026-09": {"date": "2026-09-13", "author": "nschaffner, k_evon88", "what": "Same Sunday Ticket links reported working this season ('working the same as in the past'; ST1 link used 2026-09-20)", "url": "https://community.getchannels.com/t/nfl-sunday-ticket-with-adbtuner-hdmi-channels/37346/37"},
+  "ha-tv-repo": {"date": "2024-07-12", "author": "TarheelGrad1998", "what": "Raleigh-Durham YouTube TV channel names as the guide labels them (WRAL, ABC 11, CBS 17, FOX 50); no codes published", "url": "https://github.com/TarheelGrad1998/ha-tv/blob/main/php/downloads/channel_ids.json"},
+  "nbcsn-2025-11": {"date": "2025-11-17", "author": "NBC Sports press release", "what": "NBC Sports Network relaunched on YouTube TV (plus NBCSN 2 and 3 overflow feeds); no code published", "url": "https://www.nbcsports.com/pressbox/press-releases/nbcuniversal-to-launch-new-nbc-sports-network-next-monday-november-17"},
+  "lineup-2026": {"date": "2026-11-02", "author": "channel-lineup guides", "what": "MLB Network left YouTube TV on 2023-01-31; NHL Network is not in the national lineup", "url": "https://www.lilachbullock.com/youtube-tv-channel-list/"}
+ },
+ "search": {
+  "why": "For channels with no working code, the stick opens YouTube TV's search, types the channel name and picks the first result. The YouTube TV app draws its own screen (Cobalt), so these key presses are blind; they are data so they can be tuned on the device without code changes. UNVERIFIED until run on a real stick.",
+  "recipes": [
+   {"name": "search-link", "steps": [
+    {"view": "https://tv.youtube.com/search?q={q_url}"}, {"wait": 7},
+    {"keys": ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER"]}, {"wait": 7},
+    {"if_not_playing": [{"keys": ["KEYCODE_DPAD_CENTER"]}, {"wait": 6}]}
+   ]},
+   {"name": "search-typed", "steps": [
+    {"view": "https://tv.youtube.com/"}, {"wait": 8},
+    {"keys": ["KEYCODE_SEARCH"]}, {"wait": 3},
+    {"text": "{q}"}, {"wait": 3},
+    {"keys": ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER"]}, {"wait": 7},
+    {"if_not_playing": [{"keys": ["KEYCODE_DPAD_CENTER"]}, {"wait": 6}]}
+   ]},
+   {"name": "network-page", "needs": "browse_id", "steps": [
+    {"view": "https://tv.youtube.com/browse/{browse_id}"}, {"wait": 7},
+    {"keys": ["KEYCODE_DPAD_CENTER"]}, {"wait": 7},
+    {"if_not_playing": [{"keys": ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER"]}, {"wait": 6}]}
+   ]}
+  ]
+ },
+ "channels": {
+  "espn": {"name": "ESPN", "priority": 1, "kind": "national", "aliases": ["espn"], "search": "ESPN",
+   "browse_id": "UCakwQ1jKQnYJcUMghvnp-Yw",
+   "codes": [
+    {"code": "ferg3lVdMOg", "seen": "2025-04-15", "sources": ["techpro2004-2025-04", "cyoungers-2024-07"], "confidence": "high", "feed": "national"},
+    {"code": "k-KlMzmHTAo", "seen": "2023-07-06", "sources": ["turtletank-2023-07"], "confidence": "low", "feed": "national"},
+    {"code": "bj3v-DQPnNs", "seen": "2021-02-26", "sources": ["ha-2021-02"], "confidence": "low", "feed": "national", "note": "2021; the thread says codes rotated after that"}
+   ]},
+  "espn2": {"name": "ESPN2", "priority": 2, "kind": "national", "aliases": ["espn2", "espn 2"], "search": "ESPN2",
+   "codes": [
+    {"code": "qHoTWZ9M9gw", "seen": "2025-04-15", "sources": ["techpro2004-2025-04", "cyoungers-2024-07"], "confidence": "high", "feed": "national"}
+   ]},
+  "nflnetwork": {"name": "NFL Network", "priority": 3, "kind": "national", "aliases": ["nfl network", "nfl net", "nfln", "nflnet"], "search": "NFL Network",
+   "codes": [
+    {"code": "_pYg9qMKKIA", "seen": "2024-09-14", "sources": ["cyberskier-2024-09", "ah4c-2023-07"], "confidence": "medium", "feed": "national"},
+    {"code": "mZX1lF9YFSU", "seen": "2024-07-15", "sources": ["cyoungers-2024-07"], "confidence": "medium", "feed": "national"}
+   ]},
+  "redzone": {"name": "NFL RedZone", "priority": 4, "kind": "national", "aliases": ["nfl redzone", "redzone", "red zone"], "search": "NFL RedZone",
+   "note": "Add-on channel (comes with your Sunday Ticket bundle). No public code found.",
+   "codes": []},
+  "tnt": {"name": "TNT", "priority": 5, "kind": "national", "aliases": ["tnt", "tnt east"], "search": "TNT",
+   "codes": [
+    {"code": "lVQYDh9weHg", "seen": "2025-04-15", "sources": ["techpro2004-2025-04"], "confidence": "medium", "feed": "east"},
+    {"code": "3h9KUqzXrMQ", "seen": "2024-07-15", "sources": ["cyoungers-2024-07"], "confidence": "low", "feed": "west"},
+    {"code": "2pp2feqXcQY", "seen": "2025-08-22", "sources": ["roku-bridge-2025-08"], "confidence": "low", "feed": "unknown", "note": "worked example in a how-to; may be illustrative"}
+   ]},
+  "trutv": {"name": "truTV", "priority": 6, "kind": "national", "aliases": ["trutv", "tru tv"], "search": "truTV",
+   "codes": [
+    {"code": "x2IdxPvLNC0", "seen": "2025-04-15", "sources": ["techpro2004-2025-04"], "confidence": "medium", "feed": "east"},
+    {"code": "y7qRFO-4di0", "seen": "2024-07-15", "sources": ["cyoungers-2024-07"], "confidence": "low", "feed": "west"}
+   ]},
+  "tbs": {"name": "TBS", "priority": 7, "kind": "national", "aliases": ["tbs", "tbs east"], "search": "TBS",
+   "codes": [
+    {"code": "vv_r1X6N3sc", "seen": "2025-04-15", "sources": ["techpro2004-2025-04"], "confidence": "medium", "feed": "east"},
+    {"code": "RDpzbuJs6cQ", "seen": "2024-07-15", "sources": ["cyoungers-2024-07"], "confidence": "low", "feed": "west"}
+   ]},
+  "nbatv": {"name": "NBA TV", "priority": 8, "kind": "national", "aliases": ["nba tv", "nbatv"], "search": "NBA TV",
+   "codes": [
+    {"code": "ykTstVbuNpg", "seen": "2025-04-15", "sources": ["techpro2004-2025-04", "cyoungers-2024-07"], "confidence": "high", "feed": "national"}
+   ]},
+  "fs1": {"name": "FS1", "priority": 9, "kind": "national", "aliases": ["fs1", "fox sports 1"], "search": "FS1",
+   "codes": [
+    {"code": "_2ONrjDR7S8", "seen": "2025-04-15", "sources": ["techpro2004-2025-04", "cyoungers-2024-07"], "confidence": "high", "feed": "national"}
+   ]},
+  "usa": {"name": "USA", "priority": 10, "kind": "national", "aliases": ["usa network", "usa", "usa east"], "search": "USA Network",
+   "codes": [
+    {"code": "ZgiS2N0QkbU", "seen": "2025-04-15", "sources": ["techpro2004-2025-04"], "confidence": "medium", "feed": "east"},
+    {"code": "jsh6k-d901M", "seen": "2024-07-11", "sources": ["ha-2024-07"], "confidence": "medium", "feed": "east", "note": "from a Raleigh-Durham user"},
+    {"code": "8xN3o2PSL5s", "seen": "2024-09-14", "sources": ["cyberskier-2024-09", "boukmandutty-2023-05"], "confidence": "low", "feed": "east"},
+    {"code": "2s2wMbiwH-g", "seen": "2024-07-15", "sources": ["cyoungers-2024-07"], "confidence": "low", "feed": "west"},
+    {"code": "DJ7m0fdLKEY", "seen": "2023-11-15", "sources": ["krazijoe-2023-11", "ah4c-2023-07"], "confidence": "low", "feed": "west"}
+   ]},
+  "nbcsn": {"name": "NBC Sports Network", "priority": 11, "kind": "national", "aliases": ["nbc sports network", "nbcsn", "nbc sports"], "search": "NBC Sports Network",
+   "note": "Relaunched 2025-11-17 on YouTube TV; NBCSN 2 and 3 are overflow feeds. No public code found.",
+   "codes": []},
+  "espnu": {"name": "ESPNU", "priority": 30, "kind": "national", "aliases": ["espnu"], "search": "ESPNU",
+   "codes": [
+    {"code": "6x-T96Q-5eY", "seen": "2025-04-15", "sources": ["techpro2004-2025-04", "cyoungers-2024-07"], "confidence": "high", "feed": "national"}
+   ]},
+  "espnews": {"name": "ESPNews", "priority": 31, "kind": "national", "aliases": ["espnews", "espn news"], "search": "ESPNews",
+   "codes": [
+    {"code": "ReMgHDtmz_w", "seen": "2025-04-15", "sources": ["techpro2004-2025-04", "cyoungers-2024-07"], "confidence": "high", "feed": "national"}
+   ]},
+  "cbssn": {"name": "CBS Sports Network", "priority": 32, "kind": "national", "aliases": ["cbs sports network", "cbssn", "cbs sports"], "search": "CBS Sports Network",
+   "codes": [
+    {"code": "XG1jwCkVgUE", "seen": "2025-04-15", "sources": ["techpro2004-2025-04", "cyoungers-2024-07"], "confidence": "high", "feed": "national"}
+   ]},
+  "fs2": {"name": "FS2", "priority": 33, "kind": "national", "aliases": ["fs2", "fox sports 2"], "search": "FS2",
+   "codes": [
+    {"code": "Cf2Bf4xPJlc", "seen": "2025-04-15", "sources": ["techpro2004-2025-04", "cyoungers-2024-07"], "confidence": "high", "feed": "national"}
+   ]},
+  "accn": {"name": "ACC Network", "priority": 34, "kind": "national", "aliases": ["acc network", "accn"], "search": "ACC Network",
+   "codes": [
+    {"code": "HmB4f8_5kwE", "seen": "2025-04-15", "sources": ["techpro2004-2025-04", "cyoungers-2024-07"], "confidence": "high", "feed": "national"}
+   ]},
+  "secn": {"name": "SEC Network", "priority": 35, "kind": "national", "aliases": ["sec network", "secn"], "search": "SEC Network",
+   "codes": [
+    {"code": "LU-XElpC4Zo", "seen": "2025-04-15", "sources": ["techpro2004-2025-04", "cyoungers-2024-07"], "confidence": "high", "feed": "national"}
+   ]},
+  "btn": {"name": "Big Ten Network", "priority": 36, "kind": "national", "aliases": ["big ten network", "btn", "big ten"], "search": "Big Ten Network",
+   "codes": [
+    {"code": "1D2LKf_AW5w", "seen": "2025-04-15", "sources": ["techpro2004-2025-04", "cyoungers-2024-07"], "confidence": "high", "feed": "national"}
+   ]},
+  "golf": {"name": "Golf Channel", "priority": 37, "kind": "national", "aliases": ["golf channel", "golf"], "search": "Golf Channel",
+   "codes": [
+    {"code": "ll39j_Jw-yM", "seen": "2025-04-15", "sources": ["techpro2004-2025-04", "cyoungers-2024-07"], "confidence": "medium", "feed": "national", "note": "labelled 'Go Channel' in the 2025 list, 'Golf Channel' in 2024"},
+    {"code": "XK34g7QRvGk", "seen": "2024-09-14", "sources": ["cyberskier-2024-09", "ah4c-2023-07"], "confidence": "low", "feed": "national"}
+   ]},
+  "nhlnetwork": {"name": "NHL Network", "priority": 50, "kind": "national", "carried": "unlikely", "aliases": ["nhl network"], "search": "NHL Network",
+   "note": "Not in YouTube TV's national lineup as far as public lineups show; kept so search can confirm.", "sources": ["lineup-2026"],
+   "codes": []},
+  "mlbnetwork": {"name": "MLB Network", "priority": 51, "kind": "national", "carried": "unlikely", "aliases": ["mlb network"], "search": "MLB Network",
+   "note": "Left YouTube TV on 2023-01-31; kept so search can confirm if it ever returns.", "sources": ["lineup-2026"],
+   "codes": []},
+  "nbc": {"name": "WRAL (NBC 5)", "priority": 12, "kind": "local", "aliases": ["wral", "wral tv", "nbc 5", "nbc"], "search": "WRAL",
+   "note": "Raleigh-Durham local. Local codes are market-specific and none are published.", "sources": ["ha-tv-repo"],
+   "codes": []},
+  "abc": {"name": "WTVD (ABC 11)", "priority": 13, "kind": "local", "aliases": ["wtvd", "abc 11", "abc11", "abc"], "search": "ABC 11",
+   "note": "Raleigh-Durham local. YouTube TV's guide calls it 'ABC 11'.", "sources": ["ha-tv-repo"],
+   "codes": []},
+  "cbs": {"name": "WNCN (CBS 17)", "priority": 14, "kind": "local", "aliases": ["wncn", "cbs 17", "cbs17", "cbs"], "search": "CBS 17",
+   "note": "Raleigh-Durham local. YouTube TV's guide calls it 'CBS 17'.", "sources": ["ha-tv-repo"],
+   "codes": []},
+  "fox": {"name": "WRAZ (FOX 50)", "priority": 15, "kind": "local", "aliases": ["wraz", "fox 50", "fox50", "fox"], "search": "FOX 50",
+   "note": "Raleigh-Durham local. YouTube TV's guide calls it 'FOX 50'.", "sources": ["ha-tv-repo"],
+   "codes": []},
+  "st1": {"name": "NFL Sunday Ticket 1", "priority": 20, "kind": "sunday_ticket", "slot": 1, "codes": [{"code": "njJRoIW1Lps", "seen": "2026-09-20", "sources": ["st-thread-2023", "cyoungers-2024-07", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st2": {"name": "NFL Sunday Ticket 2", "priority": 20, "kind": "sunday_ticket", "slot": 2, "codes": [{"code": "5xG-EzXIrVY", "seen": "2026-09-13", "sources": ["st-thread-2023", "cyoungers-2024-07", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st3": {"name": "NFL Sunday Ticket 3", "priority": 20, "kind": "sunday_ticket", "slot": 3, "codes": [{"code": "qUkrmFVFd_o", "seen": "2026-09-13", "sources": ["st-thread-2023", "cyoungers-2024-07", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st4": {"name": "NFL Sunday Ticket 4", "priority": 20, "kind": "sunday_ticket", "slot": 4, "codes": [{"code": "WITrFqk7trk", "seen": "2026-09-13", "sources": ["st-thread-2023", "cyoungers-2024-07", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st5": {"name": "NFL Sunday Ticket 5", "priority": 20, "kind": "sunday_ticket", "slot": 5, "codes": [{"code": "H5xBq5BtoQM", "seen": "2026-09-13", "sources": ["st-thread-2023", "cyoungers-2024-07", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st6": {"name": "NFL Sunday Ticket 6", "priority": 20, "kind": "sunday_ticket", "slot": 6, "codes": [{"code": "Tkf390yuOb4", "seen": "2026-09-13", "sources": ["st-thread-2023", "cyoungers-2024-07", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st7": {"name": "NFL Sunday Ticket 7", "priority": 20, "kind": "sunday_ticket", "slot": 7, "codes": [{"code": "xuXaQxzUorg", "seen": "2026-09-13", "sources": ["st-thread-2023", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st8": {"name": "NFL Sunday Ticket 8", "priority": 21, "kind": "sunday_ticket", "slot": 8, "note": "Call sign YNFLS8; never aired in the posts' weeks, so no code was ever published.", "codes": []},
+  "st9": {"name": "NFL Sunday Ticket 9", "priority": 20, "kind": "sunday_ticket", "slot": 9, "codes": [{"code": "M_1qk2R5Wag", "seen": "2026-09-13", "sources": ["st-thread-2023", "cyoungers-2024-07", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st10": {"name": "NFL Sunday Ticket 10", "priority": 20, "kind": "sunday_ticket", "slot": 10, "codes": [{"code": "XmSjRm4RIF4", "seen": "2026-09-13", "sources": ["st-thread-2023", "cyoungers-2024-07", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st11": {"name": "NFL Sunday Ticket 11", "priority": 20, "kind": "sunday_ticket", "slot": 11, "codes": [{"code": "WRPvVMAAqRs", "seen": "2026-09-13", "sources": ["st-thread-2023", "cyoungers-2024-07", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st12": {"name": "NFL Sunday Ticket 12", "priority": 20, "kind": "sunday_ticket", "slot": 12, "codes": [{"code": "uaorBsVz578", "seen": "2026-09-13", "sources": ["st-thread-2023", "cyoungers-2024-07", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st13": {"name": "NFL Sunday Ticket 13", "priority": 20, "kind": "sunday_ticket", "slot": 13, "codes": [{"code": "HRXWfMfeXlA", "seen": "2026-09-13", "sources": ["st-thread-2023", "cyoungers-2024-07", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st14": {"name": "NFL Sunday Ticket 14", "priority": 20, "kind": "sunday_ticket", "slot": 14, "codes": [{"code": "pP4txDZI-0g", "seen": "2026-09-13", "sources": ["st-thread-2023", "cyoungers-2024-07", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st15": {"name": "NFL Sunday Ticket 15", "priority": 20, "kind": "sunday_ticket", "slot": 15, "codes": [{"code": "PE1RbHEwa8s", "seen": "2026-09-13", "sources": ["st-thread-2023", "cyoungers-2024-07", "st-thread-2026-09"], "confidence": "high", "feed": "national"}]},
+  "st16": {"name": "NFL Sunday Ticket 16", "priority": 21, "kind": "sunday_ticket", "slot": 16, "note": "Call sign YNFLS16; never aired in the posts' weeks, so no code was ever published.", "codes": []}
+ }
+}

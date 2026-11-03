@@ -1,7 +1,9 @@
 """Polite HTTP for undocumented feeds: caching, ETags, and backoff on 403/429/5xx.
 
 Guardrails:
-- Per-host backoff doubles on every 403/429/5xx (cap 10 min) and resets on success.
+- Per-host backoff doubles on each 403/429/5xx/network failure (cap 10 min, 1 min for
+  ESPN, the live feed) and resets on success. Failures while already backing off (a burst
+  of concurrent requests dying in one Wi-Fi blip) count once.
 - A host in backoff is skipped, not hammered; callers get the last good copy.
 - Every response is size-capped so a broken feed can't eat memory.
 """
@@ -26,6 +28,8 @@ BROWSER_HEADERS = {
 }
 MAX_BYTES = 8_000_000
 MAX_BACKOFF_S = 600.0
+LIVE_MAX_BACKOFF_S = 60.0          # ESPN is the live feed: never black it out for long
+LIVE_HOSTS = ("espn.com",)
 
 
 @dataclass
@@ -58,6 +62,16 @@ class Fetcher:
     def backing_off(self, url: str) -> bool:
         b = self._backoff.get(urlparse(url).netloc)
         return bool(b and b.until > self._clock())
+
+    def fetched_at(self, url: str) -> float | None:
+        """When url last returned a fresh 200/304. get_json hands back the cached copy when the
+        host is down or backing off, so callers check this to tell fresh data from stale."""
+        c = self._cache.get(url)
+        return c.fetched_at if c else None
+
+    def is_fresh(self, url: str, max_age_s: float) -> bool:
+        t = self.fetched_at(url)
+        return t is not None and self._clock() - t <= max_age_s
 
     def last_good(self, url: str) -> object | None:
         c = self._cache.get(url)
@@ -118,11 +132,20 @@ class Fetcher:
         return r.content, r.headers.get("content-type", "application/octet-stream")
 
     def _bump(self, host: str, retry_after: str | None = None) -> None:
+        now = self._clock()
         b = self._backoff.setdefault(host, _Backoff())
-        b.delay = min(MAX_BACKOFF_S, max(5.0, b.delay * 2))
-        if retry_after and retry_after.isdigit():
-            b.delay = min(MAX_BACKOFF_S, max(b.delay, float(retry_after)))
-        b.until = self._clock() + b.delay
+        cap = LIVE_MAX_BACKOFF_S if host.endswith(LIVE_HOSTS) else MAX_BACKOFF_S
+        ra = float(retry_after) if retry_after and retry_after.isdigit() else None
+        if b.until > now:
+            # Already backing off: this is another request from the same burst. Count once,
+            # but still honour a longer Retry-After.
+            if ra is not None and now + min(MAX_BACKOFF_S, ra) > b.until:
+                b.until = now + min(MAX_BACKOFF_S, ra)
+            return
+        b.delay = min(cap, max(5.0, b.delay * 2))
+        if ra is not None:
+            b.delay = min(MAX_BACKOFF_S, max(b.delay, ra))
+        b.until = now + b.delay
 
     def _reset(self, host: str) -> None:
         self._backoff.pop(host, None)

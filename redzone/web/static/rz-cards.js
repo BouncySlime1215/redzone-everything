@@ -3,9 +3,9 @@
 import {
   app, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, isDark, whereLabel, whereUnknown,
   leaderLabel, winner, teamBy, fmtDur, nowS, fmtCountdown, imgSrc, games,
-} from "./rz-core.js?v=32";
-import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=32";
-import { situation, wpBar } from "./rz-viz.js?v=32";
+} from "./rz-core.js?v=41";
+import { icon, logo, leagueImg, avatar, odo, meter, heat, stateBadge } from "./rz-ui.js?v=40";
+import { situation, wpBar } from "./rz-viz.js?v=40";
 
 /* ---------- chips ---------- */
 export function whereChip(g, { onDark = false } = {}) {
@@ -15,7 +15,7 @@ export function whereChip(g, { onDark = false } = {}) {
   }
   const label = whereLabel(g).replace(/\s*\((event link|channel)[^)]*\)\s*/gi, " ").trim();
   const needs = g && g.where && typeof g.where === "object" && g.where.tunable === false;
-  return `<button class="chip chip--where chip--btn where" data-act="set-channel" data-gid="${gid}" aria-label="Playing on ${attr(label)}. Change channel">${icon("tv")}<span>${esc(label)}</span>${needs ? `<i class="needs" title="Link not set"></i>` : ""}</button>`;
+  return `<button class="chip chip--where chip--btn where" data-act="set-channel" data-gid="${gid}" aria-label="Source: ${attr(label)}. Change channel">${icon("tv")}<span>${esc(label)}</span>${needs ? `<i class="needs" title="Link not set"></i>` : ""}</button>`;
 }
 export const isGarbage = (g) => arr(g && g.tags).some((t) => /garbage/i.test(String(t))) || /^garbage time/i.test(String((g && g.reason) || ""));
 export const isComeback = (g) => /comeback/i.test(String((g && g.reason) || ""));
@@ -65,7 +65,8 @@ export function leaderMini(l, g, { size = 34, dark = isDark() } = {}) {
 function possessionFor(g, t) {
   const s = (g && g.situation) || {};
   if (g.phase !== "live" || !t) return "";
-  if ((g.league === "nfl" || g.league === "nba") && s.possession === t.abbr) return icon(g.league === "nba" ? "basketball" : "football", "pss");
+  const ball = { nfl: "football", cfb: "football", nba: "basketball", cbb: "basketball", wcbb: "basketball" }[g.league];
+  if (ball && s.possession === t.abbr) return icon(ball, "pss");
   if (g.league === "nhl" && s.power_play === t.abbr) return `<span class="pp-tag">PP</span>`;
   if (g.league === "nhl" && s.empty_net === t.abbr) return `<span class="pp-tag">EN</span>`;
   if (g.league === "mlb" && s.half) {
@@ -86,6 +87,17 @@ function teamRow(g, side, inkc) {
     <div class="pts">${possessionFor(g, t)}${showScore ? odo(t.score ?? "—") : ""}</div>
   </div>`;
 }
+/* "Watch this": put the TV on this game at the next safe moment and hold it there.
+   While that switch waits, the same button becomes "Go now" (cuts immediately). */
+export function watchBtn(g) {
+  const h = get(app.S, "mode.hold");
+  const gid = attr(g.id);
+  if (h && h.game_id === g.id && h.waiting) return `<button class="chip chip--btn chip--watch chip--watch-go" data-act="hold" data-gid="${gid}" data-force="1">${icon("zap")}<span>Go now</span></button>`;
+  if (h && h.game_id === g.id) return `<span class="chip chip--locked">${icon("lock")}<span>Holding</span></span>`;
+  if (g.on_now) return "";
+  return `<button class="chip chip--btn chip--watch" data-act="hold" data-gid="${gid}" aria-label="Watch ${attr(g.matchup || "this game")} now">${icon("play", "ico--fill")}<span>Watch this</span></button>`;
+}
+
 export function gameCard(g, { key = true } = {}) {
   const ph = phase(g);
   const st = status(g);
@@ -99,6 +111,7 @@ export function gameCard(g, { key = true } = {}) {
     : ph === "pre" ? `<div class="start"><b>${esc(st.clk || "TBD")}</b>${g.start_time && g.start_time - nowS() < 6 * 3600 && g.start_time > nowS() ? `<small>in <span data-countdown="${num(g.start_time)}" data-own>${esc(fmtCountdown(g.start_time))}</span></small>` : ""}</div>`
     : "";
   const chips = stateChips(g) + tagChips(g);
+  const watch = ph === "live" ? watchBtn(g) : "";
   const leaders = pickLeaders(g);
   const reason = ph === "live" ? cleanReason(g.reason) : ph === "pre" ? g.odds : "";
   return `<article class="${cls}" ${key ? `data-key="g:${attr(g.id)}"` : ""} data-act="open-game" data-gid="${attr(g.id)}" role="button" tabindex="0" aria-label="${attr(`${g.matchup || ""}, ${st.text}`)}" style="${teamVars(g.away, g.home)}">
@@ -107,7 +120,7 @@ export function gameCard(g, { key = true } = {}) {
     <div class="gc-teams">${teamRow(g, "a", ai)}${teamRow(g, "h", hi)}</div>
     ${ph === "live" ? `<div class="gc-meter">${meter(g.score)}</div>` : ""}
     ${reason ? `<p class="gc-reason ${ph === "live" && isComeback(g) ? "gc-reason--hot" : ""}">${esc(reason)}</p>` : ""}
-    ${chips || ph !== "post" ? `<footer class="gc-foot">${chips}${ph !== "post" ? whereChip(g) : ""}</footer>` : ""}
+    ${chips || ph !== "post" ? `<footer class="gc-foot">${chips}${ph !== "post" ? whereChip(g) : ""}${watch}</footer>` : ""}
     ${leaders.length ? `<div class="gc-lead">${leaders.map((l) => leaderMini(l, g)).join("")}</div>` : ""}
   </article>`;
 }
@@ -134,7 +147,8 @@ function boardTeam(g, side) {
   const s = g.situation || {};
   let poss = "";
   if (g.phase === "live") {
-    if ((g.league === "nfl" || g.league === "nba") && s.possession && s.possession === t.abbr) poss = `${icon(g.league === "nba" ? "basketball" : "football")}Ball`;
+    const ball = { nfl: "football", cfb: "football", nba: "basketball", cbb: "basketball", wcbb: "basketball" }[g.league];
+    if (ball && s.possession && s.possession === t.abbr) poss = `${icon(ball)}Ball`;
     else if (g.league === "nhl" && s.power_play === t.abbr) poss = `${icon("zap")}Power play`;
     else if (g.league === "nhl" && s.empty_net === t.abbr) poss = `${icon("alert")}Empty net`;
     else if (g.league === "mlb" && s.half && ((/^top/i.test(s.half) && side === "a") || (/^bot/i.test(s.half) && side === "h"))) poss = `${icon("baseball")}At bat`;
@@ -186,7 +200,7 @@ export function heroCard(n, g, S) {
     <div class="hero-bg">${venue ? `<img src="${attr(imgUrl(venue))}" data-src="${attr(imgUrl(venue))}" data-orig="${attr(venue)}" alt="" decoding="async" fetchpriority="high">` : ""}</div>
     <i class="hero-fx"></i><i class="hero-sweep"></i>
     <div class="hero-in">
-      <div class="hero-top"><div class="left">${stateBadge(kind)}${leagueImg(game.league, { dark: true })}</div>
+      <div class="hero-top"><div class="left">${stateBadge(kind, mode.dry_run ? "Simulation" : undefined)}${leagueImg(game.league, { dark: true })}</div>
         <span class="on-for">${icon("clock")}on for <b data-since="${since}" data-own>${since ? fmtDur(nowS() - since) : "—"}</b></span></div>
       ${board(game)}
       ${wpBar(game)}
