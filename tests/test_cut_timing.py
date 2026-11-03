@@ -107,6 +107,19 @@ def test_nhl_window_ends_at_the_faceoff():
     assert (w[0].start, w[0].end, w[0].kind) == (3005, 3150, "tv_timeout")
 
 
+def test_dead_until_and_resume_eta():
+    dt = nfl_tracker()
+    assert dt.dead_until(1100) == 1240          # the TV timeout ends at the 1250 snap (minus its 10 s)
+    assert dt.dead_until(1035) is None          # mid-snap
+    assert dt.resume_eta(1100) == 1240 and dt.resume_eta(1035) == 1035
+    nhl = DeadTracker(League.NHL)
+    nhl.add("a", 3000, 3000, "shot", "shot on goal", "Shot", 600.0, 1)
+    nhl.add("b", 3005, 3005, "stoppage", "TV timeout", "Stoppage", 600.0, 1)
+    nhl.seen(3020, 10)
+    assert nhl.dead_until(3010) == 3005 + 130   # still open: the shortest TV timeout on record
+    assert nhl.resume_eta(3010) == 3005 + 149   # typical
+
+
 def test_delaybook_behind_is_part_of_mu_until_a_fresh_tune():
     book = DelayBook({"youtubetv": 40.0}, 3.0, clock=lambda: 0.0)
     book.set_behind("youtubetv:espn", 20.0)

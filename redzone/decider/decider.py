@@ -75,7 +75,9 @@ ENTRY_RELAXED_S = 8.0
 ENTRY_FASTEST_S = 4.0
 # Crunch time or your team: landing on the dead ball the data shows, with only this much doubt.
 ENTRY_URGENT_S = 2.0
-
+# The furthest an entry rewinds to reach a dead ball (YouTube TV): hockey can run a minute and more
+# between whistles; RedZone itself airs touchdowns ~16 s late.
+ENTRY_MAX_REWIND_S = 120.0
 
 def _short(s: Scored) -> str:
     return "your game"
@@ -429,6 +431,14 @@ class Decider:
         if tl is None or x is None:
             return 0.0
         d = self.delays.get(x.target or "unknown")
+        old = self._stoppage_remaining(tl, d, now)
+        # [cut timing] The dead window the screen is in, ended at the real restart (the game clock,
+        # the faceoff, the next snap) or, still open, at the shortest that kind has ever run.
+        m = 2 * d.current_sigma(now)
+        until = tl.dead.dead_until(now - d.mu - m) if tl.dead.marks else None
+        return old if until is None else max(old, until + d.mu - m - now)
+
+    def _stoppage_remaining(self, tl: Timeline, d, now: float) -> float:
         start, end = tl.last("stop_start"), tl.last("stop_end")
         if start is None:
             return 0.0
@@ -512,7 +522,7 @@ class Decider:
         can = bool(c.get("decider.entry.rewind", True)) and self._replayable(x)
         return plan_entry(tl.dead, base_mu, margin, now, cost, can_rewind=can,
                           step=float(c.get("replay.seek_step_s", 10)),
-                          max_back=float(c.get("decider.entry.max_rewind_s", 60)),
+                          max_back=float(c.get("decider.entry.max_rewind_s", ENTRY_MAX_REWIND_S)),
                           relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
                           cost_lo=min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S))),
                           urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None)
@@ -560,6 +570,15 @@ class Decider:
         self.home_break_visit, self.home_return_at = home_before
         return Decision(now, "stay", self.current, f"staying for it to air here ({until - now:.0f}s): {label}",
                         d.state, d.gate, want=d.target)
+
+    def _resume_eta(self, gid: str, cands, now: float) -> float:
+        """Wall time play should be back on screen in gid if we tuned there now."""
+        tl, x = self.timelines.get(gid), cands.get(gid)
+        if tl is None or x is None or not tl.dead.marks:
+            return now
+        d = self.delays.get(x.target or "unknown")
+        base = d.mu - d.behind
+        return tl.dead.resume_eta(now - base) + base
 
     def _land_behind(self, gid: str | None, rewind_s: float) -> None:
         """The tune now on screen runs rewind_s behind live; every other tune is fresh again."""
@@ -874,7 +893,10 @@ class Decider:
             rp = self._best_replay(cands, now, None, allow_seen=True)
             if rp:
                 return self._replay_decision(rp, State.REPLAY, "everything's on a break", now)
-            best = max(watchable, key=lambda g: watchable[g].scored.score, default=None)
+            # [cut timing] Everything's on a break: land where play resumes soonest, not in the
+            # longest commercial (an intermission after a replay sat 18 minutes in the ad).
+            best = min(watchable, key=lambda g: (self._resume_eta(g, watchable, now), -watchable[g].scored.score),
+                       default=None)
             if best is None:
                 return Decision(now, "stay", self.current, "nothing live", State.IDLE)
         live = cands[best].scored

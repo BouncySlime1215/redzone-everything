@@ -365,6 +365,27 @@ class DeadTracker:
             0.0 if lg in (League.NFL, League.MLB) else 2.0)
         return max(floor, covered)
 
+    def dead_until(self, x0: float) -> float | None:
+        """The screen shows real time x0 (its earliest) now: until what real time is it surely still
+        dead? None if x0 isn't inside a dead window."""
+        for w in reversed(self.windows()):
+            if w.start > x0:
+                continue
+            until = w.end if w.end is not None else self._open_until(w)
+            return until if until > x0 else None
+        return None
+
+    def resume_eta(self, x: float) -> float:
+        """Real time play is expected to resume after the dead window covering real time x (x itself
+        if it's live): the logged restart, else the window's typical (median) length."""
+        for w in reversed(self.windows()):
+            if w.start > x:
+                continue
+            if w.end is not None:
+                return max(x, w.end)
+            return max(x, w.start + MEDIAN_S.get(_lg(self.league), {}).get(w.kind, 30.0))
+        return x
+
     def landing(self, x0: float, x1: float) -> Landing:
         """What the screen shows across real times [x0, x1] (the arrival, give or take the delay doubt)."""
         lg = _lg(self.league)
