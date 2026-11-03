@@ -166,6 +166,15 @@ switch_speed:              # every real tune and input flip is timed; the decide
   learn: true              # keep decider.switch_cost up to date from those measurements
   sync_every_s: 300        # at most this often (sooner when two-stick mode turns on or off)
 
+redzone_mode:              # whip-around like NFL RedZone (scoring/drive.py, decider nfl_priority, the catch-up reel)
+  enabled: true
+  heat_points: 8           # an NFL game gains up to this many points while its drive is alive (field position, yards, explosive plays)
+  dead_damp: 0.25          # ...and loses up to this share of its score to punt-fest signs (punt coming, 3rd & long deep, empty drives)
+  nfl_priority: true       # while an NFL drive is hot, other sports' non-crunch moments rank below it (your teams, crunch exempt)
+  hot_heat: 0.5            # drive heat (0-1) that counts as "a drive is alive"
+  priority_gap: 15         # ...those other games are held this many points under the hottest drive
+  live_first_heat: 0.75    # an NFL drive this hot (scoring position) and live: no catch-up replay until it's over
+
 replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
   enabled: true
   apps: [youtubetv]        # apps where rewinding live TV works

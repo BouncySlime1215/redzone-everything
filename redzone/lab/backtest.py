@@ -28,7 +28,8 @@ from redzone.config import Config
 from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode
 from redzone.decider.screen import DelayBook
 from redzone.models import REAL_BREAKS, League, Phase
-from redzone.scoring.engine import Personal, Scorer
+from redzone.scoring.drive import DriveScorer
+from redzone.scoring.engine import Personal
 from redzone.sources import espn
 
 ET = ZoneInfo("America/New_York")
@@ -232,7 +233,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     lag_total = feed_lag + delay   # real life -> your screen, as the app believes it
     lag_true = feed_lag + (delay if true_delay is None else true_delay)  # ...and as it really is
     delays = DelayBook({"youtubetv": lag_total}, sigma_default=sigma, clock=clock)
-    scorer = Scorer(cfg, clock=clock)
+    scorer = DriveScorer(cfg, clock=clock)
     dec = Decider(cfg, delays, clock=clock)
     me = Personal(my_teams={lg: set(my_teams) for lg in League})
     if focus:
@@ -496,8 +497,9 @@ def hot_drive_plays(r: "Replay") -> list[int]:
     drive scored, or reached the red zone. What RedZone exists to show; a punt-fest has none."""
     if r.league.base != League.NFL:
         return []
-    drives = list(espn._get(r.data, "drives", "previous") or [])
-    cur = espn._get(r.data, "drives", "current")
+    data = getattr(r, "data", None) or {}
+    drives = list(espn._get(data, "drives", "previous") or [])
+    cur = espn._get(data, "drives", "current")
     if cur:
         drives.append(cur)
     hot_ids: set[str] = set()

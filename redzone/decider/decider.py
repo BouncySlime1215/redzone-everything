@@ -27,7 +27,7 @@ from __future__ import annotations
 import time
 import math
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Callable
 
@@ -235,6 +235,7 @@ class Decider:
         now = self._clock()
         self._known.update({gid: x for gid, x in cands.items() if x.target})
         cands = self._with_redzone(cands, redzone)
+        cands = self._nfl_priority(cands)
         self._scan_missed(cands, now)
         if self.replaying:
             if self.safe_mode or self.user.paused or self.on_screen_at(now) != "replay":
@@ -377,11 +378,18 @@ class Decider:
 
     def _best_replay(self, cands, now: float, budget: float | None, allow_seen: bool,
                      top: float | None = None, margin: float | None = None,
-                     exclude: str | None = None) -> Missed | None:
+                     exclude: str | None = None, live_first: bool = True) -> Missed | None:
         """The replay to show next. With top: only one worth leaving live play scored top for.
-        exclude: a game not to replay (e.g. the crunch game you're about to go back to)."""
+        exclude: a game not to replay (e.g. the crunch game you're about to go back to).
+        live_first: [redzone mode] no catch-up while an NFL drive is alive somewhere: like RedZone,
+        show the live drive and catch up when nothing hot is live."""
+        hot = live_first and self._hot_live(cands)
         games = self._replay_pool(cands)
         pool = [m for m in self.queue if m.game_id != exclude and self._replayable(games.get(m.game_id))]
+        if hot:
+            # Only a last chance (its replay window is closing) still goes ahead of a live drive.
+            pool = [m for m in pool if self._urgency(m, now) > 0]
+            allow_seen = False
         if allow_seen and not pool:
             recent = now - self.cfg.get("replay.instant_window_s", 900)
             done_ids = {(d.game_id, d.pid) for d in self.done_replays if d.replayed}
@@ -610,7 +618,7 @@ class Decider:
             if rp:
                 self.home_break_visit = visit_home
                 return self._replay_decision(rp, state, gate_txt, now)
-            if dest and gate_ok and not self._short_stop(self.current, s_cur):
+            if dest and gate_ok and (not self._short_stop(self.current, s_cur) or self._is_hot(cands[dest])):
                 self.home_break_visit = visit_home
                 return Decision(now, "switch", dest, self._why(cands[dest], f"{_short(s_cur)} on a break → "),
                                 state, gate_txt, kind="break_visit")
@@ -897,7 +905,8 @@ class Decider:
             return None
         # Back on screen before the snap, even if this poll is the last one before it.
         back = self._deadline_cost(self._target_of.get(gid)) + 6 + self.cfg.get("polling.live_s", 10)
-        return self._best_replay(cands, now, self._next_snap_s(gid, cands, now) - back, allow_seen=True, exclude=gid)
+        return self._best_replay(cands, now, self._next_snap_s(gid, cands, now) - back, allow_seen=True, exclude=gid,
+                                 live_first=False)   # crunch holds here anyway: a hot drive elsewhere can't be visited
 
     def _next_snap_s(self, gid: str, cands, now: float) -> float:
         """Seconds until gid's next scrimmage snap could start airing on your screen (early side
@@ -942,11 +951,62 @@ class Decider:
         _, gid, ev = max(chases, key=lambda z: z[0])
         return gid, ev
 
+    def _is_hot(self, x: Candidate | None, heat: float | None = None) -> bool:
+        """[redzone mode] An NFL game whose drive is alive (scoring/drive.py heat)."""
+        if x is None or not self.cfg.get("redzone_mode.enabled", True):
+            return False
+        s = x.scored
+        thr = float(self.cfg.get("redzone_mode.hot_heat", 0.5)) if heat is None else heat
+        return s.league.base == League.NFL and not s.garbage and s.factors.get("drive_heat", 0.0) >= thr
+
+    def _hot_live(self, cands: dict[str, Candidate]) -> str | None:
+        """[redzone mode] A watchable NFL game in scoring position (redzone_mode.live_first_heat) whose next
+        snap isn't behind a break: no catch-up replay then, the live drive comes first."""
+        thr = float(self.cfg.get("redzone_mode.live_first_heat", 0.75))
+        for gid, x in cands.items():
+            if (gid != REDZONE and x.target and not x.stale and gid not in self.user.muted and self._is_hot(x, thr)
+                    and not x.scored.is_break and gid not in self._screen_break):
+                return gid
+        return None
+
+    def _nfl_priority(self, cands: dict[str, Candidate]) -> dict[str, Candidate]:
+        """[redzone mode] While an NFL drive is alive (Scored.factors["drive_heat"], scoring/drive.py),
+        other sports' non-crunch moments rank under it. Never touches crunch time, your teams/bets,
+        your focus game, or NFL games themselves (their own heat already orders them)."""
+        c = self.cfg
+        if not c.get("redzone_mode.enabled", True) or not c.get("redzone_mode.nfl_priority", True):
+            return cands
+        thr = float(c.get("redzone_mode.hot_heat", 0.5))
+        hot = [x.scored.score for gid, x in cands.items()
+               if gid != REDZONE and x.target and not x.stale and gid not in self.user.muted
+               and x.scored.league.base == League.NFL and not x.scored.garbage
+               and x.scored.factors.get("drive_heat", 0.0) >= thr]
+        if not hot:
+            return cands
+        ceiling = max(hot) - float(c.get("redzone_mode.priority_gap", 15))
+        keep = c.get("decider.crunch.hold_personal", 5)
+        out = {}
+        for gid, x in cands.items():
+            s = x.scored
+            if (s.league.base == League.NFL or s.crunch or s.lock in CRUNCH_LOCKS or s.personal >= keep
+                    or gid == self.user.focus_game or s.score <= ceiling):
+                out[gid] = x
+                continue
+            out[gid] = replace(x, scored=replace(s, score=max(0.0, ceiling), tags=s.tags + ["NFL drive on"]))
+        return out
+
     def _with_redzone(self, cands: dict[str, Candidate], target: str | None) -> dict[str, Candidate]:
         """Add RedZone as a candidate while it's on the air and you have it turned on."""
         if not target or not self.cfg.get("decider.redzone_channel", False):
             return cands
-        return {**cands, REDZONE: Candidate(redzone_scored(self.cfg.get("decider.redzone_score", 45)), target)}
+        score = self.cfg.get("decider.redzone_score", 45)
+        if self.cfg.get("redzone_mode.enabled", True):
+            # [redzone mode] RedZone is showing the hottest drive too: it gets the same drive-heat lift,
+            # so a hot drive alone doesn't pull us off a commercial-free whip-around we can leave any time.
+            heat = max((x.scored.factors.get("drive_heat", 0.0) for x in cands.values()
+                        if x.scored.league.base == League.NFL and not x.scored.garbage), default=0.0)
+            score += float(self.cfg.get("redzone_mode.heat_points", 8)) * heat
+        return {**cands, REDZONE: Candidate(redzone_scored(score), target)}
 
     def _gate(self, cur: Candidate, now: float) -> Gate | None:
         """Can we leave what's on screen? RedZone is a whip-around: there's no play of ours to cut."""

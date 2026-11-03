@@ -12,6 +12,8 @@ Real-world messiness (all off by default; see backtest.run):
     --late-plays [FRAC]  this fraction of plays arrive a poll late / out of order (0.15)
     --no-wallclock [FRAC]  this fraction of plays come without a wallclock (0.5)
     --seed N             which random draw of the above
+    --no-redzone         no NFL RedZone channel (Sunday Ticket off): the app's own whip-around only
+    --set KEY=VALUE      override one config value for the run (repeatable)
 
 Targets: mid_play_cuts 0 (hard), dead_air_pct -> 0, big_seen_pct -> 100,
 crunch_live_pct as high as physically possible, your_team_crunch_live_pct 100.
@@ -23,6 +25,8 @@ import json
 import sys
 import time
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -54,10 +58,22 @@ def main():
     ap.add_argument("--late-plays", type=float, nargs="?", const=0.15, default=0.0)
     ap.add_argument("--no-wallclock", type=float, nargs="?", const=0.5, default=0.0)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--no-redzone", action="store_true", help="no RedZone channel: our own whip-around only")
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    help="override a config value for this run, e.g. redzone_mode.enabled=false")
     a = ap.parse_args()
     knobs = dict(true_delay=a.true_delay, sigma=a.sigma, lag_jitter=(3.0, 25.0) if a.lag_jitter else None,
                  drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed)
     cfg = Config(user_path=ROOT / "data/config.yaml")
+    if a.no_redzone:
+        cfg.data["sunday_ticket"] = False
+    for kv in a.set:
+        key, _, val = kv.partition("=")
+        node = cfg.data
+        *path, last = key.split(".")
+        for part in path:
+            node = node.setdefault(part, {})
+        node[last] = yaml.safe_load(val)
     t0 = time.time()
     tot = dict(big=0, seen=0, live=0, cuts=0, dead=0.0, watched=0.0, crunch=0, crunch_live=0,
                my_crunch=0, my_crunch_live=0, switches=0, hours=0.0, my_big=0, my_seen=0, blackout=0.0,

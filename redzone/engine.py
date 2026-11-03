@@ -24,6 +24,7 @@ from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook,
 from redzone.models import GameState, League, Phase
 from redzone.plan import Tonight
 from redzone.scoring import breaks
+from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal, Scored, Scorer
 from redzone.sources import espn, fastcast, leagues
 from redzone.sources.http import Fetcher
@@ -50,7 +51,7 @@ class Engine:
         self.channels = ChannelMap()
         self.fetcher = Fetcher()
         self.merger = Merger()
-        self.scorer = Scorer(self.cfg)
+        self.scorer = DriveScorer(self.cfg)
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"))
         try:   # every "I just saw it" from the last 30 days: a restart keeps tonight's taps
             self.delays.load(self.store.calibrations(since=time.time() - TAP_HISTORY_S))
