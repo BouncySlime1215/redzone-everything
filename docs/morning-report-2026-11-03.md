@@ -33,17 +33,17 @@ with 0 mid-play cuts and nothing important getting worse. Anything mixed stays o
 
 ## Your call: fix NHL mid-play entries?
 
-On branch `entry-wait-cap`: in hockey, when switching to a game, wait for the next whistle before the picture comes up, except when switching into crunch time (never delayed).
+Branch `nhl-entry-timing`, ready to merge: in hockey, a switch waits for the next whistle before the picture comes up. Switches into crunch time and the night's first pick never wait. It's a setting (`decider.entry.hold_only: [nhl]`; set `[]` to turn it off).
 
 | NHL, 14 nights | Today | With it |
 |---|---|---|
-| Entries in mid-play | 165 | **15** (fewer on every night) |
-| Crunch time seen live | 87.5% | 88.3% |
+| Entries in mid-play | 165 | **12** |
+| Crunch time seen live | 87.5% | 87.5% |
 | Dead air | 24.8% | 24.6% |
-| Big plays seen | 99.7% | 99.2% (3 of 631 lost, one each on 3 nights) |
-| Big plays seen live | 41.5% | 40.6% |
+| Big plays seen | 99.7% | 99.5% (1 of 631: a goal today's code only catches in a later catch-up replay) |
+| Big plays seen live | 41.5% | 41.0% (3 of 631) |
 
-It isn't a clear win under tonight's rule (nothing important worse), so it's not merged. Say "merge NHL entry timing" and I'll build it properly behind a setting and ship it.
+NBA is unchanged. It isn't a clean sweep (3 goals seen on a short delay instead of live), so it isn't merged yet. Say "merge NHL entry timing" and I'll run the full tests on the main code and ship it.
 
 ## Scorecard pitfalls, fixed
 
@@ -57,7 +57,7 @@ Two more at 5:40 AM:
 
 ## Found and fixed tonight
 
-- **Today's code enters NBA games mid-play 50 times and NHL 163 times** across the test nights (the new `entries_mid_play` scorecard). This is the "cuts in mid-play" you saw, and it's the top item for the next round. As of 5:55 AM it's NBA 36 (see "Live now"), and NHL could be 15 (see "Your call").
+- **Today's code enters NBA games mid-play 50 times and NHL 163 times** across the test nights (the new `entries_mid_play` scorecard). This is the "cuts in mid-play" you saw, and it's the top item for the next round. As of 5:55 AM it's NBA 36 (see "Live now"), and NHL could be 12 (see "Your call").
   - With cut timing on everywhere, mid-play entries dropped to **0**, but it held switches for about 69 s of dead time per entry, and that cost crunch plays elsewhere.
   - Most NBA games are on **Prime (League Pass), which can't rewind live**, so it can't back up to the free throw the way YouTube TV can. Short rewinds only (20 s or less, never waiting) never found a clean landing.
   - A test for the Prime pause idea (a, below) is written and ready to run tonight with a live Prime game on the off-screen stick. It checks whether pause works on live Prime, whether play resumes from the paused point, and how fast.
