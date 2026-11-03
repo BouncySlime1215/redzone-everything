@@ -20,7 +20,7 @@ scorecard must report `"eval_data": "eval-data-v1"`. Nobody copies archives from
    combination worse.
 3. Merge #2 right after #14, and keep it inside the scorecard checks. The user chose "Keep drive
    gain, 9.7 % dead air" on #2's decision card at 17:06. Then re-measure #4.
-4. Merge #11 → #8 (sync, after the DECISION review of screen.py), then #5, #6, #9.
+4. Merge #8 (sync; rebased on f2a494d, green at 163c61c, 1385 tests, scorecards identical to base) once the DECISION review of screen.py is done. Then #15 (platform; green, scorecards unchanged), #5, #6 and #9.
 5. Engine glue: build `WorldState` in `Engine.decide` and fill `Screen.switch_in_flight` with
    `trace.switch_id(cmd_ts)` (from #10).
 
