@@ -58,7 +58,12 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-
+- **2026-11-03 4:48 PM ET.** Live service: this MORNING's code (deploy tonight).
+- **integration/next:** green, last merge #33 FastCast check. Open PRs: #13 #16 #18 #20 #23 #24 #26 #30 #34 #35. `integration/release` isn't cut yet (due by 7 PM).
+- **Kaggle round 1, V2:** running ~1 h 55 m; teacher at 5,120 of 81,372. ETA ~1 AM.
+- **Kaggle round 2:** rz_code.tar.gz was refreshed on kaggle-inputs. Re-upload it as a new version of nickmatta/redzone-code right before round 2.
+- **Usage:** 45%, on pace (<=55% by 10 PM, ~89% at 5 PM Wed).
+- **Waiting on Nick tonight:** docs/tonight-checklist.md. **Wed 5 PM:** new account (docs/new-environment.md).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
