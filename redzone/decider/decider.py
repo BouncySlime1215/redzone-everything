@@ -1095,10 +1095,10 @@ class Decider:
 
     # ----- crunch time ----------------------------------------------------------
 
-    @staticmethod
-    def _crunch_rank(s: Scored) -> tuple:
-        """When crunch times overlap: your teams and bets first, then the closest score, then the moment."""
-        return (round(s.personal), s.closeness, s.score)
+    def _crunch_rank(self, s: Scored) -> tuple:
+        """When crunch times overlap: your teams and bets first, then the league order
+        (core.league_priority: NFL > CFB > NBA > ...), then the closest score, then the moment."""
+        return (round(s.personal), core.league_rank(s.league.value, self.core.k), s.closeness, s.score)
 
     def _crunch_pick(self, watchable: dict[str, Candidate], exclude: str | None = None) -> str | None:
         """The crunch game to be on. Breaks included: a stoppage is the time to get there."""
@@ -1118,6 +1118,9 @@ class Decider:
         dp = p.personal - s_cur.personal
         if abs(dp) >= self.cfg.get("decider.crunch.personal_lead", 5):
             return dp > 0   # your team (then your bet) wins an overlap outright
+        lp, lc = (core.league_rank(x.league.value, self.core.k) for x in (p, s_cur))
+        if lp != lc:
+            return lp > lc  # [core] the league order decides between crunch times; the other gets a replay after
         # Two crunches, same tier: hop only while this one is stopped and that one is live, so its
         # next snap airs first. Never for the last few seconds of a stoppage.
         return on_break and not p.is_break and pick not in self._screen_break and \

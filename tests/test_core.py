@@ -68,3 +68,23 @@ def test_knobs_read_existing_decider_keys():
             return super().get(k, d)
     k = Knobs.from_cfg(Cfg({"decider.switch_margin": 7, "core.dead_air_penalty": 3}))
     assert k.switch_margin == 7 and k.dead_air_penalty == 3 and k.visit_min == 25
+
+
+def test_league_priority_nfl_cfb_nba_then_rest():
+    r = [core.league_rank(lg, K) for lg in ("nfl", "cfb", "nba", "nhl", "mlb")]
+    assert r == sorted(r, reverse=True) and core.league_rank("xyz", K) == 0
+
+
+def test_plan_advances_on_done_and_completes():
+    from redzone.decider.core import Plan, PlanStep
+    st = state("a", opt("a", 80), opt("b", 70))
+    flag = {"a_over": False}
+    p = Plan("crunch overlap", [
+        PlanStep(Action("stay", "a"), "crunch_over:a", lambda s: flag["a_over"], prepare=("b",)),
+        PlanStep(Action("reel", "reel:b"), "reel_done", lambda s: True),
+        PlanStep(Action("switch", "b"), "dead_ball:b")], created_at=0.0)
+    assert p.advance(st).action.verb == "stay" and p.step.prepare == ("b",)
+    flag["a_over"] = True
+    assert p.advance(st).action.target == "b"   # reel step finishes at once here
+    p.i += 1
+    assert p.advance(st) is None

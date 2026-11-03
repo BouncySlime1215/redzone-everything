@@ -159,6 +159,7 @@ core:                      # the decision core's expected-value knobs (redzone/d
   break_risk: 0.0          # 0..1: discount a destination by the brain's chance it goes to break soon
   lock_in_step: 10.0       # friction added per reasoner lock_in level to leave a game
   reel_margin_s: 5.0       # the catch-up reel must fit its break with this much to spare
+  league_priority: [nfl, cfb, nba, cbb, wcbb, nhl, mlb]   # overlapping crunch times: first listed wins (after your team / bet)
 
 fantasy:                   # ESPN fantasy football (leave league_id empty to turn off)
   league_id: ""

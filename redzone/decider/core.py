@@ -180,6 +180,42 @@ class Action:
         return self.ev - self.ev_stay if self.margin is None else self.margin
 
 
+@dataclass
+class PlanStep:
+    """One step of a multi-step plan. `until` names what ends it, for the trace and the phone;
+    `done` is the test the core runs each tick (None: one tick)."""
+    action: Action
+    until: str = ""                       # e.g. "crunch_over:<gid>", "reel_done", "dead_ball:<gid>"
+    done: Callable[[CoreState], bool] | None = None
+    prepare: tuple[str, ...] = ()         # targets to start on the hidden stick now (time-shifted)
+
+
+@dataclass
+class Plan:
+    """A sequence the core follows across ticks, e.g. Nick's crunch overlap:
+    [watch A live until A's crunch ends] -> [catch-up reel of B] -> [tune B in at a dead ball],
+    with B started time-shifted on the other stick during step 1.
+
+    The core re-checks a plan every tick: each step's action still goes through the guards (never a
+    mid-play cut), and the plan is dropped (adapt on the fly) when its ev falls below the best one-shot
+    action by more than Knobs.switch_margin."""
+    name: str
+    steps: list[PlanStep]
+    created_at: float
+    ev: float = 0.0
+    i: int = 0
+
+    @property
+    def step(self) -> PlanStep | None:
+        return self.steps[self.i] if self.i < len(self.steps) else None
+
+    def advance(self, state: CoreState) -> PlanStep | None:
+        """Move past every finished step; the step to act on now (None: plan complete)."""
+        while (st := self.step) is not None and st.done is not None and st.done(state):
+            self.i += 1
+        return self.step
+
+
 # --------------------------------------------------------------------------- the one function
 
 @dataclass(frozen=True)
@@ -195,6 +231,8 @@ class Knobs:
     reel_margin_s: float = 5.0         # reel must fit with this much to spare (both trips included)
     break_value_frac: float = 1.0      # how much of an on-break game's value still counts
     return_tolerance: float = 5.0      # decider.return_tolerance: go back if within this many points
+    # Nick, Nov 3: when crunch times overlap, NFL > CFB > NBA > the rest. Your team / bet still comes first.
+    league_priority: tuple = ("nfl", "cfb", "nba", "cbb", "wcbb", "nhl", "mlb")
 
     @classmethod
     def from_cfg(cls, cfg) -> "Knobs":
@@ -211,7 +249,8 @@ class Knobs:
                    locked_override_lead=float(g("decider.locked_override_lead", d.locked_override_lead)),
                    reel_margin_s=float(g("core.reel_margin_s", d.reel_margin_s)),
                    break_value_frac=float(g("core.break_value_frac", d.break_value_frac)),
-                   return_tolerance=float(g("decider.return_tolerance", d.return_tolerance)))
+                   return_tolerance=float(g("decider.return_tolerance", d.return_tolerance)),
+                   league_priority=tuple(g("core.league_priority", None) or d.league_priority))
 
 
 def rate(o: Option, k: Knobs) -> float:
@@ -228,6 +267,12 @@ def rate(o: Option, k: Knobs) -> float:
     if k.break_risk and o.brk.break_soon_p > 0:
         v -= k.break_risk * o.brk.break_soon_p * (v + k.dead_air_penalty)
     return v
+
+
+def league_rank(league: str, k: Knobs) -> int:
+    """Higher = shown first when crunch times overlap. Unlisted leagues rank below every listed one."""
+    lp = [x.lower() for x in k.league_priority]
+    return len(lp) - lp.index(league) if league in lp else 0
 
 
 def window_value(o: Option, k: Knobs, seconds: float) -> float:
