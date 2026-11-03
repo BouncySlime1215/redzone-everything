@@ -6,7 +6,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [codex/resume-redzone, integration/next]
+    branches: [codex/resume-redzone, integration/next, integration/release]
   workflow_dispatch:
 
 permissions:
@@ -22,7 +22,7 @@ env:
   EVAL_DATA_ASSET: eval-archive.tgz
   PYTHONDONTWRITEBYTECODE: "1"
   # The integration train gets every scorecard in full; other PRs get the fast smoke slice.
-  RZ_SCORECARD_FULL: ${{ (github.base_ref == 'integration/next' || github.ref == 'refs/heads/integration/next' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
+  RZ_SCORECARD_FULL: ${{ (github.base_ref == 'integration/next' || github.ref == 'refs/heads/integration/next' || github.ref == 'refs/heads/integration/release' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
 
 jobs:
   lint:
