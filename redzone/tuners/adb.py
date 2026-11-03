@@ -391,8 +391,11 @@ class Stick:
         """Provably still on `target`, live: we tuned it there, nothing has been pressed or launched
         since, and the app's playback clock shows no pause, seek or new stream since our tune."""
         t = self.tuned
-        return bool(t and t["target"] == target and playback_ready(report)
-                    and report.get("pkg") == t["pkg"] and same_stream(t["report"], report) is True)
+        if not (t and t["target"] == target and playback_ready(report) and report.get("pkg") == t["pkg"]):
+            return False
+        # Live players run a touch fast to catch up (Prime/Sye: ~1%, Nov 2): allow 2% of the elapsed time.
+        elapsed = (report.get("updated") or 0) - (t["report"].get("updated") or 0)
+        return same_stream(t["report"], report, slack_ms=3000 + int(0.02 * max(0, elapsed))) is True
 
 
 def hdmi_port_from_dump(text: str) -> str | None:

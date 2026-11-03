@@ -411,13 +411,42 @@ class PrimeTuner(Tuner):
                 if len(done) < 2 and not (live_pressed and not done) and await self._on_detail_page(stick):
                     if may_cut is not None and not may_cut():
                         break
-                    # The detail page is in front, so whatever was playing is gone from the screen.
-                    # Prime reports every live game as the same "PrimeVideo" session on a wall-clock
-                    # position, so without this a stick already on a Prime game never confirms the next.
-                    watch.gap = True
                     await stick.key("KEYCODE_DPAD_CENTER")
                     steps.append("pressed: watch (focused button)" if not done else "pressed: watch live (panel)")
         return await super()._confirm(stick, pkg, steps, watch, may_cut)
+
+    _PLAYERS = ("IgnitionActivity", "PlaybackActivity")
+
+    async def _player_token(self, stick: Stick) -> str | None:
+        """Prime's player screen in front, as its ActivityRecord id; None when it isn't."""
+        r = await stick.shell("dumpsys activity activities | grep -m1 mResumedActivity", timeout=5)
+        out = r.out if r.ok else ""
+        if "com.amazon.firebat" not in out or not any(p in out for p in self._PLAYERS):
+            return None
+        m = re.search(r"ActivityRecord\{(\w+)", out)
+        return m.group(1) if m else "player"
+
+    async def tune(self, stick: Stick, ref: str, target: str, **kw):
+        # Prime reports every live game as one "PrimeVideo" session on a wall-clock position, and
+        # the game already playing keeps running behind the detail page (Nov 2): "playing" alone
+        # would confirm the OLD game. A new game is a new player screen (a new ActivityRecord).
+        self._before_player = getattr(self, "_before_player", {})
+        self._before_player[stick.host] = await self._player_token(stick)
+        return await super().tune(stick, ref, target, **kw)
+
+    async def _watch_for(self, stick: Stick, pkg: str, watch: NewStream, seconds: float) -> bool:
+        end = time.monotonic() + seconds
+        before = getattr(self, "_before_player", {}).get(stick.host)
+        while True:
+            pb = await stick.playback(pkg)
+            if playback_ready(pb):
+                token = await self._player_token(stick)
+                if token and token != before:
+                    watch.report = pb
+                    return True
+            if time.monotonic() >= end:
+                return False
+            await asyncio.sleep(self.poll_s)
 
     async def _on_detail_page(self, stick: Stick) -> bool:
         """Prime's detail page/panel is in front (LandingActivity), not its player (Ignition/Playback)."""
