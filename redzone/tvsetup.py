@@ -29,12 +29,25 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import httpx
 
 from redzone import tv as tvmod
 from redzone.autonomy import arp_table, local_network, norm_mac, port_open, samsung_info, scan_port
+
+try:   # the network-aware branch owns find-by-MAC; until it lands, a stub with the same signature
+    from redzone.network import find_by_mac  # type: ignore[attr-defined]
+except ImportError:
+    async def find_by_mac(mac: str, subnet: ipaddress.IPv4Network | None = None, probe=None) -> str | None:
+        """Temporary stand-in for redzone.network.find_by_mac: read ARP; if the MAC isn't there,
+        touch the subnet (`probe`, default a TCP sweep of port 8001) to fill ARP, and read again."""
+        want = norm_mac(mac)
+        hit = next((ip for ip, m in arp_table().items() if m == want), None)
+        if hit or subnet is None:
+            return hit
+        await (probe(subnet) if probe is not None else scan_port(subnet, 8001))
+        return next((ip for ip, m in arp_table().items() if m == want), None)
 
 ROOT = Path(__file__).resolve().parent.parent
 DEVICES = ROOT / "data" / "devices.json"
@@ -108,12 +121,8 @@ class Home:
     def mac_network(self) -> ipaddress.IPv4Network | None:
         return local_network()
 
-    async def sweep(self, net: ipaddress.IPv4Network) -> list[str]:
-        # A TCP touch of every address fills the ARP table (like a ping sweep, but needs no root).
-        return await scan_port(net, 8001)
-
-    def arp(self) -> dict[str, str]:
-        return arp_table()
+    async def find_by_mac(self, mac: str, subnet: ipaddress.IPv4Network | None) -> str | None:
+        return await find_by_mac(mac, subnet)
 
     async def port(self, ip: str, port: int) -> bool:
         return await port_open(ip, port, timeout=1.5)
@@ -209,11 +218,12 @@ async def find_tv(home: Home, mac: str, sticks: list[dict], saved_ip: str | None
                      "home network (or on a guest network). Join the sticks' Wi-Fi and run this again.")
         rep.causes.append("wrong subnet")
         return None
+    hit = None
     for n in nets or ([mine] if mine else []):
         rep.say("…", f"Looking for the TV ({mac}) on {n} ...")
-        await home.sweep(n)
-    table = home.arp()
-    hit = next((ip for ip, m in table.items() if m == mac), None)
+        hit = await home.find_by_mac(mac, n)
+        if hit:
+            break
     if hit:
         rep.say(OK, f"Found the TV at {hit} (this Mac's ARP table, MAC {mac})"
                     + ("" if hit == saved_ip else f" — the saved IP {saved_ip} was wrong"))

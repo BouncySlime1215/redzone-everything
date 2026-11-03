@@ -263,7 +263,7 @@ async def test_ambiguous_tv_command_still_completes_by_home_even_if_the_moment_p
     tv_path(c, works=False, ambiguous=True)
     c.on_target = "youtubetv:fox"
     calls = iter([True, True, True, False, False])   # the exit check closes after the TV command
-    out = await c.execute("youtubetv:espn", may_cut=lambda: next(calls, False))
+    await c.execute("youtubetv:espn", may_cut=lambda: next(calls, False))
     # The TV may already show HDMI2: pushing the SAME destination is the only safe follow-up.
     assert homes(c.sticks[1]) and not homes(c.sticks[0])
 

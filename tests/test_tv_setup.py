@@ -35,6 +35,10 @@ class FakeHome(tvsetup.Home):
     def arp(self):
         return self._arp
 
+    async def find_by_mac(self, mac, subnet):
+        await self.sweep(subnet)
+        return next((ip for ip, m in self._arp.items() if m == mac), None)
+
     async def port(self, ip, port):
         return port in self.ports
 

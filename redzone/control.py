@@ -32,7 +32,7 @@ Guardrails:
   SmartThings, whichever scripts/tv_setup.py proved): no HOME, no launcher, no relaunch, and the
   stick we flip to must still be playing right after. Only if that path isn't set up or fails:
   HOME -> active source (polled every ~0.12 s), then the relaunched app must be playing the game
-  (MEDIA_PLAY at once if it comes back paused, then one fresh deep link) before the switch reports;
+  (MEDIA_PLAY, then one fresh deep link) before the switch reports;
   flip_s and resume_s are booked separately for the phone.
 - A stick whose HDMI-CEC is off (scripts/stick_cec.py, so losing the input never pauses it) gets
   CEC switched back on only for a HOME fallback onto it, and off again once the TV shows it.
@@ -165,10 +165,6 @@ class LatencyBook:
     def median(self, key: str) -> float | None:
         s = self.samples.get(key)
         return statistics.median(s) if s else None
-
-    def quantile(self, key: str, q: float) -> float | None:
-        s = sorted(self.samples.get(key) or ())
-        return s[min(len(s) - 1, max(0, math.ceil(len(s) * q) - 1))] if s else None
 
     def note_preloaded(self, app: str, hit: bool) -> None:
         self.preloaded.setdefault(app, deque(maxlen=self.keep)).append(bool(hit))
