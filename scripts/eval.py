@@ -38,7 +38,7 @@ sys.path.insert(0, str(ROOT))
 
 from redzone.config import Config  # noqa: E402
 from redzone.lab.backtest import fmt_time, run  # noqa: E402
-from redzone.lab import evaldata  # noqa: E402
+from redzone.lab import evaldata, splits  # noqa: E402
 from redzone.lab.cutgrade import CutCard  # noqa: E402
 from redzone.lab.optimize import load_slates  # noqa: E402
 
@@ -48,8 +48,14 @@ from redzone.lab.optimize import load_slates  # noqa: E402
 EVAL_END = "20261101"
 
 
-def eval_set(n=16, end=None):
-    slates = load_slates(ROOT / "data/archive/nfl", end=end or evaldata.window_end("nfl", EVAL_END))
+def eval_set(n=16, end=None, split="all"):
+    end = end or evaldata.window_end("nfl", EVAL_END)
+    slates = load_slates(ROOT / "data/archive/nfl", end=end)
+    keep = splits.nights_for(ROOT / "data/archive/nfl", split, end)
+    if keep is not None:
+        # [no overfitting] one time split, every slate in it (no sampling): test = the LOCKED set.
+        night = {gid: nt for nt, ids in splits.archive_nights(ROOT / "data/archive/nfl", end).items() for gid in ids}
+        return [s for s in slates if night.get(s[0].gid) in keep]
     # Every slate with Washington in it, then an even spread of the rest.
     wsh = [s for s in slates if any("WSH" in r.matchup.split() for r in s)]
     rest = [s for s in slates if s not in wsh]
@@ -63,6 +69,8 @@ def main():
     ap.add_argument("--slates", action="store_true")
     ap.add_argument("--dead", action="store_true", help="print dead air by cause")
     ap.add_argument("--n", type=int, default=16)
+    ap.add_argument("--split", choices=splits.SPLITS, default="all",
+                    help="grade one time split of the pinned window (redzone/lab/splits.py); test = LOCKED")
     ap.add_argument("--true-delay", type=float, default=None)
     ap.add_argument("--sigma", type=float, default=3.0)
     ap.add_argument("--lag-jitter", action="store_true")
@@ -105,7 +113,7 @@ def main():
                behind=0.0, on_replay=0, drive=0, drive_live=0)
     causes: dict[str, float] = {}
     cut = CutCard()
-    for reps in eval_set(a.n):
+    for reps in eval_set(a.n, split=a.split):
         r = run(reps, cfg, set(cfg.get("teams.nfl")), **knobs)
         tot["big"] += r.big_plays; tot["seen"] += r.big_plays_caught; tot["live"] += r.big_plays_live
         tot["cuts"] += len(r.mid_play_cuts); tot["dead"] += r.dead_air_s; tot["watched"] += r.watched_s
