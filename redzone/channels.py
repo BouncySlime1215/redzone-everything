@@ -280,7 +280,7 @@ class ChannelMap:
 # What to type for each (the channel table's own search name where it works; "WRAL" finds WRAL
 # news, while "NBC" opens the NBC network page whose Live row is the local station, Nov 3).
 SEARCH_QUERY = {"nbc": "NBC"}
-SEARCH_CHANNELS = frozenset({"nbcsn", "nbc"})   # both proven on the stick (Nov 3). Not yet: NHL Network (lineup unknown)
+SEARCH_CHANNELS = frozenset({"nbcsn", "nbc"})   # both proven on the stick (Nov 3). Not yet: NHL Network (not in this lineup: Sports Plus add-on)
 
 YTTV_LINK = re.compile(r"tv\.youtube\.com/watch/([A-Za-z0-9_-]{11})")
 

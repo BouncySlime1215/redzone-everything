@@ -48,7 +48,7 @@ Scorecards now read a pinned `data/eval_config.yaml` when it exists, so before/a
 - Peacock games (NBCSN nights) now route to YouTube TV NBCSN first. Peacock is only a last resort.
 - Along the way, fixed two bugs: a word a hair off the screen edge made the text reader reject the whole screen, and a 1–2 pixel shift of the focus ring between screenshots aborted selections.
 - **Local NBC (WRAL) works too:** searching "NBC" opens the NBC network page, and its Live row is your local station ("Early Today, WRAL", 20.0 s).
-- **Not yet:** NHL Network (not sure it's in your lineup).
+- **NHL Network isn't in your YouTube TV plan.** Searching it only shows clips from NHL Network's YouTube channel, with no live channel (it's part of the Sports Plus add-on). Games that are only on NHL Network can't be shown.
 
 ## Still on you
 
