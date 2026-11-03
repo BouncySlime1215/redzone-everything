@@ -216,6 +216,7 @@ class Controller:
         self._home_flipped = False               # the last flip pressed HOME (its app was relaunched)
         self._resume_task: asyncio.Task | None = None   # "did the relaunched app resume?" after a HOME flip
         self._cec_synced_at = 0.0
+        self._adopt_once = True                  # first switch after start may adopt the screen
         self._flip_gen = 0                       # bumped on every flip: a CEC read that spans one is stale
         self._refresh_task: asyncio.Task | None = None   # after a flip: reload the game we left (see _refresh_left)
         self._refreshing: str | None = None      # the target the running preload is refreshing, if it is a refresh
@@ -813,7 +814,22 @@ class Controller:
         return bool(sent and sent.ok)
 
     async def _still_on_visible(self, target: str) -> bool:
-        if self.on_target != target or self.main is None:
+        if self.main is None:
+            return False
+        if self.on_target is None and self._adopt_once and not target.startswith("youtubetv:"):
+            # Just restarted: the screen may already be playing this game (in an app whose deep
+            # links we can't tell apart by channel). Re-tuning it would cut the game mid-play, and a
+            # stick that isn't signed in to that app would fail the switch outright.
+            self._adopt_once = False
+            pkg = self._package(self.main, target)
+            pb = await self.main.playback(pkg)
+            if pkg and pb.get("pkg") == pkg and playback_ready(pb) and (pb.get("title") or pb.get("description")):
+                log.info("adopting what's on screen after a restart: %s (%s)", target, pb.get("title") or pb.get("description"))
+                self.main.remember(target, pb)
+                self.on_target = target
+                return True
+            return False
+        if self.on_target != target:
             return False
         pb = await self.main.playback(self._package(self.main, target))
         return self.main.still_on(target, pb)
