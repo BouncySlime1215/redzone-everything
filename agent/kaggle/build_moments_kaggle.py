@@ -194,7 +194,7 @@ def game_rows(g: dict) -> list[dict]:
     from redzone.models import League
     _college_rules()
     if _CFG is None:
-        pinned = next((p for p in (ROOT / "data/eval_config.yaml", ROOT / "agent/kaggle/data/eval_config.yaml")
+        pinned = next((p for p in (ROOT / "data/eval_config.yaml", ROOT / "agent/kaggle/assets/eval_config.yaml")
                        if p.exists()), ROOT / "data/config.yaml")
         _CFG = Config(user_path=pinned)
     lg = League(g["league"])
@@ -323,7 +323,7 @@ def main() -> None:
     ap.add_argument("--seasons", type=int, default=SEASONS)
     ap.add_argument("--today", default=None, help="YYYYMMDD (default: today, UTC)")
     ap.add_argument("--archive", default=None, help="local test: build from this archive, no network")
-    ap.add_argument("--locked", default=str(ROOT / "agent/kaggle/data/locked_v1.json"))
+    ap.add_argument("--locked", default=str(ROOT / "agent/kaggle/assets/locked_v1.json"))
     ap.add_argument("--workers", type=int, default=max(2, (os.cpu_count() or 4) - 1))
     ap.add_argument("--budget-h", type=float, default=6.0, help="stop downloading new games after this")
     ap.add_argument("--max-games", type=int, default=None, help="per league (tests)")
