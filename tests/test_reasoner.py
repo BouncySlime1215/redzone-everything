@@ -139,7 +139,7 @@ def test_scorer_unchanged_when_off(cfg, clock):
 
 def test_scorer_adds_points_live_not_in_breaks_not_in_garbage(cfg, clock):
     on(cfg, must_points=8, max_points=12)
-    cfg.data["reasoner"]["nfl"]["must_points"] = 8
+    cfg.data["reasoner"]["nfl"].update(must_points=8, by_odds=0)
     live = nfl("g", "KC", "BUF", 7, 10, q=2, clock=500, pos="KC", down=1, dist=10, ytg=50, wp=0.4)
     off_cfg_score = Scorer(cfg, clock=clock, reasoner=Reasoner(cfg, head=FixedHead(0.0))).score(live, ME)
     s = Scorer(cfg, clock=clock, reasoner=Reasoner(cfg, head=FixedHead(0.99))).score(live, ME)
