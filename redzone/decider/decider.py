@@ -91,16 +91,11 @@ def _nhl_ot(s: Scored) -> bool:
     return s.league.base == League.NHL and s.lock == "overtime"
 
 
-_PP_HOLD_K = 2.0
-
-
 def _holds_replays(s: Scored) -> bool:
     """A live moment that a catch-up replay must not be shown instead of. A power play only holds
     the TV once you're on it: on the way somewhere else it competes on score with the replay, or a
     night of power plays would cut every catch-up chain short (Oct 20 replay: 5 goals never seen)."""
-    if s.lock == "power play":
-        return s.closeness >= _PP_HOLD_K
-    return bool(s.lock)
+    return bool(s.lock) and s.lock != "power play"
 
 
 def _nhl_close_third(s: Scored) -> bool:
