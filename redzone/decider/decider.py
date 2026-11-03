@@ -557,6 +557,10 @@ class Decider:
         if plan.ok:
             d.rewind_s = plan.rewind_s
             return d
+        if x is not None and x.scored.league.base.value in (self.cfg.get("decider.entry.no_wait_leagues") or []):
+            # Continuous play: holding a switch for a dead ball missed more than it saved (scorecards,
+            # Nov 3); enter live unless a rewind lands it clean (decided above).
+            return d
         # Not yet: whatever the switch planned (a visit's way home) waits with it.
         self.home_break_visit, self.home_return_at = home_before
         state = State.REPLAY if self.after_replay else d.state
