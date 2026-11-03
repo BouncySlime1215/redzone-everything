@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import os
 import json
 import logging
 import random
@@ -210,6 +211,7 @@ class Night:
         self.errors: list[dict] = []
         self.watchdog_rows: list[dict] = []
         self.fault_log: list[dict] = []
+        self.lock_holds: list[tuple[float, float, str]] = []   # every hold of the controller lock
         self.crashed: str | None = None
 
     # ---- setup -----------------------------------------------------------------------
@@ -227,7 +229,7 @@ class Night:
         self.t1 = max(lasts) + 600
         if self.end_s:
             self.t1 = min(self.t1, t0 + self.end_s)
-        self.clock.t0 = self.clock.t = t0
+        self.clock.reset(t0)
         self.live_windows = [(r.wall[0] - t0, r.wall[-1] - t0 + 120) for _, r in self.games
                              if r.wall[-1] > t0 and r.wall[0] < self.t1]
         self.live_windows.sort()
@@ -236,7 +238,6 @@ class Night:
             "mode": {"dry_run": False, "leagues": {"mlb": False, "cbb": False, "wcbb": False}},
             "sunday_ticket": False,
             "reel": {"enabled": False},
-            "delay": {"scorebug": False},
             "autonomy": {"enabled": False},
             "plan": {"verify": False},
         }
@@ -247,6 +248,8 @@ class Night:
             {"host": HOSTS[0], "name": "Fire TV Stick 4K (2023)", "hdmi": "HDMI1"},
             {"host": HOSTS[1], "name": "Fire TV Stick 4K Plus", "hdmi": "HDMI2"}]}))
         h = self.house
+        if os.environ.get("RZ_NIGHT_TRACE"):
+            h.trace = []
         h.add(HOSTS[0], "HDMI1", "Living Room")
         h.add(HOSTS[1], "HDMI2", "Den")
         h.tv.source = h.sticks[HOSTS[0]]
@@ -295,6 +298,7 @@ class Night:
         e.refresh_links = _no_links
         e._keep_awake = lambda live: None
         e.supervisor.luma = houselib.fake_luma
+        e.control._lock = _TimedLock(self.lock_holds)
         self.engine = e
         return e
 
@@ -435,6 +439,12 @@ class Night:
         for t in side + [self.engine_task]:
             t.cancel()
         await asyncio.gather(*side, self.engine_task, return_exceptions=True)
+        with (self.work / "screen.jsonl").open("w") as f:   # what the TV showed, for debugging a report
+            for x in self.house.shown:
+                f.write(json.dumps({"t": round(x.t, 2), "et": _et(x.t), "host": x.host, "target": x.target,
+                                    "what": x.what, "behind": round(x.behind, 1), "cause": x.cause}) + "\n")
+        if self.house.trace is not None:
+            (self.work / "trace.txt").write_text("\n".join(" | ".join(map(str, r)) for r in self.house.trace))
         return grade(self)
 
 
@@ -534,6 +544,34 @@ def _episodes(samples: list[Sample], pred) -> list[tuple[float, float]]:
     return out
 
 
+class _TimedLock(asyncio.Lock):
+    """The controller's lock, recording each hold: (acquired, released, the holder's coroutine).
+    Sampling `locked()` every few seconds can't tell one stuck hold from many short ones."""
+
+    def __init__(self, holds: list):
+        super().__init__()
+        self._holds = holds
+        self._since = None
+        self._who = ""
+
+    async def acquire(self):
+        r = await super().acquire()
+        self._since = time.time()
+        task = asyncio.current_task()
+        coro = task.get_coro() if task else None
+        self._who = getattr(coro, "__qualname__", "") or (task.get_name() if task else "")
+        return r
+
+    def release(self):
+        if self._since is not None:
+            self._holds.append((self._since, time.time(), self._who))
+            self._since = None
+        super().release()
+
+    def held_s(self) -> float:
+        return time.time() - self._since if self._since is not None else 0.0
+
+
 def grade(night: Night) -> dict:
     from redzone.decider.decider import REEL
     e = night.engine
@@ -549,14 +587,18 @@ def grade(night: Night) -> dict:
           {"crashed": night.crashed, "errors": real_errors[:20], "n_errors": len(real_errors)})
     max_switch = float(e.cfg.get("control.max_switch_s", 150))
     pend = max((x.pending_s for x in s), default=0.0)
-    locked = _episodes(s, lambda x: x.locked)
-    long_lock = max((b - a for a, b in locked), default=0.0)
+    holds = list(night.lock_holds)
+    lk = getattr(e.control, "_lock", None)
+    if isinstance(lk, _TimedLock) and lk.locked() and lk._since is not None:
+        holds.append((lk._since, time.time(), lk._who + " (still held)"))
+    long_lock = max((b - a for a, b, _ in holds), default=0.0)
     unknown = _episodes(s, lambda x: x.input_unknown)
     long_unknown = max((b - a for a, b in unknown), default=0.0)
     final = s[-1] if s else None
     check("no_stuck_state", pend <= max_switch + 40 and long_lock <= 180 and long_unknown <= 600
           and final is not None and final.pending_s <= max_switch and not final.input_unknown,
           {"longest_pending_switch_s": round(pend), "longest_controller_lock_s": round(long_lock),
+           "long_locks": [(_et(a), round(b - a), who) for a, b, who in holds if b - a > 60],
            "longest_input_unknown_s": round(long_unknown), "end": final.__dict__ if final else None})
     safe = _episodes(s, lambda x: x.safe)
     check("safe_mode_clears", all(b - a <= 900 for a, b in safe) and (final is None or not final.safe),

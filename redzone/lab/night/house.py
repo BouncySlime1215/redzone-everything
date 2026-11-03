@@ -58,6 +58,10 @@ class Timing:
     cmd: float = 0.03               # a plain shell command over the always-open shell
     uiautomator: float = 1.5
     screencap: float = 1.2
+    # After a pause (HOME flip, input lost, a prompt) YouTube TV resumes where it paused, so the
+    # picture is now behind live by the time it sat paused. True = it jumps to the live edge instead
+    # (an open hardware question: set it to see how the night grades if the stick does that).
+    yttv_resume_live_edge: bool = False
 
 
 @dataclass
@@ -78,6 +82,7 @@ class App:
     prompt: str = ""                # "still_watching" while that prompt is up
     ends_at: float | None = None    # a reel stops by itself
     page_for: str | None = None     # Prime detail page of this target
+    paused_at: float | None = None  # when the player paused (resuming adds the gap to `behind`)
 
 
 class FakeFireTV:
@@ -98,13 +103,32 @@ class FakeFireTV:
         return int((time.monotonic() - self.boot) * 1000) + 1_000_000
 
     def _stamp(self, a: App, state: int, position: int | None = None) -> None:
+        now = time.time()
+        if state == PAUSED:
+            if a.paused_at is None:
+                a.paused_at = now
+        elif a.paused_at is not None and state in (PLAYING, BUFFERING, CONNECTING):
+            # Resuming a paused live stream: it picks up where it stopped, that much behind live.
+            if a.pkg != VLC:
+                a.behind += max(0.0, now - a.paused_at)
+            a.paused_at = None
         a.state, a.updated = state, self.uptime_ms()
         if position is not None:
             a.position = position
 
     def _live_pos(self, a: App) -> int:
-        # A live stream's position: ms of wall clock minus how far behind live it runs.
-        return int((time.time() - a.behind) * 1000) - 1_700_000_000_000
+        """Where a stream that is starting (or jumping) now reports it is. Prime reports a
+        wall-clock position (minus how far behind live it runs); YouTube TV and the reel player
+        count from the start of what they opened, so a fresh tune starts low again."""
+        if a.pkg == PRIME:
+            return int((time.time() - a.behind) * 1000) - 1_700_000_000_000
+        return 15_000 + int(1000 * (self._tok % 7))
+
+    def _now_pos(self, a: App) -> int:
+        """Where it is right now: a playing session moves on with the stick's clock."""
+        if a.state == PLAYING:
+            return a.position + (self.uptime_ms() - a.updated)
+        return a.position
 
     def _token(self) -> str:
         self._tok += 1
@@ -116,6 +140,7 @@ class FakeFireTV:
         for a in self.apps.values():
             if a.ready_at is not None and now >= a.ready_at and a.screen == "player" and not a.prompt:
                 a.ready_at = None
+                self._tok += 1
                 self._stamp(a, PLAYING, self._live_pos(a))
             if a.ends_at is not None and now >= a.ends_at and a.state == PLAYING:
                 a.ends_at = None
@@ -167,7 +192,10 @@ class FakeFireTV:
                     break
         self.tick()
         self.house.observe()
-        return ok, "\n".join(o for o in outs if o)
+        out = "\n".join(o for o in outs if o)
+        if self.house.trace is not None:
+            self.house.trace.append((round(time.time(), 2), self.host[-7:], cmd[:110], out[-600:].replace("\n", " / ")))
+        return ok, out
 
     def _one(self, cmd: str) -> tuple[bool, str]:
         cmd = re.sub(r"\s*[12]?>\s*/dev/null(\s+2>&1)?|\s+2>&1", "", cmd).strip()
@@ -282,16 +310,16 @@ class FakeFireTV:
                 self._stamp(a, PLAYING, a.position)
         elif k == "MEDIA_PAUSE":
             if a.screen == "player" and a.state == PLAYING:
-                self._stamp(a, PAUSED, a.position)
+                self._stamp(a, PAUSED, self._now_pos(a))
         elif k == "MEDIA_REWIND":
             if a.screen == "player" and a.state in (PLAYING, PAUSED) and a.pkg == YTTV:
                 a.behind += float(self.house.seek_step)
-                self._stamp(a, a.state, self._live_pos(a))
+                self._stamp(a, a.state, max(1000, self._now_pos(a) - int(1000 * self.house.seek_step)))
 
     def _center(self, a: App) -> None:
         if a.prompt:
             a.prompt = ""
-            self._stamp(a, PLAYING, self._live_pos(a))
+            self._stamp(a, PLAYING, self._now_pos(a))
             self.house.event("prompt_cleared", self.host, a.target)
         elif a.pkg == PRIME and a.screen == "detail":
             target = a.page_for
@@ -302,13 +330,13 @@ class FakeFireTV:
         elif a.pkg == PRIME and a.screen == "panel":
             self._prime_player(a, a.page_for, self.house.timing.prime_live)
         elif a.screen == "player" and a.state == PLAYING:
-            self._stamp(a, PAUSED, a.position)      # OK in a player pauses it
+            self._stamp(a, PAUSED, self._now_pos(a))      # OK in a player pauses it
             self.house.event("center_paused_player", self.host, a.target)
         elif a.screen == "player" and a.state == PAUSED:
             self._stamp(a, PLAYING, a.position)
 
     def _prime_player(self, a: App, target: str | None, load_s: float) -> None:
-        a.screen, a.target, a.behind, a.prompt = "player", target, 0.0, ""
+        a.screen, a.target, a.behind, a.prompt, a.paused_at = "player", target, 0.0, "", None
         a.token = self._token()
         a.ready_at = time.time() + max(0.5, load_s)
         self._stamp(a, CONNECTING, 0)
@@ -319,14 +347,14 @@ class FakeFireTV:
                 pass                       # Prime's player keeps running in the background
             else:
                 a.ready_at = None
-                self._stamp(a, PAUSED, a.position)
+                self._stamp(a, PAUSED, self._now_pos(a))
 
     def lost_input(self) -> None:
         """The TV went to the other stick: YouTube TV pauses, Prime keeps playing."""
         a = self.apps.get(self.fg)
         if a is not None and a.pkg == YTTV and a.screen == "player" and a.state in (PLAYING, BUFFERING):
             a.ready_at = None
-            self._stamp(a, PAUSED, a.position)
+            self._stamp(a, PAUSED, self._now_pos(a))
 
     # ---- app launches -----------------------------------------------------------------
     def _am(self, cmd: str) -> tuple[bool, str]:
@@ -358,16 +386,17 @@ class FakeFireTV:
                 # In the background: Android brings the task forward; the app keeps its own link.
                 if a.screen == "player":
                     a.prompt = ""
-                    a.behind = 0.0
+                    if self.house.timing.yttv_resume_live_edge:
+                        a.behind, a.paused_at = 0.0, None
                     a.ready_at = time.time() + self.house.timing.yttv_resume
-                    self._stamp(a, BUFFERING, a.position)
+                    self._stamp(a, BUFFERING, self._now_pos(a))
                 return True, ("Starting: Intent { act=android.intent.action.VIEW }\n"
                               "Warning: Activity not started, its current task has been brought to the front")
-            a.task, a.screen, a.url, a.target, a.behind, a.prompt = True, "player", url, target, 0.0, ""
+            a.task, a.screen, a.url, a.target, a.behind, a.prompt, a.paused_at = True, "player", url, target, 0.0, "", None
             a.subtitle = self.house.channel_name(target)
             a.title = self.house.show_title(target)
             a.ready_at = time.time() + self.house.timing.yttv_tune
-            self._stamp(a, BUFFERING, a.position)
+            self._stamp(a, BUFFERING, self._now_pos(a))
             return True, "Starting: Intent { act=android.intent.action.VIEW }"
         if pkg == PRIME:
             a.task = True
@@ -382,7 +411,7 @@ class FakeFireTV:
                 a.screen = "detail"
             return True, "Starting: Intent { act=android.intent.action.VIEW }"
         if pkg == VLC:
-            a.task, a.screen, a.url, a.target, a.behind, a.prompt = True, "player", url, target, 0.0, ""
+            a.task, a.screen, a.url, a.target, a.behind, a.prompt, a.paused_at = True, "player", url, target, 0.0, "", None
             a.title, a.subtitle = "reel.mp4", ""
             a.ready_at = time.time() + self.house.timing.reel_load
             a.ends_at = time.time() + self.house.timing.reel_load + self.house.reel_seconds
@@ -426,6 +455,7 @@ class House:
     shown: list[Shown] = field(default_factory=list)
     events: list[tuple[float, str, str, str | None]] = field(default_factory=list)
     active_faults: dict[str, set] = field(default_factory=dict)
+    trace: list | None = None                                  # every shell command, when tracing
 
     def __post_init__(self):
         self.tv = FakeTV(self)
@@ -443,7 +473,10 @@ class House:
         return bool(s) and (host is None or host in s or "*" in s)
 
     def fault_done(self, kind: str, host: str) -> None:
-        self.active_faults.get(kind, set()).discard(host)
+        """A one-shot fault fired (on this host, or on any host for a "*" fault)."""
+        s = self.active_faults.get(kind, set())
+        s.discard(host)
+        s.discard("*")
 
     def event(self, kind: str, host: str, detail: str | None = None) -> None:
         self.events.append((time.time(), kind, host, detail))

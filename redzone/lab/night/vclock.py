@@ -25,14 +25,26 @@ class VirtualClock:
 
     def __init__(self, t0: float):
         self.t0 = float(t0)
-        self.t = float(t0)
+        self.dt = 0.0            # seconds since t0, kept small so tiny steps don't vanish in a big float
         self.skew = 0.0          # a fault can skew the wall clock only (NTP jump); monotonic never jumps
 
+    @property
+    def t(self) -> float:
+        return self.t0 + self.dt
+
+    @t.setter
+    def t(self, value: float) -> None:
+        self.dt = float(value) - self.t0
+
+    def reset(self, t0: float) -> None:
+        """Start the night at t0 (only before anything has scheduled a timer)."""
+        self.t0, self.dt = float(t0), 0.0
+
     def time(self) -> float:
-        return self.t + self.skew
+        return self.t0 + self.dt + self.skew
 
     def monotonic(self) -> float:
-        return self.MONO0 + (self.t - self.t0)
+        return self.MONO0 + self.dt
 
     def time_ns(self) -> int:
         return int(self.time() * 1e9)
@@ -42,7 +54,8 @@ class VirtualClock:
 
     def advance(self, dt: float) -> None:
         if dt > 0:
-            self.t += dt
+            # At least a microsecond: asyncio rounds a timer due "now" to a few ns of timeout.
+            self.dt += max(dt, 1e-6)
 
 
 CLOCK: VirtualClock | None = None
@@ -52,7 +65,7 @@ def install(t0: float) -> VirtualClock:
     """Replace time.time / monotonic (and their _ns twins) with the virtual clock, process-wide."""
     global CLOCK
     if CLOCK is not None:
-        CLOCK.t0 = CLOCK.t = float(t0)
+        CLOCK.reset(t0)
         return CLOCK
     CLOCK = VirtualClock(t0)
     _time.time = CLOCK.time

@@ -123,9 +123,17 @@ def from_spec(spec: dict) -> Fault:
 def default(rng: random.Random, live_windows: list[tuple[float, float]]) -> list[Fault]:
     """The I4 night: everything the user listed, at seeded times while games are live.
     live_windows are (start, end) offsets from the night's start when something is live."""
+    def live(t: float) -> int:
+        return sum(1 for lo, hi in live_windows if lo + 300 <= t <= hi - 600)
+
     def when(lo_frac: float, hi_frac: float) -> float:
-        a, b = live_windows[0][0], live_windows[-1][1]
-        return a + (b - a) * rng.uniform(lo_frac, hi_frac)
+        """A seeded time in this part of the night when at least one game is well under way."""
+        a, b = live_windows[0][0], max(hi for _, hi in live_windows)
+        for _ in range(200):
+            t = a + (b - a) * rng.uniform(lo_frac, hi_frac)
+            if live(t):
+                return t
+        return t
     faults: list[Fault] = []
     # Random stick drops: short blips on either stick, a few per night.
     for i in range(4):
