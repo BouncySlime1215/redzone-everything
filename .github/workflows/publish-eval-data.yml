@@ -1,0 +1,27 @@
+# Lives only on the eval-data branch: publishes the pinned eval snapshot committed here as a
+# GitHub release (free). Runs on push to this branch; never replaces an existing release's assets.
+name: publish-eval-data
+on:
+  push:
+    branches: [eval-data]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify checksum
+        run: sha256sum -c eval-archive.tgz.sha256
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: eval-data-v1
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$TAG already exists; not touching it"; exit 0
+          fi
+          gh release create "$TAG" eval-archive.tgz eval-archive.tgz.sha256 \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Eval data v1 (pinned scorecard archive, through 2026-11-01)" --notes-file README.md
