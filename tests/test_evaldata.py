@@ -66,6 +66,12 @@ def test_build_is_deterministic(repo):
     assert line == f"{a['sha256']}  eval-archive.tgz\n"
 
 
+def test_build_refuses_profile_names(repo):
+    (repo / "src/data/eval_config.yaml").write_text("providers:\n  profiles:\n    prime: Someone\n")
+    with pytest.raises(SystemExit, match="providers"):
+        _build(repo)
+
+
 def test_build_refuses_without_eval_config(repo):
     (repo / "src/data/eval_config.yaml").unlink()
     with pytest.raises(SystemExit):

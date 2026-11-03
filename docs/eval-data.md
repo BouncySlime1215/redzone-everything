@@ -34,9 +34,13 @@ On a machine with the archive (the Mac, low priority):
 ```bash
 python scripts/build_eval_data.py --tag eval-data-v2 --out /tmp/evaldata \
   --window nfl:20250905:20261108 --window nba:20261020:20261108 --window nhl:20261019:20261108 --demo 20261101
-gh release create eval-data-v2 /tmp/evaldata/eval-archive.tgz /tmp/evaldata/eval-archive.tgz.sha256 \
-  --repo BouncySlime1215/redzone-everything --title "Eval data v2" --notes "window ..."
 ```
+
+Cloud sessions can't create releases directly, so the release is made by a workflow that lives only on the
+`eval-data` branch (`.github/workflows/publish-eval-data.yml`, free, `GITHUB_TOKEN`): replace
+`eval-archive.tgz`, `eval-archive.tgz.sha256` and README.md on that branch, set `TAG: eval-data-v2` in the
+workflow, push. It checks the sha256 and creates the release only if the tag doesn't exist yet. (With
+release rights, `gh release create eval-data-v2 eval-archive.tgz eval-archive.tgz.sha256` does the same.)
 
 Commit the rewritten `eval-data.lock.json` in its own PR with the new baseline numbers. The build is
 deterministic (same files give the same sha256). Never replace an existing tag's asset: older branches pin it.

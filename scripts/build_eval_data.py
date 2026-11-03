@@ -5,10 +5,9 @@ that copied it). Writes a deterministic tarball + .sha256 and rewrites eval-data
         --window nfl:20250904:20261101 --window nba:20261001:20261101 --window nhl:20261001:20261101 \
         --demo 20261101
 
-Then publish (needs push access; the repo's releases are free):
-    gh release create eval-data-v2 /tmp/evaldata/eval-archive.tgz /tmp/evaldata/eval-archive.tgz.sha256 \
-        --repo BouncySlime1215/redzone-everything --title "Eval data v2" --notes-file /tmp/evaldata/NOTES.md
-and commit the new eval-data.lock.json. Never overwrite an existing tag's asset: old PRs pinned it.
+Then publish it as a release (docs/eval-data.md: push to the eval-data branch, whose workflow creates
+the release) and commit the new eval-data.lock.json. Never overwrite an existing tag's asset: old PRs
+pinned it.
 """
 import argparse
 import gzip
@@ -37,6 +36,10 @@ def build(data: Path, out: Path, tag: str, window: dict, demo_days: list[str]) -
         sys.exit(f"no archive files under {data} in that window")
     if "data/eval_config.yaml" not in files:
         sys.exit(f"{data}/eval_config.yaml is missing: the scorecards would grade on defaults")
+    import yaml
+    if "providers" in (yaml.safe_load((data / "eval_config.yaml").read_text()) or {}):
+        # The snapshot is public: account profile names don't belong in it, and grading never reads them.
+        sys.exit(f"{data}/eval_config.yaml has a providers: block; remove it before publishing")
     base = data.parent
     hashes = {f: evaldata.sha256_file(base / f) for f in files}
     counts = {lg: sum(f.startswith(f"data/archive/{lg}/summary_") for f in files) for lg in window}
