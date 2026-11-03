@@ -543,6 +543,7 @@ class Brain:
         self._models: dict[str, Forest | None] = {}
         self.info: dict[str, dict] = {}
         self._track: dict[str, Tracker] = {}
+        self._broken: set[str] = set()     # leagues whose model failed to predict: rules only from then on
         self._cache: dict[str, tuple[int, Reading]] = {}
         self._timeline: dict[str, list] = {}
 
@@ -572,6 +573,8 @@ class Brain:
         if g is None or not self.enabled or g.phase != Phase.LIVE:
             return EMPTY
         lg = g.league.value
+        if lg in self._broken:
+            return EMPTY
         ms = self.models(lg)
         if ms is None:
             return EMPTY
@@ -594,7 +597,10 @@ class Brain:
         try:
             pred = ms.predict(tr.vector(ms.features), explain=True)
         except Exception:  # noqa: BLE001
-            log.exception("brain: prediction failed for %s", g.game_id)
+            # A loadable but broken model fails the same way on every poll of every game: log it once
+            # per league, then drop that league's model so the hand-written rules carry on.
+            log.exception("brain: prediction failed for %s; using the rules for %s from now on", g.game_id, lg)
+            self._broken.add(lg)
             return EMPTY
         if "break" in pred:
             out.break_soon_p = pred["break"][0]

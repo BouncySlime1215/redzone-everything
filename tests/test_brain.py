@@ -176,3 +176,21 @@ def test_brain_settings_are_validated(cfg):
     assert cfg.get("brain.break_weight") is not None
     with pytest.raises(Exception):
         cfg.update({"brain": {"break_weight": 3}}, record=False)
+
+
+def test_a_model_that_fails_to_predict_is_logged_once_then_skipped():
+    """A loadable but broken model used to log a traceback on every poll of every game."""
+    b = B.Brain()
+    b.enabled = True
+    calls = {"n": 0}
+
+    class Bad:
+        features, rates = [], {}
+
+        def predict(self, *a, **k):
+            calls["n"] += 1
+            raise ValueError("bad model")
+    b.models = lambda lg: Bad()
+    for i in range(4):
+        assert b.read(live(pid=str(i), clock=100.0 - i)) is B.EMPTY
+    assert calls["n"] == 1
