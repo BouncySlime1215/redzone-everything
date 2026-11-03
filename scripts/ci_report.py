@@ -93,7 +93,8 @@ def delta_cell(h, b, direction) -> str:
 
 
 def card_kind(name: str) -> str:
-    return "demo" if name.startswith("demo") else name
+    """The headline set for a card: demo_<day> -> demo, <league>_resync -> <league>."""
+    return "demo" if name.startswith("demo") else name.removesuffix("_resync")
 
 
 def scorecard_section(head: dict, base: dict | None) -> tuple[list[str], list[str]]:

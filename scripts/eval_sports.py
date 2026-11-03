@@ -69,13 +69,15 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--channel-spread", type=float, default=0.0)   # [per-channel delay] see scripts/eval.py
     ap.add_argument("--history", type=float, default=0.0)
     ap.add_argument("--delay-model", choices=("channel", "legacy"), default=None)
+    ap.add_argument("--resync", action="store_true",
+                    help="model live Kalman re-sync on every tune (backtest.run resync)")
 
 
 def knobs(a: argparse.Namespace) -> dict:
     return dict(true_delay=a.true_delay, sigma=a.sigma, lag_jitter=(3.0, 25.0) if a.lag_jitter else None,
                 drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed,
                 channel_spread=getattr(a, "channel_spread", 0.0), history=getattr(a, "history", 0.0),
-                delay_model=getattr(a, "delay_model", None))
+                delay_model=getattr(a, "delay_model", None), resync=getattr(a, "resync", False))
 
 
 def main():

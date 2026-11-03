@@ -11,7 +11,8 @@ others, so one broken league still leaves numbers for the rest.
 
 PRs into `integration/next` (and pushes to it) run `--full`, the whole merge scorecard.
 The slice (all overridable): NFL `--n 4` slates, NBA and NHL `--nights 3`, and the Nov 1 mixed
-demo. It is a smoke test, not the merge scorecard: numbers are only comparable with another run
+demo. NFL, NBA and NHL also run a second time with `--resync` (live re-sync modelled), as
+`<league>_resync`. It is a smoke test, not the merge scorecard: numbers are only comparable with another run
 of the same slice on the same data, which is exactly what the CI comment shows (PR vs base).
 """
 from __future__ import annotations
@@ -45,6 +46,10 @@ def cards(a) -> list[tuple[str, list[str], Path]]:
     out = [("nfl", ["scripts/eval.py", "--n", str(a.nfl_n)], Path("data/archive/nfl"))]
     for lg in ("nba", "nhl"):
         out.append((lg, ["scripts/eval_sports.py", lg, "--nights", str(a.nights)], Path(f"data/archive/{lg}")))
+    if a.resync:
+        # [auto sync] the same slice with live Kalman re-sync modelled (backtest.run resync), so the
+        # comment shows each scorecard both ways. A base without the flag records an error here.
+        out += [(f"{n}_resync", argv + ["--resync"], need) for n, argv, need in list(out)]
     if a.demo_day:
         out.append((f"demo_{a.demo_day}", ["-m", "redzone.demo", a.demo_day, "--summary", "--json"],
                     Path(f"data/demo/{a.demo_day}")))
@@ -77,6 +82,9 @@ def main(argv=None) -> int:
     ap.add_argument("--nights", type=int, default=int(os.environ.get("RZ_SMOKE_NIGHTS", 3)))
     ap.add_argument("--demo-day", default=os.environ.get("RZ_SMOKE_DEMO_DAY", "20261101"),
                     help="mixed demo day to replay ('' to skip)")
+    ap.add_argument("--resync", action=argparse.BooleanOptionalAction,
+                    default=os.environ.get("RZ_SCORECARD_RESYNC", "1") == "1",
+                    help="also run NFL/NBA/NHL with live re-sync modelled (default on)")
     ap.add_argument("--full", action="store_true", default=os.environ.get("RZ_SCORECARD_FULL") == "1",
                     help="the whole merge scorecard (NFL 16 slates, NBA/NHL 14 nights) instead of the slice")
     ap.add_argument("--timeout", type=float, default=None,
