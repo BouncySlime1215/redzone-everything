@@ -20,6 +20,15 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
+@pytest.fixture(autouse=True)
+def _tv_files_in_tmp(tmp_path, monkeypatch):
+    """No test ever reads or writes the real TV token, SmartThings sign-in or input log."""
+    from redzone import tv
+    monkeypatch.setattr(tv, "TOKEN_FILE", tmp_path / "tv_token.txt")
+    monkeypatch.setattr(tv, "OAUTH_FILE", tmp_path / "smartthings_oauth.json")
+    monkeypatch.setattr(tv, "INPUT_LOG", tmp_path / "tv_input.jsonl")
+
+
 @pytest.fixture
 def cfg(tmp_path):
     return Config(user_path=tmp_path / "config.yaml", history_dir=tmp_path / "hist")
