@@ -124,13 +124,52 @@ def test_a_power_play_does_not_cut_a_catch_up_short_but_crunch_does():
     assert _holds_replays(nsc("a", 80, "empty net"))
 
 
-def test_a_chase_into_hockey_does_not_wait_for_a_whistle(dec):  # noqa: F811
+def test_only_an_imminent_chance_lets_a_chase_skip_the_whistle_hold(dec):  # noqa: F811
     from redzone.decider.decider import Decision, State
-    x = Candidate(nsc("b", 50), "youtubetv:b")
     chase = Decision(0, "switch", "b", "catch it live", State.WATCHING, kind="chase")
     better = Decision(0, "switch", "b", "better game", State.WATCHING, kind="better")
-    assert not dec._entry_only(x, chase)
-    assert dec._entry_only(x, better)
+    hot = nsc("b", 50)
+    hot.imminent = True
+    assert not dec._entry_only(Candidate(hot, "youtubetv:b"), chase)
+    assert dec._entry_only(Candidate(hot, "youtubetv:b"), better)
+    assert dec._entry_only(Candidate(nsc("b", 50), "youtubetv:b"), chase)   # an ordinary chase waits
+
+
+def test_crunch_run_up_waits_for_a_whistle_but_the_last_two_minutes_do_not(dec):  # noqa: F811
+    from redzone.decider.decider import Decision, State
+    d = Decision(0, "switch", "b", "crunch time", State.WATCHING, kind="crunch")
+    run_up = nsc("b", 70, crunch=True)
+    now = nsc("b", 70, crunch=True)
+    now.crunch_now = True
+    assert dec._entry_only(Candidate(run_up, "youtubetv:b"), d)
+    assert not dec._entry_only(Candidate(now, "youtubetv:b"), d)
+
+
+def test_imminent_goal_chances(cfg, clock):
+    from redzone.scoring.engine import History, Scorer, crunch_window, nhl_goal_imminent
+    h = History()
+    g = _nhl(1, 1, 2, 900, "PIT")
+    assert nhl_goal_imminent(g, h, cfg)                   # the power play just started
+    g.clock_s = 880
+    assert nhl_goal_imminent(g, h, cfg)
+    g.clock_s = 860
+    assert not nhl_goal_imminent(g, h, cfg)               # 40 s in: an ordinary power play
+    g.situation.strength = "5v3"
+    assert nhl_goal_imminent(g, h, cfg)
+    g = _nhl(2, 1, 3, 100)
+    g.situation.empty_net = "PIT"
+    assert nhl_goal_imminent(g, History(), cfg)
+    g.clock_s = 300
+    assert not nhl_goal_imminent(g, History(), cfg)
+    # ...and it stays "imminent" on the scored game for a while after (the goal kills the power play)
+    sc = Scorer(cfg, clock=clock)
+    assert sc.score(_nhl(1, 1, 2, 900, "PIT")).imminent
+    clock.t += 20
+    assert sc.score(_nhl(2, 1, 2, 890)).imminent
+    clock.t += 20
+    assert not sc.score(_nhl(2, 1, 2, 870)).imminent
+    assert not crunch_window(_nhl(2, 1, 3, 170)) and crunch_window(_nhl(2, 1, 3, 110))
+    assert crunch_window(_nhl(2, 2, 4, 290))
 
 
 # --- the scorecard lines ----------------------------------------------------------------

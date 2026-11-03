@@ -582,8 +582,15 @@ class Decider:
         scorecards Nov 3: mid-play entries 165 -> 15, crunch live 87.5 -> 88.3%, big plays seen
         99.7 -> 99.5%. The rest of cut timing (holding for a big play, stretching a stoppage) cost
         hockey crunch time, so it stays football-only."""
-        if x is None or d.kind in ("crunch", "start", "chase") or x.scored.crunch:
-            return False   # a chase is going for a goal that's about to air: waiting for a whistle misses it
+        if x is None or d.kind == "start" or x.scored.crunch_now:
+            return False
+        if x.scored.crunch and not x.scored.crunch_now and \
+                not self.cfg.get("decider.entry.hold_crunch_runup", True):
+            return False
+        if d.kind == "chase" and x.scored.imminent:
+            # A chase for a goal off a 5-on-3, a fresh power play, a late empty net or a penalty
+            # shot: waiting for a whistle misses it. Every other chase waits like any entry.
+            return False
         return x.scored.league.base.value in (self.cfg.get("decider.entry.hold_only") or [])
 
     def _time_entry(self, d: Decision, cands, now: float, home_before) -> Decision:
@@ -595,7 +602,10 @@ class Decider:
             return d
         if d.target == self.current and not self.after_replay:
             return d
-        urgent = d.kind == "crunch" or (x is not None and (x.scored.crunch or self._sticky_home(d.target, cands)))
+        # [nhl pp] A power play or a close 3rd makes a game sticky for break visits, but is no reason
+        # to come in on a tighter margin: that only buys mid-play entries.
+        urgent = d.kind == "crunch" or (x is not None and (x.scored.crunch or
+                                                           self._sticky_home(d.target, cands, entry=True)))
         plan = self.entry_plan(d.target, cands, now, urgent=urgent)
         if plan is None:
             return d
@@ -1351,15 +1361,18 @@ class Decider:
                     and s.personal >= self.cfg.get("decider.crunch.hold_personal", 5)
                     and s.closeness >= self.cfg.get("decider.mine_late_closeness", 0.2))
 
-    def _sticky_home(self, gid: str, watchable) -> bool:
-        """A game whose next play you must be back for."""
+    def _sticky_home(self, gid: str, watchable, entry: bool = False) -> bool:
+        """A game whose next play you must be back for. entry=True: one worth an urgent (tighter)
+        entry, which a power play or a close NHL 3rd alone is not."""
         x = watchable.get(gid)
         if x is None:
             return gid == self.user.focus_game
         s = x.scored
-        return (gid == self.user.focus_game or s.crunch or s.lock is not None
+        soft = s.lock == "power play" or _nhl_close_third(s)
+        return (gid == self.user.focus_game or s.crunch
+                or (s.lock is not None and not (entry and s.lock == "power play"))
                 or s.personal >= self.cfg.get("decider.crunch.hold_personal", 5)
-                or _nhl_close_third(s))
+                or (not entry and soft))
 
     def _wait_for_my_tip(self, x: Candidate, now: float) -> str | None:
         """Your team tips soon: don't start on a neutral basketball/hockey game we couldn't leave.

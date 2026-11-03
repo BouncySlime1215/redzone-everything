@@ -211,18 +211,23 @@ def test_short_stops_are_ridden_out_in_basketball_but_not_hockey(cfg, clock):
 
 
 def test_hockey_waits_for_a_whistle_on_the_way_in_but_never_into_crunch(cfg, clock):
+    """[nhl pp] Never inside crunch's last 2:00 (or OT). The 3:00-2:00 run-up waits for a whistle
+    like any entry: a whistle comes before 2:00, and crunch entries there were most of NHL's
+    mid-play landings (PR #3 review)."""
     from types import SimpleNamespace as NS
     from redzone.decider.decider import Decision, State
     from redzone.scoring.engine import Scored
     dec = _decider(cfg, clock)
 
-    def x(league, crunch=False):
-        return NS(scored=Scored("b", league, 50, 50, 50, 1.0, 0.0, "r", [], False, None, None, 1.0, crunch=crunch))
+    def x(league, crunch=False, now=False):
+        return NS(scored=Scored("b", league, 50, 50, 50, 1.0, 0.0, "r", [], False, None, None, 1.0,
+                                crunch=crunch, crunch_now=now))
 
     def d(kind):
         return Decision(0.0, "switch", "b", "r", State.WATCHING, "", kind=kind)
     assert dec._entry_only(x(League.NHL), d("better"))
-    assert not dec._entry_only(x(League.NHL, crunch=True), d("better"))
-    assert not dec._entry_only(x(League.NHL), d("crunch"))
+    assert not dec._entry_only(x(League.NHL, crunch=True, now=True), d("better"))
+    assert not dec._entry_only(x(League.NHL, crunch=True, now=True), d("crunch"))
+    assert dec._entry_only(x(League.NHL, crunch=True), d("crunch"))           # the run-up waits
     assert not dec._entry_only(x(League.NHL), d("start"))      # nothing on screen to protect
     assert not dec._entry_only(x(League.NBA), d("better"))
