@@ -304,6 +304,19 @@ def test_last_chance_replay_jumps_the_queue(dec, clock):
     assert dec._best_replay(cs, now, None, False) is fresh_td    # plenty of time: value first
 
 
+def test_your_teams_missed_play_beats_other_games_last_chances(dec, clock):
+    # Stale-feed robustness card, Nov 3: other games' urgent plays won every replay slot, so your
+    # team's TD sat in the queue until its window closed (your-team big plays seen 20/21).
+    now = clock.t
+    yours = Missed("a", "td1", "TD", "td", now - 60, 75, mine=True)
+    urgent = Missed("b", "fg1", "FG", "fg", now - 1700, 35)
+    dec.queue = [urgent, yours]
+    cs = cands(a=10, b=10)
+    assert dec._best_replay(cs, now, None, False) is yours
+    dec.cfg.update({"replay": {"yours_first": False}}, record=False)
+    assert dec._best_replay(cs, now, None, False) is urgent      # off: earliest deadline first
+
+
 @pytest.mark.parametrize("lock, action", [(None, "replay"), ("final two minutes", "switch")])
 def test_game_over_catch_up_never_skips_a_locked_moment(dec, clock, lock, action):
     for g in "ab":

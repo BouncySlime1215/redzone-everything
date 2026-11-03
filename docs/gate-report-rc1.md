@@ -7,6 +7,8 @@ stale) and the Nov 1 mixed demo. Pending never counts as passing.
 
 **Result: 58 pass, 11 fail, 27 pending.**
 
+_Correction (Nov 3, 23:00 UTC): the table below was run just before the brain was turned off. With the brain off (what RC 1 ships), NBA has 21 entries, not 19, and still 5 mid-play. CI on #37 shows the same, and every pass/fail stays the same._
+
 What fails, and what ships:
 - **NBA entries at a dead ball / mid-play (5 of 19 mid-play).** This is better than today
   (codex/resume-redzone: 10 of 20) and comes from #21's whistle wait. No flag makes it better, so NBA
