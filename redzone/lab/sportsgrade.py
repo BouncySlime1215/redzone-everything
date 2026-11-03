@@ -62,6 +62,7 @@ class Card:
                 "dead_air_pct": pct(self.dead, self.watched), "big_seen_pct": pct(self.big_seen, self.big),
                 "big_live_pct": pct(self.big_live, self.big), "crunch_live_pct": pct(self.crunch_live, self.crunch),
                 "your_team_crunch_live_pct": pct(self.my_crunch_live, self.my_crunch),
+                "your_team_crunch_live": f"{self.my_crunch_live}/{self.my_crunch}",   # 0/0 is "none", not 0 %
                 "tuning_blackout_s": round(self.tuning_blackout_s, 1),
                 "tuning_blackout_pct": pct(self.tuning_blackout_s, self.hours * 3600),
                 "switches_per_hour": round(self.switches / max(0.1, self.hours), 1),

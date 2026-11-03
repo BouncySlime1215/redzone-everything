@@ -131,6 +131,9 @@ def main():
            "crunch_live_pct": pct(tot["crunch_live"], tot["crunch"]),
            "your_team_crunch_live_pct": pct(tot["my_crunch_live"], tot["my_crunch"]),
            "your_team_big_seen_pct": pct(tot["my_seen"], tot["my_big"]),
+           # counts beside the %: 0/0 prints as 0.0 and must not read as a failure (or a pass)
+           "your_team_crunch_live": f"{tot['my_crunch_live']}/{tot['my_crunch']}",
+           "your_team_big_seen": f"{tot['my_seen']}/{tot['my_big']}",
            "switches_per_hour": round(tot["switches"] / max(0.1, tot["hours"]), 1),
            "tuning_blackout_s": round(tot["blackout"], 1),
            "tuning_blackout_pct": pct(tot["blackout"], tot["hours"] * 3600),

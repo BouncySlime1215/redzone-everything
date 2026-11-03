@@ -37,6 +37,8 @@ from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S
                                     resume_lead, resume_play)
 from redzone.decider.cuts import EntryPlan, plan_entry
 from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
+from redzone.decider import core
+from redzone.decider.core import BreakView, CoreState, DecisionCore, Knobs, MomentView, Option, SwitchPath
 from redzone.scoring.engine import Scored
 
 log = logging.getLogger(__name__)
@@ -280,6 +282,10 @@ class Decider:
         self._proposal_home: tuple | None = None
         self.start_fails = 0            # start picks in a row that didn't land
         self.start_retry_at = 0.0       # ...so the next start pick waits until then
+        self._entry_wait: tuple | None = None   # (target, waiting since, last tick) for a whistle wait
+        # [core] Every soft choice (which game, visit or not, reel, replay vs live, go back) is scored by
+        # the one expected-value function in core.py; the rules left in here are the hard guards.
+        self.core = DecisionCore(Knobs.from_cfg(cfg))
 
     # ----- inputs -----------------------------------------------------------
 
@@ -326,6 +332,7 @@ class Decider:
         """`redzone` is the RedZone channel's tuner target while it's on the air, else None.
         `reel` is (tuner target, seconds) of a ready catch-up reel, else None."""
         now = self._clock()
+        self.core.k = Knobs.from_cfg(self.cfg)   # config can change between ticks (tuner, phone)
         self._known.update({gid: x for gid, x in cands.items() if x.target})
         hold = self.cfg.get("decider.crunch.hold_personal", 5)
         self._yours.update(gid for gid, x in cands.items() if x.scored.personal >= hold)
@@ -496,7 +503,7 @@ class Decider:
         if budget is not None:
             pool = [m for m in pool if self._replay_cost(m, cands) <= budget]
         if top is not None:
-            margin = self.cfg.get("decider.switch_margin") if margin is None else margin
+            margin = self.core.k.switch_margin if margin is None else margin
             # Your team's missed big play clears the bar against ordinary live play (crunch and locked
             # moments never reach here: a replay is only considered between plays of a normal stretch).
             yours = yours and self.cfg.get("replay.yours_first", True)
@@ -678,6 +685,18 @@ class Decider:
         if x is not None and x.scored.league.base.value in (self.cfg.get("decider.entry.no_wait_leagues") or []):
             # Continuous play: holding a switch for a dead ball missed more than it saved (scorecards,
             # Nov 3); enter live unless a rewind lands it clean (decided above).
+            return d
+        # [core] A whistle wait can be bounded (decider.entry.max_wait_s.<league>, off by default) where
+        # waiting costs the most: a finished game on screen, or a final period. In basketball the next
+        # dead ball can be minutes away (NBA Oct 23: a 3.5-minute wait on a final game into crunch time).
+        lg = x.scored.league.base.value if x is not None else ""
+        cap = self.cfg.get(f"decider.entry.max_wait_s.{lg}")
+        w = self._entry_wait
+        if w is None or w[0] != d.target or now - w[2] > 3 * float(self.cfg.get("polling.live_s", 10)):
+            w = (d.target, now, now)
+        self._entry_wait = (d.target, w[1], now)
+        if cap is not None and now - w[1] >= float(cap) and (
+                d.kind == "ended" or (x is not None and getattr(x.scored, "late", False))):
             return d
         # Not yet: whatever the switch planned (a visit's way home) waits with it.
         self.home_break_visit, self.home_return_at = home_before
@@ -920,9 +939,8 @@ class Decider:
         if best is None:
             return Decision(now, "stay", self.current, s_cur.reason, state, gate_txt)
         b = cands[best]
-        margin = c.get("decider.switch_margin")
+        margin = self.core.k.switch_margin
         cost = self._rank_cost(b.target)
-        lead = b.scored.score - s_cur.score
 
         # Catch-up between plays: a missed big play is worth more than this ordinary moment.
         if gate_ok and not s_cur.lock:
@@ -947,16 +965,13 @@ class Decider:
         if self.stack and not s_cur.lock and gate_ok:
             prev = self.stack[-1]
             if prev in watchable and not cands[prev].scored.is_break and prev not in self._screen_break:
-                if cands[prev].scored.score >= s_cur.score - c.get("decider.return_tolerance") and \
-                        cands[prev].scored.score >= b.scored.score - margin:
+                st = self._cstate(cands, now)
+                if core.ev(st, "return", prev, self.core.k).gain >= 0 and \
+                        core.rate(st.options[prev], self.core.k) >= core.rate(st.options[best], self.core.k) - margin:
                     return Decision(now, "switch", prev, self._why(cands[prev], "moment's over, back to"),
                                     state, gate_txt, kind="return")
 
-        needed = margin + cost
-        if s_cur.lock and not self._mine_late(b.scored):
-            # A moment here (a power play...) holds the TV, but never against your team late and close.
-            needed = max(needed, c.get("decider.locked_override_lead"))
-        if lead < needed:
+        if core.ev(self._cstate(cands, now), "switch", best, self.core.k, cost_s=cost).gain < 0:
             return Decision(now, "stay", self.current, s_cur.reason, state, gate_txt)
         if not gate_ok:
             return Decision(now, "stay", self.current, f"want {b.scored.reason} — waiting: {gate_txt}",
@@ -1131,10 +1146,10 @@ class Decider:
 
     # ----- crunch time ----------------------------------------------------------
 
-    @staticmethod
-    def _crunch_rank(s: Scored) -> tuple:
-        """When crunch times overlap: your teams and bets first, then the closest score, then the moment."""
-        return (round(s.personal), s.closeness, s.score)
+    def _crunch_rank(self, s: Scored) -> tuple:
+        """When crunch times overlap: your teams and bets first, then the league order
+        (core.league_priority: NFL > CFB > NBA > ...), then the closest score, then the moment."""
+        return (round(s.personal), core.league_rank(s.league.value, self.core.k), s.closeness, s.score)
 
     def _crunch_pick(self, watchable: dict[str, Candidate], exclude: str | None = None) -> str | None:
         """The crunch game to be on. Breaks included: a stoppage is the time to get there."""
@@ -1154,6 +1169,9 @@ class Decider:
         dp = p.personal - s_cur.personal
         if abs(dp) >= self.cfg.get("decider.crunch.personal_lead", 5):
             return dp > 0   # your team (then your bet) wins an overlap outright
+        lp, lc = (core.league_rank(x.league.value, self.core.k) for x in (p, s_cur))
+        if lp != lc:
+            return lp > lc  # [core] the league order decides between crunch times; the other gets a replay after
         # Two crunches, same tier: hop only while this one is stopped and that one is live, so its
         # next snap airs first. Never for the last few seconds of a stoppage.
         return on_break and not p.is_break and pick not in self._screen_break and \
@@ -1431,18 +1449,43 @@ class Decider:
         snap = resume_play(tl) if tl else None
         return bool(x.scored.lock in CRUNCH_LOCKS or (snap and snap.big))
 
+    # ----- [core] the views the decision core scores ---------------------------
+
+    def _option(self, gid: str, x: Candidate) -> Option:
+        s = x.scored
+        kind = "redzone" if gid == REDZONE else "reel" if gid == REEL else "game"
+        # On a break for the core: in the data, or (for a destination) still on screen when we'd land.
+        on_break = s.is_break or (gid != self.current and gid in self._screen_break)
+        brain = s.brain or {}
+        return Option(gid, kind, x.target,
+                      MomentView(s.score, float(brain.get("key_soon_p", 0.0) or 0.0), s.lock, s.crunch,
+                                 bool(getattr(s, "late", False)), s.garbage, s.personal,
+                                 mine_late=self._mine_late(s)),
+                      BreakView(on_break, break_soon_p=float(brain.get("break_soon_p", 0.0) or 0.0)),
+                      paths=(SwitchPath("tune", self._rank_cost(x.target)),))
+
+    def _cstate(self, cands: dict[str, Candidate], now: float | None = None) -> CoreState:
+        opts = {gid: self._option(gid, x) for gid, x in cands.items()}
+        cur = self.current
+        if cur and cur not in opts and cur in self._known:
+            opts[cur] = self._option(cur, self._known[cur])
+        return CoreState(self._clock() if now is None else now, cur, opts, home=self.home_break_visit)
+
     def _best(self, watchable: dict[str, Candidate], exclude: str | None) -> str | None:
-        options = [(x.scored.score, gid) for gid, x in watchable.items()
-                   if gid != exclude and gid != REEL and not x.scored.is_break and gid not in self._screen_break]
-        if not options:
+        """The best destination by the core's rate: never the reel (a break filler), never a game whose
+        break is on screen when we'd land."""
+        st = self._cstate(watchable)
+        opts = [st.options[g] for g in watchable
+                if g != exclude and g != REEL and not st.options[g].brk.on_break]
+        if not opts:
             return None
-        best = max(options)[1]
+        best = max(opts, key=lambda o: core.rank(o, self.core.k)).id
         if watchable[best].scored.lock == "power play":
             # [nhl pp] A power play is always worth a look, but never over your team late and close
             # (Oct 29 replay: back from a catch-up onto NYI @ MIN's power play instead of WSH, tied late).
-            mine = [o for o in options if self._mine_late(watchable[o[1]].scored)]
+            mine = [o for o in opts if o.moment.mine_late]
             if mine:
-                return max(mine)[1]
+                return max(mine, key=lambda o: core.rank(o, self.core.k)).id
         return best
 
     def _break_destination(self, watchable, exclude, home: str | None = None) -> str | None:
@@ -1473,7 +1516,7 @@ class Decider:
         # WPG @ STL, up 1 with 3:57 left, which the code before the budget visited and kept; we got
         # there only at 1:16 left.
         home_x = (watchable.get(anchor) or self._known.get(anchor)) if anchor else None
-        margin = self.cfg.get("decider.switch_margin")
+        margin = self.core.k.switch_margin
 
         def keeper(x: Candidate) -> bool:
             if home_x is None:
@@ -1488,15 +1531,18 @@ class Decider:
                 or keeper(x)}
         pool = [gid for gid, x in fits.items()
                 if gid != exclude and gid != REEL and not x.scored.is_break and gid not in self._screen_break]
-        top = max((fits[g].scored.score for g in pool), default=None)
-        floor = self.cfg.get("decider.break_destination_min")
-        if top is not None and top >= floor:
-            worth = [g for g in pool if fits[g].scored.score >= floor]
+        # [core] Worth leaving the commercial for: the core's visit ev (rate against the ad, bar
+        # decider.break_destination_min); ranked by the core's window value, rate x seconds on screen.
+        st = self._cstate(fits, now)
+        k = self.core.k
+        worth = [g for g in pool if core.ev(st, "visit", g, k).gain >= 0]
+        if worth:
             # Crunch first, then the user's team, and only then score x seconds on screen: a
             # preloaded neutral game must never pull the viewer away from crunch time or from
             # their own team behind a cold (e.g. Prime) tune.
             return max(worth, key=lambda g: (crunch(fits[g]), fits[g].scored.personal >= hold,
-                                             fits[g].scored.score * (watch[g] or 1.0), fits[g].scored.score))
+                                             core.window_value(st.options[g], k, watch[g] or 1.0),
+                                             core.rate(st.options[g], k)))
         # Nothing live worth a visit: the catch-up reel, if it fits in the break with the trip back.
         if REEL in watchable and exclude != REEL and anchor and self._reel_fits(anchor, watchable):
             return REEL
@@ -1600,7 +1646,7 @@ class Decider:
         pool = {**self._known, **watchable}
         left = self._break_remaining(home, pool, now)
         trip = self._deadline_cost(watchable[REEL].target) + self._deadline_cost(self._target_of.get(home))
-        return left >= self.reel_s + trip + 5.0
+        return core.reel_fits(left, self.reel_s, trip, self.core.k)
 
     def _with_reel(self, cands: dict[str, Candidate], reel: tuple[str, float] | None) -> dict[str, Candidate]:
         """Add the catch-up reel while one is ready and putting it on the TV is turned on."""
@@ -1655,7 +1701,9 @@ class Decider:
         options = {g: x for g, x in options.items() if watch(g) >= 60}
         if not options:
             return None
-        dest = max(options, key=lambda g: (options[g].scored.score * watch(g), options[g].scored.score))
+        st = self._cstate(options, now)
+        dest = max(options, key=lambda g: (core.window_value(st.options[g], self.core.k, watch(g)),
+                                           core.rate(st.options[g], self.core.k)))
         buffer = RETURN_BUFFER_S if self._exits_often(dest) or dest in PSEUDO else RETURN_BUFFER_CONTINUOUS_S
         self.home_break_visit = home
         # Head back early enough to find a clean exit AND finish the trip before the break ends.
