@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from redzone.models import GameState, League, Phase
+from redzone.models import REGULATION, GameState, League, Phase
 from redzone.sources import espn
 
 LEAGUE_LOGO = "https://a.espncdn.com/i/teamlogos/leagues/500/{}.png"
@@ -35,7 +35,7 @@ def clock_text(g: GameState) -> str:
 def situation(g: GameState) -> dict:
     s = g.situation
     text = ""
-    if g.league == League.NFL and s.down and s.possession:
+    if g.league.base == League.NFL and s.down and s.possession:
         ytg = s.yards_to_goal
         spot = (f"& goal at the {ytg}" if s.goal_to_go else
                 f"& {s.distance} at {'OPP' if ytg and ytg < 50 else 'OWN'} {ytg if ytg and ytg < 50 else 100 - (ytg or 50)}")
@@ -94,7 +94,7 @@ def game_detail(g: GameState, summary: dict | None, item: dict) -> dict:
         side = "home" if c.get("homeAway") == "home" else "away"
         out["linescore"][side] = [ls.get("displayValue") for ls in c.get("linescores") or []]
     n = max(len(out["linescore"]["home"]), len(out["linescore"]["away"]))
-    reg = {League.NFL: 4, League.NBA: 4, League.NHL: 3, League.MLB: 9}[lg]
+    reg = REGULATION[lg]
     out["linescore"]["labels"] = [str(i + 1) if i < reg else ("OT" if lg != League.MLB else str(i + 1))
                                   for i in range(n)]
     by_team = {str(espn._get(x, "team", "id") or ""): x.get("leaders") or [] for x in summary.get("leaders") or []}

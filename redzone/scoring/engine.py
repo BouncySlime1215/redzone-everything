@@ -13,23 +13,28 @@ import math
 import time
 from dataclasses import dataclass, field
 
-from redzone.models import REAL_BREAKS, GameState, League, Phase, Stoppage
+from redzone.models import PERIOD_S, REAL_BREAKS, REGULATION, ByLeague, GameState, League, Phase, Stoppage, pro_period
 from redzone.scoring import garbage
 
 # --- closeness: how competitive the score is, 0..1 --------------------------
 
-_K = {
+_K = ByLeague({
     # (max deficit, late value, early value)
     League.NFL: [(3, 1.0, 1.0), (8, 0.9, 0.9), (16, 0.6, 0.85), (24, 0.3, 0.6), (999, 0.1, 0.1)],
     League.NBA: [(3, 1.0, 1.0), (5, 0.95, 0.95), (8, 0.8, 0.8), (12, 0.55, 0.85), (20, 0.3, 0.65), (999, 0.05, 0.05)],
     League.NHL: [(0, 1.0, 1.0), (1, 0.9, 0.9), (2, 0.5, 0.8), (999, 0.15, 0.5)],
     League.MLB: [(1, 1.0, 1.0), (2, 0.85, 0.85), (3, 0.65, 0.65), (5, 0.35, 0.35), (999, 0.1, 0.1)],
-}
+})
+
+
+def _q(g: GameState) -> int:
+    """Period in pro terms (men's college halves read as NBA quarters)."""
+    return pro_period(g.league, g.period, g.clock_s)
 
 
 def is_late(g: GameState) -> bool:
-    p = g.period or 0
-    return {League.NFL: p >= 4, League.NBA: p >= 4, League.NHL: p >= 3, League.MLB: p >= 7}[g.league]
+    p = _q(g)
+    return {League.NFL: p >= 4, League.NBA: p >= 4, League.NHL: p >= 3, League.MLB: p >= 7}[g.league.base]
 
 
 def closeness(g: GameState) -> float:
@@ -56,14 +61,14 @@ def crunch_time(g: GameState) -> bool:
       MLB  8th inning on, within 2 runs (extra innings always)"""
     if g.phase != Phase.LIVE:
         return False
-    q, d, clk = g.period or 0, g.score_diff, g.clock_s
+    q, d, clk = _q(g), g.score_diff, g.clock_s
     if d is None:
         return False
-    if g.league == League.NFL:
+    if g.league.base == League.NFL:
         if q >= 5:
             return True
-        return q == 4 and clk is not None and clk <= 120 and abs(d) <= ONE_SCORE[g.league]
-    if g.league == League.NBA:
+        return q == 4 and clk is not None and clk <= 120 and abs(d) <= ONE_SCORE[League.NFL]
+    if g.league.base == League.NBA:
         return q >= 5 or (q == 4 and clk is not None and clk <= 180 and abs(d) <= 7)
     if g.league == League.NHL:
         return q >= 4 or (q == 3 and clk is not None and clk <= 180 and abs(d) <= 1)
@@ -191,7 +196,7 @@ class Scorer:
             return Scored(g.game_id, g.league, 0.0, 0.0, 0.0, 1.0, 0.0,
                           _phase_reason(g), [], True, None, None, k)
 
-        fn = {League.NFL: _nfl, League.NBA: _nba, League.NHL: _nhl, League.MLB: _mlb}[g.league]
+        fn = {League.NFL: _nfl, League.NBA: _nba, League.NHL: _nhl, League.MLB: _mlb}[g.league.base]
         m, parts, lock, pre = fn(g, h, k, now, c)
         ctx, ctx_parts, factors = context(g, h, k, now, c)
         m += ctx
@@ -274,7 +279,7 @@ class Scorer:
 # is, so it reorders close games without ever lifting a blowout. Garbage time still multiplies
 # the whole moment down afterwards.
 
-_LATE_FRAC = {League.NFL: 4, League.NBA: 4, League.NHL: 3, League.MLB: 9}
+_LATE_FRAC = REGULATION
 
 
 def game_progress(g: GameState) -> float:
@@ -287,7 +292,7 @@ def game_progress(g: GameState) -> float:
         return 1.0
     if g.league == League.MLB:
         return min(1.0, (p - 1 + (0.5 if g.half == "bottom" else 0.0)) / reg)
-    length = {League.NFL: 900, League.NBA: 720, League.NHL: 1200}[g.league]
+    length = PERIOD_S[g.league]
     clk = g.clock_s if g.clock_s is not None else length / 2
     return min(1.0, max(0.0, (p - 1 + (1 - min(clk, length) / length)) / reg))
 
@@ -297,7 +302,7 @@ def context(g: GameState, h: History, k: float, now: float, c) -> tuple[float, l
     f: dict[str, float] = {}
     prog = game_progress(g)
     late = prog ** 2  # most of the weight in the last third
-    lg = g.league.value.lower() if hasattr(g.league, "value") else str(g.league).lower()
+    lg = g.league.base.value.lower() if hasattr(g.league, "value") else str(g.league).lower()
 
     # 1. Win-probability leverage: a coin flip late is worth more than a coin flip early.
     #    (NFL/NBA already have an uncertainty term, so NHL/MLB get the bigger share.)
@@ -328,11 +333,11 @@ def context(g: GameState, h: History, k: float, now: float, c) -> tuple[float, l
 
     # 4. Late one-score windows the base clock buckets don't single out: NHL within a goal in the
     #    last 5:00 of the 3rd (the extra-attacker window), NBA within 6 under 3:00.
-    p, clk = g.period or 0, g.clock_s
+    p, clk = _q(g), g.clock_s
     if d is not None and clk is not None:
         if g.league == League.NHL and p == 3 and clk <= 300 and abs(d) <= 1:
             f["late_one_score"] = c.get("score.context.nhl.late_one_goal", 10)
-        elif g.league == League.NBA and p == 4 and clk <= 180 and abs(d) <= 6:
+        elif g.league.base == League.NBA and p == 4 and clk <= 180 and abs(d) <= 6:
             f["late_one_score"] = c.get("score.context.nba.late_within_6", 4)
 
     # 5. Overtime / extras: sudden death or close to it, every league.
@@ -369,6 +374,14 @@ def _clock_str(s: float | None) -> str:
         return ""
     s = max(0, int(s))
     return f"{s // 60}:{s % 60:02d}"
+
+
+def _period_name(g: GameState, q: int) -> str:
+    if q >= 5:
+        return "OT"
+    if REGULATION[g.league] == 2:
+        return f"H{g.period or 1}"
+    return f"Q{q}"
 
 
 def _nfl(g, h, k, now, c):
@@ -461,7 +474,7 @@ def _nfl(g, h, k, now, c):
 
 
 def _nba(g, h, k, now, c):
-    q = g.period or 0
+    q = _q(g)
     clk = g.clock_s
     w = c.get("score.nba.time")
     if q >= 5:
@@ -496,7 +509,7 @@ def _nba(g, h, k, now, c):
     m = k * (t + last) + run + comeback + u + gp
 
     parts = [(t, _lead_phrase(g)),
-             (t, f"{_clock_str(clk)} left in {'OT' if q >= 5 else f'Q{q}'}" if clk is not None else f"Q{q}")]
+             (t, f"{_clock_str(clk)} left in {_period_name(g, q)}" if clk is not None else _period_name(g, q))]
     if run:
         parts.append((run + 10, f"{h.run_team} on a {h.run_pts}-0 run"))
     if comeback:

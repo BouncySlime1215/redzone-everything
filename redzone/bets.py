@@ -10,11 +10,9 @@ from __future__ import annotations
 
 import math
 
-from redzone.models import GameState, League, Phase
+from redzone.models import PERIOD_S, REGULATION, ByLeague, GameState, League, Phase
 
-UNIT = {League.NFL: 7.0, League.NBA: 4.0, League.NHL: 1.0, League.MLB: 1.5}
-REGULATION = {League.NFL: 4, League.NBA: 4, League.NHL: 3, League.MLB: 9}
-PERIOD_S = {League.NFL: 900, League.NBA: 720, League.NHL: 1200}
+UNIT = ByLeague({League.NFL: 7.0, League.NBA: 4.0, League.NHL: 1.0, League.MLB: 1.5})
 
 
 def progress(g: GameState) -> float:

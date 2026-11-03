@@ -17,23 +17,23 @@ Never garbage: overtime/extra innings, or anything before these windows.
 """
 from __future__ import annotations
 
-from redzone.models import GameState, League, Phase
+from redzone.models import ByLeague, GameState, League, Phase, pro_period
 
 # (min period, max clock seconds left in that period or None, margin)
-_RULES = {
+_RULES = ByLeague({
     League.NFL: [(3, None, 25), (4, 480, 17), (4, 120, 12), (4, 45, 9)],
     League.NBA: [(3, None, 30), (4, 720, 25), (4, 540, 20), (4, 360, 15), (4, 120, 10), (4, 35, 7)],
     League.NHL: [(2, None, 5), (3, None, 4), (3, 600, 3)],
     League.MLB: [(5, None, 8), (7, None, 6), (9, None, 5)],
-}
+})
 # How much closer it has to get before it's live again (avoids flickering at the line).
-_HYSTERESIS = {League.NFL: 8, League.NBA: 6, League.NHL: 1, League.MLB: 2}
-_REGULATION = {League.NFL: 4, League.NBA: 4, League.NHL: 3, League.MLB: 9}
+_HYSTERESIS = ByLeague({League.NFL: 8, League.NBA: 6, League.NHL: 1, League.MLB: 2})
+_REGULATION = ByLeague({League.NFL: 4, League.NBA: 4, League.NHL: 3, League.MLB: 9})
 
 
 def threshold(g: GameState) -> int | None:
     """Smallest margin that counts as garbage time right now (None = can't be garbage yet)."""
-    per = g.period or 0
+    per = pro_period(g.league, g.period, g.clock_s)  # men's college halves read as NBA quarters
     if per > _REGULATION[g.league] and g.league != League.MLB:
         return None  # overtime is never garbage
     best = None
@@ -56,7 +56,7 @@ def is_garbage(g: GameState, was: bool = False) -> bool:
         return False
     d = abs(g.score_diff)
     thr = threshold(g)
-    if g.league == League.NFL and (g.period or 0) == 4 and g.home_win_prob is not None:
+    if g.league.base == League.NFL and (g.period or 0) == 4 and g.home_win_prob is not None:
         if max(g.home_win_prob, 1 - g.home_win_prob) >= 0.99 and d >= 9:
             return True
     if thr is None:

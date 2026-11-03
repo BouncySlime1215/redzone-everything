@@ -154,7 +154,9 @@ def topic_league(topic: str) -> League | None:
     parts = topic.split("-")
     if len(parts) < 4 or parts[0] != "gp":
         return None
-    return next((lg for lg, sport in _SPORT.items() if sport == parts[1]), None)
+    path = "-".join(parts[1:-1])
+    exact = next((lg for lg, p in espn.PATH.items() if p.replace("/", "-") == path), None)
+    return exact or next((lg for lg, sport in _SPORT.items() if sport == parts[1]), None)
 
 
 def parse_topic_arg(s: str) -> str:

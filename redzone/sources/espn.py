@@ -323,6 +323,9 @@ def _kind(league: League, p: dict) -> str:
         # ESPN wraps between-innings fielding substitutions in "Play Result".
         # They are bookkeeping, not a pitch that can be cut off mid-flight.
         return "lineup_change"
+    if league.college and league.base == League.NBA and "freethrow" in t.replace(" ", ""):
+        m = re.search(r"(\d) of (\d)", p.get("text") or "")  # NBA-style kind, so dead-ball rules match
+        return f"free_throw_-_{m.group(1)}_of_{m.group(2)}" if m else "free_throw"
     if league.base == League.NBA and "team rebound" in (p.get("text") or "").lower():
         return "team_rebound"  # ball out of bounds / between free throws: a dead ball, not live play
     if league.base == League.NFL:

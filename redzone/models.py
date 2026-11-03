@@ -57,6 +57,19 @@ class ByLeague(dict):
         return dict.__contains__(self, key) or dict.__contains__(self, getattr(key, "base", key))
 
 
+def pro_period(league: League, period: int | None, clock_s: float | None) -> int:
+    """The period in the pro league's terms, so NBA rules read college halves right: a men's
+    college half counts as two NBA quarters (2nd half with 10:00 or less left = "Q4", 1st OT = 5).
+    Every other league already plays the pro structure."""
+    p = period or 0
+    if REGULATION.get(league) != 2 or p <= 0:
+        return p
+    if p > 2:
+        return p + 2
+    half = PERIOD_S[league] / 2
+    return 2 * p - (1 if clock_s is None or clock_s > half else 0)
+
+
 class Phase(str, Enum):
     PRE = "pre"
     LIVE = "live"

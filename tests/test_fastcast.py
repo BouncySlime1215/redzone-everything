@@ -275,7 +275,8 @@ def test_game_topic_matches_espn(path):
 def test_topic_names():
     assert fc.parse_topic_arg("nba:401909911") == "gp-basketball-nba-401909911"
     assert fc.parse_topic_arg("event-topevents") == "event-topevents"
-    assert fc.topic_league(WCBB_TOPIC) == League.NBA                    # basketball reads like the NBA
+    assert fc.topic_league(WCBB_TOPIC) == League.WCBB                   # women's college: NBA rules via League.base
+    assert fc.topic_league("gp-basketball-euroleague-1") == League.NBA  # other basketball reads like the NBA
     assert fc.topic_league("event-topevents") is None
     with pytest.raises(ValueError):
         fc.parse_topic_arg("../../etc/passwd")

@@ -18,12 +18,12 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 
-from redzone.models import REAL_BREAKS, GameState, League, Phase, Stoppage
+from redzone.models import REAL_BREAKS, ByLeague, GameState, League, Phase, Stoppage, pro_period
 
 # Leagues where the ball/puck is live continuously; only official stoppages are gaps.
-CONTINUOUS = {League.NBA, League.NHL}
+CONTINUOUS = {League.NBA, League.NHL, League.CBB, League.WCBB}
 FEED_LAG_GUESS_S = 6.0  # used only when a feed gives no wallclock
-PLAY_LEN_S = {League.NFL: 10.0, League.MLB: 8.0, League.NBA: 0.0, League.NHL: 0.0}
+PLAY_LEN_S = ByLeague({League.NFL: 10.0, League.MLB: 8.0, League.NBA: 0.0, League.NHL: 0.0})
 AFTER_PLAY_BUFFER_S = 3.0
 FIRST_POLL_RECENT_S = 60.0  # on a game's first poll, plays newer than this may not have aired yet
 # [mid-play guard] A play with no wallclock happened somewhere in [arrived - MAX, arrived - MIN].
@@ -40,7 +40,7 @@ STALE_DATA_S = 20.0        # older than this, "no play in the data" no longer me
 # NFL games: end of quarter p1 171 s, halftime p1 816 s, two-minute warning p1 55 s. Timeouts and
 # score breaks can be 5-15 s in the data, so they get no floor. Used only when we can't see the resume;
 # these empirical bounds are not direct observation of the broadcast.
-MIN_BREAK_S = {
+MIN_BREAK_S = ByLeague({
     League.NFL: {Stoppage.END_PERIOD: 120.0, Stoppage.HALFTIME: 800.0,
                  Stoppage.TWO_MINUTE_WARNING: 50.0},
     League.NBA: {Stoppage.HALFTIME: 800.0},
@@ -48,7 +48,7 @@ MIN_BREAK_S = {
     League.NHL: {Stoppage.INTERMISSION: 1080.0},
     # A baseball inning change can be shorter than an NFL quarter break.
     # No minimum is assumed without feed coverage of the current screen.
-}
+})
 # NFL halftime p5 829 s (200 games), NBA halftime p5 931 s (92 games): HALFTIME 800 is safe for both.
 
 
@@ -296,7 +296,7 @@ _MARKERS = ("timeout", "end_", "two-minute", "period_end", "period_start", "star
 # Basketball: after a timeout/inbound the ball is live with nothing logged until the next shot,
 # foul or turnover — up to a full shot clock. Play may have resumed that long before the first
 # logged event (backtests: assuming 2s caused 7 cuts once break visits got more frequent).
-SILENT_LIVE_S = {League.NBA: 24.0}
+SILENT_LIVE_S = ByLeague({League.NBA: 24.0, League.CBB: 30.0, League.WCBB: 30.0})  # college: 30 s shot clock
 
 
 def resume_lead(league: League) -> float:
@@ -304,12 +304,12 @@ def resume_lead(league: League) -> float:
     return PLAY_LEN_S.get(league, 0.0) + 2.0 + SILENT_LIVE_S.get(league, 0.0)
 
 
-_DEAD_BALL = {
+_DEAD_BALL = ByLeague({
     League.NBA: ("foul", "substitution", "violation", "kicked_ball", "technical", "flagrant", "delay", "team_rebound",
                  "free_throw_-_1_of_2", "free_throw_-_1_of_3", "free_throw_-_2_of_3"),
     League.NHL: ("hooking", "holding", "tripping", "roughing", "interference", "slashing", "high-sticking",
                  "fighting", "unsportsmanlike", "cross-checking", "too_many", "delay"),
-}
+})
 
 
 def _is_marker(kind: str, league: League | None = None) -> bool:
@@ -386,9 +386,9 @@ class Timeline:
     def _nba_clutch(self, p, g: GameState) -> bool:
         """NBA highlight: a field goal in the last 2:00 of Q4/OT within 5 (what the scorecard counts).
         ESPN's NBA kinds are never "turnover"/"td", so without this no NBA play was ever big."""
-        if self.league != League.NBA or not p.scoring or "free_throw" in (p.kind or ""):
+        if self.league.base != League.NBA or not p.scoring or "free_throw" in (p.kind or ""):
             return False
-        if (g.period or 0) < 4 or g.clock_s is None or g.clock_s > 120:
+        if pro_period(g.league, g.period, g.clock_s) < 4 or g.clock_s is None or g.clock_s > 120:
             return False
         hs, as_ = self._last_score or (g.home.score, g.away.score)
         return hs is not None and as_ is not None and abs(hs - as_) <= 5
@@ -412,7 +412,7 @@ class Timeline:
             if first_poll and _t(p, now) < now - FIRST_POLL_RECENT_S:
                 continue
             # In basketball every basket "scores"; only flag true highlights there.
-            big = p.kind in ("td", "turnover", "goal", "hr") or (p.scoring and self.league != League.NBA) \
+            big = p.kind in ("td", "turnover", "goal", "hr") or (p.scoring and self.league.base != League.NBA) \
                 or self._nba_clutch(p, g)
             lo, hi = _bounds(p, now, prev_fresh)
             self.events.append(Event(hi, "play", (p.text or p.kind)[:80], big, p.id, p.kind, hi - lo))
