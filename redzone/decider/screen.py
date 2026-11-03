@@ -75,7 +75,7 @@ BOUNDARY_MIN_SAMPLES = 2
 # showing a new score, against the feed wallclock of the play that made it. Frame-accurate to half
 # the ~2 s capture gap, so stronger than a tap: this many agreeing samples (pooled with any taps)
 # lower the floor to SCREEN_SIGMA_S and settle the app on their own.
-SCREEN_SIGMA_S = 3.0
+SCREEN_SIGMA_S = 4.0
 
 
 @dataclass
