@@ -115,6 +115,9 @@ class Engine:
         self.recorded = RecordedPlayback(self)
         from redzone.discovery.runtime import DiscoveryRuntime
         self.discovery = DiscoveryRuntime(self)
+        from redzone.network import NetWatch
+        # Home / away from home / Tailscale stealing the home routes (redzone/network.py). Read-only.
+        self.network = NetWatch(self.discovery.autonomy.paths.devices)
         self.tonight = Tonight(self)   # today's plan + pre-game checks on the hidden stick
         from redzone.supervisor import DATA as SUPERVISOR_DATA, Supervisor
         # Per-switch TraceEvents (redzone/contracts/trace.py): data/traces.jsonl; in memory without a data dir.
@@ -160,7 +163,7 @@ class Engine:
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
                              self._boundary_loop(), self._scorebug_loop(), self.tonight.run(),
-                             self.supervisor.run())
+                             self.supervisor.run(), self.network.run())
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)
@@ -1533,7 +1536,8 @@ class Engine:
                         "live": x.live is not None} for t, x in self.delays.book.items()],
             "delay_watch": self.boundary.status(),
             "scorebug_watch": self.scorebug.status(),
-            "health": {"sources": list(self.source_status.values()), "sticks": self.control.status(),
+            "health": {"sources": list(self.source_status.values()), "sticks": self._sticks_view(),
+                       "network": self.network.view(),
                        "tv": {"state": "unknown"}, "race": self.merger.race_summary(),
                        "adb": self.control.adb_ok, "switch_times": self.control.switch_times(),
                        "fastcast": self.fastcast.status() if self.fastcast else None,
@@ -1545,6 +1549,16 @@ class Engine:
                 "starters": [{"name": x.name, "pos": x.pos, "team": x.team, "mine": x.mine}
                              for x in self.fantasy.starters]},
         }
+
+    def _sticks_view(self) -> list[dict]:
+        """Stick rows for the phone. Away from home a stick that can't answer is "away", not "offline"
+        (the watchdog only reconnects "offline" ones)."""
+        rows = self.control.status()
+        if self.network.away:
+            for r in rows:
+                if r.get("state") != "connected":
+                    r["state"] = "away"
+        return rows
 
     def screen_evidence(self) -> dict:
         if self.recorded.active:

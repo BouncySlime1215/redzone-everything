@@ -765,6 +765,15 @@ class Supervisor:
                 return ctl.adb_ok, "adb answering" if ctl.adb_ok else "adb still not answering"
             await self.fix("adb", "server", "start adb server", start_server, limit="adb_server")
             return
+        net = getattr(getattr(self.e, "network", None), "state", None)
+        if net is not None and (net.away or net.routes_broken):
+            # Away from home, or the home routes go into a tunnel: reconnecting can't help, and the
+            # sticks aren't broken. Say so once; the clocks start fresh when it's fixed.
+            self.observe("network", net.message)
+            for s in list(getattr(ctl, "sticks", []) or []):
+                self._held(f"adb:{s.host}", False, now)
+            return
+        self._observed.pop("network", None)
         for s in list(getattr(ctl, "sticks", []) or []):
             state = getattr(s, "state", "unknown")
             held = self._held(f"adb:{s.host}", state != "connected", now)

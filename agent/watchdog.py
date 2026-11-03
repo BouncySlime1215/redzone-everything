@@ -125,6 +125,9 @@ class Watchdog:
             o.live_games = sum(1 for g in games if g.get("phase") == "live")
             cur = st.get("now") or {}
             o.crunch_on_screen = bool(cur and cur.get("phase") == "live" and (cur.get("lock") or cur.get("mine")))
+            net = ((st.get("health") or {}).get("network")) or {}
+            o.away = net.get("where") == "away"
+            o.route_issue = (net.get("message") or "")[:300] if net.get("routes_broken") else ""
             sticks = ((st.get("health") or {}).get("sticks")) or []
             off = [s.get("host") for s in sticks if s.get("state") == "offline" and s.get("host")]
             for h in off:
