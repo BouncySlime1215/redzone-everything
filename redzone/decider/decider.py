@@ -544,15 +544,25 @@ class Decider:
         lg = x.scored.league.base.value
         return lg in (self.cfg.get("decider.entry.leagues") or ["nfl"])
 
+    def _entry_only(self, x: Candidate | None, d: Decision) -> bool:
+        """Leagues whose switches wait for a whistle on the way IN only (decider.entry.hold_only),
+        never into crunch time or as the night's first pick (nothing on screen to protect). Hockey,
+        scorecards Nov 3: mid-play entries 165 -> 15, crunch live 87.5 -> 88.3%, big plays seen
+        99.7 -> 99.5%. The rest of cut timing (holding for a big play, stretching a stoppage) cost
+        hockey crunch time, so it stays football-only."""
+        if x is None or d.kind in ("crunch", "start") or x.scored.crunch:
+            return False
+        return x.scored.league.base.value in (self.cfg.get("decider.entry.hold_only") or [])
+
     def _time_entry(self, d: Decision, cands, now: float, home_before) -> Decision:
         """Hold a switch until its picture would come up on a dead ball, or land it with a rewind."""
         if d.action != "switch" or not d.target or d.kind in ENTRY_EXEMPT:
             return d
-        if not self._cut_timed(d.target, cands):
+        x = cands.get(d.target)
+        if not self._cut_timed(d.target, cands) and not self._entry_only(x, d):
             return d
         if d.target == self.current and not self.after_replay:
             return d
-        x = cands.get(d.target)
         urgent = d.kind == "crunch" or (x is not None and (x.scored.crunch or self._sticky_home(d.target, cands)))
         plan = self.entry_plan(d.target, cands, now, urgent=urgent)
         if plan is None:
