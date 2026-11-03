@@ -56,7 +56,10 @@ def main():
     a = ap.parse_args()
     knobs = dict(true_delay=a.true_delay, sigma=a.sigma, lag_jitter=(3.0, 25.0) if a.lag_jitter else None,
                  drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed)
-    cfg = Config(user_path=ROOT / "data/config.yaml")
+    # The live service rewrites data/config.yaml (measured switch costs, taps): scorecards read a
+    # pinned copy when one exists, so a before/after comparison isn't moved by the live night.
+    pinned = ROOT / "data/eval_config.yaml"
+    cfg = Config(user_path=pinned if pinned.exists() else ROOT / "data/config.yaml")
     t0 = time.time()
     tot = dict(big=0, seen=0, live=0, cuts=0, dead=0.0, watched=0.0, crunch=0, crunch_live=0,
                my_crunch=0, my_crunch_live=0, switches=0, hours=0.0, my_big=0, my_seen=0, blackout=0.0)
