@@ -1282,10 +1282,25 @@ class Decider:
         def crunch(x: Candidate) -> bool:
             return bool(x.scored.crunch or x.scored.lock in CRUNCH_LOCKS)
 
-        # Crunch time elsewhere, and the user's own team, are worth the trip whatever is left of
-        # this break.
+        # A game clearly better than home is no round trip: once there, decide() releases home
+        # (score + switch_margin, or crunch that outranks it) and we stay, so the trip back never
+        # has to fit. NHL Oct 20: a BOS @ DAL goal break (15 s left) was skipped as "can't fit" for
+        # WPG @ STL, up 1 with 3:57 left, which the code before the budget visited and kept; we got
+        # there only at 1:16 left.
+        home_x = (watchable.get(anchor) or self._known.get(anchor)) if anchor else None
+        margin = self.cfg.get("decider.switch_margin")
+
+        def keeper(x: Candidate) -> bool:
+            if home_x is None:
+                return False
+            return (home_x.scored.score + margin < x.scored.score
+                    or self._crunch_outranks(x.scored, home_x.scored))
+
+        # Crunch time elsewhere, the user's own team, and a game we'd stay on are worth the trip
+        # whatever is left of this break.
         fits = {gid: x for gid, x in options.items()
-                if watch[gid] is None or watch[gid] > need or crunch(x) or x.scored.personal >= hold}
+                if watch[gid] is None or watch[gid] > need or crunch(x) or x.scored.personal >= hold
+                or keeper(x)}
         pool = [gid for gid, x in fits.items()
                 if gid != exclude and gid != REEL and not x.scored.is_break and gid not in self._screen_break]
         top = max((fits[g].scored.score for g in pool), default=None)
@@ -1355,11 +1370,30 @@ class Decider:
             return None
         there = self._deadline_cost(self._target_of.get(dest))
         if not self._visit_due_by_break_end(home):
-            # A routine snap ends it: we come back once that has aired (_home_due), so the trip
-            # home doesn't have to fit inside the break, and any of the other game beats the ad.
-            return left - there
+            # A routine snap ends it: we come back once that snap has finished airing (_home_due ->
+            # break_on_arrival), not when the break could first end. Budget the visit to that
+            # moment: measuring it to the early edge of the resume (2 sigma early, backdated by the
+            # resume lead) called 10-25 s visits negative and skipped them (CLE @ CHI slate).
+            return self._routine_back_at(home, left, now) - now - there
         exit_s = 0.0 if dest in PSEUDO else VISIT_EXIT_S if self._exits_often(dest) else VISIT_EXIT_CONTINUOUS_S
         return left - there - self._return_cost(home) - exit_s
+
+    def _routine_back_at(self, home: str, left: float, now: float) -> float:
+        """When a visit during a routine-snap break heads home: the moment arriving home no longer
+        lands in the break (the same test _home_due uses), less the trip back. On the late side of
+        the delay's error bars (+2 sigma): being late here costs at most part of a routine snap,
+        which _home_due already gives up, so a visit is skipped only if it can't show anything
+        even then."""
+        tl = self.timelines[home]
+        d = self.delays.get(self._target_of.get(home) or "unknown")
+        start, end = tl.last("stop_start"), tl.last("stop_end")
+        play = PLAY_LEN_S.get(tl.league, 8.0) + 2.0
+        if end is not None and start is not None and end.seen >= start.lo:
+            snap = resume_play(tl)
+            aired = (snap.seen if snap else end.seen + play) + d.mu
+        else:
+            aired = now + left + play   # resume not in the data yet: its expected airing, plus the snap
+        return aired + 2 * d.current_sigma(now) - self._deadline_cost(self._target_of.get(home))
 
     def _visit_due_by_break_end(self, home: str | None) -> bool:
         """Must a visit be back before home's break ends on screen? Yes unless a routine football

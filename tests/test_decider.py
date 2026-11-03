@@ -496,7 +496,7 @@ def test_halftime_visit_plans_its_trip_back(dec, clock):
     assert dec.home_return_at is not None and dec.home_return_at - clock.t > 400
 
 
-def _nba_short_timeout(dec, clock, dest_cost):
+def _nba_short_timeout(dec, clock, dest_cost, dest_score=40):
     """Home NBA game in its 3rd timeout of the period (~107 s of ads); another NBA game is live on Prime."""
     from redzone.decider.screen import Event as Ev
     for g in ("h", "o"):
@@ -511,7 +511,7 @@ def _nba_short_timeout(dec, clock, dest_cost):
     tl.stoppage = Stoppage.TIMEOUT
     clock.t += 75   # on screen now: ~92 s of it left
     return dec.decide({"h": Candidate(sc("h", 50, is_break=True, league=League.NBA), "youtubetv:h"),
-                       "o": Candidate(sc("o", 40, league=League.NBA), "youtubetv:o")})
+                       "o": Candidate(sc("o", dest_score, league=League.NBA), "youtubetv:o")})
 
 
 def test_short_timeout_is_not_spent_on_a_cold_prime_tune(dec, clock):
@@ -523,6 +523,41 @@ def test_short_timeout_is_not_spent_on_a_cold_prime_tune(dec, clock):
 def test_same_short_timeout_visits_a_preloaded_stick(dec, clock):
     d = _nba_short_timeout(dec, clock, dest_cost=6.0)
     assert d.action == "switch" and d.target == "o" and d.kind == "break_visit"
+
+
+def test_trip_budget_skips_no_game_we_would_stay_on(dec, clock):
+    """NHL Oct 20 scorecard: a goal break with 15 s left was skipped as "can't fit" for WPG @ STL
+    (up 1, 3:57 left), which the old code visited and kept. A destination clearly better than home
+    is no round trip (decide() releases home there), so the trip back never has to fit."""
+    assert _nba_short_timeout(dec, clock, dest_cost=76.0).action == "stay"   # o at 40: no trip
+    watchable = {"h": Candidate(sc("h", 50, is_break=True, league=League.NBA), "youtubetv:h"),
+                 "o": Candidate(sc("o", 80, league=League.NBA), "youtubetv:o")}
+    assert dec._break_destination(watchable, exclude="h") == "o"
+
+
+def _routine_snap_break(dec, clock, end_ago, snap_ago):
+    """NFL home h in a timeout whose resume (stop_end) and routine snap are already in the data."""
+    calibrate(dec, "youtubetv:h", mu=40.0)
+    start_on(dec, clock, "h", {"o": 50})
+    tl = dec.timeline("h", League.NFL)
+    dec.deadline_cost = lambda t: 6.0
+    tl.events.append(Event(clock.t - 90, "stop_start", "timeout"))
+    tl.events.append(Event(clock.t - end_ago, "stop_end"))
+    tl.events.append(Event(clock.t - snap_ago, "play", "routine snap"))
+    return dec._visit_watch("h", "o", clock.t)
+
+
+def test_routine_snap_visit_is_budgeted_to_when_we_really_come_back(dec, clock):
+    """CLE @ CHI scorecard: the resume of a routine-snap break was logged 40 s ago and its snap
+    15 s ago, so the snap airs in ~25 s and _home_due brings us back only once it has. Budgeting
+    the visit to the early edge of the resume instead called it negative and skipped it."""
+    assert dec._visit_watch is not None
+    assert _routine_snap_break(dec, clock, end_ago=40, snap_ago=15) > 0
+
+
+def test_routine_snap_visit_that_cant_show_anything_is_still_skipped(dec, clock):
+    # The snap has already aired at home: a visit would land after we're due back.
+    assert _routine_snap_break(dec, clock, end_ago=70, snap_ago=60) < 0
 
 
 def test_nba_timeouts_are_counted_per_period(clock):
