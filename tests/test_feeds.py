@@ -133,7 +133,7 @@ async def test_engine_never_enters_a_game_whose_feed_went_dark(cfg, tmp_path):
     e._poll_every["1"] = 3.0
     url = e._feed_urls(g)[0]
     e.fetcher._cache[url] = type("C", (), {"body": {}, "etag": None, "fetched_at": e.merger.games["1"].updated_at - 9})()
-    assert e.feeds.stale("1")                     # 9 s old at a 3 s cadence
+    assert e.feed_book.stale("1")                     # 9 s old at a 3 s cadence
     await e.close()
 
 
@@ -143,7 +143,7 @@ async def test_a_dark_feed_never_makes_the_game_on_screen_unwatchable(cfg, tmp_p
     from redzone.engine import Engine
     from redzone.store import Store
     e = Engine(cfg, Store(tmp_path / "t.db"))
-    e.feeds.stale = lambda gid, now=None: True     # every feed dark
+    e.feed_book.stale = lambda gid, now=None: True     # every feed dark
     e.merger.is_stale = lambda gid: False          # ...but no 60 s no-progress yet
     e.decider.current = "1"
     calls = []
@@ -157,4 +157,16 @@ async def test_a_dark_feed_never_makes_the_game_on_screen_unwatchable(cfg, tmp_p
     cands = calls[-1]
     assert "1" in cands and not cands["1"].stale
     assert "2" in cands and cands["2"].stale
+    await e.close()
+
+
+async def test_a_subclass_that_swaps_in_its_own_merger_is_followed(cfg, tmp_path):
+    """The replay demo replaces engine.merger after Engine.__init__ (CI caught every demo game
+    reading stale: 201 entries -> 14)."""
+    from redzone.engine import Engine
+    from redzone.store import Store
+    e = Engine(cfg, Store(tmp_path / "t.db"))
+    e.merger = Merger()
+    e.merger.update("espn_summary", game())
+    assert not e.feed_book.stale("1")
     await e.close()

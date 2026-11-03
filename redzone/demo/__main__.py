@@ -20,7 +20,15 @@ from redzone.demo.download import day_dir, download
 from redzone.demo.engine import DemoEngine, demo_config, et_at, find_user_config, hm, load_day, report_text
 
 
-def build(day: str, speed: float, step: float) -> DemoEngine:
+def scorecard_config():
+    """--summary is a scorecard (the Nov 1 mixed demo): grade on the pinned data/eval_config.yaml
+    when there is one, like scripts/eval.py, so the live service's config edits don't move it."""
+    from redzone.lab.evaldata import ROOT
+    pinned = ROOT / "data" / "eval_config.yaml"
+    return pinned if pinned.exists() else find_user_config()
+
+
+def build(day: str, speed: float, step: float, source=None) -> DemoEngine:
     folder = day_dir(day)
     if not any(folder.glob("*/summary_*.json")):
         print(f"Downloading {day} play-by-play into {folder} ...")
@@ -28,7 +36,7 @@ def build(day: str, speed: float, step: float) -> DemoEngine:
     reps, tv = load_day(folder)
     if not reps:
         sys.exit(f"No finished games with play-by-play in {folder}")
-    cfg = demo_config(folder / "_work", find_user_config())
+    cfg = demo_config(folder / "_work", source or find_user_config())
     return DemoEngine(reps, tv, cfg, day=day, speed=speed, step=step, work=folder / "_work")
 
 
@@ -87,7 +95,7 @@ def main(argv=None) -> None:
     a = p.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)   # the timeline shows up live even when piped
     logging.basicConfig(level=logging.WARNING)
-    e = build(a.day, a.speed, a.step)
+    e = build(a.day, a.speed, a.step, scorecard_config() if a.summary else None)
     start = et_at(a.day, a.start) if a.start else None
     end = et_at(a.day, a.end) if a.end else e.t1
     fast_forward(e, start)
@@ -95,6 +103,9 @@ def main(argv=None) -> None:
         print(f"Replay of {a.day}: {len(e.replays)} games, {hm(e.clock.t)} to {hm(end)} ET (dry run, no TV)\n")
         e.advance(end)
         card = e.report(start=start)
+        if a.json:
+            from redzone.lab.evaldata import stamp
+            card = {**card, "eval_data": stamp()}
         print(json.dumps(card, indent=1) if a.json else report_text(card))
         return
     asyncio.run(serve(e, a.port, end))
