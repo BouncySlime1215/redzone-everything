@@ -789,6 +789,12 @@ class Decider:
             if rp:
                 return self._replay_decision(rp, state, gate_txt, now)
 
+        # Your team late and close: never left for a lesser game (Oct 26 replay: WSH @ CHA, down 8 with
+        # 8:23 left, was left for a neutral comeback; we got back with 0:33 left and saw 0 of its 13
+        # crunch plays). Only crunch time elsewhere takes the TV, and that's decided before this.
+        if self._mine_late(s_cur):
+            return Decision(now, "stay", self.current, f"your team, late and close — {s_cur.reason}", state, gate_txt)
+
         # Go back to where we were if this moment is over and that game is about as good.
         if self.stack and not s_cur.lock and gate_ok:
             prev = self.stack[-1]
@@ -1246,6 +1252,12 @@ class Decider:
         self.home_return_at = now + left - buffer
         return Decision(now, "switch", dest, self._why(options[dest], f"{_short(cands[home].scored)} at the break → "),
                         state, gate_txt, kind="break_visit")
+
+    def _mine_late(self, s) -> bool:
+        """Your team (or your bet) in its final period, not decided and still competitive."""
+        return bool(getattr(s, "late", False) and not s.garbage
+                    and s.personal >= self.cfg.get("decider.crunch.hold_personal", 5)
+                    and s.closeness >= self.cfg.get("decider.mine_late_closeness", 0.2))
 
     def _sticky_home(self, gid: str, watchable) -> bool:
         """A game whose next play you must be back for."""

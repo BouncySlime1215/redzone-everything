@@ -494,3 +494,18 @@ def test_halftime_visit_plans_its_trip_back(dec, clock):
     d = dec.decide(cs)
     assert d.action == "switch" and d.target == "o" and d.kind == "break_visit"
     assert dec.home_return_at is not None and dec.home_return_at - clock.t > 400
+
+
+def test_your_team_late_and_close_is_never_left_for_a_lesser_game():
+    """Oct 26 replay: WSH @ CHA, down 9 with 8:23 left in Q4, was left for a neutral comeback and we
+    got back with 0:33 left (0 of 13 crunch plays). Late, not garbage, your team: stay."""
+    from redzone.decider.decider import Decider
+    from types import SimpleNamespace as NS
+    d = Decider.__new__(Decider)
+    d.cfg = NS(get=lambda k, default=None: {"decider.crunch.hold_personal": 5,
+                                            "decider.mine_late_closeness": 0.2}.get(k, default))
+    mine = NS(late=True, garbage=False, personal=7.5, closeness=0.3)
+    assert d._mine_late(mine)
+    assert not d._mine_late(NS(late=False, garbage=False, personal=25.0, closeness=1.0))   # not late yet
+    assert not d._mine_late(NS(late=True, garbage=True, personal=25.0, closeness=0.1))     # garbage time
+    assert not d._mine_late(NS(late=True, garbage=False, personal=0.0, closeness=0.9))     # not your team
