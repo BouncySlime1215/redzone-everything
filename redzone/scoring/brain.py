@@ -546,13 +546,16 @@ class Brain:
     """Loads per-league models; keeps one Tracker and a hotness timeline per game."""
 
     def __init__(self, model_dir: Path | None = None, enabled: bool = True, version: int = 3,
-                 v3_score=None):
+                 v3_score=None, v3_break_odds=None):
         self.model_dir = model_dir or MODEL_DIR
         self.enabled = enabled
         self.version = int(version)
         # Leagues whose score fields (key_soon_p, hotness: what the Scorer adds points for) come from
         # v3; elsewhere they stay v2's while v3 still supplies the stoppage / entry outputs. None = all.
         self.v3_score = None if v3_score is None else {str(x) for x in v3_score}
+        # Leagues whose break odds (break_soon_p: what breaks.blend mixes with the rules) come from v3's
+        # long-break head; elsewhere v2's (better calibrated on held-out nights). None = all.
+        self.v3_break_odds = None if v3_break_odds is None else {str(x) for x in v3_break_odds}
         self._v2: "Brain | None" = None
         self._models: dict[str, Forest | None] = {}
         self._v3: dict[str, object | None] = {}
@@ -567,7 +570,7 @@ class Brain:
         if cfg is None:
             return cls(enabled=False)
         return cls(enabled=bool(cfg.get("brain.enabled", False)), version=int(cfg.get("brain.version", 3) or 3),
-                   v3_score=cfg.get("brain.v3_score", None))
+                   v3_score=cfg.get("brain.v3_score", None), v3_break_odds=cfg.get("brain.v3_break_odds", None))
 
     def model3(self, league: str):
         """Brain v3's forest for this league (brain_models/<league>.v3.npz), or None: then v2 runs."""
@@ -690,11 +693,16 @@ class Brain:
         top = max(v.types.items(), key=lambda kv: kv[1])[0] if v.types else ""
         out = Reading(break_soon_p=v.long_p, key_soon_p=v.big[180], hotness=v.hot, events=tr.n, key_rate=rate,
                       v3=v, break_reasons=[f"{top.replace('_', ' ')} likely"] if top and v.stop[60] >= 0.3 else [])
-        if self.v3_score is not None and lg not in self.v3_score:
+        v2_score = self.v3_score is not None and lg not in self.v3_score
+        v2_odds = self.v3_break_odds is not None and lg not in self.v3_break_odds
+        if v2_score or v2_odds:
             if self._v2 is None:
                 self._v2 = Brain(model_dir=self.model_dir, enabled=self.enabled, version=2)
             r2 = self._v2.read(g)
-            out.key_soon_p, out.hotness, out.key_rate, out.reasons = r2.key_soon_p, r2.hotness, r2.key_rate, r2.reasons
+            if v2_score:
+                out.key_soon_p, out.hotness, out.key_rate, out.reasons = r2.key_soon_p, r2.hotness, r2.key_rate, r2.reasons
+            if v2_odds and r2.break_soon_p is not None:
+                out.break_soon_p, out.break_reasons = r2.break_soon_p, r2.break_reasons
         self._cache[g.game_id] = (tr.n, out)
         self._note(g, tr, out)
         return out

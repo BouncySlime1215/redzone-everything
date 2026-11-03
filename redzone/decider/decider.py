@@ -701,7 +701,7 @@ class Decider:
     def _learn_entries(self, cands: dict[str, Candidate]) -> None:
         """Brain v3's entry point (seconds to the restart) for each game's newest event, for the
         expected end of a stoppage the data hasn't closed yet (cuts.DeadTracker.resume_eta)."""
-        on = self.cfg.get("brain.v3_entry", ["nfl", "nba", "nhl"])
+        on = self.cfg.get("brain.v3_entry", [])
         if not on:
             return
         for gid, x in cands.items():

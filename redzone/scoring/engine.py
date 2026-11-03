@@ -198,7 +198,8 @@ class Scorer:
         # The learned brain (redzone/scoring/brain.py): read every poll while brain.enabled is on;
         # with it off or a league unmodeled, scores are the hand-written ones, unchanged.
         self.brain = brain if brain is not None else Brain(version=int(cfg.get("brain.version", 3) or 3),
-                                                           v3_score=cfg.get("brain.v3_score", None))
+                                                           v3_score=cfg.get("brain.v3_score", None),
+                                                           v3_break_odds=cfg.get("brain.v3_break_odds", None))
 
     def brain_on(self) -> bool:
         return bool(self.cfg.get("brain.enabled", False))

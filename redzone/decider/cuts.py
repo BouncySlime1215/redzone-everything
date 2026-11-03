@@ -181,8 +181,8 @@ AFTER_PLAY_S = 3.0           # celebration / whistle after a discrete play: not 
 CLOCK_RESUME_MARGIN_S = 3.0  # a restart worked back from the game clock: wallclock and clock rounding
 # Basketball: after an inbound the ball can be live for a full shot clock with nothing logged.
 SILENT_S = {League.NBA: 24.0}
-FROZEN_HOLD_S = 300.0
-LEARNED_MAX_S = 1800.0       # a learned restart further out than this is a broken reading        # after a frozen-wallclock stretch, distrust windows this long
+FROZEN_HOLD_S = 300.0        # after a frozen-wallclock stretch, distrust windows this long
+LEARNED_MAX_S = 1800.0       # a learned restart further out than this is a broken reading
 # How long before play resumes the picture should come up: the line-up / set / faceoff circle.
 LEAD_S = {League.NFL: 6.0, League.NBA: 4.0, League.NHL: 5.0, League.MLB: 4.0}
 

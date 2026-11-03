@@ -156,6 +156,20 @@ def test_a_real_game_reads_fast_calibrated_and_ordered():
     assert out[-1].as_dict()["v3"]["entry_q"]
 
 
+def test_score_and_break_odds_can_stay_v2_per_league():
+    """v3_score / v3_break_odds leave those fields v2's while v3's other outputs still come through."""
+    if B.Brain(version=3).model3("nba") is None:
+        pytest.skip("no v3 NBA model")
+    seq = [g for g in states(League.NBA, "espn_nba_summary_401909906.json") if g and g.phase == Phase.LIVE][:200]
+    v2, mixed = B.Brain(version=2), B.Brain(version=3, v3_score=["nfl"], v3_break_odds=[])
+    r2 = [v2.read(g) for g in seq]
+    rm = [mixed.read(g) for g in seq]
+    got = [(a, b) for a, b in zip(r2, rm) if a.break_soon_p is not None and b.v3 is not None]
+    assert len(got) > 50
+    for a, b in got:
+        assert b.break_soon_p == a.break_soon_p and b.key_soon_p == a.key_soon_p and b.hotness == a.hotness
+
+
 def test_version_2_ignores_v3_models():
     b = B.Brain(version=2)
     assert b.model3("nba") is None
@@ -287,3 +301,14 @@ def test_contract_break_coming_uses_type_quantiles(monkeypatch):
     assert not f.in_data_now and f.p_start == pytest.approx(0.4)
     assert (f.length_q10_s, f.length_q50_s, f.length_q90_s) == pytest.approx((120.0, 150.0, 200.0))
     assert f.kind.value == "commercial"
+
+
+def test_brain_defaults_survive_validation_as_saved_settings():
+    """Saving any brain.* default back (the settings page does) must not be rejected by its limits."""
+    import yaml
+    from redzone import config as C
+    d = yaml.safe_load(C.DEFAULTS.read_text())
+    kept, dropped = C.prune({"brain": d["brain"]}, d)
+    assert dropped == []
+    for bad in ({"version": 4}, {"v3_entry_q": 90}, {"v3_entry": "nfl"}):
+        assert C.prune({"brain": bad}, d)[1]
