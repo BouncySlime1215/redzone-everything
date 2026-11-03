@@ -23,6 +23,7 @@ HISTORY = DATA / "config_history"
 LIMITS: dict[str, tuple[float, float]] = {
     "server.port": (1024, 65535),
     "polling.live_s": (5, 60),
+    "college.top_n": (1, 25),
     "polling.hot_s": (2, 30),
     "polling.idle_s": (30, 3600),
     "plan.verify_lead_min": (5, 90),

@@ -1,6 +1,6 @@
 /* RedZone Everything — Bets: sweat meters, add-bet flow (sheet), delete with confirm. */
 
-import { app, ACTIONS, INPUTS, hooks, attr, esc, num, get, arr, games, gameById, status, pairInks, fmtStart, vibrate } from "./rz-core.js?v=40";
+import { app, ACTIONS, INPUTS, hooks, attr, esc, num, get, arr, games, gameById, status, pairInks, fmtStart, vibrate } from "./rz-core.js?v=41";
 import { patch } from "./rz-dom.js?v=40";
 import { icon, logo, empty, sec, seg, screenHead, meter, odo } from "./rz-ui.js?v=40";
 import { fantasyCard } from "./rz-cards.js?v=40";

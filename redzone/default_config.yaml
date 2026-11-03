@@ -4,7 +4,7 @@
 
 mode:
   dry_run: true            # true = show what it WOULD do, never touch the TV
-  leagues: {nfl: true, nba: true, nhl: true, mlb: true}
+  leagues: {nfl: true, nba: true, nhl: true, mlb: true, cbb: true, cfb: true, wcbb: true}
 
 sunday_ticket: true        # you have NFL Sunday Ticket (+ RedZone) on YouTube TV
 market: raleigh-durham
@@ -17,6 +17,16 @@ teams:                     # your teams: biggest boost
   nba: [WSH]
   nhl: [WSH]
   mlb: [WSH]
+  cbb: [UNC]               # college: ESPN abbreviations (North Carolina = UNC, ESPN team id 153)
+  cfb: [UNC]
+  wcbb: [UNC]
+
+college:                   # college boards are huge: only your teams' games and ranked games are followed
+  groups:                  # ESPN conference ids to also poll, so an unranked team of yours still shows
+    cbb: ["2"]             # ACC (men's basketball)
+    cfb: ["1"]             # ACC (football)
+    wcbb: ["2"]            # ACC (women's basketball)
+  top_n: 25                # follow games with a team ranked this high or better
 
 polling:
   hot_s: 3                 # what's on, what's next, and tense games: every N seconds

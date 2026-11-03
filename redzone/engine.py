@@ -461,10 +461,30 @@ class Engine:
         return hot
 
     async def _scoreboard(self, lg: League) -> list[GameState] | None:
+        if lg.college:
+            return await self._college_scoreboard(lg)
         data = await self.fetcher.get_json(espn.scoreboard_url(lg), min_interval=8)
         if not data:
             return None
         return espn.parse_scoreboard(lg, data)
+
+    async def _college_scoreboard(self, lg: League) -> list[GameState] | None:
+        """Ranked/featured board + your conference's board, filtered to your teams and ranked games
+        (never all of Division I: every kept live game costs a summary poll)."""
+        urls = espn.scoreboard_urls(lg, (self.cfg.get("college.groups") or {}).get(lg.value) or [])
+        boards = await asyncio.gather(*(self.fetcher.get_json(u, min_interval=8) for u in urls),
+                                      return_exceptions=True)
+        if not any(isinstance(b, dict) and b for b in boards):
+            return None
+        mine = self._my_teams().get(lg, set())
+        top_n = int(self.cfg.get("college.top_n", espn.TOP_N))
+        out: dict[str, GameState] = {}
+        for b in boards:
+            if isinstance(b, dict):
+                for g in espn.parse_scoreboard(lg, b):
+                    if espn.keep_college(g, mine, top_n):
+                        out.setdefault(g.game_id, g)
+        return list(out.values())
 
     async def _league_feeds(self, live: list[GameState]) -> None:
         today = datetime.now(ET).strftime("%Y-%m-%d")
@@ -1203,7 +1223,7 @@ class Engine:
         w = self.where.get(gid)
         live = g.phase == Phase.LIVE
         return {
-            "id": gid, "league": g.league.value, "league_logo": views.LEAGUE_LOGO.format(g.league.value),
+            "id": gid, "league": g.league.value, "league_logo": views.league_logo(g.league.value),
             "matchup": g.matchup, "phase": g.phase.value,
             "status_text": g.status_text or _status(g), "home": views.team(g.home), "away": views.team(g.away),
             "period": g.period, "clock": views.clock_text(g) if live else "",

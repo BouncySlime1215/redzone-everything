@@ -90,7 +90,7 @@ FUBO_CHANNELS = {"espn": "10179", "espn2": "12444", "espnews": "16485", "espnu":
 NATIONAL_NETS = frozenset({"espn", "espn2", "espnu", "espnews", "abc", "tnt", "trutv", "tbs", "nbc",
                            "nbcsn", "peacock", "prime", "fox", "fs1", "fs2", "cbs", "cbssn",
                            "nflnetwork", "nbatv", "nhlnetwork", "mlbnetwork", "usa", "netflix",
-                           "appletv", "max"})
+                           "appletv", "max", "accn", "secn", "btn", "cw"})
 # Apps used only when nothing else that isn't risky can play the game.  Everything on Peacock
 # is simulcast on NBC / NBCSN, which YouTube TV carries (and can rewind): the owner never
 # needs Peacock, so it is the last resort.

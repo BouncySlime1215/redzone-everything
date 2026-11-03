@@ -6,7 +6,7 @@
 import {
   app, ACTIONS, CHANGES, INPUTS, hooks, store, MOCK, Q, esc, num, get, arr, gameById, nowS, fmtDur, fmtCountdown,
   installImages, reduceMotion, pairInks, markMine,
-} from "./rz-core.js?v=40";
+} from "./rz-core.js?v=41";
 import { patch, flash } from "./rz-dom.js?v=40";
 import { icon } from "./rz-ui.js?v=40";
 import { startStream, act } from "./rz-api.js?v=40";

@@ -15,6 +15,59 @@ class League(str, Enum):
     NBA = "nba"
     NHL = "nhl"
     MLB = "mlb"
+    CBB = "cbb"    # men's college basketball: NBA rules, two 20-minute halves
+    WCBB = "wcbb"  # women's college basketball: NBA rules, four 10-minute quarters
+    CFB = "cfb"    # college football: NFL rules
+
+    @property
+    def base(self) -> "League":
+        """The pro league whose game rules (dead balls, breaks, scoring) this one plays by."""
+        return _BASE.get(self, self)
+
+    @property
+    def college(self) -> bool:
+        return self in _BASE
+
+
+_BASE = {League.CBB: League.NBA, League.WCBB: League.NBA, League.CFB: League.NFL}
+# Periods in regulation and seconds per period (MLB: innings, untimed).
+REGULATION = {League.NFL: 4, League.NBA: 4, League.NHL: 3, League.MLB: 9,
+              League.CBB: 2, League.WCBB: 4, League.CFB: 4}
+PERIOD_S = {League.NFL: 900, League.NBA: 720, League.NHL: 1200, League.MLB: 0,
+            League.CBB: 1200, League.WCBB: 600, League.CFB: 900}
+
+
+class ByLeague(dict):
+    """A per-league table keyed by the pro leagues: a college league reads its pro league's row
+    unless it has its own."""
+
+    def __missing__(self, key):
+        base = getattr(key, "base", key)
+        if base is key:
+            raise KeyError(key)
+        return self[base]
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __contains__(self, key):
+        return dict.__contains__(self, key) or dict.__contains__(self, getattr(key, "base", key))
+
+
+def pro_period(league: League, period: int | None, clock_s: float | None) -> int:
+    """The period in the pro league's terms, so NBA rules read college halves right: a men's
+    college half counts as two NBA quarters (2nd half with 10:00 or less left = "Q4", 1st OT = 5).
+    Every other league already plays the pro structure."""
+    p = period or 0
+    if REGULATION.get(league) != 2 or p <= 0:
+        return p
+    if p > 2:
+        return p + 2
+    half = PERIOD_S[league] / 2
+    return 2 * p - (1 if clock_s is None or clock_s > half else 0)
 
 
 class Phase(str, Enum):
@@ -59,6 +112,7 @@ class Team:
     wins: int | None = None
     losses: int | None = None
     ties: int | None = None        # NFL ties / NHL OT losses
+    rank: int | None = None        # college poll rank (top 25), None when unranked
 
     @property
     def win_pct(self) -> float | None:

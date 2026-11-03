@@ -997,7 +997,7 @@ class Decider:
         """[pacing] Is this football game in a kind of break that ends before a visit pays off?
         Not in crunch time: there a timeout is the moment to check the other close game."""
         tl = self.timelines.get(gid) if gid else None
-        if tl is None or s.league != League.NFL or s.crunch or s.lock in CRUNCH_LOCKS:
+        if tl is None or s.league.base != League.NFL or s.crunch or s.lock in CRUNCH_LOCKS:
             return False
         start, end = tl.last("stop_start"), tl.last("stop_end")
         return start is not None and start.label in SHORT_STOPS and (end is None or end.seen < start.lo)
@@ -1016,7 +1016,7 @@ class Decider:
         """Is the first snap after this game's break worth a few seconds of ad to see live?
         Yes in crunch time (every snap matters) or when that snap is a big play. Always outside
         football: there the first logged event comes well after play has resumed."""
-        if x.scored.league != League.NFL:
+        if x.scored.league.base != League.NFL:
             return True
         tl = self.timelines.get(gid)
         snap = resume_play(tl) if tl else None

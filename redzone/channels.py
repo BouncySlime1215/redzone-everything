@@ -39,16 +39,23 @@ NETWORKS = {
     "nba league pass": "leaguepass", "league pass": "leaguepass",
     "monumental": "monumental", "monumental sports network": "monumental", "msn": "monumental",
     "peacock": "peacock", "netflix": "netflix", "apple tv": "appletv", "max": "max", "hbo max": "max",
+    # College: conference networks are YouTube TV channels; ACC Network Extra / SEC Network+ are
+    # ESPN+ streams (ESPN app, lowest tier); FloSports and B1G+ aren't set up.
+    "acc network": "accn", "accn": "accn", "sec network": "secn", "secn": "secn",
+    "big ten network": "btn", "btn": "btn", "b1g network": "btn", "cbs sports network": "cbssn",
+    "accnx": "espnplus", "acc network extra": "espnplus", "secn+": "espnplus", "sec network+": "espnplus",
+    "cw": "cw", "the cw": "cw", "flosports": "flosports", "b1g+": "bigtenplus",
 }
 # Where each channel key is watchable for you.
 APP_FOR = {
     "prime": "prime", "leaguepass": "prime", "monumental": "prime",
     "peacock": None, "netflix": None, "appletv": None, "max": None, "espnplus": "youtubetv_event",
+    "flosports": None, "bigtenplus": None,
 }
 # Regional sports networks: blacked out here, so out-of-market games go to League Pass (NBA) / ESPN+ (NHL).
 RSN_HINTS = ("sn", "sports net", "sportsnet", "fanduel", "nesn", "msg", "scripps", "dsn", "marquee", "yes",
              "spectrum", "altitude", "root", "bally", "chsn", "kunpd", "victory", "kcop", "kmcc", "gulf coast")
-BROADCAST = {"cbs", "fox", "nbc", "abc"}
+BROADCAST = {"cbs", "fox", "nbc", "abc", "cw"}
 LOCAL_TEAMS = {League.NFL: {"CAR"}, League.NBA: {"CHA"}, League.NHL: {"CAR"}, League.MLB: set()}
 # Wizards/Caps local games are on Monumental, which you watch through Prime Video Channels.
 MONUMENTAL_TEAMS = {League.NBA: {"WSH", "WAS"}, League.NHL: {"WSH"}}
@@ -274,11 +281,13 @@ PRETTY = {"espn": "ESPN", "espn2": "ESPN2", "espnu": "ESPNU", "abc": "ABC", "fox
           "cbs": "CBS", "nbc": "NBC", "nflnetwork": "NFL Network", "tnt": "TNT", "trutv": "truTV",
           "tbs": "TBS", "nbatv": "NBA TV", "nhlnetwork": "NHL Network", "mlbnetwork": "MLB Network",
           "usa": "USA", "redzone": "NFL RedZone", "st": "Sunday Ticket", "cbssn": "CBS Sports Net",
-          "fs2": "FS2", "espnews": "ESPNews", "nbcsn": "NBCSN"}
+          "fs2": "FS2", "espnews": "ESPNews", "nbcsn": "NBCSN", "accn": "ACC Network",
+          "secn": "SEC Network", "btn": "Big Ten Network", "cw": "The CW"}
 
 # Channels to ask for in the setup helper, most useful first.
 SETUP_CHANNELS = ["espn", "espn2", "abc", "cbs", "fox", "nbc", "nflnetwork", "redzone", "nbcsn", "tnt", "trutv",
-                  "tbs", "nbatv", "nhlnetwork", "fs1", "mlbnetwork", "usa", "espnu", "cbssn"]
+                  "tbs", "nbatv", "nhlnetwork", "fs1", "mlbnetwork", "usa", "espnu", "cbssn",
+                  "accn", "secn", "btn"]
 
 
 def describe(target: str | None) -> str:

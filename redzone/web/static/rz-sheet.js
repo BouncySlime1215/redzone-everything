@@ -1,6 +1,6 @@
 /* RedZone Everything — bottom sheets (stacked, drag-to-dismiss, spring) and toasts. */
 
-import { esc, reduceMotion, SPRING } from "./rz-core.js?v=40";
+import { esc, reduceMotion, SPRING } from "./rz-core.js?v=41";
 import { patch } from "./rz-dom.js?v=40";
 import { icon } from "./rz-ui.js?v=40";
 

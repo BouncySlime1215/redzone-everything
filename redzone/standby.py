@@ -29,7 +29,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
-from redzone.models import GameState, League, Phase
+from redzone.models import ByLeague, GameState, League, Phase, pro_period
 
 NEXT, HOME, REPLAY, MOMENT, BEST = -1, 0, 1, 2, 3
 KIND = {NEXT: "next", HOME: "home", REPLAY: "replay", MOMENT: "moment", BEST: "best"}
@@ -54,7 +54,7 @@ class Option:
 # --- what kind of game is it right now ----------------------------------------------------------
 
 # Crunch time coming: (final period, seconds left at or under, max margin). Overtime counts if close.
-_CRUNCH = {League.NFL: (4, 420, 8), League.NBA: (4, 360, 8), League.NHL: (3, 480, 1)}
+_CRUNCH = ByLeague({League.NFL: (4, 420, 8), League.NBA: (4, 360, 8), League.NHL: (3, 480, 1)})
 
 
 def crunch_soon(g: GameState) -> bool:
@@ -62,7 +62,7 @@ def crunch_soon(g: GameState) -> bool:
     d = g.score_diff
     if g.phase != Phase.LIVE or d is None:
         return False
-    p = g.period or 0
+    p = pro_period(g.league, g.period, g.clock_s)  # men's college halves read as NBA quarters
     if g.league == League.MLB:
         return p >= 8 and abs(d) <= 2
     last, clock, margin = _CRUNCH[g.league]
@@ -83,12 +83,12 @@ def break_soon(g: GameState | None, s=None) -> bool:
         return False
     if g.league == League.MLB:
         return (g.situation.outs or 0) >= 2
-    p, clk = g.period or 0, g.clock_s
+    p, clk = pro_period(g.league, g.period, g.clock_s), g.clock_s
     if clk is None:
         return False
-    if g.league == League.NFL:
+    if g.league.base == League.NFL:
         return (p in (1, 2, 3) and clk <= 60) or (p in (2, 4) and 120 < clk <= 165)
-    if g.league == League.NBA:
+    if g.league.base == League.NBA:
         return p in (1, 2, 3) and clk <= 60
     return p in (1, 2) and clk <= 90   # NHL intermission
 
