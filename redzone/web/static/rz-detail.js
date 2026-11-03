@@ -3,13 +3,13 @@
 import {
   app, ACTIONS, hooks, store, attr, esc, num, get, arr, status, phase, teamVars, pairInks, ink, raw, onColor, lum,
   gameById, games, fmtStart, whereLabel, teamBy, imgSrc, vibrate,
-} from "./rz-core.js?v=39";
-import { icon, logo, leagueImg, avatar, empty, skel, stateBadge, chip } from "./rz-ui.js?v=39";
-import { situation, wpBar, sparkline, linescore } from "./rz-viz.js?v=39";
-import { board, gameCard } from "./rz-cards.js?v=39";
-import { openSheet, sheetById, closeSheet, confirmSheet, toast, updateSheets } from "./rz-sheet.js?v=39";
-import { api, act } from "./rz-api.js?v=39";
-import { pop } from "./rz-dom.js?v=39";
+} from "./rz-core.js?v=40";
+import { icon, logo, leagueImg, avatar, empty, skel, stateBadge, chip } from "./rz-ui.js?v=40";
+import { situation, wpBar, sparkline, linescore } from "./rz-viz.js?v=40";
+import { board, gameCard } from "./rz-cards.js?v=40";
+import { openSheet, sheetById, closeSheet, confirmSheet, toast, updateSheets } from "./rz-sheet.js?v=40";
+import { api, act } from "./rz-api.js?v=40";
+import { pop } from "./rz-dom.js?v=40";
 
 /* ====================================================================== game detail */
 async function loadDetail(gid, force = false) {
@@ -132,7 +132,8 @@ function playsBlock(g, det) {
     return `<div class="sheet-sec"><h4>Plays</h4></div><div class="panel">${empty("plays", phase(g) === "pre" ? "No plays yet" : "No plays to show", phase(g) === "pre" ? "Play-by-play shows up here once it starts." : "", "", "empty--sm", "pl-none")}</div>`;
   }
   const [aInk, hInk] = pairInks(g.away, g.home);
-  return `<div class="sheet-sec"><h4>Plays</h4><small>Newest first</small></div><div class="panel plays" data-flip>${plays.map((p) => {
+  const live = phase(g) === "live";
+  return `<div class="sheet-sec"><h4>Plays</h4><small>Newest first</small></div><div class="panel plays" data-flip>${plays.map((p, i) => {
     const t = teamBy(g, p.team);
     const tink = t === g.home ? hInk : aInk;
     const media = p.headshot
@@ -142,9 +143,19 @@ function playsBlock(g, det) {
     return `<div class="pl ${p.scoring ? "pl--score" : ""}" data-key="p:${attr(p.id)}" style="--tc-ink:${tink}">
       <div class="pl-media">${media}</div>
       <div style="min-width:0"><div class="pl-meta">${p.scoring ? `<span class="score-tag">Score</span>` : ""}<span>${esc(when, "")}</span>${p.type && !p.scoring ? `<span>· ${esc(p.type)}</span>` : ""}<span class="sc">${esc(p.score, "")}</span></div>
-      <div class="pl-text">${esc(p.text)}</div></div></div>`;
+      <div class="pl-text">${esc(p.text)}</div>${live && p.id && i < SAW_ROWS ? sawBtn(g, p) : ""}</div></div>`;
   }).join("")}</div>`;
 }
+/* "I saw this" on a recent play: calibrates the stream delay against that exact play (by its feed id,
+   the same id the engine's timeline keys plays by), so free throws a few seconds apart can't be confused. */
+const SAW_ROWS = 8;
+function sawBtn(g, p) {
+  return g.on_now
+    ? `<button class="chip chip--btn pl-saw" data-act="saw-play" data-gid="${attr(g.id)}" data-pid="${attr(p.id)}">${icon("eye")}<span>I saw this</span></button>`
+    : `<button class="chip pl-saw" disabled>${icon("eye")}<span>Only for the game on your TV</span></button>`;
+}
+ACTIONS["saw-play"] = (el) => act("saw_it", { game_id: el.dataset.gid, value: el.dataset.pid }, el);
+
 function periodShort(g, p) {
   p = num(p);
   if (g.league === "mlb") return `Inn ${p}`;

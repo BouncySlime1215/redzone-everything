@@ -4,14 +4,14 @@
 import {
   app, ACTIONS, CHANGES, attr, esc, num, get, arr, games, gameById, status, pairInks, fmtAgo, fmtTime, fmtStart, nowS,
   reduceMotion, SPRING, EASE_OUT, ink, teamBy, whereLabel,
-} from "./rz-core.js?v=39";
-import { patch } from "./rz-dom.js?v=39";
-import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=39";
-import { heroCard, fantasyCard } from "./rz-cards.js?v=39";
-import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=39";
-import { act } from "./rz-api.js?v=39";
-import { screenEvidence } from "./rz-evidence.js?v=39";
-import { recordedPanel } from "./rz-recorded.js?v=39";
+} from "./rz-core.js?v=40";
+import { patch } from "./rz-dom.js?v=40";
+import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=40";
+import { heroCard, fantasyCard } from "./rz-cards.js?v=40";
+import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=40";
+import { act } from "./rz-api.js?v=40";
+import { screenEvidence } from "./rz-evidence.js?v=40";
+import { recordedPanel } from "./rz-recorded.js?v=40";
 
 const STATE_LABEL = { idle: "Idle", watching: "Watching", locked: "Locked in", break: "On a break", paused: "Paused",
   frozen: "Holding still", safe: "Safe mode", replay: "Replay" };

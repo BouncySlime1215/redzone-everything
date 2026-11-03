@@ -779,6 +779,8 @@ main { max-width: var(--maxw); margin: 0 auto; padding: var(--sp-3) var(--gutter
 .pl { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; padding: 12px 0; border-top: 1px solid var(--line-1); }
 .pl:first-child { border-top: 0; padding-top: 2px; }
 .pl-media { position: relative; width: 40px; height: 40px; }
+.pl-saw { margin-top: 8px; height: 30px; }
+.pl-saw[disabled] { opacity: .5; }
 .pl-media .avatar { --s: 40px; }
 .pl-media > .logo { --s: 34px; margin: 3px; }
 .pl-media .mini { position: absolute; right: -5px; bottom: -5px; width: 20px; height: 20px; border-radius: 50%; background: var(--bg-1); display: grid; place-items: center; }

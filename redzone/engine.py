@@ -877,6 +877,8 @@ class Engine:
             self._act_manual(gid)
             return True, f"Switching to {self._name(gid)}"
         if action == "saw_it":
+            if game_id and game_id != dec.current:
+                return False, "Only the game on your TV can be calibrated"
             return self._calibrate(str(value) if value else None)
         if action == "vote":
             self.store.feedback(dec.current, int(value or 0), context={"reason": getattr(self.last_decision, "reason", "")})

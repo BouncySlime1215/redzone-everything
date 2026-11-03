@@ -118,3 +118,36 @@ def test_dns_rebinding_host_is_rejected(client):
 def test_external_page_cannot_send_bodyless_mutation(client):
     r = client.post('/api/settings/rollback', headers={'Origin': 'https://unrelated.example'})
     assert r.status_code == 403
+
+
+def test_tap_a_play_in_the_detail_sheet_calibrates_against_that_play(client, engine):
+    """The game sheet's play rows carry the timeline's play id; tapping one calibrates against exactly it."""
+    import time
+    from types import SimpleNamespace
+    from redzone.decider.screen import Event, Timeline
+
+    gid = next(g.game_id for g in engine.merger.games.values() if g.league == League.NBA)
+    engine.summaries[gid] = json.loads((FIX / "espn_nba_summary_401909906.json").read_text())
+    plays = client.get(f"/api/game/{gid}").json()["plays"]
+    assert len(plays) >= 2 and all(p["id"] for p in plays)
+    first, second = plays[0]["id"], plays[1]["id"]
+
+    # The same game is on the TV, with two plays (free throws) seconds apart on its timeline.
+    engine.cfg.update({"mode": {"dry_run": False}}, record=False)
+    dec = engine.decider
+    dec.current = gid
+    engine.where[gid] = SimpleNamespace(target="youtubetv:test", label="YouTube TV", confidence="high")
+    tl = dec.timelines[gid] = Timeline(League.NBA)
+    now = time.time()
+    tl.events.append(Event(now - 42, "play", "Free throw 1 of 2", pid=second))
+    tl.events.append(Event(now - 40, "play", "Free throw 2 of 2", pid=first))
+
+    # Another game's play can't calibrate the stream that's on.
+    other = next(g.game_id for g in engine.merger.games.values() if g.game_id != gid)
+    r = client.post("/api/action", json={"action": "saw_it", "game_id": other, "value": first}).json()
+    assert r["ok"] is False and "on your TV" in r["message"]
+
+    r = client.post("/api/action", json={"action": "saw_it", "game_id": gid, "value": first}).json()
+    assert r["ok"], r
+    assert "Free throw 2 of 2" in r["message"] and "delay" in r["message"]
+    assert engine.delays.get("youtubetv:test").samples

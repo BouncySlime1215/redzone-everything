@@ -1,6 +1,6 @@
 /* Screen timing is an estimate. Transport playback never proves live action on the TV. */
-import { ACTIONS, attr, esc } from "./rz-core.js?v=39";
-import { icon } from "./rz-ui.js?v=39";
+import { ACTIONS, attr, esc } from "./rz-core.js?v=40";
+import { icon } from "./rz-ui.js?v=40";
 
 const STATUS = {
   unknown: "Screen timing unknown",
