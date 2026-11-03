@@ -182,6 +182,43 @@ async def _clock_skew() -> dict:
             "spurious_errors": errors}
 
 
+async def _corrupt_state() -> dict:
+    """Every state file left broken (a crash mid-write, a full disk, a bad copy), one at a time: does
+    the engine still start, and does it keep your settings (a lost config = dry run = no TV control)?"""
+    from redzone.engine import Engine
+    from redzone.store import Store
+    from redzone.supervisor import read_jsonl
+    cases = {
+        "config.yaml": b"\x00\x00 mode: {dry_run: fal",
+        "switch_times.json": b'{"samples": {"youtubetv": [4.1, 5',
+        "user_state.json": b'{"locked_game": "40',
+        "traces.jsonl": b'{"id": 1}\n{"id": 2, "stag',
+        "supervisor.jsonl": b'{"ts": 1}\n{"ts": 2, "ki',
+        "redzone.db": b"SQLite format 3\x00" + b"\x00" * 50,
+    }
+    crashed, lost_settings = [], []
+    for name, body in cases.items():
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            cfg = Config(user_path=root / "config.yaml", history_dir=root / "hist")
+            cfg.update({"mode": {"dry_run": False}})          # you turned TV control on earlier
+            (root / name).write_bytes(body)
+            try:
+                cfg = Config(user_path=root / "config.yaml", history_dir=root / "hist")
+                e = Engine(cfg, Store(root / "redzone.db"))
+                e._restore_user_state()
+                e.store.recent_switches(5)
+                read_jsonl(root / "supervisor.jsonl")
+                if cfg.get("mode.dry_run", True):
+                    lost_settings.append(name)
+                await e.close()
+            except Exception as ex:
+                crashed.append(f"{name}: {type(ex).__name__}")
+    return {"ok": not crashed and not lost_settings, "wall_s": None, "mid_play_cuts": 0, "stuck": False,
+            "flagged": True, "crashed_at_start": crashed, "fell_back_to_dry_run": lost_settings,
+            "detail": f"{len(cases)} broken state files, one at a time"}
+
+
 SCENARIOS = {
     "baseline":            lambda: _switch(None, None),
     "adb_drop_hidden":     lambda: _switch("hidden", "adb_drop"),
@@ -193,6 +230,7 @@ SCENARIOS = {
     "tv_flip_fail":        lambda: _switch("hidden", "tv_flip_fail", tv_fail=True),
     "feed_5xx":            _feed_5xx,
     "clock_skew":          _clock_skew,
+    "corrupt_state":       _corrupt_state,
 }
 
 
