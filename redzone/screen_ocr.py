@@ -161,6 +161,16 @@ def parse_result(raw: str) -> OCRResult:
             confidence = _number(row["confidence"])
             box = row["box"]
             x, y, w, h = (_number(box[key]) for key in ("x", "y", "width", "height"))
+            # Vision can place a word a hair past the frame edge (x = -0.0015 for text cut at the
+            # left border, Nov 3): clamp that slack onto the frame instead of rejecting the screen.
+            if -0.02 <= x < 0:
+                w, x = w + x, 0.0
+            if -0.02 <= y < 0:
+                h, y = h + y, 0.0
+            if 1 < x + w <= 1.02:
+                w = 1 - x
+            if 1 < y + h <= 1.02:
+                h = 1 - y
             if not (0 <= confidence <= 1 and 0 <= x <= 1 and 0 <= y <= 1
                     and 0 < w <= 1 and 0 < h <= 1 and x + w <= 1.000001 and y + h <= 1.000001):
                 raise ValueError("out-of-bounds OCR region")
