@@ -1,0 +1,23 @@
+# LoRA fine-tune of the watchdog model (mlx_lm lora -c agent/train/lora.yaml). Sized for an 8 GB M2
+# with the RedZone service running beside it: batch 2, 512 tokens, grad checkpointing.
+model: mlx-community/Qwen3-1.7B-4bit
+train: true
+data: agent/train/data
+adapter_path: agent/model/adapter
+fine_tune_type: lora
+mask_prompt: true          # learn the answer, not the prompt
+num_layers: 16
+batch_size: 2
+iters: 300
+learning_rate: 1.0e-4
+steps_per_report: 25
+steps_per_eval: 100
+val_batches: 10
+save_every: 100
+max_seq_length: 768
+grad_checkpoint: true
+seed: 7
+lora_parameters:
+  rank: 8
+  scale: 16.0
+  dropout: 0.05

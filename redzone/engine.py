@@ -10,6 +10,7 @@ import json
 import logging
 import subprocess
 import time
+from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -288,6 +289,36 @@ class Engine:
         target = self.decider.target_of(c.game_id) or ""
         mu = self.delays.get(target).mu if target else 45.0
         return self.decider._saw(c.game_id, c.play_at + mu - 3, c.play_at + mu + 6)
+
+    _agent_cache: tuple[float, list] = (0.0, [])
+
+    def agent_notes(self, limit: int = 5, max_age_s: float = 86400.0) -> list[dict]:
+        """The watchdog's recent notes and actions (agent/watchdog.py writes data/agent.jsonl),
+        re-read only when the file changes."""
+        path = Path(getattr(self.cfg, "user_path", Path("data/config.yaml"))).parent / "agent.jsonl"
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            return []
+        if mtime != self._agent_cache[0]:
+            rows = []
+            try:
+                with path.open("rb") as f:
+                    f.seek(0, 2)
+                    f.seek(max(0, f.tell() - 200_000))
+                    for line in f.read().decode("utf-8", "replace").splitlines():
+                        try:
+                            r = json.loads(line)
+                        except ValueError:
+                            continue
+                        if isinstance(r, dict) and r.get("action") not in (None, "none"):
+                            rows.append({"ts": r.get("ts"), "action": r.get("action"), "why": r.get("why"),
+                                         "result": r.get("result")})
+            except OSError:
+                return []
+            self._agent_cache = (mtime, rows)
+        now = time.time()
+        return [r for r in self._agent_cache[1] if now - (r.get("ts") or 0) <= max_age_s][-limit:]
 
     def reel_view(self) -> dict | None:
         r = self.reeler.current
@@ -1449,7 +1480,7 @@ class Engine:
                      "tv_control": self.control.live_control, "two_stick": self.control.two_stick,
                      "control_note": self.control.note, "mic": self.mic is not None, "announcer_hint": ""},
             "now": now, "next": nxt, "standby": self._standby_view(), "games": games,
-            "reel": self.reel_view(),
+            "reel": self.reel_view(), "agent": self.agent_notes(),
             "tonight": self.tonight.view(),
             "screen_evidence": self.screen_evidence(),
             "queue": [self._queue_item(m) for m in sorted(dec.queue, key=lambda m: -m.value)[:10]],
