@@ -56,7 +56,8 @@ class Engine:
         self.fetcher = Fetcher()
         self.merger = Merger()
         self._poll_every: dict[str, float] = {}   # game id -> the poll interval it was last fetched at
-        self.feeds = FeedBook(self.merger, self.fetcher, self._feed_urls, self._feed_cadence)
+        # Not "feeds": the replay demo engine (redzone/demo/engine.py) uses that name for its own dict.
+        self.feed_book = FeedBook(self.merger, self.fetcher, self._feed_urls, self._feed_cadence)
         self.scorer = Scorer(self.cfg)
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"))
         try:   # every "I just saw it" from the last 30 days: a restart keeps tonight's taps
@@ -775,7 +776,7 @@ class Engine:
             # A dark feed (sources/feeds.py, flagged within 5 s) blocks ENTERING a game, never leaving
             # the one on screen: for that one only the merger's old 60 s no-progress rule applies, so
             # an ESPN blip can't empty the watchable set and send you to a catch-up reel.
-            stale = self.merger.is_stale(gid) if gid == self.decider.current else self.feeds.stale(gid)
+            stale = self.merger.is_stale(gid) if gid == self.decider.current else self.feed_book.stale(gid)
             cands[gid] = Candidate(sc, target, stale=stale)
         self._garbage_focus()
         self._hold_check()
@@ -946,7 +947,7 @@ class Engine:
         if d.target == REEL:
             return bool(target and target.startswith("reel:")) and (REEL_DIR / "reel.mp4").exists()
         g = self.merger.games.get(d.target or "")
-        if not g or g.phase != Phase.LIVE or self.feeds.stale(g.game_id):
+        if not g or g.phase != Phase.LIVE or self.feed_book.stale(g.game_id):
             return False
         if getattr(self.where.get(g.game_id), "target", None) != target:
             return False
@@ -1491,7 +1492,7 @@ class Engine:
                       "tunable": getattr(w, "tunable", False), "target": getattr(w, "target", None)},
             "odds": g.odds_text, "mine": g.involves(set((self.cfg.get("teams") or {}).get(g.league.value, []))),
             "boosted": gid in self.boosted, "muted": gid in dec.user.muted, "focus": gid == dec.user.focus_game,
-            "stale": self.feeds.stale(gid), "start_time": g.start_time, "on_now": gid == dec.current,
+            "stale": self.feed_book.stale(gid), "start_time": g.start_time, "on_now": gid == dec.current,
             "wp": g.home_win_prob, "situation": views.situation(g), "leaders": g.leaders,
             "spotlight": g.spotlight, "venue": g.venue_info,
             "brain": (s.brain or None) if s and live else None,
