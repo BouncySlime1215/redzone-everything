@@ -1,0 +1,240 @@
+# CI for every pull request: tests on Linux, ruff for real errors, and a fast scorecard smoke run
+# on the pinned eval dataset (PR vs base, same data). The numbers go into one PR comment that each
+# push updates. Free tier only: public repo, GitHub-hosted ubuntu runners, the built-in token.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [codex/resume-redzone, integration/next]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The pinned eval dataset (see the "Pin one eval dataset" work): a release asset, cached here.
+  EVAL_DATA_TAG: eval-data-v1
+  EVAL_DATA_ASSET: eval-archive.tgz
+  PYTHONDONTWRITEBYTECODE: "1"
+  # The integration train gets every scorecard in full; other PRs get the fast smoke slice.
+  RZ_SCORECARD_FULL: ${{ (github.base_ref == 'integration/next' || github.ref == 'refs/heads/integration/next' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff==0.16.9
+      - name: ruff (real errors only, rules in pyproject.toml)
+        run: |
+          set +e
+          ruff check --output-format concise . > lint.txt 2>&1
+          echo $? > lint-status.txt
+          cat lint.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lint
+          path: lint*.txt
+      - name: fail on lint errors
+        run: test "$(cat lint-status.txt)" = 0
+
+  data:
+    # Fetch the pinned dataset once per tag, verify its sha256, and keep it in the Actions cache.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      available: ${{ steps.fetch.outputs.available }}
+    steps:
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: eval-data
+          key: eval-data-${{ env.EVAL_DATA_TAG }}-v1
+      - name: download and verify
+        id: fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ steps.cache.outputs.cache-hit }}" != "true" ]; then
+            mkdir -p eval-data
+            if ! gh release download "$EVAL_DATA_TAG" -R "$GITHUB_REPOSITORY" -D eval-data \
+                 -p "$EVAL_DATA_ASSET" -p "$EVAL_DATA_ASSET.sha256"; then
+              echo "::warning::pinned eval dataset $EVAL_DATA_TAG is not published yet; scorecard smoke skipped"
+              rm -rf eval-data
+              echo "available=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          cd eval-data
+          # The .sha256 file names the asset; check only that line, by our asset name.
+          grep -E "[[:space:]]\*?$EVAL_DATA_ASSET\$" "$EVAL_DATA_ASSET.sha256" | sha256sum -c -
+          echo "available=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.fetch.outputs.available == 'true'
+        with:
+          name: eval-data
+          path: eval-data
+          retention-days: 1
+
+  test:
+    needs: data
+    # Tests run even if the dataset job failed (a bad checksum must not hide test results).
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: system tools (PortAudio for sounddevice, ffmpeg for the catch-up reel, as on the Mac)
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libportaudio2 ffmpeg
+      - run: pip install -r requirements.txt
+      - uses: actions/download-artifact@v4
+        if: needs.data.outputs.available == 'true'
+        with:
+          name: eval-data
+          path: eval-data
+      - name: unpack pinned data (archive-backed tests run when it is there)
+        if: needs.data.outputs.available == 'true'
+        run: tar -xzf "eval-data/$EVAL_DATA_ASSET"
+      - name: end-to-end replayed night (when the suite has it)
+        # The whole-night system test (real Engine + Controller + fakes) is the integration gate:
+        # run it on its own first so its result is visible apart from the unit tests.
+        run: |
+          shopt -s nullglob
+          e2e=(tests/test_e2e*.py)
+          if [ ${#e2e[@]} -eq 0 ]; then echo "no end-to-end night test in this branch yet"; exit 0; fi
+          python -m pytest -q -rs -p no:cacheprovider "${e2e[@]}"
+      - name: pytest (mac_only tests are skipped by name on Linux)
+        run: python -m pytest -q -rs -p no:cacheprovider --junitxml=pytest-${{ matrix.python }}.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pytest-${{ matrix.python }}
+          path: pytest-${{ matrix.python }}.xml
+
+  scorecard:
+    needs: data
+    if: needs.data.outputs.available == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: head
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with:
+          path: base
+          ref: ${{ github.event.pull_request.base.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: head/requirements.txt
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libportaudio2 ffmpeg
+      - run: pip install -r head/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: eval-data
+          path: eval-data
+      - name: one copy of the pinned data, linked into both checkouts
+        run: |
+          mkdir pinned && tar -xzf "eval-data/$EVAL_DATA_ASSET" -C pinned
+          for co in head base; do
+            [ -d "$co" ] || continue
+            mkdir -p "$co/data"
+            for d in pinned/data/*; do
+              # Copy small files (eval_config.yaml etc.) so a scorecard can't change the pin through
+              # a link; link the big archive folders.
+              if [ -d "$d" ]; then ln -sfn "$PWD/$d" "$co/data/$(basename "$d")"; else cp "$d" "$co/data/"; fi
+            done
+          done
+      - name: smoke run, PR
+        run: python head/scripts/ci_scorecard.py --root head --out head.json
+      - name: smoke run, base (same slice, same data)
+        if: github.event_name == 'pull_request'
+        run: python head/scripts/ci_scorecard.py --root base --out base.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scorecard
+          path: "*.json"
+      - name: hard rule (no added mid-play cuts)
+        run: |
+          base=""; [ -f base.json ] && base="--base base.json"
+          python head/scripts/ci_report.py --head head.json $base --out scorecard.md
+          cat scorecard.md >> "$GITHUB_STEP_SUMMARY"
+
+  report:
+    needs: [lint, data, test, scorecard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          path: results
+          pattern: "{lint,pytest-3.12,scorecard}"
+          merge-multiple: true
+        continue-on-error: true
+      - name: build the comment
+        env:
+          DATA_AVAILABLE: ${{ needs.data.outputs.available }}
+          JOBS: "Jobs: lint ${{ needs.lint.result }}, tests ${{ needs.test.result }} (3.12 + 3.13), scorecard ${{ needs.scorecard.result }}. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: |
+          args=()
+          [ -f results/pytest-3.12.xml ] && args+=(--junit results/pytest-3.12.xml)
+          [ -f results/lint-status.txt ] && args+=(--lint results/lint.txt --lint-status "$(cat results/lint-status.txt)")
+          if [ "$DATA_AVAILABLE" = "true" ]; then
+            args+=(--head results/head.json)
+            [ -f results/base.json ] && args+=(--base results/base.json)
+          else
+            args+=(--note "Scorecards skipped: the pinned eval dataset ($EVAL_DATA_TAG) is not published yet.")
+          fi
+          args+=(--note "$JOBS")
+          python scripts/ci_report.py "${args[@]}" --out comment.md || true
+          cat comment.md >> "$GITHUB_STEP_SUMMARY"
+      - name: post or update the PR comment
+        if: github.event_name == 'pull_request'
+        # A PR from a fork gets a read-only token: the numbers stay in the run summary instead.
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('comment.md', 'utf8');
+            const marker = '<!-- redzone-ci -->';
+            const {owner, repo} = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {owner, repo, issue_number, per_page: 100});
+            const mine = comments.find(c => c.user.type === 'Bot' && c.body.includes(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({owner, repo, comment_id: mine.id, body});
+            } else {
+              await github.rest.issues.createComment({owner, repo, issue_number, body});
+            }

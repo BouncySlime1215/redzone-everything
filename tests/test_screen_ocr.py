@@ -2,7 +2,6 @@ import json
 from dataclasses import replace
 from pathlib import Path
 import subprocess
-import platform
 import struct
 import zlib
 
@@ -174,7 +173,7 @@ def _synthetic_png(path, rectangles, border_thickness=3):
                      + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
 
-@pytest.mark.skipif(platform.system() != "Darwin", reason="native local pixel reader requires macOS")
+@pytest.mark.mac_only  # the native local pixel reader is a Swift helper
 def test_native_geometry_moves_with_border_and_rejects_keyboard(tmp_path):
     helper = ocr._helper(45)
     for name, rectangles, expected in [

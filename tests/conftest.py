@@ -1,7 +1,23 @@
+import platform
+
 import pytest
 
 from redzone.config import Config
 from redzone.models import GameState, League, Phase, Situation, Stoppage, Team
+
+
+ON_MAC = platform.system() == "Darwin"
+
+
+def pytest_collection_modifyitems(config, items):
+    """`@pytest.mark.mac_only` tests need macOS itself (Swift helpers, Vision, sips). They run on the
+    Mac and are skipped, by name, everywhere else, so CI on Linux reports them instead of failing."""
+    if ON_MAC:
+        return
+    skip = pytest.mark.skip(reason="mac_only: needs macOS (runs on the Mac, skipped on Linux CI)")
+    for item in items:
+        if "mac_only" in item.keywords:
+            item.add_marker(skip)
 
 
 @pytest.fixture

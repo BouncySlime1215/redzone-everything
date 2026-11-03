@@ -2,7 +2,6 @@
 the matching math, and the 'screen' evidence in the delay book."""
 from __future__ import annotations
 
-import platform
 from pathlib import Path
 
 import pytest
@@ -15,7 +14,6 @@ from redzone.screen_ocr import TextBox, recognize
 
 FIX = Path(__file__).parent / "fixtures" / "scorebug"
 HOME, AWAY = Team("ORL", "Magic"), Team("WSH", "Wizards")
-VISION = platform.system() == "Darwin" and (Path(__file__).parents[1] / "scripts" / "vision_ocr.swift").exists()
 
 # What Vision read on clean.png (1000x562 downscale of the stick's 1920x1080), for machines without it.
 CLEAN_OCR = [
@@ -48,7 +46,7 @@ def test_clean_frame_reads_the_score_bug_with_recorded_ocr():
     assert bug == Bug(home=59, away=60, period="HALFTIME", clock="")
 
 
-@pytest.mark.skipif(not VISION, reason="needs macOS Vision")
+@pytest.mark.mac_only  # macOS Vision OCR through scripts/vision_ocr.swift
 @pytest.mark.parametrize("name,want", [("clean", Bug(59, 60, "HALFTIME", "")), ("ov", None),
                                        ("p150b", None), ("espn150", None)])
 def test_real_screenshots_with_vision(name, want):
