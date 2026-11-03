@@ -312,3 +312,37 @@ def test_brain_defaults_survive_validation_as_saved_settings():
     assert dropped == []
     for bad in ({"version": 4}, {"v3_entry_q": 90}, {"v3_entry": "nfl"}):
         assert C.prune({"brain": bad}, d)[1]
+
+
+def test_cautious_scale_fit_caps_overruns_at_alpha():
+    from redzone.lab.brain3cal import fit_scale
+    rng = np.random.default_rng(0)
+    p10 = rng.uniform(30, 120, 2000)
+    y = p10 * rng.uniform(0.3, 3.0, 2000)
+    s = fit_scale(y, p10, 0.05)
+    assert 0 < s <= 1 and (y < s * p10).mean() <= 0.05 + 1e-9
+    assert fit_scale(p10 * 2, p10, 0.05) == 1.0          # never lengthens p10
+    assert fit_scale(np.array([]), np.array([]), 0.05) == 1.0
+
+
+def test_safe_entry_scales_p10_by_type_and_crunch():
+    sc = {"tv_timeout": {"crunch": 0.75, "early": 0.9}, "score_break": {"crunch": 0.5, "early": 0.8}}
+    v = _v3(1000.0, entry=(100.0, 150.0, 200.0))
+    v.safe_scale, v.crunch = sc, True
+    assert v.safe_entry("tv_timeout") == pytest.approx(75.0)
+    assert v.safe_entry("score_break") == pytest.approx(50.0)
+    assert v.safe_entry() == pytest.approx(50.0)         # unknown kind: the most cautious
+    assert v.resume_at_safe("tv_timeout") == pytest.approx(1075.0)
+    v.crunch = False
+    assert v.safe_entry("score_break") == pytest.approx(80.0)
+    v.safe_scale = {}
+    assert v.safe_entry("tv_timeout") == pytest.approx(100.0)   # no calibration: p10 as is
+
+
+def test_shipped_entry_calibration_only_shortens_and_is_read_live():
+    cal = json.loads((B.MODEL_DIR / "entry_cal_v3.json").read_text())
+    for lg, types in cal["scales"].items():
+        for t, sl in types.items():
+            assert all(0 < x <= 1 for x in sl.values()), (lg, t)
+    assert B3.entry_scales("nfl") == cal["scales"].get("nfl", {})
+    assert B3.entry_scales("mlb") == {}

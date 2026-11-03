@@ -124,11 +124,42 @@ This round predates the rule and falls short of it:
 Next round: a time-ordered split, 5 forward-chaining folds (mean and worst fold), the gap report,
 slices, and the locked test set left untouched.
 
+## Cautious restart bound (`V3.safe_entry`, for the decision core's break budget)
+
+When the core's break budget used plain p10, replays overran into crunch snaps. On NFL held-out
+nights, a crunch-time score break ends before p10 20% of the time, against 10% overall.
+`redzone/lab/brain3cal.py` fits a scale s ≤ 1 per break type and crunch state so a break ends before
+`s × p10` at most 5% of the time. The fit uses only nights the trees never trained on, in time
+order. `scripts/calibrate_brain3.py` writes `brain_models/entry_cal_v3.json` and the full report
+`docs/brain3/entry_cal.json`.
+
+NFL scales: TV timeout 0.94 (crunch 0.75), score break 0.85 (crunch 0.56).
+
+| NFL | overrun at p10 | overrun at safe bound | budget p10 → safe (s) |
+|---|---|---|---|
+| 5 forward-chaining folds (46 held-out public nights) | – | mean 4.5%, worst fold 9.0% | 92 (mean) |
+| fit on all of them | 7.4% | 4.6% | 105 → 92 |
+| **nights after the cutoff** (58 archive nights, never fitted) | 5.2% | **3.1%** | 104 → 91 |
+| … score break, crunch (176) | 19.9% | 0.6% | 95 → 54 |
+| … TV timeout, crunch (196) | 6.6% | 4.1% | 90 → 68 |
+| … score break, early (2146) | 8.1% | 4.7% | 134 → 114 |
+| … TV timeout, early (2832) | 2.1% | 2.0% | 83 → 78 |
+
+The fresh nights overrun less than the nights it was fitted on, so the scales show no overfit gap.
+The worst fold (9.0%, a run of late-2024 nights) is the honest risk.
+
+NBA and NHL keep plain p10. NBA's TV-timeout labels only count dead spells of at least 140 s, so p10
+can't overrun them and a fitted scale means nothing. NHL has one calibration night, and its
+after-cutoff score breaks overrun p10 15% of the time on 54 breaks. Consumers should treat NHL
+score breaks with extra margin until there is more archive.
+
 ## For other owners
 
 - `brain3.MomentV3(brain)` and `brain3.BreaksV3(book, brain)` implement the MomentModel and
   BreakModel contracts (`redzone/contracts`), with real `length_q10/50/90`, `next_restart_at` and
   `kind`. `LegacyMoment` and `LegacyBreaks` stay the defaults until the integration owner switches them.
+- Cautious break budget: `v3.safe_entry(kind)` / `v3.resume_at_safe(kind)`, with kind "tv_timeout" or
+  "score_break" (None = the most cautious). It is calibrated for NFL and is plain p10 elsewhere.
 - Every `Reading` carries `v3` (a `brain3.V3`): `stop15/30/60`, `types`, `length`, `entry`,
   `big60/180`, `resume_at(q)` and `as_dict()`. Highlight jump: `entry[0]` (p10) and `big60`/`big180`.
 - A broken or mismatched `.v3.npz` falls back to v2 for that league, and so does a prediction error at runtime.

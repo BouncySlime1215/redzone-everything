@@ -274,6 +274,23 @@ class V3:
     clock: str = "wall"                   # "game" for leagues trained on the game clock
     type_len: dict[str, float] = field(default_factory=dict)   # median length (s) of each type
     type_q: dict[str, list[float]] = field(default_factory=dict)  # (p10, p50, p90) length of each type
+    crunch: bool = False                  # the state is crunch time (the cautious scale differs there)
+    safe_scale: dict[str, dict[str, float]] = field(default_factory=dict)  # brain_models/entry_cal_v3.json
+
+    def safe_entry(self, kind: str | None = None) -> float:
+        """A cautious restart bound (s after `at`): p10 scaled per break type and crunch so the break
+        ends before it at most ~5% of the time (redzone/lab/brain3cal.py, time-ordered held-out nights).
+        `kind` is "tv_timeout" or "score_break"; None or unknown takes the most cautious of them."""
+        slot = "crunch" if self.crunch else "early"
+        if kind in self.safe_scale:
+            sc = self.safe_scale[kind].get(slot, 1.0)
+        else:
+            sc = min([v.get(slot, 1.0) for v in self.safe_scale.values()] or [1.0])
+        return self.entry[0] * max(0.0, min(1.0, float(sc)))
+
+    def resume_at_safe(self, kind: str | None = None) -> float | None:
+        """Wallclock of safe_entry(kind), None if unknown."""
+        return None if self.at is None else self.at + self.safe_entry(kind)
 
     def expected_len(self, long_only: bool = True) -> float | None:
         """Expected length of the stoppage coming within 60 s, weighted by its likely type."""
@@ -304,7 +321,7 @@ class V3:
                 "types": {k: r(v) for k, v in self.types.items()}, "long_p": r(self.long_p),
                 "len_q": [round(x, 1) for x in self.length], "entry_q": [round(x, 1) for x in self.entry],
                 "big": {str(k): r(v) for k, v in self.big.items()}, "hot": r(self.hot),
-                "expect_len": r(self.expected_len())}
+                "expect_len": r(self.expected_len()), "safe_entry": round(self.safe_entry(), 1)}
 
     def resume_at(self, q: int = 50) -> float | None:
         """Wallclock play is expected to resume (q = 10 / 50 / 90 quantile), None if unknown."""
@@ -313,7 +330,23 @@ class V3:
         return self.at + self.entry[{10: 0, 50: 1, 90: 2}[q]]
 
 
-def reading_from(pred: dict, forest: Forest3, at: float | None) -> V3:
+_CAL: dict | None = None
+
+
+def entry_scales(league: str) -> dict:
+    """The calibrated cautious-entry scales for a league ({} = p10 as is)."""
+    global _CAL
+    if _CAL is None:
+        try:
+            _CAL = json.loads((Path(__file__).resolve().parent / "brain_models" / "entry_cal_v3.json")
+                              .read_text()).get("scales", {})
+        except Exception:  # noqa: BLE001 - a missing or broken file only loses the scaling
+            _CAL = {}
+    return _CAL.get(league, {})
+
+
+def reading_from(pred: dict, forest: Forest3, at: float | None, league: str | None = None,
+                 crunch: bool = False) -> V3:
     types = pred.get("type")
     names = forest.info.get("type_names", list(TYPES[1:]))
     tp = {n: float(p) for n, p in zip(names, types)} if types is not None else {}
@@ -329,7 +362,8 @@ def reading_from(pred: dict, forest: Forest3, at: float | None) -> V3:
               hot=max(0.0, min(100.0, float(pred["hot"]))) if "hot" in pred else None,
               clock=forest.info.get("clock", "wall"), type_len=dict(forest.info.get("type_len", {})),
               type_q={k: list(v) for k, v in (forest.info.get("type_q") or {}).items()},
-              long=tuple(long_types))
+              long=tuple(long_types), crunch=bool(crunch),
+              safe_scale=entry_scales(league or forest.info.get("league", "")))
 
 
 # ----------------------------------------------------------------------------- contracts

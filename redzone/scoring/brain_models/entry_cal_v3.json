@@ -1,0 +1,21 @@
+{
+ "alpha": 0.05,
+ "types": [
+  "tv_timeout",
+  "score_break"
+ ],
+ "scales": {
+  "nfl": {
+   "tv_timeout": {
+    "all": 0.943,
+    "crunch": 0.75,
+    "early": 0.943
+   },
+   "score_break": {
+    "all": 0.848,
+    "crunch": 0.563,
+    "early": 0.848
+   }
+  }
+ }
+}

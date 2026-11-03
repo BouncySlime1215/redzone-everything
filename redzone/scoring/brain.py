@@ -684,7 +684,8 @@ class Brain:
         if hit is not None and hit[0] == tr.n:
             return hit[1]
         try:
-            v = brain3.reading_from(m3.predict(tr.vector(m3.features)), m3, tr.at)
+            v = brain3.reading_from(m3.predict(tr.vector(m3.features)), m3, tr.at, league=lg,
+                                   crunch=bool((tr.row or {}).get("crunch", 0)))
         except Exception:  # noqa: BLE001
             log.exception("brain v3: prediction failed for %s; using v2 for %s from now on", g.game_id, lg)
             self._broken.add(lg + ":v3")
