@@ -277,7 +277,10 @@ class ChannelMap:
 # YouTube TV channels with no known watch code that tune by in-app search instead (~15-20 s):
 # search -> the channel (or its network page -> Live -> the live tile), confirmed by the media
 # session naming the channel. NBCSN proved by hand on the 4K Plus, Nov 3.
-SEARCH_CHANNELS = frozenset({"nbcsn"})   # proven on the stick. Not yet: WRAL/NBC (search shows WRAL news, not the channel), NHL Network (lineup unknown)
+# What to type for each (the channel table's own search name where it works; "WRAL" finds WRAL
+# news, while "NBC" opens the NBC network page whose Live row is the local station, Nov 3).
+SEARCH_QUERY = {"nbc": "NBC"}
+SEARCH_CHANNELS = frozenset({"nbcsn", "nbc"})   # both proven on the stick (Nov 3). Not yet: NHL Network (lineup unknown)
 
 YTTV_LINK = re.compile(r"tv\.youtube\.com/watch/([A-Za-z0-9_-]{11})")
 

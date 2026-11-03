@@ -409,7 +409,8 @@ class YouTubeTVTuner(Tuner):
                 result = await asyncio.to_thread(recognize, path, timeout=8.0)
             return CapturedScreen(result, seq[0], time.monotonic())
 
-        hunt = await hunt_channel(stick, observe, key=key, table=_yttv_table(),
+        from redzone.channels import SEARCH_QUERY
+        hunt = await hunt_channel(stick, observe, key=key, table=_yttv_table(), query=SEARCH_QUERY.get(key, ""),
                                   profile=getattr(self, "preferred_profile", "") or "", collect_codes=False)
         steps += [f"{x['action']}: {x['detail'][:60]}" for x in hunt.steps[-6:]]
         if hunt.status != "confirmed":

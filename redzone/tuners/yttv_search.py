@@ -703,7 +703,10 @@ async def hunt_channel(stick, observe, *, key: str, table, query: str = "", prof
         Series / News with the live tile beside Live), not the channel (Nov 3, by hand on the 4K Plus):
         DOWN to the Live row, RIGHT onto its live tile, Select."""
         t = normalize_text(frame.text)
-        if not ("live" in t and "upcoming" in t and ("series" in t or "news" in t)):
+        # NBCSN: Live / Upcoming / Series / News. NBC (local WRAL): Live / Series / Popular / ...
+        # with the station's NOW tile beside Live.
+        menu = sum(w in t for w in ("upcoming", "series", "news", "popular"))
+        if not ("live" in t and menu >= 2):
             return False
         await press("KEYCODE_DPAD_DOWN")
         await sleep(.8)
