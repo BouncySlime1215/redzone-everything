@@ -33,7 +33,14 @@ Plus: key moments (big plays from play-by-play) judged seen/missed as they air, 
 report at data/reports/YYYY-MM-DD.md (switches, failures by cause, key moments, delays measured,
 what it fixed). Optional phone push through ntfy.sh (no account) when supervisor.ntfy_topic is set.
 
-Read-only report from the saved data:  .venv/bin/python -m redzone.supervisor report [YYYY-MM-DD]
+Every switch carries a trace (redzone/trace.py: decision -> command -> picture, with step times); ~90 s
+after each cut the supervisor grades it against the feed (did we leave or land mid-play?) into
+data/supervisor_cuts.jsonl. The report rolls traces, grades, safe-mode minutes and the watchdog's actions
+into "what it showed / missed / broke / fixed" and a 7-night error budget (redzone/observability.py),
+saves the numbers next to it as YYYY-MM-DD.json, and pushes five lines to the phone.
+
+Read-only report from the saved data:  .venv/bin/python -m redzone.supervisor report [YYYY-MM-DD] [--push]
+Check the phone push works:            .venv/bin/python -m redzone.supervisor push-test
 """
 from __future__ import annotations
 
@@ -46,12 +53,15 @@ import re
 import shutil
 import statistics
 import time
-from collections import Counter, defaultdict, deque
+from collections import Counter, OrderedDict, defaultdict, deque
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
+
+from redzone import observability as obs
+from redzone import trace
 
 log = logging.getLogger(__name__)
 
@@ -60,6 +70,9 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 NIGHT_STARTS_H = 6          # a "night" runs 6:00 AM ET to 6:00 AM ET the next day, named by its first date
 REPORT_AFTER_S = 300.0      # ...and its report is written 5 minutes after it ends
+CUT_JUDGE_AFTER_S = 90.0    # a cut is graded this long after it happened (the feed has caught up by then)
+CUT_LOOKBACK_S = 900.0      # switch rows this recent are looked at (a switch's row lands when it finishes)
+NTFY_TOPIC_RX = re.compile(r"^[-_A-Za-z0-9]{1,64}$")
 
 PLAYING = ("playing", "buffering", "connecting")
 # Fire OS's own screens: the launcher, settings, the app store, profiles, screensaver.
@@ -97,6 +110,7 @@ DEFAULTS = {
     "max_wal_bytes": 64 * 1024 ** 2,
     "ntfy_topic": "",              # set to push the nightly summary to the ntfy app (ntfy.sh/<topic>)
     "ntfy_server": "https://ntfy.sh",
+    "budget": {},                  # error budget objectives (redzone/observability.BUDGET_DEFAULTS)
 }
 
 # How often each fix may run: (minimum gap in seconds, at most this many per hour), per key.
@@ -262,6 +276,7 @@ class Supervisor:
         self.root = Path(root) if root else DATA
         self.log_path = self.root / "supervisor.jsonl"
         self.moments_path = self.root / "supervisor_moments.jsonl"
+        self.cuts_path = self.root / "supervisor_cuts.jsonl"
         self.reports = self.root / "reports"
         self.clock = clock
         self.sleep = sleep
@@ -282,6 +297,9 @@ class Supervisor:
         self._limited: set[str] = set()                  # fixes whose rate limit we already logged
         self._observed: dict[str, str] = {}              # condition -> last logged observation
         self._report_checked: date | None = None
+        self._cut_floor = clock()                        # switches before start were graded last run
+        self._cuts_judged: OrderedDict[str, None] = OrderedDict()
+        self._safe_on: bool | None = None                # last safe-mode state recorded as an episode
         self.last_step = 0.0
         self.running = False
 
@@ -386,7 +404,8 @@ class Supervisor:
             await self.sleep(float(self.opt("every_s")))
 
     RULES = ("rule_stuck_switch", "rule_screen", "rule_failures", "rule_safe_mode", "rule_idle", "rule_feeds",
-             "rule_adb", "rule_delay_doubt", "rule_finished_hold", "rule_logs", "track_moments", "maybe_report")
+             "rule_adb", "rule_delay_doubt", "rule_finished_hold", "rule_logs", "track_moments", "track_episodes",
+             "grade_cuts", "maybe_report")
 
     async def step(self) -> None:
         if not self.opt("enabled"):
@@ -916,6 +935,39 @@ class Supervisor:
         if len(self._judged) > 5000:
             self._judged = set(list(self._judged)[-2000:])
 
+    async def track_episodes(self, now: float) -> None:
+        """Safe mode on/off as episodes, so the report (and the error budget) can count its minutes."""
+        on = bool(getattr(getattr(self.e, "decider", None), "safe_mode", False))
+        if on == self._safe_on or (self._safe_on is None and not on):
+            self._safe_on = on
+            return
+        self._safe_on = on
+        self._record({"kind": "episode", "rule": "safe_mode", "state": "on" if on else "off"})
+
+    async def grade_cuts(self, now: float) -> None:
+        """Each live cut, once the feed has caught up: was a play on screen in the game we left, and in
+        the one we landed on? Uses the delays the switch planned with (saved in its trace)."""
+        store = getattr(self.e, "store", None)
+        if store is None:
+            return
+        rows = _switch_rows(store, max(self._cut_floor, now - CUT_LOOKBACK_S), now)
+        timelines = getattr(getattr(self.e, "decider", None), "timelines", {}) or {}
+        for r in rows:
+            t = trace.of_row(r)
+            if not t or t.get("dry_run") or t.get("cut_at") is None or t.get("id") in self._cuts_judged:
+                continue
+            if now < float(t["cut_at"]) + CUT_JUDGE_AFTER_S:
+                continue
+            self._cuts_judged[t["id"]] = None
+            g = grade_cut(t, timelines)
+            if g is not None:
+                append_jsonl(self.cuts_path, g)
+                if g.get("leave") == "play":
+                    log.warning("cut at %s left %s mid-play (%s)", _clock_et(float(t["cut_at"])),
+                                g.get("from_label") or g.get("from"), g.get("leave_why"))
+        while len(self._cuts_judged) > 2000:
+            self._cuts_judged.popitem(last=False)
+
     async def maybe_report(self, now: float) -> None:
         prev = night_of(now) - timedelta(days=1)
         if self._report_checked == prev:
@@ -926,29 +978,21 @@ class Supervisor:
         path = self.reports / f"{prev.isoformat()}.md"
         if path.exists():
             return
-        text, summary = build_report(prev, getattr(self.e, "store", None), self.root, now=now)
-        write_report(path, text)
+        rep = night_report(prev, getattr(self.e, "store", None), self.root, now=now,
+                           budget_cfg=self.opt("budget"))
+        write_report(path, rep["text"])
+        write_metrics(path.with_suffix(".json"), rep["metrics"])
         self._record({"kind": "report", "rule": "report", "key": prev.isoformat(), "path": str(path)})
-        await self.send_push(f"RedZone night of {prev.isoformat()}", summary)
+        spent = rep["budget"]["spent"]
+        await self.send_push(f"RedZone night of {prev.isoformat()}", rep["phone"],
+                             priority="high" if spent else "default",
+                             tags="warning,tv" if spent else "tv")
 
-    async def send_push(self, title: str, body: str) -> bool:
+    async def send_push(self, title: str, body: str, priority: str = "default", tags: str = "tv") -> bool:
         topic = str(self.opt("ntfy_topic") or "").strip()
         if not topic:
             return False
-        try:
-            if self.push is not None:
-                res = self.push(title, body)
-                if inspect.isawaitable(res):
-                    await res
-                return True
-            import httpx
-            async with httpx.AsyncClient(timeout=8) as c:
-                r = await c.post(f"{str(self.opt('ntfy_server')).rstrip('/')}/{topic}", content=body.encode(),
-                                 headers={"Title": title, "Tags": "tv"})
-            return r.status_code < 300
-        except Exception as ex:
-            log.warning("push failed: %s", ex)
-            return False
+        return await push_ntfy(str(self.opt("ntfy_server")), topic, title, body, priority, tags, self.push)
 
     def status(self) -> dict:
         now = self.clock()
@@ -1061,6 +1105,81 @@ def _clock_et(ts: float) -> str:
 
 def build_report(night: date, store: Any, root: Path, now: float | None = None) -> tuple[str, str]:
     """(markdown, one-paragraph summary) for one night."""
+    rep = night_report(night, store, root, now=now)
+    return rep["text"], rep["summary"]
+
+
+def grade_cut(t: dict, timelines: dict) -> dict | None:
+    """Both ends of one live cut from its trace, against the game timelines the decider keeps.
+    leave/enter: "dead" | "play" | "unknown" | None (not graded: a replay, RedZone, a reel, no data)."""
+    cut, pic = t.get("cut_at"), t.get("picture_at")
+    if cut is None:
+        return None
+    rec = {"ts": cut, "id": t.get("id"), "from": t.get("from"), "from_label": t.get("from_label"),
+           "to": t.get("to"), "to_label": t.get("to_label"), "kind": t.get("kind"), "path": t.get("path"),
+           "leave": None, "leave_why": "", "enter": None, "enter_why": ""}
+
+    def land(gid, at, delay):
+        tl = timelines.get(gid or "")
+        dead = getattr(tl, "dead", None)
+        if dead is None or not delay or delay.get("mu") is None:
+            return None, ""
+        x = float(at) - float(delay["mu"])    # the real (feed) time the screen showed at that moment
+        try:
+            got = dead.landing(x, x)
+        except Exception:
+            log.exception("cut grade failed")
+            return None, ""
+        return got.state, f"{got.why}{' (' + got.kind + ')' if got.kind else ''}"
+
+    if t.get("from") and not t.get("from_replay"):
+        rec["leave"], rec["leave_why"] = land(t["from"], cut, t.get("leave_delay"))
+    if pic is not None and t.get("action") != "replay":
+        rec["enter"], rec["enter_why"] = land(t.get("to"), pic, t.get("enter_delay"))
+    if rec["leave"] is None and rec["enter"] is None:
+        return None
+    return rec
+
+
+async def push_ntfy(server: str, topic: str, title: str, body: str, priority: str = "default",
+                    tags: str = "tv", fake: Callable[[str, str], Any] | None = None) -> bool:
+    """Post to ntfy (free, no account: install the ntfy app and subscribe to the topic). The topic is
+    the only secret, so it must be long and random."""
+    topic = (topic or "").strip()
+    if not NTFY_TOPIC_RX.match(topic):
+        log.warning("ntfy topic %r is not valid (letters, digits, - and _, at most 64): no push", topic[:70])
+        return False
+    try:
+        if fake is not None:
+            res = fake(title, body)
+            if inspect.isawaitable(res):
+                await res
+            return True
+        import httpx
+        # Header values must be latin-1: keep the title plain; the body is UTF-8.
+        safe_title = title.encode("latin-1", "replace").decode("latin-1")
+        async with httpx.AsyncClient(timeout=8) as c:
+            r = await c.post(f"{(server or 'https://ntfy.sh').rstrip('/')}/{topic}", content=body.encode(),
+                             headers={"Title": safe_title, "Tags": tags, "Priority": priority})
+        if r.status_code >= 300:
+            log.warning("push refused: HTTP %s %s", r.status_code, r.text[:120])
+        return r.status_code < 300
+    except Exception as ex:
+        log.warning("push failed: %s", ex)
+        return False
+
+
+def write_metrics(path: Path, m: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(m, indent=1, default=str))
+    tmp.replace(path)
+
+
+def night_report(night: date, store: Any, root: Path, now: float | None = None,
+                 budget_cfg: dict | None = None) -> dict:
+    """text (markdown), summary (one line), phone (the push body), metrics (the .json sidecar), budget."""
+    budget_cfg = budget_cfg if isinstance(budget_cfg, dict) else {}
     t0, t1 = night_window(night)
     rows = _switch_rows(store, t0, t1)
     live_rows = [r for r in rows if not r.get("dry_run")]
@@ -1105,6 +1224,21 @@ def build_report(night: date, store: Any, root: Path, now: float | None = None) 
                + (f"; {len(by_target)} delays measured" if by_target else ""))
     lines += [f"**{summary}.**", "",
               f"Window: {_clock_et(t0)} {night.isoformat()} to {_clock_et(t1)} the next day (ET).", ""]
+
+    end_at = None
+    if store is not None and hasattr(store, "last_snapshot_between"):
+        try:
+            end_at = store.last_snapshot_between(t0, t1)
+        except Exception:
+            end_at = None
+    nm = obs.metrics(night, rows, root, t0, t1, end_at=end_at, held_prefixes=NOT_THE_TARGET, cfg=budget_cfg)
+    bud = obs.budget(nm, obs.load_sidecars(root / "reports", night, int(budget_cfg.get(
+        "window_nights", obs.BUDGET_DEFAULTS["window_nights"]))), budget_cfg)
+    nm["budget"] = {k: v for k, v in bud.items() if isinstance(v, dict)}
+    top, rest = obs.report_sections(nm, bud, root, t0, t1, budget_cfg)
+    if bud["spent"]:
+        lines += ["**Error budget spent: " + ", ".join(obs.NAMES[k] for k in bud["spent"]) + ".**", ""]
+    lines += top
 
     lines += ["## Switches", ""]
     if not rows:
@@ -1172,9 +1306,14 @@ def build_report(night: date, store: Any, root: Path, now: float | None = None) 
     if limited:
         needs.append(f"{len(limited)} fixes hit their rate limit (problem kept coming back): "
                      + ", ".join(sorted({str(x.get('rule')) for x in limited})[:5]))
+    lines += rest
+    if nm["left_mid_play"]:
+        needs.insert(0, f"{nm['left_mid_play']} cut(s) left a play on screen: see 'Cuts' above")
     lines += ["## Needs you", ""]
     lines += ([f"- {w}" for w in list(dict.fromkeys(needs))[:5]] or ["Nothing."]) + [""]
-    return "\n".join(lines), summary
+    phone = obs.phone_body(nm, bud, len(fixes), fix_rules, causes, missed,
+                           len(obs.watchdog_actions(root, t0, t1)))
+    return {"text": "\n".join(lines), "summary": summary, "phone": phone, "metrics": nm, "budget": bud}
 
 
 def write_report(path: Path, text: str) -> None:
@@ -1184,19 +1323,49 @@ def write_report(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
+def _cli_cfg() -> tuple[str, str, dict]:
+    """(ntfy server, topic, budget settings) from data/config.yaml, the same place the service reads."""
+    try:
+        from redzone.config import Config
+        cfg = Config()
+        return (str(cfg.get("supervisor.ntfy_server", None) or DEFAULTS["ntfy_server"]),
+                str(cfg.get("supervisor.ntfy_topic", "") or ""), cfg.get("supervisor.budget", {}) or {})
+    except Exception as ex:
+        print(f"(config not readable: {ex})")
+        return DEFAULTS["ntfy_server"], "", {}
+
+
 def main(argv: list[str] | None = None) -> int:
     import sys
     args = list(sys.argv[1:] if argv is None else argv)
-    if not args or args[0] != "report":
-        print("usage: python -m redzone.supervisor report [YYYY-MM-DD]")
+    usage = ("usage: python -m redzone.supervisor report [YYYY-MM-DD] [--push]\n"
+             "       python -m redzone.supervisor push-test")
+    if not args or args[0] not in ("report", "push-test"):
+        print(usage)
         return 2
-    night = date.fromisoformat(args[1]) if len(args) > 1 else night_of(time.time()) - timedelta(days=1)
+    server, topic, budget_cfg = _cli_cfg()
+    if args[0] == "push-test":
+        if not topic:
+            print("No supervisor.ntfy_topic in data/config.yaml. Pick a long random one, e.g.\n"
+                  f"  supervisor:\n    ntfy_topic: redzone-{os.urandom(9).hex()}\n"
+                  "then subscribe to it in the free ntfy app (ntfy.sh, no account).")
+            return 1
+        ok = asyncio.run(push_ntfy(server, topic, "RedZone test", "If you can read this, the nightly report "
+                                   "will reach your phone."))
+        print("sent" if ok else "push failed (see the log line above)")
+        return 0 if ok else 1
+    rest = [a for a in args[1:] if not a.startswith("--")]
+    night = date.fromisoformat(rest[0]) if rest else night_of(time.time()) - timedelta(days=1)
     from redzone.store import Store
-    text, _ = build_report(night, Store(), DATA)
+    rep = night_report(night, Store(), DATA, budget_cfg=budget_cfg)
     path = DATA / "reports" / f"{night.isoformat()}.md"
-    write_report(path, text)
-    print(text)
+    write_report(path, rep["text"])
+    write_metrics(path.with_suffix(".json"), rep["metrics"])
+    print(rep["text"])
     print(f"\nSaved {path}")
+    if "--push" in args:
+        ok = asyncio.run(push_ntfy(server, topic, f"RedZone night of {night.isoformat()}", rep["phone"]))
+        print("pushed" if ok else "not pushed (no or invalid supervisor.ntfy_topic, or the network refused)")
     return 0
 
 

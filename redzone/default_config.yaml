@@ -181,6 +181,13 @@ autonomy:
 supervisor:                # watches the live system and fixes what it can on its own (redzone/supervisor.py)
   enabled: true
   ntfy_topic: ""           # optional: push the nightly report to the free ntfy app (pick a hard-to-guess topic)
+  budget:                  # error budget, over the last window_nights nights that had switches (nightly report)
+    window_nights: 7
+    failure_pct: 5         # failed + picture-never-confirmed switches, % of live switches
+    mid_play_cuts: 0       # cuts that left a play on screen (judged from the feed ~90 s later)
+    dead_air_s: 10         # a cut whose new picture took longer than this is "slow"...
+    dead_air_pct: 10       # ...and this % of cuts may be slow
+    safe_mode_min: 10      # minutes in safe mode a night
 
 two_stick:
   cec_flip: true           # flip inputs by HOME -> HDMI-CEC Active Source (no TV network or SmartThings needed)
