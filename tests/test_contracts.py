@@ -121,6 +121,8 @@ def test_trace_timings():
         t.emit(c.TraceEvent("sw1", stage, at, "test"))
     assert t.timings("sw1") == pytest.approx({"decided": 0.0, "command": 0.2, "picture": 4.0})
     assert '"stage":"picture"' in t.events[-1].jsonl()
+    order = [x.value for x in c.Stage]
+    assert order.index("guarded") < order.index("rechecked") < order.index("command")
 
 
 def _world(screen_game="g1"):

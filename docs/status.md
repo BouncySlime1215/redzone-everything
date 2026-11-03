@@ -2,7 +2,8 @@
 
 Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-03 17:00 UTC,
 `integration/next` = 5f0e6a1 + #1 (trip budget) + the decision-core interface (23f30d0) +
-contracts v1 + #7 (CI) + d0c775a (`core.SwitchPath` gains `stick`, `fastest_s`, `samples`).
+contracts v1 + #7 (CI) + d0c775a (`core.SwitchPath` gains `stick`, `fastest_s`, `samples`) +
+#3 (NHL, with the entry fix).
 
 ## Decisions from the user
 
@@ -33,7 +34,7 @@ depends on has merged into `integration/next`.
 
 | Owner | Done | Next | Blocked |
 |---|---|---|---|
-| DECISION | #1 trip budget merged here. Core interface (`core.py`) is in. | #3 NHL entry fix (mid-play entries ≤ 11, missed on entry ≤ 1); #2 dead-air fix (≤ 8.6 %); build `CoreState` from `WorldState` | none |
+| DECISION | #1 trip budget and #3 NHL merged here (NHL entries mid-play 11 → 5, missed on entry 1 → 0; crunch 87.5 → 86.3 standard, 85.9 → 87.2 with randomized arrival, per the thread). Core interface (`core.py`) is in. | #2 dead-air fix (≤ 8.6 %); build `CoreState` from `WorldState` | #2 waits on the user's dead-air setting |
 | MOMENT/BREAK | Hype v2 retrain PR #4 open, **held until #2's fix lands** (retarget to `integration/next`) | BreakModel quantiles; Brain v3 behind `MomentModel` | pinned data |
 | LOCAL AI | watchdog rules + policy guard on the branch | reasoner `ReasonerView`; one LLM server ≤ 1.5 GB | none |
 | SWITCHING | PR #5 instant input switching open | native `SwitchPaths`; `fastest_s` interface request | none |
@@ -49,8 +50,8 @@ and the table in `docs/integration.md` has the per-merge history.
 | Line | Today (codex/resume-redzone) | integration/next |
 |---|---|---|
 | Mid-play cuts | 0 | pending archive |
-| NHL entries mid-play | 11 | pending |
-| NHL plays missed on entry | 1 | pending |
+| NHL entries mid-play | 11 | 5 (thread's run; re-run pending) |
+| NHL plays missed on entry | 1 | 0 (thread's run; re-run pending) |
 | NBA entries mid-play | 38 | pending |
 | NFL dead air (commercials on screen) | 8.6 % | pending |
 | NFL big plays live / seen | 29.9 % / 95.4 % | pending |
@@ -61,4 +62,4 @@ and the table in `docs/integration.md` has the per-merge history.
 | Switch seconds (median, per path) | not measured yet (SWITCHING) | |
 | Sync error (median abs, s) | not measured yet (SYNC) | |
 | RAM, service + LLM | ≤ 1.5 GB budget for models (LOCAL AI / PLATFORM) | |
-| Tests | 1228 passed, 20 skipped, 0 failed | 1271 passed, 20 skipped, 0 failed; ruff clean |
+| Tests | 1228 passed, 20 skipped, 0 failed | 1285 passed, 20 skipped, 0 failed; ruff clean |

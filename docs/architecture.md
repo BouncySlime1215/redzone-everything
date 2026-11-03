@@ -178,9 +178,9 @@ The supervisor runs about every 10 s and the watchdog about every 60 s. Both rep
 shapes. `redzone/platform/faults.py` imports them and does not redefine them.
 
 ### Trace (`trace.py`). Owner: PLATFORM
-One trace per switch: `TraceEvent(switch_id, stage: decided|guarded|command|picture|aborted|failed,
+One trace per switch: `TraceEvent(switch_id, stage: decided|guarded|rechecked|command|picture|aborted|failed,
 at, component, detail)`, sent to a `TraceSink.emit`. It writes to `data/traces.jsonl`, and
-`MemoryTrace` collects events in tests. The nightly report and the error budget read traces.
+`MemoryTrace` collects events in tests. `guarded` is the decision's guard pass and comes once per decision. `rechecked` is the controller's final safe-moment check just before the command. Each stage appears at most once per switch, so `timings()` is unambiguous. The nightly report and the error budget read traces.
 Nothing on the decision path reads them.
 
 ## 3. Shared building blocks
