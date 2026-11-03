@@ -234,3 +234,86 @@ async def test_youtube_tv_we_left_is_still_reloaded(two, monkeypatch):
     await c.execute("youtubetv:espn", may_cut=lambda: True)
     await refreshed(c)
     assert tuner.calls[-1] == ("a:5555", "youtubetv:fox") and c.hidden_ready
+
+
+# --- is the Prime standby still live? -------------------------------------------------------------
+
+async def prime_standby(c, tuner):
+    """Prime CBS preloaded and confirmed on the hidden stick, Prime FOX on screen."""
+    await on_screen(c, tuner, PRIME_FOX)
+    assert c.preload(PRIME_CBS)
+    await c._preload_task
+    assert c.standby == (PRIME_CBS, None) and c.hidden_ready
+    return c.hidden
+
+
+async def verify(c):
+    c._verified_at = 0
+    await c.verify_standby()
+
+
+async def test_a_prime_standby_that_keeps_pace_stays_ready(prime):
+    c, tuner, _ = prime
+    await prime_standby(c, tuner)
+    await asyncio.sleep(0.1)
+    await verify(c)
+    assert c.hidden_ready
+
+
+async def test_a_prime_standby_that_resumed_behind_live_is_dropped(prime):
+    """Playing, "PrimeVideo", same app: only the wall-clock position shows it's 40 s behind."""
+    c, tuner, _ = prime
+    b = await prime_standby(c, tuner)
+    b.seek_back(40)
+    await verify(c)
+    assert c.standby == (None, None)
+
+
+async def test_a_paused_prime_standby_is_dropped_at_once(prime):
+    c, tuner, _ = prime
+    b = await prime_standby(c, tuner)
+    b.pause()
+    await verify(c)
+    assert c.standby == (None, None)
+
+
+async def test_one_missing_prime_session_is_read_again_before_dropping(prime):
+    c, tuner, _ = prime
+    b = await prime_standby(c, tuner)
+    b.playing = "none"
+    await verify(c)
+    assert c.hidden_ready                                         # one read: not believed yet
+    assert c._verified_at > time.time() - c._verify_every()       # ...but re-checked soon
+    await verify(c)
+    assert c.standby == (None, None)                              # twice: gone
+
+
+async def test_a_missing_prime_session_that_comes_back_resets(prime):
+    c, tuner, _ = prime
+    b = await prime_standby(c, tuner)
+    b.playing = "none"
+    await verify(c)
+    b.playing = "playing"
+    await verify(c)
+    b.playing = "none"
+    await verify(c)
+    assert c.hidden_ready                                         # two misses, not in a row
+
+
+async def test_a_failed_read_never_drops_a_standby(prime):
+    c, tuner, _ = prime
+    b = await prime_standby(c, tuner)
+    b.fail_reads = 5
+    for _ in range(3):
+        await verify(c)
+    assert c.hidden_ready
+
+
+async def test_a_youtube_tv_standby_with_no_session_is_still_dropped_at_once(two):
+    c, _ = two
+    c.on_target = "youtubetv:fox"
+    assert c.preload("youtubetv:cbs")
+    await c._preload_task
+    c.hidden.playing = "none"
+    await verify(c)
+    assert c.standby == (None, None)

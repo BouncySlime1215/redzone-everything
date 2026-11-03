@@ -229,6 +229,7 @@ class Controller:
         self._flip_gen = 0                       # bumped on every flip: a CEC read that spans one is stale
         self._refresh_task: asyncio.Task | None = None   # after a flip: reload the game we left (see _refresh_left)
         self._refreshing: str | None = None      # the target the running preload is refreshing, if it is a refresh
+        self._standby_miss: str | None = None    # a Prime standby whose last check found no session (one more read)
         self._exit_check = None
         self._flip_s: float | None = None       # HOME -> active source, of the last flip
         self.last_flip: dict | None = None       # the phone's latency book: flip_s / resume_s of the last flip
@@ -1574,12 +1575,32 @@ class Controller:
         self._verified_at = time.time()
         if self.hidden_target != target or self.parked is not parked or self._busy():
             return   # it changed while we looked
+        if pb.get("read_ok") is False:
+            # adb didn't answer: that says nothing about the stream. Ask again soon, keep it.
+            self._verified_at = time.time() - self._verify_every() + VERIFY_SOON_S
+            return
         state = pb.get("state")
         if state in ("playing", "buffering", "paused"):
             self._awake_at[hid.host] = time.time()
         expect = ("paused",) if parked and parked.paused else ("playing", "buffering")
+        prime_live = parked is None and target.startswith("prime:")
+        if prime_live and state not in expect and state not in ("paused", "stopped") \
+                and self._standby_miss != target:
+            # Prime's session can be missing from one read without the player stopping (it read
+            # "none" for seconds after a reorder, Nov 2), and a dropped Prime standby costs a ~33 s
+            # reload: one more read, a few seconds from now, before believing it.
+            self._standby_miss = target
+            self._verified_at = time.time() - self._verify_every() + VERIFY_SOON_S
+            return
+        self._standby_miss = None
         if state not in expect:
             log.info("standby %s is %s, not %s — it'll be reloaded", target, state, "/".join(expect))
+            self._set_hidden(None, False)
+        elif prime_live and self._jumped(hid, target, pb):
+            # Every Prime game reads "PrimeVideo" on a wall-clock position, so "playing" alone can't
+            # tell live from a player that paused and resumed behind the live edge: its position
+            # must still keep pace with the stick's clock (~1% drift is normal; 2% is allowed).
+            log.info("standby %s is playing but fell off the live edge — it'll be reloaded", target)
             self._set_hidden(None, False)
 
     def verify_hidden(self, target: str | None) -> asyncio.Task | None:
