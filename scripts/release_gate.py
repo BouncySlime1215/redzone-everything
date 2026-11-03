@@ -1,6 +1,6 @@
 """The release gate ("95% good minimum", the user's rule of 2026-11-03), checked on HELD-OUT nights.
 
-    python scripts/ci_scorecard.py --nfl-n 2 --nights 4 --out heldout.json   # held-out slice (see HELDOUT)
+    python scripts/ci_scorecard.py --split test --robust --out locked.json   # the LOCKED split + noise
     python scripts/release_gate.py heldout.json [--baseline docs/gate_baseline.json] [--md gate.md]
 
 Every gate gets PASS, FAIL or PENDING. PENDING means it can't be measured yet (no gold labels, no TV
@@ -8,8 +8,9 @@ path, no e2e night test, no feasible-ceiling computation), and it NEVER counts a
 1 when any gate FAILs. A part that can't pass ships OFF behind its feature flag
 (redzone/contracts/flags.py), and the release PR says how far short it is and why.
 
-Held-out nights: the newest nights of the pinned window. No tuning (auto-tune, threshold picks,
-model training) may read them; tuning uses the earlier nights only.
+Judged ONLY on the LOCKED test split (redzone/lab/splits.py) and fresh post-cutoff nights, never on
+nights any choice was made on. Robustness cards (sync +-3 s, a dropping/late feed) must pass the
+same hard gates.
 """
 from __future__ import annotations
 
@@ -20,11 +21,11 @@ from pathlib import Path
 
 HELDOUT = {
     "eval_data": "eval-data-v1",
-    "nfl": "the last 2 slates up to 20261101 (scripts/eval.py --n 2)",
-    "nba": "the last 4 nights, 20261029-20261101 (scripts/eval_sports.py nba --nights 4)",
-    "nhl": "the last 4 nights, 20261029-20261101 (scripts/eval_sports.py nhl --nights 4)",
-    "demo": "20261101 mixed demo day",
-    "tuning_end": {"nfl": "the slates before the last 2", "nba": "20261028", "nhl": "20261028"},
+    "split": "test",   # the LOCKED split of redzone/lab/splits.py: newest >= 25 % of nights per league
+    "nfl": "LOCKED test nights 20251209-20261101 (10 Sunday slates, 57 games): scripts/eval.py --split test",
+    "nba": "LOCKED test nights 20261029-20261101 (24 games): scripts/eval_sports.py nba --split test",
+    "nhl": "LOCKED test nights 20261029-20261101 (29 games): scripts/eval_sports.py nhl --split test",
+    "demo": "20261101 mixed demo day (inside the locked window)",
 }
 PASS, FAIL, PENDING = "PASS", "FAIL", "PENDING"
 
@@ -107,7 +108,13 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
                       ("watchdog >= 95% correct, every kind >= 90%, 0 unsafe", "no held-out error set yet"),
                       ("sync error < 2 s on >= 95% of samples", "needs real screen samples (Mac)"),
                       ("preloaded switches < 3 s on >= 95%", "TV path not working yet"),
-                      ("fault-injection night: >= 95% minutes correct picture, all faults recovered", "e2e night test not merged")):
+                      ("fault-injection night: >= 95% minutes correct picture, all faults recovered", "e2e night test reports no uptime figure yet"),
+                      ("slices: per network/app, close/blowout, crunch/early, your teams", "scorecards don't report slices yet"),
+                      ("locked test size: >= 25% of nights AND a few thousand games", "eval-data-v1 locked test is 130 games (110 graded); needs eval-data-v2"),
+                      ("fresh nights after the pin", "none in eval-data-v1; the 5 AM archive feeds eval-data-v2"),
+                      ("models trained only before the locked cutoff (no leakage)",
+                       "brain models were trained on seasons that include the locked nights (NBA dev-test AUC 0.999): "
+                       "every number above that uses brain features is OPTIMISTIC until the time-cutoff retrain lands")):
         add(gate, "system", False, why, pending=True)
     return rows
 

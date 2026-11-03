@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 
 from redzone.channels import ChannelMap  # noqa: E402
 from redzone.config import Config  # noqa: E402
-from redzone.lab import evaldata, sportsgrade  # noqa: E402
+from redzone.lab import evaldata, splits, sportsgrade  # noqa: E402
 from redzone.lab.backtest import Replay, run  # noqa: E402
 from redzone.models import League  # noqa: E402
 from redzone.sources import espn  # noqa: E402
@@ -35,12 +35,15 @@ from redzone.sources import espn  # noqa: E402
 EVAL_END = "20261101"
 
 
-def nights(league: League, n: int, end: str | None = None):
+def nights(league: League, n: int, end: str | None = None, split: str = "all"):
     """The last n archived nights, up to `end` (YYYYMMDD) when given: the service archives every
     new night at 5 AM, and an unpinned window would slide under a before/after comparison."""
     arch = ROOT / "data/archive" / league.value
     sbs = sorted(sb for sb in arch.glob("scoreboard_*.json") if not end or sb.stem.split("_")[1] <= str(end))
-    for sb in sbs[-n:]:
+    keep = splits.nights_for(arch, split, end)
+    # [no overfitting] --split grades exactly one time split (every night in it); --nights is ignored then.
+    sbs = sbs[-n:] if keep is None else [sb for sb in sbs if sb.stem.split("_")[-1] in keep]
+    for sb in sbs:
         evs = json.loads(sb.read_text()).get("events", [])
         reps, targets = [], {}
         for e in evs:
@@ -87,6 +90,8 @@ def main():
     ap.add_argument("--slates", action="store_true")
     ap.add_argument("--step", type=float, default=None)
     ap.add_argument("--end", default=None, help="last night to grade (YYYYMMDD); default eval.<league>_end")
+    ap.add_argument("--split", choices=splits.SPLITS, default="all",
+                    help="grade one time split of the pinned window (redzone/lab/splits.py); test = LOCKED")
     stress_args(ap)
     a = ap.parse_args()
     lg = League(a.league)
@@ -102,7 +107,7 @@ def main():
     total = sportsgrade.Card(lg.value)
     t0 = time.time()
     end = a.end or evaldata.window_end(lg.value, EVAL_END)
-    for day, reps, targets in nights(lg, a.nights, end):
+    for day, reps, targets in nights(lg, a.nights, end, a.split):
         rep = run(reps, cfg, mine, targets=targets, step=a.step, **knobs(a))
         # [xleague] Grade against what the screen REALLY showed (true delay), not the app's belief.
         card = sportsgrade.grade(reps, rep.switches, mine, rep.lag_true, 5.0, rep.t0, rep.t1, rep.replayed)
