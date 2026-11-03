@@ -66,6 +66,11 @@ STALE_MARGIN_S = 4.0           # stale estimate
 SETTLED_SAMPLES = 3            # this many taps for an app ...
 SETTLED_SPREAD_S = 6.0         # ... agreeing within this (half the range): stop asking for taps
 SETTLED_DRIFT_S = 4.0          # settled delays proved stable: doubt grows to at most this
+# Delay measured automatically from show changes on the quarter hour (redzone/screen/boundary.py).
+# Weaker than a tap: a network may switch the title a few seconds off the hour, a show may start
+# late. Each sample counts with this sigma; one alone never narrows the interval below the default.
+BOUNDARY_SIGMA_S = 6.0
+BOUNDARY_MIN_SAMPLES = 2
 
 
 @dataclass
@@ -74,8 +79,9 @@ class Delay:
     sigma: float
     calibrated_at: float | None = None
     samples: deque = field(default_factory=lambda: deque(maxlen=TAP_KEEP))
-    source: str = "default"    # "tap" (this channel) | "app" (another channel of the same app) | "default"
+    source: str = "default"    # "tap" (this channel) | "app" (another channel of the same app) | "boundary" | "default"
     drift_cap: float = 6.0
+    live: float | None = None  # this tune's own delay from the channel's stream origin (boundary.py)
 
     def current_sigma(self, now: float) -> float:
         if self.calibrated_at is None:
@@ -114,6 +120,8 @@ class DelayBook:
         self._clock = clock
         self.book: dict[str, Delay] = {}
         self.taps: dict[str, list[tuple[float, float]]] = {}   # target -> [(ts, sample)]
+        self.bounds: dict[str, list[tuple[float, float]]] = {}  # target -> [(ts, sample)] from show changes
+        self.live: dict[str, float] = {}                         # target -> this tune's delay (origin model)
 
     @staticmethod
     def app(target: str) -> str:
@@ -133,6 +141,7 @@ class DelayBook:
         own = self.taps.get(target) or []
         taps = own or self._app_taps(self.app(target))
         if not taps:
+            self._refresh_boundary(target)   # taps win; without any, show changes may measure it
             return
         mu, spread, newest = _estimate(taps, now)
         sigma = max(MIN_TAP_SIGMA_S, spread)   # contradicting taps widen the interval
@@ -146,6 +155,59 @@ class DelayBook:
         d.samples.clear()
         d.samples.extend(x for _, x in sorted(taps)[-TAP_KEEP:])
         d.drift_cap = SETTLED_DRIFT_S if self.settled(self.app(target)) else 6.0
+        d.live = None
+
+    def _app_bounds(self, app: str) -> list[tuple[float, float]]:
+        return [x for t, v in self.bounds.items() if self.app(t) == app for x in v]
+
+    def _refresh_boundary(self, target: str) -> None:
+        """No taps for this app: use show-change samples (this channel's, else the app's) once there
+        are two. Never below the boundary sigma (> the tap floor); disagreeing samples widen it."""
+        d, now = self.book[target], self._clock()
+        own = self.bounds.get(target) or []
+        pool = own if len(own) >= BOUNDARY_MIN_SAMPLES else self._app_bounds(self.app(target))
+        if len(pool) < BOUNDARY_MIN_SAMPLES:
+            return
+        mu, spread, newest = _estimate(pool, now)
+        sigma = max(MIN_TAP_SIGMA_S, BOUNDARY_SIGMA_S, spread)
+        age = now - newest
+        if age > STALE_TAP_S:
+            sigma += STALE_MARGIN_S
+        elif pool is not own or age > CROSS_NIGHT_S:
+            sigma += SHARED_MARGIN_S
+        d.mu, d.sigma, d.calibrated_at = mu, sigma, newest
+        d.source = "boundary"
+        d.samples.clear()
+        d.samples.extend(x for _, x in sorted(pool)[-TAP_KEEP:])
+        d.drift_cap = 6.0
+        # This tune's own delay (origin model) re-centres the interval when it agrees with the
+        # pooled samples; it never narrows it.
+        live = self.live.get(target)
+        d.live = live if live is not None and abs(live - mu) <= 2 * sigma else None
+        if d.live is not None:
+            d.mu = d.live
+
+    def boundary_count(self, app: str) -> int:
+        """Show-change samples remembered for this app (all its channels)."""
+        return len(self._app_bounds(app))
+
+    def boundary(self, target: str, sample_s: float, ts: float | None = None) -> Delay:
+        """One delay sample measured from a show change on the quarter hour (no tap)."""
+        d = self.get(target)
+        if not self._add(target, self._clock() if ts is None else ts, sample_s, self.bounds):
+            return d
+        self._refresh_app(self.app(target))
+        return d
+
+    def set_live(self, target: str, delay_s: float | None) -> None:
+        """This tune's own delay from the channel's stream origin, or None when it's unknown."""
+        if delay_s is None:
+            if self.live.pop(target, None) is None:
+                return
+        else:
+            self.live[target] = delay_s
+        if target in self.book:
+            self._refresh(target)
 
     def _refresh_app(self, app: str) -> None:
         for t in self.book:
@@ -164,20 +226,25 @@ class DelayBook:
         """This channel was tapped itself, or its app is settled: no need to ask for a tap."""
         return bool(self.taps.get(target)) or self.settled(self.app(target))
 
-    def _add(self, target: str, ts: float, sample_s: float) -> bool:
+    def _add(self, target: str, ts: float, sample_s: float, into: dict | None = None) -> bool:
+        into = self.taps if into is None else into
         if not 2.0 <= sample_s <= 180.0 or ":" not in target:
             return False
-        self.taps.setdefault(target, []).append((ts, sample_s))
-        self.taps[target] = sorted(self.taps[target])[-TAP_KEEP:]
+        into.setdefault(target, []).append((ts, sample_s))
+        into[target] = sorted(into[target])[-TAP_KEEP:]
         return True
 
     def load(self, rows) -> int:
-        """Taps remembered from earlier runs: (ts, target, sample) rows from the store."""
+        """Samples remembered from earlier runs: (ts, target, sample[, kind]) rows from the store.
+        kind 'tap' ("I just saw it"; older rows have none) or 'boundary' (a show change)."""
         cutoff, n = self._clock() - TAP_HISTORY_S, 0
-        for ts, target, sample in rows:
-            if ts is not None and ts >= cutoff and target and sample is not None:
-                n += self._add(str(target), float(ts), float(sample))
-        for app in {self.app(t) for t in self.taps}:
+        for row in rows:
+            ts, target, sample = row[:3]
+            kind = (row[3] if len(row) > 3 else None) or "tap"
+            into = {"tap": self.taps, "boundary": self.bounds}.get(kind)
+            if into is not None and ts is not None and ts >= cutoff and target and sample is not None:
+                n += self._add(str(target), float(ts), float(sample), into)
+        for app in {self.app(t) for t in (*self.taps, *self.bounds)}:
             self._refresh_app(app)
         return n
 

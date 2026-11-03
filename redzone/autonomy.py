@@ -1239,7 +1239,8 @@ def calibration_history(store: Any) -> dict[str, tuple[float, float, float]]:
     if query is None:
         return {}
     try:
-        rows = query("SELECT target, MAX(ts), mu, sigma FROM calibrations GROUP BY target").fetchall()
+        rows = query("SELECT target, MAX(ts), mu, sigma FROM calibrations "
+                     "WHERE COALESCE(kind, 'tap') = 'tap' GROUP BY target").fetchall()
     except Exception:
         return {}
     return {r[0]: (float(r[1]), float(r[2]), float(r[3])) for r in rows if r[0] and None not in r}

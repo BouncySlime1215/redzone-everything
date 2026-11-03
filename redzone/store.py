@@ -35,6 +35,9 @@ class Store:
         self._db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.executescript(SCHEMA)
+        cols = {r[1] for r in self._db.execute("PRAGMA table_info(calibrations)")}
+        if "kind" not in cols:   # 'tap' ("I just saw it") | 'boundary' (a show change, measured automatically)
+            self._db.execute("ALTER TABLE calibrations ADD COLUMN kind TEXT DEFAULT 'tap'")
         self._lock = threading.Lock()
 
     def _x(self, sql: str, args: tuple = ()):
@@ -55,12 +58,15 @@ class Store:
     def feedback(self, game: str | None, vote: int, note: str = "", context: dict | None = None) -> None:
         self._x("INSERT INTO feedback VALUES (?,?,?,?,?)", (time.time(), game, vote, note, json.dumps(context or {})))
 
-    def calibration(self, target: str, sample: float, mu: float, sigma: float) -> None:
-        self._x("INSERT INTO calibrations VALUES (?,?,?,?,?)", (time.time(), target, sample, mu, sigma))
+    def calibration(self, target: str, sample: float, mu: float, sigma: float, kind: str = "tap") -> None:
+        self._x("INSERT INTO calibrations (ts, target, sample, mu, sigma, kind) VALUES (?,?,?,?,?,?)",
+                (time.time(), target, sample, mu, sigma, kind))
 
-    def calibrations(self, since: float = 0.0) -> list[tuple[float, str, float]]:
-        """Every "I just saw it" tap since `since`, oldest first: (ts, target, sample)."""
-        return self._x("SELECT ts, target, sample FROM calibrations WHERE ts >= ? ORDER BY ts", (since,)).fetchall()
+    def calibrations(self, since: float = 0.0) -> list[tuple[float, str, float, str]]:
+        """Every delay sample since `since`, oldest first: (ts, target, sample, kind), kind 'tap' for
+        "I just saw it" and 'boundary' for a show change measured automatically."""
+        return self._x("SELECT ts, target, sample, COALESCE(kind, 'tap') FROM calibrations WHERE ts >= ? "
+                       "ORDER BY ts", (since,)).fetchall()
 
     def label(self, label: str, game: str | None, signals: dict) -> None:
         self._x("INSERT INTO labels VALUES (?,?,?,?)", (time.time(), label, game, json.dumps(signals)))
