@@ -97,7 +97,7 @@ class PlatformHealth:
                 if br is not None and br.state != "closed":
                     out.append(("stick_hung", f"stick:{s.host}",
                                 f"{br.hangs} adb commands hung; {br.state}, retry in {br.retry_in():.0f}s"))
-        feeds = getattr(e, "feeds", None)
+        feeds = getattr(e, "feed_book", None)
         merger = getattr(e, "merger", None)
         if feeds is not None and merger is not None:
             from redzone.models import Phase

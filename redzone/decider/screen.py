@@ -19,6 +19,7 @@ from collections import deque
 from dataclasses import dataclass, field
 
 from redzone.decider.cuts import DeadTracker
+from redzone.decider.delaymodel import Centre, app_prior, combine
 from redzone.models import REAL_BREAKS, ByLeague, GameState, League, Phase, Stoppage, pro_period
 
 # Leagues where the ball/puck is live continuously; only official stoppages are gaps.
@@ -91,6 +92,8 @@ class Delay:
     # [cut timing] this tune was rewound this far behind the live edge on entry (YouTube TV DVR) so
     # the picture came up on a dead ball; already included in mu. A fresh tune clears it.
     behind: float = 0.0
+    # [auto sync] the per-channel predictor's own figure, kept while a synced filter overrides mu/sigma
+    base: tuple | None = None
 
     def current_sigma(self, now: float) -> float:
         if self.calibrated_at is None:
@@ -120,18 +123,27 @@ def _estimate(taps: list[tuple[float, float]], now: float) -> tuple[float, float
 class DelayBook:
     """Per-channel delay estimates. Key is the tuner target, e.g. 'youtubetv:espn'.
 
-    Each channel uses its own taps; with none, the pooled taps of its app (all 'youtubetv:*'); with
-    none of those, the config default. Taps persist in the store and are reloaded at start (load)."""
+    Each channel uses its own taps (or score-bug samples). Without any, model "channel" (the default,
+    delaymodel.py) predicts it from the app's other channels, each counted once with the learned
+    channel-to-channel spread, combined with the channel's own show-change samples; model "legacy"
+    hands it the pooled taps of its app (all 'youtubetv:*'). With nothing measured, the config
+    default. Samples persist in the store and are reloaded at start (load)."""
 
-    def __init__(self, defaults: dict[str, float], sigma_default: float, clock=time.time):
+    MODELS = ("channel", "legacy")
+
+    def __init__(self, defaults: dict[str, float], sigma_default: float, clock=time.time,
+                 model: str = "channel"):
         self._defaults = defaults
         self._sigma_default = sigma_default
         self._clock = clock
+        self.model = model if model in self.MODELS else "channel"
         self.book: dict[str, Delay] = {}
         self.taps: dict[str, list[tuple[float, float]]] = {}   # target -> [(ts, sample)]
         self.bounds: dict[str, list[tuple[float, float]]] = {}  # target -> [(ts, sample)] from show changes
         self.screens: dict[str, list[tuple[float, float]]] = {}  # target -> [(ts, sample)] from the score bug
         self.live: dict[str, float] = {}                         # target -> this tune's delay (origin model)
+        self.sync = None                                         # [auto sync] SyncBook, see attach_sync
+        self._sync_floor = MIN_TAP_SIGMA_S
 
     @staticmethod
     def app(target: str) -> str:
@@ -156,7 +168,50 @@ class DelayBook:
             self._refresh(target)
         return self.book[target]
 
+    # ------------------------------------------------------------------ [auto sync]
+    def attach_sync(self, min_sigma_s: float = MIN_TAP_SIGMA_S, log_path=None):
+        """Track every channel with a Kalman filter (sync.py) that fuses the automatic signals; a synced
+        channel's delay comes from it. Its sigma never drops below min_sigma_s: the gates were tuned on
+        a 4 s floor (MIN_TAP_SIGMA_S) and a too-narrow interval is what cuts plays mid-play."""
+        from redzone.decider.sync import SyncBook
+        self._sync_floor = float(min_sigma_s)
+        self.sync = SyncBook(self._sync_prior, clock=self._clock, on_change=self._sync_changed, log_path=log_path)
+        return self.sync
+
+    def _sync_prior(self, target: str) -> tuple[float, float]:
+        d = self.get(target)
+        mu, sigma = (d.base[0], d.base[1]) if d.base is not None else (d.mu, d.sigma)
+        return mu, sigma
+
+    def _sync_changed(self, target: str) -> None:
+        if target in self.book:
+            self._refresh(target)
+
+    def tuned(self, target: str) -> None:
+        """A new tune or a seek on this channel: its filter re-syncs (no-op without sync)."""
+        if self.sync is not None:
+            self.sync.tuned(target)
+
     def _refresh(self, target: str) -> None:
+        d = self.book[target]
+        if d.base is not None:                 # undo the sync overlay: the model recomputes from its base
+            d.mu, d.sigma, d.calibrated_at, d.source, d.drift_cap = d.base
+            d.base = None
+        self._refresh_model(target)
+        if self.sync is None:
+            return
+        est = self.sync.estimate(target, better_than=d.sigma)
+        if est is None:
+            return
+        d.base = (d.mu, d.sigma, d.calibrated_at, d.source, d.drift_cap)
+        f = self.sync.filters[target]
+        d.mu, d.sigma, d.calibrated_at = est[0], max(self._sync_floor, est[1]), f.updated
+        d.source, d.drift_cap = "sync", SETTLED_DRIFT_S
+
+    def _refresh_model(self, target: str) -> None:
+        if self.model == "channel" and not self._own(target):
+            self._refresh_predicted(target)
+            return
         d, now = self.book[target], self._clock()
         own = self._own(target)
         taps = own or self._app_taps(self.app(target))
@@ -176,6 +231,61 @@ class DelayBook:
         d.samples.extend(x for _, x in sorted(taps)[-TAP_KEEP:])
         d.drift_cap = SETTLED_DRIFT_S if self.settled(self.app(target)) else 6.0
         d.live = None
+
+    def centres(self, app: str) -> dict[str, Centre]:
+        """Each measured channel of this app, once: its taps and score-bug samples, else its show changes."""
+        now, out = self._clock(), {}
+        for t in {t for d in (self.taps, self.screens, self.bounds) for t in d if self.app(t) == app}:
+            own = self._own(t)
+            pool = own or self.bounds.get(t) or []
+            if not pool:
+                continue
+            mu, spread, newest = _estimate(pool, now)
+            out[t] = Centre(mu, spread, newest, len(pool), frozenset(("direct",) if own else ("boundary",)))
+        return out
+
+    def _refresh_predicted(self, target: str) -> None:
+        """[per-channel delay] No taps or score-bug samples on this channel: predict it.
+
+        From the app's other measured channels (their centre, widened by how far channels of this app
+        differ), combined with this channel's own show-change samples. Never below the floors, never
+        without the other-night / stale margins; with nothing to go on, the default stays."""
+        d, now, app = self.book[target], self._clock(), self.app(target)
+        direct = self._app_taps(app)
+        if not direct and len(self._app_bounds(app)) < BOUNDARY_MIN_SAMPLES:
+            return                               # one show change alone never narrows the default
+        prior = app_prior(self.centres(app), target)
+        if prior is None:                        # only this channel measured, by its show changes
+            self._refresh_boundary(target)
+            return
+        own_b = self.bounds.get(target) or []
+        floor = self._floor(direct) if direct else max(MIN_TAP_SIGMA_S, BOUNDARY_SIGMA_S)
+        if own_b:
+            cb, spread_b, newest = _estimate(own_b, now)
+            x_sd = max(BOUNDARY_SIGMA_S / math.sqrt(len(own_b)), spread_b if len(own_b) > 1 else 0.0)
+            mu, post = combine(prior.m, prior.sd, cb, x_sd)
+            sigma = max(MIN_TAP_SIGMA_S, BOUNDARY_SIGMA_S, post, spread_b if len(own_b) > 1 else 0.0)
+            shared = len(own_b) < BOUNDARY_MIN_SAMPLES
+            d.source, pool = "boundary", own_b
+        else:
+            mu, newest = prior.m, prior.newest
+            sigma = max(floor, prior.spread, prior.sd)
+            shared = True
+            # labelled by what the app's measurements are: taps / score bug, or show changes only
+            d.source, pool = ("app", direct) if direct else ("boundary", self._app_bounds(app))
+        age = now - newest
+        if age > STALE_TAP_S:
+            sigma += STALE_MARGIN_S
+        elif shared or age > CROSS_NIGHT_S:
+            sigma += SHARED_MARGIN_S
+        d.mu, d.sigma, d.calibrated_at = mu + d.behind, sigma, newest
+        d.samples.clear()
+        d.samples.extend(x for _, x in sorted(pool)[-TAP_KEEP:])
+        d.drift_cap = SETTLED_DRIFT_S if self.settled(app) and not own_b else 6.0
+        live = self.live.get(target)
+        d.live = live if live is not None and abs(live - mu) <= 2 * sigma else None
+        if d.live is not None:
+            d.mu = d.live + d.behind      # this tune's own delay re-centres; it never narrows
 
     def _app_bounds(self, app: str) -> list[tuple[float, float]]:
         return [x for t, v in self.bounds.items() if self.app(t) == app for x in v]
@@ -251,8 +361,22 @@ class DelayBook:
         return (max(vals) - min(vals)) / 2 <= SETTLED_SPREAD_S
 
     def measured(self, target: str) -> bool:
-        """This channel was tapped itself, or its app is settled: no need to ask for a tap."""
-        return bool(self._own(target)) or self.settled(self.app(target))
+        """This channel was tapped itself, or its app is settled: no need to ask for a tap.
+
+        [per-channel delay] Model "channel": an app counts as settled for a channel never measured
+        itself only once SETTLED_SAMPLES other channels agree; one channel tapped three times says
+        nothing about how far the others differ (truTV 22 s vs FS1 42 s on one app)."""
+        if self._own(target):
+            return True
+        if self.sync is not None and self.sync.estimate(target) is not None:
+            return True                        # [auto sync] synced from the automatic signals: no tap needed
+        app = self.app(target)
+        if not self.settled(app):
+            return False
+        if self.model == "legacy":
+            return True
+        prior = app_prior(self.centres(app), target)
+        return prior is not None and prior.n >= SETTLED_SAMPLES and prior.spread <= SETTLED_SPREAD_S
 
     def _add(self, target: str, ts: float, sample_s: float, into: dict | None = None) -> bool:
         into = self.taps if into is None else into
@@ -290,14 +414,23 @@ class DelayBook:
         or 0 again (a fresh tune, a jump back to live)."""
         d = self.get(target)
         behind_s = max(0.0, behind_s)
-        d.mu += behind_s - d.behind
+        delta = behind_s - d.behind
+        d.mu += delta
         d.behind = behind_s
+        if d.base is not None:
+            d.base = (d.base[0] + delta,) + d.base[1:]
+        if delta and self.sync is not None:
+            self.sync.tuned(target)            # a seek: the screen delay moved, re-sync
 
     def buffered(self, target: str) -> None:
         """The stream stalled: it's now further behind, and we're less sure by how much."""
         d = self.get(target)
         d.mu += 3.0
         d.sigma += 5.0
+        if d.base is not None:
+            d.base = (d.base[0] + 3.0, d.base[1] + 5.0) + d.base[2:]
+        if self.sync is not None:
+            self.sync.tuned(target)            # stalled: re-sync from the next signal
 
 
 _MARKERS = ("timeout", "end_", "two-minute", "period_end", "period_start", "start_inning",
@@ -381,6 +514,9 @@ class Timeline:
         self._clock = clock
         self.events: deque[Event] = deque(maxlen=200)
         self.scores: deque[Event] = deque(maxlen=60)   # score changes (kind "score"), oldest first
+        # [auto sync] (wallclock, period, game clock s left) of timed plays: the score bug's clock is
+        # timed against these (sync.clock_sample)
+        self.clocks: deque[tuple] = deque(maxlen=80)
         self._seen_ids: deque[str] = deque(maxlen=400)
         self._last_score: tuple | None = None
         self._stopped = False
@@ -446,6 +582,8 @@ class Timeline:
                 self.scores.append(Event(hi, "score", (p.text or p.kind)[:80], pid=p.id, play_kind=p.kind,
                                          spread=hi - lo, score=tuple(sc)))
         for p in new:
+            if p.wallclock and getattr(p, "clock", None) is not None and getattr(p, "period", None) is not None:
+                self.clocks.append((p.wallclock, p.period, p.clock))
             self._seen_ids.append(p.id)
             lo, hi = _bounds(p, now, prev_fresh)
             self.dead.add(p.id, lo, hi, p.kind, p.text, getattr(p, "type_text", ""),

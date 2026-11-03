@@ -28,7 +28,8 @@ from redzone.config import Config
 from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode
 from redzone.decider.screen import DelayBook
 from redzone.models import REAL_BREAKS, League, Phase
-from redzone.scoring.engine import Personal, Scorer
+from redzone.scoring.drive import DriveScorer
+from redzone.scoring.engine import Personal
 from redzone.sources import espn
 
 ET = ZoneInfo("America/New_York")
@@ -160,6 +161,48 @@ class _Feed:
         self.late_set = set(self.late)
 
 
+
+class Lags(float):
+    """Real life -> your screen: one figure (every channel alike), with per-game overrides when the
+    channels run different delays (the per-channel delay scenario). Behaves as the plain float."""
+
+    def __new__(cls, default: float, per: dict[str, float] | None = None):
+        x = super().__new__(cls, default)
+        x.per = dict(per or {})
+        return x
+
+    def of(self, gid: str | None) -> float:
+        return self.per.get(gid or "", float(self))
+
+
+def lag_of(lag: float, gid: str | None) -> float:
+    """This game's real-life -> screen lag (the plain figure when channels don't differ)."""
+    return lag.of(gid) if isinstance(lag, Lags) else lag
+
+
+def channel_scenario(replays, targets, feed_lag: float, delay: float, spread: float, history: float,
+                     seed: int, t0: float) -> tuple["Lags", list[tuple]]:
+    """[per-channel delay] Each game's channel runs its own real delay (around `delay`, sd `spread`,
+    clipped to 15..75 s, like the 22..42 s measured on one app on Nov 2 2026), and what earlier nights
+    measured of it: (Lags real life -> screen per game, store rows (ts, target, sample, kind))."""
+    per, rows = {}, []
+    for r in replays:
+        rng = random.Random(seed * 7_919 + zlib.crc32(("delay:" + r.gid).encode()))
+        true_c = min(75.0, max(15.0, rng.gauss(delay, spread)))
+        per[r.gid] = feed_lag + true_c
+        target = (targets or {}).get(r.gid, f"youtubetv:{r.gid}")
+        u = rng.random()
+        if u < history:                     # tapped on earlier nights: tap error ~2 s, night-to-night ~2 s
+            for _ in range(rng.randint(1, 3)):
+                rows.append((t0 - rng.uniform(1, 5) * 86400, target,
+                             feed_lag + true_c + rng.gauss(0, 2) + rng.gauss(0, 2), "tap"))
+        elif u < history * 1.5:             # only show changes (looser: the title flips a few s off)
+            for _ in range(rng.randint(1, 2)):
+                rows.append((t0 - rng.uniform(1, 5) * 86400, target,
+                             feed_lag + true_c + rng.gauss(0, 3), "boundary"))
+    return Lags(feed_lag + delay, per), rows
+
+
 def _feed(r: Replay, rng: random.Random, feed_lag: float, step: float, lag_jitter, drop: float,
           late_plays: float, no_wallclock: float, t0: float, t1: float) -> _Feed:
     if lag_jitter:
@@ -219,6 +262,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         targets: dict[str, str] | None = None,
         true_delay: float | None = None, sigma: float = 3.0, lag_jitter: tuple[float, float] | None = None,
         drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
+        channel_spread: float = 0.0, history: float = 0.0, delay_model: str | None = None,
         on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
@@ -228,26 +272,45 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
       drop          source goes silent 60-120 s, this many times per game-minute on average
       late_plays    fraction of plays that arrive one poll late (so out of order)
       no_wallclock  fraction of plays delivered without a wallclock
+      channel_spread  [per-channel delay] each game's channel really runs its own delay, drawn around
+                    `delay` with this sd (seeded). The app is no longer handed a calibrated delay: it
+                    starts from the config default and learns only from `history`
+      history       [per-channel delay] fraction of channels measured on earlier nights (1-3 taps);
+                    half as many again have only show-change samples; the rest were never measured
+      delay_model   DelayBook model ("channel" | "legacy"); default from cfg delay.model
       on_tick       optional read-only lab observer (historical time, decider), before selection
     """
     step = step or cfg.get("polling.live_s", 10)
     clock = _Clock()
     lag_total = feed_lag + delay   # real life -> your screen, as the app believes it
     lag_true = feed_lag + (delay if true_delay is None else true_delay)  # ...and as it really is
-    delays = DelayBook({"youtubetv": lag_total}, sigma_default=sigma, clock=clock)
-    scorer = Scorer(cfg, clock=clock)
+    model = delay_model or cfg.get("delay.model", "channel")
+    t0 = start or min(r.wall[0] for r in replays) - 60
+    t1 = end or max(r.wall[-1] for r in replays) + 60
+    history_rows = []
+    if channel_spread > 0:
+        lag_true, history_rows = channel_scenario(replays, targets, feed_lag, lag_true - feed_lag, channel_spread,
+                                                  history, seed, t0)
+        sigma_book = float(cfg.get("delay.sigma_default", 15))
+    else:
+        sigma_book = sigma
+    delays = DelayBook({"youtubetv": lag_total}, sigma_default=sigma_book,
+                       clock=clock, model=model)
+    scorer = DriveScorer(cfg, clock=clock)
     dec = Decider(cfg, delays, clock=clock)
     dec.entry_cost = lambda target: tune_s   # [cut timing] this simulator's picture is up tune_s after a switch
     me = Personal(my_teams={lg: set(my_teams) for lg in League})
     if focus:
         dec.user.focus_game, dec.user.focus_mode = focus, FocusMode.FOCUS
-    t0 = start or min(r.wall[0] for r in replays) - 60
-    t1 = end or max(r.wall[-1] for r in replays) + 60
 
-    for r in replays:
-        d = delays.get(f"youtubetv:{r.gid}")
-        d.calibrated_at = t0
-        d.sigma = sigma
+    clock.t = t0
+    if channel_spread > 0:
+        delays.load(history_rows)
+    else:
+        for r in replays:
+            d = delays.get(f"youtubetv:{r.gid}")
+            d.calibrated_at = t0
+            d.sigma = sigma
     feeds = {r.gid: _feed(r, random.Random(seed * 1_000_003 + zlib.crc32(r.gid.encode())), feed_lag, step,
                           lag_jitter, drop, late_plays, no_wallclock, t0, t1) for r in replays}
 
@@ -449,7 +512,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
         prev_kind = s.kind
         if not r or was_replay:
             continue
-        screen_t = s.t - lag_total - lo  # game time showing on screen when we cut
+        screen_t = s.t - lag_of(lag_total, r.gid) - lo  # game time showing on screen when we cut
         for w, p in zip(r.wall, r.plays):
             t = (espn._get(p, "type", "text") or "").lower()
             if t in ("timeout", "official timeout", "end period", "end of half", "two-minute warning",
@@ -466,7 +529,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             if not _is_big(p):
                 continue
             big += 1
-            air = w + lag_total
+            air = w + lag_of(lag_total, r.gid)
             on = watched_whole(watching, r.gid, air - play_len, air, tune_s, t1, offs)
             live += on
             rep_seen = (r.gid, round(w)) in replayed
@@ -495,7 +558,8 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             if not ((per == 4 and clk is not None and clk <= 120 and close) or per >= 5):
                 continue
             crunch += 1
-            on = watched_whole(watching, r.gid, w + lag_total - play_len, w + lag_total, tune_s, t1, offs)
+            on = watched_whole(watching, r.gid, w + lag_of(lag_total, r.gid) - play_len,
+                               w + lag_of(lag_total, r.gid), tune_s, t1, offs)
             crunch_live += on
             if any(a in my_teams for a in r.matchup.replace("@", " ").split()):
                 my_crunch += 1
@@ -515,7 +579,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             watched += 10
         elif g:
             r = by_id[g]
-            screen_t = t - lag_total - o
+            screen_t = t - lag_of(lag_total, g) - o
             i = max(0, _bisect(r.wall, screen_t))
             st = r.state_at(i)
             if st and st.phase == Phase.LIVE:
@@ -564,7 +628,7 @@ def hot_drive_plays(r: "Replay") -> list[int]:
     if not data:
         return []   # a replay without its raw summary (test fakes, partial archives): no drive data
     drives = list(espn._get(data, "drives", "previous") or [])
-    cur = espn._get(r.data, "drives", "current")
+    cur = espn._get(data, "drives", "current")
     if cur:
         drives.append(cur)
     hot_ids: set[str] = set()
@@ -592,7 +656,7 @@ def drive_coverage(replays, watching, lag_total: float, play_len: float, tune_s:
     n = live = other = rz = 0
     for r in replays:
         for i in hot_drive_plays(r):
-            air = r.wall[i] + lag_total
+            air = r.wall[i] + lag_of(lag_total, r.gid)
             n += 1
             if watched_whole(watching, r.gid, air - play_len, air, tune_s, t1):
                 live += 1
@@ -607,14 +671,15 @@ def drive_coverage(replays, watching, lag_total: float, play_len: float, tune_s:
 
 def _dead_cause(replays, r: Replay, i: int, t: float, switches, watching, lag_total: float, tune_s: float) -> str:
     """Why is this break on screen? Bookkeeping only: it never changes what counts as dead."""
-    screen_t = t - lag_total
+    screen_t = t - lag_of(lag_total, r.gid)
     others = [x.state_at(j) for x in replays if x is not r and (j := _bisect(x.wall, screen_t)) >= 0]
     if not _redzone_on_screen(replays, screen_t) and not any(
             o and o.phase == Phase.LIVE and o.stoppage not in REAL_BREAKS for o in others):
         return "alone: one game on, nothing else to show"
     arrived = max((k for k, (at, _) in enumerate(watching) if at <= t), default=None)
     brk_on, brk_off = _break_span(r, i)
-    brk_on, brk_off = brk_on + lag_total, brk_off + lag_total
+    lag = lag_of(lag_total, r.gid)
+    brk_on, brk_off = brk_on + lag, brk_off + lag
     if arrived is not None and watching[arrived][0] + tune_s > brk_on:
         return f"landed in it ({switches[arrived].kind})"
     left = arrived is not None and any(t < s.t < brk_off for s in switches[arrived + 1:])

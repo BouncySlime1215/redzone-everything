@@ -30,13 +30,27 @@ PUSH_SOURCES = ("espn_fastcast",)
 
 
 class FeedBook:
-    def __init__(self, merger: Merger, fetcher: Fetcher, urls_of: Callable[[GameState], list[str]],
-                 cadence_of: Callable[[str], float], clock: Callable[[], float] = time.time):
-        self.merger = merger
-        self.fetcher = fetcher
+    """merger / fetcher may be the objects or zero-argument callables returning them: the engine passes
+    callables, because a subclass (the replay demo) swaps in its own merger after Engine.__init__."""
+
+    def __init__(self, merger: Merger | Callable[[], Merger], fetcher: Fetcher | Callable[[], Fetcher],
+                 urls_of: Callable[[GameState], list[str]], cadence_of: Callable[[str], float],
+                 clock: Callable[[], float] = time.time):
+        self._merger = merger
+        self._fetcher = fetcher
         self.urls_of = urls_of            # game -> the URLs its state comes from (summary, league board)
         self.cadence_of = cadence_of      # game id -> seconds between its polls (polling.hot_s / live_s)
         self._clock = clock
+
+    @property
+    def merger(self) -> Merger:
+        m = self._merger
+        return m if isinstance(m, Merger) else m()
+
+    @property
+    def fetcher(self) -> Fetcher:
+        f = self._fetcher
+        return f if isinstance(f, Fetcher) else f()
 
     def fresh_at(self, gid: str) -> float | None:
         g = self.merger.games.get(gid)
