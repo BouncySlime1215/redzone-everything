@@ -1,7 +1,9 @@
 """Auto-tune the decider against the scorecards (see redzone/lab/tune.py).
 
     python scripts/tune.py --gens 24             # CMA-ES on the TRAIN half of the nights
+    python scripts/tune.py --resume --gens 16    # continue from data/lab/tune.json
     python scripts/tune.py --report              # winner vs today on TRAIN and held-out TEST
+    python scripts/tune.py --resume --gens 16    # continue from data/lab/tune.json
     python scripts/tune.py --report --params p.json
 
 Heavy (all CPU cores for ~an hour): run it in the cloud, never on the Mac.
@@ -25,13 +27,15 @@ def main():
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--resume", action="store_true", help="continue from data/lab/tune.json")
     ap.add_argument("--params", default=None, help="JSON file of knob values to report on")
     a = ap.parse_args()
     if a.report:
         p = json.loads(Path(a.params).read_text()) if a.params else None
         print(json.dumps(tune.report(p, a.workers), indent=1))
         return
-    best = tune.tune(a.gens, a.lam, a.sigma, a.workers, a.seed, log=lambda s: print(s, flush=True))
+    best = tune.tune(a.gens, a.lam, a.sigma, a.workers, a.seed, log=lambda s: print(s, flush=True),
+                     resume=a.resume)
     print(json.dumps(best, indent=1, default=str))
 
 

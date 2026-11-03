@@ -262,6 +262,15 @@ class CMA:
         self.chin = math.sqrt(n) * (1 - 1 / (4 * n) + 1 / (21 * n * n))
         self.gen = 0
 
+    def state(self) -> dict:
+        return {"mean": self.mean.tolist(), "sigma": self.sigma, "C": self.C.tolist(), "pc": self.pc.tolist(),
+                "ps": self.ps.tolist(), "gen": self.gen, "rng": self.rng.bit_generator.state}
+
+    def load(self, st: dict) -> None:
+        self.mean, self.sigma, self.gen = np.array(st["mean"]), float(st["sigma"]), int(st["gen"])
+        self.C, self.pc, self.ps = np.array(st["C"]), np.array(st["pc"]), np.array(st["ps"])
+        self.rng.bit_generator.state = st["rng"]
+
     def ask(self) -> list[np.ndarray]:
         vals, vecs = np.linalg.eigh(self.C)
         self._B, self._D = vecs, np.sqrt(np.maximum(vals, 1e-20))
@@ -315,7 +324,9 @@ def setup() -> tuple[dict, dict]:
 
 
 def tune(gens: int = 24, lam: int = 12, sigma: float = 0.1, workers: int | None = None, seed: int = 7,
-         log=print) -> dict:
+         log=print, resume: bool = False) -> dict:
+    """`resume`: pick up from data/lab/tune.json. With a saved CMA state it continues exactly; an
+    older checkpoint that only has its best point restarts the search centred there."""
     units, halves = setup()
     workers = workers or os.cpu_count() or 2
     today = defaults(_BASE)
@@ -325,8 +336,17 @@ def tune(gens: int = 24, lam: int = 12, sigma: float = 0.1, workers: int | None 
         es = CMA(encode(today), sigma, lam, seed)
         best = {"params": today, "fit": (0.0, 0.0), "train": base}
         history = []
+        saved = json.loads(OUT.read_text()) if resume and OUT.exists() else {}
+        if saved.get("best") and saved.get("today") == today:
+            best = saved["best"] | {"fit": tuple(saved["best"]["fit"])}
+            history = saved.get("history", [])
+            if saved.get("cma"):
+                es.load(saved["cma"])
+            else:
+                es.mean = encode(best["params"])
+            log(f"resumed at gen {len(history)}: best gain {-best['fit'][1]:+.2f} (viol {best['fit'][0]:.2f})")
         t0 = time.time()
-        for g in range(gens):
+        for g in range(len(history), len(history) + gens):
             xs = es.ask()
             ps = [decode(x) for x in xs]
             res = evaluate_many(pool, ps, "train", halves)
@@ -344,7 +364,7 @@ def tune(gens: int = 24, lam: int = 12, sigma: float = 0.1, workers: int | None 
                             "feasible": sum(f[0] == 0 for f in fits)})
             log(f"gen {g:2d}  {time.time() - t0:5.0f}s  best viol {fits[i][0]:.2f} gain {-fits[i][1]:+.2f}"
                 f" {why}  overall gain {-best['fit'][1]:+.2f} (viol {best['fit'][0]:.2f})  sigma {es.sigma:.3f}")
-            _save({"today": today, "baseline_train": base, "best": best, "history": history,
+            _save({"today": today, "baseline_train": base, "best": best, "history": history, "cma": es.state(),
                    "halves": {lg: {k: [units[lg][j][0] for j in v] for k, v in h.items() if k != "all"}
                               for lg, h in halves.items()}})
     return best

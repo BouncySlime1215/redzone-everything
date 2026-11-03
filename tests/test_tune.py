@@ -61,3 +61,13 @@ def test_cma_finds_a_quadratic_minimum():
         f = [float(((np.clip(x, 0, 1) - target) ** 2).sum()) for x in xs]
         es.tell([np.clip(x, 0, 1) for x in xs], sorted(range(len(xs)), key=f.__getitem__))
     assert np.abs(es.mean - target).max() < 0.02
+
+
+def test_cma_state_round_trips():
+    import json
+    a = tune.CMA(np.full(3, 0.5), 0.2, 6, seed=3)
+    xs = a.ask()
+    a.tell(xs, list(range(6)))
+    b = tune.CMA(np.zeros(3), 0.5, 6, seed=99)
+    b.load(json.loads(json.dumps(a.state())))
+    assert np.allclose(a.ask(), b.ask())
