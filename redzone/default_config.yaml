@@ -266,6 +266,9 @@ playbooks:
     net_window_s: 300
     skew_s: 5             # SAFE-05: wall vs monotonic jump that counts as clock skew
     reanchor_s: 90
+  game:                   # [scenario tree] GAME-01..03 branches (redzone/decider/scenarios.py), OFF
+    enabled: false
+    table: ""             # a JSON branch table (the cloud-built tree); empty = the hand-written seeds
 screen:
   mic_calibration: false   # let the Mac's mic hear crowd roars to measure your delay (nothing is recorded)
 
