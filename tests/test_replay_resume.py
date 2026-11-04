@@ -13,17 +13,17 @@ def _dec(cfg=None):
     dec.delays = NS(held={}, get=lambda t: NS(behind=0.0, current_sigma=lambda now: 1.0))
     dec.target_of = lambda gid: "yt:" + gid
     dec._known = {"g": NS(target="yt:g", scored=NS(league=NS(base=NS(value="nhl"))))}
-    dec.resume, dec.resume_log, dec.home_break_visit = None, [], None
+    dec.paused_for, dec.resume_log, dec.home_break_visit = None, [], None
     return dec
 
 
 def test_resume_lands_on_the_frame_we_left():
     """Rule #1: we leave on a dead ball and come back to that same frame (time away + the flip back)."""
     dec = _dec()
-    dec.resume = ("g", 1000.0, 12.0)              # paused 12 s behind its buffer already
+    dec.paused_for = ("g", 1000.0, 12.0)              # paused 12 s behind its buffer already
     d = dec._resume_back({}, 1040.0)
     assert d.action == "switch" and d.target == "g" and d.kind == "resume"
-    assert d.rewind_s == 12.0 + 40.0 + 5.0 and dec.resume is None
+    assert d.rewind_s == 12.0 + 40.0 + 5.0 and dec.paused_for is None
 
 
 def test_resume_scopes_to_its_leagues():

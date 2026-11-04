@@ -243,7 +243,7 @@ class Decider:
         # outcomes); Nick's buttons are controls, never labels (Nov 4 hard rule).
         self.possession_policy = None
         # [replay and resume] the game paused for a catch-up replay: (game, when, its extra behind-live then)
-        self.resume: tuple[str, float, float] | None = None
+        self.paused_for: tuple[str, float, float] | None = None
         self.resume_log: list[tuple[float, str, str, float]] = []   # (when, "replay"|"resume"|"skip", game, extra s)
         self.scenarios = Scenarios(cfg)   # [scenario tree] GAME-01..03, 21, 22 seeds, flag playbooks.game.enabled (off)
         self.safety = Safety(cfg)   # [playbooks] SAFE-01/02/03/05, flag playbooks.safe.enabled (off)
@@ -1521,17 +1521,17 @@ class Decider:
     def _pause_for(self, d: Decision, now: float) -> None:
         """Committing a replay: remember the game it pauses (replay_resume), else nothing to resume."""
         if d.kind == "replay_resume" and self.current and self.current not in PSEUDO and self.replaying is None:
-            self.resume = (self.current, now, self._extra_behind(self.current))
-            self.resume_log.append((now, "replay", self.current, self.resume[2]))
+            self.paused_for = (self.current, now, self._extra_behind(self.current))
+            self.resume_log.append((now, "replay", self.current, self.paused_for[2]))
         elif self.replaying is None:
-            self.resume = None
+            self.paused_for = None
 
     def _resume_back(self, cands, now: float) -> Decision | None:
         """The replay is over: back to the paused game on the frame we left (rewind = time away)."""
-        if self.resume is None:
+        if self.paused_for is None:
             return None
-        gid, at, extra = self.resume
-        self.resume = None
+        gid, at, extra = self.paused_for
+        self.paused_for = None
         x = cands.get(gid) or self._known.get(gid)
         if x is None or not x.target:
             return None
