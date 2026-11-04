@@ -270,3 +270,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   candidate made 1 NHL mid-play entry on every seed (BUF @ WSH, an urgent landing after a game ended). After: 0 on
   all three seeds, NHL crunch 79.9 -> 81.3 (seed 0), every other line within 0.2, locked equal. The 6 s is
   syncsim's upper end until Thursday's probe refits it.
+- 2026-11-04 (Nick, 15:06 UTC scale order): the Noggin data factory runs on free Kaggle CPU
+  (`scripts/kaggle_noggin_factory.py`, resumable season shards + oracle self-play parts, all 4 loaded
+  leagues back to 2002 where wall clocks exist). The `noggin-factory.yml` push trigger is removed (manual
+  dispatch only), because the repo's GitHub Actions minutes are capped. Every lane 1 PR reports rows per league.
