@@ -69,8 +69,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 6:25 AM ET.** The brake held: usage flat at 8% (line 3.8%, +4.2). Lanes 1-3 run until 8 AM. New merge: #100 **Clairvoyance** (lookahead view + GAME-04 in the candidate). CI green on integration/next and release. Open: #88, #91, #99, #101-#103.
-- **Kaggle V6** at 3 h 4 min; training is likely done and it's now answering the full test set. Results ~7:30-9:30 AM.
+- **Kaggle V6 COMPLETE (Mind v0, 4.0 h). Gate: FAIL, so it stays OFF.** Game-reasoner on dev-test (4,002 answers, 11 nights): lock_acc **66.0%** (today's rules 70.5, the teacher itself 73.4; needs 95; the gold encodes the future, see B11 gate split); unsafe leaves **6.5%** (today 8.9, needs <0.5); must-see recall 75.7% but precision 29%; restart ETA MAE **82 s (beats the teacher's 113 s)**. Watchdog: accuracy **37.9%** (base 21.6), unusable JSON 37 (base 81), FAIL.
+- **Read:** the student learned (better than base, better than the teacher on ETA and unsafe leaves), but round 1 had only 22k teacher answers, a rank-8 / last-8-layer LoRA, and a gate the teacher can't pass. V7 waits for lane 1's D19 recipe (fp16 base, r16-32, all layers), the B11 gate split, the full teacher queue and JSON-constrained decoding. GPU used ~16/30 h this week.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
