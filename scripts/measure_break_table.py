@@ -15,13 +15,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from redzone.contracts.breaks import TABLE_PATH  # noqa: E402
+from redzone.contracts.breaks import BREAK_TABLE_PATH  # noqa: E402
 from redzone.lab import breaktable  # noqa: E402
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default=str(TABLE_PATH))
+    ap.add_argument("--out", default=str(BREAK_TABLE_PATH))
     a = ap.parse_args(argv)
     t = breaktable.measure()
     Path(a.out).write_text(json.dumps(t, indent=1) + "\n")

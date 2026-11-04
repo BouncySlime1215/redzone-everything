@@ -63,7 +63,7 @@ class BreakModel(Protocol):
 # (scripts/measure_break_table.py) from the archive's non-locked nights, with its provenance; read behind
 # ``breaks.one_model``. Two key spaces: ``rules`` = breaks.LEN keys (what the forecast says), ``stoppage`` =
 # models.Stoppage values per league (what the feed says). Lengths are feed seconds, break play -> next live play.
-TABLE_PATH = Path(__file__).resolve().parents[1] / "scoring" / "break_table.v1.json"
+BREAK_TABLE_PATH = Path(__file__).resolve().parents[1] / "scoring" / "break_table.v1.json"
 
 
 @dataclass(frozen=True)
@@ -97,9 +97,9 @@ def _len(d: dict) -> BreakLength:
 
 
 def load_table(path=None) -> BreakTable:
-    """The committed table (TABLE_PATH). A missing or bad file raises: the flag is off by default, and a
+    """The committed table (BREAK_TABLE_PATH). A missing or bad file raises: the flag is off by default, and a
     flag that is on must not silently fall back to the old numbers."""
     import json
-    d = json.loads(Path(path or TABLE_PATH).read_text())
+    d = json.loads(Path(path or BREAK_TABLE_PATH).read_text())
     return BreakTable(str(d["version"]), dict(d["provenance"]), {k: _len(v) for k, v in d["rules"].items()},
                       {lg: {k: _len(v) for k, v in t.items()} for lg, t in d["stoppage"].items()})

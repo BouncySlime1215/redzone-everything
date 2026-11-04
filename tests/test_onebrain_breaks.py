@@ -2,7 +2,7 @@
 import json
 
 from redzone.config import Config
-from redzone.contracts.breaks import TABLE_PATH, BreakTable, load_table
+from redzone.contracts.breaks import BREAK_TABLE_PATH, BreakTable, load_table
 from redzone.scoring import breaks
 
 
@@ -54,7 +54,7 @@ def test_flag_on_shares_one_book(tmp_path):
 
 
 def test_table_file_is_what_the_lab_script_writes():
-    d = json.loads(TABLE_PATH.read_text())
+    d = json.loads(BREAK_TABLE_PATH.read_text())
     assert d["provenance"]["script"] == "scripts/measure_break_table.py"
     assert set(d["stoppage"]) == {"nfl", "nba", "nhl"}
 

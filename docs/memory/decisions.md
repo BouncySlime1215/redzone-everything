@@ -363,3 +363,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   to `two_stick.standby_repause_s: 600` in default_config.yaml, value unchanged; postseason.py's ROUNDS / DEFAULTS /
   _rank renamed ROUNDS_LEFT / WEIGHTS / _poll_rank (no behavior change). Reason: the contract kernel (K1/K2/K4)
   flagged them as new on merge; one definition per fact, timings in config (Nick, one connected system).
+- 2026-11-04 (overseer 22:28, one-brain step 5; lane 1): **ONE measured break table**
+  (`redzone/scoring/break_table.v1.json`, written by `scripts/measure_break_table.py` from the archive's
+  train+valid nights, locked never read) and **ONE BreakBook owned by the engine** and shared with the drive
+  scorer, behind `breaks.one_model` (default **off**). Only keys with n >= 30 replace breaks.LEN; NBA timeouts
+  measure longer than the prior (long 202 vs 188 s, short 121 vs 107). Parity on the full fit-split scorecards
+  (NFL/NBA/NHL, with and without resync): identical. Lane 4 wires decider BREAK_LEN_S, cuts MEDIAN_S and
+  screen MIN_BREAK_S to `BreakTable.by_stoppage` after lane 2's decider PRs land.

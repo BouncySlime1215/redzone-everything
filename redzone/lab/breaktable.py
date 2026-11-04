@@ -20,10 +20,9 @@ from pathlib import Path
 
 import numpy as np
 
-from redzone.lab import datasets, splits
+from redzone.lab import datasets, evaldata, splits
 
-LEAGUES = ("nfl", "nba", "nhl")       # what data/archive holds (eval-data-v1)
-MAX_S = 1800.0                        # longer than this is a feed gap, not a break
+LEAGUES = evaldata.LEAGUES            # what data/archive holds (eval-data-v1)
 
 
 def breaks_of(league: str, data: dict) -> list[tuple[str, str, float]]:
@@ -50,7 +49,7 @@ def breaks_of(league: str, data: dict) -> list[tuple[str, str, float]]:
         sub = "substitution" in (g.last_play.kind if g.last_play else "")
         rows.append((w, g.stoppage, brk and not prev_break, key, sub))
         prev_break = brk
-    out = []
+    out, gap = [], 1.6 * max(breaks.LEN.values())            # the legacy q90 of the longest break
     for i, r in enumerate(rows):
         if r is None or not r[2] or r[0] is None:
             continue
@@ -59,7 +58,7 @@ def breaks_of(league: str, data: dict) -> list[tuple[str, str, float]]:
         if nxt is None:
             continue
         s = nxt[0] - r[0]
-        if 0 < s <= MAX_S:
+        if 0 < s <= gap:                                     # longer: a feed gap, not a break
             out.append((r[3], r[1].value, float(s)))
     return out
 
