@@ -21,7 +21,6 @@ from dataclasses import replace as dc_replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
-from zoneinfo import ZoneInfo
 
 from redzone.channels import REDZONE_TARGET, redzone_on
 from redzone.config import Config
@@ -33,8 +32,8 @@ from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal
 from redzone.lab import leverage
 from redzone.sources import espn
+from redzone.config import ET  # [one fact] defined once (contract kernel K1)
 
-ET = ZoneInfo("America/New_York")
 
 
 @dataclass

@@ -23,8 +23,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from redzone.models import GameState, League, Phase
+from redzone.config import ET, DATA  # [one fact] defined once (contract kernel K1)
 
-DATA = Path(__file__).resolve().parent.parent / "data"
 
 # ESPN broadcast name (lowercased) -> our channel key
 NETWORKS = {
@@ -328,7 +328,6 @@ def _is_sunday_afternoon(g: GameState) -> bool:
     return kickoff.weekday() == 6 and 12 <= kickoff.hour < 19
 
 
-ET = ZoneInfo("America/New_York")
 REDZONE_TARGET = "youtubetv:redzone"
 
 

@@ -40,13 +40,12 @@ import shutil
 import sys
 import time
 from urllib.parse import parse_qs, urlsplit
-from zoneinfo import ZoneInfo
 
 import httpx
+from redzone.config import ET  # [one fact] defined once (contract kernel K1)
 
 log = logging.getLogger(__name__)
 
-ET = ZoneInfo("America/New_York")
 CACHE_TTL_S = 300.0
 DEFAULT_TERMS = ("nba", "nhl", "nfl", "mlb")
 _TIMEOUT = httpx.Timeout(10.0, connect=5.0)

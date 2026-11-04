@@ -11,6 +11,7 @@ import copy
 import logging
 import time
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import yaml
 
@@ -19,6 +20,7 @@ log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTS = Path(__file__).with_name("default_config.yaml")
 DATA = ROOT / "data"
+ET = ZoneInfo("America/New_York")   # Nick's clock: nights, schedules and the phone all read time in ET
 USER = DATA / "config.yaml"
 HISTORY = DATA / "config_history"
 

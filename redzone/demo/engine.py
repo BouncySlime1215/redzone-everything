@@ -17,7 +17,6 @@ import zlib
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from zoneinfo import ZoneInfo
 
 import time as _real_time
 import yaml
@@ -37,8 +36,8 @@ from redzone.sources.feeds import FeedBook
 from redzone.sources import espn
 from redzone.sources.merge import Merger
 from redzone.store import Store
+from redzone.config import ET  # [one fact] defined once (contract kernel K1)
 
-ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parent.parent.parent
 TEAM_NAMES = {"nfl": "Commanders", "nba": "Wizards", "nhl": "Capitals"}
 

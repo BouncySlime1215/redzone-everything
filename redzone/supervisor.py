@@ -58,7 +58,6 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
-from zoneinfo import ZoneInfo
 
 from redzone import observability as obs
 from redzone.platform.health import PUSH as PUSH_FAULTS
@@ -66,9 +65,7 @@ from redzone import trace
 
 log = logging.getLogger(__name__)
 
-ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
 NIGHT_STARTS_H = 6          # a "night" runs 6:00 AM ET to 6:00 AM ET the next day, named by its first date
 REPORT_AFTER_S = 300.0      # ...and its report is written 5 minutes after it ends
 CUT_JUDGE_AFTER_S = 90.0    # a cut is graded this long after it happened (the feed has caught up by then)
@@ -122,6 +119,7 @@ LIMITS = {
     "delay_doubt": (1800.0, 2), "finished_hold": (60.0, 10), "log_growth": (600.0, 6),
 }
 from redzone.platform.agent_fix import LIMITS as _AGENT_LIMITS  # noqa: E402  (watchdog-requested fixes)
+from redzone.config import ET, DATA  # [one fact] defined once (contract kernel K1)
 LIMITS.update(_AGENT_LIMITS)
 
 # Switch outcomes that say nothing about the target (same idea as engine.NOT_THE_TARGETS_FAULT).
