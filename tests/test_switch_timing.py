@@ -107,3 +107,10 @@ def test_fixed_feed_lag_keeps_the_screen_where_it_was():
     assert k["feed_lag"] + k["delay"] == backtest.SCREEN_LAG_S
     with pytest.raises(ValueError):
         backtest.feed_lag_knobs(-1)
+
+
+def test_time_shift_buffer_moves_the_screen_and_calibrates_every_app():
+    k = backtest.feed_lag_knobs(None, 60)
+    assert k["feed_lag"] + k["delay"] == backtest.STREAM_DELAY_S + 60 and k["calibrate_targets"]
+    with pytest.raises(ValueError):
+        backtest.feed_lag_knobs(None, 500)

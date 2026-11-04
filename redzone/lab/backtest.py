@@ -178,14 +178,27 @@ class Lags(float):
 SCREEN_LAG_S = 43.0   # run()'s default real life -> screen (feed_lag 8 + delay 35)
 
 
-def feed_lag_knobs(feed_lag: float | None) -> dict:
-    """[switch timing] run() kwargs for a fixed feed lag that keeps the screen where it was: the app
-    learns of each play later; the stream itself is no faster or slower."""
-    if feed_lag is None:
+STREAM_DELAY_S = 26.0   # a YouTube TV channel at its live edge, behind real life (ESPN, Nov 2 2026)
+
+
+def feed_lag_knobs(feed_lag: float | None, behind_live: float | None = None,
+                   stream_delay: float = STREAM_DELAY_S) -> dict:
+    """[switch timing] run() kwargs for a fixed feed lag and/or a time-shift buffer.
+
+    feed_lag     the app learns of each play this long after it happened (default 8)
+    behind_live  [time-shift buffer] the stream is held this far behind its live edge, so the screen
+                 runs stream_delay + behind_live behind real life. Without it the screen stays where
+                 the scorecard always had it (43 s), so only the warning before a play airs changes."""
+    if feed_lag is None and behind_live is None:
         return {}
-    if not 0 <= feed_lag <= 300:
-        raise ValueError(f"feed lag {feed_lag} s is outside 0..300")
-    return {"feed_lag": float(feed_lag), "delay": SCREEN_LAG_S - float(feed_lag)}
+    fl = 8.0 if feed_lag is None else float(feed_lag)
+    if not 0 <= fl <= 300:
+        raise ValueError(f"feed lag {fl} s is outside 0..300")
+    if behind_live is not None and not 0 <= behind_live <= 180:
+        raise ValueError(f"behind_live {behind_live} s is outside 0..180")
+    if behind_live is None:
+        return {"feed_lag": fl, "delay": SCREEN_LAG_S - fl}
+    return {"feed_lag": fl, "delay": stream_delay + float(behind_live) - fl, "calibrate_targets": True}
 
 
 def lag_of(lag: float, gid: str | None) -> float:
@@ -284,7 +297,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         true_delay: float | None = None, sigma: float = 3.0, lag_jitter: tuple[float, float] | None = None,
         drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
         channel_spread: float = 0.0, history: float = 0.0, delay_model: str | None = None,
-        resync: bool = False, feed_lag_model: str | None = None, on_tick: Callable | None = None) -> Report:
+        resync: bool = False, feed_lag_model: str | None = None, calibrate_targets: bool = False,
+        on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
       true_delay    the stream's real delay; `delay` is only the app's estimate of it
@@ -325,7 +339,13 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         sigma_book = float(cfg.get("delay.sigma_default", 15))
     else:
         sigma_book = sigma
-    delays = DelayBook({"youtubetv": lag_total}, sigma_default=sigma_book,
+    # calibrate_targets: every app the night's games are on starts from the same believed delay (the
+    # simulated screen runs one delay for all, lag_true). Off, only YouTube TV gets it and a Prime/ESPN
+    # game is planned with the config default (40 s): 3 s off on today's scorecard, 46 s off with a
+    # 60 s time-shift buffer. On only with --behind-live for now: turning it on for today's NBA card
+    # moves it a lot (big seen 92.0 -> 77.0) for a reason not yet understood (docs/timing.md).
+    apps = {"youtubetv"} | ({t.split(":", 1)[0] for t in (targets or {}).values()} if calibrate_targets else set())
+    delays = DelayBook({a: lag_total for a in sorted(apps)}, sigma_default=sigma_book,
                        clock=clock, model=model)
     scorer = DriveScorer(cfg, clock=clock)
     dec = Decider(cfg, delays, clock=clock)
@@ -339,13 +359,16 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         delays.load(history_rows)
     else:
         for r in replays:
-            d = delays.get(f"youtubetv:{r.gid}")
+            d = delays.get((targets or {}).get(r.gid, f"youtubetv:{r.gid}") if calibrate_targets
+                           else f"youtubetv:{r.gid}")
             d.calibrated_at = t0
             d.sigma = sigma
     sync = None
     if resync:
         sync = _attach_resync(delays, cfg, pinned=None if channel_spread > 0 else
-                              {f"youtubetv:{r.gid}": (lag_total, sigma, t0) for r in replays})
+                              {((targets or {}).get(r.gid, f"youtubetv:{r.gid}") if calibrate_targets
+                                                          else f"youtubetv:{r.gid}"): (lag_total, sigma, t0)
+                                                         for r in replays})
         tgt_of = {r.gid: (targets or {}).get(r.gid, f"youtubetv:{r.gid}") for r in replays}
         noise = random.Random(seed * 7_000_003 + 17)
     sampler = None
