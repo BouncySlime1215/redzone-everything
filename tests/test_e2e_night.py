@@ -46,6 +46,7 @@ def night(tmp_path_factory):
     before = _data_snapshot()
     env = dict(os.environ, PYTHONPATH=str(ROOT) + os.pathsep + os.environ.get("PYTHONPATH", ""))
     env.pop("RZ_NIGHT_TRACE", None)
+    env["RZ_NIGHT_HOSTILE_HOST"] = "1"   # another subnet, a tunnel, a busy Mac: the night must not see any of it
     proc = subprocess.run([sys.executable, "-m", "redzone.lab.night", "--json", str(out), "--work", str(work / "w")],
                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
     assert out.exists(), f"the night wrote no report (exit {proc.returncode}):\n{proc.stdout[-3000:]}\n{proc.stderr[-3000:]}"
@@ -158,3 +159,29 @@ def test_pin_network_says_home_whatever_the_host_is():
         assert st.where == "home" and not st.away and not st.routes_broken
     finally:
         network.assess = real
+
+
+def test_a_hostile_host_says_away_until_the_night_pins_it(tmp_path):
+    """The CI night runs on hostile_host(): another subnet with a tunnel taking 10.x. Unpinned, the
+    network check says away (the supervisor would skip every stick reconnect, as on Nick's Mac), and
+    the governor is critical with a 1500 MB live app; pinned, home and normal."""
+    import asyncio
+    import json as _json
+    from redzone import governor, network
+    from redzone.lab.night import run as night_run
+    devices = tmp_path / "devices.json"
+    devices.write_text(_json.dumps({"sticks": [{"host": h} for h in night_run.HOSTS]}))
+    saved = network.Probe, network.assess, governor.sample
+    try:
+        night_run.hostile_host()
+        st = asyncio.run(network.NetWatch(devices).refresh(force=True))
+        assert st.away and st.tailscale
+        assert governor.Governor().update(governor.sample()) == "critical"
+        night_run.pin_network(network)
+        night_run.pin_host(governor)
+        st = asyncio.run(network.NetWatch(devices).refresh(force=True))
+        assert st.where == "home" and not st.routes_broken
+        gov = governor.Governor()
+        assert gov.update(governor.sample()) == "normal" and gov.service_mb() is None
+    finally:
+        network.Probe, network.assess, governor.sample = saved

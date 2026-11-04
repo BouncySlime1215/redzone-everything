@@ -557,6 +557,39 @@ def pin_network(network) -> None:
     network.assess = home
 
 
+class _HostileProbe:
+    """redzone.network.Probe for a host that is NOT the fake house: home Wi-Fi on 192.168.1.x and a
+    Tailscale tunnel (utun4, 100.64/10) taking the 10.0.0.x routes the fake sticks live on."""
+    def interfaces(self):
+        return {"lo0": [("127.0.0.1", 8)], "en0": [("192.168.1.20", 24)], "utun4": [("100.101.1.2", 32)]}
+
+    def default_route(self):
+        return "192.168.1.1", "en0"
+
+    def route_iface(self, ip):
+        return "utun4" if ip.startswith("10.") else "en0"
+
+    def arp(self):
+        return {}
+
+    def nudge(self, hosts):
+        return None
+
+
+def hostile_host() -> None:
+    """Make the machine the night runs on look as unlike the fake house as possible (the CI night sets
+    RZ_NIGHT_HOSTILE_HOST=1): another subnet, a tunnel stealing 10.x, and a busy battery-powered Mac
+    with a big live RedZone app in ps. Night.patch() must pin all of it away (pin_host, pin_network),
+    or the night fails in CI the way it failed on Nick's Mac (RC 2 and RC 3 deploys)."""
+    from redzone import governor, network
+    network.Probe = _HostileProbe
+
+    def busy(root=None, run=None, clock=time.time):
+        return governor.Sample(at=clock(), on_battery=True, battery_pct=5, load_per_core=14.0,
+                               mem_pressure=4, disk_free_mb=100.0, procs={"service": 1500.0})
+    governor.sample = busy
+
+
 def _still_off_at_end(samples: list[Sample], pred) -> float:
     """How long the run of samples matching pred that is still going at the end has lasted (0 if none)."""
     if not samples or not pred(samples[-1]):
