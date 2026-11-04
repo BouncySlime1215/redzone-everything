@@ -278,14 +278,15 @@ def test_parse_playback_formats():
     old_style = media("other.pkg", 2, 5, 10) + media("yttv.pkg", 3, 1000, 5000)
     assert parse_playback(old_style, "yttv.pkg") == {"state": "playing", "pkg": "yttv.pkg", "position": 1000,
                                                      "updated": 5000, "speed": 1.0, "title": "Game",
-                                                     "subtitle": "Channel", "description": ""}
+                                                     "subtitle": "Channel", "description": "",
+                                                     "active": True}
     assert parse_playback(old_style, "other.pkg")["state"] == "paused"
     assert parse_playback(old_style)["pkg"] == "yttv.pkg"           # a playing session wins
     new_style = old_style.replace("state=3,", "state=PLAYING(3),")
     assert parse_playback(new_style, "yttv.pkg")["state"] == "playing"
     assert parse_playback("", "yttv.pkg") == {"state": "none", "pkg": None, "position": None, "updated": None}
     grepped = "\n".join(x for x in old_style.splitlines()
-                        if "package=" in x or "state=PlaybackState" in x or "metadata:" in x)
+                        if "package=" in x or "active=" in x or "state=PlaybackState" in x or "metadata:" in x)
     assert parse_playback(grepped, "yttv.pkg") == parse_playback(old_style, "yttv.pkg")
 
 

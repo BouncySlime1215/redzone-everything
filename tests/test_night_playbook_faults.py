@@ -101,3 +101,35 @@ def test_cec_steal_reboots_the_hidden_stick_onto_the_tv():
     f.start(w)
     b = w.house.sticks["10.0.0.12:5555"]
     assert w.house.tv.source is b and b.fg == H.LAUNCHER
+
+
+@pytest.mark.playbook("STK-05")
+def test_stick_paused_leaves_a_stale_playing_report_that_no_longer_counts():
+    from redzone.tuners.adb import PLAYBACK_CMD, parse_playback, playback_ready
+    w, d, a = _world()
+    b = w.house.sticks["10.0.0.12:5555"]
+    x = b.apps[H.YTTV]
+    b.fg, x.screen, x.target, x.task = H.YTTV, "player", "youtubetv:fox", True
+    b._stamp(x, H.PLAYING, 1000)
+    assert playback_ready(parse_playback(b._media(), H.YTTV))
+    f = F.from_spec({"name": "stick_paused", "at": 0, "dur": 0, "host": "10.0.0.12:5555"})
+    f.start(w)
+    assert f.info["hit"] and x.state == H.PAUSED                     # what the picture really does
+    pb = parse_playback(b._media(), H.YTTV)
+    assert pb["state"] == "playing" and pb["active"] is False and not playback_ready(pb)
+    assert "active=" in PLAYBACK_CMD
+    b._stamp(x, H.PLAYING, 2000)                                     # re-tuned: a live, active session
+    assert playback_ready(parse_playback(b._media(), H.YTTV))
+    g = F.from_spec({"name": "stick_paused", "at": 0, "dur": 0, "host": "10.0.0.12:5555", "mode": "pause"})
+    g.start(w)
+    assert parse_playback(b._media(), H.YTTV)["state"] == "paused"
+
+
+def test_parse_playback_prefers_an_active_playing_session():
+    from redzone.tuners.adb import parse_playback
+    text = ("  package=a.pkg\n    active=false\n    state=PlaybackState {state=3, position=5, buffered position=0, "
+            "speed=1.0, updated=9, actions=0, custom actions=[], active item id=-1, error=null}\n"
+            "  package=b.pkg\n    active=true\n    state=PlaybackState {state=3, position=7, buffered position=0, "
+            "speed=1.0, updated=9, actions=0, custom actions=[], active item id=-1, error=null}\n")
+    assert parse_playback(text)["pkg"] == "b.pkg"
+    assert parse_playback(text, "a.pkg")["active"] is False

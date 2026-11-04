@@ -1,5 +1,6 @@
 """[switch timing] The e2e night's TV with the SmartThings input change, at the latency measured on
-the user's TV (Nov 3 2026: 10 of 10 confirmed, median 1.98 s, max 2.2 s, command -> readback).
+the user's TV (live lab Nov 4 2026: 64 of 64 confirmed, 0 retries, p50 1.89 s, p95 2.18 s, max 2.58 s,
+command -> readback; ack 0.31 s. It replaces the Nov 3 10-sample 1.98 / 2.2 s).
 
     python -m redzone.lab.night --tv smartthings
 
@@ -13,16 +14,22 @@ from __future__ import annotations
 import asyncio
 import random
 
-# Command -> the TV reporting the new input. Triangular around the measured median, inside the
-# measured range: the readback loop (tv.VERIFY_GAP_S) adds up to one gap on top, as it did live.
-MEASURED_MEDIAN_S = 1.98
-MEASURED_MAX_S = 2.2
-LOW_S = 1.6
+# Command -> the TV reporting the new input, as an inverse CDF through the measured quantiles. The
+# readback loop (tv.VERIFY_GAP_S = 0.3) adds U(0, 0.3) on top, as it did live, so each point sits
+# 0.15 s under the confirmed figure: confirmed p50 ~1.89, p95 ~2.18, max ~2.58 (tests/test_switch_timing).
+MEASURED_P50_S, MEASURED_P95_S, MEASURED_MAX_S = 1.89, 2.18, 2.58
+MEASURED_MEDIAN_S = MEASURED_P50_S
+READBACK_S = 0.15
+_Q = ((0.0, 1.60), (0.5, MEASURED_P50_S), (0.95, MEASURED_P95_S), (1.0, MEASURED_MAX_S))
 
 
 def draw(rng: random.Random) -> float:
     """One input change, seconds. Read back one VERIFY_GAP_S later at most, like the live timing."""
-    return rng.triangular(LOW_S, MEASURED_MAX_S - 0.15, MEASURED_MEDIAN_S - 0.1)
+    u = rng.random()
+    for (q0, x0), (q1, x1) in zip(_Q, _Q[1:]):
+        if u <= q1:
+            return x0 + (x1 - x0) * (u - q0) / (q1 - q0) - READBACK_S
+    return MEASURED_MAX_S - READBACK_S
 
 
 def make_tv_class(tv_mod, house, rng: random.Random):

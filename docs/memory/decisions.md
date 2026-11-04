@@ -272,3 +272,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   candidate made 1 NHL mid-play entry on every seed (BUF @ WSH, an urgent landing after a game ended). After: 0 on
   all three seeds, NHL crunch 79.9 -> 81.3 (seed 0), every other line within 0.2, locked equal. The 6 s is
   syncsim's upper end until Thursday's probe refits it.
+- 2026-11-04: **two_stick.tv_flip_prior_s = {median: 1.89, max: 2.58}** (was 1.98 / 2.2, 10 samples). Nick's live
+  lab: 64/64 SmartThings flips confirmed, 0 retries, p50 1.89 s, p95 2.18 s, max 2.58 s, ack 0.31 s. The upper
+  bound stays the measured max because landing deadlines guard rule #1; decider.switch_cost.hdmi_flip
+  (half-step of median + settle) is unchanged at its shipped value. The night lab's SmartThings TV draws from
+  the same quantiles. Also STK-05 (no flag: a stale or paused standby was never a usable one): media_session must
+  read active and speed>0, and verify_standby re-tunes a paused / stale hidden stick at once.
