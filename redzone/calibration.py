@@ -68,9 +68,9 @@ def judge(value: float, past: list[float]) -> tuple[bool, str, float | None, flo
     return True, "ok", ref, mad
 
 
-def merge(root: Path, night: date | str, measured: dict[str, tuple[float, int, str]], now: float | None = None,
+def merge(root: Path, night: date | str, measured: dict[str, tuple], now: float | None = None,
           section: str = "timing") -> dict:
-    """Judge and write `measured` {key: (value, n, source)} into one section of the night's file.
+    """Judge and write `measured` {key: (value, n, source[, sd])} into one section of the night's file.
     Returns that section."""
     night = night if isinstance(night, str) else night.isoformat()
     path = folder(root) / f"{night}.json"
@@ -79,7 +79,9 @@ def merge(root: Path, night: date | str, measured: dict[str, tuple[float, int, s
     except (OSError, ValueError):
         doc = {}
     vals = doc.get(section) or {}
-    for key, (value, n, source) in measured.items():
+    for key, m in measured.items():
+        value, n, source = m[:3]
+        sd = m[3] if len(m) > 3 else None      # optional spread (lane 2's delay_s for the sync prior)
         if value is None:
             continue
         if n < MIN_SAMPLES.get(key, 1):
@@ -89,6 +91,8 @@ def merge(root: Path, night: date | str, measured: dict[str, tuple[float, int, s
         ok, why, ref, mad = judge(float(value), history(root, key, night, section))
         vals[key] = {"value": round(float(value), 3), "n": n, "source": source, "accepted": ok, "reason": why,
                      "ref": None if ref is None else round(ref, 3), "mad": None if mad is None else round(mad, 3)}
+        if sd is not None:
+            vals[key]["sd"] = round(float(sd), 3)
         if not ok:
             log.warning("calibration %s=%.3f on %s %s", key, value, night, why)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,7 +109,8 @@ def latest(root: Path, section: str = "timing") -> dict[str, dict]:
     for night, doc in _nights(root):
         for key, v in (doc.get(section) or {}).items():
             if v.get("accepted"):
-                out[key] = {"value": float(v["value"]), "night": night, "n": v.get("n")}
+                out[key] = {"value": float(v["value"]), "night": night, "n": v.get("n"),
+                            **({"sd": float(v["sd"])} if v.get("sd") is not None else {})}
     return out
 
 
