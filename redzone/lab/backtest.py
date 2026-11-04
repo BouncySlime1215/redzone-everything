@@ -87,6 +87,7 @@ class SwitchLog:
     reason: str
     offset: float = 0.0   # [cut timing] the picture came up this far behind live (a rewind on entry)
     jitter: float = 0.0   # [auto-anchors] of which: the tune's own unknown landing behind the live edge
+    arrive_dt: float = 0.0  # [live lab] the picture came up this much later (+) or sooner than tune_s
 
 
 @dataclass
@@ -317,7 +318,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         true_delay: float | None = None, sigma: float = 3.0, lag_jitter: tuple[float, float] | None = None,
         drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
         channel_spread: float = 0.0, history: float = 0.0, delay_model: str | None = None,
-        resync: bool = False, anchors: bool = False, tune_jitter_s: float = 0.0, feed_lag_model: str | None = None,
+        resync: bool = False, anchors: bool = False, tune_jitter_s: float = 0.0, flip_dist: bool = False,
+        feed_lag_model: str | None = None,
         calibrate_targets: bool = False,
         on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
@@ -346,6 +348,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
                     true whistle -> ad-on-screen gap is drawn per break (sync.break_anchor.true_gap_s /
                     true_gap_sd_s, default = the config prior: an assumption until the Wednesday probe
                     data). Every on-screen second is graded for honesty (Report.sync_honesty).
+      flip_dist     [live lab] each picture comes up with the measured TV flip's spread around tune_s
       tune_jitter_s [auto-anchors] each tune lands U(0, S) s behind the live edge, unknown to the app (a
                     YouTube TV tune, redzone/lab/syncsim.py: 0-6 s). Graded as a real offset of that
                     visit, so the delay the app believes is wrong by it until something re-syncs it.
@@ -466,6 +469,10 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             j = jitter_rng.uniform(0.0, tune_jitter_s)
             switches[-1].offset += j
             switches[-1].jitter = j
+        if flip_dist and len(switches) > n_sw and switches[-1].kind != "replay":
+            # [live lab] the TV flip's measured spread around its median (64 SmartThings flips, Nov 4)
+            from redzone.contracts.switching import FLIP_PRIOR, LIVELAB_FLIPS_S
+            switches[-1].arrive_dt = jitter_rng.choice(LIVELAB_FLIPS_S) - FLIP_PRIOR["median"]
         if sync is not None and resync:
             _resync_tick(delays, sync, decision, switches, tgt_of, lag_true, tune_s, clock.t, noise)
         elif sync is not None:

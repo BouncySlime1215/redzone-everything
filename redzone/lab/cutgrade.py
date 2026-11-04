@@ -231,7 +231,7 @@ def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
         dst = by_id.get(s.to or "")
         if dst is None:
             continue
-        arrive = s.t + tune_s
+        arrive = s.t + tune_s + (getattr(s, "arrive_dt", 0.0) or 0.0)
         off = getattr(s, "offset", 0.0) or 0.0
         lag = lag_of(lag_true, dst.gid)
         st = arrive - lag - off

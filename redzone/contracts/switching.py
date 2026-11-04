@@ -45,9 +45,24 @@ def deadline(paths: tuple[SwitchPath, ...]) -> float:
 #   tunes      decider.switch_cost.<app>: the Mac's measured medians (switch_speed.learn wrote them
 #              to data/config.yaml; eval-data-v1 pinned that snapshot), shipped in default_config.yaml
 #   TV flip    two_stick.tv_flip_prior_s (SmartThings setInputSource on the user's TV, Nov 3 2026:
-#              10/10 confirmed, median 1.98 s, max 2.2 s) + two_stick.input_settle_s, exactly as
+#              live lab Nov 4: 64/64 confirmed, median 1.89 s, p95 2.18 s) + two_stick.input_settle_s, exactly as
 #              Controller.flip_estimate / _flip_upper price the tv_flip path before 5 own samples.
 TUNE_APPS = ("youtubetv", "prime", "espn")
+# [live lab] SmartThings input flips on the user's TV, Nov 4 2026 (docs/livelab-2026-11-04.md on the Mac):
+# command to confirmed readback, 64/64 confirmed, 0 retries. p50 1.89, p95 2.18, max 2.58 s.
+LIVELAB_FLIPS_S = (1.6, 1.66, 1.71, 1.71, 1.76, 1.77, 1.82, 1.83, 1.83, 1.83, 1.84, 1.84, 1.85, 1.85, 1.85,
+                   1.86, 1.86, 1.86, 1.86, 1.87, 1.87, 1.87, 1.87, 1.87, 1.88, 1.88, 1.88, 1.88, 1.88, 1.88,
+                   1.88, 1.89, 1.89, 1.9, 1.9, 1.9, 1.9, 1.9, 1.91, 1.91, 1.92, 1.92, 1.93, 1.93, 1.94, 1.95,
+                   1.95, 2.0, 2.0, 2.02, 2.02, 2.02, 2.02, 2.04, 2.04, 2.06, 2.08, 2.1, 2.12, 2.14, 2.18, 2.23,
+                   2.36, 2.58)
+FLIP_PRIOR = {"median": 1.89, "p95": 2.18, "max": 2.58}
+
+
+def flip_bound(prior: dict) -> tuple[float, float]:
+    """(median, planning upper bound) of the TV flip prior: its p95 when measured, else its max."""
+    med = float(prior.get("median", FLIP_PRIOR["median"]))
+    hi = prior.get("p95", prior.get("max", FLIP_PRIOR["p95"]))
+    return med, max(med, float(hi))
 
 
 def half_step(x: float) -> float:
@@ -70,9 +85,8 @@ class ConfigSwitchPaths:
 
     def flip(self) -> SwitchPath:
         settle = float(self._get("two_stick.input_settle_s", 1.0))
-        prior = self._get("two_stick.tv_flip_prior_s", {}) or {}
-        med, mx = float(prior.get("median", 1.98)), float(prior.get("max", 2.2))
-        return SwitchPath(TV_FLIP, med + settle, max(med, mx) + settle)
+        med, hi = flip_bound(self._get("two_stick.tv_flip_prior_s", {}) or {})
+        return SwitchPath(TV_FLIP, med + settle, hi + settle)
 
     def tune(self, app: str) -> float:
         return float(self._get(f"decider.switch_cost.{app}", 5.0))
