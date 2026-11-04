@@ -64,15 +64,3 @@ def test_the_controller_plans_with_the_calibrated_prior(tmp_path):
     assert c._tv_prior() == (float(p["median"]), float(p["max"]))       # the shipped prior, whatever it is
     c.calibrated_flip = (1.8, 2.1)
     assert c._tv_prior() == (1.8, 2.1)
-
-
-def test_flip_and_tune_costs_come_from_the_measured_config_not_constants(tmp_path):
-    from redzone import standby
-    from redzone.config import Config
-    cfg = Config(user_path=tmp_path / "config.yaml", history_dir=tmp_path / "hist")
-    med = cfg.get("two_stick.tv_flip_prior_s")["median"]
-    assert cal.flip_s(cfg) == round(med + cal.FLIP_SETTLE_S, 2)
-    assert cal.tune_s(cfg) == cfg.get("decider.switch_cost")["youtubetv"]
-    cfg.update({"two_stick": {"tv_flip_prior_s": {"median": 1.5, "max": 2.6}}})
-    assert cal.flip_s(cfg) == 2.5
-    assert standby.ShadowStick(flip_s=cal.flip_s(cfg)).FLIP_S == 2.5

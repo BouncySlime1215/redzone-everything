@@ -225,4 +225,3 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   so a 60 s hold came out 81.7 s (90 -> 111.6 s) in the night lab. Fix: the resume waits at most
   HOLD_RESUME_LOCK_S (1 s), then plays a stick nobody touched since the pause (a token that any _tune on
   that stick clears); `held` is only written if the token survived. Timed waits must not sit behind locks.
-- 2026-11-04: **Hard-coded timing constants drift from what was measured.** The demo graded entries with `TUNE_S = 5.0` while the learned YTTV switch cost was 5.5, and the shadow stick counted a flip as 3.0 s while Nick timed 1.89 s + settle. Costs now come from calibration.flip_s / tune_s, which read the measured config (and tonight's calibration with calib.auto). Lane 4's checker will catch new constants.

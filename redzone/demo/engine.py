@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 import time as _real_time
 import yaml
 
-from redzone import calibration, engine as engine_mod, standby
+from redzone import engine as engine_mod, standby
 from redzone.channels import REDZONE_TARGET, ChannelMap, Where
 from redzone.config import Config, ConfigError, _deep_merge, validate
 from redzone.control import Controller, Outcome
@@ -42,6 +42,7 @@ ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parent.parent.parent
 FEED_LAG_S = 8.0      # a play reaches the app this long after it happens (same as the backtest)
 PLAY_LEN_S = 7.0
+TUNE_S = 5.0
 CALIBRATED_SIGMA_S = 3.0
 TEAM_NAMES = {"nfl": "Commanders", "nba": "Wizards", "nhl": "Capitals"}
 
@@ -262,15 +263,12 @@ class DemoEngine(Engine):
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"), clock=clock,
                                 model=self.cfg.get("delay.model", "channel"))
         self.decider = Decider(self.cfg, self.delays, clock=clock)
-        # [cut timing] the replay's picture is up tune_s after a switch: the measured YTTV switch cost
-        # (calibration.tune_s), never a constant of its own (Nick's city map, Nov 4).
-        self.tune_s = calibration.tune_s(self.cfg)
-        self.decider.entry_cost = lambda target: self.tune_s
+        self.decider.entry_cost = lambda target: TUNE_S   # [cut timing] the replay's picture is up TUNE_S after a switch
         self.control = InertController(self.cfg, self.channels, clock)
         # The hidden stick, modeled: what the real standby Planner would have had ready at each switch.
         self.planner = standby.Planner(self.cfg, clock=clock)
         self.shadow = standby.ShadowStick(app_s={a: float(v) for a, v in (self.cfg.get("decider.switch_cost") or {}).items()
-                                                 if a != "hdmi_flip"}, flip_s=calibration.flip_s(self.cfg))
+                                                 if a != "hdmi_flip"})
         self.started = 0.0
         self.replays = replays
         self.tv = tv
@@ -451,7 +449,7 @@ class DemoEngine(Engine):
         lag = float((self.cfg.get("delay.default") or {}).get("youtubetv", 45))
         backtest._credit_completed_replays(self.replay_windows, self.watching, t1, self.replayed)
         rep = backtest._grade(self.replays, self.switches, self.watching, self.my_teams, lag, PLAY_LEN_S,
-                              self.tune_s, t0, t1, self.replayed)
+                              TUNE_S, t0, t1, self.replayed)
         sw = [x for x in self.switches if t0 <= x.t <= t1]
         hours = max(0.1, (t1 - t0) / 3600)
         cuts = [(t, w) for t, w in rep.mid_play_cuts if t0 <= t <= t1]
@@ -461,7 +459,7 @@ class DemoEngine(Engine):
 
         def crunch(r):
             hockey = r.league == League.NHL
-            return _crunch_counts(r, self.watching, lag, PLAY_LEN_S, self.tune_s, 3 if hockey else 4,
+            return _crunch_counts(r, self.watching, lag, PLAY_LEN_S, TUNE_S, 3 if hockey else 4,
                                   1 if hockey else 8, 1200.0 if hockey else None, win, offs)
 
         # Big plays: NFL TDs/FGs/turnovers, NHL goals (every NBA bucket is a "scoring play": left out).
@@ -474,9 +472,9 @@ class DemoEngine(Engine):
                     if not backtest._is_big(pl) or not (t0 <= w + lag <= t1):
                         continue
                     n += 1
-                    on = backtest._on_screen_game(self.watching, w + lag - PLAY_LEN_S, self.tune_s)
+                    on = backtest._on_screen_game(self.watching, w + lag - PLAY_LEN_S, TUNE_S)
                     on_replay += (on or "").startswith("replay:")
-                    if backtest.shows(self.watching, offs, r.gid, w + lag - PLAY_LEN_S, self.tune_s):
+                    if backtest.shows(self.watching, offs, r.gid, w + lag - PLAY_LEN_S, TUNE_S):
                         on = r.gid
                     if on == r.gid:
                         live += 1

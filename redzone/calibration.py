@@ -146,21 +146,3 @@ def flip_prior(cfg, root: Path) -> tuple[float, float] | None:
     log.info("calib.auto: TV flip prior median %.2f s (%s), max %.2f s (never below the shipped %.2f s)",
              med["value"], med["night"], upper, shipped)
     return round(med["value"], 2), round(upper, 2)
-
-
-FLIP_SETTLE_S = 1.0   # input change -> picture on the TV (default_config: hdmi_flip = prior median + 1 s)
-
-
-def flip_s(cfg, root: Path | None = None) -> float:
-    """Seconds from a flip to a ready stick's picture: the TV's measured input change (tonight's
-    calibrated p50 with calib.auto, else two_stick.tv_flip_prior_s, Nick's 64 timed flips) plus the
-    settle. The one source for models of a flip (standby.ShadowStick); no hard-coded 3.0 elsewhere."""
-    got = flip_prior(cfg, root) if root is not None else None
-    med = got[0] if got else float((cfg.get("two_stick.tv_flip_prior_s") or {}).get("median", 1.89))
-    return round(med + FLIP_SETTLE_S, 2)
-
-
-def tune_s(cfg, app: str = "youtubetv") -> float:
-    """Seconds from a tune to picture for `app`: the measured switch cost the live service learns
-    (Engine._learn_switch_costs) and ships in decider.switch_cost. The demo's cut timing reads this."""
-    return float((cfg.get("decider.switch_cost") or {}).get(app, 5.5))
