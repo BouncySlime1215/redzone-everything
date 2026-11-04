@@ -138,3 +138,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   integration/next (schedule only fires from main, which we never merge to). Every PR names the line it
   moves; CI shows the dev-test delta (never the locked set). docs/roadmap.md is ranked from
   docs/roadmap.json by (gap × impact) / effort, with the director's morning `priority` first.
+- 2026-11-04 7:05 AM: **SYNC 1: flip only onto a steady PLAYING stream** (Nick, 1:30 AM sync plan). The preloaded
+  path now needs the hidden stick to report PLAYING with no state change for `FLIP_STEADY_S` = 1 s (up to 3 s of
+  buffering is waited out, else it's re-tuned). Buffering measured from the stick's own clock vs position is
+  added to that target's delay (`held` -> DelayBook). A flip "settles" when the stick is PLAYING within 3 s
+  (`settle_book`, the North Star row "flips PLAYING within 3 s >= 99%"). The #61 hold now re-anchors the stream.
+  Not behind a flag: it only refuses unsafe flips and books measured lag; the sims don't model the sticks.

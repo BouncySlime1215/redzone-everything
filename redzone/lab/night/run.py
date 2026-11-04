@@ -793,4 +793,6 @@ def grade(night: Night) -> dict:
         "restarts": [_et(x) for x in night.restarts], "polls": night.feed.polls,
         "reel_target": REEL,
         "stick_commands": {h: d.cmds for h, d in night.house.sticks.items()},
+        # [SYNC 1] North Star row "flips PLAYING within 3 s >= 99%" (scripts/northstar.py reads this)
+        "settle_book": dict(getattr(e.control, "settle_book", {}) or {}),
     }
