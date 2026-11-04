@@ -26,7 +26,7 @@ def test_a_drifting_hold_is_rebuilt_and_the_night_stays_clean(tmp_path):
                            "--seed", "1", "--no-default-faults", "--set", "timing.behind_live_s.enabled=true",
                            "--set", "buffer.watchdog=true",
                            "--fault", json.dumps({"name": "buffer_lost", "at": 4700, "dur": 0, "mode": "drift",
-                                                  "seconds": 6}),
+                                                  "seconds": 6, "wait_s": 900}),
                            "--json", str(out), "--work", str(work)],
                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
     assert out.exists(), f"no report (exit {proc.returncode}):\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}"
