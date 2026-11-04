@@ -189,6 +189,7 @@ class GameState:
     odds_text: str = ""             # "SEA -3 · O/U 46.5"
     leaders: list[dict] = field(default_factory=list)   # top performers: label, name, short, headshot, stat, team
     spotlight: dict | None = None   # player in the latest big play: name, short, headshot, team, text
+    stakes: object | None = None    # scoring.postseason.Stakes: series / round / ranks (None = nothing to say)
     venue_info: dict = field(default_factory=dict)      # id, name, city, image, indoor
     last_play: Play | None = None
     recent_plays: list[Play] = field(default_factory=list)

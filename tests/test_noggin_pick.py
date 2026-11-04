@@ -78,3 +78,33 @@ def test_pick_ships_off_and_never_overrides_crunch():
     c = Config()
     assert not c.get("noggin.pick.enabled") and not c.get("noggin.pick.shadow")
     assert c.get("noggin.pick.mode") == "breaks" and "crunch" in c.get("noggin.pick.keep_kinds")
+
+
+def test_possession_policy_ships_off_and_keeps_your_team():
+    """[possession start] Decider._possession_pick: off by default; stays only when PICK-cue prefers the
+    game on screen by its margin; never over your team; the shipped cue90 model loads."""
+    from collections import deque
+
+    from redzone.config import Config
+    from redzone.decider.decider import Decider
+    c = Config()
+    assert not c.get("noggin.possession.enabled") and not c.get("noggin.possession.shadow")
+    m = PK.model_for("nba", name=c.get("noggin.possession.model"))
+    assert m is not None and m.meta["features"] == list(PK.PICK_FEATURES)
+    nba = SimpleNamespace(scored=SimpleNamespace(league=SimpleNamespace(base=SimpleNamespace(value="nba"))))
+
+    def fake(enabled, scores, yours=(), shadow=False):
+        cfg = {"noggin.possession.enabled": enabled, "noggin.possession.shadow": shadow,
+               "noggin.possession.leagues": ["nba"], "noggin.possession.model": "cue90", "noggin.pick.tune_s": 5.0}
+        return SimpleNamespace(cfg=SimpleNamespace(get=lambda k, d=None: cfg.get(k, d)), _yours=set(yours),
+                               current="a", _known={}, possession_log=deque(),
+                               _pick_scores=lambda *a, **k: ("a", scores, SimpleNamespace(margin=0.05)))
+    d = SimpleNamespace(target="b")
+    pol = Decider._possession_pick
+    assert pol(fake(False, {"a": 0.9, "b": 0.1}), d, nba, 0.0) == "jump"            # off: the rule
+    assert pol(fake(True, {"a": 0.9, "b": 0.1}), d, nba, 0.0) == "stay"
+    assert pol(fake(True, {"a": 0.52, "b": 0.5}), d, nba, 0.0) == "jump"            # inside the margin
+    assert pol(fake(True, {"a": 0.9, "b": 0.1}, yours={"b"}), d, nba, 0.0) == "jump"  # your team: jump
+    assert pol(fake(True, {"a": 0.9, "b": 0.1}, yours={"a"}), d, nba, 0.0) == "jump"
+    sh = fake(False, {"a": 0.9, "b": 0.1}, shadow=True)
+    assert pol(sh, d, nba, 0.0) == "jump" and list(sh.possession_log) == [(0.0, "a", "b", "stay")]

@@ -203,6 +203,10 @@ def _strongest(a: str | None, b: str | None) -> str | None:
     return a if ra <= rb else b
 
 
+# [data gap] marks that follow a dead ball but don't prove one on their own: the stoppage itself is missing
+WEAK_OPEN = frozenset({"substitution"})
+
+
 @dataclass
 class Mark:
     """One play-by-play entry, in real time."""
@@ -268,6 +272,11 @@ class DeadTracker:
         # [noggin] Noggin Timing v1 (redzone/noggin/live.py): a calibrated bound for open windows in place
         # of FLOOR_S / MEDIAN_S. None = today's tables (noggin.timing.leagues off for this league).
         self.noggin = None
+        # [data gap] open a dead window only on a confirmed stoppage: a substitution with no stoppage
+        # logged before it means the play that stopped the game is missing from the data, so how long
+        # it has been dead (and when it restarted) is unknown (NBA GS @ DEN, Nov 4: a 70 s rewind
+        # into such a gap landed mid-play). Set from decider.entry.confirmed_dead_only.
+        self.confirmed_only = False
 
     # ---- input
     def add(self, pid: str, lo: float, hi: float, kind: str, text: str, type_text: str,
@@ -371,7 +380,7 @@ class DeadTracker:
                     if cur.end is not None:
                         out.append(cur)
                         cur = None
-                if cur is None and m.after is not None:
+                if cur is None and m.after is not None and not (self.confirmed_only and m.after in WEAK_OPEN):
                     cur = Window(m.hi, None, m.after)
                     c0, p0 = m.clock, m.period
                 elif cur is not None and m.after is not None:
@@ -465,7 +474,7 @@ class DeadTracker:
 def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: float, *,
                can_rewind: bool, step: float = 10.0, max_back: float = 60.0,
                relaxed: float | None = None, cost_lo: float | None = None,
-               urgent: float | None = None, lag: float = 0.0) -> EntryPlan:
+               urgent: float | None = None, lag: float = 0.0, possession: bool = False) -> EntryPlan:
     """How to come into this game: as is (the picture lands on a dead ball), with a short rewind so
     it lands on the dead ball just before the restart we'd otherwise join mid-play, or not yet.
 
@@ -477,7 +486,11 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
 
     lag: [landing lag] a fresh tune comes up as much as this further behind the live edge, never ahead
     (one-sided). Each pass's early side covers at least `lag`: a full 2-sigma margin usually already
-    does (the honest-sim doubt covers the tune's own landing), a thin one (centred, urgent) does not."""
+    does (the honest-sim doubt covers the tune's own landing), a thin one (centred, urgent) does not.
+
+    possession: [possession start] never wait for the next dead ball while one is in reach behind the
+    picture: after the urgent pass, cue to the last dead ball before the current possession with no
+    doubt beyond the landing lag (the hidden stick is positioned there before the flip)."""
     x1 = now + cost - mu
     x00 = now + min(cost, cost if cost_lo is None else cost_lo) - mu
 
@@ -510,6 +523,11 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
         if quick is not None:
             quick.why += " (urgent)"
             return quick
+    if possession and can_rewind:
+        cue = _rewind(dt, lo(0.0), x1, 0.0, step, max_back)
+        if cue is not None:
+            cue.why += " (possession start)"
+            return cue
     if here.state == "unknown":
         return EntryPlan(True, 0.0, here, here.why)
     return EntryPlan(False, 0.0, here, f"waiting for a dead ball to come in ({here.why})")

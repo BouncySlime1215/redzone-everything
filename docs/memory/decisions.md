@@ -7,6 +7,10 @@ enforces it in CI. Gate changes in architecture.md §7 need a line too (by hand)
 
 Format: `- YYYY-MM-DD: **decision.** Why.`
 
+## ArenaSwap ideas (Nov 4)
+
+- 2026-11-04: **New `score.postseason` block ships OFF (`enabled: false`).** Postseason stakes (elimination game, Game 7 / one-game final, rounds left to the title, ranked college matchups) parsed from the ESPN scoreboard we already poll, offered to the scorer and the Noggin as hooks (`redzone/scoring/postseason.py`). Why: the stakes multiplier can't tell a Game 7 from a regular-season game; it stays off until a playoff-night scorecard shows no rise in mid-play entries, plays missed on entry or dead air. Idea from ArenaSwap (ideas only, our own code).
+
 ## Research bugs C18 (Nov 4)
 
 - 2026-11-04: **The break blend uses per-league log-odds coefficients fitted on held-out nights (`brain.break_blend`)**, replacing the fixed 0.5 log-odds weight #51 shipped; leagues without a fit keep `break_weight`. Why: held-out ECE (forward folds on archive nights that are neither locked nor brain-training) NFL .063 -> .054 (Brier .167 -> .147), NBA .024 -> .023, NHL .095 -> .027; the original 50/50 mix was .169 / .126 / .144. `brain.enabled` stays false, so the scorecards are unchanged.
@@ -278,3 +282,76 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (half-step of median + settle) is unchanged at its shipped value. The night lab's SmartThings TV draws from
   the same quantiles. Also STK-05 (no flag: a stale or paused standby was never a usable one): media_session must
   read active and speed>0, and verify_standby re-tunes a paused / stale hidden stick at once.
+- 2026-11-04 3:30 PM (lane 2, Nick's crunch_now decision): **new key `decider.entry.possession_start` ships
+  `off`** (off | crunch | all). Why: on dev with tune jitter (3 seeds) `crunch` is identical to the candidate's
+  `wait` (which already rewinds to the last dead ball when one is in reach) and `all` costs NBA big live
+  77.5 -> 73.2 on seed 0; 0 mid-play either way, locked equal. New grade `possession_start_entry_pct`.
+  The candidate profile takes `crunch` (Nick's default; same numbers as `wait`), live default stays off.
+- 2026-11-04 4:15 PM (lane 2, rule #1): **new key `decider.entry.confirmed_dead_only` (default false, candidate
+  true)**: a dead window opens only on a logged stoppage; a lone substitution (its stoppage missing from the data)
+  opens none. Why: the candidate's last mid-play entry (NBA GS @ DEN, dev seed 2) was a 70 s rewind into such a
+  gap. Dev jitter 6: NBA mid-play 1 -> 0 (seed 2), NBA crunch 87.9 -> 86.9 (seed 1), dead air +0.1..0.3, rest equal.
+- 2026-11-04: **calib.auto (new, default OFF).** Nick's 3:05 PM overseer queue item (c): each night's TV flip
+  time and press-to-TV are re-measured from the live logs into data/calib/<night>.json (one shared
+  file per night: a timing section, lane 2's sync section), with an outlier guard that refuses a value
+  more than 3 MADs from the last 5 nights. The files are written every night so the guard has history; with
+  calib.auto on, the next start plans the TV flip with the newest accepted median and max.
+- 2026-11-04: **warmup.pregame (new, default OFF), warmup.lead_min 10.** Overseer queue item (d): from 10 min
+  before the night's first listed start until a game goes live (listed starts run 5-15 min early), the
+  likeliest first pick of that window (your team, then league order) is preloaded on the HIDDEN stick, so the
+  first switch is a flip. Never the stick on screen, never while paused / dry run / a switch is in flight;
+  the pre-game checks stand aside meanwhile. Night lab seed 1: first switch 7.52 s cold tune -> 1.92 s flip.
+- 2026-11-04: **buffer.watchdog (new, default OFF); timing.behind_live_s.hold_cal_s -1.5.** Overseer queue item (e),
+  playbook STK-06: a hidden-stick hold more than 2 s off its target (read off the stick's own clock since the
+  hold re-anchored it) is rebuilt at its game's next dead ball, or after 90 s without one (the stick is off
+  screen and not flippable while it rebuilds, so nothing on the TV is cut). Too close to live: pause the gap
+  minus 1.5 s (Nick's hold calibration); too far behind: reload at the live edge and hold again. Every
+  detection and rebuild goes to data/buffer.jsonl -> live-night summary -> northstar "buffer drift recovered".
+- 2026-11-04 3:15 PM ET (Nick): **PROMOTION BAR = strict (B); cut rules; North Star mid-play line split.** A
+  candidate flag goes ON in the next RC only if, on LOCKED nights: (a) mid-play entries = 0, hard PASS; (b) NBA
+  and NHL crunch live PASS and are >= live; (c) your-team gates PASS; (d) every other line is >= live, where
+  equal within the bootstrap CI counts as equal. Cut rules: never JOIN mid-play; leaving mid-play is OK at low
+  leverage, never at a high-leverage moment; down the stretch is sticky (learned leverage score, self-taught
+  from the oracle, rules only set the floors); league order NFL = CFB > NBA > NHL, MLB; MLB jumps in only for
+  key moments; multi-game conflicts go to the scenario tree. CLAUDE.md Rule #1 now reads "never JOIN
+  mid-play". northstar.py: `mid_play` counts entries only (gate 0), new `high_leverage_leaves` (gate 0, close
+  + late or overtime per `redzone/lab/leverage.py`) and `low_leverage_leaves` (info). Scorecards without
+  `cuts_high` read PENDING.
+- 2026-11-04 (integrator, promotion step): **highlight jump `jump_when_it_fits` is NOT promoted; `reel.play` and
+  the `highlight_jump` flag stay as they are.** Checked under bar (B) at the overseer's request. It is the naive
+  baseline in the Kaggle distill jump task (`agent/kaggle/grade.py`): 99.8% of reels in dead time, 0 big plays
+  missed. It can't pass bar (B) yet: (1) release_gate.py has no line for it, because the North Star sims never
+  play a reel, so there is nothing to grade on locked; (2) the 99.8% is on the distill pack's own test split,
+  which excludes the locked nights; (3) 99.8% is not 100%: about 1 jump in 500 comes back after the restart,
+  which is a mid-play JOIN and fails bar (a) outright. Next: model the reel jump in the night sim (return time =
+  reel + both switches vs the real break), grade it on locked as entries_mid_play, and require 0.
+- 2026-11-04 3:30 / 3:40 PM ET (Nick): **North Star gains three lines, all PENDING until their builders land:**
+  `wv_calibration_err` and `wv_rank_agree` (Heat 2.0 Watch Value, lanes 1+2; read from a card's
+  `metrics.watch_value` {calibration_err, rank_agree_pct}; gates TBD) and `contract_violations` (gate 0; read
+  from `docs/citymap.json` {"violations": [{rule, where}]}, which lane 4's city map checker writes). **Crunch
+  floor in the promotion step:** `tests/test_crunch_floor.py` checks that no named profile, and no override
+  layer at its most aggressive (Pick replace mode with no keep kinds, scenario tree, lookahead), leaves live
+  crunch where the live default stays, and that Pick hands back the app's decision inside a crunch window.
+  A candidate that fails it fails bar (B).
+- 2026-11-04 4:15 PM ET (Nick; REPLACES his 3:47 PM "crunch = stay is absolute"): **crunch is a learned state,
+  not a wall.** (1) The Noggin learns when a game ENTERS crunch and when it LEAVES it (lead blows out, game
+  decided, clock gone, the key moment passes), with hysteresis so it doesn't flicker. New North Star line
+  `crunch_exit_acc` (crunch exits matching the hindsight oracle, >= 95%; PENDING until a card carries
+  `crunch_exits` / `crunch_exits_ok` per night). (2) Crunch protects against LOW-value games only: a "bullshit
+  game" can never pull us out. Crunch vs crunch is decided by value (scenario tree + Watch Value, trained by
+  self-play against the oracle), e.g. leave the Bills' last 3 min for a Bears 1-minute drive, then catch up the
+  Bills from the hidden stick's buffer, or interleave at dead balls. (3) Hard rules are FLOORS only: never join
+  mid-play; never leave a high-leverage moment for a low-value game. League order and WSH/UNC are strong priors,
+  not walls; Nick's press is a control. Tests: `tests/test_crunch_floor.py` (floor: a low-value game never pulls
+  us out, live or at a break except an ad-break round trip; priors, the press and value-based crunch vs crunch).
+  The strict-xfail tests that forced an absolute stay are removed.
+- 2026-11-04: **replay.crunch_block (new, default OFF; candidate ON), crunch_block_mine_leagues [] (candidate
+  [nfl]), crunch_block_mine_after_s 90.** Cycle 04 review's promotion blocker: on locked, NHL crunch plays aired
+  under a catch-up 2 -> 10. No catch-up starts while any live game is in crunch time or its run-up; your team's
+  missed play waits too, except in NFL after 90 s (its 3-min window can't wait out crunch). Locked, 3 seeds,
+  honest sims: crunch plays under a replay NFL 7-13 -> 0-1, NHL 0/10/9 -> 3/3/3; your-team plays = or better.
+- 2026-11-04 (lane 1, cycle 04): new config keys `noggin.possession.{enabled,shadow,leagues,model}` (the learned
+  jump / stay policy for lane 2's possession-start hook, PICK-cue trained on `oracle.solve_cue`) and
+  `noggin.pick.model` (default `v1`). All are off or unchanged by default. Why off: on NBA dev the veto leaves the rule
+  default unchanged (77.5 / 90.0) and the `all` scope adds a mid-play cut. The pure rollout beats the rule (85.9 / 91.9),
+  but the decider path doesn't carry that gain yet. docs/noggin.md §13.

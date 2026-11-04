@@ -350,6 +350,10 @@ class Night:
                 f = p[2]
                 try:
                     f.start(self)
+                    if f.info.get("retry") and now + 1.0 <= self.t0 + f.at + float(f.info["wait_s"]):
+                        pending.append((now + 1.0, 0, f))   # not applicable yet: again in 1 s (BufferLost wait_s)
+                        continue
+                    f.info.pop("retry", None)
                     self.fault_log.append({"t": now, "event": "start", **f.describe()})
                 except Exception as ex:
                     self.fault_log.append({"t": now, "event": "start failed", "error": str(ex), **f.describe()})
