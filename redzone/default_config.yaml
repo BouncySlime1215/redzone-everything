@@ -40,7 +40,7 @@ sources:
   fastcast_check: true     # with fastcast off: run it in SHADOW on a few live games (logged, never merged) and grade
                            # it against polling -> data/fastcast_check.json (redzone/sources/fastcast_check.py)
   fastcast_auto_enable: false  # turn fastcast on by itself once that check passes
-  nhl_primary: true        # NHL api-web live play-by-play (~17 s behind the ice vs ESPN's ~43 s) owns NHL
+  nhl_primary: false       # NHL api-web live play-by-play (~17 s behind the ice vs ESPN's ~43 s) owns NHL
                            # stoppages while fresh and feeds its plays to the timeline (docs/timing.md, A2)
 
 score:

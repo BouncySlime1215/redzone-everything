@@ -56,7 +56,7 @@ class Engine:
         self.channels = ChannelMap()
         self.fetcher = Fetcher()
         # [NHL primary] api-web's live play-by-play owns NHL stoppages while it's fresh.
-        self._nhl_primary = bool(self.cfg.get("sources.nhl_primary", True))
+        self._nhl_primary = bool(self.cfg.get("sources.nhl_primary", False))
         self.merger = Merger(stoppage_owner={League.NHL: "nhl"} if self._nhl_primary else None)
         self._nhl_seen: dict[str, dict[str, float]] = {}   # game id -> NHL event id -> first seen
         self._nhl_ids: dict[str, str] = {}                  # ESPN game id -> NHL game id
