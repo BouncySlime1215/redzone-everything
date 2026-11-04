@@ -32,7 +32,15 @@ FIRST_POLL_RECENT_S = 60.0  # on a game's first poll, plays newer than this may 
 # Timing it at one guessed point can put its on-screen window in the wrong place entirely.
 FEED_LAG_MIN_S = 2.0
 FEED_LAG_MAX_S = 30.0
+# Per source, for plays with no wallclock: (min, max) seconds the feed runs behind the ice. NHL
+# api-web's live play-by-play ran 16.7 s p50 behind the event (ANA@VAN, Nov 3); its gamecenter
+# publishes every ~20 s, so a 3 s poll sees a play 2..~45 s late. 60 s leaves room for a slow batch.
+SOURCE_LAG_S = {"nhl": (2.0, 60.0)}
 LAG_EST_DEFAULT_S = 10.0   # feed lag assumed until we've measured some
+# [switch timing] A lag sample ("not in the data at the last fresh poll") is a lower bound. It was capped
+# at 45 s, under the measured NHL median (50 s, docs/timing.md), so the gate believed its data covered a
+# 43 s stream: 5 NHL mid-play cuts on the scorecard graded with the measured feed lag (--real-lag).
+LAG_SAMPLE_CAP_S = 180.0
 # The least doubt "I just saw it" taps can earn. Taps that agree to the second still share a bias
 # (reaction time, the feed's wallclock rounding): stated 2 s, a real 6 s error cut 3 plays mid-play
 # (eval.py --sigma 2 --true-delay 41); 4 s held 0 cuts out to 8 s of error for ~0.3 pt dead air.
@@ -47,7 +55,11 @@ MIN_BREAK_S = ByLeague({
                  Stoppage.TWO_MINUTE_WARNING: 50.0},
     League.NBA: {Stoppage.HALFTIME: 800.0},
     # NHL 1st/2nd intermission: 5th percentile 1120 s over 190 archived intermissions.
-    League.NHL: {Stoppage.INTERMISSION: 1080.0},
+    # NHL TV timeout: 220 of 221 fit-split timeouts ran >= 130 s (5-fold forward CV: 0 below 120 s in
+    # every fold; the one short row is a mis-stamped faceoff, the next shot came 214 s later).
+    # With the measured 35-50 s feed lag the data never covers the screen, so this floor is what
+    # lets us leave during a TV timeout at all (docs/timing.md, A3).
+    League.NHL: {Stoppage.INTERMISSION: 1080.0, Stoppage.TIMEOUT: 120.0},
     # A baseball inning change can be shorter than an NFL quarter break.
     # No minimum is assumed without feed coverage of the current screen.
 })
@@ -95,12 +107,45 @@ class Delay:
     # [auto sync] the per-channel predictor's own figure, kept while a synced filter overrides mu/sigma
     base: tuple | None = None
 
+    # [self-calibrating doubt] the app's measured error (NoiseCal), when it has enough residuals; never widens
+    cal_sigma: float | None = None
+
     def current_sigma(self, now: float) -> float:
         if self.calibrated_at is None:
-            return self.sigma
-        # Stream delay is stable unless the stream buffers (see buffered()); doubt grows slowly.
-        drift = min(self.drift_cap, max(0.0, now - self.calibrated_at) / 900.0)
-        return self.sigma + drift
+            model = self.sigma
+        else:
+            # Stream delay is stable unless the stream buffers (see buffered()); doubt grows slowly.
+            model = self.sigma + min(self.drift_cap, max(0.0, now - self.calibrated_at) / 900.0)
+        return model if self.cal_sigma is None else min(model, self.cal_sigma)
+
+
+class NoiseCal:
+    """[self-calibrating doubt] How wrong a fresh tune's delay really is, learned from the filter's own
+    innovations, so it works live without ground truth. The first anchor after each tune is compared
+    with the delay the app was using: residual r = z - mu = (true error) + (anchor noise, sd R). Then
+    E[r^2] - R^2 is the app's real squared error, mean included. The stated doubt is the 95 % upper
+    bound of that (chi-square on n residuals), floored at min_sigma_s, and only once n >= min_n. It
+    persists across nights (the pool lives as long as the object), so a night starts from the last."""
+
+    def __init__(self, min_n: int = 20, min_sigma_s: float = 2.0, keep: int = 400):
+        self.min_n, self.min_sigma_s, self.keep = int(min_n), float(min_sigma_s), int(keep)
+        self.pool: dict[str, deque] = {}       # app -> (r, R)
+
+    def add(self, app: str, r: float, anchor_sd: float) -> None:
+        self.pool.setdefault(app, deque(maxlen=self.keep)).append((float(r), float(anchor_sd)))
+
+    def sigma(self, app: str) -> float | None:
+        rows = self.pool.get(app) or ()
+        n = len(rows)
+        if n < self.min_n:
+            return None
+        ms = sum(r * r for r, _ in rows) / n
+        noise = sum(sd * sd for _, sd in rows) / n
+        # one-sided 95 % upper bound on E[r^2] (Wilson-Hilferty chi-square quantile, n dof)
+        z = 1.645
+        lo_q = n * (1 - 2 / (9 * n) - z * (2 / (9 * n)) ** 0.5) ** 3
+        upper = ms * n / max(1e-9, lo_q)
+        return max(self.min_sigma_s, math.sqrt(max(0.0, upper - noise)))
 
 
 def _estimate(taps: list[tuple[float, float]], now: float) -> tuple[float, float, float]:
@@ -143,7 +188,10 @@ class DelayBook:
         self.screens: dict[str, list[tuple[float, float]]] = {}  # target -> [(ts, sample)] from the score bug
         self.live: dict[str, float] = {}                         # target -> this tune's delay (origin model)
         self.sync = None                                         # [auto sync] SyncBook, see attach_sync
+        self.held: dict[str, float] = {}                         # [time-shift buffer] target -> s held behind live
         self._sync_floor = MIN_TAP_SIGMA_S
+        self.cal: NoiseCal | None = None                         # [self-calibrating doubt] see attach_cal
+        self._fresh: set[str] = set()                            # tuned, no anchor yet since
 
     @staticmethod
     def app(target: str) -> str:
@@ -165,6 +213,8 @@ class DelayBook:
     def get(self, target: str) -> Delay:
         if target not in self.book:
             self.book[target] = Delay(self._defaults.get(self.app(target), 40.0), self._sigma_default)
+            if self.cal is not None:
+                self.book[target].cal_sigma = self.cal.sigma(self.app(target))
             self._refresh(target)
         return self.book[target]
 
@@ -189,8 +239,28 @@ class DelayBook:
 
     def tuned(self, target: str) -> None:
         """A new tune or a seek on this channel: its filter re-syncs (no-op without sync)."""
+        self._fresh.add(target)
         if self.sync is not None:
             self.sync.tuned(target)
+
+    def attach_cal(self, cal: "NoiseCal") -> "NoiseCal":
+        """[self-calibrating doubt] Learn the real error from anchor innovations (NoiseCal)."""
+        self.cal = cal
+        for t, d in self.book.items():
+            d.cal_sigma = cal.sigma(self.app(t))
+        return cal
+
+    def anchor(self, target: str, z: float, kind: str, t: float, sd: float) -> bool:
+        """An absolute delay sample (a break anchor): its innovation feeds NoiseCal (first one after a
+        tune only: the error of the delay a fresh tune starts from), then the filter."""
+        if self.cal is not None and target in self._fresh:
+            self._fresh.discard(target)
+            self.cal.add(self.app(target), z - self.get(target).mu, sd)
+            c = self.cal.sigma(self.app(target))
+            for tt, d in self.book.items():
+                if self.app(tt) == self.app(target):
+                    d.cal_sigma = c
+        return bool(self.sync.measure(target, z, kind, t, sd)) if self.sync is not None else False
 
     def _refresh(self, target: str) -> None:
         d = self.book[target]
@@ -409,9 +479,10 @@ class DelayBook:
         self._refresh_app(self.app(target))   # every channel of this app without its own taps learns too
         return d
 
-    def set_behind(self, target: str, behind_s: float) -> None:
+    def set_behind(self, target: str, behind_s: float, known_sd: float | None = None) -> None:
         """[cut timing] This tune now runs behind_s further behind the live edge (a rewind on entry),
-        or 0 again (a fresh tune, a jump back to live)."""
+        or 0 again (a fresh tune, a jump back to live). known_sd: the move was MEASURED (a hold or a
+        stall timed on the stick's clock): the sync filter shifts by it instead of re-syncing."""
         d = self.get(target)
         behind_s = max(0.0, behind_s)
         delta = behind_s - d.behind
@@ -420,7 +491,10 @@ class DelayBook:
         if d.base is not None:
             d.base = (d.base[0] + delta,) + d.base[1:]
         if delta and self.sync is not None:
-            self.sync.tuned(target)            # a seek: the screen delay moved, re-sync
+            if known_sd is not None and behind_s > 0:
+                self.sync.shift(target, delta, known_sd)   # [SYNC 1] a measured move: keep the sync
+            else:
+                self.sync.tuned(target)        # a seek: the screen delay moved, re-sync
 
     def buffered(self, target: str) -> None:
         """The stream stalled: it's now further behind, and we're less sure by how much."""
@@ -475,7 +549,8 @@ def _bounds(p, now: float, prev_fresh: float | None = None) -> tuple[float, floa
     if p.wallclock:
         return p.wallclock, p.wallclock
     arrived = p.seen_at or now
-    return min(arrived, prev_fresh or arrived) - FEED_LAG_MAX_S, arrived - FEED_LAG_MIN_S
+    lo_lag, hi_lag = SOURCE_LAG_S.get(getattr(p, "source", ""), (FEED_LAG_MIN_S, FEED_LAG_MAX_S))
+    return min(arrived, prev_fresh or arrived) - hi_lag, arrived - lo_lag
 
 
 def _stoppage(label: str) -> Stoppage | None:
@@ -530,6 +605,7 @@ class Timeline:
         # Break-length hints for planning break visits (Decider only; no leave gate reads these).
         self.break_kind = ""                  # ESPN kind of the play that started the current break
         self.period_timeouts: int | None = None  # timeouts this period so far; None = joined mid-period
+        self.live = None                      # [noggin PICK] pick.LiveGame when noggin.pick is on (or shadow)
 
     def lag_est(self) -> float:
         """How far behind real life this game's feed runs (recent worst case)."""
@@ -555,6 +631,9 @@ class Timeline:
         if g.last_play and plays and plays[-1].id != g.last_play.id:
             plays.append(g.last_play)
         new = [p for p in plays if p.id and p.id not in self._seen_ids]
+        if self.live is not None:
+            self.live.matchup = g.matchup or self.live.matchup
+            self.live.add(plays)
         first_poll = not self._seen_ids
         action = [p for p in new if not _is_marker(p.kind, self.league)]
         scorers = [p for p in new if p.scoring]
@@ -570,7 +649,7 @@ class Timeline:
             self.events.append(Event(hi, "play", (p.text or p.kind)[:80], big, p.id, p.kind, hi - lo))
             if p.wallclock and prev_fresh is not None and not first_poll:
                 # It wasn't in the data at the last fresh poll, so the feed ran at least this far behind.
-                self._lags.append(min(45.0, max(0.0, prev_fresh - p.wallclock)))
+                self._lags.append(min(LAG_SAMPLE_CAP_S, max(0.0, prev_fresh - p.wallclock)))
         for p in scorers:
             # Every score change with its feed time, free throws included (they're dead-ball markers
             # above), for timing the broadcast's score bug (redzone/screen/scorebug.py).

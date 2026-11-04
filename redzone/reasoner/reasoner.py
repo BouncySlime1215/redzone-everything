@@ -80,16 +80,8 @@ EMPTY = Reading()
 
 def parse_answer(text: str) -> Narration | None:
     """The model's JSON, validated and clamped. None for anything unusable (never raises)."""
-    if not text:
-        return None
-    t = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
-    m = re.search(r"\{.*\}", t, flags=re.S)
-    if not m:
-        return None
-    try:
-        d = json.loads(m.group(0))
-    except ValueError:
-        return None
+    from redzone.jsonfind import first_json_object
+    d = first_json_object(text, accept=lambda x: x.get("lock_in") in LEVELS)
     if not isinstance(d, dict) or d.get("lock_in") not in LEVELS:
         return None
 

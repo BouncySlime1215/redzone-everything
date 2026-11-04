@@ -8,6 +8,7 @@ from redzone.config import Config
 from redzone.store import Store
 
 
+@pytest.mark.playbook("MAC-07")
 def test_a_database_that_isnt_one_is_set_aside_and_a_fresh_one_starts(tmp_path):
     db = tmp_path / "redzone.db"
     db.write_bytes(b"SQLite format 3\x00" + b"\x00" * 50)
@@ -33,6 +34,7 @@ def test_a_healthy_database_is_reopened_as_is(tmp_path):
     assert len(Store(db).recent_switches(5)) == 1
 
 
+@pytest.mark.playbook("MAC-07")
 def test_an_unreadable_config_brings_back_your_last_saved_settings(tmp_path):
     c = Config(user_path=tmp_path / "config.yaml", history_dir=tmp_path / "hist")
     c.update({"mode": {"dry_run": False}})

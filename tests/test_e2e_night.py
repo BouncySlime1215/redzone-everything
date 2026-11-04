@@ -46,6 +46,7 @@ def night(tmp_path_factory):
     before = _data_snapshot()
     env = dict(os.environ, PYTHONPATH=str(ROOT) + os.pathsep + os.environ.get("PYTHONPATH", ""))
     env.pop("RZ_NIGHT_TRACE", None)
+    env["RZ_NIGHT_HOSTILE_HOST"] = "1"   # another subnet, a tunnel, a busy Mac: the night must not see any of it
     proc = subprocess.run([sys.executable, "-m", "redzone.lab.night", "--json", str(out), "--work", str(work / "w")],
                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
     assert out.exists(), f"the night wrote no report (exit {proc.returncode}):\n{proc.stdout[-3000:]}\n{proc.stderr[-3000:]}"
@@ -60,6 +61,19 @@ def test_night_check(night, name):
     checks = {c["name"]: c for c in night["checks"]}
     assert name in checks, f"the night did not grade {name}"
     assert checks[name]["ok"], json.dumps(checks[name]["detail"], indent=1, default=str)[:4000]
+
+
+@pytest.mark.playbook("STK-01", "STK-02")
+def test_night_a_dropped_stick_recovers(night):
+    """stick_drop on the visible and the hidden stick: back to two sticks within 420 s each time."""
+    test_night_check(night, "two_stick_recovers")
+    assert {f.get("host") for f in night["faults"] if f["name"] == "stick_drop"}, "no stick_drop in the night"
+
+
+@pytest.mark.playbook("STK-03")
+def test_night_a_wedged_stick_is_reconnected(night):
+    test_night_check(night, "wedged_stick_reconnected")
+    assert any(f["name"] == "stick_wedge" for f in night["faults"]), "no stick_wedge in the night"
 
 
 def test_night_covers_the_whole_night(night):
@@ -158,3 +172,67 @@ def test_pin_network_says_home_whatever_the_host_is():
         assert st.where == "home" and not st.away and not st.routes_broken
     finally:
         network.assess = real
+
+
+def test_a_hostile_host_says_away_until_the_night_pins_it(tmp_path):
+    """The CI night runs on hostile_host(): another subnet with a tunnel taking 10.x. Unpinned, the
+    network check says away (the supervisor would skip every stick reconnect, as on Nick's Mac), and
+    the governor is critical with a 1500 MB live app; pinned, home and normal."""
+    import asyncio
+    import json as _json
+    from redzone import governor, network
+    from redzone.lab.night import run as night_run
+    devices = tmp_path / "devices.json"
+    devices.write_text(_json.dumps({"sticks": [{"host": h} for h in night_run.HOSTS]}))
+    saved = network.Probe, network.assess, governor.sample
+    try:
+        night_run.hostile_host()
+        st = asyncio.run(network.NetWatch(devices).refresh(force=True))
+        assert st.away and st.tailscale
+        assert governor.Governor().update(governor.sample()) == "critical"
+        night_run.pin_network(network)
+        night_run.pin_host(governor)
+        st = asyncio.run(network.NetWatch(devices).refresh(force=True))
+        assert st.where == "home" and not st.routes_broken
+        gov = governor.Governor()
+        assert gov.update(governor.sample()) == "normal" and gov.service_mb() is None
+    finally:
+        network.Probe, network.assess, governor.sample = saved
+
+
+# ---- playbook entries this night proves (docs/playbooks.md; scripts/playbook_coverage.py) ----------
+
+def _ok(night, name):
+    c = {x["name"]: x for x in night["checks"]}[name]
+    assert c["ok"], json.dumps(c["detail"], indent=1, default=str)[:3000]
+
+
+@pytest.mark.playbook("STK-01", "STK-02")
+def test_playbook_stick_drops_recover(night):
+    hosts = {f["host"] for f in night["faults"] if f["name"] == "stick_drop"}
+    assert len(hosts) >= 1
+    _ok(night, "two_stick_recovers")
+    _ok(night, "zero_midplay_cuts")
+
+
+@pytest.mark.playbook("STK-03")
+def test_playbook_wedged_stick(night):
+    _ok(night, "wedged_stick_reconnected")
+
+
+@pytest.mark.playbook("STK-04")
+def test_playbook_still_watching(night):
+    _ok(night, "still_watching_cleared")
+
+
+@pytest.mark.playbook("SAFE-01")
+def test_playbook_dark_feed_never_cut_into(night):
+    _ok(night, "feed_outage_handled")
+    _ok(night, "zero_midplay_cuts")
+
+
+@pytest.mark.playbook("MAC-06")
+def test_playbook_hung_app_restarted_and_restored(night):
+    _ok(night, "watchdog_fixes_what_it_should")
+    assert night["restarts"], "the hung app was never restarted"
+    _ok(night, "no_stuck_state")

@@ -1,0 +1,61 @@
+# Noggin data factory + Timing v1 training on a free GitHub runner (never the Mac, never GPU quota).
+# Builds the labeled dead-window table from public play-by-play, trains the hazard, grades it on the
+# factory's own unseen nights, and uploads the table, the model and the report as artifacts.
+# On a noggin-factory/<league> branch the model and reports are also pushed to noggin-out/<league> (the
+# cloud container can't download artifacts); a model still reaches integration/next only through a PR.
+name: noggin-factory
+on:
+  push:
+    # noggin-factory/<league> branches build that league (e.g. noggin-factory/nhl: ESPN summaries, which
+    # this cloud container can't reach); integration/next rebuilds the NBA table when the factory changes.
+    branches: [integration/next, "noggin-factory/**"]
+    paths: ["redzone/noggin/factory.py", "redzone/noggin/features.py", "redzone/noggin/timing*.py",
+            "scripts/noggin_factory.py", "scripts/train_noggin_timing.py", ".github/workflows/noggin-factory.yml"]
+  workflow_dispatch:
+    inputs:
+      league: {default: nba}
+      seasons: {default: "2013-2026"}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt pandas pyarrow lightgbm requests
+      - name: league
+        run: |
+          L="${{ inputs.league }}"
+          case "$GITHUB_REF_NAME" in noggin-factory/*) L="${L:-${GITHUB_REF_NAME#noggin-factory/}}";; esac
+          L="${L:-nba}"
+          case "$L" in nhl) D=2011-2027;; nfl) D=2011-2025;; *) D=2013-2026;; esac
+          echo "LEAGUE=$L" >> "$GITHUB_ENV"
+          S="${{ inputs.seasons }}"
+          echo "SEASONS=${S:-$D}" >> "$GITHUB_ENV"
+      - name: factory
+        run: python scripts/noggin_factory.py "$LEAGUE" --seasons "$SEASONS" --raw /tmp/raw --out data/noggin --jobs 3
+      - name: train + grade
+        run: python scripts/train_noggin_timing.py "$LEAGUE" --data data/noggin --out data/noggin/models
+      - name: predict (big play after the restart)
+        continue-on-error: true
+        run: python scripts/train_noggin_predict.py "$LEAGUE" --data data/noggin --out data/noggin/models
+      - name: push outputs to noggin-out/<league>
+        if: always() && startsWith(github.ref_name, 'noggin-factory/')
+        run: |
+          mkdir -p /tmp/out && cp data/noggin/*.json data/noggin/models/*.npz /tmp/out/ 2>/dev/null || true
+          ls -la /tmp/out
+          cd /tmp/out && git init -q -b "noggin-out/$LEAGUE" && git add -A
+          git -c user.name=noggin-factory -c user.email=noggin-factory@users.noreply.github.com \
+            commit -qm "noggin-factory $LEAGUE outputs from $GITHUB_SHA (run $GITHUB_RUN_ID)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY" "HEAD:refs/heads/noggin-out/$LEAGUE"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: noggin-${{ env.LEAGUE }}
+          path: |
+            data/noggin/*.json
+            data/noggin/*.parquet
+            data/noggin/models/*.npz
+          retention-days: 14

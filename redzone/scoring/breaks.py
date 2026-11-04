@@ -28,6 +28,7 @@ is never second-guessed.
 """
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 
@@ -70,9 +71,47 @@ NONE = Forecast(0.0, 0.0, "")
 BRAIN_LEN = {League.NFL: 150.0, League.NBA: 180.0, League.NHL: LEN["nhl_tv"], League.MLB: LEN["mlb_inning"]}
 
 
-def blend(f: Forecast, p: float | None, g: GameState, w: float = 0.5, why: list[str] | None = None,
+def _mix_logit(a: float, b: float, w: float) -> float:
+    """(1-w)*logit(a) + w*logit(b), back to a probability (each side clipped off 0 and 1)."""
+    def lo(x: float) -> float:
+        x = min(max(x, 1e-4), 1 - 1e-4)
+        return math.log(x / (1 - x))
+    z = (1 - w) * lo(a) + w * lo(b)
+    return 1 / (1 + math.exp(-z))
+
+
+def mix(rules_p: float, brain_p: float, w=0.5) -> float:
+    """The rules' and the brain's break odds as one probability. No rule evidence (rules_p == 0):
+    the brain alone. Otherwise in log-odds: w = (a, b, c), fitted per league on held-out nights
+    (scripts/eval_break_blend.py), gives logit q = a + b*logit(brain) + c*logit(rules); a plain
+    number w is the brain's weight, (0, w, 1-w) (= _mix_logit, for leagues nobody has fitted)."""
+    if rules_p <= 0:
+        return float(brain_p)
+    if isinstance(w, (int, float)):
+        return _mix_logit(rules_p, brain_p, float(w))
+    a, b, c = (float(x) for x in w)
+    def lo(x: float) -> float:
+        x = min(max(x, 1e-4), 1 - 1e-4)
+        return math.log(x / (1 - x))
+    z = a + b * lo(brain_p) + c * lo(rules_p)
+    return 1 / (1 + math.exp(-max(-30.0, min(30.0, z))))
+
+
+def weight_for(w, g: GameState):
+    """A per-league blend setting ({league: {a, b, c}, "*": default weight}) for this game; a plain
+    number or (a, b, c) passes through."""
+    if not isinstance(w, dict):
+        return w
+    got = w.get(g.league.value) or w.get(g.league.base.value)
+    if isinstance(got, dict):
+        return (got.get("a", 0.0), got.get("b", 1.0), got.get("c", 0.0))
+    return got if got is not None else w.get("*", 0.5)
+
+
+def blend(f: Forecast, p: float | None, g: GameState, w=0.5, why: list[str] | None = None,
           v3=None, lengths: bool = True) -> Forecast:
-    """Mix the rules' forecast with the brain's chance of a break in the next minute.
+    """Mix the rules' forecast with the brain's chance of a break in the next minute (w: a brain
+    weight, fitted (a, b, c), or a per-league dict; see mix / weight_for).
 
     A break already in the data (f.now) keeps its odds; with Brain v3 (`v3`, a brain3.V3 about the
     newest play) its length becomes the model's time to the restart instead of the fixed LEN table
@@ -87,9 +126,14 @@ def blend(f: Forecast, p: float | None, g: GameState, w: float = 0.5, why: list[
         return f
     if p is None:
         return f
-    q = w * p + (1 - w) * f.p
     if f.p > 0:
-        return Forecast(q, f.expect_s, f.why)
+        # Both have evidence: mix in log-odds (research 02 §C18: the old 50/50 mix in probability
+        # space took the live ECE from <=0.10 for the brain alone to 0.12-0.17), with the per-league
+        # coefficients fitted on held-out nights (brain.break_blend; mix / weight_for below).
+        return Forecast(mix(f.p, p, weight_for(w, g)), f.expect_s, f.why)
+    # The rules see nothing coming: that is no evidence, not a forecast of 0, so the brain stands
+    # alone instead of being halved.
+    q = p
     if q <= 0:
         return f
     reason = "the model expects a break soon" + (f" ({why[0]})" if why else "")

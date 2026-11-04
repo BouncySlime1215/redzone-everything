@@ -153,6 +153,23 @@ def junit_summary(path: Path) -> tuple[str, bool]:
             f"({mac} of them mac_only) in {secs:.0f} s"), ok
 
 
+PERF = (("tick_ms_p50", "tick p50", " ms"), ("tick_ms_p99", "p99", " ms"), ("peak_rss_mb", "peak RSS", " MB"),
+        ("cpu_s", "CPU", " s"), ("startup_s", "startup", " s"))
+
+
+def perf_line(head: dict, base: dict | None) -> str:
+    """One RAM/CPU line (scripts/perf_probe.py: the decide() tick on a synthetic slate), PR vs base."""
+    parts = []
+    for k, label, unit in PERF:
+        if k not in head:
+            continue
+        txt = f"{label} {head[k]}{unit}"
+        if base and k in base:
+            txt += f" (base {base[k]})"
+        parts.append(txt)
+    return f"**RAM/CPU ({head.get('games', '?')} live games, {head.get('ticks', '?')} decide ticks):** " + ", ".join(parts)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--head", type=Path)
@@ -161,6 +178,10 @@ def main(argv=None) -> int:
     ap.add_argument("--lint", type=Path)
     ap.add_argument("--lint-status", type=int)
     ap.add_argument("--note", action="append", default=[], help="extra line for the comment")
+    ap.add_argument("--section", type=Path, action="append", default=[],
+                    help="a markdown file appended as its own section (the North Star delta table)")
+    ap.add_argument("--perf", type=Path, help="scripts/perf_probe.py JSON for the PR head")
+    ap.add_argument("--perf-base", type=Path, help="...and for the base")
     ap.add_argument("--out", type=Path)
     a = ap.parse_args(argv)
 
@@ -174,6 +195,9 @@ def main(argv=None) -> int:
         else:
             out.append("**Lint (ruff, real errors only):** ❌ errors")
             out += ["", "```", *body.splitlines()[:40], "```"]
+    if a.perf and a.perf.exists():
+        out.append(perf_line(json.loads(a.perf.read_text()),
+                             json.loads(a.perf_base.read_text()) if a.perf_base and a.perf_base.exists() else None))
     out += [f"> {n}" for n in a.note]
     hard: list[str] = []
     if a.head and a.head.exists():
@@ -185,6 +209,9 @@ def main(argv=None) -> int:
             out += ["", "❌ **Hard rule broken** (no added mid-play cuts, no crashing scorecard): " + "; ".join(hard)]
     elif a.head:
         out += ["", "#### Scorecard smoke", "", "⚠️ not run (no results file)"]
+    for sec in a.section:
+        if sec.exists():
+            out += ["", sec.read_text().rstrip()]
     text = "\n".join(out) + "\n"
     if a.out:
         a.out.write_text(text)

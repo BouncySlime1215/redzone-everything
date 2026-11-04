@@ -17,11 +17,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-LOCK = ROOT / "eval-data.lock.json"
+# RZ_EVAL_LOCK=eval-data-v2.lock.json grades on another pin (a repo-root file name) without
+# switching the default: v2 lands next to v1 so every lane keeps comparable deltas (cycle 01 plan, task 4).
+LOCK = ROOT / os.environ.get("RZ_EVAL_LOCK", "eval-data.lock.json")
 PIN_NAME = "eval_pin.json"          # inside data/, shipped in the tarball
 REPO = "BouncySlime1215/redzone-everything"
 LEAGUES = ("nfl", "nba", "nhl")
@@ -141,3 +144,16 @@ def stamp(root: Path = ROOT) -> str:
     if ok:
         return json.loads((root / "data" / PIN_NAME).read_text())["tag"]
     return f"UNPINNED: {problems[0]}" + (f" (+{len(problems) - 1} more)" if len(problems) > 1 else "")
+
+
+def use_shipped_switch_costs(cfg) -> dict:
+    """[switch costs] Scorecards price switches from the one source of truth (default_config.yaml,
+    contracts/switching.ConfigSwitchPaths), not from whatever the pinned eval_config.yaml snapshot
+    carried. Returns the costs now in cfg."""
+    from redzone.config import Config
+    from redzone.contracts.switching import ConfigSwitchPaths
+    shipped = Config.__new__(Config)
+    shipped.data = cfg.defaults
+    costs = ConfigSwitchPaths(shipped).costs()
+    cfg.data.setdefault("decider", {})["switch_cost"] = dict(costs)
+    return costs

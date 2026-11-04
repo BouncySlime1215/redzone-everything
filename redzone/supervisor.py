@@ -61,6 +61,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from redzone import observability as obs
+from redzone.platform.health import PUSH as PUSH_FAULTS
 from redzone import trace
 
 log = logging.getLogger(__name__)
@@ -120,6 +121,8 @@ LIMITS = {
     "stale_feeds": (300.0, 4), "stale_feeds_hard": (900.0, 2), "adb": (300.0, 6), "adb_server": (900.0, 2),
     "delay_doubt": (1800.0, 2), "finished_hold": (60.0, 10), "log_growth": (600.0, 6),
 }
+from redzone.platform.agent_fix import LIMITS as _AGENT_LIMITS  # noqa: E402  (watchdog-requested fixes)
+LIMITS.update(_AGENT_LIMITS)
 
 # Switch outcomes that say nothing about the target (same idea as engine.NOT_THE_TARGETS_FAULT).
 NOT_THE_TARGET = ("no safe moment", "safe exit window closed", "switch cancelled", "tv input is unknown",
@@ -1024,6 +1027,12 @@ class Supervisor:
                               "component": f.component, "detail": f.detail})
                 if f.severity.value in ("error", "critical"):
                     log.warning("invariant broken: %s (%s): %s", f.code, f.component, f.detail)
+                if f.code in PUSH_FAULTS:
+                    # Only faults a person has to fix (a refused sign-in); once per appearance.
+                    try:
+                        await self.send_push(f"RedZone: {f.code}", f.detail, priority="high", tags="warning,tv")
+                    except Exception:
+                        log.exception("couldn't push fault %s", f.code)
         for k in sorted(self._faults_logged - keys):
             self._faults_logged.discard(k)
             self._record({"kind": "invariant_cleared", "code": k[0], "component": k[1]})
@@ -1344,7 +1353,17 @@ def night_report(night: date, store: Any, root: Path, now: float | None = None,
                          + (f" -> {last.get('detail')}" if last.get("detail") else "") + ")")
         lines.append("")
 
+    try:
+        from redzone.platform.autofix import night_lines
+        autofix = night_lines(root, t0, t1)
+    except Exception:
+        autofix = []
+    if autofix:
+        lines += ["## Sent to Claude (auto-fix)", ""] + autofix + [""]
+
     needs = []
+    if autofix:
+        needs.append(f"{len(autofix)} problem(s) sent to Claude: review the draft PR(s) it opens (see 'Sent to Claude')")
     for x in observed:
         w = str(x.get("what", ""))
         if "approved on the TV" in w or "needs a look" in w or "GB free" in w:
@@ -1359,6 +1378,8 @@ def night_report(night: date, store: Any, root: Path, now: float | None = None,
     lines += ([f"- {w}" for w in list(dict.fromkeys(needs))[:5]] or ["Nothing."]) + [""]
     phone = obs.phone_body(nm, bud, len(fixes), fix_rules, causes, missed,
                            len(obs.watchdog_actions(root, t0, t1)))
+    if autofix:
+        phone += f"\nAuto-fix: {len(autofix)} problem(s) sent to Claude; a draft PR follows."
     return {"text": "\n".join(lines), "summary": summary, "phone": phone, "metrics": nm, "budget": bud}
 
 

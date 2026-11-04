@@ -9,10 +9,11 @@ import { patch } from "./rz-dom.js?v=40";
 import { icon, logo, avatar, empty, skel, sec, seg, ART } from "./rz-ui.js?v=40";
 import { heroCard, fantasyCard } from "./rz-cards.js?v=40";
 import { openSheet, closeSheet, sheetById, confirmSheet } from "./rz-sheet.js?v=40";
-import { act } from "./rz-api.js?v=40";
+import { act } from "./rz-api.js?v=43";
 import { screenEvidence } from "./rz-evidence.js?v=40";
 import { recordedPanel } from "./rz-recorded.js?v=40";
 import { tonightCard } from "./rz-plan.js?v=40";
+import { switchExtras, missedBar } from "./rz-v2.js?v=5";
 
 const STATE_LABEL = { idle: "Idle", watching: "Watching", locked: "Locked in", break: "On a break", paused: "Paused",
   frozen: "Holding still", safe: "Safe mode", replay: "Replay" };
@@ -232,8 +233,9 @@ function timeline(S) {
   const log = arr(S.log).slice(0, 12);
   const allDry = log.length && log.every((l) => l.dry_run);
   const head = sec("Recent switches", { key: "sec-log", aside: allDry ? "Dry run" : "" });
-  if (!log.length) return `${head}<div class="card" data-key="log-empty">${empty("timeline", "No switches yet", "Every channel change shows up here with the reason it made it.", "", "empty--sm", "tl")}</div>`;
-  return `${head}<div class="card tl" data-key="log" data-flip>${log.map((l) => {
+  const miss = missedBar();
+  if (!log.length) return `${head}${miss}<div class="card" data-key="log-empty">${empty("timeline", "No switches yet", "Every channel change shows up here with the reason it made it.", "", "empty--sm", "tl")}</div>`;
+  return `${head}${miss}<div class="card tl" data-key="log" data-flip>${log.map((l) => {
     const g = gameById(l.to);
     const [ic, kname] = KIND[l.kind] || ["tv", l.kind || "Switch"];
     return `<div class="tl-i" data-key="l:${attr(l.ts)}:${attr(l.to)}" ${g ? `data-act="open-game" data-gid="${attr(g.id)}" role="button"` : ""}>
@@ -242,6 +244,7 @@ function timeline(S) {
         <div class="tl-top">${g ? `<span class="logo-pair">${logo(g.away, { size: 20 })}${logo(g.home, { size: 20 })}</span>` : ""}<span class="m ell">${esc(l.matchup || (g && g.matchup))}</span><span class="t">${esc(fmtTime(l.ts))}</span></div>
         <div class="tl-why">${esc(l.reason)}</div>
         <div class="tl-tags"><span class="tag tag--kind">${esc(kname)}</span>${l.dry_run && !allDry ? `<span class="tag tag--would">Would switch</span>` : ""}${l.ok === false && !l.dry_run ? `<span class="tag tag--fail">Failed</span>` : ""}${l.took ? `<span class="tag">${num(l.took).toFixed(1)}s</span>` : ""}</div>
+        ${switchExtras(l)}
       </div></div>`;
   }).join("")}</div>`;
 }

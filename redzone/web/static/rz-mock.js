@@ -144,6 +144,7 @@ function gameForTeam(lg, id) {
   return copy(STATE.games.find((g) => g.league === lg && (g.home.id === id || g.away.id === id)) || null);
 }
 
+const TAPS = {};
 export async function mockApi(path, { method, body } = {}) {
   await sleep(140 + Math.random() * 160);
   const m = (method || (body !== undefined ? "POST" : "GET")).toUpperCase();
@@ -156,6 +157,7 @@ export async function mockApi(path, { method, body } = {}) {
     if (!g) throw new Error("game not found");
     return { ...copy(d), game: copy(g), venue: d.venue && Object.keys(d.venue).length ? d.venue : g.venue };
   }
+  if (path.startsWith("/api/v2/")) return mockV2(path, b);
   if (path === "/api/teams") return teamsPayload();
   if ((x = path.match(/^\/api\/teams\/(\w+)\/(\d+)/))) {
     const [, lg, id] = x;
@@ -198,7 +200,20 @@ export async function mockApi(path, { method, body } = {}) {
     return { ok: true, message: "Removed" };
   }
   if (path === "/api/lab") return labPayload();
-  if (path === "/api/action") return action(b);
+  if (path === "/api/action") {
+    const r = action(b);
+    if (!Q.has("v2") || !b.id || !r || r.ok === false) return r;
+    // phone v2 tap states: a game tap waits ~3 s for a "safe moment", then the TV shows it
+    const game = ["hold", "watch", "redzone", "focus"].includes(b.action) && b.game_id;
+    if (game) TAPS[b.id] = { at: Date.now(), gid: b.game_id };
+    return { ...r, id: b.id, state: game ? "waiting" : "done", on_tv: game ? false : undefined };
+  }
+  if (path.startsWith("/api/action/")) {
+    const t = TAPS[decodeURIComponent(path.slice(12))];
+    if (!t) throw new Error("unknown or expired tap id");
+    const on = Date.now() - t.at > 3000;
+    return { ok: true, id: path.slice(12), state: on ? "done" : "waiting", on_tv: on, game_id: t.gid };
+  }
   return { ok: true, message: "(preview) saved" };
 }
 
@@ -295,4 +310,31 @@ function labPayload() {
     },
     feedback: STATE.feedback || {},
   };
+}
+
+/* ---------- phone v2 (?mock&v2 turns the flag on) ---------- */
+const V2 = { votes: {}, prefs: { bets_weight: 1, rivalry_points: 6, nhl_pp_ot_boost: 1, switch_frequency: 1, reels: true } };
+const V2_RULES = [["yours", "Your team", /your team|UNC|WSH|Commanders|Capitals|Wizards/i], ["crunch", "Crunch time", /crunch|close|final|overtime/i],
+  ["redzone", "Red zone", /red ?zone|goal[- ]to[- ]go/i], ["score", "Score", /touchdown|goal|scor/i], ["break", "Break elsewhere", /break|timeout|commercial/i],
+  ["replay", "Catch-up", /replay|catch[- ]up|missed/i], ["manual", "You picked", /you (picked|asked)|manual/i]];
+function mockV2(path, b) {
+  if (path === "/api/v2/status") return { enabled: Q.has("v2") };
+  if (path === "/api/v2/switches") return { enabled: true, switches: (STATE.log || []).map((l) => {
+    const key = `${l.ts}|${l.to}`;
+    const chips = V2_RULES.filter(([, , rx]) => rx.test(`${l.reason || ""} ${l.kind || ""}`)).slice(0, 4).map(([key, label]) => ({ key, label }));
+    return { ...l, key, chips: chips.length ? chips : [{ key: "best", label: "Best on" }], vote: V2.votes[key] || 0 };
+  }) };
+  if (path === "/api/v2/vote") { V2.votes[b.key] = b.vote; return { ok: true, vote: b.vote, message: b.vote ? (b.vote > 0 ? "Good switch — noted" : "Bad switch — noted") : "Rating cleared" }; }
+  if (path === "/api/v2/missed") {
+    const live = (STATE.games || []).filter((g) => g.phase === "live").slice(0, 3);
+    const c = live.map((g, i) => ({ game_id: g.id, matchup: g.matchup, text: "Touchdown pass", kind: "td", ago_s: 90 + i * 140 }));
+    const guess = b.game_id ? c.find((x) => x.game_id === b.game_id) : c[0];
+    return { ok: true, guess, candidates: c, message: guess ? `Logged: ${guess.matchup} (${guess.text}, ${Math.floor(guess.ago_s / 60)} min ago)` : "Logged" };
+  }
+  if (path === "/api/v2/priority" && !Object.keys(b).length) {
+    return { enabled: true, prefs: { ...V2.prefs }, ranges: { bets_weight: [0, 2], rivalry_points: [0, 15], nhl_pp_ot_boost: [0, 2], switch_frequency: [0.5, 2] },
+      votes: Object.keys(V2.votes).length, suggestions: [] };
+  }
+  if (path === "/api/v2/priority") { Object.assign(V2.prefs, b); return { ok: true, message: "Saved", prefs: b }; }
+  throw new Error("not in mock");
 }

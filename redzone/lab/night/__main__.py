@@ -11,6 +11,8 @@ import tempfile  # noqa: E402
 import time as _t  # noqa: E402
 from pathlib import Path  # noqa: E402
 
+import yaml  # noqa: E402
+
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m redzone.lab.night")
@@ -22,16 +24,23 @@ def main(argv=None) -> int:
     ap.add_argument("--fault", action="append", default=[], help='extra fault, JSON: {"name":"stick_drop","at":600,"dur":60}')
     ap.add_argument("--faults", action="append", default=[], help="module:function returning more faults")
     ap.add_argument("--no-default-faults", action="store_true")
+    ap.add_argument("--set", action="append", default=[], help="config override key=value (YAML value), e.g. "
+                                                              "playbooks.safe.enabled=true")
     ap.add_argument("--no-watchdog", action="store_true")
+    ap.add_argument("--tv", choices=("home", "smartthings"), default="home",
+                    help="smartthings: flips by the TV's own input change at the latency measured on the user's TV")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
     os.environ.setdefault("TZ", "America/New_York")
     _t.tzset()
     work = Path(a.work) if a.work else Path(tempfile.mkdtemp(prefix="rz-night-"))
-    from redzone.lab.night.run import Night, setup_logging
+    from redzone.lab.night.run import Night, hostile_host, setup_logging
+    if os.environ.get("RZ_NIGHT_HOSTILE_HOST") == "1":
+        hostile_host()      # the CI night: Night.patch() has to pin the host away (run.py pin_host/pin_network)
     night = Night(CLOCK, work, seed=a.seed, end_s=a.hours * 3600 if a.hours else None, start_at=a.start,
                   fault_specs=[json.loads(x) for x in a.fault], plugins=a.faults,
-                  default_faults=not a.no_default_faults, use_watchdog=not a.no_watchdog)
+                  default_faults=not a.no_default_faults, use_watchdog=not a.no_watchdog, tv_path=a.tv,
+                  cfg_set={k: yaml.safe_load(v) for k, _, v in (x.partition("=") for x in a.set)})
     night.prepare()
     setup_logging(night, a.verbose)
     night.patch()

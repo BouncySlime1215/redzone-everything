@@ -25,6 +25,10 @@ HISTORY = DATA / "config_history"
 # (min, max) for numeric settings, matched by dotted-path prefix; most specific wins.
 LIMITS: dict[str, tuple[float, float]] = {
     "server.port": (1024, 65535),
+    "noggin.priority.prefs.bets_weight": (0, 2),
+    "noggin.priority.prefs.rivalry_points": (0, 15),
+    "noggin.priority.prefs.nhl_pp_ot_boost": (0, 2),
+    "noggin.priority.prefs.switch_frequency": (0.5, 2),
     "polling.live_s": (5, 60),
     "college.top_n": (1, 25),
     "polling.hot_s": (2, 30),
@@ -54,6 +58,8 @@ LIMITS: dict[str, tuple[float, float]] = {
     "score.personal.my_team_league": (0.0, 1.5),
     "score": (-100, 100),
     "decider": (0, 1000),
+    "tuners.prime_tiles": (1, 3),
+    "tuners": (0, 10),
     "two_stick.min_gain": (0, 100),
     "two_stick.input_settle_s": (0, 10),
     "two_stick.park_max_s": (30, 1800),
@@ -66,6 +72,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "governor.battery_low_pct": (0, 100),
     "governor": (100, 16000),
     "brain.break_weight": (0.0, 1.0),
+    "brain.break_blend": (-10.0, 10.0),
     "brain.hot_reason_min": (50, 100),
     "brain.version": (2, 3),
     "brain.v3_entry_q": (10, 50),

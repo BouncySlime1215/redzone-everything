@@ -57,7 +57,10 @@ def cards(a) -> list[tuple[str, list[str], Path]]:
         # delivers late. One stick down is the end-to-end night test's job (tests/test_e2e*.py).
         base = [x for x in out if not x[0].endswith("_resync")]
         for tag, extra in (("sync+3", ["--true-delay", "38"]), ("sync-3", ["--true-delay", "32"]),
-                           ("stale", ["--drop", "0.1", "--late-plays", "0.15"])):
+                           ("stale", ["--drop", "0.1", "--late-plays", "0.15"]),
+                           # [switch timing] plays reach the app after the MEASURED feed lag (35-50 s
+                           # median, redzone/lab/feed_lag_profile.json), not the scorecard's fixed 8 s
+                           ("reallag", ["--real-lag"])):
             out += [(f"{n}_{tag}", argv + extra, need) for n, argv, need in base]
     if a.demo_day:
         out.append((f"demo_{a.demo_day}", ["-m", "redzone.demo", a.demo_day, "--summary", "--json"],

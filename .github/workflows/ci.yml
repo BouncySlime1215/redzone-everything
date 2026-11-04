@@ -113,7 +113,7 @@ jobs:
     # Tests run even if the dataset job failed (a bad checksum must not hide test results).
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30   # base took 19m50s on 3.12 (Nov 4 12:12 run): three replayed-night tests (~3 min each)
     strategy:
       fail-fast: false
       matrix:
@@ -136,6 +136,8 @@ jobs:
       - name: unpack pinned data (archive-backed tests run when it is there)
         if: needs.data.outputs.available == 'true'
         run: tar -xzf "eval-data/$EVAL_DATA_ASSET"
+      - name: leakage checks (research 05 §3; PENDING never fails, FAIL does)
+        run: python scripts/leak_check.py
       - name: end-to-end replayed night (when the suite has it)
         # The whole-night system test (real Engine + Controller + fakes) is the integration gate:
         # run it on its own first so its result is visible apart from the unit tests.
@@ -146,6 +148,8 @@ jobs:
           python -m pytest -q -rs -p no:cacheprovider "${e2e[@]}"
       - name: pytest (mac_only tests are skipped by name on Linux)
         run: python -m pytest -q -rs -p no:cacheprovider --junitxml=pytest-${{ matrix.python }}.xml
+      - name: playbook coverage (a `done` entry must have a marked test that passed)
+        run: python scripts/playbook_coverage.py --junit pytest-${{ matrix.python }}.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -194,6 +198,21 @@ jobs:
       - name: smoke run, base (same slice, same data)
         if: github.event_name == 'pull_request'
         run: python head/scripts/ci_scorecard.py --root base --out base.json
+      - name: RAM/CPU of the decide() tick, PR vs base (scripts/perf_probe.py)
+        continue-on-error: true
+        run: |
+          python head/scripts/perf_probe.py --root head --json perf-head.json
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python head/scripts/perf_probe.py --root base --json perf-base.json || true
+          fi
+      - name: North Star on dev-test nights, PR vs base (scripts/northstar.py; the locked set never goes in a PR delta)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          python head/scripts/northstar.py --root head --split dev --no-write --json ns-head.json
+          python head/scripts/northstar.py --root base --split dev --no-write --json ns-base.json
+          python head/scripts/northstar.py --delta ns-head.json ns-base.json --md northstar.md
+          cat northstar.md >> "$GITHUB_STEP_SUMMARY"
       - name: release gate on the LOCKED test split ("95% good minimum" + no overfitting, docs/architecture.md)
         # Report on every run; it only FAILS the job on the release PR (into codex/resume-redzone).
         # PENDING gates (not measurable yet) never count as passing. --robust adds sync +-3 s and a
@@ -212,7 +231,9 @@ jobs:
         if: always()
         with:
           name: scorecard
-          path: "*.json"
+          path: |
+            *.json
+            northstar.md
       - name: hard rule (no added mid-play cuts)
         run: |
           base=""; [ -f base.json ] && base="--base base.json"
@@ -252,6 +273,12 @@ jobs:
           else
             args+=(--note "Scorecards skipped: the pinned eval dataset ($EVAL_DATA_TAG) is not published yet.")
           fi
+          [ -f results/northstar.md ] && args+=(--section results/northstar.md)
+          [ -f results/perf-head.json ] && args+=(--perf results/perf-head.json)
+          [ -f results/perf-base.json ] && args+=(--perf-base results/perf-base.json)
+          jarg=(); [ -f results/pytest-3.12.xml ] && jarg=(--junit results/pytest-3.12.xml)
+          python scripts/playbook_coverage.py "${jarg[@]}" --md playbooks.md || echo "::error::playbook coverage failed"
+          [ -f playbooks.md ] && args+=(--section playbooks.md)
           args+=(--note "$JOBS")
           python scripts/ci_report.py "${args[@]}" --out comment.md || true
           cat comment.md >> "$GITHUB_STEP_SUMMARY"

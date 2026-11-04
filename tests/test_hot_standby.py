@@ -405,9 +405,10 @@ def test_switch_costs_follow_the_path_we_would_use(two):
     costs = c.switch_costs()
     # flip 0.5 + 1.0 TV settle = 1.5; a tune is needed (1+1)/(4+2) = 1/3 of the time: 1.5 + 6/3
     assert costs["hdmi_flip"] == 1.5 and costs["youtubetv"] == 3.5
-    assert costs["prime"] == 1.5 + 0.5 * 8              # nothing measured: half of the default guess
+    prime = c._default_cost("prime")                    # the shipped (measured) default
+    assert costs["prime"] == 1.5 + 0.5 * prime          # nothing measured here: half of the default
     c.two_stick_ok = False                              # one stick: every switch is a full tune
-    assert c.switch_costs()["youtubetv"] == 6.0 and c.switch_costs()["prime"] == 8.0
+    assert c.switch_costs()["youtubetv"] == 6.0 and c.switch_costs()["prime"] == prime
 
 
 async def test_cec_that_failed_goes_straight_to_the_tv_next_time(two, monkeypatch):
@@ -524,16 +525,16 @@ def test_engine_hands_measured_times_to_the_decider_through_settings(eng):
     e, _ = eng
     e.control.two_stick_ok = False                      # one stick: costs are plain tune times
     for _ in range(5):
-        e.control.latency.record("youtubetv", 6.2)
+        e.control.latency.record("youtubetv", 7.2)      # clear of the shipped 5.5 (a move is >= 10 %)
         e.control.latency.record("prime", 11.0)
     e._sync_switch_costs()
-    assert e.cfg.get("decider.switch_cost.youtubetv") == 6.0 and e.cfg.get("decider.switch_cost.prime") == 11.0
-    assert e.decider._cost("youtubetv:espn") == 6.0     # the decider plans with it now
+    assert e.cfg.get("decider.switch_cost.youtubetv") == 7.0 and e.cfg.get("decider.switch_cost.prime") == 11.0
+    assert e.decider._cost("youtubetv:espn") == 7.0     # the decider plans with it now
     assert not list((e.cfg.history_dir).glob("*.yaml"))[1:]   # learned values stay out of Undo
     for _ in range(15):
         e.control.latency.record("youtubetv", 9.0)
     e._sync_switch_costs()
-    assert e.cfg.get("decider.switch_cost.youtubetv") == 6.0   # at most every few minutes...
+    assert e.cfg.get("decider.switch_cost.youtubetv") == 7.0   # at most every few minutes...
     for hit in (True, True, True, True):
         e.control.latency.record("flip", 0.5)
         e.control.latency.note_preloaded("youtubetv", hit)
@@ -672,3 +673,110 @@ async def test_a_refresh_never_wakes_a_sleeping_stick_or_presses_home(two, monke
     assert tuner.calls == [("b:5555", "youtubetv:espn")]
     assert not any("WAKEUP" in x or "HOME" in x or "onetouchplay" in x for x in new)
     assert c.main.host == "b:5555" and FakeStick.last_input_host == "b:5555"
+
+
+# --- phone controls: a game opened on the phone, "go now" on a preloaded game ------------------
+
+async def test_a_game_opened_on_the_phone_skips_the_preload_gap_and_displaces_the_planner(two):
+    """preload(user=True) (engine._peek): what you opened wins over the planner's guess still loading,
+    and the planner's MIN_PRELOAD_GAP_S doesn't make you wait."""
+    c, tuner = two
+    tuner.slow = {"youtubetv:fox": 5.0}
+    assert c.preload("youtubetv:fox")                   # the planner's guess, slow to load
+    await asyncio.sleep(0.05)
+    guess = c._preload_task
+    assert not c.preload("youtubetv:cbs")               # a second planner preload waits out the gap
+    assert c.preload("youtubetv:cbs", user=True)        # your pick doesn't
+    await asyncio.wait_for(c._preload_task, 2)
+    assert guess.cancelled() and c.standby == ("youtubetv:cbs", None) and c.hidden_ready
+
+
+async def test_a_user_preload_never_displaces_a_switch(two):
+    c, tuner = two
+    tuner.slow = {"youtubetv:espn": 0.3}
+    done = asyncio.Event()
+    c.submit("youtubetv:espn", on_done=lambda o: done.set(), may_cut=lambda: True)
+    await asyncio.sleep(0.05)
+    assert not c.preload("youtubetv:cbs", user=True)    # the switch owns the sticks
+    await asyncio.wait_for(done.wait(), 2)
+
+
+async def test_go_now_on_a_fresh_preload_flips_without_a_second_steady_wait(two, monkeypatch):
+    """The tune's confirming read counts as the first of the flip's two steady reads, so "go now"
+    right after a preload costs one read, not FLIP_STEADY_S more."""
+    monkeypatch.setattr(ctl, "FLIP_STEADY_S", 1.5)
+    c, tuner = two
+    assert c.preload("youtubetv:fox")
+    await asyncio.wait_for(c._preload_task, 2)
+    assert c._steady.get(c.hidden.host, (None,))[0] == ("youtubetv:fox", 0)
+    await asyncio.sleep(1.55)
+    done = asyncio.Event()
+    outs = []
+    t0 = time.monotonic()
+    c.submit("youtubetv:fox", on_done=lambda o: (outs.append(o), done.set()), may_cut=lambda: True)
+    await asyncio.wait_for(done.wait(), 4)
+    assert outs[0].ok and outs[0].path == "preloaded"
+    assert time.monotonic() - t0 < 1.2                  # the flip itself (~0.6 s here), no 1.5 s steady wait
+
+
+async def test_verify_standby_keeps_the_steady_evidence_fresh(two):
+    c, tuner = two
+    assert c.preload("youtubetv:fox")
+    await asyncio.wait_for(c._preload_task, 2)
+    c._steady.pop(c.hidden.host, None)
+    c._verified_at = 0
+    await c.verify_standby()
+    assert c._steady.get(c.hidden.host, (None,))[0] == ("youtubetv:fox", 0)
+
+
+# --- playbook=TV-04: a stick that rebooted woke the TV onto itself ------------------------------
+
+@pytest.fixture
+def readback(two, monkeypatch):
+    c, tuner = two
+    monkeypatch.setattr(type(c.tv), "has_readback", property(lambda s: True))
+    return c, tuner
+
+
+async def _stolen(c):
+    """Stick a shows ESPN; then stick b (rebooted, on its home screen) takes the TV by HDMI-CEC."""
+    c.on_target = "youtubetv:espn"
+    c.main.remember(c.on_target, await c.main.playback('yttv.pkg'))
+    FakeStick.last_input_host = "a:5555"
+    await c._sync_from_tv()
+    c.sticks[1].playing, c.sticks[1].tuned = "none", None
+    FakeStick.last_input_host = "b:5555"
+    assert await c._sync_from_tv() and c.main.host == "b:5555"
+
+
+@pytest.mark.playbook("TV-04")
+async def test_a_cec_steal_is_undone_and_nothing_preloads_over_the_game_meanwhile(readback):
+    c, tuner = readback
+    c.cfg.update({"hardening": {"tv": True}})
+    await _stolen(c)
+    assert c._steal_task is not None
+    assert not c.preload("youtubetv:fox")       # the "hidden" stick is the game the TV jumped off
+    await asyncio.wait_for(c._steal_task, 5)
+    assert c.main.host == "a:5555" and c.on_target == "youtubetv:espn"
+    assert FakeStick.last_input_host == "a:5555" and tuner.calls == []
+
+
+async def test_a_cec_steal_is_left_alone_with_hardening_off(readback):
+    c, _ = readback
+    await _stolen(c)
+    assert c._steal_task is None and c.main.host == "b:5555"
+
+
+@pytest.mark.playbook("TV-04")
+async def test_a_jump_to_a_stick_playing_something_is_a_person_and_stays(readback):
+    c, _ = readback
+    c.cfg.update({"hardening": {"tv": True}})
+    c.on_target = "youtubetv:espn"
+    c.main.remember(c.on_target, await c.main.playback('yttv.pkg'))
+    FakeStick.last_input_host = "a:5555"
+    await c._sync_from_tv()
+    c.sticks[1].tuned = None                    # b plays something we never put there
+    FakeStick.last_input_host = "b:5555"
+    await c._sync_from_tv()
+    await asyncio.wait_for(c._steal_task, 5)
+    assert c.main.host == "b:5555"

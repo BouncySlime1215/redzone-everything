@@ -8,12 +8,11 @@
 	<array>
 		<string>/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone/.venv-agent/bin/python</string>
 		<string>-u</string>
-		<string>-m</string>
-		<string>agent.watchdog</string>
-		<string>--no-model</string>
+		<string>-c</string>
+		<string>import os, runpy, sys; os.chdir('/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone'); sys.path.insert(0, '/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone'); sys.argv = ['agent.watchdog', '--no-model']; runpy.run_module('agent.watchdog', run_name='__main__', alter_sys=True)</string>
 	</array>
-	<key>WorkingDirectory</key>
-	<string>/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone</string>
+	<!-- No WorkingDirectory and no log under ~/Documents: macOS privacy (TCC) closes it to launchd,
+	     which then fails the job with EX_CONFIG (78). Python (Full Disk Access) changes into the repo. -->
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>PATH</key>
@@ -33,8 +32,8 @@
 	<key>LowPriorityIO</key>
 	<true/>
 	<key>StandardOutPath</key>
-	<string>/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone/data/agent.log</string>
+	<string>/Users/nick_matta/Library/Logs/redzone/agent.log</string>
 	<key>StandardErrorPath</key>
-	<string>/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone/data/agent.log</string>
+	<string>/Users/nick_matta/Library/Logs/redzone/agent.log</string>
 </dict>
 </plist>

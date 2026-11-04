@@ -1,5 +1,6 @@
 """Feed staleness from real fetch times (redzone/sources/feeds.py): an ESPN outage is flagged within
 one poll and 5 s of the data being due, a stale game is never entered, and it clears on recovery."""
+import pytest
 import httpx
 
 from redzone.models import GameState, League, Phase, Team
@@ -45,6 +46,7 @@ async def test_fresh_while_polls_come_back():
     await f.close()
 
 
+@pytest.mark.playbook("FEED-01")
 async def test_an_outage_is_flagged_at_the_first_failed_poll_even_with_the_cached_copy_replayed():
     clk, down, f, m, book = setup()
     await f.get_json(URL)
@@ -124,6 +126,7 @@ async def test_snapshot_matches_the_contract():
     await f.close()
 
 
+@pytest.mark.playbook("SAFE-01")
 async def test_engine_never_enters_a_game_whose_feed_went_dark(cfg, tmp_path):
     from redzone.engine import Engine
     from redzone.store import Store

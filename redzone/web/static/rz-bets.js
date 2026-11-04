@@ -5,7 +5,7 @@ import { patch } from "./rz-dom.js?v=40";
 import { icon, logo, empty, sec, seg, screenHead, meter, odo } from "./rz-ui.js?v=40";
 import { fantasyCard } from "./rz-cards.js?v=40";
 import { openSheet, closeSheet, sheetById, confirmSheet, toast } from "./rz-sheet.js?v=40";
-import { api } from "./rz-api.js?v=40";
+import { api } from "./rz-api.js?v=43";
 
 const ui = app.ui;
 ui.bet = ui.bet || { game: null, kind: "spread", team: null, line: "", side: "over", note: "" };

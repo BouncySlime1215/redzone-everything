@@ -385,13 +385,17 @@ class FakeFireTV:
             if a.task and not was_fg and not fresh:
                 # In the background: Android brings the task forward; the app keeps its own link.
                 if a.screen == "player":
-                    a.prompt = ""
+                    if a.prompt:   # the sim's model: coming forward reloads the player, prompt gone
+                        a.prompt = ""
+                        self.house.event("prompt_cleared", self.host, f"{a.target} (brought forward)")
                     if self.house.timing.yttv_resume_live_edge:
                         a.behind, a.paused_at = 0.0, None
                     a.ready_at = time.time() + self.house.timing.yttv_resume
                     self._stamp(a, BUFFERING, self._now_pos(a))
                 return True, ("Starting: Intent { act=android.intent.action.VIEW }\n"
                               "Warning: Activity not started, its current task has been brought to the front")
+            if a.prompt:
+                self.house.event("prompt_cleared", self.host, f"{a.target} (relink)")
             a.task, a.screen, a.url, a.target, a.behind, a.prompt, a.paused_at = True, "player", url, target, 0.0, "", None
             a.subtitle = self.house.channel_name(target)
             a.title = self.house.show_title(target)
@@ -411,6 +415,8 @@ class FakeFireTV:
                 a.screen = "detail"
             return True, "Starting: Intent { act=android.intent.action.VIEW }"
         if pkg == VLC:
+            if a.prompt:
+                self.house.event("prompt_cleared", self.host, f"{a.target} (relink)")
             a.task, a.screen, a.url, a.target, a.behind, a.prompt, a.paused_at = True, "player", url, target, 0.0, "", None
             a.title, a.subtitle = "reel.mp4", ""
             a.ready_at = time.time() + self.house.timing.reel_load
@@ -429,6 +435,7 @@ class FakeTV:
     def __init__(self, house: "House"):
         self.house = house
         self.source: FakeFireTV | None = None
+        self.other: str | None = None    # tv_other_input: the input a person picked (not a stick)
         self.input_at = 0.0
         self.flips = 0
 
@@ -456,6 +463,7 @@ class House:
     events: list[tuple[float, str, str, str | None]] = field(default_factory=list)
     active_faults: dict[str, set] = field(default_factory=dict)
     trace: list | None = None                                  # every shell command, when tracing
+    adb_scale: float = 1.0                                     # wifi_degrade: every adb reply this much slower
 
     def __post_init__(self):
         self.tv = FakeTV(self)
@@ -505,10 +513,20 @@ class House:
         loop = asyncio.get_running_loop()
         self._claims.append(loop.call_later(after, self._switch_to, stick))
 
-    def _switch_to(self, stick: FakeFireTV) -> None:
+    def tv_input(self, stick: FakeFireTV) -> None:
+        """The TV's own input change (SmartThings): nothing was pressed on any stick."""
+        if self.faults_on("tv_input_ignored", stick.host):
+            self.event("tv_input_ignored", stick.host)
+            self.fault_done("tv_input_ignored", stick.host)
+            return
+        self._switch_to(stick)
+
+    def _switch_to(self, stick: FakeFireTV | None) -> None:
         old = self.tv.source
         if old is stick:
             return
+        if stick is not None:
+            self.tv.other = None   # one of the sticks took the TV back
         self.tv.source = stick
         self.tv.input_at = time.time()
         self.tv.flips += 1
@@ -519,7 +537,7 @@ class House:
     def screen(self) -> tuple[str | None, str | None, str, float]:
         s = self.tv.source
         if s is None:
-            return None, None, "no input", 0.0
+            return None, None, "other input" if self.tv.other else "no input", 0.0
         if time.time() - self.tv.input_at < self.timing.tv_settle:
             return s.host, None, "settling", 0.0
         tgt, what, behind = s.picture()
@@ -557,7 +575,7 @@ class FakeStick(Stick):
         if d.wedged:
             await asyncio.sleep(min(timeout, 2.0))
             return RunResult(False, "error: closed", time.monotonic() - t0)
-        lat = d.latency(cmd)
+        lat = d.latency(cmd) * d.house.adb_scale
         if lat > timeout:
             await asyncio.sleep(timeout)
             ok, out = d.shell(cmd)     # it still ran on the stick; we just never heard back

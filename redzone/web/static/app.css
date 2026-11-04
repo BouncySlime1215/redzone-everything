@@ -1145,3 +1145,21 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .gc-story .gc-next{opacity:.7}
 .gc-lock{font-size:10px;letter-spacing:.06em;padding:1px 5px;border-radius:4px;background:rgba(255,255,255,.14)}
 .gc-lock--must{background:#ff3b47;color:#fff}
+
+/* ---------- phone v2 (flag phone.v2): reason chips, 👍/👎 per switch, "I missed that" ---------- */
+.v2-why { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.v2-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; font: 600 12px/1 var(--font-ui); background: var(--surface-3); color: var(--text-1); white-space: nowrap; }
+.v2-chip--yours { background: color-mix(in srgb, var(--mine-ink) 20%, transparent); color: var(--mine-ink); }
+.v2-chip--crunch, .v2-chip--redzone { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger-ink); }
+.v2-chip--manual, .v2-chip--lock { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info-ink); }
+.v2-vote { display: inline-grid; place-items: center; width: 44px; height: 36px; border-radius: 10px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); }
+.v2-vote .ico { width: 18px; height: 18px; }
+.v2-vote.on[aria-label="Good switch"] { background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success-ink); }
+.v2-vote.on[aria-label="Bad switch"] { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger-ink); }
+.v2-missed { margin: 0 0 10px; }
+.v2-tap { position: fixed; z-index: 81; left: 50%; transform: translateX(-50%); width: max-content; top: calc(var(--safe-t, 0px) + 64px); display: inline-flex; align-items: center; gap: 8px; max-width: calc(100% - 32px); padding: 10px 14px; border-radius: 22px; font: 600 14px/1.25 var(--font-ui); background: var(--surface-1); color: var(--text-1); border: 1px solid var(--line-2); box-shadow: var(--e-2, 0 6px 24px rgba(0,0,0,.25)); }
+.v2-tap[hidden] { display: none; }
+.v2-tap .ico { width: 18px; height: 18px; flex: none; }
+.v2-tap[data-kind="ok"] .ico { color: var(--success-ink); }
+.v2-tap[data-kind="bad"] .ico, .v2-tap[data-kind="stale"] .ico { color: var(--danger-ink); }
+.v2-tap[data-kind="wait"] .ico { color: var(--info-ink); }

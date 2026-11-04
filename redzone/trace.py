@@ -67,6 +67,10 @@ class JsonlTrace:
             f.write(ev.jsonl() + "\n")
 
 
+# Paths that change the picture on the stick already on screen: the cut is the first command there.
+# "prime_tile" is a Prime multiview tile switch (redzone/tuners/prime_multiview.py).
+IN_PLACE = ("single", "prime_tile")
+
 def switch_id(submitted_at: float) -> str:
     """The id every component tags this switch's events with (ms since epoch, hex)."""
     return f"{int(submitted_at * 1000):x}"
@@ -133,7 +137,7 @@ def build(d: Any, before: str | None, target: str | None, out: Any, submitted_at
     if getattr(out, "ok", False) and not getattr(out, "dry_run", False) and path != "already":
         if flip_start is not None:
             cut = flip_done if flip_done is not None else flip_start
-        elif path == "single" and tune_start is not None:
+        elif path in IN_PLACE and tune_start is not None:
             cut = tune_start
     resumed = getattr(out, "resumed", None)
     labels = labels or {}
@@ -150,6 +154,7 @@ def build(d: Any, before: str | None, target: str | None, out: Any, submitted_at
         "picture_confirmed": bool(picture is not None and resumed is not False
                                   and not getattr(out, "dry_run", False)),
         "detail": str(getattr(out, "detail", ""))[:300],
+        "settled": getattr(out, "settled", None), "stall_s": getattr(out, "stall_s", None),
         "decided_at": _r(decided), "submitted_at": _r(submitted_at), "cut_at": _r(cut),
         "picture_at": _r(picture), "done_at": _r(now),
         "spans": {
@@ -193,7 +198,7 @@ def events(t: dict) -> list:
         add("guarded", steps["safe_done"], "guard", rule="no mid-play cut", safe_wait_s=sp.get("safe_wait"),
             queued_s=sp.get("queued"))
     cmd = steps.get("flip_start") if steps.get("flip_start") is not None else (
-        steps.get("tune_start") if t.get("path") == "single" else None)
+        steps.get("tune_start") if t.get("path") in IN_PLACE else None)
     add("command", cmd, "control", path=t.get("path"), stick=t.get("stick"), tune_s=sp.get("tune"),
         flip_s=sp.get("flip"))
     end = t.get("done_at")

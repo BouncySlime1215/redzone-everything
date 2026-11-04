@@ -490,8 +490,15 @@ def test_one_missing_session_read_at_flip_time_is_asked_again(two, monkeypatch):
     assert out.ok and out.path == "preloaded" and tuner.calls == []
 
 
-def test_paused_standby_at_flip_time_is_not_reread(two, monkeypatch):
+@pytest.mark.playbook("SAFE-08")
+def test_paused_standby_at_flip_time_is_not_reread(two, monkeypatch, caplog):
+    """SAFE-08: a standby that isn't steady playing right before the flip: the flip is skipped and
+    the TV stays on the current game (the next decision re-tunes it)."""
     c, tuner = two
+    on_screen = c.main
     reads = _flaky_standby(c, monkeypatch, lambda n, pb: dict(pb, state="paused") if n >= 2 else pb)
-    out = run(c.execute("youtubetv:fox", may_cut=lambda: True))
+    with caplog.at_level("INFO", logger="redzone.control"):
+        out = run(c.execute("youtubetv:fox", may_cut=lambda: True))
     assert not out.ok and out.detail == "standby stream is no longer confirmed" and reads["n"] == 2
+    assert out.screen_unchanged and c.main is on_screen and not c.hidden_ready
+    assert "playbook=SAFE-08" in caplog.text

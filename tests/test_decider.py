@@ -104,8 +104,9 @@ def test_locked_moment_needs_a_much_bigger_one(dec, clock):
 def test_small_lead_is_not_enough(dec, clock):
     calibrate(dec, "youtubetv:a")
     start_on(dec, clock, "a", {})
-    assert dec.decide(cands(a=50, b=60)).action == "stay"     # 10 < margin 10 + cost 3
-    assert dec.decide(cands(a=50, b=64)).action == "switch"
+    need = 10 + dec._cost("youtubetv:b")                       # margin 10 + the shipped (measured) tune cost
+    assert dec.decide(cands(a=50, b=60)).action == "stay"     # 10 < need
+    assert dec.decide(cands(a=50, b=50 + need + 1)).action == "switch"
 
 
 def test_better_game_does_not_wait_for_a_viewing_quota(dec, clock):

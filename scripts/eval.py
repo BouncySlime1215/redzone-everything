@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from redzone.config import Config  # noqa: E402
-from redzone.lab.backtest import fmt_time, run  # noqa: E402
+from redzone.lab.backtest import feed_lag_knobs, fmt_time, run  # noqa: E402
 from redzone.lab import evaldata, splits  # noqa: E402
 from redzone.lab.cutgrade import CutCard  # noqa: E402
 from redzone.lab.optimize import load_slates  # noqa: E402
@@ -64,9 +64,26 @@ def eval_set(n=16, end=None, split="all"):
     return (wsh[: n // 2] + rest[::step][:k])[:n]
 
 
+def _oracle_night(reps, mine, r) -> dict:
+    """[oracle] The hindsight ceiling of one slate, and the app's own switches graded by the SAME grader
+    (sportsgrade: NFL's backtest card counts plays its own way, so a share needs one grader on both)."""
+    import numpy as np
+
+    from redzone.lab import oracle as O
+    from redzone.lab import sportsgrade
+    n = O.Night(reps, mine, r.lag_true, 5.0, r.t0, r.t1)
+    tab = O.tables(n, np.arange(n.t0, n.t1, O.STEP_S))
+    out = {obj: O.counts(O.grade(n, O.solve(n, obj, tab))) for obj in O.OBJECTIVES}
+    out["app"] = O.counts(sportsgrade.grade(reps, r.switches, mine, r.lag_true, 5.0, r.t0, r.t1, r.replayed))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--slates", action="store_true")
+    ap.add_argument("--oracle", action="store_true",
+                    help="also solve the hindsight oracle per slate (redzone/lab/oracle.py): each line's ceiling, and "
+                         "the app's switches on the same grader (oracle_app)")
     ap.add_argument("--dead", action="store_true", help="print dead air by cause")
     ap.add_argument("--n", type=int, default=16)
     ap.add_argument("--split", choices=splits.SPLITS, default="all",
@@ -86,10 +103,22 @@ def main():
     ap.add_argument("--delay-model", choices=("channel", "legacy"), default=None)
     ap.add_argument("--resync", action="store_true",
                     help="model live Kalman re-sync on every tune (backtest.run resync)")
+    ap.add_argument("--real-lag", action="store_true",
+                    help="[switch timing] plays reach the app after the MEASURED feed lag per league "
+                         "(redzone/lab/feed_lag_profile.json), not a fixed 8 s")
+    ap.add_argument("--feed-lag", type=float, default=None, metavar="S",
+                    help="[switch timing] every play reaches the app S s after it happened (default 8). The "
+                         "screen stays 43 s behind real life, so only the warning before it airs changes")
+    ap.add_argument("--behind-live", type=float, default=None, metavar="S",
+                    help="[time-shift buffer] hold every stream S s behind its live edge: the screen runs "
+                         "26 s (a YouTube TV channel) + S behind real life, so the feed arrives S s earlier "
+                         "relative to the picture")
     a = ap.parse_args()
     knobs = dict(true_delay=a.true_delay, sigma=a.sigma, lag_jitter=(3.0, 25.0) if a.lag_jitter else None,
                  drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed,
-                 channel_spread=a.channel_spread, history=a.history, delay_model=a.delay_model, resync=a.resync)
+                 channel_spread=a.channel_spread, history=a.history, delay_model=a.delay_model, resync=a.resync,
+                 feed_lag_model="measured" if a.real_lag else None,
+                 **feed_lag_knobs(a.feed_lag, a.behind_live))
     # The live service rewrites data/config.yaml (measured switch costs, taps): scorecards read a
     # pinned copy when one exists, so a before/after comparison isn't moved by the live night.
     pinned = ROOT / "data/eval_config.yaml"
@@ -98,6 +127,7 @@ def main():
         # Config falls back to defaults when a file doesn't validate (an unknown key, say): a
         # scorecard on silent defaults compares the wrong thing.
         sys.exit(f"{pinned} has settings the app rejects ({cfg.rejected}): refusing to grade on a partial config")
+    evaldata.use_shipped_switch_costs(cfg)   # one source of truth for switch costs (contracts/switching.py)
     if a.no_redzone:
         cfg.data["sunday_ticket"] = False
     for kv in a.set:
@@ -113,8 +143,23 @@ def main():
                behind=0.0, on_replay=0, drive=0, drive_live=0)
     causes: dict[str, float] = {}
     cut = CutCard()
+    oracle_nights = []
+    per_night = []   # one row per slate: the unit of evidence for the release gate's night bootstrap
     for reps in eval_set(a.n, split=a.split):
         r = run(reps, cfg, set(cfg.get("teams.nfl")), **knobs)
+        rc = r.cut.summary()
+        if a.oracle:
+            oracle_nights.append(_oracle_night(reps, set(cfg.get("teams.nfl")), r))
+        per_night.append({"night": reps[0].gid, "entries": rc["entries"], "entries_mid_play": rc["entries_mid_play"],
+                          "cuts": len(r.mid_play_cuts), "big": r.big_plays, "big_seen": r.big_plays_caught,
+                          "big_seen_10m": r.big_seen_10m, "my_big": r.my_big_plays,
+                          "my_big_seen_10m": r.my_big_seen_10m, "crunch_on_replay": r.crunch_on_replay,
+                          # [north star] per-night counts so scripts/northstar.py can bootstrap every line
+                          "big_live": r.big_plays_live, "my_big_live": r.my_big_plays_live,
+                          "landings": r.cut.landings()[1], "landings_dead": r.cut.landings()[0],
+                          "dead_s": round(r.dead_air_s, 1), "watched_s": round(r.watched_s, 1),
+                          "crunch": r.crunch, "crunch_live": r.crunch_live,
+                          "my_crunch": r.my_crunch, "my_crunch_live": r.my_crunch_live})
         tot["big"] += r.big_plays; tot["seen"] += r.big_plays_caught; tot["live"] += r.big_plays_live
         tot["cuts"] += len(r.mid_play_cuts); tot["dead"] += r.dead_air_s; tot["watched"] += r.watched_s
         tot["crunch"] += r.crunch; tot["crunch_live"] += r.crunch_live
@@ -124,6 +169,9 @@ def main():
         tot["behind"] += r.behind_live_s; tot["on_replay"] += r.big_missed_on_replay
         tot["drive"] += r.drive_plays; tot["drive_live"] += r.drive_plays_live
         tot["my_big"] += r.my_big_plays; tot["my_seen"] += r.my_big_plays_live
+        tot["seen10"] = tot.get("seen10", 0) + r.big_seen_10m
+        tot["my_seen10"] = tot.get("my_seen10", 0) + r.my_big_seen_10m
+        tot["crunch_on_replay"] = tot.get("crunch_on_replay", 0) + r.crunch_on_replay
         cut.add(r.cut)
         for k, v in r.dead_causes.items():
             causes[k] = causes.get(k, 0.0) + v
@@ -148,9 +196,19 @@ def main():
            "nfl_drive_live_pct": pct(tot["drive_live"], tot["drive"]),
            "behind_live_pct": pct(tot["behind"], tot["hours"] * 3600),
            "big_missed_on_replay": tot["on_replay"],
+           "big_seen_10m_pct": pct(tot.get("seen10", 0), tot["big"]),
+           "your_team_big_seen_10m": f"{tot.get('my_seen10', 0)}/{tot['my_big']}",
+           "crunch_on_replay": tot.get("crunch_on_replay", 0),
            "big_plays": tot["big"], "crunch_plays": tot["crunch"], **cut.summary(),
            "seconds": round(time.time() - t0),
-           "eval_data": evaldata.stamp(), "eval_end": evaldata.window_end("nfl", EVAL_END)}
+           "eval_data": evaldata.stamp(), "eval_end": evaldata.window_end("nfl", EVAL_END),
+           "per_night": per_night}
+    if a.oracle:
+        from redzone.lab import oracle as O
+        out["oracle"] = {obj: O.aggregate([x[obj] for x in oracle_nights]) for obj in O.OBJECTIVES}
+        out["oracle_app"] = O.aggregate([x["app"] for x in oracle_nights])
+        for row, x in zip(per_night, oracle_nights):
+            row["oracle"] = x
     print(json.dumps(out, indent=1))
     if a.dead:
         print("dead air by cause (points of dead_air_pct):")

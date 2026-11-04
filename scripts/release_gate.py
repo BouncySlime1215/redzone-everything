@@ -56,6 +56,74 @@ def _pct(s) -> float | None:
         return None
 
 
+# [eval honesty, research 05 §2.2] The NIGHT is the unit of evidence: plays and switches within a night
+# share the stream delay, the slate and the decider's state, so a rate gate gets a 95 % interval from a
+# cluster bootstrap over nights. PASS needs >= MIN_NIGHTS nights, >= MIN_DECISIONS decisions in the slice
+# and the interval's LOWER bound at the bar; a slice whose upper bound is under the bar FAILS; anything
+# in between is PENDING (not enough evidence either way). Pending never counts as passing.
+MIN_NIGHTS = 8
+MIN_DECISIONS = 60
+BOOT_DRAWS = 2000
+
+
+def night_ci(rows: list[tuple[int, int]], draws: int = BOOT_DRAWS, seed: int = 7) -> tuple[float, float, float]:
+    """rows: (good, total) per night. Pooled rate and its 95 % cluster-bootstrap interval, in %."""
+    import random
+    rows = [(g, n) for g, n in rows if n]
+    tot = sum(n for _, n in rows)
+    if not tot:
+        return float("nan"), float("nan"), float("nan")
+    point = 100.0 * sum(g for g, _ in rows) / tot
+    if len(rows) == 1:
+        return point, *wilson(rows[0][0], rows[0][1])
+    rng = random.Random(seed)
+    rates = []
+    for _ in range(draws):
+        pick = [rows[rng.randrange(len(rows))] for _ in rows]
+        n = sum(x[1] for x in pick)
+        rates.append(100.0 * sum(x[0] for x in pick) / n)
+    rates.sort()
+    return point, rates[int(0.025 * draws)], rates[min(draws - 1, int(0.975 * draws))]
+
+
+def wilson(good: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """Wilson 95 % interval for good/n, in % (used for a single night)."""
+    if not n:
+        return float("nan"), float("nan")
+    p = good / n
+    d = 1 + z * z / n
+    c = (p + z * z / (2 * n)) / d
+    h = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
+    return 100.0 * max(0.0, c - h), 100.0 * min(1.0, c + h)
+
+
+def rate_gate(rows: list[tuple[int, int]], bar: float) -> tuple[str, str]:
+    """(status, detail) for 'rate >= bar %' judged by nights: FAIL when the point estimate (or the
+    whole CI) is under the bar, PASS only with enough nights and decisions and a lower bound at the bar."""
+    nights = [r for r in rows if r[1]]
+    n = sum(t for _, t in nights)
+    point, lo, hi = night_ci(nights)
+    if not n:
+        return PENDING, "no decisions in this slice (0/0)"
+    detail = (f"{point:.1f}% ({sum(g for g, _ in nights)}/{n}), 95% CI {lo:.1f}-{hi:.1f} over "
+              f"{len(nights)} night{'s' if len(nights) != 1 else ''}")
+    if hi < bar:
+        return FAIL, detail
+    if point < bar:     # too few nights to prove a pass is no excuse for a miss we can already see
+        return FAIL, detail + f"; point estimate under {bar:g}"
+    if len(nights) >= MIN_NIGHTS and n >= MIN_DECISIONS and lo >= bar:
+        return PASS, detail
+    short = [f"{len(nights)}/{MIN_NIGHTS} nights" if len(nights) < MIN_NIGHTS else "",
+             f"{n}/{MIN_DECISIONS} decisions" if n < MIN_DECISIONS else "",
+             f"lower bound {lo:.1f} < {bar:g}" if lo < bar else ""]
+    return PENDING, detail + "; needs " + ", ".join(x for x in short if x)
+
+
+def zero_bound(n: int) -> str:
+    """Rule of three: 0 events in n trials bounds the rate at <= 3/n with 95 % confidence."""
+    return f"<= {300.0 / n:.2f}% (rule of three, {n} trials)" if n else "no trials"
+
+
 def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str, str]]:
     """(gate, scope, status, detail) rows."""
     rows: list[tuple[str, str, str, str]] = []
@@ -72,12 +140,32 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
         if m.get("eval_data") != HELDOUT["eval_data"]:
             add("pinned data", name, False, f"eval_data={m.get('eval_data')!r}")
         cuts = m.get("mid_play_cuts")
-        add("mid-play cuts = 0", name, cuts == 0, f"{cuts}")
         n, mid = _entries(m)
-        if n:
+        add("mid-play cuts = 0", name, cuts == 0,
+            f"{cuts}" + (f"; true rate {zero_bound(n)}" if cuts == 0 and n else ""))
+        per = [x for x in m.get("per_night") or [] if isinstance(x, dict)]
+        if per:
+            rows_n = [(int(x.get("entries") or 0) - int(x.get("entries_mid_play") or 0), int(x.get("entries") or 0))
+                      for x in per]
+            st, det = rate_gate(rows_n, 95.0)
+            rows.append(("entries at a dead ball >= 95%", name, st, det))
+            # <= 5 % mid-play is the same rows read the other way (good = not mid-play): no second verdict
+            # that could disagree; it prints the mid-play share for the report.
+            if n:
+                rows.append(("entries mid-play <= 5%", name, st, f"{100.0 * mid / n:.1f}% ({mid}/{n}), judged with the row above"))
+            bn, bmid = _entries(_m(base.get(name, {})))
+            if bmid is not None and n:
+                add("entries mid-play never above today", name, mid <= bmid, f"{mid} vs today {bmid}")
+        elif n:
             dead = 100.0 * (n - mid) / n
-            add("entries at a dead ball >= 95%", name, dead >= 95.0, f"{dead:.1f}% ({n - mid}/{n})")
+            add("entries at a dead ball >= 95%", name, dead >= 95.0, f"{dead:.1f}% ({n - mid}/{n}); no per-night counts: point estimate")
             add("entries mid-play <= 5%", name, 100.0 * mid / n <= 5.0, f"{100.0 * mid / n:.1f}% ({mid}/{n})")
+            # [landing offsets] Nick's Nov 4 timing gate: 0 mid-play entries, and >= 95 % of landings
+            # (cuts away and entries) inside on-screen dead time (histogram: *_to_restart_hist)
+            add("entries mid-play = 0", name, mid == 0, f"{mid}")
+            ld = m.get("cut_timing", m).get("landings_in_dead_pct")
+            if ld is not None:
+                add("landings in dead time >= 95%", name, ld >= 95.0, f"{ld}%")
             bn, bmid = _entries(_m(base.get(name, {})))
             if bmid is not None:
                 add("entries mid-play never above today", name, mid <= bmid, f"{mid} vs today {bmid}")
@@ -87,8 +175,22 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
             cr = _pct(m.get("crunch_live"))
             add("crunch live >= 95% or feasible ceiling", name, cr is not None and cr >= 95, f"{cr:.1f}% (ceiling: pending)" if cr is not None else "n/a", pending=cr is not None and cr < 95)
             continue
-        if m.get("big_seen_pct") is not None:
+        if per and any(x.get("big") for x in per):
+            st, det = rate_gate([(int(x.get("big_seen") or 0), int(x.get("big") or 0)) for x in per], 95.0)
+            rows.append(("big plays seen >= 95%", name, st, det))
+        elif m.get("big_seen_pct") is not None:
             add("big plays seen >= 95%", name, m["big_seen_pct"] >= 95.0, f"{m['big_seen_pct']}%")
+        if per and any("big_seen_10m" in x for x in per) and any(x.get("big") for x in per):
+            # [catch-up the RedZone way] Nick, Nov 4: never miss a big play for long. Live, or replayed
+            # within 10 min (backtest.CATCHUP_S); your team's all of them; no crunch play given up for one.
+            st, det = rate_gate([(int(x.get("big_seen_10m") or 0), int(x.get("big") or 0)) for x in per], 99.0)
+            rows.append(("catch-up: big plays seen live or replayed within 10 min >= 99%", name, st, det))
+            mb = sum(int(x.get("my_big") or 0) for x in per)
+            ms = sum(int(x.get("my_big_seen_10m") or 0) for x in per)
+            add("catch-up: your-team big plays within 10 min = 100%", name, ms >= mb,
+                f"{ms}/{mb}" if mb else "no your-team big plays in this slice (0/0)", pending=not mb)
+            cor = sum(int(x.get("crunch_on_replay") or 0) for x in per)
+            add("catch-up: crunch plays aired during a replay = 0", name, cor == 0, f"{cor}")
         if m.get("your_team_big_seen_pct") is not None:
             add("your-team big plays seen = 100%", name, m["your_team_big_seen_pct"] >= 100.0, f"{m['your_team_big_seen_pct']}%")
         if m.get("your_team_crunch_live_pct") is not None:
@@ -103,7 +205,7 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
             # replay is not a miss; until that ceiling is computed, a value under 95% is PENDING, not PASS.
             add("crunch live >= 95% or feasible ceiling", name, cr >= 95.0,
                 f"{cr}% (ceiling: pending)" if cr < 95 else f"{cr}%", pending=cr < 95.0)
-    for gate, why in (("reels >= 95% in dead time, 0 live big plays missed on a reel", "reel scorecard line not built yet"),
+    for gate, why in (("reels >= 95% in dead time, 0 live big plays missed on a reel", "ESPN clip reels are not simulated; rewind replays are graded by the catch-up rows and the cut grade"),
                       ("reasoner >= 95% agreement, unsafe leaves <= 0.5%, 100% valid JSON", "no gold labels yet"),
                       ("watchdog >= 95% correct, every kind >= 90%, 0 unsafe", "no held-out error set yet"),
                       ("sync error < 2 s on >= 95% of samples", "needs real screen samples (Mac)"),

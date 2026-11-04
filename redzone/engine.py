@@ -46,6 +46,8 @@ CLOCK_JUMP_S = 5.0     # wall clock moved this much more (or less) than time.mon
 NOT_THE_TARGETS_FAULT = ("no safe moment", "safe exit window closed", "switch cancelled",
                          "TV input is unknown", "TV control was disabled", "no channel",
                          "stick not responding")
+PEEK_HOLD_S = 90.0    # a game opened on the phone keeps the hidden stick this long (two_stick.pretune_on_open)
+SKIP_S = 300.0        # a skipped game stays off the TV this long after the TV leaves it
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
@@ -55,8 +57,36 @@ class Engine:
         self.store = store or Store()
         self.channels = ChannelMap()
         self.fetcher = Fetcher()
-        self.merger = Merger()
+        # [NHL primary] api-web's live play-by-play owns NHL stoppages while it's fresh.
+        self._nhl_primary = bool(self.cfg.get("sources.nhl_primary", False))
+        # With primary off: still poll api-web at the fast rate and log when each event first
+        # reached us (data/recordings/<day>/nhl_seen.jsonl), so the backtest that gates it has data.
+        self._nhl_shadow = not self._nhl_primary and bool(self.cfg.get("sources.nhl_shadow", True))
+        self._nhl_logged: dict[str, dict[str, float]] = {}
+        # [NBA primary] the same for NBA's liveData play-by-play (real event times, ~4-12 s published).
+        self._nba_primary = bool(self.cfg.get("sources.nba_primary", False))
+        self._nba_shadow = not self._nba_primary and bool(self.cfg.get("sources.nba_shadow", True))
+        self._nba_seen: dict[str, dict[str, float]] = {}
+        self._nba_logged: dict[str, dict[str, float]] = {}
+        self._nba_ids: dict[str, str] = {}
+        owners = {}
+        if self._nhl_primary:
+            owners[League.NHL] = "nhl"
+        if self._nba_primary:
+            owners[League.NBA] = "nba"
+        # [FEED-01/03] sources.trust_order: per league, sources fastest measured first. The first fresh,
+        # healthy one owns stoppages; the next takes over when it goes dark. Empty (default) = as above.
+        for lg, order in (self.cfg.get("sources.trust_order") or {}).items():
+            try:
+                if order:
+                    owners[League(lg)] = [str(x) for x in order]
+            except ValueError:
+                log.warning("sources.trust_order: unknown league %r", lg)
+        self.merger = Merger(stoppage_owner=owners or None)
+        self._nhl_seen: dict[str, dict[str, float]] = {}   # game id -> NHL event id -> first seen
+        self._nhl_ids: dict[str, str] = {}                  # ESPN game id -> NHL game id
         self._poll_every: dict[str, float] = {}   # game id -> the poll interval it was last fetched at
+        self._burst: set[str] = set()   # [sync 5] games polled at polling.burst.every_s right now
         self.feeds = FeedBook(self.merger, self.fetcher, self._feed_urls, self._feed_cadence)
         self.scorer = DriveScorer(self.cfg)
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"),
@@ -77,8 +107,14 @@ class Engine:
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
+        self.decider.safety.feed_age = self._feed_age   # [playbooks SAFE-01]
         # Break visits: the game we leave keeps playing on the other stick, so the trip back is one
         # flip; with one stick it's a full tune of that game.
+        # [time-shift buffer] hold each fresh hidden-stick tune B s behind live (timing.behind_live_s,
+        # OFF by default); the delay book shares the controller's held offsets.
+        self.delays.held = self.control.held
+        self.control.behind_of = self._behind_of
+        self.control.on_behind = self._on_behind
         self.decider.return_cost = lambda t: (self.control.flip_estimate() if self.control.two_stick
                                               else self.control.deadline_cost(t))
         # Stream delay measured from YouTube TV show changes on the quarter hour (no taps needed).
@@ -109,11 +145,19 @@ class Engine:
         self.reeler = reel.Reeler(self.cfg)   # catch-up reel kept ready from the summaries' clips
         self._reel_task: asyncio.Task | None = None
         self.recorder = Recorder()
+        from redzone.sync_probe import SyncProbe
+        self.sync_probe = SyncProbe(self.cfg, self.control, lambda: self.recorder.root)   # [SYNC] read-only stick probe
+        self.sync_probe.on_condition = self._sync_condition
+        self.sync_probe.on_screen_event = self._break_event
+        self._alarmed: dict[str, float] = {}   # [SYNC 6] target -> last drift alarm
         self._last_snapshot = 0.0
         self.mic = None
         self.fantasy = None   # latest fantasy.Matchup
         self._suspended_focus: tuple | None = None   # (game, mode) paused for garbage time
         self.hold: dict | None = None   # "Watch this" from the phone: a manual hold until "Resume auto"
+        from redzone.commands import Commands
+        self.commands = Commands()   # phone taps by id: a retried tap answers, never runs twice
+        self.peek: tuple[str, str, float] | None = None   # (game, target, until): a game opened on the phone
         self._mic_used: set[tuple[str, float]] = set()
         self._last_mic = 0.0
         self._pending_decision = None
@@ -140,10 +184,14 @@ class Engine:
         from redzone.network import NetWatch
         # Home / away from home / Tailscale stealing the home routes (redzone/network.py). Read-only.
         self.network = NetWatch(self.discovery.autonomy.paths.devices)
+        from redzone.platform.wake import WakeWatch
+        self.wake = WakeWatch()                       # hardening.mac: the Mac slept / changed network
+        self._net_where: str | None = None
         self.tonight = Tonight(self)   # today's plan + pre-game checks on the hidden stick
         from redzone.governor import Governor
         # Backs optional work off when the Mac is busy, hot, on battery or short of disk (redzone/governor.py).
         self.governor = Governor.from_config(self.cfg, **({"root": data_dir.parent} if data_dir else {}))
+        self.sync_probe.governor = self.governor
         from redzone.supervisor import DATA as SUPERVISOR_DATA, Supervisor
         # Per-switch TraceEvents (redzone/contracts/trace.py): data/traces.jsonl; in memory without a data dir.
         self.trace_sink = (trace.JsonlTrace(data_dir.parent / "traces.jsonl") if data_dir
@@ -188,7 +236,8 @@ class Engine:
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
                              self._boundary_loop(), self._scorebug_loop(), self.tonight.run(),
-                             self.supervisor.run(), self.network.run(), self.governor.run())
+                             self.supervisor.run(), self.network.run(), self.governor.run(),
+                             self.sync_probe.run())
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)
@@ -237,6 +286,94 @@ class Engine:
             self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="screen")
         except Exception:
             log.exception("could not save a score-bug delay sample")
+
+    def _behind_of(self, target: str) -> float:
+        """[time-shift buffer] Seconds to hold this target behind live: per league, 0 when off."""
+        if not self.cfg.get("timing.behind_live_s.enabled", False):
+            return 0.0
+        gid = self._game_on(target, False)
+        g = self.merger.games.get(gid or "")
+        if g is None or g.phase != Phase.LIVE:
+            return 0.0
+        by = self.cfg.get("timing.behind_live_s.by_league") or {}
+        b = by.get(g.league.value, by.get(g.league.base.value, self.cfg.get("timing.behind_live_s.default", 0)))
+        return max(0.0, min(float(b or 0.0), float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
+
+    def _on_behind(self, target: str, new_s: float, old_s: float) -> None:
+        """The controller held (or freed) this target's stream: shift its delay by the difference."""
+        d = self.delays.get(target)
+        # [SYNC 1] A hold or a stall is timed on the stick's own clock: the sync filter shifts by it
+        # (+-0.5 s) instead of throwing its estimate away. A fresh tune (new_s 0) still re-syncs.
+        self.delays.set_behind(target, max(0.0, d.behind - old_s + new_s), known_sd=0.5 if new_s > 0 else None)
+
+    # ------------------------------------------------------------------ [SYNC 4/6] network + anchors + drift
+    def _sync_condition(self, target: str, q_scale: float, feats: dict) -> None:
+        if self.sync is not None:
+            self.sync.condition(target, q_scale)
+        self.decider.safety.condition(target, q_scale)   # [playbooks SAFE-03]
+
+    def _feed_age(self, gid: str) -> tuple[float, float] | None:
+        """[playbooks SAFE-01] (seconds since this game's feed last had fresh data, its poll cadence)."""
+        g = self.merger.games.get(gid)
+        if g is None:
+            return None
+        fresh = self.feeds.fresh_at(gid) or g.updated_at
+        if not fresh:
+            return None
+        return time.time() - fresh, float(self.feeds.cadence_of(gid))
+
+    def _break_event(self, target: str, host: str, visible: bool, kind: str, t: float, sd: float) -> None:
+        """[auto-anchors] An ad break started or ended on screen at t (SyncProbe). break_start is matched
+        to the feed's last dead ball on that game: delay = t - its wallclock - the broadcast's usual
+        whistle-to-break gap (sync.break_anchor.start_bias_s, a prior until the Wednesday probe data
+        refits it). Every edge is logged with the feed event it matched (the Noggin's delay labels);
+        only with sync.break_anchor.enabled does it reach the filter."""
+        from redzone.lab.timing import is_dead_ball
+        gid = self._game_on(target, visible)
+        g = self.merger.games.get(gid or "")
+        row = {"ts": round(t, 2), "target": target, "stick": host, "sample_kind": kind, "game": gid,
+               "edge_sd": round(sd, 2), "feed_wall": None, "z": None, "used": False}
+        if g is not None and kind == "break_start":
+            lo, hi = float(self.cfg.get("sync.break_anchor.min_s", 10)), float(self.cfg.get("sync.break_anchor.max_s", 240))
+            dead = [p for p in g.recent_plays if p.wallclock and lo <= t - p.wallclock <= hi
+                    and (is_dead_ball(g.league.value, p.type_text or p.kind) or p.scoring)]
+            if dead:
+                w = max(p.wallclock for p in dead)
+                bias = float(self.cfg.get("sync.break_anchor.start_bias_s", 15.0))
+                bias_sd = float(self.cfg.get("sync.break_anchor.bias_sd_s", 10.0))
+                z = t - w - bias
+                row.update(feed_wall=round(w, 2), z=round(z, 2))
+                if self.cfg.get("sync.break_anchor.enabled", False):
+                    row["used"] = bool(self.sync is not None and self.delays.anchor(
+                        target, z, "break", t, (sd * sd + bias_sd * bias_sd) ** 0.5))
+        try:
+            self.recorder.sync_anchor(row)
+        except Exception:
+            log.exception("could not log a break anchor")
+
+    def _drift_check(self) -> list[dict]:
+        """[SYNC 6] Every channel whose delay moved > 5 s since it synced, or whose stick's network says
+        it is about to: logged once per 5 min. With sync.drift_alarm.resync, the hidden stick's live
+        standby is re-tuned while no switch is pending (it isn't on screen, so nothing is cut)."""
+        if self.sync is None:
+            return []
+        now = time.time()
+        out = []
+        for a in self.sync.alarms(now, float(self.cfg.get("sync.drift_alarm.limit_s", 5.0))):
+            if now - self._alarmed.get(a["target"], 0.0) < 300:
+                continue
+            self._alarmed[a["target"]] = now
+            out.append(a)
+            log.warning("drift alarm on %s: %s", a["target"], a)
+            try:
+                self.recorder.sync_anchor({"ts": round(now, 2), "target": a["target"], "sample_kind": "drift_alarm", **a})
+            except Exception:
+                log.exception("could not log a drift alarm")
+            c = self.control
+            if (self.cfg.get("sync.drift_alarm.resync", False) and a["target"] == c.hidden_target
+                    and c.hidden_ready and self._pending_decision is None):
+                c.preload(a["target"], refresh=True)
+        return out
 
     def _game_on(self, target: str, visible: bool) -> str | None:
         """The game the engine thinks this target shows (the current one first, for the visible stick)."""
@@ -328,7 +465,7 @@ class Engine:
                        for g in self.merger.games.values())
             self._keep_awake(live)
             if live:
-                interval = self.cfg.get("polling.hot_s", 3)
+                interval = self._burst_s() if self._burst else self.cfg.get("polling.hot_s", 3)
             else:
                 interval = self.cfg.get("polling.live_s") if soon else self.cfg.get("polling.idle_s")
                 if not soon:   # nothing live or about to start: idle polling may slow down...
@@ -510,12 +647,36 @@ class Engine:
         while True:
             await asyncio.sleep(10)
             try:
+                await self._after_wake()
+            except Exception:
+                log.exception("wake check failed")
+            try:
+                self._drift_check()
+            except Exception:
+                log.exception("drift check failed")
+            try:
                 await self._device_keepalive()
                 self._tick += 1
                 if self._tick % 360 == 0:
                     self.store.prune()
             except Exception:
                 log.exception("housekeeping failed")
+
+    async def _after_wake(self) -> list[str] | None:
+        """hardening.mac: after a sleep or a network change, every connection re-proves itself now
+        (redzone/platform/wake.py), before this tick's device keepalive. Off: nothing."""
+        slept = self.wake.check()
+        where = self.network.state.where
+        prev, self._net_where = self._net_where, where
+        moved = prev not in (None, "unknown") and where not in (prev, "unknown")
+        if not self.cfg.get("hardening.mac", False) or not (slept or moved):
+            return None
+        from redzone.platform.wake import recover
+        why = f"woke after {slept:.0f}s" if slept else f"network changed to {where}"
+        if slept:
+            await self.network.refresh(force=True)
+            self._net_where = self.network.state.where
+        return recover(self, why)
 
     async def tick(self) -> None:
         """One full cycle (used by tests and one-shot tools)."""
@@ -555,9 +716,13 @@ class Engine:
         live = [g for g in self.merger.games.values() if g.phase == Phase.LIVE and g.league in lgs]
         sem = asyncio.Semaphore(6)
         hot = self._hot_games(live)
+        self._burst = self._burst_games(live)
 
         async def one(g: GameState):
-            every = self.cfg.get("polling.hot_s", 3) if g.game_id in hot else self.cfg.get("polling.live_s", 10)
+            if g.game_id in self._burst:
+                every = self._burst_s()
+            else:
+                every = self.cfg.get("polling.hot_s", 3) if g.game_id in hot else self.cfg.get("polling.live_s", 10)
             async with sem:
                 data = await self.fetcher.get_json(espn.summary_url(g.league, g.game_id), min_interval=every - 0.5)
             # Recorded after the fetch: a game that just turned hot keeps its slower rate until it has
@@ -638,6 +803,39 @@ class Engine:
         hot |= {s.game_id for s in ranked if s.lock or s.pre_moment or s.personal > 0}
         return hot
 
+    def _burst_s(self) -> float:
+        return max(1.0, float(self.cfg.get("polling.burst.every_s", 1.5)))
+
+    def _burst_games(self, live: list[GameState]) -> set[str]:
+        """[sync 5] At most polling.burst.max_games games to poll every 1-2 s: the game on screen and
+        its top challenger, only while a stoppage is likely there (break forecast p >= break_p) or
+        it's tense (a lock or a pre-moment). The dead ball we switch on is then seen ~1 s sooner on
+        average (half the cadence), and nothing else is polled faster, so the request budget stays
+        small. Off (empty) unless polling.burst.enabled."""
+        if not self.cfg.get("polling.burst.enabled", False) or not live:
+            return set()
+        by_id = {g.game_id: g for g in live}
+        cur = self.decider.current if self.decider.current in by_id else None
+        rivals = sorted((self.scored[gid] for gid in by_id if gid in self.scored and gid != cur),
+                        key=lambda s: -s.score)
+        order = ([cur] if cur else []) + [s.game_id for s in rivals[:1]]
+        thr = float(self.cfg.get("polling.burst.break_p", 0.5))
+        out: set[str] = set()
+        for gid in order[: max(0, int(self.cfg.get("polling.burst.max_games", 2)))]:
+            s = self.scored.get(gid)
+            tense = bool(s and (s.lock or s.pre_moment or s.crunch))
+            try:
+                likely = self.breaks.forecast(by_id[gid]).p >= thr
+            except Exception:
+                likely = False
+            if tense or likely:
+                out.add(gid)
+        return out
+
+    def _pbp_every(self, gid: str, base: float) -> float:
+        """League pbp cadence for one game: the burst rate while it's a burst game."""
+        return min(base, self._burst_s()) if gid in self._burst else base
+
     async def _scoreboard(self, lg: League) -> list[GameState] | None:
         if lg.college:
             return await self._college_scoreboard(lg)
@@ -669,29 +867,56 @@ class Engine:
         nhl = [g for g in live if g.league == League.NHL]
         if nhl:
             sc = await self.fetcher.get_json(leagues.NHL_SCORE.format(date=today), min_interval=8)
-            if sc:
-                idx = leagues.nhl_index(sc)
-                for g in nhl:
-                    gm = leagues.nhl_match(g, idx)
-                    if not gm:
-                        continue
-                    pbp = await self.fetcher.get_json(leagues.NHL_PBP.format(id=gm.get("id")), min_interval=8)
+            idx = leagues.nhl_index(sc) if sc else {}
+            fast = self._nhl_primary or self._nhl_shadow
+            every = float(self.cfg.get("polling.nhl_pbp_s", 3)) if fast else 8.0
+
+            async def one(g: GameState):
+                gm = leagues.nhl_match(g, idx)
+                if not gm:
+                    return
+                self._nhl_ids[g.game_id] = str(gm.get("id"))
+                pbp = await self.fetcher.get_json(leagues.NHL_PBP.format(id=gm.get("id")),
+                                                  min_interval=self._pbp_every(g.game_id, every) - 0.5)
+                if self._nhl_shadow and pbp:
                     try:
-                        self.merger.update("nhl", leagues.enrich_nhl(self.merger.games[g.game_id], gm, pbp))
+                        self.recorder.nhl_seen(g, pbp, self._nhl_logged.setdefault(g.game_id, {}))
                     except Exception:
-                        log.exception("nhl enrich")
+                        log.exception("nhl shadow log")
+                try:
+                    seen = self._nhl_seen.setdefault(g.game_id, {}) if self._nhl_primary else None
+                    self.merger.update("nhl", leagues.enrich_nhl(self.merger.games[g.game_id], gm, pbp, seen))
+                except Exception:
+                    log.exception("nhl enrich")
+            await asyncio.gather(*(one(g) for g in nhl))
         nba = [g for g in live if g.league == League.NBA]
         if nba:
             sb = await self.fetcher.get_json(leagues.NBA_SCOREBOARD, min_interval=5)
             if sb:
                 idx = leagues.nba_index(sb)
-                for g in nba:
+                fast = self._nba_primary or self._nba_shadow
+                every = float(self.cfg.get("polling.nba_pbp_s", 3))
+
+                async def one_nba(g: GameState):
                     gm = leagues.nba_match(g, idx)
-                    if gm:
+                    if not gm:
+                        return
+                    pbp = None
+                    if fast and gm.get("gameId") and gm.get("gameStatus") == 2:
+                        self._nba_ids[g.game_id] = str(gm["gameId"])
+                        pbp = await self.fetcher.get_json(leagues.NBA_PBP.format(id=gm["gameId"]),
+                                                          min_interval=self._pbp_every(g.game_id, every) - 0.5)
+                    if self._nba_shadow and pbp:
                         try:
-                            self.merger.update("nba", leagues.enrich_nba(self.merger.games[g.game_id], gm))
+                            self.recorder.feed_plays(g, leagues.nba_plays(pbp, self._nba_logged.setdefault(g.game_id, {})))
                         except Exception:
-                            log.exception("nba enrich")
+                            log.exception("nba shadow log")
+                    try:
+                        seen = self._nba_seen.setdefault(g.game_id, {}) if self._nba_primary else None
+                        self.merger.update("nba", leagues.enrich_nba(self.merger.games[g.game_id], gm, pbp, seen))
+                    except Exception:
+                        log.exception("nba enrich")
+                await asyncio.gather(*(one_nba(g) for g in nba))
 
     def _feed_urls(self, g: GameState) -> list[str]:
         """The URLs a game's state comes from: its summary and its league's scoreboard(s)."""
@@ -699,7 +924,12 @@ class Engine:
             boards = espn.scoreboard_urls(g.league, (self.cfg.get("college.groups") or {}).get(g.league.value) or [])
         else:
             boards = [espn.scoreboard_url(g.league)]
-        return [espn.summary_url(g.league, g.game_id), *boards]
+        out = [espn.summary_url(g.league, g.game_id), *boards]
+        if g.league == League.NBA and self._nba_primary and g.game_id in self._nba_ids:
+            out.append(leagues.NBA_PBP.format(id=self._nba_ids[g.game_id]))
+        if g.league == League.NHL and self._nhl_primary and g.game_id in self._nhl_ids:
+            out.append(leagues.NHL_PBP.format(id=self._nhl_ids[g.game_id]))
+        return out
 
     def _feed_cadence(self, gid: str) -> float:
         return self._poll_every.get(gid, float(self.cfg.get("polling.live_s", 10)))
@@ -728,21 +958,28 @@ class Engine:
         off, the live check (sources.fastcast_check) runs it in shadow on a few live games instead."""
         mode = "merge" if self.cfg.get("sources.fastcast", False) else (
             "shadow" if self.cfg.get("sources.fastcast_check", True) and not self.fc_check.done else None)
+        dark = self._dark_games() if mode != "merge" else []
+        if mode is None and dark:
+            mode = "fallback"     # hardening.feeds: polling went dark on live games, FastCast covers them
         if mode != self._fastcast_mode:
             self._stop_fastcast()
         if mode is None:
             return
         if self.fastcast is None:
-            cb = self._on_fastcast if mode == "merge" else self._on_fastcast_shadow
+            cb = {"merge": self._on_fastcast, "fallback": self._on_fastcast_fallback}.get(
+                mode, self._on_fastcast_shadow)
             self.fastcast = fastcast.FastcastClient(cb, http=self.fetcher._client)
             self._fastcast_task = asyncio.get_running_loop().create_task(self.fastcast.run())
             self._fastcast_mode = mode
         lgs = self._leagues()
         live = [g for g in self.merger.games.values() if g.phase == Phase.LIVE and g.league in lgs]
+        if mode == "fallback":
+            live = [g for g in live if g.game_id in dark][:fastcast_check.MAX_TOPICS]
         if mode == "shadow":
-            # a few games, keeping the ones already subscribed (their pairing is under way)
+            # a few games: dark ones first (hardening.feeds), then the ones already subscribed
+            # (their pairing is under way)
             have = {gid for _, gid in self._fastcast_games.values()}
-            live.sort(key=lambda g: (g.game_id not in have, g.game_id))
+            live.sort(key=lambda g: (g.game_id not in dark, g.game_id not in have, g.game_id))
             live = live[:fastcast_check.MAX_TOPICS]
         self._fastcast_games = {
             fastcast.game_topic(g.league, g.game_id, self.summaries.get(g.game_id)): (g.league, g.game_id)
@@ -758,9 +995,32 @@ class Engine:
             log.warning("fastcast live check passed: turning FastCast on (sources.fastcast_auto_enable)")
             self.cfg.update({"sources": {"fastcast": True}})
 
-    def _on_fastcast_shadow(self, topic: str, doc, received_at: float, published_at: float | None) -> None:
-        """[fastcast live check] Parsed and logged, never merged: nothing on screen can change."""
+    def _dark_games(self) -> set[str]:
+        """hardening.feeds: live games whose polled feed is dark (FeedBook.polled_stale). Off: none."""
+        if not self.cfg.get("hardening.feeds", False):
+            return set()
+        try:
+            return {gid for gid, g in self.merger.games.items()
+                    if g.phase == Phase.LIVE and self.feeds.polled_stale(gid)}
+        except Exception:
+            log.exception("feed fallback check failed")
+            return set()
+
+    def _on_fastcast_fallback(self, topic: str, doc, received_at: float, published_at: float | None) -> None:
+        """hardening.feeds: FastCast stands in for a game whose polling went dark, and only while it is
+        dark. Once polling is fresh again the push is ignored and the next sync unsubscribes it."""
         game = self._fastcast_games.get(topic)
+        if game is None or not self.feeds.polled_stale(game[1]):
+            return
+        self._on_fastcast(topic, doc, received_at, published_at)
+
+    def _on_fastcast_shadow(self, topic: str, doc, received_at: float, published_at: float | None) -> None:
+        """[fastcast live check] Parsed and logged, never merged: nothing on screen can change.
+        hardening.feeds: a game whose polling went dark is merged instead (the fallback)."""
+        game = self._fastcast_games.get(topic)
+        if game is not None and self.cfg.get("hardening.feeds", False) and self.feeds.polled_stale(game[1]):
+            self._on_fastcast(topic, doc, received_at, published_at)
+            return
         if game is None:
             return
         league, gid = game
@@ -840,6 +1100,12 @@ class Engine:
             return False
         now = time.time()
         for gid, until in list(self.skipped.items()):
+            if gid == self.decider.current:
+                # [controls] Still on the skipped game (waiting for a dead ball to leave it): the five
+                # minutes count from when the TV leaves. Before, a skip in a hockey power play waited
+                # ~5 min for a stoppage, expired first, and the TV never left (controls drill, seed 4).
+                self.skipped[gid] = max(until, now + SKIP_S)
+                continue
             if now >= until:
                 self.skipped.pop(gid)
                 self.decider.user.muted.discard(gid)
@@ -1217,9 +1483,32 @@ class Engine:
         is a 1-2s input flip instead of a 5-10s tune. What and when: redzone/standby.py."""
         if not self.control.two_stick or self.decider.user.paused:
             return
+        if self._peeking():
+            return   # a game you opened on the phone is on the hidden stick: keep it there for now
+        self._plan_prime_multiview(cands)
         pick = self.planner.plan(self._standby_options(cands, redzone), self.control.standby)
         if pick:
             self.control.preload(pick.target, back_s=pick.back_s, replay_id=pick.replay_id)
+
+    def _plan_prime_multiview(self, cands: dict) -> None:
+        """tuners.prime_multiview: the top eligible Prime NBA games share one multiview (~1 s between
+        them); excluded ones (score.personal.multiview_exclude) stay on the other stick."""
+        if not self.cfg.get("tuners.prime_multiview", False):
+            return
+        from redzone.tuners import prime_multiview as pmv
+        pool = []
+        for gid, c in cands.items():
+            g = self.merger.games.get(gid)
+            if g is None or not c.target or not c.target.startswith("prime:"):
+                continue
+            lg = getattr(c.scored.league, "value", c.scored.league)
+            pool.append(pmv.TileCandidate(c.target, str(lg).lower(), (g.home.abbr, g.away.abbr), c.scored.score))
+        mv = self.control.prime_mv
+        s = mv.session(self.control.hidden.host) if mv and self.control.hidden else None
+        tiles, _ = pmv.plan_tiles(pool, self.cfg.get("score.personal.multiview_exclude") or [],
+                                  self.cfg.get("score.personal.multiview_pin") or [],
+                                  k=int(self.cfg.get("tuners.prime_tiles", 3)), current=s.tiles if s else ())
+        self.control.plan_prime_multiview(tiles)
 
     def _standby_options(self, cands: dict, redzone: str | None = None) -> list[standby.Option]:
         dec, u = self.decider, self.decider.user
@@ -1250,11 +1539,13 @@ class Engine:
                                replay_sure=sure)
 
     def _break_brain(self):
-        """(brain, blend weight) for the break forecast, or (None, 0) with the brain off."""
+        """(brain, blend weights, v3 lengths) for the break forecast, or (None, 0) with the brain off.
+        The weights are per league (brain.break_blend, fitted on held-out nights), with
+        brain.break_weight for a league nobody has fitted (breaks.weight_for)."""
         if not self.cfg.get("brain.enabled", False):
             return None, 0.0, False
-        return (self.scorer.brain, float(self.cfg.get("brain.break_weight", 0.5)),
-                self.cfg.get("brain.v3_lengths", ["nfl", "nba"]))
+        w = {"*": float(self.cfg.get("brain.break_weight", 0.5)), **(self.cfg.get("brain.break_blend") or {})}
+        return self.scorer.brain, w, self.cfg.get("brain.v3_lengths", ["nfl", "nba"])
 
     def _break_standby(self, cands: dict) -> tuple[str | None, str, standby.Option | None]:
         """The game on screen is about to break (redzone/scoring/breaks.py): where the decider will
@@ -1352,6 +1643,8 @@ class Engine:
             return self._hold(gid, force=value == "force")
         if action == "release":
             return self._release_hold("Back on autopilot")
+        if action == "peek":
+            return self._peek(gid)
         if action == "hold_auto":
             if not self.hold:
                 return False, "Nothing is held"
@@ -1404,7 +1697,7 @@ class Engine:
         if action == "skip":
             if not dec.current:
                 return False, "Nothing to skip"
-            self.skipped[dec.current] = time.time() + 300
+            self.skipped[dec.current] = time.time() + SKIP_S
             if self.hold and self.hold["game_id"] == dec.current:
                 self.hold, u.locked_game = None, None
             u.muted.add(dec.current)
@@ -1478,6 +1771,10 @@ class Engine:
         name = self._name(gid)
         p = self._pending_decision
         waiting = bool(self.hold and self.hold["game_id"] == gid and p is not None and p.target == gid)
+        # playbook=BTN-05: the game on screen, tapped while a switch AWAY from it is in flight (the
+        # flip can't be stopped halfway). It isn't "already there": queue the way back, which runs as
+        # soon as the flip lands. Before, it said "Holding on X" and the TV landed on the other game.
+        leaving = bool(dec.current == gid and p is not None and p.target not in (None, gid))
         prev = self.hold if self.hold and self.hold["game_id"] == gid else None
         self.hold = {"game_id": gid, "since": prev["since"] if prev else time.time(),
                      "auto_resume": prev["auto_resume"] if prev else True,
@@ -1486,12 +1783,36 @@ class Engine:
         u.paused = False   # holding IS the pause: autopilot won't switch away
         if waiting:
             return True, f"Switching to {name} now"
-        if dec.current == gid:
+        if dec.current == gid and not leaving:
             return True, f"Holding on {name} — tap Resume auto to hand back"
         self._act_manual(gid)
+        if leaving:
+            log.info("playbook=BTN-05 %s tapped mid-switch away from it: going back once the flip lands", gid)
+            return True, f"Back to {name} as soon as this switch lands"
         if force or self.cfg.get("mode.dry_run", True):
             return True, f"On {name} — holding here"
         return True, f"Switching to {name} at the next safe moment (tap again to go now)"
+
+    def _peek(self, gid: str | None) -> tuple[bool, str]:
+        """A live game opened on the phone (two_stick.pretune_on_open): tune it on the hidden stick now,
+        so the "Watch this" / "Go now" that usually follows is a flip (~3 s), not a tune + flip (~8 s).
+        The planner leaves the hidden stick alone for PEEK_HOLD_S. Silent: the message is empty."""
+        if not self.cfg.get("two_stick.pretune_on_open", False) or not gid or gid == self.decider.current:
+            return True, ""
+        g = self.merger.games.get(gid)
+        target = getattr(self.where.get(gid), "target", None)
+        if g is None or g.phase != Phase.LIVE or not target or self.decider.user.paused:
+            return True, ""
+        self.peek = (gid, target, time.time() + PEEK_HOLD_S)
+        self.control.preload(target, user=True)
+        return True, ""
+
+    def _peeking(self) -> bool:
+        p = self.peek
+        if p is None or time.time() >= p[2] or p[0] == self.decider.current:
+            self.peek = None
+            return False
+        return True
 
     def _hold_waits(self, d: Decision) -> bool:
         """A switch to the held game honors the never-cut-mid-play rule unless you forced it."""
@@ -1509,6 +1830,8 @@ class Engine:
         p = self._pending_decision
         if h and p is not None and p.kind == "user" and p.target == h["game_id"]:
             self.control.cancel_pending()   # still waiting for a safe moment: don't go after all
+        if h:
+            log.info("playbook=BTN-04 released %s: autopilot picks again, leaving at the next dead ball", h["game_id"])
         return True, msg
 
     def _hold_check(self) -> None:
@@ -1520,8 +1843,9 @@ class Engine:
         if u.locked_game != gid:
             self.hold = None   # unlocked or re-locked elsewhere
             return
-        if self.decider.current == gid:
-            h["force"] = False
+        p = self._pending_decision
+        if self.decider.current == gid and not (p is not None and p.target not in (None, gid)):
+            h["force"] = False   # (not while a switch away from it is still landing: BTN-05)
         if gid == REDZONE:
             over, garbage = not redzone_on(self.merger.games.values()), False
         else:
@@ -1724,7 +2048,7 @@ class Engine:
                        "fastcast": self.fastcast.status() if self.fastcast else None,
                        "fastcast_check": self.fc_check.verdict,
                        "discovery": self.discovery.status(), "supervisor": self.supervisor.status(),
-                       "governor": self.governor.view()},
+                       "governor": self.governor.view(), "agent": self._agent_view()},
             "bets": self.bets_view(), "feedback": self.store.feedback_counts(),
             "fantasy": None if self.fantasy is None else {
                 "me": self.fantasy.me, "opponent": self.fantasy.opponent, "my_points": self.fantasy.my_points,
@@ -1732,6 +2056,14 @@ class Engine:
                 "starters": [{"name": x.name, "pos": x.pos, "team": x.team, "mine": x.mine}
                              for x in self.fantasy.starters]},
         }
+
+    def _agent_view(self) -> dict:
+        """What the watchdog reads beyond the rest of the snapshot (redzone/platform/agent_fix.py)."""
+        try:
+            from redzone.platform.agent_fix import view
+            return view(self)
+        except Exception as e:   # a status read must never break the snapshot
+            return {"error": str(e)[:120]}
 
     def _sticks_view(self) -> list[dict]:
         """Stick rows for the phone. Away from home a stick that can't answer is "away", not "offline"
