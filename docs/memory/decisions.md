@@ -349,3 +349,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   strict-xfail tests mark what it must fix: the core's own score-based leave (99 vs 55), and a neutral crunch
   timeout's break visit to a lower-league game. They turn red (XPASS) when it lands, so the marks come off with
   it. The same-league "replay within 3 min" for the losing crunch is not built yet.
+- 2026-11-04 (lane 2, #160): **crunch floors (SAFE-09)** per Nick's 4:15 PM correction. `decider.crunch.floor: true`:
+  while the screen is in a crunch window, no overlay or model (scenario, clairvoyance, PICK, later the Mind and
+  watch value) turns the app's own decision into a leave for a non-crunch game; crunch vs crunch and ad-break
+  round trips stay the app's (and later the value model's) call. Live default identical on dev and locked;
+  candidate identical on dev (3 seeds, all leagues). The low-value floor `decider.crunch.floor_low_value`
+  ships at 0 (off): at 50 on today's score it helped dev NFL (crunch live +0.3..1.2, mid-play entries 10 -> 8,
+  crunch under a replay 70 -> 49) but cost locked NFL crunch live 64.2/61.2/64.2 -> 63.6/57.3/64.2 (locked read
+  once). It waits for watch value, which is the value the floor should read.

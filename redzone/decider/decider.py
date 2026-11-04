@@ -912,8 +912,8 @@ class Decider:
         (1) no overlay or model (scenario, clairvoyance, PICK, later the Mind and watch value) turns the app's
             own decision into a leave for a game that isn't in crunch: models choose between crunches;
         (2) a LOW-value game never pulls us out, not even by the app's own switch or a catch-up reel: below
-            decider.crunch.floor_low_value (watch value once it ships, else today's score; 50 = the league's
-            median live moment). An ad-break round trip (kind break_visit) and your own press are not leaves.
+            decider.crunch.floor_low_value (watch value once it ships, else today's score; 0 = off until
+            watch value: at 50 on today's score it cost locked NFL crunch live, Nov 4). An ad-break round trip (kind break_visit) and your own press are not leaves.
         Off only with decider.crunch.floor: false."""
         if not self.cfg.get("decider.crunch.floor", True) or d.action not in ("switch", "replay") \
                 or d.kind in ("user", "break_visit") or self.replaying or not self.current:
@@ -933,7 +933,7 @@ class Decider:
                 return d                   # crunch vs crunch: decided by value, not by this floor
             value = self._floor_value(x.scored)
         overlay = (d.action, d.target, d.kind) != (d0.action, d0.target, d0.kind)
-        low = value < float(self.cfg.get("decider.crunch.floor_low_value", 50))
+        low = value < float(self.cfg.get("decider.crunch.floor_low_value", 0) or 0)
         if not (overlay or low):
             return d
         why = "an overlay can't leave crunch for a non-crunch game" if overlay else f"{value:.0f} is a low-value game"
