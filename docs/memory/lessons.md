@@ -249,3 +249,4 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   returned on "no target", so a "Still watching?" sat 110 s (limit 60). Now a forgotten screen still gets a
   prompt-only check (CENTER only on a prompt read from a screenshot): cleared at 46 s, 2/2 reruns pass.
   Seed 1 alone (CI) never showed it; run a second seed before calling a night clean.
+- **Nov 4, crunch block lifted under an OT winner (lane 2).** A game the feed ends in OT drops out of the candidates while its last plays are still a stream delay from the screen, so `replay.crunch_block` saw no crunch and a catch-up reel ran over the OT goal (NHL dev night 20261027: 6 crunch plays on replay). Fix: `replay.crunch_block_tail` keeps the block until mu + 2 sigma + a poll after the game was last seen in crunch.
