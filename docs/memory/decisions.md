@@ -195,3 +195,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (`noggin.priority.prefs`, the same values as `Preferences` in redzone/noggin/priority.py, so nothing moves).
   Phone v2 only writes `feedback` rows (note `switch` / `missed`); the decider, tick loop and TV never read them.
   Rivalries stay config-only for now: the validator takes lists of names, not pairs.
+- 2026-11-04 11:55 AM (noggin logic, cycle 02): **candidate: crunch_now=wait + clairvoyance (GAME-04,
+  `noggin.lookahead.enabled`)**, candidate only; live defaults unchanged. Asked by the Start Planner pending Nick's
+  call on wait (rule #1). Candidate mid-play 0 on dev and locked in NBA/NHL/NFL. Cost of wait, NBA: dev big live
+  81.7 -> 77.5, crunch 90.9 -> 90.0; locked big live 100 -> 68.8 (16 plays), crunch 93.3 -> 84.9. Lookahead: NFL dev
+  big live 50.3 -> 54.3 (locked 49.0 -> 52.9), dead air +0.4 / +0.5. Revert wait with one line in profile.py.

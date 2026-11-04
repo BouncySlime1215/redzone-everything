@@ -36,6 +36,7 @@ from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S
                                     Timeline, break_on_arrival, catchable, final_play_aired, leave_gate,
                                     resume_lead, resume_play)
 from redzone.decider.cuts import EntryPlan, plan_entry
+from redzone.noggin.lookahead import ahead
 from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
 from redzone.decider import core
 from redzone.decider.core import BreakView, CoreState, DecisionCore, Knobs, MomentView, Option, SwitchPath
@@ -231,6 +232,7 @@ class Decider:
         self.cfg = cfg
         self.delays = delays
         self._clock = clock
+        self.lookahead_why: dict[str, int] = {}   # [GAME-04] outcomes by reason (audit)
         # The live controller knows whether THIS target is already ready. App-wide
         # average costs are useful for ranking, but cannot promise a deadline.
         # Offline simulations intentionally keep their configured timing model.
@@ -355,6 +357,7 @@ class Decider:
                 self.after_replay = True
         home_before = (self.home_break_visit, self.home_return_at)
         d = self._decide(cands, now)
+        d = self._clairvoyant(d, cands, now, home_before)
         d = self._hold_for_big(d, cands, now, home_before)
         d = self._time_entry(d, cands, now, home_before)
         if not commit and d.action in ("switch", "replay"):
@@ -777,6 +780,76 @@ class Decider:
         state = State.REPLAY if self.after_replay else d.state
         return Decision(now, "stay", self.current, f"{plan.why}: {d.reason}", state, d.gate,
                         want=d.target)
+
+    def _clairvoyant(self, d: Decision, cands, now: float, home_before) -> Decision:
+        """[GAME-04 clairvoyance, noggin.lookahead.enabled] The feed already knows a big play in game X
+        that the screen hasn't shown (redzone/noggin/lookahead.py): pre-tune X, and flip so the picture
+        comes up on X's last dead ball before the play airs. Only ever turns a "stay" into a visit, only
+        when what's on screen has nothing of its own coming, isn't crunch time, a lock or your team, and
+        can be left (the leave gate); entry timing and the safety playbooks still apply after it."""
+        c = self.cfg
+        visit = d.action == "switch" and d.kind == "break_visit"
+        if not c.get("noggin.lookahead.enabled", False) or not (d.action == "stay" or visit) or self.current is None \
+                or self.current in PSEUDO or self.replaying or self.safe_mode or self.user.paused \
+                or self.user.locked_game or self.user.focus_mode != FocusMode.AUTOPILOT:
+            return d
+        cur = cands.get(self.current)
+        if cur is None or not cur.target:
+            return d
+        s = cur.scored
+        if not visit and (s.crunch or s.lock or s.personal >= c.get("decider.crunch.hold_personal", 5)):
+            return d
+        maxs = float(c.get("noggin.lookahead.max_sigma_s", 10))
+        mine = ahead(self.timelines.get(self.current), self.delays.get(cur.target), now, maxs)
+        if mine is not None and mine.big is not None and not visit:
+            return d                       # our own big play is on its way: stay for it
+        best = None
+        for gid, x in cands.items():
+            if gid == self.current or gid in PSEUDO or not x.target or x.stale or gid in self.user.muted:
+                continue
+            a = ahead(self.timelines.get(gid), self.delays.get(x.target), now, maxs)
+            if a is not None and a.big is not None and (best is None or a.big.lo < best[1]):
+                best = (gid, a.big.lo, a.big)
+        if best is None:
+            return d
+        gid, tb, ev = best
+        x = cands[gid]
+        dl = self.delays.get(x.target)
+        cost = self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target)
+        lead = float(c.get("noggin.lookahead.lead_s", 45))
+        tag = f"playbook=GAME-04: {ev.label[:40]} on its way in {_short(x.scored)}"
+        # A break visit the generic logic already chose stands unless X's play can be caught from here.
+        wait = d if visit else Decision(now, "stay", self.current, f"{tag} (pre-tuning): {d.reason}", d.state,
+                                        d.gate, want=gid)
+        why = self.lookahead_why
+        gate = self._gate(cur, now)
+        if not (gate and gate.safe):
+            why["gate"] = why.get("gate", 0) + 1
+            return wait
+        plan = self.entry_plan(gid, cands, now, cost=cost)
+        if plan is None or not plan.ok or plan.landing is None or plan.landing.state != "dead":
+            why["no_landing"] = why.get("no_landing", 0) + 1
+            return wait
+        land = now + cost - (dl.mu - dl.behind) - plan.rewind_s      # real time the picture comes up on
+        margin = 2 * dl.current_sigma(now) + ENTRY_SLACK_S
+        if land > tb - margin:
+            why["too_late"] = why.get("too_late", 0) + 1
+            return d                       # can't get there before it airs: the catch-up replay's job
+        if tb - land > lead:
+            why["too_early"] = why.get("too_early", 0) + 1
+            return wait                    # too early: a later dead ball is closer to the play
+        if visit:
+            why["visit_kept" if d.target == gid else "visit_redirected"] = \
+                why.get("visit_kept" if d.target == gid else "visit_redirected", 0) + 1
+            if d.target == gid:
+                d.reason = f"{tag}: {d.reason}"
+                return d
+            return Decision(now, "switch", gid, f"{tag} ({tb - land:.0f} s after we land)", d.state, d.gate,
+                            kind="break_visit")
+        why["switch"] = why.get("switch", 0) + 1
+        self.home_break_visit = self.current
+        return Decision(now, "switch", gid, f"{tag} ({tb - land:.0f} s after we land)", d.state, d.gate,
+                        kind="chase")
 
     def _hold_for_big(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[cut timing] A big play is in the data but hasn't finished airing here yet: stay for it.
