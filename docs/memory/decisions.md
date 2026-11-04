@@ -178,3 +178,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   on the hidden stick (the planner leaves it there 90 s), so the "Watch this" + "Go now" that follows is a flip.
   Controls drill (4 nights): open -> Go now median 8.36 -> 3.06 s, max 8.7 -> 4.34 s. OFF until real presses on
   Nick's TV show it, since every sheet opened costs a tune and takes the hidden stick off the planner's pick.
+- 2026-11-04 3:20 AM: **Phone v2 added OFF** (`phone.v2: false`) and the Noggin L2 prefs got config defaults
+  (`noggin.priority.prefs`, the same values as `Preferences` in redzone/noggin/priority.py, so nothing moves).
+  Phone v2 only writes `feedback` rows (note `switch` / `missed`); the decider, tick loop and TV never read them.
+  Rivalries stay config-only for now: the validator takes lists of names, not pairs.
