@@ -60,6 +60,8 @@ What Nick wants from RedZone Everything (as of 2026-11-03):
 
 - NOGGIN FOUNDATION MODEL (Nick, Nov 4 4:45 PM: 'stop looping on hand weights; millions-billions of learned parameters'): pretrain a ~100M-300M param event-sequence model on ~1B play-event tokens (real + self-play), self-supervised (next event/time/stoppage), then add heads (Watch Value, crunch enter/exit, breaks, big-play-next, game importance), distill to the Reflex. Hand features become optional inputs. Also: crunch is a learned state with entry/exit, not a hard rule; game importance (playoff race, big matchups, NFL scarcity) is a learned weight.
 
+- SHARP TRAINING, SHARPER GRADING (Nick, Nov 4 6:40 PM): graders are written and frozen by the integrator, never by the training lane. Pre-register experiments. Grade against real outcomes + the oracle, not teacher labels. Bootstrap CIs over nights, with PENDING when underpowered. Per-slice reports. Automatic leakage checks (adversarial validation; AUC > .98 = red flag). Calibration. A golden nightmare-night regression suite. Ablations. Reproducible runs. Selection on valid only. Spec in docs/grading.md.
+
 **Why:** These were stated across the Nov 2-4 sessions; this is the consolidated spec.
 
 **How to apply:** Check every coordinator thread and PR against this list. Keep ADHD-style replies.

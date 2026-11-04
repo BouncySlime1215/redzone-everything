@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- 18:30 Tonight: STAY ON RC5.1. RC6 (#132 seek fix + #173 gold capture) can't be healthy before tip, so it deploys after the last game or at 9 AM. No deploys during games. #171 rig check moved to the morning (needs Nick's OK in the Mac session). V8 Mind (35e6da4) waits for the weekly GPU quota reset unless lane 1 ships a <2.3 h students-only variant. Master plan v2 pushed as a draft (pending Nick's go).
+- 18:50 NICK: 'A + colab'. RC6 is a halftime deploy tonight: tests and build run now, and the switch is held until a halftime/intermission (1-2 min app restart; TV stays on its input; auto-rollback). V8 students-only runs on Google Colab (free GPU, Nick's own account) tonight; lane 1 builds colab/v8_students.ipynb and the overseer runs it. Kaggle multi-account declined (one account per person per Kaggle's terms).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
