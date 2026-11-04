@@ -4,7 +4,7 @@
             your team's big moments first (WSH: Commanders/Wizards/Capitals/Nationals; UNC), then
             crunch time, ranked by league order NFL > CFB > NBA > CBB > NHL > MLB; never Peacock.
     L2  Nick's preferences (phone page): bets weight, rivalries, NHL power-play/OT boost, reels on/off,
-            switch frequency. Learned suggestions from 👍/👎 are returned for display, never applied.
+            switch frequency. Controls only: nothing learns from Nick's 👍/👎, taps or overrides.
     L3  Mind read (every 30-60 s): narrative and stakes numbers, bounded to +-mind_cap points and
             expired after its TTL. It can reorder games only inside the same L1 tier.
     L4  Reflex live value (every tick): red zone, close-late, power play, win-prob swing, restart countdown.
@@ -226,25 +226,6 @@ def violations(ranked: list[Ranked], games: Mapping[str, GameInput], rules: Hard
     return bad
 
 
-# ---------------------------------------------------------------- learned suggestions (L2, never applied)
-
-def suggest_from_feedback(feedback: Iterable[Mapping], prefs: Preferences, min_votes: int = 8) -> list[dict]:
-    """Suggestions from 👍/👎 on switches, shown to Nick on the phone page. Never mutates `prefs`.
-
-    feedback rows: {"vote": +1 | -1, "terms": {term: points}} for the switch it rated. A term that shows
-    up mostly in 👎 switches suggests turning its weight down, mostly in 👍 switches up."""
-    tally: dict[str, list[int]] = {}
-    for row in feedback:
-        v = 1 if row.get("vote", 0) > 0 else -1
-        for k, pts in (row.get("terms") or {}).items():
-            if pts and pts > 0:
-                tally.setdefault(k, []).append(v)
-    out = []
-    for k, votes in sorted(tally.items()):
-        if len(votes) < min_votes:
-            continue
-        share = sum(1 for v in votes if v > 0) / len(votes)
-        if share <= 0.3 or share >= 0.8:
-            out.append({"term": k, "votes": len(votes), "thumbs_up": round(share, 2),
-                        "suggest": "less" if share <= 0.3 else "more", "applied": False})
-    return out
+# [no training signal from Nick, Nov 4] L2 has no learned suggestions: his votes, taps and overrides are
+# controls, never labels. The Noggin learns only from the oracle, simulation, the Teacher's review and
+# play-by-play outcomes (docs/noggin.md § Self-taught).

@@ -254,7 +254,7 @@
   {
    "id": "C16",
    "priority": null,
-   "work": "Reel ranker: pbp value + Nick's taps; NHL/MLB clip sources",
+   "work": "Reel ranker: pbp value (never Nick's taps); NHL/MLB clip sources",
    "metric": "big_seen_10min",
    "expected_delta": 1,
    "effort_days": 1.5,
@@ -295,7 +295,7 @@
   {
    "id": "E23-25",
    "priority": null,
-   "work": "Decision records + phone thumbs, shadow mode + SPRT rollback, BRAIN auto-fix on dev-test only",
+   "work": "Decision records (app-side, no Nick labels), shadow mode + SPRT rollback, BRAIN auto-fix on dev-test only",
    "metric": null,
    "effort_days": 3,
    "owner": "DECISION (E25 PLATFORM)",

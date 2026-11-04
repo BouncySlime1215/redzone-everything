@@ -264,3 +264,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   locked, but big live only ties (77.5 / 68.8) and locked crunch live drops 84.9 -> 81.0, so it misses the
   bar. pct_of_oracle is unchanged (83.3 dev, 68.8 locked). The switch-rate cap is off because 90-180 s
   cost dead air on dev with no change in the switch rate. docs/noggin.md §11b.
+- 2026-11-04 11:10 AM (Nick, hard rule; lane 1): **No training signal from Nick: the Noggin is fully
+  self-taught.** His 👍/👎, overrides, lock-ins and taps are controls only. Removed: `priority.suggest_from_feedback`
+  (the phone page's L2 suggestions are now always empty), and the North Star row "right game: agreement
+  with Nick's 👍/👎" (`right_game`, `load_taps`, `--taps-db`), replaced by `oracle_value` (% of
+  hindsight-oracle value: the worst league's pct_of_oracle). Allowed sources: the oracle, self-play and
+  simulation, the Teacher's automated review, play-by-play outcomes and stick/sync telemetry.
+  docs/noggin.md § Self-taught.

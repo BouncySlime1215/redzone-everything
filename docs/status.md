@@ -58,7 +58,7 @@ writes words only, async. Gates only on unseen nights.
 | C18 | Bugs: `breaks.blend` 50/50 calibration, two JSON parsers, switch-cost constants disagreeing | INTEGRATION (switch costs with TIMING) |
 | D19-D21 | Kaggle student recipe (fp16 base + fp32 LoRA r16-32), teacher throughput, KD | LOCAL AI (under NOGGIN: Mind) |
 | D22 | Historical label factory (data factory) | NOGGIN |
-| E23-E25 | Decision records + phone 👍/👎, shadow mode + SPRT rollback, BRAIN auto-fix on dev-test only | DECISION (E25 PLATFORM) |
+| E23-E25 | Decision records (no Nick labels), shadow mode + SPRT rollback, BRAIN auto-fix on dev-test only | DECISION (E25 PLATFORM) |
 
 ## Queue (in order; at most 2 working threads)
 

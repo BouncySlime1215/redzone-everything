@@ -34,7 +34,7 @@ def test_chips_read_the_reason_text():
     assert len(phone_v2.chips("your team crunch red zone touchdown power play bet")) == 4
 
 
-def test_vote_is_tied_to_one_switch_and_feeds_suggestions(client, engine):
+def test_vote_is_tied_to_one_switch_and_never_a_training_signal(client, engine):
     _on(engine)
     gid = next(iter(engine.merger.games))
     _switch(engine, gid)
@@ -49,12 +49,11 @@ def test_vote_is_tied_to_one_switch_and_feeds_suggestions(client, engine):
     assert t["tap"] == "down" and t["game"] == gid and t["switch"] == sw[0]["key"] and "Crunch" in t["reason"]
     assert client.post("/api/v2/vote", json={"key": "nope", "vote": 1}).json()["ok"] is False
     assert client.post("/api/v2/vote", json={"key": sw[0]["key"], "vote": 5}).json()["ok"] is False
-    # eight 👎 on crunch switches -> a "less" suggestion, never applied
+    # [no training signal from Nick] eight 👎 on crunch switches: still no suggestion, nothing learned
     for _ in range(8):
         client.post("/api/v2/vote", json={"key": sw[0]["key"], "vote": -1})
     p = client.get("/api/v2/priority").json()
-    sugg = {s["term"]: s for s in p["suggestions"]}
-    assert sugg["crunch"]["suggest"] == "less" and sugg["crunch"]["applied"] is False
+    assert p["suggestions"] == []
     assert p["prefs"]["bets_weight"] == 1.0
 
 

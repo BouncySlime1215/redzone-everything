@@ -88,9 +88,17 @@ for `q_lo(remaining | league, kind, e, rules)` instead of a constant. Behind `no
 |---|---|---|---|
 | **Data factory** | Kaggle CPU or GitHub Actions (never the Mac, never GPU quota) | public PBP with real wall clocks: nflfastR (`time_of_day` 2011+), hoopR NBA 2002+ / MBB 2006+ (`wallclock`), cfbfastR 2014+, fastRhockey + archived ESPN NHL wallclocks, MLB pitch timestamps 2008+ | labeled moments (parquet): stoppage type, length, restart instant, rule state, big-play-next; each row carries its night and split |
 | **Reflex fit** | Kaggle CPU / Actions | factory moments (train nights only) | LightGBM per league and head → exported to numpy `.npz` (Brain v3 pattern) + conformal offsets from the calibration nights |
-| **Teacher** | Kaggle GPU | moments, replayed nights | worded labels, night reviews, preference pairs |
+| **Teacher** | Kaggle GPU | moments, replayed nights | worded labels, automated night reviews |
 | **Mind fit** | Kaggle GPU | teacher rows (D19 recipe: LoRA r16-32, fp16 base + fp32 LoRA) | MLX adapter for the 1.7B student |
-| **Nightly self-review** | Mac records the night, cloud/Kaggle labels it at 5 AM | decision records (E23), 👍/👎 | new labels for both layers |
+| **Nightly self-review** | Mac records the night, cloud/Kaggle labels it at 5 AM | decision records (E23: what the app did and why), play-by-play outcomes, stick/sync telemetry | new labels for both layers (from the oracle and outcomes, never from Nick) |
+
+**Self-taught (hard rule, Nick, Nov 4).** No training or labelling signal comes from Nick. His 👍/👎,
+overrides, lock-ins and taps are controls only (lock in, go now, ...), never labels, features or
+suggestions, for every model: Pick, the crunch / possession policy, Priority L2 and the E23 records. The only
+sources allowed: (1) the hindsight oracle on archived nights (DP-optimal schedules, `redzone/lab/oracle.py`);
+(2) self-play and simulation over replayed and synthetic nights; (3) the Teacher's automated nightly
+review; (4) objective outcomes from play-by-play (a big play happened, restart time, dead air) and the
+stick/sync telemetry.
 
 **Splits (no-overfitting rule):** by whole nights (5 AM ET boundary), time-ordered: train = oldest,
 calibration = the next block, test = newest (`redzone/lab/splits.py`). The scorecard archive
@@ -156,7 +164,7 @@ Four layers, applied in order:
 | Layer | Source | What it holds | Can it be overridden? |
 |---|---|---|---|
 | **L1 Nick's hard rules** | config only (`teams`, `core.league_priority`, banned apps) | your-team (WSH: Commanders/Wizards/Capitals/Nationals; UNC) big plays 100 %; crunch time first; league order NFL > CFB > NBA > CBB > NHL > MLB; never Peacock | **never**, by AI or by any other layer |
-| **L2 Nick's preferences** | phone-page settings (`noggin.priority.prefs`) | bets weight, rivalries, NHL PP/OT boost, reels on/off, switch frequency; each clamped to a range | only by Nick; learned 👍/👎 suggestions are shown to him, never auto-applied (`suggest_from_feedback` returns `applied: false`) |
+| **L2 Nick's preferences** | phone-page settings (`noggin.priority.prefs`) | bets weight, rivalries, NHL PP/OT boost, reels on/off, switch frequency; each clamped to a range | only by Nick; nothing is learned from his 👍/👎 (no suggestions: they are controls, never labels) |
 | **L3 Mind read** | the Mind, every 30-60 s | narrative and stakes numbers in [-1, 1]: comeback brewing, star heating up, playoff race, upset alert, bet decisive next | bounded: the total is capped at ±15 points and expires after its TTL (90 s); it can reorder games only inside the same L1 tier |
 | **L4 Reflex live value** | the Reflex, every tick | red-zone drive, close-late, power play, win-prob swing, restart countdown | it is the base score |
 
@@ -174,8 +182,9 @@ broken by game id. The night lab replays it and gets the same order and reasons.
 switch trace.
 
 **North Star rows** (sent to the harness thread): your-team big plays 100 %, crunch live ≥ 95 %,
-league order respected (no lower-league non-crunch over a higher-league crunch), and "right game"
-agreement with Nick's choices once 👍/👎 data exists.
+league order respected (no lower-league non-crunch over a higher-league crunch), and % of
+hindsight-oracle value achieved (`oracle_value`, live and candidate; it replaced "right game: agreement
+with Nick's 👍/👎" on Nov 4).
 
 **Wiring (next).** The module is not yet on the live path. It goes in behind `noggin.priority.enabled`
 (OFF), first in shadow next to today's `score.league_weight` / crunch priority in the decider, and is

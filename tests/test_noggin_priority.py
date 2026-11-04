@@ -100,13 +100,9 @@ def test_prefs_clamped_and_margin():
     assert P.margin(10, P.Preferences(switch_frequency=2.0)) == 5.0
 
 
-def test_suggestions_are_shown_never_applied():
-    prefs = P.Preferences()
-    rows = [{"vote": -1, "terms": {"bet": 10}}] * 9 + [{"vote": 1, "terms": {"red_zone": 30}}] * 9
-    out = P.suggest_from_feedback(rows, prefs)
-    assert {(s["term"], s["suggest"]) for s in out} == {("bet", "less"), ("red_zone", "more")}
-    assert all(s["applied"] is False for s in out)
-    assert prefs == P.Preferences()
+def test_nothing_learns_from_nicks_votes():
+    """[hard rule, Nov 4] Nick's 👍/👎, taps and overrides are controls, never labels: no learner reads them."""
+    assert not hasattr(P, "suggest_from_feedback")
 
 
 def test_rules_from_default_config():

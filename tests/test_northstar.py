@@ -124,7 +124,8 @@ def test_priority_rows():
     assert r["crunch_live_nfl"]["status"] == ns.PENDING        # 80 % but the feasible ceiling isn't computed
     assert r["crunch_live_nfl"]["value"] == pytest.approx(80.0)
     assert r["your_team_crunch"]["status"] == ns.PASS
-    assert r["league_order"]["status"] == ns.PENDING and r["right_game"]["status"] == ns.PENDING
+    assert r["league_order"]["status"] == ns.PENDING and "right_game" not in r
+    assert r["oracle_value"]["status"] == ns.PENDING          # these cards ran without --oracle
     assert rows_by(ns.table(cards(9)))["crunch_live_nba"]["status"] == ns.PASS
 
 
@@ -155,28 +156,16 @@ def test_profile_run_keeps_its_candidate_column(tmp_path, monkeypatch):
     assert rows_by(res["rows"])["mid_play"]["value"] > 0
 
 
-def test_right_game_reads_store_taps(tmp_path, monkeypatch):
-    import time as _time
-    from redzone.store import Store
-    assert ns.load_taps(tmp_path / "none.db") is None and not (tmp_path / "none.db").exists()
-    db = tmp_path / "redzone.db"
-    st = Store(db)
-    base = 1_793_000_000.0                       # an evening, Eastern
-    for night in range(9):
-        for k in range(8):
-            monkeypatch.setattr(_time, "time", lambda t=base + night * 86400 + k * 60: t)
-            st.feedback("g1", 1 if k else -1, "switch", {"reason": "crunch", "switch": k})
-    monkeypatch.setattr(_time, "time", lambda: base + 10 * 86400)
-    st.feedback("g1", 0, "missed", {})
-    st.feedback("g1", 0, "switch", {})          # cleared: not counted
-    monkeypatch.undo()
-    taps = ns.load_taps(db)
-    assert len(taps) == 74
-    r = ns.right_game_row(taps)
-    assert r["key"] == "right_game" and r["nights"] == 10
-    assert abs(r["value"] - 100 * 63 / 73) < 0.01 and r["status"] == ns.FAIL      # 86 % < 95 %
-    assert ns.right_game_row(None)["status"] == ns.PENDING
-
+def test_no_row_reads_nicks_taps():
+    """[hard rule, Nov 4] nothing in the North Star is graded against Nick's 👍/👎: right_game is gone and
+    % of hindsight-oracle value takes its place (worst league's pct_of_oracle)."""
+    assert not hasattr(ns, "load_taps") and not hasattr(ns, "right_game_row")
+    assert "right_game" not in {m[0] for m in ns.METRICS} and "oracle_value" in {m[0] for m in ns.METRICS}
+    m = {"big_live_pct": 50.0, "crunch_live_pct": 80.0, "dead_air_pct": 20.0,
+         "oracle": {"big_live": {"big_live_pct": 100.0}, "crunch_live": {"crunch_live_pct": 100.0},
+                    "dead_air": {"dead_air_pct": 10.0}}}
+    rows = {r["key"]: r for r in ns.oracle_rows({"nba": m, "nhl": {**m, "big_live_pct": 70.0}})}
+    assert rows["oracle_value"]["value"] == 50.0 and rows["oracle_value"]["status"] == ns.FAIL
 
 def test_every_run_runs_the_controls_drill_unless_given_one(tmp_path, monkeypatch):
     """press_to_tv_p95 gets a sim value on every run (cycle 02 lane 3): no --controls-json -> drill runs."""
