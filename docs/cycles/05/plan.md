@@ -63,11 +63,11 @@ listed under it; a marked night-lab test counts even when the behaviour behind i
 - Coverage: FEED-02, FEED-04..07, NET-01..03, APP-01..07, MAC-01, MAC-08, SLATE-01, SLATE-02.
 
 ## ⑤ Features (reopened; lowest, never preempts ①-④)
-1. **Phone states for the buttons** (UI half of BTN-01..06): LOCK IN badge, GO NOW "switching… / on TV",
-   "not delivered, retrying", using lane ③'s command API only.
-2. **Teacher decision-record export:** one JSONL per night, objective outcomes only, no taps.
-3. **Replay viewer oracle overlay:** the oracle's schedule next to what we did, plus missed-big-play markers.
-4. North Star trend page from docs/northstar-history.jsonl (read-only).
+1. **Teacher decision-record export:** one JSONL per night, objective outcomes only, no taps.
+2. **Replay viewer oracle overlay:** the oracle's schedule next to what we did, plus missed-big-play markers.
+3. North Star trend page from docs/northstar-history.jsonl (read-only).
+4. **"I missed that"** records a catch-up reel request for the next dead window (3-min rule); reels stay OFF.
+(Button states are already merged as #96.)
 
 ## Integrator (at T+0 and T+90)
 - **T+0:** review cycle 04 → `docs/cycles/04/review.md`.
