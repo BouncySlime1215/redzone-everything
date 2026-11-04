@@ -119,3 +119,21 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** `espn.parse_summary(upto=N)` filled `leaders` from the whole-game boxscore; the night's GAMES were picked before the splits existed.
 - **Fix:** leaders are filled only when `upto is None`; the night uses train-night games (NHL 401892578, NBA 401909860). `scripts/leak_check.py` (in CI) fails on locked games in the night, end-of-game fields in a replay, model stamps past the test start and expired KNOWN_ERRORS.
 - **Signals:** a replayed GameState with leaders or W-L records, a fixture id on a test night, `leak_check` FAIL
+
+## "Go now" on a preloaded game still waited a second it had already proven
+- **Symptom:** (controls drill) "Watch this" + "Go now" on a game already playing on the hidden stick took 4.1 s to the picture, not the ~3 s a flip costs.
+- **Cause:** the flip asks for two playback reads >= FLIP_STEADY_S apart with no state change. The memo of the first read was only filled during a switch, so every flip started the 1 s clock from zero even though verify_standby and the preload's own confirming read had just seen the same steady stream.
+- **Fix:** verify_standby and a finished live preload feed the same memo (`_note_steady`), so a flip needs one more read, never less evidence. Preloaded go-now median 4.1 -> 3.0 s.
+- **Signals:** FLIP_STEADY_S, `_steady_playing`, preloaded flip ~1 s slower than flip + settle
+
+## A retried "Watch this" was a "Go now", and a Skip expired before the TV left
+- **Symptom:** (controls drill) a lost answer resent by the phone would run the tap again: a second "Watch this" means "Go now" (cuts at once, even mid-play), a second Skip skips two games. Separately, a Skip during a hockey power play waited ~5 min for a stoppage, the 5-minute skip expired first and the TV never left (seed 4).
+- **Cause:** /api/action had no tap identity. `engine.skipped` counted from the tap, not from when the TV left.
+- **Fix:** every phone tap carries an id (redzone/commands.py): a repeat id gets the first answer back, never a second run; the phone retries a lost answer with the same id. The skip's five minutes start once the TV is off the skipped game. Drill with taps lost and duplicated on purpose: 83 taps, 65 retried, 0 ran more or less than once; skips that never left 2 -> 0.
+- **Signals:** double tap, retry, duplicate, "Go now" mid-play, skip ignored, skip_stuck, not_once
+- 2026-11-04: **CI now checks playbook coverage and posts a RAM/CPU line.** Tests claim entries with
+  `@pytest.mark.playbook("ID")`. `scripts/playbook_coverage.py --junit` fails CI only when an entry marked
+  `done` has no passing test, or a test names an unknown id, so the 79 entries can be built top-down.
+  `scripts/perf_probe.py` times the real `Engine.decide()` on 8 synthetic live games (300 ticks): it was
+  p50 1.0 ms, p99 5.3 ms, 56 MB peak RSS at 1f5e751. Engine needs a running event loop, so the probe runs
+  inside `asyncio.run`.

@@ -36,6 +36,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT))
 
 import ci_scorecard  # noqa: E402
 import release_gate as rg  # noqa: E402
@@ -72,6 +73,7 @@ METRICS = [
     ("switch_p95", "Switch time p95 (SmartThings input change)", "<= 3 s", -1, 3.0, 3.0),
     ("flips_settled", "Flips PLAYING within 3 s", ">= 99%", 1, 99.0, 100.0),
     ("delay_err_p95", "Per-stick delay error p95", "<= 2 s", -1, 2.0, 2.0),
+    ("press_to_tv_p95", "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)", "<= 3 s", -1, 3.0, 3.0),
     ("dead_air", "Dead air (commercials/breaks on screen)", "0%", -1, 0.0, 100.0),
     ("recovery", "Faults recovered without Nick (e2e night)", ">= 95%", 1, 95.0, 100.0),
     *[(f"feed_lag_{lg}", f"Honest feed lag in use, {lg.upper()} (p50)", "info", -1, None, None) for lg in LEAGUES],
@@ -81,11 +83,15 @@ META = {k: dict(label=lb, target=t, dir=d, bar=b, scale=s) for k, lb, t, d, b, s
 
 # ---- running the evidence ---------------------------------------------------------------------
 
-def run_cards(root: Path, split: str, timeout: float = 1800) -> dict:
-    """The three league scorecards on one split, every night in it, measured feed lag."""
+def run_cards(root: Path, split: str, timeout: float = 1800, profile: str | None = None) -> dict:
+    """The three league scorecards on one split, every night in it, measured feed lag. With `profile`
+    (redzone/noggin/profile.py), the same cards with that profile's flags and buffer on."""
     sp = SPLITS[split]
     argvs = {"nfl": ["scripts/eval.py", "--n", "999", "--split", sp, "--real-lag"],
              **{lg: ["scripts/eval_sports.py", lg, "--nights", "999", "--split", sp, "--real-lag"] for lg in ("nba", "nhl")}}
+    if profile:
+        from redzone.noggin import profile as P
+        argvs = {lg: a + P.argv(profile, lg) for lg, a in argvs.items()}
     out = {}
     for lg, argv in argvs.items():
         if not (root / f"data/archive/{lg}").exists():
@@ -93,7 +99,7 @@ def run_cards(root: Path, split: str, timeout: float = 1800) -> dict:
             continue
         card, err, took = ci_scorecard.run_one(root, argv, timeout)
         out[lg] = {"metrics": card, "seconds": round(took)} if card is not None else {"error": err}
-        print(f"  {split}/{lg}: {'ok' if card else err} ({took:.0f} s)", flush=True)
+        print(f"  {split}/{lg}{'/' + profile if profile else ''}: {'ok' if card else err} ({took:.0f} s)", flush=True)
     return out
 
 
@@ -171,7 +177,7 @@ def _boot_ratio(rows: list[tuple[float, float]], draws: int = rg.BOOT_DRAWS, see
 
 
 def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] | None = None,
-          lag_profile: dict | None = None) -> list[dict]:
+          lag_profile: dict | None = None, controls: dict | None = None) -> list[dict]:
     rows: list[dict] = []
     per = {lg: _per(cards, lg) for lg in LEAGUES}
     broken = [lg for lg in LEAGUES if not rg._m(cards.get(lg, {}))]
@@ -248,6 +254,7 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
     rows.append(_row("delay_err_p95", None, None, None, PENDING,
                      "not measured: needs the break-anchor delay estimator (on-screen break start/end vs feed "
                      "event time) and Wednesday's probe logs"))
+    rows.append(press_row(controls))
     # 7. dead air
     d = [(float(x.get("dead_s") or 0), float(x.get("watched_s") or 0)) for x in every]
     point, lo, hi = _boot_ratio(d)
@@ -309,6 +316,23 @@ def settle_row(nights: list[dict] | None) -> dict:
     r = _rate("flips_settled", per, 99.0)
     r["detail"] += "; e2e fault nights (fake TV), picture-checked flips only"
     return r
+def press_row(drill: dict | None) -> dict:
+    """press_to_tv_p95 from the controls drill (scripts/controls_drill.py: phone presses in the replayed
+    night, fake sticks and TV timed like the real ones). The sim can FAIL the line, since a real press
+    is never faster than the sim's; it can't PASS it: that needs real presses on Nick's TV."""
+    s = (drill or {}).get("summary") or {}
+    xs = sorted(x for r in (drill or {}).get("runs", []) for x in r.get("go_now_s", []) + r.get("open_go_s", []))
+    if not xs:
+        return _row("press_to_tv_p95", None, None, None, PENDING,
+                    "controls drill not run here (scripts/controls_drill.py --json, then --controls-json)")
+    q = lambda v: v[min(len(v) - 1, math.ceil(0.95 * len(v)) - 1)]  # noqa: E731
+    p95 = q(xs)
+    det = (f"sim drill: {len(xs)} presses over {s.get('nights', '?')} nights, median {xs[len(xs) // 2]:.2f} s, "
+           f"{s.get('go_now_within_3s_pct')}% within 3 s; dropped {s.get('dropped', 0)}, ran-not-once "
+           f"{s.get('not_once', 0)} of {s.get('taps', 0)} taps ({s.get('taps_retried', 0)} lost/duplicated on purpose)")
+    if p95 > 3.0 or s.get("dropped") or s.get("not_once"):
+        return _row("press_to_tv_p95", round(p95, 2), None, None, FAIL, det)
+    return _row("press_to_tv_p95", round(p95, 2), None, None, PENDING, det + "; PENDING until real presses are logged")
 
 
 def recovery_row(nights: list[dict] | None) -> dict:
@@ -339,8 +363,8 @@ def recovery_row(nights: list[dict] | None) -> dict:
 def _fmt(key, v) -> str:
     if v is None:
         return "n/a"
-    if key == "switch_p95" or key.startswith("feed_lag"):
-        return f"{v:.2f} s" if key == "switch_p95" else f"{v:.1f} s"
+    if key in ("switch_p95", "press_to_tv_p95") or key.startswith("feed_lag"):
+        return f"{v:.2f} s" if key in ("switch_p95", "press_to_tv_p95") else f"{v:.1f} s"
     return f"{v:.2f}" if key == "mid_play" else f"{v:.1f}%"
 
 
@@ -351,7 +375,7 @@ def _delta(key, now, before) -> str:
     if abs(d) < 1e-9:
         return "0"
     better = (d > 0) == (META[key]["dir"] > 0)
-    return f"{'+' if d > 0 else ''}{d:.2f}{' s' if key == 'switch_p95' else ''} {'🟢' if better else '🔴'}"
+    return f"{'+' if d > 0 else ''}{d:.2f}{' s' if key in ('switch_p95', 'press_to_tv_p95') else ''} {'🟢' if better else '🔴'}"
 
 
 def last_run(history: Path, split: str) -> dict | None:
@@ -371,17 +395,26 @@ def last_run(history: Path, split: str) -> dict | None:
 ICON = {PASS: "✅ PASS", FAIL: "❌ FAIL", PENDING: "⏳ PENDING", INFO: "ℹ️ INFO"}
 
 
-def md_table(rows: list[dict], before: dict | None) -> list[str]:
+def md_table(rows: list[dict], before: dict | None, candidate: list[dict] | None = None,
+             cand_name: str = "candidate") -> list[str]:
+    """The table; with `candidate` rows (a --profile run) a column with that profile's value, status and
+    its change against current, so a flag decision reads the combined numbers."""
     prev = (before or {}).get("values", {})
-    out = ["| metric | target | current | 95% CI (nights) | status | Δ vs last run | evidence |",
-           "|---|---|---:|---|---|---:|---|"]
+    cand = {r["key"]: r for r in candidate or []}
+    extra_h = f" {cand_name} | {cand_name} status | {cand_name} vs current |" if candidate is not None else ""
+    out = ["| metric | target | current | 95% CI (nights) | status | Δ vs last run |" + extra_h + " evidence |",
+           "|---|---|---:|---|---|---:|" + ("---:|---|---:|" if candidate is not None else "") + "---|"]
     for r in rows:
         k = r["key"]
         ci = "–" if r["lo"] is None else f"{_fmt(k, r['lo'])} – {_fmt(k, r['hi'])}"
         if r.get("nights"):
             ci += f" ({r['nights']})"
+        extra = ""
+        if candidate is not None:
+            c = cand.get(k) or {"value": None, "status": PENDING}
+            extra = f" {_fmt(k, c['value'])} | {ICON[c['status']]} | {_delta(k, c['value'], r['value'])} |"
         out.append(f"| {META[k]['label']} | {META[k]['target']} | {_fmt(k, r['value'])} | {ci} | {ICON[r['status']]} "
-                   f"| {_delta(k, r['value'], prev.get(k))} | {r['detail']} |")
+                   f"| {_delta(k, r['value'], prev.get(k))} |{extra} {r['detail']} |")
     n = {s: sum(r["status"] == s for r in rows) for s in (PASS, FAIL, PENDING)}
     out.append(f"\n{n[PASS]} pass, {n[FAIL]} fail, {n[PENDING]} pending (pending never counts as passing).")
     return out
@@ -405,7 +438,11 @@ def render(results: dict, commit: str, when: str, history: Path) -> str:
                  "locked": "LOCKED unseen nights (`test`): report only, never tuned on"}[split]
         nn = ", ".join(f"{lg.upper()} {len(_per(res['cards'], lg))}" for lg in LEAGUES)
         out += [f"## {title}", "", f"Nights: {nn}.", ""]
-        out += md_table(res["rows"], last_run(history, split)) + [""]
+        cand = res.get("candidate")
+        if cand:
+            out += [f"Candidate profile `{cand['profile']}`: {cand.get('about', '')}.", ""]
+        out += md_table(res["rows"], last_run(history, split), cand["rows"] if cand else None,
+                        cand["profile"] if cand else "candidate") + [""]
     return "\n".join(out)
 
 
@@ -513,10 +550,13 @@ def main(argv=None) -> int:
     ap.add_argument("--reuse-nights", type=Path, help="take the e2e nights from an earlier --json output")
     ap.add_argument("--switch-log", type=Path, action="append", default=None,
                     help="tv_input.jsonl file(s) with real switches (default: <root>/data/tv_input.jsonl)")
+    ap.add_argument("--controls-json", type=Path, help="a scripts/controls_drill.py --json report (press_to_tv_p95)")
     ap.add_argument("--json", type=Path, help="write the raw results here (PR CI compares two of these)")
     ap.add_argument("--no-write", action="store_true", help="don't touch docs/ (PR CI)")
     ap.add_argument("--delta", nargs=2, type=Path, metavar=("HEAD", "BASE"), help="print the PR delta table")
     ap.add_argument("--md", type=Path, help="with --delta: write the table here")
+    ap.add_argument("--profile", default=None,
+                    help="also score this Noggin profile (redzone/noggin/profile.py, e.g. candidate) as its own column")
     a = ap.parse_args(argv)
 
     if a.delta:
@@ -535,11 +575,19 @@ def main(argv=None) -> int:
     # keep only what the recovery line reads, so the raw file stays small
     nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults", "settle_book") if k in n}
               for n in nights]
+    nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults") if k in n} for n in nights]
+    drill = json.loads(a.controls_json.read_text()) if a.controls_json and a.controls_json.exists() else None
     xs = switch_samples(a.switch_log if a.switch_log is not None else [root / "data/tv_input.jsonl"])
     results = {}
     for split in (("dev", "locked") if a.split == "both" else (a.split,)):
         cards = run_cards(root, split)
         results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof)}
+        if a.profile:
+            from redzone.noggin import profile as P
+            cc = run_cards(root, split, profile=a.profile)
+            results[split]["candidate"] = {"profile": a.profile, "about": P.PROFILES[a.profile].get("about", ""),
+                                           "cards": cc, "rows": table(cc, nights, xs, prof)}
+        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill)}
     commit = _git(root, "rev-parse", "--short", "HEAD")
     when = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     if a.json:
@@ -552,7 +600,8 @@ def main(argv=None) -> int:
         if ROADMAP_SRC.exists() and "dev" in results:
             ROADMAP_MD.write_text(render_roadmap(json.loads(ROADMAP_SRC.read_text()), results["dev"]["rows"], commit, when))
     for split, res in results.items():
-        print(f"\n## {split}\n" + "\n".join(md_table(res["rows"], None)))
+        cand = res.get("candidate")
+        print(f"\n## {split}\n" + "\n".join(md_table(res["rows"], None, cand["rows"] if cand else None)))
     return 0
 
 

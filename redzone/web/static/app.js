@@ -9,14 +9,14 @@ import {
 } from "./rz-core.js?v=41";
 import { patch, flash } from "./rz-dom.js?v=40";
 import { icon } from "./rz-ui.js?v=40";
-import { startStream, act } from "./rz-api.js?v=40";
+import { startStream, act } from "./rz-api.js?v=42";
 import { updateSheets, topSheet, closeSheet } from "./rz-sheet.js?v=40";
-import { renderNow, countdown } from "./rz-now.js?v=45";
+import { renderNow, countdown } from "./rz-now.js?v=46";
 import { renderGames } from "./rz-games.js?v=41";
 import { renderBets } from "./rz-bets.js?v=40";
 import { renderLab, loadLab } from "./rz-lab.js?v=40";
-import { renderSettings, announce } from "./rz-settings.js?v=45";
-import { loadTeams } from "./rz-detail.js?v=41";
+import { renderSettings, announce } from "./rz-settings.js?v=46";
+import { loadTeams } from "./rz-detail.js?v=42";
 
 const TABS = ["now", "games", "bets", "lab", "settings"];
 const SCREENS = { now: renderNow, games: renderGames, bets: renderBets, lab: renderLab, settings: renderSettings };

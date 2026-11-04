@@ -46,9 +46,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python scripts/fetch_eval_data.py
+      - name: controls drill (phone presses in 4 replayed nights, taps lost and duplicated on purpose)
+        # Shipped defaults (no --pretune). Exit 1 = a dropped/broken press: the North Star line says so.
+        run: python scripts/controls_drill.py --seeds 4 --hours 3 --flaky --json controls.json || true
       - name: North Star (dev + locked, 8 e2e fault nights)
         run: |
-          python scripts/northstar.py --night-seeds 8 --json northstar-raw.json
+          python scripts/northstar.py --night-seeds 8 --controls-json controls.json --json northstar-raw.json
           cat docs/northstar.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()

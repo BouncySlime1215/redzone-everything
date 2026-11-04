@@ -8,7 +8,7 @@ import { icon, logo, leagueImg, avatar, empty, skel, stateBadge, chip } from "./
 import { situation, wpBar, sparkline, linescore } from "./rz-viz.js?v=40";
 import { board, gameCard } from "./rz-cards.js?v=40";
 import { openSheet, sheetById, closeSheet, confirmSheet, toast, updateSheets } from "./rz-sheet.js?v=40";
-import { api, act } from "./rz-api.js?v=40";
+import { api, act } from "./rz-api.js?v=42";
 import { pop } from "./rz-dom.js?v=40";
 
 /* ====================================================================== game detail */
@@ -28,6 +28,9 @@ export function openGame(gid) {
   if (!gid) return;
   const id = "game:" + gid;
   const s = openSheet({ id, live: true, full: true, flush: true, onImg: true, label: "Game details", render: () => gameSheet(gid) });
+  // Pre-tune it on the hidden stick (two_stick.pretune_on_open), so "Watch this" is a quick flip. Silent.
+  const g0 = gameById(gid);
+  if (g0 && g0.phase === "live") api("/api/action", { body: { action: "peek", game_id: gid } }).catch(() => {});
   loadDetail(gid).then(() => s.update());
   const iv = setInterval(() => {
     if (!sheetById(id)) { clearInterval(iv); return; }

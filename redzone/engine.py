@@ -46,6 +46,8 @@ CLOCK_JUMP_S = 5.0     # wall clock moved this much more (or less) than time.mon
 NOT_THE_TARGETS_FAULT = ("no safe moment", "safe exit window closed", "switch cancelled",
                          "TV input is unknown", "TV control was disabled", "no channel",
                          "stick not responding")
+PEEK_HOLD_S = 90.0    # a game opened on the phone keeps the hidden stick this long (two_stick.pretune_on_open)
+SKIP_S = 300.0        # a skipped game stays off the TV this long after the TV leaves it
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
@@ -141,6 +143,9 @@ class Engine:
         self.fantasy = None   # latest fantasy.Matchup
         self._suspended_focus: tuple | None = None   # (game, mode) paused for garbage time
         self.hold: dict | None = None   # "Watch this" from the phone: a manual hold until "Resume auto"
+        from redzone.commands import Commands
+        self.commands = Commands()   # phone taps by id: a retried tap answers, never runs twice
+        self.peek: tuple[str, str, float] | None = None   # (game, target, until): a game opened on the phone
         self._mic_used: set[tuple[str, float]] = set()
         self._last_mic = 0.0
         self._pending_decision = None
@@ -1008,6 +1013,12 @@ class Engine:
             return False
         now = time.time()
         for gid, until in list(self.skipped.items()):
+            if gid == self.decider.current:
+                # [controls] Still on the skipped game (waiting for a dead ball to leave it): the five
+                # minutes count from when the TV leaves. Before, a skip in a hockey power play waited
+                # ~5 min for a stoppage, expired first, and the TV never left (controls drill, seed 4).
+                self.skipped[gid] = max(until, now + SKIP_S)
+                continue
             if now >= until:
                 self.skipped.pop(gid)
                 self.decider.user.muted.discard(gid)
@@ -1385,6 +1396,8 @@ class Engine:
         is a 1-2s input flip instead of a 5-10s tune. What and when: redzone/standby.py."""
         if not self.control.two_stick or self.decider.user.paused:
             return
+        if self._peeking():
+            return   # a game you opened on the phone is on the hidden stick: keep it there for now
         self._plan_prime_multiview(cands)
         pick = self.planner.plan(self._standby_options(cands, redzone), self.control.standby)
         if pick:
@@ -1543,6 +1556,8 @@ class Engine:
             return self._hold(gid, force=value == "force")
         if action == "release":
             return self._release_hold("Back on autopilot")
+        if action == "peek":
+            return self._peek(gid)
         if action == "hold_auto":
             if not self.hold:
                 return False, "Nothing is held"
@@ -1595,7 +1610,7 @@ class Engine:
         if action == "skip":
             if not dec.current:
                 return False, "Nothing to skip"
-            self.skipped[dec.current] = time.time() + 300
+            self.skipped[dec.current] = time.time() + SKIP_S
             if self.hold and self.hold["game_id"] == dec.current:
                 self.hold, u.locked_game = None, None
             u.muted.add(dec.current)
@@ -1683,6 +1698,27 @@ class Engine:
         if force or self.cfg.get("mode.dry_run", True):
             return True, f"On {name} — holding here"
         return True, f"Switching to {name} at the next safe moment (tap again to go now)"
+
+    def _peek(self, gid: str | None) -> tuple[bool, str]:
+        """A live game opened on the phone (two_stick.pretune_on_open): tune it on the hidden stick now,
+        so the "Watch this" / "Go now" that usually follows is a flip (~3 s), not a tune + flip (~8 s).
+        The planner leaves the hidden stick alone for PEEK_HOLD_S. Silent: the message is empty."""
+        if not self.cfg.get("two_stick.pretune_on_open", False) or not gid or gid == self.decider.current:
+            return True, ""
+        g = self.merger.games.get(gid)
+        target = getattr(self.where.get(gid), "target", None)
+        if g is None or g.phase != Phase.LIVE or not target or self.decider.user.paused:
+            return True, ""
+        self.peek = (gid, target, time.time() + PEEK_HOLD_S)
+        self.control.preload(target, user=True)
+        return True, ""
+
+    def _peeking(self) -> bool:
+        p = self.peek
+        if p is None or time.time() >= p[2] or p[0] == self.decider.current:
+            self.peek = None
+            return False
+        return True
 
     def _hold_waits(self, d: Decision) -> bool:
         """A switch to the held game honors the never-cut-mid-play rule unless you forced it."""
@@ -1915,7 +1951,7 @@ class Engine:
                        "fastcast": self.fastcast.status() if self.fastcast else None,
                        "fastcast_check": self.fc_check.verdict,
                        "discovery": self.discovery.status(), "supervisor": self.supervisor.status(),
-                       "governor": self.governor.view()},
+                       "governor": self.governor.view(), "agent": self._agent_view()},
             "bets": self.bets_view(), "feedback": self.store.feedback_counts(),
             "fantasy": None if self.fantasy is None else {
                 "me": self.fantasy.me, "opponent": self.fantasy.opponent, "my_points": self.fantasy.my_points,
@@ -1923,6 +1959,14 @@ class Engine:
                 "starters": [{"name": x.name, "pos": x.pos, "team": x.team, "mine": x.mine}
                              for x in self.fantasy.starters]},
         }
+
+    def _agent_view(self) -> dict:
+        """What the watchdog reads beyond the rest of the snapshot (redzone/platform/agent_fix.py)."""
+        try:
+            from redzone.platform.agent_fix import view
+            return view(self)
+        except Exception as e:   # a status read must never break the snapshot
+            return {"error": str(e)[:120]}
 
     def _sticks_view(self) -> list[dict]:
         """Stick rows for the phone. Away from home a stick that can't answer is "away", not "offline"
