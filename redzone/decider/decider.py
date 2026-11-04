@@ -103,7 +103,7 @@ START_RETRY_MAX_S = 60.0
 # [cut timing] Every live entry lands on a dead ball (cuts.plan_entry): as is, with a short DVR rewind
 # to the dead ball before the play we'd otherwise join mid-way, or after waiting for one. Only a
 # switch you made by hand goes straight in.
-ENTRY_EXEMPT = {"user"}
+ENTRY_EXEMPT = {"user", "resume", "skip"}   # resume/skip land on a planned frame of the same tune
 PICK_KEEPS = {"user", "crunch", "home", "must_see", "live"}   # [noggin PICK] app-only switch kinds
 ENTRY_SLACK_S = 2.0       # the tune's own timing doubt, on top of the delay's 2 sigma
 # Once the delay's doubt grows (sigma drifts up between calibrations) no landing fits a 30 s huddle
@@ -242,6 +242,9 @@ class Decider:
         # "stay". None = jump (the rule default). Self-taught only (oracle imitation, simulation, play-by-play
         # outcomes); Nick's buttons are controls, never labels (Nov 4 hard rule).
         self.possession_policy = None
+        # [replay and resume] the game paused for a catch-up replay: (game, when, its extra behind-live then)
+        self.resume: tuple[str, float, float] | None = None
+        self.resume_log: list[tuple[float, str, str, float]] = []   # (when, "replay"|"resume"|"skip", game, extra s)
         self.scenarios = Scenarios(cfg)   # [scenario tree] GAME-01..03, 21, 22 seeds, flag playbooks.game.enabled (off)
         self.safety = Safety(cfg)   # [playbooks] SAFE-01/02/03/05, flag playbooks.safe.enabled (off)
         # The live controller knows whether THIS target is already ready. App-wide
@@ -396,13 +399,16 @@ class Decider:
             self.log.append(d)
             return d
         if d.action == "switch" and d.target:
-            if d.target == self.current and not self.after_replay:
+            if d.target == self.current and not self.after_replay and d.kind != "skip":
                 d = Decision(now, "stay", self.current, "already here", d.state)
             else:
+                if d.kind in ("resume", "skip"):
+                    self.resume_log.append((now, d.kind, d.target, d.rewind_s))
                 self._commit(d.target, kind=d.kind)
                 self._land_behind(d.target, d.rewind_s)
                 self.after_replay = False
         elif d.action == "replay" and d.replay:
+            self._pause_for(d, now)
             self._start_replay(d.replay, cands, now)
         self.log.append(d)
         return d
@@ -413,6 +419,7 @@ class Decider:
             _, self.home_break_visit, self.home_return_at = self._proposal_home
         self._proposal_home = None
         if d.action == "replay" and d.replay:
+            self._pause_for(d, self._clock())
             self._start_replay(d.replay, cands, self._clock(), confirmed=True)
         elif d.target:
             self.abort_replay()
@@ -1315,6 +1322,16 @@ class Decider:
             return Decision(now, "switch", REDZONE, "break's ending on a routine snap → NFL RedZone",
                             state, gate_txt, kind="break_visit")
 
+        # [replay and resume] repay the buffer in this break, else a missed play at this dead ball
+        if on_break:
+            skip = self._skip_ahead(s_cur, on_break, state, gate_txt, now)
+            if skip:
+                return skip
+        if not chase:
+            rr = self._resume_replay(cands, s_cur, gate, state, gate_txt, now)
+            if rr:
+                return rr
+
         # Chase: a big play just happened somewhere and hasn't aired yet. Go now, see it live.
         if chase:
             return self._chase_decision(chase, cands, state, gate_txt, now)
@@ -1453,8 +1470,97 @@ class Decider:
         return Decision(now, "replay", rp.game_id, f"{name}: {rp.label}", State.REPLAY, gate_txt,
                         kind="replay", replay=rp)
 
+    # ----- [replay and resume] a replay costs buffer, not live play (planner, Nov 4) ----------------
+    # At the screen game's dead ball: pause it, flip to the catch-up (parked on the hidden stick), flip
+    # back and unpause on the same frame. Nothing live is missed and we leave and land on one dead
+    # ball (rule #1); the screen runs that much further behind live, repaid by skipping ahead in its
+    # next commercial / TV timeout (or by any switch away, which comes back fresh). Hardware gate: a
+    # paused YouTube TV stick must resume on the same frame (night-lab step, lane 3). Flag replay.resume.
+
+    def _extra_behind(self, gid: str | None) -> float:
+        """How far the tune on screen runs behind its usual place (held buffer), in seconds."""
+        t = self.target_of(gid) if gid else None
+        if not t:
+            return 0.0
+        held = getattr(self.delays, "held", None) or {}
+        return max(0.0, self.delays.get(t).behind - held.get(t, 0.0))
+
+    def _resume_on(self, x) -> bool:
+        if not self.cfg.get("replay.resume", False) or x is None:
+            return False
+        lgs = self.cfg.get("replay.resume_leagues") or []
+        return not lgs or x.scored.league.base.value in lgs
+
+    def _resume_replay(self, cands, s_cur: Scored, gate, state, gate_txt: str, now: float) -> Decision | None:
+        """A missed play, aired within replay.resume_window_s, replayed by pausing the game on screen
+        at this dead ball. Never past the offset cap; never in crunch time unless the cap's
+        replay.resume_crunch_share is free (0 = never)."""
+        c = self.cfg
+        cur = self._known.get(self.current) if self.current else None
+        if self.current is None or self.current in PSEUDO or cur is None or not self._resume_on(cur) \
+                or not (gate and gate.safe) or s_cur.lock or self.user.locked_game:
+            return None
+        w = float(c.get("replay.resume_window_s", 180))
+        games = self._replay_pool(cands)
+        fresh = [m for m in self.queue if m.game_id != self.current and not m.seen_live and not m.replayed
+                 and self._aired_age(m, now) <= w and self._replayable(games.get(m.game_id))]
+        if not fresh:
+            return None
+        # your team's first, then the one closest to the end of its 3 minutes
+        rp = max(fresh, key=lambda m: (int(m.mine), self._aired_age(m, now)))
+        back = self.entry_cost(cur.target) if self.entry_cost is not None else self._deadline_cost(cur.target)
+        cost = self._replay_cost(rp, cands) + self._replay_overrun(rp, cands, now) + back
+        cap = float(c.get("replay.resume_cap_s", 60))
+        if s_cur.crunch or s_cur.crunch_now:
+            cap *= float(c.get("replay.resume_crunch_share", 0.0))
+        if self._extra_behind(self.current) + cost > cap:
+            return None
+        return Decision(now, "replay", rp.game_id, f"catch-up (paused {_short(s_cur)} here): {rp.label}",
+                        State.REPLAY, gate_txt, kind="replay_resume", replay=rp)
+
+    def _pause_for(self, d: Decision, now: float) -> None:
+        """Committing a replay: remember the game it pauses (replay_resume), else nothing to resume."""
+        if d.kind == "replay_resume" and self.current and self.current not in PSEUDO and self.replaying is None:
+            self.resume = (self.current, now, self._extra_behind(self.current))
+            self.resume_log.append((now, "replay", self.current, self.resume[2]))
+        elif self.replaying is None:
+            self.resume = None
+
+    def _resume_back(self, cands, now: float) -> Decision | None:
+        """The replay is over: back to the paused game on the frame we left (rewind = time away)."""
+        if self.resume is None:
+            return None
+        gid, at, extra = self.resume
+        self.resume = None
+        x = cands.get(gid) or self._known.get(gid)
+        if x is None or not x.target:
+            return None
+        cost = self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target)
+        self.home_break_visit = None
+        return Decision(now, "switch", gid, "back where we paused it for the replay", State.WATCHING,
+                        "replay finished", kind="resume", rewind_s=extra + (now - at) + cost)
+
+    def _skip_ahead(self, s_cur: Scored, on_break: bool, state, gate_txt: str, now: float) -> Decision | None:
+        """Repay: the screen game is in a commercial / TV timeout and runs behind from earlier
+        replays: skip ahead inside the break (never past its end, so the landing stays dead)."""
+        extra = self._extra_behind(self.current)
+        cur = self._known.get(self.current) if self.current else None
+        if extra < 1.0 or not on_break or cur is None or not self._resume_on(cur):
+            return None
+        d = self.delays.get(cur.target or "unknown")
+        cost = self.entry_cost(cur.target) if self.entry_cost is not None else self._deadline_cost(cur.target)
+        room = self._break_remaining(self.current, self._known, now) - cost - 2 * d.current_sigma(now) - ENTRY_SLACK_S
+        jump = min(extra, room)
+        if jump < float(self.cfg.get("replay.resume_min_skip_s", 10)):
+            return None
+        return Decision(now, "switch", self.current, f"skipping {jump:.0f} s of the break to catch up",
+                        state, gate_txt, kind="skip", rewind_s=extra - jump)
+
     def _after_replay(self, cands, watchable, now: float) -> Decision:
         """A replay just finished; we're on old footage, so go somewhere live (or replay more)."""
+        back = self._resume_back(cands, now)
+        if back is not None:
+            return back
         home = self.home_break_visit
         hot = self._crunch_pick(watchable)
         if hot and (home not in watchable or not self._crunch_outranks(cands[home].scored, cands[hot].scored)):

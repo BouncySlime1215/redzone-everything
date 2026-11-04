@@ -891,6 +891,31 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
     return rep
 
 
+def behind_extra(switches: list, t1: float) -> list[tuple[float, float]]:
+    """[replay and resume] (seconds, extra s behind its usual place) per live stretch on screen: the
+    rewinds on entry and the pauses for replays, never the tune's own landing jitter. Replays excluded."""
+    out = []
+    for i, s in enumerate(switches):
+        end = switches[i + 1].t if i + 1 < len(switches) else t1
+        if s.kind == "replay" or end <= s.t:
+            continue
+        out.append((end - s.t, max(0.0, (s.offset or 0.0) - (s.jitter or 0.0))))
+    return out
+
+
+def weighted_pct(pairs: list[tuple[float, float]], q: float) -> float:
+    """The time-weighted q-quantile of (weight, value) pairs (0 when empty)."""
+    tot = sum(w for w, _ in pairs)
+    if tot <= 0:
+        return 0.0
+    acc = 0.0
+    for w, v in sorted(pairs, key=lambda p: p[1]):
+        acc += w
+        if acc >= q * tot:
+            return v
+    return max(v for _, v in pairs)
+
+
 def behind_live_seconds(watching: list[tuple[float, str | None]], t0: float, t1: float) -> float:
     """[redzone mode] Seconds the screen showed a catch-up replay: time spent behind live."""
     out = 0.0
