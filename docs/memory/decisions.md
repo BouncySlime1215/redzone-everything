@@ -323,3 +323,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   feed's last dead ball so a night can show whether they follow TV timeouts (scripts/burst_align.py). Off as an
   anchor until then. Also: the sync filter's origin is per TUNE (YTTV position restarts near 46,790 s at every
   tune), and `--positions` in the sims is now that per-tune clock (honest NFL big live ~5 points lower).
+- 2026-11-04: **buffer.watchdog (new, default OFF); timing.behind_live_s.hold_cal_s -1.5.** Overseer queue item (e),
+  playbook STK-06: a hidden-stick hold more than 2 s off its target (read off the stick's own clock since the
+  hold re-anchored it) is rebuilt at its game's next dead ball, or after 90 s without one (the stick is off
+  screen and not flippable while it rebuilds, so nothing on the TV is cut). Too close to live: pause the gap
+  minus 1.5 s (Nick's hold calibration); too far behind: reload at the live edge and hold again. Every
+  detection and rebuild goes to data/buffer.jsonl -> live-night summary -> northstar "buffer drift recovered".

@@ -15,6 +15,8 @@ archive (real wallclocks, the stream's real delay), per league:
                        sees the whole possession from its start)
   leaves_in_dead_pct   share of leaves made inside a dead window: an official stoppage or a dead
                        ball (free throws, a foul, a review, a timeout), not just "between plays"
+  landed_dead_pct      share of switches whose picture came up on a dead ball (100 - mid-play
+                       entries): the "cuts not random" line, driven toward 100 by scripts/tune.py
 
 Resume times are the real restart, not the next logged event: NFL/MLB the next play's start,
 NBA/CBB worked back from the first event that moved the game clock (wall - clock that ran),
@@ -77,6 +79,7 @@ class CutCard:
     def summary(self) -> dict:
         pct = lambda a, b: round(100 * a / max(1, b), 1)  # noqa: E731
         return {"entries": self.entries, "entries_mid_play": self.entries_mid_play,
+                "landed_dead_pct": pct(self.entries - self.entries_mid_play, self.entries) if self.entries else 100.0,
                 "entries_in_break": self.entries_in_break,
                 "entry_wait_s": round(self.entry_wait_s / max(1, self.entries), 1),
                 "plays_missed_entry": self.plays_missed_entry,
