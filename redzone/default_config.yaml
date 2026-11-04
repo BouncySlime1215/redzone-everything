@@ -40,6 +40,12 @@ polling:
     break_p: 0.5
     max_games: 2
 
+sync:
+  probe:
+    enabled: true          # [SYNC] read-only log of what the sticks expose (media_session, Wi-Fi, UI tree, logcat)
+                           # -> recordings/<day>/sync_probe.jsonl. Presses nothing; skips during switches.
+    visible_ui: false      # also dump the VISIBLE stick's UI tree (off: unmeasured whether a dump stutters video)
+
 sources:
   fastcast: false          # ESPN's push feed: new plays the moment ESPN publishes them. Runs NEXT TO polling
                            # (polling never stops). Off until the live check passes: see redzone/sources/fastcast.py

@@ -145,3 +145,14 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   1.43 s. Backtests don't model poll cadence, so the scorecards are equal by construction; it turns on
   after a live shadow night shows the measured detection lag drop in scripts/timing_report.py. The fetcher
   also sends If-Modified-Since when a host gives Last-Modified and no ETag.
+- 2026-11-04 7:05 AM: **SYNC 1: flip only onto a steady PLAYING stream** (Nick, 1:30 AM sync plan). The preloaded
+  path now needs the hidden stick to report PLAYING with no state change for `FLIP_STEADY_S` = 1 s (up to 3 s of
+  buffering is waited out, else it's re-tuned). Buffering measured from the stick's own clock vs position is
+  added to that target's delay (`held` -> DelayBook). A flip "settles" when the stick is PLAYING within 3 s
+  (`settle_book`, the North Star row "flips PLAYING within 3 s >= 99%"). The #61 hold now re-anchors the stream.
+  Not behind a flag: it only refuses unsafe flips and books measured lag; the sims don't model the sticks.
+- 2026-11-04 8:10 AM: **SYNC probe ON by default** (`sync.probe.enabled: true`). Nick (1:45 AM): auto-anchors only,
+  no manual work, and a probe that runs by itself on Wednesday. It is read-only: it presses nothing, changes no
+  setting, uses its own adb process and skips every tick during a switch, flip or preload, in dry run, and when
+  the governor blocks OCR. It writes `recordings/<day>/sync_probe.jsonl`. The visible stick's UI tree is not dumped
+  (`sync.probe.visible_ui: false`) until a dump is shown not to stutter the picture. Decisions don't read it.

@@ -154,6 +154,7 @@ def build(d: Any, before: str | None, target: str | None, out: Any, submitted_at
         "picture_confirmed": bool(picture is not None and resumed is not False
                                   and not getattr(out, "dry_run", False)),
         "detail": str(getattr(out, "detail", ""))[:300],
+        "settled": getattr(out, "settled", None), "stall_s": getattr(out, "stall_s", None),
         "decided_at": _r(decided), "submitted_at": _r(submitted_at), "cut_at": _r(cut),
         "picture_at": _r(picture), "done_at": _r(now),
         "spans": {
