@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 from redzone.decider.decider import Decider
-from redzone.decider.screen import DelayBook
+from redzone.decider.screen import DelayBook, Event
 from redzone.models import League
 from redzone.noggin import profile
 from redzone.scoring.engine import Scored
@@ -108,3 +108,75 @@ def test_pick_in_replace_mode_never_overrules_a_crunch_window(cfg, clock, monkey
     monkeypatch.setattr(PK, "live_choice", lambda *a, **k: calls.append(1) or ("b", {"a": 0.0, "b": 1.0}))
     out = d._pick(stay, cands(a=85, b=85), clock.t)
     assert calls and (out.target == "b" or out.want == "b")
+
+
+# ---- Nick, Nov 4 3:47 PM ET: crunch = stay is ABSOLUTE, over the app's own score-based switch too -------------
+# The only ways out of a game in crunch: (1) a higher-priority crunch by league order (NFL = CFB > NBA > NHL, MLB)
+# or Nick's team in crunch; (2) Nick's own button press. Two same-league crunches: the higher leverage one wins.
+
+def _on_crunch(cfg, clock, league=League.NFL):
+    d = Decider(cfg, DelayBook({"youtubetv": 40.0}, sigma_default=15.0, clock=clock), clock=clock)
+    with_fresh_timing(d, clock)
+    for g in ("a", "b"):
+        calibrate(d, f"youtubetv:{g}")
+    d.timeline("a", league)
+    start_on(d, clock, "a", {})
+    d.timeline("b", League.NFL)
+    return d
+
+
+def _crunch(gid, score, league=League.NFL, personal=0.0, closeness=1.0, is_break=False):
+    return Scored(gid, league, score, score, score, 1.0, personal, f"reason {gid}", [], is_break,
+                  None if is_break else "crunch time", None, closeness, crunch=True, crunch_now=True)
+
+
+@pytest.mark.xfail(strict=True, reason="lane 2's default change: the core's own score-based switch still leaves a "
+                   "neutral crunch for a far higher score (Nick 3:47 PM makes crunch = stay absolute)")
+def test_the_apps_own_switch_never_leaves_live_crunch_for_a_higher_score(cfg, clock):
+    d = _on_crunch(cfg, clock)
+    for _ in range(5):
+        clock.t += 15
+        out = d.decide(cands(a=_crunch("a", 55), b=99))
+        assert not (out.action == "switch" and out.target == "b"), out.reason
+
+
+def test_exception_a_higher_league_crunch_outranks(cfg, clock):
+    d = _on_crunch(cfg, clock, League.NBA)
+    c = cands(a=_crunch("a", 80, League.NBA), b=_crunch("b", 60))
+    assert d._crunch_pick(c, exclude="a") == "b"          # NFL crunch outranks NBA crunch (league order)
+
+
+@pytest.mark.xfail(strict=True, reason="lane 2's default change: today a neutral NFL crunch timeout still takes a "
+                   "break visit to a lower-league game (Nick 3:47 PM: only a higher crunch or your team may pull)")
+def test_a_lower_league_game_never_pulls_off_crunch_even_at_a_timeout(cfg, clock):
+    d2 = _on_crunch(cfg, clock)
+    d2.timeline("a", League.NFL).events.append(Event(clock.t, "stop_start", "timeout"))
+    clock.t += 45
+    d2.timeline("b", League.NBA)
+    out = d2.decide(cands(a=_crunch("a", 60, is_break=True), b=_crunch("b", 95, League.NBA)))
+    assert not (out.action == "switch" and out.target == "b"), out.reason
+
+
+def test_exception_your_team_crunch_takes_the_tv(cfg, clock):
+    d = _on_crunch(cfg, clock)
+    d.timeline("a", League.NFL).events.append(Event(clock.t, "stop_start", "timeout"))
+    clock.t += 45
+    out = d.decide(cands(a=_crunch("a", 80, is_break=True), b=_crunch("b", 50, personal=22.5, is_break=True)))
+    assert out.action == "switch" and out.target == "b", out.reason
+
+
+def test_exception_nicks_button_press_leaves_crunch(cfg, clock):
+    d = _on_crunch(cfg, clock)
+    d.manual_switch("b")
+    assert d.current == "b"
+    clock.t += 15
+    out = d.decide(cands(a=_crunch("a", 90), b=60))
+    assert not (out.action == "switch" and out.target == "a"), "the app overrode Nick's press"
+
+
+def test_same_league_crunches_the_higher_leverage_one_wins(cfg, clock):
+    d = _on_crunch(cfg, clock)
+    d.timeline("a", League.NFL).events.append(Event(clock.t, "stop_start", "timeout"))
+    clock.t += 45
+    out = d.decide(cands(a=_crunch("a", 80, closeness=0.4, is_break=True), b=_crunch("b", 60, closeness=1.0)))
+    assert out.action == "switch" and out.target == "b", out.reason
