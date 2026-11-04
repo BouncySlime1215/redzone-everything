@@ -1091,12 +1091,11 @@ class Controller:
 
     def _tv_prior(self) -> tuple[float, float]:
         """(median, upper) of the TV input change before we've timed our own: the SmartThings
-        switch measured on the user's TV, live lab Nov 4 2026 (64/64 confirmed, p50 1.89 s, p95 2.18 s,
-        max 2.58 s). The upper bound stays the measured max: deadlines guard rule #1."""
+        switch measured on the user's TV, Nov 4 2026 (live lab Nov 4, CEC off: 30/30, median 1.89 s, max 2.02 s). The upper bound is the measured max: deadlines guard rule #1."""
         if self.calibrated_flip is not None:
             return self.calibrated_flip   # [calib.auto] last nights' accepted figures (redzone/calibration.py)
-        p = self.cfg.get("two_stick.tv_flip_prior_s") or {}
-        return float(p.get("median", 1.89)), float(p.get("max", 2.58))
+        from redzone.contracts.switching import flip_bound
+        return flip_bound(self.cfg.get("two_stick.tv_flip_prior_s") or {})
 
     def flip_estimate(self) -> float:
         """Seconds from "flip" to the new picture: the measured command, plus the TV's own HDMI

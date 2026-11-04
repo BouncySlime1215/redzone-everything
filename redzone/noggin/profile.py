@@ -28,7 +28,10 @@ PROFILES: dict[str, dict] = {
             "decider.entry.max_wait_s={}",
             # [noggin logic, cycle 02] Clairvoyance (GAME-04): pre-tune the game whose big play the
             # feed already shows ahead of the screen, and land on its last dead ball before it airs.
+            # NFL only (planner, Nov 4): 3 s sigma, 3 dev seeds + locked: NFL big live +5.4..5.5 dev,
+            # +4.9 locked, 0 mid-play; NHL crunch live is -0.9 on locked, so NHL/NBA stay off.
             "noggin.lookahead.enabled=true",
+            "noggin.lookahead.leagues=[nfl]",
             # [noggin logic, cycle 03, rule #1] A fresh tune comes up 0-6 s behind the live edge
             # (syncsim's YouTube TV prior, upper end; Thursday's probe refits it): entry margins take
             # that late side, and a switch off a finished game never takes the thin urgent landing.
@@ -41,6 +44,19 @@ PROFILES: dict[str, dict] = {
             # [noggin logic, rule #1] A lone substitution (its stoppage missing from the data) opens no
             # dead window: the last candidate mid-play entry (NBA GS @ DEN) rewound 70 s into one.
             "decider.entry.confirmed_dead_only=true",
+            # [noggin logic, live lab Nov 4] YouTube TV's playback position (4K Plus) pins each channel's
+            # delay once its origin is known (title flips, ad-break anchors): the filter's floor drops to
+            # 3 s. Honest sims (jitter, flip spread, anchors, positions), 3 seeds: 2-sigma coverage
+            # >= 98%, sigma p50 9 -> 3 s, 0 mid-play, NFL big live +4-5, NHL +2-3.
+            "sync.break_anchor.enabled=true",
+            "delay.sync.min_sigma_s=3",
+            # [noggin logic, Nick Nov 4 11:00 AM] a missed moment airs within 3 min or not singly: NFL
+            # only for now (3 seeds: big live +4, crunch +1.4..2.9; NHL loses 4-7 points of seen-in-3-min).
+            "replay.window_s=180",
+            "replay.window_leagues=[nfl]",
+            # [noggin logic] a crunch stoppage takes only a play you missed, never an instant replay of one
+            # you saw: NFL dev 3 seeds crunch live +0.8..2.2, crunch plays under a replay halved, NBA/NHL equal.
+            "decider.crunch.instant_replays=false",
             # [controls, cycle 03] Opening a game on the phone tunes it on the hidden stick while you
             # read the sheet, so "Go now" is a flip (press_to_tv_p95). Live default stays off.
             "two_stick.pretune_on_open=true",

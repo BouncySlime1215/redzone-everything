@@ -202,6 +202,7 @@ class Missed:
     mine: bool = False        # your team / your bet: its catch-up goes before other games' ones
     due_s: float = 0.0        # [replay.redzone_way] replay it within this long of the play (0 = old rule)
     must: bool = False        # [T4] missed because another big play was on screen: head of the queue
+    aired: float = 0.0        # when it aired on the screen (wallclock; 0 = unknown, use t)
 
     def back_s(self, now: float, delay_mu: float, play_len: float, lead_s: float = 3.0) -> float:
         """How far to rewind from the live edge (which shows real time now - delay)."""
@@ -504,7 +505,7 @@ class Decider:
                                                              "turnover" if "intercept" in e.label.lower() else "other")
                 value = REPLAY_BASE.get(kind, 40) + min(25.0, x.scored.personal)
                 m = Missed(gid, e.pid or e.label, e.label, kind, e.seen, value, seen_live=seen,
-                           mine=gid in self._yours)
+                           mine=gid in self._yours, aired=air_end)
                 if rw and not seen:
                     m.must = self._collided(gid, air_end, play_len)
                     m.due_s = float(self.cfg.get("replay.collision_s", 180) if m.must
@@ -563,11 +564,38 @@ class Decider:
         urgent = self.cfg.get("replay.urgent_s", 1200)
         if m.seen_live or urgent <= 0:
             return 0.0
-        if m.due_s:
-            # [redzone way] ramps from half its due time to 1 at the due time, and stays there.
-            return max(0.0, min(1.0, ((now - m.t) - m.due_s / 2) / (m.due_s / 2)))
+        due = self._due(m)
+        if due:
+            # [redzone way] ramps from half its due time to 1 at the due time, and stays there. The
+            # 3-minute window counts from when the play aired, not from when the feed had it.
+            w = self._window(m)
+            age = self._aired_age(m, now) if w and due == w else now - m.t
+            return max(0.0, min(1.0, (age - due / 2) / (due / 2)))
         left = self.cfg.get("replay.max_age_s", 1800) - (now - m.t)
         return max(0.0, min(1.0, 1.0 - left / urgent))
+
+    @staticmethod
+    def _aired_age(m: Missed, now: float) -> float:
+        """How long ago the play aired on the screen: Nick's 3 minutes run from there (the feed has
+        it a whole stream delay earlier, ~2 min with the time-shift buffer)."""
+        return now - (m.aired or m.t)
+
+    def _window(self, m: Missed | None = None) -> float:
+        """[replay window] Nick, Nov 4: a missed moment is shown within this (2-3 min, the next dead
+        moment) or not singly at all; older plays only fold into the montage. 0 = off.
+        replay.window_leagues: only these leagues' plays ([] = every league)."""
+        w = float(self.cfg.get("replay.window_s", 0) or 0)
+        lgs = self.cfg.get("replay.window_leagues") or []
+        if w and lgs and m is not None:
+            x = self._known.get(m.game_id)
+            lg = x.scored.league.base.value if x is not None else None
+            if lg not in lgs:
+                return 0.0
+        return w
+
+    def _due(self, m: Missed) -> float:
+        w = self._window(m)
+        return min(m.due_s, w) if (m.due_s and w) else (m.due_s or w)
 
     def _replay_value(self, m: Missed, now: float) -> float:
         age = now - m.t
@@ -595,6 +623,10 @@ class Decider:
         rw = self._rw()
         if rw and not montage:     # [T5] older plays wait for the end-of-window montage
             pool = [m for m in pool if now - m.t <= self.cfg.get("replay.max_age_s", 1800)]
+        if not montage and (top is not None or not self.cfg.get("replay.window_fill", False)):
+            # [replay window] past the window a missed play is skipped (montage only); with
+            # replay.window_fill it may still fill dead time, but never trades live play for it
+            pool = [m for m in pool if not self._window(m) or self._aired_age(m, now) <= self._window(m)]
         scored_at = self._just_scored(now) if rw else None
         meanwhile = (lambda m: scored_at is not None and m.game_id != self.current
                      and abs(m.t - scored_at) <= self.cfg.get("replay.meanwhile_s", 120))
@@ -925,14 +957,23 @@ class Decider:
         return Decision(now, "stay", self.current, f"playbook={pid}: {why}: {d.reason}", state, d.gate,
                         want=d.target if d.action == "switch" else None)
 
+    def _lookahead_on(self, x=None) -> bool:
+        """noggin.lookahead.enabled, scoped by noggin.lookahead.leagues ([] = every league) to the game x."""
+        if not self.cfg.get("noggin.lookahead.enabled", False):
+            return False
+        lgs = self.cfg.get("noggin.lookahead.leagues") or []
+        if not lgs or x is None:
+            return True
+        return x.scored.league.base.value in lgs
+
     def _crunch_guard(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[crunch guard, with noggin.lookahead.enabled] A catch-up replay of another game never takes the
         screen off a game inside its crunch window: the replay waits (it stays catchable for 10 min).
         Under tighter sync (the 3 s what-if) these replays cost NHL crunch live 80.2 -> 77.6."""
-        if d.action != "replay" or not self.cfg.get("noggin.lookahead.enabled", False) or self.current is None:
+        if d.action != "replay" or not self._lookahead_on() or self.current is None:
             return d
         cur = cands.get(self.current)
-        if cur is None or not cur.scored.crunch_now or (d.replay and d.replay.game_id == self.current):
+        if cur is None or not self._lookahead_on(cur) or not cur.scored.crunch_now or (d.replay and d.replay.game_id == self.current):
             return d
         self.lookahead_why["crunch_guard"] = self.lookahead_why.get("crunch_guard", 0) + 1
         self.home_break_visit, self.home_return_at = home_before
@@ -946,7 +987,7 @@ class Decider:
         can be left (the leave gate); entry timing and the safety playbooks still apply after it."""
         c = self.cfg
         visit = d.action == "switch" and d.kind == "break_visit"
-        if not c.get("noggin.lookahead.enabled", False) or not (d.action == "stay" or visit) or self.current is None \
+        if not self._lookahead_on() or not (d.action == "stay" or visit) or self.current is None \
                 or self.current in PSEUDO or self.replaying or self.safe_mode or self.user.paused \
                 or self.user.locked_game or self.user.focus_mode != FocusMode.AUTOPILOT:
             return d
@@ -964,7 +1005,8 @@ class Decider:
             return d                       # our own big play is on its way: stay for it
         best = None
         for gid, x in cands.items():
-            if gid == self.current or gid in PSEUDO or not x.target or x.stale or gid in self.user.muted:
+            if gid == self.current or gid in PSEUDO or not x.target or x.stale or gid in self.user.muted \
+                    or not self._lookahead_on(x):
                 continue
             a = ahead(self.timelines.get(gid), self.delays.get(x.target), now, maxs)
             if a is not None and a.big is not None and (best is None or a.big.lo < best[1]):
@@ -1678,7 +1720,10 @@ class Decider:
             return None
         # Back on screen before the snap, even if this poll is the last one before it.
         back = self._deadline_cost(self._target_of.get(gid)) + 6 + self.cfg.get("polling.live_s", 10)
-        return self._best_replay(cands, now, self._next_snap_s(gid, cands, now) - back, allow_seen=True, exclude=gid)
+        # decider.crunch.instant_replays=false: a crunch stoppage only takes a play you MISSED, never an
+        # instant replay of one you saw (the snap it can overrun is worth more than a second look)
+        return self._best_replay(cands, now, self._next_snap_s(gid, cands, now) - back,
+                                 allow_seen=bool(self.cfg.get("decider.crunch.instant_replays", True)), exclude=gid)
 
     def _next_snap_s(self, gid: str, cands, now: float) -> float:
         """Seconds until gid's next scrimmage snap could start airing on your screen (early side
