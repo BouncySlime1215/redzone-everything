@@ -71,8 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Cycle 07 plan up as #176; lane 1: learned Watch Value beats clock score on locked nights (NBA 74 vs 66, NFL 59 vs 42); lane 2 opened #174 (NHL OT winner).
-Kaggle factory still running (9930s); CI integration/next running on 8cb0f6e; release green; deploy healthy; 30 open PRs; usage 29%.
+Waiting on Nick: say "cut RC6" to ship #132 seek fix + #173 gold-data capture before tonight; OK to stop Mac service for #171 rig check (phone thread, 41m)
+Cycle 06 review merged (nothing promoted); lane 4 tier question answered; Kaggle factory running 10218s; deploy healthy
+Usage 30%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
