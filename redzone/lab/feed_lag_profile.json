@@ -164,5 +164,37 @@
    ]
   }
  },
- "note": "detection lag t - wallclock of tracked plays (first batch / gaps excluded); built by scripts/timing_report.py --write-profile"
+ "note": "detection lag t - wallclock of tracked plays (first batch / gaps excluded); built by scripts/timing_report.py --write-profile",
+ "sources": {
+  "nhl_wsc": {
+   "nhl": {
+    "n": 0,
+    "basis": "derived",
+    "q": [
+     8.02,
+     11.49,
+     12.44,
+     13.16,
+     13.8,
+     14.4,
+     14.88,
+     15.4,
+     15.85,
+     16.32,
+     16.7,
+     18.11,
+     19.52,
+     21.4,
+     23.49,
+     25.53,
+     27.73,
+     30.53,
+     37.76,
+     57.34,
+     319.33
+    ],
+    "note": "NOT measured row by row yet. Nick's live check (Nov 4): api-web v1/wsc/play-by-play p50 16.7 s vs ESPN 43.1 s. Derived from ESPN's NHL dead-ball quantiles: each quantile is the larger of ESPN's scaled to a 16.7 s median and ESPN's shifted to it (floor 2 s): the low end keeps ESPN's shape, the tail stays as late as ESPN's. Replace with recordings/*/nhl_seen.jsonl once the shadow logs a live night."
+   }
+  }
+ }
 }
