@@ -603,7 +603,9 @@ class Decider:
         rw = self._rw()
         if rw and not montage:     # [T5] older plays wait for the end-of-window montage
             pool = [m for m in pool if now - m.t <= self.cfg.get("replay.max_age_s", 1800)]
-        if not montage:   # [replay window] never aired stale: skipped or folded into the montage
+        if not montage and (top is not None or not self.cfg.get("replay.window_fill", False)):
+            # [replay window] past the window a missed play is skipped (montage only); with
+            # replay.window_fill it may still fill dead time, but never trades live play for it
             pool = [m for m in pool if not self._window(m) or now - m.t <= self._window(m)]
         scored_at = self._just_scored(now) if rw else None
         meanwhile = (lambda m: scored_at is not None and m.game_id != self.current

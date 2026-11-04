@@ -419,6 +419,7 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   window_s: 0              # [replay window] Nick, Nov 4: a missed moment airs within this (180 = 3 min, the next
                            # dead moment) or is skipped / folded into the montage; 0 = off
   window_leagues: []       # ...only these leagues' plays ([] = every league)
+  window_fill: false       # ...past the window a play may still fill dead time (never displacing live play)
   lull_score: 45           # no live game at this score or above (and no crunch / lock): a replay takes the dead ball
   meanwhile_s: 120         # the screen's game just scored: plays elsewhere within this of it go first
   montage_age_s: 14400     # nothing live: every missed big play still on the DVR, however old
