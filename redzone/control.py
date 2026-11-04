@@ -1133,6 +1133,8 @@ class Controller:
         # it isn't. The flip takes ~1s; the new command just waits for it.
         if self._task and not self._task.done() and not self._flipping:
             self._task.cancel()
+        elif self._task and not self._task.done():
+            log.info("playbook=BTN-05 a command for %s arrived mid-flip: it runs once the flip lands", target)
         if self._resume_task and not self._resume_task.done():
             self._resume_task.cancel()
         self._cancel_refresh()   # the new switch decides what the hidden stick gets; a flip starts a new refresh

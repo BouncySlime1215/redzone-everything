@@ -29,6 +29,13 @@ function tapId() {
 }
 
 const RETRY_MS = [400, 1200, 2500];
+const OFFLINE_WAIT_MS = 30000;   // a tap made with no network waits this long for it, per retry
+
+/* Read-only "rz:tap" events for the phone's tap-state display (rz-v2.js, flag phone.v2). They never
+   change what sendTap does. */
+function tapEvent(detail) {
+  try { window.dispatchEvent(new CustomEvent("rz:tap", { detail })); } catch { /* no window (tests) */ }
+}
 
 /** POST /api/action once per tap: the tap carries an id, and a lost answer (Wi-Fi blip, server
  *  restart) is retried with the SAME id, so the server answers instead of running it twice. */
@@ -36,12 +43,24 @@ export async function sendTap(body) {
   const id = tapId();
   for (let i = 0; ; i++) {
     try {
-      return await api("/api/action", { body: { ...body, id } });
+      const res = await api("/api/action", { body: { ...body, id } });
+      tapEvent({ phase: "answer", id, body, res });
+      return res;
     } catch (e) {
       // fetch() rejects with a TypeError when the request never got an answer; a 5xx is a server hiccup.
       const retry = e instanceof TypeError || /Server said 5\d\d/.test(e.message || "");
-      if (!retry || i >= RETRY_MS.length) throw e;
-      await new Promise((r) => setTimeout(r, RETRY_MS[i]));
+      if (!retry || i >= RETRY_MS.length) { tapEvent({ phase: retry ? "lost" : "error", id, body }); throw e; }
+      tapEvent({ phase: "retry", id, body, attempt: i + 1 });
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        // playbook=BTN-06: no network at all. Wait (up to OFFLINE_WAIT_MS) for it to come back
+        // instead of burning the retries; the same id makes a late arrival land once.
+        await new Promise((r) => {
+          const t = setTimeout(r, OFFLINE_WAIT_MS);
+          window.addEventListener("online", () => { clearTimeout(t); r(); }, { once: true });
+        });
+      } else {
+        await new Promise((r) => setTimeout(r, RETRY_MS[i]));
+      }
     }
   }
 }

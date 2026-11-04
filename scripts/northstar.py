@@ -612,7 +612,6 @@ def main(argv=None) -> int:
     # keep only what the recovery line reads, so the raw file stays small
     nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults", "settle_book") if k in n}
               for n in nights]
-    nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults") if k in n} for n in nights]
     drill = json.loads(a.controls_json.read_text()) if a.controls_json and a.controls_json.exists() else None
     xs = switch_samples(a.switch_log if a.switch_log is not None else [root / "data/tv_input.jsonl"])
     taps = load_taps(a.taps_db or root / "data" / "redzone.db")

@@ -195,6 +195,17 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (`noggin.priority.prefs`, the same values as `Preferences` in redzone/noggin/priority.py, so nothing moves).
   Phone v2 only writes `feedback` rows (note `switch` / `missed`); the decider, tick loop and TV never read them.
   Rivalries stay config-only for now: the validator takes lists of names, not pairs.
+- 2026-11-04 10:30 AM (noggin logic, playbooks): **Safety playbooks SAFE-01/02/03/05 ship OFF**
+  (`playbooks.safe.enabled: false`, redzone/decider/playbooks.py). Each holds a switch and logs `playbook=<id>`.
+  SAFE-02's threshold is 10 s, not the backlog's 3 s: the sims' normal delay doubt is 4-8 s (floor
+  `delay.sync.min_sigma_s` 4, uncalibrated 8), and 3-8 s held normal entries (NHL dev crunch live 80.6 -> 66.0
+  at 3 s, 72.4 at 6 s, 74.3 at 8 s; 80.6 at 10 s). At 10 s, dev and locked scorecards are identical on and off;
+  the night lab (`--faults redzone.lab.night.faults:safety`, 3 seeds) passes with 0 mid-play cuts.
+- 2026-11-04 11:15 AM (noggin logic, scenario tree): **scenario-tree lookup ships OFF** (`playbooks.game.enabled:
+  false`, redzone/decider/scenarios.py, seeds GAME-01..03). Dev is mixed (NFL crunch live 68.0 -> 67.6, big seen
+  98.7 -> 98.1, big live 50.3 -> 50.5, dead air 29.8 -> 29.4; NHL big live 44.7 -> 44.9, dead air 22.4 -> 22.6;
+  NBA unchanged). Locked: NFL crunch live 68.1 -> 69.0, your-team crunch 26/27 -> 27/27; NHL big live 48.1 -> 48.6.
+  0 mid-play cuts on both. The table format is the contract for the cloud-built tree (idea #19).
 - 2026-11-04 6:30 AM: **`sources.trust_order` added OFF** (empty lists per league, cycle 02 lane 4, FEED-01/03). When set,
   the first fresh, unbenched, non-erroring source in the list owns a game's stoppage, the next takes over on its
   errors/silence, and disagreements are counted (`Merger.disagreements`). Empty = the old nhl/nba_primary behavior.

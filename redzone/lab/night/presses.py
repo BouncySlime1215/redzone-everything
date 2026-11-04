@@ -11,6 +11,9 @@ showed (house.shown) and scores every press:
            leaves it before the release.
   pause    Pause then Resume: no input change and no new channel while paused.
   skip     Skip: the TV leaves the skipped game.
+  mid_flip A "Watch this" + "Go now" for another game sent 0.3 s into a switch's input flip
+           (playbook=BTN-05): it must wait for the flip, then win (newest command wins), and the TV
+           must end on it. Graded like go_now. Armed at a seeded time; the next flip fires it.
   open_go  The game's sheet opened on the phone (action "peek"), then "Watch this" + "Go now" `dur`
            seconds later, as a person reads the sheet first. With two_stick.pretune_on_open the
            hidden stick is tuned while they read. Graded like go_now, timed from the "Go now".
@@ -102,6 +105,11 @@ class Press(Fault):
 
     def start(self, world):
         log = world.__dict__.setdefault("presses", [])
+        if self.name == "mid_flip":
+            world.__dict__["_mid_flip"] = self   # _arm_flips fires it inside the next flip
+            self.rec = {"t": time.time(), "kind": "mid_flip", "ok": True, "msg": "", "pending": True}
+            log.append(self.rec)
+            return
         if self.name == "open_go":
             gid = _other_live(world, self.rng)
             if gid is None:
@@ -129,7 +137,30 @@ class Press(Fault):
             self.rec = {**_press(world, "skip"), "kind": "skip", "gid": cur, "target": _target(world, cur)}
         log.append(self.rec)
 
+    def fire(self, world, flipping_to: str | None) -> None:
+        """Called 0.3 s into a flip: tap another game (not the one being flipped to), twice."""
+        from redzone.models import Phase
+        games = world.engine.merger.games
+        gids = sorted(g for g in (getattr(world.engine, "where", {}) or {})
+                      if _target(world, g) not in (None, flipping_to)
+                      and getattr(games.get(g), "phase", None) == Phase.LIVE)
+        # Another game if there is one; with two live games that is the one we're leaving ("go back").
+        gids = [g for g in gids if g != world.engine.decider.current] or gids
+        if not gids:
+            self.rec.update(pending=False, skipped="no other live game mid-flip")
+            return
+        gid = self.rng.choice(gids)
+        first = _press(world, "hold", gid)
+        second = _press(world, "hold", gid, "force")
+        self.rec.update(t=first["t"], gid=gid, target=_target(world, gid), ok=first["ok"] and second["ok"],
+                        msg=second["msg"], current=first["current"], pending=False, flipping_to=flipping_to)
+
     def stop(self, world):
+        if self.name == "mid_flip":
+            if world.__dict__.get("_mid_flip") is self:
+                world.__dict__["_mid_flip"] = None
+                self.rec.update(pending=False, skipped="no flip while armed")
+            return
         if self.rec is None or self.rec.get("skipped"):
             return
         if self.name == "open_go":
@@ -164,9 +195,29 @@ def _time_ticks(world) -> None:
     e.decide = timed
 
 
+def _arm_flips(world) -> None:
+    """Wrap the controller's input flip so an armed mid_flip press fires 0.3 s into it."""
+    import asyncio
+    c = world.engine.control
+    if getattr(c, "_drill_flip_wrapped", False):
+        return
+    c._drill_flip_wrapped = True
+    inner = c._flip_to
+
+    async def flip(stick, *a, **k):
+        p = world.__dict__.get("_mid_flip")
+        if p is not None:
+            world.__dict__["_mid_flip"] = None
+            to = (getattr(stick, "tuned", None) or {}).get("target")
+            asyncio.get_running_loop().call_later(0.3, p.fire, world, to)
+        return await inner(stick, *a, **k)
+    c._flip_to = flip
+
+
 def controls(world, rng: random.Random) -> list[Fault]:
     """A few of each press per night, at seeded times while at least two games are live."""
     _time_ticks(world)
+    _arm_flips(world)
     wins = world.live_windows
     # Leave every press room to finish (a lock or skip may wait SAFE_GIVE_UP_S for a dead ball)
     # before the night ends: a press cut off by --hours says nothing about the press.
@@ -192,6 +243,40 @@ def controls(world, rng: random.Random) -> list[Fault]:
         dur = {"lock": rng.uniform(180, 300), "pause": rng.uniform(60, 180),
                "open_go": rng.uniform(4, 12)}.get(kind, 0.0)
         out.append(Press(kind, float(t), dur, random.Random(rng.random())))
+    # mid_flip presses come from their own draw, after the plan above, so the other presses keep
+    # their seeded times; armed only where no other press (or its lock/pause) is running.
+    extra = random.Random(rng.random())
+    busy = [(f.at - 60, f.at + f.dur + 420) for f in out]
+    free = [t for t in times if all(not (lo <= t <= hi) and not (lo <= t + 300 <= hi) for lo, hi in busy)]
+    armed: list[float] = []
+    for t in extra.sample(free, len(free)):
+        if len(armed) < 2 and all(abs(t - a) >= 360 for a in armed):
+            armed.append(t)
+    for t in sorted(armed):
+        out.append(Press("mid_flip", float(t), 300.0, random.Random(extra.random())))
+    return out
+
+
+FORCED_WITHIN_S = 15.0   # a mid-play cut this soon after a "Go now" is that press's doing
+RELEASE_WITHIN_S = 600.0
+
+
+def classify_mid_play(rep: dict, g: dict) -> list[dict]:
+    """The night's mid-play cuts (check zero_midplay_cuts), each tagged with why:
+    forced_go_now  within FORCED_WITHIN_S after a "Go now" (go_now / open_go / mid_flip): you asked
+                   to leave now (the decision card on #83 asks whether it should still wait)
+    after_release  within RELEASE_WITHIN_S after a LOCK release (playbook=BTN-04: must be 0)
+    unexplained    neither: not a press's doing (the night itself; must be 0)"""
+    cuts = [m for c in rep.get("checks", []) if c.get("name") == "zero_midplay_cuts" and not c.get("ok")
+            for m in (c.get("detail") or {}).get("mid_play", [])]
+    go = [t for k, t in g.get("press_at", []) if k in ("go_now", "open_go", "mid_flip")]
+    rel = g.get("released_at", [])
+    out = []
+    for m in cuts:
+        t = m.get("t") or 0.0
+        why = ("forced_go_now" if any(0 <= t - x <= FORCED_WITHIN_S for x in go)
+               else "after_release" if any(0 <= t - x <= RELEASE_WITHIN_S for x in rel) else "unexplained")
+        out.append({"t": t, "et": m.get("et"), "game": m.get("game"), "why": why})
     return out
 
 
@@ -208,9 +293,11 @@ def _playing_at(shown: list, target: str, t0: float, t1: float) -> float | None:
 
 def grade(world) -> dict:
     shown = world.house.shown
-    out = {"go_now_s": [], "open_go_s": [], "lock_s": [], "skip_s": [], "dropped": [], "lock_broken": [], "pause_broken": [],
+    out = {"go_now_s": [], "open_go_s": [], "mid_flip_s": [], "lock_s": [], "skip_s": [], "dropped": [], "lock_broken": [], "pause_broken": [],
            "skip_stuck": [], "lock_waited_out": [], "n": {}}
     out["press_at"] = [(r.get("kind") or r.get("action"), round(r["t"], 1)) for r in getattr(world, "presses", [])]
+    out["released_at"] = [round(r["released"], 1) for r in getattr(world, "presses", [])
+                          if r.get("kind") == "lock" and r.get("released")]
     taps = getattr(world, "taps", [])
     out["taps"] = len(taps)
     out["taps_retried"] = sum(1 for x in taps if x["net"] != "ok")
@@ -223,10 +310,17 @@ def grade(world) -> dict:
         if not r["ok"]:
             out["dropped"].append({"kind": kind, "msg": r["msg"]})
             continue
-        if kind in ("go_now", "open_go", "lock"):
+        if kind in ("go_now", "open_go", "lock", "mid_flip"):
             give = GIVE_UP_S if kind != "lock" else SAFE_GIVE_UP_S
             end = r.get("released", float("inf")) if kind == "lock" else float("inf")
-            at = _playing_at(shown, r["target"], r["t"], min(r["t"] + give, end)) if r.get("target") else None
+            t0 = r["t"]
+            if kind == "mid_flip":
+                # The flip in progress lands first (it can't be cancelled); the press counts from
+                # there, so a "go back" to the game we were leaving isn't graded on the old picture.
+                land = next((x.t for x in shown if x.t > r["t"] and x.target == r.get("flipping_to")
+                             and x.what == "playing"), None)
+                t0 = land if land is not None else r["t"]
+            at = _playing_at(shown, r["target"], t0, min(r["t"] + give, end)) if r.get("target") else None
             if at is None and kind == "lock" and r.get("released", float("inf")) - r["t"] < SAFE_GIVE_UP_S:
                 # Released while still waiting for a dead ball in the game on screen (rule #1): the
                 # press was honored, the cut never became safe. Reported, not a dropped press.
@@ -235,7 +329,7 @@ def grade(world) -> dict:
             if at is None:
                 out["dropped"].append({"kind": kind, "msg": f"TV never showed {r.get('target')} playing"})
                 continue
-            if kind in ("go_now", "open_go"):
+            if kind in ("go_now", "open_go", "mid_flip"):
                 out[kind + "_s"].append(round(at - r["t"], 2))
             else:
                 out["lock_s"].append(round(at - r["t"], 1))
