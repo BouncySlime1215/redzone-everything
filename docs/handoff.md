@@ -106,22 +106,20 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 | **Executor** | Coordinator threads | Build. Every PR names the North Star metric it moves and shows the measured delta in CI. |
 | **Gatekeeper** | `release_gate.py` plus CI | A release only ships when the North Star rows hold on locked unseen nights. Anything that misses ships off behind a flag. |
 
-## 6d. The Noggin (Nick's name for the decision brain)
+## 6d. The Noggin: THE #1 FOCUS (Nick, Nov 4, 1:45 AM)
 
-The noggin is the part that decides **which game, when to cut, and when to enter**:
-- the scoring engine (what's worth watching)
-- Brain v3 (timing and what's about to happen; small calibrated GBMs, under 1 ms)
-- the decider (one EV function)
+Everything combines into one AI brain with three layers, one training pipeline and one scoreboard:
 
-The 1.7B language model (Kaggle student) is NOT the noggin. It does words and the watchdog.
+| Layer | Speed | Job | Trained on |
+|---|---|---|---|
+| **Noggin Reflex** | <5 ms, every 3 s tick | Timing (dead now / restart when), big-play prediction, and the PICK (which game, when to cut, when to enter). Absorbs Brain v3, A3 and the decider weights | Millions of historical moments (data factory: nflfastR, hoopR, cfbfastR, fastRhockey, MLB wall-clock pbp) plus replayed nights. Free Kaggle CPU |
+| **Noggin Mind** (1.7B local student) | every 30-60 s, async | Storylines and stakes, lock-in, **sets the Reflex's per-game priorities**, explains switches, runs the watchdog. Absorbs the distill track and the live reasoner | Teacher distillation on Kaggle GPU |
+| **Noggin Teacher** (32B, Kaggle) | offline | Labels moments, reviews each night, generates data for both layers | Free Kaggle GPU |
 
-Noggin training track (started Nov 4, 1:35 AM):
-- **Data factory:** historical play-by-play with wall-clock times (nflfastR, hoopR, cfbfastR,
-  fastRhockey, MLB), split by whole nights. Runs on Kaggle CPU or GitHub Actions.
-- **Noggin Timing v1:** boosted discrete hazard plus conformal bounds. Replaces A3.
-- **Noggin Predict:** big play next.
-- **Noggin Pick:** scoring and decider weights, tuned on replayed nights with forward-chaining CV.
-- **Gate:** beat the current noggin on locked unseen nights, then shadow mode, then turn it on.
+- **Gates:** beat the current brain on locked unseen nights → shadow mode → turn on behind a flag.
+- **Input priority #1:** the live time-shift buffer plus faster feeds give the Reflex a 30-60 s head
+  start.
+- **Design doc:** `docs/noggin.md`.
 
 ## 7. How the director works (so a new session can take over)
 
