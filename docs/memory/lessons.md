@@ -166,3 +166,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - 2026-11-04: **Prime multiview gate scored a 0.0 s switch as slow.** `pmv.gate` read `float(took or 1e9)`, so
   a rounded 0.0 became 1e9. Found by the stick-free rehearsal (`prime_multiview_probe.py --fake`), where tile
   switches are instant. Fix: only a missing time counts as slow. Use `is None`, never `or`, on numbers that can be 0.
+- 2026-11-04: **Clairvoyance replaced a crunch pre-tune with a big-play one.** While the leave gate held us on a
+  quiet game waiting for crunch time elsewhere (`want=<crunch game>`), GAME-04 turned the stay into its own wait
+  with `want=<big-play game>`, so the hidden stick would tune the wrong game. Dev scorecards didn't move (the gate
+  was the binding constraint), found by tallying decisions made while a crunch game sat elsewhere. Fix: a stay that
+  already wants a crunch game is left alone (crunch first). Check every layer that rewrites `want`.
