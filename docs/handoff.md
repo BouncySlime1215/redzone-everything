@@ -71,8 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-16:30 usage 27%. Kaggle factory still running 6169s (only known CBB KeyError); new pack 610dde4 replaces c9590dc for next run.
-Cycle 05 reviewed, nothing promoted (66.4% of oracle locked); Cycle 06 plan #162 open ~40m. CI next in progress, release green, deploy healthy.
+Nudged integrator to merge Cycle 06 plan #162 (open 63m); lane 5 idle 32m, asked coordinator
+Newest factory pack is kaggle-inputs 30ca1c5 (replaces 610dde4); factory still running 7652s
+Usage 28%; deploy healthy; CI next in progress, release green
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
