@@ -236,7 +236,8 @@ decider:
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
   redzone_score: 45        # RedZone vs a game (0-100): stay on it unless a game beats this; any break goes there
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
-    floor: true            # [SAFE-09] no overlay or model (PICK, Mind, watch value) takes the screen off a crunch window
+    floor: true            # [SAFE-09] in a crunch window: no overlay or model leaves it for a non-crunch game, and
+    floor_low_value: 50    # ...no game below this value (watch value, else score; 50 = league-median moment) pulls us out
     hold_personal: 5       # stay through every stoppage of a crunch game with this much personal boost (your team, bet)
     hold_neutral_breaks: [two_minute_warning]  # ...and of any crunch game through these (the 2:00 warning is the way in)
     personal_lead: 5       # your team / bet wins an overlap when its boost is this much bigger

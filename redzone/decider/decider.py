@@ -907,30 +907,45 @@ class Decider:
         return Decision(now, "stay", self.current, f"crunch time here: catch-up waits ({d.reason})", d.state, d.gate)
 
     def _crunch_floor(self, d: Decision, d0: Decision, cands, now: float, home_before) -> Decision:
-        """[crunch floor, SAFE-09] Crunch = stay sits above every model. While the game on screen is inside its
-        crunch window, nothing layered on the app's own rules (scenario, clairvoyance, PICK, and later the
-        Mind and watch value) may take the screen off it, except to another game in crunch time or by your
-        hand. The app's own crunch rules (hops to another crunch at a long stoppage, a catch-up that is
-        surely back for the snap) still decide for themselves: the floor only undoes what an overlay changed.
-        Nick, Nov 4 3:30 PM: the Mind's crunch unsafe-leaves are a data failure; this floor is why they never
-        reach the TV. Off only with decider.crunch.floor: false."""
+        """[crunch floor, SAFE-09] Crunch is a learned state and crunch vs crunch is decided by value (Nick,
+        Nov 4 4:15 PM), but two floors hold while the game on screen is inside its crunch window:
+        (1) no overlay or model (scenario, clairvoyance, PICK, later the Mind and watch value) turns the app's
+            own decision into a leave for a game that isn't in crunch: models choose between crunches;
+        (2) a LOW-value game never pulls us out, not even by the app's own switch or a catch-up reel: below
+            decider.crunch.floor_low_value (watch value once it ships, else today's score; 50 = the league's
+            median live moment). An ad-break round trip (kind break_visit) and your own press are not leaves.
+        Off only with decider.crunch.floor: false."""
         if not self.cfg.get("decider.crunch.floor", True) or d.action not in ("switch", "replay") \
-                or d.kind == "user" or self.replaying or not self.current:
+                or d.kind in ("user", "break_visit") or self.replaying or not self.current:
             return d
         cur = cands.get(self.current)
         if cur is None or not cur.scored.crunch_now or getattr(cur.scored, "garbage", False):
             return d
-        tgt = d.replay.game_id if d.action == "replay" and d.replay else d.target
-        if tgt == self.current:
+        if d.action == "replay":
+            if d.replay is None or d.replay.game_id == self.current:
+                return d                   # this game's own instant replay
+            x, value = None, float(d.replay.value)
+        else:
+            x = cands.get(d.target)
+            if d.target == self.current or x is None:
+                return d
+            if x.scored.crunch or x.scored.crunch_now:
+                return d                   # crunch vs crunch: decided by value, not by this floor
+            value = self._floor_value(x.scored)
+        overlay = (d.action, d.target, d.kind) != (d0.action, d0.target, d0.kind)
+        low = value < float(self.cfg.get("decider.crunch.floor_low_value", 50))
+        if not (overlay or low):
             return d
-        if (d.action, d.target, d.kind) == (d0.action, d0.target, d0.kind):
-            return d                       # the app's own crunch rules made this call
-        x = cands.get(tgt)
-        if x is not None and (x.scored.crunch or x.scored.crunch_now):
-            return d                       # crunch time elsewhere: league order and crunch rules already chose
+        why = "an overlay can't leave crunch for a non-crunch game" if overlay else f"{value:.0f} is a low-value game"
         self.lookahead_why["crunch_floor"] = self.lookahead_why.get("crunch_floor", 0) + 1
         self.home_break_visit, self.home_return_at = home_before
-        return Decision(now, "stay", self.current, f"crunch floor: crunch time here ({d.reason})", d.state, d.gate)
+        return Decision(now, "stay", self.current, f"crunch floor: {why} ({d.reason})", d.state, d.gate)
+
+    @staticmethod
+    def _floor_value(s) -> float:
+        """Lane 1's Scored.watch_value once it ships, else today's score."""
+        wv = getattr(s, "watch_value", None)
+        return float(wv) if wv is not None else float(s.score)
 
     def _clairvoyant(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[GAME-04 clairvoyance, noggin.lookahead.enabled] The feed already knows a big play in game X

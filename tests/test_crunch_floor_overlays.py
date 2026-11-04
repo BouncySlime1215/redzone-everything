@@ -1,4 +1,4 @@
-"""[SAFE-09] Crunch = stay sits above every model (Nick, Nov 4 3:30 PM).
+"""[SAFE-09] The crunch floors (Nick, Nov 4 3:30 PM; corrected 4:15 PM: crunch vs crunch is decided by value).
 
 The Mind's 100% crunch unsafe-leaves are a training-data failure. The live app's rule floor keeps them off
 the TV: whatever any overlay or model proposes (scenario, clairvoyance, PICK, and later the Mind and watch
@@ -108,3 +108,36 @@ def test_floor_is_on_by_default_and_no_candidate_profile_turns_it_off():
         for lg in ("nfl", "cfb", "nba", "cbb", "nhl", "mlb"):
             args = profile.argv(name, lg)
             assert not any(a.startswith("decider.crunch.floor") for a in args), (name, lg)
+
+
+@pytest.mark.playbook("SAFE-09")
+def test_a_low_value_game_never_pulls_us_out_even_by_the_apps_own_switch():
+    """Nick 4:15 PM: a 'bullshit game' can never pull us out of crunch. The app's own switch (d0) to a game
+    below decider.crunch.floor_low_value is held; to a strong game it is the app's (and later WV's) call."""
+    now = 1000.0
+    dec = _dec({"decider.crunch.floor_low_value": 50})
+    c = _cands()
+    c["B"].scored.score = 30.0
+    d0 = _rogue(now)
+    out = dec._crunch_floor(d0, d0, c, now, (None, 0.0))
+    assert out.action == "stay" and "low-value" in out.reason
+    c["B"].scored.score = 80.0
+    assert dec._crunch_floor(d0, d0, c, now, (None, 0.0)) is d0
+    # watch value, once it ships, is the value that counts
+    c["B"].scored.watch_value = 20.0
+    assert dec._crunch_floor(d0, d0, c, now, (None, 0.0)).action == "stay"
+    # a catch-up reel of a low-value moment elsewhere waits too; a must-see one is the app's call
+    lo, hi = _rogue(now, replay=True), _rogue(now, replay=True)
+    lo.replay.value, hi.replay.value = 30.0, 90.0
+    assert dec._crunch_floor(lo, lo, _cands(), now, (None, 0.0)).action == "stay"
+    assert dec._crunch_floor(hi, hi, _cands(), now, (None, 0.0)) is hi
+
+
+@pytest.mark.playbook("SAFE-09")
+def test_an_ad_break_round_trip_is_not_a_leave():
+    now = 1000.0
+    dec = _dec()
+    c = _cands()
+    c["B"].scored.score = 10.0
+    d = _rogue(now, kind="break_visit")
+    assert dec._crunch_floor(d, d, c, now, (None, 0.0)) is d
