@@ -142,3 +142,19 @@ def test_two_stick_off_at_the_end_is_held_to_the_same_420_s():
     assert night_run._still_off_at_end(late, lambda x: not x.two_stick) == 95.0      # young gap: fine
     stuck = [sample(t, t < 400) for t in range(0, 1000, 5)]
     assert night_run._still_off_at_end(stuck, lambda x: not x.two_stick) > 420       # fails the check
+
+
+def test_pin_network_says_home_whatever_the_host_is():
+    """pin_network makes the night's network check say home even on a host whose LAN isn't 10.0.0.x
+    (Nick's Mac: 100.110.165.x plus a Tailscale tunnel), so the supervisor keeps reconnecting sticks."""
+    import asyncio
+    from redzone import network
+    from redzone.lab.night import run as night_run
+    real = network.assess
+    try:
+        night_run.pin_network(network)
+        w = network.NetWatch(Path("/nonexistent/devices.json"))
+        st = asyncio.run(w.refresh(force=True))
+        assert st.where == "home" and not st.away and not st.routes_broken
+    finally:
+        network.assess = real

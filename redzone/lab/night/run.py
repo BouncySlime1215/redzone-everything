@@ -266,7 +266,7 @@ class Night:
 
     def patch(self) -> None:
         """Point the production modules' outside-world edges at the fakes and at the work folder."""
-        from redzone import channels, control, engine as engine_mod, governor, plan, recorder, reel, screen_ocr, supervisor, tv
+        from redzone import channels, control, engine as engine_mod, governor, network, plan, recorder, reel, screen_ocr, supervisor, tv
         from redzone.discovery import yttv
         from redzone.tuners import screen_prompts
         import redzone.autonomy as autonomy
@@ -285,6 +285,7 @@ class Night:
         screen_ocr.recognize = houselib.fake_recognize
         screen_prompts.png_luma = houselib.fake_luma_path
         pin_host(governor)
+        pin_network(network)
 
     def build_engine(self):
         from redzone.config import Config
@@ -543,6 +544,17 @@ def pin_host(governor) -> None:
                                thermal_level=0, mem_pressure=1, swap_used_mb=0.0, load_per_core=0.1,
                                disk_free_mb=100_000.0, procs={})
     governor.sample = calm
+
+
+def pin_network(network) -> None:
+    """The night's sticks live at 10.0.0.x on the fake home LAN, so the network check must not read the
+    real computer either. Left alone it compared them with the host's own LAN: on Nick's Mac
+    (100.110.165.x, Tailscale up) it said "away from home", the supervisor then skips every adb
+    reconnect, and a dropped stick stayed offline all night. CI runners sit on 10.x, so it passed there."""
+    def home(probe, home, clock=time.time):
+        return network.NetState(where="home", home=home.label(), home_subnet=str(home.subnet or ""),
+                                message="On the home network (the night's house)", checked_at=clock())
+    network.assess = home
 
 
 def _still_off_at_end(samples: list[Sample], pred) -> float:
