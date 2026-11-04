@@ -46,7 +46,8 @@ def game_state(walls: np.ndarray, home: np.ndarray, away: np.ndarray, i: int) ->
                 lead_changes=int(np.count_nonzero(np.diff(sg))) if len(sg) > 1 else 0)
 
 
-REG = {League.NBA: (4, 720.0), League.CBB: (2, 1200.0), League.WCBB: (4, 600.0), League.NFL: (4, 900.0)}
+REG = {League.NBA: (4, 720.0), League.CBB: (2, 1200.0), League.WCBB: (4, 600.0), League.NFL: (4, 900.0),
+       League.NHL: (3, 1200.0)}
 
 
 def season_of(epoch: float) -> int:
@@ -117,7 +118,7 @@ def windows_for_game(league: League, plays: list[dict]) -> list[dict]:
         seen[win.start] = win
     frozen = dt.frozen_until
     walls_a = np.asarray(walls)
-    big = _big_marks(rows)
+    big = _big_marks(rows, league)
     home_a = np.maximum.accumulate(np.array([r[2] for r in rows] or [0.0]))
     away_a = np.maximum.accumulate(np.array([r[3] for r in rows] or [0.0]))
     out, history = [], []
@@ -150,15 +151,16 @@ def _f(x) -> float:
     return v if v == v else 0.0
 
 
-def _big_marks(rows: list[tuple]) -> np.ndarray:
-    """Big plays for the big-play-next label: a made three, a dunk, or a lead change (late ties count)."""
+def _big_marks(rows: list[tuple], league: League = League.NBA) -> np.ndarray:
+    """Big plays for the big-play-next label. Basketball: a made three, a dunk, or a lead change. Hockey:
+    every goal (sportsgrade.is_big's NHL rule, the 'goals live' line)."""
     out = np.zeros(len(rows), bool)
     ph = pa = 0.0
     for i, (_, _, h, a, tt) in enumerate(rows):
         made = (h + a) > (ph + pa)
         three = (h - ph == 3) or (a - pa == 3)
         swap = (ph - pa) * (h - a) < 0
-        out[i] = made and (three or "dunk" in tt or swap)
+        out[i] = made and (league == League.NHL or three or "dunk" in tt or swap)
         ph, pa = max(ph, h), max(pa, a)
     return out
 

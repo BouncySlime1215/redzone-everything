@@ -67,3 +67,13 @@ def test_fit_save_load_matches_lightgbm(tmp_path):
 
 def test_no_model_means_off(tmp_path):
     assert P.model_for("nba", tmp_path) is None
+
+
+def test_hockey_big_play_is_every_goal_basketball_unchanged():
+    from redzone.models import League
+    rows = [(1, 900.0, 0, 0, ""), (1, 800.0, 1, 0, "goal"), (1, 700.0, 2, 0, "goal"), (1, 600.0, 2, 0, "shot")]
+    assert F._big_marks(rows, League.NHL).tolist() == [False, True, True, False]
+    # basketball: a 2-pt make that doesn't swap the lead is not big; a three is
+    b = [(1, 700.0, 0, 0, ""), (1, 690.0, 2, 0, "jump shot"), (1, 680.0, 5, 0, "three point")]
+    assert F._big_marks(b).tolist() == [False, False, True]
+    assert F.REG[League.NHL] == (3, 1200.0)
