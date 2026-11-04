@@ -140,7 +140,7 @@ def test_profile_run_keeps_its_candidate_column(tmp_path, monkeypatch):
     """Regression: a later results[split] assignment dropped the --profile column (cycle 01)."""
     calls = []
 
-    def fake_run(root, split, timeout=1800, profile=None):
+    def fake_run(root, split, timeout=1800, profile=None, **kw):
         calls.append(profile)
         return cards(mid=1 if profile is None else 0)
 
