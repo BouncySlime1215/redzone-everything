@@ -71,7 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- 18:50 NICK: 'A + colab'. RC6 is a halftime deploy tonight: tests and build run now, and the switch is held until a halftime/intermission (1-2 min app restart; TV stays on its input; auto-rollback). V8 students-only runs on Google Colab (free GPU, Nick's own account) tonight; lane 1 builds colab/v8_students.ipynb and the overseer runs it. Kaggle multi-account declined (one account per person per Kaggle's terms).
+RC6 cut in progress; #188 adds deploy.py --at-break (switch only at halftime); no RC6 deploy lines yet; RC5.1 healthy
+Colab V8 notebook not pushed yet; Kaggle factory running 12813s; Plan thread waiting: approve randomizing dead-ball near-ties?
+Usage 32%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
