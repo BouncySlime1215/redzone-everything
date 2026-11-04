@@ -105,6 +105,7 @@ export function missedBar() {
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
     <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>
     <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-capture">${icon("moon")}Live night: did it become gold data?</button>
     <button class="btn btn--ghost v2-span" data-act="v2-ledger">${icon("activity")}Data + NFM: what the Noggin learns from</button></div>`;
 }
 
@@ -367,6 +368,44 @@ function trendSheet() {
 }
 ACTIONS["v2-trend"] = () => { trendS.data = null; openSheet({ id: "v2-trend", label: "How close to perfect", full: true, render: trendSheet }); loadTrend(); };
 ACTIONS["v2-trend-split"] = (el) => { trendS.split = el.dataset.f; trendS.data = null; const s = sheetById("v2-trend"); if (s) s.update(); loadTrend(); };
+
+/* ---------- Live night: the morning check that last night became gold data (auto-log, provenance, held, report) ---------- */
+const cap = { data: null, day: "", report: null };
+const shiftDay = (d, n) => { const t = new Date(`${d}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+async function loadCapture() {
+  try { cap.data = await api(`/api/v2/capture${cap.day ? `?day=${cap.day}` : ""}`); if (cap.data && cap.data.night) cap.day = cap.data.night; } catch (e) { cap.data = { error: e.message }; }
+  const s = sheetById("v2-capture"); if (s) s.update();
+}
+function captureSheet() {
+  const d = cap.data;
+  if (!d) return `<h3>Live night</h3><p class="lead">Loading…</p>`;
+  if (d.error || d.ok === false) return `<h3>Live night</h3><p class="lead">${esc(d.error || d.message)}</p>`;
+  if (cap.report != null) return `<h3>Night report · ${esc(d.night)}</h3><button class="v2-day" data-act="v2-capture-back">Back</button><pre class="v2-report">${esc(cap.report)}</pre>`;
+  const nav = `<div class="v2-days"><button class="v2-day" data-act="v2-capture-day" data-n="-1">◀ ${esc(shiftDay(d.night, -1))}</button>
+    <button class="v2-day" aria-pressed="true">${esc(d.night)}</button><button class="v2-day" data-act="v2-capture-day" data-n="1">${esc(shiftDay(d.night, 1))} ▶</button></div>`;
+  const checks = arr(d.checks).map((c) => `<div class="v2-ms"><span class="tag tag--${c.ok ? "pass" : "fail"}">${c.ok ? "yes" : "no"}</span><span>${esc(c.label)}</span></div>`).join("");
+  const a = d.autolog, kv = (k, v) => `<span><b>${v == null ? "–" : esc(String(v))}</b> ${esc(k)}</span>`;
+  const auto = a ? `<div class="v2-led"><div class="v2-led-nums">${kv("cuts graded", a.cuts_graded)}${kv("mid-play entries", a.entries_mid_play)}${kv("switch p95 s", a.switch_p95_s)}${kv("picture ≤ 3 s", a.picture_within_3s)}${kv("press→TV p95 s", a.press_to_tv_p95_s)}${kv("mid-play leaves", a.leaves_mid_play)}</div>
+      <small>${Object.entries(a.rows || {}).map(([k, n]) => `${esc(k)} ${num(n)}`).join(" · ")}</small></div>` : `<p class="lead">No auto-log yet: the supervisor collects it after 6 AM ET.</p>`;
+  const prov = arr(d.provenance_keys).length ? arr(d.provenance_keys).map((p) => `<span class="chip">${esc(MOD_TXT[p.module] || p.module)} ${num(p.n)}</span>`).join(" ") : `<span class="m">No provenance yet (lane 3's traces).</span>`;
+  const h = d.held || {}, now = Object.entries(h.now || {}), log = Object.entries(h.log || {});
+  return `<h3>Live night</h3>${nav}
+    <div class="v2-tiles"><div class="stile"><b>${d.gold ? "Gold" : "Not yet"}</b><span>All checks</span></div>
+      <div class="stile"><b>${num(d.with_provenance)}/${num(d.switches)}</b><span>Switches with provenance</span></div>
+      <div class="stile"><b>${num(d.with_trace)}</b><span>With a trace</span></div></div>
+    <div class="v2-mss">${checks}</div>
+    <h4>Auto-log</h4>${auto}
+    <h4>Who spoke (provenance)</h4><div class="v2-chips">${prov}</div>
+    <h4>Held buffer</h4><p class="lead">${now.length ? now.map(([t, s]) => `${esc(t)} held ${num(s)} s behind live`).join(" · ") : "Nothing held right now."}${log.length ? ` Log: ${log.map(([k, n]) => `${esc(k)} ${num(n)}`).join(", ")}.` : ""}</p>
+    ${d.report ? `<button class="btn btn--ghost" data-act="v2-capture-report">${icon("replay")}Open the night report</button>` : `<p class="lead">No night report for this night.</p>`}`;
+}
+ACTIONS["v2-capture"] = () => { cap.data = null; cap.day = ""; cap.report = null; openSheet({ id: "v2-capture", label: "Live night", full: true, render: captureSheet }); loadCapture(); };
+ACTIONS["v2-capture-day"] = (el) => { cap.day = shiftDay(cap.day, Number(el.dataset.n)); cap.data = null; cap.report = null; const s = sheetById("v2-capture"); if (s) s.update(); loadCapture(); };
+ACTIONS["v2-capture-report"] = async () => {
+  try { const r = await api(`/api/v2/capture/report?day=${cap.day}`); cap.report = r.text || "(empty)"; } catch (e) { cap.report = e.message; }
+  const s = sheetById("v2-capture"); if (s) s.update();
+};
+ACTIONS["v2-capture-back"] = () => { cap.report = null; const s = sheetById("v2-capture"); if (s) s.update(); };
 
 /* ---------- Data ledger + NFM status: tokens per league, real vs synthetic, and the model's milestones ---------- */
 const ledgerS = { data: null };

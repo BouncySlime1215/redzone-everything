@@ -46,6 +46,9 @@ DATA = Path(__file__).resolve().parent.parent.parent / "data"
 ORACLE_DIR = DATA / "oracle"            # <night>.json: the hindsight oracle's schedule for that night
 MOMENTS = DATA / "supervisor_moments.jsonl"   # every big play, judged from the feed: seen live or not
 HISTORY = DATA.parent / "docs" / "northstar-history.jsonl"   # scripts/northstar.py appends a row per run
+LIVE_NIGHTS = DATA / "live_nights"         # <night>/summary.json: the supervisor's auto-log (collect_live_night)
+REPORTS = (DATA / "reports", DATA.parent / "docs" / "nights")   # <night>.md: night report (supervisor, lane 4 #137)
+BUFFER_LOG = DATA / "buffer.jsonl"        # STK-06 holds that went bad and their rebuilds (control._buffer_log)
 REEL_REQUESTS = DATA / "reel_requests.jsonl"   # "I missed that" -> a catch-up request (record only)
 REPLAY_DUE_S = 180.0    # Nick, Nov 4 11:00 AM: a missed key moment airs within 3 min, at the next dead moment
 MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min, a phone convenience; the graded window is big_seen_3min
@@ -231,6 +234,43 @@ def provenance_view(row: dict, name) -> dict:
             "to": name(row.get("to_game")) if row.get("to_game") else "", "kind": row.get("kind") or "",
             "ok": bool(row.get("ok")), "dry_run": bool(row.get("dry_run")), "chips": chips(reason, row.get("kind")),
             "chain": chain, "parts": parts, "source": source, "has_trace": bool(t)}
+
+
+def capture_view(night: str, switches: list[dict], summary: dict | None, buffer_rows: list[dict],
+                 report: str | None, held_now: dict | None = None) -> dict:
+    """"Live night" morning view: did tonight become gold data? The supervisor's auto-log
+    (data/live_nights/<night>/summary.json), how many switches carry lane 3's provenance (#173) and which
+    modules spoke, the hidden stick's held buffer (control.held now; data/buffer.jsonl for the night), and
+    the night report if one is written. Read only: every input is already read."""
+    from redzone import trace as tr
+    keys: dict[str, int] = {}
+    with_prov = with_trace = 0
+    for row in switches:
+        t = tr.of_row(row) or {}
+        with_trace += bool(t)
+        p = t.get("provenance")
+        if isinstance(p, dict) and p:
+            with_prov += 1
+            for k in p:
+                keys[k] = keys.get(k, 0) + 1
+    order = [k for k in PROV_ORDER if k in keys] + sorted(k for k in keys if k not in PROV_ORDER)
+    s = summary if isinstance(summary, dict) else None
+    auto = None
+    if s is not None:
+        auto = {"rows": {k: v for k, v in (s.get("rows") or {}).items() if isinstance(v, int)},
+                **{k: s.get(k) for k in ("cuts_graded", "entries_mid_play", "leaves_mid_play", "switch_p95_s",
+                                         "picture_within_3s", "press_to_tv_p95_s")}}
+    kinds: dict[str, int] = {}
+    for r in buffer_rows:
+        kinds[str(r.get("kind") or "?")] = kinds.get(str(r.get("kind") or "?"), 0) + 1
+    n = len(switches)
+    checks = [{"key": "autolog", "label": "Auto-log collected", "ok": auto is not None},
+              {"key": "provenance", "label": "Switches with provenance", "ok": bool(n) and with_prov == n},
+              {"key": "report", "label": "Night report written", "ok": report is not None}]
+    return {"night": night, "switches": n, "with_trace": with_trace, "with_provenance": with_prov,
+            "provenance_keys": [{"module": k, "n": keys[k]} for k in order], "autolog": auto,
+            "held": {"now": {k: round(float(v), 1) for k, v in (held_now or {}).items()}, "log": kinds},
+            "report": report, "checks": checks, "gold": all(c["ok"] for c in checks)}
 
 
 def held_view(hidden_game: str | None, hidden_ready: bool, behind_s: float, home: str | None,
@@ -603,6 +643,38 @@ def router(engine) -> APIRouter:
         if row is None:
             return {"ok": False, "message": "No switch with that key"}
         return {"ok": True, "enabled": True, **provenance_view(row, engine._name)}
+
+    @r.get("/capture")
+    async def capture(day: str = ""):
+        if not _enabled(engine):
+            return _off()
+        now = time.time()
+        try:
+            d = date.fromisoformat(day) if day else night_of(now)
+        except ValueError:
+            return {"ok": False, "message": "day is YYYY-MM-DD"}
+        from redzone.supervisor import read_jsonl as rows_between
+        t0, t1 = night_window(d)
+        try:
+            summary = json.loads((LIVE_NIGHTS / d.isoformat() / "summary.json").read_text())
+        except (OSError, ValueError):
+            summary = None
+        rep = next((p for p in (base / f"{d.isoformat()}.md" for base in REPORTS) if p.exists()), None)
+        held_now = dict(engine.control.held) if t0 <= now < t1 else {}
+        v = capture_view(d.isoformat(), engine.store.switches_between(t0, t1), summary,
+                         rows_between(BUFFER_LOG, t0, t1), rep.name if rep else None, held_now)
+        return {"enabled": True, "now": now, **v}
+
+    @r.get("/capture/report")
+    async def capture_report(day: str = ""):
+        if not _enabled(engine):
+            return _off()
+        try:
+            d = date.fromisoformat(day)
+        except ValueError:
+            return {"ok": False, "message": "day is YYYY-MM-DD"}
+        rep = next((p for p in (base / f"{d.isoformat()}.md" for base in REPORTS) if p.exists()), None)
+        return {"ok": rep is not None, "day": d.isoformat(), "text": rep.read_text(errors="replace")[:60000] if rep else ""}
 
     @r.get("/held")
     async def held():

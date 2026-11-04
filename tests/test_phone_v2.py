@@ -423,3 +423,42 @@ def test_ledger_folds_the_kaggle_factory_manifest():
     assert led["nfm"] == keep["nfm"] and led["total_tokens"] == 3_000_000
     row = next(r for r in DL.view(led)["rows"] if r["league"] == "nba")
     assert not row["pending"] and "| NBA | nba_api, nba_cdn | 3.0M | 0 | 9,000 | 12% | 5% / 10% / 25% |" in DL.table(DL.view(led))
+
+
+def test_capture_view_counts_provenance_autolog_held_and_report():
+    import json
+    prov = {"trace": {"id": "t", "provenance": {"guard": {"ok": True}, "decider": {"kind": "better"}, "zz": 1}}}
+    sws = [{"ts": 1.0, "detail": json.dumps(prov)}, {"ts": 2.0, "detail": json.dumps({"trace": {"id": "u"}})},
+           {"ts": 3.0, "detail": "{}"}]
+    summary = {"rows": {"traces.jsonl": 2, "bad": "x"}, "cuts_graded": 2, "entries_mid_play": 0, "switch_p95_s": 2.2}
+    v = phone_v2.capture_view("2026-11-04", sws, summary, [{"kind": "drift"}, {"kind": "recovered"}, {"kind": "drift"}],
+                              "2026-11-04.md", {"HDMI2": 62.46})
+    assert (v["switches"], v["with_trace"], v["with_provenance"]) == (3, 2, 1)
+    assert [k["module"] for k in v["provenance_keys"]] == ["decider", "guard", "zz"]        # PROV_ORDER, then the rest
+    assert v["autolog"]["rows"] == {"traces.jsonl": 2} and v["autolog"]["entries_mid_play"] == 0
+    assert v["held"] == {"now": {"HDMI2": 62.5}, "log": {"drift": 2, "recovered": 1}}
+    assert [c["ok"] for c in v["checks"]] == [True, False, True] and v["gold"] is False
+    empty = phone_v2.capture_view("2026-11-05", [], None, [], None)
+    assert empty["autolog"] is None and empty["gold"] is False and empty["held"]["now"] == {}
+
+
+def test_capture_routes(client, engine, tmp_path, monkeypatch):
+    assert client.get("/api/v2/capture").status_code == 404
+    _on(engine)
+    monkeypatch.setattr(phone_v2, "LIVE_NIGHTS", tmp_path / "ln")
+    monkeypatch.setattr(phone_v2, "REPORTS", (tmp_path / "rep",))
+    monkeypatch.setattr(phone_v2, "BUFFER_LOG", tmp_path / "buffer.jsonl")
+    gid = next(iter(engine.merger.games))
+    _switch(engine, gid)
+    r = client.get("/api/v2/capture").json()
+    assert r["enabled"] and r["switches"] == 1 and r["report"] is None and r["autolog"] is None
+    night = r["night"]
+    (tmp_path / "ln" / night).mkdir(parents=True)
+    (tmp_path / "ln" / night / "summary.json").write_text('{"rows": {"traces.jsonl": 1}, "cuts_graded": 1}')
+    (tmp_path / "rep").mkdir()
+    (tmp_path / "rep" / f"{night}.md").write_text("# report")
+    r = client.get(f"/api/v2/capture?day={night}").json()
+    assert r["autolog"]["cuts_graded"] == 1 and r["report"] == f"{night}.md"
+    assert client.get(f"/api/v2/capture/report?day={night}").json() == {"ok": True, "day": night, "text": "# report"}
+    assert client.get("/api/v2/capture?day=x").json()["ok"] is False
+    assert client.get("/api/v2/capture/report?day=2020-01-01").json()["ok"] is False

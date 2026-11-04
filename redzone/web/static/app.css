@@ -1205,6 +1205,8 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .v2-ms { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; }
 .v2-stakes--pending { color: var(--text-3); }
 .v2-stakes--pending small { font-size: 11px; }
+.v2-report { white-space: pre-wrap; font-size: 12px; background: var(--surface-2); padding: 10px 12px; border-radius: 12px; overflow-wrap: anywhere; max-height: 60vh; overflow: auto; }
+.v2-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
 .v2-trend { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
 .v2-trend-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .v2-trend-top .m { font-size: 14px; }

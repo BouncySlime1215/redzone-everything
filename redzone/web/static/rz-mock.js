@@ -374,6 +374,17 @@ function mockV2(path, b) {
       league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, stakes_line: ["AFC 1-seed race, top-5 matchup", "Rivalry game", "", "Wild-card push"][i] || "", stakes_pending: i === 2 || i > 3, is_break: i === 4, source: "stub" }));
     return { enabled: true, now: Date.now() / 1000, current: games[0] && games[0].game_id, games, source: games.length ? "stub" : null };
   }
+  if (path.startsWith("/api/v2/capture/report")) {
+    return { ok: true, day: "2026-11-04", text: "# RedZone night report: 2026-11-04\n\n**41 switches (1 failed); key moments seen 37/40; 2 auto-fixes.**\n\n- Mid-play entries: 0\n- Held buffer rebuilt twice (drift)" };
+  }
+  if (path.startsWith("/api/v2/capture")) {
+    const day = (path.match(/day=([0-9-]+)/) || [])[1] || "2026-11-04";
+    return { enabled: true, night: day, switches: 41, with_trace: 41, with_provenance: 38,
+      provenance_keys: [["decider", 38], ["crunch_state", 38], ["importance", 38], ["stakes", 21], ["planner", 9], ["guard", 38], ["control", 38], ["playbook", 14]].map(([module, n]) => ({ module, n })),
+      autolog: { rows: { "traces.jsonl": 41, "tv_input.jsonl": 44, "supervisor_cuts.jsonl": 39, "sync.jsonl": 212, "buffer.jsonl": 3 }, cuts_graded: 39, entries_mid_play: 0, leaves_mid_play: 1, switch_p95_s: 2.2, picture_within_3s: "38/41", press_to_tv_p95_s: 4.1 },
+      held: { now: { HDMI2: 62.5 }, log: { drift: 2, recovered: 2 } }, report: `${day}.md`,
+      checks: [{ key: "autolog", label: "Auto-log collected", ok: true }, { key: "provenance", label: "Switches with provenance", ok: false }, { key: "report", label: "Night report written", ok: true }], gold: false };
+  }
   if (path === "/api/v2/ledger") {
     const R = [["nfl", "nflverse pbp", "CC-BY 4.0", 212e6, 80e6, 41000, 0.14, "1999-2025"], ["cfb", "cfbfastR", "MIT", 105e6, 0, 30500, 0.11, "2004-2025"],
       ["nba", "nba_api pbp", "", 160e6, 120e6, 25000, 0.17, "2015-2025"], ["nhl", "api-web.nhle.com", "", 58e6, 40e6, 9800, 0.13, "2010-2025"]];
