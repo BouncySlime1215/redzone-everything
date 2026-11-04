@@ -10,6 +10,7 @@ import { confirmSheet, toast } from "./rz-sheet.js?v=40";
 import { api, act } from "./rz-api.js?v=40";
 import { loadTeams, teamList } from "./rz-detail.js?v=41";
 import { showTeams } from "./rz-games.js?v=41";
+import { prioritySection } from "./rz-v2.js?v=1";
 
 const ui = app.ui;
 ui.pending = ui.pending || {};
@@ -104,7 +105,7 @@ export function renderSettings(root) {
   const save = n ? `<div class="savebar" data-key="savebar"><div class="savebar-in"><span class="t">${n} unsaved change${n === 1 ? "" : "s"}</span>
     <button class="btn btn--sm btn--ghost" data-act="settings-discard">Discard</button><button class="btn btn--sm btn--primary" data-act="settings-save">Save</button></div></div>` : "";
 
-  patch(root, head + tv + teams + leagues + fan + sliders
+  patch(root, head + tv + teams + leagues + fan + sliders + prioritySection()
     + `<button class="btn btn--ghost btn--block" style="margin-top:10px" data-act="settings-undo" data-key="undo">${icon("undo")}Undo last save</button>`
     + channels() + sundayTicket() + healthSec(S)
     + `<div class="foot-note" data-key="foot">RedZone Everything · home network only</div>` + save);

@@ -435,5 +435,14 @@ noggin:                    # docs/noggin.md
   priority:
     enabled: false         # pick the best game by the Noggin Priority order (L1 hard rules, then score). OFF until measured
     banned_apps: [peacock]
+    prefs:                 # L2: Nick's preferences, set from the phone page (phone.v2). Only the score moves
+      bets_weight: 1.0     # x your bet's sweat term (0-2)
+      rivalry_points: 6.0  # points added for a rivalry game (0-15)
+      nhl_pp_ot_boost: 1.0 # x the NHL power-play / overtime term (0-2)
+      reels: true          # catch-up reels allowed
+      switch_frequency: 1.0  # 0.5 calmer .. 2.0 busier
   timing:
     leagues: []            # Noggin Timing v1: calibrated dead-window bounds in place of cuts.FLOOR_S / MEDIAN_S
+
+phone:                     # the phone page (redzone/web)
+  v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it

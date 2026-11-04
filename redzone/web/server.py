@@ -22,6 +22,7 @@ import re
 from redzone.channels import parse_yttv_link
 from redzone.config import LIMITS, ConfigError
 from redzone.engine import Engine
+from redzone.web import phone_v2
 
 STATIC = Path(__file__).with_name("static")
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -95,6 +96,7 @@ def build_app(engine: Engine) -> FastAPI:
         return FileResponse(STATIC / "index.html")
 
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
+    app.include_router(phone_v2.router(engine))   # flag phone.v2 (off): reasons, 👍/👎, "I missed that", L2
 
     @app.get("/reel.mp4")
     def reel_file():
