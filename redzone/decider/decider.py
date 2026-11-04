@@ -1588,7 +1588,8 @@ class Decider:
             from redzone.noggin import wire
             hold = self.cfg.get("decider.crunch.hold_personal", 5)
             yours = self._yours | {g for g in watchable if watchable[g].scored.personal >= hold}
-            return wire.pick(self.cfg, watchable, [o.id for o in opts], yours)
+            return wire.pick(self.cfg, watchable, [o.id for o in opts], yours,
+                             {o.id: core.rate(o, self.core.k) for o in opts})
         if watchable[best].scored.lock == "power play":
             # [nhl pp] A power play is always worth a look, but never over your team late and close
             # (Oct 29 replay: back from a catch-up onto NYI @ MIN's power play instead of WSH, tied late).
