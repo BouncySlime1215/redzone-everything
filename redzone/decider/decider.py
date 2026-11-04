@@ -237,6 +237,10 @@ class Decider:
         self._clock = clock
         self.overlap_why: Counter = Counter()   # [GAME-05] overlap calls (audit)
         self.lookahead_why: dict[str, int] = {}   # [GAME-04] outcomes by reason (audit)
+        # [possession start] the per-possession jump / stay policy: (decision, candidate, now) -> "jump" |
+        # "stay". None = jump (the rule default). Self-taught only (oracle imitation, simulation, play-by-play
+        # outcomes); Nick's buttons are controls, never labels (Nov 4 hard rule).
+        self.possession_policy = None
         self.scenarios = Scenarios(cfg)   # [scenario tree] GAME-01..03, 21, 22 seeds, flag playbooks.game.enabled (off)
         self.safety = Safety(cfg)   # [playbooks] SAFE-01/02/03/05, flag playbooks.safe.enabled (off)
         # The live controller knows whether THIS target is already ready. App-wide
@@ -699,7 +703,7 @@ class Decider:
     # ----- [cut timing] entering on a dead ball ------------------------------------
 
     def entry_plan(self, gid: str, cands: dict[str, Candidate], now: float, cost: float | None = None,
-                   urgent: bool = False) -> EntryPlan | None:
+                   urgent: bool = False, possession: bool = False) -> EntryPlan | None:
         """How to come into gid right now (None: no timing evidence, e.g. RedZone or no timeline)."""
         c = self.cfg
         if gid in PSEUDO or not c.get("decider.entry.enabled", True):
@@ -722,7 +726,7 @@ class Decider:
                           relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
                           cost_lo=min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S))),
                           urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
-                          lag=float(c.get("decider.entry.landing_lag_s", 0.0)))
+                          lag=float(c.get("decider.entry.landing_lag_s", 0.0)), possession=possession)
 
     def _cut_timed(self, gid: str | None, cands) -> bool:
         """Cut timing is on for this game's league (decider.entry.leagues). Scorecards, Nov 3: NFL
@@ -755,6 +759,20 @@ class Decider:
             return False
         return x.scored.league.base.value in (self.cfg.get("decider.entry.hold_only") or [])
 
+    def _possession_start(self, x: Candidate | None, d: Decision) -> bool:
+        """[possession start] Nick, Nov 4: this entry cues the hidden stick to the last dead ball before
+        the current possession (the time-shift buffer), never lands mid-play and never waits for the
+        next break while that dead ball is in reach. decider.entry.possession_start: off | crunch (the
+        crunch_now entries) | all (every timed entry)."""
+        mode = self.cfg.get("decider.entry.possession_start", "off")
+        if mode in (None, False, "off", "false") or x is None:
+            return False
+        if mode == "all":
+            return True
+        if mode != "crunch":
+            return False
+        return bool(x.scored.crunch_now) or d.kind == "crunch"
+
     def _crunch_entry_mode(self) -> str:
         """[nhl crunch entry] Coming into hockey inside crunch's last 2:00 / OT: "live" (go now),
         "rewind" (land on the last whistle with a rewind when one fits, else go now), or "wait"
@@ -776,16 +794,27 @@ class Decider:
                                                            self._sticky_home(d.target, cands, entry=True)))
         if d.kind == "ended" and self.cfg.get("decider.entry.ended_strict", False):
             urgent = False   # [landing lag] the game on screen is over: nothing is lost by a strict landing
-        plan = self.entry_plan(d.target, cands, now, urgent=urgent)
+        pos = self._possession_start(x, d)
+        if pos and self.possession_policy is not None:
+            # [possession start] the learned jump / stay policy (lane 1); default (None) is jump
+            if self.possession_policy(d, x, now) == "stay":
+                self.home_break_visit, self.home_return_at = home_before
+                state = State.REPLAY if self.after_replay else d.state
+                return Decision(now, "stay", self.current, f"possession policy: stay: {d.reason}", state,
+                                d.gate, want=d.target)
+        plan = self.entry_plan(d.target, cands, now, urgent=urgent or pos, possession=pos)
         if plan is None:
             return d
         if plan.ok:
             d.rewind_s = plan.rewind_s
             return d
-        if x is not None and (x.scored.crunch_now and self._crunch_entry_mode() == "rewind"
+        if pos:
+            pass   # no dead ball in reach behind the picture: wait for one (rule #1), never go live
+        elif x is not None and (x.scored.crunch_now and self._crunch_entry_mode() == "rewind"
                               or x.scored.league.base.value in (self.cfg.get("decider.entry.rewind_only") or [])):
             return d   # no clean landing in reach: crunch time (and rewind-only leagues) don't wait
-        if x is not None and x.scored.league.base.value in (self.cfg.get("decider.entry.no_wait_leagues") or []):
+        if not pos and x is not None and \
+                x.scored.league.base.value in (self.cfg.get("decider.entry.no_wait_leagues") or []):
             # Continuous play: holding a switch for a dead ball missed more than it saved (scorecards,
             # Nov 3); enter live unless a rewind lands it clean (decided above).
             return d
@@ -798,7 +827,7 @@ class Decider:
         if w is None or w[0] != d.target or now - w[2] > 3 * float(self.cfg.get("polling.live_s", 10)):
             w = (d.target, now, now)
         self._entry_wait = (d.target, w[1], now)
-        if cap is not None and now - w[1] >= float(cap) and (
+        if not pos and cap is not None and now - w[1] >= float(cap) and (
                 d.kind == "ended" or (x is not None and getattr(x.scored, "late", False))):
             return d
         # Not yet: whatever the switch planned (a visit's way home) waits with it.
