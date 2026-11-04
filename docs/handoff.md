@@ -106,6 +106,23 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 | **Executor** | Coordinator threads | Build. Every PR names the North Star metric it moves and shows the measured delta in CI. |
 | **Gatekeeper** | `release_gate.py` plus CI | A release only ships when the North Star rows hold on locked unseen nights. Anything that misses ships off behind a flag. |
 
+## 6d. The Noggin (Nick's name for the decision brain)
+
+The noggin is the part that decides **which game, when to cut, and when to enter**:
+- the scoring engine (what's worth watching)
+- Brain v3 (timing and what's about to happen; small calibrated GBMs, under 1 ms)
+- the decider (one EV function)
+
+The 1.7B language model (Kaggle student) is NOT the noggin. It does words and the watchdog.
+
+Noggin training track (started Nov 4, 1:35 AM):
+- **Data factory:** historical play-by-play with wall-clock times (nflfastR, hoopR, cfbfastR,
+  fastRhockey, MLB), split by whole nights. Runs on Kaggle CPU or GitHub Actions.
+- **Noggin Timing v1:** boosted discrete hazard plus conformal bounds. Replaces A3.
+- **Noggin Predict:** big play next.
+- **Noggin Pick:** scoring and decider weights, tuned on replayed nights with forward-chaining CV.
+- **Gate:** beat the current noggin on locked unseen nights, then shadow mode, then turn it on.
+
 ## 7. How the director works (so a new session can take over)
 
 - **Every 10 minutes, in one pass:** usage guard → PRs/CI → Kaggle log → project threads → one
