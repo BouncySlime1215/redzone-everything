@@ -277,3 +277,38 @@ async def test_plan_tonight_script_writes_the_plan_without_touching_engine_files
     saved = json.loads(P.path_for(DAY, tmp_path).read_text())
     assert {e["game_id"] for e in saved["games"]} == {"espn", "tnt", "wiz", "lp", "pea"}
     assert (tmp_path / "channels.json").read_text() == before
+
+
+# --- [warmup.pregame] the night's likeliest first game on the hidden stick before the first start ----
+
+def test_warmup_target_is_the_first_windows_likeliest_first_pick(ch):
+    p = build(ch)
+    assert P.warmup_target(p, at(18, 40)) is None                       # 20 min out: not yet
+    assert P.warmup_target(p, at(18, 52)) == ("prime:amzn1.dv.gti.wiz", at(19))   # your team first
+    assert P.warmup_target(p, at(19, 20)) == ("prime:amzn1.dv.gti.wiz", at(19))   # listed starts run late
+    assert P.warmup_target(p, at(19, 31)) is None                       # 30 min past: given up
+    live = build(ch, slate() + [game("live", "SEA", "POR", at(18), phase=Phase.LIVE)], now=at(18, 52))
+    assert P.warmup_target(live, at(18, 52)) is None                    # a game is on: autopilot owns it
+
+
+async def test_warmup_preloads_the_hidden_stick_and_holds_it_against_checks(eng):
+    e, clock = eng
+    pre = []
+    e.control.preload = lambda t: pre.append(t) or True
+    e.control.standby, e.control.hidden_ready = (None, None), False
+    await e.tonight.step()                                              # 18:45: flag off -> a normal check
+    assert e.control.calls == ["prime:amzn1.dv.gti.wiz"] and pre == []
+    e.cfg.update({"warmup": {"pregame": True}})
+    clock[0] = at(18, 52)
+    await e.tonight.step()
+    assert pre == ["prime:amzn1.dv.gti.wiz"] and e.tonight.plan["warmup"]["state"] == "tuning"
+    e.control.standby, e.control.hidden_ready = ("prime:amzn1.dv.gti.wiz", None), True
+    clock[0] = at(18, 53)
+    e.tonight._built_at = 0                                             # a rebuild keeps the warm-up state
+    await e.tonight.step()
+    assert e.tonight.plan["warmup"]["state"] == "ready" and pre == ["prime:amzn1.dv.gti.wiz"]
+    assert e.control.calls == ["prime:amzn1.dv.gti.wiz"]                # no other check re-tunes it
+    e.decider.user.paused = True                                        # paused: nothing is tuned
+    e.control.standby, e.control.hidden_ready = (None, None), False
+    await e.tonight.step()
+    assert pre == ["prime:amzn1.dv.gti.wiz"] and e.tonight.plan["warmup"]["state"] == "waiting"

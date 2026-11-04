@@ -283,3 +283,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   file per night: a timing section, lane 2's sync section), with an outlier guard that refuses a value
   more than 3 MADs from the last 5 nights. The files are written every night so the guard has history; with
   calib.auto on, the next start plans the TV flip with the newest accepted median and max.
+- 2026-11-04: **warmup.pregame (new, default OFF), warmup.lead_min 10.** Overseer queue item (d): from 10 min
+  before the night's first listed start until a game goes live (listed starts run 5-15 min early), the
+  likeliest first pick of that window (your team, then league order) is preloaded on the HIDDEN stick, so the
+  first switch is a flip. Never the stick on screen, never while paused / dry run / a switch is in flight;
+  the pre-game checks stand aside meanwhile. Night lab seed 1: first switch 7.52 s cold tune -> 1.92 s flip.
