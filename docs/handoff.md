@@ -69,7 +69,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **Nick's crunch decision (10:45 AM):** HYBRID and AI-decided (ref: NBA CrunchTime look-ins). **New default: possession-start entry.** The buffered hidden stick cues to the target game's last dead ball, so entry is never mid-play and never waits. Per-possession jump/stay/replay-later policy trained on the hindsight oracle, then Nick's 👍/👎, then Mind stakes. Lane 1 top priority: Pick-v1 oracle imitation plus Mind V7 (Kaggle, running).
+- **2026-11-04 10:25 AM ET.** **RC5 cut:** integration/release = 4602c63 (CI running). The **live hardware lab** (a director background agent on the Mac) deploys it once green, then runs real TV/stick tests all day (flips, press-to-TV, pre-tune, buffer, sync probe, FastCast, tonight's NBA shadow). The TV is on. Cycle 04 started (#114). Merged: #109 (Noggin PICK hook, off), #110 (entry landing fixes), #111 (self-taught rule).
+- **Usage** 11% (line 6.3%, +4.7), close to the brake. Lanes ①②③ plus ④ for RC5; ⑤ paused. Kaggle V7 running.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
