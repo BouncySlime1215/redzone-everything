@@ -134,3 +134,21 @@ def test_sync_rows():
     assert ns.settle_row(reps)["status"] == ns.PASS
     assert ns.settle_row([{"seed": i, "settle_book": {"n": 20, "ok": 17}} for i in range(8)])["status"] == ns.FAIL
     assert rows_by(ns.table(cards(9)))["delay_err_p95"]["status"] == ns.PENDING
+
+
+def test_profile_run_keeps_its_candidate_column(tmp_path, monkeypatch):
+    """Regression: a later results[split] assignment dropped the --profile column (cycle 01)."""
+    calls = []
+
+    def fake_run(root, split, timeout=1800, profile=None):
+        calls.append(profile)
+        return cards(mid=1 if profile is None else 0)
+
+    monkeypatch.setattr(ns, "run_cards", fake_run)
+    out = tmp_path / "ns.json"
+    ns.main(["--split", "dev", "--profile", "candidate", "--no-write", "--json", str(out)])
+    res = json.loads(out.read_text())["dev"]
+    assert calls == [None, "candidate"]
+    assert "candidate" in res and res["candidate"]["profile"] == "candidate"
+    assert rows_by(res["candidate"]["rows"])["mid_play"]["value"] == 0
+    assert rows_by(res["rows"])["mid_play"]["value"] > 0

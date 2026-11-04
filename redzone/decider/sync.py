@@ -36,7 +36,9 @@ from dataclasses import dataclass, field
 
 log = logging.getLogger("redzone.sync")
 
-SIGMA = {"flip": 3.0, "score": 2.0, "clock": 1.5, "tap": 4.0, "mic": 3.0}
+SIGMA = {"flip": 3.0, "score": 2.0, "clock": 1.5, "tap": 4.0, "mic": 3.0, "break": 8.0}
+DRIFT_ALARM_S = 5.0           # [SYNC 6] the delay moved this far from what it was when it synced: alarm
+Q_SCALE_MAX = 25.0            # [SYNC 4] worst network condition: the delay wanders this much faster
 POSITION_SIGMA_S = 0.5        # default doubt of one position read once the stick clock is pinned
 Q_DELAY = 0.02 ** 2           # delay random walk, s^2 per s (about 1 s per 40 min)
 Q_DRIFT = 1e-5 ** 2           # drift random walk, (s/s)^2 per s
@@ -70,6 +72,8 @@ class ChannelSync:
     accepted: int = 0
     _last_reject: tuple | None = None          # (t, kind, z) of the last rejected measurement
     has_origin: bool = False
+    q_scale: float = 1.0                       # [SYNC 4] network condition: process noise multiplier
+    plan_mu: float | None = None               # [SYNC 6] the delay when it (re)synced: drift is measured from it
 
     # ------------------------------------------------------------------ model
     def reset(self, t: float, mu: float, sd: float) -> None:
@@ -83,6 +87,7 @@ class ChannelSync:
         if not self.has_origin:
             self.P[2][2] = O0_SD ** 2
         self.tuned_at, self.synced_at, self._last_reject = t, None, None
+        self.plan_mu = None
 
     def _predict(self, t: float) -> None:
         dt = t - self.t
@@ -95,7 +100,7 @@ class ChannelSync:
         p01 = P[0][1] + dt * P[1][1]
         p02 = P[0][2] + dt * P[1][2]
         P[0][0], P[0][1], P[1][0], P[0][2], P[2][0] = p00, p01, p01, p02, p02
-        P[0][0] += Q_DELAY * dt
+        P[0][0] += Q_DELAY * self.q_scale * dt
         P[1][1] += Q_DRIFT * dt
         self.t = t
 
@@ -136,12 +141,15 @@ class ChannelSync:
 
     def _restart_on(self, h: list, z: float, r_sd: float, t: float) -> None:
         log.info("%s: two signals in a row disagree with the filter; re-syncing from the newest", self.target)
+        plan = self.plan_mu        # [SYNC 6] the stream moved under us: that IS drift, keep measuring from the plan
         if h[2]:                                # a position read: the origin is suspect, the delay too
             self.has_origin = False
             self.reset(t, self.x[0], 30.0)
             self.P[2][2] = O0_SD ** 2
+            self.plan_mu = plan
         else:
             self.reset(t, z, r_sd)
+            self.plan_mu = plan
             self._accepted(t)
             return
         self._update(h, z, r_sd, t, "restart")
@@ -153,6 +161,18 @@ class ChannelSync:
             self.has_origin = True
         if self.synced_at is None and self.sd(t) <= SYNC_TARGET_S:
             self.synced_at = t
+        if self.plan_mu is None and self.synced_at is not None:
+            self.plan_mu = self.x[0]
+
+    def shift(self, t: float, delta: float, sd: float) -> None:
+        """[SYNC 1] A KNOWN move of the screen delay (a stall measured on the stick's own clock, a hold of
+        a measured length): the estimate moves by delta and gets sd more doubt. A re-sync (reset) would
+        throw away a good estimate for a 1 s buffering blip. The plan moves too: a booked stall isn't drift."""
+        self._predict(t)
+        self.x[0] += delta
+        self.P[0][0] += sd * sd
+        if self.plan_mu is not None:
+            self.plan_mu += delta
 
     # ------------------------------------------------------------------ measurements
     def delay(self, t: float, z: float, kind: str, sd: float | None = None) -> bool:
@@ -172,7 +192,7 @@ class ChannelSync:
 
     def sd(self, t: float) -> float:
         dt = max(0.0, t - self.t)
-        v = self.P[0][0] + 2 * dt * self.P[0][1] + dt * dt * self.P[1][1] + Q_DELAY * dt
+        v = self.P[0][0] + 2 * dt * self.P[0][1] + dt * dt * self.P[1][1] + Q_DELAY * self.q_scale * dt
         return math.sqrt(max(v, 0.0))
 
     def uncertain(self, t: float) -> bool:
@@ -183,8 +203,14 @@ class ChannelSync:
         return (self.updated is not None and t - self.updated <= STALE_S and not self.uncertain(t)
                 and self.sd(t) <= SYNC_TARGET_S)
 
+    def drift(self, t: float) -> float | None:
+        """[SYNC 6] How far the delay has moved since it synced (None = not synced since the tune)."""
+        return None if self.plan_mu is None else self.mu(t) - self.plan_mu
+
     def status(self, t: float) -> dict:
+        d = self.drift(t)
         return {"target": self.target, "delay_s": round(self.mu(t), 1), "error_s": round(self.sd(t), 2),
+                "drift_s": None if d is None else round(d, 1), "q_scale": round(self.q_scale, 2),
                 "synced": self.synced(t), "uncertain": self.uncertain(t), "origin": self.has_origin,
                 "since_tune_s": None if self.tuned_at is None else round(t - self.tuned_at),
                 "synced_after_s": None if self.synced_at is None or self.tuned_at is None
@@ -247,6 +273,38 @@ class SyncBook:
         self.get(target).reset(t, mu, sd)
         self._log("tune", target, t, prior=round(mu, 2), prior_sd=round(sd, 2))
         self.on_change(target)
+
+    def shift(self, target: str, delta: float, sd: float = 0.5, t: float | None = None) -> None:
+        """[SYNC 1] A known move of this channel's delay (see ChannelSync.shift)."""
+        t = self._clock() if t is None else t
+        self.get(target).shift(t, delta, sd)
+        self._log("shift", target, t, delta=round(delta, 2), shift_sd=round(sd, 2))
+        self.on_change(target)
+
+    def condition(self, target: str, q_scale: float) -> None:
+        """[SYNC 4] Network condition on the stick playing this channel (SyncProbe.condition): a weak or
+        stalling link makes the delay wander faster, so its error bar widens faster between anchors."""
+        f = self.filters.get(target)
+        if f is None:
+            return
+        t = self._clock()
+        f._predict(t)                          # the old rate applies up to now
+        f.q_scale = min(Q_SCALE_MAX, max(1.0, float(q_scale)))
+        self.on_change(target)
+
+    def alarms(self, t: float | None = None, limit_s: float = DRIFT_ALARM_S,
+               predicted_q: float = 9.0) -> list[dict]:
+        """[SYNC 6] Channels whose delay moved more than limit_s since they synced ("measured"), or
+        whose network condition says it is about to ("predicted": q_scale >= predicted_q)."""
+        t = self._clock() if t is None else t
+        out = []
+        for target, f in self.filters.items():
+            d = f.drift(t)
+            if d is not None and abs(d) > limit_s:
+                out.append({"target": target, "why": "measured", "drift_s": round(d, 1)})
+            elif f.q_scale >= predicted_q:
+                out.append({"target": target, "why": "predicted", "q_scale": round(f.q_scale, 1)})
+        return out
 
     def measure(self, target: str, z: float, kind: str, t: float | None = None, sd: float | None = None) -> bool:
         if not 2.0 <= z <= 180.0:

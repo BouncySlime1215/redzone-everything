@@ -152,3 +152,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   rebooted stick as main, the stick we left became "hidden", so the planner preloaded another game over it.
 - **Fix:** the undo clears `_exit_check` around its own flip, and `preload()` refuses while the undo is pending.
 - **Signals:** playbook=TV-04, "was re-tuned meanwhile", TV jumped by itself, CEC steal, rebooted stick
+
+- 2026-11-04: **The merge of #83 and #76 dropped the North Star candidate column without any error.** Both
+  PRs edited the same loop in scripts/northstar.py, and git merged them cleanly. #83's line reassigned
+  `results[split]` after #76 had added `["candidate"]` to it, so `--profile candidate` scored the profile and
+  then threw it away. Now the drill is passed to both tables and a test covers the column. Lesson: when two PRs
+  edit the same loop, read the merged loop, not only the conflict list.
