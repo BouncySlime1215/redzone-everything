@@ -292,3 +292,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `noggin.pick.model` (default `v1`). All are off or unchanged by default. Why off: on NBA dev the veto leaves the rule
   default unchanged (77.5 / 90.0) and the `all` scope adds a mid-play cut. The pure rollout beats the rule (85.9 / 91.9),
   but the decider path doesn't carry that gain yet. docs/noggin.md §13.
+- 2026-11-04 (Nick, 15:06 UTC scale order): the Noggin data factory runs on free Kaggle CPU
+  (`scripts/kaggle_noggin_factory.py`, resumable season shards + oracle self-play parts, all 4 loaded
+  leagues back to 2002 where wall clocks exist). The `noggin-factory.yml` push trigger is removed (manual
+  dispatch only), because the repo's GitHub Actions minutes are capped. Every lane 1 PR reports rows per league.

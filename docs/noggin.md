@@ -470,3 +470,30 @@ Nick's crunch_now decision (possession-start entry), with the AI deciding when t
   Against plain PICK-cue's 91.7 / 92.2, imitation has plateaued at about 94 % of the clairvoyant oracle. What's
   left is what the oracle knows about the future, not compounding error. The next lever is the decider, not
   the model.
+## 12. The billions-scale factory on Kaggle CPU (Nov 4, scale order)
+
+Nick's order (15:06 UTC): billions of labeled examples, built on free Kaggle CPU (12 h sessions), never on
+the Mac and never on GitHub Actions (the push trigger on `noggin-factory.yml` is gone; it is manual only).
+
+- **Notebook:** `scripts/kaggle_noggin_factory.py` (cells), shipped as `kaggle_noggin_factory.ipynb` plus the
+  code pack `rz_factory_code.tar.gz` on the `kaggle-inputs` branch (`python scripts/pack_factory_code.py OUT`).
+  Accelerator None, Internet On. Launch steps: [kaggle-run runbook](memory/runbooks/kaggle-run.md).
+- **What it writes** (`/kaggle/working/factory`, kept as the notebook's output dataset):
+  - `moments/<league>/<season>.parquet`: every dead ball / stoppage as a labeled moment (NBA 2002-2026,
+    NFL 2011-2025, NHL 2011-2026, CBB 2006-2026), with the night on each row.
+  - `selfplay/<league>/<season>/part-NNNN.parquet` (NBA 20, NHL 20, CBB 4 synthetic slates per real night;
+    NHL from ESPN summaries, which carry wall clocks from 2019-20 on): PICK
+    rows labelled only by the hindsight oracle, on every real night and on synthetic slates (random games of
+    the same season, re-timed into a 3 h window, random screen lag 80/116/150 s). float16 features, ~0.9
+    byte per row compressed.
+  - `manifest.json`: rows per league / season / kind, and the seasons still missing.
+- **Resume:** attach the previous version's output as an input and run again. Moments shards and
+  self-play parts that exist are copied and skipped; the slate list is seeded, so a season cut short by
+  the session deadline continues at its next part (100 slates each). Seasons are interleaved across
+  leagues, so a short session still has every league's newest seasons.
+- **No leakage, no Nick:** the locked and scorecard nights are dropped before anything is written
+  (`factory.EVAL_FIRST_NIGHT`), splits are by whole season, and no label comes from a tap.
+- **Smoke run (cloud container, NBA 2026, synthetic 1):** 2,760 moments and 10.8 M self-play rows (382
+  slates) in about 4 min on 2 cores, 10.2 MB. At the full setting (20 synthetic per night) one NBA season
+  is about 4,000 slates and roughly 110 M rows, so NBA alone is on the order of 2.5 B rows when every
+  season has wall clocks. CFB and MLB have no loader yet (factory.SOURCES), so they are not in the plan.
