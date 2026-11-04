@@ -394,3 +394,7 @@ flags:                       # kill switches, one per subsystem (redzone/contrac
   sync_predictor: true
   auto_tune: true
   fastcast: true
+
+noggin:                      # the one decision brain (docs/noggin.md); every part OFF until it passes its gate
+  timing:
+    leagues: []              # Noggin Timing v1: calibrated dead-window bounds in place of cuts.FLOOR_S / MEDIAN_S

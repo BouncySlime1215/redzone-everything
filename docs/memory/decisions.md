@@ -124,3 +124,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   to Noggin Timing v1; the live time-shift buffer (#61) is the Reflex's input #1. Every PR names the North
   Star line it moves. Gates: beat the current brain on locked unseen nights, shadow mode, OFF behind a flag.
   Spec: `docs/noggin.md`.
+- 2026-11-04 3:15 AM: **Noggin Timing v1 ships OFF** (`noggin.timing.leagues: []`). NBA hazard + conformal lower
+  bound: 0.56 % of restarts before the bound on 421 unseen public nights (today's FLOOR_S: 7.33 %) at the same
+  tightness, ECE 0.053; on the NBA scorecard at B=90 (dev nights) entries mid-play 5/61 -> 5/61, so no gain to
+  ship yet. The remaining NBA mid-play entries are entry policy (crunch_now live, 180 s wait cap), Noggin Pick.

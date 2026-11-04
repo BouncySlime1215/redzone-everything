@@ -293,7 +293,9 @@ class Decider:
 
     def timeline(self, game_id: str, league: League) -> Timeline:
         if game_id not in self.timelines:
-            self.timelines[game_id] = Timeline(league, clock=self._clock)
+            tl = self.timelines[game_id] = Timeline(league, clock=self._clock)
+            from redzone.noggin.live import hook_for   # [noggin] Timing v1, off unless noggin.timing.leagues
+            tl.dead.noggin = hook_for(self.cfg, league)
         return self.timelines[game_id]
 
     def note_error(self) -> None:

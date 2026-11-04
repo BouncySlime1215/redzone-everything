@@ -265,6 +265,9 @@ class DeadTracker:
         self.learned: tuple[float, tuple[float, float, float]] | None = None
         self.learned_q = 1          # which quantile the expected restart uses (0 = p10, 1 = p50)
         self.learned_cap = True     # never later than the table's median (a learned estimate only shortens)
+        # [noggin] Noggin Timing v1 (redzone/noggin/live.py): a calibrated bound for open windows in place
+        # of FLOOR_S / MEDIAN_S. None = today's tables (noggin.timing.leagues off for this league).
+        self.noggin = None
 
     # ---- input
     def add(self, pid: str, lo: float, hi: float, kind: str, text: str, type_text: str,
@@ -385,13 +388,28 @@ class DeadTracker:
         lg = _lg(self.league)
         if w.start <= self.frozen_until:
             return w.start     # the feed's wallclock froze around here: nothing is certain
+        covered = self._covered()
+        if self.noggin is not None:
+            nb = self.noggin.lower_until(self, w, self._proven(w, covered))
+            if nb is not None:
+                return max(nb, w.start if covered is None else covered)
         floor = w.start + FLOOR_S.get(lg, {}).get(w.kind, 0.0)
-        if self.fresh_at is None:
+        if covered is None:
             return floor
-        # Anything that restarted play before this would already be in the data.
-        covered = self.fresh_at - self.lag - PLAY_S.get(lg, 0.0) - SILENT_S.get(lg, 0.0) - (
-            0.0 if lg in (League.NFL, League.MLB) else 2.0)
         return max(floor, covered)
+
+    def _covered(self) -> float | None:
+        """Real time up to which the data would already show a restart (None: no fresh poll yet)."""
+        if self.fresh_at is None:
+            return None
+        lg = _lg(self.league)
+        return self.fresh_at - self.lag - PLAY_S.get(lg, 0.0) - SILENT_S.get(lg, 0.0) - (
+            0.0 if lg in (League.NFL, League.MLB) else 2.0)
+
+    @staticmethod
+    def _proven(w: Window, covered: float | None) -> float:
+        """Seconds the data proves window w has stayed dead."""
+        return 0.0 if covered is None else max(0.0, covered - w.start)
 
     def dead_until(self, x0: float) -> float | None:
         """The screen shows real time x0 (its earliest) now: until what real time is it surely still
@@ -412,6 +430,10 @@ class DeadTracker:
             if w.end is not None:
                 return max(x, w.end)
             table = w.start + MEDIAN_S.get(_lg(self.league), {}).get(w.kind, 30.0)
+            if self.noggin is not None:
+                med = self.noggin.median_until(self, w, self._proven(w, self._covered()))
+                if med is not None:
+                    table = med
             learned = self._learned_end(w)
             if learned is not None:
                 return max(x, min(learned, table) if self.learned_cap else learned)
