@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Guarded service at login. Render with scripts/install_service.sh render. -->
+<!-- Guarded service at login. Render with scripts/install_service.sh render.
+     No WorkingDirectory and no log path under the checkout: the checkout lives under ~/Documents,
+     which macOS privacy (TCC) closes to launchd itself, and the job then dies with EX_CONFIG (78)
+     before Python starts. Python (granted Full Disk Access) changes into the checkout instead. -->
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.redzone.everything</string>
@@ -8,9 +11,9 @@
   <array>
     <string>__ROOT__/.venv/bin/python</string>
     <string>-u</string>
-    <string>__ROOT__/scripts/service_runtime.py</string>
+    <string>-c</string>
+    <string>__LAUNCHER__</string>
   </array>
-  <key>WorkingDirectory</key><string>__ROOT__</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>15</integer>
@@ -24,7 +27,7 @@
   <key>Nice</key><integer>5</integer>
   <key>EnvironmentVariables</key>
   <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
-  <key>StandardOutPath</key><string>__ROOT__/data/service-bootstrap.log</string>
-  <key>StandardErrorPath</key><string>__ROOT__/data/service-bootstrap.log</string>
+  <key>StandardOutPath</key><string>__LOGS__/service-bootstrap.log</string>
+  <key>StandardErrorPath</key><string>__LOGS__/service-bootstrap.log</string>
 </dict>
 </plist>

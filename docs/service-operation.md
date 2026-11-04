@@ -70,10 +70,15 @@ Primary logs rotate at about 5 MiB each, with three backups:
 ```text
 data/service.log
 data/service.log.1 ... service.log.3
-data/service-bootstrap.log
+~/Library/Logs/redzone/service-bootstrap.log
 ```
 
-The bootstrap log is for failures before the Python logging setup and is not rotated.
+The bootstrap log is for failures before the Python logging setup and is not rotated. It lives in
+`~/Library/Logs/redzone`, not in the checkout, and the job has no `WorkingDirectory`: the checkout is
+under `~/Documents`, which macOS privacy (TCC) closes to launchd itself, so a job pointed there exits
+with EX_CONFIG (78) before Python starts. The job runs `python -c` that changes into the checkout and
+runs `scripts/service_runtime.py`; give the venv's Python (python3.12) Full Disk Access once in
+System Settings > Privacy & Security.
 Recordings, archives and the SQLite database have separate retention behavior; they are
 not bounded by log rotation. Check available disk space during extended operation.
 `status` describes launchd process state, not feed freshness, account access or the screen.
