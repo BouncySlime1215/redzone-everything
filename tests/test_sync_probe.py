@@ -89,3 +89,15 @@ def test_quiet_during_a_switch_and_in_dry_run(cfg, tmp_path):
     cfg.update({"sync": {"probe": {"enabled": False}}})
     c.busy = False
     assert asyncio.run(sp.SyncProbe(cfg, c, tmp_path).tick()) == []
+
+
+def test_log_pattern_keeps_youtube_tv_state_bursts_not_the_ifa_timer():
+    """Live lab Nov 4: content-anchored onPlaybackStateChanged bursts are kept; the 600 s
+    advertising-ID timer is not an ad break and stays out."""
+    import re
+    from redzone import sync_probe as sp
+    rx = re.compile(sp.LOG_RE, re.I)
+    burst = ("1793808834.6  2066  2066 I whad-MediaSession: onPlaybackStateChanged: starboard_d98, "
+             "state=PlaybackState {state=3, position=47832337, buffered position=0, speed=1.0, updated=1}")
+    timer = "1793808031.984  1146  1313 I starboard: Successfully retrieved Advertising ID (IfA)."
+    assert rx.search(burst) and not rx.search(timer)

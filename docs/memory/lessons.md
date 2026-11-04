@@ -211,3 +211,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Fix:** `decider.entry.confirmed_dead_only` (candidate on): a lone substitution opens no window, so a rewind falls back to an earlier logged stoppage or the entry waits.
 - **Signals:** a rewind of 50 s or more into NBA; a window of kind `substitution` with no stronger kind.
 
+- 2026-11-04: **Two sticks are not one tune speed.** Live lab: hidden-stick tune to PLAYING p50 2.33 s / p95 3.06 s on
+  the 4K Plus vs 3.74 / 5.50 s on the 4K 2023, but every tune went into one shared median. The roles swap on every
+  flip, so there is no free "use the fast stick" choice; what we can do is price the stick that will tune. Tunes now
+  also book under `<app>@<model>`; tune_estimate uses it after 3, deadline_cost its p90 after 8. The decider's
+  long-run switch_cost stays the shared figure, so the config doesn't flap with whichever stick is hidden.
