@@ -69,8 +69,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 3:00 AM, Nick's orders for the night:** PERFORMANCE ONLY. No new features: every thread works on the cutting logic and sync-to-Noggin (candidate-Noggin column, crunch-entry rule, truthful per-source lag, sync stack, dead air, your-team crunch). NO SHORTCUTS: grade on the full test set every round. Don't stop; 4 threads, ~0.6%/h.
-- Nick is asleep. Next: the 8 AM planner run; Kaggle V5 (Mind v0) ETA ~4:30-6 AM; Nick's live test Wed evening.
+- **2026-11-04 4:00 AM, Kaggle:** V5 trained both students. **Watchdog done** (val_loss 0.0724). The game-reasoner trained, then OOM'd answering the test set (32 at a time on fp32). Patched run_students (redzone-code v4): reuse a saved adapter from the attached output, answer the FULL set in fp16 at batch 8 with progress lines. **V6 started 4:00 AM.** GPU used ~12/30 h this week.
+- **Operating loop live** (§6f): Start Planner → 5 lanes → End Planner/Integrator. The director is overseer (6-hourly audits) and owns Kaggle.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order

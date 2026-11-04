@@ -45,6 +45,9 @@ What Nick wants from RedZone Everything (as of 2026-11-03):
 - Merge bar: full tests pass, scorecards show a clear win, 0 mid-play cuts, nothing important worse.
 - $0 budget; ask before spending. Never enter passwords. No disruptive TV tests while he's watching. He says when to push.
 
-**Why:** These were stated across the Nov 2-3 sessions; this is the consolidated spec.
+- THREADS (Nick, Nov 4, 3 AM): (1) Noggin training, always on; (2) Noggin logic (cutting + sync), always on; (3) performance + controls ("when I press a button it actually does it": lock-in holds, go-now within about 3 s); (4) integration; (5) features/experience, lowest priority. "Performance" means faster, sharper, better logic. It does NOT mean UI polish ("that's stupid"). No shortcuts in grading.
+- THE NOGGIN (Nick's name) is the #1 focus: one AI brain = Reflex (<5 ms; 20k+ features, billions of data points) + Mind (3-4B local) + Teacher (32B Kaggle). Priority layers: Nick's rules > his prefs > Mind > Reflex. Sync must match the TV output automatically (no manual work).
+
+**Why:** These were stated across the Nov 2-4 sessions; this is the consolidated spec.
 
 **How to apply:** Check every coordinator thread and PR against this list. Keep ADHD-style replies.
