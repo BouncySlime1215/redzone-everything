@@ -134,6 +134,21 @@ Everything combines into one AI brain with three layers, one training pipeline a
   start.
 - **Design doc:** `docs/noggin.md`.
 
+## 6e. Standing thread structure (Nick, Nov 4, 3 AM)
+
+1. **NOGGIN TRAINING:** always on; training never stops.
+2. **NOGGIN LOGIC:** always on. Cutting logic + sync to the Noggin.
+3. **PERFORMANCE + CONTROLS:**
+   - Every phone button works instantly and reliably: "lock in" holds until released, and "go to
+     this game now" switches in about 3 s.
+   - Press-to-TV p95 ≤3 s.
+   - Speed, memory, no stalls. No UI polish here.
+4. **INTEGRATION:** merges, CI, releases, app health.
+5. **FEATURES / EXPERIENCE:** lowest priority, only when 1-4 are moving.
+
+Nick's definition of performance: "faster, sharper, the logic behind everything better," and buttons
+that actually do what they say. Not a nicer UI.
+
 ## 7. How the director works (so a new session can take over)
 
 - **Every 10 minutes, in one pass:** usage guard → PRs/CI → Kaggle log → project threads → one
