@@ -222,3 +222,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   98.7 -> 98.1, big live 50.3 -> 50.5, dead air 29.8 -> 29.4; NHL big live 44.7 -> 44.9, dead air 22.4 -> 22.6;
   NBA unchanged). Locked: NFL crunch live 68.1 -> 69.0, your-team crunch 26/27 -> 27/27; NHL big live 48.1 -> 48.6.
   0 mid-play cuts on both. The table format is the contract for the cloud-built tree (idea #19).
+- 2026-11-04 12:00 PM (lane 1, cycle 02): **Noggin Reflex PICK v1 (NBA) is offline only**: a model plus
+  `eval_sports --pick`, with no decider hook and no default changes. It imitates the hindsight oracle and is
+  graded on the full factory test split (377 nights: big live 91.3 vs hand 80.1, oracle 96.3) and on the
+  app's eval nights (dev vs the candidate: big live 81.7 -> 83.1, dead air 19.4 -> 13.7, mid-play entries
+  3 -> 0). Next is a flag-off decider hook in shadow first, since the rollout assumes every switch lands
+  as planned.
