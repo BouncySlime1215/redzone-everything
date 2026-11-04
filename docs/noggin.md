@@ -344,3 +344,41 @@ shadow first, then the sim with every app mechanic. NHL waits for local NHL fact
 on the GitHub runner today). Your-team crunch misses 20 of 1,183 test plays (hand rule 28): widening the
 forced window to 8-15 minutes recovers 3 of 5 on calib but costs 2-4 points of big live, so it stays at
 5 minutes until the decider hook, where the app's own L1 rules apply.
+
+### 11b. The PICK decider hook (Nov 4, cycle 03): flag OFF
+
+`noggin.pick` in default_config.yaml, all off: `enabled`, `shadow` (log only, `Decider.pick_log`), `mode`,
+`min_gap_s` (switch-rate cap), `keep_kinds`. The forest runs in numpy (`models/pick_nba.v1.npz`, 99 KB,
+matches LightGBM to 1.5e-8, 0.5 ms for 12 games, no LightGBM at runtime). Each `Timeline` keeps a
+`LiveGame` of the plays delivered so far, and `pick.live_choice` builds the same 22 features as training at
+one tick. In the pipeline `_pick` runs after `_crunch_guard` and before `_hold_for_big`, `_time_entry` and
+`_safe`, so entry timing, the hold for a big play and the safety playbooks still apply to its switches. It
+never acts in a replay, over your team's game, in a crunch window, or on a game it doesn't score (an ended
+one). It always waits for the app's own leave gate (Rule #1).
+
+Mode `breaks` (the default when enabled): PICK only picks where to go while a break is on screen and the app
+would stay. `stays` acts whenever the app stays, and `replace` also overrides the app's non-kept switches.
+Sim, NBA, candidate profile, `--real-lag --oracle`, every night of each split (locked scored once):
+
+| NBA | dev: app → PICK (breaks) | locked: app → PICK (breaks) |
+|---|---|---|
+| mid-play cuts / entries | 0 / 0 → 0 / 0 | 0 / 0 → 0 / 0 |
+| plays missed on entry | 0 → 0 | 0 → 0 |
+| big live % | 77.5 → 77.5 | 68.8 → 68.8 |
+| crunch live % | 90.0 → 90.0 | 84.9 → **81.0** |
+| your-team crunch | 31/31 → 31/31 | 0/0 |
+| dead air % | 19.4 → **18.1** | 24.1 → **23.4** |
+| switches / h | 1.2 → 1.6 | 1.1 → 1.7 |
+| pct_of_oracle (worst line) | 83.3 → 83.3 (big live) | 68.8 → 68.8 (big live) |
+| live-air share of the ceiling | 90.8 → 92.2 | 90.0 → 90.9 |
+
+It misses the bar: big live only ties (needs a win), and locked crunch live drops 3.9 points. The gap to
+the oracle is unchanged: 16.7 points on dev and 31.2 on locked, all of it big live (ceiling 93.0 on dev).
+So it ships OFF. Dev variants (no locked runs): `replace` with the first fixes had 10 mid-play cuts (a
+switch off an ended game skipped the leave gate; fixed) and your-team 17/31 (fixed by never acting on a
+game PICK doesn't score). After those fixes, `replace`/`stays` tie big live at best and lose crunch
+(88.2) with 2 mid-play entries, because PICK's own whistle-time switches cost crunch. A 90 s or 180 s
+`min_gap_s` cap gave the same switch rate (1.6-1.9/h) with 0.4-0.8 points more dead air, so the cap ships
+at 0 (off). Next: the 22 features don't see why crunch is coming (the oracle's labels follow the screen
+one tune later, not the crunch window ahead), so add crunch-ahead features and retrain, then re-grade on
+fresh nights.

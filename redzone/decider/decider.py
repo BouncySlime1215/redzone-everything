@@ -104,6 +104,7 @@ START_RETRY_MAX_S = 60.0
 # to the dead ball before the play we'd otherwise join mid-way, or after waiting for one. Only a
 # switch you made by hand goes straight in.
 ENTRY_EXEMPT = {"user"}
+PICK_KEEPS = {"user", "crunch", "home", "must_see", "live"}   # [noggin PICK] app-only switch kinds
 ENTRY_SLACK_S = 2.0       # the tune's own timing doubt, on top of the delay's 2 sigma
 # Once the delay's doubt grows (sigma drifts up between calibrations) no landing fits a 30 s huddle
 # with the full margin: then centre it in the dead window with this much doubt. A miss here joins a
@@ -253,6 +254,7 @@ class Decider:
         self.my_tip_at: Callable[[], float | None] | None = None
         self.user = UserState()
         self.current: str | None = None
+        self.pick_log: deque = deque(maxlen=2000)   # [noggin PICK] (t, on, pick, app action, app target)
         self.since: float = 0.0
         self._arrival_until: float = 0.0   # simulated transport work, not a viewing-time quota
         self.stack: deque[str] = deque(maxlen=3)   # where we came from, for "go back"
@@ -303,7 +305,19 @@ class Decider:
             tl = self.timelines[game_id] = Timeline(league, clock=self._clock)
             from redzone.noggin.live import hook_for   # [noggin] Timing v1, off unless noggin.timing.leagues
             tl.dead.noggin = hook_for(self.cfg, league)
+            if self._pick_on(league):
+                from redzone.noggin.pick import LiveGame
+                tl.live = LiveGame(league, game_id, "")
         return self.timelines[game_id]
+
+    def _pick_on(self, league: League) -> bool:
+        """[noggin PICK] on (or in shadow) for this league, with a model to run."""
+        if not (self.cfg.get("noggin.pick.enabled", False) or self.cfg.get("noggin.pick.shadow", False)):
+            return False
+        if league.value not in (self.cfg.get("noggin.pick.leagues") or []):
+            return False
+        from redzone.noggin.pick import model_for
+        return model_for(league.value) is not None
 
     def note_error(self) -> None:
         now = self._clock()
@@ -365,6 +379,7 @@ class Decider:
         d = self._scenario(d, cands, now, home_before)
         d = self._clairvoyant(d, cands, now, home_before)
         d = self._crunch_guard(d, cands, now, home_before)
+        d = self._pick(d, cands, now)
         d = self._hold_for_big(d, cands, now, home_before)
         d = self._time_entry(d, cands, now, home_before)
         d = self._safe(d, cands, now, home_before)
@@ -929,6 +944,74 @@ class Decider:
         self.home_break_visit = self.current
         return Decision(now, "switch", gid, f"{tag} ({tb - land:.0f} s after we land)", d.state, d.gate,
                         kind="chase")
+
+    def _pick(self, d: Decision, cands, now: float) -> Decision:
+        """[noggin PICK] Reflex PICK (redzone/noggin/pick.py): the game the hindsight-oracle imitation wants on
+        screen. Shadow logs it beside the app's own decision. Enabled, mode "breaks" (the default) only lets
+        PICK choose where to go while a break is on screen and the app would stay; "stays" acts whenever the app
+        stays; "replace" also overrides the app's own switches (except keep_kinds). Never during a replay, never
+        over your team (the app's L1 rules) or a crunch window, always through the app's leave gate (Rule #1),
+        and only with the time-shift buffer on: PICK reads the screen's next (lag - feed lag) seconds from the
+        feed, as it was trained."""
+        shadow = self.cfg.get("noggin.pick.shadow", False)
+        if not (self.cfg.get("noggin.pick.enabled", False) or shadow) or self.replaying or self.after_replay \
+                or d.action == "replay" or d.kind == "user" or self.user.paused or self.safe_mode:
+            return d
+        from redzone.noggin import pick as PK
+        games, lags = [], {}
+        for gid, x in cands.items():
+            tl = self.timelines.get(gid)
+            if tl is None or tl.live is None or not x.target:
+                continue
+            fl = sorted(tl._lags)[len(tl._lags) // 2] if tl._lags else tl.lag_est()
+            lags[gid] = fl + self.delays.get(x.target).mu
+            games.append(tl.live)
+        if len(games) < 2:
+            return d
+        league = games[0].league
+        model = PK.model_for(league.value)
+        tune = float(self.cfg.get("noggin.pick.tune_s", 5.0))
+        if model is None or min(lags.values()) < PK.FEED_LAG_P90.get(league, 70.0) + tune:
+            return d
+        mine = {t for g in games if g.gid in self._yours for t in g.matchup.split(" @ ")}
+        cur = self.current if self.current in lags else None
+        target, scores = PK.live_choice(games, cur, now, lags, mine, tune, model)
+        self.pick_log.append((now, cur, target, d.action, d.target))
+        if shadow and not self.cfg.get("noggin.pick.enabled", False):
+            return d
+        if (d.action == "switch" and d.target in self._yours) or (d.action == "stay" and self.current in self._yours):
+            return d                     # L1: your team's game is the app's call
+        if cur is None:
+            return d                     # what's on screen isn't a live game PICK scores (ended, pseudo): the app's call
+        mode = self.cfg.get("noggin.pick.mode", "breaks")      # breaks | stays (only when the app stays) | replace
+        if d.action != "stay" and mode != "replace":
+            return d
+        if mode == "breaks":
+            g = self._gate(cands[self.current], now)
+            if not (g and g.safe and g.on_screen_break):
+                return d                 # only a break on screen is PICK's to fill
+        if d.action == "switch" and d.kind in (self.cfg.get("noggin.pick.keep_kinds") or PICK_KEEPS):
+            return d                     # crunch time, the way home, a playbook visit: the app's hard rules
+        if self.current in cands and cands[self.current].scored.crunch_now:
+            return d                     # never second-guess staying (or leaving) inside a crunch window
+        if target and target != self.current:
+            # [switch-rate cap] PICK alone never flips again within min_gap_s of the last switch
+            gap = float(self.cfg.get("noggin.pick.min_gap_s", 0.0))
+            if self.history and now - self.history[-1][0] < gap and not (d.action == "switch" and d.target == target):
+                return d if d.action == "stay" else Decision(now, "stay", self.current, "pick: too soon after a switch",
+                                                             d.state, d.gate)
+            # Rule #1: the app's own leave gate decides when, for whatever is on screen (also a game PICK
+            # doesn't score, e.g. one that just ended); wait for it, wanting PICK's game
+            on = cands.get(self.current) if self.current else None
+            gate = self._gate(on, now) if on is not None else None
+            why = f"pick {scores[target]:.2f} vs {scores.get(cur, 0):.2f}"
+            if self.current and not (gate and gate.safe and not on.scored.lock):
+                return Decision(now, "stay", self.current, f"{why} — waiting: {gate.why if gate else 'no timeline'}",
+                                d.state, gate.why if gate else "", want=target)
+            return Decision(now, "switch", target, why, d.state, kind="better")
+        if d.action == "switch" and cur is not None:
+            return Decision(now, "stay", cur, f"pick stays ({scores.get(cur, 0):.2f})", d.state)
+        return d
 
     def _hold_for_big(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[cut timing] A big play is in the data but hasn't finished airing here yet: stay for it.

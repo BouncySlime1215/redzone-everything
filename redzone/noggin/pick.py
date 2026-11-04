@@ -186,3 +186,137 @@ def load_booster(path: Path):
     if path.suffix == ".gz":
         return lgb.Booster(model_str=gzip.decompress(path.read_bytes()).decode())
     return lgb.Booster(model_file=str(path))
+
+
+# ---------------------------------------------------------------- live: numpy forest + incremental per-game book
+
+class PickModel:
+    """The PICK forest in numpy (no LightGBM at runtime): proba(X) = sigmoid(raw margin)."""
+
+    def __init__(self, arrays: dict, meta: dict):
+        from redzone.noggin.timing import Forest
+        if meta.get("features") != list(PICK_FEATURES):
+            raise ValueError(f"PICK features {meta.get('features')} != {list(PICK_FEATURES)}")
+        self.forest = Forest(arrays, meta)
+        self.meta = meta
+        self.margin = float(meta.get("margin", 0.1))
+
+    def proba(self, X: np.ndarray) -> np.ndarray:
+        return 1.0 / (1.0 + np.exp(-np.clip(self.forest.raw(X), -40, 40)))
+
+    @classmethod
+    def from_booster(cls, booster, margin: float, info: dict | None = None) -> "PickModel":
+        from redzone.scoring.brain3 import flatten
+        dump = booster.dump_model()
+        arrays, meta = flatten({"h": [dict(t, slot=0) for t in dump["tree_info"]]}, list(PICK_FEATURES))
+        arrays.pop("slot", None)
+        meta.update(init=0.0, margin=margin, info=info or {})
+        return cls(arrays, meta)
+
+    def save(self, path: Path) -> None:
+        import json
+        flat = {a: getattr(self.forest, a) for a in ("feat", "thr", "left", "right", "dleft", "miss", "value", "roots")}
+        flat["meta"] = np.frombuffer(json.dumps(self.meta).encode(), np.uint8)
+        np.savez_compressed(path, **flat)
+
+    @classmethod
+    def load(cls, path: Path) -> "PickModel":
+        import json
+        with np.load(path, allow_pickle=False) as z:
+            meta = json.loads(bytes(z["meta"]).decode())
+            arrays = {k: z[k] for k in z.files if k != "meta"}
+        return cls(arrays, meta)
+
+
+_MODELS: dict = {}
+
+
+def model_for(league: str, model_dir: Path | None = None) -> PickModel | None:
+    p = (model_dir or MODEL_DIR) / f"pick_{league}.v1.npz"
+    if p not in _MODELS:
+        _MODELS[p] = PickModel.load(p) if p.exists() else None
+    return _MODELS[p]
+
+
+def play_dict(p) -> dict:
+    """models.Play -> the ESPN play dict the PICK features read (same fields the factory writes)."""
+    c = p.clock
+    clock = f"{int(c // 60)}:{c % 60:04.1f}" if c is not None else ""
+    d = {"id": p.id, "type": {"text": p.type_text or p.kind}, "text": p.text or "", "period": {"number": p.period},
+         "clock": {"displayValue": clock}, "scoringPlay": bool(p.scoring)}
+    if p.score is not None:
+        d["homeScore"], d["awayScore"] = p.score
+    return d
+
+
+class LiveGame:
+    """One game's delivered plays (wallclock order), shaped like a backtest Replay for the shared features."""
+
+    def __init__(self, league: League, gid: str, matchup: str):
+        self.league, self.gid, self.matchup = league, gid, matchup
+        self.plays: list[dict] = []
+        self.wall: list[float] = []
+        self._ids: set = set()
+
+    def add(self, plays) -> None:
+        for p in plays:
+            if not p.id or p.id in self._ids or p.wallclock is None:
+                continue
+            self._ids.add(p.id)
+            d, w = play_dict(p), float(p.wallclock)
+            j = len(self.wall)
+            while j and self.wall[j - 1] > w:     # rare out-of-order delivery
+                j -= 1
+            self.plays.insert(j, d)
+            self.wall.insert(j, w)
+
+
+def live_choice(games: list[LiveGame], current: str | None, now: float, lags: dict, mine: set, tune_s: float,
+                model: PickModel) -> tuple[str | None, dict]:
+    """PICK at one tick: the game to switch to now (None = stay), and the scores. Same features and rule as
+    `rollout`, from the plays delivered so far (the feed lag p90 cut keeps it to what training saw)."""
+    from types import SimpleNamespace
+
+    from redzone.lab import oracle as O
+    steps = np.array([now])
+    G = len(games)
+    leave, land, dead = np.zeros((G, 1), bool), np.zeros((G, 1), bool), np.zeros((G, 1))
+    for g, r in enumerate(games):
+        if not r.wall:
+            land[g, 0], dead[g, 0] = True, 1.0
+            continue
+        lag = float(lags.get(r.gid, 0.0))
+        st, sl = now - lag, now + tune_s - lag
+        leave[g, 0] = O._clean_leave(r.league, r.wall, r.plays, st) and cutgrade._dead_at(r.league, r.wall, r.plays, st)[0]
+        land[g, 0] = (sl < r.wall[0] or sl > r.wall[-1]) or cutgrade._dead_at(r.league, r.wall, r.plays, sl)[0]
+        if r.wall[0] <= st <= r.wall[-1]:
+            i = cutgrade._idx(r.wall, st)
+            dead[g, 0] = espn.stoppage_for(r.league, r.plays[max(0, i)]) in sportsgrade.REAL_BREAKS
+        else:
+            dead[g, 0] = 1.0
+    reps = [r if r.wall else SimpleNamespace(league=r.league, gid=r.gid, matchup=r.matchup, wall=[math.inf],
+                                             plays=[{}]) for r in games]
+    from redzone.lab.backtest import Lags
+    lagmap = Lags(0.0, {k: float(v) for k, v in lags.items()})
+    X = features_for_night(reps, dict(leave=leave, land=land, dead=dead), steps, lagmap, mine)
+    sc = model.proba(X[:, 0, :])
+    gi = {r.gid: i for i, r in enumerate(games)}
+    a = gi.get(current)
+    hot = my_hot(X)[:, 0]
+    scores = {r.gid: float(sc[i]) for i, r in enumerate(games)}
+    if a is None:
+        cand = land[:, 0]
+        return (games[int(np.argmax(np.where(cand, sc, -np.inf)))].gid if cand.any() else None), scores
+    if not leave[a, 0] or hot[a]:
+        return None, scores
+    cand = land[:, 0].copy()
+    cand[a] = False
+    if not cand.any():
+        return None, scores
+    forced = cand & hot
+    s = np.where(forced if forced.any() else cand, sc, -np.inf)
+    b = int(np.argmax(s))
+    if forced.any() or s[b] - sc[a] > model.margin:
+        return games[b].gid, scores
+    return None, scores
+

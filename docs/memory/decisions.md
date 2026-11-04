@@ -258,6 +258,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   p95 stays 8.75 s. Pre-tuned presses (game live on the hidden stick): 10, p50 3.02 s, p95 3.7 s, bounded by the
   ~2 s SmartThings flip. Cold presses (a tune, including a channel parked on a catch-up replay): 8, p50 8.5 s.
   The drill and the North Star line now report the two apart.
+- 2026-11-04 1:30 PM (lane 1, cycle 03): **The Noggin PICK decider hook ships OFF** (`noggin.pick.enabled:
+  false`, `shadow: false`; new knobs `mode: breaks`, `min_gap_s: 0`, `keep_kinds`). NBA candidate sim with
+  the flag ON: 0 mid-play cuts and entries, your-team 31/31, dead air 19.4 -> 18.1 dev / 24.1 -> 23.4
+  locked, but big live only ties (77.5 / 68.8) and locked crunch live drops 84.9 -> 81.0, so it misses the
+  bar. pct_of_oracle is unchanged (83.3 dev, 68.8 locked). The switch-rate cap is off because 90-180 s
+  cost dead air on dev with no change in the switch rate. docs/noggin.md §11b.
 - 2026-11-04 2:30 PM (lane 2, planner ask, rule #1): **candidate gets `decider.entry.landing_lag_s=6` and
   `decider.entry.ended_strict=true`** (new keys, default 0 / false). Why: with an honest per-tune landing error the
   candidate made 1 NHL mid-play entry on every seed (BUF @ WSH, an urgent landing after a game ended). After: 0 on

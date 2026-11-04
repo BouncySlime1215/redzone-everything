@@ -605,6 +605,7 @@ class Timeline:
         # Break-length hints for planning break visits (Decider only; no leave gate reads these).
         self.break_kind = ""                  # ESPN kind of the play that started the current break
         self.period_timeouts: int | None = None  # timeouts this period so far; None = joined mid-period
+        self.live = None                      # [noggin PICK] pick.LiveGame when noggin.pick is on (or shadow)
 
     def lag_est(self) -> float:
         """How far behind real life this game's feed runs (recent worst case)."""
@@ -630,6 +631,9 @@ class Timeline:
         if g.last_play and plays and plays[-1].id != g.last_play.id:
             plays.append(g.last_play)
         new = [p for p in plays if p.id and p.id not in self._seen_ids]
+        if self.live is not None:
+            self.live.matchup = g.matchup or self.live.matchup
+            self.live.add(plays)
         first_poll = not self._seen_ids
         action = [p for p in new if not _is_marker(p.kind, self.league)]
         scorers = [p for p in new if p.scoring]
