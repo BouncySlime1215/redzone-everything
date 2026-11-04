@@ -555,11 +555,29 @@ class Decider:
         urgent = self.cfg.get("replay.urgent_s", 1200)
         if m.seen_live or urgent <= 0:
             return 0.0
-        if m.due_s:
+        due = self._due(m)
+        if due:
             # [redzone way] ramps from half its due time to 1 at the due time, and stays there.
-            return max(0.0, min(1.0, ((now - m.t) - m.due_s / 2) / (m.due_s / 2)))
+            return max(0.0, min(1.0, ((now - m.t) - due / 2) / (due / 2)))
         left = self.cfg.get("replay.max_age_s", 1800) - (now - m.t)
         return max(0.0, min(1.0, 1.0 - left / urgent))
+
+    def _window(self, m: Missed | None = None) -> float:
+        """[replay window] Nick, Nov 4: a missed moment is shown within this (2-3 min, the next dead
+        moment) or not singly at all; older plays only fold into the montage. 0 = off.
+        replay.window_leagues: only these leagues' plays ([] = every league)."""
+        w = float(self.cfg.get("replay.window_s", 0) or 0)
+        lgs = self.cfg.get("replay.window_leagues") or []
+        if w and lgs and m is not None:
+            x = self._known.get(m.game_id)
+            lg = x.scored.league.base.value if x is not None else None
+            if lg not in lgs:
+                return 0.0
+        return w
+
+    def _due(self, m: Missed) -> float:
+        w = self._window(m)
+        return min(m.due_s, w) if (m.due_s and w) else (m.due_s or w)
 
     def _replay_value(self, m: Missed, now: float) -> float:
         age = now - m.t
@@ -585,6 +603,8 @@ class Decider:
         rw = self._rw()
         if rw and not montage:     # [T5] older plays wait for the end-of-window montage
             pool = [m for m in pool if now - m.t <= self.cfg.get("replay.max_age_s", 1800)]
+        if not montage:   # [replay window] never aired stale: skipped or folded into the montage
+            pool = [m for m in pool if not self._window(m) or now - m.t <= self._window(m)]
         scored_at = self._just_scored(now) if rw else None
         meanwhile = (lambda m: scored_at is not None and m.game_id != self.current
                      and abs(m.t - scored_at) <= self.cfg.get("replay.meanwhile_s", 120))

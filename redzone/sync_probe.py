@@ -36,6 +36,7 @@ WIFI_EVERY_S = 15.0
 LOG_EVERY_S = 15.0
 UI_EVERY_S = 20.0         # uiautomator dump on the hidden stick
 UI_KEEP_CHARS = 600
+LOG_EDGE_SD_S = 1.0       # [yttv anchors] an ad edge read from the player's own log line
 COND_WINDOW_S = 300.0     # [SYNC 4] stalls per minute over this window
 RSSI_WEAK = -65           # below this every dB widens the delay's error bar
 RSSI_DROP_DB = 10         # a drop this big within RSSI_DROP_WINDOW_S: predicted drift
@@ -59,6 +60,30 @@ UI_HINTS = {
 LOG_RE = (r"ad ?break|ad ?pod|adstart|ad_start|adend|ad_end|cue ?in|cue ?out|scte|insertion|"
           r"rebuffer|buffering|stall|bitrate|bandwidth|resolution|videoformat|video format|"
           r"dropped frames|quality")
+
+
+# [yttv anchors] YouTube TV (Cobalt) draws its own UI: uiautomator sees no text (live lab, Nov 4), so its
+# ad edges must come from logcat. Defaults are the generic SCTE / ad-pod words; the probe logs every
+# matching line (sync_probe.jsonl "log"), so the real YTTV strings refit these (sync.probe.log_ad_start/end).
+LOG_AD_START = r"cue ?out|ad ?break ?start|adstart|ad_start|ad ?pod ?start|onadstart"
+LOG_AD_END = r"cue ?in|ad ?break ?end|adend|ad_end|ad ?pod ?end|onadend|onadscomplete"
+_EPOCH = re.compile(r"^\s*(\d{9,11}\.\d{1,6})\s")
+
+
+def log_ad_edges(lines: list[str], start_re: str = LOG_AD_START, end_re: str = LOG_AD_END
+                 ) -> list[tuple[float, str]]:
+    """(stick epoch time, "break_start" | "break_end") for logcat lines (`-v epoch`) that name an ad
+    edge. A line matching both counts as neither (ambiguous)."""
+    out = []
+    s_rx, e_rx = re.compile(start_re, re.I), re.compile(end_re, re.I)
+    for line in lines:
+        m = _EPOCH.match(line)
+        if not m:
+            continue
+        st, en = bool(s_rx.search(line)), bool(e_rx.search(line))
+        if st != en:
+            out.append((float(m.group(1)), "break_start" if st else "break_end"))
+    return out
 
 
 def parse_wifi(text: str) -> dict:
@@ -156,6 +181,8 @@ class SyncProbe:
                 row["wifi"] = parse_wifi(await self._sh(stick, "dumpsys wifi | grep -m2 -E 'mWifiInfo|RSSI:'"))
             if self._is_due(host, "log", LOG_EVERY_S, now):
                 row["log"] = await self._logcat(stick)
+                if self.cfg.get("sync.probe.logcat_anchors", False) and self.on_screen_event is not None:
+                    self._log_edges(target, host, role == "visible", row["log"])
             if (role == "hidden" or self.cfg.get("sync.probe.visible_ui", False)) \
                     and self._is_due(host, "ui", UI_EVERY_S, now):
                 text = ui_text(await self._sh(
@@ -214,6 +241,18 @@ class SyncProbe:
                                      prev[0] + gap / 2.0, gap / 12 ** 0.5)
             except Exception:
                 log.exception("screen event hand-off failed")
+
+    def _log_edges(self, target: str | None, host: str, visible: bool, lines: list[str]) -> None:
+        """[yttv anchors] Ad edges from the stick's own log, stamped by the stick's clock (sd ~1 s:
+        the player logs the edge as it renders it)."""
+        if not target:
+            return
+        for t, kind in log_ad_edges(lines, str(self.cfg.get("sync.probe.log_ad_start") or LOG_AD_START),
+                                    str(self.cfg.get("sync.probe.log_ad_end") or LOG_AD_END)):
+            try:
+                self.on_screen_event(target, host, visible, kind, t, LOG_EDGE_SD_S)
+            except Exception:
+                log.exception("log edge hand-off failed")
 
     async def _logcat(self, stick) -> list[str]:
         back = int(LOG_EVERY_S) + 2

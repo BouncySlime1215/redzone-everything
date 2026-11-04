@@ -45,6 +45,10 @@ sync:
     enabled: true          # [SYNC] read-only log of what the sticks expose (media_session, Wi-Fi, UI tree, logcat)
                            # -> recordings/<day>/sync_probe.jsonl. Presses nothing; skips during switches.
     visible_ui: false      # also dump the VISIBLE stick's UI tree (off: unmeasured whether a dump stutters video)
+    logcat_anchors: false  # [yttv anchors] ad edges from the player's logcat lines (YouTube TV has no UI text);
+                           # off until the probe's logged lines show YTTV's real ad strings
+    log_ad_start: ""       # regex override for an ad-start log line ("" = sync_probe.LOG_AD_START)
+    log_ad_end: ""         # ... and an ad-end line ("" = sync_probe.LOG_AD_END)
   break_anchor:            # [auto-anchors] ad break on screen <-> the feed's dead ball -> a delay sample
     enabled: false         # logged always (recordings/<day>/sync_anchors.jsonl); fed to the filter only when on.
     start_bias_s: 15       # whistle -> ad on screen, a PRIOR until the Wednesday probe data refits it
@@ -412,6 +416,9 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
                            # collision and end-of-night montage triggers (redzone/decider/decider.py)
   catchup_s: 600           # each missed big play replayed within this; its value halves every catchup_s
   collision_s: 180         # missed because another big play was on screen: replayed within this
+  window_s: 0              # [replay window] Nick, Nov 4: a missed moment airs within this (180 = 3 min, the next
+                           # dead moment) or is skipped / folded into the montage; 0 = off
+  window_leagues: []       # ...only these leagues' plays ([] = every league)
   lull_score: 45           # no live game at this score or above (and no crunch / lock): a replay takes the dead ball
   meanwhile_s: 120         # the screen's game just scored: plays elsewhere within this of it go first
   montage_age_s: 14400     # nothing live: every missed big play still on the DVR, however old

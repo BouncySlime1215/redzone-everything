@@ -161,3 +161,42 @@ def test_rule1_no_rewind_into_a_data_gap():
 def test_candidate_takes_confirmed_dead_only():
     from redzone.noggin import profile
     assert "decider.entry.confirmed_dead_only=true" in profile.argv("candidate", "nba")
+
+
+def test_candidate_takes_the_position_floor():
+    from redzone.noggin import profile
+    args = profile.argv("candidate", "nfl")
+    assert "delay.sync.min_sigma_s=3" in args and "sync.break_anchor.enabled=true" in args
+
+
+def test_position_reads_pin_the_delay_after_a_tune():
+    """[yttv position] once an anchor has fixed the origin, a position read after a new tune gives the
+    delay at once (sync.py: d = wall - origin - position)."""
+    from redzone.decider.sync import SyncBook
+    sb = SyncBook(lambda t: (40.0, 8.0), clock=lambda: 0.0)
+    for k in range(20):                               # anchors with 5 s doubt, positions every 5 s
+        t = 1000.0 + 5 * k
+        sb.position("youtubetv:espn", t - 1.7e9 - 45.0, t=t)
+        if k % 5 == 0:
+            sb.measure("youtubetv:espn", 45.0 + (2 if k % 10 else -2), "flip", t=t, sd=3.0)
+    sb.tuned("youtubetv:espn", 1200.0)
+    sb.position("youtubetv:espn", 1210.0 - 1.7e9 - 51.0, t=1210.0)   # the new tune landed 6 s further back
+    mu, sd = sb.get("youtubetv:espn").mu(1210.0), sb.get("youtubetv:espn").sd(1210.0)
+    assert abs(mu - 51.0) < 2.5 and sd < 3.0
+
+
+def test_replay_window_skips_stale_single_replays_in_its_leagues():
+    """[replay window] Nick, Nov 4: a missed moment airs within 3 min or not singly (montage only)."""
+    from types import SimpleNamespace as NS
+    from redzone.decider.decider import Decider, Missed
+    dec = Decider.__new__(Decider)
+    dec._known = {"g1": NS(scored=NS(league=NS(base=NS(value="nfl")))),
+                  "g2": NS(scored=NS(league=NS(base=NS(value="nhl"))))}
+    m1 = Missed("g1", "p", "TD", "td", 1000.0, 90.0)
+    m2 = Missed("g2", "p", "goal", "goal", 1000.0, 90.0)
+    dec.cfg = {"replay.window_s": 180, "replay.window_leagues": ["nfl"]}
+    assert dec._window(m1) == 180 and dec._window(m2) == 0
+    dec.cfg = {"replay.window_s": 0}
+    assert dec._window(m1) == 0
+    dec.cfg = {"replay.window_s": 180}
+    assert dec._window(m2) == 180 and dec._due(m2) == 180
