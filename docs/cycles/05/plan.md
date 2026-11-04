@@ -74,6 +74,55 @@ listed under it; a marked night-lab test counts even when the behaviour behind i
 4. **"I missed that"** records a catch-up reel request for the next dead window (3-min rule); reels stay OFF.
 (Button states are already merged as #96.)
 
+## Addendum: HEAT 2.0, a learned watch value (Nick, 3:30 PM ET). This is the top item for lanes ① and ②
+**Why:** the heat scores feel off. Monday's Bears game read ~30 at a big Q3 moment. Today's heat
+(redzone/scoring/drive.py) is hand-weighted (0.45 EP + 0.30 yards + 0.25 explosive, plus bumps) and adds
+at most `redzone_mode.heat_points` on top of a time-weighted base. That value is 0 in default_config.yaml,
+so live, the base scorer alone sets the number, and a Q3 moment can never read high.
+
+**What:** one learned **watch value (WV)** per game, recomputed every play:
+- **WV** = expected "want to see" over the next ~3 min = P(big play or score soon) × impact
+  + leverage (the win-prob swing at stake, including Q1-Q3 one-score games)
+  + story (comeback, lead changes, records)
+  − blowout / garbage time.
+- **Stakes** (Nick's teams, bets, fantasy) are **preference multipliers in config**, never training
+  labels (self-taught rule).
+- **Labels** are what happened next (the hindsight oracle) over the factory rows.
+- **Calibrated 0-100:** 50 = the league-median live moment, 90+ = the top 5% (must-see), checked by
+  reliability curves on locked nights.
+- A one-line **"why"** per game for the UI.
+
+**Non-crunch switching** (nothing here touches crunch):
+- Be on the highest-WV game. NFL plays like RedZone: red zone, explosive drives, 3rd/4th downs, the
+  2-minute drill.
+- Switch only at dead balls.
+- Pre-tune the hidden stick to the game whose WV is rising (e.g. a drive crossing midfield).
+- Use catch-up reels for big plays missed elsewhere (3-min rule).
+
+**Crunch floor:** the live app's rule floor (crunch = stay) sits above the Mind and every model. The Mind's
+100% crunch unsafe-leaves is a training-data failure (crunch is under-weighted). Keep the floor, and add a
+test that **no candidate bypasses it**.
+
+**Split:**
+- **Lane ① owns the model** and makes it item 1, ahead of everything else:
+  - a WV Reflex head per league trained on factory rows with oracle labels, forward CV by whole nights,
+    locked untouched, < 5 ms;
+  - this **absorbs lane ②'s leverage score** (it's WV's leverage term) **and the MLB key-moment head**
+    (MLB WV: RISP late and close, no-hit bids, walk-off spots);
+  - a `why` string from its top contributions;
+  - lines: **WV calibration error** (ECE on 0-100 bins, reliability curve) and **rank agreement with the
+    oracle** (Spearman / top-1 per tick), dev + locked.
+- **Lane ② owns the decision**:
+  - after the seek stack and `replay.crunch_block` (both nearly done, both promotion blockers), wire WV into
+    the decider behind `scoring.watch_value` (off): highest-WV at dead balls, rising-WV pre-tune, sticky
+    down the stretch as a WV floor, low-leverage leaves from WV;
+  - retire drive.py heat in the candidate;
+  - the **crunch-floor test** (every candidate profile, the Mind, Pick and WV: crunch = stay holds; a
+    marked SAFE test);
+  - lines: big plays live per league (the existing rows), mid_play_entries 0, high_leverage_leaves 0,
+    crunch ≥ live.
+- **Lane ⑤:** the per-game "why" line on the phone, read-only, once lane ① exposes it.
+
 ## Addendum: Nick's promotion bar and cut rules (3:15 PM ET), built into this cycle
 **Promotion bar (strict B).** A candidate flag turns ON in the next RC only if, on **locked** nights:
 - (a) mid-play **entries** = 0, a hard PASS;
