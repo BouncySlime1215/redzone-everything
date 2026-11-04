@@ -210,6 +210,7 @@ def grade(world) -> dict:
     shown = world.house.shown
     out = {"go_now_s": [], "open_go_s": [], "lock_s": [], "skip_s": [], "dropped": [], "lock_broken": [], "pause_broken": [],
            "skip_stuck": [], "lock_waited_out": [], "n": {}}
+    out["press_at"] = [(r.get("kind") or r.get("action"), round(r["t"], 1)) for r in getattr(world, "presses", [])]
     taps = getattr(world, "taps", [])
     out["taps"] = len(taps)
     out["taps_retried"] = sum(1 for x in taps if x["net"] != "ok")
