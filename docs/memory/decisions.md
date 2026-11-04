@@ -376,3 +376,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   decisions, and never in crunch, down the stretch, your-team moments or the catch-up queue. Every decision logs its
   propensity so the doubly robust estimator is valid. Promotion goes through the normal bar (worth it ≥ live).
   Reason: grade new brains on logged nights without running them live.
+- 2026-11-05 (lane 2, EXP-029, pre-registered at 720b4bc): **`decider.break_fill`** (enabled `false`, long_s 120, min 0)
+  ships OFF, and `decider.break_destination_min` stays 25. Both pre-registered arms failed the bar (NBA dead air only
+  −1.0 / −0.8 vs −3.0 needed; NBA crunch live −1.3 on two seeds). **Why:** the binding limits on filling breaks are the
+  halftime return-trip exit check and your-team stays, not the visit bar; see the experiments.md results log.
