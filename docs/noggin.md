@@ -27,7 +27,7 @@ three layers, one training pipeline, one scoreboard (the North Star, `docs/north
 | Layer | Runs | What it does | Absorbs |
 |---|---|---|---|
 | **Reflex** | every tick, < 5 ms per tick for all games, numpy only, no LLM | **Timing**: dead now? restart when (calibrated lower bound)? **Predict**: big play next? **Pick**: which game, when to cut, when to enter | Brain v3 (#26), A3 restart countdown, Noggin Timing / Predict / Pick, the decider weights (`core.*` knobs, auto-tune #16) |
-| **Mind** | every 30-60 s, async, background priority, ≤ ~2 GB RSS, lazy | Storylines and stakes, lock-in, **sets the Reflex's priorities** (per-game weight / attention), explains switches, runs the watchdog | distill track (#13, Kaggle V5), live game reasoner (`redzone/reasoner/`), watchdog adapter |
+| **Mind** | every 30-60 s, async, background priority, ≤ ~2.5 GB RSS, lazy | Storylines and stakes, lock-in, **sets the Reflex's priorities** (per-game weight / attention), explains switches, runs the watchdog | distill track (#13, Kaggle V5), live game reasoner (`redzone/reasoner/`), watchdog adapter |
 | **Teacher** | offline, Kaggle GPU (32B) | Labels moments, reviews each night, generates training data for both layers | Kaggle teacher notebooks (`/mnt/project-files/distill/`) |
 
 Architecture rule (research queue, Nov 3): **GBMs and rules own timing; the LLM writes words and
@@ -130,3 +130,20 @@ A Noggin part turns on only when all of these hold:
 | Reflex input #1: live buffer (#61), feed lag, SmartThings cost | Dial in switch timing | timing scored at B=90 is the Timing v1 baseline |
 | Mind + Teacher: distill, Kaggle V5, reasoner | LOCAL AI / distill (#13) | priority vector contract above |
 | Scoreboard | North Star harness | Noggin deltas reported in its lines |
+
+## 7. Scale targets (Nick, Nov 4 1:55 AM: "billions")
+
+| Layer | Target | Constraint | How we check |
+|---|---|---|---|
+| **Mind** | 1.7B → **~3-4B parameters**, 4-bit MLX (Qwen3-4B, a ~3B Qwen/Llama-class model, or newer) | local AI RAM budget **~2.5 GB RSS total** (raised from ~2 GB); ≤ 5 s per call (runs every 30-60 s async); the Mac stays usable | measure RSS and latency on the M2; bake off against 1.7B on the dev-test grade |
+| **Reflex** | **20,000+ variables**, trained on **billions of data points** (millions of moments × 20k features) | < 5 ms inference per tick: GBM / small NN with feature selection or hashing, exported to numpy like Brain v3 | latency test in CI; per-head feature importance |
+| **Teacher** | 32B for the hard cases + 14B for volume | Kaggle GPU only | writes per-game storylines and narrative labels for every archived game: they train the Mind and become Reflex features |
+| **Data** | all seasons (2002+) | feature tables built on Kaggle CPU in chunks, split by whole nights, locked nights never touched | row and night counts per split in the factory manifest |
+
+Reflex feature families: game state; rolling team and player stats (form, pace, clutch, injuries); win
+probability and its swings; live odds and line movement (free sources only); standings, playoff stakes,
+rivalry; broadcast market and TV-timeout rules (national/local); **narrative features** produced by the
+Mind/Teacher as numbers ("comeback brewing", "star heating up", "upset alert" embeddings).
+
+Gates are unchanged (section 4). **Every Noggin PR reports:** parameter count (trees × leaves or NN
+weights; LLM params for the Mind), feature count, training row count, RAM, and latency (p50/p99 per tick).
