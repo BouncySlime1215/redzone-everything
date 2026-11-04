@@ -84,13 +84,20 @@ def reasoner_job(pack: Path, answers: list[dict]) -> dict:
             "test": test + js["test"], "meta": meta}
 
 
+# [V7] The watchdog's training rows travel in the code pack (agent/train/make_data.py on
+# claude/watchdog-v7-data: +10 train wordings and 3x rows for paused, prompt, frozen and upstream), so the
+# data pack needn't be re-uploaded. Valid and test (and their labels) are byte-identical to the pack's.
+WATCHDOG_TRAIN_V7 = Path(__file__).resolve().parent / "assets" / "watchdog_v7"
+
+
 def watchdog_job(pack: Path) -> dict | None:
     d = pack / "data" / "watchdog"
     if not (d / "train.jsonl").exists():
         return None
     test = [{"id": f"wd-test-{i}", "task": "watchdog", "messages": r["messages"][:2]}
             for i, r in enumerate(_rows(d, "test.jsonl"))]
-    return {"train": _rows(d, "train.jsonl"), "valid": _rows(d, "valid.jsonl"), "test": test, "meta": []}
+    tr = _rows(WATCHDOG_TRAIN_V7, "train.jsonl") or _rows(d, "train.jsonl")
+    return {"train": tr, "valid": _rows(d, "valid.jsonl"), "test": test, "meta": []}
 
 
 def jobs(pack: Path, answers: list[dict]) -> dict[str, dict]:

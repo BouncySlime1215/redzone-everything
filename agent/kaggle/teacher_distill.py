@@ -34,12 +34,17 @@ import subprocess
 import sys
 import time
 
-MODE = os.environ.get("RZ_MODE", "students")    # "students" (reuse attached teacher answers) or "full"
-TEACHER_BUDGET_H = 2.5      # the 32B on the hardest + gold-adjacent head of the queue
-BIG_N = 9000                # how many open requests the 32B gets (round 1 measured ~65/min)
-FAST_BUDGET_H = 3.0         # then the 14B (~3x faster) on the easier tail
-BUILD_BUDGET_H = 4.5        # stop downloading new games after this (the head + export follow)
-BLIND_BUDGET_H = 0.5        # teacher on the dev-test grading sample
+# [V7] "full" by default: the whole teacher queue (V6 had answered 22k of 81k) with the tiered teacher, inside
+# one ~11.5 h session (Kaggle's cap is 12 h; ~13 GPU-h were left this week). Attach V6's output to resume.
+MODE = os.environ.get("RZ_MODE", "full")        # "full" or "students" (reuse attached teacher answers)
+SESSION_H = 11.5            # every phase's budget is cut to what is left of this
+TEACHER_BUDGET_H = 2.25     # the 32B on the hardest + gold-adjacent head of the queue (~65/min)
+BIG_N = 8800                # how many open requests the 32B gets (2.25 h x ~65/min)
+FAST_BUDGET_H = 4.25        # then the 14B (~3x faster, ~195/min) on the easier tail: ~50k, the rest of the queue
+BUILD_BUDGET_H = 4.5        # stop downloading new games after this (on the CPUs, during the teacher)
+BLIND_BUDGET_H = 0.4        # teacher on the dev-test grading sample
+STUDENT_BUDGET_H = 3.75     # both students: train + answer the full test set (constrained JSON)
+GRADE_RESERVE_H = 0.35      # grading + out.zip after the students
 ROUND = time.strftime("%Y%m%d-%H%M")
 KW = os.environ.get("RZ_KAGGLE_WORKING", "/kaggle/working")        # overridable for the CPU smoke test
 INP = os.environ.get("RZ_KAGGLE_INPUT", "/kaggle/input")
@@ -135,6 +140,28 @@ def run(args, env=None):
         raise RuntimeError(f"{args[0]} failed with exit code {p.returncode}")
 
 
+def left_h(reserve=0.0):
+    """Hours of the session budget still free after `reserve`."""
+    return max(0.1, SESSION_H - (time.time() - T0) / 3600 - reserve)
+
+
+def ticker(label, fn, every_s=600):
+    """[V7] a status line in this cell every `every_s` while a background phase runs (fn() -> str|None)."""
+    import threading
+    stop = threading.Event()
+
+    def loop():
+        while not stop.wait(every_s):
+            try:
+                msg = fn()
+            except Exception as e:  # noqa: BLE001
+                msg = f"(status unavailable: {e})"
+            if msg:
+                print(f"[{label} {(time.time() - T0) / 3600:.2f} h] {msg}", flush=True)
+    threading.Thread(target=loop, daemon=True).start()
+    return stop
+
+
 def tail(path, n=20):
     return "".join(open(path).readlines()[-n:]) if os.path.exists(path) else ""
 
@@ -158,6 +185,7 @@ if ROUND2 and not STUDENTS_ONLY:
     while build.poll() is None and not os.path.exists(f"{MOMENTS}/split_plan.json") and time.time() - T0 < 3600:
         time.sleep(30)
     print(tail(f"{KW}/build.log"))
+    build_tick = ticker("build", lambda: tail(f"{KW}/build.log", 1).strip() if build.poll() is None else None)
     if not os.path.exists(f"{MOMENTS}/split_plan.json"):
         print("build has no split plan (see build.log): this round runs on the pack only")
 
@@ -195,10 +223,12 @@ if queue and os.path.exists(f"{MOMENTS}/split_plan.json"):
     write_jsonl(queue, keep)
     print("teacher queue after the time split:", len(keep))
 if queue:
-    run(["agent/kaggle/run_teacher.py", "--requests", queue, "--out", WORK, "--budget-h", str(TEACHER_BUDGET_H),
-         "--limit", str(BIG_N), "--resume-from", *PREV])
+    tail_h = BLIND_BUDGET_H + STUDENT_BUDGET_H + GRADE_RESERVE_H        # what must still fit after the teacher
+    run(["agent/kaggle/run_teacher.py", "--requests", queue, "--out", WORK,
+         "--budget-h", f"{min(TEACHER_BUDGET_H, left_h(tail_h + 0.5)):.2f}", "--limit", str(BIG_N), "--resume-from", *PREV])
     shutil.copy(f"{WORK}/teacher_report.json", f"{WORK}/teacher_report_32b.json")
-    run(["agent/kaggle/run_teacher.py", "--requests", queue, "--out", WORK, "--budget-h", str(FAST_BUDGET_H), "--fast"])
+    run(["agent/kaggle/run_teacher.py", "--requests", queue, "--out", WORK,
+         "--budget-h", f"{min(FAST_BUDGET_H, left_h(tail_h)):.2f}", "--fast"])
     shutil.copy(f"{WORK}/teacher_report.json", f"{WORK}/teacher_report_14b.json")
 
 # %%
@@ -206,6 +236,7 @@ if queue:
 if build is not None:
     while build.poll() is None:
         time.sleep(60)
+    build_tick.set()
     print(tail(f"{KW}/build.log", 40))
 student_args = ["--pack", PACK, "--teacher-out", os.path.join(WORK, "teacher_out.jsonl"),
                 "--out", os.path.join(WORK, "students")]
@@ -223,11 +254,13 @@ if os.path.exists(gr) and not STUDENTS_ONLY:
     reqs = reasoner_requests(rows, system, grounded_splits=(), blind_splits=("test",))
     write_jsonl(f"{WORK}/teacher_blind_r2.jsonl", reqs)
     run(["agent/kaggle/run_teacher.py", "--requests", f"{WORK}/teacher_blind_r2.jsonl", "--out", WORK,
-         "--budget-h", str(BLIND_BUDGET_H)])
+         "--budget-h", f"{min(BLIND_BUDGET_H, left_h(STUDENT_BUDGET_H + GRADE_RESERVE_H)):.2f}"])
 
 # %%
 # Phase 4: students on both T4s, then mlx_lm adapters
-run(["agent/kaggle/run_students.py", *student_args, "--prepared"])
+sb = min(STUDENT_BUDGET_H, left_h(GRADE_RESERVE_H))
+print(f"students: {sb:.2f} h budget ({left_h():.2f} h left in the session)", flush=True)
+run(["agent/kaggle/run_students.py", *student_args, "--prepared"], env={"RZ_STUDENT_BUDGET_S": str(int(sb * 3600))})
 
 # %%
 # Phase 5: grade, and the teacher's new watchdog wordings

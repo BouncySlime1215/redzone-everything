@@ -25,6 +25,10 @@ from typing import Iterable
 from agent.distill.teacher import clean_reasoner, eta_s, extract_json
 
 _KEY = re.compile(r"key soon (\d+)%")
+def pct(a, b):
+    return round(100.0 * a / b, 1) if b else None
+
+
 MISSING = {}          # sentinel: the source was never asked about this row (vs. asked but unusable = None)
 
 
@@ -139,6 +143,8 @@ def compare(rows: Iterable[dict], sources: dict[str, dict[str, dict] | None]) ->
             res["thresholds"][name] = {lg: {"must_see_at": h, "watch_at": w} for lg, (h, w) in th.items()}
         preds = answers_for(name, test, ans, th)
         by = {"all": score(test, preds)}
+        by["all"]["rule_conformance_pct"], by["all"]["rule_rows"] = conformance(test, preds)
+        by["all"]["confidence_ece"] = calibration(test, preds)
         for lg in sorted({r.get("league") for r in test}):
             by[lg] = score([r for r in test if r.get("league") == lg], preds)
         res[name] = by
@@ -171,3 +177,92 @@ def gate(s: dict, rules: dict = GATE) -> list[str]:
         if v is None or (kind == "min" and v < lim) or (kind == "max" and v > lim):
             bad.append(f"{k}={v} (needs {'>=' if kind == 'min' else '<='} {lim})")
     return bad
+
+
+# ---- [V7, B11] the split reasoner gate -------------------------------------------------------------
+# V6: lock_acc against gold folds hindsight in (a big play in the next horizon): even the 32B teacher
+# reaches 73%, so 95% can't be passed by anyone. B11 splits it into what a model can be held to:
+#   rule conformance   Nick's rules that the brief already decides (garbage, your team late, NFL drive,
+#                      NHL power play): >= 99% of those rows answered by the rule
+#   calibration        confidence vs being right about lock_in: ECE <= 0.10
+#   non-inferiority    ON vs OFF (today's rules, fitted on valid): unsafe leaves no worse, must-see
+#                      recall and lock_acc at most 2 points worse
+#   abstain            a confidence cut that keeps unsafe leaves <= 0.5% answers >= 50% of rows
+#   usable JSON        100% (constrained decoding makes it so)
+SPLIT_GATE = {"usable_json_pct": 100.0, "rule_conformance_pct": 99.0, "confidence_ece": 0.10,
+              "noninferior_pts": 2.0, "abstain_coverage_pct": 50.0}
+
+
+def rule_expect(r: dict) -> str | None:
+    """The lock_in the brief alone decides, or None (then only hindsight knows)."""
+    from agent.distill.gold import nhl_pp
+    from agent.distill.jump import live_drive
+    if r.get("garbage"):
+        return "none"
+    if r.get("mine") and r.get("late"):
+        return "must_see"
+    if live_drive(r):
+        return "must_see"
+    if r.get("league") == "nhl" and nhl_pp(r.get("brief", "")):
+        return "watch+"
+    return None
+
+
+def conformance(rows: list[dict], preds: dict) -> tuple[float | None, int]:
+    hits = n = 0
+    for r in rows:
+        want = rule_expect(r)
+        p = preds.get(r["id"])
+        if want is None or not p or p is MISSING:
+            continue
+        n += 1
+        hits += (p["lock_in"] in ("watch", "must_see")) if want == "watch+" else (p["lock_in"] == want)
+    return pct(hits, n), n
+
+
+def calibration(rows: list[dict], preds: dict, bins: int = 10) -> float | None:
+    pts = []
+    for r in rows:
+        p = preds.get(r["id"])
+        if not p or p is MISSING:
+            continue
+        try:
+            c = min(1.0, max(0.0, float(p.get("confidence"))))
+        except (TypeError, ValueError):
+            continue
+        pts.append((c, p["lock_in"] == truth_lock(r)))
+    if not pts:
+        return None
+    ece = 0.0
+    for b in range(bins):
+        sub = [(c, y) for c, y in pts if b / bins <= c < (b + 1) / bins or (b == bins - 1 and c == 1.0)]
+        if sub:
+            ece += len(sub) / len(pts) * abs(sum(c for c, _ in sub) / len(sub) - sum(y for _, y in sub) / len(sub))
+    return round(ece, 4)
+
+
+def gate_split(res: dict, source: str, dont_know: dict | None = None) -> dict:
+    """{line: (value, needs, ok)} for one source; ships only if every line is ok."""
+    s, off = res[source]["all"], res.get("today", {}).get("all", {})
+    g = SPLIT_GATE
+    lines = {"usable_json_pct": (s.get("usable_json_pct"), f">= {g['usable_json_pct']}",
+                                 (s.get("usable_json_pct") or 0) >= g["usable_json_pct"]),
+             "rule_conformance_pct": (s.get("rule_conformance_pct"), f">= {g['rule_conformance_pct']}",
+                                      (s.get("rule_conformance_pct") or 0) >= g["rule_conformance_pct"]),
+             "confidence_ece": (s.get("confidence_ece"), f"<= {g['confidence_ece']}",
+                                s.get("confidence_ece") is not None and s["confidence_ece"] <= g["confidence_ece"])}
+    d = g["noninferior_pts"]
+    for k, better in (("unsafe_leave_pct", -1), ("must_see_recall", 1), ("lock_acc", 1)):
+        v, o = s.get(k), off.get(k)
+        if v is None or o is None:
+            lines[f"vs_off_{k}"] = (v, f"vs OFF {o}", False)
+            continue
+        ok = v <= o if better < 0 else v >= o - d
+        lines[f"vs_off_{k}"] = (v, f"{'<=' if better < 0 else '>='} {o if better < 0 else round(o - d, 1)} (OFF {o})", ok)
+    if dont_know is not None:
+        c = dont_know.get("test_coverage_pct") or 0.0
+        u = (dont_know.get("test_answered") or {}).get("unsafe_leave_pct")
+        lines["abstain_coverage_pct"] = (c, f">= {g['abstain_coverage_pct']} with unsafe <= 0.5 (test {u})",
+                                         dont_know.get("cut") is not None and c >= g["abstain_coverage_pct"]
+                                         and u is not None and u <= 0.5)
+    return lines

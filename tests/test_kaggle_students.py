@@ -51,4 +51,6 @@ def test_recipe_d19_defaults(monkeypatch):
     for k in ("RZ_LORA_RANK", "RZ_LORA_LAYERS", "RZ_LR", "RZ_BASE_DTYPE"):
         monkeypatch.delenv(k, raising=False)
     m = importlib.reload(rs)
-    assert (m.RANK, m.ALPHA, m.LAST_LAYERS, m.LR, m.BASE_DTYPE) == (16, 32, None, 2e-4, "float16")
+    assert (m.RANK, m.LAST_LAYERS, m.LR, m.BASE_DTYPE) == (None, None, 2e-4, "float16")
+    assert (m.rank_for("game-reasoner"), m.rank_for("watchdog")) == (32, 16)      # [V7] D19 r16-32
+    assert m.CONSTRAINED and m.MAX_NEW >= 112

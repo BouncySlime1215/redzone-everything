@@ -27,6 +27,7 @@ def _adapter(root, name, weights=True):
     (d / "adapter_config.json").write_text("{}")
     if weights:
         (d / "adapter_model.safetensors").write_bytes(b"x")
+    (d / "recipe.txt").write_text(R.recipe_of(name))
     return d
 
 
@@ -44,3 +45,13 @@ def test_reuses_a_trained_adapter_from_the_attached_output(tmp_path, monkeypatch
 
 def test_answers_in_small_fp16_batches():
     assert R.ANSWER_BATCH == 8 and R.ANSWER_LOG_ROWS == 400
+
+
+def test_an_adapter_from_an_older_recipe_is_not_reused(tmp_path, monkeypatch):
+    """[V7] V6's output is attached for its teacher answers; its r16 adapters must not skip V7's training."""
+    monkeypatch.delenv("RZ_RETRAIN", raising=False)
+    d = _adapter(tmp_path, "game-reasoner")
+    (d / "recipe.txt").unlink()                                    # a V6 adapter: no stamp
+    assert R.previous_adapter("game-reasoner", [tmp_path]) is None
+    (d / "recipe.txt").write_text("v6 r16")
+    assert R.previous_adapter("game-reasoner", [tmp_path]) is None

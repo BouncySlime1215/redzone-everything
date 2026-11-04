@@ -218,8 +218,12 @@ def run(requests, out_path, backend, model_used, budget_s, t0, batch=BATCH, done
                 stats["gen_tokens"] += gt
             stats["followups"] += len(fan)
             f.flush()
-            print(f"teacher {min(i + batch, len(todo))}/{len(todo)}  "
-                  f"{stats['gen_tokens'] / max(gen_s, 1e-6):.0f} gen tok/s", flush=True)
+            k = min(i + batch, len(todo))
+            el = time.time() - t0
+            rate = stats["answered"] / max(el / 60, 1e-6)
+            eta = (len(todo) - k) / max(rate, 1e-6)          # [V7] answers/min, ETA and the budget left
+            print(f"teacher {k}/{len(todo)}  {stats['gen_tokens'] / max(gen_s, 1e-6):.0f} gen tok/s  "
+                  f"{rate:.0f}/min  eta {eta:.0f} min  budget left {(budget_s - el) / 60:.0f} min", flush=True)
     stats["gen_s"] = round(gen_s)
     stats["remaining"] = len(todo) - stats["answered"]
     return stats
