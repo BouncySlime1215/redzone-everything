@@ -282,6 +282,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (half-step of median + settle) is unchanged at its shipped value. The night lab's SmartThings TV draws from
   the same quantiles. Also STK-05 (no flag: a stale or paused standby was never a usable one): media_session must
   read active and speed>0, and verify_standby re-tunes a paused / stale hidden stick at once.
+- 2026-11-04 3:05 PM: **report.nightly (default OFF): the night health report** (Nick's build (a), lane 4).
+  scripts/night_report.py writes docs/nights/YYYY-MM-DD.md each morning from the night's published live
+  summary (docs/live-nights/): the North Star lines one live night can grade (mid-play, landings in dead time
+  >= 98%, press-to-TV p95 <= 3 s), every miss (ET time, game, end, reason), sync error per stick, switch and
+  press latency, faults fixed. PENDING with no night. Off until it passes its gates; northstar.yml runs it.
 - 2026-11-04 3:30 PM (lane 2, Nick's crunch_now decision): **new key `decider.entry.possession_start` ships
   `off`** (off | crunch | all). Why: on dev with tune jitter (3 seeds) `crunch` is identical to the candidate's
   `wait` (which already rewinds to the last dead ball when one is in reach) and `all` costs NBA big live
@@ -402,3 +407,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
     - G2: a running or done experiment is not pre-registered;
     - G3: a running experiment moved its goalposts.
   - Reason: grading has to be harder to fool than training.
+- **2026-11-04 (lane 2, #174): `replay.crunch_block_tail`** (default `false`, candidate `true`). The crunch block also
+  holds until a game the feed ended in crunch time (an OT winner) has aired. Why: the OT winner reached the screen ~2 min
+  after the feed dropped the game, and a catch-up reel ran over it. NHL locked crunch live +2.5..2.6 on 3 seeds,
+  0 mid-play; dev big seen in 10 min −5..6 (catch-ups wait out the OT tail).
+- 2026-11-04 (lane 4, cycle 07 plan #176 "night report live tonight"): `report.nightly` default ON. The night health
+  report (scripts/night_report.py, northstar.yml's 10:00 UTC run) writes docs/nights/YYYY-MM-DD.md from the published
+  live-night summary. Its gates pass in tests/test_night_report.py: matches the live log through publish, PENDING with
+  no night or no games, no private strings published. Report only: nothing on the TV changes. Off again: set it false.

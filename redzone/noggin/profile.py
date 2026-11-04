@@ -71,6 +71,10 @@ PROFILES: dict[str, dict] = {
             # time or its run-up. Your team's missed play waits too, except in NFL, where it goes 90 s after
             # it aired (its 3-min replay window can't wait out crunch). Locked, 3 seeds, vs live: no line worse.
             "replay.crunch_block=true",
+            # [noggin logic, cycle 06] ...and until a game the feed ended in crunch time (an OT winner) has
+            # aired: dev 3 seeds NHL crunch on replay 7/6/0 -> 0/0/0, crunch live +3.6/+2.7/+0.1, 0 mid-play;
+            # big seen in 10 min -4.1..4.5 (catch-ups wait out the OT tail). NFL crunch +0.1..0.8, NBA equal.
+            "replay.crunch_block_tail=true",
             "replay.crunch_block_mine_leagues=[nfl]",
         ],
     },
