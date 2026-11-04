@@ -43,6 +43,30 @@ This **replaces** the 4:05 "crunch = stay, absolute" line.
    - never leave a high-leverage moment for a low-value game;
    - league order and WSH/UNC are **strong priors**, not absolute walls.
 
+## Data ledger (new standing section, Nick 5:00 PM ET: data scale is the Noggin's #1 bottleneck)
+Every cycle plan carries this table, filled from the factory manifest. Lane ① reports it in every factory PR.
+This cycle it's PENDING: the factory has no event-token shards yet (they arrive next round).
+
+| league | source (license / terms checked) | real tokens | synthetic (self-play) tokens | crunch share | OT / comeback / blowout share |
+|---|---|---:|---:|---:|---|
+| NFL | nflverse open pbp 1999+ (check the license) + ESPN | PENDING | PENDING | PENDING | PENDING |
+| CFB | collegefootballdata.com API (free key; Nick adds it) + ESPN | PENDING | PENDING | PENDING | PENDING |
+| NBA | full historical pbp (source + terms to record) | PENDING | PENDING | PENDING | PENDING |
+| NHL | api-web full pbp + shift data | PENDING | PENDING | PENDING | PENDING |
+| MLB | Statcast pitch-level via Baseball Savant (check terms, throttle) | PENDING | PENDING | PENDING | PENDING |
+| CBB | ESPN (everything it has) | PENDING | PENDING | PENDING | PENDING |
+| live nights (gold) | our own logs: TV timing, ads, delay | PENDING | n/a | PENDING | n/a |
+
+**Lane ① source expansion (new item 2, after the NFM design doc):**
+- Add each source to the factory as its own resumable shard family. **Record each source's license or terms
+  in `docs/data-sources.md` before the first pull.** Respect rate limits. No scraping of sites that forbid it,
+  and no paid feeds without Nick's OK.
+- The CFB key is a secret, so Nick adds it himself. Ask the overseer, and don't ask for the value.
+- **Self-play slates ×5-10** over real nights.
+- **Every live night becomes gold data** (lane ③'s auto-log, lane ④'s night report).
+- **Balance, not just volume:** stratify sampling so crunch, OT, comeback and blowout have target shares,
+  and report the shares in the ledger.
+
 ## Addendum: strategy shift, the Noggin Foundation Model (Nick, 4:45 PM ET). The Noggin's main track
 Stop hand-listing features. Build one **pretrained event model** and put the heads on top (roadmap item
 **NFM**, priority 0).
