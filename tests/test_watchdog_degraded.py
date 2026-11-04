@@ -107,3 +107,28 @@ def test_every_action_is_journaled_with_its_result(w, monkeypatch, tmp_path):
     acted = [r for r in rows if r["action"] != "none"]
     assert acted and all(r["result"] for r in acted)
     assert any(r["action"] == "restart_service" and r["result"] == "restarted" for r in acted)
+
+
+def test_launchd_exit_78_notifies_the_fix_instead_of_a_restart_loop():
+    from agent.policy import rules
+    v = rules(Obs(api_ok=False, api_fail_streak=5, launchd_exit=78))
+    assert v.action == "notify" and "Full Disk Access" in v.why
+    assert rules(Obs(api_ok=False, api_fail_streak=5, launchd_exit=127)).action == "notify"
+    assert rules(Obs(api_ok=False, api_fail_streak=5, launchd_exit=1)).action == "restart_service"
+    assert rules(Obs(api_ok=False, api_fail_streak=5)).action == "restart_service"
+
+
+def test_launchd_exit_stays_out_of_the_trained_prompt():
+    assert "launchd_exit" not in Obs(launchd_exit=78).text()
+
+
+def test_launchd_last_exit_parses_launchctl(monkeypatch):
+    out = "gui/501/com.redzone.everything = {\n\tstate = not running\n\tlast exit code = 78: EX_CONFIG\n}"
+    monkeypatch.setattr(watchdog.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a[0], 0, out, ""))
+    assert watchdog.launchd_last_exit() == 78
+
+    def missing(*a, **k):
+        raise FileNotFoundError("launchctl")
+    monkeypatch.setattr(watchdog.subprocess, "run", missing)
+    assert watchdog.launchd_last_exit() is None

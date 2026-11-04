@@ -65,6 +65,17 @@ class Recorder:
                          "text": (p.get("text") or "")[:80]})
         self._write("plays.jsonl", rows)
 
+    def feed_plays(self, g: GameState, plays) -> None:
+        """Plays from a league feed with real event times (NBA liveData timeActual), as plays.jsonl
+        rows under their own source: timing_report.py measures their lag next to ESPN's."""
+        now = time.time()
+        plays = [p for p in plays if (g.game_id, p.id) not in self._nhl_logged]
+        self._nhl_logged.update((g.game_id, p.id) for p in plays)   # ids are prefixed per feed: one set
+        self._write("plays.jsonl", [{"t": round(p.seen_at or now, 2), "league": g.league.value, "game": g.game_id,
+                                     "play": p.id, "type": p.type_text, "wall": p.wallclock,
+                                     "lag": round((p.seen_at or now) - p.wallclock, 2) if p.wallclock else None,
+                                     "source": p.source, "text": (p.text or "")[:80]} for p in plays])
+
     def nhl_seen(self, g: GameState, pbp, seen: dict[str, float]) -> None:
         """NHL api-web events with when we first saw them (the feed has no wallclock). Joined to
         ESPN's wallclocked plays by period, clock and type, this gives api-web's real lag, and it

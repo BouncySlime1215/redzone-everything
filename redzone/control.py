@@ -238,6 +238,12 @@ class Controller:
         # app the other plays (Peacock on .181 only). None = every stick can play every app.
         self.can_play: Callable[[str, str], bool] | None = None
         self._tuned_on: str | None = None        # host of the last stick a switch tuned
+        # [time-shift buffer] target -> seconds its stream is held behind the live edge (on whichever
+        # stick plays it). A fresh tune clears it. behind_of(target) is the engine's B for a target
+        # (0 = no hold); on_behind(target, new, old) tells the delay book (DelayBook.set_behind).
+        self.held: dict[str, float] = {}
+        self.behind_of: Callable[[str], float] = lambda target: 0.0
+        self.on_behind: Callable[[str, float, float], None] | None = None   # (target, new s, old s)
         self._cec_bad: dict[str, float] = {}     # stick host -> skip CEC until
         self._awake_at: dict[str, float] = {}    # stick host -> last seen awake
         self._asleep_until = 0.0
@@ -743,11 +749,30 @@ class Controller:
             log.exception("reconnecting %s failed; trying again next tick", s.host)
 
     def _forget(self, stick: Stick) -> None:
-        """A stick came back from a drop (maybe a reboot): whatever we thought it showed is stale."""
+        """A stick came back from a drop (maybe a reboot): whatever we thought it showed is stale.
+
+        The stick on screen: forgetting its target used to leave nothing to restore it (the visible
+        watchdog and the supervisor's screen rule both need on_target), so a reboot showed the Fire TV
+        home until the decider happened to pick another game. With hardening.sticks the target is kept
+        and the watchdog checks it at once: still playing (a short adb blip) -> nothing happens; not
+        playing (a reboot) -> the usual resume / re-link after VISIBLE_STALL_S, on that stick only."""
         if stick is self.main:
+            if self.on_target and self._hardening("sticks"):
+                log.info("%s (on screen) is back after a drop: checking it still plays %s", stick.host,
+                         self.on_target)
+                self._visible_bad_since = None
+                self._loading_since.pop((stick.host, self.on_target), None)
+                self._schedule_visible_check(0.0)
+                return
             self.on_target = None
         else:
             self._set_hidden(None, False)
+
+    def _hardening(self, part: str) -> bool:
+        try:
+            return bool(self.cfg.get(f"hardening.{part}", False))
+        except Exception:
+            return False
 
     def save_latency(self) -> None:
         if self.latency_path and self.latency.dirty:
@@ -1169,10 +1194,57 @@ class Controller:
             # target isn't cooled down or marked unplayable for a stick fault.
             res.error = f"{STICK_HUNG}: {res.error}"
         if res.ok:
+            self._set_held(target, 0.0)   # a fresh tune plays from the live edge
             # A Prime multiview tile switch is ~1 s, not a ~32 s tune: never let it into Prime's median.
             self.latency.record("prime_tile" if res.path == "tile" else app, res.took)
             self._awake_at[stick.host] = time.time()
         return res
+
+    def _set_held(self, target: str, behind_s: float) -> None:
+        old = self.held.get(target, 0.0)
+        if old == behind_s:
+            return
+        if behind_s:
+            self.held[target] = behind_s
+        else:
+            self.held.pop(target, None)
+        if self.on_behind is not None:
+            self.on_behind(target, behind_s, old)
+
+    async def _hold(self, stick: Stick, target: str, behind_s: float) -> bool:
+        """[time-shift buffer] Hold the hidden stick's fresh live tune behind_s behind the live edge:
+        pause, wait it out WITHOUT the control lock (switches go on meanwhile; the stick isn't
+        ready, so nothing flips to it), then play. True = it's playing behind_s behind live.
+        On any doubt the stream is reloaded at the live edge rather than left at an unknown offset."""
+        pkg = self._package(stick, target)
+        async with self._lock:
+            if self.hidden is not stick or self.hidden_target != target:
+                return False
+            sent = await stick.key("KEYCODE_MEDIA_PAUSE")
+            pb = await stick.playback(pkg) if sent and sent.ok else {}
+            if pb.get("state") != "paused":
+                await stick.key("KEYCODE_MEDIA_PLAY")
+                log.info("buffer: %s on %s didn't pause (%s); left at the live edge", target, stick.host,
+                         pb.get("state"))
+                return False
+            paused_at = time.monotonic()
+        await asyncio.sleep(behind_s)
+        async with self._lock:
+            if self.hidden is not stick or self.hidden_target != target:
+                return False      # flipped or retargeted meanwhile: whoever did that owns the stick
+            sent = await stick.key("KEYCODE_MEDIA_PLAY")
+            pb = await stick.playback(pkg) if sent and sent.ok else {}
+            if pb.get("state") != "playing":
+                log.warning("buffer: %s on %s didn't resume (%s); reloading at the live edge", target,
+                            stick.host, pb.get("state"))
+                self._set_hidden(target, False)
+                res = await self._tune(stick, target)
+                self._set_hidden(target if res.ok else None, res.ok)
+                return False
+            held = round(time.monotonic() - paused_at, 1)
+            self._set_held(target, min(held, float(self.cfg.get("timing.behind_live_s.max_s", 90.0)) + 5.0))
+            log.info("buffer: %s on %s held %.1fs behind live", target, stick.host, held)
+            return True
 
     async def _rewind(self, stick: Stick, back_s: float) -> bool:
         """Rewind about back_s and play. Whole presses, rounded UP: landing a few seconds early shows
@@ -2167,6 +2239,7 @@ class Controller:
         return True
 
     async def _preload(self, target: str, back_s: float | None, replay_id: str | None, t0: float) -> None:
+        hold = 0.0
         try:
             async with self._lock:
                 hid = self.hidden
@@ -2192,17 +2265,43 @@ class Controller:
                         return
                     self._set_hidden(target, True)
                     await self._maybe_build_multiview(hid, target, res)
+                    hold = 0.0 if replay_id is not None else self._buffer_for(hid, target, res)
+                    if hold:
+                        self._set_hidden(target, False)   # not flippable until it's held
                 if replay_id is not None:
-                    if not await self._park(hid, target, (back_s or 0.0) + (time.time() - t0), replay_id):
+                    # A stream already held behind live is that much closer to the play.
+                    back = (back_s or 0.0) + (time.time() - t0) - self.held.get(target, 0.0)
+                    if not await self._park(hid, target, max(0.0, back), replay_id):
                         self._failed[target] = time.time() + PRELOAD_BACKOFF_S
                         return
                 self._verified_at = time.time()
+            if replay_id is None and hold:
+                await self._hold(hid, target, hold)
+                if self.hidden is hid and self.hidden_target == target:
+                    self._set_hidden(target, True)
         except asyncio.CancelledError:
             self._set_hidden(None, False)   # stopped mid-tune: we don't know what it's showing
             raise
         finally:
             if self._preload_task is asyncio.current_task():   # not a preload that displaced this one
                 self._preloading, self._refreshing = None, None
+
+    def _buffer_for(self, stick: Stick, target: str, res: TuneResult) -> float:
+        """Seconds to hold this fresh hidden-stick tune behind live (0 = none)."""
+        if not self.cfg.get("timing.behind_live_s.enabled", False):
+            return 0.0
+        app = self._ref(target)[0]
+        if app not in (self.cfg.get("timing.behind_live_s.apps") or ("youtubetv", "primevideo")):
+            return 0.0
+        mv = self.prime_mv
+        if res.path == "tile" or (mv is not None and mv.session(stick.host) is not None):
+            return 0.0    # a multiview tile is one stream of several: pausing it pauses them all
+        try:
+            b = float(self.behind_of(target) or 0.0)
+        except Exception:
+            log.exception("buffer: behind_of(%s)", target)
+            return 0.0
+        return max(0.0, min(b, float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
 
     def plan_prime_multiview(self, tiles: list[str]) -> None:
         """The engine's pick of Prime NBA games for a multiview, best first (prime_multiview.plan_tiles)."""

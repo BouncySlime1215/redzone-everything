@@ -61,7 +61,18 @@ class Engine:
         # reached us (data/recordings/<day>/nhl_seen.jsonl), so the backtest that gates it has data.
         self._nhl_shadow = not self._nhl_primary and bool(self.cfg.get("sources.nhl_shadow", True))
         self._nhl_logged: dict[str, dict[str, float]] = {}
-        self.merger = Merger(stoppage_owner={League.NHL: "nhl"} if self._nhl_primary else None)
+        # [NBA primary] the same for NBA's liveData play-by-play (real event times, ~4-12 s published).
+        self._nba_primary = bool(self.cfg.get("sources.nba_primary", False))
+        self._nba_shadow = not self._nba_primary and bool(self.cfg.get("sources.nba_shadow", True))
+        self._nba_seen: dict[str, dict[str, float]] = {}
+        self._nba_logged: dict[str, dict[str, float]] = {}
+        self._nba_ids: dict[str, str] = {}
+        owners = {}
+        if self._nhl_primary:
+            owners[League.NHL] = "nhl"
+        if self._nba_primary:
+            owners[League.NBA] = "nba"
+        self.merger = Merger(stoppage_owner=owners or None)
         self._nhl_seen: dict[str, dict[str, float]] = {}   # game id -> NHL event id -> first seen
         self._nhl_ids: dict[str, str] = {}                  # ESPN game id -> NHL game id
         self._poll_every: dict[str, float] = {}   # game id -> the poll interval it was last fetched at
@@ -87,6 +98,11 @@ class Engine:
         self.decider.deadline_cost = self.control.deadline_cost
         # Break visits: the game we leave keeps playing on the other stick, so the trip back is one
         # flip; with one stick it's a full tune of that game.
+        # [time-shift buffer] hold each fresh hidden-stick tune B s behind live (timing.behind_live_s,
+        # OFF by default); the delay book shares the controller's held offsets.
+        self.delays.held = self.control.held
+        self.control.behind_of = self._behind_of
+        self.control.on_behind = self._on_behind
         self.decider.return_cost = lambda t: (self.control.flip_estimate() if self.control.two_stick
                                               else self.control.deadline_cost(t))
         # Stream delay measured from YouTube TV show changes on the quarter hour (no taps needed).
@@ -248,6 +264,23 @@ class Engine:
             self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="screen")
         except Exception:
             log.exception("could not save a score-bug delay sample")
+
+    def _behind_of(self, target: str) -> float:
+        """[time-shift buffer] Seconds to hold this target behind live: per league, 0 when off."""
+        if not self.cfg.get("timing.behind_live_s.enabled", False):
+            return 0.0
+        gid = self._game_on(target, False)
+        g = self.merger.games.get(gid or "")
+        if g is None or g.phase != Phase.LIVE:
+            return 0.0
+        by = self.cfg.get("timing.behind_live_s.by_league") or {}
+        b = by.get(g.league.value, by.get(g.league.base.value, self.cfg.get("timing.behind_live_s.default", 0)))
+        return max(0.0, min(float(b or 0.0), float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
+
+    def _on_behind(self, target: str, new_s: float, old_s: float) -> None:
+        """The controller held (or freed) this target's stream: shift its delay by the difference."""
+        d = self.delays.get(target)
+        self.delays.set_behind(target, max(0.0, d.behind - old_s + new_s))
 
     def _game_on(self, target: str, visible: bool) -> str | None:
         """The game the engine thinks this target shows (the current one first, for the visible stick)."""
@@ -726,13 +759,29 @@ class Engine:
             sb = await self.fetcher.get_json(leagues.NBA_SCOREBOARD, min_interval=5)
             if sb:
                 idx = leagues.nba_index(sb)
-                for g in nba:
+                fast = self._nba_primary or self._nba_shadow
+                every = float(self.cfg.get("polling.nba_pbp_s", 3))
+
+                async def one_nba(g: GameState):
                     gm = leagues.nba_match(g, idx)
-                    if gm:
+                    if not gm:
+                        return
+                    pbp = None
+                    if fast and gm.get("gameId") and gm.get("gameStatus") == 2:
+                        self._nba_ids[g.game_id] = str(gm["gameId"])
+                        pbp = await self.fetcher.get_json(leagues.NBA_PBP.format(id=gm["gameId"]),
+                                                          min_interval=every - 0.5)
+                    if self._nba_shadow and pbp:
                         try:
-                            self.merger.update("nba", leagues.enrich_nba(self.merger.games[g.game_id], gm))
+                            self.recorder.feed_plays(g, leagues.nba_plays(pbp, self._nba_logged.setdefault(g.game_id, {})))
                         except Exception:
-                            log.exception("nba enrich")
+                            log.exception("nba shadow log")
+                    try:
+                        seen = self._nba_seen.setdefault(g.game_id, {}) if self._nba_primary else None
+                        self.merger.update("nba", leagues.enrich_nba(self.merger.games[g.game_id], gm, pbp, seen))
+                    except Exception:
+                        log.exception("nba enrich")
+                await asyncio.gather(*(one_nba(g) for g in nba))
 
     def _feed_urls(self, g: GameState) -> list[str]:
         """The URLs a game's state comes from: its summary and its league's scoreboard(s)."""
@@ -741,6 +790,8 @@ class Engine:
         else:
             boards = [espn.scoreboard_url(g.league)]
         out = [espn.summary_url(g.league, g.game_id), *boards]
+        if g.league == League.NBA and self._nba_primary and g.game_id in self._nba_ids:
+            out.append(leagues.NBA_PBP.format(id=self._nba_ids[g.game_id]))
         if g.league == League.NHL and self._nhl_primary and g.game_id in self._nhl_ids:
             out.append(leagues.NHL_PBP.format(id=self._nhl_ids[g.game_id]))
         return out

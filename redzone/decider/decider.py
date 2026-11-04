@@ -837,11 +837,12 @@ class Decider:
     def _land_behind(self, gid: str | None, rewind_s: float) -> None:
         """The tune now on screen runs rewind_s behind live; every other tune is fresh again."""
         mine = self.target_of(gid) if gid else None
+        held = getattr(self.delays, "held", None) or {}   # [time-shift buffer] streams held behind live
         for t, dl in list(self.delays.book.items()):
-            if dl.behind and t != mine:
-                self.delays.set_behind(t, 0.0)
+            if dl.behind != held.get(t, 0.0) and t != mine:
+                self.delays.set_behind(t, held.get(t, 0.0))
         if mine:
-            self.delays.set_behind(mine, rewind_s)
+            self.delays.set_behind(mine, held.get(mine, 0.0) + rewind_s)
 
     def _decide(self, cands: dict[str, Candidate], now: float) -> Decision:
         c = self.cfg
@@ -1583,6 +1584,14 @@ class Decider:
         if not opts:
             return None
         best = max(opts, key=lambda o: core.rank(o, self.core.k)).id
+        if self.cfg.get("noggin.priority.enabled", False):
+            # [noggin priority] L1 hard rules first (your team > crunch by league order > open; never a
+            # banned app), then score: redzone/noggin/priority.py through redzone/noggin/wire.py.
+            from redzone.noggin import wire
+            hold = self.cfg.get("decider.crunch.hold_personal", 5)
+            yours = self._yours | {g for g in watchable if watchable[g].scored.personal >= hold}
+            return wire.pick(self.cfg, watchable, [o.id for o in opts], yours,
+                             {o.id: core.rate(o, self.core.k) for o in opts})
         if watchable[best].scored.lock == "power play":
             # [nhl pp] A power play is always worth a look, but never over your team late and close
             # (Oct 29 replay: back from a catch-up onto NYI @ MIN's power play instead of WSH, tied late).

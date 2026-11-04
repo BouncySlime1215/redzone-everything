@@ -202,3 +202,40 @@ NBA breaks need the resume seen in data (or the stick's own score-bug OCR), not 
 
 Next: a hazard model per league for the "how long until the restart" countdown (the floors are
 its lower bound with no features), and fixing the NBA timeout stamps before NBA gets a floor.
+
+## Time-shift buffer, live control (flag `timing.behind_live_s`, OFF)
+
+How a stream gets B s behind live (`Controller._hold`, `control.py`):
+
+1. The hidden stick tunes the next game at the live edge (as today).
+2. If the buffer is on for that app (YouTube TV, Prime; not a Prime multiview tile) and league, it
+   sends MEDIA_PAUSE and checks the player says "paused". If not, it plays on at the live edge.
+3. It waits B s **without the control lock**, so switches go on. The stick isn't "ready", so nothing
+   flips to it meanwhile.
+4. MEDIA_PLAY, then a check that it's playing. If it won't resume, it's reloaded at the live edge.
+5. The held seconds (measured, not assumed) go into `Controller.held` and the delay book
+   (`DelayBook.set_behind` via `Engine._on_behind`). The sync filter re-syncs on that, as for an
+   entry rewind. `Decider._land_behind` keeps held offsets instead of zeroing them.
+
+Any fresh tune of a target clears its hold (`_tune` → `_set_held(target, 0)`). A replay parked on a
+held stream rewinds that much less. Drift back to live is a reload, which is a fresh tune.
+
+Verification on the TV: the per-tune delay estimate (sync filter: boundary, score bug, taps)
+should read about B s more than the same channel without the hold. Live landings are graded in
+`data/supervisor_cuts.jsonl` (leave / enter: dead, play or unknown) from each switch's trace.
+
+## A2. NBA liveData play-by-play (flag `sources.nba_primary`, OFF; shadow ON)
+
+`playbyplay_<gameId>.json` on the same S3 mirror as the scoreboard. The path is assumed from the
+scoreboard mirror and can't be reached from the cloud; the shadow log is the check. Every action
+has `timeActual` (when it happened, ms) and `edited` (last publish). In the fixture game
+(0022600157), edited - timeActual: p10 3.8 s, **p50 11.6 s**, timeouts ~10 s, fouls ~11 s. That's
+an upper bound, since `edited` is the last edit, not the first. ESPN's NBA dead balls: p50 45 s.
+
+- Shadow (default): polls every `polling.nba_pbp_s` (3 s) for live games and writes new actions to
+  `plays.jsonl` as source `nba_cdn`, with wall and lag. `python scripts/timing_report.py` puts its
+  dead-ball lag next to ESPN's.
+- Primary (off): its actions reach the timeline with real times (exact bounds and lag samples),
+  and its last action sets the stoppage, which it owns while fresh (`Merger.stoppage_owner`).
+  Kinds use ESPN's spelling, so the dead-ball rules (fouls, subs, non-final free throws, timeouts)
+  match.
