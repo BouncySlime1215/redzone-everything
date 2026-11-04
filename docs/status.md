@@ -1,8 +1,9 @@
 # Status board
 
-Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-04 03:55 UTC.
-`integration/next` has #1-#3, #5-#12, #14, #15, #17 (reasoner, off), #19-#36, #38, #39 and the RC 3 deploy fixes
-(see `docs/integration.md`). Tests: 1722 passed, 11 skipped; ruff clean.
+Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-04 04:50 UTC.
+`integration/next` has #1-#3, #5-#12, #14, #15, #17 (reasoner, off), #19-#36, #38-#50 and the RC 3 deploy fixes
+(see `docs/integration.md`). Tests: 1788 passed; ruff clean. #51 (eval honesty, research B9-B10/C18) waits for 8 AM.
+**Usage brake (Nick, Nov 3 11:35 PM):** until 8 AM only the TIMING thread works; INTEGRATION is idle, no new merges unless timing needs one.
 **Release: RC 4 on `integration/release` = 8a47053** (RC 2 + deploy test-step fixes + the e2e night pinning
 the host and the network; no app change, so the gates are RC 2's: 59 pass, 10 fail, 27 pending, `docs/gate-report-rc3.md`).
 The draft release PR #37 is closed (Nick, Nov 3 10:45 PM); the deploy fetches `integration/release`.
@@ -23,12 +24,12 @@ The draft release PR #37 is closed (Nick, Nov 3 10:45 PM); the deploy fetches `i
 | Area | Owner | Now |
 |---|---|---|
 | Switch timing (Nick's items 1-7: dead-ball lag per source, live-delay offset per stick, restart prediction, SmartThings ~2 s trip cost, dwell/hysteresis, landing-offset scorecard line, e2e SmartThings latency) | TIMING thread (new, Nov 3 night) | working |
-| Error handling (items 8-12: SmartThings breaker + HOME/CEC fallback, stick recovery, feed fallback, Mac sleep/network/launchd, watchdog rate limits) | ERRORS thread (new, Nov 3 night) | PRs up, all OFF behind `hardening.*`: #44 SmartThings (adds the block; merge first), #48 sticks, #49 feeds, #50 Mac wake (stacked on #44), #45 watchdog cap (on). Turn each on after Nick's TV test |
-| Integration train, CI, release, housekeeping (items 13a-d, 14, 16) | INTEGRATION | #41 SmartThings OAuth + port map, #42 launchd off ~/Documents, #43 hostile-host e2e night + RC 4 pin_network: CI, then merge |
-| Kaggle teacher (item 13e: `pip uninstall torchao` on kaggle-inputs; V4 running with Nick's patch) | LOCAL AI (#13) | queued |
-| Prime multiview live-calibration plan (item 15, #40 flag off) | SWITCHING | queued |
+| Error handling (items 8-12: SmartThings breaker + HOME/CEC fallback, stick recovery, feed fallback, Mac sleep/network/launchd, watchdog rate limits) | ERRORS thread (new, Nov 3 night) **Done:** #44 SmartThings, #48 sticks, #49 feeds, #50 Mac wake and #45 watchdog cap merged. All OFF behind `hardening.*` except #45's hourly action cap (on). Turn each on after Nick's TV test |
+| Integration train, CI, release, housekeeping (items 13a-d, 14, 16) | INTEGRATION #41-#43 merged; #44-#50 merged; #47 TIMING honest feed_lag + NHL lag-cap merged; #51 eval honesty up (idle until 8 AM) |
+| Kaggle teacher (item 13e: `pip uninstall torchao` on kaggle-inputs; V4 running with Nick's patch) | LOCAL AI (#13) | **D19 ready on kaggle-inputs; V5 running** |
+| Prime multiview live-calibration plan (item 15, #40 flag off) | SWITCHING | **Done:** #40 merged, flag off; calibration plan is queue row 9b |
 | Memory systems (item 14) | MEMORY (#36 merged) | keep current |
-| Paused with a dependency | auto-tune #16, highlight jump #18 (brain break quantiles), reasoner (Kaggle adapter), brain leak-fix retrain | see queue |
+| Paused with a dependency | auto-tune #16 (paused: overfitting), highlight jump #18 (OFF: NBA 82% < 95%), live reasoner (queued; Kaggle adapter), brain leak-fix retrain | see queue |
 
 ## Research queue A-E (Nick, Nov 3 11:30 PM; `docs/research/2026-11-03/00-PLAN.md`, #46)
 
