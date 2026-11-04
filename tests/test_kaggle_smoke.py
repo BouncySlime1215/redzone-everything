@@ -82,3 +82,14 @@ def test_notebook_cells_compile():
                                     "build_moments_kaggle", "dequant"])
 def test_kaggle_scripts_import(script):
     __import__(f"agent.kaggle.{script}")
+
+
+def test_notebook_removes_kaggle_torchao():
+    """Kaggle's torchao 0.10 breaks peft LoRA (needs >= 0.16 or none): V3 died on it."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    src = (root / "agent/kaggle/teacher_distill.py").read_text()
+    nb = (root / "agent/kaggle/teacher_distill.ipynb").read_text()
+    assert '"uninstall", "-y", "-q", "torchao"' in src
+    assert "torchao" in nb
+    assert src.index('"torchao"') < src.index("run_students.py")

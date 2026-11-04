@@ -143,6 +143,8 @@ def tail(path, n=20):
 if not os.environ.get("RZ_SMOKE"):
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "vllm", "peft", "accelerate", "bitsandbytes",
                     "huggingface_hub", "safetensors", "lightgbm", "httpx", "pyyaml"], check=False)
+    # Kaggle ships torchao 0.10; peft's LoRA needs torchao >= 0.16 or none at all (V3 died on it)
+    subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "-q", "torchao"], check=False)
 
 # %%
 # Phase 0 (round 2+): start the multi-season build on the CPUs; it writes its time split first.
