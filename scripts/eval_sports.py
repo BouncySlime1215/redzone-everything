@@ -106,6 +106,8 @@ def main():
     ap.add_argument("--end", default=None, help="last night to grade (YYYYMMDD); default eval.<league>_end")
     ap.add_argument("--split", choices=splits.SPLITS, default="all",
                     help="grade one time split of the pinned window (redzone/lab/splits.py); test = LOCKED")
+    ap.add_argument("--oracle", action="store_true",
+                    help="also solve the hindsight oracle per night (redzone/lab/oracle.py): each line's ceiling")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                     help="override a config value for this run, e.g. replay.redzone_way=true")
     stress_args(ap)
@@ -148,6 +150,20 @@ def main():
                           "dead_s": round(card.dead, 1), "watched_s": round(card.watched, 1),
                           "crunch": card.crunch, "crunch_live": card.crunch_live,
                           "my_crunch": card.my_crunch, "my_crunch_live": card.my_crunch_live})
+        if a.oracle:
+            from redzone.lab import oracle as O
+            n = O.Night(reps, mine, rep.lag_true, 5.0, rep.t0, rep.t1)
+            import numpy as np
+            tab = O.tables(n, np.arange(n.t0, n.t1, O.STEP_S))
+            per_night[-1]["oracle"] = {}
+            for obj in O.OBJECTIVES:
+                oc = O.grade(n, O.solve(n, obj, tab))
+                ocs = oc.cut.summary()
+                per_night[-1]["oracle"][obj] = {
+                    "big": oc.big, "big_live": oc.big_live, "crunch": oc.crunch, "crunch_live": oc.crunch_live,
+                    "my_crunch": oc.my_crunch, "my_crunch_live": oc.my_crunch_live, "mid_play_cuts": len(oc.cuts),
+                    "entries": ocs["entries"], "entries_mid_play": ocs["entries_mid_play"],
+                    "dead_s": round(oc.dead, 1), "watched_s": round(oc.watched, 1), "switches": oc.switches}
         if a.slates:
             print(" ", day, json.dumps(card.summary()))
             for t, what in card.cuts[:3]:
@@ -159,6 +175,17 @@ def main():
     out["eval_data"] = evaldata.stamp()
     out["eval_end"] = end
     out["per_night"] = per_night
+    if a.oracle:
+        out["oracle"] = {}
+        for obj in {k for x in per_night for k in x.get("oracle", {})}:
+            tot = {}
+            for x in per_night:
+                for k, v in x.get("oracle", {}).get(obj, {}).items():
+                    tot[k] = tot.get(k, 0) + v
+            tot["big_live_pct"] = round(100 * tot["big_live"] / max(1, tot["big"]), 1)
+            tot["crunch_live_pct"] = round(100 * tot["crunch_live"] / max(1, tot["crunch"]), 1)
+            tot["dead_air_pct"] = round(100 * tot["dead_s"] / max(1, tot["watched_s"]), 1)
+            out["oracle"][obj] = tot
     print(json.dumps(out, indent=1))
 
 

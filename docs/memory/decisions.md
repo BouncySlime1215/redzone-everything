@@ -167,3 +167,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   bound: 0.56 % of restarts before the bound on 421 unseen public nights (today's FLOOR_S: 7.33 %) at the same
   tightness, ECE 0.053; on the NBA scorecard at B=90 (dev nights) entries mid-play 5/61 -> 5/61, so no gain to
   ship yet. The remaining NBA mid-play entries are entry policy (crunch_now live, 180 s wait cap), Noggin Pick.
+- 2026-11-04 5:00 AM: **Hindsight oracle + `oracle_gap` lines** (`redzone/lab/oracle.py`, `eval_sports.py --oracle`,
+  `northstar.py --oracle`, INFO rows, no gate changes). DP over 5 s steps with every hard rule (clean leave and
+  landing, your-team crunch first), live-only with no rewinds, graded by the same `sportsgrade.grade`. Candidate dev
+  nights: NBA big plays live ceiling 93.0 % (app 81.7), crunch 93.7 (90.9), dead air 11.2 (19.2); NHL goals live
+  85.3 (44.7), crunch 87.9 (80.6), dead air 18.9 (22.4). The NBA >= 95 % big-plays-live gate is above the live-only
+  ceiling on these nights.

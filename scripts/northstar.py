@@ -58,6 +58,8 @@ FAULT_CHECK = {"stick_drop": "two_stick_recovers", "stick_wedge": "wedged_stick_
                "still_watching": "still_watching_cleared", "feed_outage": "feed_outage_handled",
                "flip_ignored": "tv_shows_games", "api_down": "no_crash"}
 
+ORACLE_LEAGUES = ("nba", "nhl")    # NFL's scorecard has its own grader (RedZone channel): not yet
+
 # key, label, target text, direction (+1 higher is better, -1 lower), bar, scale (for the roadmap's gap
 # normalisation: the size of a "whole" gap in this line's unit)
 METRICS = [
@@ -76,13 +78,18 @@ METRICS = [
     ("dead_air", "Dead air (commercials/breaks on screen)", "0%", -1, 0.0, 100.0),
     ("recovery", "Faults recovered without Nick (e2e night)", ">= 95%", 1, 95.0, 100.0),
     *[(f"feed_lag_{lg}", f"Honest feed lag in use, {lg.upper()} (p50)", "info", -1, None, None) for lg in LEAGUES],
+    # [oracle] hindsight ceiling - app, same nights, same grader (redzone/lab/oracle.py; --oracle)
+    *[(f"oracle_gap_{m}_{lg}", f"Oracle gap: {lbl}, {lg.upper()} (ceiling - app, points)", "info", -1, None, None)
+      for m, lbl in (("big_live", "big plays live"), ("crunch_live", "crunch live"), ("dead_air", "dead air"))
+      for lg in ORACLE_LEAGUES],
 ]
 META = {k: dict(label=lb, target=t, dir=d, bar=b, scale=s) for k, lb, t, d, b, s in METRICS}
 
 
 # ---- running the evidence ---------------------------------------------------------------------
 
-def run_cards(root: Path, split: str, timeout: float = 1800, profile: str | None = None) -> dict:
+def run_cards(root: Path, split: str, timeout: float = 1800, profile: str | None = None,
+              oracle: bool = False) -> dict:
     """The three league scorecards on one split, every night in it, measured feed lag. With `profile`
     (redzone/noggin/profile.py), the same cards with that profile's flags and buffer on."""
     sp = SPLITS[split]
@@ -91,6 +98,8 @@ def run_cards(root: Path, split: str, timeout: float = 1800, profile: str | None
     if profile:
         from redzone.noggin import profile as P
         argvs = {lg: a + P.argv(profile, lg) for lg, a in argvs.items()}
+    if oracle:
+        argvs = {lg: a + (["--oracle"] if lg in ORACLE_LEAGUES else []) for lg, a in argvs.items()}
     out = {}
     for lg, argv in argvs.items():
         if not (root / f"data/archive/{lg}").exists():
@@ -276,7 +285,28 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
         extra = " ; NHL api-web wsc measured 16.7 s p50 (not wired yet, #58)" if lg == "nhl" else ""
         rows.append(_row(f"feed_lag_{lg}", qs.get(50), qs.get(10), qs.get(90), INFO,
                          f"{lag_profile.get('source')} p10-p90 {qs.get(10)}-{qs.get(90)} s, n={p['n']}, {p.get('basis')}{extra}"))
+    rows += oracle_rows(cards)
     return rows
+
+
+def oracle_rows(cards: dict) -> list[dict]:
+    """[oracle] Each line's hindsight ceiling on the same nights (live-only, no rewinds, every L1 rule and
+    0 mid-play), and the gap to what the app did. Only when the cards ran with --oracle."""
+    out = []
+    for lg in ORACLE_LEAGUES:
+        m = rg._m(cards.get(lg, {}))
+        orc = m.get("oracle") or {}
+        for key, obj, app_key in (("big_live", "big_live", "big_live_pct"), ("crunch_live", "crunch_live", "crunch_live_pct"),
+                                  ("dead_air", "dead_air", "dead_air_pct")):
+            o = (orc.get(obj) or {}).get(f"{key}_pct" if key != "dead_air" else "dead_air_pct")
+            app = m.get(app_key)
+            if o is None or app is None:
+                continue
+            gap = round((app - o) if key == "dead_air" else (o - app), 1)
+            out.append(_row(f"oracle_gap_{key}_{lg}", gap, None, None, INFO,
+                            f"ceiling {o}% vs app {app}% ({orc[obj].get('switches')} oracle switches, "
+                            f"{orc[obj].get('entries_mid_play')} mid-play entries)"))
+    return out
 
 
 def switch_row(xs: list[float]) -> dict:
@@ -537,6 +567,8 @@ def main(argv=None) -> int:
     ap.add_argument("--md", type=Path, help="with --delta: write the table here")
     ap.add_argument("--profile", default=None,
                     help="also score this Noggin profile (redzone/noggin/profile.py, e.g. candidate) as its own column")
+    ap.add_argument("--oracle", action="store_true",
+                    help="also solve the hindsight oracle per night (NBA/NHL): the oracle_gap lines")
     a = ap.parse_args(argv)
 
     if a.delta:
@@ -558,11 +590,11 @@ def main(argv=None) -> int:
     xs = switch_samples(a.switch_log if a.switch_log is not None else [root / "data/tv_input.jsonl"])
     results = {}
     for split in (("dev", "locked") if a.split == "both" else (a.split,)):
-        cards = run_cards(root, split)
+        cards = run_cards(root, split, oracle=a.oracle)
         results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof)}
         if a.profile:
             from redzone.noggin import profile as P
-            cc = run_cards(root, split, profile=a.profile)
+            cc = run_cards(root, split, profile=a.profile, oracle=a.oracle)
             results[split]["candidate"] = {"profile": a.profile, "about": P.PROFILES[a.profile].get("about", ""),
                                            "cards": cc, "rows": table(cc, nights, xs, prof)}
     commit = _git(root, "rev-parse", "--short", "HEAD")
