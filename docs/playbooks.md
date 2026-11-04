@@ -94,13 +94,13 @@ generalize them; until then each is a named rule, tested on replayed nights.
 | FEED-01 | ESPN summary 5xx | switch to the next source (NHL wsc, NBA liveData) | FastCast; else SAFE-01 | feed_5xx / api_down | recovery | ④ | done (flag sources.trust_order, off; tests/test_feed_trust_order.py) |
 | FEED-02 | feed returns stale ETag for > 30 s | burst poll the challenger | SAFE-01 | new `feed_frozen` fault | mid_play | ④ | partial (#73) |
 | FEED-03 | two sources disagree on clock/state | trust the faster measured source, log it | hold | new `feed_disagree` fault | mid_play | ④ | done (flag sources.trust_order, off; merger.disagreements logged) |
-| FEED-04 | play arrives out of order / late | re-sort by wallclock; revise only future decisions | – | lag jitter (B12) | mid_play | ④ | new |
+| FEED-04 | play arrives out of order / late | re-sort by wallclock; revise only future decisions | – | lag jitter (B12) | mid_play | ④ | done (backtest late_plays / lag jitter: tests/test_midplay.py zero cuts under real-world mess) |
 | FEED-05 | feed schema change (parse error) | quarantine the source, fall back | file an auto-fix issue | malformed fixture | recovery | ④ | partial (autofix) |
 | FEED-06 | rate limited (429) | back off with jitter, rotate source | – | new `rate_limit` fault | recovery | ④ | new |
-| FEED-07 | game missing from the scoreboard | keep last known, recheck in 30 s | drop from slate | fixture | – | ④ | new |
-| NET-01 | Mac offline | keep playing the current game; no cuts | resume decisions on reconnect | new `mac_offline` fault | recovery | ④ | new |
+| FEED-07 | game missing from the scoreboard | keep last known, recheck in 30 s | drop from slate | fixture | – | ④ | done (decider _gone_hold keeps it; night lab `game_missing`, check net_feed_faults_handled) |
+| NET-01 | Mac offline | keep playing the current game; no cuts | resume decisions on reconnect | new `mac_offline` fault | recovery | ④ | done (NET-01 hold in playbooks.safe, flag off: no cut while every feed is stale; night lab `mac_offline` in faults:safety) |
 | NET-02 | stick bitrate drop / buffering | that stick's delay estimate widens; prefer the other stick | SAFE-03 | new `buffering` fault | flip_playing_3s | ② | new |
-| NET-03 | DNS failure for one source | that source down; others continue | FEED-01 | fixture | recovery | ④ | new |
+| NET-03 | DNS failure for one source | that source down; others continue | FEED-01 | fixture | recovery | ④ | done (per-host backoff, sources/http.py; tests/test_http.py) |
 | APP-01 | YTTV sign-in screen | person-only fault: notify Nick once, use the other app/channel | – | prompt_screen | recovery | ④ | partial |
 | APP-02 | YTTV channel not found by search | try the next tune path (guide, deep link) | other provider | fixture | recovery | ④ | partial |
 | APP-03 | Prime "are you still there" / ad break overlay | dismiss on the hidden stick | relaunch | prompt_screen | recovery | ④ | partial |

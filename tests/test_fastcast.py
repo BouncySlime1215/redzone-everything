@@ -691,6 +691,7 @@ async def test_heartbeats_keep_the_connection(fast, monkeypatch):
     await asyncio.wait_for(task, 1)
 
 
+@pytest.mark.playbook("SLATE-02")
 async def test_connects_only_while_something_is_live(fast):
     espn_ = FakeESPN({})
     clock = {"t": 0.0}
@@ -889,6 +890,7 @@ async def test_shadow_updates_are_graded_not_merged(engine, monkeypatch):
     assert engine.snapshot()["health"]["fastcast_check"]["result"] == "pending"
 
 
+@pytest.mark.playbook("FEED-05")
 async def test_engine_takes_pushed_updates_like_a_poll(engine, monkeypatch):
     FakeClient.made = []
     monkeypatch.setattr(fc, "FastcastClient", FakeClient)
