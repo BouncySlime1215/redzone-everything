@@ -71,8 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-RC6 cut as integration/release cf480a4 (#132+#173+#188); Mac tests running, switch held for halftime. RC5.1 still healthy.
-Colab notebook not pushed yet. Usage 33%.
+RC6 cf480a4 Mac tests FAILED (citymap tag rename); no switch, RC5.1 still live; fix #193 -> RC6.1 at ~8 PM ET halftime
+Colab V8 notebook posted: kaggle-inputs 84fad55
+Usage 33%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
