@@ -46,6 +46,8 @@ CLOCK_JUMP_S = 5.0     # wall clock moved this much more (or less) than time.mon
 NOT_THE_TARGETS_FAULT = ("no safe moment", "safe exit window closed", "switch cancelled",
                          "TV input is unknown", "TV control was disabled", "no channel",
                          "stick not responding")
+PEEK_HOLD_S = 90.0    # a game opened on the phone keeps the hidden stick this long (two_stick.pretune_on_open)
+SKIP_S = 300.0        # a skipped game stays off the TV this long after the TV leaves it
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
@@ -136,11 +138,17 @@ class Engine:
         self.recorder = Recorder()
         from redzone.sync_probe import SyncProbe
         self.sync_probe = SyncProbe(self.cfg, self.control, lambda: self.recorder.root)   # [SYNC] read-only stick probe
+        self.sync_probe.on_condition = self._sync_condition
+        self.sync_probe.on_screen_event = self._break_event
+        self._alarmed: dict[str, float] = {}   # [SYNC 6] target -> last drift alarm
         self._last_snapshot = 0.0
         self.mic = None
         self.fantasy = None   # latest fantasy.Matchup
         self._suspended_focus: tuple | None = None   # (game, mode) paused for garbage time
         self.hold: dict | None = None   # "Watch this" from the phone: a manual hold until "Resume auto"
+        from redzone.commands import Commands
+        self.commands = Commands()   # phone taps by id: a retried tap answers, never runs twice
+        self.peek: tuple[str, str, float] | None = None   # (game, target, until): a game opened on the phone
         self._mic_used: set[tuple[str, float]] = set()
         self._last_mic = 0.0
         self._pending_decision = None
@@ -285,7 +293,67 @@ class Engine:
     def _on_behind(self, target: str, new_s: float, old_s: float) -> None:
         """The controller held (or freed) this target's stream: shift its delay by the difference."""
         d = self.delays.get(target)
-        self.delays.set_behind(target, max(0.0, d.behind - old_s + new_s))
+        # [SYNC 1] A hold or a stall is timed on the stick's own clock: the sync filter shifts by it
+        # (+-0.5 s) instead of throwing its estimate away. A fresh tune (new_s 0) still re-syncs.
+        self.delays.set_behind(target, max(0.0, d.behind - old_s + new_s), known_sd=0.5 if new_s > 0 else None)
+
+    # ------------------------------------------------------------------ [SYNC 4/6] network + anchors + drift
+    def _sync_condition(self, target: str, q_scale: float, feats: dict) -> None:
+        if self.sync is not None:
+            self.sync.condition(target, q_scale)
+
+    def _break_event(self, target: str, host: str, visible: bool, kind: str, t: float, sd: float) -> None:
+        """[auto-anchors] An ad break started or ended on screen at t (SyncProbe). break_start is matched
+        to the feed's last dead ball on that game: delay = t - its wallclock - the broadcast's usual
+        whistle-to-break gap (sync.break_anchor.start_bias_s, a prior until the Wednesday probe data
+        refits it). Every edge is logged with the feed event it matched (the Noggin's delay labels);
+        only with sync.break_anchor.enabled does it reach the filter."""
+        from redzone.lab.timing import is_dead_ball
+        gid = self._game_on(target, visible)
+        g = self.merger.games.get(gid or "")
+        row = {"ts": round(t, 2), "target": target, "stick": host, "sample_kind": kind, "game": gid,
+               "edge_sd": round(sd, 2), "feed_wall": None, "z": None, "used": False}
+        if g is not None and kind == "break_start":
+            lo, hi = float(self.cfg.get("sync.break_anchor.min_s", 10)), float(self.cfg.get("sync.break_anchor.max_s", 240))
+            dead = [p for p in g.recent_plays if p.wallclock and lo <= t - p.wallclock <= hi
+                    and (is_dead_ball(g.league.value, p.type_text or p.kind) or p.scoring)]
+            if dead:
+                w = max(p.wallclock for p in dead)
+                bias = float(self.cfg.get("sync.break_anchor.start_bias_s", 15.0))
+                bias_sd = float(self.cfg.get("sync.break_anchor.bias_sd_s", 10.0))
+                z = t - w - bias
+                row.update(feed_wall=round(w, 2), z=round(z, 2))
+                if self.cfg.get("sync.break_anchor.enabled", False):
+                    row["used"] = bool(self.sync is not None and self.sync.measure(
+                        target, z, "break", t, (sd * sd + bias_sd * bias_sd) ** 0.5))
+        try:
+            self.recorder.sync_anchor(row)
+        except Exception:
+            log.exception("could not log a break anchor")
+
+    def _drift_check(self) -> list[dict]:
+        """[SYNC 6] Every channel whose delay moved > 5 s since it synced, or whose stick's network says
+        it is about to: logged once per 5 min. With sync.drift_alarm.resync, the hidden stick's live
+        standby is re-tuned while no switch is pending (it isn't on screen, so nothing is cut)."""
+        if self.sync is None:
+            return []
+        now = time.time()
+        out = []
+        for a in self.sync.alarms(now, float(self.cfg.get("sync.drift_alarm.limit_s", 5.0))):
+            if now - self._alarmed.get(a["target"], 0.0) < 300:
+                continue
+            self._alarmed[a["target"]] = now
+            out.append(a)
+            log.warning("drift alarm on %s: %s", a["target"], a)
+            try:
+                self.recorder.sync_anchor({"ts": round(now, 2), "target": a["target"], "sample_kind": "drift_alarm", **a})
+            except Exception:
+                log.exception("could not log a drift alarm")
+            c = self.control
+            if (self.cfg.get("sync.drift_alarm.resync", False) and a["target"] == c.hidden_target
+                    and c.hidden_ready and self._pending_decision is None):
+                c.preload(a["target"], refresh=True)
+        return out
 
     def _game_on(self, target: str, visible: bool) -> str | None:
         """The game the engine thinks this target shows (the current one first, for the visible stick)."""
@@ -562,6 +630,10 @@ class Engine:
                 await self._after_wake()
             except Exception:
                 log.exception("wake check failed")
+            try:
+                self._drift_check()
+            except Exception:
+                log.exception("drift check failed")
             try:
                 await self._device_keepalive()
                 self._tick += 1
@@ -1008,6 +1080,12 @@ class Engine:
             return False
         now = time.time()
         for gid, until in list(self.skipped.items()):
+            if gid == self.decider.current:
+                # [controls] Still on the skipped game (waiting for a dead ball to leave it): the five
+                # minutes count from when the TV leaves. Before, a skip in a hockey power play waited
+                # ~5 min for a stoppage, expired first, and the TV never left (controls drill, seed 4).
+                self.skipped[gid] = max(until, now + SKIP_S)
+                continue
             if now >= until:
                 self.skipped.pop(gid)
                 self.decider.user.muted.discard(gid)
@@ -1385,6 +1463,8 @@ class Engine:
         is a 1-2s input flip instead of a 5-10s tune. What and when: redzone/standby.py."""
         if not self.control.two_stick or self.decider.user.paused:
             return
+        if self._peeking():
+            return   # a game you opened on the phone is on the hidden stick: keep it there for now
         self._plan_prime_multiview(cands)
         pick = self.planner.plan(self._standby_options(cands, redzone), self.control.standby)
         if pick:
@@ -1543,6 +1623,8 @@ class Engine:
             return self._hold(gid, force=value == "force")
         if action == "release":
             return self._release_hold("Back on autopilot")
+        if action == "peek":
+            return self._peek(gid)
         if action == "hold_auto":
             if not self.hold:
                 return False, "Nothing is held"
@@ -1595,7 +1677,7 @@ class Engine:
         if action == "skip":
             if not dec.current:
                 return False, "Nothing to skip"
-            self.skipped[dec.current] = time.time() + 300
+            self.skipped[dec.current] = time.time() + SKIP_S
             if self.hold and self.hold["game_id"] == dec.current:
                 self.hold, u.locked_game = None, None
             u.muted.add(dec.current)
@@ -1683,6 +1765,27 @@ class Engine:
         if force or self.cfg.get("mode.dry_run", True):
             return True, f"On {name} — holding here"
         return True, f"Switching to {name} at the next safe moment (tap again to go now)"
+
+    def _peek(self, gid: str | None) -> tuple[bool, str]:
+        """A live game opened on the phone (two_stick.pretune_on_open): tune it on the hidden stick now,
+        so the "Watch this" / "Go now" that usually follows is a flip (~3 s), not a tune + flip (~8 s).
+        The planner leaves the hidden stick alone for PEEK_HOLD_S. Silent: the message is empty."""
+        if not self.cfg.get("two_stick.pretune_on_open", False) or not gid or gid == self.decider.current:
+            return True, ""
+        g = self.merger.games.get(gid)
+        target = getattr(self.where.get(gid), "target", None)
+        if g is None or g.phase != Phase.LIVE or not target or self.decider.user.paused:
+            return True, ""
+        self.peek = (gid, target, time.time() + PEEK_HOLD_S)
+        self.control.preload(target, user=True)
+        return True, ""
+
+    def _peeking(self) -> bool:
+        p = self.peek
+        if p is None or time.time() >= p[2] or p[0] == self.decider.current:
+            self.peek = None
+            return False
+        return True
 
     def _hold_waits(self, d: Decision) -> bool:
         """A switch to the held game honors the never-cut-mid-play rule unless you forced it."""

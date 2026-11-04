@@ -72,6 +72,8 @@ def main():
     ap.add_argument("--window", action="append", required=True, help="league:YYYYMMDD:YYYYMMDD")
     ap.add_argument("--demo", action="append", default=[], help="demo day YYYYMMDD (data/demo/<day>)")
     ap.add_argument("--no-lock", action="store_true", help="don't rewrite eval-data.lock.json")
+    ap.add_argument("--lock", type=Path, default=None,
+                    help="write the lock here instead (e.g. eval-data-v2.lock.json, next to v1)")
     a = ap.parse_args()
     window = {}
     for w in a.window:
@@ -80,8 +82,9 @@ def main():
     lock = build(a.data.resolve(), a.out, a.tag, window, a.demo)
     text = json.dumps(lock, indent=1, sort_keys=True) + "\n"
     if not a.no_lock:
-        evaldata.LOCK.write_text(text)
-        evaldata.load_lock()  # validates what was just written
+        dest = a.lock or evaldata.LOCK
+        dest.write_text(text)
+        evaldata.load_lock(dest)  # validates what was just written
     print(text)
 
 

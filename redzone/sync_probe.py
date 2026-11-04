@@ -36,6 +36,10 @@ WIFI_EVERY_S = 15.0
 LOG_EVERY_S = 15.0
 UI_EVERY_S = 20.0         # uiautomator dump on the hidden stick
 UI_KEEP_CHARS = 600
+COND_WINDOW_S = 300.0     # [SYNC 4] stalls per minute over this window
+RSSI_WEAK = -65           # below this every dB widens the delay's error bar
+RSSI_DROP_DB = 10         # a drop this big within RSSI_DROP_WINDOW_S: predicted drift
+RSSI_DROP_WINDOW_S = 120.0
 LOG_KEEP_LINES = 40
 
 _WIFI = {"rssi": r"RSSI:\s*(-?\d+)", "link_mbps": r"(?<![TR]x )Link speed:\s*(\d+)",
@@ -97,6 +101,12 @@ class SyncProbe:
         self._seen_log: dict[str, list[str]] = {}
         self.rows = 0
         self.governor = None     # the Mac's resource governor (engine): no probing when it is critical
+        # [SYNC 4] (target, q_scale, features) per stick per tick -> SyncBook.condition (engine wires it)
+        self.on_condition: Callable[[str, float, dict], None] | None = None
+        # [auto-anchors] (target, host, visible, "break_start"|"break_end", t, sd) -> engine matches it
+        self.on_screen_event: Callable[..., None] | None = None
+        self._hist: dict[str, list[tuple[float, float | None, int | None]]] = {}   # host -> [(t, stall, rssi)]
+        self._ui_last: dict[str, tuple[float, bool, str | None]] = {}           # host -> (t, ad on, target)
 
     def enabled(self) -> bool:
         return bool(self.cfg.get("sync.probe.enabled", True)) and not self.cfg.get("mode.dry_run", True)
@@ -154,9 +164,56 @@ class SyncProbe:
                 row["ui"] = {"chars": len(text), "hints": ui_hints(text), "text": text[:UI_KEEP_CHARS]}
             if self._quiet():
                 return rows      # a switch started meanwhile: drop the half-read tick
+            row["cond"] = self._condition(host, target, now, row)
+            if "ui" in row:
+                self._screen_edge(host, target, role == "visible", now, "ad" in row["ui"]["hints"])
             rows.append(row)
         self._write(rows)
         return rows
+
+    def _condition(self, host: str, target: str | None, now: float, row: dict) -> dict:
+        """[SYNC 4] Network-condition features for this stick and the process-noise multiplier they
+        imply for its channel's delay filter. A stall is a delay jump; a weak or falling Wi-Fi link
+        predicts more of them."""
+        h = self._hist.setdefault(host, [])
+        rssi = (row.get("wifi") or {}).get("rssi")
+        h.append((now, row.get("stall_s"), rssi))
+        del h[:-200]
+        recent = [x for x in h if now - x[0] <= COND_WINDOW_S]
+        span_min = max(1.0, (now - recent[0][0]) / 60.0) if recent else 1.0
+        stalls = [x[1] for x in recent if x[1] is not None and x[1] >= 0.5]
+        rssis = [(t, r) for t, _, r in h if r is not None]
+        last_rssi = rssis[-1][1] if rssis else None
+        peak = max((r for t, r in rssis if now - t <= RSSI_DROP_WINDOW_S), default=None)
+        drop = (peak - last_rssi) if peak is not None and last_rssi is not None else 0
+        q = (1.0 + 4.0 * len(stalls) / span_min
+             + (max(0, RSSI_WEAK - last_rssi) / 2.0 if last_rssi is not None else 0.0)
+             + (8.0 if drop >= RSSI_DROP_DB else 0.0))
+        feats = {"stalls_per_min": round(len(stalls) / span_min, 2), "stall_s_sum": round(sum(stalls), 2),
+                 "rssi": last_rssi, "rssi_drop": drop, "q_scale": round(q, 2)}
+        if target and self.on_condition is not None:
+            try:
+                self.on_condition(target, q, feats)
+            except Exception:
+                log.exception("sync condition hand-off failed")
+        return feats
+
+    def _screen_edge(self, host: str, target: str | None, visible: bool, now: float, ad: bool) -> None:
+        """[auto-anchors] An ad label appearing (break_start) or going (break_end) between two UI reads
+        of the same stream: the edge is placed midway, with the read gap's uniform doubt."""
+        prev = self._ui_last.get(host)
+        self._ui_last[host] = (now, ad, target)
+        if prev is None or prev[2] != target or not target or prev[1] == ad:
+            return
+        gap = now - prev[0]
+        if gap > 3 * UI_EVERY_S:
+            return           # too long between reads (a switch skipped ticks): the edge is anywhere in it
+        if self.on_screen_event is not None:
+            try:
+                self.on_screen_event(target, host, visible, "break_start" if ad else "break_end",
+                                     prev[0] + gap / 2.0, gap / 12 ** 0.5)
+            except Exception:
+                log.exception("screen event hand-off failed")
 
     async def _logcat(self, stick) -> list[str]:
         back = int(LOG_EVERY_S) + 2
