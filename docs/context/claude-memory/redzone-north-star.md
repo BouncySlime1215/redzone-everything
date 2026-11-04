@@ -58,6 +58,8 @@ What Nick wants from RedZone Everything (as of 2026-11-03):
   - MLB is mostly dead: detect the key moments and jump only for those.
   - Promotion = strict on entries 0, NBA/NHL crunch, and your-team; every other line must be >= live.
 
+- NOGGIN FOUNDATION MODEL (Nick, Nov 4 4:45 PM: 'stop looping on hand weights; millions-billions of learned parameters'): pretrain a ~100M-300M param event-sequence model on ~1B play-event tokens (real + self-play), self-supervised (next event/time/stoppage), then add heads (Watch Value, crunch enter/exit, breaks, big-play-next, game importance), distill to the Reflex. Hand features become optional inputs. Also: crunch is a learned state with entry/exit, not a hard rule; game importance (playoff race, big matchups, NFL scarcity) is a learned weight.
+
 **Why:** These were stated across the Nov 2-4 sessions; this is the consolidated spec.
 
 **How to apply:** Check every coordinator thread and PR against this list. Keep ADHD-style replies.
