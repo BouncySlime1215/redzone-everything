@@ -34,8 +34,14 @@ def test_a_drifting_hold_is_rebuilt_and_the_night_stays_clean(tmp_path):
     hit = [f for f in night["faults"] if f["name"] == "buffer_lost" and f.get("hit")]
     assert hit, night["faults"]
     rows = [json.loads(x) for x in (work / "data" / "buffer.jsonl").read_text().splitlines()]
-    fault_t = next(r["ts"] for r in rows if r["kind"] == "drift" and r["target"] == hit[0]["target"]
-                   and abs(r["err_s"] - 6.0) < 1.0)
+    # The drift lands on a hold that may already be off its target by a little (a rebuild books 88.6 s of
+    # 90): the row's error is that offset plus the 6 s.
+    tgt = hit[0]["target"]
+    drift = next(i for i, r in enumerate(rows) if r["kind"] == "drift" and r["target"] == tgt
+                 and r["err_s"] > 3.0)
+    before = [r["behind_s"] for r in rows[:drift] if r["kind"] == "recovered" and r["target"] == tgt]
+    assert abs(rows[drift]["err_s"] - ((before[-1] if before else 90.0) - 90.0 + 6.0)) < 1.0, rows
+    fault_t = rows[drift]["ts"]
     rebuilt = [r for r in rows if r["kind"] == "recovered" and r["ts"] > fault_t]
     assert rebuilt and abs(rebuilt[0]["behind_s"] - 90.0) <= 2.0, rows
     bad = [c for c in night["checks"] if not c["ok"]]

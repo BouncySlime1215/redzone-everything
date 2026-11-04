@@ -240,3 +240,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   hidden stick itself (path "tuned") and then finds no safe moment leaves it at the live edge with held=0;
   only preloads hold, and the STK-06 watchdog skipped held=0 by design. Now buffer_error reads an unheld
   standby whose buffer is wanted, with no hold or preload under way, as 0 s behind, so the watchdog holds it.
+- 2026-11-04 (lane 3, #167, found by lane 2): **A fault at a fixed time can land inside the recovery it tests.** The
+  STK-06 drift fault at t=4700 fell inside the rebuild hold that the unheld-standby detection starts (with #132), so no
+  drift row was ever written. buffer_lost now takes `wait_s` and hits the first held, playing standby after `at`; the
+  test reads the drift error relative to the hold's last booked value (a rebuild books 88.6 of 90 s).
