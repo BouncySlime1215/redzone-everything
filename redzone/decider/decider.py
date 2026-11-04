@@ -1007,6 +1007,13 @@ class Decider:
         if chase:
             return self._chase_decision(chase, cands, state, gate_txt, now)
 
+        # [drive in 20] A drive inside the 20 elsewhere: that's where the touchdown will be.
+        d20 = (self._rz_drive(watchable, now) if gate_ok and not s_cur.lock
+               and (self.current != REDZONE or self.cfg.get("redzone_mode.drive_in_20_from_redzone", True)) else None)
+        if d20 and not self._mine_late(s_cur):
+            return Decision(now, "switch", d20, self._why(cands[d20], "inside the 20 →"), state, gate_txt,
+                            kind="drive")
+
         best = self._best(watchable, exclude=self.current)
         if best is None:
             return Decision(now, "stay", self.current, s_cur.reason, state, gate_txt)
@@ -1140,6 +1147,10 @@ class Decider:
         hot = self._crunch_pick(watchable)
         if hot and (home not in watchable or not self._crunch_outranks(cands[home].scored, cands[hot].scored)):
             self.home_break_visit = home = hot   # leaving a replay needs no gap: get to crunch time
+        d20 = self._rz_drive(watchable, now) if self.cfg.get("redzone_mode.drive_in_20_after_replay", False) else None
+        if d20 and not (home and home in watchable and cands[home].scored.crunch):
+            return Decision(now, "switch", d20, self._why(cands[d20], "inside the 20 →"), State.WATCHING,
+                            "replay finished", kind="live")
         if home and home in watchable and cands[home].scored.crunch:
             # Crunch time at home: another replay only if it surely ends before the next snap, never a visit.
             rp = self._crunch_replay(cands, now, home)
@@ -1362,6 +1373,21 @@ class Decider:
                if gid not in PSEUDO and x.target and not x.stale and gid not in self.user.muted
                and self._is_hot(x, heat) and not x.scored.is_break and gid not in self._screen_break]
         return max(hot)[2] if hot else None
+
+    def _rz_drive(self, watchable, now: float) -> str | None:
+        """[redzone_mode.drive_in_20] The best tunable NFL game with a live drive inside the opponent's
+        20 (the scorer's "red zone drive" lock), not in or about to go to a break, other than the one
+        on screen. Most NFL touchdowns are scored from there (valid split: 178 of 321 big plays, 43 %
+        of them seen live), and RedZone's producers go there first."""
+        if not self.cfg.get("redzone_mode.drive_in_20", False):
+            return None
+        cap = float(self.cfg.get("redzone_mode.takeover_break_p", 0.5))
+        hot = [(x.scored.score, gid) for gid, x in watchable.items()
+               if gid != self.current and gid not in PSEUDO and x.target and not x.stale
+               and gid not in self.user.muted and x.scored.league.base == League.NFL
+               and x.scored.lock == "red zone drive" and not x.scored.is_break
+               and gid not in self._screen_break and x.scored.factors.get("break_p", 0.0) < cap]
+        return max(hot)[1] if hot else None
 
     def _drive_takeover(self, watchable, gate_ok: bool, state, gate_txt: str, now: float) -> Decision | None:
         """[redzone mode] On the RedZone channel while a game we can tune has a live drive going: watch

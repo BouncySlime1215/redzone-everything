@@ -113,3 +113,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   crunch plays aired during a replay. Valid split, flag on vs off: NFL within-10-min 90.7 -> 92.8%, NHL
   84.5 -> 86.9%, NBA 94.1 = 94.1%, every other line equal or better, so it stays off until the 99% row passes.
   Lull score 70+ or a 300 s half-life gave 1 crunch play on a replay: defaults are lull 45, half-life 600 s.
+- 2026-11-04 6:45 AM: **NFL drive-in-20 priority ships OFF** (`redzone_mode.drive_in_20: false`, planner item 4).
+  Valid split, on vs off: NFL big plays live 32.1 -> 34.9 %, within 10 min 90.7 -> 89.4 %, dead air 9.3 -> 9.6 %,
+  0 mid-play cuts / entries either way. On together with `replay.redzone_way` it was worse (live 31.8, within
+  10 min 85.4, 1 crunch play on a replay), so neither turns on until they're tuned together on more nights.
