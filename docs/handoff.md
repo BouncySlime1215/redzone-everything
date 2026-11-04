@@ -69,8 +69,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 4:25 AM ET.** Merged since 3:25 AM: #79 (phone v2, off), #80 (eval-data-v2, live-test logs), #81 (candidate: finished-game exits and crunch entries wait for a dead ball), #83 (phone controls land exactly once, faster Go now), #84 (idea bank slotted into lanes), #85 (playbooks + per-lane backlogs + scenario-tree planning), #86 (night-lab playbook faults), #87 (CI playbook coverage + RAM/CPU line). Open: #82, #88-#95.
-- **Usage:** 7% at 4:23 AM (line 2.5%, +4.5, running about 2%/h). Lane 5 (features) paused until 8 AM; lanes 1-4 and the planners continue. Kaggle V6 running ~1 h 4 min (retraining; ETA ~8:30-9:30 AM).
+- **2026-11-04 5:25 AM ET.** Cycle 02 is running (#98). Merged since 4:25 AM: #82 (Noggin NFL data factory + Timing v1 NFL, Predict v1 NBA, off), #92 (candidate column restored), #94 (multiview rehearsal), #95, #96 (button states), #97 (scenario-tree lookup, off). Open: #88-#91, #99-#101.
+- **Usage BRAKE:** 8% vs a 3.1% line (+4.9). Lanes 1-3 only until 8 AM; lanes 4 and 5 paused; planners minimal. Kaggle V6 2 h 4 min, retraining.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
