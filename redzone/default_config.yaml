@@ -445,6 +445,7 @@ timing:
     default: 60
     max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
     apps: [youtubetv, primevideo]   # apps whose player pauses and resumes on the hidden stick
+    hold_cal_s: -1.5       # a rebuild's pause is this much off the gap it closes (Nick's live hold calibration)
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
@@ -513,3 +514,10 @@ noggin:                    # docs/noggin.md
 
 phone:                     # the phone page (redzone/web)
   v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it
+warmup:                    # [warmup.pregame] before the night's first game (redzone/plan.py Tonight._warmup)
+  pregame: false           # put the likeliest first game on the HIDDEN stick before the first start (never the one on screen)
+  lead_min: 10             # ...this many minutes before it
+buffer:                    # [buffer.watchdog] playbook STK-06 (redzone/control.py _buffer_watch)
+  watchdog: false          # rebuild a lost / drifting (> 2 s) hidden-stick hold at that game's next dead ball
+calib:                     # [calib.auto] values re-measured each night from live logs (data/calib/<night>.json)
+  auto: false              # read last nights' accepted flip time back at start (OFF until it's proven on live nights)

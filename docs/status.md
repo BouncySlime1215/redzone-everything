@@ -32,7 +32,7 @@ The draft release PR #37 is closed (Nick, Nov 3 10:45 PM); the deploy fetches `i
 | Kaggle teacher (item 13e: `pip uninstall torchao` on kaggle-inputs; V4 running with Nick's patch) | LOCAL AI (#13) | **D19 ready on kaggle-inputs; V5 running** |
 | Prime multiview live-calibration plan (item 15, #40 flag off) | SWITCHING | **Done:** #40 merged, flag off; calibration plan is queue row 9b |
 | Memory systems (item 14) | MEMORY (#36 merged) | keep current |
-| Paused with a dependency | auto-tune #16 (paused: overfitting), highlight jump #18 (OFF: NBA 82% < 95%), live reasoner (queued; Kaggle adapter), brain leak-fix retrain | see queue |
+| Paused with a dependency | auto-tune (#16 salvaged into #135, lab only), highlight jump #18 (closed; OFF: NBA 82% < 95%), live reasoner (queued; Kaggle adapter), brain leak-fix retrain | see queue |
 
 ## Research queue A-E (Nick, Nov 3 11:30 PM; `docs/research/2026-11-03/00-PLAN.md`, #46)
 
@@ -60,21 +60,41 @@ writes words only, async. Gates only on unseen nights.
 | D22 | Historical label factory (data factory) | NOGGIN |
 | E23-E25 | Decision records + phone 👍/👎, shadow mode + SPRT rollback, BRAIN auto-fix on dev-test only | DECISION (E25 PLATFORM) |
 
-## Queue (in order; at most 2 working threads)
+## Queue (refreshed Nov 4, 3:30 PM ET, per Nick's 3:05 PM order; brake lifted, all 5 lanes run)
 
-| # | Work | Owner | Resume point |
-|---|---|---|---|
-| 1 | Memory systems #36 (CLAUDE.md, docs/memory/, context_pack.py) | Memory | merge after the release cut; afterwards every PR that changes `default_config.yaml`, `gate_baseline.json` or `release_gate.py` adds a dated line to `docs/memory/decisions.md` |
-| 2 | Kaggle round-2 notebook fix + round-2 data builder | Distill (#13) | teacher run healthy (2,048/81,372 at 55 min) |
-| 3 | Brain leak-fix retrain (train only before the locked cutoff), then `brain.enabled` back on if the gate holds | MOMENT/BREAK | brain (v2 + v3, #26 merged) ships off in RC 1 |
-| 4 | Follow-up commits on #20 / #23 / #24 (feed staleness, health, crash-safe) since they merged, and the stale-feed gate rows | PLATFORM | branches have 3 / 5 / 6 new commits; retarget them as one PR on integration/next |
-| 5 | #30 auto-fix loop | PLATFORM | green; config conflict with integration/next; after #36, also add the memory steps to `.github/auto-fix/prompt.md` and a decisions.md line |
-| 6 | Watchdog model, step-400 checkpoint | LOCAL AI | branch agent-training d9d1813; checkpoint in /mnt/project-files/watchdog/run1/ (PEFT + MLX); next: grade step 400, verify conversion on 20 prompts, MLX server test, peak RSS on the Mac, RESULTS.md, draft PR (agent/train/NEXT.md). Watch any run until it finishes: the container restarts when idle |
-| 7 | Stick roles (D) and stick tuning | SWITCHING | after the user's TV setup tonight |
-| 8 | **RedZone as teacher** (legal: only the user's own YouTube TV, live or DVR; no downloaded episodes, no DRM workaround, no mic) | DECISION + SYNC | **Gate: a 5-minute check this Sunday — are YTTV screenshots DRM-black on the sticks? If yes, report and stop.** Then (1) `scripts/redzone_logger.py`: the hidden stick plays RedZone when not needed, every ~2 s score-bug OCR (vision_ocr/scorebug) logs which game is on; (2) align with ESPN PBP into labeled decisions; (3) imitation dataset + "RedZone agreement %" scorecard line (our gates still win: your teams, no commercials); (4) now: encode RedZone's public principles as gold rules (every TD live, red-zone drives, 2-minute drill, never commercials, whip-around at scores); (5) the same for whip-around specials (NHL Frozen Frenzy, NBA whip-arounds) |
-| 9 | Auto-tune #16, highlight jump #18, reasoner on | DECISION / LOCAL AI | see Board |
-| 9b | **Prime NBA multiview calibration** (PR #40, flag `tuners.prime_multiview` off) | SWITCHING | Next Prime NBA night, Nick at home, ~15 min: probe before tip (readable player? bench >= 95% right tile under 2 s), flag on for that night only, grade next morning with `scripts/prime_multiview_grade.py` (>= 20 switches, >= 95% under 2 s, 0 mid-play). Plan: [docs/prime-multiview-calibration.md](prime-multiview-calibration.md). Not tonight |
-| 10 | Crunch feasible ceiling (NFL > CFB > NBA > rest), golden nights in CI, eval-data-v2 (GitHub Actions on the eval-data branch) | INTEGRATION | after the queue above |
+Gates: big plays live >= 95% of oracle per league, live or replayed within 3 min (stretch 2 min), mid-play 0,
+dead-time landings >= 98% (#121). Everything new ships flag OFF until it passes on locked + fresh nights.
+
+**Open PRs, in merge order**
+
+| # | PR | Work | Lane | Resume point |
+|---|---|---|---|---|
+| 1 | #133 + #132 | YouTube TV seek as measured (15 s a press, first press swallowed) + entries that use it | ② (#133 Nick) | merge together: #132 contains #133, and #133 alone double-counts the wake press and makes mid-play entries on locked (NFL 12, NHL 14); #132 takes them to 0. Waiting on #132 to be green |
+| 2 | #116 | Possession-start entry + no landing in a data gap (candidate) | ② | conflicts with integration/next; lane 2 to merge it in (read the merged northstar table) |
+| 3 | #125 | Honest sync from the live lab: YTTV positions, real flips, 3 s floor | ② | draft; after #132 |
+| 4 | #131 | NHL leaves on pbp dead windows (candidate) | ② | draft |
+| 5 | #119 | Shadow probe for the fastest free NFL/CFB score feed | ② | draft |
+| 6 | #129 | Possession-start oracle + learned possession policy (PICK cue), flag off | ① | draft; after #116 |
+| 7 | #122 | Noggin data factory on Kaggle CPU (resumable shards, oracle self-play) | ① | draft; Nick launches Kaggle |
+| 8 | #130 | Replay and resume (flag off): a catch-up costs buffer, not live play | ②/③ | draft; hardware gate in docs/timing.md (lane 3 night lab) |
+| 9 | #135 | Decider auto-tuner salvaged from #16 (locked split held out) | Integrator → ② | draft; lab tool, then hook to % of oracle |
+| 10 | #112, #113 | No-Nick-signal and FastCast shadow clock | ①, ② | likely superseded by #111 / #117 (merged); the owner confirms and closes |
+| 11 | #13 | Kaggle teacher/student (Mind) source: agent/kaggle, agent/distill | ① | salvage into a fresh PR on integration/next (V7 runs from kaggle-inputs' code pack, the source lives only on this branch), then close #13 |
+| 12 | #26 | Brain v3 | ① | old draft; absorbed by Noggin Reflex; owner decides |
+
+**New builds (Nick, 3:05 PM), queued in this order, flag off until gated**
+
+| # | Build | Lane |
+|---|---|---|
+| a | Night health report every morning: last night's North Star lines, misses, sync p95, press-to-TV, auto-written to docs/nights/ | ④ |
+| b | Smarter stick assignment: hottest game on the 4K Plus (.150); hidden-stick prediction feeds it | ② |
+| c | Self-calibration: seek step, flip time and per-channel delay re-measured each night from live signals, no Nick work | ②/③ |
+| d | Pre-game warm-up: tune and buffer both sticks 10 min before the first tip/kick | ③ |
+| e | Buffer watchdog: detect a lost pause buffer or drift > 2 s and rebuild it | ③ |
+
+**Closed in triage (Nov 4):** #20, #23, #24 (superseded on integration/next, nothing to salvage), #16 (salvaged
+into #135), #18 (never met its bar; branch kept for the reel jump/stay model).
+**Standing:** eval-data-v3 locked switch Fri Nov 6 (④); Prime NBA multiview calibration (PR #40, next Prime NBA night).
 
 ## Latest numbers vs targets
 

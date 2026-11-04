@@ -302,3 +302,19 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-04 (Nick 11:35 AM live lab, lane 2): **`two_stick.tv_flip_prior_s` = CEC-off flips {median 1.89, p95 1.98, max 2.02}** (30/30; CEC on was p95 2.18, max 2.58), so the planning bound (the measured max: landing deadlines guard rule #1) drops 2.58 -> 2.02 s. Hidden-stick pre-tune to PLAYING by model in `contracts.switching.PRETUNE_PRIOR_S` (4K Plus 2.33/3.06, 4K 2023 3.74/5.50; prefer the 4K Plus for hot pre-tunes). Sims: `--flip-dist` draws the CEC-off prior; `--pretune-dist` makes every switch a cold pre-tune (pessimistic): 0 mid-play, NFL big live -0.4, NHL crunch -1.0 vs the planner's 5 s.
 - 2026-11-04 (lane 2): **the 3-minute replay window counts from when the play aired on screen**, not from when the feed had it (that was ~2 min earlier with the time-shift buffer, so the window was really ~1 min). NFL dev seeds 1/2: seen within 3 min +2.7/+1.5, big live -0.7/-1.3, 0 mid-play. NHL still loses 1 point of seen-within-3-min with the window, so it stays NFL only.
 - 2026-11-04 (planner, lane 2): `decider.crunch.instant_replays` (default true); **candidate false**: a crunch stoppage takes only a play you missed, never an instant replay of one you saw. It answers the locked NFL crunch drop from the window-origin fix. Dev, 3 seeds: crunch live +0.8..2.2, crunch plays under a replay 19/13/21 -> 9/4/11, big live -0.6..+0.5; NBA/NHL equal. Locked, report only: crunch 71.6 -> 74.6, big live 60.7 -> 59.4, seen within 10 min 78.7 -> 86.6, 0 mid-play.
+- 2026-11-04: **calib.auto (new, default OFF).** Nick's 3:05 PM overseer queue item (c): each night's TV flip
+  time and press-to-TV are re-measured from the live logs into data/calib/<night>.json (one shared
+  file per night: a timing section, lane 2's sync section), with an outlier guard that refuses a value
+  more than 3 MADs from the last 5 nights. The files are written every night so the guard has history; with
+  calib.auto on, the next start plans the TV flip with the newest accepted median and max.
+- 2026-11-04: **warmup.pregame (new, default OFF), warmup.lead_min 10.** Overseer queue item (d): from 10 min
+  before the night's first listed start until a game goes live (listed starts run 5-15 min early), the
+  likeliest first pick of that window (your team, then league order) is preloaded on the HIDDEN stick, so the
+  first switch is a flip. Never the stick on screen, never while paused / dry run / a switch is in flight;
+  the pre-game checks stand aside meanwhile. Night lab seed 1: first switch 7.52 s cold tune -> 1.92 s flip.
+- 2026-11-04: **buffer.watchdog (new, default OFF); timing.behind_live_s.hold_cal_s -1.5.** Overseer queue item (e),
+  playbook STK-06: a hidden-stick hold more than 2 s off its target (read off the stick's own clock since the
+  hold re-anchored it) is rebuilt at its game's next dead ball, or after 90 s without one (the stick is off
+  screen and not flippable while it rebuilds, so nothing on the TV is cut). Too close to live: pause the gap
+  minus 1.5 s (Nick's hold calibration); too far behind: reload at the live edge and hold again. Every
+  detection and rebuild goes to data/buffer.jsonl -> live-night summary -> northstar "buffer drift recovered".

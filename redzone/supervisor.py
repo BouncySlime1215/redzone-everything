@@ -1026,6 +1026,13 @@ class Supervisor:
             spec.loader.exec_module(mod)
             lo, hi = night_window(night)
             s = mod.collect(self.root, out, lo, hi)
+            try:
+                # [calib.auto] the night's flip and press-to-TV, judged against the last 5 nights. Written
+                # whether or not calib.auto is on (the guard needs history); read back only when it is.
+                from redzone import calibration
+                calibration.merge(self.root, night, calibration.timing_from_summary(s))
+            except Exception:
+                log.exception("calibration write failed for %s", night)
             self._record({"kind": "report", "rule": "live_night", "key": night.isoformat(), "path": str(out),
                           "rows": s.get("rows")})
             return out
