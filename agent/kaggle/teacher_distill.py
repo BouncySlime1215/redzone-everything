@@ -48,7 +48,7 @@ BIG_N = 8800                # how many open requests the 32B gets (2.25 h x ~65/
 FAST_BUDGET_H = 4.25        # then the 14B (~3x faster, ~195/min) on the easier tail: ~50k, the rest of the queue
 BUILD_BUDGET_H = 4.5        # stop downloading new games after this (on the CPUs, during the teacher)
 BLIND_BUDGET_H = 0.4        # teacher on the dev-test grading sample
-STUDENT_BUDGET_H = 1.8 if PRESET == "quick" else 3.75     # both students: train + answer the full test set
+STUDENT_BUDGET_H = float(os.environ.get("RZ_STUDENT_BUDGET_H", "1.8" if PRESET == "quick" else "3.75"))   # both students
 GRADE_RESERVE_H = 0.35      # grading + out.zip after the students
 ROUND = time.strftime("%Y%m%d-%H%M")
 
@@ -71,7 +71,7 @@ def stamp() -> dict:
     return {"seed": 7, "data_sha256_16": data, "teacher_out_sha256_16": h(os.path.join(WORK, "teacher_out.jsonl")),
             "recipe": {"preset": PRESET, "mode": MODE, "session_h": SESSION_H, "student_budget_h": STUDENT_BUDGET_H,
                        "epochs": "1 (quick)" if PRESET == "quick" else "game-reasoner 2, watchdog 1"},
-            "code_pack": json.load(open(man)).get("commit") if man else None}
+            "code_pack": os.environ.get("RZ_CODE_PACK") or (json.load(open(man)).get("commit") if man else None)}
 
 KW = os.environ.get("RZ_KAGGLE_WORKING", "/kaggle/working")        # overridable for the CPU smoke test
 INP = os.environ.get("RZ_KAGGLE_INPUT", "/kaggle/input")
@@ -195,8 +195,10 @@ def tail(path, n=20):
 
 # %%
 if not os.environ.get("RZ_SMOKE"):
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "vllm", "peft", "accelerate", "bitsandbytes",
-                    "huggingface_hub", "safetensors", "lightgbm", "httpx", "pyyaml"], check=False)
+    # [Colab V8] students-only needs no vLLM (and its install would replace the runtime's torch)
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", *([] if STUDENTS_ONLY else ["vllm"]), "peft",
+                    "accelerate", "bitsandbytes", "huggingface_hub", "safetensors", "lightgbm", "httpx", "pyyaml"],
+                   check=False)
     # Kaggle ships torchao 0.10; peft's LoRA needs torchao >= 0.16 or none at all (V3 died on it)
     subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "-q", "torchao"], check=False)
 
@@ -272,7 +274,10 @@ student_args = ["--pack", PACK, "--teacher-out", os.path.join(WORK, "teacher_out
                 "--out", os.path.join(WORK, "students")]
 if os.path.exists(f"{MOMENTS}/DONE"):
     student_args += ["--moments", MOMENTS]
-run(["agent/kaggle/run_students.py", *student_args, "--prepare-only"])
+if os.path.exists(os.path.join(WORK, "students", "student_data.json")):     # [Colab V8] a resumed run: same data
+    print("student data already written (resumed run):", open(os.path.join(WORK, "students", "student_data.json")).read())
+else:
+    run(["agent/kaggle/run_students.py", *student_args, "--prepare-only"])
 
 # %%
 # Phase 3: the teacher answers the dev-test grading sample blind (graded exactly like the student)
@@ -350,6 +355,17 @@ try:
     rep = json.load(open(os.path.join(WORK, "report.json"))) if os.path.exists(os.path.join(WORK, "report.json")) else {}
     g = short_grades(rep, ROUND, MODE, round((time.time() - T0) / 3600, 2))
     g["stamp"] = stamp()                        # [Nick 6:40 PM rule 10] seed, data hash, recipe, code pack id
+    cov = {}
+    for job in ("game-reasoner", "watchdog"):  # [Colab V8] how much of each test set is answered, and resumes
+        try:
+            tr = json.load(open(os.path.join(WORK, "students", job, "train_report.json")))
+            cov[job] = {"complete": tr.get("complete"), "stopped_early": tr.get("stopped_early"),
+                        "ckpt_resumes": tr.get("ckpt_resumes"), "steps": tr.get("steps"),
+                        **{k: {m: v.get(m) for m in ("answered", "of", "reused")} for k, v in tr.get("answered", {}).items()}}
+        except (OSError, ValueError):
+            cov[job] = None
+    g["coverage"] = cov
+    g["complete"] = all(v and v.get("complete") for v in cov.values())
     json.dump(g, open(os.path.join(KW, "grades.json"), "w"), indent=1)
     print("grades.json:", open(os.path.join(KW, "grades.json")).read())
 except Exception as e:  # noqa: BLE001 - the summary never fails the round

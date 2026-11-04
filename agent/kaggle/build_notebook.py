@@ -45,6 +45,9 @@ def build(src: Path, dst: Path) -> None:
           "metadata": {"kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"},
                        "language_info": {"name": "python"},
                        "kaggle": {"accelerator": "nvidiaTeslaT4", "isInternetEnabled": True, "isGpuEnabled": True}}}
+    if src.stem.startswith("colab"):        # [Colab V8] a Colab notebook asks for a T4 by itself
+        nb["metadata"] = {"kernelspec": nb["metadata"]["kernelspec"], "language_info": {"name": "python"},
+                          "accelerator": "GPU", "colab": {"provenance": [], "gpuType": "T4"}}
     dst.write_text(json.dumps(nb, indent=1) + "\n")
 
 
