@@ -74,6 +74,43 @@ listed under it; a marked night-lab test counts even when the behaviour behind i
 4. **"I missed that"** records a catch-up reel request for the next dead window (3-min rule); reels stay OFF.
 (Button states are already merged as #96.)
 
+## Addendum: one connected system, the "city map" (Nick, 3:40 PM ET). Lane ④ leads, every lane follows
+**Why:** 154 modules / 49k lines with seams:
+- several brains score games in parallel (scoring/engine, drive heat, brain, brain3, noggin/priority,
+  reasoner, decider);
+- flip and tune costs are hard-coded in two places (standby `FLIP_S=3.0`, demo `TUNE_S=5.0`) instead of the
+  measured ~2 s;
+- there are 82 separate `json.loads` sites.
+
+The model is a checked-dependency build (Axiom's Lean formalization of the Stacks Project): every
+piece builds on the others through checked contracts.
+
+**Lane ④ (lead), now item 1:**
+1. a **generated city map**: `docs/citymap.md` plus a graph from imports and `redzone/contracts`, regenerated in
+   CI, showing each module's inputs → outputs and its owner;
+2. a **contract checker** in CI (the "proof kernel") that fails on:
+   - a constant defined twice (timing costs come only from measured config / `data/calib`);
+   - a module bypassing its contract (e.g. stick I/O outside `tuners/`);
+   - orphan or dead modules;
+   - a second scoring path;
+3. the North Star line **`contract_violations` = 0**.
+
+Land the checker in report mode first, listing today's violations, then make it fail-on-new. Each violation
+burns down in the lane that owns the module.
+
+**How lanes ①-③ route through the map:**
+- **① Noggin training:** WV (Heat 2.0) is the one scoring output. The old scorers (scoring/engine, drive heat,
+  brain, brain3, noggin/priority, reasoner) become **feature providers** feeding WV, never competing
+  deciders. Lane ① declares WV's input features in its contract.
+- **② Logic / sync:** the **Noggin is the single decision entry**. Migrate each old scorer out of the decider
+  one by one, each behind a **parity test on locked nights** (same or better on every bar (B) line), in
+  step with the WV wiring. Use one JSON loader for the feed paths lane ② owns.
+- **③ Controls:** `FLIP_S` / `TUNE_S` and every other timing cost come from the measured calibration (#136 /
+  `data/calib`), not constants. All stick and TV I/O goes through `tuners/`. **Every TV action and decision is
+  traced with its provenance** (which module contributed what), so the End Planner can audit the chain. This
+  extends the traces from #118.
+- **⑤:** no new scoring or I/O path. The UI reads WV and traces only.
+
 ## Addendum: HEAT 2.0, a learned watch value (Nick, 3:30 PM ET). This is the top item for lanes ① and ②
 **Why:** the heat scores feel off. Monday's Bears game read ~30 at a big Q3 moment. Today's heat
 (redzone/scoring/drive.py) is hand-weighted (0.45 EP + 0.30 yards + 0.25 explosive, plus bumps) and adds
