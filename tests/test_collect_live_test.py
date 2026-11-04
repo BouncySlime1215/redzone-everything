@@ -94,3 +94,16 @@ def test_trace_events_fold_into_one_switch_each(tmp_path):
     assert s["press_samples"] == 1 and s["press_to_tv_p95_s"] == 2.4 and s["press_no_picture"] == 1
     assert s["press_spans"]["flip"]["p50_s"] == 1.9 and s["press_spans"]["queued"]["p50_s"] == 0.1
     assert s["picture_within_3s"] == "2/2"
+
+
+def test_home_network_shared_address_space_is_masked():
+    """Live lab, Nov 4: the sticks are 100.110.165.150/.181 and the TV .151 (100.64/10); they were copied
+    unmasked. Public addresses stay as they are."""
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("clt", Path(__file__).parent.parent / "scripts/collect_live_test.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    out = m.redact('{"host": "100.110.165.150:5555", "tv": "100.110.165.151", "dns": "100.200.1.1"}')
+    assert "100.110.165" not in out and "lan.150" in out and "lan.151" in out
+    assert "100.200.1.1" in out
