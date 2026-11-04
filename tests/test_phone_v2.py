@@ -253,3 +253,63 @@ def test_clash_alert_only_for_your_team_soon():
 def test_slate_route_carries_the_alert(client, engine):
     _on(engine)
     assert "alert" in client.get("/api/v2/slate").json()
+
+
+def test_watch_values_learned_field_or_stub():
+    from types import SimpleNamespace as NS
+    from redzone.models import League, Phase as P
+    from redzone.scoring.engine import Scored
+
+    def sc(gid, lg, score, factor="", reason="", crunch=False, is_break=False):
+        return Scored(gid, League(lg), score, score, 0.0, 0.0, 0.0, reason, [], is_break, None, None, 0.0,
+                      crunch=crunch, factor=factor)
+    games = {"a": NS(matchup="A @ B", phase=P.LIVE), "b": NS(matchup="C @ D", phase=P.LIVE), "z": NS(matchup="done", phase=P.POST)}
+    old = {"a": sc("a", "nba", 140.0, factor="Tied late", reason="r", crunch=True),
+           "b": sc("b", "nhl", -3.0, reason="Break", is_break=True), "z": sc("z", "nhl", 50.0)}
+    v = phone_v2.watch_values(old, games)
+    assert v["source"] == "stub" and [(r["game_id"], r["wv"], r["why"]) for r in v["games"]] == [("a", 100, "Tied late"), ("b", 0, "Break")]
+    old["a"].watch_value, old["a"].watch_why = 63.4, "Comeback brewing"
+    old["b"].watch_value = 12
+    v = phone_v2.watch_values(old, games)
+    assert v["source"] == "learned" and v["games"][0] == {"game_id": "a", "matchup": "A @ B", "league": "nba", "wv": 63,
+                                                         "why": "Comeback brewing", "crunch_state": "entering", "stakes_line": "",
+                                                         "crunch": True, "is_break": False, "source": "learned"}
+    assert v["games"][1]["why"] == "Break"                                             # no watch_why: the reason
+    assert phone_v2.watch_values({}, {}) == {"games": [], "source": None}
+    old["a"].crunch_now = True
+    assert phone_v2.watch_values(old, games)["games"][0]["crunch_state"] == "in"       # stub from the flags
+    old["a"].crunch_state = "leaving"                                                  # lane 1's model wins
+    assert phone_v2.watch_values(old, games)["games"][0]["crunch_state"] == "leaving"
+    old["a"].stakes = 0.7
+    assert phone_v2.watch_values(old, games)["games"][0]["stakes_line"] == "Big stakes"           # stub
+    old["a"].stakes_line = "AFC 1-seed race, top-5 matchup"                                       # lane 1 wins
+    assert phone_v2.watch_values(old, games)["games"][0]["stakes_line"] == "AFC 1-seed race, top-5 matchup"
+    old["b"].crunch_state = "bogus"
+    assert phone_v2.watch_values(old, games)["games"][1]["crunch_state"] is None
+
+
+def test_watch_route(client, engine):
+    assert client.get("/api/v2/watch").status_code == 404
+    _on(engine)
+    r = client.get("/api/v2/watch").json()
+    assert r["enabled"] and isinstance(r["games"], list)
+
+
+def test_plan_marks_catchups_and_interleaves():
+    sw = [{"ts": 1.0, "to_game": "a", "kind": "better", "reason": "x", "ok": 1},
+          {"ts": 2.0, "to_game": "b", "kind": "replay", "reason": "catch-up plan=crunch-overlap", "ok": 1},
+          {"ts": 3.0, "to_game": "reel", "kind": "better", "reason": "reel", "ok": 0, "dry_run": 1},
+          {"ts": 4.0, "to_game": "c", "kind": "break_visit", "reason": "a in commercial", "ok": 0},
+          {"ts": 5.0, "to_game": "a", "kind": "return", "reason": "back", "ok": 1}]
+    m = phone_v2.plan_marks(sw, lambda g: g.upper())
+    assert [(x["type"], x["matchup"]) for x in m] == [("catchup", "B"), ("catchup", "Catch-up reel"), ("interleave", "C"), ("interleave", "A")]
+    assert m[0]["plan"] == "crunch-overlap" and m[1]["ok"] is True and m[2]["ok"] is False
+
+
+def test_night_route_carries_plan_marks(client, engine):
+    _on(engine)
+    gid = next(iter(engine.merger.games))
+    engine.store._x("INSERT INTO switches (ts, frm, to_game, target, kind, reason, dry_run, ok, detail) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)", (time.time(), None, gid, "a", "replay", "catch-up", 0, 1, "{}"))
+    r = client.get("/api/v2/night").json()
+    assert r["plan_counts"]["catchup"] >= 1 and r["plan_marks"][-1]["type"] == "catchup"
