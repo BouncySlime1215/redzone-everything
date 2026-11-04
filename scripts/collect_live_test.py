@@ -146,13 +146,15 @@ def summarize(got: dict[str, list[dict]]) -> dict:
         "sync_anchor_err": {k: {"n": len(v), "p50_s": sorted(v)[len(v) // 2], "p95_s": p95(v)}
                             for k, v in sorted(anchors.items())},
         "rows": {k: len(v) for k, v in got.items()},
-        "switch_samples": len(tv), "switch_p95_s": p95(tv), "switch_max_s": round(max(tv), 2) if tv else None,
+        "switch_samples": len(tv), "switch_p50_s": round(sorted(tv)[len(tv) // 2], 2) if tv else None,
+        "switch_p95_s": p95(tv), "switch_max_s": round(max(tv), 2) if tv else None,
         "tv_unverified": sum(1 for r in got["tv_input.jsonl"] if not r.get("verified")),
         "cuts_graded": len(cuts), "entries_mid_play": sum(1 for r in cuts if r.get("enter") == "play"),
         "leaves_mid_play": sum(1 for r in cuts if r.get("leave") == "play"),
         "picture_within_3s": f"{sum(1 for x in pics if x <= 3)}/{len(pics)}" if pics else None,
         "picture_p95_s": p95(pics),
         "press_samples": len(press), "press_to_tv_p95_s": p95(press),
+        "press_to_tv_p50_s": round(sorted(press)[len(press) // 2], 2) if press else None,
         "press_no_picture": len(user) - len(press),
     }
 

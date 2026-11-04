@@ -116,6 +116,9 @@ class Engine:
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
+        if data_dir:
+            from redzone import calibration
+            self.control.calibrated_flip = calibration.flip_prior(self.cfg, data_dir.parent)
         self.decider.safety.feed_age = self._feed_age   # [playbooks SAFE-01]
         # Break visits: the game we leave keeps playing on the other stick, so the trip back is one
         # flip; with one stick it's a full tune of that game.
