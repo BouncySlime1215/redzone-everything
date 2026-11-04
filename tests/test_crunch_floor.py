@@ -93,7 +93,7 @@ def test_pick_in_replace_mode_never_overrules_a_crunch_window(cfg, clock, monkey
     for g in ("a", "b"):
         calibrate(d, f"youtubetv:{g}")
     start_on(d, clock, "a", {})
-    monkeypatch.setattr(PK, "model_for", lambda lg: object())
+    monkeypatch.setattr(PK, "model_for", lambda *a, **k: SimpleNamespace(meta={}))
     monkeypatch.setattr(PK, "FEED_LAG_P90", {League.NFL: -999.0})
     monkeypatch.setattr(PK, "live_choice", lambda *a, **k: ("b", {"a": 0.0, "b": 1.0}))
     for g in ("a", "b"):
