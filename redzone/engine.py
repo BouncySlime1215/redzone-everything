@@ -61,7 +61,18 @@ class Engine:
         # reached us (data/recordings/<day>/nhl_seen.jsonl), so the backtest that gates it has data.
         self._nhl_shadow = not self._nhl_primary and bool(self.cfg.get("sources.nhl_shadow", True))
         self._nhl_logged: dict[str, dict[str, float]] = {}
-        self.merger = Merger(stoppage_owner={League.NHL: "nhl"} if self._nhl_primary else None)
+        # [NBA primary] the same for NBA's liveData play-by-play (real event times, ~4-12 s published).
+        self._nba_primary = bool(self.cfg.get("sources.nba_primary", False))
+        self._nba_shadow = not self._nba_primary and bool(self.cfg.get("sources.nba_shadow", True))
+        self._nba_seen: dict[str, dict[str, float]] = {}
+        self._nba_logged: dict[str, dict[str, float]] = {}
+        self._nba_ids: dict[str, str] = {}
+        owners = {}
+        if self._nhl_primary:
+            owners[League.NHL] = "nhl"
+        if self._nba_primary:
+            owners[League.NBA] = "nba"
+        self.merger = Merger(stoppage_owner=owners or None)
         self._nhl_seen: dict[str, dict[str, float]] = {}   # game id -> NHL event id -> first seen
         self._nhl_ids: dict[str, str] = {}                  # ESPN game id -> NHL game id
         self._poll_every: dict[str, float] = {}   # game id -> the poll interval it was last fetched at
@@ -748,13 +759,29 @@ class Engine:
             sb = await self.fetcher.get_json(leagues.NBA_SCOREBOARD, min_interval=5)
             if sb:
                 idx = leagues.nba_index(sb)
-                for g in nba:
+                fast = self._nba_primary or self._nba_shadow
+                every = float(self.cfg.get("polling.nba_pbp_s", 3))
+
+                async def one_nba(g: GameState):
                     gm = leagues.nba_match(g, idx)
-                    if gm:
+                    if not gm:
+                        return
+                    pbp = None
+                    if fast and gm.get("gameId") and gm.get("gameStatus") == 2:
+                        self._nba_ids[g.game_id] = str(gm["gameId"])
+                        pbp = await self.fetcher.get_json(leagues.NBA_PBP.format(id=gm["gameId"]),
+                                                          min_interval=every - 0.5)
+                    if self._nba_shadow and pbp:
                         try:
-                            self.merger.update("nba", leagues.enrich_nba(self.merger.games[g.game_id], gm))
+                            self.recorder.feed_plays(g, leagues.nba_plays(pbp, self._nba_logged.setdefault(g.game_id, {})))
                         except Exception:
-                            log.exception("nba enrich")
+                            log.exception("nba shadow log")
+                    try:
+                        seen = self._nba_seen.setdefault(g.game_id, {}) if self._nba_primary else None
+                        self.merger.update("nba", leagues.enrich_nba(self.merger.games[g.game_id], gm, pbp, seen))
+                    except Exception:
+                        log.exception("nba enrich")
+                await asyncio.gather(*(one_nba(g) for g in nba))
 
     def _feed_urls(self, g: GameState) -> list[str]:
         """The URLs a game's state comes from: its summary and its league's scoreboard(s)."""
@@ -763,6 +790,8 @@ class Engine:
         else:
             boards = [espn.scoreboard_url(g.league)]
         out = [espn.summary_url(g.league, g.game_id), *boards]
+        if g.league == League.NBA and self._nba_primary and g.game_id in self._nba_ids:
+            out.append(leagues.NBA_PBP.format(id=self._nba_ids[g.game_id]))
         if g.league == League.NHL and self._nhl_primary and g.game_id in self._nhl_ids:
             out.append(leagues.NHL_PBP.format(id=self._nhl_ids[g.game_id]))
         return out

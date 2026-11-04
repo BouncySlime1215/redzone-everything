@@ -32,6 +32,7 @@ polling:
   hot_s: 3                 # what's on, what's next, and tense games: every N seconds
   live_s: 10               # every other live game
   idle_s: 300              # poll every N seconds when nothing is live
+  nba_pbp_s: 3             # NBA liveData play-by-play per live NBA game (sources.nba_primary / nba_shadow)
   nhl_pbp_s: 3             # NHL api-web play-by-play per live NHL game (sources.nhl_primary); 8 s when off
 
 sources:
@@ -42,6 +43,9 @@ sources:
   fastcast_auto_enable: false  # turn fastcast on by itself once that check passes
   nhl_primary: false       # NHL api-web live play-by-play (~17 s behind the ice vs ESPN's ~43 s) owns NHL
                            # stoppages while fresh and feeds its plays to the timeline (docs/timing.md, A2)
+  nba_primary: false       # NBA liveData play-by-play (real event times, published ~4-12 s after) owns NBA
+                           # stoppages while fresh and feeds the timeline; OFF until a backtest + live night pass
+  nba_shadow: true         # primary off: still poll it and log its plays (source nba_cdn) to plays.jsonl
   nhl_shadow: true         # primary off: still poll api-web every polling.nhl_pbp_s and log each event's
                            # first-seen time (data/recordings/<day>/nhl_seen.jsonl) for the gating backtest
 
