@@ -231,10 +231,13 @@ class ShadowStick:
 
     Hit rate = switches that landed on a stick already playing the destination (a 1-3s flip)."""
 
-    FLIP_S = 3.0   # an input flip to a ready stick (measured median ~2.9 s)
+    FLIP_S = 3.0   # the fallback only: callers pass flip_s from calibration.flip_s(cfg) (measured)
 
-    def __init__(self, tune_s: float = 7.0, keep_s: float = 2.5, app_s: dict[str, float] | None = None):
+    def __init__(self, tune_s: float = 7.0, keep_s: float = 2.5, app_s: dict[str, float] | None = None,
+                 flip_s: float | None = None):
         self.tune_s = tune_s
+        if flip_s is not None:
+            self.FLIP_S = float(flip_s)
         # Per-app tune seconds (Prime ~30 s, YouTube TV ~5 s): a model where every tune is 7 s can't
         # see what a Prime preload is worth.
         self.app_s = dict(app_s or {})

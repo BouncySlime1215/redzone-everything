@@ -294,3 +294,4 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   screen and not flippable while it rebuilds, so nothing on the TV is cut). Too close to live: pause the gap
   minus 1.5 s (Nick's hold calibration); too far behind: reload at the live edge and hold again. Every
   detection and rebuild goes to data/buffer.jsonl -> live-night summary -> northstar "buffer drift recovered".
+- 2026-11-04 (Nick's "city map", Cycle 05 addendum in #141; lane 3, #136): timing costs come only from measured calibration. The demo's cut-timing tune (was `TUNE_S = 5.0`) now reads `decider.switch_cost.youtubetv` (5.5 in the pinned eval config) through `calibration.tune_s`. The modeled flip (was `ShadowStick.FLIP_S = 3.0`) is now the measured flip prior median + 1 s settle (2.89 s) through `calibration.flip_s`. Demo 20261101: mid-play 0 -> 0, crunch live 104 -> 105/137, switches 396 -> 399, standby hits 152 -> 157.
