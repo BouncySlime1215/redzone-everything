@@ -131,3 +131,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** /api/action had no tap identity. `engine.skipped` counted from the tap, not from when the TV left.
 - **Fix:** every phone tap carries an id (redzone/commands.py): a repeat id gets the first answer back, never a second run; the phone retries a lost answer with the same id. The skip's five minutes start once the TV is off the skipped game. Drill with taps lost and duplicated on purpose: 83 taps, 65 retried, 0 ran more or less than once; skips that never left 2 -> 0.
 - **Signals:** double tap, retry, duplicate, "Go now" mid-play, skip ignored, skip_stuck, not_once
+- 2026-11-04: **CI now checks playbook coverage and posts a RAM/CPU line.** Tests claim entries with
+  `@pytest.mark.playbook("ID")`. `scripts/playbook_coverage.py --junit` fails CI only when an entry marked
+  `done` has no passing test, or a test names an unknown id, so the 79 entries can be built top-down.
+  `scripts/perf_probe.py` times the real `Engine.decide()` on 8 synthetic live games (300 ticks): it was
+  p50 1.0 ms, p99 5.3 ms, 56 MB peak RSS at 1f5e751. Engine needs a running event loop, so the probe runs
+  inside `asyncio.run`.
