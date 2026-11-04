@@ -350,9 +350,6 @@ def test_endpoint_is_local_only_and_never_crashes(monkeypatch):
         called.append((fix, target))
         raise RuntimeError("boom")
     monkeypatch.setattr("redzone.platform.agent_fix.run_fix", fake_run_fix)
-    app = server.create_app(fake_engine()) if hasattr(server, "create_app") else None
-    if app is None:
-        pytest.skip("no app factory")
-    c = TestClient(app)
+    c = TestClient(server.build_app(fake_engine()))
     r = c.post("/api/agent/fix", json={"fix": "refresh_feed", "target": "feeds"})
     assert r.json()["ok"] is False and "crashed" in r.json()["message"] and called

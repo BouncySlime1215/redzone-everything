@@ -25,7 +25,7 @@ The draft release PR #37 is closed (Nick, Nov 3 10:45 PM); the deploy fetches `i
 | Area | Owner | Now |
 |---|---|---|
 | Switch timing (Nick's items 1-7: dead-ball lag per source, live-delay offset per stick, restart prediction, SmartThings ~2 s trip cost, dwell/hysteresis, landing-offset scorecard line, e2e SmartThings latency) | TIMING thread (new, Nov 3 night) | working |
-| Error handling (items 8-12: SmartThings breaker + HOME/CEC fallback, stick recovery, feed fallback, Mac sleep/network/launchd, watchdog rate limits) | ERRORS thread (new, Nov 3 night) **Done:** #44 SmartThings, #48 sticks, #49 feeds, #50 Mac wake and #45 watchdog cap merged. All OFF behind `hardening.*` except #45's hourly action cap (on). Turn each on after Nick's TV test |
+| Error handling (items 8-12: SmartThings breaker + HOME/CEC fallback, stick recovery, feed fallback, Mac sleep/network/launchd, watchdog rate limits) | ERRORS thread (new, Nov 3 night) **Done:** #44 SmartThings, #48 sticks, #49 feeds, #50 Mac wake and #45 watchdog cap merged. All OFF behind `hardening.*` except #45's hourly action cap (on). Turn each on after Nick's TV test. **Open:** #57 (rebooted on-screen stick, launchd exit codes), C17 watchdog actions PR (`hardening.watchdog`, off), #63 Wed live-test script. **Next:** why FastCast never logged on the Mac (needs Mac log read) |
 | Integration train, CI, release, housekeeping (items 13a-d, 14, 16) | INTEGRATION #41-#43 merged; #44-#50 merged; #47 TIMING honest feed_lag + NHL lag-cap merged; #51 eval honesty up (idle until 8 AM) |
 | Kaggle teacher (item 13e: `pip uninstall torchao` on kaggle-inputs; V4 running with Nick's patch) | LOCAL AI (#13) | **D19 ready on kaggle-inputs; V5 running** |
 | Prime multiview live-calibration plan (item 15, #40 flag off) | SWITCHING | **Done:** #40 merged, flag off; calibration plan is queue row 9b |
@@ -52,7 +52,7 @@ writes words only, async. Gates only on unseen nights.
 | B11 | Reasoner gate split (rule conformance, calibration, ON/OFF non-inferiority, abstain) | LOCAL AI |
 | B12 | Realistic night lab (lag jitter, late plays, drops, resyncs from real traces) | INTEGRATION (after B9-B10) |
 | C13-C16 | Calibrated safe-now with abstain; next big play; stakes layer; reel ranker | MOMENT/BREAK (C13 with LOCAL AI) |
-| C17 | Watchdog 5 -> 12 guarded actions, all 13 kinds | ERRORS |
+| C17 | Watchdog 5 -> 12 guarded actions, all 13 kinds | ERRORS (PR open, off behind `hardening.watchdog`) |
 | C18 | Bugs: `breaks.blend` 50/50 calibration, two JSON parsers, switch-cost constants disagreeing | INTEGRATION (switch costs with TIMING) |
 | D19-D22 | Kaggle student recipe (fp16 base + fp32 LoRA r16-32), teacher throughput, KD, historical label factory | LOCAL AI |
 | E23-E25 | Decision records + phone 👍/👎, shadow mode + SPRT rollback, BRAIN auto-fix on dev-test only | DECISION (E25 PLATFORM) |
