@@ -241,7 +241,7 @@ def test_replay_window_counts_from_the_airing():
     dec.cfg = {"replay.window_s": 180}
     m = Missed("g1", "p", "TD", "td", 1000.0, 90.0, due_s=600.0, aired=1130.0)
     assert dec._aired_age(m, 1250.0) == 120.0                 # 250 s after the feed, 120 s after it aired
-    assert dec._urgency(m, 1250.0) == 120.0 / 90.0 - 1.0      # ramps from 90 s to 180 s after airing
+    assert abs(dec._urgency(m, 1250.0) - 1 / 3) < 1e-9          # ramps from 90 s to 180 s after airing
     assert dec._urgency(m, 1320.0) == 1.0
     old = Missed("g1", "p", "TD", "td", 1000.0, 90.0, due_s=600.0)
     assert dec._aired_age(old, 1250.0) == 250.0               # unknown airing: the feed time
