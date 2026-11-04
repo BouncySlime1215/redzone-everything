@@ -113,3 +113,32 @@ def test_default_faults_land_while_games_are_live():
     for seed in range(20):
         for f in faults.default(random.Random(seed), windows):
             assert any(lo + 300 <= f.at <= hi - 600 for lo, hi in windows), (seed, f.describe())
+
+
+def test_the_night_never_reads_the_host_it_runs_on(monkeypatch):
+    """On Nick's Mac the night's watchdog saw the live RedZone app (over its 1200 MB cap) in the
+    real `ps` and kept restarting the night's own engine; two-stick mode was off at the end.
+    pin_host makes every governor in the night see a calm machine with no RedZone processes."""
+    from redzone import governor as G
+    from redzone.lab.night import run as night_run
+    monkeypatch.setattr(G, "sample", lambda *a, **k: G.Sample(procs={"service": 1500.0}, on_battery=True,
+                                                               battery_pct=5, load_per_core=14.0))
+    assert G.Governor().update(G.sample()) == "critical"     # what the Mac looked like mid-deploy
+    night_run.pin_host(G)
+    gov = G.Governor()
+    s = G.sample()
+    assert gov.update(s) == "normal"
+    assert s.procs == {} and gov.service_mb() is None
+
+
+def test_two_stick_off_at_the_end_is_held_to_the_same_420_s():
+    from redzone.lab.night import run as night_run
+
+    def sample(t, two):
+        return night_run.Sample(t, 0.0, False, "idle", False, two, True, False, None, 0, 2, ("connected",) * 2)
+    on_at_end = [sample(t, t < 100 or t > 300) for t in range(0, 1000, 5)]
+    assert night_run._still_off_at_end(on_at_end, lambda x: not x.two_stick) == 0.0
+    late = [sample(t, t < 900) for t in range(0, 1000, 5)]
+    assert night_run._still_off_at_end(late, lambda x: not x.two_stick) == 95.0      # young gap: fine
+    stuck = [sample(t, t < 400) for t in range(0, 1000, 5)]
+    assert night_run._still_off_at_end(stuck, lambda x: not x.two_stick) > 420       # fails the check

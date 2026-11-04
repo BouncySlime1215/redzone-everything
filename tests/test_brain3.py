@@ -16,6 +16,7 @@ from redzone.scoring import brain as B
 from redzone.scoring import brain3 as B3
 from redzone.scoring import breaks
 from redzone.sources import espn
+from tests.conftest import assert_speed
 
 FIX = Path(__file__).parent / "fixtures"
 LEAGUES = ("nfl", "nba", "nhl", "mlb")
@@ -143,7 +144,7 @@ def test_a_real_game_reads_fast_calibrated_and_ordered():
     t0 = time.perf_counter()
     out = [b.read(g) for g in seq]
     per = (time.perf_counter() - t0) / len(seq)
-    assert per < 0.004   # the budget is 2 ms per game per tick on an M2; generous for slow CI
+    assert_speed(per, 0.004, "brain v3 read")   # budget 2 ms per game per tick on an M2; generous for slow CI
     vs = [r.v3 for r in out if r.v3 is not None]
     assert len(vs) > len(seq) // 2
     for v in vs:
