@@ -642,11 +642,11 @@ def watch_values(scored: dict, games: dict) -> dict:
         if cs not in CRUNCH_STATES:
             cs = "in" if s.crunch_now else ("entering" if s.crunch else None)
         sl = s.stakes_line                            # lane 1: e.g. "AFC 1-seed race, top-5 matchup"
-        stakes_pending = sl is None                   # the phone says "pending" until the model writes it
+        stakes_rough = sl is None                     # #172 writes it (None = no stakes); the stub is "rough"
         if sl is None:
             sl = "Big stakes" if s.stakes >= STAKES_BIG else ("Some stakes" if s.stakes >= STAKES_SOME else "")
         rows.append({"game_id": gid, "matchup": g.matchup if g is not None else gid,
-                     "crunch_state": cs, "stakes_line": sl[:100], "stakes_pending": stakes_pending,
+                     "crunch_state": cs, "stakes_line": sl[:100], "stakes_rough": stakes_rough and bool(sl),
                      "league": s.league.value, "wv": int(round(max(0.0, min(100.0, val)))),
                      "why": str(why or "")[:120], "crunch": bool(s.crunch),
                      "is_break": bool(s.is_break), "source": "learned" if learned else "stub"})

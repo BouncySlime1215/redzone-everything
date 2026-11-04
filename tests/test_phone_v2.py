@@ -273,7 +273,7 @@ def test_watch_values_learned_field_or_stub():
     v = phone_v2.watch_values(old, games)
     assert v["source"] == "learned" and v["games"][0] == {"game_id": "a", "matchup": "A @ B", "league": "nba", "wv": 63,
                                                          "why": "Comeback brewing", "crunch_state": "entering", "stakes_line": "",
-                                                         "stakes_pending": True,
+                                                         "stakes_rough": False,
                                                          "crunch": True, "is_break": False, "source": "learned"}
     assert v["games"][1]["why"] == "Break"                                             # no watch_why: the reason
     assert phone_v2.watch_values({}, {}) == {"games": [], "source": None}
@@ -282,10 +282,11 @@ def test_watch_values_learned_field_or_stub():
     old["a"].crunch_state = "leaving"                                                  # lane 1's model wins
     assert phone_v2.watch_values(old, games)["games"][0]["crunch_state"] == "leaving"
     old["a"].stakes = 0.7
-    assert phone_v2.watch_values(old, games)["games"][0]["stakes_line"] == "Big stakes"           # stub
+    g0 = phone_v2.watch_values(old, games)["games"][0]
+    assert g0["stakes_line"] == "Big stakes" and g0["stakes_rough"] is True                       # stub
     old["a"].stakes_line = "AFC 1-seed race, top-5 matchup"                                       # lane 1 wins
     g0 = phone_v2.watch_values(old, games)["games"][0]
-    assert g0["stakes_line"] == "AFC 1-seed race, top-5 matchup" and g0["stakes_pending"] is False
+    assert g0["stakes_line"] == "AFC 1-seed race, top-5 matchup" and g0["stakes_rough"] is False
     old["b"].crunch_state = "bogus"
     assert phone_v2.watch_values(old, games)["games"][1]["crunch_state"] is None
 
