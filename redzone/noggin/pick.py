@@ -28,6 +28,7 @@ import numpy as np
 from redzone import grading
 from redzone.grading import SwitchLog, lag_of
 from redzone.models import REAL_BREAKS, League
+from redzone.models_rt.forest import MODEL_DIRS
 from redzone.noggin.features import REG
 from redzone.sources import espn
 
@@ -37,7 +38,7 @@ PICK_FEATURES = ("leave_ok", "land_ok", "dead_screen", "ahead_big", "ahead_crunc
                  "margin_rank", "left_rank")
 # p90 of each league's measured detection lag (redzone/lab/feed_lag_profile.json, Nov 2-3 2026)
 FEED_LAG_P90 = {League.NBA: 70.0, League.NHL: 75.0, League.NFL: 62.0, League.CBB: 46.0}
-MODEL_DIR = Path(__file__).resolve().parent / "models"
+MODEL_DIR = MODEL_DIRS["noggin"]
 
 
 def _secs(clock) -> float:
@@ -254,11 +255,8 @@ class PickModel:
 
     @classmethod
     def load(cls, path: Path) -> "PickModel":
-        import json
-        with np.load(path, allow_pickle=False) as z:
-            meta = json.loads(bytes(z["meta"]).decode())
-            arrays = {k: z[k] for k in z.files if k != "meta"}
-        return cls(arrays, meta)
+        from redzone.models_rt.forest import load_npz   # [one brain] the one loader
+        return cls(*load_npz(path))
 
 
 _MODELS: dict = {}
