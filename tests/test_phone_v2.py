@@ -506,3 +506,33 @@ def test_slate_watch_values_only_when_on_and_learned():
     assert by["b"]["wv"]["arrow"] == "" and "wv" not in by["c"] and "wv" not in by["d"]   # not live / no model
     scored["b"].watch_rising = -2.0
     assert phone_v2.slate_watch(rows(), scored, on=True)[1]["wv"]["arrow"] == "down"
+
+
+def test_catchup_queue_holds_and_waiting():
+    from types import SimpleNamespace as NS
+    from redzone.decider.decider import Missed
+    rows = [{"ts": 100.0, "kind": "left_held", "target": "H2", "behind_s": 0.0},
+            {"ts": 160.0, "kind": "left_resumed", "target": "H2", "behind_s": 60.0},
+            {"ts": 200.0, "kind": "lost", "target": "H1"},                               # STK-06 row: not a left hold
+            {"ts": 300.0, "kind": "left_expired", "target": "H9"},                       # never held: ignored
+            {"ts": 400.0, "kind": "left_held", "target": "H2", "behind_s": 5.0}]
+    q = [Missed("b", "p1", "Goal", "goal", 380.0, 50.0), Missed("a", "p2", "TD", "td", 390.0, 70.0, mine=True, due_s=180.0),
+         Missed("a", "p3", "old", "td", 10.0, 70.0, replayed=True), Missed("c", "p4", "FG", "fg", 395.0, 30.0, must=True)]
+    sc = {"a": NS(is_break=True), "b": NS(is_break=False)}
+    v = phone_v2.catchup_queue(rows, {"H2": "a"}, "H2", True, {"H2": 30.04}, q, sc, str.upper, now=430.0)
+    assert v["hidden"] == {"game_id": "a", "matchup": "A", "target": "H2", "ready": True, "behind_s": 30.0, "dead_now": True}
+    first, second = v["holds"]                                                             # newest first
+    assert (first["open"], first["age_s"], first["end"]) == (True, 35.0, None)
+    assert (second["end"], second["age_s"], second["open"]) == ("resumed", 60.0, False)
+    assert [i["game_id"] for i in v["queue"]] == ["c", "a", "b"]                          # must, then yours, then oldest
+    assert v["queue"][1]["due_in_s"] == 140 and v["queue"][0]["dead_now"] is None and v["queue"][2]["dead_now"] is False
+    assert v["counts"] == {"held": 2, "resumed": 1, "expired": 0, "lost": 0, "queued": 3, "yours": 1}
+    assert phone_v2.catchup_queue([], {}, None, False, {}, [], {}, str, 0.0)["hidden"] is None
+
+
+def test_catchup_route(client, engine, tmp_path, monkeypatch):
+    assert client.get("/api/v2/catchup").status_code == 404
+    _on(engine)
+    monkeypatch.setattr(phone_v2, "BUFFER_LOG", tmp_path / "none.jsonl")
+    r = client.get("/api/v2/catchup").json()
+    assert r["enabled"] and r["counts"]["held"] == 0 and isinstance(r["queue"], list)

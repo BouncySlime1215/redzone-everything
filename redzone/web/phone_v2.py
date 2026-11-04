@@ -350,6 +350,48 @@ def held_view(hidden_game: str | None, hidden_ready: bool, behind_s: float, home
             "back": back, "catchup": catch, "queued": sum(1 for m in queue if not m.replayed)}
 
 
+LEFT_END = {"left_resumed": "resumed", "left_expired": "expired", "left_lost": "lost"}   # STK-07 (#171)
+
+
+def catchup_queue(buffer_rows: list[dict], target_game: dict, hidden_target: str | None, hidden_ready: bool,
+                  held: dict, queue: list, scored: dict, name, now: float) -> dict:
+    """The catch-up queue (your-team catch-ups were the locked blocker: 73.5 vs 82.4): what the hidden stick
+    holds now (control.held: seconds behind live), tonight's STK-07 left-game holds from data/buffer.jsonl
+    (left_held -> left_resumed | left_expired | left_lost) with their age, and every catch-up waiting in the
+    decider's queue, your team first, each with whether its game is in a dead window right now
+    (Scored.is_break). Display only."""
+    holds: list[dict] = []
+    open_: dict = {}
+    for r in sorted(buffer_rows, key=lambda r: float(r.get("ts") or 0)):
+        k, t = r.get("kind"), r.get("target")
+        if k == "left_held":
+            open_[t] = {"target": t, "game_id": target_game.get(t), "held_at": float(r["ts"]),
+                        "base_s": float(r.get("behind_s") or 0.0), "end": None, "ended_at": None}
+            holds.append(open_[t])
+        elif k in LEFT_END and t in open_:
+            h = open_.pop(t)
+            h["end"], h["ended_at"] = LEFT_END[k], float(r["ts"])
+    for h in holds:
+        h["matchup"] = name(h["game_id"]) if h["game_id"] else str(h["target"])
+        h["age_s"] = round((h["ended_at"] or now) - h["held_at"] + h["base_s"], 1)
+        h["open"] = h["end"] is None and h["target"] == hidden_target
+    hid = target_game.get(hidden_target) if hidden_target else None
+    sc = scored or {}
+    dead = lambda gid: bool(sc[gid].is_break) if gid in sc else None   # noqa: E731
+    waiting = sorted((m for m in queue if not m.replayed), key=lambda m: (not m.must, not m.mine, m.t))
+    items = [{"game_id": m.game_id, "matchup": name(m.game_id), "label": m.label[:100], "kind": m.kind,
+              "mine": bool(m.mine), "must": bool(m.must), "ago_s": max(0, round(now - m.t)),
+              "due_in_s": max(0, round(m.t + m.due_s - now)) if m.due_s else None, "dead_now": dead(m.game_id)}
+             for m in waiting]
+    ends = [h["end"] for h in holds]
+    return {"hidden": {"game_id": hid, "matchup": name(hid) if hid else (hidden_target or ""), "target": hidden_target,
+                       "ready": bool(hidden_ready), "behind_s": round(float(held.get(hidden_target, 0.0)), 1),
+                       "dead_now": dead(hid) if hid else None} if hidden_target else None,
+            "holds": holds[::-1], "queue": items,
+            "counts": {"held": len(holds), "resumed": ends.count("resumed"), "expired": ends.count("expired"),
+                       "lost": ends.count("lost"), "queued": len(items), "yours": sum(1 for i in items if i["mine"])}}
+
+
 CATCHUP_KINDS = {"replay"}                                # a catch-up replay of a missed play
 INTERLEAVE_KINDS = {"break_visit", "return"}             # visit another game in a break, then come back
 PLAN = re.compile(r"\bplan=([A-Za-z0-9_-]+)")
@@ -746,6 +788,19 @@ def router(engine) -> APIRouter:
             return {"ok": False, "message": "day is YYYY-MM-DD"}
         rep = next((p for p in (base / f"{d.isoformat()}.md" for base in REPORTS) if p.exists()), None)
         return {"ok": rep is not None, "day": d.isoformat(), "text": rep.read_text(errors="replace")[:60000] if rep else ""}
+
+    @r.get("/catchup")
+    async def catchup():
+        if not _enabled(engine):
+            return _off()
+        from redzone.supervisor import read_jsonl as rows_between
+        now = time.time()
+        c, dec = engine.control, engine.decider
+        t0, _ = night_window(night_of(now))
+        tg = {t: g for g, w in engine.where.items() if (t := getattr(w, "target", None))}
+        return {"enabled": True, "now": now, **catchup_queue(
+            rows_between(BUFFER_LOG, t0, now + 1), tg, c.hidden_target if c.two_stick else None, c.hidden_ready,
+            dict(c.held), list(dec.queue), engine.scored, engine._name, now)}
 
     @r.get("/held")
     async def held():

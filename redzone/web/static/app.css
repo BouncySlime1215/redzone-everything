@@ -1223,6 +1223,7 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .v2-g-wv--up { color: var(--live); }
 .v2-g-wv--down { color: var(--text-3); }
 .v2-g-why { font-size: 12px; color: var(--text-3); }
+button.v2-held { width: 100%; text-align: left; font: inherit; font-size: 13px; color: inherit; cursor: pointer; }
 .v2-trend { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
 .v2-trend-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .v2-trend-top .m { font-size: 14px; }

@@ -375,6 +375,17 @@ function mockV2(path, b) {
       league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, stakes_line: ["AFC 1-seed race, top-5 matchup", "Rivalry game", "", "Wild-card push"][i] || "", stakes_pending: i === 2 || i > 3, is_break: i === 4, source: "stub" }));
     return { enabled: true, now: Date.now() / 1000, current: games[0] && games[0].game_id, games, source: games.length ? "stub" : null };
   }
+  if (path === "/api/v2/catchup") {
+    const now = Date.now() / 1000, g = (STATE.games || []).filter((x) => x.phase === "live");
+    const m = (i) => (g[i] || { id: "g" + i, matchup: "Game " + i });
+    return { enabled: true, now, hidden: { game_id: m(1).id, matchup: m(1).matchup, target: "HDMI2", ready: true, behind_s: 74.2, dead_now: false },
+      holds: [{ target: "HDMI2", game_id: m(1).id, matchup: m(1).matchup, held_at: now - 74, base_s: 0, end: null, ended_at: null, age_s: 74.2, open: true },
+        { target: "HDMI1", game_id: m(2).id, matchup: m(2).matchup, held_at: now - 1900, base_s: 0, end: "resumed", ended_at: now - 1810, age_s: 90, open: false },
+        { target: "HDMI2", game_id: m(3).id, matchup: m(3).matchup, held_at: now - 3600, base_s: 12, end: "expired", ended_at: now - 3400, age_s: 212, open: false }],
+      queue: [{ game_id: m(1).id, matchup: m(1).matchup, label: "Touchdown: 12-yd pass", kind: "td", mine: true, must: true, ago_s: 95, due_in_s: 85, dead_now: false },
+        { game_id: m(2).id, matchup: m(2).matchup, label: "Goal: power play", kind: "goal", mine: false, must: false, ago_s: 240, due_in_s: null, dead_now: true }],
+      counts: { held: 3, resumed: 1, expired: 1, lost: 0, queued: 2, yours: 1 } };
+  }
   if (path.startsWith("/api/v2/capture/report")) {
     return { ok: true, day: "2026-11-04", text: "# RedZone night report: 2026-11-04\n\n**41 switches (1 failed); key moments seen 37/40; 2 auto-fixes.**\n\n- Mid-play entries: 0\n- Held buffer rebuilt twice (drift)" };
   }

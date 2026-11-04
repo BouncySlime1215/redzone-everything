@@ -52,7 +52,7 @@ function heldLine() {
   if (v.held) rows.push(`<span><b>Holding</b> ${esc(v.held.matchup)}${v.held.behind_s ? ` · ${esc(fmtDur(v.held.behind_s))} behind live` : ""}${v.held.ready ? "" : " · loading"}</span>`);
   if (v.back) rows.push(`<span><b>Coming back</b> ${esc(v.back.text)}</span>`);
   if (v.catchup) rows.push(`<span><b>Next catch-up</b> ${esc(v.catchup.matchup)}: ${esc(v.catchup.label || v.catchup.kind)}${v.queued > 1 ? ` (+${num(v.queued - 1)} more)` : ""}</span>`);
-  return `<div class="v2-held" data-key="v2-held">${icon("hourglass")}<div>${rows.join("")}</div></div>`;
+  return `<button class="v2-held" data-key="v2-held" data-act="v2-catchup" aria-label="Catch-up queue">${icon("hourglass")}<div>${rows.join("")}</div></button>`;
 }
 
 function alertLine() {
@@ -105,6 +105,7 @@ export function missedBar() {
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
     <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>
     <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-catchup">${icon("hourglass")}Catch-up queue: held games and what's waiting</button>
     <button class="btn btn--ghost v2-span" data-act="v2-capture">${icon("moon")}Live night: did it become gold data?</button>
     <button class="btn btn--ghost v2-span" data-act="v2-ledger">${icon("activity")}Data + NFM: what the Noggin learns from</button></div>`;
 }
@@ -380,6 +381,37 @@ function trendSheet() {
 }
 ACTIONS["v2-trend"] = () => { trendS.data = null; openSheet({ id: "v2-trend", label: "How close to perfect", full: true, render: trendSheet }); loadTrend(); };
 ACTIONS["v2-trend-split"] = (el) => { trendS.split = el.dataset.f; trendS.data = null; const s = sheetById("v2-trend"); if (s) s.update(); loadTrend(); };
+
+/* ---------- Catch-up queue: what the hidden stick holds, tonight's left-game holds, and every catch-up waiting ---------- */
+const cq = { data: null };
+async function loadCatchup() {
+  try { cq.data = await api("/api/v2/catchup"); } catch (e) { cq.data = { error: e.message }; }
+  const s = sheetById("v2-catchup"); if (s) s.update();
+}
+const END_TXT = { resumed: ["pass", "Resumed"], expired: ["fail", "Hit the cap"], lost: ["fail", "Lost"] };
+function catchupSheet() {
+  const d = cq.data;
+  if (!d) return `<h3>Catch-up queue</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Catch-up queue</h3><p class="lead">${esc(d.error)}</p>`;
+  const c = d.counts || {}, h = d.hidden;
+  const dead = (x) => (x === true ? `<span class="tag tag--pass">dead ball now</span>` : x === false ? `<span class="tag tag--kind">in play</span>` : "");
+  const hid = h ? `<div class="v2-led"><div class="v2-led-top"><b>Hidden stick</b><span class="m">${esc(h.matchup || "nothing")}</span></div>
+      <div class="v2-led-nums"><span><b>${h.behind_s ? esc(fmtDur(h.behind_s)) : "live"}</b> behind live</span><span><b>${h.ready ? "ready" : "loading"}</b></span></div>${dead(h.dead_now)}</div>` : `<p class="lead">One stick only: nothing can be held.</p>`;
+  const q = arr(d.queue).map((m) => `<div class="v2-ev"><span class="v2-ev-ic">${icon(m.mine ? "star" : "replay")}</span><div style="min-width:0">
+      <div class="v2-ev-top"><span class="m">${esc(m.matchup)}</span><span class="t">${esc(fmtDur(m.ago_s))} ago</span></div>
+      <div class="v2-ev-why">${esc(m.label || m.kind)}${m.due_in_s != null ? ` · replay within ${esc(fmtDur(m.due_in_s))}` : ""}</div>
+      <div>${m.must ? `<span class="tag tag--fail">missed for another big play</span> ` : ""}${m.mine ? `<span class="tag tag--pass">your team</span> ` : ""}${dead(m.dead_now)}</div></div></div>`).join("");
+  const holds = arr(d.holds).map((x) => `<div class="v2-ms"><span class="tag tag--${x.open ? "kind" : (END_TXT[x.end] || ["kind"])[0]}">${x.open ? "holding" : esc((END_TXT[x.end] || [, "ended"])[1])}</span>
+      <span>${esc(x.matchup)} <small>held ${esc(fmtTime(x.held_at))} · ${esc(fmtDur(x.age_s))} behind${x.ended_at ? ` · ended ${esc(fmtTime(x.ended_at))}` : ""}</small></span></div>`).join("");
+  return `<h3>Catch-up queue</h3>
+    <div class="v2-tiles"><div class="stile"><b>${num(c.queued)}</b><span>Waiting</span></div>
+      <div class="stile"><b>${num(c.yours)}</b><span>Your team</span></div>
+      <div class="stile"><b>${num(c.resumed)}/${num(c.held)}</b><span>Left-game holds resumed</span></div></div>
+    ${hid}
+    <h4>Waiting to be caught up</h4>${q || `<p class="lead">Nothing waiting.</p>`}
+    <h4>Tonight's left-game holds</h4><div class="v2-mss">${holds || `<p class="lead">None yet (STK-07 holds the game we leave at its dead ball).</p>`}</div>`;
+}
+ACTIONS["v2-catchup"] = () => { cq.data = null; openSheet({ id: "v2-catchup", label: "Catch-up queue", full: true, render: catchupSheet }); loadCatchup(); };
 
 /* ---------- Live night: the morning check that last night became gold data (auto-log, provenance, held, report) ---------- */
 const cap = { data: null, day: "", report: null };
