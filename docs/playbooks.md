@@ -32,7 +32,7 @@ crunch value, P2 = robustness, P3 = polish.
 | id | trigger | action | fallback | test | line | lane | status |
 |---|---|---|---|---|---|---|---|
 | SAFE-01 | feed stale > 10 s on the target game | no cut into it; hold current | if current is stale too, stay put, re-poll at 1.5 s | feed_outage on target | mid_play | ② | partial |
-| SAFE-02 | sync σ on the target stick > 3 s | no cut; widen the wait to the next confirmed dead ball | hold until σ shrinks or a break anchor lands | sync ±3 s slice | mid_play | ② | new |
+| SAFE-02 | sync σ on the target stick > 3 s | no cut; widen the wait to the next confirmed dead ball | hold until σ shrinks or a break anchor lands | sync ±3 s slice | mid_play | ② | done (playbooks.safe, flag off: tests/test_playbooks_safe.py; night lab `sync_wide` in faults:safety) |
 | SAFE-03 | Wi-Fi RSSI drop / buffering > 2 events/min on either stick | safe mode: only cut on long breaks (TV timeout, quarter end) | hold current | new `wifi_degrade` fault | mid_play, dead_air | ② | new |
 | SAFE-04 | Reflex models disagree (ensemble spread > threshold) | abstain: hold | rules fallback (FLOOR_S timing) | replayed nights with noise | mid_play | ① | new |
 | SAFE-05 | clock skew detected (feed vs wall > 5 s) | re-anchor the clock; no cut until re-anchored | hold | clock_skew | mid_play | ② | exists |

@@ -74,6 +74,7 @@ def test_buttons_and_first_pick_are_never_held(clk):
     assert s.check(dec, switch(), cands, clk.wall) is None
 
 
+@pytest.mark.playbook("SAFE-02")
 def test_safe02_wide_sigma_needs_a_sure_dead_ball(clk):
     s = safety()
     centred = EntryPlan(True, 0.0, Landing("dead", "huddle"), "dead ball (centred)")
@@ -102,6 +103,7 @@ def test_safe03_degraded_network_cuts_only_into_long_breaks(clk):
     assert s.check(dec, switch(), cands, clk.wall) is None
 
 
+@pytest.mark.playbook("SAFE-05")
 def test_safe05_clock_jump_holds_until_reanchored(clk):
     s = safety()
     s.tick()
@@ -117,6 +119,7 @@ def test_safe05_clock_jump_holds_until_reanchored(clk):
     assert s.skew_at is None
 
 
+@pytest.mark.playbook("SAFE-05")
 def test_safe05_gives_up_after_reanchor_s(clk):
     s = safety(**{"playbooks.safe.reanchor_s": 60})
     s.tick()
@@ -142,6 +145,7 @@ def test_decider_writes_the_playbook_reason(clk):
     assert dec.safety.seen == {"SAFE-01": 1}
 
 
+@pytest.mark.playbook("SAFE-05")
 def test_safe05_backward_jump_waits_for_a_fresh_poll(clk):
     s = safety()
     s.tick()

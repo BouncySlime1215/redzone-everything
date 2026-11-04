@@ -216,6 +216,7 @@ def _wd(s: Sample, clock=lambda: 1000.0, **opts):
     return watchdog.Watchdog(dry_run=True, use_model=False, clock=clock, governor=FixedGov(s, **opts))
 
 
+@pytest.mark.playbook("MAC-04")
 def test_app_over_its_memory_cap_is_restarted_after_three_checks_but_never_in_crunch():
     w = _wd(Sample(procs={"service": 1500.0}))
     o = Obs()
@@ -243,6 +244,7 @@ def test_hard_rules_still_come_first():
     assert v.action == "prune_disk"
 
 
+@pytest.mark.playbook("MAC-04")
 def test_models_over_budget_drop_the_watchdogs_own_model():
     w = _wd(Sample(procs={"watchdog": 1700.0}))
     w._model = object()
