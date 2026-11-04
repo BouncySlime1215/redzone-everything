@@ -265,3 +265,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   locked, but big live only ties (77.5 / 68.8) and locked crunch live drops 84.9 -> 81.0, so it misses the
   bar. pct_of_oracle is unchanged (83.3 dev, 68.8 locked). The switch-rate cap is off because 90-180 s
   cost dead air on dev with no change in the switch rate. docs/noggin.md §11b.
+- 2026-11-04 2:30 PM (lane 2, planner ask, rule #1): **candidate gets `decider.entry.landing_lag_s=6` and
+  `decider.entry.ended_strict=true`** (new keys, default 0 / false). Why: with an honest per-tune landing error the
+  candidate made 1 NHL mid-play entry on every seed (BUF @ WSH, an urgent landing after a game ended). After: 0 on
+  all three seeds, NHL crunch 79.9 -> 81.3 (seed 0), every other line within 0.2, locked equal. The 6 s is
+  syncsim's upper end until Thursday's probe refits it.

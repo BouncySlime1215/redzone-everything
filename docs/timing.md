@@ -508,3 +508,28 @@ lever for NBA/NHL.
 and Oct 20 gains 5. The decision logs first diverge at a catch-up replay that starts 6 min earlier (the anchor
 lowered the doubt, so the gate opened sooner). From there the crunch picks differ, ending with a crunch wait
 stuck behind a 110 s rewound tune. A lab lesson: judge an NHL crunch delta under ~4 points over several seeds.
+
+### Landing lag in the entry margin (cycle 03, rule #1)
+
+With an honest per-tune landing error (`--tune-jitter 6`) the candidate made one NHL mid-play entry on every
+seed: an "ended" switch (the game on screen had finished) into BUF @ WSH at 18:57 of P1. It took the urgent
+2 s landing because WSH is your team, and the tune came up 4-6 s late. Candidate only:
+`decider.entry.ended_strict=true` (a switch off a finished game never takes the urgent landing: nothing on screen
+is lost by waiting) and `decider.entry.landing_lag_s=6` (syncsim's upper end; Thursday's probe refits it). The lag
+is one-sided, since a tune only ever lands late. It widens each pass's early side to cover at least 6 s, so a full
+2-sigma margin (which already covers it) is unchanged and only the thin centred/urgent passes move. Adding 6 s on
+top of every margin also gave 0 but cost NFL big live 54.4 -> 49.7 and NBA 77.5 -> 67.6.
+
+| dev, --tune-jitter 6 | seed 0 before -> after | seed 1 | seed 2 |
+|---|---|---|---|
+| NHL mid-play | 1 -> **0** | 1 -> **0** | 1 -> **0** |
+| NHL big live / crunch | 44.9 -> 44.7 / 79.9 -> 81.3 | 44.0 -> 44.2 / 78.0 = | 45.4 = / 82.1 = |
+| NFL big live / dead air | 54.4 = / 30.0 = | 54.9 -> 55.0 / 29.6 = | 54.3 = / 30.0 = |
+| NBA big live / mid-play | 77.5 = / 0 | 77.5 = / 0 | 84.5 = / 1 = 1 |
+
+Locked (`--tune-jitter 6`): every line equal (NHL seen within 10 min 78.8 -> 79.3), 0 mid-play. Dev without jitter:
+NHL crunch 80.6 -> 81.9, big live 44.9 -> 44.7, the rest equal.
+
+The NBA seed-2 entry is not the landing lag: it is mid-play with no jitter too. It is a 70 s rewind into GS @ DEN
+where the replayed feed has only two plays in the 200 s around the landing, so the grader can't call it dead.
+Open, a data-gap case.

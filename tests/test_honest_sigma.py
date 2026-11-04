@@ -76,3 +76,33 @@ def test_first_anchor_after_a_tune_feeds_the_calibration():
     book.anchor("youtubetv:g", 47.0, "break", 1.0, 1.0)     # second one after the same tune: ignored
     assert [round(r) for r, _ in cal.pool["youtubetv"]] == [5]
     assert book.get("youtubetv:g").cal_sigma is not None
+
+
+def _tracker():
+    from redzone.decider.cuts import DeadTracker
+    dt = DeadTracker(League.NFL)
+    dt.add("1", 1000, 1000, "rush", "run for 3", "Rush", None, 1)
+    dt.add("2", 1040, 1040, "pass", "pass for 8", "Pass Reception", None, 1)
+    dt.seen(1100, 10)
+    return dt                                   # dead 1003-1030, then from 1043
+
+
+def test_landing_lag_widens_only_a_thin_margin():
+    from redzone.decider.cuts import plan_entry
+    dt = _tracker()
+    kw = dict(can_rewind=False, relaxed=8.0, urgent=2.0)
+    # the picture would come up at 1006: an urgent (2 s) landing is fine on time, not 6 s late
+    a = plan_entry(dt, 100.0, 20.0, 1101.0, 5.0, **kw)
+    b = plan_entry(dt, 100.0, 20.0, 1101.0, 5.0, lag=6.0, **kw)
+    assert a.ok and "(urgent)" in a.why and not b.ok
+    # a full margin already covers the lag: same answer either way
+    for x in range(990, 1050, 2):
+        a = plan_entry(dt, 100.0, 20.0, x + 95.0, 5.0, can_rewind=False)
+        b = plan_entry(dt, 100.0, 20.0, x + 95.0, 5.0, can_rewind=False, lag=6.0)
+        assert (a.ok, a.why) == (b.ok, b.why)
+
+
+def test_candidate_takes_the_landing_lag_and_strict_ended_entries():
+    from redzone.noggin import profile
+    args = profile.argv("candidate", "nhl")
+    assert "decider.entry.landing_lag_s=6" in args and "decider.entry.ended_strict=true" in args
