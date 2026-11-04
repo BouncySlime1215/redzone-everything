@@ -39,7 +39,7 @@ def test_each_mode_lands_on_userstate_and_bad_ones_are_refused(tmp_path):
     assert e.snapshot()["mode"]["commit"] is None
 
 
-async def test_a_commit_survives_a_restart_and_a_past_end_time_is_dropped(tmp_path):
+async def test_a_commit_survives_a_restart_and_a_past_end_time_still_ends_the_night(tmp_path):
     e = make(tmp_path)
     e.action("commit", "g7", {"mode": "stop_after", "game_id": "g7"})
     await e.close()
@@ -49,8 +49,10 @@ async def test_a_commit_survives_a_restart_and_a_past_end_time_is_dropped(tmp_pa
     await again.close()
     path = tmp_path / "user_state.json"
     state = userstate.capture(again.decider.user, None)
-    userstate.save(path, {**state, "commit": {"mode": "end_at", "at": time.time() + 60}}, now=time.time())
-    assert userstate.load(path, now=time.time() + 120)["commit"] is None   # its end time passed while we were down
+    at = time.time() + 60
+    userstate.save(path, {**state, "commit": {"mode": "end_at", "at": at}}, now=time.time())
+    assert userstate.load(path, now=time.time() + 120)["commit"] == {"mode": "end_at", "at": at}   # passed while down: kept
+    assert userstate.load(path, now=time.time() + userstate.STALE_S + 60)["commit"] is None       # tomorrow: gone
 
 
 def test_a_retried_commit_tap_runs_once_with_the_usual_ack(tmp_path):
