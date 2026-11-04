@@ -244,3 +244,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   STK-06 drift fault at t=4700 fell inside the rebuild hold that the unheld-standby detection starts (with #132), so no
   drift row was ever written. buffer_lost now takes `wait_s` and hits the first held, playing standby after `at`; the
   test reads the drift error relative to the hold's last booked value (a rebuild books 88.6 of 90 s).
+- 2026-11-04: **A screen we forgot is a screen nobody watches.** Night lab seed 2: the stick on screen came back
+  from an adb drop, `_forget` (hardening.sticks off) cleared on_target, and the during-a-switch screen check
+  returned on "no target", so a "Still watching?" sat 110 s (limit 60). Now a forgotten screen still gets a
+  prompt-only check (CENTER only on a prompt read from a screenshot): cleared at 46 s, 2/2 reruns pass.
+  Seed 1 alone (CI) never showed it; run a second seed before calling a night clean.

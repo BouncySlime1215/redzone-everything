@@ -67,6 +67,8 @@ DEVICES = Path(__file__).resolve().parent.parent / "data" / "devices.json"
 MAX_SAFE_WAIT_S = 25.0     # how long a flip may wait for a safe moment before giving up
 SAFE_POLL_S = 0.2          # re-check for that moment this often (a cheap local computation)
 PRELOAD_BACKOFF_S = 120.0  # a preload that failed isn't retried for this long
+STANDBY_REPAUSE_N = 3      # [APP-04] the same standby paused off screen this many times...
+STANDBY_REPAUSE_S = 600.0  # ...within this long is not CEC: the app is blocked there (a forced update)
 MIN_PRELOAD_GAP_S = 5.0    # never start preloads back to back faster than this
 CEC_RETRY_S = 600.0        # a stick whose CEC flip failed goes straight to the TV remote this long
 CEC_SYNC_S = 30.0          # re-ask the sticks which one is on screen this often (when idle)
@@ -251,6 +253,7 @@ class Controller:
         self._preloading: tuple[str, str | None] | None = None   # (target, replay_id) being loaded
         self._last_preload = 0.0
         self._failed: dict[str, float] = {}      # target -> don't preload before
+        self._repaused: dict[tuple[str, str], list[float]] = {}   # [APP-04] (host, target) -> STK-05 drop times
         self.on_preload_fail: Callable[..., None] | None = None   # (target, detail, host=): teach discovery
         # Discovery's per-stick answer (host, target) -> bool: one stick can be signed out of an
         # app the other plays (Peacock on .181 only). None = every stick can play every app.
@@ -1565,10 +1568,16 @@ class Controller:
         replay = self.on_target is None
         target = self.on_target or self._replay_target(stick)
         if not target:
-            return
+            # The TV shows this stick but we've forgotten what (it came back from an adb drop without
+            # hardening.sticks, _forget): night lab seed 2, a "Still watching?" sat 110 s on screen
+            # through four "no safe moment" waits. Prompt-only, like a replay: a paused app that draws
+            # its own prompts gets CENTER only when a screenshot shows the prompt; nothing else.
+            target = await self._paused_prompt_app(stick)
+            if not target:
+                return
         pkg = self._package(stick, target)
         pb = await stick.playback(pkg)
-        if self.main is not stick or (self.on_target or self._replay_target(stick)) != target \
+        if self.main is not stick or (self.on_target or self._replay_target(stick) or target) != target \
                 or pb.get("read_ok") is False:
             return
         now = time.time()
@@ -1598,6 +1607,18 @@ class Controller:
             self.note = ""
         elif not replay:
             self.note = f"The TV stopped playing {target}; couldn't restart it yet (retrying)"
+
+    async def _paused_prompt_app(self, stick: Stick) -> str | None:
+        """"<app>:" for an app on this stick that draws its own on-screen prompts (YouTube TV) and
+        reads paused in front, else None. Only for a prompt-only check (_unstall_visible)."""
+        for app, tuner in TUNERS.items():
+            pkg = stick.packages.get(getattr(tuner, "role", app))
+            if not pkg or not getattr(tuner, "screenshot_prompts", False):
+                continue
+            pb = await stick.playback(pkg)
+            if pb.get("state") == "paused" and pb.get("pkg") in (None, pkg):
+                return f"{app}:"
+        return None
 
     def _replay_target(self, stick: Any) -> str | None:
         """The target of the catch-up replay this stick was flipped to, while nothing has flipped since."""
@@ -2297,6 +2318,17 @@ class Controller:
         if self._plays_target(stick, target, last, pkg):
             stick.remember(target, last)
             return "auto"
+        if self._dialog_back(stick, target, last, pkg):
+            # playbook=APP-04: still paused after MEDIA_PLAY and no prompt read: YouTube TV draws an
+            # "update available" window over its player that only BACK dismisses (it pauses the
+            # player and ignores play). One BACK, then the re-link below if that wasn't it.
+            log.info("playbook=APP-04 %s: %s still paused after play; one BACK for a dialog", stick.host, target)
+            await stick.key("KEYCODE_BACK")
+            pb = await self._await_playing(stick, target, pkg, RESUME_PLAY_WAIT_S)
+            if pb is not None:
+                stick.remember(target, pb)
+                return "back"
+            last = await stick.playback(pkg)
         log.warning("%s isn't playing %s (%s); loading it again", stick.host, target, last.get("state"))
         try:
             # Prime needs its page, "Watch" and "Watch Live" before video: ~33 s on these sticks (Nov 2).
@@ -2309,6 +2341,30 @@ class Controller:
             return "relink"
         log.warning("re-load of %s on %s failed: %s", target, stick.host, res.error)
         return None
+
+    def _standby_blocked(self, hid: Stick, target: str) -> bool:
+        """[APP-04] A flip pauses the stick it leaves once (STK-05). The same standby pausing again and
+        again off screen, with no flip, is the app blocked behind a window that keeps coming back (a
+        forced update): stop re-tuning it there for PRELOAD_BACKOFF_S x 5 and say so on the phone."""
+        now = time.time()
+        times = [x for x in self._repaused.get((hid.host, target), []) if now - x < STANDBY_REPAUSE_S] + [now]
+        self._repaused[(hid.host, target)] = times
+        if len(times) < STANDBY_REPAUSE_N:
+            return False
+        self._repaused.pop((hid.host, target), None)
+        self._failed[target] = now + 5 * PRELOAD_BACKOFF_S
+        self.note = (f"{target.split(':', 1)[0]} keeps stopping on {getattr(hid, 'name', '') or hid.host} (an app update "
+                     "window?); not pre-tuning it there for 10 min")
+        log.warning("playbook=APP-04 standby %s on %s paused %d times in %.0f min: blocked there for %.0f s",
+                    target, hid.host, len(times), STANDBY_REPAUSE_S / 60, 5 * PRELOAD_BACKOFF_S)
+        return True
+
+    @staticmethod
+    def _dialog_back(stick: Stick, target: str, pb: dict, pkg: str | None) -> bool:
+        """[APP-04] Worth one BACK: YouTube TV is in front and paused (an update dialog over its player
+        reads exactly so). Not Prime (BACK leaves its player for the detail page) and not the home screen."""
+        return (target.startswith("youtubetv:") and pb.get("state") == "paused"
+                and (not pkg or pb.get("pkg") in (None, pkg)))
 
     async def restore_visible(self, target: str, relink: bool = False, why: str = "") -> str | None:
         """The supervisor saw the stick on screen showing the Fire TV home screen or an app page
@@ -2661,6 +2717,8 @@ class Controller:
                      "paused" if state == "paused" else "a stale PLAYING (active=false)")
             self._set_hidden(None, False)
             self._last_preload = 0.0   # re-tune at once, not after the preload gap
+            if state == "paused" and self._standby_blocked(hid, target):
+                self._last_preload = time.time()
             return
         if state not in expect:
             log.info("standby %s is %s, not %s — it'll be reloaded", target, state, "/".join(expect))
