@@ -25,6 +25,10 @@ HISTORY = DATA / "config_history"
 # (min, max) for numeric settings, matched by dotted-path prefix; most specific wins.
 LIMITS: dict[str, tuple[float, float]] = {
     "server.port": (1024, 65535),
+    "noggin.priority.prefs.bets_weight": (0, 2),
+    "noggin.priority.prefs.rivalry_points": (0, 15),
+    "noggin.priority.prefs.nhl_pp_ot_boost": (0, 2),
+    "noggin.priority.prefs.switch_frequency": (0.5, 2),
     "polling.live_s": (5, 60),
     "college.top_n": (1, 25),
     "polling.hot_s": (2, 30),

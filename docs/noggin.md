@@ -228,3 +228,67 @@ ships OFF behind `noggin.timing.leagues`.
 
 Next leagues for the factory: NFL (nflfastR `time_of_day`), CBB/WCBB (same loader as NBA, needs a
 live-path check), CFB, NHL (fastRhockey + ESPN wallclock), MLB.
+
+## 10. Phase 1b + 2 results (Nov 4, NFL Timing, NBA Predict)
+
+**Data factory, NFL** (`factory.build_football`): nflverse / nflfastR play-by-play 2011-2024
+(`time_of_day` is the snap, like ESPN's NFL wallclock). **587,528 labeled windows**, 3,811 games; train
+2011-09 → 2021-09 (571 nights), calib → 2023-09 (122), test → 2025-02 (122). The 2025 season (the scorecard
+window) is never written. To make a label mean what the live tracker sees on ESPN (checked against 150
+archived ESPN games): the extra point / two-point try folds into the touchdown entry, END QUARTER / END GAME
+take the previous play's wallclock (ESPN: median 0 s), and the windows around each 2:00 crossing in Q2/Q4
+are dropped (nflfastR has no two-minute-warning row, so that break is unseen). ESPN's "Official Timeout"
+(TV) entries have no nflfastR row: the model learns the physical restart after a punt/score/injury, which
+is the safe direction for a lower bound, and the live hook returns no reading for kinds it never trained
+on (`tv_timeout`, `two_minute`), so those keep `cuts.FLOOR_S`.
+
+**Noggin Timing v1, NFL** (`models/timing_nfl.v1.npz`, 120 KB, 300 trees, 4.77M person-period rows,
+17 features). Test: 122 unseen nights, 82k windows:
+
+| | Timing v1 | `cuts.FLOOR_S` |
+|---|---|---|
+| restarts before the bound | **1.43 %** | 9.1 % |
+| mean bound (s left) | 6.3 | 13.0 |
+| ECE, P(restart within 30 s) | 0.076 | – |
+
+Injury (8.1 %) and review (4.7 %) are above alpha on the test nights: too few calib rows to calibrate them per
+kind. Candidate NFL scorecard with `noggin.timing.leagues: [nba, nfl]`, dev / locked: mid-play 0 / 0 (=),
+big plays live 49.4 → 49.6 / 45.6 → 45.8 %, crunch live 65.4 → 65.2 / 67.0 → 68.1 %, dead air
+12.5 → 12.3 / 12.6 → 12.5 %. A safer bound at no measured cost; ships OFF.
+
+**Noggin Predict v1, NBA** (`predict.py`, `predict_fit.py`, `models/predict_nba.v1.npz`, 302 KB): P(big play
+within 30 / 60 / 120 s of the restart), 13 features (`features.PREDICT_FEATURES`: window + game state at
+the restart, one definition with the live `PredictHook`), LightGBM per horizon (225 / 211 / 238 trees) +
+isotonic calibration on calib. 757k train windows. 5-fold season forward CV (2021-2025 seasons), and one
+grade on the FULL test split (421 nights, 166k windows):
+
+| horizon | CV logloss mean / worst | test logloss (baseline) | test PR-AUC (baseline) | test ECE | beats baseline every fold |
+|---|---|---|---|---|---|
+| 30 s | 0.491 / 0.498 | 0.495 (0.509) | 0.270 (0.240) | 0.006 | yes |
+| 60 s | 0.624 / 0.631 | 0.629 (0.652) | 0.444 (0.416) | 0.011 | yes |
+| 120 s | 0.652 / 0.653 | 0.647 (0.684) | 0.642 (0.615) | 0.012 | yes |
+
+Baseline = base rate × game state (train-night rate per period × 2-minute clock bucket × margin bucket).
+Latency: 8 games × 3 horizons 0.75 ms p50 / 1.35 ms p99. The signal is real but small (AUC ~0.59): made
+threes are close to random. As an L4 term in the Priority pick (`noggin.predict.points` × (P60 − base
+rate), needs `noggin.priority.enabled`), candidate NBA scorecard dev / locked: big plays live 81.7 → 81.7 /
+100 → 100 %, crunch live 90.9 → 89.6 / 93.3 → 93.3 %, entries mid-play 5 → 4 / 4 → 4, dead air
+19.2 → 18.8 / 24.2 → 24.2 %. The NBA sim switches ~1.2 times an hour, so a pick-time term has little to act
+on. Ships OFF (`noggin.predict.leagues: []`) and does not join the candidate.
+
+**NHL factory + Timing v1 NHL + Predict v1 NHL** (built on a GitHub runner: the container can't reach
+ESPN). ESPN summaries 2011-2027, but ESPN NHL plays carry wallclocks only from the 2019-20 season on, so
+the table is 2020+: 6,247 train / 1,438 calib / 1,533 test games, 324k train windows (4.36M hazard rows).
+Regulation is 3 × 20 min (`features.REG`); a big play is every goal (sportsgrade's NHL rule).
+
+- Timing NHL (`models/timing_nhl.v1.npz`, 118 KB, 298 trees, 17 features): 0.36 % of restarts below the
+  2 % bound on the test nights vs FLOOR_S 1.16 %, mean bound 13.6 s vs 12.2 s, ECE 0.042.
+- Predict NHL (`models/predict_nhl.v1.npz`, 161 KB, 60 / 117 / 186 trees): test logloss 0.146 / 0.240 /
+  0.365 vs baseline 0.148 / 0.245 / 0.372 at 30 / 60 / 120 s; CV beats the baseline every fold at 60 and
+  120 s, not at 30 s (goals within 30 s are 3.4 %).
+- Candidate NHL scorecard, base / +Timing / +Timing+Predict, dev (66 games) and locked (34): every line
+  equal (dev mid-play 1 / 1 / 1, goals live 44.7 %, crunch 80.6 %, dead air 22.4 / 22.4 / 22.3 %; locked
+  mid-play 0, goals live 48.1 %, crunch 84.7 %). Predict at 80 or 300 points: still equal on dev.
+
+The NHL sim switches ~4 times an hour; the hindsight ceiling for goals live is 85 % (#89). The gap is the
+schedule, not the readings: next is Reflex PICK by imitation of the oracle. Both NHL models ship OFF.

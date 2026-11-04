@@ -22,6 +22,7 @@ import re
 from redzone.channels import parse_yttv_link
 from redzone.config import LIMITS, ConfigError
 from redzone.engine import Engine
+from redzone.web import phone_v2
 
 STATIC = Path(__file__).with_name("static")
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -51,6 +52,17 @@ def _target_from_link(link: str) -> str | None:
         return f"youtubetv:ev:{code}"
     m = re.search(r"gti=(amzn1\.dv\.gti\.[0-9a-fA-F-]+)", link)
     return f"prime:{m.group(1)}" if m else None
+
+
+def _tap_status(engine: Engine, rec: dict) -> dict:
+    """"state" of a tap: failed | done | waiting (a "Watch this" the TV hasn't followed yet) and,
+    for a game tap, on_tv = that game is what the TV shows now."""
+    if not rec["ok"]:
+        return {"state": "failed"}
+    if rec["action"] in ("hold", "watch", "redzone", "focus") and rec.get("game_id"):
+        on = engine.decider.current == rec["game_id"]
+        return {"state": "done" if on else "waiting", "on_tv": on}
+    return {"state": "done"}
 
 
 def build_app(engine: Engine) -> FastAPI:
@@ -95,6 +107,7 @@ def build_app(engine: Engine) -> FastAPI:
         return FileResponse(STATIC / "index.html")
 
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
+    app.include_router(phone_v2.router(engine))   # flag phone.v2 (off): reasons, 👍/👎, "I missed that", L2
 
     @app.get("/reel.mp4")
     def reel_file():
@@ -135,13 +148,24 @@ def build_app(engine: Engine) -> FastAPI:
 
     @app.post("/api/action")
     async def action(body: dict):
-        try:
-            ok, msg = engine.action(str(body.get("action", "")), body.get("game_id"), body.get("value"))
-        except Exception as e:  # a bad tap never crashes the server
-            ok, msg = False, f"Something went wrong: {e}"
-        engine.decide()
-        engine.broadcast()
-        return {"ok": ok, "message": msg}
+        """One phone tap. With an "id" it runs once: a retry with the same id gets the first answer
+        back ("duplicate": true) instead of running again (redzone/commands.py)."""
+        act, gid, value = str(body.get("action", "")), body.get("game_id"), body.get("value")
+        rec = engine.commands.run(body.get("id"), act, gid, value, lambda: engine.action(act, gid, value))
+        if not rec["duplicate"]:
+            engine.decide()
+            engine.broadcast()
+        return {"ok": rec["ok"], "message": rec["message"], "id": rec["id"], "duplicate": rec["duplicate"],
+                **_tap_status(engine, rec)}
+
+    @app.get("/api/action/{cid}")
+    async def action_status(cid: str):
+        """A tap's status by id: what it answered, and whether the TV has done it yet."""
+        rec = engine.commands.status(cid)
+        if rec is None:
+            return JSONResponse({"ok": False, "message": "unknown or expired tap id"}, status_code=404)
+        return {"ok": rec["ok"], "message": rec["message"], "id": cid, "action": rec["action"],
+                "game_id": rec["game_id"], **_tap_status(engine, rec)}
 
     @app.post("/api/recorded/start")
     async def recorded_start(body: dict):

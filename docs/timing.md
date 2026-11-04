@@ -276,6 +276,23 @@ one of the things Wednesday will settle. The next step builds break anchors (sam
 `break_end` plus the feed event wallclock) into `redzone/decider/sync.py`. delay_mu and delay_sigma are
 exposed through DelayBook for the Noggin.
 
+## Sync stack (Nov 4, overnight)
+
+- **Known moves keep the sync.** `DelayBook.set_behind(..., known_sd=0.5)` is used for the controller's holds
+  and stalls (`Engine._on_behind`), and it calls `SyncBook.shift`. The estimate moves by the measured amount and
+  gains 0.5 s of doubt. Before this, every booked stall re-synced the channel from its prior.
+- **Network condition → error bar.** `SyncProbe._condition` turns stalls per minute (last 5 min), RSSI below
+  -65 dBm and an RSSI drop of 10 dB or more within 2 min into `q_scale` (1 to 25). `SyncBook.condition`
+  multiplies the delay's random-walk noise by it, so `d.current_sigma()` grows faster on a bad link. That is
+  the variance the Reflex reads.
+- **Break anchors.** An ad label appearing or going in the hidden stick's UI tree is placed midway between
+  two reads (sd = gap/√12). It is matched to the game's last dead ball 10 to 240 s earlier:
+  z = t − wallclock − `start_bias_s` (15 ± 10 s, a prior). Every edge goes to
+  `recordings/<day>/sync_anchors.jsonl` (ts, target, stick, sample_kind, feed_wall, z) as the Noggin's labels.
+  It reaches the filter only with `sync.break_anchor.enabled`.
+- **Drift alarm.** `SyncBook.alarms` flags "measured" when the delay moved more than 5 s since it synced (a
+  restart keeps the plan, so a jump counts), and "predicted" when q_scale ≥ 9. Alarms are logged once per
+  5 min. `sync.drift_alarm.resync` re-tunes the hidden standby when no switch is pending (off by default).
 ## Sims score the feed actually in use (planner 2:45 AM item 3, Nov 4)
 
 `--real-lag` used to draw every league's feed lag from ESPN's summary profile, even when the config decides
@@ -301,3 +318,22 @@ NHL dev split (`fit`, 10 nights, `--real-lag`), ESPN profile vs `--set sources.n
 
 The single mid-play cut moves from seed to seed and shows up with either feed (base: seeds 1 and 2;
 wsc: seed 0, night 20261024).
+
+## Entry policy in the candidate: no blind cap, crunch rewinds (Nov 4, cycle 01)
+
+The remaining NBA mid-play entries in the candidate were entry policy, not timing: two were a finished game
+leaving after the 180 s `decider.entry.max_wait_s.nba` cap ran out, and the rest were crunch-time entries
+going in live (`decider.entry.crunch_now: live`). NBA dev nights (fit split), candidate profile, B=90:
+
+| variant | mid-play entries | missed on entry | big seen | big live | crunch live |
+|---|---|---|---|---|---|
+| candidate before (cap 180, crunch live) | 6/61 | 4 | 84.5 | 81.7 | 90.9 |
+| no cap, crunch live | 4/60 | 2 | 84.5 | 81.7 | 90.9 |
+| **no cap, crunch rewind (shipped in the candidate)** | **3/60** | **1** | 84.5 | 81.7 | 90.9 |
+| no cap, crunch wait capped at 15 s | 2/60 | 0 | 83.1 | 80.3 | 90.6 |
+| no cap, crunch wait capped at 60 s | 2/60 | 1 | 80.3 | 77.5 | 90.1 |
+| no cap, crunch wait | 0/60 | 0 | 80.3 | 77.5 | 90.0 |
+
+A crunch entry with no rewind in reach has to choose between landing mid-play and missing what happens
+while it waits; any wait costs plays. Full North Star, candidate column: dev mid-play 0.35 -> 0.23 per 100,
+locked 0.33 -> 0.17, every other line unchanged (dead air dev 18.90 -> 18.95, locked 20.35 -> 20.32).

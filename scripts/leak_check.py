@@ -29,10 +29,29 @@ ARCHIVE = ROOT / "data" / "archive"
 LEAGUES = ("nfl", "nba", "nhl")
 
 
+MIN_LOCKED = 8   # the release gate's minimum locked nights per league (cycle 01 plan, EVAL2)
+
+
 def _split(league: str):
-    from redzone.lab import splits
-    an = splits.archive_nights(ARCHIVE / league)
+    from redzone.lab import evaldata, splits
+    # Only nights inside the pin (window end), the same nights the scorecards grade: nights the live
+    # recorder adds later are fresh, never part of the locked split.
+    an = splits.archive_nights(ARCHIVE / league, evaldata.window_end(league, None))
     return an, splits.split_nights(an)
+
+
+def check_locked_nights() -> list[tuple[str, str, str]]:
+    """PASS when a league's locked set has >= MIN_LOCKED nights, else PENDING (thin data can't reach
+    PASS on the locked lines; it is not a leak, so it never fails the build). eval-data-v2 fixes v1's 4."""
+    out = []
+    for lg in LEAGUES:
+        if not (ARCHIVE / lg).exists():
+            continue
+        _, s = _split(lg)
+        n = len(s.test)
+        out.append(("PASS" if n >= MIN_LOCKED else "PENDING", f"locked_nights_{lg}",
+                    f"{n} locked nights (from {s.test[0] if s.test else '-'}), need >= {MIN_LOCKED}"))
+    return out
 
 
 def check_splits() -> list[tuple[str, str, str]]:
@@ -56,6 +75,29 @@ def locked_games() -> dict[str, set[str]]:
         if (ARCHIVE / lg).exists():
             an, s = _split(lg)
             out[lg] = {g for n in s.test for g in an.get(n, ())}
+    return out
+
+
+def check_locked_unseen_by_previous_pin() -> list[tuple[str, str, str]]:
+    """When grading on another pin (RZ_EVAL_LOCK), its LOCKED nights must not be nights the default pin
+    (eval-data.lock.json) let anyone tune on (that pin's train/valid). Moving the window forward makes
+    the newest 25 % slide back over old dev nights, and everything tuned on them would score high there."""
+    from redzone.lab import evaldata, splits
+    default = ROOT / "eval-data.lock.json"
+    if evaldata.LOCK == default or not default.exists():
+        return []
+    prev = evaldata.load_lock(default)
+    out = []
+    for lg in LEAGUES:
+        w = prev["window"].get(lg)
+        if not w or not (ARCHIVE / lg).exists():
+            continue
+        an, s = _split(lg)
+        old = splits.split_nights([n for n in an if w["start"] <= n <= w["end"]])
+        seen = sorted(set(s.test) & set(old.train + old.valid))
+        out.append(("FAIL" if seen else "PASS", f"locked_unseen_{lg}",
+                    f"{len(seen)} locked nights were {prev['tag']} dev nights ({', '.join(seen[:5])})" if seen else
+                    f"no locked night was a {prev['tag']} dev night"))
     return out
 
 
@@ -142,7 +184,7 @@ def check_known_errors(today: date | None = None) -> list[tuple[str, str, str]]:
 
 def run_all() -> list[tuple[str, str, str]]:
     rows = []
-    for fn in (check_splits, check_night_fixtures, check_replay_fields, check_model_stamps, check_known_errors):
+    for fn in (check_splits, check_locked_nights, check_locked_unseen_by_previous_pin, check_night_fixtures, check_replay_fields, check_model_stamps, check_known_errors):
         try:
             rows += fn()
         except Exception as e:

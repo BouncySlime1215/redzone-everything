@@ -148,6 +148,8 @@ jobs:
           python -m pytest -q -rs -p no:cacheprovider "${e2e[@]}"
       - name: pytest (mac_only tests are skipped by name on Linux)
         run: python -m pytest -q -rs -p no:cacheprovider --junitxml=pytest-${{ matrix.python }}.xml
+      - name: playbook coverage (a `done` entry must have a marked test that passed)
+        run: python scripts/playbook_coverage.py --junit pytest-${{ matrix.python }}.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -196,6 +198,13 @@ jobs:
       - name: smoke run, base (same slice, same data)
         if: github.event_name == 'pull_request'
         run: python head/scripts/ci_scorecard.py --root base --out base.json
+      - name: RAM/CPU of the decide() tick, PR vs base (scripts/perf_probe.py)
+        continue-on-error: true
+        run: |
+          python head/scripts/perf_probe.py --root head --json perf-head.json
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python head/scripts/perf_probe.py --root base --json perf-base.json || true
+          fi
       - name: North Star on dev-test nights, PR vs base (scripts/northstar.py; the locked set never goes in a PR delta)
         if: github.event_name == 'pull_request'
         continue-on-error: true
@@ -265,6 +274,11 @@ jobs:
             args+=(--note "Scorecards skipped: the pinned eval dataset ($EVAL_DATA_TAG) is not published yet.")
           fi
           [ -f results/northstar.md ] && args+=(--section results/northstar.md)
+          [ -f results/perf-head.json ] && args+=(--perf results/perf-head.json)
+          [ -f results/perf-base.json ] && args+=(--perf-base results/perf-base.json)
+          jarg=(); [ -f results/pytest-3.12.xml ] && jarg=(--junit results/pytest-3.12.xml)
+          python scripts/playbook_coverage.py "${jarg[@]}" --md playbooks.md || echo "::error::playbook coverage failed"
+          [ -f playbooks.md ] && args+=(--section playbooks.md)
           args+=(--note "$JOBS")
           python scripts/ci_report.py "${args[@]}" --out comment.md || true
           cat comment.md >> "$GITHUB_STEP_SUMMARY"

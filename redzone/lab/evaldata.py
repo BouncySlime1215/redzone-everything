@@ -17,11 +17,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-LOCK = ROOT / "eval-data.lock.json"
+# RZ_EVAL_LOCK=eval-data-v2.lock.json grades on another pin (a repo-root file name) without
+# switching the default: v2 lands next to v1 so every lane keeps comparable deltas (cycle 01 plan, task 4).
+LOCK = ROOT / os.environ.get("RZ_EVAL_LOCK", "eval-data.lock.json")
 PIN_NAME = "eval_pin.json"          # inside data/, shipped in the tarball
 REPO = "BouncySlime1215/redzone-everything"
 LEAGUES = ("nfl", "nba", "nhl")

@@ -422,9 +422,10 @@ class DelayBook:
         self._refresh_app(self.app(target))   # every channel of this app without its own taps learns too
         return d
 
-    def set_behind(self, target: str, behind_s: float) -> None:
+    def set_behind(self, target: str, behind_s: float, known_sd: float | None = None) -> None:
         """[cut timing] This tune now runs behind_s further behind the live edge (a rewind on entry),
-        or 0 again (a fresh tune, a jump back to live)."""
+        or 0 again (a fresh tune, a jump back to live). known_sd: the move was MEASURED (a hold or a
+        stall timed on the stick's clock): the sync filter shifts by it instead of re-syncing."""
         d = self.get(target)
         behind_s = max(0.0, behind_s)
         delta = behind_s - d.behind
@@ -433,7 +434,10 @@ class DelayBook:
         if d.base is not None:
             d.base = (d.base[0] + delta,) + d.base[1:]
         if delta and self.sync is not None:
-            self.sync.tuned(target)            # a seek: the screen delay moved, re-sync
+            if known_sd is not None and behind_s > 0:
+                self.sync.shift(target, delta, known_sd)   # [SYNC 1] a measured move: keep the sync
+            else:
+                self.sync.tuned(target)        # a seek: the screen delay moved, re-sync
 
     def buffered(self, target: str) -> None:
         """The stream stalled: it's now further behind, and we're less sure by how much."""

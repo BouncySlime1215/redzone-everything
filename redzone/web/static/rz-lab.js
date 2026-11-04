@@ -4,7 +4,7 @@ import { app, ACTIONS, hooks, attr, esc, num, get, arr, clamp, reduceMotion, SPR
 import { patch } from "./rz-dom.js?v=40";
 import { icon, empty, sec, screenHead, skel, odo } from "./rz-ui.js?v=40";
 import { toast } from "./rz-sheet.js?v=40";
-import { api, act } from "./rz-api.js?v=40";
+import { api, act } from "./rz-api.js?v=42";
 import { screenEvidence } from "./rz-evidence.js?v=40";
 import { recordedPanel } from "./rz-recorded.js?v=40";
 

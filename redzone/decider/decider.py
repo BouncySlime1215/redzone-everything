@@ -1575,6 +1575,28 @@ class Decider:
             opts[cur] = self._option(cur, self._known[cur])
         return CoreState(self._clock() if now is None else now, cur, opts, home=self.home_break_visit)
 
+    def _predict_points(self, gid: str, x: Candidate) -> float:
+        """[noggin predict] L4 term: noggin.predict.points x (P(big play within 60 s of the restart) - the
+        league's base rate), bounded to +-points. 0 unless noggin.predict.leagues has this league."""
+        lg = x.scored.league
+        hooks = self.__dict__.setdefault("_predict_hooks", {})
+        if lg not in hooks:
+            from redzone.noggin.live import predict_hook_for
+            hooks[lg] = predict_hook_for(self.cfg, lg)
+        hook, tl = hooks[lg], self.timelines.get(gid)
+        if hook is None or tl is None:
+            return 0.0
+        try:
+            r = hook.reading(gid, tl, self._clock())
+        except Exception:  # noqa: BLE001 - a bad reading only drops the term
+            log.exception("noggin predict for %s", gid)
+            return 0.0
+        if not r or 60 not in r:
+            return 0.0
+        pts = float(self.cfg.get("noggin.predict.points", 20))
+        base = float((hook.model.info.get("rate") or {}).get("60", 0.0))
+        return max(-pts, min(pts, pts * (r[60] - base)))
+
     def _best(self, watchable: dict[str, Candidate], exclude: str | None) -> str | None:
         """The best destination by the core's rate: never the reel (a break filler), never a game whose
         break is on screen when we'd land."""
@@ -1590,8 +1612,10 @@ class Decider:
             from redzone.noggin import wire
             hold = self.cfg.get("decider.crunch.hold_personal", 5)
             yours = self._yours | {g for g in watchable if watchable[g].scored.personal >= hold}
-            return wire.pick(self.cfg, watchable, [o.id for o in opts], yours,
-                             {o.id: core.rate(o, self.core.k) for o in opts})
+            values = {o.id: core.rate(o, self.core.k) for o in opts}
+            for g in values:
+                values[g] += self._predict_points(g, watchable[g])
+            return wire.pick(self.cfg, watchable, [o.id for o in opts], yours, values)
         if watchable[best].scored.lock == "power play":
             # [nhl pp] A power play is always worth a look, but never over your team late and close
             # (Oct 29 replay: back from a catch-up onto NYI @ MIN's power play instead of WSH, tied late).

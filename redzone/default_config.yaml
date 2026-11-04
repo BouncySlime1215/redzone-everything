@@ -45,6 +45,15 @@ sync:
     enabled: true          # [SYNC] read-only log of what the sticks expose (media_session, Wi-Fi, UI tree, logcat)
                            # -> recordings/<day>/sync_probe.jsonl. Presses nothing; skips during switches.
     visible_ui: false      # also dump the VISIBLE stick's UI tree (off: unmeasured whether a dump stutters video)
+  break_anchor:            # [auto-anchors] ad break on screen <-> the feed's dead ball -> a delay sample
+    enabled: false         # logged always (recordings/<day>/sync_anchors.jsonl); fed to the filter only when on.
+    start_bias_s: 15       # whistle -> ad on screen, a PRIOR until the Wednesday probe data refits it
+    bias_sd_s: 10
+    min_s: 10              # plausible whistle -> ad-on-screen window (feed wall to screen time)
+    max_s: 240
+  drift_alarm:             # [SYNC 6] delay moved > limit_s since it synced, or the stick's network predicts it
+    limit_s: 5
+    resync: false          # re-tune the hidden stick's standby on an alarm (off until a live night shows alarms are real)
 
 sources:
   fastcast: false          # ESPN's push feed: new plays the moment ESPN publishes them. Runs NEXT TO polling
@@ -327,6 +336,8 @@ two_stick:
   min_gain: 8              # ...and then only for one this many points better (your game's return and
                            # a replay about to play take it right away)
   verify_s: 15             # check the hidden stick is still playing this often
+  pretune_on_open: false   # opening a live game on the phone pre-tunes it on the hidden stick (90 s), so
+                           # "Watch this" / "Go now" is a ~3 s flip instead of a ~8 s tune + flip
   input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
   tv_flip_prior_s: {median: 1.98, max: 2.2}  # the TV's own input change (SmartThings) before we've timed 5:
                            # measured on your TV Nov 3 (10/10 confirmed). The decider plans flips with it.
@@ -436,5 +447,17 @@ noggin:                    # docs/noggin.md
   priority:
     enabled: false         # pick the best game by the Noggin Priority order (L1 hard rules, then score). OFF until measured
     banned_apps: [peacock]
+    prefs:                 # L2: Nick's preferences, set from the phone page (phone.v2). Only the score moves
+      bets_weight: 1.0     # x your bet's sweat term (0-2)
+      rivalry_points: 6.0  # points added for a rivalry game (0-15)
+      nhl_pp_ot_boost: 1.0 # x the NHL power-play / overtime term (0-2)
+      reels: true          # catch-up reels allowed
+      switch_frequency: 1.0  # 0.5 calmer .. 2.0 busier
   timing:
     leagues: []            # Noggin Timing v1: calibrated dead-window bounds in place of cuts.FLOOR_S / MEDIAN_S
+  predict:
+    leagues: []            # Noggin Predict v1: P(big play in the next 60 s of play) as an L4 term in the Priority pick
+    points: 20             # term = points x (P - the league's base rate), bounded to +-points; needs priority.enabled
+
+phone:                     # the phone page (redzone/web)
+  v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it

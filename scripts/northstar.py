@@ -75,6 +75,7 @@ METRICS = [
     ("switch_p95", "Switch time p95 (SmartThings input change)", "<= 3 s", -1, 3.0, 3.0),
     ("flips_settled", "Flips PLAYING within 3 s", ">= 99%", 1, 99.0, 100.0),
     ("delay_err_p95", "Per-stick delay error p95", "<= 2 s", -1, 2.0, 2.0),
+    ("press_to_tv_p95", "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)", "<= 3 s", -1, 3.0, 3.0),
     ("dead_air", "Dead air (commercials/breaks on screen)", "0%", -1, 0.0, 100.0),
     ("recovery", "Faults recovered without Nick (e2e night)", ">= 95%", 1, 95.0, 100.0),
     *[(f"feed_lag_{lg}", f"Honest feed lag in use, {lg.upper()} (p50)", "info", -1, None, None) for lg in LEAGUES],
@@ -190,7 +191,7 @@ def _boot_ratio(rows: list[tuple[float, float]], draws: int = rg.BOOT_DRAWS, see
 
 
 def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] | None = None,
-          lag_profile: dict | None = None) -> list[dict]:
+          lag_profile: dict | None = None, controls: dict | None = None) -> list[dict]:
     rows: list[dict] = []
     per = {lg: _per(cards, lg) for lg in LEAGUES}
     broken = [lg for lg in LEAGUES if not rg._m(cards.get(lg, {}))]
@@ -267,6 +268,7 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
     rows.append(_row("delay_err_p95", None, None, None, PENDING,
                      "not measured: needs the break-anchor delay estimator (on-screen break start/end vs feed "
                      "event time) and Wednesday's probe logs"))
+    rows.append(press_row(controls))
     # 7. dead air
     d = [(float(x.get("dead_s") or 0), float(x.get("watched_s") or 0)) for x in every]
     point, lo, hi = _boot_ratio(d)
@@ -362,6 +364,23 @@ def settle_row(nights: list[dict] | None) -> dict:
     r = _rate("flips_settled", per, 99.0)
     r["detail"] += "; e2e fault nights (fake TV), picture-checked flips only"
     return r
+def press_row(drill: dict | None) -> dict:
+    """press_to_tv_p95 from the controls drill (scripts/controls_drill.py: phone presses in the replayed
+    night, fake sticks and TV timed like the real ones). The sim can FAIL the line, since a real press
+    is never faster than the sim's; it can't PASS it: that needs real presses on Nick's TV."""
+    s = (drill or {}).get("summary") or {}
+    xs = sorted(x for r in (drill or {}).get("runs", []) for x in r.get("go_now_s", []) + r.get("open_go_s", []))
+    if not xs:
+        return _row("press_to_tv_p95", None, None, None, PENDING,
+                    "controls drill not run here (scripts/controls_drill.py --json, then --controls-json)")
+    q = lambda v: v[min(len(v) - 1, math.ceil(0.95 * len(v)) - 1)]  # noqa: E731
+    p95 = q(xs)
+    det = (f"sim drill: {len(xs)} presses over {s.get('nights', '?')} nights, median {xs[len(xs) // 2]:.2f} s, "
+           f"{s.get('go_now_within_3s_pct')}% within 3 s; dropped {s.get('dropped', 0)}, ran-not-once "
+           f"{s.get('not_once', 0)} of {s.get('taps', 0)} taps ({s.get('taps_retried', 0)} lost/duplicated on purpose)")
+    if p95 > 3.0 or s.get("dropped") or s.get("not_once"):
+        return _row("press_to_tv_p95", round(p95, 2), None, None, FAIL, det)
+    return _row("press_to_tv_p95", round(p95, 2), None, None, PENDING, det + "; PENDING until real presses are logged")
 
 
 def recovery_row(nights: list[dict] | None) -> dict:
@@ -392,8 +411,8 @@ def recovery_row(nights: list[dict] | None) -> dict:
 def _fmt(key, v) -> str:
     if v is None:
         return "n/a"
-    if key == "switch_p95" or key.startswith("feed_lag"):
-        return f"{v:.2f} s" if key == "switch_p95" else f"{v:.1f} s"
+    if key in ("switch_p95", "press_to_tv_p95") or key.startswith("feed_lag"):
+        return f"{v:.2f} s" if key in ("switch_p95", "press_to_tv_p95") else f"{v:.1f} s"
     return f"{v:.2f}" if key == "mid_play" else f"{v:.1f}%"
 
 
@@ -404,7 +423,7 @@ def _delta(key, now, before) -> str:
     if abs(d) < 1e-9:
         return "0"
     better = (d > 0) == (META[key]["dir"] > 0)
-    return f"{'+' if d > 0 else ''}{d:.2f}{' s' if key == 'switch_p95' else ''} {'🟢' if better else '🔴'}"
+    return f"{'+' if d > 0 else ''}{d:.2f}{' s' if key in ('switch_p95', 'press_to_tv_p95') else ''} {'🟢' if better else '🔴'}"
 
 
 def last_run(history: Path, split: str) -> dict | None:
@@ -579,6 +598,7 @@ def main(argv=None) -> int:
     ap.add_argument("--reuse-nights", type=Path, help="take the e2e nights from an earlier --json output")
     ap.add_argument("--switch-log", type=Path, action="append", default=None,
                     help="tv_input.jsonl file(s) with real switches (default: <root>/data/tv_input.jsonl)")
+    ap.add_argument("--controls-json", type=Path, help="a scripts/controls_drill.py --json report (press_to_tv_p95)")
     ap.add_argument("--json", type=Path, help="write the raw results here (PR CI compares two of these)")
     ap.add_argument("--no-write", action="store_true", help="don't touch docs/ (PR CI)")
     ap.add_argument("--delta", nargs=2, type=Path, metavar=("HEAD", "BASE"), help="print the PR delta table")
@@ -605,16 +625,18 @@ def main(argv=None) -> int:
     # keep only what the recovery line reads, so the raw file stays small
     nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults", "settle_book") if k in n}
               for n in nights]
+    nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults") if k in n} for n in nights]
+    drill = json.loads(a.controls_json.read_text()) if a.controls_json and a.controls_json.exists() else None
     xs = switch_samples(a.switch_log if a.switch_log is not None else [root / "data/tv_input.jsonl"])
     results = {}
     for split in (("dev", "locked") if a.split == "both" else (a.split,)):
         cards = run_cards(root, split, oracle=a.oracle)
-        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof)}
+        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill)}
         if a.profile:
             from redzone.noggin import profile as P
             cc = run_cards(root, split, profile=a.profile, oracle=a.oracle)
             results[split]["candidate"] = {"profile": a.profile, "about": P.PROFILES[a.profile].get("about", ""),
-                                           "cards": cc, "rows": table(cc, nights, xs, prof)}
+                                           "cards": cc, "rows": table(cc, nights, xs, prof, drill)}
     commit = _git(root, "rev-parse", "--short", "HEAD")
     when = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     if a.json:
