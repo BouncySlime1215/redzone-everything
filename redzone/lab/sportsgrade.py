@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from redzone.decider.screen import CONTINUOUS, _is_marker
 from redzone.lab import cutgrade
-from redzone.lab.backtest import (CATCHUP_S, lag_of, leave_offsets, offsets_of, on_screen, replayed_by,
+from redzone.lab.backtest import (CATCHUP_2_S, CATCHUP_3_S, CATCHUP_S, lag_of, leave_offsets, offsets_of, on_screen, replayed_by,
                                   tuning_blackout_seconds, watched_whole)
 from redzone.models import REAL_BREAKS, League, Stoppage
 from redzone.sources import espn
@@ -39,6 +39,9 @@ class Card:
     big_seen_10m: int = 0      # live, or replayed within backtest.CATCHUP_S of airing
     my_big: int = 0
     my_big_seen_10m: int = 0
+    big_seen_3m: int = 0       # live, or replayed within backtest.CATCHUP_3_S (the gate)
+    big_seen_2m: int = 0       # ...within CATCHUP_2_S (stretch)
+    my_big_seen_3m: int = 0
     crunch_on_replay: int = 0  # crunch plays that aired while a catch-up replay was on screen
     crunch: int = 0
     crunch_live: int = 0
@@ -247,9 +250,13 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
                 card.big_seen += on or (r.gid, round(w)) in replayed
                 soon = on or replayed_by(replayed, (r.gid, round(w)), w + lag + CATCHUP_S)
                 card.big_seen_10m += soon
+                soon3 = on or replayed_by(replayed, (r.gid, round(w)), w + lag + CATCHUP_3_S)
+                card.big_seen_3m += soon3
+                card.big_seen_2m += on or replayed_by(replayed, (r.gid, round(w)), w + lag + CATCHUP_2_S)
                 if mine:
                     card.my_big += 1
                     card.my_big_seen_10m += soon
+                    card.my_big_seen_3m += soon3
             t = _type(p)
             if is_crunch(league, p) and not _marker(t):
                 card.crunch += 1

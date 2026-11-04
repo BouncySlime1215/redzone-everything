@@ -158,6 +158,8 @@ def main():
                           "cuts": len(card.cuts), "big": card.big, "big_seen": card.big_seen,
                           "big_seen_10m": card.big_seen_10m, "my_big": card.my_big,
                           "my_big_seen_10m": card.my_big_seen_10m, "crunch_on_replay": card.crunch_on_replay,
+                          "big_seen_3m": card.big_seen_3m, "big_seen_2m": card.big_seen_2m,
+                          "my_big_seen_3m": card.my_big_seen_3m,
                           # [north star] per-night counts so scripts/northstar.py can bootstrap every line
                           "big_live": card.big_live, "landings": card.cut.landings()[1],
                           "landings_dead": card.cut.landings()[0],

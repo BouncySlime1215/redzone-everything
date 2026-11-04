@@ -224,27 +224,3 @@ def violations(ranked: list[Ranked], games: Mapping[str, GameInput], rules: Hard
             if a.tier == b.tier == TIER_CRUNCH and b.league_rank < a.league_rank:
                 bad.append(f"crunch {b.game_id} ({games[b.game_id].league}) below crunch {a.game_id}")
     return bad
-
-
-# ---------------------------------------------------------------- learned suggestions (L2, never applied)
-
-def suggest_from_feedback(feedback: Iterable[Mapping], prefs: Preferences, min_votes: int = 8) -> list[dict]:
-    """Suggestions from 👍/👎 on switches, shown to Nick on the phone page. Never mutates `prefs`.
-
-    feedback rows: {"vote": +1 | -1, "terms": {term: points}} for the switch it rated. A term that shows
-    up mostly in 👎 switches suggests turning its weight down, mostly in 👍 switches up."""
-    tally: dict[str, list[int]] = {}
-    for row in feedback:
-        v = 1 if row.get("vote", 0) > 0 else -1
-        for k, pts in (row.get("terms") or {}).items():
-            if pts and pts > 0:
-                tally.setdefault(k, []).append(v)
-    out = []
-    for k, votes in sorted(tally.items()):
-        if len(votes) < min_votes:
-            continue
-        share = sum(1 for v in votes if v > 0) / len(votes)
-        if share <= 0.3 or share >= 0.8:
-            out.append({"term": k, "votes": len(votes), "thumbs_up": round(share, 2),
-                        "suggest": "less" if share <= 0.3 else "more", "applied": False})
-    return out

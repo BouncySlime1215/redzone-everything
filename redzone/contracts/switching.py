@@ -44,8 +44,8 @@ def deadline(paths: tuple[SwitchPath, ...]) -> float:
 # ConfigSwitchPaths below, so it reads the same numbers the controller falls back to:
 #   tunes      decider.switch_cost.<app>: the Mac's measured medians (switch_speed.learn wrote them
 #              to data/config.yaml; eval-data-v1 pinned that snapshot), shipped in default_config.yaml
-#   TV flip    two_stick.tv_flip_prior_s (SmartThings setInputSource on the user's TV, Nov 3 2026:
-#              10/10 confirmed, median 1.98 s, max 2.2 s) + two_stick.input_settle_s, exactly as
+#   TV flip    two_stick.tv_flip_prior_s (SmartThings setInputSource on the user's TV, Nov 4 2026:
+#              64/64 confirmed in the Nov 4 live lab, p50 1.89 s, p95 2.18 s) + two_stick.input_settle_s, exactly as
 #              Controller.flip_estimate / _flip_upper price the tv_flip path before 5 own samples.
 TUNE_APPS = ("youtubetv", "prime", "espn")
 
@@ -71,7 +71,7 @@ class ConfigSwitchPaths:
     def flip(self) -> SwitchPath:
         settle = float(self._get("two_stick.input_settle_s", 1.0))
         prior = self._get("two_stick.tv_flip_prior_s", {}) or {}
-        med, mx = float(prior.get("median", 1.98)), float(prior.get("max", 2.2))
+        med, mx = float(prior.get("median", 1.89)), float(prior.get("max", 2.58))
         return SwitchPath(TV_FLIP, med + settle, max(med, mx) + settle)
 
     def tune(self, app: str) -> float:

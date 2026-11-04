@@ -76,7 +76,7 @@ def _ocr_prompt(text: str) -> bool:
 
 
 # Only the lines the playback parser reads: ~1 KB instead of a 20-60 KB dump.
-PLAYBACK_CMD = "dumpsys media_session | grep -E 'package=|state=PlaybackState|metadata:.*description='"
+PLAYBACK_CMD = "dumpsys media_session | grep -E 'package=|active=|state=PlaybackState|metadata:.*description='"
 
 
 @dataclass
@@ -657,6 +657,11 @@ def parse_playback(text: str, package: str | None = None) -> dict:
             blocks.append(current)
         if current is None:
             continue
+        act = re.match(r"\s*active=(true|false)\s*$", line)
+        if act:
+            # [STK-05] Fire OS keeps a stale state=3 (PLAYING) on a session that went inactive after
+            # backgrounding (live lab, Nov 4): only an active session's PLAYING counts.
+            current["active"] = act.group(1) == "true"
         m = _STATE_RE.search(line)
         if m:
             code = int(m.group(1))
@@ -677,7 +682,8 @@ def parse_playback(text: str, package: str | None = None) -> dict:
                 current[key] = "" if value.strip().lower() == "null" else value.strip()
     eligible = [b for b in blocks if (package is None or b["pkg"] == package)
                 and b["position"] is not None]
-    return next((b for b in eligible if b["state"] == "playing"), eligible[-1] if eligible else empty)
+    return next((b for b in eligible if b["state"] == "playing" and b.get("active") is not False),
+                next((b for b in eligible if b["state"] == "playing"), eligible[-1] if eligible else empty))
 
 
 def playback_ready(report: dict) -> bool:
@@ -689,6 +695,8 @@ def playback_ready(report: dict) -> bool:
     """
     if report.get("state") != "playing" or report.get("read_ok") is False:
         return False
+    if report.get("active") is False:
+        return False   # [STK-05] a stale PLAYING left on an inactive session (live lab, Nov 4)
     speed = report.get("speed")
     if speed is None:
         return True

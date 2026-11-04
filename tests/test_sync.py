@@ -190,9 +190,11 @@ def test_sync_log_rows(tmp_path):
     c = Clock()
     s = SyncBook(lambda t: (45.0, 15.0), clock=c, log_path=tmp_path / "sync.jsonl")
     s.tuned("prime:x", c.t)
-    s.measure("prime:x", 33.0, "score", t=c.t)
+    s.measure("prime:x", 33.0, "score", t=c.t, stick="HDMI2")
     rows = [json.loads(x) for x in (tmp_path / "sync.jsonl").read_text().splitlines()]
     assert [r["kind"] for r in rows] == ["tune", "score"] and rows[1]["used"] and "sd" in rows[1]
+    # [live nights] the anchor's error vs the delay predicted before it, and the stick it came from
+    assert rows[1]["err"] == round(33.0 - 45.0, 2) and rows[1]["stick"] == "HDMI2"
     from redzone.lab.syncsim import log_summary
     assert log_summary(tmp_path / "sync.jsonl")["prime:x"]["tunes"] == 1
 
