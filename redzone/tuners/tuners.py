@@ -25,6 +25,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
+from redzone.tuners import prime_multiview as pmv
 from redzone.tuners.adb import Stick, playback_ready, same_stream
 from redzone.tuners.profiles import ProfileSelectionRequired, preference, select_profile
 
@@ -127,6 +128,7 @@ class TuneResult:
     steps: list[str] = field(default_factory=list)
     error: str = ""
     screen_changed: bool | None = None  # False: no visible command sent; True: sent; None: legacy unknown
+    path: str = ""                      # "tile": a Prime multiview tile switch, not a tune
 
 
 @dataclass
@@ -598,6 +600,139 @@ class PrimeTuner(Tuner):
         return await super()._press_prompt(stick, text, steps, verb, may_cut)
 
 
+class PrimeMultiviewTuner(PrimeTuner):
+    """Prime with its NBA multiview (redzone/tuners/prime_multiview.py). OFF (`enabled` False) it is
+    exactly PrimeTuner. ON, it knows each stick's tile order, and a tune to a game that is a tile
+    there makes that tile main with the probe's key path (~1 s) instead of a deep link (~32 s).
+    A game that isn't a tile, or a tile switch that can't be verified, falls back to a normal tune
+    (which leaves the multiview, so that stick's session is forgotten)."""
+
+    def __init__(self, keys: "pmv.KeyMap | None" = None, verify_s: float = 3.0, poll_s: float = 0.3):
+        self.enabled = False
+        self.keys = keys
+        self.sessions: dict[str, pmv.Session] = {}
+        self.names: Callable[[str], list[str]] | None = None   # target -> labels (the engine's team names)
+        self.verify_s, self.verify_poll_s = verify_s, poll_s
+        self.results: list[dict] = []                           # every tile switch, for the gate
+
+    # --- state ---------------------------------------------------------------------------------
+    @property
+    def ready(self) -> bool:
+        return self.enabled and self.keys is not None and self.keys.can_switch
+
+    def session(self, host: str) -> "pmv.Session | None":
+        return self.sessions.get(host) if self.ready else None
+
+    def has_tile(self, host: str, target: str | None) -> bool:
+        s = self.session(host)
+        return bool(target and s and s.slot(target) is not None)
+
+    def is_main(self, host: str, target: str | None) -> bool:
+        s = self.session(host)
+        return bool(target and s and s.main_target == target)
+
+    def forget(self, host: str) -> None:
+        self.sessions.pop(host, None)
+
+    def _labels(self, targets) -> dict[str, list[str]]:
+        out = {}
+        for t in targets:
+            try:
+                out[t] = [n for n in (self.names(t) if self.names else []) if n]
+            except Exception:   # a names bug must never press a key
+                log.exception("prime multiview: names failed for %s", t)
+                out[t] = []
+        return out
+
+    async def _ui(self, stick: Stick) -> "list[pmv.Node] | None":
+        r = await stick.run("shell", pmv.UI_DUMP, timeout=8)
+        return pmv.parse_nodes(r.out if r.ok else "")
+
+    async def read_main(self, stick: Stick, targets) -> str | None:
+        return pmv.main_tile(await self._ui(stick), self._labels(targets))
+
+    # --- tile switch ---------------------------------------------------------------------------
+    async def switch(self, stick: Stick, target: str, may_cut=None, clock=time.monotonic) -> TuneResult:
+        """Make `target` the main tile (it gets the audio). Verified from the accessibility tree;
+        an unverified result forgets the session (the next switch is a normal tune)."""
+        t0 = clock()
+        steps: list[str] = []
+        s = self.session(stick.host)
+        slot = s.slot(target) if s else None
+        if s is None or slot is None:
+            return TuneResult(False, target, 0.0, steps, "not a multiview tile here", False, "tile")
+        if slot == s.main:
+            return TuneResult(True, target, 0.0, ["already the main tile"], "", False, "tile")
+        path = self.keys.path(s.main, slot)
+        if path is None:
+            return TuneResult(False, target, 0.0, steps, f"no key path {s.main}>{slot}", False, "tile")
+        if may_cut is not None and not may_cut():
+            return TuneResult(False, target, 0.0, steps, "cut window closed", False, "tile")
+        await stick.key(*pmv.codes(path))
+        steps.append(f"tile {slot} -> main ({' '.join(path)})")
+        seen = None
+        while clock() - t0 < self.verify_s:
+            seen = await self.read_main(stick, s.tiles)
+            if seen == target:
+                break
+            await asyncio.sleep(self.verify_poll_s)
+        took = clock() - t0
+        ok = seen == target
+        self.results.append({"ok": ok, "took": round(took, 2), "slot": slot, "seen": seen is not None})
+        if not ok:
+            self.forget(stick.host)
+            why = "main tile not verified" if seen is None else "a different tile became main"
+            return TuneResult(False, target, took, steps + [why], why, True, "tile")
+        s.promoted(slot, self.keys.after)
+        pb = await stick.playback(stick.packages.get(self.role))
+        if playback_ready(pb):
+            stick.remember(target, pb)
+        steps.append("verified main tile")
+        return TuneResult(True, target, took, steps, "", True, "tile")
+
+    async def tune(self, stick: Stick, ref: str, target: str, **kw):
+        if self.has_tile(stick.host, target):
+            res = await self.switch(stick, target, kw.get("may_cut"))
+            if res.ok or res.screen_changed is False and "cut window" in res.error:
+                return res
+            log.info("prime multiview: %s on %s: %s; normal tune instead", target, stick.host, res.error)
+        res = await super().tune(stick, ref, target, **kw)
+        if res.screen_changed is not False:
+            self.forget(stick.host)   # a deep link leaves the multiview
+        return res
+
+    # --- building one (hidden stick only: it takes over the screen of the stick it runs on) ----
+    async def build(self, stick: Stick, tiles: list[str], clock=time.monotonic) -> bool:
+        """With tiles[0] playing on this stick (a normal tune), open multiview and add up to two more
+        games from the picker, each verified. Leaves a Session with what actually got in."""
+        if not (self.ready and self.keys.can_build) or not tiles:
+            return False
+        tiles = list(tiles)[:pmv.MAX_TILES]
+        await stick.key(*pmv.codes(self.keys.open))
+        if await self.read_main(stick, tiles[:1]) != tiles[0]:
+            self.forget(stick.host)
+            return False
+        s = pmv.Session(stick.host, [tiles[0]], 0)
+        self.sessions[stick.host] = s
+        for t in tiles[1:]:
+            await stick.key(*pmv.codes(self.keys.add_open))
+            rows, focus = pmv.picker_rows(await self._ui(stick))
+            names = self._labels([t])[t]
+            want = next((i for i, r in enumerate(rows) if pmv._hits(r, names)), None)
+            if want is None or focus is None or want < focus:
+                await stick.key(pmv.KEYCODE["back"])   # not offered (or can't tell): close the picker
+                continue
+            await stick.key(*pmv.codes([self.keys.add_next] * (want - focus) + [self.keys.add_select]))
+            if self.keys.add_slot == "main":
+                s.tiles.insert(0, t)
+            else:
+                s.tiles.append(t)
+            if await self.read_main(stick, s.tiles) != s.main_target:
+                self.forget(stick.host)
+                return False
+        return len(s.tiles) > 1
+
+
 class EspnTuner(Tuner):
     """ESPN+ events in the ESPN app (experimental: verify on the stick first)."""
     app = "espn"
@@ -635,5 +770,6 @@ def reel_base_url() -> str:
     return f"http://{ip}:{port}"
 
 
-TUNERS: dict[str, Tuner] = {"youtubetv": YouTubeTVTuner(), "prime": PrimeTuner(), "espn": EspnTuner(),
+# Prime's tuner is the multiview one; with tuners.prime_multiview off it is plain PrimeTuner.
+TUNERS: dict[str, Tuner] = {"youtubetv": YouTubeTVTuner(), "prime": PrimeMultiviewTuner(), "espn": EspnTuner(),
                             "reel": ReelTuner()}
