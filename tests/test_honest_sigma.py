@@ -34,9 +34,10 @@ def test_honesty_summary_counts_misses_and_small_doubt():
 
 def test_anchor_tick_feeds_one_break_matched_like_live():
     got = []
-    sync = NS(measure=lambda target, z, kind, t, sd: got.append((target, round(z, 1), kind, t, round(sd, 2))))
+    sync = None
     d = NS(behind=0.0)
-    delays = NS(get=lambda t: d, tuned=lambda t: got.append(("tuned", t)))
+    delays = NS(get=lambda t: d, tuned=lambda t: got.append(("tuned", t)),
+                anchor=lambda target, z, kind, t, sd: got.append((target, round(z, 1), kind, t, round(sd, 2))))
     sw = [B.SwitchLog(1000.0, None, "g", "chase", "", 2.0, 2.0)]
     cfg = Cfg({"sync.break_anchor.start_bias_s": 15.0, "sync.break_anchor.bias_sd_s": 10.0})
     dec = NS(action="stay", target="g")
@@ -46,3 +47,32 @@ def test_anchor_tick_feeds_one_break_matched_like_live():
     got.clear()
     B._anchor_tick(delays, sync, dec, sw, {"g": "yt:g"}, {"g": [(990.0, 1060.0)]}, cfg, 5.0, 1080.0, 10.0)
     assert got == []                                             # one anchor per break
+
+
+def test_noise_cal_learns_the_real_error_and_never_widens():
+    from redzone.decider.screen import Delay, NoiseCal
+    rng = random.Random(1)
+    cal = NoiseCal(min_n=20, min_sigma_s=2.0)
+    assert cal.sigma("yt") is None
+    for _ in range(400):                          # true error U(0, 6), anchor noise sd 10
+        cal.add("yt", rng.uniform(0, 6) + rng.gauss(0, 10), 10.0)
+    s = cal.sigma("yt")
+    assert 3.0 <= s <= 9.0                         # an upper bound on ~3.5 s rms, honest side
+    d = Delay(100.0, 3.0, calibrated_at=0.0)
+    d.cal_sigma = s
+    assert d.current_sigma(5400.0) == min(9.0, s)  # aging model 3 + 6 = 9, the learned doubt below it
+    d.cal_sigma = 50.0
+    assert d.current_sigma(5400.0) == 9.0          # never wider than the model
+
+
+def test_first_anchor_after_a_tune_feeds_the_calibration():
+    from redzone.decider.screen import DelayBook, NoiseCal
+    book = DelayBook({"youtubetv": 40.0}, 9.0, clock=lambda: 0.0)
+    cal = book.attach_cal(NoiseCal(min_n=1, min_sigma_s=2.0))
+    book.anchor("youtubetv:g", 45.0, "break", 0.0, 1.0)     # not tuned yet: no residual
+    assert not cal.pool
+    book.tuned("youtubetv:g")
+    book.anchor("youtubetv:g", 45.0, "break", 0.0, 1.0)
+    book.anchor("youtubetv:g", 47.0, "break", 1.0, 1.0)     # second one after the same tune: ignored
+    assert [round(r) for r, _ in cal.pool["youtubetv"]] == [5]
+    assert book.get("youtubetv:g").cal_sigma is not None

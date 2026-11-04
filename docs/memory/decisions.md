@@ -243,3 +243,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   app's eval nights (dev vs the candidate: big live 81.7 -> 83.1, dead air 19.4 -> 13.7, mid-play entries
   3 -> 0). Next is a flag-off decider hook in shadow first, since the rollout assumes every switch lands
   as planned.
+- 2026-11-04 1:10 PM (lane 2, cycle 03, planner redirect): **new `delay.self_calibrate` block, OFF** (NoiseCal:
+  the stated doubt learned from break-anchor innovations, floor 2 s, never wider than the aging model). Why off:
+  sims only (live needs the residual pool persisted across nights), and the truth model it is graded against
+  (per-tune U(0, 6) s, gap 15 +- 10 s) is an assumption until Thursday's probe data. Measured (honest sims, wait):
+  dev NFL big live 54.4 -> 57.6, locked 53.3 -> 60.4, coverage 98.4-100%, 0 new mid-play entries.

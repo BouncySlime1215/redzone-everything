@@ -403,6 +403,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         tgt_of = {r.gid: (targets or {}).get(r.gid, f"youtubetv:{r.gid}") for r in replays}
         noise = random.Random(seed * 7_000_003 + 17)
         breaks = ad_breaks(replays, lag_true, cfg, random.Random(seed * 9_000_011 + 5)) if anchors else {}
+        if anchors and cfg.get("delay.self_calibrate.enabled", False):
+            delays.attach_cal(noise_cal(cfg, replays[0].league if replays else None))
     jitter_rng = random.Random(seed * 5_000_011 + 3)
     honesty: list[tuple[float, float]] = []   # (error of the delay used, its sigma), each on-screen tick
     sampler = None
@@ -552,6 +554,20 @@ def ad_breaks(replays, lag_true, cfg, rng: random.Random) -> dict[str, list[tupl
     return out
 
 
+_CALS: dict = {}   # [self-calibrating doubt] league -> NoiseCal, kept across the nights of one run (live: across nights)
+
+
+def noise_cal(cfg, league):
+    """The run's NoiseCal for this league: nights are run in date order, so a night only ever starts from
+    earlier nights' residuals (forward-only, like live)."""
+    from redzone.decider.screen import NoiseCal
+    key = (getattr(league, "value", league), int(cfg.get("delay.self_calibrate.min_n", 20)),
+           float(cfg.get("delay.self_calibrate.min_sigma_s", 2.0)))
+    if key not in _CALS:
+        _CALS[key] = NoiseCal(min_n=key[1], min_sigma_s=key[2])
+    return _CALS[key]
+
+
 def _anchor_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict, breaks: dict, cfg,
                  tune_s: float, now: float, step: float) -> None:
     """A tune re-syncs its channel (as live); an ad break that comes up on the screen of the game being
@@ -568,7 +584,7 @@ def _anchor_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict
     for w, ts in breaks.get(last.to, ()):
         ts += d.behind + last.jitter
         if now - step < ts <= now and ts - last.t >= tune_s:
-            sync.measure(target, ts - w - bias, "break", ts, (1.0 + bias_sd * bias_sd) ** 0.5)
+            delays.anchor(target, ts - w - bias, "break", ts, (1.0 + bias_sd * bias_sd) ** 0.5)
 
 
 def _honesty_tick(delays: DelayBook, switches: list, targets, lag_true, tune_s: float, now: float,

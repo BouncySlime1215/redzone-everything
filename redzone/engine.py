@@ -344,7 +344,7 @@ class Engine:
                 z = t - w - bias
                 row.update(feed_wall=round(w, 2), z=round(z, 2))
                 if self.cfg.get("sync.break_anchor.enabled", False):
-                    row["used"] = bool(self.sync is not None and self.sync.measure(
+                    row["used"] = bool(self.sync is not None and self.delays.anchor(
                         target, z, "break", t, (sd * sd + bias_sd * bias_sd) ** 0.5))
         try:
             self.recorder.sync_anchor(row)

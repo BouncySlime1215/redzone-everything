@@ -477,3 +477,34 @@ sigma ~18 s. Break anchors at today's prior (sd 10 s) hardly narrow it, and the 
 what the Wednesday probe logs measure. Anchors also cost NHL crunch (79.9 -> 74.4) through re-syncs on tunes:
 not understood yet, keep `sync.break_anchor.enabled` off. With honest per-tune error, crunch_now=rewind
 makes mid-play entries (NBA 4-5, NHL 2) where wait makes 0-1: one more reason wait is the candidate default.
+
+### Self-calibrating doubt (NoiseCal, `delay.self_calibrate.enabled`, OFF)
+
+The doubt learns from the filter's own innovations, so it works live without ground truth. The first break
+anchor after each tune is compared with the delay that tune started from: r = z - mu = (true error) + (anchor
+noise, sd R). E[r^2] - R^2 is the real squared error, bias included. The stated doubt is the 95 % upper bound
+of that (chi-square on n residuals, n >= 20), floored at 2 s (the 4 s floor stays for the filter itself), and
+it never widens the aging model. The pool persists across nights (in the sims: across the nights of one run, in
+date order, so a night only learns from earlier ones).
+
+Candidate, `--tune-jitter 6 --break-anchors` + self-calibration, wait:
+
+| split | league | big live | crunch | mid-play | dead air | within 2 sigma | sigma <= 8 s | sigma <= 3 s | sigma p50 |
+|---|---|---|---|---|---|---|---|---|---|
+| dev | NFL | 54.4 -> **57.6** | 70.5 -> 71.2 | 0 | 30.0 -> 30.3 | 100% | 9 -> 66% | 0% | 9.0 -> 6.7 |
+| dev | NBA | 77.5 -> 78.9 | 90.0 -> 91.1 | 0 | 19.4 -> 19.5 | 100% | 19 -> 36% | 0% | 8.6 |
+| dev | NHL | 44.9 -> 44.2 | 79.9 -> 79.3 | 1 -> 1 | 22.5 -> 22.6 | 100% | 21 -> 77% | 0% | 7.3 |
+| locked | NFL | 53.3 -> **60.4** | 69.0 -> 71.6 | 0 | 29.4 -> 30.3 | 98.4% | 7 -> 70% | 29% | 5.3 |
+| locked | NBA | 68.8 | 84.9 | 0 | 24.1 | 100% | 19 -> 25% | 0% | 9.0 |
+| locked | NHL | 49.0 -> 48.6 | 76.2 -> 80.0 | 0 | 25.5 | 100% | 16 -> 33% | 0% | 9.0 |
+
+(before = no anchors with the same per-tune error.) Rewind, dev: NBA big live 83.1 with 3 mid-play entries,
+NHL 2: wait stays the default. With R = 10 s the bound tightens slowly (about 1/sqrt(n)): NFL, with the most
+tunes and breaks, gets there first. A tighter anchor (Thursday's probe refit of the 15 +- 10 s prior) is the
+lever for NBA/NHL.
+
+**NHL crunch drop with anchors (79.9 -> 74.4, seed 0)** is not systematic: seeds 1 and 2 give 78.0 -> 77.8 and
+82.1 -> 82.3, and the seed-to-seed spread is about 4 points. At seed 0, two nights (Oct 22 -10, Oct 27 -24) lose it
+and Oct 20 gains 5. The decision logs first diverge at a catch-up replay that starts 6 min earlier (the anchor
+lowered the doubt, so the gate opened sooner). From there the crunch picks differ, ending with a crunch wait
+stuck behind a 110 s rewound tune. A lab lesson: judge an NHL crunch delta under ~4 points over several seeds.

@@ -439,6 +439,10 @@ delay:                     # seconds your screen runs behind real life, per app;
     enabled: true          # Kalman filter per channel: show flips, score bug (score + clock), stick position, taps
     min_sigma_s: 4         # a synced channel's stated doubt never goes below this (the gates' tested floor)
     log: true              # every signal + estimate to data/sync.jsonl (scripts/eval_sync.py --log grades it)
+  self_calibrate:          # [self-calibrating doubt] stated doubt learned from break-anchor innovations (NoiseCal), OFF
+    enabled: false         # sims only so far (eval_sports --break-anchors); live needs the pool persisted across nights
+    min_n: 20              # residuals (first anchor after a tune) before it speaks
+    min_sigma_s: 2         # floor of the learned doubt (the 4 s sync floor stays for the filter itself)
 
 break_lengths_s:           # typical commercial lengths used to plan catch-ups
   nfl: {timeout: 75, tv_timeout: 120, score_break: 150, end_period: 120, two_minute_warning: 150, halftime: 780}
