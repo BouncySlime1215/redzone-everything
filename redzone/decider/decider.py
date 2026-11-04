@@ -242,7 +242,8 @@ class Decider:
         # [possession start] the per-possession jump / stay policy: (decision, candidate, now) -> "jump" |
         # "stay". None = jump (the rule default). Self-taught only (oracle imitation, simulation, play-by-play
         # outcomes); Nick's buttons are controls, never labels (Nov 4 hard rule).
-        self.possession_policy = None
+        self.possession_policy = self._possession_pick   # jump unless noggin.possession is on (default off)
+        self.possession_log: deque = deque(maxlen=2000)  # [noggin possession] (t, on, target, policy says)
         # [replay and resume] the game paused for a catch-up replay: (game, when, its extra behind-live then)
         self.paused_for: tuple[str, float, float] | None = None
         self.resume_log: list[tuple[float, str, str, float]] = []   # (when, "replay"|"resume"|"skip", game, extra s)
@@ -320,8 +321,15 @@ class Decider:
         return self.timelines[game_id]
 
     def _pick_on(self, league: League) -> bool:
-        """[noggin PICK] on (or in shadow) for this league, with a model to run."""
-        if not (self.cfg.get("noggin.pick.enabled", False) or self.cfg.get("noggin.pick.shadow", False)):
+        """[noggin PICK] on (or in shadow) for this league, with a model to run (PICK itself, or the
+        possession policy's PICK-cue model)."""
+        c = self.cfg
+        if (c.get("noggin.possession.enabled", False) or c.get("noggin.possession.shadow", False)) \
+                and league.value in (c.get("noggin.possession.leagues") or []):
+            from redzone.noggin.pick import model_for
+            if model_for(league.value, name=str(c.get("noggin.possession.model", "cue90"))) is not None:
+                return True
+        if not (c.get("noggin.pick.enabled", False) or c.get("noggin.pick.shadow", False)):
             return False
         if league.value not in (self.cfg.get("noggin.pick.leagues") or []):
             return False
@@ -616,8 +624,10 @@ class Decider:
         exclude: a game not to replay (e.g. the crunch game you're about to go back to).
         yours: your team's missed plays clear the `top` bar (replay.yours_first); False while your
         team's own game is on screen, so its live snaps aren't traded for its old ones."""
+        crunch_on = not montage and self._crunch_on(cands)
         games = self._replay_pool(cands)
-        pool = [m for m in self.queue if m.game_id != exclude and self._replayable(games.get(m.game_id))]
+        pool = [m for m in self.queue if m.game_id != exclude and self._replayable(games.get(m.game_id))
+                and (not crunch_on or self._mine_cant_wait(m, now))]
         rw = self._rw()
         if rw and not montage:     # [T5] older plays wait for the end-of-window montage
             pool = [m for m in pool if now - m.t <= self.cfg.get("replay.max_age_s", 1800)]
@@ -661,6 +671,29 @@ class Decider:
                 return (mine, 1, 0, -m.t)
             return (mine, 0, 0, self._replay_value(m, now))
         return max(pool, key=rank, default=None)
+
+    def _mine_cant_wait(self, m: Missed, now: float) -> bool:
+        """Your team's missed play may break the crunch block in replay.crunch_block_mine_leagues (its own
+        game's league), once this long after it aired (NFL: its 3-min replay window can't wait out crunch)."""
+        if not m.mine:
+            return False
+        lgs = self.cfg.get("replay.crunch_block_mine_leagues") or []
+        x = self._known.get(m.game_id)
+        lg = getattr(getattr(getattr(getattr(x, "scored", None), "league", None), "base", None), "value", None)
+        if lg not in lgs:
+            return False
+        return now - (getattr(m, "aired", 0.0) or m.t) >= float(self.cfg.get("replay.crunch_block_mine_after_s", 90))
+
+    def _crunch_on(self, cands) -> bool:
+        """[crunch block, replay.crunch_block] A catch-up never starts while any live game is in crunch time
+        or its run-up (NHL: from 3:00 left in a close 3rd, and OT): its next play may come while the reel
+        is on. Cycle 04 review, locked: NHL crunch plays aired during a catch-up 2 -> 10 on the candidate.
+        Your team's missed plays wait too, except in replay.crunch_block_mine_leagues once
+        replay.crunch_block_mine_after_s has passed since they aired (_mine_cant_wait)."""
+        if not self.cfg.get("replay.crunch_block", False):
+            return False
+        return any((x.scored.crunch or x.scored.crunch_now) and not getattr(x.scored, "garbage", False)
+                   for x in cands.values())
 
     def _break_remaining(self, gid: str, cands, now: float) -> float:
         """Conservative break budget, never a typical ad length treated as a deadline."""
@@ -1027,6 +1060,52 @@ class Decider:
         return Decision(now, "switch", gid, f"{tag} ({tb - land:.0f} s after we land)", d.state, d.gate,
                         kind="chase")
 
+    def _pick_scores(self, cands: dict, now: float, model_name: str = "v1", tune: float = 5.0):
+        """(cur, scores) from the Reflex PICK model on the live books of every target game, or None when PICK
+        can't score this tick (fewer than 2 live games, no model, the buffer shorter than the feed lag p90)."""
+        from redzone.noggin import pick as PK
+        games, lags = [], {}
+        for gid, x in cands.items():
+            tl = self.timelines.get(gid)
+            if tl is None or tl.live is None or not x.target:
+                continue
+            fl = sorted(tl._lags)[len(tl._lags) // 2] if tl._lags else tl.lag_est()
+            lags[gid] = fl + self.delays.get(x.target).mu
+            games.append(tl.live)
+        if len(games) < 2:
+            return None
+        league = games[0].league
+        model = PK.model_for(league.value, name=model_name)
+        if model is None or min(lags.values()) < PK.FEED_LAG_P90.get(league, 70.0) + tune:
+            return None
+        mine = {t for g in games if g.gid in self._yours for t in g.matchup.split(" @ ")}
+        cur = self.current if self.current in lags else None
+        _, scores = PK.live_choice(games, cur, now, lags, mine, tune, model, model.meta.get("info", {}).get("cue_s"))
+        return cur, scores, model
+
+    def _possession_pick(self, d: Decision, x: Candidate | None, now: float) -> str:
+        """[noggin possession] The per-possession jump / stay policy for a possession-start entry: Reflex PICK
+        trained on the possession-start hindsight oracle (oracle.solve_cue, labels from the oracle only,
+        never from Nick). "stay" only when the model scores the game on screen above the rule's target by
+        the model's margin. Your team's games (both ways) and anything PICK can't score stay the rule's call
+        (jump). noggin.possession.enabled (off) acts; .shadow only logs."""
+        c = self.cfg
+        on, shadow = c.get("noggin.possession.enabled", False), c.get("noggin.possession.shadow", False)
+        if not (on or shadow) or not d.target or d.target in self._yours or self.current in self._yours:
+            return "jump"
+        if x is None or x.scored.league.base.value not in (c.get("noggin.possession.leagues") or []):
+            return "jump"
+        got = self._pick_scores(self._known, now, str(c.get("noggin.possession.model", "cue90")),
+                                float(c.get("noggin.pick.tune_s", 5.0)))
+        if got is None:
+            return "jump"
+        cur, scores, model = got
+        say = "jump"
+        if cur is not None and d.target in scores and scores[cur] - scores[d.target] > model.margin:
+            say = "stay"
+        self.possession_log.append((now, cur, d.target, say))
+        return say if on else "jump"
+
     def _pick(self, d: Decision, cands, now: float) -> Decision:
         """[noggin PICK] Reflex PICK (redzone/noggin/pick.py): the game the hindsight-oracle imitation wants on
         screen. Shadow logs it beside the app's own decision. Enabled, mode "breaks" (the default) only lets
@@ -1051,13 +1130,13 @@ class Decider:
         if len(games) < 2:
             return d
         league = games[0].league
-        model = PK.model_for(league.value)
+        model = PK.model_for(league.value, name=str(self.cfg.get("noggin.pick.model", "v1")))
         tune = float(self.cfg.get("noggin.pick.tune_s", 5.0))
         if model is None or min(lags.values()) < PK.FEED_LAG_P90.get(league, 70.0) + tune:
             return d
         mine = {t for g in games if g.gid in self._yours for t in g.matchup.split(" @ ")}
         cur = self.current if self.current in lags else None
-        target, scores = PK.live_choice(games, cur, now, lags, mine, tune, model)
+        target, scores = PK.live_choice(games, cur, now, lags, mine, tune, model, model.meta.get("info", {}).get("cue_s"))
         self.pick_log.append((now, cur, target, d.action, d.target))
         if shadow and not self.cfg.get("noggin.pick.enabled", False):
             return d
