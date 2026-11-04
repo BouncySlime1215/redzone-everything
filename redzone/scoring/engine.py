@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass, field
 
 from redzone.models import PERIOD_S, REAL_BREAKS, REGULATION, ByLeague, GameState, League, Phase, Stoppage, pro_period
-from redzone.scoring import garbage
+from redzone.scoring import garbage, postseason
 from redzone.scoring.brain import Brain
 from redzone.reasoner import brief as rbrief
 from redzone.reasoner.reasoner import Reasoner, lock_points
@@ -349,6 +349,7 @@ class Scorer:
                 s += c.get("score.stakes.big_spread_penalty")
         if g.national_tv:
             s += c.get("score.stakes.national_tv", 0)
+        s += postseason.stakes_bonus(g, c)   # [#163 playoff stakes] 0 unless score.postseason.enabled
         return max(c.get("score.stakes.min"), min(c.get("score.stakes.max"), s))
 
     def _personal(self, g: GameState, me: Personal, k: float, garbage_time: bool = False) -> tuple[float, list[str]]:
