@@ -229,12 +229,66 @@ SCENARIOS = {
     "prompt_screen":       lambda: _switch("hidden", "prompt_screen"),
     "tv_flip_fail":        lambda: _switch("hidden", "tv_flip_fail", tv_fail=True),
     "feed_5xx":            _feed_5xx,
+    "reboot_visible":      lambda: _visible_fault("reboot"),
+    "stuck_buffering":     lambda: _visible_fault("buffering"),
     "st_outage":           lambda: _st_fault("outage"),
     "st_429":              lambda: _st_fault("429"),
     "st_auth":             lambda: _st_fault("auth"),
     "clock_skew":          _clock_skew,
     "corrupt_state":       _corrupt_state,
 }
+
+
+async def _visible_fault(kind: str) -> dict:
+    """The stick on screen stops showing the game for 60 s of keepalive ticks (10 s apart):
+      reboot     its adb link drops and comes back (keepalive's reconnect -> _forget) on the Fire TV
+                 home screen;
+      buffering  its player spins on "buffering" forever (a dead stream).
+    Compared with hardening.sticks off and on: seconds until the game plays again (None = never in
+    the 60 s), re-links sent, and whether the other stick or the TV input was touched."""
+    res = {}
+    for on in (False, True):
+        with tempfile.TemporaryDirectory() as d:
+            world = World(safe=_safe)
+            c, a, b, tv = _controller(Path(d), world)
+            c.cfg.update({"hardening": {"sticks": on}})
+            tuner = FaultTuner()
+            plain = tuner.tune
+
+            async def tune(stick, ref, target, may_cut=None, plain=plain):
+                stick.playing = "playing"        # a fresh deep link plays (the app itself is fine)
+                return await plain(stick, ref, target, may_cut)
+            tuner.tune = tune
+            ctl.TUNERS["youtubetv"] = tuner
+            c.adb_ok = True
+            c._watchdog_applied = True
+            clock = [time.time()]
+            real = ctl.time.time
+            ctl.time.time = lambda: clock[0]
+            fixed_at = None
+            try:
+                a.playing = "none" if kind == "reboot" else "buffering"
+                if kind == "reboot":
+                    c._forget(a)                 # what _reconnect does when the stick comes back
+                tv.calls = 0
+                for tick in range(7):            # t = 0, 10, ... 60 s
+                    await c._watch_visible()
+                    if c._resume_task:
+                        await asyncio.gather(c._resume_task, return_exceptions=True)
+                    await c._watch_visible()
+                    if c._resume_task:
+                        await asyncio.gather(c._resume_task, return_exceptions=True)
+                    if a.playing == "playing" and fixed_at is None:
+                        fixed_at = tick * 10
+                    clock[0] += 10
+            finally:
+                ctl.time.time = real
+            res["on" if on else "off"] = {"restored_after_s": fixed_at, "relinks": len(tuner.calls),
+                                          "other_stick_touched": any("am start" in x for x in b.log),
+                                          "tv_input_changes": tv.calls}
+    return {"ok": res["on"]["restored_after_s"] is not None and not res["on"]["other_stick_touched"],
+            "wall_s": None, "mid_play_cuts": 0, "stuck": False, "flagged": True,
+            "detail": f"{kind}: visible stick not playing for 60 s, off vs on", "off": res["off"], "on": res["on"]}
 
 
 async def _st_fault(kind: str) -> dict:

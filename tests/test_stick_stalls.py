@@ -113,3 +113,43 @@ async def test_standby_buffering_kept_when_off(two, clock):
         await c.verify_standby()
         clock.t += 15
     assert c.hidden_ready and c.hidden_target == "youtubetv:espn"
+
+
+async def test_visible_stick_back_from_a_reboot_gets_its_game_back(two, clock, monkeypatch):
+    """Before: _forget cleared on_target, so nothing ever restored the stick on screen."""
+    monkeypatch.setattr(ctl, "VISIBLE_STALL_S", 0.0)
+    c, tuner = two
+    live(c)
+    harden(c)
+    c.on_target = "youtubetv:fox"
+    c.main.playing = "none"                  # rebooted to the Fire TV home
+    orig = tuner.tune
+
+    async def tune(stick, ref, target, may_cut=None):
+        stick.playing = "playing"
+        return await orig(stick, ref, target, may_cut)
+    monkeypatch.setattr(tuner, "tune", tune)
+    c._forget(c.main)                        # what _reconnect does when it comes back
+    assert c.on_target == "youtubetv:fox"
+    await asyncio.wait_for(asyncio.gather(c._resume_task, return_exceptions=True), 2)   # first look
+    await c._watch_visible()
+    await asyncio.wait_for(asyncio.gather(c._resume_task, return_exceptions=True), 2)
+    assert tuner.calls == [("a:5555", "youtubetv:fox")] and c.main.playing == "playing"
+    assert not [x for x in c.sticks[1].log if "KEYCODE_HOME" in x]
+
+
+async def test_visible_stick_back_from_a_blip_still_playing_is_left_alone(two, clock):
+    c, tuner = two
+    live(c)
+    harden(c)
+    c.on_target = "youtubetv:fox"
+    c._forget(c.main)
+    await asyncio.wait_for(asyncio.gather(c._resume_task, return_exceptions=True), 2)
+    assert tuner.calls == [] and c._visible_bad_since is None and c.on_target == "youtubetv:fox"
+
+
+async def test_flag_off_a_dropped_visible_stick_is_forgotten_as_before(two):
+    c, tuner = two
+    c.on_target = "youtubetv:fox"
+    c._forget(c.main)
+    assert c.on_target is None
