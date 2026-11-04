@@ -134,3 +134,8 @@ def test_possession_start_is_off_by_default_and_reads_its_scope():
         assert dec._possession_start(x, d) is want
     dec.cfg = {"decider.entry.possession_start": "crunch"}
     assert dec._possession_start(NS(scored=NS(crunch_now=True)), d) is True
+
+
+def test_candidate_uses_possession_start_for_crunch():
+    from redzone.noggin import profile
+    assert "decider.entry.possession_start=crunch" in profile.argv("candidate", "nba")
