@@ -158,3 +158,11 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   `results[split]` after #76 had added `["candidate"]` to it, so `--profile candidate` scored the profile and
   then threw it away. Now the drill is passed to both tables and a test covers the column. Lesson: when two PRs
   edit the same loop, read the merged loop, not only the conflict list.
+- 2026-11-04 (playbooks SAFE-05): "has every feed been heard from since the clock jump?" compared timestamps,
+  so after a BACKWARD jump every old stamp already looked later than the jump and the hold cleared at once
+  (night lab: a replay started 8 s after a -30 s jump). Compare each timeline's fresh_at with its value at
+  the jump instead. Also: a fault that widens the sync filter does nothing while a tap-calibrated base is
+  tighter (DelayBook only overlays a filter that is better), so the night fault widens the Delay itself.
+- 2026-11-04: **Prime multiview gate scored a 0.0 s switch as slow.** `pmv.gate` read `float(took or 1e9)`, so
+  a rounded 0.0 became 1e9. Found by the stick-free rehearsal (`prime_multiview_probe.py --fake`), where tile
+  switches are instant. Fix: only a missing time counts as slow. Use `is None`, never `or`, on numbers that can be 0.

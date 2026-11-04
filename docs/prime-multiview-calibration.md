@@ -4,6 +4,16 @@ For the next Prime NBA night (PR #40, flag `tuners.prime_multiview`, off). About
 Nick's time, at home, before tip-off plus a few checks during the games. Not tonight: no live TV or
 stick tests until Nick says so.
 
+## Rehearsal (any time, no stick, ~10 s)
+
+`.venv/bin/python scripts/prime_multiview_probe.py --fake --gap 0` runs the whole probe against a
+simulated Prime player (redzone/lab/prime_mv_fake.py) and prints the same result block as the real
+run: it should end `error: null, can_switch: true, can_build: true` with 20/20 bench switches. It never
+writes data/prime_multiview_keys.json. If it fails, the probe is broken, not the stick: don't spend
+Nick's 15 minutes on it. tests/test_prime_multiview_rehearsal.py runs the same in CI (swap and rotate
+layouts, an unreadable DRM player, a dropped tile switch) and grades a synthetic night with
+scripts/prime_multiview_grade.py.
+
 ## Before (app paused, ~10 min, no game on screen yet)
 
 1. Pick the Prime stick. Sticks: .150 = HDMI1, .181 = HDMI2 (see data/devices.json). The other
