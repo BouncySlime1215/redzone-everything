@@ -403,3 +403,8 @@ flags:                       # kill switches, one per subsystem (redzone/contrac
   sync_predictor: true
   auto_tune: true
   fastcast: true
+
+noggin:                    # docs/noggin.md
+  priority:
+    enabled: false         # pick the best game by the Noggin Priority order (L1 hard rules, then score). OFF until measured
+    banned_apps: [peacock]

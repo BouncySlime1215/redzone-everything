@@ -125,3 +125,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   to Noggin Timing v1; the live time-shift buffer (#61) is the Reflex's input #1. Every PR names the North
   Star line it moves. Gates: beat the current brain on locked unseen nights, shadow mode, OFF behind a flag.
   Spec: `docs/noggin.md`.
+- 2026-11-04 7:45 AM: **Noggin Priority wired into `Decider._best`, OFF** (`noggin.priority.enabled: false`; Nick's
+  1:25 AM planner). On: L1 tiers (your team in a big moment > crunch by league order > open) and the Peacock
+  ban decide first, then score. Valid split on vs off: NFL / NBA / NHL every line equal (NHL dead air 21.5 ->
+  21.6, switches/h 5.5 -> 5.6): crunch and your team are already handled before `_best`. Mixed-league nights
+  (demo card) are where it can move things; it stays off until the Mind / Reflex terms are wired.
