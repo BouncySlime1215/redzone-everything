@@ -4,7 +4,7 @@
 
 import { app, ACTIONS, CHANGES, INPUTS, hooks, attr, esc, num, arr } from "./rz-core.js?v=41";
 import { icon, sec } from "./rz-ui.js?v=40";
-import { api } from "./rz-api.js?v=40";
+import { api } from "./rz-api.js?v=43";
 import { toast, openSheet, closeSheet, sheetById } from "./rz-sheet.js?v=40";
 
 const v2 = { on: false, checked: false, rows: new Map(), head: "", loading: false, prio: null, missed: null };
@@ -142,3 +142,81 @@ INPUTS["v2-prio"] = (el) => {
 };
 
 CHANGES["v2-reels"] = (el) => savePrio({ reels: !!el.checked });
+
+/* ---------- Button states: what happened to the tap you just made (lane 3's id/ack/status API) ----------
+   GO NOW / Watch this: "Switching to X…" until GET /api/action/{id} says the TV shows it ("On your TV"),
+   or "Waiting for a safe moment" while it holds off mid-play. A tap whose answer was lost shows
+   "Not delivered yet, retrying" while rz-api retries with the same id, then "Not delivered" if it gives up.
+   A dropped live connection for 8 s shows a banner: taps may not reach the TV. Display only. */
+const GAME_TAPS = new Set(["hold", "watch", "redzone", "focus"]);
+const POLL_MS = 1000, POLL_FOR_MS = 25000;
+const tap = { el: null, timer: null, hide: null };
+
+function tapBar() {
+  if (!tap.el) {
+    tap.el = document.createElement("div");
+    tap.el.className = "v2-tap";
+    tap.el.setAttribute("role", "status");
+    tap.el.setAttribute("aria-live", "polite");
+    document.body.appendChild(tap.el);
+  }
+  return tap.el;
+}
+
+function showTap(kind, ic, text, ms = 0) {
+  const el = tapBar();
+  clearTimeout(tap.hide);
+  el.dataset.kind = kind;
+  el.innerHTML = `${icon(ic)}<span>${esc(text)}</span>`;
+  el.hidden = false;
+  if (ms) tap.hide = setTimeout(() => { el.hidden = true; }, ms);
+}
+
+function gameName(gid) {
+  const g = arr(app.S && app.S.games).find((x) => x.id === gid);
+  return (g && g.matchup) || "that game";
+}
+
+function follow(id, gid, t0 = Date.now()) {
+  clearTimeout(tap.timer);
+  tap.timer = setTimeout(async () => {
+    let st = null;
+    try { st = await api(`/api/action/${encodeURIComponent(id)}`); } catch { st = null; }
+    if (st && st.on_tv) { showTap("ok", "check", `On your TV: ${gameName(gid)}`, 3000); return; }
+    if (st && st.state === "failed") { showTap("bad", "alert", st.message || "That didn't work", 5000); return; }
+    if (Date.now() - t0 > POLL_FOR_MS) { showTap("wait", "hourglass", `Still waiting for a safe moment in ${gameName(gid)}`, 6000); return; }
+    follow(id, gid, t0);
+  }, POLL_MS);
+}
+
+export function onTap(d) {
+  if (!v2.on || !d) return;
+  const action = d.body && d.body.action;
+  if (d.phase === "retry") { showTap("wait", "wifi", `Not delivered yet, retrying (${d.attempt})…`); return; }
+  if (d.phase === "lost") { showTap("bad", "alert", "Not delivered: the app didn't answer. Tap again.", 6000); return; }
+  if (d.phase !== "answer" || !d.res) return;
+  const r = d.res, gid = d.body.game_id;
+  if (!GAME_TAPS.has(action) || !gid || r.ok === false) { if (tap.el && tap.el.dataset.kind === "wait") tap.el.hidden = true; return; }
+  if (r.on_tv) { showTap("ok", "check", `On your TV: ${gameName(gid)}`, 3000); return; }
+  showTap("wait", "swap", d.body.value === "force" ? `Switching to ${gameName(gid)} now…` : `Switching to ${gameName(gid)} at the next safe moment…`);
+  follow(r.id || d.id, gid);
+}
+try { window.addEventListener("rz:tap", (e) => onTap(e.detail)); } catch { /* no window */ }
+
+/* Stale connection: the #conn pill (app.js) says "Reconnecting" for 8 s -> one banner until it's back. */
+const STALE_MS = 8000;
+function watchConn() {
+  const c = document.getElementById("conn");
+  if (!c || typeof MutationObserver === "undefined") return;
+  let since = null, t = null;
+  const check = () => {
+    const bad = c.dataset.state === "wait";
+    clearTimeout(t);
+    if (!bad) { since = null; if (tap.el && tap.el.dataset.kind === "stale") tap.el.hidden = true; return; }
+    since = since || Date.now();
+    t = setTimeout(() => { if (v2.on && c.dataset.state === "wait") showTap("stale", "wifi", "Lost the connection to the Mac. Taps may not reach the TV; reconnecting…"); }, Math.max(0, STALE_MS - (Date.now() - since)));
+  };
+  new MutationObserver(check).observe(c, { attributes: true, attributeFilter: ["data-state"] });
+  check();
+}
+try { if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", watchConn); else watchConn(); } catch { /* no DOM */ }
