@@ -17,7 +17,8 @@ after its first night per league is dropped here: its locked nights can never re
 Sources (free, public; licenses in SOURCES):
     nba   hoopR ESPN NBA pbp (`wallclock` from 2013-14 on)            cbb   hoopR ESPN MBB pbp 2006+
     wcbb  wehoop ESPN WBB pbp
-Queued (loaders not written yet): nfl (nflfastR `time_of_day` 2011+), cfb (cfbfastR 2014+), nhl
+    nfl   nflfastR / nflverse pbp (`time_of_day` = the snap, like ESPN's NFL wallclock; 2011+)
+Queued (loaders not written yet): cfb (cfbfastR 2014+), nhl
 (fastRhockey + archived ESPN wallclock), mlb (pitch timestamps 2008+). See docs/noggin.md § Phases.
 """
 from __future__ import annotations
@@ -29,6 +30,7 @@ import numpy as np
 import pandas as pd
 
 from redzone.models import League
+from redzone.sources import espn
 from redzone.noggin.features import (FEATURES, KIND_CODE, KINDS, MAX_LEN_S, NBA_MARKS, context,  # noqa: F401
                                       season_of, vector, windows_for_game)
 
@@ -40,16 +42,13 @@ SOURCES = {
                 license="MIT (hoopR); underlying ESPN data for personal/non-commercial use"),
     "wcbb": dict(url=SDV + "/espn_womens_college_basketball_pbp/play_by_play_{y}.parquet", first=2006,
                  license="MIT (wehoop); underlying ESPN data for personal/non-commercial use"),
+    "nfl": dict(url="https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{y}.parquet",
+                first=2011, license="CC-BY 4.0 (nflverse data); underlying NFL data for personal/non-commercial use"),
 }
 # First night of the pinned scorecard window (data/eval_pin.json, eval-data-v1). Nothing on or after it
 # is ever written by the factory. College has no scorecard yet; it uses the NBA date as a safe cut.
 EVAL_FIRST_NIGHT = {"nba": "20261020", "cbb": "20261020", "wcbb": "20261020", "nfl": "20250905",
                     "nhl": "20261019"}
-
-def _iso(s: pd.Series) -> np.ndarray:
-    t = pd.to_datetime(s, utc=True, errors="coerce", format="ISO8601")
-    return (t.astype("int64") / 1e9).where(t.notna(), np.nan).to_numpy(float)
-
 
 def night_of(epoch: float) -> str:
     t = pd.Timestamp(epoch, unit="s", tz="UTC").tz_convert("America/New_York") - pd.Timedelta(hours=5)
@@ -70,6 +69,120 @@ def _plays_basketball(g: pd.DataFrame) -> list[dict]:
                     "scoreValue": r.score_value, "homeScore": r.home_score, "awayScore": r.away_score})
     return out
 
+
+
+def _nfl_type(r) -> str:
+    """nflfastR row -> ESPN's NFL play type text (what espn._kind / cuts.after_kind read)."""
+    d = (r.desc if isinstance(r.desc, str) else "")
+    dl, pt = d.lower(), (r.play_type if isinstance(r.play_type, str) else "")
+    if "two-minute warning" in dl:
+        return "Two-minute warning"
+    if dl.startswith("end quarter 2") or "end of half" in dl:
+        return "End of Half"
+    if dl.startswith("end game"):
+        return "End of Game"
+    if dl.startswith("end quarter"):
+        return "End Period"
+    if r.timeout == 1 or (pt == "no_play" and "timeout #" in dl):
+        return "Timeout"
+    td = r.touchdown == 1
+    if pt == "kickoff":
+        return "Kickoff"
+    if pt == "punt":
+        return "Punt"
+    if pt == "field_goal":
+        return "Field Goal Good" if r.field_goal_result == "made" else "Field Goal Missed"
+    if pt == "extra_point":
+        return "Extra Point Good" if r.extra_point_result == "good" else "Extra Point Missed"
+    if r.interception == 1:
+        return "Interception Return Touchdown" if td else "Pass Interception Return"
+    if r.fumble_lost == 1:
+        return "Fumble Return Touchdown" if td else "Fumble Recovery (Opponent)"
+    if r.sack == 1:
+        return "Sack"
+    if pt in ("pass", "qb_spike"):
+        if td:
+            return "Passing Touchdown"
+        return "Pass Reception" if r.complete_pass == 1 else "Pass Incompletion"
+    if pt in ("run", "qb_kneel"):
+        return "Rushing Touchdown" if td else "Rush"
+    if r.safety == 1:
+        return "Safety"
+    if pt == "no_play":
+        return "Penalty"
+    return ""
+
+
+TWO_MIN_S = 120.0
+
+
+def _plays_football(g: pd.DataFrame) -> tuple[list[dict], list[tuple[float, float]]]:
+    """nflfastR rows -> the ESPN summary play dicts the live parser reads (NFL), made to look like the
+    ESPN feed the live tracker sees (data/archive/nfl, 150 games):
+    - the extra point / two-point try folds into the touchdown entry (ESPN has no separate entry);
+    - END QUARTER / END GAME rows (no time_of_day in nflfastR) take the previous play's wallclock, which
+      is exactly what ESPN stamps (median 0 s);
+    - nflfastR has no two-minute-warning rows: the (prev play, next play) wallclock spans that cross
+      2:00 in Q2/Q4 are returned, and build_football drops the windows inside them (an unseen break).
+    """
+    out, skip, prev_w, prev = [], [], None, None
+    for r in g.itertuples(index=False):
+        if r.play_type in ("extra_point",) or r.two_point_attempt == 1:
+            continue
+        tt = _nfl_type(r)
+        if not tt:
+            continue
+        q = int(r.qtr) if r.qtr == r.qtr else None
+        wall = r.time_of_day if isinstance(r.time_of_day, str) else None
+        if wall is None:
+            if tt not in ("End Period", "End of Half", "End of Game") or prev_w is None:
+                continue
+            wall = prev_w
+        clock = espn._clock_s(r.time) if isinstance(r.time, str) else None
+        if prev is not None and q in (2, 4) and prev[0] == q and prev[1] is not None and clock is not None \
+                and prev[1] > TWO_MIN_S >= clock and tt not in ("End Period", "End of Half", "End of Game"):
+            skip.append((prev[2], wall))
+        out.append({"id": f"{r.game_id}:{int(r.play_id)}", "type": {"text": tt},
+                    "text": r.desc if isinstance(r.desc, str) else "", "period": {"number": q},
+                    "clock": {"displayValue": r.time if isinstance(r.time, str) else ""},
+                    "wallclock": wall, "scoringPlay": bool(r.sp == 1),
+                    "homeScore": r.total_home_score, "awayScore": r.total_away_score})
+        prev_w, prev = wall, (q, clock, wall)
+    return out, [(espn._ts(a), espn._ts(b)) for a, b in skip]
+
+
+NFL_COLS = ["game_id", "play_id", "time_of_day", "time", "qtr", "play_type", "desc", "timeout", "touchdown",
+            "field_goal_result", "extra_point_result", "interception", "fumble_lost", "sack", "complete_pass",
+            "safety", "sp", "total_home_score", "total_away_score", "season_type", "two_point_attempt"]
+
+
+def build_football(league: str, path: Path, max_games: int | None = None) -> pd.DataFrame:
+    lg = League(league)
+    import pyarrow.parquet as pq
+    have = set(pq.read_schema(path).names)
+    if "time_of_day" not in have:
+        return pd.DataFrame()
+    df = pd.read_parquet(path, columns=[c for c in NFL_COLS if c in have])
+    df = df[df.qtr.notna()].sort_values(["game_id", "play_id"], kind="stable")
+    if max_games:
+        df = df[df.game_id.isin(df.game_id.unique()[:max_games])]
+    out = []
+    for gid, g in df.groupby("game_id", sort=False):
+        plays, skip = _plays_football(g)
+        ws = [w for w in windows_for_game(lg, plays)
+              if not any(a - 1.0 <= w["start"] <= b + 1.0 for a, b in skip)]
+        playoff = int(g.season_type.iloc[0] == "POST")
+        for w in ws:
+            w.update(league=league, game_id=str(gid), playoff=playoff)
+        out.extend(ws)
+    t = pd.DataFrame(out)
+    if len(t):
+        t["night"] = [night_of(s) for s in t.start]
+    return t
+
+
+def build(league: str, path: Path, max_games: int | None = None) -> pd.DataFrame:
+    return (build_football if League(league).base == League.NFL else build_basketball)(league, path, max_games)
 
 
 def build_basketball(league: str, path: Path, max_games: int | None = None) -> pd.DataFrame:

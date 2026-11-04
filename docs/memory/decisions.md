@@ -167,3 +167,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   bound: 0.56 % of restarts before the bound on 421 unseen public nights (today's FLOOR_S: 7.33 %) at the same
   tightness, ECE 0.053; on the NBA scorecard at B=90 (dev nights) entries mid-play 5/61 -> 5/61, so no gain to
   ship yet. The remaining NBA mid-play entries are entry policy (crunch_now live, 180 s wait cap), Noggin Pick.
+- 2026-11-04 4:30 AM: **Noggin Timing v1 NFL and Predict v1 NBA ship OFF** (`noggin.timing.leagues: []`,
+  new `noggin.predict.leagues: []`, `noggin.predict.points: 20`). NFL Timing: 1.43 % of restarts before the
+  bound on 122 unseen nights vs FLOOR_S 9.1 %, scorecard neutral (0 mid-play). Predict: beats the game-state
+  baseline on logloss and PR-AUC in all 5 forward-CV folds, but no big-live gain in the candidate NBA sim and
+  crunch live -1.3 points on dev nights. Neither joins the candidate (docs/noggin.md §10).

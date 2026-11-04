@@ -26,7 +26,27 @@ FEATURES = ("kind_code", "kind_median", "kind_floor", "period", "clock_left", "g
             "prev_kind_code", "prev_len", "merged")
 
 
-REG = {League.NBA: (4, 720.0), League.CBB: (2, 1200.0), League.WCBB: (4, 600.0)}
+# Reflex Predict v1 (redzone/noggin/predict.py): the game state at the restart that ends a dead window.
+PREDICT_FEATURES = ("kind_code", "period", "clock_left", "game_left", "season", "score_diff", "total_pts",
+                    "pts_5m", "swing_5m", "lead_changes", "n_stops_10m", "since_last_stop", "playoff")
+PREDICT_HORIZONS = (30, 60, 120)
+
+
+def game_state(walls: np.ndarray, home: np.ndarray, away: np.ndarray, i: int) -> dict:
+    """Score state as of entry i (cumulative scores per entry, wallclock seconds): ONE definition for the
+    factory and the live hook."""
+    if i < 0:
+        return dict(score_diff=0.0, total_pts=0.0, pts_5m=0.0, swing_5m=0.0, lead_changes=0)
+    j = int(np.searchsorted(walls, walls[i] - 300.0, side="right")) - 1
+    h0, a0 = (home[j], away[j]) if j >= 0 else (0.0, 0.0)
+    m = home[: i + 1] - away[: i + 1]
+    sg = np.sign(m[m != 0])
+    return dict(score_diff=float(abs(home[i] - away[i])), total_pts=float(home[i] + away[i]),
+                pts_5m=float(home[i] + away[i] - h0 - a0), swing_5m=float(abs((home[i] - away[i]) - (h0 - a0))),
+                lead_changes=int(np.count_nonzero(np.diff(sg))) if len(sg) > 1 else 0)
+
+
+REG = {League.NBA: (4, 720.0), League.CBB: (2, 1200.0), League.WCBB: (4, 600.0), League.NFL: (4, 900.0)}
 
 
 def season_of(epoch: float) -> int:
@@ -98,6 +118,8 @@ def windows_for_game(league: League, plays: list[dict]) -> list[dict]:
     frozen = dt.frozen_until
     walls_a = np.asarray(walls)
     big = _big_marks(rows)
+    home_a = np.maximum.accumulate(np.array([r[2] for r in rows] or [0.0]))
+    away_a = np.maximum.accumulate(np.array([r[3] for r in rows] or [0.0]))
     out, history = [], []
     for win in sorted(seen.values(), key=lambda x: x.start):
         i = int(np.searchsorted(walls_a, win.start, side="right")) - 1
@@ -109,8 +131,12 @@ def windows_for_game(league: League, plays: list[dict]) -> list[dict]:
             and 0.0 <= win.end - win.start <= MAX_LEN_S
         if ok:
             row = context(league, history, cur)
-            row.update(kind=win.kind, start=win.start, length_s=win.end - win.start, exact=bool(win.exact),
-                       score_diff=abs(hs - as_), big_next60=int(_any_between(walls_a, big, win.end, win.end + 60.0)))
+            row.update(kind=win.kind, start=win.start, length_s=win.end - win.start, exact=bool(win.exact))
+            # Predict: game state at the restart, and big plays in the next 30/60/120 s of play
+            k = int(np.searchsorted(walls_a, win.end, side="right")) - 1
+            row.update(game_state(walls_a, home_a, away_a, k))
+            for hz in PREDICT_HORIZONS:
+                row[f"big_next{hz}"] = int(_any_between(walls_a, big, win.end, win.end + float(hz)))
             out.append(row)
         history.append(cur)
     return out

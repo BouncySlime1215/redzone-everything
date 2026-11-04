@@ -45,7 +45,7 @@ def _one(args):
     dest = Path(raw) / league / f"pbp_{year}.parquet"
     if not _fetch(src["url"].format(y=year), dest):
         return year, None
-    t = F.build_basketball(league, dest, max_games=max_games)
+    t = F.build(league, dest, max_games=max_games)
     if not keep:
         dest.unlink(missing_ok=True)
     return year, t
