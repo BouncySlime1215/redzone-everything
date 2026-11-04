@@ -123,7 +123,7 @@ for `q_lo(remaining | league, kind, e, rules)` instead of a constant. Behind `no
 | **Reflex fit** | Kaggle CPU / Actions | factory moments (train nights only) | LightGBM per league and head → exported to numpy `.npz` (Brain v3 pattern) + conformal offsets from the calibration nights |
 | **Teacher** | Kaggle GPU | moments, replayed nights | worded labels, night reviews, preference pairs |
 | **Mind fit** | Kaggle GPU | teacher rows (D19 recipe: LoRA r16-32, fp16 base + fp32 LoRA) | MLX adapter for the 1.7B student |
-| **Nightly self-review** | Mac records the night, cloud/Kaggle labels it at 5 AM | decision records (E23) + objective pbp outcomes + stick/sync telemetry, graded against the hindsight oracle (never Nick's taps) | new labels for both layers |
+| **Nightly self-review** | Mac records the night, cloud/Kaggle labels it at 5 AM | [decision records](decision-records.md) (E23) + objective pbp outcomes + stick/sync telemetry, graded against the hindsight oracle (never Nick's taps) | new labels for both layers |
 
 **Splits (no-overfitting rule):** by whole nights (5 AM ET boundary), time-ordered: train = oldest,
 calibration = the next block, test = newest (`redzone/lab/splits.py`). The scorecard archive

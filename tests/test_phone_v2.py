@@ -3,10 +3,17 @@
 import json
 import time
 
+import pytest
+
 from test_app import client, engine  # noqa: F401  (fixtures)
 
 from redzone.models import Play
 from redzone.web import phone_v2
+
+
+@pytest.fixture(autouse=True)
+def _tmp_reel_requests(tmp_path, monkeypatch):
+    monkeypatch.setattr(phone_v2, "REEL_REQUESTS", tmp_path / "reel_requests.jsonl")
 
 
 def _on(engine):
@@ -71,6 +78,17 @@ def test_missed_finds_the_big_play_off_screen(client, engine):
     vote, note, game = engine.store._x("SELECT vote, note, game FROM feedback").fetchall()[-1]
     assert (vote, note, game) == (0, "missed", gids[1])
     assert engine.store.taps()[-1]["tap"] == "missed" and engine.store.taps()[-1]["guess"]["play_id"] == "p9"
+    req = r["reel_request"]                                   # record only: reels are off by default
+    assert req["play_id"] == "p9" and req["state"] == "recorded_reels_off" and req["due_by"] - req["ts"] == 180.0
+    assert "reels are off" in r["message"]
+    assert json.loads(phone_v2.REEL_REQUESTS.read_text().splitlines()[-1])["game_id"] == gids[1]
+
+
+def test_reel_request_shape():
+    g = {"game_id": "g", "matchup": "A @ B", "play_id": "p", "kind": "td", "text": "x" * 300, "ago_s": 40}
+    r = phone_v2.reel_request(g, 1000.0, reel_play=True)
+    assert r["state"] == "queued" and r["due_by"] == 1180.0 and len(r["text"]) == 160 and r["play_ago_s"] == 40
+    assert phone_v2.reel_request(None, 1000.0, True) is None
 
 
 def test_missed_ignores_old_and_small_plays():
@@ -153,3 +171,69 @@ def test_slate_route(client, engine):
     _on(engine)
     r = client.get("/api/v2/slate").json()
     assert r["enabled"] and isinstance(r["games"], list) and isinstance(r["clashes"], list)
+
+
+def test_oracle_overlay_agreement_and_markers(tmp_path):
+    segs = [{"t0": 0.0, "t1": 100.0, "game": "a", "matchup": "A"}, {"t0": 100.0, "t1": 200.0, "game": "b", "matchup": "B"}]
+    f = tmp_path / "o.json"
+    f.write_text(json.dumps({"objective": "combined", "switches": [{"t": 50.0, "to": "b"}, {"t": 0.0, "to": "a"}]}))
+    o = phone_v2.read_oracle(f)
+    assert [x["t"] for x in o["switches"]] == [0.0, 50.0]                  # sorted
+    moments = [{"ts": 60.0, "game": "b", "kind": "dunk", "seen": False}, {"ts": 150.0, "game": "b", "kind": "3pt", "seen": True},
+               {"ts": 500.0, "game": "b", "kind": "late", "seen": True}]   # after the end: dropped
+    v = phone_v2.oracle_overlay(segs, o, moments, lambda g: g.upper(), end=200.0)
+    assert v["oracle"]["agree_pct"] == 75.0                                  # 50 s of a + 100 s of b, of 200
+    assert [(s["game"], s["t1"]) for s in v["oracle"]["segments"]] == [("a", 50.0), ("b", 200.0)]
+    assert v["big"] == {"plays": 2, "seen": 1, "missed": 1}
+    assert v["markers"][0] == {"ts": 60.0, "game": "b", "matchup": "B", "kind": "dunk", "label": "", "seen": False, "on": "A"}
+    none = phone_v2.oracle_overlay(segs, None, [], str, end=200.0)
+    assert none["oracle"] is None and none["markers"] == []
+    f.write_text("{not json")
+    assert phone_v2.read_oracle(f) is None and phone_v2.read_oracle(tmp_path / "missing.json") is None
+
+
+def test_night_route_carries_the_overlay(client, engine, tmp_path, monkeypatch):
+    _on(engine)
+    gid = next(iter(engine.merger.games))
+    _switch(engine, gid)
+    day = phone_v2.night_of(time.time()).isoformat()
+    (tmp_path / "oracle").mkdir()
+    (tmp_path / "oracle" / f"{day}.json").write_text(json.dumps({"switches": [{"t": time.time() - 5, "to": gid}]}))
+    (tmp_path / "m.jsonl").write_text(json.dumps({"ts": time.time(), "game": gid, "kind": "td", "seen": False}) + "\n")
+    monkeypatch.setattr(phone_v2, "ORACLE_DIR", tmp_path / "oracle")
+    monkeypatch.setattr(phone_v2, "MOMENTS", tmp_path / "m.jsonl")
+    r = client.get("/api/v2/night").json()
+    assert r["oracle"]["objective"] == "combined" and r["oracle"]["segments"][0]["game"] == gid
+    assert r["big"]["missed"] == 1 and r["markers"][0]["on"]
+
+
+def test_trend_lines_match_the_harness():
+    from scripts.northstar import META
+    for key, _label, bar, d in phone_v2.TREND_LINES:
+        assert key in META and META[key]["bar"] == bar and META[key]["dir"] == d, key
+
+
+def test_trend_series_and_gap(tmp_path):
+    rows = [{"split": "dev", "ts": "t1", "commit": "a", "values": {"mid_play": 3.0, "landings_dead": 96.0},
+             "status": {"mid_play": "FAIL", "landings_dead": "FAIL"}},
+            {"split": "locked", "ts": "t1", "commit": "a", "values": {"mid_play": 9.0}},
+            {"split": "dev", "ts": "t2", "commit": "b", "values": {"mid_play": 1.5, "landings_dead": 99.0},
+             "status": {"mid_play": "FAIL", "landings_dead": "PASS"}}]
+    v = phone_v2.trend(rows, "dev")
+    by = {x["key"]: x for x in v["lines"]}
+    assert v["runs"] == 2 and v["commit"] == "b" and v["passing"] == 1
+    assert by["mid_play"]["better"] == 1.5 and by["mid_play"]["gap"] == 1.5            # lower is better
+    assert by["landings_dead"]["better"] == 3.0 and by["landings_dead"]["gap"] == 0.0
+    assert by["pct_of_oracle"]["latest"] is None and by["pct_of_oracle"]["gap"] is None
+    assert phone_v2.trend(rows, "locked")["lines"][0]["latest"] == 9.0
+    f = tmp_path / "h.jsonl"
+    f.write_text(json.dumps(rows[0]) + "\nbroken\n")
+    assert len(phone_v2.read_history(f)) == 1 and phone_v2.read_history(tmp_path / "none") == []
+
+
+def test_trend_route(client, engine):
+    assert client.get("/api/v2/trend").status_code == 404
+    _on(engine)
+    r = client.get("/api/v2/trend").json()                 # the real docs/northstar-history.jsonl
+    assert r["enabled"] and r["split"] == "dev" and len(r["lines"]) == len(phone_v2.TREND_LINES)
+    assert client.get("/api/v2/trend?split=x").json()["ok"] is False

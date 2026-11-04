@@ -13,6 +13,7 @@ import json
 import re
 import time
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter
@@ -40,6 +41,12 @@ BIG_KINDS = {"td", "fg", "turnover", "goal", "hr", "safety", "interception", "fu
 ET = ZoneInfo("America/New_York")
 NIGHT_START_H = 6       # a "night" runs 6 AM ET to 6 AM ET the next day, so a 1 AM switch is last night
 PLAYBOOK = re.compile(r"playbook=([A-Za-z]+-\d+)")
+DATA = Path(__file__).resolve().parent.parent.parent / "data"
+ORACLE_DIR = DATA / "oracle"            # <night>.json: the hindsight oracle's schedule for that night
+MOMENTS = DATA / "supervisor_moments.jsonl"   # every big play, judged from the feed: seen live or not
+HISTORY = DATA.parent / "docs" / "northstar-history.jsonl"   # scripts/northstar.py appends a row per run
+REEL_REQUESTS = DATA / "reel_requests.jsonl"   # "I missed that" -> a catch-up request (record only)
+REPLAY_DUE_S = 180.0    # Nick, Nov 4 11:00 AM: a missed key moment airs within 3 min, at the next dead moment
 MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min, a phone convenience; the graded window is big_seen_3min
 
 
@@ -94,6 +101,18 @@ def miss_candidates(games, on_screen: str | None, now: float, window: float = MI
                         "text": p.text, "kind": p.kind, "ago_s": round(now - at)})
     out.sort(key=lambda r: r["ago_s"])
     return out
+
+
+def reel_request(guess: dict | None, now: float, reel_play: bool) -> dict | None:
+    """A catch-up request for the play Nick says he missed: replay it at the next dead moment, due within
+    REPLAY_DUE_S. RECORD ONLY: nothing reads these to train, grade or suggest (self-taught rule), and with
+    `reel.play` off (the default) nothing plays them either; the state says so. None without a play."""
+    if not guess:
+        return None
+    return {"ts": round(now, 3), "game_id": guess["game_id"], "matchup": guess.get("matchup"),
+            "play_id": guess.get("play_id"), "kind": guess.get("kind"), "text": (guess.get("text") or "")[:160],
+            "play_ago_s": guess.get("ago_s"), "due_by": round(now + REPLAY_DUE_S, 3),
+            "state": "queued" if reel_play else "recorded_reels_off"}
 
 
 def night_window(day: date) -> tuple[float, float]:
@@ -153,6 +172,111 @@ def night_view(switches: list[dict], decisions: list[dict], taps: list[dict], na
                         "on_air": sorted(({"matchup": k, "s": round(v)} for k, v in on_air.items()),
                                          key=lambda r: -r["s"])[:8],
                         "playbooks": dict(sorted(pb.items(), key=lambda kv: -kv[1]))}}
+
+
+def read_oracle(path: Path) -> dict | None:
+    """The oracle schedule file for one night, or None. Format (docs/decision-records.md):
+    {"objective": "combined", "switches": [{"t": <unix s>, "to": <game id>}, ...]} in time order; written
+    offline from the archived night by the hindsight oracle (redzone/lab/oracle.py). A bad file is None."""
+    try:
+        d = json.loads(Path(path).read_text())
+        sw = [{"t": float(x["t"]), "to": str(x["to"])} for x in d.get("switches") or []]
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return None
+    return {"objective": str(d.get("objective") or "combined"), "switches": sorted(sw, key=lambda x: x["t"])}
+
+
+def _on_at(segs: list[dict], ts: float, key: str = "game") -> str | None:
+    for sg in segs:
+        if sg["t0"] <= ts < sg["t1"]:
+            return sg[key]
+    return None
+
+
+def oracle_overlay(segments: list[dict], oracle: dict | None, moments: list[dict], name, end: float) -> dict:
+    """What the hindsight oracle would have shown next to what we did, and a marker per big play.
+    agree_pct: share of our on-screen time showing the oracle's game; markers: each big play in the
+    window (seen live or missed, judged from the feed by the supervisor), with what was on at the time."""
+    osegs = []
+    if oracle:
+        sw = oracle["switches"]
+        for i, x in enumerate(sw):
+            t1 = min(end, sw[i + 1]["t"]) if i + 1 < len(sw) else end
+            if t1 > x["t"]:
+                osegs.append({"t0": x["t"], "t1": t1, "game": x["to"], "matchup": name(x["to"])})
+    agree = total = 0.0
+    if osegs:
+        for sg in segments:
+            total += sg["t1"] - sg["t0"]
+            for o in osegs:
+                lo, hi = max(sg["t0"], o["t0"]), min(sg["t1"], o["t1"])
+                if hi > lo and o["game"] == sg["game"]:
+                    agree += hi - lo
+    t0 = segments[0]["t0"] if segments else None
+    markers = [{"ts": float(m["ts"]), "game": m.get("game"), "matchup": m.get("matchup") or name(m.get("game")),
+                "kind": m.get("kind") or "", "label": (m.get("label") or "")[:80], "seen": bool(m.get("seen")),
+                "on": name(_on_at(segments, float(m["ts"]))) if _on_at(segments, float(m["ts"])) else ""}
+               for m in moments if t0 is not None and t0 <= float(m["ts"]) < end]
+    return {"oracle": {"objective": oracle["objective"], "segments": osegs,
+                       "agree_pct": round(100 * agree / total, 1) if total else None} if oracle else None,
+            "markers": markers,
+            "big": {"plays": len(markers), "seen": sum(1 for m in markers if m["seen"]),
+                    "missed": sum(1 for m in markers if not m["seen"])}}
+
+
+# North Star trend: the headline lines on the phone, short labels. key, label, bar, direction (+1 higher is
+# better). tests/test_phone_v2.py checks every key, bar and direction against scripts/northstar.py METRICS.
+TREND_LINES = [
+    ("mid_play", "Mid-play cuts per 100 landings", 0.0, -1),
+    ("landings_dead", "Landings in dead time %", 98.0, 1),
+    ("pct_of_oracle", "% of hindsight-oracle value", 95.0, 1),
+    ("big_live_nfl", "Big plays live, NFL %", 95.0, 1),
+    ("big_live_nba", "Big plays live, NBA %", 95.0, 1),
+    ("big_live_nhl", "Big plays live, NHL %", 95.0, 1),
+    ("big_seen_3min", "Big plays seen within 3 min %", 99.0, 1),
+    ("your_team_big", "Your-team big plays seen %", 100.0, 1),
+    ("your_team_crunch", "Your-team crunch live %", 100.0, 1),
+    ("crunch_live_nfl", "Crunch live, NFL %", 95.0, 1),
+    ("crunch_live_nba", "Crunch live, NBA %", 95.0, 1),
+    ("crunch_live_nhl", "Crunch live, NHL %", 95.0, 1),
+    ("dead_air", "Dead air %", 0.0, -1),
+    ("switch_p95", "Switch time p95 (s)", 3.0, -1),
+    ("press_to_tv_p95", "Phone press to TV p95 (s)", 3.0, -1),
+]
+
+
+def trend(rows: list[dict], split: str = "dev", last: int = 30) -> dict:
+    """The North Star history for one split as one series per headline line, oldest first. Each line:
+    points (ts, commit, v, status), latest value and status, change since the first point (in the good
+    direction = positive `better`), and the gap to its bar. Read-only: the harness writes the file."""
+    rows = [r for r in rows if r.get("split") == split][-last:]
+    lines = []
+    for key, label, bar, d in TREND_LINES:
+        pts = [{"ts": r.get("ts"), "commit": r.get("commit"), "v": (r.get("values") or {}).get(key),
+                "status": (r.get("status") or {}).get(key)} for r in rows]
+        have = [p for p in pts if isinstance(p["v"], (int, float))]
+        first, latest = (have[0]["v"], have[-1]["v"]) if have else (None, None)
+        lines.append({"key": key, "label": label, "bar": bar, "dir": d, "points": pts, "latest": latest,
+                      "status": pts[-1]["status"] if pts else None,
+                      "better": round((latest - first) * d, 2) if have else None,
+                      "gap": round(max(0.0, (bar - latest) * d), 2) if have else None})
+    return {"split": split, "runs": len(rows), "commit": rows[-1].get("commit") if rows else None,
+            "ts": rows[-1].get("ts") if rows else None, "lines": lines,
+            "passing": sum(1 for x in lines if x["status"] == "PASS")}
+
+
+def read_history(path: Path) -> list[dict]:
+    try:
+        text = Path(path).read_text()
+    except OSError:
+        return []
+    out = []
+    for line in text.splitlines():
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
 
 
 # Slate preview: typical wall-clock length of a game and of its crunch window (the last stretch where
@@ -265,11 +389,20 @@ def router(engine) -> APIRouter:
         engine.store.feedback(guess["game_id"] if guess else pick, 0, note="missed",
                               context={"on_screen": cur, "guess": guess, "candidates": cands[:5],
                                        "note": str(body.get("note") or "")[:200]})
+        req = reel_request(guess, now, bool(engine.cfg.get("reel.play", False)))
+        if req:
+            try:
+                with REEL_REQUESTS.open("a") as f:
+                    f.write(json.dumps(req) + "\n")
+            except OSError:
+                req = None   # a full disk or read-only data dir: the tap is still logged above
         if guess:
             msg = f"Logged: {guess['matchup']} ({guess['text'] or guess['kind']}, {guess['ago_s'] // 60} min ago)"
+            if req:
+                msg += ". Queued for a catch-up replay" if req["state"] == "queued" else ". Saved for catch-up (reels are off)"
         else:
             msg = "Logged. No big play found in the feeds; it still counts as a miss"
-        return {"ok": True, "message": msg, "guess": guess, "candidates": cands[:5]}
+        return {"ok": True, "message": msg, "guess": guess, "candidates": cands[:5], "reel_request": req}
 
     @r.get("/night")
     async def night(day: str = ""):
@@ -289,8 +422,20 @@ def router(engine) -> APIRouter:
         end = min(t1, now) if last is None else min(t1, now, max(last, sws[-1]["ts"] if sws else last))
         nights = sorted({night_of(ts).isoformat() for ts in engine.store.switch_days(21)} | {night_of(now).isoformat()},
                         reverse=True)[:14]
+        view = night_view(sws, decs, taps, engine._name, end)
+        from redzone.lab.decision_records import read_jsonl
+        over = oracle_overlay(view["segments"], read_oracle(ORACLE_DIR / f"{d.isoformat()}.json"),
+                              read_jsonl(MOMENTS, t0, t1), engine._name, end)
         return {"enabled": True, "day": d.isoformat(), "t0": t0, "t1": t1, "now": now, "nights": nights,
-                **night_view(sws, decs, taps, engine._name, end)}
+                **view, **over}
+
+    @r.get("/trend")
+    async def get_trend(split: str = "dev"):
+        if not _enabled(engine):
+            return _off()
+        if split not in ("dev", "locked"):
+            return {"ok": False, "message": "split is dev or locked"}
+        return {"enabled": True, **trend(read_history(HISTORY), split)}
 
     @r.get("/slate")
     async def slate():
