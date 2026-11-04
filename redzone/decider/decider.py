@@ -721,7 +721,8 @@ class Decider:
                           max_back=float(c.get("decider.entry.max_rewind_s", ENTRY_MAX_REWIND_S)),
                           relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
                           cost_lo=min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S))),
-                          urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None)
+                          urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
+                          lag=float(c.get("decider.entry.landing_lag_s", 0.0)))
 
     def _cut_timed(self, gid: str | None, cands) -> bool:
         """Cut timing is on for this game's league (decider.entry.leagues). Scorecards, Nov 3: NFL
@@ -773,6 +774,8 @@ class Decider:
         # to come in on a tighter margin: that only buys mid-play entries.
         urgent = d.kind == "crunch" or (x is not None and (x.scored.crunch or
                                                            self._sticky_home(d.target, cands, entry=True)))
+        if d.kind == "ended" and self.cfg.get("decider.entry.ended_strict", False):
+            urgent = False   # [landing lag] the game on screen is over: nothing is lost by a strict landing
         plan = self.entry_plan(d.target, cands, now, urgent=urgent)
         if plan is None:
             return d

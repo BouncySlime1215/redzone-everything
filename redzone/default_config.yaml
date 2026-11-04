@@ -211,12 +211,14 @@ decider:
   entry:
     hold_only: [nhl, nba]     # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
     rewind_only: []      # leagues whose entries land on a dead ball with a rewind when one fits, never wait
+    landing_lag_s: 0     # [landing lag] a fresh tune comes up up to this much later than the live edge (one-sided)
+    ended_strict: false  # [landing lag] a switch off a finished game never takes the urgent (thin-margin) landing
     crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
   # Seconds to the new picture, MEASURED (the one source of truth; contracts/switching.ConfigSwitchPaths):
   # tunes = the Mac's LatencyBook medians (switch_speed.learn; pinned in eval-data-v1's eval_config.yaml);
-  # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.98 s) + the 1 s settle.
+  # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.89 s) + the 1 s settle.
   # Replaced by your own measured times as you use it (see switch_speed).
   switch_cost: {youtubetv: 5.5, prime: 27, espn: 7.5, hdmi_flip: 3}
   return_tolerance: 5      # go back to the previous game if it's within this many points
@@ -360,8 +362,8 @@ two_stick:
   pretune_on_open: false   # opening a live game on the phone pre-tunes it on the hidden stick (90 s), so
                            # "Watch this" / "Go now" is a ~3 s flip instead of a ~8 s tune + flip
   input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
-  tv_flip_prior_s: {median: 1.98, max: 2.2}  # the TV's own input change (SmartThings) before we've timed 5:
-                           # measured on your TV Nov 3 (10/10 confirmed). The decider plans flips with it.
+  tv_flip_prior_s: {median: 1.89, max: 2.58}  # the TV's own input change (SmartThings) before we've timed 5:
+                           # measured on your TV Nov 4 (64/64 confirmed, p50 1.89, p95 2.18). The decider plans flips with it.
   keep_cec_off: true       # a stick whose HDMI-CEC you turned off (scripts/stick_cec.py) gets it back on only
                            # for a HOME fallback onto it, then off again (so losing the input never pauses it)
   park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long
