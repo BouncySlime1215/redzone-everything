@@ -379,13 +379,14 @@ class Decider:
                 self.replaying = None
                 self.after_replay = True
         home_before = (self.home_break_visit, self.home_return_at)
-        d = self._decide(cands, now)
+        d0 = d = self._decide(cands, now)
         d = self._scenario(d, cands, now, home_before)
         d = self._clairvoyant(d, cands, now, home_before)
         d = self._crunch_guard(d, cands, now, home_before)
         d = self._pick(d, cands, now)
         d = self._hold_for_big(d, cands, now, home_before)
         d = self._time_entry(d, cands, now, home_before)
+        d = self._crunch_floor(d, d0, cands, now, home_before)
         d = self._safe(d, cands, now, home_before)
         if not commit and d.action in ("switch", "replay"):
             # The simulator can commit synchronously. A real TV must confirm
@@ -904,6 +905,32 @@ class Decider:
         self.lookahead_why["crunch_guard"] = self.lookahead_why.get("crunch_guard", 0) + 1
         self.home_break_visit, self.home_return_at = home_before
         return Decision(now, "stay", self.current, f"crunch time here: catch-up waits ({d.reason})", d.state, d.gate)
+
+    def _crunch_floor(self, d: Decision, d0: Decision, cands, now: float, home_before) -> Decision:
+        """[crunch floor, SAFE-09] Crunch = stay sits above every model. While the game on screen is inside its
+        crunch window, nothing layered on the app's own rules (scenario, clairvoyance, PICK, and later the
+        Mind and watch value) may take the screen off it, except to another game in crunch time or by your
+        hand. The app's own crunch rules (hops to another crunch at a long stoppage, a catch-up that is
+        surely back for the snap) still decide for themselves: the floor only undoes what an overlay changed.
+        Nick, Nov 4 3:30 PM: the Mind's crunch unsafe-leaves are a data failure; this floor is why they never
+        reach the TV. Off only with decider.crunch.floor: false."""
+        if not self.cfg.get("decider.crunch.floor", True) or d.action not in ("switch", "replay") \
+                or d.kind == "user" or self.replaying or not self.current:
+            return d
+        cur = cands.get(self.current)
+        if cur is None or not cur.scored.crunch_now or getattr(cur.scored, "garbage", False):
+            return d
+        tgt = d.replay.game_id if d.action == "replay" and d.replay else d.target
+        if tgt == self.current:
+            return d
+        if (d.action, d.target, d.kind) == (d0.action, d0.target, d0.kind):
+            return d                       # the app's own crunch rules made this call
+        x = cands.get(tgt)
+        if x is not None and (x.scored.crunch or x.scored.crunch_now):
+            return d                       # crunch time elsewhere: league order and crunch rules already chose
+        self.lookahead_why["crunch_floor"] = self.lookahead_why.get("crunch_floor", 0) + 1
+        self.home_break_visit, self.home_return_at = home_before
+        return Decision(now, "stay", self.current, f"crunch floor: crunch time here ({d.reason})", d.state, d.gate)
 
     def _clairvoyant(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[GAME-04 clairvoyance, noggin.lookahead.enabled] The feed already knows a big play in game X

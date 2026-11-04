@@ -341,3 +341,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   not walls; Nick's press is a control. Tests: `tests/test_crunch_floor.py` (floor: a low-value game never pulls
   us out, live or at a break except an ad-break round trip; priors, the press and value-based crunch vs crunch).
   The strict-xfail tests that forced an absolute stay are removed.
+- 2026-11-04 3:47 PM ET (Nick, via the overseer): **crunch = stay is ABSOLUTE**, over every score-based switch
+  including the app's own. The only ways out of a game in crunch: (1) a higher-priority crunch by league order
+  (NFL = CFB > NBA > NHL, MLB) or Nick's team (WSH/UNC) in crunch; (2) Nick's own button press (a control, not
+  training). Two same-league crunches: the higher Watch Value / leverage one wins, and the other gets a replay
+  within 3 min. Tests: `tests/test_crunch_floor.py`, one per exception. Lane 2 makes the default change. Two
+  strict-xfail tests mark what it must fix: the core's own score-based leave (99 vs 55), and a neutral crunch
+  timeout's break visit to a lower-league game. They turn red (XPASS) when it lands, so the marks come off with
+  it. The same-league "replay within 3 min" for the losing crunch is not built yet.
