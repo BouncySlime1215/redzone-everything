@@ -287,7 +287,11 @@ def build(root: Path) -> dict:
         "unowned": sum(m["owner"] == "unowned" for m in mods.values()),
         "orphans": sum(is_orphan(p, m) for p, m in mods.items()),
     }
-    return {"version": 1, "modules": mods, "summary": summary}
+    # hand-written lane pages (docs/lanes/<lane>.md: endpoints, flags, the contract fields each view reads),
+    # linked from that lane's section; the generated tables never hold prose
+    pages = {lane: f"lanes/{lane.lower().replace('/', '-').replace(' ', '-')}.md" for lane in LANES}
+    pages = {lane: p for lane, p in pages.items() if (Path(root) / "docs" / p).exists()}
+    return {"version": 1, "modules": mods, "summary": summary, **({"pages": pages} if pages else {})}
 
 
 # ---- rendering --------------------------------------------------------------------------------
@@ -331,8 +335,10 @@ def render_md(graph: dict) -> str:
         rows = [(p, m) for p, m in mods.items() if m["owner"] == lane]
         if not rows:
             continue
-        out += ["", f"## {lane} ({len(rows)})", "", "| module | role | inputs -> outputs | serves |",
-                "|---|---|---|---|"]
+        out += ["", f"## {lane} ({len(rows)})", ""]
+        if lane in graph.get("pages", {}):
+            out += [f"Lane page: [{graph['pages'][lane]}]({graph['pages'][lane]})", ""]
+        out += ["| module | role | inputs -> outputs | serves |", "|---|---|---|---|"]
         for p, m in rows:
             kind = "" if m["kind"] == "module" else f" ({m['kind']})"
             out.append(f"| `{p}`{kind} | {_cell(m['role'])} | {_cell(_edges(m['inputs']))} -> "
