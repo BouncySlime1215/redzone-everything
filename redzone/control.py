@@ -743,11 +743,30 @@ class Controller:
             log.exception("reconnecting %s failed; trying again next tick", s.host)
 
     def _forget(self, stick: Stick) -> None:
-        """A stick came back from a drop (maybe a reboot): whatever we thought it showed is stale."""
+        """A stick came back from a drop (maybe a reboot): whatever we thought it showed is stale.
+
+        The stick on screen: forgetting its target used to leave nothing to restore it (the visible
+        watchdog and the supervisor's screen rule both need on_target), so a reboot showed the Fire TV
+        home until the decider happened to pick another game. With hardening.sticks the target is kept
+        and the watchdog checks it at once: still playing (a short adb blip) -> nothing happens; not
+        playing (a reboot) -> the usual resume / re-link after VISIBLE_STALL_S, on that stick only."""
         if stick is self.main:
+            if self.on_target and self._hardening("sticks"):
+                log.info("%s (on screen) is back after a drop: checking it still plays %s", stick.host,
+                         self.on_target)
+                self._visible_bad_since = None
+                self._loading_since.pop((stick.host, self.on_target), None)
+                self._schedule_visible_check(0.0)
+                return
             self.on_target = None
         else:
             self._set_hidden(None, False)
+
+    def _hardening(self, part: str) -> bool:
+        try:
+            return bool(self.cfg.get(f"hardening.{part}", False))
+        except Exception:
+            return False
 
     def save_latency(self) -> None:
         if self.latency_path and self.latency.dirty:

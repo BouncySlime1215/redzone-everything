@@ -101,3 +101,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** the backtest delivered every play 8 s after it happened; ESPN play-by-play really reaches us 35-50 s after the whistle (median, [docs/timing.md](../timing.md)), longer than a YouTube TV channel's 22-26 s delay. The gate's lag estimate capped each sample at 45 s, under the NHL median, so it believed its data covered the screen.
 - **Fix:** samples cap at 180 s; a game with fewer than 3 samples uses the measured league p90 (`FEED_LAG_PRIOR_S` in redzone/decider/screen.py). Feed realism knobs from measurements, and never cap an estimate below what was measured.
 - **Signals:** feed lag, lag_est, real-lag, data running behind your screen, NHL mid-play cut
+
+## A rebooted stick on screen was never given its game back
+- **Symptom:** (fault drill `reboot_visible`, `hardening.sticks` off) the stick on screen drops off adb and comes back on the Fire TV home; for the whole 60 s drill nothing restores it.
+- **Cause:** `Controller._forget` cleared `on_target` for the visible stick, and both repairers (the visible-stick watchdog and the supervisor's `screen_not_game` rule) need `on_target` to know what to restore. Health only logged `screen_unknown_silent`.
+- **Fix:** with `hardening.sticks`, keep the target and check the stick at once: still playing → nothing; not playing → the usual resume/re-link on that stick (10 s in the drill). The watchdog also reads launchd's last exit code while the app is down and, for 78/126/127, says what to fix instead of looping on restarts.
+- **Signals:** reboot, adb drop, Fire TV home, on_target None, screen_unknown_silent, exit 78, restart loop
