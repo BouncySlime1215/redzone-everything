@@ -236,4 +236,17 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   so a 60 s hold came out 81.7 s (90 -> 111.6 s) in the night lab. Fix: the resume waits at most
   HOLD_RESUME_LOCK_S (1 s), then plays a stick nobody touched since the pause (a token that any _tune on
   that stick clears); `held` is only written if the token survived. Timed waits must not sit behind locks.
+- 2026-11-04 (lane 2, #132): **A standby that a failed switch tuned was never held.** A switch that tunes the
+  hidden stick itself (path "tuned") and then finds no safe moment leaves it at the live edge with held=0;
+  only preloads hold, and the STK-06 watchdog skipped held=0 by design. Now buffer_error reads an unheld
+  standby whose buffer is wanted, with no hold or preload under way, as 0 s behind, so the watchdog holds it.
+- 2026-11-04 (lane 3, #167, found by lane 2): **A fault at a fixed time can land inside the recovery it tests.** The
+  STK-06 drift fault at t=4700 fell inside the rebuild hold that the unheld-standby detection starts (with #132), so no
+  drift row was ever written. buffer_lost now takes `wait_s` and hits the first held, playing standby after `at`; the
+  test reads the drift error relative to the hold's last booked value (a rebuild books 88.6 of 90 s).
+- 2026-11-04: **A screen we forgot is a screen nobody watches.** Night lab seed 2: the stick on screen came back
+  from an adb drop, `_forget` (hardening.sticks off) cleared on_target, and the during-a-switch screen check
+  returned on "no target", so a "Still watching?" sat 110 s (limit 60). Now a forgotten screen still gets a
+  prompt-only check (CENTER only on a prompt read from a screenshot): cleared at 46 s, 2/2 reruns pass.
+  Seed 1 alone (CI) never showed it; run a second seed before calling a night clean.
 - 2026-11-04 (one brain step 2, #168): `from redzone import crunch` in demo/engine.py was shadowed by a local `def crunch(r)` in the same function scope, so the demo card crashed with "'function' object has no attribute 'row'". Unit tests never reach the demo summary; only CI's scorecard job did. Fix: import the module under a name no local uses (`crunch as crunch_table`), and run `python -m redzone.demo 20261101 --summary --json` before pushing anything that touches demo/.

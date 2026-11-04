@@ -91,6 +91,16 @@ score:
     national_tv: 0.03
     min: 0.8
     max: 1.2
+  postseason:              # redzone/scoring/postseason.py: series state, round, ranked matchups (idea: ArenaSwap)
+    enabled: false         # OFF until scored on playoff nights; the hook adds at most `cap` to the stakes multiplier
+    base: 0.02             # any postseason game
+    elimination: 0.05      # a loss ends someone's season
+    decider: 0.05          # winner takes it (Game 7, a one-game final)
+    round_step: 0.02       # round bonus = max_round_bonus - round_step * rounds left
+    max_round_bonus: 0.08  # the title game / series
+    ranked_both: 0.03      # college: both teams in the top 25
+    ranked_top10_both: 0.02
+    cap: 0.15
   garbage:                 # decided games stop competing for the TV (your team's too); bets/fantasy still count
     moment_mult: 0.12
     comeback_boost: 12     # when a blowout gets close again
@@ -378,6 +388,7 @@ hardening:                 # error handling (PLATFORM). Each switch is off until
   tv: false                # the TV jumped by itself to a stick on its home screen (a reboot's HDMI-CEC): flip it back
 
 two_stick:
+  standby_repause_s: 600     # [APP-04] the same standby pausing again within this long is a blocked app (a forced update)
   cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,
                            # set up by scripts/tv_setup.py, goes first when it's proven)
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment
