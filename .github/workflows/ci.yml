@@ -113,7 +113,7 @@ jobs:
     # Tests run even if the dataset job failed (a bad checksum must not hide test results).
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30   # base took 19m50s on 3.12 (Nov 4 12:12 run): three replayed-night tests (~3 min each)
     strategy:
       fail-fast: false
       matrix:
