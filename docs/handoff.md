@@ -69,8 +69,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 3:25 AM ET.** The loop is running: **Cycle 01 plan merged (#77)**. Merged since 2:45 AM: #72 (Noggin data factory + Timing v1, off), #73 (burst polling, off), #74 (stricter 10-min replay grading: live-or-replayed now reads 62%, an honest re-grade, not a behavior change), #75 (sims use the real per-source lag), #76 (candidate-Noggin profile + column; table not regenerated yet). Open: #78-#81.
-- **Usage:** 5% at 3:23 AM (line ~1.9%, +3.1). Kaggle V6 is running (likely retraining because the V5 adapter wasn't in the attached output); results ~6-9:30 AM.
+- **2026-11-04 3:45 AM, Nick's orders before sleep:** (1) chess-style lookahead with a SCENARIO TREE (if X then Y), precomputed in the cloud, read instantly on the Mac; (2) PLAYBOOKS everywhere: hundreds of tested "given X, do Y" entries (trigger → action → fallback) across game situations, failures, network, sticks, SmartThings, Mac and button presses, in priority order; (3) a deep backlog in every lane, never idle; 5 lanes all night. Idea bank: docs/plans/2026-11-04-0335-idea-bank.md. Nick expects it built by morning.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
