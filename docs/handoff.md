@@ -69,7 +69,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 3:45 AM, Nick's orders before sleep:** (1) chess-style lookahead with a SCENARIO TREE (if X then Y), precomputed in the cloud, read instantly on the Mac; (2) PLAYBOOKS everywhere: hundreds of tested "given X, do Y" entries (trigger → action → fallback) across game situations, failures, network, sticks, SmartThings, Mac and button presses, in priority order; (3) a deep backlog in every lane, never idle; 5 lanes all night. Idea bank: docs/plans/2026-11-04-0335-idea-bank.md. Nick expects it built by morning.
+- **2026-11-04 4:25 AM ET.** Merged since 3:25 AM: #79 (phone v2, off), #80 (eval-data-v2, live-test logs), #81 (candidate: finished-game exits and crunch entries wait for a dead ball), #83 (phone controls land exactly once, faster Go now), #84 (idea bank slotted into lanes), #85 (playbooks + per-lane backlogs + scenario-tree planning), #86 (night-lab playbook faults), #87 (CI playbook coverage + RAM/CPU line). Open: #82, #88-#95.
+- **Usage:** 7% at 4:23 AM (line 2.5%, +4.5, running about 2%/h). Lane 5 (features) paused until 8 AM; lanes 1-4 and the planners continue. Kaggle V6 running ~1 h 4 min (retraining; ETA ~8:30-9:30 AM).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
