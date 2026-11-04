@@ -533,3 +533,19 @@ NHL crunch 80.6 -> 81.9, big live 44.9 -> 44.7, the rest equal.
 The NBA seed-2 entry is not the landing lag: it is mid-play with no jitter too. It is a 70 s rewind into GS @ DEN
 where the replayed feed has only two plays in the 200 s around the landing, so the grader can't call it dead.
 Open, a data-gap case.
+
+## Possession-start entry (Nick, Nov 4 10:45 AM)
+
+`decider.entry.possession_start: off | crunch | all` (default off). With the time-shift buffer, the
+hidden stick cues to the target's last dead ball before the current possession (a DVR rewind, whole
+seek steps, up to `max_rewind_s`) instead of waiting for the next one. It is never mid-play: after the
+strict, centred and urgent passes, a last pass cues with no doubt beyond the one-sided landing lag, and
+with no dead ball in reach the entry still waits (it never goes live, and `max_wait_s` / `no_wait_leagues`
+are ignored). `Decider.possession_policy` is the hook for the learned jump / stay policy (None = jump);
+it is self-taught only (oracle, simulation, play-by-play outcomes), never Nick's buttons.
+
+The grade is `possession_start_entry_pct` (cutgrade): entries that came up on a dead ball with no play
+missed. Candidate, dev, `--tune-jitter 6`, 3 seeds: the candidate's crunch `wait` already lands on
+the last dead ball by rewind whenever one is in reach, so `crunch` changes nothing and the share is
+already 96.9-100%. `all` costs NBA on seed 0 (big live 77.5 -> 73.2, crunch 90.0 -> 85.3), so it
+stays off. Locked: equal for all three.
