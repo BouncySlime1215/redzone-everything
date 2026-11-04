@@ -116,6 +116,9 @@ class Engine:
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
+        if data_dir:
+            from redzone import calibration
+            self.control.calibrated_flip = calibration.flip_prior(self.cfg, data_dir.parent)
         self.decider.safety.feed_age = self._feed_age   # [playbooks SAFE-01]
         # Break visits: the game we leave keeps playing on the other stick, so the trip back is one
         # flip; with one stick it's a full tune of that game.
@@ -124,6 +127,9 @@ class Engine:
         self.delays.held = self.control.held
         self.control.behind_of = self._behind_of
         self.control.on_behind = self._on_behind
+        # [buffer.watchdog STK-06] a lost hold is rebuilt only while that game is in a dead ball
+        self.control.dead_ball = self._target_dead
+        self.control.buffer_log_path = data_dir.parent / "buffer.jsonl" if data_dir else None
         self.decider.return_cost = lambda t: (self.control.flip_estimate() if self.control.two_stick
                                               else self.control.deadline_cost(t))
         # Stream delay measured from YouTube TV show changes on the quarter hour (no taps needed).
@@ -1493,6 +1499,11 @@ class Engine:
                 for t in (g.home, g.away):
                     out += [t.abbr, t.name, (t.name or "").split()[-1] if t.name else ""]
         return [x for x in out if x]
+
+    def _target_dead(self, target: str) -> bool:
+        """[STK-06] Is the game on `target` in a dead ball on screen right now? No game known: no."""
+        gid = next((g for g, w in self.where.items() if getattr(w, "target", None) == target), None)
+        return bool(gid) and self.safe_to_leave(gid)
 
     def safe_to_leave(self, gid: str | None, required_s: float = 0.0) -> bool:
         """Re-checked right before a two-stick input flip: is a play on screen in the game we're leaving?"""

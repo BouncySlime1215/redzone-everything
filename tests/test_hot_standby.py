@@ -1,5 +1,6 @@
 """Hot standby with fake sticks: flip-back, cancelling stale preloads, parked replays, the sleep
 guard, learned switch times, and the engine handing those times to the decider."""
+import json
 import asyncio
 import time
 
@@ -811,3 +812,57 @@ async def test_a_jump_to_a_stick_playing_something_is_a_person_and_stays(readbac
     await c._sync_from_tv()
     await asyncio.wait_for(c._steal_task, 5)
     assert c.main.host == "b:5555"
+
+
+# --- playbook=STK-06 (buffer.watchdog): a lost or drifting hold on the hidden stick ---------------
+
+def _held(c, target, held, want):
+    c.held[target] = held
+    c.behind_of = lambda t: want
+    c.hidden.remember(target, {"state": "playing", "pkg": "yttv.pkg", "position": 100_000, "updated": 500_000})
+
+
+@pytest.mark.playbook("STK-06")
+def test_buffer_error_reads_a_jump_to_live_and_a_drift_off_the_sticks_own_clock(two):
+    c, _ = two
+    _held(c, "youtubetv:fox", 90.0, 90.0)
+    pb = lambda pos, upd: {"state": "playing", "pkg": "yttv.pkg", "position": pos, "updated": upd}
+    assert c.buffer_error(c.hidden, "youtubetv:fox", pb(130_000, 530_000)) == (90.0, 0.0)          # on target
+    assert c.buffer_error(c.hidden, "youtubetv:fox", pb(220_000, 530_000)) == (0.0, -90.0)         # jumped to live
+    assert c.buffer_error(c.hidden, "youtubetv:fox", pb(124_000, 530_000)) == (96.0, 6.0)          # fell 6 s behind
+    c.held.pop("youtubetv:fox")
+    assert c.buffer_error(c.hidden, "youtubetv:fox", pb(130_000, 530_000)) is None                 # no hold: not judged
+
+
+@pytest.mark.playbook("STK-06")
+async def test_the_watchdog_waits_for_a_dead_ball_then_rebuilds(two, monkeypatch, tmp_path):
+    c, _ = two
+    c.cfg.update({"buffer": {"watchdog": True}})
+    c.buffer_log_path = tmp_path / "buffer.jsonl"
+    c._set_hidden("youtubetv:fox", True)
+    _held(c, "youtubetv:fox", 90.0, 90.0)
+    holds = []
+
+    async def hold(stick, target, behind_s, base_s=0.0):
+        holds.append((round(behind_s, 1), base_s))
+        c._set_held(target, base_s + behind_s)
+        return True
+    monkeypatch.setattr(c, "_hold", hold)
+    dead = [False]
+    c.dead_ball = lambda t: dead[0]
+    jumped = {"state": "playing", "pkg": "yttv.pkg", "position": 220_000, "updated": 530_000}
+    assert not c._buffer_watch(c.hidden, "youtubetv:fox", jumped)       # a play is on: wait, keep it usable
+    assert c.hidden_ready and holds == []
+    dead[0] = True
+    assert c._buffer_watch(c.hidden, "youtubetv:fox", jumped)           # dead ball: rebuild, not flippable
+    assert not c.hidden_ready
+    await asyncio.wait_for(c._preload_task, 2)
+    assert holds == [(88.5, 0.0)] and c.hidden_ready                   # 90 s minus the -1.5 s calibration
+    rows = [json.loads(x)["kind"] for x in c.buffer_log_path.read_text().splitlines()]
+    assert rows == ["lost", "recovered"]
+    c._buffer_bad.clear()
+    c.cfg.update({"buffer": {"watchdog": False}})
+    c._verified_at = 0
+    monkeypatch.setattr(c.hidden, "playback", lambda pkg=None: asyncio.sleep(0, result=jumped))
+    await c.verify_standby()                                           # flag off: nothing watches the hold
+    assert holds == [(88.5, 0.0)]

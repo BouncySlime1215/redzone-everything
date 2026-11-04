@@ -347,6 +347,18 @@ function mockV2(path, b) {
     }
     return { enabled: true, now, games: gs, clashes: cl.sort((x, y) => x.t0 - y.t0).slice(0, 6), yours: gs.filter((g) => g.yours).length };
   }
+  if (path.startsWith("/api/v2/trend")) {
+    const L = [["mid_play", "Mid-play cuts per 100 landings", 0, -1, 2.4, 1.75], ["landings_dead", "Landings in dead time %", 98, 1, 96.1, 98.25],
+      ["pct_of_oracle", "% of hindsight-oracle value", 95, 1, 61, 74.2], ["big_live_nfl", "Big plays live, NFL %", 95, 1, 19.5, 23.3],
+      ["big_live_nba", "Big plays live, NBA %", 95, 1, 58, 62.5], ["your_team_crunch", "Your-team crunch live %", 100, 1, 100, 100],
+      ["dead_air", "Dead air %", 0, -1, 29.4, 26.7], ["press_to_tv_p95", "Phone press to TV p95 (s)", 3, -1, 11.2, 8.75]];
+    const n = 10;
+    const lines = L.map(([key, label, bar, dir, a, z]) => {
+      const points = Array.from({ length: n }, (_, i) => ({ ts: `run ${i + 1}`, commit: "abc" + i, v: +(a + ((z - a) * i) / (n - 1) + (i % 3 ? 0.4 : -0.3) * (i < n - 1)).toFixed(2), status: (dir > 0 ? z >= bar : z <= bar) ? "PASS" : "FAIL" }));
+      return { key, label, bar, dir, points, latest: z, status: points[n - 1].status, better: +((z - a) * dir).toFixed(2), gap: +Math.max(0, (bar - z) * dir).toFixed(2) };
+    });
+    return { enabled: true, split: "dev", runs: n, commit: "d62e7ac", ts: "2026-11-04 17:33 UTC", lines, passing: lines.filter((l) => l.status === "PASS").length };
+  }
   if (path.startsWith("/api/v2/night")) {
     const now = Date.now() / 1000, t0 = now - 4 * 3600;
     const live = (STATE.games || []).slice(0, 5);
@@ -369,7 +381,12 @@ function mockV2(path, b) {
     const pb = {};
     events.forEach((e) => (e.playbooks || []).forEach((k) => { pb[k] = (pb[k] || 0) + 1; }));
     const day = new Date().toISOString().slice(0, 10);
+    const oseg = segs.map((x, i) => ({ ...x, ...(i % 3 === 1 ? live[(i + 1) % live.length] && { game: live[(i + 1) % live.length].id, matchup: live[(i + 1) % live.length].matchup } : {}) }));
+    const markers = segs.flatMap((x, i) => [{ ts: x.t0 + 200, game: x.game, matchup: x.matchup, kind: "td", label: "", seen: true, on: x.matchup },
+      ...(i % 3 === 1 ? [{ ts: x.t0 + 260, game: oseg[i].game, matchup: oseg[i].matchup, kind: "goal", label: "", seen: false, on: x.matchup }] : [])]).filter((m) => m.ts < now);
     return { enabled: true, day, nights: [day, "2026-11-03", "2026-11-02"], segments: segs, events,
+      oracle: { objective: "combined", segments: oseg, agree_pct: 71.4 }, markers,
+      big: { plays: markers.length, seen: markers.filter((m) => m.seen).length, missed: markers.filter((m) => !m.seen).length },
       summary: { switches: segs.length, failed: 1, games: Object.keys(air).length, taps: { up: 2, down: 1, missed: 1 },
         on_air: Object.entries(air).map(([matchup, s]) => ({ matchup, s: Math.round(s) })).sort((a, b) => b.s - a.s), playbooks: pb } };
   }
