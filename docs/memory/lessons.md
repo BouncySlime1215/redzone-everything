@@ -211,3 +211,4 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Fix:** `decider.entry.confirmed_dead_only` (candidate on): a lone substitution opens no window, so a rewind falls back to an earlier logged stoppage or the entry waits.
 - **Signals:** a rewind of 50 s or more into NBA; a window of kind `substitution` with no stronger kind.
 
+- 2026-11-04, the Kaggle factory's first run failed every CBB season with KeyError <League.CBB>: the oracle (self-play labels) indexes sportsgrade.PLAY_LEN / RESUME_LEAD by the replay's league, and those were plain dicts of pro leagues; is_big / is_crunch also compared league == League.NBA and hard-coded period 4, so CBB would have had zero big or crunch plays even without the crash. Fix: ByLeague tables (college reads its pro row) and the last regulation period from models.REGULATION (CBB: the 2nd half). tests/test_kaggle_factory_jobs.py runs season_job for every league in PLAN offline.
