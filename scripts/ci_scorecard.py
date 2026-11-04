@@ -59,6 +59,11 @@ def cards(a) -> list[tuple[str, list[str], Path]]:
         for tag, extra in (("sync+3", ["--true-delay", "38"]), ("sync-3", ["--true-delay", "32"]),
                            ("stale", ["--drop", "0.1", "--late-plays", "0.15"])):
             out += [(f"{n}_{tag}", argv + extra, need) for n, argv, need in base]
+    if getattr(a, "reels", False):
+        # [highlight jump] the same NFL/NBA/NHL cards with the catch-up reel on (reel.play, in memory),
+        # for the release gate's reel lines (reels_in_dead_pct, reel_home_big_missed).
+        base = [x for x in out if x[0] in ("nfl", "nba", "nhl")]
+        out += [(f"{n}_reels", argv + ["--reels"], need) for n, argv, need in base]
     if a.demo_day:
         out.append((f"demo_{a.demo_day}", ["-m", "redzone.demo", a.demo_day, "--summary", "--json"],
                     Path(f"data/demo/{a.demo_day}")))
@@ -98,6 +103,8 @@ def main(argv=None) -> int:
                     help="grade one time split (redzone/lab/splits.py); test = the LOCKED release set")
     ap.add_argument("--robust", action="store_true", default=os.environ.get("RZ_SCORECARD_ROBUST") == "1",
                     help="also run NFL/NBA/NHL with sync error +-3 s and a dropping, late feed")
+    ap.add_argument("--reels", action="store_true", default=os.environ.get("RZ_SCORECARD_REELS") == "1",
+                    help="also run NFL/NBA/NHL with the catch-up reel on (the release gate's reel lines)")
     ap.add_argument("--full", action="store_true", default=os.environ.get("RZ_SCORECARD_FULL") == "1",
                     help="the whole merge scorecard (NFL 16 slates, NBA/NHL 14 nights) instead of the slice")
     ap.add_argument("--timeout", type=float, default=None,

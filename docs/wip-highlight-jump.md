@@ -46,6 +46,26 @@ Fitted margins: NBA 0 and NHL 0 on both folds (no unsafe jump held out); NFL fol
 because ~10% of jumps outlast the break whatever the margin (the p10 tail): the early return covers
 those. Config uses 8 s everywhere.
 
+## Locked test split, scored once (Nov 4, RC 2 base 5c7727e)
+
+The knobs (`reel.jump.p10_s`, `reel.jump.margin_s`) were refit on the fit split only (train + valid,
+5 forward-chaining folds by night, `python -m redzone.lab.reeljump <league>`), then the LOCKED test
+split was scored once, reels off vs on (`eval.py --split test [--reels]`, `eval_sports.py <lg> --split test [--reels]`).
+
+Fit folds (share of jumps where the real dead ball ran out before reel + trip back; check = the next block):
+NFL mean 1%, worst fold 5%, gap -5 pts; NBA 0 / 0 / 0; NHL mean 17%, worst 33% (1 of 3), gap +17 pts.
+
+| league | reels in dead time | big plays missed on a reel (game left / any) | rule lines (dead air, mid-play entries, missed on entry) | other changes |
+|---|---:|---|---|---|
+| NFL | **98.8%** ✅ (21 reels, 666 s, 644 s of ads) | 0 ✅ / 3 | unchanged | big live 35.6 → 35.4, crunch live 73.4 → 73.0 |
+| NBA | **82.2%** ❌ (6 reels, 267 s late) | 0 ✅ / 0 | dead air 24.5 → 25.4 ❌, mid-play entries 3 → 4 ❌ | |
+| NHL | **100%** ✅ (6 reels, 280 s of ads) | 0 ✅ / 0 | dead air 26.5 → 26.2, unchanged otherwise | |
+
+**Verdict: reels stay OFF (`reel.play: false`).** NBA misses the gate and raises two rule lines. Turning
+reels on for only NFL + NHL would be a choice made by looking at the locked nights, which the
+no-overfitting rule forbids. Next time, decide it on the fit split and judge it on fresh nights
+(after 20261101). Also: NFL crunch live dips 0.4 pts, and NHL's fit is thin (3 checked jumps).
+
 ## Next
 1. NBA plays missed on entry +2 and NHL entries mid-play +1: find the reel returns that land live.
 2. NFL: allow the jump only where it replaces a commercial (not RedZone or a replay chain).

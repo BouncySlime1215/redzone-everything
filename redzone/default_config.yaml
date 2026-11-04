@@ -323,20 +323,21 @@ reel:                      # catch-up reel: 5+ plays you missed, back to back, 3
   min_free_mb: 1500        # never download with less free disk than this
   jump:                    # [highlight jump] leave the game on screen for the reel at a dead ball (needs play: true;
                            # kill switches: flags.reel, flags.highlight_jump)
-    margin_s:              # spare seconds on top of reel + both switches inside the dead ball's cautious length
-      default: 8.0         # (fit offline per league by redzone/lab/reeljump.py on archive nights)
-      nfl: 8.0
-      nba: 8.0
-      nhl: 8.0
+    margin_s:              # spare seconds on top of reel + both switches inside the dead ball's cautious length.
+      default: 8.0         # Fit by redzone/lab/reeljump.py on the FIT split only (train + valid, 5 forward-chaining
+      nfl: 20.0            # folds, worst fold kept), never on the LOCKED nights; floor 8 s where the fit said less.
+      nba: 8.0             # (fit 0 s on 9 nights: the 8 s floor stays)
+      nhl: 60.0            # (no smaller margin was safe on the fit nights: NHL reels almost never fit)
     key_ratio: 1.5         # the brain's chance of a key moment soon this many times the league's usual rate: stay
     key_p_no_rate: 0.8     # ...or, when the usual rate isn't known, at least this likely
     tail_p: 0.10           # chance the dead ball ends before its cautious length (p10)
     min_gain: 5.0          # the reel must beat staying by this much (0-100 scale)
-    p10_s:                 # cautious (p10) on-screen length per league and break kind, s (fit by redzone/lab/reeljump.py
-                           # on the scorecard nights, 2-fold by night; the break model's quantiles replace these)
-      nfl: {end_period: 176.1, halftime: 823.6, injury: 31.0, review: 109.0, score_break: 105.0, timeout: 33.0, two_minute_warning: 147.6}
-      nba: {end_period: 152.0, halftime: 908.0, review: 20.1, timeout: 99.3}
-      nhl: {end_period: 136.2, intermission: 1123.0, review: 119.0, score_break: 41.0, timeout: 137.0}
+    p10_s:                 # cautious (p10) on-screen length per league and break kind, s: redzone/lab/reeljump.py on
+                           # the FIT split (NFL through 20251207, NBA/NHL through 20261028); kinds seen < 20 times
+                           # there make no claim. Brain v3's quantiles replace these once its leak-free retrain ships.
+      nfl: {end_period: 176.0, halftime: 822.2, injury: 31.0, review: 109.0, score_break: 110.0, timeout: 33.0, two_minute_warning: 148.0}
+      nba: {end_period: 152.0, halftime: 908.0, review: 20.3, timeout: 99.1}
+      nhl: {intermission: 1123.0, score_break: 41.0, timeout: 136.0}
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback

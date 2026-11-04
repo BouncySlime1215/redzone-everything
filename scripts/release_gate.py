@@ -59,6 +59,7 @@ def _pct(s) -> float | None:
 def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str, str]]:
     """(gate, scope, status, detail) rows."""
     rows: list[tuple[str, str, str, str]] = []
+    reeled = False
     base = (baseline or {}).get("cards", {})
 
     def add(gate, scope, ok, detail, pending=False):
@@ -81,6 +82,18 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
             bn, bmid = _entries(_m(base.get(name, {})))
             if bmid is not None:
                 add("entries mid-play never above today", name, mid <= bmid, f"{mid} vs today {bmid}")
+        if m.get("reels_in_dead_pct") is not None or m.get("reels") is not None:
+            # [highlight jump] A reel only ever replaces dead time, and no live big play of the game it
+            # stood in for airs while it is on (plays elsewhere are reported, not gated: staying home
+            # would have missed them too).
+            rd = m.get("reels_in_dead_pct")
+            add("reels >= 95% in dead time", name, rd is not None and rd >= 95.0,
+                f"{rd}% of {m.get('reel_s')} s over {m.get('reels')} reels" if rd is not None else "no reels played",
+                pending=rd is None)
+            hb = m.get("reel_home_big_missed")
+            add("0 live big plays missed on a reel", name, hb == 0,
+                f"{hb} (any game: {m.get('reel_big_missed_anywhere')})")
+            reeled = True
         if name.startswith("demo"):
             add("big plays seen >= 95% (NFL)", name, (_pct(m.get("nfl_big_plays")) or 0) >= 95, str(m.get("nfl_big_plays", {}).get("seen")))
             add("big plays seen >= 95% (NHL)", name, (_pct(m.get("nhl_goals")) or 0) >= 95, str(m.get("nhl_goals", {}).get("seen")))
@@ -103,7 +116,9 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
             # replay is not a miss; until that ceiling is computed, a value under 95% is PENDING, not PASS.
             add("crunch live >= 95% or feasible ceiling", name, cr >= 95.0,
                 f"{cr}% (ceiling: pending)" if cr < 95 else f"{cr}%", pending=cr < 95.0)
-    for gate, why in (("reels >= 95% in dead time, 0 live big plays missed on a reel", "reel scorecard line not built yet"),
+    pend = [] if reeled else [("reels >= 95% in dead time, 0 live big plays missed on a reel",
+                                "no reel cards in this run (ci_scorecard.py --reels)")]
+    for gate, why in (*pend,
                       ("reasoner >= 95% agreement, unsafe leaves <= 0.5%, 100% valid JSON", "no gold labels yet"),
                       ("watchdog >= 95% correct, every kind >= 90%, 0 unsafe", "no held-out error set yet"),
                       ("sync error < 2 s on >= 95% of samples", "needs real screen samples (Mac)"),

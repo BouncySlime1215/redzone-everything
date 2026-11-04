@@ -55,3 +55,16 @@ def test_demo_card_reads_its_own_shapes():
     assert _status(rows, "entries at a dead ball >= 95%", "demo_20261101") == rg.PASS
     assert _status(rows, "big plays seen >= 95% (NHL)", "demo_20261101") == rg.PASS
     assert _status(rows, "crunch live >= 95% or feasible ceiling", "demo_20261101") == rg.PENDING
+
+
+def test_reel_cards_get_their_own_gate_rows():
+    rows = rg.gates({"nhl_reels": _card(reels=12, reel_s=600, reels_in_dead_pct=97.5, reel_home_big_missed=0,
+                                        reel_big_missed_anywhere=2)})
+    assert _status(rows, "reels >= 95% in dead time", "nhl_reels") == rg.PASS
+    assert _status(rows, "0 live big plays missed on a reel", "nhl_reels") == rg.PASS
+    assert not any(r[0].startswith("reels >= 95% in dead time, 0") for r in rows)   # no pending system row
+    rows = rg.gates({"nfl_reels": _card(reels=5, reel_s=300, reels_in_dead_pct=90.0, reel_home_big_missed=1)})
+    assert _status(rows, "reels >= 95% in dead time", "nfl_reels") == rg.FAIL
+    assert _status(rows, "0 live big plays missed on a reel", "nfl_reels") == rg.FAIL
+    rows = rg.gates({"nhl": _card()})
+    assert any(r[0].startswith("reels >= 95% in dead time, 0") and r[2] == rg.PENDING for r in rows)

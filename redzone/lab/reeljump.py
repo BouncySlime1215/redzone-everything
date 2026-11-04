@@ -1,7 +1,7 @@
 """[highlight jump] Learn the jump/stay policy offline, from what actually happened on archive nights.
 
-Two things are fit, both on one fold of nights and checked on the other (2-fold by night: what is
-reported is always held out):
+Two things are fit, on the fit nights only (train + valid of redzone/lab/splits.py; the LOCKED test
+nights are never read), with forward-chaining folds by night (fit on older, check on the next block):
 
 1. How long each kind of break really runs on screen, at its cautious end (p10): break event ->
    the restart (cutgrade.resume_after), per league and stoppage kind. Until the break model has
@@ -176,49 +176,75 @@ def fit_margin(moments: list[Moment], tail: float = 0.10) -> float:
 
 # --- nights ------------------------------------------------------------------------------------
 
-def league_nights(league: League):
-    """[(replays, targets)] for every archived night the scorecards grade, in date order."""
+def league_nights(league: League, split: str = "fit"):
+    """[(night, replays, targets)] of one time split (redzone/lab/splits.py), oldest first. Tuning
+    reads only "fit" (train + valid): the LOCKED test nights are never passed here."""
     import importlib.util
+    if split == "test":
+        raise ValueError("the LOCKED test split is never used for fitting")
     if league == League.NFL:
+        from redzone.lab import splits
         spec = importlib.util.spec_from_file_location("_ev", ROOT / "scripts/eval.py")
         ev = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(ev)
-        return [(reps, None) for reps in ev.eval_set(16)]
+        night = {gid: nt for nt, ids in splits.archive_nights(ROOT / "data/archive/nfl").items() for gid in ids}
+        out = [(night.get(reps[0].gid, ""), reps, None) for reps in ev.eval_set(split=split)]
+        return sorted(out, key=lambda x: x[0])
     spec = importlib.util.spec_from_file_location("_evs", ROOT / "scripts/eval_sports.py")
     evs = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(evs)
-    return [(reps, targets) for _, reps, targets in evs.nights(league, 14, evs.EVAL_END)]
+    return sorted(evs.nights(league, 10_000, evs.evaldata.window_end(league.value, evs.EVAL_END), split),
+                  key=lambda x: x[0])
+
+
+def _fit_one(fit_on, cfg, mine, lg):
+    table = p10_table([r for _, reps, _ in fit_on for r in reps])
+    cfg.data["reel"]["jump"]["p10_s"] = {lg.value: table}
+    m_fit = observe([(reps, t) for _, reps, t in fit_on], cfg, mine)
+    return table, fit_margin(m_fit), m_fit
 
 
 def main(argv=None):
+    """Forward-chaining folds over the fit nights (train + valid; never the LOCKED test split): fold k
+    fits on blocks 0..k and checks on block k+1. Reports every fold, the mean and the worst fold,
+    and the fit-vs-check gap; the final table and margin are fit on all fit nights."""
     from redzone.config import Config
+    from redzone.lab import splits
     ap = argparse.ArgumentParser()
     ap.add_argument("league")
     ap.add_argument("--json", default=None)
+    ap.add_argument("--folds", type=int, default=splits.FOLDS)
     a = ap.parse_args(argv)
     lg = League(a.league)
     pinned = ROOT / "data/eval_config.yaml"
     cfg = Config(user_path=pinned if pinned.exists() else ROOT / "data/config.yaml")
     cfg.data["reel"]["play"] = True   # in memory only
     mine = set(cfg.get(f"teams.{lg.value}") or ["WSH"])
-    nights = league_nights(lg)
-    folds = [nights[0::2], nights[1::2]]
-    out = {"league": lg.value, "nights": len(nights), "folds": []}
-    for k in (0, 1):
-        fit_on, test_on = folds[k], folds[1 - k]
-        table = p10_table([r for reps, _ in fit_on for r in reps])
-        cfg.data["reel"]["jump"]["p10_s"] = {lg.value: table}
-        m_fit = observe(fit_on, cfg, mine)
-        margin = fit_margin(m_fit)
-        m_test = observe(test_on, cfg, mine)
-        out["folds"].append({"p10_s": table, "margin_s": margin, "fit": score(m_fit, margin),
-                             "held_out": score(m_test, margin),
-                             "held_out_by_margin": [score(m_test, x) for x in MARGINS]})
-    table = p10_table([r for reps, _ in nights for r in reps])
-    cfg.data["reel"]["jump"]["p10_s"] = {lg.value: table}
-    allm = observe(nights, cfg, mine)
-    out["final"] = {"p10_s": table, "margin_s": max(fit_margin(allm), *(f["margin_s"] for f in out["folds"])),
-                    "moments": len(allm)}
+    nights = league_nights(lg, "fit")
+    by_night: dict[str, list] = {}
+    for nt, reps, t in nights:
+        by_night.setdefault(nt, []).append((nt, reps, t))
+    order = sorted(by_night)
+    k = min(a.folds, max(1, len(order) - 1))
+    out = {"league": lg.value, "split": "fit (train + valid)", "nights": order, "folds": []}
+    for fit_n, check_n in splits.folds(order, k):
+        fit_on = [x for n in fit_n for x in by_night[n]]
+        check_on = [x for n in check_n for x in by_night[n]]
+        table, margin, m_fit = _fit_one(fit_on, cfg, mine, lg)
+        m_chk = observe([(reps, t) for _, reps, t in check_on], cfg, mine)
+        fs, cs = score(m_fit, margin), score(m_chk, margin)
+        rate = lambda d: round(d["unsafe"] / d["jumps"], 3) if d["jumps"] else 0.0
+        out["folds"].append({"fit_through": fit_n[-1], "check": list(check_n), "p10_s": table,
+                             "margin_s": margin, "fit": fs, "check_score": cs,
+                             "unsafe_rate_fit": rate(fs), "unsafe_rate_check": rate(cs)})
+    rates = [f["unsafe_rate_check"] for f in out["folds"] if f["check_score"]["jumps"]]
+    out["check_unsafe_rate"] = {"mean": round(sum(rates) / len(rates), 3) if rates else None,
+                                "worst": max(rates) if rates else None}
+    gaps = [f["unsafe_rate_check"] - f["unsafe_rate_fit"] for f in out["folds"] if f["check_score"]["jumps"]]
+    out["gap_check_minus_fit"] = round(sum(gaps) / len(gaps), 3) if gaps else None
+    table, margin, allm = _fit_one(nights, cfg, mine, lg)
+    out["final"] = {"p10_s": table, "margin_s": max(margin, *(f["margin_s"] for f in out["folds"]), 0.0),
+                    "moments": len(allm), "fit_through": order[-1] if order else None}
     txt = json.dumps(out, indent=1)
     print(txt)
     if a.json:
