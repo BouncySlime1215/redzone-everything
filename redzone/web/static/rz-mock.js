@@ -395,6 +395,9 @@ function mockV2(path, b) {
       ...(i % 3 === 1 ? [{ ts: x.t0 + 260, game: oseg[i].game, matchup: oseg[i].matchup, kind: "goal", label: "", seen: false, on: x.matchup }] : [])]).filter((m) => m.ts < now);
     return { enabled: true, day, nights: [day, "2026-11-03", "2026-11-02"], segments: segs, events,
       oracle: { objective: "combined", segments: oseg, agree_pct: 71.4 }, markers,
+      plan_marks: segs.flatMap((x, i) => i % 3 === 0 ? [{ ts: x.t0 + 90, type: "catchup", kind: "replay", game: x.game, matchup: x.matchup, reason: "catch-up", plan: null, ok: true }]
+        : i % 3 === 2 ? [{ ts: x.t0 + 30, type: "interleave", kind: "break_visit", game: x.game, matchup: x.matchup, reason: "break", plan: "crunch-overlap", ok: true }] : []),
+      plan_counts: { catchup: 5, interleave: 4 },
       big: { plays: markers.length, seen: markers.filter((m) => m.seen).length, missed: markers.filter((m) => !m.seen).length },
       summary: { switches: segs.length, failed: 1, games: Object.keys(air).length, taps: { up: 2, down: 1, missed: 1 },
         on_air: Object.entries(air).map(([matchup, s]) => ({ matchup, s: Math.round(s) })).sort((a, b) => b.s - a.s), playbooks: pb } };

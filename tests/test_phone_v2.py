@@ -284,3 +284,23 @@ def test_watch_route(client, engine):
     _on(engine)
     r = client.get("/api/v2/watch").json()
     assert r["enabled"] and isinstance(r["games"], list)
+
+
+def test_plan_marks_catchups_and_interleaves():
+    sw = [{"ts": 1.0, "to_game": "a", "kind": "better", "reason": "x", "ok": 1},
+          {"ts": 2.0, "to_game": "b", "kind": "replay", "reason": "catch-up plan=crunch-overlap", "ok": 1},
+          {"ts": 3.0, "to_game": "reel", "kind": "better", "reason": "reel", "ok": 0, "dry_run": 1},
+          {"ts": 4.0, "to_game": "c", "kind": "break_visit", "reason": "a in commercial", "ok": 0},
+          {"ts": 5.0, "to_game": "a", "kind": "return", "reason": "back", "ok": 1}]
+    m = phone_v2.plan_marks(sw, lambda g: g.upper())
+    assert [(x["type"], x["matchup"]) for x in m] == [("catchup", "B"), ("catchup", "Catch-up reel"), ("interleave", "C"), ("interleave", "A")]
+    assert m[0]["plan"] == "crunch-overlap" and m[1]["ok"] is True and m[2]["ok"] is False
+
+
+def test_night_route_carries_plan_marks(client, engine):
+    _on(engine)
+    gid = next(iter(engine.merger.games))
+    engine.store._x("INSERT INTO switches (ts, frm, to_game, target, kind, reason, dry_run, ok, detail) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)", (time.time(), None, gid, "a", "replay", "catch-up", 0, 1, "{}"))
+    r = client.get("/api/v2/night").json()
+    assert r["plan_counts"]["catchup"] >= 1 and r["plan_marks"][-1]["type"] == "catchup"

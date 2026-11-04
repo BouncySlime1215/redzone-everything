@@ -216,8 +216,13 @@ function nightSheet() {
       `<b class="v2-c${colorOf(sg.matchup, order)}" style="left:${(((Math.max(sg.t0, a) - a) / span) * 100).toFixed(2)}%;width:${Math.max(0.4, ((Math.min(sg.t1, b) - Math.max(sg.t0, a)) / span) * 100).toFixed(2)}%" title="${attr(sg.matchup)} ${attr(fmtTime(sg.t0))}"></b>`).join("");
     const marks = arr(d.markers).filter((m) => m.ts >= a && m.ts < b).map((m) =>
       `<em class="v2-mark${m.seen ? "" : " v2-mark--miss"}" style="left:${(((m.ts - a) / span) * 100).toFixed(2)}%" title="${attr(`${m.seen ? "Seen live" : "Missed"}: ${m.matchup} ${m.kind} ${fmtTime(m.ts)}`)}"></em>`).join("");
+    const pm = arr(d.plan_marks).filter((m) => m.ts >= a && m.ts < b);
+    const lane = pm.length ? `<div class="v2-rlabel">What the planner chose: <span class="v2-pm-key v2-pm--catchup">▲</span> catch-up <span class="v2-pm-key v2-pm--interleave">◆</span> break visit / return</div>
+      <div class="v2-pmlane" role="img" aria-label="${attr(`${num((d.plan_counts || {}).catchup)} catch-ups and ${num((d.plan_counts || {}).interleave)} break visits`)}">${pm.map((m) =>
+        `<i class="v2-pm v2-pm--${attr(m.type)}${m.ok ? "" : " v2-pm--fail"}" style="left:${(((m.ts - a) / span) * 100).toFixed(2)}%" title="${attr(`${m.type === "catchup" ? "Catch-up" : m.kind === "return" ? "Back home" : "Break visit"}: ${m.matchup} ${fmtTime(m.ts)}${m.plan ? " (plan " + m.plan + ")" : ""}`)}">${m.type === "catchup" ? "▲" : "◆"}</i>`).join("")}</div>` : "";
     const o = d.oracle;
     ribbon = `<div class="v2-ribbon" role="img" aria-label="What was on the TV, ${esc(fmtTime(a))} to ${esc(fmtTime(b))}">${bars(segs)}${marks}</div>
+      ${lane}
       ${o ? `<div class="v2-rlabel">Best possible (hindsight)${o.agree_pct != null ? ` · we matched ${esc(String(o.agree_pct))}% of the time` : ""}</div>
       <div class="v2-ribbon v2-ribbon--oracle" role="img" aria-label="What the hindsight oracle would have shown">${bars(arr(o.segments))}</div>` : ""}
       <div class="v2-ticks">${ticks.join("")}</div>

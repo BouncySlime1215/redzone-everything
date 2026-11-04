@@ -193,6 +193,31 @@ def _on_at(segs: list[dict], ts: float, key: str = "game") -> str | None:
     return None
 
 
+CATCHUP_KINDS = {"replay"}                                # a catch-up replay of a missed play
+INTERLEAVE_KINDS = {"break_visit", "return"}             # visit another game in a break, then come back
+PLAN = re.compile(r"\bplan=([A-Za-z0-9_-]+)")
+
+
+def plan_marks(switches: list[dict], name) -> list[dict]:
+    """The planner's catch-ups and interleaves on the night's switches, oldest first, for the replay
+    viewer: a catch-up is a replay of a missed play or the catch-up reel; an interleave is a break visit
+    to another game and the return home. A `plan=<name>` tag in the reason is kept (multi-step plans)."""
+    out = []
+    for sw in switches:
+        kind, to = sw.get("kind") or "", sw.get("to_game")
+        if kind in CATCHUP_KINDS or to == "reel":
+            typ = "catchup"
+        elif kind in INTERLEAVE_KINDS:
+            typ = "interleave"
+        else:
+            continue
+        m = PLAN.search(sw.get("reason") or "")
+        out.append({"ts": sw["ts"], "type": typ, "kind": kind, "game": to,
+                    "matchup": "Catch-up reel" if to == "reel" else name(to), "reason": sw.get("reason") or "",
+                    "plan": m.group(1) if m else None, "ok": bool(sw.get("ok")) or bool(sw.get("dry_run"))})
+    return out
+
+
 def oracle_overlay(segments: list[dict], oracle: dict | None, moments: list[dict], name, end: float) -> dict:
     """What the hindsight oracle would have shown next to what we did, and a marker per big play.
     agree_pct: share of our on-screen time showing the oracle's game; markers: each big play in the
@@ -473,8 +498,11 @@ def router(engine) -> APIRouter:
         from redzone.lab.decision_records import read_jsonl
         over = oracle_overlay(view["segments"], read_oracle(ORACLE_DIR / f"{d.isoformat()}.json"),
                               read_jsonl(MOMENTS, t0, t1), engine._name, end)
+        marks = plan_marks(sws, engine._name)
         return {"enabled": True, "day": d.isoformat(), "t0": t0, "t1": t1, "now": now, "nights": nights,
-                **view, **over}
+                **view, **over, "plan_marks": marks,
+                "plan_counts": {"catchup": sum(1 for m in marks if m["type"] == "catchup"),
+                                "interleave": sum(1 for m in marks if m["type"] == "interleave")}}
 
     @r.get("/trend")
     async def get_trend(split: str = "dev"):
