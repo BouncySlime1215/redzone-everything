@@ -50,6 +50,14 @@ What Nick wants from RedZone Everything (as of 2026-11-03):
 
 - FULLY SELF-TAUGHT (Nick, Nov 4): no training signal from Nick (no 👍/👎, overrides or taps as labels; his buttons are controls only). The Noggin learns from the hindsight oracle, self-play/simulation, the Teacher's automated reviews and objective play-by-play outcomes. NBA crunch = hybrid, AI-decided, possession-start entry via the buffer. Missed key moments must be replayed within 2-3 MIN MAX (not 10); the vision is following multiple games at once, jumping for key moments. Usage: Nick lifted the pace brake Nov 4 ('push this'); the only usage rule left is the hard stop at 89-90%.
 
+- CUT RULES + PROMOTION BAR (Nick, Nov 4, 3:15 PM):
+  - NEVER JOIN mid-play.
+  - LEAVING mid-play is fine at low leverage (right after a bucket or score, in transition, Q1-Q3, not a hype moment).
+  - Down the stretch is sticky: in a close, late game (e.g. NBA within ~6 pts with ~6 min left, back and forth), don't leave unless a higher-priority crunch needs it.
+  - Leverage is decided by a learned, self-taught score; rules only set floors.
+  - MLB is mostly dead: detect the key moments and jump only for those.
+  - Promotion = strict on entries 0, NBA/NHL crunch, and your-team; every other line must be >= live.
+
 **Why:** These were stated across the Nov 2-4 sessions; this is the consolidated spec.
 
 **How to apply:** Check every coordinator thread and PR against this list. Keep ADHD-style replies.

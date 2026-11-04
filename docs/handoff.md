@@ -71,9 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- 15:10 director: usage 21% weekly. 20 open PRs. integration/release green; integration/next CI running on eb814f3. RC5.1 e8bbf8e live and healthy.
-- All 5 lanes are working. Cycle 04 review is in (nothing promoted: no gate set passes fully). Waiting on Nick to pick the promotion bar (A: rule #1 passes + nothing worse than live; B: every gate PASS). Cycle 05 plan started.
-- Lab: no new findings since 2:38 PM. The phone-controls thread has the TV and sticks 3:10-3:45 for the GO NOW probe (#145); the lab agent is paused for that window. Factory: CBB KeyError fix in progress (lane 1).
+- 15:15 NICK DECISION: never JOIN mid-play. LEAVING mid-play is OK at low leverage (after a bucket, in transition, Q1-Q3). Close and late games are sticky (NBA/NHL down the stretch). MLB: detect key moments only. League order unchanged.
+- Promotion bar: strict on mid-play entries 0, NBA/NHL crunch PASS and >= live, and your-team PASS; every other line >= live (CI-aware). Relayed to the coordinator for decisions.md and Cycle 05.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
