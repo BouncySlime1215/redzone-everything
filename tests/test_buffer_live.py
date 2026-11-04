@@ -46,6 +46,10 @@ def test_hold_pauses_waits_and_plays_then_reports_the_offset(held):
     assert stick.log[-2:] == ["KEYCODE_MEDIA_PAUSE", "KEYCODE_MEDIA_PLAY"]
     assert c.hidden_target == "youtubetv:fox" and c.hidden_ready
     assert 0.15 <= c.held["youtubetv:fox"] <= 1.0 and calls[-1][0] == "youtubetv:fox"
+    # [SYNC 2] Re-anchored after the hold: the held stream still counts as the preloaded standby,
+    # so the next flip uses it instead of re-tuning it at the live edge (which threw the hold away).
+    assert stick.tuned["report"]["state"] == "playing"
+    assert stick.still_on("youtubetv:fox", asyncio.run(stick.playback("yttv.pkg")))
 
 
 def test_not_flippable_while_held_and_lock_is_free(held):

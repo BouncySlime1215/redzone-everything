@@ -21,6 +21,14 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(autouse=True)
+def _flip_steady_off(monkeypatch):
+    """[SYNC 1] The ~1 s steady-PLAYING wait before a flip would slow every switch test by a second
+    and shift their read counts; tests/test_sync_flip.py turns it back on and tests it directly."""
+    from redzone import control
+    monkeypatch.setattr(control, "FLIP_STEADY_S", 0.0)
+
+
+@pytest.fixture(autouse=True)
 def _tv_files_in_tmp(tmp_path, monkeypatch):
     """No test ever reads or writes the real TV token, SmartThings sign-in or input log."""
     from redzone import tv

@@ -223,3 +223,19 @@ held stream rewinds that much less. Drift back to live is a reload, which is a f
 Verification on the TV: the per-tune delay estimate (sync filter: boundary, score bug, taps)
 should read about B s more than the same channel without the hold. Live landings are graded in
 `data/supervisor_cuts.jsonl` (leave / enter: dead, play or unknown) from each switch's trace.
+
+## SYNC 1: steady before the flip, buffering into the delay (Nov 4)
+
+- **Steady before the flip.** `Controller._steady_playing`: the hidden stick must be still on the stream we tuned
+  (`Stick.still_on`) and show the same `updated` stamp (the app's last state change) on two reads at least
+  `FLIP_STEADY_S` = 1 s apart. A warm cache (`_kept_playing` and earlier reads) makes this free on most flips.
+  Buffering or connecting gets `FLIP_STEADY_WAIT_S` = 3 s, after which the stream is re-tuned. A pause or stop is
+  believed at once.
+- **Buffering into the delay.** Each report carries position p at stick time u. Against the tune anchor,
+  lag = (u - u0) - (p - p0). Between 0.5 s and 20 s it is a stall: it goes into `held[target]`, the engine's
+  `on_behind` moves the delay book by the same amount, and the stream is re-anchored so the stall is booked once.
+  It is checked before the flip and right after a TV-input flip. Negative lag (a player catching up) is never booked.
+- **Settle.** `settle_book` counts flips with a picture check and those PLAYING within `FLIP_SETTLE_S` = 3 s. Every
+  switch trace carries `settled` and `stall_s`. North Star row: flips PLAYING within 3 s >= 99%.
+- **#61 hold fix.** After the hold's PLAY, the stream is re-anchored. Before, the pause broke `still_on`, so the
+  next flip re-tuned the held stream at the live edge and threw the hold away.
