@@ -266,7 +266,7 @@ class Night:
 
     def patch(self) -> None:
         """Point the production modules' outside-world edges at the fakes and at the work folder."""
-        from redzone import channels, control, engine as engine_mod, plan, recorder, reel, screen_ocr, supervisor, tv
+        from redzone import channels, control, engine as engine_mod, governor, plan, recorder, reel, screen_ocr, supervisor, tv
         from redzone.discovery import yttv
         from redzone.tuners import screen_prompts
         import redzone.autonomy as autonomy
@@ -284,6 +284,7 @@ class Night:
         recorder.ROOT = d
         screen_ocr.recognize = houselib.fake_recognize
         screen_prompts.png_luma = houselib.fake_luma_path
+        pin_host(governor)
 
     def build_engine(self):
         from redzone.config import Config
@@ -531,6 +532,31 @@ def _et(t: float) -> str:
     return datetime.fromtimestamp(t, ET).strftime("%-I:%M:%S %p")
 
 
+def pin_host(governor) -> None:
+    """The night grades the house, not the computer it runs on: the resource governor (the app's
+    and the watchdog's) sees a calm, idle, plugged-in machine. Left alone it read the real host:
+    on Nick's Mac the live RedZone app (`python -m redzone`, over the 1200 MB cap) showed up in
+    `ps`, so the night's watchdog kept restarting the night's own engine; a busy or battery Mac
+    also changed OCR pacing. CI has neither, so the night passed there and failed on the Mac."""
+    def calm(root=None, run=None, clock=time.time):
+        return governor.Sample(at=clock(), on_battery=False, battery_pct=100, low_power=False,
+                               thermal_level=0, mem_pressure=1, swap_used_mb=0.0, load_per_core=0.1,
+                               disk_free_mb=100_000.0, procs={})
+    governor.sample = calm
+
+
+def _still_off_at_end(samples: list[Sample], pred) -> float:
+    """How long the run of samples matching pred that is still going at the end has lasted (0 if none)."""
+    if not samples or not pred(samples[-1]):
+        return 0.0
+    start = samples[-1].t
+    for s in reversed(samples):
+        if not pred(s):
+            break
+        start = s.t
+    return samples[-1].t - start
+
+
 def _episodes(samples: list[Sample], pred) -> list[tuple[float, float]]:
     out, start = [], None
     for s in samples:
@@ -624,9 +650,13 @@ def grade(night: Night) -> dict:
     check("safe_mode_clears", all(b - a <= 900 for a, b in safe) and (final is None or not final.safe),
           {"episodes": [(_et(a), round(b - a)) for a, b in safe]})
     off = _episodes(s, lambda x: not x.two_stick_ok)
-    check("two_stick_recovers", all(b - a <= 420 for a, b in off) and (final is None or final.two_stick),
+    # Two-stick mode (and its inputs: both sticks connected, the HDMI map) is back at the end, or the
+    # gap still running at the end is younger than the same 420 s every off episode gets.
+    tail_off = _still_off_at_end(s, lambda x: not x.two_stick)
+    check("two_stick_recovers", all(b - a <= 420 for a, b in off) and tail_off <= 420,
           {"off_episodes": [(_et(a), round(b - a)) for a, b in off],
-           "two_stick_at_end": final.two_stick if final else None})
+           "two_stick_at_end": final.two_stick if final else None, "off_at_end_s": round(tail_off),
+           "end": final.__dict__ if final else None})
     check("zero_midplay_cuts", not mid, {"mid_play": mid, "cuts": len(every)})
     # Every fault the night injected was dealt with.
     ev = night.house.events

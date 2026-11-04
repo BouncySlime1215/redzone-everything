@@ -3,7 +3,7 @@
 Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-03 21:50 UTC.
 `integration/next` has #1, #2, #3, #5, #6, #7, #8, #9, #10, #11, #12, #14, #15, #17 (reasoner, off), #19, #20,
 #21, #22, #23, #24, #25, #26 (Brain v3), #27, #28, #29, #31, #32, #33, #34, #35 and the no-overfitting gate. Tests: 1704 passed, 0 failed (one e2e test is
-timing-sensitive under parallel load and passes alone); ruff clean. **Tonight's release candidate is RC 2 on
+timing-sensitive under parallel load and passes alone); ruff clean. **Tonight's release candidate is RC 3** (RC 2 + deploy test-step fixes, no app change; `docs/gate-report-rc3.md`). RC 2 was on
 `integration/release`** (integration/next after #38 and #39; gate report in `docs/gate-report-rc2.md`: 59 pass, 10 fail, 27 pending). CI now also runs on pushes to integration/release.
 
 ## Usage rules from the user (hard)

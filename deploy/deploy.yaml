@@ -16,3 +16,4 @@ managed:
   - agent/model
 # Tests that need hardware the Mac doesn't have attached. Node ids, as pytest prints them.
 deselect: []
+test_timeout_s: 3600    # tests run at background priority (taskpolicy -b): ~25 min on the M2

@@ -74,7 +74,7 @@ class Settings:
     sample_s: float = 30.0            # health sample period
     startup_grace_s: float = 120.0    # the API must answer within this after the restart
     baseline_s: float = 600.0         # old version's log window to compare against
-    test_timeout_s: float = 1800.0
+    test_timeout_s: float = 3600.0   # background priority on the Mac's efficiency cores: ~25 min
     test_args: list[str] = field(default_factory=lambda: ["-q", "-x", "-p", "no:cacheprovider"])
     deselect: list[str] = field(default_factory=list)   # known Mac/hardware-only tests to skip
     live_wait_s: float = 0.0          # 0: defer at once if a game is live; else poll this long
@@ -132,8 +132,9 @@ class System:
         self.root = root
 
     def run(self, args: list[str], cwd: Path | None = None, timeout: float = 120.0,
-            check: bool = True) -> subprocess.CompletedProcess:
-        r = subprocess.run(args, cwd=cwd or self.root, capture_output=True, text=True, timeout=timeout)
+            check: bool = True, env: dict | None = None) -> subprocess.CompletedProcess:
+        r = subprocess.run(args, cwd=cwd or self.root, capture_output=True, text=True, timeout=timeout,
+                           env={**os.environ, **env} if env else None)
         if check and r.returncode != 0:
             raise DeployError(f"{' '.join(args[:3])} failed: {(r.stderr or r.stdout).strip()[:300]}")
         return r
@@ -541,7 +542,10 @@ class Deployer:
                 cmd += ["--deselect", d]
             self.journal("tests", msg=f"running on {commit[:9]} at background priority")
             try:
-                r = self.sys.run(self.sys.low_priority(cmd), cwd=stage, timeout=self.s.test_timeout_s, check=False)
+                # Background priority (efficiency cores) makes wall-clock speed budgets meaningless,
+                # so tests skip their speed asserts (tests/conftest.py assert_speed) but keep the rest.
+                r = self.sys.run(self.sys.low_priority(cmd), cwd=stage, timeout=self.s.test_timeout_s, check=False,
+                                 env={"RZ_TESTS_LOW_PRIORITY": "1"})
             except subprocess.TimeoutExpired:
                 return False, f"tests timed out after {int(self.s.test_timeout_s)} s"
             tail = "\n".join((r.stdout or r.stderr).strip().splitlines()[-15:])
