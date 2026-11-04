@@ -261,6 +261,52 @@ def solve_cue(n: Night, objective: str = "combined", tab: dict | None = None,
     return out[::-1]
 
 
+def value_to_go_cue(n: Night, objective: str = "combined", tab: dict | None = None, max_cue_s: float = 120.0):
+    """[possession-start entry, DAgger] The backward form of solve_cue: V[k, g, o] = the best value from
+    step k on, watching game g o steps behind live (deciding now), and the action values at any state, so an
+    imitation policy can be labelled on the states IT visits. Returns (V, R shifted Rs, leave Ls, cue, blk, ws)."""
+    wb, wc, wm, wd, ws = OBJECTIVES[objective]
+    steps = np.arange(n.t0, n.t1, STEP_S)
+    tab = tab or tables(n, steps)
+    R = wb * tab["big"] + wc * tab["crunch"] + wm * tab["mine"] - wd * tab["dead"]
+    G, K = R.shape
+    O = int(max_cue_s // STEP_S) + 1
+    cue = cue_steps(tab, max_cue_s)
+    blk = max(1, int(math.ceil(n.tune_s / STEP_S)))
+    Rs = np.zeros((G, O, K))
+    Ls = np.zeros((G, O, K), bool)
+    for o in range(O):
+        Rs[:, o, o:] = R[:, :K - o] if o else R
+        Ls[:, o, o:] = tab["leave"][:, :K - o] if o else tab["leave"]
+    NEG = -1e18
+    V = np.zeros((K + blk + 1, G, O))
+    gi = np.arange(G)
+    for k in range(K - 1, -1, -1):
+        v = Rs[:, :, k] + V[k + 1]
+        if k + blk <= K:
+            tgt = np.where(cue[:, k] >= 0, V[k + blk, gi, np.clip(cue[:, k], 0, None)] - ws, NEG)
+            order = np.argsort(-tgt)
+            best1, best2 = tgt[order[0]], (tgt[order[1]] if G > 1 else NEG)
+            alt = np.where(gi == order[0], best2, best1)                 # best switch to another game
+            v = np.where(Ls[:, :, k] & (alt[:, None] > v), alt[:, None], v)
+        V[k] = v
+    return V, Rs, Ls, cue, blk, ws
+
+
+def cue_action_values(V, Rs, Ls, cue, blk, ws, k: int, a: int, o: int) -> np.ndarray:
+    """Per game b: the value of being on b after deciding at step k on (a, o): stay for b == a, else a
+    switch (NEG where not allowed). The DAgger label is its argmax."""
+    G = Rs.shape[0]
+    K = Rs.shape[2]
+    out = np.full(G, -1e18)
+    out[a] = Rs[a, o, k] + V[k + 1, a, o]
+    if Ls[a, o, k] and k + blk <= K:
+        for b in range(G):
+            if b != a and cue[b, k] >= 0:
+                out[b] = V[k + blk, b, int(cue[b, k])] - ws
+    return out
+
+
 def schedule_value(n: Night, tab: dict, objective: str, switches) -> float:
     """The DP's own objective for a schedule (reward on the steps a game is on screen, black for tune_s
     after each switch, minus the switch cost): what `solve` maximizes, for checks and brute force."""

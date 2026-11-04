@@ -119,3 +119,28 @@ def test_possession_start_oracle_matches_brute_force():
         live = O.schedule_value(n, tab, obj, O.solve(n, obj, tab))
         assert O.schedule_value(n, tab, obj, sw) >= live - 1e-9
         assert abs(O.schedule_value(n, tab, obj, O.solve_cue(n, obj, tab, max_cue_s=0.0)) - live) < 1e-9
+
+
+def test_cue_value_to_go_matches_the_forward_oracle():
+    """[DAgger] value_to_go_cue (backward) gives the same best value as solve_cue (forward)."""
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from redzone.lab import oracle as O
+    rng = np.random.default_rng(5)
+    for trial in range(30):
+        G, K = 3, 14
+        tab = dict(big=(rng.random((G, K)) < .15) * 1.0, crunch=(rng.random((G, K)) < .2) * 1.0,
+                   mine=(rng.random((G, K)) < .05) * 1.0, dead=(rng.random((G, K)) < .3) * 1.0,
+                   leave=rng.random((G, K)) < .5, land=rng.random((G, K)) < .35)
+        tab["land"][rng.integers(G), 0] = True
+        tune = float(rng.choice([5.0, 10.0]))
+        n = O.Night([SimpleNamespace(gid=f"g{g}") for g in range(G)], set(), 0.0, tune, 0.0, K * O.STEP_S)
+        obj = ("combined", "dead_air", "crunch_live")[trial % 3]
+        V, Rs, Ls, cue, blk, ws = O.value_to_go_cue(n, obj, tab, max_cue_s=20.0)
+        best = max(V[blk, g, 0] for g in range(G) if tab["land"][g, 0])
+        fwd = O.schedule_value(n, tab, obj, O.solve_cue(n, obj, tab, max_cue_s=20.0))
+        assert abs(best - fwd) < 1e-9, (trial, best, fwd)
+        q = O.cue_action_values(V, Rs, Ls, cue, blk, ws, blk, int(np.argmax(tab["land"][:, 0])), 0)
+        assert abs(q.max() - V[blk, int(np.argmax(tab["land"][:, 0])), 0]) < 1e-9

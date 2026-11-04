@@ -449,6 +449,10 @@ Nick's crunch_now decision (possession-start entry), with the AI deciding when t
 | cued oracle | 94.4 / 93.8 | 100 / 100 |
 
   On dev the PICK-cue rollout reaches 91.0 % (big) and 98.0 % (crunch) of the cued oracle; the gaps to 100 % are 9.0 and 2.0 points.
+  **Caveat:** the rollout's leave / land rules read the oracle's hindsight tables, which know whether each
+  moment was dead from the complete play-by-play. The decider sees only delivered plays and its own sync
+  doubt, so the rollout is an optimistic bound and not an app-equivalent score. Part of the 77.5 → 85.9
+  gap is information the app can't have.
 - **Through the decider (flag OFF): it misses the bar.** Measured on NBA dev with `--tune-jitter 6` and
   the candidate profile. The jump / stay veto (`noggin.possession.enabled`) leaves the crunch scope
   unchanged at 77.5 / 90.0. On the `all` scope it gives 77.5 / 88.2 with 1 mid-play cut: a leave on a
@@ -457,3 +461,12 @@ Nick's crunch_now decision (possession-start entry), with the AI deciding when t
   The policy's gain is in the rollout, and the decider path (sync doubt, entry planning, its own gates)
   loses it. Next: carry the rollout's decision into the decider directly, as a replace mode with
   possession-start entry, and close the decider-vs-rollout gap.
+- **Tried, no gain (factory test, 377 nights, big / crunch at the calib margin):**
+  - cue-replay features (`--cue-feats`, the plays the cued rewind would replay): 91.6 / 92.2;
+  - DAgger, 2 rounds. Oracle value-to-go labels (`oracle.value_to_go_cue`, the backward form of solve_cue, tested
+    equal to it) on the states the policy itself visits, 43M aggregate rows (`scripts/train_noggin_pick_dagger.py`):
+    92.0 / 92.0 at margin 0.05 (calib picks 0.0: 91.6 / 91.5).
+
+  Against plain PICK-cue's 91.7 / 92.2, imitation has plateaued at about 94 % of the clairvoyant oracle. What's
+  left is what the oracle knows about the future, not compounding error. The next lever is the decider, not
+  the model.
