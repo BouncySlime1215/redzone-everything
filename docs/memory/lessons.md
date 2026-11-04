@@ -187,3 +187,10 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   the delay the app believed, so a 2 s "urgent" landing always looked safe. With a real tune's 0-6 s late landing,
   one NHL entry was mid-play on every seed. Fix: thin-margin landings cover a one-sided landing lag, and "ended"
   switches never take the urgent path. Grade entry changes with `--tune-jitter 6` on several seeds.
+
+## A rewind landed in a data gap (NBA GS @ DEN, Nov 4)
+- **Symptom:** the candidate's one remaining mid-play entry (dev seed 2) was a 70 s rewind, the same with or without tune jitter.
+- **Cause:** a substitution at 377 s left was the last event for 238 s of wall time (the play that stopped the game is missing). The tracker opened a dead window on the substitution and closed it 24 s of game clock before the next event, so it looked like a 3.5-minute dead ball. The grader, rightly, can't call that a dead ball.
+- **Fix:** `decider.entry.confirmed_dead_only` (candidate on): a lone substitution opens no window, so a rewind falls back to an earlier logged stoppage or the entry waits.
+- **Signals:** a rewind of 50 s or more into NBA; a window of kind `substitution` with no stronger kind.
+

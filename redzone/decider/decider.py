@@ -712,6 +712,9 @@ class Decider:
         x = cands.get(gid) or self._known.get(gid)
         if tl is None or x is None or not x.target or not tl.dead.marks:
             return None
+        co = bool(c.get("decider.entry.confirmed_dead_only", False))
+        if tl.dead.confirmed_only != co:
+            tl.dead.confirmed_only, tl.dead._windows = co, None
         d = self.delays.get(x.target)
         base_mu = d.mu - d.behind     # a fresh tune lands on the live edge
         margin = 2 * d.current_sigma(now) + ENTRY_SLACK_S

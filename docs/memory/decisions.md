@@ -274,3 +274,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `wait` (which already rewinds to the last dead ball when one is in reach) and `all` costs NBA big live
   77.5 -> 73.2 on seed 0; 0 mid-play either way, locked equal. New grade `possession_start_entry_pct`.
   The candidate profile takes `crunch` (Nick's default; same numbers as `wait`), live default stays off.
+- 2026-11-04 4:15 PM (lane 2, rule #1): **new key `decider.entry.confirmed_dead_only` (default false, candidate
+  true)**: a dead window opens only on a logged stoppage; a lone substitution (its stoppage missing from the data)
+  opens none. Why: the candidate's last mid-play entry (NBA GS @ DEN, dev seed 2) was a 70 s rewind into such a
+  gap. Dev jitter 6: NBA mid-play 1 -> 0 (seed 2), NBA crunch 87.9 -> 86.9 (seed 1), dead air +0.1..0.3, rest equal.

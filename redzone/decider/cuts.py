@@ -203,6 +203,10 @@ def _strongest(a: str | None, b: str | None) -> str | None:
     return a if ra <= rb else b
 
 
+# [data gap] marks that follow a dead ball but don't prove one on their own: the stoppage itself is missing
+WEAK_OPEN = frozenset({"substitution"})
+
+
 @dataclass
 class Mark:
     """One play-by-play entry, in real time."""
@@ -268,6 +272,11 @@ class DeadTracker:
         # [noggin] Noggin Timing v1 (redzone/noggin/live.py): a calibrated bound for open windows in place
         # of FLOOR_S / MEDIAN_S. None = today's tables (noggin.timing.leagues off for this league).
         self.noggin = None
+        # [data gap] open a dead window only on a confirmed stoppage: a substitution with no stoppage
+        # logged before it means the play that stopped the game is missing from the data, so how long
+        # it has been dead (and when it restarted) is unknown (NBA GS @ DEN, Nov 4: a 70 s rewind
+        # into such a gap landed mid-play). Set from decider.entry.confirmed_dead_only.
+        self.confirmed_only = False
 
     # ---- input
     def add(self, pid: str, lo: float, hi: float, kind: str, text: str, type_text: str,
@@ -371,7 +380,7 @@ class DeadTracker:
                     if cur.end is not None:
                         out.append(cur)
                         cur = None
-                if cur is None and m.after is not None:
+                if cur is None and m.after is not None and not (self.confirmed_only and m.after in WEAK_OPEN):
                     cur = Window(m.hi, None, m.after)
                     c0, p0 = m.clock, m.period
                 elif cur is not None and m.after is not None:
