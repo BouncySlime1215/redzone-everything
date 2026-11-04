@@ -32,6 +32,14 @@ polling:
   hot_s: 3                 # what's on, what's next, and tense games: every N seconds
   live_s: 10               # every other live game
   idle_s: 300              # poll every N seconds when nothing is live
+  nba_pbp_s: 3             # NBA liveData play-by-play per live NBA game (sources.nba_primary / nba_shadow)
+  nhl_pbp_s: 3             # NHL api-web play-by-play per live NHL game (sources.nhl_primary); 8 s when off
+
+sync:
+  probe:
+    enabled: true          # [SYNC] read-only log of what the sticks expose (media_session, Wi-Fi, UI tree, logcat)
+                           # -> recordings/<day>/sync_probe.jsonl. Presses nothing; skips during switches.
+    visible_ui: false      # also dump the VISIBLE stick's UI tree (off: unmeasured whether a dump stutters video)
 
 sources:
   fastcast: false          # ESPN's push feed: new plays the moment ESPN publishes them. Runs NEXT TO polling
@@ -39,6 +47,13 @@ sources:
   fastcast_check: true     # with fastcast off: run it in SHADOW on a few live games (logged, never merged) and grade
                            # it against polling -> data/fastcast_check.json (redzone/sources/fastcast_check.py)
   fastcast_auto_enable: false  # turn fastcast on by itself once that check passes
+  nhl_primary: false       # NHL api-web live play-by-play (~17 s behind the ice vs ESPN's ~43 s) owns NHL
+                           # stoppages while fresh and feeds its plays to the timeline (docs/timing.md, A2)
+  nba_primary: false       # NBA liveData play-by-play (real event times, published ~4-12 s after) owns NBA
+                           # stoppages while fresh and feeds the timeline; OFF until a backtest + live night pass
+  nba_shadow: true         # primary off: still poll it and log its plays (source nba_cdn) to plays.jsonl
+  nhl_shadow: true         # primary off: still poll api-web every polling.nhl_pbp_s and log each event's
+                           # first-seen time (data/recordings/<day>/nhl_seen.jsonl) for the gating backtest
 
 score:
   neutral_cap: 0.9         # a neutral game tops out at 90; 90-100 is reserved for games you care about
@@ -316,6 +331,10 @@ redzone_mode:              # whip-around like NFL RedZone (scoring/drive.py; dec
   takeover_heat: 0.65      # ...a drive this hot is worth leaving the whip-around for (see drive_over_redzone)
   drive_over_redzone: true # on the RedZone channel and a game we can tune has a live drive: watch that drive ourselves
   takeover_break_p: 0.5    # ...and only when its break forecast (scoring/breaks.py) is under this: no tuning into a commercial
+  drive_in_20: false       # a tunable NFL drive inside the 20 elsewhere: go there at the next dead ball (and before
+                           # more catch-up replays). OFF: valid split +2.8 pts NFL big plays live, -1.3 within 10 min
+  drive_in_20_from_redzone: true   # ...also from the RedZone channel (that's where most of the gain was)
+  drive_in_20_after_replay: false  # ...and cut a catch-up chain short for one (on: -4 pts within 10 min)
   min_redzone_s: 20        # ...but only after this long on the channel: no bouncing on every poll
   redzone_lift: 8          # RedZone gains up to this many points with the hottest drive (it's showing it), vs ordinary games
   nfl_priority: true       # while an NFL drive is live, other sports' non-crunch moments rank below it (your teams,
@@ -335,6 +354,13 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   instant_window_s: 900    # when everything's on a break, re-show great plays from the last 15 min
   seek_key: KEYCODE_MEDIA_REWIND
   seek_step_s: 10          # seconds per rewind press (measure on your stick in the Screen Lab)
+  redzone_way: false       # catch-up the RedZone way (Nick, Nov 4; OFF until its gate passes): lull, "meanwhile",
+                           # collision and end-of-night montage triggers (redzone/decider/decider.py)
+  catchup_s: 600           # each missed big play replayed within this; its value halves every catchup_s
+  collision_s: 180         # missed because another big play was on screen: replayed within this
+  lull_score: 45           # no live game at this score or above (and no crunch / lock): a replay takes the dead ball
+  meanwhile_s: 120         # the screen's game just scored: plays elsewhere within this of it go first
+  montage_age_s: 14400     # nothing live: every missed big play still on the DVR, however old
 
 reel:                      # catch-up reel: 5+ plays you missed, back to back, 30-60 s (redzone/reel.py)
   enabled: true            # find, download and trim clips as they post (ESPN's in-game highlights)
@@ -347,6 +373,15 @@ reel:                      # catch-up reel: 5+ plays you missed, back to back, 3
   parallel: 2              # clips prepared at once (download + trim, ~3 s CPU each)
   cache_mb: 400            # trimmed clips kept on disk
   min_free_mb: 1500        # never download with less free disk than this
+
+timing:
+  behind_live_s:           # [time-shift buffer] hold each stream B s behind live so the feeds lead the screen
+    enabled: false         # OFF until Nick's live test (docs/live-test-wed.md); sim at B=90: NHL entries
+                           # mid-play 12 -> 0, NBA big seen 67.8 -> 87.4 %, NFL big seen 77.9 -> 97 % (docs/timing.md)
+    by_league: {nfl: 60, cfb: 60, nba: 90, cbb: 90, wcbb: 90, nhl: 90}
+    default: 60
+    max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
+    apps: [youtubetv, primevideo]   # apps whose player pauses and resumes on the hidden stick
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
@@ -379,3 +414,8 @@ flags:                       # kill switches, one per subsystem (redzone/contrac
   sync_predictor: true
   auto_tune: true
   fastcast: true
+
+noggin:                    # docs/noggin.md
+  priority:
+    enabled: false         # pick the best game by the Noggin Priority order (L1 hard rules, then score). OFF until measured
+    banned_apps: [peacock]

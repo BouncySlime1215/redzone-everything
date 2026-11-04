@@ -180,6 +180,17 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
             rows.append(("big plays seen >= 95%", name, st, det))
         elif m.get("big_seen_pct") is not None:
             add("big plays seen >= 95%", name, m["big_seen_pct"] >= 95.0, f"{m['big_seen_pct']}%")
+        if per and any("big_seen_10m" in x for x in per) and any(x.get("big") for x in per):
+            # [catch-up the RedZone way] Nick, Nov 4: never miss a big play for long. Live, or replayed
+            # within 10 min (backtest.CATCHUP_S); your team's all of them; no crunch play given up for one.
+            st, det = rate_gate([(int(x.get("big_seen_10m") or 0), int(x.get("big") or 0)) for x in per], 99.0)
+            rows.append(("catch-up: big plays seen live or replayed within 10 min >= 99%", name, st, det))
+            mb = sum(int(x.get("my_big") or 0) for x in per)
+            ms = sum(int(x.get("my_big_seen_10m") or 0) for x in per)
+            add("catch-up: your-team big plays within 10 min = 100%", name, ms >= mb,
+                f"{ms}/{mb}" if mb else "no your-team big plays in this slice (0/0)", pending=not mb)
+            cor = sum(int(x.get("crunch_on_replay") or 0) for x in per)
+            add("catch-up: crunch plays aired during a replay = 0", name, cor == 0, f"{cor}")
         if m.get("your_team_big_seen_pct") is not None:
             add("your-team big plays seen = 100%", name, m["your_team_big_seen_pct"] >= 100.0, f"{m['your_team_big_seen_pct']}%")
         if m.get("your_team_crunch_live_pct") is not None:
@@ -194,7 +205,7 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
             # replay is not a miss; until that ceiling is computed, a value under 95% is PENDING, not PASS.
             add("crunch live >= 95% or feasible ceiling", name, cr >= 95.0,
                 f"{cr}% (ceiling: pending)" if cr < 95 else f"{cr}%", pending=cr < 95.0)
-    for gate, why in (("reels >= 95% in dead time, 0 live big plays missed on a reel", "reel scorecard line not built yet"),
+    for gate, why in (("reels >= 95% in dead time, 0 live big plays missed on a reel", "ESPN clip reels are not simulated; rewind replays are graded by the catch-up rows and the cut grade"),
                       ("reasoner >= 95% agreement, unsafe leaves <= 0.5%, 100% valid JSON", "no gold labels yet"),
                       ("watchdog >= 95% correct, every kind >= 90%, 0 unsafe", "no held-out error set yet"),
                       ("sync error < 2 s on >= 95% of samples", "needs real screen samples (Mac)"),

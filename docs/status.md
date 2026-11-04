@@ -7,6 +7,7 @@ Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026
 **Shifts (Nick, Nov 4 12:45 AM, handoff.md §6b):** day shift 9 AM-11 PM is Claude's threads; night shift 11 PM-9 AM is Nick's cloud sessions.
 **Release: RC 4 on `integration/release` = 8a47053** (RC 2 + deploy test-step fixes + the e2e night pinning
 the host and the network; no app change, so the gates are RC 2's: 59 pass, 10 fail, 27 pending, `docs/gate-report-rc3.md`).
+**RC 5 candidate f1034b5** (not cut): locked gate 49 pass / 16 fail / 52 pending, triage in `docs/gate-report-rc5.md`.
 The draft release PR #37 is closed (Nick, Nov 3 10:45 PM); the deploy fetches `integration/release`.
 
 ## Usage rules from the user (hard)
@@ -24,6 +25,7 @@ The draft release PR #37 is closed (Nick, Nov 3 10:45 PM); the deploy fetches `i
 
 | Area | Owner | Now |
 |---|---|---|
+| **NOGGIN** (Nick, Nov 4 1:45 AM: #1 focus; one brain, three layers, `docs/noggin.md`). Reflex: data factory, Noggin Timing v1 (absorbs A3), Predict, Pick (absorbs Brain v3, decider weights, auto-tune #16). Mind: distill #13 / Kaggle V5, live reasoner, watchdog adapter. Teacher: Kaggle 32B labels and night reviews. Reflex input #1: the live time-shift buffer (#61) | NOGGIN ("Noggin training" thread); sub-tracks: LOCAL AI/distill (Mind), TIMING (buffer #61, feed lag, SmartThings) | Phase 1: data factory + Timing v1 (NBA entries mid-play 9 -> 0 at B=90, ECE <= 0.10) |
 | Switch timing (Nick's items 1-7: dead-ball lag per source, live-delay offset per stick, restart prediction, SmartThings ~2 s trip cost, dwell/hysteresis, landing-offset scorecard line, e2e SmartThings latency) | TIMING thread (new, Nov 3 night) | working |
 | Error handling (items 8-12: SmartThings breaker + HOME/CEC fallback, stick recovery, feed fallback, Mac sleep/network/launchd, watchdog rate limits) | ERRORS thread (new, Nov 3 night) **Done:** #44 SmartThings, #48 sticks, #49 feeds, #50 Mac wake and #45 watchdog cap merged. All OFF behind `hardening.*` except #45's hourly action cap (on). Turn each on after Nick's TV test. **Open:** #57 (rebooted on-screen stick, launchd exit codes), C17 watchdog actions PR (`hardening.watchdog`, off), #63 Wed live-test script. **Next:** why FastCast never logged on the Mac (needs Mac log read) |
 | Integration train, CI, release, housekeeping (items 13a-d, 14, 16) | INTEGRATION #41-#43 merged; #44-#50 merged; #47 TIMING honest feed_lag + NHL lag-cap merged; #51 eval honesty up (idle until 8 AM) |
@@ -41,7 +43,7 @@ writes words only, async. Gates only on unseen nights.
 |---|---|---|
 | A1 | Honest baseline: `feed_lag` exposed in `scripts/eval.py` / `eval_sports.py`, re-run with measured lags (NBA 38, CBB 35, NFL 45, NHL 49 s) | TIMING |
 | A2 | FastCast on every league + league-origin feeds (NHL `clock.running`, NBA `timeActual`, MLB pitch times), per-source lag logged | TIMING |
-| A3 | One shared restart countdown (KM, then boosted hazard, then conformal lower bounds) replacing `jump.py`'s p10 and the 0.6x/1.6x quantiles | TIMING |
+| A3 | One shared restart countdown (KM, then boosted hazard, then conformal lower bounds) replacing `jump.py`'s p10 and the 0.6x/1.6x quantiles | NOGGIN (Timing v1; moved from TIMING Nov 4) |
 | A4 | Rule features: national vs local break lengths, full TV-timeout rules per league | TIMING |
 | A5 | Per-(app, channel, tune) stream-delay Kalman filter fed by Prime clock OCR | TIMING (with SYNC) |
 | A6 | Commit a cut only at P_safe >= 99.5 % over the ~3.5 s flip + settle window; SmartThings ~2 s trip cost | TIMING |
@@ -54,7 +56,8 @@ writes words only, async. Gates only on unseen nights.
 | C13-C16 | Calibrated safe-now with abstain; next big play; stakes layer; reel ranker | MOMENT/BREAK (C13 with LOCAL AI) |
 | C17 | Watchdog 5 -> 12 guarded actions, all 13 kinds | ERRORS (PR open, off behind `hardening.watchdog`) |
 | C18 | Bugs: `breaks.blend` 50/50 calibration, two JSON parsers, switch-cost constants disagreeing | INTEGRATION (switch costs with TIMING) |
-| D19-D22 | Kaggle student recipe (fp16 base + fp32 LoRA r16-32), teacher throughput, KD, historical label factory | LOCAL AI |
+| D19-D21 | Kaggle student recipe (fp16 base + fp32 LoRA r16-32), teacher throughput, KD | LOCAL AI (under NOGGIN: Mind) |
+| D22 | Historical label factory (data factory) | NOGGIN |
 | E23-E25 | Decision records + phone 👍/👎, shadow mode + SPRT rollback, BRAIN auto-fix on dev-test only | DECISION (E25 PLATFORM) |
 
 ## Queue (in order; at most 2 working threads)

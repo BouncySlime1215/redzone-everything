@@ -1,0 +1,347 @@
+{
+ "about": "Source of docs/roadmap.md (scripts/northstar.py ranks it against docs/northstar.md). metric: a key of scripts/northstar.py METRICS or null (process work, scores 0). expected_delta: estimated change in that line's unit (points for a rate, per-100-landings for mid_play, seconds for switch_p95), positive = toward the target. priority: the director's order for today (1 = first); null = ranked by score. status: queued | working | review | done | blocked.",
+ "items": [
+  {
+   "id": "P1",
+   "priority": 1,
+   "work": "Time-shift buffer LIVE: hold each stream B s behind live (YTTV/Prime rewind/pause on the hidden stick before the flip, verified by the per-stick delay estimate + Prime clock OCR); B=90 NBA/NHL, 60-75 NFL behind timing.behind_live_s, OFF by default, ready for Wed test. Sim at B=90: NBA seen 67.8->87.4, NFL seen 77.9->97.1, NHL entries mid-play 12->0",
+   "metric": "big_seen_10min",
+   "expected_delta": 12,
+   "effort_days": 1.5,
+   "owner": "TIMING",
+   "status": "working",
+   "source": "planner 2026-11-04 01:15 #1; docs/timing.md"
+  },
+  {
+   "id": "P2",
+   "priority": 2,
+   "work": "A3 restart countdown for NBA (KM -> boosted hazard -> conformal) on top of #56's NHL floor: NBA entries mid-play 9 -> 0 (with buffer), crunch live 91 -> >=95%",
+   "metric": "mid_play",
+   "expected_delta": 1.7,
+   "effort_days": 1.5,
+   "owner": "TIMING",
+   "status": "queued",
+   "source": "planner #2; PR #46 A3"
+  },
+  {
+   "id": "P3a",
+   "priority": 3,
+   "work": "Merge #58 NHL api-web wsc play-by-play (16.7 s p50 vs ESPN 43 s) once green",
+   "metric": "big_live_nhl",
+   "expected_delta": 5,
+   "effort_days": 0.25,
+   "owner": "TIMING",
+   "status": "review",
+   "source": "planner #3; #58"
+  },
+  {
+   "id": "P3b",
+   "priority": 3,
+   "work": "FastCast never logged a row on the Mac: find out why and fix (A2), per-source lag logged",
+   "metric": "mid_play",
+   "expected_delta": 0.5,
+   "effort_days": 0.5,
+   "owner": "TIMING",
+   "status": "queued",
+   "source": "planner #3; PR #46 A2"
+  },
+  {
+   "id": "P3c",
+   "priority": 3,
+   "work": "NBA cdn.nba.com liveData timeActual as a faster dead-ball source",
+   "metric": "mid_play",
+   "expected_delta": 0.5,
+   "effort_days": 0.75,
+   "owner": "TIMING",
+   "status": "queued",
+   "source": "planner #3; PR #46 A2"
+  },
+  {
+   "id": "P4a",
+   "priority": 4,
+   "work": "NFL big plays LIVE: drive-in-the-20 priority using the buffer's lead (49% with the buffer in sim)",
+   "metric": "big_live_nfl",
+   "expected_delta": 20,
+   "effort_days": 1.5,
+   "owner": "DECISION",
+   "status": "queued",
+   "source": "planner #4"
+  },
+  {
+   "id": "P4b",
+   "priority": 4,
+   "work": "Catch-up reels T1-T5, the RedZone way (flag OFF until its gate passes; after A3 #56)",
+   "metric": "big_seen_10min",
+   "expected_delta": 6,
+   "effort_days": 2,
+   "owner": "INTEGRATION (reel/jump #18)",
+   "status": "queued",
+   "source": "planner #4; memory CATCH-UP REELS"
+  },
+  {
+   "id": "P5",
+   "priority": 5,
+   "work": "Triage the 10 failing RC 2 gate rows: fix, or accept and flag off",
+   "metric": null,
+   "effort_days": 0.5,
+   "owner": "INTEGRATION",
+   "status": "queued",
+   "source": "planner #5; gate-report-rc3.md"
+  },
+  {
+   "id": "P6",
+   "priority": 6,
+   "work": "Harness: scripts/northstar.py + nightly CI + this roadmap (then: grade replay age so the 10-min line can PASS; your-team big plays in the NBA/NHL scorecards; dead-air ceiling)",
+   "metric": "big_seen_10min",
+   "expected_delta": 0,
+   "effort_days": 0.5,
+   "owner": "HARNESS",
+   "status": "review",
+   "source": "planner #6; Nick 1:05 AM"
+  },
+  {
+   "id": "P7",
+   "priority": 7,
+   "work": "docs/live-test-wed.md: Nick's Wed evening test script (SmartThings flips on real games, buffer on, record real landing offsets), <= 30 min of his time. Gives the first real switch samples",
+   "metric": "switch_p95",
+   "expected_delta": 0.8,
+   "effort_days": 0.25,
+   "owner": "TIMING",
+   "status": "queued",
+   "source": "planner #7"
+  },
+  {
+   "id": "NOGGIN-PRI",
+   "priority": null,
+   "work": "Noggin Priority module (docs/noggin.md § Priority): L1 Nick's hard rules from config only (your teams 100%, crunch first, NFL>CFB>NBA>CBB>NHL>MLB, never Peacock), L2 phone-page preferences, L3 mind read (bounded), L4 reflex live value; deterministic, reason string per switch. Feeds the league-order and right-game North Star lines",
+   "metric": "league_order",
+   "expected_delta": 0,
+   "effort_days": 2,
+   "owner": "NOGGIN",
+   "status": "queued",
+   "source": "Nick 2:05 AM"
+  },
+  {
+   "id": "ERR-57",
+   "priority": null,
+   "work": "Error handling #57 (in flight), then C17 watchdog 5 -> 12 guarded actions, all 13 kinds",
+   "metric": "recovery",
+   "expected_delta": 5,
+   "effort_days": 1.5,
+   "owner": "ERRORS",
+   "status": "working",
+   "source": "PR #46 C17; #57"
+  },
+  {
+   "id": "INT-RC5",
+   "priority": null,
+   "work": "RC5 gate report on the LOCKED set for integration/next (Nick cuts releases)",
+   "metric": null,
+   "effort_days": 0.5,
+   "owner": "INTEGRATION",
+   "status": "queued",
+   "source": "memory redzone-integration"
+  },
+  {
+   "id": "A4",
+   "priority": null,
+   "work": "Rule features: national vs local break lengths, full TV-timeout rules per league, NHL inferred TV timeouts",
+   "metric": "mid_play",
+   "expected_delta": 0.4,
+   "effort_days": 1,
+   "owner": "TIMING",
+   "status": "queued",
+   "source": "PR #46 A4"
+  },
+  {
+   "id": "A5",
+   "priority": null,
+   "work": "Per-(app, channel, tune) stream-delay Kalman filter fed by Prime clock OCR (the buffer's verifier)",
+   "metric": "landings_dead",
+   "expected_delta": 1,
+   "effort_days": 1.5,
+   "owner": "TIMING (with SYNC)",
+   "status": "queued",
+   "source": "PR #46 A5"
+  },
+  {
+   "id": "A6",
+   "priority": null,
+   "work": "Commit a cut only at P_safe >= 99.5% over the ~3.5 s flip + settle window (SmartThings 1.98 s trip cost)",
+   "metric": "mid_play",
+   "expected_delta": 0.5,
+   "effort_days": 1,
+   "owner": "TIMING",
+   "status": "queued",
+   "source": "PR #46 A6"
+  },
+  {
+   "id": "A8",
+   "priority": null,
+   "work": "Hidden-stick prediction (next target in 180 s), so every switch is a pre-tuned flip",
+   "metric": "big_live_nba",
+   "expected_delta": 3,
+   "effort_days": 1,
+   "owner": "TIMING",
+   "status": "queued",
+   "source": "PR #46 A8"
+  },
+  {
+   "id": "B10",
+   "priority": null,
+   "work": "Leaks left after #51: the 2 locked-set games in the e2e night (NHL 401892626, NBA 401909906) and parse_summary leaders",
+   "metric": null,
+   "effort_days": 0.5,
+   "owner": "INTEGRATION",
+   "status": "queued",
+   "source": "PR #46 B10"
+  },
+  {
+   "id": "B12",
+   "priority": null,
+   "work": "Realistic night lab: lag jitter, late plays, drops, resyncs fitted from real traces; many nights x seeds (more recovery evidence)",
+   "metric": "recovery",
+   "expected_delta": 0,
+   "effort_days": 2,
+   "owner": "INTEGRATION",
+   "status": "queued",
+   "source": "PR #46 B12"
+  },
+  {
+   "id": "EVAL2",
+   "priority": null,
+   "work": "eval-data-v2: more nights (NBA/NHL locked sets have 4 nights; PASS needs >= 8) and fresh post-pin nights",
+   "metric": "big_live_nba",
+   "expected_delta": 0,
+   "effort_days": 1,
+   "owner": "INTEGRATION",
+   "status": "queued",
+   "source": "status.md queue 10"
+  },
+  {
+   "id": "C13",
+   "priority": null,
+   "work": "Calibrated safe-to-cut/enter now with a runtime abstain (unsure = unsafe, rules fallback)",
+   "metric": "mid_play",
+   "expected_delta": 0.5,
+   "effort_days": 2,
+   "owner": "MOMENT/BREAK",
+   "status": "queued",
+   "source": "PR #46 C13"
+  },
+  {
+   "id": "C14",
+   "priority": null,
+   "work": "Next big play: what it is plus ETA quantiles",
+   "metric": "big_live_nfl",
+   "expected_delta": 5,
+   "effort_days": 2,
+   "owner": "MOMENT/BREAK",
+   "status": "queued",
+   "source": "PR #46 C14"
+  },
+  {
+   "id": "C15",
+   "priority": null,
+   "work": "Stakes layer: standings, clinch, rivalry, bet-decisive-next from ESPN probabilities; NFL drive tempo + NHL PP clock features",
+   "metric": "big_live_nfl",
+   "expected_delta": 3,
+   "effort_days": 2,
+   "owner": "MOMENT/BREAK",
+   "status": "queued",
+   "source": "PR #46 C15"
+  },
+  {
+   "id": "C16",
+   "priority": null,
+   "work": "Reel ranker: pbp value + Nick's taps; NHL/MLB clip sources",
+   "metric": "big_seen_10min",
+   "expected_delta": 1,
+   "effort_days": 1.5,
+   "owner": "MOMENT/BREAK",
+   "status": "queued",
+   "source": "PR #46 C16"
+  },
+  {
+   "id": "C18",
+   "priority": null,
+   "work": "Bugs: breaks.blend 50/50 calibration, two JSON parsers, switch-cost constants disagreeing (Nick's own session; don't touch)",
+   "metric": null,
+   "effort_days": 1,
+   "owner": "Nick (separate session)",
+   "status": "working",
+   "source": "PR #46 C18"
+  },
+  {
+   "id": "B11",
+   "priority": null,
+   "work": "Reasoner gate split: rule conformance, calibration, ON/OFF non-inferiority, abstain",
+   "metric": null,
+   "effort_days": 1,
+   "owner": "LOCAL AI",
+   "status": "queued",
+   "source": "PR #46 B11"
+  },
+  {
+   "id": "D19-22",
+   "priority": null,
+   "work": "Kaggle: student recipe (D19 ready), teacher throughput, KD, historical label factory. The LLM writes words only, so no North Star line moves directly",
+   "metric": null,
+   "effort_days": 3,
+   "owner": "LOCAL AI",
+   "status": "working",
+   "source": "PR #46 D19-D22"
+  },
+  {
+   "id": "E23-25",
+   "priority": null,
+   "work": "Decision records + phone thumbs, shadow mode + SPRT rollback, BRAIN auto-fix on dev-test only",
+   "metric": null,
+   "effort_days": 3,
+   "owner": "DECISION (E25 PLATFORM)",
+   "status": "queued",
+   "source": "PR #46 E23-E25"
+  },
+  {
+   "id": "A1",
+   "priority": null,
+   "work": "Honest baseline with the measured per-league feed lag",
+   "metric": "mid_play",
+   "expected_delta": 0,
+   "effort_days": 0.5,
+   "owner": "TIMING",
+   "status": "done",
+   "source": "#47"
+  },
+  {
+   "id": "A7",
+   "priority": null,
+   "work": "Scorecard lines: landing/leave-offset histograms, % landings in dead time",
+   "metric": "landings_dead",
+   "expected_delta": 0,
+   "effort_days": 0.5,
+   "owner": "TIMING",
+   "status": "done",
+   "source": "#53-#55"
+  },
+  {
+   "id": "B9",
+   "priority": null,
+   "work": "Night-level cluster bootstrap; PASS needs >= 8 nights, >= 60 decisions, lower bound at the bar",
+   "metric": null,
+   "effort_days": 0.5,
+   "owner": "INTEGRATION",
+   "status": "done",
+   "source": "#51"
+  }
+ ],
+ "notes": [
+  "## Planning loop",
+  "",
+  "1. **Nightly** (`.github/workflows/northstar.yml`, ~10:00 UTC): runs `scripts/northstar.py --night-seeds 8` on `integration/next`, commits docs/northstar.md, docs/northstar-history.jsonl and this file back to `integration/next`, and uploads them as an artifact.",
+  "2. **Every morning** the director reads [northstar.md](northstar.md) and this page, re-sets `priority` in [roadmap.json](roadmap.json) (the score is the mechanical suggestion; the director's order wins), updates statuses, and hands each thread the day's top items.",
+  "3. **Every PR** says which North Star line it moves and its expected delta (the PR template has the section), and the CI comment shows the measured delta on dev-test nights (PR vs base, same data). The locked set never appears in a PR delta.",
+  "",
+  "The planner's own table (docs/plans/2026-11-04-0115-planner.md) used the full `all` split; northstar.md uses dev (`fit`) and locked (`test`) separately, so the numbers differ by slice, not by code."
+ ]
+}
