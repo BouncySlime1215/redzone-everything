@@ -76,6 +76,11 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--delay-model", choices=("channel", "legacy"), default=None)
     ap.add_argument("--resync", action="store_true",
                     help="model live Kalman re-sync on every tune (backtest.run resync)")
+    ap.add_argument("--break-anchors", action="store_true",
+                    help="[auto-anchors] the live filter fed only by on-screen ad breaks (backtest.run anchors; "
+                         "needs --set sync.break_anchor.enabled=true)")
+    ap.add_argument("--tune-jitter", type=float, default=0.0, metavar="S",
+                    help="[auto-anchors] each tune lands U(0, S) s behind the live edge, unknown to the app")
     ap.add_argument("--real-lag", action="store_true",
                     help="[switch timing] plays reach the app after the MEASURED feed lag per league "
                          "(redzone/lab/feed_lag_profile.json), not a fixed 8 s")
@@ -93,6 +98,7 @@ def knobs(a: argparse.Namespace) -> dict:
                 drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed,
                 channel_spread=getattr(a, "channel_spread", 0.0), history=getattr(a, "history", 0.0),
                 delay_model=getattr(a, "delay_model", None), resync=getattr(a, "resync", False),
+                anchors=getattr(a, "break_anchors", False), tune_jitter_s=getattr(a, "tune_jitter", 0.0),
                 feed_lag_model="measured" if getattr(a, "real_lag", False) else None,
                 **feed_lag_knobs(getattr(a, "feed_lag", None), getattr(a, "behind_live", None)))
 
@@ -154,7 +160,8 @@ def main():
                           "landings_dead": card.cut.landings()[0],
                           "dead_s": round(card.dead, 1), "watched_s": round(card.watched, 1),
                           "crunch": card.crunch, "crunch_live": card.crunch_live,
-                          "my_crunch": card.my_crunch, "my_crunch_live": card.my_crunch_live})
+                          "my_crunch": card.my_crunch, "my_crunch_live": card.my_crunch_live,
+                          "sync_honesty": rep.sync_honesty})
         if a.oracle:
             from redzone.lab import oracle as O
             n = O.Night(reps, mine, rep.lag_true, 5.0, rep.t0, rep.t1)

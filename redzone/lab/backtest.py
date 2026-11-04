@@ -86,6 +86,7 @@ class SwitchLog:
     kind: str
     reason: str
     offset: float = 0.0   # [cut timing] the picture came up this far behind live (a rewind on entry)
+    jitter: float = 0.0   # [auto-anchors] of which: the tune's own unknown landing behind the live edge
 
 
 @dataclass
@@ -101,6 +102,7 @@ class Report:
     hours: float
     missed: list[tuple[float, str, str]]
     decisions: list = field(default_factory=list)
+    sync_honesty: dict = field(default_factory=dict)   # [auto-anchors] honesty_summary of the on-screen delay
     big_plays_caught: int = 0
     crunch: int = 0
     crunch_live: int = 0
@@ -315,7 +317,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         true_delay: float | None = None, sigma: float = 3.0, lag_jitter: tuple[float, float] | None = None,
         drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
         channel_spread: float = 0.0, history: float = 0.0, delay_model: str | None = None,
-        resync: bool = False, feed_lag_model: str | None = None, calibrate_targets: bool = False,
+        resync: bool = False, anchors: bool = False, tune_jitter_s: float = 0.0, feed_lag_model: str | None = None,
+        calibrate_targets: bool = False,
         on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
@@ -337,6 +340,15 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
                     seeded). Channels off screen keep their last figure and age the way live ages them
                     (sigma floored at delay.sync.min_sigma_s, doubt growing to the settled cap, stale
                     after 30 min). Without it, every channel keeps the kickoff calibration.
+      anchors       [auto-anchors, needs sync.break_anchor.enabled] the filter is attached as live
+                    attaches it and fed ONLY what live can feed it today: each ad break on the screen of
+                    the game you're watching, matched to the feed's dead ball (engine._break_event). The
+                    true whistle -> ad-on-screen gap is drawn per break (sync.break_anchor.true_gap_s /
+                    true_gap_sd_s, default = the config prior: an assumption until the Wednesday probe
+                    data). Every on-screen second is graded for honesty (Report.sync_honesty).
+      tune_jitter_s [auto-anchors] each tune lands U(0, S) s behind the live edge, unknown to the app (a
+                    YouTube TV tune, redzone/lab/syncsim.py: 0-6 s). Graded as a real offset of that
+                    visit, so the delay the app believes is wrong by it until something re-syncs it.
       feed_lag_model  [switch timing] "measured": each play reaches the app after a lag drawn from the
                     league's MEASURED detection lag (redzone/lab/feed_lag_profile.json, the flight
                     recorder's espn_summary rows; seeded, in order), instead of the fixed feed_lag.
@@ -382,13 +394,17 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             d.calibrated_at = t0
             d.sigma = sigma
     sync = None
-    if resync:
+    anchors = anchors and bool(cfg.get("sync.break_anchor.enabled", False))
+    if resync or anchors:
         sync = _attach_resync(delays, cfg, pinned=None if channel_spread > 0 else
                               {((targets or {}).get(r.gid, f"youtubetv:{r.gid}") if calibrate_targets
                                                           else f"youtubetv:{r.gid}"): (lag_total, sigma, t0)
                                                          for r in replays})
         tgt_of = {r.gid: (targets or {}).get(r.gid, f"youtubetv:{r.gid}") for r in replays}
         noise = random.Random(seed * 7_000_003 + 17)
+        breaks = ad_breaks(replays, lag_true, cfg, random.Random(seed * 9_000_011 + 5)) if anchors else {}
+    jitter_rng = random.Random(seed * 5_000_011 + 3)
+    honesty: list[tuple[float, float]] = []   # (error of the delay used, its sigma), each on-screen tick
     sampler = None
     if feed_lag_model == "measured":
         from redzone.lab.timing import LagSampler, sources_in_use
@@ -442,9 +458,17 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             on_tick(clock.t, dec)
         decision = dec.decide(cands, REDZONE_TARGET if rz_ok and redzone_on(states.values()) else None)
         decisions.append(decision)
+        n_sw = len(switches)
         _record(decision, before, clock.t, switches, watching, replayed)
-        if sync is not None:
+        if tune_jitter_s > 0 and len(switches) > n_sw and switches[-1].kind != "replay":
+            j = jitter_rng.uniform(0.0, tune_jitter_s)
+            switches[-1].offset += j
+            switches[-1].jitter = j
+        if sync is not None and resync:
             _resync_tick(delays, sync, decision, switches, tgt_of, lag_true, tune_s, clock.t, noise)
+        elif sync is not None:
+            _anchor_tick(delays, sync, decision, switches, tgt_of, breaks, cfg, tune_s, clock.t, step)
+        _honesty_tick(delays, switches, targets, lag_true, tune_s, clock.t, honesty)
         if decision.action == "replay" and decision.replay and getattr(dec, "replay_until", None) is not None:
             replay_windows.append((decision.target, round(decision.replay.t), clock.t, dec.replay_until))
         _credit_completed_replays(replay_windows, watching, clock.t, replayed)
@@ -455,6 +479,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     rep.decisions = decisions
     rep.replayed, rep.t0, rep.t1, rep.lag_total = replayed, t0, t1, lag_total
     rep.lag_true = lag_true
+    rep.sync_honesty = honesty_summary(honesty)
     return rep
 
 
@@ -492,6 +517,82 @@ def _resync_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict
     d = delays.get(target)
     sync.measure(target, lag_of(lag_true, last.to) + d.behind + noise.gauss(0, RESYNC_SD_S),
                  "clock", t=now, sd=RESYNC_SD_S)
+
+
+# [auto-anchors] Plays the broadcast follows with an ad break. NHL: ESPN says only "Stoppage", so the TV
+# timeouts are the first stoppage after 6:00, 10:00 and 14:00 have been played in a period.
+_AD_BREAK = ("official timeout", "full timeout", "end period", "period end", "end of half", "two-minute warning",
+             "end of regulation", "halftime")
+_NHL_TV_MARKS = (14 * 60, 10 * 60, 6 * 60)   # seconds LEFT in a 20:00 period
+
+
+def ad_breaks(replays, lag_true, cfg, rng: random.Random) -> dict[str, list[tuple[float, float]]]:
+    """game -> [(feed wallclock of the dead ball, true screen time the ad comes up)], the latter without
+    the time-shift buffer (added at match time). The gap is drawn per break."""
+    mu = float(cfg.get("sync.break_anchor.true_gap_s", cfg.get("sync.break_anchor.start_bias_s", 15.0)))
+    sd = float(cfg.get("sync.break_anchor.true_gap_sd_s", cfg.get("sync.break_anchor.bias_sd_s", 10.0)))
+    out: dict[str, list[tuple[float, float]]] = {}
+    for r in replays:
+        rows, done = [], set()
+        for w, p in zip(r.wall, r.plays):
+            t = (espn._get(p, "type", "text") or "").lower()
+            hit = any(k in t for k in _AD_BREAK)
+            if not hit and r.league == League.NHL and t == "stoppage":
+                per = espn._int(espn._get(p, "period", "number")) or 0
+                clk = espn._clock_s(espn._get(p, "clock", "displayValue"))
+                for m in _NHL_TV_MARKS:
+                    if clk is not None and clk <= m and (per, m) not in done:
+                        done.update((per, mm) for mm in _NHL_TV_MARKS if mm >= m)
+                        hit = True
+                        break
+            if hit and w:
+                gap = min(90.0, max(2.0, rng.gauss(mu, sd)))
+                rows.append((w, w + lag_of(lag_true, r.gid) + gap))
+        out[r.gid] = rows
+    return out
+
+
+def _anchor_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict, breaks: dict, cfg,
+                 tune_s: float, now: float, step: float) -> None:
+    """A tune re-syncs its channel (as live); an ad break that comes up on the screen of the game being
+    watched in this tick gives one anchor, matched and weighted the way engine._break_event does."""
+    if decision.action == "switch" and decision.target in tgt_of and switches and switches[-1].t == now:
+        delays.tuned(tgt_of[decision.target])
+    last = switches[-1] if switches else None
+    if last is None or last.kind == "replay" or last.to not in tgt_of:
+        return
+    target = tgt_of[last.to]
+    d = delays.get(target)
+    bias = float(cfg.get("sync.break_anchor.start_bias_s", 15.0))
+    bias_sd = float(cfg.get("sync.break_anchor.bias_sd_s", 10.0))
+    for w, ts in breaks.get(last.to, ()):
+        ts += d.behind + last.jitter
+        if now - step < ts <= now and ts - last.t >= tune_s:
+            sync.measure(target, ts - w - bias, "break", ts, (1.0 + bias_sd * bias_sd) ** 0.5)
+
+
+def _honesty_tick(delays: DelayBook, switches: list, targets, lag_true, tune_s: float, now: float,
+                  out: list) -> None:
+    """The game on screen (picture up, not a replay): the delay the app uses vs the true one."""
+    last = switches[-1] if switches else None
+    if last is None or last.kind == "replay" or not last.to or now - last.t < tune_s or last.to == REDZONE:
+        return
+    d = delays.get((targets or {}).get(last.to, f"youtubetv:{last.to}"))
+    out.append((d.mu - (lag_of(lag_true, last.to) + d.behind + last.jitter), d.current_sigma(now)))
+
+
+def honesty_summary(rows: list[tuple[float, float]]) -> dict:
+    """Is the stated doubt honest (true error within 2 sigma >= 95% of on-screen ticks) and small?"""
+    if not rows:
+        return {"n": 0}
+    n = len(rows)
+    err = sorted(abs(e) for e, _ in rows)
+    sig = sorted(s for _, s in rows)
+    return {"n": n, "within_2sigma": round(sum(abs(e) <= 2 * s for e, s in rows) / n, 4),
+            "sigma_le_8": round(sum(s <= 8 for _, s in rows) / n, 4),
+            "sigma_le_3": round(sum(s <= 3 for _, s in rows) / n, 4),
+            "sigma_p50": round(sig[n // 2], 2), "err_p50": round(err[n // 2], 2),
+            "err_p95": round(err[min(n - 1, int(0.95 * n))], 2)}
 
 
 def _record(decision, before: str | None, t: float, switches: list[SwitchLog],

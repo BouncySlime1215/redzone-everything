@@ -442,3 +442,38 @@ GAME-03 (your team's crunch: go there, then hold), GAME-01 (NFL red zone during 
 
 On dev, GAME-01 fired 213 times and agreed with the generic break visit another 42. Its visits trade some
 crunch and big-play coverage for dead air, so it stays off until the cloud tree replaces the hand-written seed.
+
+## Honest sync doubt in the sims (cycle 03, Nov 4)
+
+`eval_sports.py --tune-jitter 6 [--break-anchors --set sync.break_anchor.enabled=true]` (backtest.run
+`tune_jitter_s`, `anchors`). Every on-screen tick is graded for honesty: the true error of the delay the app
+uses against its stated sigma (`per_night[].sync_honesty`: within 2 sigma, sigma <= 8 s, sigma <= 3 s).
+
+- **Until now the sims had no true delay error at all** (the app's delay = the screen's), so their ~9 s doubt
+  was pure pessimism. `--tune-jitter 6` adds what a YouTube TV tune really does (redzone/lab/syncsim.py): each
+  tune lands U(0, 6) s behind the live edge, unknown to the app, graded as a real offset of that visit.
+- `--break-anchors` feeds the filter only what live can feed it today: the ad break on screen of the game
+  you watch, matched to the feed's dead ball, weighted like `engine._break_event`. The true whistle -> ad gap
+  is drawn N(15, 10) by default (the config prior: an assumption until the Wednesday probe data).
+
+Candidate, dev, all with `--tune-jitter 6` (truth error p95 ~5 s everywhere):
+
+| run | NFL big live | NBA big live | NHL big live | NHL crunch | mid-play NFL/NBA/NHL | within 2 sigma | sigma <= 8 s (NFL/NBA/NHL) | sigma <= 3 s |
+|---|---|---|---|---|---|---|---|---|
+| no anchors (today) | 54.4 | 77.5 | 44.9 | 79.9 | 0 / 0 / 1 | 100% | 9 / 19 / 21% | 0% |
+| anchors, prior sd 10 | 54.4 | 78.9 | 44.0 | 74.4 | 0 / 0 / 1 | 100% | 12 / 31 / 34% | 0% |
+| anchors, sd 2 (what-if) | 54.4 | 76.1 | 43.7 | 75.7 | 0 / 1 / 0 | 100% | 45 / 91 / 51% | 0% |
+| doubt calibrated to 3 s (what-if cap) | **64.1** | **81.7** | **49.2** | 78.2 | 0 / 0 / 0 | 100% | 100% | 100% |
+| same, crunch_now=rewind | 64.1 | 90.1 | 49.2 | 78.2 | 0 / **5** / 0 | 100% | 100% | 100% |
+| no anchors, crunch_now=rewind | 54.4 | 81.7 | 44.9 | 80.2 | 0 / **4** / **2** | 100% | 9 / 19 / 21% | 0% |
+
+Locked (read once), wait: no anchors NFL 53.3 / NBA 68.8 / NHL 49.0, 0 mid-play; doubt at 3 s NFL 64.8 / NBA
+68.8 / NHL 57.2, 0 mid-play, within 2 sigma 100%.
+
+Reading: the doubt is honest (no misses) but about 3x too wide: the true error is ~5 s at p95, the stated 2
+sigma ~18 s. Break anchors at today's prior (sd 10 s) hardly narrow it, and the 4 s sync floor makes sigma <=
+3 s impossible by construction. A doubt calibrated to the real error reaches the cycle targets (NFL >= 60, NBA
+>= 77.5, NHL ~50) at 0 mid-play, but only if the real per-tune error is as small as syncsim assumes, which is
+what the Wednesday probe logs measure. Anchors also cost NHL crunch (79.9 -> 74.4) through re-syncs on tunes:
+not understood yet, keep `sync.break_anchor.enabled` off. With honest per-tune error, crunch_now=rewind
+makes mid-play entries (NBA 4-5, NHL 2) where wait makes 0-1: one more reason wait is the candidate default.
