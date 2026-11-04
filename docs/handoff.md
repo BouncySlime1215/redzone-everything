@@ -69,10 +69,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 1:25 AM ET.** Live: RC4 8a47053 with SmartThings switching on. **The Noggin is the #1 focus (§6d).** Merged overnight: #47-#56, #58 (NHL api-web primary), #59 (RedZone-way reels, off), #60 (RC 5 gate triage), #62 (NFL drive-in-20, off). Open: #61 (live time-shift buffer), #63 (Wed test script), #64 (watchdog 12 actions), #65 (Noggin doc + Priority), #57.
-- **Usage:** 3% of Ultra at 1:23 AM (pace line ~0.6%; reset Mon 8 PM). 4 coordinator threads plus 1 approved cloud session (C18 bugs).
-- **Plans:** docs/plans/2026-11-04-0115 and -0125. The planner runs every 6 h (2/8/14/20). Kaggle V5 (Mind v0) ETA ~3 AM.
-- **Waiting on Nick:** Wed evening live test (docs/live-test-wed.md once #63 merges).
+- **2026-11-04 2:25 AM ET.** Live: RC4 with SmartThings on. Merged since 1:25 AM: #65 Noggin doc, #66 NBA liveData (shadow), #67 Priority wired (off), #69 North Star harness (northstar.py + roadmap). Open: #70 SYNC 1 (flip only onto steady PLAYING), #71 SYNC probe, #72 Noggin Phase 1 (NBA data factory 1.09M windows + Timing v1), #73 burst polling, #68 C18 bugs, #64 watchdog, #61 buffer, #63 test script, #57.
+- **Usage:** 4% at 2:23 AM (line ~1.2%; +2.8, under the 5-point brake). Sync is fully automatic (no taps; auto-anchors from on-screen ad breaks plus network-condition features).
+- **Kaggle V5** (Mind v0) ETA ~3 AM.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order

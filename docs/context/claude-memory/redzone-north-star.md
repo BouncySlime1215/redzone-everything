@@ -14,7 +14,7 @@ What Nick wants from RedZone Everything (as of 2026-11-03):
 4. **League order:** NFL > CFB > NBA > NCAA basketball > NHL > MLB. Teams: Commanders, UNC, Wizards, Capitals, Nationals. Teams and bets have their own priorities.
 5. **NHL:** power plays, goals and overtimes.
 6. **Catch-up mode:** 5+ clips back to back in 30-60 s, only what he needs to see. Timing is super important; play it when a game lingers in dead time.
-7. **Sync is automatic.** No taps, no mic or camera.
+7. **Sync is automatic.** No taps, no mic or camera. Nick reaffirmed on Nov 4: "no manual work, no extra setup, I'm not changing anything; pure code + AI". The Noggin must match the TV output from digital signals only: on-screen ad-break anchors read over ADB, media-session state, the set offset, and learned per-channel delay priors. No tap-sync or calibration chores.
 8. **Never Peacock** ([[redzone-no-peacock]]).
 9. **Fully autonomous.** A watchdog fixes problems by itself.
 
