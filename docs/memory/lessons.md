@@ -220,3 +220,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   now catches and rebuilds it; resuming without waiting behind a whole switch would fix the cause.
   - **Signals:** "buffer: ... held N s behind live" with N well over timing.behind_live_s
 - 2026-11-04 (lane 3, #136 review by lane 4): calibration.flip_prior took the measured flip max as the landing deadline's upper bound, so one quiet night could LOWER it below the shipped 2.58 s and let a later slow flip land mid-play. The bound is now max(shipped prior, tonight, every accepted night): calibration may raise it, never lower it.
+- 2026-11-04: **A time-shift hold's resume queued behind a switch's lock and overshot.** `_hold` paused,
+  slept B s, then waited for the control lock to press PLAY; a switch waiting on a safe moment held it,
+  so a 60 s hold came out 81.7 s (90 -> 111.6 s) in the night lab. Fix: the resume waits at most
+  HOLD_RESUME_LOCK_S (1 s), then plays a stick nobody touched since the pause (a token that any _tune on
+  that stick clears); `held` is only written if the token survived. Timed waits must not sit behind locks.
