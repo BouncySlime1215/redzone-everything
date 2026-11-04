@@ -71,8 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- 18:12 NICK: 'do whatever you think is needed'. Overseer decisions: cut RC6 now (#132 seek fix + #173 gold-data capture, everything else flag-off; healthy by 6:50 PM tip or stay on RC5.1); #171 rig check approved (Mac service stopped at most 10 min); Baseball Savant skipped.
-- OFFICIAL DIRECTION: docs/plans/2026-11-04-noggin-master-plan.md + docs/research/watch-science-playbook.md (51908ba). Planners build one ranked experiment queue (docs/experiments.md) from ~100 ideas; Phase 0 starts now (suspense reward, one event language, shadow mode, off-policy grading). Objective = 'worth it', not watch time; the playbook's line section is binding.
+RC6 not started: deploy.jsonl last = RC5.1 healthy 13:05; RC6 waits on #132 config (due 18:15), full tests ~33 min + 11 min health watch puts healthy ~19:00, after 18:50 tip-off
+#171 rig check did not run: needs Nick to type approval in the Mac session (after games)
+Usage 31%; Kaggle factory still running 12219s; CI next in progress, release green
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
