@@ -441,6 +441,13 @@ function mockV2(path, b) {
       plan_marks: segs.flatMap((x, i) => i % 3 === 0 ? [{ ts: x.t0 + 90, type: "catchup", kind: "replay", game: x.game, matchup: x.matchup, reason: "catch-up", plan: null, ok: true }]
         : i % 3 === 2 ? [{ ts: x.t0 + 30, type: "interleave", kind: "break_visit", game: x.game, matchup: x.matchup, reason: "break", plan: "crunch-overlap", ok: true }] : []),
       plan_counts: { catchup: 5, interleave: 4 },
+      crunch: (() => {
+        const g = live.slice(0, 3).map((x, i) => {
+          const o0 = now - 3000 + i * 600, o1 = o0 + 900, de = [20, 140, -95][i], dx = [35, -30, 260][i];
+          return { game: x.id, matchup: x.matchup, learned: [[o0 + de, o1 + dx]], oracle: [[o0, o1]], points: [], entry_s: de, exit_s: dx, entry_ok: Math.abs(de) <= 60, exit_ok: Math.abs(dx) <= 60 };
+        }).sort((p, q) => p.exit_ok - q.exit_ok);
+        return { source: "graded", tol_s: 60, games: g, exits: g.length, exits_ok: g.filter((x) => x.exit_ok).length, entries_ok: g.filter((x) => x.entry_ok).length };
+      })(),
       big: { plays: markers.length, seen: markers.filter((m) => m.seen).length, missed: markers.filter((m) => !m.seen).length },
       summary: { switches: segs.length, failed: 1, games: Object.keys(air).length, taps: { up: 2, down: 1, missed: 1 },
         on_air: Object.entries(air).map(([matchup, s]) => ({ matchup, s: Math.round(s) })).sort((a, b) => b.s - a.s), playbooks: pb } };

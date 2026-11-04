@@ -49,6 +49,7 @@ HISTORY = DATA.parent / "docs" / "northstar-history.jsonl"   # scripts/northstar
 LIVE_NIGHTS = DATA / "live_nights"         # <night>/summary.json: the supervisor's auto-log (collect_live_night)
 REPORTS = (DATA / "reports", DATA.parent / "docs" / "nights")   # <night>.md: night report (supervisor, lane 4 #137)
 BUFFER_LOG = DATA / "buffer.jsonl"        # STK-06 holds that went bad and their rebuilds (control._buffer_log)
+CRUNCH_DIR = DATA / "crunch"              # <night>.json: learned crunch spans vs the oracle's (lane 1 grader)
 REEL_REQUESTS = DATA / "reel_requests.jsonl"   # "I missed that" -> a catch-up request (record only)
 REPLAY_DUE_S = 180.0    # Nick, Nov 4 11:00 AM: a missed key moment airs within 3 min, at the next dead moment
 MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min, a phone convenience; the graded window is big_seen_3min
@@ -188,6 +189,57 @@ def read_oracle(path: Path) -> dict | None:
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return None
     return {"objective": str(d.get("objective") or "combined"), "switches": sorted(sw, key=lambda x: x["t"])}
+
+
+# Crunch timeline: the learned crunch state (#166) beside the hindsight oracle's crunch, per game, so the
+# crunch_exit_acc misses are visible. data/crunch/<night>.json (written offline by lane 1's grader, the same
+# rule as scripts/train_watch_value.crunch_card):
+#   {"tol_s": 60, "games": {"<gid>": {"learned": [[t0, t1], ...], "oracle": [[t0, t1], ...]}}}
+# Entry / exit is the first-on / last-on time of each; it's right when within tol_s of the oracle's. Until
+# the file exists, the learned side is sampled from the switches' provenance (crunch_state, #173) and the
+# oracle side is pending.
+def read_crunch(path: Path) -> dict | None:
+    try:
+        d = json.loads(Path(path).read_text())
+        games = {str(g): {k: sorted([float(a), float(b)] for a, b in (v.get(k) or []) if float(b) > float(a))
+                          for k in ("learned", "oracle")} for g, v in (d.get("games") or {}).items()}
+        tol = float(d["tol_s"])      # the grader's tolerance (train_watch_value.EXIT_TOL_S); required
+    except (OSError, ValueError, TypeError, AttributeError, KeyError):
+        return None
+    return {"tol_s": tol, "games": games}
+
+
+def crunch_timeline(crunch: dict | None, switches: list[dict], name) -> dict:
+    """Per game: learned and oracle crunch spans, entry / exit deltas and whether each is within tol_s."""
+    from redzone import trace as tr
+    rows, tol = [], None
+    if crunch:
+        tol = crunch["tol_s"]
+        for gid, v in crunch["games"].items():
+            le, orc = v["learned"], v["oracle"]
+            r = {"game": gid, "matchup": name(gid), "learned": le, "oracle": orc, "points": []}
+            if le and orc:
+                r["entry_s"], r["exit_s"] = round(le[0][0] - orc[0][0], 1), round(le[-1][1] - orc[-1][1], 1)
+                r["entry_ok"], r["exit_ok"] = abs(r["entry_s"]) <= tol, abs(r["exit_s"]) <= tol
+            elif orc:
+                r["entry_ok"] = r["exit_ok"] = False        # the oracle saw crunch; the model never did
+            rows.append(r)
+    else:
+        pts: dict[str, list] = {}
+        for s in switches:
+            p = (tr.of_row(s) or {}).get("provenance")
+            cs = p.get("crunch_state") if isinstance(p, dict) else None
+            sides = cs if isinstance(cs, dict) else {"to": cs}
+            for side, gid in (("to", s.get("to_game")), ("from", s.get("frm"))):
+                st = sides.get(side)
+                if gid and isinstance(st, str) and st in CRUNCH_STATES:
+                    pts.setdefault(gid, []).append({"ts": float(s["ts"]), "state": st})
+        rows = [{"game": g, "matchup": name(g), "learned": [], "oracle": [], "points": p} for g, p in pts.items()]
+    graded = [r for r in rows if "exit_ok" in r]
+    rows.sort(key=lambda r: (r.get("exit_ok", True), r["game"]))     # misses first
+    return {"source": "graded" if crunch else ("provenance" if rows else None), "tol_s": tol, "games": rows,
+            "exits": len(graded), "exits_ok": sum(1 for r in graded if r["exit_ok"]),
+            "entries_ok": sum(1 for r in graded if r["entry_ok"])}
 
 
 def _on_at(segs: list[dict], ts: float, key: str = "game") -> str | None:
@@ -610,7 +662,8 @@ def router(engine) -> APIRouter:
         over = oracle_overlay(view["segments"], read_oracle(ORACLE_DIR / f"{d.isoformat()}.json"),
                               read_jsonl(MOMENTS, t0, t1), engine._name, end)
         marks = plan_marks(sws, engine._name)
-        return {"enabled": True, "day": d.isoformat(), "t0": t0, "t1": t1, "now": now, "nights": nights,
+        crunch = crunch_timeline(read_crunch(CRUNCH_DIR / f"{d.isoformat()}.json"), sws, engine._name)
+        return {"crunch": crunch, "enabled": True, "day": d.isoformat(), "t0": t0, "t1": t1, "now": now, "nights": nights,
                 **view, **over, "plan_marks": marks,
                 "plan_counts": {"catchup": sum(1 for m in marks if m["type"] == "catchup"),
                                 "interleave": sum(1 for m in marks if m["type"] == "interleave")}}

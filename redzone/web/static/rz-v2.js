@@ -238,12 +238,24 @@ function nightSheet() {
     const lane = pm.length ? `<div class="v2-rlabel">What the planner chose: <span class="v2-pm-key v2-pm--catchup">▲</span> catch-up <span class="v2-pm-key v2-pm--interleave">◆</span> break visit / return</div>
       <div class="v2-pmlane" role="img" aria-label="${attr(`${num((d.plan_counts || {}).catchup)} catch-ups and ${num((d.plan_counts || {}).interleave)} break visits`)}">${pm.map((m) =>
         `<i class="v2-pm v2-pm--${attr(m.type)}${m.ok ? "" : " v2-pm--fail"}" style="left:${(((m.ts - a) / span) * 100).toFixed(2)}%" title="${attr(`${m.type === "catchup" ? "Catch-up" : m.kind === "return" ? "Back home" : "Break visit"}: ${m.matchup} ${fmtTime(m.ts)}${m.plan ? " (plan " + m.plan + ")" : ""}`)}">${m.type === "catchup" ? "▲" : "◆"}</i>`).join("")}</div>` : "";
-    const o = d.oracle;
+    const o = d.oracle, cr = d.crunch || {};
+    const X = (t) => (((Math.max(a, Math.min(b, t)) - a) / span) * 100).toFixed(2);
+    const spanBars = (list, cls) => arr(list).filter(([t0, t1]) => t1 > a && t0 < b).map(([t0, t1]) =>
+      `<b class="${cls}" style="left:${X(t0)}%;width:${Math.max(0.4, X(t1) - X(t0)).toFixed(2)}%"></b>`).join("");
+    const dlt = (s) => (typeof s === "number" ? `${s > 0 ? "+" : ""}${Math.round(s)} s` : "–");
+    const crunchRows = arr(cr.games).map((g) => `<div class="v2-cr">
+        <div class="v2-cr-top"><span class="m">${esc(g.matchup)}</span>${"exit_ok" in g ? `<span class="tag tag--${g.exit_ok ? "pass" : "fail"}">exit ${esc(dlt(g.exit_s))}</span>
+          <span class="tag tag--${g.entry_ok ? "pass" : "fail"}">entry ${esc(dlt(g.entry_s))}</span>` : ""}</div>
+        <div class="v2-cr-track" title="Learned">${spanBars(g.learned, "v2-cr-l")}${arr(g.points).map((p) => `<i class="v2-cs--${attr(p.state)}" style="left:${X(p.ts)}%" title="${attr(`${CRUNCH_TXT[p.state] || p.state} ${fmtTime(p.ts)}`)}"></i>`).join("")}</div>
+        <div class="v2-cr-track v2-cr-track--o" title="Hindsight">${spanBars(g.oracle, "v2-cr-o")}</div></div>`).join("");
+    const crunchBox = cr.source ? `<div class="v2-rlabel">Crunch: learned (top) vs hindsight (bottom)${cr.source === "graded"
+      ? ` · exits right ${num(cr.exits_ok)}/${num(cr.exits)} (within ${num(cr.tol_s)} s)` : " · hindsight pending: learned states from switch traces"}</div><div class="v2-crs">${crunchRows}</div>` : "";
     ribbon = `<div class="v2-ribbon" role="img" aria-label="What was on the TV, ${esc(fmtTime(a))} to ${esc(fmtTime(b))}">${bars(segs)}${marks}</div>
       ${lane}
       ${o ? `<div class="v2-rlabel">Best possible (hindsight)${o.agree_pct != null ? ` · we matched ${esc(String(o.agree_pct))}% of the time` : ""}</div>
       <div class="v2-ribbon v2-ribbon--oracle" role="img" aria-label="What the hindsight oracle would have shown">${bars(arr(o.segments))}</div>` : ""}
       <div class="v2-ticks">${ticks.join("")}</div>
+      ${crunchBox}
       <div class="v2-legend">${arr(sm.on_air).map((r) => `<span><i class="v2-c${colorOf(r.matchup, order)}"></i>${esc(r.matchup)} <small>${esc(fmtDur(r.s))}</small></span>`).join("")}</div>`;
   }
   const pb = Object.entries(sm.playbooks || {});
@@ -396,7 +408,7 @@ function captureSheet() {
     <div class="v2-mss">${checks}</div>
     <h4>Auto-log</h4>${auto}
     <h4>Who spoke (provenance)</h4><div class="v2-chips">${prov}</div>
-    <h4>Held buffer</h4><p class="lead">${now.length ? now.map(([t, s]) => `${esc(t)} held ${num(s)} s behind live`).join(" · ") : "Nothing held right now."}${log.length ? ` Log: ${log.map(([k, n]) => `${esc(k)} ${num(n)}`).join(", ")}.` : ""}</p>
+    <h4>Held buffer</h4><p class="lead">${now.length ? now.map(([t, s]) => `${esc(t)} held ${num(s)} s behind live.`).join(" ") : "Nothing held right now."}${log.length ? ` Log: ${log.map(([k, n]) => `${esc(k)} ${num(n)}`).join(", ")}.` : ""}</p>
     ${d.report ? `<button class="btn btn--ghost" data-act="v2-capture-report">${icon("replay")}Open the night report</button>` : `<p class="lead">No night report for this night.</p>`}`;
 }
 ACTIONS["v2-capture"] = () => { cap.data = null; cap.day = ""; cap.report = null; openSheet({ id: "v2-capture", label: "Live night", full: true, render: captureSheet }); loadCapture(); };

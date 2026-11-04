@@ -462,3 +462,29 @@ def test_capture_routes(client, engine, tmp_path, monkeypatch):
     assert client.get(f"/api/v2/capture/report?day={night}").json() == {"ok": True, "day": night, "text": "# report"}
     assert client.get("/api/v2/capture?day=x").json()["ok"] is False
     assert client.get("/api/v2/capture/report?day=2020-01-01").json()["ok"] is False
+
+
+def test_crunch_timeline_graded_and_from_provenance(tmp_path):
+    import json
+    f = tmp_path / "c.json"
+    f.write_text(json.dumps({"tol_s": 60, "games": {
+        "a": {"learned": [[100, 400], [500, 900]], "oracle": [[130, 950]]},       # entry -30 ok, exit -50 ok
+        "b": {"learned": [[100, 200]], "oracle": [[100, 500]]},                    # exit -300: a miss
+        "c": {"learned": [], "oracle": [[0, 10]]}, "d": {"learned": [[5, 1]]}}}))  # never on; a bad span drops
+    c = phone_v2.read_crunch(f)
+    assert c["games"]["d"]["learned"] == [] and phone_v2.read_crunch(tmp_path / "none.json") is None
+    v = phone_v2.crunch_timeline(c, [], str.upper)
+    by = {g["game"]: g for g in v["games"]}
+    assert (by["a"]["entry_s"], by["a"]["exit_s"], by["a"]["exit_ok"]) == (-30.0, -50.0, True)
+    assert by["b"]["exit_ok"] is False and by["c"]["exit_ok"] is False and "exit_ok" not in by["d"]
+    assert (v["source"], v["exits"], v["exits_ok"], v["entries_ok"]) == ("graded", 3, 1, 2)
+    assert v["games"][0]["game"] in ("b", "c")                                     # misses first
+    sw = [{"ts": 10.0, "to_game": "x", "frm": "y",
+           "detail": json.dumps({"trace": {"id": "t", "provenance": {"crunch_state": {"to": "in", "from": "leaving"}}}})},
+          {"ts": 20.0, "to_game": "y", "frm": None, "detail": json.dumps({"trace": {"provenance": {"crunch_state": "entering"}}})},
+          {"ts": 30.0, "to_game": "z", "detail": json.dumps({"trace": {"provenance": {"crunch_state": "bogus"}}})}]
+    v = phone_v2.crunch_timeline(None, sw, str.upper)
+    pts = {g["game"]: g["points"] for g in v["games"]}
+    assert v["source"] == "provenance" and pts == {"x": [{"ts": 10.0, "state": "in"}],
+                                                   "y": [{"ts": 10.0, "state": "leaving"}, {"ts": 20.0, "state": "entering"}]}
+    assert phone_v2.crunch_timeline(None, [], str)["source"] is None

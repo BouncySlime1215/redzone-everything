@@ -1207,6 +1207,15 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .v2-stakes--pending small { font-size: 11px; }
 .v2-report { white-space: pre-wrap; font-size: 12px; background: var(--surface-2); padding: 10px 12px; border-radius: 12px; overflow-wrap: anywhere; max-height: 60vh; overflow: auto; }
 .v2-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+.v2-crs { display: grid; gap: 6px; margin: 4px 0 10px; }
+.v2-cr-top { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.v2-cr-top .m { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2-cr-track { position: relative; height: 10px; margin-top: 3px; border-radius: 5px; background: var(--surface-3); overflow: hidden; }
+.v2-cr-track--o { height: 6px; opacity: .8; }
+.v2-cr-track > b { position: absolute; top: 0; bottom: 0; border-radius: 5px; }
+.v2-cr-l { background: #e5484d; }
+.v2-cr-o { background: var(--text-2); }
+.v2-cr-track > i { position: absolute; top: 1px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #e5484d; }
 .v2-trend { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
 .v2-trend-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .v2-trend-top .m { font-size: 14px; }
