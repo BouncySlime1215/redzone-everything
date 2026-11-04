@@ -72,3 +72,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** the session proxy allows only the REST API and 2 concurrent git transfers per repo.
 - **Fix:** use `gh api repos/BouncySlime1215/redzone-everything/...`; one clone at a time.
 - **Signals:** GraphQL, 403, 429, too many concurrent
+
+## The e2e night read the Mac it ran on
+- **Symptom:** the deploy's tests failed `two_stick_recovers` (two_stick_at_end false) on the Mac; CI and every cloud rerun passed, even with thread work slowed at random.
+- **Cause:** the night pinned the clock, sticks and TV but not the resource governor. Its watchdog read the real `ps`, saw the live RedZone app over the 1200 MB cap and restarted the night's own engine every few minutes (23 restarts in a repro). Battery or load (load avg ~14 during the deploy) also changed OCR pacing. The night's virtual clock makes CPU speed itself irrelevant.
+- **Fix:** `pin_host()` in redzone/lab/night/run.py makes every governor in the night see a calm machine with no RedZone processes. The end check holds a two-stick gap still open at the end to the same 420 s as every other episode.
+- **Signals:** passes in CI, fails on the Mac, deploy tests, watchdog restart, governor, ps

@@ -75,3 +75,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-03 2:38 PM: **REFLEX reasoning add-ons are ablated one by one**; ship only what moves the gates.
 - 2026-11-03 3:01 PM: **Round 2 excludes brain features** until the leak-free brain retrain lands
   (the NFL brain had trained on locked 2025 nights).
+- 2026-11-03 10:05 PM: **Deploy test step: 3600 s timeout, speed budgets skipped at background
+  priority** (`RZ_TESTS_LOW_PRIORITY=1`), and the e2e night pins the host (governor) so the Mac's live
+  app can't restart the night's engine. Every other test still blocks a deploy. RC 3 = RC 2 + these.
