@@ -436,6 +436,10 @@ def press_row(drill: dict | None) -> dict:
     det = (f"sim drill: {len(xs)} presses over {s.get('nights', '?')} nights, median {xs[len(xs) // 2]:.2f} s, "
            f"{s.get('go_now_within_3s_pct')}% within 3 s; dropped {s.get('dropped', 0)}, ran-not-once "
            f"{s.get('not_once', 0)} of {s.get('taps', 0)} taps ({s.get('taps_retried', 0)} lost/duplicated on purpose)")
+    for k, name in (("warm", "pre-tuned"), ("cold", "cold")):
+        w = s.get(k) or {}
+        if w.get("n"):
+            det += f"; {name} {w['n']}: p50 {w['p50_s']} s, p95 {w['p95_s']} s"
     if p95 > 3.0 or s.get("dropped") or s.get("not_once"):
         return _row("press_to_tv_p95", round(p95, 2), None, None, FAIL, det)
     return _row("press_to_tv_p95", round(p95, 2), None, None, PENDING, det + "; PENDING until real presses are logged")

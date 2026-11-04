@@ -253,3 +253,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   sims only (live needs the residual pool persisted across nights), and the truth model it is graded against
   (per-tune U(0, 6) s, gap 15 +- 10 s) is an assumption until Thursday's probe data. Measured (honest sims, wait):
   dev NFL big live 54.4 -> 57.6, locked 53.3 -> 60.4, coverage 98.4-100%, 0 new mid-play entries.
+- 2026-11-04 12:45 PM (controls, cycle 03): **the candidate profile turns `two_stick.pretune_on_open` on**; the live
+  default stays off. Drill (4 nights, flaky taps): with it, press-to-TV p50 8.5 -> 3.7 s and pre-tuned presses
+  p95 stays 8.75 s. Pre-tuned presses (game live on the hidden stick): 10, p50 3.02 s, p95 3.7 s, bounded by the
+  ~2 s SmartThings flip. Cold presses (a tune, including a channel parked on a catch-up replay): 8, p50 8.5 s.
+  The drill and the North Star line now report the two apart.

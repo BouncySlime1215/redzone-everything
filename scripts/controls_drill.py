@@ -88,6 +88,11 @@ def summary(runs: list[dict]) -> dict:
     s = {"nights": len(runs), "go_now_n": len(xs), "go_now_p50_s": q(0.5), "go_now_p95_s": q(0.95),
          "go_now_max_s": xs[-1] if xs else None,
          "go_now_within_3s_pct": round(100 * sum(x <= 3.0 for x in xs) / len(xs), 1) if xs else None}
+    for k in ("warm", "cold"):   # pre-tuned presses (a flip) and cold ones (a tune), reported apart
+        v = sorted(x for r in runs for x in r.get(k + "_s", []))
+        s[k] = {"n": len(v), "p50_s": v[len(v) // 2] if v else None,
+                "p95_s": v[min(len(v) - 1, int(0.95 * len(v)))] if v else None,
+                "within_3s_pct": round(100 * sum(x <= 3.0 for x in v) / len(v), 1) if v else None}
     for k in ("go_now_s", "open_go_s", "mid_flip_s", "lock_s", "skip_s"):
         v = sorted(x for r in runs for x in r.get(k, []))
         s[k.replace("_s", "_median_s")] = v[len(v) // 2] if v else None
@@ -118,12 +123,15 @@ def main(argv=None) -> int:
     ap.add_argument("--with-faults", action="store_true", help="also inject the night's default faults")
     ap.add_argument("--pretune", action="store_true", help="two_stick.pretune_on_open on")
     ap.add_argument("--flaky", action="store_true", help="lose and duplicate taps on the way (RZ_FLAKY=1)")
+    ap.add_argument("--profile", default=None, help="a Noggin profile's config overrides (redzone/noggin/profile.py)")
     ap.add_argument("--json", type=Path, default=None)
     a = ap.parse_args(argv)
     if a.pretune:
         os.environ["RZ_PRETUNE"] = "1"
     if a.flaky:
         os.environ["RZ_FLAKY"] = "1"
+    if a.profile:
+        os.environ["RZ_PROFILE"] = a.profile
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=min(4, a.seeds)) as ex:
         runs = list(ex.map(lambda s: one(s, a.tv, a.hours, a.with_faults), range(1, a.seeds + 1)))

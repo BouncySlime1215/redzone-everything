@@ -29,6 +29,9 @@ PROFILES: dict[str, dict] = {
             # [noggin logic, cycle 02] Clairvoyance (GAME-04): pre-tune the game whose big play the
             # feed already shows ahead of the screen, and land on its last dead ball before it airs.
             "noggin.lookahead.enabled=true",
+            # [controls, cycle 03] Opening a game on the phone tunes it on the hidden stick while you
+            # read the sheet, so "Go now" is a flip (press_to_tv_p95). Live default stays off.
+            "two_stick.pretune_on_open=true",
         ],
     },
 }
