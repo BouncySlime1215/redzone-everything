@@ -169,6 +169,19 @@ that actually do what they say. Not a nicer UI.
   never sends a competing task list.
 - **Owns Kaggle and model training** and is the go-between for lanes ①-②.
 
+## 6g. The Noggin is FULLY SELF-TAUGHT (Nick, Nov 4, 10:55 AM): a hard rule
+
+**No training signal from Nick.** His 👍/👎, overrides, lock-ins and taps are never used as labels.
+They're controls only.
+
+The Noggin learns only from:
+1. the hindsight oracle on archived nights,
+2. self-play and simulation,
+3. the Teacher's automated nightly review,
+4. objective outcomes from play-by-play and telemetry.
+
+The North Star "agreement with Nick" row is replaced by "% of hindsight-oracle value achieved".
+
 ## 7. How the director works (so a new session can take over)
 
 - **Every 10 minutes, in one pass:** usage guard → PRs/CI → Kaggle log → project threads → one
