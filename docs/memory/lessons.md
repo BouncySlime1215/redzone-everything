@@ -240,3 +240,6 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   so a 60 s hold came out 81.7 s (90 -> 111.6 s) in the night lab. Fix: the resume waits at most
   HOLD_RESUME_LOCK_S (1 s), then plays a stick nobody touched since the pause (a token that any _tune on
   that stick clears); `held` is only written if the token survived. Timed waits must not sit behind locks.
+- 2026-11-04: `_held_for` added `self.held` and the caller added `base_s` too, so a watchdog top-up (STK-06)
+  booked the earlier hold twice. `_held_for` now returns only this pause; the caller adds what the stream
+  already ran behind.
