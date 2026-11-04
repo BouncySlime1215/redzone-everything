@@ -13,9 +13,21 @@ async function check() {
   if (v2.checked) return;
   v2.checked = true;
   try { v2.on = !!(await api("/api/v2/status")).enabled; } catch { v2.on = false; }
-  if (v2.on) hooks.render();
+  if (v2.on) { hooks.render(); pollAlert(); }
 }
 check();
+
+/* A your-team crunch clash coming up in the next 30 min: one line above the bar (display only). */
+let alert = null;
+function pollAlert() {
+  api("/api/v2/slate").then((r) => { const a = (r && r.alert) || null; const was = JSON.stringify(alert); alert = a; if (JSON.stringify(a) !== was) hooks.renderScreen("now"); })
+    .catch(() => {}).finally(() => setTimeout(pollAlert, 60000));
+}
+function alertLine() {
+  if (!alert) return "";
+  const when = alert.now ? "Now" : alert.in_s < 90 ? "In a minute" : `In ${Math.round(alert.in_s / 60)} min`;
+  return `<button class="v2-alert" data-act="v2-slate">${icon("alert")}<span><b>${esc(when)}: crunch times overlap.</b> ${esc(alert.on_tv)} gets the TV (${esc(alert.why)}); ${esc(arr(alert.second).join(", "))} on the second stick.</span></button>`;
+}
 
 /** Refetch chips + votes when the newest switch changes. */
 function sync(S) {
@@ -56,7 +68,7 @@ ACTIONS["v2-vote"] = async (el) => {
 /** The "I missed that" bar above Recent switches. */
 export function missedBar() {
   if (!v2.on) return "";
-  return `<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
+  return `${alertLine()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
     <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button></div>`;
