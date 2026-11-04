@@ -278,3 +278,4 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (half-step of median + settle) is unchanged at its shipped value. The night lab's SmartThings TV draws from
   the same quantiles. Also STK-05 (no flag: a stale or paused standby was never a usable one): media_session must
   read active and speed>0, and verify_standby re-tunes a paused / stale hidden stick at once.
+- **2026-11-04 (Nick 3:15 PM rule + overseer V7 review):** the Mind reasoner gate adds `unsafe_leave_hi_pct` <= 0 (a high-leverage unsafe leave, meaning sticky now or a crunch play due, is a hard 0); low-leverage unsafe leaves are reported as info (`unsafe_leave_lo_pct`). A hard crunch=stay prior (`evaluate.CRUNCH_STAY_PRIOR`) now overrides every model answer on sticky rows (crunch, or late within NBA/CBB 6, NFL/CFB 8, NHL 1, MLB 2). Reports also show the student without the prior. Why: V7's crunch slice left 100% unsafely (n=125).

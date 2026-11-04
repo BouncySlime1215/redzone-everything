@@ -350,6 +350,7 @@ def export(lg: str, raw_dir: Path, plan: dict[str, str], head: dict, out_dir: Pa
                        "league": lg, "i": r["i"], "brief": brief_with(r, p, on_screen=rng.random() < 0.3),
                        "target": tgt, **{k: r[k] for k in ("y", "big_next", "crunch_next", "next_text", "garbage",
                                                           "crunch", "late", "mine")},
+                       "abs_diff": (r.get("facts") or {}).get("abs_diff"),
                        "t_big": None if math.isinf(r["t_big"]) else r["t_big"],
                        "t_break": None if math.isinf(r["t_break"]) else r["t_break"], "head_p": round(p, 4)}
                 g, _ = gold.gold_target({**row, "league": base})

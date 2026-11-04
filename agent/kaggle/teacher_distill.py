@@ -219,9 +219,12 @@ if queue and os.path.exists(f"{MOMENTS}/split_plan.json"):
             continue                  # round 2+ grades on the build's dev-test sample (phase 3)
         else:
             keep.append(q)
+    from agent.distill.teacher import balance_by_league
+    keep = balance_by_league(keep)            # every league gets answers before the budget runs out
     queue = f"{WORK}/teacher_requests_r2.jsonl"
     write_jsonl(queue, keep)
-    print("teacher queue after the time split:", len(keep))
+    print("teacher queue after the time split:", len(keep),
+          {k: sum(1 for q in keep if str(q.get("id", "")).split(":")[0] == k) for k in ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")})
 if queue:
     tail_h = BLIND_BUDGET_H + STUDENT_BUDGET_H + GRADE_RESERVE_H        # what must still fit after the teacher
     run(["agent/kaggle/run_teacher.py", "--requests", queue, "--out", WORK,
