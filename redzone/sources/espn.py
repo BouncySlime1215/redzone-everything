@@ -15,6 +15,7 @@ import re
 from datetime import datetime
 
 from redzone.models import PERIOD_S, REGULATION, GameState, League, Phase, Play, Situation, Stoppage, Team
+from redzone.scoring import postseason
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports"
 PATH = {League.NFL: "football/nfl", League.NBA: "basketball/nba",
@@ -254,6 +255,10 @@ def _parse_event(league: League, ev: dict) -> GameState | None:
     g.spread = _float(odds.get("spread"))
     if odds.get("details"):
         g.odds_text = odds["details"] + (f" · O/U {odds['overUnder']}" if odds.get("overUnder") else "")
+    try:   # postseason / ranked stakes: data only, scored behind score.postseason.enabled
+        g.stakes = postseason.parse(league, ev, g.home.id, g.away.id, g.home.rank, g.away.rank)
+    except Exception:
+        g.stakes = None
     detail = (_get(status, "type", "detail") or "").lower()
     brk = _status_break(league, g.period, detail)
     if brk is not None:
