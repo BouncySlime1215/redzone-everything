@@ -260,3 +260,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   prompt-only check (CENTER only on a prompt read from a screenshot): cleared at 46 s, 2/2 reruns pass.
   Seed 1 alone (CI) never showed it; run a second seed before calling a night clean.
 - 2026-11-04 (one brain step 2, #168): `from redzone import crunch` in demo/engine.py was shadowed by a local `def crunch(r)` in the same function scope, so the demo card crashed with "'function' object has no attribute 'row'". Unit tests never reach the demo summary; only CI's scorecard job did. Fix: import the module under a name no local uses (`crunch as crunch_table`), and run `python -m redzone.demo 20261101 --summary --json` before pushing anything that touches demo/.
+- 2026-11-04 (RC6): the Mac deploy's test step failed on tests/test_citymap.py: docs/citymap_tags.json still tagged
+  modules "Mid-play cuts + entries (per 100 landings)", but the nightly northstar table (700e4d4, `[skip ci]`)
+  regenerated docs/northstar.md with northstar.py's renamed line "Mid-play entries (per 100 landings)". The rename
+  had landed earlier, and the tags only broke once the table was regenerated. A `[skip ci]` commit can still break
+  the suite, so run the full suite on the exact tree you cut, not on the PRs before the nightly merge.
