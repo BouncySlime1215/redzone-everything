@@ -119,9 +119,10 @@ def _nfl_type(r) -> str:
 TWO_MIN_S = 120.0
 
 
-def _plays_football(g: pd.DataFrame) -> tuple[list[dict], list[tuple[float, float]]]:
+def _plays_football(g: pd.DataFrame, need_wall: bool = True) -> tuple[list[dict], list[tuple[float, float]]]:
     """nflfastR rows -> the ESPN summary play dicts the live parser reads (NFL), made to look like the
     ESPN feed the live tracker sees (data/archive/nfl, 150 games):
+    - need_wall=False (NFM tokens only, seasons before 2011 have no time_of_day) keeps every play, wallclock None;
     - the extra point / two-point try folds into the touchdown entry (ESPN has no separate entry);
     - END QUARTER / END GAME rows (no time_of_day in nflfastR) take the previous play's wallclock, which
       is exactly what ESPN stamps (median 0 s);
@@ -137,7 +138,7 @@ def _plays_football(g: pd.DataFrame) -> tuple[list[dict], list[tuple[float, floa
             continue
         q = int(r.qtr) if r.qtr == r.qtr else None
         wall = r.time_of_day if isinstance(r.time_of_day, str) else None
-        if wall is None:
+        if wall is None and need_wall:
             if tt not in ("End Period", "End of Half", "End of Game") or prev_w is None:
                 continue
             wall = prev_w

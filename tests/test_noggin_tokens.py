@@ -45,3 +45,32 @@ def test_coverage_tags_for_the_ledger():
     tg = NT.game_tags("nba", t)
     assert tg["events"] == 3 and tg["crunch_events"] == 1          # Q4 0:05, within 1
     assert not tg["ot"] and not tg["blowout"] and not tg["comeback"]
+
+
+def _old_nfl(tmp_path, date):
+    """A 1999-style nflverse season: no time_of_day at all, only game_date."""
+    import pandas as pd
+    rows = []
+    for i, (q, t, h, a) in enumerate([(1, "15:00", 0, 0), (1, "10:00", 7, 0), (2, "05:00", 7, 3), (4, "01:00", 14, 3)]
+                                     * 4):
+        rows.append(dict(game_id="1999_01_WAS_DAL", play_id=i + 1, time_of_day=None, time=t, qtr=q, play_type="run",
+                         desc="run", timeout=0, touchdown=0, field_goal_result=None, extra_point_result=None,
+                         interception=0, fumble_lost=0, sack=0, complete_pass=0, safety=0, sp=0, total_home_score=h,
+                         total_away_score=a, season_type="REG", two_point_attempt=0, home_team="WAS",
+                         away_team="DAL", game_date=date))
+    p = tmp_path / "pbp_1999.parquet"
+    pd.DataFrame(rows).to_parquet(p)
+    return p
+
+
+def test_seasons_without_wall_clocks_are_dated_by_game_date(tmp_path):
+    info = NT.build("nfl", _old_nfl(tmp_path, "1999-09-12"), 1999, tmp_path / "tok")
+    assert info["games"] == 1 and info["index"][0][1] == "19990912"
+    assert info["coverage"]["no_wall_games"] == 1
+    t = np.load(tmp_path / "tok" / "nfl" / "1999.npy")
+    assert (t[3:-1].reshape(-1, NT.TOKENS_PER_EVENT)[1:, 1] != NT.UNK_DT).all()     # DT from the game clock
+
+
+def test_game_date_fallback_still_respects_the_eval_cut(tmp_path):
+    info = NT.build("nfl", _old_nfl(tmp_path, "2025-12-01"), 1999, tmp_path / "tok")
+    assert info["games"] == 0

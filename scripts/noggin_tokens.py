@@ -106,7 +106,8 @@ CLOSE = {"nba": 6, "nfl": 8, "nhl": 1, "mlb": 2}
 def game_tags(league: str, t: np.ndarray) -> dict:
     """Coverage tags for one tokenized game (the data ledger balances on these, Nick 5:00 PM): crunch events (last
     regulation period, last quarter of its clock, within the league's close margin, or OT), OT, a comeback (a lead
-    of 10+ (NFL 14, NHL 2, MLB 4) erased), a blowout (final margin 20+ (NFL 21, NHL 4, MLB 6))."""
+    of 10+ (NFL 14, NHL 2, MLB 4) erased), a blowout (final margin 20+ (NHL 4, MLB 6); MARGIN clips at 20, so
+    20 is the most a token can show)."""
     from redzone.models import REGULATION, League
     lg = League(league)
     base = lg.base.value
@@ -120,12 +121,28 @@ def game_tags(league: str, t: np.ndarray) -> dict:
     close = CLOSE.get(base, 3)
     crunch = (per > reg) | ((per == reg) & (frac >= 0.75) & (np.abs(margin) <= close))
     big_lead = {"nfl": 14, "nhl": 2, "mlb": 4}.get(base, 10)
-    blow = {"nfl": 21, "nhl": 4, "mlb": 6}.get(base, 20)
+    blow = {"nhl": 4, "mlb": 6}.get(base, MARGIN_CAP)
     led_home, led_away = (margin >= big_lead).any(), (margin <= -big_lead).any()
     final = int(margin[-1])
     comeback = bool((led_home and final <= 0) or (led_away and final >= 0))
     return {"events": int(len(ev)), "crunch_events": int(crunch.sum()), "ot": bool((per > reg).any()),
             "comeback": comeback, "blowout": abs(final) >= blow}
+
+
+def _night(plays: list[dict], g) -> str | None:
+    """The game's night: from the first wallclock, else (older seasons with no wall clocks) the game_date column.
+    A game with neither is dropped, so no game can slip past the scorecard cut undated."""
+    from redzone.noggin import factory as F
+    from redzone.sources import espn
+    ts = [t for t in (espn._ts(p.get("wallclock")) for p in plays) if t is not None]
+    if ts:
+        return F.night_of(ts[0])
+    import pandas as pd
+    d = g.game_date.iloc[0] if "game_date" in g else None
+    try:
+        return None if d is None or pd.isna(d) else pd.Timestamp(d).strftime("%Y%m%d")
+    except (TypeError, ValueError):
+        return None
 
 
 def games_of(league: str, raw: Path):
@@ -152,27 +169,29 @@ def games_of(league: str, raw: Path):
     import pyarrow.parquet as pq
     have = set(pq.read_schema(raw).names)
     if "time_of_day" in have:                       # nflfastR (football)
-        df = pd.read_parquet(raw, columns=[c for c in F.NFL_COLS + ["home_team", "away_team"] if c in have])
+        df = pd.read_parquet(raw, columns=[c for c in F.NFL_COLS + ["home_team", "away_team", "game_date"]
+                                           if c in have])
         df = df[df.qtr.notna()].sort_values(["game_id", "play_id"], kind="stable")
         for gid, g in df.groupby("game_id", sort=False):
-            plays, _ = F._plays_football(g)
-            ts = [t for t in (espn._ts(p.get("wallclock")) for p in plays) if t is not None]
-            if not ts or F.night_of(ts[0]) >= cut:
+            walled = g.time_of_day.map(lambda v: isinstance(v, str)).any()
+            plays, _ = F._plays_football(g, need_wall=bool(walled))
+            night = _night(plays, g)
+            if night is None or night >= cut:
                 continue
             home = str(g.home_team.iloc[0]) if "home_team" in g else "?"
             away = str(g.away_team.iloc[0]) if "away_team" in g else "?"
-            yield str(gid), F.night_of(ts[0]), plays, home, away
+            yield str(gid), night, plays, home, away
         return
     cols = ["id", "sequence_number", "type_text", "text", "period_number", "clock_display_value", "wallclock",
-            "scoring_play", "score_value", "home_score", "away_score", "game_id", "home_team_abbrev", "away_team_abbrev"]
+            "scoring_play", "score_value", "home_score", "away_score", "game_id", "home_team_abbrev", "away_team_abbrev", "game_date"]
     df = pd.read_parquet(raw, columns=[c for c in cols if c in have])
     df["sq"] = pd.to_numeric(df.sequence_number, errors="coerce")
     for gid, g in df.sort_values(["game_id", "sq"], kind="stable").groupby("game_id", sort=False):
         plays = F._plays_basketball(g)
-        ts = [t for t in (espn._ts(p.get("wallclock")) for p in plays) if t is not None]
-        if not ts or F.night_of(ts[0]) >= cut:
+        night = _night(plays, g)
+        if night is None or night >= cut:
             continue
-        yield (str(gid), F.night_of(ts[0]), plays, str(g.home_team_abbrev.iloc[0]) if "home_team_abbrev" in g else "?",
+        yield (str(gid), night, plays, str(g.home_team_abbrev.iloc[0]) if "home_team_abbrev" in g else "?",
                str(g.away_team_abbrev.iloc[0]) if "away_team_abbrev" in g else "?")
 
 
@@ -195,7 +214,7 @@ def build(league: str, raw: Path, year: int, out: Path) -> dict:
             return info
     d.mkdir(parents=True, exist_ok=True)
     parts, games, off = [], [], 0
-    cov = {"crunch_events": 0, "ot_games": 0, "comeback_games": 0, "blowout_games": 0}
+    cov = {"crunch_events": 0, "ot_games": 0, "comeback_games": 0, "blowout_games": 0, "no_wall_games": 0}
     for gid, night, plays, home, away in games_of(league, raw):
         if len(plays) < 10:
             continue
@@ -205,6 +224,7 @@ def build(league: str, raw: Path, year: int, out: Path) -> dict:
         cov["ot_games"] += tg["ot"]
         cov["comeback_games"] += tg["comeback"]
         cov["blowout_games"] += tg["blowout"]
+        cov["no_wall_games"] += not any(p.get("wallclock") for p in plays)   # DT from the game clock (risk §8)
         parts.append(t)
         games.append([gid, night, off, int(len(t)), int(tg["ot"]) | int(tg["comeback"]) << 1 | int(tg["blowout"]) << 2])
         off += len(t)

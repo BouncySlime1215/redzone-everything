@@ -39,9 +39,10 @@ SMOKE = os.environ.get("RZ_SMOKE") == "1"
 # league -> (seasons newest first, synthetic self-play slates per real night; 0 = moments only)
 PLAN = {
     "nba": (list(range(2026, 2001, -1)), 20),
-    "nfl": (list(range(2025, 2010, -1)), 0),
+    "nfl": (list(range(2025, 1998, -1)), 0),    # nflverse 1999+; before 2011 no snap clock: tokens only (DT from game clock)
     "nhl": (list(range(2026, 2010, -1)), 20),   # ESPN wall clocks from 2019-20 on: older seasons give 0 rows
     "cbb": (list(range(2026, 2005, -1)), 4),
+    "wcbb": (list(range(2026, 2005, -1)), 4),  # wehoop (MIT); docs/data-sources.md
 }
 if os.environ.get("RZ_LEAGUES"):
     PLAN = {k: v for k, v in PLAN.items() if k in os.environ["RZ_LEAGUES"].split(",")}
@@ -187,7 +188,7 @@ man["ledger"] = {lg: {"tokens_real": v.get("tokens", 0), "sources": v.get("sourc
                       "selfplay_rows_synthetic": v.get("selfplay_rows", 0), "moments_rows_real": v.get("moments_rows", 0),
                       "crunch_event_share_pct": round(100 * v.get("crunch_events", 0) / max(1, v.get("events", 0)), 2),
                       "ot_games": v.get("ot_games", 0), "comeback_games": v.get("comeback_games", 0),
-                      "blowout_games": v.get("blowout_games", 0)}
+                      "blowout_games": v.get("blowout_games", 0), "no_wall_games": v.get("no_wall_games", 0)}
                  for lg, v in man["leagues"].items()}
 man["total_rows"] = sum(v["moments_rows"] + v["selfplay_rows"] for v in man["leagues"].values())
 man["missing"] = sorted(f"{lg} {y}" for lg, (years, _) in PLAN.items() for y in years

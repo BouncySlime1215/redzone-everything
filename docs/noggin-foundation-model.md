@@ -140,7 +140,9 @@ This week's remaining GPU (~2.5 h) goes to the Mind V8 round. The NFM's first GP
 ## 8. Risks
 
 - **Wall clocks:** ESPN pbp has no wall clocks for NHL before 2019-20 and only partial coverage for older NBA seasons.
-  DT then falls back to the game-clock delta, which is a different distribution. A flag token marks it (vocab v2) if it hurts.
+  DT then falls back to the game-clock delta, which is a different distribution, and the game's night comes from
+  `game_date`. Each shard counts these games (`coverage.no_wall_games`, in the ledger). NFL 1999 has no snap clock
+  at all (258 games, tokens only); 2005 already has 94%. A flag token marks them (vocab v2) if it hurts.
 - **Hash collisions** in KIND and TEAM: 2,048 and 512 slots against about 150 kinds and 30-360 teams per league, so
   collisions are rare. They are checked per shard.
 - **ESPN terms:** the data is for personal, non-commercial use, which this is. No redistribution beyond private Kaggle datasets.
