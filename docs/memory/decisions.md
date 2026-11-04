@@ -270,3 +270,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   candidate made 1 NHL mid-play entry on every seed (BUF @ WSH, an urgent landing after a game ended). After: 0 on
   all three seeds, NHL crunch 79.9 -> 81.3 (seed 0), every other line within 0.2, locked equal. The 6 s is
   syncsim's upper end until Thursday's probe refits it.
+- 2026-11-04 3:00 PM (live lab, #133): **`replay.seek_step_s` 10 -> 15 and new `replay.seek_wake_presses: 1`**.
+  Why: measured on both sticks (YouTube TV, `data/livelab/2026-11-04/seekcal.jsonl`): the first press of a batch
+  only shows the seek bar, each further press is 15 s, plus a 2-4 s stall. The old 10 s quantum made a 60 s replay
+  rewind land ~80 s back.
