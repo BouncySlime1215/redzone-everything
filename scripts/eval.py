@@ -130,7 +130,9 @@ def main():
         r = run(reps, cfg, set(cfg.get("teams.nfl")), **knobs)
         rc = r.cut.summary()
         per_night.append({"night": reps[0].gid, "entries": rc["entries"], "entries_mid_play": rc["entries_mid_play"],
-                          "cuts": len(r.mid_play_cuts), "big": r.big_plays, "big_seen": r.big_plays_caught})
+                          "cuts": len(r.mid_play_cuts), "big": r.big_plays, "big_seen": r.big_plays_caught,
+                          "big_seen_10m": r.big_seen_10m, "my_big": r.my_big_plays,
+                          "my_big_seen_10m": r.my_big_seen_10m, "crunch_on_replay": r.crunch_on_replay})
         tot["big"] += r.big_plays; tot["seen"] += r.big_plays_caught; tot["live"] += r.big_plays_live
         tot["cuts"] += len(r.mid_play_cuts); tot["dead"] += r.dead_air_s; tot["watched"] += r.watched_s
         tot["crunch"] += r.crunch; tot["crunch_live"] += r.crunch_live
@@ -140,6 +142,9 @@ def main():
         tot["behind"] += r.behind_live_s; tot["on_replay"] += r.big_missed_on_replay
         tot["drive"] += r.drive_plays; tot["drive_live"] += r.drive_plays_live
         tot["my_big"] += r.my_big_plays; tot["my_seen"] += r.my_big_plays_live
+        tot["seen10"] = tot.get("seen10", 0) + r.big_seen_10m
+        tot["my_seen10"] = tot.get("my_seen10", 0) + r.my_big_seen_10m
+        tot["crunch_on_replay"] = tot.get("crunch_on_replay", 0) + r.crunch_on_replay
         cut.add(r.cut)
         for k, v in r.dead_causes.items():
             causes[k] = causes.get(k, 0.0) + v
@@ -164,6 +169,9 @@ def main():
            "nfl_drive_live_pct": pct(tot["drive_live"], tot["drive"]),
            "behind_live_pct": pct(tot["behind"], tot["hours"] * 3600),
            "big_missed_on_replay": tot["on_replay"],
+           "big_seen_10m_pct": pct(tot.get("seen10", 0), tot["big"]),
+           "your_team_big_seen_10m": f"{tot.get('my_seen10', 0)}/{tot['my_big']}",
+           "crunch_on_replay": tot.get("crunch_on_replay", 0),
            "big_plays": tot["big"], "crunch_plays": tot["crunch"], **cut.summary(),
            "seconds": round(time.time() - t0),
            "eval_data": evaldata.stamp(), "eval_end": evaldata.window_end("nfl", EVAL_END),

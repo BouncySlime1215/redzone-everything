@@ -339,6 +339,13 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   instant_window_s: 900    # when everything's on a break, re-show great plays from the last 15 min
   seek_key: KEYCODE_MEDIA_REWIND
   seek_step_s: 10          # seconds per rewind press (measure on your stick in the Screen Lab)
+  redzone_way: false       # catch-up the RedZone way (Nick, Nov 4; OFF until its gate passes): lull, "meanwhile",
+                           # collision and end-of-night montage triggers (redzone/decider/decider.py)
+  catchup_s: 600           # each missed big play replayed within this; its value halves every catchup_s
+  collision_s: 180         # missed because another big play was on screen: replayed within this
+  lull_score: 45           # no live game at this score or above (and no crunch / lock): a replay takes the dead ball
+  meanwhile_s: 120         # the screen's game just scored: plays elsewhere within this of it go first
+  montage_age_s: 14400     # nothing live: every missed big play still on the DVR, however old
 
 reel:                      # catch-up reel: 5+ plays you missed, back to back, 30-60 s (redzone/reel.py)
   enabled: true            # find, download and trim clips as they post (ESPN's in-game highlights)

@@ -18,6 +18,8 @@ import sys
 import time
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -104,6 +106,8 @@ def main():
     ap.add_argument("--end", default=None, help="last night to grade (YYYYMMDD); default eval.<league>_end")
     ap.add_argument("--split", choices=splits.SPLITS, default="all",
                     help="grade one time split of the pinned window (redzone/lab/splits.py); test = LOCKED")
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    help="override a config value for this run, e.g. replay.redzone_way=true")
     stress_args(ap)
     a = ap.parse_args()
     lg = League(a.league)
@@ -115,6 +119,13 @@ def main():
         # Config falls back to defaults when a file doesn't validate (an unknown key, say): a
         # scorecard on silent defaults compares the wrong thing.
         sys.exit(f"{pinned} has settings the app rejects ({cfg.rejected}): refusing to grade on a partial config")
+    for kv in a.set:
+        key, _, val = kv.partition("=")
+        node = cfg.data
+        *path, last = key.split(".")
+        for part in path:
+            node = node.setdefault(part, {})
+        node[last] = yaml.safe_load(val)
     mine = set(cfg.get(f"teams.{lg.value}") or ["WSH"])
     total = sportsgrade.Card(lg.value)
     t0 = time.time()
@@ -127,7 +138,9 @@ def main():
         total.add(card)
         cs = card.cut.summary()
         per_night.append({"night": day, "entries": cs["entries"], "entries_mid_play": cs["entries_mid_play"],
-                          "cuts": len(card.cuts), "big": card.big, "big_seen": card.big_seen})
+                          "cuts": len(card.cuts), "big": card.big, "big_seen": card.big_seen,
+                          "big_seen_10m": card.big_seen_10m, "my_big": card.my_big,
+                          "my_big_seen_10m": card.my_big_seen_10m, "crunch_on_replay": card.crunch_on_replay})
         if a.slates:
             print(" ", day, json.dumps(card.summary()))
             for t, what in card.cuts[:3]:
