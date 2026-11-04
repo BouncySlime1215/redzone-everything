@@ -429,6 +429,7 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   resume_cap_s: 60         # never run more than this far behind the usual buffer
   resume_crunch_share: 0.0 # in crunch time only this share of the cap (0 = never pause crunch time)
   resume_min_skip_s: 10    # skip ahead in a break only if it wins back at least this much
+  resume_pause_s: 1.0      # the pause command's ack: a stoppage on screen this much longer is enough to pause
   lull_score: 45           # no live game at this score or above (and no crunch / lock): a replay takes the dead ball
   meanwhile_s: 120         # the screen's game just scored: plays elsewhere within this of it go first
   montage_age_s: 14400     # nothing live: every missed big play still on the DVR, however old

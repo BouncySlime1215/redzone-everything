@@ -1498,8 +1498,17 @@ class Decider:
         c = self.cfg
         cur = self._known.get(self.current) if self.current else None
         if self.current is None or self.current in PSEUDO or cur is None or not self._resume_on(cur) \
-                or not (gate and gate.safe) or s_cur.lock or self.user.locked_game:
+                or s_cur.lock or self.user.locked_game:
             return None
+        if not (gate and gate.safe):
+            # A pause needs no trip back in time: the stoppage only has to be on screen now, not for the
+            # tune_s a visit takes (replay.resume_pause_s: the pause command's own ack, live lab ~0.3 s)
+            tl = self.timelines.get(self.current)
+            gate = tl and leave_gate(tl, self.delays.get(cur.target or "unknown"), now,
+                                     c.get("decider.uncalibrated_sigma_s"),
+                                     tune_s=float(c.get("replay.resume_pause_s", 1.0)))
+            if not (gate and gate.safe):
+                return None
         w = float(c.get("replay.resume_window_s", 180))
         games = self._replay_pool(cands)
         fresh = [m for m in self.queue if m.game_id != self.current and not m.seen_live and not m.replayed
