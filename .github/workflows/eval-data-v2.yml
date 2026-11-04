@@ -17,8 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      TAG: eval-data-v2
-      END: "20261103"
+      # v2 (END 20261103) is published but its locked set reaches back over 3-4 v1 dev nights, so
+      # leak_check now FAILs it. v3 waits for enough FRESH nights (>= 8 locked nights all at or after
+      # v1's locked start, Oct 29): the Nov 5 night, so build it Fri Nov 6 morning.
+      TAG: eval-data-v3
+      END: "20261105"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,19 +33,19 @@ jobs:
         run: python scripts/backfill_eval_v2.py --end "$END" --json /tmp/backfill.json
       - name: build tarball + lock
         run: |
-          python scripts/build_eval_data.py --tag "$TAG" --out /tmp/evaldata --lock eval-data-v2.lock.json \
+          python scripts/build_eval_data.py --tag "$TAG" --out /tmp/evaldata --lock "$TAG.lock.json" \
             --window nfl:20250905:$END --window nba:20260101:$END --window nhl:20260101:$END --demo 20261101
-          cp eval-data-v2.lock.json /tmp/evaldata/
+          cp "$TAG.lock.json" /tmp/evaldata/
           cp /tmp/backfill.json /tmp/evaldata/backfill-report.json
       - name: leak check on v2
-        env: {RZ_EVAL_LOCK: eval-data-v2.lock.json}
+        env: {RZ_EVAL_LOCK: "${{ env.TAG }}.lock.json"}
         run: |
           python scripts/fetch_eval_data.py --tgz /tmp/evaldata/eval-archive.tgz --force
           python scripts/fetch_eval_data.py --check
           python scripts/leak_check.py
       - uses: actions/upload-artifact@v4
         with:
-          name: eval-data-v2
+          name: ${{ env.TAG }}
           path: /tmp/evaldata/
           retention-days: 14
       - name: publish release (new tag only)
@@ -52,6 +55,6 @@ jobs:
             echo "release $TAG exists: not replacing it (artifact has this run's build)"; exit 0
           fi
           gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" \
-            --notes "Pinned eval data v2: >= 8 locked nights per league (cycle 01 task 4). See eval-data-v2.lock.json and backfill-report.json." \
+            --notes "Pinned eval data $TAG: >= 8 locked nights per league, none of them a v1 dev night (cycle 01 task 4). See $TAG.lock.json and backfill-report.json." \
             /tmp/evaldata/eval-archive.tgz /tmp/evaldata/eval-archive.tgz.sha256 \
-            /tmp/evaldata/eval-data-v2.lock.json /tmp/evaldata/backfill-report.json
+            "/tmp/evaldata/$TAG.lock.json" /tmp/evaldata/backfill-report.json

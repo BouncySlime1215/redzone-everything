@@ -58,6 +58,28 @@ def needed_nights(min_locked: int) -> int:
     return n
 
 
+def max_nights_clean(locked_ok: int) -> int:
+    """Largest night count whose newest TEST_FRAC is <= locked_ok nights, so the locked set never
+    reaches back past the nights allowed to be locked."""
+    n = locked_ok
+    while math.ceil((n + 1) * splits.TEST_FRAC - 1e-9) <= locked_ok:
+        n += 1
+    return n
+
+
+def previous_locked_start(league: str) -> str | None:
+    """First LOCKED night of the default pin (eval-data.lock.json) for this league: everything older
+    was that pin's dev (tunable) data and must never become locked in a new pin."""
+    from redzone.lab import evaldata
+    lock = evaldata.load_lock(ROOT / "eval-data.lock.json")
+    w = (lock or {}).get("window", {}).get(league)
+    if not w:
+        return None
+    an = splits.archive_nights(ARCH / league)
+    s = splits.split_nights([n for n in an if w["start"] <= n <= w["end"]])
+    return s.test[0] if s.test else None
+
+
 def split_report(league: str, end: str | None = None) -> dict:
     an = splits.archive_nights(ARCH / league, end)
     s = splits.split_nights(an)
@@ -72,7 +94,9 @@ def split_report(league: str, end: str | None = None) -> dict:
     return {"nights": len(an), "train": len(s.train), "valid": len(s.valid), "locked": len(s.test),
             "locked_from": s.test[0] if s.test else None, "games": sum(len(v) for v in an.values()),
             "your_team_games_dev": yt(s.train + s.valid), "your_team_games_locked": yt(s.test),
-            "leaks": splits.leaks(s, an)}
+            "leaks": splits.leaks(s, an), "clean_after": previous_locked_start(league),
+            "locked_were_dev": sorted(n for n in s.test if previous_locked_start(league)
+                                      and n < previous_locked_start(league))}
 
 
 def _abbrs(event: dict) -> set[str]:
@@ -111,7 +135,11 @@ def backfill(new_end: str, min_locked: int, extra: int) -> list[dict]:
                 day += timedelta(days=1)
             if lg not in OLD_SEASON:
                 continue
-            want = needed_nights(min_locked) + extra
+            # Old nights only up to the count that keeps every locked night at or after the default
+            # pin's locked start (its older nights were dev: tuned on). Short of fresh nights -> NOT READY.
+            clean = previous_locked_start(lg) or "0"
+            ok_locked = sum(1 for n in splits.archive_nights(ARCH / lg) if n >= clean)
+            want = min(needed_nights(min_locked) + extra, max_nights_clean(ok_locked))
             start, stop = (_d(x) for x in OLD_SEASON[lg])
             day = stop
             while len(splits.archive_nights(ARCH / lg)) < want and day >= start:   # 2. old your-team nights
@@ -146,11 +174,12 @@ def main(argv=None) -> int:
     for lg, r in rep.items():
         print(f"{lg}: {r['nights']} nights = {r['train']} train / {r['valid']} valid / {r['locked']} locked "
               f"(from {r['locked_from']}), {r['games']} games; your-team games dev {r['your_team_games_dev']}, "
-              f"locked {r['your_team_games_locked']}; leaks: {r['leaks'] or 'none'}")
+              f"locked {r['your_team_games_locked']}; leaks: {r['leaks'] or 'none'}; "
+              f"locked nights that were dev in the default pin: {r['locked_were_dev'] or 'none'}")
     errors = [x for x in log if x.get("errors")]
     if errors:
         print(f"{len(errors)} day(s) with download errors (see --json)")
-    short = [lg for lg, r in rep.items() if r["locked"] < a.min_locked or r["leaks"]]
+    short = [lg for lg, r in rep.items() if r["locked"] < a.min_locked or r["leaks"] or r["locked_were_dev"]]
     if short:
         print("NOT READY:", ", ".join(short))
     return 1 if short else 0

@@ -64,3 +64,31 @@ def test_locked_nights_check_is_pending_not_fail_when_thin(tmp_path, monkeypatch
     from redzone.lab import evaldata
     monkeypatch.setattr(evaldata, "window_end", lambda league, default=None: None)   # no pin end
     assert lc.check_locked_nights()[0][0] == "PASS"
+
+
+def test_clean_cap_keeps_locked_inside_allowed_nights():
+    import backfill_eval_v2 as b
+    from redzone.lab import splits
+    for ok in (4, 6, 8, 9):
+        n = b.max_nights_clean(ok)
+        assert len(splits.split_nights([f"{i:08d}" for i in range(n)]).test) <= ok
+        assert len(splits.split_nights([f"{i:08d}" for i in range(n + 1)]).test) > ok
+
+
+def test_locked_nights_that_were_dev_in_the_default_pin_fail(tmp_path, monkeypatch):
+    import leak_check as lc
+    from redzone.lab import evaldata
+    lg = tmp_path / "nba"
+    lg.mkdir()
+    for i in range(13):                                   # the default pin's 13 nights: Oct 20..Nov 1
+        _night(lg, f"2026{(1020 + i) if i < 12 else 1101}", [f"g{i}"])
+    for i in range(2):
+        _night(lg, f"2026110{i + 2}", [f"f{i}"])          # fresh nights
+    for i in range(18):
+        _night(lg, f"202603{i + 1:02d}", [f"o{i}"])       # old nights: locked slides back over Oct 26-28
+    monkeypatch.setattr(lc, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(lc, "LEAGUES", ("nba",))
+    monkeypatch.setattr(evaldata, "LOCK", tmp_path / "eval-data-v2.lock.json")
+    monkeypatch.setattr(evaldata, "window_end", lambda league, default=None: None)
+    rows = lc.check_locked_unseen_by_previous_pin()
+    assert rows and rows[0][0] == "FAIL" and "20261028" in rows[0][2]
