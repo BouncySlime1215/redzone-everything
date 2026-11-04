@@ -133,7 +133,7 @@ class Store:
         return [r[0] for r in cur.fetchall()]
 
     def taps(self, since: float = 0.0) -> list[dict]:
-        """Phone v2 decision records, oldest first, for northstar.py's right_game line:
+        """Phone v2 decision records, oldest first, for the phone page only (no training or grading path reads them: self-taught rule, Nov 4):
         {ts, game, tap: "up" | "down" | "clear" | "missed", reason, switch, guess}. Rows without
         note 'switch' or 'missed' (the old one-tap vote) are left out."""
         out = []

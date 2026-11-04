@@ -122,7 +122,7 @@ export function prioritySection() {
   const sugg = arr(p.suggestions);
   const learned = `<div class="t2" style="margin-top:10px">${sugg.length
     ? `From your ${p.votes} ratings: ${sugg.map((s) => `${esc(s.suggest === "less" ? "less" : "more")} <b>${esc(s.term)}</b>`).join(", ")}. Suggestions only; nothing changes until you move a slider.`
-    : `Rate switches 👍/👎 on the Now screen and suggestions show up here (${num(p.votes)} so far).`}</div>`;
+    : `Your sliders are the only way these change; the Noggin teaches itself and never learns from your ratings.`}</div>`;
   return `${head}<div class="card set" data-key="v2prio">${rows}${reels}<div class="card-pad">${learned}</div></div>`;
 }
 

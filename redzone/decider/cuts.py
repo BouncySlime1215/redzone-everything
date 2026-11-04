@@ -465,7 +465,7 @@ class DeadTracker:
 def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: float, *,
                can_rewind: bool, step: float = 10.0, max_back: float = 60.0,
                relaxed: float | None = None, cost_lo: float | None = None,
-               urgent: float | None = None) -> EntryPlan:
+               urgent: float | None = None, lag: float = 0.0) -> EntryPlan:
     """How to come into this game: as is (the picture lands on a dead ball), with a short rewind so
     it lands on the dead ball just before the restart we'd otherwise join mid-play, or not yet.
 
@@ -473,19 +473,27 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
     up somewhere between cost_lo (a fast flip) and cost seconds from now, so the whole stretch must
     land dead. With the full margin no landing fits a 30 s huddle once the delay's doubt passes
     ~10 s, so a second pass centres the landing in the dead window with `relaxed` doubt (default:
-    none); such a landing is flagged in its `why`."""
+    none); such a landing is flagged in its `why`.
+
+    lag: [landing lag] a fresh tune comes up as much as this further behind the live edge, never ahead
+    (one-sided). Each pass's early side covers at least `lag`: a full 2-sigma margin usually already
+    does (the honest-sim doubt covers the tune's own landing), a thin one (centred, urgent) does not."""
     x1 = now + cost - mu
-    x0 = now + min(cost, cost if cost_lo is None else cost_lo) - mu
+    x00 = now + min(cost, cost if cost_lo is None else cost_lo) - mu
+
+    def lo(m: float) -> float:              # the early edge for margin m, widened to cover the landing lag
+        return x00 - max(0.0, lag - m)
+    x0 = lo(margin)
     here = dt.landing(x0 - margin, x1 + margin)
     if here.state == "dead" or (here.state == "unknown" and not can_rewind):
         # Football/baseball with no play known to be on screen: the leave gate's own rule.
         return EntryPlan(True, 0.0, here, here.why)
     strict = _rewind(dt, x0, x1, margin, step, max_back) if can_rewind else None
     if relaxed is not None and relaxed < margin:
-        soft = dt.landing(x0 - relaxed, x1 + relaxed)
+        soft = dt.landing(lo(relaxed) - relaxed, x1 + relaxed)
         if soft.state == "dead" and (strict is None or strict.rewind_s > step):
             return EntryPlan(True, 0.0, soft, soft.why + " (centred)")
-        loose = _rewind(dt, x0, x1, relaxed, step, max_back) if can_rewind else None
+        loose = _rewind(dt, lo(relaxed), x1, relaxed, step, max_back) if can_rewind else None
         # The full margin wins unless it costs more than one extra seek step.
         if loose is not None and (strict is None or strict.rewind_s > loose.rewind_s + step):
             loose.why += " (centred)"
@@ -495,10 +503,10 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
     if urgent is not None and urgent < min(margin, relaxed if relaxed is not None else margin):
         # Crunch time / your team: every second waiting is a play missed. Take the dead ball the
         # data puts the landing on even if the delay's doubt can't rule out a few seconds' error.
-        last = dt.landing(x0 - urgent, x1 + urgent)
+        last = dt.landing(lo(urgent) - urgent, x1 + urgent)
         if last.state == "dead":
             return EntryPlan(True, 0.0, last, last.why + " (urgent)")
-        quick = _rewind(dt, x0, x1, urgent, step, max_back) if can_rewind else None
+        quick = _rewind(dt, lo(urgent), x1, urgent, step, max_back) if can_rewind else None
         if quick is not None:
             quick.why += " (urgent)"
             return quick
