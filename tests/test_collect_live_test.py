@@ -31,3 +31,42 @@ def test_collects_rows_since_start_masks_lan_and_summarizes(tmp_path):
     text = (out / "tv_input.jsonl").read_text() + (out / "sync_probe.jsonl").read_text()
     assert "192.168" not in text and "aa:bb" not in text and "\"total_s\": 9.0" not in text
     assert (d / "tv_input.jsonl").read_text().count("\n") == 5      # source untouched
+
+
+def test_live_night_rows_landings_and_sync_anchor_error_per_stick(tmp_path):
+    import collect_live_test as c
+    now = time.time()
+    d = tmp_path / "data"
+    d.mkdir()
+    (d / "supervisor_cuts.jsonl").write_text("\n".join(map(json.dumps, [
+        {"ts": now - 50, "enter": "dead", "enter_after_dead_s": 4.0, "enter_before_play_s": 12.0},
+        {"ts": now - 40, "enter": "dead", "enter_after_dead_s": 9.0, "enter_before_play_s": 3.0},
+        {"ts": now - 30, "enter": "play"}])) + "\n")
+    (d / "sync.jsonl").write_text("\n".join(map(json.dumps, [
+        {"t": now - 20, "kind": "flip", "target": "youtubetv:espn", "err": -1.5, "stick": "HDMI1"},
+        {"t": now - 19, "kind": "score", "target": "youtubetv:espn", "err": 3.0, "stick": "HDMI1"},
+        {"t": now - 18, "kind": "flip", "target": "youtubetv:fox", "err": 0.5, "stick": "HDMI2"},
+        {"t": now - 17, "kind": "position", "target": "youtubetv:fox", "position": 1.0},
+        {"t": now - 99999, "kind": "flip", "err": 50.0, "stick": "HDMI2"}])) + "\n")
+    s = c.collect(d, tmp_path / "out", now - 3600, now)
+    assert s["landings"] == {"n": 2, "after_dead_p50_s": 9.0, "before_play_min_s": 3.0, "before_play_p50_s": 12.0}
+    assert s["sync_anchor_err"]["HDMI1"]["n"] == 2 and s["sync_anchor_err"]["HDMI1"]["p95_s"] == 3.0
+    assert s["sync_anchor_err"]["HDMI2"] == {"n": 1, "p50_s": 0.5, "p95_s": 0.5}
+    assert (tmp_path / "out" / "summary.json").exists()
+
+
+def test_the_supervisor_collects_each_live_night_by_itself_once(tmp_path):
+    from datetime import date
+    from types import SimpleNamespace
+    from redzone.supervisor import Supervisor, night_window
+    from redzone.config import Config
+    night = date(2026, 11, 4)
+    lo, hi = night_window(night)
+    (tmp_path / "tv_input.jsonl").write_text(json.dumps({"ts": lo + 60, "verified": True, "total_s": 2.0}) + "\n"
+                                             + json.dumps({"ts": hi + 60, "verified": True, "total_s": 9.0}) + "\n")
+    e = SimpleNamespace(store=None, cfg=Config(tmp_path / "c.yaml"), decider=SimpleNamespace(timelines={}, safe_mode=False))
+    sup = Supervisor(e, root=tmp_path, clock=lambda: hi + 3600)
+    out = sup.collect_live_night(night)
+    s = json.loads((out / "summary.json").read_text())
+    assert s["switch_samples"] == 1 and s["switch_p95_s"] == 2.0        # only that night's rows
+    assert sup.collect_live_night(night) is None                         # once
