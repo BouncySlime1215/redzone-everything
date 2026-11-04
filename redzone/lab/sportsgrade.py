@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from redzone.decider.screen import CONTINUOUS, _is_marker
-from redzone.lab import cutgrade
+from redzone.lab import cutgrade, leverage
 from redzone.lab.backtest import (CATCHUP_2_S, CATCHUP_3_S, CATCHUP_S, lag_of, leave_offsets, offsets_of, on_screen, replayed_by,
                                   tuning_blackout_seconds, watched_whole)
 from redzone.models import REAL_BREAKS, League, Stoppage
@@ -33,6 +33,7 @@ class Card:
     switches: int = 0
     replays: int = 0
     cuts: list = field(default_factory=list)
+    cuts_high: list = field(default_factory=list)   # the mid-play leaves at a high-leverage moment (leverage.py)
     big: int = 0
     big_live: int = 0
     big_seen: int = 0
@@ -66,7 +67,7 @@ class Card:
 
     def summary(self) -> dict:
         pct = lambda a, b: round(100 * a / max(1, b), 1)
-        return {"league": self.league, "games": self.games, "mid_play_cuts": len(self.cuts),
+        return {"league": self.league, "games": self.games, "mid_play_cuts": len(self.cuts), "mid_play_cuts_high": len(self.cuts_high),
                 "dead_air_pct": pct(self.dead, self.watched), "big_seen_pct": pct(self.big_seen, self.big),
                 "big_live_pct": pct(self.big_live, self.big), "crunch_live_pct": pct(self.crunch_live, self.crunch),
                 "your_team_crunch_live_pct": pct(self.my_crunch_live, self.my_crunch),
@@ -229,9 +230,13 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
         r = by_id.get(s.frm or "")
         if r is None or was_replay:
             continue
-        ok, what = _clean_cut(league, r.wall, r.plays, s.t - lag_of(lag_total, r.gid) - lo)
+        screen_t = s.t - lag_of(lag_total, r.gid) - lo
+        ok, what = _clean_cut(league, r.wall, r.plays, screen_t)
         if not ok:
             card.cuts.append((s.t, f"{r.matchup}: {what}"))
+            at = max((k for k, w in enumerate(r.wall) if w <= screen_t), default=0)
+            if leverage.high_leverage(league, r.plays[at] if r.plays else None):
+                card.cuts_high.append((s.t, f"{r.matchup}: {what}"))
 
     replayed = replayed or set()
     for r in replays:
