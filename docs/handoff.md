@@ -116,6 +116,11 @@ Everything combines into one AI brain with three layers, one training pipeline a
 | **Noggin Mind** (1.7B local student) | every 30-60 s, async | Storylines and stakes, lock-in, **sets the Reflex's per-game priorities**, explains switches, runs the watchdog. Absorbs the distill track and the live reasoner | Teacher distillation on Kaggle GPU |
 | **Noggin Teacher** (32B, Kaggle) | offline | Labels moments, reviews each night, generates data for both layers | Free Kaggle GPU |
 
+- **Scale targets (Nick: "billions"):**
+  - **Mind:** ~3-4B parameters (4-bit). The local AI RAM budget goes up to ~2.5 GB total.
+  - **Reflex:** 20,000+ variables trained on billions of data points. The model stays small for
+    <5 ms decisions.
+  - **Teacher:** 32B plus 14B. It writes storylines and narrative labels that feed both layers.
 - **Gates:** beat the current brain on locked unseen nights → shadow mode → turn on behind a flag.
 - **Input priority #1:** the live time-shift buffer plus faster feeds give the Reflex a 30-60 s head
   start.
