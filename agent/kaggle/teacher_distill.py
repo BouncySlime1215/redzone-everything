@@ -18,6 +18,10 @@
 #    job on the Mac's own 4-bit base (dequantized), one job per T4; mlx_lm adapters.
 # 5. **Grade** on dev-test nights: per league, train/valid/test gap, slices, calibrated "I don't know".
 #
+# **MODE** (next cell): "students" = skip the teacher and the multi-season build, reuse the teacher
+# answers in the attached previous output, and train + grade the students (~2-3 GPU-h). "full" = the
+# whole round above (the teacher resumes from the attached answers).
+#
 # **Run:** Accelerator **GPU T4 x2**, Internet **On**, inputs attached, **Save & Run All (Commit)**.
 # Download **out.zip** from the version's Output. Next round: attach this version's output too.
 
@@ -30,6 +34,7 @@ import subprocess
 import sys
 import time
 
+MODE = os.environ.get("RZ_MODE", "students")    # "students" (reuse attached teacher answers) or "full"
 TEACHER_BUDGET_H = 2.5      # the 32B on the hardest + gold-adjacent head of the queue
 BIG_N = 9000                # how many open requests the 32B gets (round 1 measured ~65/min)
 FAST_BUDGET_H = 3.0         # then the 14B (~3x faster) on the easier tail
@@ -104,6 +109,19 @@ if prev_m and not os.path.exists(MOMENTS):
     shutil.copytree(prev_m[0], MOMENTS, ignore=shutil.ignore_patterns("DONE", "rows"))
     print("resume build from:", prev_m[0])
 ROUND2 = os.path.exists(os.path.join(CODE, "agent/kaggle/build_moments_kaggle.py"))
+STUDENTS_ONLY = MODE == "students"
+if STUDENTS_ONLY:
+    from agent.kaggle.run_teacher import load_done
+    answers = load_done(PREV)                     # every attached teacher_out, one answer per id
+    if not answers:
+        raise SystemExit('MODE="students" needs the previous version\'s output (with teacher_out.jsonl) attached')
+    with open(os.path.join(WORK, "teacher_out.jsonl"), "w") as f:
+        for v in answers.values():
+            f.write(json.dumps(v) + "\n")
+    print(f"students-only: reusing {len(answers)} teacher answers; teacher and multi-season build skipped")
+    del answers
+    ROUND2 = ROUND2 and os.path.exists(f"{MOMENTS}/DONE")    # a finished build attached: still use it
+print("mode:", MODE)
 print(json.dumps(json.load(open(os.path.join(PACK, "manifest.json")))["counts"], indent=1))
 
 
@@ -129,7 +147,7 @@ if not os.environ.get("RZ_SMOKE"):
 # %%
 # Phase 0 (round 2+): start the multi-season build on the CPUs; it writes its time split first.
 build = None
-if ROUND2:
+if ROUND2 and not STUDENTS_ONLY:
     blog = open(f"{KW}/build.log", "a")
     build = subprocess.Popen([sys.executable, "agent/kaggle/build_moments_kaggle.py", "--out", MOMENTS,
                               "--budget-h", str(BUILD_BUDGET_H), "--workers", "3",
@@ -146,9 +164,11 @@ if ROUND2:
 # filtered by the build's time split, so hindsight is used on train nights only and nothing locked
 # is ever asked.
 queue = os.path.join(PACK, "teacher_requests.jsonl.gz")
-if not os.path.exists(queue):
+if STUDENTS_ONLY:
+    queue = None
+if queue and not os.path.exists(queue):
     queue = os.path.join(PACK, "teacher_requests.jsonl")
-if os.path.exists(f"{MOMENTS}/split_plan.json"):
+if queue and os.path.exists(f"{MOMENTS}/split_plan.json"):
     from agent.distill.teacher import read_jsonl, write_jsonl
     plan = json.load(open(f"{MOMENTS}/split_plan.json"))
     where = {}
@@ -172,11 +192,12 @@ if os.path.exists(f"{MOMENTS}/split_plan.json"):
     queue = f"{WORK}/teacher_requests_r2.jsonl"
     write_jsonl(queue, keep)
     print("teacher queue after the time split:", len(keep))
-run(["agent/kaggle/run_teacher.py", "--requests", queue, "--out", WORK, "--budget-h", str(TEACHER_BUDGET_H),
-     "--limit", str(BIG_N), "--resume-from", *PREV])
-shutil.copy(f"{WORK}/teacher_report.json", f"{WORK}/teacher_report_32b.json")
-run(["agent/kaggle/run_teacher.py", "--requests", queue, "--out", WORK, "--budget-h", str(FAST_BUDGET_H), "--fast"])
-shutil.copy(f"{WORK}/teacher_report.json", f"{WORK}/teacher_report_14b.json")
+if queue:
+    run(["agent/kaggle/run_teacher.py", "--requests", queue, "--out", WORK, "--budget-h", str(TEACHER_BUDGET_H),
+         "--limit", str(BIG_N), "--resume-from", *PREV])
+    shutil.copy(f"{WORK}/teacher_report.json", f"{WORK}/teacher_report_32b.json")
+    run(["agent/kaggle/run_teacher.py", "--requests", queue, "--out", WORK, "--budget-h", str(FAST_BUDGET_H), "--fast"])
+    shutil.copy(f"{WORK}/teacher_report.json", f"{WORK}/teacher_report_14b.json")
 
 # %%
 # Phase 2: wait for the build, then write the student data (weighted pick from the millions)
@@ -193,7 +214,7 @@ run(["agent/kaggle/run_students.py", *student_args, "--prepare-only"])
 # %%
 # Phase 3: the teacher answers the dev-test grading sample blind (graded exactly like the student)
 gr = os.path.join(WORK, "students/data/game-reasoner/grade_rows.jsonl")
-if os.path.exists(gr):
+if os.path.exists(gr) and not STUDENTS_ONLY:
     from agent.distill.teacher import read_jsonl, reasoner_requests, write_jsonl
     rows = [r for r in read_jsonl(gr) if r["split"] == "test"]
     system = open(os.path.join(PACK, "data/reasoner/system.txt")).read()
@@ -250,7 +271,7 @@ for f in ("grade_rows.jsonl", "jump_rows.jsonl"):
     if os.path.exists(os.path.join(gdir, f)):
         os.makedirs(os.path.join(keep, "graded"), exist_ok=True)
         shutil.copy(os.path.join(gdir, f), os.path.join(keep, "graded", f))
-json.dump({"round": ROUND, "wall_h": round((time.time() - T0) / 3600, 2)}, open(os.path.join(keep, "round.json"), "w"))
+json.dump({"round": ROUND, "mode": MODE, "wall_h": round((time.time() - T0) / 3600, 2)}, open(os.path.join(keep, "round.json"), "w"))
 shutil.make_archive(f"{KW}/out", "zip", keep)
 # keep the version output small: the 3.4 GB dequantized base is rebuilt next session in ~2 min
 shutil.rmtree(os.path.join(WORK, "students", "base-deq"), ignore_errors=True)

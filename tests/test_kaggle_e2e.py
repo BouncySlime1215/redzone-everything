@@ -102,7 +102,7 @@ def data_pack(d: Path) -> Path:
     return d
 
 
-@pytest.mark.parametrize("upload", ["tarball", "kaggle-extracted"])
+@pytest.mark.parametrize("upload", ["tarball", "kaggle-extracted", "students-only"])
 def test_notebook_end_to_end_on_cpu(tmp_path, upload):
     import tarfile
     from agent.kaggle.pack_data import code_pack
@@ -114,8 +114,15 @@ def test_notebook_end_to_end_on_cpu(tmp_path, upload):
         with tarfile.open(tgz) as t:
             t.extractall(inp / "rz-code" / "rz_code", filter="data")
         tgz.unlink()
+    mode = "full"
+    if upload == "students-only":        # V3: reuse the previous version's teacher answers, train students only
+        mode = "students"
+        (inp / "v2-out" / "rz").mkdir(parents=True)
+        (inp / "v2-out" / "rz" / "teacher_out.jsonl").write_text(json.dumps(
+            {"id": "wd:paused:0", "task": "wd_paraphrase", "kind": "paused", "model": "prev",
+             "text": "stream froze again", "followups": [{"item": "stream froze again", "text": "none"}]}) + "\n")
     work.mkdir()
-    env = {**os.environ, "RZ_KAGGLE_INPUT": str(inp), "RZ_KAGGLE_WORKING": str(work), "RZ_SMOKE": "1",
+    env = {"RZ_MODE": mode, **os.environ, "RZ_KAGGLE_INPUT": str(inp), "RZ_KAGGLE_WORKING": str(work), "RZ_SMOKE": "1",
            "RZ_FAKE_TEACHER": "1", "RZ_BASE_DIR": str(tiny_base(tmp_path / "base")),
            "RZ_BUILD_ARCHIVE": str(archive(tmp_path / "archive")), "CUDA_VISIBLE_DEVICES": ""}
     p = subprocess.run([sys.executable, str(ROOT / "agent/kaggle/teacher_distill.py")], env=env, cwd=tmp_path,
@@ -123,6 +130,15 @@ def test_notebook_end_to_end_on_cpu(tmp_path, upload):
     log = p.stdout + p.stderr
     assert p.returncode == 0, log[-4000:]
     assert "| code: pack" not in log, "the notebook fell back to round-1 code"
+    if mode == "students":
+        assert "students-only: reusing 1 teacher answers" in log, log[-3000:]
+        assert "teacher:" not in log and not (work / "build.log").exists(), "students-only ran the teacher or build"
+        z = zipfile.ZipFile(work / "out.zip")
+        assert json.loads(z.read("teacher_out.jsonl").decode().splitlines()[0])["model"] == "prev"
+        for f in ("report.md", "game-reasoner/mlx/adapters.safetensors", "watchdog/mlx/adapters.safetensors"):
+            assert f in z.namelist(), (f, log[-3000:])
+        assert json.loads(z.read("round.json"))["mode"] == "students"
+        return
     z = zipfile.ZipFile(work / "out.zip")
     names = set(z.namelist())
     for f in ("report.md", "teacher_out.jsonl", "build_report.json", "split_plan.json",

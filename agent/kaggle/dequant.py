@@ -34,8 +34,36 @@ def dequantize(q: np.ndarray, scales: np.ndarray, biases: np.ndarray, group_size
     return w.reshape(v.shape)
 
 
+_DT = {"F64": np.float64, "F32": np.float32, "F16": np.float16, "BF16": np.uint16, "I64": np.int64,
+       "I32": np.int32, "I16": np.int16, "I8": np.int8, "U64": np.uint64, "U32": np.uint32, "U16": np.uint16,
+       "U8": np.uint8, "BOOL": np.bool_}
+
+
+def load_file(path: str) -> dict[str, np.ndarray]:
+    """Read a .safetensors file into numpy, bf16 included (numpy has no bfloat16, and
+    safetensors.numpy.load_file raises "data type 'bfloat16' not understood"; mlx-community stores
+    the 4-bit scales/biases in bf16). bf16 -> float32 is exact: the bf16 bits are the top half of
+    a float32. Pure numpy, so no torch dtype support (uint32) is needed either."""
+    import struct
+    with open(path, "rb") as f:
+        n = struct.unpack("<Q", f.read(8))[0]
+        header = json.loads(f.read(n))
+        blob = f.read()
+    header.pop("__metadata__", None)
+    out = {}
+    for k, h in header.items():
+        a, b = h["data_offsets"]
+        if h["dtype"] not in _DT:
+            raise ValueError(f"{path}: {k} has unsupported dtype {h['dtype']}")
+        v = np.frombuffer(blob[a:b], dtype=np.dtype(_DT[h["dtype"]]).newbyteorder("<")).reshape(h["shape"])
+        if h["dtype"] == "BF16":
+            v = (v.astype(np.uint32) << 16).view(np.float32)
+        out[k] = v
+    return out
+
+
 def convert(src: Path, out: Path, dtype=np.float16) -> dict:
-    from safetensors.numpy import load_file, save_file
+    from safetensors.numpy import save_file
     cfg = json.loads((src / "config.json").read_text())
     qc = cfg.pop("quantization", None) or {}
     cfg.pop("quantization_config", None)
