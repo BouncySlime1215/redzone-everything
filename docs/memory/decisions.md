@@ -182,3 +182,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (`noggin.priority.prefs`, the same values as `Preferences` in redzone/noggin/priority.py, so nothing moves).
   Phone v2 only writes `feedback` rows (note `switch` / `missed`); the decider, tick loop and TV never read them.
   Rivalries stay config-only for now: the validator takes lists of names, not pairs.
+- 2026-11-04 10:00 AM: **TV-04 undo added OFF** (`hardening.tv: false`). When the TV jumps by itself
+  (SmartThings readback, no command of ours) to a stick that isn't playing, while the stick it left still
+  plays our game, the controller puts the TV straight back and no preload runs until it has. Night lab
+  (`--faults redzone.lab.night.faults:tv --tv smartthings`, seeds 1-2): back on the game in 20.1 s / 15.3 s
+  with it on; off, the TV stays on the rebooted stick's home screen until the next switch. It stays off
+  until a real CEC steal is seen on Nick's TV (the Wed test), because a wrong undo would take the TV from a person.

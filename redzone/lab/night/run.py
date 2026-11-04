@@ -766,6 +766,28 @@ def grade(night: Night) -> dict:
                    **{k: v for k, v in f.items() if k in ("host", "seconds", "scale", "hit")}})
     if pb:
         check("playbook_faults_no_midplay", all(x["mid_play_cuts"] == 0 for x in pb), pb)
+    # TV-03 / TV-04 outcomes (faults:tv). TV-03: while a person has the TV on another input, no input
+    # change of ours. TV-04: after the TV jumped to a rebooted stick by itself, seconds until it shows
+    # the game it was showing again (graded <= 30 s only with hardening.tv, which does the undo).
+    shown_all = night.house.shown
+    tvx = []
+    for f in night.fault_log:
+        if f["event"] != "start" or f["name"] not in ("tv_other_input", "cec_steal"):
+            continue
+        t = f["t"]
+        if f["name"] == "tv_other_input":
+            ours = [x for x in shown_all if t + 1 < x.t < t + float(f.get("dur") or 0) - 1 and x.cause == "input"]
+            tvx.append({"fault": f["name"], "et": _et(t), "ok": not ours, "our_input_changes": len(ours)})
+        else:
+            before = next((x for x in reversed(shown_all) if x.t < t - 0.01 and x.what == "playing"), None)
+            back = next((x for x in shown_all if x.t > t + 0.5 and before is not None and x.target == before.target
+                         and x.host == before.host and x.what == "playing"), None)
+            back_s = round(back.t - t, 1) if back is not None else None
+            need = bool(night.engine.cfg.get("hardening.tv", False))
+            tvx.append({"fault": f["name"], "et": _et(t), "back_s": back_s, "graded": need,
+                        "ok": (not need) or (back_s is not None and back_s <= 30.0)})
+    if tvx:
+        check("tv_faults_handled", all(x["ok"] for x in tvx), tvx)
     # The screen: how much of the live night showed a live game.
     live_s = shown_live = far_s = prompt_s = 0.0
     far: list = []
@@ -794,6 +816,11 @@ def grade(night: Night) -> dict:
         # [switch timing] every flip by the TV's own input, at the measured latency, readback-confirmed
         log = night.work / "data" / "tv_input.jsonl"
         rows_in = [json.loads(x) for x in log.read_text().splitlines() if x.strip()] if log.exists() else []
+        # An injected SmartThings outage (st_down, playbook=TV-02) fails the cloud path on purpose: those
+        # attempts are graded by the playbook check (the TV still switched by HOME), not here.
+        down = [(night.t0 + f.at, night.t0 + f.at + f.dur + 5) for f in getattr(night, "faults", [])
+                if f.name == "st_down"]
+        rows_in = [r for r in rows_in if not any(lo <= float(r.get("at") or 0) <= hi for lo, hi in down)]
         totals = sorted(r["total_s"] for r in rows_in if r.get("total_s") is not None and r.get("verified"))
         homes = sum(1 for d in night.house.sticks.values() for _, k in d.log if k == "HOME")
         med = totals[len(totals) // 2] if totals else None

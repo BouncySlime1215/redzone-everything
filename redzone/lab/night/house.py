@@ -429,6 +429,7 @@ class FakeTV:
     def __init__(self, house: "House"):
         self.house = house
         self.source: FakeFireTV | None = None
+        self.other: str | None = None    # tv_other_input: the input a person picked (not a stick)
         self.input_at = 0.0
         self.flips = 0
 
@@ -514,10 +515,12 @@ class House:
             return
         self._switch_to(stick)
 
-    def _switch_to(self, stick: FakeFireTV) -> None:
+    def _switch_to(self, stick: FakeFireTV | None) -> None:
         old = self.tv.source
         if old is stick:
             return
+        if stick is not None:
+            self.tv.other = None   # one of the sticks took the TV back
         self.tv.source = stick
         self.tv.input_at = time.time()
         self.tv.flips += 1
@@ -528,7 +531,7 @@ class House:
     def screen(self) -> tuple[str | None, str | None, str, float]:
         s = self.tv.source
         if s is None:
-            return None, None, "no input", 0.0
+            return None, None, "other input" if self.tv.other else "no input", 0.0
         if time.time() - self.tv.input_at < self.timing.tv_settle:
             return s.host, None, "settling", 0.0
         tgt, what, behind = s.picture()

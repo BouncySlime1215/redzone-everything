@@ -50,6 +50,9 @@ def make_tv_class(tv_mod, house, rng: random.Random):
             return True
 
         async def st_input(self, source: str) -> bool:
+            if house.faults_on("st_down"):
+                self.last_error = "SmartThings 503 (fault st_down)"
+                return False
             stick = next((s for s in house.sticks.values() if s.hdmi == source), None)
             if stick is None:
                 self.last_error = f"TV doesn't list input {source}"
@@ -61,8 +64,10 @@ def make_tv_class(tv_mod, house, rng: random.Random):
             return True
 
         async def input_status(self) -> str | None:
+            if house.faults_on("st_down"):
+                return None
             s = house.tv.source
-            return s.hdmi if s is not None else None
+            return s.hdmi if s is not None else house.tv.other
 
         async def warm(self) -> bool:
             return True

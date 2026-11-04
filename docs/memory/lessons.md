@@ -144,3 +144,11 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   `scripts/perf_probe.py` times the real `Engine.decide()` on 8 synthetic live games (300 ticks): it was
   p50 1.0 ms, p99 5.3 ms, 56 MB peak RSS at 1f5e751. Engine needs a running event loop, so the probe runs
   inside `asyncio.run`.
+
+## The TV-04 undo found nothing to go back to
+- **Symptom:** (night lab, cec_steal, hardening.tv on) seed 1: `_flip_to` refused the way back; seed 2: the undo
+  read the stick we left as playing ESPN, waited 4.5 s for the lock, then found it on FOX.
+- **Cause:** a stale `_exit_check` from the last switch still gated `_flip_to`; and once the readback adopted the
+  rebooted stick as main, the stick we left became "hidden", so the planner preloaded another game over it.
+- **Fix:** the undo clears `_exit_check` around its own flip, and `preload()` refuses while the undo is pending.
+- **Signals:** playbook=TV-04, "was re-tuned meanwhile", TV jumped by itself, CEC steal, rebooted stick
