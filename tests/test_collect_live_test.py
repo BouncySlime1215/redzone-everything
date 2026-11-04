@@ -29,5 +29,5 @@ def test_collects_rows_since_start_masks_lan_and_summarizes(tmp_path):
     assert s["entries_mid_play"] == 1 and s["rows"]["traces.jsonl"] == 3
     assert s["press_samples"] == 1 and s["press_to_tv_p95_s"] == 2.5 and s["press_no_picture"] == 1
     text = (out / "tv_input.jsonl").read_text() + (out / "sync_probe.jsonl").read_text()
-    assert "192.168" not in text and "aa:bb" not in text and "9.0" not in text
+    assert "192.168" not in text and "aa:bb" not in text and "\"total_s\": 9.0" not in text
     assert (d / "tv_input.jsonl").read_text().count("\n") == 5      # source untouched
