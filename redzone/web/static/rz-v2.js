@@ -471,7 +471,8 @@ function slateSheet() {
   const ticks = [];
   for (let t = Math.ceil(a / 3600) * 3600; t < b; t += 3600) ticks.push(`<i style="left:${pct(t)}%"><span>${esc(fmtTime(t).replace(":00", ""))}</span></i>`);
   const rows = gs.map((g) => `<div class="v2-g">
-      <div class="v2-g-name ell">${g.yours ? icon("star", "ico--fill ico--xs") + " " : ""}${esc(g.matchup)} <small>${esc(String(g.league).toUpperCase())}${g.live ? " · live" : " · " + esc(fmtTime(g.start))}</small></div>
+      <div class="v2-g-name ell">${g.yours ? icon("star", "ico--fill ico--xs") + " " : ""}${esc(g.matchup)} <small>${esc(String(g.league).toUpperCase())}${g.live ? " · live" : " · " + esc(fmtTime(g.start))}</small>${g.wv ? `<span class="v2-g-wv" title="${attr(`Watch value ${g.wv.value}${g.wv.rising != null ? `, ${g.wv.rising > 0 ? "+" : ""}${g.wv.rising}/min` : ""}`)}"><b>${num(g.wv.value)}</b>${g.wv.arrow ? `<i class="v2-g-wv--${attr(g.wv.arrow)}">${g.wv.arrow === "up" ? "▲" : "▼"}</i>` : ""}</span>` : ""}</div>
+      ${g.wv && g.wv.why ? `<div class="v2-g-why ell">${esc(g.wv.why)}</div>` : ""}
       <div class="v2-g-track"><b class="v2-g-bar ${g.yours ? "v2-g-bar--yours" : ""}" style="left:${pct(g.start)}%;width:${(((g.end - g.start) / span) * 100).toFixed(2)}%"></b>
         <b class="v2-g-crunch" style="left:${pct(g.crunch[0])}%;width:${(((g.crunch[1] - g.crunch[0]) / span) * 100).toFixed(2)}%" title="Crunch time"></b>
         <i class="v2-now" style="left:${pct(now)}%"></i></div></div>`).join("");

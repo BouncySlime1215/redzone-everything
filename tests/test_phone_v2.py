@@ -488,3 +488,21 @@ def test_crunch_timeline_graded_and_from_provenance(tmp_path):
     assert v["source"] == "provenance" and pts == {"x": [{"ts": 10.0, "state": "in"}],
                                                    "y": [{"ts": 10.0, "state": "leaving"}, {"ts": 20.0, "state": "entering"}]}
     assert phone_v2.crunch_timeline(None, [], str)["source"] is None
+
+
+def test_slate_watch_values_only_when_on_and_learned():
+    from redzone.scoring.engine import Scored
+    from redzone.models import League
+    def sc(gid, wv=None, why="", rise=None):
+        s = Scored(gid, League.NBA, 50.0, 50.0, 0.0, 0.0, 0.0, "", [], False, None, None, 0.0)
+        s.watch_value, s.watch_why, s.watch_rising = wv, why, rise
+        return s
+    rows = lambda: [{"game_id": "a", "live": True}, {"game_id": "b", "live": True}, {"game_id": "c", "live": False},
+                    {"game_id": "d", "live": True}]
+    scored = {"a": sc("a", 71.6, "Tied late", 3.44), "b": sc("b", 40.0, "", -0.5), "c": sc("c", 90.0), "d": sc("d")}
+    assert all("wv" not in r for r in phone_v2.slate_watch(rows(), scored, on=False))     # flag off: hidden
+    by = {r["game_id"]: r for r in phone_v2.slate_watch(rows(), scored, on=True)}
+    assert by["a"]["wv"] == {"value": 72, "why": "Tied late", "rising": 3.4, "arrow": "up"}
+    assert by["b"]["wv"]["arrow"] == "" and "wv" not in by["c"] and "wv" not in by["d"]   # not live / no model
+    scored["b"].watch_rising = -2.0
+    assert phone_v2.slate_watch(rows(), scored, on=True)[1]["wv"]["arrow"] == "down"

@@ -479,6 +479,24 @@ def progress(g) -> float:
     return min(1.0, ((p - 1) * per + (per - left)) / (reg * per))
 
 
+RISING_MIN = 1.0    # watch_rising (points per minute) at or above this shows an up arrow, at or below -this a down one
+
+
+def slate_watch(rows: list[dict], scored: dict, on: bool) -> list[dict]:
+    """HEAT 2.0 on the slate: each live game's learned watch value (0-100), its why line and a rising /
+    falling arrow, from Scored.watch_value / watch_why / watch_rising (#166 contract). Hidden (no "wv" key)
+    when scoring.watch_value is off or the game has no learned value yet. Display only."""
+    for r in rows:
+        s = (scored or {}).get(r["game_id"]) if on and r.get("live") else None
+        if s is None or s.watch_value is None:
+            continue
+        rise = s.watch_rising
+        r["wv"] = {"value": int(round(max(0.0, min(100.0, float(s.watch_value))))), "why": (s.watch_why or "")[:120],
+                   "rising": None if rise is None else round(float(rise), 1),
+                   "arrow": "" if rise is None or abs(rise) < RISING_MIN else ("up" if rise > 0 else "down")}
+    return rows
+
+
 def slate_preview(games, rules: HardRules, now: float) -> dict:
     """Tonight ahead, as a pure function of the board: each live or upcoming game's expected window
     and crunch window, and every stretch where two or more crunch windows overlap, with who gets the
@@ -753,7 +771,9 @@ def router(engine) -> APIRouter:
             return _off()
         now = time.time()
         v = slate_preview(getattr(engine.merger, "games", {}), HardRules.from_config(engine.cfg), now)
-        return {"enabled": True, "now": now, **v, "alert": clash_alert(v, now)}
+        wv_on = bool(engine.cfg.get("scoring.watch_value", False))
+        slate_watch(v["games"], engine.scored, wv_on)
+        return {"enabled": True, "now": now, **v, "alert": clash_alert(v, now), "watch_value": wv_on}
 
     @r.get("/priority")
     async def get_priority():

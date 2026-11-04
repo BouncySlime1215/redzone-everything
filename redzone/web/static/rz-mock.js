@@ -338,7 +338,8 @@ function mockV2(path, b) {
       const [d, c] = L[g.league] || [150, 30];
       const start = g.phase === "live" ? now - 3600 + i * 600 : now + 1800 + i * 1500;
       const end = start + d * 60;
-      return { game_id: g.id, league: g.league, matchup: g.matchup, live: g.phase === "live", start, end, crunch: [end - c * 60, end], yours: !!g.mine };
+      const wv = g.phase === "live" ? { value: Math.max(8, 88 - i * 19), why: ["Tied, 2:10 left in the 4th", "Comeback brewing: 10-0 run", "Power play, down one", "Blowout, starters sitting"][i % 4], rising: [3.4, 6.1, -0.4, -2.2][i % 4], arrow: ["up", "up", "", "down"][i % 4] } : undefined;
+      return { game_id: g.id, league: g.league, matchup: g.matchup, live: g.phase === "live", start, end, crunch: [end - c * 60, end], yours: !!g.mine, ...(wv ? { wv } : {}) };
     });
     const cl = [];
     for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++) {

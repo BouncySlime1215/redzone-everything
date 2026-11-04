@@ -1216,6 +1216,13 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .v2-cr-l { background: #e5484d; }
 .v2-cr-o { background: var(--text-2); }
 .v2-cr-track > i { position: absolute; top: 1px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #e5484d; }
+.v2-g { position: relative; }
+.v2-g-name:has(.v2-g-wv) { padding-right: 46px; }
+.v2-g-wv { position: absolute; right: 0; top: 0; display: inline-flex; align-items: baseline; gap: 2px; font-size: 13px; }
+.v2-g-wv i { font-style: normal; font-size: 10px; }
+.v2-g-wv--up { color: var(--live); }
+.v2-g-wv--down { color: var(--text-3); }
+.v2-g-why { font-size: 12px; color: var(--text-3); }
 .v2-trend { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
 .v2-trend-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .v2-trend-top .m { font-size: 14px; }
