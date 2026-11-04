@@ -160,6 +160,7 @@ def _nfl_rows():
 
 
 def test_nfl_loader_looks_like_the_espn_feed():
+    pytest.importorskip("pandas")
     from redzone.noggin import factory as FA
     plays, skip = FA._plays_football(_nfl_rows())
     types = [p["type"]["text"] for p in plays]
