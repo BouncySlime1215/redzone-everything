@@ -251,6 +251,8 @@ def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
         # plays that started airing while the screen was black, or were under way when it came up
         plen = _plen(dst.league)
         lo, hi = s.t - lag - off, st
+        if s.kind == "resume":
+            lo = hi   # [replay and resume] back on the frame we paused: what came before it was on screen
         missed0 = card.plays_missed_entry
         for k in range(max(0, _idx(dst.wall, lo)), len(dst.wall)):
             w, p = dst.wall[k], dst.plays[k]
