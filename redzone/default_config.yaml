@@ -271,6 +271,7 @@ playbooks:
   game:                   # [scenario tree] GAME-01..03, 21, 22 branches (redzone/decider/scenarios.py), OFF
     enabled: false
     table: ""             # a JSON branch table (the cloud-built tree); empty = the hand-written seeds
+    skip: [GAME-01]       # rows left out: GAME-01 visits cost NFL dev crunch 70.7 -> 69.3, big live 54.4 -> 53.5
     crunch_overlap: false # GAME-05: two same-tier crunches: higher stakes (OT, 2:00 window, score) stays live
     empty_net: false      # GAME-09: an NHL pulled goalie counts as crunch time (live feed only: not in replays)
 screen:

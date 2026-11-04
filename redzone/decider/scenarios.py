@@ -95,7 +95,8 @@ def state_of(dec, gid: str, x, now: float) -> str:
 class Scenarios:
     def __init__(self, cfg):
         self.cfg = cfg
-        self.table = load(cfg)
+        skip = set((cfg.get("playbooks.game.skip") if cfg is not None else None) or [])
+        self.table = [r for r in load(cfg) if r["id"] not in skip]   # rows measured to cost (see default_config)
         self.plan: Plan | None = None
         self.seen: dict[str, int] = {}
 

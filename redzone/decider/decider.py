@@ -814,6 +814,8 @@ class Decider:
         if d.action == "switch" and d.target == b:
             d.reason = f"{tag}: {d.reason}"
             return d
+        if d.action == "replay" or d.kind == "crunch":
+            return d    # a catch-up reel or crunch time already fills A's break: a visit never displaces it
         gate = self._gate(cands.get(self.current), now) if self.current in cands else None
         if not (gate and gate.safe):
             return d    # rule #1: a branch never cuts out of a play; it acts at A's next safe moment
