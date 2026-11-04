@@ -58,6 +58,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 
 - **Fire TV sticks:** Fire TV Stick 4K Plus at 100.110.165.150 on HDMI2, and Fire TV Stick 4K
   (2023) at .181 on HDMI1.
+- **HDMI-CEC is OFF on both sticks** (Nov 4, 10:40 AM; Nick approved). With it on, every SmartThings flip paused the stick left behind (live lab finding).
+  Re-enable with `scripts/stick_cec.py on` only if HOME/CEC flipping is needed as the fallback.
 - **TV:** Samsung 6 Series 55" that came with the apartment (The Union Chapel Hill, WhiteSky
   Wi-Fi). MAC 8c:79:f5:8e:e2:5f. The IP .151 was never verified.
 - **Why network TV control failed:** almost certainly the Tailscale 100.64/10 route overlap or a
