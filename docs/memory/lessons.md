@@ -183,3 +183,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** not one test. integration/next itself already took 19m50s on 3.12 (12:12 run): the e2e night, the playbook night (#86) and the SmartThings night take ~3 min each, and the drill night adds ~1 min. GitHub runners are ~1.6x slower than the cloud box (11.5 min there).
 - **Fix:** timeout-minutes 30 on the test job. The next step is to run the replayed nights in their own job, in parallel.
 - **Signals:** "The operation was canceled", test job cancelled, timeout-minutes
+- 2026-11-04: **A sim with zero delay error hid a deterministic mid-play entry.** The backtest's screen ran exactly
+  the delay the app believed, so a 2 s "urgent" landing always looked safe. With a real tune's 0-6 s late landing,
+  one NHL entry was mid-play on every seed. Fix: thin-margin landings cover a one-sided landing lag, and "ended"
+  switches never take the urgent path. Grade entry changes with `--tune-jitter 6` on several seeds.

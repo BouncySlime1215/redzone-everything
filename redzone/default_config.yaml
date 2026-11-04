@@ -211,6 +211,8 @@ decider:
   entry:
     hold_only: [nhl, nba]     # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
     rewind_only: []      # leagues whose entries land on a dead ball with a rewind when one fits, never wait
+    landing_lag_s: 0     # [landing lag] a fresh tune comes up up to this much later than the live edge (one-sided)
+    ended_strict: false  # [landing lag] a switch off a finished game never takes the urgent (thin-margin) landing
     crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)

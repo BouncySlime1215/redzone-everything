@@ -258,3 +258,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   p95 stays 8.75 s. Pre-tuned presses (game live on the hidden stick): 10, p50 3.02 s, p95 3.7 s, bounded by the
   ~2 s SmartThings flip. Cold presses (a tune, including a channel parked on a catch-up replay): 8, p50 8.5 s.
   The drill and the North Star line now report the two apart.
+- 2026-11-04 2:30 PM (lane 2, planner ask, rule #1): **candidate gets `decider.entry.landing_lag_s=6` and
+  `decider.entry.ended_strict=true`** (new keys, default 0 / false). Why: with an honest per-tune landing error the
+  candidate made 1 NHL mid-play entry on every seed (BUF @ WSH, an urgent landing after a game ended). After: 0 on
+  all three seeds, NHL crunch 79.9 -> 81.3 (seed 0), every other line within 0.2, locked equal. The 6 s is
+  syncsim's upper end until Thursday's probe refits it.
