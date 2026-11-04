@@ -27,6 +27,7 @@ class Recorder:
         self.root = root
         self._seen: dict[tuple[str, str], set[str]] = {}   # (game, source) -> play ids
         self._race_n = 0
+        self._nhl_logged: set[tuple[str, str]] = set()
         self._archived: set[str] = set()
 
     def _day(self) -> Path:
@@ -61,6 +62,18 @@ class Recorder:
                          "lag": round(now - wall, 2) if wall else None, "source": source,
                          "text": (p.get("text") or "")[:80]})
         self._write("plays.jsonl", rows)
+
+    def nhl_seen(self, g: GameState, pbp, seen: dict[str, float]) -> None:
+        """NHL api-web events with when we first saw them (the feed has no wallclock). Joined to
+        ESPN's wallclocked plays by period, clock and type, this gives api-web's real lag, and it
+        is what a backtest of sources.nhl_primary replays. The first look is history: not logged."""
+        from redzone.sources.leagues import nhl_plays
+        rows = [{"t": round(p.seen_at, 2), "league": "nhl", "game": g.game_id, "event": p.id,
+                 "type": p.type_text, "kind": p.kind, "period": p.period, "clock": p.clock,
+                 "text": p.text} for p in nhl_plays(pbp, seen)]
+        new = [r for r in rows if (r["game"], r["event"]) not in self._nhl_logged]
+        self._nhl_logged.update((r["game"], r["event"]) for r in new)
+        self._write("nhl_seen.jsonl", new)
 
     def race(self, merger) -> None:
         new = merger.race[self._race_n:]

@@ -57,6 +57,10 @@ class Engine:
         self.fetcher = Fetcher()
         # [NHL primary] api-web's live play-by-play owns NHL stoppages while it's fresh.
         self._nhl_primary = bool(self.cfg.get("sources.nhl_primary", False))
+        # With primary off: still poll api-web at the fast rate and log when each event first
+        # reached us (data/recordings/<day>/nhl_seen.jsonl), so the backtest that gates it has data.
+        self._nhl_shadow = not self._nhl_primary and bool(self.cfg.get("sources.nhl_shadow", True))
+        self._nhl_logged: dict[str, dict[str, float]] = {}
         self.merger = Merger(stoppage_owner={League.NHL: "nhl"} if self._nhl_primary else None)
         self._nhl_seen: dict[str, dict[str, float]] = {}   # game id -> NHL event id -> first seen
         self._nhl_ids: dict[str, str] = {}                  # ESPN game id -> NHL game id
@@ -697,7 +701,8 @@ class Engine:
         if nhl:
             sc = await self.fetcher.get_json(leagues.NHL_SCORE.format(date=today), min_interval=8)
             idx = leagues.nhl_index(sc) if sc else {}
-            every = float(self.cfg.get("polling.nhl_pbp_s", 3)) if self._nhl_primary else 8.0
+            fast = self._nhl_primary or self._nhl_shadow
+            every = float(self.cfg.get("polling.nhl_pbp_s", 3)) if fast else 8.0
 
             async def one(g: GameState):
                 gm = leagues.nhl_match(g, idx)
@@ -705,6 +710,11 @@ class Engine:
                     return
                 self._nhl_ids[g.game_id] = str(gm.get("id"))
                 pbp = await self.fetcher.get_json(leagues.NHL_PBP.format(id=gm.get("id")), min_interval=every - 0.5)
+                if self._nhl_shadow and pbp:
+                    try:
+                        self.recorder.nhl_seen(g, pbp, self._nhl_logged.setdefault(g.game_id, {}))
+                    except Exception:
+                        log.exception("nhl shadow log")
                 try:
                     seen = self._nhl_seen.setdefault(g.game_id, {}) if self._nhl_primary else None
                     self.merger.update("nhl", leagues.enrich_nhl(self.merger.games[g.game_id], gm, pbp, seen))

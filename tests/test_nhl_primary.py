@@ -57,3 +57,17 @@ def test_delayed_penalty_is_live_and_a_whistle_penalty_is_dead():
     assert not _is_marker(leagues.NHL_KIND["delayed-penalty"], League.NHL)
     assert _is_marker(leagues.NHL_KIND["penalty"], League.NHL)
     assert not _is_marker(leagues.NHL_KIND["faceoff"], League.NHL)
+
+
+def test_shadow_log_writes_each_new_event_once(tmp_path):
+    from redzone.recorder import Recorder
+    rec = Recorder(tmp_path)
+    g, seen = _g(Stoppage.NONE), {}
+    rec.nhl_seen(g, PBP, seen)                       # first look: history, nothing written
+    assert not list(tmp_path.glob("recordings/*/nhl_seen.jsonl"))
+    newer = dict(PBP, plays=PBP["plays"] + [{"eventId": 9999, "typeDescKey": "faceoff",
+                                             "timeRemaining": "05:00", "periodDescriptor": {"number": 3}}])
+    rec.nhl_seen(g, newer, seen)
+    rec.nhl_seen(g, newer, seen)
+    rows = [json.loads(x) for x in next(tmp_path.glob("recordings/*/nhl_seen.jsonl")).read_text().splitlines()]
+    assert [(r["event"], r["kind"], r["clock"]) for r in rows] == [("nhl9999", "face_off", 300)]
