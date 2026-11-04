@@ -77,3 +77,16 @@ def test_lull_needs_every_game_quiet(rw):
     assert rw._lull(cands(a=20, b=30))
     assert not rw._lull(cands(a=20, b=60))
     assert not rw._lull({"a": cands(a=sc("a", 20, lock="final two minutes"))["a"]})
+
+
+def test_drive_in_20_off_by_default_and_picks_the_red_zone_game(dec, clock):  # noqa: F811
+    cs = cands(a=40, b=sc("b", 50, lock="red zone drive"), c=sc("c", 70, lock="final two minutes"))
+    dec.current = "a"
+    assert dec._rz_drive(cs, clock.t) is None
+    dec.cfg.update({"redzone_mode": {"drive_in_20": True}}, record=False)
+    assert dec._rz_drive(cs, clock.t) == "b"
+    dec.current = "b"
+    assert dec._rz_drive(cs, clock.t) is None          # already there
+    dec.current = "a"
+    cs["b"].scored.factors["break_p"] = 0.9             # a field goal try / commercial coming: stay put
+    assert dec._rz_drive(cs, clock.t) is None
