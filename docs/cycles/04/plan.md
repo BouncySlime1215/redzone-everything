@@ -64,12 +64,20 @@ data factory scales to billions of examples on Kaggle. **No signal from Nick in 
 ### Addendum 2: brake lifted, gates raised (Nick, 10:55 AM)
 All 5 lanes and both planners run at full speed; the only usage rule is the hard stop at 89-90% weekly.
 **New gates** (PR #121): big live per league **>= 95% of oracle value** (ceilings ~NFL 91/93, NBA 93/100,
-NHL 85/90 dev/locked), live-or-replayed within 10 min >= 99%, mid-play 0, landings in dead time **>= 98%**.
+NHL 85/90 dev/locked), live-or-replayed within 3 min >= 99% (see Addendum 3), mid-play 0, landings in dead time **>= 98%**.
 Every oracle-backed row shows its gap to 100% of oracle. Each lane's biggest lever:
 ① Pick-v1 oracle imitation + the Mind V7 result; ② possession-start entry + clairvoyance + honest sync from
 the real hardware (YTTV position, CEC-pause guard); ③ press-to-TV <= 3 s on real hardware (flips are
 2.2 s p95, so the rest is app-side); ④ RC5 deploy + live-nights logging into northstar; ⑤ phone v2
 merges (#88/#91).
+
+### Addendum 3: replay window is 2-3 minutes (Nick, 11:00 AM)
+A replay of a missed big play is worth it only within **3 minutes**, never 10. The row `big_seen_10min`
+becomes **`big_seen_3min`** (>= 99%) plus a stretch **`big_seen_2min`** (>= 99%), on dev and locked, live and
+candidate (PR #121; `my_big_seen_3m` for your-team). Lane ② owns the reel queue: a collision replay
+(T2-T4) targets the **very next dead window**; a replay that cannot air within 3 min is skipped or folded
+into a later montage, never aired stale. Bar: big_seen_3min up on dev and locked, mid_play 0, dead air
+not worse.
 
 ## ④ App + integration hardening (reopened)
 RC5/RC5.1 deploy support for the live lab, live-nights logging wired into northstar with lane ③, the v3
