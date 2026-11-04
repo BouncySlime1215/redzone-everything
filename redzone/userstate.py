@@ -22,9 +22,10 @@ HOLD_KEYS = ("game_id", "since", "auto_resume")
 COMMIT_MODES = ("my_teams", "stop_after", "end_at")   # [commit] EXP-036
 
 
-def commit_value(value, game_id: str | None, now: float) -> tuple[dict | None, str | None]:
+def commit_value(value, game_id: str | None, now: float | None) -> tuple[dict | None, str | None]:
     """A phone commit made safe to keep: ({mode, game_id?, at?}, None), (None, None) to clear, or
-    (None, why) when it can't be used. stop_after needs a game; end_at needs a time still ahead."""
+    (None, why) when it can't be used. stop_after needs a game; a new end_at needs a time still ahead
+    (now=None skips that: a restored end_at that passed while we were down still ends tonight's slate)."""
     if value is None or value == "off" or (isinstance(value, dict) and value.get("mode") in (None, "off")):
         return None, None
     if not isinstance(value, dict) or value.get("mode") not in COMMIT_MODES:
@@ -39,7 +40,7 @@ def commit_value(value, game_id: str | None, now: float) -> tuple[dict | None, s
         at = float(value.get("at"))
     except (TypeError, ValueError):
         return None, "Pick a time to end at"
-    return ({"mode": mode, "at": at}, None) if at > now else (None, "That time has already passed")
+    return ({"mode": mode, "at": at}, None) if now is None or at > now else (None, "That time has already passed")
 
 
 def capture(user, hold: dict | None) -> dict:
@@ -76,7 +77,7 @@ def load(path: Path, now: float | None = None) -> dict | None:
     except (TypeError, ValueError):
         saved = 0.0
     out = {"paused": bool(d.get("paused")), "locked_game": None, "focus_game": None,
-           "focus_mode": "autopilot", "hold": None}
+           "focus_mode": "autopilot", "hold": None, "commit": None}
     if now - saved <= STALE_S:
         hold = d.get("hold")
         if isinstance(hold, dict) and isinstance(hold.get("game_id"), str):
@@ -87,7 +88,7 @@ def load(path: Path, now: float | None = None) -> dict | None:
                 out[k] = d[k]
         if isinstance(d.get("focus_mode"), str):
             out["focus_mode"] = d["focus_mode"]
-        out["commit"] = commit_value(d.get("commit"), None, now)[0]   # an end_at already past is dropped
+        out["commit"] = commit_value(d.get("commit"), None, None)[0]   # kept for the night, even an end_at now past
     # Muted games stay muted all night (games that can't play here, the user's own mutes).
     if now - saved <= 12 * 3600 and isinstance(d.get("muted"), list):
         out["muted"] = [g for g in d["muted"] if isinstance(g, str)]
