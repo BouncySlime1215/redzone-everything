@@ -9,7 +9,7 @@ Copies only rows at or after --since (default: the start in /tmp/rz_test_start, 
   sync_probe.jsonl      recordings/<day>/sync_probe.jsonl of every day in range (the read-only probe, #71)
   tv_input.jsonl        every TV input command + its verify latency (redzone/tv.py)  -> switch p95
   supervisor_cuts.jsonl where each switch landed (enter/leave play/dead)            -> mid-play entries
-  traces.jsonl          per-switch timing marks (cut -> picture, flip)              -> press-to-TV
+  traces.jsonl          per-switch timing marks (cut -> picture, flip); kind=user rows -> press_to_tv_p95
 and writes summary.json + summary.md: rows per file, switch p95 (scripts/northstar.switch_samples rule:
 verified rows' total_s), mid-play entries, picture-within-3s share.
 
@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 
 _IP = re.compile(r"\b(?:10|127|172\.(?:1[6-9]|2\d|3[01])|192\.168)(?:\.\d{1,3}){2,3}\b")
 _MAC = re.compile(r"\b[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}\b")
-TS_KEYS = ("ts", "cut_at", "t", "at", "time")
+TS_KEYS = ("ts", "decided_at", "cut_at", "t", "at", "time")
 
 
 def redact(line: str) -> str:
@@ -85,6 +85,10 @@ def summarize(got: dict[str, list[dict]]) -> dict:
     cuts = got["supervisor_cuts.jsonl"]
     tr = got["traces.jsonl"]
     pics = [(r.get("picture_at") or 0) - (r.get("cut_at") or 0) for r in tr if r.get("picture_at") and r.get("cut_at")]
+    # Lane 3's press_to_tv_p95: a phone press (decided kind=user) -> the picture on the TV.
+    user = [r for r in tr if r.get("kind") == "user"]
+    press = [float(r["picture_at"]) - float(r["decided_at"]) for r in user
+             if isinstance(r.get("picture_at"), (int, float)) and isinstance(r.get("decided_at"), (int, float))]
     return {
         "rows": {k: len(v) for k, v in got.items()},
         "switch_samples": len(tv), "switch_p95_s": p95(tv), "switch_max_s": max(tv) if tv else None,
@@ -93,6 +97,8 @@ def summarize(got: dict[str, list[dict]]) -> dict:
         "leaves_mid_play": sum(1 for r in cuts if r.get("leave") == "play"),
         "picture_within_3s": f"{sum(1 for x in pics if x <= 3)}/{len(pics)}" if pics else None,
         "picture_p95_s": p95(pics),
+        "press_samples": len(press), "press_to_tv_p95_s": p95(press),
+        "press_no_picture": len(user) - len(press),
     }
 
 
@@ -127,6 +133,8 @@ def main(argv=None) -> int:
           f"unverified {s['tv_unverified']}",
           f"- Cuts graded: {s['cuts_graded']}; entries mid-play {s['entries_mid_play']}, leaves mid-play {s['leaves_mid_play']}",
           f"- Picture within 3 s: {s['picture_within_3s']}; cut -> picture p95 {s['picture_p95_s']} s",
+          f"- Phone presses (decided kind=user -> picture): {s['press_samples']}, press-to-TV p95 "
+          f"{s['press_to_tv_p95_s']} s, {s['press_no_picture']} never reached a picture",
           f"- Rows: {', '.join(f'{k} {v}' for k, v in s['rows'].items())}", ""]
     (a.out / "summary.md").write_text("\n".join(md))
     print("\n".join(md))
