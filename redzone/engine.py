@@ -140,6 +140,9 @@ class Engine:
         from redzone.network import NetWatch
         # Home / away from home / Tailscale stealing the home routes (redzone/network.py). Read-only.
         self.network = NetWatch(self.discovery.autonomy.paths.devices)
+        from redzone.platform.wake import WakeWatch
+        self.wake = WakeWatch()                       # hardening.mac: the Mac slept / changed network
+        self._net_where: str | None = None
         self.tonight = Tonight(self)   # today's plan + pre-game checks on the hidden stick
         from redzone.governor import Governor
         # Backs optional work off when the Mac is busy, hot, on battery or short of disk (redzone/governor.py).
@@ -510,12 +513,32 @@ class Engine:
         while True:
             await asyncio.sleep(10)
             try:
+                await self._after_wake()
+            except Exception:
+                log.exception("wake check failed")
+            try:
                 await self._device_keepalive()
                 self._tick += 1
                 if self._tick % 360 == 0:
                     self.store.prune()
             except Exception:
                 log.exception("housekeeping failed")
+
+    async def _after_wake(self) -> list[str] | None:
+        """hardening.mac: after a sleep or a network change, every connection re-proves itself now
+        (redzone/platform/wake.py), before this tick's device keepalive. Off: nothing."""
+        slept = self.wake.check()
+        where = self.network.state.where
+        prev, self._net_where = self._net_where, where
+        moved = prev not in (None, "unknown") and where not in (prev, "unknown")
+        if not self.cfg.get("hardening.mac", False) or not (slept or moved):
+            return None
+        from redzone.platform.wake import recover
+        why = f"woke after {slept:.0f}s" if slept else f"network changed to {where}"
+        if slept:
+            await self.network.refresh(force=True)
+            self._net_where = self.network.state.where
+        return recover(self, why)
 
     async def tick(self) -> None:
         """One full cycle (used by tests and one-shot tools)."""
