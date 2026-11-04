@@ -69,8 +69,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 7:25 AM ET.** Cycle 03 started (#106). Merged since 6:25 AM: #101 (playbook coverage 15/79, right_game), #102 (controls drill in North Star), #103 (GAME playbooks + clairvoyance, off), **#104 Noggin Reflex PICK v1 (NBA) imitating the hindsight oracle** (off). Open: #88, #91, #105.
-- **Usage:** 9% (line 4.4%, +4.6). Lanes 1-3 run until the 8:42 AM audit.
+- **Kaggle V7 launched 8:04 AM** (lane 1's V7 code pack c24f65c: split reasoner gate, D19 LoRA r32/r16, the whole tiered teacher queue 32B to 14B, JSON-constrained decoding, torchao fix). Full mode, SESSION_H 11.5, so it ends by ~7:30 PM at the latest. GPU after V7 ~27.5/30 h this week. Its log hadn't appeared yet at 8:05 (queued); the hourly :37 check confirms it.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
