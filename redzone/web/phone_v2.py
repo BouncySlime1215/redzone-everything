@@ -371,8 +371,8 @@ STAKES_BIG, STAKES_SOME = 0.6, 0.3     # stub only: Scored.stakes (0..1) until l
 
 def watch_values(scored: dict, games: dict) -> dict:
     """Each live game's 0-100 watch value and its one-line why, best first (display only).
-    Contract with lane 1 (HEAT 2.0): a Scored may carry `watch_value` (0-100) and `watch_why` (str). Until
-    it does, the stub shows today's priority score clipped to 0-100 with its biggest factor, marked
+    Contract with lane 1 (HEAT 2.0): Scored.watch_value (0-100) and Scored.watch_why. While watch_value is
+    None, the stub shows today's priority score clipped to 0-100 with its biggest factor, marked
     source="stub" so the phone says it's the old score.
     crunch_state: lane 1's crunch model sets `Scored.crunch_state` in CRUNCH_STATES; until then the stub
     reads today's flags (crunch_now -> "in", crunch -> "entering"; "leaving" needs the model).
@@ -381,24 +381,22 @@ def watch_values(scored: dict, games: dict) -> dict:
     rows = []
     for gid, s in (scored or {}).items():
         g = (games or {}).get(gid)
-        if g is not None and getattr(g, "phase", None) not in (Phase.LIVE, None):
+        if g is not None and g.phase != Phase.LIVE:
             continue
-        wv = getattr(s, "watch_value", None)
-        learned = isinstance(wv, (int, float))
-        val = float(wv) if learned else float(getattr(s, "score", 0.0) or 0.0)
-        why = (getattr(s, "watch_why", "") if learned else "") or getattr(s, "factor", "") or getattr(s, "reason", "")
-        cs = getattr(s, "crunch_state", None)        # lane 1's crunch model: entering | in | leaving
+        learned = s.watch_value is not None
+        val = float(s.watch_value) if learned else float(s.score)
+        why = (s.watch_why if learned else "") or s.factor or s.reason
+        cs = s.crunch_state                           # lane 1's crunch model: entering | in | leaving
         if cs not in CRUNCH_STATES:
-            cs = "in" if getattr(s, "crunch_now", False) else ("entering" if getattr(s, "crunch", False) else None)
-        sl = getattr(s, "stakes_line", None)          # lane 1: e.g. "AFC 1-seed race, top-5 matchup"
-        if not isinstance(sl, str):
-            st = getattr(s, "stakes", 0.0) or 0.0
-            sl = "Big stakes" if st >= STAKES_BIG else ("Some stakes" if st >= STAKES_SOME else "")
-        rows.append({"game_id": gid, "matchup": getattr(g, "matchup", gid) if g is not None else gid,
+            cs = "in" if s.crunch_now else ("entering" if s.crunch else None)
+        sl = s.stakes_line                            # lane 1: e.g. "AFC 1-seed race, top-5 matchup"
+        if sl is None:
+            sl = "Big stakes" if s.stakes >= STAKES_BIG else ("Some stakes" if s.stakes >= STAKES_SOME else "")
+        rows.append({"game_id": gid, "matchup": g.matchup if g is not None else gid,
                      "crunch_state": cs, "stakes_line": sl[:100],
-                     "league": getattr(getattr(s, "league", None), "value", ""), "wv": int(round(max(0.0, min(100.0, val)))),
-                     "why": str(why or "")[:120], "crunch": bool(getattr(s, "crunch", False)),
-                     "is_break": bool(getattr(s, "is_break", False)), "source": "learned" if learned else "stub"})
+                     "league": s.league.value, "wv": int(round(max(0.0, min(100.0, val)))),
+                     "why": str(why or "")[:120], "crunch": bool(s.crunch),
+                     "is_break": bool(s.is_break), "source": "learned" if learned else "stub"})
     rows.sort(key=lambda r: -r["wv"])
     return {"games": rows, "source": "learned" if rows and all(r["source"] == "learned" for r in rows)
             else ("stub" if rows else None)}

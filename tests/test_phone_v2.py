@@ -258,18 +258,23 @@ def test_slate_route_carries_the_alert(client, engine):
 def test_watch_values_learned_field_or_stub():
     from types import SimpleNamespace as NS
     from redzone.models import League, Phase as P
+    from redzone.scoring.engine import Scored
+
+    def sc(gid, lg, score, factor="", reason="", crunch=False, is_break=False):
+        return Scored(gid, League(lg), score, score, 0.0, 0.0, 0.0, reason, [], is_break, None, None, 0.0,
+                      crunch=crunch, factor=factor)
     games = {"a": NS(matchup="A @ B", phase=P.LIVE), "b": NS(matchup="C @ D", phase=P.LIVE), "z": NS(matchup="done", phase=P.POST)}
-    old = {"a": NS(league=League("nba"), score=140.0, factor="Tied late", reason="r", crunch=True, is_break=False),
-           "b": NS(league=League("nhl"), score=-3.0, factor="", reason="Break", crunch=False, is_break=True),
-           "z": NS(league=League("nhl"), score=50.0, factor="", reason="", crunch=False, is_break=False)}
+    old = {"a": sc("a", "nba", 140.0, factor="Tied late", reason="r", crunch=True),
+           "b": sc("b", "nhl", -3.0, reason="Break", is_break=True), "z": sc("z", "nhl", 50.0)}
     v = phone_v2.watch_values(old, games)
     assert v["source"] == "stub" and [(r["game_id"], r["wv"], r["why"]) for r in v["games"]] == [("a", 100, "Tied late"), ("b", 0, "Break")]
     old["a"].watch_value, old["a"].watch_why = 63.4, "Comeback brewing"
-    old["b"].watch_value, old["b"].watch_why = 12, ""
+    old["b"].watch_value = 12
     v = phone_v2.watch_values(old, games)
     assert v["source"] == "learned" and v["games"][0] == {"game_id": "a", "matchup": "A @ B", "league": "nba", "wv": 63,
-                                                         "why": "Comeback brewing", "crunch_state": "entering", "stakes_line": "", "crunch": True,
-                                                         "is_break": False, "source": "learned"}
+                                                         "why": "Comeback brewing", "crunch_state": "entering", "stakes_line": "",
+                                                         "crunch": True, "is_break": False, "source": "learned"}
+    assert v["games"][1]["why"] == "Break"                                             # no watch_why: the reason
     assert phone_v2.watch_values({}, {}) == {"games": [], "source": None}
     old["a"].crunch_now = True
     assert phone_v2.watch_values(old, games)["games"][0]["crunch_state"] == "in"       # stub from the flags
