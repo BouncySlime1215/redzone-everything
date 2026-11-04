@@ -179,6 +179,16 @@ def test_failing_tests_stop_before_anything_changes(world):
     assert not (w.mac / "data/deploy/state.json").exists() or "pending" not in state(w)
 
 
+def test_the_suite_runs_with_speed_budgets_relaxed_but_still_fails_real_failures(world):
+    # Nov 3: RC 2's tests failed on the Mac at background priority on a wall-clock speed budget
+    # (brain v3 read 5.8 ms vs 4 ms). deploy.py tells the suite it is low priority; speed asserts
+    # (tests/conftest.py assert_speed) skip, every other assert still counts.
+    w = world
+    w.push_commit("import os\n\ndef test_env():\n    assert os.environ.get('RZ_TESTS_LOW_PRIORITY') == '1'\n",
+                  "tests/test_lowprio.py")
+    assert w.deployer().deploy(dry_run=True) == D.EXIT_OK
+
+
 def test_already_current_is_a_no_op(world):
     w = world
     git(w.mac, "fetch", "-q", "origin", "integration/release")

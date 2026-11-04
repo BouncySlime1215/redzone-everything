@@ -16,6 +16,7 @@ from redzone.scoring import brain as B
 from redzone.scoring import breaks
 from redzone.scoring.engine import Scorer
 from redzone.sources import espn
+from tests.conftest import assert_speed
 
 FIX = Path(__file__).parent / "fixtures"
 
@@ -124,7 +125,7 @@ def test_committed_models_read_a_real_game_fast_and_keep_a_timeline():
     t0 = time.perf_counter()
     out = [b.read(g) for g in seq]
     per = (time.perf_counter() - t0) / len(seq)
-    assert per < 0.005  # ~0.3 ms on an M2; generous for slow CI
+    assert_speed(per, 0.005, "brain read")  # ~0.3 ms on an M2; generous for slow CI
     r = out[-1]
     assert 0 <= r.break_soon_p <= 1 and 0 <= r.key_soon_p <= 1 and 0 <= r.hotness <= 100
     tl = b.timeline(seq[-1].game_id)
