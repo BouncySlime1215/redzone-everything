@@ -380,7 +380,7 @@ async def test_an_unparked_replay_holds_still_while_waiting_for_a_safe_moment(tw
 
 
 async def test_single_stick_replay_rewind_counts_the_tune_time(cfg, tmp_path, monkeypatch):
-    cfg.update({"mode": {"dry_run": False}, "replay": {"seek_step_s": 0.5, "seek_swallowed_presses": 0,
+    cfg.update({"mode": {"dry_run": False}, "replay": {"seek_step_s": 0.5, "seek_wake_presses": 0,
                                                                 "seek_stall_min_s": 0, "seek_stall_max_s": 0}})
     ch = ChannelMap(tmp_path / "ch.json")
     ch.codes["espn"] = "AAAAAAAAAAA"

@@ -126,12 +126,12 @@ YTTV_SEEK = SeekModel(step=15.0, swallowed=1, stall_lo=2.0, stall_hi=4.0)
 
 
 def seek_model(cfg) -> SeekModel:
-    """What control.py assumes about the rewind (replay.seek_step_s / seek_swallowed_presses /
+    """What control.py assumes about the rewind (replay.seek_step_s / seek_wake_presses /
     seek_stall_min_s / seek_stall_max_s)."""
     lo = float(cfg.get("replay.seek_stall_min_s", 0.0) or 0.0)
     hi = float(cfg.get("replay.seek_stall_max_s", lo) or 0.0)
     return SeekModel(step=float(cfg.get("replay.seek_step_s", 15) or 15),
-                     swallowed=int(cfg.get("replay.seek_swallowed_presses", 0) or 0),
+                     swallowed=int(cfg.get("replay.seek_wake_presses", 0) or 0),
                      stall_lo=min(lo, hi), stall_hi=max(lo, hi))
 
 

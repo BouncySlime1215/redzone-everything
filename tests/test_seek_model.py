@@ -54,7 +54,7 @@ def test_the_plan_holds_the_whole_stall_on_a_dead_ball():
 def test_the_sim_lands_the_seek_the_stick_really_does():
     cfg = _cfg()
     old = _cfg()
-    old.data.setdefault("replay", {}).update(seek_step_s=10, seek_swallowed_presses=0, seek_stall_min_s=0, seek_stall_max_s=0)
+    old.data.setdefault("replay", {}).update(seek_step_s=10, seek_wake_presses=0, seek_stall_min_s=0, seek_stall_max_s=0)
     rng = random.Random(1)
     sw = SwitchLog(0.0, "a", "b", "live", "", offset=20.0)
     seek_cue(sw, _D(20.0), old, rng)                 # today's live code: 2 presses -> 15 s + stall

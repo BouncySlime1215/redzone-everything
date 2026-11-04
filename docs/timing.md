@@ -560,7 +560,7 @@ never checked.
 
 - `contracts.switching.SeekModel` holds it: `YTTV_SEEK` (15 s, 1 swallowed, 2-4 s) is the stick as
   measured; `seek_model(cfg)` is what control.py assumes (`replay.seek_step_s: 15`,
-  `seek_swallowed_presses: 1`, `seek_stall_min_s: 2`, `seek_stall_max_s: 4`). control.py sends one extra
+  `seek_wake_presses: 1`, `seek_stall_min_s: 2`, `seek_stall_max_s: 4`). control.py sends one extra
   press, and the planner (`cuts._rewind`) lands a rewind of k at k + 2..4 s and checks the whole range.
 - `decider.entry.cue`: `seek` (default) rewinds the visible stick after the flip, so the live edge is
   on screen for the presses first; `hidden` (candidate) rewinds the hidden stick before the flip. The stall
