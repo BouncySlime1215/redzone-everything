@@ -115,3 +115,14 @@ The locked set includes architecture §7's held-out nights (NFL last 2 slates, N
 pack a dataset, attach it, Accelerator None, Internet On, Save & Run All. From run 2, also attach the
 previous version's output: it resumes, nothing is rebuilt. Output `factory/` = moments + self-play shards +
 `manifest.json` (rows per league, missing seasons). Source: scripts/kaggle_noggin_factory.py on integration/next.
+
+## V8 on Google Colab (students only, free T4, Nov 4)
+
+Open `colab/v8_students.ipynb` in Colab (File, Upload notebook, or GitHub tab with this branch). It pulls this
+branch's pack at a pinned commit (public, no login) and V7's answers from your Drive.
+
+1. Put V7's Kaggle **out.zip** in Google Drive at `MyDrive/redzone_v8/inputs/` (once).
+2. Runtime, Change runtime type, **T4 GPU**. Then Runtime, **Run all**. Keep the tab open (~3.6 h).
+3. If it disconnects, Run all again: it resumes from `MyDrive/redzone_v8/students/` (checkpoint every 30 min).
+4. Results: `MyDrive/redzone_v8/grades.json` (`complete: true` when every test row is answered) and
+   `MyDrive/redzone_v8/results/<time>/out.zip`.
