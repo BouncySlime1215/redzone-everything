@@ -231,6 +231,31 @@ def provenance_view(row: dict, name) -> dict:
             "chain": chain, "parts": parts, "source": source, "has_trace": bool(t)}
 
 
+def held_view(hidden_game: str | None, hidden_ready: bool, behind_s: float, home: str | None,
+              home_return_at: float | None, queue: list, current: str | None, name, now: float) -> dict | None:
+    """Crunch vs crunch, "held + coming back": the game the hidden stick holds, how far behind live it
+    is held (the time-shift buffer), when we head back to the game we left for a break, and the next
+    catch-up in line. Display only. None when the hidden stick holds nothing and nothing is queued."""
+    nxt = next((m for m in queue if not m.replayed), None)
+    if not hidden_game and not home and nxt is None:
+        return None
+    back = None
+    if home and home != current:
+        back = {"game_id": home, "matchup": name(home), "kind": "return",
+                "in_s": max(0, round(home_return_at - now)) if home_return_at else None,
+                "text": f"back to {name(home)}" + (f" within {max(1, round((home_return_at - now) / 60))} min"
+                                                   if home_return_at and home_return_at > now else " at its restart")}
+    catch = None
+    if nxt is not None:
+        catch = {"game_id": nxt.game_id, "matchup": name(nxt.game_id), "kind": nxt.kind, "label": nxt.label[:100],
+                 "ago_s": max(0, round(now - nxt.t)), "mine": nxt.mine,
+                 "due_in_s": max(0, round(nxt.t + nxt.due_s - now)) if nxt.due_s else None,
+                 "text": "catch-up at the next dead moment"}
+    return {"held": {"game_id": hidden_game, "matchup": name(hidden_game) if hidden_game else "",
+                     "ready": bool(hidden_ready), "behind_s": round(behind_s, 1)} if hidden_game else None,
+            "back": back, "catchup": catch, "queued": sum(1 for m in queue if not m.replayed)}
+
+
 CATCHUP_KINDS = {"replay"}                                # a catch-up replay of a missed play
 INTERLEAVE_KINDS = {"break_visit", "return"}             # visit another game in a break, then come back
 PLAN = re.compile(r"\bplan=([A-Za-z0-9_-]+)")
@@ -575,6 +600,18 @@ def router(engine) -> APIRouter:
         if row is None:
             return {"ok": False, "message": "No switch with that key"}
         return {"ok": True, "enabled": True, **provenance_view(row, engine._name)}
+
+    @r.get("/held")
+    async def held():
+        if not _enabled(engine):
+            return _off()
+        c, dec, now = engine.control, engine.decider, time.time()
+        t = c.hidden_target if c.two_stick else None
+        gid = next((g for g, w in engine.where.items() if getattr(w, "target", None) == t), None) if t else None
+        return {"enabled": True, "now": now,
+                "view": held_view(gid, c.hidden_ready, float(c.held.get(t, 0.0)) if t else 0.0,
+                                  dec.home_break_visit, dec.home_return_at, list(dec.queue), dec.current,
+                                  engine._name, now)}
 
     @r.get("/slate")
     async def slate():

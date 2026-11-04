@@ -13,7 +13,7 @@ async function check() {
   if (v2.checked) return;
   v2.checked = true;
   try { v2.on = !!(await api("/api/v2/status")).enabled; } catch { v2.on = false; }
-  if (v2.on) { hooks.render(); pollAlert(); pollStrip(); }
+  if (v2.on) { hooks.render(); pollAlert(); pollStrip(); pollHeld(); }
 }
 check();
 
@@ -37,6 +37,22 @@ function watchStrip() {
   return `<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
     `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc([g.why, g.stakes_line].filter(Boolean).join(" · "))}</small></span></span>`).join("")}
     ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>`;
+}
+
+/* Crunch vs crunch: what the hidden stick holds, how far behind, and what comes back when (display only). */
+let heldV = null;
+function pollHeld() {
+  api("/api/v2/held").then((r) => { const v = (r && r.view) || null; if (JSON.stringify(v) !== JSON.stringify(heldV)) { heldV = v; hooks.renderScreen("now"); } })
+    .catch(() => {}).finally(() => setTimeout(pollHeld, 10000));
+}
+function heldLine() {
+  const v = heldV;
+  if (!v || (!v.held && !v.back && !v.catchup)) return "";
+  const rows = [];
+  if (v.held) rows.push(`<span><b>Holding</b> ${esc(v.held.matchup)}${v.held.behind_s ? ` · ${esc(fmtDur(v.held.behind_s))} behind live` : ""}${v.held.ready ? "" : " · loading"}</span>`);
+  if (v.back) rows.push(`<span><b>Coming back</b> ${esc(v.back.text)}</span>`);
+  if (v.catchup) rows.push(`<span><b>Next catch-up</b> ${esc(v.catchup.matchup)}: ${esc(v.catchup.label || v.catchup.kind)}${v.queued > 1 ? ` (+${num(v.queued - 1)} more)` : ""}</span>`);
+  return `<div class="v2-held" data-key="v2-held">${icon("hourglass")}<div>${rows.join("")}</div></div>`;
 }
 
 function alertLine() {
@@ -84,7 +100,7 @@ ACTIONS["v2-vote"] = async (el) => {
 /** The "I missed that" bar above Recent switches. */
 export function missedBar() {
   if (!v2.on) return "";
-  return `${alertLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
+  return `${alertLine()}${heldLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
     <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>

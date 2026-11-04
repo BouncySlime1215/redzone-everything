@@ -343,3 +343,22 @@ def test_provenance_route(client, engine):
     assert r["ok"] and r["source"] == "stub" and r["parts"][0]["module"] == "decider"
     assert client.get("/api/v2/provenance?key=nope").json()["ok"] is False
     assert client.get("/api/v2/provenance?key=1.0|zzz").json()["ok"] is False
+
+
+def test_held_view_holding_coming_back_and_catchup():
+    from redzone.decider.decider import Missed
+    q = [Missed("c", "p1", "Goal", "goal", t=900.0, value=80, replayed=True),
+         Missed("c", "p2", "Ovechkin one-timer", "goal", t=950.0, value=90, mine=True, due_s=180.0)]
+    v = phone_v2.held_view("b", True, 84.04, "b", 1240.0, q, "a", str.upper, now=1000.0)
+    assert v["held"] == {"game_id": "b", "matchup": "B", "ready": True, "behind_s": 84.0}
+    assert v["back"]["in_s"] == 240 and v["back"]["text"] == "back to B within 4 min"
+    assert v["catchup"]["label"] == "Ovechkin one-timer" and v["catchup"]["due_in_s"] == 130 and v["queued"] == 1
+    assert phone_v2.held_view(None, False, 0.0, None, None, [], "a", str, 0.0) is None
+    assert phone_v2.held_view(None, False, 0.0, "a", None, [], "a", str, 0.0)["back"] is None   # already home
+
+
+def test_held_route(client, engine):
+    assert client.get("/api/v2/held").status_code == 404
+    _on(engine)
+    r = client.get("/api/v2/held").json()
+    assert r["enabled"] and "view" in r

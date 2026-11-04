@@ -360,6 +360,14 @@ function mockV2(path, b) {
       chain: [{ stage: "decided", at: now, component: "decider", detail: { kind: "crunch" } }, { stage: "guarded", at: now + 3.1, component: "guard", detail: { rule: "no mid-play cut" } },
         { stage: "command", at: now + 3.4, component: "control", detail: { path: "flip", stick: "HDMI2" } }, { stage: "picture", at: now + 5.6, component: "control", detail: { to_picture_s: 5.6 } }] };
   }
+  if (path === "/api/v2/held") {
+    const gs = (STATE.games || []).slice(0, 3);
+    return { enabled: true, now: Date.now() / 1000, view: gs.length < 2 ? null : {
+      held: { game_id: gs[1].id, matchup: gs[1].matchup, ready: true, behind_s: 84 },
+      back: { game_id: gs[1].id, matchup: gs[1].matchup, kind: "return", in_s: 240, text: `back to ${gs[1].matchup} within 4 min` },
+      catchup: { game_id: gs[2] ? gs[2].id : gs[1].id, matchup: (gs[2] || gs[1]).matchup, kind: "goal", label: "Ovechkin power-play one-timer", ago_s: 95, mine: true, due_in_s: 85, text: "catch-up at the next dead moment" },
+      queued: 2 } };
+  }
   if (path === "/api/v2/watch") {
     const why = ["Tied, 2:10 left in the 4th", "Red zone, 3rd & goal", "Power play, down one", "Blowout, starters sitting", "Commercial break"];
     const games = (STATE.games || []).filter((g) => g.phase === "live" || g.state === "live").slice(0, 6).map((g, i) => ({ game_id: g.id, matchup: g.matchup,
