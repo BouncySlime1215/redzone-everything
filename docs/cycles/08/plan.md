@@ -122,6 +122,14 @@ commits or docs.
    each waiting for a dead ball), plus a "Slate complete, 0 live games" state with no filler after it.
 4. **EXP-037:** a one-question context line ("Down 3, 1:12 left, no timeouts").
 
-## Questions for Nick (none blocking tonight)
-- EXP-005: may the decider randomize a small share of **already safe** dead-ball near-ties for off-policy
-  grading? It is live behavior, so it waits for his OK. It stays recommended off until v3 locked lands.
+## Answered by Nick
+- EXP-005 randomization: **yes, with limits** (7:21 PM ET). It is held until Friday's v3 locked set lands. The
+  limits:
+  - behind `decider.explore.enabled`, off by default;
+  - only between options that are both already safe and within a small value margin;
+  - at most 5% of decisions;
+  - never in crunch, down the stretch, your-team moments or the catch-up queue;
+  - a propensity is logged on every decision;
+  - it goes through the normal promotion bar.
+
+  Lane ② owns it.
