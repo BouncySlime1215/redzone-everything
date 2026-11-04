@@ -147,17 +147,19 @@ class WifiDegrade(Fault):
     probe reports the bad link (info.q, buffering + an RSSI drop) for the stick on screen."""
     def start(self, world):
         world.house.adb_scale = float(self.info.get("scale", 8.0))
-        e = world.engine
-        self.info["target"] = e.decider.target_of(e.decider.current) or "visible"
-        e._sync_condition(self.info["target"], float(self.info.get("q", 13.0)), {})
-        # The probe re-reports every few seconds on a real stick; stand in for that for the whole fault.
-        q, t = e.decider.safety.net[self.info["target"]]
-        e.decider.safety.net[self.info["target"]] = (q, t + self.dur)
+        e = getattr(world, "engine", None)
+        if e is not None:
+            self.info["target"] = e.decider.target_of(e.decider.current) or "visible"
+            e._sync_condition(self.info["target"], float(self.info.get("q", 13.0)), {})
+            # The probe re-reports every few seconds on a real stick; stand in for that for the whole fault.
+            q, t = e.decider.safety.net[self.info["target"]]
+            e.decider.safety.net[self.info["target"]] = (q, t + self.dur)
         world.house.event("fault", "*", f"wifi x{world.house.adb_scale:g}")
 
     def stop(self, world):
         world.house.adb_scale = 1.0
-        world.engine._sync_condition(self.info.get("target", "visible"), 1.0, {})
+        if getattr(world, "engine", None) is not None and "target" in self.info:
+            world.engine._sync_condition(self.info["target"], 1.0, {})
 
 
 class Buffering(Fault):
@@ -182,7 +184,7 @@ class Buffering(Fault):
 
 
 PLAYBOOK = {"feed_frozen": "FEED-02", "rate_limit": "FEED-06", "slow_poll": "MAC-05", "wifi_degrade": "SAFE-03",
-            "buffering": "NET-02", "feed_stale": "SAFE-01", "sync_wide": "SAFE-02"}   # fault kind -> docs/playbooks.md entry it exercises
+            "buffering": "NET-02"}   # fault kind -> docs/playbooks.md entry it exercises
 
 
 class FeedStale(Fault):
