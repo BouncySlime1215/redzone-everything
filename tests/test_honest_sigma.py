@@ -106,3 +106,58 @@ def test_candidate_takes_the_landing_lag_and_strict_ended_entries():
     from redzone.noggin import profile
     args = profile.argv("candidate", "nhl")
     assert "decider.entry.landing_lag_s=6" in args and "decider.entry.ended_strict=true" in args
+
+
+def test_possession_start_cues_to_the_last_dead_ball_instead_of_waiting():
+    from redzone.decider.cuts import plan_entry
+    dt = _tracker()
+    # the picture would come up at 1036, mid-play; the full 20 s doubt fits no rewind in 1003-1030
+    kw = dict(can_rewind=True, step=10.0, max_back=120.0)
+    a = plan_entry(dt, 100.0, 20.0, 1131.0, 5.0, **kw)
+    b = plan_entry(dt, 100.0, 20.0, 1131.0, 5.0, possession=True, **kw)
+    assert not a.ok
+    assert b.ok and b.rewind_s > 0 and "(possession start)" in b.why
+    assert 1003 <= 1036 - b.rewind_s <= 1030           # lands on the dead ball before the play
+    # without a DVR there is nothing to cue: still waits (rule #1)
+    c = plan_entry(dt, 100.0, 20.0, 1131.0, 5.0, can_rewind=False, possession=True)
+    assert not c.ok
+
+
+def test_possession_start_is_off_by_default_and_reads_its_scope():
+    from types import SimpleNamespace as NS
+    from redzone.decider.decider import Decider
+    dec = Decider.__new__(Decider)
+    x = NS(scored=NS(crunch_now=False))
+    d = NS(kind="score")
+    for mode, want in (("off", False), (False, False), ("crunch", False), ("all", True)):
+        dec.cfg = {"decider.entry.possession_start": mode}
+        assert dec._possession_start(x, d) is want
+    dec.cfg = {"decider.entry.possession_start": "crunch"}
+    assert dec._possession_start(NS(scored=NS(crunch_now=True)), d) is True
+
+
+def test_candidate_uses_possession_start_for_crunch():
+    from redzone.noggin import profile
+    assert "decider.entry.possession_start=crunch" in profile.argv("candidate", "nba")
+
+
+def test_rule1_no_rewind_into_a_data_gap():
+    """[data gap] NBA GS @ DEN (Nov 4): a substitution with no stoppage logged before it, then 4 minutes
+    with no data. With decider.entry.confirmed_dead_only the gap is no dead window, so nothing lands in it."""
+    from redzone.decider.cuts import DeadTracker, plan_entry
+    dt = DeadTracker(League.NBA)
+    dt.add("1", 1000, 1000, "jump_shot", "makes 2", "Jump Shot", 377.0, 2)
+    dt.add("2", 1000, 1000, "substitution", "enters the game", "Substitution", 377.0, 2)
+    dt.add("3", 1238, 1238, "jump_shot", "makes 3", "Jump Shot", 353.0, 2)
+    dt.seen(1300, 10)
+    kw = dict(can_rewind=True, step=10.0, max_back=120.0, possession=True)
+    # the picture would come up at 1250: a rewind would have landed in the gap (1000 .. 1212)
+    assert plan_entry(dt, 100.0, 4.0, 1345.0, 5.0, **kw).ok
+    dt.confirmed_only, dt._windows = True, None
+    assert all(w.kind != "substitution" for w in dt.windows())
+    assert not plan_entry(dt, 100.0, 4.0, 1345.0, 5.0, **kw).ok
+
+
+def test_candidate_takes_confirmed_dead_only():
+    from redzone.noggin import profile
+    assert "decider.entry.confirmed_dead_only=true" in profile.argv("candidate", "nba")

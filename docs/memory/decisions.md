@@ -283,3 +283,28 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   summary (docs/live-nights/): the North Star lines one live night can grade (mid-play, landings in dead time
   >= 98%, press-to-TV p95 <= 3 s), every miss (ET time, game, end, reason), sync error per stick, switch and
   press latency, faults fixed. PENDING with no night. Off until it passes its gates; northstar.yml runs it.
+- 2026-11-04 3:30 PM (lane 2, Nick's crunch_now decision): **new key `decider.entry.possession_start` ships
+  `off`** (off | crunch | all). Why: on dev with tune jitter (3 seeds) `crunch` is identical to the candidate's
+  `wait` (which already rewinds to the last dead ball when one is in reach) and `all` costs NBA big live
+  77.5 -> 73.2 on seed 0; 0 mid-play either way, locked equal. New grade `possession_start_entry_pct`.
+  The candidate profile takes `crunch` (Nick's default; same numbers as `wait`), live default stays off.
+- 2026-11-04 4:15 PM (lane 2, rule #1): **new key `decider.entry.confirmed_dead_only` (default false, candidate
+  true)**: a dead window opens only on a logged stoppage; a lone substitution (its stoppage missing from the data)
+  opens none. Why: the candidate's last mid-play entry (NBA GS @ DEN, dev seed 2) was a 70 s rewind into such a
+  gap. Dev jitter 6: NBA mid-play 1 -> 0 (seed 2), NBA crunch 87.9 -> 86.9 (seed 1), dead air +0.1..0.3, rest equal.
+- 2026-11-04: **calib.auto (new, default OFF).** Nick's 3:05 PM overseer queue item (c): each night's TV flip
+  time and press-to-TV are re-measured from the live logs into data/calib/<night>.json (one shared
+  file per night: a timing section, lane 2's sync section), with an outlier guard that refuses a value
+  more than 3 MADs from the last 5 nights. The files are written every night so the guard has history; with
+  calib.auto on, the next start plans the TV flip with the newest accepted median and max.
+- 2026-11-04: **warmup.pregame (new, default OFF), warmup.lead_min 10.** Overseer queue item (d): from 10 min
+  before the night's first listed start until a game goes live (listed starts run 5-15 min early), the
+  likeliest first pick of that window (your team, then league order) is preloaded on the HIDDEN stick, so the
+  first switch is a flip. Never the stick on screen, never while paused / dry run / a switch is in flight;
+  the pre-game checks stand aside meanwhile. Night lab seed 1: first switch 7.52 s cold tune -> 1.92 s flip.
+- 2026-11-04: **buffer.watchdog (new, default OFF); timing.behind_live_s.hold_cal_s -1.5.** Overseer queue item (e),
+  playbook STK-06: a hidden-stick hold more than 2 s off its target (read off the stick's own clock since the
+  hold re-anchored it) is rebuilt at its game's next dead ball, or after 90 s without one (the stick is off
+  screen and not flippable while it rebuilds, so nothing on the TV is cut). Too close to live: pause the gap
+  minus 1.5 s (Nick's hold calibration); too far behind: reload at the live edge and hold again. Every
+  detection and rebuild goes to data/buffer.jsonl -> live-night summary -> northstar "buffer drift recovered".
