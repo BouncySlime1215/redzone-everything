@@ -603,3 +603,6 @@ buffer:                    # [buffer.watchdog] playbook STK-06 (redzone/control.
   watchdog: false          # rebuild a lost / drifting (> 2 s) hidden-stick hold at that game's next dead ball
 calib:                     # [calib.auto] values re-measured each night from live logs (data/calib/<night>.json)
   auto: false              # read last nights' accepted flip time back at start (OFF until it's proven on live nights)
+
+report:                    # [night health] scripts/night_report.py -> docs/nights/YYYY-MM-DD.md every morning (northstar.yml)
+  nightly: true            # ON (cycle 07): its gates pass in tests/test_night_report.py (matches the live log, PENDING with no night, nothing private)
