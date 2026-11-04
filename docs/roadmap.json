@@ -9,7 +9,7 @@
    "expected_delta": 12,
    "effort_days": 1.5,
    "owner": "TIMING",
-   "status": "working",
+   "status": "merged OFF (#61); live test Wed",
    "source": "planner 2026-11-04 01:15 #1; docs/timing.md"
   },
   {
@@ -64,7 +64,7 @@
    "expected_delta": 20,
    "effort_days": 1.5,
    "owner": "DECISION",
-   "status": "queued",
+   "status": "merged OFF (#62)",
    "source": "planner #4"
   },
   {
@@ -75,7 +75,7 @@
    "expected_delta": 6,
    "effort_days": 2,
    "owner": "INTEGRATION (reel/jump #18)",
-   "status": "queued",
+   "status": "merged OFF (replay.redzone_way)",
    "source": "planner #4; memory CATCH-UP REELS"
   },
   {
@@ -85,13 +85,13 @@
    "metric": null,
    "effort_days": 0.5,
    "owner": "INTEGRATION",
-   "status": "queued",
+   "status": "done",
    "source": "planner #5; gate-report-rc3.md"
   },
   {
    "id": "P6",
    "priority": 6,
-   "work": "Harness: scripts/northstar.py + nightly CI + this roadmap (then: grade replay age so the 10-min line can PASS; your-team big plays in the NBA/NHL scorecards; dead-air ceiling)",
+   "work": "Harness: scripts/northstar.py + nightly CI + this roadmap (then: your-team big plays in every scorecard, dead-air ceiling, league-order grade on mixed nights)",
    "metric": "big_seen_10min",
    "expected_delta": 0,
    "effort_days": 0.5,
@@ -107,7 +107,7 @@
    "expected_delta": 0.8,
    "effort_days": 0.25,
    "owner": "TIMING",
-   "status": "queued",
+   "status": "done",
    "source": "planner #7"
   },
   {
@@ -124,12 +124,12 @@
   {
    "id": "ERR-57",
    "priority": null,
-   "work": "Error handling #57 (in flight), then C17 watchdog 5 -> 12 guarded actions, all 13 kinds",
+   "work": "C17 watchdog 5 -> 12 guarded actions, all 13 kinds (after #57); first: the e2e seed-9 'Still watching?' prompt left up",
    "metric": "recovery",
    "expected_delta": 5,
    "effort_days": 1.5,
    "owner": "ERRORS",
-   "status": "working",
+   "status": "working (C17 next; #57 merged)",
    "source": "PR #46 C17; #57"
   },
   {
