@@ -232,6 +232,8 @@ class Controller:
         self.active = 0                          # index of the stick on screen
         self.hidden_target: str | None = None    # what the hidden stick is playing or loading
         self.hidden_ready = False                # ...and it's confirmed playing
+        self._hidden_entry = 0.0                 # [seek model] entry rewind to run on the hidden stick before the flip
+        self._hidden_entry_done = False
         self.parked: Parked | None = None        # ...parked on a replay instead of live
         self.two_stick_ok = True                 # flips to False if an input flip ever fails
         self.latency = LatencyBook()
@@ -1194,7 +1196,7 @@ class Controller:
 
     def submit(self, target: str | None, replay_back_s: float | None = None, on_done=None,
                may_cut: Callable[[], bool] | None = None, replay_id: str | None = None,
-               entry_rewind_s: float = 0.0) -> None:
+               entry_rewind_s: float = 0.0, entry_cue: str = "") -> None:
         """Fire-and-forget; the newest command wins. A preload of some OTHER target is cancelled
         (queueing behind a tune we no longer want would add up to 10s); one loading this very
         target is kept, and the switch picks it up the moment it's ready."""
@@ -1211,14 +1213,14 @@ class Controller:
         if self._preload_task and not self._preload_task.done() and self._preloading != want:
             self._preload_task.cancel()
         self._task = asyncio.create_task(self._run(target, replay_back_s, on_done, may_cut, replay_id, time.time(),
-                                                   entry_rewind_s))
+                                                   entry_rewind_s, entry_cue))
         if on_done:
             self._task.add_done_callback(lambda task: on_done(
                 Outcome(False, target, 0.0, "switch cancelled; playback not confirmed", False)
             ) if task.cancelled() else None)
 
     async def _run(self, target, replay_back_s, on_done, may_cut, replay_id=None, issued_at=None,
-                   entry_rewind_s: float = 0.0) -> None:
+                   entry_rewind_s: float = 0.0, entry_cue: str = "") -> None:
         async with self._lock:
             if replay_back_s:
                 self._adopt_once = False   # a rewound picture must never be adopted as live
@@ -1226,7 +1228,7 @@ class Controller:
             try:
                 self._tuned_on = None
                 out = await self.execute(target, replay_back_s, may_cut, replay_id, issued_at,
-                                         entry_rewind_s=entry_rewind_s)
+                                         entry_rewind_s=entry_rewind_s, entry_cue=entry_cue)
                 if out.stick is None:
                     out.stick = self._tuned_on
             except asyncio.CancelledError:
@@ -1329,7 +1331,7 @@ class Controller:
                 res = await self._tune(stick, target)
                 self._set_hidden(target if res.ok else None, res.ok)
                 return False
-            held = round(time.monotonic() - paused_at, 1)
+            held = self._held_for(stick, target, pb, time.monotonic() - paused_at)
             # Re-anchor the stream here: the pause broke its position from the tune's, so without this
             # still_on fails and the next flip re-tunes it at the live edge, throwing the hold away.
             stick.remember(target, pb)
@@ -1337,15 +1339,33 @@ class Controller:
             log.info("buffer: %s on %s held %.1fs behind live", target, stick.host, held)
             return True
 
+    def _held_for(self, stick: Stick, target: str, pb: dict, span_s: float) -> float:
+        """[hold calibration] How far behind live a hold really left the stream. Best: the stick's own
+        clock against its position since the tune anchor (clock elapsed - position elapsed: what the
+        live lab used, error under 0.5 s), on top of what was already booked. Else the wall span
+        between the confirmed pause and the confirmed play less timing.behind_live_s.hold_overreport_s
+        (live lab, Nov 4: that span over-reports by ~1.4 s; 1.5 s default)."""
+        t = stick.tuned or {}
+        a = t.get("report") or {} if t.get("target") == target else {}
+        pa, ua, pn, un = a.get("position"), a.get("updated"), pb.get("position"), pb.get("updated")
+        if None not in (pa, ua, pn, un) and pa > 0 and pn > 0 and un >= ua:
+            lag = ((un - ua) - (pn - pa)) / 1000.0
+            if 0.0 < lag <= span_s + 5.0:
+                return round(self.held.get(target, 0.0) + lag, 1)
+        over = float(self.cfg.get("timing.behind_live_s.hold_overreport_s", 1.5) or 0.0)
+        return round(max(0.0, span_s - over) + self.held.get(target, 0.0), 1)
+
     async def _rewind(self, stick: Stick, back_s: float) -> bool:
         """Rewind about back_s and play. Whole presses, rounded UP: landing a few seconds early shows
         the snap; landing late misses it (the decider pads the replay's end for this). Up to
         SEEK_LATE_OK_S late is fine, because the target already starts 3s before the snap — so
         30.2s doesn't cost a whole extra press (10s more pre-roll)."""
-        step = float(self.cfg.get("replay.seek_step_s", 10))
+        from redzone.contracts.switching import seek_model
         if self._task is asyncio.current_task():
             self.stage["stage"] = "rewinding"
-        presses = min(60, math.ceil(max(0.0, back_s - SEEK_LATE_OK_S) / step))
+        # [seek model] live lab, Nov 4: a 15 s step, the batch's first press swallowed (one extra is
+        # sent), and a 2-4 s stall that itself puts the picture further behind (seek_model).
+        presses = seek_model(self.cfg).sent(back_s)
         t0 = time.monotonic()
         if presses:
             key = self.cfg.get("replay.seek_key", "KEYCODE_MEDIA_REWIND")
@@ -1541,17 +1561,25 @@ class Controller:
 
     async def execute(self, target: str | None, replay_back_s: float | None = None,
                       may_cut: Callable[[], bool] | None = None, replay_id: str | None = None,
-                      issued_at: float | None = None, entry_rewind_s: float = 0.0) -> Outcome:
+                      issued_at: float | None = None, entry_rewind_s: float = 0.0, entry_cue: str = "") -> Outcome:
         """replay_back_s is "rewind this far from the live edge" as of issued_at (the decision);
         every second since (queued, tuning, waiting) is added so the replay still lands before the snap.
 
         entry_rewind_s [cut timing]: a LIVE switch whose picture should come up this far behind the
         live edge (whole seek steps), on the dead ball before the play it would otherwise join
-        mid-way. The game stays the live target; only its delay grows by that much."""
+        mid-way. The game stays the live target; only its delay grows by that much.
+
+        entry_cue "hidden" [seek model]: with two sticks the rewind runs on the hidden stick BEFORE the
+        flip (no glimpse of the live edge, and the 2-4 s seek stall passes off screen); otherwise, or if
+        that path isn't taken, the visible stick rewinds right after the flip."""
         marks = self._marks = [("started", time.time())]
+        self._hidden_entry = entry_rewind_s if (entry_cue == "hidden" and not replay_back_s) else 0.0
+        self._hidden_entry_done = False
         try:
             out = await self._execute(target, replay_back_s, may_cut, replay_id, issued_at)
-            if entry_rewind_s and out.ok and not out.dry_run and not replay_back_s and self.main is not None:
+            if self._hidden_entry_done and out.ok:
+                out.detail += f"; rewound {entry_rewind_s:.0f}s to the dead ball before the flip"
+            elif entry_rewind_s and out.ok and not out.dry_run and not replay_back_s and self.main is not None:
                 if not await self._rewind(self.main, entry_rewind_s):
                     out = Outcome(False, target, out.took, "entry rewind failed; position unknown", False,
                                   path=out.path)
@@ -1560,6 +1588,7 @@ class Controller:
                     out.detail += f"; rewound {entry_rewind_s:.0f}s to the dead ball"
         finally:
             self._marks = None
+            self._hidden_entry = 0.0
         marks.append(("done", time.time()))
         out.marks = marks
         return out
@@ -1729,6 +1758,19 @@ class Controller:
                     return Outcome(False, target, time.time() - t0, "replay resume failed; kept current game", False,
                                    path=path, screen_unchanged=visible_untouched)
             else:
+                back = getattr(self, "_hidden_entry", 0.0)
+                if back:
+                    # [seek model] rewind the hidden stick to the dead ball before the flip, then take
+                    # its position as the stream's new anchor (a seek breaks still_on's clock).
+                    if not await self._rewind(hid, back):
+                        self._set_hidden(None, False)
+                        return Outcome(False, target, time.time() - t0, "entry rewind failed; kept current game",
+                                       False, path=path, screen_unchanged=visible_untouched)
+                    self._mark("rewind_done")
+                    pb0 = await hid.playback(self._package(hid, target))
+                    if playback_ready(pb0):
+                        hid.remember(target, pb0)
+                    self._hidden_entry_done = True
                 # Cached readiness is not proof the stream survived a pause,
                 # app error, or a user change on the hidden stick.
                 pb = await hid.playback(self._package(hid, target))

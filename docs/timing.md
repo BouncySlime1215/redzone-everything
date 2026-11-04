@@ -550,6 +550,69 @@ the last dead ball by rewind whenever one is in reach, so `crunch` changes nothi
 already 96.9-100%. `all` costs NBA on seed 0 (big live 77.5 -> 73.2, crunch 90.0 -> 85.3), so it
 stays off. Locked: equal for all three.
 
+## YouTube TV seek, as measured (live lab, Nov 4 12:10 PM)
+
+The lab found three things about YouTube TV's DVR rewind: a press steps **15 s** (the app assumed 10),
+the **first press of each batch is swallowed**, and each seek **stalls the picture 2-4 s**, which leaves
+it that much further behind. A "60 s" rewind landed 75-80 s back and a "20 s" one 15-19 s back. Every
+entry rewind (possession start, crunch, rewind-only leagues) therefore landed somewhere the planner
+never checked.
+
+- `contracts.switching.SeekModel` holds it: `YTTV_SEEK` (15 s, 1 swallowed, 2-4 s) is the stick as
+  measured; `seek_model(cfg)` is what control.py assumes (`replay.seek_step_s: 15`,
+  `seek_swallowed_presses: 1`, `seek_stall_min_s: 2`, `seek_stall_max_s: 4`). control.py sends one extra
+  press, and the planner (`cuts._rewind`) lands a rewind of k at k + 2..4 s and checks the whole range.
+- `decider.entry.cue`: `seek` (default) rewinds the visible stick after the flip, so the live edge is
+  on screen for the presses first; `hidden` (candidate) rewinds the hidden stick before the flip. The stall
+  passes off screen and puts the stream exactly as far behind as it takes, so the content that comes up
+  doesn't depend on it; the flip waits ~1.5 s + the stall. `pause` (seek past it on the hidden stick, play
+  up to the dead ball, pause, flip) is graded and loses: the flip waits up to ~19 s and the old game gets
+  left mid-play.
+- Sims: `--real-seek` re-lands every entry rewind from the presses control.py sends
+  (`backtest.seek_cue`). New grades per night: `rewinds`, `flash_mid_play` (an on-screen rewind whose
+  live edge showed play first) and `plays_missed_entry`.
+- Hold calibration: a time-shift hold is measured on the stick's own clock against its position since the
+  tune anchor (`Controller._held_for`, error under 0.5 s). The wall span from pause to play over-reports by
+  ~1.4 s, so it is only the fallback, less `timing.behind_live_s.hold_overreport_s` (1.5).
+
+Candidate, honest dev config (`--tune-jitter 6 --flip-dist --break-anchors --positions --real-lag`),
+seeds 0/1/2:
+
+| | today's code (10 s assumed) | calibrated seek | hidden-stick cue |
+|---|---|---|---|
+| NFL mid-play entries | 33/32/34 | 0/0/0 | 0/0/0 |
+| NFL mid-play cuts | 44/44/63 | 0/0/0 | 0/0/0 |
+| NFL live-edge glimpses mid-play | 345/312/341 | 332/270/304 | 0/0/0 |
+| NFL big live % | 57.6/57.0/56.5 | 60.2/60.3/59.7 | 61.4/61.1/61.4 |
+| NFL crunch live % | 74.4/73.7/72.9 | 73.4/71.8/72.3 | 71.5/70.8/72.7 |
+| NHL mid-play entries | 37/35/32 | 0/0/0 | 0/0/0 |
+| NHL mid-play cuts | 86/76/76 | 0/0/0 | 0/0/0 |
+| NHL landings in dead time % | 83.7/85.6/86.2 | 100/100/100 | 100/100/100 |
+| NHL big live % | 44.7/42.8/44.4 | 46.1/47.8/46.1 | 45.2/47.0/46.3 |
+| NHL crunch live % | 77.6/77.4/80.8 | 77.8/82.6/79.7 | 76.5/83.4/81.2 |
+| NBA mid-play entries / cuts | 1/1/1, 2/3/1 | 0, 0 | 0, 0 |
+
+What the planner believed before (rewinds landing exactly where planned) was 0 mid-play with NFL big live
+62.5/62.3/61.7 and NHL 49.4/47.0/49.4: those numbers were never real on the TV.
+
+Locked, read once (seed 0):
+
+| | believed before | today's code | calibrated seek | hidden-stick cue |
+|---|---|---|---|---|
+| NFL mid-play entries / cuts | 0 / 0 | 12 / 24 | 0 / 0 | 0 / 0 |
+| NFL live-edge glimpses mid-play | 0 | 127 | 126 | 0 |
+| NFL big live % | 59.4 | 53.8 | 57.6 | 59.5 |
+| NFL crunch live % | 74.6 | 73.1 | 71.3 | **67.2** |
+| NHL mid-play entries / cuts | 0 / 0 | 14 / 38 | 0 / 0 | 0 / 0 |
+| NHL landings in dead time % | 100 | 86.6 | 100 | 100 |
+| NHL big live % / seen within 3 min % | 51.0 / 72.1 | 46.6 / 68.3 | 49.5 / 72.6 | 49.0 / 75.5 |
+| NHL crunch live % | 81.7 | 78.7 | 80.9 | **76.2** |
+| NBA | equal everywhere | | | |
+
+The hidden-stick cue costs crunch time on locked (NFL -4.1, NHL -4.7 vs the calibrated seek; dev was
+-1.9..+0.8): a crunch flip waits ~4-5 s for the seek. Rule #1 comes first, so the candidate takes it;
+the next step is cueing the hidden stick while the decider waits for the dead ball, not after.
+
 ## Replay and resume (flag `replay.resume`, off)
 
 A catch-up replay costs buffer instead of live play. At the screen game's dead ball (the leave gate),

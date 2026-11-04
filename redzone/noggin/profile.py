@@ -61,6 +61,10 @@ PROFILES: dict[str, dict] = {
             # faceoff landed in the same poll never reached the game state): dev 3 seeds seen-in-3-min
             # +11..14, crunch +0.5..2.8, 0 mid-play; NBA made mid-play cuts, NFL gains nothing.
             "decider.leave.dead_windows=[nhl]",
+            # [seek model] live lab, Nov 4: entry rewinds run on the hidden stick before the flip, so the
+            # live edge never shows mid-play first (NFL 270-345 such glimpses per dev seed) and the 2-4 s
+            # seek stall passes off screen. Dev 3 seeds: 0 mid-play, NFL big live +0.8..1.7 vs seeking on screen.
+            "decider.entry.cue=hidden",
             # [controls, cycle 03] Opening a game on the phone tunes it on the hidden stick while you
             # read the sheet, so "Go now" is a flip (press_to_tv_p95). Live default stays off.
             "two_stick.pretune_on_open=true",

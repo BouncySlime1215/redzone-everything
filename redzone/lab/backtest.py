@@ -14,6 +14,7 @@ Report card (what "good" means):
 from __future__ import annotations
 
 import json
+import math
 import random
 import zlib
 from dataclasses import dataclass, field
@@ -88,6 +89,8 @@ class SwitchLog:
     offset: float = 0.0   # [cut timing] the picture came up this far behind live (a rewind on entry)
     jitter: float = 0.0   # [auto-anchors] of which: the tune's own unknown landing behind the live edge
     arrive_dt: float = 0.0  # [live lab] the picture came up this much later (+) or sooner than tune_s
+    leave_dt: float = 0.0   # [seek model] the screen left the old game this much after the decision (a pause cue)
+    flash: float = 0.0      # [seek model] s of the LIVE edge shown before an on-screen rewind takes hold
 
 
 @dataclass
@@ -325,7 +328,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
         channel_spread: float = 0.0, history: float = 0.0, delay_model: str | None = None,
         resync: bool = False, anchors: bool = False, tune_jitter_s: float = 0.0, flip_dist: bool = False, positions: bool = False,
-        pretune_dist: bool = False,
+        pretune_dist: bool = False, real_seek: bool = False,
         feed_lag_model: str | None = None,
         calibrate_targets: bool = False,
         on_tick: Callable | None = None) -> Report:
@@ -358,6 +361,10 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
       positions     [yttv position] with anchors: the stick on screen reports its playback position
       flip_dist     [live lab] each picture comes up with the measured TV flip's spread around tune_s
       pretune_dist  [live lab] ...or a cold hidden-stick pre-tune (4K Plus / 4K 2023 in turn) + flip + settle
+      real_seek     [seek model] an entry rewind is done the way YouTube TV really seeks (YTTV_SEEK: 15 s
+                    steps, first press swallowed, a 2-4 s stall) from the presses control.py SENDS for
+                    the configured replay.seek_* model; a pause cue (decision.cue) lands where planned
+                    but flips later by the hidden stick's cue time (seek_cue below)
       tune_jitter_s [auto-anchors] each tune lands U(0, S) s behind the live edge, unknown to the app (a
                     YouTube TV tune, redzone/lab/syncsim.py: 0-6 s). Graded as a real offset of that
                     visit, so the delay the app believes is wrong by it until something re-syncs it.
@@ -419,6 +426,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             delays.attach_cal(noise_cal(cfg, replays[0].league if replays else None))
     jitter_rng = random.Random(seed * 5_000_011 + 3)
     flip_rng = random.Random(seed * 5_000_011 + 7)   # its own stream: the tune jitter draws stay the same
+    seek_rng = random.Random(seed * 5_000_011 + 13)  # [seek model] stalls and pause errors, own stream
     honesty: list[tuple[float, float]] = []   # (error of the delay used, its sigma), each on-screen tick
     sampler = None
     if feed_lag_model == "measured":
@@ -490,6 +498,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
                 switches[-1].arrive_dt = sample_prior(stick, flip_rng) + flip + INPUT_SETTLE_S - tune_s
             else:
                 switches[-1].arrive_dt = flip - FLIP_PRIOR["median"]
+        if real_seek and len(switches) > n_sw and switches[-1].kind not in ("replay", "resume", "skip"):
+            seek_cue(switches[-1], decision, cfg, seek_rng)
         if sync is not None and resync:
             _resync_tick(delays, sync, decision, switches, tgt_of, lag_true, tune_s, clock.t, noise)
         elif sync is not None:
@@ -653,6 +663,50 @@ def honesty_summary(rows: list[tuple[float, float]]) -> dict:
             "sigma_le_3": round(sum(s <= 3 for _, s in rows) / n, 4),
             "sigma_p50": round(sig[n // 2], 2), "err_p50": round(err[n // 2], 2),
             "err_p95": round(err[min(n - 1, int(0.95 * n))], 2)}
+
+
+# [seek model] a pause cue on the hidden stick: seek presses at ~this pace, then the pause/play keys
+SEEK_PRESS_S = 0.25
+PAUSE_KEYS_S = 0.5
+PAUSE_ERR_S = 0.25      # the lab's pause hold, calibrated: error well under 0.5 s
+
+
+def seek_cue(sw: "SwitchLog", decision, cfg, rng) -> None:
+    """[seek model] Re-land an entry rewind the way the stick really does it (live lab, Nov 4).
+
+    seek (on screen, after the flip): control.py sends seek_model(cfg).sent(r) presses; YTTV_SEEK
+      says where that lands (15 s a press, the first swallowed, + a 2-4 s stall). The live edge shows
+      for the presses' time first (sw.flash).
+    pause (decision.cue == "pause"): on the hidden stick seek PAST the dead ball, play up to it, pause,
+      then flip and play. It lands where planned (+/- the pause error) whatever the flip costs, but the
+      flip (and leaving the old game) comes later by the cue time."""
+    from redzone.contracts.switching import YTTV_SEEK, seek_model
+    r = float(getattr(decision, "rewind_s", 0.0) or 0.0)
+    if r <= 0:
+        return
+    t = YTTV_SEEK
+    stall = rng.uniform(t.stall_lo, t.stall_hi)
+    if getattr(decision, "cue", "") == "pause":
+        eff = max(1, math.ceil((r + PAUSE_ERR_S * 2 - t.stall_lo) / t.step - 1e-9))
+        over = eff * t.step + stall - r                       # played forward up to the dead ball
+        cue_t = SEEK_PRESS_S * (eff + t.swallowed) + stall + over + PAUSE_KEYS_S
+        err = max(-2 * PAUSE_ERR_S, min(2 * PAUSE_ERR_S, rng.gauss(0.0, PAUSE_ERR_S)))
+        # paused content: the flip's own spread and the fresh tune's landing don't move it
+        sw.offset = r + cue_t + sw.arrive_dt + err
+        sw.jitter = 0.0
+        sw.arrive_dt += cue_t
+        sw.leave_dt = cue_t
+        return
+    sent = seek_model(cfg).sent(r)
+    if getattr(decision, "cue", "") == "hidden":
+        # seek on the hidden stick, then flip: no live glimpse, the flip waits for presses + stall
+        cue_t = SEEK_PRESS_S * sent + PAUSE_KEYS_S + stall
+        sw.offset = sw.jitter + t.landed(sent, stall)
+        sw.arrive_dt += cue_t
+        sw.leave_dt = cue_t
+        return
+    sw.offset = sw.jitter + t.landed(sent, stall)
+    sw.flash = SEEK_PRESS_S * sent + PAUSE_KEYS_S if sent else 0.0
 
 
 def _record(decision, before: str | None, t: float, switches: list[SwitchLog],

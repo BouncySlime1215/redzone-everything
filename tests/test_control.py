@@ -456,12 +456,28 @@ def test_unknown_input_blocks_preload_reseek_and_sunday_ticket_scan(two):
 
 def test_entry_rewind_lands_the_live_switch_behind_on_purpose(two):
     """[cut timing] A live switch planned to come up on the dead ball before the current play:
-    flip, then whole rewind presses; the game stays the live target (only its delay grows)."""
+    flip, then whole rewind presses; the game stays the live target (only its delay grows).
+    [seek model] the planner's 18 s is one 15 s step + the 3 s mid stall: ONE press that counts,
+    plus the first press YouTube TV swallows (live lab, Nov 4)."""
     c, tuner = two
-    out = run(c.execute("youtubetv:espn", may_cut=lambda: True, entry_rewind_s=20.0))
-    assert out.ok and "rewound 20s to the dead ball" in out.detail
+    out = run(c.execute("youtubetv:espn", may_cut=lambda: True, entry_rewind_s=18.0))
+    assert out.ok and "rewound 18s to the dead ball" in out.detail
     presses = sum(cmd.count("KEYCODE_MEDIA_REWIND") for cmd in c.main.log if isinstance(cmd, str))
     assert presses == 2 and "KEYCODE_MEDIA_PLAY" in c.main.log
+    assert c.on_target == "youtubetv:espn"
+
+
+def test_a_hidden_cue_rewinds_the_hidden_stick_before_the_flip(two):
+    """[seek model] entry_cue "hidden": the seek (and its 2-4 s stall) happens on the hidden stick before
+    the flip, so the TV never shows the live edge mid-play; the visible stick gets no presses after."""
+    c, tuner = two
+    hid = c.hidden
+    out = run(c.execute("youtubetv:espn", may_cut=lambda: True, entry_rewind_s=18.0, entry_cue="hidden"))
+    assert out.ok and "before the flip" in out.detail
+    presses = sum(cmd.count("KEYCODE_MEDIA_REWIND") for cmd in hid.log if isinstance(cmd, str))
+    assert presses == 2 and c.main is hid                       # 1 that counts + 1 swallowed, then flipped
+    names = [n for n, _ in out.marks]
+    assert names.index("rewind_done") < names.index("flip_start")
     assert c.on_target == "youtubetv:espn"
 
 

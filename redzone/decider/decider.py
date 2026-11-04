@@ -105,7 +105,9 @@ START_RETRY_MAX_S = 60.0
 # switch you made by hand goes straight in.
 ENTRY_EXEMPT = {"user", "resume", "skip"}   # resume/skip land on a planned frame of the same tune
 PICK_KEEPS = {"user", "crunch", "home", "must_see", "live"}   # [noggin PICK] app-only switch kinds
-LEAVE_TUNE_S = 6.0        # leave_gate's own tune margin: a visit can't come back inside the window
+LEAVE_TUNE_S = 6.0
+HIDDEN_SEEK_KEYS_S = 1.5  # [seek model] a hidden-stick seek's presses + PLAY before the flip (the stall comes on top)
+PAUSE_CUE_GRAIN_S = 0.5   # [seek model] a pause cue's landing grain (the lab's pause hold: +1.66 s raw, under 0.5 s calibrated)        # leave_gate's own tune margin: a visit can't come back inside the window
 ENTRY_SLACK_S = 2.0       # the tune's own timing doubt, on top of the delay's 2 sigma
 # Once the delay's doubt grows (sigma drifts up between calibrations) no landing fits a 30 s huddle
 # with the full margin: then centre it in the dead window with this much doubt. A miss here joins a
@@ -187,6 +189,7 @@ class Decision:
     replay: "Missed | None" = None
     want: str | None = None   # the game it wants to switch to while it waits for a safe moment
     rewind_s: float = 0.0     # [cut timing] land this far behind live (whole seek steps) on a dead ball
+    cue: str = ""             # [seek model] "pause": the hidden stick cues the rewind before the flip
 
 
 @dataclass
@@ -763,8 +766,28 @@ class Decider:
         if not math.isfinite(cost):
             return None
         can = bool(c.get("decider.entry.rewind", True)) and self._replayable(x)
+        from redzone.contracts.switching import seek_model
+        sk = seek_model(c)
+        cue = c.get("decider.entry.cue", "seek")
+        pause = cue == "pause"
+        lo_cost = min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S)))
+        if cue == "hidden" and can:
+            # [seek model] seek on the hidden stick, then flip: the stall passes before the flip and
+            # puts the stream just as far behind, so the picture's content doesn't depend on it (no
+            # stall doubt); the flip waits for the presses (HIDDEN_SEEK_KEYS_S) and the stall (mid).
+            plan = plan_entry(tl.dead, base_mu, margin, now, cost + HIDDEN_SEEK_KEYS_S, can_rewind=can,
+                              step=sk.step, max_back=float(c.get("decider.entry.max_rewind_s", ENTRY_MAX_REWIND_S)),
+                              relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
+                              cost_lo=lo_cost + HIDDEN_SEEK_KEYS_S,
+                              urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
+                              lag=float(c.get("decider.entry.landing_lag_s", 0.0)), possession=possession)
+            if plan.ok and plan.rewind_s:
+                plan.rewind_s += sk.stall_mid
+            return plan
         return plan_entry(tl.dead, base_mu, margin, now, cost, can_rewind=can,
-                          step=float(c.get("replay.seek_step_s", 10)),
+                          # [seek model] a pause cue lands where it pauses (half-second grain, no stall)
+                          step=PAUSE_CUE_GRAIN_S if pause else sk.step,
+                          stall=(0.0, 0.0) if pause else (sk.stall_lo, sk.stall_hi),
                           max_back=float(c.get("decider.entry.max_rewind_s", ENTRY_MAX_REWIND_S)),
                           relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
                           cost_lo=min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S))),
@@ -850,6 +873,8 @@ class Decider:
             return d
         if plan.ok:
             d.rewind_s = plan.rewind_s
+            if plan.rewind_s and self.cfg.get("decider.entry.cue", "seek") in ("pause", "hidden"):
+                d.cue = self.cfg.get("decider.entry.cue")
             return d
         if pos:
             pass   # no dead ball in reach behind the picture: wait for one (rule #1), never go live

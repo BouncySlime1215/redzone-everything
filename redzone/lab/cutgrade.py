@@ -46,6 +46,7 @@ class CutCard:
     possession_starts: int = 0  # entries on a dead ball with no play missed: the whole possession seen
     rewinds: int = 0            # entries that came up behind live on purpose (DVR rewind to a dead ball)
     rewind_s: float = 0.0
+    flash_mid_play: int = 0     # [seek model] on-screen rewinds whose LIVE edge showed play before the seek took hold
     mid_entries: list = field(default_factory=list)
     # [landing offsets] seconds of dead time left on screen when we cut away (leave) / when the new
     # picture came up (entry), until play restarted; mid-play landings are their own bucket
@@ -216,7 +217,7 @@ def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
         src = by_id.get(s.frm or "")
         if src is not None and not was_replay:
             card.leaves += 1
-            st = s.t - lag_of(lag_true, src.gid) - left_off[n]
+            st = s.t + (getattr(s, "leave_dt", 0.0) or 0.0) - lag_of(lag_true, src.gid) - left_off[n]
             dead, _, left = _dead_at(src.league, src.wall, src.plays, st)
             card.landed("leave", dead, left)
             i = _idx(src.wall, st)
@@ -241,6 +242,12 @@ def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
             continue   # before the game started or after it ended on screen
         nxt = switches[n + 1].t if n + 1 < len(switches) else float("inf")
         card.entries += 1
+        fl = getattr(s, "flash", 0.0) or 0.0
+        if fl > 0:
+            # [seek model] the live edge is on screen while the presses go out: play there is a glimpse mid-play
+            live = arrive - lag - (getattr(s, "jitter", 0.0) or 0.0)
+            card.flash_mid_play += not (_dead_at(dst.league, dst.wall, dst.plays, live)[0]
+                                        and _dead_at(dst.league, dst.wall, dst.plays, live + fl)[0])
         dead, brk, wait = _dead_at(dst.league, dst.wall, dst.plays, st)
         card.landed("entry", dead, wait)
         if not dead:
@@ -250,7 +257,7 @@ def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
         card.entry_wait_s += min(wait, max(0.0, nxt - arrive))
         # plays that started airing while the screen was black, or were under way when it came up
         plen = _plen(dst.league)
-        lo, hi = s.t - lag - off, st
+        lo, hi = s.t + (getattr(s, "leave_dt", 0.0) or 0.0) - lag - off, st   # [seek model] the old game stayed on through a cue
         if s.kind == "resume":
             lo = hi   # [replay and resume] back on the frame we paused: what came before it was on screen
         missed0 = card.plays_missed_entry

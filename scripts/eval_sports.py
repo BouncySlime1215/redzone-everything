@@ -85,6 +85,9 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
                     help="[yttv position] with --break-anchors: the stick on screen reports its playback position")
     ap.add_argument("--flip-dist", action="store_true",
                     help="[live lab] each picture comes up with the measured SmartThings flip spread (CEC off)")
+    ap.add_argument("--real-seek", action="store_true",
+                    help="[seek model] entry rewinds land the way YouTube TV really seeks (15 s steps, first "
+                         "press swallowed, 2-4 s stall) from the presses the configured model sends")
     ap.add_argument("--pretune-dist", action="store_true",
                     help="[live lab] each picture comes up after a cold hidden-stick pre-tune (4K Plus and 4K 2023 "
                          "in turn) + flip + settle, against the planner's tune_s (pessimistic)")
@@ -107,7 +110,7 @@ def knobs(a: argparse.Namespace) -> dict:
                 delay_model=getattr(a, "delay_model", None), resync=getattr(a, "resync", False),
                 anchors=getattr(a, "break_anchors", False), tune_jitter_s=getattr(a, "tune_jitter", 0.0),
                 flip_dist=getattr(a, "flip_dist", False), positions=getattr(a, "positions", False),
-                pretune_dist=getattr(a, "pretune_dist", False),
+                pretune_dist=getattr(a, "pretune_dist", False), real_seek=getattr(a, "real_seek", False),
                 feed_lag_model="measured" if getattr(a, "real_lag", False) else None,
                 **feed_lag_knobs(getattr(a, "feed_lag", None), getattr(a, "behind_live", None)))
 
@@ -183,6 +186,10 @@ def main():
         per_night[-1]["behind_extra_max_s"] = round(max((v for _, v in be), default=0.0), 1)
         per_night[-1]["resumes"] = sum(s.kind == "resume" for s in rep.switches)
         per_night[-1]["skips"] = sum(s.kind == "skip" for s in rep.switches)
+        # [seek model] entry rewinds, and on-screen ones whose live edge showed play before the seek took
+        per_night[-1]["rewinds"] = card.cut.rewinds
+        per_night[-1]["flash_mid_play"] = card.cut.flash_mid_play
+        per_night[-1]["plays_missed_entry"] = card.cut.plays_missed_entry
         if a.oracle:
             from redzone.lab import oracle as O
             n = O.Night(reps, mine, rep.lag_true, 5.0, rep.t0, rep.t1)

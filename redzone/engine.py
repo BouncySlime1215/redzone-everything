@@ -1331,7 +1331,8 @@ class Engine:
                                  and (time.time() >= replay_exit if replay_exit is not None
                                       else self.safe_to_leave(before, required_s=8.0))))),
                             replay_id=d.replay.pid if d.replay else None,
-                            entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0)
+                            entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0,
+                            entry_cue=getattr(d, "cue", "") if d.action == "switch" else "")
 
     def pending_age(self, now: float) -> float:
         """Seconds the pending switch has been running, as of wall-clock `now`. If the wall clock

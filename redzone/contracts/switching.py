@@ -8,6 +8,7 @@ completed switch (LatencyBook). Units: seconds from command sent to picture conf
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from redzone.decider.core import SwitchPath
@@ -83,6 +84,55 @@ def flip_bound(prior: dict) -> tuple[float, float]:
     med = float(prior.get("median", FLIP_PRIOR["median"]))
     hi = prior.get("max", prior.get("p95", FLIP_PRIOR["max"]))
     return med, max(med, float(hi))
+
+
+@dataclass(frozen=True)
+class SeekModel:
+    """YouTube TV's DVR rewind as the stick really does it (live lab, Nov 4 2026, Nick 12:10 PM):
+    each press steps `step` s, the FIRST press of a batch is swallowed, and each seek stalls the
+    picture `stall_lo`..`stall_hi` s (the stall adds to how far behind the picture lands). A "60 s"
+    rewind of 6 presses at an assumed 10 s step landed 75-80 s back, a "20 s" one 15-19 s back.
+
+    effective(back_s): the presses that count, rounded UP so the landing is never short of back_s
+    by more than late_ok (a replay shows its snap; an entry's plan already holds the stall).
+    sent(back_s): what control.py sends (effective + swallowed). landing(n_eff, stall): how far
+    behind the picture comes up."""
+    step: float = 15.0
+    swallowed: int = 0
+    stall_lo: float = 0.0
+    stall_hi: float = 0.0
+    late_ok: float = 1.0
+
+    @property
+    def stall_mid(self) -> float:
+        return (self.stall_lo + self.stall_hi) / 2
+
+    def effective(self, back_s: float) -> int:
+        import math
+        return min(60, max(0, math.ceil((back_s - self.late_ok - self.stall_lo) / self.step - 1e-9)))
+
+    def sent(self, back_s: float) -> int:
+        n = self.effective(back_s)
+        return n + self.swallowed if n else 0
+
+    def landed(self, sent: int, stall: float | None = None) -> float:
+        """Seconds behind for `sent` presses on THIS model's stick (stall: the mid by default)."""
+        n = max(0, sent - self.swallowed)
+        return n * self.step + (self.stall_mid if stall is None else stall) if sent else 0.0
+
+
+# The stick as measured (the sims' truth). Config replay.seek_* is what control.py ASSUMES.
+YTTV_SEEK = SeekModel(step=15.0, swallowed=1, stall_lo=2.0, stall_hi=4.0)
+
+
+def seek_model(cfg) -> SeekModel:
+    """What control.py assumes about the rewind (replay.seek_step_s / seek_swallowed_presses /
+    seek_stall_min_s / seek_stall_max_s)."""
+    lo = float(cfg.get("replay.seek_stall_min_s", 0.0) or 0.0)
+    hi = float(cfg.get("replay.seek_stall_max_s", lo) or 0.0)
+    return SeekModel(step=float(cfg.get("replay.seek_step_s", 15) or 15),
+                     swallowed=int(cfg.get("replay.seek_swallowed_presses", 0) or 0),
+                     stall_lo=min(lo, hi), stall_hi=max(lo, hi))
 
 
 def half_step(x: float) -> float:

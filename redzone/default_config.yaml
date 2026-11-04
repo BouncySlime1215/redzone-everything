@@ -216,6 +216,8 @@ decider:
     hold_only: [nhl, nba]     # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
     rewind_only: []      # leagues whose entries land on a dead ball with a rewind when one fits, never wait
     landing_lag_s: 0     # [landing lag] a fresh tune comes up up to this much later than the live edge (one-sided)
+    cue: seek                # [seek model] seek: rewind on screen after the flip (whole 15 s presses + a 2-4 s stall) |
+                             # pause: on the HIDDEN stick seek past the dead ball, play up to it, pause, flip, play
     possession_start: "off"  # [possession start] off | crunch | all: cue to the last dead ball before the possession, never wait while one is in reach
     confirmed_dead_only: false  # [data gap] a dead window opens only on a logged stoppage (a lone substitution means the stoppage is missing)
     ended_strict: false  # [landing lag] a switch off a finished game never takes the urgent (thin-margin) landing
@@ -414,7 +416,10 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   seek_s: 6                # time spent rewinding to the play
   instant_window_s: 900    # when everything's on a break, re-show great plays from the last 15 min
   seek_key: KEYCODE_MEDIA_REWIND
-  seek_step_s: 10          # seconds per rewind press (measure on your stick in the Screen Lab)
+  seek_step_s: 15          # seconds per rewind press: YouTube TV steps 15 s (live lab, Nov 4; was 10)
+  seek_swallowed_presses: 1  # the first press of each batch does nothing (live lab, Nov 4): one extra is sent
+  seek_stall_min_s: 2      # each seek stalls the picture 2-4 s (live lab, Nov 4), which lands it that much
+  seek_stall_max_s: 4      # further behind
   redzone_way: false       # catch-up the RedZone way (Nick, Nov 4; OFF until its gate passes): lull, "meanwhile",
                            # collision and end-of-night montage triggers (redzone/decider/decider.py)
   catchup_s: 600           # each missed big play replayed within this; its value halves every catchup_s
@@ -456,6 +461,8 @@ timing:
     default: 60
     max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
     apps: [youtubetv, primevideo]   # apps whose player pauses and resumes on the hidden stick
+    hold_overreport_s: 1.5 # [hold calibration] live lab, Nov 4: pause->play wall span over-reports the hold by
+                           # ~1.4 s; used only when the stick's position can't measure it (that is under 0.5 s)
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
