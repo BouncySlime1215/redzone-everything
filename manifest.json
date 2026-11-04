@@ -1,0 +1,52 @@
+{
+ "nhl": {
+  "source": "espn summaries",
+  "license": "ESPN public site API; personal/non-commercial use",
+  "seasons": "2011-2027",
+  "windows": 488310,
+  "dropped_eval_window": 0,
+  "eval_first_night": "20261019",
+  "features": [
+   "kind_code",
+   "kind_median",
+   "kind_floor",
+   "period",
+   "clock_left",
+   "game_left",
+   "season",
+   "n_timeout_period",
+   "timeout_index",
+   "under_mark",
+   "mark_owed",
+   "n_stops_10m",
+   "since_last_stop",
+   "prev_kind_code",
+   "prev_len",
+   "merged"
+  ],
+  "splits": {
+   "calib": {
+    "rows": 79949,
+    "nights": 232,
+    "games": 1438,
+    "first": "20241025",
+    "last": "20251014"
+   },
+   "test": {
+    "rows": 84251,
+    "nights": 232,
+    "games": 1533,
+    "first": "20251015",
+    "last": "20261018"
+   },
+   "train": {
+    "rows": 324110,
+    "nights": 1081,
+    "games": 6247,
+    "first": "20191113",
+    "last": "20241024"
+   }
+  },
+  "built_s": 244
+ }
+}
