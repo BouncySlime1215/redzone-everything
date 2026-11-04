@@ -152,3 +152,26 @@ def test_profile_run_keeps_its_candidate_column(tmp_path, monkeypatch):
     assert "candidate" in res and res["candidate"]["profile"] == "candidate"
     assert rows_by(res["candidate"]["rows"])["mid_play"]["value"] == 0
     assert rows_by(res["rows"])["mid_play"]["value"] > 0
+
+
+def test_right_game_reads_store_taps(tmp_path, monkeypatch):
+    import time as _time
+    from redzone.store import Store
+    assert ns.load_taps(tmp_path / "none.db") is None and not (tmp_path / "none.db").exists()
+    db = tmp_path / "redzone.db"
+    st = Store(db)
+    base = 1_793_000_000.0                       # an evening, Eastern
+    for night in range(9):
+        for k in range(8):
+            monkeypatch.setattr(_time, "time", lambda t=base + night * 86400 + k * 60: t)
+            st.feedback("g1", 1 if k else -1, "switch", {"reason": "crunch", "switch": k})
+    monkeypatch.setattr(_time, "time", lambda: base + 10 * 86400)
+    st.feedback("g1", 0, "missed", {})
+    st.feedback("g1", 0, "switch", {})          # cleared: not counted
+    monkeypatch.undo()
+    taps = ns.load_taps(db)
+    assert len(taps) == 74
+    r = ns.right_game_row(taps)
+    assert r["key"] == "right_game" and r["nights"] == 10
+    assert abs(r["value"] - 100 * 63 / 73) < 0.01 and r["status"] == ns.FAIL      # 86 % < 95 %
+    assert ns.right_game_row(None)["status"] == ns.PENDING

@@ -89,9 +89,9 @@ generalize them; until then each is a named rule, tested on replayed nights.
 
 | id | trigger | action | fallback | test | line | lane | status |
 |---|---|---|---|---|---|---|---|
-| FEED-01 | ESPN summary 5xx | switch to the next source (NHL wsc, NBA liveData) | FastCast; else SAFE-01 | feed_5xx / api_down | recovery | ④ | partial |
+| FEED-01 | ESPN summary 5xx | switch to the next source (NHL wsc, NBA liveData) | FastCast; else SAFE-01 | feed_5xx / api_down | recovery | ④ | done (flag sources.trust_order, off; tests/test_feed_trust_order.py) |
 | FEED-02 | feed returns stale ETag for > 30 s | burst poll the challenger | SAFE-01 | new `feed_frozen` fault | mid_play | ④ | partial (#73) |
-| FEED-03 | two sources disagree on clock/state | trust the faster measured source, log it | hold | new `feed_disagree` fault | mid_play | ④ | new |
+| FEED-03 | two sources disagree on clock/state | trust the faster measured source, log it | hold | new `feed_disagree` fault | mid_play | ④ | done (flag sources.trust_order, off; merger.disagreements logged) |
 | FEED-04 | play arrives out of order / late | re-sort by wallclock; revise only future decisions | – | lag jitter (B12) | mid_play | ④ | new |
 | FEED-05 | feed schema change (parse error) | quarantine the source, fall back | file an auto-fix issue | malformed fixture | recovery | ④ | partial (autofix) |
 | FEED-06 | rate limited (429) | back off with jitter, rotate source | – | new `rate_limit` fault | recovery | ④ | new |

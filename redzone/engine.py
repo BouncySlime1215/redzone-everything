@@ -74,6 +74,14 @@ class Engine:
             owners[League.NHL] = "nhl"
         if self._nba_primary:
             owners[League.NBA] = "nba"
+        # [FEED-01/03] sources.trust_order: per league, sources fastest measured first. The first fresh,
+        # healthy one owns stoppages; the next takes over when it goes dark. Empty (default) = as above.
+        for lg, order in (self.cfg.get("sources.trust_order") or {}).items():
+            try:
+                if order:
+                    owners[League(lg)] = [str(x) for x in order]
+            except ValueError:
+                log.warning("sources.trust_order: unknown league %r", lg)
         self.merger = Merger(stoppage_owner=owners or None)
         self._nhl_seen: dict[str, dict[str, float]] = {}   # game id -> NHL event id -> first seen
         self._nhl_ids: dict[str, str] = {}                  # ESPN game id -> NHL game id

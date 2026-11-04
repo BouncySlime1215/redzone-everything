@@ -176,8 +176,44 @@ def _boot_ratio(rows: list[tuple[float, float]], draws: int = rg.BOOT_DRAWS, see
     return point, rs[int(0.025 * draws)], rs[min(draws - 1, int(0.975 * draws))]
 
 
+def load_taps(db: Path | None) -> list[dict] | None:
+    """Phone v2 decision records (Store.taps()) from the live service's redzone.db; None when there is
+    no database here (CI, a cloud checkout). Only reads: a missing file is never created."""
+    if db is None or not Path(db).exists():
+        return None
+    try:
+        sys.path.insert(0, str(ROOT))
+        from redzone.store import Store
+        return Store(Path(db)).taps()
+    except Exception as e:   # an old schema, a locked file: the line stays PENDING, the table still renders
+        print(f"right_game: couldn't read {db}: {type(e).__name__}: {e}", file=sys.stderr)
+        return None
+
+
+def right_game_row(taps: list[dict] | None) -> dict:
+    """Agreement with Nick's taps: 👍 counts as right, 👎 and "I missed that" as wrong, a cleared tap
+    not at all. Rows are nights (US Eastern), so PASS needs the release gate's nights and decisions."""
+    if not taps:
+        return _row("right_game", None, None, None, PENDING,
+                    "no 👍/👎 decision records yet (E23); PENDING until Nick's taps exist")
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+    per: dict[str, list[int]] = {}
+    for t in taps:
+        if t.get("tap") not in ("up", "down", "missed"):
+            continue
+        night = dt.datetime.fromtimestamp(float(t["ts"]) - 6 * 3600, et).strftime("%Y%m%d")   # 1 AM counts as the night before
+        g = per.setdefault(night, [0, 0])
+        g[0] += t["tap"] == "up"
+        g[1] += 1
+    n_up = sum(g for g, _ in per.values())
+    n = sum(x for _, x in per.values())
+    return _rate("right_game", [tuple(v) for v in per.values()], 95.0,
+                 note=f"; {n_up}/{n} taps 👍 over {len(per)} nights (Store.taps)")
+
+
 def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] | None = None,
-          lag_profile: dict | None = None, controls: dict | None = None) -> list[dict]:
+          lag_profile: dict | None = None, controls: dict | None = None, taps: list[dict] | None = None) -> list[dict]:
     rows: list[dict] = []
     per = {lg: _per(cards, lg) for lg in LEAGUES}
     broken = [lg for lg in LEAGUES if not rg._m(cards.get(lg, {}))]
@@ -236,8 +272,7 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
     rows.append(_row("league_order", None, None, None, PENDING,
                      "needs a mixed-league night graded for overlaps (Noggin Priority module; the per-league "
                      "scorecards can't see a cross-league overlap)"))
-    rows.append(_row("right_game", None, None, None, PENDING,
-                     "no 👍/👎 decision records yet (E23); PENDING until Nick's taps exist"))
+    rows.append(right_game_row(taps))
     # 5. live or replayed within 10 min. With big_seen_10m (replay age graded) it can PASS; an older
     # scorecard only has big_seen (a replay of any age), an upper bound that can FAIL but never PASS.
     graded = bool(every) and all("big_seen_10m" in x for x in every)
@@ -550,6 +585,8 @@ def main(argv=None) -> int:
     ap.add_argument("--reuse-nights", type=Path, help="take the e2e nights from an earlier --json output")
     ap.add_argument("--switch-log", type=Path, action="append", default=None,
                     help="tv_input.jsonl file(s) with real switches (default: <root>/data/tv_input.jsonl)")
+    ap.add_argument("--taps-db", type=Path, default=None,
+                    help="redzone.db with Nick's phone taps for right_game (default: <root>/data/redzone.db if present)")
     ap.add_argument("--controls-json", type=Path, help="a scripts/controls_drill.py --json report (press_to_tv_p95)")
     ap.add_argument("--json", type=Path, help="write the raw results here (PR CI compares two of these)")
     ap.add_argument("--no-write", action="store_true", help="don't touch docs/ (PR CI)")
@@ -578,15 +615,16 @@ def main(argv=None) -> int:
     nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults") if k in n} for n in nights]
     drill = json.loads(a.controls_json.read_text()) if a.controls_json and a.controls_json.exists() else None
     xs = switch_samples(a.switch_log if a.switch_log is not None else [root / "data/tv_input.jsonl"])
+    taps = load_taps(a.taps_db or root / "data" / "redzone.db")
     results = {}
     for split in (("dev", "locked") if a.split == "both" else (a.split,)):
         cards = run_cards(root, split)
-        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill)}
+        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill, taps)}
         if a.profile:
             from redzone.noggin import profile as P
             cc = run_cards(root, split, profile=a.profile)
             results[split]["candidate"] = {"profile": a.profile, "about": P.PROFILES[a.profile].get("about", ""),
-                                           "cards": cc, "rows": table(cc, nights, xs, prof, drill)}
+                                           "cards": cc, "rows": table(cc, nights, xs, prof, drill, taps)}
     commit = _git(root, "rev-parse", "--short", "HEAD")
     when = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     if a.json:

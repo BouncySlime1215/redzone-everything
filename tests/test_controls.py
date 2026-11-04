@@ -16,6 +16,7 @@ from redzone.web.server import build_app
 
 # --- the tap log -----------------------------------------------------------------------------
 
+@pytest.mark.playbook("BTN-03")
 def test_a_tap_with_an_id_runs_once_and_a_retry_gets_the_first_answer():
     log, calls = Commands(), []
     fn = lambda: calls.append(1) or (True, "Skipping")   # noqa: E731
@@ -62,6 +63,7 @@ def engine(tmp_path):
     return Engine(cfg, Store(tmp_path / "rz.db"))
 
 
+@pytest.mark.playbook("BTN-03")
 def test_a_retried_post_runs_the_action_once(engine, monkeypatch):
     calls = []
     monkeypatch.setattr(engine, "action", lambda a, g=None, v=None: calls.append((a, g, v)) or (True, "Skipping"))

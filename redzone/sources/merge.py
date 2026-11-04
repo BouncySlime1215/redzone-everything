@@ -73,6 +73,7 @@ class SourceHealth:
 
 
 STOPPAGE_OWNER_FRESH_S = 10.0   # an owner's copy this recent decides the game's stoppage
+OWNER_ERROR_HOLD_S = 30.0       # [FEED-01] a source that errored this recently is skipped in the trust order
 
 
 class Merger:
@@ -81,7 +82,15 @@ class Merger:
         # league -> source whose stoppage wins while its copy is fresh (NHL: api-web's live
         # play-by-play, ~17 s behind the ice vs ESPN's ~43 s). Without it, a stale ESPN copy at the
         # same stopped clock takes over on the tie-break and flips the whistle off and on again.
-        self.stoppage_owner = dict(stoppage_owner or {})
+        # [FEED-01/03] A value may also be a list: the league's TRUST ORDER, fastest measured source
+        # first (sources.trust_order). The first source whose copy is fresh, unbenched and not
+        # erroring owns the stoppage; when it goes dark the next one takes over (failover), and a
+        # disagreement with the owner is decided for the owner and logged (self.disagreements).
+        self.stoppage_owner = {lg: ([v] if isinstance(v, str) else list(v)) for lg, v in (stoppage_owner or {}).items()}
+        self._err_at: dict[str, float] = {}
+        self.disagreements: dict[tuple[str, str], int] = defaultdict(int)   # (owner, other) -> count
+        self.owner_log: list[tuple[float, str, str]] = []                    # (t, game, new owner) on change
+        self._owner_now: dict[str, str] = {}
         self._owner_at: dict[str, float] = {}     # game -> when its owner's copy last arrived
         self.games: dict[str, GameState] = {}
         self._per_source: dict[str, dict[str, GameState]] = defaultdict(dict)
@@ -93,6 +102,23 @@ class Merger:
 
     def record_error(self, source: str) -> None:
         self.health[source].errors += 1
+        self._err_at[source] = self._clock()
+
+    def owner(self, league, game_id: str, now: float | None = None) -> str | None:
+        """[FEED-01] Who owns this game's stoppage right now: the first source in the league's trust
+        order with a fresh copy, not benched for it, and no error in the last OWNER_ERROR_HOLD_S."""
+        order = self.stoppage_owner.get(league)
+        if not order:
+            return None
+        now = self._clock() if now is None else now
+        for src in order:
+            if src not in self._per_source or game_id not in self._per_source[src]:
+                continue
+            seen = self._owner_at.get((src, game_id), -1e18)
+            if (now - seen <= STOPPAGE_OWNER_FRESH_S and (src, game_id) not in self._bench_until
+                    and now - self._err_at.get(src, -1e18) > OWNER_ERROR_HOLD_S):
+                return src
+        return None
 
     def update(self, source: str, g: GameState) -> GameState:
         now = self._clock()
@@ -145,17 +171,26 @@ class Merger:
         return cur
 
     def _owned_stoppage(self, source: str, g: GameState, now: float) -> GameState:
-        owner = self.stoppage_owner.get(g.league)
-        if owner is None:
+        order = self.stoppage_owner.get(g.league)
+        if not order:
             return g
-        if source == owner:
-            self._owner_at[g.game_id] = now
-            return g
+        if source in order:
+            self._owner_at[(source, g.game_id)] = now
+            # Count this copy as the source's own before choosing (update() stores it right after).
+            self._per_source[source].setdefault(g.game_id, g)
+        owner = self.owner(g.league, g.game_id, now)
+        if owner is not None and self._owner_now.get(g.game_id) != owner:
+            self._owner_now[g.game_id] = owner
+            self.owner_log.append((now, g.game_id, owner))
+            del self.owner_log[:-500]
+        if owner is None or source == owner:
+            return g          # nobody fresh in the order (or this IS the owner): the feeds decide as usual
         mine = self._per_source[owner].get(g.game_id)
-        if mine is None or now - self._owner_at.get(g.game_id, -1e18) > STOPPAGE_OWNER_FRESH_S:
-            return g          # the owner went quiet: the other feeds decide again
+        if mine is None:
+            return g
         if g.stoppage == mine.stoppage:
             return g
+        self.disagreements[(owner, source)] += 1
         g = copy.copy(g)      # shallow: only the stoppage field differs from the caller's object
         g.stoppage = mine.stoppage
         return g
