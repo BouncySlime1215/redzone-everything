@@ -177,3 +177,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** the grader, not the app. A `stick_drop` took that stick off adb 10 s after the prompt, for 87 s; no key reaches a dropped stick. The reload of that game cleared it 14 s after it came back. The sim also logged no `prompt_cleared` when a new link replaced the player, only on CENTER.
 - **Fix:** the 60 s count from when the stick is reachable again (`clock_from` in the report), the clear must be on the same stick, and a relink logs `prompt_cleared (relink)`.
 - **Signals:** still_watching_cleared, prompt, stick_drop, STK-04, seed 2
+
+## The Linux test job hit its 20-minute limit
+- **Symptom:** (#108, Nov 4) `test (3.12)` was cancelled at 54% after 20 min; 3.13 finished in 18 min.
+- **Cause:** not one test. integration/next itself already took 19m50s on 3.12 (12:12 run): the e2e night, the playbook night (#86) and the SmartThings night take ~3 min each, and the drill night adds ~1 min. GitHub runners are ~1.6x slower than the cloud box (11.5 min there).
+- **Fix:** timeout-minutes 30 on the test job. The next step is to run the replayed nights in their own job, in parallel.
+- **Signals:** "The operation was canceled", test job cancelled, timeout-minutes
