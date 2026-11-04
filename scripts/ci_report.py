@@ -161,6 +161,8 @@ def main(argv=None) -> int:
     ap.add_argument("--lint", type=Path)
     ap.add_argument("--lint-status", type=int)
     ap.add_argument("--note", action="append", default=[], help="extra line for the comment")
+    ap.add_argument("--section", type=Path, action="append", default=[],
+                    help="a markdown file appended as its own section (the North Star delta table)")
     ap.add_argument("--out", type=Path)
     a = ap.parse_args(argv)
 
@@ -185,6 +187,9 @@ def main(argv=None) -> int:
             out += ["", "❌ **Hard rule broken** (no added mid-play cuts, no crashing scorecard): " + "; ".join(hard)]
     elif a.head:
         out += ["", "#### Scorecard smoke", "", "⚠️ not run (no results file)"]
+    for sec in a.section:
+        if sec.exists():
+            out += ["", sec.read_text().rstrip()]
     text = "\n".join(out) + "\n"
     if a.out:
         a.out.write_text(text)

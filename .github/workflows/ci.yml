@@ -196,6 +196,14 @@ jobs:
       - name: smoke run, base (same slice, same data)
         if: github.event_name == 'pull_request'
         run: python head/scripts/ci_scorecard.py --root base --out base.json
+      - name: North Star on dev-test nights, PR vs base (scripts/northstar.py; the locked set never goes in a PR delta)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          python head/scripts/northstar.py --root head --split dev --no-write --json ns-head.json
+          python head/scripts/northstar.py --root base --split dev --no-write --json ns-base.json
+          python head/scripts/northstar.py --delta ns-head.json ns-base.json --md northstar.md
+          cat northstar.md >> "$GITHUB_STEP_SUMMARY"
       - name: release gate on the LOCKED test split ("95% good minimum" + no overfitting, docs/architecture.md)
         # Report on every run; it only FAILS the job on the release PR (into codex/resume-redzone).
         # PENDING gates (not measurable yet) never count as passing. --robust adds sync +-3 s and a
@@ -214,7 +222,9 @@ jobs:
         if: always()
         with:
           name: scorecard
-          path: "*.json"
+          path: |
+            *.json
+            northstar.md
       - name: hard rule (no added mid-play cuts)
         run: |
           base=""; [ -f base.json ] && base="--base base.json"
@@ -254,6 +264,7 @@ jobs:
           else
             args+=(--note "Scorecards skipped: the pinned eval dataset ($EVAL_DATA_TAG) is not published yet.")
           fi
+          [ -f results/northstar.md ] && args+=(--section results/northstar.md)
           args+=(--note "$JOBS")
           python scripts/ci_report.py "${args[@]}" --out comment.md || true
           cat comment.md >> "$GITHUB_STEP_SUMMARY"

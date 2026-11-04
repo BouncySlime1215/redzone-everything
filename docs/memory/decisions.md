@@ -108,3 +108,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-04 4:30 AM: **breaks.blend mixes in log-odds and lets the brain stand alone when the rules
   see nothing** (research C18: the 50/50 mix took live ECE from ≤0.10 to 0.12–0.17). Brain is off,
   so no scorecard moves; refit the weight on valid nights after the leak-free retrain.
+- 2026-11-04 1:05 AM (Nick): **The North Star harness is the one answer to "where are we vs perfect" and
+  "what next".** `scripts/northstar.py` writes docs/northstar.md (dev-test `fit` and LOCKED `test` nights,
+  measured feed lag, night-bootstrap CIs, PASS/PENDING/FAIL as in release_gate.py) and appends
+  docs/northstar-history.jsonl; `.github/workflows/northstar.yml` refreshes it on every push to
+  integration/next (schedule only fires from main, which we never merge to). Every PR names the line it
+  moves; CI shows the dev-test delta (never the locked set). docs/roadmap.md is ranked from
+  docs/roadmap.json by (gap × impact) / effort, with the director's morning `priority` first.

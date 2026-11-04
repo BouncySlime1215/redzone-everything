@@ -127,7 +127,13 @@ def main():
         total.add(card)
         cs = card.cut.summary()
         per_night.append({"night": day, "entries": cs["entries"], "entries_mid_play": cs["entries_mid_play"],
-                          "cuts": len(card.cuts), "big": card.big, "big_seen": card.big_seen})
+                          "cuts": len(card.cuts), "big": card.big, "big_seen": card.big_seen,
+                          # [north star] per-night counts so scripts/northstar.py can bootstrap every line
+                          "big_live": card.big_live, "landings": card.cut.landings()[1],
+                          "landings_dead": card.cut.landings()[0],
+                          "dead_s": round(card.dead, 1), "watched_s": round(card.watched, 1),
+                          "crunch": card.crunch, "crunch_live": card.crunch_live,
+                          "my_crunch": card.my_crunch, "my_crunch_live": card.my_crunch_live})
         if a.slates:
             print(" ", day, json.dumps(card.summary()))
             for t, what in card.cuts[:3]:
