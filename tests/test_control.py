@@ -481,6 +481,14 @@ def test_a_hidden_cue_rewinds_the_hidden_stick_before_the_flip(two):
     assert c.on_target == "youtubetv:espn"
 
 
+def test_rewind_wake_press_is_configurable(two):
+    c, tuner = two
+    c.cfg.update({"replay": {"seek_wake_presses": 0, "seek_step_s": 10, "seek_stall_min_s": 0, "seek_stall_max_s": 0}})
+    assert run(c._rewind(c.main, 30.0))
+    presses = sum(cmd.count("KEYCODE_MEDIA_REWIND") for cmd in c.main.log if isinstance(cmd, str))
+    assert presses == 3
+
+
 def _flaky_standby(c, monkeypatch, bad):
     """The preloaded standby's playback; read #2 (the flip-time check) and later go through `bad`."""
     monkeypatch.setattr(ctl, "STANDBY_REREAD_S", 0.0)

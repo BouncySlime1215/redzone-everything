@@ -1369,6 +1369,7 @@ class Controller:
         t0 = time.monotonic()
         if presses:
             key = self.cfg.get("replay.seek_key", "KEYCODE_MEDIA_REWIND")
+            # sent() already holds the wake press (the batch's first only shows YouTube TV's seek bar)
             sent = await stick.shell(" && ".join([f"input keyevent {key}"] * presses), timeout=20)
             if not sent.ok:
                 return False
