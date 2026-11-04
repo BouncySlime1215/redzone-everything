@@ -730,9 +730,34 @@ class Decider:
 
     def _crunch_entry_mode(self) -> str:
         """[nhl crunch entry] Coming into hockey inside crunch's last 2:00 / OT: "live" (go now),
-        "rewind" (land on the last whistle with a rewind when one fits, else go now), or "wait"
-        (rewind or wait for a whistle, like any entry)."""
+        "rewind" (land on the last whistle with a rewind when one fits, else go now), "wait"
+        (rewind or wait for a whistle, like any entry) or "dead" (rewind, else wait for a dead ball
+        the data shows coming, else a short blind wait: _crunch_wait)."""
         return str(self.cfg.get("decider.entry.crunch_now", "live"))
+
+    def _crunch_wait(self, gid: str, cands, now: float, waited: float) -> bool:
+        """[noggin crunch entry, decider.entry.crunch_now: dead] Crunch-time entry with no clean
+        landing in reach: keep waiting while the data already shows a dead ball that comes up on
+        screen within decider.entry.crunch_known_s (the data runs ahead of the picture), otherwise
+        wait blind for at most decider.entry.crunch_wait_s, then go in."""
+        ahead = self._dead_ahead(gid, cands, now)
+        if ahead is not None:
+            return ahead <= float(self.cfg.get("decider.entry.crunch_known_s", 60))
+        return waited < float(self.cfg.get("decider.entry.crunch_wait_s", 20))
+
+    def _dead_ahead(self, gid: str, cands, now: float) -> float | None:
+        """Seconds until the next dead ball the data already has would be on screen if we tuned now
+        (None: the data shows no stoppage past where a tune would land)."""
+        tl, x = self.timelines.get(gid), cands.get(gid) or self._known.get(gid)
+        if tl is None or x is None or not x.target:
+            return None
+        dl = self.delays.get(x.target)
+        cost = self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target)
+        if not math.isfinite(cost):
+            return None
+        x1 = now + cost - (dl.mu - dl.behind) + 2 * dl.current_sigma(now)
+        starts = [w.start for w in tl.dead.windows() if w.start >= x1]
+        return min(starts) - x1 if starts else None
 
     def _time_entry(self, d: Decision, cands, now: float, home_before) -> Decision:
         """Hold a switch until its picture would come up on a dead ball, or land it with a rewind."""
@@ -769,6 +794,9 @@ class Decider:
         if w is None or w[0] != d.target or now - w[2] > 3 * float(self.cfg.get("polling.live_s", 10)):
             w = (d.target, now, now)
         self._entry_wait = (d.target, w[1], now)
+        if x is not None and x.scored.crunch_now and self._crunch_entry_mode() == "dead" \
+                and not self._crunch_wait(d.target, cands, now, now - w[1]):
+            return d
         if cap is not None and now - w[1] >= float(cap) and (
                 d.kind == "ended" or (x is not None and getattr(x.scored, "late", False))):
             return d
