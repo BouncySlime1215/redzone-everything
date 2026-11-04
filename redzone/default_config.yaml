@@ -369,6 +369,17 @@ two_stick:
   keep_cec_off: true       # a stick whose HDMI-CEC you turned off (scripts/stick_cec.py) gets it back on only
                            # for a HOME fallback onto it, then off again (so losing the input never pauses it)
   park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long
+  shadow:                  # the hidden stick as modeled in replays/backtests (standby.ShadowStick); values unchanged
+    flip_s: 3.0            # input flip to a ready stick (measured median ~2.9 s); moving to tv_flip_prior_s +
+                           # input_settle_s changes behavior, so it's a separate decision
+    tune_s: 7.0            # a tune, for an app with no decider.switch_cost entry
+    keep_s: 2.5            # a Prime game we left keeps playing: ready again after this long
+
+demo:                      # replay simulator timing (redzone/demo/engine.py); values unchanged
+  feed_lag_s: 8.0          # a play reaches the app this long after it happens (same as the backtest)
+  play_len_s: 7.0          # a play's length on screen, for grading
+  tune_s: 5.0              # the replay's picture is up this long after a switch
+  calibrated_sigma_s: 3.0  # delay uncertainty of a calibrated game
 
 plan:                      # tonight's plan (data/plan_YYYYMMDD.json, the phone's "Tonight's plan" card)
   verify: true             # before each start window, play each planned source on the HIDDEN stick (never the one on screen)
