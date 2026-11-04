@@ -22,11 +22,16 @@ PROFILES: dict[str, dict] = {
             "sources.nhl_primary=true",
             # [noggin logic, cycle 01] A finished game's exit waits for the target's next dead ball
             # (no blind 180 s cap), and a crunch-time entry lands on the last whistle with a rewind
-            # when one is in reach instead of going in live. Dev NBA mid-play entries 6 -> 3, plays
-            # missed on entry 4 -> 1, big plays and crunch live unchanged (docs/timing.md). "wait"
-            # reaches 0 but costs big plays live and crunch live, so it is Nick's call.
-            "decider.entry.crunch_now=rewind",
+            # when one is in reach, else waits for one (cycle 02: "wait", rule #1; the lookahead below
+            # wins back the big plays the wait costs). docs/timing.md.
+            "decider.entry.crunch_now=wait",
             "decider.entry.max_wait_s={}",
+            # [noggin logic, cycle 02] Clairvoyance (GAME-04): pre-tune the game whose big play the
+            # feed already shows ahead of the screen, and land on its last dead ball before it airs.
+            "noggin.lookahead.enabled=true",
+            # [controls, cycle 03] Opening a game on the phone tunes it on the hidden stick while you
+            # read the sheet, so "Go now" is a flip (press_to_tv_p95). Live default stays off.
+            "two_stick.pretune_on_open=true",
         ],
     },
 }

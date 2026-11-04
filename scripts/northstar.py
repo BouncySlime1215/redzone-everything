@@ -58,6 +58,8 @@ FAULT_CHECK = {"stick_drop": "two_stick_recovers", "stick_wedge": "wedged_stick_
                "still_watching": "still_watching_cleared", "feed_outage": "feed_outage_handled",
                "flip_ignored": "tv_shows_games", "api_down": "no_crash"}
 
+ORACLE_LEAGUES = ("nfl", "nba", "nhl")   # NFL: the app re-graded by sportsgrade beside the oracle (oracle_app)
+
 # key, label, target text, direction (+1 higher is better, -1 lower), bar, scale (for the roadmap's gap
 # normalisation: the size of a "whole" gap in this line's unit)
 METRICS = [
@@ -77,13 +79,23 @@ METRICS = [
     ("dead_air", "Dead air (commercials/breaks on screen)", "0%", -1, 0.0, 100.0),
     ("recovery", "Faults recovered without Nick (e2e night)", ">= 95%", 1, 95.0, 100.0),
     *[(f"feed_lag_{lg}", f"Honest feed lag in use, {lg.upper()} (p50)", "info", -1, None, None) for lg in LEAGUES],
+    # [oracle] hindsight ceiling - app, same nights, same grader (redzone/lab/oracle.py; --oracle)
+    *[(f"oracle_gap_{m}_{lg}", f"Oracle gap: {lbl}, {lg.upper()} (ceiling - app, points)", "info", -1, None, None)
+      for m, lbl in (("big_live", "big plays live"), ("crunch_live", "crunch live"), ("dead_air", "dead air"))
+      for lg in ORACLE_LEAGUES],
+    # [oracle] the app as a share of the hindsight ceiling, worst of big live / crunch live / live air
+    *[(f"pct_of_oracle_{lg}", f"% of oracle, {lg.upper()} (worst of big live, crunch live, live air)", ">= 90%", 1,
+       90.0, 100.0) for lg in ORACLE_LEAGUES],
+    *[(f"ceiling_{m}_{lg}", f"Ceiling: {lbl}, {lg.upper()} (hindsight, live-only, 0 mid-play)", "info", d, None, None)
+      for m, lbl, d in (("dead_air", "dead air", -1), ("crunch_live", "crunch live", 1)) for lg in ORACLE_LEAGUES],
 ]
 META = {k: dict(label=lb, target=t, dir=d, bar=b, scale=s) for k, lb, t, d, b, s in METRICS}
 
 
 # ---- running the evidence ---------------------------------------------------------------------
 
-def run_cards(root: Path, split: str, timeout: float = 1800, profile: str | None = None) -> dict:
+def run_cards(root: Path, split: str, timeout: float = 1800, profile: str | None = None,
+              oracle: bool = False) -> dict:
     """The three league scorecards on one split, every night in it, measured feed lag. With `profile`
     (redzone/noggin/profile.py), the same cards with that profile's flags and buffer on."""
     sp = SPLITS[split]
@@ -92,6 +104,8 @@ def run_cards(root: Path, split: str, timeout: float = 1800, profile: str | None
     if profile:
         from redzone.noggin import profile as P
         argvs = {lg: a + P.argv(profile, lg) for lg, a in argvs.items()}
+    if oracle:
+        argvs = {lg: a + (["--oracle"] if lg in ORACLE_LEAGUES else []) for lg, a in argvs.items()}
     out = {}
     for lg, argv in argvs.items():
         if not (root / f"data/archive/{lg}").exists():
@@ -123,6 +137,29 @@ def run_nights(root: Path, seeds: int, timeout: float = 900) -> list[dict]:
             reps.append(rep)
             print(f"  night seed {seed}: {'ok' if rep.get('ok') else 'not ok'}", flush=True)
     return reps
+
+
+def run_drill(root: Path, seeds: int, hours: float = 3.0, timeout: float = 1800) -> dict | None:
+    """The controls drill (scripts/controls_drill.py, taps lost and duplicated on purpose) with the
+    checkout's shipped defaults, so press_to_tv_p95 has a sim value on every run. None if it failed."""
+    if seeds <= 0 or not (root / "scripts/controls_drill.py").exists():
+        return None
+    with tempfile.TemporaryDirectory(prefix="rz-ns-drill-") as tmp:
+        out = Path(tmp) / "controls.json"
+        env = {**os.environ, "PYTHONPATH": str(root)}
+        try:
+            subprocess.run([sys.executable, "scripts/controls_drill.py", "--seeds", str(seeds), "--hours", str(hours),
+                            "--flaky", "--json", str(out)], cwd=root, env=env, capture_output=True, text=True,
+                           timeout=timeout)
+        except subprocess.TimeoutExpired:
+            print(f"  controls drill: timed out after {timeout:.0f} s", flush=True)
+            return None
+        if not out.exists():
+            print("  controls drill: wrote no report", flush=True)
+            return None
+        drill = json.loads(out.read_text())
+        print(f"  controls drill: {seeds} nights done", flush=True)
+        return drill
 
 
 def switch_samples(paths: list[Path]) -> list[float]:
@@ -176,8 +213,44 @@ def _boot_ratio(rows: list[tuple[float, float]], draws: int = rg.BOOT_DRAWS, see
     return point, rs[int(0.025 * draws)], rs[min(draws - 1, int(0.975 * draws))]
 
 
+def load_taps(db: Path | None) -> list[dict] | None:
+    """Phone v2 decision records (Store.taps()) from the live service's redzone.db; None when there is
+    no database here (CI, a cloud checkout). Only reads: a missing file is never created."""
+    if db is None or not Path(db).exists():
+        return None
+    try:
+        sys.path.insert(0, str(ROOT))
+        from redzone.store import Store
+        return Store(Path(db)).taps()
+    except Exception as e:   # an old schema, a locked file: the line stays PENDING, the table still renders
+        print(f"right_game: couldn't read {db}: {type(e).__name__}: {e}", file=sys.stderr)
+        return None
+
+
+def right_game_row(taps: list[dict] | None) -> dict:
+    """Agreement with Nick's taps: 👍 counts as right, 👎 and "I missed that" as wrong, a cleared tap
+    not at all. Rows are nights (US Eastern), so PASS needs the release gate's nights and decisions."""
+    if not taps:
+        return _row("right_game", None, None, None, PENDING,
+                    "no 👍/👎 decision records yet (E23); PENDING until Nick's taps exist")
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+    per: dict[str, list[int]] = {}
+    for t in taps:
+        if t.get("tap") not in ("up", "down", "missed"):
+            continue
+        night = dt.datetime.fromtimestamp(float(t["ts"]) - 6 * 3600, et).strftime("%Y%m%d")   # 1 AM counts as the night before
+        g = per.setdefault(night, [0, 0])
+        g[0] += t["tap"] == "up"
+        g[1] += 1
+    n_up = sum(g for g, _ in per.values())
+    n = sum(x for _, x in per.values())
+    return _rate("right_game", [tuple(v) for v in per.values()], 95.0,
+                 note=f"; {n_up}/{n} taps 👍 over {len(per)} nights (Store.taps)")
+
+
 def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] | None = None,
-          lag_profile: dict | None = None, controls: dict | None = None) -> list[dict]:
+          lag_profile: dict | None = None, controls: dict | None = None, taps: list[dict] | None = None) -> list[dict]:
     rows: list[dict] = []
     per = {lg: _per(cards, lg) for lg in LEAGUES}
     broken = [lg for lg in LEAGUES if not rg._m(cards.get(lg, {}))]
@@ -236,8 +309,7 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
     rows.append(_row("league_order", None, None, None, PENDING,
                      "needs a mixed-league night graded for overlaps (Noggin Priority module; the per-league "
                      "scorecards can't see a cross-league overlap)"))
-    rows.append(_row("right_game", None, None, None, PENDING,
-                     "no 👍/👎 decision records yet (E23); PENDING until Nick's taps exist"))
+    rows.append(right_game_row(taps))
     # 5. live or replayed within 10 min. With big_seen_10m (replay age graded) it can PASS; an older
     # scorecard only has big_seen (a replay of any age), an upper bound that can FAIL but never PASS.
     graded = bool(every) and all("big_seen_10m" in x for x in every)
@@ -278,7 +350,41 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
         extra = " ; NHL api-web wsc measured 16.7 s p50 (not wired yet, #58)" if lg == "nhl" else ""
         rows.append(_row(f"feed_lag_{lg}", qs.get(50), qs.get(10), qs.get(90), INFO,
                          f"{lag_profile.get('source')} p10-p90 {qs.get(10)}-{qs.get(90)} s, n={p['n']}, {p.get('basis')}{extra}"))
+    rows += oracle_rows(cards)
     return rows
+
+
+def oracle_rows(cards: dict) -> list[dict]:
+    """[oracle] Each line's hindsight ceiling on the same nights (live-only, no rewinds, every L1 rule and
+    0 mid-play), and the gap to what the app did. Only when the cards ran with --oracle."""
+    out = []
+    for lg in ORACLE_LEAGUES:
+        m = rg._m(cards.get(lg, {}))
+        orc = m.get("oracle") or {}
+        shares = {}
+        for key, obj, app_key in (("big_live", "big_live", "big_live_pct"), ("crunch_live", "crunch_live", "crunch_live_pct"),
+                                  ("dead_air", "dead_air", "dead_air_pct")):
+            o = (orc.get(obj) or {}).get(f"{key}_pct" if key != "dead_air" else "dead_air_pct")
+            # NFL's card has its own grader: compare against the app re-graded by the oracle's (oracle_app)
+            app = (m.get("oracle_app") or {}).get(app_key, m.get(app_key)) if m.get("oracle_app") else m.get(app_key)
+            if o is None or app is None:
+                continue
+            gap = round((app - o) if key == "dead_air" else (o - app), 1)
+            out.append(_row(f"oracle_gap_{key}_{lg}", gap, None, None, INFO,
+                            f"ceiling {o}% vs app {app}% ({orc[obj].get('switches')} oracle switches, "
+                            f"{orc[obj].get('entries_mid_play')} mid-play entries)"))
+            if key in ("dead_air", "crunch_live"):
+                out.append(_row(f"ceiling_{key}_{lg}", o, None, None, INFO, f"app {app}% on the same nights"))
+            # live air = 100 - dead air, so every share is 'more is better'
+            share = ((100 - app) / (100 - o) if key == "dead_air" else (app / o if o else None))
+            if share is not None:
+                shares[key] = round(100 * min(1.0, share), 1)
+        if len(shares) == 3:
+            worst = min(shares, key=shares.get)
+            v = shares[worst]
+            out.append(_row(f"pct_of_oracle_{lg}", v, None, None, PASS if v >= 90.0 else FAIL,
+                            ", ".join(f"{k} {x}%" for k, x in shares.items()) + f" of the ceiling (worst: {worst})"))
+    return out
 
 
 def switch_row(xs: list[float]) -> dict:
@@ -330,6 +436,10 @@ def press_row(drill: dict | None) -> dict:
     det = (f"sim drill: {len(xs)} presses over {s.get('nights', '?')} nights, median {xs[len(xs) // 2]:.2f} s, "
            f"{s.get('go_now_within_3s_pct')}% within 3 s; dropped {s.get('dropped', 0)}, ran-not-once "
            f"{s.get('not_once', 0)} of {s.get('taps', 0)} taps ({s.get('taps_retried', 0)} lost/duplicated on purpose)")
+    for k, name in (("warm", "pre-tuned"), ("cold", "cold")):
+        w = s.get(k) or {}
+        if w.get("n"):
+            det += f"; {name} {w['n']}: p50 {w['p50_s']} s, p95 {w['p95_s']} s"
     if p95 > 3.0 or s.get("dropped") or s.get("not_once"):
         return _row("press_to_tv_p95", round(p95, 2), None, None, FAIL, det)
     return _row("press_to_tv_p95", round(p95, 2), None, None, PENDING, det + "; PENDING until real presses are logged")
@@ -550,13 +660,19 @@ def main(argv=None) -> int:
     ap.add_argument("--reuse-nights", type=Path, help="take the e2e nights from an earlier --json output")
     ap.add_argument("--switch-log", type=Path, action="append", default=None,
                     help="tv_input.jsonl file(s) with real switches (default: <root>/data/tv_input.jsonl)")
+    ap.add_argument("--taps-db", type=Path, default=None,
+                    help="redzone.db with Nick's phone taps for right_game (default: <root>/data/redzone.db if present)")
     ap.add_argument("--controls-json", type=Path, help="a scripts/controls_drill.py --json report (press_to_tv_p95)")
+    ap.add_argument("--controls-seeds", type=int, default=2,
+                    help="without --controls-json: run the controls drill this many nights (0 = skip)")
     ap.add_argument("--json", type=Path, help="write the raw results here (PR CI compares two of these)")
     ap.add_argument("--no-write", action="store_true", help="don't touch docs/ (PR CI)")
     ap.add_argument("--delta", nargs=2, type=Path, metavar=("HEAD", "BASE"), help="print the PR delta table")
     ap.add_argument("--md", type=Path, help="with --delta: write the table here")
     ap.add_argument("--profile", default=None,
                     help="also score this Noggin profile (redzone/noggin/profile.py, e.g. candidate) as its own column")
+    ap.add_argument("--oracle", action="store_true",
+                    help="also solve the hindsight oracle per night (NBA/NHL): the oracle_gap lines")
     a = ap.parse_args(argv)
 
     if a.delta:
@@ -575,19 +691,20 @@ def main(argv=None) -> int:
     # keep only what the recovery line reads, so the raw file stays small
     nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults", "settle_book") if k in n}
               for n in nights]
-    nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults") if k in n} for n in nights]
     drill = json.loads(a.controls_json.read_text()) if a.controls_json and a.controls_json.exists() else None
+    if drill is None and not a.delta:
+        drill = run_drill(root, a.controls_seeds)
     xs = switch_samples(a.switch_log if a.switch_log is not None else [root / "data/tv_input.jsonl"])
+    taps = load_taps(a.taps_db or root / "data" / "redzone.db")
     results = {}
     for split in (("dev", "locked") if a.split == "both" else (a.split,)):
-        cards = run_cards(root, split)
-        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof)}
+        cards = run_cards(root, split, oracle=a.oracle)
+        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill, taps)}
         if a.profile:
             from redzone.noggin import profile as P
-            cc = run_cards(root, split, profile=a.profile)
+            cc = run_cards(root, split, profile=a.profile, oracle=a.oracle)
             results[split]["candidate"] = {"profile": a.profile, "about": P.PROFILES[a.profile].get("about", ""),
-                                           "cards": cc, "rows": table(cc, nights, xs, prof)}
-        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill)}
+                                           "cards": cc, "rows": table(cc, nights, xs, prof, drill, taps)}
     commit = _git(root, "rev-parse", "--short", "HEAD")
     when = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     if a.json:

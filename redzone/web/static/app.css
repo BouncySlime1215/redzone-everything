@@ -1196,3 +1196,9 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .v2-g-bar--yours { background: color-mix(in srgb, var(--mine-ink) 45%, transparent); }
 .v2-g-crunch { position: absolute; top: 0; bottom: 0; border-radius: 0 6px 6px 0; background: #e5484d; }
 .v2-now { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text-1); border-radius: 1px; }
+.v2-tap { position: fixed; z-index: 81; left: 50%; transform: translateX(-50%); width: max-content; top: calc(var(--safe-t, 0px) + 64px); display: inline-flex; align-items: center; gap: 8px; max-width: calc(100% - 32px); padding: 10px 14px; border-radius: 22px; font: 600 14px/1.25 var(--font-ui); background: var(--surface-1); color: var(--text-1); border: 1px solid var(--line-2); box-shadow: var(--e-2, 0 6px 24px rgba(0,0,0,.25)); }
+.v2-tap[hidden] { display: none; }
+.v2-tap .ico { width: 18px; height: 18px; flex: none; }
+.v2-tap[data-kind="ok"] .ico { color: var(--success-ink); }
+.v2-tap[data-kind="bad"] .ico, .v2-tap[data-kind="stale"] .ico { color: var(--danger-ink); }
+.v2-tap[data-kind="wait"] .ico { color: var(--info-ink); }

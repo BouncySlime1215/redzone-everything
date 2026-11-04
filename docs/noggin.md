@@ -228,3 +228,157 @@ ships OFF behind `noggin.timing.leagues`.
 
 Next leagues for the factory: NFL (nflfastR `time_of_day`), CBB/WCBB (same loader as NBA, needs a
 live-path check), CFB, NHL (fastRhockey + ESPN wallclock), MLB.
+
+## 10. Phase 1b + 2 results (Nov 4, NFL Timing, NBA Predict)
+
+**Data factory, NFL** (`factory.build_football`): nflverse / nflfastR play-by-play 2011-2024
+(`time_of_day` is the snap, like ESPN's NFL wallclock). **587,528 labeled windows**, 3,811 games; train
+2011-09 → 2021-09 (571 nights), calib → 2023-09 (122), test → 2025-02 (122). The 2025 season (the scorecard
+window) is never written. To make a label mean what the live tracker sees on ESPN (checked against 150
+archived ESPN games): the extra point / two-point try folds into the touchdown entry, END QUARTER / END GAME
+take the previous play's wallclock (ESPN: median 0 s), and the windows around each 2:00 crossing in Q2/Q4
+are dropped (nflfastR has no two-minute-warning row, so that break is unseen). ESPN's "Official Timeout"
+(TV) entries have no nflfastR row: the model learns the physical restart after a punt/score/injury, which
+is the safe direction for a lower bound, and the live hook returns no reading for kinds it never trained
+on (`tv_timeout`, `two_minute`), so those keep `cuts.FLOOR_S`.
+
+**Noggin Timing v1, NFL** (`models/timing_nfl.v1.npz`, 120 KB, 300 trees, 4.77M person-period rows,
+17 features). Test: 122 unseen nights, 82k windows:
+
+| | Timing v1 | `cuts.FLOOR_S` |
+|---|---|---|
+| restarts before the bound | **1.43 %** | 9.1 % |
+| mean bound (s left) | 6.3 | 13.0 |
+| ECE, P(restart within 30 s) | 0.076 | – |
+
+Injury (8.1 %) and review (4.7 %) are above alpha on the test nights: too few calib rows to calibrate them per
+kind. Candidate NFL scorecard with `noggin.timing.leagues: [nba, nfl]`, dev / locked: mid-play 0 / 0 (=),
+big plays live 49.4 → 49.6 / 45.6 → 45.8 %, crunch live 65.4 → 65.2 / 67.0 → 68.1 %, dead air
+12.5 → 12.3 / 12.6 → 12.5 %. A safer bound at no measured cost; ships OFF.
+
+**Noggin Predict v1, NBA** (`predict.py`, `predict_fit.py`, `models/predict_nba.v1.npz`, 302 KB): P(big play
+within 30 / 60 / 120 s of the restart), 13 features (`features.PREDICT_FEATURES`: window + game state at
+the restart, one definition with the live `PredictHook`), LightGBM per horizon (225 / 211 / 238 trees) +
+isotonic calibration on calib. 757k train windows. 5-fold season forward CV (2021-2025 seasons), and one
+grade on the FULL test split (421 nights, 166k windows):
+
+| horizon | CV logloss mean / worst | test logloss (baseline) | test PR-AUC (baseline) | test ECE | beats baseline every fold |
+|---|---|---|---|---|---|
+| 30 s | 0.491 / 0.498 | 0.495 (0.509) | 0.270 (0.240) | 0.006 | yes |
+| 60 s | 0.624 / 0.631 | 0.629 (0.652) | 0.444 (0.416) | 0.011 | yes |
+| 120 s | 0.652 / 0.653 | 0.647 (0.684) | 0.642 (0.615) | 0.012 | yes |
+
+Baseline = base rate × game state (train-night rate per period × 2-minute clock bucket × margin bucket).
+Latency: 8 games × 3 horizons 0.75 ms p50 / 1.35 ms p99. The signal is real but small (AUC ~0.59): made
+threes are close to random. As an L4 term in the Priority pick (`noggin.predict.points` × (P60 − base
+rate), needs `noggin.priority.enabled`), candidate NBA scorecard dev / locked: big plays live 81.7 → 81.7 /
+100 → 100 %, crunch live 90.9 → 89.6 / 93.3 → 93.3 %, entries mid-play 5 → 4 / 4 → 4, dead air
+19.2 → 18.8 / 24.2 → 24.2 %. The NBA sim switches ~1.2 times an hour, so a pick-time term has little to act
+on. Ships OFF (`noggin.predict.leagues: []`) and does not join the candidate.
+
+**NHL factory + Timing v1 NHL + Predict v1 NHL** (built on a GitHub runner: the container can't reach
+ESPN). ESPN summaries 2011-2027, but ESPN NHL plays carry wallclocks only from the 2019-20 season on, so
+the table is 2020+: 6,247 train / 1,438 calib / 1,533 test games, 324k train windows (4.36M hazard rows).
+Regulation is 3 × 20 min (`features.REG`); a big play is every goal (sportsgrade's NHL rule).
+
+- Timing NHL (`models/timing_nhl.v1.npz`, 118 KB, 298 trees, 17 features): 0.36 % of restarts below the
+  2 % bound on the test nights vs FLOOR_S 1.16 %, mean bound 13.6 s vs 12.2 s, ECE 0.042.
+- Predict NHL (`models/predict_nhl.v1.npz`, 161 KB, 60 / 117 / 186 trees): test logloss 0.146 / 0.240 /
+  0.365 vs baseline 0.148 / 0.245 / 0.372 at 30 / 60 / 120 s; CV beats the baseline every fold at 60 and
+  120 s, not at 30 s (goals within 30 s are 3.4 %).
+- Candidate NHL scorecard, base / +Timing / +Timing+Predict, dev (66 games) and locked (34): every line
+  equal (dev mid-play 1 / 1 / 1, goals live 44.7 %, crunch 80.6 %, dead air 22.4 / 22.4 / 22.3 %; locked
+  mid-play 0, goals live 48.1 %, crunch 84.7 %). Predict at 80 or 300 points: still equal on dev.
+
+The NHL sim switches ~4 times an hour; the hindsight ceiling for goals live is 85 % (#89). The gap is the
+schedule, not the readings: next is Reflex PICK by imitation of the oracle. Both NHL models ship OFF.
+
+## 11. Reflex PICK v1 (Nov 4, NBA): imitating the hindsight oracle
+
+`redzone/noggin/pick.py` (features + rollout, numpy), `scripts/train_noggin_pick.py` (offline, cloud),
+`models/pick_nba.v1.txt.gz` (LightGBM, 112 trees, 22 features, 13.2M train rows, 318 KB gzipped).
+
+- **Labels:** the hindsight oracle (`redzone/lab/oracle.py`, combined objective) on whole factory nights
+  built from hoopR (every game of the night together, screens at the candidate's 116 s lag). Seasons
+  2016-2022 train (1,300+ nights), 2023-2024 calib (early stopping + the switch margin, 377 nights),
+  2025-2026 test (377 nights, graded once). The label is the game the oracle has on screen one tune
+  after each step.
+- **Features (only what the app knows):** plays the feed has delivered by t - feed lag p90 (70 s NBA),
+  plus the known stretch of every screen (lag - feed lag): big plays / crunch plays / action ahead on that
+  screen, dead ball and break on screen, game state at the feed head, your team, and night context
+  (live games, crunch games, margin and time-left rank).
+- **Rollout (the hard rules outside the model):** leave and land only on dead balls (the oracle's own
+  leave / land tables), black for tune_s, and your team's late game (crunch, or the last 5 minutes within
+  10) is forced and never left. Switch when the best landable game beats the one on screen by the
+  margin (0.1, picked on calib).
+- **Forward CV** (season folds, 2018-2022): logloss 0.099-0.113 vs base rate 0.427-0.447.
+
+Full factory splits (every night, same grader as the app; rollout vs the oracle vs a hand rule):
+
+| 377 test nights | big live | crunch live | your-team crunch | dead air | switches/h | mid-play |
+|---|---:|---:|---:|---:|---:|---:|
+| oracle (ceiling) | 96.3 | 95.6 | 1183/1183 | 16.7 | 1.4 | 0 |
+| **PICK v1** | **91.3** | **92.3** | 1163/1183 | **16.7** | 4.2 | 0 |
+| hand rule (crunch first, then closest) | 80.1 | 84.7 | 1155/1183 | 21.3 | 2.6 | 0 |
+
+Calib (377 nights): PICK 89.0 / 89.8 / 1498 of 1503 / 19.4, oracle 95.4 / 93.8 / 1503 / 18.6.
+
+On the app's own eval nights (`eval_sports nba --real-lag --pick ...`): the rollout on the same nights
+and screen lags as the app's sim, both graded by sportsgrade. Locked was scored once.
+
+| NBA | dev app → PICK | locked app → PICK |
+|---|---|---|
+| default config: big live | 67.6 → 84.5 | 62.5 → 81.2 |
+| default: crunch live | 76.7 → 89.6 | 73.7 → 85.5 |
+| default: your-team crunch | 18/31 → 31/31 | 0/0 |
+| default: dead air | 20.2 → 14.1 | 26.8 → 19.7 |
+| default: mid-play entries | 18 → 0 | 8 → 0 |
+| candidate: big live | 81.7 → 83.1 | 100 → 100 |
+| candidate: crunch live | 90.9 → 90.2 | 93.3 → 94.4 |
+| candidate: dead air | 19.4 → 13.7 | 24.1 → 19.1 |
+| candidate: mid-play entries | 3 → 0 | 2 → 0 |
+
+PICK switches ~4-5 times an hour vs the app's ~1.2. The rollout is a schedule, not the app: it assumes
+each switch lands as planned (tune 5 s). Next: a decider hook behind a flag (numpy export of the forest),
+shadow first, then the sim with every app mechanic. NHL waits for local NHL factory nights (they are built
+on the GitHub runner today). Your-team crunch misses 20 of 1,183 test plays (hand rule 28): widening the
+forced window to 8-15 minutes recovers 3 of 5 on calib but costs 2-4 points of big live, so it stays at
+5 minutes until the decider hook, where the app's own L1 rules apply.
+
+### 11b. The PICK decider hook (Nov 4, cycle 03): flag OFF
+
+`noggin.pick` in default_config.yaml, all off: `enabled`, `shadow` (log only, `Decider.pick_log`), `mode`,
+`min_gap_s` (switch-rate cap), `keep_kinds`. The forest runs in numpy (`models/pick_nba.v1.npz`, 99 KB,
+matches LightGBM to 1.5e-8, 0.5 ms for 12 games, no LightGBM at runtime). Each `Timeline` keeps a
+`LiveGame` of the plays delivered so far, and `pick.live_choice` builds the same 22 features as training at
+one tick. In the pipeline `_pick` runs after `_crunch_guard` and before `_hold_for_big`, `_time_entry` and
+`_safe`, so entry timing, the hold for a big play and the safety playbooks still apply to its switches. It
+never acts in a replay, over your team's game, in a crunch window, or on a game it doesn't score (an ended
+one). It always waits for the app's own leave gate (Rule #1).
+
+Mode `breaks` (the default when enabled): PICK only picks where to go while a break is on screen and the app
+would stay. `stays` acts whenever the app stays, and `replace` also overrides the app's non-kept switches.
+Sim, NBA, candidate profile, `--real-lag --oracle`, every night of each split (locked scored once):
+
+| NBA | dev: app → PICK (breaks) | locked: app → PICK (breaks) |
+|---|---|---|
+| mid-play cuts / entries | 0 / 0 → 0 / 0 | 0 / 0 → 0 / 0 |
+| plays missed on entry | 0 → 0 | 0 → 0 |
+| big live % | 77.5 → 77.5 | 68.8 → 68.8 |
+| crunch live % | 90.0 → 90.0 | 84.9 → **81.0** |
+| your-team crunch | 31/31 → 31/31 | 0/0 |
+| dead air % | 19.4 → **18.1** | 24.1 → **23.4** |
+| switches / h | 1.2 → 1.6 | 1.1 → 1.7 |
+| pct_of_oracle (worst line) | 83.3 → 83.3 (big live) | 68.8 → 68.8 (big live) |
+| live-air share of the ceiling | 90.8 → 92.2 | 90.0 → 90.9 |
+
+It misses the bar: big live only ties (needs a win), and locked crunch live drops 3.9 points. The gap to
+the oracle is unchanged: 16.7 points on dev and 31.2 on locked, all of it big live (ceiling 93.0 on dev).
+So it ships OFF. Dev variants (no locked runs): `replace` with the first fixes had 10 mid-play cuts (a
+switch off an ended game skipped the leave gate; fixed) and your-team 17/31 (fixed by never acting on a
+game PICK doesn't score). After those fixes, `replace`/`stays` tie big live at best and lose crunch
+(88.2) with 2 mid-play entries, because PICK's own whistle-time switches cost crunch. A 90 s or 180 s
+`min_gap_s` cap gave the same switch rate (1.6-1.9/h) with 0.4-0.8 points more dead air, so the cap ships
+at 0 (off). Next: the 22 features don't see why crunch is coming (the oracle's labels follow the screen
+one tune later, not the crunch window ahead), so add crunch-ahead features and retrain, then re-grade on
+fresh nights.

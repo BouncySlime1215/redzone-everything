@@ -76,6 +76,11 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--delay-model", choices=("channel", "legacy"), default=None)
     ap.add_argument("--resync", action="store_true",
                     help="model live Kalman re-sync on every tune (backtest.run resync)")
+    ap.add_argument("--break-anchors", action="store_true",
+                    help="[auto-anchors] the live filter fed only by on-screen ad breaks (backtest.run anchors; "
+                         "needs --set sync.break_anchor.enabled=true)")
+    ap.add_argument("--tune-jitter", type=float, default=0.0, metavar="S",
+                    help="[auto-anchors] each tune lands U(0, S) s behind the live edge, unknown to the app")
     ap.add_argument("--real-lag", action="store_true",
                     help="[switch timing] plays reach the app after the MEASURED feed lag per league "
                          "(redzone/lab/feed_lag_profile.json), not a fixed 8 s")
@@ -93,6 +98,7 @@ def knobs(a: argparse.Namespace) -> dict:
                 drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed,
                 channel_spread=getattr(a, "channel_spread", 0.0), history=getattr(a, "history", 0.0),
                 delay_model=getattr(a, "delay_model", None), resync=getattr(a, "resync", False),
+                anchors=getattr(a, "break_anchors", False), tune_jitter_s=getattr(a, "tune_jitter", 0.0),
                 feed_lag_model="measured" if getattr(a, "real_lag", False) else None,
                 **feed_lag_knobs(getattr(a, "feed_lag", None), getattr(a, "behind_live", None)))
 
@@ -106,6 +112,13 @@ def main():
     ap.add_argument("--end", default=None, help="last night to grade (YYYYMMDD); default eval.<league>_end")
     ap.add_argument("--split", choices=splits.SPLITS, default="all",
                     help="grade one time split of the pinned window (redzone/lab/splits.py); test = LOCKED")
+    ap.add_argument("--oracle", action="store_true",
+                    help="also solve the hindsight oracle per night (redzone/lab/oracle.py): each line's ceiling")
+    ap.add_argument("--pick", type=Path, default=None,
+                    help="also roll out a Noggin PICK model (e.g. redzone/noggin/models/pick_nba.v1.txt.gz) on each night")
+    ap.add_argument("--pick-margin", type=float, default=0.1)
+    ap.add_argument("--oracle-out", type=Path, default=None,
+                    help="with --oracle: write each night's oracle schedules + Pick labels to DIR/<league>_<night>.json")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                     help="override a config value for this run, e.g. replay.redzone_way=true")
     stress_args(ap)
@@ -147,7 +160,55 @@ def main():
                           "landings_dead": card.cut.landings()[0],
                           "dead_s": round(card.dead, 1), "watched_s": round(card.watched, 1),
                           "crunch": card.crunch, "crunch_live": card.crunch_live,
-                          "my_crunch": card.my_crunch, "my_crunch_live": card.my_crunch_live})
+                          "my_crunch": card.my_crunch, "my_crunch_live": card.my_crunch_live,
+                          "sync_honesty": rep.sync_honesty})
+        if a.oracle:
+            from redzone.lab import oracle as O
+            n = O.Night(reps, mine, rep.lag_true, 5.0, rep.t0, rep.t1)
+            import numpy as np
+            tab = O.tables(n, np.arange(n.t0, n.t1, O.STEP_S))
+            per_night[-1]["oracle"] = {}
+            scheds = {}
+            for obj in O.OBJECTIVES:
+                osw = O.solve(n, obj, tab)
+                scheds[obj] = osw
+                oc = O.grade(n, osw)
+                ocs = oc.cut.summary()
+                per_night[-1]["oracle"][obj] = {
+                    "big": oc.big, "big_live": oc.big_live, "crunch": oc.crunch, "crunch_live": oc.crunch_live,
+                    "my_crunch": oc.my_crunch, "my_crunch_live": oc.my_crunch_live, "mid_play_cuts": len(oc.cuts),
+                    "entries": ocs["entries"], "entries_mid_play": ocs["entries_mid_play"],
+                    "dead_s": round(oc.dead, 1), "watched_s": round(oc.watched, 1), "switches": oc.switches}
+            if a.oracle_out:
+                # Pick labels: the combined oracle's game at every 5 s step (the one picked, also while black)
+                steps = np.arange(n.t0, n.t1, O.STEP_S)
+                gi, on, cur = {r.gid: r for r in reps}, [], None
+                sw = sorted(scheds["combined"], key=lambda x: x.t)
+                j = 0
+                for t in steps:
+                    while j < len(sw) and sw[j].t <= t:
+                        cur, j = sw[j].to, j + 1
+                    on.append(cur if cur in gi else None)
+                a.oracle_out.mkdir(parents=True, exist_ok=True)
+                (a.oracle_out / f"{lg.value}_{day}.json").write_text(json.dumps({
+                    "night": day, "league": lg.value, "t0": n.t0, "step_s": O.STEP_S, "tune_s": n.tune_s,
+                    "schedules": {k: [dict(t=x.t, frm=x.frm, to=x.to) for x in v] for k, v in scheds.items()},
+                    "pick_labels": on}))
+        if a.pick:
+            import numpy as np
+
+            from redzone.lab import oracle as O
+            from redzone.noggin import pick as PK
+            booster = PK.load_booster(a.pick)
+            n = O.Night(reps, mine, rep.lag_true, 5.0, rep.t0, rep.t1)
+            steps = np.arange(n.t0, n.t1, O.STEP_S)
+            tab = O.tables(n, steps)
+            X = PK.features_for_night(reps, tab, steps, rep.lag_true, mine)
+            G, K, F = X.shape
+            sc = booster.predict(X.reshape(-1, F)).reshape(G, K)
+            psw = PK.rollout(sc, X, reps, steps, 5.0, a.pick_margin)
+            per_night[-1]["pick"] = O.counts(O.grade(n, psw))
+            per_night[-1]["app_sg"] = O.counts(card)
         if a.slates:
             print(" ", day, json.dumps(card.summary()))
             for t, what in card.cuts[:3]:
@@ -159,6 +220,21 @@ def main():
     out["eval_data"] = evaldata.stamp()
     out["eval_end"] = end
     out["per_night"] = per_night
+    if a.pick:
+        from redzone.lab import oracle as O
+        out["pick"] = O.aggregate([x["pick"] for x in per_night if "pick" in x])
+        out["app_sg"] = O.aggregate([x["app_sg"] for x in per_night if "app_sg" in x])
+    if a.oracle:
+        out["oracle"] = {}
+        for obj in {k for x in per_night for k in x.get("oracle", {})}:
+            tot = {}
+            for x in per_night:
+                for k, v in x.get("oracle", {}).get(obj, {}).items():
+                    tot[k] = tot.get(k, 0) + v
+            tot["big_live_pct"] = round(100 * tot["big_live"] / max(1, tot["big"]), 1)
+            tot["crunch_live_pct"] = round(100 * tot["crunch_live"] / max(1, tot["crunch"]), 1)
+            tot["dead_air_pct"] = round(100 * tot["dead_s"] / max(1, tot["watched_s"]), 1)
+            out["oracle"][obj] = tot
     print(json.dumps(out, indent=1))
 
 

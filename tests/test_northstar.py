@@ -134,3 +134,69 @@ def test_sync_rows():
     assert ns.settle_row(reps)["status"] == ns.PASS
     assert ns.settle_row([{"seed": i, "settle_book": {"n": 20, "ok": 17}} for i in range(8)])["status"] == ns.FAIL
     assert rows_by(ns.table(cards(9)))["delay_err_p95"]["status"] == ns.PENDING
+
+
+def test_profile_run_keeps_its_candidate_column(tmp_path, monkeypatch):
+    """Regression: a later results[split] assignment dropped the --profile column (cycle 01)."""
+    calls = []
+
+    def fake_run(root, split, timeout=1800, profile=None, **kw):
+        calls.append(profile)
+        return cards(mid=1 if profile is None else 0)
+
+    monkeypatch.setattr(ns, "run_cards", fake_run)
+    monkeypatch.setattr(ns, "run_drill", lambda root, seeds: None)
+    out = tmp_path / "ns.json"
+    ns.main(["--split", "dev", "--profile", "candidate", "--no-write", "--json", str(out)])
+    res = json.loads(out.read_text())["dev"]
+    assert calls == [None, "candidate"]
+    assert "candidate" in res and res["candidate"]["profile"] == "candidate"
+    assert rows_by(res["candidate"]["rows"])["mid_play"]["value"] == 0
+    assert rows_by(res["rows"])["mid_play"]["value"] > 0
+
+
+def test_right_game_reads_store_taps(tmp_path, monkeypatch):
+    import time as _time
+    from redzone.store import Store
+    assert ns.load_taps(tmp_path / "none.db") is None and not (tmp_path / "none.db").exists()
+    db = tmp_path / "redzone.db"
+    st = Store(db)
+    base = 1_793_000_000.0                       # an evening, Eastern
+    for night in range(9):
+        for k in range(8):
+            monkeypatch.setattr(_time, "time", lambda t=base + night * 86400 + k * 60: t)
+            st.feedback("g1", 1 if k else -1, "switch", {"reason": "crunch", "switch": k})
+    monkeypatch.setattr(_time, "time", lambda: base + 10 * 86400)
+    st.feedback("g1", 0, "missed", {})
+    st.feedback("g1", 0, "switch", {})          # cleared: not counted
+    monkeypatch.undo()
+    taps = ns.load_taps(db)
+    assert len(taps) == 74
+    r = ns.right_game_row(taps)
+    assert r["key"] == "right_game" and r["nights"] == 10
+    assert abs(r["value"] - 100 * 63 / 73) < 0.01 and r["status"] == ns.FAIL      # 86 % < 95 %
+    assert ns.right_game_row(None)["status"] == ns.PENDING
+
+
+def test_every_run_runs_the_controls_drill_unless_given_one(tmp_path, monkeypatch):
+    """press_to_tv_p95 gets a sim value on every run (cycle 02 lane 3): no --controls-json -> drill runs."""
+    seen = []
+    drill = {"summary": {"nights": 2, "go_now_within_3s_pct": 50.0, "taps": 10}, "runs": [{"go_now_s": [1.5, 2.5]}]}
+    monkeypatch.setattr(ns, "run_cards", lambda root, split, **kw: cards())
+    monkeypatch.setattr(ns, "run_drill", lambda root, seeds: seen.append(seeds) or drill)
+    out = tmp_path / "ns.json"
+    ns.main(["--split", "dev", "--no-write", "--json", str(out)])
+    assert seen == [2]
+    row = rows_by(json.loads(out.read_text())["dev"]["rows"])["press_to_tv_p95"]
+    assert row["value"] == 2.5 and row["status"] == ns.PENDING
+    given = tmp_path / "c.json"
+    given.write_text(json.dumps(drill))
+    ns.main(["--split", "dev", "--no-write", "--json", str(out), "--controls-json", str(given)])
+    assert seen == [2]                                  # given a report: no second drill
+
+
+def test_press_row_reports_pre_tuned_and_cold_presses_apart():
+    drill = {"summary": {"nights": 1, "warm": {"n": 2, "p50_s": 2.9, "p95_s": 3.1},
+                         "cold": {"n": 1, "p50_s": 8.5, "p95_s": 8.5}}, "runs": [{"go_now_s": [2.9, 3.1, 8.5]}]}
+    row = ns.press_row(drill)
+    assert "pre-tuned 2: p50 2.9 s, p95 3.1 s" in row["detail"] and "cold 1: p50 8.5 s" in row["detail"]

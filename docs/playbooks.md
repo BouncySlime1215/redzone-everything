@@ -38,19 +38,19 @@ crunch value, P2 = robustness, P3 = polish.
 | SAFE-05 | clock skew detected (feed vs wall > 5 s) | re-anchor the clock; no cut until re-anchored | hold | clock_skew | mid_play | ② | exists |
 | SAFE-06 | finished game on screen | wait for the target's next dead ball, then enter | 180 s cap only if target is in a break | replayed nights (cycle 01 ②) | mid_play | ② | partial |
 | SAFE-07 | crunch starts while target is live-play | wait for whistle unless restart countdown < flip time | stay on current crunch | replayed nights | mid_play, crunch_* | ② | partial |
-| SAFE-08 | hidden stick not steady PLAYING 1 s before flip | skip the flip, retry at the next dead ball | stay on current | flip_ignored, stick_wedge | flip_playing_3s | ③ | partial (#70) |
-| BTN-01 | LOCK IN pressed | hold that game until released; survive restart | if the stick dies, re-tune it on the other stick | scripted press on a replayed night | press_to_tv_p95 | ③ | new (cycle 01) |
-| BTN-02 | GO NOW pressed | pre-tune hidden stick, flip, confirm on phone ≤3 s | if pre-tune fails, tune the visible stick and confirm | scripted press | press_to_tv_p95 | ③ | new (cycle 01) |
-| BTN-03 | pause / resume / skip / override | id + ack + retry, idempotent | phone shows "not delivered" after 3 tries | dropped + duplicated commands | press_to_tv_p95 | ③ | new (cycle 01) |
+| SAFE-08 | hidden stick not steady PLAYING 1 s before flip | skip the flip, retry at the next dead ball | stay on current | flip_ignored, stick_wedge | flip_playing_3s | ③ | done (tests/test_control.py; flip_playing in the night report) |
+| BTN-01 | LOCK IN pressed | hold that game until released; survive restart | if the stick dies, re-tune it on the other stick | scripted press on a replayed night | press_to_tv_p95 | ③ | done (drill night: tests/test_controls_drill.py) |
+| BTN-02 | GO NOW pressed | pre-tune hidden stick, flip, confirm on phone ≤3 s | if pre-tune fails, tune the visible stick and confirm | scripted press | press_to_tv_p95 | ③ | done (drill night) |
+| BTN-03 | pause / resume / skip / override | id + ack + retry, idempotent | phone shows "not delivered" after 3 tries | dropped + duplicated commands | press_to_tv_p95 | ③ | done (drill night + tests/test_controls.py) |
 | BTN-04 | release LOCK | return to the decider's pick at the next dead ball | stay | scripted press | mid_play | ③ | new |
 | BTN-05 | press arrives during a flip | queue it, apply after the flip settles | drop only if superseded, and say so | scripted press mid-flip | press_to_tv_p95 | ③ | new |
 | BTN-06 | phone loses connection | server keeps the last state; phone resyncs on reconnect | phone shows stale banner | new `phone_offline` fault | – | ③ | new |
-| STK-01 | visible stick drops (adb) | reconnect; if > 10 s, flip TV to hidden stick on current game | one-stick mode (STK-05) | stick_drop host=visible | recovery | ③ | exists |
-| STK-02 | hidden stick drops | reconnect; meanwhile no pre-tune, flips become tune-in-place at dead balls | one-stick mode | stick_drop host=hidden | recovery | ③ | exists |
-| STK-03 | stick wedged (adb up, app frozen) | force-stop app, relaunch, re-tune | reboot stick via adb | stick_wedge | recovery | ③ | exists |
+| STK-01 | visible stick drops (adb) | reconnect; if > 10 s, flip TV to hidden stick on current game | one-stick mode (STK-05) | stick_drop host=visible | recovery | ③ | done (e2e night two_stick_recovers) |
+| STK-02 | hidden stick drops | reconnect; meanwhile no pre-tune, flips become tune-in-place at dead balls | one-stick mode | stick_drop host=hidden | recovery | ③ | done (e2e night two_stick_recovers) |
+| STK-03 | stick wedged (adb up, app frozen) | force-stop app, relaunch, re-tune | reboot stick via adb | stick_wedge | recovery | ③ | done (e2e night wedged_stick_reconnected) |
 | STK-04 | "Still watching?" prompt | dismiss on the hidden stick at once, visible stick at the next dead ball | relaunch app | still_watching (seed 9 miss) | recovery | ④ | partial (#64) |
 | TV-01 | SmartThings flip ignored | retry once; verify by input readback | LAN WebSocket KEY_HDMI fast path; else stay on current | flip_ignored, tv_input_ignored | switch_p95, recovery | ③ | partial |
-| TV-02 | SmartThings API down | LAN WebSocket path | CEC via the stick; else one-stick mode | api_down | recovery | ③ | partial |
+| TV-02 | SmartThings API down | LAN WebSocket path | CEC via the stick; else one-stick mode | api_down, st_down (faults:tv) | recovery | ③ | exists (HOME fallback; tested) |
 | MAC-01 | Mac about to sleep | caffeinate while games are live; persist state | on wake: restore state, re-verify sticks and TV input | new `mac_sleep` fault | recovery | ④ | partial (wake.py) |
 
 ## P1: big plays and crunch (the scenario tree's first branches)
@@ -64,12 +64,12 @@ generalize them; until then each is a named rule, tested on replayed nights.
 | GAME-02 | TD/score in A, C has a power play (NHL) | C next at the first whistle | A replay reel if C's PP ends | replayed mixed nights | big_live_nhl | ② | new |
 | GAME-03 | your-team crunch starts | lock in (soft lock) until it ends or a blowout | none: L1 | replayed your-team nights | your_team_crunch | ② | partial (Priority L1) |
 | GAME-04 | buffer shows a big play in the next 30-60 s in game X (clairvoyance) | pre-tune X, flip at the dead ball before it airs | reel it within 10 min if missed | replayed nights with the buffer | big_live_* | ①② | new (cycle 02) |
-| GAME-05 | two crunches at once, same league | higher stakes (score margin, time, playoff) live, other time-shifted on the second stick | catch-up reel after | replayed overlap nights | crunch_* | ② | partial |
-| GAME-06 | two crunches, different leagues | league order live, other time-shifted | catch-up | mixed nights | league_order | ② | partial |
+| GAME-05 | two crunches at once, same league | higher stakes (score margin, time, playoff) live, other time-shifted on the second stick | catch-up reel after | replayed overlap nights | crunch_* | ② | built, flag `playbooks.game.crunch_overlap` off |
+| GAME-06 | two crunches, different leagues | league order live, other time-shifted | catch-up | mixed nights | league_order | ② | done (league order, tested) |
 | GAME-07 | NFL drive reaches the 20 | candidate for next switch (drive-in-20) | stay if current is crunch | replayed NFL | big_live_nfl | ② | exists (#62, off) |
 | GAME-08 | NBA final 2:00 within 5 | crunch priority; wait for dead ball | – | replayed NBA | crunch_nba | ② | partial |
-| GAME-09 | NHL empty net / 6-on-5 | top priority among non-your-team games | – | replayed NHL | big_live_nhl | ② | new |
-| GAME-10 | game goes to OT | crunch for its league | – | replayed | crunch_* | ② | partial |
+| GAME-09 | NHL empty net / 6-on-5 | top priority among non-your-team games | – | replayed NHL | big_live_nhl | ② | built, flag `playbooks.game.empty_net` off (live feed only) |
+| GAME-10 | game goes to OT | crunch for its league | – | replayed | crunch_* | ② | done (OT = crunch, tested) |
 | GAME-11 | blowout (win prob > 97%) | drop to idle priority; poll slower (attention budget) | resume if margin closes | replayed | crunch_*, CPU | ②③ | new |
 | GAME-12 | every game in break at once | best replay reel; else stay | stay on the break with the shortest expected length | replayed | dead_air (ceiling) | ② | partial (reels off) |
 | GAME-13 | big play missed live | catch-up reel in the next dead time ≤ 10 min | queue it after crunch | replayed | big_seen_10min | ② | partial (reels off) |
@@ -80,8 +80,8 @@ generalize them; until then each is a named rule, tested on replayed nights.
 | GAME-18 | NHL penalty shot / shootout | top priority | – | replayed | big_live_nhl | ② | new |
 | GAME-19 | NBA end-of-quarter heave window (< 5 s) | stay if already there; don't enter | – | replayed | mid_play | ② | new |
 | GAME-20 | live-odds swing > threshold (free source) | raise game priority | ignore if the source is stale | replayed with archived odds | big_live_* | ① | new (idea #6) |
-| GAME-21 | review / challenge in A | treat as a break: leave for B | back at the restart | replayed | dead_air | ② | new |
-| GAME-22 | injury stoppage | treat as a long break | – | replayed | dead_air | ② | new |
+| GAME-21 | review / challenge in A | treat as a break: leave for B | back at the restart | replayed | dead_air | ② | built, scenario row (flag `playbooks.game.enabled` off) |
+| GAME-22 | injury stoppage | treat as a long break | – | replayed | dead_air | ② | built, scenario row (flag `playbooks.game.enabled` off) |
 | GAME-23 | game delayed / weather | drop from the slate until it resumes | – | slate fixture | – | ② | new |
 | GAME-24 | new game starts while another is in crunch | don't leave crunch; time-shift the new game's start | – | replayed | crunch_* | ② | partial |
 
@@ -89,9 +89,9 @@ generalize them; until then each is a named rule, tested on replayed nights.
 
 | id | trigger | action | fallback | test | line | lane | status |
 |---|---|---|---|---|---|---|---|
-| FEED-01 | ESPN summary 5xx | switch to the next source (NHL wsc, NBA liveData) | FastCast; else SAFE-01 | feed_5xx / api_down | recovery | ④ | partial |
+| FEED-01 | ESPN summary 5xx | switch to the next source (NHL wsc, NBA liveData) | FastCast; else SAFE-01 | feed_5xx / api_down | recovery | ④ | done (flag sources.trust_order, off; tests/test_feed_trust_order.py) |
 | FEED-02 | feed returns stale ETag for > 30 s | burst poll the challenger | SAFE-01 | new `feed_frozen` fault | mid_play | ④ | partial (#73) |
-| FEED-03 | two sources disagree on clock/state | trust the faster measured source, log it | hold | new `feed_disagree` fault | mid_play | ④ | new |
+| FEED-03 | two sources disagree on clock/state | trust the faster measured source, log it | hold | new `feed_disagree` fault | mid_play | ④ | done (flag sources.trust_order, off; merger.disagreements logged) |
 | FEED-04 | play arrives out of order / late | re-sort by wallclock; revise only future decisions | – | lag jitter (B12) | mid_play | ④ | new |
 | FEED-05 | feed schema change (parse error) | quarantine the source, fall back | file an auto-fix issue | malformed fixture | recovery | ④ | partial (autofix) |
 | FEED-06 | rate limited (429) | back off with jitter, rotate source | – | new `rate_limit` fault | recovery | ④ | new |
@@ -113,8 +113,8 @@ generalize them; until then each is a named rule, tested on replayed nights.
 | MAC-06 | app process crash | supervisor restarts, restores state ≤ 10 s | safe mode | app_crash | recovery | ④ | exists |
 | MAC-07 | corrupt DB or config | start with defaults, keep TV control | – | fixture | recovery | ④ | partial (#24 closed; port) |
 | MAC-08 | disk nearly full | rotate logs and recordings | stop recordings | fixture | recovery | ④ | new |
-| TV-03 | TV turned off / other input by a person | stop flipping; wait for TV on our input | notify phone | new `tv_off` fault | recovery | ③ | new |
-| TV-04 | TV CEC wakes on a stick reboot and steals the input | revert input to the visible stick | – | new fault | recovery | ③ | new |
+| TV-03 | TV turned off / other input by a person | stop flipping; wait for TV on our input | notify phone | tv_other_input (faults:tv) | recovery | ③ | exists (never takes the TV back; tested) |
+| TV-04 | TV CEC wakes on a stick reboot and steals the input | revert input to the visible stick | – | cec_steal (faults:tv) | recovery | ③ | built, OFF (`hardening.tv`) |
 | SYNC-01 | drift alarm (measured or predicted > 5 s) | re-sync on the hidden stick at a dead ball | SAFE-02 | drift fixture | delay_err_p95 | ② | partial |
 | SYNC-02 | break anchor seen on screen | update the Kalman filter | – | probe replay | delay_err_p95 | ② | partial |
 | SYNC-03 | stall on a stick | shift the filter, don't reset | – | stall fixture | delay_err_p95 | ② | partial |

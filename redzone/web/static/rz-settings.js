@@ -7,10 +7,10 @@ import {
 import { patch } from "./rz-dom.js?v=40";
 import { icon, logo, leagueImg, empty, sec, screenHead, skel } from "./rz-ui.js?v=40";
 import { confirmSheet, toast } from "./rz-sheet.js?v=40";
-import { api, act } from "./rz-api.js?v=42";
+import { api, act } from "./rz-api.js?v=43";
 import { loadTeams, teamList } from "./rz-detail.js?v=42";
 import { showTeams } from "./rz-games.js?v=41";
-import { prioritySection } from "./rz-v2.js?v=4";
+import { prioritySection } from "./rz-v2.js?v=6";
 
 const ui = app.ui;
 ui.pending = ui.pending || {};

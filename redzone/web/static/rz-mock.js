@@ -144,6 +144,7 @@ function gameForTeam(lg, id) {
   return copy(STATE.games.find((g) => g.league === lg && (g.home.id === id || g.away.id === id)) || null);
 }
 
+const TAPS = {};
 export async function mockApi(path, { method, body } = {}) {
   await sleep(140 + Math.random() * 160);
   const m = (method || (body !== undefined ? "POST" : "GET")).toUpperCase();
@@ -199,7 +200,20 @@ export async function mockApi(path, { method, body } = {}) {
     return { ok: true, message: "Removed" };
   }
   if (path === "/api/lab") return labPayload();
-  if (path === "/api/action") return action(b);
+  if (path === "/api/action") {
+    const r = action(b);
+    if (!Q.has("v2") || !b.id || !r || r.ok === false) return r;
+    // phone v2 tap states: a game tap waits ~3 s for a "safe moment", then the TV shows it
+    const game = ["hold", "watch", "redzone", "focus"].includes(b.action) && b.game_id;
+    if (game) TAPS[b.id] = { at: Date.now(), gid: b.game_id };
+    return { ...r, id: b.id, state: game ? "waiting" : "done", on_tv: game ? false : undefined };
+  }
+  if (path.startsWith("/api/action/")) {
+    const t = TAPS[decodeURIComponent(path.slice(12))];
+    if (!t) throw new Error("unknown or expired tap id");
+    const on = Date.now() - t.at > 3000;
+    return { ok: true, id: path.slice(12), state: on ? "done" : "waiting", on_tv: on, game_id: t.gid };
+  }
   return { ok: true, message: "(preview) saved" };
 }
 

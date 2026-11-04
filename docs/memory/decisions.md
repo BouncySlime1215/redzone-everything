@@ -163,10 +163,34 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   setting, uses its own adb process and skips every tick during a switch, flip or preload, in dry run, and when
   the governor blocks OCR. It writes `recordings/<day>/sync_probe.jsonl`. The visible stick's UI tree is not dumped
   (`sync.probe.visible_ui: false`) until a dump is shown not to stutter the picture. Decisions don't read it.
+- 2026-11-04 8:20 AM: **Sync stack** (Nick, 1:50 AM: delay isn't stationary). (1) A hold or stall timed on the
+  stick's clock now SHIFTS the sync filter (+-0.5 s) instead of re-syncing it, which threw a good estimate away
+  for every 1 s buffering blip (#70 + #61 hold). (2) The probe's network features (stalls/min, RSSI, RSSI drop)
+  scale each channel's process noise (q_scale 1-25): a weak link widens the error bar the Reflex uses.
+  (3) Break anchors: ad-label edges on the hidden stick matched to the feed's dead ball, LOGGED to
+  sync_anchors.jsonl (ts, target, stick, sample_kind, feed_wall); `sync.break_anchor.enabled: false` until the
+  Wednesday data fits the whistle-to-break bias. (4) Drift alarm (>5 s since sync, or q_scale >= 9) logged;
+  `sync.drift_alarm.resync: false`. The sims don't run these paths: scorecards unchanged by construction.
 - 2026-11-04 3:15 AM: **Noggin Timing v1 ships OFF** (`noggin.timing.leagues: []`). NBA hazard + conformal lower
   bound: 0.56 % of restarts before the bound on 421 unseen public nights (today's FLOOR_S: 7.33 %) at the same
   tightness, ECE 0.053; on the NBA scorecard at B=90 (dev nights) entries mid-play 5/61 -> 5/61, so no gain to
   ship yet. The remaining NBA mid-play entries are entry policy (crunch_now live, 180 s wait cap), Noggin Pick.
+- 2026-11-04 5:00 AM: **Hindsight oracle + `oracle_gap` lines** (`redzone/lab/oracle.py`, `eval_sports.py --oracle`,
+  `northstar.py --oracle`, INFO rows, no gate changes). DP over 5 s steps with every hard rule (clean leave and
+  landing, your-team crunch first), live-only with no rewinds, graded by the same `sportsgrade.grade`. Candidate dev
+  nights: NBA big plays live ceiling 93.0 % (app 81.7), crunch 93.7 (90.9), dead air 11.2 (19.2); NHL goals live
+  85.3 (44.7), crunch 87.9 (80.6), dead air 18.9 (22.4). The NBA >= 95 % big-plays-live gate is above the live-only
+  ceiling on these nights.
+- 2026-11-04 10:15 AM (lane 1, cycle 02): **new North Star line `pct_of_oracle_{nfl,nba,nhl}`, target >= 90 %**
+  (Start Planner's cycle 02 plan): the app as a share of the hindsight ceiling on the same nights, the worst
+  of big live, crunch live and live air (100 - dead air). NFL compares the oracle with the app's switches
+  re-graded by sportsgrade (one grader on both). Plus INFO ceilings for dead air and crunch live. No default
+  changes. Dev: NFL 27.4, NBA 73.9, NHL 47.5 %; big live is the worst line in every league.
+- 2026-11-04 4:30 AM: **Noggin Timing v1 NFL and Predict v1 NBA ship OFF** (`noggin.timing.leagues: []`,
+  new `noggin.predict.leagues: []`, `noggin.predict.points: 20`). NFL Timing: 1.43 % of restarts before the
+  bound on 122 unseen nights vs FLOOR_S 9.1 %, scorecard neutral (0 mid-play). Predict: beats the game-state
+  baseline on logloss and PR-AUC in all 5 forward-CV folds, but no big-live gain in the candidate NBA sim and
+  crunch live -1.3 points on dev nights. Neither joins the candidate (docs/noggin.md §10).
 - 2026-11-04 9:30 AM (noggin logic, cycle 01): **candidate profile: finished-game exits wait for the next dead
   ball and crunch entries rewind to the last whistle** (`decider.entry.max_wait_s={}`,
   `decider.entry.crunch_now=rewind`, candidate only, live defaults unchanged). Full sets, candidate column: dev
@@ -182,3 +206,61 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (`noggin.priority.prefs`, the same values as `Preferences` in redzone/noggin/priority.py, so nothing moves).
   Phone v2 only writes `feedback` rows (note `switch` / `missed`); the decider, tick loop and TV never read them.
   Rivalries stay config-only for now: the validator takes lists of names, not pairs.
+- 2026-11-04 11:55 AM (noggin logic, cycle 02): **candidate: crunch_now=wait + clairvoyance (GAME-04,
+  `noggin.lookahead.enabled`)**, candidate only; live defaults unchanged. Asked by the Start Planner pending Nick's
+  call on wait (rule #1). Candidate mid-play 0 on dev and locked in NBA/NHL/NFL. Cost of wait, NBA: dev big live
+  81.7 -> 77.5, crunch 90.9 -> 90.0; locked big live 100 -> 68.8 (16 plays), crunch 93.3 -> 84.9. Lookahead: NFL dev
+  big live 50.3 -> 54.3 (locked 49.0 -> 52.9), dead air +0.4 / +0.5. Revert wait with one line in profile.py.
+- 2026-11-04 10:00 AM: **TV-04 undo added OFF** (`hardening.tv: false`). When the TV jumps by itself
+  (SmartThings readback, no command of ours) to a stick that isn't playing, while the stick it left still
+  plays our game, the controller puts the TV straight back and no preload runs until it has. Night lab
+  (`--faults redzone.lab.night.faults:tv --tv smartthings`, seeds 1-2): back on the game in 20.1 s / 15.3 s
+  with it on; off, the TV stays on the rebooted stick's home screen until the next switch. It stays off
+  until a real CEC steal is seen on Nick's TV (the Wed test), because a wrong undo would take the TV from a person.
+- 2026-11-04 10:30 AM (noggin logic, playbooks): **Safety playbooks SAFE-01/02/03/05 ship OFF**
+  (`playbooks.safe.enabled: false`, redzone/decider/playbooks.py). Each holds a switch and logs `playbook=<id>`.
+  SAFE-02's threshold is 10 s, not the backlog's 3 s: the sims' normal delay doubt is 4-8 s (floor
+  `delay.sync.min_sigma_s` 4, uncalibrated 8), and 3-8 s held normal entries (NHL dev crunch live 80.6 -> 66.0
+  at 3 s, 72.4 at 6 s, 74.3 at 8 s; 80.6 at 10 s). At 10 s, dev and locked scorecards are identical on and off;
+  the night lab (`--faults redzone.lab.night.faults:safety`, 3 seeds) passes with 0 mid-play cuts.
+- 2026-11-04 11:15 AM (noggin logic, scenario tree): **scenario-tree lookup ships OFF** (`playbooks.game.enabled:
+  false`, redzone/decider/scenarios.py, seeds GAME-01..03). Dev is mixed (NFL crunch live 68.0 -> 67.6, big seen
+  98.7 -> 98.1, big live 50.3 -> 50.5, dead air 29.8 -> 29.4; NHL big live 44.7 -> 44.9, dead air 22.4 -> 22.6;
+  NBA unchanged). Locked: NFL crunch live 68.1 -> 69.0, your-team crunch 26/27 -> 27/27; NHL big live 48.1 -> 48.6.
+  0 mid-play cuts on both. The table format is the contract for the cloud-built tree (idea #19).
+- 2026-11-04 10:50 AM (lane 2, planner ask: GAME-05 now, then 06/09/10/21/22/11): **new flags
+  `playbooks.game.crunch_overlap` (GAME-05) and `playbooks.game.empty_net` (GAME-09), both OFF; GAME-21/22 are seed rows
+  under `playbooks.game.enabled` (OFF).** Why off: GAME-05 is mixed (dev NHL crunch 80.6 -> 79.7, locked 76.2 -> 84.7 with
+  every new flag on), and GAME-09 can't be graded on replays (ESPN has no empty-net signal). The scenario tree as a whole
+  costs NFL big plays seen within 10 min 87.8 -> 84.3 (GAME-01 visits): keep `playbooks.game.enabled` off until fixed.
+- 2026-11-04 6:30 AM: **`sources.trust_order` added OFF** (empty lists per league, cycle 02 lane 4, FEED-01/03). When set,
+  the first fresh, unbenched, non-erroring source in the list owns a game's stoppage, the next takes over on its
+  errors/silence, and disagreements are counted (`Merger.disagreements`). Empty = the old nhl/nba_primary behavior.
+  `right_game` now reads `Store.taps()` from data/redzone.db when it exists (PENDING otherwise).
+- 2026-11-04 12:00 PM (lane 1, cycle 02): **Noggin Reflex PICK v1 (NBA) is offline only**: a model plus
+  `eval_sports --pick`, with no decider hook and no default changes. It imitates the hindsight oracle and is
+  graded on the full factory test split (377 nights: big live 91.3 vs hand 80.1, oracle 96.3) and on the
+  app's eval nights (dev vs the candidate: big live 81.7 -> 83.1, dead air 19.4 -> 13.7, mid-play entries
+  3 -> 0). Next is a flag-off decider hook in shadow first, since the rollout assumes every switch lands
+  as planned.
+- 2026-11-04 11:55 AM (lane 2, scenario tree): **`playbooks.game.skip: [GAME-01]` by default, and a visit row never
+  displaces a catch-up reel or crunch time.** Why: with the tree on, GAME-01 visits (and visits replacing reels) cost
+  dev NFL big plays seen within 10 min 87.8 -> 84.3 and crunch 70.7 -> 68.7. With both changes the tree is no worse
+  than off on any league: dev NFL big live 54.4 -> 54.7, crunch 70.7 -> 71.0, 10-min seen 87.8 = 87.8, dead air 30.4 =;
+  locked NFL equal (10-min seen 88.3 -> 88.6); NBA/NHL equal. `playbooks.game.enabled` stays OFF.
+- 2026-11-04 1:10 PM (lane 2, cycle 03, planner redirect): **new `delay.self_calibrate` block, OFF** (NoiseCal:
+  the stated doubt learned from break-anchor innovations, floor 2 s, never wider than the aging model). Why off:
+  sims only (live needs the residual pool persisted across nights), and the truth model it is graded against
+  (per-tune U(0, 6) s, gap 15 +- 10 s) is an assumption until Thursday's probe data. Measured (honest sims, wait):
+  dev NFL big live 54.4 -> 57.6, locked 53.3 -> 60.4, coverage 98.4-100%, 0 new mid-play entries.
+- 2026-11-04 12:45 PM (controls, cycle 03): **the candidate profile turns `two_stick.pretune_on_open` on**; the live
+  default stays off. Drill (4 nights, flaky taps): with it, press-to-TV p50 8.5 -> 3.7 s and pre-tuned presses
+  p95 stays 8.75 s. Pre-tuned presses (game live on the hidden stick): 10, p50 3.02 s, p95 3.7 s, bounded by the
+  ~2 s SmartThings flip. Cold presses (a tune, including a channel parked on a catch-up replay): 8, p50 8.5 s.
+  The drill and the North Star line now report the two apart.
+- 2026-11-04 1:30 PM (lane 1, cycle 03): **The Noggin PICK decider hook ships OFF** (`noggin.pick.enabled:
+  false`, `shadow: false`; new knobs `mode: breaks`, `min_gap_s: 0`, `keep_kinds`). NBA candidate sim with
+  the flag ON: 0 mid-play cuts and entries, your-team 31/31, dead air 19.4 -> 18.1 dev / 24.1 -> 23.4
+  locked, but big live only ties (77.5 / 68.8) and locked crunch live drops 84.9 -> 81.0, so it misses the
+  bar. pct_of_oracle is unchanged (83.3 dev, 68.8 locked). The switch-rate cap is off because 90-180 s
+  cost dead air on dev with no change in the switch rate. docs/noggin.md §11b.
