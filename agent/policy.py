@@ -171,7 +171,7 @@ SYSTEM = (
 def parse_answer(text: str) -> Verdict | None:
     """The model's JSON answer, tolerant of thinking blocks and code fences; None if unusable."""
     from redzone.jsonfind import first_json_object
-    d = first_json_object(text)
+    d = first_json_object(text, accept=lambda x: str(x.get("action", "")).strip() in ACTIONS)
     if d is None:
         return None
     a = str(d.get("action", "")).strip()
