@@ -44,6 +44,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 
 ## Gates and quality
 
+- 2026-11-04 12:45 AM: **Timing gate rows added** (overnight plan item 6): "entries mid-play = 0" and
+  "landings in dead time >= 95%" (cuts away + entries, from the new `landings_in_dead_pct`), with the
+  landing-offset histograms (`leave_to_restart_hist`, `entry_to_restart_hist`) on every league card.
+
 - 2026-11-03 1:18 PM (approved 1:20): **"95% good minimum" release gate** on the locked test set,
   fresh nights and the e2e night test (full table: [architecture.md §7](../architecture.md)).
   A part that misses ships OFF behind its flag. Why: he wants every measure at 100%; 95% is the floor.
