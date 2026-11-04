@@ -83,7 +83,7 @@ listed under it; a marked night-lab test counts even when the behaviour behind i
   Sources: [Ross et al., DAgger (arXiv 1011.0686)](https://ar5iv.labs.arxiv.org/html/1011.0686),
   [Imitation Learning survey (arXiv 2106.12177)](https://arxiv.org/pdf/2106.12177).
 - **② NHL TV timeouts are scheduled.** There are three per period, at the first stoppage after the 6:00,
-  10:00 and 14:00 elapsed marks (no timeout follows icing or a goal; then the next stoppage). That
+  10:00 and 14:00 elapsed marks (not after an icing; it moves to the next stoppage; verify the exact exceptions in the rulebook). That
   gives a predictable ~2-min dead window per segment for whistle detection, the replay-and-resume
   repay and the NHL replay window. Faceoff timing after icing is regulated (no line change for the
   icing team). Encode both as priors in NHL whistle detection.
