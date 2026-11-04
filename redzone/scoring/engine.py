@@ -300,7 +300,8 @@ class Scorer:
                       imminent=h.imminent_at is not None
                       and now - h.imminent_at <= c.get("score.nhl.imminent_hold_s", -1),
                       brain=reading.as_dict() if reading is not None and reading.hotness is not None else {},
-                      reasoner=rr.as_dict() if rr is not None and rr.p is not None else {})
+                      reasoner=rr.as_dict() if rr is not None and rr.p is not None else {},
+                      stakes_line=postseason.reason(g) or None)   # [#163] the phone's stakes line (display only)
 
     MINE_LIVE_S = 60.0      # your team's game counts as on this long after its last live, close poll
     LEAGUE_LIVE_S = 300.0   # a league counts as "on tonight" this long after its last live game

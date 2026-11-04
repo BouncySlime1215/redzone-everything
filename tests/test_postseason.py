@@ -138,3 +138,14 @@ def test_the_scorer_reads_playoff_stakes_only_with_the_flag(tmp_path):
     cfg.data.setdefault("score", {}).setdefault("postseason", {})["enabled"] = True
     on = sc._stakes(g)
     assert on > off and on - off <= postseason.bonus(st, cfg) + 1e-9
+
+
+def test_the_scorer_fills_the_phone_stakes_line(tmp_path):
+    """[#163 wiring, lane 2] Scored.stakes_line carries postseason.reason (phone_v2's stakes line)."""
+    from redzone.config import Config
+    from redzone.scoring import engine, postseason
+    g = espn.parse_scoreboard(League.MLB, _board("espn_mlb_scoreboard_2025-11-01.json"))[0]
+    g.phase = Phase.LIVE
+    s = engine.Scorer(Config(tmp_path / "c.yaml")).score(g)
+    assert s.stakes_line == (postseason.reason(g) or None)
+    assert s.stakes_line   # a World Series game has words
