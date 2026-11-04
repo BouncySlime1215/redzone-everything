@@ -243,3 +243,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   app's eval nights (dev vs the candidate: big live 81.7 -> 83.1, dead air 19.4 -> 13.7, mid-play entries
   3 -> 0). Next is a flag-off decider hook in shadow first, since the rollout assumes every switch lands
   as planned.
+- 2026-11-04 12:45 PM (controls, cycle 03): **the candidate profile turns `two_stick.pretune_on_open` on**; the live
+  default stays off. Drill (4 nights, flaky taps): with it, press-to-TV p50 8.5 -> 3.7 s and pre-tuned presses
+  10 -> 13 of 18; p95 stays 8.75 s. Pre-tuned presses land in p50 3.16 s because the SmartThings flip itself is ~2 s.
+  Cold presses (a tune) take p50 8.5 s. The drill and the North Star line now report the two apart.

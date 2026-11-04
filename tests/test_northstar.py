@@ -193,3 +193,10 @@ def test_every_run_runs_the_controls_drill_unless_given_one(tmp_path, monkeypatc
     given.write_text(json.dumps(drill))
     ns.main(["--split", "dev", "--no-write", "--json", str(out), "--controls-json", str(given)])
     assert seen == [2]                                  # given a report: no second drill
+
+
+def test_press_row_reports_pre_tuned_and_cold_presses_apart():
+    drill = {"summary": {"nights": 1, "warm": {"n": 2, "p50_s": 2.9, "p95_s": 3.1},
+                         "cold": {"n": 1, "p50_s": 8.5, "p95_s": 8.5}}, "runs": [{"go_now_s": [2.9, 3.1, 8.5]}]}
+    row = ns.press_row(drill)
+    assert "pre-tuned 2: p50 2.9 s, p95 3.1 s" in row["detail"] and "cold 1: p50 8.5 s" in row["detail"]
