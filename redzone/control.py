@@ -2678,7 +2678,8 @@ class Controller:
     def buffer_error(self, stick: Stick, target: str, pb: dict) -> tuple[float, float] | None:
         """[buffer.watchdog] (behind live now, its error vs the target hold) for a held stream on the
         hidden stick, from its own clock: how far its position ran ahead of (or fell behind) the stick's
-        clock since the hold re-anchored it. None = no hold to judge, or no usable reading."""
+        clock since the hold re-anchored it. None = no hold to judge, or no usable reading. An unheld
+        standby whose buffer is wanted, with no hold or preload under way, reads as 0 s behind."""
         held = self.held.get(target, 0.0)
         try:
             want = max(0.0, min(float(self.behind_of(target) or 0.0),
@@ -2687,6 +2688,13 @@ class Controller:
             return None
         t = stick.tuned or {}
         a = t.get("report") or {}
+        if (held <= 0 and want > 0 and t.get("target") == target and playback_ready(pb)
+                and self._holding is None and not (self._preload_task and not self._preload_task.done())
+                and self._buffer_for(stick, target, TuneResult(True, target, 0.0, [], "")) > 0):
+            # A standby at the live edge whose buffer is wanted and that nobody is holding: a switch
+            # tuned it itself and then found no safe moment (path "tuned"), so no preload ever held it
+            # (lane 2, #132's night). Judged as 0 s behind: the rebuild below holds it.
+            return 0.0, round(-want, 1)
         if not (held > 0 and want > 0) or t.get("target") != target or not playback_ready(pb):
             return None
         pa, ua, pn, un = a.get("position"), a.get("updated"), pb.get("position"), pb.get("updated")
