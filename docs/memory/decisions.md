@@ -367,3 +367,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   option set (stay, a switch to each live game, the best catch-up) with the facts it was judged on and the policy's
   propensities (deterministic: 1.0 for the one taken). Logging only: NHL dev seed 0 sim JSON identical on vs off.
   Randomizing near-ties stays on hold until Nick OKs it.
+- 2026-11-04 (Nick 7:21 PM ET, via planner): **EXP-005 exploration approved with limits**, built OFF
+  (`decider.explore.enabled: false`, rate 0.05 capped at 5%, margin 3, seed 0). Only between switches the decider
+  already chose (better / break_visit / live) and live games within the margin; it runs before entry timing,
+  the crunch floor and `_safe`, so it can never join mid-play. Hard-excluded: crunch, down the stretch (late),
+  your team or bet (personal >= hold_personal), any lock, a waiting catch-up, user lock/pause, safe mode,
+  replays. Propensities logged per decision (#186). Stays off until Friday's v3 locked set lands; promotion
+  uses the normal bar. **Why:** off-policy grading needs logged randomness on near ties.
