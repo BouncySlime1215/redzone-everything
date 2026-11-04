@@ -29,6 +29,7 @@ function tapId() {
 }
 
 const RETRY_MS = [400, 1200, 2500];
+const OFFLINE_WAIT_MS = 30000;   // a tap made with no network waits this long for it, per retry
 
 /** POST /api/action once per tap: the tap carries an id, and a lost answer (Wi-Fi blip, server
  *  restart) is retried with the SAME id, so the server answers instead of running it twice. */
@@ -41,7 +42,16 @@ export async function sendTap(body) {
       // fetch() rejects with a TypeError when the request never got an answer; a 5xx is a server hiccup.
       const retry = e instanceof TypeError || /Server said 5\d\d/.test(e.message || "");
       if (!retry || i >= RETRY_MS.length) throw e;
-      await new Promise((r) => setTimeout(r, RETRY_MS[i]));
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        // playbook=BTN-06: no network at all. Wait (up to OFFLINE_WAIT_MS) for it to come back
+        // instead of burning the retries; the same id makes a late arrival land once.
+        await new Promise((r) => {
+          const t = setTimeout(r, OFFLINE_WAIT_MS);
+          window.addEventListener("online", () => { clearTimeout(t); r(); }, { once: true });
+        });
+      } else {
+        await new Promise((r) => setTimeout(r, RETRY_MS[i]));
+      }
     }
   }
 }
