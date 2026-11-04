@@ -248,9 +248,19 @@ class Engine:
         if self.sync is None:
             return
         try:
-            self.sync.measure(target, z, kind, t=t, sd=sd)
+            self.sync.measure(target, z, kind, t=t, sd=sd, stick=self._stick_of(target))
         except Exception:
             log.exception("sync: could not use a %s sample on %s", kind, target)
+
+    def _stick_of(self, target: str) -> str | None:
+        """[live nights] The input (HDMI1/HDMI2) of the stick showing `target`, for the per-stick sync
+        error; the input, not the address, so the uploaded log carries no LAN address."""
+        c = getattr(self, "control", None)
+        try:
+            stick = c.main if c.on_target == target else c.hidden if c.hidden_target == target else None
+            return c.hdmi.get(stick.host) if stick is not None else None
+        except Exception:
+            return None
 
     def _sync_position(self, target: str, wall: float, position_s: float, sd: float) -> None:
         if self.sync is not None:

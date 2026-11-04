@@ -186,3 +186,16 @@ def test_press_row_reports_pre_tuned_and_cold_presses_apart():
                          "cold": {"n": 1, "p50_s": 8.5, "p95_s": 8.5}}, "runs": [{"go_now_s": [2.9, 3.1, 8.5]}]}
     row = ns.press_row(drill)
     assert "pre-tuned 2: p50 2.9 s, p95 3.1 s" in row["detail"] and "cold 1: p50 8.5 s" in row["detail"]
+
+
+def test_live_nights_section_is_pending_until_a_night_exists(tmp_path):
+    assert "PENDING" in "\n".join(ns.live_section(ns.load_live_nights([tmp_path / "none"])))
+    n = tmp_path / "live" / "2026-11-04"
+    n.mkdir(parents=True)
+    (n / "summary.json").write_text(json.dumps({"landings": {"n": 3, "after_dead_p50_s": 5.0, "before_play_p50_s": 9.0,
+                                                             "before_play_min_s": 2.0}, "entries_mid_play": 0,
+                                                "switch_p95_s": 2.2, "press_to_tv_p95_s": 3.4, "press_samples": 4,
+                                                "sync_anchor_err": {"HDMI1": {"n": 5, "p50_s": 1.0, "p95_s": 2.5}}}))
+    text = "\n".join(ns.live_section(ns.load_live_nights([tmp_path / "live"])))
+    assert "| 2026-11-04 | 3 | 5.0 s | 9.0 / 2.0 s | 0 | 2.2 s | 3.4 s (4) | HDMI1 2.5 s (n=5) |" in text
+    assert "PENDING" not in text
