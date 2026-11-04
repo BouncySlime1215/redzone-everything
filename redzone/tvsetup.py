@@ -385,21 +385,29 @@ def code_from(pasted: str, state: str | None = None) -> str | None:
     return pasted if re.fullmatch(r"[A-Za-z0-9._~-]{4,}", pasted) else None
 
 
-async def create_oauth_app(http: httpx.AsyncClient, pat: str, redirect_uri: str) -> tuple[str, str] | None:
+async def create_oauth_app(http: httpx.AsyncClient, pat: str, redirect_uri: str) -> tuple[str, str] | str:
     """An API_ONLY SmartThings app with OAuth (what `smartthings apps:create` makes for an OAuth-In
-    app), created with a personal token you make once; returns (client_id, client_secret)."""
+    app), created with a personal token you make once; returns (client_id, client_secret), or the
+    reason SmartThings gave (status + the start of its error body; the token is never in it).
+    No query string: `?signatureType=ST_PADLOCK&requireConfirmation=true` is for webhook apps, and
+    for API_ONLY SmartThings answers 400 "Param(s) not supported for AppType" (Nick, 2026-11-03)."""
     body = {"appName": f"redzone-everything-{secrets.token_hex(3)}", "displayName": "RedZone Everything",
             "description": "Switches the TV input for RedZone Everything", "appType": "API_ONLY",
             "classifications": ["CONNECTED_SERVICE"], "singleInstance": True,
             "apiOnly": {}, "oauth": {"clientName": "RedZone Everything", "scope": tvmod.ST_SCOPES.split(),
                                      "redirectUris": [redirect_uri]}}
-    r = await http.post(f"{tvmod.ST_API}/apps?signatureType=ST_PADLOCK&requireConfirmation=true", json=body,
-                        headers={"Authorization": f"Bearer {pat}"})
+    r = await http.post(f"{tvmod.ST_API}/apps", json=body, headers={"Authorization": f"Bearer {pat}"})
     if r.status_code >= 300:
-        return None
-    d = r.json()
+        text = " ".join((r.text or "").split())
+        if pat:
+            text = text.replace(pat, "[token]")
+        return f"HTTP {r.status_code}: {text[:300] or 'no details'}"
+    try:
+        d = r.json()
+    except ValueError:
+        return f"HTTP {r.status_code}: the answer wasn't JSON"
     cid, sec = d.get("oauthClientId"), d.get("oauthClientSecret")
-    return (cid, sec) if cid and sec else None
+    return (cid, sec) if cid and sec else "SmartThings created no OAuth client (no oauthClientId/oauthClientSecret)"
 
 
 def pick_tv(devices: list[dict], tv: dict) -> list[dict]:
@@ -432,8 +440,9 @@ async def setup_smartthings(home: Home, d: dict, rep: Report, *, client_id: str 
                 rep.say(BAD, "No token pasted: SmartThings skipped.")
                 return None
             made = await create_oauth_app(http, pat, redirect_uri)
-            if not made:
+            if isinstance(made, str):
                 rep.say(BAD, "SmartThings refused to create the app (token missing the Apps scope, or expired).")
+                rep.say("  ", "   SmartThings said: " + made)
                 rep.causes.append("smartthings app not created")
                 return None
             client_id, client_secret = made
