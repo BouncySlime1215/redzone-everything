@@ -69,8 +69,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **8:45 AM overseer audit** (docs/plans/2026-11-04-0845-overseer.md): cycles 01-02 done, 03 running; loop healthy. **Candidate Noggin: mid-play 0 PASS** (live 2.45), NFL big live 25 → 53, NBA crunch 77 → 90, live-or-replayed 62 → 83, dead air 22.5 → 19.1. **press-to-TV p95 8.75 s FAIL** (lane ③ this cycle). Playbook coverage 32/79.
-- **Usage** 10% (+4.7): brake kept (lanes ①②③). Kaggle V7 running since 8:04 AM. **Nick decides:** crunch_now wait vs rewind.
+- **2026-11-04 9:25 AM ET.** Cycle 03 running. Merged: #105 (scenario tree: GAME-01 off by default; visits never displace priority), #107 (sims model honest sync doubt), #108 (controls: pre-tuned vs cold presses measured apart). Open: #88, #91, #109, #110. CI green.
+- **Usage** 10% (line 5.9%, +4.1): lanes ①②③. Kaggle V7 running (~1 h 20 min). Waiting on Nick: crunch_now wait vs rewind.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
