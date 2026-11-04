@@ -497,3 +497,27 @@ the Mac and never on GitHub Actions (the push trigger on `noggin-factory.yml` is
   slates) in about 4 min on 2 cores, 10.2 MB. At the full setting (20 synthetic per night) one NBA season
   is about 4,000 slates and roughly 110 M rows, so NBA alone is on the order of 2.5 B rows when every
   season has wall clocks. CFB and MLB have no loader yet (factory.SOURCES), so they are not in the plan.
+
+## 14. Oracle self-play eval harness (Nov 4, cycle 05)
+
+`scripts/selfplay_eval.py <league> --raw <season> --policy hand --policy pick:<model> --policy pick-cue:<model>`
+grades any policy against the hindsight oracle per source: `real` (every night of the season as it happened)
+and `synthetic` (K self-play slates per real night: random games of the same season re-timed into 3 h, random
+screen lag). Same grader as the app (sportsgrade), same rollout as train_noggin_pick; pct_of_oracle is
+northstar's definition (worst of big live, crunch live, live air as a share of each objective's ceiling).
+Locked/scorecard nights are never read. NBA 2025 (the factory test season, never trained on), full season,
+2 synthetic slates per night, 312 s on 3 CPUs:
+
+| source | policy | big live | crunch live | dead air | mid-play | % of oracle (live) | % of oracle (cue) |
+|---|---|---:|---:|---:|---:|---:|---:|
+| real (186) | hand | 80.0 | 84.7 | 22.8 | 0 | 82.2 | 81.2 |
+| real (186) | pick v1 | 91.9 | 92.1 | 17.0 | 0 | 94.5 | 93.2 |
+| real (186) | pick-cue90 | 91.3 | 92.0 | 15.6 | 0 | 93.9 | 92.7 |
+| synthetic (372) | hand | 77.0 | 81.4 | 20.0 | 0 | 79.5 | 78.4 |
+| synthetic (372) | pick v1 | 88.3 | 89.8 | 12.9 | 0 | 91.2 | 89.8 |
+| synthetic (372) | pick-cue90 | 91.0 | 91.2 | 11.4 | 0 | 94.0 | 92.6 |
+
+Oracle ceilings, big live: real 97.3 live / 98.5 cue; synthetic 96.8 / 98.3. pick-cue holds up on the
+synthetic slates (games it has never seen together) where pick v1 drops 3.6 points: the cue entry is the
+more robust policy. These are rollout numbers on hindsight dead-ball tables (an upper bound on the app);
+the decider-level grade is eval_sports.py.
