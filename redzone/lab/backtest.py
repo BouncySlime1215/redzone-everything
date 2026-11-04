@@ -112,6 +112,9 @@ class Report:
     # [redzone mode] what a whip-around show is judged by
     behind_live_s: float = 0.0       # time the screen showed a catch-up replay (behind live)
     big_missed_on_replay: int = 0    # big plays that aired (anywhere) while we sat on a replay
+    big_seen_10m: int = 0            # big plays seen live or replayed within CATCHUP_S of airing
+    my_big_seen_10m: int = 0         # ...of your team's
+    crunch_on_replay: int = 0        # crunch plays that aired while a catch-up replay was on screen
     drive_plays: int = 0             # NFL scrimmage plays on drives that scored or reached the red zone
     drive_plays_live: int = 0        # ...of those, watched live start to finish
     drive_plays_other_sport: int = 0  # ...of those, missed while another sport was on screen
@@ -139,7 +142,22 @@ class Report:
                               f" ({100 * self.drive_plays_live / max(1, self.drive_plays):.0f}%)",
             "behind_live_pct": round(100 * self.behind_live_s / max(1, self.hours * 3600), 1),
             "big_missed_on_replay": self.big_missed_on_replay,
+            "big_seen_10m": f"{self.big_seen_10m}/{self.big_plays}"
+                            f" ({100 * self.big_seen_10m / max(1, self.big_plays):.1f}%)",
+            "your_team_big_seen_10m": f"{self.my_big_seen_10m}/{self.my_big_plays}",
+            "crunch_on_replay": self.crunch_on_replay,
         }
+
+
+CATCHUP_S = 600.0   # "seen" for the reel gate: live, or replayed within 10 min of airing (Nick, Nov 4)
+
+
+def replayed_by(replayed, key, deadline: float) -> bool:
+    """Was this play's catch-up replay finished by `deadline`? A plain set (no times) counts any replay."""
+    if key not in replayed:
+        return False
+    at = replayed.get(key) if isinstance(replayed, dict) else None
+    return at is None or at <= deadline
 
 
 def _is_big(p: dict) -> bool:
@@ -382,7 +400,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
 
     switches: list[SwitchLog] = []
     decisions = []
-    replayed: set[tuple[str, int]] = set()
+    replayed: dict[tuple[str, int], float] = {}   # (game, play) -> when its replay finished
     replay_windows: list[tuple[str, int, float, float]] = []
     watching: list[tuple[float, str | None]] = []  # (time cut happens on screen, game)
     idx = {r.gid: -1 for r in replays}
@@ -492,7 +510,7 @@ def _record(decision, before: str | None, t: float, switches: list[SwitchLog],
 
 def _credit_completed_replays(windows: list[tuple[str, int, float, float]],
                               watching: list[tuple[float, str | None]], now: float,
-                              replayed: set[tuple[str, int]]) -> None:
+                              replayed: dict[tuple[str, int], float]) -> None:
     """A replay request earns no credit until its modeled clip finishes without another tune.
 
     This is simulation credit, not evidence that a physical player's seek landed correctly.
@@ -502,7 +520,10 @@ def _credit_completed_replays(windows: list[tuple[str, int, float, float]],
         if end > now:
             continue
         if not any(start < at < end for at, _ in watching):
-            replayed.add((gid, event))
+            if isinstance(replayed, dict):
+                replayed.setdefault((gid, event), end)
+            else:
+                replayed.add((gid, event))
         windows.remove((gid, event, start, end))
 
 
@@ -626,7 +647,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
                 cuts.append((s.t, f"{r.matchup}: {(p.get('text') or '')[:70]}"))
                 break
 
-    big = live = mine = mine_live = caught = missed_on_replay = 0
+    big = live = mine = mine_live = caught = missed_on_replay = seen10 = my_seen10 = crunch_on_replay = 0
     missed = []
     for r in replays:
         for w, p in zip(r.wall, r.plays):
@@ -638,10 +659,13 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             live += on
             rep_seen = (r.gid, round(w)) in replayed
             caught += on or rep_seen
+            soon = on or replayed_by(replayed, (r.gid, round(w)), air + CATCHUP_S)
+            seen10 += soon
             ours = any(a in my_teams for a in r.matchup.replace("@", " ").split())
             if ours:
                 mine += 1
                 mine_live += on or rep_seen
+                my_seen10 += soon
             if not on and (_on_screen_game(watching, air - play_len, tune_s) or "").startswith("replay:"):
                 missed_on_replay += 1   # aired while we sat on a replay: live was given up for old footage
             if not (on or rep_seen):
@@ -665,6 +689,9 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             on = watched_whole(watching, r.gid, w + lag_of(lag_total, r.gid) - play_len,
                                w + lag_of(lag_total, r.gid), tune_s, t1, offs)
             crunch_live += on
+            if not on and (_on_screen_game(watching, w + lag_of(lag_total, r.gid) - play_len, tune_s)
+                           or "").startswith("replay:"):
+                crunch_on_replay += 1   # a crunch play aired while we sat on old footage
             if any(a in my_teams for a in r.matchup.replace("@", " ").split()):
                 my_crunch += 1
                 my_crunch_live += on
@@ -701,6 +728,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
     rep.cut = cutgrade.grade(replays, switches, lag_total, tune_s)
     rep.behind_live_s = behind_live_seconds(watching, t0, t1)
     rep.big_missed_on_replay = missed_on_replay
+    rep.big_seen_10m, rep.my_big_seen_10m, rep.crunch_on_replay = seen10, my_seen10, crunch_on_replay
     rep.drive_plays, rep.drive_plays_live, rep.drive_plays_other_sport, rep.drive_plays_on_redzone = drive_coverage(
         replays, watching, lag_total, play_len, tune_s, t1)
     rep.big_plays_caught = caught
