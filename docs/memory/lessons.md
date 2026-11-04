@@ -137,3 +137,6 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   `scripts/perf_probe.py` times the real `Engine.decide()` on 8 synthetic live games (300 ticks): it was
   p50 1.0 ms, p99 5.3 ms, 56 MB peak RSS at 1f5e751. Engine needs a running event loop, so the probe runs
   inside `asyncio.run`.
+- 2026-11-04: **Prime multiview gate scored a 0.0 s switch as slow.** `pmv.gate` read `float(took or 1e9)`, so
+  a rounded 0.0 became 1e9. Found by the stick-free rehearsal (`prime_multiview_probe.py --fake`), where tile
+  switches are instant. Fix: only a missing time counts as slow. Use `is None`, never `or`, on numbers that can be 0.

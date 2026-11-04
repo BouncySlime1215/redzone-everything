@@ -282,7 +282,8 @@ def gate(results: list[dict], mid_play_entries: int | None = None) -> dict:
     """The live-calibration gate: >= 95% of tile switches land on the right tile in under 2 s, and
     0 mid-play entries on the night. results = [{"ok": bool, "took": s}, ...]."""
     n = len(results)
-    good = sum(1 for r in results if r.get("ok") and float(r.get("took") or 1e9) < GATE_UNDER_S)
+    # a missing time counts as slow; a measured 0.0 (rounded) is fast, not missing
+    good = sum(1 for r in results if r.get("ok") and float(1e9 if r.get("took") is None else r["took"]) < GATE_UNDER_S)
     pct = round(100.0 * good / n, 1) if n else 0.0
     passed = n >= 20 and pct >= GATE_OK_PCT and mid_play_entries == 0
     return {"switches": n, "good": good, "good_pct": pct, "mid_play_entries": mid_play_entries,
