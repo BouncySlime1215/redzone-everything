@@ -279,7 +279,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   the same quantiles. Also STK-05 (no flag: a stale or paused standby was never a usable one): media_session must
   read active and speed>0, and verify_standby re-tunes a paused / stale hidden stick at once.
 - 2026-11-04: **calib.auto (new, default OFF).** Nick's 3:05 PM overseer queue item (c): each night's TV flip
-  time and press-to-TV are re-measured from the live logs into data/calibration/<night>.json (one shared
-  file per night; lane 2 adds its sync keys to the same file), with an outlier guard that refuses a value
+  time and press-to-TV are re-measured from the live logs into data/calib/<night>.json (one shared
+  file per night: a timing section, lane 2's sync section), with an outlier guard that refuses a value
   more than 3 MADs from the last 5 nights. The files are written every night so the guard has history; with
   calib.auto on, the next start plans the TV flip with the newest accepted median and max.

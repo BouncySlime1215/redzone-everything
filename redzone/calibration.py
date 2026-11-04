@@ -1,14 +1,16 @@
 """[calib.auto] Self-calibration: values re-measured each night from live telemetry, with no one's input.
 
-One dated file per night, data/calibration/YYYY-MM-DD.json, shared by every lane that calibrates:
+One dated file per night, data/calib/YYYY-MM-DD.json, shared by every lane that calibrates, one section
+per half (Start Planner, Nov 4): "timing" (lane 3: flip time, press-to-TV) and "sync" (lane 2: seek step,
+wake presses, per-channel delay):
 
     {"night": "2026-11-04", "written_at": 1793...,
-     "values": {"tv_flip_p50_s": {"value": 1.89, "n": 64, "source": "tv_input.jsonl verified total_s",
-                                  "accepted": true, "reason": "ok", "ref": 1.92, "mad": 0.03}, ...}}
+     "timing": {"tv_flip_p50_s": {"value": 1.89, "n": 64, "source": "tv_input.jsonl verified total_s",
+                                  "accepted": true, "reason": "ok", "ref": 1.92, "mad": 0.03}, ...},
+     "sync": {"yttv_seek_step_s": {...}, "delay_s:youtubetv:espn": {...}}}
 
-A key is a name plus its unit (`_s` seconds); per-target values use `<name>:<target>`, e.g.
-`delay_s:youtubetv:espn` (lane 2's sync half: `yttv_seek_step_s`, per-channel delay). `merge` adds keys to
-an existing night's file, so several writers share it (last write per key wins).
+A key is a name plus its unit (`_s` seconds); per-target values use `<name>:<target>`. `merge` adds keys
+to one section of an existing night's file, so several writers share it (last write per key wins).
 
 Outlier guard: a value further than GUARD_MADS median absolute deviations from the accepted values of
 the last HISTORY nights is written with accepted=false and never read back. With fewer than MIN_HISTORY
@@ -34,7 +36,7 @@ MIN_SAMPLES = {"tv_flip_p50_s": 5, "tv_flip_p95_s": 10, "tv_flip_max_s": 10, "pr
 
 
 def folder(root: Path) -> Path:
-    return Path(root) / "calibration"
+    return Path(root) / "calib"
 
 
 def _nights(root: Path) -> list[tuple[str, dict]]:
@@ -47,10 +49,10 @@ def _nights(root: Path) -> list[tuple[str, dict]]:
     return out
 
 
-def history(root: Path, key: str, before: str) -> list[float]:
+def history(root: Path, key: str, before: str, section: str = "timing") -> list[float]:
     """Accepted values of `key` on the last HISTORY nights before `before` (ISO date), oldest first."""
-    xs = [n["values"][key]["value"] for d, n in _nights(root) if d < before
-          and (n.get("values") or {}).get(key, {}).get("accepted")]
+    xs = [n[section][key]["value"] for d, n in _nights(root) if d < before
+          and (n.get(section) or {}).get(key, {}).get("accepted")]
     return [float(x) for x in xs[-HISTORY:]]
 
 
@@ -66,15 +68,17 @@ def judge(value: float, past: list[float]) -> tuple[bool, str, float | None, flo
     return True, "ok", ref, mad
 
 
-def merge(root: Path, night: date | str, measured: dict[str, tuple[float, int, str]], now: float | None = None) -> dict:
-    """Judge and write `measured` {key: (value, n, source)} into the night's file. Returns its values."""
+def merge(root: Path, night: date | str, measured: dict[str, tuple[float, int, str]], now: float | None = None,
+          section: str = "timing") -> dict:
+    """Judge and write `measured` {key: (value, n, source)} into one section of the night's file.
+    Returns that section."""
     night = night if isinstance(night, str) else night.isoformat()
     path = folder(root) / f"{night}.json"
     try:
         doc = json.loads(path.read_text()) if path.exists() else {}
     except (OSError, ValueError):
         doc = {}
-    vals = doc.get("values") or {}
+    vals = doc.get(section) or {}
     for key, (value, n, source) in measured.items():
         if value is None:
             continue
@@ -82,24 +86,24 @@ def merge(root: Path, night: date | str, measured: dict[str, tuple[float, int, s
             vals[key] = {"value": round(float(value), 3), "n": n, "source": source, "accepted": False,
                          "reason": f"refused: {n} samples, needs {MIN_SAMPLES.get(key, 1)}"}
             continue
-        ok, why, ref, mad = judge(float(value), history(root, key, night))
+        ok, why, ref, mad = judge(float(value), history(root, key, night, section))
         vals[key] = {"value": round(float(value), 3), "n": n, "source": source, "accepted": ok, "reason": why,
                      "ref": None if ref is None else round(ref, 3), "mad": None if mad is None else round(mad, 3)}
         if not ok:
             log.warning("calibration %s=%.3f on %s %s", key, value, night, why)
     path.parent.mkdir(parents=True, exist_ok=True)
-    doc = {"night": night, "written_at": round(now if now is not None else time.time(), 1), "values": vals}
+    doc.update({"night": night, "written_at": round(now if now is not None else time.time(), 1), section: vals})
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(doc, indent=1, sort_keys=True))
     tmp.replace(path)
     return vals
 
 
-def latest(root: Path) -> dict[str, dict]:
-    """The newest accepted value per key across every night's file: {key: {"value", "night", "n"}}."""
+def latest(root: Path, section: str = "timing") -> dict[str, dict]:
+    """The newest accepted value per key of one section across every night: {key: {"value", "night", "n"}}."""
     out: dict[str, dict] = {}
     for night, doc in _nights(root):
-        for key, v in (doc.get("values") or {}).items():
+        for key, v in (doc.get(section) or {}).items():
             if v.get("accepted"):
                 out[key] = {"value": float(v["value"]), "night": night, "n": v.get("n")}
     return out

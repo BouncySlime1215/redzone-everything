@@ -24,10 +24,12 @@ def test_first_nights_are_accepted_then_an_outlier_is_refused(tmp_path):
 def test_too_few_samples_is_refused_and_lane_two_keys_share_the_file(tmp_path):
     d = date(2026, 11, 4)
     cal.merge(tmp_path, d, {"tv_flip_p95_s": (2.1, 3, "test")})
-    cal.merge(tmp_path, d, {"yttv_seek_step_s": (15.0, 12, "lane 2"), "delay_s:youtubetv:espn": (26.4, 30, "sync")})
-    doc = json.loads((tmp_path / "calibration" / "2026-11-04.json").read_text())
-    assert not doc["values"]["tv_flip_p95_s"]["accepted"]
-    assert doc["values"]["yttv_seek_step_s"]["accepted"] and "delay_s:youtubetv:espn" in doc["values"]
+    cal.merge(tmp_path, d, {"yttv_seek_step_s": (15.0, 12, "lane 2"), "delay_s:youtubetv:espn": (26.4, 30, "sync")},
+              section="sync")
+    doc = json.loads((tmp_path / "calib" / "2026-11-04.json").read_text())
+    assert not doc["timing"]["tv_flip_p95_s"]["accepted"]
+    assert doc["sync"]["yttv_seek_step_s"]["accepted"] and "delay_s:youtubetv:espn" in doc["sync"]
+    assert cal.latest(tmp_path, "sync")["yttv_seek_step_s"]["value"] == 15.0 and "yttv_seek_step_s" not in cal.latest(tmp_path)
 
 
 def test_the_flip_prior_is_read_back_only_with_calib_auto_on(tmp_path):

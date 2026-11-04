@@ -500,5 +500,5 @@ noggin:                    # docs/noggin.md
 
 phone:                     # the phone page (redzone/web)
   v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it
-calib:                     # [calib.auto] values re-measured each night from live logs (data/calibration/<night>.json)
+calib:                     # [calib.auto] values re-measured each night from live logs (data/calib/<night>.json)
   auto: false              # read last nights' accepted flip time back at start (OFF until it's proven on live nights)
