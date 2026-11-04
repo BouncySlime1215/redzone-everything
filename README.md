@@ -108,3 +108,10 @@ The locked set includes architecture §7's held-out nights (NFL last 2 slates, N
 | teacher_distill.ipynb | 7696 |
 | teacher_requests.jsonl.gz | 10818958 |
 | code/ (pipeline source, 18 files) | 121664 |
+
+## Noggin data factory (Kaggle CPU, Nov 4)
+
+`factory/rz_factory_code.tar.gz` (code pack) + `factory/kaggle_noggin_factory.ipynb` (notebook). Make the
+pack a dataset, attach it, Accelerator None, Internet On, Save & Run All. From run 2, also attach the
+previous version's output: it resumes, nothing is rebuilt. Output `factory/` = moments + self-play shards +
+`manifest.json` (rows per league, missing seasons). Source: scripts/kaggle_noggin_factory.py on integration/next.
