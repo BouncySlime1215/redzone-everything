@@ -121,6 +121,16 @@ Everything combines into one AI brain with three layers, one training pipeline a
   - **Reflex:** 20,000+ variables trained on billions of data points. The model stays small for
     <5 ms decisions.
   - **Teacher:** 32B plus 14B. It writes storylines and narrative labels that feed both layers.
+- **PRIORITY is a first-class module (Nick: "priority is key"). Four layers, in order:**
+  - **L1, Nick's hard rules** (config only; AI can NEVER override): WSH and UNC big plays 100%,
+    crunch first, league order, never Peacock.
+  - **L2, Nick's preferences** (phone settings). AI suggestions from his 👍/👎 are shown to him, never
+    auto-applied.
+  - **L3, the Mind's narrative and stakes read,** bounded inside L1-L2.
+  - **L4, the Reflex's live value.**
+
+  Every switch shows its reason on the phone. Scoreboard rows: your-team 100%, crunch live ≥95%,
+  league order respected, and right-game agreement with Nick.
 - **Gates:** beat the current brain on locked unseen nights → shadow mode → turn on behind a flag.
 - **Input priority #1:** the live time-shift buffer plus faster feeds give the Reflex a 30-60 s head
   start.
