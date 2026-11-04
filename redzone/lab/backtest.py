@@ -318,7 +318,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         true_delay: float | None = None, sigma: float = 3.0, lag_jitter: tuple[float, float] | None = None,
         drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
         channel_spread: float = 0.0, history: float = 0.0, delay_model: str | None = None,
-        resync: bool = False, anchors: bool = False, tune_jitter_s: float = 0.0, flip_dist: bool = False,
+        resync: bool = False, anchors: bool = False, tune_jitter_s: float = 0.0, flip_dist: bool = False, positions: bool = False,
         feed_lag_model: str | None = None,
         calibrate_targets: bool = False,
         on_tick: Callable | None = None) -> Report:
@@ -348,6 +348,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
                     true whistle -> ad-on-screen gap is drawn per break (sync.break_anchor.true_gap_s /
                     true_gap_sd_s, default = the config prior: an assumption until the Wednesday probe
                     data). Every on-screen second is graded for honesty (Report.sync_honesty).
+      positions     [yttv position] with anchors: the stick on screen reports its playback position
       flip_dist     [live lab] each picture comes up with the measured TV flip's spread around tune_s
       tune_jitter_s [auto-anchors] each tune lands U(0, S) s behind the live edge, unknown to the app (a
                     YouTube TV tune, redzone/lab/syncsim.py: 0-6 s). Graded as a real offset of that
@@ -477,6 +478,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             _resync_tick(delays, sync, decision, switches, tgt_of, lag_true, tune_s, clock.t, noise)
         elif sync is not None:
             _anchor_tick(delays, sync, decision, switches, tgt_of, breaks, cfg, tune_s, clock.t, step)
+            if positions:
+                _position_tick(sync, switches, tgt_of, lag_true, delays, tune_s, clock.t)
         _honesty_tick(delays, switches, targets, lag_true, tune_s, clock.t, honesty)
         if decision.action == "replay" and decision.replay and getattr(dec, "replay_until", None) is not None:
             replay_windows.append((decision.target, round(decision.replay.t), clock.t, dec.replay_until))
@@ -592,6 +595,24 @@ def _anchor_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict
         ts += d.behind + last.jitter
         if now - step < ts <= now and ts - last.t >= tune_s:
             delays.anchor(target, ts - w - bias, "break", ts, (1.0 + bias_sd * bias_sd) ** 0.5)
+
+
+POSITION_ORIGIN_S = 1.7e9     # [yttv position] a channel's stream origin in the sim (any constant works)
+
+
+def _position_tick(sync, switches: list, tgt_of: dict, lag_true, delays: DelayBook, tune_s: float,
+                   now: float) -> None:
+    """[yttv position] The stick on screen reports its playback position each tick (YouTube TV on the
+    4K Plus, live lab Nov 4): position = wall - origin - true screen delay. Exact here; the live read's
+    doubt is the clock pin (sync.POSITION_SIGMA_S). Only YouTube TV channels report it."""
+    last = switches[-1] if switches else None
+    if last is None or last.kind == "replay" or last.to not in tgt_of or now - last.t < tune_s:
+        return
+    target = tgt_of[last.to]
+    if not str(target).startswith("youtubetv"):
+        return
+    true = lag_of(lag_true, last.to) + delays.get(target).behind + last.jitter
+    sync.position(target, now - POSITION_ORIGIN_S - true, t=now)
 
 
 def _honesty_tick(delays: DelayBook, switches: list, targets, lag_true, tune_s: float, now: float,
