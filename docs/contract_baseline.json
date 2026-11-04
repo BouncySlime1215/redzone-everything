@@ -431,6 +431,7 @@
   {"rule": "K2", "path": "redzone/tv.py", "key": "ST_RETRY_GAP_S"},
   {"rule": "K2", "path": "redzone/tv.py", "key": "VERIFY_GAP_S"},
   {"rule": "K2", "path": "redzone/tv.py", "key": "sleep@SamsungTV.key.send"},
+  {"rule": "K2", "path": "redzone/web/phone_v2.py", "key": "ALERT_AHEAD_S"},
   {"rule": "K2", "path": "redzone/web/phone_v2.py", "key": "MISS_WINDOW_S"},
   {"rule": "K2", "path": "redzone/web/phone_v2.py", "key": "REPLAY_DUE_S"},
   {"rule": "K3", "path": "redzone/autonomy.py", "key": "Autonomy._launch_check"},
