@@ -193,5 +193,12 @@ mis-stamped faceoff (the next shot came 214 s later). NHL scorecard, last 14 nig
 | default (8 s feed) | 0 → 0 | 0 → 0 | 24.1 → 24.1 | 99.7 → 99.7 | 4.3 → 4.6 | 0 → 0 |
 | real lag | 11 → 12 (3.8 → 3.6 % of entries) | 2 → 3 | 24.9 → 24.0 | 93.7 → 95.7 | 3.1 → 3.7 | 0 → 0 |
 
+Why NBA gets no timeout floor: in ESPN's NBA feed a timeout's wallclock is often the moment play
+**resumed**, not the whistle. Example: a "Full Timeout" at 6:09 is stamped 19 s before a jump shot at
+5:50, with 19 s of game clock between them, so the restart works back to the timeout's own stamp.
+A floor counted from that stamp would start the countdown at the end of the break, which is unsafe.
+NBA breaks need the resume seen in data (or the stick's own score-bug OCR), not a floor. Only 2 of
+92 archived NBA games have flat wallclocks, so this is ESPN's stamping, not missing data.
+
 Next: a hazard model per league for the "how long until the restart" countdown (the floors are
 its lower bound with no features), and fixing the NBA timeout stamps before NBA gets a floor.
