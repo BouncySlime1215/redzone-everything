@@ -1196,6 +1196,13 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .v2-wv-bar { height: 6px; border-radius: 3px; background: var(--surface-3); margin-top: 8px; overflow: hidden; }
 .v2-wv-bar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--info), var(--danger)); }
 .v2-trends { display: grid; gap: 10px; margin-top: 12px; }
+.v2-leds, .v2-mss { display: grid; gap: 8px; margin: 10px 0 14px; }
+.v2-led { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); display: grid; gap: 4px; }
+.v2-led-top { display: flex; gap: 8px; align-items: baseline; }
+.v2-led-top .m { font-size: 13px; color: var(--text-3); overflow-wrap: anywhere; }
+.v2-led-nums { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 13px; }
+.v2-led small, .v2-ms small { display: block; color: var(--text-3); font-size: 12px; }
+.v2-ms { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; }
 .v2-trend { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
 .v2-trend-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .v2-trend-top .m { font-size: 14px; }

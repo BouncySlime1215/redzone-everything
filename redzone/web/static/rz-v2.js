@@ -104,7 +104,8 @@ export function missedBar() {
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
     <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>
-    <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button></div>`;
+    <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-ledger">${icon("activity")}Data + NFM: what the Noggin learns from</button></div>`;
 }
 
 function missedSheet() {
@@ -306,7 +307,7 @@ ACTIONS["v2-watch"] = () => { watchS.data = null; openSheet({ id: "v2-watch", la
 /* ---------- Provenance: which module contributed what to one switch (from its trace) ---------- */
 const prov = { data: null };
 const STAGE_TXT = { decided: "Decided", guarded: "Guard checked", rechecked: "Re-checked", command: "Command sent", picture: "Picture on TV", aborted: "Held back", failed: "Failed" };
-const MOD_TXT = { watch_value: "Watch value", crunch_state: "Crunch state", importance: "Importance", stakes: "Stakes", floors: "Floors", planner: "Planner", playbook: "Playbook", guard: "Guard", decider: "Decider", sync: "Sync (delays)" };
+const MOD_TXT = { watch_value: "Watch value", crunch_state: "Crunch state", importance: "Importance", stakes: "Stakes", floors: "Floors", planner: "Planner", playbook: "Playbook", guard: "Guard", control: "Control", decider: "Decider", sync: "Sync (delays)" };
 const short = (v) => (v == null ? "–" : typeof v === "object" ? Object.entries(Array.isArray(v) ? { ...v } : v).filter(([, x]) => x != null && x !== "")
   .map(([k, x]) => (Array.isArray(v) ? String(typeof x === "object" ? JSON.stringify(x) : x) : `${k}: ${typeof x === "object" ? JSON.stringify(x) : x}`)).join(" · ") : String(v));
 function provSheet() {
@@ -366,6 +367,38 @@ function trendSheet() {
 }
 ACTIONS["v2-trend"] = () => { trendS.data = null; openSheet({ id: "v2-trend", label: "How close to perfect", full: true, render: trendSheet }); loadTrend(); };
 ACTIONS["v2-trend-split"] = (el) => { trendS.split = el.dataset.f; trendS.data = null; const s = sheetById("v2-trend"); if (s) s.update(); loadTrend(); };
+
+/* ---------- Data ledger + NFM status: tokens per league, real vs synthetic, and the model's milestones ---------- */
+const ledgerS = { data: null };
+const MS_TAG = { done: "pass", running: "kind", next: "kind", blocked: "fail" };
+function ledgerSheet() {
+  const d = ledgerS.data;
+  if (!d) return `<h3>Data + NFM</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Data + NFM</h3><p class="lead">${esc(d.error)}</p>`;
+  const big = (v) => (typeof v !== "number" ? "PENDING" : v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e5 ? `${(v / 1e6).toFixed(1)}M` : Math.round(v).toLocaleString());
+  const pct = (v) => (typeof v === "number" ? `${Math.round(v * 100)}%` : "–");
+  const t = d.totals || {}, nfm = d.nfm || {};
+  const rows = arr(d.rows).filter((r) => !r.pending || r.source).map((r) => `<div class="v2-led">
+      <div class="v2-led-top"><b>${esc(String(r.league).toUpperCase())}</b><span class="m">${esc(r.source || "source pending")}${r.license ? ` · ${esc(r.license)}` : ""}</span></div>
+      <div class="v2-led-nums"><span><b>${big(r.real_tokens)}</b> real</span><span><b>${big(r.synthetic_tokens)}</b> synthetic</span>
+        <span><b>${big(r.windows)}</b> windows</span><span><b>${pct(r.crunch_share)}</b> crunch</span></div>
+      ${r.seasons || r.games ? `<small>${esc(r.seasons || "")}${r.games ? ` · ${big(r.games)} games` : ""}${r.nights ? ` · ${big(r.nights)} nights` : ""}</small>` : ""}</div>`).join("");
+  const ms = arr(nfm.milestones).map((m) => `<div class="v2-ms"><span class="tag tag--${MS_TAG[m.status] || "kind"}">${esc(m.status)}</span>
+      <span>${esc(m.name)}${m.at ? ` <small>${esc(m.at)}</small>` : ""}${m.note ? `<small>${esc(m.note)}</small>` : ""}</span></div>`).join("");
+  return `<h3>Data + NFM</h3>
+    <p class="lead">${d.pending ? "Waiting on the first factory run: every number below is PENDING until lane 1 writes the ledger." : `Ledger updated ${esc(d.updated || "–")}.`}</p>
+    <div class="v2-tiles"><div class="stile"><b>${big(t.real_tokens)}</b><span>Real tokens</span></div>
+      <div class="stile"><b>${big(t.synthetic_tokens)}</b><span>Synthetic (self-play)</span></div>
+      <div class="stile"><b>${typeof t.pct_of_target === "number" ? `${t.pct_of_target}%` : "–"}</b><span>of ${big(t.tokens_target)} target</span></div></div>
+    <div class="v2-leds">${rows || `<p class="lead">No league has data yet.</p>`}</div>
+    <h4>NFM milestones · ${num(nfm.done)}/${num(arr(nfm.milestones).length)} done</h4>
+    <div class="v2-mss">${ms}</div>`;
+}
+ACTIONS["v2-ledger"] = async () => {
+  ledgerS.data = null; openSheet({ id: "v2-ledger", label: "Data + NFM", full: true, render: ledgerSheet });
+  try { ledgerS.data = await api("/api/v2/ledger"); } catch (e) { ledgerS.data = { error: e.message }; }
+  const s = sheetById("v2-ledger"); if (s) s.update();
+};
 
 /* ---------- Slate preview: tonight ahead, crunch windows and who gets the TV when they collide ---------- */
 const slate = { data: null };

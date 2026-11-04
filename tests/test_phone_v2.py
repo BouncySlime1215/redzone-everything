@@ -362,3 +362,44 @@ def test_held_route(client, engine):
     _on(engine)
     r = client.get("/api/v2/held").json()
     assert r["enabled"] and "view" in r
+
+
+def test_ledger_view_pending_then_folded(tmp_path):
+    from redzone.lab import data_ledger as DL
+    v = DL.view(DL.read(tmp_path / "missing.json"))
+    assert v["pending"] and [r["league"] for r in v["rows"]][:3] == ["nfl", "cfb", "nba"]
+    assert v["totals"]["pct_of_target"] == 0.0 and len(v["nfm"]["milestones"]) == len(DL.DEFAULT_MILESTONES)
+    assert "PENDING" in DL.table(v)
+    man = {"nfl": {"source": "nflverse", "license": "CC-BY", "seasons": "2002-2025", "windows": 1200,
+                   "splits": {"train": {"games": 90, "nights": 30}, "test": {"games": 10, "nights": 4}}}, "bad": 3}
+    led = DL.fold_manifest({"leagues": {"nfl": {"real_tokens": 4e8}}}, man, "2026-11-04T22:00Z")
+    nfl = led["leagues"]["nfl"]
+    assert (nfl["games"], nfl["nights"], nfl["windows"], nfl["real_tokens"]) == (100, 34, 1200, 4e8)
+    led["leagues"]["xfl"] = {"synthetic_tokens": 1e8}
+    led["nfm"] = {"milestones": [{"name": "pretrain", "status": "running"}, {"name": "x", "status": "weird"}, {"bad": 1}]}
+    v = DL.view(led)
+    assert not v["pending"] and v["rows"][-1]["league"] == "xfl" and v["totals"]["pct_of_target"] == 50.0
+    assert [m["status"] for m in v["nfm"]["milestones"]] == ["running", "next"] and v["updated"] == "2026-11-04T22:00Z"
+    assert "| NFL | nflverse (CC-BY) | 400.0M |" in DL.table(v)
+
+
+def test_ledger_script_folds_a_manifest(tmp_path, capsys):
+    import json
+    import scripts.data_ledger as cli
+    led, man = tmp_path / "led.json", tmp_path / "manifest.json"
+    man.write_text(json.dumps({"nba": {"source": "nba_api", "windows": 7, "splits": {}}}))
+    assert cli.main(["--ledger", str(led), "--manifest", str(man)]) == 0
+    assert json.loads(led.read_text())["leagues"]["nba"]["windows"] == 7 and "| NBA | nba_api |" in capsys.readouterr().out
+    assert cli.main(["--ledger", str(led), "--manifest", str(tmp_path / "nope.json")]) == 2
+
+
+def test_ledger_route(client, engine, tmp_path, monkeypatch):
+    assert client.get("/api/v2/ledger").status_code == 404
+    _on(engine)
+    monkeypatch.setattr(phone_v2, "LEDGER", tmp_path / "none.json")
+    r = client.get("/api/v2/ledger").json()
+    assert r["enabled"] and r["pending"] and r["nfm"]["done"] == 0
+
+
+def test_provenance_orders_lane3_control_last():
+    assert phone_v2.PROV_ORDER[-1] == "control"

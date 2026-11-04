@@ -374,6 +374,20 @@ function mockV2(path, b) {
       league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, stakes_line: ["AFC 1-seed race, top-5 matchup", "Rivalry game", "", "Wild-card push"][i] || "", is_break: i === 4, source: "stub" }));
     return { enabled: true, now: Date.now() / 1000, current: games[0] && games[0].game_id, games, source: games.length ? "stub" : null };
   }
+  if (path === "/api/v2/ledger") {
+    const R = [["nfl", "nflverse pbp", "CC-BY 4.0", 212e6, 80e6, 41000, 0.14, "1999-2025"], ["cfb", "cfbfastR", "MIT", 105e6, 40e6, 30500, 0.11, "2014-2025"],
+      ["nba", "nba_api pbp", "", 160e6, 120e6, 25000, 0.17, "2015-2025"], ["nhl", "api-web.nhle.com", "", 58e6, 40e6, 9800, 0.13, "2010-2025"]];
+    const rows = ["nfl", "cfb", "nba", "nhl", "mlb", "cbb", "live"].map((lg) => {
+      const r = R.find((x) => x[0] === lg);
+      return r ? { league: lg, source: r[1], license: r[2], real_tokens: r[3], synthetic_tokens: r[4], windows: r[5], games: Math.round(r[5] / 9), nights: Math.round(r[5] / 40), seasons: r[7], crunch_share: r[6], ot_share: 0.04, comeback_share: 0.08, blowout_share: 0.21, pending: false }
+        : { league: lg, source: "", license: "", real_tokens: null, synthetic_tokens: null, windows: null, games: null, nights: null, seasons: "", crunch_share: null, ot_share: null, comeback_share: null, blowout_share: null, pending: true };
+    });
+    const real = R.reduce((a, r) => a + r[3], 0), syn = R.reduce((a, r) => a + r[4], 0);
+    const st = ["done", "running", "next", "next", "next"];
+    const names = ["Event tokens from the factory (~1B, real + self-play)", "Pretrain: next event, its time, next stoppage", "Heads: watch value, crunch enter/exit, breaks, big-play-next, importance", "Distill to the Reflex (< 5 ms) + Mind tier on the Mac (<= 2 GB)", "Gates: locked nights, oracle rank agreement, calibration"];
+    return { enabled: true, updated: "2026-11-04T22:00Z", rows, totals: { real_tokens: real, synthetic_tokens: syn, tokens_target: 1e9, pct_of_target: +((100 * (real + syn)) / 1e9).toFixed(1) },
+      nfm: { params: null, milestones: names.map((name, i) => ({ name, status: st[i], at: i === 0 ? "Nov 4" : "", note: i === 1 ? "Kaggle T4, epoch 2/6" : "" })), done: 1 }, pending: false };
+  }
   if (path.startsWith("/api/v2/trend")) {
     const L = [["mid_play", "Mid-play cuts per 100 landings", 0, -1, 2.4, 1.75], ["landings_dead", "Landings in dead time %", 98, 1, 96.1, 98.25],
       ["pct_of_oracle", "% of hindsight-oracle value", 95, 1, 61, 74.2], ["big_live_nfl", "Big plays live, NFL %", 95, 1, 19.5, 23.3],

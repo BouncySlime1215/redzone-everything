@@ -45,6 +45,7 @@ DATA = Path(__file__).resolve().parent.parent.parent / "data"
 ORACLE_DIR = DATA / "oracle"            # <night>.json: the hindsight oracle's schedule for that night
 MOMENTS = DATA / "supervisor_moments.jsonl"   # every big play, judged from the feed: seen live or not
 HISTORY = DATA.parent / "docs" / "northstar-history.jsonl"   # scripts/northstar.py appends a row per run
+LEDGER = DATA.parent / "docs" / "data-ledger.json"           # lane 1's data ledger (redzone/lab/data_ledger.py)
 REEL_REQUESTS = DATA / "reel_requests.jsonl"   # "I missed that" -> a catch-up request (record only)
 REPLAY_DUE_S = 180.0    # Nick, Nov 4 11:00 AM: a missed key moment airs within 3 min, at the next dead moment
 MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min, a phone convenience; the graded window is big_seen_3min
@@ -198,7 +199,8 @@ def _on_at(segs: list[dict], ts: float, key: str = "game") -> str | None:
 # "floors": [...], "planner": "crunch-overlap"}); until it does, the stub rebuilds what the row already
 # holds: the decider's reason and kind, chips and playbook ids, the delays it planned with, and the
 # guard's last check. Read only: nothing here is on the decision path.
-PROV_ORDER = ("watch_value", "crunch_state", "importance", "stakes", "floors", "planner", "playbook", "guard")
+PROV_ORDER = ("watch_value", "crunch_state", "importance", "stakes", "floors", "planner", "playbook", "guard",
+              "control")   # lane 3: path, flip, resume, STK-07 left-hold
 
 
 def provenance_view(row: dict, name) -> dict:
@@ -612,6 +614,13 @@ def router(engine) -> APIRouter:
                 "view": held_view(gid, c.hidden_ready, float(c.held.get(t, 0.0)) if t else 0.0,
                                   dec.home_break_visit, dec.home_return_at, list(dec.queue), dec.current,
                                   engine._name, now)}
+
+    @r.get("/ledger")
+    async def ledger():
+        if not _enabled(engine):
+            return _off()
+        from redzone.lab import data_ledger
+        return {"enabled": True, **data_ledger.view(data_ledger.read(LEDGER))}
 
     @r.get("/slate")
     async def slate():
