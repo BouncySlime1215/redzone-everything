@@ -370,3 +370,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   time; **RedZone never adds betting features** (pre-game lines only as a hidden data prior); no artificial
   suspense, autoplay or pull-back nudges, streaks or viewer sensors. Nick's taps and ratings stay evaluation-only
   (self-taught rule). Baseball Savant skipped for now (terms unclear; MLB last and out of season). RC6 = #132 + #173.
+- 2026-11-04 (Nick 7:21 PM ET, via the overseer): **off-policy exploration approved with limits** (EXP-005). New flag
+  `decider.explore.enabled`, off by default, and not started until Friday's v3 locked set lands. It may only pick
+  between options that are both already safe (dead ball, no mid-play) and within a small value margin, on at most 5% of
+  decisions, and never in crunch, down the stretch, your-team moments or the catch-up queue. Every decision logs its
+  propensity so the doubly robust estimator is valid. Promotion goes through the normal bar (worth it ≥ live).
+  Reason: grade new brains on logged nights without running them live.
