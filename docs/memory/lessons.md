@@ -240,3 +240,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   so a 60 s hold came out 81.7 s (90 -> 111.6 s) in the night lab. Fix: the resume waits at most
   HOLD_RESUME_LOCK_S (1 s), then plays a stick nobody touched since the pause (a token that any _tune on
   that stick clears); `held` is only written if the token survived. Timed waits must not sit behind locks.
+- **2026-11-04: an ESPN summary we couldn't parse left the source looking healthy.** engine.poll logged the
+  exception and moved on without `record_error`, so a schema change never cost espn_summary its stoppage
+  ownership (Merger.owner, FEED-01): the decider kept trusting a source that had stopped telling it anything.
+  Now every unreadable summary (exception or no game id) counts as a source error (FEED-05).

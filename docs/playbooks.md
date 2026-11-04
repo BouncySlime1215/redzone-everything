@@ -53,7 +53,7 @@ crunch value, P2 = robustness, P3 = polish.
 | STK-06 | pause buffer LOST (held stick resumed or jumped to live, app restart) or behind-live drift > 2 s from target (Nick, Nov 4 3:05 PM) | rebuild the hold at the next dead ball on the hidden stick (pause method, calibrated hold -1.5 s); never mid-play. An intentional hold pause is not STK-05 | run without buffer for that game (live edge, entries at confirmed dead only) | new `buffer_lost` fault | behind_live_err_p95, drift_recovered | ③ | new (overseer queue e) |
 | TV-01 | SmartThings flip ignored | retry once; verify by input readback | LAN WebSocket KEY_HDMI fast path; else stay on current | flip_ignored, tv_input_ignored | switch_p95, recovery | ③ | partial |
 | TV-02 | SmartThings API down | LAN WebSocket path | CEC via the stick; else one-stick mode | api_down, st_down (faults:tv) | recovery | ③ | exists (HOME fallback; tested) |
-| MAC-01 | Mac about to sleep | caffeinate while games are live; persist state | on wake: restore state, re-verify sticks and TV input | new `mac_sleep` fault | recovery | ④ | partial (wake.py) |
+| MAC-01 | Mac about to sleep | caffeinate while games are live; persist state | on wake: restore state, re-verify sticks and TV input | new `mac_sleep` fault | recovery | ④ | partial (caffeinate while live: tests/test_mac_wake.py; wake.py recover; state not persisted) |
 
 ## P1: big plays and crunch (the scenario tree's first branches)
 
@@ -95,7 +95,7 @@ generalize them; until then each is a named rule, tested on replayed nights.
 | FEED-02 | feed returns stale ETag for > 30 s | burst poll the challenger | SAFE-01 | new `feed_frozen` fault | mid_play | ④ | partial (#73) |
 | FEED-03 | two sources disagree on clock/state | trust the faster measured source, log it | hold | new `feed_disagree` fault | mid_play | ④ | done (flag sources.trust_order, off; merger.disagreements logged) |
 | FEED-04 | play arrives out of order / late | re-sort by wallclock; revise only future decisions | – | lag jitter (B12) | mid_play | ④ | done (backtest late_plays / lag jitter: tests/test_midplay.py zero cuts under real-world mess) |
-| FEED-05 | feed schema change (parse error) | quarantine the source, fall back | file an auto-fix issue | malformed fixture | recovery | ④ | partial (autofix) |
+| FEED-05 | feed schema change (parse error) | quarantine the source, fall back | file an auto-fix issue | malformed fixture | recovery | ④ | partial (an unreadable summary is a source error, so the source loses stoppage ownership: tests/test_feeds.py; no bench yet; autofix files it) |
 | FEED-06 | rate limited (429) | back off with jitter, rotate source | – | new `rate_limit` fault | recovery | ④ | new |
 | FEED-07 | game missing from the scoreboard | keep last known, recheck in 30 s | drop from slate | fixture | – | ④ | done (decider _gone_hold keeps it; night lab `game_missing`, check net_feed_faults_handled) |
 | NET-01 | Mac offline | keep playing the current game; no cuts | resume decisions on reconnect | new `mac_offline` fault | recovery | ④ | done (NET-01 hold in playbooks.safe, flag off: no cut while every feed is stale; night lab `mac_offline` in faults:safety) |
