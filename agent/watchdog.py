@@ -45,6 +45,8 @@ NOTIFY_QUIET_S = 3600.0      # the same note at most once an hour
 RECONNECT_EVERY_S = 600.0
 MODEL_CACHE_S = 1800.0       # the same set of unknown errors is asked about at most every 30 min
 MODEL_IDLE_S = 900.0         # the local model is dropped after 15 idle minutes (~1 GB back to the Mac)
+PRUNE_EVERY_S = 1800.0       # prune_disk at most once per 30 min (it only frees caches the app rebuilds)
+MAX_ACTIONS_HOUR = 12        # restarts + reconnects + prunes, all kinds together: past this, notify only
 MEMORY_CHECKS = 3            # the app over its memory cap this many checks in a row: act
 ADB = shutil.which("adb") or "/opt/homebrew/bin/adb"
 
@@ -111,6 +113,8 @@ class Watchdog:
         self.offline_since: dict[str, float] = {}
         self.notified: dict[str, float] = {}
         self.reconnected: dict[str, float] = {}
+        self.pruned_at = -1e9
+        self.actions: list[float] = []               # when each device/service action ran (the hourly cap)
         self.asked: dict[tuple, tuple[float, Verdict]] = {}
         self._model = None
         self._model_used = 0.0
@@ -231,6 +235,20 @@ class Watchdog:
 
     # ---- doing ----------------------------------------------------------------------------
     def act(self, v: Verdict, o: Obs) -> str:
+        """Do the verdict, rate-limited, and never raise: whatever happens is a result string the
+        journal keeps (tick() writes one row for every action)."""
+        try:
+            return self._act(v, o)
+        except Exception as e:   # an action that blew up is logged, never the end of the watchdog
+            log.warning("agent: %s failed: %s", v.action, e)
+            return f"{v.action} failed: {type(e).__name__}: {str(e)[:100]}"
+
+    def _capped(self) -> bool:
+        now = self._clock()
+        self.actions = [t for t in self.actions if now - t < 3600]
+        return len(self.actions) >= MAX_ACTIONS_HOUR
+
+    def _act(self, v: Verdict, o: Obs) -> str:
         if v.action == "none":
             return "nothing to do"
         if v.action == "notify":
@@ -242,10 +260,19 @@ class Watchdog:
             return "noted for the phone"
         if self.dry_run:
             return f"dry run: would {v.action}"
+        if self._capped():
+            # Something keeps coming back: a person hears about it once an hour instead of a loop.
+            note = Verdict("notify", f"watchdog hit {MAX_ACTIONS_HOUR} actions this hour; holding back "
+                           "restarts, reconnects and prunes until the hour clears", source="guard")
+            told = self._act(note, o)
+            return f"rate-limited ({MAX_ACTIONS_HOUR}/h): {told}"
+        if v.action == "prune_disk" and self._clock() - self.pruned_at < PRUNE_EVERY_S:
+            return "pruned recently; waiting"
         if v.action == "restart_service":
             if deploy_in_progress(self._clock()):
                 return "deploy in progress: scripts/deploy.py is restarting and watching the app"
             self.restarts.append(self._clock())
+            self.actions.append(self._clock())
             self.mem_streak = 0
             try:
                 r = subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{LABEL}"],
@@ -259,6 +286,7 @@ class Watchdog:
             if self._clock() - self.reconnected.get(v.target, -1e9) < RECONNECT_EVERY_S:
                 return "reconnected recently; waiting"
             self.reconnected[v.target] = self._clock()
+            self.actions.append(self._clock())
             try:
                 subprocess.run([ADB, "disconnect", v.target], capture_output=True, timeout=10)
                 r = subprocess.run([ADB, "connect", v.target], capture_output=True, text=True, timeout=15)
@@ -266,6 +294,8 @@ class Watchdog:
             except (subprocess.TimeoutExpired, OSError) as e:
                 return f"no answer from {v.target} ({type(e).__name__}): likely powered off"
         if v.action == "prune_disk":
+            self.pruned_at = self._clock()
+            self.actions.append(self._clock())
             return f"freed {prune_caches()} MB"
         return "unknown action skipped"
 
