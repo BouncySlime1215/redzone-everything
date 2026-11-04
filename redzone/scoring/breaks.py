@@ -58,6 +58,7 @@ class Forecast:
     expect_s: float    # its expected length if it does
     why: str           # plain English, for the phone
     now: bool = False  # already in the data (not a guess)
+    key: str = ""      # which length (a LEN key) expect_s is: the one-brain break table is measured per key
 
     @property
     def visit(self) -> bool:
@@ -66,6 +67,24 @@ class Forecast:
 
 
 NONE = Forecast(0.0, 0.0, "")
+MIN_N = 30          # a measured length replaces the prior only with at least this many breaks behind it
+
+
+def _f(p: float, key: str, lens: dict, why: str, now: bool = False) -> Forecast:
+    return Forecast(p, float(lens[key]), why, now, key)
+
+
+def lengths_from(table) -> dict:
+    """LEN with every key the one-brain break table measured well (n >= MIN_N) replaced by its median
+    (redzone/contracts/breaks.BreakTable). Unmeasured keys (no archive for that league) keep the prior."""
+    if table is None:
+        return LEN
+    out = dict(LEN)
+    for key in LEN:
+        m = table.rule(key)
+        if m is not None and m.n >= MIN_N:
+            out[key] = m.q50
+    return out
 
 # What a learned-only forecast expects a break to last (median long break, per pro league).
 BRAIN_LEN = {League.NFL: 150.0, League.NBA: 180.0, League.NHL: LEN["nhl_tv"], League.MLB: LEN["mlb_inning"]}
@@ -179,7 +198,7 @@ def _owed(clock: float, marks: tuple, clocks: tuple) -> bool:
     return any(clock <= m for m in open_)
 
 
-def _now(g: GameState, n: int) -> Forecast | None:
+def _now(g: GameState, n: int, lens: dict = LEN) -> Forecast | None:
     """A break already in the data: no guess, just how long."""
     s = g.stoppage
     if s not in REAL_BREAKS:
@@ -190,108 +209,109 @@ def _now(g: GameState, n: int) -> Forecast | None:
     if s == Stoppage.HALFTIME:
         key = "nfl_half" if base == League.NFL else "cbb_half" if lg == League.CBB else \
             "wcbb_half" if lg == League.WCBB else "nba_half"
-        return Forecast(1.0, LEN[key], "halftime", True)
+        return _f(1.0, key, lens, "halftime", True)
     if s == Stoppage.INTERMISSION:
-        return Forecast(1.0, LEN["nhl_intermission"], "intermission", True)
+        return _f(1.0, "nhl_intermission", lens, "intermission", True)
     if base == League.NFL:
         if s == Stoppage.TIMEOUT:
             if kind == "timeout" or "timeout #" in text:
-                return Forecast(0.15, LEN["nfl_team_to"], "team timeout (usually no commercial)", True)
-            return Forecast(1.0, LEN["nfl_score"], "TV timeout", True)
+                return _f(0.15, "nfl_team_to", lens, "team timeout (usually no commercial)", True)
+            return _f(1.0, "nfl_score", lens, "TV timeout", True)
         if s == Stoppage.SCORE_BREAK:
-            return Forecast(0.95, LEN["nfl_score"], "score: commercial before the kickoff", True)
+            return _f(0.95, "nfl_score", lens, "score: commercial before the kickoff", True)
         if s == Stoppage.TWO_MINUTE_WARNING:
-            return Forecast(1.0, LEN["nfl_2min"], "two-minute warning", True)
+            return _f(1.0, "nfl_2min", lens, "two-minute warning", True)
         if s == Stoppage.END_PERIOD:
-            return Forecast(1.0, LEN["nfl_quarter"], "end of the quarter", True)
+            return _f(1.0, "nfl_quarter", lens, "end of the quarter", True)
         return Forecast(0.4, 120.0, "stoppage", True)
     if base == League.NBA:
         if s == Stoppage.TIMEOUT:
             if lg.college and "tv" in kind + " " + text:
-                return Forecast(1.0, LEN["cbb_media" if lg == League.CBB else "wcbb_media"], "media timeout", True)
+                return _f(1.0, "cbb_media" if lg == League.CBB else "wcbb_media", lens, "media timeout", True)
             if lg == League.NBA:
                 # n already counts this one (observe runs first): #1 and #2 of a quarter are the long ones.
-                return Forecast(1.0, LEN["nba_long"] if n <= 2 else LEN["nba_short"],
+                return _f(1.0, "nba_long" if n <= 2 else "nba_short", lens,
                                 "long timeout" if n <= 2 else "short timeout", True)
             return Forecast(0.8, 140.0, "timeout", True)
         if s == Stoppage.END_PERIOD:
-            return Forecast(1.0, LEN["wcbb_quarter" if lg == League.WCBB else "nba_quarter"], "end of the quarter", True)
+            return _f(1.0, "wcbb_quarter" if lg == League.WCBB else "nba_quarter", lens, "end of the quarter", True)
         return Forecast(0.5, 90.0, "review", True)
     if lg == League.NHL:
         if s == Stoppage.TIMEOUT:
-            return Forecast(1.0, LEN["nhl_tv"], "TV timeout", True)
+            return _f(1.0, "nhl_tv", lens, "TV timeout", True)
         if s == Stoppage.SCORE_BREAK:
-            return Forecast(0.3, LEN["nhl_goal"], "goal (no TV timeout after one)", True)
+            return _f(0.3, "nhl_goal", lens, "goal (no TV timeout after one)", True)
         return Forecast(0.5, 90.0, "review", True)
     if lg == League.MLB:
         if s == Stoppage.PITCHING_CHANGE:
-            return Forecast(0.7, LEN["mlb_pitching"], "pitching change", True)
+            return _f(0.7, "mlb_pitching", lens, "pitching change", True)
         if s == Stoppage.END_PERIOD:
-            return Forecast(1.0, LEN["mlb_inning"], "between innings", True)
+            return _f(1.0, "mlb_inning", lens, "between innings", True)
     return Forecast(0.6, 120.0, "stoppage", True)
 
 
-def forecast(g: GameState | None, clocks: tuple = ()) -> Forecast:
+def forecast(g: GameState | None, clocks: tuple = (), lens: dict = LEN) -> Forecast:
     """Chance a commercial reaches the screen soon, and its expected length.
 
-    clocks: the game clock at each long break this period has already had (BreakBook)."""
+    clocks: the game clock at each long break this period has already had (BreakBook).
+    lens: the length table (LEN, or the measured one-brain table: lengths_from)."""
     if g is None or g.phase != Phase.LIVE:
         return NONE
     n = len(clocks)
-    now = _now(g, n)
+    now = _now(g, n, lens)
     if now is not None:
         return now
     lg, base, clk = g.league, g.league.base, g.clock_s
     if lg == League.MLB:
         outs = g.situation.outs or 0
-        return Forecast(0.6, LEN["mlb_inning"], "two outs: the next out ends the inning") if outs >= 2 else NONE
+        return _f(0.6, "mlb_inning", lens, "two outs: the next out ends the inning") if outs >= 2 else NONE
     if clk is None:
         return NONE
     p = pro_period(lg, g.period, clk)
     kind = (g.last_play.kind if g.last_play else "").lower()
     if base == League.NFL:
         if p in (1, 3) and clk <= 60:
-            return Forecast(0.8, LEN["nfl_quarter"], "the quarter's about to end")
+            return _f(0.8, "nfl_quarter", lens, "the quarter's about to end")
         if p in (2, 4) and 120 < clk <= 165:
-            return Forecast(0.8, LEN["nfl_2min"], "two-minute warning coming")
+            return _f(0.8, "nfl_2min", lens, "two-minute warning coming")
         if kind == "punt":
-            return Forecast(0.75, LEN["nfl_punt"], "punt: commercial before the next snap")
+            return _f(0.75, "nfl_punt", lens, "punt: commercial before the next snap")
         if kind == "turnover":
-            return Forecast(0.5, LEN["nfl_turnover"], "turnover: often a commercial")
+            return _f(0.5, "nfl_turnover", lens, "turnover: often a commercial")
         sit = g.situation
         if sit.down == 4 and sit.yards_to_goal is not None:
             if sit.yards_to_goal <= 35:
-                return Forecast(0.55, LEN["nfl_score"], "4th down in range: a field goal means a break")
-            return Forecast(0.6, LEN["nfl_punt"], "4th down: a punt means a break")
+                return _f(0.55, "nfl_score", lens, "4th down in range: a field goal means a break")
+            return _f(0.6, "nfl_punt", lens, "4th down: a punt means a break")
         return NONE
     if lg == League.CBB:
         if g.period == 1 and clk <= 60:
-            return Forecast(0.8, LEN["cbb_half"], "halftime's coming")
+            return _f(0.8, "cbb_half", lens, "halftime's coming")
         if (g.period or 0) <= 2 and _owed(clk, CBB_MARKS, clocks):
-            return Forecast(0.85, LEN["cbb_media"], "media timeout due at the next whistle")
+            return _f(0.85, "cbb_media", lens, "media timeout due at the next whistle")
         return NONE
     if base == League.NBA:
         wom = lg == League.WCBB
         if p in (1, 3) and clk <= 60:
-            return Forecast(0.8, LEN["wcbb_quarter" if wom else "nba_quarter"], "the quarter's about to end")
+            return _f(0.8, "wcbb_quarter" if wom else "nba_quarter", lens, "the quarter's about to end")
         if p == 2 and clk <= 60:
-            return Forecast(0.8, LEN["wcbb_half" if wom else "nba_half"], "halftime's coming")
+            return _f(0.8, "wcbb_half" if wom else "nba_half", lens, "halftime's coming")
         if p > 4:
             return NONE
         if wom:
             if clk <= WCBB_MARK and not clocks:
-                return Forecast(0.8, LEN["wcbb_media"], "media timeout due at the next whistle")
+                return _f(0.8, "wcbb_media", lens, "media timeout due at the next whistle")
             return NONE
         if (n == 0 and clk <= NBA_MARKS[0]) or (n <= 1 and clk <= NBA_MARKS[1]):
-            return Forecast(0.7, LEN["nba_long"], "mandatory timeout due at the next dead ball")
+            return _f(0.7, "nba_long", lens, "mandatory timeout due at the next dead ball")
         return NONE
     if lg == League.NHL:
         if p in (1, 2) and clk <= 90:
-            return Forecast(0.8, LEN["nhl_intermission"], "intermission's coming")
+            return _f(0.8, "nhl_intermission", lens, "intermission's coming")
         if p > 3 or g.situation.power_play or (p in (1, 2) and clk <= 30) or (p == 3 and clk <= 120):
             return NONE
         if _owed(clk, NHL_MARKS, clocks):
-            return Forecast(0.7, LEN["nhl_tv"], "TV timeout due at the next stoppage")
+            return _f(0.7, "nhl_tv", lens, "TV timeout due at the next stoppage")
         return NONE
     return NONE
 
@@ -302,10 +322,13 @@ class BreakBook:
     (the kickoff after the TD's ads is already logged) is still on its way to the screen: a
     forecast holds for HOLD_S unless a stronger one replaces it."""
 
-    def __init__(self, clock=None, brain=None):
-        """brain: a callable returning (brain, weight) to blend in, or (None, 0) when off."""
+    def __init__(self, clock=None, brain=None, table=None):
+        """brain: a callable returning (brain, weight) to blend in, or (None, 0) when off.
+        table: the one-brain break table (contracts.breaks.BreakTable, flag breaks.one_model); None = LEN."""
         self._clock = clock or (lambda: time.time())
         self._brain = brain
+        self.table = table
+        self.lens = lengths_from(table)
         self._last: dict[str, tuple[float, Forecast]] = {}
         self._seen: dict[str, set[str]] = {}
         self._period: dict[str, int | None] = {}
@@ -331,7 +354,7 @@ class BreakBook:
     def forecast(self, g: GameState | None) -> Forecast:
         if g is None:
             return NONE
-        f, now = forecast(g, self.clocks(g.game_id, g.period)), self._clock()
+        f, now = forecast(g, self.clocks(g.game_id, g.period), self.lens), self._clock()
         if self._brain is not None and g.phase == Phase.LIVE:
             got = self._brain()
             b, w = got[0], got[1]

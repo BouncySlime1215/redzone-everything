@@ -412,10 +412,14 @@ class BreaksV3:
     def forecast(self, g: GameState, now: float):
         from redzone.contracts.breaks import BreakForecast
         from redzone.contracts.legacy import Q10_MULT, Q90_MULT, _break_kind
+        from redzone.scoring.breaks import MIN_N
         f = self.book.forecast(g)
         m = float(f.expect_s)
         kind = _break_kind(f.why, m)
         q = (m * Q10_MULT, m, m * Q90_MULT)
+        measured = self.book.table.rule(f.key) if self.book.table is not None and f.key else None
+        if measured is not None and measured.n >= MIN_N:         # [one brain, step 5] the measured spread
+            q = (measured.q10_s, measured.q50_s, measured.q90_s)
         restart = None
         v = None
         if self.brain is not None and g is not None and self.brain.available(g.league):

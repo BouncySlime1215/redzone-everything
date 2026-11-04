@@ -12,6 +12,7 @@ wallclock (add SyncEstimate.delay_s for screen time). p over the next ~60 s.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from enum import Enum
 from typing import Protocol, runtime_checkable
 
@@ -55,3 +56,50 @@ NO_BREAK = dict(p_start=0.0, kind=BreakKind.NONE, in_data_now=False,
 class BreakModel(Protocol):
     def observe(self, g: GameState) -> None: ...
     def forecast(self, g: GameState, now: float) -> BreakForecast: ...
+
+
+# [one brain, step 5] ONE measured break-length table for every reader (breaks.LEN, BRAIN_LEN, and for lane 4 to
+# wire: decider BREAK_LEN_S, cuts MEDIAN_S, screen MIN_BREAK_S, yaml break_lengths_s). Written by a lab script
+# (scripts/measure_break_table.py) from the archive's non-locked nights, with its provenance; read behind
+# ``breaks.one_model``. Two key spaces: ``rules`` = breaks.LEN keys (what the forecast says), ``stoppage`` =
+# models.Stoppage values per league (what the feed says). Lengths are feed seconds, break play -> next live play.
+TABLE_PATH = Path(__file__).resolve().parents[1] / "scoring" / "break_table.v1.json"
+
+
+@dataclass(frozen=True)
+class BreakLength:
+    n: int
+    q10_s: float
+    q50_s: float
+    q90_s: float
+
+    @property
+    def q50(self) -> float:
+        return self.q50_s
+
+
+@dataclass(frozen=True)
+class BreakTable:
+    version: str
+    provenance: dict
+    rules: dict            # LEN key -> BreakLength
+    stoppage: dict         # league value -> Stoppage value -> BreakLength
+
+    def rule(self, key: str) -> BreakLength | None:
+        return self.rules.get(key)
+
+    def by_stoppage(self, league: str, stoppage: str) -> BreakLength | None:
+        return (self.stoppage.get(league) or {}).get(stoppage)
+
+
+def _len(d: dict) -> BreakLength:
+    return BreakLength(int(d["n"]), float(d["q10_s"]), float(d["q50_s"]), float(d["q90_s"]))
+
+
+def load_table(path=None) -> BreakTable:
+    """The committed table (TABLE_PATH). A missing or bad file raises: the flag is off by default, and a
+    flag that is on must not silently fall back to the old numbers."""
+    import json
+    d = json.loads(Path(path or TABLE_PATH).read_text())
+    return BreakTable(str(d["version"]), dict(d["provenance"]), {k: _len(v) for k, v in d["rules"].items()},
+                      {lg: {k: _len(v) for k, v in t.items()} for lg, t in d["stoppage"].items()})

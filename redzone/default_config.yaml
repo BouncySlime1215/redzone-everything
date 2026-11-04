@@ -499,6 +499,9 @@ delay:                     # seconds your screen runs behind real life, per app;
     min_n: 20              # residuals (first anchor after a tune) before it speaks
     min_sigma_s: 2         # floor of the learned doubt (the 4 s sync floor stays for the filter itself)
 
+breaks:                    # [one brain, step 5] ONE break-length table (redzone/scoring/break_table.v1.json,
+  one_model: false         # measured by scripts/measure_break_table.py) and ONE BreakBook owned by the engine and
+                           # shared with the drive scorer. Off: each keeps its own book and breaks.LEN.
 break_lengths_s:           # typical commercial lengths used to plan catch-ups
   nfl: {timeout: 75, tv_timeout: 120, score_break: 150, end_period: 120, two_minute_warning: 150, halftime: 780}
   nba: {timeout: 90, end_period: 130, halftime: 900}
