@@ -363,3 +363,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   to `two_stick.standby_repause_s: 600` in default_config.yaml, value unchanged; postseason.py's ROUNDS / DEFAULTS /
   _rank renamed ROUNDS_LEFT / WEIGHTS / _poll_rank (no behavior change). Reason: the contract kernel (K1/K2/K4)
   flagged them as new on merge; one definition per fact, timings in config (Nick, one connected system).
+- 2026-11-04 (lane 4, one brain step 7): new flag `onebrain.world_shadow: false`. On, Engine.decide builds the
+  per-tick WorldState (redzone/worldstate.py, typed contracts/scored.py) beside the legacy path and logs its summary
+  to data/world_shadow.jsonl (once a minute + each changed decision); nothing decides on it. Ships OFF per
+  onebrain-rules §7; measured cost on the perf probe (8 games, 300 ticks): within noise (~0.1 ms p50).
+- 2026-11-04 22:28 UTC (overseer, for one brain step 6, "one your-team predicate"): a MANUAL BOOST (Nick presses a
+  control) is tier 0, time-limited: it holds until the boosted moment ends or he cancels. BETS are tier 1: a preference
+  multiplier like his teams' boost but below WSH/UNC, and never above the floor rules (never join mid-play). Step 5
+  (one break model): lane 1 builds and trains it; lane 4 wires it into the Noggin once lane 2's decider PRs land.

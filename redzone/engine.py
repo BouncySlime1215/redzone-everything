@@ -211,6 +211,10 @@ class Engine:
         # Per-switch TraceEvents (redzone/contracts/trace.py): data/traces.jsonl; in memory without a data dir.
         self.trace_sink = (trace.JsonlTrace(data_dir.parent / "traces.jsonl") if data_dir
                            else trace.MemoryTrace())
+        # [one brain, step 7] the per-tick WorldState, built in shadow beside the legacy path (redzone/worldstate.py)
+        self.world = None
+        self._world_path = data_dir.parent / "world_shadow.jsonl" if data_dir else None
+        self._world_logged = 0.0
         # Watches the live system and fixes what it can on its own (redzone/supervisor.py).
         self.supervisor = Supervisor(self, root=data_dir.parent if data_dir else SUPERVISOR_DATA)
         self.control.target_names = self._target_names
@@ -1198,6 +1202,7 @@ class Engine:
         d = self.decider.decide(cands, redzone, commit=dry, reel=self._reel_target())
         self.last_decision = d
         changed = d.reason != self._last_logged_reason or d.action != "stay"
+        self._world_shadow(now, cands, redzone, d, changed)
         if changed:
             self.store.decision(d)
             self._last_logged_reason = d.reason
@@ -1212,6 +1217,27 @@ class Engine:
                                   "now" if gid == self.decider.current else "")
                                  for gid, s in self.scored.items() if s.raw > 0])
         return changed
+
+    def _world_shadow(self, now: float, cands: dict, redzone: str | None, d: Decision, changed: bool) -> None:
+        """[one brain, step 7] Build this tick's WorldState in shadow (onebrain.world_shadow, default off) and
+        log its summary next to the legacy decision: at most once a minute, plus every changed decision.
+        Nothing decides on it yet. Never raises into the tick."""
+        if not self.cfg.get("onebrain.world_shadow", False):
+            return
+        try:
+            from redzone import worldstate
+            cur = self.decider.current
+            w = self.where.get(cur or "")
+            self.world = worldstate.build(
+                now, self.merger.games, cands, self.scored, fresh_at=self.feeds.fresh_at, stale=self.feeds.stale,
+                current=cur, current_target=getattr(w, "target", None), redzone_target=redzone,
+                flags={worldstate.FLAG: True}, tick=self._tick)
+            if self._world_path is not None and (changed or now - self._world_logged >= 60):
+                self._world_logged = now
+                from redzone.supervisor import append_jsonl
+                append_jsonl(self._world_path, worldstate.summary(self.world, d))
+        except Exception:
+            log.exception("world shadow failed (the legacy decision is unaffected)")
 
     def _reasoner_narrate(self) -> None:
         """Ask the local model for each hot game's storyline (background, event-driven, rate-limited)
