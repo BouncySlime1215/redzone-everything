@@ -828,7 +828,15 @@ def test_buffer_error_reads_a_jump_to_live_and_a_drift_off_the_sticks_own_clock(
     assert c.buffer_error(c.hidden, "youtubetv:fox", pb(220_000, 530_000)) == (0.0, -90.0)         # jumped to live
     assert c.buffer_error(c.hidden, "youtubetv:fox", pb(124_000, 530_000)) == (96.0, 6.0)          # fell 6 s behind
     c.held.pop("youtubetv:fox")
-    assert c.buffer_error(c.hidden, "youtubetv:fox", pb(130_000, 530_000)) is None                 # no hold: not judged
+    c.cfg.update({"timing": {"behind_live_s": {"enabled": True, "apps": ["youtubetv"]}}})
+    # Unheld but wanted, and nobody holding it (a switch tuned it, then found no safe moment):
+    # judged as 0 s behind, so the watchdog holds it (lane 2's #132 night).
+    assert c.buffer_error(c.hidden, "youtubetv:fox", pb(130_000, 530_000)) == (0.0, -90.0)
+    c._holding = (c.hidden, "youtubetv:fox", object())                                            # a hold under way
+    assert c.buffer_error(c.hidden, "youtubetv:fox", pb(130_000, 530_000)) is None
+    c._holding = None
+    c.cfg.update({"timing": {"behind_live_s": {"enabled": False}}})
+    assert c.buffer_error(c.hidden, "youtubetv:fox", pb(130_000, 530_000)) is None                 # no buffer wanted
 
 
 @pytest.mark.playbook("STK-06")

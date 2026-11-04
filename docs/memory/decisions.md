@@ -356,3 +356,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `noggin.pick.model` (default `v1`). All are off or unchanged by default. Why off: on NBA dev the veto leaves the rule
   default unchanged (77.5 / 90.0) and the `all` scope adds a mid-play cut. The pure rollout beats the rule (85.9 / 91.9),
   but the decider path doesn't carry that gain yet. docs/noggin.md §13.
+- 2026-11-04: **two_stick.shadow.* and demo.* (new keys, values unchanged).** ShadowStick flip/tune/keep and demo
+  feed-lag/play-length/tune/sigma timings moved into default_config.yaml (two_stick.shadow.*, demo.*), values
+  unchanged; reason: one source of truth for timing (Nick, one connected system). Moving to measured values is a
+  separate decision.
+- 2026-11-04 (lane 4, #168, one brain merge with integration/next): `control.STANDBY_REPAUSE_S` (APP-04, #164) moves
+  to `two_stick.standby_repause_s: 600` in default_config.yaml, value unchanged; postseason.py's ROUNDS / DEFAULTS /
+  _rank renamed ROUNDS_LEFT / WEIGHTS / _poll_rank (no behavior change). Reason: the contract kernel (K1/K2/K4)
+  flagged them as new on merge; one definition per fact, timings in config (Nick, one connected system).

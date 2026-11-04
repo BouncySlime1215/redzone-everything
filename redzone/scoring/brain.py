@@ -26,11 +26,12 @@ from pathlib import Path
 import numpy as np
 
 from redzone.models import REAL_BREAKS, GameState, League, Phase
+from redzone.models_rt.forest import MODEL_DIRS, Nodes, load_npz
 from redzone.scoring.gameflow import SPEC, game_elapsed, wp_baseball, wp_basketball, wp_hockey
 
 log = logging.getLogger(__name__)
 
-MODEL_DIR = Path(__file__).resolve().parent / "brain_models"
+MODEL_DIR = MODEL_DIRS["brain"]
 TASKS = ("break", "key", "hot")
 TIMELINE_MAX = 240
 MAX_GAMES = 300  # per-game memory kept for at most this many games (oldest dropped first)
@@ -64,7 +65,8 @@ def features_for(league: str) -> list[str]:
 # --- plain-numpy evaluation of a LightGBM model ------------------------------------------------
 
 class Trees:
-    """A LightGBM tree ensemble flattened into arrays (all trees walked at once).
+    """A LightGBM tree ensemble flattened into arrays (all trees walked at once, by
+    models_rt.forest.Nodes: the one walker).
 
     Node arrays: feat, thr, left, right (child node index), dleft (missing goes left), miss
     (0 None / 1 Zero / 2 NaN, LightGBM's missing_type), value (leaf value, or the node's
@@ -84,29 +86,17 @@ class Trees:
         self.objective = meta.get("objective", "binary")
         self.features = list(meta["features"])
         self.rate = meta.get("rate")  # training base rate of the label
+        self.nodes = Nodes(arrays, self.depth + 1)
 
     def raw(self, x: np.ndarray, explain: bool = False) -> tuple[float, np.ndarray | None]:
         """Sum of tree outputs for one feature row; with explain, Saabas per-feature contributions."""
-        x = np.asarray(x, dtype=np.float32).astype(np.float64)
-        idx = self.roots.copy()
         contrib = np.zeros(len(self.features)) if explain else None
-        for _ in range(self.depth + 1):
-            inner = ~self.leaf[idx]
-            if not inner.any():
-                break
-            node = idx[inner]
-            f = self.feat[node]
-            v = x[f]
-            nan = np.isnan(v)
-            miss = self.miss[node]
-            v = np.where(nan & (miss != 2), 0.0, v)
-            to_default = ((miss == 1) & (np.abs(v) <= 1e-35)) | ((miss == 2) & nan)
-            go_left = np.where(to_default, self.dleft[node], v <= self.thr[node])
-            child = np.where(go_left, self.left[node], self.right[node])
-            if explain:
-                np.add.at(contrib, f, self.value[child] - self.value[node])
-            idx[inner] = child
-        return float(self.value[idx].sum()), contrib
+        value = self.nodes.value
+
+        def reasons(node, child, f):
+            np.add.at(contrib, f, value[child] - value[node])
+        idx = self.nodes.leaves(x, reasons if explain else None)
+        return float(value[idx].sum()), contrib
 
     def predict(self, x: np.ndarray, explain: bool = False) -> tuple[float, np.ndarray | None]:
         r, c = self.raw(x, explain)
@@ -124,51 +114,37 @@ class Forest:
         self.tasks = list(models)
         first = next(iter(models.values()))
         self.features = first.features
-        feat, thr, left, right, dleft, miss, value, roots, task_of = [], [], [], [], [], [], [], [], []
+        parts: dict[str, list] = {k: [] for k in ("feat", "thr", "left", "right", "dleft", "miss", "value", "roots")}
+        task_of = []
         off = 0
         for k, (name, t) in enumerate(models.items()):
             if t.features != self.features:
                 raise ValueError("every task in a forest needs the same features")
-            n = len(t.feat)
-            me = np.arange(n) + off
-            feat.append(np.where(t.leaf, 0, t.feat))
-            thr.append(t.thr)
-            left.append(np.where(t.leaf, me, t.left + off))
-            right.append(np.where(t.leaf, me, t.right + off))
-            dleft.append(t.dleft), miss.append(t.miss), value.append(t.value)
-            roots.append(t.roots + off)
+            n = t.nodes
+            parts["feat"].append(n.feat), parts["thr"].append(n.thr), parts["dleft"].append(n.dleft)
+            parts["left"].append(n.left + off), parts["right"].append(n.right + off)
+            parts["miss"].append(n.miss), parts["value"].append(n.value), parts["roots"].append(n.roots + off)
             task_of.append(np.full(len(t.roots), k))
-            off += n
-        cat = np.concatenate
-        self.feat, self.thr, self.left, self.right = cat(feat), cat(thr), cat(left), cat(right)
-        self.dleft, self.miss, self.value = cat(dleft), cat(miss), cat(value)
-        self.roots, self.task_of = cat(roots), cat(task_of)
+            off += len(n.feat)
+        self.depth = max(t.depth for t in models.values())
+        self.nodes = Nodes({k: np.concatenate(v) for k, v in parts.items()}, self.depth)
+        self.task_of = np.concatenate(task_of)
         self.node_task = np.zeros(off, dtype=np.int64)
         starts = np.cumsum([0] + [len(t.feat) for t in models.values()])
         for k in range(len(self.tasks)):
             self.node_task[starts[k]:starts[k + 1]] = k
-        self.depth = max(t.depth for t in models.values())
         self.binary = [models[n].objective == "binary" for n in self.tasks]
         self.rates = {n: models[n].rate for n in self.tasks}
-        self.miss_zero, self.miss_nan = self.miss == 1, self.miss == 2
 
     def predict(self, x: np.ndarray, explain: bool = False) -> dict[str, tuple[float, np.ndarray | None]]:
-        x = np.asarray(x, dtype=np.float32).astype(np.float64)
         nf = len(self.features)
-        idx = self.roots
         contrib = np.zeros(len(self.tasks) * nf) if explain else None
-        for _ in range(self.depth):
-            f = self.feat[idx]
-            v = x[f]
-            nan = np.isnan(v)
-            v = np.where(nan & ~self.miss_nan[idx], 0.0, v)
-            to_default = (self.miss_zero[idx] & (np.abs(v) <= 1e-35)) | (self.miss_nan[idx] & nan)
-            go_left = np.where(to_default, self.dleft[idx], v <= self.thr[idx])
-            child = np.where(go_left, self.left[idx], self.right[idx])
-            if explain:
-                np.add.at(contrib, self.node_task[idx] * nf + f, self.value[child] - self.value[idx])
-            idx = child
-        sums = np.bincount(self.task_of, weights=self.value[idx], minlength=len(self.tasks))
+        value, node_task = self.nodes.value, self.node_task
+
+        def reasons(node, child, f):
+            np.add.at(contrib, node_task[node] * nf + f, value[child] - value[node])
+        idx = self.nodes.leaves(x, reasons if explain else None)
+        sums = np.bincount(self.task_of, weights=value[idx], minlength=len(self.tasks))
         out = {}
         for k, name in enumerate(self.tasks):
             r = float(sums[k])
@@ -227,12 +203,11 @@ def save(path: Path, models: dict[str, tuple[dict, dict]], info: dict) -> None:
 
 
 def load(path: Path) -> tuple[dict[str, Trees], dict]:
-    with np.load(path, allow_pickle=False) as z:
-        meta = json.loads(bytes(z["meta"]).decode())
-        out = {}
-        for task, m in meta["tasks"].items():
-            arrays = {k.split(".", 1)[1]: z[k] for k in z.files if k.startswith(task + ".")}
-            out[task] = Trees(arrays, m)
+    z, meta = load_npz(path)                  # [one brain] the one loader (models_rt.forest)
+    out = {}
+    for task, m in meta["tasks"].items():
+        arrays = {k.split(".", 1)[1]: z[k] for k in z if k.startswith(task + ".")}
+        out[task] = Trees(arrays, m)
     return out, meta.get("info", {})
 
 
