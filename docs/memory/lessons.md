@@ -119,3 +119,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** `espn.parse_summary(upto=N)` filled `leaders` from the whole-game boxscore; the night's GAMES were picked before the splits existed.
 - **Fix:** leaders are filled only when `upto is None`; the night uses train-night games (NHL 401892578, NBA 401909860). `scripts/leak_check.py` (in CI) fails on locked games in the night, end-of-game fields in a replay, model stamps past the test start and expired KNOWN_ERRORS.
 - **Signals:** a replayed GameState with leaders or W-L records, a fixture id on a test night, `leak_check` FAIL
+- 2026-11-04: **CI now checks playbook coverage and posts a RAM/CPU line.** Tests claim entries with
+  `@pytest.mark.playbook("ID")`. `scripts/playbook_coverage.py --junit` fails CI only when an entry marked
+  `done` has no passing test, or a test names an unknown id, so the 79 entries can be built top-down.
+  `scripts/perf_probe.py` times the real `Engine.decide()` on 8 synthetic live games (300 ticks): it was
+  p50 1.0 ms, p99 5.3 ms, 56 MB peak RSS at 1f5e751. Engine needs a running event loop, so the probe runs
+  inside `asyncio.run`.
