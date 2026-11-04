@@ -12,6 +12,7 @@ from redzone.models import League
 from redzone.noggin import features as F
 from redzone.noggin import live as L
 from redzone.noggin import timing as T
+from tests.conftest import assert_speed
 
 T0 = datetime(2025, 1, 10, 0, 30, tzinfo=timezone.utc)   # Jan 9 evening ET
 
@@ -114,7 +115,7 @@ def test_model_reading_is_sane_and_fast(model):
         a = time.perf_counter()
         model.reading(x, 20.0, "timeout_long")
         ts.append(time.perf_counter() - a)
-    assert np.median(ts) < 0.005    # < 5 ms per reading (one per open window per 5 s)
+    assert_speed(float(np.median(ts)), 0.005, "noggin timing reading")   # one per open window per 5 s
 
 
 def test_numpy_forest_matches_meta(model):

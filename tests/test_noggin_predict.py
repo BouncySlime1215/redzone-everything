@@ -6,6 +6,7 @@ import pytest
 
 from redzone.noggin import features as F
 from redzone.noggin import predict as P
+from tests.conftest import assert_speed
 
 
 def test_game_state_one_definition():
@@ -62,7 +63,7 @@ def test_fit_save_load_matches_lightgbm(tmp_path):
         for hz in F.PREDICT_HORIZONS:
             m2.proba(X[:8], hz)
         lat.append(time.perf_counter() - s)
-    assert np.percentile(lat, 99) < 0.005        # 8 games, all horizons, < 5 ms
+    assert_speed(float(np.percentile(lat, 99)), 0.005, "noggin predict p99")   # 8 games, all horizons
 
 
 def test_no_model_means_off(tmp_path):
