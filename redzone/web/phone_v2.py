@@ -45,6 +45,8 @@ DATA = Path(__file__).resolve().parent.parent.parent / "data"
 ORACLE_DIR = DATA / "oracle"            # <night>.json: the hindsight oracle's schedule for that night
 MOMENTS = DATA / "supervisor_moments.jsonl"   # every big play, judged from the feed: seen live or not
 HISTORY = DATA.parent / "docs" / "northstar-history.jsonl"   # scripts/northstar.py appends a row per run
+REEL_REQUESTS = DATA / "reel_requests.jsonl"   # "I missed that" -> a catch-up request (record only)
+REPLAY_DUE_S = 180.0    # Nick, Nov 4 11:00 AM: a missed key moment airs within 3 min, at the next dead moment
 MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min, a phone convenience; the graded window is big_seen_3min
 
 
@@ -99,6 +101,18 @@ def miss_candidates(games, on_screen: str | None, now: float, window: float = MI
                         "text": p.text, "kind": p.kind, "ago_s": round(now - at)})
     out.sort(key=lambda r: r["ago_s"])
     return out
+
+
+def reel_request(guess: dict | None, now: float, reel_play: bool) -> dict | None:
+    """A catch-up request for the play Nick says he missed: replay it at the next dead moment, due within
+    REPLAY_DUE_S. RECORD ONLY: nothing reads these to train, grade or suggest (self-taught rule), and with
+    `reel.play` off (the default) nothing plays them either; the state says so. None without a play."""
+    if not guess:
+        return None
+    return {"ts": round(now, 3), "game_id": guess["game_id"], "matchup": guess.get("matchup"),
+            "play_id": guess.get("play_id"), "kind": guess.get("kind"), "text": (guess.get("text") or "")[:160],
+            "play_ago_s": guess.get("ago_s"), "due_by": round(now + REPLAY_DUE_S, 3),
+            "state": "queued" if reel_play else "recorded_reels_off"}
 
 
 def night_window(day: date) -> tuple[float, float]:
@@ -375,11 +389,20 @@ def router(engine) -> APIRouter:
         engine.store.feedback(guess["game_id"] if guess else pick, 0, note="missed",
                               context={"on_screen": cur, "guess": guess, "candidates": cands[:5],
                                        "note": str(body.get("note") or "")[:200]})
+        req = reel_request(guess, now, bool(engine.cfg.get("reel.play", False)))
+        if req:
+            try:
+                with REEL_REQUESTS.open("a") as f:
+                    f.write(json.dumps(req) + "\n")
+            except OSError:
+                req = None   # a full disk or read-only data dir: the tap is still logged above
         if guess:
             msg = f"Logged: {guess['matchup']} ({guess['text'] or guess['kind']}, {guess['ago_s'] // 60} min ago)"
+            if req:
+                msg += ". Queued for a catch-up replay" if req["state"] == "queued" else ". Saved for catch-up (reels are off)"
         else:
             msg = "Logged. No big play found in the feeds; it still counts as a miss"
-        return {"ok": True, "message": msg, "guess": guess, "candidates": cands[:5]}
+        return {"ok": True, "message": msg, "guess": guess, "candidates": cands[:5], "reel_request": req}
 
     @r.get("/night")
     async def night(day: str = ""):

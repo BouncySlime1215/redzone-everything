@@ -34,3 +34,11 @@ possible (hindsight)", when `data/oracle/<night>.json` exists:
 `redzone/lab/oracle.solve`. "We matched N%" is the share of our on-screen time that showed the oracle's game.
 Every big play from `data/supervisor_moments.jsonl` gets a tick on our ribbon, and the ones not seen live
 are drawn in red. A missing or bad file just hides the oracle ribbon.
+
+## "I missed that" reel requests (record only)
+
+With phone v2 on, "I missed that" also adds a line to `data/reel_requests.jsonl`:
+`{ts, game_id, matchup, play_id, kind, text, play_ago_s, due_by, state}`. `due_by` is `ts` + 180 s (the
+3-minute rule). `state` is `recorded_reels_off` while `reel.play` is false (the default) and `queued` once
+reels can play. It's a control request, like a button press: the decision-record export, the Teacher and
+every training or grading path ignore it (self-taught rule). Nothing plays it yet.

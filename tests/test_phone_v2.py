@@ -3,10 +3,17 @@
 import json
 import time
 
+import pytest
+
 from test_app import client, engine  # noqa: F401  (fixtures)
 
 from redzone.models import Play
 from redzone.web import phone_v2
+
+
+@pytest.fixture(autouse=True)
+def _tmp_reel_requests(tmp_path, monkeypatch):
+    monkeypatch.setattr(phone_v2, "REEL_REQUESTS", tmp_path / "reel_requests.jsonl")
 
 
 def _on(engine):
@@ -71,6 +78,17 @@ def test_missed_finds_the_big_play_off_screen(client, engine):
     vote, note, game = engine.store._x("SELECT vote, note, game FROM feedback").fetchall()[-1]
     assert (vote, note, game) == (0, "missed", gids[1])
     assert engine.store.taps()[-1]["tap"] == "missed" and engine.store.taps()[-1]["guess"]["play_id"] == "p9"
+    req = r["reel_request"]                                   # record only: reels are off by default
+    assert req["play_id"] == "p9" and req["state"] == "recorded_reels_off" and req["due_by"] - req["ts"] == 180.0
+    assert "reels are off" in r["message"]
+    assert json.loads(phone_v2.REEL_REQUESTS.read_text().splitlines()[-1])["game_id"] == gids[1]
+
+
+def test_reel_request_shape():
+    g = {"game_id": "g", "matchup": "A @ B", "play_id": "p", "kind": "td", "text": "x" * 300, "ago_s": 40}
+    r = phone_v2.reel_request(g, 1000.0, reel_play=True)
+    assert r["state"] == "queued" and r["due_by"] == 1180.0 and len(r["text"]) == 160 and r["play_ago_s"] == 40
+    assert phone_v2.reel_request(None, 1000.0, True) is None
 
 
 def test_missed_ignores_old_and_small_plays():
