@@ -79,6 +79,11 @@ class Engine:
         self.decider.deadline_cost = self.control.deadline_cost
         # Break visits: the game we leave keeps playing on the other stick, so the trip back is one
         # flip; with one stick it's a full tune of that game.
+        # [time-shift buffer] hold each fresh hidden-stick tune B s behind live (timing.behind_live_s,
+        # OFF by default); the delay book shares the controller's held offsets.
+        self.delays.held = self.control.held
+        self.control.behind_of = self._behind_of
+        self.control.on_behind = self._on_behind
         self.decider.return_cost = lambda t: (self.control.flip_estimate() if self.control.two_stick
                                               else self.control.deadline_cost(t))
         # Stream delay measured from YouTube TV show changes on the quarter hour (no taps needed).
@@ -240,6 +245,23 @@ class Engine:
             self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="screen")
         except Exception:
             log.exception("could not save a score-bug delay sample")
+
+    def _behind_of(self, target: str) -> float:
+        """[time-shift buffer] Seconds to hold this target behind live: per league, 0 when off."""
+        if not self.cfg.get("timing.behind_live_s.enabled", False):
+            return 0.0
+        gid = self._game_on(target, False)
+        g = self.merger.games.get(gid or "")
+        if g is None or g.phase != Phase.LIVE:
+            return 0.0
+        by = self.cfg.get("timing.behind_live_s.by_league") or {}
+        b = by.get(g.league.value, by.get(g.league.base.value, self.cfg.get("timing.behind_live_s.default", 0)))
+        return max(0.0, min(float(b or 0.0), float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
+
+    def _on_behind(self, target: str, new_s: float, old_s: float) -> None:
+        """The controller held (or freed) this target's stream: shift its delay by the difference."""
+        d = self.delays.get(target)
+        self.delays.set_behind(target, max(0.0, d.behind - old_s + new_s))
 
     def _game_on(self, target: str, visible: bool) -> str | None:
         """The game the engine thinks this target shows (the current one first, for the visible stick)."""

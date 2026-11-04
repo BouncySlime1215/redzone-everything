@@ -151,6 +151,7 @@ class DelayBook:
         self.screens: dict[str, list[tuple[float, float]]] = {}  # target -> [(ts, sample)] from the score bug
         self.live: dict[str, float] = {}                         # target -> this tune's delay (origin model)
         self.sync = None                                         # [auto sync] SyncBook, see attach_sync
+        self.held: dict[str, float] = {}                         # [time-shift buffer] target -> s held behind live
         self._sync_floor = MIN_TAP_SIGMA_S
 
     @staticmethod
