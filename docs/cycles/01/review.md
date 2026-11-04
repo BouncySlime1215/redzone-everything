@@ -1,6 +1,6 @@
-# Cycle 01 review (End Planner / Integrator), Wed Nov 4, 08:00 to ~09:30 UTC
+# Cycle 01 review (End Planner / Integrator), Wed Nov 4, 08:00 to 09:50 UTC
 
-**Plan:** [plan.md](plan.md). **Merged train:** integration/next 22ab3b9, 2026 tests pass. **Scored at:** b3afe37
+**Plan:** [plan.md](plan.md). **Merged train:** integration/next 9ad88a1 (#92 and #82 last), 2034 tests pass. **Scored at:** b3afe37
 (the merged train plus the #92 harness fix), `scripts/northstar.py --split both --profile candidate`, eval-data-v1.
 Locked was read once for this review and not used to tune anything.
 
@@ -8,7 +8,7 @@ Locked was read once for this review and not used to tune anything.
 
 | lane | PR | verdict | against "what we're looking for" |
 |---|---|---|---|
-| ① | #82 Predict v1 NBA + NHL, Timing v1 NFL + NHL, NFL factory | **keep, flags off; not merged yet** | It is a real forecaster: forward CV, conformal Timing bound, numpy live path, and the PR reports params, rows, RAM and size. It misses the target **big_live_nba +5 on the candidate**: dev stays 81.7 → 81.7, and crunch live NBA gets worse (90.9 → 89.6). The lane kept it out of the candidate, which is the right call. It conflicts with #78/#83 in default_config.yaml, and I've sent it back for a merge commit. |
+| ① | #82 Predict v1 NBA + NHL, Timing v1 NFL + NHL, NFL factory | **keep, flags off (merged)** | It is a real forecaster: forward CV, conformal Timing bound, numpy live path, and the PR reports params, rows, RAM and size. It misses the target **big_live_nba +5 on the candidate**: dev stays 81.7 → 81.7, and crunch live NBA gets worse (90.9 → 89.6). The lane kept it out of the candidate, which is the right call. It merged after the lane resolved a config conflict with #78/#83. |
 | ② | #81 finished-game exits + crunch rewind | **keep (merged)** | It moves the right line: candidate mid_play dev 0.35 → **0.24**, locked 0.33 → 0.17. The target was ≤ 0.10 and NBA ≤ 1/61, but it reached 3/60, so it **misses**. The 3 left are crunch entries with no rewind in reach, and closing them needs a better pick (lane ① Pick), not a longer wait. `crunch_now=wait` reaches 0/60 but costs big live NBA 81.7 → 77.5: that trade is Nick's call. |
 | ② | #78 sync stack | **keep (merged)** | Stalls shift the filter instead of resetting it, network features widen σ, break anchors are logged with the filter-fed flag off, and there's a drift alarm, all as asked. delay_err_p95 stays PENDING until Wednesday's probe logs, which is honest. |
 | ② | item 2: the 3 locked regressions from #76 | **open, pending fresh nights** | The lane couldn't reproduce them on dev (candidate dev: NHL crunch 80.6 vs 79.7 live, your-team crunch 100 vs 71.7). On locked they rest on 2 nights (NHL crunch) and 1 decision each (your-team). Pinning a flag off would tune on locked, so I agree with re-checking on Wed/Thu fresh nights. |
@@ -17,7 +17,7 @@ Locked was read once for this review and not used to tune anything.
 | ④ | #86 night-lab playbook faults | **keep (merged), rework one thing** | It adds FEED-02 (feed_frozen), FEED-06 (rate_limit), MAC-05 (slow_poll), SAFE-03 (wifi_degrade) and NET-02 (buffering) as opt-in faults with a per-fault no-mid-play check: seeds 1-2 show 0 mid-play cuts in every window. Rework: its tests carry no `@pytest.mark.playbook(...)` markers yet, so coverage reads 0/79 (see below). |
 | ④ | #20/#23/#24 platform stack | **drop (close)** | Superseded on integration/next. The only leftover diff is the old `feed_book` name. Closing is blocked by the permission check for every thread, so Nick has to close them. |
 | ⑤ | #79 phone v2 | **keep (merged), flag off** | Reason chips, 👍/👎 per switch, "I missed that", and records in `feedback` read by `Store.taps()`. The Noggin L2 sliders save only. No decision path reads them, and every North Star delta is 0. `right_game` is wired from the store side; the harness still has to read `Store.taps()`. |
-| Int | #87 CI playbook coverage + RAM/CPU line, #92 northstar candidate fix | keep (#87 merged, #92 in CI) | The RAM/CPU line is now in every PR comment: tick p50 1.4 ms, p99 1.6 ms, RSS 70 MB on the CI runner. #92: the #76 + #83 merge silently dropped the candidate column from `northstar.py --profile`. |
+| Int | #87 CI playbook coverage + RAM/CPU line, #92 northstar candidate fix | keep (both merged) | The RAM/CPU line is now in every PR comment: tick p50 1.4 ms, p99 1.6 ms, RSS 70 MB on the CI runner. #92: the #76 + #83 merge silently dropped the candidate column from `northstar.py --profile`. |
 
 ### Playbook entries, per id
 | id | PR | state after cycle 01 |
@@ -53,7 +53,7 @@ your-team at 3-5) keeps most lines PENDING or wide, and the clean eval-data-v3 (
 ESPN lag. That's for lane ② in cycle 02 (target: NHL mid-play 1 → 0, big live NHL up).
 
 ## What's left from cycle 01
-1. **Lane ①:** #82 has to merge, flags off (conflict resolution).
+1. **Lane ①:** Predict and Timing are in the tree with flags off and have no candidate gain yet (see below).
 2. **Lane ②:** NBA crunch entries 3 → ≤1 (needs Pick, or Nick's call on `crunch_now=wait`); the locked regressions
    are re-checked on fresh nights; NHL wsc goes into the candidate (`sources.nhl_primary` + NHL api-web lag).
 3. **Lane ③:** `--controls-json` in the review run (or the harness runs the drill itself), so press_to_tv shows a sim value.
@@ -87,7 +87,6 @@ ESPN lag. That's for lane ② in cycle 02 (target: NHL mid-play 1 → 0, big liv
 - **Lane ①:**
   - hindsight oracle → Pick v1 by imitation;
   - Predict v2 on the lookahead features;
-  - #82 merged.
 - **Lane ③:** press_to_tv measured in the harness run; the still_watching_cleared seed-2 miss that #86 found.
 - **Lane ④:**
   - playbook markers;
