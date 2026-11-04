@@ -347,12 +347,19 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
 
 
 def load_contracts(root: Path) -> dict | None:
-    """The city map checker's output (lane 4, Nick Nov 4 3:40 PM): {"violations": [{"rule", "where"}, ...]}."""
-    f = root / "docs" / "citymap.json"
+    """The contract kernel's verdict (scripts/contract_check.py, lane 4, Nick Nov 4 3:40 PM): every hard
+    violation now, and how many are new against docs/contract_baseline.json. None if the kernel isn't there."""
     try:
-        return json.loads(f.read_text())
+        import contract_check as kc
+    except ImportError:
+        return None
+    try:
+        found, _ = kc.check(root)
+        res = kc.compare(found, kc.read_baseline(root / kc.BASELINE))
     except (OSError, ValueError):
         return None
+    return {"violations": [{"rule": v.rule, "where": v.path} for v in res["violations"]],
+            "new": len(res["new"]), "baseline": res["baseline"]}
 
 
 def system_rows(cards: dict, contracts: dict | None = None) -> list[dict]:
@@ -377,14 +384,16 @@ def system_rows(cards: dict, contracts: dict | None = None) -> list[dict]:
         out.append(_row("crunch_exit_acc", None, None, None, PENDING,
                         "no card grades crunch exits yet (learned crunch state, lanes 1+2)"))
     if contracts is None or "violations" not in contracts:
-        out.append(_row("contract_violations", None, None, None, PENDING, "no docs/citymap.json yet (lane 4's checker)"))
+        out.append(_row("contract_violations", None, None, None, PENDING, "contract kernel not found (scripts/contract_check.py)"))
     else:
         v = contracts["violations"] or []
         rules: dict[str, int] = {}
         for x in v:
             rules[str(x.get("rule", "?"))] = rules.get(str(x.get("rule", "?")), 0) + 1
+        base = (f"; {contracts['new']} new vs baseline {contracts['baseline']}"
+                if contracts.get("baseline") is not None else "")
         out.append(_row("contract_violations", len(v), None, None, PASS if not v else FAIL,
-                        "none" if not v else ", ".join(f"{k} {n}" for k, n in sorted(rules.items()))))
+                        ("none" if not v else ", ".join(f"{k} {n}" for k, n in sorted(rules.items()))) + base))
     return out
 
 

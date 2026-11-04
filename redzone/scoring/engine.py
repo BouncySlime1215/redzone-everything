@@ -14,6 +14,7 @@ import time
 from dataclasses import dataclass, field
 
 from redzone.models import PERIOD_S, REAL_BREAKS, REGULATION, ByLeague, GameState, League, Phase, Stoppage, pro_period
+from redzone import crunch
 from redzone.scoring import garbage
 from redzone.scoring.brain import Brain
 from redzone.reasoner import brief as rbrief
@@ -51,7 +52,7 @@ def closeness(g: GameState) -> float:
     return 0.1
 
 
-ONE_SCORE = {League.NFL: 8}
+ONE_SCORE = {League.NFL: crunch.ONE_SCORE_NFL}
 
 
 def crunch_time(g: GameState) -> bool:
@@ -67,20 +68,7 @@ def crunch_time(g: GameState) -> bool:
     if g.stoppage == Stoppage.HALFTIME:
         # College halftime can arrive as "period 2, 0:00" (OSU@BYU, Nov 2): never the end of a game.
         return False
-    q, d, clk = _q(g), g.score_diff, g.clock_s
-    if d is None:
-        return False
-    if g.league.base == League.NFL:
-        if q >= 5:
-            return True
-        return q == 4 and clk is not None and clk <= 120 and abs(d) <= ONE_SCORE[League.NFL]
-    if g.league.base == League.NBA:
-        return q >= 5 or (q == 4 and clk is not None and clk <= 180 and abs(d) <= 7)
-    if g.league == League.NHL:
-        return q >= 4 or (q == 3 and clk is not None and clk <= 180 and abs(d) <= 1)
-    if g.league == League.MLB:
-        return q >= 10 or (q >= 8 and abs(d) <= 2)
-    return False
+    return crunch.inside(crunch.row("run_up", g.league.base), _q(g), g.clock_s, g.score_diff)
 
 
 # --- per-game memory (runs, WP swings, smoothing) ---------------------------
@@ -547,7 +535,7 @@ def _nfl(g, h, k, now, c):
             d = dw["fourth_go"]
 
     drill = 0.0
-    if q >= 4 and clk is not None and clk <= 120 and off_diff is not None and -8 <= off_diff <= 0:
+    if crunch.trailing_drill(q, clk, off_diff):
         drill = c.get("score.nfl.two_minute_drill")
 
     wp = g.home_win_prob
@@ -700,11 +688,7 @@ def crunch_window(g: GameState) -> bool:
     """The graded crunch window. Same as crunch_time except NHL, whose flag goes up at 3:00 so we
     can get there at a stoppage: inside 2:00 (or OT) every second counts, before it a whistle is
     worth waiting for on the way in."""
-    if not crunch_time(g):
-        return False
-    if g.league != League.NHL or _q(g) >= 4:
-        return True
-    return g.clock_s is not None and g.clock_s <= 120
+    return crunch_time(g) and crunch.inside(crunch.row("window", g.league.base), _q(g), g.clock_s, g.score_diff)
 
 
 def nhl_goal_imminent(g, h: History, c) -> bool:
