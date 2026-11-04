@@ -139,7 +139,8 @@ def test_notebook_end_to_end_on_cpu(tmp_path, upload):
             assert f in z.namelist(), (f, log[-3000:])
         assert json.loads(z.read("round.json"))["mode"] == "students"
         mlx = json.loads(z.read("game-reasoner/mlx/adapter_config.json"))      # recipe D19: every layer
-        assert mlx["num_layers"] == 8 and mlx["lora_parameters"]["rank"] == 16, mlx
+        from agent.kaggle.run_students import rank_for          # [V7] D19: reasoner r32, watchdog r16
+        assert mlx["num_layers"] == 8 and mlx["lora_parameters"]["rank"] == rank_for("game-reasoner") == 32, mlx
         return
     z = zipfile.ZipFile(work / "out.zip")
     names = set(z.namelist())
