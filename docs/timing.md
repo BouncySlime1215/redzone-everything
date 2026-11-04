@@ -301,3 +301,22 @@ NHL dev split (`fit`, 10 nights, `--real-lag`), ESPN profile vs `--set sources.n
 
 The single mid-play cut moves from seed to seed and shows up with either feed (base: seeds 1 and 2;
 wsc: seed 0, night 20261024).
+
+## Entry policy in the candidate: no blind cap, crunch rewinds (Nov 4, cycle 01)
+
+The remaining NBA mid-play entries in the candidate were entry policy, not timing: two were a finished game
+leaving after the 180 s `decider.entry.max_wait_s.nba` cap ran out, and the rest were crunch-time entries
+going in live (`decider.entry.crunch_now: live`). NBA dev nights (fit split), candidate profile, B=90:
+
+| variant | mid-play entries | missed on entry | big seen | big live | crunch live |
+|---|---|---|---|---|---|
+| candidate before (cap 180, crunch live) | 6/61 | 4 | 84.5 | 81.7 | 90.9 |
+| no cap, crunch live | 4/60 | 2 | 84.5 | 81.7 | 90.9 |
+| **no cap, crunch rewind (shipped in the candidate)** | **3/60** | **1** | 84.5 | 81.7 | 90.9 |
+| no cap, crunch wait capped at 15 s | 2/60 | 0 | 83.1 | 80.3 | 90.6 |
+| no cap, crunch wait capped at 60 s | 2/60 | 1 | 80.3 | 77.5 | 90.1 |
+| no cap, crunch wait | 0/60 | 0 | 80.3 | 77.5 | 90.0 |
+
+A crunch entry with no rewind in reach has to choose between landing mid-play and missing what happens
+while it waits; any wait costs plays. Full North Star, candidate column: dev mid-play 0.35 -> 0.23 per 100,
+locked 0.33 -> 0.17, every other line unchanged (dead air dev 18.90 -> 18.95, locked 20.35 -> 20.32).
