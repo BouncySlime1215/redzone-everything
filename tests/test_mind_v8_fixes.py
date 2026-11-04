@@ -19,6 +19,15 @@ def test_sticky_is_observable_and_league_aware():
     assert not E.sticky(_row(7, crunch_next=True))          # crunch_next is hindsight: never an input
 
 
+def test_crunch_floor_is_off_by_default_and_forced_only_when_asked():
+    assert E.CRUNCH_STAY_PRIOR is False             # Nick 4:15 PM: crunch is learned; the floor is the decider's
+    rows = [_row(1, crunch=True)]
+    ans = {"nba:g:1": {"lock_in": "watch", "safe_to_leave": "yes", "confidence": 0.9, "stay_s": 60, "storyline": "s",
+                       "why": "w", "next": ""}}
+    assert E.answers_for("student", rows, ans)["nba:g:1"]["safe_to_leave"] == "yes"
+    assert E.answers_for("student", rows, ans, priors=True)["nba:g:1"]["safe_to_leave"] == "no"
+
+
 def test_crunch_stay_prior_overrides_a_leave():
     leave = {"lock_in": "watch", "safe_to_leave": "yes", "confidence": 0.9, "storyline": "s", "why": "w"}
     assert E.apply_priors(_row(1, crunch=True), leave) == dict(leave, safe_to_leave="no", lock_in="must_see")

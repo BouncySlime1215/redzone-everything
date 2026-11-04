@@ -122,10 +122,11 @@ def reasoner_big(rows: list[dict], teacher: list[dict], student: list[dict]) -> 
             if sub:
                 sc = evaluate.score(sub, preds)
                 res["slices"][name] = {k: sc[k] for k in ("n", "lock_acc", "unsafe_leave_pct", "unsafe_leave_hi_pct")}
-        # the same answers without the crunch=stay prior: what the model learned on its own
-        raw = evaluate.score(test, evaluate.answers_for("student", rows, s, priors=False))
-        res["student_no_prior"] = {k: raw[k] for k in ("n", "lock_acc", "unsafe_leave_pct", "unsafe_leave_hi_pct",
-                                                       "unsafe_leave_lo_pct")}
+        # the same answers with the crunch=stay floor forced on every sticky row (the graded answer is the
+        # model's own, Nick 4:15 PM): shows how much the floor would still have to catch
+        fl = evaluate.score(test, evaluate.answers_for("student", rows, s, priors=True))
+        res["student_floored"] = {k: fl[k] for k in ("n", "lock_acc", "unsafe_leave_pct", "unsafe_leave_hi_pct",
+                                                     "unsafe_leave_lo_pct")}
         res["dont_know"] = _abstain(rows, preds)
     res["gate_split"] = {k: evaluate.gate_split(res, k, res.get("dont_know") if k == "student" else None)
                          for k in sources if k != "today"}
@@ -210,8 +211,9 @@ def md(rep: dict) -> str:
             parts += [f"| {n} | {v['n']} | {v['lock_acc']} | {v['unsafe_leave_pct']} | {v.get('unsafe_leave_hi_pct')} |"
                       for n, v in r[k].items()]
             parts.append("")
-    if r.get("student_no_prior"):
-        parts += ["Student WITHOUT the crunch=stay prior (what it learned on its own): " + json.dumps(r["student_no_prior"]), ""]
+    if r.get("student_floored"):
+        parts += ["Student WITH the crunch=stay floor forced on sticky rows (graded rows above are its own answers): "
+                  + json.dumps(r["student_floored"]), ""]
     if r.get("dont_know"):
         parts += ["Calibrated \"I don't know\" (cut picked on valid, applied to dev-test): " +
                   json.dumps(r["dont_know"]), ""]
@@ -261,7 +263,7 @@ def short_grades(rep: dict, round_id: str = "", mode: str = "", wall_h: float | 
            "reasoner_gate": {k: ("PASS" if not v else "FAIL: " + ", ".join(map(str, v))) for k, v in (r.get("gate") or {}).items()},
            "reasoner_all": {k: {m: (r[k].get("all") or {}).get(m) for m in ("n", "lock_acc", "unsafe_leave_pct", "unsafe_leave_hi_pct", "unsafe_leave_lo_pct", "jump_acc")}
                             for k in ("today", "head", "teacher", "student") if isinstance(r.get(k), dict)},
-           "student_no_prior": r.get("student_no_prior"),
+           "student_floored": r.get("student_floored"),
            "crunch_slice": (r.get("slices") or {}).get("crunch"),
            "watchdog": {k: {m: v.get(m) for m in ("n", "accuracy", "gate")} for k, v in (rep.get("watchdog") or {}).items()
                         if isinstance(v, dict)}}

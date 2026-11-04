@@ -47,7 +47,10 @@ def truth_safe(r: dict) -> bool:
 
 # Down the stretch is sticky (Nick, Nov 4 3:15 PM): close + late = never leave. Margins per base league.
 STICKY_MARGIN = {"nba": 6, "cbb": 6, "wcbb": 6, "nfl": 8, "cfb": 8, "nhl": 1, "mlb": 2}
-CRUNCH_STAY_PRIOR = True      # the hard rule over every model answer: crunch / sticky rows never say leave
+# Nick 4:15 PM: crunch is a LEARNED state, not a hard rule. The graded answer is the model's own; the floor
+# (never leave a high-leverage moment for a LOW-value game) lives in the decider, and the report shows the
+# student with this prior applied too, as "floored", so the floor's effect stays visible.
+CRUNCH_STAY_PRIOR = False
 
 
 def sticky(r: dict) -> bool:
@@ -67,7 +70,7 @@ def high_leverage(r: dict) -> bool:
 
 def apply_priors(r: dict, p: dict | None) -> dict | None:
     """crunch = stay: a model may never say safe_to_leave on a sticky row (and crunch is always must_see)."""
-    if not CRUNCH_STAY_PRIOR or not p or p is MISSING or not sticky(r):
+    if not p or p is MISSING or not sticky(r):
         return p
     q = dict(p, safe_to_leave="no")
     if r.get("crunch"):
@@ -104,9 +107,11 @@ def fit_thresholds(source: str, valid_rows: list[dict]) -> tuple[float, float]:
 
 
 def answers_for(source: str, rows: list[dict], answers: dict[str, dict] | None = None,
-                thresholds: dict[str, tuple[float, float]] | None = None, priors: bool = True) -> dict[str, dict | None]:
+                thresholds: dict[str, tuple[float, float]] | None = None,
+                priors: bool | None = None) -> dict[str, dict | None]:
     """{row id: cleaned answer or None} for one source. thresholds: per league (baselines only)."""
     out: dict[str, dict | None] = {}
+    priors = CRUNCH_STAY_PRIOR if priors is None else priors
     for r in rows:
         if source in ("today", "head"):
             p = score_of(source, r)
