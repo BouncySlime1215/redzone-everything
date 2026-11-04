@@ -375,9 +375,9 @@ function mockV2(path, b) {
     return { enabled: true, now: Date.now() / 1000, current: games[0] && games[0].game_id, games, source: games.length ? "stub" : null };
   }
   if (path === "/api/v2/ledger") {
-    const R = [["nfl", "nflverse pbp", "CC-BY 4.0", 212e6, 80e6, 41000, 0.14, "1999-2025"], ["cfb", "cfbfastR", "MIT", 105e6, 40e6, 30500, 0.11, "2014-2025"],
+    const R = [["nfl", "nflverse pbp", "CC-BY 4.0", 212e6, 80e6, 41000, 0.14, "1999-2025"], ["cfb", "cfbfastR", "MIT", 105e6, 0, 30500, 0.11, "2004-2025"],
       ["nba", "nba_api pbp", "", 160e6, 120e6, 25000, 0.17, "2015-2025"], ["nhl", "api-web.nhle.com", "", 58e6, 40e6, 9800, 0.13, "2010-2025"]];
-    const rows = ["nfl", "cfb", "nba", "nhl", "mlb", "cbb", "live"].map((lg) => {
+    const rows = ["nfl", "cfb", "nba", "cbb", "wcbb", "nhl", "mlb", "live"].map((lg) => {
       const r = R.find((x) => x[0] === lg);
       return r ? { league: lg, source: r[1], license: r[2], real_tokens: r[3], synthetic_tokens: r[4], windows: r[5], games: Math.round(r[5] / 9), nights: Math.round(r[5] / 40), seasons: r[7], crunch_share: r[6], ot_share: 0.04, comeback_share: 0.08, blowout_share: 0.21, pending: false }
         : { league: lg, source: "", license: "", real_tokens: null, synthetic_tokens: null, windows: null, games: null, nights: null, seasons: "", crunch_share: null, ot_share: null, comeback_share: null, blowout_share: null, pending: true };

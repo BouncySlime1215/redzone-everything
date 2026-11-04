@@ -1,7 +1,8 @@
 """Data ledger + NFM status (lane 5, Start Planner item 3; cycle 06 "Data ledger" standing section).
 
 Serves: the cycle plans' data ledger table and the phone's "Data + NFM" sheet. Owner: lane 5 (reader);
-lane 1 (writer). Frontier code (redzone/lab): read only, never on the decision path.
+lane 1 (writer; agreed with lane 1 Nov 4, 21:37 UTC: lane 1 owns the "nfm" block, the fold fills
+"leagues" from the factory manifest). Frontier code (redzone/lab): read only, never on the decision path.
 
 The ledger lives in ONE small JSON file, committed so the Mac's phone page and every planner read the same
 numbers: docs/data-ledger.json (LEDGER). Lane 1 writes it from the factory, e.g. with
@@ -23,7 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 LEDGER = ROOT / "docs" / "data-ledger.json"
-LEAGUES = ("nfl", "cfb", "nba", "nhl", "mlb", "cbb", "live")
+LEAGUES = ("nfl", "cfb", "nba", "cbb", "wcbb", "nhl", "mlb", "live")
 SHARES = ("crunch_share", "ot_share", "comeback_share", "blowout_share")
 STATUSES = ("done", "running", "next", "blocked")
 DEFAULT_MILESTONES = [  # the NFM plan (cycle 06 addendum); lane 1 overwrites with real status
@@ -75,12 +76,57 @@ def view(ledger: dict) -> dict:
             "pending": all(r["pending"] for r in rows)}
 
 
+def _share(n, games) -> float | None:
+    n, games = _num(n), _num(games)
+    return round(n / games, 4) if n is not None and games else None
+
+
+def _fold_factory(lgs: dict, manifest: dict) -> None:
+    """The Kaggle factory manifest (scripts/kaggle_noggin_factory.py, PR #169): manifest["ledger"][league]
+    holds tokens_real, sources {source: tokens}, moments/selfplay rows, crunch_event_share_pct and
+    ot/comeback/blowout game counts; manifest["leagues"][league]["seasons"][year]["tokens"] holds games."""
+    leagues = manifest.get("leagues") if isinstance(manifest.get("leagues"), dict) else {}
+    for lg, m in manifest["ledger"].items():
+        if not isinstance(m, dict):
+            continue
+        e = lgs.setdefault(lg, {})
+        seasons = (leagues.get(lg) or {}).get("seasons") or {}
+        games = _num(m.get("games"))
+        if games is None:
+            games = sum(int(((v or {}).get("tokens") or {}).get("games") or 0) for v in seasons.values()) or None
+        srcs = m.get("sources") if isinstance(m.get("sources"), dict) else {}
+        if srcs:
+            e["source"] = ", ".join(k for k, _ in sorted(srcs.items(), key=lambda kv: -(_num(kv[1]) or 0)))
+            e["sources"] = srcs
+        if seasons:
+            ys = sorted(seasons)
+            e["seasons"] = ys[0] if len(ys) == 1 else f"{ys[0]}-{ys[-1]}"
+        e["real_tokens"] = _num(m.get("tokens_real")) or 0
+        e.setdefault("synthetic_tokens", 0)          # self-play adds rows, not token shards (lane 1, Nov 4)
+        e["windows"] = _num(m.get("moments_rows_real"))
+        e["selfplay_rows"] = _num(m.get("selfplay_rows_synthetic"))
+        if games:
+            e["games"] = int(games)
+        pct = _num(m.get("crunch_event_share_pct"))
+        e["crunch_share"] = None if pct is None else round(pct / 100, 4)
+        for k in ("ot", "comeback", "blowout"):
+            e[f"{k}_share"] = _share(m.get(f"{k}_games"), games)
+
+
 def fold_manifest(ledger: dict, manifest: dict, updated: str) -> dict:
-    """Fold a factory manifest.json (scripts/noggin_factory.py: per league source, license, seasons,
-    windows and per-split games/nights) into the ledger. Token and share fields are left to lane 1."""
+    """Fold a factory manifest into the ledger. Two shapes: the Kaggle factory's (has a "ledger" block;
+    fills tokens, sources, shares and coverage) or scripts/noggin_factory.py's per-league one (source,
+    license, seasons, windows and per-split games/nights). The "nfm" block is lane 1's and never touched."""
     out = json.loads(json.dumps(ledger or {}))
     lgs = out.setdefault("leagues", {})
-    for lg, m in (manifest or {}).items():
+    manifest = manifest or {}
+    if isinstance(manifest.get("ledger"), dict):
+        _fold_factory(lgs, manifest)
+        if _num(manifest.get("total_tokens")) is not None:
+            out["total_tokens"] = manifest["total_tokens"]
+        out["updated"] = updated
+        return out
+    for lg, m in manifest.items():
         if not isinstance(m, dict):
             continue
         e = lgs.setdefault(lg, {})

@@ -403,3 +403,21 @@ def test_ledger_route(client, engine, tmp_path, monkeypatch):
 
 def test_provenance_orders_lane3_control_last():
     assert phone_v2.PROV_ORDER[-1] == "control"
+
+
+def test_ledger_folds_the_kaggle_factory_manifest():
+    from redzone.lab import data_ledger as DL
+    man = {"total_tokens": 3_000_000,
+           "leagues": {"nba": {"seasons": {"2023": {"tokens": {"games": 60}}, "2024": {"tokens": {"games": 40}}}}},
+           "ledger": {"nba": {"tokens_real": 3_000_000, "sources": {"nba_cdn": 1_000_000, "nba_api": 2_000_000},
+                              "selfplay_rows_synthetic": 500, "moments_rows_real": 9000, "crunch_event_share_pct": 12.5,
+                              "ot_games": 5, "comeback_games": 10, "blowout_games": 25, "no_wall_games": 0}}}
+    keep = {"nfm": {"milestones": [{"name": "pretrain", "status": "running"}]}}
+    led = DL.fold_manifest(keep, man, "t")
+    nba = led["leagues"]["nba"]
+    assert nba["source"] == "nba_api, nba_cdn" and nba["seasons"] == "2023-2024" and nba["games"] == 100
+    assert (nba["real_tokens"], nba["synthetic_tokens"], nba["windows"]) == (3e6, 0, 9000)
+    assert (nba["crunch_share"], nba["ot_share"], nba["comeback_share"], nba["blowout_share"]) == (0.125, 0.05, 0.1, 0.25)
+    assert led["nfm"] == keep["nfm"] and led["total_tokens"] == 3_000_000
+    row = next(r for r in DL.view(led)["rows"] if r["league"] == "nba")
+    assert not row["pending"] and "| NBA | nba_api, nba_cdn | 3.0M | 0 | 9,000 | 12% | 5% / 10% / 25% |" in DL.table(DL.view(led))
