@@ -201,7 +201,7 @@ def read_oracle(path: Path) -> dict | None:
 def read_crunch(path: Path) -> dict | None:
     try:
         d = json.loads(Path(path).read_text())
-        games = {str(g): {k: sorted([float(a), float(b)] for a, b in (v.get(k) or []) if float(b) > float(a))
+        games = {str(g): {k: sorted([float(a), float(b)] for a, b in (v.get(k) or []) if float(b) >= float(a))   # t0 == t1: one row
                           for k in ("learned", "oracle")} for g, v in (d.get("games") or {}).items()}
         tol = float(d["tol_s"])      # the grader's tolerance (train_watch_value.EXIT_TOL_S); required
     except (OSError, ValueError, TypeError, AttributeError, KeyError):

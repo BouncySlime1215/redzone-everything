@@ -471,14 +471,16 @@ def test_crunch_timeline_graded_and_from_provenance(tmp_path):
     f.write_text(json.dumps({"tol_s": 60, "games": {
         "a": {"learned": [[100, 400], [500, 900]], "oracle": [[130, 950]]},       # entry -30 ok, exit -50 ok
         "b": {"learned": [[100, 200]], "oracle": [[100, 500]]},                    # exit -300: a miss
-        "c": {"learned": [], "oracle": [[0, 10]]}, "d": {"learned": [[5, 1]]}}}))  # never on; a bad span drops
+        "c": {"learned": [], "oracle": [[0, 10]]}, "d": {"learned": [[5, 1]]},    # never on; a bad span drops
+        "e": {"learned": [[7, 7]], "oracle": [[7, 7]]}}}))                          # one-row span (t0 == t1) stays
     c = phone_v2.read_crunch(f)
     assert c["games"]["d"]["learned"] == [] and phone_v2.read_crunch(tmp_path / "none.json") is None
+    assert c["games"]["e"]["learned"] == [[7.0, 7.0]]
     v = phone_v2.crunch_timeline(c, [], str.upper)
     by = {g["game"]: g for g in v["games"]}
     assert (by["a"]["entry_s"], by["a"]["exit_s"], by["a"]["exit_ok"]) == (-30.0, -50.0, True)
     assert by["b"]["exit_ok"] is False and by["c"]["exit_ok"] is False and "exit_ok" not in by["d"]
-    assert (v["source"], v["exits"], v["exits_ok"], v["entries_ok"]) == ("graded", 3, 1, 2)
+    assert (v["source"], v["exits"], v["exits_ok"], v["entries_ok"]) == ("graded", 4, 2, 3)
     assert v["games"][0]["game"] in ("b", "c")                                     # misses first
     sw = [{"ts": 10.0, "to_game": "x", "frm": "y",
            "detail": json.dumps({"trace": {"id": "t", "provenance": {"crunch_state": {"to": "in", "from": "leaving"}}}})},
