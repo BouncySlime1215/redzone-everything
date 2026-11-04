@@ -47,6 +47,8 @@ jobs:
           path: lint*.txt
       - name: fail on lint errors
         run: test "$(cat lint-status.txt)" = 0
+      - name: contract kernel (new violations fail; baseline in docs/contract_baseline.json)
+        run: python scripts/contract_check.py
 
   memory:
     # CLAUDE.md and docs/memory/ links resolve; a PR that changes a default or a gate also adds a
