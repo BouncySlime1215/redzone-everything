@@ -71,8 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- 14:50 overseer audit (docs/plans/2026-11-04-1450-overseer.md): 18 merges since 8:45 AM, but the North Star LIVE column hasn't moved (candidate wins sit behind flags). Correction sent: a standing promotion step in every review (release_gate on locked nights → switch on in the next RC).
-- Loop restarted on a 90-min clock; Cycle 04 review is overdue; usage 20% weekly; V7 done (NBA AUC .999 = likely leak, under audit); factory running on Kaggle CPU.
+- 15:10 director: usage 21% weekly. 20 open PRs. integration/release green; integration/next CI running on eb814f3. RC5.1 e8bbf8e live and healthy.
+- All 5 lanes are working. Cycle 04 review is in (nothing promoted: no gate set passes fully). Waiting on Nick to pick the promotion bar (A: rule #1 passes + nothing worse than live; B: every gate PASS). Cycle 05 plan started.
+- Lab: no new findings since 2:38 PM. The phone-controls thread has the TV and sticks 3:10-3:45 for the GO NOW probe (#145); the lab agent is paused for that window. Factory: CBB KeyError fix in progress (lane 1).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
