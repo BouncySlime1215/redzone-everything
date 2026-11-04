@@ -239,6 +239,7 @@ function nightSheet() {
       ...arr(e.playbooks).map((p) => `<span class="tag tag--kind">${esc(p)}</span>`),
       e.type === "switch" && e.dry_run ? `<span class="tag tag--would">Would switch</span>` : "",
       e.type === "switch" && !e.ok && !e.dry_run ? `<span class="tag tag--fail">Failed</span>` : "",
+      e.type === "switch" && e.key ? `<button class="v2-trace-btn" data-act="v2-prov" data-key="${attr(e.key)}">${icon("activity")}Trace</button>` : "",
     ].join("");
     return `<div class="v2-ev v2-ev--${attr(e.type)}"><span class="v2-ev-ic">${icon(ic)}</span><div style="min-width:0">
       <div class="v2-ev-top"><span class="m ell">${esc(title)}</span><span class="t">${esc(fmtTime(e.ts))}</span></div>
@@ -285,6 +286,31 @@ function watchSheet() {
       ${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}${g.stakes_line ? `<div class="v2-stakes">${icon("target")}${esc(g.stakes_line)}</div>` : ""}</div>`).join("")}</div>`;
 }
 ACTIONS["v2-watch"] = () => { watchS.data = null; openSheet({ id: "v2-watch", label: "Watch value", full: true, render: watchSheet, onClose: () => clearTimeout(watchS.timer) }); loadWatch(); };
+
+/* ---------- Provenance: which module contributed what to one switch (from its trace) ---------- */
+const prov = { data: null };
+const STAGE_TXT = { decided: "Decided", guarded: "Guard checked", rechecked: "Re-checked", command: "Command sent", picture: "Picture on TV", aborted: "Held back", failed: "Failed" };
+const MOD_TXT = { watch_value: "Watch value", crunch_state: "Crunch state", importance: "Importance", stakes: "Stakes", floors: "Floors", planner: "Planner", playbook: "Playbook", guard: "Guard", decider: "Decider", sync: "Sync (delays)" };
+const short = (v) => (v == null ? "–" : typeof v === "object" ? Object.entries(Array.isArray(v) ? { ...v } : v).filter(([, x]) => x != null && x !== "")
+  .map(([k, x]) => (Array.isArray(v) ? String(typeof x === "object" ? JSON.stringify(x) : x) : `${k}: ${typeof x === "object" ? JSON.stringify(x) : x}`)).join(" · ") : String(v));
+function provSheet() {
+  const d = prov.data;
+  if (!d) return `<h3>Switch trace</h3><p class="lead">Loading…</p>`;
+  if (d.error || d.ok === false) return `<h3>Switch trace</h3><p class="lead">${esc(d.error || d.message || "Not found")}</p>`;
+  const t0 = arr(d.chain).length ? d.chain[0].at : d.ts;
+  return `<h3>Switch trace</h3>
+    <p class="lead">${esc(d.from ? `${d.from} → ${d.to}` : d.to)} · ${esc(fmtTime(d.ts))}${d.source === "stub" ? " · rebuilt from the switch log (no provenance fields yet)" : ""}</p>
+    <div class="v2-why">${arr(d.chips).map((c) => `<span class="v2-chip v2-chip--${attr(c.key)}">${esc(c.label)}</span>`).join("")}</div>
+    <div class="sheet-sec"><h4>Who contributed</h4></div>
+    <div class="v2-prov">${arr(d.parts).map((p) => `<div class="v2-prov-row"><b>${esc(MOD_TXT[p.module] || p.module)}</b><span>${esc(short(p.value))}</span></div>`).join("")}</div>
+    <div class="sheet-sec"><h4>Timeline</h4>${d.has_trace ? "" : "<small>no trace stored</small>"}</div>
+    <div class="v2-prov">${arr(d.chain).map((c) => `<div class="v2-prov-row"><b>${esc(STAGE_TXT[c.stage] || c.stage)} <small>+${(c.at - t0).toFixed(1)} s</small></b><span>${esc(c.component)}${Object.keys(c.detail || {}).length ? " · " + esc(short(c.detail)) : ""}</span></div>`).join("")}</div>`;
+}
+ACTIONS["v2-prov"] = async (el) => {
+  prov.data = null; openSheet({ id: "v2-prov", label: "Switch trace", full: true, render: provSheet });
+  try { prov.data = await api(`/api/v2/provenance?key=${encodeURIComponent(el.dataset.key)}`); } catch (e) { prov.data = { error: e.message }; }
+  const s = sheetById("v2-prov"); if (s) s.update();
+};
 
 /* ---------- North Star trend: each headline line over the harness runs, read-only ---------- */
 const trendS = { data: null, split: "dev" };

@@ -193,6 +193,44 @@ def _on_at(segs: list[dict], ts: float, key: str = "game") -> str | None:
     return None
 
 
+# Provenance: which module contributed what to one switch. Lane 3's trace may carry a `provenance` dict
+# (module -> what it said, e.g. {"watch_value": {...}, "crunch_state": "in", "importance": 0.8,
+# "floors": [...], "planner": "crunch-overlap"}); until it does, the stub rebuilds what the row already
+# holds: the decider's reason and kind, chips and playbook ids, the delays it planned with, and the
+# guard's last check. Read only: nothing here is on the decision path.
+PROV_ORDER = ("watch_value", "crunch_state", "importance", "stakes", "floors", "planner", "playbook", "guard")
+
+
+def provenance_view(row: dict, name) -> dict:
+    """One switch as a chain of stages (trace contract events) plus each module's contribution."""
+    from redzone import trace as tr
+    t = tr.of_row(row) or {}
+    chain = [{"stage": e.stage.value, "at": e.at, "component": e.component, "detail": e.detail}
+             for e in (tr.events(t) if t else [])]
+    reason = row.get("reason") or ""
+    given = t.get("provenance")
+    if isinstance(given, dict) and given:
+        parts = [{"module": k, "value": given[k]} for k in PROV_ORDER if k in given]
+        parts += [{"module": k, "value": v} for k, v in given.items() if k not in PROV_ORDER]
+        source = "trace"
+    else:
+        parts = [{"module": "decider", "value": {"kind": row.get("kind") or "", "reason": reason}}]
+        if playbooks(reason):
+            parts.append({"module": "playbook", "value": playbooks(reason)})
+        if PLAN.search(reason):
+            parts.append({"module": "planner", "value": PLAN.search(reason).group(1)})
+        if t.get("leave_delay") or t.get("enter_delay"):
+            parts.append({"module": "sync", "value": {"leave": t.get("leave_delay"), "enter": t.get("enter_delay")}})
+        g = next((c for c in chain if c["stage"] == "guarded"), None)
+        if g:
+            parts.append({"module": "guard", "value": g["detail"]})
+        source = "stub"
+    return {"key": _switch_key(row["ts"], row.get("to_game")), "ts": row["ts"], "from": name(row["frm"]) if row.get("frm") else "",
+            "to": name(row.get("to_game")) if row.get("to_game") else "", "kind": row.get("kind") or "",
+            "ok": bool(row.get("ok")), "dry_run": bool(row.get("dry_run")), "chips": chips(reason, row.get("kind")),
+            "chain": chain, "parts": parts, "source": source, "has_trace": bool(t)}
+
+
 CATCHUP_KINDS = {"replay"}                                # a catch-up replay of a missed play
 INTERLEAVE_KINDS = {"break_visit", "return"}             # visit another game in a break, then come back
 PLAN = re.compile(r"\bplan=([A-Za-z0-9_-]+)")
@@ -523,6 +561,20 @@ def router(engine) -> APIRouter:
             return _off()
         return {"enabled": True, "now": time.time(), "current": getattr(engine.decider, "current", None),
                 **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}))}
+
+    @r.get("/provenance")
+    async def get_provenance(key: str = ""):
+        if not _enabled(engine):
+            return _off()
+        try:
+            ts = float(key.split("|", 1)[0])
+        except ValueError:
+            return {"ok": False, "message": "key is <ts>|<game>"}
+        row = next((w for w in engine.store.switches_between(ts - 0.01, ts + 0.01)
+                    if _switch_key(w["ts"], w["to_game"]) == key), None)
+        if row is None:
+            return {"ok": False, "message": "No switch with that key"}
+        return {"ok": True, "enabled": True, **provenance_view(row, engine._name)}
 
     @r.get("/slate")
     async def slate():

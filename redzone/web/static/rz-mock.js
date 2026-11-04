@@ -350,6 +350,16 @@ function mockV2(path, b) {
     const alert = first ? { t0: now + 1260, t1: now + 2400, in_s: 1260, on_tv: first.on_tv, second: first.second, why: first.why, now: false } : null;
     return { enabled: true, now, games: gs, clashes, yours: gs.filter((g) => g.yours).length, alert };
   }
+  if (path.startsWith("/api/v2/provenance")) {
+    const now = Date.now() / 1000 - 3600;
+    return { ok: true, enabled: true, key: "k", ts: now, from: "KC @ DAL", to: "CHI @ WSH", kind: "crunch", ok: true, dry_run: false,
+      chips: [{ key: "yours", label: "Your team" }, { key: "crunch", label: "Crunch time" }], source: "trace", has_trace: true,
+      parts: [{ module: "watch_value", value: { to: 88, from: 41, why: "Tied, 2:10 left in the 4th" } }, { module: "crunch_state", value: "in" },
+        { module: "importance", value: 0.82 }, { module: "floors", value: ["your-team crunch floor"] }, { module: "planner", value: "crunch-overlap" },
+        { module: "guard", value: { rule: "no mid-play cut", safe_wait_s: 3.1 } }],
+      chain: [{ stage: "decided", at: now, component: "decider", detail: { kind: "crunch" } }, { stage: "guarded", at: now + 3.1, component: "guard", detail: { rule: "no mid-play cut" } },
+        { stage: "command", at: now + 3.4, component: "control", detail: { path: "flip", stick: "HDMI2" } }, { stage: "picture", at: now + 5.6, component: "control", detail: { to_picture_s: 5.6 } }] };
+  }
   if (path === "/api/v2/watch") {
     const why = ["Tied, 2:10 left in the 4th", "Red zone, 3rd & goal", "Power play, down one", "Blowout, starters sitting", "Commercial break"];
     const games = (STATE.games || []).filter((g) => g.phase === "live" || g.state === "live").slice(0, 6).map((g, i) => ({ game_id: g.id, matchup: g.matchup,
@@ -379,7 +389,7 @@ function mockV2(path, b) {
       const len = 300 + ((i * 937) % 1500);
       segs.push({ t0: t, t1: Math.min(now, t + len), game: g.id, matchup: g.matchup });
       const reason = reasons[i % reasons.length];
-      events.push({ ts: t, type: "switch", kind: "better", game: g.id, matchup: g.matchup, reason, ok: i % 9 !== 4, dry_run: false,
+      events.push({ ts: t, type: "switch", kind: "better", game: g.id, matchup: g.matchup, reason, ok: i % 9 !== 4, dry_run: false, key: `${t.toFixed(3)}|${g.id}`,
         chips: V2_RULES.filter(([, , rx]) => rx.test(reason)).slice(0, 3).map(([key, label]) => ({ key, label })), playbooks: (reason.match(/playbook=([A-Z]+-\d+)/) || []).slice(1) });
       if (i % 4 === 1) events.push({ ts: t + 60, type: "decision", kind: "hold", game: g.id, matchup: g.matchup, reason: "wait for the whistle playbook=SAFE-07", chips: [], playbooks: ["SAFE-07"] });
       if (i % 5 === 2) events.push({ ts: t + 120, type: "tap", kind: i % 2 ? "up" : "down", game: g.id, matchup: g.matchup, reason });

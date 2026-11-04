@@ -313,3 +313,33 @@ def test_night_route_carries_plan_marks(client, engine):
                     "VALUES (?,?,?,?,?,?,?,?,?)", (time.time(), None, gid, "a", "replay", "catch-up", 0, 1, "{}"))
     r = client.get("/api/v2/night").json()
     assert r["plan_counts"]["catchup"] >= 1 and r["plan_marks"][-1]["type"] == "catchup"
+
+
+def test_provenance_from_trace_fields_or_stub():
+    trace = {"trace": {"id": "s1", "decided_at": 100.0, "kind": "crunch", "steps": [["safe_done", 3.0], ["flip_start", 3.2]],
+                       "spans": {"safe_wait": 3.0}, "path": "flip", "picture_confirmed": True, "picture_at": 105.0,
+                       "enter_delay": {"mu": 44.0, "sigma": 2.0}}}
+    row = {"ts": 100.0, "frm": "a", "to_game": "b", "kind": "crunch", "reason": "Crunch time playbook=CRUNCH-02 plan=overlap",
+           "ok": 1, "dry_run": 0, "detail": json.dumps(trace)}
+    v = phone_v2.provenance_view(row, lambda g: g.upper())
+    assert v["source"] == "stub" and v["key"] == "100.000|b" and v["to"] == "B"
+    assert [c["stage"] for c in v["chain"]] == ["decided", "guarded", "command", "picture"]
+    assert [p["module"] for p in v["parts"]] == ["decider", "playbook", "planner", "sync", "guard"]
+    trace["trace"]["provenance"] = {"planner": "overlap", "watch_value": {"to": 88}, "extra": 1}
+    row["detail"] = json.dumps(trace)
+    v = phone_v2.provenance_view(row, str)
+    assert v["source"] == "trace" and [p["module"] for p in v["parts"]] == ["watch_value", "planner", "extra"]
+    row["detail"] = "{}"
+    assert phone_v2.provenance_view(row, str)["chain"] == [] and phone_v2.provenance_view(row, str)["has_trace"] is False
+
+
+def test_provenance_route(client, engine):
+    assert client.get("/api/v2/provenance?key=1|a").status_code == 404
+    _on(engine)
+    gid = next(iter(engine.merger.games))
+    _switch(engine, gid)
+    sw = client.get("/api/v2/switches").json()["switches"][0]
+    r = client.get(f"/api/v2/provenance?key={sw['key']}").json()
+    assert r["ok"] and r["source"] == "stub" and r["parts"][0]["module"] == "decider"
+    assert client.get("/api/v2/provenance?key=nope").json()["ok"] is False
+    assert client.get("/api/v2/provenance?key=1.0|zzz").json()["ok"] is False
