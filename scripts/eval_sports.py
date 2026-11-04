@@ -160,6 +160,7 @@ def main():
                           # [north star] per-night counts so scripts/northstar.py can bootstrap every line
                           "big_live": card.big_live, "landings": card.cut.landings()[1],
                           "landings_dead": card.cut.landings()[0],
+                          "possession_starts": card.cut.possession_starts,
                           "dead_s": round(card.dead, 1), "watched_s": round(card.watched, 1),
                           "crunch": card.crunch, "crunch_live": card.crunch_live,
                           "my_crunch": card.my_crunch, "my_crunch_live": card.my_crunch_live,

@@ -34,6 +34,13 @@ PROFILES: dict[str, dict] = {
             # that late side, and a switch off a finished game never takes the thin urgent landing.
             "decider.entry.landing_lag_s=6",
             "decider.entry.ended_strict=true",
+            # [noggin logic, Nick Nov 4 10:45 AM] Possession-start entry for crunch time: cue to the last
+            # dead ball before the possession, never wait while one is in reach, never mid-play. Dev
+            # (3 seeds, tune jitter 6) and locked: identical to "wait", which already rewinds there.
+            "decider.entry.possession_start=crunch",
+            # [noggin logic, rule #1] A lone substitution (its stoppage missing from the data) opens no
+            # dead window: the last candidate mid-play entry (NBA GS @ DEN) rewound 70 s into one.
+            "decider.entry.confirmed_dead_only=true",
             # [controls, cycle 03] Opening a game on the phone tunes it on the hidden stick while you
             # read the sheet, so "Go now" is a flip (press_to_tv_p95). Live default stays off.
             "two_stick.pretune_on_open=true",

@@ -11,6 +11,8 @@ archive (real wallclocks, the stream's real delay), per league:
   entries_in_break     landed inside a commercial break (timeout, score, period end...)
   plays_missed_entry   plays that began airing on the destination during the tune (black screen)
                        or were already under way when the picture came up
+  possession_start_entry_pct  entries that came up on a dead ball with no play missed (the viewer
+                       sees the whole possession from its start)
   leaves_in_dead_pct   share of leaves made inside a dead window: an official stoppage or a dead
                        ball (free throws, a foul, a review, a timeout), not just "between plays"
   landed_dead_pct      share of switches whose picture came up on a dead ball (100 - mid-play
@@ -43,6 +45,7 @@ class CutCard:
     leaves: int = 0
     leaves_in_dead: int = 0
     leaves_between_plays: int = 0
+    possession_starts: int = 0  # entries on a dead ball with no play missed: the whole possession seen
     rewinds: int = 0            # entries that came up behind live on purpose (DVR rewind to a dead ball)
     rewind_s: float = 0.0
     mid_entries: list = field(default_factory=list)
@@ -82,6 +85,7 @@ class CutCard:
                 "plays_missed_per_entry": round(self.plays_missed_entry / max(1, self.entries), 2),
                 "leaves": self.leaves, "leaves_in_dead_pct": pct(self.leaves_in_dead, self.leaves),
                 "leaves_between_plays": self.leaves_between_plays,
+                "possession_start_entry_pct": pct(self.possession_starts, self.entries),
                 "entry_rewinds": self.rewinds,
                 "entry_rewind_s": round(self.rewind_s / max(1, self.rewinds), 1),
                 # [landing offsets] the gate line: >= 95 % of landings (both ends) in on-screen dead time
@@ -250,10 +254,12 @@ def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
         # plays that started airing while the screen was black, or were under way when it came up
         plen = _plen(dst.league)
         lo, hi = s.t - lag - off, st
+        missed0 = card.plays_missed_entry
         for k in range(max(0, _idx(dst.wall, lo)), len(dst.wall)):
             w, p = dst.wall[k], dst.plays[k]
             if w - plen > hi:
                 break
             if w >= lo and _action(dst.league, p) and w - plen < hi:
                 card.plays_missed_entry += 1
+        card.possession_starts += dead and card.plays_missed_entry == missed0
     return card

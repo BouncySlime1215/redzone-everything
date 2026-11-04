@@ -204,6 +204,13 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** (confirmed) the live check's 4 h budget ran on wall time from boot. The service restarted at 00:03 ET with no live games, so the check spent its 4 h on an empty slate and switched FastCast off for good. **Not yet explained:** the Nov 3 19:25-23:45 run had live games, yet the client never logged a connect or an error.
 - **Fix:** the budget counts only time with live games subscribed (`FastcastCheck.watching`). Every minute, the file carries the client's own status (task state, wanted topics, connected, updates, last error), the engine logs when FastCast starts and how many games it watches, and a client task that dies is logged at ERROR. The next live night's file says where it stops.
 - **Signals:** fastcast_check.json `result: stopped` with `games: 0`; no `espn_fastcast` rows in recordings/*/plays.jsonl.
+
+## A rewind landed in a data gap (NBA GS @ DEN, Nov 4)
+- **Symptom:** the candidate's one remaining mid-play entry (dev seed 2) was a 70 s rewind, the same with or without tune jitter.
+- **Cause:** a substitution at 377 s left was the last event for 238 s of wall time (the play that stopped the game is missing). The tracker opened a dead window on the substitution and closed it 24 s of game clock before the next event, so it looked like a 3.5-minute dead ball. The grader, rightly, can't call that a dead ball.
+- **Fix:** `decider.entry.confirmed_dead_only` (candidate on): a lone substitution opens no window, so a rewind falls back to an earlier logged stoppage or the entry waits.
+- **Signals:** a rewind of 50 s or more into NBA; a window of kind `substitution` with no stronger kind.
+
 - 2026-11-04: **Two sticks are not one tune speed.** Live lab: hidden-stick tune to PLAYING p50 2.33 s / p95 3.06 s on
   the 4K Plus vs 3.74 / 5.50 s on the 4K 2023, but every tune went into one shared median. The roles swap on every
   flip, so there is no free "use the fast stick" choice; what we can do is price the stick that will tune. Tunes now
