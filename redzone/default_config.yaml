@@ -45,6 +45,15 @@ sync:
     enabled: true          # [SYNC] read-only log of what the sticks expose (media_session, Wi-Fi, UI tree, logcat)
                            # -> recordings/<day>/sync_probe.jsonl. Presses nothing; skips during switches.
     visible_ui: false      # also dump the VISIBLE stick's UI tree (off: unmeasured whether a dump stutters video)
+  break_anchor:            # [auto-anchors] ad break on screen <-> the feed's dead ball -> a delay sample
+    enabled: false         # logged always (recordings/<day>/sync_anchors.jsonl); fed to the filter only when on.
+    start_bias_s: 15       # whistle -> ad on screen, a PRIOR until the Wednesday probe data refits it
+    bias_sd_s: 10
+    min_s: 10              # plausible whistle -> ad-on-screen window (feed wall to screen time)
+    max_s: 240
+  drift_alarm:             # [SYNC 6] delay moved > limit_s since it synced, or the stick's network predicts it
+    limit_s: 5
+    resync: false          # re-tune the hidden stick's standby on an alarm (off until a live night shows alarms are real)
 
 sources:
   fastcast: false          # ESPN's push feed: new plays the moment ESPN publishes them. Runs NEXT TO polling

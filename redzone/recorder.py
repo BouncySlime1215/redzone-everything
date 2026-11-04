@@ -44,6 +44,10 @@ class Recorder:
             for r in rows:
                 f.write(json.dumps(r, separators=(",", ":")) + "\n")
 
+    def sync_anchor(self, row: dict) -> None:
+        """[auto-anchors] One on-screen break edge (matched feed event) or drift alarm per row."""
+        self._write("sync_anchors.jsonl", [row])
+
     def plays(self, g: GameState, plays: list[dict], source: str) -> None:
         now = time.time()
         # Per source, so each feed's lag is measured on its own: the slower feed's copy of a

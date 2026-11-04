@@ -138,6 +138,9 @@ class Engine:
         self.recorder = Recorder()
         from redzone.sync_probe import SyncProbe
         self.sync_probe = SyncProbe(self.cfg, self.control, lambda: self.recorder.root)   # [SYNC] read-only stick probe
+        self.sync_probe.on_condition = self._sync_condition
+        self.sync_probe.on_screen_event = self._break_event
+        self._alarmed: dict[str, float] = {}   # [SYNC 6] target -> last drift alarm
         self._last_snapshot = 0.0
         self.mic = None
         self.fantasy = None   # latest fantasy.Matchup
@@ -290,7 +293,67 @@ class Engine:
     def _on_behind(self, target: str, new_s: float, old_s: float) -> None:
         """The controller held (or freed) this target's stream: shift its delay by the difference."""
         d = self.delays.get(target)
-        self.delays.set_behind(target, max(0.0, d.behind - old_s + new_s))
+        # [SYNC 1] A hold or a stall is timed on the stick's own clock: the sync filter shifts by it
+        # (+-0.5 s) instead of throwing its estimate away. A fresh tune (new_s 0) still re-syncs.
+        self.delays.set_behind(target, max(0.0, d.behind - old_s + new_s), known_sd=0.5 if new_s > 0 else None)
+
+    # ------------------------------------------------------------------ [SYNC 4/6] network + anchors + drift
+    def _sync_condition(self, target: str, q_scale: float, feats: dict) -> None:
+        if self.sync is not None:
+            self.sync.condition(target, q_scale)
+
+    def _break_event(self, target: str, host: str, visible: bool, kind: str, t: float, sd: float) -> None:
+        """[auto-anchors] An ad break started or ended on screen at t (SyncProbe). break_start is matched
+        to the feed's last dead ball on that game: delay = t - its wallclock - the broadcast's usual
+        whistle-to-break gap (sync.break_anchor.start_bias_s, a prior until the Wednesday probe data
+        refits it). Every edge is logged with the feed event it matched (the Noggin's delay labels);
+        only with sync.break_anchor.enabled does it reach the filter."""
+        from redzone.lab.timing import is_dead_ball
+        gid = self._game_on(target, visible)
+        g = self.merger.games.get(gid or "")
+        row = {"ts": round(t, 2), "target": target, "stick": host, "sample_kind": kind, "game": gid,
+               "edge_sd": round(sd, 2), "feed_wall": None, "z": None, "used": False}
+        if g is not None and kind == "break_start":
+            lo, hi = float(self.cfg.get("sync.break_anchor.min_s", 10)), float(self.cfg.get("sync.break_anchor.max_s", 240))
+            dead = [p for p in g.recent_plays if p.wallclock and lo <= t - p.wallclock <= hi
+                    and (is_dead_ball(g.league.value, p.type_text or p.kind) or p.scoring)]
+            if dead:
+                w = max(p.wallclock for p in dead)
+                bias = float(self.cfg.get("sync.break_anchor.start_bias_s", 15.0))
+                bias_sd = float(self.cfg.get("sync.break_anchor.bias_sd_s", 10.0))
+                z = t - w - bias
+                row.update(feed_wall=round(w, 2), z=round(z, 2))
+                if self.cfg.get("sync.break_anchor.enabled", False):
+                    row["used"] = bool(self.sync is not None and self.sync.measure(
+                        target, z, "break", t, (sd * sd + bias_sd * bias_sd) ** 0.5))
+        try:
+            self.recorder.sync_anchor(row)
+        except Exception:
+            log.exception("could not log a break anchor")
+
+    def _drift_check(self) -> list[dict]:
+        """[SYNC 6] Every channel whose delay moved > 5 s since it synced, or whose stick's network says
+        it is about to: logged once per 5 min. With sync.drift_alarm.resync, the hidden stick's live
+        standby is re-tuned while no switch is pending (it isn't on screen, so nothing is cut)."""
+        if self.sync is None:
+            return []
+        now = time.time()
+        out = []
+        for a in self.sync.alarms(now, float(self.cfg.get("sync.drift_alarm.limit_s", 5.0))):
+            if now - self._alarmed.get(a["target"], 0.0) < 300:
+                continue
+            self._alarmed[a["target"]] = now
+            out.append(a)
+            log.warning("drift alarm on %s: %s", a["target"], a)
+            try:
+                self.recorder.sync_anchor({"ts": round(now, 2), "target": a["target"], "sample_kind": "drift_alarm", **a})
+            except Exception:
+                log.exception("could not log a drift alarm")
+            c = self.control
+            if (self.cfg.get("sync.drift_alarm.resync", False) and a["target"] == c.hidden_target
+                    and c.hidden_ready and self._pending_decision is None):
+                c.preload(a["target"], refresh=True)
+        return out
 
     def _game_on(self, target: str, visible: bool) -> str | None:
         """The game the engine thinks this target shows (the current one first, for the visible stick)."""
@@ -567,6 +630,10 @@ class Engine:
                 await self._after_wake()
             except Exception:
                 log.exception("wake check failed")
+            try:
+                self._drift_check()
+            except Exception:
+                log.exception("drift check failed")
             try:
                 await self._device_keepalive()
                 self._tick += 1

@@ -276,6 +276,23 @@ one of the things Wednesday will settle. The next step builds break anchors (sam
 `break_end` plus the feed event wallclock) into `redzone/decider/sync.py`. delay_mu and delay_sigma are
 exposed through DelayBook for the Noggin.
 
+## Sync stack (Nov 4, overnight)
+
+- **Known moves keep the sync.** `DelayBook.set_behind(..., known_sd=0.5)` is used for the controller's holds
+  and stalls (`Engine._on_behind`), and it calls `SyncBook.shift`. The estimate moves by the measured amount and
+  gains 0.5 s of doubt. Before this, every booked stall re-synced the channel from its prior.
+- **Network condition → error bar.** `SyncProbe._condition` turns stalls per minute (last 5 min), RSSI below
+  -65 dBm and an RSSI drop of 10 dB or more within 2 min into `q_scale` (1 to 25). `SyncBook.condition`
+  multiplies the delay's random-walk noise by it, so `d.current_sigma()` grows faster on a bad link. That is
+  the variance the Reflex reads.
+- **Break anchors.** An ad label appearing or going in the hidden stick's UI tree is placed midway between
+  two reads (sd = gap/√12). It is matched to the game's last dead ball 10 to 240 s earlier:
+  z = t − wallclock − `start_bias_s` (15 ± 10 s, a prior). Every edge goes to
+  `recordings/<day>/sync_anchors.jsonl` (ts, target, stick, sample_kind, feed_wall, z) as the Noggin's labels.
+  It reaches the filter only with `sync.break_anchor.enabled`.
+- **Drift alarm.** `SyncBook.alarms` flags "measured" when the delay moved more than 5 s since it synced (a
+  restart keeps the plan, so a jump counts), and "predicted" when q_scale ≥ 9. Alarms are logged once per
+  5 min. `sync.drift_alarm.resync` re-tunes the hidden standby when no switch is pending (off by default).
 ## Sims score the feed actually in use (planner 2:45 AM item 3, Nov 4)
 
 `--real-lag` used to draw every league's feed lag from ESPN's summary profile, even when the config decides

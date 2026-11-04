@@ -163,6 +163,14 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   setting, uses its own adb process and skips every tick during a switch, flip or preload, in dry run, and when
   the governor blocks OCR. It writes `recordings/<day>/sync_probe.jsonl`. The visible stick's UI tree is not dumped
   (`sync.probe.visible_ui: false`) until a dump is shown not to stutter the picture. Decisions don't read it.
+- 2026-11-04 8:20 AM: **Sync stack** (Nick, 1:50 AM: delay isn't stationary). (1) A hold or stall timed on the
+  stick's clock now SHIFTS the sync filter (+-0.5 s) instead of re-syncing it, which threw a good estimate away
+  for every 1 s buffering blip (#70 + #61 hold). (2) The probe's network features (stalls/min, RSSI, RSSI drop)
+  scale each channel's process noise (q_scale 1-25): a weak link widens the error bar the Reflex uses.
+  (3) Break anchors: ad-label edges on the hidden stick matched to the feed's dead ball, LOGGED to
+  sync_anchors.jsonl (ts, target, stick, sample_kind, feed_wall); `sync.break_anchor.enabled: false` until the
+  Wednesday data fits the whistle-to-break bias. (4) Drift alarm (>5 s since sync, or q_scale >= 9) logged;
+  `sync.drift_alarm.resync: false`. The sims don't run these paths: scorecards unchanged by construction.
 - 2026-11-04 3:15 AM: **Noggin Timing v1 ships OFF** (`noggin.timing.leagues: []`). NBA hazard + conformal lower
   bound: 0.56 % of restarts before the bound on 421 unseen public nights (today's FLOOR_S: 7.33 %) at the same
   tightness, ECE 0.053; on the NBA scorecard at B=90 (dev nights) entries mid-play 5/61 -> 5/61, so no gain to
