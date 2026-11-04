@@ -317,6 +317,32 @@ function mockV2(path, b) {
     const guess = b.game_id ? c.find((x) => x.game_id === b.game_id) : c[0];
     return { ok: true, guess, candidates: c, message: guess ? `Logged: ${guess.matchup} (${guess.text}, ${Math.floor(guess.ago_s / 60)} min ago)` : "Logged" };
   }
+  if (path.startsWith("/api/v2/night")) {
+    const now = Date.now() / 1000, t0 = now - 4 * 3600;
+    const live = (STATE.games || []).slice(0, 5);
+    const segs = [], events = [];
+    let t = t0;
+    const reasons = ["Crunch time: close late playbook=CRUNCH-02", "FOX in commercial — break visit", "Your team in the red zone", "catch it live — big play", "Moment over, back home"];
+    for (let i = 0; t < now - 300; i++) {
+      const g = live[i % live.length] || { matchup: "Game " + i, id: "g" + i };
+      const len = 300 + ((i * 937) % 1500);
+      segs.push({ t0: t, t1: Math.min(now, t + len), game: g.id, matchup: g.matchup });
+      const reason = reasons[i % reasons.length];
+      events.push({ ts: t, type: "switch", kind: "better", game: g.id, matchup: g.matchup, reason, ok: i % 9 !== 4, dry_run: false,
+        chips: V2_RULES.filter(([, , rx]) => rx.test(reason)).slice(0, 3).map(([key, label]) => ({ key, label })), playbooks: (reason.match(/playbook=([A-Z]+-\d+)/) || []).slice(1) });
+      if (i % 4 === 1) events.push({ ts: t + 60, type: "decision", kind: "hold", game: g.id, matchup: g.matchup, reason: "wait for the whistle playbook=SAFE-07", chips: [], playbooks: ["SAFE-07"] });
+      if (i % 5 === 2) events.push({ ts: t + 120, type: "tap", kind: i % 2 ? "up" : "down", game: g.id, matchup: g.matchup, reason });
+      t += len;
+    }
+    const air = {};
+    segs.forEach((x) => { air[x.matchup] = (air[x.matchup] || 0) + x.t1 - x.t0; });
+    const pb = {};
+    events.forEach((e) => (e.playbooks || []).forEach((k) => { pb[k] = (pb[k] || 0) + 1; }));
+    const day = new Date().toISOString().slice(0, 10);
+    return { enabled: true, day, nights: [day, "2026-11-03", "2026-11-02"], segments: segs, events,
+      summary: { switches: segs.length, failed: 1, games: Object.keys(air).length, taps: { up: 2, down: 1, missed: 1 },
+        on_air: Object.entries(air).map(([matchup, s]) => ({ matchup, s: Math.round(s) })).sort((a, b) => b.s - a.s), playbooks: pb } };
+  }
   if (path === "/api/v2/priority" && !Object.keys(b).length) {
     return { enabled: true, prefs: { ...V2.prefs }, ranges: { bets_weight: [0, 2], rivalry_points: [0, 15], nhl_pp_ot_boost: [0, 2], switch_frequency: [0.5, 2] },
       votes: Object.keys(V2.votes).length, suggestions: [] };

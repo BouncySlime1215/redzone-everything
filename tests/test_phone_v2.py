@@ -90,3 +90,31 @@ def test_priority_sliders_save_clamped_into_l2(client, engine):
     assert p["bets_weight"] == 2.0 and p["switch_frequency"] == 0.7 and p["reels"] is False
     assert client.post("/api/v2/priority", json={"bets_weight": "lots"}).json()["ok"] is False
     assert client.post("/api/v2/priority", json={}).json()["ok"] is False
+
+
+def test_night_view_segments_events_and_playbooks():
+    sw = [{"ts": 100.0, "to_game": "a", "kind": "better", "reason": "Crunch time playbook=CRUNCH-02", "ok": 1, "dry_run": 0},
+          {"ts": 400.0, "to_game": "b", "kind": "break_visit", "reason": "a in commercial", "ok": 0, "dry_run": 0}]
+    dec = [{"ts": 150.0, "action": "stay", "game": "a", "kind": "", "reason": "best on", "gate": ""},
+           {"ts": 200.0, "action": "hold", "game": "a", "kind": "", "reason": "wait for whistle playbook=SAFE-07", "gate": "g"},
+           {"ts": 400.0, "action": "switch", "game": "b", "kind": "", "reason": "dup", "gate": ""}]
+    taps = [{"ts": 420.0, "game": "b", "tap": "down", "reason": "a in commercial", "switch": "400.000|b"},
+            {"ts": 500.0, "game": "a", "tap": "missed", "reason": None, "switch": None}]
+    v = phone_v2.night_view(sw, dec, taps, lambda g: g.upper(), end=1000.0)
+    assert [(s["matchup"], s["t1"] - s["t0"]) for s in v["segments"]] == [("A", 300.0), ("B", 600.0)]
+    assert [e["type"] for e in v["events"]] == ["switch", "decision", "switch", "tap", "tap"]
+    assert v["summary"]["playbooks"] == {"CRUNCH-02": 1, "SAFE-07": 1}
+    assert v["summary"]["taps"] == {"up": 0, "down": 1, "missed": 1} and v["summary"]["failed"] == 1
+    assert v["summary"]["on_air"][0] == {"matchup": "B", "s": 600}
+
+
+def test_night_route_reads_tonight(client, engine):
+    assert client.get("/api/v2/night").status_code == 404
+    _on(engine)
+    gid = next(iter(engine.merger.games))
+    _switch(engine, gid, reason="Crunch time playbook=CRUNCH-02")
+    r = client.get("/api/v2/night").json()
+    assert r["enabled"] and r["summary"]["switches"] >= 1 and r["day"] in r["nights"]
+    assert r["events"][-1]["playbooks"] == ["CRUNCH-02"]
+    assert client.get("/api/v2/night?day=2026-13-01").json()["ok"] is False
+    assert phone_v2.night_of(phone_v2.night_window(phone_v2.date(2026, 11, 3))[0] + 20 * 3600).isoformat() == "2026-11-03"
