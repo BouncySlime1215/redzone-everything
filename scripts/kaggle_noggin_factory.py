@@ -43,6 +43,7 @@ PLAN = {
     "nhl": (list(range(2026, 2010, -1)), 20),   # ESPN wall clocks from 2019-20 on: older seasons give 0 rows
     "cbb": (list(range(2026, 2005, -1)), 4),
     "wcbb": (list(range(2026, 2005, -1)), 4),  # wehoop (MIT); docs/data-sources.md
+    "cfb": (list(range(2025, 2003, -1)), 0),   # ESPN FBS board (Kaggle only; ESPN is blocked from the cloud)
 }
 if os.environ.get("RZ_LEAGUES"):
     PLAN = {k: v for k, v in PLAN.items() if k in os.environ["RZ_LEAGUES"].split(",")}
@@ -178,6 +179,7 @@ for f in sorted(glob.glob(f"{OUT}/tokens/*/*.json")):         # NFM event tokens
     L["tokens"] = L.get("tokens", 0) + int(i.get("tokens") or 0)
     L["seasons"].setdefault(season, {})["tokens"] = {k: i.get(k) for k in ("tokens", "games", "events", "complete")}
     L["events"] = L.get("events", 0) + int(i.get("events") or 0)
+    L["token_games"] = L.get("token_games", 0) + int(i.get("games") or 0)
     for k, v in (i.get("coverage") or {}).items():
         L[k] = L.get(k, 0) + int(v)
     L.setdefault("sources", {})
@@ -185,6 +187,7 @@ for f in sorted(glob.glob(f"{OUT}/tokens/*/*.json")):         # NFM event tokens
 man["total_tokens"] = sum(v.get("tokens", 0) for v in man["leagues"].values())
 # DATA LEDGER (Nick 5:00 PM): tokens per league and source, real vs synthetic, crunch / OT / comeback / blowout share
 man["ledger"] = {lg: {"tokens_real": v.get("tokens", 0), "sources": v.get("sources", {}),
+                      "games": v.get("token_games", 0), "events": v.get("events", 0),
                       "selfplay_rows_synthetic": v.get("selfplay_rows", 0), "moments_rows_real": v.get("moments_rows", 0),
                       "crunch_event_share_pct": round(100 * v.get("crunch_events", 0) / max(1, v.get("events", 0)), 2),
                       "ot_games": v.get("ot_games", 0), "comeback_games": v.get("comeback_games", 0),

@@ -19,7 +19,8 @@ Sources (free, public; licenses in SOURCES):
     wcbb  wehoop ESPN WBB pbp
     nfl   nflfastR / nflverse pbp (`time_of_day` = the snap, like ESPN's NFL wallclock; 2011+)
     nhl   ESPN summaries (fastRhockey / the NHL feeds carry no wall clock): the live parser on the live shape
-Queued (loaders not written yet): cfb (cfbfastR 2014+), mlb (pitch timestamps 2008+). See docs/noggin.md § Phases.
+    cfb   ESPN summaries, the whole FBS board (groups=80), 2004+
+Queued (loader not written yet): mlb (pitch timestamps 2008+). See docs/noggin.md § Phases.
 """
 from __future__ import annotations
 
@@ -45,12 +46,16 @@ SOURCES = {
     # ESPN summaries carry each play's wallclock (what the live app reads): fetched by
     # scripts/noggin_factory.py on a runner that can reach ESPN (GitHub Actions), never this container.
     "nhl": dict(espn=True, first=2011, license="ESPN public site API; personal/non-commercial use"),
+    # CFB: ESPN summaries carry the snap wallclock like the NFL feed; groups=80 is the whole FBS board, not ESPN's
+    # default featured games. cfbfastR-data stops at 2020 and CFBD needs Nick's key (docs/data-sources.md).
+    "cfb": dict(espn=True, first=2004, board="&groups=80&limit=300",
+                license="ESPN public site API; personal/non-commercial use"),
     "nfl": dict(url="https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{y}.parquet",
                 first=2011, license="CC-BY 4.0 (nflverse data); underlying NFL data for personal/non-commercial use"),
 }
 # First night of the pinned scorecard window (data/eval_pin.json, eval-data-v1). Nothing on or after it
 # is ever written by the factory. College has no scorecard yet; it uses the NBA date as a safe cut.
-EVAL_FIRST_NIGHT = {"nba": "20261020", "cbb": "20261020", "wcbb": "20261020", "nfl": "20250905",
+EVAL_FIRST_NIGHT = {"nba": "20261020", "cbb": "20261020", "wcbb": "20261020", "nfl": "20250905", "cfb": "20250801",
                     "nhl": "20261019"}
 
 def night_of(epoch: float) -> str:

@@ -274,3 +274,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (`scripts/kaggle_noggin_factory.py`, resumable season shards + oracle self-play parts, all 4 loaded
   leagues back to 2002 where wall clocks exist). The `noggin-factory.yml` push trigger is removed (manual
   dispatch only), because the repo's GitHub Actions minutes are capped. Every lane 1 PR reports rows per league.
+- 2026-11-04 (Nick, 5:00 PM data-scale order; lane 1): the factory plan grows to **NFL 1999+ (tokens only before
+  2011), WCBB 2006+ (wehoop) and CFB 2004+ (ESPN's whole FBS board)**. CFB gets a scorecard cut,
+  `EVAL_FIRST_NIGHT["cfb"] = 20250801` (the whole 2025 season stays unseen, like NFL), and a test now fails if any
+  planned league has no cut. Sources and terms: docs/data-sources.md. CFBD waits on Nick's key; MLB Statcast on his OK.

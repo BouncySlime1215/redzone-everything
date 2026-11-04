@@ -76,6 +76,25 @@ def _hockey_game(gid, start, home, away):
     return plays
 
 
+def _football_game(gid, start, home, away):
+    """An ESPN-summary football game (the CFB feed's shape): snaps 40 s apart, a timeout and a TD now and then."""
+    plays, t, hs = [], start, 0
+    for q in (1, 2, 3, 4):
+        for k in range(40):
+            td = k == 20
+            hs += 7 * td
+            kind = "Passing Touchdown" if td else "Timeout" if k == 30 else "Pass Reception" if k % 2 else "Rush"
+            clock = 900 - 22 * k
+            plays.append({"id": f"{gid}{q}{k:03d}", "sequenceNumber": str(len(plays)), "type": {"text": kind},
+                          "text": kind, "period": {"number": q},
+                          "clock": {"displayValue": f"{clock // 60}:{clock % 60:02d}"},
+                          "wallclock": t.strftime("%Y-%m-%dT%H:%M:%SZ"), "scoringPlay": td,
+                          "homeScore": hs, "awayScore": 3})
+            t += timedelta(seconds=40 if kind != "Timeout" else 150)
+        t += timedelta(seconds=120 if q != 2 else 1200)
+    return plays
+
+
 def _nights(year):
     """Three nights, two games each, well before every league's scorecard window."""
     base = datetime(year - 1, 12, 1, 0, 0, tzinfo=timezone.utc)
@@ -88,6 +107,7 @@ def _write_espn(league, year, dest: Path, **_):
     with gzip.open(dest, "wt") as f:
         for gid, start, home, away in _nights(year):
             plays = (_hockey_game(gid, start, home, away) if league == "nhl"
+                     else _football_game(gid, start, home, away) if league == "cfb"
                      else _basketball_game(league, gid, start, home, away))
             f.write(json.dumps({"id": gid, "season_type": 2, "plays": plays, "matchup": f"{away} @ {home}"}) + "\n")
     return True
@@ -128,7 +148,7 @@ def test_season_job_runs_for_every_league_in_plan(tmp_path, monkeypatch):
     monkeypatch.setattr(NF, "fetch_espn_season", lambda league, year, dest, **k: _write_espn(league, year, Path(dest)))
     monkeypatch.setattr(NF, "_fetch", lambda url, dest: _write_pbp(Path(dest).parent.name,
                                                                   int(Path(dest).stem.split("_")[-1]), Path(dest)))
-    assert set(plan) >= {"nba", "nfl", "nhl", "cbb"}
+    assert set(plan) >= {"nba", "nfl", "nhl", "cbb", "wcbb", "cfb"}
     for league, (years, synthetic) in plan.items():
         res = ns["season_job"](league, years[0] - 3, min(synthetic, 1), time.time() + 600)
         assert "error" not in res, (league, res)
@@ -139,3 +159,18 @@ def test_season_job_runs_for_every_league_in_plan(tmp_path, monkeypatch):
         info = json.loads(Path(ns["OUT"], "tokens", league, f"{years[0] - 3}.json").read_text())
         assert info["complete"] and info["games"] == 6 and info["events"] > 0
         assert not glob.glob(f"{ns['RAW']}/{league}/*"), "the raw season is deleted after the job"
+
+
+def test_every_planned_league_has_a_scorecard_cut():
+    """A league missing from EVAL_FIRST_NIGHT would have NO cut (the .get default): its locked nights could leak."""
+    from redzone.noggin import factory as F
+    plan, _ = _notebook_defs()
+    assert set(plan) <= set(F.EVAL_FIRST_NIGHT), set(plan) - set(F.EVAL_FIRST_NIGHT)
+
+
+def test_college_football_reads_the_whole_fbs_board(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(NF, "_get_json", lambda sess, url, tries=4: seen.append(url))
+    NF.fetch_espn_season("cfb", 2020, tmp_path / "espn_2020.jsonl.gz", jobs=1)
+    boards = [u for u in seen if "scoreboard" in u]
+    assert boards and all("groups=80" in u for u in boards)
