@@ -58,10 +58,10 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-03 9:55 PM ET.** The Mac still runs this MORNING's code. **RC3 3a36e51 has been cut** (the e2e night test is isolated from the live Mac; speed test and 3600 s timeout fixed; no app code change, so the gates match RC2). CI is running on integration/release; the deploy starts as soon as it's green.
-- **TV:** paired on 8002 (token in the director's rc2 worktree data/; copy it to the live data/ after the deploy). This 2018 UN55NU6900 IGNORES KEY_HDMI1/2. The port map is REVERSED versus the config: .150 = HDMI1 (CEC 0x1000), .181 = HDMI2 (0x2000). Next path: SmartThings setInputSource; Nick is setting up the SmartThings app plus `tv_setup.py --smartthings` himself.
-- **Open PRs:** #13 #16 #18 #20 #23 #24 #26 #37 #40.
-- **Usage:** 48% (behind pace; extra threads allowed tonight).
+- **2026-11-03 10:05 PM ET.** **RC3 3a36e51 is GREEN in CI.** The director started the deploy at 10:05 (tests ~25 min at background priority, then a 10 min watch); log in the scratchpad deploy4.log. The Mac runs this MORNING's code until it finishes.
+- **TV:** paired on 8002, but this 2018 UN55NU6900 ignores KEY_HDMI1/2. Port map: .150 = HDMI1, .181 = HDMI2 (the config has them reversed). SmartThings: the OAuth app was created at ~10:00 (the director's worktree patch dropped the `?signatureType=ST_PADLOCK&requireConfirmation=true` query that SmartThings rejects for API_ONLY with 400 "Param(s) not supported for AppType"). Nick is finishing the authorize step. Upstream that patch belongs in redzone/tvsetup.py.
+- **Kaggle:** V2 FAILED at the student phase (dequant.py: safetensors.numpy can't read bf16). The teacher's 22,272 answers are in the V2 output. The distill thread is fixing it plus a students-only resume; the director then uploads and runs V3.
+- **Usage:** 48% (behind pace, so max effort is allowed tonight).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
