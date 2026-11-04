@@ -142,6 +142,7 @@ def test_crunch_run_up_waits_for_a_whistle_but_the_last_two_minutes_do_not(dec):
     now = nsc("b", 70, crunch=True)
     now.crunch_now = True
     assert dec._entry_only(Candidate(run_up, "youtubetv:b"), d)
+    dec.cfg.update({"decider": {"entry": {"crunch_now": "live"}}}, record=False)
     assert not dec._entry_only(Candidate(now, "youtubetv:b"), d)
 
 
@@ -161,7 +162,11 @@ def test_imminent_goal_chances(cfg, clock):
     assert nhl_goal_imminent(g, History(), cfg)
     g.clock_s = 300
     assert not nhl_goal_imminent(g, History(), cfg)
-    # ...and it stays "imminent" on the scored game for a while after (the goal kills the power play)
+    # Off by default (0 mid-play entries on every measure): the skip never fires.
+    sc = Scorer(cfg, clock=clock)
+    assert not sc.score(_nhl(1, 1, 2, 900, "PIT")).imminent
+    # Turned on, it stays "imminent" on the scored game for a while after (the goal kills the power play)
+    cfg.update({"score": {"nhl": {"imminent_hold_s": 30}}}, record=False)
     sc = Scorer(cfg, clock=clock)
     assert sc.score(_nhl(1, 1, 2, 900, "PIT")).imminent
     clock.t += 20
@@ -184,3 +189,25 @@ def test_scorecard_counts_power_play_time_and_goals():
     assert [sportsgrade.is_pp_goal(League.NHL, p) for p in plays] == [False] * 4 + [True, False]
     assert {"pp_minutes_on_screen", "pp_goals_live_pct", "pp_goals"} <= set(sportsgrade.Card("nhl").summary())
     assert "pp_goals" not in sportsgrade.Card("nba").summary()
+
+
+def test_crunch_last_two_minutes_plans_a_rewind_landing_but_never_waits(dec):  # noqa: F811
+    from redzone.decider.decider import Decision, State
+    d = Decision(0, "switch", "b", "crunch time", State.WATCHING, kind="crunch")
+    now = nsc("b", 70, crunch=True)
+    now.crunch_now = True
+    assert dec._crunch_entry_mode() == "rewind"
+    assert dec._entry_only(Candidate(now, "youtubetv:b"), d)        # plan the landing...
+    dec.cfg.update({"decider": {"entry": {"crunch_now": "live"}}}, record=False)
+    assert not dec._entry_only(Candidate(now, "youtubetv:b"), d)    # ...or, set to live, go now
+
+
+def test_nba_entries_plan_a_rewind_landing(dec):  # noqa: F811
+    from redzone.decider.decider import Decision, State
+    d = Decision(0, "switch", "b", "better game", State.WATCHING, kind="better")
+    x = Candidate(Scored("b", League.NBA, 50, 50, 50, 1.0, 0.0, "r", [], False, None, None, 1.0), "youtubetv:b")
+    assert dec._entry_only(x, d)          # default: NBA waits for a whistle (hold_only, capped by max_wait_s)
+    dec.cfg.update({"decider": {"entry": {"hold_only": ["nhl"], "rewind_only": ["nba"]}}}, record=False)
+    assert dec._entry_only(x, d)          # rewind-only still plans a dead-ball landing
+    dec.cfg.update({"decider": {"entry": {"rewind_only": []}}}, record=False)
+    assert not dec._entry_only(x, d)

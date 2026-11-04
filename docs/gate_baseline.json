@@ -1,35 +1,37 @@
 {
- "note": "Today = codex/resume-redzone 5f0e6a1 on the held-out slice of eval-data-v1 (scripts/ci_scorecard.py --nfl-n 2 --nights 4). The release gate never lets entries mid-play rise above these.",
+ "note": "Today = codex/resume-redzone 5f0e6a1 graded on the LOCKED test split of eval-data-v1 (redzone/lab/splits.py: newest 25% of nights per league; scripts/ci_scorecard.py --split test) plus the Nov 1 demo. The release gate never lets entries mid-play rise above these.",
  "cards": {
   "nfl": {
    "metrics": {
     "mid_play_cuts": 0,
-    "dead_air_pct": 10.7,
-    "big_seen_pct": 97.4,
-    "big_live_pct": 24.0,
-    "crunch_live_pct": 69.9,
-    "your_team_crunch_live_pct": 0.0,
+    "dead_air_pct": 9.9,
+    "big_seen_pct": 95.2,
+    "big_live_pct": 31.1,
+    "crunch_live_pct": 72.7,
+    "your_team_crunch_live_pct": 100.0,
     "your_team_big_seen_pct": 100.0,
-    "switches_per_hour": 38.5,
-    "tuning_blackout_s": 1370.0,
-    "tuning_blackout_pct": 5.3,
-    "nfl_drive_live_pct": 12.7,
-    "behind_live_pct": 31.8,
-    "big_missed_on_replay": 48,
-    "big_plays": 192,
-    "crunch_plays": 83,
-    "entries": 72,
+    "switches_per_hour": 32.3,
+    "tuning_blackout_s": 5445.0,
+    "tuning_blackout_pct": 4.5,
+    "nfl_drive_live_pct": 11.5,
+    "behind_live_pct": 18.6,
+    "big_missed_on_replay": 101,
+    "big_plays": 601,
+    "crunch_plays": 282,
+    "entries": 340,
     "entries_mid_play": 0,
-    "entries_in_break": 25,
-    "entry_wait_s": 23.1,
+    "entries_in_break": 127,
+    "entry_wait_s": 19.0,
     "plays_missed_entry": 0,
     "plays_missed_per_entry": 0.0,
-    "leaves": 73,
-    "leaves_in_dead_pct": 79.5,
-    "leaves_between_plays": 15,
-    "entry_rewinds": 35,
-    "entry_rewind_s": 31.1,
-    "seconds": 7
+    "leaves": 338,
+    "leaves_in_dead_pct": 76.0,
+    "leaves_between_plays": 81,
+    "entry_rewinds": 177,
+    "entry_rewind_s": 34.7,
+    "seconds": 21,
+    "eval_data": "eval-data-v1",
+    "eval_end": "20261101"
    }
   },
   "nba": {
@@ -58,7 +60,9 @@
     "leaves_between_plays": 0,
     "entry_rewinds": 0,
     "entry_rewind_s": 0.0,
-    "seconds": 10
+    "seconds": 11,
+    "eval_data": "eval-data-v1",
+    "eval_end": "20261101"
    }
   },
   "nhl": {
@@ -87,7 +91,9 @@
     "leaves_between_plays": 0,
     "entry_rewinds": 69,
     "entry_rewind_s": 44.5,
-    "seconds": 11
+    "seconds": 11,
+    "eval_data": "eval-data-v1",
+    "eval_end": "20261101"
    }
   },
   "demo_20261101": {
@@ -165,7 +171,8 @@
      "landed in it (crunch)": "5 min",
      "landed in it (live)": "1 min"
     }
-   }
+   },
+   "seconds": 81
   }
  }
 }

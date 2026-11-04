@@ -28,8 +28,9 @@ from redzone.plan import Tonight
 from redzone.scoring import breaks
 from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal, Scored, Scorer
-from redzone.sources import espn, fastcast, leagues
+from redzone.sources import espn, fastcast, fastcast_check, leagues
 from redzone.sources.http import Fetcher
+from redzone.sources.feeds import FeedBook
 from redzone.sources.merge import Merger
 from redzone.recorder import Recorder
 from redzone.screen import boundary, scorebug
@@ -55,6 +56,8 @@ class Engine:
         self.channels = ChannelMap()
         self.fetcher = Fetcher()
         self.merger = Merger()
+        self._poll_every: dict[str, float] = {}   # game id -> the poll interval it was last fetched at
+        self.feeds = FeedBook(self.merger, self.fetcher, self._feed_urls, self._feed_cadence)
         self.scorer = DriveScorer(self.cfg)
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"),
                                 model=self.cfg.get("delay.model", "channel"))
@@ -122,6 +125,11 @@ class Engine:
         self.fastcast = None
         self._fastcast_task = None
         self._fastcast_games = {}
+        self._fastcast_mode = None          # "merge" (sources.fastcast) | "shadow" (the live check) | None
+        # [fastcast live check] FastCast in shadow next to polling until it proves faster and consistent
+        self.fc_check = fastcast_check.FastcastCheck(
+            path=data_dir.parent / "fastcast_check.json" if data_dir else None)
+        self._fc_graded = 0.0
         self._fresh = asyncio.Event()
         self._house_device_task = None
         self._st_scan_task = None
@@ -133,6 +141,9 @@ class Engine:
         # Home / away from home / Tailscale stealing the home routes (redzone/network.py). Read-only.
         self.network = NetWatch(self.discovery.autonomy.paths.devices)
         self.tonight = Tonight(self)   # today's plan + pre-game checks on the hidden stick
+        from redzone.governor import Governor
+        # Backs optional work off when the Mac is busy, hot, on battery or short of disk (redzone/governor.py).
+        self.governor = Governor.from_config(self.cfg, **({"root": data_dir.parent} if data_dir else {}))
         from redzone.supervisor import DATA as SUPERVISOR_DATA, Supervisor
         # Per-switch TraceEvents (redzone/contracts/trace.py): data/traces.jsonl; in memory without a data dir.
         self.trace_sink = (trace.JsonlTrace(data_dir.parent / "traces.jsonl") if data_dir
@@ -177,7 +188,7 @@ class Engine:
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
                              self._boundary_loop(), self._scorebug_loop(), self.tonight.run(),
-                             self.supervisor.run(), self.network.run())
+                             self.supervisor.run(), self.network.run(), self.governor.run())
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)
@@ -255,6 +266,11 @@ class Engine:
                     self.scorebug.reset()
                     wait = 5.0
                 else:
+                    if not self.governor.allow("ocr"):   # the Mac is critical: no OCR for now
+                        self.scorebug.reset()
+                        await asyncio.sleep(10.0)
+                        continue
+                    wait = scorebug.EVERY_S * self.governor.scale("ocr")
                     frames = await self.control.scorebug_frames(bool(self.cfg.get("delay.scorebug_hidden", False)))
                     if not frames:
                         self.scorebug.reset()
@@ -315,13 +331,19 @@ class Engine:
                 interval = self.cfg.get("polling.hot_s", 3)
             else:
                 interval = self.cfg.get("polling.live_s") if soon else self.cfg.get("polling.idle_s")
+                if not soon:   # nothing live or about to start: idle polling may slow down...
+                    slow = interval * self.governor.scale("idle_poll")
+                    # ...but never past the moment the next known game enters its 15-minute "soon" window
+                    lead = min((g.start_time - time.time() - 900 for g in self.merger.games.values()
+                                if g.phase == Phase.PRE and g.start_time), default=None)
+                    interval = slow if lead is None else max(interval, min(slow, lead))
             await asyncio.sleep(max(1.0, interval - (time.time() - t0)))
 
     def _reel_tick(self) -> None:
         """Feed new clips to the catch-up reel and rebuild it in the background. Never blocks the
         poll loop, never raises: a reel is a bonus, the live switching is the job."""
         try:
-            if not self.reeler.enabled():
+            if not self.reeler.enabled() or not self.governor.allow("reel"):
                 return
             leagues = {gid: g.league.value for gid, g in self.merger.games.items()}
             mine = {lg.value: teams for lg, teams in self._my_teams().items()}
@@ -538,6 +560,9 @@ class Engine:
             every = self.cfg.get("polling.hot_s", 3) if g.game_id in hot else self.cfg.get("polling.live_s", 10)
             async with sem:
                 data = await self.fetcher.get_json(espn.summary_url(g.league, g.game_id), min_interval=every - 0.5)
+            # Recorded after the fetch: a game that just turned hot keeps its slower rate until it has
+            # been polled at the new one, so it isn't flagged stale (and unenterable) for that moment.
+            self._poll_every[g.game_id] = float(every)
             if not data:
                 self.merger.record_error("espn_summary")
                 return
@@ -547,6 +572,8 @@ class Engine:
                 plays = espn.flatten_plays(g.league, data)
                 s = espn.parse_summary(g.league, data, plays=plays)
                 self.recorder.plays(g, plays, "espn_summary")
+                if self._fastcast_mode == "shadow":
+                    self.fc_check.saw(fastcast_check.POLLED, g.game_id, plays)
             except Exception:
                 log.exception("summary parse failed %s", g.game_id)
                 s = None
@@ -666,6 +693,17 @@ class Engine:
                         except Exception:
                             log.exception("nba enrich")
 
+    def _feed_urls(self, g: GameState) -> list[str]:
+        """The URLs a game's state comes from: its summary and its league's scoreboard(s)."""
+        if g.league.college:
+            boards = espn.scoreboard_urls(g.league, (self.cfg.get("college.groups") or {}).get(g.league.value) or [])
+        else:
+            boards = [espn.scoreboard_url(g.league)]
+        return [espn.summary_url(g.league, g.game_id), *boards]
+
+    def _feed_cadence(self, gid: str) -> float:
+        return self._poll_every.get(gid, float(self.cfg.get("polling.live_s", 10)))
+
     def _source_health(self) -> None:
         now = time.time()
         for name, h in self.merger.health.items():
@@ -686,18 +724,56 @@ class Engine:
             await asyncio.sleep(FASTCAST_SYNC_S)
 
     def sync_fastcast(self) -> None:
-        """Match the setting; subscribe to every live game, drop games that went final."""
-        if not self.cfg.get("sources.fastcast", False):
+        """Match the setting; subscribe to every live game, drop games that went final. With FastCast
+        off, the live check (sources.fastcast_check) runs it in shadow on a few live games instead."""
+        mode = "merge" if self.cfg.get("sources.fastcast", False) else (
+            "shadow" if self.cfg.get("sources.fastcast_check", True) and not self.fc_check.done else None)
+        if mode != self._fastcast_mode:
             self._stop_fastcast()
+        if mode is None:
             return
         if self.fastcast is None:
-            self.fastcast = fastcast.FastcastClient(self._on_fastcast, http=self.fetcher._client)
+            cb = self._on_fastcast if mode == "merge" else self._on_fastcast_shadow
+            self.fastcast = fastcast.FastcastClient(cb, http=self.fetcher._client)
             self._fastcast_task = asyncio.get_running_loop().create_task(self.fastcast.run())
+            self._fastcast_mode = mode
         lgs = self._leagues()
+        live = [g for g in self.merger.games.values() if g.phase == Phase.LIVE and g.league in lgs]
+        if mode == "shadow":
+            # a few games, keeping the ones already subscribed (their pairing is under way)
+            have = {gid for _, gid in self._fastcast_games.values()}
+            live.sort(key=lambda g: (g.game_id not in have, g.game_id))
+            live = live[:fastcast_check.MAX_TOPICS]
         self._fastcast_games = {
             fastcast.game_topic(g.league, g.game_id, self.summaries.get(g.game_id)): (g.league, g.game_id)
-            for g in self.merger.games.values() if g.phase == Phase.LIVE and g.league in lgs}
+            for g in live}
         self.fastcast.set_topics(self._fastcast_games)
+        if mode == "shadow" and time.time() - self._fc_graded >= 60:
+            self._grade_fastcast()
+
+    def _grade_fastcast(self) -> None:
+        self._fc_graded = time.time()
+        v = self.fc_check.tick()
+        if v["result"] == "pass" and self.cfg.get("sources.fastcast_auto_enable", False):
+            log.warning("fastcast live check passed: turning FastCast on (sources.fastcast_auto_enable)")
+            self.cfg.update({"sources": {"fastcast": True}})
+
+    def _on_fastcast_shadow(self, topic: str, doc, received_at: float, published_at: float | None) -> None:
+        """[fastcast live check] Parsed and logged, never merged: nothing on screen can change."""
+        game = self._fastcast_games.get(topic)
+        if game is None:
+            return
+        league, gid = game
+        try:
+            g, plays = fastcast.to_game_state(league, doc, expect_id=gid)
+        except Exception:
+            self.fc_check.unusable()
+            raise
+        if not fastcast.usable(g):
+            self.fc_check.unusable()
+            return
+        self.recorder.plays(g, plays, "espn_fastcast")
+        self.fc_check.saw(fastcast_check.PUSHED, gid, plays, received_at)
 
     def _stop_fastcast(self) -> None:
         if self.fastcast is not None:
@@ -707,6 +783,7 @@ class Engine:
             self._fastcast_task.cancel()
             self._fastcast_task = None
         self._fastcast_games = {}
+        self._fastcast_mode = None
 
     def _on_fastcast(self, topic: str, doc, received_at: float, published_at: float | None) -> None:
         """A pushed game update takes the same path as a polled summary (merge, flight recorder,
@@ -796,11 +873,21 @@ class Engine:
             target = w.target if (w.tunable or dry) else None
             if target in self._fail_cool:
                 target = None   # failed a moment ago: don't hammer it every tick
-            cands[gid] = Candidate(sc, target, stale=self.merger.is_stale(gid))
+            # A dark feed (sources/feeds.py, flagged within 5 s) blocks ENTERING a game, never leaving
+            # the one on screen: for that one only the merger's old 60 s no-progress rule applies, so
+            # an ESPN blip can't empty the watchable set and send you to a catch-up reel.
+            stale = self.merger.is_stale(gid) if gid == self.decider.current else self.feeds.stale(gid)
+            cands[gid] = Candidate(sc, target, stale=stale)
+        self._reasoner_narrate()
         self._garbage_focus()
         self._hold_check()
         if self._pending_decision is not None:
             return False  # score/feed updates continue; don't race a tune in flight
+        if not dry and self.control.input_unknown and getattr(self.control, "live_control", False):
+            # Input recovery owns the TV (Controller._maybe_reassert, the supervisor): every switch
+            # would be refused at once ("TV input is unknown"). Submitting anyway flooded the
+            # switches table, ~240 rows in 2 minutes on the e2e night test. Decide again once it's known.
+            return False
         before = self.decider.current
         redzone = self._redzone_target(st, dry)
         d = self.decider.decide(cands, redzone, commit=dry, reel=self._reel_target())
@@ -820,6 +907,37 @@ class Engine:
                                   "now" if gid == self.decider.current else "")
                                  for gid, s in self.scored.items() if s.raw > 0])
         return changed
+
+    def _reasoner_narrate(self) -> None:
+        """Ask the local model for each hot game's storyline (background, event-driven, rate-limited)
+        and keep the model server loaded while games are live. Never raises, never blocks a poll."""
+        r = getattr(self.scorer, "reasoner", None)
+        if r is None or not r.on() or not self.cfg.get("reasoner.model", True):
+            return
+        try:
+            if r.client is None:
+                from redzone.reasoner.reasoner import Client
+                r.client = Client(str(self.cfg.get("reasoner.server_url", "http://127.0.0.1:8779")))
+            from redzone.reasoner import brief as rbrief
+            cur = self.decider.current
+            cur_g = self.merger.games.get(cur or "")
+            live = [g for g in self.merger.games.values() if g.phase == Phase.LIVE]
+            for g in live:
+                rr = r.cached(g.game_id)
+                if rr is None:
+                    continue
+                f = rr.facts
+                ctx = rbrief.Context(mine=bool(f.get("mine")), garbage=bool(f.get("garbage")),
+                                     crunch=bool(f.get("crunch")), late=bool(f.get("late")),
+                                     on_screen=g.game_id == cur,
+                                     screen_game=cur_g.matchup if cur_g is not None and g.game_id != cur else "")
+                r.narrate(g, rr, ctx)
+            now = time.time()
+            if live and now - getattr(self, "_llm_keepalive_at", 0.0) >= 60:
+                self._llm_keepalive_at = now
+                r.keepalive(len(live))
+        except Exception:  # noqa: BLE001 - the phone text is never worth a failed poll
+            log.exception("reasoner: narration step failed")
 
     def _reel_target(self) -> tuple[str, float] | None:
         """(tuner target, seconds) of the ready catch-up reel, when reels may go on the TV."""
@@ -967,7 +1085,7 @@ class Engine:
         if d.target == REEL:
             return bool(target and target.startswith("reel:")) and (REEL_DIR / "reel.mp4").exists()
         g = self.merger.games.get(d.target or "")
-        if not g or g.phase != Phase.LIVE or self.merger.is_stale(g.game_id):
+        if not g or g.phase != Phase.LIVE or self.feeds.stale(g.game_id):
             return False
         if getattr(self.where.get(g.game_id), "target", None) != target:
             return False
@@ -1135,8 +1253,9 @@ class Engine:
     def _break_brain(self):
         """(brain, blend weight) for the break forecast, or (None, 0) with the brain off."""
         if not self.cfg.get("brain.enabled", False):
-            return None, 0.0
-        return self.scorer.brain, float(self.cfg.get("brain.break_weight", 0.5))
+            return None, 0.0, False
+        return (self.scorer.brain, float(self.cfg.get("brain.break_weight", 0.5)),
+                self.cfg.get("brain.v3_lengths", ["nfl", "nba"]))
 
     def _break_standby(self, cands: dict) -> tuple[str | None, str, standby.Option | None]:
         """The game on screen is about to break (redzone/scoring/breaks.py): where the decider will
@@ -1513,10 +1632,11 @@ class Engine:
                       "tunable": getattr(w, "tunable", False), "target": getattr(w, "target", None)},
             "odds": g.odds_text, "mine": g.involves(set((self.cfg.get("teams") or {}).get(g.league.value, []))),
             "boosted": gid in self.boosted, "muted": gid in dec.user.muted, "focus": gid == dec.user.focus_game,
-            "stale": self.merger.is_stale(gid), "start_time": g.start_time, "on_now": gid == dec.current,
+            "stale": self.feeds.stale(gid), "start_time": g.start_time, "on_now": gid == dec.current,
             "wp": g.home_win_prob, "situation": views.situation(g), "leaders": g.leaders,
             "spotlight": g.spotlight, "venue": g.venue_info,
             "brain": (s.brain or None) if s and live else None,
+            "reasoner": (s.reasoner or None) if s and live else None,
         }
 
     async def game_detail(self, gid: str) -> dict | None:
@@ -1603,7 +1723,9 @@ class Engine:
                        "tv": {"state": "unknown"}, "race": self.merger.race_summary(),
                        "adb": self.control.adb_ok, "switch_times": self.control.switch_times(),
                        "fastcast": self.fastcast.status() if self.fastcast else None,
-                       "discovery": self.discovery.status(), "supervisor": self.supervisor.status()},
+                       "fastcast_check": self.fc_check.verdict,
+                       "discovery": self.discovery.status(), "supervisor": self.supervisor.status(),
+                       "governor": self.governor.view()},
             "bets": self.bets_view(), "feedback": self.store.feedback_counts(),
             "fantasy": None if self.fantasy is None else {
                 "me": self.fantasy.me, "opponent": self.fantasy.opponent, "my_points": self.fantasy.my_points,

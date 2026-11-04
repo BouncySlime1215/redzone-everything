@@ -38,7 +38,7 @@ sys.path.insert(0, str(ROOT))
 
 from redzone.config import Config  # noqa: E402
 from redzone.lab.backtest import fmt_time, run  # noqa: E402
-from redzone.lab import evaldata  # noqa: E402
+from redzone.lab import evaldata, splits  # noqa: E402
 from redzone.lab.cutgrade import CutCard  # noqa: E402
 from redzone.lab.optimize import load_slates  # noqa: E402
 
@@ -48,8 +48,14 @@ from redzone.lab.optimize import load_slates  # noqa: E402
 EVAL_END = "20261101"
 
 
-def eval_set(n=16, end=None):
-    slates = load_slates(ROOT / "data/archive/nfl", end=end or evaldata.window_end("nfl", EVAL_END))
+def eval_set(n=16, end=None, split="all"):
+    end = end or evaldata.window_end("nfl", EVAL_END)
+    slates = load_slates(ROOT / "data/archive/nfl", end=end)
+    keep = splits.nights_for(ROOT / "data/archive/nfl", split, end)
+    if keep is not None:
+        # [no overfitting] one time split, every slate in it (no sampling): test = the LOCKED set.
+        night = {gid: nt for nt, ids in splits.archive_nights(ROOT / "data/archive/nfl", end).items() for gid in ids}
+        return [s for s in slates if night.get(s[0].gid) in keep]
     # Every slate with Washington in it, then an even spread of the rest.
     wsh = [s for s in slates if any("WSH" in r.matchup.split() for r in s)]
     rest = [s for s in slates if s not in wsh]
@@ -63,6 +69,8 @@ def main():
     ap.add_argument("--slates", action="store_true")
     ap.add_argument("--dead", action="store_true", help="print dead air by cause")
     ap.add_argument("--n", type=int, default=16)
+    ap.add_argument("--split", choices=splits.SPLITS, default="all",
+                    help="grade one time split of the pinned window (redzone/lab/splits.py); test = LOCKED")
     ap.add_argument("--true-delay", type=float, default=None)
     ap.add_argument("--sigma", type=float, default=3.0)
     ap.add_argument("--lag-jitter", action="store_true")
@@ -77,10 +85,12 @@ def main():
     ap.add_argument("--history", type=float, default=0.0)
     ap.add_argument("--delay-model", choices=("channel", "legacy"), default=None)
     ap.add_argument("--reels", action="store_true", help="[highlight jump] reels on the TV (reel.play), simulated")
+    ap.add_argument("--resync", action="store_true",
+                    help="model live Kalman re-sync on every tune (backtest.run resync)")
     a = ap.parse_args()
     knobs = dict(true_delay=a.true_delay, sigma=a.sigma, lag_jitter=(3.0, 25.0) if a.lag_jitter else None,
                  drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed,
-                 channel_spread=a.channel_spread, history=a.history, delay_model=a.delay_model)
+                 channel_spread=a.channel_spread, history=a.history, delay_model=a.delay_model, resync=a.resync)
     # The live service rewrites data/config.yaml (measured switch costs, taps): scorecards read a
     # pinned copy when one exists, so a before/after comparison isn't moved by the live night.
     pinned = ROOT / "data/eval_config.yaml"
@@ -108,7 +118,7 @@ def main():
                behind=0.0, on_replay=0, drive=0, drive_live=0)
     causes: dict[str, float] = {}
     cut = CutCard()
-    for reps in eval_set(a.n):
+    for reps in eval_set(a.n, split=a.split):
         r = run(reps, cfg, set(cfg.get("teams.nfl")), reels=a.reels, **knobs)
         if r.reel is not None:
             reel.add(r.reel)
@@ -136,6 +146,9 @@ def main():
            "crunch_live_pct": pct(tot["crunch_live"], tot["crunch"]),
            "your_team_crunch_live_pct": pct(tot["my_crunch_live"], tot["my_crunch"]),
            "your_team_big_seen_pct": pct(tot["my_seen"], tot["my_big"]),
+           # counts beside the %: 0/0 prints as 0.0 and must not read as a failure (or a pass)
+           "your_team_crunch_live": f"{tot['my_crunch_live']}/{tot['my_crunch']}",
+           "your_team_big_seen": f"{tot['my_seen']}/{tot['my_big']}",
            "switches_per_hour": round(tot["switches"] / max(0.1, tot["hours"]), 1),
            "tuning_blackout_s": round(tot["blackout"], 1),
            "tuning_blackout_pct": pct(tot["blackout"], tot["hours"] * 3600),

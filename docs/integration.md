@@ -23,3 +23,20 @@ decision (contracts, CI) merges whenever it is ready.
 
 Scorecard numbers marked "prior run" or "thread's run" come from the threads' own runs on the same window. Every
 pending cell gets filled from the pinned archive.
+
+## Merges since 2c (each: full tests + full NFL/NBA/NHL/demo scorecards on eval-data-v1)
+
+Columns: entries mid-play / missed on entry for NFL, NBA, NHL and the demo; 0 mid-play cuts on every row.
+
+| Merge | Commit | Tests | NFL | NBA | NHL | Demo | Note |
+|---|---|---|---|---|---|---|---|
+| #14, #2, #8, #15, #5, #6, #9, #25, #27, #20, #22, #23, #24, #17, #26 | (see git log) | green after each | 0 / 0 | 38/18 → 30/14 | 11/1 → 0/0 | 2 / 0 | #2 dead air 8.6 → 9.7 % accepted; #8 NBA trade accepted |
+| #29 deploy snapshot ids | 6159c27 | green | 0 / 0 | 30 / 14 | 0 / 0 | 2 / 0 | fixed red CI after #9 |
+| #19 e2e night test | b963a68 | green | 0 / 0 | 30 / 14 | 0 / 0 | 2 / 0 | |
+| #28 e2e night findings | e0906d4 | green (1 flake, passed on rerun) | 0 / 0 | 30 / 14 | 0 / 0 | 2 / 0 | |
+| #21 decision core | 0a0d09a, 81fa858 | green | 0 / 0 | **14 / 9** | 0 / 0 | 2 / 0 | NBA whistle wait (cap 120 s) over #28's rewind-only; NBA dead air 19.4 → 19.9 %, big seen 92.0 → 93.1 % |
+| #31 tonight checklist | 3ab1ed5 | green | 0 / 0 | 14 / 9 | 0 / 0 | 2 / 0 | docs |
+| #32 multiview (off) | a50fb8e | green | 0 / 0 | 14 / 9 | 0 / 0 | 2 / 0 | |
+| #33 FastCast (watch-only) | ff84725 | green | 0 / 0 | 14 / 9 | 0 / 0 | 2 / 0 | |
+| #34 deploy into the Mac checkout | fecbd83 | green (1 flake, passed on rerun) | 0 / 0 | 14 / 9 | 0 / 0 | 2 / 0 | |
+| #35 checklist path, no-overfitting gate, brain off | e52913d | 1705 pass | 0 / 0 (locked) | 5 / 4 (locked) | 0 / 0 (locked) | 2 / 0 | RC 1 = `integration/release`; gate in `docs/gate-report-rc1.md` |

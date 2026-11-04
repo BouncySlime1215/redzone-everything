@@ -120,10 +120,15 @@ def check(root: Path = ROOT, allow_live: bool = False, check_port: bool = True) 
         (result.errors if allow_live and saved_live else result.warnings).append("adb is missing from the service PATH.")
     selected = tv.get("smartthings_device_id") or tv.get("st_device")
     if cfg.get("two_stick", {}).get("enabled") and len(sticks) >= 2:
-        if not selected:
-            result.warnings.append("Two-stick switching has no selected SmartThings input-readback device.")
-        if not credential_present(root, "SMARTTHINGS_TOKEN"):
-            result.warnings.append("SMARTTHINGS_TOKEN is absent from .env; input readback will be unavailable.")
+        # One line saying how inputs will flip (docs/instant-switching.md), not two standing warnings.
+        oauth = (root / "data" / "smartthings_oauth.json").exists() or credential_present(root, "SMARTTHINGS_TOKEN")
+        local = bool(tv.get("local_input_verified") and tv.get("network_verified")) and (root / "data" / "tv_token.txt").exists()
+        paths = [n for n, ok in (("TV remote", local), ("SmartThings with readback", bool(selected) and oauth)) if ok]
+        if paths:
+            result.details.append(f"Two-stick flips by the TV input: {' then '.join(paths)}, HOME last.")
+        else:
+            result.warnings.append("Two-stick flips by HOME only (Fire TV launcher on each switch); "
+                                   "run scripts/tv_setup.py at home for instant TV-input flips.")
     if cfg.get("fantasy", {}).get("league_id"):
         if not all(credential_present(root, k) for k in ("ESPN_S2", "ESPN_SWID")):
             result.warnings.append("Fantasy is configured without both .env cookies; private leagues need them.")

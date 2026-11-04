@@ -83,7 +83,15 @@ async def _switch(fault_on: str | None, fault: str | None, tv_fail: bool = False
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         out = outs[-1]
-        return {"ok": out.ok, "wall_s": round(wall, 2), "mid_play_cuts": world.mid_play_cuts,
+        try:   # which runtime invariants are broken once the dust settles (redzone/platform/health.py)
+            from types import SimpleNamespace
+            from redzone.platform.health import PlatformHealth
+            eng = SimpleNamespace(control=c, cfg=c.cfg, _pending_decision=None,
+                                  decider=SimpleNamespace(current="fox", replaying=None, after_replay=False))
+            broken = sorted({code for code, _, _ in PlatformHealth(eng).conditions()})
+        except ImportError:
+            broken = None
+        return {"invariants": broken, "ok": out.ok, "wall_s": round(wall, 2), "mid_play_cuts": world.mid_play_cuts,
                 "stuck": _stuck(c), "flagged": bool(out.ok or out.detail),
                 "per_try_s": [round(o.took, 2) for o in outs] if repeats > 1 else None,
                 "timeouts": getattr(stick, "timeouts", 0),
@@ -93,32 +101,46 @@ async def _switch(fault_on: str | None, fault: str | None, tv_fail: bool = False
 
 
 async def _feed_5xx() -> dict:
-    """ESPN answers 503 for 30 s, then recovers. Polled every 3 s (polling.hot_s). How long until the
-    system KNOWS the feed is stale, and how long after recovery until it has fresh data again?"""
+    """ESPN answers 503 for 2 minutes, then recovers. A hot game is polled every 3 s (polling.hot_s).
+    How long until the system KNOWS the feed is stale, and how long after ESPN is back until the
+    game counts as fresh again? (Stale games are never entered.)"""
+    import httpx
+    from redzone.models import GameState, League, Phase, Team
     from redzone.sources.http import Fetcher
     from redzone.sources.merge import Merger
-    from redzone.models import GameState, League, Phase, Team
+    try:
+        from redzone.sources.feeds import FeedBook
+    except ImportError:
+        FeedBook = None
     now = [1000.0]
     clock = lambda: now[0]  # noqa: E731
     down = [False]
-    fetcher = Fetcher(client=__import__("httpx").AsyncClient(
-        transport=failing_transport(lambda: 503 if down[0] else 200)), clock=clock)
+    fetcher = Fetcher(client=httpx.AsyncClient(transport=failing_transport(lambda: 503 if down[0] else 200)),
+                      clock=clock)
     merger = Merger(clock=clock)
     url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=1"
     g = GameState(league=League.NFL, game_id="1", home=Team("A", score=0), away=Team("B", score=0),
                   phase=Phase.LIVE, period=1, clock_s=900.0)
-    merger.update("espn_summary", g)
-    await fetcher.get_json(url)
-    fail_at, detect_at, back_at, fresh_at = 1003.0, None, 1033.0, None
+    if FeedBook is not None:
+        book = FeedBook(merger, fetcher, lambda _g: [url], lambda _gid: 3.0, clock=clock)
+        stale = lambda: book.stale("1")  # noqa: E731
+    else:
+        stale = lambda: merger.is_stale("1")  # noqa: E731   (before: the merger's rule only)
+    fail_at, back_at = 1003.0, 1123.0
+    detect_at = fresh_at = None
     t = 1000.0
-    while t < 1200.0:
+    while t < 1300.0:
         now[0] = t
         down[0] = fail_at <= t < back_at
-        await fetcher.get_json(url, min_interval=2.5)
-        stale = merger.is_stale("1") or not fetcher.is_fresh(url, max_age_s=_stale_s())
-        if down[0] and detect_at is None and stale:
+        body = await fetcher.get_json(url, min_interval=2.5)
+        if body is not None:
+            if fetcher.fetched_at(url) == t:          # fresh data: the game moved on (clock runs)
+                g = GameState(league=League.NFL, game_id="1", home=Team("A", score=0), away=Team("B", score=0),
+                              phase=Phase.LIVE, period=1, clock_s=max(0.0, 900.0 - (t - 1000.0)))
+            merger.update("espn_summary", g)          # ...else the poll loop re-feeds the cached copy
+        if down[0] and detect_at is None and stale():
             detect_at = t
-        if not down[0] and t >= back_at and fresh_at is None and fetcher.is_fresh(url, 1.0):
+        if t >= back_at and fresh_at is None and not stale():
             fresh_at = t
         t += 3.0
     await fetcher.close()
@@ -126,15 +148,7 @@ async def _feed_5xx() -> dict:
             "flagged": detect_at is not None,
             "detect_s": None if detect_at is None else round(detect_at - fail_at, 1),
             "recover_s": None if fresh_at is None else round(fresh_at - back_at, 1),
-            "detail": "stale flag = merger.is_stale or fetch not fresh"}
-
-
-def _stale_s() -> float:
-    try:
-        from redzone.sources import http
-        return float(getattr(http, "FEED_STALE_S"))
-    except (AttributeError, TypeError, ValueError):
-        return float("inf")   # no fetch-level staleness: only the merger's 60 s no-progress rule
+            "detail": "2-minute ESPN 503 outage, hot game polled every 3 s"}
 
 
 async def _clock_skew() -> dict:
@@ -168,6 +182,43 @@ async def _clock_skew() -> dict:
             "spurious_errors": errors}
 
 
+async def _corrupt_state() -> dict:
+    """Every state file left broken (a crash mid-write, a full disk, a bad copy), one at a time: does
+    the engine still start, and does it keep your settings (a lost config = dry run = no TV control)?"""
+    from redzone.engine import Engine
+    from redzone.store import Store
+    from redzone.supervisor import read_jsonl
+    cases = {
+        "config.yaml": b"\x00\x00 mode: {dry_run: fal",
+        "switch_times.json": b'{"samples": {"youtubetv": [4.1, 5',
+        "user_state.json": b'{"locked_game": "40',
+        "traces.jsonl": b'{"id": 1}\n{"id": 2, "stag',
+        "supervisor.jsonl": b'{"ts": 1}\n{"ts": 2, "ki',
+        "redzone.db": b"SQLite format 3\x00" + b"\x00" * 50,
+    }
+    crashed, lost_settings = [], []
+    for name, body in cases.items():
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            cfg = Config(user_path=root / "config.yaml", history_dir=root / "hist")
+            cfg.update({"mode": {"dry_run": False}})          # you turned TV control on earlier
+            (root / name).write_bytes(body)
+            try:
+                cfg = Config(user_path=root / "config.yaml", history_dir=root / "hist")
+                e = Engine(cfg, Store(root / "redzone.db"))
+                e._restore_user_state()
+                e.store.recent_switches(5)
+                read_jsonl(root / "supervisor.jsonl")
+                if cfg.get("mode.dry_run", True):
+                    lost_settings.append(name)
+                await e.close()
+            except Exception as ex:
+                crashed.append(f"{name}: {type(ex).__name__}")
+    return {"ok": not crashed and not lost_settings, "wall_s": None, "mid_play_cuts": 0, "stuck": False,
+            "flagged": True, "crashed_at_start": crashed, "fell_back_to_dry_run": lost_settings,
+            "detail": f"{len(cases)} broken state files, one at a time"}
+
+
 SCENARIOS = {
     "baseline":            lambda: _switch(None, None),
     "adb_drop_hidden":     lambda: _switch("hidden", "adb_drop"),
@@ -179,6 +230,7 @@ SCENARIOS = {
     "tv_flip_fail":        lambda: _switch("hidden", "tv_flip_fail", tv_fail=True),
     "feed_5xx":            _feed_5xx,
     "clock_skew":          _clock_skew,
+    "corrupt_state":       _corrupt_state,
 }
 
 

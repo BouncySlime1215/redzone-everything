@@ -36,6 +36,9 @@ polling:
 sources:
   fastcast: false          # ESPN's push feed: new plays the moment ESPN publishes them. Runs NEXT TO polling
                            # (polling never stops). Off until the live check passes: see redzone/sources/fastcast.py
+  fastcast_check: true     # with fastcast off: run it in SHADOW on a few live games (logged, never merged) and grade
+                           # it against polling -> data/fastcast_check.json (redzone/sources/fastcast_check.py)
+  fastcast_auto_enable: false  # turn fastcast on by itself once that check passes
 
 score:
   neutral_cap: 0.9         # a neutral game tops out at 90; 90-100 is reserved for games you care about
@@ -94,7 +97,9 @@ score:
     power_play_p3_close: 22
     power_play_lock_within: 2   # a power play holds the TV (and is worth a visit) within this many goals
     imminent_pp_s: 30           # a power play's first N s of game clock count as an imminent goal chance
-    imminent_hold_s: 30         # ...and stay "imminent" this long after (a chase skips the whistle hold only then)
+    # ...and stay "imminent" this long after: a chase skips the whistle hold only then. -1 = off: the
+    # skip added 2 mid-play entries to the Nov 1 demo (WPG @ CAR, UTA @ PHI) and caught no extra goal.
+    imminent_hold_s: -1
     empty_net: 30
     penalty_shot: 40
   mlb:
@@ -104,7 +109,21 @@ score:
     no_hitter: {through_6: 25, through_7: 35, ninth: 50}
 
 brain:                     # learned models (redzone/scoring/brain.py, trained by scripts/train_brain.py)
-  enabled: true            # feed the brain's game flow / key-moment / break odds into the score and break forecast
+  enabled: false           # feed the brain's game flow / key-moment / break odds into the score and break forecast
+  version: 3               # 3 = Brain v3 (brain_models/<league>.v3.npz: stoppage odds/type/length, entry point,
+                           # big plays) where a league has one, else v2; 2 = v2 only
+  # Which leagues use each v3 part (scorecards + held-out nights, Nov 3; see docs/brain3/REPORT.md):
+  v3_score: [nfl]               # v3's big-play odds / game flow feed the score (else v2's). NBA/NHL stay on
+                                # v2's: v3 there cost NBA +2 missed plays and NHL +1 mid-play entry
+  v3_break_odds: []             # v3's long-break odds in the break forecast (else v2's, which are better
+                                # calibrated on held-out nights: NFL ECE 0.10 vs 0.26, NBA AUC 0.82 vs 0.77)
+  v3_lengths: [nfl, nba]        # v3's time-to-restart replaces the fixed break-length table (breaks.LEN);
+                                # NHL keeps the table (its median was measured on the same archive)
+  v3_entry: []                  # v3's time-to-restart as the expected end of a stoppage the data hasn't closed.
+                                # Off: uncapped it cost NFL your-team big plays and NBA mid-play entries, p10
+                                # cost NFL dead air, and p50 capped changed nothing. For the decision core to use
+  v3_entry_q: 50                # ...its 10th or 50th percentile
+  v3_entry_cap: true            # ...never later than the measured table median (it can only shorten a stop)
   hot_points: 0            # moment points at game flow 100 (minus at 0; 50 = a median moment adds nothing)
   key_points: 6            # moment points when a key moment in the next few minutes is a sure thing
   break_weight: 0.5        # how much the brain's break odds count against the hand-written break rules
@@ -120,10 +139,35 @@ brain:                     # learned models (redzone/scoring/brain.py, trained b
   wcbb: {hot_points: 0, key_points: 0}
   cfb: {hot_points: 0, key_points: 0}
 
+reasoner:                  # live game reasoner (redzone/reasoner): lock_in per live game, rebuilt each play
+  enabled: false           # add lock_in points to the score (the fast head decides; scorecards in the PR)
+  must_points: 8           # moment points for must_see (never more than max_points; hard cap 15)
+  watch_points: 3          # moment points for watch
+  max_points: 12
+  yield_to_your_team: true # while your team's game is live and not decided, other games get no lock_in points
+  break_discount: 0        # scale lock_in points down by the brain's break odds (0 = off)
+  by_odds: 0               # 1 = points grow with the head's odds above odds_floor (crunch counts as sure)
+  odds_floor: 0.5
+  redzone_share: 1.0       # RedZone gets this share of its best NFL game's lock_in points (it shows that play, no ads)
+  during_breaks: false     # lock_in points while the game is in a real break (off: they only bought commercials)
+  model: true              # ask the local model (agent/llm_server.py, adapter game-reasoner) for the phone text
+  decide_with: head        # head (scorecard-tested) or model: whose lock_in the score uses
+  server_url: http://127.0.0.1:8779
+  min_interval_s: 20       # at most one model call per hot game this often (a score asks sooner)
+  max_tokens: 160
+  # Cross-fitted scorecards on integration/next, Nov 3 (docs/reasoner.md). NFL: every setting that
+  # raised big plays live also raised commercials (it pulled the TV off RedZone), so storyline only.
+  nfl: {must_points: 0, watch_points: 0}
+  nba: {must_points: 0, watch_points: 0}      # no gain on the NBA scorecard: storyline only
+  nhl: {must_points: 0, watch_points: 0}      # after PR #3 (entries mid-play 11 -> 5 already): 4 pts gave 5 -> 4 but big live -0.6
+
 decider:
   switch_margin: 10
   entry:
-    hold_only: [nhl]       # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
+    hold_only: [nhl, nba]     # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
+    rewind_only: []      # leagues whose entries land on a dead ball with a rewind when one fits, never wait
+    crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
+    max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
   switch_cost: {youtubetv: 3, prime: 8, espn: 7, hdmi_flip: 1}   # seconds to the new picture; replaced by
                            # measured times as you use it (see switch_speed)
@@ -147,6 +191,17 @@ decider:
     replays: true          # replays from other games during crunch stoppages, if surely back for the snap
     shortest_break_s:      # ~10th pct, stoppage -> next scrimmage play logged, late Q4/OT, 2025 games
       {timeout: 30, injury: 27, review: 80, score_break: 110, two_minute_warning: 150, end_period: 180}
+
+core:                      # the decision core's expected-value knobs (redzone/decider/core.py); the
+                           # auto-tuner searches these plus decider.switch_margin / break_destination_min /
+                           # locked_override_lead / return_tolerance. Defaults = the rules the core replaced.
+  points_per_switch_s: 1.0 # each second of black screen costs this many points of lead
+  dead_air_penalty: 0.0    # points per second a commercial on screen costs
+  break_value_frac: 1.0    # share of an on-break game's value that still counts
+  break_risk: 0.0          # 0..1: discount a destination by the brain's chance it goes to break soon
+  lock_in_step: 10.0       # friction added per reasoner lock_in level to leave a game
+  reel_margin_s: 5.0       # the catch-up reel must fit its break with this much to spare
+  league_priority: [nfl, cfb, nba, cbb, wcbb, nhl, mlb]   # overlapping crunch times: first listed wins (after your team / bet)
 
 fantasy:                   # ESPN fantasy football (leave league_id empty to turn off)
   league_id: ""
@@ -189,14 +244,36 @@ supervisor:                # watches the live system and fixes what it can on it
     dead_air_pct: 10       # ...and this % of cuts may be slow
     safe_mode_min: 10      # minutes in safe mode a night
 
+multiview:                 # YouTube TV multiview as a switch path (redzone/tuners/multiview.py)
+  enabled: false           # off until scripts/multiview_probe.py has measured it on the real sticks
+  tiles: 4                 # games in one multiview (YouTube TV's 2x2)
+  must_have: 2             # reopen only when one of the top this-many YTTV games isn't a tile
+  costs: {mv_open: 15.0, mv_expand: 1.5, mv_collapse: 1.0, mv_step: 0.35}   # seconds, until measured
+governor:                  # keeps the Mac cool and its disk free (redzone/governor.py); live switching is never slowed
+  enabled: true
+  every_s: 30              # look at the Mac this often
+  calm_s: 180              # a busy/hot/battery state must clear this long before work resumes
+  busy_load: 0.85          # 5-min load per CPU core above this: the Mac is busy (eco)
+  battery_eco: true        # on battery: eco (no reel downloads/lab/archive, slower OCR and idle polling)
+  battery_low_pct: 20      # on battery under this: critical (also no OCR, no local model)
+  swap_eco_mb: 1500        # swap in use above this: eco
+  disk_low_mb: 3000        # free disk under this: eco (no new downloads)
+  disk_critical_mb: 1500   # free disk under this: critical
+  service_soft_mb: 700     # the app's memory: shown as a warning above this
+  service_hard_mb: 1200    # ...the watchdog restarts the app above this (never during crunch time)
+  models_mb: 1500          # all local model processes together (watchdog + game reasoner)
+
 two_stick:
-  cec_flip: true           # flip inputs by HOME -> HDMI-CEC Active Source (no TV network or SmartThings needed)
+  cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,
+                           # set up by scripts/tv_setup.py, goes first when it's proven)
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment
   hold_s: 20               # keep the hidden stick on a game at least this long before re-tuning it...
   min_gain: 8              # ...and then only for one this many points better (your game's return and
                            # a replay about to play take it right away)
   verify_s: 15             # check the hidden stick is still playing this often
   input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
+  keep_cec_off: true       # a stick whose HDMI-CEC you turned off (scripts/stick_cec.py) gets it back on only
+                           # for a HOME fallback onto it, then off again (so losing the input never pauses it)
   park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long
 
 plan:                      # tonight's plan (data/plan_YYYYMMDD.json, the phone's "Tonight's plan" card)

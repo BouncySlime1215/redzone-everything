@@ -1,0 +1,430 @@
+{
+ "alpha": 0.05,
+ "scales": {
+  "nfl": {
+   "tv_timeout": {
+    "all": 0.943,
+    "crunch": 0.75,
+    "early": 0.943
+   },
+   "score_break": {
+    "all": 0.848,
+    "crunch": 0.563,
+    "early": 0.848
+   }
+  },
+  "nba": {
+   "tv_timeout": {
+    "all": 1.0,
+    "crunch": 1.0,
+    "early": 1.0
+   },
+   "score_break": {
+    "all": 1.0,
+    "crunch": 1.0,
+    "early": 1.0
+   }
+  },
+  "nhl": {
+   "tv_timeout": {
+    "all": 1.0,
+    "crunch": 1.0,
+    "early": 1.0
+   },
+   "score_break": {
+    "all": 1.0,
+    "crunch": 1.0,
+    "early": 1.0
+   }
+  }
+ },
+ "report": {
+  "nfl": {
+   "calibration_rows": 3346,
+   "calibration_nights": 46,
+   "cv": {
+    "folds": [
+     {
+      "n": 378,
+      "overrun": 0.0132,
+      "overrun_p10": 0.0476,
+      "budget_s": 79.8,
+      "budget_p10_s": 106.4,
+      "nights": "20231105-20231230",
+      "tv_timeout": {
+       "n": 223,
+       "overrun": 0.0045,
+       "overrun_p10": 0.0314,
+       "budget_s": 57.3,
+       "budget_p10_s": 89.8
+      },
+      "score_break": {
+       "n": 155,
+       "overrun": 0.0258,
+       "overrun_p10": 0.071,
+       "budget_s": 112.2,
+       "budget_p10_s": 130.3
+      }
+     },
+     {
+      "n": 470,
+      "overrun": 0.034,
+      "overrun_p10": 0.0617,
+      "budget_s": 97.0,
+      "budget_p10_s": 106.9,
+      "nights": "20240113-20240926",
+      "tv_timeout": {
+       "n": 259,
+       "overrun": 0.0309,
+       "overrun_p10": 0.0425,
+       "budget_s": 81.5,
+       "budget_p10_s": 87.9
+      },
+      "score_break": {
+       "n": 211,
+       "overrun": 0.0379,
+       "overrun_p10": 0.0853,
+       "budget_s": 116.0,
+       "budget_p10_s": 130.2
+      }
+     },
+     {
+      "n": 788,
+      "overrun": 0.0901,
+      "overrun_p10": 0.1066,
+      "budget_s": 98.0,
+      "budget_p10_s": 104.8,
+      "nights": "20240930-20241125",
+      "tv_timeout": {
+       "n": 443,
+       "overrun": 0.0993,
+       "overrun_p10": 0.1106,
+       "budget_s": 84.9,
+       "budget_p10_s": 87.6
+      },
+      "score_break": {
+       "n": 345,
+       "overrun": 0.0783,
+       "overrun_p10": 0.1014,
+       "budget_s": 114.9,
+       "budget_p10_s": 127.0
+      }
+     },
+     {
+      "n": 796,
+      "overrun": 0.0364,
+      "overrun_p10": 0.054,
+      "budget_s": 92.2,
+      "budget_p10_s": 104.6,
+      "nights": "20241128-20241216",
+      "tv_timeout": {
+       "n": 438,
+       "overrun": 0.0251,
+       "overrun_p10": 0.0297,
+       "budget_s": 77.6,
+       "budget_p10_s": 87.1
+      },
+      "score_break": {
+       "n": 358,
+       "overrun": 0.0503,
+       "overrun_p10": 0.0838,
+       "budget_s": 110.0,
+       "budget_p10_s": 126.1
+      }
+     },
+     {
+      "n": 471,
+      "overrun": 0.051,
+      "overrun_p10": 0.0701,
+      "budget_s": 93.9,
+      "budget_p10_s": 104.8,
+      "nights": "20241222-20250209",
+      "tv_timeout": {
+       "n": 259,
+       "overrun": 0.027,
+       "overrun_p10": 0.027,
+       "budget_s": 82.4,
+       "budget_p10_s": 88.4
+      },
+      "score_break": {
+       "n": 212,
+       "overrun": 0.0802,
+       "overrun_p10": 0.1226,
+       "budget_s": 108.0,
+       "budget_p10_s": 124.9
+      }
+     }
+    ],
+    "overrun_mean": 0.0449,
+    "overrun_worst": 0.0901,
+    "budget_mean_s": 92.2
+   },
+   "fit_on_all_held_out": {
+    "n": 3346,
+    "overrun": 0.046,
+    "overrun_p10": 0.0741,
+    "budget_s": 92.1,
+    "budget_p10_s": 104.7
+   },
+   "after_cutoff": {
+    "n": 5350,
+    "overrun": 0.031,
+    "overrun_p10": 0.0521,
+    "budget_s": 91.2,
+    "budget_p10_s": 104.1
+   },
+   "after_cutoff_nights": 58,
+   "after_cutoff_slices": {
+    "tv_timeout/crunch": {
+     "n": 196,
+     "overrun": 0.0408,
+     "overrun_p10": 0.0663,
+     "budget_s": 67.6,
+     "budget_p10_s": 90.1
+    },
+    "tv_timeout/early": {
+     "n": 2832,
+     "overrun": 0.0201,
+     "overrun_p10": 0.0205,
+     "budget_s": 78.3,
+     "budget_p10_s": 83.0
+    },
+    "tv_timeout/close": {
+     "n": 1992,
+     "overrun": 0.0196,
+     "overrun_p10": 0.0226,
+     "budget_s": 77.8,
+     "budget_p10_s": 84.3
+    },
+    "tv_timeout/blowout": {
+     "n": 343,
+     "overrun": 0.0292,
+     "overrun_p10": 0.0292,
+     "budget_s": 75.5,
+     "budget_p10_s": 80.0
+    },
+    "score_break/crunch": {
+     "n": 176,
+     "overrun": 0.0057,
+     "overrun_p10": 0.1989,
+     "budget_s": 53.7,
+     "budget_p10_s": 95.3
+    },
+    "score_break/early": {
+     "n": 2146,
+     "overrun": 0.0466,
+     "overrun_p10": 0.0806,
+     "budget_s": 113.6,
+     "budget_p10_s": 133.9
+    },
+    "score_break/close": {
+     "n": 1455,
+     "overrun": 0.0392,
+     "overrun_p10": 0.0921,
+     "budget_s": 110.3,
+     "budget_p10_s": 134.0
+    },
+    "score_break/blowout": {
+     "n": 315,
+     "overrun": 0.0571,
+     "overrun_p10": 0.0921,
+     "budget_s": 103.3,
+     "budget_p10_s": 121.9
+    }
+   }
+  },
+  "nba": {
+   "calibration_rows": 6395,
+   "calibration_nights": 135,
+   "cv": {
+    "folds": [
+     {
+      "n": 1272,
+      "overrun": 0.0,
+      "overrun_p10": 0.0,
+      "budget_s": 87.9,
+      "budget_p10_s": 87.9,
+      "nights": "20250110-20250327",
+      "tv_timeout": {
+       "n": 1272,
+       "overrun": 0.0,
+       "overrun_p10": 0.0,
+       "budget_s": 87.9,
+       "budget_p10_s": 87.9
+      },
+      "score_break": null
+     },
+     {
+      "n": 796,
+      "overrun": 0.0,
+      "overrun_p10": 0.0,
+      "budget_s": 85.9,
+      "budget_p10_s": 85.9,
+      "nights": "20250329-20251026",
+      "tv_timeout": {
+       "n": 796,
+       "overrun": 0.0,
+       "overrun_p10": 0.0,
+       "budget_s": 85.9,
+       "budget_p10_s": 85.9
+      },
+      "score_break": null
+     },
+     {
+      "n": 1281,
+      "overrun": 0.0,
+      "overrun_p10": 0.0,
+      "budget_s": 87.9,
+      "budget_p10_s": 87.9,
+      "nights": "20251103-20260106",
+      "tv_timeout": {
+       "n": 1281,
+       "overrun": 0.0,
+       "overrun_p10": 0.0,
+       "budget_s": 87.9,
+       "budget_p10_s": 87.9
+      },
+      "score_break": null
+     },
+     {
+      "n": 1173,
+      "overrun": 0.0,
+      "overrun_p10": 0.0,
+      "budget_s": 87.2,
+      "budget_p10_s": 87.2,
+      "nights": "20260110-20260323",
+      "tv_timeout": {
+       "n": 1173,
+       "overrun": 0.0,
+       "overrun_p10": 0.0,
+       "budget_s": 87.2,
+       "budget_p10_s": 87.2
+      },
+      "score_break": null
+     },
+     {
+      "n": 606,
+      "overrun": 0.0,
+      "overrun_p10": 0.0,
+      "budget_s": 87.1,
+      "budget_p10_s": 87.1,
+      "nights": "20260324-20260605",
+      "tv_timeout": {
+       "n": 606,
+       "overrun": 0.0,
+       "overrun_p10": 0.0,
+       "budget_s": 87.1,
+       "budget_p10_s": 87.1
+      },
+      "score_break": null
+     }
+    ],
+    "overrun_mean": 0.0,
+    "overrun_worst": 0.0,
+    "budget_mean_s": 87.2
+   },
+   "fit_on_all_held_out": {
+    "n": 6395,
+    "overrun": 0.0,
+    "overrun_p10": 0.0,
+    "budget_s": 87.4,
+    "budget_p10_s": 87.4
+   },
+   "after_cutoff": {
+    "n": 697,
+    "overrun": 0.0,
+    "overrun_p10": 0.0,
+    "budget_s": 52.2,
+    "budget_p10_s": 52.2
+   },
+   "after_cutoff_nights": 13,
+   "after_cutoff_slices": {
+    "tv_timeout/crunch": {
+     "n": 31,
+     "overrun": 0.0,
+     "overrun_p10": 0.0,
+     "budget_s": 28.0,
+     "budget_p10_s": 28.0
+    },
+    "tv_timeout/early": {
+     "n": 666,
+     "overrun": 0.0,
+     "overrun_p10": 0.0,
+     "budget_s": 53.3,
+     "budget_p10_s": 53.3
+    },
+    "tv_timeout/close": {
+     "n": 400,
+     "overrun": 0.0,
+     "overrun_p10": 0.0,
+     "budget_s": 47.5,
+     "budget_p10_s": 47.5
+    },
+    "tv_timeout/blowout": {
+     "n": 127,
+     "overrun": 0.0,
+     "overrun_p10": 0.0,
+     "budget_s": 56.7,
+     "budget_p10_s": 56.7
+    }
+   }
+  },
+  "nhl": {
+   "calibration_rows": 20,
+   "calibration_nights": 1,
+   "cv": null,
+   "fit_on_all_held_out": {
+    "n": 20,
+    "overrun": 0.0,
+    "overrun_p10": 0.0,
+    "budget_s": 88.1,
+    "budget_p10_s": 88.1
+   },
+   "after_cutoff": {
+    "n": 96,
+    "overrun": 0.1042,
+    "overrun_p10": 0.1042,
+    "budget_s": 78.9,
+    "budget_p10_s": 78.9
+   },
+   "after_cutoff_nights": 2,
+   "after_cutoff_slices": {
+    "tv_timeout/early": {
+     "n": 38,
+     "overrun": 0.0263,
+     "overrun_p10": 0.0263,
+     "budget_s": 134.3,
+     "budget_p10_s": 134.3
+    },
+    "tv_timeout/close": {
+     "n": 38,
+     "overrun": 0.0263,
+     "overrun_p10": 0.0263,
+     "budget_s": 134.3,
+     "budget_p10_s": 134.3
+    },
+    "score_break/crunch": {
+     "n": 4,
+     "overrun": 0.25,
+     "overrun_p10": 0.25,
+     "budget_s": 34.5,
+     "budget_p10_s": 34.5
+    },
+    "score_break/early": {
+     "n": 54,
+     "overrun": 0.1481,
+     "overrun_p10": 0.1481,
+     "budget_s": 43.2,
+     "budget_p10_s": 43.2
+    },
+    "score_break/close": {
+     "n": 58,
+     "overrun": 0.1552,
+     "overrun_p10": 0.1552,
+     "budget_s": 42.6,
+     "budget_p10_s": 42.6
+    }
+   }
+  }
+ }
+}

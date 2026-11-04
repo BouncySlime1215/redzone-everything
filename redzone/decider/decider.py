@@ -24,6 +24,7 @@ are never counted as "seen": we can't tell which ones it showed.
 """
 from __future__ import annotations
 
+import logging
 import time
 import math
 from collections import deque
@@ -38,7 +39,11 @@ from redzone.decider.cuts import EntryPlan, plan_entry
 from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
 from redzone.contracts import flags
 from redzone.reel import JumpPolicy, JumpWindow, JumpVerdict, ReelClips, StayView, jump_value
+from redzone.decider import core
+from redzone.decider.core import BreakView, CoreState, DecisionCore, Knobs, MomentView, Option, SwitchPath
 from redzone.scoring.engine import Scored
+
+log = logging.getLogger(__name__)
 
 GONE_MAX_HOLD_S = 90.0  # [mid-play guard] a game that vanished without a final: don't wait on a dead feed forever
 # Basketball/hockey have no between-play gap to prove, so a vanished game (late West Coast games at the
@@ -287,6 +292,10 @@ class Decider:
         self._proposal_home: tuple | None = None
         self.start_fails = 0            # start picks in a row that didn't land
         self.start_retry_at = 0.0       # ...so the next start pick waits until then
+        self._entry_wait: tuple | None = None   # (target, waiting since, last tick) for a whistle wait
+        # [core] Every soft choice (which game, visit or not, reel, replay vs live, go back) is scored by
+        # the one expected-value function in core.py; the rules left in here are the hard guards.
+        self.core = DecisionCore(Knobs.from_cfg(cfg))
 
     # ----- inputs -----------------------------------------------------------
 
@@ -334,12 +343,14 @@ class Decider:
         `reel` is the ready catch-up reel: a ReelClips (clip by clip, so it can be cut to fit a dead
         ball), or just (tuner target, seconds); None when there isn't one."""
         now = self._clock()
+        self.core.k = Knobs.from_cfg(self.cfg)   # config can change between ticks (tuner, phone)
         self._known.update({gid: x for gid, x in cands.items() if x.target})
         hold = self.cfg.get("decider.crunch.hold_personal", 5)
         self._yours.update(gid for gid, x in cands.items() if x.scored.personal >= hold)
         cands = self._with_redzone(cands, redzone)
         cands = self._with_reel(cands, reel)
         cands = self._nfl_priority(cands)
+        self._learn_entries(cands)
         self._scan_missed(cands, now)
         if self.replaying:
             if self.safe_mode or self.user.paused or self.on_screen_at(now) != "replay":
@@ -508,19 +519,23 @@ class Decider:
         if budget is not None:
             pool = [m for m in pool if self._replay_cost(m, cands) <= budget]
         if top is not None:
-            margin = self.cfg.get("decider.switch_margin") if margin is None else margin
+            margin = self.core.k.switch_margin if margin is None else margin
             # Your team's missed big play clears the bar against ordinary live play (crunch and locked
             # moments never reach here: a replay is only considered between plays of a normal stretch).
             yours = yours and self.cfg.get("replay.yours_first", True)
             pool = [m for m in pool if self._replay_value(m, now) >= top + margin or (yours and m.mine)]
 
+        yours_first = self.cfg.get("replay.yours_first", True)
+
         def rank(m: Missed) -> tuple:
-            # Earliest deadline first among last chances (a fresh TD can wait; they can't), else value.
-            # Then your team's plays: a busier screen (RedZone mode chases more live drives) must
-            # not push your own team's catch-up out of its replay window.
+            # Your team's missed plays first (replay.yours_first), even against other games' last
+            # chances: other games' plays that went urgent used to win every time, so your team's
+            # TD could wait out its whole window. Then earliest deadline first among last chances
+            # (a fresh TD can wait; they can't), else value.
+            mine = int(m.mine and yours_first)
             if self._urgency(m, now) > 0:
-                return (1, 0, -m.t)
-            return (0, int(m.mine and self.cfg.get("replay.yours_first", True)), self._replay_value(m, now))
+                return (mine, 1, 0, -m.t)
+            return (mine, 0, 0, self._replay_value(m, now))
         return max(pool, key=rank, default=None)
 
     def _break_remaining(self, gid: str, cands, now: float) -> float:
@@ -654,16 +669,26 @@ class Decider:
         scorecards Nov 3: mid-play entries 165 -> 15, crunch live 87.5 -> 88.3%, big plays seen
         99.7 -> 99.5%. The rest of cut timing (holding for a big play, stretching a stoppage) cost
         hockey crunch time, so it stays football-only."""
-        if x is None or d.kind == "start" or x.scored.crunch_now:
+        if x is None or d.kind == "start":
+            return False
+        if x.scored.crunch_now and self._crunch_entry_mode() == "live":
             return False
         if x.scored.crunch and not x.scored.crunch_now and \
                 not self.cfg.get("decider.entry.hold_crunch_runup", True):
             return False
+        if x.scored.league.base.value in (self.cfg.get("decider.entry.rewind_only") or []):
+            return True    # plan the landing; _time_entry never waits for these (see there)
         if d.kind == "chase" and x.scored.imminent:
             # A chase for a goal off a 5-on-3, a fresh power play, a late empty net or a penalty
             # shot: waiting for a whistle misses it. Every other chase waits like any entry.
             return False
         return x.scored.league.base.value in (self.cfg.get("decider.entry.hold_only") or [])
+
+    def _crunch_entry_mode(self) -> str:
+        """[nhl crunch entry] Coming into hockey inside crunch's last 2:00 / OT: "live" (go now),
+        "rewind" (land on the last whistle with a rewind when one fits, else go now), or "wait"
+        (rewind or wait for a whistle, like any entry)."""
+        return str(self.cfg.get("decider.entry.crunch_now", "live"))
 
     def _time_entry(self, d: Decision, cands, now: float, home_before) -> Decision:
         """Hold a switch until its picture would come up on a dead ball, or land it with a rewind."""
@@ -684,9 +709,24 @@ class Decider:
         if plan.ok:
             d.rewind_s = plan.rewind_s
             return d
+        if x is not None and (x.scored.crunch_now and self._crunch_entry_mode() == "rewind"
+                              or x.scored.league.base.value in (self.cfg.get("decider.entry.rewind_only") or [])):
+            return d   # no clean landing in reach: crunch time (and rewind-only leagues) don't wait
         if x is not None and x.scored.league.base.value in (self.cfg.get("decider.entry.no_wait_leagues") or []):
             # Continuous play: holding a switch for a dead ball missed more than it saved (scorecards,
             # Nov 3); enter live unless a rewind lands it clean (decided above).
+            return d
+        # [core] A whistle wait can be bounded (decider.entry.max_wait_s.<league>, off by default) where
+        # waiting costs the most: a finished game on screen, or a final period. In basketball the next
+        # dead ball can be minutes away (NBA Oct 23: a 3.5-minute wait on a final game into crunch time).
+        lg = x.scored.league.base.value if x is not None else ""
+        cap = self.cfg.get(f"decider.entry.max_wait_s.{lg}")
+        w = self._entry_wait
+        if w is None or w[0] != d.target or now - w[2] > 3 * float(self.cfg.get("polling.live_s", 10)):
+            w = (d.target, now, now)
+        self._entry_wait = (d.target, w[1], now)
+        if cap is not None and now - w[1] >= float(cap) and (
+                d.kind == "ended" or (x is not None and getattr(x.scored, "late", False))):
             return d
         # Not yet: whatever the switch planned (a visit's way home) waits with it.
         self.home_break_visit, self.home_return_at = home_before
@@ -719,6 +759,27 @@ class Decider:
         self.home_break_visit, self.home_return_at = home_before
         return Decision(now, "stay", self.current, f"staying for it to air here ({until - now:.0f}s): {label}",
                         d.state, d.gate, want=d.target)
+
+    def _learn_entries(self, cands: dict[str, Candidate]) -> None:
+        """Brain v3's entry point (seconds to the restart) for each game's newest event, for the
+        expected end of a stoppage the data hasn't closed yet (cuts.DeadTracker.resume_eta)."""
+        on = self.cfg.get("brain.v3_entry", [])
+        if not on:
+            return
+        for gid, x in cands.items():
+            tl = self.timelines.get(gid)
+            v = (getattr(x.scored, "brain", None) or {}).get("v3") if x is not None else None
+            if tl is None or not v:
+                continue
+            if isinstance(on, (list, tuple, set)) and x.scored.league.value not in on \
+                    and x.scored.league.base.value not in on:
+                continue
+            try:
+                tl.dead.learned_q = 0 if int(self.cfg.get("brain.v3_entry_q", 50)) <= 10 else 1
+                tl.dead.learned_cap = bool(self.cfg.get("brain.v3_entry_cap", True))
+                tl.dead.learn(v.get("at"), v.get("entry_q"))
+            except Exception:  # noqa: BLE001 - a bad reading only loses the learned estimate
+                log.exception("brain v3 entry for %s", gid)
 
     def _resume_eta(self, gid: str, cands, now: float) -> float:
         """Wall time play should be back on screen in gid if we tuned there now."""
@@ -921,9 +982,8 @@ class Decider:
         if best is None:
             return Decision(now, "stay", self.current, s_cur.reason, state, gate_txt)
         b = cands[best]
-        margin = c.get("decider.switch_margin")
+        margin = self.core.k.switch_margin
         cost = self._rank_cost(b.target)
-        lead = b.scored.score - s_cur.score
 
         # Catch-up between plays: a missed big play is worth more than this ordinary moment.
         if gate_ok and not s_cur.lock:
@@ -948,16 +1008,13 @@ class Decider:
         if self.stack and not s_cur.lock and gate_ok:
             prev = self.stack[-1]
             if prev in watchable and not cands[prev].scored.is_break and prev not in self._screen_break:
-                if cands[prev].scored.score >= s_cur.score - c.get("decider.return_tolerance") and \
-                        cands[prev].scored.score >= b.scored.score - margin:
+                st = self._cstate(cands, now)
+                if core.ev(st, "return", prev, self.core.k).gain >= 0 and \
+                        core.rate(st.options[prev], self.core.k) >= core.rate(st.options[best], self.core.k) - margin:
                     return Decision(now, "switch", prev, self._why(cands[prev], "moment's over, back to"),
                                     state, gate_txt, kind="return")
 
-        needed = margin + cost
-        if s_cur.lock and not self._mine_late(b.scored):
-            # A moment here (a power play...) holds the TV, but never against your team late and close.
-            needed = max(needed, c.get("decider.locked_override_lead"))
-        if lead < needed:
+        if core.ev(self._cstate(cands, now), "switch", best, self.core.k, cost_s=cost).gain < 0:
             return Decision(now, "stay", self.current, s_cur.reason, state, gate_txt)
         if not gate_ok:
             return Decision(now, "stay", self.current, f"want {b.scored.reason} — waiting: {gate_txt}",
@@ -1151,10 +1208,10 @@ class Decider:
 
     # ----- crunch time ----------------------------------------------------------
 
-    @staticmethod
-    def _crunch_rank(s: Scored) -> tuple:
-        """When crunch times overlap: your teams and bets first, then the closest score, then the moment."""
-        return (round(s.personal), s.closeness, s.score)
+    def _crunch_rank(self, s: Scored) -> tuple:
+        """When crunch times overlap: your teams and bets first, then the league order
+        (core.league_priority: NFL > CFB > NBA > ...), then the closest score, then the moment."""
+        return (round(s.personal), core.league_rank(s.league.value, self.core.k), s.closeness, s.score)
 
     def _crunch_pick(self, watchable: dict[str, Candidate], exclude: str | None = None) -> str | None:
         """The crunch game to be on. Breaks included: a stoppage is the time to get there."""
@@ -1174,6 +1231,9 @@ class Decider:
         dp = p.personal - s_cur.personal
         if abs(dp) >= self.cfg.get("decider.crunch.personal_lead", 5):
             return dp > 0   # your team (then your bet) wins an overlap outright
+        lp, lc = (core.league_rank(x.league.value, self.core.k) for x in (p, s_cur))
+        if lp != lc:
+            return lp > lc  # [core] the league order decides between crunch times; the other gets a replay after
         # Two crunches, same tier: hop only while this one is stopped and that one is live, so its
         # next snap airs first. Never for the last few seconds of a stoppage.
         return on_break and not p.is_break and pick not in self._screen_break and \
@@ -1350,6 +1410,13 @@ class Decider:
             heat = max((x.scored.factors.get("drive_heat", 0.0) for x in cands.values()
                         if x.scored.league.base == League.NFL and not x.scored.garbage), default=0.0)
             score += float(self.cfg.get("redzone_mode.redzone_lift", 8)) * heat
+        # The reasoner's lock_in points on an NFL game also go to RedZone: RedZone whips to that
+        # game's big play anyway, with no commercials, so a lock-in is never a reason to leave it
+        # for one broadcast (Nov 3: MIN @ SEA slate, +370 s of commercials from exactly that).
+        lock = max((x.scored.factors.get("reasoner", 0.0) for x in cands.values()
+                    if x.scored.league.base == League.NFL and not x.scored.garbage), default=0.0)
+        score += max(0.0, min(1.0, float(self.cfg.get("reasoner.redzone_share", 1.0)))) * lock
+        if self.cfg.get("redzone_mode.enabled", True):
             # ...but once we ARE on a live drive, RedZone's lift is for that same drive: letting it
             # win here only bounces us back and forth across one drive (the whip-around's producers
             # will cut away from it; we won't). Hold it under what we're watching.
@@ -1450,18 +1517,43 @@ class Decider:
         snap = resume_play(tl) if tl else None
         return bool(x.scored.lock in CRUNCH_LOCKS or (snap and snap.big))
 
+    # ----- [core] the views the decision core scores ---------------------------
+
+    def _option(self, gid: str, x: Candidate) -> Option:
+        s = x.scored
+        kind = "redzone" if gid == REDZONE else "reel" if gid == REEL else "game"
+        # On a break for the core: in the data, or (for a destination) still on screen when we'd land.
+        on_break = s.is_break or (gid != self.current and gid in self._screen_break)
+        brain = s.brain or {}
+        return Option(gid, kind, x.target,
+                      MomentView(s.score, float(brain.get("key_soon_p", 0.0) or 0.0), s.lock, s.crunch,
+                                 bool(getattr(s, "late", False)), s.garbage, s.personal,
+                                 mine_late=self._mine_late(s)),
+                      BreakView(on_break, break_soon_p=float(brain.get("break_soon_p", 0.0) or 0.0)),
+                      paths=(SwitchPath("tune", self._rank_cost(x.target)),))
+
+    def _cstate(self, cands: dict[str, Candidate], now: float | None = None) -> CoreState:
+        opts = {gid: self._option(gid, x) for gid, x in cands.items()}
+        cur = self.current
+        if cur and cur not in opts and cur in self._known:
+            opts[cur] = self._option(cur, self._known[cur])
+        return CoreState(self._clock() if now is None else now, cur, opts, home=self.home_break_visit)
+
     def _best(self, watchable: dict[str, Candidate], exclude: str | None) -> str | None:
-        options = [(x.scored.score, gid) for gid, x in watchable.items()
-                   if gid != exclude and gid != REEL and not x.scored.is_break and gid not in self._screen_break]
-        if not options:
+        """The best destination by the core's rate: never the reel (a break filler), never a game whose
+        break is on screen when we'd land."""
+        st = self._cstate(watchable)
+        opts = [st.options[g] for g in watchable
+                if g != exclude and g != REEL and not st.options[g].brk.on_break]
+        if not opts:
             return None
-        best = max(options)[1]
+        best = max(opts, key=lambda o: core.rank(o, self.core.k)).id
         if watchable[best].scored.lock == "power play":
             # [nhl pp] A power play is always worth a look, but never over your team late and close
             # (Oct 29 replay: back from a catch-up onto NYI @ MIN's power play instead of WSH, tied late).
-            mine = [o for o in options if self._mine_late(watchable[o[1]].scored)]
+            mine = [o for o in opts if o.moment.mine_late]
             if mine:
-                return max(mine)[1]
+                return max(mine, key=lambda o: core.rank(o, self.core.k)).id
         return best
 
     def _break_destination(self, watchable, exclude, home: str | None = None) -> str | None:
@@ -1492,7 +1584,7 @@ class Decider:
         # WPG @ STL, up 1 with 3:57 left, which the code before the budget visited and kept; we got
         # there only at 1:16 left.
         home_x = (watchable.get(anchor) or self._known.get(anchor)) if anchor else None
-        margin = self.cfg.get("decider.switch_margin")
+        margin = self.core.k.switch_margin
 
         def keeper(x: Candidate) -> bool:
             if home_x is None:
@@ -1507,16 +1599,19 @@ class Decider:
                 or keeper(x)}
         pool = [gid for gid, x in fits.items()
                 if gid != exclude and gid != REEL and not x.scored.is_break and gid not in self._screen_break]
-        top = max((fits[g].scored.score for g in pool), default=None)
-        floor = self.cfg.get("decider.break_destination_min")
+        # [core] Worth leaving the commercial for: the core's visit ev (rate against the ad, bar
+        # decider.break_destination_min); ranked by the core's window value, rate x seconds on screen.
+        st = self._cstate(fits, now)
+        k = self.core.k
+        worth = [g for g in pool if core.ev(st, "visit", g, k).gain >= 0]
         best = None
-        if top is not None and top >= floor:
-            worth = [g for g in pool if fits[g].scored.score >= floor]
+        if worth:
             # Crunch first, then the user's team, and only then score x seconds on screen: a
             # preloaded neutral game must never pull the viewer away from crunch time or from
             # their own team behind a cold (e.g. Prime) tune.
             best = max(worth, key=lambda g: (crunch(fits[g]), fits[g].scored.personal >= hold,
-                                             fits[g].scored.score * (watch[g] or 1.0), fits[g].scored.score))
+                                             core.window_value(st.options[g], k, watch[g] or 1.0),
+                                             core.rate(st.options[g], k)))
         # [highlight jump] The catch-up reel, when it fits this dead ball with both switches and is
         # worth more than staying and than the best live visit: reel.jump_value decides (the same
         # function the scorecards and the offline fit use). Crunch time or your team elsewhere is
@@ -1781,7 +1876,9 @@ class Decider:
         options = {g: x for g, x in options.items() if watch(g) >= 60}
         if not options:
             return None
-        dest = max(options, key=lambda g: (options[g].scored.score * watch(g), options[g].scored.score))
+        st = self._cstate(options, now)
+        dest = max(options, key=lambda g: (core.window_value(st.options[g], self.core.k, watch(g)),
+                                           core.rate(st.options[g], self.core.k)))
         buffer = RETURN_BUFFER_S if self._exits_often(dest) or dest in PSEUDO else RETURN_BUFFER_CONTINUOUS_S
         self.home_break_visit = home
         # Head back early enough to find a clean exit AND finish the trip before the break ends.
@@ -1876,11 +1973,12 @@ class Decider:
         if self.current == REEL and target != REEL:
             self._reel_left(now)
         self.replay_exit_after = 0.0   # a live switch replaces the old replay picture
-        if self.current and self.current != target:
-            if kind == "return" and self.stack and self.stack[-1] == target:
-                self.stack.pop()
-            elif kind not in ("return", "home"):
-                self.stack.append(self.current)
+        if kind == "return" and self.stack and self.stack[-1] == target:
+            # Popped even when we're already on it (a "return" confirmed as "already on it"): left on
+            # the stack, the same return was proposed again every tick, 348 times on the e2e night test.
+            self.stack.pop()
+        elif self.current and self.current != target and kind not in ("return", "home"):
+            self.stack.append(self.current)
         if kind == "home" and self.stack and self.stack[-1] == target:
             self.stack.pop()
         if kind == "home" and target == self.home_break_visit:

@@ -33,6 +33,8 @@ from pathlib import Path
 
 import numpy as np
 
+from redzone.governor import background_cmd
+
 log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -406,7 +408,7 @@ def _encode(src: Path, dst: Path, start: float, length: float, timeout: float = 
                "-vf", vf, "-af", af, *venc, "-c:a", "aac", "-b:a", "160k", "-ac", "2",
                "-movflags", "+faststart", str(dst)]
         try:
-            r = subprocess.run(cmd, capture_output=True, timeout=timeout)
+            r = subprocess.run(background_cmd(cmd), capture_output=True, timeout=timeout)
         except (OSError, subprocess.TimeoutExpired):
             continue
         if r.returncode == 0 and dst.exists() and dst.stat().st_size > 10_000:

@@ -265,7 +265,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         true_delay: float | None = None, sigma: float = 3.0, lag_jitter: tuple[float, float] | None = None,
         drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
         channel_spread: float = 0.0, history: float = 0.0, delay_model: str | None = None,
-        on_tick: Callable | None = None, reels: bool = False) -> Report:
+        resync: bool = False, on_tick: Callable | None = None, reels: bool = False) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
       true_delay    the stream's real delay; `delay` is only the app's estimate of it
@@ -280,6 +280,12 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
       history       [per-channel delay] fraction of channels measured on earlier nights (1-3 taps);
                     half as many again have only show-change samples; the rest were never measured
       delay_model   DelayBook model ("channel" | "legacy"); default from cfg delay.model
+      resync        [auto sync] model live re-sync: the per-channel Kalman filter (sync.py) is attached
+                    as live attaches it, every tune re-syncs it, and the channel on screen gives it one
+                    screen-delay reading per poll from tune_s after the tune (noise sd RESYNC_SD_S,
+                    seeded). Channels off screen keep their last figure and age the way live ages them
+                    (sigma floored at delay.sync.min_sigma_s, doubt growing to the settled cap, stale
+                    after 30 min). Without it, every channel keeps the kickoff calibration.
       on_tick       optional read-only lab observer (historical time, decider), before selection
       reels         [highlight jump] simulate the catch-up reel (reel.play must be on too): the
                     archive's own ESPN clips, or one per big play (redzone/lab/reelsim.py)
@@ -315,6 +321,12 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             d = delays.get(f"youtubetv:{r.gid}")
             d.calibrated_at = t0
             d.sigma = sigma
+    sync = None
+    if resync:
+        sync = _attach_resync(delays, cfg, pinned=None if channel_spread > 0 else
+                              {f"youtubetv:{r.gid}": (lag_total, sigma, t0) for r in replays})
+        tgt_of = {r.gid: (targets or {}).get(r.gid, f"youtubetv:{r.gid}") for r in replays}
+        noise = random.Random(seed * 7_000_003 + 17)
     feeds = {r.gid: _feed(r, random.Random(seed * 1_000_003 + zlib.crc32(r.gid.encode())), feed_lag, step,
                           lag_jitter, drop, late_plays, no_wallclock, t0, t1) for r in replays}
 
@@ -392,6 +404,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             reel_ends[clock.t] = dec.reel_end_at
         decisions.append(decision)
         _record(decision, before, clock.t, switches, watching, replayed)
+        if sync is not None:
+            _resync_tick(delays, sync, decision, switches, tgt_of, lag_true, tune_s, clock.t, noise)
         if decision.action == "replay" and decision.replay and getattr(dec, "replay_until", None) is not None:
             replay_windows.append((decision.target, round(decision.replay.t), clock.t, dec.replay_until))
         _credit_completed_replays(replay_windows, watching, clock.t, replayed)
@@ -408,6 +422,42 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         rep.reel = reelsim.grade(replays, switches, lag_true, tune_s, t1, len(sim.shown), reel_homes)
         rep.reel_real_games = sim.real_games
     return rep
+
+
+RESYNC_SD_S = 1.5   # one screen-delay reading (the score-bug clock's sd; positions are tighter)
+
+
+def _attach_resync(delays: DelayBook, cfg: Config, pinned: dict | None):
+    """Attach the live filter. In the pinned scenario (no channel_spread) the kickoff calibration is
+    the predictor's own figure, so a refresh (the filter dropping back after a tune) restores it."""
+    if pinned:
+        own = delays._refresh_model
+
+        def refresh_model(target: str) -> None:
+            own(target)
+            if target in pinned:
+                d = delays.book[target]
+                mu, sig, at = pinned[target]
+                d.mu, d.sigma, d.calibrated_at, d.drift_cap = mu + d.behind, sig, at, 6.0
+        delays._refresh_model = refresh_model
+        for target in pinned:
+            delays._refresh(target)
+    return delays.attach_sync(min_sigma_s=float(cfg.get("delay.sync.min_sigma_s", 4)))
+
+
+def _resync_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict, lag_true,
+                 tune_s: float, now: float, noise: random.Random) -> None:
+    """A tune re-syncs its channel; the channel on screen gives one reading per poll once its
+    picture is up. Replays and the RedZone channel give none (not a game's own stream)."""
+    if decision.action == "switch" and decision.target in tgt_of and switches and switches[-1].t == now:
+        delays.tuned(tgt_of[decision.target])
+    last = switches[-1] if switches else None
+    if last is None or last.kind == "replay" or last.to not in tgt_of or now - last.t < tune_s:
+        return
+    target = tgt_of[last.to]
+    d = delays.get(target)
+    sync.measure(target, lag_of(lag_true, last.to) + d.behind + noise.gauss(0, RESYNC_SD_S),
+                 "clock", t=now, sd=RESYNC_SD_S)
 
 
 def _record(decision, before: str | None, t: float, switches: list[SwitchLog],

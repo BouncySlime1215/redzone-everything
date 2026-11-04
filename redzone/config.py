@@ -66,9 +66,19 @@ LIMITS: dict[str, tuple[float, float]] = {
     "two_stick": (0, 3600),
     "switch_speed.sync_every_s": (60, 3600),
     "autonomy.busy_score": (0, 100),
+    "governor.every_s": (5, 600),
+    "governor.calm_s": (0, 3600),
+    "governor.busy_load": (0.2, 4.0),
+    "governor.battery_low_pct": (0, 100),
+    "governor": (100, 16000),
     "brain.break_weight": (0.0, 1.0),
     "brain.hot_reason_min": (50, 100),
+    "brain.version": (2, 3),
+    "brain.v3_entry_q": (10, 50),
     "brain": (0, 30),
+    "reasoner.min_interval_s": (5, 600),
+    "reasoner.max_tokens": (32, 400),
+    "reasoner": (0, 15),
     "supervisor.budget.window_nights": (1, 60),
     "supervisor.budget.failure_pct": (0, 100),
     "supervisor.budget.mid_play_cuts": (0, 100),
@@ -180,9 +190,13 @@ class Config:
                 if not isinstance(raw, dict):
                     raise ConfigError(f"{user_path.name} isn't a group of settings")
             except (yaml.YAMLError, ConfigError, OSError) as e:
-                # An unreadable file never takes the app down: defaults, and say so.
-                log.error("config: %s unreadable, using defaults: %s", user_path, e)
-                raw, self.rejected = {}, [f"unreadable: {e}"]
+                # An unreadable file never takes the app down. Your last saved edit from the history
+                # comes back if one reads (defaults would mean dry run: no TV control all night);
+                # else defaults. Either way, say so.
+                raw, restored = self._last_good_version()
+                log.error("config: %s unreadable (%s); %s", user_path, e,
+                          f"restored your last saved settings ({restored})" if restored else "using defaults")
+                self.rejected = [f"unreadable: {e}" + (f"; restored {restored}" if restored else "")]
             loaded = without_retired(raw)
             # A broken setting never takes the app down, and never takes your other settings with it.
             self.overrides, dropped = prune(loaded, self.defaults)
@@ -190,6 +204,21 @@ class Config:
             for why in dropped:
                 log.warning("config: ignoring a setting in %s: %s", user_path.name, why)
         self.data = _deep_merge(self.defaults, self.overrides)
+
+    def _last_good_version(self) -> tuple[dict, str | None]:
+        """The newest history version that reads as a group of settings, or ({}, None)."""
+        try:
+            versions = sorted(self.history_dir.glob("*.yaml"), reverse=True) if self.history_dir.exists() else []
+        except OSError:
+            return {}, None
+        for v in versions:
+            try:
+                raw = yaml.safe_load(v.read_text())
+            except (yaml.YAMLError, OSError):
+                continue
+            if isinstance(raw, dict):
+                return raw, v.name
+        return {}, None
 
     def get(self, dotted: str, default=None):
         node = self.data

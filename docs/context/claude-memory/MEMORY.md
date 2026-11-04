@@ -1,0 +1,6 @@
+- [No build until explicit go](no-build-until-explicit-go.md) — "lock in" = plan harder; no installs/builds until he says build
+- [RedZone north star](redzone-north-star.md) — full spec, league order, merge bar, cloud-coordinator workflow; check every PR against it
+- [No Peacock for RedZone](redzone-no-peacock.md) — NBC/NBCSN games come from YouTube TV, not Peacock
+- [RedZone cut philosophy](redzone-cut-philosophy.md) — leave at dead time, enter at restart, NFL drives first, catch-up reels
+- [Mac load limits](mac-load-limits.md) — 8 GB M2: one heavy job at a time, training only overnight/on request
+- [RedZone home network](redzone-home-network.md) — sticks .150/.181 on 100.110.165.x, TV MAC known, Mac goes to school (sticks look offline)

@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 
 from redzone.channels import ChannelMap  # noqa: E402
 from redzone.config import Config  # noqa: E402
-from redzone.lab import evaldata, sportsgrade  # noqa: E402
+from redzone.lab import evaldata, splits, sportsgrade  # noqa: E402
 from redzone.lab.backtest import Replay, run  # noqa: E402
 from redzone.models import League  # noqa: E402
 from redzone.sources import espn  # noqa: E402
@@ -35,12 +35,15 @@ from redzone.sources import espn  # noqa: E402
 EVAL_END = "20261101"
 
 
-def nights(league: League, n: int, end: str | None = None):
+def nights(league: League, n: int, end: str | None = None, split: str = "all"):
     """The last n archived nights, up to `end` (YYYYMMDD) when given: the service archives every
     new night at 5 AM, and an unpinned window would slide under a before/after comparison."""
     arch = ROOT / "data/archive" / league.value
     sbs = sorted(sb for sb in arch.glob("scoreboard_*.json") if not end or sb.stem.split("_")[1] <= str(end))
-    for sb in sbs[-n:]:
+    keep = splits.nights_for(arch, split, end)
+    # [no overfitting] --split grades exactly one time split (every night in it); --nights is ignored then.
+    sbs = sbs[-n:] if keep is None else [sb for sb in sbs if sb.stem.split("_")[-1] in keep]
+    for sb in sbs:
         evs = json.loads(sb.read_text()).get("events", [])
         reps, targets = [], {}
         for e in evs:
@@ -69,13 +72,15 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--channel-spread", type=float, default=0.0)   # [per-channel delay] see scripts/eval.py
     ap.add_argument("--history", type=float, default=0.0)
     ap.add_argument("--delay-model", choices=("channel", "legacy"), default=None)
+    ap.add_argument("--resync", action="store_true",
+                    help="model live Kalman re-sync on every tune (backtest.run resync)")
 
 
 def knobs(a: argparse.Namespace) -> dict:
     return dict(true_delay=a.true_delay, sigma=a.sigma, lag_jitter=(3.0, 25.0) if a.lag_jitter else None,
                 drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed,
                 channel_spread=getattr(a, "channel_spread", 0.0), history=getattr(a, "history", 0.0),
-                delay_model=getattr(a, "delay_model", None))
+                delay_model=getattr(a, "delay_model", None), resync=getattr(a, "resync", False))
 
 
 def main():
@@ -86,6 +91,8 @@ def main():
     ap.add_argument("--step", type=float, default=None)
     ap.add_argument("--end", default=None, help="last night to grade (YYYYMMDD); default eval.<league>_end")
     ap.add_argument("--reels", action="store_true", help="[highlight jump] reels on the TV (reel.play), simulated")
+    ap.add_argument("--split", choices=splits.SPLITS, default="all",
+                    help="grade one time split of the pinned window (redzone/lab/splits.py); test = LOCKED")
     stress_args(ap)
     a = ap.parse_args()
     lg = League(a.league)
@@ -105,7 +112,7 @@ def main():
     total = sportsgrade.Card(lg.value)
     t0 = time.time()
     end = a.end or evaldata.window_end(lg.value, EVAL_END)
-    for day, reps, targets in nights(lg, a.nights, end):
+    for day, reps, targets in nights(lg, a.nights, end, a.split):
         rep = run(reps, cfg, mine, targets=targets, step=a.step, reels=a.reels, **knobs(a))
         if rep.reel is not None:
             reel.add(rep.reel)

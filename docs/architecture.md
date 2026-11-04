@@ -302,15 +302,77 @@ be measured yet is **PENDING**, and pending never counts as passing.
 | Switch speed | ≥ 95 % of preloaded switches under 3 s (once the TV path works) |
 | Uptime, fault-injection night test | ≥ 95 % of minutes with a correct picture, and every fault recovered automatically |
 
-**Held-out split of `eval-data-v1`**: the newest nights of the pinned window, never used for
-tuning. Auto-tune, threshold picks and model training read only the earlier nights.
+The gates are judged **only** on the locked test split plus fresh nights (§8), never on data
+used for any choice.
 
-| League | Held-out nights | Command |
+## 8. No overfitting (the user's rule, 2026-11-03)
+
+This applies to every model **and** every tuned knob: Brain v3, auto-tune, the reasoner, the
+watchdog, sync, the highlight jump and the decision core's `core.*` knobs. Code:
+`redzone/lab/splits.py`. Tests: `tests/test_splits.py`, which runs in CI on the pinned data.
+
+1. **Split by time, never by row.** Each league's nights are ordered oldest to newest. The oldest
+   go to **train**, the next block to **valid**, and the newest ≥ 25 % to **test**
+   (`split_nights`). A night is never split across sets, so a game never is either: a game
+   belongs to the first scoreboard night that lists it (`archive_nights`).
+2. **A locked final test set.** `test` is scored only by the release gate (`scripts/release_gate.py`),
+   once per release candidate. Nobody trains, tunes or picks thresholds on it. Tuning reads
+   `--split fit` (train + valid) only. Every scorecard takes `--split all|train|valid|test|fit`.
+3. **Fresh unseen data each round.** Nights archived after the pin's last night (`fresh()`) are
+   new test data. Each round reports them separately, as "nights after the training cutoff".
+4. **Rolling cross-validation** for every tuning decision: `folds()` gives 5 forward-chaining
+   folds over train + valid. Report the **mean and the worst fold**, not just the best.
+5. **Gap check.** Every model and tuning PR reports train vs valid vs test-free metrics (the
+   valid fold mean against the train fit). A gap over a few points means overfit. The answer is
+   a simpler model, more regularization or more data, not more tuning.
+6. **Leakage checks in CI.**
+   - No night and no game id is shared across splits, and time order holds (`leaks()`, run on
+     the pinned archive in `tests/test_splits.py`).
+   - No future plays in any feature: `causal(feature_times, decision_t)` must be empty, and every
+     feature builder asserts it in its own tests (MOMENT/BREAK, LOCAL AI, SYNC).
+   - The teacher's hindsight labels are built from train nights only.
+   - The gold labels' test cases are never used in training. LOCAL AI keeps the gold set's game
+     ids and the release gate checks them against the training manifest.
+7. **Slices.** Gates are reported per league (today), and also per network/app, per score
+   situation (close/blowout, crunch/early) and for the user's teams. The last three are
+   **pending**: the scorecards need to emit those slices. Passing on average while failing a
+   slice doesn't count.
+8. **Robustness.** `ci_scorecard.py --robust` re-runs NFL/NBA/NHL with the screen 3 s later and
+   3 s earlier than the app believes (`--true-delay 38/32`), and with a feed that drops out and
+   delivers late (`--drop 0.1 --late-plays 0.15`). Those cards must pass the same hard gates.
+   One stick down and a feed outage are covered by the end-to-end night test
+   (`tests/test_e2e*.py`).
+9. **Gates are judged only on the locked test split + fresh nights.** In CI that is
+   `ci_scorecard.py --split test --robust` → `release_gate.py`. It reports on every PR and fails
+   the release PR.
+
+### The locked split of `eval-data-v1` (and why it isn't enough)
+
+| League | Nights (train / valid / **test**) | Locked test |
 |---|---|---|
-| NFL | the last 2 slates up to 2026-11-01 | `scripts/eval.py --n 2` |
-| NBA | 2026-10-29 to 2026-11-01 | `scripts/eval_sports.py nba --nights 4` |
-| NHL | 2026-10-29 to 2026-11-01 | `scripts/eval_sports.py nhl --nights 4` |
-| Demo | the Nov 1 mixed demo day | `python -m redzone.demo 20261101` |
+| NFL | 75 nights: 45 / 11 / **19** | 2025-12-09 to 2026-11-01: 77 games (the scorecard grades its 10 Sunday slates, 57 games) |
+| NBA | 13 nights: 7 / 2 / **4** | 2026-10-29 to 2026-11-01: 24 games |
+| NHL | 14 nights: 8 / 2 / **4** | 2026-10-29 to 2026-11-01: 29 games |
+| Demo | | the Nov 1 mixed day (inside the locked window) |
 
-`scripts/ci_scorecard.py --nfl-n 2 --nights 4` runs the whole slice. When `eval-data-v2` adds
-Nov 2+ nights, those become the held-out set and Nov 1 moves into tuning.
+The locked test is **130 games** (110 of them graded by the scorecards). The rule asks for at least a few thousand across leagues,
+weeks and seasons, so the release gate shows "locked test size" as **pending**.
+
+**What eval-data-v2 needs, at $0.** Full past seasons from the same free ESPN endpoints the app
+already uses (`scripts/download_season.py`):
+- NBA 2024-25 and 2025-26: about 2,460 games
+- NHL 2024-25 and 2025-26: about 2,620 games
+- NFL 2023 and 2024: about 570 games
+- every new night the service archives at 5 AM
+
+That is about 5,000+ games, so the locked 25 % is over 1,200 games from many weeks and two
+seasons.
+
+Where it gets built:
+- **Not in a cloud session.** The proxy blocks ESPN.
+- **Not on the Mac.** About 3 GB uncompressed, against ~5 GB free.
+- **In a GitHub Actions workflow** on the `eval-data` branch. It is free, because the repo is
+  public. It downloads the seasons, builds the archive with `scripts/build_eval_data.py --tag
+  eval-data-v2`, and publishes the release asset, compressed to a few hundred MB.
+
+Then `eval-data.lock.json` moves to v2, and the newest 25 % of v2's nights become the locked set.

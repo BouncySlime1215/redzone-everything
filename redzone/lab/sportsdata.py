@@ -48,6 +48,17 @@ def iso_seconds(s: pd.Series) -> pd.Series:
     return out.astype("float64")
 
 
+def pq_names(path) -> set:
+    import pyarrow.parquet as pq
+    return set(pq.read_schema(path).names)
+
+
+def et_night(epoch: pd.Series) -> pd.Series:
+    """Epoch seconds -> the US evening ("night") it belongs to, YYYYMMDD (ET, a 5 AM day boundary)."""
+    t = pd.to_datetime(epoch, unit="s", utc=True, errors="coerce").dt.tz_convert("America/New_York")
+    return (t - pd.Timedelta(hours=5)).dt.strftime("%Y%m%d").fillna("")
+
+
 def _wall_rel(wall_abs: pd.Series, game: pd.Series) -> pd.Series:
     """Epoch seconds -> seconds since the game's first stamped event, made monotone."""
     first = wall_abs.groupby(game, sort=False).transform("min")
@@ -71,7 +82,7 @@ def norm_nfl(paths: list[Path]) -> pd.DataFrame:
             "home_wp_post", "play_type_nfl", "desc", "time_of_day", "touchdown", "interception",
             "fumble_lost", "safety", "field_goal_result", "replay_or_challenge", "yards_gained",
             "yardline_100", "down", "ydstogo", "home_timeouts_remaining", "away_timeouts_remaining",
-            "fourth_down_converted", "result", "season_type"]
+            "fourth_down_converted", "result", "season_type", "game_date"]
     df = pd.concat([pd.read_parquet(p, columns=cols) for p in paths], ignore_index=True)
     df = df[df.qtr.notna()].sort_values(["game_id", "play_id"], kind="stable").reset_index(drop=True)
     e = pd.DataFrame({"league": "nfl", "season": df.season.astype(int), "game_id": df.game_id})
@@ -113,6 +124,9 @@ def norm_nfl(paths: list[Path]) -> pd.DataFrame:
     e["ydstogo"] = df.ydstogo
     e["to_home"] = df.home_timeouts_remaining
     e["to_away"] = df.away_timeouts_remaining
+    e["night"] = df.game_date.astype(str).str.replace("-", "").str[:8].values
+    e["ttext"] = t.str.lower().str.replace("_", " ").values
+    e["desc"] = desc.values
     return _blank(e)
 
 
@@ -180,7 +194,8 @@ def norm_basketball(league: str, paths: list[Path], max_games: int | None = None
     cols = ["game_id", "season", "sequence_number", "type_text", "text", "period_number",
             "clock_display_value", "home_score", "away_score", "scoring_play", "score_value",
             "team_id", "home_team_id", "away_team_id", "wallclock", "game_spread", "home_favorite"]
-    df = pd.concat([pd.read_parquet(p, columns=cols) for p in paths], ignore_index=True)
+    df = pd.concat([pd.read_parquet(p, columns=[c for c in cols + ["game_date"] if c in pq_names(p)])
+                    for p in paths], ignore_index=True)
     df = df[df.type_text.ne("Substitution") & df.period_number.notna()]
     if max_games:
         keep = _sample_games(df.game_id, max_games)
@@ -249,6 +264,9 @@ def norm_basketball(league: str, paths: list[Path], max_games: int | None = None
     exp_margin = np.where(df.home_favorite.astype("boolean").fillna(False), spread, -spread)
     e["_exp_margin"] = exp_margin
     e["wp_home"] = np.nan
+    e["night"] = df.game_date.astype(str).str.replace("-", "").str[:8].values if "game_date" in df else ""
+    e["ttext"] = low.values
+    e["desc"] = text.values
     return _blank(e)
 
 
@@ -262,7 +280,8 @@ def norm_nhl(paths: list[Path]) -> pd.DataFrame:
     cols = ["game_id", "season", "season_type", "event_idx", "event_type", "description", "period",
             "period_type", "period_seconds_remaining", "game_seconds", "home_score", "away_score",
             "home_skaters", "away_skaters", "event_team_type", "xg"]
-    df = pd.concat([pd.read_parquet(p, columns=cols) for p in paths], ignore_index=True)
+    df = pd.concat([pd.read_parquet(p, columns=[c for c in cols + ["game_date"] if c in pq_names(p)])
+                    for p in paths], ignore_index=True)
     df = df[df.game_id.notna() & df.event_type.ne("CHANGE") & df.period_type.ne("SHOOTOUT")
             & df.event_type.ne("SHOOTOUT_COMPLETE")]
     df = df.sort_values(["game_id", "event_idx"], kind="stable").reset_index(drop=True)
@@ -298,6 +317,9 @@ def norm_nhl(paths: list[Path]) -> pd.DataFrame:
     e["to_away"] = 1 - (to & reason.str.contains("visitor-timeout")).groupby(gid).cumsum().clip(upper=1)
     e["_playoff"] = df.season_type.eq("P").values
     e["wp_home"] = np.nan
+    e["night"] = df.game_date.astype(str).str.replace("-", "").str[:8].values if "game_date" in df else ""
+    e["ttext"] = et.str.lower().str.replace("_", " ").values
+    e["desc"] = desc.values
     return _blank(e)
 
 
@@ -334,7 +356,8 @@ def norm_mlb(paths: list[Path], pitch_paths: list[Path] | None = None) -> pd.Dat
         "score_home": df.home_score.astype(float), "score_away": df.away_score.astype(float),
         "outs": df.outs.astype(float), "on_1b": df.post_on_first_id.notna().astype(float),
         "on_2b": df.post_on_second_id.notna().astype(float), "on_3b": df.post_on_third_id.notna().astype(float),
-        "balls": np.nan, "strikes": np.nan, "stoppage": st, "clutch": df.event_type.eq("home_run")})
+        "balls": np.nan, "strikes": np.nan, "stoppage": st, "clutch": df.event_type.eq("home_run"),
+        "ttext": df.event_type.fillna("").astype(str).str.lower().str.replace("_", " "), "desc": ""})
     parts = [pa]
     if pitch_paths:
         p = pd.concat([pd.read_parquet(x, columns=["game_pk", "at_bat_index", "pitch_number", "balls",
@@ -352,7 +375,7 @@ def norm_mlb(paths: list[Path], pitch_paths: list[Path] | None = None) -> pd.Dat
             "period": p.period, "half_bottom": p.half_bottom, "score_home": p.score_home,
             "score_away": p.score_away, "outs": p.outs, "on_1b": p.on_1b, "on_2b": p.on_2b, "on_3b": p.on_3b,
             "balls": p.balls.astype(float), "strikes": p.strikes.astype(float).clip(upper=2),
-            "stoppage": "none", "clutch": False}))
+            "stoppage": "none", "clutch": False, "ttext": "pitch", "desc": ""}))
     e = pd.concat(parts, ignore_index=True).sort_values(["game_id", "ab", "sub"], kind="stable")
     e = e.reset_index(drop=True)
     e.insert(0, "league", "mlb")
@@ -364,6 +387,8 @@ def norm_mlb(paths: list[Path], pitch_paths: list[Path] | None = None) -> pd.Dat
     e["wall_s"] = _wall_rel(e.pop("abs_t"), e.game_id)
     e["wall_s"] = e.groupby("game_id").wall_s.transform(lambda s: s.interpolate(limit_direction="both"))
     e["t_game"] = e.wall_s  # baseball has no game clock: game time is wall time
+    first = start.groupby(gid).min()
+    e["night"] = e.game_id.map(et_night(first)).fillna("").values
     e["big"] = False
     e["wp_home"] = np.nan
     return _blank(e.drop(columns=["ab", "sub"]))
@@ -388,6 +413,8 @@ def norm_espn_archive(league: str, archive: Path) -> pd.DataFrame:
         gid = f.stem.split("_")[-1]
         season = espn._int(espn._get(data, "header", "season", "year")) or 0
         skaters = _espn_nhl_skaters(data, plays) if lg == League.NHL else None
+        when = espn._ts(espn._get(data, "header", "competitions", 0, "date"))
+        night = et_night(pd.Series([when]))[0] if when else ""
         for i, p in enumerate(plays):
             per = espn._int(espn._get(p, "period", "number")) or 0
             clock = espn._clock_s(espn._get(p, "clock", "displayValue"))
@@ -406,6 +433,7 @@ def norm_espn_archive(league: str, archive: Path) -> pd.DataFrame:
                 if lg == League.MLB else np.nan,
                 outs=espn._int(p.get("outs")) if lg == League.MLB else np.nan,
                 **({"home_skaters": skaters[i][0], "away_skaters": skaters[i][1]} if skaters else {}),
+                night=night, ttext=ttxt.lower(), desc=(p.get("text") or "").lower(),
             ))
         if rows and rows[-1]["game_id"] == gid:
             rows[-1]["stoppage"] = "game_end"
@@ -448,6 +476,75 @@ def _espn_nhl_skaters(data: dict, plays: list[dict]) -> list[tuple[float, float]
         a, b = (float(x) for x in strength.split("v"))
         out.append((a, b) if pp == home else (b, a))
     return out
+
+
+def norm_espn_nfl_public(paths: list[Path]) -> pd.DataFrame:
+    """sportsdataverse's ESPN NFL play-by-play: the same feed (type texts, wallclocks) the live service
+    reads, classified exactly as the live service does (espn.stoppage_for on each play)."""
+    from redzone.models import League
+    from redzone.sources import espn
+
+    cols = ["game_id", "sequenceNumber", "type.text", "text", "wallclock", "period.number", "clock.displayValue",
+            "season", "homeScore", "awayScore", "home_wp_after", "scoringPlay", "isTurnover", "statYardage",
+            "start.down", "start.distance", "start.yardsToEndzone", "start.team.id", "homeTeamId"]
+    df = pd.concat([pd.read_parquet(p, columns=cols) for p in paths], ignore_index=True)
+    df = df[df["period.number"].notna()].copy()
+    df["sq"] = pd.to_numeric(df.sequenceNumber, errors="coerce")
+    df = df.sort_values(["game_id", "sq"], kind="stable").reset_index(drop=True)
+    # This release drops ESPN's period-end rows ("End Period", "End of Half"), which the live feed has:
+    # put them back at the period's last play (ESPN stamps them with that play's wallclock).
+    per = df["period.number"].astype(int)
+    nxt_per = per.groupby(df.game_id).shift(-1)
+    ends = df[nxt_per.notna() & (nxt_per != per)].copy()
+    if len(ends):
+        ep = ends["period.number"].astype(int)
+        ends["type.text"] = np.where(ep == 2, "End of Half", np.where(ep == 4, "End of Regulation", "End Period"))
+        ends["text"] = "End of period"
+        ends["clock.displayValue"] = "0:00"
+        ends[["scoringPlay", "isTurnover"]] = False
+        ends["statYardage"] = 0
+        ends["sq"] = ends.sq + 0.5
+        df = pd.concat([df, ends], ignore_index=True).sort_values(["game_id", "sq"], kind="stable")
+        df = df.reset_index(drop=True)
+    gid = df.game_id.astype("int64").astype(str)
+    lg = League.NFL
+    tt = df["type.text"].fillna("").astype(str)
+    text = df.text.fillna("").astype(str)
+    st, big, clutch = [], [], []
+    for t, x, sp, to, yd, per in zip(tt.values, text.values, df.scoringPlay.values, df.isTurnover.values,
+                                     df.statYardage.values, df["period.number"].values):
+        p = {"type": {"text": t}, "text": x, "scoringPlay": bool(sp) if sp == sp else False,
+             "isTurnover": bool(to) if to == to else False, "statYardage": yd, "period": {"number": int(per)}}
+        st.append(espn.stoppage_for(lg, p).value)
+        big.append(_espn_big(lg, t, p))
+        clutch.append(_espn_clutch(lg, t, p))
+    e = pd.DataFrame({"league": "nfl", "season": df.season.astype(int), "game_id": gid})
+    e["seq"] = e.groupby("game_id").cumcount()
+    e["etype"] = tt.values
+    e["period"] = df["period.number"].astype(int)
+    e["clock_s"] = parse_clock(df["clock.displayValue"]).astype(float).groupby(gid).ffill().values
+    wall_abs = iso_seconds(df.wallclock)
+    e["wall_s"] = _wall_rel(wall_abs, gid).values
+    e["wall_s"] = e.groupby("game_id").wall_s.transform(lambda s: s.interpolate(limit_direction="both"))
+    e["t_game"] = game_elapsed("nfl", e.period.values.astype(float), np.nan_to_num(e.clock_s.values))
+    e["t_game"] = pd.Series(e.t_game).groupby(e.game_id).cummax().values
+    for c, src in (("score_home", "homeScore"), ("score_away", "awayScore")):
+        e[c] = df[src].astype(float).groupby(gid).ffill().fillna(0).groupby(gid).cummax().values
+    e["wp_home"] = df.home_wp_after.astype(float).values
+    e["stoppage"] = st
+    last = ~e.game_id.duplicated(keep="last")
+    e.loc[last, "stoppage"] = "game_end"
+    e["big"], e["clutch"] = big, clutch
+    home = df["start.team.id"].astype("float64") == df.homeTeamId.astype("float64")
+    e["possession_home"] = np.where(df["start.team.id"].isna(), np.nan, home.astype(float))
+    e["yardline_100"] = df["start.yardsToEndzone"].astype(float).values
+    e["down"] = df["start.down"].astype(float).where(lambda x: x > 0).values
+    e["ydstogo"] = df["start.distance"].astype(float).values
+    first = wall_abs.groupby(gid).min()
+    e["night"] = e.game_id.map(et_night(first)).fillna("").values
+    e["ttext"] = tt.str.lower().values
+    e["desc"] = text.str.lower().values
+    return _blank(e)
 
 
 def _espn_big(lg, t: str, p: dict) -> bool:

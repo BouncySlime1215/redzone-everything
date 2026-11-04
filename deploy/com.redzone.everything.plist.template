@@ -16,6 +16,12 @@
   <key>ThrottleInterval</key><integer>15</integer>
   <key>ExitTimeOut</key><integer>20</integer>
   <key>Umask</key><integer>63</integer>
+  <!-- Resource governor (redzone/governor.py): a slightly lower CPU priority, but Standard, not
+       Background, QoS. Background would pin the switch loop to the efficiency cores and coalesce
+       its timers, and a cut must land on time. Heavy children (ffmpeg trims, the lab search, the
+       OCR helper build) run under `taskpolicy -b`; optional work backs off when the Mac is busy. -->
+  <key>ProcessType</key><string>Standard</string>
+  <key>Nice</key><integer>5</integer>
   <key>EnvironmentVariables</key>
   <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
   <key>StandardOutPath</key><string>__ROOT__/data/service-bootstrap.log</string>

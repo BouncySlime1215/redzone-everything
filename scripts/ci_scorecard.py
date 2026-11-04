@@ -11,7 +11,8 @@ others, so one broken league still leaves numbers for the rest.
 
 PRs into `integration/next` (and pushes to it) run `--full`, the whole merge scorecard.
 The slice (all overridable): NFL `--n 4` slates, NBA and NHL `--nights 3`, and the Nov 1 mixed
-demo. It is a smoke test, not the merge scorecard: numbers are only comparable with another run
+demo. NFL, NBA and NHL also run a second time with `--resync` (live re-sync modelled), as
+`<league>_resync`. It is a smoke test, not the merge scorecard: numbers are only comparable with another run
 of the same slice on the same data, which is exactly what the CI comment shows (PR vs base).
 """
 from __future__ import annotations
@@ -42,9 +43,22 @@ def last_json(text: str):
 
 def cards(a) -> list[tuple[str, list[str], Path]]:
     """(name, argv, data it needs) for each scorecard in the slice."""
-    out = [("nfl", ["scripts/eval.py", "--n", str(a.nfl_n)], Path("data/archive/nfl"))]
+    sp = ["--split", a.split] if getattr(a, "split", "all") != "all" else []
+    out = [("nfl", ["scripts/eval.py", "--n", str(a.nfl_n), *sp], Path("data/archive/nfl"))]
     for lg in ("nba", "nhl"):
-        out.append((lg, ["scripts/eval_sports.py", lg, "--nights", str(a.nights)], Path(f"data/archive/{lg}")))
+        out.append((lg, ["scripts/eval_sports.py", lg, "--nights", str(a.nights), *sp], Path(f"data/archive/{lg}")))
+    if a.resync:
+        # [auto sync] the same slice with live Kalman re-sync modelled (backtest.run resync), so the
+        # comment shows each scorecard both ways. A base without the flag records an error here.
+        out += [(f"{n}_resync", argv + ["--resync"], need) for n, argv, need in list(out)]
+    if getattr(a, "robust", False):
+        # [no overfitting, rule 8] the same cards on noisy conditions: the screen really runs 3 s later /
+        # earlier than the app believes (the backtest believes 35 s), and a feed that drops out and
+        # delivers late. One stick down is the end-to-end night test's job (tests/test_e2e*.py).
+        base = [x for x in out if not x[0].endswith("_resync")]
+        for tag, extra in (("sync+3", ["--true-delay", "38"]), ("sync-3", ["--true-delay", "32"]),
+                           ("stale", ["--drop", "0.1", "--late-plays", "0.15"])):
+            out += [(f"{n}_{tag}", argv + extra, need) for n, argv, need in base]
     if a.demo_day:
         out.append((f"demo_{a.demo_day}", ["-m", "redzone.demo", a.demo_day, "--summary", "--json"],
                     Path(f"data/demo/{a.demo_day}")))
@@ -77,6 +91,13 @@ def main(argv=None) -> int:
     ap.add_argument("--nights", type=int, default=int(os.environ.get("RZ_SMOKE_NIGHTS", 3)))
     ap.add_argument("--demo-day", default=os.environ.get("RZ_SMOKE_DEMO_DAY", "20261101"),
                     help="mixed demo day to replay ('' to skip)")
+    ap.add_argument("--resync", action=argparse.BooleanOptionalAction,
+                    default=os.environ.get("RZ_SCORECARD_RESYNC", "1") == "1",
+                    help="also run NFL/NBA/NHL with live re-sync modelled (default on)")
+    ap.add_argument("--split", choices=("all", "train", "valid", "test", "fit"), default="all",
+                    help="grade one time split (redzone/lab/splits.py); test = the LOCKED release set")
+    ap.add_argument("--robust", action="store_true", default=os.environ.get("RZ_SCORECARD_ROBUST") == "1",
+                    help="also run NFL/NBA/NHL with sync error +-3 s and a dropping, late feed")
     ap.add_argument("--full", action="store_true", default=os.environ.get("RZ_SCORECARD_FULL") == "1",
                     help="the whole merge scorecard (NFL 16 slates, NBA/NHL 14 nights) instead of the slice")
     ap.add_argument("--timeout", type=float, default=None,
@@ -90,7 +111,7 @@ def main(argv=None) -> int:
     if a.nfl_n < 1 or a.nights < 1:
         ap.error("--nfl-n and --nights must be at least 1")
     result = {"root": str(root), "slice": {"nfl_n": a.nfl_n, "nights": a.nights, "demo_day": a.demo_day,
-                                           "full": a.full},
+                                           "full": a.full, "split": a.split, "robust": a.robust},
               "cards": {}}
     for name, args, needs in cards(a):
         if not (root / needs).exists():
