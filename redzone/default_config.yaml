@@ -34,6 +34,11 @@ polling:
   idle_s: 300              # poll every N seconds when nothing is live
   nba_pbp_s: 3             # NBA liveData play-by-play per live NBA game (sources.nba_primary / nba_shadow)
   nhl_pbp_s: 3             # NHL api-web play-by-play per live NHL game (sources.nhl_primary); 8 s when off
+  burst:                   # [sync 5] the on-screen game + its top challenger, only while a stoppage is likely
+    enabled: false         # (break forecast p >= break_p) or it's tense: summary + league pbp every every_s
+    every_s: 1.5           # floor 1 s; the poll loop runs at this rate while any burst game exists
+    break_p: 0.5
+    max_games: 2
 
 sources:
   fastcast: false          # ESPN's push feed: new plays the moment ESPN publishes them. Runs NEXT TO polling
