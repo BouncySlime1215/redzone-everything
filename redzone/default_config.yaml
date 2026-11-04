@@ -368,9 +368,9 @@ two_stick:
   pretune_on_open: false   # opening a live game on the phone pre-tunes it on the hidden stick (90 s), so
                            # "Watch this" / "Go now" is a ~3 s flip instead of a ~8 s tune + flip
   input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
-  tv_flip_prior_s: {median: 1.89, p95: 2.18, max: 2.58}  # the TV's own input change (SmartThings) before
-                           # we've timed 5: the live lab on your TV, Nov 4 (64/64 confirmed, 0 retries). The
-                           # decider plans flips with the median and bounds them with the p95.
+  tv_flip_prior_s: {median: 1.89, p95: 1.98, max: 2.02}  # the TV's own input change (SmartThings) before
+                           # we've timed 5: the live lab on your TV, Nov 4, CEC off (30/30; with CEC on it was
+                           # p95 2.18, max 2.58). The decider plans flips with the median, bounds them with the p95.
   keep_cec_off: true       # a stick whose HDMI-CEC you turned off (scripts/stick_cec.py) gets it back on only
                            # for a HOME fallback onto it, then off again (so losing the input never pauses it)
   park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long

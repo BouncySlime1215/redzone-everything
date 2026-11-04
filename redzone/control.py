@@ -1070,7 +1070,7 @@ class Controller:
 
     def _tv_prior(self) -> tuple[float, float]:
         """(median, upper) of the TV input change before we've timed our own: the SmartThings
-        switch measured on the user's TV, Nov 4 2026 (live lab Nov 4: 64/64 confirmed, median 1.89 s, p95 2.18 s)."""
+        switch measured on the user's TV, Nov 4 2026 (live lab Nov 4, CEC off: 30/30, median 1.89 s, p95 1.98 s)."""
         from redzone.contracts.switching import flip_bound
         return flip_bound(self.cfg.get("two_stick.tv_flip_prior_s") or {})
 

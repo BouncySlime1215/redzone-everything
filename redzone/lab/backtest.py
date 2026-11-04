@@ -319,6 +319,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
         channel_spread: float = 0.0, history: float = 0.0, delay_model: str | None = None,
         resync: bool = False, anchors: bool = False, tune_jitter_s: float = 0.0, flip_dist: bool = False, positions: bool = False,
+        pretune_dist: bool = False,
         feed_lag_model: str | None = None,
         calibrate_targets: bool = False,
         on_tick: Callable | None = None) -> Report:
@@ -350,6 +351,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
                     data). Every on-screen second is graded for honesty (Report.sync_honesty).
       positions     [yttv position] with anchors: the stick on screen reports its playback position
       flip_dist     [live lab] each picture comes up with the measured TV flip's spread around tune_s
+      pretune_dist  [live lab] ...or a cold hidden-stick pre-tune (4K Plus / 4K 2023 in turn) + flip + settle
       tune_jitter_s [auto-anchors] each tune lands U(0, S) s behind the live edge, unknown to the app (a
                     YouTube TV tune, redzone/lab/syncsim.py: 0-6 s). Graded as a real offset of that
                     visit, so the delay the app believes is wrong by it until something re-syncs it.
@@ -410,6 +412,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         if anchors and cfg.get("delay.self_calibrate.enabled", False):
             delays.attach_cal(noise_cal(cfg, replays[0].league if replays else None))
     jitter_rng = random.Random(seed * 5_000_011 + 3)
+    flip_rng = random.Random(seed * 5_000_011 + 7)   # its own stream: the tune jitter draws stay the same
     honesty: list[tuple[float, float]] = []   # (error of the delay used, its sigma), each on-screen tick
     sampler = None
     if feed_lag_model == "measured":
@@ -470,10 +473,17 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             j = jitter_rng.uniform(0.0, tune_jitter_s)
             switches[-1].offset += j
             switches[-1].jitter = j
-        if flip_dist and len(switches) > n_sw and switches[-1].kind != "replay":
-            # [live lab] the TV flip's measured spread around its median (64 SmartThings flips, Nov 4)
-            from redzone.contracts.switching import FLIP_PRIOR, LIVELAB_FLIPS_S
-            switches[-1].arrive_dt = jitter_rng.choice(LIVELAB_FLIPS_S) - FLIP_PRIOR["median"]
+        if (flip_dist or pretune_dist) and len(switches) > n_sw and switches[-1].kind != "replay":
+            # [live lab] the TV flip's measured spread around its median (CEC off, 30 flips, Nov 4)
+            from redzone.contracts.switching import FLIP_PRIOR, INPUT_SETTLE_S, PRETUNE_PRIOR_S, sample_prior
+            flip = sample_prior(FLIP_PRIOR, flip_rng)
+            if pretune_dist:
+                # every switch a cold pre-tune on the hidden stick, the two sticks taking turns
+                # (pessimistic: a hot standby is a flip alone): pre-tune + flip + HDMI settle vs tune_s
+                stick = list(PRETUNE_PRIOR_S.values())[len(switches) % len(PRETUNE_PRIOR_S)]
+                switches[-1].arrive_dt = sample_prior(stick, flip_rng) + flip + INPUT_SETTLE_S - tune_s
+            else:
+                switches[-1].arrive_dt = flip - FLIP_PRIOR["median"]
         if sync is not None and resync:
             _resync_tick(delays, sync, decision, switches, tgt_of, lag_true, tune_s, clock.t, noise)
         elif sync is not None:

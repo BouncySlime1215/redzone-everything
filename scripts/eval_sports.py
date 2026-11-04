@@ -84,7 +84,10 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--positions", action="store_true",
                     help="[yttv position] with --break-anchors: the stick on screen reports its playback position")
     ap.add_argument("--flip-dist", action="store_true",
-                    help="[live lab] each picture comes up with the measured SmartThings flip spread (64 flips)")
+                    help="[live lab] each picture comes up with the measured SmartThings flip spread (CEC off)")
+    ap.add_argument("--pretune-dist", action="store_true",
+                    help="[live lab] each picture comes up after a cold hidden-stick pre-tune (4K Plus and 4K 2023 "
+                         "in turn) + flip + settle, against the planner's tune_s (pessimistic)")
     ap.add_argument("--real-lag", action="store_true",
                     help="[switch timing] plays reach the app after the MEASURED feed lag per league "
                          "(redzone/lab/feed_lag_profile.json), not a fixed 8 s")
@@ -104,6 +107,7 @@ def knobs(a: argparse.Namespace) -> dict:
                 delay_model=getattr(a, "delay_model", None), resync=getattr(a, "resync", False),
                 anchors=getattr(a, "break_anchors", False), tune_jitter_s=getattr(a, "tune_jitter", 0.0),
                 flip_dist=getattr(a, "flip_dist", False), positions=getattr(a, "positions", False),
+                pretune_dist=getattr(a, "pretune_dist", False),
                 feed_lag_model="measured" if getattr(a, "real_lag", False) else None,
                 **feed_lag_knobs(getattr(a, "feed_lag", None), getattr(a, "behind_live", None)))
 

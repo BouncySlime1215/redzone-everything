@@ -27,7 +27,7 @@ def test_tv_path_plans_with_the_measured_smartthings_prior(cfg, tmp_path):
     c = _ctl(cfg, tmp_path, True)
     assert c.flip_path() == "tv_flip"
     assert c.flip_estimate() == pytest.approx(1.89 + 1.0)        # median + HDMI settle, before any of our own
-    assert c._flip_upper() == pytest.approx(2.18 + 1.0)  # the measured p95 until we've timed 5
+    assert c._flip_upper() == pytest.approx(1.98 + 1.0)  # the measured p95 until we've timed 5
 
 
 def test_tv_path_ignores_home_flips(cfg, tmp_path):
@@ -70,4 +70,4 @@ def test_deadline_cost_uses_the_tv_bound_for_a_preloaded_target(cfg, tmp_path, m
     monkeypatch.setattr(c, "_tile_path_cost", lambda t: None)
     monkeypatch.setattr(type(c), "prime_mv", property(lambda self: None))
     monkeypatch.setattr(type(c), "hidden", property(lambda self: None))
-    assert c.deadline_cost("youtubetv:espn") == pytest.approx(2.18 + 1.0)
+    assert c.deadline_cost("youtubetv:espn") == pytest.approx(1.98 + 1.0)

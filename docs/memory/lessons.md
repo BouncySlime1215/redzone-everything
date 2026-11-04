@@ -194,3 +194,4 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Fix:** `decider.entry.confirmed_dead_only` (candidate on): a lone substitution opens no window, so a rewind falls back to an earlier logged stoppage or the entry waits.
 - **Signals:** a rewind of 50 s or more into NBA; a window of kind `substitution` with no stronger kind.
 
+- 2026-11-04 **Replay window measured from the wrong clock.** `Missed.t` is when the feed had the play; Nick's "within 3 minutes" runs from when it aired on the TV, a whole stream delay later (~2 min with the time-shift buffer). The window filter and its urgency ramp used `t`, so they allowed ~1 minute. Now `Missed.aired` (feed time + screen delay) drives both. Check which clock a deadline means before tuning it.

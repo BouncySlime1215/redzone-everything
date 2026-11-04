@@ -202,6 +202,7 @@ class Missed:
     mine: bool = False        # your team / your bet: its catch-up goes before other games' ones
     due_s: float = 0.0        # [replay.redzone_way] replay it within this long of the play (0 = old rule)
     must: bool = False        # [T4] missed because another big play was on screen: head of the queue
+    aired: float = 0.0        # when it aired on the screen (wallclock; 0 = unknown, use t)
 
     def back_s(self, now: float, delay_mu: float, play_len: float, lead_s: float = 3.0) -> float:
         """How far to rewind from the live edge (which shows real time now - delay)."""
@@ -496,7 +497,7 @@ class Decider:
                                                              "turnover" if "intercept" in e.label.lower() else "other")
                 value = REPLAY_BASE.get(kind, 40) + min(25.0, x.scored.personal)
                 m = Missed(gid, e.pid or e.label, e.label, kind, e.seen, value, seen_live=seen,
-                           mine=gid in self._yours)
+                           mine=gid in self._yours, aired=air_end)
                 if rw and not seen:
                     m.must = self._collided(gid, air_end, play_len)
                     m.due_s = float(self.cfg.get("replay.collision_s", 180) if m.must
@@ -557,10 +558,19 @@ class Decider:
             return 0.0
         due = self._due(m)
         if due:
-            # [redzone way] ramps from half its due time to 1 at the due time, and stays there.
-            return max(0.0, min(1.0, ((now - m.t) - due / 2) / (due / 2)))
+            # [redzone way] ramps from half its due time to 1 at the due time, and stays there. The
+            # 3-minute window counts from when the play aired, not from when the feed had it.
+            w = self._window(m)
+            age = self._aired_age(m, now) if w and due == w else now - m.t
+            return max(0.0, min(1.0, (age - due / 2) / (due / 2)))
         left = self.cfg.get("replay.max_age_s", 1800) - (now - m.t)
         return max(0.0, min(1.0, 1.0 - left / urgent))
+
+    @staticmethod
+    def _aired_age(m: Missed, now: float) -> float:
+        """How long ago the play aired on the screen: Nick's 3 minutes run from there (the feed has
+        it a whole stream delay earlier, ~2 min with the time-shift buffer)."""
+        return now - (m.aired or m.t)
 
     def _window(self, m: Missed | None = None) -> float:
         """[replay window] Nick, Nov 4: a missed moment is shown within this (2-3 min, the next dead
@@ -606,7 +616,7 @@ class Decider:
         if not montage and (top is not None or not self.cfg.get("replay.window_fill", False)):
             # [replay window] past the window a missed play is skipped (montage only); with
             # replay.window_fill it may still fill dead time, but never trades live play for it
-            pool = [m for m in pool if not self._window(m) or now - m.t <= self._window(m)]
+            pool = [m for m in pool if not self._window(m) or self._aired_age(m, now) <= self._window(m)]
         scored_at = self._just_scored(now) if rw else None
         meanwhile = (lambda m: scored_at is not None and m.game_id != self.current
                      and abs(m.t - scored_at) <= self.cfg.get("replay.meanwhile_s", 120))

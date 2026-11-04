@@ -55,7 +55,26 @@ LIVELAB_FLIPS_S = (1.6, 1.66, 1.71, 1.71, 1.76, 1.77, 1.82, 1.83, 1.83, 1.83, 1.
                    1.88, 1.89, 1.89, 1.9, 1.9, 1.9, 1.9, 1.9, 1.91, 1.91, 1.92, 1.92, 1.93, 1.93, 1.94, 1.95,
                    1.95, 2.0, 2.0, 2.02, 2.02, 2.02, 2.02, 2.04, 2.04, 2.06, 2.08, 2.1, 2.12, 2.14, 2.18, 2.23,
                    2.36, 2.58)
-FLIP_PRIOR = {"median": 1.89, "p95": 2.18, "max": 2.58}
+FLIP_PRIOR_CEC_ON = {"median": 1.89, "p95": 2.18, "max": 2.58}   # the 64 flips above (CEC on)
+# [live lab, Nick Nov 4 11:35 AM] with HDMI-CEC off the stick we leave keeps PLAYING (83/83) and the
+# flip tightens: 30/30, p50 1.89 s, p95 1.98 s, max 2.02 s. The planner's prior.
+FLIP_PRIOR = {"median": 1.89, "p95": 1.98, "max": 2.02}
+# Hidden-stick pre-tune to PLAYING (same live lab), by ADB model code: prefer the 4K Plus for hot pre-tunes.
+PRETUNE_PRIOR_S = {
+    "AFTMA08C15": {"name": "Fire TV Stick 4K Plus", "median": 2.33, "p95": 3.06},
+    "AFTKM": {"name": "Fire TV Stick 4K (2023)", "median": 3.74, "p95": 5.50},
+}
+INPUT_SETTLE_S = 1.0   # two_stick.input_settle_s default: the picture after the input change
+
+
+def sample_prior(prior: dict, rng) -> float:
+    """One draw from a measured (median, p95[, max]) prior: a lognormal through the median and p95,
+    clipped at the measured max. The sims' spread for flips and pre-tunes."""
+    import math
+    med, p95 = float(prior["median"]), float(prior.get("p95", prior["median"]))
+    sd = math.log(max(p95, med) / med) / 1.645
+    x = med * math.exp(rng.gauss(0.0, sd))
+    return min(x, float(prior["max"])) if "max" in prior else x
 
 
 def flip_bound(prior: dict) -> tuple[float, float]:

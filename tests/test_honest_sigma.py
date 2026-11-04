@@ -216,3 +216,32 @@ def test_lookahead_scopes_to_its_leagues():
     dec.cfg = {"noggin.lookahead.leagues": ["nfl"]}
     assert not dec._lookahead_on(nfl)
     assert "noggin.lookahead.leagues=[nfl]" in profile.argv("candidate", "nhl")
+
+
+def test_cec_off_flip_prior_and_stick_pretunes():
+    """[live lab, Nov 4 11:35 AM] CEC off: flips p50 1.89 / p95 1.98 / max 2.02; hidden-stick pre-tune to
+    PLAYING 4K Plus 2.33 / 3.06, 4K 2023 3.74 / 5.50. The sims draw from these."""
+    import statistics
+    from redzone.contracts.switching import FLIP_PRIOR, PRETUNE_PRIOR_S, flip_bound, sample_prior
+    assert flip_bound(FLIP_PRIOR) == (1.89, 1.98)
+    rng = random.Random(3)
+    xs = sorted(sample_prior(FLIP_PRIOR, rng) for _ in range(4000))
+    assert abs(statistics.median(xs) - 1.89) < 0.01 and abs(xs[int(.95 * len(xs))] - 1.98) < 0.01 and xs[-1] <= 2.02
+    for p in PRETUNE_PRIOR_S.values():
+        ys = sorted(sample_prior(p, rng) for _ in range(4000))
+        assert abs(statistics.median(ys) - p["median"]) < 0.08 and abs(ys[int(.95 * len(ys))] - p["p95"]) < 0.2
+    assert PRETUNE_PRIOR_S["AFTMA08C15"]["p95"] < PRETUNE_PRIOR_S["AFTKM"]["median"]   # prefer the 4K Plus
+
+
+def test_replay_window_counts_from_the_airing():
+    """[replay window] Nick's 3 minutes run from when the play aired, not from when the feed had it."""
+    from redzone.decider.decider import Decider, Missed
+    dec = Decider.__new__(Decider)
+    dec._known = {}
+    dec.cfg = {"replay.window_s": 180}
+    m = Missed("g1", "p", "TD", "td", 1000.0, 90.0, due_s=600.0, aired=1130.0)
+    assert dec._aired_age(m, 1250.0) == 120.0                 # 250 s after the feed, 120 s after it aired
+    assert dec._urgency(m, 1250.0) == 120.0 / 90.0 - 1.0      # ramps from 90 s to 180 s after airing
+    assert dec._urgency(m, 1320.0) == 1.0
+    old = Missed("g1", "p", "TD", "td", 1000.0, 90.0, due_s=600.0)
+    assert dec._aired_age(old, 1250.0) == 250.0               # unknown airing: the feed time
