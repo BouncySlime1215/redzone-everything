@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from redzone.config import Config  # noqa: E402
-from redzone.lab.backtest import fmt_time, run  # noqa: E402
+from redzone.lab.backtest import feed_lag_knobs, fmt_time, run  # noqa: E402
 from redzone.lab import evaldata, splits  # noqa: E402
 from redzone.lab.cutgrade import CutCard  # noqa: E402
 from redzone.lab.optimize import load_slates  # noqa: E402
@@ -86,10 +86,18 @@ def main():
     ap.add_argument("--delay-model", choices=("channel", "legacy"), default=None)
     ap.add_argument("--resync", action="store_true",
                     help="model live Kalman re-sync on every tune (backtest.run resync)")
+    ap.add_argument("--real-lag", action="store_true",
+                    help="[switch timing] plays reach the app after the MEASURED feed lag per league "
+                         "(redzone/lab/feed_lag_profile.json), not a fixed 8 s")
+    ap.add_argument("--feed-lag", type=float, default=None, metavar="S",
+                    help="[switch timing] every play reaches the app S s after it happened (default 8). The "
+                         "screen stays 43 s behind real life, so only the warning before it airs changes")
     a = ap.parse_args()
     knobs = dict(true_delay=a.true_delay, sigma=a.sigma, lag_jitter=(3.0, 25.0) if a.lag_jitter else None,
                  drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed,
-                 channel_spread=a.channel_spread, history=a.history, delay_model=a.delay_model, resync=a.resync)
+                 channel_spread=a.channel_spread, history=a.history, delay_model=a.delay_model, resync=a.resync,
+                 feed_lag_model="measured" if a.real_lag else None,
+                 **feed_lag_knobs(a.feed_lag))
     # The live service rewrites data/config.yaml (measured switch costs, taps): scorecards read a
     # pinned copy when one exists, so a before/after comparison isn't moved by the live night.
     pinned = ROOT / "data/eval_config.yaml"

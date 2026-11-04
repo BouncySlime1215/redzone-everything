@@ -1,0 +1,79 @@
+"""[switch timing] Dead-ball detection lag per source and league, and the on-screen lead it leaves.
+
+    python scripts/timing_report.py                                  # data/recordings/*/plays.jsonl
+    python scripts/timing_report.py --rec path/to/recordings --json out.json
+    python scripts/timing_report.py --delay youtubetv:espn=26.4 --delay peacock:x=48.4
+    python scripts/timing_report.py --write-profile                  # refresh redzone/lab/feed_lag_profile.json
+
+Read-only on the recordings and data/redzone.db. See redzone/lab/timing.py for the definitions.
+"""
+import argparse
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from redzone.lab import timing  # noqa: E402
+
+
+def db_delays(db: Path) -> dict[str, float]:
+    """Latest measured stream delay per channel (taps and show changes; set-aside taps skipped)."""
+    if not db.exists():
+        return {}
+    try:
+        c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        rows = c.execute("select target, sample, kind from calibrations order by ts").fetchall()
+    except sqlite3.Error:
+        return {}
+    return {t: float(s) for t, s, k in rows if k in ("tap", "boundary", "scorebug")}
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--rec", type=Path, default=ROOT / "data/recordings")
+    ap.add_argument("--db", type=Path, default=ROOT / "data/redzone.db")
+    ap.add_argument("--delay", action="append", default=[], metavar="CHANNEL=SECONDS")
+    ap.add_argument("--json", type=Path)
+    ap.add_argument("--write-profile", action="store_true")
+    a = ap.parse_args(argv)
+    files = sorted(a.rec.glob("*/plays.jsonl"))
+    if not files:
+        print(f"no recordings under {a.rec}")
+        return 2
+    days = [f.parent.name for f in files]
+    rows = timing.load_rows(files)
+    rep = timing.detection_report(rows, days)
+    delays = db_delays(a.db)
+    for kv in a.delay:
+        k, _, v = kv.partition("=")
+        delays[k] = float(v)
+    out = rep.to_json()
+    out["delays"] = delays
+    out["lead"] = timing.lead_table(rep, delays)
+    print(f"recordings {days[0]}..{days[-1]}: {rep.kept}/{rep.rows} rows while tracking")
+    print(f"{'league':6} {'source':14} {'dead balls':>10} {'p10':>6} {'p50':>6} {'p90':>6} {'<=3s':>6}  newest-in-batch p50  poll gap p50")
+    for lg, srcs in sorted(rep.by_league.items()):
+        for src, s in srcs.items():
+            d = s["dead_ball"]
+            if not d.get("n"):
+                continue
+            print(f"{lg:6} {src:14} {d['n']:>10} {d['p10']:>6} {d['p50']:>6} {d['p90']:>6} {d['within_3s_pct']:>5}%"
+                  f"  {s['newest_in_batch'].get('p50', '-'):>19}  {s['poll_gap_s'].get('p50', '-'):>12}")
+    if out["lead"]:
+        print("\non-screen lead = stream delay - dead-ball detection lag (negative: it aired before we knew)")
+        for k, v in out["lead"].items():
+            print(f"  {k:40} delay {v['delay_s']:>5}  lead at lag p10 {v['lead_p10_lag']:>6}  p50 {v['lead_median_lag']:>6}  p90 {v['lead_p90_lag']:>6}")
+    if a.json:
+        a.json.write_text(json.dumps(out, indent=1))
+    if a.write_profile:
+        prof = timing.build_profile(rows, days)
+        timing.PROFILE_PATH.write_text(json.dumps(prof, indent=1) + "\n")
+        print(f"wrote {timing.PROFILE_PATH.relative_to(ROOT)} ({', '.join(prof['leagues'])})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

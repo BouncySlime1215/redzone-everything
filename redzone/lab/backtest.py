@@ -175,6 +175,19 @@ class Lags(float):
         return self.per.get(gid or "", float(self))
 
 
+SCREEN_LAG_S = 43.0   # run()'s default real life -> screen (feed_lag 8 + delay 35)
+
+
+def feed_lag_knobs(feed_lag: float | None) -> dict:
+    """[switch timing] run() kwargs for a fixed feed lag that keeps the screen where it was: the app
+    learns of each play later; the stream itself is no faster or slower."""
+    if feed_lag is None:
+        return {}
+    if not 0 <= feed_lag <= 300:
+        raise ValueError(f"feed lag {feed_lag} s is outside 0..300")
+    return {"feed_lag": float(feed_lag), "delay": SCREEN_LAG_S - float(feed_lag)}
+
+
 def lag_of(lag: float, gid: str | None) -> float:
     """This game's real-life -> screen lag (the plain figure when channels don't differ)."""
     return lag.of(gid) if isinstance(lag, Lags) else lag
@@ -204,8 +217,16 @@ def channel_scenario(replays, targets, feed_lag: float, delay: float, spread: fl
 
 
 def _feed(r: Replay, rng: random.Random, feed_lag: float, step: float, lag_jitter, drop: float,
-          late_plays: float, no_wallclock: float, t0: float, t1: float) -> _Feed:
-    if lag_jitter:
+          late_plays: float, no_wallclock: float, t0: float, t1: float, sampler=None) -> _Feed:
+    if sampler is not None:
+        # [switch timing] the measured feed: each play's own lag, delivered in order (a poll never
+        # hands over a play before an older one it already carries)
+        lg = r.league.value
+        arrive, prev = [], float("-inf")
+        for w in r.wall:
+            prev = max(prev, w + sampler.draw(lg, rng))
+            arrive.append(prev)
+    elif lag_jitter:
         lo, hi = lag_jitter
         arrive, prev = [], float("-inf")
         for w in r.wall:
@@ -263,7 +284,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         true_delay: float | None = None, sigma: float = 3.0, lag_jitter: tuple[float, float] | None = None,
         drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
         channel_spread: float = 0.0, history: float = 0.0, delay_model: str | None = None,
-        resync: bool = False, on_tick: Callable | None = None) -> Report:
+        resync: bool = False, feed_lag_model: str | None = None, on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
       true_delay    the stream's real delay; `delay` is only the app's estimate of it
@@ -284,6 +305,10 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
                     seeded). Channels off screen keep their last figure and age the way live ages them
                     (sigma floored at delay.sync.min_sigma_s, doubt growing to the settled cap, stale
                     after 30 min). Without it, every channel keeps the kickoff calibration.
+      feed_lag_model  [switch timing] "measured": each play reaches the app after a lag drawn from the
+                    league's MEASURED detection lag (redzone/lab/feed_lag_profile.json, the flight
+                    recorder's espn_summary rows; seeded, in order), instead of the fixed feed_lag.
+                    The app still believes feed_lag + delay is real life -> screen.
       on_tick       optional read-only lab observer (historical time, decider), before selection
     """
     step = step or cfg.get("polling.live_s", 10)
@@ -323,8 +348,14 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
                               {f"youtubetv:{r.gid}": (lag_total, sigma, t0) for r in replays})
         tgt_of = {r.gid: (targets or {}).get(r.gid, f"youtubetv:{r.gid}") for r in replays}
         noise = random.Random(seed * 7_000_003 + 17)
+    sampler = None
+    if feed_lag_model == "measured":
+        from redzone.lab.timing import LagSampler
+        sampler = LagSampler()
+    elif feed_lag_model not in (None, "fixed"):
+        raise ValueError(f"feed_lag_model must be 'measured' or 'fixed', not {feed_lag_model!r}")
     feeds = {r.gid: _feed(r, random.Random(seed * 1_000_003 + zlib.crc32(r.gid.encode())), feed_lag, step,
-                          lag_jitter, drop, late_plays, no_wallclock, t0, t1) for r in replays}
+                          lag_jitter, drop, late_plays, no_wallclock, t0, t1, sampler) for r in replays}
 
     switches: list[SwitchLog] = []
     decisions = []

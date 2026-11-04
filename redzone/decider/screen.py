@@ -33,6 +33,10 @@ FIRST_POLL_RECENT_S = 60.0  # on a game's first poll, plays newer than this may 
 FEED_LAG_MIN_S = 2.0
 FEED_LAG_MAX_S = 30.0
 LAG_EST_DEFAULT_S = 10.0   # feed lag assumed until we've measured some
+# [switch timing] A lag sample ("not in the data at the last fresh poll") is a lower bound. It was capped
+# at 45 s, under the measured NHL median (50 s, docs/timing.md), so the gate believed its data covered a
+# 43 s stream: 5 NHL mid-play cuts on the scorecard graded with the measured feed lag (--real-lag).
+LAG_SAMPLE_CAP_S = 180.0
 # The least doubt "I just saw it" taps can earn. Taps that agree to the second still share a bias
 # (reaction time, the feed's wallclock rounding): stated 2 s, a real 6 s error cut 3 plays mid-play
 # (eval.py --sigma 2 --true-delay 41); 4 s held 0 cuts out to 8 s of error for ~0.3 pt dead air.
@@ -570,7 +574,7 @@ class Timeline:
             self.events.append(Event(hi, "play", (p.text or p.kind)[:80], big, p.id, p.kind, hi - lo))
             if p.wallclock and prev_fresh is not None and not first_poll:
                 # It wasn't in the data at the last fresh poll, so the feed ran at least this far behind.
-                self._lags.append(min(45.0, max(0.0, prev_fresh - p.wallclock)))
+                self._lags.append(min(LAG_SAMPLE_CAP_S, max(0.0, prev_fresh - p.wallclock)))
         for p in scorers:
             # Every score change with its feed time, free throws included (they're dead-ball markers
             # above), for timing the broadcast's score bug (redzone/screen/scorebug.py).
