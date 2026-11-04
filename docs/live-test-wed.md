@@ -7,6 +7,13 @@ landed:
 2. **The time-shift buffer.** Each stream is held B seconds behind live: NFL 60, NBA/NHL 90.
    Its North Star metric is entries mid-play: 0 in the sim, and NBA big plays seen 67.8 → 87.4 %.
 
+3. **Sync data, collected by itself.** You do nothing for this. While the app runs, it logs what
+   each stick exposes: playback state, buffering, Wi-Fi signal and link speed, and on the hidden
+   stick any on-screen ad, countdown, clock or caption text. It presses nothing and pauses itself
+   during switches. The log is `data/recordings/<date>/sync_probe.jsonl`, and Claude reads it from the
+   Mac afterwards. The flips also now wait until the hidden stick has been playing steadily for
+   about 1 s (PR #70), and every switch records whether its picture was playing within 3 s.
+
 **It passes when** `enter == "play"` is **0** across every graded cut, the buffer log lines show
 streams held near B, and no flip took longer than about 4 s.
 
@@ -87,7 +94,8 @@ Grading needs about 90 s after each cut, so run these once the last switch has s
       for r in rows:
           pic = (r.get("picture_at") or 0) - (r.get("cut_at") or 0)
           flip = (r.get("flip_done") or 0) - (r.get("flip_start") or 0)
-          print(f"picture {pic:5.1f}s  flip {flip:4.1f}s  rewind {r.get('rewind_s')}  {r.get('to')}")
+          print(f"picture {pic:5.1f}s  flip {flip:4.1f}s  rewind {r.get('rewind_s')}  "
+                f"settled {r.get('settled')}  stall {r.get('stall_s')}  {r.get('to')}")
       EOF
       ```
 - [ ] **Did the buffer hold?**

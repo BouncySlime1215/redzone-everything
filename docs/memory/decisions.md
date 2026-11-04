@@ -144,3 +144,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   added to that target's delay (`held` -> DelayBook). A flip "settles" when the stick is PLAYING within 3 s
   (`settle_book`, the North Star row "flips PLAYING within 3 s >= 99%"). The #61 hold now re-anchors the stream.
   Not behind a flag: it only refuses unsafe flips and books measured lag; the sims don't model the sticks.
+- 2026-11-04 8:10 AM: **SYNC probe ON by default** (`sync.probe.enabled: true`). Nick (1:45 AM): auto-anchors only,
+  no manual work, and a probe that runs by itself on Wednesday. It is read-only: it presses nothing, changes no
+  setting, uses its own adb process and skips every tick during a switch, flip or preload, in dry run, and when
+  the governor blocks OCR. It writes `recordings/<day>/sync_probe.jsonl`. The visible stick's UI tree is not dumped
+  (`sync.probe.visible_ui: false`) until a dump is shown not to stutter the picture. Decisions don't read it.

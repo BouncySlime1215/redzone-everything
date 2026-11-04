@@ -255,3 +255,23 @@ an upper bound, since `edited` is the last edit, not the first. ESPN's NBA dead 
   switch trace carries `settled` and `stall_s`. North Star row: flips PLAYING within 3 s >= 99%.
 - **#61 hold fix.** After the hold's PLAY, the stream is re-anchored. Before, the pause broke `still_on`, so the
   next flip re-tuned the held stream at the live edge and threw the hold away.
+
+## SYNC probe: what the sticks expose (Nov 4)
+
+`redzone/sync_probe.py` collects the data for auto-anchors and the network features of the delay model.
+Nick's 1:45 and 1:50 AM revisions: no tap-sync, and delay is not stationary. It runs on its own whenever the
+app is live (`sync.probe.enabled`, default on). Each tick (5 s) writes one row per stick to
+`recordings/<day>/sync_probe.jsonl`:
+
+| field | from | for |
+|---|---|---|
+| `ms` | `dumpsys media_session` (state, position, updated, speed, title/subtitle/description) | state transitions, ad metadata |
+| `stall_s`, `state_changed` | stick clock vs position since the last tick | buffering per minute and its length |
+| `wifi` (every 15 s) | `dumpsys wifi`: RSSI, link/tx/rx speed, frequency (numbers only) | network condition features |
+| `ui` (hidden stick, every 20 s) | `uiautomator dump`: text, hints `ad`/`countdown`/`clock`/`score`/`captions` | break start/end, clock anchors |
+| `log` (every 15 s) | `logcat` lines on ads, cues, SCTE, buffering, bitrate, resolution | break anchors, bitrate |
+
+Expect YouTube TV (Cobalt) and Prime's player to draw their own UI, so `ui` may come back empty. That is
+one of the things Wednesday will settle. The next step builds break anchors (sample_kind `break_start` /
+`break_end` plus the feed event wallclock) into `redzone/decider/sync.py`. delay_mu and delay_sigma are
+exposed through DelayBook for the Noggin.
