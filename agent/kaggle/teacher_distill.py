@@ -307,6 +307,15 @@ for f in ("grade_rows.jsonl", "jump_rows.jsonl"):
         os.makedirs(os.path.join(keep, "graded"), exist_ok=True)
         shutil.copy(os.path.join(gdir, f), os.path.join(keep, "graded", f))
 json.dump({"round": ROUND, "mode": MODE, "wall_h": round((time.time() - T0) / 3600, 2)}, open(os.path.join(keep, "round.json"), "w"))
+from agent.kaggle.grade import short_grades  # noqa: E402
+
+# grades.json at the output ROOT: the few numbers the overseer reads from Kaggle's Output tab (the log is cut)
+try:
+    rep = json.load(open(os.path.join(WORK, "report.json"))) if os.path.exists(os.path.join(WORK, "report.json")) else {}
+    json.dump(short_grades(rep, ROUND, MODE, round((time.time() - T0) / 3600, 2)), open(os.path.join(KW, "grades.json"), "w"), indent=1)
+    print("grades.json:", open(os.path.join(KW, "grades.json")).read())
+except Exception as e:  # noqa: BLE001 - the summary never fails the round
+    print("grades.json not written:", type(e).__name__, e)
 shutil.make_archive(f"{KW}/out", "zip", keep)
 # keep the version output small: the 3.4 GB dequantized base is rebuilt next session in ~2 min
 shutil.rmtree(os.path.join(WORK, "students", "base-deq"), ignore_errors=True)

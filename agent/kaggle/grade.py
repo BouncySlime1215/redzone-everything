@@ -247,6 +247,21 @@ def md(rep: dict) -> str:
     return "\n".join(parts) + "\n"
 
 
+def short_grades(rep: dict, round_id: str = "", mode: str = "", wall_h: float | None = None) -> dict:
+    """The few numbers worth reading from Kaggle's Output tab: gates per source, watchdog, head AUCs + leak flags."""
+    r = rep.get("reasoner") or {}
+    out = {"round": round_id, "mode": mode, "wall_h": wall_h,
+           "reasoner_gate": {k: ("PASS" if not v else "FAIL: " + ", ".join(map(str, v))) for k, v in (r.get("gate") or {}).items()},
+           "reasoner_all": {k: {m: (r[k].get("all") or {}).get(m) for m in ("n", "lock_acc", "unsafe_leave_pct", "jump_acc")}
+                            for k in ("today", "head", "teacher", "student") if isinstance(r.get(k), dict)},
+           "watchdog": {k: {m: v.get(m) for m in ("n", "accuracy", "gate")} for k, v in (rep.get("watchdog") or {}).items()
+                        if isinstance(v, dict)}}
+    head = (rep.get("build") or {}).get("head") or {}
+    out["head"] = {lg: {m: v.get(m) for m in ("base_rate", "auc_test", "auc_test_context_only", "auc_lift_over_context",
+                                              "auc_test_in_window", "leak_suspect", "near_perfect")} for lg, v in head.items()}
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pack", required=True)
