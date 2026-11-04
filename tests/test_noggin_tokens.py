@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -49,7 +50,8 @@ def test_coverage_tags_for_the_ledger():
 
 def _old_nfl(tmp_path, date):
     """A 1999-style nflverse season: no time_of_day at all, only game_date."""
-    import pandas as pd
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("pyarrow")
     rows = []
     for i, (q, t, h, a) in enumerate([(1, "15:00", 0, 0), (1, "10:00", 7, 0), (2, "05:00", 7, 3), (4, "01:00", 14, 3)]
                                      * 4):

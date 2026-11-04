@@ -45,6 +45,7 @@ PLAN = {
     "wcbb": (list(range(2026, 2005, -1)), 4),  # wehoop (MIT); docs/data-sources.md
     "cfb": (list(range(2025, 2003, -1)), 0),   # ESPN FBS board (Kaggle only; ESPN is blocked from the cloud)
 }
+APIWEB_BEFORE = 2020   # NHL seasons before 2019-20 tokenize from api-web (docs/data-sources.md)
 if os.environ.get("RZ_LEAGUES"):
     PLAN = {k: v for k, v in PLAN.items() if k in os.environ["RZ_LEAGUES"].split(",")}
 os.makedirs(OUT, exist_ok=True)
@@ -108,6 +109,7 @@ def season_job(league, year, synthetic, deadline):
                     "nights": int(t["night"].nunique()) if "night" in t else None}
         else:
             info = {"rows": 0, "complete": True, "note": "no data (season missing or no wall clocks)"}
+        os.makedirs(os.path.dirname(mo), exist_ok=True)      # a no-data season still records that it is done
         json.dump(info, open(mo[:-8] + ".json", "w"))
     res["moments"] = json.load(open(mo[:-8] + ".json"))["rows"]
     espn_src = bool(F.SOURCES[league].get("espn"))
@@ -121,6 +123,10 @@ def season_job(league, year, synthetic, deadline):
             NF.fetch_espn_season(league, year, __import__("pathlib").Path(raw), max_games=40 if SMOKE else None)
         else:
             NF._fetch(F.SOURCES[league]["url"].format(y=year), __import__("pathlib").Path(raw))
+    if league == "nhl" and year < APIWEB_BEFORE and not tk_done and time.time() < deadline:
+        import nhl_apiweb                     # ESPN has no NHL wall clocks before 2019-20: the NHL's own feed
+        raw = f"{RAW}/nhl/apiweb_{year}.jsonl.gz"
+        nhl_apiweb.fetch_season(year, __import__("pathlib").Path(raw), max_games=40 if SMOKE else None)
     if not tk_done and os.path.exists(raw) and time.time() < deadline:     # NFM event tokens (every league)
         import noggin_tokens as NT
         res["tokens"] = NT.build(league, __import__("pathlib").Path(raw), year, __import__("pathlib").Path(f"{OUT}/tokens"))["tokens"]

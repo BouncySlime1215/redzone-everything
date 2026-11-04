@@ -237,3 +237,6 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   so a 60 s hold came out 81.7 s (90 -> 111.6 s) in the night lab. Fix: the resume waits at most
   HOLD_RESUME_LOCK_S (1 s), then plays a stick nobody touched since the pause (a token that any _tune on
   that stick clears); `held` is only written if the token survived. Timed waits must not sit behind locks.
+- 2026-11-04 (lane 1, factory): a season with no data wrote its `done` marker into a folder that only a
+  season WITH rows had created, so the first no-data season of a league crashed the job (found by the NHL
+  api-web test). Create the folder before writing any marker.

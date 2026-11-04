@@ -31,9 +31,10 @@ def _notebook_defs():
     tree = ast.parse(SCRIPT.read_text())
     plan = next(n for n in tree.body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "PLAN")
     job = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "season_job")
+    consts = [n for n in tree.body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "APIWEB_BEFORE"]
     ns = {"range": range, "list": list}
     exec(compile(ast.Module([plan], []), str(SCRIPT), "exec"), ns)
-    return ns["PLAN"], job
+    return ns["PLAN"], ast.Module(consts + [job], [])
 
 
 def _basketball_game(league: str, gid: str, start: datetime, home: str, away: str) -> list[dict]:
@@ -144,7 +145,7 @@ def test_season_job_runs_for_every_league_in_plan(tmp_path, monkeypatch):
     ns = {"OUT": str(tmp_path / "factory"), "RAW": str(tmp_path / "raw"), "SMOKE": False,
           "time": time, "os": os, "json": json, "glob": glob, "dict": dict, "round": round, "bool": bool,
           "len": len, "int": int, "__import__": __import__}
-    exec(compile(ast.Module([job], []), str(SCRIPT), "exec"), ns)
+    exec(compile(job, str(SCRIPT), "exec"), ns)
     monkeypatch.setattr(NF, "fetch_espn_season", lambda league, year, dest, **k: _write_espn(league, year, Path(dest)))
     monkeypatch.setattr(NF, "_fetch", lambda url, dest: _write_pbp(Path(dest).parent.name,
                                                                   int(Path(dest).stem.split("_")[-1]), Path(dest)))
@@ -174,3 +175,57 @@ def test_college_football_reads_the_whole_fbs_board(tmp_path, monkeypatch):
     NF.fetch_espn_season("cfb", 2020, tmp_path / "espn_2020.jsonl.gz", jobs=1)
     boards = [u for u in seen if "scoreboard" in u]
     assert boards and all("groups=80" in u for u in boards)
+
+
+def _apiweb_payload(gid, day):
+    plays = [{"eventId": 1, "sortOrder": 1, "typeDescKey": "period-start", "periodDescriptor": {"number": 1},
+              "timeRemaining": "20:00"}]
+    for per in (1, 2, 3):
+        for k in range(12):
+            key = "goal" if k == 6 and per != 2 else "penalty" if k == 3 else "stoppage" if k == 9 else "shot-on-goal"
+            det = {"homeScore": per, "awayScore": 1} if key == "goal" else \
+                {"descKey": "cross-checking"} if key == "penalty" else {"reason": "tv-timeout"} if key == "stoppage" else {}
+            plays.append({"eventId": 100 * per + k, "sortOrder": 100 * per + k, "typeDescKey": key, "details": det,
+                          "periodDescriptor": {"number": per}, "timeRemaining": f"{19 - k}:00"})
+        plays.append({"eventId": 100 * per + 99, "sortOrder": 100 * per + 99, "typeDescKey": "period-end",
+                      "periodDescriptor": {"number": per}, "timeRemaining": "00:00"})
+    return {"id": int(gid), "gameDate": day, "gameType": 2, "homeTeam": {"abbrev": "WSH"},
+            "awayTeam": {"abbrev": "PIT"}, "plays": plays}
+
+
+def test_nhl_apiweb_plays_read_like_the_espn_feed():
+    import nhl_apiweb as NA
+
+    from redzone.models import League, Stoppage
+    from redzone.sources import espn
+    g = NA.convert(_apiweb_payload("2015020001", "2014-10-08"))
+    kinds = [p["type"]["text"] for p in g["plays"]]
+    assert g["matchup"] == "PIT @ WSH" and g["date"] == "2014-10-08" and "Cross-Checking" in kinds
+    stops = [espn.stoppage_for(League.NHL, p) for p in g["plays"]]
+    assert Stoppage.TIMEOUT in stops and Stoppage.SCORE_BREAK in stops and Stoppage.INTERMISSION in stops
+    assert Stoppage.WHISTLE in stops                                       # the penalty
+    assert g["plays"][-1]["homeScore"] == 3 and g["plays"][-1]["awayScore"] == 1
+
+
+def test_old_nhl_seasons_tokenize_from_apiweb(tmp_path, monkeypatch):
+    import nhl_apiweb as NA
+    plan, job = _notebook_defs()
+    ns = {"OUT": str(tmp_path / "factory"), "RAW": str(tmp_path / "raw"), "SMOKE": False,
+          "time": time, "os": os, "json": json, "glob": glob, "dict": dict, "round": round, "bool": bool,
+          "len": len, "int": int, "__import__": __import__}
+    exec(compile(job, str(SCRIPT), "exec"), ns)
+    monkeypatch.setattr(NF, "fetch_espn_season", lambda league, year, dest, **k: False)    # no ESPN wall clocks
+
+    def fake(year, dest, max_games=None, session=None):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(dest, "wt") as f:
+            for k, (day, cut) in enumerate((("2015-01-10", False), ("2015-01-11", False), ("2026-11-01", True))):
+                g = NA.convert(_apiweb_payload(f"201502000{k}", day))
+                f.write(json.dumps(g) + "\n")
+        return True
+    monkeypatch.setattr(NA, "fetch_season", fake)
+    res = ns["season_job"]("nhl", 2015, 0, time.time() + 600)
+    info = json.loads(Path(ns["OUT"], "tokens", "nhl", "2015.json").read_text())
+    assert res["tokens"] > 0 and info["games"] == 2 and info["source"] == "nhl-api-web"   # the eval-window game is dropped
+    assert info["coverage"]["no_wall_games"] == 2
+    assert not glob.glob(f"{ns['RAW']}/nhl/*")

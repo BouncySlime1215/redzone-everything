@@ -11,7 +11,8 @@ import tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ("noggin_factory.py", "noggin_selfplay.py", "train_noggin_pick.py", "kaggle_noggin_factory.py", "noggin_tokens.py")
+SCRIPTS = ("noggin_factory.py", "noggin_selfplay.py", "train_noggin_pick.py", "kaggle_noggin_factory.py",
+           "noggin_tokens.py", "nhl_apiweb.py")
 SKIP = ("__pycache__", ".pyc", ".db", ".sqlite", ".env", ".log")
 
 

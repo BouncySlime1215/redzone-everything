@@ -159,10 +159,8 @@ def games_of(league: str, raw: Path):
             for line in f:
                 g = json.loads(line)
                 ts = [t for t in (espn._ts(p.get("wallclock")) for p in g["plays"]) if t is not None]
-                if not ts:
-                    continue
-                night = F.night_of(ts[0])
-                if night < cut:
+                night = F.night_of(ts[0]) if ts else (g.get("date") or "").replace("-", "")[:8] or None
+                if night is not None and night < cut:      # no wall clock (NHL api-web): the game date
                     away, _, home = (g.get("matchup") or "? @ ?").partition(" @ ")
                     yield str(g["id"]), night, g["plays"], home, away
         return
@@ -198,6 +196,8 @@ def games_of(league: str, raw: Path):
 def source_of(league: str, raw: Path) -> str:
     """Which open source a raw season came from (the data ledger's 'source' column)."""
     n = Path(raw).name
+    if n.startswith("apiweb_"):
+        return "nhl-api-web"
     if n.endswith(".jsonl.gz"):
         return "espn-site-api"
     return {"nfl": "nflverse", "cfb": "nflverse"}.get(league, "sportsdataverse-hoopR" if league in ("nba", "cbb")
