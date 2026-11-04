@@ -125,6 +125,29 @@ def run_nights(root: Path, seeds: int, timeout: float = 900) -> list[dict]:
     return reps
 
 
+def run_drill(root: Path, seeds: int, hours: float = 3.0, timeout: float = 1800) -> dict | None:
+    """The controls drill (scripts/controls_drill.py, taps lost and duplicated on purpose) with the
+    checkout's shipped defaults, so press_to_tv_p95 has a sim value on every run. None if it failed."""
+    if seeds <= 0 or not (root / "scripts/controls_drill.py").exists():
+        return None
+    with tempfile.TemporaryDirectory(prefix="rz-ns-drill-") as tmp:
+        out = Path(tmp) / "controls.json"
+        env = {**os.environ, "PYTHONPATH": str(root)}
+        try:
+            subprocess.run([sys.executable, "scripts/controls_drill.py", "--seeds", str(seeds), "--hours", str(hours),
+                            "--flaky", "--json", str(out)], cwd=root, env=env, capture_output=True, text=True,
+                           timeout=timeout)
+        except subprocess.TimeoutExpired:
+            print(f"  controls drill: timed out after {timeout:.0f} s", flush=True)
+            return None
+        if not out.exists():
+            print("  controls drill: wrote no report", flush=True)
+            return None
+        drill = json.loads(out.read_text())
+        print(f"  controls drill: {seeds} nights done", flush=True)
+        return drill
+
+
 def switch_samples(paths: list[Path]) -> list[float]:
     """Command -> TV-confirmed input change, seconds, from the live service's data/tv_input.jsonl."""
     xs = []
@@ -551,6 +574,8 @@ def main(argv=None) -> int:
     ap.add_argument("--switch-log", type=Path, action="append", default=None,
                     help="tv_input.jsonl file(s) with real switches (default: <root>/data/tv_input.jsonl)")
     ap.add_argument("--controls-json", type=Path, help="a scripts/controls_drill.py --json report (press_to_tv_p95)")
+    ap.add_argument("--controls-seeds", type=int, default=2,
+                    help="without --controls-json: run the controls drill this many nights (0 = skip)")
     ap.add_argument("--json", type=Path, help="write the raw results here (PR CI compares two of these)")
     ap.add_argument("--no-write", action="store_true", help="don't touch docs/ (PR CI)")
     ap.add_argument("--delta", nargs=2, type=Path, metavar=("HEAD", "BASE"), help="print the PR delta table")
@@ -577,6 +602,8 @@ def main(argv=None) -> int:
               for n in nights]
     nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults") if k in n} for n in nights]
     drill = json.loads(a.controls_json.read_text()) if a.controls_json and a.controls_json.exists() else None
+    if drill is None and not a.delta:
+        drill = run_drill(root, a.controls_seeds)
     xs = switch_samples(a.switch_log if a.switch_log is not None else [root / "data/tv_input.jsonl"])
     results = {}
     for split in (("dev", "locked") if a.split == "both" else (a.split,)):

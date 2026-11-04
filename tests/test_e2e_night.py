@@ -63,6 +63,19 @@ def test_night_check(night, name):
     assert checks[name]["ok"], json.dumps(checks[name]["detail"], indent=1, default=str)[:4000]
 
 
+@pytest.mark.playbook("STK-01", "STK-02")
+def test_night_a_dropped_stick_recovers(night):
+    """stick_drop on the visible and the hidden stick: back to two sticks within 420 s each time."""
+    test_night_check(night, "two_stick_recovers")
+    assert {f.get("host") for f in night["faults"] if f["name"] == "stick_drop"}, "no stick_drop in the night"
+
+
+@pytest.mark.playbook("STK-03")
+def test_night_a_wedged_stick_is_reconnected(night):
+    test_night_check(night, "wedged_stick_reconnected")
+    assert any(f["name"] == "stick_wedge" for f in night["faults"]), "no stick_wedge in the night"
+
+
 def test_night_covers_the_whole_night(night):
     assert night["hours"] >= 7.5
     assert night["cuts"] >= 20, "too few cuts: the night barely switched"

@@ -385,13 +385,17 @@ class FakeFireTV:
             if a.task and not was_fg and not fresh:
                 # In the background: Android brings the task forward; the app keeps its own link.
                 if a.screen == "player":
-                    a.prompt = ""
+                    if a.prompt:   # the sim's model: coming forward reloads the player, prompt gone
+                        a.prompt = ""
+                        self.house.event("prompt_cleared", self.host, f"{a.target} (brought forward)")
                     if self.house.timing.yttv_resume_live_edge:
                         a.behind, a.paused_at = 0.0, None
                     a.ready_at = time.time() + self.house.timing.yttv_resume
                     self._stamp(a, BUFFERING, self._now_pos(a))
                 return True, ("Starting: Intent { act=android.intent.action.VIEW }\n"
                               "Warning: Activity not started, its current task has been brought to the front")
+            if a.prompt:
+                self.house.event("prompt_cleared", self.host, f"{a.target} (relink)")
             a.task, a.screen, a.url, a.target, a.behind, a.prompt, a.paused_at = True, "player", url, target, 0.0, "", None
             a.subtitle = self.house.channel_name(target)
             a.title = self.house.show_title(target)
@@ -411,6 +415,8 @@ class FakeFireTV:
                 a.screen = "detail"
             return True, "Starting: Intent { act=android.intent.action.VIEW }"
         if pkg == VLC:
+            if a.prompt:
+                self.house.event("prompt_cleared", self.host, f"{a.target} (relink)")
             a.task, a.screen, a.url, a.target, a.behind, a.prompt, a.paused_at = True, "player", url, target, 0.0, "", None
             a.title, a.subtitle = "reel.mp4", ""
             a.ready_at = time.time() + self.house.timing.reel_load
