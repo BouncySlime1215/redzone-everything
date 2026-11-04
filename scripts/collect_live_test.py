@@ -137,7 +137,15 @@ def summarize(got: dict[str, list[dict]]) -> dict:
         for k, v in (r.get("spans") or {}).items():
             if isinstance(v, (int, float)) and k not in ("total",):
                 spans.setdefault(k, []).append(float(v))
+    # [STK-06] the hidden stick's time-shift buffer: holds that went bad (lost / drift) and were rebuilt.
+    buf = got.get("buffer.jsonl", [])
+    bad = [r for r in buf if r.get("kind") in ("lost", "drift")]
+    errs = [abs(float(r["err_s"])) for r in bad if isinstance(r.get("err_s"), (int, float))]
     return {
+        "buffer": {"detected": len(bad), "lost": sum(1 for r in bad if r["kind"] == "lost"),
+                   "recovered": sum(1 for r in buf if r.get("kind") == "recovered"),
+                   "rebuild_failed": sum(1 for r in buf if r.get("kind") == "rebuild_failed"),
+                   "err_p95_s": p95(errs)},
         "press_spans": {k: {"n": len(v), "p50_s": round(sorted(v)[len(v) // 2], 2), "p95_s": p95(v)}
                         for k, v in sorted(spans.items())},
         "landings": {"n": len(after), "after_dead_p50_s": after[len(after) // 2] if after else None,
@@ -146,13 +154,15 @@ def summarize(got: dict[str, list[dict]]) -> dict:
         "sync_anchor_err": {k: {"n": len(v), "p50_s": sorted(v)[len(v) // 2], "p95_s": p95(v)}
                             for k, v in sorted(anchors.items())},
         "rows": {k: len(v) for k, v in got.items()},
-        "switch_samples": len(tv), "switch_p95_s": p95(tv), "switch_max_s": round(max(tv), 2) if tv else None,
+        "switch_samples": len(tv), "switch_p50_s": round(sorted(tv)[len(tv) // 2], 2) if tv else None,
+        "switch_p95_s": p95(tv), "switch_max_s": round(max(tv), 2) if tv else None,
         "tv_unverified": sum(1 for r in got["tv_input.jsonl"] if not r.get("verified")),
         "cuts_graded": len(cuts), "entries_mid_play": sum(1 for r in cuts if r.get("enter") == "play"),
         "leaves_mid_play": sum(1 for r in cuts if r.get("leave") == "play"),
         "picture_within_3s": f"{sum(1 for x in pics if x <= 3)}/{len(pics)}" if pics else None,
         "picture_p95_s": p95(pics),
         "press_samples": len(press), "press_to_tv_p95_s": p95(press),
+        "press_to_tv_p50_s": round(sorted(press)[len(press) // 2], 2) if press else None,
         "press_no_picture": len(user) - len(press),
     }
 
@@ -165,7 +175,8 @@ def collect(data: Path, out: Path, since: float, until: float | None = None) -> 
     days = [(day0 + timedelta(days=i)).isoformat() for i in range((end - day0).days + 1)]
     srcs = {"sync_probe.jsonl": [data / "recordings" / d / "sync_probe.jsonl" for d in days],
             "tv_input.jsonl": [data / "tv_input.jsonl"], "supervisor_cuts.jsonl": [data / "supervisor_cuts.jsonl"],
-            "traces.jsonl": [data / "traces.jsonl"], "sync.jsonl": [data / "sync.jsonl"]}
+            "traces.jsonl": [data / "traces.jsonl"], "sync.jsonl": [data / "sync.jsonl"],
+            "buffer.jsonl": [data / "buffer.jsonl"]}
     got = {k: copy_rows(v, out / k, since, until) for k, v in srcs.items()}
     s = summarize(got)
     s["since"] = datetime.fromtimestamp(since).isoformat(timespec="seconds")
@@ -198,6 +209,7 @@ def main(argv=None) -> int:
         "supervisor_cuts.jsonl": copy_rows([a.data / "supervisor_cuts.jsonl"], a.out / "supervisor_cuts.jsonl", since),
         "traces.jsonl": copy_rows([a.data / "traces.jsonl"], a.out / "traces.jsonl", since),
         "sync.jsonl": copy_rows([a.data / "sync.jsonl"], a.out / "sync.jsonl", since),
+        "buffer.jsonl": copy_rows([a.data / "buffer.jsonl"], a.out / "buffer.jsonl", since),
     }
     s = summarize(got)
     s["since"] = datetime.fromtimestamp(since).isoformat(timespec="seconds")
@@ -215,6 +227,8 @@ def main(argv=None) -> int:
           f"(p50), {s['landings']['before_play_p50_s']} s before play resumed (p50, min {s['landings']['before_play_min_s']})",
           "- Sync anchor error by stick: " + (", ".join(f"{k} n={v['n']} p50 {v['p50_s']} s p95 {v['p95_s']} s"
                                                        for k, v in s["sync_anchor_err"].items()) or "none"),
+          f"- Buffer (STK-06): {s['buffer']['detected']} went bad, {s['buffer']['recovered']} rebuilt, "
+          f"error p95 {s['buffer']['err_p95_s']} s",
           f"- Rows: {', '.join(f'{k} {v}' for k, v in s['rows'].items())}", ""]
     (a.out / "summary.md").write_text("\n".join(md))
     print("\n".join(md))
