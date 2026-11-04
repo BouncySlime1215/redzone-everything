@@ -71,12 +71,10 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- 14:10 director check: RC5.1 e8bbf8e live, deploy verdict healthy; CI green on integration/next + integration/release.
-- Usage 17% weekly (brake lifted; hard stop at 89%).
-- Merged since last check: #115 #117 #118 #120 #121 #123 #126 #127.
-- Live lab: SmartThings flips p95 ~2 s, CEC off on both sticks, YTTV seek calibration + content-anchored sync signal found; awaiting tonight's NBA shadow run + real press-to-TV.
-- Kaggle V7 Mind training running (lane 1 pack c24f65c); grade read from log when done.
-- Open PRs pending review: #112 #113 #116 #119 #122 #125 #128-#133.
+- 15:05 overseer: Nick approved everything. Merged #128 into integration/next. Pushed the missing decisions.md line to #133 (CI rerunning; coordinator merges when green).
+- Queued 5 builds with the coordinator: night health report (lane 4), smarter stick assignment + self-calibration (lane 2/3), pre-game warm-up + buffer watchdog (lane 3). Flags off until gates pass.
+- Coordinator to triage old drafts #13 #16 #18 #20 #23 #24 (salvage, then close) and rewrite the docs/status.md queue.
+- Checked: the Mac's data/config.yaml has no replay.seek_step_s override, so #133's 15 s applies once deployed.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
