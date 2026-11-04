@@ -84,3 +84,33 @@ air by +0.1 and nothing else.
 plays seen, and NBA entries land mid-play a quarter of the time. The fix is faster data, not more
 tuning: FastCast (if it delivers in a few seconds), then predicting restarts (item 3) so entries
 are timed from the stoppage's expected length instead of from a whistle we hear about late.
+
+## A2. Faster feeds: the source race
+
+The live app already polls NHL api-web (score + play-by-play, 8 s) and the NBA liveData mirror
+(5 s) next to ESPN, and the merger notes which source reported each score first. From the Mac's
+Nov 2-3 recordings (`python scripts/timing_report.py`), deduped per game and score:
+
+| league | first: league feed | first: ESPN scoreboard | first: ESPN summary |
+|---|---|---|---|
+| NHL (94 scores) | **79.8 %** (api-web) | 19.1 % | 1.1 % |
+| NBA (1665) | 2.0 % (liveData) | 95.2 % | 2.8 % |
+| CBB / WCBB | none | 95 % / 96 % | 5 % / 4 % |
+
+So NHL api-web is the faster source for NHL; the NBA mirror adds almost nothing over ESPN's
+scoreboard. **How much faster is not known yet**: two recorder bugs hid it.
+
+1. The recorder wrote each race row the moment the first source reported, before any other
+   source had, so `others` (the followers' lags) was always empty.
+2. It tracked rows by list index, but the merger trims its race list at 2000 events; after that
+   the index froze and nothing new was written.
+
+Fixed: the recorder writes a row 90 s after the first report with every follower's lag, tracked
+by identity. The race also times **dead balls** now (label `stop p<period> <clock>`, keyed by the
+stopped clock so feeds that name the stoppage differently still match; UNKNOWN doesn't count).
+`timing_report.py` prints first % and the gain over the fastest ESPN copy per league, kind and
+source. The status page's race summary stays score-only.
+
+Next (needs a night of recordings on the Mac): if api-web whistles beat ESPN by more than a few
+seconds, feed NHL stoppages to the decider timeline from api-web (today they only set the merged
+state). Real (realapp.com) stays out: its terms forbid automated queries.

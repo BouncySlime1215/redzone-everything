@@ -255,3 +255,51 @@ class LagSampler:
         i = int(u)
         j = min(len(q) - 1, i + 1)
         return max(0.0, q[i] + (q[j] - q[i]) * (u - i))
+
+
+# --- A2: the source race (who knows a score or a whistle first, and by how much) -----------------
+
+ESPN_SOURCES = ("espn_summary", "espn_scoreboard", "espn_fastcast")
+
+
+def race_report(paths: Iterable[Path], league_of: dict[str, str] | None = None) -> dict:
+    """Per league and label kind ("score" / "stop"), per source: how often it was first, and how
+    many seconds it beat the fastest ESPN copy (positive = ahead of ESPN).
+
+    Rows are deduped by (game, label), keeping the earliest (a restart re-reports the open
+    labels). Rows written before the recorder waited for followers carry no "others", so they
+    count toward first% but not the gain. league_of fills rows that predate the league field."""
+    best: dict[tuple[str, str], dict] = {}
+    for p in paths:
+        with open(p) as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if r.get("label") in (None, "score 0-0"):
+                    continue
+                k = (str(r.get("game")), r["label"])
+                if k not in best or r["t"] < best[k]["t"]:
+                    best[k] = r
+    out: dict[str, dict[str, dict]] = {}
+    for (gid, label), r in best.items():
+        lg = r.get("league") or (league_of or {}).get(gid) or "?"
+        kind = label.split(" ", 1)[0]
+        lags = {r["first"]: 0.0, **{s: float(v) for s, v in (r.get("others") or {}).items()}}
+        espn = [lags[s] for s in ESPN_SOURCES if s in lags]
+        bucket = out.setdefault(lg, {}).setdefault(kind, {"n": 0, "with_followers": 0, "sources": {}})
+        bucket["n"] += 1
+        bucket["with_followers"] += bool(r.get("others"))
+        for s, lag in lags.items():
+            d = bucket["sources"].setdefault(s, {"seen": 0, "first": 0, "gain": []})
+            d["seen"] += 1
+            d["first"] += s == r["first"]
+            if espn and s not in ESPN_SOURCES and r.get("others"):
+                d["gain"].append(round(min(espn) - lag, 2))
+    for kinds in out.values():
+        for b in kinds.values():
+            for d in b["sources"].values():
+                d["first_pct"] = round(100.0 * d["first"] / b["n"], 1)
+                d["gain_s"] = _stats(d.pop("gain"))
+    return out
