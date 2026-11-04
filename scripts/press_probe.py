@@ -51,13 +51,27 @@ def p(xs: list[float], q: float) -> float | None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--url", default="http://127.0.0.1:8777")
+    ap.add_argument("--url", help="the app (default: the first of :8777 / :8778 that answers)")
     ap.add_argument("--presses", type=int, default=10)
     ap.add_argument("--gap", type=float, default=45.0, help="seconds between presses (lets the hidden stick re-tune)")
     ap.add_argument("--kind", choices=("alternate", "warm", "cold"), default="alternate")
     ap.add_argument("--timeout", type=float, default=40.0)
     ap.add_argument("--json", help="write the per-press rows here")
     a = ap.parse_args(argv)
+    for u in ([a.url] if a.url else ["http://127.0.0.1:8777", "http://127.0.0.1:8778"]):
+        try:
+            st0 = _call(u, "/api/state", timeout=3.0)
+            a.url = u
+            break
+        except OSError:
+            continue
+    else:
+        print("the app isn't answering on :8777 or :8778 (pass --url)")
+        return 2
+    if (st0.get("mode") or {}).get("dry_run"):
+        print("the app is in dry run: GO NOW wouldn't touch the TV; nothing pressed")
+        return 2
+    was_paused = bool((st0.get("mode") or {}).get("paused"))
     rows, last = [], None
     try:
         for i in range(a.presses):
@@ -86,7 +100,11 @@ def main(argv=None) -> int:
     finally:
         try:
             _call(a.url, "/api/action", {"action": "release", "id": uuid.uuid4().hex[:16]})
-            print("released: back on autopilot")
+            if was_paused:   # release resumes autopilot: put the pause back the way we found it
+                _call(a.url, "/api/action", {"action": "pause", "value": True, "id": uuid.uuid4().hex[:16]})
+                print("released, and paused again as it was")
+            else:
+                print("released: back on autopilot")
         except Exception as e:  # the summary still prints
             print(f"release failed: {e}", file=sys.stderr)
     out = {}
