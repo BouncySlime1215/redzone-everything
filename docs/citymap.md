@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**248 modules**, 208 untagged, 97 unowned, 10 orphans (no importer).
+**250 modules**, 210 untagged, 99 unowned, 10 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -83,7 +83,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/discovery/search.py` | Find a YouTube TV channel nobody published a code for (locals, NFL RedZone, NBCSN, Sunday Ticket 8/16) by searching for it inside the app on the stick. | discovery.providers, discovery.stickio, discovery.yttv -> discovery.yttv | untagged |
 | `redzone/discovery/stickio.py` | What is this Fire TV stick playing right now? | discovery.providers, tuners.adb, tuners.profiles -> discovery.search, discovery.yttv, tuners.yttv_search | untagged |
 | `redzone/discovery/yttv.py` | YouTube TV channel codes with zero pasting: a researched default table, self-verification on a Fire TV stick, and an in-app search fallback. | channels, discovery.lounge, discovery.search, discovery.stickio, sources.eventlinks, tuners.adb -> autonomy, discovery.search, lab.night.run, tuners.tuners, tuners.yttv_search, scripts.find_yttv_code | untagged |
-| `redzone/standby.py` | Hot standby: what the hidden stick should be playing, so the next switch is a 1-2s input flip. | models -> demo.engine, engine | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-05, STK-06 |
+| `redzone/standby.py` | Hot standby: what the hidden stick should be playing, so the next switch is a 1-2s input flip. | config, models -> demo.engine, engine | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-05, STK-06 |
 | `redzone/tuners/__init__.py` (package) | no docstring | - -> - | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/adb.py` | Talk to a Fire TV stick over the network with the adb command-line tool. | platform.breaker, screen_ocr -> autonomy, control, discovery.stickio, discovery.yttv, lab.night.house, platform.faults +18 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04, STK-05 |
 | `redzone/tuners/identity.py` | Conservative matchup evidence from fresh provider metadata. | - -> - | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
@@ -158,7 +158,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, demo.engine, engine, lab.backtest +26 | untagged |
+| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, demo.engine, engine, lab.backtest +27 | untagged |
 | `redzone/contracts/__init__.py` (package) | Interfaces every thread codes against. | contracts.breaks, contracts.budget, contracts.clock, contracts.feeds, contracts.flags, contracts.guard +55 -> - | untagged |
 | `redzone/contracts/breaks.py` | BreakModel contract: when a stoppage starts, what kind it is, how long it runs, when play restarts. | models -> contracts, contracts.legacy, contracts.views, contracts.world, scoring.brain3 | untagged |
 | `redzone/contracts/budget.py` | Per-tick latency budget, split across modules. | - -> contracts | untagged |
@@ -195,7 +195,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (97)
+## unowned (99)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -224,7 +224,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/lab/night/run.py` | Run a whole replayed night through the real system, on a virtual clock. | agent.watchdog, autonomy, channels, config, control, decider.decider +19 -> lab.night.__main__, scripts.leak_check | SAFE-01, SAFE-08, TV-02, TV-03, TV-04 |
 | `redzone/lab/night/smartthings.py` | [switch timing] The e2e night's TV with the SmartThings input change, at the latency measured on the user's TV (live lab Nov 4 2026: 64 of 64 confirmed, 0 re... | - -> lab.night.run | untagged |
 | `redzone/lab/night/vclock.py` | Virtual time for the end-to-end night: hours of a real night run in minutes. | - -> lab.night.__main__, lab.night.run | untagged |
-| `redzone/lab/oracle.py` | Hindsight oracle: the best schedule anyone could have run on an archived night (offline only). | lab.backtest, lab.cutgrade, lab.sportsgrade, models, sources.espn -> noggin.pick, scripts.eval, scripts.eval_sports, scripts.train_noggin_pick | untagged |
+| `redzone/lab/oracle.py` | Hindsight oracle: the best schedule anyone could have run on an archived night (offline only). | lab.backtest, lab.cutgrade, lab.sportsgrade, models, sources.espn -> noggin.pick, scripts.eval, scripts.eval_sports, scripts.train_noggin_pick, scripts.train_noggin_pick_dagger | untagged |
 | `redzone/lab/prime_mv_fake.py` | A simulated Prime Video NBA player with multiview, for rehearsing scripts/prime_multiview_probe.py without a stick (`--fake`) and for its tests. | tuners.prime_multiview -> scripts.prime_multiview_probe | untagged |
 | `redzone/lab/reasoner_data.py` | Training rows for the live game reasoner, distilled from the archive (no paid APIs). | config, lab.backtest, lab.sportsgrade, models, reasoner.brief, scoring.engine +1 -> agent.kaggle.build_moments_kaggle, scripts.build_reasoner_data, scripts.eval_reasoner, scripts.export_reasoner_llm, scripts.train_reasoner | untagged |
 | `redzone/lab/splits.py` | Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03). | - -> lab.breakblend, lab.tune, scripts.backfill_eval_v2, scripts.eval, scripts.eval_sports, scripts.leak_check | untagged |
@@ -237,7 +237,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/noggin/features.py` | Noggin Timing features and window labels: numpy + stdlib only (the live app has no pandas). | decider.cuts, models, sources.espn -> noggin.factory, noggin.live, noggin.pick, noggin.predict, noggin.predict_fit, noggin.timing +1 | untagged |
 | `redzone/noggin/live.py` | Noggin Timing v1 on the live path: a calibrated "surely still dead" bound for an open dead window. | models, noggin.features, noggin.predict, noggin.timing -> decider.decider | untagged |
 | `redzone/noggin/lookahead.py` | Clairvoyance: what the feed already knows that the screen hasn't shown yet (cycle 02, lane 2). | - -> decider.decider | SAFE-02 |
-| `redzone/noggin/pick.py` | Noggin Reflex PICK v1: which game should be on screen, learned by imitating the hindsight oracle. | lab.backtest, lab.cutgrade, lab.oracle, lab.sportsgrade, models, noggin.features +3 -> decider.decider, scripts.eval_sports, scripts.train_noggin_pick | untagged |
+| `redzone/noggin/pick.py` | Noggin Reflex PICK v1: which game should be on screen, learned by imitating the hindsight oracle. | lab.backtest, lab.cutgrade, lab.oracle, lab.sportsgrade, models, noggin.features +3 -> decider.decider, scripts.eval_sports, scripts.train_noggin_pick, scripts.train_noggin_pick_dagger | untagged |
 | `redzone/noggin/predict.py` | Noggin Reflex Predict v1: P(a big play in the next 30 / 60 / 120 s of play) at a restart (numpy only). | noggin.features, noggin.timing -> noggin.live, noggin.predict_fit, scripts.train_noggin_predict | untagged |
 | `redzone/noggin/predict_fit.py` | Fit and grade Noggin Predict v1 (pandas + LightGBM; Kaggle CPU / cloud only, never the Mac). | noggin.features, noggin.predict, noggin.timing_fit, scoring.brain3 -> scripts.train_noggin_predict | untagged |
 | `redzone/noggin/priority.py` | Noggin Priority: which game deserves the TV, in four layers applied in order (docs/noggin.md § Priority). | - -> noggin.wire, web.phone_v2 | untagged |
@@ -266,6 +266,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `scripts/citymap.py` (entry) | City map: one generated graph of every RedZone module (role, inputs -> outputs, owner, serves). | - -> - | untagged |
 | `scripts/collect_live_test.py` (entry) | Collect a live test's logs into one folder, with a summary the North Star harness reads (cycle 01 plan, task 4: "the sync-probe log and data/tv_input.jsonl u... | - -> - | STK-06 |
 | `scripts/context_pack.py` (entry) | Build ONE markdown context pack for pasting into a brand-new AI session. | memory -> - | untagged |
+| `scripts/contract_check.py` (entry) | Proof kernel: check the whole redzone/ graph against the contract rules on every change. | - -> - | untagged |
 | `scripts/controls_drill.py` (entry) | Phone controls drill: replay the end-to-end night with scripted phone presses and grade them. | - -> - | untagged |
 | `scripts/delay_report.py` (entry) | How well each channel's stream delay is predicted, from the delay samples the app has stored. | config, decider.screen -> - | untagged |
 | `scripts/disk_guard.py` (entry) | Disk guard for the Mac (~5 GB free): what is using space in this checkout, and a safe cleanup of the transfer folders that cloud build threads leave behind. | governor -> - | untagged |
@@ -291,13 +292,14 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `scripts/timing_report.py` (entry) | [switch timing] Dead-ball detection lag per source and league, and the on-screen lead it leaves. | lab.timing -> - | untagged |
 | `scripts/train_brain3.py` (entry) | Train Brain v3 (one compact model per league) and print its test-night scorecard. | lab.brain3fit, scoring.brain -> - | untagged |
 | `scripts/train_noggin_pick.py` (entry) | Train Noggin Reflex PICK v1 by imitating the hindsight oracle on whole factory nights (offline, cloud). | lab.backtest, lab.oracle, lab.sportsgrade, models, noggin.factory, noggin.pick +1 -> - | untagged |
+| `scripts/train_noggin_pick_dagger.py` (entry) | DAgger for the possession policy: label the states the PICK-cue policy ITSELF visits with the oracle. | lab.oracle, noggin.pick -> - | untagged |
 | `scripts/train_noggin_predict.py` (entry) | Train Noggin Predict v1 for one league from the data factory's table (Kaggle CPU / cloud only). | noggin.predict, noggin.predict_fit -> - | untagged |
 | `scripts/train_noggin_timing.py` (entry) | Train Noggin Timing v1 for one league from the data factory's table (Kaggle CPU / GitHub Actions only). | decider.cuts, models, noggin.timing, noggin.timing_fit -> - | untagged |
 | `scripts/train_reasoner.py` (entry) | Train the reasoner's fast head (lock_in odds) per league, cross-fitted by night. | lab.reasoner_data, reasoner.brief, reasoner.head, scoring.brain -> - | untagged |
 | `scripts/tune.py` (entry) | Auto-tune the decider against the scorecards (see redzone/lab/tune.py). | lab.tune -> - | untagged |
 | `scripts/tv_local_probe.py` (entry) | Time the TV's local input keys against SmartThings, on Nick's TV (~1 minute, Nick at the TV). | tv -> - | untagged |
 
-## Untagged (208)
+## Untagged (210)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -458,6 +460,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 - `scripts/ci_scorecard.py`
 - `scripts/citymap.py`
 - `scripts/context_pack.py`
+- `scripts/contract_check.py`
 - `scripts/controls_drill.py`
 - `scripts/delay_report.py`
 - `scripts/deploy.py`
@@ -500,6 +503,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 - `scripts/train_brain.py`
 - `scripts/train_brain3.py`
 - `scripts/train_noggin_pick.py`
+- `scripts/train_noggin_pick_dagger.py`
 - `scripts/train_noggin_predict.py`
 - `scripts/train_noggin_timing.py`
 - `scripts/train_reasoner.py`

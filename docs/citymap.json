@@ -539,6 +539,7 @@
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/tune.py",
+    "redzone/standby.py",
     "redzone/supervisor.py",
     "redzone/web/phone_v2.py",
     "redzone/web/server.py",
@@ -2031,7 +2032,8 @@
     "redzone/noggin/pick.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
-    "scripts/train_noggin_pick.py"
+    "scripts/train_noggin_pick.py",
+    "scripts/train_noggin_pick_dagger.py"
    ],
    "owner": "unowned",
    "role": "Hindsight oracle: the best schedule anyone could have run on an archived night (offline only).",
@@ -2426,7 +2428,8 @@
    "outputs": [
     "redzone/decider/decider.py",
     "scripts/eval_sports.py",
-    "scripts/train_noggin_pick.py"
+    "scripts/train_noggin_pick.py",
+    "scripts/train_noggin_pick_dagger.py"
    ],
    "owner": "unowned",
    "role": "Noggin Reflex PICK v1: which game should be on screen, learned by imitating the hindsight oracle.",
@@ -3251,6 +3254,7 @@
   "redzone/standby.py": {
    "contracts": [],
    "inputs": [
+    "redzone/config.py",
     "redzone/models.py"
    ],
    "kind": "module",
@@ -3932,6 +3936,17 @@
     "untagged"
    ]
   },
+  "scripts/contract_check.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Proof kernel: check the whole redzone/ graph against the contract rules on every change.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/controls_drill.py": {
    "contracts": [],
    "inputs": [],
@@ -4587,6 +4602,20 @@
     "untagged"
    ]
   },
+  "scripts/train_noggin_pick_dagger.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/oracle.py",
+    "redzone/noggin/pick.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "DAgger for the possession policy: label the states the PICK-cue policy ITSELF visits with the oracle.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/train_noggin_predict.py": {
    "contracts": [],
    "inputs": [
@@ -4689,10 +4718,10 @@
   }
  },
  "summary": {
-  "modules": 248,
+  "modules": 250,
   "orphans": 10,
-  "unowned": 97,
-  "untagged": 208
+  "unowned": 99,
+  "untagged": 210
  },
  "version": 1
 }
