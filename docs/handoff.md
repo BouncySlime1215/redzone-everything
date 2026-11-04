@@ -69,8 +69,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 5:25 AM ET.** Cycle 02 is running (#98). Merged since 4:25 AM: #82 (Noggin NFL data factory + Timing v1 NFL, Predict v1 NBA, off), #92 (candidate column restored), #94 (multiview rehearsal), #95, #96 (button states), #97 (scenario-tree lookup, off). Open: #88-#91, #99-#101.
-- **Usage BRAKE:** 8% vs a 3.1% line (+4.9). Lanes 1-3 only until 8 AM; lanes 4 and 5 paused; planners minimal. Kaggle V6 2 h 4 min, retraining.
+- **2026-11-04 6:25 AM ET.** The brake held: usage flat at 8% (line 3.8%, +4.2). Lanes 1-3 run until 8 AM. New merge: #100 **Clairvoyance** (lookahead view + GAME-04 in the candidate). CI green on integration/next and release. Open: #88, #91, #99, #101-#103.
+- **Kaggle V6** at 3 h 4 min; training is likely done and it's now answering the full test set. Results ~7:30-9:30 AM.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
