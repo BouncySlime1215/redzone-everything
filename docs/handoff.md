@@ -69,7 +69,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **Kaggle V7 launched 8:04 AM** (lane 1's V7 code pack c24f65c: split reasoner gate, D19 LoRA r32/r16, the whole tiered teacher queue 32B to 14B, JSON-constrained decoding, torchao fix). Full mode, SESSION_H 11.5, so it ends by ~7:30 PM at the latest. GPU after V7 ~27.5/30 h this week. Its log hadn't appeared yet at 8:05 (queued); the hourly :37 check confirms it.
+- **8:45 AM overseer audit** (docs/plans/2026-11-04-0845-overseer.md): cycles 01-02 done, 03 running; loop healthy. **Candidate Noggin: mid-play 0 PASS** (live 2.45), NFL big live 25 → 53, NBA crunch 77 → 90, live-or-replayed 62 → 83, dead air 22.5 → 19.1. **press-to-TV p95 8.75 s FAIL** (lane ③ this cycle). Playbook coverage 32/79.
+- **Usage** 10% (+4.7): brake kept (lanes ①②③). Kaggle V7 running since 8:04 AM. **Nick decides:** crunch_now wait vs rewind.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
