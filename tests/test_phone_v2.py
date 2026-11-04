@@ -402,7 +402,7 @@ def test_ledger_route(client, engine, tmp_path, monkeypatch):
 
 
 def test_provenance_orders_lane3_control_last():
-    assert phone_v2.PROV_ORDER[-1] == "control"
+    assert phone_v2.PROV_ORDER[0] == "decider" and phone_v2.PROV_ORDER[-1] == "control"   # lane 3 #173 keys
 
 
 def test_ledger_folds_the_kaggle_factory_manifest():

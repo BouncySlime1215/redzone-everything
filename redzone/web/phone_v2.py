@@ -199,7 +199,7 @@ def _on_at(segs: list[dict], ts: float, key: str = "game") -> str | None:
 # "floors": [...], "planner": "crunch-overlap"}); until it does, the stub rebuilds what the row already
 # holds: the decider's reason and kind, chips and playbook ids, the delays it planned with, and the
 # guard's last check. Read only: nothing here is on the decision path.
-PROV_ORDER = ("watch_value", "crunch_state", "importance", "stakes", "floors", "planner", "playbook", "guard",
+PROV_ORDER = ("decider", "watch_value", "crunch_state", "importance", "stakes", "floors", "planner", "playbook", "guard",
               "control")   # lane 3: path, flip, resume, STK-07 left-hold
 
 
