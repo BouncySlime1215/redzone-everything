@@ -456,6 +456,7 @@ class House:
     events: list[tuple[float, str, str, str | None]] = field(default_factory=list)
     active_faults: dict[str, set] = field(default_factory=dict)
     trace: list | None = None                                  # every shell command, when tracing
+    adb_scale: float = 1.0                                     # wifi_degrade: every adb reply this much slower
 
     def __post_init__(self):
         self.tv = FakeTV(self)
@@ -565,7 +566,7 @@ class FakeStick(Stick):
         if d.wedged:
             await asyncio.sleep(min(timeout, 2.0))
             return RunResult(False, "error: closed", time.monotonic() - t0)
-        lat = d.latency(cmd)
+        lat = d.latency(cmd) * d.house.adb_scale
         if lat > timeout:
             await asyncio.sleep(timeout)
             ok, out = d.shell(cmd)     # it still ran on the stick; we just never heard back

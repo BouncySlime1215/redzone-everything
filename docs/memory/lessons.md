@@ -137,3 +137,10 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** `_hold` saw `decider.current == gid` (current only moves once the flip lands) and treated it as already there; `_hold_check` then cleared "force" for the same reason, so the way back waited for a dead ball.
 - **Fix:** playbook=BTN-05: a hold of the current game while a switch away from it is pending queues the way back (it runs as soon as the flip lands; a flip is never cancelled halfway) and keeps "force". Drill: 4 of 4 land, ~10 s.
 - **Signals:** "Holding on" while the TV shows another game, mid_flip dropped, current vs pending target
+
+- 2026-11-04: **CI now checks playbook coverage and posts a RAM/CPU line.** Tests claim entries with
+  `@pytest.mark.playbook("ID")`. `scripts/playbook_coverage.py --junit` fails CI only when an entry marked
+  `done` has no passing test, or a test names an unknown id, so the 79 entries can be built top-down.
+  `scripts/perf_probe.py` times the real `Engine.decide()` on 8 synthetic live games (300 ticks): it was
+  p50 1.0 ms, p99 5.3 ms, 56 MB peak RSS at 1f5e751. Engine needs a running event loop, so the probe runs
+  inside `asyncio.run`.

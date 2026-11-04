@@ -119,6 +119,23 @@ class Store:
         """Fold the write-ahead log back into the database file so it can't grow without bound."""
         self._x("PRAGMA wal_checkpoint(TRUNCATE)")
 
+    def taps(self, since: float = 0.0) -> list[dict]:
+        """Phone v2 decision records, oldest first, for northstar.py's right_game line:
+        {ts, game, tap: "up" | "down" | "clear" | "missed", reason, switch, guess}. Rows without
+        note 'switch' or 'missed' (the old one-tap vote) are left out."""
+        out = []
+        for ts, game, vote, note, ctx in self._x(
+                "SELECT ts, game, vote, note, context FROM feedback WHERE note IN ('switch', 'missed') AND ts >= ? "
+                "ORDER BY ts", (since,)).fetchall():
+            try:
+                c = json.loads(ctx or "{}")
+            except ValueError:
+                c = {}
+            tap = "missed" if note == "missed" else {1: "up", -1: "down"}.get(vote, "clear")
+            out.append({"ts": ts, "game": game, "tap": tap, "reason": c.get("reason"),
+                        "switch": c.get("switch"), "guess": c.get("guess")})
+        return out
+
     def feedback_counts(self) -> dict:
         cur = self._x("SELECT vote, COUNT(*) FROM feedback GROUP BY vote")
         return {("up" if v > 0 else "down"): n for v, n in cur.fetchall()}
