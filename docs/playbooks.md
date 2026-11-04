@@ -48,6 +48,7 @@ crunch value, P2 = robustness, P3 = polish.
 | STK-01 | visible stick drops (adb) | reconnect; if > 10 s, flip TV to hidden stick on current game | one-stick mode (STK-05) | stick_drop host=visible | recovery | ③ | done (e2e night two_stick_recovers) |
 | STK-02 | hidden stick drops | reconnect; meanwhile no pre-tune, flips become tune-in-place at dead balls | one-stick mode | stick_drop host=hidden | recovery | ③ | done (e2e night two_stick_recovers) |
 | STK-03 | stick wedged (adb up, app frozen) | force-stop app, relaunch, re-tune | reboot stick via adb | stick_wedge | recovery | ③ | done (e2e night wedged_stick_reconnected) |
+| STK-05 | hidden stick PAUSED (media_session state paused, or speed 0, or active=false), e.g. after a CEC flip | resume it, re-sync its delay estimate, then allow the flip | skip this flip; re-tune at the next dead ball | new `stick_paused` fault | flip_playing_3s, delay_err_p95 | ③ | new (live lab Nov 4) |
 | STK-04 | "Still watching?" prompt | dismiss on the hidden stick at once, visible stick at the next dead ball | relaunch app | still_watching (seed 9 miss) | recovery | ④ | partial (#64) |
 | TV-01 | SmartThings flip ignored | retry once; verify by input readback | LAN WebSocket KEY_HDMI fast path; else stay on current | flip_ignored, tv_input_ignored | switch_p95, recovery | ③ | partial |
 | TV-02 | SmartThings API down | LAN WebSocket path | CEC via the stick; else one-stick mode | api_down, st_down (faults:tv) | recovery | ③ | exists (HOME fallback; tested) |
