@@ -45,8 +45,87 @@ def reasoner(pack: Path, teacher: list[dict], student: list[dict]) -> dict:
     return res
 
 
-def jumps(pack: Path, teacher: list[dict], student: list[dict]) -> dict:
-    rows = [r for r in _read(pack / "data" / "jump_rows.jsonl") if r.get("split") == "test"]
+def _abstain(rows: list[dict], preds: dict) -> dict:
+    """Calibrated "I don't know": the confidence cut is picked on VALID rows only (the lowest cut whose
+    answered valid rows meet the gates; else the best lock_acc with unsafe leaves <= 0.5%), then
+    applied to TEST rows. Below the cut the student abstains: the rules decide (stay on the game,
+    lock_in from the head's cuts) and the moment is escalated."""
+    def conf(r):
+        p = preds.get(r["id"])
+        try:
+            return float(p.get("confidence")) if p and p is not evaluate.MISSING else -1.0
+        except (TypeError, ValueError):
+            return -1.0
+
+    valid = [r for r in rows if r["split"] == "valid"]
+    test = [r for r in rows if r["split"] == "test"]
+    if not valid or not test:
+        return {}
+    best = None
+    for k in range(0, 100, 5):
+        t = k / 100
+        sub = [r for r in valid if conf(r) >= t]
+        if len(sub) < max(20, len(valid) // 20):
+            break
+        sc = evaluate.score(sub, preds)
+        ok_unsafe = (sc["unsafe_leave_pct"] or 0) <= evaluate.GATE["unsafe_leave_pct"][1]
+        if ok_unsafe and (sc["lock_acc"] or 0) >= evaluate.GATE["lock_acc"][1]:
+            best = (t, sc)
+            break
+        if ok_unsafe and (best is None or (sc["lock_acc"] or 0) > (best[1]["lock_acc"] or 0)):
+            best = (t, sc)
+    if best is None:
+        return {"cut": None, "note": "no confidence cut keeps unsafe leaves <= 0.5% on valid"}
+    t = best[0]
+    answered = [r for r in test if conf(r) >= t]
+    sc = evaluate.score(answered, preds) if answered else {}
+    return {"cut": t, "valid_at_cut": {k: best[1][k] for k in ("n", "lock_acc", "unsafe_leave_pct")},
+            "test_coverage_pct": round(100 * len(answered) / len(test), 1),
+            "test_answered": {k: sc.get(k) for k in ("n", "lock_acc", "unsafe_leave_pct", "usable_json_pct")},
+            "escalated": len(test) - len(answered),
+            "gate_on_answered": evaluate.gate(sc) if sc else ["nothing answered"]}
+
+
+def reasoner_big(rows: list[dict], teacher: list[dict], student: list[dict]) -> dict:
+    """Round 2+: the multi-season build's dev-test sample, per league, with the gap, slices and the
+    calibrated "I don't know" mode."""
+    sources = {"today": None, "head": None}
+    t = index_answers(a for a in teacher if a.get("task") == "reasoner_blind")
+    s = index_answers(a for a in student if str(a.get("task", "")).startswith("reasoner_blind"))
+    if t:
+        sources["teacher"] = t
+    if s:
+        sources["student"] = s
+    res = evaluate.compare(rows, sources)
+    res["test_nights"] = [f"{len({r['night'] for r in rows if r['split'] == 'test' and r['league'] == lg})} "
+                          f"{lg} nights" for lg in sorted({r["league"] for r in rows})]
+    res["gate"] = {k: evaluate.gate(res[k]["all"]) for k in sources}
+    if s:
+        preds = evaluate.answers_for("student", rows, s)
+        gap = {}
+        for sp in ("train", "valid", "test"):
+            sub = [r for r in rows if r["split"] == sp]
+            if sub:
+                sc = evaluate.score(sub, preds)
+                gap[sp] = {k: sc[k] for k in ("n", "lock_acc", "unsafe_leave_pct")}
+        res["gap"] = gap
+        test = [r for r in rows if r["split"] == "test"]
+        slices = {"crunch": lambda r: r.get("crunch") or r.get("crunch_next"), "early": lambda r: not r.get("late"),
+                  "late": lambda r: r.get("late"), "decided (garbage)": lambda r: r.get("garbage"),
+                  "your team": lambda r: r.get("mine")}
+        res["slices"] = {}
+        for name, f in slices.items():
+            sub = [r for r in test if f(r)]
+            if sub:
+                sc = evaluate.score(sub, preds)
+                res["slices"][name] = {k: sc[k] for k in ("n", "lock_acc", "unsafe_leave_pct")}
+        res["dont_know"] = _abstain(rows, preds)
+    return res
+
+
+def jumps(pack: Path, teacher: list[dict], student: list[dict], jrows: list[dict] | None = None) -> dict:
+    rows = [r for r in (jrows if jrows is not None else _read(pack / "data" / "jump_rows.jsonl"))
+            if r.get("split") == "test"]
 
     def parsed(answers):
         ans = index_answers(a for a in answers if a.get("task") == "jump_blind")
@@ -107,13 +186,27 @@ def watchdog(pack: Path, work: Path) -> dict:
 
 def md(rep: dict) -> str:
     r = rep["reasoner"]
-    parts = ["## Game reasoner, held-out nights", "", f"Nights: {', '.join(r['test_nights'])}", ""]
-    for lg in ["all", "nfl", "nba", "nhl"]:
+    parts = ["## Game reasoner, dev-test nights (the locked test set is never graded here)", "",
+             f"Nights: {', '.join(r['test_nights'])}", ""]
+    for lg in ["all", "nfl", "cfb", "nba", "cbb", "nhl", "mlb"]:
         if lg in r.get("today", {}):
             parts += [f"### {lg}", "", evaluate.table(r, lg), ""]
     if r.get("gold_hard"):
         parts += ["Gold hard cases only (held-out): " + "; ".join(
             f"{k}: lock_acc {v.get('lock_acc')} unsafe {v.get('unsafe_leave_pct')}" for k, v in r["gold_hard"].items()), ""]
+    for k, title in (("gap", "Train vs valid vs test (student; a gap over a few points = overfit)"),
+                     ("slices", "Slices, dev-test (student)")):
+        if r.get(k):
+            parts += [f"{title}:", "", "| | n | lock_acc | unsafe_leave_pct |", "|---|---|---|---|"]
+            parts += [f"| {n} | {v['n']} | {v['lock_acc']} | {v['unsafe_leave_pct']} |" for n, v in r[k].items()]
+            parts.append("")
+    if r.get("dont_know"):
+        parts += ["Calibrated \"I don't know\" (cut picked on valid, applied to dev-test): " +
+                  json.dumps(r["dont_know"]), ""]
+    if rep.get("build"):
+        b = rep["build"]
+        parts += [f"Build: {b.get('total_rows')} moments; rows per league/split {json.dumps(b.get('rows'))}; "
+                  f"head AUC train/valid/test {json.dumps({lg: [v.get('auc_train'), v.get('auc_valid'), v.get('auc_test')] for lg, v in (b.get('head') or {}).items()})}", ""]
     parts += ["Ship gate (100% valid answers, lock_in >= 95% vs gold, unsafe leaves <= 0.5%): " +
               "; ".join(f"{k}: {'PASS' if not v else 'FAIL ' + ', '.join(v)}" for k, v in r["gate"].items()), ""]
     j = rep["jump"]
@@ -137,6 +230,23 @@ def md(rep: dict) -> str:
     return "\n".join(parts) + "\n"
 
 
+def sampled_ids(path: Path) -> set[str] | None:
+    """[V6] The test ids the student answered when run_students answered a stratified sample (None: all)."""
+    if not path.exists():
+        return None
+    info = json.loads(path.read_text())
+    if info.get("mode") == "all":
+        return None
+    return {str(i).split("|", 1)[0] for i in info.get("ids", [])}
+
+
+def on_sample(rows: list[dict], keep: set[str] | None) -> list[dict]:
+    """Grade test rows only where the student was asked (valid rows stay: baselines fit on them)."""
+    if keep is None:
+        return rows
+    return [r for r in rows if r.get("split") != "test" or str(r["id"]) in keep]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pack", required=True)
@@ -146,8 +256,18 @@ def main() -> None:
     sys.path.insert(0, str(pack / "code"))
     teacher = _read(work / "teacher_out.jsonl")
     student = _read(work / "students" / "game-reasoner" / "test_out.jsonl")
-    rep = {"reasoner": reasoner(pack, teacher, student), "jump": jumps(pack, teacher, student),
-           "watchdog": watchdog(pack, work)}
+    big = work / "students" / "data" / "game-reasoner"
+    keep = sampled_ids(work / "students" / "game-reasoner" / "answer_sample.json")
+    if (big / "grade_rows.jsonl").exists():          # round 2+: the multi-season build
+        rep = {"reasoner": reasoner_big(on_sample(_read(big / "grade_rows.jsonl"), keep), teacher, student),
+               "jump": jumps(pack, teacher, student, on_sample(_read(big / "jump_rows.jsonl"), keep)),
+               "watchdog": watchdog(pack, work)}
+        mb = work.parent / "moments" / "build_report.json"
+        if mb.exists():
+            rep["build"] = json.loads(mb.read_text())
+    else:
+        rep = {"reasoner": reasoner(pack, teacher, student), "jump": jumps(pack, teacher, student),
+               "watchdog": watchdog(pack, work)}
     for f in ("teacher_report.json", "students/student_data.json"):
         if (work / f).exists():
             rep[os.path.basename(f)] = json.loads((work / f).read_text())

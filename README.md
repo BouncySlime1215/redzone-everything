@@ -25,6 +25,13 @@ To run the next round, add the previous version's output as an input and run it 
 3. Settings: **GPU T4 x2**, Internet **On**. Then Save Version, then **Save & Run All**. It takes about 11 h.
 4. Download **out.zip**.
 
+### V6 (code pack only, Nov 4)
+
+- Each student job's progress shows in the notebook output, prefixed `[job]`: step, loss and ETA every 50 steps, and answer batches done/total.
+- The round grade answers a stratified 1,500-row dev-test sample (by task and league). Set `RZ_ANSWER_ALL=1` to answer the full set for a release run.
+- The frozen base runs in fp16; only the LoRA weights are fp32.
+- Each job writes `heartbeat.json`. There is an overall budget, `RZ_STUDENT_BUDGET_S` (default 4.5 h), so the run always ends with partial results and a grade.
+
 Inside Kaggle, round 2 runs these steps:
 - It downloads 3 seasons plus the current one of NFL, CFB, NBA, men's college basketball, NHL and MLB from ESPN's public API, on the CPUs. It builds every live play into a labeled moment, split by fixed dates (`agent/distill/split.py` BIG_CUTS). Locked nights are never downloaded.
 - At the same time, the 32B teacher takes the hardest 9,000 requests and the 14B teacher takes the easier tail.
