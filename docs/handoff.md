@@ -69,8 +69,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 9:25 AM ET.** Cycle 03 running. Merged: #105 (scenario tree: GAME-01 off by default; visits never displace priority), #107 (sims model honest sync doubt), #108 (controls: pre-tuned vs cold presses measured apart). Open: #88, #91, #109, #110. CI green.
-- **Usage** 10% (line 5.9%, +4.1): lanes ①②③. Kaggle V7 running (~1 h 20 min). Waiting on Nick: crunch_now wait vs rewind.
+- **Nick's crunch decision (10:45 AM):** HYBRID and AI-decided (ref: NBA CrunchTime look-ins). **New default: possession-start entry.** The buffered hidden stick cues to the target game's last dead ball, so entry is never mid-play and never waits. Per-possession jump/stay/replay-later policy trained on the hindsight oracle, then Nick's 👍/👎, then Mind stakes. Lane 1 top priority: Pick-v1 oracle imitation plus Mind V7 (Kaggle, running).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
