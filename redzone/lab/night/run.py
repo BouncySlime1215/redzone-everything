@@ -201,6 +201,7 @@ class Night:
     default_faults: bool = True
     use_watchdog: bool = True
     games: list = field(default_factory=list)
+    tv_path: str = "home"               # "home" (HOME/CEC flips only) | "smartthings" (the TV's input, measured latency)
 
     def __post_init__(self):
         self.api_down = False
@@ -276,7 +277,16 @@ class Night:
         autonomy.Stick = houselib.FakeStick
         control.DEVICES = d / "devices.json"
         engine_mod.ChannelMap = functools.partial(channels.ChannelMap, path=d / "channels.json")
-        tv.SamsungTV.from_devices = classmethod(lambda cls: cls())
+        tv.OAUTH_FILE = d / "smartthings_oauth.json"
+        if self.tv_path == "smartthings":
+            from redzone.lab.night import smartthings
+            import random as _random
+            night_tv = smartthings.make_tv_class(tv, self.house, _random.Random(self.seed * 31 + 5))
+            tv.SamsungTV.from_devices = classmethod(lambda cls: night_tv(log_path=d / "tv_input.jsonl"))
+        elif self.tv_path == "home":
+            tv.SamsungTV.from_devices = classmethod(lambda cls: cls())
+        else:
+            raise ValueError(f"tv_path must be 'home' or 'smartthings', not {self.tv_path!r}")
         tv.TOKEN_FILE = d / "tv_token.txt"
         yttv.STATE_PATH, yttv.DEVICES_PATH = d / "yttv_verified.json", d / "devices.json"
         plan.DATA = supervisor.DATA = d
@@ -756,10 +766,22 @@ def grade(night: Night) -> dict:
            "far_behind": far[:20], "prompt_on_screen_s": round(prompt_s)})
     switches = e.store._db.execute("SELECT ok, dry_run, detail, kind FROM switches").fetchall() \
         if hasattr(e.store, "_db") else []
+    tv_input = None
+    if night.tv_path == "smartthings":
+        # [switch timing] every flip by the TV's own input, at the measured latency, readback-confirmed
+        log = night.work / "data" / "tv_input.jsonl"
+        rows_in = [json.loads(x) for x in log.read_text().splitlines() if x.strip()] if log.exists() else []
+        totals = sorted(r["total_s"] for r in rows_in if r.get("total_s") is not None and r.get("verified"))
+        homes = sum(1 for d in night.house.sticks.values() for _, k in d.log if k == "HOME")
+        med = totals[len(totals) // 2] if totals else None
+        tv_input = {"commands": len(rows_in), "confirmed": len(totals), "home_presses": homes,
+                    "total_s_median": med, "total_s_max": totals[-1] if totals else None}
+        check("tv_input_path", bool(totals) and len(totals) >= 0.95 * len(rows_in)
+              and med is not None and 1.6 <= med <= 2.8, tv_input)
     return {
         "window": [_et(night.t0), _et(night.t1)], "hours": round((night.t1 - night.t0) / 3600, 2),
         "ok": all(c["ok"] for c in checks), "checks": checks,
-        "cuts": len(every), "mid_play_cuts": mid, "tv_flips": night.house.tv.flips,
+        "cuts": len(every), "mid_play_cuts": mid, "tv_flips": night.house.tv.flips, "tv_input": tv_input,
         "switches": {"total": len(switches), "ok": sum(1 for x in switches if x[0]),
                      "failed": sum(1 for x in switches if not x[0])},
         "faults": [f.describe() | {"et": _et(night.t0 + f.at)} for f in night.faults],
