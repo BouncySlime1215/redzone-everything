@@ -74,6 +74,7 @@ def test_buttons_and_first_pick_are_never_held(clk):
     assert s.check(dec, switch(), cands, clk.wall) is None
 
 
+@pytest.mark.playbook("SAFE-02")
 def test_safe02_wide_sigma_needs_a_sure_dead_ball(clk):
     s = safety()
     centred = EntryPlan(True, 0.0, Landing("dead", "huddle"), "dead ball (centred)")
@@ -102,6 +103,7 @@ def test_safe03_degraded_network_cuts_only_into_long_breaks(clk):
     assert s.check(dec, switch(), cands, clk.wall) is None
 
 
+@pytest.mark.playbook("SAFE-05")
 def test_safe05_clock_jump_holds_until_reanchored(clk):
     s = safety()
     s.tick()
@@ -117,6 +119,7 @@ def test_safe05_clock_jump_holds_until_reanchored(clk):
     assert s.skew_at is None
 
 
+@pytest.mark.playbook("SAFE-05")
 def test_safe05_gives_up_after_reanchor_s(clk):
     s = safety(**{"playbooks.safe.reanchor_s": 60})
     s.tick()
@@ -142,6 +145,7 @@ def test_decider_writes_the_playbook_reason(clk):
     assert dec.safety.seen == {"SAFE-01": 1}
 
 
+@pytest.mark.playbook("SAFE-05")
 def test_safe05_backward_jump_waits_for_a_fresh_poll(clk):
     s = safety()
     s.tick()
@@ -152,3 +156,16 @@ def test_safe05_backward_jump_waits_for_a_fresh_poll(clk):
     for tl in dec.timelines.values():
         tl.fresh_at = clk.wall
     assert s.check(dec, switch(), cands, clk.wall) is None
+
+
+@pytest.mark.playbook("NET-01")
+def test_net01_offline_holds_every_cut_replays_too(clk):
+    s = safety()
+    dec, cands = world(clk, fresh_age=40.0)
+    dec.timelines["A"] = NS(fresh_at=clk.wall - 40.0)       # the game on screen is stale too: offline
+    replay = NS(action="replay", target="B", kind="replay", reason="x")
+    assert s.check(dec, replay, cands, clk.wall)[0] == "NET-01"
+    assert s.check(dec, switch(), cands, clk.wall)[0] == "NET-01"
+    dec.timelines["A"] = NS(fresh_at=clk.wall)               # on screen fresh: a replay is not this rule's
+    assert s.check(dec, replay, cands, clk.wall) is None
+    assert s.check(dec, switch(), cands, clk.wall)[0] == "SAFE-01"   # ...and the stale target is still SAFE-01

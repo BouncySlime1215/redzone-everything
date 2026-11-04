@@ -230,10 +230,96 @@ class CecSteal(Fault):
         h._switch_to(d)
 
 
+class MacOffline(Fault):
+    """playbook=NET-01: the Mac's internet is down (the LAN, sticks and TV still answer): every score
+    source fails for `dur` seconds. Response: keep playing the game on screen, no cuts until it's back."""
+    def start(self, world):
+        world.feed.outage = True
+        world.house.event("fault", "-", "mac offline")
+
+    def stop(self, world):
+        world.feed.outage = False
+
+
+class GameMissing(Fault):
+    """playbook=FEED-07: one live game (not the one on screen) drops off the scoreboard for `dur`
+    seconds. Response: keep its last known state (no switch into it on data we no longer get), and it
+    is still on the slate when it comes back."""
+    def start(self, world):
+        e = world.engine
+        cur = e.decider.current
+        live = [r.gid for _, r in world.feed.games if r.gid != cur and r.gid in e.merger.games
+                and getattr(e.merger.games[r.gid].phase, "value", "") == "live"]
+        if not live:
+            return
+        gid = sorted(live)[0]
+        world.feed.stale_games = set(world.feed.stale_games) | {gid}
+        self._engine = id(e)
+        self.info["game"] = gid
+        self.info["target"] = next((spec.target for spec, r in world.feed.games if r.gid == gid), None)
+        world.house.event("fault", "-", f"game {gid} missing from the scoreboard")
+
+    def stop(self, world):
+        gid = self.info.get("game")
+        if gid:
+            world.feed.stale_games = set(world.feed.stale_games) - {gid}
+            if id(world.engine) != getattr(self, "_engine", None):
+                self.info["restarted"] = True     # a restart rebuilt the merger meanwhile: nothing to judge
+            else:
+                self.info["kept"] = gid in world.engine.merger.games
+
+
+class SearchMiss(Fault):
+    """playbook=APP-02: for `dur` seconds every YouTube TV tune on this stick (default: the hidden one)
+    ends on the app's search page instead of a player: nothing plays there. On the real sticks only the
+    channels with no watch code (in-app search) can miss; every channel in the night lab deep-links, so the
+    fault stands in at the link. Response (lane 3): the tune fails on the hidden stick, the TV stays on
+    the current game, the next try waits out PRELOAD_BACKOFF_S. Never flip onto it."""
+    def start(self, world):
+        self.host = _pick(world, self.host or "hidden")
+        world.house.active_faults.setdefault("search_miss", set()).add(self.host)
+        world.house.event("fault", self.host, "search miss")
+
+    def stop(self, world):
+        world.house.active_faults.get("search_miss", set()).discard(self.host)
+
+
+class UpdateDialog(Fault):
+    """playbook=APP-04: "An update is available" covers YouTube TV's player on this stick (default: the
+    hidden one) and pauses it. info.mode "back" (default): one BACK (or a fresh link) clears it.
+    "sticky": a forced update, back on every player for `dur` seconds whatever is pressed. Response
+    (lane 3): one BACK, re-link; still there -> block the app 10 min and tell the phone. Never flip onto it."""
+    def start(self, world):
+        self.host = _pick(world, self.host or "hidden")
+        world.house.active_faults.setdefault("update_dialog", set()).add(self.host)
+        if self.info.get("mode", "back") == "sticky":
+            world.house.active_faults.setdefault("update_dialog_sticky", set()).add(self.host)
+        world.house.event("fault", self.host, f"update dialog ({self.info.get('mode', 'back')})")
+
+    def stop(self, world):
+        for k in ("update_dialog", "update_dialog_sticky"):
+            world.house.active_faults.get(k, set()).discard(self.host)
+
+
+class WrongTune(Fault):
+    """playbook=APP-05: the next YouTube TV deep link on this stick (default: the hidden one) within `dur`
+    seconds plays another channel than the one asked for; its media session names that channel.
+    Response (lane 3, tuning.verify_matchup): re-tune the hidden stick before any flip onto it."""
+    def start(self, world):
+        self.host = _pick(world, self.host or "hidden")
+        world.house.active_faults.setdefault("wrong_tune", set()).add(self.host)
+        world.house.event("fault", self.host, "wrong tune armed")
+
+    def stop(self, world):
+        world.house.active_faults.get("wrong_tune", set()).discard(self.host)
+
+
 PLAYBOOK = {"feed_frozen": "FEED-02", "rate_limit": "FEED-06", "slow_poll": "MAC-05", "wifi_degrade": "SAFE-03",
             "buffering": "NET-02", "stick_drop": "STK-01/02", "stick_wedge": "STK-03", "flip_ignored": "TV-01",
             "st_down": "TV-02", "tv_other_input": "TV-03", "cec_steal": "TV-04",
-            "stick_paused": "STK-05", "buffer_lost": "STK-06"}   # fault kind -> docs/playbooks.md entry
+            "stick_paused": "STK-05", "mac_offline": "NET-01", "game_missing": "FEED-07",
+            "search_miss": "APP-02", "update_dialog": "APP-04", "wrong_tune": "APP-05",
+            "buffer_lost": "STK-06"}   # fault kind -> docs/playbooks.md entry
 
 
 class FeedStale(Fault):
@@ -318,7 +404,9 @@ KINDS = {"stick_drop": StickDrop, "stick_wedge": StickWedge, "still_watching": S
          "feed_frozen": FeedFrozen, "rate_limit": RateLimit, "slow_poll": SlowPoll, "wifi_degrade": WifiDegrade,
          "buffering": Buffering, "st_down": StDown, "tv_other_input": TvOtherInput, "cec_steal": CecSteal,
          "feed_stale": FeedStale, "sync_wide": SyncWide,
-         "stick_paused": StickPaused, "buffer_lost": BufferLost}
+         "stick_paused": StickPaused, "mac_offline": MacOffline, "game_missing": GameMissing,
+         "search_miss": SearchMiss, "update_dialog": UpdateDialog, "wrong_tune": WrongTune,
+         "buffer_lost": BufferLost}
 
 
 def from_spec(spec: dict) -> Fault:
@@ -356,7 +444,7 @@ def default(rng: random.Random, live_windows: list[tuple[float, float]]) -> list
 
 
 def safety(world, rng: random.Random) -> list[Fault]:
-    """[playbooks SAFE-01/02/03/05] One fault per safety playbook, while games are live:
+    """[playbooks SAFE-01/02/03/05, NET-01] One fault per safety playbook, while games are live:
     `python -m redzone.lab.night --faults redzone.lab.night.faults:safety --set playbooks.safe.enabled=true`."""
     lw = world.live_windows
     a, b = lw[0][0], max(hi for _, hi in lw)
@@ -370,7 +458,8 @@ def safety(world, rng: random.Random) -> list[Fault]:
     return [FeedStale("feed_stale", when(0.10, 0.20), 900.0),
             SyncWide("sync_wide", when(0.30, 0.40), 600.0, info={"sd": 12.0}),
             WifiDegrade("wifi_degrade", when(0.50, 0.60), 900.0, info={"q": 13.0}),
-            ClockSkew("clock_skew", when(0.70, 0.80), 1800.0, info={"seconds": 30.0})]
+            ClockSkew("clock_skew", when(0.70, 0.80), 1800.0, info={"seconds": 30.0}),
+            MacOffline("mac_offline", when(0.85, 0.95), rng.uniform(90, 240))]
 
 
 def playbook(world, rng: random.Random) -> list[Fault]:
@@ -390,7 +479,8 @@ def playbook(world, rng: random.Random) -> list[Fault]:
            RateLimit("rate_limit", when(0.25, 0.35), rng.uniform(60, 180)),
            SlowPoll("slow_poll", when(0.40, 0.50), rng.uniform(300, 600), info={"seconds": rng.uniform(4, 9)}),
            WifiDegrade("wifi_degrade", when(0.55, 0.65), rng.uniform(300, 600), info={"scale": rng.choice([4.0, 8.0, 15.0])}),
-           Buffering("buffering", when(0.70, 0.80), rng.uniform(8, 40), rng.choice(["visible", "hidden"]))]
+           Buffering("buffering", when(0.70, 0.80), rng.uniform(8, 40), rng.choice(["visible", "hidden"])),
+           GameMissing("game_missing", when(0.82, 0.88), rng.uniform(60, 180))]
     return sorted(out, key=lambda f: f.at)
 
 
@@ -413,6 +503,28 @@ def tv(world, rng: random.Random) -> list[Fault]:
     return sorted([StDown("st_down", when(0.15, 0.30), rng.uniform(300, 900)),
                    TvOtherInput("tv_other_input", when(0.40, 0.55), rng.uniform(120, 420)),
                    CecSteal("cec_steal", when(0.65, 0.80), 0.0, "hidden")], key=lambda f: f.at)
+
+
+def app(world, rng: random.Random) -> list[Fault]:
+    """`--faults redzone.lab.night.faults:app`: the YouTube TV app faults (APP-02 search miss, APP-04 an
+    update dialog, once dismissable and once forced, APP-05 a wrong tune) on the hidden stick at seeded
+    live times. Graded in the report's app_faults_handled (never a broken screen or a wrong game on the TV)."""
+    wins = world.live_windows
+    a, b = wins[0][0], max(hi for _, hi in wins)
+
+    def when(lo, hi):
+        for _ in range(200):
+            t = a + (b - a) * rng.uniform(lo, hi)
+            if any(w0 + 300 <= t <= w1 - 600 for w0, w1 in wins):
+                return t
+        return t
+    # The hidden stick re-tunes only when the standby plan changes, so each fault is armed long enough
+    # to meet a tune (the night's report says whether it fired: search_miss "hit", wrong_tune "fired").
+    t_wrong = when(0.55, 0.70)
+    return sorted([SearchMiss("search_miss", when(0.10, 0.25), rng.uniform(600, 1200), "hidden"),
+                   UpdateDialog("update_dialog", when(0.28, 0.38), 300.0, "hidden"),
+                   UpdateDialog("update_dialog", when(0.40, 0.55), rng.uniform(300, 900), "hidden", {"mode": "sticky"}),
+                   WrongTune("wrong_tune", t_wrong, max(900.0, b - t_wrong), "hidden")], key=lambda f: f.at)
 
 
 def plug(spec: str, world, rng: random.Random) -> list[Fault]:

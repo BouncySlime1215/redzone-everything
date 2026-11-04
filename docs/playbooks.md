@@ -32,7 +32,7 @@ crunch value, P2 = robustness, P3 = polish.
 | id | trigger | action | fallback | test | line | lane | status |
 |---|---|---|---|---|---|---|---|
 | SAFE-01 | feed stale > 10 s on the target game | no cut into it; hold current | if current is stale too, stay put, re-poll at 1.5 s | feed_outage on target | mid_play | ② | partial |
-| SAFE-02 | sync σ on the target stick > 3 s | no cut; widen the wait to the next confirmed dead ball | hold until σ shrinks or a break anchor lands | sync ±3 s slice | mid_play | ② | new |
+| SAFE-02 | sync σ on the target stick > 3 s | no cut; widen the wait to the next confirmed dead ball | hold until σ shrinks or a break anchor lands | sync ±3 s slice | mid_play | ② | done (playbooks.safe, flag off: tests/test_playbooks_safe.py; night lab `sync_wide` in faults:safety) |
 | SAFE-03 | Wi-Fi RSSI drop / buffering > 2 events/min on either stick | safe mode: only cut on long breaks (TV timeout, quarter end) | hold current | new `wifi_degrade` fault | mid_play, dead_air | ② | new |
 | SAFE-04 | Reflex models disagree (ensemble spread > threshold) | abstain: hold | rules fallback (FLOOR_S timing) | replayed nights with noise | mid_play | ① | new |
 | SAFE-05 | clock skew detected (feed vs wall > 5 s) | re-anchor the clock; no cut until re-anchored | hold | clock_skew | mid_play | ② | exists |
@@ -53,7 +53,7 @@ crunch value, P2 = robustness, P3 = polish.
 | STK-06 | pause buffer LOST (held stick resumed or jumped to live, app restart) or behind-live drift > 2 s from target (Nick, Nov 4 3:05 PM) | rebuild the hold at the next dead ball on the hidden stick (pause method, calibrated hold -1.5 s); never mid-play. An intentional hold pause is not STK-05 | run without buffer for that game (live edge, entries at confirmed dead only) | new `buffer_lost` fault | behind_live_err_p95, drift_recovered | ③ | new (overseer queue e) |
 | TV-01 | SmartThings flip ignored | retry once; verify by input readback | LAN WebSocket KEY_HDMI fast path; else stay on current | flip_ignored, tv_input_ignored | switch_p95, recovery | ③ | partial |
 | TV-02 | SmartThings API down | LAN WebSocket path | CEC via the stick; else one-stick mode | api_down, st_down (faults:tv) | recovery | ③ | exists (HOME fallback; tested) |
-| MAC-01 | Mac about to sleep | caffeinate while games are live; persist state | on wake: restore state, re-verify sticks and TV input | new `mac_sleep` fault | recovery | ④ | partial (wake.py) |
+| MAC-01 | Mac about to sleep | caffeinate while games are live; persist state | on wake: restore state, re-verify sticks and TV input | new `mac_sleep` fault | recovery | ④ | partial (caffeinate while live: tests/test_mac_wake.py; wake.py recover; state not persisted) |
 
 ## P1: big plays and crunch (the scenario tree's first branches)
 
@@ -94,18 +94,18 @@ generalize them; until then each is a named rule, tested on replayed nights.
 | FEED-01 | ESPN summary 5xx | switch to the next source (NHL wsc, NBA liveData) | FastCast; else SAFE-01 | feed_5xx / api_down | recovery | ④ | done (flag sources.trust_order, off; tests/test_feed_trust_order.py) |
 | FEED-02 | feed returns stale ETag for > 30 s | burst poll the challenger | SAFE-01 | new `feed_frozen` fault | mid_play | ④ | partial (#73) |
 | FEED-03 | two sources disagree on clock/state | trust the faster measured source, log it | hold | new `feed_disagree` fault | mid_play | ④ | done (flag sources.trust_order, off; merger.disagreements logged) |
-| FEED-04 | play arrives out of order / late | re-sort by wallclock; revise only future decisions | – | lag jitter (B12) | mid_play | ④ | new |
-| FEED-05 | feed schema change (parse error) | quarantine the source, fall back | file an auto-fix issue | malformed fixture | recovery | ④ | partial (autofix) |
+| FEED-04 | play arrives out of order / late | re-sort by wallclock; revise only future decisions | – | lag jitter (B12) | mid_play | ④ | done (backtest late_plays / lag jitter: tests/test_midplay.py zero cuts under real-world mess) |
+| FEED-05 | feed schema change (parse error) | quarantine the source, fall back | file an auto-fix issue | malformed fixture | recovery | ④ | partial (an unreadable summary is a source error, so the source loses stoppage ownership: tests/test_feeds.py; no bench yet; autofix files it) |
 | FEED-06 | rate limited (429) | back off with jitter, rotate source | – | new `rate_limit` fault | recovery | ④ | new |
-| FEED-07 | game missing from the scoreboard | keep last known, recheck in 30 s | drop from slate | fixture | – | ④ | new |
-| NET-01 | Mac offline | keep playing the current game; no cuts | resume decisions on reconnect | new `mac_offline` fault | recovery | ④ | new |
+| FEED-07 | game missing from the scoreboard | keep last known, recheck in 30 s | drop from slate | fixture | – | ④ | done (decider _gone_hold keeps it; night lab `game_missing`, check net_feed_faults_handled) |
+| NET-01 | Mac offline | keep playing the current game; no cuts | resume decisions on reconnect | new `mac_offline` fault | recovery | ④ | done (NET-01 hold in playbooks.safe, flag off: no cut while every feed is stale; night lab `mac_offline` in faults:safety) |
 | NET-02 | stick bitrate drop / buffering | that stick's delay estimate widens; prefer the other stick | SAFE-03 | new `buffering` fault | flip_playing_3s | ② | new |
-| NET-03 | DNS failure for one source | that source down; others continue | FEED-01 | fixture | recovery | ④ | new |
+| NET-03 | DNS failure for one source | that source down; others continue | FEED-01 | fixture | recovery | ④ | done (per-host backoff, sources/http.py; tests/test_http.py) |
 | APP-01 | YTTV sign-in screen | person-only fault: notify Nick once, use the other app/channel | – | prompt_screen | recovery | ④ | partial |
-| APP-02 | YTTV channel not found by search | try the next tune path (guide, deep link) | other provider | fixture | recovery | ④ | partial |
+| APP-02 | YTTV channel not found by search | try the next tune path (guide, deep link) | other provider | fixture + night-lab `search_miss` (faults:app) | recovery | ④ | partial (fault built; lane 3's response next) |
 | APP-03 | Prime "are you still there" / ad break overlay | dismiss on the hidden stick | relaunch | prompt_screen | recovery | ④ | partial |
-| APP-04 | app update dialog | dismiss/skip on the hidden stick | relaunch | new fault | recovery | ④ | new |
-| APP-05 | wrong game tuned (OCR mismatch) | re-tune | other provider | new `wrong_tune` fault | recovery | ④ | partial (screen OCR) |
+| APP-04 | app update dialog | dismiss/skip on the hidden stick | relaunch | night-lab `update_dialog`, modes back / sticky (faults:app) | recovery | ④ | fault built; lane 3's response next |
+| APP-05 | wrong game tuned (OCR mismatch) | re-tune | other provider | night-lab `wrong_tune` (faults:app; graded with tuning.verify_matchup) | recovery | ④ | partial (screen OCR); fault built |
 | APP-06 | blackout / not available in region | pick the next provider or drop the game | – | fixture | – | ④ | new |
 | APP-07 | stream starts at live edge but buffer wanted B s behind | rewind/pause to B on the hidden stick | play at live, Timing uses live lag | buffer fixture | big_live_* | ② | partial (#61) |
 | MAC-02 | Mac hot (thermal pressure) | pause the Mind; Reflex only | slow poll on blowouts | new `thermal` fault | tick p99 | ③ | new (idea #15) |

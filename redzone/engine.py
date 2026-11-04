@@ -767,6 +767,11 @@ class Engine:
             except Exception:
                 log.exception("summary parse failed %s", g.game_id)
                 s = None
+            if not (s and s.game_id):
+                # playbook=FEED-05: a summary we can't read (a schema change) counts against the source like
+                # a 5xx, so it loses stoppage ownership (Merger.owner, FEED-01) instead of looking healthy.
+                self.merger.record_error("espn_summary")
+                return
             if s and s.game_id:
                 self.summaries[s.game_id] = data
                 self.merger.update("espn_summary", s)

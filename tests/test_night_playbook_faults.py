@@ -56,7 +56,7 @@ def test_playbook_plug_puts_one_of_each_inside_live_time():
     w, _, _ = _world()
     got = F.playbook(w, random.Random(3))
     names = [x.name for x in got]
-    assert len(set(names)) == len(names) == 5 and set(names) <= set(F.PLAYBOOK)
+    assert len(set(names)) == len(names) == 6 and set(names) <= set(F.PLAYBOOK)
     assert all(300 <= x.at <= 4 * 3600 - 600 for x in got)
 
 
@@ -133,3 +133,92 @@ def test_parse_playback_prefers_an_active_playing_session():
             "speed=1.0, updated=9, actions=0, custom actions=[], active item id=-1, error=null}\n")
     assert parse_playback(text)["pkg"] == "b.pkg"
     assert parse_playback(text, "a.pkg")["active"] is False
+
+
+# ---- APP-02 / APP-04 / APP-05: the YouTube TV app faults (`--faults redzone.lab.night.faults:app`) ----
+
+def _link(d, url="https://tv.youtube.com/watch/espn"):
+    return d._am(f"am start -a android.intent.action.VIEW -d '{url}' {H.YTTV}")
+
+
+def _app_world():
+    w, d, a = _world()
+    w.house.urls.update({"https://tv.youtube.com/watch/espn": "youtubetv:espn",
+                         "https://tv.youtube.com/watch/fox": "youtubetv:fox"})
+    hid = w.house.sticks["10.0.0.12:5555"]
+    return w, d, hid
+
+
+@pytest.mark.playbook("APP-02")
+def test_search_miss_leaves_the_hidden_stick_on_the_search_page_for_its_whole_length():
+    w, d, hid = _app_world()
+    f = F.from_spec({"name": "search_miss", "at": 0, "dur": 90})
+    f.start(w)
+    assert f.host == hid.host                       # the hidden stick (the TV shows A)
+    for _ in range(2):                              # a retry misses too while it lasts
+        ok, _ = _link(hid)
+        assert ok and hid.picture() == (None, "tv search", 0.0)
+    assert sum(1 for e in w.house.events if e[1] == "search_miss") == 2
+    _link(d)                                        # the stick on screen is untouched
+    assert d.apps[H.YTTV].screen == "player"
+    f.stop(w)
+    _link(hid)
+    a = hid.apps[H.YTTV]
+    assert a.screen == "player" and a.target == "youtubetv:espn"
+
+
+@pytest.mark.playbook("APP-04")
+def test_update_dialog_covers_the_player_until_one_back():
+    w, d, hid = _app_world()
+    _link(hid)
+    f = F.from_spec({"name": "update_dialog", "at": 0, "dur": 300})
+    f.start(w)
+    hid.tick()
+    a = hid.apps[H.YTTV]
+    assert hid.picture()[1] == "tv dialog" and a.state == H.PAUSED
+    hid.key("KEYCODE_BACK")
+    assert a.screen == "player" and a.state == H.PLAYING
+    hid.tick()                                      # dismissable: it doesn't come back
+    assert a.screen == "player"
+    f.stop(w)
+
+
+@pytest.mark.playbook("APP-04")
+def test_a_forced_update_dialog_ignores_back_and_comes_back_on_every_link():
+    w, d, hid = _app_world()
+    _link(hid)
+    f = F.from_spec({"name": "update_dialog", "at": 0, "dur": 300, "mode": "sticky"})
+    f.start(w)
+    hid.tick()
+    a = hid.apps[H.YTTV]
+    hid.key("KEYCODE_BACK")
+    assert a.screen == "dialog" and any(e[1] == "dialog_back_ignored" for e in w.house.events)
+    _link(hid)
+    hid.tick()
+    assert hid.picture()[1] == "tv dialog"
+    f.stop(w)
+    hid.key("KEYCODE_BACK")                         # the update is done: BACK clears it
+    assert a.screen == "player"
+
+
+@pytest.mark.playbook("APP-05")
+def test_wrong_tune_plays_another_channel_once_and_the_session_names_it():
+    w, d, hid = _app_world()
+    f = F.from_spec({"name": "wrong_tune", "at": 0, "dur": 600})
+    f.start(w)
+    _link(hid)
+    a = hid.apps[H.YTTV]
+    assert a.target == "youtubetv:fox" and a.subtitle == w.house.channel_name("youtubetv:fox")
+    assert any(e[1] == "wrong_tune" and e[3] == "youtubetv:espn->youtubetv:fox" for e in w.house.events)
+    _link(hid)                                      # one-shot: the re-tune lands on the right channel
+    assert a.target == "youtubetv:espn"
+    f.stop(w)
+
+
+def test_app_plug_puts_each_app_fault_on_the_hidden_stick_inside_live_time():
+    w, _, _ = _world()
+    got = F.app(w, random.Random(5))
+    assert [x.name for x in got].count("update_dialog") == 2
+    assert {x.name for x in got} == {"search_miss", "update_dialog", "wrong_tune"}
+    assert {F.PLAYBOOK[x.name] for x in got} == {"APP-02", "APP-04", "APP-05"}
+    assert all(x.host == "hidden" and 300 <= x.at <= 4 * 3600 - 600 for x in got)

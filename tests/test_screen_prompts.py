@@ -165,6 +165,7 @@ async def test_live_play_guard_runs_before_every_key():
     (still(pkg="com.amazon.tv.launcher"), False),
     (still(heading="Are you still watching? Sign in to continue"), False),
 ])
+@pytest.mark.playbook("APP-03")
 async def test_still_watching_is_cleared_only_when_yes_is_safe(frame, pressed):
     st = Stick([frame])
     steps = []
@@ -251,6 +252,7 @@ async def test_tuner_watchdog_hook_swallows_unclear_pickers(monkeypatch):
     assert st.keys == [] and "signed out" in steps[-1]
 
 
+@pytest.mark.playbook("APP-03")
 async def test_watchdog_clears_a_prompt_before_reloading_the_game(cfg, tmp_path, monkeypatch):
     from redzone.channels import ChannelMap
     from test_hot_standby import FakeStick
