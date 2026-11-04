@@ -37,6 +37,7 @@ from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S
                                     resume_lead, resume_play)
 from redzone.decider.cuts import EntryPlan, plan_entry
 from redzone.decider.playbooks import Safety
+from redzone.decider.scenarios import Scenarios
 from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
 from redzone.decider import core
 from redzone.decider.core import BreakView, CoreState, DecisionCore, Knobs, MomentView, Option, SwitchPath
@@ -232,6 +233,7 @@ class Decider:
         self.cfg = cfg
         self.delays = delays
         self._clock = clock
+        self.scenarios = Scenarios(cfg)   # [scenario tree] GAME-01..03 seeds, flag playbooks.game.enabled (off)
         self.safety = Safety(cfg)   # [playbooks] SAFE-01/02/03/05, flag playbooks.safe.enabled (off)
         # The live controller knows whether THIS target is already ready. App-wide
         # average costs are useful for ranking, but cannot promise a deadline.
@@ -357,6 +359,7 @@ class Decider:
                 self.after_replay = True
         home_before = (self.home_break_visit, self.home_return_at)
         d = self._decide(cands, now)
+        d = self._scenario(d, cands, now, home_before)
         d = self._hold_for_big(d, cands, now, home_before)
         d = self._time_entry(d, cands, now, home_before)
         d = self._safe(d, cands, now, home_before)
@@ -780,6 +783,40 @@ class Decider:
         state = State.REPLAY if self.after_replay else d.state
         return Decision(now, "stay", self.current, f"{plan.why}: {d.reason}", state, d.gate,
                         want=d.target)
+
+    def _scenario(self, d: Decision, cands, now: float, home_before) -> Decision:
+        """[scenario tree] The branch of the scenario table that matches the slate (redzone/decider/
+        scenarios.py, GAME-01..03), when it disagrees with the generic pick. Nick's buttons, a lock,
+        a focus mode, a replay in progress and safe mode win."""
+        sc = self.scenarios
+        if not sc.enabled() or self.current is None or d.kind == "user" or self.replaying or self.safe_mode \
+                or self.user.paused or self.user.locked_game or self.user.focus_mode != FocusMode.AUTOPILOT:
+            return d
+        plan = sc.step(self, cands, now)
+        if plan is None:
+            return d
+        br, tag = plan.branch, f"playbook={plan.branch['id']}"
+        if br["do"] == "hold":
+            if d.action in ("switch", "replay") and d.target != self.current:
+                sc.seen[br["id"]] = sc.seen.get(br["id"], 0) + 1
+                self.home_break_visit, self.home_return_at = home_before
+                return Decision(now, "stay", self.current, f"{tag}: your team's crunch time: {d.reason}",
+                                d.state, d.gate)
+            return d
+        b = plan.b
+        if b is None or b == self.current or b not in cands:
+            return d
+        if d.action == "switch" and d.target == b:
+            d.reason = f"{tag}: {d.reason}"
+            return d
+        gate = self._gate(cands.get(self.current), now) if self.current in cands else None
+        if not (gate and gate.safe):
+            return d    # rule #1: a branch never cuts out of a play; it acts at A's next safe moment
+        sc.seen[br["id"]] = sc.seen.get(br["id"], 0) + 1
+        if br.get("back") == "restart":
+            self.home_break_visit = plan.a
+        kind = "break_visit" if br["do"] == "visit" else "crunch"
+        return Decision(now, "switch", b, self._why(cands[b], f"{tag}: "), d.state, d.gate, kind=kind)
 
     def _safe(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[playbooks SAFE-01/02/03/05] A switch the safety playbooks hold (redzone/decider/playbooks.py)."""

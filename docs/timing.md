@@ -366,3 +366,24 @@ playbooks.safe.enabled=true` injects `feed_stale` (every game but the one on scr
 doubt, 10 min), `wifi_degrade` (15 min) and `clock_skew` (+30 s for 30 min, then back). Seeds 7, 11 and 13:
 every check passes with 0 mid-play cuts. The existing guards already hold most of these situations. The gate
 looked at 149 switches on seed 7 and held 6, all SAFE-05 at the backward clock jump.
+
+## Scenario-tree lookup (flag `playbooks.game.enabled`, OFF)
+
+`redzone/decider/scenarios.py` (idea #19, Mac half). Each tick turns the slate into one state word per live game:
+`my_crunch`, `long_break`, `after_score`, `break`, `redzone`, `pp`, `crunch` or `live`. A table of branches then says
+what to do. First match wins; a file can replace the seeds (`playbooks.game.table`, the cloud tree's format). A live
+plan is dropped as soon as B leaves the state that justified it, and the slate is looked up again. A branch never
+acts while the leave gate says A is mid-play, and it never visits away from a game in crunch time. Seeds:
+GAME-03 (your team's crunch: go there, then hold), GAME-01 (NFL red zone during a long break on screen) and GAME-02
+(NHL power play after a score on screen).
+
+| split | league | flag | mid-play | crunch live | big live | big seen | dead air | your-team crunch |
+|---|---|---|---|---|---|---|---|---|
+| dev | NFL | off → on | 0 → 0 | 68.0 → 67.6 | 50.3 → 50.5 | 98.7 → 98.1 | 29.8 → 29.4 | 51/56 → 51/56 |
+| dev | NHL | off → on | 1/242 → 1/240 | 80.6 → 80.6 | 44.7 → 44.9 | 98.6 → 98.6 | 22.4 → 22.6 | 15/15 |
+| dev | NBA | off → on | 3/60 → 3/60 | 90.9 → 90.9 | 81.7 → 81.7 | 84.5 → 84.5 | 19.4 → 19.4 | 31/31 |
+| locked | NFL | off → on | 0 → 0 | 68.1 → 69.0 | 49.0 → 49.5 | 100 → 100 | 29.2 → 29.0 | 26/27 → 27/27 |
+| locked | NHL | off → on | 0 → 0 | 84.7 → 84.7 | 48.1 → 48.6 | 98.1 → 98.1 | 25.4 → 25.5 | 13/13 |
+
+On dev, GAME-01 fired 213 times and agreed with the generic break visit another 42. Its visits trade some
+crunch and big-play coverage for dead air, so it stays off until the cloud tree replaces the hand-written seed.
