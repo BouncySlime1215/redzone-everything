@@ -222,3 +222,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   98.7 -> 98.1, big live 50.3 -> 50.5, dead air 29.8 -> 29.4; NHL big live 44.7 -> 44.9, dead air 22.4 -> 22.6;
   NBA unchanged). Locked: NFL crunch live 68.1 -> 69.0, your-team crunch 26/27 -> 27/27; NHL big live 48.1 -> 48.6.
   0 mid-play cuts on both. The table format is the contract for the cloud-built tree (idea #19).
+- 2026-11-04 10:50 AM (lane 2, planner ask: GAME-05 now, then 06/09/10/21/22/11): **new flags
+  `playbooks.game.crunch_overlap` (GAME-05) and `playbooks.game.empty_net` (GAME-09), both OFF; GAME-21/22 are seed rows
+  under `playbooks.game.enabled` (OFF).** Why off: GAME-05 is mixed (dev NHL crunch 80.6 -> 79.7, locked 76.2 -> 84.7 with
+  every new flag on), and GAME-09 can't be graded on replays (ESPN has no empty-net signal). The scenario tree as a whole
+  costs NFL big plays seen within 10 min 87.8 -> 84.3 (GAME-01 visits): keep `playbooks.game.enabled` off until fixed.
