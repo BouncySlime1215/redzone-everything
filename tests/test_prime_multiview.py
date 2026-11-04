@@ -284,3 +284,41 @@ def test_probe_order_models_and_labels():
     assert probe.predict("swap", ["a", "b", "c"], 0, 2) == (["c", "b", "a"], 0)
     assert probe.predict("rotate", ["a", "b", "c"], 0, 2) == (["c", "a", "b"], 0)
     assert probe.words("Gammas at Home LIVE") == ["Gammas", "Home"]
+
+
+def test_night_grader(tmp_path):
+    import importlib.util
+    import sqlite3
+    p = Path(__file__).resolve().parent.parent / "scripts" / "prime_multiview_grade.py"
+    spec = importlib.util.spec_from_file_location("pmv_grade", p)
+    g = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(g)
+    db = tmp_path / "redzone.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE switches (ts REAL, target TEXT, ok INTEGER, dry_run INTEGER, detail TEXT)")
+    for i in range(20):
+        d = {"path": "prime_tile" if i < 20 else "tuned", "took": 1.2, "trace": {"id": f"s{i}"}}
+        con.execute("INSERT INTO switches VALUES (?,?,?,?,?)", (100 + i, B, 1, 0, json.dumps(d)))
+    con.execute("INSERT INTO switches VALUES (?,?,?,?,?)", (130, D, 1, 0, json.dumps({"path": "tuned", "took": 30})))
+    con.commit()
+    con.close()
+    sw = g.tile_switches(db, 0)
+    assert len(sw) == 20
+    cuts = tmp_path / "cuts.jsonl"
+    cuts.write_text("\n".join(json.dumps({"id": f"s{i}", "ts": 100 + i, "path": "prime_tile",
+                                          "enter": "dead", "leave": "dead"}) for i in range(20)))
+    assert g.grade(sw, g.graded(cuts, 0))["pass"]
+    cuts.write_text("\n".join(json.dumps({"id": f"s{i}", "ts": 100 + i, "path": "prime_tile",
+                                          "enter": "play" if i == 3 else "dead"}) for i in range(19)))
+    r = g.grade(sw, g.graded(cuts, 0))
+    assert not r["pass"] and r["ungraded"] == 1
+
+
+def test_tile_switch_trace_has_a_cut_so_the_supervisor_grades_it():
+    from types import SimpleNamespace
+    from redzone import trace
+    d = SimpleNamespace(at=100.0, target="g2", kind="switch", reason="better game", action="switch")
+    out = ctl.Outcome(True, B, 1.1, "verified main tile", False, confirmed_at=106.2, path="prime_tile",
+                      marks=[("safe_start", 101.0), ("safe_done", 105.0), ("tune_start", 105.0), ("tune_done", 106.1)])
+    t = trace.build(d, "g1", B, out, 100.5, now=107.0)
+    assert t["cut_at"] == 105.0 and t["path"] == "prime_tile"

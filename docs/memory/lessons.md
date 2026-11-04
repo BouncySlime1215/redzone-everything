@@ -78,3 +78,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** the night pinned the clock, sticks and TV but not the resource governor. Its watchdog read the real `ps`, saw the live RedZone app over the 1200 MB cap and restarted the night's own engine every few minutes (23 restarts in a repro). Battery or load (load avg ~14 during the deploy) also changed OCR pacing. The night's virtual clock makes CPU speed itself irrelevant.
 - **Fix:** `pin_host()` in redzone/lab/night/run.py makes every governor in the night see a calm machine with no RedZone processes. The end check holds a two-stick gap still open at the end to the same 420 s as every other episode.
 - **Signals:** passes in CI, fails on the Mac, deploy tests, watchdog restart, governor, ps
+
+## A new switch path was invisible to the cut grader
+- **Symptom:** Prime multiview tile switches (path `prime_tile`) would never show up in data/supervisor_cuts.jsonl, so their mid-play entries couldn't be counted.
+- **Cause:** `trace.build` only sets `cut_at` for a flip or for path `single`; any other in-place path got `cut_at` None and the supervisor skips those.
+- **Fix:** `trace.IN_PLACE` lists the paths that change the stick on screen (`single`, `prime_tile`); a new in-place path must be added there. Test: tests/test_prime_multiview.py.
+- **Signals:** new Outcome.path, cut_at None, ungraded cuts, supervisor_cuts.jsonl missing rows
