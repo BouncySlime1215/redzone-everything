@@ -99,3 +99,15 @@ def test_ad_edges_from_logcat_lines_for_yttv():
              "1793805271.000  1234  1300 I Cobalt  : bitrate changed to 6000",
              "no timestamp: cue out"]
     assert log_ad_edges(lines) == [(1793805150.123, "break_start"), (1793805270.5, "break_end")]
+
+
+def test_log_pattern_keeps_youtube_tv_state_bursts_not_the_ifa_timer():
+    """Live lab Nov 4: content-anchored onPlaybackStateChanged bursts are kept; the 600 s
+    advertising-ID timer is not an ad break and stays out."""
+    import re
+    from redzone import sync_probe as sp
+    rx = re.compile(sp.LOG_RE, re.I)
+    burst = ("1793808834.6  2066  2066 I whad-MediaSession: onPlaybackStateChanged: starboard_d98, "
+             "state=PlaybackState {state=3, position=47832337, buffered position=0, speed=1.0, updated=1}")
+    timer = "1793808031.984  1146  1313 I starboard: Successfully retrieved Advertising ID (IfA)."
+    assert rx.search(burst) and not rx.search(timer)

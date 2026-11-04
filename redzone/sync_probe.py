@@ -59,7 +59,11 @@ UI_HINTS = {
 
 LOG_RE = (r"ad ?break|ad ?pod|adstart|ad_start|adend|ad_end|cue ?in|cue ?out|scte|insertion|"
           r"rebuffer|buffering|stall|bitrate|bandwidth|resolution|videoformat|video format|"
-          r"dropped frames|quality")
+          r"dropped frames|quality|"
+          # Live lab Nov 4: YouTube TV's media session republishes its state in bursts (4 updates over
+          # ~60 s) at the SAME stream position on both sticks, i.e. tied to the content (candidate ad
+          # break / segment marker). The picture is DRM-black in screencaps, so this line is the evidence.
+          r"onPlaybackStateChanged")
 
 
 # [yttv anchors] YouTube TV (Cobalt) draws its own UI: uiautomator sees no text (live lab, Nov 4), so its

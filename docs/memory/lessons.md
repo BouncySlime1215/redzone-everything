@@ -215,3 +215,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - 2026-11-04 **NBA technicals without "foul" in the type were live play.** ESPN types like "Defensive 3-Seconds Technical" or "Coach Technical" mapped to Stoppage.NONE, so the grader called a leave 72 s into a timeout a mid-play cut (DET @ NY, Oct 27, found by lane 1). `espn.stoppage_for` now maps technical/flagrant to WHISTLE; the app's screen model already treated them as dead.
 
 - 2026-11-04 **The sims trusted the rewind to land where the plan said.** `backtest` set an entry's offset to `rewind_s` exactly, so 0 mid-play entries looked proven while the stick stepped 15 s (not 10), swallowed the first press and stalled 2-4 s. With the real seek, today's code made 32-37 mid-play entries per dev seed in NFL and NHL. Model the hardware's actual response (`--real-seek`, `contracts.switching.YTTV_SEEK`) and grade from the commands the app really sends, not from what it meant.
+- 2026-11-04: **Two sticks are not one tune speed.** Live lab: hidden-stick tune to PLAYING p50 2.33 s / p95 3.06 s on
+  the 4K Plus vs 3.74 / 5.50 s on the 4K 2023, but every tune went into one shared median. The roles swap on every
+  flip, so there is no free "use the fast stick" choice; what we can do is price the stick that will tune. Tunes now
+  also book under `<app>@<model>`; tune_estimate uses it after 3, deadline_cost its p90 after 8. The decider's
+  long-run switch_cost stays the shared figure, so the config doesn't flap with whichever stick is hidden.
