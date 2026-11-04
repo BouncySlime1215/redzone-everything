@@ -873,6 +873,39 @@ def grade(night: Night) -> dict:
                          "switched_into": len(into), "kept": kept, "ok": not into and kept})
     if netx:
         check("net_feed_faults_handled", all(x["ok"] for x in netx), netx)
+    # APP-02 / APP-04 / APP-05 (faults:app): the stick with the broken app is never flipped onto while it
+    # shows the search page or the update dialog, and a wrong tune never reaches the TV as the game we
+    # meant (graded only with tuning.verify_matchup, lane 3's check: without it nothing reads the channel).
+    appx = []
+    hev = night.house.events
+    for f in night.fault_log:
+        if f["event"] != "start" or f["name"] not in ("search_miss", "update_dialog", "wrong_tune"):
+            continue
+        lo, hi, h = f["t"], f["t"] + float(f.get("dur") or 0) + 120, f.get("host")
+        row = {"fault": f["name"], "playbook": faultlib.PLAYBOOK[f["name"]], "et": _et(lo), "host": h,
+               "dur": round(f.get("dur") or 0), **({"mode": f["mode"]} if f.get("mode") else {})}
+        if f["name"] == "wrong_tune":
+            fired = [x for x in hev if x[1] == "wrong_tune" and x[2] == h and lo <= x[0] <= hi]
+            bad = []
+            for x in fired[:1]:
+                got = x[3].split("->")[-1]
+                nxt = next((y[0] for y in hev if y[1] == "deeplink" and y[2] == h and y[0] > x[0]), night.t1)
+                bad = [s for s in night.house.shown if x[0] <= s.t <= nxt and s.host == h
+                       and s.target == got and s.what == "playing"]
+            graded = bool(night.engine.cfg.get("tuning.verify_matchup", False))
+            row.update({"fired": bool(fired), "wrong_on_tv": len(bad), "graded": graded,
+                        "ok": not bad or not graded, "detail": [(_et(s.t), s.target) for s in bad[:5]]})
+        else:
+            what = "tv search" if f["name"] == "search_miss" else "tv dialog"
+            hit = [x for x in hev if x[1] in ("search_miss", "dialog_shown") and x[2] == h and lo <= x[0] <= hi]
+            on_tv = [s for s in night.house.shown if lo <= s.t <= hi and s.host == h and s.what == what]
+            row.update({"hit": len(hit), "on_tv": len(on_tv), "ok": not on_tv,
+                        "cleared": sum(1 for x in hev if x[1] == "dialog_cleared" and x[2] == h and lo <= x[0] <= hi)
+                        if f["name"] == "update_dialog" else None,
+                        "detail": [(_et(s.t), s.cause) for s in on_tv[:5]]})
+        appx.append(row)
+    if appx:
+        check("app_faults_handled", all(x["ok"] for x in appx), appx)
     # TV-03 / TV-04 outcomes (faults:tv). TV-03: while a person has the TV on another input, no input
     # change of ours. TV-04: after the TV jumped to a rebooted stick by itself, seconds until it shows
     # the game it was showing again (graded <= 30 s only with hardening.tv, which does the undo).

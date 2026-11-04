@@ -68,7 +68,7 @@ class Timing:
 class App:
     pkg: str
     task: bool = False              # has a task (was launched and not killed)
-    screen: str = ""                # "player" | "detail" | "panel" | ""
+    screen: str = ""                # "player" | "detail" | "panel" | "search" (APP-02) | "dialog" (APP-04) | ""
     target: str | None = None       # what the player shows ("youtubetv:nbc", "prime:<gti>", "reel:..")
     url: str = ""
     state: int = NONE
@@ -148,6 +148,15 @@ class FakeFireTV:
             if a.ends_at is not None and now >= a.ends_at and a.state == PLAYING:
                 a.ends_at = None
                 self._stamp(a, 1)   # the reel finished: stopped
+        if self.house.faults_on("update_dialog", self.host):
+            # [APP-04] "An update is available" covers YouTube TV's player (pausing it) until BACK.
+            a = self.apps.get(self.fg)
+            if a and a.pkg == YTTV and a.screen == "player" and not a.prompt:
+                a.screen, a.ready_at = "dialog", None
+                self._stamp(a, PAUSED, self._now_pos(a))
+                self.house.event("dialog_shown", self.host, a.target)
+                if not self.house.faults_on("update_dialog_sticky", self.host):
+                    self.house.fault_done("update_dialog", self.host)
         if self.house.faults_on("still_watching", self.host):
             a = self.apps.get(self.fg)
             if a and a.pkg == YTTV and a.screen == "player" and a.state == PLAYING and not a.prompt:
@@ -308,6 +317,13 @@ class FakeFireTV:
         elif k == "BACK":
             if self.awake == "Dreaming":
                 self.awake = "Awake"
+            elif a is not None and a.screen == "dialog":
+                if self.house.faults_on("update_dialog_sticky", self.host):
+                    self.house.event("dialog_back_ignored", self.host, a.target)   # a forced update: it stays
+                else:
+                    a.screen = "player"
+                    self._stamp(a, PLAYING, self._now_pos(a))
+                    self.house.event("dialog_cleared", self.host, a.target)
         elif a is None:
             return
         elif k == "DPAD_CENTER":
@@ -403,6 +419,22 @@ class FakeFireTV:
                               "Warning: Activity not started, its current task has been brought to the front")
             if a.prompt:
                 self.house.event("prompt_cleared", self.host, f"{a.target} (relink)")
+            self.house.event("deeplink", self.host, target)
+            if self.house.faults_on("search_miss", self.host):
+                # [APP-02] the link resolves to YouTube TV's search page, no player: nothing plays.
+                a.task, a.screen, a.url, a.target, a.behind, a.prompt, a.paused_at = True, "search", url, None, 0.0, "", None
+                a.subtitle, a.title, a.ready_at = "", "", None
+                self._stamp(a, NONE, 0)
+                self.house.event("search_miss", self.host, target)
+                return True, "Starting: Intent { act=android.intent.action.VIEW }"
+            if self.house.faults_on("wrong_tune", self.host):
+                # [APP-05] the link plays another channel than the one asked for (once).
+                got = next((x for x in sorted(set(self.house.urls.values()))
+                            if x and x != target and x.startswith("youtubetv:")), None)
+                if got is not None:
+                    self.house.event("wrong_tune", self.host, f"{target}->{got}")
+                    self.house.fault_done("wrong_tune", self.host)
+                    target = got
             a.task, a.screen, a.url, a.target, a.behind, a.prompt, a.paused_at = True, "player", url, target, 0.0, "", None
             a.subtitle = self.house.channel_name(target)
             a.title = self.house.show_title(target)

@@ -102,10 +102,10 @@ generalize them; until then each is a named rule, tested on replayed nights.
 | NET-02 | stick bitrate drop / buffering | that stick's delay estimate widens; prefer the other stick | SAFE-03 | new `buffering` fault | flip_playing_3s | ② | new |
 | NET-03 | DNS failure for one source | that source down; others continue | FEED-01 | fixture | recovery | ④ | done (per-host backoff, sources/http.py; tests/test_http.py) |
 | APP-01 | YTTV sign-in screen | person-only fault: notify Nick once, use the other app/channel | – | prompt_screen | recovery | ④ | partial |
-| APP-02 | YTTV channel not found by search | try the next tune path (guide, deep link) | other provider | fixture | recovery | ④ | partial |
+| APP-02 | YTTV channel not found by search | try the next tune path (guide, deep link) | other provider | fixture + night-lab `search_miss` (faults:app) | recovery | ④ | partial (fault built; lane 3's response next) |
 | APP-03 | Prime "are you still there" / ad break overlay | dismiss on the hidden stick | relaunch | prompt_screen | recovery | ④ | partial |
-| APP-04 | app update dialog | dismiss/skip on the hidden stick | relaunch | new fault | recovery | ④ | new |
-| APP-05 | wrong game tuned (OCR mismatch) | re-tune | other provider | new `wrong_tune` fault | recovery | ④ | partial (screen OCR) |
+| APP-04 | app update dialog | dismiss/skip on the hidden stick | relaunch | night-lab `update_dialog`, modes back / sticky (faults:app) | recovery | ④ | fault built; lane 3's response next |
+| APP-05 | wrong game tuned (OCR mismatch) | re-tune | other provider | night-lab `wrong_tune` (faults:app; graded with tuning.verify_matchup) | recovery | ④ | partial (screen OCR); fault built |
 | APP-06 | blackout / not available in region | pick the next provider or drop the game | – | fixture | – | ④ | new |
 | APP-07 | stream starts at live edge but buffer wanted B s behind | rewind/pause to B on the hidden stick | play at live, Timing uses live lag | buffer fixture | big_live_* | ② | partial (#61) |
 | MAC-02 | Mac hot (thermal pressure) | pause the Mind; Reflex only | slow poll on blowouts | new `thermal` fault | tick p99 | ③ | new (idea #15) |
