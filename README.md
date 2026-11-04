@@ -25,6 +25,30 @@ To run the next round, add the previous version's output as an input and run it 
 3. Settings: **GPU T4 x2**, Internet **On**. Then Save Version, then **Save & Run All**. It takes about 11 h.
 4. Download **out.zip**.
 
+### V7 (code pack only, Nov 4): Nick's six V6 takeaways
+
+Attach **redzone-distill** (unchanged, no re-upload), the new **rz_code.tar.gz**, and **V6's output** (its 22k teacher
+answers and the multi-season build carry forward). GPU T4 x2, Internet On, Save & Run All. MODE is now `"full"`.
+
+1. **B11 split reasoner gate.** The report gets a "[V7] Split reasoner gate" table next to the legacy one: usable JSON
+   100%, rule conformance >= 99% (rows the brief alone decides: garbage, your team late, NFL drive, NHL power play),
+   confidence ECE <= 0.10, and versus OFF (today's rules): unsafe leaves no worse, must-see recall and lock_acc at most
+   2 points worse, plus an abstain cut that answers >= 50% of test rows at unsafe <= 0.5%.
+2. **D19 recipe.** fp16 frozen base, fp32 LoRA on all 28 layers incl. the MLP, LR 2e-4; rank 32 for the
+   game-reasoner, 16 for the watchdog. V6's adapters are not reused (recipe stamp `v7`).
+3. **Whole teacher queue, tiered.** The 32B takes the hardest 8,800 (2.25 h), then the 14B takes the rest (4.25 h,
+   about 50k at ~195/min). Every phase's budget shrinks to fit an 11.5 h session, so the run ends with a grade.
+4. **JSON-constrained decoding** (`agent/kaggle/constrained.py`) for both students and the base: every answer is
+   its schema's JSON by construction (V6 watchdog: 37% unusable).
+5. **More watchdog data** for paused, prompt, frozen and upstream: +10 train wordings each and 3x rows per wording
+   (train 6,548 to 11,488 rows; 1,440 to 1,680 per weak kind). Valid and test are byte-identical to V6, so V6 and V7
+   compare directly. Generator: `agent/train/make_data.py` on branch `claude/watchdog-v7-data`.
+6. **Progress in the notebook.** Teacher lines show answers/min, ETA and budget left; the build prints its last
+   log line every 10 min; the students print every job's heartbeat every 10 min, besides the `[job]` tee.
+
+Budget: about 11.5 h wall on T4 x2 (setup 0.3, 32B 2.25, 14B 4.25, blind 0.4, students 3.75, grade 0.35),
+under the ~13 GPU-h left this week. `RZ_MODE=students` still skips the teacher (~4 h).
+
 ### V6 (code pack only, Nov 4)
 
 - Each student job's progress shows in the notebook output, prefixed `[job]`: step, loss and ETA every 50 steps, and answer batches done/total.

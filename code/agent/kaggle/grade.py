@@ -38,6 +38,9 @@ def reasoner(pack: Path, teacher: list[dict], student: list[dict]) -> dict:
     res = evaluate.compare(rows, sources)
     res["test_nights"] = sorted({f"{r['league']} {r['night']}" for r in rows if r["split"] == "test"})
     res["gate"] = {k: evaluate.gate(res[k]["all"]) for k in sources}
+    dk = _abstain(rows, evaluate.answers_for("student", rows, s)) if s else None
+    res["gate_split"] = {k: evaluate.gate_split(res, k, dk if k == "student" else None)
+                         for k in sources if k != "today"}
     gold = [r for r in rows if r.get("gold") or r.get("split") == "valid"]
     if any(r.get("gold") and r["split"] == "test" for r in gold):
         g = evaluate.compare(gold, sources)
@@ -120,6 +123,8 @@ def reasoner_big(rows: list[dict], teacher: list[dict], student: list[dict]) -> 
                 sc = evaluate.score(sub, preds)
                 res["slices"][name] = {k: sc[k] for k in ("n", "lock_acc", "unsafe_leave_pct")}
         res["dont_know"] = _abstain(rows, preds)
+    res["gate_split"] = {k: evaluate.gate_split(res, k, res.get("dont_know") if k == "student" else None)
+                         for k in sources if k != "today"}
     return res
 
 
@@ -207,7 +212,19 @@ def md(rep: dict) -> str:
         b = rep["build"]
         parts += [f"Build: {b.get('total_rows')} moments; rows per league/split {json.dumps(b.get('rows'))}; "
                   f"head AUC train/valid/test {json.dumps({lg: [v.get('auc_train'), v.get('auc_valid'), v.get('auc_test')] for lg, v in (b.get('head') or {}).items()})}", ""]
-    parts += ["Ship gate (100% valid answers, lock_in >= 95% vs gold, unsafe leaves <= 0.5%): " +
+    if r.get("gate_split"):
+        parts += ["## [V7] Split reasoner gate (B11)", "", "| line | " + " | ".join(r["gate_split"]) + " |",
+                  "|---|" + "---|" * len(r["gate_split"])]
+        keys = sorted({k for v in r["gate_split"].values() for k in v})
+        for k in keys:
+            cells = []
+            for src in r["gate_split"]:
+                v = r["gate_split"][src].get(k)
+                cells.append("" if v is None else f"{v[0]} ({'ok' if v[2] else 'FAIL'}; {v[1]})")
+            parts.append(f"| {k} | " + " | ".join(cells) + " |")
+        parts += ["", "Split gate: " + "; ".join(
+            f"{src}: {'PASS' if all(x[2] for x in v.values()) else 'FAIL'}" for src, v in r["gate_split"].items()), ""]
+    parts += ["Legacy gate (100% valid answers, lock_in >= 95% vs gold, unsafe leaves <= 0.5%): " +
               "; ".join(f"{k}: {'PASS' if not v else 'FAIL ' + ', '.join(v)}" for k, v in r["gate"].items()), ""]
     j = rep["jump"]
     keys = ["n", "jumps", "reels_in_dead_time_pct", "big_missed_on_reel", "agree_pct", "jump_recall_pct"]

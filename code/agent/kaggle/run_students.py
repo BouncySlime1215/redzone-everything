@@ -28,8 +28,15 @@ BASE_REPO = "mlx-community/Qwen3-1.7B-4bit"
 # Student recipe D19 (docs/research/2026-11-03/04-architecture-distillation.md, "LoRA Without Regret"):
 # LoRA on every layer incl. the MLP, rank 16, alpha 32, LR 2e-4. Round 1 was rank 8 / alpha 16 / last 8
 # layers / LR 1e-4; RZ_LORA_RANK, RZ_LORA_LAYERS (0 = all), RZ_LR override it for ablations.
-RANK = int(os.environ.get("RZ_LORA_RANK", "16"))
-ALPHA = 2 * RANK
+# [V7, Nick's D19 ask "r16-32"] rank per job: the game-reasoner (storylines, lock-in, jump) gets 32, the
+# watchdog (11 actions on a status JSON) keeps 16. RZ_LORA_RANK overrides both.
+RANKS = {"game-reasoner": 32, "watchdog": 16}
+RANK = int(os.environ.get("RZ_LORA_RANK", "0")) or None
+
+
+def rank_for(job: str) -> int:
+    return RANK or RANKS.get(job, 16)
+
 LAST_LAYERS = int(os.environ.get("RZ_LORA_LAYERS", "0")) or None       # None: every layer
 TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 EPOCHS = {"game-reasoner": 2, "watchdog": 1}
@@ -52,6 +59,10 @@ KILL_GRACE_S = 600.0
 # fp16 base + 8 at a time, a progress line every ANSWER_LOG_ROWS rows.
 ANSWER_BATCH = int(os.environ.get("RZ_ANSWER_BATCH", "8"))
 ANSWER_LOG_ROWS = 400
+# [V7] JSON-constrained greedy decoding (V6 watchdog: 37% unusable JSON); RZ_CONSTRAINED=0 turns it off.
+# 192 new tokens: the constrained answer always closes in time (the reasoner's shortest JSON is 112 chars).
+CONSTRAINED = os.environ.get("RZ_CONSTRAINED", "1") == "1"
+MAX_NEW = 192
 SMOKE = os.environ.get("RZ_SMOKE") == "1"
 FP16_OVERFLOW = 3                             # job exit code: rerun it once on a float32 base     # CPU smoke test: tiny model, few steps
 
@@ -107,6 +118,13 @@ def answer_loss(model, ids, lab, att):
     return torch.nn.functional.cross_entropy(logits, tgt[keep])
 
 
+RECIPE = "v7"       # [V7] bump when the recipe or the data change: an older adapter is never reused
+
+
+def recipe_of(name: str) -> str:
+    return f"{RECIPE} r{rank_for(name)} lr{LR} layers{LAST_LAYERS or 'all'}"
+
+
 def previous_adapter(name: str, roots: list[Path] | None = None) -> Path | None:
     """[V6, Nick's V5 fix] A trained adapter for this job in an attached notebook output
     (/kaggle/input/**/students/<job>/peft), so a crash after training never costs the training again.
@@ -119,14 +137,24 @@ def previous_adapter(name: str, roots: list[Path] | None = None) -> Path | None:
     for root in roots:
         if root.is_dir():
             found += [c.parent for c in root.glob(f"**/students/{name}/peft/adapter_config.json")
-                      if (c.parent / "adapter_model.safetensors").exists() or (c.parent / "adapter_model.bin").exists()]
+                      if ((c.parent / "adapter_model.safetensors").exists() or (c.parent / "adapter_model.bin").exists())
+                      and _stamp(c.parent) == recipe_of(name)]      # [V7] V6's adapters (r16, old data) don't count
     return max(found, key=lambda d: (d / "adapter_config.json").stat().st_mtime) if found else None
+
+
+def _stamp(d: Path) -> str | None:
+    try:
+        return (d / "recipe.txt").read_text().strip()
+    except OSError:
+        return None
 
 
 def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
     import torch
     from peft import LoraConfig, get_peft_model
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer, LogitsProcessorList
+
+    from agent.kaggle.constrained import JsonSchemaProcessor, schema_for
 
     random.seed(7)
     torch.manual_seed(7)
@@ -186,7 +214,7 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
         log.append({"reused_adapter": str(prev)})
         heartbeat(out, phase="reused", adapter=str(prev))
     else:
-        cfg = LoraConfig(r=RANK, lora_alpha=ALPHA, lora_dropout=0.05, target_modules=TARGETS,
+        cfg = LoraConfig(r=rank_for(name), lora_alpha=2 * rank_for(name), lora_dropout=0.05, target_modules=TARGETS,
                          layers_to_transform=list(range(n_layers - min(LAST_LAYERS or n_layers, n_layers), n_layers)),
                          task_type="CAUSAL_LM")
         model = get_peft_model(model, cfg)
@@ -255,6 +283,7 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
                 break
     peft_dir = out / "peft"
     model.save_pretrained(peft_dir)
+    (peft_dir / "recipe.txt").write_text(recipe_of(name))
     train_s = round(time.time() - t0)
     # [V6] convert first: a run stopped during the answers still leaves a usable Mac adapter
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -272,7 +301,7 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
     def answer(rows, path: Path, adapter_on=True) -> dict:
         """Answers in batches, appended as they come (a stop keeps every finished batch)."""
         nb = (len(rows) + ANSWER_BATCH - 1) // ANSWER_BATCH
-        ta, done, cut = time.time(), 0, False
+        ta, done, cut, forced = time.time(), 0, False, 0
         with open(path, "w") as f:
             for b, i in enumerate(range(0, len(rows), ANSWER_BATCH)):
                 if time.time() > deadline():
@@ -282,14 +311,19 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
                 part = rows[i:i + ANSWER_BATCH]
                 enc = tok([render(r["messages"][:2], True) for r in part], return_tensors="pt", padding=True,
                           add_special_tokens=False).to(dev)
+                kw = {"max_new_tokens": 8 if SMOKE else MAX_NEW, "do_sample": False, "pad_token_id": tok.pad_token_id}
+                if CONSTRAINED:     # [V7] every answer is its schema's JSON (agent/kaggle/constrained.py)
+                    proc = JsonSchemaProcessor(tok, [schema_for(r["task"], r["messages"][1]["content"]) for r in part],
+                                               max_new_tokens=kw["max_new_tokens"])
+                    kw["logits_processor"] = LogitsProcessorList([proc])
                 with torch.no_grad(), torch.autocast(**amp):
                     if adapter_on:
-                        gen = model.generate(**enc, max_new_tokens=8 if SMOKE else 160, do_sample=False,
-                                             pad_token_id=tok.pad_token_id)
+                        gen = model.generate(**enc, **kw)
                     else:
                         with model.disable_adapter():
-                            gen = model.generate(**enc, max_new_tokens=8 if SMOKE else 160, do_sample=False,
-                                                 pad_token_id=tok.pad_token_id)
+                            gen = model.generate(**enc, **kw)
+                if CONSTRAINED:
+                    forced += proc.forced
                 for r, g in zip(part, gen):
                     f.write(json.dumps({"id": r["id"], "task": r["task"],
                                         "text": tok.decode(g[enc["input_ids"].shape[1]:], skip_special_tokens=True)}) + "\n")
@@ -299,7 +333,8 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
                     print(f"{name} answers {'' if adapter_on else '(no adapter) '}batch {b + 1}/{nb} "
                           f"({done}/{len(rows)} rows) eta {_eta(b + 1, nb, ta)}", flush=True)
                     heartbeat(out, phase="answer" if adapter_on else "answer_base", batch=b + 1, batches=nb)
-        return {"answered": done, "of": len(rows), "cut_by_budget": cut}
+        return {"answered": done, "of": len(rows), "cut_by_budget": cut, "constrained": CONSTRAINED,
+                "forced_tokens": forced}
 
     t1 = time.time()
     answered = {"student": answer(tests, out / "test_out.jsonl")}
@@ -308,7 +343,7 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
     answer_s = round(time.time() - t1)
     heartbeat(out, phase="done")
 
-    json.dump({"job": name, "base": BASE_REPO + " (dequantized)", "rank": RANK, "alpha": ALPHA,
+    json.dump({"job": name, "base": BASE_REPO + " (dequantized)", "rank": rank_for(name), "alpha": 2 * rank_for(name),
                "last_layers": LAST_LAYERS or n_layers, "lr": LR, "base_dtype": BASE_DTYPE, "batch": BATCH * ACCUM, "targets": TARGETS, "train_rows": len(train), "steps": step,
                "stopped_early": stopped, "log": log, "train_s": train_s, "answer_s": answer_s, "answered": answered,
                "mlx": mlx_cfg},
@@ -385,6 +420,21 @@ def main() -> None:
                 return -9
             time.sleep(5)
         return p.returncode
+
+    def status():
+        """[V7] one line per job from its heartbeat.json, every 10 min, in the notebook's stdout."""
+        while time.time() < dl + KILL_GRACE_S:
+            time.sleep(600)
+            parts = []
+            for nm in sorted(info):
+                try:
+                    hb = json.load(open(out / nm / "heartbeat.json"))
+                    parts.append(f"{nm}: " + " ".join(f"{k}={v}" for k, v in hb.items()))
+                except (OSError, ValueError):
+                    parts.append(f"{nm}: (no heartbeat yet)")
+            print(f"[status {(time.time() - t_start) / 60:.0f} min, {(dl - time.time()) / 60:.0f} min to the budget] "
+                  + " | ".join(parts), flush=True)
+    threading.Thread(target=status, daemon=True).start()
 
     procs = []
     for k, name in enumerate(sorted(info)):
