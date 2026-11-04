@@ -19,7 +19,8 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from redzone.models import PERIOD_S, REGULATION, Phase
+from redzone.crunch import ONE_SCORE_NFL
+from redzone.models import PERIOD_S, REGULATION, League, Phase
 from redzone.noggin.priority import HardRules, Preferences
 from redzone.web import ledger as ledger_mod
 
@@ -576,6 +577,65 @@ def why_tag(s, threshold: float) -> dict | None:
             "source": "learned" if learned else "stub"}
 
 
+# EXP-037: one question the game will answer soon, in the trailing side's words ("UNC down 3, 1:12 left,
+# no timeouts"). Only late and close, so it never frames a question the game won't answer soon: the last
+# regulation period or overtime, at most CONTEXT_LATE_FRAC of a period left, within one score.
+CONTEXT_MARGIN = {League.NFL: ONE_SCORE_NFL, League.NBA: 6, League.NHL: 1, League.MLB: 3}
+CONTEXT_LATE_FRAC = 0.42      # NFL/NBA: about the last 5-6 minutes of the 4th (and the last 8 of an NHL 3rd)
+
+
+def _clock(s: float) -> str:
+    s = max(0, int(round(s)))
+    return f"{s // 60}:{s % 60:02d}"
+
+
+def _ord(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def context_line(g) -> str | None:
+    """The one-question context line for a live game (a GameState), or None when it isn't late and close."""
+    if g is None or g.phase != Phase.LIVE or g.home.score is None or g.away.score is None or not g.period:
+        return None
+    base = g.league.base
+    diff = g.home.score - g.away.score
+    if abs(diff) > CONTEXT_MARGIN.get(base, 0):
+        return None
+    reg = REGULATION.get(g.league, 4)
+    trail, lead = (g.home, g.away) if diff < 0 else (g.away, g.home)
+    sit = g.situation
+    who = "Tied" if diff == 0 else f"{trail.abbr} down {abs(diff)}"
+    if base == League.MLB:
+        if g.period < reg:
+            return None
+        bits = [who, f"{(g.half or '').lower()} {_ord(g.period)}".strip()]
+        if sit.outs is not None:
+            bits.append(f"{sit.outs} out" + ("" if sit.outs == 1 else "s"))
+        if sit.runners:
+            on = sum(1 for r in sit.runners if r)
+            bits.append("bases loaded" if on == 3 else f"{on} on")
+        return ", ".join(bits)
+    if g.clock_s is None or g.period < reg:
+        return None
+    ot = g.period > reg or (g.period_type or "").upper() in ("OT", "SO")
+    if not ot and g.clock_s > CONTEXT_LATE_FRAC * PERIOD_S.get(g.league, 900):
+        return None
+    bits = [who, ("OT, " if ot else "") + f"{_clock(g.clock_s)} left"]
+    if base == League.NFL and sit.possession and sit.down:
+        bits.append(f"{sit.possession} ball, {_ord(sit.down)} & {'goal' if sit.goal_to_go else sit.distance}"
+                    + (f" at the {sit.yards_to_goal}" if sit.yards_to_goal is not None else ""))
+    if base == League.NHL:
+        if sit.empty_net:
+            bits.append("goalie pulled" if sit.empty_net == trail.abbr else f"{sit.empty_net} net empty")
+        elif sit.power_play:
+            bits.append(f"{sit.power_play} power play")
+    if base in (League.NFL, League.NBA) and diff != 0:
+        to = sit.timeouts_home if trail is g.home else sit.timeouts_away
+        if to is not None:
+            bits.append("no timeouts" if to == 0 else f"{to} timeout" + ("" if to == 1 else "s"))
+    return ", ".join(bits)
+
+
 RISING_MIN = 1.0    # watch_rising (points per minute) at or above this shows an up arrow, at or below -this a down one
 
 
@@ -633,8 +693,11 @@ def slate_preview(games, rules: HardRules, now: float) -> dict:
                         "why": "your team" if inside[0]["yours"] and not inside[1]["yours"] else "league order"})
     for r in rows:
         r.pop("rank")
+    # EXP-036: nothing live, nothing still to start, and tonight had games: the slate is complete (the
+    # phone shows that and nothing after it: no autoplay, no "up next")
+    done = sum(1 for g in (games or {}).values() if g.phase == Phase.POST)
     return {"games": rows, "clashes": [c for c in clashes if c["t1"] - c["t0"] >= 120],
-            "yours": sum(1 for r in rows if r["yours"])}
+            "yours": sum(1 for r in rows if r["yours"]), "complete": not rows and done > 0, "finished": done}
 
 
 CRUNCH_STATES = ("entering", "in", "leaving")
@@ -666,7 +729,7 @@ def watch_values(scored: dict, games: dict) -> dict:
         if sl is None:
             sl = "Big stakes" if s.stakes >= STAKES_BIG else ("Some stakes" if s.stakes >= STAKES_SOME else "")
         rows.append({"game_id": gid, "matchup": g.matchup if g is not None else gid,
-                     "crunch_state": cs, "stakes_line": sl[:100], "stakes_rough": stakes_rough and bool(sl),
+                     "crunch_state": cs, "stakes_line": sl[:100], "context": context_line(g), "stakes_rough": stakes_rough and bool(sl),
                      "league": s.league.value, "wv": int(round(max(0.0, min(100.0, val)))),
                      "why": str(why or "")[:120], "crunch": bool(s.crunch),
                      "is_break": bool(s.is_break), "source": "learned" if learned else "stub"})
@@ -695,7 +758,7 @@ def router(engine) -> APIRouter:
 
     @r.get("/status")
     async def status():
-        return {"enabled": _enabled(engine)}
+        return {"enabled": _enabled(engine), "commit": _enabled(engine) and bool(engine.cfg.get("phone.commit"))}
 
     @r.get("/switches")
     async def switches():

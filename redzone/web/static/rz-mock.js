@@ -318,7 +318,7 @@ const V2_RULES = [["yours", "Your team", /your team|UNC|WSH|Commanders|Capitals|
   ["redzone", "Red zone", /red ?zone|goal[- ]to[- ]go/i], ["score", "Score", /touchdown|goal|scor/i], ["break", "Break elsewhere", /break|timeout|commercial/i],
   ["replay", "Catch-up", /replay|catch[- ]up|missed/i], ["manual", "You picked", /you (picked|asked)|manual/i]];
 function mockV2(path, b) {
-  if (path === "/api/v2/status") return { enabled: Q.has("v2") };
+  if (path === "/api/v2/status") return { enabled: Q.has("v2"), commit: Q.has("v2") };
   if (path === "/api/v2/switches") return { enabled: true, switches: (STATE.log || []).map((l) => {
     const key = `${l.ts}|${l.to}`;
     const chips = V2_RULES.filter(([, , rx]) => rx.test(`${l.reason || ""} ${l.kind || ""}`)).slice(0, 4).map(([key, label]) => ({ key, label }));
@@ -331,6 +331,7 @@ function mockV2(path, b) {
     const guess = b.game_id ? c.find((x) => x.game_id === b.game_id) : c[0];
     return { ok: true, guess, candidates: c, message: guess ? `Logged: ${guess.matchup} (${guess.text}, ${Math.floor(guess.ago_s / 60)} min ago)` : "Logged" };
   }
+  if (path === "/api/v2/slate" && Q.has("done")) return { enabled: true, now: Date.now() / 1000, games: [], clashes: [], yours: 0, complete: true, finished: 9, alert: null };
   if (path === "/api/v2/slate") {
     const now = Date.now() / 1000;
     const L = { nfl: [190, 45], nba: [135, 25], nhl: [150, 35], mlb: [165, 30], cbb: [120, 20], cfb: [210, 50], wcbb: [120, 20] };
@@ -372,7 +373,7 @@ function mockV2(path, b) {
   if (path === "/api/v2/watch") {
     const why = ["Tied, 2:10 left in the 4th", "Red zone, 3rd & goal", "Power play, down one", "Blowout, starters sitting", "Commercial break"];
     const games = (STATE.games || []).filter((g) => g.phase === "live" || g.state === "live").slice(0, 6).map((g, i) => ({ game_id: g.id, matchup: g.matchup,
-      league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, stakes_line: ["AFC 1-seed race, top-5 matchup", "Rivalry game", "", "Wild-card push"][i] || "", stakes_rough: i === 3, is_break: i === 4, source: "stub" }));
+      league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, stakes_line: ["AFC 1-seed race, top-5 matchup", "Rivalry game", "", "Wild-card push"][i] || "", stakes_rough: i === 3, is_break: i === 4, context: ["BUF down 3, 1:12 left, BUF ball, 2nd & 7 at the 34, 1 timeout", "Tied, 0:48 left", "", "BOS down 1, 1:30 left, goalie pulled"][i] || null, source: "stub" }));
     return { enabled: true, now: Date.now() / 1000, current: games[0] && games[0].game_id, games, source: games.length ? "stub" : null,
       why_tag: games.length ? { text: why[0], value: games[0].wv, threshold: 70, source: "stub" } : null };
   }

@@ -367,3 +367,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   label shows only when the game on screen is at or over it (learned watch value, else today's score), and
   lab/decision_records grades every switch over it for "alerted but nothing happened". Reason: the Start Planner
   (Cycle 08, #183) asked for one source for numbers; 70 is a starting point, to move only with an EXP result.
+- 2026-11-04 (lane 5, EXP-036): new default `phone.commit: false`. Commitment controls on the phone (stay here, only
+  my teams, stop after this game, end at a time) send the agreed `commit {mode, game_id?, at?}` action, which every
+  mode applies at a dead ball, and a "Slate complete, 0 live games" state ends the night with nothing after it.
+  OFF until lanes 2/3 ship the action. Reason: Start Planner Cycle 08 (#183), playbook §5.
