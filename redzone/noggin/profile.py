@@ -60,6 +60,11 @@ PROFILES: dict[str, dict] = {
             # [controls, cycle 03] Opening a game on the phone tunes it on the hidden stick while you
             # read the sheet, so "Go now" is a flip (press_to_tv_p95). Live default stays off.
             "two_stick.pretune_on_open=true",
+            # [noggin logic, cycle 05 promotion blocker] No catch-up starts while any live game is in crunch
+            # time or its run-up. Your team's missed play waits too, except in NFL, where it goes 90 s after
+            # it aired (its 3-min replay window can't wait out crunch). Locked, 3 seeds, vs live: no line worse.
+            "replay.crunch_block=true",
+            "replay.crunch_block_mine_leagues=[nfl]",
         ],
     },
 }

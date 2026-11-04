@@ -126,6 +126,9 @@ def main():
     ap.add_argument("--pick", type=Path, default=None,
                     help="also roll out a Noggin PICK model (e.g. redzone/noggin/models/pick_nba.v1.txt.gz) on each night")
     ap.add_argument("--pick-margin", type=float, default=0.1)
+    ap.add_argument("--cue-max-s", type=float, default=0.0,
+                    help="with --oracle: also solve each objective with possession-start entry (cue to the "
+                         "target's last dead ball, at most this many s behind live; keys <objective>_cue)")
     ap.add_argument("--oracle-out", type=Path, default=None,
                     help="with --oracle: write each night's oracle schedules + Pick labels to DIR/<league>_<night>.json")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
@@ -161,7 +164,7 @@ def main():
         total.add(card)
         cs = card.cut.summary()
         per_night.append({"night": day, "entries": cs["entries"], "entries_mid_play": cs["entries_mid_play"],
-                          "cuts": len(card.cuts), "big": card.big, "big_seen": card.big_seen,
+                          "cuts": len(card.cuts), "cuts_high": len(card.cuts_high), "big": card.big, "big_seen": card.big_seen,
                           "big_seen_10m": card.big_seen_10m, "my_big": card.my_big,
                           "my_big_seen_10m": card.my_big_seen_10m, "crunch_on_replay": card.crunch_on_replay,
                           "big_seen_3m": card.big_seen_3m, "big_seen_2m": card.big_seen_2m,
@@ -181,8 +184,16 @@ def main():
             tab = O.tables(n, np.arange(n.t0, n.t1, O.STEP_S))
             per_night[-1]["oracle"] = {}
             scheds = {}
-            for obj in O.OBJECTIVES:
-                osw = O.solve(n, obj, tab)
+            # [possession-start entry] each objective again with entry cued to the target's last dead ball
+            # (the time-shift buffer, up to --cue-max-s behind live): the ceiling of the possession policy
+            plan = [(obj, obj, None) for obj in O.OBJECTIVES]
+            if a.cue_max_s > 0:
+                plan += [(f"{obj}_cue", obj, a.cue_max_s) for obj in O.OBJECTIVES]
+            for key, obj, cue in plan:
+                osw = O.solve(n, obj, tab) if cue is None else O.solve_cue(n, obj, tab, max_cue_s=cue)
+                if cue is not None:
+                    per_night[-1]["oracle"][key] = O.counts(O.grade(n, osw))
+                    continue
                 scheds[obj] = osw
                 oc = O.grade(n, osw)
                 ocs = oc.cut.summary()
@@ -215,10 +226,11 @@ def main():
             n = O.Night(reps, mine, rep.lag_true, 5.0, rep.t0, rep.t1)
             steps = np.arange(n.t0, n.t1, O.STEP_S)
             tab = O.tables(n, steps)
-            X = PK.features_for_night(reps, tab, steps, rep.lag_true, mine)
+            cue = O.cue_steps(tab, a.cue_max_s) if a.cue_max_s > 0 else None   # [possession start]
+            X = PK.features_for_night(reps, tab if cue is None else dict(tab, land=cue >= 0), steps, rep.lag_true, mine)
             G, K, F = X.shape
             sc = booster.predict(X.reshape(-1, F)).reshape(G, K)
-            psw = PK.rollout(sc, X, reps, steps, 5.0, a.pick_margin)
+            psw = PK.rollout(sc, X, reps, steps, 5.0, a.pick_margin, cue=cue)
             per_night[-1]["pick"] = O.counts(O.grade(n, psw))
             per_night[-1]["app_sg"] = O.counts(card)
         if a.slates:

@@ -63,7 +63,10 @@ ORACLE_LEAGUES = ("nfl", "nba", "nhl")   # NFL: the app re-graded by sportsgrade
 # key, label, target text, direction (+1 higher is better, -1 lower), bar, scale (for the roadmap's gap
 # normalisation: the size of a "whole" gap in this line's unit)
 METRICS = [
-    ("mid_play", "Mid-play cuts + entries (per 100 landings)", "0", -1, 0.0, 5.0),
+    # Nick, Nov 4 3:15 PM: never JOIN mid-play (hard 0); leaving mid-play is allowed at low leverage only
+    ("mid_play", "Mid-play entries (per 100 landings)", "0", -1, 0.0, 5.0),
+    ("high_leverage_leaves", "High-leverage mid-play leaves (close + late or OT; per 100 landings)", "0", -1, 0.0, 5.0),
+    ("low_leverage_leaves", "Low-leverage mid-play leaves (allowed; per 100 landings)", "info", -1, None, None),
     ("landings_dead", "Landings in dead time", ">= 98%", 1, 98.0, 100.0),
     ("possession_start", "Entries at a possession start (dead ball, no play missed)", ">= 95%", 1, 95.0, 100.0),
     # Nick, Nov 4 10:55 AM: gates are honest against the hindsight ceiling: >= 95% OF ORACLE VALUE where the
@@ -73,6 +76,9 @@ METRICS = [
     ("your_team_big", "Your-team big plays seen (live or within 3 min)", "100%", 1, 100.0, 100.0),
     *[(f"crunch_live_{lg}", f"Crunch live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
     ("your_team_crunch", "Your-team crunch live", "100%", 1, 100.0, 100.0),
+    # Nick, Nov 4 4:15 PM: crunch is a learned state with an entry AND an exit (hysteresis); the exit is graded
+    # against the hindsight oracle. PENDING until a card carries crunch_exits / crunch_exits_ok per night.
+    ("crunch_exit_acc", "Crunch exit accuracy vs the hindsight oracle", ">= 95%", 1, 95.0, 100.0),
     ("league_order", "League order respected (no lower-league non-crunch over a higher-league crunch)", "100%", 1, 100.0, 100.0),
     # Nick, Nov 4 10:55 AM: the Noggin is fully self-taught, so no line is graded by Nick's taps.
     ("pct_of_oracle", "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)", ">= 95%", 1, 95.0, 100.0),
@@ -84,6 +90,12 @@ METRICS = [
     ("delay_err_p95", "Per-stick delay error p95", "<= 2 s", -1, 2.0, 2.0),
     ("press_to_tv_p95", "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)", "<= 3 s", -1, 3.0, 3.0),
     ("dead_air", "Dead air (commercials/breaks on screen)", "0%", -1, 0.0, 100.0),
+    # Nick, Nov 4 3:30 PM: Heat 2.0, one learned Watch Value per game (0-100, 50 = league-median live moment,
+    # 90+ = top 5%), self-taught from what happened next. Gates TBD; PENDING until a card carries `watch_value`.
+    ("wv_calibration_err", "Watch Value calibration error (reliability curve, locked; points)", "gate TBD", -1, None, None),
+    ("wv_rank_agree", "Watch Value rank agreement with the oracle (pairwise, %)", "gate TBD", 1, None, None),
+    # Nick, Nov 4 3:40 PM: the city map's contract checker (lane 4). PENDING until it writes docs/citymap.json.
+    ("contract_violations", "Contract violations (city map checker)", "0", -1, 0.0, 10.0),
     ("recovery", "Faults recovered without Nick (e2e night)", ">= 95%", 1, 95.0, 100.0),
     *[(f"feed_lag_{lg}", f"Honest feed lag in use, {lg.upper()} (p50)", "info", -1, None, None) for lg in LEAGUES],
     # [oracle] hindsight ceiling - app, same nights, same grader (redzone/lab/oracle.py; --oracle)
@@ -222,22 +234,23 @@ def _boot_ratio(rows: list[tuple[float, float]], draws: int = rg.BOOT_DRAWS, see
 
 
 def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] | None = None,
-          lag_profile: dict | None = None, controls: dict | None = None) -> list[dict]:
+          lag_profile: dict | None = None, controls: dict | None = None, contracts: dict | None = None) -> list[dict]:
     rows: list[dict] = []
     per = {lg: _per(cards, lg) for lg in LEAGUES}
     broken = [lg for lg in LEAGUES if not rg._m(cards.get(lg, {}))]
     note = f" (missing: {', '.join(broken)})" if broken else ""
     every = [x for lg in LEAGUES for x in per[lg]]
 
-    # 1. mid-play cuts + entries: hard 0. 0 events in N landings bounds the rate at 3/N (rule of three).
-    ev = [(int(x.get("cuts") or 0) + int(x.get("entries_mid_play") or 0), int(x.get("landings") or 0)) for x in every]
+    # 1. mid-play ENTRIES: hard 0 (Nick, Nov 4 3:15 PM: never join mid-play). 0 events in N landings bounds
+    # the rate at 3/N (rule of three). Leaves are split by leverage below.
+    ev = [(int(x.get("entries_mid_play") or 0), int(x.get("landings") or 0)) for x in every]
     n_land = sum(n for _, n in ev)
     n_ev = sum(e for e, _ in ev)
     if not n_land:
         rows.append(_row("mid_play", None, None, None, PENDING, "no landings counted (old scorecard?)" + note))
     else:
         point, lo, hi = _boot_ratio(ev)
-        by = ", ".join(f"{lg.upper()} {sum(int(x.get('cuts') or 0) + int(x.get('entries_mid_play') or 0) for x in per[lg])}"
+        by = ", ".join(f"{lg.upper()} {sum(int(x.get('entries_mid_play') or 0) for x in per[lg])}"
                        for lg in LEAGUES if per[lg])
         if n_ev:
             st, det = FAIL, f"{n_ev} in {n_land} landings ({by})"
@@ -249,6 +262,7 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
             lo = hi = 0.0
             hi = round(300.0 / n_land, 2)
         rows.append(_row("mid_play", round(point, 2), round(lo, 2), round(hi, 2), st, det + note, len(ev)))
+    rows += leave_rows(per, every, n_land, note)
 
     # 2. landings (both ends of every switch) in on-screen dead time
     rows.append(_rate("landings_dead", [(int(x.get("landings_dead") or 0), int(x.get("landings") or 0)) for x in every],
@@ -326,9 +340,81 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
         extra = " ; NHL api-web wsc measured 16.7 s p50 (not wired yet, #58)" if lg == "nhl" else ""
         rows.append(_row(f"feed_lag_{lg}", qs.get(50), qs.get(10), qs.get(90), INFO,
                          f"{lag_profile.get('source')} p10-p90 {qs.get(10)}-{qs.get(90)} s, n={p['n']}, {p.get('basis')}{extra}"))
+    rows += system_rows(cards, contracts)
     rows += oracle_rows(cards)
     apply_oracle_gates(rows)
     return rows
+
+
+def load_contracts(root: Path) -> dict | None:
+    """The city map checker's output (lane 4, Nick Nov 4 3:40 PM): {"violations": [{"rule", "where"}, ...]}."""
+    f = root / "docs" / "citymap.json"
+    try:
+        return json.loads(f.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def system_rows(cards: dict, contracts: dict | None = None) -> list[dict]:
+    """Watch Value (Heat 2.0) and the city map: lines Nick asked for on Nov 4 before their builders landed.
+    Each reads PENDING until its evidence exists, never PASS by default."""
+    out = []
+    wv = {lg: rg._m(cards.get(lg, {})).get("watch_value") for lg in LEAGUES}
+    wv = {lg: v for lg, v in wv.items() if v}
+    for key, field_, lbl in (("wv_calibration_err", "calibration_err", "calibration error"),
+                             ("wv_rank_agree", "rank_agree_pct", "rank agreement")):
+        vals = {lg: v.get(field_) for lg, v in wv.items() if v.get(field_) is not None}
+        if not vals:
+            out.append(_row(key, None, None, None, PENDING, "no card carries watch_value yet (Heat 2.0, lanes 1+2)"))
+            continue
+        worst = max(vals.values()) if META[key]["dir"] < 0 else min(vals.values())
+        out.append(_row(key, round(worst, 2), None, None, INFO,
+                        "worst league; " + ", ".join(f"{lg.upper()} {v:.1f}" for lg, v in vals.items()) + f" ({lbl})"))
+    if all("crunch_exits" in x for lg in LEAGUES for x in _per(cards, lg)) and any(_per(cards, lg) for lg in LEAGUES):
+        out.append(_rate("crunch_exit_acc", [(int(x.get("crunch_exits_ok") or 0), int(x.get("crunch_exits") or 0))
+                                             for lg in LEAGUES for x in _per(cards, lg)], 95.0))
+    else:
+        out.append(_row("crunch_exit_acc", None, None, None, PENDING,
+                        "no card grades crunch exits yet (learned crunch state, lanes 1+2)"))
+    if contracts is None or "violations" not in contracts:
+        out.append(_row("contract_violations", None, None, None, PENDING, "no docs/citymap.json yet (lane 4's checker)"))
+    else:
+        v = contracts["violations"] or []
+        rules: dict[str, int] = {}
+        for x in v:
+            rules[str(x.get("rule", "?"))] = rules.get(str(x.get("rule", "?")), 0) + 1
+        out.append(_row("contract_violations", len(v), None, None, PASS if not v else FAIL,
+                        "none" if not v else ", ".join(f"{k} {n}" for k, n in sorted(rules.items()))))
+    return out
+
+
+def leave_rows(per: dict, every: list[dict], n_land: int, note: str = "") -> list[dict]:
+    """Mid-play LEAVES split by leverage (redzone/lab/leverage.py, Nick Nov 4 3:15 PM): a high-leverage leave
+    (close + late, or overtime) is a hard 0; a low-leverage one (after a score, in transition, early or not
+    close) is allowed and shown as info. Older cards without `cuts_high` read PENDING, never PASS."""
+    if not n_land:
+        return [_row("high_leverage_leaves", None, None, None, PENDING, "no landings counted" + note),
+                _row("low_leverage_leaves", None, None, None, INFO, "no landings counted" + note)]
+    if not all("cuts_high" in x for x in every):
+        cuts = sum(int(x.get("cuts") or 0) for x in every)
+        return [_row("high_leverage_leaves", None, None, None, PENDING,
+                     f"{cuts} mid-play leaves, leverage not graded (older scorecard: no cuts_high)" + note),
+                _row("low_leverage_leaves", None, None, None, INFO, f"{cuts} mid-play leaves, not split" + note)]
+    hi_ev = [(int(x.get("cuts_high") or 0), int(x.get("landings") or 0)) for x in every]
+    n_hi = sum(e for e, _ in hi_ev)
+    n_lo = sum(int(x.get("cuts") or 0) for x in every) - n_hi
+    by = ", ".join(f"{lg.upper()} {sum(int(x.get('cuts_high') or 0) for x in per[lg])}" for lg in LEAGUES if per[lg])
+    if n_hi:
+        point, lo, hi = _boot_ratio(hi_ev)
+        r = _row("high_leverage_leaves", round(point, 2), round(lo, 2), round(hi, 2), FAIL,
+                 f"{n_hi} in {n_land} landings ({by})" + note, len(hi_ev))
+    else:
+        st = PASS if len(hi_ev) >= rg.MIN_NIGHTS and n_land >= 600 else PENDING
+        r = _row("high_leverage_leaves", 0.0, 0.0, round(300.0 / n_land, 2), st,
+                 f"0 in {n_land} landings; true rate {rg.zero_bound(n_land)}" + note, len(hi_ev))
+    lo_r = _row("low_leverage_leaves", round(100.0 * n_lo / n_land, 2), None, None, INFO,
+                f"{n_lo} in {n_land} landings (allowed: after a score, in transition, early or not close)" + note)
+    return [r, lo_r]
 
 
 def oracle_rows(cards: dict) -> list[dict]:
@@ -497,7 +583,11 @@ def _fmt(key, v) -> str:
         return "n/a"
     if key in ("switch_p95", "press_to_tv_p95") or key.startswith("feed_lag"):
         return f"{v:.2f} s" if key in ("switch_p95", "press_to_tv_p95") else f"{v:.1f} s"
-    return f"{v:.2f}" if key == "mid_play" else f"{v:.1f}%"
+    if key == "contract_violations":
+        return str(int(v))
+    if key == "wv_calibration_err":
+        return f"{v:.1f} pts"
+    return f"{v:.2f}" if key in ("mid_play", "high_leverage_leaves", "low_leverage_leaves") else f"{v:.1f}%"
 
 
 def _delta(key, now, before) -> str:
@@ -757,15 +847,16 @@ def main(argv=None) -> int:
     if drill is None and not a.delta:
         drill = run_drill(root, a.controls_seeds)
     xs = switch_samples(a.switch_log if a.switch_log is not None else [root / "data/tv_input.jsonl"])
+    contracts = load_contracts(root)
     results = {}
     for split in (("dev", "locked") if a.split == "both" else (a.split,)):
         cards = run_cards(root, split, oracle=a.oracle)
-        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill)}
+        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill, contracts)}
         if a.profile:
             from redzone.noggin import profile as P
             cc = run_cards(root, split, profile=a.profile, oracle=a.oracle)
             results[split]["candidate"] = {"profile": a.profile, "about": P.PROFILES[a.profile].get("about", ""),
-                                           "cards": cc, "rows": table(cc, nights, xs, prof, drill)}
+                                           "cards": cc, "rows": table(cc, nights, xs, prof, drill, contracts)}
     live = load_live_nights(a.live_dir if a.live_dir is not None else [root / "data/live_nights"])
     commit = _git(root, "rev-parse", "--short", "HEAD")
     when = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
