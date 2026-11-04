@@ -180,7 +180,11 @@ class DriveScorer(Scorer):
         # The break forecast for each NFL game (scoring/breaks.py), so the decider can tell a drive
         # it's about to tune to from one about to go to commercial. Its hold keeps a break that has
         # left the data (the kickoff after the TD's ads) forecast until it has reached the screen.
-        self.breaks = breaks.BreakBook(clock=clock)
+        self.breaks = breaks.BreakBook(clock=clock, table=_one_table(cfg))
+
+    def use_breaks(self, book: breaks.BreakBook) -> None:
+        """[one brain, step 5] read the engine's BreakBook (the one instance) instead of a private one."""
+        self.breaks = book
 
     def score(self, g: GameState, me: Personal | None = None) -> Scored:
         s = super().score(g, me)
@@ -191,6 +195,14 @@ class DriveScorer(Scorer):
         f = self.breaks.forecast(g)
         s = apply_heat(s, h, self.cfg)
         return replace(s, factors={**s.factors, "break_p": round(f.p, 2), "break_s": round(f.expect_s)})
+
+
+def _one_table(cfg):
+    """The measured break table when ``breaks.one_model`` is on, else None (breaks.LEN)."""
+    if not cfg.get("breaks.one_model", False):
+        return None
+    from redzone.contracts.breaks import load_table
+    return load_table()
 
 
 def apply_heat(s: Scored, h: Heat, cfg) -> Scored:

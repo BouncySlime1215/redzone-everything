@@ -48,5 +48,11 @@
  "redzone/reel.py": [
   "Big plays live or replayed within 3 min",
   "Big plays live or replayed within 2 min (stretch)"
+ ],
+ "redzone/lab/breaktable.py": [
+  "Dead air (commercials/breaks on screen)"
+ ],
+ "scripts/measure_break_table.py": [
+  "Dead air (commercials/breaks on screen)"
  ]
 }

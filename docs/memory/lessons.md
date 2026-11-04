@@ -250,3 +250,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   prompt-only check (CENTER only on a prompt read from a screenshot): cleared at 46 s, 2/2 reruns pass.
   Seed 1 alone (CI) never showed it; run a second seed before calling a night clean.
 - 2026-11-04 (one brain step 2, #168): `from redzone import crunch` in demo/engine.py was shadowed by a local `def crunch(r)` in the same function scope, so the demo card crashed with "'function' object has no attribute 'row'". Unit tests never reach the demo summary; only CI's scorecard job did. Fix: import the module under a name no local uses (`crunch as crunch_table`), and run `python -m redzone.demo 20261101 --summary --json` before pushing anything that touches demo/.
+- 2026-11-04 (lane 1, one-brain step 5): five break-length tables had drifted apart (NFL score 150/160/187).
+  Re-measuring with one definition (break play -> next play that is neither a break nor a substitution)
+  reproduced the NFL and NHL priors exactly, so the drift was in the copies, not the data; NBA timeouts are
+  the exception (202 s measured vs 188 s prior on the Oct 2026 nights). Measure once, read from one table.

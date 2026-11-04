@@ -142,7 +142,9 @@ class Engine:
                                                  on_clock=self._sync_clock)
         self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
         # owed TV timeouts per game: when a break is coming (+ the learned brain, when brain.enabled)
-        self.breaks = breaks.BreakBook(brain=self._break_brain)
+        self.breaks = breaks.BreakBook(brain=self._break_brain, table=self.scorer.breaks.table)
+        if self.cfg.get("breaks.one_model", False):
+            self.scorer.use_breaks(self.breaks)    # [one brain, step 5] one BreakBook, owned here
         self._cost_mode: bool | None = None         # two-stick mode when switch costs were last synced
         self._cost_synced = 0.0
         self.boosted: set[str] = set()
