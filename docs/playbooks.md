@@ -38,16 +38,16 @@ crunch value, P2 = robustness, P3 = polish.
 | SAFE-05 | clock skew detected (feed vs wall > 5 s) | re-anchor the clock; no cut until re-anchored | hold | clock_skew | mid_play | ② | exists |
 | SAFE-06 | finished game on screen | wait for the target's next dead ball, then enter | 180 s cap only if target is in a break | replayed nights (cycle 01 ②) | mid_play | ② | partial |
 | SAFE-07 | crunch starts while target is live-play | wait for whistle unless restart countdown < flip time | stay on current crunch | replayed nights | mid_play, crunch_* | ② | partial |
-| SAFE-08 | hidden stick not steady PLAYING 1 s before flip | skip the flip, retry at the next dead ball | stay on current | flip_ignored, stick_wedge | flip_playing_3s | ③ | partial (#70) |
-| BTN-01 | LOCK IN pressed | hold that game until released; survive restart | if the stick dies, re-tune it on the other stick | scripted press on a replayed night | press_to_tv_p95 | ③ | new (cycle 01) |
-| BTN-02 | GO NOW pressed | pre-tune hidden stick, flip, confirm on phone ≤3 s | if pre-tune fails, tune the visible stick and confirm | scripted press | press_to_tv_p95 | ③ | new (cycle 01) |
-| BTN-03 | pause / resume / skip / override | id + ack + retry, idempotent | phone shows "not delivered" after 3 tries | dropped + duplicated commands | press_to_tv_p95 | ③ | new (cycle 01) |
+| SAFE-08 | hidden stick not steady PLAYING 1 s before flip | skip the flip, retry at the next dead ball | stay on current | flip_ignored, stick_wedge | flip_playing_3s | ③ | done (tests/test_control.py; flip_playing in the night report) |
+| BTN-01 | LOCK IN pressed | hold that game until released; survive restart | if the stick dies, re-tune it on the other stick | scripted press on a replayed night | press_to_tv_p95 | ③ | done (drill night: tests/test_controls_drill.py) |
+| BTN-02 | GO NOW pressed | pre-tune hidden stick, flip, confirm on phone ≤3 s | if pre-tune fails, tune the visible stick and confirm | scripted press | press_to_tv_p95 | ③ | done (drill night) |
+| BTN-03 | pause / resume / skip / override | id + ack + retry, idempotent | phone shows "not delivered" after 3 tries | dropped + duplicated commands | press_to_tv_p95 | ③ | done (drill night + tests/test_controls.py) |
 | BTN-04 | release LOCK | return to the decider's pick at the next dead ball | stay | scripted press | mid_play | ③ | new |
 | BTN-05 | press arrives during a flip | queue it, apply after the flip settles | drop only if superseded, and say so | scripted press mid-flip | press_to_tv_p95 | ③ | new |
 | BTN-06 | phone loses connection | server keeps the last state; phone resyncs on reconnect | phone shows stale banner | new `phone_offline` fault | – | ③ | new |
-| STK-01 | visible stick drops (adb) | reconnect; if > 10 s, flip TV to hidden stick on current game | one-stick mode (STK-05) | stick_drop host=visible | recovery | ③ | exists |
-| STK-02 | hidden stick drops | reconnect; meanwhile no pre-tune, flips become tune-in-place at dead balls | one-stick mode | stick_drop host=hidden | recovery | ③ | exists |
-| STK-03 | stick wedged (adb up, app frozen) | force-stop app, relaunch, re-tune | reboot stick via adb | stick_wedge | recovery | ③ | exists |
+| STK-01 | visible stick drops (adb) | reconnect; if > 10 s, flip TV to hidden stick on current game | one-stick mode (STK-05) | stick_drop host=visible | recovery | ③ | done (e2e night two_stick_recovers) |
+| STK-02 | hidden stick drops | reconnect; meanwhile no pre-tune, flips become tune-in-place at dead balls | one-stick mode | stick_drop host=hidden | recovery | ③ | done (e2e night two_stick_recovers) |
+| STK-03 | stick wedged (adb up, app frozen) | force-stop app, relaunch, re-tune | reboot stick via adb | stick_wedge | recovery | ③ | done (e2e night wedged_stick_reconnected) |
 | STK-04 | "Still watching?" prompt | dismiss on the hidden stick at once, visible stick at the next dead ball | relaunch app | still_watching (seed 9 miss) | recovery | ④ | partial (#64) |
 | TV-01 | SmartThings flip ignored | retry once; verify by input readback | LAN WebSocket KEY_HDMI fast path; else stay on current | flip_ignored, tv_input_ignored | switch_p95, recovery | ③ | partial |
 | TV-02 | SmartThings API down | LAN WebSocket path | CEC via the stick; else one-stick mode | api_down, st_down (faults:tv) | recovery | ③ | exists (HOME fallback; tested) |

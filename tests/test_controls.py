@@ -79,6 +79,7 @@ def test_a_retried_post_runs_the_action_once(engine, monkeypatch):
     assert c.get("/api/action/never-sent-1").status_code == 404
 
 
+@pytest.mark.playbook("BTN-03")
 def test_a_retried_watch_this_is_not_a_go_now(engine, monkeypatch):
     """The reason ids matter: a second "Watch this" means "Go now" (cut over at once, even mid-play),
     so a lost answer resent must not run it again."""
@@ -164,6 +165,7 @@ def test_a_skip_counts_its_five_minutes_from_when_the_tv_leaves(engine):
     assert "g1" not in e.decider.user.muted and "g1" not in e.skipped
 
 
+@pytest.mark.playbook("BTN-05")
 def test_tapping_the_game_on_screen_mid_switch_away_goes_back(engine, monkeypatch):
     """playbook=BTN-05 (controls drill, mid_flip): "Watch this" + "Go now" on the game on screen while
     a switch away from it is landing used to answer "Holding on X" while the TV landed elsewhere."""

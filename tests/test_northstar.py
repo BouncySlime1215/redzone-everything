@@ -145,6 +145,7 @@ def test_profile_run_keeps_its_candidate_column(tmp_path, monkeypatch):
         return cards(mid=1 if profile is None else 0)
 
     monkeypatch.setattr(ns, "run_cards", fake_run)
+    monkeypatch.setattr(ns, "run_drill", lambda root, seeds: None)
     out = tmp_path / "ns.json"
     ns.main(["--split", "dev", "--profile", "candidate", "--no-write", "--json", str(out)])
     res = json.loads(out.read_text())["dev"]
@@ -175,3 +176,20 @@ def test_right_game_reads_store_taps(tmp_path, monkeypatch):
     assert r["key"] == "right_game" and r["nights"] == 10
     assert abs(r["value"] - 100 * 63 / 73) < 0.01 and r["status"] == ns.FAIL      # 86 % < 95 %
     assert ns.right_game_row(None)["status"] == ns.PENDING
+
+
+def test_every_run_runs_the_controls_drill_unless_given_one(tmp_path, monkeypatch):
+    """press_to_tv_p95 gets a sim value on every run (cycle 02 lane 3): no --controls-json -> drill runs."""
+    seen = []
+    drill = {"summary": {"nights": 2, "go_now_within_3s_pct": 50.0, "taps": 10}, "runs": [{"go_now_s": [1.5, 2.5]}]}
+    monkeypatch.setattr(ns, "run_cards", lambda root, split, **kw: cards())
+    monkeypatch.setattr(ns, "run_drill", lambda root, seeds: seen.append(seeds) or drill)
+    out = tmp_path / "ns.json"
+    ns.main(["--split", "dev", "--no-write", "--json", str(out)])
+    assert seen == [2]
+    row = rows_by(json.loads(out.read_text())["dev"]["rows"])["press_to_tv_p95"]
+    assert row["value"] == 2.5 and row["status"] == ns.PENDING
+    given = tmp_path / "c.json"
+    given.write_text(json.dumps(drill))
+    ns.main(["--split", "dev", "--no-write", "--json", str(out), "--controls-json", str(given)])
+    assert seen == [2]                                  # given a report: no second drill

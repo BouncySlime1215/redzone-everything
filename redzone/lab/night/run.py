@@ -591,6 +591,30 @@ def _safe_checks(night: Night, check) -> None:
         check(f"safe_{f['name']}", ok, detail)
 
 
+def flip_playing(shown: list, within_s: float = 3.0) -> dict:
+    """flip_playing_3s (playbook SAFE-08): of the TV input changes (Shown rows with cause "input"), how
+    many showed the game playing within `within_s`. Measured, not graded: the North Star line is."""
+    took = []
+    for i, a in enumerate(shown):
+        if a.cause != "input":
+            continue
+        t = None
+        for b in shown[i + 1:]:
+            if b.cause == "input":
+                break
+            if b.what == "playing":
+                t = b.t - a.t
+                break
+        took.append(t)
+    ok = sorted(x for x in took if x is not None)
+    n = len(took)
+    return {"flips": n, "within_s": within_s,
+            "pct": round(100.0 * sum(x <= within_s for x in ok) / n, 1) if n else None,
+            "p50_s": round(ok[len(ok) // 2], 2) if ok else None,
+            "p95_s": round(ok[min(len(ok) - 1, max(0, -(-95 * len(ok) // 100) - 1))], 2) if ok else None,
+            "never": n - len(ok)}
+
+
 def _et(t: float) -> str:
     return datetime.fromtimestamp(t, ET).strftime("%-I:%M:%S %p")
 
@@ -771,9 +795,21 @@ def grade(night: Night) -> dict:
     ev = night.house.events
     shown_prompts = [x for x in ev if x[1] == "prompt_shown"]
     cleared = [x for x in ev if x[1] == "prompt_cleared"]
-    prompt_ok = all(any(c[0] >= p[0] and c[0] - p[0] <= 60 for c in cleared) for p in shown_prompts)
+    drops = [f for f in night.fault_log if f["name"] == "stick_drop" and f["event"] == "start"]
+
+    def clock_from(p) -> float:
+        # The 60 s count from when the stick can take a key: a prompt on a stick that dropped off
+        # adb (stick_drop, seed 2: 10 s after the prompt, for 87 s) can't be cleared by anyone.
+        t0 = p[0]
+        for d in sorted(drops, key=lambda d: d["t"]):
+            if d.get("host") == p[2] and d["t"] <= t0 + 60 and d["t"] + (d.get("dur") or 0) > t0:
+                t0 = d["t"] + (d.get("dur") or 0)
+        return t0
+    starts = [(p, clock_from(p)) for p in shown_prompts]
+    prompt_ok = all(any(c[0] >= p[0] and c[0] - t0 <= 60 and c[2] == p[2] for c in cleared) for p, t0 in starts)
     check("still_watching_cleared", prompt_ok,
-          {"shown": [_et(p[0]) for p in shown_prompts], "cleared": [_et(c[0]) for c in cleared]})
+          {"shown": [_et(p[0]) for p in shown_prompts], "cleared": [(_et(c[0]), c[3]) for c in cleared],
+           "clock_from": [_et(t0) for _, t0 in starts]})
     paused_by_center = [x for x in ev if x[1] == "center_paused_player"]
     check("no_center_in_player", not paused_by_center, {"events": [(_et(x[0]), x[2], x[3]) for x in paused_by_center]})
     wedges = [f for f in night.fault_log if f["name"] == "stick_wedge" and f["event"] == "start"]
@@ -853,7 +889,7 @@ def grade(night: Night) -> dict:
     # back this far behind live; and how long a prompt sat on screen in all.
     check("tv_shows_games", coverage >= 0.75,
           {"playing_share_while_live": round(coverage, 3), "far_behind_share": round(far_s / live_s, 3) if live_s else 0.0,
-           "far_behind": far[:20], "prompt_on_screen_s": round(prompt_s)})
+           "far_behind": far[:20], "prompt_on_screen_s": round(prompt_s), "flip_playing": flip_playing(sh)})
     switches = e.store._db.execute("SELECT ok, dry_run, detail, kind FROM switches").fetchall() \
         if hasattr(e.store, "_db") else []
     tv_input = None

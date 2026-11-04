@@ -1745,6 +1745,10 @@ class Controller:
                     # [SYNC 1] Its state changed since the check (a buffering blip): steady again first.
                     pb = await self._steady_playing(hid, target) or {}
                 if not hid.still_on(target, pb):
+                    # playbook=SAFE-08: not steady PLAYING right before the flip. Skip it and stay on the
+                    # current game; the next decision re-tunes it and tries again at the next dead ball.
+                    log.info("playbook=SAFE-08 %s on %s isn't steady playing (%s): flip skipped, kept the current game",
+                             target, hid.host, pb.get("state"))
                     self._set_hidden(None, False)
                     return Outcome(False, target, time.time() - t0, "standby stream is no longer confirmed", False,
                                    path=path, screen_unchanged=visible_untouched)

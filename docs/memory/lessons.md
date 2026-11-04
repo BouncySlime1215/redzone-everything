@@ -171,3 +171,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   with `want=<big-play game>`, so the hidden stick would tune the wrong game. Dev scorecards didn't move (the gate
   was the binding constraint), found by tallying decisions made while a crunch game sat elsewhere. Fix: a stay that
   already wants a crunch game is left alone (crunch first). Check every layer that rewrites `want`.
+
+## "Still watching?" graded as missed on a stick nobody could reach
+- **Symptom:** (e2e night, seed 2, #86) `still_watching_cleared` failed: the prompt shown at 5:46:11 PM was cleared at 5:48:01, 110 s later.
+- **Cause:** the grader, not the app. A `stick_drop` took that stick off adb 10 s after the prompt, for 87 s; no key reaches a dropped stick. The reload of that game cleared it 14 s after it came back. The sim also logged no `prompt_cleared` when a new link replaced the player, only on CENTER.
+- **Fix:** the 60 s count from when the stick is reachable again (`clock_from` in the report), the clear must be on the same stick, and a relink logs `prompt_cleared (relink)`.
+- **Signals:** still_watching_cleared, prompt, stick_drop, STK-04, seed 2
