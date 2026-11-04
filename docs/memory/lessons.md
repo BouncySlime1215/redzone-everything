@@ -137,3 +137,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   `scripts/perf_probe.py` times the real `Engine.decide()` on 8 synthetic live games (300 ticks): it was
   p50 1.0 ms, p99 5.3 ms, 56 MB peak RSS at 1f5e751. Engine needs a running event loop, so the probe runs
   inside `asyncio.run`.
+- 2026-11-04: **The merge of #83 and #76 dropped the North Star candidate column without any error.** Both
+  PRs edited the same loop in scripts/northstar.py, and git merged them cleanly. #83's line reassigned
+  `results[split]` after #76 had added `["candidate"]` to it, so `--profile candidate` scored the profile and
+  then threw it away. Now the drill is passed to both tables and a test covers the column. Lesson: when two PRs
+  edit the same loop, read the merged loop, not only the conflict list.
