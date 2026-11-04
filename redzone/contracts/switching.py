@@ -45,7 +45,7 @@ def deadline(paths: tuple[SwitchPath, ...]) -> float:
 #   tunes      decider.switch_cost.<app>: the Mac's measured medians (switch_speed.learn wrote them
 #              to data/config.yaml; eval-data-v1 pinned that snapshot), shipped in default_config.yaml
 #   TV flip    two_stick.tv_flip_prior_s (SmartThings setInputSource on the user's TV, Nov 3 2026:
-#              live lab Nov 4: 64/64 confirmed, median 1.89 s, p95 2.18 s) + two_stick.input_settle_s, exactly as
+#              live lab Nov 4, CEC off: 30/30, p50 1.89 s, p95 1.98 s, max 2.02 s) + two_stick.input_settle_s, exactly as
 #              Controller.flip_estimate / _flip_upper price the tv_flip path before 5 own samples.
 TUNE_APPS = ("youtubetv", "prime", "espn")
 # [live lab] SmartThings input flips on the user's TV, Nov 4 2026 (docs/livelab-2026-11-04.md on the Mac):
@@ -78,9 +78,10 @@ def sample_prior(prior: dict, rng) -> float:
 
 
 def flip_bound(prior: dict) -> tuple[float, float]:
-    """(median, planning upper bound) of the TV flip prior: its p95 when measured, else its max."""
+    """(median, planning upper bound) of the TV flip prior. The bound is the measured max: landing
+    deadlines guard rule #1 (decisions.md, Nov 4); the p95 only where no max was measured."""
     med = float(prior.get("median", FLIP_PRIOR["median"]))
-    hi = prior.get("p95", prior.get("max", FLIP_PRIOR["p95"]))
+    hi = prior.get("max", prior.get("p95", FLIP_PRIOR["max"]))
     return med, max(med, float(hi))
 
 

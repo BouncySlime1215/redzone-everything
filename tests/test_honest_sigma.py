@@ -223,7 +223,7 @@ def test_cec_off_flip_prior_and_stick_pretunes():
     PLAYING 4K Plus 2.33 / 3.06, 4K 2023 3.74 / 5.50. The sims draw from these."""
     import statistics
     from redzone.contracts.switching import FLIP_PRIOR, PRETUNE_PRIOR_S, flip_bound, sample_prior
-    assert flip_bound(FLIP_PRIOR) == (1.89, 1.98)
+    assert flip_bound(FLIP_PRIOR) == (1.89, 2.02)   # bounded by the measured max (rule #1)
     rng = random.Random(3)
     xs = sorted(sample_prior(FLIP_PRIOR, rng) for _ in range(4000))
     assert abs(statistics.median(xs) - 1.89) < 0.01 and abs(xs[int(.95 * len(xs))] - 1.98) < 0.01 and xs[-1] <= 2.02

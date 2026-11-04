@@ -1070,7 +1070,7 @@ class Controller:
 
     def _tv_prior(self) -> tuple[float, float]:
         """(median, upper) of the TV input change before we've timed our own: the SmartThings
-        switch measured on the user's TV, Nov 4 2026 (live lab Nov 4, CEC off: 30/30, median 1.89 s, p95 1.98 s)."""
+        switch measured on the user's TV, Nov 4 2026 (live lab Nov 4, CEC off: 30/30, median 1.89 s, max 2.02 s). The upper bound is the measured max: deadlines guard rule #1."""
         from redzone.contracts.switching import flip_bound
         return flip_bound(self.cfg.get("two_stick.tv_flip_prior_s") or {})
 
@@ -2584,6 +2584,16 @@ class Controller:
             log.info("standby %s has been %s too long — it'll be reloaded", target, state)
             self._loading_since.pop((hid.host, target), None)
             self._set_hidden(None, False)
+            return
+        if parked is None and (state == "paused" or (state == "playing" and pb.get("active") is False)):
+            # playbook=STK-05: the hidden stick paused off screen (HDMI-CEC pauses the stick a flip
+            # leaves, live lab Nov 4) or reads a stale PLAYING on an inactive session. Resuming would
+            # come back behind live: drop it now so the planner re-tunes it at the live edge before
+            # any flip, instead of the flip finding it (SAFE-08 would skip that flip).
+            log.info("playbook=STK-05 standby %s on %s is %s: re-syncing it before any flip", target, hid.host,
+                     "paused" if state == "paused" else "a stale PLAYING (active=false)")
+            self._set_hidden(None, False)
+            self._last_preload = 0.0   # re-tune at once, not after the preload gap
             return
         if state not in expect:
             log.info("standby %s is %s, not %s — it'll be reloaded", target, state, "/".join(expect))

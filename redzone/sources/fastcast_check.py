@@ -75,6 +75,20 @@ class FastcastCheck:
     errors: int = 0                                   # pushed docs we couldn't use
     updates: int = 0
     verdict: dict | None = None
+    # [fastcast mac] seconds shadowed WITH live games subscribed. None: wall time since `started` (old
+    # callers). The service counts this: a restart at midnight used to burn the 4 h on an empty slate.
+    watched_s: float | None = None
+    _watch_at: float | None = None
+    client: dict | None = None                        # the FastCast client's own status, for the file
+
+    def watching(self, live: bool, now: float | None = None) -> None:
+        """The service's heartbeat: count time only while FastCast had live games to watch."""
+        now = time.time() if now is None else now
+        if self.watched_s is None:
+            self.watched_s = 0.0
+        if live and self._watch_at is not None:
+            self.watched_s += max(0.0, min(now - self._watch_at, 300.0))
+        self._watch_at = now if live else None
 
     # ------------------------------------------------------------------ input
     def saw(self, source: str, game: str, plays: list[dict], now: float | None = None) -> None:
@@ -142,7 +156,10 @@ class FastcastCheck:
                "behind_pct": round(100 * sum(1 for x in leads if x < -BEHIND_S) / n, 1) if n else None,
                "disagreements": disagree, "disagreement_examples": examples,
                "unusable_docs": self.errors, "pushed_updates": self.updates,
-               "shadow_s": round(now - self.started)}
+               "shadow_s": round(now - self.started),
+               "watched_s": None if self.watched_s is None else round(self.watched_s),
+               "client": self.client}
+        spent = (now - self.started) if self.watched_s is None else self.watched_s
         reasons = []
         if out["lead_median_s"] is not None and out["lead_median_s"] < MIN_MEDIAN_LEAD_S:
             reasons.append(f"median lead {out['lead_median_s']} s < {MIN_MEDIAN_LEAD_S} s")
@@ -156,9 +173,9 @@ class FastcastCheck:
         if disagree:                    # one disagreement is enough to fail: never merge a feed that lies
             out["result"] = "fail"
         elif not enough:
-            out["result"] = "stopped" if now - self.started > MAX_SHADOW_S else "pending"
+            out["result"] = "stopped" if spent > MAX_SHADOW_S else "pending"
             if out["result"] == "stopped":
-                reasons.append(f"only {n} plays over {len(both)} games in {MAX_SHADOW_S / 3600:.0f} h")
+                reasons.append(f"only {n} plays over {len(both)} games in {MAX_SHADOW_S / 3600:.0f} h of live games")
         else:
             out["result"] = "fail" if reasons else "pass"
         out["reasons"] = reasons
