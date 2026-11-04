@@ -13,7 +13,7 @@ async function check() {
   if (v2.checked) return;
   v2.checked = true;
   try { v2.on = !!(await api("/api/v2/status")).enabled; } catch { v2.on = false; }
-  if (v2.on) { hooks.render(); pollAlert(); }
+  if (v2.on) { hooks.render(); pollAlert(); pollStrip(); }
 }
 check();
 
@@ -23,6 +23,22 @@ function pollAlert() {
   api("/api/v2/slate").then((r) => { const a = (r && r.alert) || null; const was = JSON.stringify(alert); alert = a; if (JSON.stringify(a) !== was) hooks.renderScreen("now"); })
     .catch(() => {}).finally(() => setTimeout(pollAlert, 60000));
 }
+/* Top 3 watch values on the Now screen, refreshed every 15 s (read only; tap for the full sheet). */
+let strip = null;
+function pollStrip() {
+  api("/api/v2/watch").then((r) => {
+    const top = arr(r && r.games).slice(0, 3).map((g) => ({ ...g, on: g.game_id === r.current }));
+    const next = JSON.stringify({ top, src: r && r.source });
+    if (next !== JSON.stringify(strip)) { strip = { top, src: r && r.source }; hooks.renderScreen("now"); }
+  }).catch(() => {}).finally(() => setTimeout(pollStrip, 15000));
+}
+function watchStrip() {
+  if (!strip || !strip.top.length) return "";
+  return `<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
+    `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${esc(g.matchup)}</span><small>${esc(g.why || "")}</small></span></span>`).join("")}
+    ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>`;
+}
+
 function alertLine() {
   if (!alert) return "";
   const when = alert.now ? "Now" : alert.in_s < 90 ? "In a minute" : `In ${Math.round(alert.in_s / 60)} min`;
@@ -68,7 +84,7 @@ ACTIONS["v2-vote"] = async (el) => {
 /** The "I missed that" bar above Recent switches. */
 export function missedBar() {
   if (!v2.on) return "";
-  return `${alertLine()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
+  return `${alertLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
     <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>
