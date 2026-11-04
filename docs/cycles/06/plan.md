@@ -40,6 +40,36 @@ This **replaces** the 4:05 "crunch = stay, absolute" line.
    - never leave a high-leverage moment for a low-value game;
    - league order and WSH/UNC are **strong priors**, not absolute walls.
 
+## Addendum: strategy shift, the Noggin Foundation Model (Nick, 4:45 PM ET). The Noggin's main track
+Stop hand-listing features. Build one **pretrained event model** and put the heads on top (roadmap item
+**NFM**, priority 0).
+1. **Data = event tokens:** every play, stoppage, score, clock, score-state and lineup event from the
+   factory, across all leagues and seasons, as sequences per game, plus the cross-game slate. ~1B tokens,
+   real + self-play.
+2. **Pretrain self-supervised:** predict the next event, its time, and the next stoppage. No human labels.
+3. **Fine-tuned heads:** Watch Value, crunch enter/exit, break start/length, big-play-next, game
+   importance. The hand features become optional inputs.
+4. **Size to the data**, then distill to the Reflex (< 5 ms) and run a 3B-class Mind/MLX tier on the Mac
+   (≤ 2 GB) at a few Hz.
+5. **Gates:** locked nights, oracle rank agreement, calibration.
+
+**Planner's compute note for the design doc (lane ① to confirm):**
+- Training compute is ≈ 6·N·D FLOPs:
+  - 100M params × 1B tokens ≈ 6e17 FLOPs, about **8 T4-hours** at a realistic ~20 TFLOPS fp16;
+  - 300M params is ≈ 25 T4-hours, which uses almost all of the 30 GPU-h/week.
+- Compute-optimal scaling (~20 tokens per param) puts 1B tokens nearer **~50M params**. So start at
+  50-100M, add tokens (self-play) before adding size, and keep 300M as the stretch once tokens reach ~5B.
+- On the Mac, a 3B 4-bit model is ~1.7-2 GB. "A few Hz" fits only short-context scoring passes, not
+  generation, so budget the Mind tier as scoring, with the Reflex carrying every tick.
+
+**Lane ① re-ranked for this cycle:**
+1. `docs/noggin-foundation-model.md`: tokenizer, objective, size/compute plan, milestones, gates.
+2. The factory emits **event-token shards** next round (sequence schema, per-game + slate context, resumable,
+   rows/tokens per league in every PR).
+3. **V8** (the crunch + leak fixes) stays the near-term model.
+4. The WV / crunch-state / importance work this cycle continues as **baselines and head definitions**. The
+   NFM heads must beat them on locked nights before they replace them. The `Scored.*` contract is unchanged.
+
 ## Addendum: GAME IMPORTANCE, a per-game weight in Watch Value (Nick, 4:35 PM ET; extends #163)
 "How much does this game matter?" A weight is set before kickoff and updated live. It is **a weight, not a
 lock**: on a busy Sunday the big matchup gets more screen time, but the other games still get their
