@@ -165,6 +165,7 @@ def test_a_skip_counts_its_five_minutes_from_when_the_tv_leaves(engine):
     assert "g1" not in e.decider.user.muted and "g1" not in e.skipped
 
 
+@pytest.mark.playbook("BTN-05")
 def test_tapping_the_game_on_screen_mid_switch_away_goes_back(engine, monkeypatch):
     """playbook=BTN-05 (controls drill, mid_flip): "Watch this" + "Go now" on the game on screen while
     a switch away from it is landing used to answer "Holding on X" while the TV landed elsewhere."""
