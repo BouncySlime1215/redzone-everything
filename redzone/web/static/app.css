@@ -1177,6 +1177,9 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .v2-strip-g .m { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .v2-strip-g small { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .v2-strip-g.on .m::after { content: " · on TV"; color: var(--info); font-weight: 700; }
+.v2-cs { font: 800 10px/1 var(--font-display); letter-spacing: .1em; text-transform: uppercase; font-style: normal; color: var(--danger); margin-right: 6px; }
+.v2-cs--entering { color: var(--mine); }
+.v2-cs--leaving { color: var(--text-3); }
 .v2-strip em { position: absolute; top: 8px; right: 10px; font: 700 10px/1 var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); font-style: normal; }
 .v2-wv { display: grid; gap: 10px; margin-top: 12px; }
 .v2-wv-row { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }

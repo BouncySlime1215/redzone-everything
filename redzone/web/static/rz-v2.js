@@ -35,7 +35,7 @@ function pollStrip() {
 function watchStrip() {
   if (!strip || !strip.top.length) return "";
   return `<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
-    `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${esc(g.matchup)}</span><small>${esc(g.why || "")}</small></span></span>`).join("")}
+    `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc(g.why || "")}</small></span></span>`).join("")}
     ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>`;
 }
 
@@ -264,6 +264,7 @@ async function loadWatch() {
   const s = sheetById("v2-watch");
   if (s) { s.update(); clearTimeout(watchS.timer); watchS.timer = setTimeout(loadWatch, 10000); }
 }
+const CRUNCH_TXT = { entering: "Crunch soon", in: "Crunch", leaving: "Crunch ending" };
 function watchSheet() {
   const d = watchS.data;
   if (!d) return `<h3>Watch value</h3><p class="lead">Loading…</p>`;
@@ -274,7 +275,7 @@ function watchSheet() {
     : "Preview: today's priority score until the learned watch value ships.";
   return `<h3>Watch value</h3><p class="lead">${esc(note)}</p>
     <div class="v2-wv">${gs.map((g) => `<div class="v2-wv-row${g.game_id === d.current ? " on" : ""}">
-      <div class="v2-wv-top"><span class="m ell">${esc(g.matchup)}</span>${g.game_id === d.current ? `<span class="tag tag--kind">On TV</span>` : ""}${g.crunch ? `<span class="tag tag--fail">Crunch</span>` : ""}${g.is_break ? `<span class="tag">Break</span>` : ""}<b>${num(g.wv)}</b></div>
+      <div class="v2-wv-top"><span class="m ell">${esc(g.matchup)}</span>${g.game_id === d.current ? `<span class="tag tag--kind">On TV</span>` : ""}${g.crunch_state ? `<span class="tag tag--fail">${esc(CRUNCH_TXT[g.crunch_state] || "Crunch")}</span>` : ""}${g.is_break ? `<span class="tag">Break</span>` : ""}<b>${num(g.wv)}</b></div>
       <div class="v2-wv-bar"><i style="width:${Math.max(2, Math.min(100, g.wv))}%"></i></div>
       ${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}</div>`).join("")}</div>`;
 }

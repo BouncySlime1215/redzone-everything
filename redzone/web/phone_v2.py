@@ -340,11 +340,16 @@ def slate_preview(games, rules: HardRules, now: float) -> dict:
             "yours": sum(1 for r in rows if r["yours"])}
 
 
+CRUNCH_STATES = ("entering", "in", "leaving")
+
+
 def watch_values(scored: dict, games: dict) -> dict:
     """Each live game's 0-100 watch value and its one-line why, best first (display only).
     Contract with lane 1 (HEAT 2.0): a Scored may carry `watch_value` (0-100) and `watch_why` (str). Until
     it does, the stub shows today's priority score clipped to 0-100 with its biggest factor, marked
-    source="stub" so the phone says it's the old score."""
+    source="stub" so the phone says it's the old score.
+    crunch_state: lane 1's crunch model sets `Scored.crunch_state` in CRUNCH_STATES; until then the stub
+    reads today's flags (crunch_now -> "in", crunch -> "entering"; "leaving" needs the model)."""
     rows = []
     for gid, s in (scored or {}).items():
         g = (games or {}).get(gid)
@@ -354,7 +359,11 @@ def watch_values(scored: dict, games: dict) -> dict:
         learned = isinstance(wv, (int, float))
         val = float(wv) if learned else float(getattr(s, "score", 0.0) or 0.0)
         why = (getattr(s, "watch_why", "") if learned else "") or getattr(s, "factor", "") or getattr(s, "reason", "")
+        cs = getattr(s, "crunch_state", None)        # lane 1's crunch model: entering | in | leaving
+        if cs not in CRUNCH_STATES:
+            cs = "in" if getattr(s, "crunch_now", False) else ("entering" if getattr(s, "crunch", False) else None)
         rows.append({"game_id": gid, "matchup": getattr(g, "matchup", gid) if g is not None else gid,
+                     "crunch_state": cs,
                      "league": getattr(getattr(s, "league", None), "value", ""), "wv": int(round(max(0.0, min(100.0, val)))),
                      "why": str(why or "")[:120], "crunch": bool(getattr(s, "crunch", False)),
                      "is_break": bool(getattr(s, "is_break", False)), "source": "learned" if learned else "stub"})
