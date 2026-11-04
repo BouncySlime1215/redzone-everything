@@ -549,3 +549,29 @@ missed. Candidate, dev, `--tune-jitter 6`, 3 seeds: the candidate's crunch `wait
 the last dead ball by rewind whenever one is in reach, so `crunch` changes nothing and the share is
 already 96.9-100%. `all` costs NBA on seed 0 (big live 77.5 -> 73.2, crunch 90.0 -> 85.3), so it
 stays off. Locked: equal for all three.
+
+## Replay and resume (flag `replay.resume`, off)
+
+A catch-up replay costs buffer instead of live play. At the screen game's dead ball (the leave gate),
+the app pauses that stick, flips to the replay parked on the hidden stick, then flips back and
+unpauses on the same frame, so we leave and land on one dead ball (rule #1). The screen now runs that
+much further behind its buffer. It wins the time back by skipping ahead inside its next commercial or
+TV timeout (`replay.resume_min_skip_s`), or by any switch away, which comes back to a fresh tune.
+
+Limits:
+- `replay.resume_window_s` (180): only plays that aired within 3 minutes.
+- `replay.resume_cap_s`: never run further behind the buffer than this, counting entry rewinds.
+- `replay.resume_crunch_share` (0): crunch time is never paused.
+
+The sims report `behind_extra_p95_s` and `behind_extra_max_s` (per night and pooled) and `resumes`.
+
+**Hardware gate (night-lab step for lane 3's next probe).** On each stick model (4K Plus, 4K 2023), on
+YouTube TV live with DVR:
+1. Note the playback position, then send a media PAUSE over adb.
+2. Flip the TV input away for 20 s and then 60 s, and flip back.
+3. Send PLAY and read the position again.
+
+Pass: playback resumes within ~1 s of PLAY, on the same frame (position delta ≤ 0.5 s plus the time
+before PLAY), with no ad insertion, no "Are you still watching" prompt and no jump to live, in 20 of
+20 trials per model. Log `pause_ack_s`, `resume_ack_s`, the position deltas and any UI dump. Until
+this passes, the sims' zero-cost pause is unproven and the flag stays off.

@@ -44,10 +44,45 @@ def deadline(paths: tuple[SwitchPath, ...]) -> float:
 # ConfigSwitchPaths below, so it reads the same numbers the controller falls back to:
 #   tunes      decider.switch_cost.<app>: the Mac's measured medians (switch_speed.learn wrote them
 #              to data/config.yaml; eval-data-v1 pinned that snapshot), shipped in default_config.yaml
-#   TV flip    two_stick.tv_flip_prior_s (SmartThings setInputSource on the user's TV, Nov 4 2026:
-#              64/64 confirmed in the Nov 4 live lab, p50 1.89 s, p95 2.18 s) + two_stick.input_settle_s, exactly as
+#   TV flip    two_stick.tv_flip_prior_s (SmartThings setInputSource on the user's TV, Nov 3 2026:
+#              live lab Nov 4, CEC off: 30/30, p50 1.89 s, p95 1.98 s, max 2.02 s) + two_stick.input_settle_s, exactly as
 #              Controller.flip_estimate / _flip_upper price the tv_flip path before 5 own samples.
 TUNE_APPS = ("youtubetv", "prime", "espn")
+# [live lab] SmartThings input flips on the user's TV, Nov 4 2026 (docs/livelab-2026-11-04.md on the Mac):
+# command to confirmed readback, 64/64 confirmed, 0 retries. p50 1.89, p95 2.18, max 2.58 s.
+LIVELAB_FLIPS_S = (1.6, 1.66, 1.71, 1.71, 1.76, 1.77, 1.82, 1.83, 1.83, 1.83, 1.84, 1.84, 1.85, 1.85, 1.85,
+                   1.86, 1.86, 1.86, 1.86, 1.87, 1.87, 1.87, 1.87, 1.87, 1.88, 1.88, 1.88, 1.88, 1.88, 1.88,
+                   1.88, 1.89, 1.89, 1.9, 1.9, 1.9, 1.9, 1.9, 1.91, 1.91, 1.92, 1.92, 1.93, 1.93, 1.94, 1.95,
+                   1.95, 2.0, 2.0, 2.02, 2.02, 2.02, 2.02, 2.04, 2.04, 2.06, 2.08, 2.1, 2.12, 2.14, 2.18, 2.23,
+                   2.36, 2.58)
+FLIP_PRIOR_CEC_ON = {"median": 1.89, "p95": 2.18, "max": 2.58}   # the 64 flips above (CEC on)
+# [live lab, Nick Nov 4 11:35 AM] with HDMI-CEC off the stick we leave keeps PLAYING (83/83) and the
+# flip tightens: 30/30, p50 1.89 s, p95 1.98 s, max 2.02 s. The planner's prior.
+FLIP_PRIOR = {"median": 1.89, "p95": 1.98, "max": 2.02}
+# Hidden-stick pre-tune to PLAYING (same live lab), by ADB model code: prefer the 4K Plus for hot pre-tunes.
+PRETUNE_PRIOR_S = {
+    "AFTMA08C15": {"name": "Fire TV Stick 4K Plus", "median": 2.33, "p95": 3.06},
+    "AFTKM": {"name": "Fire TV Stick 4K (2023)", "median": 3.74, "p95": 5.50},
+}
+INPUT_SETTLE_S = 1.0   # two_stick.input_settle_s default: the picture after the input change
+
+
+def sample_prior(prior: dict, rng) -> float:
+    """One draw from a measured (median, p95[, max]) prior: a lognormal through the median and p95,
+    clipped at the measured max. The sims' spread for flips and pre-tunes."""
+    import math
+    med, p95 = float(prior["median"]), float(prior.get("p95", prior["median"]))
+    sd = math.log(max(p95, med) / med) / 1.645
+    x = med * math.exp(rng.gauss(0.0, sd))
+    return min(x, float(prior["max"])) if "max" in prior else x
+
+
+def flip_bound(prior: dict) -> tuple[float, float]:
+    """(median, planning upper bound) of the TV flip prior. The bound is the measured max: landing
+    deadlines guard rule #1 (decisions.md, Nov 4); the p95 only where no max was measured."""
+    med = float(prior.get("median", FLIP_PRIOR["median"]))
+    hi = prior.get("max", prior.get("p95", FLIP_PRIOR["max"]))
+    return med, max(med, float(hi))
 
 
 def half_step(x: float) -> float:
@@ -70,9 +105,8 @@ class ConfigSwitchPaths:
 
     def flip(self) -> SwitchPath:
         settle = float(self._get("two_stick.input_settle_s", 1.0))
-        prior = self._get("two_stick.tv_flip_prior_s", {}) or {}
-        med, mx = float(prior.get("median", 1.89)), float(prior.get("max", 2.58))
-        return SwitchPath(TV_FLIP, med + settle, max(med, mx) + settle)
+        med, hi = flip_bound(self._get("two_stick.tv_flip_prior_s", {}) or {})
+        return SwitchPath(TV_FLIP, med + settle, hi + settle)
 
     def tune(self, app: str) -> float:
         return float(self._get(f"decider.switch_cost.{app}", 5.0))

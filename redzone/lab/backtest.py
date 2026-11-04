@@ -88,6 +88,7 @@ class SwitchLog:
     reason: str
     offset: float = 0.0   # [cut timing] the picture came up this far behind live (a rewind on entry)
     jitter: float = 0.0   # [auto-anchors] of which: the tune's own unknown landing behind the live edge
+    arrive_dt: float = 0.0  # [live lab] the picture came up this much later (+) or sooner than tune_s
 
 
 @dataclass
@@ -326,7 +327,9 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         true_delay: float | None = None, sigma: float = 3.0, lag_jitter: tuple[float, float] | None = None,
         drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
         channel_spread: float = 0.0, history: float = 0.0, delay_model: str | None = None,
-        resync: bool = False, anchors: bool = False, tune_jitter_s: float = 0.0, feed_lag_model: str | None = None,
+        resync: bool = False, anchors: bool = False, tune_jitter_s: float = 0.0, flip_dist: bool = False, positions: bool = False,
+        pretune_dist: bool = False,
+        feed_lag_model: str | None = None,
         calibrate_targets: bool = False,
         on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
@@ -355,6 +358,9 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
                     true whistle -> ad-on-screen gap is drawn per break (sync.break_anchor.true_gap_s /
                     true_gap_sd_s, default = the config prior: an assumption until the Wednesday probe
                     data). Every on-screen second is graded for honesty (Report.sync_honesty).
+      positions     [yttv position] with anchors: the stick on screen reports its playback position
+      flip_dist     [live lab] each picture comes up with the measured TV flip's spread around tune_s
+      pretune_dist  [live lab] ...or a cold hidden-stick pre-tune (4K Plus / 4K 2023 in turn) + flip + settle
       tune_jitter_s [auto-anchors] each tune lands U(0, S) s behind the live edge, unknown to the app (a
                     YouTube TV tune, redzone/lab/syncsim.py: 0-6 s). Graded as a real offset of that
                     visit, so the delay the app believes is wrong by it until something re-syncs it.
@@ -415,6 +421,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         if anchors and cfg.get("delay.self_calibrate.enabled", False):
             delays.attach_cal(noise_cal(cfg, replays[0].league if replays else None))
     jitter_rng = random.Random(seed * 5_000_011 + 3)
+    flip_rng = random.Random(seed * 5_000_011 + 7)   # its own stream: the tune jitter draws stay the same
     honesty: list[tuple[float, float]] = []   # (error of the delay used, its sigma), each on-screen tick
     sampler = None
     if feed_lag_model == "measured":
@@ -475,10 +482,23 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             j = jitter_rng.uniform(0.0, tune_jitter_s)
             switches[-1].offset += j
             switches[-1].jitter = j
+        if (flip_dist or pretune_dist) and len(switches) > n_sw and switches[-1].kind != "replay":
+            # [live lab] the TV flip's measured spread around its median (CEC off, 30 flips, Nov 4)
+            from redzone.contracts.switching import FLIP_PRIOR, INPUT_SETTLE_S, PRETUNE_PRIOR_S, sample_prior
+            flip = sample_prior(FLIP_PRIOR, flip_rng)
+            if pretune_dist:
+                # every switch a cold pre-tune on the hidden stick, the two sticks taking turns
+                # (pessimistic: a hot standby is a flip alone): pre-tune + flip + HDMI settle vs tune_s
+                stick = list(PRETUNE_PRIOR_S.values())[len(switches) % len(PRETUNE_PRIOR_S)]
+                switches[-1].arrive_dt = sample_prior(stick, flip_rng) + flip + INPUT_SETTLE_S - tune_s
+            else:
+                switches[-1].arrive_dt = flip - FLIP_PRIOR["median"]
         if sync is not None and resync:
             _resync_tick(delays, sync, decision, switches, tgt_of, lag_true, tune_s, clock.t, noise)
         elif sync is not None:
             _anchor_tick(delays, sync, decision, switches, tgt_of, breaks, cfg, tune_s, clock.t, step)
+            if positions:
+                _position_tick(sync, switches, tgt_of, lag_true, delays, tune_s, clock.t)
         _honesty_tick(delays, switches, targets, lag_true, tune_s, clock.t, honesty)
         if decision.action == "replay" and decision.replay and getattr(dec, "replay_until", None) is not None:
             replay_windows.append((decision.target, round(decision.replay.t), clock.t, dec.replay_until))
@@ -594,6 +614,24 @@ def _anchor_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict
         ts += d.behind + last.jitter
         if now - step < ts <= now and ts - last.t >= tune_s:
             delays.anchor(target, ts - w - bias, "break", ts, (1.0 + bias_sd * bias_sd) ** 0.5)
+
+
+POSITION_ORIGIN_S = 1.7e9     # [yttv position] a channel's stream origin in the sim (any constant works)
+
+
+def _position_tick(sync, switches: list, tgt_of: dict, lag_true, delays: DelayBook, tune_s: float,
+                   now: float) -> None:
+    """[yttv position] The stick on screen reports its playback position each tick (YouTube TV on the
+    4K Plus, live lab Nov 4): position = wall - origin - true screen delay. Exact here; the live read's
+    doubt is the clock pin (sync.POSITION_SIGMA_S). Only YouTube TV channels report it."""
+    last = switches[-1] if switches else None
+    if last is None or last.kind == "replay" or last.to not in tgt_of or now - last.t < tune_s:
+        return
+    target = tgt_of[last.to]
+    if not str(target).startswith("youtubetv"):
+        return
+    true = lag_of(lag_true, last.to) + delays.get(target).behind + last.jitter
+    sync.position(target, now - POSITION_ORIGIN_S - true, t=now)
 
 
 def _honesty_tick(delays: DelayBook, switches: list, targets, lag_true, tune_s: float, now: float,
@@ -870,6 +908,31 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
     rep.big_plays_caught = caught
     rep.crunch, rep.crunch_live, rep.my_crunch, rep.my_crunch_live = crunch, crunch_live, my_crunch, my_crunch_live
     return rep
+
+
+def behind_extra(switches: list, t1: float) -> list[tuple[float, float]]:
+    """[replay and resume] (seconds, extra s behind its usual place) per live stretch on screen: the
+    rewinds on entry and the pauses for replays, never the tune's own landing jitter. Replays excluded."""
+    out = []
+    for i, s in enumerate(switches):
+        end = switches[i + 1].t if i + 1 < len(switches) else t1
+        if s.kind == "replay" or end <= s.t:
+            continue
+        out.append((end - s.t, max(0.0, (s.offset or 0.0) - (s.jitter or 0.0))))
+    return out
+
+
+def weighted_pct(pairs: list[tuple[float, float]], q: float) -> float:
+    """The time-weighted q-quantile of (weight, value) pairs (0 when empty)."""
+    tot = sum(w for w, _ in pairs)
+    if tot <= 0:
+        return 0.0
+    acc = 0.0
+    for w, v in sorted(pairs, key=lambda p: p[1]):
+        acc += w
+        if acc >= q * tot:
+            return v
+    return max(v for _, v in pairs)
 
 
 def behind_live_seconds(watching: list[tuple[float, str | None]], t0: float, t1: float) -> float:

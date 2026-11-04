@@ -81,6 +81,13 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
                          "needs --set sync.break_anchor.enabled=true)")
     ap.add_argument("--tune-jitter", type=float, default=0.0, metavar="S",
                     help="[auto-anchors] each tune lands U(0, S) s behind the live edge, unknown to the app")
+    ap.add_argument("--positions", action="store_true",
+                    help="[yttv position] with --break-anchors: the stick on screen reports its playback position")
+    ap.add_argument("--flip-dist", action="store_true",
+                    help="[live lab] each picture comes up with the measured SmartThings flip spread (CEC off)")
+    ap.add_argument("--pretune-dist", action="store_true",
+                    help="[live lab] each picture comes up after a cold hidden-stick pre-tune (4K Plus and 4K 2023 "
+                         "in turn) + flip + settle, against the planner's tune_s (pessimistic)")
     ap.add_argument("--real-lag", action="store_true",
                     help="[switch timing] plays reach the app after the MEASURED feed lag per league "
                          "(redzone/lab/feed_lag_profile.json), not a fixed 8 s")
@@ -99,6 +106,8 @@ def knobs(a: argparse.Namespace) -> dict:
                 channel_spread=getattr(a, "channel_spread", 0.0), history=getattr(a, "history", 0.0),
                 delay_model=getattr(a, "delay_model", None), resync=getattr(a, "resync", False),
                 anchors=getattr(a, "break_anchors", False), tune_jitter_s=getattr(a, "tune_jitter", 0.0),
+                flip_dist=getattr(a, "flip_dist", False), positions=getattr(a, "positions", False),
+                pretune_dist=getattr(a, "pretune_dist", False),
                 feed_lag_model="measured" if getattr(a, "real_lag", False) else None,
                 **feed_lag_knobs(getattr(a, "feed_lag", None), getattr(a, "behind_live", None)))
 
@@ -147,6 +156,7 @@ def main():
     total = sportsgrade.Card(lg.value)
     t0 = time.time()
     end = a.end or evaldata.window_end(lg.value, EVAL_END)
+    behind_all: list = []
     per_night = []   # the unit of evidence for the release gate's night bootstrap (scripts/release_gate.py)
     for day, reps, targets in nights(lg, a.nights, end, a.split):
         rep = run(reps, cfg, mine, targets=targets, step=a.step, **knobs(a))
@@ -168,6 +178,14 @@ def main():
                           "crunch": card.crunch, "crunch_live": card.crunch_live,
                           "my_crunch": card.my_crunch, "my_crunch_live": card.my_crunch_live,
                           "sync_honesty": rep.sync_honesty})
+        # [replay and resume] how far the screen ran behind its usual place (rewinds, pauses)
+        from redzone.lab.backtest import behind_extra, weighted_pct
+        be = behind_extra(rep.switches, rep.t1)
+        behind_all.extend(be)
+        per_night[-1]["behind_extra_p95_s"] = round(weighted_pct(be, .95), 1)
+        per_night[-1]["behind_extra_max_s"] = round(max((v for _, v in be), default=0.0), 1)
+        per_night[-1]["resumes"] = sum(s.kind == "resume" for s in rep.switches)
+        per_night[-1]["skips"] = sum(s.kind == "skip" for s in rep.switches)
         if a.oracle:
             from redzone.lab import oracle as O
             n = O.Night(reps, mine, rep.lag_true, 5.0, rep.t0, rep.t1)
@@ -235,6 +253,10 @@ def main():
     out["eval_data"] = evaldata.stamp()
     out["eval_end"] = end
     out["per_night"] = per_night
+    from redzone.lab.backtest import weighted_pct
+    out["behind_extra_p95_s"] = round(weighted_pct(behind_all, .95), 1)
+    out["behind_extra_max_s"] = max((x["behind_extra_max_s"] for x in per_night), default=0.0)
+    out["resumes"] = sum(x["resumes"] for x in per_night)
     if a.pick:
         from redzone.lab import oracle as O
         out["pick"] = O.aggregate([x["pick"] for x in per_night if "pick" in x])

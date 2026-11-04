@@ -45,6 +45,10 @@ sync:
     enabled: true          # [SYNC] read-only log of what the sticks expose (media_session, Wi-Fi, UI tree, logcat)
                            # -> recordings/<day>/sync_probe.jsonl. Presses nothing; skips during switches.
     visible_ui: false      # also dump the VISIBLE stick's UI tree (off: unmeasured whether a dump stutters video)
+    logcat_anchors: false  # [yttv anchors] ad edges from the player's logcat lines (YouTube TV has no UI text);
+                           # off until the probe's logged lines show YTTV's real ad strings
+    log_ad_start: ""       # regex override for an ad-start log line ("" = sync_probe.LOG_AD_START)
+    log_ad_end: ""         # ... and an ad-end line ("" = sync_probe.LOG_AD_END)
   break_anchor:            # [auto-anchors] ad break on screen <-> the feed's dead ball -> a delay sample
     enabled: false         # logged always (recordings/<day>/sync_anchors.jsonl); fed to the filter only when on.
     start_bias_s: 15       # whistle -> ad on screen, a PRIOR until the Wednesday probe data refits it
@@ -233,6 +237,8 @@ decider:
   # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.89 s) + the 1 s settle.
   # Replaced by your own measured times as you use it (see switch_speed).
   switch_cost: {youtubetv: 5.5, prime: 27, espn: 7.5, hdmi_flip: 3}
+  leave:
+    dead_windows: []       # [whistle detection] also leave on the play-by-play's dead windows in these leagues
   return_tolerance: 5      # go back to the previous game if it's within this many points
   break_destination_min: 25   # anything at least this good beats watching a commercial
   chase_max_deficit: 15
@@ -251,6 +257,7 @@ decider:
     personal_lead: 5       # your team / bet wins an overlap when its boost is this much bigger
     hop_min_break_s: 20    # hop to another live crunch only if this one's stoppage has this much left
     replays: true          # replays from other games during crunch stoppages, if surely back for the snap
+    instant_replays: true  # ...including instant replays of plays you saw (false: only plays you missed)
     shortest_break_s:      # ~10th pct, stoppage -> next scrimmage play logged, late Q4/OT, 2025 games
       {timeout: 30, injury: 27, review: 80, score_break: 110, two_minute_warning: 150, end_period: 180}
 
@@ -374,8 +381,9 @@ two_stick:
   pretune_on_open: false   # opening a live game on the phone pre-tunes it on the hidden stick (90 s), so
                            # "Watch this" / "Go now" is a ~3 s flip instead of a ~8 s tune + flip
   input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
-  tv_flip_prior_s: {median: 1.89, max: 2.58}  # the TV's own input change (SmartThings) before we've timed 5:
-                           # measured on your TV Nov 4 (64/64 confirmed, p50 1.89, p95 2.18). The decider plans flips with it.
+  tv_flip_prior_s: {median: 1.89, p95: 1.98, max: 2.02}  # the TV's own input change (SmartThings) before
+                           # we've timed 5: the live lab on your TV, Nov 4, CEC off (30/30; with CEC on it was
+                           # p95 2.18, max 2.58). The decider plans flips with the median, bounds them with the max.
   keep_cec_off: true       # a stick whose HDMI-CEC you turned off (scripts/stick_cec.py) gets it back on only
                            # for a HOME fallback onto it, then off again (so losing the input never pauses it)
   park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long
@@ -424,6 +432,19 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
                            # collision and end-of-night montage triggers (redzone/decider/decider.py)
   catchup_s: 600           # each missed big play replayed within this; its value halves every catchup_s
   collision_s: 180         # missed because another big play was on screen: replayed within this
+  window_s: 0              # [replay window] Nick, Nov 4: a missed moment airs within this (180 = 3 min, the next
+                           # dead moment) or is skipped / folded into the montage; 0 = off
+  window_leagues: []       # ...only these leagues' plays ([] = every league)
+  window_fill: false       # ...past the window a play may still fill dead time (never displacing live play)
+  resume: false            # [replay and resume] a missed play airs at the screen game's dead ball: pause it, show
+                           # the catch-up, resume on the same frame (costs buffer, not live play); repaid by
+                           # skipping ahead in its next break. Hardware gate: pause/resume on the same frame.
+  resume_leagues: []       # only these leagues' screen games pause ([] = every league)
+  resume_window_s: 180     # only plays that aired within this long (Nick: 3 minutes)
+  resume_cap_s: 60         # never run more than this far behind the usual buffer
+  resume_crunch_share: 0.0 # in crunch time only this share of the cap (0 = never pause crunch time)
+  resume_min_skip_s: 10    # skip ahead in a break only if it wins back at least this much
+  resume_pause_s: 1.0      # the pause command's ack: a stoppage on screen this much longer is enough to pause
   lull_score: 45           # no live game at this score or above (and no crunch / lock): a replay takes the dead ball
   meanwhile_s: 120         # the screen's game just scored: plays elsewhere within this of it go first
   montage_age_s: 14400     # nothing live: every missed big play still on the DVR, however old
@@ -514,6 +535,7 @@ noggin:                    # docs/noggin.md
     enabled: false         # flip to a game whose big play is visible ahead, landing on its last dead ball first
     max_sigma_s: 10        # no lookahead when the screen's position is this unsure (SAFE-02)
     lead_s: 45             # land at most this long before the play airs (a later dead ball is closer)
+    leagues: []            # only these leagues' games are chased or guarded ([] = every league)
   timing:
     leagues: []            # Noggin Timing v1: calibrated dead-window bounds in place of cuts.FLOOR_S / MEDIAN_S
   predict:
