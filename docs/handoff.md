@@ -69,8 +69,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 2:45 AM ET planner:** the North Star table exists (docs/northstar.md). Live default, dev nights: **2 PASS** (dead-time landings 97.5%, fault recovery 98.6%), **7 FAIL** (mid-play 2.45/100; big plays live NFL 25 / NBA 68 / NHL 41%; live-or-replayed 88.5%; your-team crunch 71.7%; dead air 22.5%), 7 pending. Key insight: all of tonight's fixes are OFF and scored alone. #1 is now the combined **candidate Noggin** column.
-- **Merged since 1:25 AM:** #61, #63, #65, #66, #67, #69, #70, #71. Open: #72 (Noggin Timing v1: 13× fewer early restarts, ECE 0.053), #73, #74, #68, #64. Kaggle V5 (Mind v0) running 3.8 h, ETA ~4-5 AM.
+- **2026-11-04 3:00 AM, Nick's orders for the night:** PERFORMANCE ONLY. No new features: every thread works on the cutting logic and sync-to-Noggin (candidate-Noggin column, crunch-entry rule, truthful per-source lag, sync stack, dead air, your-team crunch). NO SHORTCUTS: grade on the full test set every round. Don't stop; 4 threads, ~0.6%/h.
+- Nick is asleep. Next: the 8 AM planner run; Kaggle V5 (Mind v0) ETA ~4:30-6 AM; Nick's live test Wed evening.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
