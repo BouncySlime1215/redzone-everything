@@ -233,10 +233,12 @@ def apply_profile(cfg, name: str) -> None:
 
 
 def _warm(world, target: str | None) -> bool:
-    """Was the pressed game already live and ready on the hidden stick (a flip, not a tune)?"""
+    """Was the pressed game already live and ready on the hidden stick (a flip, not a tune)? A catch-up
+    replay parked on that channel doesn't count: a live press never uses parked replay footage, so it
+    is a tune (cycle 03: those were the "pre-tuned" presses that took 8.5 s)."""
     c = getattr(world.engine, "control", None)
     return bool(c is not None and target and getattr(c, "hidden_target", None) == target
-                and getattr(c, "hidden_ready", False))
+                and getattr(c, "hidden_ready", False) and getattr(c, "parked", None) is None)
 
 
 def controls(world, rng: random.Random) -> list[Fault]:

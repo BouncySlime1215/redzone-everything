@@ -245,5 +245,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   as planned.
 - 2026-11-04 12:45 PM (controls, cycle 03): **the candidate profile turns `two_stick.pretune_on_open` on**; the live
   default stays off. Drill (4 nights, flaky taps): with it, press-to-TV p50 8.5 -> 3.7 s and pre-tuned presses
-  10 -> 13 of 18; p95 stays 8.75 s. Pre-tuned presses land in p50 3.16 s because the SmartThings flip itself is ~2 s.
-  Cold presses (a tune) take p50 8.5 s. The drill and the North Star line now report the two apart.
+  p95 stays 8.75 s. Pre-tuned presses (game live on the hidden stick): 10, p50 3.02 s, p95 3.7 s, bounded by the
+  ~2 s SmartThings flip. Cold presses (a tune, including a channel parked on a catch-up replay): 8, p50 8.5 s.
+  The drill and the North Star line now report the two apart.
