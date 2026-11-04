@@ -350,6 +350,12 @@ function mockV2(path, b) {
     const alert = first ? { t0: now + 1260, t1: now + 2400, in_s: 1260, on_tv: first.on_tv, second: first.second, why: first.why, now: false } : null;
     return { enabled: true, now, games: gs, clashes, yours: gs.filter((g) => g.yours).length, alert };
   }
+  if (path === "/api/v2/watch") {
+    const why = ["Tied, 2:10 left in the 4th", "Red zone, 3rd & goal", "Power play, down one", "Blowout, starters sitting", "Commercial break"];
+    const games = (STATE.games || []).filter((g) => g.phase === "live" || g.state === "live").slice(0, 6).map((g, i) => ({ game_id: g.id, matchup: g.matchup,
+      league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, is_break: i === 4, source: "stub" }));
+    return { enabled: true, now: Date.now() / 1000, current: games[0] && games[0].game_id, games, source: games.length ? "stub" : null };
+  }
   if (path.startsWith("/api/v2/trend")) {
     const L = [["mid_play", "Mid-play cuts per 100 landings", 0, -1, 2.4, 1.75], ["landings_dead", "Landings in dead time %", 98, 1, 96.1, 98.25],
       ["pct_of_oracle", "% of hindsight-oracle value", 95, 1, 61, 74.2], ["big_live_nfl", "Big plays live, NFL %", 95, 1, 19.5, 23.3],

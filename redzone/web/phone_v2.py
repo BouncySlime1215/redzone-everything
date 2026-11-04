@@ -340,6 +340,29 @@ def slate_preview(games, rules: HardRules, now: float) -> dict:
             "yours": sum(1 for r in rows if r["yours"])}
 
 
+def watch_values(scored: dict, games: dict) -> dict:
+    """Each live game's 0-100 watch value and its one-line why, best first (display only).
+    Contract with lane 1 (HEAT 2.0): a Scored may carry `watch_value` (0-100) and `watch_why` (str). Until
+    it does, the stub shows today's priority score clipped to 0-100 with its biggest factor, marked
+    source="stub" so the phone says it's the old score."""
+    rows = []
+    for gid, s in (scored or {}).items():
+        g = (games or {}).get(gid)
+        if g is not None and getattr(g, "phase", None) not in (Phase.LIVE, None):
+            continue
+        wv = getattr(s, "watch_value", None)
+        learned = isinstance(wv, (int, float))
+        val = float(wv) if learned else float(getattr(s, "score", 0.0) or 0.0)
+        why = (getattr(s, "watch_why", "") if learned else "") or getattr(s, "factor", "") or getattr(s, "reason", "")
+        rows.append({"game_id": gid, "matchup": getattr(g, "matchup", gid) if g is not None else gid,
+                     "league": getattr(getattr(s, "league", None), "value", ""), "wv": int(round(max(0.0, min(100.0, val)))),
+                     "why": str(why or "")[:120], "crunch": bool(getattr(s, "crunch", False)),
+                     "is_break": bool(getattr(s, "is_break", False)), "source": "learned" if learned else "stub"})
+    rows.sort(key=lambda r: -r["wv"])
+    return {"games": rows, "source": "learned" if rows and all(r["source"] == "learned" for r in rows)
+            else ("stub" if rows else None)}
+
+
 ALERT_AHEAD_S = 1800.0   # warn about a your-team crunch clash this far ahead
 
 
@@ -451,6 +474,13 @@ def router(engine) -> APIRouter:
         if split not in ("dev", "locked"):
             return {"ok": False, "message": "split is dev or locked"}
         return {"enabled": True, **trend(read_history(HISTORY), split)}
+
+    @r.get("/watch")
+    async def watch():
+        if not _enabled(engine):
+            return _off()
+        return {"enabled": True, "now": time.time(), "current": getattr(engine.decider, "current", None),
+                **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}))}
 
     @r.get("/slate")
     async def slate():

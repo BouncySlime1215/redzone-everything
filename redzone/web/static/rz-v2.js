@@ -71,6 +71,7 @@ export function missedBar() {
   return `${alertLine()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>
     <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button></div>`;
 }
 
@@ -239,6 +240,29 @@ function nightSheet() {
 ACTIONS["v2-night"] = () => { night.data = null; openSheet({ id: "v2-night", label: "The whole night", full: true, render: nightSheet }); loadNight(""); };
 ACTIONS["v2-night-day"] = (el) => { night.data = null; const s = sheetById("v2-night"); if (s) s.update(); loadNight(el.dataset.day); };
 ACTIONS["v2-night-filter"] = (el) => { night.filter = el.dataset.f; const s = sheetById("v2-night"); if (s) s.update(); };
+
+/* ---------- Watch value: each live game's 0-100 and its one-line why (read only) ---------- */
+const watchS = { data: null, timer: null };
+async function loadWatch() {
+  try { watchS.data = await api("/api/v2/watch"); } catch (e) { watchS.data = { error: e.message }; }
+  const s = sheetById("v2-watch");
+  if (s) { s.update(); clearTimeout(watchS.timer); watchS.timer = setTimeout(loadWatch, 10000); }
+}
+function watchSheet() {
+  const d = watchS.data;
+  if (!d) return `<h3>Watch value</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Watch value</h3><p class="lead">${esc(d.error)}</p>`;
+  const gs = arr(d.games);
+  if (!gs.length) return `<h3>Watch value</h3><p class="lead">No live games right now.</p>`;
+  const note = d.source === "learned" ? "The Noggin's learned watch value, updated every few seconds."
+    : "Preview: today's priority score until the learned watch value ships.";
+  return `<h3>Watch value</h3><p class="lead">${esc(note)}</p>
+    <div class="v2-wv">${gs.map((g) => `<div class="v2-wv-row${g.game_id === d.current ? " on" : ""}">
+      <div class="v2-wv-top"><span class="m ell">${esc(g.matchup)}</span>${g.game_id === d.current ? `<span class="tag tag--kind">On TV</span>` : ""}${g.crunch ? `<span class="tag tag--fail">Crunch</span>` : ""}${g.is_break ? `<span class="tag">Break</span>` : ""}<b>${num(g.wv)}</b></div>
+      <div class="v2-wv-bar"><i style="width:${Math.max(2, Math.min(100, g.wv))}%"></i></div>
+      ${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}</div>`).join("")}</div>`;
+}
+ACTIONS["v2-watch"] = () => { watchS.data = null; openSheet({ id: "v2-watch", label: "Watch value", full: true, render: watchSheet, onClose: () => clearTimeout(watchS.timer) }); loadWatch(); };
 
 /* ---------- North Star trend: each headline line over the harness runs, read-only ---------- */
 const trendS = { data: null, split: "dev" };
