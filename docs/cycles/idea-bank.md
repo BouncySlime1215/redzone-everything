@@ -44,6 +44,15 @@ Lanes: ① Noggin training, ② Noggin logic/sync, ③ performance + controls, �
 | 17 | Keep the most-likely-next game pre-tuned on the hidden stick | ③ (uses ① Predict) | `press_to_tv_p95` ≤3 s, `switch_p95`, `big_live_*` | <1 ms decision | cycle 02 |
 | 18 | Safe mode on bad feeds or Wi-Fi: never cut mid-play | ② (rule), ④ (feed health) | `mid_play` 0 under the robustness slices (feed 10 s stale, sync ±3 s) | <1 ms | cycle 02 |
 
+## Nick's last orders (3:45 AM)
+
+| # | idea | lane | metric (target) | Mac budget | offline work | slot |
+|---|---|---|---|---|---|---|
+| 19 | **Chess planning with scenarios** (extends #3): the lookahead keeps a TREE of contingency branches ("if A breaks while B is in the red zone → B now, back to A at the restart"; "TD in A while C has a PP → C next"; "your-team crunch → lock in"). The cloud precomputes the scenario policy as compact tables keyed by a discretized slate state; the Mac looks up the branch that matches the live state (instant) and re-plans when a branch is invalidated | ② (Mac lookup + invalidation), ① (cloud solver over the #2 oracle) | `oracle_gap` ≥90%, `big_live_*`, `crunch_*`; `mid_play` 0 hard | table ≤100 MB mmap, lookup <1 ms, re-plan ≤20 ms | build tables on GH Actions / Kaggle from archived nights | cycle 02 (hand-written GAME-* branches + table format), 03 (cloud-built tree) |
+| 20 | **Playbooks everywhere:** hundreds of named trigger → action → fallback entries across game situations, feeds, Wi-Fi, sticks, SmartThings, Mac sleep/heat and button presses, each with a night-lab test. Ordered list: [docs/playbooks.md](../playbooks.md) | all lanes (owner per entry) | per entry; overall `recovery` ≥95%, `mid_play` 0 | each check <1 ms, pure lookup | night-lab seeds in CI / GH Actions | every cycle, P0 → P1 → P2 |
+
+Per-lane ranked backlogs: [backlog.md](backlog.md).
+
 ## New North Star lines these need
 - `oracle_gap` (#2): the candidate's big-plays-seen + crunch score as a % of the hindsight oracle's on
   the same nights. Built offline, graded on dev and locked.
