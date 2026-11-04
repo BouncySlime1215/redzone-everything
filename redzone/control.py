@@ -285,6 +285,7 @@ class Controller:
         self._flip_s: float | None = None       # HOME -> active source, of the last flip
         self.last_flip: dict | None = None       # the phone's latency book: flip_s / resume_s of the last flip
         self._visible_bad_since: float | None = None   # the stick on screen stopped playing at (watchdog)
+        self._visible_state = ""                       # ... and how: paused / frozen / none / stopped
         self._visible_fix_at = 0.0               # last watchdog repair (rate limit)
         self._loading_since: dict[tuple[str, str], tuple[float, float]] = {}   # (host, target) -> (first, last) loading read
         self._unknown_since = 0.0                # input became unknown at
@@ -674,6 +675,9 @@ class Controller:
                 stick, target, pb.get("state")):
             self._visible_bad_since = None
             return
+        # How it's dead, for the watchdog (redzone/platform/agent_fix.py): "playing" here means stuck loading.
+        st = str(pb.get("state") or "stopped")
+        self._visible_state = "frozen" if st in ("playing", "buffering", "connecting") else st
         if self._visible_bad_since is None:
             self._visible_bad_since = now
             log.info("%s (on screen) is %s, not playing %s; checking again in %.0fs", stick.host,

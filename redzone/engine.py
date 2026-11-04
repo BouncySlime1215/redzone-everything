@@ -1915,7 +1915,7 @@ class Engine:
                        "fastcast": self.fastcast.status() if self.fastcast else None,
                        "fastcast_check": self.fc_check.verdict,
                        "discovery": self.discovery.status(), "supervisor": self.supervisor.status(),
-                       "governor": self.governor.view()},
+                       "governor": self.governor.view(), "agent": self._agent_view()},
             "bets": self.bets_view(), "feedback": self.store.feedback_counts(),
             "fantasy": None if self.fantasy is None else {
                 "me": self.fantasy.me, "opponent": self.fantasy.opponent, "my_points": self.fantasy.my_points,
@@ -1923,6 +1923,14 @@ class Engine:
                 "starters": [{"name": x.name, "pos": x.pos, "team": x.team, "mine": x.mine}
                              for x in self.fantasy.starters]},
         }
+
+    def _agent_view(self) -> dict:
+        """What the watchdog reads beyond the rest of the snapshot (redzone/platform/agent_fix.py)."""
+        try:
+            from redzone.platform.agent_fix import view
+            return view(self)
+        except Exception as e:   # a status read must never break the snapshot
+            return {"error": str(e)[:120]}
 
     def _sticks_view(self) -> list[dict]:
         """Stick rows for the phone. Away from home a stick that can't answer is "away", not "offline"
