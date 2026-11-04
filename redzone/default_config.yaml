@@ -32,6 +32,7 @@ polling:
   hot_s: 3                 # what's on, what's next, and tense games: every N seconds
   live_s: 10               # every other live game
   idle_s: 300              # poll every N seconds when nothing is live
+  nhl_pbp_s: 3             # NHL api-web play-by-play per live NHL game (sources.nhl_primary); 8 s when off
 
 sources:
   fastcast: false          # ESPN's push feed: new plays the moment ESPN publishes them. Runs NEXT TO polling
@@ -39,6 +40,10 @@ sources:
   fastcast_check: true     # with fastcast off: run it in SHADOW on a few live games (logged, never merged) and grade
                            # it against polling -> data/fastcast_check.json (redzone/sources/fastcast_check.py)
   fastcast_auto_enable: false  # turn fastcast on by itself once that check passes
+  nhl_primary: false       # NHL api-web live play-by-play (~17 s behind the ice vs ESPN's ~43 s) owns NHL
+                           # stoppages while fresh and feeds its plays to the timeline (docs/timing.md, A2)
+  nhl_shadow: true         # primary off: still poll api-web every polling.nhl_pbp_s and log each event's
+                           # first-seen time (data/recordings/<day>/nhl_seen.jsonl) for the gating backtest
 
 score:
   neutral_cap: 0.9         # a neutral game tops out at 90; 90-100 is reserved for games you care about

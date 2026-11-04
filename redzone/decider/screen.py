@@ -32,6 +32,10 @@ FIRST_POLL_RECENT_S = 60.0  # on a game's first poll, plays newer than this may 
 # Timing it at one guessed point can put its on-screen window in the wrong place entirely.
 FEED_LAG_MIN_S = 2.0
 FEED_LAG_MAX_S = 30.0
+# Per source, for plays with no wallclock: (min, max) seconds the feed runs behind the ice. NHL
+# api-web's live play-by-play ran 16.7 s p50 behind the event (ANA@VAN, Nov 3); its gamecenter
+# publishes every ~20 s, so a 3 s poll sees a play 2..~45 s late. 60 s leaves room for a slow batch.
+SOURCE_LAG_S = {"nhl": (2.0, 60.0)}
 LAG_EST_DEFAULT_S = 10.0   # feed lag assumed until we've measured some
 # [switch timing] A lag sample ("not in the data at the last fresh poll") is a lower bound. It was capped
 # at 45 s, under the measured NHL median (50 s, docs/timing.md), so the gate believed its data covered a
@@ -483,7 +487,8 @@ def _bounds(p, now: float, prev_fresh: float | None = None) -> tuple[float, floa
     if p.wallclock:
         return p.wallclock, p.wallclock
     arrived = p.seen_at or now
-    return min(arrived, prev_fresh or arrived) - FEED_LAG_MAX_S, arrived - FEED_LAG_MIN_S
+    lo_lag, hi_lag = SOURCE_LAG_S.get(getattr(p, "source", ""), (FEED_LAG_MIN_S, FEED_LAG_MAX_S))
+    return min(arrived, prev_fresh or arrived) - hi_lag, arrived - lo_lag
 
 
 def _stoppage(label: str) -> Stoppage | None:
