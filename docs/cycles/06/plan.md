@@ -25,6 +25,25 @@ No escape hatches: reuse definitions and follow `docs/memory/onebrain-rules.md`.
 - crunch floor #160;
 - city map #157, coverage PRs #143/#147/#159.
 
+## Cycle 05 review folded in (fdcc5c3, 21:25 UTC)
+- **% of oracle moved:** dev 64.8 → 65.0, locked 59.1 → **66.4** (mostly #116 on NBA locked, 4 nights).
+- **Merged:** #116, #150, #129, #148, #156, #141, #134.
+- **Promoted under bar (B): nothing.** Rule #1 and the crunch floor pass. Two blockers remain:
+  - NHL crunch live on locked: 76 vs 89 live, with crunch-in-replay at 4 vs 2;
+  - 4 your-team catch-ups: NFL 2, NHL 2.
+- **Held:** #146, #132, #131 and #125, all on **one red e2e test** (a drifting hold on an unheld standby).
+  It's either a lane ③ gap or a test change. No skip.
+
+**Re-ranked top items:**
+- **③ #0 (unblocks 4 PRs):** fix the red e2e test. Find out whether the controller drifts a hold on a standby
+  it isn't holding (fix the code) or the test asserts the wrong thing (fix the test, with the reason in the
+  PR). This comes before everything else in lane ③.
+- **② #1 (promotion):** NHL crunch live on locked back to ≥ live (find the remaining crunch-in-replay starts
+  and the NHL crunch-exit cases), plus the 4 your-team catch-ups (NFL 2, NHL 2). Bar: release_gate under
+  bar (B) passes, with no candidate line worse than live.
+- **Integrator next:** #163, #165 (+ f83137c), #168. Then the held four once the e2e test is green. Next
+  review at 22:25 UTC or the next big pass.
+
 ## The big change: crunch is a learned state, decided by value (Nick, 4:15 PM ET)
 This **replaces** the 4:05 "crunch = stay, absolute" line.
 1. **Crunch is a state with an entry and an EXIT.** The Noggin learns when a game enters crunch and when it
