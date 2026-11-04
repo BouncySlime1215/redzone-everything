@@ -5,8 +5,8 @@ whatever has landed, and the Start Planner writes the next plan within 10 minute
 lane below has 3+ ranked tasks. When a task finishes or blocks (CI, Kaggle, hardware), go straight to the
 next one; waiting on CI is not work. **Kaggle goes to the overseer** (factory pack cdf86ef is launching now).
 Lab hardware (TV + sticks) is on all day, so use it for anything that needs real timing.
-**From:** the cycle 04 work in flight (no review.md yet, so the End Planner reviews cycle 04 at this
-cycle's start), Nick's live-lab sync findings (12:10 PM) and the 3:05 PM overseer queue (backlog.md, top).
+**From:** [cycle 04 review](../04/review.md) (f7e53bb: % of oracle 64.8 dev / 59.1 locked, unchanged, because no
+candidate change landed; nothing promoted), Nick's live-lab sync findings (12:10 PM) and the 3:05 PM overseer queue (backlog.md, top).
 **Rules as always:** graded on locked unseen nights, flags OFF until they pass, mid_play 0, no signal from
 Nick, North Star delta (dev + locked, live + candidate) and a RAM/CPU line in every PR.
 
@@ -37,10 +37,14 @@ listed under it; a marked night-lab test counts even when the behaviour behind i
 1. **Land the rule #1 seek stack:** #132 must follow #133 (take #132's `_rewind`: one wake press, not two),
    plus the crunch pre-cue recovery (the ~4-pt locked crunch cost of #132). Bar: mid_play 0 with the measured
    seek on dev and locked; crunch locked back to its pre-#132 level.
-2. **MediaSession content anchor** (in flight): the burst offset (~0.3 s) goes into the per-stick filter.
+2. **Promotion blocker (cycle 04 review):** the candidate passes every rule #1 gate on locked, but it is
+   worse than live on NHL crunch (crunch plays aired during a catch-up replay 2 → 10; crunch live 89 → 76)
+   and on 2 NFL your-team big plays. Never start a catch-up with NHL crunch due inside it, and fix the 2
+   NFL plays. Bar: release_gate.py on locked has no candidate line worse than live.
+3. **MediaSession content anchor** (in flight): the burst offset (~0.3 s) goes into the per-stick filter.
    Bar: σ p50 below 3 s with coverage ≥ 95%; NFL/NHL big live and GAME-04 re-graded.
-3. **Self-calibration, sync half (#140)** to green: `data/calib/YYYY-MM-DD.json` `sync` section, 3-MAD guard.
-4. **NHL whistle detection** (#131 follow-up), then the entry-rewind extra-behind.
+4. **Self-calibration, sync half (#140)** to green: `data/calib/YYYY-MM-DD.json` `sync` section, 3-MAD guard.
+5. **NHL whistle detection** (#131 follow-up), then the entry-rewind extra-behind.
 - Coverage: SAFE-02, SAFE-03, SAFE-05, SYNC-01..03, GAME-07, GAME-08, GAME-11..14.
 
 ## ③ Performance + controls
@@ -70,7 +74,6 @@ listed under it; a marked night-lab test counts even when the behaviour behind i
 (Button states are already merged as #96.)
 
 ## Integrator (at T+0 and T+90)
-- **T+0:** review cycle 04 → `docs/cycles/04/review.md`.
 - **Merge order:** #133 then #132 (never release one alone) → #116/#125 → #139 → #137/#136/#140 → lane 1.
-- **T+90:** review cycle 05 with the coverage count and every lane's delta; the Start Planner writes cycle 06
+- **T+90 (21:15 UTC review):** review cycle 05 with the coverage count and every lane's delta; the Start Planner writes cycle 06
   within 10 min.
