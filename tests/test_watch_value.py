@@ -136,3 +136,23 @@ def test_scorer_hook_is_off_by_default_and_only_adds_fields(model_dir, monkeypat
     # WV is an extra reading: the floors the decider reads (crunch, lock, the score) are exactly as before
     for k in ("score", "raw", "crunch", "crunch_now", "lock", "late", "garbage", "is_break"):
         assert getattr(on, k) == getattr(off, k), k
+
+
+def test_postseason_stakes_raise_wv_only_behind_their_flag(model_dir, monkeypatch):
+    """#163: a Game 7 multiplies WV (after the model, never a label) and fills stakes_line, only when
+    score.postseason.enabled; off, the reading is exactly the regular-season one."""
+    import dataclasses
+
+    from redzone.models import GameState, League, Phase, Team
+    from redzone.scoring.engine import Scorer
+    from redzone.scoring.postseason import Stakes
+    monkeypatch.setattr(W, "MODEL_DIR", model_dir)
+    g = GameState(League.NBA, "g7", Team("BOS", score=60), Team("NYK", score=58), phase=Phase.LIVE, period=3, clock_s=400)
+    g7 = dataclasses.replace(g, stakes=Stakes(postseason=True, rounds_left=0, best_of=7, game_no=7, elimination=True,
+                                              decider=True, label="NBA Finals - Game 7"))
+    base = Scorer(_cfg(**{"scoring.watch_value": True}), clock=lambda: 1000.0).score(g)
+    flag_off = Scorer(_cfg(**{"scoring.watch_value": True}), clock=lambda: 1000.0).score(g7)
+    on = Scorer(_cfg(**{"scoring.watch_value": True, "score.postseason.enabled": True}), clock=lambda: 1000.0).score(g7)
+    assert flag_off.watch_value == base.watch_value and flag_off.stakes_line is None
+    assert on.watch_terms["stakes_mult"] > 1.0 and on.watch_value >= base.watch_value
+    assert on.stakes_line == "NBA Finals - Game 7 · winner takes it"

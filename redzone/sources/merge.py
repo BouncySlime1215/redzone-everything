@@ -274,6 +274,8 @@ def _fill_gaps(dst: GameState, src: GameState) -> GameState:
             setattr(dst, attr, copy.copy(getattr(src, attr)))
     if dst.spotlight is None and src.spotlight is not None:
         dst.spotlight = src.spotlight
+    if dst.stakes is None and src.stakes is not None:
+        dst.stakes = src.stakes
     if dst.start_time is None:
         dst.start_time = src.start_time
     dst.national_tv = dst.national_tv or src.national_tv

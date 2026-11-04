@@ -133,7 +133,7 @@ def why(features: list[str], contrib, terms: dict, value: float) -> str:
         if len(words) == 2:
             break
     if terms.get("stakes_mult", 1.0) > 1.0:
-        words.append("your stakes")
+        words.append("stakes")
     head = "must-see" if value >= 90 else "worth a look" if value >= 65 else "quiet" if value < 35 else "live"
     return head + (": " + ", ".join(words) if words else "")
 

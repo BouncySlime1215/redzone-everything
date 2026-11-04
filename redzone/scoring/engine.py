@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass, field
 
 from redzone.models import PERIOD_S, REAL_BREAKS, REGULATION, ByLeague, GameState, League, Phase, Stoppage, pro_period
-from redzone.scoring import garbage
+from redzone.scoring import garbage, postseason
 from redzone.scoring.brain import Brain
 from redzone.reasoner import brief as rbrief
 from redzone.reasoner.reasoner import Reasoner, lock_points
@@ -182,6 +182,7 @@ class Scored:
     watch_terms: dict = field(default_factory=dict)   # p_big, impact, leverage, stakes_mult, story, garbage
     watch_rising: float | None = None  # d(watch_value)/dt, points per minute
     crunch_state: str | None = None    # learned crunch STATE: "entering" | "in" | "leaving" | None (contracts/watch.py)
+    stakes_line: str | None = None     # e.g. "World Series - Game 7 · winner takes it"; None = not computed
 
     @property
     def display(self) -> int:
@@ -236,6 +237,7 @@ class Scorer:
             mult *= 1.0 + float(c.get("scoring.watch_stakes.bet", 0.15)) * float(me.bet_sweat[g.game_id])
         if g.game_id in me.fantasy:
             mult *= float(c.get("scoring.watch_stakes.fantasy", 1.1))
+        mult *= 1.0 + postseason.stakes_bonus(g, c)      # #163: elimination / decider / round (0 unless its flag)
         return self.watch.read(g.game_id, g.league.value, f, now, mult)
 
     def brain_on(self) -> bool:
@@ -336,6 +338,7 @@ class Scorer:
                       watch_value=wr.watch_value if wr else None, watch_why=wr.watch_why if wr else "",
                       watch_terms=dict(wr.watch_terms) if wr else {}, watch_rising=wr.watch_rising if wr else None,
                       crunch_state=wr.crunch_state if wr else None,
+                      stakes_line=(postseason.reason(g) or None) if wr and postseason.enabled(c) else None,
                       late=is_late(g),
                       factor="garbage time" if h.garbage else factor, factors=factors,
                       crunch_now=crunch_window(g),
