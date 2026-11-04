@@ -416,3 +416,55 @@ game PICK doesn't score). After those fixes, `replace`/`stays` tie big live at b
 at 0 (off). Next: the 22 features don't see why crunch is coming (the oracle's labels follow the screen
 one tune later, not the crunch window ahead), so add crunch-ahead features and retrain, then re-grade on
 fresh nights.
+
+## HEAT 2.0: the learned watch value (Nov 4, Nick 3:30 PM)
+
+One learned score per game, recomputed every play (contract `redzone/contracts/watch.py`, loader
+`redzone/noggin/watch.py`, trainer `scripts/train_watch_value.py`, flag `scoring.watch_value`, off).
+Scored gets `watch_value` (0-100: 50 = the league's median live moment on train nights, 90 = p95),
+`watch_why`, `watch_terms` (p_big, impact, leverage, stakes_mult, story, garbage) and `watch_rising`.
+
+**Self-taught label:** the realized win-probability swing over the next 3 min (max |dWP|, full at 0.25), with
+WP from the brain track (ESPN's when given, else the analytic model). It measures leverage directly, so a
+one-score Q3 game scores and a blowout doesn't, unlike the scorecard's clock-defined big plays (the V7 NBA
+lesson). A second head gives p_big = P(one play moves WP >= 0.08 within 3 min). Stakes (your teams, bets,
+fantasy) multiply after the model (config `scoring.watch_stakes`), never labels. The brain's learned outputs
+are not features (they saw graded seasons); its WP track is.
+
+**Scorecard lines** (`metrics.watch_value`, the North Star card shape from #156): `calibration_err` = weighted
+mean |predicted WV - realized WV| per predicted decile (0..1), where realized WV is the label on the same
+train-night scale; `rank_agree_pct` = per minute of a night with 2+ live games, how often the highest-WV game
+is the one with the most realized swing.
+
+v1 is trained on the archive (eval-data-v1 nights, whole-night time split; locked graded once). It beats a
+clock+margin-only model on every line in NBA and NFL:
+
+| league | split | rows | rank agree | context-only | calib err | context-only |
+|---|---|---:|---:|---:|---:|---:|
+| NBA | dev | 8,012 | 72.6 | 56.8 | 0.056 | 0.098 |
+| NBA | locked | 11,890 | **74.2** | 65.5 | **0.057** | 0.077 |
+| NFL | dev | 7,592 | 62.5 | 49.8 | 0.062 | 0.126 |
+| NFL | locked | 13,727 | **58.6** | 42.4 | **0.056** | 0.118 |
+| NHL | locked | 8,965 | 55.4 | 49.9 | 0.190 | 0.180 |
+
+Forward CV (3 folds over train+valid): NBA rank 68.2 mean / 64.7 worst; NFL 60.4 / 59.7. Train rows: NBA
+26,780 (7 nights), NFL 29,399 (45), NHL 16,218 (8). **NHL does not ship** (14 nights is too few: calibration
+is no better than the baseline); NHL, CBB and MLB WV train on the factory's rows on Kaggle next (`Row.wall`
+and `Row.wp_home` are on every reasoner row now). Cost: 0.31 ms per read, models 86 KB (NBA) / 124 KB (NFL).
+
+**Crunch as a learned state (Nick 4:15 PM).** A third head `cr` learns crunch from hindsight: a moment is crunch
+when it is late (NBA last 6 min, NFL ~6, NHL ~7) AND the rest of the game still moves WP by >= 0.15. So the state
+ENDS when the game is decided, the clock is gone or the key moment has passed, and exit is learned instead of
+being a clock rule. Live it runs with hysteresis (on at 0.6, off at 0.35) and reaches Scored as `crunch_state` =
+entering / in / leaving / None. Its scorecard line is `crunch_exit_acc_pct` (the predicted state's last-on within
+60 s of the oracle's), next to entry accuracy and flicker (extra on/off flips per game):
+
+| league | split | games in crunch | entry acc | exit acc | flicker / game | today's rule: entry / exit / flicker |
+|---|---|---:|---:|---:|---:|---|
+| NBA | locked | 7 | 85.7 | 71.4 | 1.57 | 0 / 14.3 / 0.43 |
+| NFL | dev | 19 | 84.2 | 73.7 | 1.0 | 0 / 10.5 / 0 |
+| NFL | locked | 38 | 84.2 | **92.1** | 0.55 | 0 / 18.4 / 0.03 |
+
+The rule flag (`crunch_time`) almost never matches when hindsight says crunch starts and ends. The learned head
+is far closer but is **not at the 95% exit bar**, and it flickers more than the rule. It ships OFF (part of
+`scoring.watch_value`). Next: train on the factory's millions of rows and tune the hysteresis on valid nights.

@@ -510,3 +510,14 @@ buffer:                    # [buffer.watchdog] playbook STK-06 (redzone/control.
   watchdog: false          # rebuild a lost / drifting (> 2 s) hidden-stick hold at that game's next dead ball
 calib:                     # [calib.auto] values re-measured each night from live logs (data/calib/<night>.json)
   auto: false              # read last nights' accepted flip time back at start (OFF until it's proven on live nights)
+
+# HEAT 2.0 (Nick Nov 4 3:30 PM): the learned watch value per game (redzone/noggin/watch.py, contract
+# redzone/contracts/watch.py). Off: Scored.watch_value stays None and nothing changes. On: every live game
+# gets watch_value 0-100 (50 = league-median live moment, 90 = top 5%), watch_why and watch_terms; the
+# decider reads them behind its own flag (lane 2). Stakes are preference multipliers, never labels.
+scoring:
+  watch_value: false
+  watch_stakes:
+    your_team: 1.25
+    bet: 0.15            # x (1 + bet * sweat 0..1)
+    fantasy: 1.1

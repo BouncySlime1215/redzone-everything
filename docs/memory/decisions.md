@@ -303,3 +303,4 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   screen and not flippable while it rebuilds, so nothing on the TV is cut). Too close to live: pause the gap
   minus 1.5 s (Nick's hold calibration); too far behind: reload at the live edge and hold again. Every
   detection and rebuild goes to data/buffer.jsonl -> live-night summary -> northstar "buffer drift recovered".
+- **2026-11-04 (Nick 3:30 PM, HEAT 2.0):** new flag `scoring.watch_value` (default **off**): the learned watch value per game on Scored (watch_value 0-100, watch_why, watch_terms, watch_rising), contract redzone/contracts/watch.py. Self-taught label = realized win-prob swing over the next 3 min; stakes are config multipliers (`scoring.watch_stakes`), never labels. v1 ships NBA + NFL models (locked rank agreement 74.2 / 58.6 vs 65.5 / 42.4 for a clock-only baseline); NHL waits for the factory rows. Crunch = stay stays above WV.
