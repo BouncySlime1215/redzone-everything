@@ -386,7 +386,7 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
             ft = t if re.search(r"\d of \d", t) else f"{t} {text}"
             return Stoppage.NONE if _last_free_throw(ft) else Stoppage.WHISTLE
         if ("foul" in t or "violation" in t or "out of bounds" in t or "substitution" in t
-                or "kicked ball" in t or "delay" in t):
+                or "kicked ball" in t or "delay" in t or "technical" in t or "flagrant" in t):
             return Stoppage.WHISTLE
         return Stoppage.NONE
     if league == League.NHL:

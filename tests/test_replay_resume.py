@@ -59,3 +59,12 @@ def test_behind_extra_rows():
     rows = behind_extra(sw, 300.0)
     assert rows == [(100.0, 0.0), (80.0, 25.0), (100.0, 5.0)]
     assert weighted_pct(rows, .95) == 25.0 and weighted_pct([], .5) == 0.0
+
+
+def test_nba_technical_is_a_whistle():
+    """[rule #1 grading] 'Defensive 3-Seconds Technical' (DET @ NY, Oct 27) stops play: the grader called a
+    leave 72 s later mid-play because the type text has no 'foul'."""
+    from redzone.models import League, Stoppage
+    from redzone.sources import espn
+    for t in ("Defensive 3-Seconds Technical", "Coach Technical", "Non-Unsportsmanlike Technical", "Flagrant Foul Type 1"):
+        assert espn.stoppage_for(League.NBA, {"type": {"text": t}, "text": t}) == Stoppage.WHISTLE
