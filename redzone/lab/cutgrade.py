@@ -65,6 +65,11 @@ class CutCard:
         b = hist_bucket(dead, left_s)
         h[b] = h.get(b, 0) + 1
 
+    def landings(self) -> tuple[int, int]:
+        """(landings in on-screen dead time, all landings): both ends of every switch (North Star)."""
+        good = self.leaves_in_dead + self.leaves_between_plays + self.entries - self.entries_mid_play
+        return good, self.leaves + self.entries
+
     def summary(self) -> dict:
         pct = lambda a, b: round(100 * a / max(1, b), 1)  # noqa: E731
         return {"entries": self.entries, "entries_mid_play": self.entries_mid_play,

@@ -132,7 +132,13 @@ def main():
         per_night.append({"night": reps[0].gid, "entries": rc["entries"], "entries_mid_play": rc["entries_mid_play"],
                           "cuts": len(r.mid_play_cuts), "big": r.big_plays, "big_seen": r.big_plays_caught,
                           "big_seen_10m": r.big_seen_10m, "my_big": r.my_big_plays,
-                          "my_big_seen_10m": r.my_big_seen_10m, "crunch_on_replay": r.crunch_on_replay})
+                          "my_big_seen_10m": r.my_big_seen_10m, "crunch_on_replay": r.crunch_on_replay,
+                          # [north star] per-night counts so scripts/northstar.py can bootstrap every line
+                          "big_live": r.big_plays_live, "my_big_live": r.my_big_plays_live,
+                          "landings": r.cut.landings()[1], "landings_dead": r.cut.landings()[0],
+                          "dead_s": round(r.dead_air_s, 1), "watched_s": round(r.watched_s, 1),
+                          "crunch": r.crunch, "crunch_live": r.crunch_live,
+                          "my_crunch": r.my_crunch, "my_crunch_live": r.my_crunch_live})
         tot["big"] += r.big_plays; tot["seen"] += r.big_plays_caught; tot["live"] += r.big_plays_live
         tot["cuts"] += len(r.mid_play_cuts); tot["dead"] += r.dead_air_s; tot["watched"] += r.watched_s
         tot["crunch"] += r.crunch; tot["crunch_live"] += r.crunch_live

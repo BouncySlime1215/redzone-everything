@@ -131,3 +131,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   ban decide first, then score. Valid split on vs off: NFL / NBA / NHL every line equal (NHL dead air 21.5 ->
   21.6, switches/h 5.5 -> 5.6): crunch and your team are already handled before `_best`. Mixed-league nights
   (demo card) are where it can move things; it stays off until the Mind / Reflex terms are wired.
+- 2026-11-04 1:05 AM (Nick): **The North Star harness is the one answer to "where are we vs perfect" and
+  "what next".** `scripts/northstar.py` writes docs/northstar.md (dev-test `fit` and LOCKED `test` nights,
+  measured feed lag, night-bootstrap CIs, PASS/PENDING/FAIL as in release_gate.py) and appends
+  docs/northstar-history.jsonl; `.github/workflows/northstar.yml` refreshes it on every push to
+  integration/next (schedule only fires from main, which we never merge to). Every PR names the line it
+  moves; CI shows the dev-test delta (never the locked set). docs/roadmap.md is ranked from
+  docs/roadmap.json by (gap × impact) / effort, with the director's morning `priority` first.
