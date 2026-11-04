@@ -1247,9 +1247,30 @@ class Engine:
         is a 1-2s input flip instead of a 5-10s tune. What and when: redzone/standby.py."""
         if not self.control.two_stick or self.decider.user.paused:
             return
+        self._plan_prime_multiview(cands)
         pick = self.planner.plan(self._standby_options(cands, redzone), self.control.standby)
         if pick:
             self.control.preload(pick.target, back_s=pick.back_s, replay_id=pick.replay_id)
+
+    def _plan_prime_multiview(self, cands: dict) -> None:
+        """tuners.prime_multiview: the top eligible Prime NBA games share one multiview (~1 s between
+        them); excluded ones (score.personal.multiview_exclude) stay on the other stick."""
+        if not self.cfg.get("tuners.prime_multiview", False):
+            return
+        from redzone.tuners import prime_multiview as pmv
+        pool = []
+        for gid, c in cands.items():
+            g = self.merger.games.get(gid)
+            if g is None or not c.target or not c.target.startswith("prime:"):
+                continue
+            lg = getattr(c.scored.league, "value", c.scored.league)
+            pool.append(pmv.TileCandidate(c.target, str(lg).lower(), (g.home.abbr, g.away.abbr), c.scored.score))
+        mv = self.control.prime_mv
+        s = mv.session(self.control.hidden.host) if mv and self.control.hidden else None
+        tiles, _ = pmv.plan_tiles(pool, self.cfg.get("score.personal.multiview_exclude") or [],
+                                  self.cfg.get("score.personal.multiview_pin") or [],
+                                  k=int(self.cfg.get("tuners.prime_tiles", 3)), current=s.tiles if s else ())
+        self.control.plan_prime_multiview(tiles)
 
     def _standby_options(self, cands: dict, redzone: str | None = None) -> list[standby.Option]:
         dec, u = self.decider, self.decider.user

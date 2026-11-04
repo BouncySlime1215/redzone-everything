@@ -58,7 +58,8 @@ from typing import Any, Callable
 
 from redzone.channels import ChannelMap
 from redzone.tuners.adb import STICK_HUNG, Stick, adb_available, playback_ready, same_stream
-from redzone.tuners.tuners import TUNERS, TuneResult, channel_matcher
+from redzone.tuners import prime_multiview as pmv
+from redzone.tuners.tuners import TUNERS, PrimeMultiviewTuner, TuneResult, channel_matcher
 from redzone.tv import SamsungTV
 
 log = logging.getLogger(__name__)
@@ -112,7 +113,7 @@ SEEK_LATE_OK_S = 1.0       # a rewind may land this far past its target (Missed.
 LATENCY_KEEP = 15
 # What a real measurement can look like; outside this it's a glitch (a fake, a hung adb), not a switch.
 PLAUSIBLE = {"flip": (0.02, 30.0), "seek": (0.05, 60.0), "resume": (0.0, 60.0), "tv_flip": (0.02, 30.0),
-             "home_flip": (0.02, 30.0)}
+             "home_flip": (0.02, 30.0), "prime_tile": (0.05, 30.0)}
 ACTIVE_SOURCE_CMD = "dumpsys hdmi_control | grep -E -c 'mIsActiveSource: true'"
 CEC_GET_CMD = "settings get global hdmi_control_enabled"
 CEC_SET_CMD = "settings put global hdmi_control_enabled {v}"
@@ -253,6 +254,7 @@ class Controller:
         self._cec_synced_at = 0.0
         self._adopt_once = True                  # first switch after start may adopt the screen
         self.target_names: Callable[[str], list[str]] | None = None   # engine: team names for a target
+        self.prime_plan: list[str] = []          # engine: Prime NBA games for a multiview, best first
         self._flip_gen = 0                       # bumped on every flip: a CEC read that spans one is stale
         self._replay_shown: tuple[str, Any, int] | None = None   # (target, stick, flip gen) of a replay put on screen
         self._refresh_task: asyncio.Task | None = None   # after a flip: reload the game we left (see _refresh_left)
@@ -931,12 +933,56 @@ class Controller:
             out[app] = flip + self.latency.miss_rate(app) * tune if two else tune
         return {k: round(v * 2) / 2 for k, v in out.items()}
 
+    @property
+    def prime_mv(self) -> PrimeMultiviewTuner | None:
+        """The Prime multiview tuner when tuners.prime_multiview is on and the probe's key map can
+        switch tiles; None otherwise (every Prime switch is then a normal tune or flip)."""
+        t = TUNERS.get("prime")
+        if not isinstance(t, PrimeMultiviewTuner):
+            return None
+        t.enabled = bool(self.cfg.get("tuners.prime_multiview", False))
+        if t.enabled and t.keys is None and not getattr(self, "_prime_keys_tried", False):
+            self._prime_keys_tried = True
+            t.keys = pmv.load_keys()
+            if t.keys is None:
+                log.warning("tuners.prime_multiview is on but data/prime_multiview_keys.json is missing or broken")
+        if t.names is None and self.target_names is not None:
+            t.names = self.target_names
+        return t if t.ready else None
+
+    def tile_cost(self, p90: bool = False) -> float:
+        """Seconds for a Prime multiview tile switch: measured here, else the probe's timings, else
+        tuners.prime_tile_s / prime_tile_p90_s."""
+        xs = sorted(self.latency.samples.get("prime_tile") or ())
+        if xs:
+            return xs[min(len(xs) - 1, math.ceil(len(xs) * .9) - 1)] if p90 else statistics.median(xs)
+        mv = TUNERS.get("prime")
+        probe = mv.keys.tile_cost(.9 if p90 else .5) if isinstance(mv, PrimeMultiviewTuner) and mv.keys else None
+        if probe is not None:
+            return probe
+        return float(self.cfg.get("tuners.prime_tile_p90_s" if p90 else "tuners.prime_tile_s",
+                                  pmv.DEFAULT_TILE_P90_S if p90 else pmv.DEFAULT_TILE_S))
+
+    def _tile_path_cost(self, target: str | None) -> float | None:
+        """A Prime multiview tile on the stick on screen: a ~1 s tile switch, no flip. A tile on the
+        hidden stick: switch it there first (off screen), then the usual flip."""
+        mv = self.prime_mv
+        if mv is None or not target:
+            return None
+        main = self.main
+        if main is not None and mv.has_tile(main.host, target):
+            return 0.0 if mv.is_main(main.host, target) else self.tile_cost(p90=True)
+        return None   # a tile on the hidden stick is costed with its flip (deadline_cost)
+
     def deadline_cost(self, target: str | None) -> float:
         """Budget the actual target path, never an average of hits and misses.
 
         The 90th percentile and the shipped estimate are planning bounds, not
         a physical guarantee; actual exit timing is checked again at the cut.
         """
+        tile = self._tile_path_cost(target)
+        if tile is not None:
+            return tile
         app = (target or "unknown").split(":", 1)[0]
         def upper(key):
             samples = sorted(self.latency.samples.get(key) or ())
@@ -949,6 +995,11 @@ class Controller:
         flip = max(self._default_cost("hdmi_flip"),
                    samples[min(len(samples)-1, math.ceil(len(samples)*.9)-1)] if samples else 0)
         flip += float(self.cfg.get("two_stick.input_settle_s", 1.0))
+        mv = self.prime_mv
+        hid = self.hidden
+        if mv is not None and target and hid is not None and mv.has_tile(hid.host, target):
+            # Off-screen tile switch on the hidden stick, then the flip.
+            return flip + (0.0 if mv.is_main(hid.host, target) else self.tile_cost(p90=True))
         return flip if target and self._live_on_hidden(target) else tune + flip
 
     def switch_times(self) -> dict:
@@ -1052,7 +1103,8 @@ class Controller:
             # target isn't cooled down or marked unplayable for a stick fault.
             res.error = f"{STICK_HUNG}: {res.error}"
         if res.ok:
-            self.latency.record(app, res.took)
+            # A Prime multiview tile switch is ~1 s, not a ~32 s tune: never let it into Prime's median.
+            self.latency.record("prime_tile" if res.path == "tile" else app, res.took)
             self._awake_at[stick.host] = time.time()
         return res
 
@@ -1301,6 +1353,11 @@ class Controller:
             return Outcome(True, target, 0.0, why, True, time.time())
         if self.input_unknown:
             return Outcome(False, target, 0.0, "TV input is unknown; verify the visible stick before resuming", False)
+        mv = self.prime_mv
+        if mv is not None and not replay_back_s and self.main is not None and mv.has_tile(self.main.host, target):
+            out = await self._execute_tile(mv, target, may_cut, t0)
+            if out is not None:
+                return out
         if self.two_stick:
             out = await self._execute_two(target, replay_back_s, may_cut, t0, replay_id, back_at)
             if out is not None:
@@ -1315,6 +1372,37 @@ class Controller:
         if not self.live_control:
             return Outcome(False, target, 0.0, "TV control was disabled", True)
         return await self._execute_one(target, replay_back_s, t0, back_at)
+
+    async def _execute_tile(self, mv: PrimeMultiviewTuner, target: str, may_cut, t0: float) -> Outcome | None:
+        """The game is a tile of the Prime multiview on screen: at a safe moment, make it main
+        (~1 s, no relaunch). None = nothing was pressed, so the caller's normal path runs instead."""
+        main = self.main
+        if mv.is_main(main.host, target) and await self._still_on_visible(target):
+            return Outcome(True, target, 0.0, "already on it", False, time.time(), path="already")
+        self._mark("safe_start")
+        waited = await self._wait_safe(may_cut)
+        if waited is None:
+            return Outcome(False, target, time.time() - t0, "no safe moment to cut — kept the current game", False,
+                           path="prime_tile", waited=MAX_SAFE_WAIT_S, screen_unchanged=True)
+        self._mark("safe_done")
+        if not self.live_control:
+            return Outcome(False, target, 0.0, "TV control was disabled", True)
+        self.on_target = None
+        self._mark("tune_start")
+        res = await mv.switch(main, target, may_cut)
+        self._mark("tune_done")
+        if res.ok:
+            self.latency.record("prime_tile", res.took)
+            self.on_target = target
+            self._visible_bad_since = None
+            return Outcome(True, target, res.took, "; ".join(res.steps[-2:]), False, time.time(), path="prime_tile",
+                           waited=waited, stick=main.host)
+        if res.screen_changed is False:
+            return None
+        # Keys were pressed and the main tile isn't the one we wanted (or can't be read). The session is
+        # forgotten, so the next decision takes a normal path; never chain a 30 s tune into this cut.
+        return Outcome(False, target, time.time() - t0, res.error, False, path="prime_tile", waited=waited,
+                       stick=main.host)
 
     async def _execute_one(self, target, replay_back_s, t0, back_at=None) -> Outcome:
         if not replay_back_s and await self._still_on_visible(target):
@@ -2035,6 +2123,7 @@ class Controller:
                                                  host=hid.host)
                         return
                     self._set_hidden(target, True)
+                    await self._maybe_build_multiview(hid, target, res)
                 if replay_id is not None:
                     if not await self._park(hid, target, (back_s or 0.0) + (time.time() - t0), replay_id):
                         self._failed[target] = time.time() + PRELOAD_BACKOFF_S
@@ -2046,6 +2135,39 @@ class Controller:
         finally:
             if self._preload_task is asyncio.current_task():   # not a preload that displaced this one
                 self._preloading, self._refreshing = None, None
+
+    def plan_prime_multiview(self, tiles: list[str]) -> None:
+        """The engine's pick of Prime NBA games for a multiview, best first (prime_multiview.plan_tiles)."""
+        self.prime_plan = list(tiles)
+
+    async def _maybe_build_multiview(self, hid: Stick, target: str, res: TuneResult) -> None:
+        """After a normal Prime tune on the HIDDEN stick (off screen), open a multiview of the planned
+        games around it, so the next switches among them are ~1 s tile switches."""
+        mv = self.prime_mv
+        plan = list(getattr(self, "prime_plan", ()) or ())
+        if mv is None or res.path == "tile" or target not in plan or len(plan) < 2:
+            return
+        if not pmv.needs_rebuild(mv.session(hid.host), plan):
+            return
+        try:
+            built = await mv.build(hid, [target] + [t for t in plan if t != target])
+        except asyncio.CancelledError:
+            raise
+        except Exception:   # a multiview bug must never cost the preload it rides on
+            log.exception("prime multiview build failed on %s", hid.host)
+            mv.forget(hid.host)
+            built = False
+        s = mv.session(hid.host)
+        log.info("prime multiview on %s: %s", hid.host, s.tiles if built and s else "not built")
+        if not built or s is None or s.main_target != target:
+            # Where the player stands is unknown now: the next switch re-tunes it.
+            self._set_hidden(None, False)
+        else:
+            pb = await hid.playback(self._package(hid, target))
+            if playback_ready(pb):
+                hid.remember(target, pb)
+            else:
+                self._set_hidden(None, False)
 
     def _maybe_reseek(self) -> None:
         """A parked replay that didn't hold still drifts forward: pull it back every ~20s (from

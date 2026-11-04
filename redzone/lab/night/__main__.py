@@ -28,7 +28,9 @@ def main(argv=None) -> int:
     os.environ.setdefault("TZ", "America/New_York")
     _t.tzset()
     work = Path(a.work) if a.work else Path(tempfile.mkdtemp(prefix="rz-night-"))
-    from redzone.lab.night.run import Night, setup_logging
+    from redzone.lab.night.run import Night, hostile_host, setup_logging
+    if os.environ.get("RZ_NIGHT_HOSTILE_HOST") == "1":
+        hostile_host()      # the CI night: Night.patch() has to pin the host away (run.py pin_host/pin_network)
     night = Night(CLOCK, work, seed=a.seed, end_s=a.hours * 3600 if a.hours else None, start_at=a.start,
                   fault_specs=[json.loads(x) for x in a.fault], plugins=a.faults,
                   default_faults=not a.no_default_faults, use_watchdog=not a.no_watchdog)
