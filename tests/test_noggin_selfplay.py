@@ -76,3 +76,28 @@ def test_notebook_converts_and_packs(tmp_path):
     names = tarfile.open(tmp_path / "rz_factory_code.tar.gz").getnames()
     assert "rz/scripts/noggin_selfplay.py" in names and "rz/redzone/noggin/factory.py" in names
     assert not any(n.endswith((".db", ".env", ".pyc")) or "__pycache__" in n for n in names)
+
+
+def test_espn_nights_loader_for_nhl(tmp_path):
+    """[NHL self-play] factory espn_game records -> whole nights of Replays, eval window dropped."""
+    import gzip
+
+    from redzone.noggin import factory as F
+
+    def game(gid, t0, matchup):
+        plays = [{"id": str(i), "wallclock": f"2025-01-0{t0}T0{i}:00:00Z", "type": {"text": "Shot"},
+                  "period": {"number": 1}, "clock": {"displayValue": "10:00"}} for i in range(1, 5)]
+        return {"id": gid, "season_type": 2, "plays": plays, "matchup": matchup}
+    p = tmp_path / "espn_2025.jsonl.gz"
+    with gzip.open(p, "wt") as f:
+        for g in (game("1", 3, "WSH @ NYR"), game("2", 3, "BOS @ TOR"), game("3", 4, "A @ B")):
+            f.write(json.dumps(g) + "\n")
+    nights = T.season_nights("nhl", p)
+    assert list(nights) and all(len(v) >= 2 for v in nights.values())   # the lone game's night is dropped
+    reps = next(iter(nights.values()))
+    assert {r.matchup for r in reps} == {"WSH @ NYR", "BOS @ TOR"} and all(r.wall == sorted(r.wall) for r in reps)
+    assert all(n < F.EVAL_FIRST_NIGHT["nhl"] for n in nights)
+    hdr = {"header": {"id": "9", "season": {"type": 2}, "competitions": [{"competitors": [
+        {"homeAway": "home", "team": {"abbreviation": "WSH"}}, {"homeAway": "away", "team": {"abbreviation": "PIT"}}]}]},
+        "plays": [{"id": "1", "wallclock": "2025-01-03T01:00:00Z"}]}
+    assert F.espn_game(hdr)["matchup"] == "PIT @ WSH"

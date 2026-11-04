@@ -41,8 +41,40 @@ PARAMS = dict(objective="binary", learning_rate=0.05, num_leaves=63, min_data_in
               bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, verbose=-1, num_threads=4)
 
 
+def season_nights_espn(league: str, path: Path) -> dict:
+    """[NHL / ESPN leagues] factory espn_<year>.jsonl.gz (factory.espn_game records) -> {night: [Replay]},
+    the same shape as the hoopR loader: plays in ESPN's own format, wall clocks made non-decreasing."""
+    import gzip
+
+    from redzone.lab.backtest import Replay
+    from redzone.noggin import factory as FA
+    from redzone.sources import espn
+    lg = League(league)
+    out: dict[str, list] = {}
+    with gzip.open(path, "rt") as f:
+        for line in f:
+            g = json.loads(line)
+            plays, wall, last = [], [], None
+            for p in g["plays"]:
+                t = espn._ts(p.get("wallclock"))
+                t = t if t is not None else (last + 5 if last else None)
+                if t is None:
+                    continue
+                plays.append(p)
+                wall.append(max(t, last) if last else t)
+                last = wall[-1]
+            if len(plays) < 2:
+                continue
+            night = FA.night_of(wall[0])
+            if night < FA.EVAL_FIRST_NIGHT[league]:
+                out.setdefault(night, []).append(Replay(lg, str(g["id"]), {}, plays, wall, g.get("matchup") or "? @ ?"))
+    return {k: v for k, v in out.items() if len(v) >= 2}
+
+
 def season_nights(league: str, path: Path) -> dict:
     import pandas as pd
+    if str(path).endswith(".jsonl.gz"):
+        return season_nights_espn(league, path)
 
     from redzone.lab.backtest import Replay
     from redzone.noggin import factory as FA

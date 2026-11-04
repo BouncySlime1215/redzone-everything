@@ -12,7 +12,7 @@
 # Per league, per season (newest first), into /kaggle/working/factory:
 # 1. `moments/<league>/<season>.parquet`: every dead ball / stoppage as a labeled moment (scripts/noggin_factory.py:
 #    stoppage type, length, restart instant, rule state, big play next; night id on each row).
-# 2. `selfplay/<league>/<season>/part-NNNN.parquet` (basketball, 100 slates per part): PICK rows from the hindsight oracle on every real night
+# 2. `selfplay/<league>/<season>/part-NNNN.parquet` (NBA, CBB, NHL; 100 slates per part): PICK rows from the hindsight oracle on every real night
 #    plus SYNTHETIC self-play slates (random games of the same season, re-timed, random screen lag), labels from
 #    the oracle only: no human input anywhere.
 # 3. `manifest.json`: rows per league / season / kind, and what is still missing.
@@ -40,7 +40,7 @@ SMOKE = os.environ.get("RZ_SMOKE") == "1"
 PLAN = {
     "nba": (list(range(2026, 2001, -1)), 20),
     "nfl": (list(range(2025, 2010, -1)), 0),
-    "nhl": (list(range(2026, 2010, -1)), 0),
+    "nhl": (list(range(2026, 2010, -1)), 20),   # ESPN wall clocks from 2019-20 on: older seasons give 0 rows
     "cbb": (list(range(2026, 2005, -1)), 4),
 }
 if os.environ.get("RZ_LEAGUES"):
@@ -108,11 +108,15 @@ def season_job(league, year, synthetic, deadline):
             info = {"rows": 0, "complete": True, "note": "no data (season missing or no wall clocks)"}
         json.dump(info, open(mo[:-8] + ".json", "w"))
     res["moments"] = json.load(open(mo[:-8] + ".json"))["rows"]
-    raw = f"{RAW}/{league}/pbp_{year}.parquet"
+    espn_src = bool(F.SOURCES[league].get("espn"))
+    raw = f"{RAW}/{league}/{'espn' if espn_src else 'pbp'}_{year}{'.jsonl.gz' if espn_src else '.parquet'}"
     spj = f"{OUT}/selfplay/{league}/{year}.json"
     sp_done = os.path.exists(spj) and json.load(open(spj)).get("complete")
     if synthetic and not sp_done and not os.path.exists(raw) and time.time() < deadline:
-        NF._fetch(F.SOURCES[league]["url"].format(y=year), __import__("pathlib").Path(raw))
+        if espn_src:
+            NF.fetch_espn_season(league, year, __import__("pathlib").Path(raw), max_games=40 if SMOKE else None)
+        else:
+            NF._fetch(F.SOURCES[league]["url"].format(y=year), __import__("pathlib").Path(raw))
     if synthetic and not sp_done and os.path.exists(raw) and time.time() < deadline:
         sp = SP.build(league, __import__("pathlib").Path(raw), year, __import__("pathlib").Path(f"{OUT}/selfplay"),
                       1 if SMOKE else synthetic, 7, 1, deadline - time.time())

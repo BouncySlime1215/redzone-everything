@@ -420,7 +420,8 @@ the Mac and never on GitHub Actions (the push trigger on `noggin-factory.yml` is
 - **What it writes** (`/kaggle/working/factory`, kept as the notebook's output dataset):
   - `moments/<league>/<season>.parquet`: every dead ball / stoppage as a labeled moment (NBA 2002-2026,
     NFL 2011-2025, NHL 2011-2026, CBB 2006-2026), with the night on each row.
-  - `selfplay/<league>/<season>/part-NNNN.parquet` (NBA 20, CBB 4 synthetic slates per real night): PICK
+  - `selfplay/<league>/<season>/part-NNNN.parquet` (NBA 20, NHL 20, CBB 4 synthetic slates per real night;
+    NHL from ESPN summaries, which carry wall clocks from 2019-20 on): PICK
     rows labelled only by the hindsight oracle, on every real night and on synthetic slates (random games of
     the same season, re-timed into a 3 h window, random screen lag 80/116/150 s). float16 features, ~0.9
     byte per row compressed.

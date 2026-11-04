@@ -137,7 +137,7 @@ def build(league: str, raw: Path, season: int, out: Path, synthetic: int, seed: 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("league", choices=["nba", "cbb"])
+    ap.add_argument("league", choices=["nba", "cbb", "nhl"])
     ap.add_argument("--raw", type=Path, required=True)
     ap.add_argument("--season", type=int, required=True)
     ap.add_argument("--out", type=Path, required=True)

@@ -197,7 +197,10 @@ def espn_game(summary: dict) -> dict | None:
     if not any(p.get("wallclock") for p in plays):
         return None
     hdr = summary.get("header") or {}
-    return {"id": str(hdr.get("id") or ""), "season_type": (hdr.get("season") or {}).get("type"), "plays": plays}
+    side = {c.get("homeAway"): (c.get("team") or {}).get("abbreviation") or "?"
+            for c in ((hdr.get("competitions") or [{}])[0].get("competitors") or [])}
+    return {"id": str(hdr.get("id") or ""), "season_type": (hdr.get("season") or {}).get("type"), "plays": plays,
+            "matchup": f"{side.get('away', '?')} @ {side.get('home', '?')}"}
 
 
 def build_espn(league: str, path: Path, max_games: int | None = None) -> pd.DataFrame:
