@@ -2,9 +2,8 @@
 and the Noggin Priority L2 sliders.
 
 North Star: none of these move a scoring line directly. They feed two of them:
-  * `big_seen_10min` / `your_team_big`: every "I missed that" tap is a labeled miss (which game, when),
-    the only ground truth we get for misses the feed did not flag as big.
-  * L2 suggestions (noggin/priority.suggest_from_feedback): 👍/👎 tied to ONE switch and its reason chips.
+  * Nick, Nov 4 10:55 AM: the Noggin is fully self-taught. Votes and "I missed that" are recorded for
+    the phone page only; no training, labelling, suggestion or North Star path reads them.
 Nothing here touches the decider, the tick loop or the TV. Votes and misses only write rows to the
 existing `feedback` table (note = "switch" | "missed"), so turning the flag off leaves no trace in play.
 """
@@ -17,7 +16,7 @@ import time
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from redzone.noggin.priority import Preferences, suggest_from_feedback
+from redzone.noggin.priority import Preferences
 
 # Reason text -> chip. First match per key wins; order = how chips are shown (most important first).
 CHIP_RULES: list[tuple[str, str, re.Pattern]] = [
@@ -167,7 +166,7 @@ def router(engine) -> APIRouter:
                 "prefs": {k: getattr(prefs, k) for k in (*Preferences.RANGES, "reels")},
                 "ranges": {k: list(v) for k, v in Preferences.RANGES.items()},
                 "votes": len(fb),
-                "suggestions": suggest_from_feedback(fb, prefs)}
+                "suggestions": []}   # self-taught rule: taps never suggest or train anything
 
     @r.post("/priority")
     async def set_priority(body: dict):

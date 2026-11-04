@@ -124,7 +124,8 @@ def test_priority_rows():
     assert r["crunch_live_nfl"]["status"] == ns.PENDING        # 80 % but the feasible ceiling isn't computed
     assert r["crunch_live_nfl"]["value"] == pytest.approx(80.0)
     assert r["your_team_crunch"]["status"] == ns.PASS
-    assert r["league_order"]["status"] == ns.PENDING and r["right_game"]["status"] == ns.PENDING
+    assert r["league_order"]["status"] == ns.PENDING and r["pct_of_oracle"]["status"] == ns.PENDING
+    assert "right_game" not in r
     assert rows_by(ns.table(cards(9)))["crunch_live_nba"]["status"] == ns.PASS
 
 
@@ -155,28 +156,13 @@ def test_profile_run_keeps_its_candidate_column(tmp_path, monkeypatch):
     assert rows_by(res["rows"])["mid_play"]["value"] > 0
 
 
-def test_right_game_reads_store_taps(tmp_path, monkeypatch):
-    import time as _time
-    from redzone.store import Store
-    assert ns.load_taps(tmp_path / "none.db") is None and not (tmp_path / "none.db").exists()
-    db = tmp_path / "redzone.db"
-    st = Store(db)
-    base = 1_793_000_000.0                       # an evening, Eastern
-    for night in range(9):
-        for k in range(8):
-            monkeypatch.setattr(_time, "time", lambda t=base + night * 86400 + k * 60: t)
-            st.feedback("g1", 1 if k else -1, "switch", {"reason": "crunch", "switch": k})
-    monkeypatch.setattr(_time, "time", lambda: base + 10 * 86400)
-    st.feedback("g1", 0, "missed", {})
-    st.feedback("g1", 0, "switch", {})          # cleared: not counted
-    monkeypatch.undo()
-    taps = ns.load_taps(db)
-    assert len(taps) == 74
-    r = ns.right_game_row(taps)
-    assert r["key"] == "right_game" and r["nights"] == 10
-    assert abs(r["value"] - 100 * 63 / 73) < 0.01 and r["status"] == ns.FAIL      # 86 % < 95 %
-    assert ns.right_game_row(None)["status"] == ns.PENDING
-
+def test_pct_of_oracle_is_the_mean_of_the_leagues():
+    """Self-taught rule (Nick, Nov 4 10:55 AM): the line that replaced right_game is graded by the oracle."""
+    rows = [ns._row(f"pct_of_oracle_{lg}", v, None, None, ns.PASS, "") for lg, v in zip(ns.ORACLE_LEAGUES, (59.0, 83.0, 53.0))]
+    r = ns.pct_of_oracle_row(rows)
+    assert r["key"] == "pct_of_oracle" and r["value"] == pytest.approx(65.0) and r["status"] == ns.FAIL
+    assert ns.pct_of_oracle_row(rows[:2])["status"] == ns.PENDING
+    assert not hasattr(ns, "load_taps") and not hasattr(ns, "right_game_row")
 
 def test_every_run_runs_the_controls_drill_unless_given_one(tmp_path, monkeypatch):
     """press_to_tv_p95 gets a sim value on every run (cycle 02 lane 3): no --controls-json -> drill runs."""
