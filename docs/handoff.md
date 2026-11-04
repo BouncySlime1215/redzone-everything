@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Usage 24%. #148 merged; lane 5 unblocked; #155 waits on CI. Nick's 4:15 crunch correction (learned crunch entry/exit) sent to all lanes.
-Kaggle noggin-factory still running 3857s; deploy healthy; integration/next CI queued; 30 open PRs.
+15:56 sweep: usage 25%; Kaggle factory still running (4143s); CI next pending, release green; deploy healthy
+Coordinator: 4:15 crunch correction landed in #156; 4 threads working, 3 idle (<20m); 30 open PRs
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
