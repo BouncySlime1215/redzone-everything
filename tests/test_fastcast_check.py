@@ -99,6 +99,18 @@ def test_too_long_without_enough_plays_stops():
     assert g["result"] == "stopped" and g["reasons"]
 
 
+def test_hours_with_no_live_game_never_stop_the_check():
+    """Live, Nov 4: the app started at midnight, no game was live for 4 h, and the check STOPPED with
+    "0 plays over 0 games" before the night began. Its clock now starts at the first live game."""
+    chk = FastcastCheck()
+    assert chk.tick(T + 10 * fcc.MAX_SHADOW_S)["result"] == "pending" and not chk.done
+    later = T + 10 * fcc.MAX_SHADOW_S
+    chk.saw(POLLED, "g0", [play(0)], later)                          # the first game goes live
+    assert chk.grade(later + 60)["result"] == "pending"
+    assert chk.grade(later + 60)["shadow_s"] == 60
+    assert chk.grade(later + fcc.MAX_SHADOW_S + 1)["result"] == "stopped"
+
+
 def test_tick_writes_the_verdict_and_freezes_it(tmp_path):
     chk = FastcastCheck(path=tmp_path / "fastcast_check.json", started=T)
     end = night(chk)

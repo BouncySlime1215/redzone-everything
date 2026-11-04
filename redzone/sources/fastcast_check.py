@@ -68,7 +68,10 @@ class _Seen:
 @dataclass
 class FastcastCheck:
     path: Path | None = None
-    started: float = field(default_factory=time.time)
+    # When shadowing began: the first live game either feed reported, NOT when the app started.
+    # (Live Nov 4: the app restarted at midnight, sat 4 h with no live games, and the check gave up
+    # with "0 plays over 0 games in 4 h" before the night's games, so FastCast never logged a row.)
+    started: float | None = None
     seen: dict = field(default_factory=dict)          # (source, game, play) -> _Seen
     primed: set = field(default_factory=set)          # (source, game): first batch already skipped
     last_push: dict = field(default_factory=dict)     # game -> last pushed update (FastCast still watching)
@@ -82,6 +85,8 @@ class FastcastCheck:
         if self.done or source not in (POLLED, PUSHED):
             return
         now = time.time() if now is None else now
+        if self.started is None:
+            self.started = now
         key = (source, str(game))
         first = key not in self.primed
         self.primed.add(key)
@@ -112,6 +117,7 @@ class FastcastCheck:
 
     def grade(self, now: float | None = None) -> dict:
         now = time.time() if now is None else now
+        shadowed = now - self.started if self.started is not None else 0.0
         both = self.games()
         leads, missed, disagree, examples = [], 0, 0, []
         for (src, game, pid), s in self.seen.items():
@@ -142,7 +148,7 @@ class FastcastCheck:
                "behind_pct": round(100 * sum(1 for x in leads if x < -BEHIND_S) / n, 1) if n else None,
                "disagreements": disagree, "disagreement_examples": examples,
                "unusable_docs": self.errors, "pushed_updates": self.updates,
-               "shadow_s": round(now - self.started)}
+               "shadow_s": round(shadowed)}
         reasons = []
         if out["lead_median_s"] is not None and out["lead_median_s"] < MIN_MEDIAN_LEAD_S:
             reasons.append(f"median lead {out['lead_median_s']} s < {MIN_MEDIAN_LEAD_S} s")
@@ -156,7 +162,7 @@ class FastcastCheck:
         if disagree:                    # one disagreement is enough to fail: never merge a feed that lies
             out["result"] = "fail"
         elif not enough:
-            out["result"] = "stopped" if now - self.started > MAX_SHADOW_S else "pending"
+            out["result"] = "stopped" if shadowed > MAX_SHADOW_S else "pending"
             if out["result"] == "stopped":
                 reasons.append(f"only {n} plays over {len(both)} games in {MAX_SHADOW_S / 3600:.0f} h")
         else:
