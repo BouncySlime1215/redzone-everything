@@ -8,7 +8,10 @@ whichever comes first. **No idle lanes:** when a task blocks, take the next one.
 - your-team PASS;
 - every other line ≥ live within the CI.
 
-Also: no signal from Nick; North Star delta + RAM/CPU line in every PR; route through the city map (#157).
+Also: no signal from Nick; North Star delta + RAM/CPU line in every PR.
+**Standing rule (overseer, city map #165):** every lane **reads `docs/citymap.md` first** and opens only the
+files it needs, and **tags every new module with the North Star line it serves** (and an owner).
+No escape hatches: reuse definitions and follow `docs/memory/onebrain-rules.md`.
 
 **Since cycle 05 (merged into integration/next):**
 - #116 possession-start entry;
@@ -139,8 +142,13 @@ value per slate (dev + locked).
    reason.
 
 ## ④ App + integration hardening (lead: city map)
-1. **#157 city map + contract checker** to green in report mode, then fail-on-new. Row `contract_violations`.
-   Publish the burn-down list per owning lane.
+1. **Execute the onebrain migration plan** (`docs/onebrain-migration.md`, overseer #165) step by step:
+   - tag and own the 210 untagged / 99 unowned modules;
+   - resolve the 10 orphans;
+   - burn down contract violations from the 490 baseline;
+   - the Integrator ratchets the baseline after each merge.
+   **Reconcile #157 with #165** (same city map and checker): keep one, fold the other's unique parts in,
+   and close the duplicate.
 2. Coverage PRs #147 / #159 / #151 to green (target ≥ 50 marked).
 3. eval-data-v3 locked switch on Fri (#149).
 
