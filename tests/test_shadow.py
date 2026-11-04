@@ -42,3 +42,16 @@ def test_an_error_turns_the_shadow_off_for_the_night_and_says_so(tmp_path):
     sh.tick({}, None, None, "stay")               # off: nothing runs, nothing raises
     rows = [json.loads(x) for x in (tmp_path / "shadow.jsonl").read_text().splitlines()]
     assert rows == [{"ts": rows[0]["ts"], "action": "shadow_off", "reason": "error in decide"}]
+
+
+def test_a_quiet_night_logs_only_the_changes_not_every_tick(tmp_path):
+    from types import SimpleNamespace
+    cfg = Config(user_path=tmp_path / "c.yaml", history_dir=tmp_path / "h")
+    sh = Shadow(cfg, ReadOnlyDelays(object()), tmp_path / "shadow.jsonl")
+    stay = SimpleNamespace(action="stay", target=None, kind="", reason="")
+    sh.decider.decide = lambda *a, **k: stay
+    sh.decider.current = "a"
+    for live in ["b"] * 50 + ["a"] * 50:          # a seed-1 replay logged 17k rows like this before
+        sh.tick({}, None, live, "stay")
+    rows = [json.loads(x) for x in (tmp_path / "shadow.jsonl").read_text().splitlines()]
+    assert [(r["on"], r["live_on"]) for r in rows] == [("a", "b"), ("a", "a")] and sh.calls == 100

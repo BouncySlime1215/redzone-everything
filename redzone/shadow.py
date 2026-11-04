@@ -93,6 +93,7 @@ class Shadow:
         self.alive = True
         self.calls = 0
         self.spent_s = 0.0
+        self._pair: tuple | None = None
 
     def observe(self, game_id: str, league: League, game) -> None:
         """The same play-by-play the live decider just observed."""
@@ -105,14 +106,16 @@ class Shadow:
 
     def tick(self, cands: dict[str, Candidate], redzone: str | None, live_current: str | None,
              live_action: str) -> None:
-        """One decision beside live's. Logged when it differs from staying put (or from live)."""
+        """One decision beside live's. Logged when it acts, or when the (shadow, live) screens change."""
         if not self.alive:
             return
         t0 = time.perf_counter()
         try:
             d = self.decider.decide(cands, redzone, commit=True)
             self.calls += 1
-            if d.action != "stay" or self.decider.current != live_current:
+            pair = (self.decider.current, live_current)
+            if d.action != "stay" or pair != self._pair:
+                self._pair = pair
                 self._write({"ts": round(self.clock(), 2), "profile": self.profile, "action": d.action,
                              "target": d.target, "kind": d.kind, "reason": str(d.reason)[:160],
                              "on": self.decider.current, "live_on": live_current, "live_action": live_action})
