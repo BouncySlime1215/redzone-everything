@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 11:25 AM ET.** RC5 deploy FAILED on the Mac (test_noggin_timing speed assert at background priority; app still on RC4). **RC5.1 cut: e8bbf8e** (CI queued); the lab deploys it when green. Merged: #117 (FastCast fix: the 4 h check started at app start, not when shadowing began), #118 and #123 (live nights log themselves into the North Star), #120 (live-lab addendum), #121 (honest gates: ≥95% of oracle, landings ≥98%, replay ≤3 min).
-- **Live lab:** CEC off, so the left stick keeps PLAYING (83/83). Flips p95 1.98 s (30/30). Pre-tune p50 2.3 s (4K Plus) / 3.7 s (2023). Pending: press-to-TV and buffer (need live games), the sync probe (YTTV UI tree empty). Usage 13% (brake lifted). V7 running.
+- **12:10 PM live lab (real TV):** the time-shift buffer WORKS. The pause method held 90 s at 91.66 s with -0.32 s drift over 40 min (calibrating -1.5 s gives <0.5 s error). **YTTV seek bug:** a 15 s step plus the first press swallowed, while the app assumes 10 s, so rewinds overshoot ~15-20 s (lab PR coming). **Content-anchored sync signal found:** YTTV MediaSession bursts tied to the stream content give a stick-to-stick offset to ~0.3 s.
+- RC5.1 e8bbf8e CI running; #126 (relaxed speed budgets) merged, #127 (per-stick tune timing). Usage 15% (brake lifted). V7 running.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
