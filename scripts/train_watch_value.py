@@ -111,6 +111,45 @@ def crunch_card(rows: list[dict], p: np.ndarray, y: np.ndarray) -> dict:
             "flicker_per_game": round(flick / n, 2) if n else None}
 
 
+def _spans(on: np.ndarray, w: np.ndarray) -> list[list[float]]:
+    """[t0, t1] of each run of True (unix seconds of its first and last row)."""
+    out, start = [], None
+    for k, v in enumerate(on):
+        if v and start is None:
+            start = k
+        if start is not None and (not v or k == len(on) - 1):
+            end = k if v else k - 1
+            out.append([float(w[start]), float(w[end])])
+            start = None
+    return out
+
+
+def crunch_spans(rows: list[dict], p: np.ndarray, y: np.ndarray) -> dict:
+    """{night: {gid: {"learned": spans, "oracle": spans}}}: crunch_card's own rule (learned = the hysteresis
+    on-state, oracle = y > 0), for lane 5's replay-viewer crunch timeline (#177)."""
+    by: dict = {}
+    for k, r in enumerate(rows):
+        if r["wall"] is not None:
+            by.setdefault((r["night"], r["gid"]), []).append(k)
+    out: dict = {}
+    for (night, gid), ks in by.items():
+        w = np.array([rows[k]["wall"] for k in ks], float)
+        learned, oracle = _spans(hysteresis(p[ks]), w), _spans(y[ks] > 0, w)
+        if learned or oracle:
+            out.setdefault(night, {})[str(gid)] = {"learned": learned, "oracle": oracle}
+    return out
+
+
+def write_crunch_files(spans: dict, out_dir: Path) -> int:
+    """data/crunch/<night>.json = {"tol_s": EXIT_TOL_S, "games": {gid: {...}}}; leagues merge into one night file."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for night, games in spans.items():
+        f = out_dir / f"{night}.json"
+        cur = json.loads(f.read_text()) if f.exists() else {}
+        f.write_text(json.dumps({"tol_s": EXIT_TOL_S, "games": {**cur.get("games", {}), **games}}))
+    return len(spans)
+
+
 def matrix(rows, feats) -> np.ndarray:
     return np.array([[W._num((r["facts"] or {}).get(f)) for f in feats] for r in rows], np.float32)
 
@@ -177,7 +216,7 @@ def fit(X, y, Xv, yv, feats, objective):
     return b, max(20, b.best_iteration)
 
 
-def league(lg: str, archive: Path, cfg, out_dir: Path) -> dict:
+def league(lg: str, archive: Path, cfg, out_dir: Path, crunch_dir: Path = ROOT / "data" / "crunch") -> dict:
     from redzone.lab import reasoner_data as RD
     from redzone.lab import splits
     from redzone.models import League
@@ -216,6 +255,8 @@ def league(lg: str, archive: Path, cfg, out_dir: Path) -> dict:
         rep[name] = card(sub, m_wv.predict(X[m], num_iteration=n_wv), wv[m], cal, realize)
         rep[name + "_context_only"] = card(sub, m_cx.predict(X[m][:, ci], num_iteration=n_cx), wv[m], cal_cx, realize)
         rep[name]["crunch"] = crunch_card(sub, m_cr.predict(X[m], num_iteration=n_cr), cr[m])
+        rep[name]["crunch"]["night_files"] = write_crunch_files(
+            crunch_spans(sub, m_cr.predict(X[m], num_iteration=n_cr), cr[m]), crunch_dir)
         # baseline: today's rule crunch flag (the engine's crunch_time), with the same hysteresis
         rep[name + "_context_only"]["crunch"] = crunch_card(sub, X[m][:, feats.index("crunch")].astype(float), cr[m])
     # forward-chaining CV over train + valid nights (mean and worst fold)
@@ -256,6 +297,8 @@ def main(argv=None) -> int:
     ap.add_argument("--archive", type=Path, default=ROOT / "data" / "archive")
     ap.add_argument("--config", type=Path, default=ROOT / "data" / "eval_config.yaml")
     ap.add_argument("--out", type=Path, default=W.MODEL_DIR)
+    ap.add_argument("--crunch-dir", type=Path, default=ROOT / "data" / "crunch",
+                    help="per-night crunch spans for the replay viewer (lane 5 #177)")
     ap.add_argument("--report", type=Path, default=ROOT / "data" / "training" / "watch_value_report.json")
     a = ap.parse_args(argv)
     # the brain TRACK (win probability, swings, runs) is what WV reads: rows need it on. Its learned outputs
@@ -265,7 +308,7 @@ def main(argv=None) -> int:
     tmp = Path(tempfile.mkdtemp()) / "watch_value_config.yaml"
     tmp.write_text(text)
     cfg = Config(user_path=tmp)
-    rep = {lg: league(lg, a.archive, cfg, a.out) for lg in a.leagues}
+    rep = {lg: league(lg, a.archive, cfg, a.out, a.crunch_dir) for lg in a.leagues}
     a.report.parent.mkdir(parents=True, exist_ok=True)
     a.report.write_text(json.dumps(rep, indent=1))
     print(json.dumps(rep, indent=1))

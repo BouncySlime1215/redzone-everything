@@ -156,3 +156,20 @@ def test_postseason_stakes_raise_wv_only_behind_their_flag(model_dir, monkeypatc
     assert flag_off.watch_value == base.watch_value and flag_off.stakes_line is None
     assert on.watch_terms["stakes_mult"] > 1.0 and on.watch_value >= base.watch_value
     assert on.stakes_line == "NBA Finals - Game 7 · winner takes it"
+
+
+def test_crunch_night_files_for_the_replay_viewer(tmp_path):
+    """Lane 5 #177 reads data/crunch/<night>.json: learned spans = the hysteresis on-state, oracle = y > 0."""
+    import json
+
+    import numpy as np
+    import train_watch_value as TW
+    rows = [{"night": "20261021", "gid": "g1", "wall": 1000.0 + 30 * k} for k in range(10)]
+    p = np.array([0, 0, 0.7, 0.8, 0.5, 0.4, 0.2, 0.1, 0, 0])     # on at 0.6, off below 0.35
+    y = np.array([0, 0, 0, 1, 1, 1, 0, 0, 0, 0])
+    sp = TW.crunch_spans(rows, p, y)
+    assert sp == {"20261021": {"g1": {"learned": [[1060.0, 1150.0]], "oracle": [[1090.0, 1150.0]]}}}
+    assert TW.write_crunch_files(sp, tmp_path) == 1
+    TW.write_crunch_files({"20261021": {"g2": {"learned": [], "oracle": [[1.0, 2.0]]}}}, tmp_path)
+    d = json.loads((tmp_path / "20261021.json").read_text())
+    assert d["tol_s"] == TW.EXIT_TOL_S and set(d["games"]) == {"g1", "g2"}        # leagues merge per night
