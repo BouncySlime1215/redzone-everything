@@ -237,3 +237,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   the first fresh, unbenched, non-erroring source in the list owns a game's stoppage, the next takes over on its
   errors/silence, and disagreements are counted (`Merger.disagreements`). Empty = the old nhl/nba_primary behavior.
   `right_game` now reads `Store.taps()` from data/redzone.db when it exists (PENDING otherwise).
+- 2026-11-04 12:00 PM (lane 1, cycle 02): **Noggin Reflex PICK v1 (NBA) is offline only**: a model plus
+  `eval_sports --pick`, with no decider hook and no default changes. It imitates the hindsight oracle and is
+  graded on the full factory test split (377 nights: big live 91.3 vs hand 80.1, oracle 96.3) and on the
+  app's eval nights (dev vs the candidate: big live 81.7 -> 83.1, dead air 19.4 -> 13.7, mid-play entries
+  3 -> 0). Next is a flag-off decider hook in shadow first, since the rollout assumes every switch lands
+  as planned.

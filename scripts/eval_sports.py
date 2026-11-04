@@ -108,6 +108,9 @@ def main():
                     help="grade one time split of the pinned window (redzone/lab/splits.py); test = LOCKED")
     ap.add_argument("--oracle", action="store_true",
                     help="also solve the hindsight oracle per night (redzone/lab/oracle.py): each line's ceiling")
+    ap.add_argument("--pick", type=Path, default=None,
+                    help="also roll out a Noggin PICK model (e.g. redzone/noggin/models/pick_nba.v1.txt.gz) on each night")
+    ap.add_argument("--pick-margin", type=float, default=0.1)
     ap.add_argument("--oracle-out", type=Path, default=None,
                     help="with --oracle: write each night's oracle schedules + Pick labels to DIR/<league>_<night>.json")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
@@ -184,6 +187,21 @@ def main():
                     "night": day, "league": lg.value, "t0": n.t0, "step_s": O.STEP_S, "tune_s": n.tune_s,
                     "schedules": {k: [dict(t=x.t, frm=x.frm, to=x.to) for x in v] for k, v in scheds.items()},
                     "pick_labels": on}))
+        if a.pick:
+            import numpy as np
+
+            from redzone.lab import oracle as O
+            from redzone.noggin import pick as PK
+            booster = PK.load_booster(a.pick)
+            n = O.Night(reps, mine, rep.lag_true, 5.0, rep.t0, rep.t1)
+            steps = np.arange(n.t0, n.t1, O.STEP_S)
+            tab = O.tables(n, steps)
+            X = PK.features_for_night(reps, tab, steps, rep.lag_true, mine)
+            G, K, F = X.shape
+            sc = booster.predict(X.reshape(-1, F)).reshape(G, K)
+            psw = PK.rollout(sc, X, reps, steps, 5.0, a.pick_margin)
+            per_night[-1]["pick"] = O.counts(O.grade(n, psw))
+            per_night[-1]["app_sg"] = O.counts(card)
         if a.slates:
             print(" ", day, json.dumps(card.summary()))
             for t, what in card.cuts[:3]:
@@ -195,6 +213,10 @@ def main():
     out["eval_data"] = evaldata.stamp()
     out["eval_end"] = end
     out["per_night"] = per_night
+    if a.pick:
+        from redzone.lab import oracle as O
+        out["pick"] = O.aggregate([x["pick"] for x in per_night if "pick" in x])
+        out["app_sg"] = O.aggregate([x["app_sg"] for x in per_night if "app_sg" in x])
     if a.oracle:
         out["oracle"] = {}
         for obj in {k for x in per_night for k in x.get("oracle", {})}:

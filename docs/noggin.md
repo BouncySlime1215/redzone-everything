@@ -292,3 +292,55 @@ Regulation is 3 × 20 min (`features.REG`); a big play is every goal (sportsgrad
 
 The NHL sim switches ~4 times an hour; the hindsight ceiling for goals live is 85 % (#89). The gap is the
 schedule, not the readings: next is Reflex PICK by imitation of the oracle. Both NHL models ship OFF.
+
+## 11. Reflex PICK v1 (Nov 4, NBA): imitating the hindsight oracle
+
+`redzone/noggin/pick.py` (features + rollout, numpy), `scripts/train_noggin_pick.py` (offline, cloud),
+`models/pick_nba.v1.txt.gz` (LightGBM, 112 trees, 22 features, 13.2M train rows, 318 KB gzipped).
+
+- **Labels:** the hindsight oracle (`redzone/lab/oracle.py`, combined objective) on whole factory nights
+  built from hoopR (every game of the night together, screens at the candidate's 116 s lag). Seasons
+  2016-2022 train (1,300+ nights), 2023-2024 calib (early stopping + the switch margin, 377 nights),
+  2025-2026 test (377 nights, graded once). The label is the game the oracle has on screen one tune
+  after each step.
+- **Features (only what the app knows):** plays the feed has delivered by t - feed lag p90 (70 s NBA),
+  plus the known stretch of every screen (lag - feed lag): big plays / crunch plays / action ahead on that
+  screen, dead ball and break on screen, game state at the feed head, your team, and night context
+  (live games, crunch games, margin and time-left rank).
+- **Rollout (the hard rules outside the model):** leave and land only on dead balls (the oracle's own
+  leave / land tables), black for tune_s, and your team's late game (crunch, or the last 5 minutes within
+  10) is forced and never left. Switch when the best landable game beats the one on screen by the
+  margin (0.1, picked on calib).
+- **Forward CV** (season folds, 2018-2022): logloss 0.099-0.113 vs base rate 0.427-0.447.
+
+Full factory splits (every night, same grader as the app; rollout vs the oracle vs a hand rule):
+
+| 377 test nights | big live | crunch live | your-team crunch | dead air | switches/h | mid-play |
+|---|---:|---:|---:|---:|---:|---:|
+| oracle (ceiling) | 96.3 | 95.6 | 1183/1183 | 16.7 | 1.4 | 0 |
+| **PICK v1** | **91.3** | **92.3** | 1163/1183 | **16.7** | 4.2 | 0 |
+| hand rule (crunch first, then closest) | 80.1 | 84.7 | 1155/1183 | 21.3 | 2.6 | 0 |
+
+Calib (377 nights): PICK 89.0 / 89.8 / 1498 of 1503 / 19.4, oracle 95.4 / 93.8 / 1503 / 18.6.
+
+On the app's own eval nights (`eval_sports nba --real-lag --pick ...`): the rollout on the same nights
+and screen lags as the app's sim, both graded by sportsgrade. Locked was scored once.
+
+| NBA | dev app → PICK | locked app → PICK |
+|---|---|---|
+| default config: big live | 67.6 → 84.5 | 62.5 → 81.2 |
+| default: crunch live | 76.7 → 89.6 | 73.7 → 85.5 |
+| default: your-team crunch | 18/31 → 31/31 | 0/0 |
+| default: dead air | 20.2 → 14.1 | 26.8 → 19.7 |
+| default: mid-play entries | 18 → 0 | 8 → 0 |
+| candidate: big live | 81.7 → 83.1 | 100 → 100 |
+| candidate: crunch live | 90.9 → 90.2 | 93.3 → 94.4 |
+| candidate: dead air | 19.4 → 13.7 | 24.1 → 19.1 |
+| candidate: mid-play entries | 3 → 0 | 2 → 0 |
+
+PICK switches ~4-5 times an hour vs the app's ~1.2. The rollout is a schedule, not the app: it assumes
+each switch lands as planned (tune 5 s). Next: a decider hook behind a flag (numpy export of the forest),
+shadow first, then the sim with every app mechanic. NHL waits for local NHL factory nights (they are built
+on the GitHub runner today). Your-team crunch misses 20 of 1,183 test plays (hand rule 28): widening the
+forced window to 8-15 minutes recovers 3 of 5 on calib but costs 2-4 points of big live, so it stays at
+5 minutes until the decider hook, where the app's own L1 rules apply.
