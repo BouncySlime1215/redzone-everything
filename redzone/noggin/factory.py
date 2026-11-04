@@ -18,8 +18,8 @@ Sources (free, public; licenses in SOURCES):
     nba   hoopR ESPN NBA pbp (`wallclock` from 2013-14 on)            cbb   hoopR ESPN MBB pbp 2006+
     wcbb  wehoop ESPN WBB pbp
     nfl   nflfastR / nflverse pbp (`time_of_day` = the snap, like ESPN's NFL wallclock; 2011+)
-Queued (loaders not written yet): cfb (cfbfastR 2014+), nhl
-(fastRhockey + archived ESPN wallclock), mlb (pitch timestamps 2008+). See docs/noggin.md § Phases.
+    nhl   ESPN summaries (fastRhockey / the NHL feeds carry no wall clock): the live parser on the live shape
+Queued (loaders not written yet): cfb (cfbfastR 2014+), mlb (pitch timestamps 2008+). See docs/noggin.md § Phases.
 """
 from __future__ import annotations
 
@@ -42,6 +42,9 @@ SOURCES = {
                 license="MIT (hoopR); underlying ESPN data for personal/non-commercial use"),
     "wcbb": dict(url=SDV + "/espn_womens_college_basketball_pbp/play_by_play_{y}.parquet", first=2006,
                  license="MIT (wehoop); underlying ESPN data for personal/non-commercial use"),
+    # ESPN summaries carry each play's wallclock (what the live app reads): fetched by
+    # scripts/noggin_factory.py on a runner that can reach ESPN (GitHub Actions), never this container.
+    "nhl": dict(espn=True, first=2011, license="ESPN public site API; personal/non-commercial use"),
     "nfl": dict(url="https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{y}.parquet",
                 first=2011, license="CC-BY 4.0 (nflverse data); underlying NFL data for personal/non-commercial use"),
 }
@@ -181,7 +184,46 @@ def build_football(league: str, path: Path, max_games: int | None = None) -> pd.
     return t
 
 
+ESPN_KEEP = ("id", "sequenceNumber", "type", "text", "period", "clock", "wallclock", "homeScore", "awayScore",
+             "scoringPlay", "scoreValue")
+
+
+def espn_game(summary: dict) -> dict | None:
+    """One ESPN summary -> the compact record the factory keeps (plays with only the fields the live
+    parser reads, plus the season type)."""
+    plays = summary.get("plays") or [p for d in (summary.get("drives") or {}).get("previous", [])
+                                      for p in d.get("plays", [])]
+    plays = [{k: p.get(k) for k in ESPN_KEEP if k in p} for p in plays]
+    if not any(p.get("wallclock") for p in plays):
+        return None
+    hdr = summary.get("header") or {}
+    return {"id": str(hdr.get("id") or ""), "season_type": (hdr.get("season") or {}).get("type"), "plays": plays}
+
+
+def build_espn(league: str, path: Path, max_games: int | None = None) -> pd.DataFrame:
+    """ESPN summaries (jsonl.gz of espn_game records) -> windows, through the exact live parser."""
+    import gzip
+    import json
+    lg = League(league)
+    out = []
+    with gzip.open(path, "rt") as f:
+        for n, line in enumerate(f):
+            if max_games and n >= max_games:
+                break
+            g = json.loads(line)
+            ws = windows_for_game(lg, g["plays"])
+            for w in ws:
+                w.update(league=league, game_id=g["id"], playoff=int(g.get("season_type") == 3))
+            out.extend(ws)
+    t = pd.DataFrame(out)
+    if len(t):
+        t["night"] = [night_of(s) for s in t.start]
+    return t
+
+
 def build(league: str, path: Path, max_games: int | None = None) -> pd.DataFrame:
+    if SOURCES.get(league, {}).get("espn"):
+        return build_espn(league, path, max_games)
     return (build_football if League(league).base == League.NFL else build_basketball)(league, path, max_games)
 
 

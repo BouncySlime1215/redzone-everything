@@ -5,9 +5,11 @@
 name: noggin-factory
 on:
   push:
-    branches: [integration/next]
-    paths: ["redzone/noggin/factory.py", "redzone/noggin/timing*.py", "scripts/noggin_factory.py",
-            "scripts/train_noggin_timing.py", ".github/workflows/noggin-factory.yml"]
+    # noggin-factory/<league> branches build that league (e.g. noggin-factory/nhl: ESPN summaries, which
+    # this cloud container can't reach); integration/next rebuilds the NBA table when the factory changes.
+    branches: [integration/next, "noggin-factory/**"]
+    paths: ["redzone/noggin/factory.py", "redzone/noggin/features.py", "redzone/noggin/timing*.py",
+            "scripts/noggin_factory.py", "scripts/train_noggin_timing.py", ".github/workflows/noggin-factory.yml"]
   workflow_dispatch:
     inputs:
       league: {default: nba}
@@ -15,19 +17,29 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - run: pip install -r requirements.txt pyarrow lightgbm requests
+      - name: league
+        run: |
+          L="${{ inputs.league }}"
+          case "$GITHUB_REF_NAME" in noggin-factory/*) L="${L:-${GITHUB_REF_NAME#noggin-factory/}}";; esac
+          L="${L:-nba}"
+          case "$L" in nhl) D=2011-2027;; nfl) D=2011-2025;; *) D=2013-2026;; esac
+          echo "LEAGUE=$L" >> "$GITHUB_ENV"
+          S="${{ inputs.seasons }}"
+          echo "SEASONS=${S:-$D}" >> "$GITHUB_ENV"
       - name: factory
-        run: python scripts/noggin_factory.py ${{ inputs.league || 'nba' }} --seasons ${{ inputs.seasons || '2013-2026' }} --raw /tmp/raw --out data/noggin
+        run: python scripts/noggin_factory.py "$LEAGUE" --seasons "$SEASONS" --raw /tmp/raw --out data/noggin --jobs 3
       - name: train + grade
-        run: python scripts/train_noggin_timing.py ${{ inputs.league || 'nba' }} --data data/noggin --out data/noggin/models
+        run: python scripts/train_noggin_timing.py "$LEAGUE" --data data/noggin --out data/noggin/models
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: noggin-${{ inputs.league || 'nba' }}
+          name: noggin-${{ env.LEAGUE }}
           path: |
             data/noggin/*.json
             data/noggin/*.parquet

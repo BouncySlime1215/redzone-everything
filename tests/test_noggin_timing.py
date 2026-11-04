@@ -177,3 +177,21 @@ def test_hook_falls_back_for_kinds_the_model_never_saw():
     hook = L.TimingHook(M(), League.NFL)
     w = cuts.Window(start=100.0, end=None, kind="tv_timeout")
     assert hook.reading(None, w, 10.0) is None
+
+
+def test_espn_summary_loader_runs_the_live_parser(tmp_path):
+    """NHL (and any league) from ESPN summaries: the same plays the live app reads, so the same windows."""
+    import gzip
+    import json
+    pytest.importorskip("pandas")
+    from redzone.noggin import factory as FA
+    rec = FA.espn_game({"header": {"id": "1", "season": {"type": 3}}, "plays": GAME})
+    assert rec and rec["season_type"] == 3 and set(rec["plays"][0]) <= set(FA.ESPN_KEEP)
+    assert FA.espn_game({"plays": [{"id": "1", "text": "x"}]}) is None      # no wallclock: nothing to label
+    p = tmp_path / "espn_2025.jsonl.gz"
+    with gzip.open(p, "wt") as f:
+        f.write(json.dumps(rec) + "\n")
+    t = FA.build_espn("nba", p)
+    direct = F.windows_for_game(League.NBA, GAME)
+    assert len(t) == len(direct) and t.playoff.eq(1).all()
+    assert list(t.length_s) == [w["length_s"] for w in direct]
