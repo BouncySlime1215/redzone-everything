@@ -51,6 +51,15 @@ SKIP_S = 300.0        # a skipped game stays off the TV this long after the TV l
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
+def _fastcast_ended(task: asyncio.Task) -> None:
+    """[fastcast mac] The client's loop never returns while it's wanted: say so if it dies."""
+    if task.cancelled():
+        return
+    e = task.exception()
+    if e is not None:
+        log.error("Fastcast client stopped: %r (polling carries on)", e, exc_info=e)
+
+
 class Engine:
     def __init__(self, cfg: Config | None = None, store: Store | None = None):
         self.cfg = cfg or Config()
@@ -980,7 +989,9 @@ class Engine:
                 mode, self._on_fastcast_shadow)
             self.fastcast = fastcast.FastcastClient(cb, http=self.fetcher._client)
             self._fastcast_task = asyncio.get_running_loop().create_task(self.fastcast.run())
+            self._fastcast_task.add_done_callback(_fastcast_ended)
             self._fastcast_mode = mode
+            log.info("Fastcast: started (%s)", mode)
         lgs = self._leagues()
         live = [g for g in self.merger.games.values() if g.phase == Phase.LIVE and g.league in lgs]
         if mode == "fallback":
@@ -994,7 +1005,19 @@ class Engine:
         self._fastcast_games = {
             fastcast.game_topic(g.league, g.game_id, self.summaries.get(g.game_id)): (g.league, g.game_id)
             for g in live}
+        if bool(self._fastcast_games) != bool(getattr(self.fastcast, "wanted", None)):
+            log.info("Fastcast (%s): %d live games to watch", mode, len(self._fastcast_games))
         self.fastcast.set_topics(self._fastcast_games)
+        if mode == "shadow":
+            # [fastcast mac] the 4 h budget counts only time with live games, and the file carries the
+            # client's own status, so a night with no FastCast rows says why
+            self.fc_check.watching(bool(self._fastcast_games))
+            st = dict(self.fastcast.status()) if hasattr(self.fastcast, "status") else {}
+            t = self._fastcast_task
+            st["task"] = "running" if t is not None and not t.done() else (
+                "none" if t is None else ("cancelled" if t.cancelled() else f"died: {t.exception()!r}"[:200]))
+            st["wanted"] = len(getattr(self.fastcast, "wanted", ()) or ())
+            self.fc_check.client = st
         if mode == "shadow" and time.time() - self._fc_graded >= 60:
             self._grade_fastcast()
 
