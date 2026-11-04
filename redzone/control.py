@@ -73,6 +73,8 @@ CEC_SYNC_S = 30.0          # re-ask the sticks which one is on screen this often
 RESUME_WAIT_S = 6.0        # after a HOME flip, the relaunched app must be playing again within this
 TV_PLAYING_WAIT_S = 2.5    # after a TV-input flip: the stick we flipped to must show it's playing within this
 # [SYNC 1] Flip only onto a stream that is steady, and book any stall into its delay.
+PER_STICK_MIN = 3          # tunes on one stick model before its own median replaces the shared one
+PER_STICK_DEADLINE_MIN = 8 # ...and before its own p90 replaces the shared bound in deadline_cost (rule #1)
 FLIP_STEADY_S = 1.0        # the hidden stick must have reported PLAYING, with no state change, this long
 FLIP_STEADY_WAIT_S = 3.0   # ...and gets this long to get there (buffering/connecting) before it's re-tuned
 FLIP_SETTLE_S = 3.0        # a flip "settled" = the stick we flipped to is PLAYING within this (North Star row)
@@ -171,7 +173,8 @@ class LatencyBook:
         self.dirty = False
 
     def record(self, key: str, seconds: float) -> None:
-        lo, hi = PLAUSIBLE.get(key, PLAUSIBLE.get(key.split(":", 1)[0], TUNE_PLAUSIBLE))
+        base = key.split("@", 1)[0]
+        lo, hi = PLAUSIBLE.get(key, PLAUSIBLE.get(base.split(":", 1)[0], TUNE_PLAUSIBLE))
         if lo <= seconds <= hi:
             self.samples.setdefault(key, deque(maxlen=self.keep)).append(round(seconds, 2))
             self.dirty = True
@@ -1044,9 +1047,14 @@ class Controller:
         d = (getattr(self.cfg, "defaults", None) or {}).get("decider", {}).get("switch_cost", {})
         return float(d.get(key, 5.0))
 
-    def tune_estimate(self, target_or_app: str) -> float:
-        """Seconds a tune takes for this target's app: measured median, else the default guess."""
+    def tune_estimate(self, target_or_app: str, stick: Stick | None = None) -> float:
+        """Seconds a tune takes for this target's app: measured on this stick's model once it has
+        PER_STICK_MIN tunes, else measured over both sticks, else the default guess."""
         app = target_or_app.split(":", 1)[0]
+        model = getattr(stick, "model", None)
+        mine = self.latency.samples.get(f"{app}@{model}") if model else None
+        if mine and len(mine) >= PER_STICK_MIN:
+            return statistics.median(mine)
         m = self.latency.median(app)
         return m if m is not None else self._default_cost(app)
 
@@ -1109,7 +1117,7 @@ class Controller:
         two = self.two_stick
         out = {"hdmi_flip": flip}
         for app in TUNERS:
-            tune = self.tune_estimate(app)
+            tune = self.tune_estimate(app)   # both sticks: the decider's long-run figure
             out[app] = flip + self.latency.miss_rate(app) * tune if two else tune
         return {k: round(v * 2) / 2 for k, v in out.items()}
 
@@ -1169,6 +1177,12 @@ class Controller:
             p90 = samples[min(len(samples) - 1, math.ceil(len(samples) * .9) - 1)] if samples else 0
             return max(self._default_cost(key), p90)
         tune = upper(app)
+        tuner = self.hidden if self.two_stick else self.main
+        mine = sorted(self.latency.samples.get(f"{app}@{getattr(tuner, 'model', None)}") or ())
+        if len(mine) >= PER_STICK_DEADLINE_MIN:
+            # This stick model's own p90 once it has enough tunes (4K Plus p50 2.33 s vs 4K 2023
+            # 3.74 s, live lab Nov 4): a fast stick isn't priced as the slow one, nor the reverse.
+            tune = mine[min(len(mine) - 1, math.ceil(len(mine) * .9) - 1)]
         if not self.two_stick:
             return tune
         flip = self._flip_upper()
@@ -1286,6 +1300,10 @@ class Controller:
             self._set_held(target, 0.0)   # a fresh tune plays from the live edge
             # A Prime multiview tile switch is ~1 s, not a ~32 s tune: never let it into Prime's median.
             self.latency.record("prime_tile" if res.path == "tile" else app, res.took)
+            if res.path != "tile" and getattr(stick, "model", None):
+                # Per stick model too: the live lab (Nov 4) had a hidden-stick tune to PLAYING at p50
+                # 2.33 s on the 4K Plus vs 3.74 s on the 4K 2023, so one median misprices one of them.
+                self.latency.record(f"{app}@{stick.model}", res.took)
             self._awake_at[stick.host] = time.time()
         return res
 
