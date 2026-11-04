@@ -478,6 +478,14 @@ noggin:                    # docs/noggin.md
       nhl_pp_ot_boost: 1.0 # x the NHL power-play / overtime term (0-2)
       reels: true          # catch-up reels allowed
       switch_frequency: 1.0  # 0.5 calmer .. 2.0 busier
+  pick:                    # Reflex PICK v1 (redzone/noggin/pick.py): the hindsight-oracle imitation picks the game
+    enabled: false         # replace the app's pick (never over your team, never in a replay); needs the time-shift buffer
+    shadow: false          # log what PICK would do (Decider.pick_log) beside the app's own decision
+    leagues: [nba]         # leagues with a model (models/pick_<league>.v1.npz)
+    tune_s: 5.0            # the black screen PICK plans around per switch
+    mode: breaks           # breaks: PICK only fills a break on screen while the app stays | stays | replace
+    min_gap_s: 0           # switch-rate cap: PICK alone never flips again this soon after a switch (0 = off)
+    keep_kinds: [user, crunch, home, must_see, live]   # the app's switch kinds PICK never overrides
   lookahead:                # [GAME-04 clairvoyance] the feed's plays that haven't aired yet (redzone/noggin/lookahead.py)
     enabled: false         # flip to a game whose big play is visible ahead, landing on its last dead ball first
     max_sigma_s: 10        # no lookahead when the screen's position is this unsure (SAFE-02)
