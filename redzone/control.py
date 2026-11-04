@@ -939,15 +939,54 @@ class Controller:
         m = self.latency.median(app)
         return m if m is not None else self._default_cost(app)
 
+    def flip_path(self) -> str:
+        """[switch timing] The flip _flip_to will try first: "tv_flip" (the TV's own input change,
+        SmartThings or a setup-proven local key) or "home_flip" (HOME on the stick, CEC)."""
+        try:
+            return "tv_flip" if self.tv.ready() and self.tv.paths() else "home_flip"
+        except Exception:  # a broken TV object must never block planning
+            log.exception("tv path check failed")
+            return "home_flip"
+
+    def _flip_samples(self, path: str) -> list[float]:
+        """Measured flips of this path only: a HOME flip (2-6 s, then a relaunch) is not a TV input
+        change (~2 s, nothing pressed), and mixing them planned the TV path with HOME's numbers.
+        Older saves booked HOME flips only under "flip"."""
+        s = self.latency.samples.get(path)
+        if not s and path == "home_flip":
+            s = self.latency.samples.get("flip")
+        return sorted(s or ())
+
+    def _tv_prior(self) -> tuple[float, float]:
+        """(median, upper) of the TV input change before we've timed our own: the SmartThings
+        switch measured on the user's TV, Nov 3 2026 (10/10 confirmed, median 1.98 s, max 2.2 s)."""
+        p = self.cfg.get("two_stick.tv_flip_prior_s") or {}
+        return float(p.get("median", 1.98)), float(p.get("max", 2.2))
+
     def flip_estimate(self) -> float:
         """Seconds from "flip" to the new picture: the measured command, plus the TV's own HDMI
         re-sync (two_stick.input_settle_s — set it from a stopwatch, the TV can't tell us)."""
-        m = self.latency.median("flip")
-        if m is None:
+        settle = float(self.cfg.get("two_stick.input_settle_s", 1.0))
+        path = self.flip_path()
+        samples = self._flip_samples(path)
+        if path == "tv_flip":
+            return (statistics.median(samples) if samples else self._tv_prior()[0]) + settle
+        if not samples:
             return self._default_cost("hdmi_flip")
         # flip_s is HOME -> active source (the cut). The picture coming back (resume_s) is booked
         # separately and deliberately NOT added here: it would shift tonight's decider costs.
-        return m + float(self.cfg.get("two_stick.input_settle_s", 1.0))
+        return statistics.median(samples) + settle
+
+    def _flip_upper(self) -> float:
+        """The flip's planning bound: p90 of this path's measurements (TV path: never under the
+        measured prior's max until we have 5 of our own), plus the HDMI settle."""
+        settle = float(self.cfg.get("two_stick.input_settle_s", 1.0))
+        path = self.flip_path()
+        samples = self._flip_samples(path)
+        p90 = samples[min(len(samples) - 1, math.ceil(len(samples) * .9) - 1)] if samples else 0.0
+        if path == "tv_flip":
+            return (p90 if len(samples) >= 5 else max(p90, self._tv_prior()[1])) + settle
+        return max(self._default_cost("hdmi_flip"), p90) + settle
 
     def switch_costs(self) -> dict[str, float]:
         """Expected seconds from "switch" to the new game on screen, per app, on the path we'd use now.
@@ -1020,10 +1059,7 @@ class Controller:
         tune = upper(app)
         if not self.two_stick:
             return tune
-        samples = sorted(self.latency.samples.get("flip") or ())
-        flip = max(self._default_cost("hdmi_flip"),
-                   samples[min(len(samples)-1, math.ceil(len(samples)*.9)-1)] if samples else 0)
-        flip += float(self.cfg.get("two_stick.input_settle_s", 1.0))
+        flip = self._flip_upper()
         mv = self.prime_mv
         hid = self.hidden
         if mv is not None and target and hid is not None and mv.has_tile(hid.host, target):
@@ -1038,6 +1074,7 @@ class Controller:
                 "path": "flip" if self.two_stick else "tune",
                 # The input change and the picture coming back, measured separately (medians + last).
                 "flip_s": self.latency.median("flip"), "resume_s": self.latency.median("resume"),
+                "flip_path": self.flip_path(), "flip_plan_s": round(self.flip_estimate(), 2),
                 "last_flip": dict(self.last_flip) if self.last_flip else None,
                 "input": {"unknown": self.input_unknown, "cec": self.cec_view, "reasserts": self._reasserts,
                           "two_stick_ok": self.two_stick_ok}}

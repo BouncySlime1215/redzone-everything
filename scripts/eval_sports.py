@@ -80,6 +80,10 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--feed-lag", type=float, default=None, metavar="S",
                     help="[switch timing] every play reaches the app S s after it happened (default 8). The "
                          "screen stays 43 s behind real life, so only the warning before it airs changes")
+    ap.add_argument("--behind-live", type=float, default=None, metavar="S",
+                    help="[time-shift buffer] hold every stream S s behind its live edge: the screen runs "
+                         "26 s (a YouTube TV channel) + S behind real life, so the feed arrives S s earlier "
+                         "relative to the picture")
 
 
 def knobs(a: argparse.Namespace) -> dict:
@@ -88,7 +92,7 @@ def knobs(a: argparse.Namespace) -> dict:
                 channel_spread=getattr(a, "channel_spread", 0.0), history=getattr(a, "history", 0.0),
                 delay_model=getattr(a, "delay_model", None), resync=getattr(a, "resync", False),
                 feed_lag_model="measured" if getattr(a, "real_lag", False) else None,
-                **feed_lag_knobs(getattr(a, "feed_lag", None)))
+                **feed_lag_knobs(getattr(a, "feed_lag", None), getattr(a, "behind_live", None)))
 
 
 def main():
@@ -115,11 +119,15 @@ def main():
     total = sportsgrade.Card(lg.value)
     t0 = time.time()
     end = a.end or evaldata.window_end(lg.value, EVAL_END)
+    per_night = []   # the unit of evidence for the release gate's night bootstrap (scripts/release_gate.py)
     for day, reps, targets in nights(lg, a.nights, end, a.split):
         rep = run(reps, cfg, mine, targets=targets, step=a.step, **knobs(a))
         # [xleague] Grade against what the screen REALLY showed (true delay), not the app's belief.
         card = sportsgrade.grade(reps, rep.switches, mine, rep.lag_true, 5.0, rep.t0, rep.t1, rep.replayed)
         total.add(card)
+        cs = card.cut.summary()
+        per_night.append({"night": day, "entries": cs["entries"], "entries_mid_play": cs["entries_mid_play"],
+                          "cuts": len(card.cuts), "big": card.big, "big_seen": card.big_seen})
         if a.slates:
             print(" ", day, json.dumps(card.summary()))
             for t, what in card.cuts[:3]:
@@ -130,6 +138,7 @@ def main():
     out["seconds"] = round(time.time() - t0)
     out["eval_data"] = evaldata.stamp()
     out["eval_end"] = end
+    out["per_night"] = per_night
     print(json.dumps(out, indent=1))
 
 

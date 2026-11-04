@@ -54,11 +54,14 @@ class GameSpec:
 
 NIGHT_DAY = "2026-11-01"
 GAMES = [
-    GameSpec("nhl", "espn_nhl_summary_401892626", "youtubetv:espn", None, "ESPN"),
+    # NHL and NBA come from TRAIN nights of eval-data-v1 (Oct 25 and Oct 24), moved onto the night: the
+    # night is a gate everyone iterates against, so it must not replay locked-set games (research 05
+    # §3.2: it used NHL 401892626 and NBA 401909906, both locked). scripts/leak_check.py enforces it.
+    GameSpec("nhl", "espn_nhl_summary_401892578", "youtubetv:espn", "16:00", "ESPN"),
     GameSpec("nfl", "espn_nfl_summary_401772894", "youtubetv:fox", "16:25", "FOX"),
     GameSpec("cfb", "espn_cfb_summary_401858282", "youtubetv:abc", "19:45", "ABC"),
     GameSpec("nfl", "espn_nfl_summary_401772931", "youtubetv:nbc", "20:20", "NBC"),
-    GameSpec("nba", "espn_nba_summary_401909906", "prime:amzn1.dv.gti.night-tor-lal", None),
+    GameSpec("nba", "espn_nba_summary_401909860", "prime:amzn1.dv.gti.night-phx-gs", "21:00"),
 ]
 YTTV_CODES = {"espn": "ESPNnight01", "fox": "FOXnight001", "abc": "ABCnight001", "nbc": "NBCnight001"}
 
@@ -201,6 +204,7 @@ class Night:
     default_faults: bool = True
     use_watchdog: bool = True
     games: list = field(default_factory=list)
+    tv_path: str = "home"               # "home" (HOME/CEC flips only) | "smartthings" (the TV's input, measured latency)
 
     def __post_init__(self):
         self.api_down = False
@@ -276,7 +280,16 @@ class Night:
         autonomy.Stick = houselib.FakeStick
         control.DEVICES = d / "devices.json"
         engine_mod.ChannelMap = functools.partial(channels.ChannelMap, path=d / "channels.json")
-        tv.SamsungTV.from_devices = classmethod(lambda cls: cls())
+        tv.OAUTH_FILE = d / "smartthings_oauth.json"
+        if self.tv_path == "smartthings":
+            from redzone.lab.night import smartthings
+            import random as _random
+            night_tv = smartthings.make_tv_class(tv, self.house, _random.Random(self.seed * 31 + 5))
+            tv.SamsungTV.from_devices = classmethod(lambda cls: night_tv(log_path=d / "tv_input.jsonl"))
+        elif self.tv_path == "home":
+            tv.SamsungTV.from_devices = classmethod(lambda cls: cls())
+        else:
+            raise ValueError(f"tv_path must be 'home' or 'smartthings', not {self.tv_path!r}")
         tv.TOKEN_FILE = d / "tv_token.txt"
         yttv.STATE_PATH, yttv.DEVICES_PATH = d / "yttv_verified.json", d / "devices.json"
         plan.DATA = supervisor.DATA = d
@@ -621,12 +634,14 @@ def _episodes(samples: list[Sample], pred) -> list[tuple[float, float]]:
 KNOWN_ERRORS = (
     # control.boundary_reads reads s.tuned["target"] again after awaiting another stick's
     # playback; a switch can clear s.tuned meanwhile (SWITCHING, redzone/control.py:293).
-    ("boundary read failed", "TypeError: 'NoneType' object is not subscriptable"),
+    # (message, exception, expires YYYY-MM-DD, owner): scripts/leak_check.py fails the build once an
+    # entry is past its date, so an allowlisted bug can't quietly become permanent (research 05 §3.10).
+    ("boundary read failed", "TypeError: 'NoneType' object is not subscriptable", "2026-11-17", "SWITCHING"),
 )
 
 
 def _known(err: dict) -> bool:
-    return any(m in str(err.get("msg", "")) and e in str(err.get("exc", "")) for m, e in KNOWN_ERRORS)
+    return any(m in str(err.get("msg", "")) and e in str(err.get("exc", "")) for m, e, *_ in KNOWN_ERRORS)
 
 
 FAR_BEHIND_S = 120.0   # a picture this far behind live (s) is reported as stale
@@ -756,10 +771,22 @@ def grade(night: Night) -> dict:
            "far_behind": far[:20], "prompt_on_screen_s": round(prompt_s)})
     switches = e.store._db.execute("SELECT ok, dry_run, detail, kind FROM switches").fetchall() \
         if hasattr(e.store, "_db") else []
+    tv_input = None
+    if night.tv_path == "smartthings":
+        # [switch timing] every flip by the TV's own input, at the measured latency, readback-confirmed
+        log = night.work / "data" / "tv_input.jsonl"
+        rows_in = [json.loads(x) for x in log.read_text().splitlines() if x.strip()] if log.exists() else []
+        totals = sorted(r["total_s"] for r in rows_in if r.get("total_s") is not None and r.get("verified"))
+        homes = sum(1 for d in night.house.sticks.values() for _, k in d.log if k == "HOME")
+        med = totals[len(totals) // 2] if totals else None
+        tv_input = {"commands": len(rows_in), "confirmed": len(totals), "home_presses": homes,
+                    "total_s_median": med, "total_s_max": totals[-1] if totals else None}
+        check("tv_input_path", bool(totals) and len(totals) >= 0.95 * len(rows_in)
+              and med is not None and 1.6 <= med <= 2.8, tv_input)
     return {
         "window": [_et(night.t0), _et(night.t1)], "hours": round((night.t1 - night.t0) / 3600, 2),
         "ok": all(c["ok"] for c in checks), "checks": checks,
-        "cuts": len(every), "mid_play_cuts": mid, "tv_flips": night.house.tv.flips,
+        "cuts": len(every), "mid_play_cuts": mid, "tv_flips": night.house.tv.flips, "tv_input": tv_input,
         "switches": {"total": len(switches), "ok": sum(1 for x in switches if x[0]),
                      "failed": sum(1 for x in switches if not x[0])},
         "faults": [f.describe() | {"et": _et(night.t0 + f.at)} for f in night.faults],

@@ -5,7 +5,8 @@ That's the true feed lag, which decides how much head start we get on the stream
 the source race (who reported each score first). Small JSONL files, one per day:
 
     data/recordings/2026-11-02/plays.jsonl   {"t","league","game","play","type","wall","lag","source","text"}
-    data/recordings/2026-11-02/race.jsonl    {"t","game","label","first","others"}
+    data/recordings/2026-11-02/race.jsonl    {"t","league","game","label","first","others"}
+                                             label "score A-H" or "stop p<period> <clock s>" (a dead ball)
 
 Finished games' full play-by-play is also saved to data/archive/<league>/ for backtesting.
 """
@@ -20,14 +21,15 @@ from redzone.models import GameState
 from redzone.sources import espn
 
 ROOT = Path(__file__).resolve().parent.parent / "data"
+RACE_SETTLE_S = 90.0   # a race row is written this long after the first report, with every follower's lag
 
 
 class Recorder:
     def __init__(self, root: Path = ROOT):
         self.root = root
         self._seen: dict[tuple[str, str], set[str]] = {}   # (game, source) -> play ids
-        self._race_n = 0
         self._nhl_logged: set[tuple[str, str]] = set()
+        self._race_done: set[tuple[str, str, float]] = set()
         self._archived: set[str] = set()
 
     def _day(self) -> Path:
@@ -75,11 +77,25 @@ class Recorder:
         self._nhl_logged.update((r["game"], r["event"]) for r in new)
         self._write("nhl_seen.jsonl", new)
 
-    def race(self, merger) -> None:
-        new = merger.race[self._race_n:]
-        self._race_n = len(merger.race)
-        self._write("race.jsonl", [{"t": round(e.first_at, 2), "game": e.game_id, "label": e.label,
-                                    "first": e.first_source, "others": e.others} for e in new])
+    def race(self, merger, now: float | None = None) -> None:
+        """Write each race event once it has settled (RACE_SETTLE_S), so the slower sources'
+        lags are in the row. Written events are tracked by identity, not by list index: the
+        merger trims its list at 2000, which used to freeze the index and stop all race rows."""
+        now = time.time() if now is None else now
+        live = {(e.game_id, e.label, e.first_at) for e in merger.race}
+        rows = []
+        for e in merger.race:
+            key = (e.game_id, e.label, e.first_at)
+            if key in self._race_done or e.first_at > now - RACE_SETTLE_S:
+                continue
+            self._race_done.add(key)
+            g = merger.games.get(e.game_id)
+            rows.append({"t": round(e.first_at, 2), "league": g.league.value if g else None,
+                         "game": e.game_id, "label": e.label, "first": e.first_source,
+                         "others": dict(e.others)})
+        if len(self._race_done) > 4000:
+            self._race_done &= live
+        self._write("race.jsonl", rows)
 
     def archive(self, g: GameState, summary: dict) -> None:
         """Keep a finished game's full play-by-play for future backtests (NBA/NHL/MLB too)."""

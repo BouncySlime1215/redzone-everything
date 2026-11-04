@@ -48,6 +48,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 
 ## Gates and quality
 
+- 2026-11-04 12:45 AM: **Timing gate rows added** (overnight plan item 6): "entries mid-play = 0" and
+  "landings in dead time >= 95%" (cuts away + entries, from the new `landings_in_dead_pct`), with the
+  landing-offset histograms (`leave_to_restart_hist`, `entry_to_restart_hist`) on every league card.
+
 - 2026-11-03 1:18 PM (approved 1:20): **"95% good minimum" release gate** on the locked test set,
   fresh nights and the e2e night test (full table: [architecture.md §7](../architecture.md)).
   A part that misses ships OFF behind its flag. Why: he wants every measure at 100%; 95% is the floor.
@@ -64,6 +68,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 ## Product
 
 - 2026-11-04 12:35 AM: **NHL api-web live play-by-play as the primary NHL source ships OFF (`sources.nhl_primary: false`, `polling.nhl_pbp_s: 3` when on).** It turns on after a backtest on archived api-web nights and a live NHL night pass the 95% gate; until then `sources.nhl_shadow: true` polls api-web at the fast rate and logs each event's first-seen time (nhl_seen.jsonl) for that backtest. When on, it owns NHL stoppages while its copy is under 10 s old, and its plays reach the timeline bounded by a 2-60 s lag window. Why: Nick measured it at 16.7 s p50 behind the event vs ESPN summary 43.1 s and FastCast 25.3 s (ANA@VAN, Nov 3).
+- 2026-11-04 12:00 AM: **The decider plans a TV input flip with the SmartThings numbers** measured
+  on Nick's TV (10/10 confirmed, median 1.98 s, max 2.2 s; `two_stick.tv_flip_prior_s`) plus the 1 s
+  HDMI settle, instead of HOME's 2-6 s flips; HOME and TV flips are timed apart (`tv_flip`/`home_flip`).
+  Nick's overnight plan, item 4. Scorecards and the Nov 1 demo are unchanged (they don't use the controller).
+
 - 2026-11-03 3:05 PM: **NFL commercials and dead air go to 0**, with replays when every game is
   in a break. #21 accepted NBA dead air +0.5 and demo commercials +0.5 for NBA mid-play entries 38 → 15.
 - 2026-11-03: **Crunch overlaps:** top game live, the other time-shifted on the second stick,
@@ -92,3 +101,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-03 10:05 PM: **Deploy test step: 3600 s timeout, speed budgets skipped at background
   priority** (`RZ_TESTS_LOW_PRIORITY=1`), and the e2e night pins the host (governor) so the Mac's live
   app can't restart the night's engine. Every other test still blocks a deploy. RC 3 = RC 2 + these.
+- 2026-11-04 4:30 AM: **Rate gates are judged per night with a lower bound** (research 05 B9,
+  Director 11:30 PM queue). A rate gate (dead-ball entries, big plays seen, mid-play ≤5%) PASSes only
+  with ≥8 nights, ≥60 decisions and a cluster-bootstrap (over nights) lower bound ≥ the bar; it FAILs
+  when the point estimate (or the whole CI) is under the bar, and is PENDING otherwise. "0 mid-play cuts" also prints its
+  rule-of-three bound. Reason: a pooled rate over 4 locked NBA nights said PASS with no error bar.
+- 2026-11-04 4:30 AM: **breaks.blend mixes in log-odds and lets the brain stand alone when the rules
+  see nothing** (research C18: the 50/50 mix took live ECE from ≤0.10 to 0.12–0.17). Brain is off,
+  so no scorecard moves; refit the weight on valid nights after the leak-free retrain.

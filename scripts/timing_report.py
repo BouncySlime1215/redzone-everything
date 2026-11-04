@@ -66,6 +66,17 @@ def main(argv=None) -> int:
         print("\non-screen lead = stream delay - dead-ball detection lag (negative: it aired before we knew)")
         for k, v in out["lead"].items():
             print(f"  {k:40} delay {v['delay_s']:>5}  lead at lag p10 {v['lead_p10_lag']:>6}  p50 {v['lead_median_lag']:>6}  p90 {v['lead_p90_lag']:>6}")
+    races = sorted(a.rec.glob("*/race.jsonl"))
+    if races:
+        league_of = {r.game: r.league for r in rows}
+        out["race"] = timing.race_report(races, league_of)
+        print("\nsource race (A2): first = reported it first; gain = seconds ahead of the fastest ESPN copy")
+        for lg, kinds in sorted(out["race"].items()):
+            for kind, b in sorted(kinds.items()):
+                for src, d in sorted(b["sources"].items(), key=lambda kv: -kv[1]["first"]):
+                    g = d["gain_s"]
+                    gain = f"p10 {g['p10']:>6} p50 {g['p50']:>6} p90 {g['p90']:>6} (n {g['n']})" if g["n"] else "-"
+                    print(f"  {lg:5} {kind:5} {src:16} first {d['first']:>5}/{b['n']:<5} ({d['first_pct']:>5}%)  gain {gain}")
     if a.json:
         a.json.write_text(json.dumps(out, indent=1))
     if a.write_profile:

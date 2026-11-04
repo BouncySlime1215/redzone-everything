@@ -300,6 +300,8 @@ two_stick:
                            # a replay about to play take it right away)
   verify_s: 15             # check the hidden stick is still playing this often
   input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
+  tv_flip_prior_s: {median: 1.98, max: 2.2}  # the TV's own input change (SmartThings) before we've timed 5:
+                           # measured on your TV Nov 3 (10/10 confirmed). The decider plans flips with it.
   keep_cec_off: true       # a stick whose HDMI-CEC you turned off (scripts/stick_cec.py) gets it back on only
                            # for a HOME fallback onto it, then off again (so losing the input never pauses it)
   park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long

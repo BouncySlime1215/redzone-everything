@@ -23,6 +23,8 @@ def main(argv=None) -> int:
     ap.add_argument("--faults", action="append", default=[], help="module:function returning more faults")
     ap.add_argument("--no-default-faults", action="store_true")
     ap.add_argument("--no-watchdog", action="store_true")
+    ap.add_argument("--tv", choices=("home", "smartthings"), default="home",
+                    help="smartthings: flips by the TV's own input change at the latency measured on the user's TV")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
     os.environ.setdefault("TZ", "America/New_York")
@@ -33,7 +35,7 @@ def main(argv=None) -> int:
         hostile_host()      # the CI night: Night.patch() has to pin the host away (run.py pin_host/pin_network)
     night = Night(CLOCK, work, seed=a.seed, end_s=a.hours * 3600 if a.hours else None, start_at=a.start,
                   fault_specs=[json.loads(x) for x in a.fault], plugins=a.faults,
-                  default_faults=not a.no_default_faults, use_watchdog=not a.no_watchdog)
+                  default_faults=not a.no_default_faults, use_watchdog=not a.no_watchdog, tv_path=a.tv)
     night.prepare()
     setup_logging(night, a.verbose)
     night.patch()

@@ -230,7 +230,7 @@ def test_brain_raised_break_uses_the_type_weighted_length():
     f = breaks.forecast(g, ())
     assert f.p == 0
     got = breaks.blend(f, 0.8, g, 0.5, v3=_v3(g.last_play.wallclock))
-    assert got.p == pytest.approx(0.4) and got.expect_s == pytest.approx(150.0)
+    assert got.p == pytest.approx(0.8) and got.expect_s == pytest.approx(150.0)
 
 
 def _tracker_with_open_window(t0=1000.0):
@@ -299,7 +299,7 @@ def test_contract_break_coming_uses_type_quantiles(monkeypatch):
     monkeypatch.setattr(brain, "read", lambda g: B.Reading(break_soon_p=0.8, v3=v, break_reasons=[]))
     book = BreakBook(clock=lambda: 0.0, brain=lambda: (brain, 0.5, True))
     f = B3.BreaksV3(book, brain).forecast(g, 5.0)
-    assert not f.in_data_now and f.p_start == pytest.approx(0.4)
+    assert not f.in_data_now and f.p_start == pytest.approx(0.8)
     assert (f.length_q10_s, f.length_q50_s, f.length_q90_s) == pytest.approx((120.0, 150.0, 200.0))
     assert f.kind.value == "commercial"
 

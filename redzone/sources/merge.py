@@ -17,7 +17,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from redzone.models import GameState, Phase
+from redzone.models import GameState, Phase, Stoppage
 
 STALE_AFTER_S = 60.0       # a live game with no fresh data this long is "stale"
 UNHEALTHY_REGRESSIONS = 3  # backwards jumps (per game, within REGRESSION_WINDOW_S) before benching
@@ -39,6 +39,19 @@ def progress_key(g: GameState) -> tuple:
 def _position(key: tuple) -> tuple:
     """progress_key without the score total and play count: where the game is."""
     return key[:4]
+
+
+def race_labels(g: GameState) -> list[str]:
+    """What the source race times: each score, and each dead ball (A2: who knows the whistle first).
+
+    A dead ball is keyed by period and the stopped clock, so two feeds reporting the same whistle
+    share a label whatever stoppage kind each calls it."""
+    if g.home.score is None or g.away.score is None:
+        return []
+    out = [f"score {g.away.score}-{g.home.score}"]
+    if g.stoppage not in (None, Stoppage.NONE, Stoppage.UNKNOWN) and g.clock_s is not None:
+        out.append(f"stop p{g.period or 0} {int(g.clock_s)}")
+    return out
 
 
 @dataclass
@@ -160,20 +173,18 @@ class Merger:
             h.benched = any(k[0] == source for k in self._bench_until)
 
     def _note_race(self, source: str, g: GameState, now: float) -> None:
-        if g.home.score is None or g.away.score is None:
-            return
-        label = f"score {g.away.score}-{g.home.score}"
-        key = (g.game_id, label)
-        ev = self._race_open.get(key)
-        if ev is None:
-            ev = RaceEvent(g.game_id, label, source, now)
-            self._race_open[key] = ev
-            self.race.append(ev)
-            if len(self.race) > 2000:
-                old = self.race.pop(0)
-                self._race_open.pop((old.game_id, old.label), None)
-        elif source != ev.first_source and source not in ev.others:
-            ev.others[source] = round(now - ev.first_at, 2)
+        for label in race_labels(g):
+            key = (g.game_id, label)
+            ev = self._race_open.get(key)
+            if ev is None:
+                ev = RaceEvent(g.game_id, label, source, now)
+                self._race_open[key] = ev
+                self.race.append(ev)
+                if len(self.race) > 2000:
+                    old = self.race.pop(0)
+                    self._race_open.pop((old.game_id, old.label), None)
+            elif source != ev.first_source and source not in ev.others:
+                ev.others[source] = round(now - ev.first_at, 2)
 
     def is_stale(self, game_id: str) -> bool:
         g = self.games.get(game_id)
@@ -188,6 +199,8 @@ class Merger:
         firsts: dict[str, int] = defaultdict(int)
         lags: dict[str, list[float]] = defaultdict(list)
         for ev in self.race:
+            if not ev.label.startswith("score"):
+                continue          # the status page's race is about scores; whistles go to the recorder
             firsts[ev.first_source] += 1
             for s, lag in ev.others.items():
                 lags[s].append(lag)

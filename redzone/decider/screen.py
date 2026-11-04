@@ -55,7 +55,11 @@ MIN_BREAK_S = ByLeague({
                  Stoppage.TWO_MINUTE_WARNING: 50.0},
     League.NBA: {Stoppage.HALFTIME: 800.0},
     # NHL 1st/2nd intermission: 5th percentile 1120 s over 190 archived intermissions.
-    League.NHL: {Stoppage.INTERMISSION: 1080.0},
+    # NHL TV timeout: 220 of 221 fit-split timeouts ran >= 130 s (5-fold forward CV: 0 below 120 s in
+    # every fold; the one short row is a mis-stamped faceoff, the next shot came 214 s later).
+    # With the measured 35-50 s feed lag the data never covers the screen, so this floor is what
+    # lets us leave during a TV timeout at all (docs/timing.md, A3).
+    League.NHL: {Stoppage.INTERMISSION: 1080.0, Stoppage.TIMEOUT: 120.0},
     # A baseball inning change can be shorter than an NFL quarter break.
     # No minimum is assumed without feed coverage of the current screen.
 })

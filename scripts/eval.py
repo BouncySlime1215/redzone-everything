@@ -92,12 +92,16 @@ def main():
     ap.add_argument("--feed-lag", type=float, default=None, metavar="S",
                     help="[switch timing] every play reaches the app S s after it happened (default 8). The "
                          "screen stays 43 s behind real life, so only the warning before it airs changes")
+    ap.add_argument("--behind-live", type=float, default=None, metavar="S",
+                    help="[time-shift buffer] hold every stream S s behind its live edge: the screen runs "
+                         "26 s (a YouTube TV channel) + S behind real life, so the feed arrives S s earlier "
+                         "relative to the picture")
     a = ap.parse_args()
     knobs = dict(true_delay=a.true_delay, sigma=a.sigma, lag_jitter=(3.0, 25.0) if a.lag_jitter else None,
                  drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed,
                  channel_spread=a.channel_spread, history=a.history, delay_model=a.delay_model, resync=a.resync,
                  feed_lag_model="measured" if a.real_lag else None,
-                 **feed_lag_knobs(a.feed_lag))
+                 **feed_lag_knobs(a.feed_lag, a.behind_live))
     # The live service rewrites data/config.yaml (measured switch costs, taps): scorecards read a
     # pinned copy when one exists, so a before/after comparison isn't moved by the live night.
     pinned = ROOT / "data/eval_config.yaml"
@@ -121,8 +125,12 @@ def main():
                behind=0.0, on_replay=0, drive=0, drive_live=0)
     causes: dict[str, float] = {}
     cut = CutCard()
+    per_night = []   # one row per slate: the unit of evidence for the release gate's night bootstrap
     for reps in eval_set(a.n, split=a.split):
         r = run(reps, cfg, set(cfg.get("teams.nfl")), **knobs)
+        rc = r.cut.summary()
+        per_night.append({"night": reps[0].gid, "entries": rc["entries"], "entries_mid_play": rc["entries_mid_play"],
+                          "cuts": len(r.mid_play_cuts), "big": r.big_plays, "big_seen": r.big_plays_caught})
         tot["big"] += r.big_plays; tot["seen"] += r.big_plays_caught; tot["live"] += r.big_plays_live
         tot["cuts"] += len(r.mid_play_cuts); tot["dead"] += r.dead_air_s; tot["watched"] += r.watched_s
         tot["crunch"] += r.crunch; tot["crunch_live"] += r.crunch_live
@@ -158,7 +166,8 @@ def main():
            "big_missed_on_replay": tot["on_replay"],
            "big_plays": tot["big"], "crunch_plays": tot["crunch"], **cut.summary(),
            "seconds": round(time.time() - t0),
-           "eval_data": evaldata.stamp(), "eval_end": evaldata.window_end("nfl", EVAL_END)}
+           "eval_data": evaldata.stamp(), "eval_end": evaldata.window_end("nfl", EVAL_END),
+           "per_night": per_night}
     print(json.dumps(out, indent=1))
     if a.dead:
         print("dead air by cause (points of dead_air_pct):")

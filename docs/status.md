@@ -1,9 +1,10 @@
 # Status board
 
-Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-04 04:50 UTC.
-`integration/next` has #1-#3, #5-#12, #14, #15, #17 (reasoner, off), #19-#36, #38-#50 and the RC 3 deploy fixes
-(see `docs/integration.md`). Tests: 1788 passed; ruff clean. #51 (eval honesty, research B9-B10/C18) waits for 8 AM.
-**Usage brake (Nick, Nov 3 11:35 PM):** until 8 AM only the TIMING thread works; INTEGRATION is idle, no new merges unless timing needs one.
+Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-04 05:45 UTC.
+`integration/next` has #1-#3, #5-#12, #14, #15, #17 (reasoner, off), #19-#36, #38-#56 and the RC 3 deploy fixes
+(see `docs/integration.md`). Tests: 1843 passed, 11 skipped; ruff clean; leak_check 15 pass / 0 fail / 13 pending.
+#51 eval honesty (night-bootstrap gate; locked gate 41/10/45), #52-#56 timing (SmartThings 2 s cost, behind-live scoring, landing histograms, source race, NHL 120 s break floor).
+**Shifts (Nick, Nov 4 12:45 AM, handoff.md §6b):** day shift 9 AM-11 PM is Claude's threads; night shift 11 PM-9 AM is Nick's cloud sessions.
 **Release: RC 4 on `integration/release` = 8a47053** (RC 2 + deploy test-step fixes + the e2e night pinning
 the host and the network; no app change, so the gates are RC 2's: 59 pass, 10 fail, 27 pending, `docs/gate-report-rc3.md`).
 The draft release PR #37 is closed (Nick, Nov 3 10:45 PM); the deploy fetches `integration/release`.
