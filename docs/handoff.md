@@ -71,9 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-RC6 cut in progress; #188 adds deploy.py --at-break (switch only at halftime); no RC6 deploy lines yet; RC5.1 healthy
-Colab V8 notebook not pushed yet; Kaggle factory running 12813s; Plan thread waiting: approve randomizing dead-ball near-ties?
-Usage 32%
+RC6 cut as integration/release cf480a4 (#132+#173+#188); Mac tests running, switch held for halftime. RC5.1 still healthy.
+Colab notebook not pushed yet. Usage 33%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
