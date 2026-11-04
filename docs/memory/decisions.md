@@ -341,3 +341,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   not walls; Nick's press is a control. Tests: `tests/test_crunch_floor.py` (floor: a low-value game never pulls
   us out, live or at a break except an ad-break round trip; priors, the press and value-based crunch vs crunch).
   The strict-xfail tests that forced an absolute stay are removed.
+- 2026-11-04: **replay.crunch_block (new, default OFF; candidate ON), crunch_block_mine_leagues [] (candidate
+  [nfl]), crunch_block_mine_after_s 90.** Cycle 04 review's promotion blocker: on locked, NHL crunch plays aired
+  under a catch-up 2 -> 10. No catch-up starts while any live game is in crunch time or its run-up; your team's
+  missed play waits too, except in NFL after 90 s (its 3-min window can't wait out crunch). Locked, 3 seeds,
+  honest sims: crunch plays under a replay NFL 7-13 -> 0-1, NHL 0/10/9 -> 3/3/3; your-team plays = or better.
+- 2026-11-04 (lane 1, cycle 04): new config keys `noggin.possession.{enabled,shadow,leagues,model}` (the learned
+  jump / stay policy for lane 2's possession-start hook, PICK-cue trained on `oracle.solve_cue`) and
+  `noggin.pick.model` (default `v1`). All are off or unchanged by default. Why off: on NBA dev the veto leaves the rule
+  default unchanged (77.5 / 90.0) and the `all` scope adds a mid-play cut. The pure rollout beats the rule (85.9 / 91.9),
+  but the decider path doesn't carry that gain yet. docs/noggin.md §13.
