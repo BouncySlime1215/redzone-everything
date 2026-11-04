@@ -39,7 +39,12 @@ def test_the_flip_prior_is_read_back_only_with_calib_auto_on(tmp_path):
     _night(tmp_path, date(2026, 11, 4), 1.85)
     assert cal.flip_prior(cfg, tmp_path) is None
     cfg.update({"calib": {"auto": True}})
-    assert cal.flip_prior(cfg, tmp_path) == (1.85, 2.35)
+    shipped = float(cfg.get("two_stick.tv_flip_prior_s")["max"])
+    assert cal.flip_prior(cfg, tmp_path) == (1.85, max(shipped, 2.35))   # a low max never lowers the bound
+    _night(tmp_path, date(2026, 11, 5), 2.6)                              # a slow night raises it
+    assert cal.flip_prior(cfg, tmp_path) == (2.6, 3.1)
+    _night(tmp_path, date(2026, 11, 6), 1.8)                              # ...and a quiet one after keeps it
+    assert cal.flip_prior(cfg, tmp_path) == (1.8, 3.1)
 
 
 def test_summary_feeds_the_timing_half():

@@ -219,3 +219,4 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   90 s one to 111.6 s (night lab, seed 1). The recorded `held` was right, the target wasn't. The STK-06 watchdog
   now catches and rebuilds it; resuming without waiting behind a whole switch would fix the cause.
   - **Signals:** "buffer: ... held N s behind live" with N well over timing.behind_live_s
+- 2026-11-04 (lane 3, #136 review by lane 4): calibration.flip_prior took the measured flip max as the landing deadline's upper bound, so one quiet night could LOWER it below the shipped 2.58 s and let a later slow flip land mid-play. The bound is now max(shipped prior, tonight, every accepted night): calibration may raise it, never lower it.
