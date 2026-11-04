@@ -176,6 +176,11 @@ class Scored:
     factors: dict[str, float] = field(default_factory=dict)  # context points by name (debug/UI)
     brain: dict = field(default_factory=dict)  # learned brain's reading (hotness, key/break odds, reasons)
     reasoner: dict = field(default_factory=dict)  # live game reasoner: lock_in, odds, the model's storyline
+    # [HEAT 2.0, lane 1 sets these; the phone's Watch value surface reads them (phone_v2.watch_values)]
+    watch_value: float | None = None   # learned 0-100 watch value; None = not computed yet (phone shows a stub)
+    watch_why: str = ""                # one line: why that value
+    crunch_state: str | None = None    # crunch model: "entering" | "in" | "leaving"; None = not computed
+    stakes_line: str | None = None     # e.g. "AFC 1-seed race, top-5 matchup"; None = not computed
 
     @property
     def display(self) -> int:

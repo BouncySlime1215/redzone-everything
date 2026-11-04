@@ -193,6 +193,31 @@ def _on_at(segs: list[dict], ts: float, key: str = "game") -> str | None:
     return None
 
 
+CATCHUP_KINDS = {"replay"}                                # a catch-up replay of a missed play
+INTERLEAVE_KINDS = {"break_visit", "return"}             # visit another game in a break, then come back
+PLAN = re.compile(r"\bplan=([A-Za-z0-9_-]+)")
+
+
+def plan_marks(switches: list[dict], name) -> list[dict]:
+    """The planner's catch-ups and interleaves on the night's switches, oldest first, for the replay
+    viewer: a catch-up is a replay of a missed play or the catch-up reel; an interleave is a break visit
+    to another game and the return home. A `plan=<name>` tag in the reason is kept (multi-step plans)."""
+    out = []
+    for sw in switches:
+        kind, to = sw.get("kind") or "", sw.get("to_game")
+        if kind in CATCHUP_KINDS or to == "reel":
+            typ = "catchup"
+        elif kind in INTERLEAVE_KINDS:
+            typ = "interleave"
+        else:
+            continue
+        m = PLAN.search(sw.get("reason") or "")
+        out.append({"ts": sw["ts"], "type": typ, "kind": kind, "game": to,
+                    "matchup": "Catch-up reel" if to == "reel" else name(to), "reason": sw.get("reason") or "",
+                    "plan": m.group(1) if m else None, "ok": bool(sw.get("ok")) or bool(sw.get("dry_run"))})
+    return out
+
+
 def oracle_overlay(segments: list[dict], oracle: dict | None, moments: list[dict], name, end: float) -> dict:
     """What the hindsight oracle would have shown next to what we did, and a marker per big play.
     agree_pct: share of our on-screen time showing the oracle's game; markers: each big play in the
@@ -340,6 +365,58 @@ def slate_preview(games, rules: HardRules, now: float) -> dict:
             "yours": sum(1 for r in rows if r["yours"])}
 
 
+CRUNCH_STATES = ("entering", "in", "leaving")
+STAKES_BIG, STAKES_SOME = 0.6, 0.3     # stub only: Scored.stakes (0..1) until lane 1 sets stakes_line
+
+
+def watch_values(scored: dict, games: dict) -> dict:
+    """Each live game's 0-100 watch value and its one-line why, best first (display only).
+    Contract with lane 1 (HEAT 2.0): Scored.watch_value (0-100) and Scored.watch_why. While watch_value is
+    None, the stub shows today's priority score clipped to 0-100 with its biggest factor, marked
+    source="stub" so the phone says it's the old score.
+    crunch_state: lane 1's crunch model sets `Scored.crunch_state` in CRUNCH_STATES; until then the stub
+    reads today's flags (crunch_now -> "in", crunch -> "entering"; "leaving" needs the model).
+    stakes_line: lane 1 sets `Scored.stakes_line` (e.g. "AFC 1-seed race, top-5 matchup"); until then the
+    stub turns Scored.stakes into "Big stakes" / "Some stakes" / ""."""
+    rows = []
+    for gid, s in (scored or {}).items():
+        g = (games or {}).get(gid)
+        if g is not None and g.phase != Phase.LIVE:
+            continue
+        learned = s.watch_value is not None
+        val = float(s.watch_value) if learned else float(s.score)
+        why = (s.watch_why if learned else "") or s.factor or s.reason
+        cs = s.crunch_state                           # lane 1's crunch model: entering | in | leaving
+        if cs not in CRUNCH_STATES:
+            cs = "in" if s.crunch_now else ("entering" if s.crunch else None)
+        sl = s.stakes_line                            # lane 1: e.g. "AFC 1-seed race, top-5 matchup"
+        if sl is None:
+            sl = "Big stakes" if s.stakes >= STAKES_BIG else ("Some stakes" if s.stakes >= STAKES_SOME else "")
+        rows.append({"game_id": gid, "matchup": g.matchup if g is not None else gid,
+                     "crunch_state": cs, "stakes_line": sl[:100],
+                     "league": s.league.value, "wv": int(round(max(0.0, min(100.0, val)))),
+                     "why": str(why or "")[:120], "crunch": bool(s.crunch),
+                     "is_break": bool(s.is_break), "source": "learned" if learned else "stub"})
+    rows.sort(key=lambda r: -r["wv"])
+    return {"games": rows, "source": "learned" if rows and all(r["source"] == "learned" for r in rows)
+            else ("stub" if rows else None)}
+
+
+ALERT_AHEAD_S = 1800.0   # warn about a your-team crunch clash this far ahead
+
+
+def clash_alert(slate: dict, now: float, ahead: float = ALERT_AHEAD_S) -> dict | None:
+    """The next crunch clash that involves Nick's team, starting within `ahead` s (or under way), as one
+    phone banner: who gets the TV and who goes to the second stick / catch-up. Display only."""
+    yours = {g["game_id"] for g in slate.get("games") or [] if g.get("yours")}
+    for c in slate.get("clashes") or []:
+        if c["t1"] <= now or c["t0"] - now > ahead or not yours.intersection(c["games"]):
+            continue
+        return {"t0": c["t0"], "t1": c["t1"], "in_s": max(0, round(c["t0"] - now)), "on_tv": c["on_tv"],
+                "second": c["second"], "why": c["why"], "now": c["t0"] <= now}
+    return None
+
+
 def router(engine) -> APIRouter:
     r = APIRouter(prefix="/api/v2")
 
@@ -426,8 +503,11 @@ def router(engine) -> APIRouter:
         from redzone.lab.decision_records import read_jsonl
         over = oracle_overlay(view["segments"], read_oracle(ORACLE_DIR / f"{d.isoformat()}.json"),
                               read_jsonl(MOMENTS, t0, t1), engine._name, end)
+        marks = plan_marks(sws, engine._name)
         return {"enabled": True, "day": d.isoformat(), "t0": t0, "t1": t1, "now": now, "nights": nights,
-                **view, **over}
+                **view, **over, "plan_marks": marks,
+                "plan_counts": {"catchup": sum(1 for m in marks if m["type"] == "catchup"),
+                                "interleave": sum(1 for m in marks if m["type"] == "interleave")}}
 
     @r.get("/trend")
     async def get_trend(split: str = "dev"):
@@ -437,13 +517,20 @@ def router(engine) -> APIRouter:
             return {"ok": False, "message": "split is dev or locked"}
         return {"enabled": True, **trend(read_history(HISTORY), split)}
 
+    @r.get("/watch")
+    async def watch():
+        if not _enabled(engine):
+            return _off()
+        return {"enabled": True, "now": time.time(), "current": getattr(engine.decider, "current", None),
+                **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}))}
+
     @r.get("/slate")
     async def slate():
         if not _enabled(engine):
             return _off()
         now = time.time()
-        return {"enabled": True, "now": now,
-                **slate_preview(getattr(engine.merger, "games", {}), HardRules.from_config(engine.cfg), now)}
+        v = slate_preview(getattr(engine.merger, "games", {}), HardRules.from_config(engine.cfg), now)
+        return {"enabled": True, "now": now, **v, "alert": clash_alert(v, now)}
 
     @r.get("/priority")
     async def get_priority():
