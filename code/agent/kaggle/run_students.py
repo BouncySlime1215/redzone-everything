@@ -48,7 +48,10 @@ ANSWER_RESERVE_S = float(os.environ.get("RZ_ANSWER_RESERVE_S", str(45 * 60)))
 KILL_GRACE_S = 600.0
 # [V6] Every round answers the FULL test set (Nick, Nov 4 3:00 AM: no samples). The speed comes from the
 # fp16 base, batching and the progress tee; 5,542 rows x 160 tokens took 1.5-3 h on a T4 in V5.
-ANSWER_BATCH = 32
+# [V6, Nick's V5 fix] 32 answers at a time on fp32 weights OOM'd in lm_head (V5 game-reasoner, 5,542 rows):
+# fp16 base + 8 at a time, a progress line every ANSWER_LOG_ROWS rows.
+ANSWER_BATCH = int(os.environ.get("RZ_ANSWER_BATCH", "8"))
+ANSWER_LOG_ROWS = 400
 SMOKE = os.environ.get("RZ_SMOKE") == "1"
 FP16_OVERFLOW = 3                             # job exit code: rerun it once on a float32 base     # CPU smoke test: tiny model, few steps
 
@@ -102,6 +105,22 @@ def answer_loss(model, ids, lab, att):
     keep = tgt != -100
     logits = lm.lm_head(h[:, :-1][keep]).float()
     return torch.nn.functional.cross_entropy(logits, tgt[keep])
+
+
+def previous_adapter(name: str, roots: list[Path] | None = None) -> Path | None:
+    """[V6, Nick's V5 fix] A trained adapter for this job in an attached notebook output
+    (/kaggle/input/**/students/<job>/peft), so a crash after training never costs the training again.
+    RZ_RETRAIN=1 always retrains."""
+    if os.environ.get("RZ_RETRAIN") == "1":
+        return None
+    if roots is None:
+        roots = [Path(p) for p in os.environ.get("RZ_PREV_ROOTS", "/kaggle/input").split(os.pathsep) if p]
+    found = []
+    for root in roots:
+        if root.is_dir():
+            found += [c.parent for c in root.glob(f"**/students/{name}/peft/adapter_config.json")
+                      if (c.parent / "adapter_model.safetensors").exists() or (c.parent / "adapter_model.bin").exists()]
+    return max(found, key=lambda d: (d / "adapter_config.json").stat().st_mtime) if found else None
 
 
 def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
@@ -158,73 +177,82 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
     model.gradient_checkpointing_enable()
     model.enable_input_require_grads()
     n_layers = model.config.num_hidden_layers
-    cfg = LoraConfig(r=RANK, lora_alpha=ALPHA, lora_dropout=0.05, target_modules=TARGETS,
-                     layers_to_transform=list(range(n_layers - min(LAST_LAYERS or n_layers, n_layers), n_layers)),
-                     task_type="CAUSAL_LM")
-    model = get_peft_model(model, cfg)
-    params = [p for p in model.parameters() if p.requires_grad]
-    for p in params:
-        p.data = p.data.float()           # LoRA weights in float32 even on a float16 base
-    opt = torch.optim.AdamW(params, lr=LR, weight_decay=0.0)
-    scaler = torch.amp.GradScaler(dev, enabled=dev == "cuda")
-    epochs = EPOCHS.get(name, 1)
-    steps = max(1, epochs * ((len(train) + BATCH * ACCUM - 1) // (BATCH * ACCUM)))
-    sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / 30) * max(0.05, 1 - s / steps))
-    log, step = [], 0
+    prev = previous_adapter(name)
+    log, step, stopped, steps = [], 0, False, 0
+    if prev is not None:
+        from peft import PeftModel
+        print(f"{name}: reusing the trained adapter {prev} (RZ_RETRAIN=1 retrains)", flush=True)
+        model = PeftModel.from_pretrained(model, prev)
+        log.append({"reused_adapter": str(prev)})
+        heartbeat(out, phase="reused", adapter=str(prev))
+    else:
+        cfg = LoraConfig(r=RANK, lora_alpha=ALPHA, lora_dropout=0.05, target_modules=TARGETS,
+                         layers_to_transform=list(range(n_layers - min(LAST_LAYERS or n_layers, n_layers), n_layers)),
+                         task_type="CAUSAL_LM")
+        model = get_peft_model(model, cfg)
+        params = [p for p in model.parameters() if p.requires_grad]
+        for p in params:
+            p.data = p.data.float()           # LoRA weights in float32 even on a float16 base
+        opt = torch.optim.AdamW(params, lr=LR, weight_decay=0.0)
+        scaler = torch.amp.GradScaler(dev, enabled=dev == "cuda")
+        epochs = EPOCHS.get(name, 1)
+        steps = max(1, epochs * ((len(train) + BATCH * ACCUM - 1) // (BATCH * ACCUM)))
+        sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / 30) * max(0.05, 1 - s / steps))
+        log, step = [], 0
 
-    def val_loss():
-        model.eval()
-        tot, n = 0.0, 0
-        with torch.no_grad(), torch.autocast(**amp):
-            for ids, lab, att in batches(valid, False):
-                tot += answer_loss(model, ids, lab, att).item()
-                n += 1
+        def val_loss():
+            model.eval()
+            tot, n = 0.0, 0
+            with torch.no_grad(), torch.autocast(**amp):
+                for ids, lab, att in batches(valid, False):
+                    tot += answer_loss(model, ids, lab, att).item()
+                    n += 1
+            model.train()
+            return round(tot / max(1, n), 4)
+
+        heartbeat(out, phase="val0")
+        log.append({"step": 0, "val_loss": val_loss()})
         model.train()
-        return round(tot / max(1, n), 4)
+        stopped = False
+        def opt_step():
+            scaler.unscale_(opt)
+            torch.nn.utils.clip_grad_norm_(params, 1.0)
+            scaler.step(opt)
+            scaler.update()
+            opt.zero_grad(set_to_none=True)
+            sched.step()
 
-    heartbeat(out, phase="val0")
-    log.append({"step": 0, "val_loss": val_loss()})
-    model.train()
-    stopped = False
-    def opt_step():
-        scaler.unscale_(opt)
-        torch.nn.utils.clip_grad_norm_(params, 1.0)
-        scaler.step(opt)
-        scaler.update()
-        opt.zero_grad(set_to_none=True)
-        sched.step()
-
-    bad_loss = 0
-    for ep in range(epochs):
-        micro = 0
-        for ids, lab, att in batches(train, True):
-            with torch.autocast(**amp):
-                loss = answer_loss(model, ids, lab, att)
-            if not torch.isfinite(loss):
-                bad_loss += 1
-                if BASE_DTYPE == "float16" and bad_loss > 20:
-                    print(f"{name}: {bad_loss} non-finite losses on the float16 base", flush=True)
-                    raise SystemExit(FP16_OVERFLOW)
-            scaler.scale(loss / ACCUM).backward()
-            micro += 1
-            if micro % ACCUM:
-                continue
-            opt_step()
-            step += 1
-            if step % 50 == 0:
-                print(f"{name} step {step}/{steps} loss {loss.item():.4f} eta {_eta(step, steps, t0)}", flush=True)
-                heartbeat(out, phase="train", step=step, steps=steps, loss=round(loss.item(), 4))
-            if time.time() - t0 > TIME_PER_JOB_S or time.time() > deadline() - ANSWER_RESERVE_S:
-                print(f"{name}: training time cap at step {step}/{steps}", flush=True)
-                stopped = True
+        bad_loss = 0
+        for ep in range(epochs):
+            micro = 0
+            for ids, lab, att in batches(train, True):
+                with torch.autocast(**amp):
+                    loss = answer_loss(model, ids, lab, att)
+                if not torch.isfinite(loss):
+                    bad_loss += 1
+                    if BASE_DTYPE == "float16" and bad_loss > 20:
+                        print(f"{name}: {bad_loss} non-finite losses on the float16 base", flush=True)
+                        raise SystemExit(FP16_OVERFLOW)
+                scaler.scale(loss / ACCUM).backward()
+                micro += 1
+                if micro % ACCUM:
+                    continue
+                opt_step()
+                step += 1
+                if step % 50 == 0:
+                    print(f"{name} step {step}/{steps} loss {loss.item():.4f} eta {_eta(step, steps, t0)}", flush=True)
+                    heartbeat(out, phase="train", step=step, steps=steps, loss=round(loss.item(), 4))
+                if time.time() - t0 > TIME_PER_JOB_S or time.time() > deadline() - ANSWER_RESERVE_S:
+                    print(f"{name}: training time cap at step {step}/{steps}", flush=True)
+                    stopped = True
+                    break
+            if micro % ACCUM:                    # the epoch's last, partial accumulation
+                opt_step()
+                step += 1
+            log.append({"epoch": ep + 1, "step": step, "val_loss": val_loss()})
+            print(name, log[-1], flush=True)
+            if stopped:
                 break
-        if micro % ACCUM:                    # the epoch's last, partial accumulation
-            opt_step()
-            step += 1
-        log.append({"epoch": ep + 1, "step": step, "val_loss": val_loss()})
-        print(name, log[-1], flush=True)
-        if stopped:
-            break
     peft_dir = out / "peft"
     model.save_pretrained(peft_dir)
     train_s = round(time.time() - t0)
@@ -267,7 +295,7 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
                                         "text": tok.decode(g[enc["input_ids"].shape[1]:], skip_special_tokens=True)}) + "\n")
                 f.flush()
                 done += len(part)
-                if (b + 1) % 5 == 0 or b + 1 == nb:
+                if done // ANSWER_LOG_ROWS > (done - len(part)) // ANSWER_LOG_ROWS or b + 1 == nb:
                     print(f"{name} answers {'' if adapter_on else '(no adapter) '}batch {b + 1}/{nb} "
                           f"({done}/{len(rows)} rows) eta {_eta(b + 1, nb, ta)}", flush=True)
                     heartbeat(out, phase="answer" if adapter_on else "answer_base", batch=b + 1, batches=nb)

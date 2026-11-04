@@ -28,7 +28,8 @@ To run the next round, add the previous version's output as an input and run it 
 ### V6 (code pack only, Nov 4)
 
 - Each student job's progress shows in the notebook output, prefixed `[job]`: step, loss and ETA every 50 steps, and answer batches done/total.
-- Every round answers and grades the FULL test set (no sampling).
+- Every round answers and grades the FULL test set (no sampling), in fp16, 8 at a time, with a progress line every 400 rows.
+- A trained adapter in an attached notebook output (`students/<job>/peft`) is reused, so a crash after training never costs the training again. Set `RZ_RETRAIN=1` to retrain.
 - The frozen base runs in fp16; only the LoRA weights are fp32.
 - Each job writes `heartbeat.json`. There is an overall budget, `RZ_STUDENT_BUDGET_S` (default 4.5 h), so the run always ends with partial results and a grade.
 
