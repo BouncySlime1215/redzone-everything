@@ -74,6 +74,43 @@ listed under it; a marked night-lab test counts even when the behaviour behind i
 4. **"I missed that"** records a catch-up reel request for the next dead window (3-min rule); reels stay OFF.
 (Button states are already merged as #96.)
 
+## Addendum: Nick's promotion bar and cut rules (3:15 PM ET), built into this cycle
+**Promotion bar (strict B).** A candidate flag turns ON in the next RC only if, on **locked** nights:
+- (a) mid-play **entries** = 0, a hard PASS;
+- (b) NBA and NHL crunch live PASSES and is ≥ live. The NHL crunch-in-replay regression (89 → 76) blocks
+  until `replay.crunch_block` lands;
+- (c) every your-team gate PASSES;
+- (d) every other line is ≥ live. Equal within the bootstrap CI counts as equal.
+
+**Cut rules:**
+1. **Never JOIN mid-play.** The entry rule is unchanged and absolute.
+2. **Leaving mid-play is OK at low leverage**: right after a score, in transition, in Q1-Q3, or in a
+   non-close game. Never leave a high-leverage moment. The North Star line "mid-play cuts + entries"
+   splits into **`mid_play_entries`** (target 0) and **`high_leverage_leaves`** (target 0); low-leverage
+   leaves are reported as info.
+3. **Down the stretch is sticky.** When a game is close and late (e.g. NBA within ~6 points with under
+   ~6 min left in Q4, going back and forth), don't leave unless a higher-priority crunch needs the screen.
+   A **learned leverage score** (win-prob swing, margin, time left, lead changes), self-taught from the
+   oracle, decides sticky vs leavable. Rules only set the floors.
+4. League order is unchanged.
+5. **MLB:** mostly dead air, so the AI detects the key moments (RISP late and close, no-hitters, walk-off
+   spots) and jumps in only for those.
+6. **Multi-game conflicts** are handled by planning 5-10 min ahead across all games with the scenario tree
+   (roadmap TREE-6, cycle 06+).
+
+**Owners and re-ranking:**
+- **Lane ②, now ranked:** (1) the seek stack; (2) `replay.crunch_block`, the promotion blocker; (3) **rules 2
+  and 3**: split the North Star line (backtest fields `mid_play_entries`, `leaves_high_lev`, `leaves_low_lev`,
+  plus the northstar.py rows), the learned leverage score (oracle-labelled, forward CV by whole nights,
+  locked untouched), and sticky down-the-stretch. Bar: entries 0 and high-leverage leaves 0 on dev and
+  locked; NBA/NHL crunch live ≥ live; switches allowed by low-leverage leaves show up as big live and
+  % of oracle gains. (4) the MediaSession anchor; (5) #140; (6) NHL whistle detection.
+- **Lane ①, new item 2:** an **MLB key-moment head** (Reflex) trained on the factory's MLB shards with
+  objective labels (leverage index or win-prob swing, RISP late and close, no-hit bids, walk-off spots).
+  Bar: recall of key moments ≥ 95% at a dead-air cost no worse than today, on locked MLB nights. The
+  oracle self-play eval moves to item 3.
+- **Integrator:** log the decision in decisions.md; grade cycle 05 promotions with release_gate on bar (B).
+
 ## Outside research, one focused lookup per lane (Start Planner, 20:05 UTC)
 - **① DAgger, not plain behavior cloning.** Our oracle is a DP over the archived night, so it can label
   *any* state, including the off-oracle states our own policy drifts into. Train the possession policy
