@@ -34,6 +34,11 @@ polling:
   idle_s: 300              # poll every N seconds when nothing is live
   nba_pbp_s: 3             # NBA liveData play-by-play per live NBA game (sources.nba_primary / nba_shadow)
   nhl_pbp_s: 3             # NHL api-web play-by-play per live NHL game (sources.nhl_primary); 8 s when off
+  burst:                   # [sync 5] the on-screen game + its top challenger, only while a stoppage is likely
+    enabled: false         # (break forecast p >= break_p) or it's tense: summary + league pbp every every_s
+    every_s: 1.5           # floor 1 s; the poll loop runs at this rate while any burst game exists
+    break_p: 0.5
+    max_games: 2
 
 sync:
   probe:
@@ -155,7 +160,16 @@ brain:                     # learned models (redzone/scoring/brain.py, trained b
   v3_entry_cap: true            # ...never later than the measured table median (it can only shorten a stop)
   hot_points: 0            # moment points at game flow 100 (minus at 0; 50 = a median moment adds nothing)
   key_points: 6            # moment points when a key moment in the next few minutes is a sure thing
-  break_weight: 0.5        # how much the brain's break odds count against the hand-written break rules
+  break_weight: 0.5        # log-odds weight of the brain's break odds where the rules also see a break coming,
+                           # for leagues without a fitted break_blend (where the rules see nothing, the brain alone)
+  # Fitted log-odds blend where the rules see a break coming: logit p = a + b*logit(brain) + c*logit(rules)
+  # (scripts/eval_break_blend.py: forward folds on archive nights that are neither locked nor brain-training,
+  # Nov 4 2026). Held-out ECE, 50/50 -> fixed log-odds 0.5 -> this: NFL .169 -> .063 -> .054,
+  # NBA .126 -> .024 -> .023, NHL .144 -> .095 -> .027.
+  break_blend:
+    nfl: {a: 1.002, b: 0.3282, c: 0.9161}
+    nba: {a: 0.8576, b: 0.6289, c: 1.1204}
+    nhl: {a: 0.2209, b: 0.9402, c: 0.0351}
   hot_reason_min: 85       # game flow at least this hot shows up in the reason line
   # Per league (tuned on scripts/eval.py + eval_sports.py, Nov 3 2026): NFL's hand-tuned crunch logic
   # did best untouched (the brain only shows its numbers and helps the break forecast there).
@@ -198,8 +212,11 @@ decider:
     crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
-  switch_cost: {youtubetv: 3, prime: 8, espn: 7, hdmi_flip: 1}   # seconds to the new picture; replaced by
-                           # measured times as you use it (see switch_speed)
+  # Seconds to the new picture, MEASURED (the one source of truth; contracts/switching.ConfigSwitchPaths):
+  # tunes = the Mac's LatencyBook medians (switch_speed.learn; pinned in eval-data-v1's eval_config.yaml);
+  # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.98 s) + the 1 s settle.
+  # Replaced by your own measured times as you use it (see switch_speed).
+  switch_cost: {youtubetv: 5.5, prime: 27, espn: 7.5, hdmi_flip: 3}
   return_tolerance: 5      # go back to the previous game if it's within this many points
   break_destination_min: 25   # anything at least this good beats watching a commercial
   chase_max_deficit: 15
@@ -309,6 +326,7 @@ hardening:                 # error handling (PLATFORM). Each switch is off until
   sticks: false            # a player "buffering" 20 s+ is stalled: resume the visible stick, reload the standby
   feeds: false             # a live game whose ESPN polling went dark takes FastCast pushes until polling is back
   mac: false               # after the Mac sleeps or changes network: re-check network, reconnect sticks, resync the TV
+  watchdog: false          # the watchdog may ask the app for narrow fixes (POST /api/agent/fix); off: it only tells you
 
 two_stick:
   cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,
@@ -427,3 +445,5 @@ noggin:                    # docs/noggin.md
   priority:
     enabled: false         # pick the best game by the Noggin Priority order (L1 hard rules, then score). OFF until measured
     banned_apps: [peacock]
+  timing:
+    leagues: []            # Noggin Timing v1: calibrated dead-window bounds in place of cuts.FLOOR_S / MEDIAN_S

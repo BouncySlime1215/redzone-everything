@@ -293,3 +293,28 @@ exposed through DelayBook for the Noggin.
 - **Drift alarm.** `SyncBook.alarms` flags "measured" when the delay moved more than 5 s since it synced (a
   restart keeps the plan, so a jump counts), and "predicted" when q_scale ≥ 9. Alarms are logged once per
   5 min. `sync.drift_alarm.resync` re-tunes the hidden standby when no switch is pending (off by default).
+## Sims score the feed actually in use (planner 2:45 AM item 3, Nov 4)
+
+`--real-lag` used to draw every league's feed lag from ESPN's summary profile, even when the config decides
+NHL from the api-web play-by-play (#58). Now `timing.sources_in_use(cfg)` picks the profile per league:
+`sources.nhl_primary` → `sources.nhl_wsc.nhl` in `feed_lag_profile.json`, `sources.nba_primary` → `nba_cdn`.
+A source with no profile keeps ESPN's.
+
+- **nhl_wsc is derived, not measured row by row.** Nick's live check gave p50 16.7 s (ESPN 43.1 s). Each
+  quantile is the larger of ESPN's NHL dead-ball quantile scaled to a 16.7 s median and the same quantile
+  shifted to it (floor 2 s), giving p0 8.0, p50 16.7, p90 37.8 and p95 57.3 s. The tail is kept as late as
+  ESPN's on purpose. `scripts/timing_report.py --write-profile` replaces it with measured rows once the
+  `nhl` source has a live night in the recordings.
+- **nba_cdn has no profile yet.** The liveData pbp's own lag hasn't been measured, so NBA stays on ESPN's.
+
+NHL dev split (`fit`, 10 nights, `--real-lag`), ESPN profile vs `--set sources.nhl_primary=true`:
+
+| seed | entries mid-play | mid-play cuts | plays missed on entry | dead air % | big seen % | crunch live % |
+|---|---|---|---|---|---|---|
+| 0 | 8 → 3 | 0 → 1 | 1 → 2 | 22.7 → 22.5 | 95.3 → 99.3 | 79.7 → 84.3 |
+| 1 | 9 → 1 | 1 → 0 | 1 → 1 | 23.3 → 22.5 | 98.3 → 99.5 | 81.2 → 82.8 |
+| 2 | 9 → 0 | 1 → 0 | 2 → 0 | 21.7 → 22.0 | 96.0 → 99.5 | 84.5 → 85.8 |
+| total | 26 → 4 | 2 → 1 | 4 → 3 | | | |
+
+The single mid-play cut moves from seed to seed and shows up with either feed (base: seeds 1 and 2;
+wsc: seed 0, night 20261024).

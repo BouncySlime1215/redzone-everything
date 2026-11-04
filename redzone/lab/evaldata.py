@@ -141,3 +141,16 @@ def stamp(root: Path = ROOT) -> str:
     if ok:
         return json.loads((root / "data" / PIN_NAME).read_text())["tag"]
     return f"UNPINNED: {problems[0]}" + (f" (+{len(problems) - 1} more)" if len(problems) > 1 else "")
+
+
+def use_shipped_switch_costs(cfg) -> dict:
+    """[switch costs] Scorecards price switches from the one source of truth (default_config.yaml,
+    contracts/switching.ConfigSwitchPaths), not from whatever the pinned eval_config.yaml snapshot
+    carried. Returns the costs now in cfg."""
+    from redzone.config import Config
+    from redzone.contracts.switching import ConfigSwitchPaths
+    shipped = Config.__new__(Config)
+    shipped.data = cfg.defaults
+    costs = ConfigSwitchPaths(shipped).costs()
+    cfg.data.setdefault("decider", {})["switch_cost"] = dict(costs)
+    return costs

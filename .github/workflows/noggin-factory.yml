@@ -1,0 +1,35 @@
+# Noggin data factory + Timing v1 training on a free GitHub runner (never the Mac, never GPU quota).
+# Builds the labeled dead-window table from public play-by-play, trains the hazard, grades it on the
+# factory's own unseen nights, and uploads the table, the model and the report as artifacts.
+# Nothing is committed: a model reaches the repo only through a reviewed PR.
+name: noggin-factory
+on:
+  push:
+    branches: [integration/next]
+    paths: ["redzone/noggin/factory.py", "redzone/noggin/timing*.py", "scripts/noggin_factory.py",
+            "scripts/train_noggin_timing.py", ".github/workflows/noggin-factory.yml"]
+  workflow_dispatch:
+    inputs:
+      league: {default: nba}
+      seasons: {default: "2013-2026"}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt pyarrow lightgbm requests
+      - name: factory
+        run: python scripts/noggin_factory.py ${{ inputs.league || 'nba' }} --seasons ${{ inputs.seasons || '2013-2026' }} --raw /tmp/raw --out data/noggin
+      - name: train + grade
+        run: python scripts/train_noggin_timing.py ${{ inputs.league || 'nba' }} --data data/noggin --out data/noggin/models
+      - uses: actions/upload-artifact@v4
+        with:
+          name: noggin-${{ inputs.league || 'nba' }}
+          path: |
+            data/noggin/*.json
+            data/noggin/*.parquet
+            data/noggin/models/*.npz
+          retention-days: 14

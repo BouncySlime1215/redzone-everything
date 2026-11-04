@@ -405,9 +405,10 @@ def test_switch_costs_follow_the_path_we_would_use(two):
     costs = c.switch_costs()
     # flip 0.5 + 1.0 TV settle = 1.5; a tune is needed (1+1)/(4+2) = 1/3 of the time: 1.5 + 6/3
     assert costs["hdmi_flip"] == 1.5 and costs["youtubetv"] == 3.5
-    assert costs["prime"] == 1.5 + 0.5 * 8              # nothing measured: half of the default guess
+    prime = c._default_cost("prime")                    # the shipped (measured) default
+    assert costs["prime"] == 1.5 + 0.5 * prime          # nothing measured here: half of the default
     c.two_stick_ok = False                              # one stick: every switch is a full tune
-    assert c.switch_costs()["youtubetv"] == 6.0 and c.switch_costs()["prime"] == 8.0
+    assert c.switch_costs()["youtubetv"] == 6.0 and c.switch_costs()["prime"] == prime
 
 
 async def test_cec_that_failed_goes_straight_to_the_tv_next_time(two, monkeypatch):
@@ -524,16 +525,16 @@ def test_engine_hands_measured_times_to_the_decider_through_settings(eng):
     e, _ = eng
     e.control.two_stick_ok = False                      # one stick: costs are plain tune times
     for _ in range(5):
-        e.control.latency.record("youtubetv", 6.2)
+        e.control.latency.record("youtubetv", 7.2)      # clear of the shipped 5.5 (a move is >= 10 %)
         e.control.latency.record("prime", 11.0)
     e._sync_switch_costs()
-    assert e.cfg.get("decider.switch_cost.youtubetv") == 6.0 and e.cfg.get("decider.switch_cost.prime") == 11.0
-    assert e.decider._cost("youtubetv:espn") == 6.0     # the decider plans with it now
+    assert e.cfg.get("decider.switch_cost.youtubetv") == 7.0 and e.cfg.get("decider.switch_cost.prime") == 11.0
+    assert e.decider._cost("youtubetv:espn") == 7.0     # the decider plans with it now
     assert not list((e.cfg.history_dir).glob("*.yaml"))[1:]   # learned values stay out of Undo
     for _ in range(15):
         e.control.latency.record("youtubetv", 9.0)
     e._sync_switch_costs()
-    assert e.cfg.get("decider.switch_cost.youtubetv") == 6.0   # at most every few minutes...
+    assert e.cfg.get("decider.switch_cost.youtubetv") == 7.0   # at most every few minutes...
     for hit in (True, True, True, True):
         e.control.latency.record("flip", 0.5)
         e.control.latency.note_preloaded("youtubetv", hit)

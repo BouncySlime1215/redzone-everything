@@ -32,8 +32,15 @@ def test_perfect_slice_passes_where_evidence_allows():
     assert r["mid_play"]["status"] == ns.PASS and r["mid_play"]["value"] == 0.0   # 1080 landings, 27 nights
     assert r["landings_dead"]["status"] == ns.PASS
     assert r["big_live_nba"]["status"] == ns.PASS
-    # live-or-replayed is an upper bound (replay age not graded): never PASS
+    # live-or-replayed without replay age graded is an upper bound: never PASS
     assert r["big_seen_10min"]["status"] == ns.PENDING
+    c = cards(9)
+    for lg in ns.LEAGUES:
+        for x in c[lg]["metrics"]["per_night"]:
+            x["big_seen_10m"] = x["big"]
+            x["my_big_seen_10m"] = x["my_big"] = 3
+    r2 = rows_by(ns.table(c))
+    assert r2["big_seen_10min"]["status"] == ns.PASS and r2["your_team_big"]["status"] == ns.PASS
     assert r["switch_p95"]["status"] == ns.PENDING        # only the 10 Nov 3 samples
     assert r["recovery"]["status"] == ns.PENDING          # no night run
     assert r["dead_air"]["status"] == ns.FAIL             # 10 % with a CI above 0
@@ -119,3 +126,11 @@ def test_priority_rows():
     assert r["your_team_crunch"]["status"] == ns.PASS
     assert r["league_order"]["status"] == ns.PENDING and r["right_game"]["status"] == ns.PENDING
     assert rows_by(ns.table(cards(9)))["crunch_live_nba"]["status"] == ns.PASS
+
+
+def test_sync_rows():
+    assert ns.settle_row(None)["status"] == ns.PENDING
+    reps = [{"seed": i, "settle_book": {"n": 20, "ok": 20}} for i in range(8)]
+    assert ns.settle_row(reps)["status"] == ns.PASS
+    assert ns.settle_row([{"seed": i, "settle_book": {"n": 20, "ok": 17}} for i in range(8)])["status"] == ns.FAIL
+    assert rows_by(ns.table(cards(9)))["delay_err_p95"]["status"] == ns.PENDING
