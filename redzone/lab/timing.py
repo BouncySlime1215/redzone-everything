@@ -224,6 +224,18 @@ def load_profile(path: Path | None = None) -> dict:
         return {}
 
 
+def sources_in_use(cfg) -> dict[str, str]:
+    """[sim lag in use] The feed each league really decides from under this config: the NHL api-web
+    play-by-play when sources.nhl_primary is on, the NBA liveData cdn when sources.nba_primary is on.
+    A league whose source has no profile yet keeps ESPN's (LagSampler drops it)."""
+    out = {}
+    if cfg.get("sources.nhl_primary", False):
+        out["nhl"] = "nhl_wsc"
+    if cfg.get("sources.nba_primary", False):
+        out["nba"] = "nba_cdn"
+    return out
+
+
 # Leagues the recorder hasn't seen enough of borrow a similar one's feed.
 PROFILE_FALLBACK = {"mlb": "nfl", "cfb": "nfl", "wnba": "nba", "cbb": "nba", "wcbb": "nba"}
 
@@ -232,14 +244,20 @@ class LagSampler:
     """Draws one play's detection lag for a league from the measured quantiles (inverse CDF,
     linear between quantiles). Seeded by the caller's rng, so scorecards stay reproducible."""
 
-    def __init__(self, profile: dict | None = None):
+    def __init__(self, profile: dict | None = None, use: dict[str, str] | None = None):
         self.profile = profile if profile is not None else load_profile()
+        # [sim lag in use] league -> source whose profile replaces ESPN's (sources_in_use(cfg)).
+        self.use = {k: v for k, v in (use or {}).items()
+                    if ((self.profile.get("sources") or {}).get(v) or {}).get(k)}
 
     def has(self, league: str) -> bool:
         return self._q(league) is not None
 
     def _q(self, league: str) -> list[float] | None:
         lg = (league or "").lower()
+        src = self.use.get(lg)
+        if src:
+            return self.profile["sources"][src][lg]["q"]
         leagues = self.profile.get("leagues") or {}
         row = leagues.get(lg) or leagues.get(PROFILE_FALLBACK.get(lg, ""))
         return row["q"] if row else None

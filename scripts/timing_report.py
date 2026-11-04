@@ -89,6 +89,14 @@ def main(argv=None) -> int:
         a.json.write_text(json.dumps(out, indent=1))
     if a.write_profile:
         prof = timing.build_profile(rows, days)
+        # [sim lag in use] the faster feeds' own profiles: measured once the recorder has their rows,
+        # else the derived ones already in the file are kept (see "note" there).
+        old = timing.load_profile().get("sources") or {}
+        prof["sources"] = dict(old)
+        for name, (src, lg) in {"nhl_wsc": ("nhl", "nhl"), "nba_cdn": ("nba_cdn", "nba")}.items():
+            got = timing.build_profile(rows, days, source=src)["leagues"].get(lg)
+            if got:
+                prof["sources"][name] = {lg: got}
         timing.PROFILE_PATH.write_text(json.dumps(prof, indent=1) + "\n")
         print(f"wrote {timing.PROFILE_PATH.relative_to(ROOT)} ({', '.join(prof['leagues'])})")
     return 0
