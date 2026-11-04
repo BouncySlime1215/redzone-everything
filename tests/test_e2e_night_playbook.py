@@ -41,7 +41,8 @@ def _check(night, name):
 def test_playbook_faults_never_cause_a_mid_play_cut(pb_night):
     c = _check(pb_night, "playbook_faults_no_midplay")
     assert c["ok"], json.dumps(c["detail"], indent=1)
-    assert {x["fault"] for x in c["detail"]} == {"feed_frozen", "rate_limit", "slow_poll", "wifi_degrade", "buffering"}
+    # the lane-4 faults are graded; #99 added more playbook faults to the same night (STK/TV), also graded
+    assert {"feed_frozen", "rate_limit", "slow_poll", "wifi_degrade", "buffering"} <= {x["fault"] for x in c["detail"]}
 
 
 def test_playbook_night_does_not_crash_or_stick(pb_night):
