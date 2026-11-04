@@ -49,6 +49,7 @@ sync:
                            # off until the probe's logged lines show YTTV's real ad strings
     log_ad_start: ""       # regex override for an ad-start log line ("" = sync_probe.LOG_AD_START)
     log_ad_end: ""         # ... and an ad-end line ("" = sync_probe.LOG_AD_END)
+    log_edge_sd_s: 1.0     # an ad edge read from the player's own log line: the player logs it as it renders it
   break_anchor:            # [auto-anchors] ad break on screen <-> the feed's dead ball -> a delay sample
     enabled: false         # logged always (recordings/<day>/sync_anchors.jsonl); fed to the filter only when on.
     start_bias_s: 15       # whistle -> ad on screen, a PRIOR until the Wednesday probe data refits it
@@ -241,6 +242,7 @@ decider:
   switch_cost: {youtubetv: 5.5, prime: 27, espn: 7.5, hdmi_flip: 3}
   leave:
     dead_windows: []       # [whistle detection] also leave on the play-by-play's dead windows in these leagues
+    tune_s: 6              # ...and the window must outlast this tune margin (a visit can't come back inside it)
   return_tolerance: 5      # go back to the previous game if it's within this many points
   break_destination_min: 25   # anything at least this good beats watching a commercial
   chase_max_deficit: 15
@@ -469,6 +471,11 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   seek_wake_presses: 1  # the first press of each batch does nothing (live lab, Nov 4): one extra is sent
   seek_stall_min_s: 2      # each seek stalls the picture 2-4 s (live lab, Nov 4), which lands it that much
   seek_stall_max_s: 4      # further behind
+  seek_press_s: 0.25       # [seek model] the stick takes seek presses at about this pace
+  pause_keys_s: 0.5        # ...then the pause / play keys
+  pause_err_s: 0.25        # a pause cue's landing error, calibrated (the lab's pause hold: well under 0.5 s)
+  pause_cue_grain_s: 0.5   # a pause cue's landing grain (the lab's pause hold: +1.66 s raw, under 0.5 s calibrated)
+  hidden_seek_keys_s: 1.5  # a hidden-stick seek's presses + PLAY before the flip (the stall comes on top)
   redzone_way: false       # catch-up the RedZone way (Nick, Nov 4; OFF until its gate passes): lull, "meanwhile",
                            # collision and end-of-night montage triggers (redzone/decider/decider.py)
   catchup_s: 600           # each missed big play replayed within this; its value halves every catchup_s

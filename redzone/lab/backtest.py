@@ -461,13 +461,13 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             switches[-1].jitter = j
         if (flip_dist or pretune_dist) and len(switches) > n_sw and switches[-1].kind != "replay":
             # [live lab] the TV flip's measured spread around its median (CEC off, 30 flips, Nov 4)
-            from redzone.contracts.switching import FLIP_PRIOR, INPUT_SETTLE_S, PRETUNE_PRIOR_S, sample_prior
+            from redzone.contracts.switching import FLIP_PRIOR, PRETUNE_PRIOR_S, sample_prior
             flip = sample_prior(FLIP_PRIOR, flip_rng)
             if pretune_dist:
                 # every switch a cold pre-tune on the hidden stick, the two sticks taking turns
                 # (pessimistic: a hot standby is a flip alone): pre-tune + flip + HDMI settle vs tune_s
                 stick = list(PRETUNE_PRIOR_S.values())[len(switches) % len(PRETUNE_PRIOR_S)]
-                switches[-1].arrive_dt = sample_prior(stick, flip_rng) + flip + INPUT_SETTLE_S - tune_s
+                switches[-1].arrive_dt = sample_prior(stick, flip_rng) + flip + float(cfg.get("two_stick.input_settle_s")) - tune_s
             else:
                 switches[-1].arrive_dt = flip - FLIP_PRIOR["median"]
         if real_seek and len(switches) > n_sw and switches[-1].kind not in ("replay", "resume", "skip"):
@@ -595,9 +595,6 @@ def _anchor_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict
             delays.anchor(target, ts - w - bias, "break", ts, (1.0 + bias_sd * bias_sd) ** 0.5)
 
 
-POSITION_ORIGIN_S = 1.7e9     # [yttv position] a channel's stream origin in the sim (any constant works)
-
-
 def _position_tick(sync, switches: list, tgt_of: dict, lag_true, delays: DelayBook, tune_s: float,
                    now: float) -> None:
     """[yttv position] The stick on screen reports its playback position each tick (YouTube TV on the
@@ -610,7 +607,7 @@ def _position_tick(sync, switches: list, tgt_of: dict, lag_true, delays: DelayBo
     if not str(target).startswith("youtubetv"):
         return
     true = lag_of(lag_true, last.to) + delays.get(target).behind + last.jitter
-    sync.position(target, now - POSITION_ORIGIN_S - true, t=now)
+    sync.position(target, now - true, t=now)   # stream origin 0: any constant works
 
 
 def _honesty_tick(delays: DelayBook, switches: list, targets, lag_true, tune_s: float, now: float,
@@ -637,12 +634,6 @@ def honesty_summary(rows: list[tuple[float, float]]) -> dict:
             "err_p95": round(err[min(n - 1, int(0.95 * n))], 2)}
 
 
-# [seek model] a pause cue on the hidden stick: seek presses at ~this pace, then the pause/play keys
-SEEK_PRESS_S = 0.25
-PAUSE_KEYS_S = 0.5
-PAUSE_ERR_S = 0.25      # the lab's pause hold, calibrated: error well under 0.5 s
-
-
 def seek_cue(sw: "SwitchLog", decision, cfg, rng) -> None:
     """[seek model] Re-land an entry rewind the way the stick really does it (live lab, Nov 4).
 
@@ -657,12 +648,13 @@ def seek_cue(sw: "SwitchLog", decision, cfg, rng) -> None:
     if r <= 0:
         return
     t = YTTV_SEEK
+    press, keys, perr = (float(cfg.get(k)) for k in ("replay.seek_press_s", "replay.pause_keys_s", "replay.pause_err_s"))
     stall = rng.uniform(t.stall_lo, t.stall_hi)
     if getattr(decision, "cue", "") == "pause":
-        eff = max(1, math.ceil((r + PAUSE_ERR_S * 2 - t.stall_lo) / t.step - 1e-9))
+        eff = max(1, math.ceil((r + perr * 2 - t.stall_lo) / t.step - 1e-9))
         over = eff * t.step + stall - r                       # played forward up to the dead ball
-        cue_t = SEEK_PRESS_S * (eff + t.swallowed) + stall + over + PAUSE_KEYS_S
-        err = max(-2 * PAUSE_ERR_S, min(2 * PAUSE_ERR_S, rng.gauss(0.0, PAUSE_ERR_S)))
+        cue_t = press * (eff + t.swallowed) + stall + over + keys
+        err = max(-2 * perr, min(2 * perr, rng.gauss(0.0, perr)))
         # paused content: the flip's own spread and the fresh tune's landing don't move it
         sw.offset = r + cue_t + sw.arrive_dt + err
         sw.jitter = 0.0
@@ -672,13 +664,13 @@ def seek_cue(sw: "SwitchLog", decision, cfg, rng) -> None:
     sent = seek_model(cfg).sent(r)
     if getattr(decision, "cue", "") == "hidden":
         # seek on the hidden stick, then flip: no live glimpse, the flip waits for presses + stall
-        cue_t = SEEK_PRESS_S * sent + PAUSE_KEYS_S + stall
+        cue_t = press * sent + keys + stall
         sw.offset = sw.jitter + t.landed(sent, stall)
         sw.arrive_dt += cue_t
         sw.leave_dt = cue_t
         return
     sw.offset = sw.jitter + t.landed(sent, stall)
-    sw.flash = SEEK_PRESS_S * sent + PAUSE_KEYS_S if sent else 0.0
+    sw.flash = press * sent + keys if sent else 0.0
 
 
 def _record(decision, before: str | None, t: float, switches: list[SwitchLog],

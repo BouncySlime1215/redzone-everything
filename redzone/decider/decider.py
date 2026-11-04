@@ -105,9 +105,6 @@ START_RETRY_MAX_S = 60.0
 # switch you made by hand goes straight in.
 ENTRY_EXEMPT = {"user", "resume", "skip"}   # resume/skip land on a planned frame of the same tune
 PICK_KEEPS = {"user", "crunch", "home", "must_see", "live"}   # [noggin PICK] app-only switch kinds
-LEAVE_TUNE_S = 6.0
-HIDDEN_SEEK_KEYS_S = 1.5  # [seek model] a hidden-stick seek's presses + PLAY before the flip (the stall comes on top)
-PAUSE_CUE_GRAIN_S = 0.5   # [seek model] a pause cue's landing grain (the lab's pause hold: +1.66 s raw, under 0.5 s calibrated)        # leave_gate's own tune margin: a visit can't come back inside the window
 ENTRY_SLACK_S = 2.0       # the tune's own timing doubt, on top of the delay's 2 sigma
 # Once the delay's doubt grows (sigma drifts up between calibrations) no landing fits a 30 s huddle
 # with the full margin: then centre it in the dead window with this much doubt. A miss here joins a
@@ -807,11 +804,11 @@ class Decider:
         if cue == "hidden" and can:
             # [seek model] seek on the hidden stick, then flip: the stall passes before the flip and
             # puts the stream just as far behind, so the picture's content doesn't depend on it (no
-            # stall doubt); the flip waits for the presses (HIDDEN_SEEK_KEYS_S) and the stall (mid).
-            plan = plan_entry(tl.dead, base_mu, margin, now, cost + HIDDEN_SEEK_KEYS_S, can_rewind=can,
+            # stall doubt); the flip waits for the presses (replay.hidden_seek_keys_s) and the stall (mid).
+            plan = plan_entry(tl.dead, base_mu, margin, now, cost + float(self.cfg.get("replay.hidden_seek_keys_s")), can_rewind=can,
                               step=sk.step, max_back=float(c.get("decider.entry.max_rewind_s", ENTRY_MAX_REWIND_S)),
                               relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
-                              cost_lo=lo_cost + HIDDEN_SEEK_KEYS_S,
+                              cost_lo=lo_cost + float(self.cfg.get("replay.hidden_seek_keys_s")),
                               urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
                               lag=float(c.get("decider.entry.landing_lag_s", 0.0)), possession=possession)
             if plan.ok and plan.rewind_s:
@@ -819,7 +816,7 @@ class Decider:
             return plan
         return plan_entry(tl.dead, base_mu, margin, now, cost, can_rewind=can,
                           # [seek model] a pause cue lands where it pauses (half-second grain, no stall)
-                          step=PAUSE_CUE_GRAIN_S if pause else sk.step,
+                          step=float(self.cfg.get("replay.pause_cue_grain_s")) if pause else sk.step,
                           stall=(0.0, 0.0) if pause else (sk.stall_lo, sk.stall_hi),
                           max_back=float(c.get("decider.entry.max_rewind_s", ENTRY_MAX_REWIND_S)),
                           relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
@@ -2033,7 +2030,7 @@ class Decider:
             # poll) is still a dead ball. Safe only if the whole doubt band on screen is inside it.
             m = 2 * d.current_sigma(now)
             until = tl.dead.dead_until(now - d.mu - m)
-            if until is not None and until >= now - d.mu + m + LEAVE_TUNE_S:
+            if until is not None and until >= now - d.mu + m + float(self.cfg.get("decider.leave.tune_s")):
                 return Gate(True, "dead ball on screen (play-by-play)")
         return g
 

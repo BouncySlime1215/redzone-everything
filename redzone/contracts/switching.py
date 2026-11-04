@@ -51,12 +51,7 @@ def deadline(paths: tuple[SwitchPath, ...]) -> float:
 TUNE_APPS = ("youtubetv", "prime", "espn")
 # [live lab] SmartThings input flips on the user's TV, Nov 4 2026 (docs/livelab-2026-11-04.md on the Mac):
 # command to confirmed readback, 64/64 confirmed, 0 retries. p50 1.89, p95 2.18, max 2.58 s.
-LIVELAB_FLIPS_S = (1.6, 1.66, 1.71, 1.71, 1.76, 1.77, 1.82, 1.83, 1.83, 1.83, 1.84, 1.84, 1.85, 1.85, 1.85,
-                   1.86, 1.86, 1.86, 1.86, 1.87, 1.87, 1.87, 1.87, 1.87, 1.88, 1.88, 1.88, 1.88, 1.88, 1.88,
-                   1.88, 1.89, 1.89, 1.9, 1.9, 1.9, 1.9, 1.9, 1.91, 1.91, 1.92, 1.92, 1.93, 1.93, 1.94, 1.95,
-                   1.95, 2.0, 2.0, 2.02, 2.02, 2.02, 2.02, 2.04, 2.04, 2.06, 2.08, 2.1, 2.12, 2.14, 2.18, 2.23,
-                   2.36, 2.58)
-FLIP_PRIOR_CEC_ON = {"median": 1.89, "p95": 2.18, "max": 2.58}   # the 64 flips above (CEC on)
+FLIP_PRIOR_CEC_ON = {"median": 1.89, "p95": 2.18, "max": 2.58}   # those 64 flips (CEC on)
 # [live lab, Nick Nov 4 11:35 AM] with HDMI-CEC off the stick we leave keeps PLAYING (83/83) and the
 # flip tightens: 30/30, p50 1.89 s, p95 1.98 s, max 2.02 s. The planner's prior.
 FLIP_PRIOR = {"median": 1.89, "p95": 1.98, "max": 2.02}
@@ -65,7 +60,6 @@ PRETUNE_PRIOR_S = {
     "AFTMA08C15": {"name": "Fire TV Stick 4K Plus", "median": 2.33, "p95": 3.06},
     "AFTKM": {"name": "Fire TV Stick 4K (2023)", "median": 3.74, "p95": 5.50},
 }
-INPUT_SETTLE_S = 1.0   # two_stick.input_settle_s default: the picture after the input change
 
 
 def sample_prior(prior: dict, rng) -> float:
