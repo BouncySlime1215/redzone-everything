@@ -345,7 +345,16 @@ function mockV2(path, b) {
       const t0 = Math.max(gs[i].crunch[0], gs[j].crunch[0]), t1 = Math.min(gs[i].crunch[1], gs[j].crunch[1]);
       if (t1 - t0 > 120) { const [w, l] = gs[j].yours && !gs[i].yours ? [gs[j], gs[i]] : [gs[i], gs[j]]; cl.push({ t0, t1, games: [w.game_id, l.game_id], on_tv: w.matchup, second: [l.matchup], why: w.yours && !l.yours ? "your team" : "league order" }); }
     }
-    return { enabled: true, now, games: gs, clashes: cl.sort((x, y) => x.t0 - y.t0).slice(0, 6), yours: gs.filter((g) => g.yours).length };
+    const clashes = cl.sort((x, y) => x.t0 - y.t0).slice(0, 6);
+    const first = clashes[0];
+    const alert = first ? { t0: now + 1260, t1: now + 2400, in_s: 1260, on_tv: first.on_tv, second: first.second, why: first.why, now: false } : null;
+    return { enabled: true, now, games: gs, clashes, yours: gs.filter((g) => g.yours).length, alert };
+  }
+  if (path === "/api/v2/watch") {
+    const why = ["Tied, 2:10 left in the 4th", "Red zone, 3rd & goal", "Power play, down one", "Blowout, starters sitting", "Commercial break"];
+    const games = (STATE.games || []).filter((g) => g.phase === "live" || g.state === "live").slice(0, 6).map((g, i) => ({ game_id: g.id, matchup: g.matchup,
+      league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, stakes_line: ["AFC 1-seed race, top-5 matchup", "Rivalry game", "", "Wild-card push"][i] || "", is_break: i === 4, source: "stub" }));
+    return { enabled: true, now: Date.now() / 1000, current: games[0] && games[0].game_id, games, source: games.length ? "stub" : null };
   }
   if (path.startsWith("/api/v2/trend")) {
     const L = [["mid_play", "Mid-play cuts per 100 landings", 0, -1, 2.4, 1.75], ["landings_dead", "Landings in dead time %", 98, 1, 96.1, 98.25],
@@ -386,6 +395,9 @@ function mockV2(path, b) {
       ...(i % 3 === 1 ? [{ ts: x.t0 + 260, game: oseg[i].game, matchup: oseg[i].matchup, kind: "goal", label: "", seen: false, on: x.matchup }] : [])]).filter((m) => m.ts < now);
     return { enabled: true, day, nights: [day, "2026-11-03", "2026-11-02"], segments: segs, events,
       oracle: { objective: "combined", segments: oseg, agree_pct: 71.4 }, markers,
+      plan_marks: segs.flatMap((x, i) => i % 3 === 0 ? [{ ts: x.t0 + 90, type: "catchup", kind: "replay", game: x.game, matchup: x.matchup, reason: "catch-up", plan: null, ok: true }]
+        : i % 3 === 2 ? [{ ts: x.t0 + 30, type: "interleave", kind: "break_visit", game: x.game, matchup: x.matchup, reason: "break", plan: "crunch-overlap", ok: true }] : []),
+      plan_counts: { catchup: 5, interleave: 4 },
       big: { plays: markers.length, seen: markers.filter((m) => m.seen).length, missed: markers.filter((m) => !m.seen).length },
       summary: { switches: segs.length, failed: 1, games: Object.keys(air).length, taps: { up: 2, down: 1, missed: 1 },
         on_air: Object.entries(air).map(([matchup, s]) => ({ matchup, s: Math.round(s) })).sort((a, b) => b.s - a.s), playbooks: pb } };

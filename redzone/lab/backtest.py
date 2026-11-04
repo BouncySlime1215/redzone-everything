@@ -27,9 +27,11 @@ from redzone.channels import REDZONE_TARGET, redzone_on
 from redzone.config import Config
 from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode
 from redzone.decider.screen import DelayBook
+from redzone.grading import Lags, SwitchLog, idx as _bisect, lag_of  # noqa: F401  [one brain] moved, step 3
 from redzone.models import REAL_BREAKS, League, Phase
 from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal
+from redzone.lab import leverage
 from redzone.sources import espn
 
 ET = ZoneInfo("America/New_York")
@@ -79,17 +81,6 @@ class Replay:
 
 
 @dataclass
-class SwitchLog:
-    t: float
-    frm: str | None
-    to: str
-    kind: str
-    reason: str
-    offset: float = 0.0   # [cut timing] the picture came up this far behind live (a rewind on entry)
-    jitter: float = 0.0   # [auto-anchors] of which: the tune's own unknown landing behind the live edge
-
-
-@dataclass
 class Report:
     switches: list[SwitchLog]
     mid_play_cuts: list[tuple[float, str]]
@@ -124,11 +115,13 @@ class Report:
     drive_plays_live: int = 0        # ...of those, watched live start to finish
     drive_plays_other_sport: int = 0  # ...of those, missed while another sport was on screen
     drive_plays_on_redzone: int = 0  # ...of those, aired while the RedZone channel was on (it may have shown them)
+    mid_play_cuts_high: list = field(default_factory=list)   # mid-play leaves at a high-leverage moment
 
     @property
     def summary(self) -> dict:
         return {
             "mid_play_cuts": len(self.mid_play_cuts),
+            "mid_play_cuts_high": len(self.mid_play_cuts_high),
             "big_plays_seen": f"{self.big_plays_caught}/{self.big_plays}"
                               f" ({100 * self.big_plays_caught / max(1, self.big_plays):.0f}%)",
             "big_plays_live": f"{self.big_plays_live}/{self.big_plays}"
@@ -188,19 +181,6 @@ class _Feed:
 
 
 
-class Lags(float):
-    """Real life -> your screen: one figure (every channel alike), with per-game overrides when the
-    channels run different delays (the per-channel delay scenario). Behaves as the plain float."""
-
-    def __new__(cls, default: float, per: dict[str, float] | None = None):
-        x = super().__new__(cls, default)
-        x.per = dict(per or {})
-        return x
-
-    def of(self, gid: str | None) -> float:
-        return self.per.get(gid or "", float(self))
-
-
 SCREEN_LAG_S = 43.0   # run()'s default real life -> screen (feed_lag 8 + delay 35)
 
 
@@ -225,11 +205,6 @@ def feed_lag_knobs(feed_lag: float | None, behind_live: float | None = None,
     if behind_live is None:
         return {"feed_lag": fl, "delay": SCREEN_LAG_S - fl}
     return {"feed_lag": fl, "delay": stream_delay + float(behind_live) - fl, "calibrate_targets": True}
-
-
-def lag_of(lag: float, gid: str | None) -> float:
-    """This game's real-life -> screen lag (the plain figure when channels don't differ)."""
-    return lag.of(gid) if isinstance(lag, Lags) else lag
 
 
 def channel_scenario(replays, targets, feed_lag: float, delay: float, spread: float, history: float,
@@ -751,6 +726,7 @@ def tuning_blackout_seconds(watching: list[tuple[float, str | None]], tune_s: fl
 def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t0, t1, replayed) -> Report:
     by_id = {r.gid: r for r in replays}
     cuts = []
+    cuts_high: list = []   # the mid-play leaves at a high-leverage moment (redzone/lab/leverage.py)
     prev_kind = None
     offs = offsets_of(switches) if len(switches) == len(watching) else None
     left_off = leave_offsets(switches)
@@ -768,6 +744,8 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
                 continue
             if w - play_len <= screen_t <= w:
                 cuts.append((s.t, f"{r.matchup}: {(p.get('text') or '')[:70]}"))
+                if leverage.high_leverage(r.league, p):
+                    cuts_high.append(cuts[-1])
                 break
 
     big = live = mine = mine_live = caught = missed_on_replay = seen10 = my_seen10 = crunch_on_replay = 0
@@ -850,6 +828,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             causes[cause] = causes.get(cause, 0.0) + 10
         t += 10
     rep = Report(switches, cuts, big, live, mine, mine_live, dead, watched, (t1 - t0) / 3600, missed)
+    rep.mid_play_cuts_high = cuts_high
     rep.dead_causes = causes
     rep.tuning_blackout_s = tuning_blackout_seconds(watching, tune_s, t0, t1)
     from redzone.lab import cutgrade
@@ -963,17 +942,6 @@ def _redzone_on_screen(replays: list[Replay], screen_t: float) -> bool:
     """Was RedZone on the air at this (screen) time? Same rule the decider is fed."""
     states = [r.state_at(i) for r in replays if (i := _bisect(r.wall, screen_t)) >= 0]
     return redzone_on(g for g in states if g)
-
-
-def _bisect(wall: list[float], t: float) -> int:
-    lo, hi = 0, len(wall)
-    while lo < hi:
-        mid = (lo + hi) // 2
-        if wall[mid] <= t:
-            lo = mid + 1
-        else:
-            hi = mid
-    return lo - 1
 
 
 class _Clock:

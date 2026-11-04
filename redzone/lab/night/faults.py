@@ -291,12 +291,20 @@ class StickPaused(Fault):
 class BufferLost(Fault):
     """STK-06: the hidden stick's held stream loses its time-shift buffer. mode "jump" (default): it
     jumps to the live edge (a resume-to-live, a seek), its position leaping ahead by what it was behind;
-    mode "drift": it falls info.seconds (default 6) further behind (a long stall nobody booked)."""
+    mode "drift": it falls info.seconds (default 6) further behind (a long stall nobody booked).
+    info.wait_s: it only hits a stream that is playing AND held behind live, so it fires at the first
+    such moment within wait_s of `at` (a fixed time can land inside a hold or a rebuild, lane 2 Nov 4)."""
     def start(self, world):
         from redzone.lab.night import house as h
-        self.host = _pick(world, self.host or "hidden")
-        d = world.house.sticks[self.host]
+        host = _pick(world, self.host or "hidden")
+        d = world.house.sticks[host]
         a = d.apps.get(d.fg)
+        held = a is not None and a.screen == "player" and a.state == h.PLAYING and a.behind > 0
+        if self.info.get("wait_s") and not held:
+            self.info["retry"] = True   # run.py tries again a moment later, until at + wait_s
+            return
+        self.info.pop("retry", None)
+        self.host = host
         if a is not None and a.screen == "player" and a.state == h.PLAYING:
             mode = self.info.get("mode", "jump")
             pos = d._now_pos(a)

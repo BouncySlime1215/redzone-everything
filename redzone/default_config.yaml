@@ -91,6 +91,16 @@ score:
     national_tv: 0.03
     min: 0.8
     max: 1.2
+  postseason:              # redzone/scoring/postseason.py: series state, round, ranked matchups (idea: ArenaSwap)
+    enabled: false         # OFF until scored on playoff nights; the hook adds at most `cap` to the stakes multiplier
+    base: 0.02             # any postseason game
+    elimination: 0.05      # a loss ends someone's season
+    decider: 0.05          # winner takes it (Game 7, a one-game final)
+    round_step: 0.02       # round bonus = max_round_bonus - round_step * rounds left
+    max_round_bonus: 0.08  # the title game / series
+    ranked_both: 0.03      # college: both teams in the top 25
+    ranked_top10_both: 0.02
+    cap: 0.15
   garbage:                 # decided games stop competing for the TV (your team's too); bets/fantasy still count
     moment_mult: 0.12
     comeback_boost: 12     # when a blowout gets close again
@@ -244,6 +254,30 @@ decider:
     shortest_break_s:      # ~10th pct, stoppage -> next scrimmage play logged, late Q4/OT, 2025 games
       {timeout: 30, injury: 27, review: 80, score_break: 110, two_minute_warning: 150, end_period: 180}
 
+crunch:                    # [one brain, step 2] ONE crunch table (redzone/crunch.py), read by the scorer, standby,
+                           # the demo and the grading. period / clock_s (left, at or under; null = whole period on) / margin /
+                           # ot (crunch from this period on) / ot_close (OT still needs the margin). Values as shipped Nov 4.
+  run_up:                  # crunch_time: up a little before the graded window, to arrive at a stoppage
+    nfl: {period: 4, clock_s: 120, margin: 8, ot: 5}
+    nba: {period: 4, clock_s: 180, margin: 7, ot: 5}
+    nhl: {period: 3, clock_s: 180, margin: 1, ot: 4}
+    mlb: {period: 8, clock_s: null, margin: 2, ot: 10}
+  window:                  # crunch_window: the graded window the app aims at (NHL from 2:00)
+    nfl: {period: 4, clock_s: 120, margin: 8, ot: 5}
+    nba: {period: 4, clock_s: 180, margin: 7, ot: 5}
+    nhl: {period: 3, clock_s: 120, margin: 1, ot: 4}
+    mlb: {period: 8, clock_s: null, margin: 2, ot: 10}
+  graded:                  # the lab scorecard's crunch plays (sportsgrade.is_crunch, demo crunch counts)
+    nfl: {period: 4, clock_s: 120, margin: 8, ot: 5}
+    nba: {period: 4, clock_s: 120, margin: 5, ot: 5}
+    nhl: {period: 3, clock_s: 120, margin: 1, ot: 4}
+    mlb: {period: 8, clock_s: null, margin: 2}
+  soon:                    # standby.crunch_soon: crunch a few minutes off, pre-position the hidden stick
+    nfl: {period: 4, clock_s: 420, margin: 8, ot: 5, ot_close: true}
+    nba: {period: 4, clock_s: 360, margin: 8, ot: 5, ot_close: true}
+    nhl: {period: 3, clock_s: 480, margin: 1, ot: 4, ot_close: true}
+    mlb: {period: 8, clock_s: null, margin: 2}
+
 core:                      # the decision core's expected-value knobs (redzone/decider/core.py); the
                            # auto-tuner searches these plus decider.switch_margin / break_destination_min /
                            # locked_override_lead / return_tolerance. Defaults = the rules the core replaced.
@@ -354,6 +388,7 @@ hardening:                 # error handling (PLATFORM). Each switch is off until
   tv: false                # the TV jumped by itself to a stick on its home screen (a reboot's HDMI-CEC): flip it back
 
 two_stick:
+  standby_repause_s: 600     # [APP-04] the same standby pausing again within this long is a blocked app (a forced update)
   cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,
                            # set up by scripts/tv_setup.py, goes first when it's proven)
   enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment
@@ -369,6 +404,17 @@ two_stick:
   keep_cec_off: true       # a stick whose HDMI-CEC you turned off (scripts/stick_cec.py) gets it back on only
                            # for a HOME fallback onto it, then off again (so losing the input never pauses it)
   park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long
+  shadow:                  # the hidden stick as modeled in replays/backtests (standby.ShadowStick); values unchanged
+    flip_s: 3.0            # input flip to a ready stick (measured median ~2.9 s); moving to tv_flip_prior_s +
+                           # input_settle_s changes behavior, so it's a separate decision
+    tune_s: 7.0            # a tune, for an app with no decider.switch_cost entry
+    keep_s: 2.5            # a Prime game we left keeps playing: ready again after this long
+
+demo:                      # replay simulator timing (redzone/demo/engine.py); values unchanged
+  feed_lag_s: 8.0          # a play reaches the app this long after it happens (same as the backtest)
+  play_len_s: 7.0          # a play's length on screen, for grading
+  tune_s: 5.0              # the replay's picture is up this long after a switch
+  calibrated_sigma_s: 3.0  # delay uncertainty of a calibrated game
 
 plan:                      # tonight's plan (data/plan_YYYYMMDD.json, the phone's "Tonight's plan" card)
   verify: true             # before each start window, play each planned source on the HIDDEN stick (never the one on screen)
@@ -401,6 +447,9 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   yours_first: true        # your team's missed big plays: replayed before other games' and over ordinary live play
   apps: [youtubetv]        # apps where rewinding live TV works
   max_age_s: 1800          # don't replay anything older than this
+  crunch_block: false      # [crunch block] no catch-up starts while any live game is in crunch time / its run-up
+  crunch_block_mine_leagues: []   # ...your team's missed play still goes in these leagues (its game's league)
+  crunch_block_mine_after_s: 90    # ...once this long after it aired
   urgent_s: 1200           # in its last N seconds a missed play jumps the queue and beats dull live play
   clip_s: 15               # how long each replay plays
   seek_s: 6                # time spent rewinding to the play
@@ -487,10 +536,16 @@ noggin:                    # docs/noggin.md
     enabled: false         # replace the app's pick (never over your team, never in a replay); needs the time-shift buffer
     shadow: false          # log what PICK would do (Decider.pick_log) beside the app's own decision
     leagues: [nba]         # leagues with a model (models/pick_<league>.v1.npz)
+    model: v1              # models/pick_<league>.<model>.npz (cue90: trained on the possession-start oracle)
     tune_s: 5.0            # the black screen PICK plans around per switch
     mode: breaks           # breaks: PICK only fills a break on screen while the app stays | stays | replace
     min_gap_s: 0           # switch-rate cap: PICK alone never flips again this soon after a switch (0 = off)
     keep_kinds: [user, crunch, home, must_see, live]   # the app's switch kinds PICK never overrides
+  possession:              # [possession start] the learned jump / stay policy (Decider.possession_policy)
+    enabled: false         # stay on the game on screen when PICK-cue scores it above the rule's target (off)
+    shadow: false          # log what it would say (Decider.possession_log)
+    leagues: [nba]         # leagues with a model (models/pick_<league>.<model>.npz)
+    model: cue90           # PICK trained on the possession-start hindsight oracle (oracle.solve_cue, 90 s)
   lookahead:                # [GAME-04 clairvoyance] the feed's plays that haven't aired yet (redzone/noggin/lookahead.py)
     enabled: false         # flip to a game whose big play is visible ahead, landing on its last dead ball first
     max_sigma_s: 10        # no lookahead when the screen's position is this unsure (SAFE-02)

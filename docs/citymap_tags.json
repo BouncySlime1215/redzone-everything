@@ -1,0 +1,52 @@
+{
+ "redzone/decider/*": [
+  "Mid-play cuts + entries (per 100 landings)",
+  "Landings in dead time",
+  "Entries at a possession start (dead ball, no play missed)",
+  "Crunch live, NFL",
+  "Crunch live, NBA",
+  "Crunch live, NHL",
+  "Your-team crunch live"
+ ],
+ "redzone/control.py": [
+  "Switch time p95 (SmartThings input change)",
+  "Flips PLAYING within 3 s",
+  "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+  "STK-01",
+  "STK-02",
+  "STK-05"
+ ],
+ "redzone/standby.py": [
+  "Flips PLAYING within 3 s",
+  "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+  "STK-05",
+  "STK-06"
+ ],
+ "redzone/tuners/*": [
+  "Flips PLAYING within 3 s",
+  "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
+  "STK-03",
+  "STK-04"
+ ],
+ "redzone/tv.py": [
+  "Switch time p95 (SmartThings input change)",
+  "TV-01",
+  "TV-02"
+ ],
+ "redzone/scoring/brain*.py": [
+  "Big plays seen live, NFL",
+  "Big plays seen live, NBA",
+  "Big plays seen live, NHL",
+  "Your-team big plays seen (live or within 3 min)"
+ ],
+ "redzone/scoring/breaks.py": [
+  "Dead air (commercials/breaks on screen)"
+ ],
+ "redzone/plan.py": [
+  "League order respected (no lower-league non-crunch over a higher-league crunch)"
+ ],
+ "redzone/reel.py": [
+  "Big plays live or replayed within 3 min",
+  "Big plays live or replayed within 2 min (stretch)"
+ ]
+}
