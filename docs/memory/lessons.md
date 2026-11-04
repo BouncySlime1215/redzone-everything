@@ -187,3 +187,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   the delay the app believed, so a 2 s "urgent" landing always looked safe. With a real tune's 0-6 s late landing,
   one NHL entry was mid-play on every seed. Fix: thin-margin landings cover a one-sided landing lag, and "ended"
   switches never take the urgent path. Grade entry changes with `--tune-jitter 6` on several seeds.
+- 2026-11-04: **"PLAYING" on Fire OS can be a stale report.** Live lab: with HDMI-CEC on, every flip paused the
+  stick we left and it never resumed, and after backgrounding media_session kept a stale state=3 with
+  active=false. Our readback grepped no `active=` line, so a frozen stick read as playing. Fix (STK-05): grep and
+  parse `active=`, require active and speed>0 in playback_ready, and verify_standby re-tunes a paused or stale
+  hidden stick at once. Night-lab fault `stick_paused` (mode stale / pause).
+  - **Signals:** standby "playing" but the picture behind live after a flip, state=3 with speed but no new `updated`

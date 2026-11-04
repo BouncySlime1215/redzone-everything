@@ -19,7 +19,8 @@ def test_collects_rows_since_start_masks_lan_and_summarizes(tmp_path):
     (d / "recordings" / time.strftime("%Y-%m-%d") / "sync_probe.jsonl").write_text(
         json.dumps({"ts": now - 2, "mac": "aa:bb:cc:dd:ee:ff"}) + "\n")
     (d / "traces.jsonl").write_text("\n".join(map(json.dumps, [
-        {"kind": "user", "decided_at": now - 9, "cut_at": now - 8, "picture_at": now - 6.5},
+        {"kind": "user", "decided_at": now - 9, "cut_at": now - 8, "picture_at": now - 6.5,
+         "spans": {"queued": 0.1, "flip": 1.9, "to_picture": 2.5, "total": 3.0}},
         {"kind": "user", "decided_at": now - 7},                       # a press that never reached the TV
         {"kind": "auto", "decided_at": now - 6, "cut_at": now - 5, "picture_at": now - 3}])) + "\n")
     out = tmp_path / "out"
@@ -28,6 +29,8 @@ def test_collects_rows_since_start_masks_lan_and_summarizes(tmp_path):
     assert s["switch_samples"] == 2 and s["switch_p95_s"] == 2.4 and s["tv_unverified"] == 1
     assert s["entries_mid_play"] == 1 and s["rows"]["traces.jsonl"] == 3
     assert s["press_samples"] == 1 and s["press_to_tv_p95_s"] == 2.5 and s["press_no_picture"] == 1
+    assert s["press_spans"]["flip"] == {"n": 1, "p50_s": 1.9, "p95_s": 1.9} and "total" not in s["press_spans"]
+    assert "Press spans" in (out / "summary.md").read_text()
     text = (out / "tv_input.jsonl").read_text() + (out / "sync_probe.jsonl").read_text()
     assert "192.168" not in text and "aa:bb" not in text and "\"total_s\": 9.0" not in text
     assert (d / "tv_input.jsonl").read_text().count("\n") == 5      # source untouched

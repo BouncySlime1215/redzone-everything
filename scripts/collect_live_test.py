@@ -97,7 +97,16 @@ def summarize(got: dict[str, list[dict]]) -> dict:
     for r in got.get("sync.jsonl", []):
         if r.get("kind") in ("flip", "score", "clock", "tap") and isinstance(r.get("err"), (int, float)):
             anchors.setdefault(str(r.get("stick") or "unknown"), []).append(abs(float(r["err"])))
+    # Where a press's time goes, app side vs the TV (trace.build spans): decide, queued (the lock),
+    # tune, safe_wait (a dead ball), flip (SmartThings), resume. p50 / p95 per span, user presses only.
+    spans: dict[str, list[float]] = {}
+    for r in user:
+        for k, v in (r.get("spans") or {}).items():
+            if isinstance(v, (int, float)) and k not in ("total",):
+                spans.setdefault(k, []).append(float(v))
     return {
+        "press_spans": {k: {"n": len(v), "p50_s": round(sorted(v)[len(v) // 2], 2), "p95_s": p95(v)}
+                        for k, v in sorted(spans.items())},
         "landings": {"n": len(after), "after_dead_p50_s": after[len(after) // 2] if after else None,
                      "before_play_min_s": before[0] if before else None,
                      "before_play_p50_s": before[len(before) // 2] if before else None},
@@ -167,6 +176,8 @@ def main(argv=None) -> int:
           f"- Picture within 3 s: {s['picture_within_3s']}; cut -> picture p95 {s['picture_p95_s']} s",
           f"- Phone presses (decided kind=user -> picture): {s['press_samples']}, press-to-TV p95 "
           f"{s['press_to_tv_p95_s']} s, {s['press_no_picture']} never reached a picture",
+          "- Press spans (p50 / p95 s): " + (", ".join(f"{k} {v['p50_s']}/{v['p95_s']}"
+                                                      for k, v in s["press_spans"].items()) or "none"),
           f"- Landings (dead ball): {s['landings']['n']}, came up {s['landings']['after_dead_p50_s']} s into it "
           f"(p50), {s['landings']['before_play_p50_s']} s before play resumed (p50, min {s['landings']['before_play_min_s']})",
           "- Sync anchor error by stick: " + (", ".join(f"{k} n={v['n']} p50 {v['p50_s']} s p95 {v['p95_s']} s"
