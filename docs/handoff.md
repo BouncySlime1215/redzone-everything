@@ -71,8 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- 15:15 NICK DECISION: never JOIN mid-play. LEAVING mid-play is OK at low leverage (after a bucket, in transition, Q1-Q3). Close and late games are sticky (NBA/NHL down the stretch). MLB: detect key moments only. League order unchanged.
-- Promotion bar: strict on mid-play entries 0, NBA/NHL crunch PASS and >= live, and your-team PASS; every other line >= live (CI-aware). Relayed to the coordinator for decisions.md and Cycle 05.
+- 15:20 V7 Mind gate (dev-test, n=2400): student lock_acc 82.2 (bar 95), unsafe leaves 7.6% (bar 0.5), rule conformance 99.7 OK. The split gate FAILs for head, teacher and student. The crunch slice has 100% unsafe leaves (top fix).
+- Train/test gap is inverted (train 75.2 vs test 82.2 lock_acc), so check the train sample. The teacher answered 0% on CBB/NHL/MLB. The NBA head AUC .999 is a likely leak. Summary: docs/kaggle/v7-report-summary.md.
+- Highlight jump 'jump_when_it_fits': 99.8% in dead time, 0 big missed, sent to promotion. Next GPU round waits on the crunch + leak fixes (~2.5 GPU-h left this week).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
