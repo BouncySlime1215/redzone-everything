@@ -167,3 +167,31 @@ source. The status page's race summary stays score-only.
 Next (needs a night of recordings on the Mac): if api-web whistles beat ESPN by more than a few
 seconds, feed NHL stoppages to the decider timeline from api-web (today they only set the merged
 state). Real (realapp.com) stays out: its terms forbid automated queries.
+
+## A3. Restart countdown, step 1: break-length floors
+
+Break lengths on the **fit split only** (train + valid nights; locked nights unseen), from the
+stoppage entry to the real restart (`cutgrade.resume_after`), with 5-fold forward-chaining CV:
+
+| league, stoppage | n | p0.5 | p1 | p5 | p50 | share below candidate floor (all / CV mean / worst fold) |
+|---|---|---|---|---|---|---|
+| NHL TV timeout | 221 | 130 | 131 | 135 | 149 | 120 s: 0.45 % / 0 % / 0 % |
+| NHL goal | 410 | 0 | 29 | 38 | 49 | 30 s: 1.2 / 1.9 / 4.9 %: no floor |
+| NFL timeout | 4355 | 7 | 15 | 27 | 136 | 30 s: 6.2 %: no floor |
+| NFL two-minute warning | 411 | -7 | 48 | 101 | 160 | today's 50 s floor: ~1.5 % below (data artifacts, to check) |
+| NBA timeout | 747 | 0 | 0 | 0 | 182 | ~10 % read as 0 s: the timeout entry is often logged after the restart |
+
+Why a floor matters now: with the measured 35-50 s feed lag the data never covers the screen
+(`leave_gate`'s `covered` is false), so a break with no resume in the data is safe to leave only
+while `start + floor + delay` hasn't passed. Without a floor, an NHL TV timeout couldn't be left.
+
+Shipped: **NHL TV timeout floor 120 s** (`MIN_BREAK_S`). The one fit-split row under 120 s is a
+mis-stamped faceoff (the next shot came 214 s later). NHL scorecard, last 14 nights:
+
+| card | entries_mid_play | plays_missed_entry | dead_air_pct | big seen | switches/h | mid-play cuts |
+|---|---|---|---|---|---|---|
+| default (8 s feed) | 0 → 0 | 0 → 0 | 24.1 → 24.1 | 99.7 → 99.7 | 4.3 → 4.6 | 0 → 0 |
+| real lag | 11 → 12 (3.8 → 3.6 % of entries) | 2 → 3 | 24.9 → 24.0 | 93.7 → 95.7 | 3.1 → 3.7 | 0 → 0 |
+
+Next: a hazard model per league for the "how long until the restart" countdown (the floors are
+its lower bound with no features), and fixing the NBA timeout stamps before NBA gets a floor.
