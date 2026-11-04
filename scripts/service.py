@@ -137,12 +137,29 @@ def check(root: Path = ROOT, allow_live: bool = False, check_port: bool = True) 
     return result
 
 
-def make_plist(root: Path = ROOT, allow_live: bool = False, port: str | None = None) -> bytes:
+def logs_dir() -> Path:
+    """launchd's own stdout/stderr files: outside ~/Documents (TCC), where launchd may open them."""
+    return Path.home() / "Library/Logs/redzone"
+
+
+def launcher(root: Path) -> str:
+    """`python -c` program: change into the checkout, then run scripts/service_runtime.py as __main__
+    (launchd can't use a WorkingDirectory under ~/Documents; Python, with Full Disk Access, can)."""
+    script = str(root / "scripts/service_runtime.py")
+    return (f"import os, runpy, sys; os.chdir({str(root)!r}); sys.argv[0] = {script!r}; "
+            f"runpy.run_path({script!r}, run_name='__main__')")
+
+
+def make_plist(root: Path = ROOT, allow_live: bool = False, port: str | None = None,
+               logs: Path | None = None) -> bytes:
     template = plistlib.loads((root / "deploy/com.redzone.everything.plist.template").read_bytes())
+    logs = logs or logs_dir()
 
     def expand(value):
         if isinstance(value, str):
-            return value.replace("__ROOT__", str(root))
+            if value == "__LAUNCHER__":
+                return launcher(root)
+            return value.replace("__ROOT__", str(root)).replace("__LOGS__", str(logs))
         if isinstance(value, list):
             return [expand(v) for v in value]
         if isinstance(value, dict):
@@ -182,6 +199,7 @@ def install(payload: bytes, path: Path, domain: str) -> None:
         raise RuntimeError("A service already exists; inspect status and explicitly remove it before installing again.")
     path.parent.mkdir(parents=True, exist_ok=True)
     (ROOT / "data").mkdir(parents=True, exist_ok=True)
+    logs_dir().mkdir(parents=True, exist_ok=True)     # launchd opens its log files but won't make the folder
     fd, name = tempfile.mkstemp(prefix=f".{LABEL}.", dir=path.parent)
     try:
         with os.fdopen(fd, "wb") as stream:

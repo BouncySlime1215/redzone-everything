@@ -28,11 +28,12 @@ def service_root(tmp_path):
 
 
 def test_plist_paths_escape_and_default_service_has_no_live_opt_in(service_root):
-    payload = service.make_plist(service_root)
+    payload = service.make_plist(service_root, logs=service_root / "logs")
     job = plistlib.loads(payload)
-    assert job["ProgramArguments"] == [str(service_root / ".venv/bin/python"), "-u",
-                                       str(service_root / "scripts/service_runtime.py")]
-    assert job["WorkingDirectory"] == str(service_root)
+    assert job["ProgramArguments"][:3] == [str(service_root / ".venv/bin/python"), "-u", "-c"]
+    assert "WorkingDirectory" not in job          # ~/Documents is closed to launchd (TCC): EX_CONFIG 78
+    assert job["StandardOutPath"] == job["StandardErrorPath"] == str(service_root / "logs/service-bootstrap.log")
+    assert b"__LOGS__" not in payload and b"__LAUNCHER__" not in payload
     assert job["KeepAlive"] is True
     assert job["ThrottleInterval"] == 15
     assert job["Umask"] == 0o077
@@ -219,3 +220,24 @@ async def test_requested_shutdown_closes_cleanly():
     engine = Engine()
     await run_services(Server(), engine, stop)
     assert engine.closed
+
+
+def test_launcher_changes_into_the_checkout_and_passes_the_live_flag(tmp_path):
+    """The -c launcher runs scripts/service_runtime.py as __main__ from inside the checkout, with
+    --allow-live (appended by make_plist) still in sys.argv, even for a path with spaces and quotes."""
+    root = tmp_path / "Codex's dir" / "redzone"
+    (root / "scripts").mkdir(parents=True)
+    (root / "scripts/service_runtime.py").write_text(
+        "import os, sys, json\nprint(json.dumps({'cwd': os.getcwd(), 'argv': sys.argv, 'name': __name__}))\n")
+    job = plistlib.loads(service.make_plist(_template_root(root), allow_live=True, logs=tmp_path / "logs"))
+    args = [sys.executable, *job["ProgramArguments"][1:]]
+    out = subprocess.run(args, cwd="/", capture_output=True, text=True, timeout=30, check=True).stdout
+    got = json.loads(out)
+    assert got["cwd"] == str(root) and got["name"] == "__main__"
+    assert got["argv"] == [str(root / "scripts/service_runtime.py"), "--allow-live"]
+
+
+def _template_root(root):
+    (root / "deploy").mkdir(exist_ok=True)
+    shutil.copy(service.ROOT / "deploy/com.redzone.everything.plist.template", root / "deploy")
+    return root

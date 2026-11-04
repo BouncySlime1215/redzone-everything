@@ -1,31 +1,59 @@
 # Status board
 
-Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-03 21:50 UTC.
-`integration/next` has #1, #2, #3, #5, #6, #7, #8, #9, #10, #11, #12, #14, #15, #17 (reasoner, off), #19, #20,
-#21, #22, #23, #24, #25, #26 (Brain v3), #27, #28, #29, #31, #32, #33, #34, #35 and the no-overfitting gate. Tests: 1704 passed, 0 failed (one e2e test is
-timing-sensitive under parallel load and passes alone); ruff clean. **Tonight's release candidate is RC 3** (RC 2 + deploy test-step fixes, no app change; `docs/gate-report-rc3.md`). RC 2 was on
-`integration/release`** (integration/next after #38 and #39; gate report in `docs/gate-report-rc2.md`: 59 pass, 10 fail, 27 pending). CI now also runs on pushes to integration/release.
+Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-04 03:55 UTC.
+`integration/next` has #1-#3, #5-#12, #14, #15, #17 (reasoner, off), #19-#36, #38, #39 and the RC 3 deploy fixes
+(see `docs/integration.md`). Tests: 1722 passed, 11 skipped; ruff clean.
+**Release: RC 4 on `integration/release` = 8a47053** (RC 2 + deploy test-step fixes + the e2e night pinning
+the host and the network; no app change, so the gates are RC 2's: 59 pass, 10 fail, 27 pending, `docs/gate-report-rc3.md`).
+The draft release PR #37 is closed (Nick, Nov 3 10:45 PM); the deploy fetches `integration/release`.
 
 ## Usage rules from the user (hard)
 
 - **All RedZone work stops at 90 % of the user's weekly Claude usage.** The last 10 % is for school.
   The user pauses the project at 88-89 %. Kaggle runs need no Claude usage and continue during a pause.
 - From 75 %: no new threads; finish and merge what's open; keep this file current so a pause is resumable.
-- Pacing (Nov 3, 4:30 PM ET, at ~44 %): reach ~90 % at 5 PM ET Wed. Checkpoints: <= 55 % at 10 PM,
-  <= 62 % at 8 AM, <= 78 % at 1 PM, ~89 % at 5 PM. **Max 2 working threads (1 overnight, midnight-8 AM).**
-  Lean turns: scorecards only for the leagues a change touches, no idle polling.
-- Spend order: (1) tonight's release + checklist; (2) decision core merge (done); (3) Memory systems
-  (#36, lands before 5 PM Wed); (4) Kaggle round-2 notebook fix; then the queue below.
+- Pacing (Nick, Nov 3 10:45 PM ET, at 48 %): work non-stop to **89 % at 5 PM ET Wed**. Checkpoints
+  **62 % at 8 AM, 78 % at 1 PM**. Behind pace: **3 working threads overnight, up to 5 when needed**; more than
+  3 points ahead, drop threads. Lean turns: scorecards only for the leagues a change touches, no idle polling.
+- Overnight focus: **switch timing** and **error handling everywhere**. No live TV or stick tests tonight
+  (Nick tests Wed evening). Mac light. 95 % gates on locked unseen nights; anything that misses ships OFF.
 
-## Board
+## Board (one owner per area)
 
-| State | Work |
-|---|---|
-| Working | INTEGRATION (release cut, then #36 after 23:00 UTC); Memory systems (#36) |
-| Waiting on the user | TV setup tonight with `docs/tonight-checklist.md` (deploy line, TV, multiview probe, FastCast check) |
-| Paused, resumes when | auto-tune #16: decision core merged, so on the queue; highlight jump #18: Brain v3 break-length quantiles land; reasoner (#17 merged, off): the Kaggle adapter returns |
-| Folded | Hype v2 #4 into Brain v3 #26; watchdog model into distill (#13) |
-| Merged | see the list above and `docs/integration.md` |
+| Area | Owner | Now |
+|---|---|---|
+| Switch timing (Nick's items 1-7: dead-ball lag per source, live-delay offset per stick, restart prediction, SmartThings ~2 s trip cost, dwell/hysteresis, landing-offset scorecard line, e2e SmartThings latency) | TIMING thread (new, Nov 3 night) | working |
+| Error handling (items 8-12: SmartThings breaker + HOME/CEC fallback, stick recovery, feed fallback, Mac sleep/network/launchd, watchdog rate limits) | ERRORS thread (new, Nov 3 night) | PRs up, all OFF behind `hardening.*`: #44 SmartThings (adds the block; merge first), #48 sticks, #49 feeds, #50 Mac wake (stacked on #44), #45 watchdog cap (on). Turn each on after Nick's TV test |
+| Integration train, CI, release, housekeeping (items 13a-d, 14, 16) | INTEGRATION | #41 SmartThings OAuth + port map, #42 launchd off ~/Documents, #43 hostile-host e2e night + RC 4 pin_network: CI, then merge |
+| Kaggle teacher (item 13e: `pip uninstall torchao` on kaggle-inputs; V4 running with Nick's patch) | LOCAL AI (#13) | queued |
+| Prime multiview live-calibration plan (item 15, #40 flag off) | SWITCHING | queued |
+| Memory systems (item 14) | MEMORY (#36 merged) | keep current |
+| Paused with a dependency | auto-tune #16, highlight jump #18 (brain break quantiles), reasoner (Kaggle adapter), brain leak-fix retrain | see queue |
+
+## Research queue A-E (Nick, Nov 3 11:30 PM; `docs/research/2026-11-03/00-PLAN.md`, #46)
+
+It merges into the overnight list; timing comes first. Architecture: GBMs and rules own timing; the 1.7B LLM
+writes words only, async. Gates only on unseen nights.
+
+| Item | Work | Owner |
+|---|---|---|
+| A1 | Honest baseline: `feed_lag` exposed in `scripts/eval.py` / `eval_sports.py`, re-run with measured lags (NBA 38, CBB 35, NFL 45, NHL 49 s) | TIMING |
+| A2 | FastCast on every league + league-origin feeds (NHL `clock.running`, NBA `timeActual`, MLB pitch times), per-source lag logged | TIMING |
+| A3 | One shared restart countdown (KM, then boosted hazard, then conformal lower bounds) replacing `jump.py`'s p10 and the 0.6x/1.6x quantiles | TIMING |
+| A4 | Rule features: national vs local break lengths, full TV-timeout rules per league | TIMING |
+| A5 | Per-(app, channel, tune) stream-delay Kalman filter fed by Prime clock OCR | TIMING (with SYNC) |
+| A6 | Commit a cut only at P_safe >= 99.5 % over the ~3.5 s flip + settle window; SmartThings ~2 s trip cost | TIMING |
+| A7 | Scorecard lines: landing/leave-offset histograms, % landings in dead time, mid-play per 100 switches (Wilson CI) | TIMING |
+| A8 | Hidden-stick prediction (next target in 180 s) | TIMING (after A3) |
+| B9 | Cluster-bootstrap over nights; PASS needs >= 8 nights, >= 60 decisions and lower bound >= 95 %, else PENDING | INTEGRATION |
+| B10 | Leaks: 2 locked games in the e2e night (NHL 401892626, NBA 401909906), `parse_summary` leaders, `scripts/leak_check.py` | INTEGRATION |
+| B11 | Reasoner gate split (rule conformance, calibration, ON/OFF non-inferiority, abstain) | LOCAL AI |
+| B12 | Realistic night lab (lag jitter, late plays, drops, resyncs from real traces) | INTEGRATION (after B9-B10) |
+| C13-C16 | Calibrated safe-now with abstain; next big play; stakes layer; reel ranker | MOMENT/BREAK (C13 with LOCAL AI) |
+| C17 | Watchdog 5 -> 12 guarded actions, all 13 kinds | ERRORS |
+| C18 | Bugs: `breaks.blend` 50/50 calibration, two JSON parsers, switch-cost constants disagreeing | INTEGRATION (switch costs with TIMING) |
+| D19-D22 | Kaggle student recipe (fp16 base + fp32 LoRA r16-32), teacher throughput, KD, historical label factory | LOCAL AI |
+| E23-E25 | Decision records + phone 👍/👎, shadow mode + SPRT rollback, BRAIN auto-fix on dev-test only | DECISION (E25 PLATFORM) |
 
 ## Queue (in order; at most 2 working threads)
 
@@ -40,6 +68,7 @@ timing-sensitive under parallel load and passes alone); ruff clean. **Tonight's 
 | 7 | Stick roles (D) and stick tuning | SWITCHING | after the user's TV setup tonight |
 | 8 | **RedZone as teacher** (legal: only the user's own YouTube TV, live or DVR; no downloaded episodes, no DRM workaround, no mic) | DECISION + SYNC | **Gate: a 5-minute check this Sunday — are YTTV screenshots DRM-black on the sticks? If yes, report and stop.** Then (1) `scripts/redzone_logger.py`: the hidden stick plays RedZone when not needed, every ~2 s score-bug OCR (vision_ocr/scorebug) logs which game is on; (2) align with ESPN PBP into labeled decisions; (3) imitation dataset + "RedZone agreement %" scorecard line (our gates still win: your teams, no commercials); (4) now: encode RedZone's public principles as gold rules (every TD live, red-zone drives, 2-minute drill, never commercials, whip-around at scores); (5) the same for whip-around specials (NHL Frozen Frenzy, NBA whip-arounds) |
 | 9 | Auto-tune #16, highlight jump #18, reasoner on | DECISION / LOCAL AI | see Board |
+| 9b | **Prime NBA multiview calibration** (PR #40, flag `tuners.prime_multiview` off) | SWITCHING | Next Prime NBA night, Nick at home, ~15 min: probe before tip (readable player? bench >= 95% right tile under 2 s), flag on for that night only, grade next morning with `scripts/prime_multiview_grade.py` (>= 20 switches, >= 95% under 2 s, 0 mid-play). Plan: [docs/prime-multiview-calibration.md](prime-multiview-calibration.md). Not tonight |
 | 10 | Crunch feasible ceiling (NFL > CFB > NBA > rest), golden nights in CI, eval-data-v2 (GitHub Actions on the eval-data branch) | INTEGRATION | after the queue above |
 
 ## Latest numbers vs targets

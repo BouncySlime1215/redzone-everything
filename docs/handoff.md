@@ -45,8 +45,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 
 ## 4. Hardware facts
 
-- **Fire TV sticks:** Fire TV Stick 4K Plus at 100.110.165.150 on HDMI2, and Fire TV Stick 4K
-  (2023) at .181 on HDMI1.
+- **Fire TV sticks:** 100.110.165.150 on **HDMI1** (CEC physical address 0x1000) and .181 on **HDMI2**
+  (0x2000), confirmed by Nick on 2026-11-03 (older notes had the ports the other way round).
 - **TV:** Samsung 6 Series 55" that came with the apartment (The Union Chapel Hill, WhiteSky
   Wi-Fi). MAC 8c:79:f5:8e:e2:5f. The IP .151 was never verified.
 - **Why network TV control failed:** almost certainly the Tailscale 100.64/10 route overlap or a

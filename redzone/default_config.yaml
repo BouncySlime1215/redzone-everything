@@ -73,6 +73,11 @@ score:
     fantasy_mine: 12
     fantasy_opponent: 8
     manual_boost: 15
+    # Prime NBA multiview (tuners.prime_multiview): who may share it. Personal data, so the shipped
+    # defaults are empty; put yours in data/config.yaml. Entries are "league:ABBR" (the feed's
+    # team abbreviation).
+    multiview_exclude: []  # a game with one of these teams never joins a multiview (it goes on the other stick)
+    multiview_pin: []      # a game with one of these teams gets a tile first
   nfl:
     time: {q1: 5, q2: 10, q2_two_min: 25, q3: 15, q4_early: 25, q4_mid: 35, q4_late: 55, ot: 60}
     field: {own: 5, opp_mid: 12, opp_deep: 20, red_zone: 30, inside_10: 38, goal_to_go: 7}
@@ -249,6 +254,13 @@ multiview:                 # YouTube TV multiview as a switch path (redzone/tune
   tiles: 4                 # games in one multiview (YouTube TV's 2x2)
   must_have: 2             # reopen only when one of the top this-many YTTV games isn't a tile
   costs: {mv_open: 15.0, mv_expand: 1.5, mv_collapse: 1.0, mv_step: 0.35}   # seconds, until measured
+tuners:                    # per-app switch paths
+  prime_multiview: false   # Prime NBA multiview (redzone/tuners/prime_multiview.py): a switch between its
+                           # tiles is ~1 s of remote navigation, no relaunch. Off until a live Prime NBA
+                           # night passes the gate (>= 95% right tile under 2 s, 0 mid-play entries)
+  prime_tiles: 3           # games in one Prime multiview (1 main + 2 on the right)
+  prime_tile_s: 1.0        # seconds for a tile switch, until data/prime_multiview_keys.json has timings
+  prime_tile_p90_s: 2.0    # ...and its deadline bound
 autofix:                   # the watchdog files problems it can't fix as GitHub issues for Claude (docs/auto-fix.md)
   enabled: true            # kill switch on the Mac side (the repo variable AUTOFIX_ENABLED=false stops the GitHub side)
   max_per_day: 3           # at most this many issues a day
