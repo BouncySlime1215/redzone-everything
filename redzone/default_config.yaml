@@ -268,6 +268,12 @@ governor:                  # keeps the Mac cool and its disk free (redzone/gover
   service_hard_mb: 1200    # ...the watchdog restarts the app above this (never during crunch time)
   models_mb: 1500          # all local model processes together (watchdog + game reasoner)
 
+hardening:                 # error handling (PLATFORM). Each switch is off until a live night proves it.
+  smartthings: false       # SmartThings breaker, 429 Retry-After, auth fault + phone push (redzone/tv.py)
+  sticks: false            # a player "buffering" 20 s+ is stalled: resume the visible stick, reload the standby
+  feeds: false             # a live game whose ESPN polling went dark takes FastCast pushes until polling is back
+  mac: false               # after the Mac sleeps or changes network: re-check network, reconnect sticks, resync the TV
+
 two_stick:
   cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,
                            # set up by scripts/tv_setup.py, goes first when it's proven)

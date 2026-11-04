@@ -78,3 +78,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** the night pinned the clock, sticks and TV but not the resource governor. Its watchdog read the real `ps`, saw the live RedZone app over the 1200 MB cap and restarted the night's own engine every few minutes (23 restarts in a repro). Battery or load (load avg ~14 during the deploy) also changed OCR pacing. The night's virtual clock makes CPU speed itself irrelevant.
 - **Fix:** `pin_host()` in redzone/lab/night/run.py makes every governor in the night see a calm machine with no RedZone processes. The end check holds a two-stick gap still open at the end to the same 420 s as every other episode.
 - **Signals:** passes in CI, fails on the Mac, deploy tests, watchdog restart, governor, ps
+
+## A SmartThings outage made each flip wait ~72 s
+- **Symptom:** (fault drill `st_outage`, flag off) with the cloud timing out, one flip tried discover, the command and 8 readback reads, each waiting out its own 8 s timeout, before falling back to HOME.
+- **Cause:** every SmartThings call was independent: no breaker, the readback loop kept reading a dead cloud, and a 429 counted as an ordinary failure.
+- **Fix:** `hardening.smartthings` (redzone/tv.py): breaker shared by every call, readback stops when it opens, Retry-After honoured, auth failures blocked until the OAuth file changes. Off until a live night.
+- **Signals:** SmartThings, timeout, 429, 503, flip slow, HOME fallback, tv_auth

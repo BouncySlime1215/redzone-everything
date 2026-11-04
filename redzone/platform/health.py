@@ -13,6 +13,9 @@ Invariants (code: what must always hold):
   stick_offline           a saved stick isn't connected (not a fault while away from home)
   stick_hung              a stick's circuit breaker is open (redzone/platform/breaker.py)
   stale_feed              live games whose score feed went dark (redzone/sources/feeds.py)
+  tv_auth                 SmartThings sign-in refused (or its refresh was): flips use HOME/CEC until
+                          scripts/tv_setup.py --smartthings is run again (pushed to the phone once)
+  tv_cloud_down           SmartThings breaker open (5xx, timeouts, 429): flips use HOME/CEC meanwhile
 
 Each condition must hold for its grace period before it is a fault (`since` = first seen), so a
 switch in its first seconds or a one-tick race never shows up.
@@ -31,12 +34,16 @@ from redzone.contracts.health import Fault, Fix, HealthReport, Severity
 GRACE_S = {
     "orphan_switch": 10.0, "lost_switch_callback": 10.0, "screen_unknown": 0.0, "screen_unknown_silent": 30.0,
     "stuck_lock": 0.0, "stuck_flip": 60.0, "stick_offline": 30.0, "stick_hung": 0.0, "stale_feed": 0.0,
+    "tv_auth": 0.0, "tv_cloud_down": 0.0,
 }
 SEVERITY = {
     "orphan_switch": Severity.ERROR, "lost_switch_callback": Severity.ERROR, "screen_unknown": Severity.WARN,
     "screen_unknown_silent": Severity.ERROR, "stuck_lock": Severity.CRITICAL, "stuck_flip": Severity.CRITICAL,
     "stick_offline": Severity.WARN, "stick_hung": Severity.WARN, "stale_feed": Severity.WARN,
+    "tv_auth": Severity.ERROR, "tv_cloud_down": Severity.WARN,
 }
+# Faults the supervisor pushes to the phone (once each time they appear): only ones a person must fix.
+PUSH = {"tv_auth"}
 
 
 def _alive(task: Any) -> bool:
@@ -97,6 +104,8 @@ class PlatformHealth:
                 if br is not None and br.state != "closed":
                     out.append(("stick_hung", f"stick:{s.host}",
                                 f"{br.hangs} adb commands hung; {br.state}, retry in {br.retry_in():.0f}s"))
+        if ctl is not None:
+            out += self._tv_conditions(getattr(ctl, "tv", None))
         feeds = getattr(e, "feeds", None)
         merger = getattr(e, "merger", None)
         if feeds is not None and merger is not None:
@@ -109,6 +118,24 @@ class PlatformHealth:
                 out.append(("stale_feed", "feed:espn", f"{len(dark)} live game(s) with no fresh data: "
                             + ", ".join(sorted(dark)[:5])))
         return out
+
+    @staticmethod
+    def _tv_conditions(tv: Any) -> list[tuple[str, str, str]]:
+        """SmartThings faults (redzone/tv.py, hardening.smartthings). Off: nothing, as before."""
+        try:
+            if tv is None or not tv._hardened() or not getattr(tv, "st_device", None):
+                return []
+            auth = getattr(tv, "auth", None)
+            if tv.st_fault == "auth" or (auth is not None and auth.oauth and auth.last_kind == "auth"):
+                return [("tv_auth", "tv:smartthings",
+                         (tv.st_fault_detail or auth.last_error or "sign-in refused")[:200])]
+            if tv.st_breaker.state != "closed":
+                return [("tv_cloud_down", "tv:smartthings",
+                         f"{tv.st_fault_detail or 'unreachable'}; HOME/CEC flips, retry in "
+                         f"{tv.st_breaker.retry_in():.0f}s")]
+        except Exception:
+            return []
+        return []
 
     def _away(self) -> bool:
         try:

@@ -22,6 +22,19 @@ delivery never triggers a second TV method (the first one may already have switc
 successful network write alone never confirms which input the viewer sees.
 
 Each attempt is appended to data/tv_input.jsonl with its command and verify latency.
+
+SmartThings failure handling (`hardening.smartthings`, off until a live night proves it):
+  401          renew the access token once and retry (always on). Still 401, or the refresh token
+               refused (400/401): st_fault "auth". The cloud path stops (HOME/CEC flips take over)
+               until data/smartthings_oauth.json changes (tv_setup.py --smartthings) or an hour passes,
+               and Health raises tv_auth (ERROR), which the supervisor pushes once.
+  429          st_fault "rate_limited": no SmartThings call until Retry-After (capped 300 s).
+  5xx, network st_fault "cloud_down": a circuit breaker (redzone/platform/breaker.py) opens after two
+  or timeout   in a row, 30 s doubling to 2 min. While open every call fails at once (0 s, no 8 s
+               timeouts inside a flip), so flips go straight to HOME/CEC. The keepalive's readback
+               is the half-open probe: the cloud comes back without a real flip paying for it.
+               A GET that got a fast 5xx or never connected is retried once. A POST never is: the
+               command may have been applied, and the readback decides.
 """
 from __future__ import annotations
 
@@ -37,6 +50,8 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 import httpx
+
+from redzone.platform.breaker import Breaker
 
 log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent.parent
@@ -56,6 +71,21 @@ LOCAL_TIMEOUT_S = 6.0
 FAIL_BACKOFF_AFTER = 2       # this many failures in a row on one method...
 FAIL_BACKOFF_S = 300.0       # ...and it isn't tried for this long (HOME takes over meanwhile)
 INPUT_LOG_MAX = 2 * 1024 ** 2
+ST_BREAK_AFTER = 2           # cloud failures in a row before the SmartThings breaker opens
+ST_BREAK_S = 30.0            # first open; doubles per re-open...
+ST_BREAK_MAX_S = 120.0       # ...up to this (a probe is one background read, so keep it short)
+RETRY_AFTER_MAX_S = 300.0    # a 429's Retry-After is honoured up to this
+RETRY_AFTER_DEFAULT_S = 60.0
+AUTH_RETRY_S = 3600.0        # an auth failure is re-tried after this even if the OAuth file never changes
+ST_RETRY_GAP_S = 0.3         # before the one retry of an idempotent GET
+
+
+def _retry_after(r: httpx.Response) -> float:
+    try:
+        v = float(r.headers.get("retry-after", ""))
+    except ValueError:
+        v = RETRY_AFTER_DEFAULT_S
+    return max(1.0, min(RETRY_AFTER_MAX_S, v))
 
 
 def _env(name: str) -> str | None:
@@ -120,6 +150,7 @@ class SmartThingsAuth:
         self.transport = transport
         self.clock = clock
         self.last_error = ""
+        self.last_kind = ""      # why the last token call failed: "" | "auth" (refused) | "down" (5xx/network/429)
         self._lock = asyncio.Lock()
         self._d: dict | None = None
 
@@ -170,17 +201,22 @@ class SmartThingsAuth:
                 r = await c.post(ST_TOKEN_URL, data=form, headers={"Authorization": self._basic(d)})
         except httpx.HTTPError as e:
             self.last_error = f"SmartThings sign-in server unreachable: {e}"
+            self.last_kind = "down"
             return False
         try:
             body = r.json()
         except ValueError:
             body = {}
+        if not isinstance(body, dict):
+            body = {}
         if r.status_code in (400, 401) and form["grant_type"] == "refresh_token":
             self.last_error = ("SmartThings sign-in expired or was revoked "
                                f"({body.get('error', r.status_code)}): run scripts/tv_setup.py --smartthings")
+            self.last_kind = "auth"
             return False
         if r.status_code >= 300 or not body.get("access_token"):
             self.last_error = f"SmartThings token request failed: HTTP {r.status_code} {body.get('error', '')}".strip()
+            self.last_kind = "down" if (r.status_code >= 500 or r.status_code == 429) else "auth"
             return False
         now = self.clock()
         d.update(access_token=body["access_token"],
@@ -189,6 +225,7 @@ class SmartThingsAuth:
                  scope=body.get("scope", d.get("scope", ST_SCOPES)))
         self.save(d)
         self.last_error = ""
+        self.last_kind = ""
         return True
 
     async def token(self, force: bool = False) -> str | None:
@@ -208,7 +245,15 @@ class SmartThingsAuth:
         pat = _env("SMARTTHINGS_TOKEN")
         if not pat:
             self.last_error = "SmartThings not set up (run scripts/tv_setup.py --smartthings)"
+            self.last_kind = "auth"
         return pat
+
+    def stamp(self) -> float | None:
+        """When the OAuth file last changed (tv_setup.py rewrote it): an auth failure is retried then."""
+        try:
+            return self.path.stat().st_mtime
+        except OSError:
+            return None
 
     async def maintain(self) -> None:
         """Keepalive: renew well before expiry, and at least every few hours (refresh tokens that sit
@@ -239,13 +284,22 @@ class SamsungTV:
     clock: Callable[[], float] = time.time
     # Optional corroboration from the sticks (controller): "does the stick on `hdmi` say it's on screen?"
     corroborate: Callable[[str], Awaitable[bool | None]] | None = None
+    # hardening.smartthings (the controller passes a live reader so the phone's toggle applies at once)
+    hardening: Callable[[], bool] = lambda: False
+    st_fault: str = ""                   # "" | "auth" | "rate_limited" | "cloud_down"
+    st_fault_detail: str = ""
+    st_breaker: Breaker | None = None
     _tv: object = None
     _fails: dict = field(default_factory=dict)      # method -> consecutive failures
     _skip_until: dict = field(default_factory=dict)  # method -> not before
+    _auth_failed: tuple | None = None                # (at, oauth file stamp) of the last auth failure
 
     def __post_init__(self):
         if self.auth is None:
             self.auth = SmartThingsAuth(transport=self.transport)
+        if self.st_breaker is None:
+            self.st_breaker = Breaker("smartthings", threshold=ST_BREAK_AFTER, backoff_s=ST_BREAK_S,
+                                      max_backoff_s=ST_BREAK_MAX_S, clock=lambda: self.clock())
 
     @classmethod
     def from_devices(cls, path: Path | None = None) -> "SamsungTV":
@@ -272,7 +326,72 @@ class SamsungTV:
 
     @property
     def cloud_ready(self) -> bool:
-        return bool(self.st_device and self.auth and self.auth.configured) and not self._backed_off("smartthings")
+        return (bool(self.st_device and self.auth and self.auth.configured) and not self._backed_off("smartthings")
+                and not self.cloud_blocked())
+
+    # --- SmartThings failure handling (hardening.smartthings) ---------------------------------
+
+    def _hardened(self) -> bool:
+        try:
+            return bool(self.hardening())
+        except Exception:
+            return False
+
+    def _auth_blocked(self) -> bool:
+        if self._auth_failed is None:
+            return False
+        at, stamp = self._auth_failed
+        if self.clock() - at >= AUTH_RETRY_S or (self.auth and self.auth.stamp() != stamp):
+            self._auth_failed = None        # tv_setup.py ran again (or an hour passed): try once more
+            if self.auth is not None:
+                self.auth._d = None         # re-read the new sign-in, not the cached refused one
+            return False
+        return True
+
+    def cloud_blocked(self) -> str:
+        """Why no SmartThings call should go out right now ("" = it may). Only with hardening.smartthings."""
+        if not self._hardened():
+            return ""
+        if self._auth_blocked():
+            return "SmartThings sign-in refused: run scripts/tv_setup.py --smartthings"
+        b = self.st_breaker
+        if b.state == "open":
+            return (f"SmartThings {'rate-limited' if self.st_fault == 'rate_limited' else 'unreachable'}"
+                    f": retry in {b.retry_in():.0f}s")
+        return ""
+
+    def _cloud_ok(self) -> None:
+        if self.st_fault in ("cloud_down", "rate_limited") or self.st_breaker.state != "closed":
+            log.info("SmartThings answering again")
+        self.st_breaker.success()
+        self._auth_failed = None              # the sign-in worked: any auth fault is over too
+        self.st_fault = self.st_fault_detail = ""
+
+    def _cloud_down(self, detail: str) -> None:
+        was = self.st_breaker.state
+        self.st_breaker.hang()
+        self.st_fault, self.st_fault_detail = "cloud_down", detail
+        if was != "open" and self.st_breaker.state == "open":
+            log.warning("SmartThings %s: HOME/CEC flips for %.0fs", detail, self.st_breaker.retry_in())
+
+    def _rate_limited(self, wait_s: float) -> None:
+        b = self.st_breaker
+        b.hangs = max(b.hangs, b.threshold - 1)
+        b.hang()                                       # open now...
+        b.until = max(b.until, self.clock() + wait_s)  # ...for at least as long as SmartThings asked
+        self.st_fault, self.st_fault_detail = "rate_limited", f"HTTP 429, retry after {wait_s:.0f}s"
+        log.warning("SmartThings rate limit: HOME/CEC flips for %.0fs", b.retry_in())
+
+    def _auth_down(self, detail: str) -> None:
+        self._auth_failed = (self.clock(), self.auth.stamp() if self.auth else None)
+        if self.st_fault != "auth":
+            log.error("SmartThings sign-in refused (%s): HOME/CEC flips until tv_setup.py --smartthings", detail)
+        self.st_fault, self.st_fault_detail = "auth", detail
+        self.st_breaker.release()
+
+    def cloud_view(self) -> dict:
+        return {"fault": self.st_fault, "detail": self.st_fault_detail, "hardening": self._hardened(),
+                "breaker": self.st_breaker.view(), "blocked": self.cloud_blocked()}
 
     @property
     def has_readback(self) -> bool:
@@ -297,7 +416,7 @@ class SamsungTV:
         """For the phone's Health card and scripts/rz.py."""
         last = self.last_input
         return {"local": self.local_ready, "smartthings": self.cloud_ready, "readback": self.has_readback,
-                "method": self.method, "last_error": self.last_error,
+                "method": self.method, "last_error": self.last_error, "cloud": self.cloud_view(),
                 "last": asdict(last) if last else None}
 
     def _note(self, method: str, ok: bool) -> None:
@@ -390,21 +509,51 @@ class SamsungTV:
     # --- smartthings ---------------------------------------------------------------------
 
     async def _st(self, method: str, path: str, body: dict | None = None) -> dict | None:
+        hard = self._hardened()
+        if hard:
+            blocked = self.cloud_blocked()
+            if blocked:
+                self.last_error = blocked
+                return None
+            if not self.st_breaker.allow():      # half-open: someone else is already probing
+                self.last_error = "SmartThings unreachable: probing"
+                return None
+        try:
+            return await self._st_call(method, path, body, hard)
+        finally:
+            if hard:
+                self.st_breaker.release()        # a cancelled probe must not hold the slot
+
+    async def _st_call(self, method: str, path: str, body: dict | None, hard: bool) -> dict | None:
         token = await self.auth.token() if self.auth else _env("SMARTTHINGS_TOKEN")
         if not token:
             self.last_error = (self.auth.last_error if self.auth and self.auth.last_error
                                else "SmartThings not set up (run scripts/tv_setup.py --smartthings)")
+            if hard and self.auth is not None:
+                if self.auth.last_kind == "down":
+                    self._cloud_down("sign-in server unreachable")
+                elif self.auth.configured:
+                    self._auth_down(self.auth.last_error or "no access token")
             return None
-        for attempt in range(2):
+        renewed = retried = False
+        while True:
             try:
                 async with httpx.AsyncClient(timeout=8, transport=self.transport) as c:
                     r = await c.request(method, ST_API + path, json=body,
                                         headers={"Authorization": f"Bearer {token}"})
             except httpx.HTTPError as e:
                 self.last_error = f"SmartThings unreachable: {e}"
+                if hard:
+                    # Never connected: nothing was sent, so even a POST may go again once.
+                    if not retried and isinstance(e, httpx.ConnectError):
+                        retried = True
+                        await asyncio.sleep(ST_RETRY_GAP_S)
+                        continue
+                    self._cloud_down(f"unreachable ({type(e).__name__})")
                 return None
-            if r.status_code == 401 and attempt == 0 and self.auth and self.auth.oauth:
+            if r.status_code == 401 and not renewed and self.auth and self.auth.oauth:
                 # The access token went stale early (revoked, clock skew): renew once and retry.
+                renewed = True
                 token = await self.auth.token(force=True)
                 if token:
                     continue
@@ -412,7 +561,27 @@ class SamsungTV:
                 self.last_error = ("SmartThings sign-in expired: run scripts/tv_setup.py --smartthings"
                                    if not (self.auth and self.auth.oauth) else
                                    (self.auth.last_error or "SmartThings refused the renewed sign-in"))
+                if hard:
+                    if self.auth is not None and self.auth.last_kind == "down":
+                        self._cloud_down("sign-in server unreachable")
+                    else:
+                        self._auth_down(self.last_error)
                 return None
+            if hard and r.status_code == 429:
+                wait = _retry_after(r)
+                self.last_error = f"SmartThings HTTP 429 (rate limited, retry after {wait:.0f}s)"
+                self._rate_limited(wait)
+                return None
+            if hard and r.status_code >= 500:
+                self.last_error = f"SmartThings HTTP {r.status_code}"
+                if method == "GET" and not retried:
+                    retried = True                # a read is safe to repeat
+                    await asyncio.sleep(ST_RETRY_GAP_S)
+                    continue
+                self._cloud_down(f"HTTP {r.status_code}")
+                return None
+            if hard:
+                self._cloud_ok()                  # any real answer, even a 4xx: the cloud is up
             if r.status_code >= 300:
                 self.last_error = f"SmartThings HTTP {r.status_code}"
                 return None
@@ -420,7 +589,6 @@ class SamsungTV:
                 return r.json() if r.content else {}
             except ValueError:
                 return {}
-        return None
 
     async def st_discover(self) -> bool:
         """Read capabilities for the explicitly selected TV; never select the first cloud TV."""
@@ -469,10 +637,17 @@ class SamsungTV:
         return re.sub(r"\s+", "", value).upper() if isinstance(value, str) else None
 
     async def maintain(self) -> None:
-        """Keepalive: keep the SmartThings sign-in fresh and the local socket open."""
+        """Keepalive: keep the SmartThings sign-in fresh and the local socket open. With hardening.smartthings,
+        a SmartThings breaker past its wait is probed here (one readback), not by a real flip."""
         try:
-            if self.auth:
+            if self.auth and not (self._hardened() and self.cloud_blocked()):
+                # A refused refresh here doesn't block the cloud yet: the access token may have
+                # hours left. Health warns (tv_auth) so the sign-in can be redone before it runs out.
                 await self.auth.maintain()
+            if self._hardened() and self.st_device and (
+                    self.st_breaker.state == "half-open"
+                    or (self.st_fault == "auth" and not self.cloud_blocked())):
+                await self.input_status()   # the probe: closes the breaker / clears the fault if it answers
             await self.warm()
         except Exception:
             log.exception("TV keepalive failed")
@@ -491,6 +666,8 @@ class SamsungTV:
                     evidence.detail = "selected TV reports the requested input"
                     evidence.verify_s = time.monotonic() - t0
                     return True
+                if self.cloud_blocked():
+                    break                         # the cloud went away mid-verify: don't spin on it
                 if attempt < n - 1:
                     await asyncio.sleep(VERIFY_GAP_S if self.has_readback else 0.25)
         if self.corroborate is not None and evidence.accepted:
