@@ -71,9 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Experience-features thread idle 32m: sweep nudged the coordinator to reassign or park it.
-Cycle 06 plan is open as PR #162 (29m); CI on integration/next pending on Merge #134; deploy healthy; Kaggle factory still running.
-Usage 26%.
+Usage 27%. Kaggle factory still running (5884s, only the known CBB KeyError); deploy healthy; CI next pending on Cycle 05 review, release green.
+Nick needed: add free CFBD API key as a Kaggle secret on the factory notebook; OK or not the first Baseball Savant Statcast pull (terms unclear).
+Lane 5 back to work with 3 new items; new factory pack c9590dc on kaggle-inputs.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
