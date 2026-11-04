@@ -554,6 +554,7 @@
     "scripts/eval_sports.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
+    "scripts/night_report.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
     "scripts/replay_check.py",
@@ -3091,7 +3092,8 @@
     "redzone/reasoner/brief.py",
     "redzone/reasoner/reasoner.py",
     "redzone/scoring/brain.py",
-    "redzone/scoring/garbage.py"
+    "redzone/scoring/garbage.py",
+    "redzone/scoring/postseason.py"
    ],
    "kind": "module",
    "outputs": [
@@ -3144,6 +3146,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/scoring/engine.py",
     "redzone/sources/espn.py"
    ],
    "owner": "unowned",
@@ -4436,6 +4439,19 @@
     "untagged"
    ]
   },
+  "scripts/night_report.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Night health report: one page per night, written every morning to docs/nights/YYYY-MM-DD.md (cycle 04 build (a), lane 4).",
+   "serves": [
+    "STK-06"
+   ]
+  },
   "scripts/noggin_factory.py": {
    "contracts": [],
    "inputs": [
@@ -4594,7 +4610,7 @@
    "owner": "unowned",
    "role": "Publish live-night summaries into the repo so the North Star workflow grades real nights (cycle 04, lane 4: \"live nights into northstar\").",
    "serves": [
-    "untagged"
+    "STK-06"
    ]
   },
   "scripts/release_gate.py": {
@@ -4873,10 +4889,10 @@
   }
  },
  "summary": {
-  "modules": 256,
+  "modules": 257,
   "orphans": 10,
-  "unowned": 105,
-  "untagged": 215
+  "unowned": 106,
+  "untagged": 214
  },
  "version": 1
 }
