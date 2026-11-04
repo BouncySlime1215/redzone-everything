@@ -71,8 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 10:25 AM ET.** **RC5 cut:** integration/release = 4602c63 (CI running). The **live hardware lab** (a director background agent on the Mac) deploys it once green, then runs real TV/stick tests all day (flips, press-to-TV, pre-tune, buffer, sync probe, FastCast, tonight's NBA shadow). The TV is on. Cycle 04 started (#114). Merged: #109 (Noggin PICK hook, off), #110 (entry landing fixes), #111 (self-taught rule).
-- **Usage** 11% (line 6.3%, +4.7), close to the brake. Lanes ①②③ plus ④ for RC5; ⑤ paused. Kaggle V7 running.
+- **Nick 10:55 AM: "fuck usage, push this."** Pace brake LIFTED: all 5 lanes + planners at full speed. The only usage rule left is the hard stop at ≥89% weekly (keep 10% for school). **Bar raised:** big-plays-live gate = ≥95% of ORACLE value per league (the raw 95% is infeasible: the oracle ceiling is NFL 91, NBA 93, NHL 85); live-or-replayed ≤10 min ≥99%; mid-play 0; dead-time landings ≥98%; press-to-TV ≤3 s on real hardware.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
