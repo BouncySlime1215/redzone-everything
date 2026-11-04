@@ -92,12 +92,16 @@ def main():
     ap.add_argument("--feed-lag", type=float, default=None, metavar="S",
                     help="[switch timing] every play reaches the app S s after it happened (default 8). The "
                          "screen stays 43 s behind real life, so only the warning before it airs changes")
+    ap.add_argument("--behind-live", type=float, default=None, metavar="S",
+                    help="[time-shift buffer] hold every stream S s behind its live edge: the screen runs "
+                         "26 s (a YouTube TV channel) + S behind real life, so the feed arrives S s earlier "
+                         "relative to the picture")
     a = ap.parse_args()
     knobs = dict(true_delay=a.true_delay, sigma=a.sigma, lag_jitter=(3.0, 25.0) if a.lag_jitter else None,
                  drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed,
                  channel_spread=a.channel_spread, history=a.history, delay_model=a.delay_model, resync=a.resync,
                  feed_lag_model="measured" if a.real_lag else None,
-                 **feed_lag_knobs(a.feed_lag))
+                 **feed_lag_knobs(a.feed_lag, a.behind_live))
     # The live service rewrites data/config.yaml (measured switch costs, taps): scorecards read a
     # pinned copy when one exists, so a before/after comparison isn't moved by the live night.
     pinned = ROOT / "data/eval_config.yaml"
