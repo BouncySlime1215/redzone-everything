@@ -300,7 +300,7 @@ function watchSheet() {
     <div class="v2-wv">${gs.map((g) => `<div class="v2-wv-row${g.game_id === d.current ? " on" : ""}">
       <div class="v2-wv-top"><span class="m ell">${esc(g.matchup)}</span>${g.game_id === d.current ? `<span class="tag tag--kind">On TV</span>` : ""}${g.crunch_state ? `<span class="tag tag--fail">${esc(CRUNCH_TXT[g.crunch_state] || "Crunch")}</span>` : ""}${g.is_break ? `<span class="tag">Break</span>` : ""}<b>${num(g.wv)}</b></div>
       <div class="v2-wv-bar"><i style="width:${Math.max(2, Math.min(100, g.wv))}%"></i></div>
-      ${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}${g.stakes_line ? `<div class="v2-stakes">${icon("target")}${esc(g.stakes_line)}</div>` : ""}</div>`).join("")}</div>`;
+      ${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}${g.stakes_line || g.stakes_pending ? `<div class="v2-stakes${g.stakes_pending ? " v2-stakes--pending" : ""}">${icon("target")}${esc(g.stakes_line || "Stakes")}${g.stakes_pending ? " <small>(model pending)</small>" : ""}</div>` : ""}</div>`).join("")}</div>`;
 }
 ACTIONS["v2-watch"] = () => { watchS.data = null; openSheet({ id: "v2-watch", label: "Watch value", full: true, render: watchSheet, onClose: () => clearTimeout(watchS.timer) }); loadWatch(); };
 
