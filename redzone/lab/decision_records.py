@@ -35,7 +35,6 @@ SCHEMA = 1
 OUTCOME_WINDOW_S = 300.0      # big plays in the 5 minutes after a decision are its outcome
 SNAP_MAX_AGE_S = 180.0        # a candidate snapshot older than this is too stale to attach
 NEVER = ["feedback", "taps", "votes", "overrides"]
-ALERT_MIN = 70.0              # EXP-035: = redzone.web.phone_v2.WHY_TAG_MIN (pinned by a test)
 PLAYBOOK = re.compile(r"playbook=([A-Za-z]+-\d+)")
 
 
@@ -106,8 +105,13 @@ def _trace(row: dict) -> dict:
 
 
 def build(night: str, t0: float, t1: float, decisions: list[dict], switches: list[dict],
-          snapshots: Iterable[tuple] = (), cuts: list[dict] = (), moments: list[dict] = ()) -> list[dict]:
-    """All of one night's records, header first. Pure: every input is already read."""
+          snapshots: Iterable[tuple] = (), cuts: list[dict] = (), moments: list[dict] = (),
+          alert_min: float | None = None) -> list[dict]:
+    """All of one night's records, header first. Pure: every input is already read. alert_min is the
+    EXP-035 why-tag threshold (config phone.why_tag_min; the shipped default when not given)."""
+    if alert_min is None:
+        from redzone.config import default
+        alert_min = float(default("phone.why_tag_min"))
     decisions = sorted(decisions, key=lambda r: float(r["ts"]))
     switches = sorted(switches, key=lambda r: float(r["ts"]))
     moments = sorted(moments, key=lambda r: float(r["ts"]))
@@ -143,7 +147,7 @@ def build(night: str, t0: float, t1: float, decisions: list[dict], switches: lis
         val = _f(wv.get("to") if isinstance(wv, dict) else wv)
         if val is None and isinstance(imp, dict):
             val = _f(imp.get("to"))
-        fired = val is not None and val >= ALERT_MIN and not s.get("dry_run")
+        fired = val is not None and val >= alert_min and not s.get("dry_run")
         ts0 = float(s["ts"])
         hit = any(m.get("game") == s.get("to_game") for m in
                   moments[bisect.bisect_left(mts, ts0):bisect.bisect_left(mts, ts0 + OUTCOME_WINDOW_S)])
@@ -156,7 +160,7 @@ def build(night: str, t0: float, t1: float, decisions: list[dict], switches: lis
             "timing": {"decide_to_picture_s": _f((t.get("spans") or {}).get("to_picture")),
                        "dead_air_s": _f((t.get("spans") or {}).get("dead_air")), "path": t.get("path")},
             "landing": {k: c.get(k) for k in ("leave", "leave_why", "enter", "enter_why")} if c else None,
-            "alert": {"value": val, "threshold": ALERT_MIN, "fired": fired,
+            "alert": {"value": val, "threshold": alert_min, "fired": fired,
                       "nothing_happened": fired and not hit} if val is not None else None})
     for m in moments:
         out.append({"type": "moment", "ts": _f(m["ts"]), "game": m.get("game"), "league": m.get("league"),

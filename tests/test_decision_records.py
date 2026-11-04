@@ -82,8 +82,8 @@ def test_empty_night_still_has_a_header():
 def test_alerts_graded_against_big_plays():
     """EXP-035: a switch whose value crossed the why-tag threshold is an alert; it 'did nothing' when its game
     had no big play in the outcome window. The threshold is the phone's (one number, two places)."""
-    from redzone.web import phone_v2
-    assert dr.ALERT_MIN == phone_v2.WHY_TAG_MIN
+    from redzone.config import default
+    assert default("phone.why_tag_min") == 70
 
     def sw(ts, to, prov, dry=False):
         return {"ts": ts, "frm": None, "to_game": to, "kind": "better", "reason": "", "ok": 1, "dry_run": dry,
@@ -94,7 +94,7 @@ def test_alerts_graded_against_big_plays():
            sw(3000.0, "d", {"importance": {"to": 95.0}}, dry=True),       # a dry run never alerts
            sw(4000.0, "e", {})]                                           # no provenance: no alert record
     moments = [{"ts": 200.0, "game": "a", "kind": "td", "seen": True}, {"ts": 1100.0, "game": "z", "kind": "td"}]
-    recs = dr.build("n", 0.0, 9e9, [], sws, (), [], moments)
+    recs = dr.build("n", 0.0, 9e9, [], sws, (), [], moments)                 # the shipped default, 70
     c = recs[0]["counts"]
     assert (c["alerts"], c["alerts_nothing_happened"], c["alerts_nothing_pct"]) == (2, 1, 50.0)
     al = {r["to_game"]: r["alert"] for r in recs if r["type"] == "switch"}

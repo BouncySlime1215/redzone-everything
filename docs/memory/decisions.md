@@ -363,3 +363,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   to `two_stick.standby_repause_s: 600` in default_config.yaml, value unchanged; postseason.py's ROUNDS / DEFAULTS /
   _rank renamed ROUNDS_LEFT / WEIGHTS / _poll_rank (no behavior change). Reason: the contract kernel (K1/K2/K4)
   flagged them as new on merge; one definition per fact, timings in config (Nick, one connected system).
+- 2026-11-04 (lane 5, #185, EXP-035): new default `phone.why_tag_min: 70` (0-100). The phone's "Why we're here"
+  label shows only when the game on screen is at or over it (learned watch value, else today's score), and
+  lab/decision_records grades every switch over it for "alerted but nothing happened". Reason: the Start Planner
+  (Cycle 08, #183) asked for one source for numbers; 70 is a starting point, to move only with an EXP result.

@@ -578,10 +578,11 @@ def test_why_tag_only_over_the_threshold():
     from redzone.models import League
     from redzone.scoring.engine import Scored
     s = Scored("a", League.NBA, 65.0, 65.0, 0.0, 0.0, 0.0, "Close late", [], False, None, None, 0.0, factor="tied, 2:10 left")
-    assert phone_v2.why_tag(s) is None and phone_v2.why_tag(None) is None              # 65 < 70
+    assert phone_v2.why_tag(s, 70.0) is None and phone_v2.why_tag(None, 70.0) is None    # 65 < 70
     s.score = 74.6
-    assert phone_v2.why_tag(s) == {"text": "tied, 2:10 left", "value": 75, "threshold": 70.0, "source": "stub"}
+    assert phone_v2.why_tag(s, 70.0) == {"text": "tied, 2:10 left", "value": 75, "threshold": 70.0, "source": "stub"}
+    assert phone_v2.why_tag(s, 80.0) is None                                            # the config number decides
     s.watch_value, s.watch_why = 40.0, "Quiet stretch"                                   # learned wins, and it's under
-    assert phone_v2.why_tag(s) is None
+    assert phone_v2.why_tag(s, 70.0) is None
     s.watch_value = 88.0
-    assert phone_v2.why_tag(s)["text"] == "Quiet stretch" and phone_v2.why_tag(s)["source"] == "learned"
+    assert phone_v2.why_tag(s, 70.0)["text"] == "Quiet stretch" and phone_v2.why_tag(s, 70.0)["source"] == "learned"

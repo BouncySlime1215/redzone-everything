@@ -71,7 +71,7 @@ It's read only and makes no writes.
 ## EXP-035: "why we're here" alerts, graded
 
 The phone labels the game on screen "Why we're here: <why>" only when its value is at or over a fixed
-threshold (`phone_v2.WHY_TAG_MIN` = 70 on the 0-100 scale: the learned watch value when there is one,
+threshold (config `phone.why_tag_min`, default 70, on the 0-100 scale: the learned watch value when there is one,
 otherwise today's score). Each switch record carries `alert: {value, threshold, fired, nothing_happened}`.
 The value is the one the decision saw, from `trace.provenance` (`watch_value.to`, otherwise `importance.to`).
 A fired alert "did nothing" when its game had no big play in the outcome window (`OUTCOME_WINDOW_S`).
