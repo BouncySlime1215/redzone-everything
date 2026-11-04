@@ -233,7 +233,7 @@ class CecSteal(Fault):
 PLAYBOOK = {"feed_frozen": "FEED-02", "rate_limit": "FEED-06", "slow_poll": "MAC-05", "wifi_degrade": "SAFE-03",
             "buffering": "NET-02", "stick_drop": "STK-01/02", "stick_wedge": "STK-03", "flip_ignored": "TV-01",
             "st_down": "TV-02", "tv_other_input": "TV-03", "cec_steal": "TV-04",
-            "stick_paused": "STK-05"}   # fault kind -> docs/playbooks.md entry
+            "stick_paused": "STK-05", "buffer_lost": "STK-06"}   # fault kind -> docs/playbooks.md entry
 
 
 class FeedStale(Fault):
@@ -288,12 +288,45 @@ class StickPaused(Fault):
         world.house.event("fault", self.host, f"stick paused ({self.info.get('mode', 'stale')})")
 
 
+class BufferLost(Fault):
+    """STK-06: the hidden stick's held stream loses its time-shift buffer. mode "jump" (default): it
+    jumps to the live edge (a resume-to-live, a seek), its position leaping ahead by what it was behind;
+    mode "drift": it falls info.seconds (default 6) further behind (a long stall nobody booked).
+    info.wait_s: it only hits a stream that is playing AND held behind live, so it fires at the first
+    such moment within wait_s of `at` (a fixed time can land inside a hold or a rebuild, lane 2 Nov 4)."""
+    def start(self, world):
+        from redzone.lab.night import house as h
+        host = _pick(world, self.host or "hidden")
+        d = world.house.sticks[host]
+        a = d.apps.get(d.fg)
+        held = a is not None and a.screen == "player" and a.state == h.PLAYING and a.behind > 0
+        if self.info.get("wait_s") and not held:
+            self.info["retry"] = True   # run.py tries again a moment later, until at + wait_s
+            return
+        self.info.pop("retry", None)
+        self.host = host
+        if a is not None and a.screen == "player" and a.state == h.PLAYING:
+            mode = self.info.get("mode", "jump")
+            pos = d._now_pos(a)
+            if mode == "drift":
+                lag = float(self.info.get("seconds", 6.0))
+                a.behind += lag
+                d._stamp(a, h.PLAYING, pos - int(lag * 1000))
+            else:
+                self.info["was_behind_s"] = round(a.behind, 1)
+                jump = int(a.behind * 1000)
+                a.behind = 0.0
+                d._stamp(a, h.PLAYING, pos + jump)
+            self.info["hit"], self.info["target"] = True, a.target
+        world.house.event("fault", self.host, f"buffer lost ({self.info.get('mode', 'jump')})")
+
+
 KINDS = {"stick_drop": StickDrop, "stick_wedge": StickWedge, "still_watching": StillWatching,
          "feed_outage": FeedOutage, "flip_ignored": FlipIgnored, "api_down": ApiDown, "clock_skew": ClockSkew,
          "feed_frozen": FeedFrozen, "rate_limit": RateLimit, "slow_poll": SlowPoll, "wifi_degrade": WifiDegrade,
          "buffering": Buffering, "st_down": StDown, "tv_other_input": TvOtherInput, "cec_steal": CecSteal,
          "feed_stale": FeedStale, "sync_wide": SyncWide,
-         "stick_paused": StickPaused}
+         "stick_paused": StickPaused, "buffer_lost": BufferLost}
 
 
 def from_spec(spec: dict) -> Fault:

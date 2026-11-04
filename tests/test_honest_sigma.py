@@ -106,3 +106,147 @@ def test_candidate_takes_the_landing_lag_and_strict_ended_entries():
     from redzone.noggin import profile
     args = profile.argv("candidate", "nhl")
     assert "decider.entry.landing_lag_s=6" in args and "decider.entry.ended_strict=true" in args
+
+
+def test_possession_start_cues_to_the_last_dead_ball_instead_of_waiting():
+    from redzone.decider.cuts import plan_entry
+    dt = _tracker()
+    # the picture would come up at 1036, mid-play; the full 20 s doubt fits no rewind in 1003-1030
+    kw = dict(can_rewind=True, step=10.0, max_back=120.0)
+    a = plan_entry(dt, 100.0, 20.0, 1131.0, 5.0, **kw)
+    b = plan_entry(dt, 100.0, 20.0, 1131.0, 5.0, possession=True, **kw)
+    assert not a.ok
+    assert b.ok and b.rewind_s > 0 and "(possession start)" in b.why
+    assert 1003 <= 1036 - b.rewind_s <= 1030           # lands on the dead ball before the play
+    # without a DVR there is nothing to cue: still waits (rule #1)
+    c = plan_entry(dt, 100.0, 20.0, 1131.0, 5.0, can_rewind=False, possession=True)
+    assert not c.ok
+
+
+def test_possession_start_is_off_by_default_and_reads_its_scope():
+    from types import SimpleNamespace as NS
+    from redzone.decider.decider import Decider
+    dec = Decider.__new__(Decider)
+    x = NS(scored=NS(crunch_now=False))
+    d = NS(kind="score")
+    for mode, want in (("off", False), (False, False), ("crunch", False), ("all", True)):
+        dec.cfg = {"decider.entry.possession_start": mode}
+        assert dec._possession_start(x, d) is want
+    dec.cfg = {"decider.entry.possession_start": "crunch"}
+    assert dec._possession_start(NS(scored=NS(crunch_now=True)), d) is True
+
+
+def test_candidate_uses_possession_start_for_crunch():
+    from redzone.noggin import profile
+    assert "decider.entry.possession_start=crunch" in profile.argv("candidate", "nba")
+
+
+def test_rule1_no_rewind_into_a_data_gap():
+    """[data gap] NBA GS @ DEN (Nov 4): a substitution with no stoppage logged before it, then 4 minutes
+    with no data. With decider.entry.confirmed_dead_only the gap is no dead window, so nothing lands in it."""
+    from redzone.decider.cuts import DeadTracker, plan_entry
+    dt = DeadTracker(League.NBA)
+    dt.add("1", 1000, 1000, "jump_shot", "makes 2", "Jump Shot", 377.0, 2)
+    dt.add("2", 1000, 1000, "substitution", "enters the game", "Substitution", 377.0, 2)
+    dt.add("3", 1238, 1238, "jump_shot", "makes 3", "Jump Shot", 353.0, 2)
+    dt.seen(1300, 10)
+    kw = dict(can_rewind=True, step=10.0, max_back=120.0, possession=True)
+    # the picture would come up at 1250: a rewind would have landed in the gap (1000 .. 1212)
+    assert plan_entry(dt, 100.0, 4.0, 1345.0, 5.0, **kw).ok
+    dt.confirmed_only, dt._windows = True, None
+    assert all(w.kind != "substitution" for w in dt.windows())
+    assert not plan_entry(dt, 100.0, 4.0, 1345.0, 5.0, **kw).ok
+
+
+def test_candidate_takes_confirmed_dead_only():
+    from redzone.noggin import profile
+    assert "decider.entry.confirmed_dead_only=true" in profile.argv("candidate", "nba")
+
+
+def test_candidate_takes_the_position_floor():
+    from redzone.noggin import profile
+    args = profile.argv("candidate", "nfl")
+    assert "delay.sync.min_sigma_s=3" in args and "sync.break_anchor.enabled=true" in args
+
+
+def test_position_reads_pin_the_delay_after_a_tune():
+    """[yttv position] once an anchor has fixed the origin, a position read after a new tune gives the
+    delay at once (sync.py: d = wall - origin - position)."""
+    from redzone.decider.sync import SyncBook
+    sb = SyncBook(lambda t: (40.0, 8.0), clock=lambda: 0.0)
+    for k in range(20):                               # anchors with 5 s doubt, positions every 5 s
+        t = 1000.0 + 5 * k
+        sb.position("youtubetv:espn", t - 1.7e9 - 45.0, t=t)
+        if k % 5 == 0:
+            sb.measure("youtubetv:espn", 45.0 + (2 if k % 10 else -2), "flip", t=t, sd=3.0)
+    sb.tuned("youtubetv:espn", 1200.0)
+    sb.position("youtubetv:espn", 1210.0 - 1.7e9 - 51.0, t=1210.0)   # the new tune landed 6 s further back
+    mu, sd = sb.get("youtubetv:espn").mu(1210.0), sb.get("youtubetv:espn").sd(1210.0)
+    assert abs(mu - 51.0) < 2.5 and sd < 3.0
+
+
+def test_replay_window_skips_stale_single_replays_in_its_leagues():
+    """[replay window] Nick, Nov 4: a missed moment airs within 3 min or not singly (montage only)."""
+    from types import SimpleNamespace as NS
+    from redzone.decider.decider import Decider, Missed
+    dec = Decider.__new__(Decider)
+    dec._known = {"g1": NS(scored=NS(league=NS(base=NS(value="nfl")))),
+                  "g2": NS(scored=NS(league=NS(base=NS(value="nhl"))))}
+    m1 = Missed("g1", "p", "TD", "td", 1000.0, 90.0)
+    m2 = Missed("g2", "p", "goal", "goal", 1000.0, 90.0)
+    dec.cfg = {"replay.window_s": 180, "replay.window_leagues": ["nfl"]}
+    assert dec._window(m1) == 180 and dec._window(m2) == 0
+    dec.cfg = {"replay.window_s": 0}
+    assert dec._window(m1) == 0
+    dec.cfg = {"replay.window_s": 180}
+    assert dec._window(m2) == 180 and dec._due(m2) == 180
+
+
+def test_lookahead_scopes_to_its_leagues():
+    """[GAME-04] noggin.lookahead.leagues: the candidate chases only NFL plays (NHL locked crunch -0.9)."""
+    from types import SimpleNamespace as NS
+    from redzone.decider.decider import Decider
+    from redzone.noggin import profile
+    dec = Decider.__new__(Decider)
+    nfl, nhl = (NS(scored=NS(league=NS(base=NS(value=v)))) for v in ("nfl", "nhl"))
+    dec.cfg = {"noggin.lookahead.enabled": True, "noggin.lookahead.leagues": ["nfl"]}
+    assert dec._lookahead_on() and dec._lookahead_on(nfl) and not dec._lookahead_on(nhl)
+    dec.cfg = {"noggin.lookahead.enabled": True}
+    assert dec._lookahead_on(nhl)
+    dec.cfg = {"noggin.lookahead.leagues": ["nfl"]}
+    assert not dec._lookahead_on(nfl)
+    assert "noggin.lookahead.leagues=[nfl]" in profile.argv("candidate", "nhl")
+
+
+def test_cec_off_flip_prior_and_stick_pretunes():
+    """[live lab, Nov 4 11:35 AM] CEC off: flips p50 1.89 / p95 1.98 / max 2.02; hidden-stick pre-tune to
+    PLAYING 4K Plus 2.33 / 3.06, 4K 2023 3.74 / 5.50. The sims draw from these."""
+    import statistics
+    from redzone.contracts.switching import FLIP_PRIOR, PRETUNE_PRIOR_S, flip_bound, sample_prior
+    assert flip_bound(FLIP_PRIOR) == (1.89, 2.02)   # bounded by the measured max (rule #1)
+    rng = random.Random(3)
+    xs = sorted(sample_prior(FLIP_PRIOR, rng) for _ in range(4000))
+    assert abs(statistics.median(xs) - 1.89) < 0.01 and abs(xs[int(.95 * len(xs))] - 1.98) < 0.01 and xs[-1] <= 2.02
+    for p in PRETUNE_PRIOR_S.values():
+        ys = sorted(sample_prior(p, rng) for _ in range(4000))
+        assert abs(statistics.median(ys) - p["median"]) < 0.08 and abs(ys[int(.95 * len(ys))] - p["p95"]) < 0.2
+    assert PRETUNE_PRIOR_S["AFTMA08C15"]["p95"] < PRETUNE_PRIOR_S["AFTKM"]["median"]   # prefer the 4K Plus
+
+
+def test_replay_window_counts_from_the_airing():
+    """[replay window] Nick's 3 minutes run from when the play aired, not from when the feed had it."""
+    from redzone.decider.decider import Decider, Missed
+    dec = Decider.__new__(Decider)
+    dec._known = {}
+    dec.cfg = {"replay.window_s": 180}
+    m = Missed("g1", "p", "TD", "td", 1000.0, 90.0, due_s=600.0, aired=1130.0)
+    assert dec._aired_age(m, 1250.0) == 120.0                 # 250 s after the feed, 120 s after it aired
+    assert abs(dec._urgency(m, 1250.0) - 1 / 3) < 1e-9          # ramps from 90 s to 180 s after airing
+    assert dec._urgency(m, 1320.0) == 1.0
+    old = Missed("g1", "p", "TD", "td", 1000.0, 90.0, due_s=600.0)
+    assert dec._aired_age(old, 1250.0) == 250.0               # unknown airing: the feed time
+
+
+def test_candidate_crunch_stoppages_skip_instant_replays():
+    from redzone.noggin import profile
+    assert "decider.crunch.instant_replays=false" in profile.argv("candidate", "nfl")

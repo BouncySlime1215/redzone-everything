@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 import time
 import multiprocessing as mp
@@ -33,6 +34,10 @@ from redzone.noggin import pick as PK  # noqa: E402
 
 LAG_S = 116.0
 TUNE_S = 5.0
+# [possession-start entry] > 0: entry cues to the target's last dead ball up to CUE_S behind live (the
+# time-shift buffer): labels from oracle.solve_cue, land_ok = a dead ball in reach, rollouts carry the offset
+CUE_S = float(os.environ.get("RZ_PICK_CUE_S", "0") or 0)
+CUE_FEATS = os.environ.get("RZ_PICK_CUE_FEATS") == "1"    # + pick.CUE_FEATURES (what the cue replays)
 MINE = {"WSH", "UNC"}
 COLS = ["id", "sequence_number", "type_text", "text", "period_number", "clock_display_value", "wallclock",
         "scoring_play", "score_value", "home_score", "away_score", "game_id", "home_team_abbrev",
@@ -77,12 +82,23 @@ def night_pack(reps):
     n = O.Night(reps, MINE, LAG_S, TUNE_S, t0, t1)
     steps = np.arange(t0, t1, O.STEP_S)
     tab = O.tables(n, steps)
-    X = PK.features_for_night(reps, tab, steps, LAG_S, MINE)
+    X = PK.features_for_night(reps, cue_tab(tab), steps, LAG_S, MINE)
+    if CUE_S > 0 and CUE_FEATS:
+        X = np.concatenate([X, PK.cue_features(reps, O.cue_steps(tab, CUE_S), steps, LAG_S)], axis=2)
     return n, steps, tab, X
 
 
+def cue_tab(tab):
+    """The tables the features see: with CUE_S, a game is landable when a dead ball is in reach behind live."""
+    return dict(tab, land=O.cue_steps(tab, CUE_S) >= 0) if CUE_S > 0 else tab
+
+
+def oracle_solve(n, tab):
+    return O.solve_cue(n, "combined", tab, max_cue_s=CUE_S) if CUE_S > 0 else O.solve(n, "combined", tab)
+
+
 def labels(n, steps, tab):
-    sw = O.solve(n, "combined", tab)
+    sw = oracle_solve(n, tab)
     on = PK.oracle_on(sw, n.replays, steps, TUNE_S)
     blk = max(1, int(math.ceil(TUNE_S / O.STEP_S)))
     tgt = np.concatenate([on[blk:], np.repeat(on[-1:], blk)])
@@ -139,13 +155,15 @@ def grade_split(args):
         n, steps, tab, X = night_pack(reps)
         row = {"night": night}
         cards = {}
-        osw = O.solve(n, "combined", tab)
-        cards["oracle"] = O.grade(n, osw)
-        cards["hand"] = O.grade(n, PK.rollout(_hand(X), X, reps, steps, TUNE_S, 0.5, "hand"))
+        cue = O.cue_steps(tab, CUE_S) if CUE_S > 0 else None
+        cards["oracle"] = O.grade(n, oracle_solve(n, tab))
+        if cue is not None:
+            cards["oracle_live"] = O.grade(n, O.solve(n, "combined", tab))
+        cards["hand"] = O.grade(n, PK.rollout(_hand(X), X, reps, steps, TUNE_S, 0.5, "hand", cue))
         if model is not None:
             sc = score_of(model, X)
             for m in margins:
-                cards[f"pick_{m}"] = O.grade(n, PK.rollout(sc, X, reps, steps, TUNE_S, m, "pick"))
+                cards[f"pick_{m}"] = O.grade(n, PK.rollout(sc, X, reps, steps, TUNE_S, m, "pick", cue))
         for k, c in cards.items():
             row[k] = dict(big=c.big, big_live=c.big_live, crunch=c.crunch, crunch_live=c.crunch_live,
                           my_crunch=c.my_crunch, my_crunch_live=c.my_crunch_live, dead_s=c.dead, watched_s=c.watched,
@@ -183,7 +201,18 @@ def main() -> int:
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--model", type=Path, default=None, help="grade this saved model (skip building + training)")
     ap.add_argument("--cv-json", type=Path, default=None, help="with --model: the CV rows from the training run")
+    ap.add_argument("--cue-s", type=float, default=None,
+                    help="possession-start entry: cue to the last dead ball up to this many s behind live")
+    ap.add_argument("--cue-feats", action="store_true", help="with --cue-s: add pick.CUE_FEATURES")
     a = ap.parse_args()
+    if a.cue_feats:
+        global CUE_FEATS
+        CUE_FEATS = True
+        os.environ["RZ_PICK_CUE_FEATS"] = "1"
+    if a.cue_s is not None:
+        global CUE_S
+        CUE_S = a.cue_s
+        os.environ["RZ_PICK_CUE_S"] = str(a.cue_s)        # the spawned graders read it at import
     import lightgbm as lgb
     rng = lambda s: list(range(int(s.split("-")[0]), int(s.split("-")[1]) + 1))   # noqa: E731
     a.out.mkdir(parents=True, exist_ok=True)
@@ -221,15 +250,15 @@ def main() -> int:
         xca, yca = stack(seasons["calib"])
         model = lgb.train(PARAMS, lgb.Dataset(xtr, ytr), a.rounds, valid_sets=[lgb.Dataset(xca, yca)],
                           callbacks=[lgb.early_stopping(50, verbose=False)])
-        model_path = a.out / f"pick_{a.league}.v1.txt"
+        model_path = a.out / (f"pick_{a.league}.cue{int(CUE_S)}{'f' if CUE_FEATS else ''}.txt" if CUE_S > 0 else f"pick_{a.league}.v1.txt")
         model.save_model(str(model_path))
-        print(f"  model: {model.num_trees()} trees, {len(ytr):,} train rows, {len(PK.PICK_FEATURES)} features "
+        print(f"  model: {model.num_trees()} trees, {len(ytr):,} train rows, {xtr.shape[1]} features "
               f"({time.time() - t0:.0f} s)", flush=True)
         mp_ = model_path
         calib_nights = {n for y in seasons["calib"] for n, _, _ in data[y]}
 
     margins = (0.0, 0.05, 0.1, 0.2, 0.3)
-    report = {"cv": cv, "info": dict(train_rows=int(len(ytr)), trees=model.num_trees(), features=list(PK.PICK_FEATURES),
+    report = {"cv": cv, "info": dict(train_rows=int(len(ytr)), trees=model.num_trees(), features=list(PK.PICK_FEATURES) + (list(PK.CUE_FEATURES) if CUE_S > 0 and CUE_FEATS else []),
                                      lag_s=LAG_S, tune_s=TUNE_S, feed_lag_p90=PK.FEED_LAG_P90[League(a.league)])}
     for split in ("calib", "test"):
         yrs = seasons[split]
@@ -242,7 +271,7 @@ def main() -> int:
         # spawn, not fork: a forked child inherits LightGBM's OpenMP pool and hangs in predict
         with ProcessPoolExecutor(a.jobs, mp_context=mp.get_context("spawn")) as ex:
             res = [r for part in ex.map(grade_split, jobs) for r in part]
-        keys = ["oracle", "hand"] + [f"pick_{m}" for m in margins]
+        keys = ["oracle", "hand"] + (["oracle_live"] if CUE_S > 0 else []) + [f"pick_{m}" for m in margins]
         report[split] = {k: totals(res, k) for k in keys}
         if split == "calib":
             # the margin is picked on calib only, by the oracle's own objective (never on test)
@@ -252,7 +281,8 @@ def main() -> int:
             best = max(margins, key=lambda m: val(report["calib"][f"pick_{m}"]))
             report["margin"] = best
         print(f"  {split}: " + json.dumps(report[split]), flush=True)
-    (a.out / f"pick_{a.league}.report.json").write_text(json.dumps(report, indent=1))
+    report["info"]["cue_s"] = CUE_S
+    (a.out / (f"pick_{a.league}.cue{int(CUE_S)}{'f' if CUE_FEATS else ''}.report.json" if CUE_S > 0 else f"pick_{a.league}.report.json")).write_text(json.dumps(report, indent=1))
     print(json.dumps({k: report[k] for k in ("margin", "test")}, indent=1))
     return 0
 

@@ -30,23 +30,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from redzone.grading import DEAD_WORDS, is_dead_ball  # noqa: F401  [one brain] moved, step 3
+
 TRACK_GAP_S = 120.0      # a batch this long after the game's previous one starts a new tracking stretch
 MAX_LAG_S = 600.0        # beyond this a row is a backlog we missed, not a feed delay
 TARGET_S = 3.0           # the user's goal: dead ball known within 3 s of the whistle
 QS = tuple(range(0, 101, 5))   # profile quantiles
 PROFILE_PATH = Path(__file__).with_name("feed_lag_profile.json")
 
-# Play types that mean the ball is dead (whistle, timeout, review, period end). Lower-case substrings.
-DEAD_WORDS = ("timeout", "foul", "free throw", "stoppage", "penalty", "end of", "end period", "review",
-              "challenge", "injury", "violation", "jump ball", "two-minute", "two minute", "kick",
-              "punt", "field goal", "extra point", "touchdown", "goal", "icing", "offside", "turnover",
-              "out of bounds")
 BASKETBALL = ("nba", "cbb", "wcbb", "wnba")
-
-
-def is_dead_ball(league: str, typ: str) -> bool:
-    t = (typ or "").lower()
-    return any(w in t for w in DEAD_WORDS)
 
 
 def quantile(xs: Sequence[float], q: float) -> float:

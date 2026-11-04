@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import re
 import sys
 import time
@@ -137,7 +138,27 @@ def summarize(got: dict[str, list[dict]]) -> dict:
         for k, v in (r.get("spans") or {}).items():
             if isinstance(v, (int, float)) and k not in ("total",):
                 spans.setdefault(k, []).append(float(v))
+    # [STK-06] the hidden stick's time-shift buffer: holds that went bad (lost / drift) and were rebuilt.
+    buf = got.get("buffer.jsonl", [])
+    bad = [r for r in buf if r.get("kind") in ("lost", "drift")]
+    errs = [abs(float(r["err_s"])) for r in bad if isinstance(r.get("err_s"), (int, float))]
+    # [STK-07] the left-game hold (buffer.hold_left): held, played on from the dead ball, or reloaded live.
+    left = {k: sum(1 for r in buf if r.get("kind") == f"left_{k}") for k in ("held", "resumed", "expired", "lost")}
+    # [provenance] which module contributed what, per switch (switches.detail.trace.provenance, from the DB)
+    sw = got.get("switches.jsonl", [])
+    prov = [((r.get("detail") or {}).get("trace") or {}).get("provenance") for r in sw]
+    fired: dict[str, int] = {}
+    for p in prov:
+        for pb in (p or {}).get("playbook") or []:
+            fired[pb] = fired.get(pb, 0) + 1
     return {
+        "left_hold": left,
+        "provenance": {"switches": len(sw), "with_provenance": sum(1 for p in prov if p),
+                       "modules": sorted({m for p in prov for m in (p or {})}), "playbooks_fired": fired},
+        "buffer": {"detected": len(bad), "lost": sum(1 for r in bad if r["kind"] == "lost"),
+                   "recovered": sum(1 for r in buf if r.get("kind") == "recovered"),
+                   "rebuild_failed": sum(1 for r in buf if r.get("kind") == "rebuild_failed"),
+                   "err_p95_s": p95(errs)},
         "press_spans": {k: {"n": len(v), "p50_s": round(sorted(v)[len(v) // 2], 2), "p95_s": p95(v)}
                         for k, v in sorted(spans.items())},
         "landings": {"n": len(after), "after_dead_p50_s": after[len(after) // 2] if after else None,
@@ -146,15 +167,41 @@ def summarize(got: dict[str, list[dict]]) -> dict:
         "sync_anchor_err": {k: {"n": len(v), "p50_s": sorted(v)[len(v) // 2], "p95_s": p95(v)}
                             for k, v in sorted(anchors.items())},
         "rows": {k: len(v) for k, v in got.items()},
-        "switch_samples": len(tv), "switch_p95_s": p95(tv), "switch_max_s": round(max(tv), 2) if tv else None,
+        "switch_samples": len(tv), "switch_p50_s": round(sorted(tv)[len(tv) // 2], 2) if tv else None,
+        "switch_p95_s": p95(tv), "switch_max_s": round(max(tv), 2) if tv else None,
         "tv_unverified": sum(1 for r in got["tv_input.jsonl"] if not r.get("verified")),
         "cuts_graded": len(cuts), "entries_mid_play": sum(1 for r in cuts if r.get("enter") == "play"),
         "leaves_mid_play": sum(1 for r in cuts if r.get("leave") == "play"),
         "picture_within_3s": f"{sum(1 for x in pics if x <= 3)}/{len(pics)}" if pics else None,
         "picture_p95_s": p95(pics),
         "press_samples": len(press), "press_to_tv_p95_s": p95(press),
+        "press_to_tv_p50_s": round(sorted(press)[len(press) // 2], 2) if press else None,
         "press_no_picture": len(user) - len(press),
     }
+
+
+def copy_switches(db: Path, dst: Path, since: float, until: float | None = None) -> list[dict]:
+    """Every switch row of the window from the app's database (read-only), detail parsed: its trace,
+    provenance included, is the night's record of who decided what. [] without a database."""
+    if not db.exists():
+        return []
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        cur = con.execute("SELECT ts, frm, to_game, target, kind, reason, ok, dry_run, detail FROM switches "
+                          "WHERE ts >= ? AND ts < ? ORDER BY ts", (since, until if until else 4e9))
+        cols = [c[0] for c in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    except sqlite3.Error:
+        return []
+    finally:
+        con.close()
+    for r in rows:
+        try:
+            r["detail"] = json.loads(r["detail"] or "{}")
+        except ValueError:
+            r["detail"] = {}
+    dst.write_text("".join(json.dumps(r, default=str) + "\n" for r in rows))
+    return rows
 
 
 def collect(data: Path, out: Path, since: float, until: float | None = None) -> dict:
@@ -165,8 +212,10 @@ def collect(data: Path, out: Path, since: float, until: float | None = None) -> 
     days = [(day0 + timedelta(days=i)).isoformat() for i in range((end - day0).days + 1)]
     srcs = {"sync_probe.jsonl": [data / "recordings" / d / "sync_probe.jsonl" for d in days],
             "tv_input.jsonl": [data / "tv_input.jsonl"], "supervisor_cuts.jsonl": [data / "supervisor_cuts.jsonl"],
-            "traces.jsonl": [data / "traces.jsonl"], "sync.jsonl": [data / "sync.jsonl"]}
+            "traces.jsonl": [data / "traces.jsonl"], "sync.jsonl": [data / "sync.jsonl"],
+            "buffer.jsonl": [data / "buffer.jsonl"]}
     got = {k: copy_rows(v, out / k, since, until) for k, v in srcs.items()}
+    got["switches.jsonl"] = copy_switches(data / "redzone.db", out / "switches.jsonl", since, until)
     s = summarize(got)
     s["since"] = datetime.fromtimestamp(since).isoformat(timespec="seconds")
     if until:
@@ -198,6 +247,8 @@ def main(argv=None) -> int:
         "supervisor_cuts.jsonl": copy_rows([a.data / "supervisor_cuts.jsonl"], a.out / "supervisor_cuts.jsonl", since),
         "traces.jsonl": copy_rows([a.data / "traces.jsonl"], a.out / "traces.jsonl", since),
         "sync.jsonl": copy_rows([a.data / "sync.jsonl"], a.out / "sync.jsonl", since),
+        "buffer.jsonl": copy_rows([a.data / "buffer.jsonl"], a.out / "buffer.jsonl", since),
+        "switches.jsonl": copy_switches(a.data / "redzone.db", a.out / "switches.jsonl", since),
     }
     s = summarize(got)
     s["since"] = datetime.fromtimestamp(since).isoformat(timespec="seconds")
@@ -215,6 +266,11 @@ def main(argv=None) -> int:
           f"(p50), {s['landings']['before_play_p50_s']} s before play resumed (p50, min {s['landings']['before_play_min_s']})",
           "- Sync anchor error by stick: " + (", ".join(f"{k} n={v['n']} p50 {v['p50_s']} s p95 {v['p95_s']} s"
                                                        for k, v in s["sync_anchor_err"].items()) or "none"),
+          f"- Buffer (STK-06): {s['buffer']['detected']} went bad, {s['buffer']['recovered']} rebuilt, "
+          f"error p95 {s['buffer']['err_p95_s']} s",
+          f"- Left-game hold (STK-07): {s['left_hold']}",
+          f"- Provenance: {s['provenance']['with_provenance']}/{s['provenance']['switches']} switches, playbooks fired "
+          f"{s['provenance']['playbooks_fired'] or 'none'}",
           f"- Rows: {', '.join(f'{k} {v}' for k, v in s['rows'].items())}", ""]
     (a.out / "summary.md").write_text("\n".join(md))
     print("\n".join(md))
