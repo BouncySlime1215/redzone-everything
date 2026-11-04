@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- 16:50 CITY MAP draft PR #165 (14-agent diamond run, all 4 claims verified): citymap.py + docs/citymap.md (250 modules), the contract_check.py proof kernel in report mode (490 violations vs baseline 498, CI fails only on new ones), timing constants moved to config with values unchanged, the one-brain migration plan + Axiom rules. Rule for every thread: read docs/citymap.md first.
-- NOGGIN FOUNDATION MODEL is the main track (Nick 4:45 PM): pretrain a ~100-300M param model on ~1B play-event tokens, then heads (Watch Value, crunch enter/exit, breaks, importance), distilled to the Reflex. Game importance (playoff race, big matchups, NFL scarcity) and learned crunch entry/exit sent to the planners. PR #163 adds playoff stakes (ArenaSwap ideas, no code copied).
+STATUS 16:10: usage 26%; Kaggle factory still running (5003s); deploy healthy; CI integration/next pending.
+STATUS: coordinator relayed NFM strategy shift (lane 1 + planners); experience-features thread idle 22m; diamond workflow done.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
