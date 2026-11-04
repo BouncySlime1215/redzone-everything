@@ -345,7 +345,10 @@ function mockV2(path, b) {
       const t0 = Math.max(gs[i].crunch[0], gs[j].crunch[0]), t1 = Math.min(gs[i].crunch[1], gs[j].crunch[1]);
       if (t1 - t0 > 120) { const [w, l] = gs[j].yours && !gs[i].yours ? [gs[j], gs[i]] : [gs[i], gs[j]]; cl.push({ t0, t1, games: [w.game_id, l.game_id], on_tv: w.matchup, second: [l.matchup], why: w.yours && !l.yours ? "your team" : "league order" }); }
     }
-    return { enabled: true, now, games: gs, clashes: cl.sort((x, y) => x.t0 - y.t0).slice(0, 6), yours: gs.filter((g) => g.yours).length };
+    const clashes = cl.sort((x, y) => x.t0 - y.t0).slice(0, 6);
+    const first = clashes[0];
+    const alert = first ? { t0: now + 1260, t1: now + 2400, in_s: 1260, on_tv: first.on_tv, second: first.second, why: first.why, now: false } : null;
+    return { enabled: true, now, games: gs, clashes, yours: gs.filter((g) => g.yours).length, alert };
   }
   if (path.startsWith("/api/v2/trend")) {
     const L = [["mid_play", "Mid-play cuts per 100 landings", 0, -1, 2.4, 1.75], ["landings_dead", "Landings in dead time %", 98, 1, 96.1, 98.25],

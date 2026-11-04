@@ -237,3 +237,19 @@ def test_trend_route(client, engine):
     r = client.get("/api/v2/trend").json()                 # the real docs/northstar-history.jsonl
     assert r["enabled"] and r["split"] == "dev" and len(r["lines"]) == len(phone_v2.TREND_LINES)
     assert client.get("/api/v2/trend?split=x").json()["ok"] is False
+
+
+def test_clash_alert_only_for_your_team_soon():
+    slate = {"games": [{"game_id": "w", "yours": True}, {"game_id": "x", "yours": False}, {"game_id": "y", "yours": False}],
+             "clashes": [{"t0": 100.0, "t1": 900.0, "games": ["x", "y"], "on_tv": "X", "second": ["Y"], "why": "league order"},
+                         {"t0": 1000.0, "t1": 1800.0, "games": ["w", "x"], "on_tv": "W", "second": ["X"], "why": "your team"}]}
+    a = phone_v2.clash_alert(slate, now=0.0)
+    assert a["on_tv"] == "W" and a["in_s"] == 1000 and a["now"] is False      # not the x/y clash
+    assert phone_v2.clash_alert(slate, now=1200.0)["now"] is True
+    assert phone_v2.clash_alert(slate, now=0.0, ahead=500.0) is None
+    assert phone_v2.clash_alert(slate, now=2000.0) is None
+
+
+def test_slate_route_carries_the_alert(client, engine):
+    _on(engine)
+    assert "alert" in client.get("/api/v2/slate").json()
