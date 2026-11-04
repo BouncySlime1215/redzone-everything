@@ -243,3 +243,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   app's eval nights (dev vs the candidate: big live 81.7 -> 83.1, dead air 19.4 -> 13.7, mid-play entries
   3 -> 0). Next is a flag-off decider hook in shadow first, since the rollout assumes every switch lands
   as planned.
+- 2026-11-04 11:55 AM (lane 2, scenario tree): **`playbooks.game.skip: [GAME-01]` by default, and a visit row never
+  displaces a catch-up reel or crunch time.** Why: with the tree on, GAME-01 visits (and visits replacing reels) cost
+  dev NFL big plays seen within 10 min 87.8 -> 84.3 and crunch 70.7 -> 68.7. With both changes the tree is no worse
+  than off on any league: dev NFL big live 54.4 -> 54.7, crunch 70.7 -> 71.0, 10-min seen 87.8 = 87.8, dead air 30.4 =;
+  locked NFL equal (10-min seen 88.3 -> 88.6); NBA/NHL equal. `playbooks.game.enabled` stays OFF.

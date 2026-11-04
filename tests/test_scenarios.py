@@ -80,5 +80,11 @@ def test_table_from_a_file(tmp_path):
     f = tmp_path / "t.json"
     f.write_text('[{"id": "X-1", "on": ["live"], "other": [], "do": "hold", "back": ""}]')
     assert sc.Scenarios(Cfg({"playbooks.game.table": str(f)})).table[0]["id"] == "X-1"
-    assert sc.Scenarios(Cfg()).table is sc.SEED
+    assert sc.Scenarios(Cfg()).table == sc.SEED
     assert not sc.Scenarios(Cfg()).enabled()
+
+
+@pytest.mark.playbook("GAME-01")
+def test_skipped_rows_are_left_out_of_the_table():
+    s = sc.Scenarios(Cfg({"playbooks.game.enabled": True, "playbooks.game.skip": ["GAME-01"]}))
+    assert all(r["id"] != "GAME-01" for r in s.table) and any(r["id"] == "GAME-03" for r in s.table)

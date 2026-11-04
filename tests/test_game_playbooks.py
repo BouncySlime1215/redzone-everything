@@ -112,3 +112,15 @@ def test_clairvoyance_never_steals_the_pretune_from_crunch_time(monkeypatch):
              "B": cand(sc_(League.NFL), "B"), "C": cand(sc_(League.NFL, crunch=False, crunch_now=False), "C")}
     want = Decision(0.0, "stay", "A", "want crunch time", State.WATCHING, want="B")
     assert d._clairvoyant(want, cands, 0.0, (None, 0.0)) is want
+
+
+@pytest.mark.playbook("GAME-01")
+def test_a_visit_never_displaces_a_catch_up_reel_or_crunch_time(monkeypatch):
+    d = dec(**{"playbooks.game.enabled": True})
+    d.current = "A"
+    plan = sc.Plan({"id": "GAME-01", "do": "visit", "back": "restart"}, "A", "B")
+    monkeypatch.setattr(d.scenarios, "step", lambda *a: plan)
+    cands = {"A": cand(sc_(League.NFL, crunch=False), "A"), "B": cand(sc_(League.NFL, crunch=False), "B")}
+    for x in (Decision(0.0, "replay", "C", "catch-up", State.WATCHING, kind="replay"),
+              Decision(0.0, "switch", "C", "crunch time", State.WATCHING, kind="crunch")):
+        assert d._scenario(x, cands, 0.0, (None, 0.0)) is x
