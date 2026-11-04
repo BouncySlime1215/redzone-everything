@@ -65,6 +65,7 @@ ORACLE_LEAGUES = ("nfl", "nba", "nhl")   # NFL: the app re-graded by sportsgrade
 METRICS = [
     ("mid_play", "Mid-play cuts + entries (per 100 landings)", "0", -1, 0.0, 5.0),
     ("landings_dead", "Landings in dead time", ">= 95%", 1, 95.0, 100.0),
+    ("possession_start", "Entries at a possession start (dead ball, no play missed)", ">= 95%", 1, 95.0, 100.0),
     *[(f"big_live_{lg}", f"Big plays seen live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
     ("your_team_big", "Your-team big plays seen (live or within 10 min)", "100%", 1, 100.0, 100.0),
     *[(f"crunch_live_{lg}", f"Crunch live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
@@ -281,6 +282,9 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
     # 2. landings (both ends of every switch) in on-screen dead time
     rows.append(_rate("landings_dead", [(int(x.get("landings_dead") or 0), int(x.get("landings") or 0)) for x in every],
                       95.0, note=note))
+    # 2b. [possession start] entries that came up on a dead ball with no play missed (older cards: pending)
+    rows.append(_rate("possession_start", [(int(x["possession_starts"]), int(x.get("entries") or 0))
+                                           for x in every if "possession_starts" in x], 95.0, note=note))
     # 3. big plays seen live, per league
     for lg in LEAGUES:
         rows.append(_rate(f"big_live_{lg}", [(int(x.get("big_live") or 0), int(x.get("big") or 0)) for x in per[lg]],
