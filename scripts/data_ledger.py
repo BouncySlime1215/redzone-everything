@@ -17,12 +17,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from redzone.lab import data_ledger as DL  # noqa: E402
+from redzone.web import ledger as DL  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--ledger", type=Path, default=DL.LEDGER)
+    ap.add_argument("--ledger", type=Path, default=DL.LEDGER_FILE)
     ap.add_argument("--manifest", type=Path, help="a factory manifest.json to fold in")
     a = ap.parse_args(argv)
     led = DL.read(a.ledger)

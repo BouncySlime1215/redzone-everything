@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 
 from redzone.models import PERIOD_S, REGULATION, Phase
 from redzone.noggin.priority import HardRules, Preferences
+from redzone.web import ledger as ledger_mod
 
 # Reason text -> chip. First match per key wins; order = how chips are shown (most important first).
 CHIP_RULES: list[tuple[str, str, re.Pattern]] = [
@@ -45,7 +46,6 @@ DATA = Path(__file__).resolve().parent.parent.parent / "data"
 ORACLE_DIR = DATA / "oracle"            # <night>.json: the hindsight oracle's schedule for that night
 MOMENTS = DATA / "supervisor_moments.jsonl"   # every big play, judged from the feed: seen live or not
 HISTORY = DATA.parent / "docs" / "northstar-history.jsonl"   # scripts/northstar.py appends a row per run
-LEDGER = DATA.parent / "docs" / "data-ledger.json"           # lane 1's data ledger (redzone/lab/data_ledger.py)
 REEL_REQUESTS = DATA / "reel_requests.jsonl"   # "I missed that" -> a catch-up request (record only)
 REPLAY_DUE_S = 180.0    # Nick, Nov 4 11:00 AM: a missed key moment airs within 3 min, at the next dead moment
 MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min, a phone convenience; the graded window is big_seen_3min
@@ -619,8 +619,7 @@ def router(engine) -> APIRouter:
     async def ledger():
         if not _enabled(engine):
             return _off()
-        from redzone.lab import data_ledger
-        return {"enabled": True, **data_ledger.view(data_ledger.read(LEDGER))}
+        return {"enabled": True, **ledger_mod.view(ledger_mod.read(ledger_mod.LEDGER_FILE))}
 
     @r.get("/slate")
     async def slate():

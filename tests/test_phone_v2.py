@@ -365,7 +365,7 @@ def test_held_route(client, engine):
 
 
 def test_ledger_view_pending_then_folded(tmp_path):
-    from redzone.lab import data_ledger as DL
+    from redzone.web import ledger as DL
     v = DL.view(DL.read(tmp_path / "missing.json"))
     assert v["pending"] and [r["league"] for r in v["rows"]][:3] == ["nfl", "cfb", "nba"]
     assert v["totals"]["pct_of_target"] == 0.0 and len(v["nfm"]["milestones"]) == len(DL.DEFAULT_MILESTONES)
@@ -396,7 +396,7 @@ def test_ledger_script_folds_a_manifest(tmp_path, capsys):
 def test_ledger_route(client, engine, tmp_path, monkeypatch):
     assert client.get("/api/v2/ledger").status_code == 404
     _on(engine)
-    monkeypatch.setattr(phone_v2, "LEDGER", tmp_path / "none.json")
+    monkeypatch.setattr(phone_v2.ledger_mod, "LEDGER_FILE", tmp_path / "none.json")
     r = client.get("/api/v2/ledger").json()
     assert r["enabled"] and r["pending"] and r["nfm"]["done"] == 0
 
@@ -406,7 +406,7 @@ def test_provenance_orders_lane3_control_last():
 
 
 def test_ledger_folds_the_kaggle_factory_manifest():
-    from redzone.lab import data_ledger as DL
+    from redzone.web import ledger as DL
     man = {"total_tokens": 3_000_000,
            "leagues": {"nba": {"seasons": {"2023": {"tokens": {"games": 60}}, "2024": {"tokens": {"games": 40}}}}},
            "ledger": {"nba": {"tokens_real": 3_000_000, "sources": {"nba_cdn": 1_000_000, "nba_api": 2_000_000},

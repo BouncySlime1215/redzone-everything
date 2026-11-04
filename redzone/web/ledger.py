@@ -2,10 +2,11 @@
 
 Serves: the cycle plans' data ledger table and the phone's "Data + NFM" sheet. Owner: lane 5 (reader);
 lane 1 (writer; agreed with lane 1 Nov 4, 21:37 UTC: lane 1 owns the "nfm" block, the fold fills
-"leagues" from the factory manifest). Frontier code (redzone/lab): read only, never on the decision path.
+"leagues" from the factory manifest). Lives in redzone/web (not lab) so the phone route can import it (Core never imports lab). Read only,
+never on the decision path.
 
 The ledger lives in ONE small JSON file, committed so the Mac's phone page and every planner read the same
-numbers: docs/data-ledger.json (LEDGER). Lane 1 writes it from the factory, e.g. with
+numbers: docs/data-ledger.json (LEDGER_FILE). Lane 1 writes it from the factory, e.g. with
 `python scripts/data_ledger.py --manifest <factory out>/manifest.json`, which folds a factory manifest
 into it. Format (every field optional; missing = PENDING):
 
@@ -23,8 +24,8 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-LEDGER = ROOT / "docs" / "data-ledger.json"
-LEAGUES = ("nfl", "cfb", "nba", "cbb", "wcbb", "nhl", "mlb", "live")
+LEDGER_FILE = ROOT / "docs" / "data-ledger.json"
+LEDGER_LEAGUES = ("nfl", "cfb", "nba", "cbb", "wcbb", "nhl", "mlb", "live")
 SHARES = ("crunch_share", "ot_share", "comeback_share", "blowout_share")
 STATUSES = ("done", "running", "next", "blocked")
 DEFAULT_MILESTONES = [  # the NFM plan (cycle 06 addendum); lane 1 overwrites with real status
@@ -40,7 +41,7 @@ def _num(x) -> float | None:
     return float(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else None
 
 
-def read(path: Path = LEDGER) -> dict:
+def read(path: Path = LEDGER_FILE) -> dict:
     """The ledger file, or {} when missing or unreadable (the phone then shows PENDING everywhere)."""
     try:
         d = json.loads(Path(path).read_text())
@@ -53,7 +54,7 @@ def view(ledger: dict) -> dict:
     """Rows per league (real/synthetic tokens, shares, coverage), totals and the NFM milestones."""
     lgs = ledger.get("leagues") if isinstance(ledger.get("leagues"), dict) else {}
     rows = []
-    for lg in list(LEAGUES) + sorted(k for k in lgs if k not in LEAGUES):
+    for lg in list(LEDGER_LEAGUES) + sorted(k for k in lgs if k not in LEDGER_LEAGUES):
         e = lgs.get(lg) if isinstance(lgs.get(lg), dict) else {}
         rows.append({"league": lg, "source": str(e.get("source") or ""), "license": str(e.get("license") or ""),
                      "real_tokens": _num(e.get("real_tokens")), "synthetic_tokens": _num(e.get("synthetic_tokens")),
