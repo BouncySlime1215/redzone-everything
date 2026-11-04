@@ -2,6 +2,17 @@
  "about": "Source of docs/roadmap.md (scripts/northstar.py ranks it against docs/northstar.md). metric: a key of scripts/northstar.py METRICS or null (process work, scores 0). expected_delta: estimated change in that line's unit (points for a rate, per-100-landings for mid_play, seconds for switch_p95), positive = toward the target. priority: the director's order for today (1 = first); null = ranked by score. status: queued | working | review | done | blocked.",
  "items": [
   {
+   "id": "NFM",
+   "priority": 0,
+   "work": "NOGGIN FOUNDATION MODEL, the Noggin's main track (Nick 4:45 PM Nov 4). Event-token sequences per game plus the cross-game slate from the factory (~1B tokens, real + self-play); self-supervised pretraining (next event, its time, next stoppage); fine-tuned heads for Watch Value, crunch enter/exit, break start/length, big-play-next, game importance; hand features become optional inputs. ~100-300M params on Kaggle T4s within 30 GPU-h/week; distilled to the Reflex (<5 ms), plus a 3B-class Mind/MLX tier on the Mac (<=2 GB). Gates: locked nights, oracle rank agreement, calibration. Design: docs/noggin-foundation-model.md.",
+   "metric": "pct_of_oracle",
+   "expected_delta": 20,
+   "effort_days": 10,
+   "owner": "lane 1 (Noggin training); Kaggle via the overseer",
+   "status": "design doc this cycle (06); factory emits event-token shards next round",
+   "source": "Nick 2026-11-04 4:45 PM"
+  },
+  {
    "id": "P1",
    "priority": 1,
    "work": "Time-shift buffer LIVE: hold each stream B s behind live (YTTV/Prime rewind/pause on the hidden stick before the flip, verified by the per-stick delay estimate + Prime clock OCR); B=90 NBA/NHL, 60-75 NFL behind timing.behind_live_s, OFF by default, ready for Wed test. Sim at B=90: NBA seen 67.8->87.4, NFL seen 77.9->97.1, NHL entries mid-play 12->0",
@@ -33,6 +44,17 @@
    "owner": "TIMING",
    "status": "review",
    "source": "planner #3; #58"
+  },
+  {
+   "id": "TREE-6",
+   "priority": 3,
+   "work": "Multi-game conflicts by look-ahead (Nick 3:15 PM rule 6): plan the next 5-10 min across all games with the scenario tree (idea #19) over predicted stoppages, crunch and leverage, and pick flips that keep the best expected value; replaces greedy conflict resolution. Cloud builds the tables from the oracle, the Mac looks up branches.",
+   "metric": "pct_of_oracle",
+   "expected_delta": 5,
+   "effort_days": 3,
+   "owner": "lane 2 (Mac lookup) + lane 1 (cloud tables)",
+   "status": "queued (cycle 06+)",
+   "source": "Nick 2026-11-04 3:15 PM rule 6; idea-bank #19"
   },
   {
    "id": "P3b",

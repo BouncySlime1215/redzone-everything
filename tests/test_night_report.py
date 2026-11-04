@@ -60,9 +60,10 @@ def test_clean_night_passes_and_private_strings_never_publish(tmp_path):
     assert rows["Mid-play cuts + entries"] == rows["Landings in dead time"] == rows["Press-to-TV p95"] == "✅ PASS"
 
 
-def test_flag_is_off_by_default_and_writes_nothing(tmp_path, monkeypatch):
+def test_flag_is_on_by_default_and_off_writes_nothing(tmp_path, monkeypatch):
     monkeypatch.setattr(nr, "OUT", tmp_path / "out")
-    assert nr.enabled() is False
+    assert nr.enabled() is True            # cycle 07: live (its gates are the tests in this file)
+    monkeypatch.setattr(nr, "enabled", lambda: False)
     assert nr.main(["--out", str(tmp_path / "out")]) == 0 and not (tmp_path / "out").exists()
 
 

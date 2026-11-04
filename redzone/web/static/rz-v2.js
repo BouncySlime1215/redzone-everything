@@ -15,12 +15,40 @@ function check() {
     v2.checked = true;
     checking = (async () => {
       try { v2.on = !!(await api("/api/v2/status")).enabled; } catch { v2.on = false; }
-      if (v2.on) hooks.render();
+      if (v2.on) { hooks.render(); pollAlert(); pollStrip(); }
     })();
   }
   return checking;
 }
 check();
+
+/* A your-team crunch clash coming up in the next 30 min: one line above the bar (display only). */
+let alert = null;
+function pollAlert() {
+  api("/api/v2/slate").then((r) => { const a = (r && r.alert) || null; const was = JSON.stringify(alert); alert = a; if (JSON.stringify(a) !== was) hooks.renderScreen("now"); })
+    .catch(() => {}).finally(() => setTimeout(pollAlert, 60000));
+}
+/* Top 3 watch values on the Now screen, refreshed every 15 s (read only; tap for the full sheet). */
+let strip = null;
+function pollStrip() {
+  api("/api/v2/watch").then((r) => {
+    const top = arr(r && r.games).slice(0, 3).map((g) => ({ ...g, on: g.game_id === r.current }));
+    const next = JSON.stringify({ top, src: r && r.source });
+    if (next !== JSON.stringify(strip)) { strip = { top, src: r && r.source }; hooks.renderScreen("now"); }
+  }).catch(() => {}).finally(() => setTimeout(pollStrip, 15000));
+}
+function watchStrip() {
+  if (!strip || !strip.top.length) return "";
+  return `<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
+    `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc([g.why, g.stakes_line].filter(Boolean).join(" · "))}</small></span></span>`).join("")}
+    ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>`;
+}
+
+function alertLine() {
+  if (!alert) return "";
+  const when = alert.now ? "Now" : alert.in_s < 90 ? "In a minute" : `In ${Math.round(alert.in_s / 60)} min`;
+  return `<button class="v2-alert" data-act="v2-slate">${icon("alert")}<span><b>${esc(when)}: crunch times overlap.</b> ${esc(alert.on_tv)} gets the TV (${esc(alert.why)}); ${esc(arr(alert.second).join(", "))} on the second stick.</span></button>`;
+}
 
 /** Refetch chips + votes when the newest switch changes. */
 function sync(S) {
@@ -61,9 +89,10 @@ ACTIONS["v2-vote"] = async (el) => {
 /** The "I missed that" bar above Recent switches. */
 export function missedBar() {
   if (!v2.on) return "";
-  return `<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
+  return `${alertLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>
     <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button></div>`;
 }
 
@@ -192,8 +221,13 @@ function nightSheet() {
       `<b class="v2-c${colorOf(sg.matchup, order)}" style="left:${(((Math.max(sg.t0, a) - a) / span) * 100).toFixed(2)}%;width:${Math.max(0.4, ((Math.min(sg.t1, b) - Math.max(sg.t0, a)) / span) * 100).toFixed(2)}%" title="${attr(sg.matchup)} ${attr(fmtTime(sg.t0))}"></b>`).join("");
     const marks = arr(d.markers).filter((m) => m.ts >= a && m.ts < b).map((m) =>
       `<em class="v2-mark${m.seen ? "" : " v2-mark--miss"}" style="left:${(((m.ts - a) / span) * 100).toFixed(2)}%" title="${attr(`${m.seen ? "Seen live" : "Missed"}: ${m.matchup} ${m.kind} ${fmtTime(m.ts)}`)}"></em>`).join("");
+    const pm = arr(d.plan_marks).filter((m) => m.ts >= a && m.ts < b);
+    const lane = pm.length ? `<div class="v2-rlabel">What the planner chose: <span class="v2-pm-key v2-pm--catchup">▲</span> catch-up <span class="v2-pm-key v2-pm--interleave">◆</span> break visit / return</div>
+      <div class="v2-pmlane" role="img" aria-label="${attr(`${num((d.plan_counts || {}).catchup)} catch-ups and ${num((d.plan_counts || {}).interleave)} break visits`)}">${pm.map((m) =>
+        `<i class="v2-pm v2-pm--${attr(m.type)}${m.ok ? "" : " v2-pm--fail"}" style="left:${(((m.ts - a) / span) * 100).toFixed(2)}%" title="${attr(`${m.type === "catchup" ? "Catch-up" : m.kind === "return" ? "Back home" : "Break visit"}: ${m.matchup} ${fmtTime(m.ts)}${m.plan ? " (plan " + m.plan + ")" : ""}`)}">${m.type === "catchup" ? "▲" : "◆"}</i>`).join("")}</div>` : "";
     const o = d.oracle;
     ribbon = `<div class="v2-ribbon" role="img" aria-label="What was on the TV, ${esc(fmtTime(a))} to ${esc(fmtTime(b))}">${bars(segs)}${marks}</div>
+      ${lane}
       ${o ? `<div class="v2-rlabel">Best possible (hindsight)${o.agree_pct != null ? ` · we matched ${esc(String(o.agree_pct))}% of the time` : ""}</div>
       <div class="v2-ribbon v2-ribbon--oracle" role="img" aria-label="What the hindsight oracle would have shown">${bars(arr(o.segments))}</div>` : ""}
       <div class="v2-ticks">${ticks.join("")}</div>
@@ -256,6 +290,30 @@ async function openNightLink() {
 }
 try { if (typeof window !== "undefined") { window.addEventListener("hashchange", openNightLink); setTimeout(openNightLink, 0); } } catch { /* no DOM */ }
 ACTIONS["v2-night-filter"] = (el) => { night.filter = el.dataset.f; const s = sheetById("v2-night"); if (s) s.update(); };
+
+/* ---------- Watch value: each live game's 0-100 and its one-line why (read only) ---------- */
+const watchS = { data: null, timer: null };
+async function loadWatch() {
+  try { watchS.data = await api("/api/v2/watch"); } catch (e) { watchS.data = { error: e.message }; }
+  const s = sheetById("v2-watch");
+  if (s) { s.update(); clearTimeout(watchS.timer); watchS.timer = setTimeout(loadWatch, 10000); }
+}
+const CRUNCH_TXT = { entering: "Crunch soon", in: "Crunch", leaving: "Crunch ending" };
+function watchSheet() {
+  const d = watchS.data;
+  if (!d) return `<h3>Watch value</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Watch value</h3><p class="lead">${esc(d.error)}</p>`;
+  const gs = arr(d.games);
+  if (!gs.length) return `<h3>Watch value</h3><p class="lead">No live games right now.</p>`;
+  const note = d.source === "learned" ? "The Noggin's learned watch value, updated every few seconds."
+    : "Preview: today's priority score until the learned watch value ships.";
+  return `<h3>Watch value</h3><p class="lead">${esc(note)}</p>
+    <div class="v2-wv">${gs.map((g) => `<div class="v2-wv-row${g.game_id === d.current ? " on" : ""}">
+      <div class="v2-wv-top"><span class="m ell">${esc(g.matchup)}</span>${g.game_id === d.current ? `<span class="tag tag--kind">On TV</span>` : ""}${g.crunch_state ? `<span class="tag tag--fail">${esc(CRUNCH_TXT[g.crunch_state] || "Crunch")}</span>` : ""}${g.is_break ? `<span class="tag">Break</span>` : ""}<b>${num(g.wv)}</b></div>
+      <div class="v2-wv-bar"><i style="width:${Math.max(2, Math.min(100, g.wv))}%"></i></div>
+      ${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}${g.stakes_line ? `<div class="v2-stakes">${icon("target")}${esc(g.stakes_line)}</div>` : ""}</div>`).join("")}</div>`;
+}
+ACTIONS["v2-watch"] = () => { watchS.data = null; openSheet({ id: "v2-watch", label: "Watch value", full: true, render: watchSheet, onClose: () => clearTimeout(watchS.timer) }); loadWatch(); };
 
 /* ---------- North Star trend: each headline line over the harness runs, read-only ---------- */
 const trendS = { data: null, split: "dev" };
