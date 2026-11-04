@@ -30,6 +30,7 @@ from redzone.decider.screen import DelayBook
 from redzone.models import REAL_BREAKS, League, Phase
 from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal
+from redzone.lab import leverage
 from redzone.sources import espn
 
 ET = ZoneInfo("America/New_York")
@@ -116,16 +117,21 @@ class Report:
     big_missed_on_replay: int = 0    # big plays that aired (anywhere) while we sat on a replay
     big_seen_10m: int = 0            # big plays seen live or replayed within CATCHUP_S of airing
     my_big_seen_10m: int = 0         # ...of your team's
+    big_seen_3m: int = 0             # live or replayed within CATCHUP_3_S (the gate, Nick Nov 4 11:00 AM)
+    big_seen_2m: int = 0             # ...within CATCHUP_2_S (stretch)
+    my_big_seen_3m: int = 0          # your team's, within CATCHUP_3_S
     crunch_on_replay: int = 0        # crunch plays that aired while a catch-up replay was on screen
     drive_plays: int = 0             # NFL scrimmage plays on drives that scored or reached the red zone
     drive_plays_live: int = 0        # ...of those, watched live start to finish
     drive_plays_other_sport: int = 0  # ...of those, missed while another sport was on screen
     drive_plays_on_redzone: int = 0  # ...of those, aired while the RedZone channel was on (it may have shown them)
+    mid_play_cuts_high: list = field(default_factory=list)   # mid-play leaves at a high-leverage moment
 
     @property
     def summary(self) -> dict:
         return {
             "mid_play_cuts": len(self.mid_play_cuts),
+            "mid_play_cuts_high": len(self.mid_play_cuts_high),
             "big_plays_seen": f"{self.big_plays_caught}/{self.big_plays}"
                               f" ({100 * self.big_plays_caught / max(1, self.big_plays):.0f}%)",
             "big_plays_live": f"{self.big_plays_live}/{self.big_plays}"
@@ -152,6 +158,9 @@ class Report:
 
 
 CATCHUP_S = 600.0   # "seen" for the reel gate: live, or replayed within 10 min of airing (Nick, Nov 4)
+# Nick, Nov 4 11:00 AM: the replay window is 2-3 MINUTES max. 3 min is the gate, 2 min the stretch row.
+CATCHUP_3_S = 180.0
+CATCHUP_2_S = 120.0
 
 
 def replayed_by(replayed, key, deadline: float) -> bool:
@@ -745,6 +754,7 @@ def tuning_blackout_seconds(watching: list[tuple[float, str | None]], tune_s: fl
 def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t0, t1, replayed) -> Report:
     by_id = {r.gid: r for r in replays}
     cuts = []
+    cuts_high: list = []   # the mid-play leaves at a high-leverage moment (redzone/lab/leverage.py)
     prev_kind = None
     offs = offsets_of(switches) if len(switches) == len(watching) else None
     left_off = leave_offsets(switches)
@@ -762,9 +772,12 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
                 continue
             if w - play_len <= screen_t <= w:
                 cuts.append((s.t, f"{r.matchup}: {(p.get('text') or '')[:70]}"))
+                if leverage.high_leverage(r.league, p):
+                    cuts_high.append(cuts[-1])
                 break
 
     big = live = mine = mine_live = caught = missed_on_replay = seen10 = my_seen10 = crunch_on_replay = 0
+    seen3 = seen2 = my_seen3 = 0
     missed = []
     for r in replays:
         for w, p in zip(r.wall, r.plays):
@@ -778,11 +791,15 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             caught += on or rep_seen
             soon = on or replayed_by(replayed, (r.gid, round(w)), air + CATCHUP_S)
             seen10 += soon
+            soon3 = on or replayed_by(replayed, (r.gid, round(w)), air + CATCHUP_3_S)
+            seen3 += soon3
+            seen2 += on or replayed_by(replayed, (r.gid, round(w)), air + CATCHUP_2_S)
             ours = any(a in my_teams for a in r.matchup.replace("@", " ").split())
             if ours:
                 mine += 1
                 mine_live += on or rep_seen
                 my_seen10 += soon
+                my_seen3 += soon3
             if not on and (_on_screen_game(watching, air - play_len, tune_s) or "").startswith("replay:"):
                 missed_on_replay += 1   # aired while we sat on a replay: live was given up for old footage
             if not (on or rep_seen):
@@ -839,6 +856,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             causes[cause] = causes.get(cause, 0.0) + 10
         t += 10
     rep = Report(switches, cuts, big, live, mine, mine_live, dead, watched, (t1 - t0) / 3600, missed)
+    rep.mid_play_cuts_high = cuts_high
     rep.dead_causes = causes
     rep.tuning_blackout_s = tuning_blackout_seconds(watching, tune_s, t0, t1)
     from redzone.lab import cutgrade
@@ -846,6 +864,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
     rep.behind_live_s = behind_live_seconds(watching, t0, t1)
     rep.big_missed_on_replay = missed_on_replay
     rep.big_seen_10m, rep.my_big_seen_10m, rep.crunch_on_replay = seen10, my_seen10, crunch_on_replay
+    rep.big_seen_3m, rep.big_seen_2m, rep.my_big_seen_3m = seen3, seen2, my_seen3
     rep.drive_plays, rep.drive_plays_live, rep.drive_plays_other_sport, rep.drive_plays_on_redzone = drive_coverage(
         replays, watching, lag_total, play_len, tune_s, t1)
     rep.big_plays_caught = caught

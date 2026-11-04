@@ -13,7 +13,7 @@ import { act } from "./rz-api.js?v=43";
 import { screenEvidence } from "./rz-evidence.js?v=40";
 import { recordedPanel } from "./rz-recorded.js?v=40";
 import { tonightCard } from "./rz-plan.js?v=40";
-import { switchExtras, missedBar } from "./rz-v2.js?v=5";
+import { switchExtras, missedBar } from "./rz-v2.js?v=9";
 
 const STATE_LABEL = { idle: "Idle", watching: "Watching", locked: "Locked in", break: "On a break", paused: "Paused",
   frozen: "Holding still", safe: "Safe mode", replay: "Replay" };

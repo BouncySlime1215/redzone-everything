@@ -996,6 +996,7 @@ class Supervisor:
         if now < night_window(prev)[1] + REPORT_AFTER_S:
             return
         self._report_checked = prev
+        self.collect_live_night(prev)
         path = self.reports / f"{prev.isoformat()}.md"
         if path.exists():
             return
@@ -1008,6 +1009,36 @@ class Supervisor:
         await self.send_push(f"RedZone night of {prev.isoformat()}", rep["phone"],
                              priority="high" if spent else "default",
                              tags="warning,tv" if spent else "tv")
+
+    def collect_live_night(self, night: date) -> Path | None:
+        """[live nights] After each night, with no one's input: its landings (offset vs the dead ball),
+        sync anchors (error per stick), TV switch latency and phone press-to-TV, LAN addresses masked,
+        into data/live_nights/<night>/ (scripts/collect_live_test.py's format; summary.json is what
+        scripts/northstar.py's "Live nights" section reads). Once per night; never raises."""
+        out = self.root / "live_nights" / night.isoformat()
+        if (out / "summary.json").exists():
+            return None
+        try:
+            import importlib.util
+            src = Path(__file__).resolve().parent.parent / "scripts" / "collect_live_test.py"
+            spec = importlib.util.spec_from_file_location("rz_collect_live_test", src)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            lo, hi = night_window(night)
+            s = mod.collect(self.root, out, lo, hi)
+            try:
+                # [calib.auto] the night's flip and press-to-TV, judged against the last 5 nights. Written
+                # whether or not calib.auto is on (the guard needs history); read back only when it is.
+                from redzone import calibration
+                calibration.merge(self.root, night, calibration.timing_from_summary(s))
+            except Exception:
+                log.exception("calibration write failed for %s", night)
+            self._record({"kind": "report", "rule": "live_night", "key": night.isoformat(), "path": str(out),
+                          "rows": s.get("rows")})
+            return out
+        except Exception:
+            log.exception("live night collection failed for %s", night)
+            return None
 
     async def send_push(self, title: str, body: str, priority: str = "default", tags: str = "tv") -> bool:
         topic = str(self.opt("ntfy_topic") or "").strip()
@@ -1174,7 +1205,7 @@ def grade_cut(t: dict, timelines: dict) -> dict | None:
            "to": t.get("to"), "to_label": t.get("to_label"), "kind": t.get("kind"), "path": t.get("path"),
            "leave": None, "leave_why": "", "enter": None, "enter_why": ""}
 
-    def land(gid, at, delay):
+    def land(gid, at, delay, offsets: bool = False):
         tl = timelines.get(gid or "")
         dead = getattr(tl, "dead", None)
         if dead is None or not delay or delay.get("mu") is None:
@@ -1185,12 +1216,23 @@ def grade_cut(t: dict, timelines: dict) -> dict | None:
         except Exception:
             log.exception("cut grade failed")
             return None, ""
+        if offsets:
+            # [live nights] Where in the dead ball the picture came up: seconds after it began and
+            # seconds before play resumed (negative: it had resumed). The live-night log's landing.
+            try:
+                w = next((w for w in reversed(dead.windows()) if w.start <= x), None)
+                if w is not None:
+                    rec["enter_after_dead_s"] = round(x - w.start, 1)
+                if getattr(got, "resume", None) is not None:
+                    rec["enter_before_play_s"] = round(got.resume - x, 1)
+            except Exception:
+                log.debug("landing offsets unavailable", exc_info=True)
         return got.state, f"{got.why}{' (' + got.kind + ')' if got.kind else ''}"
 
     if t.get("from") and not t.get("from_replay"):
         rec["leave"], rec["leave_why"] = land(t["from"], cut, t.get("leave_delay"))
     if pic is not None and t.get("action") != "replay":
-        rec["enter"], rec["enter_why"] = land(t.get("to"), pic, t.get("enter_delay"))
+        rec["enter"], rec["enter_why"] = land(t.get("to"), pic, t.get("enter_delay"), offsets=True)
     if rec["leave"] is None and rec["enter"] is None:
         return None
     return rec

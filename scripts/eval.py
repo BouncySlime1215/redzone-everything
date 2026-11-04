@@ -151,9 +151,10 @@ def main():
         if a.oracle:
             oracle_nights.append(_oracle_night(reps, set(cfg.get("teams.nfl")), r))
         per_night.append({"night": reps[0].gid, "entries": rc["entries"], "entries_mid_play": rc["entries_mid_play"],
-                          "cuts": len(r.mid_play_cuts), "big": r.big_plays, "big_seen": r.big_plays_caught,
+                          "cuts": len(r.mid_play_cuts), "cuts_high": len(r.mid_play_cuts_high), "big": r.big_plays, "big_seen": r.big_plays_caught,
                           "big_seen_10m": r.big_seen_10m, "my_big": r.my_big_plays,
                           "my_big_seen_10m": r.my_big_seen_10m, "crunch_on_replay": r.crunch_on_replay,
+                          "big_seen_3m": r.big_seen_3m, "big_seen_2m": r.big_seen_2m, "my_big_seen_3m": r.my_big_seen_3m,
                           # [north star] per-night counts so scripts/northstar.py can bootstrap every line
                           "big_live": r.big_plays_live, "my_big_live": r.my_big_plays_live,
                           "landings": r.cut.landings()[1], "landings_dead": r.cut.landings()[0],

@@ -111,6 +111,19 @@ async def test_revoked_sign_in_says_how_to_fix_it_and_keeps_a_still_valid_token(
     assert await late.token() is None
 
 
+async def test_a_refresh_by_another_process_is_picked_up_not_overwritten(tmp_path):
+    """Live lab, Nov 4: the running app cached the token file forever. A script (tv_local_probe.py) that
+    refreshes rotates the refresh token, and the app would renew with the dead one and lose the TV."""
+    cloud = FakeCloud()
+    app = oauth(tmp_path, cloud, expires_at=100.0, clock=lambda: 50.0)
+    assert app.load()["refresh_token"] == "ref0"                       # cached by the app
+    script = tvmod.SmartThingsAuth(app.path, transport=cloud.transport(), clock=lambda: 50.0)
+    assert await script.token() == "acc1"                              # the script refreshed: ref0 -> ref1
+    assert app.load()["refresh_token"] == "ref1"                       # the app sees the rotation
+    assert await app.token() == "acc1"                                 # still fresh for the app: no refresh
+    assert cloud.refreshes == 1
+
+
 async def test_maintain_rolls_the_refresh_token_forward_before_it_ages_out(tmp_path):
     cloud = FakeCloud()
     now = 10 ** 9

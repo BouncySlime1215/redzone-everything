@@ -51,6 +51,15 @@ SKIP_S = 300.0        # a skipped game stays off the TV this long after the TV l
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
+def _fastcast_ended(task: asyncio.Task) -> None:
+    """[fastcast mac] The client's loop never returns while it's wanted: say so if it dies."""
+    if task.cancelled():
+        return
+    e = task.exception()
+    if e is not None:
+        log.error("Fastcast client stopped: %r (polling carries on)", e, exc_info=e)
+
+
 class Engine:
     def __init__(self, cfg: Config | None = None, store: Store | None = None):
         self.cfg = cfg or Config()
@@ -107,6 +116,9 @@ class Engine:
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
+        if data_dir:
+            from redzone import calibration
+            self.control.calibrated_flip = calibration.flip_prior(self.cfg, data_dir.parent)
         self.decider.safety.feed_age = self._feed_age   # [playbooks SAFE-01]
         # Break visits: the game we leave keeps playing on the other stick, so the trip back is one
         # flip; with one stick it's a full tune of that game.
@@ -115,6 +127,9 @@ class Engine:
         self.delays.held = self.control.held
         self.control.behind_of = self._behind_of
         self.control.on_behind = self._on_behind
+        # [buffer.watchdog STK-06] a lost hold is rebuilt only while that game is in a dead ball
+        self.control.dead_ball = self._target_dead
+        self.control.buffer_log_path = data_dir.parent / "buffer.jsonl" if data_dir else None
         self.decider.return_cost = lambda t: (self.control.flip_estimate() if self.control.two_stick
                                               else self.control.deadline_cost(t))
         # Stream delay measured from YouTube TV show changes on the quarter hour (no taps needed).
@@ -248,9 +263,19 @@ class Engine:
         if self.sync is None:
             return
         try:
-            self.sync.measure(target, z, kind, t=t, sd=sd)
+            self.sync.measure(target, z, kind, t=t, sd=sd, stick=self._stick_of(target))
         except Exception:
             log.exception("sync: could not use a %s sample on %s", kind, target)
+
+    def _stick_of(self, target: str) -> str | None:
+        """[live nights] The input (HDMI1/HDMI2) of the stick showing `target`, for the per-stick sync
+        error; the input, not the address, so the uploaded log carries no LAN address."""
+        c = getattr(self, "control", None)
+        try:
+            stick = c.main if c.on_target == target else c.hidden if c.hidden_target == target else None
+            return c.hdmi.get(stick.host) if stick is not None else None
+        except Exception:
+            return None
 
     def _sync_position(self, target: str, wall: float, position_s: float, sd: float) -> None:
         if self.sync is not None:
@@ -970,7 +995,9 @@ class Engine:
                 mode, self._on_fastcast_shadow)
             self.fastcast = fastcast.FastcastClient(cb, http=self.fetcher._client)
             self._fastcast_task = asyncio.get_running_loop().create_task(self.fastcast.run())
+            self._fastcast_task.add_done_callback(_fastcast_ended)
             self._fastcast_mode = mode
+            log.info("Fastcast: started (%s)", mode)
         lgs = self._leagues()
         live = [g for g in self.merger.games.values() if g.phase == Phase.LIVE and g.league in lgs]
         if mode == "fallback":
@@ -984,7 +1011,19 @@ class Engine:
         self._fastcast_games = {
             fastcast.game_topic(g.league, g.game_id, self.summaries.get(g.game_id)): (g.league, g.game_id)
             for g in live}
+        if bool(self._fastcast_games) != bool(getattr(self.fastcast, "wanted", None)):
+            log.info("Fastcast (%s): %d live games to watch", mode, len(self._fastcast_games))
         self.fastcast.set_topics(self._fastcast_games)
+        if mode == "shadow":
+            # [fastcast mac] the 4 h budget counts only time with live games, and the file carries the
+            # client's own status, so a night with no FastCast rows says why
+            self.fc_check.watching(bool(self._fastcast_games))
+            st = dict(self.fastcast.status()) if hasattr(self.fastcast, "status") else {}
+            t = self._fastcast_task
+            st["task"] = "running" if t is not None and not t.done() else (
+                "none" if t is None else ("cancelled" if t.cancelled() else f"died: {t.exception()!r}"[:200]))
+            st["wanted"] = len(getattr(self.fastcast, "wanted", ()) or ())
+            self.fc_check.client = st
         if mode == "shadow" and time.time() - self._fc_graded >= 60:
             self._grade_fastcast()
 
@@ -1459,6 +1498,11 @@ class Engine:
                 for t in (g.home, g.away):
                     out += [t.abbr, t.name, (t.name or "").split()[-1] if t.name else ""]
         return [x for x in out if x]
+
+    def _target_dead(self, target: str) -> bool:
+        """[STK-06] Is the game on `target` in a dead ball on screen right now? No game known: no."""
+        gid = next((g for g, w in self.where.items() if getattr(w, "target", None) == target), None)
+        return bool(gid) and self.safe_to_leave(gid)
 
     def safe_to_leave(self, gid: str | None, required_s: float = 0.0) -> bool:
         """Re-checked right before a two-stick input flip: is a play on screen in the game we're leaving?"""

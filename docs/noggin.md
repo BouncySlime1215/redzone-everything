@@ -37,6 +37,14 @@ possession policy, Priority L2, the Mind, the Teacher's review, E23). His button
 
 "Right game" is measured as `pct_of_oracle` in northstar.py, never as agreement with Nick.
 
+## Replay window (Nick, Nov 4 11:00 AM): 2-3 minutes, never 10
+
+Nick follows several games at once and jumps for key moments as they happen; any key moment he missed is
+shown within **2-3 minutes** (the next dead moment). The reel/replay queue (T2/T3/T4 collision replays)
+targets the very next dead window. A replay that can't air within 3 min is skipped or folded into a later
+montage. Seeing the moment LIVE (clairvoyance + possession-start entry) is the main path; replay is the
+fallback. North Star: `big_seen_3min` >= 99% (gate) and `big_seen_2min` (stretch), dev and locked.
+
 ## Crunch entry (Nick, Nov 4 10:45 AM): possession-start entry, AI-decided when
 
 Replaces both `crunch_now: wait` and `rewind`. With the time-shift buffer, the hidden stick cues to the
@@ -115,7 +123,7 @@ for `q_lo(remaining | league, kind, e, rules)` instead of a constant. Behind `no
 | **Reflex fit** | Kaggle CPU / Actions | factory moments (train nights only) | LightGBM per league and head → exported to numpy `.npz` (Brain v3 pattern) + conformal offsets from the calibration nights |
 | **Teacher** | Kaggle GPU | moments, replayed nights | worded labels, night reviews, preference pairs |
 | **Mind fit** | Kaggle GPU | teacher rows (D19 recipe: LoRA r16-32, fp16 base + fp32 LoRA) | MLX adapter for the 1.7B student |
-| **Nightly self-review** | Mac records the night, cloud/Kaggle labels it at 5 AM | decision records (E23) + objective pbp outcomes + stick/sync telemetry, graded against the hindsight oracle (never Nick's taps) | new labels for both layers |
+| **Nightly self-review** | Mac records the night, cloud/Kaggle labels it at 5 AM | [decision records](decision-records.md) (E23) + objective pbp outcomes + stick/sync telemetry, graded against the hindsight oracle (never Nick's taps) | new labels for both layers |
 
 **Splits (no-overfitting rule):** by whole nights (5 AM ET boundary), time-ordered: train = oldest,
 calibration = the next block, test = newest (`redzone/lab/splits.py`). The scorecard archive
@@ -435,4 +443,59 @@ the Mac and never on GitHub Actions (the push trigger on `noggin-factory.yml` is
 - **Smoke run (cloud container, NBA 2026, synthetic 1):** 2,760 moments and 10.8 M self-play rows (382
   slates) in about 4 min on 2 cores, 10.2 MB. At the full setting (20 synthetic per night) one NBA season
   is about 4,000 slates and roughly 110 M rows, so NBA alone is on the order of 2.5 B rows when every
-  season has wall clocks. CFB and MLB have no loader yet (factory.SOURCES), so they are not in the plan.
+  season has wall clocks. CFB (ESPN FBS board, 2004+) and WCBB (wehoop) joined the plan on Nov 4, and NFL tokens
+  go back to 1999; MLB has no loader yet. Every run also writes NFM event-token shards and a DATA LEDGER
+  ([noggin-foundation-model.md](noggin-foundation-model.md), [data-sources.md](data-sources.md)).
+## 13. Possession-start oracle + the learned possession policy (Nov 4, cycle 04)
+
+Nick's crunch_now decision (possession-start entry), with the AI deciding when to jump. Labels come only from the oracle.
+
+- **Oracle v2** `oracle.solve_cue(n, objective, tab, max_cue_s)`. The state is (game, steps behind live). A
+  switch cues the target to its last dead ball, at most `max_cue_s` back (`cue_steps`), and the picture then
+  leaves on a dead ball of what it shows. It is exact against brute force on random small nights
+  (`tests/test_oracle.py`), is never below `solve`, and equals `solve` at `max_cue_s = 0`.
+  `eval_sports --oracle --cue-max-s 90` adds `<objective>_cue` ceilings.
+- **Ceiling (`--real-lag`, every night of the split, 0 mid-play everywhere).** Big live is from the big-live
+  objective and crunch live from the crunch-live objective, live → cued:
+
+| | NBA dev | NBA locked | NFL dev | NFL locked | NHL dev | NHL locked |
+|---|---|---|---|---|---|---|
+| big live | 91.5 → 94.4 | 100 → 100 | 93.2 → 96.2 | 94.1 → 96.5 | 87.2 → 93.4 | 91.8 → 96.2 |
+| crunch live | 93.6 → 93.8 | 95.0 → 100 | 88.6 → 92.5 | 88.4 → 94.0 | 90.3 → 93.3 | 96.2 → 100 |
+
+- **PICK-cue** (`models/pick_nba.cue90.npz`, 112 trees, the same 22 features, 14.4M train rows,
+  `train_noggin_pick.py --cue-s 90`). It imitates `solve_cue` on factory nights: 2016-22 train, 2023-24
+  calib, 2025-26 test, full sets. Forward CV logloss is 0.147-0.155 against a base rate of 0.41. Test, 377
+  nights: big live 91.7 / crunch 92.2 against the cued oracle's 97.9 / 96.7 (93.7 % / 95.3 % of it). PICK v1
+  scores 91.3 / 92.3 against its own oracle's 96.3 / 95.6. There are 0 mid-play cuts and entries.
+- **On the app's eval nights, pure rollout** (`eval_sports --pick ... --cue-max-s 90`):
+
+| NBA | dev big / crunch | locked big / crunch |
+|---|---|---|
+| rule candidate (possession_start crunch) | 77.5 / 90.0 | 100 / 94.4 |
+| PICK v1 rollout | 84.5 / 89.6 | 87.5 / 88.3 |
+| **PICK-cue rollout** | **85.9 / 91.9** | **100 / 94.4** |
+| cued oracle | 94.4 / 93.8 | 100 / 100 |
+
+  On dev the PICK-cue rollout reaches 91.0 % (big) and 98.0 % (crunch) of the cued oracle; the gaps to 100 % are 9.0 and 2.0 points.
+  **Caveat:** the rollout's leave / land rules read the oracle's hindsight tables, which know whether each
+  moment was dead from the complete play-by-play. The decider sees only delivered plays and its own sync
+  doubt, so the rollout is an optimistic bound and not an app-equivalent score. Part of the 77.5 → 85.9
+  gap is information the app can't have.
+- **Through the decider (flag OFF): it misses the bar.** Measured on NBA dev with `--tune-jitter 6` and
+  the candidate profile. The jump / stay veto (`noggin.possession.enabled`) leaves the crunch scope
+  unchanged at 77.5 / 90.0. On the `all` scope it gives 77.5 / 88.2 with 1 mid-play cut: a leave on a
+  technical-foul play that the app's leave gate accepts. PICK-cue as the picker (`noggin.pick.model:
+  cue90`) gives 76.1 / 88.4 with less dead air, 19.5 → 18.1. Locked, read once, is equal (100 / 94.4).
+  The policy's gain is in the rollout, and the decider path (sync doubt, entry planning, its own gates)
+  loses it. Next: carry the rollout's decision into the decider directly, as a replace mode with
+  possession-start entry, and close the decider-vs-rollout gap.
+- **Tried, no gain (factory test, 377 nights, big / crunch at the calib margin):**
+  - cue-replay features (`--cue-feats`, the plays the cued rewind would replay): 91.6 / 92.2;
+  - DAgger, 2 rounds. Oracle value-to-go labels (`oracle.value_to_go_cue`, the backward form of solve_cue, tested
+    equal to it) on the states the policy itself visits, 43M aggregate rows (`scripts/train_noggin_pick_dagger.py`):
+    92.0 / 92.0 at margin 0.05 (calib picks 0.0: 91.6 / 91.5).
+
+  Against plain PICK-cue's 91.7 / 92.2, imitation has plateaued at about 94 % of the clairvoyant oracle. What's
+  left is what the oracle knows about the future, not compounding error. The next lever is the decider, not
+  the model.

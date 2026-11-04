@@ -50,8 +50,12 @@ jobs:
         # Shipped defaults (no --pretune). Exit 1 = a dropped/broken press: the North Star line says so.
         run: python scripts/controls_drill.py --seeds 4 --hours 3 --flaky --json controls.json || true
       - name: North Star (dev + locked, 8 e2e fault nights)
+        # Live nights: the Mac's per-night summaries, published to docs/live-nights/ (scripts/publish_live_nights.py).
+        # The runner has no data/live_nights, so without this the section is PENDING forever.
         run: |
-          python scripts/northstar.py --night-seeds 8 --controls-json controls.json --json northstar-raw.json
+          LIVE=""
+          if python scripts/northstar.py --help | grep -q -- --live-dir; then LIVE="--live-dir docs/live-nights"; fi
+          python scripts/northstar.py --night-seeds 8 --controls-json controls.json --json northstar-raw.json $LIVE
           cat docs/northstar.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()

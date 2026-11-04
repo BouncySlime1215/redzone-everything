@@ -83,6 +83,8 @@ class App:
     ends_at: float | None = None    # a reel stops by itself
     page_for: str | None = None     # Prime detail page of this target
     paused_at: float | None = None  # when the player paused (resuming adds the gap to `behind`)
+    stale: tuple[int, int] | None = None  # [STK-05] paused, but media_session still says PLAYING at
+                                    # this (position, updated) with active=false (live lab, Nov 4)
 
 
 class FakeFireTV:
@@ -104,6 +106,7 @@ class FakeFireTV:
 
     def _stamp(self, a: App, state: int, position: int | None = None) -> None:
         now = time.time()
+        a.stale = None
         if state == PAUSED:
             if a.paused_at is None:
                 a.paused_at = now
@@ -242,8 +245,12 @@ class FakeFireTV:
             if a.pkg == PRIME and a.screen != "player" and a.state in (NONE, 1):
                 continue    # Prime's detail page: no session at all
             lines.append(f"  package={a.pkg}")
-            lines.append(f"    state=PlaybackState {{state={a.state}, position={a.position}, buffered position=0, "
-                         f"speed={1.0 if a.state == PLAYING else 0.0}, updated={a.updated}, actions=822, "
+            state, pos, upd = a.state, a.position, a.updated
+            if a.stale and state == PAUSED:
+                state, (pos, upd) = PLAYING, a.stale     # the lingering stale report
+            lines.append(f"    active={'false' if a.stale else 'true'}")
+            lines.append(f"    state=PlaybackState {{state={state}, position={pos}, buffered position=0, "
+                         f"speed={1.0 if state == PLAYING else 0.0}, updated={upd}, actions=822, "
                          f"custom actions=[], active item id=-1, error=null}}")
             title = a.title or ("PrimeVideo" if a.pkg == PRIME else "null")
             lines.append(f"    metadata: size=4, description={title}, {a.subtitle or 'null'}, null")

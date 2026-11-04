@@ -212,13 +212,15 @@ decider:
     hold_only: [nhl, nba]     # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
     rewind_only: []      # leagues whose entries land on a dead ball with a rewind when one fits, never wait
     landing_lag_s: 0     # [landing lag] a fresh tune comes up up to this much later than the live edge (one-sided)
+    possession_start: "off"  # [possession start] off | crunch | all: cue to the last dead ball before the possession, never wait while one is in reach
+    confirmed_dead_only: false  # [data gap] a dead window opens only on a logged stoppage (a lone substitution means the stoppage is missing)
     ended_strict: false  # [landing lag] a switch off a finished game never takes the urgent (thin-margin) landing
     crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
   # Seconds to the new picture, MEASURED (the one source of truth; contracts/switching.ConfigSwitchPaths):
   # tunes = the Mac's LatencyBook medians (switch_speed.learn; pinned in eval-data-v1's eval_config.yaml);
-  # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.98 s) + the 1 s settle.
+  # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.89 s) + the 1 s settle.
   # Replaced by your own measured times as you use it (see switch_speed).
   switch_cost: {youtubetv: 5.5, prime: 27, espn: 7.5, hdmi_flip: 3}
   return_tolerance: 5      # go back to the previous game if it's within this many points
@@ -362,8 +364,8 @@ two_stick:
   pretune_on_open: false   # opening a live game on the phone pre-tunes it on the hidden stick (90 s), so
                            # "Watch this" / "Go now" is a ~3 s flip instead of a ~8 s tune + flip
   input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
-  tv_flip_prior_s: {median: 1.98, max: 2.2}  # the TV's own input change (SmartThings) before we've timed 5:
-                           # measured on your TV Nov 3 (10/10 confirmed). The decider plans flips with it.
+  tv_flip_prior_s: {median: 1.89, max: 2.58}  # the TV's own input change (SmartThings) before we've timed 5:
+                           # measured on your TV Nov 4 (64/64 confirmed, p50 1.89, p95 2.18). The decider plans flips with it.
   keep_cec_off: true       # a stick whose HDMI-CEC you turned off (scripts/stick_cec.py) gets it back on only
                            # for a HOME fallback onto it, then off again (so losing the input never pauses it)
   park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long
@@ -399,6 +401,9 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   yours_first: true        # your team's missed big plays: replayed before other games' and over ordinary live play
   apps: [youtubetv]        # apps where rewinding live TV works
   max_age_s: 1800          # don't replay anything older than this
+  crunch_block: false      # [crunch block] no catch-up starts while any live game is in crunch time / its run-up
+  crunch_block_mine_leagues: []   # ...your team's missed play still goes in these leagues (its game's league)
+  crunch_block_mine_after_s: 90    # ...once this long after it aired
   urgent_s: 1200           # in its last N seconds a missed play jumps the queue and beats dull live play
   clip_s: 15               # how long each replay plays
   seek_s: 6                # time spent rewinding to the play
@@ -433,6 +438,7 @@ timing:
     default: 60
     max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
     apps: [youtubetv, primevideo]   # apps whose player pauses and resumes on the hidden stick
+    hold_cal_s: -1.5       # a rebuild's pause is this much off the gap it closes (Nick's live hold calibration)
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
@@ -484,10 +490,16 @@ noggin:                    # docs/noggin.md
     enabled: false         # replace the app's pick (never over your team, never in a replay); needs the time-shift buffer
     shadow: false          # log what PICK would do (Decider.pick_log) beside the app's own decision
     leagues: [nba]         # leagues with a model (models/pick_<league>.v1.npz)
+    model: v1              # models/pick_<league>.<model>.npz (cue90: trained on the possession-start oracle)
     tune_s: 5.0            # the black screen PICK plans around per switch
     mode: breaks           # breaks: PICK only fills a break on screen while the app stays | stays | replace
     min_gap_s: 0           # switch-rate cap: PICK alone never flips again this soon after a switch (0 = off)
     keep_kinds: [user, crunch, home, must_see, live]   # the app's switch kinds PICK never overrides
+  possession:              # [possession start] the learned jump / stay policy (Decider.possession_policy)
+    enabled: false         # stay on the game on screen when PICK-cue scores it above the rule's target (off)
+    shadow: false          # log what it would say (Decider.possession_log)
+    leagues: [nba]         # leagues with a model (models/pick_<league>.<model>.npz)
+    model: cue90           # PICK trained on the possession-start hindsight oracle (oracle.solve_cue, 90 s)
   lookahead:                # [GAME-04 clairvoyance] the feed's plays that haven't aired yet (redzone/noggin/lookahead.py)
     enabled: false         # flip to a game whose big play is visible ahead, landing on its last dead ball first
     max_sigma_s: 10        # no lookahead when the screen's position is this unsure (SAFE-02)
@@ -500,3 +512,10 @@ noggin:                    # docs/noggin.md
 
 phone:                     # the phone page (redzone/web)
   v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it
+warmup:                    # [warmup.pregame] before the night's first game (redzone/plan.py Tonight._warmup)
+  pregame: false           # put the likeliest first game on the HIDDEN stick before the first start (never the one on screen)
+  lead_min: 10             # ...this many minutes before it
+buffer:                    # [buffer.watchdog] playbook STK-06 (redzone/control.py _buffer_watch)
+  watchdog: false          # rebuild a lost / drifting (> 2 s) hidden-stick hold at that game's next dead ball
+calib:                     # [calib.auto] values re-measured each night from live logs (data/calib/<night>.json)
+  auto: false              # read last nights' accepted flip time back at start (OFF until it's proven on live nights)

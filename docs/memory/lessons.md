@@ -188,3 +188,52 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   one NHL entry was mid-play on every seed. Fix: thin-margin landings cover a one-sided landing lag, and "ended"
   switches never take the urgent path. Grade entry changes with `--tune-jitter 6` on several seeds.
 - 2026-11-04, the Kaggle factory's first run failed every CBB season with KeyError <League.CBB>: the oracle (self-play labels) indexes sportsgrade.PLAY_LEN / RESUME_LEAD by the replay's league, and those were plain dicts of pro leagues; is_big / is_crunch also compared league == League.NBA and hard-coded period 4, so CBB would have had zero big or crunch plays even without the crash. Fix: ByLeague tables (college reads its pro row) and the last regulation period from models.REGULATION (CBB: the 2nd half). tests/test_kaggle_factory_jobs.py runs season_job for every league in PLAN offline.
+- 2026-11-04: **"PLAYING" on Fire OS can be a stale report.** Live lab: with HDMI-CEC on, every flip paused the
+  stick we left and it never resumed, and after backgrounding media_session kept a stale state=3 with
+  active=false. Our readback grepped no `active=` line, so a frozen stick read as playing. Fix (STK-05): grep and
+  parse `active=`, require active and speed>0 in playback_ready, and verify_standby re-tunes a paused or stale
+  hidden stick at once. Night-lab fault `stick_paused` (mode stale / pause).
+  - **Signals:** standby "playing" but the picture behind live after a flip, state=3 with speed but no new `updated`
+- 2026-11-04: **The live-test collector read traces.jsonl in a format it never had.** data/traces.jsonl is one
+  TraceEvent per line (switch_id, stage, at, detail), but collect_live_test looked for flat decided_at /
+  picture_at rows, so press-to-TV and picture-within-3s would have come back empty from every real night. Its test
+  had used hand-made flat rows. Fix: fold the events per switch_id; the test now uses the real event shape.
+  - **Signals:** press_samples 0 with presses in the log; check collectors against a real data dir, not fixtures
+
+## FastCast never logged a row on the Mac (Nov 4)
+- **Symptom:** no `espn_fastcast` rows in any recording (Nov 2-4), and data/fastcast_check.json said "stopped: only 0 plays over 0 games in 4 h". The service log has no FastCast line at all: no connect, no warning.
+- **Cause:** (confirmed) the live check's 4 h budget ran on wall time from boot. The service restarted at 00:03 ET with no live games, so the check spent its 4 h on an empty slate and switched FastCast off for good. **Not yet explained:** the Nov 3 19:25-23:45 run had live games, yet the client never logged a connect or an error.
+- **Fix:** the budget counts only time with live games subscribed (`FastcastCheck.watching`). Every minute, the file carries the client's own status (task state, wanted topics, connected, updates, last error), the engine logs when FastCast starts and how many games it watches, and a client task that dies is logged at ERROR. The next live night's file says where it stops.
+- **Signals:** fastcast_check.json `result: stopped` with `games: 0`; no `espn_fastcast` rows in recordings/*/plays.jsonl.
+
+## A rewind landed in a data gap (NBA GS @ DEN, Nov 4)
+- **Symptom:** the candidate's one remaining mid-play entry (dev seed 2) was a 70 s rewind, the same with or without tune jitter.
+- **Cause:** a substitution at 377 s left was the last event for 238 s of wall time (the play that stopped the game is missing). The tracker opened a dead window on the substitution and closed it 24 s of game clock before the next event, so it looked like a 3.5-minute dead ball. The grader, rightly, can't call that a dead ball.
+- **Fix:** `decider.entry.confirmed_dead_only` (candidate on): a lone substitution opens no window, so a rewind falls back to an earlier logged stoppage or the entry waits.
+- **Signals:** a rewind of 50 s or more into NBA; a window of kind `substitution` with no stronger kind.
+
+- 2026-11-04: **Two sticks are not one tune speed.** Live lab: hidden-stick tune to PLAYING p50 2.33 s / p95 3.06 s on
+  the 4K Plus vs 3.74 / 5.50 s on the 4K 2023, but every tune went into one shared median. The roles swap on every
+  flip, so there is no free "use the fast stick" choice; what we can do is price the stick that will tune. Tunes now
+  also book under `<app>@<model>`; tune_estimate uses it after 3, deadline_cost its p90 after 8. The decider's
+  long-run switch_cost stays the shared figure, so the config doesn't flap with whichever stick is hidden.
+- 2026-11-04: **A tuner's hard-coded holdout went stale when the splits were re-pinned.** #16's auto-tuner held
+  out only the old section-7 slice (NFL `eval.py --n 2`, NBA/NHL from Oct 29), while eval-data-v1's LOCKED split
+  has 19 NFL nights. Salvaging it as-is would have tuned on locked. Fix: hold out `splits.nights_for(..., "test")`
+  as well. Any tool that excludes locked nights reads them from redzone/lab/splits.py, never from its own list.
+- 2026-11-04: **The night's first switch was always a cold tune.** Before any game is live the standby planner
+  has nothing to pre-position, and the pre-game checks leave the hidden stick on whichever game they checked
+  last. Warm-up (warmup.pregame) puts the likeliest first pick there from T-10 min. Listed start times run
+  early, so the window lasts until a game goes live (night lab: games went live 15 min after the listing).
+  Also: Tonight rebuilds its plan every minute, so any state kept in the plan dict must be carried over.
+- 2026-11-04: **A hold's pause overshoots when a switch holds the lock.** `_hold` sleeps B s without the lock,
+  then waits for it to press play: a switch on the other stick in between stretched a 60 s hold to 81.7 s and a
+  90 s one to 111.6 s (night lab, seed 1). The recorded `held` was right, the target wasn't. The STK-06 watchdog
+  now catches and rebuilds it; resuming without waiting behind a whole switch would fix the cause.
+  - **Signals:** "buffer: ... held N s behind live" with N well over timing.behind_live_s
+- 2026-11-04 (lane 3, #136 review by lane 4): calibration.flip_prior took the measured flip max as the landing deadline's upper bound, so one quiet night could LOWER it below the shipped 2.58 s and let a later slow flip land mid-play. The bound is now max(shipped prior, tonight, every accepted night): calibration may raise it, never lower it.
+- 2026-11-04: **A time-shift hold's resume queued behind a switch's lock and overshot.** `_hold` paused,
+  slept B s, then waited for the control lock to press PLAY; a switch waiting on a safe moment held it,
+  so a 60 s hold came out 81.7 s (90 -> 111.6 s) in the night lab. Fix: the resume waits at most
+  HOLD_RESUME_LOCK_S (1 s), then plays a stick nobody touched since the pause (a token that any _tune on
+  that stick clears); `held` is only written if the token survived. Timed waits must not sit behind locks.
