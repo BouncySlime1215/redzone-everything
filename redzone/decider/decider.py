@@ -105,6 +105,7 @@ START_RETRY_MAX_S = 60.0
 # switch you made by hand goes straight in.
 ENTRY_EXEMPT = {"user", "resume", "skip"}   # resume/skip land on a planned frame of the same tune
 PICK_KEEPS = {"user", "crunch", "home", "must_see", "live"}   # [noggin PICK] app-only switch kinds
+LEAVE_TUNE_S = 6.0        # leave_gate's own tune margin: a visit can't come back inside the window
 ENTRY_SLACK_S = 2.0       # the tune's own timing doubt, on top of the delay's 2 sigma
 # Once the delay's doubt grows (sigma drifts up between calibrations) no landing fits a 30 s huddle
 # with the full margin: then centre it in the dead window with this much doubt. A miss here joins a
@@ -1919,8 +1920,18 @@ class Decider:
         tl = self.timelines.get(self.current)
         if tl is None:
             return None
-        return leave_gate(tl, self.delays.get(cur.target or "unknown"), now,
-                          self.cfg.get("decider.uncalibrated_sigma_s"))
+        d = self.delays.get(cur.target or "unknown")
+        g = leave_gate(tl, d, now, self.cfg.get("decider.uncalibrated_sigma_s"))
+        lgs = self.cfg.get("decider.leave.dead_windows") or []
+        if not g.safe and cur.scored.league.base.value in lgs and tl.dead.marks:
+            # [whistle detection] the play-by-play's own dead windows (cuts.DeadTracker, what entries land
+            # on): a whistle whose stoppage never reached the game state (the faceoff came in the same
+            # poll) is still a dead ball. Safe only if the whole doubt band on screen is inside it.
+            m = 2 * d.current_sigma(now)
+            until = tl.dead.dead_until(now - d.mu - m)
+            if until is not None and until >= now - d.mu + m + LEAVE_TUNE_S:
+                return Gate(True, "dead ball on screen (play-by-play)")
+        return g
 
     def _mark_screen_breaks(self, watchable: dict[str, Candidate], now: float) -> None:
         """A game whose break is still showing on screen is a bad destination even if the data
