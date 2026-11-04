@@ -578,6 +578,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: var(--sp-3) var(--gutter
 .tag--would { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info-ink); }
 .tag--fail { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger-ink); }
 .tag--kind { background: var(--surface-3); color: var(--text-1); }
+.tag--pass { background: color-mix(in srgb, var(--success) 16%, transparent); color: var(--success); }
 
 /* ------------------------------------------------------------------ 8. Games */
 .subbar { position: sticky; top: calc(var(--appbar-h) + var(--safe-t)); z-index: 20; margin: 0 calc(-1 * var(--gutter)); padding: 8px var(--gutter) 10px; background: color-mix(in srgb, var(--bg-0) 82%, transparent); -webkit-backdrop-filter: blur(20px) saturate(170%); backdrop-filter: blur(20px) saturate(170%); }
@@ -1167,6 +1168,20 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .v2-tiles .stile > b { font-size: 26px; }
 .v2-ribbon { position: relative; height: 28px; border-radius: 8px; background: var(--surface-3); overflow: hidden; margin-top: 8px; }
 .v2-ribbon > b { position: absolute; top: 0; bottom: 0; border-right: 1px solid var(--surface-1); }
+.v2-trends { display: grid; gap: 10px; margin-top: 12px; }
+.v2-trend { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
+.v2-trend-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.v2-trend-top .m { font-size: 14px; }
+.v2-trend-mid { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+.v2-spark { flex: 1; min-width: 0; height: 36px; }
+.v2-spark-line { fill: none; stroke: var(--info, #4c8dff); stroke-width: 1.8; vector-effect: non-scaling-stroke; }
+.v2-spark-bar { stroke: var(--text-3); stroke-dasharray: 3 3; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.v2-spark-dot { fill: var(--info, #4c8dff); }
+.v2-trend-num { display: flex; flex-direction: column; align-items: flex-end; min-width: 92px; }
+.v2-trend-num b { font-size: 18px; }
+.v2-trend-num small { color: var(--text-2); font-size: 11px; }
+.v2-trend-num small.up { color: var(--success); }
+.v2-trend-num small.down { color: var(--danger); }
 .v2-ribbon--oracle { height: 14px; margin-top: 4px; opacity: .75; }
 .v2-rlabel { font-size: 12px; color: var(--text-2); margin-top: 8px; }
 .v2-mark { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text-1); opacity: .55; }

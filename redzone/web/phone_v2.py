@@ -44,6 +44,7 @@ PLAYBOOK = re.compile(r"playbook=([A-Za-z]+-\d+)")
 DATA = Path(__file__).resolve().parent.parent.parent / "data"
 ORACLE_DIR = DATA / "oracle"            # <night>.json: the hindsight oracle's schedule for that night
 MOMENTS = DATA / "supervisor_moments.jsonl"   # every big play, judged from the feed: seen live or not
+HISTORY = DATA.parent / "docs" / "northstar-history.jsonl"   # scripts/northstar.py appends a row per run
 MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min, a phone convenience; the graded window is big_seen_3min
 
 
@@ -209,6 +210,61 @@ def oracle_overlay(segments: list[dict], oracle: dict | None, moments: list[dict
                     "missed": sum(1 for m in markers if not m["seen"])}}
 
 
+# North Star trend: the headline lines on the phone, short labels. key, label, bar, direction (+1 higher is
+# better). tests/test_phone_v2.py checks every key, bar and direction against scripts/northstar.py METRICS.
+TREND_LINES = [
+    ("mid_play", "Mid-play cuts per 100 landings", 0.0, -1),
+    ("landings_dead", "Landings in dead time %", 98.0, 1),
+    ("pct_of_oracle", "% of hindsight-oracle value", 95.0, 1),
+    ("big_live_nfl", "Big plays live, NFL %", 95.0, 1),
+    ("big_live_nba", "Big plays live, NBA %", 95.0, 1),
+    ("big_live_nhl", "Big plays live, NHL %", 95.0, 1),
+    ("big_seen_3min", "Big plays seen within 3 min %", 99.0, 1),
+    ("your_team_big", "Your-team big plays seen %", 100.0, 1),
+    ("your_team_crunch", "Your-team crunch live %", 100.0, 1),
+    ("crunch_live_nfl", "Crunch live, NFL %", 95.0, 1),
+    ("crunch_live_nba", "Crunch live, NBA %", 95.0, 1),
+    ("crunch_live_nhl", "Crunch live, NHL %", 95.0, 1),
+    ("dead_air", "Dead air %", 0.0, -1),
+    ("switch_p95", "Switch time p95 (s)", 3.0, -1),
+    ("press_to_tv_p95", "Phone press to TV p95 (s)", 3.0, -1),
+]
+
+
+def trend(rows: list[dict], split: str = "dev", last: int = 30) -> dict:
+    """The North Star history for one split as one series per headline line, oldest first. Each line:
+    points (ts, commit, v, status), latest value and status, change since the first point (in the good
+    direction = positive `better`), and the gap to its bar. Read-only: the harness writes the file."""
+    rows = [r for r in rows if r.get("split") == split][-last:]
+    lines = []
+    for key, label, bar, d in TREND_LINES:
+        pts = [{"ts": r.get("ts"), "commit": r.get("commit"), "v": (r.get("values") or {}).get(key),
+                "status": (r.get("status") or {}).get(key)} for r in rows]
+        have = [p for p in pts if isinstance(p["v"], (int, float))]
+        first, latest = (have[0]["v"], have[-1]["v"]) if have else (None, None)
+        lines.append({"key": key, "label": label, "bar": bar, "dir": d, "points": pts, "latest": latest,
+                      "status": pts[-1]["status"] if pts else None,
+                      "better": round((latest - first) * d, 2) if have else None,
+                      "gap": round(max(0.0, (bar - latest) * d), 2) if have else None})
+    return {"split": split, "runs": len(rows), "commit": rows[-1].get("commit") if rows else None,
+            "ts": rows[-1].get("ts") if rows else None, "lines": lines,
+            "passing": sum(1 for x in lines if x["status"] == "PASS")}
+
+
+def read_history(path: Path) -> list[dict]:
+    try:
+        text = Path(path).read_text()
+    except OSError:
+        return []
+    out = []
+    for line in text.splitlines():
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
+
+
 # Slate preview: typical wall-clock length of a game and of its crunch window (the last stretch where
 # the decider's crunch rules kick in), in minutes. Rough public averages; only used for the preview.
 GAME_MIN = {"nfl": 190, "cfb": 210, "nba": 135, "cbb": 120, "wcbb": 120, "nhl": 150, "mlb": 165}
@@ -349,6 +405,14 @@ def router(engine) -> APIRouter:
                               read_jsonl(MOMENTS, t0, t1), engine._name, end)
         return {"enabled": True, "day": d.isoformat(), "t0": t0, "t1": t1, "now": now, "nights": nights,
                 **view, **over}
+
+    @r.get("/trend")
+    async def get_trend(split: str = "dev"):
+        if not _enabled(engine):
+            return _off()
+        if split not in ("dev", "locked"):
+            return {"ok": False, "message": "split is dev or locked"}
+        return {"enabled": True, **trend(read_history(HISTORY), split)}
 
     @r.get("/slate")
     async def slate():

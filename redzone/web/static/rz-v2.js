@@ -58,7 +58,8 @@ export function missedBar() {
   if (!v2.on) return "";
   return `<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
-    <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button></div>`;
+    <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button></div>`;
 }
 
 function missedSheet() {
@@ -226,6 +227,45 @@ function nightSheet() {
 ACTIONS["v2-night"] = () => { night.data = null; openSheet({ id: "v2-night", label: "The whole night", full: true, render: nightSheet }); loadNight(""); };
 ACTIONS["v2-night-day"] = (el) => { night.data = null; const s = sheetById("v2-night"); if (s) s.update(); loadNight(el.dataset.day); };
 ACTIONS["v2-night-filter"] = (el) => { night.filter = el.dataset.f; const s = sheetById("v2-night"); if (s) s.update(); };
+
+/* ---------- North Star trend: each headline line over the harness runs, read-only ---------- */
+const trendS = { data: null, split: "dev" };
+async function loadTrend() {
+  try { trendS.data = await api(`/api/v2/trend?split=${trendS.split}`); } catch (e) { trendS.data = { error: e.message }; }
+  const s = sheetById("v2-trend"); if (s) s.update();
+}
+const STAT = { PASS: "pass", FAIL: "fail" };
+function spark(l) {
+  const pts = arr(l.points).map((p, i) => [i, p.v]).filter(([, v]) => typeof v === "number");
+  if (!pts.length) return `<svg class="v2-spark" viewBox="0 0 100 28"></svg>`;
+  const vs = pts.map(([, v]) => v).concat(l.bar), lo = Math.min(...vs), hi = Math.max(...vs), n = Math.max(1, arr(l.points).length - 1);
+  const y = (v) => (hi === lo ? 14 : 25 - ((v - lo) / (hi - lo)) * 22).toFixed(1), x = (i) => ((i / n) * 100).toFixed(1);
+  return `<svg class="v2-spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
+    <line x1="0" x2="100" y1="${y(l.bar)}" y2="${y(l.bar)}" class="v2-spark-bar"/>
+    <polyline points="${pts.map(([i, v]) => `${x(i)},${y(v)}`).join(" ")}" class="v2-spark-line"/>
+    <circle cx="${x(pts[pts.length - 1][0])}" cy="${y(pts[pts.length - 1][1])}" r="2.2" class="v2-spark-dot"/></svg>`;
+}
+function trendSheet() {
+  const d = trendS.data;
+  if (!d) return `<h3>How close to perfect</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>How close to perfect</h3><p class="lead">${esc(d.error)}</p>`;
+  const tabs = [["dev", "Dev nights"], ["locked", "Locked test nights"]].map(([k, l]) =>
+    `<button class="v2-day" data-act="v2-trend-split" data-f="${k}" aria-pressed="${trendS.split === k}">${l}</button>`).join("");
+  if (!d.runs) return `<h3>How close to perfect</h3><div class="v2-days">${tabs}</div><p class="lead">No North Star runs yet.</p>`;
+  const fmt = (v) => (typeof v === "number" ? (Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2)).replace(/\.0+$/, "") : "–");
+  const rows = arr(d.lines).map((l) => `<div class="v2-trend">
+      <div class="v2-trend-top"><span class="m">${esc(l.label)}</span><span class="tag tag--${STAT[l.status] || "kind"}">${esc(l.status || "–")}</span></div>
+      <div class="v2-trend-mid">${spark(l)}<div class="v2-trend-num"><b>${fmt(l.latest)}</b><small>bar ${fmt(l.bar)}${l.gap ? ` · ${fmt(l.gap)} to go` : ""}</small>
+      ${typeof l.better === "number" && l.better !== 0 ? `<small class="${l.better > 0 ? "up" : "down"}">${l.better > 0 ? "▲" : "▼"} ${fmt(Math.abs(l.better))} since first run</small>` : ""}</div></div></div>`).join("");
+  return `<h3>How close to perfect</h3>
+    <div class="v2-days">${tabs}</div>
+    <div class="v2-tiles"><div class="stile"><b>${num(d.passing)}/${num(arr(d.lines).length)}</b><span>Lines passing</span></div>
+      <div class="stile"><b>${num(d.runs)}</b><span>Runs</span></div>
+      <div class="stile"><b>${esc(String(d.commit || "–"))}</b><span>${esc(String(d.ts || ""))}</span></div></div>
+    <div class="v2-trends">${rows}</div>`;
+}
+ACTIONS["v2-trend"] = () => { trendS.data = null; openSheet({ id: "v2-trend", label: "How close to perfect", full: true, render: trendSheet }); loadTrend(); };
+ACTIONS["v2-trend-split"] = (el) => { trendS.split = el.dataset.f; trendS.data = null; const s = sheetById("v2-trend"); if (s) s.update(); loadTrend(); };
 
 /* ---------- Slate preview: tonight ahead, crunch windows and who gets the TV when they collide ---------- */
 const slate = { data: null };

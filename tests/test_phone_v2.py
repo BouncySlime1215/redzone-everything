@@ -187,3 +187,35 @@ def test_night_route_carries_the_overlay(client, engine, tmp_path, monkeypatch):
     r = client.get("/api/v2/night").json()
     assert r["oracle"]["objective"] == "combined" and r["oracle"]["segments"][0]["game"] == gid
     assert r["big"]["missed"] == 1 and r["markers"][0]["on"]
+
+
+def test_trend_lines_match_the_harness():
+    from scripts.northstar import META
+    for key, _label, bar, d in phone_v2.TREND_LINES:
+        assert key in META and META[key]["bar"] == bar and META[key]["dir"] == d, key
+
+
+def test_trend_series_and_gap(tmp_path):
+    rows = [{"split": "dev", "ts": "t1", "commit": "a", "values": {"mid_play": 3.0, "landings_dead": 96.0},
+             "status": {"mid_play": "FAIL", "landings_dead": "FAIL"}},
+            {"split": "locked", "ts": "t1", "commit": "a", "values": {"mid_play": 9.0}},
+            {"split": "dev", "ts": "t2", "commit": "b", "values": {"mid_play": 1.5, "landings_dead": 99.0},
+             "status": {"mid_play": "FAIL", "landings_dead": "PASS"}}]
+    v = phone_v2.trend(rows, "dev")
+    by = {x["key"]: x for x in v["lines"]}
+    assert v["runs"] == 2 and v["commit"] == "b" and v["passing"] == 1
+    assert by["mid_play"]["better"] == 1.5 and by["mid_play"]["gap"] == 1.5            # lower is better
+    assert by["landings_dead"]["better"] == 3.0 and by["landings_dead"]["gap"] == 0.0
+    assert by["pct_of_oracle"]["latest"] is None and by["pct_of_oracle"]["gap"] is None
+    assert phone_v2.trend(rows, "locked")["lines"][0]["latest"] == 9.0
+    f = tmp_path / "h.jsonl"
+    f.write_text(json.dumps(rows[0]) + "\nbroken\n")
+    assert len(phone_v2.read_history(f)) == 1 and phone_v2.read_history(tmp_path / "none") == []
+
+
+def test_trend_route(client, engine):
+    assert client.get("/api/v2/trend").status_code == 404
+    _on(engine)
+    r = client.get("/api/v2/trend").json()                 # the real docs/northstar-history.jsonl
+    assert r["enabled"] and r["split"] == "dev" and len(r["lines"]) == len(phone_v2.TREND_LINES)
+    assert client.get("/api/v2/trend?split=x").json()["ok"] is False

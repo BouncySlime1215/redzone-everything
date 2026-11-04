@@ -347,6 +347,18 @@ function mockV2(path, b) {
     }
     return { enabled: true, now, games: gs, clashes: cl.sort((x, y) => x.t0 - y.t0).slice(0, 6), yours: gs.filter((g) => g.yours).length };
   }
+  if (path.startsWith("/api/v2/trend")) {
+    const L = [["mid_play", "Mid-play cuts per 100 landings", 0, -1, 2.4, 1.75], ["landings_dead", "Landings in dead time %", 98, 1, 96.1, 98.25],
+      ["pct_of_oracle", "% of hindsight-oracle value", 95, 1, 61, 74.2], ["big_live_nfl", "Big plays live, NFL %", 95, 1, 19.5, 23.3],
+      ["big_live_nba", "Big plays live, NBA %", 95, 1, 58, 62.5], ["your_team_crunch", "Your-team crunch live %", 100, 1, 100, 100],
+      ["dead_air", "Dead air %", 0, -1, 29.4, 26.7], ["press_to_tv_p95", "Phone press to TV p95 (s)", 3, -1, 11.2, 8.75]];
+    const n = 10;
+    const lines = L.map(([key, label, bar, dir, a, z]) => {
+      const points = Array.from({ length: n }, (_, i) => ({ ts: `run ${i + 1}`, commit: "abc" + i, v: +(a + ((z - a) * i) / (n - 1) + (i % 3 ? 0.4 : -0.3) * (i < n - 1)).toFixed(2), status: (dir > 0 ? z >= bar : z <= bar) ? "PASS" : "FAIL" }));
+      return { key, label, bar, dir, points, latest: z, status: points[n - 1].status, better: +((z - a) * dir).toFixed(2), gap: +Math.max(0, (bar - z) * dir).toFixed(2) };
+    });
+    return { enabled: true, split: "dev", runs: n, commit: "d62e7ac", ts: "2026-11-04 17:33 UTC", lines, passing: lines.filter((l) => l.status === "PASS").length };
+  }
   if (path.startsWith("/api/v2/night")) {
     const now = Date.now() / 1000, t0 = now - 4 * 3600;
     const live = (STATE.games || []).slice(0, 5);
