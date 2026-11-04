@@ -11,6 +11,7 @@ Field names verified against tests/fixtures (Nov 2026).
 from __future__ import annotations
 
 import copy
+from datetime import datetime
 import re
 import time
 
@@ -21,6 +22,11 @@ NHL_SCORE = "https://api-web.nhle.com/v1/score/{date}"
 NHL_PBP = "https://api-web.nhle.com/v1/wsc/play-by-play/{id}"
 NBA_SCOREBOARD = ("https://nba-prod-us-east-1-mediaops-stats.s3.amazonaws.com/NBA/liveData/"
                   "scoreboard/todaysScoreboard_00.json")
+# The live play-by-play on the same S3 mirror (cdn.nba.com 403s scripts). Each action carries
+# timeActual (when it happened, ms) and edited (when it was last published): 4-12 s apart at the
+# median in a fixture game, vs ESPN's ~45 s. Path assumed from the scoreboard mirror: unverified.
+NBA_PBP = ("https://nba-prod-us-east-1-mediaops-stats.s3.amazonaws.com/NBA/liveData/"
+           "playbyplay/playbyplay_{id}.json")
 MLB_SCHEDULE = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={date}&hydrate=broadcasts,team"
 MLB_LIVE = "https://statsapi.mlb.com/api/v1.1/game/{pk}/feed/live"
 
@@ -193,7 +199,8 @@ def _iso_clock(s: str | None) -> float | None:
     return int(m.group(1)) * 60 + float(m.group(2)) if m else None
 
 
-def enrich_nba(g: GameState, gm: dict) -> GameState:
+def enrich_nba(g: GameState, gm: dict, pbp: dict | None = None,
+               seen: dict[str, float] | None = None) -> GameState:
     out = copy.deepcopy(g)
     out.sources = {}
     st = gm.get("gameStatus")
@@ -210,9 +217,98 @@ def enrich_nba(g: GameState, gm: dict) -> GameState:
         out.stoppage = Stoppage.HALFTIME
     elif text.startswith("end"):
         out.stoppage = Stoppage.END_PERIOD
+    if seen is not None and isinstance(pbp, dict):
+        # [NBA primary] the live play-by-play: real event times, its stoppage, its clock.
+        acts = _get(pbp, "game", "actions") or []
+        plays = nba_plays(pbp, seen)
+        if plays:
+            out.recent_plays, out.last_play = plays, plays[-1]
+        if acts:
+            last = acts[-1]
+            out.stoppage = nba_stoppage(last) if out.stoppage not in (Stoppage.HALFTIME,) else out.stoppage
+            if _int(last.get("period")) == out.period and _iso_clock(last.get("clock")) is not None:
+                out.clock_s = min(out.clock_s if out.clock_s is not None else 1e9, _iso_clock(last.get("clock")))
     out.situation.timeouts_home = _int(_get(gm, "homeTeam", "timeoutsRemaining"))
     out.situation.timeouts_away = _int(_get(gm, "awayTeam", "timeoutsRemaining"))
     out.updated_at = time.time()
+    return out
+
+
+def _iso_ts(s) -> float | None:
+    try:
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00")).timestamp() if s else None
+    except ValueError:
+        return None
+
+
+def _nba_kind(a: dict) -> str:
+    """NBA liveData action -> the decider's play kind, in ESPN's spelling so the screen model's
+    marker and dead-ball rules (timeouts, fouls, subs, non-final free throws) match."""
+    t, sub = a.get("actionType") or "", (a.get("subType") or "").lower()
+    desc = (a.get("descriptor") or "").lower()
+    if t == "timeout":
+        return f"{sub or 'full'}_timeout"
+    if t == "foul":
+        return f"{desc or sub or 'personal'}_foul".replace(" ", "_")
+    if t == "freethrow":
+        m = re.search(r"(\d) of (\d)", sub)
+        return f"free_throw_-_{m.group(1)}_of_{m.group(2)}" if m else "free_throw"
+    if t == "period":
+        return "period_start" if sub == "start" else "end_period"
+    if t == "game":
+        return "end_game"
+    if t == "rebound" and (not a.get("personId") or "team" in (a.get("qualifiers") or [])):
+        return "team_rebound"
+    if t == "3pt" and a.get("shotResult") == "Made":
+        return "three"
+    if t in ("2pt", "3pt"):
+        return (sub or "shot").replace(" ", "_")[:30]
+    if t == "turnover":
+        return f"{sub or 'lost_ball'}_turnover".replace(" ", "_")
+    return t.replace(" ", "_")[:30] or "action"
+
+
+def nba_stoppage(a: dict | None) -> Stoppage:
+    """What the game is doing right after this action."""
+    if not a:
+        return Stoppage.UNKNOWN
+    t, sub = a.get("actionType") or "", (a.get("subType") or "").lower()
+    if t == "timeout":
+        return Stoppage.TIMEOUT
+    if t == "period" and sub == "end":
+        return Stoppage.HALFTIME if _int(a.get("period")) == 2 else Stoppage.END_PERIOD
+    if t in ("foul", "violation", "substitution", "instantreplay") or _nba_kind(a) == "team_rebound":
+        return Stoppage.WHISTLE
+    if t == "freethrow":
+        m = re.search(r"(\d) of (\d)", sub)
+        return Stoppage.WHISTLE if m and m.group(1) != m.group(2) else Stoppage.NONE
+    return Stoppage.NONE
+
+
+def nba_plays(pbp, seen: dict[str, float], now: float | None = None) -> list[Play]:
+    """New NBA liveData actions as Plays, with their real time (timeActual). The first look at a
+    game is history (remembered, not returned), like nhl_plays."""
+    now = time.time() if now is None else now
+    acts = (_get(pbp, "game", "actions") or []) if isinstance(pbp, dict) else []
+    if not seen:
+        seen.update({f"nba{a.get('actionNumber')}": 0.0 for a in acts})
+        seen.setdefault("_primed", 0.0)
+        return []
+    out = []
+    for a in acts[-NHL_PLAYS_KEPT:]:
+        n = a.get("actionNumber")
+        if n is None:
+            continue
+        pid = f"nba{n}"
+        t = seen.setdefault(pid, now)
+        if not t:
+            continue
+        hs, as_ = _int(a.get("scoreHome")), _int(a.get("scoreAway"))
+        out.append(Play(pid, (a.get("description") or "")[:80], _nba_kind(a), a.get("shotResult") == "Made",
+                        _iso_ts(a.get("timeActual")), t, "nba_cdn",
+                        score=(hs, as_) if hs is not None and as_ is not None else None,
+                        clock=_iso_clock(a.get("clock")), period=_int(a.get("period")),
+                        type_text=a.get("actionType") or ""))
     return out
 
 

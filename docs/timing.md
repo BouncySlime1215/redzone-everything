@@ -224,6 +224,22 @@ Verification on the TV: the per-tune delay estimate (sync filter: boundary, scor
 should read about B s more than the same channel without the hold. Live landings are graded in
 `data/supervisor_cuts.jsonl` (leave / enter: dead, play or unknown) from each switch's trace.
 
+## A2. NBA liveData play-by-play (flag `sources.nba_primary`, OFF; shadow ON)
+
+`playbyplay_<gameId>.json` on the same S3 mirror as the scoreboard. The path is assumed from the
+scoreboard mirror and can't be reached from the cloud; the shadow log is the check. Every action
+has `timeActual` (when it happened, ms) and `edited` (last publish). In the fixture game
+(0022600157), edited - timeActual: p10 3.8 s, **p50 11.6 s**, timeouts ~10 s, fouls ~11 s. That's
+an upper bound, since `edited` is the last edit, not the first. ESPN's NBA dead balls: p50 45 s.
+
+- Shadow (default): polls every `polling.nba_pbp_s` (3 s) for live games and writes new actions to
+  `plays.jsonl` as source `nba_cdn`, with wall and lag. `python scripts/timing_report.py` puts its
+  dead-ball lag next to ESPN's.
+- Primary (off): its actions reach the timeline with real times (exact bounds and lag samples),
+  and its last action sets the stoppage, which it owns while fresh (`Merger.stoppage_owner`).
+  Kinds use ESPN's spelling, so the dead-ball rules (fouls, subs, non-final free throws, timeouts)
+  match.
+
 ## SYNC 1: steady before the flip, buffering into the delay (Nov 4)
 
 - **Steady before the flip.** `Controller._steady_playing`: the hidden stick must be still on the stream we tuned
