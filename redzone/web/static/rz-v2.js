@@ -106,6 +106,7 @@ export function missedBar() {
     <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>
     <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button>
     <button class="btn btn--ghost v2-span" data-act="v2-catchup">${icon("hourglass")}Catch-up queue: held games and what's waiting</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-scorecard">${icon("shield")}Night scorecard: the release gate, night by night</button>
     <button class="btn btn--ghost v2-span" data-act="v2-capture">${icon("moon")}Live night: did it become gold data?</button>
     <button class="btn btn--ghost v2-span" data-act="v2-ledger">${icon("activity")}Data + NFM: what the Noggin learns from</button></div>`;
 }
@@ -382,6 +383,29 @@ function trendSheet() {
 ACTIONS["v2-trend"] = () => { trendS.data = null; openSheet({ id: "v2-trend", label: "How close to perfect", full: true, render: trendSheet }); loadTrend(); };
 ACTIONS["v2-trend-split"] = (el) => { trendS.split = el.dataset.f; trendS.data = null; const s = sheetById("v2-trend"); if (s) s.update(); loadTrend(); };
 
+/* ---------- Night scorecard: the release gate's per-night lines and their trend ---------- */
+const scS = { data: null };
+function scorecardSheet() {
+  const d = scS.data;
+  if (!d) return `<h3>Night scorecard</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Night scorecard</h3><p class="lead">${esc(d.error)}</p>`;
+  if (!arr(d.nights).length) return `<h3>Night scorecard</h3><p class="lead">No night reports yet: the supervisor writes one after 6 AM ET.</p>`;
+  const fmt = (v) => (typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(1)) : "–");
+  const ST = { PASS: "pass", FAIL: "fail", OVER: "would" };
+  const rows = arr(d.lines).map((l) => `<div class="v2-trend">
+      <div class="v2-trend-top"><span class="m">${esc(l.label)}${l.hard ? " <small>(hard)</small>" : ""}</span><span class="tag tag--${ST[l.status] || "kind"}">${esc(l.status || "pending")}</span></div>
+      <div class="v2-trend-mid">${spark(l)}<div class="v2-trend-num"><b>${fmt(l.latest)}</b><small>${l.measured ? `${num(l.nights_at_bar)}/${num(l.measured)} nights at ${fmt(l.bar)}` : "not measured yet"}</small></div></div></div>`).join("");
+  return `<h3>Night scorecard</h3>
+    <div class="v2-tiles"><div class="stile"><b>${d.gate == null ? "–" : d.gate ? "Pass" : "Fail"}</b><span>Hard lines, ${esc(d.last || "")}</span></div>
+      <div class="stile"><b>${num(arr(d.nights).length)}</b><span>Nights</span></div></div>
+    <div class="v2-trends">${rows}</div>`;
+}
+ACTIONS["v2-scorecard"] = async () => {
+  scS.data = null; openSheet({ id: "v2-scorecard", label: "Night scorecard", full: true, render: scorecardSheet });
+  try { scS.data = await api("/api/v2/scorecard"); } catch (e) { scS.data = { error: e.message }; }
+  const s = sheetById("v2-scorecard"); if (s) s.update();
+};
+
 /* ---------- Catch-up queue: what the hidden stick holds, tonight's left-game holds, and every catch-up waiting ---------- */
 const cq = { data: null };
 async function loadCatchup() {
@@ -403,7 +427,12 @@ function catchupSheet() {
       <div>${m.must ? `<span class="tag tag--fail">missed for another big play</span> ` : ""}${m.mine ? `<span class="tag tag--pass">your team</span> ` : ""}${dead(m.dead_now)}</div></div></div>`).join("");
   const holds = arr(d.holds).map((x) => `<div class="v2-ms"><span class="tag tag--${x.open ? "kind" : (END_TXT[x.end] || ["kind"])[0]}">${x.open ? "holding" : esc((END_TXT[x.end] || [, "ended"])[1])}</span>
       <span>${esc(x.matchup)} <small>held ${esc(fmtTime(x.held_at))} · ${esc(fmtDur(x.age_s))} behind${x.ended_at ? ` · ended ${esc(fmtTime(x.ended_at))}` : ""}</small></span></div>`).join("");
-  return `<h3>Catch-up queue</h3>
+  const on = d.on_screen;
+  // crunch vs crunch at a glance (multiview stub): the TV's game live, the other held behind it on the hidden stick
+  const mv = on && h && h.game_id && h.game_id !== on.game_id ? `<div class="v2-mv" role="img" aria-label="${attr(`${on.matchup} live on the TV, ${h.matchup} held ${fmtDur(h.behind_s || 0)} behind`)}">
+      <div class="v2-mv-tile v2-mv-tile--live"><small>On the TV · live</small><b>${esc(on.matchup)}</b></div>
+      <div class="v2-mv-tile"><small>Held · ${h.behind_s ? esc(fmtDur(h.behind_s)) + " behind" : "at the live edge"}</small><b>${esc(h.matchup)}</b></div></div>` : "";
+  return `<h3>Catch-up queue</h3>${mv}
     <div class="v2-tiles"><div class="stile"><b>${num(c.queued)}</b><span>Waiting</span></div>
       <div class="stile"><b>${num(c.yours)}</b><span>Your team</span></div>
       <div class="stile"><b>${num(c.resumed)}/${num(c.held)}</b><span>Left-game holds resumed</span></div></div>

@@ -350,6 +350,41 @@ def held_view(hidden_game: str | None, hidden_ready: bool, behind_s: float, home
             "back": back, "catchup": catch, "queued": sum(1 for m in queue if not m.replayed)}
 
 
+# Night scorecard: the release gate's per-night lines, so each morning shows last night at a glance.
+# (key, label, bar, hard): hard lines must sit at the bar every night; the rest must not regress.
+SCORE_LINES = (("mid_play_entries", "Mid-play entries", 0, True),
+               ("high_leverage_leaves", "High-leverage mid-play leaves", 0, True),
+               ("plays_missed_entry", "Plays missed on entry", 0, False),
+               ("dead_air_pct", "Dead air %", 0, False))
+
+
+def _night_line(key: str, metrics: dict, summary: dict):
+    """One gate line for one night: the night report's metrics sidecar (data/reports/<night>.json) first,
+    then the supervisor's auto-log summary; None (pending) when neither measures it."""
+    v = metrics.get(key)
+    if v is None and key == "mid_play_entries":
+        v = metrics.get("landed_mid_play", summary.get("entries_mid_play"))
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def night_scorecard(nights: list[tuple[str, dict | None, dict | None]]) -> dict:
+    """Per-night release-gate lines (oldest first) and each line's trend; `nights` is (night, metrics,
+    auto-log summary). Read only."""
+    rows = [(n, m or {}, s or {}) for n, m, s in sorted(nights) if m or s]
+    lines = []
+    for key, label, bar, hard in SCORE_LINES:
+        pts = [{"night": n, "v": _night_line(key, m, s)} for n, m, s in rows]
+        vals = [p["v"] for p in pts if p["v"] is not None]
+        latest = pts[-1]["v"] if pts else None
+        lines.append({"key": key, "label": label, "bar": bar, "hard": hard, "points": pts, "latest": latest,
+                      "status": None if latest is None else ("PASS" if latest <= bar else ("FAIL" if hard else "OVER")),
+                      "nights_at_bar": sum(1 for v in vals if v <= bar), "measured": len(vals)})
+    last = rows[-1][0] if rows else None
+    hard_ok = [ln["status"] == "PASS" for ln in lines if ln["hard"] and ln["latest"] is not None]
+    return {"nights": [n for n, _, _ in rows], "last": last, "lines": lines,
+            "gate": None if not hard_ok else all(hard_ok)}
+
+
 LEFT_END = {"left_resumed": "resumed", "left_expired": "expired", "left_lost": "lost"}   # STK-07 (#171)
 
 
@@ -789,6 +824,25 @@ def router(engine) -> APIRouter:
         rep = next((p for p in (base / f"{d.isoformat()}.md" for base in REPORTS) if p.exists()), None)
         return {"ok": rep is not None, "day": d.isoformat(), "text": rep.read_text(errors="replace")[:60000] if rep else ""}
 
+    @r.get("/scorecard")
+    async def scorecard(n: int = 14):
+        if not _enabled(engine):
+            return _off()
+        found = {p.stem for base in REPORTS if base.is_dir() for p in base.glob("20??-??-??.json")}
+        if LIVE_NIGHTS.is_dir():
+            found |= {p.name for p in LIVE_NIGHTS.glob("20??-??-??") if p.is_dir()}
+        days = sorted(found)[-max(1, min(n, 60)):]
+
+        def load(p: Path) -> dict | None:
+            try:
+                d = json.loads(p.read_text())
+            except (OSError, ValueError):
+                return None
+            return d if isinstance(d, dict) else None
+        nights = [(d, next((m for m in (load(b / f"{d}.json") for b in REPORTS) if m), None),
+                   load(LIVE_NIGHTS / d / "summary.json")) for d in days]
+        return {"enabled": True, **night_scorecard(nights)}
+
     @r.get("/catchup")
     async def catchup():
         if not _enabled(engine):
@@ -800,7 +854,8 @@ def router(engine) -> APIRouter:
         tg = {t: g for g, w in engine.where.items() if (t := getattr(w, "target", None))}
         return {"enabled": True, "now": now, **catchup_queue(
             rows_between(BUFFER_LOG, t0, now + 1), tg, c.hidden_target if c.two_stick else None, c.hidden_ready,
-            dict(c.held), list(dec.queue), engine.scored, engine._name, now)}
+            dict(c.held), list(dec.queue), engine.scored, engine._name, now),
+            "on_screen": {"game_id": dec.current, "matchup": engine._name(dec.current)} if dec.current else None}
 
     @r.get("/held")
     async def held():

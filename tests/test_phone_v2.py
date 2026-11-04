@@ -535,4 +535,37 @@ def test_catchup_route(client, engine, tmp_path, monkeypatch):
     _on(engine)
     monkeypatch.setattr(phone_v2, "BUFFER_LOG", tmp_path / "none.jsonl")
     r = client.get("/api/v2/catchup").json()
-    assert r["enabled"] and r["counts"]["held"] == 0 and isinstance(r["queue"], list)
+    assert r["enabled"] and r["counts"]["held"] == 0 and isinstance(r["queue"], list) and "on_screen" in r
+
+
+def test_night_scorecard_lines_and_gate():
+    nights = [("2026-11-04", {"landed_mid_play": 0, "high_leverage_leaves": 0, "dead_air_pct": 22.5}, {"entries_mid_play": 3}),
+              ("2026-11-02", None, {"entries_mid_play": 2}),
+              ("2026-11-03", {"mid_play_entries": 1, "plays_missed_entry": 4}, None),
+              ("2026-11-01", None, None)]                                                  # nothing measured: dropped
+    v = phone_v2.night_scorecard(nights)
+    assert v["nights"] == ["2026-11-02", "2026-11-03", "2026-11-04"] and v["last"] == "2026-11-04"
+    by = {ln["key"]: ln for ln in v["lines"]}
+    assert [p["v"] for p in by["mid_play_entries"]["points"]] == [2.0, 1.0, 0.0]          # report wins over auto-log
+    assert by["mid_play_entries"]["status"] == "PASS" and by["mid_play_entries"]["nights_at_bar"] == 1
+    assert by["plays_missed_entry"]["latest"] is None and by["plays_missed_entry"]["status"] is None
+    assert by["dead_air_pct"]["status"] == "OVER" and by["high_leverage_leaves"]["measured"] == 1
+    assert v["gate"] is True
+    nights[0][1]["high_leverage_leaves"] = 1
+    assert phone_v2.night_scorecard(nights)["gate"] is False
+    assert phone_v2.night_scorecard([])["gate"] is None
+
+
+def test_scorecard_route(client, engine, tmp_path, monkeypatch):
+    import json
+    assert client.get("/api/v2/scorecard").status_code == 404
+    _on(engine)
+    monkeypatch.setattr(phone_v2, "REPORTS", (tmp_path / "rep",))
+    monkeypatch.setattr(phone_v2, "LIVE_NIGHTS", tmp_path / "ln")
+    assert client.get("/api/v2/scorecard").json()["nights"] == []
+    (tmp_path / "rep").mkdir()
+    (tmp_path / "rep" / "2026-11-03.json").write_text(json.dumps({"landed_mid_play": 1}))
+    (tmp_path / "ln" / "2026-11-04").mkdir(parents=True)
+    (tmp_path / "ln" / "2026-11-04" / "summary.json").write_text(json.dumps({"entries_mid_play": 0}))
+    r = client.get("/api/v2/scorecard?n=5").json()
+    assert r["nights"] == ["2026-11-03", "2026-11-04"] and r["gate"] is True
