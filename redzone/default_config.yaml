@@ -188,8 +188,11 @@ decider:
     crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
-  switch_cost: {youtubetv: 3, prime: 8, espn: 7, hdmi_flip: 1}   # seconds to the new picture; replaced by
-                           # measured times as you use it (see switch_speed)
+  # Seconds to the new picture, MEASURED (the one source of truth; contracts/switching.ConfigSwitchPaths):
+  # tunes = the Mac's LatencyBook medians (switch_speed.learn; pinned in eval-data-v1's eval_config.yaml);
+  # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.98 s) + the 1 s settle.
+  # Replaced by your own measured times as you use it (see switch_speed).
+  switch_cost: {youtubetv: 5.5, prime: 27, espn: 7.5, hdmi_flip: 3}
   return_tolerance: 5      # go back to the previous game if it's within this many points
   break_destination_min: 25   # anything at least this good beats watching a commercial
   chase_max_deficit: 15
