@@ -77,6 +77,14 @@ def main(argv=None) -> int:
                     g = d["gain_s"]
                     gain = f"p10 {g['p10']:>6} p50 {g['p50']:>6} p90 {g['p90']:>6} (n {g['n']})" if g["n"] else "-"
                     print(f"  {lg:5} {kind:5} {src:16} first {d['first']:>5}/{b['n']:<5} ({d['first_pct']:>5}%)  gain {gain}")
+    out["fastest"] = timing.fastest_feeds(rep, out.get("race"))
+    if out["fastest"]:
+        print("\nfastest feed per league (sync 5): lowest dead-ball lag p50; race = first on stoppages")
+        for lg, row in sorted(out["fastest"].items()):
+            lag, race = row.get("by_lag"), row.get("by_race")
+            txt = f"lag {lag['source']} p50 {lag['p50']} s (n {lag['n']})" if lag else "lag -"
+            txt += f"   race {race['source']} first {race['first_pct']}% (n {race['n']})" if race else ""
+            print(f"  {lg:6} {txt}")
     if a.json:
         a.json.write_text(json.dumps(out, indent=1))
     if a.write_profile:

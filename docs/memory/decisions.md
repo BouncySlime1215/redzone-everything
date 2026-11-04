@@ -144,6 +144,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   integration/next (schedule only fires from main, which we never merge to). Every PR names the line it
   moves; CI shows the dev-test delta (never the locked set). docs/roadmap.md is ranked from
   docs/roadmap.json by (gap × impact) / effort, with the director's morning `priority` first.
+- 2026-11-04 7:30 AM: **Burst polling ships OFF** (`polling.burst.enabled: false`; Director 1:35 AM sync item 5).
+  When on, the on-screen game and its top challenger (max 2) poll ESPN summary + NBA/NHL pbp every 1.5 s
+  (floor 1 s) while a stoppage is likely there (break forecast p >= 0.5) or it's tense (lock, pre-moment,
+  crunch). Cadence wait on those games drops from U(0,3) to U(0,1.5) s: mean 1.5 -> 0.75 s, p95 2.85 ->
+  1.43 s. Backtests don't model poll cadence, so the scorecards are equal by construction; it turns on
+  after a live shadow night shows the measured detection lag drop in scripts/timing_report.py. The fetcher
+  also sends If-Modified-Since when a host gives Last-Modified and no ETag.
 - 2026-11-04 7:05 AM: **SYNC 1: flip only onto a steady PLAYING stream** (Nick, 1:30 AM sync plan). The preloaded
   path now needs the hidden stick to report PLAYING with no state change for `FLIP_STEADY_S` = 1 s (up to 3 s of
   buffering is waited out, else it's re-tuned). Buffering measured from the stick's own clock vs position is

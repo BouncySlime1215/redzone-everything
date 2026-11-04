@@ -303,3 +303,23 @@ def race_report(paths: Iterable[Path], league_of: dict[str, str] | None = None) 
                 d["first_pct"] = round(100.0 * d["first"] / b["n"], 1)
                 d["gain_s"] = _stats(d.pop("gain"))
     return out
+
+
+def fastest_feeds(report: LagReport, race: dict | None = None, min_n: int = 20) -> dict:
+    """[sync 5] The fastest feed per league: lowest dead-ball detection lag p50 over sources with
+    at least min_n dead balls, and (when race data exists) the source that reported "stop" labels
+    first most often. Read-only advice for sources.*_primary flags; nothing switches by itself."""
+    out = {}
+    for lg, srcs in report.by_league.items():
+        ok = {s: d["dead_ball"] for s, d in srcs.items() if d["dead_ball"].get("n", 0) >= min_n}
+        row = {}
+        if ok:
+            s = min(ok, key=lambda k: ok[k]["p50"])
+            row["by_lag"] = {"source": s, "p50": ok[s]["p50"], "p90": ok[s]["p90"], "n": ok[s]["n"]}
+        stop = ((race or {}).get(lg) or {}).get("stop")
+        if stop and stop["n"] >= min_n:
+            s, d = max(stop["sources"].items(), key=lambda kv: kv[1]["first"])
+            row["by_race"] = {"source": s, "first_pct": d["first_pct"], "n": stop["n"]}
+        if row:
+            out[lg] = row
+    return out
