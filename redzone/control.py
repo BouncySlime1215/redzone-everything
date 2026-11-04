@@ -107,6 +107,8 @@ PLANNER_WISH_S = 3.0       # a refresh holds off while the planner asked for ano
 KEEP_CONFIRM_S = 2.0       # ...on two reads this far apart (a player that pauses a beat late isn't "ready")
 ASLEEP_RECHECK_S = 60.0    # a sleeping hidden stick: don't ask again (or preload) for this long
 VERIFY_SOON_S = 3.0        # after a flip, check the stick we left within a few seconds
+STUCK_BUFFER_S = 20.0      # hardening.sticks: "buffering"/"connecting" this long is a stalled player, not a load
+STUCK_GAP_S = 30.0         # ...on reads at most this far apart (else it may have played in between)
 SEEK_LATE_OK_S = 1.0       # a rewind may land this far past its target (Missed.back_s leads the snap by 3s)
 
 LATENCY_KEEP = 15
@@ -264,6 +266,7 @@ class Controller:
         self.last_flip: dict | None = None       # the phone's latency book: flip_s / resume_s of the last flip
         self._visible_bad_since: float | None = None   # the stick on screen stopped playing at (watchdog)
         self._visible_fix_at = 0.0               # last watchdog repair (rate limit)
+        self._loading_since: dict[tuple[str, str], tuple[float, float]] = {}   # (host, target) -> (first, last) loading read
         self._unknown_since = 0.0                # input became unknown at
         self._unknown_target: str | None = None  # what the intended stick was showing when it did
         self._reasserts = 0                      # HOME re-asserts on the intended stick this episode
@@ -605,6 +608,30 @@ class Controller:
             finally:
                 self._flipping = False
 
+    def _stuck_loading(self, stick: Stick, target: str, state: str | None) -> bool:
+        """hardening.sticks: a player that has read "buffering"/"connecting" for STUCK_BUFFER_S in a
+        row is stalled (a dead stream spins forever; a real load or rebuffer takes a few seconds).
+        Off: never, as before (buffering always counted as playing)."""
+        key = (stick.host, target)
+        if state not in ("buffering", "connecting"):
+            self._loading_since.pop(key, None)
+            return False
+        try:
+            on = bool(self.cfg.get("hardening.sticks", False))
+        except Exception:
+            on = False
+        if not on:
+            return False
+        now = time.time()
+        first, last = self._loading_since.get(key, (now, now))
+        if now - last > STUCK_GAP_S:
+            first = now                    # reads too far apart: it may have played in between
+        self._loading_since[key] = (first, now)
+        if now - first < STUCK_BUFFER_S:
+            return False
+        log.warning("%s has been %s on %s for %.0fs: treating it as stalled", stick.host, state, target, now - first)
+        return True
+
     async def _watch_visible(self) -> None:
         """The stick on screen should be playing what we put there. An "are you still watching?"
         pause, the app crashing to the Fire TV home, or an app update stopping it all leave the
@@ -623,7 +650,8 @@ class Controller:
                 or pb.get("read_ok") is False):
             return
         now = time.time()
-        if pb.get("state") in ("playing", "buffering", "connecting"):
+        if pb.get("state") in ("playing", "buffering", "connecting") and not self._stuck_loading(
+                stick, target, pb.get("state")):
             self._visible_bad_since = None
             return
         if self._visible_bad_since is None:
@@ -644,6 +672,7 @@ class Controller:
                 self._resume_task = asyncio.create_task(self._watch_visible())
             return
         self._visible_fix_at = now
+        self._loading_since.pop((stick.host, target), None)   # a repair starts a fresh load
         async with self._lock:
             if self.main is not stick or self.on_target != target or self.input_unknown:
                 return
@@ -1224,7 +1253,8 @@ class Controller:
                 or pb.get("read_ok") is False:
             return
         now = time.time()
-        if pb.get("state") in ("playing", "buffering", "connecting"):
+        if pb.get("state") in ("playing", "buffering", "connecting") and not self._stuck_loading(
+                stick, target, pb.get("state")):
             self._visible_bad_since = None
             return
         if self._visible_bad_since is None:
@@ -1235,6 +1265,7 @@ class Controller:
         if now - self._visible_bad_since < VISIBLE_STALL_S or now - self._visible_fix_at < VISIBLE_FIX_GAP_S:
             return
         self._visible_fix_at = now
+        self._loading_since.pop((stick.host, target), None)
         r0 = time.monotonic()
         if replay:
             how = "prompt" if await self._clear_screen_prompt(stick, target, pkg) else None
@@ -2105,6 +2136,11 @@ class Controller:
             self._verified_at = time.time() - self._verify_every() + VERIFY_SOON_S
             return
         self._standby_miss = None
+        if state in expect and self._stuck_loading(hid, target, state):
+            log.info("standby %s has been %s too long — it'll be reloaded", target, state)
+            self._loading_since.pop((hid.host, target), None)
+            self._set_hidden(None, False)
+            return
         if state not in expect:
             log.info("standby %s is %s, not %s — it'll be reloaded", target, state, "/".join(expect))
             self._set_hidden(None, False)
