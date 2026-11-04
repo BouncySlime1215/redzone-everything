@@ -13,7 +13,7 @@ and the PR shows its North Star line and RAM/CPU cost.
   A LOCK IN beats everything except rule #1 and safety.
 - Each entry is a pure function of the live state plus a small table (no model call on the Mac
   beyond the Reflex), costs <1 ms to check, and writes a reason string (`playbook=<id>`) into the
-  decision record so 👍/👎 and the End Planner can audit it.
+  decision record so the End Planner and the Teacher's automated review can audit it (never Nick's taps: the Noggin is self-taught).
 - Flag OFF until its test passes on seeded nights; one flag per family (`playbooks.<family>.enabled`).
 - **Night lab:** extend `redzone/lab/night/faults.py` KINDS (today: stick_drop, stick_wedge,
   still_watching, feed_outage, flip_ignored, api_down, clock_skew) with one fault/scenario per entry.
@@ -123,9 +123,9 @@ generalize them; until then each is a named rule, tested on replayed nights.
 
 | id | trigger | action | fallback | test | line | lane | status |
 |---|---|---|---|---|---|---|---|
-| TASTE-01 | Nick overrides a pick | log it; learn (idea #7) | – | replay with overrides | right_game | ① | new |
-| TASTE-02 | 👎 on a switch | lower that reason's weight for the night | – | replay | right_game | ① | new |
-| TASTE-03 | Nick watches a game > 10 min after a GO NOW | raise its priority for the night | – | replay | right_game | ① | new |
+| ~~TASTE-01~~ | Nick overrides a pick | **dropped** (Nick, Nov 4 10:55 AM: no training signal from Nick) | – | – | – | – | dropped |
+| ~~TASTE-02~~ | 👎 on a switch | **dropped** (Nick, Nov 4 10:55 AM: no training signal from Nick) | – | – | – | – | dropped |
+| ~~TASTE-03~~ | Nick watches a game > 10 min after a GO NOW | **dropped** (Nick, Nov 4 10:55 AM: no training signal from Nick) | – | – | – | – | dropped |
 | SLATE-01 | night starts | pull the cloud night plan; warm up lags | local plan | startup fixture | startup time | ④ | new (ideas #9, #14) |
 | SLATE-02 | night ends (last game final) | upload logs; stop polling; let the Mac cool | – | fixture | – | ④ | partial |
 
