@@ -73,6 +73,39 @@ listed under it; a marked night-lab test counts even when the behaviour behind i
 4. **"I missed that"** records a catch-up reel request for the next dead window (3-min rule); reels stay OFF.
 (Button states are already merged as #96.)
 
+## Outside research, one focused lookup per lane (Start Planner, 20:05 UTC)
+- **① DAgger, not plain behavior cloning.** Our oracle is a DP over the archived night, so it can label
+  *any* state, including the off-oracle states our own policy drifts into. Train the possession policy
+  (#129) with DAgger rounds: roll out the policy, ask the oracle what it would do at each visited
+  state, aggregate, retrain. This fixes the covariate shift that plain imitation leaves, which is the
+  usual reason a policy that "beats the rule in rollout" doesn't beat it inside the decider. Report the
+  decider-level result per round.
+  Sources: [Ross et al., DAgger (arXiv 1011.0686)](https://ar5iv.labs.arxiv.org/html/1011.0686),
+  [Imitation Learning survey (arXiv 2106.12177)](https://arxiv.org/pdf/2106.12177).
+- **② NHL TV timeouts are scheduled.** There are three per period, at the first stoppage after the 6:00,
+  10:00 and 14:00 elapsed marks (no timeout follows icing or a goal; then the next stoppage). That
+  gives a predictable ~2-min dead window per segment for whistle detection, the replay-and-resume
+  repay and the NHL replay window. Faceoff timing after icing is regulated (no line change for the
+  icing team). Encode both as priors in NHL whistle detection.
+  Sources: [NHL rules](https://en.wikipedia.org/wiki/National_Hockey_League_rules),
+  [NHL rulebook 2021-22](https://media.nhl.com/site/asset/public/ext/2021-22/2021-22Rules.pdf),
+  [the hurry-up faceoff](https://thehockeywriters.com/the-death-of-the-hurry-up-faceoff/).
+- **③ ADBTuner / ah4c (Channels DVR community)** tune YouTube TV channels on Fire TV and Android TV over
+  adb with deep links (`am start` with a channel intent) instead of key sequences. Read their YTTV tune
+  recipes and measured tune times before the GO NOW probe (#145). A deep-link tune could cut the
+  cold path well under today's 8.5 s. Read-only research; nothing is installed on the Mac.
+  Sources: [ADBTuner thread](https://community.getchannels.com/t/adbtuner-a-channel-tuning-application-for-networked-google-tv-android-tv-devices/36822/251),
+  [ah4c thread](https://community.getchannels.com/t/androidhdmi-for-channels-ah4c-a-virtual-channel-tuner-using-hdmi-encoder-s-streaming-stick-s/38976/300).
+- **④ espnscrapeR / sportsdataverse** document ESPN's free pbp endpoints, including the per-play
+  wallclock, for NFL and CFB. Use them as the reference for the feed-fault tests (FEED-0x) and the
+  night report's schema checks.
+  Sources: [espnscrapeR get_nfl_pbp](https://rdrr.io/github/jthomasmock/espnscrapeR/man/get_nfl_pbp.html),
+  [cfbfastR news](https://sportsdataverse.r-universe.dev/cfbfastR/NEWS).
+- **⑤** No outside lookup needed (UI over our own data).
+
+**Lab window:** the TV and sticks belong to lane ③ from 3:10 to 3:45 PM ET for the GO NOW probe (#145).
+**Promotion bar:** the question is with Nick. Until his answer comes, every lane keeps producing candidates.
+
 ## Integrator (at T+0 and T+90)
 - **Merge order:** #133 then #132 (never release one alone) → #116/#125 → #139 → #137/#136/#140 → lane 1.
 - **T+90 (21:15 UTC review):** review cycle 05 with the coverage count and every lane's delta; the Start Planner writes cycle 06
