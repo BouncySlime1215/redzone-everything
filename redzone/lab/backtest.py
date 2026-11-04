@@ -27,6 +27,7 @@ from redzone.channels import REDZONE_TARGET, redzone_on
 from redzone.config import Config
 from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode
 from redzone.decider.screen import DelayBook
+from redzone.grading import Lags, SwitchLog, idx as _bisect, lag_of  # noqa: F401  [one brain] moved, step 3
 from redzone.models import REAL_BREAKS, League, Phase
 from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal
@@ -77,17 +78,6 @@ class Replay:
                     t.wins = t.losses = t.ties = None
             self._cache[idx] = g
         return self._cache[idx]
-
-
-@dataclass
-class SwitchLog:
-    t: float
-    frm: str | None
-    to: str
-    kind: str
-    reason: str
-    offset: float = 0.0   # [cut timing] the picture came up this far behind live (a rewind on entry)
-    jitter: float = 0.0   # [auto-anchors] of which: the tune's own unknown landing behind the live edge
 
 
 @dataclass
@@ -191,19 +181,6 @@ class _Feed:
 
 
 
-class Lags(float):
-    """Real life -> your screen: one figure (every channel alike), with per-game overrides when the
-    channels run different delays (the per-channel delay scenario). Behaves as the plain float."""
-
-    def __new__(cls, default: float, per: dict[str, float] | None = None):
-        x = super().__new__(cls, default)
-        x.per = dict(per or {})
-        return x
-
-    def of(self, gid: str | None) -> float:
-        return self.per.get(gid or "", float(self))
-
-
 SCREEN_LAG_S = 43.0   # run()'s default real life -> screen (feed_lag 8 + delay 35)
 
 
@@ -228,11 +205,6 @@ def feed_lag_knobs(feed_lag: float | None, behind_live: float | None = None,
     if behind_live is None:
         return {"feed_lag": fl, "delay": SCREEN_LAG_S - fl}
     return {"feed_lag": fl, "delay": stream_delay + float(behind_live) - fl, "calibrate_targets": True}
-
-
-def lag_of(lag: float, gid: str | None) -> float:
-    """This game's real-life -> screen lag (the plain figure when channels don't differ)."""
-    return lag.of(gid) if isinstance(lag, Lags) else lag
 
 
 def channel_scenario(replays, targets, feed_lag: float, delay: float, spread: float, history: float,
@@ -970,17 +942,6 @@ def _redzone_on_screen(replays: list[Replay], screen_t: float) -> bool:
     """Was RedZone on the air at this (screen) time? Same rule the decider is fed."""
     states = [r.state_at(i) for r in replays if (i := _bisect(r.wall, screen_t)) >= 0]
     return redzone_on(g for g in states if g)
-
-
-def _bisect(wall: list[float], t: float) -> int:
-    lo, hi = 0, len(wall)
-    while lo < hi:
-        mid = (lo + hi) // 2
-        if wall[mid] <= t:
-            lo = mid + 1
-        else:
-            hi = mid
-    return lo - 1
 
 
 class _Clock:

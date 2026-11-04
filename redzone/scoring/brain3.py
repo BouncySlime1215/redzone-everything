@@ -31,6 +31,7 @@ from pathlib import Path
 import numpy as np
 
 from redzone.models import GameState
+from redzone.models_rt.forest import Nodes, load_npz
 from redzone.scoring import brain as B
 
 TYPES = ("none", "tv_timeout", "team_timeout", "review", "free_throws", "injury", "score_break",
@@ -93,33 +94,17 @@ class Forest3:
     (a binary / quantile head has one slot, the type head one per class)."""
 
     def __init__(self, arrays: dict, meta: dict):
-        self.feat = arrays["feat"].astype(np.int64)
-        self.thr = arrays["thr"].astype(np.float64)
-        self.left = arrays["left"].astype(np.int64)
-        self.right = arrays["right"].astype(np.int64)
-        self.dleft = arrays["dleft"].astype(bool)
-        self.miss = arrays["miss"].astype(np.int8)
-        self.value = arrays["value"].astype(np.float64)
-        self.roots = arrays["roots"].astype(np.int64)
+        self.nodes = Nodes(arrays, int(meta["depth"]))     # [one brain] the one walker (models_rt.forest)
+        self.feat, self.thr, self.value, self.roots = self.nodes.feat, self.nodes.thr, self.nodes.value, self.nodes.roots
         self.slot = arrays["slot"].astype(np.int64)
-        self.depth = int(meta["depth"])
+        self.depth = self.nodes.depth
         self.nslots = int(meta["nslots"])
-        self.miss_zero, self.miss_nan = self.miss == 1, self.miss == 2
         self.features = list(meta["features"])
         self.heads = meta["heads"]          # name -> {"slots": [..], "kind": ..., "iso": [[x], [y]] | None}
         self.info = meta.get("info", {})
 
     def raw(self, x: np.ndarray) -> np.ndarray:
-        x = np.asarray(x, dtype=np.float32).astype(np.float64)
-        idx = self.roots
-        for _ in range(self.depth):
-            f = self.feat[idx]
-            v = x[f]
-            nan = np.isnan(v)
-            v = np.where(nan & ~self.miss_nan[idx], 0.0, v)
-            to_default = (self.miss_zero[idx] & (np.abs(v) <= 1e-35)) | (self.miss_nan[idx] & nan)
-            go_left = np.where(to_default, self.dleft[idx], v <= self.thr[idx])
-            idx = np.where(go_left, self.left[idx], self.right[idx])
+        idx = self.nodes.leaves(x)
         return np.bincount(self.slot, weights=self.value[idx], minlength=self.nslots)
 
     def predict(self, x: np.ndarray) -> dict[str, np.ndarray | float]:
@@ -185,11 +170,7 @@ def save(path: Path, arrays: dict, meta: dict) -> None:
 
 
 def load(path: Path) -> Forest3:
-    with np.load(path, allow_pickle=False) as z:
-        meta = json.loads(bytes(z["meta"]).decode())
-        arrays = {k: z[k] for k in z.files if k != "meta"}
-    # thresholds were stored as float32: compare in float32 space like LightGBM's float features
-    return Forest3(arrays, meta)
+    return Forest3(*load_npz(path))
 
 
 # ----------------------------------------------------------------------------- live features

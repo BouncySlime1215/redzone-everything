@@ -353,7 +353,7 @@ class Engine:
         whistle-to-break gap (sync.break_anchor.start_bias_s, a prior until the Wednesday probe data
         refits it). Every edge is logged with the feed event it matched (the Noggin's delay labels);
         only with sync.break_anchor.enabled does it reach the filter."""
-        from redzone.lab.timing import is_dead_ball
+        from redzone.grading import is_dead_ball
         gid = self._game_on(target, visible)
         g = self.merger.games.get(gid or "")
         row = {"ts": round(t, 2), "target": target, "stick": host, "sample_kind": kind, "game": gid,

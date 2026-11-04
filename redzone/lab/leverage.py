@@ -7,12 +7,11 @@ leverage score (lane 2, self-taught from the oracle) may only make it stricter.
 """
 from __future__ import annotations
 
-from redzone.models import League
+from redzone.models import PERIOD_S, League
 from redzone.sources import espn
 
 # (final period, seconds left in it, max margin) that count as close + late; overtime always counts
 CLOSE_LATE = {League.NFL: (4, 300, 8), League.NBA: (4, 360, 6), League.NHL: (3, 300, 1)}
-PERIOD_S = {League.NHL: 1200}
 
 
 def _left_s(league: League, p: dict) -> float | None:
