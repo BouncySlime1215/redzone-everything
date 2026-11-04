@@ -90,3 +90,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** `trace.build` only sets `cut_at` for a flip or for path `single`; any other in-place path got `cut_at` None and the supervisor skips those.
 - **Fix:** `trace.IN_PLACE` lists the paths that change the stick on screen (`single`, `prime_tile`); a new in-place path must be added there. Test: tests/test_prime_multiview.py.
 - **Signals:** new Outcome.path, cut_at None, ungraded cuts, supervisor_cuts.jsonl missing rows
+## The scorecard's 8 s feed hid a 35-50 s real one
+- **Symptom:** every scorecard showed 0 mid-play cuts, but graded with the feed lag the flight recorder measured (`--real-lag`), NHL cut 5 plays mid-play and NBA entries landed mid-play 26 times.
+- **Cause:** the backtest delivered every play 8 s after it happened; ESPN play-by-play really reaches us 35-50 s after the whistle (median, [docs/timing.md](../timing.md)), longer than a YouTube TV channel's 22-26 s delay. The gate's lag estimate capped each sample at 45 s, under the NHL median, so it believed its data covered the screen.
+- **Fix:** samples cap at 180 s; a game with fewer than 3 samples uses the measured league p90 (`FEED_LAG_PRIOR_S` in redzone/decider/screen.py). Feed realism knobs from measurements, and never cap an estimate below what was measured.
+- **Signals:** feed lag, lag_est, real-lag, data running behind your screen, NHL mid-play cut

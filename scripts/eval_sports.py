@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT))
 from redzone.channels import ChannelMap  # noqa: E402
 from redzone.config import Config  # noqa: E402
 from redzone.lab import evaldata, splits, sportsgrade  # noqa: E402
-from redzone.lab.backtest import Replay, run  # noqa: E402
+from redzone.lab.backtest import Replay, feed_lag_knobs, run  # noqa: E402
 from redzone.models import League  # noqa: E402
 from redzone.sources import espn  # noqa: E402
 
@@ -74,13 +74,21 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--delay-model", choices=("channel", "legacy"), default=None)
     ap.add_argument("--resync", action="store_true",
                     help="model live Kalman re-sync on every tune (backtest.run resync)")
+    ap.add_argument("--real-lag", action="store_true",
+                    help="[switch timing] plays reach the app after the MEASURED feed lag per league "
+                         "(redzone/lab/feed_lag_profile.json), not a fixed 8 s")
+    ap.add_argument("--feed-lag", type=float, default=None, metavar="S",
+                    help="[switch timing] every play reaches the app S s after it happened (default 8). The "
+                         "screen stays 43 s behind real life, so only the warning before it airs changes")
 
 
 def knobs(a: argparse.Namespace) -> dict:
     return dict(true_delay=a.true_delay, sigma=a.sigma, lag_jitter=(3.0, 25.0) if a.lag_jitter else None,
                 drop=a.drop, late_plays=a.late_plays, no_wallclock=a.no_wallclock, seed=a.seed,
                 channel_spread=getattr(a, "channel_spread", 0.0), history=getattr(a, "history", 0.0),
-                delay_model=getattr(a, "delay_model", None), resync=getattr(a, "resync", False))
+                delay_model=getattr(a, "delay_model", None), resync=getattr(a, "resync", False),
+                feed_lag_model="measured" if getattr(a, "real_lag", False) else None,
+                **feed_lag_knobs(getattr(a, "feed_lag", None)))
 
 
 def main():
