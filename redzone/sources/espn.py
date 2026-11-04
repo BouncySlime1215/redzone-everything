@@ -517,9 +517,12 @@ def parse_summary(league: League, data: dict, upto: int | None = None,
         _live_overrides(g, data, comp, ids)
     g.venue_info = _venue(league, _get(data, "gameInfo", "venue"))
     g.venue = g.venue_info.get("name", "")
-    by_team = {str(_get(x, "team", "id") or ""): x.get("leaders") or [] for x in data.get("leaders") or []}
-    g.leaders = _leaders_from(league, [(g.home.abbr, by_team.get(g.home.id, [])),
-                                       (g.away.abbr, by_team.get(g.away.id, []))])
+    if upto is None:
+        # The summary's leader board is as of now; replayed at play `upto` it is the FINAL board
+        # (a leak: research 05 §3.1). A replay has no leaders until it reaches the end of the game.
+        by_team = {str(_get(x, "team", "id") or ""): x.get("leaders") or [] for x in data.get("leaders") or []}
+        g.leaders = _leaders_from(league, [(g.home.abbr, by_team.get(g.home.id, [])),
+                                           (g.away.abbr, by_team.get(g.away.id, []))])
     g.spotlight = spotlight(league, data, cut, ids)
     return g
 

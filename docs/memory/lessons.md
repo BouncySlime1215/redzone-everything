@@ -107,3 +107,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** `Controller._forget` cleared `on_target` for the visible stick, and both repairers (the visible-stick watchdog and the supervisor's `screen_not_game` rule) need `on_target` to know what to restore. Health only logged `screen_unknown_silent`.
 - **Fix:** with `hardening.sticks`, keep the target and check the stick at once: still playing → nothing; not playing → the usual resume/re-link on that stick (10 s in the drill). The watchdog also reads launchd's last exit code while the app is down and, for 78/126/127, says what to fix instead of looping on restarts.
 - **Signals:** reboot, adb drop, Fire TV home, on_target None, screen_unknown_silent, exit 78, restart loop
+
+## A replayed moment could see the end of the game
+- **Symptom:** none on a scorecard yet; found by research 05 §3. A replay at play N carried the summary's FINAL leader board, and the e2e night replayed 2 games from LOCKED test nights.
+- **Cause:** `espn.parse_summary(upto=N)` filled `leaders` from the whole-game boxscore; the night's GAMES were picked before the splits existed.
+- **Fix:** leaders are filled only when `upto is None`; the night uses train-night games (NHL 401892578, NBA 401909860). `scripts/leak_check.py` (in CI) fails on locked games in the night, end-of-game fields in a replay, model stamps past the test start and expired KNOWN_ERRORS.
+- **Signals:** a replayed GameState with leaders or W-L records, a fixture id on a test night, `leak_check` FAIL

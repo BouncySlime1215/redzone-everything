@@ -505,6 +505,14 @@ class House:
         loop = asyncio.get_running_loop()
         self._claims.append(loop.call_later(after, self._switch_to, stick))
 
+    def tv_input(self, stick: FakeFireTV) -> None:
+        """The TV's own input change (SmartThings): nothing was pressed on any stick."""
+        if self.faults_on("tv_input_ignored", stick.host):
+            self.event("tv_input_ignored", stick.host)
+            self.fault_done("tv_input_ignored", stick.host)
+            return
+        self._switch_to(stick)
+
     def _switch_to(self, stick: FakeFireTV) -> None:
         old = self.tv.source
         if old is stick:

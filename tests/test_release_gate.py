@@ -8,7 +8,7 @@ spec.loader.exec_module(rg)
 
 
 def _card(**kw):
-    m = {"eval_data": "eval-data-v1", "mid_play_cuts": 0, "entries": 100, "entries_mid_play": 2,
+    m = {"eval_data": "eval-data-v1", "mid_play_cuts": 0, "entries": 100, "entries_mid_play": 0,
          "big_seen_pct": 99.0, "your_team_crunch_live_pct": 100.0, "crunch_live_pct": 96.0}
     m.update(kw)
     return {"metrics": m}

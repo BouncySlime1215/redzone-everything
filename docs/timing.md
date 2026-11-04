@@ -84,3 +84,114 @@ air by +0.1 and nothing else.
 plays seen, and NBA entries land mid-play a quarter of the time. The fix is faster data, not more
 tuning: FastCast (if it delivers in a few seconds), then predicting restarts (item 3) so entries
 are timed from the stoppage's expected length instead of from a whistle we hear about late.
+
+## Time-shift buffer (hold each stream ~1 min behind live)
+
+Nick accepts being about a minute behind live. Holding every stream B s behind its live edge puts
+the screen at 26 s (a YouTube TV channel) + B behind real life, so the feed's 35-50 s turns into a
+lead: **lead = 26 + B - feed lag**. At B = 60 the median dead ball is known ~35-40 s before it airs.
+
+Scored with `--real-lag --behind-live B` (full scorecards, eval-data-v1, after #47's gate fix):
+
+| B (s behind live) | 0 | 30 | 45 | 60 | 75 | 90 |
+|---|---|---|---|---|---|---|
+| NFL dead air | 30.1 % | 24.4 | 21.0 | 13.3 | 12.0 | 13.0 |
+| NFL big plays seen | 77.9 % | 85.7 | 91.0 | 97.3 | 97.2 | 97.1 |
+| NFL big plays live | 24.9 % | 26.0 | 28.5 | 39.4 | 46.2 | 49.4 |
+| NFL your-team crunch live | 19/21 | 19/21 | 20/21 | 16/21 | 20/21 | 21/21 |
+| NFL entries mid-play / missed | 1/1 | 0/0 | 0/0 | 0/0 | 0/0 | 0/0 |
+| NBA big plays seen | 67.8 % | | | 81.6 | | 87.4 |
+| NBA crunch live | 76.5 % | | | 82.8 | | 91.3 |
+| NBA your-team crunch live | 18/31 | | | 13/31 | | 31/31 |
+| NBA entries mid-play / missed | 28/11 | | | 6/3 | | 9/3 |
+| NHL goals seen | 93.2 % | 93.5 | 98.1 | 99.0 | 99.5 | 99.2 |
+| NHL entries mid-play / missed | 12/7 | 10/2 | 5/4 | 2/0 | 2/1 | 0/0 |
+| Mid-play cuts (all) | 0 | 0 | 0 | 0 | 0 | 0 |
+
+**It is the biggest timing lever found so far.** NFL dead air halves, big plays seen goes from 78
+to 97 %, and NHL entries reach 0 mid-play at 90 s. NBA is mixed at 60 s (your-team crunch 13/31)
+and good at 90 s. The rest of the NBA gap is the restart countdown (A3).
+
+Sim note: with a buffer, every app's game is calibrated to the screen's delay (`calibrate_targets`).
+Before, only YouTube TV games were: Prime/ESPN games were planned at the config's 40 s. The first
+NBA buffer runs made 3-15 mid-play cuts from exactly that (planned at 40 s against an 86 s screen),
+which wouldn't happen live, where each channel's delay is measured. Turning it on for today's 8 s NBA
+card moves that card a lot (big seen 92.0 → 77.0, still 0 cuts) for a reason not yet understood, so
+it stays off there. It's an open item.
+
+### Design for the live app (not built yet; A5/A6)
+
+- **Knob:** `delay.behind_live_s` (default 60, hard cap 90). 0 = today (live edge).
+- **Set it after each tune:** the stick lands at the live edge. Then pause (YTTV) for B s, or seek back
+  B s (Prime, which has a 10 s seek step; the e2e night already models seeks). Do this while the TV
+  shows the other stick, so the viewer never sees it. The hidden stick's preload does it before a flip.
+- **Verify:** the per-channel delay filter (`redzone/decider/sync.py`) reads the actual screen delay
+  from YTTV show changes and the Prime score-bug clock (OCR). Target 26 + B ± 3 s. Re-seek when it is
+  more than 5 s off.
+- **Drift back to live:** apps jump to the live edge after an ad pod or an error. The filter sees the
+  delay fall below target, and the gate treats that channel as uncalibrated (`sigma` up) until it's
+  re-seeked at the next safe moment. Never seek the visible stick mid-play.
+- **Every stick held to the same B,** so a flip between games doesn't jump in time (same-B rule).
+  Crunch overlaps already use the second stick time-shifted. That stays, inside the cap.
+- **Gate:** lead = screen delay - measured feed lag. The decider already uses both, so nothing new
+  is needed. A dead ball known by the time it airs makes "cut only at P_safe ≥ 99.5 % over the
+  ~3 s flip+settle window" (A6) reachable.
+- **Cost:** you're about a minute behind your group chat and phone alerts. Nick accepted that.
+
+## A2. Faster feeds: the source race
+
+The live app already polls NHL api-web (score + play-by-play, 8 s) and the NBA liveData mirror
+(5 s) next to ESPN, and the merger notes which source reported each score first. From the Mac's
+Nov 2-3 recordings (`python scripts/timing_report.py`), deduped per game and score:
+
+| league | first: league feed | first: ESPN scoreboard | first: ESPN summary |
+|---|---|---|---|
+| NHL (94 scores) | **79.8 %** (api-web) | 19.1 % | 1.1 % |
+| NBA (1665) | 2.0 % (liveData) | 95.2 % | 2.8 % |
+| CBB / WCBB | none | 95 % / 96 % | 5 % / 4 % |
+
+So NHL api-web is the faster source for NHL; the NBA mirror adds almost nothing over ESPN's
+scoreboard. **How much faster is not known yet**: two recorder bugs hid it.
+
+1. The recorder wrote each race row the moment the first source reported, before any other
+   source had, so `others` (the followers' lags) was always empty.
+2. It tracked rows by list index, but the merger trims its race list at 2000 events; after that
+   the index froze and nothing new was written.
+
+Fixed: the recorder writes a row 90 s after the first report with every follower's lag, tracked
+by identity. The race also times **dead balls** now (label `stop p<period> <clock>`, keyed by the
+stopped clock so feeds that name the stoppage differently still match; UNKNOWN doesn't count).
+`timing_report.py` prints first % and the gain over the fastest ESPN copy per league, kind and
+source. The status page's race summary stays score-only.
+
+Next (needs a night of recordings on the Mac): if api-web whistles beat ESPN by more than a few
+seconds, feed NHL stoppages to the decider timeline from api-web (today they only set the merged
+state). Real (realapp.com) stays out: its terms forbid automated queries.
+
+## A3. Restart countdown, step 1: break-length floors
+
+Break lengths on the **fit split only** (train + valid nights; locked nights unseen), from the
+stoppage entry to the real restart (`cutgrade.resume_after`), with 5-fold forward-chaining CV:
+
+| league, stoppage | n | p0.5 | p1 | p5 | p50 | share below candidate floor (all / CV mean / worst fold) |
+|---|---|---|---|---|---|---|
+| NHL TV timeout | 221 | 130 | 131 | 135 | 149 | 120 s: 0.45 % / 0 % / 0 % |
+| NHL goal | 410 | 0 | 29 | 38 | 49 | 30 s: 1.2 / 1.9 / 4.9 %: no floor |
+| NFL timeout | 4355 | 7 | 15 | 27 | 136 | 30 s: 6.2 %: no floor |
+| NFL two-minute warning | 411 | -7 | 48 | 101 | 160 | today's 50 s floor: ~1.5 % below (data artifacts, to check) |
+| NBA timeout | 747 | 0 | 0 | 0 | 182 | ~10 % read as 0 s: the timeout entry is often logged after the restart |
+
+Why a floor matters now: with the measured 35-50 s feed lag the data never covers the screen
+(`leave_gate`'s `covered` is false), so a break with no resume in the data is safe to leave only
+while `start + floor + delay` hasn't passed. Without a floor, an NHL TV timeout couldn't be left.
+
+Shipped: **NHL TV timeout floor 120 s** (`MIN_BREAK_S`). The one fit-split row under 120 s is a
+mis-stamped faceoff (the next shot came 214 s later). NHL scorecard, last 14 nights:
+
+| card | entries_mid_play | plays_missed_entry | dead_air_pct | big seen | switches/h | mid-play cuts |
+|---|---|---|---|---|---|---|
+| default (8 s feed) | 0 → 0 | 0 → 0 | 24.1 → 24.1 | 99.7 → 99.7 | 4.3 → 4.6 | 0 → 0 |
+| real lag | 11 → 12 (3.8 → 3.6 % of entries) | 2 → 3 | 24.9 → 24.0 | 93.7 → 95.7 | 3.1 → 3.7 | 0 → 0 |
+
+Next: a hazard model per league for the "how long until the restart" countdown (the floors are
+its lower bound with no features), and fixing the NBA timeout stamps before NBA gets a floor.
