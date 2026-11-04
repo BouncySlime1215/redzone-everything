@@ -114,3 +114,12 @@ def test_time_shift_buffer_moves_the_screen_and_calibrates_every_app():
     assert k["feed_lag"] + k["delay"] == backtest.STREAM_DELAY_S + 60 and k["calibrate_targets"]
     with pytest.raises(ValueError):
         backtest.feed_lag_knobs(None, 500)
+
+
+def test_the_night_tv_flip_matches_the_live_lab_distribution():
+    """Live lab Nov 4: 64/64 SmartThings flips, command -> confirmed p50 1.89 s, p95 2.18 s, max 2.58 s."""
+    from redzone.lab.night import smartthings as st
+    rng = random.Random(3)
+    xs = sorted(st.draw(rng) + rng.uniform(0, 0.3) for _ in range(4000))
+    assert abs(xs[len(xs) // 2] - 1.89) < 0.06 and abs(xs[int(0.95 * len(xs))] - 2.18) < 0.08
+    assert xs[-1] <= 2.58 + 0.15

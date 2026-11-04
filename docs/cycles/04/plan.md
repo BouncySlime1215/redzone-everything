@@ -49,11 +49,42 @@ data factory scales to billions of examples on Kaggle. **No signal from Nick in 
    can reach ≤3 s honestly once the probe confirms it.
 - **Bar:** tonight's run produces non-empty live rows; tick p99 and RSS unchanged.
 
-## ④ App + integration hardening (only if reopened)
-Switch locked to v3 on Fri Nov 6; rebase #88/#91.
+### Addendum: first real-hardware findings (live lab, Nick, 10:45 AM; docs/livelab-2026-11-04.md on the Mac)
+- **② (raises priority):** (a) the real SmartThings flip distribution (64/64 confirmed, p50 1.89 s, p95 2.18 s,
+  max 2.58 s, ack 0.31 s) replaces the 10-sample one in the sims and the planner's trip cost. (b) **YTTV reports a
+  real playback position (ms) on the 4K Plus while playing**: use it as a direct delay measurement in the
+  per-stick filter. It's the most likely way to the small σ that GAME-04 needs, so it comes right after the NBA
+  data-gap fix. YTTV (Cobalt) has no UI text nodes, so its anchors come from logcat/position, not the UI tree.
+- **③:** (a) **STK-05 paused hidden stick:** with HDMI-CEC on, every flip paused the stick we left, and it
+  drifted silently behind live. CEC is now off on both sticks, but the guard detects a PAUSED hidden stick
+  (media_session state + speed) and resumes or re-syncs it before any flip, with a marked night-lab test.
+  This comes right after the live-night logging. (b) A playing stick requires `speed > 0` **and** `active`
+  (a stale state=3 with active=false lingers after backgrounding).
 
-## ⑤ Features (only if reopened)
-Decision-record export for the Teacher (objective outcomes only, no taps).
+### Addendum 2: brake lifted, gates raised (Nick, 10:55 AM)
+All 5 lanes and both planners run at full speed; the only usage rule is the hard stop at 89-90% weekly.
+**New gates** (PR #121): big live per league **>= 95% of oracle value** (ceilings ~NFL 91/93, NBA 93/100,
+NHL 85/90 dev/locked), live-or-replayed within 3 min >= 99% (see Addendum 3), mid-play 0, landings in dead time **>= 98%**.
+Every oracle-backed row shows its gap to 100% of oracle. Each lane's biggest lever:
+① Pick-v1 oracle imitation + the Mind V7 result; ② possession-start entry + clairvoyance + honest sync from
+the real hardware (YTTV position, CEC-pause guard); ③ press-to-TV <= 3 s on real hardware (flips are
+2.2 s p95, so the rest is app-side); ④ RC5 deploy + live-nights logging into northstar; ⑤ phone v2
+merges (#88/#91).
+
+### Addendum 3: replay window is 2-3 minutes (Nick, 11:00 AM)
+A replay of a missed big play is worth it only within **3 minutes**, never 10. The row `big_seen_10min`
+becomes **`big_seen_3min`** (>= 99%) plus a stretch **`big_seen_2min`** (>= 99%), on dev and locked, live and
+candidate (PR #121; `my_big_seen_3m` for your-team). Lane ② owns the reel queue: a collision replay
+(T2-T4) targets the **very next dead window**; a replay that cannot air within 3 min is skipped or folded
+into a later montage, never aired stale. Bar: big_seen_3min up on dev and locked, mid_play 0, dead air
+not worse.
+
+## ④ App + integration hardening (reopened)
+RC5/RC5.1 deploy support for the live lab, live-nights logging wired into northstar with lane ③, the v3
+locked switch on Fri Nov 6.
+
+## ⑤ Features (reopened)
+Rebase and merge #88/#91 (UI conflict), then the Teacher export (objective outcomes only, no taps).
 
 ## Integrator
 ③ item 1 merges first: it has to be live on the Mac before tonight's test (it ships with the next

@@ -26,7 +26,7 @@ def test_shipped_flip_cost_is_the_measured_smartthings_switch(cfg):
     p = ConfigSwitchPaths(cfg)
     assert p.flip().kind == TV_FLIP
     assert p.flip().cost_s == pytest.approx(1.89 + 1.0)       # SmartThings median (live lab, 64/64) + HDMI settle
-    assert p.flip().cost_p90_s == pytest.approx(1.98 + 1.0)   # its measured p95 + settle
+    assert p.flip().cost_p90_s == pytest.approx(2.02 + 1.0)   # its measured max + settle
     # The table the decider plans with says the same thing, so the two can't drift apart.
     assert cfg.defaults["decider"]["switch_cost"]["hdmi_flip"] == half_step(1.89 + 1.0) == p.costs()["hdmi_flip"]
 

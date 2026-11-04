@@ -306,12 +306,18 @@ class SyncBook:
                 out.append({"target": target, "why": "predicted", "q_scale": round(f.q_scale, 1)})
         return out
 
-    def measure(self, target: str, z: float, kind: str, t: float | None = None, sd: float | None = None) -> bool:
+    def measure(self, target: str, z: float, kind: str, t: float | None = None, sd: float | None = None,
+                stick: str | None = None) -> bool:
         if not 2.0 <= z <= 180.0:
             return False
         t = self._clock() if t is None else t
-        ok = self.get(target).delay(t, z, kind, sd)
-        self._log(kind, target, t, z=round(z, 2), used=ok)
+        f = self.get(target)
+        try:   # [live nights] the anchor's error: what this anchor measured minus what we predicted
+            err = round(z - f.mu(t), 2)
+        except Exception:
+            err = None
+        ok = f.delay(t, z, kind, sd)
+        self._log(kind, target, t, z=round(z, 2), used=ok, err=err, **({"stick": stick} if stick else {}))
         self.on_change(target)
         return ok
 
