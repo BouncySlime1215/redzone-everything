@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 import time as _real_time
 import yaml
 
-from redzone import crunch, engine as engine_mod, standby
+from redzone import crunch as crunch_table, engine as engine_mod, standby
 from redzone.channels import REDZONE_TARGET, ChannelMap, Where
 from redzone.config import Config, ConfigError, _deep_merge, default, validate
 from redzone.control import Controller, Outcome
@@ -462,7 +462,7 @@ class DemoEngine(Engine):
 
         def crunch(r):
             hockey = r.league == League.NHL
-            g = crunch.row("graded", League.NHL if hockey else League.NFL)   # [one brain] the crunch table
+            g = crunch_table.row("graded", League.NHL if hockey else League.NFL)   # [one brain] the crunch table
             return _crunch_counts(r, self.watching, lag, self.play_len_s, self.tune_s, g.period,
                                   g.margin, 1200.0 if hockey else None, win, offs, g.clock_s)
 

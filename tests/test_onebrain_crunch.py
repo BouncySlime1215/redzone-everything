@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from redzone import crunch, standby
+from redzone import crunch, grading, standby
 from redzone.lab import sportsgrade
 from redzone.models import League, Phase, Stoppage, pro_period
 from redzone.scoring import engine as E
@@ -99,7 +99,7 @@ def test_the_grading_predicate_matches_the_old_copy(monkeypatch):
         if d is None:
             continue
         play = {"period": {"number": p}, "homeScore": abs(d), "awayScore": 0}
-        monkeypatch.setattr(sportsgrade, "_clock", lambda league, pl, c=c: c)
+        monkeypatch.setattr(grading, "play_clock", lambda league, pl, c=c: c)
         assert sportsgrade.is_crunch(lg, play) == old_is_crunch(lg, p, c, abs(d)), (lg, p, c, d)
 
 

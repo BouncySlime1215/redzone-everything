@@ -14,16 +14,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from redzone import crunch
 from redzone.decider.screen import CONTINUOUS, _is_marker
 from redzone.lab import cutgrade, leverage
 from redzone.lab.backtest import (CATCHUP_2_S, CATCHUP_3_S, CATCHUP_S, lag_of, leave_offsets, offsets_of, on_screen, replayed_by,
                                   tuning_blackout_seconds, watched_whole)
+from redzone.grading import PLAY_LEN, RESUME_LEAD, is_big, is_crunch  # noqa: F401  [one brain] moved, step 3
+from redzone.grading import marker as _marker, play_clock as _clock, play_type as _type  # noqa: F401
 from redzone.models import REAL_BREAKS, League, Stoppage
 from redzone.sources import espn
-
-PLAY_LEN = {League.NFL: 7.0, League.MLB: 6.0, League.NBA: 0.0, League.NHL: 0.0}
-RESUME_LEAD = {League.NBA: 26.0, League.NHL: 5.0}   # play can restart this long before the next logged action
 
 
 @dataclass
@@ -86,51 +84,6 @@ class Card:
                 **self.cut.summary()}
 
 
-def _type(p: dict) -> str:
-    if (espn._get(p, "alternativeType", "type") == "lineup-change"
-            or (espn._get(p, "alternativeType", "text") or "").lower() == "lineup change"):
-        return "lineup_change"
-    return (espn._get(p, "type", "text") or "").lower()
-
-
-def _clock(league: League, p: dict) -> float | None:
-    c = espn._clock_s(espn._get(p, "clock", "displayValue"))
-    if c is not None and league == League.NHL:
-        per = espn._int(espn._get(p, "period", "number")) or 1
-        c = max(0.0, (300 if per >= 4 else 1200) - c)
-    return c
-
-
-def is_big(league: League, p: dict, prev: dict | None) -> bool:
-    t = _type(p)
-    if league == League.NFL:
-        return bool(p.get("scoringPlay")) or "interception" in t or "fumble recovery (opponent)" in t \
-            or bool(p.get("isTurnover"))
-    if league == League.NHL:
-        return t == "goal" or bool(p.get("scoringPlay"))
-    if league == League.MLB:
-        return bool(p.get("scoringPlay")) or "home run" in t
-    if league == League.NBA:
-        if not p.get("scoringPlay") or "free throw" in t:
-            return False
-        per = espn._int(espn._get(p, "period", "number")) or 0
-        c = _clock(league, p)
-        if per < 4 or c is None or c > 120 or prev is None:
-            return False
-        hs, as_ = espn._int(prev.get("homeScore")), espn._int(prev.get("awayScore"))
-        return hs is not None and as_ is not None and abs(hs - as_) <= 5
-    return False
-
-
-def is_crunch(league: League, p: dict) -> bool:
-    per = espn._int(espn._get(p, "period", "number")) or 0
-    c = _clock(league, p)
-    hs, as_ = espn._int(p.get("homeScore")), espn._int(p.get("awayScore"))
-    if hs is None or as_ is None:
-        return False
-    return crunch.inside(crunch.row("graded", league), per, c, abs(hs - as_))   # [one brain] the crunch table
-
-
 def power_play_after(league: League, plays: list[dict]) -> list[bool]:
     """[nhl pp] Was a power play on after each play? The grader may look ahead: ESPN labels every
     team play (penalties too) with that team's strength before it, so the next labelled play says
@@ -150,11 +103,6 @@ def power_play_after(league: League, plays: list[dict]) -> list[bool]:
 
 def is_pp_goal(league: League, p: dict) -> bool:
     return league == League.NHL and _type(p) == "goal" and espn._get(p, "strength", "abbreviation") == "power-play"
-
-
-def _marker(t: str) -> bool:
-    return any(k in t for k in ("timeout", "end ", "end of", "two-minute", "coin toss", "period start",
-                                "start inning", "start batter", "end batter", "end inning", "lineup_change"))
 
 
 def _on_screen(watching: list[tuple[float, str]], t: float, tune_s: float) -> str | None:
