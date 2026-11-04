@@ -5,7 +5,7 @@ held-out prompts, and convert each adapter to mlx_lm format.
 
 * Base: mlx-community/Qwen3-1.7B-4bit (what the Mac runs), dequantized with agent/kaggle/dequant.py,
   so the adapter is trained on exactly the weights it will run on.
-* Adapter: rank 8, alpha 16, the last 8 of 28 layers, q/k/v/o/gate/up/down (the shape
+* Adapter: rank 16, alpha 32, all 28 layers, q/k/v/o/gate/up/down (recipe D19 below; the shape
   agent/train/peft_to_mlx.py converts and agent/llm_server.py loads). Loss on the answer only.
 * Jobs run in parallel, one per T4 (game-reasoner on GPU 0, watchdog on GPU 1).
 * Answers: greedy, like the Mac. The watchdog job also answers with the adapter switched off, the
@@ -25,15 +25,23 @@ import time
 from pathlib import Path
 
 BASE_REPO = "mlx-community/Qwen3-1.7B-4bit"
-RANK, ALPHA, LAST_LAYERS = 8, 16, 8
+# Student recipe D19 (docs/research/2026-11-03/04-architecture-distillation.md, "LoRA Without Regret"):
+# LoRA on every layer incl. the MLP, rank 16, alpha 32, LR 2e-4. Round 1 was rank 8 / alpha 16 / last 8
+# layers / LR 1e-4; RZ_LORA_RANK, RZ_LORA_LAYERS (0 = all), RZ_LR override it for ablations.
+RANK = int(os.environ.get("RZ_LORA_RANK", "16"))
+ALPHA = 2 * RANK
+LAST_LAYERS = int(os.environ.get("RZ_LORA_LAYERS", "0")) or None       # None: every layer
 TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 EPOCHS = {"game-reasoner": 2, "watchdog": 1}
 # BATCH 2 x ACCUM 4 = an effective batch of 8 (V4 ran out of memory on a T4 at BATCH 8)
-LR, BATCH, ACCUM, MAX_LEN = 1e-4, 2, 4, 768
-# "float16" halves the frozen base's memory (~3.4 GB less); the LoRA weights stay float32 either way
-BASE_DTYPE = os.environ.get("RZ_BASE_DTYPE", "float32")
+LR = float(os.environ.get("RZ_LR", "2e-4"))
+BATCH, ACCUM, MAX_LEN = 2, 4, 768
+# float16 frozen base (~3.4 GB less than float32) + float32 LoRA weights + GradScaler: the D19 recipe.
+# RZ_BASE_DTYPE=float32 goes back to round 1's float32 base if fp16 ever overflows (loss nan/inf).
+BASE_DTYPE = os.environ.get("RZ_BASE_DTYPE", "float16")
 TIME_PER_JOB_S = 3.0 * 3600
-SMOKE = os.environ.get("RZ_SMOKE") == "1"     # CPU smoke test: tiny model, few steps
+SMOKE = os.environ.get("RZ_SMOKE") == "1"
+FP16_OVERFLOW = 3                             # job exit code: rerun it once on a float32 base     # CPU smoke test: tiny model, few steps
 
 
 def base_dir(work: Path) -> Path:
@@ -112,13 +120,15 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
             yield ids.to(dev), lab.to(dev), att.to(dev)
 
     # fp32 master weights + fp16 autocast: T4s have no bf16, and pure fp16 can overflow in Qwen3
-    model = AutoModelForCausalLM.from_pretrained(base, torch_dtype=getattr(torch, BASE_DTYPE)).to(dev)
+    model = AutoModelForCausalLM.from_pretrained(base, torch_dtype=getattr(torch, BASE_DTYPE),
+                                                 attn_implementation="sdpa").to(dev)
     model.config.use_cache = False
     model.gradient_checkpointing_enable()
     model.enable_input_require_grads()
     n_layers = model.config.num_hidden_layers
     cfg = LoraConfig(r=RANK, lora_alpha=ALPHA, lora_dropout=0.05, target_modules=TARGETS,
-                     layers_to_transform=list(range(n_layers - LAST_LAYERS, n_layers)), task_type="CAUSAL_LM")
+                     layers_to_transform=list(range(n_layers - min(LAST_LAYERS or n_layers, n_layers), n_layers)),
+                     task_type="CAUSAL_LM")
     model = get_peft_model(model, cfg)
     params = [p for p in model.parameters() if p.requires_grad]
     for p in params:
@@ -151,11 +161,17 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
         opt.zero_grad(set_to_none=True)
         sched.step()
 
+    bad_loss = 0
     for ep in range(epochs):
         micro = 0
         for ids, lab, att in batches(train, True):
             with torch.autocast(**amp):
                 loss = answer_loss(model, ids, lab, att)
+            if not torch.isfinite(loss):
+                bad_loss += 1
+                if BASE_DTYPE == "float16" and bad_loss > 20:
+                    print(f"{name}: {bad_loss} non-finite losses on the float16 base", flush=True)
+                    raise SystemExit(FP16_OVERFLOW)
             scaler.scale(loss / ACCUM).backward()
             micro += 1
             if micro % ACCUM:
@@ -215,7 +231,7 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
     from agent.train.peft_to_mlx import convert
     mlx_cfg = convert(peft_dir, out / "mlx", n_layers)
     json.dump({"job": name, "base": BASE_REPO + " (dequantized)", "rank": RANK, "alpha": ALPHA,
-               "last_layers": LAST_LAYERS, "targets": TARGETS, "train_rows": len(train), "steps": step,
+               "last_layers": LAST_LAYERS or n_layers, "lr": LR, "base_dtype": BASE_DTYPE, "batch": BATCH * ACCUM, "targets": TARGETS, "train_rows": len(train), "steps": step,
                "stopped_early": stopped, "log": log, "train_s": train_s, "answer_s": answer_s, "mlx": mlx_cfg},
               open(out / "train_report.json", "w"), indent=1)
     print(name, "done", flush=True)
@@ -265,15 +281,21 @@ def main() -> None:
         cmd = [sys.executable, __file__, "--pack", a.pack, "--out", a.out, "--job", name]
         log = open(out / name / "train.log", "w")
         p = subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT)
-        procs.append((name, p))
+        procs.append((name, p, env))
         if k % n_gpu == n_gpu - 1:          # more jobs than GPUs: wait for this round
-            for _, q in procs:
+            for _, q, _ in procs:
                 q.wait()
     bad = []
-    for name, p in procs:
+    for name, p, env in procs:
+        if p.wait() == FP16_OVERFLOW:          # fp16 base overflowed: same job again on a float32 base
+            print(name, "overflowed on the float16 base; retrying on float32", flush=True)
+            env = {**env, "RZ_BASE_DTYPE": "float32"}
+            log = open(out / name / "train.log", "a")
+            p = subprocess.Popen([sys.executable, __file__, "--pack", a.pack, "--out", a.out, "--job", name],
+                                 env=env, stdout=log, stderr=subprocess.STDOUT)
         if p.wait() != 0:
             bad.append(name)
-    for name, _ in procs:
+    for name, _, _ in procs:
         print(f"--- {name} log tail ---\n" + "".join(open(out / name / "train.log").readlines()[-15:]), flush=True)
     if bad:
         raise SystemExit(f"student jobs failed: {bad} (see {out}/<job>/train.log)")

@@ -44,3 +44,11 @@ def test_answer_loss_matches_the_full_logits_loss():
 
 def test_effective_batch_is_eight():
     assert rs.BATCH * rs.ACCUM == 8 and rs.BATCH <= 2
+
+
+def test_recipe_d19_defaults(monkeypatch):
+    import importlib
+    for k in ("RZ_LORA_RANK", "RZ_LORA_LAYERS", "RZ_LR", "RZ_BASE_DTYPE"):
+        monkeypatch.delenv(k, raising=False)
+    m = importlib.reload(rs)
+    assert (m.RANK, m.ALPHA, m.LAST_LAYERS, m.LR, m.BASE_DTYPE) == (16, 32, None, 2e-4, "float16")
