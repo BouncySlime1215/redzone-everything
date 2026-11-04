@@ -1167,6 +1167,10 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .v2-tiles .stile > b { font-size: 26px; }
 .v2-ribbon { position: relative; height: 28px; border-radius: 8px; background: var(--surface-3); overflow: hidden; margin-top: 8px; }
 .v2-ribbon > b { position: absolute; top: 0; bottom: 0; border-right: 1px solid var(--surface-1); }
+.v2-ribbon--oracle { height: 14px; margin-top: 4px; opacity: .75; }
+.v2-rlabel { font-size: 12px; color: var(--text-2); margin-top: 8px; }
+.v2-mark { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text-1); opacity: .55; }
+.v2-mark--miss { background: var(--danger, #e5484d); opacity: 1; width: 3px; box-shadow: 0 0 0 1px var(--surface-1); z-index: 1; }
 .v2-ticks { position: relative; height: 18px; }
 .v2-ticks > i { position: absolute; top: 0; height: 5px; border-left: 1px solid var(--line-3); }
 .v2-ticks > i span { position: absolute; top: 5px; transform: translateX(-50%); font: 600 10px/1.2 var(--font-ui); color: var(--text-3); white-space: nowrap; }

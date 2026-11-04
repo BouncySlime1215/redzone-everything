@@ -153,3 +153,37 @@ def test_slate_route(client, engine):
     _on(engine)
     r = client.get("/api/v2/slate").json()
     assert r["enabled"] and isinstance(r["games"], list) and isinstance(r["clashes"], list)
+
+
+def test_oracle_overlay_agreement_and_markers(tmp_path):
+    segs = [{"t0": 0.0, "t1": 100.0, "game": "a", "matchup": "A"}, {"t0": 100.0, "t1": 200.0, "game": "b", "matchup": "B"}]
+    f = tmp_path / "o.json"
+    f.write_text(json.dumps({"objective": "combined", "switches": [{"t": 50.0, "to": "b"}, {"t": 0.0, "to": "a"}]}))
+    o = phone_v2.read_oracle(f)
+    assert [x["t"] for x in o["switches"]] == [0.0, 50.0]                  # sorted
+    moments = [{"ts": 60.0, "game": "b", "kind": "dunk", "seen": False}, {"ts": 150.0, "game": "b", "kind": "3pt", "seen": True},
+               {"ts": 500.0, "game": "b", "kind": "late", "seen": True}]   # after the end: dropped
+    v = phone_v2.oracle_overlay(segs, o, moments, lambda g: g.upper(), end=200.0)
+    assert v["oracle"]["agree_pct"] == 75.0                                  # 50 s of a + 100 s of b, of 200
+    assert [(s["game"], s["t1"]) for s in v["oracle"]["segments"]] == [("a", 50.0), ("b", 200.0)]
+    assert v["big"] == {"plays": 2, "seen": 1, "missed": 1}
+    assert v["markers"][0] == {"ts": 60.0, "game": "b", "matchup": "B", "kind": "dunk", "label": "", "seen": False, "on": "A"}
+    none = phone_v2.oracle_overlay(segs, None, [], str, end=200.0)
+    assert none["oracle"] is None and none["markers"] == []
+    f.write_text("{not json")
+    assert phone_v2.read_oracle(f) is None and phone_v2.read_oracle(tmp_path / "missing.json") is None
+
+
+def test_night_route_carries_the_overlay(client, engine, tmp_path, monkeypatch):
+    _on(engine)
+    gid = next(iter(engine.merger.games))
+    _switch(engine, gid)
+    day = phone_v2.night_of(time.time()).isoformat()
+    (tmp_path / "oracle").mkdir()
+    (tmp_path / "oracle" / f"{day}.json").write_text(json.dumps({"switches": [{"t": time.time() - 5, "to": gid}]}))
+    (tmp_path / "m.jsonl").write_text(json.dumps({"ts": time.time(), "game": gid, "kind": "td", "seen": False}) + "\n")
+    monkeypatch.setattr(phone_v2, "ORACLE_DIR", tmp_path / "oracle")
+    monkeypatch.setattr(phone_v2, "MOMENTS", tmp_path / "m.jsonl")
+    r = client.get("/api/v2/night").json()
+    assert r["oracle"]["objective"] == "combined" and r["oracle"]["segments"][0]["game"] == gid
+    assert r["big"]["missed"] == 1 and r["markers"][0]["on"]

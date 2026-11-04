@@ -369,7 +369,12 @@ function mockV2(path, b) {
     const pb = {};
     events.forEach((e) => (e.playbooks || []).forEach((k) => { pb[k] = (pb[k] || 0) + 1; }));
     const day = new Date().toISOString().slice(0, 10);
+    const oseg = segs.map((x, i) => ({ ...x, ...(i % 3 === 1 ? live[(i + 1) % live.length] && { game: live[(i + 1) % live.length].id, matchup: live[(i + 1) % live.length].matchup } : {}) }));
+    const markers = segs.flatMap((x, i) => [{ ts: x.t0 + 200, game: x.game, matchup: x.matchup, kind: "td", label: "", seen: true, on: x.matchup },
+      ...(i % 3 === 1 ? [{ ts: x.t0 + 260, game: oseg[i].game, matchup: oseg[i].matchup, kind: "goal", label: "", seen: false, on: x.matchup }] : [])]).filter((m) => m.ts < now);
     return { enabled: true, day, nights: [day, "2026-11-03", "2026-11-02"], segments: segs, events,
+      oracle: { objective: "combined", segments: oseg, agree_pct: 71.4 }, markers,
+      big: { plays: markers.length, seen: markers.filter((m) => m.seen).length, missed: markers.filter((m) => !m.seen).length },
       summary: { switches: segs.length, failed: 1, games: Object.keys(air).length, taps: { up: 2, down: 1, missed: 1 },
         on_air: Object.entries(air).map(([matchup, s]) => ({ matchup, s: Math.round(s) })).sort((a, b) => b.s - a.s), playbooks: pb } };
   }

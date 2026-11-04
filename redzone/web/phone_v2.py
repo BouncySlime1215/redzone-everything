@@ -13,6 +13,7 @@ import json
 import re
 import time
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter
@@ -40,6 +41,9 @@ BIG_KINDS = {"td", "fg", "turnover", "goal", "hr", "safety", "interception", "fu
 ET = ZoneInfo("America/New_York")
 NIGHT_START_H = 6       # a "night" runs 6 AM ET to 6 AM ET the next day, so a 1 AM switch is last night
 PLAYBOOK = re.compile(r"playbook=([A-Za-z]+-\d+)")
+DATA = Path(__file__).resolve().parent.parent.parent / "data"
+ORACLE_DIR = DATA / "oracle"            # <night>.json: the hindsight oracle's schedule for that night
+MOMENTS = DATA / "supervisor_moments.jsonl"   # every big play, judged from the feed: seen live or not
 MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min, a phone convenience; the graded window is big_seen_3min
 
 
@@ -153,6 +157,56 @@ def night_view(switches: list[dict], decisions: list[dict], taps: list[dict], na
                         "on_air": sorted(({"matchup": k, "s": round(v)} for k, v in on_air.items()),
                                          key=lambda r: -r["s"])[:8],
                         "playbooks": dict(sorted(pb.items(), key=lambda kv: -kv[1]))}}
+
+
+def read_oracle(path: Path) -> dict | None:
+    """The oracle schedule file for one night, or None. Format (docs/decision-records.md):
+    {"objective": "combined", "switches": [{"t": <unix s>, "to": <game id>}, ...]} in time order; written
+    offline from the archived night by the hindsight oracle (redzone/lab/oracle.py). A bad file is None."""
+    try:
+        d = json.loads(Path(path).read_text())
+        sw = [{"t": float(x["t"]), "to": str(x["to"])} for x in d.get("switches") or []]
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return None
+    return {"objective": str(d.get("objective") or "combined"), "switches": sorted(sw, key=lambda x: x["t"])}
+
+
+def _on_at(segs: list[dict], ts: float, key: str = "game") -> str | None:
+    for sg in segs:
+        if sg["t0"] <= ts < sg["t1"]:
+            return sg[key]
+    return None
+
+
+def oracle_overlay(segments: list[dict], oracle: dict | None, moments: list[dict], name, end: float) -> dict:
+    """What the hindsight oracle would have shown next to what we did, and a marker per big play.
+    agree_pct: share of our on-screen time showing the oracle's game; markers: each big play in the
+    window (seen live or missed, judged from the feed by the supervisor), with what was on at the time."""
+    osegs = []
+    if oracle:
+        sw = oracle["switches"]
+        for i, x in enumerate(sw):
+            t1 = min(end, sw[i + 1]["t"]) if i + 1 < len(sw) else end
+            if t1 > x["t"]:
+                osegs.append({"t0": x["t"], "t1": t1, "game": x["to"], "matchup": name(x["to"])})
+    agree = total = 0.0
+    if osegs:
+        for sg in segments:
+            total += sg["t1"] - sg["t0"]
+            for o in osegs:
+                lo, hi = max(sg["t0"], o["t0"]), min(sg["t1"], o["t1"])
+                if hi > lo and o["game"] == sg["game"]:
+                    agree += hi - lo
+    t0 = segments[0]["t0"] if segments else None
+    markers = [{"ts": float(m["ts"]), "game": m.get("game"), "matchup": m.get("matchup") or name(m.get("game")),
+                "kind": m.get("kind") or "", "label": (m.get("label") or "")[:80], "seen": bool(m.get("seen")),
+                "on": name(_on_at(segments, float(m["ts"]))) if _on_at(segments, float(m["ts"])) else ""}
+               for m in moments if t0 is not None and t0 <= float(m["ts"]) < end]
+    return {"oracle": {"objective": oracle["objective"], "segments": osegs,
+                       "agree_pct": round(100 * agree / total, 1) if total else None} if oracle else None,
+            "markers": markers,
+            "big": {"plays": len(markers), "seen": sum(1 for m in markers if m["seen"]),
+                    "missed": sum(1 for m in markers if not m["seen"])}}
 
 
 # Slate preview: typical wall-clock length of a game and of its crunch window (the last stretch where
@@ -289,8 +343,12 @@ def router(engine) -> APIRouter:
         end = min(t1, now) if last is None else min(t1, now, max(last, sws[-1]["ts"] if sws else last))
         nights = sorted({night_of(ts).isoformat() for ts in engine.store.switch_days(21)} | {night_of(now).isoformat()},
                         reverse=True)[:14]
+        view = night_view(sws, decs, taps, engine._name, end)
+        from redzone.lab.decision_records import read_jsonl
+        over = oracle_overlay(view["segments"], read_oracle(ORACLE_DIR / f"{d.isoformat()}.json"),
+                              read_jsonl(MOMENTS, t0, t1), engine._name, end)
         return {"enabled": True, "day": d.isoformat(), "t0": t0, "t1": t1, "now": now, "nights": nights,
-                **night_view(sws, decs, taps, engine._name, end)}
+                **view, **over}
 
     @r.get("/slate")
     async def slate():

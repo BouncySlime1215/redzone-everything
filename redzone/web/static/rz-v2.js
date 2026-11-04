@@ -182,8 +182,14 @@ function nightSheet() {
     const ticks = [];
     const first = Math.ceil(a / 3600) * 3600;
     for (let t = first; t < b; t += 3600) ticks.push(`<i style="left:${(((t - a) / span) * 100).toFixed(2)}%"><span>${esc(fmtTime(t).replace(":00", ""))}</span></i>`);
-    ribbon = `<div class="v2-ribbon" role="img" aria-label="What was on the TV, ${esc(fmtTime(a))} to ${esc(fmtTime(b))}">${segs.map((sg) =>
-      `<b class="v2-c${colorOf(sg.matchup, order)}" style="left:${(((sg.t0 - a) / span) * 100).toFixed(2)}%;width:${Math.max(0.4, ((sg.t1 - sg.t0) / span) * 100).toFixed(2)}%" title="${attr(sg.matchup)} ${attr(fmtTime(sg.t0))}"></b>`).join("")}</div>
+    const bars = (list) => list.filter((sg) => sg.t1 > a && sg.t0 < b).map((sg) =>
+      `<b class="v2-c${colorOf(sg.matchup, order)}" style="left:${(((Math.max(sg.t0, a) - a) / span) * 100).toFixed(2)}%;width:${Math.max(0.4, ((Math.min(sg.t1, b) - Math.max(sg.t0, a)) / span) * 100).toFixed(2)}%" title="${attr(sg.matchup)} ${attr(fmtTime(sg.t0))}"></b>`).join("");
+    const marks = arr(d.markers).filter((m) => m.ts >= a && m.ts < b).map((m) =>
+      `<em class="v2-mark${m.seen ? "" : " v2-mark--miss"}" style="left:${(((m.ts - a) / span) * 100).toFixed(2)}%" title="${attr(`${m.seen ? "Seen live" : "Missed"}: ${m.matchup} ${m.kind} ${fmtTime(m.ts)}`)}"></em>`).join("");
+    const o = d.oracle;
+    ribbon = `<div class="v2-ribbon" role="img" aria-label="What was on the TV, ${esc(fmtTime(a))} to ${esc(fmtTime(b))}">${bars(segs)}${marks}</div>
+      ${o ? `<div class="v2-rlabel">Best possible (hindsight)${o.agree_pct != null ? ` · we matched ${esc(String(o.agree_pct))}% of the time` : ""}</div>
+      <div class="v2-ribbon v2-ribbon--oracle" role="img" aria-label="What the hindsight oracle would have shown">${bars(arr(o.segments))}</div>` : ""}
       <div class="v2-ticks">${ticks.join("")}</div>
       <div class="v2-legend">${arr(sm.on_air).map((r) => `<span><i class="v2-c${colorOf(r.matchup, order)}"></i>${esc(r.matchup)} <small>${esc(fmtDur(r.s))}</small></span>`).join("")}</div>`;
   }
@@ -208,7 +214,8 @@ function nightSheet() {
     <div class="v2-tiles"><div class="stile"><b>${num(sm.switches)}</b><span>Switches</span></div>
       <div class="stile"><b>${num(sm.games)}</b><span>Games shown</span></div>
       <div class="stile"><b>${num(taps.up)}/${num(taps.down)}</b><span>👍 / 👎</span></div>
-      <div class="stile"><b>${num(taps.missed)}</b><span>Missed</span></div></div>
+      <div class="stile"><b>${num(taps.missed)}</b><span>Missed</span></div>
+      ${d.big && d.big.plays ? `<div class="stile"><b>${num(d.big.seen)}/${num(d.big.plays)}</b><span>Big plays live</span></div>` : ""}</div>
     <div class="sheet-sec"><h4>What was on</h4>${sm.failed ? `<small>${num(sm.failed)} failed</small>` : ""}</div>${ribbon}
     ${pb.length ? `<div class="sheet-sec"><h4>Playbooks used</h4></div><div class="v2-why">${pb.map(([k, n]) => `<span class="tag tag--kind">${esc(k)} × ${num(n)}</span>`).join("")}</div>` : ""}
     <div class="sheet-sec"><h4>Timeline</h4><small>newest first</small></div>

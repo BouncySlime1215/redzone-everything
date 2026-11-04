@@ -20,3 +20,17 @@ The Teacher joins records to archived pbp by `(game, ts)` and grades them agains
 ([redzone/lab/oracle.py](../redzone/lab/oracle.py)). The files hold game ids and reason strings only, but
 they're night logs: keep them out of the public repo, as with the rest of `data/`. There's no upload
 code: moving a night to Kaggle is the overseer's step.
+
+## Oracle overlay in the replay viewer
+
+The phone's "Whole night" sheet (flag `phone.v2`) draws a second ribbon below what was on, labelled "Best
+possible (hindsight)", when `data/oracle/<night>.json` exists:
+
+```json
+{"objective": "combined", "switches": [{"t": 1730761200.0, "to": "<game id>"}, ...]}
+```
+
+`t` is unix seconds and the switches are in time order. It's written offline from the archived night by
+`redzone/lab/oracle.solve`. "We matched N%" is the share of our on-screen time that showed the oracle's game.
+Every big play from `data/supervisor_moments.jsonl` gets a tick on our ribbon, and the ones not seen live
+are drawn in red. A missing or bad file just hides the oracle ribbon.
