@@ -135,4 +135,7 @@ def test_season_job_runs_for_every_league_in_plan(tmp_path, monkeypatch):
         assert res["moments"] > 0, (league, res)
         if synthetic:
             assert res.get("selfplay_complete") is True and res["selfplay"] > 0, (league, res)
+        assert res.get("tokens", 0) > 0, (league, res)            # NFM event tokens, every league
+        info = json.loads(Path(ns["OUT"], "tokens", league, f"{years[0] - 3}.json").read_text())
+        assert info["complete"] and info["games"] == 6 and info["events"] > 0
         assert not glob.glob(f"{ns['RAW']}/{league}/*"), "the raw season is deleted after the job"

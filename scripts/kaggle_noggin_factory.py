@@ -112,11 +112,18 @@ def season_job(league, year, synthetic, deadline):
     raw = f"{RAW}/{league}/{'espn' if espn_src else 'pbp'}_{year}{'.jsonl.gz' if espn_src else '.parquet'}"
     spj = f"{OUT}/selfplay/{league}/{year}.json"
     sp_done = os.path.exists(spj) and json.load(open(spj)).get("complete")
-    if synthetic and not sp_done and not os.path.exists(raw) and time.time() < deadline:
+    tkj = f"{OUT}/tokens/{league}/{year}.json"
+    tk_done = os.path.exists(tkj) and json.load(open(tkj)).get("complete")
+    if ((synthetic and not sp_done) or not tk_done) and not os.path.exists(raw) and time.time() < deadline:
         if espn_src:
             NF.fetch_espn_season(league, year, __import__("pathlib").Path(raw), max_games=40 if SMOKE else None)
         else:
             NF._fetch(F.SOURCES[league]["url"].format(y=year), __import__("pathlib").Path(raw))
+    if not tk_done and os.path.exists(raw) and time.time() < deadline:     # NFM event tokens (every league)
+        import noggin_tokens as NT
+        res["tokens"] = NT.build(league, __import__("pathlib").Path(raw), year, __import__("pathlib").Path(f"{OUT}/tokens"))["tokens"]
+    elif tk_done:
+        res["tokens"] = json.load(open(tkj))["tokens"]
     if synthetic and not sp_done and os.path.exists(raw) and time.time() < deadline:
         sp = SP.build(league, __import__("pathlib").Path(raw), year, __import__("pathlib").Path(f"{OUT}/selfplay"),
                       1 if SMOKE else synthetic, 7, 1, deadline - time.time())
@@ -163,11 +170,32 @@ for kind in ("moments", "selfplay"):
         L[f"{kind}_rows"] += int(i.get("rows") or 0)
         L["seasons"].setdefault(season, {})[kind] = {k: i.get(k) for k in
                                                      ("rows", "complete", "slates", "slates_total", "nights")}
+for f in sorted(glob.glob(f"{OUT}/tokens/*/*.json")):         # NFM event tokens per league (and per season)
+    lg, season = f.split("/")[-2], f.split("/")[-1][:-5]
+    i = json.load(open(f))
+    L = man["leagues"].setdefault(lg, {"moments_rows": 0, "selfplay_rows": 0, "seasons": {}})
+    L["tokens"] = L.get("tokens", 0) + int(i.get("tokens") or 0)
+    L["seasons"].setdefault(season, {})["tokens"] = {k: i.get(k) for k in ("tokens", "games", "events", "complete")}
+    L["events"] = L.get("events", 0) + int(i.get("events") or 0)
+    for k, v in (i.get("coverage") or {}).items():
+        L[k] = L.get(k, 0) + int(v)
+    L.setdefault("sources", {})
+    L["sources"][i.get("source", "?")] = L["sources"].get(i.get("source", "?"), 0) + int(i.get("tokens") or 0)
+man["total_tokens"] = sum(v.get("tokens", 0) for v in man["leagues"].values())
+# DATA LEDGER (Nick 5:00 PM): tokens per league and source, real vs synthetic, crunch / OT / comeback / blowout share
+man["ledger"] = {lg: {"tokens_real": v.get("tokens", 0), "sources": v.get("sources", {}),
+                      "selfplay_rows_synthetic": v.get("selfplay_rows", 0), "moments_rows_real": v.get("moments_rows", 0),
+                      "crunch_event_share_pct": round(100 * v.get("crunch_events", 0) / max(1, v.get("events", 0)), 2),
+                      "ot_games": v.get("ot_games", 0), "comeback_games": v.get("comeback_games", 0),
+                      "blowout_games": v.get("blowout_games", 0)}
+                 for lg, v in man["leagues"].items()}
 man["total_rows"] = sum(v["moments_rows"] + v["selfplay_rows"] for v in man["leagues"].values())
 man["missing"] = sorted(f"{lg} {y}" for lg, (years, _) in PLAN.items() for y in years
                         if not os.path.exists(f"{OUT}/moments/{lg}/{y}.json"))
 json.dump(man, open(f"{OUT}/manifest.json", "w"), indent=1)
-print(json.dumps({lg: {"moments": v["moments_rows"], "selfplay": v["selfplay_rows"]} for lg, v in man["leagues"].items()}, indent=1))
-print("TOTAL rows:", f"{man['total_rows']:,}", "| missing seasons:", len(man["missing"]))
+print(json.dumps({lg: {"moments": v["moments_rows"], "selfplay": v["selfplay_rows"], "tokens": v.get("tokens", 0)}
+                  for lg, v in man["leagues"].items()}, indent=1))
+print("DATA LEDGER:", json.dumps(man["ledger"], indent=1))
+print("TOTAL rows:", f"{man['total_rows']:,}", "| NFM tokens:", f"{man['total_tokens']:,}", "| missing seasons:", len(man["missing"]))
 shutil.rmtree(RAW, ignore_errors=True)
 shutil.rmtree(CODE, ignore_errors=True)
