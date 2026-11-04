@@ -110,6 +110,9 @@ class NightFeed:
         from redzone.lab.backtest import _feed
         self.night = night
         self.outage = False
+        self.frozen = False          # feed_frozen: polls "succeed" (304 / same body) but nothing new
+        self.rate_limited = False    # rate_limit: every poll answers 429
+        self.slow_s = 0.0            # slow_poll: each poll's round trip takes this much longer
         self.games = night.games
         self.feeds = {r.gid: _feed(r, random.Random(r.gid), FEED_LAG_S, 3.0, None, 0.0, 0.0, 0.0,
                                    night.t0, night.t1) for _, r in self.games}
@@ -126,8 +129,10 @@ class NightFeed:
         from redzone.models import Phase
         e = self.night.engine
         self.polls += 1
-        await asyncio.sleep(0.2)                          # an HTTP round trip
-        if self.outage:
+        await asyncio.sleep(0.2 + self.slow_s)            # an HTTP round trip
+        if self.frozen:
+            return                                        # cached body again: no progress, no error
+        if self.outage or self.rate_limited:
             for _, r in self.games:
                 e.merger.record_error("espn_summary")
             e._source_health()
@@ -748,6 +753,19 @@ def grade(night: Night) -> dict:
           {"api_down": [(_et(d["t"]), round(d["dur"])) for d in downs], "restarts": [_et(x) for x in night.restarts],
            "stray_restarts": [_et(x) for x in stray],
            "actions": Counter(r["action"] for r in rows), "notes": [r.get("why") for r in rows if r["action"] != "none"][:12]})
+    # Playbook faults (faults.PLAYBOOK, `--faults redzone.lab.night.faults:playbook`): what happened on
+    # the TV while each ran and in the 60 s after. Graded: no mid-play cut in any of those windows.
+    pb = []
+    for f in night.fault_log:
+        if f["event"] != "start" or f["name"] not in faultlib.PLAYBOOK:
+            continue
+        lo, hi = f["t"], f["t"] + float(f.get("dur") or 0) + 60
+        pb.append({"fault": f["name"], "playbook": faultlib.PLAYBOOK[f["name"]], "et": _et(lo), "dur": round(f.get("dur") or 0),
+                   "cuts": sum(1 for x in every if lo <= x["t"] <= hi),
+                   "mid_play_cuts": sum(1 for x in mid if lo <= x["t"] <= hi),
+                   **{k: v for k, v in f.items() if k in ("host", "seconds", "scale", "hit")}})
+    if pb:
+        check("playbook_faults_no_midplay", all(x["mid_play_cuts"] == 0 for x in pb), pb)
     # The screen: how much of the live night showed a live game.
     live_s = shown_live = far_s = prompt_s = 0.0
     far: list = []
