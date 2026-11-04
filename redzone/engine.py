@@ -728,21 +728,28 @@ class Engine:
         off, the live check (sources.fastcast_check) runs it in shadow on a few live games instead."""
         mode = "merge" if self.cfg.get("sources.fastcast", False) else (
             "shadow" if self.cfg.get("sources.fastcast_check", True) and not self.fc_check.done else None)
+        dark = self._dark_games() if mode != "merge" else []
+        if mode is None and dark:
+            mode = "fallback"     # hardening.feeds: polling went dark on live games, FastCast covers them
         if mode != self._fastcast_mode:
             self._stop_fastcast()
         if mode is None:
             return
         if self.fastcast is None:
-            cb = self._on_fastcast if mode == "merge" else self._on_fastcast_shadow
+            cb = {"merge": self._on_fastcast, "fallback": self._on_fastcast_fallback}.get(
+                mode, self._on_fastcast_shadow)
             self.fastcast = fastcast.FastcastClient(cb, http=self.fetcher._client)
             self._fastcast_task = asyncio.get_running_loop().create_task(self.fastcast.run())
             self._fastcast_mode = mode
         lgs = self._leagues()
         live = [g for g in self.merger.games.values() if g.phase == Phase.LIVE and g.league in lgs]
+        if mode == "fallback":
+            live = [g for g in live if g.game_id in dark][:fastcast_check.MAX_TOPICS]
         if mode == "shadow":
-            # a few games, keeping the ones already subscribed (their pairing is under way)
+            # a few games: dark ones first (hardening.feeds), then the ones already subscribed
+            # (their pairing is under way)
             have = {gid for _, gid in self._fastcast_games.values()}
-            live.sort(key=lambda g: (g.game_id not in have, g.game_id))
+            live.sort(key=lambda g: (g.game_id not in dark, g.game_id not in have, g.game_id))
             live = live[:fastcast_check.MAX_TOPICS]
         self._fastcast_games = {
             fastcast.game_topic(g.league, g.game_id, self.summaries.get(g.game_id)): (g.league, g.game_id)
@@ -758,9 +765,32 @@ class Engine:
             log.warning("fastcast live check passed: turning FastCast on (sources.fastcast_auto_enable)")
             self.cfg.update({"sources": {"fastcast": True}})
 
-    def _on_fastcast_shadow(self, topic: str, doc, received_at: float, published_at: float | None) -> None:
-        """[fastcast live check] Parsed and logged, never merged: nothing on screen can change."""
+    def _dark_games(self) -> set[str]:
+        """hardening.feeds: live games whose polled feed is dark (FeedBook.polled_stale). Off: none."""
+        if not self.cfg.get("hardening.feeds", False):
+            return set()
+        try:
+            return {gid for gid, g in self.merger.games.items()
+                    if g.phase == Phase.LIVE and self.feeds.polled_stale(gid)}
+        except Exception:
+            log.exception("feed fallback check failed")
+            return set()
+
+    def _on_fastcast_fallback(self, topic: str, doc, received_at: float, published_at: float | None) -> None:
+        """hardening.feeds: FastCast stands in for a game whose polling went dark, and only while it is
+        dark. Once polling is fresh again the push is ignored and the next sync unsubscribes it."""
         game = self._fastcast_games.get(topic)
+        if game is None or not self.feeds.polled_stale(game[1]):
+            return
+        self._on_fastcast(topic, doc, received_at, published_at)
+
+    def _on_fastcast_shadow(self, topic: str, doc, received_at: float, published_at: float | None) -> None:
+        """[fastcast live check] Parsed and logged, never merged: nothing on screen can change.
+        hardening.feeds: a game whose polling went dark is merged instead (the fallback)."""
+        game = self._fastcast_games.get(topic)
+        if game is not None and self.cfg.get("hardening.feeds", False) and self.feeds.polled_stale(game[1]):
+            self._on_fastcast(topic, doc, received_at, published_at)
+            return
         if game is None:
             return
         league, gid = game

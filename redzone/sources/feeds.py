@@ -38,6 +38,21 @@ class FeedBook:
         self.cadence_of = cadence_of      # game id -> seconds between its polls (polling.hot_s / live_s)
         self._clock = clock
 
+    def polled_stale(self, gid: str, now: float | None = None) -> bool:
+        """Is the POLLED data for this live game dark (pushes ignored)? hardening.feeds merges FastCast
+        pushes for exactly these games, and stops once polling is fresh again, so a push that freshens
+        the game can't switch its own fallback off and on every few seconds."""
+        g = self.merger.games.get(gid)
+        if g is None or g.phase != Phase.LIVE:
+            return False
+        times = [t for t in (self.fetcher.fetched_at(u) for u in self.urls_of(g)) if t is not None]
+        if not times:
+            return False
+        now = self._clock() if now is None else now
+        age = now - max(times)
+        cadence = float(self.cadence_of(gid))
+        return age > cadence + FEED_STALE_S or (self._backing_off(g) and age >= cadence)
+
     def fresh_at(self, gid: str) -> float | None:
         g = self.merger.games.get(gid)
         if g is None:
