@@ -211,3 +211,23 @@ def test_parsers():
     assert tvsetup.code_from("") is None
     url = tvsetup.authorize_url("cid", tvsetup.DEFAULT_REDIRECT, "s1")
     assert "client_id=cid" in url and "response_type=code" in url and "x%3Adevices" in url
+
+
+async def test_oauth_app_is_created_without_the_webhook_query_and_errors_are_shown():
+    """SmartThings rejects ?signatureType=ST_PADLOCK&requireConfirmation=true for API_ONLY apps with a
+    400 "Param(s) not supported for AppType"; the setup now sends none and shows the error body."""
+    seen = []
+
+    def ok(req):
+        seen.append(req.url)
+        return httpx.Response(200, json={"oauthClientId": "cid", "oauthClientSecret": "sec"})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(ok)) as http:
+        assert await tvsetup.create_oauth_app(http, "pat-123", "https://httpbin.org/get") == ("cid", "sec")
+    assert seen[0].path == "/v1/apps" and not seen[0].query
+
+    def bad(req):
+        return httpx.Response(400, json={"error": {"code": "ConstraintViolationError",
+                                                   "message": "Param(s) not supported for AppType pat-123"}})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(bad)) as http:
+        why = await tvsetup.create_oauth_app(http, "pat-123", "https://httpbin.org/get")
+    assert why.startswith("HTTP 400") and "not supported for AppType" in why and "pat-123" not in why
