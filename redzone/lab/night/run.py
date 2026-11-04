@@ -30,8 +30,8 @@ import yaml
 from redzone.lab.night import faults as faultlib
 from redzone.lab.night import house as houselib
 from redzone.lab.night.vclock import VirtualClock
+from redzone.config import ET  # [one fact] defined once (contract kernel K1)
 
-ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parents[3]
 FIX = ROOT / "tests" / "fixtures"
 FEED_LAG_S = 8.0

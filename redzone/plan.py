@@ -20,14 +20,12 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 from typing import Callable, Iterable
-from zoneinfo import ZoneInfo
 
 from redzone.channels import PRETTY, describe
 from redzone.models import GameState, League, Phase, league_order
+from redzone.config import ET, DATA  # [one fact] defined once (contract kernel K1)
 
 log = logging.getLogger(__name__)
-ET = ZoneInfo("America/New_York")
-DATA = Path(__file__).resolve().parent.parent / "data"
 
 LEAD_S = 20 * 60          # checks start this long before a start window
 STOP_S = 2 * 60           # ...and no new check starts this close to the start

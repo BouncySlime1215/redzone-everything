@@ -14,13 +14,13 @@ import re
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from redzone.models import PERIOD_S, REGULATION, Phase
 from redzone.noggin.priority import HardRules, Preferences
+from redzone.config import ET, DATA  # [one fact] defined once (contract kernel K1)
 
 # Reason text -> chip. First match per key wins; order = how chips are shown (most important first).
 CHIP_RULES: list[tuple[str, str, re.Pattern]] = [
@@ -38,10 +38,8 @@ CHIP_RULES: list[tuple[str, str, re.Pattern]] = [
 ]
 BIG_KINDS = {"td", "fg", "turnover", "goal", "hr", "safety", "interception", "fumble", "pick6",
              "dunk", "three", "and1", "buzzer", "penalty_shot", "grand_slam"}
-ET = ZoneInfo("America/New_York")
 NIGHT_START_H = 6       # a "night" runs 6 AM ET to 6 AM ET the next day, so a 1 AM switch is last night
 PLAYBOOK = re.compile(r"playbook=([A-Za-z]+-\d+)")
-DATA = Path(__file__).resolve().parent.parent.parent / "data"
 ORACLE_DIR = DATA / "oracle"            # <night>.json: the hindsight oracle's schedule for that night
 MOMENTS = DATA / "supervisor_moments.jsonl"   # every big play, judged from the feed: seen live or not
 HISTORY = DATA.parent / "docs" / "northstar-history.jsonl"   # scripts/northstar.py appends a row per run

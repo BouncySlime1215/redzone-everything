@@ -45,7 +45,6 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Awaitable, Callable
-from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -54,12 +53,11 @@ from redzone.models import League, Phase
 from redzone.network import arp_table, find_by_mac, norm_mac  # noqa: F401  (re-exported)
 from redzone.tuners.adb import YTTV_PACKAGES, Stick, adb_available
 from redzone.tuners.tuners import TUNERS
+from redzone.config import ET, DATA  # [one fact] defined once (contract kernel K1)
 
 log = logging.getLogger(__name__)
 
-ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
 TUE, SUN = 1, 6
 
 LOST_AFTER_S = 120.0                      # a stick/TV missing this long gets looked for on the network

@@ -12,7 +12,6 @@ import subprocess
 import time
 from pathlib import Path
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from redzone import bets as betlib
 from redzone import reel, standby, trace, userstate, views
@@ -35,9 +34,9 @@ from redzone.sources.merge import Merger
 from redzone.recorder import Recorder
 from redzone.screen import boundary, scorebug
 from redzone.store import Store
+from redzone.config import ET  # [one fact] defined once (contract kernel K1)
 
 log = logging.getLogger(__name__)
-ET = ZoneInfo("America/New_York")
 FASTCAST_SYNC_S = 2.0
 DECIDE_EVERY_S = 0.5
 CLOCK_JUMP_S = 5.0     # wall clock moved this much more (or less) than time.monotonic(): it jumped

@@ -30,10 +30,10 @@ from typing import Iterable, Mapping
 
 from redzone.channels import APP_FOR, LOCAL_TEAMS, MONUMENTAL_TEAMS, NETWORKS, PRETTY, ChannelMap, Where, describe
 from redzone.models import GameState, League
+from redzone.config import DATA  # [one fact] defined once (contract kernel K1)
 
 log = logging.getLogger(__name__)
 
-DATA = Path(__file__).resolve().parent.parent.parent / "data"
 
 
 # --- the providers ------------------------------------------------------------------

@@ -52,10 +52,10 @@ from typing import Awaitable, Callable
 import httpx
 
 from redzone.platform.breaker import Breaker
+from redzone.config import DATA  # [one fact] defined once (contract kernel K1)
 
 log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
 TOKEN_FILE = DATA / "tv_token.txt"
 OAUTH_FILE = DATA / "smartthings_oauth.json"
 INPUT_LOG = DATA / "tv_input.jsonl"
