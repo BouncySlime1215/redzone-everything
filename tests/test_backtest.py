@@ -102,3 +102,15 @@ def test_resync_is_off_by_default(cfg):
     backtest.run([r], cfg, set(), start=1000.0, end=1040.0, resync=True,
                  on_tick=lambda t, dec: seen.append(dec.delays.sync))
     assert seen and all(s is not None for s in seen)
+
+
+def test_decide_step_ticks_between_feed_polls(cfg):
+    """[decide step] The sim can decide as often as the live app (engine._decide_loop, 0.5 s) while the
+    feed is still polled every polling.live_s; off (None) it ticks once per poll, as before."""
+    r = _NoData(League.NFL, "g", {}, [{"id": "1", "text": "run", "type": {"text": "Rush"}}], [1100.0])
+    ticks = []
+    backtest.run([r], cfg, set(), start=1000.0, end=1040.0, on_tick=lambda t, dec: ticks.append(t))
+    assert ticks == [1000.0, 1010.0, 1020.0, 1030.0, 1040.0]
+    ticks.clear()
+    backtest.run([r], cfg, set(), start=1000.0, end=1040.0, decide_step=1.0, on_tick=lambda t, dec: ticks.append(t))
+    assert len(ticks) == 41 and ticks[1] - ticks[0] == 1.0
