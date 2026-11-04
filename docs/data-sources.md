@@ -14,7 +14,7 @@ league and season, with a `done` marker per shard, so a run that stops resumes w
 |---|---|---|---|---|---|
 | nflverse-data (nflfastR pbp releases) | NFL | 1999-2025 | data CC-BY 4.0 (attribution: "nflverse / nflfastR"); nflfastR code MIT | GitHub release downloads, 1 file per season | **in use**: tokens 1999+, moments 2011+ (no snap clock before 2011: NFL 1999 has 0% `time_of_day`, 2005 has 94%) |
 | sportsdataverse-data: hoopR | NBA, CBB (men's D-I) | NBA 2002+, CBB 2006+ | MIT (repo); the underlying pbp is ESPN's, personal non-commercial use | GitHub release downloads | **in use** |
-| sportsdataverse-data: wehoop | WCBB | 2006+ | MIT (repo); underlying ESPN data as above | GitHub release downloads | **in use** (in the factory plan from pack c9590dc's successor) |
+| sportsdataverse-data: wehoop | WCBB | 2006+ | MIT (repo); underlying ESPN data as above | GitHub release downloads | **in use** (in the factory plan from pack 610dde4) |
 | sportsdataverse-data: cfbfastR | CFB | 2014+ | MIT (repo); underlying CFBD/ESPN data | GitHub release downloads | planned, a no-key CFB path |
 | ESPN site API (`site.api.espn.com`) | all | per league | no published license; personal, non-commercial use only | ≤ 1 request/s, cached per game, from Kaggle only (blocked from the cloud container) | **in use** (the live parser's own feed) |
 | NHL api-web (`api-web.nhle.com`) | NHL pbp + shifts | 2010-11+ | no published terms; public, unauthenticated | ≤ 1 request/s, cached per game | planned; robots/terms check on the first Kaggle run (unreachable from the cloud container) |
