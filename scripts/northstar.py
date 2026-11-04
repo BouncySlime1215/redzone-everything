@@ -18,7 +18,7 @@ Two splits (redzone/lab/splits.py):
 
 Status: PASS / FAIL / PENDING exactly as the release gate means them (pending never counts as passing),
 plus INFO for a line with no target (the feed lag in use). A line whose value is an upper bound on the
-real thing (live-or-replayed counts a replay of any age, not only within 10 min) can FAIL but not PASS.
+real thing (live-or-replayed from a scorecard that does not grade replay age) can FAIL but not PASS.
 
 No new dependencies: standard library + the repo's own scripts.
 """
@@ -63,13 +63,15 @@ METRICS = [
     ("mid_play", "Mid-play cuts + entries (per 100 landings)", "0", -1, 0.0, 5.0),
     ("landings_dead", "Landings in dead time", ">= 95%", 1, 95.0, 100.0),
     *[(f"big_live_{lg}", f"Big plays seen live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
-    ("your_team_big", "Your-team big plays seen live", "100%", 1, 100.0, 100.0),
+    ("your_team_big", "Your-team big plays seen (live or within 10 min)", "100%", 1, 100.0, 100.0),
     *[(f"crunch_live_{lg}", f"Crunch live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
     ("your_team_crunch", "Your-team crunch live", "100%", 1, 100.0, 100.0),
     ("league_order", "League order respected (no lower-league non-crunch over a higher-league crunch)", "100%", 1, 100.0, 100.0),
     ("right_game", "Right game: agreement with Nick's 👍/👎", ">= 95%", 1, 95.0, 100.0),
     ("big_seen_10min", "Big plays live or replayed within 10 min", ">= 99%", 1, 99.0, 100.0),
     ("switch_p95", "Switch time p95 (SmartThings input change)", "<= 3 s", -1, 3.0, 3.0),
+    ("flips_settled", "Flips PLAYING within 3 s", ">= 99%", 1, 99.0, 100.0),
+    ("delay_err_p95", "Per-stick delay error p95", "<= 2 s", -1, 2.0, 2.0),
     ("dead_air", "Dead air (commercials/breaks on screen)", "0%", -1, 0.0, 100.0),
     ("recovery", "Faults recovered without Nick (e2e night)", ">= 95%", 1, 95.0, 100.0),
     *[(f"feed_lag_{lg}", f"Honest feed lag in use, {lg.upper()} (p50)", "info", -1, None, None) for lg in LEAGUES],
@@ -204,9 +206,13 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
     for lg in LEAGUES:
         rows.append(_rate(f"big_live_{lg}", [(int(x.get("big_live") or 0), int(x.get("big") or 0)) for x in per[lg]],
                           95.0, note="" if per[lg] else f" ({lg.upper()} scorecard missing)"))
-    # 4. your-team big plays, live (NFL scorecard; NBA/NHL scorecards don't grade your-team big plays yet)
-    r = _rate("your_team_big", [(int(x.get("my_big_live") or 0), int(x.get("my_big") or 0)) for x in per["nfl"]], 100.0)
-    r["detail"] += "; NFL only (NBA/NHL scorecards don't grade your-team big plays yet)"
+    # 4. your-team big plays, live or replayed within 10 min where the scorecard grades replay age
+    # (big_seen_10m, the catch-up gate), else live only (older scorecards: NFL's my_big_live)
+    yt = [(int(x["my_big_seen_10m"]), int(x.get("my_big") or 0)) if "my_big_seen_10m" in x
+          else (int(x.get("my_big_live") or 0), int(x.get("my_big") or 0)) for x in every]
+    r = _rate("your_team_big", yt, 100.0, note=note)
+    if not all("my_big_seen_10m" in x for x in every):
+        r["detail"] += "; some scorecards don't grade replay age: live only there"
     rows.append(r)
     # 4b. crunch live per league. Under the league order a lower-priority overlap that gets a replay is
     # not a miss, and that feasible ceiling isn't computed yet: a miss under 95 % reads PENDING (as in
@@ -226,13 +232,22 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
                      "scorecards can't see a cross-league overlap)"))
     rows.append(_row("right_game", None, None, None, PENDING,
                      "no 👍/👎 decision records yet (E23); PENDING until Nick's taps exist"))
-    # 5. live or replayed: an upper bound until replay age (<= 10 min) is graded
-    sub = ", ".join(f"{lg.upper()} {100.0 * sum(int(x.get('big_seen') or 0) for x in per[lg]) / max(1, sum(int(x.get('big') or 0) for x in per[lg])):.1f}%"
+    # 5. live or replayed within 10 min. With big_seen_10m (replay age graded) it can PASS; an older
+    # scorecard only has big_seen (a replay of any age), an upper bound that can FAIL but never PASS.
+    graded = bool(every) and all("big_seen_10m" in x for x in every)
+    fld = "big_seen_10m" if graded else "big_seen"
+    sub = ", ".join(f"{lg.upper()} {100.0 * sum(int(x.get(fld) or 0) for x in per[lg]) / max(1, sum(int(x.get('big') or 0) for x in per[lg])):.1f}%"
                     for lg in LEAGUES if per[lg])
-    rows.append(_rate("big_seen_10min", [(int(x.get("big_seen") or 0), int(x.get("big") or 0)) for x in every], 99.0,
-                      upper_bound_only=True, note=f" [{sub}]" + note))
+    rows.append(_rate("big_seen_10min", [(int(x.get(fld) or 0), int(x.get("big") or 0)) for x in every], 99.0,
+                      upper_bound_only=not graded, note=f" [{sub}]" + note))
     # 6. switch time p95: real TV samples if there are any, else the Nov 3 measurement (too few to prove p95)
     rows.append(switch_row(switch_s or []))
+    # 6b. [sync plan, TIMING] flips that reach PLAYING within 3 s: Controller.settle_book {n, ok} as the
+    # e2e night reports it (a switch whose picture was never checked is not in n)
+    rows.append(settle_row(nights))
+    rows.append(_row("delay_err_p95", None, None, None, PENDING,
+                     "not measured: needs the break-anchor delay estimator (on-screen break start/end vs feed "
+                     "event time) and Wednesday's probe logs"))
     # 7. dead air
     d = [(float(x.get("dead_s") or 0), float(x.get("watched_s") or 0)) for x in every]
     point, lo, hi = _boot_ratio(d)
@@ -280,6 +295,20 @@ def switch_row(xs: list[float]) -> dict:
         st = PENDING
         det += f"; needs >= {MIN_SWITCH_SAMPLES} samples and the upper bound <= 3 s"
     return _row("switch_p95", round(p95, 2), round(lo, 2), round(hi, 2), st, det)
+
+
+def settle_row(nights: list[dict] | None) -> dict:
+    per = []
+    for rep in nights or []:
+        b = rep.get("settle_book") or (rep.get("last_flip") or {}).get("settle_book")
+        if isinstance(b, dict) and b.get("n"):
+            per.append((int(b.get("ok") or 0), int(b["n"])))
+    if not per:
+        return _row("flips_settled", None, None, None, PENDING,
+                    "not measured: the e2e night doesn't report Controller.settle_book yet (#70)")
+    r = _rate("flips_settled", per, 99.0)
+    r["detail"] += "; e2e fault nights (fake TV), picture-checked flips only"
+    return r
 
 
 def recovery_row(nights: list[dict] | None) -> dict:
@@ -504,7 +533,8 @@ def main(argv=None) -> int:
     if a.night_seeds:
         nights += run_nights(root, a.night_seeds)
     # keep only what the recovery line reads, so the raw file stays small
-    nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults") if k in n} for n in nights]
+    nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults", "settle_book") if k in n}
+              for n in nights]
     xs = switch_samples(a.switch_log if a.switch_log is not None else [root / "data/tv_input.jsonl"])
     results = {}
     for split in (("dev", "locked") if a.split == "both" else (a.split,)):
