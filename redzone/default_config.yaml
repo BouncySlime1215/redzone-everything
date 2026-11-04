@@ -565,3 +565,7 @@ buffer:                    # [buffer.watchdog] playbook STK-06 (redzone/control.
   watchdog: false          # rebuild a lost / drifting (> 2 s) hidden-stick hold at that game's next dead ball
 calib:                     # [calib.auto] values re-measured each night from live logs (data/calib/<night>.json)
   auto: false              # read last nights' accepted flip time back at start (OFF until it's proven on live nights)
+
+shadow:                    # [shadow] EXP-004: the candidate decider runs silently beside live (redzone/shadow.py)
+  enabled: false           # OFF until a replayed night shows it fits (<= 150 MB extra RSS, no TV commands)
+  profile: candidate       # which Noggin profile (redzone/noggin/profile.py); its calls go to data/shadow.jsonl

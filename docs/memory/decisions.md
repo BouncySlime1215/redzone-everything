@@ -363,3 +363,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   to `two_stick.standby_repause_s: 600` in default_config.yaml, value unchanged; postseason.py's ROUNDS / DEFAULTS /
   _rank renamed ROUNDS_LEFT / WEIGHTS / _poll_rank (no behavior change). Reason: the contract kernel (K1/K2/K4)
   flagged them as new on merge; one definition per fact, timings in config (Nick, one connected system).
+- 2026-11-04 (lane 3, EXP-004, shadow mode Mac half): new config keys `shadow.enabled: false` and
+  `shadow.profile: candidate`. With the flag on, a second Decider (the Noggin profile's overrides on today's
+  config) sees the same candidates and play-by-play as live, sends no TV commands, never writes the delay book,
+  and logs its calls to data/shadow.jsonl for next-morning scoring; any error turns it off for the night.
+  Reason: Cycle 08 plan (#183) step 3 and Nick's grading rules (final judges locked, then shadow live, then real
+  hardware). Ships off until measured on a replayed night.

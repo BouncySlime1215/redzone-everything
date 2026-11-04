@@ -116,6 +116,11 @@ class Engine:
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
+        # [shadow] EXP-004: the candidate decider beside live, silent (redzone/shadow.py), flag off
+        self.shadow = None
+        if self.cfg.get("shadow.enabled"):
+            from redzone.shadow import Shadow
+            self.shadow = Shadow(self.cfg, self.delays, data_dir.parent / "shadow.jsonl" if data_dir else None)
         if data_dir:
             from redzone import calibration
             self.control.calibrated_flip = calibration.flip_prior(self.cfg, data_dir.parent)
@@ -780,6 +785,8 @@ class Engine:
             # knows it ENDED (and stays for the last play to air) instead of seeing it vanish.
             if g.phase == Phase.LIVE or (g.phase == Phase.POST and g.game_id in self.decider.timelines):
                 self.decider.timeline(g.game_id, g.league).observe(g)
+                if self.shadow is not None:
+                    self.shadow.observe(g.game_id, g.league, g)
 
     async def _archive_finished(self) -> None:
         """A game we watched just ended: save its final play-by-play for future backtests."""
@@ -1105,6 +1112,8 @@ class Engine:
         merged = self.merger.update("espn_fastcast", g)
         if merged.phase == Phase.LIVE or (merged.phase == Phase.POST and gid in self.decider.timelines):
             self.decider.timeline(gid, league).observe(merged)
+            if self.shadow is not None:
+                self.shadow.observe(gid, league, merged)
         if _game_fingerprint(merged) != before:
             self._fresh.set()   # most pushes are odds/stat tweaks every 10s: those don't wake it
 
@@ -1197,6 +1206,8 @@ class Engine:
         redzone = self._redzone_target(st, dry)
         d = self.decider.decide(cands, redzone, commit=dry, reel=self._reel_target())
         self.last_decision = d
+        if self.shadow is not None:
+            self.shadow.tick(cands, redzone, before, d.action)
         changed = d.reason != self._last_logged_reason or d.action != "stay"
         if changed:
             self.store.decision(d)
