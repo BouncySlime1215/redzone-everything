@@ -71,9 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-RC6 not started: deploy.jsonl last = RC5.1 healthy 13:05; RC6 waits on #132 config (due 18:15), full tests ~33 min + 11 min health watch puts healthy ~19:00, after 18:50 tip-off
-#171 rig check did not run: needs Nick to type approval in the Mac session (after games)
-Usage 31%; Kaggle factory still running 12219s; CI next in progress, release green
+- 18:30 Tonight: STAY ON RC5.1. RC6 (#132 seek fix + #173 gold capture) can't be healthy before tip, so it deploys after the last game or at 9 AM. No deploys during games. #171 rig check moved to the morning (needs Nick's OK in the Mac session). V8 Mind (35e6da4) waits for the weekly GPU quota reset unless lane 1 ships a <2.3 h students-only variant. Master plan v2 pushed as a draft (pending Nick's go).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
