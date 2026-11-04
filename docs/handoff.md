@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- 15:50 CITY MAP (Nick: the Axiom Stacks idea, one connected system; method borrowed from github.com/AxiomMath/Stacks CONTRIBUTING: claim with a blueprint, Frontier/Core tiers, tag every module to its spec line, reuse definitions, no escape hatches). The overseer is running a diamond workflow wf_361840d6-39f: 4 auditors → architect → 4 builders (citymap.py, contract_check.py in report mode, timing constants into config, migration plan) → verifiers → 1 merger → one draft PR into integration/next. Lane 4 was told to hand the files over and do its next task; it executes the brain migrations after the PR lands.
+- 15:55 RHYTHM (Nick): one medium-effort Opus sweep agent every 5 min (playbook: scratchpad/sweep.md: usage, coordinator threads, Kaggle, CI/deploy, workflow progress, handoff if anything changed). Planners every 60 min or at each big pass. The 6-hourly overseer audit stays. Removed the hourly director, hourly Kaggle and 30-min kicker crons.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
