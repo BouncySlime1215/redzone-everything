@@ -144,7 +144,7 @@ jobs:
       - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: pip install "transformers>=4.51" peft safetensors tokenizers
       - name: Kaggle scripts end to end (CPU)
-        run: python -m pytest -q -rs -p no:cacheprovider tests/test_kaggle_smoke.py tests/test_kaggle_dequant.py tests/test_kaggle_e2e.py
+        run: python -m pytest -q -rs -p no:cacheprovider tests/test_kaggle_smoke.py tests/test_kaggle_dequant.py tests/test_kaggle_students.py tests/test_kaggle_e2e.py
 
   scorecard:
     needs: data

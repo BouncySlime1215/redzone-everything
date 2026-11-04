@@ -28,7 +28,10 @@ BASE_REPO = "mlx-community/Qwen3-1.7B-4bit"
 RANK, ALPHA, LAST_LAYERS = 8, 16, 8
 TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 EPOCHS = {"game-reasoner": 2, "watchdog": 1}
-LR, BATCH, MAX_LEN = 1e-4, 8, 768
+# BATCH 2 x ACCUM 4 = an effective batch of 8 (V4 ran out of memory on a T4 at BATCH 8)
+LR, BATCH, ACCUM, MAX_LEN = 1e-4, 2, 4, 768
+# "float16" halves the frozen base's memory (~3.4 GB less); the LoRA weights stay float32 either way
+BASE_DTYPE = os.environ.get("RZ_BASE_DTYPE", "float32")
 TIME_PER_JOB_S = 3.0 * 3600
 SMOKE = os.environ.get("RZ_SMOKE") == "1"     # CPU smoke test: tiny model, few steps
 
@@ -46,6 +49,19 @@ def base_dir(work: Path) -> Path:
     src = Path(snapshot_download(BASE_REPO))
     print("dequantize:", convert(src, out), flush=True)
     return out
+
+
+def answer_loss(model, ids, lab, att):
+    """The causal-LM loss over the answer tokens only, the same value as model(..., labels=lab).loss,
+    but the 152k-vocab logits are computed only where a label is (a few dozen answer tokens), not
+    for every prompt position: [B, 768, 152k] float32 logits were most of V4's out-of-memory."""
+    import torch
+    lm = model.get_base_model() if hasattr(model, "get_base_model") else model
+    h = lm.model(input_ids=ids, attention_mask=att).last_hidden_state
+    tgt = lab[:, 1:]
+    keep = tgt != -100
+    logits = lm.lm_head(h[:, :-1][keep]).float()
+    return torch.nn.functional.cross_entropy(logits, tgt[keep])
 
 
 def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
@@ -96,7 +112,7 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
             yield ids.to(dev), lab.to(dev), att.to(dev)
 
     # fp32 master weights + fp16 autocast: T4s have no bf16, and pure fp16 can overflow in Qwen3
-    model = AutoModelForCausalLM.from_pretrained(base, torch_dtype=torch.float32).to(dev)
+    model = AutoModelForCausalLM.from_pretrained(base, torch_dtype=getattr(torch, BASE_DTYPE)).to(dev)
     model.config.use_cache = False
     model.gradient_checkpointing_enable()
     model.enable_input_require_grads()
@@ -105,10 +121,12 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
                      layers_to_transform=list(range(n_layers - LAST_LAYERS, n_layers)), task_type="CAUSAL_LM")
     model = get_peft_model(model, cfg)
     params = [p for p in model.parameters() if p.requires_grad]
+    for p in params:
+        p.data = p.data.float()           # LoRA weights in float32 even on a float16 base
     opt = torch.optim.AdamW(params, lr=LR, weight_decay=0.0)
     scaler = torch.amp.GradScaler(dev, enabled=dev == "cuda")
     epochs = EPOCHS.get(name, 1)
-    steps = max(1, epochs * ((len(train) + BATCH - 1) // BATCH))
+    steps = max(1, epochs * ((len(train) + BATCH * ACCUM - 1) // (BATCH * ACCUM)))
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / 30) * max(0.05, 1 - s / steps))
     log, step = [], 0
 
@@ -117,7 +135,7 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
         tot, n = 0.0, 0
         with torch.no_grad(), torch.autocast(**amp):
             for ids, lab, att in batches(valid, False):
-                tot += model(input_ids=ids, attention_mask=att, labels=lab).loss.item()
+                tot += answer_loss(model, ids, lab, att).item()
                 n += 1
         model.train()
         return round(tot / max(1, n), 4)
@@ -125,23 +143,33 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
     log.append({"step": 0, "val_loss": val_loss()})
     model.train()
     stopped = False
+    def opt_step():
+        scaler.unscale_(opt)
+        torch.nn.utils.clip_grad_norm_(params, 1.0)
+        scaler.step(opt)
+        scaler.update()
+        opt.zero_grad(set_to_none=True)
+        sched.step()
+
     for ep in range(epochs):
+        micro = 0
         for ids, lab, att in batches(train, True):
             with torch.autocast(**amp):
-                loss = model(input_ids=ids, attention_mask=att, labels=lab).loss
-            scaler.scale(loss).backward()
-            scaler.unscale_(opt)
-            torch.nn.utils.clip_grad_norm_(params, 1.0)
-            scaler.step(opt)
-            scaler.update()
-            opt.zero_grad(set_to_none=True)
-            sched.step()
+                loss = answer_loss(model, ids, lab, att)
+            scaler.scale(loss / ACCUM).backward()
+            micro += 1
+            if micro % ACCUM:
+                continue
+            opt_step()
             step += 1
             if step % 50 == 0:
                 print(f"{name} step {step}/{steps} loss {loss.item():.4f}", flush=True)
             if time.time() - t0 > TIME_PER_JOB_S:
                 stopped = True
                 break
+        if micro % ACCUM:                    # the epoch's last, partial accumulation
+            opt_step()
+            step += 1
         log.append({"epoch": ep + 1, "step": step, "val_loss": val_loss()})
         print(name, log[-1], flush=True)
         if stopped:
