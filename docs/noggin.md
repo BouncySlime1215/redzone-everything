@@ -382,3 +382,44 @@ game PICK doesn't score). After those fixes, `replace`/`stays` tie big live at b
 at 0 (off). Next: the 22 features don't see why crunch is coming (the oracle's labels follow the screen
 one tune later, not the crunch window ahead), so add crunch-ahead features and retrain, then re-grade on
 fresh nights.
+
+## 13. Possession-start oracle + the learned possession policy (Nov 4, cycle 04)
+
+Nick's crunch_now decision (possession-start entry), with the AI deciding when to jump. Labels come only from the oracle.
+
+- **Oracle v2** `oracle.solve_cue(n, objective, tab, max_cue_s)`. The state is (game, steps behind live). A
+  switch cues the target to its last dead ball, at most `max_cue_s` back (`cue_steps`), and the picture then
+  leaves on a dead ball of what it shows. It is exact against brute force on random small nights
+  (`tests/test_oracle.py`), is never below `solve`, and equals `solve` at `max_cue_s = 0`.
+  `eval_sports --oracle --cue-max-s 90` adds `<objective>_cue` ceilings.
+- **Ceiling (`--real-lag`, every night of the split, 0 mid-play everywhere).** Big live is from the big-live
+  objective and crunch live from the crunch-live objective, live → cued:
+
+| | NBA dev | NBA locked | NFL dev | NFL locked | NHL dev | NHL locked |
+|---|---|---|---|---|---|---|
+| big live | 91.5 → 94.4 | 100 → 100 | 93.2 → 96.2 | 94.1 → 96.5 | 87.2 → 93.4 | 91.8 → 96.2 |
+| crunch live | 93.6 → 93.8 | 95.0 → 100 | 88.6 → 92.5 | 88.4 → 94.0 | 90.3 → 93.3 | 96.2 → 100 |
+
+- **PICK-cue** (`models/pick_nba.cue90.npz`, 112 trees, the same 22 features, 14.4M train rows,
+  `train_noggin_pick.py --cue-s 90`). It imitates `solve_cue` on factory nights: 2016-22 train, 2023-24
+  calib, 2025-26 test, full sets. Forward CV logloss is 0.147-0.155 against a base rate of 0.41. Test, 377
+  nights: big live 91.7 / crunch 92.2 against the cued oracle's 97.9 / 96.7 (93.7 % / 95.3 % of it). PICK v1
+  scores 91.3 / 92.3 against its own oracle's 96.3 / 95.6. There are 0 mid-play cuts and entries.
+- **On the app's eval nights, pure rollout** (`eval_sports --pick ... --cue-max-s 90`):
+
+| NBA | dev big / crunch | locked big / crunch |
+|---|---|---|
+| rule candidate (possession_start crunch) | 77.5 / 90.0 | 100 / 94.4 |
+| PICK v1 rollout | 84.5 / 89.6 | 87.5 / 88.3 |
+| **PICK-cue rollout** | **85.9 / 91.9** | **100 / 94.4** |
+| cued oracle | 94.4 / 93.8 | 100 / 100 |
+
+  On dev the PICK-cue rollout reaches 91.0 % (big) and 98.0 % (crunch) of the cued oracle; the gaps to 100 % are 9.0 and 2.0 points.
+- **Through the decider (flag OFF): it misses the bar.** Measured on NBA dev with `--tune-jitter 6` and
+  the candidate profile. The jump / stay veto (`noggin.possession.enabled`) leaves the crunch scope
+  unchanged at 77.5 / 90.0. On the `all` scope it gives 77.5 / 88.2 with 1 mid-play cut: a leave on a
+  technical-foul play that the app's leave gate accepts. PICK-cue as the picker (`noggin.pick.model:
+  cue90`) gives 76.1 / 88.4 with less dead air, 19.5 → 18.1. Locked, read once, is equal (100 / 94.4).
+  The policy's gain is in the rollout, and the decider path (sync doubt, entry planning, its own gates)
+  loses it. Next: carry the rollout's decision into the decider directly, as a replace mode with
+  possession-start entry, and close the decider-vs-rollout gap.

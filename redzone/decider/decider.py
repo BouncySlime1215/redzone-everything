@@ -240,7 +240,8 @@ class Decider:
         # [possession start] the per-possession jump / stay policy: (decision, candidate, now) -> "jump" |
         # "stay". None = jump (the rule default). Self-taught only (oracle imitation, simulation, play-by-play
         # outcomes); Nick's buttons are controls, never labels (Nov 4 hard rule).
-        self.possession_policy = None
+        self.possession_policy = self._possession_pick   # jump unless noggin.possession is on (default off)
+        self.possession_log: deque = deque(maxlen=2000)  # [noggin possession] (t, on, target, policy says)
         self.scenarios = Scenarios(cfg)   # [scenario tree] GAME-01..03, 21, 22 seeds, flag playbooks.game.enabled (off)
         self.safety = Safety(cfg)   # [playbooks] SAFE-01/02/03/05, flag playbooks.safe.enabled (off)
         # The live controller knows whether THIS target is already ready. App-wide
@@ -315,8 +316,15 @@ class Decider:
         return self.timelines[game_id]
 
     def _pick_on(self, league: League) -> bool:
-        """[noggin PICK] on (or in shadow) for this league, with a model to run."""
-        if not (self.cfg.get("noggin.pick.enabled", False) or self.cfg.get("noggin.pick.shadow", False)):
+        """[noggin PICK] on (or in shadow) for this league, with a model to run (PICK itself, or the
+        possession policy's PICK-cue model)."""
+        c = self.cfg
+        if (c.get("noggin.possession.enabled", False) or c.get("noggin.possession.shadow", False)) \
+                and league.value in (c.get("noggin.possession.leagues") or []):
+            from redzone.noggin.pick import model_for
+            if model_for(league.value, name=str(c.get("noggin.possession.model", "cue90"))) is not None:
+                return True
+        if not (c.get("noggin.pick.enabled", False) or c.get("noggin.pick.shadow", False)):
             return False
         if league.value not in (self.cfg.get("noggin.pick.leagues") or []):
             return False
@@ -977,6 +985,52 @@ class Decider:
         return Decision(now, "switch", gid, f"{tag} ({tb - land:.0f} s after we land)", d.state, d.gate,
                         kind="chase")
 
+    def _pick_scores(self, cands: dict, now: float, model_name: str = "v1", tune: float = 5.0):
+        """(cur, scores) from the Reflex PICK model on the live books of every target game, or None when PICK
+        can't score this tick (fewer than 2 live games, no model, the buffer shorter than the feed lag p90)."""
+        from redzone.noggin import pick as PK
+        games, lags = [], {}
+        for gid, x in cands.items():
+            tl = self.timelines.get(gid)
+            if tl is None or tl.live is None or not x.target:
+                continue
+            fl = sorted(tl._lags)[len(tl._lags) // 2] if tl._lags else tl.lag_est()
+            lags[gid] = fl + self.delays.get(x.target).mu
+            games.append(tl.live)
+        if len(games) < 2:
+            return None
+        league = games[0].league
+        model = PK.model_for(league.value, name=model_name)
+        if model is None or min(lags.values()) < PK.FEED_LAG_P90.get(league, 70.0) + tune:
+            return None
+        mine = {t for g in games if g.gid in self._yours for t in g.matchup.split(" @ ")}
+        cur = self.current if self.current in lags else None
+        _, scores = PK.live_choice(games, cur, now, lags, mine, tune, model, model.meta.get("info", {}).get("cue_s"))
+        return cur, scores, model
+
+    def _possession_pick(self, d: Decision, x: Candidate | None, now: float) -> str:
+        """[noggin possession] The per-possession jump / stay policy for a possession-start entry: Reflex PICK
+        trained on the possession-start hindsight oracle (oracle.solve_cue, labels from the oracle only,
+        never from Nick). "stay" only when the model scores the game on screen above the rule's target by
+        the model's margin. Your team's games (both ways) and anything PICK can't score stay the rule's call
+        (jump). noggin.possession.enabled (off) acts; .shadow only logs."""
+        c = self.cfg
+        on, shadow = c.get("noggin.possession.enabled", False), c.get("noggin.possession.shadow", False)
+        if not (on or shadow) or not d.target or d.target in self._yours or self.current in self._yours:
+            return "jump"
+        if x is None or x.scored.league.base.value not in (c.get("noggin.possession.leagues") or []):
+            return "jump"
+        got = self._pick_scores(self._known, now, str(c.get("noggin.possession.model", "cue90")),
+                                float(c.get("noggin.pick.tune_s", 5.0)))
+        if got is None:
+            return "jump"
+        cur, scores, model = got
+        say = "jump"
+        if cur is not None and d.target in scores and scores[cur] - scores[d.target] > model.margin:
+            say = "stay"
+        self.possession_log.append((now, cur, d.target, say))
+        return say if on else "jump"
+
     def _pick(self, d: Decision, cands, now: float) -> Decision:
         """[noggin PICK] Reflex PICK (redzone/noggin/pick.py): the game the hindsight-oracle imitation wants on
         screen. Shadow logs it beside the app's own decision. Enabled, mode "breaks" (the default) only lets
@@ -1001,13 +1055,13 @@ class Decider:
         if len(games) < 2:
             return d
         league = games[0].league
-        model = PK.model_for(league.value)
+        model = PK.model_for(league.value, name=str(self.cfg.get("noggin.pick.model", "v1")))
         tune = float(self.cfg.get("noggin.pick.tune_s", 5.0))
         if model is None or min(lags.values()) < PK.FEED_LAG_P90.get(league, 70.0) + tune:
             return d
         mine = {t for g in games if g.gid in self._yours for t in g.matchup.split(" @ ")}
         cur = self.current if self.current in lags else None
-        target, scores = PK.live_choice(games, cur, now, lags, mine, tune, model)
+        target, scores = PK.live_choice(games, cur, now, lags, mine, tune, model, model.meta.get("info", {}).get("cue_s"))
         self.pick_log.append((now, cur, target, d.action, d.target))
         if shadow and not self.cfg.get("noggin.pick.enabled", False):
             return d

@@ -278,3 +278,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   true)**: a dead window opens only on a logged stoppage; a lone substitution (its stoppage missing from the data)
   opens none. Why: the candidate's last mid-play entry (NBA GS @ DEN, dev seed 2) was a 70 s rewind into such a
   gap. Dev jitter 6: NBA mid-play 1 -> 0 (seed 2), NBA crunch 87.9 -> 86.9 (seed 1), dead air +0.1..0.3, rest equal.
+- 2026-11-04 (lane 1, cycle 04): new config keys `noggin.possession.{enabled,shadow,leagues,model}` (the learned
+  jump / stay policy for lane 2's possession-start hook, PICK-cue trained on `oracle.solve_cue`) and
+  `noggin.pick.model` (default `v1`). All are off or unchanged by default. Why off: on NBA dev the veto leaves the rule
+  default unchanged (77.5 / 90.0) and the `all` scope adds a mid-play cut. The pure rollout beats the rule (85.9 / 91.9),
+  but the decider path doesn't carry that gain yet. docs/noggin.md §13.
