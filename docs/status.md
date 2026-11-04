@@ -1,31 +1,34 @@
 # Status board
 
-Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-03 21:50 UTC.
-`integration/next` has #1, #2, #3, #5, #6, #7, #8, #9, #10, #11, #12, #14, #15, #17 (reasoner, off), #19, #20,
-#21, #22, #23, #24, #25, #26 (Brain v3), #27, #28, #29, #31, #32, #33, #34, #35 and the no-overfitting gate. Tests: 1704 passed, 0 failed (one e2e test is
-timing-sensitive under parallel load and passes alone); ruff clean. **Tonight's release candidate is RC 3** (RC 2 + deploy test-step fixes, no app change; `docs/gate-report-rc3.md`). RC 2 was on
-`integration/release`** (integration/next after #38 and #39; gate report in `docs/gate-report-rc2.md`: 59 pass, 10 fail, 27 pending). CI now also runs on pushes to integration/release.
+Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026-11-04 03:55 UTC.
+`integration/next` has #1-#3, #5-#12, #14, #15, #17 (reasoner, off), #19-#36, #38, #39 and the RC 3 deploy fixes
+(see `docs/integration.md`). Tests: 1722 passed, 11 skipped; ruff clean.
+**Release: RC 4 on `integration/release` = 8a47053** (RC 2 + deploy test-step fixes + the e2e night pinning
+the host and the network; no app change, so the gates are RC 2's: 59 pass, 10 fail, 27 pending, `docs/gate-report-rc3.md`).
+The draft release PR #37 is closed (Nick, Nov 3 10:45 PM); the deploy fetches `integration/release`.
 
 ## Usage rules from the user (hard)
 
 - **All RedZone work stops at 90 % of the user's weekly Claude usage.** The last 10 % is for school.
   The user pauses the project at 88-89 %. Kaggle runs need no Claude usage and continue during a pause.
 - From 75 %: no new threads; finish and merge what's open; keep this file current so a pause is resumable.
-- Pacing (Nov 3, 4:30 PM ET, at ~44 %): reach ~90 % at 5 PM ET Wed. Checkpoints: <= 55 % at 10 PM,
-  <= 62 % at 8 AM, <= 78 % at 1 PM, ~89 % at 5 PM. **Max 2 working threads (1 overnight, midnight-8 AM).**
-  Lean turns: scorecards only for the leagues a change touches, no idle polling.
-- Spend order: (1) tonight's release + checklist; (2) decision core merge (done); (3) Memory systems
-  (#36, lands before 5 PM Wed); (4) Kaggle round-2 notebook fix; then the queue below.
+- Pacing (Nick, Nov 3 10:45 PM ET, at 48 %): work non-stop to **89 % at 5 PM ET Wed**. Checkpoints
+  **62 % at 8 AM, 78 % at 1 PM**. Behind pace: **3 working threads overnight, up to 5 when needed**; more than
+  3 points ahead, drop threads. Lean turns: scorecards only for the leagues a change touches, no idle polling.
+- Overnight focus: **switch timing** and **error handling everywhere**. No live TV or stick tests tonight
+  (Nick tests Wed evening). Mac light. 95 % gates on locked unseen nights; anything that misses ships OFF.
 
-## Board
+## Board (one owner per area)
 
-| State | Work |
-|---|---|
-| Working | INTEGRATION (release cut, then #36 after 23:00 UTC); Memory systems (#36) |
-| Waiting on the user | TV setup tonight with `docs/tonight-checklist.md` (deploy line, TV, multiview probe, FastCast check) |
-| Paused, resumes when | auto-tune #16: decision core merged, so on the queue; highlight jump #18: Brain v3 break-length quantiles land; reasoner (#17 merged, off): the Kaggle adapter returns |
-| Folded | Hype v2 #4 into Brain v3 #26; watchdog model into distill (#13) |
-| Merged | see the list above and `docs/integration.md` |
+| Area | Owner | Now |
+|---|---|---|
+| Switch timing (Nick's items 1-7: dead-ball lag per source, live-delay offset per stick, restart prediction, SmartThings ~2 s trip cost, dwell/hysteresis, landing-offset scorecard line, e2e SmartThings latency) | TIMING thread (new, Nov 3 night) | working |
+| Error handling (items 8-12: SmartThings breaker + HOME/CEC fallback, stick recovery, feed fallback, Mac sleep/network/launchd, watchdog rate limits) | ERRORS thread (new, Nov 3 night) | working |
+| Integration train, CI, release, housekeeping (items 13a-d, 14, 16) | INTEGRATION | #41 SmartThings OAuth + port map, #42 launchd off ~/Documents, #43 hostile-host e2e night + RC 4 pin_network: CI, then merge |
+| Kaggle teacher (item 13e: `pip uninstall torchao` on kaggle-inputs; V4 running with Nick's patch) | LOCAL AI (#13) | queued |
+| Prime multiview live-calibration plan (item 15, #40 flag off) | SWITCHING | queued |
+| Memory systems (item 14) | MEMORY (#36 merged) | keep current |
+| Paused with a dependency | auto-tune #16, highlight jump #18 (brain break quantiles), reasoner (Kaggle adapter), brain leak-fix retrain | see queue |
 
 ## Queue (in order; at most 2 working threads)
 
