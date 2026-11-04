@@ -106,7 +106,7 @@ def _cfg(**over):
 
 
 def test_crunch_state_reading_enters_stays_and_leaves(model_dir, monkeypatch):
-    from redzone.contracts.watch import CRUNCH_STATES, SCORED_FIELDS
+    from redzone.contracts.watch import WV_CRUNCH_STATES as CRUNCH_STATES, SCORED_FIELDS
     from redzone.scoring.engine import Scored
     assert set(SCORED_FIELDS) <= {f for f in Scored.__dataclass_fields__}
     wvm = W.WatchValue(model_dir)

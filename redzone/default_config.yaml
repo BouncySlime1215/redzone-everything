@@ -572,6 +572,9 @@ calib:                     # [calib.auto] values re-measured each night from liv
 # decider reads them behind its own flag (lane 2). Stakes are preference multipliers, never labels.
 scoring:
   watch_value: false
+  # WV's training label horizon: the realized WP swing over the next this-many seconds (a label
+  # definition, read by scripts/train_watch_value.py; the shipped models record it as horizon_s)
+  watch_horizon_s: {nfl: 180, nba: 180, nhl: 180, mlb: 300}
   watch_stakes:
     your_team: 1.25
     bet: 0.15            # x (1 + bet * sweat 0..1)

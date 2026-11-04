@@ -23,7 +23,7 @@ from redzone.contracts.watch import WatchReading
 
 log = logging.getLogger(__name__)
 
-MODEL_DIR = Path(__file__).resolve().parent / "models"
+WV_MODEL_DIR = Path(__file__).resolve().parent / "models"
 BIG_SWING = 0.08          # one play moving the win probability this much is a "big play" for WV
 CRUNCH_ON, CRUNCH_OFF = 0.6, 0.35
 SCALE_PCT = (0.0, 50.0, 95.0, 100.0)    # train-night percentile ...
@@ -47,7 +47,7 @@ def calibrate(raw: float, qs: list[float], pcts: list[float]) -> float:
 
 class WatchValue:
     def __init__(self, model_dir: Path | None = None, version: str = "v1"):
-        self.model_dir = model_dir or MODEL_DIR
+        self.model_dir = model_dir or WV_MODEL_DIR
         self.version = version
         self._m: dict[str, tuple | None] = {}
         self._broken: set[str] = set()

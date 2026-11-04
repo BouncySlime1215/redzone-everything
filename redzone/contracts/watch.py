@@ -10,7 +10,7 @@ Crunch = stay sits ABOVE WV: no WV value may take the screen off a crunch window
 
 Units: watch_value 0..100 on a calibrated scale: 50 = the league's median live moment on train nights,
 90 = its 95th percentile (top 5% = must-see), 100 = the top. Self-taught: the label is what happened next
-(the realized win-probability swing over the next ``HORIZON_S``, plus scoring chances), never Nick's taps.
+(the realized win-probability swing over the next ``scoring.watch_horizon_s``, plus scoring chances), never Nick's taps.
 Stakes (your teams, bets, fantasy) are PREFERENCE multipliers applied after the model, never labels.
 Cost: < 5 ms per game, numpy only, no network.
 """
@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-HORIZON_S = {"nfl": 180.0, "nba": 180.0, "nhl": 180.0, "mlb": 300.0}
+# The label horizon (seconds per league) is config: scoring.watch_horizon_s (redzone/default_config.yaml).
 
 # The model's inputs: the numbers the existing scorers already produce (redzone/reasoner/brief.py facts:
 # game clock and score, the brain's win-probability track, story counters, the state flags), per league.
@@ -34,12 +34,12 @@ FEATURES_EXTRA = {
     "mlb": ("outs", "runners"),
 }
 # Feature providers that WV reads (the "city map" edges): who computes each input today.
-PROVIDERS = {"brief.facts": "redzone/reasoner/brief.py", "brain.track": "redzone/scoring/brain.py (wp_*)",
+WV_PROVIDERS = {"brief.facts": "redzone/reasoner/brief.py", "brain.track": "redzone/scoring/brain.py (wp_*)",
              "engine.state": "redzone/scoring/engine.py (crunch, garbage, late)"}
 TERMS = ("p_big", "impact", "leverage", "stakes_mult", "story", "garbage", "crunch_p")
-CRUNCH_STATES = ("entering", "in", "leaving")
+WV_CRUNCH_STATES = ("entering", "in", "leaving")
 # What every scored game carries (lane 5 #161 + lane 2 read these exact names on redzone.scoring.engine.Scored)
-SCORED_FIELDS = {"watch_value": "float | None, 0..100", "watch_why": "str", "crunch_state": "str | None, CRUNCH_STATES",
+SCORED_FIELDS = {"watch_value": "float | None, 0..100", "watch_why": "str", "crunch_state": "str | None, WV_CRUNCH_STATES",
                  "watch_terms": "dict, TERMS", "watch_rising": "float | None, points per minute"}
 
 
@@ -58,7 +58,7 @@ class WatchReading:
     model_version: str = ""
     # [Nick 4:15 PM] crunch as a LEARNED state with entry and exit (hysteresis inside, never flickers); None =
     # no crunch head. It is a strong prior for the decider, not a wall: crunch vs crunch is decided by value.
-    # One of CRUNCH_STATES: "entering" (this reading turned it on), "in", "leaving" (this reading turned it off),
+    # One of WV_CRUNCH_STATES: "entering" (this reading turned it on), "in", "leaving" (this reading turned it off),
     # or None (not in crunch, or no crunch head).
     crunch_state: str | None = None
 

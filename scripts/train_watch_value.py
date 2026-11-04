@@ -30,7 +30,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from redzone.contracts.watch import HORIZON_S, features_for  # noqa: E402
+from redzone.contracts.watch import features_for  # noqa: E402
 from redzone.noggin import watch as W  # noqa: E402
 
 SWING_FULL = 0.25
@@ -223,6 +223,7 @@ def league(lg: str, archive: Path, cfg, out_dir: Path, crunch_dir: Path = ROOT /
     from redzone.scoring import brain as B
     t0 = time.time()
     rows = [r.as_dict() for r in RD.league_rows(League(lg), archive / lg, cfg, {"WSH", "UNC"}, every=1)]
+    HORIZON_S = {k: float(v) for k, v in cfg.get("scoring.watch_horizon_s").items()}   # noqa: N806
     by_game: dict = {}
     for k, r in enumerate(rows):
         by_game.setdefault(r["gid"], []).append(k)
@@ -296,7 +297,7 @@ def main(argv=None) -> int:
     ap.add_argument("leagues", nargs="+")
     ap.add_argument("--archive", type=Path, default=ROOT / "data" / "archive")
     ap.add_argument("--config", type=Path, default=ROOT / "data" / "eval_config.yaml")
-    ap.add_argument("--out", type=Path, default=W.MODEL_DIR)
+    ap.add_argument("--out", type=Path, default=W.WV_MODEL_DIR)
     ap.add_argument("--crunch-dir", type=Path, default=ROOT / "data" / "crunch",
                     help="per-night crunch spans for the replay viewer (lane 5 #177)")
     ap.add_argument("--report", type=Path, default=ROOT / "data" / "training" / "watch_value_report.json")
