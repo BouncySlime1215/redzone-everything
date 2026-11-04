@@ -1676,6 +1676,25 @@ class Engine:
 
     # ------------------------------------------------------------------ user actions
 
+    def _commit(self, game_id: str | None, value) -> tuple[bool, str]:
+        """[commit] EXP-036: keep what you committed to (my teams / stop after a game / end at a time) on
+        the decider's UserState and in data/user_state.json. The controls only carry it; the decider's
+        use of it is lane 2's. A tap like any other: same id, ack and status (redzone/commands.py)."""
+        if not self.cfg.get("phone.commit"):
+            return False, "Commit isn't on yet"
+        c, why = userstate.commit_value(value, game_id, time.time())
+        if why:
+            return False, why
+        self.decider.user.commit = c
+        self._save_user_state()
+        if c is None:
+            return True, "No commitment: back to normal"
+        if c["mode"] == "my_teams":
+            return True, "Only your teams from here"
+        if c["mode"] == "stop_after":
+            return True, f"Stopping after {self._name(c['game_id'])}"
+        return True, "Ending at " + time.strftime("%-I:%M %p", time.localtime(c["at"]))
+
     def action(self, action: str, game_id: str | None = None, value=None) -> tuple[bool, str]:
         if self.recorded.active and action not in {"pause", "dry_run", "label", "vote"}:
             return False, "Stop the recorded session before using live controls"
@@ -1724,6 +1743,8 @@ class Engine:
         if action == "lock":
             u.locked_game = gid
             return True, f"Staying on {self._name(gid)}"
+        if action == "commit":   # [commit] EXP-036, flag phone.commit (off)
+            return self._commit(game_id, value)
         if action == "unlock":
             u.locked_game = None
             self.hold = None
@@ -2062,7 +2083,7 @@ class Engine:
             "mode": {"dry_run": self.cfg.get("mode.dry_run", True), "paused": dec.user.paused,
                      "safe": dec.safe_mode, "frozen_until": dec.frozen_until or None,
                      "focus_game": dec.user.focus_game, "focus_mode": dec.user.focus_mode.value,
-                     "locked_game": dec.user.locked_game, "state": d.state.value if d else "idle",
+                     "locked_game": dec.user.locked_game, "commit": dec.user.commit, "state": d.state.value if d else "idle",
                      "decision": f"{d.action}: {d.reason}"[:200] if d else "",
                      "hold": self._hold_view(), "two_stick_enabled": bool(self.cfg.get("two_stick.enabled", True)),
                      "redzone_on": bool(self._redzone_target(self.cfg.get("sunday_ticket", True),
