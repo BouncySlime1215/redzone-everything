@@ -318,3 +318,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   likeliest first pick of that window (your team, then league order) is preloaded on the HIDDEN stick, so the
   first switch is a flip. Never the stick on screen, never while paused / dry run / a switch is in flight;
   the pre-game checks stand aside meanwhile. Night lab seed 1: first switch 7.52 s cold tune -> 1.92 s flip.
+- 2026-11-04: **sync.probe.bursts true (new, logging only), sync.burst_anchor.enabled false (new), gap_s 15 /
+  gap_sd_s 10 (priors).** YTTV MediaSession bursts are content-tied (live lab); their onsets are logged with the
+  feed's last dead ball so a night can show whether they follow TV timeouts (scripts/burst_align.py). Off as an
+  anchor until then. Also: the sync filter's origin is per TUNE (YTTV position restarts near 46,790 s at every
+  tune), and `--positions` in the sims is now that per-tune clock (honest NFL big live ~5 points lower).

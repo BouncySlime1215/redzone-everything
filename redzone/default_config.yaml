@@ -49,12 +49,18 @@ sync:
                            # off until the probe's logged lines show YTTV's real ad strings
     log_ad_start: ""       # regex override for an ad-start log line ("" = sync_probe.LOG_AD_START)
     log_ad_end: ""         # ... and an ad-end line ("" = sync_probe.LOG_AD_END)
+    bursts: true           # [burst anchor] YTTV MediaSession bursts (content-tied, live lab Nov 4) -> logged as
+                           # "burst" rows in sync_anchors.jsonl with the feed's dead ball they follow
   break_anchor:            # [auto-anchors] ad break on screen <-> the feed's dead ball -> a delay sample
     enabled: false         # logged always (recordings/<day>/sync_anchors.jsonl); fed to the filter only when on.
     start_bias_s: 15       # whistle -> ad on screen, a PRIOR until the Wednesday probe data refits it
     bias_sd_s: 10
     min_s: 10              # plausible whistle -> ad-on-screen window (feed wall to screen time)
     max_s: 240
+  burst_anchor:            # [burst anchor] a burst onset <-> the feed's last dead ball -> a delay sample
+    enabled: false         # off until a live night shows bursts line up with TV timeouts (scripts/burst_align.py)
+    gap_s: 15              # dead ball -> burst on screen: a PRIOR; burst_align.py fits it
+    gap_sd_s: 10
   drift_alarm:             # [SYNC 6] delay moved > limit_s since it synced, or the stick's network predicts it
     limit_s: 5
     resync: false          # re-tune the hidden stick's standby on an alarm (off until a live night shows alarms are real)

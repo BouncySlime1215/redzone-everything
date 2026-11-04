@@ -287,10 +287,10 @@ class Engine:
             except Exception:
                 log.exception("sync: could not use a position read on %s", target)
 
-    def _sync_tune(self, target: str, wall: float) -> None:
+    def _sync_tune(self, target: str, wall: float, new_stream: bool = True) -> None:
         if self.sync is not None:
             try:
-                self.sync.tuned(target, wall)
+                self.sync.tuned(target, wall, new_stream=new_stream)
             except Exception:
                 log.exception("sync: could not re-sync %s", target)
 
@@ -361,19 +361,28 @@ class Engine:
         g = self.merger.games.get(gid or "")
         row = {"ts": round(t, 2), "target": target, "stick": host, "sample_kind": kind, "game": gid,
                "edge_sd": round(sd, 2), "feed_wall": None, "z": None, "used": False}
-        if g is not None and kind == "break_start":
+        burst = kind == "burst"   # [burst anchor] a content-tied MediaSession burst (sync_probe.BurstWatch)
+        if burst:
+            try:   # what the app believed then: tonight's rows tell whether bursts line up with TV timeouts
+                d = self.delays.get(target)
+                row.update(delay_mu=round(float(d.mu), 2), delay_sd=round(float(d.current_sigma(t)), 2))
+            except Exception:
+                pass
+        if g is not None and kind in ("break_start", "burst"):
             lo, hi = float(self.cfg.get("sync.break_anchor.min_s", 10)), float(self.cfg.get("sync.break_anchor.max_s", 240))
             dead = [p for p in g.recent_plays if p.wallclock and lo <= t - p.wallclock <= hi
                     and (is_dead_ball(g.league.value, p.type_text or p.kind) or p.scoring)]
             if dead:
                 w = max(p.wallclock for p in dead)
-                bias = float(self.cfg.get("sync.break_anchor.start_bias_s", 15.0))
-                bias_sd = float(self.cfg.get("sync.break_anchor.bias_sd_s", 10.0))
+                key = "sync.burst_anchor" if burst else "sync.break_anchor"
+                bias = float(self.cfg.get(f"{key}.gap_s" if burst else f"{key}.start_bias_s", 15.0))
+                bias_sd = float(self.cfg.get(f"{key}.gap_sd_s" if burst else f"{key}.bias_sd_s", 10.0))
                 z = t - w - bias
-                row.update(feed_wall=round(w, 2), z=round(z, 2))
-                if self.cfg.get("sync.break_anchor.enabled", False):
+                row.update(feed_wall=round(w, 2), z=round(z, 2), feed_type=next(
+                    (p.type_text or p.kind for p in dead if p.wallclock == w), None) if burst else None)
+                if self.cfg.get(f"{key}.enabled", False):
                     row["used"] = bool(self.sync is not None and self.delays.anchor(
-                        target, z, "break", t, (sd * sd + bias_sd * bias_sd) ** 0.5))
+                        target, z, "burst" if burst else "break", t, (sd * sd + bias_sd * bias_sd) ** 0.5))
         try:
             self.recorder.sync_anchor(row)
         except Exception:

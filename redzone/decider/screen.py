@@ -504,7 +504,7 @@ class DelayBook:
             if known_sd is not None and behind_s > 0:
                 self.sync.shift(target, delta, known_sd)   # [SYNC 1] a measured move: keep the sync
             else:
-                self.sync.tuned(target)        # a seek: the screen delay moved, re-sync
+                self.sync.tuned(target, new_stream=False)   # a seek: the screen delay moved, re-sync
 
     def buffered(self, target: str) -> None:
         """The stream stalled: it's now further behind, and we're less sure by how much."""
@@ -514,7 +514,7 @@ class DelayBook:
         if d.base is not None:
             d.base = (d.base[0] + 3.0, d.base[1] + 5.0) + d.base[2:]
         if self.sync is not None:
-            self.sync.tuned(target)            # stalled: re-sync from the next signal
+            self.sync.tuned(target, new_stream=False)   # stalled: re-sync from the next signal
 
 
 _MARKERS = ("timeout", "end_", "two-minute", "period_end", "period_start", "start_inning",

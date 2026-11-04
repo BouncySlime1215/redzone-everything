@@ -91,6 +91,7 @@ class SwitchLog:
     arrive_dt: float = 0.0  # [live lab] the picture came up this much later (+) or sooner than tune_s
     leave_dt: float = 0.0   # [seek model] the screen left the old game this much after the decision (a pause cue)
     flash: float = 0.0      # [seek model] s of the LIVE edge shown before an on-screen rewind takes hold
+    pos_true0: float | None = None   # [yttv position] the true delay when this tune's position clock started
 
 
 @dataclass
@@ -623,14 +624,17 @@ def _anchor_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict
             delays.anchor(target, ts - w - bias, "break", ts, (1.0 + bias_sd * bias_sd) ** 0.5)
 
 
-POSITION_ORIGIN_S = 1.7e9     # [yttv position] a channel's stream origin in the sim (any constant works)
+YTTV_TUNE_POSITION_S = 46_790.0   # [yttv position] where every fresh YouTube TV tune's position starts (lab)
 
 
 def _position_tick(sync, switches: list, tgt_of: dict, lag_true, delays: DelayBook, tune_s: float,
                    now: float) -> None:
     """[yttv position] The stick on screen reports its playback position each tick (YouTube TV on the
-    4K Plus, live lab Nov 4): position = wall - origin - true screen delay. Exact here; the live read's
-    doubt is the clock pin (sync.POSITION_SIGMA_S). Only YouTube TV channels report it."""
+    4K Plus, live lab Nov 4). It is a per-TUNE clock: every fresh tune starts near the same position
+    (46,790 s) whatever the hour, so a read says nothing about how far behind live the tune landed. It
+    only moves the delay when the stream itself moves under the same tune (a hold, a stall). Before
+    Nov 4 the sim read position = wall - channel origin - true delay, which handed the filter each
+    tune's unknown landing (tune_jitter) for free. Only YouTube TV channels report it."""
     last = switches[-1] if switches else None
     if last is None or last.kind == "replay" or last.to not in tgt_of or now - last.t < tune_s:
         return
@@ -638,7 +642,9 @@ def _position_tick(sync, switches: list, tgt_of: dict, lag_true, delays: DelayBo
     if not str(target).startswith("youtubetv"):
         return
     true = lag_of(lag_true, last.to) + delays.get(target).behind + last.jitter
-    sync.position(target, now - POSITION_ORIGIN_S - true, t=now)
+    if last.pos_true0 is None:
+        last.pos_true0 = true
+    sync.position(target, YTTV_TUNE_POSITION_S + (now - last.t) - (true - last.pos_true0), t=now)
 
 
 def _honesty_tick(delays: DelayBook, switches: list, targets, lag_true, tune_s: float, now: float,

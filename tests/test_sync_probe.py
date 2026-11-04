@@ -111,3 +111,51 @@ def test_log_pattern_keeps_youtube_tv_state_bursts_not_the_ifa_timer():
              "state=PlaybackState {state=3, position=47832337, buffered position=0, speed=1.0, updated=1}")
     timer = "1793808031.984  1146  1313 I starboard: Successfully retrieved Advertising ID (IfA)."
     assert rx.search(burst) and not rx.search(timer)
+
+
+def test_burst_onsets_are_the_content_anchor_not_tunes_or_lone_updates():
+    """[burst anchor] Live lab Nov 4 (adwatch.jsonl, shapes copied): a tune, a pause/resume and a lone
+    update are not bursts; a burst's onset is its first update, confirmed by a second within 60 s."""
+    from redzone.sync_probe import BurstWatch
+
+    def line(t, state, pos, speed):
+        return (f"  {T0 + t:.3f}  2066  2066 I whad-MediaSession: onPlaybackStateChanged: starboard_x, "
+                f"state=PlaybackState {{state={state}, position={pos}, buffered position=0, speed={speed}, updated=1,")
+    T0 = 1_793_800_000.0
+    w = BurstWatch()
+    lines = [line(7790.37, 3, 0, 0.0), line(7792.09, 3, 46790137, 1.0),          # a tune settling
+             line(7802.56, 2, 46796456, 0.0), line(7893.83, 3, 46796636, 1.0),   # a pause, then PLAY
+             line(7894.03, 3, 46796738, 1.0),
+             line(8513.80, 3, 46909706, 1.0)]                                    # a lone update
+    assert w.feed(lines) == []
+    burst = [line(8834.61, 3, 47832337, 1.0), line(8849.54, 3, 47847270, 1.0), line(8864.55, 3, 47862285, 1.0)]
+    assert w.feed(burst[:1]) == []                    # not confirmed yet (reads arrive every 15 s)
+    assert w.feed(burst[1:]) == [(T0 + 8834.61, 47832.337)]
+    assert w.feed([line(8894.46, 3, 47892195, 1.0)]) == []          # the same burst's tail
+
+
+def test_burst_align_lines_bursts_up_with_the_feed(tmp_path):
+    """[burst anchor] scripts/burst_align.py: a burst 20 s (real life) after each timeout shows a steady gap."""
+    import json
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("burst_align", "scripts/burst_align.py")
+    ba = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ba)
+    T0, delay = 1_793_800_000.0, 45.0
+    plays, probe = [], []
+    for k in range(4):
+        w = T0 + 1200 * k
+        plays.append({"game": "g", "play": f"p{k}", "type": "Full Timeout", "league": "nba", "wall": w})
+        plays.append({"game": "g", "play": f"q{k}", "type": "Jump Shot", "league": "nba", "wall": w + 300})
+        for j in range(3):
+            t = w + 20 + delay + 15 * j
+            probe.append({"host": "h", "kind": "log", "line": f"  {t:.3f}  1  1 I whad-MediaSession: onPlaybackStateChanged:"
+                          f" x, state=PlaybackState {{state=3, position={int(4.7e7 + 1e6 * k + 15000 * j)}, buffered position=0,"
+                          f" speed=1.0, updated=1,"})
+    (tmp_path / "plays.jsonl").write_text("\n".join(json.dumps(r) for r in plays))
+    (tmp_path / "probe.jsonl").write_text("\n".join(json.dumps(r) for r in probe))
+    assert ba.main(["--probe", str(tmp_path / "probe.jsonl"), "--plays", str(tmp_path / "plays.jsonl"),
+                    "--game", "g", "--delay", str(delay)]) == 0
+    gaps = [g for _, t in ba.onsets(ba.probe_lines(tmp_path / "probe.jsonl", None))
+            for g in [t - delay - ba.last_before(ba.dead_balls(tmp_path / "plays.jsonl", "g"), t - delay, 240, True)[0]]]
+    assert [round(g, 1) for g in gaps] == [20.0] * 4

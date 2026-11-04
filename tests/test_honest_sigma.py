@@ -169,9 +169,10 @@ def test_candidate_takes_the_position_floor():
     assert "delay.sync.min_sigma_s=3" in args and "sync.break_anchor.enabled=true" in args
 
 
-def test_position_reads_pin_the_delay_after_a_tune():
-    """[yttv position] once an anchor has fixed the origin, a position read after a new tune gives the
-    delay at once (sync.py: d = wall - origin - position)."""
+def test_position_reads_pin_the_delay_after_a_seek_not_a_new_tune():
+    """[yttv position] once an anchor has fixed the origin, a position read after a seek on the same tune
+    gives the delay at once (sync.py: d = wall - origin - position). A new tune's position clock starts
+    over (live lab, Nov 4), so it gives nothing until an anchor."""
     from redzone.decider.sync import SyncBook
     sb = SyncBook(lambda t: (40.0, 8.0), clock=lambda: 0.0)
     for k in range(20):                               # anchors with 5 s doubt, positions every 5 s
@@ -179,10 +180,14 @@ def test_position_reads_pin_the_delay_after_a_tune():
         sb.position("youtubetv:espn", t - 1.7e9 - 45.0, t=t)
         if k % 5 == 0:
             sb.measure("youtubetv:espn", 45.0 + (2 if k % 10 else -2), "flip", t=t, sd=3.0)
-    sb.tuned("youtubetv:espn", 1200.0)
-    sb.position("youtubetv:espn", 1210.0 - 1.7e9 - 51.0, t=1210.0)   # the new tune landed 6 s further back
+    sb.tuned("youtubetv:espn", 1200.0, new_stream=False)
+    sb.position("youtubetv:espn", 1210.0 - 1.7e9 - 60.0, t=1210.0)   # the seek put it 15 s further back
     mu, sd = sb.get("youtubetv:espn").mu(1210.0), sb.get("youtubetv:espn").sd(1210.0)
-    assert abs(mu - 51.0) < 2.5 and sd < 3.0
+    assert abs(mu - 60.0) < 2.5 and sd < 3.0
+    sb.tuned("youtubetv:espn", 1300.0)
+    sb.position("youtubetv:espn", 46_790.0, t=1310.0)
+    f = sb.get("youtubetv:espn")
+    assert f.sd(1310.0) > 7.0 and f.rejected == 0 and not f.uncertain(1310.0)
 
 
 def test_replay_window_skips_stale_single_replays_in_its_leagues():

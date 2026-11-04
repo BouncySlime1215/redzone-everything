@@ -73,6 +73,57 @@ LOG_AD_START = r"cue ?out|ad ?break ?start|adstart|ad_start|ad ?pod ?start|onads
 LOG_AD_END = r"cue ?in|ad ?break ?end|adend|ad_end|ad ?pod ?end|onadend|onadscomplete"
 _EPOCH = re.compile(r"^\s*(\d{9,11}\.\d{1,6})\s")
 
+# [burst anchor] YouTube TV's MediaSession republishes its PLAYING state in bursts tied to the content
+# (live lab, Nov 4: 4-8 updates over 1-2 min, 15-30 min apart, at the same stream position on both
+# sticks and exactly one hold later on a held stick). The onset is the content anchor. A tune, seek
+# or pause also fires the line, with a stopped state or speed 0 first: those are not bursts.
+_PSC = re.compile(r"onPlaybackStateChanged.*?state=(\d+), position=(-?\d+).*?speed=(-?[\d.]+)")
+BURST_GAP_S = 300.0        # a quiet gap this long before an update makes it a new burst's onset
+BURST_AFTER_TUNE_S = 30.0  # updates this soon after a tune, seek or pause are the player settling
+BURST_CONFIRM_S = 60.0     # ...and a second update within this confirms it (a burst has 4-8)
+BURST_SD_S = 0.3           # the onset's doubt on the stick's own clock (burst vs position: 0.1-0.4 s)
+
+
+def playback_updates(lines: list[str]) -> list[tuple[float, int, int, float]]:
+    """(stick epoch time, state, position ms, speed) of each MediaSession onPlaybackStateChanged line."""
+    out = []
+    for line in lines:
+        m, e = _PSC.search(line), _EPOCH.match(line)
+        if m and e:
+            out.append((float(e.group(1)), int(m.group(1)), int(m.group(2)), float(m.group(3))))
+    return sorted(out)
+
+
+class BurstWatch:
+    """One stick's burst onsets from its MediaSession log lines, fed in order across reads. An onset is
+    confirmed by a second playing update within BURST_CONFIRM_S (a lone update is a key press or the
+    player settling, not a burst), and reported then with the FIRST update's time and position."""
+
+    def __init__(self) -> None:
+        self.last_update: float | None = None     # last playing update that belonged to a burst
+        self.settle_until = float("-inf")         # a tune / seek / pause: ignore updates until then
+        self.playing = True                       # the last update was a playing one
+        self.pending: tuple[float, float] | None = None
+
+    def feed(self, lines: list[str]) -> list[tuple[float, float]]:
+        """New confirmed onsets as (stick epoch time, stream position s)."""
+        onsets = []
+        for t, state, pos, speed in playback_updates(lines):
+            if state != 3 or speed <= 0 or pos <= 0:
+                self.settle_until, self.last_update, self.pending, self.playing = t + BURST_AFTER_TUNE_S, None, None, False
+                continue
+            if not self.playing:                  # the PLAY after a pause, seek or tune
+                self.settle_until, self.playing = max(self.settle_until, t + BURST_AFTER_TUNE_S), True
+            if t < self.settle_until:
+                continue
+            if self.pending is not None and t - self.pending[0] <= BURST_CONFIRM_S:
+                onsets.append(self.pending)
+                self.pending = None
+            elif self.last_update is None or t - self.last_update >= BURST_GAP_S:
+                self.pending = (t, pos / 1000.0)
+            self.last_update = t
+        return onsets
+
 
 def log_ad_edges(lines: list[str], start_re: str = LOG_AD_START, end_re: str = LOG_AD_END
                  ) -> list[tuple[float, str]]:
@@ -136,6 +187,8 @@ class SyncProbe:
         self.on_screen_event: Callable[..., None] | None = None
         self._hist: dict[str, list[tuple[float, float | None, int | None]]] = {}   # host -> [(t, stall, rssi)]
         self._ui_last: dict[str, tuple[float, bool, str | None]] = {}           # host -> (t, ad on, target)
+        self._bursts: dict[str, BurstWatch] = {}                                 # host -> its burst onsets
+        self._log_read: dict[str, float] = {}                                    # host -> last logcat read
 
     def enabled(self) -> bool:
         return bool(self.cfg.get("sync.probe.enabled", True)) and not self.cfg.get("mode.dry_run", True)
@@ -187,6 +240,9 @@ class SyncProbe:
                 row["log"] = await self._logcat(stick)
                 if self.cfg.get("sync.probe.logcat_anchors", False) and self.on_screen_event is not None:
                     self._log_edges(target, host, role == "visible", row["log"])
+                bursts = self._burst_onsets(target, host, role == "visible", row["log"])
+                if bursts:
+                    row["bursts"] = bursts
             if (role == "hidden" or self.cfg.get("sync.probe.visible_ui", False)) \
                     and self._is_due(host, "ui", UI_EVERY_S, now):
                 text = ui_text(await self._sh(
@@ -258,8 +314,32 @@ class SyncProbe:
             except Exception:
                 log.exception("log edge hand-off failed")
 
+    def _burst_onsets(self, target: str | None, host: str, visible: bool, lines: list[str]) -> list[list[float]]:
+        """[burst anchor] Content-tied MediaSession bursts on this stick: logged in the probe row, and
+        handed to the engine as a "burst" screen event (it logs the feed's dead ball it lines up with;
+        the filter gets it only with sync.burst_anchor.enabled)."""
+        w = self._bursts.setdefault(host, BurstWatch())
+        if target is None:
+            w.settle_until = float("inf")     # not a channel we tuned: nothing to anchor
+            return []
+        if w.settle_until == float("inf"):
+            w.settle_until = float("-inf")
+        out = w.feed(lines)
+        if out and self.on_screen_event is not None and self.cfg.get("sync.probe.bursts", True):
+            for t, _pos in out:
+                try:
+                    self.on_screen_event(target, host, visible, "burst", t, BURST_SD_S)
+                except Exception:
+                    log.exception("burst hand-off failed")
+        return [[round(t, 3), round(p, 3)] for t, p in out]
+
     async def _logcat(self, stick) -> list[str]:
-        back = int(LOG_EVERY_S) + 2
+        # since this stick's last read (ticks skip during switches): a missed line could make a burst's
+        # second update look like its onset, 15 s late
+        now = time.time()
+        last = self._log_read.get(stick.host)
+        self._log_read[stick.host] = now
+        back = int(min(120.0, (now - last) if last else LOG_EVERY_S)) + 2
         out = await self._sh(stick, f"logcat -d -v epoch -T \"$(( $(date +%s) - {back} )).000\" 2>/dev/null"
                                     f" | grep -iE '{LOG_RE}' | tail -n {LOG_KEEP_LINES}")
         seen = self._seen_log.setdefault(stick.host, [])
