@@ -74,6 +74,8 @@ def test_the_supervisor_collects_each_live_night_by_itself_once(tmp_path):
     out = sup.collect_live_night(night)
     s = json.loads((out / "summary.json").read_text())
     assert s["switch_samples"] == 1 and s["switch_p95_s"] == 2.0        # only that night's rows
+    got = json.loads((tmp_path / "calib" / "2026-11-04.json").read_text())["timing"]
+    assert got["tv_flip_p50_s"]["value"] == 2.0 and not got["tv_flip_p50_s"]["accepted"]   # 1 sample: refused
     assert sup.collect_live_night(night) is None                         # once
 
 
@@ -96,3 +98,16 @@ def test_trace_events_fold_into_one_switch_each(tmp_path):
     assert s["press_samples"] == 1 and s["press_to_tv_p95_s"] == 2.4 and s["press_no_picture"] == 1
     assert s["press_spans"]["flip"]["p50_s"] == 1.9 and s["press_spans"]["queued"]["p50_s"] == 0.1
     assert s["picture_within_3s"] == "2/2"
+
+
+def test_buffer_rows_summarize_stk06(tmp_path):
+    import collect_live_test as c
+    now = time.time()
+    d = tmp_path / "data"
+    d.mkdir()
+    rows = [{"ts": now - 50, "kind": "lost", "target": "youtubetv:fox", "stick": "HDMI2", "behind_s": 0.0, "err_s": -90.0},
+            {"ts": now - 40, "kind": "recovered", "target": "youtubetv:fox", "stick": "HDMI2", "behind_s": 88.6},
+            {"ts": now - 30, "kind": "drift", "target": "youtubetv:espn", "stick": "HDMI1", "behind_s": 96.1, "err_s": 6.1}]
+    (d / "buffer.jsonl").write_text("\n".join(map(json.dumps, rows)) + "\n")
+    s = c.collect(d, tmp_path / "out", now - 3600, now)
+    assert s["buffer"] == {"detected": 2, "lost": 1, "recovered": 1, "rebuild_failed": 0, "err_p95_s": 90.0}
