@@ -351,3 +351,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `noggin.pick.model` (default `v1`). All are off or unchanged by default. Why off: on NBA dev the veto leaves the rule
   default unchanged (77.5 / 90.0) and the `all` scope adds a mid-play cut. The pure rollout beats the rule (85.9 / 91.9),
   but the decider path doesn't carry that gain yet. docs/noggin.md §13.
+- 2026-11-04 (lane 3, Cycle 06 #1, Start Planner #162): new flag `buffer.hold_left` (default **off**), plus
+  `buffer.hold_left_apps` [youtubetv] and `buffer.hold_left_slop_s` 3.0 (playbook STK-07). When on, the game we leave
+  stays paused on the stick we left, at the dead ball we left it on, so going back is a flip plus a catch-up from there.
+  Past timing.behind_live_s.max_s (one definition, Nick's 90 s cap), or if it resumes by itself, it is reloaded at the
+  live edge (the STK-06 guard). Why off: night lab seed 1 has 0 mid-play both ways and identical cuts (52), but no
+  return came within the cap, so the catch-up path has only unit tests. It needs the lab rig first.

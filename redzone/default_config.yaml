@@ -517,5 +517,10 @@ warmup:                    # [warmup.pregame] before the night's first game (red
   lead_min: 10             # ...this many minutes before it
 buffer:                    # [buffer.watchdog] playbook STK-06 (redzone/control.py _buffer_watch)
   watchdog: false          # rebuild a lost / drifting (> 2 s) hidden-stick hold at that game's next dead ball
+  hold_left: false         # playbook STK-07: the game we leave stays paused on the stick we left at that dead
+                           # ball, so going back starts there (a catch-up) instead of at the live edge. It is
+                           # reloaded at the live edge once it's timing.behind_live_s.max_s behind (OFF until the lab rig)
+  hold_left_apps: [youtubetv]   # apps whose left-game pause is proven to resume where it paused
+  hold_left_slop_s: 3.0    # the pause must land this close to the flip that left it (else: reload at live, as before)
 calib:                     # [calib.auto] values re-measured each night from live logs (data/calib/<night>.json)
   auto: false              # read last nights' accepted flip time back at start (OFF until it's proven on live nights)
