@@ -359,3 +359,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   holds until a game the feed ended in crunch time (an OT winner) has aired. Why: the OT winner reached the screen ~2 min
   after the feed dropped the game, and a catch-up reel ran over it. NHL locked crunch live +2.5..2.6 on 3 seeds,
   0 mid-play; dev big seen in 10 min −5..6 (catch-ups wait out the OT tail).
+- **2026-11-04 (lane 2, cycle 07): `replay.when_alone`** (default `false`, candidate `true`). When no other game is worth
+  switching to, the decider used to stay without checking for a catch-up, so a missed WSH goal waited while WSH's own
+  game sat on a break (dev NHL night 20261028). Now your team's missed play still gets its catch-up then (other games'
+  plays still wait). Dev NHL your-team 19/21/18 -> 20/21/20 of 21, crunch equal, 0 mid-play, dead air +0..0.4;
+  NFL, NBA and locked unchanged.
