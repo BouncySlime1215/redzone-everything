@@ -53,3 +53,10 @@ def test_go_now_always_lands_on_the_tv(drill):
 def test_lost_and_duplicated_taps_run_exactly_once(drill):
     assert drill["dropped"] == [] and drill["pause_broken"] == [] and drill["skip_stuck"] == []
     assert drill["not_once"] == [] and drill.get("taps_retried", 0) >= 1
+
+
+@pytest.mark.playbook("BTN-04")
+def test_a_released_lock_hands_back_without_a_mid_play_cut(drill):
+    assert drill.get("released_at"), "no LOCK IN was released in the night"
+    after = [m for m in drill.get("mid_play", []) if m.get("why") == "after_release"]
+    assert after == [], after

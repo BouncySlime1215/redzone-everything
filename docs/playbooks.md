@@ -42,16 +42,16 @@ crunch value, P2 = robustness, P3 = polish.
 | BTN-01 | LOCK IN pressed | hold that game until released; survive restart | if the stick dies, re-tune it on the other stick | scripted press on a replayed night | press_to_tv_p95 | ③ | done (drill night: tests/test_controls_drill.py) |
 | BTN-02 | GO NOW pressed | pre-tune hidden stick, flip, confirm on phone ≤3 s | if pre-tune fails, tune the visible stick and confirm | scripted press | press_to_tv_p95 | ③ | done (drill night) |
 | BTN-03 | pause / resume / skip / override | id + ack + retry, idempotent | phone shows "not delivered" after 3 tries | dropped + duplicated commands | press_to_tv_p95 | ③ | done (drill night + tests/test_controls.py) |
-| BTN-04 | release LOCK | return to the decider's pick at the next dead ball | stay | scripted press | mid_play | ③ | new |
+| BTN-04 | release LOCK | return to the decider's pick at the next dead ball | stay | scripted press | mid_play | ③ | done (drill night: tests/test_controls_drill.py; tests/test_controls.py) |
 | BTN-05 | press arrives during a flip | queue it, apply after the flip settles | drop only if superseded, and say so | scripted press mid-flip | press_to_tv_p95 | ③ | new |
-| BTN-06 | phone loses connection | server keeps the last state; phone resyncs on reconnect | phone shows stale banner | new `phone_offline` fault | – | ③ | new |
+| BTN-06 | phone loses connection | server keeps the last state; phone resyncs on reconnect | phone shows stale banner | new `phone_offline` fault | – | ③ | partial (server half tests/test_phone_offline.py in CI; browser half tests/js/phone_offline.cjs needs node + Playwright, skipped in CI) |
 | STK-01 | visible stick drops (adb) | reconnect; if > 10 s, flip TV to hidden stick on current game | one-stick mode (STK-05) | stick_drop host=visible | recovery | ③ | done (e2e night two_stick_recovers) |
 | STK-02 | hidden stick drops | reconnect; meanwhile no pre-tune, flips become tune-in-place at dead balls | one-stick mode | stick_drop host=hidden | recovery | ③ | done (e2e night two_stick_recovers) |
 | STK-03 | stick wedged (adb up, app frozen) | force-stop app, relaunch, re-tune | reboot stick via adb | stick_wedge | recovery | ③ | done (e2e night wedged_stick_reconnected) |
 | STK-05 | hidden stick PAUSED (media_session state paused, or speed 0, or active=false), e.g. after a CEC flip | resume it, re-sync its delay estimate, then allow the flip | skip this flip; re-tune at the next dead ball | new `stick_paused` fault | flip_playing_3s, delay_err_p95 | ③ | new (live lab Nov 4) |
 | STK-04 | "Still watching?" prompt | dismiss on the hidden stick at once, visible stick at the next dead ball | relaunch app | still_watching (seed 9 miss) | recovery | ④ | partial (#64) |
 | STK-05 | hidden stick PAUSED off screen (HDMI-CEC pauses the stick a flip leaves; live lab Nov 4) or a stale state=3 PLAYING with active=false | media_session must read active + speed>0; verify_standby (every 15 s) drops it and re-tunes at the live edge at once (no preload gap) | at the flip: SAFE-08 skips it | stick_paused (mode stale / pause) | recovery, flip_playing_3s | ③ | done (tests/test_hot_standby.py, tests/test_night_playbook_faults.py) |
-| TV-01 | SmartThings flip ignored | retry once; verify by input readback | LAN WebSocket KEY_HDMI fast path; else stay on current | flip_ignored, tv_input_ignored | switch_p95, recovery | ③ | partial |
+| TV-01 | SmartThings flip ignored | retry once; verify by input readback | LAN WebSocket KEY_HDMI fast path; else stay on current | flip_ignored, tv_input_ignored | switch_p95, recovery | ③ | partial (tests/test_tv_input.py: readback, ignored = not success, HOME fallback on the destination; no second SmartThings try yet) |
 | TV-02 | SmartThings API down | LAN WebSocket path | CEC via the stick; else one-stick mode | api_down, st_down (faults:tv) | recovery | ③ | exists (HOME fallback; tested) |
 | MAC-01 | Mac about to sleep | caffeinate while games are live; persist state | on wake: restore state, re-verify sticks and TV input | new `mac_sleep` fault | recovery | ④ | partial (wake.py) |
 
@@ -108,9 +108,9 @@ generalize them; until then each is a named rule, tested on replayed nights.
 | APP-05 | wrong game tuned (OCR mismatch) | re-tune | other provider | new `wrong_tune` fault | recovery | ④ | partial (screen OCR) |
 | APP-06 | blackout / not available in region | pick the next provider or drop the game | – | fixture | – | ④ | new |
 | APP-07 | stream starts at live edge but buffer wanted B s behind | rewind/pause to B on the hidden stick | play at live, Timing uses live lag | buffer fixture | big_live_* | ② | partial (#61) |
-| MAC-02 | Mac hot (thermal pressure) | pause the Mind; Reflex only | slow poll on blowouts | new `thermal` fault | tick p99 | ③ | new (idea #15) |
-| MAC-03 | Mac on battery | pause the Mind; reduce polling | – | fixture | tick p99 | ③ | new |
-| MAC-04 | RSS near the 2.5 GB AI cap | unload the Mind, shrink caches | restart the AI worker | new `mem_pressure` fault | RSS | ③ | partial (governor) |
+| MAC-02 | Mac hot (thermal pressure) | pause the Mind; Reflex only | slow poll on blowouts | new `thermal` fault | tick p99 | ③ | partial (governor eco: tests/test_governor.py; the Mind isn't live, the local model stops only at critical) |
+| MAC-03 | Mac on battery | pause the Mind; reduce polling | – | fixture | tick p99 | ③ | partial (governor eco: tests/test_governor.py) |
+| MAC-04 | RSS near the 2.5 GB AI cap | unload the Mind, shrink caches | restart the AI worker | new `mem_pressure` fault | RSS | ③ | partial (governor + watchdog model drop: tests/test_governor.py) |
 | MAC-05 | tick loop > 200 ms | drop non-critical work this tick, log | restart the worker | new `slow_tick` fault | tick p99 | ③ | new |
 | MAC-06 | app process crash | supervisor restarts, restores state ≤ 10 s | safe mode | app_crash | recovery | ④ | exists |
 | MAC-07 | corrupt DB or config | start with defaults, keep TV control | – | fixture | recovery | ④ | partial (#24 closed; port) |

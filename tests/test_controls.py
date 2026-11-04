@@ -185,3 +185,38 @@ def test_tapping_the_game_on_screen_mid_switch_away_goes_back(engine, monkeypatc
     e._pending_decision = None
     went.clear()
     assert e.action("hold", "g1")[1].startswith("Holding on g1") and went == []
+
+
+@pytest.mark.playbook("BTN-04")
+def test_releasing_a_lock_that_is_still_waiting_to_land_calls_it_off(engine, monkeypatch):
+    """Release LOCK while its switch still waits for a safe moment: don't go after all; autopilot
+    picks again (and leaves, if it wants to, at the next dead ball like any switch)."""
+    from redzone.decider.decider import Decision, State
+    e = engine
+    e.merger.games["g2"] = SimpleNamespace(game_id="g2", phase=Phase.LIVE)
+    e.decider.current = "g1"
+    e.hold = {"game_id": "g2", "force": False, "since": time.time(), "auto_resume": True,
+              "resume_at": None, "why": ""}
+    e.decider.user.locked_game = "g2"
+    e.decider.user.paused = True
+    e._pending_decision = Decision(time.time(), "switch", "g2", "you selected this game", State.PAUSED, kind="user")
+    called = []
+    monkeypatch.setattr(e.control, "cancel_pending", lambda: called.append(1))
+    ok, msg = e.action("release")
+    assert ok and msg == "Back on autopilot" and called == [1]
+    assert e.hold is None and e.decider.user.locked_game is None and not e.decider.user.paused
+    assert e.decider.user.manual_until == 0.0
+
+
+@pytest.mark.playbook("BTN-04")
+def test_releasing_a_lock_leaves_an_autopilot_switch_alone(engine, monkeypatch):
+    from redzone.decider.decider import Decision, State
+    e = engine
+    e.decider.current = "g1"
+    e.hold = {"game_id": "g1", "force": False, "since": time.time(), "auto_resume": True,
+              "resume_at": None, "why": ""}
+    e.decider.user.locked_game = "g1"
+    e._pending_decision = Decision(time.time(), "switch", "g3", "best game on", State.WATCHING, kind="live")
+    called = []
+    monkeypatch.setattr(e.control, "cancel_pending", lambda: called.append(1))
+    assert e.action("release")[0] and called == [] and e.hold is None

@@ -69,6 +69,23 @@ def test_assess_levels(s, level):
     assert bool(reasons) == (level != "normal")
 
 
+@pytest.mark.playbook("MAC-02", "MAC-03", "MAC-04")
+@pytest.mark.parametrize("s, why", [
+    (Sample(thermal_level=1), "hot"),
+    (Sample(on_battery=True, battery_pct=80), "battery"),
+    (Sample(mem_pressure=2), "memory"),
+])
+def test_hot_on_battery_or_short_of_memory_drops_the_extras_never_the_switching(s, why):
+    """MAC-02 hot / MAC-03 on battery / MAC-04 short of memory: reels, the lab and the archive stop,
+    OCR and idle polling slow down. Decisions, tunes and hot polling ask nothing of the governor."""
+    g = Governor(probe=lambda: s, clock=lambda: 1000.0)
+    g.refresh(force=True)
+    assert g.level == "eco" and why in g.why().lower(), g.why()
+    assert not any(g.allow(k) for k in ("reel", "lab", "archive"))
+    assert g.allow("ocr") and g.scale("ocr") == 2.0 and g.scale("idle_poll") == 2.0
+    assert g.allow("decide") and g.scale("hot_poll") == 1.0    # unknown kinds = live switching: never slowed
+
+
 def test_battery_eco_can_be_turned_off():
     assert assess(Sample(on_battery=True, battery_pct=80), options({"battery_eco": False}))[0] == "normal"
 
@@ -243,6 +260,7 @@ def test_hard_rules_still_come_first():
     assert v.action == "prune_disk"
 
 
+@pytest.mark.playbook("MAC-04")
 def test_models_over_budget_drop_the_watchdogs_own_model():
     w = _wd(Sample(procs={"watchdog": 1700.0}))
     w._model = object()
@@ -251,6 +269,7 @@ def test_models_over_budget_drop_the_watchdogs_own_model():
     assert v.action == "notify" and "model server" in v.why
 
 
+@pytest.mark.playbook("MAC-02", "MAC-03", "MAC-04")
 def test_no_model_while_the_mac_is_critical(monkeypatch):
     w = watchdog.Watchdog(dry_run=True, use_model=True, clock=lambda: 1000.0,
                           governor=FixedGov(Sample(mem_pressure=4)))

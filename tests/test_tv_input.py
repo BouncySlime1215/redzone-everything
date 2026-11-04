@@ -135,6 +135,7 @@ async def test_maintain_rolls_the_refresh_token_forward_before_it_ages_out(tmp_p
     assert cloud.refreshes == 1
 
 
+@pytest.mark.playbook("TV-01")
 async def test_smartthings_input_is_read_back_and_logged_with_latency(tmp_path):
     cloud = FakeCloud(lag=2)
     tv = tvmod.SamsungTV(st_device="tv-1", auth=oauth(tmp_path, cloud), transport=cloud.transport(),
@@ -156,6 +157,7 @@ async def test_a_401_renews_once_and_retries_the_command(tmp_path):
     assert cloud.refreshes == 1
 
 
+@pytest.mark.playbook("TV-01")
 async def test_smartthings_that_never_shows_the_input_is_not_success(tmp_path, monkeypatch):
     monkeypatch.setattr(tvmod, "VERIFY_READS", 3)
     cloud = FakeCloud(lag=99)
@@ -262,6 +264,7 @@ async def test_flip_by_the_tv_presses_nothing_on_either_stick(two):
     assert c.switch_times()["last_flip"]["how"] == "auto"
 
 
+@pytest.mark.playbook("TV-01")
 async def test_tv_path_failure_falls_back_to_home_on_the_destination_only(two):
     c, _ = two
     sent = tv_path(c, works=False)
