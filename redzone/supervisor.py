@@ -121,6 +121,8 @@ LIMITS = {
     "stale_feeds": (300.0, 4), "stale_feeds_hard": (900.0, 2), "adb": (300.0, 6), "adb_server": (900.0, 2),
     "delay_doubt": (1800.0, 2), "finished_hold": (60.0, 10), "log_growth": (600.0, 6),
 }
+from redzone.platform.agent_fix import LIMITS as _AGENT_LIMITS  # noqa: E402  (watchdog-requested fixes)
+LIMITS.update(_AGENT_LIMITS)
 
 # Switch outcomes that say nothing about the target (same idea as engine.NOT_THE_TARGETS_FAULT).
 NOT_THE_TARGET = ("no safe moment", "safe exit window closed", "switch cancelled", "tv input is unknown",

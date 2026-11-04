@@ -180,3 +180,51 @@ agreement with Nick's choices once 👍/👎 data exists.
 **Wiring (next).** The module is not yet on the live path. It goes in behind `noggin.priority.enabled`
 (OFF), first in shadow next to today's `score.league_weight` / crunch priority in the decider, and is
 scored on the same nights before it turns on.
+
+## 9. Phase 1 results (Nov 4, NBA)
+
+**Data factory v1** (`redzone/noggin/factory.py`, `features.py`, `scripts/noggin_factory.py`, workflow
+`noggin-factory.yml`): hoopR NBA play-by-play, every season with a wall clock (2013-14 on; older hoopR
+seasons have none). 17,219 games, **1,090,023 labeled dead windows**, each labeled by the live
+`cuts.DeadTracker` (same kind names, same restart rule) with 16 rule/state features plus
+`big_next60`. Splits by whole night, time-ordered: train 2013-02 → 2022-10 (1,967 nights), calib
+2022-10 → 2024-10 (421), test 2024-10 → 2026-06 (421). Nothing on or after the scorecard window
+(2026-10-20) is written. Build: ~1 min for 14 seasons on 4 CPU cores.
+
+**Noggin Timing v1** (`redzone/noggin/timing.py`, `timing_fit.py`, `live.py`): discrete-time hazard,
+5 s bins, LightGBM (300 trees, 18,300 leaves, 17 features incl. elapsed), trained on **8.97M person-period
+rows**; split-conformal lower bound (alpha 2 %, Mondrian by kind × elapsed bucket, never loosened past
+the raw bound). Exported to numpy: `redzone/noggin/models/timing_nba.v1.npz` (121 KB), numpy vs
+LightGBM max diff 1.2e-7, one reading 2.2 ms p50 / 3.7 ms p99, cached per window per 5 s bin.
+
+Factory test nights (421 unseen nights, 166k windows, 982k checkpoints):
+
+| | Timing v1 lower bound | today's `cuts.FLOOR_S` |
+|---|---|---|
+| restarts before the bound | **0.56 %** (every kind ≤ 1.9 %) | 7.33 % |
+| mean bound (s of dead time left) | 11.5 | 12.2 |
+| ECE, P(restart within 30 s) | **0.053** (target ≤ 0.10) | – |
+
+**Live path, NBA scorecard at B = 90 with measured feed lag** (`--real-lag --behind-live 90`, dev
+nights = split `fit`; locked nights not read): with `noggin.timing.leagues: [nba]`, entries mid-play
+5/61 → 5/61, plays missed on entry 3 → 3, dead air 19.1 → 19.2 %, big plays seen 84.5 → 84.5 %,
+crunch live 90.9 → 90.9 %, 0 mid-play cuts. **Timing v1 alone does not move the 9 → 0 target.**
+
+Why: the dev-night mid-play entries are not break-length misses. 3 of 5 are crunch-time entries
+(`decider.entry.crunch_now: live` goes in at once inside the last 2:00) and 2 are entries off a
+finished game after the 180 s wait cap (`max_wait_s.nba`), both landing on a live ball with no whistle
+in between. Entry policy knobs (measured, dev nights, not shipped):
+
+| setting | entries mid-play | plays missed on entry | big plays seen | crunch live |
+|---|---|---|---|---|
+| today | 5 / 61 | 3 | 84.5 % | 90.9 % |
+| `crunch_now: wait` | 3 / 61 | 2 | 80.3 % | 90.0 % |
+| `crunch_now: wait` + `max_wait_s.nba: 600` | **1 / 61** | 0 | 80.3 % | 90.0 % |
+
+So the next step is NOGGIN PICK on entries: wait for the next dead window the buffer already shows
+(the 45 s lead at B = 90 shows the next whistle before it airs), scored with Timing v1's bound, and
+tuned with forward-chaining CV over nights so the big-play cost is measured, not guessed. Timing v1
+ships OFF behind `noggin.timing.leagues`.
+
+Next leagues for the factory: NFL (nflfastR `time_of_day`), CBB/WCBB (same loader as NBA, needs a
+live-path check), CFB, NHL (fastRhockey + ESPN wallclock), MLB.

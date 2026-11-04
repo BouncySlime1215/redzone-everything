@@ -76,6 +76,7 @@ class Engine:
         self._nhl_seen: dict[str, dict[str, float]] = {}   # game id -> NHL event id -> first seen
         self._nhl_ids: dict[str, str] = {}                  # ESPN game id -> NHL game id
         self._poll_every: dict[str, float] = {}   # game id -> the poll interval it was last fetched at
+        self._burst: set[str] = set()   # [sync 5] games polled at polling.burst.every_s right now
         self.feeds = FeedBook(self.merger, self.fetcher, self._feed_urls, self._feed_cadence)
         self.scorer = DriveScorer(self.cfg)
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"),
@@ -439,7 +440,7 @@ class Engine:
                        for g in self.merger.games.values())
             self._keep_awake(live)
             if live:
-                interval = self.cfg.get("polling.hot_s", 3)
+                interval = self._burst_s() if self._burst else self.cfg.get("polling.hot_s", 3)
             else:
                 interval = self.cfg.get("polling.live_s") if soon else self.cfg.get("polling.idle_s")
                 if not soon:   # nothing live or about to start: idle polling may slow down...
@@ -690,9 +691,13 @@ class Engine:
         live = [g for g in self.merger.games.values() if g.phase == Phase.LIVE and g.league in lgs]
         sem = asyncio.Semaphore(6)
         hot = self._hot_games(live)
+        self._burst = self._burst_games(live)
 
         async def one(g: GameState):
-            every = self.cfg.get("polling.hot_s", 3) if g.game_id in hot else self.cfg.get("polling.live_s", 10)
+            if g.game_id in self._burst:
+                every = self._burst_s()
+            else:
+                every = self.cfg.get("polling.hot_s", 3) if g.game_id in hot else self.cfg.get("polling.live_s", 10)
             async with sem:
                 data = await self.fetcher.get_json(espn.summary_url(g.league, g.game_id), min_interval=every - 0.5)
             # Recorded after the fetch: a game that just turned hot keeps its slower rate until it has
@@ -773,6 +778,39 @@ class Engine:
         hot |= {s.game_id for s in ranked if s.lock or s.pre_moment or s.personal > 0}
         return hot
 
+    def _burst_s(self) -> float:
+        return max(1.0, float(self.cfg.get("polling.burst.every_s", 1.5)))
+
+    def _burst_games(self, live: list[GameState]) -> set[str]:
+        """[sync 5] At most polling.burst.max_games games to poll every 1-2 s: the game on screen and
+        its top challenger, only while a stoppage is likely there (break forecast p >= break_p) or
+        it's tense (a lock or a pre-moment). The dead ball we switch on is then seen ~1 s sooner on
+        average (half the cadence), and nothing else is polled faster, so the request budget stays
+        small. Off (empty) unless polling.burst.enabled."""
+        if not self.cfg.get("polling.burst.enabled", False) or not live:
+            return set()
+        by_id = {g.game_id: g for g in live}
+        cur = self.decider.current if self.decider.current in by_id else None
+        rivals = sorted((self.scored[gid] for gid in by_id if gid in self.scored and gid != cur),
+                        key=lambda s: -s.score)
+        order = ([cur] if cur else []) + [s.game_id for s in rivals[:1]]
+        thr = float(self.cfg.get("polling.burst.break_p", 0.5))
+        out: set[str] = set()
+        for gid in order[: max(0, int(self.cfg.get("polling.burst.max_games", 2)))]:
+            s = self.scored.get(gid)
+            tense = bool(s and (s.lock or s.pre_moment or s.crunch))
+            try:
+                likely = self.breaks.forecast(by_id[gid]).p >= thr
+            except Exception:
+                likely = False
+            if tense or likely:
+                out.add(gid)
+        return out
+
+    def _pbp_every(self, gid: str, base: float) -> float:
+        """League pbp cadence for one game: the burst rate while it's a burst game."""
+        return min(base, self._burst_s()) if gid in self._burst else base
+
     async def _scoreboard(self, lg: League) -> list[GameState] | None:
         if lg.college:
             return await self._college_scoreboard(lg)
@@ -813,7 +851,8 @@ class Engine:
                 if not gm:
                     return
                 self._nhl_ids[g.game_id] = str(gm.get("id"))
-                pbp = await self.fetcher.get_json(leagues.NHL_PBP.format(id=gm.get("id")), min_interval=every - 0.5)
+                pbp = await self.fetcher.get_json(leagues.NHL_PBP.format(id=gm.get("id")),
+                                                  min_interval=self._pbp_every(g.game_id, every) - 0.5)
                 if self._nhl_shadow and pbp:
                     try:
                         self.recorder.nhl_seen(g, pbp, self._nhl_logged.setdefault(g.game_id, {}))
@@ -841,7 +880,7 @@ class Engine:
                     if fast and gm.get("gameId") and gm.get("gameStatus") == 2:
                         self._nba_ids[g.game_id] = str(gm["gameId"])
                         pbp = await self.fetcher.get_json(leagues.NBA_PBP.format(id=gm["gameId"]),
-                                                          min_interval=every - 0.5)
+                                                          min_interval=self._pbp_every(g.game_id, every) - 0.5)
                     if self._nba_shadow and pbp:
                         try:
                             self.recorder.feed_plays(g, leagues.nba_plays(pbp, self._nba_logged.setdefault(g.game_id, {})))
@@ -1467,11 +1506,13 @@ class Engine:
                                replay_sure=sure)
 
     def _break_brain(self):
-        """(brain, blend weight) for the break forecast, or (None, 0) with the brain off."""
+        """(brain, blend weights, v3 lengths) for the break forecast, or (None, 0) with the brain off.
+        The weights are per league (brain.break_blend, fitted on held-out nights), with
+        brain.break_weight for a league nobody has fitted (breaks.weight_for)."""
         if not self.cfg.get("brain.enabled", False):
             return None, 0.0, False
-        return (self.scorer.brain, float(self.cfg.get("brain.break_weight", 0.5)),
-                self.cfg.get("brain.v3_lengths", ["nfl", "nba"]))
+        w = {"*": float(self.cfg.get("brain.break_weight", 0.5)), **(self.cfg.get("brain.break_blend") or {})}
+        return self.scorer.brain, w, self.cfg.get("brain.v3_lengths", ["nfl", "nba"])
 
     def _break_standby(self, cands: dict) -> tuple[str | None, str, standby.Option | None]:
         """The game on screen is about to break (redzone/scoring/breaks.py): where the decider will
@@ -1941,7 +1982,7 @@ class Engine:
                        "fastcast": self.fastcast.status() if self.fastcast else None,
                        "fastcast_check": self.fc_check.verdict,
                        "discovery": self.discovery.status(), "supervisor": self.supervisor.status(),
-                       "governor": self.governor.view()},
+                       "governor": self.governor.view(), "agent": self._agent_view()},
             "bets": self.bets_view(), "feedback": self.store.feedback_counts(),
             "fantasy": None if self.fantasy is None else {
                 "me": self.fantasy.me, "opponent": self.fantasy.opponent, "my_points": self.fantasy.my_points,
@@ -1949,6 +1990,14 @@ class Engine:
                 "starters": [{"name": x.name, "pos": x.pos, "team": x.team, "mine": x.mine}
                              for x in self.fantasy.starters]},
         }
+
+    def _agent_view(self) -> dict:
+        """What the watchdog reads beyond the rest of the snapshot (redzone/platform/agent_fix.py)."""
+        try:
+            from redzone.platform.agent_fix import view
+            return view(self)
+        except Exception as e:   # a status read must never break the snapshot
+            return {"error": str(e)[:120]}
 
     def _sticks_view(self) -> list[dict]:
         """Stick rows for the phone. Away from home a stick that can't answer is "away", not "offline"

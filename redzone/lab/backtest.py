@@ -391,8 +391,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         noise = random.Random(seed * 7_000_003 + 17)
     sampler = None
     if feed_lag_model == "measured":
-        from redzone.lab.timing import LagSampler
-        sampler = LagSampler()
+        from redzone.lab.timing import LagSampler, sources_in_use
+        sampler = LagSampler(use=sources_in_use(cfg))
     elif feed_lag_model not in (None, "fixed"):
         raise ValueError(f"feed_lag_model must be 'measured' or 'fixed', not {feed_lag_model!r}")
     feeds = {r.gid: _feed(r, random.Random(seed * 1_000_003 + zlib.crc32(r.gid.encode())), feed_lag, step,

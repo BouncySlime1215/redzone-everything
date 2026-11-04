@@ -68,6 +68,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "governor.battery_low_pct": (0, 100),
     "governor": (100, 16000),
     "brain.break_weight": (0.0, 1.0),
+    "brain.break_blend": (-10.0, 10.0),
     "brain.hot_reason_min": (50, 100),
     "brain.version": (2, 3),
     "brain.v3_entry_q": (10, 50),

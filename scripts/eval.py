@@ -110,6 +110,7 @@ def main():
         # Config falls back to defaults when a file doesn't validate (an unknown key, say): a
         # scorecard on silent defaults compares the wrong thing.
         sys.exit(f"{pinned} has settings the app rejects ({cfg.rejected}): refusing to grade on a partial config")
+    evaldata.use_shipped_switch_costs(cfg)   # one source of truth for switch costs (contracts/switching.py)
     if a.no_redzone:
         cfg.data["sunday_ticket"] = False
     for kv in a.set:

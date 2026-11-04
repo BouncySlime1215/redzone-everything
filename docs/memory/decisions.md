@@ -7,6 +7,12 @@ enforces it in CI. Gate changes in architecture.md §7 need a line too (by hand)
 
 Format: `- YYYY-MM-DD: **decision.** Why.`
 
+## Research bugs C18 (Nov 4)
+
+- 2026-11-04: **The break blend uses per-league log-odds coefficients fitted on held-out nights (`brain.break_blend`)**, replacing the fixed 0.5 log-odds weight #51 shipped; leagues without a fit keep `break_weight`. Why: held-out ECE (forward folds on archive nights that are neither locked nor brain-training) NFL .063 -> .054 (Brier .167 -> .147), NBA .024 -> .023, NHL .095 -> .027; the original 50/50 mix was .169 / .126 / .144. `brain.enabled` stays false, so the scorecards are unchanged.
+
+- 2026-11-04: **Switch costs have one source of truth: `decider.switch_cost` in default_config.yaml holds the measured numbers** (tunes = the Mac's LatencyBook medians pinned in eval-data-v1: YTTV 5.5, Prime 27, ESPN 7.5; flip = SmartThings median 1.98 s, 10/10, + 1 s settle = 3). The old guesses were 3 / 8 / 7 / 1. Offline code (jump/reel labels, Kaggle briefs) prices switches through `contracts/switching.ConfigSwitchPaths`, and the scorecards use that table instead of the pinned snapshot's (its tunes are identical; only its 4.0 HOME-era flip differed). Why: research C18, the two configs disagreed.
+
 ## Prime NBA multiview (Nov 3, 7:45 PM)
 
 - 2026-11-03: **Prime NBA multiview ships OFF (`tuners.prime_multiview: false`).** It turns on only after a live Prime NBA night passes its gate: >= 95% right-tile switches under 2 s (>= 20 switches) and 0 mid-play entries. Why: the key paths are guesses until `scripts/prime_multiview_probe.py` records them on the real sticks.
@@ -26,6 +32,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 ## Error handling (PLATFORM, overnight plan items 8-12, Nov 4)
 
 - 2026-11-04: **New `hardening:` config block (`smartthings`, `sticks`, `feeds`, `mac`), all false.** Each is read with a False default, so the code PRs for sticks/feeds/mac work in any merge order. `hardening.smartthings`: SmartThings 5xx/timeouts open a breaker (30 s doubling to 2 min, probed by the keepalive, not by a flip), a 429 waits its Retry-After (cap 300 s), and a refused sign-in stops the cloud path until `tv_setup.py --smartthings` rewrites the OAuth file, raising Health `tv_auth` and one phone push. Off by default because no live night has proven it yet (the overnight plan: anything unproven ships off). Drill `st_outage`: with it off, 3 of 10 flips during an outage wait out 216 s of timeouts; on, 1 flip waits 16 s and the rest go straight to HOME/CEC.
+- 2026-11-04: **`hardening.watchdog: false` (C17).** The watchdog may ask the app (POST /api/agent/fix) to resume, clear a prompt on or re-tune the stick on screen while its screen has been dead 90 s+, refresh or restart the feeds, restart the push feed, or leave safe mode. Every fix goes through the supervisor's rate limits, and the watchdog judges each one (worked or failed within 2 checks), climbs a ladder and then tells a person. Off by default: no live night has proven it, so with it off the watchdog only notifies. Stick fixes act only on a screen that is already not playing, so they can't cut a live play.
 
 ## Process and budget
 
@@ -138,6 +145,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   integration/next (schedule only fires from main, which we never merge to). Every PR names the line it
   moves; CI shows the dev-test delta (never the locked set). docs/roadmap.md is ranked from
   docs/roadmap.json by (gap × impact) / effort, with the director's morning `priority` first.
+- 2026-11-04 7:30 AM: **Burst polling ships OFF** (`polling.burst.enabled: false`; Director 1:35 AM sync item 5).
+  When on, the on-screen game and its top challenger (max 2) poll ESPN summary + NBA/NHL pbp every 1.5 s
+  (floor 1 s) while a stoppage is likely there (break forecast p >= 0.5) or it's tense (lock, pre-moment,
+  crunch). Cadence wait on those games drops from U(0,3) to U(0,1.5) s: mean 1.5 -> 0.75 s, p95 2.85 ->
+  1.43 s. Backtests don't model poll cadence, so the scorecards are equal by construction; it turns on
+  after a live shadow night shows the measured detection lag drop in scripts/timing_report.py. The fetcher
+  also sends If-Modified-Since when a host gives Last-Modified and no ETag.
 - 2026-11-04 7:05 AM: **SYNC 1: flip only onto a steady PLAYING stream** (Nick, 1:30 AM sync plan). The preloaded
   path now needs the hidden stick to report PLAYING with no state change for `FLIP_STEADY_S` = 1 s (up to 3 s of
   buffering is waited out, else it's re-tuned). Buffering measured from the stick's own clock vs position is
@@ -157,3 +171,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   sync_anchors.jsonl (ts, target, stick, sample_kind, feed_wall); `sync.break_anchor.enabled: false` until the
   Wednesday data fits the whistle-to-break bias. (4) Drift alarm (>5 s since sync, or q_scale >= 9) logged;
   `sync.drift_alarm.resync: false`. The sims don't run these paths: scorecards unchanged by construction.
+- 2026-11-04 3:15 AM: **Noggin Timing v1 ships OFF** (`noggin.timing.leagues: []`). NBA hazard + conformal lower
+  bound: 0.56 % of restarts before the bound on 421 unseen public nights (today's FLOOR_S: 7.33 %) at the same
+  tightness, ECE 0.053; on the NBA scorecard at B=90 (dev nights) entries mid-play 5/61 -> 5/61, so no gain to
+  ship yet. The remaining NBA mid-play entries are entry policy (crunch_now live, 180 s wait cap), Noggin Pick.
+- 2026-11-04 9:30 AM (noggin logic, cycle 01): **candidate profile: finished-game exits wait for the next dead
+  ball and crunch entries rewind to the last whistle** (`decider.entry.max_wait_s={}`,
+  `decider.entry.crunch_now=rewind`, candidate only, live defaults unchanged). Full sets, candidate column: dev
+  mid-play 0.35 -> 0.23 per 100 landings, locked 0.33 -> 0.17; big live, crunch live, your-team and big seen
+  unchanged on both. `crunch_now=wait` reaches 0 on NBA dev but costs big live NBA 81.7 -> 77.5 and crunch
+  live 90.9 -> 90.0, and a bounded crunch wait (15-60 s) still costs a big play, so it is left for Nick.

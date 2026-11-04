@@ -308,6 +308,20 @@ def build_app(engine: Engine) -> FastAPI:
         return FileResponse(f, media_type=IMG_TYPES.get(ext, "image/png"),
                             headers={"Cache-Control": "public, max-age=604800, immutable"})
 
+    @app.post("/api/agent/fix")
+    async def agent_fix(body: dict, request: Request):
+        """The watchdog (agent/watchdog.py, same Mac) asks for one narrow fix. Local callers only:
+        the phone page never needs it. Off unless hardening.watchdog (redzone/platform/agent_fix.py)."""
+        host = request.client.host if request.client else ""
+        if host not in ("127.0.0.1", "::1", "localhost", "testclient"):
+            return JSONResponse({"ok": False, "message": "local only"}, status_code=403)
+        from redzone.platform.agent_fix import run_fix
+        try:
+            ok, msg = await run_fix(engine, str(body.get("fix", "")), str(body.get("target", "") or ""))
+        except Exception as e:   # a fix never takes the server down
+            ok, msg = False, f"crashed: {type(e).__name__}: {str(e)[:100]}"
+        return {"ok": ok, "message": msg}
+
     @app.get("/api/health")
     async def health():
         return engine.snapshot()["health"]

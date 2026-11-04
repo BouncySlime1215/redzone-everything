@@ -18,7 +18,7 @@ Two splits (redzone/lab/splits.py):
 
 Status: PASS / FAIL / PENDING exactly as the release gate means them (pending never counts as passing),
 plus INFO for a line with no target (the feed lag in use). A line whose value is an upper bound on the
-real thing (live-or-replayed counts a replay of any age, not only within 10 min) can FAIL but not PASS.
+real thing (live-or-replayed from a scorecard that does not grade replay age) can FAIL but not PASS.
 
 No new dependencies: standard library + the repo's own scripts.
 """
@@ -36,6 +36,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT))
 
 import ci_scorecard  # noqa: E402
 import release_gate as rg  # noqa: E402
@@ -63,13 +64,15 @@ METRICS = [
     ("mid_play", "Mid-play cuts + entries (per 100 landings)", "0", -1, 0.0, 5.0),
     ("landings_dead", "Landings in dead time", ">= 95%", 1, 95.0, 100.0),
     *[(f"big_live_{lg}", f"Big plays seen live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
-    ("your_team_big", "Your-team big plays seen live", "100%", 1, 100.0, 100.0),
+    ("your_team_big", "Your-team big plays seen (live or within 10 min)", "100%", 1, 100.0, 100.0),
     *[(f"crunch_live_{lg}", f"Crunch live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
     ("your_team_crunch", "Your-team crunch live", "100%", 1, 100.0, 100.0),
     ("league_order", "League order respected (no lower-league non-crunch over a higher-league crunch)", "100%", 1, 100.0, 100.0),
     ("right_game", "Right game: agreement with Nick's 👍/👎", ">= 95%", 1, 95.0, 100.0),
     ("big_seen_10min", "Big plays live or replayed within 10 min", ">= 99%", 1, 99.0, 100.0),
     ("switch_p95", "Switch time p95 (SmartThings input change)", "<= 3 s", -1, 3.0, 3.0),
+    ("flips_settled", "Flips PLAYING within 3 s", ">= 99%", 1, 99.0, 100.0),
+    ("delay_err_p95", "Per-stick delay error p95", "<= 2 s", -1, 2.0, 2.0),
     ("dead_air", "Dead air (commercials/breaks on screen)", "0%", -1, 0.0, 100.0),
     ("recovery", "Faults recovered without Nick (e2e night)", ">= 95%", 1, 95.0, 100.0),
     *[(f"feed_lag_{lg}", f"Honest feed lag in use, {lg.upper()} (p50)", "info", -1, None, None) for lg in LEAGUES],
@@ -79,11 +82,15 @@ META = {k: dict(label=lb, target=t, dir=d, bar=b, scale=s) for k, lb, t, d, b, s
 
 # ---- running the evidence ---------------------------------------------------------------------
 
-def run_cards(root: Path, split: str, timeout: float = 1800) -> dict:
-    """The three league scorecards on one split, every night in it, measured feed lag."""
+def run_cards(root: Path, split: str, timeout: float = 1800, profile: str | None = None) -> dict:
+    """The three league scorecards on one split, every night in it, measured feed lag. With `profile`
+    (redzone/noggin/profile.py), the same cards with that profile's flags and buffer on."""
     sp = SPLITS[split]
     argvs = {"nfl": ["scripts/eval.py", "--n", "999", "--split", sp, "--real-lag"],
              **{lg: ["scripts/eval_sports.py", lg, "--nights", "999", "--split", sp, "--real-lag"] for lg in ("nba", "nhl")}}
+    if profile:
+        from redzone.noggin import profile as P
+        argvs = {lg: a + P.argv(profile, lg) for lg, a in argvs.items()}
     out = {}
     for lg, argv in argvs.items():
         if not (root / f"data/archive/{lg}").exists():
@@ -91,7 +98,7 @@ def run_cards(root: Path, split: str, timeout: float = 1800) -> dict:
             continue
         card, err, took = ci_scorecard.run_one(root, argv, timeout)
         out[lg] = {"metrics": card, "seconds": round(took)} if card is not None else {"error": err}
-        print(f"  {split}/{lg}: {'ok' if card else err} ({took:.0f} s)", flush=True)
+        print(f"  {split}/{lg}{'/' + profile if profile else ''}: {'ok' if card else err} ({took:.0f} s)", flush=True)
     return out
 
 
@@ -204,9 +211,13 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
     for lg in LEAGUES:
         rows.append(_rate(f"big_live_{lg}", [(int(x.get("big_live") or 0), int(x.get("big") or 0)) for x in per[lg]],
                           95.0, note="" if per[lg] else f" ({lg.upper()} scorecard missing)"))
-    # 4. your-team big plays, live (NFL scorecard; NBA/NHL scorecards don't grade your-team big plays yet)
-    r = _rate("your_team_big", [(int(x.get("my_big_live") or 0), int(x.get("my_big") or 0)) for x in per["nfl"]], 100.0)
-    r["detail"] += "; NFL only (NBA/NHL scorecards don't grade your-team big plays yet)"
+    # 4. your-team big plays, live or replayed within 10 min where the scorecard grades replay age
+    # (big_seen_10m, the catch-up gate), else live only (older scorecards: NFL's my_big_live)
+    yt = [(int(x["my_big_seen_10m"]), int(x.get("my_big") or 0)) if "my_big_seen_10m" in x
+          else (int(x.get("my_big_live") or 0), int(x.get("my_big") or 0)) for x in every]
+    r = _rate("your_team_big", yt, 100.0, note=note)
+    if not all("my_big_seen_10m" in x for x in every):
+        r["detail"] += "; some scorecards don't grade replay age: live only there"
     rows.append(r)
     # 4b. crunch live per league. Under the league order a lower-priority overlap that gets a replay is
     # not a miss, and that feasible ceiling isn't computed yet: a miss under 95 % reads PENDING (as in
@@ -226,13 +237,22 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
                      "scorecards can't see a cross-league overlap)"))
     rows.append(_row("right_game", None, None, None, PENDING,
                      "no 👍/👎 decision records yet (E23); PENDING until Nick's taps exist"))
-    # 5. live or replayed: an upper bound until replay age (<= 10 min) is graded
-    sub = ", ".join(f"{lg.upper()} {100.0 * sum(int(x.get('big_seen') or 0) for x in per[lg]) / max(1, sum(int(x.get('big') or 0) for x in per[lg])):.1f}%"
+    # 5. live or replayed within 10 min. With big_seen_10m (replay age graded) it can PASS; an older
+    # scorecard only has big_seen (a replay of any age), an upper bound that can FAIL but never PASS.
+    graded = bool(every) and all("big_seen_10m" in x for x in every)
+    fld = "big_seen_10m" if graded else "big_seen"
+    sub = ", ".join(f"{lg.upper()} {100.0 * sum(int(x.get(fld) or 0) for x in per[lg]) / max(1, sum(int(x.get('big') or 0) for x in per[lg])):.1f}%"
                     for lg in LEAGUES if per[lg])
-    rows.append(_rate("big_seen_10min", [(int(x.get("big_seen") or 0), int(x.get("big") or 0)) for x in every], 99.0,
-                      upper_bound_only=True, note=f" [{sub}]" + note))
+    rows.append(_rate("big_seen_10min", [(int(x.get(fld) or 0), int(x.get("big") or 0)) for x in every], 99.0,
+                      upper_bound_only=not graded, note=f" [{sub}]" + note))
     # 6. switch time p95: real TV samples if there are any, else the Nov 3 measurement (too few to prove p95)
     rows.append(switch_row(switch_s or []))
+    # 6b. [sync plan, TIMING] flips that reach PLAYING within 3 s: Controller.settle_book {n, ok} as the
+    # e2e night reports it (a switch whose picture was never checked is not in n)
+    rows.append(settle_row(nights))
+    rows.append(_row("delay_err_p95", None, None, None, PENDING,
+                     "not measured: needs the break-anchor delay estimator (on-screen break start/end vs feed "
+                     "event time) and Wednesday's probe logs"))
     # 7. dead air
     d = [(float(x.get("dead_s") or 0), float(x.get("watched_s") or 0)) for x in every]
     point, lo, hi = _boot_ratio(d)
@@ -280,6 +300,20 @@ def switch_row(xs: list[float]) -> dict:
         st = PENDING
         det += f"; needs >= {MIN_SWITCH_SAMPLES} samples and the upper bound <= 3 s"
     return _row("switch_p95", round(p95, 2), round(lo, 2), round(hi, 2), st, det)
+
+
+def settle_row(nights: list[dict] | None) -> dict:
+    per = []
+    for rep in nights or []:
+        b = rep.get("settle_book") or (rep.get("last_flip") or {}).get("settle_book")
+        if isinstance(b, dict) and b.get("n"):
+            per.append((int(b.get("ok") or 0), int(b["n"])))
+    if not per:
+        return _row("flips_settled", None, None, None, PENDING,
+                    "not measured: the e2e night doesn't report Controller.settle_book yet (#70)")
+    r = _rate("flips_settled", per, 99.0)
+    r["detail"] += "; e2e fault nights (fake TV), picture-checked flips only"
+    return r
 
 
 def recovery_row(nights: list[dict] | None) -> dict:
@@ -342,17 +376,26 @@ def last_run(history: Path, split: str) -> dict | None:
 ICON = {PASS: "✅ PASS", FAIL: "❌ FAIL", PENDING: "⏳ PENDING", INFO: "ℹ️ INFO"}
 
 
-def md_table(rows: list[dict], before: dict | None) -> list[str]:
+def md_table(rows: list[dict], before: dict | None, candidate: list[dict] | None = None,
+             cand_name: str = "candidate") -> list[str]:
+    """The table; with `candidate` rows (a --profile run) a column with that profile's value, status and
+    its change against current, so a flag decision reads the combined numbers."""
     prev = (before or {}).get("values", {})
-    out = ["| metric | target | current | 95% CI (nights) | status | Δ vs last run | evidence |",
-           "|---|---|---:|---|---|---:|---|"]
+    cand = {r["key"]: r for r in candidate or []}
+    extra_h = f" {cand_name} | {cand_name} status | {cand_name} vs current |" if candidate is not None else ""
+    out = ["| metric | target | current | 95% CI (nights) | status | Δ vs last run |" + extra_h + " evidence |",
+           "|---|---|---:|---|---|---:|" + ("---:|---|---:|" if candidate is not None else "") + "---|"]
     for r in rows:
         k = r["key"]
         ci = "–" if r["lo"] is None else f"{_fmt(k, r['lo'])} – {_fmt(k, r['hi'])}"
         if r.get("nights"):
             ci += f" ({r['nights']})"
+        extra = ""
+        if candidate is not None:
+            c = cand.get(k) or {"value": None, "status": PENDING}
+            extra = f" {_fmt(k, c['value'])} | {ICON[c['status']]} | {_delta(k, c['value'], r['value'])} |"
         out.append(f"| {META[k]['label']} | {META[k]['target']} | {_fmt(k, r['value'])} | {ci} | {ICON[r['status']]} "
-                   f"| {_delta(k, r['value'], prev.get(k))} | {r['detail']} |")
+                   f"| {_delta(k, r['value'], prev.get(k))} |{extra} {r['detail']} |")
     n = {s: sum(r["status"] == s for r in rows) for s in (PASS, FAIL, PENDING)}
     out.append(f"\n{n[PASS]} pass, {n[FAIL]} fail, {n[PENDING]} pending (pending never counts as passing).")
     return out
@@ -376,7 +419,11 @@ def render(results: dict, commit: str, when: str, history: Path) -> str:
                  "locked": "LOCKED unseen nights (`test`): report only, never tuned on"}[split]
         nn = ", ".join(f"{lg.upper()} {len(_per(res['cards'], lg))}" for lg in LEAGUES)
         out += [f"## {title}", "", f"Nights: {nn}.", ""]
-        out += md_table(res["rows"], last_run(history, split)) + [""]
+        cand = res.get("candidate")
+        if cand:
+            out += [f"Candidate profile `{cand['profile']}`: {cand.get('about', '')}.", ""]
+        out += md_table(res["rows"], last_run(history, split), cand["rows"] if cand else None,
+                        cand["profile"] if cand else "candidate") + [""]
     return "\n".join(out)
 
 
@@ -488,6 +535,8 @@ def main(argv=None) -> int:
     ap.add_argument("--no-write", action="store_true", help="don't touch docs/ (PR CI)")
     ap.add_argument("--delta", nargs=2, type=Path, metavar=("HEAD", "BASE"), help="print the PR delta table")
     ap.add_argument("--md", type=Path, help="with --delta: write the table here")
+    ap.add_argument("--profile", default=None,
+                    help="also score this Noggin profile (redzone/noggin/profile.py, e.g. candidate) as its own column")
     a = ap.parse_args(argv)
 
     if a.delta:
@@ -504,12 +553,18 @@ def main(argv=None) -> int:
     if a.night_seeds:
         nights += run_nights(root, a.night_seeds)
     # keep only what the recovery line reads, so the raw file stays small
-    nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults") if k in n} for n in nights]
+    nights = [{k: n.get(k) for k in ("seed", "ok", "error", "checks", "faults", "settle_book") if k in n}
+              for n in nights]
     xs = switch_samples(a.switch_log if a.switch_log is not None else [root / "data/tv_input.jsonl"])
     results = {}
     for split in (("dev", "locked") if a.split == "both" else (a.split,)):
         cards = run_cards(root, split)
         results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof)}
+        if a.profile:
+            from redzone.noggin import profile as P
+            cc = run_cards(root, split, profile=a.profile)
+            results[split]["candidate"] = {"profile": a.profile, "about": P.PROFILES[a.profile].get("about", ""),
+                                           "cards": cc, "rows": table(cc, nights, xs, prof)}
     commit = _git(root, "rev-parse", "--short", "HEAD")
     when = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     if a.json:
@@ -522,7 +577,8 @@ def main(argv=None) -> int:
         if ROADMAP_SRC.exists() and "dev" in results:
             ROADMAP_MD.write_text(render_roadmap(json.loads(ROADMAP_SRC.read_text()), results["dev"]["rows"], commit, when))
     for split, res in results.items():
-        print(f"\n## {split}\n" + "\n".join(md_table(res["rows"], None)))
+        cand = res.get("candidate")
+        print(f"\n## {split}\n" + "\n".join(md_table(res["rows"], None, cand["rows"] if cand else None)))
     return 0
 
 

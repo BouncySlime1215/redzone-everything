@@ -293,3 +293,47 @@ exposed through DelayBook for the Noggin.
 - **Drift alarm.** `SyncBook.alarms` flags "measured" when the delay moved more than 5 s since it synced (a
   restart keeps the plan, so a jump counts), and "predicted" when q_scale ≥ 9. Alarms are logged once per
   5 min. `sync.drift_alarm.resync` re-tunes the hidden standby when no switch is pending (off by default).
+## Sims score the feed actually in use (planner 2:45 AM item 3, Nov 4)
+
+`--real-lag` used to draw every league's feed lag from ESPN's summary profile, even when the config decides
+NHL from the api-web play-by-play (#58). Now `timing.sources_in_use(cfg)` picks the profile per league:
+`sources.nhl_primary` → `sources.nhl_wsc.nhl` in `feed_lag_profile.json`, `sources.nba_primary` → `nba_cdn`.
+A source with no profile keeps ESPN's.
+
+- **nhl_wsc is derived, not measured row by row.** Nick's live check gave p50 16.7 s (ESPN 43.1 s). Each
+  quantile is the larger of ESPN's NHL dead-ball quantile scaled to a 16.7 s median and the same quantile
+  shifted to it (floor 2 s), giving p0 8.0, p50 16.7, p90 37.8 and p95 57.3 s. The tail is kept as late as
+  ESPN's on purpose. `scripts/timing_report.py --write-profile` replaces it with measured rows once the
+  `nhl` source has a live night in the recordings.
+- **nba_cdn has no profile yet.** The liveData pbp's own lag hasn't been measured, so NBA stays on ESPN's.
+
+NHL dev split (`fit`, 10 nights, `--real-lag`), ESPN profile vs `--set sources.nhl_primary=true`:
+
+| seed | entries mid-play | mid-play cuts | plays missed on entry | dead air % | big seen % | crunch live % |
+|---|---|---|---|---|---|---|
+| 0 | 8 → 3 | 0 → 1 | 1 → 2 | 22.7 → 22.5 | 95.3 → 99.3 | 79.7 → 84.3 |
+| 1 | 9 → 1 | 1 → 0 | 1 → 1 | 23.3 → 22.5 | 98.3 → 99.5 | 81.2 → 82.8 |
+| 2 | 9 → 0 | 1 → 0 | 2 → 0 | 21.7 → 22.0 | 96.0 → 99.5 | 84.5 → 85.8 |
+| total | 26 → 4 | 2 → 1 | 4 → 3 | | | |
+
+The single mid-play cut moves from seed to seed and shows up with either feed (base: seeds 1 and 2;
+wsc: seed 0, night 20261024).
+
+## Entry policy in the candidate: no blind cap, crunch rewinds (Nov 4, cycle 01)
+
+The remaining NBA mid-play entries in the candidate were entry policy, not timing: two were a finished game
+leaving after the 180 s `decider.entry.max_wait_s.nba` cap ran out, and the rest were crunch-time entries
+going in live (`decider.entry.crunch_now: live`). NBA dev nights (fit split), candidate profile, B=90:
+
+| variant | mid-play entries | missed on entry | big seen | big live | crunch live |
+|---|---|---|---|---|---|
+| candidate before (cap 180, crunch live) | 6/61 | 4 | 84.5 | 81.7 | 90.9 |
+| no cap, crunch live | 4/60 | 2 | 84.5 | 81.7 | 90.9 |
+| **no cap, crunch rewind (shipped in the candidate)** | **3/60** | **1** | 84.5 | 81.7 | 90.9 |
+| no cap, crunch wait capped at 15 s | 2/60 | 0 | 83.1 | 80.3 | 90.6 |
+| no cap, crunch wait capped at 60 s | 2/60 | 1 | 80.3 | 77.5 | 90.1 |
+| no cap, crunch wait | 0/60 | 0 | 80.3 | 77.5 | 90.0 |
+
+A crunch entry with no rewind in reach has to choose between landing mid-play and missing what happens
+while it waits; any wait costs plays. Full North Star, candidate column: dev mid-play 0.35 -> 0.23 per 100,
+locked 0.33 -> 0.17, every other line unchanged (dead air dev 18.90 -> 18.95, locked 20.35 -> 20.32).

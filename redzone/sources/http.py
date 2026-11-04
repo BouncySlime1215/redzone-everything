@@ -41,6 +41,7 @@ class _Cached:
     body: object
     etag: str | None
     fetched_at: float
+    last_modified: str | None = None   # [sync 5] for If-Modified-Since on hosts that send no ETag
 
 
 @dataclass
@@ -95,6 +96,8 @@ class Fetcher:
             hdrs = dict(headers or {})
             if cached and cached.etag:
                 hdrs["If-None-Match"] = cached.etag
+            if cached and cached.last_modified:
+                hdrs["If-Modified-Since"] = cached.last_modified
             try:
                 r = await self._client.get(url, headers=hdrs)
             except (httpx.HTTPError, OSError) as e:
@@ -115,7 +118,7 @@ class Fetcher:
                 body = r.json()
             except ValueError:
                 return cached.body if cached else None
-            self._cache[url] = _Cached(body, r.headers.get("ETag"), self._clock())
+            self._cache[url] = _Cached(body, r.headers.get("ETag"), self._clock(), r.headers.get("Last-Modified"))
             self._reset(host)
             return body
 
