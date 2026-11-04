@@ -29,7 +29,7 @@ NIGHT = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # Aggregate fields from scripts/collect_live_test.summarize. Anything else is dropped.
 NUM_KEYS = ("switch_samples", "switch_p95_s", "switch_max_s", "tv_unverified", "cuts_graded",
             "entries_mid_play", "leaves_mid_play", "picture_p95_s", "press_samples", "press_to_tv_p95_s",
-            "press_no_picture", "press_to_tv_p50_s", "landings_dead", "landings_graded")
+            "press_no_picture", "press_to_tv_p50_s", "landings_dead", "landings_graded", "switch_p50_s")
 STR_KEYS = {"picture_within_3s": re.compile(r"^\d+/\d+$"),
             "since": re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$"),
             "until": re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$")}
@@ -82,6 +82,10 @@ def clean(summary: dict) -> dict:
     if isinstance(ps, dict):
         out["press_spans"] = {str(k): {kk: v[kk] for kk in ANCHOR_KEYS if _num(v.get(kk)) is not None}
                               for k, v in ps.items() if RULE.match(str(k)) and isinstance(v, dict)}
+    bf = summary.get("buffer")     # [STK-06] hidden-stick buffer watchdog counts (#136)
+    if isinstance(bf, dict):
+        out["buffer"] = {k: bf[k] for k in ("detected", "lost", "recovered", "rebuild_failed", "err_p95_s")
+                         if _num(bf.get(k)) is not None}
     rows = summary.get("rows")
     if isinstance(rows, dict):
         out["rows"] = {str(k): v for k, v in rows.items()

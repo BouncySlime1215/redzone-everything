@@ -13,7 +13,8 @@ night; scripts/publish_live_nights.py puts the aggregates in docs/live-nights/) 
   - every miss: when (ET), which game, which end of the cut, the grade's reason
   - sync anchor error p50 / p95 per stick, TV switch p95, press-to-TV p50 / p95 and where it goes
   - what the supervisor fixed on its own (rule, times, how many didn't work)
-No night collected -> a PENDING page. These lines are one night: they inform, the release gate still
+Each miss links into phone v2's night replay viewer (--phone-url, or the #night=..&at=.. fragment).
+No night collected, or a night with no games -> a PENDING page. These lines are one night: they inform, the release gate still
 judges the locked set plus fresh nights (release_gate.py).
 
 Behind report.nightly (default OFF): with it off the script writes nothing unless --force.
@@ -88,13 +89,31 @@ def lines_graded(s: dict) -> list[tuple[str, str, str, str]]:
     return out
 
 
-def render(night: date, s: dict | None) -> str:
+REPLAY_HASH = "#night={night}&at={at}"   # redzone/web/static/rz-v2.js nightFromHash (phone v2's whole-night viewer)
+
+
+def replay_link(night: date, at: str | None, phone_url: str | None = None) -> str:
+    """A miss's link into the phone's night replay viewer. With no phone URL (a page on GitHub: the
+    Mac's address stays off the public repo) it is the fragment to add to the phone page's address."""
+    if not at:
+        return "–"
+    frag = REPLAY_HASH.format(night=night.isoformat(), at=at)
+    return f"[replay]({phone_url.rstrip('/')}/{frag})" if phone_url else f"`{frag}`"
+
+
+def no_games(s: dict) -> bool:
+    return not any(s.get(k) for k in ("cuts_graded", "switch_samples", "press_samples", "landings_graded"))
+
+
+def render(night: date, s: dict | None, phone_url: str | None = None) -> str:
     md = [f"# Night health: {night.isoformat()}", "",
           "Written by `scripts/night_report.py` from the night's live log (no input from Nick). One night "
           "informs; the release gate judges the locked set plus fresh nights.", ""]
     if not s:
         return "\n".join(md + ["⏳ PENDING: no live night collected for this date "
                                f"(docs/live-nights/{night.isoformat()}/summary.json).", ""])
+    if no_games(s):
+        return "\n".join(md + ["⏳ PENDING: no games ran this night (the app was up, nothing was switched or graded).", ""])
     md += ["## North Star lines, last night", "", "| line | target | last night | status |", "|---|---|---|---|"]
     md += [f"| {a} | {b} | {c} | {d} |" for a, b, c, d in lines_graded(s)] + [""]
 
@@ -103,9 +122,12 @@ def render(night: date, s: dict | None) -> str:
     if not ms:
         md += ["None: no cut left or entered a play." if s.get("cuts_graded") else "No cuts graded.", ""]
     else:
-        md += ["| when (ET) | game | end | reason |", "|---|---|---|---|"]
-        md += [f"| {m.get('at') or '?'} | {m.get('game') or '?'} | {m.get('end') or '?'} | {m.get('why') or '–'} |"
-               for m in ms] + [""]
+        md += ["| when (ET) | game | end | reason | replay |", "|---|---|---|---|---|"]
+        md += [f"| {m.get('at') or '?'} | {m.get('game') or '?'} | {m.get('end') or '?'} | {m.get('why') or '–'} | "
+               f"{replay_link(night, m.get('at') if m.get('at') != '?' else None, phone_url)} |" for m in ms]
+        if not phone_url:
+            md.append("\nReplay: add the fragment to the phone page's address (phone v2's Whole night viewer opens at that miss).")
+        md.append("")
 
     md += ["## Sync and switching", ""]
     sy = s.get("sync_anchor_err") or {}
@@ -115,12 +137,17 @@ def render(night: date, s: dict | None) -> str:
         md.append("")
     else:
         md += ["Sync anchor error: no anchors logged.", ""]
-    md += [f"- TV switch (SmartThings, confirmed): {s.get('switch_samples', 0)} switches, p95 {_v(s.get('switch_p95_s'))}, "
+    md += [f"- TV switch (SmartThings, confirmed): {s.get('switch_samples', 0)} switches, p50 {_v(s.get('switch_p50_s'))}, "
+           f"p95 {_v(s.get('switch_p95_s'))}, "
            f"max {_v(s.get('switch_max_s'))}, unconfirmed {s.get('tv_unverified', 0)}",
            f"- Picture within 3 s of the cut: {s.get('picture_within_3s') or '–'}; cut to picture p95 "
            f"{_v(s.get('picture_p95_s'))}",
            f"- Phone press to TV: {s.get('press_samples', 0)} presses, p50 {_v(s.get('press_to_tv_p50_s'))}, "
            f"p95 {_v(s.get('press_to_tv_p95_s'))}, {s.get('press_no_picture', 0)} never reached a picture"]
+    bf = s.get("buffer") or {}
+    if bf.get("detected"):
+        md.append(f"- Hidden-stick buffer (STK-06): {bf.get('detected')} lost or drifting, {bf.get('recovered', 0)} rebuilt, "
+                  f"{bf.get('rebuild_failed', 0)} not rebuilt; error p95 {_v(bf.get('err_p95_s'))}")
     sp = s.get("press_spans") or {}
     if sp:
         md.append("- Where a press's time goes (p50 / p95): " + ", ".join(
@@ -141,10 +168,10 @@ def render(night: date, s: dict | None) -> str:
     return "\n".join(md)
 
 
-def write(night: date, dirs: list[Path], out: Path = OUT) -> Path:
+def write(night: date, dirs: list[Path], out: Path = OUT, phone_url: str | None = None) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     p = out / f"{night.isoformat()}.md"
-    p.write_text(render(night, load(night, dirs)))
+    p.write_text(render(night, load(night, dirs), phone_url))
     return p
 
 
@@ -154,12 +181,14 @@ def main(argv=None) -> int:
     ap.add_argument("--live-dir", type=Path, action="append", default=None,
                     help="folders of <night>/summary.json (default docs/live-nights)")
     ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument("--phone-url", help="the phone page (http://<mac>.local:8777): misses link straight into its "
+                    "night replay viewer. Never on a page committed to the public repo")
     ap.add_argument("--force", action="store_true", help="write even with report.nightly off")
     a = ap.parse_args(argv)
     if not (a.force or enabled()):
         print("report.nightly is off: nothing written (use --force for a manual run)")
         return 0
-    p = write(a.night or last_night(), a.live_dir or [LIVE], a.out)
+    p = write(a.night or last_night(), a.live_dir or [LIVE], a.out, a.phone_url)
     print(p.read_text())
     return 0
 

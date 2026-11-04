@@ -71,3 +71,20 @@ def test_last_night_is_the_evening_before_the_morning():
     et = ZoneInfo("America/New_York")
     assert nr.last_night(datetime(2026, 11, 5, 6, 30, tzinfo=et)) == NIGHT
     assert nr.last_night(datetime(2026, 11, 4, 23, 0, tzinfo=et)) == NIGHT
+
+
+def test_a_night_with_no_games_is_pending(tmp_path):
+    _write(tmp_path / "pub", {"cuts_graded": 0, "switch_samples": 0, "press_samples": 0, "rows": {"tv_input.jsonl": 0}})
+    assert "PENDING: no games ran" in nr.write(NIGHT, [tmp_path / "pub"], tmp_path / "out").read_text()
+
+
+def test_misses_link_into_the_night_replay_viewer(tmp_path):
+    import re
+    s = {"cuts_graded": 3, "entries_mid_play": 1, "misses": [{"at": "00:15", "game": "NYR @ WSH", "end": "enter", "why": "x"}]}
+    on_github = nr.render(NIGHT, s)
+    assert "`#night=2026-11-04&at=00:15`" in on_github and "http" not in on_github
+    assert "[replay](http://mac.local:8777/#night=2026-11-04&at=00:15)" in nr.render(NIGHT, s, "http://mac.local:8777/")
+    # the phone's parser (rz-v2.js nightFromHash) accepts exactly this fragment
+    js = (nr.ROOT / "redzone/web/static/rz-v2.js").read_text()
+    pat = re.search(r"const m = /(.+?)/\.exec\(hash", js).group(1).replace("\\\\", "\\")
+    assert re.match(pat, "#night=2026-11-04&at=00:15")

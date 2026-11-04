@@ -1179,6 +1179,7 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .v2-ev { display: grid; grid-template-columns: 30px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line-1); }
 .v2-ev-ic { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--surface-3); color: var(--text-2); }
 .v2-ev-ic .ico { width: 15px; height: 15px; }
+.v2-ev--hit { background: color-mix(in srgb, var(--warn, #c80) 14%, transparent); border-radius: 8px; }
 .v2-ev--tap .v2-ev-ic { background: color-mix(in srgb, var(--info) 18%, transparent); color: var(--info-ink); }
 .v2-ev--decision .v2-ev-ic { background: color-mix(in srgb, var(--mine-ink) 18%, transparent); color: var(--mine-ink); }
 .v2-ev-top { display: flex; gap: 8px; align-items: baseline; }
