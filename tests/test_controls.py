@@ -160,3 +160,24 @@ def test_a_skip_counts_its_five_minutes_from_when_the_tv_leaves(engine):
     e.skipped["g1"] = time.time() - 1
     e.decide()
     assert "g1" not in e.decider.user.muted and "g1" not in e.skipped
+
+
+def test_tapping_the_game_on_screen_mid_switch_away_goes_back(engine, monkeypatch):
+    """playbook=BTN-05 (controls drill, mid_flip): "Watch this" + "Go now" on the game on screen while
+    a switch away from it is landing used to answer "Holding on X" while the TV landed elsewhere."""
+    from redzone.decider.decider import Decision, State
+    e = engine
+    e.merger.games["g1"] = SimpleNamespace(game_id="g1", phase=Phase.LIVE)
+    e.decider.current = "g1"
+    e._pending_decision = Decision(time.time(), "switch", "g2", "best game on", State.WATCHING, kind="live")
+    went = []
+    monkeypatch.setattr(e, "_act_manual", lambda gid, replay=None: went.append(gid))
+    monkeypatch.setattr(e, "_name", lambda gid: gid)
+    ok, msg = e.action("hold", "g1")
+    assert ok and went == ["g1"] and "as soon as this switch lands" in msg
+    assert e.action("hold", "g1", "force")[0] and e.hold["force"]
+    e._hold_check()
+    assert e.hold["force"]                      # still landing elsewhere: keep "now"
+    e._pending_decision = None
+    went.clear()
+    assert e.action("hold", "g1")[1].startswith("Holding on g1") and went == []

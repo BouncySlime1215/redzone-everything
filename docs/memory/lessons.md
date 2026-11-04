@@ -131,6 +131,13 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** /api/action had no tap identity. `engine.skipped` counted from the tap, not from when the TV left.
 - **Fix:** every phone tap carries an id (redzone/commands.py): a repeat id gets the first answer back, never a second run; the phone retries a lost answer with the same id. The skip's five minutes start once the TV is off the skipped game. Drill with taps lost and duplicated on purpose: 83 taps, 65 retried, 0 ran more or less than once; skips that never left 2 -> 0.
 - **Signals:** double tap, retry, duplicate, "Go now" mid-play, skip ignored, skip_stuck, not_once
+
+## "Go now" on the game on screen, tapped mid-switch, was ignored
+- **Symptom:** (controls drill, `mid_flip` press, 4 of 4) "Watch this" + "Go now" on the game you're leaving, tapped while the flip away from it is landing: the phone said "Holding on X", the TV landed on the other game and stayed there.
+- **Cause:** `_hold` saw `decider.current == gid` (current only moves once the flip lands) and treated it as already there; `_hold_check` then cleared "force" for the same reason, so the way back waited for a dead ball.
+- **Fix:** playbook=BTN-05: a hold of the current game while a switch away from it is pending queues the way back (it runs as soon as the flip lands; a flip is never cancelled halfway) and keeps "force". Drill: 4 of 4 land, ~10 s.
+- **Signals:** "Holding on" while the TV shows another game, mid_flip dropped, current vs pending target
+
 - 2026-11-04: **CI now checks playbook coverage and posts a RAM/CPU line.** Tests claim entries with
   `@pytest.mark.playbook("ID")`. `scripts/playbook_coverage.py --junit` fails CI only when an entry marked
   `done` has no passing test, or a test names an unknown id, so the 79 entries can be built top-down.
