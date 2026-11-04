@@ -84,3 +84,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** macOS privacy (TCC) closes ~/Documents to launchd itself, so a `WorkingDirectory` or log path inside the checkout fails before Python runs.
 - **Fix:** no WorkingDirectory; `python -c` changes into the checkout and runs the script; launchd logs in ~/Library/Logs/redzone; Full Disk Access for the venv's python3.12.
 - **Signals:** EX_CONFIG, exit 78, launchd, WorkingDirectory, Documents, TCC
+
+## A new switch path was invisible to the cut grader
+- **Symptom:** Prime multiview tile switches (path `prime_tile`) would never show up in data/supervisor_cuts.jsonl, so their mid-play entries couldn't be counted.
+- **Cause:** `trace.build` only sets `cut_at` for a flip or for path `single`; any other in-place path got `cut_at` None and the supervisor skips those.
+- **Fix:** `trace.IN_PLACE` lists the paths that change the stick on screen (`single`, `prime_tile`); a new in-place path must be added there. Test: tests/test_prime_multiview.py.
+- **Signals:** new Outcome.path, cut_at None, ungraded cuts, supervisor_cuts.jsonl missing rows
