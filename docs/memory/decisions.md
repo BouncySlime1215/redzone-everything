@@ -175,6 +175,21 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   bound: 0.56 % of restarts before the bound on 421 unseen public nights (today's FLOOR_S: 7.33 %) at the same
   tightness, ECE 0.053; on the NBA scorecard at B=90 (dev nights) entries mid-play 5/61 -> 5/61, so no gain to
   ship yet. The remaining NBA mid-play entries are entry policy (crunch_now live, 180 s wait cap), Noggin Pick.
+- 2026-11-04 9:30 AM (noggin logic, cycle 01): **candidate profile: finished-game exits wait for the next dead
+  ball and crunch entries rewind to the last whistle** (`decider.entry.max_wait_s={}`,
+  `decider.entry.crunch_now=rewind`, candidate only, live defaults unchanged). Full sets, candidate column: dev
+  mid-play 0.35 -> 0.23 per 100 landings, locked 0.33 -> 0.17; big live, crunch live, your-team and big seen
+  unchanged on both. `crunch_now=wait` reaches 0 on NBA dev but costs big live NBA 81.7 -> 77.5 and crunch
+  live 90.9 -> 90.0, and a bounded crunch wait (15-60 s) still costs a big play, so it is left for Nick.
+- 2026-11-04 8:40 AM: **Pre-tune a game opened on the phone, OFF by default** (`two_stick.pretune_on_open: false`).
+  Nick (3:05 AM): "GO TO THIS GAME NOW switches within ~3 s (pre-tune, flip)". Opening a live game's sheet tunes it
+  on the hidden stick (the planner leaves it there 90 s), so the "Watch this" + "Go now" that follows is a flip.
+  Controls drill (4 nights): open -> Go now median 8.36 -> 3.06 s, max 8.7 -> 4.34 s. OFF until real presses on
+  Nick's TV show it, since every sheet opened costs a tune and takes the hidden stick off the planner's pick.
+- 2026-11-04 3:20 AM: **Phone v2 added OFF** (`phone.v2: false`) and the Noggin L2 prefs got config defaults
+  (`noggin.priority.prefs`, the same values as `Preferences` in redzone/noggin/priority.py, so nothing moves).
+  Phone v2 only writes `feedback` rows (note `switch` / `missed`); the decider, tick loop and TV never read them.
+  Rivalries stay config-only for now: the validator takes lists of names, not pairs.
 - 2026-11-04 10:30 AM (noggin logic, playbooks): **Safety playbooks SAFE-01/02/03/05 ship OFF**
   (`playbooks.safe.enabled: false`, redzone/decider/playbooks.py). Each holds a switch and logs `playbook=<id>`.
   SAFE-02's threshold is 10 s, not the backlog's 3 s: the sims' normal delay doubt is 4-8 s (floor

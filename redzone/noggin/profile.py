@@ -20,6 +20,13 @@ PROFILES: dict[str, dict] = {
             "replay.redzone_way=true",
             "noggin.timing.leagues=[nba]",
             "sources.nhl_primary=true",
+            # [noggin logic, cycle 01] A finished game's exit waits for the target's next dead ball
+            # (no blind 180 s cap), and a crunch-time entry lands on the last whistle with a rewind
+            # when one is in reach instead of going in live. Dev NBA mid-play entries 6 -> 3, plays
+            # missed on entry 4 -> 1, big plays and crunch live unchanged (docs/timing.md). "wait"
+            # reaches 0 but costs big plays live and crunch live, so it is Nick's call.
+            "decider.entry.crunch_now=rewind",
+            "decider.entry.max_wait_s={}",
         ],
     },
 }

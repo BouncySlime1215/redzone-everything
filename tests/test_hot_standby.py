@@ -673,3 +673,57 @@ async def test_a_refresh_never_wakes_a_sleeping_stick_or_presses_home(two, monke
     assert tuner.calls == [("b:5555", "youtubetv:espn")]
     assert not any("WAKEUP" in x or "HOME" in x or "onetouchplay" in x for x in new)
     assert c.main.host == "b:5555" and FakeStick.last_input_host == "b:5555"
+
+
+# --- phone controls: a game opened on the phone, "go now" on a preloaded game ------------------
+
+async def test_a_game_opened_on_the_phone_skips_the_preload_gap_and_displaces_the_planner(two):
+    """preload(user=True) (engine._peek): what you opened wins over the planner's guess still loading,
+    and the planner's MIN_PRELOAD_GAP_S doesn't make you wait."""
+    c, tuner = two
+    tuner.slow = {"youtubetv:fox": 5.0}
+    assert c.preload("youtubetv:fox")                   # the planner's guess, slow to load
+    await asyncio.sleep(0.05)
+    guess = c._preload_task
+    assert not c.preload("youtubetv:cbs")               # a second planner preload waits out the gap
+    assert c.preload("youtubetv:cbs", user=True)        # your pick doesn't
+    await asyncio.wait_for(c._preload_task, 2)
+    assert guess.cancelled() and c.standby == ("youtubetv:cbs", None) and c.hidden_ready
+
+
+async def test_a_user_preload_never_displaces_a_switch(two):
+    c, tuner = two
+    tuner.slow = {"youtubetv:espn": 0.3}
+    done = asyncio.Event()
+    c.submit("youtubetv:espn", on_done=lambda o: done.set(), may_cut=lambda: True)
+    await asyncio.sleep(0.05)
+    assert not c.preload("youtubetv:cbs", user=True)    # the switch owns the sticks
+    await asyncio.wait_for(done.wait(), 2)
+
+
+async def test_go_now_on_a_fresh_preload_flips_without_a_second_steady_wait(two, monkeypatch):
+    """The tune's confirming read counts as the first of the flip's two steady reads, so "go now"
+    right after a preload costs one read, not FLIP_STEADY_S more."""
+    monkeypatch.setattr(ctl, "FLIP_STEADY_S", 1.5)
+    c, tuner = two
+    assert c.preload("youtubetv:fox")
+    await asyncio.wait_for(c._preload_task, 2)
+    assert c._steady.get(c.hidden.host, (None,))[0] == ("youtubetv:fox", 0)
+    await asyncio.sleep(1.55)
+    done = asyncio.Event()
+    outs = []
+    t0 = time.monotonic()
+    c.submit("youtubetv:fox", on_done=lambda o: (outs.append(o), done.set()), may_cut=lambda: True)
+    await asyncio.wait_for(done.wait(), 4)
+    assert outs[0].ok and outs[0].path == "preloaded"
+    assert time.monotonic() - t0 < 1.2                  # the flip itself (~0.6 s here), no 1.5 s steady wait
+
+
+async def test_verify_standby_keeps_the_steady_evidence_fresh(two):
+    c, tuner = two
+    assert c.preload("youtubetv:fox")
+    await asyncio.wait_for(c._preload_task, 2)
+    c._steady.pop(c.hidden.host, None)
+    c._verified_at = 0
+    await c.verify_standby()
+    assert c._steady.get(c.hidden.host, (None,))[0] == ("youtubetv:fox", 0)

@@ -109,17 +109,93 @@ class ClockSkew(Fault):
         world.clock.skew -= float(self.info.get("seconds", 30.0))
 
 
+# ---- playbook faults (docs/playbooks.md): one night-lab kind per entry that had none ----------
+
+class FeedFrozen(Fault):
+    """FEED-02: the feed keeps answering (304 / the same cached body) but nothing advances: no error,
+    so only the no-progress rule can tell. The game on screen must not be left or entered on stale data."""
+    def start(self, world):
+        world.feed.frozen = True
+        world.house.event("fault", "-", "feed frozen")
+
+    def stop(self, world):
+        world.feed.frozen = False
+
+
+class RateLimit(Fault):
+    """FEED-06: every poll answers 429 for `dur` seconds (counted as source errors, like a 5xx)."""
+    def start(self, world):
+        world.feed.rate_limited = True
+        world.house.event("fault", "-", "feed 429")
+
+    def stop(self, world):
+        world.feed.rate_limited = False
+
+
+class SlowPoll(Fault):
+    """MAC-05 slow tick: each feed poll's round trip takes info.seconds longer (a saturated link or
+    a hot, throttled Mac), so data arrives late and the engine's loop runs slower."""
+    def start(self, world):
+        world.feed.slow_s = float(self.info.get("seconds", 6.0))
+
+    def stop(self, world):
+        world.feed.slow_s = 0.0
+
+
+class WifiDegrade(Fault):
+    """SAFE-03: every adb reply from both sticks is info.scale times slower (weak Wi-Fi), and the sync
+    probe reports the bad link (info.q, buffering + an RSSI drop) for the stick on screen."""
+    def start(self, world):
+        world.house.adb_scale = float(self.info.get("scale", 8.0))
+        e = world.engine
+        self.info["target"] = e.decider.target_of(e.decider.current) or "visible"
+        e._sync_condition(self.info["target"], float(self.info.get("q", 13.0)), {})
+        # The probe re-reports every few seconds on a real stick; stand in for that for the whole fault.
+        q, t = e.decider.safety.net[self.info["target"]]
+        e.decider.safety.net[self.info["target"]] = (q, t + self.dur)
+        world.house.event("fault", "*", f"wifi x{world.house.adb_scale:g}")
+
+    def stop(self, world):
+        world.house.adb_scale = 1.0
+        world.engine._sync_condition(self.info.get("target", "visible"), 1.0, {})
+
+
+class Buffering(Fault):
+    """NET-02: the stick's player spins (BUFFERING) for `dur` seconds, then plays again by itself."""
+    def start(self, world):
+        from redzone.lab.night import house as h
+        self.host = _pick(world, self.host or "visible")
+        d = world.house.sticks[self.host]
+        a = d.apps.get(d.fg)
+        self.info["pkg"] = a.pkg if a else None
+        if a is not None and a.screen == "player" and a.state == h.PLAYING:
+            d._stamp(a, h.BUFFERING)
+            self.info["hit"] = True
+        world.house.event("fault", self.host, "buffering")
+
+    def stop(self, world):
+        from redzone.lab.night import house as h
+        d = world.house.sticks.get(self.host)
+        a = d.apps.get(self.info.get("pkg") or "") if d else None
+        if a is not None and a.state == h.BUFFERING:
+            d._stamp(a, h.PLAYING, d._live_pos(a))
+
+
+PLAYBOOK = {"feed_frozen": "FEED-02", "rate_limit": "FEED-06", "slow_poll": "MAC-05", "wifi_degrade": "SAFE-03",
+            "buffering": "NET-02", "feed_stale": "SAFE-01", "sync_wide": "SAFE-02"}   # fault kind -> docs/playbooks.md entry it exercises
+
+
 class FeedStale(Fault):
     """[playbooks SAFE-01] Every live game's feed but the one on screen stops (one source wedged on
     those games): any switch would go into a game whose feed is stale."""
     def start(self, world):
         cur = world.engine.decider.current
-        world.feed.frozen = {r.gid for _, r in world.feed.games if r.gid != cur}
-        self.info["frozen"] = sorted(world.feed.frozen)
-        world.house.event("fault", "-", f"feed stale on {len(world.feed.frozen)} games")
+        world.feed.stale_games = {r.gid for _, r in world.feed.games if r.gid != cur}
+        self.info["frozen"] = sorted(world.feed.stale_games)
+        world.house.event("fault", "-", f"feed stale on {len(world.feed.stale_games)} games")
 
     def stop(self, world):
-        world.feed.frozen = set()
+        world.feed.stale_games = set()
 
 
 class SyncWide(Fault):
@@ -142,24 +218,10 @@ class SyncWide(Fault):
                 d.sigma = sig
 
 
-class WifiDegrade(Fault):
-    """[playbooks SAFE-03] The sync probe reports buffering + an RSSI drop on the stick on screen."""
-    def start(self, world):
-        e = world.engine
-        self.info["target"] = e.decider.target_of(e.decider.current) or "visible"
-        e._sync_condition(self.info["target"], float(self.info.get("q", 13.0)), {})
-        # The probe re-reports every few seconds on a real stick; stand in for that for the whole fault.
-        q, t = e.decider.safety.net[self.info["target"]]
-        e.decider.safety.net[self.info["target"]] = (q, t + self.dur)
-        world.house.event("fault", "-", "wifi degraded")
-
-    def stop(self, world):
-        world.engine._sync_condition(self.info.get("target", "visible"), 1.0, {})
-
-
 KINDS = {"stick_drop": StickDrop, "stick_wedge": StickWedge, "still_watching": StillWatching,
          "feed_outage": FeedOutage, "flip_ignored": FlipIgnored, "api_down": ApiDown, "clock_skew": ClockSkew,
-         "feed_stale": FeedStale, "sync_wide": SyncWide, "wifi_degrade": WifiDegrade}
+         "feed_frozen": FeedFrozen, "rate_limit": RateLimit, "slow_poll": SlowPoll, "wifi_degrade": WifiDegrade,
+         "buffering": Buffering, "feed_stale": FeedStale, "sync_wide": SyncWide}
 
 
 def from_spec(spec: dict) -> Fault:
@@ -212,6 +274,27 @@ def safety(world, rng: random.Random) -> list[Fault]:
             SyncWide("sync_wide", when(0.30, 0.40), 600.0, info={"sd": 12.0}),
             WifiDegrade("wifi_degrade", when(0.50, 0.60), 900.0, info={"q": 13.0}),
             ClockSkew("clock_skew", when(0.70, 0.80), 1800.0, info={"seconds": 30.0})]
+
+
+def playbook(world, rng: random.Random) -> list[Fault]:
+    """`--faults redzone.lab.night.faults:playbook`: one of each playbook fault at seeded live times,
+    next to (or with --no-default-faults instead of) the I4 night. Each is graded in the report's
+    `playbook_faults` (cuts and mid-play cuts while it ran and 60 s after)."""
+    wins = world.live_windows
+    a, b = wins[0][0], max(hi for _, hi in wins)
+
+    def when(lo, hi):
+        for _ in range(200):
+            t = a + (b - a) * rng.uniform(lo, hi)
+            if any(w0 + 300 <= t <= w1 - 600 for w0, w1 in wins):
+                return t
+        return t
+    out = [FeedFrozen("feed_frozen", when(0.10, 0.20), rng.uniform(90, 180)),
+           RateLimit("rate_limit", when(0.25, 0.35), rng.uniform(60, 180)),
+           SlowPoll("slow_poll", when(0.40, 0.50), rng.uniform(300, 600), info={"seconds": rng.uniform(4, 9)}),
+           WifiDegrade("wifi_degrade", when(0.55, 0.65), rng.uniform(300, 600), info={"scale": rng.choice([4.0, 8.0, 15.0])}),
+           Buffering("buffering", when(0.70, 0.80), rng.uniform(8, 40), rng.choice(["visible", "hidden"]))]
+    return sorted(out, key=lambda f: f.at)
 
 
 def plug(spec: str, world, rng: random.Random) -> list[Fault]:
