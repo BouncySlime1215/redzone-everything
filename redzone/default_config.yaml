@@ -254,6 +254,9 @@ decider:
     shortest_break_s:      # ~10th pct, stoppage -> next scrimmage play logged, late Q4/OT, 2025 games
       {timeout: 30, injury: 27, review: 80, score_break: 110, two_minute_warning: 150, end_period: 180}
 
+onebrain:                  # [one brain] migration flags (docs/onebrain-migration.md); each ships OFF
+  world_shadow: false     # step 7: build the per-tick WorldState beside the legacy path, log data/world_shadow.jsonl
+
 crunch:                    # [one brain, step 2] ONE crunch table (redzone/crunch.py), read by the scorer, standby,
                            # the demo and the grading. period / clock_s (left, at or under; null = whole period on) / margin /
                            # ot (crunch from this period on) / ot_close (OT still needs the margin). Values as shipped Nov 4.
