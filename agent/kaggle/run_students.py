@@ -46,10 +46,8 @@ TIME_PER_JOB_S = 3.0 * 3600
 BUDGET_S = float(os.environ.get("RZ_STUDENT_BUDGET_S", str(4.5 * 3600)))
 ANSWER_RESERVE_S = float(os.environ.get("RZ_ANSWER_RESERVE_S", str(45 * 60)))
 KILL_GRACE_S = 600.0
-# [V6] Round grade = a stratified sample of the dev-test rows (by task and league); the full set is for the
-# release only (RZ_ANSWER_ALL=1). 5,542 rows x 160 tokens took 1.5-3 h on a T4 in V5.
-ANSWER_N = int(os.environ.get("RZ_ANSWER_N", "1500"))
-ANSWER_ALL = os.environ.get("RZ_ANSWER_ALL") == "1"
+# [V6] Every round answers the FULL test set (Nick, Nov 4 3:00 AM: no samples). The speed comes from the
+# fp16 base, batching and the progress tee; 5,542 rows x 160 tokens took 1.5-3 h on a T4 in V5.
 ANSWER_BATCH = 32
 SMOKE = os.environ.get("RZ_SMOKE") == "1"
 FP16_OVERFLOW = 3                             # job exit code: rerun it once on a float32 base     # CPU smoke test: tiny model, few steps
@@ -76,25 +74,6 @@ def _eta(done: int, total: int, t0: float) -> str:
         return "?"
     left = (time.time() - t0) / done * max(0, total - done)
     return f"{left / 60:.0f} min"
-
-
-def answer_sample(rows: list[dict], n: int = ANSWER_N, seed: str = "v6-answer") -> list[dict]:
-    """A stratified sample of the test rows for the round grade: every (task, league) stratum keeps its
-    share (at least 1 row each), deterministic. All rows when RZ_ANSWER_ALL=1 or there are few rows."""
-    if ANSWER_ALL or len(rows) <= n:
-        return rows
-    strata: dict[tuple, list[dict]] = {}
-    for r in rows:
-        lg = str(r.get("id", "")).split(":", 1)[0] if ":" in str(r.get("id", "")) else ""
-        strata.setdefault((str(r.get("task", "")), lg), []).append(r)
-    picked = []
-    for key in sorted(strata):
-        g = strata[key]
-        k = max(1, round(n * len(g) / len(rows)))
-        random.Random(f"{seed}{key}").shuffle(g)
-        picked += g[:k]
-    keep = {r["id"] for r in picked}
-    return [r for r in rows if r["id"] in keep]       # original order (length buckets stay as built)
 
 
 def base_dir(work: Path) -> Path:
@@ -259,11 +238,8 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
     model.config.use_cache = True
     if dev == "cuda" and BASE_DTYPE != "float16":
         model.half()        # [V6] answering never needs a float32 base (training fell back to float32)
-    all_tests = rd("test.jsonl")[:8 if SMOKE else None]
-    tests = answer_sample(all_tests)
-    json.dump({"mode": "all" if len(tests) == len(all_tests) else "stratified sample", "n": len(tests),
-               "of": len(all_tests), "ids": [r["id"] for r in tests]}, open(out / "answer_sample.json", "w"))
-    print(f"{name}: answering {len(tests)} of {len(all_tests)} test rows", flush=True)
+    tests = rd("test.jsonl")[:8 if SMOKE else None]
+    print(f"{name}: answering all {len(tests)} test rows", flush=True)
 
     def answer(rows, path: Path, adapter_on=True) -> dict:
         """Answers in batches, appended as they come (a stop keeps every finished batch)."""
