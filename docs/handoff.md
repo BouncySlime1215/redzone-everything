@@ -71,9 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-STATUS 15:46: usage 24%, open PRs 20->30, CI next+release green, deploy healthy.
-STATUS: Kaggle noggin-factory running ~60 min; cbb 2026 shard failed (KeyError League.CBB).
-STATUS: Waiting on Nick: should crunch=stay be absolute for every game (#156/#160)? Poked coordinator on deferred-features thread (31m).
+Usage 24%. #148 merged; lane 5 unblocked; #155 waits on CI. Nick's 4:15 crunch correction (learned crunch entry/exit) sent to all lanes.
+Kaggle noggin-factory still running 3857s; deploy healthy; integration/next CI queued; 30 open PRs.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
