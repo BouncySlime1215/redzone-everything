@@ -358,6 +358,7 @@ class Decider:
         home_before = (self.home_break_visit, self.home_return_at)
         d = self._decide(cands, now)
         d = self._clairvoyant(d, cands, now, home_before)
+        d = self._crunch_guard(d, cands, now, home_before)
         d = self._hold_for_big(d, cands, now, home_before)
         d = self._time_entry(d, cands, now, home_before)
         if not commit and d.action in ("switch", "replay"):
@@ -780,6 +781,19 @@ class Decider:
         state = State.REPLAY if self.after_replay else d.state
         return Decision(now, "stay", self.current, f"{plan.why}: {d.reason}", state, d.gate,
                         want=d.target)
+
+    def _crunch_guard(self, d: Decision, cands, now: float, home_before) -> Decision:
+        """[crunch guard, with noggin.lookahead.enabled] A catch-up replay of another game never takes the
+        screen off a game inside its crunch window: the replay waits (it stays catchable for 10 min).
+        Under tighter sync (the 3 s what-if) these replays cost NHL crunch live 80.2 -> 77.6."""
+        if d.action != "replay" or not self.cfg.get("noggin.lookahead.enabled", False) or self.current is None:
+            return d
+        cur = cands.get(self.current)
+        if cur is None or not cur.scored.crunch_now or (d.replay and d.replay.game_id == self.current):
+            return d
+        self.lookahead_why["crunch_guard"] = self.lookahead_why.get("crunch_guard", 0) + 1
+        self.home_break_visit, self.home_return_at = home_before
+        return Decision(now, "stay", self.current, f"crunch time here: catch-up waits ({d.reason})", d.state, d.gate)
 
     def _clairvoyant(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[GAME-04 clairvoyance, noggin.lookahead.enabled] The feed already knows a big play in game X

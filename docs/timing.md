@@ -378,3 +378,17 @@ safety signal.
 
 Reproduce with `SIGCAP=3 python sigcap.py <league> ...`, which wraps scripts/eval_sports.py and patches
 `Delay.current_sigma`.
+
+**Crunch guard** (with `noggin.lookahead.enabled`): a catch-up replay of another game never takes the screen off a game
+inside its crunch window. The replay waits; it stays catchable for 10 minutes. Under the 3 s what-if those replays
+were the NHL crunch loss. Results:
+
+| | guard off | guard on |
+|---|---|---|
+| NHL crunch, 3 s cap | 77.6 | 78.7 |
+| NFL crunch, 3 s cap | 72.1 | 74.3 |
+| NHL crunch, candidate | 80.2 | 80.6 |
+
+Big plays live held under the cap: NFL 64.1, NBA 81.7, NHL 49.2. Dead air under the cap rose for NFL (29.8 → 30.6).
+The rest of the NHL gap is two nights (Oct 19 and Oct 27) where two crunches overlap and it picks the other one.
+That's GAME-05 (crunch overlaps), not a switch away from crunch time.

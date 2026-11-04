@@ -56,3 +56,21 @@ def test_candidate_turns_it_on_with_crunch_wait():
     from redzone.noggin import profile
     args = profile.argv("candidate", "nba")
     assert "noggin.lookahead.enabled=true" in args and "decider.entry.crunch_now=wait" in args
+
+
+def test_crunch_guard_keeps_a_catch_up_replay_off_a_crunch_game():
+    from redzone.decider.decider import Decider, Decision, Missed, State
+    from redzone.decider.screen import DelayBook
+
+    class Cfg(dict):
+        def get(self, k, default=None):
+            return super().get(k, default)
+    dec = Decider(Cfg({"noggin.lookahead.enabled": True}), DelayBook({}, 15.0))
+    dec.current = "A"
+    cands = {"A": NS(target="yt:a", stale=False, scored=NS(crunch_now=True))}
+    m = Missed("B", "p1", "goal", "goal", 1000.0, 50.0)
+    d = Decision(1100.0, "replay", "B", "catch-up: goal", State.WATCHING, kind="replay", replay=m)
+    out = dec._crunch_guard(d, cands, 1100.0, (None, 0.0))
+    assert out.action == "stay" and out.target == "A" and dec.lookahead_why["crunch_guard"] == 1
+    cands["A"].scored.crunch_now = False
+    assert dec._crunch_guard(d, cands, 1100.0, (None, 0.0)) is d
