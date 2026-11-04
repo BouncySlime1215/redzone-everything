@@ -233,6 +233,9 @@ decider:
   # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.89 s) + the 1 s settle.
   # Replaced by your own measured times as you use it (see switch_speed).
   switch_cost: {youtubetv: 5.5, prime: 27, espn: 7.5, hdmi_flip: 3}
+  break_owed:              # [EXP-020] rulebook "break owed" countdown (scoring/breaks.owed_in): don't land on a
+    enabled: false         # game whose owed long break comes within window_s of game clock. OFF: pre-registered bar first
+    window_s: {nba: 24, cbb: 24, nhl: 30}   # set a priori (about one possession / one stoppage), never tuned on locked
   return_tolerance: 5      # go back to the previous game if it's within this many points
   break_destination_min: 25   # anything at least this good beats watching a commercial
   chase_max_deficit: 15

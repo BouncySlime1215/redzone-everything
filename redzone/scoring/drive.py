@@ -171,6 +171,9 @@ def _heat(g: GameState, dr: Drive, empty: int, now: float) -> tuple[float, float
     return h, dead, why
 
 
+OWED_LEAGUES = (League.NBA, League.CBB, League.NHL)   # [EXP-020] leagues with rulebook-owed long breaks
+
+
 class DriveScorer(Scorer):
     """The scorer, plus NFL drive heat. Only Scorer.score's output is touched (public API)."""
 
@@ -184,6 +187,11 @@ class DriveScorer(Scorer):
 
     def score(self, g: GameState, me: Personal | None = None) -> Scored:
         s = super().score(g, me)
+        if g.league in OWED_LEAGUES and g.phase == Phase.LIVE and self.cfg.get("decider.break_owed.enabled"):
+            # [EXP-020] the rulebook countdown to the next owed long break (scoring/breaks.owed_in)
+            self.breaks.observe(g)
+            owed = breaks.owed_in(g, self.breaks.clocks(g.game_id, g.period))
+            return s if owed is None else replace(s, factors={**s.factors, "owed_s": round(owed, 1)})
         if g.league.base != League.NFL or g.phase != Phase.LIVE or not self.cfg.get("redzone_mode.enabled", True):
             return s
         h = self.drives.observe(g)

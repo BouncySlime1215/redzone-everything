@@ -376,3 +376,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   decisions, and never in crunch, down the stretch, your-team moments or the catch-up queue. Every decision logs its
   propensity so the doubly robust estimator is valid. Promotion goes through the normal bar (worth it ≥ live).
   Reason: grade new brains on logged nights without running them live.
+- 2026-11-04 (lane 2, EXP-020, pre-registered in docs/experiments.md before any run): **`decider.break_owed`**
+  (enabled `false`, window_s NBA/CBB 24, NHL 30 game-clock seconds, set a priori). The scorer adds the rulebook
+  countdown `owed_s` (scoring/breaks.owed_in: NBA mandatory, CBB media, NHL TV timeouts with their exceptions) to
+  NBA/CBB/NHL games when on, and the decider treats a non-crunch game whose owed break is that close as a bad
+  destination (like a break on screen). **Why:** stop landing right before a commercial. **Result: FAILED its bar** (NHL crunch live seed 1 −6.4,
+  crunch-in-replay up, dead air up; NBA no change), so it ships OFF; see the experiments.md results log.
