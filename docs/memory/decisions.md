@@ -363,3 +363,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   to `two_stick.standby_repause_s: 600` in default_config.yaml, value unchanged; postseason.py's ROUNDS / DEFAULTS /
   _rank renamed ROUNDS_LEFT / WEIGHTS / _poll_rank (no behavior change). Reason: the contract kernel (K1/K2/K4)
   flagged them as new on merge; one definition per fact, timings in config (Nick, one connected system).
+- **2026-11-04 (lane 2, EXP-005 logging half): `decider.log_options`** (default `false`). Each decision can carry its
+  option set (stay, a switch to each live game, the best catch-up) with the facts it was judged on and the policy's
+  propensities (deterministic: 1.0 for the one taken). Logging only: NHL dev seed 0 sim JSON identical on vs off.
+  Randomizing near-ties stays on hold until Nick OKs it.

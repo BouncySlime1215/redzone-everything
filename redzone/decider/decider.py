@@ -186,6 +186,10 @@ class Decision:
     replay: "Missed | None" = None
     want: str | None = None   # the game it wants to switch to while it waits for a safe moment
     rewind_s: float = 0.0     # [cut timing] land this far behind live (whole seek steps) on a dead ball
+    # [EXP-005 off-policy logging, decider.log_options] every option this decision could have taken, with the
+    # policy's probability of each (the decider is deterministic: 1.0 for the one taken, 0 for the rest)
+    options: tuple = ()
+    propensity: float = 1.0
 
 
 @dataclass
@@ -400,7 +404,7 @@ class Decider:
             # the command first: a proposal is not a watched game or replay.
             self._proposal_home = (d, self.home_break_visit, self.home_return_at)
             self.home_break_visit, self.home_return_at = home_before
-            self.log.append(d)
+            self._log_decision(d, cands)
             return d
         if d.action == "switch" and d.target:
             if d.target == self.current and not self.after_replay:
@@ -411,8 +415,44 @@ class Decider:
                 self.after_replay = False
         elif d.action == "replay" and d.replay:
             self._start_replay(d.replay, cands, now)
-        self.log.append(d)
+        self._log_decision(d, cands)
         return d
+
+    def _log_decision(self, d: Decision, cands: dict[str, Candidate]) -> None:
+        """[EXP-005] Keep the decision; with decider.log_options also its option set and propensities, so
+        a doubly robust estimator can grade another policy on logged nights. Logging only: the option set
+        is read after the choice is made and never feeds back into it."""
+        if self.cfg.get("decider.log_options", False):
+            try:
+                d.options = self._option_set(d, cands)
+                d.propensity = 1.0
+            except Exception:   # a log line must never cost the decision
+                log.exception("option set failed")
+        self.log.append(d)
+
+    def _option_set(self, d: Decision, cands: dict[str, Candidate]) -> tuple:
+        """Stay, a switch to each live game, and the best catch-up replay, each with the facts it was
+        judged on (score, watch value, break, crunch) and the policy's probability of taking it."""
+        def facts(gid):
+            x = cands.get(gid)
+            if x is None:
+                return {}
+            s = x.scored
+            wv = getattr(s, "watch_value", None)
+            return {"score": round(float(s.score), 1), "wv": None if wv is None else round(float(wv), 1),
+                    "brk": bool(s.is_break), "crunch": bool(s.crunch or s.crunch_now), "stale": bool(x.stale)}
+        taken = (d.action if d.action != "switch" or d.target != self.current else "stay",
+                 d.target if d.action != "stay" else self.current)
+        opts = [("stay", self.current)] + [("switch", g) for g in cands if g != self.current and g not in PSEUDO]
+        rp = d.replay if d.action == "replay" else next((m for m in self.queue if not m.replayed), None)
+        if rp is not None:
+            opts.append(("replay", rp.game_id))
+        out = []
+        for a, g in dict.fromkeys(opts):
+            out.append({"a": a, "g": g, "p": 1.0 if (a, g) == taken else 0.0, **facts(g)})
+        if not any(o["p"] for o in out):   # a pseudo channel (RedZone, the reel) or a decision we didn't list
+            out.append({"a": d.action, "g": d.target, "p": 1.0, **facts(d.target)})
+        return tuple(out)
 
     def confirm(self, d: Decision, cands: dict[str, Candidate]) -> None:
         """Commit an observed playback change, with screen time from confirmation."""
