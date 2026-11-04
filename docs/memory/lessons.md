@@ -7,6 +7,12 @@ auto-fix brain and the watchdog read this file before acting
 Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words that point to it
 (comma separated); the watchdog matches them against error signatures, so keep them literal.
 
+## A fixed blend weight left the NHL break odds miscalibrated
+- **Symptom:** after #51's log-odds fix, NHL break-forecast ECE was still 0.095 on held-out nights (brain alone 0.041).
+- **Cause:** the NHL rules say 0.70 for every owed TV timeout but only 18 % of those plays reach a break within a minute, so any fixed weight on the rules pulls the odds up; in the NFL it is the other way round (rules 0.75 -> observed 0.78, brain 0.18).
+- **Fix:** fit (a, b, c) per league on held-out nights only (`scripts/eval_break_blend.py`, `redzone/lab/breakblend.py`); ship a fit only when it beats the brain alone on the mean and the worst fold. Test: tests/test_break_blend.py.
+- **Signals:** break_weight, break_blend, ECE, break_soon_p, calibration
+
 ## Your team's missed TD lost every replay slot to other games' last chances
 - **Symptom:** release gate `nfl_stale` (10 s stale feed): your-team big plays seen 95.2 % (20/21). The TD was queued for a replay and never shown.
 - **Cause:** `Decider._best_replay` ranked any urgent play (in its last `replay.urgent_s`) above everything else, so with a stale feed's extra misses there was always another game's last chance ahead of your team's TD until its window closed.

@@ -1367,11 +1367,13 @@ class Engine:
                                replay_sure=sure)
 
     def _break_brain(self):
-        """(brain, blend weight) for the break forecast, or (None, 0) with the brain off."""
+        """(brain, blend weights, v3 lengths) for the break forecast, or (None, 0) with the brain off.
+        The weights are per league (brain.break_blend, fitted on held-out nights), with
+        brain.break_weight for a league nobody has fitted (breaks.weight_for)."""
         if not self.cfg.get("brain.enabled", False):
             return None, 0.0, False
-        return (self.scorer.brain, float(self.cfg.get("brain.break_weight", 0.5)),
-                self.cfg.get("brain.v3_lengths", ["nfl", "nba"]))
+        w = {"*": float(self.cfg.get("brain.break_weight", 0.5)), **(self.cfg.get("brain.break_blend") or {})}
+        return self.scorer.brain, w, self.cfg.get("brain.v3_lengths", ["nfl", "nba"])
 
     def _break_standby(self, cands: dict) -> tuple[str | None, str, standby.Option | None]:
         """The game on screen is about to break (redzone/scoring/breaks.py): where the decider will

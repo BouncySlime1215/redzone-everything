@@ -160,7 +160,9 @@ def fit(r: Rows, l2: float = L2, iters: int = 50) -> tuple[float, float, float]:
     return tuple(round(float(v), 4) for v in w)
 
 
-METHODS = ("rules", "brain", "legacy_blend", "fitted_blend")
+# rules alone, brain alone, the original 50/50 probability mix, the fixed log-odds 0.5 mix #51 shipped
+# (brain alone without rule evidence), and the fitted per-league log-odds blend.
+METHODS = ("rules", "brain", "legacy_blend", "logodds_05", "fitted_blend")
 
 
 def predict(method: str, r: Rows, coef=None) -> np.ndarray:
@@ -170,6 +172,8 @@ def predict(method: str, r: Rows, coef=None) -> np.ndarray:
         return apply((0.0, 1.0, 0.0), r)
     if method == "legacy_blend":
         return apply(None, r)
+    if method == "logodds_05":
+        return apply((0.0, 0.5, 0.5), r)
     return apply(coef, r)
 
 
