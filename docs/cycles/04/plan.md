@@ -49,6 +49,18 @@ data factory scales to billions of examples on Kaggle. **No signal from Nick in 
    can reach ≤3 s honestly once the probe confirms it.
 - **Bar:** tonight's run produces non-empty live rows; tick p99 and RSS unchanged.
 
+### Addendum: first real-hardware findings (live lab, Nick, 10:45 AM; docs/livelab-2026-11-04.md on the Mac)
+- **② (raises priority):** (a) the real SmartThings flip distribution (64/64 confirmed, p50 1.89 s, p95 2.18 s,
+  max 2.58 s, ack 0.31 s) replaces the 10-sample one in the sims and the planner's trip cost. (b) **YTTV reports a
+  real playback position (ms) on the 4K Plus while playing**: use it as a direct delay measurement in the
+  per-stick filter. It's the most likely way to the small σ that GAME-04 needs, so it comes right after the NBA
+  data-gap fix. YTTV (Cobalt) has no UI text nodes, so its anchors come from logcat/position, not the UI tree.
+- **③:** (a) **STK-05 paused hidden stick:** with HDMI-CEC on, every flip paused the stick we left, and it
+  drifted silently behind live. CEC is now off on both sticks, but the guard detects a PAUSED hidden stick
+  (media_session state + speed) and resumes or re-syncs it before any flip, with a marked night-lab test.
+  This comes right after the live-night logging. (b) A playing stick requires `speed > 0` **and** `active`
+  (a stale state=3 with active=false lingers after backgrounding).
+
 ## ④ App + integration hardening (only if reopened)
 Switch locked to v3 on Fri Nov 6; rebase #88/#91.
 
