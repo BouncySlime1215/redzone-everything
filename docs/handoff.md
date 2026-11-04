@@ -97,6 +97,15 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 - **Token thrift:** short directives, short coordinator replies, no long page dumps, and research
   agents only when they clearly pay off (cheaper models first).
 
+## 6c. The harness: who plans, who analyzes
+
+| Role | Who | What |
+|---|---|---|
+| **Analyst** | `scripts/northstar.py` plus a nightly CI job (being built Nov 4) | Computes the North Star table (0 mid-play cuts; ≥95% landings in dead time; ≥95% big plays live; your-team 100%; ≥99% live-or-replayed within 10 min; switch p95 ≤3 s; recovery ≥95%), with night-level CIs on unseen nights. Writes `docs/northstar.md` and a history file. |
+| **Planner** | The director, daily at about 8 AM | Reads `northstar.md` and `docs/roadmap.md`, re-ranks by (gap × impact) / effort, and gives the coordinator the day's top items with target deltas. |
+| **Executor** | Coordinator threads | Build. Every PR names the North Star metric it moves and shows the measured delta in CI. |
+| **Gatekeeper** | `release_gate.py` plus CI | A release only ships when the North Star rows hold on locked unseen nights. Anything that misses ships off behind a flag. |
+
 ## 7. How the director works (so a new session can take over)
 
 - **Every 10 minutes, in one pass:** usage guard → PRs/CI → Kaggle log → project threads → one
