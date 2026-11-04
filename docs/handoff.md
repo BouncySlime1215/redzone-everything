@@ -71,8 +71,12 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 1:10 PM ET. RC5.1 e8bbf8e is DEPLOYED and HEALTHY on the Mac** (switched 8a47053 → e8bbf8e, verdict healthy). Every new behavior is behind flags (OFF), so the live lab turns them on one at a time on the real TV. CEC is off on both sticks; SmartThings switching is on.
-- **Usage** 16% (brake lifted). Lab pending: press-to-TV and tonight's NBA shadow run (7 PM+). Kaggle V7 running (ETA ~7:30 PM).
+- 14:10 director check: RC5.1 e8bbf8e live, deploy verdict healthy; CI green on integration/next + integration/release.
+- Usage 17% weekly (brake lifted; hard stop at 89%).
+- Merged since last check: #115 #117 #118 #120 #121 #123 #126 #127.
+- Live lab: SmartThings flips p95 ~2 s, CEC off on both sticks, YTTV seek calibration + content-anchored sync signal found; awaiting tonight's NBA shadow run + real press-to-TV.
+- Kaggle V7 Mind training running (lane 1 pack c24f65c); grade read from log when done.
+- Open PRs pending review: #112 #113 #116 #119 #122 #125 #128-#133.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
