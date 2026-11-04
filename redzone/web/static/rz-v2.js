@@ -129,13 +129,13 @@ function commitSheet() {
 }
 ACTIONS["v2-commit-open"] = () => openSheet({ id: "v2-commit", label: "Commit", render: commitSheet });
 ACTIONS["v2-commit-hold"] = (el) => act("hold", {}, el);
-ACTIONS["v2-commit"] = (el) => act("commit", { value: { mode: el.dataset.mode, game_id: el.dataset.mode === "stop_after" ? curGame() : null } }, el);
+ACTIONS["v2-commit"] = (el) => act("commit", { value: el.dataset.mode === "stop_after" ? { mode: "stop_after", game_id: curGame() } : { mode: el.dataset.mode } }, el);
 ACTIONS["v2-commit-end"] = (el) => {
   const inp = document.querySelector('[data-act-input="v2-commit-at"]'), [h, m] = String((inp && inp.value) || "23:30").split(":").map(Number);
   const t = new Date(); t.setHours(h, m, 0, 0); if (t.getTime() < Date.now() - 3600e3) t.setDate(t.getDate() + 1);
   return act("commit", { value: { mode: "end_at", at: Math.round(t.getTime() / 1000) } }, el);
 };
-ACTIONS["v2-commit-clear"] = (el) => act("commit", { value: { mode: null } }, el);
+ACTIONS["v2-commit-clear"] = (el) => act("commit", { value: "off" }, el);  // #194: "off" clears it
 
 export function missedBar() {
   if (!v2.on) return "";

@@ -250,6 +250,7 @@ function action(b) {
     case "boost": case "unboost": if (g) g.boosted = a === "boost"; msg = `${a === "boost" ? "Boosted" : "Unboosted"} ${g ? g.matchup : ""}`; break;
     case "mute": case "unmute": if (g) g.muted = a === "mute"; msg = `${a === "mute" ? "Muted" : "Unmuted"} ${g ? g.matchup : ""}`; break;
     case "lock": M.locked_game = gid; M.state = "locked"; msg = `Staying on ${g ? g.matchup : "this game"}`; break;
+    case "commit": M.commit = b.value === "off" ? null : b.value; msg = M.commit ? "Commit set, applies at the next dead ball" : "Commit cleared"; break;
     case "unlock": M.locked_game = null; M.state = "watching"; msg = "Unlocked"; break;
     case "watch": case "hold": {
       if (!g || g.phase !== "live") return { ok: false, message: "That game isn't live" };
