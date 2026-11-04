@@ -1344,7 +1344,17 @@ def night_report(night: date, store: Any, root: Path, now: float | None = None,
                          + (f" -> {last.get('detail')}" if last.get("detail") else "") + ")")
         lines.append("")
 
+    try:
+        from redzone.platform.autofix import night_lines
+        autofix = night_lines(root, t0, t1)
+    except Exception:
+        autofix = []
+    if autofix:
+        lines += ["## Sent to Claude (auto-fix)", ""] + autofix + [""]
+
     needs = []
+    if autofix:
+        needs.append(f"{len(autofix)} problem(s) sent to Claude: review the draft PR(s) it opens (see 'Sent to Claude')")
     for x in observed:
         w = str(x.get("what", ""))
         if "approved on the TV" in w or "needs a look" in w or "GB free" in w:
@@ -1359,6 +1369,8 @@ def night_report(night: date, store: Any, root: Path, now: float | None = None,
     lines += ([f"- {w}" for w in list(dict.fromkeys(needs))[:5]] or ["Nothing."]) + [""]
     phone = obs.phone_body(nm, bud, len(fixes), fix_rules, causes, missed,
                            len(obs.watchdog_actions(root, t0, t1)))
+    if autofix:
+        phone += f"\nAuto-fix: {len(autofix)} problem(s) sent to Claude; a draft PR follows."
     return {"text": "\n".join(lines), "summary": summary, "phone": phone, "metrics": nm, "budget": bud}
 
 

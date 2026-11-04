@@ -249,6 +249,11 @@ multiview:                 # YouTube TV multiview as a switch path (redzone/tune
   tiles: 4                 # games in one multiview (YouTube TV's 2x2)
   must_have: 2             # reopen only when one of the top this-many YTTV games isn't a tile
   costs: {mv_open: 15.0, mv_expand: 1.5, mv_collapse: 1.0, mv_step: 0.35}   # seconds, until measured
+autofix:                   # the watchdog files problems it can't fix as GitHub issues for Claude (docs/auto-fix.md)
+  enabled: true            # kill switch on the Mac side (the repo variable AUTOFIX_ENABLED=false stops the GitHub side)
+  max_per_day: 3           # at most this many issues a day
+  refile_days: 7           # the same error is filed at most once per this many days
+  repo: ""                 # owner/name; empty = this checkout's origin
 governor:                  # keeps the Mac cool and its disk free (redzone/governor.py); live switching is never slowed
   enabled: true
   every_s: 30              # look at the Mac this often
