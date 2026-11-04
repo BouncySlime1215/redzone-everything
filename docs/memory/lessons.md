@@ -204,3 +204,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** (confirmed) the live check's 4 h budget ran on wall time from boot. The service restarted at 00:03 ET with no live games, so the check spent its 4 h on an empty slate and switched FastCast off for good. **Not yet explained:** the Nov 3 19:25-23:45 run had live games, yet the client never logged a connect or an error.
 - **Fix:** the budget counts only time with live games subscribed (`FastcastCheck.watching`). Every minute, the file carries the client's own status (task state, wanted topics, connected, updates, last error), the engine logs when FastCast starts and how many games it watches, and a client task that dies is logged at ERROR. The next live night's file says where it stops.
 - **Signals:** fastcast_check.json `result: stopped` with `games: 0`; no `espn_fastcast` rows in recordings/*/plays.jsonl.
+- 2026-11-04: **Two sticks are not one tune speed.** Live lab: hidden-stick tune to PLAYING p50 2.33 s / p95 3.06 s on
+  the 4K Plus vs 3.74 / 5.50 s on the 4K 2023, but every tune went into one shared median. The roles swap on every
+  flip, so there is no free "use the fast stick" choice; what we can do is price the stick that will tune. Tunes now
+  also book under `<app>@<model>`; tune_estimate uses it after 3, deadline_cost its p90 after 8. The decider's
+  long-run switch_cost stays the shared figure, so the config doesn't flap with whichever stick is hidden.

@@ -1,5 +1,7 @@
 """[switch timing] The decider plans a TV input change (SmartThings, ~2 s) with that path's own
 numbers, not HOME's (2-6 s and a relaunch)."""
+import statistics
+
 from redzone import control as ctl
 from redzone.channels import ChannelMap
 
@@ -69,3 +71,25 @@ def test_deadline_cost_uses_the_tv_bound_for_a_preloaded_target(cfg, tmp_path, m
     monkeypatch.setattr(type(c), "prime_mv", property(lambda self: None))
     monkeypatch.setattr(type(c), "hidden", property(lambda self: None))
     assert c.deadline_cost("youtubetv:espn") == 2.58 + 1.0
+
+
+def test_tune_cost_is_per_stick_model_once_measured(cfg, tmp_path, monkeypatch):
+    """Live lab Nov 4: hidden-stick tune to PLAYING p50 2.33 s on the 4K Plus, 3.74 s on the 4K 2023."""
+    from types import SimpleNamespace
+    c = _ctl(cfg, tmp_path, True)
+    plus, slow = SimpleNamespace(model="AFTMA08C15", host="a"), SimpleNamespace(model="AFTKM", host="b")
+    for _ in range(4):
+        c.latency.record("youtubetv", 2.3)
+        c.latency.record("youtubetv@AFTMA08C15", 2.3)
+        c.latency.record("youtubetv", 3.8)
+        c.latency.record("youtubetv@AFTKM", 3.8)
+    assert c.tune_estimate("youtubetv:espn", plus) == 2.3 and c.tune_estimate("youtubetv:espn", slow) == 3.8
+    assert c.tune_estimate("youtubetv:espn") == statistics.median([2.3] * 4 + [3.8] * 4)
+    assert c.tune_estimate("youtubetv:espn", SimpleNamespace(model="AFTKA")) == c.tune_estimate("youtubetv:espn")
+    # deadline_cost: the tuning stick's own p90 only after PER_STICK_DEADLINE_MIN tunes (rule #1)
+    monkeypatch.setattr(type(c), "two_stick", property(lambda self: False))
+    monkeypatch.setattr(type(c), "main", property(lambda self: slow))
+    before = c.deadline_cost("youtubetv:espn")
+    for _ in range(ctl.PER_STICK_DEADLINE_MIN):
+        c.latency.record("youtubetv@AFTKM", 9.0)
+    assert c.deadline_cost("youtubetv:espn") == 9.0 > before
