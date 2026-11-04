@@ -56,6 +56,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from redzone import config
 from redzone.channels import ChannelMap
 from redzone.tuners.adb import STICK_HUNG, Stick, adb_available, playback_ready, same_stream
 from redzone.tuners import prime_multiview as pmv
@@ -68,7 +69,7 @@ MAX_SAFE_WAIT_S = 25.0     # how long a flip may wait for a safe moment before g
 SAFE_POLL_S = 0.2          # re-check for that moment this often (a cheap local computation)
 PRELOAD_BACKOFF_S = 120.0  # a preload that failed isn't retried for this long
 STANDBY_REPAUSE_N = 3      # [APP-04] the same standby paused off screen this many times...
-STANDBY_REPAUSE_S = 600.0  # ...within this long is not CEC: the app is blocked there (a forced update)
+STANDBY_REPAUSE_S = float(config.default("two_stick.standby_repause_s", 600))  # ...within this long is not CEC: the app is blocked there (a forced update)
 MIN_PRELOAD_GAP_S = 5.0    # never start preloads back to back faster than this
 CEC_RETRY_S = 600.0        # a stick whose CEC flip failed goes straight to the TV remote this long
 CEC_SYNC_S = 30.0          # re-ask the sticks which one is on screen this often (when idle)

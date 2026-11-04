@@ -63,6 +63,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "two_stick.min_gain": (0, 100),
     "two_stick.input_settle_s": (0, 10),
     "two_stick.park_max_s": (30, 1800),
+    "two_stick.shadow": (0.1, 60),   # replay/backtest stick timings (standby.ShadowStick)
     "two_stick": (0, 3600),
     "switch_speed.sync_every_s": (60, 3600),
     "autonomy.busy_score": (0, 100),
@@ -86,6 +87,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "supervisor.budget.dead_air_s": (1, 300),
     "supervisor.budget.dead_air_pct": (0, 100),
     "supervisor.budget.safe_mode_min": (0, 1440),
+    "demo": (0, 60),   # replay simulator timings (redzone/demo/engine.py)
 }
 
 # Former rate/dwell limits are deliberately inactive. Old saved files and lab
@@ -102,6 +104,22 @@ def without_retired(cfg: dict, path: str = "") -> dict:
         if dotted not in RETIRED_SETTINGS:
             out[key] = without_retired(value, dotted) if isinstance(value, dict) else copy.deepcopy(value)
     return out
+
+
+_DEFAULTS: dict | None = None
+
+
+def default(dotted: str, fallback=None):
+    """A value from default_config.yaml, for code that has no live Config (read once, cached)."""
+    global _DEFAULTS
+    if _DEFAULTS is None:
+        _DEFAULTS = yaml.safe_load(DEFAULTS.read_text())
+    node = _DEFAULTS
+    for part in dotted.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return fallback
+        node = node[part]
+    return copy.deepcopy(node)
 
 
 class ConfigError(ValueError):
