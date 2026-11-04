@@ -71,9 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nudged integrator to merge Cycle 06 plan #162 (open 63m); lane 5 idle 32m, asked coordinator
-Newest factory pack is kaggle-inputs 30ca1c5 (replaces 610dde4); factory still running 7652s
-Usage 28%; deploy healthy; CI next in progress, release green
+#162 merged (Cycle 06 plan official); lane 5 PR #170 in CI; nudged idle lane 2 to rebase held PRs + start NHL crunch
+Kaggle factory still running (7936s); deploy healthy; usage 28%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
