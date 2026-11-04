@@ -136,6 +136,8 @@ jobs:
       - name: unpack pinned data (archive-backed tests run when it is there)
         if: needs.data.outputs.available == 'true'
         run: tar -xzf "eval-data/$EVAL_DATA_ASSET"
+      - name: leakage checks (research 05 §3; PENDING never fails, FAIL does)
+        run: python scripts/leak_check.py
       - name: end-to-end replayed night (when the suite has it)
         # The whole-night system test (real Engine + Controller + fakes) is the integration gate:
         # run it on its own first so its result is visible apart from the unit tests.

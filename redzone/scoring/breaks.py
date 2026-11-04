@@ -28,6 +28,7 @@ is never second-guessed.
 """
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 
@@ -70,6 +71,15 @@ NONE = Forecast(0.0, 0.0, "")
 BRAIN_LEN = {League.NFL: 150.0, League.NBA: 180.0, League.NHL: LEN["nhl_tv"], League.MLB: LEN["mlb_inning"]}
 
 
+def _mix_logit(a: float, b: float, w: float) -> float:
+    """(1-w)*logit(a) + w*logit(b), back to a probability (each side clipped off 0 and 1)."""
+    def lo(x: float) -> float:
+        x = min(max(x, 1e-4), 1 - 1e-4)
+        return math.log(x / (1 - x))
+    z = (1 - w) * lo(a) + w * lo(b)
+    return 1 / (1 + math.exp(-z))
+
+
 def blend(f: Forecast, p: float | None, g: GameState, w: float = 0.5, why: list[str] | None = None,
           v3=None, lengths: bool = True) -> Forecast:
     """Mix the rules' forecast with the brain's chance of a break in the next minute.
@@ -87,9 +97,14 @@ def blend(f: Forecast, p: float | None, g: GameState, w: float = 0.5, why: list[
         return f
     if p is None:
         return f
-    q = w * p + (1 - w) * f.p
     if f.p > 0:
-        return Forecast(q, f.expect_s, f.why)
+        # Both have evidence: mix in log-odds (research 02 §C18: the old 50/50 mix in probability
+        # space took the live ECE from <=0.10 for the brain alone to 0.12-0.17). `w` is the brain's
+        # weight; refit it on valid nights once the leak-free brain lands.
+        return Forecast(_mix_logit(f.p, p, w), f.expect_s, f.why)
+    # The rules see nothing coming: that is no evidence, not a forecast of 0, so the brain stands
+    # alone instead of being halved.
+    q = p
     if q <= 0:
         return f
     reason = "the model expects a break soon" + (f" ({why[0]})" if why else "")

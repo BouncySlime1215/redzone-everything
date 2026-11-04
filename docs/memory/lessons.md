@@ -90,3 +90,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** `trace.build` only sets `cut_at` for a flip or for path `single`; any other in-place path got `cut_at` None and the supervisor skips those.
 - **Fix:** `trace.IN_PLACE` lists the paths that change the stick on screen (`single`, `prime_tile`); a new in-place path must be added there. Test: tests/test_prime_multiview.py.
 - **Signals:** new Outcome.path, cut_at None, ungraded cuts, supervisor_cuts.jsonl missing rows
+
+## A replayed moment could see the end of the game
+- **Symptom:** none on a scorecard yet; found by research 05 §3. A replay at play N carried the summary's FINAL leader board, and the e2e night replayed 2 games from LOCKED test nights.
+- **Cause:** `espn.parse_summary(upto=N)` filled `leaders` from the whole-game boxscore; the night's GAMES were picked before the splits existed.
+- **Fix:** leaders are filled only when `upto is None`; the night uses train-night games (NHL 401892578, NBA 401909860). `scripts/leak_check.py` (in CI) fails on locked games in the night, end-of-game fields in a replay, model stamps past the test start and expired KNOWN_ERRORS.
+- **Signals:** a replayed GameState with leaders or W-L records, a fixture id on a test night, `leak_check` FAIL

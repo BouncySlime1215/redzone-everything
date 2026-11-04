@@ -87,3 +87,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-03 10:05 PM: **Deploy test step: 3600 s timeout, speed budgets skipped at background
   priority** (`RZ_TESTS_LOW_PRIORITY=1`), and the e2e night pins the host (governor) so the Mac's live
   app can't restart the night's engine. Every other test still blocks a deploy. RC 3 = RC 2 + these.
+- 2026-11-04 4:30 AM: **Rate gates are judged per night with a lower bound** (research 05 B9,
+  Director 11:30 PM queue). A rate gate (dead-ball entries, big plays seen, mid-play ≤5%) PASSes only
+  with ≥8 nights, ≥60 decisions and a cluster-bootstrap (over nights) lower bound ≥ the bar; it FAILs
+  when the point estimate (or the whole CI) is under the bar, and is PENDING otherwise. "0 mid-play cuts" also prints its
+  rule-of-three bound. Reason: a pooled rate over 4 locked NBA nights said PASS with no error bar.
+- 2026-11-04 4:30 AM: **breaks.blend mixes in log-odds and lets the brain stand alone when the rules
+  see nothing** (research C18: the 50/50 mix took live ECE from ≤0.10 to 0.12–0.17). Brain is off,
+  so no scorecard moves; refit the weight on valid nights after the leak-free retrain.

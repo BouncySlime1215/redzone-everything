@@ -54,11 +54,14 @@ class GameSpec:
 
 NIGHT_DAY = "2026-11-01"
 GAMES = [
-    GameSpec("nhl", "espn_nhl_summary_401892626", "youtubetv:espn", None, "ESPN"),
+    # NHL and NBA come from TRAIN nights of eval-data-v1 (Oct 25 and Oct 24), moved onto the night: the
+    # night is a gate everyone iterates against, so it must not replay locked-set games (research 05
+    # §3.2: it used NHL 401892626 and NBA 401909906, both locked). scripts/leak_check.py enforces it.
+    GameSpec("nhl", "espn_nhl_summary_401892578", "youtubetv:espn", "16:00", "ESPN"),
     GameSpec("nfl", "espn_nfl_summary_401772894", "youtubetv:fox", "16:25", "FOX"),
     GameSpec("cfb", "espn_cfb_summary_401858282", "youtubetv:abc", "19:45", "ABC"),
     GameSpec("nfl", "espn_nfl_summary_401772931", "youtubetv:nbc", "20:20", "NBC"),
-    GameSpec("nba", "espn_nba_summary_401909906", "prime:amzn1.dv.gti.night-tor-lal", None),
+    GameSpec("nba", "espn_nba_summary_401909860", "prime:amzn1.dv.gti.night-phx-gs", "21:00"),
 ]
 YTTV_CODES = {"espn": "ESPNnight01", "fox": "FOXnight001", "abc": "ABCnight001", "nbc": "NBCnight001"}
 
@@ -621,12 +624,14 @@ def _episodes(samples: list[Sample], pred) -> list[tuple[float, float]]:
 KNOWN_ERRORS = (
     # control.boundary_reads reads s.tuned["target"] again after awaiting another stick's
     # playback; a switch can clear s.tuned meanwhile (SWITCHING, redzone/control.py:293).
-    ("boundary read failed", "TypeError: 'NoneType' object is not subscriptable"),
+    # (message, exception, expires YYYY-MM-DD, owner): scripts/leak_check.py fails the build once an
+    # entry is past its date, so an allowlisted bug can't quietly become permanent (research 05 §3.10).
+    ("boundary read failed", "TypeError: 'NoneType' object is not subscriptable", "2026-11-17", "SWITCHING"),
 )
 
 
 def _known(err: dict) -> bool:
-    return any(m in str(err.get("msg", "")) and e in str(err.get("exc", "")) for m, e in KNOWN_ERRORS)
+    return any(m in str(err.get("msg", "")) and e in str(err.get("exc", "")) for m, e, *_ in KNOWN_ERRORS)
 
 
 FAR_BEHIND_S = 120.0   # a picture this far behind live (s) is reported as stale
