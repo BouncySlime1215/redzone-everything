@@ -149,3 +149,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   setting, uses its own adb process and skips every tick during a switch, flip or preload, in dry run, and when
   the governor blocks OCR. It writes `recordings/<day>/sync_probe.jsonl`. The visible stick's UI tree is not dumped
   (`sync.probe.visible_ui: false`) until a dump is shown not to stutter the picture. Decisions don't read it.
+- 2026-11-04 3:15 AM: **Noggin Timing v1 ships OFF** (`noggin.timing.leagues: []`). NBA hazard + conformal lower
+  bound: 0.56 % of restarts before the bound on 421 unseen public nights (today's FLOOR_S: 7.33 %) at the same
+  tightness, ECE 0.053; on the NBA scorecard at B=90 (dev nights) entries mid-play 5/61 -> 5/61, so no gain to
+  ship yet. The remaining NBA mid-play entries are entry policy (crunch_now live, 180 s wait cap), Noggin Pick.

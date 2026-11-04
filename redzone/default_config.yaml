@@ -418,3 +418,5 @@ noggin:                    # docs/noggin.md
   priority:
     enabled: false         # pick the best game by the Noggin Priority order (L1 hard rules, then score). OFF until measured
     banned_apps: [peacock]
+  timing:
+    leagues: []            # Noggin Timing v1: calibrated dead-window bounds in place of cuts.FLOOR_S / MEDIAN_S
