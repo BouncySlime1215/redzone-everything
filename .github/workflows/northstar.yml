@@ -10,7 +10,7 @@ on:
   # table; its own docs-only commit is ignored), and the cron takes over if the file ever reaches main.
   push:
     branches: [integration/next]
-    paths-ignore: [docs/northstar.md, docs/northstar-history.jsonl, docs/roadmap.md]
+    paths-ignore: [docs/northstar.md, docs/northstar-history.jsonl, docs/roadmap.md, docs/citymap.md, docs/citymap.json]
   schedule:
     - cron: "0 10 * * *"     # 5-6 AM ET, before the director's morning re-rank
   workflow_dispatch:
@@ -49,6 +49,8 @@ jobs:
       - name: controls drill (phone presses in 4 replayed nights, taps lost and duplicated on purpose)
         # Shipped defaults (no --pretune). Exit 1 = a dropped/broken press: the North Star line says so.
         run: python scripts/controls_drill.py --seeds 4 --hours 3 --flaky --json controls.json || true
+      - name: city map (docs/citymap.md + docs/citymap.json; northstar reads contract_violations from it)
+        run: python scripts/citymap.py
       - name: North Star (dev + locked, 8 e2e fault nights)
         # Live nights: the Mac's per-night summaries, published to docs/live-nights/ (scripts/publish_live_nights.py).
         # The runner has no data/live_nights, so without this the section is PENDING forever.
@@ -65,12 +67,13 @@ jobs:
             docs/northstar.md
             docs/northstar-history.jsonl
             docs/roadmap.md
+            docs/citymap.md
             northstar-raw.json
       - name: commit the result to integration/next
         run: |
           git config user.name "redzone-northstar[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/northstar.md docs/northstar-history.jsonl docs/roadmap.md
+          git add docs/northstar.md docs/northstar-history.jsonl docs/roadmap.md docs/citymap.md docs/citymap.json
           if git diff --cached --quiet; then echo "nothing changed"; exit 0; fi
           git commit -m "northstar: nightly table $(date -u +%F) [skip ci]"
           # The train may have merged meanwhile: rebase the docs-only commit and retry a few times.

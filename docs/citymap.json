@@ -1,0 +1,7593 @@
+{
+ "counts": {
+  "boundary": 6,
+  "dead": 1,
+  "defined-twice": 13,
+  "orphan": 2,
+  "second-scoring-path": 2,
+  "timing-literal": 7
+ },
+ "edges": [
+  [
+   "redzone.__main__",
+   "redzone.config"
+  ],
+  [
+   "redzone.__main__",
+   "redzone.engine"
+  ],
+  [
+   "redzone.__main__",
+   "redzone.web.server"
+  ],
+  [
+   "redzone.autonomy",
+   "redzone.channels"
+  ],
+  [
+   "redzone.autonomy",
+   "redzone.config"
+  ],
+  [
+   "redzone.autonomy",
+   "redzone.control"
+  ],
+  [
+   "redzone.autonomy",
+   "redzone.discovery.yttv"
+  ],
+  [
+   "redzone.autonomy",
+   "redzone.governor"
+  ],
+  [
+   "redzone.autonomy",
+   "redzone.models"
+  ],
+  [
+   "redzone.autonomy",
+   "redzone.network"
+  ],
+  [
+   "redzone.autonomy",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.autonomy",
+   "redzone.tuners.tuners"
+  ],
+  [
+   "redzone.bets",
+   "redzone.models"
+  ],
+  [
+   "redzone.channels",
+   "redzone.models"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.breaks"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.budget"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.clock"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.feeds"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.flags"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.guard"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.health"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.moment"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.reasoner"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.reel"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.switching"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.sync"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.trace"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.views"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.contracts.world"
+  ],
+  [
+   "redzone.contracts",
+   "redzone.decider.core"
+  ],
+  [
+   "redzone.contracts.breaks",
+   "redzone.models"
+  ],
+  [
+   "redzone.contracts.clock",
+   "redzone.contracts.sync"
+  ],
+  [
+   "redzone.contracts.feeds",
+   "redzone.models"
+  ],
+  [
+   "redzone.contracts.guard",
+   "redzone.contracts.trace"
+  ],
+  [
+   "redzone.contracts.guard",
+   "redzone.decider.core"
+  ],
+  [
+   "redzone.contracts.legacy",
+   "redzone.contracts.breaks"
+  ],
+  [
+   "redzone.contracts.legacy",
+   "redzone.contracts.moment"
+  ],
+  [
+   "redzone.contracts.legacy",
+   "redzone.contracts.sync"
+  ],
+  [
+   "redzone.contracts.legacy",
+   "redzone.decider.core"
+  ],
+  [
+   "redzone.contracts.legacy",
+   "redzone.decider.decider"
+  ],
+  [
+   "redzone.contracts.legacy",
+   "redzone.models"
+  ],
+  [
+   "redzone.contracts.moment",
+   "redzone.models"
+  ],
+  [
+   "redzone.contracts.switching",
+   "redzone.decider.core"
+  ],
+  [
+   "redzone.contracts.views",
+   "redzone.contracts.breaks"
+  ],
+  [
+   "redzone.contracts.views",
+   "redzone.contracts.clock"
+  ],
+  [
+   "redzone.contracts.views",
+   "redzone.contracts.moment"
+  ],
+  [
+   "redzone.contracts.views",
+   "redzone.contracts.reasoner"
+  ],
+  [
+   "redzone.contracts.views",
+   "redzone.contracts.reel"
+  ],
+  [
+   "redzone.contracts.views",
+   "redzone.contracts.sync"
+  ],
+  [
+   "redzone.contracts.views",
+   "redzone.decider.core"
+  ],
+  [
+   "redzone.contracts.world",
+   "redzone.contracts.breaks"
+  ],
+  [
+   "redzone.contracts.world",
+   "redzone.contracts.clock"
+  ],
+  [
+   "redzone.contracts.world",
+   "redzone.contracts.feeds"
+  ],
+  [
+   "redzone.contracts.world",
+   "redzone.contracts.health"
+  ],
+  [
+   "redzone.contracts.world",
+   "redzone.contracts.moment"
+  ],
+  [
+   "redzone.contracts.world",
+   "redzone.contracts.reasoner"
+  ],
+  [
+   "redzone.contracts.world",
+   "redzone.contracts.reel"
+  ],
+  [
+   "redzone.contracts.world",
+   "redzone.contracts.switching"
+  ],
+  [
+   "redzone.contracts.world",
+   "redzone.contracts.sync"
+  ],
+  [
+   "redzone.contracts.world",
+   "redzone.models"
+  ],
+  [
+   "redzone.control",
+   "redzone.channels"
+  ],
+  [
+   "redzone.control",
+   "redzone.tuners"
+  ],
+  [
+   "redzone.control",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.control",
+   "redzone.tuners.prime_multiview"
+  ],
+  [
+   "redzone.control",
+   "redzone.tuners.tuners"
+  ],
+  [
+   "redzone.control",
+   "redzone.tv"
+  ],
+  [
+   "redzone.decider.cuts",
+   "redzone.models"
+  ],
+  [
+   "redzone.decider.decider",
+   "redzone.decider"
+  ],
+  [
+   "redzone.decider.decider",
+   "redzone.decider.core"
+  ],
+  [
+   "redzone.decider.decider",
+   "redzone.decider.cuts"
+  ],
+  [
+   "redzone.decider.decider",
+   "redzone.decider.playbooks"
+  ],
+  [
+   "redzone.decider.decider",
+   "redzone.decider.scenarios"
+  ],
+  [
+   "redzone.decider.decider",
+   "redzone.decider.screen"
+  ],
+  [
+   "redzone.decider.decider",
+   "redzone.models"
+  ],
+  [
+   "redzone.decider.decider",
+   "redzone.noggin"
+  ],
+  [
+   "redzone.decider.decider",
+   "redzone.noggin.live"
+  ],
+  [
+   "redzone.decider.decider",
+   "redzone.noggin.lookahead"
+  ],
+  [
+   "redzone.decider.decider",
+   "redzone.noggin.pick"
+  ],
+  [
+   "redzone.decider.decider",
+   "redzone.noggin.wire"
+  ],
+  [
+   "redzone.decider.decider",
+   "redzone.scoring.engine"
+  ],
+  [
+   "redzone.decider.scenarios",
+   "redzone.decider.playbooks"
+  ],
+  [
+   "redzone.decider.screen",
+   "redzone.decider.cuts"
+  ],
+  [
+   "redzone.decider.screen",
+   "redzone.decider.delaymodel"
+  ],
+  [
+   "redzone.decider.screen",
+   "redzone.decider.sync"
+  ],
+  [
+   "redzone.decider.screen",
+   "redzone.models"
+  ],
+  [
+   "redzone.decider.sync",
+   "redzone.contracts.sync"
+  ],
+  [
+   "redzone.demo.__main__",
+   "redzone.__main__"
+  ],
+  [
+   "redzone.demo.__main__",
+   "redzone.demo.download"
+  ],
+  [
+   "redzone.demo.__main__",
+   "redzone.demo.engine"
+  ],
+  [
+   "redzone.demo.__main__",
+   "redzone.lab.evaldata"
+  ],
+  [
+   "redzone.demo.__main__",
+   "redzone.web.server"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.channels"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.config"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.control"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.decider.decider"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.decider.screen"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.engine"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.lab"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.lab.backtest"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.models"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.scoring.drive"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.sources"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.sources.feeds"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.sources.merge"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.standby"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.store"
+  ],
+  [
+   "redzone.demo.engine",
+   "redzone.views"
+  ],
+  [
+   "redzone.discovery.providers",
+   "redzone.channels"
+  ],
+  [
+   "redzone.discovery.providers",
+   "redzone.models"
+  ],
+  [
+   "redzone.discovery.runtime",
+   "redzone.autonomy"
+  ],
+  [
+   "redzone.discovery.runtime",
+   "redzone.discovery.providers"
+  ],
+  [
+   "redzone.discovery.runtime",
+   "redzone.tuners.providers"
+  ],
+  [
+   "redzone.discovery.runtime",
+   "redzone.tuners.tuners"
+  ],
+  [
+   "redzone.discovery.search",
+   "redzone.discovery"
+  ],
+  [
+   "redzone.discovery.search",
+   "redzone.discovery.providers"
+  ],
+  [
+   "redzone.discovery.search",
+   "redzone.discovery.stickio"
+  ],
+  [
+   "redzone.discovery.search",
+   "redzone.discovery.yttv"
+  ],
+  [
+   "redzone.discovery.stickio",
+   "redzone.discovery.providers"
+  ],
+  [
+   "redzone.discovery.stickio",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.discovery.stickio",
+   "redzone.tuners.profiles"
+  ],
+  [
+   "redzone.discovery.yttv",
+   "redzone.channels"
+  ],
+  [
+   "redzone.discovery.yttv",
+   "redzone.discovery"
+  ],
+  [
+   "redzone.discovery.yttv",
+   "redzone.discovery.lounge"
+  ],
+  [
+   "redzone.discovery.yttv",
+   "redzone.discovery.search"
+  ],
+  [
+   "redzone.discovery.yttv",
+   "redzone.discovery.stickio"
+  ],
+  [
+   "redzone.discovery.yttv",
+   "redzone.sources"
+  ],
+  [
+   "redzone.discovery.yttv",
+   "redzone.sources.eventlinks"
+  ],
+  [
+   "redzone.discovery.yttv",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.engine",
+   "redzone"
+  ],
+  [
+   "redzone.engine",
+   "redzone.bets"
+  ],
+  [
+   "redzone.engine",
+   "redzone.calibration"
+  ],
+  [
+   "redzone.engine",
+   "redzone.channels"
+  ],
+  [
+   "redzone.engine",
+   "redzone.commands"
+  ],
+  [
+   "redzone.engine",
+   "redzone.config"
+  ],
+  [
+   "redzone.engine",
+   "redzone.control"
+  ],
+  [
+   "redzone.engine",
+   "redzone.decider.decider"
+  ],
+  [
+   "redzone.engine",
+   "redzone.decider.screen"
+  ],
+  [
+   "redzone.engine",
+   "redzone.decider.sync"
+  ],
+  [
+   "redzone.engine",
+   "redzone.discovery.runtime"
+  ],
+  [
+   "redzone.engine",
+   "redzone.fantasy"
+  ],
+  [
+   "redzone.engine",
+   "redzone.governor"
+  ],
+  [
+   "redzone.engine",
+   "redzone.lab.timing"
+  ],
+  [
+   "redzone.engine",
+   "redzone.models"
+  ],
+  [
+   "redzone.engine",
+   "redzone.network"
+  ],
+  [
+   "redzone.engine",
+   "redzone.plan"
+  ],
+  [
+   "redzone.engine",
+   "redzone.platform.agent_fix"
+  ],
+  [
+   "redzone.engine",
+   "redzone.platform.wake"
+  ],
+  [
+   "redzone.engine",
+   "redzone.reasoner"
+  ],
+  [
+   "redzone.engine",
+   "redzone.reasoner.brief"
+  ],
+  [
+   "redzone.engine",
+   "redzone.reasoner.reasoner"
+  ],
+  [
+   "redzone.engine",
+   "redzone.recorded"
+  ],
+  [
+   "redzone.engine",
+   "redzone.recorder"
+  ],
+  [
+   "redzone.engine",
+   "redzone.reel"
+  ],
+  [
+   "redzone.engine",
+   "redzone.scoring"
+  ],
+  [
+   "redzone.engine",
+   "redzone.scoring.breaks"
+  ],
+  [
+   "redzone.engine",
+   "redzone.scoring.drive"
+  ],
+  [
+   "redzone.engine",
+   "redzone.scoring.engine"
+  ],
+  [
+   "redzone.engine",
+   "redzone.screen"
+  ],
+  [
+   "redzone.engine",
+   "redzone.screen.audio"
+  ],
+  [
+   "redzone.engine",
+   "redzone.screen.boundary"
+  ],
+  [
+   "redzone.engine",
+   "redzone.screen.scorebug"
+  ],
+  [
+   "redzone.engine",
+   "redzone.screen_ocr"
+  ],
+  [
+   "redzone.engine",
+   "redzone.sources"
+  ],
+  [
+   "redzone.engine",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.engine",
+   "redzone.sources.eventlinks"
+  ],
+  [
+   "redzone.engine",
+   "redzone.sources.fastcast"
+  ],
+  [
+   "redzone.engine",
+   "redzone.sources.fastcast_check"
+  ],
+  [
+   "redzone.engine",
+   "redzone.sources.feeds"
+  ],
+  [
+   "redzone.engine",
+   "redzone.sources.http"
+  ],
+  [
+   "redzone.engine",
+   "redzone.sources.leagues"
+  ],
+  [
+   "redzone.engine",
+   "redzone.sources.merge"
+  ],
+  [
+   "redzone.engine",
+   "redzone.standby"
+  ],
+  [
+   "redzone.engine",
+   "redzone.store"
+  ],
+  [
+   "redzone.engine",
+   "redzone.supervisor"
+  ],
+  [
+   "redzone.engine",
+   "redzone.sync_probe"
+  ],
+  [
+   "redzone.engine",
+   "redzone.trace"
+  ],
+  [
+   "redzone.engine",
+   "redzone.tuners"
+  ],
+  [
+   "redzone.engine",
+   "redzone.tuners.prime_multiview"
+  ],
+  [
+   "redzone.engine",
+   "redzone.userstate"
+  ],
+  [
+   "redzone.engine",
+   "redzone.views"
+  ],
+  [
+   "redzone.fantasy",
+   "redzone.models"
+  ],
+  [
+   "redzone.fantasy",
+   "redzone.tv"
+  ],
+  [
+   "redzone.lab.backtest",
+   "redzone.channels"
+  ],
+  [
+   "redzone.lab.backtest",
+   "redzone.config"
+  ],
+  [
+   "redzone.lab.backtest",
+   "redzone.decider.decider"
+  ],
+  [
+   "redzone.lab.backtest",
+   "redzone.decider.screen"
+  ],
+  [
+   "redzone.lab.backtest",
+   "redzone.lab"
+  ],
+  [
+   "redzone.lab.backtest",
+   "redzone.lab.cutgrade"
+  ],
+  [
+   "redzone.lab.backtest",
+   "redzone.lab.timing"
+  ],
+  [
+   "redzone.lab.backtest",
+   "redzone.models"
+  ],
+  [
+   "redzone.lab.backtest",
+   "redzone.scoring.drive"
+  ],
+  [
+   "redzone.lab.backtest",
+   "redzone.scoring.engine"
+  ],
+  [
+   "redzone.lab.backtest",
+   "redzone.sources"
+  ],
+  [
+   "redzone.lab.backtest",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.lab.brain3cal",
+   "redzone.lab.brain3data"
+  ],
+  [
+   "redzone.lab.brain3cal",
+   "redzone.scoring"
+  ],
+  [
+   "redzone.lab.brain3cal",
+   "redzone.scoring.brain"
+  ],
+  [
+   "redzone.lab.brain3cal",
+   "redzone.scoring.brain3"
+  ],
+  [
+   "redzone.lab.brain3data",
+   "redzone.lab"
+  ],
+  [
+   "redzone.lab.brain3data",
+   "redzone.lab.datasets"
+  ],
+  [
+   "redzone.lab.brain3data",
+   "redzone.lab.sportsdata"
+  ],
+  [
+   "redzone.lab.brain3data",
+   "redzone.scoring.brain3"
+  ],
+  [
+   "redzone.lab.brain3fit",
+   "redzone.lab"
+  ],
+  [
+   "redzone.lab.brain3fit",
+   "redzone.lab.brain3data"
+  ],
+  [
+   "redzone.lab.brain3fit",
+   "redzone.lab.brainfit"
+  ],
+  [
+   "redzone.lab.brain3fit",
+   "redzone.models"
+  ],
+  [
+   "redzone.lab.brain3fit",
+   "redzone.scoring"
+  ],
+  [
+   "redzone.lab.brain3fit",
+   "redzone.scoring.brain"
+  ],
+  [
+   "redzone.lab.brain3fit",
+   "redzone.scoring.brain3"
+  ],
+  [
+   "redzone.lab.brain3fit",
+   "redzone.scoring.breaks"
+  ],
+  [
+   "redzone.lab.brain3fit",
+   "redzone.sources"
+  ],
+  [
+   "redzone.lab.brain3fit",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.lab.brainfit",
+   "redzone.config"
+  ],
+  [
+   "redzone.lab.brainfit",
+   "redzone.lab"
+  ],
+  [
+   "redzone.lab.brainfit",
+   "redzone.lab.datasets"
+  ],
+  [
+   "redzone.lab.brainfit",
+   "redzone.models"
+  ],
+  [
+   "redzone.lab.brainfit",
+   "redzone.scoring"
+  ],
+  [
+   "redzone.lab.brainfit",
+   "redzone.scoring.brain"
+  ],
+  [
+   "redzone.lab.brainfit",
+   "redzone.scoring.breaks"
+  ],
+  [
+   "redzone.lab.brainfit",
+   "redzone.scoring.engine"
+  ],
+  [
+   "redzone.lab.brainfit",
+   "redzone.sources"
+  ],
+  [
+   "redzone.lab.brainfit",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.lab.breakblend",
+   "redzone.config"
+  ],
+  [
+   "redzone.lab.breakblend",
+   "redzone.lab"
+  ],
+  [
+   "redzone.lab.breakblend",
+   "redzone.lab.brainfit"
+  ],
+  [
+   "redzone.lab.breakblend",
+   "redzone.lab.datasets"
+  ],
+  [
+   "redzone.lab.breakblend",
+   "redzone.lab.splits"
+  ],
+  [
+   "redzone.lab.breakblend",
+   "redzone.models"
+  ],
+  [
+   "redzone.lab.breakblend",
+   "redzone.scoring"
+  ],
+  [
+   "redzone.lab.breakblend",
+   "redzone.scoring.brain"
+  ],
+  [
+   "redzone.lab.breakblend",
+   "redzone.scoring.breaks"
+  ],
+  [
+   "redzone.lab.breakblend",
+   "redzone.sources"
+  ],
+  [
+   "redzone.lab.breakblend",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.lab.citymap",
+   "redzone.contracts"
+  ],
+  [
+   "redzone.lab.citymap",
+   "redzone.contracts.map"
+  ],
+  [
+   "redzone.lab.cutgrade",
+   "redzone.decider.screen"
+  ],
+  [
+   "redzone.lab.cutgrade",
+   "redzone.lab.backtest"
+  ],
+  [
+   "redzone.lab.cutgrade",
+   "redzone.lab.sportsgrade"
+  ],
+  [
+   "redzone.lab.cutgrade",
+   "redzone.models"
+  ],
+  [
+   "redzone.lab.cutgrade",
+   "redzone.sources"
+  ],
+  [
+   "redzone.lab.cutgrade",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.lab.evaldata",
+   "redzone.config"
+  ],
+  [
+   "redzone.lab.evaldata",
+   "redzone.contracts.switching"
+  ],
+  [
+   "redzone.lab.night.__main__",
+   "redzone.lab.night"
+  ],
+  [
+   "redzone.lab.night.__main__",
+   "redzone.lab.night.run"
+  ],
+  [
+   "redzone.lab.night.__main__",
+   "redzone.lab.night.vclock"
+  ],
+  [
+   "redzone.lab.night.faults",
+   "redzone.lab.night"
+  ],
+  [
+   "redzone.lab.night.faults",
+   "redzone.lab.night.house"
+  ],
+  [
+   "redzone.lab.night.house",
+   "redzone.screen_ocr"
+  ],
+  [
+   "redzone.lab.night.house",
+   "redzone.tuners"
+  ],
+  [
+   "redzone.lab.night.house",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.lab.night.presses",
+   "redzone.lab.night.faults"
+  ],
+  [
+   "redzone.lab.night.presses",
+   "redzone.models"
+  ],
+  [
+   "redzone.lab.night.presses",
+   "redzone.noggin.profile"
+  ],
+  [
+   "redzone.lab.night.run",
+   "agent.watchdog"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.autonomy"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.channels"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.config"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.control"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.decider.decider"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.discovery"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.discovery.yttv"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.engine"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.governor"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.lab.backtest"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.lab.night"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.lab.night.faults"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.lab.night.house"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.lab.night.smartthings"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.lab.night.vclock"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.models"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.network"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.plan"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.recorder"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.reel"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.screen_ocr"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.sources"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.store"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.supervisor"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.tuners"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.tuners.screen_prompts"
+  ],
+  [
+   "redzone.lab.night.run",
+   "redzone.tv"
+  ],
+  [
+   "redzone.lab.optimize",
+   "redzone.config"
+  ],
+  [
+   "redzone.lab.optimize",
+   "redzone.lab.backtest"
+  ],
+  [
+   "redzone.lab.optimize",
+   "redzone.models"
+  ],
+  [
+   "redzone.lab.oracle",
+   "redzone.lab"
+  ],
+  [
+   "redzone.lab.oracle",
+   "redzone.lab.backtest"
+  ],
+  [
+   "redzone.lab.oracle",
+   "redzone.lab.cutgrade"
+  ],
+  [
+   "redzone.lab.oracle",
+   "redzone.lab.sportsgrade"
+  ],
+  [
+   "redzone.lab.oracle",
+   "redzone.models"
+  ],
+  [
+   "redzone.lab.oracle",
+   "redzone.sources"
+  ],
+  [
+   "redzone.lab.oracle",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.lab.prime_mv_fake",
+   "redzone.tuners"
+  ],
+  [
+   "redzone.lab.prime_mv_fake",
+   "redzone.tuners.prime_multiview"
+  ],
+  [
+   "redzone.lab.reasoner_data",
+   "redzone.config"
+  ],
+  [
+   "redzone.lab.reasoner_data",
+   "redzone.lab"
+  ],
+  [
+   "redzone.lab.reasoner_data",
+   "redzone.lab.backtest"
+  ],
+  [
+   "redzone.lab.reasoner_data",
+   "redzone.lab.sportsgrade"
+  ],
+  [
+   "redzone.lab.reasoner_data",
+   "redzone.models"
+  ],
+  [
+   "redzone.lab.reasoner_data",
+   "redzone.reasoner"
+  ],
+  [
+   "redzone.lab.reasoner_data",
+   "redzone.reasoner.brief"
+  ],
+  [
+   "redzone.lab.reasoner_data",
+   "redzone.scoring.engine"
+  ],
+  [
+   "redzone.lab.reasoner_data",
+   "redzone.sources"
+  ],
+  [
+   "redzone.lab.reasoner_data",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.lab.replaycheck",
+   "redzone.config"
+  ],
+  [
+   "redzone.lab.replaycheck",
+   "redzone.decider.screen"
+  ],
+  [
+   "redzone.lab.replaycheck",
+   "redzone.lab"
+  ],
+  [
+   "redzone.lab.replaycheck",
+   "redzone.lab.backtest"
+  ],
+  [
+   "redzone.lab.replaycheck",
+   "redzone.lab.sportsgrade"
+  ],
+  [
+   "redzone.lab.replaycheck",
+   "redzone.models"
+  ],
+  [
+   "redzone.lab.replaycheck",
+   "redzone.sources"
+  ],
+  [
+   "redzone.lab.replaycheck",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.lab.sportsdata",
+   "redzone.lab.datasets"
+  ],
+  [
+   "redzone.lab.sportsdata",
+   "redzone.models"
+  ],
+  [
+   "redzone.lab.sportsdata",
+   "redzone.scoring.gameflow"
+  ],
+  [
+   "redzone.lab.sportsdata",
+   "redzone.sources"
+  ],
+  [
+   "redzone.lab.sportsdata",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.lab.sportsgrade",
+   "redzone.decider.screen"
+  ],
+  [
+   "redzone.lab.sportsgrade",
+   "redzone.lab"
+  ],
+  [
+   "redzone.lab.sportsgrade",
+   "redzone.lab.backtest"
+  ],
+  [
+   "redzone.lab.sportsgrade",
+   "redzone.lab.cutgrade"
+  ],
+  [
+   "redzone.lab.sportsgrade",
+   "redzone.models"
+  ],
+  [
+   "redzone.lab.sportsgrade",
+   "redzone.sources"
+  ],
+  [
+   "redzone.lab.sportsgrade",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.lab.syncsim",
+   "redzone.decider.screen"
+  ],
+  [
+   "redzone.lab.tune",
+   "redzone.config"
+  ],
+  [
+   "redzone.lab.tune",
+   "redzone.decider"
+  ],
+  [
+   "redzone.lab.tune",
+   "redzone.decider.decider"
+  ],
+  [
+   "redzone.lab.tune",
+   "redzone.lab"
+  ],
+  [
+   "redzone.lab.tune",
+   "redzone.lab.backtest"
+  ],
+  [
+   "redzone.lab.tune",
+   "redzone.lab.optimize"
+  ],
+  [
+   "redzone.lab.tune",
+   "redzone.lab.splits"
+  ],
+  [
+   "redzone.lab.tune",
+   "redzone.lab.sportsgrade"
+  ],
+  [
+   "redzone.lab.tune",
+   "redzone.models"
+  ],
+  [
+   "redzone.noggin.factory",
+   "redzone.models"
+  ],
+  [
+   "redzone.noggin.factory",
+   "redzone.noggin.features"
+  ],
+  [
+   "redzone.noggin.factory",
+   "redzone.sources"
+  ],
+  [
+   "redzone.noggin.factory",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.noggin.features",
+   "redzone.decider"
+  ],
+  [
+   "redzone.noggin.features",
+   "redzone.decider.cuts"
+  ],
+  [
+   "redzone.noggin.features",
+   "redzone.models"
+  ],
+  [
+   "redzone.noggin.features",
+   "redzone.sources"
+  ],
+  [
+   "redzone.noggin.features",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.noggin.live",
+   "redzone.models"
+  ],
+  [
+   "redzone.noggin.live",
+   "redzone.noggin"
+  ],
+  [
+   "redzone.noggin.live",
+   "redzone.noggin.features"
+  ],
+  [
+   "redzone.noggin.live",
+   "redzone.noggin.predict"
+  ],
+  [
+   "redzone.noggin.live",
+   "redzone.noggin.timing"
+  ],
+  [
+   "redzone.noggin.pick",
+   "redzone.lab"
+  ],
+  [
+   "redzone.noggin.pick",
+   "redzone.lab.backtest"
+  ],
+  [
+   "redzone.noggin.pick",
+   "redzone.lab.cutgrade"
+  ],
+  [
+   "redzone.noggin.pick",
+   "redzone.lab.oracle"
+  ],
+  [
+   "redzone.noggin.pick",
+   "redzone.lab.sportsgrade"
+  ],
+  [
+   "redzone.noggin.pick",
+   "redzone.models"
+  ],
+  [
+   "redzone.noggin.pick",
+   "redzone.noggin.features"
+  ],
+  [
+   "redzone.noggin.pick",
+   "redzone.noggin.timing"
+  ],
+  [
+   "redzone.noggin.pick",
+   "redzone.scoring.brain3"
+  ],
+  [
+   "redzone.noggin.pick",
+   "redzone.sources"
+  ],
+  [
+   "redzone.noggin.pick",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.noggin.predict",
+   "redzone.noggin.features"
+  ],
+  [
+   "redzone.noggin.predict",
+   "redzone.noggin.timing"
+  ],
+  [
+   "redzone.noggin.predict_fit",
+   "redzone.noggin"
+  ],
+  [
+   "redzone.noggin.predict_fit",
+   "redzone.noggin.features"
+  ],
+  [
+   "redzone.noggin.predict_fit",
+   "redzone.noggin.predict"
+  ],
+  [
+   "redzone.noggin.predict_fit",
+   "redzone.noggin.timing_fit"
+  ],
+  [
+   "redzone.noggin.predict_fit",
+   "redzone.scoring.brain3"
+  ],
+  [
+   "redzone.noggin.timing",
+   "redzone.noggin.features"
+  ],
+  [
+   "redzone.noggin.timing",
+   "redzone.scoring.brain3"
+  ],
+  [
+   "redzone.noggin.timing_fit",
+   "redzone.noggin"
+  ],
+  [
+   "redzone.noggin.timing_fit",
+   "redzone.noggin.features"
+  ],
+  [
+   "redzone.noggin.timing_fit",
+   "redzone.noggin.timing"
+  ],
+  [
+   "redzone.noggin.wire",
+   "redzone.noggin"
+  ],
+  [
+   "redzone.noggin.wire",
+   "redzone.noggin.priority"
+  ],
+  [
+   "redzone.observability",
+   "redzone"
+  ],
+  [
+   "redzone.observability",
+   "redzone.supervisor"
+  ],
+  [
+   "redzone.observability",
+   "redzone.trace"
+  ],
+  [
+   "redzone.plan",
+   "redzone.channels"
+  ],
+  [
+   "redzone.plan",
+   "redzone.models"
+  ],
+  [
+   "redzone.platform.agent_fix",
+   "redzone.models"
+  ],
+  [
+   "redzone.platform.faults",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.platform.faults",
+   "redzone.tuners.tuners"
+  ],
+  [
+   "redzone.platform.health",
+   "redzone.contracts.health"
+  ],
+  [
+   "redzone.platform.health",
+   "redzone.models"
+  ],
+  [
+   "redzone.reasoner.brief",
+   "redzone.models"
+  ],
+  [
+   "redzone.reasoner.head",
+   "redzone.reasoner"
+  ],
+  [
+   "redzone.reasoner.head",
+   "redzone.reasoner.brief"
+  ],
+  [
+   "redzone.reasoner.head",
+   "redzone.scoring.brain"
+  ],
+  [
+   "redzone.reasoner.reasoner",
+   "redzone.jsonfind"
+  ],
+  [
+   "redzone.reasoner.reasoner",
+   "redzone.models"
+  ],
+  [
+   "redzone.reasoner.reasoner",
+   "redzone.reasoner"
+  ],
+  [
+   "redzone.reasoner.reasoner",
+   "redzone.reasoner.brief"
+  ],
+  [
+   "redzone.reasoner.reasoner",
+   "redzone.reasoner.head"
+  ],
+  [
+   "redzone.recorded",
+   "redzone.screen_ocr"
+  ],
+  [
+   "redzone.recorded",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.recorded",
+   "redzone.tuners.prime_search"
+  ],
+  [
+   "redzone.recorder",
+   "redzone.models"
+  ],
+  [
+   "redzone.recorder",
+   "redzone.sources"
+  ],
+  [
+   "redzone.recorder",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.recorder",
+   "redzone.sources.leagues"
+  ],
+  [
+   "redzone.reel",
+   "redzone.governor"
+  ],
+  [
+   "redzone.scoring.brain",
+   "redzone.models"
+  ],
+  [
+   "redzone.scoring.brain",
+   "redzone.scoring"
+  ],
+  [
+   "redzone.scoring.brain",
+   "redzone.scoring.brain3"
+  ],
+  [
+   "redzone.scoring.brain",
+   "redzone.scoring.gameflow"
+  ],
+  [
+   "redzone.scoring.brain3",
+   "redzone.contracts.breaks"
+  ],
+  [
+   "redzone.scoring.brain3",
+   "redzone.contracts.legacy"
+  ],
+  [
+   "redzone.scoring.brain3",
+   "redzone.contracts.moment"
+  ],
+  [
+   "redzone.scoring.brain3",
+   "redzone.models"
+  ],
+  [
+   "redzone.scoring.brain3",
+   "redzone.scoring"
+  ],
+  [
+   "redzone.scoring.brain3",
+   "redzone.scoring.brain"
+  ],
+  [
+   "redzone.scoring.brain3",
+   "redzone.scoring.breaks"
+  ],
+  [
+   "redzone.scoring.breaks",
+   "redzone.models"
+  ],
+  [
+   "redzone.scoring.drive",
+   "redzone.models"
+  ],
+  [
+   "redzone.scoring.drive",
+   "redzone.scoring"
+  ],
+  [
+   "redzone.scoring.drive",
+   "redzone.scoring.breaks"
+  ],
+  [
+   "redzone.scoring.drive",
+   "redzone.scoring.engine"
+  ],
+  [
+   "redzone.scoring.engine",
+   "redzone.models"
+  ],
+  [
+   "redzone.scoring.engine",
+   "redzone.reasoner"
+  ],
+  [
+   "redzone.scoring.engine",
+   "redzone.reasoner.brief"
+  ],
+  [
+   "redzone.scoring.engine",
+   "redzone.reasoner.reasoner"
+  ],
+  [
+   "redzone.scoring.engine",
+   "redzone.scoring"
+  ],
+  [
+   "redzone.scoring.engine",
+   "redzone.scoring.brain"
+  ],
+  [
+   "redzone.scoring.engine",
+   "redzone.scoring.garbage"
+  ],
+  [
+   "redzone.scoring.garbage",
+   "redzone.models"
+  ],
+  [
+   "redzone.screen.scorebug",
+   "redzone.decider.sync"
+  ],
+  [
+   "redzone.screen_ocr",
+   "redzone.governor"
+  ],
+  [
+   "redzone.sources.espn",
+   "redzone.models"
+  ],
+  [
+   "redzone.sources.fastcast",
+   "redzone.models"
+  ],
+  [
+   "redzone.sources.fastcast",
+   "redzone.sources"
+  ],
+  [
+   "redzone.sources.fastcast",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.sources.fastcast",
+   "redzone.views"
+  ],
+  [
+   "redzone.sources.feeds",
+   "redzone.contracts.feeds"
+  ],
+  [
+   "redzone.sources.feeds",
+   "redzone.models"
+  ],
+  [
+   "redzone.sources.feeds",
+   "redzone.sources.http"
+  ],
+  [
+   "redzone.sources.feeds",
+   "redzone.sources.merge"
+  ],
+  [
+   "redzone.sources.leagues",
+   "redzone.models"
+  ],
+  [
+   "redzone.sources.leagues",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.sources.merge",
+   "redzone.models"
+  ],
+  [
+   "redzone.standby",
+   "redzone.models"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.calibration"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.channels"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.config"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.contracts.health"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.control"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.decider.decider"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.decider.screen"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.discovery.providers"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.models"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.observability"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.platform.agent_fix"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.platform.autofix"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.platform.health"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.store"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.trace"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.tuners"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.tuners.providers"
+  ],
+  [
+   "redzone.supervisor",
+   "redzone.tuners.screen_prompts"
+  ],
+  [
+   "redzone.sync_probe",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.trace",
+   "redzone.contracts.trace"
+  ],
+  [
+   "redzone.trace",
+   "redzone.store"
+  ],
+  [
+   "redzone.trace",
+   "redzone.supervisor"
+  ],
+  [
+   "redzone.tuners.adb",
+   "redzone.platform.breaker"
+  ],
+  [
+   "redzone.tuners.adb",
+   "redzone.screen_ocr"
+  ],
+  [
+   "redzone.tuners.multiview",
+   "redzone.decider.core"
+  ],
+  [
+   "redzone.tuners.prime_search",
+   "redzone.discovery.providers"
+  ],
+  [
+   "redzone.tuners.prime_search",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.tuners.prime_search",
+   "redzone.tuners.profiles"
+  ],
+  [
+   "redzone.tuners.profiles",
+   "redzone.discovery.providers"
+  ],
+  [
+   "redzone.tuners.providers",
+   "redzone.discovery.providers"
+  ],
+  [
+   "redzone.tuners.providers",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.tuners.providers",
+   "redzone.tuners.profiles"
+  ],
+  [
+   "redzone.tuners.providers",
+   "redzone.tuners.tuners"
+  ],
+  [
+   "redzone.tuners.screen_prompts",
+   "redzone.discovery.providers"
+  ],
+  [
+   "redzone.tuners.screen_prompts",
+   "redzone.screen_ocr"
+  ],
+  [
+   "redzone.tuners.screen_prompts",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.tuners.screen_prompts",
+   "redzone.tuners.profiles"
+  ],
+  [
+   "redzone.tuners.tuners",
+   "redzone.channels"
+  ],
+  [
+   "redzone.tuners.tuners",
+   "redzone.discovery.providers"
+  ],
+  [
+   "redzone.tuners.tuners",
+   "redzone.discovery.yttv"
+  ],
+  [
+   "redzone.tuners.tuners",
+   "redzone.screen_ocr"
+  ],
+  [
+   "redzone.tuners.tuners",
+   "redzone.tuners"
+  ],
+  [
+   "redzone.tuners.tuners",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.tuners.tuners",
+   "redzone.tuners.prime_multiview"
+  ],
+  [
+   "redzone.tuners.tuners",
+   "redzone.tuners.prime_search"
+  ],
+  [
+   "redzone.tuners.tuners",
+   "redzone.tuners.profiles"
+  ],
+  [
+   "redzone.tuners.tuners",
+   "redzone.tuners.screen_prompts"
+  ],
+  [
+   "redzone.tuners.tuners",
+   "redzone.tuners.yttv_search"
+  ],
+  [
+   "redzone.tuners.yttv_search",
+   "redzone.discovery"
+  ],
+  [
+   "redzone.tuners.yttv_search",
+   "redzone.discovery.providers"
+  ],
+  [
+   "redzone.tuners.yttv_search",
+   "redzone.discovery.stickio"
+  ],
+  [
+   "redzone.tuners.yttv_search",
+   "redzone.discovery.yttv"
+  ],
+  [
+   "redzone.tuners.yttv_search",
+   "redzone.screen_ocr"
+  ],
+  [
+   "redzone.tuners.yttv_search",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.tuners.yttv_search",
+   "redzone.tuners.prime_search"
+  ],
+  [
+   "redzone.tuners.yttv_search",
+   "redzone.tuners.profiles"
+  ],
+  [
+   "redzone.tuners.yttv_search",
+   "redzone.tuners.tuners"
+  ],
+  [
+   "redzone.tv",
+   "redzone.platform.breaker"
+  ],
+  [
+   "redzone.tvsetup",
+   "redzone"
+  ],
+  [
+   "redzone.tvsetup",
+   "redzone.autonomy"
+  ],
+  [
+   "redzone.tvsetup",
+   "redzone.network"
+  ],
+  [
+   "redzone.tvsetup",
+   "redzone.tuners.adb"
+  ],
+  [
+   "redzone.tvsetup",
+   "redzone.tv"
+  ],
+  [
+   "redzone.views",
+   "redzone.models"
+  ],
+  [
+   "redzone.views",
+   "redzone.sources"
+  ],
+  [
+   "redzone.views",
+   "redzone.sources.espn"
+  ],
+  [
+   "redzone.web.phone_v2",
+   "redzone.config"
+  ],
+  [
+   "redzone.web.phone_v2",
+   "redzone.lab.decision_records"
+  ],
+  [
+   "redzone.web.phone_v2",
+   "redzone.models"
+  ],
+  [
+   "redzone.web.phone_v2",
+   "redzone.noggin.priority"
+  ],
+  [
+   "redzone.web.server",
+   "redzone.channels"
+  ],
+  [
+   "redzone.web.server",
+   "redzone.config"
+  ],
+  [
+   "redzone.web.server",
+   "redzone.engine"
+  ],
+  [
+   "redzone.web.server",
+   "redzone.platform.agent_fix"
+  ],
+  [
+   "redzone.web.server",
+   "redzone.web"
+  ],
+  [
+   "redzone.web.server",
+   "redzone.web.phone_v2"
+  ],
+  [
+   "agent.distill.evaluate",
+   "agent.distill.gold"
+  ],
+  [
+   "agent.distill.evaluate",
+   "agent.distill.jump"
+  ],
+  [
+   "agent.distill.evaluate",
+   "agent.distill.teacher"
+  ],
+  [
+   "agent.distill.gold",
+   "agent.distill.jump"
+  ],
+  [
+   "agent.distill.jump",
+   "redzone.lab.sportsdata"
+  ],
+  [
+   "agent.distill.jump",
+   "redzone.models"
+  ],
+  [
+   "agent.distill.jump",
+   "redzone.sources"
+  ],
+  [
+   "agent.distill.jump",
+   "redzone.sources.espn"
+  ],
+  [
+   "agent.distill.student",
+   "agent.distill.teacher"
+  ],
+  [
+   "agent.kaggle.build_moments_kaggle",
+   "agent.distill"
+  ],
+  [
+   "agent.kaggle.build_moments_kaggle",
+   "agent.distill.gold"
+  ],
+  [
+   "agent.kaggle.build_moments_kaggle",
+   "agent.distill.split"
+  ],
+  [
+   "agent.kaggle.build_moments_kaggle",
+   "redzone.config"
+  ],
+  [
+   "agent.kaggle.build_moments_kaggle",
+   "redzone.lab"
+  ],
+  [
+   "agent.kaggle.build_moments_kaggle",
+   "redzone.lab.backtest"
+  ],
+  [
+   "agent.kaggle.build_moments_kaggle",
+   "redzone.lab.reasoner_data"
+  ],
+  [
+   "agent.kaggle.build_moments_kaggle",
+   "redzone.lab.sportsgrade"
+  ],
+  [
+   "agent.kaggle.build_moments_kaggle",
+   "redzone.models"
+  ],
+  [
+   "agent.kaggle.build_moments_kaggle",
+   "redzone.reasoner"
+  ],
+  [
+   "agent.kaggle.build_moments_kaggle",
+   "redzone.reasoner.brief"
+  ],
+  [
+   "agent.kaggle.grade",
+   "agent.distill"
+  ],
+  [
+   "agent.kaggle.grade",
+   "agent.distill.evaluate"
+  ],
+  [
+   "agent.kaggle.grade",
+   "agent.distill.jump"
+  ],
+  [
+   "agent.kaggle.grade",
+   "agent.distill.teacher"
+  ],
+  [
+   "agent.kaggle.grade",
+   "agent.policy"
+  ],
+  [
+   "agent.kaggle.pack_data",
+   "agent.distill"
+  ],
+  [
+   "agent.kaggle.pack_data",
+   "agent.distill.gold"
+  ],
+  [
+   "agent.kaggle.pack_data",
+   "agent.distill.jump"
+  ],
+  [
+   "agent.kaggle.pack_data",
+   "agent.distill.split"
+  ],
+  [
+   "agent.kaggle.pack_data",
+   "agent.distill.teacher"
+  ],
+  [
+   "agent.kaggle.run_students",
+   "agent.distill.teacher"
+  ],
+  [
+   "agent.kaggle.run_students",
+   "agent.kaggle.constrained"
+  ],
+  [
+   "agent.kaggle.run_students",
+   "agent.kaggle.dequant"
+  ],
+  [
+   "agent.kaggle.run_students",
+   "agent.kaggle.student_data"
+  ],
+  [
+   "agent.kaggle.run_students",
+   "agent.train.peft_to_mlx"
+  ],
+  [
+   "agent.kaggle.student_data",
+   "agent.distill"
+  ],
+  [
+   "agent.kaggle.student_data",
+   "agent.distill.student"
+  ],
+  [
+   "agent.kaggle.student_data",
+   "agent.distill.teacher"
+  ],
+  [
+   "agent.kaggle.teacher_distill",
+   "agent.distill.teacher"
+  ],
+  [
+   "agent.kaggle.teacher_distill",
+   "agent.kaggle.run_teacher"
+  ],
+  [
+   "agent.llm",
+   "redzone.governor"
+  ],
+  [
+   "agent.policy",
+   "redzone.jsonfind"
+  ],
+  [
+   "agent.train.evaluate",
+   "agent.llm"
+  ],
+  [
+   "agent.train.evaluate",
+   "agent.policy"
+  ],
+  [
+   "agent.train.make_data",
+   "agent.policy"
+  ],
+  [
+   "agent.watchdog",
+   "agent.llm"
+  ],
+  [
+   "agent.watchdog",
+   "agent.policy"
+  ],
+  [
+   "agent.watchdog",
+   "redzone.governor"
+  ],
+  [
+   "agent.watchdog",
+   "redzone.memory"
+  ],
+  [
+   "agent.watchdog",
+   "redzone.platform.autofix"
+  ]
+ ],
+ "generated_by": "scripts/citymap.py",
+ "json_loads_sites": 122,
+ "modules": {
+  "agent": {
+   "config": [],
+   "data": [],
+   "doc": "",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 1,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/__init__.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 8
+  },
+  "agent.distill": {
+   "config": [],
+   "data": [],
+   "doc": "Big teacher, small student: a large open model (run for free on a Kaggle GPU) writes labels and",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 12,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/distill/__init__.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.build_moments_kaggle",
+    "agent.kaggle.grade",
+    "agent.kaggle.pack_data",
+    "agent.kaggle.student_data"
+   ],
+   "used_by_scripts": [
+    "scripts/distill.py"
+   ],
+   "used_by_tests": 2
+  },
+  "agent.distill.evaluate": {
+   "config": [],
+   "data": [],
+   "doc": "Score reasoner answers against what actually happened, on held-out (test) nights. Stdlib only.",
+   "imports": [
+    "agent.distill.gold",
+    "agent.distill.jump",
+    "agent.distill.teacher"
+   ],
+   "json_loads": 0,
+   "lines": 269,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/distill/evaluate.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.grade"
+   ],
+   "used_by_scripts": [
+    "scripts/distill.py"
+   ],
+   "used_by_tests": 2
+  },
+  "agent.distill.gold": {
+   "config": [],
+   "data": [],
+   "doc": "Gold labels: Nick's rules applied exactly, written by Claude, for lock-in and jump-or-stay.",
+   "imports": [
+    "agent.distill.jump"
+   ],
+   "json_loads": 0,
+   "lines": 118,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/distill/gold.py",
+   "timing": {},
+   "used_by": [
+    "agent.distill.evaluate",
+    "agent.kaggle.build_moments_kaggle",
+    "agent.kaggle.pack_data"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "agent.distill.jump": {
+   "config": [],
+   "data": [],
+   "doc": "Jump-to-highlights vs stay: moments, context and hindsight labels from the archive.",
+   "imports": [
+    "redzone.lab.sportsdata",
+    "redzone.models",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 1,
+   "lines": 299,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/distill/jump.py",
+   "timing": {
+    "CLIP_S": 9.0,
+    "LOOKBACK_S": 900.0,
+    "MARGIN_S": 5.0,
+    "SWITCH_S": 5.5
+   },
+   "used_by": [
+    "agent.distill.evaluate",
+    "agent.distill.gold",
+    "agent.kaggle.grade",
+    "agent.kaggle.pack_data"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "agent.distill.split": {
+   "config": [],
+   "data": [],
+   "doc": "Split moments BY TIME, whole nights at a time, per league (Nick's no-overfitting rules 1, 2, 6).",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 138,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/distill/split.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.build_moments_kaggle",
+    "agent.kaggle.pack_data"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "agent.distill.student": {
+   "config": [],
+   "data": [],
+   "doc": "Teacher words + hindsight targets -> mlx_lm chat datasets for the game-reasoner adapter.",
+   "imports": [
+    "agent.distill.teacher"
+   ],
+   "json_loads": 1,
+   "lines": 116,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/distill/student.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.student_data"
+   ],
+   "used_by_scripts": [
+    "scripts/distill.py"
+   ],
+   "used_by_tests": 1
+  },
+  "agent.distill.teacher": {
+   "config": [],
+   "data": [],
+   "doc": "Teacher prompts, request files and answer parsing. Stdlib only.",
+   "imports": [],
+   "json_loads": 3,
+   "lines": 404,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/distill/teacher.py",
+   "timing": {
+    "MAX_STAY_S": 900.0
+   },
+   "used_by": [
+    "agent.distill.evaluate",
+    "agent.distill.student",
+    "agent.kaggle.grade",
+    "agent.kaggle.pack_data",
+    "agent.kaggle.run_students",
+    "agent.kaggle.student_data",
+    "agent.kaggle.teacher_distill"
+   ],
+   "used_by_scripts": [
+    "scripts/distill.py"
+   ],
+   "used_by_tests": 1
+  },
+  "agent.kaggle": {
+   "config": [],
+   "data": [],
+   "doc": "",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 1,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/kaggle/__init__.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 4
+  },
+  "agent.kaggle.build_moments_kaggle": {
+   "config": [],
+   "data": [],
+   "doc": "Round 2+: build MILLIONS of outcome-labeled reasoner moments inside the Kaggle notebook.",
+   "imports": [
+    "agent.distill",
+    "agent.distill.gold",
+    "agent.distill.split",
+    "redzone.config",
+    "redzone.lab",
+    "redzone.lab.backtest",
+    "redzone.lab.reasoner_data",
+    "redzone.lab.sportsgrade",
+    "redzone.models",
+    "redzone.reasoner",
+    "redzone.reasoner.brief"
+   ],
+   "json_loads": 4,
+   "lines": 449,
+   "main": true,
+   "owner": "LOCAL AI",
+   "path": "agent/kaggle/build_moments_kaggle.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "agent.kaggle.build_notebook": {
+   "config": [],
+   "data": [],
+   "doc": "Turn a ``# %%`` percent-format script into a Kaggle/Jupyter notebook. Stdlib only.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 56,
+   "main": true,
+   "owner": "LOCAL AI",
+   "path": "agent/kaggle/build_notebook.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "agent.kaggle.constrained": {
+   "config": [],
+   "data": [],
+   "doc": "[V7] JSON-constrained decoding: the student can only write its answer's own JSON shape.",
+   "imports": [],
+   "json_loads": 1,
+   "lines": 272,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/kaggle/constrained.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.run_students"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "agent.kaggle.dequant": {
+   "config": [],
+   "data": [],
+   "doc": "Dequantize the Mac's own base (mlx-community/Qwen3-1.7B-4bit) with numpy, no MLX needed.",
+   "imports": [],
+   "json_loads": 2,
+   "lines": 100,
+   "main": true,
+   "owner": "LOCAL AI",
+   "path": "agent/kaggle/dequant.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.run_students"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "agent.kaggle.grade": {
+   "config": [],
+   "data": [
+    "grade_rows.jsonl",
+    "jump_rows.jsonl",
+    "rows_test.jsonl",
+    "rows_valid.jsonl",
+    "teacher_out.jsonl",
+    "test_out.jsonl",
+    "test_out_base.jsonl"
+   ],
+   "doc": "Phase 3: grade today vs teacher vs student on the held-out nights. Stdlib only.",
+   "imports": [
+    "agent.distill",
+    "agent.distill.evaluate",
+    "agent.distill.jump",
+    "agent.distill.teacher",
+    "agent.policy"
+   ],
+   "json_loads": 3,
+   "lines": 280,
+   "main": true,
+   "owner": "LOCAL AI",
+   "path": "agent/kaggle/grade.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "agent.kaggle.pack_data": {
+   "config": [],
+   "data": [
+    "chat_test.jsonl",
+    "jump_gold.jsonl",
+    "lock_gold.jsonl",
+    "test.jsonl",
+    "train.jsonl",
+    "valid.jsonl"
+   ],
+   "doc": "Build the ONE upload-ready folder for the private Kaggle dataset `redzone-distill`. Light, no GPU.",
+   "imports": [
+    "agent.distill",
+    "agent.distill.gold",
+    "agent.distill.jump",
+    "agent.distill.split",
+    "agent.distill.teacher"
+   ],
+   "json_loads": 1,
+   "lines": 285,
+   "main": true,
+   "owner": "LOCAL AI",
+   "path": "agent/kaggle/pack_data.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "agent.kaggle.run_students": {
+   "config": [],
+   "data": [
+    "test.jsonl",
+    "test_out.jsonl",
+    "test_out_base.jsonl",
+    "train.jsonl",
+    "valid.jsonl"
+   ],
+   "doc": "Phase 2 on Kaggle: LoRA-train one student adapter per job on the Mac's own base, answer the",
+   "imports": [
+    "agent.distill.teacher",
+    "agent.kaggle.constrained",
+    "agent.kaggle.dequant",
+    "agent.kaggle.student_data",
+    "agent.train.peft_to_mlx"
+   ],
+   "json_loads": 1,
+   "lines": 470,
+   "main": true,
+   "owner": "LOCAL AI",
+   "path": "agent/kaggle/run_students.py",
+   "timing": {
+    "KILL_GRACE_S": 600.0
+   },
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "agent.kaggle.run_teacher": {
+   "config": [],
+   "data": [
+    "teacher_out.jsonl"
+   ],
+   "doc": "Phase 1 on Kaggle: the big teacher answers every request in the pack. Resumable.",
+   "imports": [],
+   "json_loads": 3,
+   "lines": 269,
+   "main": true,
+   "owner": "LOCAL AI",
+   "path": "agent/kaggle/run_teacher.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.teacher_distill"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "agent.kaggle.student_data": {
+   "config": [],
+   "data": [
+    "jump_rows.jsonl",
+    "lock_gold.jsonl",
+    "test.jsonl",
+    "train.jsonl",
+    "valid.jsonl"
+   ],
+   "doc": "Training sets per adapter job from the pack + the teacher's answers. Stdlib only.",
+   "imports": [
+    "agent.distill",
+    "agent.distill.student",
+    "agent.distill.teacher"
+   ],
+   "json_loads": 3,
+   "lines": 244,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/kaggle/student_data.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.run_students"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "agent.kaggle.teacher_distill": {
+   "config": [],
+   "data": [
+    "grade_rows.jsonl",
+    "jump_rows.jsonl",
+    "teacher_out.jsonl",
+    "teacher_requests.jsonl",
+    "test_out.jsonl",
+    "test_out_base.jsonl"
+   ],
+   "doc": "",
+   "imports": [
+    "agent.distill.teacher",
+    "agent.kaggle.run_teacher"
+   ],
+   "json_loads": 0,
+   "lines": 316,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/kaggle/teacher_distill.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "agent.llm": {
+   "config": [],
+   "data": [],
+   "doc": "The local model: Qwen3 1.7B (4-bit, MLX) on this Mac, with this project's LoRA adapter when",
+   "imports": [
+    "redzone.governor"
+   ],
+   "json_loads": 0,
+   "lines": 36,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/llm.py",
+   "timing": {},
+   "used_by": [
+    "agent.train.evaluate",
+    "agent.watchdog"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "agent.policy": {
+   "config": [],
+   "data": [],
+   "doc": "The watchdog's judgment: what's wrong and what (if anything) to do. Stdlib only.",
+   "imports": [
+    "redzone.jsonfind"
+   ],
+   "json_loads": 0,
+   "lines": 359,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/policy.py",
+   "timing": {
+    "SCREEN_DEAD_S": 90.0,
+    "STALE_FEED_S": 180.0,
+    "STALE_LOG_S": 240.0
+   },
+   "used_by": [
+    "agent.kaggle.grade",
+    "agent.train.evaluate",
+    "agent.train.make_data",
+    "agent.watchdog"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 8
+  },
+  "agent.train": {
+   "config": [],
+   "data": [],
+   "doc": "",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 1,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "agent/train/__init__.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "agent.train.evaluate": {
+   "config": [],
+   "data": [],
+   "doc": "Score the watchdog model on the held-out test set: exact action accuracy, overall and per kind.",
+   "imports": [
+    "agent.llm",
+    "agent.policy"
+   ],
+   "json_loads": 2,
+   "lines": 55,
+   "main": true,
+   "owner": "LOCAL AI",
+   "path": "agent/train/evaluate.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "agent.train.make_data": {
+   "config": [],
+   "data": [],
+   "doc": "Fine-tuning data for the watchdog model: app status -> the right action, as chat examples.",
+   "imports": [
+    "agent.policy"
+   ],
+   "json_loads": 0,
+   "lines": 173,
+   "main": true,
+   "owner": "LOCAL AI",
+   "path": "agent/train/make_data.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "agent.train.peft_to_mlx": {
+   "config": [],
+   "data": [],
+   "doc": "Turn a PEFT LoRA adapter (agent/train/train_peft.py) into mlx_lm's adapter format, the one the",
+   "imports": [],
+   "json_loads": 2,
+   "lines": 122,
+   "main": true,
+   "owner": "LOCAL AI",
+   "path": "agent/train/peft_to_mlx.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.run_students"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "agent.watchdog": {
+   "config": [],
+   "data": [
+    "agent.jsonl"
+   ],
+   "doc": "RedZone watchdog: a separate, always-on process that keeps the app healthy without a person.",
+   "imports": [
+    "agent.llm",
+    "agent.policy",
+    "redzone.governor",
+    "redzone.memory",
+    "redzone.platform.autofix"
+   ],
+   "json_loads": 3,
+   "lines": 569,
+   "main": true,
+   "owner": "LOCAL AI",
+   "path": "agent/watchdog.py",
+   "timing": {
+    "CHECK_S": 60.0,
+    "FAILED_TTL_S": 1800.0,
+    "MODEL_CACHE_S": 1800.0,
+    "MODEL_IDLE_S": 900.0,
+    "NOTIFY_QUIET_S": 3600.0,
+    "PRUNE_EVERY_S": 1800.0,
+    "RECONNECT_EVERY_S": 600.0,
+    "WINDOW_S": 900.0
+   },
+   "used_by": [
+    "redzone.lab.night.run"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 7
+  },
+  "redzone": {
+   "config": [],
+   "data": [],
+   "doc": "",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 1,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/__init__.py",
+   "timing": {},
+   "used_by": [
+    "redzone.demo.engine",
+    "redzone.engine",
+    "redzone.lab.night.run",
+    "redzone.observability",
+    "redzone.supervisor",
+    "redzone.tvsetup"
+   ],
+   "used_by_scripts": [
+    "scripts/eval_reasoner.py",
+    "scripts/export_decision_records.py",
+    "scripts/fault_drill.py",
+    "scripts/plan_tonight.py",
+    "scripts/prime_multiview_grade.py",
+    "scripts/screen_lab.py",
+    "scripts/service_runtime.py",
+    "scripts/stick_cec.py",
+    "scripts/tv_local_probe.py",
+    "scripts/tv_setup.py"
+   ],
+   "used_by_tests": 48
+  },
+  "redzone.__main__": {
+   "config": [
+    "mode",
+    "server"
+   ],
+   "data": [],
+   "doc": "Start RedZone Everything:  .venv/bin/python -m redzone",
+   "imports": [
+    "redzone.config",
+    "redzone.engine",
+    "redzone.web.server"
+   ],
+   "json_loads": 0,
+   "lines": 97,
+   "main": true,
+   "owner": "PLATFORM",
+   "path": "redzone/__main__.py",
+   "timing": {},
+   "used_by": [
+    "redzone.demo.__main__"
+   ],
+   "used_by_scripts": [
+    "scripts/service_runtime.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.autonomy": {
+   "config": [
+    "autonomy"
+   ],
+   "data": [
+    "autonomy.jsonl"
+   ],
+   "doc": "Autonomy: the app runs itself. After the one-time \"Allow\" prompts on the TV, nothing here needs you.",
+   "imports": [
+    "redzone.channels",
+    "redzone.config",
+    "redzone.control",
+    "redzone.discovery.yttv",
+    "redzone.governor",
+    "redzone.models",
+    "redzone.network",
+    "redzone.tuners.adb",
+    "redzone.tuners.tuners"
+   ],
+   "json_loads": 5,
+   "lines": 2156,
+   "main": true,
+   "owner": "PLATFORM",
+   "path": "redzone/autonomy.py",
+   "timing": {
+    "DeviceHealer.LEARN_EVERY_S": 1800.0,
+    "HEAL_TIMEOUT_S": 120.0,
+    "LOST_AFTER_S": 120.0,
+    "SETUP_EVERY_S": 300.0,
+    "SETUP_TIMEOUT_S": 180.0,
+    "TV_CHECK_S": 120.0,
+    "TV_SETUP_EVERY_S": 1800.0
+   },
+   "used_by": [
+    "redzone.discovery.runtime",
+    "redzone.lab.night.run",
+    "redzone.tvsetup"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 3
+  },
+  "redzone.bets": {
+   "config": [],
+   "data": [],
+   "doc": "How much is a bet sweating right now? 0 = decided or calm, 1 = on the knife's edge.",
+   "imports": [
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 83,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/bets.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.calibration": {
+   "config": [
+    "calib",
+    "two_stick"
+   ],
+   "data": [],
+   "doc": "[calib.auto] Self-calibration: values re-measured each night from live telemetry, with no one's input.",
+   "imports": [],
+   "json_loads": 2,
+   "lines": 149,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/calibration.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine",
+    "redzone.supervisor"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.channels": {
+   "config": [],
+   "data": [],
+   "doc": "Where can you actually watch a game? Map each game to a tuner target.",
+   "imports": [
+    "redzone.models"
+   ],
+   "json_loads": 1,
+   "lines": 368,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/channels.py",
+   "timing": {},
+   "used_by": [
+    "redzone.autonomy",
+    "redzone.control",
+    "redzone.demo.engine",
+    "redzone.discovery.providers",
+    "redzone.discovery.yttv",
+    "redzone.engine",
+    "redzone.lab.backtest",
+    "redzone.lab.night.run",
+    "redzone.plan",
+    "redzone.supervisor",
+    "redzone.tuners.tuners",
+    "redzone.web.server"
+   ],
+   "used_by_scripts": [
+    "scripts/eval_sports.py",
+    "scripts/fault_drill.py",
+    "scripts/find_yttv_code.py",
+    "scripts/multiview_probe.py",
+    "scripts/plan_tonight.py",
+    "scripts/rz.py",
+    "scripts/tv_practice.py"
+   ],
+   "used_by_tests": 28
+  },
+  "redzone.commands": {
+   "config": [],
+   "data": [],
+   "doc": "Phone commands that land exactly once: an id, an ack, a status, and safe retries.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 79,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/commands.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.config": {
+   "config": [],
+   "data": [],
+   "doc": "Config: defaults + user overrides, validated, versioned, and undoable.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 274,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/config.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.build_moments_kaggle",
+    "redzone.__main__",
+    "redzone.autonomy",
+    "redzone.demo.engine",
+    "redzone.engine",
+    "redzone.lab.backtest",
+    "redzone.lab.brainfit",
+    "redzone.lab.breakblend",
+    "redzone.lab.evaldata",
+    "redzone.lab.night.run",
+    "redzone.lab.optimize",
+    "redzone.lab.reasoner_data",
+    "redzone.lab.replaycheck",
+    "redzone.lab.tune",
+    "redzone.supervisor",
+    "redzone.web.phone_v2",
+    "redzone.web.server"
+   ],
+   "used_by_scripts": [
+    "scripts/backtest.py",
+    "scripts/build_reasoner_data.py",
+    "scripts/delay_report.py",
+    "scripts/eval.py",
+    "scripts/eval_reasoner.py",
+    "scripts/eval_sports.py",
+    "scripts/fault_drill.py",
+    "scripts/find_yttv_code.py",
+    "scripts/perf_probe.py",
+    "scripts/plan_tonight.py",
+    "scripts/replay_check.py",
+    "scripts/rz.py",
+    "scripts/service.py",
+    "scripts/service_runtime.py",
+    "scripts/tv_practice.py"
+   ],
+   "used_by_tests": 34
+  },
+  "redzone.contracts": {
+   "config": [],
+   "data": [],
+   "doc": "Interfaces every thread codes against. See docs/architecture.md.",
+   "imports": [
+    "redzone.contracts.breaks",
+    "redzone.contracts.budget",
+    "redzone.contracts.clock",
+    "redzone.contracts.feeds",
+    "redzone.contracts.flags",
+    "redzone.contracts.guard",
+    "redzone.contracts.health",
+    "redzone.contracts.moment",
+    "redzone.contracts.reasoner",
+    "redzone.contracts.reel",
+    "redzone.contracts.switching",
+    "redzone.contracts.sync",
+    "redzone.contracts.trace",
+    "redzone.contracts.views",
+    "redzone.contracts.world",
+    "redzone.decider.core"
+   ],
+   "json_loads": 0,
+   "lines": 89,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/__init__.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.citymap"
+   ],
+   "used_by_scripts": [
+    "scripts/citymap.py"
+   ],
+   "used_by_tests": 3
+  },
+  "redzone.contracts.breaks": {
+   "config": [],
+   "data": [],
+   "doc": "BreakModel contract: when a stoppage starts, what kind it is, how long it runs, when play restarts.",
+   "imports": [
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 58,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/breaks.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts",
+    "redzone.contracts.legacy",
+    "redzone.contracts.views",
+    "redzone.contracts.world",
+    "redzone.scoring.brain3"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.contracts.budget": {
+   "config": [],
+   "data": [],
+   "doc": "Per-tick latency budget, split across modules. Enforced and logged.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 46,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/budget.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.contracts.clock": {
+   "config": [],
+   "data": [],
+   "doc": "One clock: wall time, feed (data) time and per-channel screen time.",
+   "imports": [
+    "redzone.contracts.sync"
+   ],
+   "json_loads": 0,
+   "lines": 48,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/clock.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts",
+    "redzone.contracts.views",
+    "redzone.contracts.world"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.contracts.feeds": {
+   "config": [],
+   "data": [],
+   "doc": "Feeds contract: game state plus how fresh it is.",
+   "imports": [
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 42,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/feeds.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts",
+    "redzone.contracts.world",
+    "redzone.sources.feeds"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.contracts.flags": {
+   "config": [],
+   "data": [],
+   "doc": "Feature flags / kill switches: one per subsystem.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 60,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/flags.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.contracts.guard": {
+   "config": [],
+   "data": [],
+   "doc": "The hard-rule (guard) layer, as seen by the rest of the system.",
+   "imports": [
+    "redzone.contracts.trace",
+    "redzone.decider.core"
+   ],
+   "json_loads": 0,
+   "lines": 42,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/guard.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.contracts.health": {
+   "config": [],
+   "data": [],
+   "doc": "Watchdog/Health contract: faults the system sees and the fixes applied.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 62,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/health.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts",
+    "redzone.contracts.world",
+    "redzone.platform.health",
+    "redzone.supervisor"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.contracts.legacy": {
+   "config": [],
+   "data": [],
+   "doc": "Adapters from today's code to the contracts, so every thread builds against real types now.",
+   "imports": [
+    "redzone.contracts.breaks",
+    "redzone.contracts.moment",
+    "redzone.contracts.sync",
+    "redzone.decider.core",
+    "redzone.decider.decider",
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 105,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/legacy.py",
+   "timing": {},
+   "used_by": [
+    "redzone.scoring.brain3"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.contracts.map": {
+   "config": [],
+   "data": [],
+   "doc": "The city map's contract: who owns each module, which modules may touch which outside system, which",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 116,
+   "main": true,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/map.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.citymap"
+   ],
+   "used_by_scripts": [
+    "scripts/citymap.py"
+   ],
+   "used_by_tests": 0
+  },
+  "redzone.contracts.moment": {
+   "config": [],
+   "data": [],
+   "doc": "MomentModel contract (Brain v3): per-game \"is something worth seeing about to happen\".",
+   "imports": [
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 44,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/moment.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts",
+    "redzone.contracts.legacy",
+    "redzone.contracts.views",
+    "redzone.contracts.world",
+    "redzone.scoring.brain3"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.contracts.reasoner": {
+   "config": [],
+   "data": [],
+   "doc": "Reasoner contract: the local LLM's read of the night. Advisory only.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 45,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/reasoner.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts",
+    "redzone.contracts.views",
+    "redzone.contracts.world"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.contracts.reel": {
+   "config": [],
+   "data": [],
+   "doc": "ReelProvider contract: a ready catch-up reel of plays you missed. Feeds core.ReelView / Option",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 49,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/reel.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts",
+    "redzone.contracts.views",
+    "redzone.contracts.world"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.contracts.switching": {
+   "config": [],
+   "data": [],
+   "doc": "SwitchPaths contract: every way to put a target on screen, each with a measured cost.",
+   "imports": [
+    "redzone.decider.core"
+   ],
+   "json_loads": 0,
+   "lines": 98,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/switching.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts",
+    "redzone.contracts.world",
+    "redzone.lab.evaldata"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "redzone.contracts.sync": {
+   "config": [],
+   "data": [],
+   "doc": "SyncModel contract: how far each channel's picture runs behind real life.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 43,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/sync.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts",
+    "redzone.contracts.clock",
+    "redzone.contracts.legacy",
+    "redzone.contracts.views",
+    "redzone.contracts.world",
+    "redzone.decider.sync"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.contracts.trace": {
+   "config": [],
+   "data": [],
+   "doc": "Trace contract: one trace per switch, decision -> command -> picture confirmed, with timings.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 60,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/trace.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts",
+    "redzone.contracts.guard",
+    "redzone.trace"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.contracts.views": {
+   "config": [],
+   "data": [],
+   "doc": "Producer outputs -> the decision core's views (redzone/decider/core.py).",
+   "imports": [
+    "redzone.contracts.breaks",
+    "redzone.contracts.clock",
+    "redzone.contracts.moment",
+    "redzone.contracts.reasoner",
+    "redzone.contracts.reel",
+    "redzone.contracts.sync",
+    "redzone.decider.core"
+   ],
+   "json_loads": 0,
+   "lines": 61,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/views.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.contracts.world": {
+   "config": [],
+   "data": [],
+   "doc": "WorldState: ONE immutable snapshot per tick, passed to every module.",
+   "imports": [
+    "redzone.contracts.breaks",
+    "redzone.contracts.clock",
+    "redzone.contracts.feeds",
+    "redzone.contracts.health",
+    "redzone.contracts.moment",
+    "redzone.contracts.reasoner",
+    "redzone.contracts.reel",
+    "redzone.contracts.switching",
+    "redzone.contracts.sync",
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 84,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/contracts/world.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.control": {
+   "config": [
+    "buffer",
+    "decider",
+    "hardening",
+    "mode",
+    "replay",
+    "timing",
+    "tuners",
+    "two_stick"
+   ],
+   "data": [],
+   "doc": "Turns decisions into TV actions. Dry-run by default.",
+   "imports": [
+    "redzone.channels",
+    "redzone.tuners",
+    "redzone.tuners.adb",
+    "redzone.tuners.prime_multiview",
+    "redzone.tuners.tuners",
+    "redzone.tv"
+   ],
+   "json_loads": 2,
+   "lines": 2884,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/control.py",
+   "timing": {
+    "ASLEEP_RECHECK_S": 60.0,
+    "AWAKE_TRUST_S": 120.0,
+    "BUFFER_DRIFT_S": 2.0,
+    "BUFFER_WAIT_S": 90.0,
+    "CEC_REENABLE_S": 0.6,
+    "CEC_RETRY_S": 600.0,
+    "CEC_STATE_EVERY_S": 300.0,
+    "CEC_SYNC_S": 30.0,
+    "FLIP_DEADLINE_S": 4.5,
+    "FLIP_POLL_S": 0.12,
+    "FLIP_SETTLE_S": 3.0,
+    "FLIP_STEADY_S": 1.0,
+    "FLIP_STEADY_WAIT_S": 3.0,
+    "HOLD_RESUME_LOCK_S": 1.0,
+    "KEEP_CONFIRM_S": 2.0,
+    "MAX_SAFE_WAIT_S": 25.0,
+    "MIN_PRELOAD_GAP_S": 5.0,
+    "PLANNER_WISH_S": 3.0,
+    "PRELOAD_BACKOFF_S": 120.0,
+    "PRIME_KEEP_WAIT_S": 15.0,
+    "PRIME_LIVE_WAIT_S": 8.0,
+    "PRIME_PAGE_AFTER_S": 1.0,
+    "PRIME_RESUME_WAIT_S": 15.0,
+    "REASSERT_BOTH_S": 120.0,
+    "REASSERT_FIRST_S": 15.0,
+    "REASSERT_GAP_S": 60.0,
+    "REFRESH_POLL_S": 0.5,
+    "RELAUNCH_AFTER_S": 0.6,
+    "RELINK_MAX_S": 25.0,
+    "RESUME_PAUSED_S": 2.0,
+    "RESUME_PLAY_WAIT_S": 3.0,
+    "RESUME_POLL_S": 0.25,
+    "RESUME_WAIT_S": 6.0,
+    "SAFE_POLL_S": 0.2,
+    "SEEK_LATE_OK_S": 1.0,
+    "STALL_MAX_S": 20.0,
+    "STALL_MIN_S": 0.5,
+    "STANDBY_REREAD_S": 0.5,
+    "STEAL_LOCK_WAIT_S": 10.0,
+    "STUCK_BUFFER_S": 20.0,
+    "STUCK_GAP_S": 30.0,
+    "TV_FLIP_MAX_S": 6.0,
+    "TV_MAINTAIN_S": 60.0,
+    "TV_PLAYING_WAIT_S": 2.5,
+    "TWO_STICK_RETRY_S": 120.0,
+    "VERIFY_SOON_S": 3.0,
+    "VISIBLE_FIX_GAP_S": 30.0,
+    "VISIBLE_STALL_S": 8.0,
+    "WAIT_SCREEN_LOOK_S": 4.0
+   },
+   "used_by": [
+    "redzone.autonomy",
+    "redzone.demo.engine",
+    "redzone.engine",
+    "redzone.lab.night.run",
+    "redzone.supervisor"
+   ],
+   "used_by_scripts": [
+    "scripts/fault_drill.py",
+    "scripts/rz.py",
+    "scripts/tv_practice.py"
+   ],
+   "used_by_tests": 29
+  },
+  "redzone.decider": {
+   "config": [],
+   "data": [],
+   "doc": "",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 1,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/decider/__init__.py",
+   "timing": {},
+   "used_by": [
+    "redzone.decider.decider",
+    "redzone.lab.tune",
+    "redzone.noggin.features"
+   ],
+   "used_by_scripts": [
+    "scripts/train_noggin_timing.py"
+   ],
+   "used_by_tests": 6
+  },
+  "redzone.decider.core": {
+   "config": [],
+   "data": [],
+   "doc": "The decision core: ONE expected-value function that every action is chosen by.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 399,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/decider/core.py",
+   "timing": {},
+   "used_by": [
+    "redzone.contracts",
+    "redzone.contracts.guard",
+    "redzone.contracts.legacy",
+    "redzone.contracts.switching",
+    "redzone.contracts.views",
+    "redzone.decider.decider",
+    "redzone.tuners.multiview"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "redzone.decider.cuts": {
+   "config": [],
+   "data": [],
+   "doc": "Cut timing: WHEN to leave a game and WHEN to come into one.",
+   "imports": [
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 557,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/decider/cuts.py",
+   "timing": {
+    "AFTER_PLAY_S": 3.0,
+    "CLOCK_RESUME_MARGIN_S": 3.0,
+    "FROZEN_HOLD_S": 300.0,
+    "LEARNED_MAX_S": 1800.0
+   },
+   "used_by": [
+    "redzone.decider.decider",
+    "redzone.decider.screen",
+    "redzone.noggin.features"
+   ],
+   "used_by_scripts": [
+    "scripts/train_noggin_timing.py"
+   ],
+   "used_by_tests": 7
+  },
+  "redzone.decider.decider": {
+   "config": [
+    "brain",
+    "decider",
+    "noggin",
+    "playbooks",
+    "polling",
+    "reasoner",
+    "redzone_mode",
+    "reel",
+    "replay"
+   ],
+   "data": [],
+   "doc": "The switch decider: a producer that never cuts you off mid-play.",
+   "imports": [
+    "redzone.decider",
+    "redzone.decider.core",
+    "redzone.decider.cuts",
+    "redzone.decider.playbooks",
+    "redzone.decider.scenarios",
+    "redzone.decider.screen",
+    "redzone.models",
+    "redzone.noggin",
+    "redzone.noggin.live",
+    "redzone.noggin.lookahead",
+    "redzone.noggin.pick",
+    "redzone.noggin.wire",
+    "redzone.scoring.engine"
+   ],
+   "json_loads": 0,
+   "lines": 2240,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/decider/decider.py",
+   "timing": {
+    "ENTRY_FASTEST_S": 4.0,
+    "ENTRY_MAX_REWIND_S": 120.0,
+    "ENTRY_RELAXED_S": 8.0,
+    "ENTRY_SLACK_S": 2.0,
+    "ENTRY_URGENT_S": 2.0,
+    "GONE_MAX_HOLD_CONTINUOUS_S": 300.0,
+    "GONE_MAX_HOLD_S": 90.0,
+    "KICKOFF_TO_SNAP_S": 25.0,
+    "LONG_VISIT_MIN_S": 240.0,
+    "RETURN_BUFFER_CONTINUOUS_S": 180.0,
+    "RETURN_BUFFER_S": 60.0,
+    "START_RETRY_MAX_S": 60.0,
+    "START_RETRY_S": 3.0,
+    "TUNE_SLACK_S": 3.0,
+    "UNSEEN_PLAY_LAG_S": 10.0,
+    "VISIT_EXIT_CONTINUOUS_S": 25.0,
+    "VISIT_EXIT_S": 10.0,
+    "VISIT_MIN_S": 90.0,
+    "VISIT_MIN_WATCH_S": 0.0
+   },
+   "used_by": [
+    "redzone.contracts.legacy",
+    "redzone.demo.engine",
+    "redzone.engine",
+    "redzone.lab.backtest",
+    "redzone.lab.night.run",
+    "redzone.lab.tune",
+    "redzone.supervisor"
+   ],
+   "used_by_scripts": [
+    "scripts/fault_drill.py"
+   ],
+   "used_by_tests": 32
+  },
+  "redzone.decider.delaymodel": {
+   "config": [],
+   "data": [],
+   "doc": "Per-channel stream-delay predictor: how far each channel's picture runs behind real life.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 110,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/decider/delaymodel.py",
+   "timing": {
+    "TAU_PRIOR_S": 8.0
+   },
+   "used_by": [
+    "redzone.decider.screen"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.decider.playbooks": {
+   "config": [
+    "playbooks",
+    "polling"
+   ],
+   "data": [],
+   "doc": "Safety playbooks SAFE-01/02/03/05 (docs/playbooks.md, family flag `playbooks.safe.enabled`, OFF).",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 140,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/decider/playbooks.py",
+   "timing": {},
+   "used_by": [
+    "redzone.decider.decider",
+    "redzone.decider.scenarios"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.decider.scenarios": {
+   "config": [
+    "decider",
+    "playbooks"
+   ],
+   "data": [],
+   "doc": "Scenario-tree lookup on the Mac (idea #19, Mac half; docs/playbooks.md GAME-*). Flag",
+   "imports": [
+    "redzone.decider.playbooks"
+   ],
+   "json_loads": 0,
+   "lines": 147,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/decider/scenarios.py",
+   "timing": {},
+   "used_by": [
+    "redzone.decider.decider"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "redzone.decider.screen": {
+   "config": [],
+   "data": [],
+   "doc": "What's on your screen right now, estimated from the data and the stream delay.",
+   "imports": [
+    "redzone.decider.cuts",
+    "redzone.decider.delaymodel",
+    "redzone.decider.sync",
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 944,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/decider/screen.py",
+   "timing": {
+    "AFTER_PLAY_BUFFER_S": 3.0,
+    "BOUNDARY_SIGMA_S": 6.0,
+    "FEED_LAG_GUESS_S": 6.0,
+    "FEED_LAG_MAX_S": 30.0,
+    "FEED_LAG_MIN_S": 2.0,
+    "FIRST_POLL_RECENT_S": 60.0,
+    "LAG_EST_DEFAULT_S": 10.0,
+    "LAG_SAMPLE_CAP_S": 180.0,
+    "MIN_TAP_SIGMA_S": 4.0,
+    "SCREEN_SIGMA_S": 4.0,
+    "SETTLED_DRIFT_S": 4.0,
+    "SETTLED_SPREAD_S": 6.0,
+    "SHARED_MARGIN_S": 2.0,
+    "STALE_DATA_S": 20.0,
+    "STALE_MARGIN_S": 4.0
+   },
+   "used_by": [
+    "redzone.decider.decider",
+    "redzone.demo.engine",
+    "redzone.engine",
+    "redzone.lab.backtest",
+    "redzone.lab.cutgrade",
+    "redzone.lab.replaycheck",
+    "redzone.lab.sportsgrade",
+    "redzone.lab.syncsim",
+    "redzone.supervisor"
+   ],
+   "used_by_scripts": [
+    "scripts/delay_report.py"
+   ],
+   "used_by_tests": 32
+  },
+  "redzone.decider.sync": {
+   "config": [],
+   "data": [],
+   "doc": "Automatic per-channel sync: each channel's screen delay tracked by a small Kalman filter, no taps.",
+   "imports": [
+    "redzone.contracts.sync"
+   ],
+   "json_loads": 0,
+   "lines": 409,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/decider/sync.py",
+   "timing": {
+    "DRIFT_ALARM_S": 5.0,
+    "POSITION_SIGMA_S": 0.5,
+    "POS_LOG_S": 10.0,
+    "STALE_S": 1800.0,
+    "SYNC_TARGET_S": 2.0,
+    "UNCERTAIN_HOLD_S": 300.0
+   },
+   "used_by": [
+    "redzone.decider.screen",
+    "redzone.engine",
+    "redzone.screen.scorebug"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "redzone.demo": {
+   "config": [],
+   "data": [],
+   "doc": "",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 1,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/demo/__init__.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/ci_scorecard.py"
+   ],
+   "used_by_tests": 0
+  },
+  "redzone.demo.__main__": {
+   "config": [],
+   "data": [],
+   "doc": "Replay demo: watch how the app WOULD have switched during a past day's real games.",
+   "imports": [
+    "redzone.__main__",
+    "redzone.demo.download",
+    "redzone.demo.engine",
+    "redzone.lab.evaldata",
+    "redzone.web.server"
+   ],
+   "json_loads": 0,
+   "lines": 116,
+   "main": true,
+   "owner": "INTEGRATION",
+   "path": "redzone/demo/__main__.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.demo.download": {
+   "config": [],
+   "data": [],
+   "doc": "Fetch one day's finished games (scoreboard + play-by-play) into data/demo/<day>/<league>/.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 43,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/demo/download.py",
+   "timing": {},
+   "used_by": [
+    "redzone.demo.__main__"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.demo.engine": {
+   "config": [
+    "decider",
+    "delay"
+   ],
+   "data": [],
+   "doc": "The real Engine, replaying a past day on a simulated clock. Never touches the TV.",
+   "imports": [
+    "redzone",
+    "redzone.channels",
+    "redzone.config",
+    "redzone.control",
+    "redzone.decider.decider",
+    "redzone.decider.screen",
+    "redzone.engine",
+    "redzone.lab",
+    "redzone.lab.backtest",
+    "redzone.models",
+    "redzone.scoring.drive",
+    "redzone.sources",
+    "redzone.sources.espn",
+    "redzone.sources.feeds",
+    "redzone.sources.merge",
+    "redzone.standby",
+    "redzone.store",
+    "redzone.views"
+   ],
+   "json_loads": 1,
+   "lines": 569,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/demo/engine.py",
+   "timing": {
+    "CALIBRATED_SIGMA_S": 3.0,
+    "FEED_LAG_S": 8.0,
+    "PLAY_LEN_S": 7.0,
+    "TUNE_S": 5.0
+   },
+   "used_by": [
+    "redzone.demo.__main__"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.discovery": {
+   "config": [],
+   "data": [],
+   "doc": "Finding where things are watchable, by itself.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 8,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/discovery/__init__.py",
+   "timing": {},
+   "used_by": [
+    "redzone.discovery.search",
+    "redzone.discovery.yttv",
+    "redzone.lab.night.run",
+    "redzone.tuners.yttv_search"
+   ],
+   "used_by_scripts": [
+    "scripts/find_yttv_code.py",
+    "scripts/providers_check.py"
+   ],
+   "used_by_tests": 3
+  },
+  "redzone.discovery.lounge": {
+   "config": [],
+   "data": [],
+   "doc": "Ask the YouTube TV app on a stick which video id it is playing, over the network, no login.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 209,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/discovery/lounge.py",
+   "timing": {
+    "NEG_TTL_S": 600.0
+   },
+   "used_by": [
+    "redzone.discovery.yttv"
+   ],
+   "used_by_scripts": [
+    "scripts/find_yttv_code.py"
+   ],
+   "used_by_tests": 0
+  },
+  "redzone.discovery.providers": {
+   "config": [],
+   "data": [],
+   "doc": "Provider candidates: installed apps, learned access failures, and per-game routes.",
+   "imports": [
+    "redzone.channels",
+    "redzone.models"
+   ],
+   "json_loads": 1,
+   "lines": 1042,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/discovery/providers.py",
+   "timing": {
+    "SCAN_EVERY_S": 1800.0
+   },
+   "used_by": [
+    "redzone.discovery.runtime",
+    "redzone.discovery.search",
+    "redzone.discovery.stickio",
+    "redzone.supervisor",
+    "redzone.tuners.prime_search",
+    "redzone.tuners.profiles",
+    "redzone.tuners.providers",
+    "redzone.tuners.screen_prompts",
+    "redzone.tuners.tuners",
+    "redzone.tuners.yttv_search"
+   ],
+   "used_by_scripts": [
+    "scripts/plan_tonight.py",
+    "scripts/providers_check.py"
+   ],
+   "used_by_tests": 6
+  },
+  "redzone.discovery.runtime": {
+   "config": [
+    "autonomy",
+    "mode",
+    "providers"
+   ],
+   "data": [],
+   "doc": "Connect recovered provider discovery and background maintenance to the engine.",
+   "imports": [
+    "redzone.autonomy",
+    "redzone.discovery.providers",
+    "redzone.tuners.providers",
+    "redzone.tuners.tuners"
+   ],
+   "json_loads": 0,
+   "lines": 146,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/discovery/runtime.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 3
+  },
+  "redzone.discovery.search": {
+   "config": [],
+   "data": [],
+   "doc": "Find a YouTube TV channel nobody published a code for (locals, NFL RedZone, NBCSN, Sunday",
+   "imports": [
+    "redzone.discovery",
+    "redzone.discovery.providers",
+    "redzone.discovery.stickio",
+    "redzone.discovery.yttv"
+   ],
+   "json_loads": 0,
+   "lines": 240,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/discovery/search.py",
+   "timing": {
+    "MAX_WAIT_S": 20.0
+   },
+   "used_by": [
+    "redzone.discovery.yttv"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.discovery.stickio": {
+   "config": [],
+   "data": [],
+   "doc": "What is this Fire TV stick playing right now? Read-only probes for YouTube TV discovery.",
+   "imports": [
+    "redzone.discovery.providers",
+    "redzone.tuners.adb",
+    "redzone.tuners.profiles"
+   ],
+   "json_loads": 0,
+   "lines": 342,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/discovery/stickio.py",
+   "timing": {},
+   "used_by": [
+    "redzone.discovery.search",
+    "redzone.discovery.yttv",
+    "redzone.tuners.yttv_search"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "redzone.discovery.yttv": {
+   "config": [],
+   "data": [],
+   "doc": "YouTube TV channel codes with zero pasting: a researched default table, self-verification on a",
+   "imports": [
+    "redzone.channels",
+    "redzone.discovery",
+    "redzone.discovery.lounge",
+    "redzone.discovery.search",
+    "redzone.discovery.stickio",
+    "redzone.sources",
+    "redzone.sources.eventlinks",
+    "redzone.tuners.adb"
+   ],
+   "json_loads": 3,
+   "lines": 701,
+   "main": true,
+   "owner": "SWITCHING",
+   "path": "redzone/discovery/yttv.py",
+   "timing": {
+    "PER_CODE_TIMEOUT_S": 20.0
+   },
+   "used_by": [
+    "redzone.autonomy",
+    "redzone.discovery.search",
+    "redzone.lab.night.run",
+    "redzone.tuners.tuners",
+    "redzone.tuners.yttv_search"
+   ],
+   "used_by_scripts": [
+    "scripts/find_yttv_code.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.engine": {
+   "config": [
+    "brain",
+    "college",
+    "control",
+    "decider",
+    "delay",
+    "fantasy",
+    "hardening",
+    "mode",
+    "polling",
+    "reasoner",
+    "reel",
+    "replay",
+    "score",
+    "screen",
+    "sources",
+    "switch_speed",
+    "sync",
+    "timing",
+    "tuners",
+    "two_stick"
+   ],
+   "data": [
+    "agent.jsonl",
+    "buffer.jsonl",
+    "sync.jsonl",
+    "traces.jsonl"
+   ],
+   "doc": "The producer loop: poll every feed -> merge -> score -> decide -> act -> tell the phone.",
+   "imports": [
+    "redzone",
+    "redzone.bets",
+    "redzone.calibration",
+    "redzone.channels",
+    "redzone.commands",
+    "redzone.config",
+    "redzone.control",
+    "redzone.decider.decider",
+    "redzone.decider.screen",
+    "redzone.decider.sync",
+    "redzone.discovery.runtime",
+    "redzone.fantasy",
+    "redzone.governor",
+    "redzone.lab.timing",
+    "redzone.models",
+    "redzone.network",
+    "redzone.plan",
+    "redzone.platform.agent_fix",
+    "redzone.platform.wake",
+    "redzone.reasoner",
+    "redzone.reasoner.brief",
+    "redzone.reasoner.reasoner",
+    "redzone.recorded",
+    "redzone.recorder",
+    "redzone.reel",
+    "redzone.scoring",
+    "redzone.scoring.breaks",
+    "redzone.scoring.drive",
+    "redzone.scoring.engine",
+    "redzone.screen",
+    "redzone.screen.audio",
+    "redzone.screen.boundary",
+    "redzone.screen.scorebug",
+    "redzone.screen_ocr",
+    "redzone.sources",
+    "redzone.sources.espn",
+    "redzone.sources.eventlinks",
+    "redzone.sources.fastcast",
+    "redzone.sources.fastcast_check",
+    "redzone.sources.feeds",
+    "redzone.sources.http",
+    "redzone.sources.leagues",
+    "redzone.sources.merge",
+    "redzone.standby",
+    "redzone.store",
+    "redzone.supervisor",
+    "redzone.sync_probe",
+    "redzone.trace",
+    "redzone.tuners",
+    "redzone.tuners.prime_multiview",
+    "redzone.userstate",
+    "redzone.views"
+   ],
+   "json_loads": 2,
+   "lines": 2279,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/engine.py",
+   "timing": {
+    "CLOCK_JUMP_S": 5.0,
+    "DECIDE_EVERY_S": 0.5,
+    "FASTCAST_SYNC_S": 2.0,
+    "HOLD_RESUME_S": 45.0,
+    "PEEK_HOLD_S": 90.0,
+    "SKIP_S": 300.0
+   },
+   "used_by": [
+    "redzone.__main__",
+    "redzone.demo.engine",
+    "redzone.lab.night.run",
+    "redzone.web.server"
+   ],
+   "used_by_scripts": [
+    "scripts/fault_drill.py",
+    "scripts/perf_probe.py"
+   ],
+   "used_by_tests": 27
+  },
+  "redzone.fantasy": {
+   "config": [],
+   "data": [],
+   "doc": "ESPN Fantasy Football: boost games where your (or your opponent's) starters are about to score.",
+   "imports": [
+    "redzone.models",
+    "redzone.tv"
+   ],
+   "json_loads": 0,
+   "lines": 136,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/fantasy.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.governor": {
+   "config": [],
+   "data": [],
+   "doc": "Resource governor: keep the Mac cool, quiet and with free disk while RedZone runs.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 433,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/governor.py",
+   "timing": {},
+   "used_by": [
+    "agent.llm",
+    "agent.watchdog",
+    "redzone.autonomy",
+    "redzone.engine",
+    "redzone.lab.night.run",
+    "redzone.reel",
+    "redzone.screen_ocr"
+   ],
+   "used_by_scripts": [
+    "scripts/disk_guard.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.jsonfind": {
+   "config": [],
+   "data": [],
+   "doc": "One parser for a model's JSON answer (the reasoner and the watchdog both use it).",
+   "imports": [],
+   "json_loads": 2,
+   "lines": 76,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/jsonfind.py",
+   "timing": {},
+   "used_by": [
+    "agent.policy",
+    "redzone.reasoner.reasoner"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.lab": {
+   "config": [],
+   "data": [],
+   "doc": "",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 1,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/__init__.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.build_moments_kaggle",
+    "redzone.demo.engine",
+    "redzone.lab.backtest",
+    "redzone.lab.brain3data",
+    "redzone.lab.brain3fit",
+    "redzone.lab.brainfit",
+    "redzone.lab.breakblend",
+    "redzone.lab.oracle",
+    "redzone.lab.reasoner_data",
+    "redzone.lab.replaycheck",
+    "redzone.lab.sportsgrade",
+    "redzone.lab.tune",
+    "redzone.noggin.pick"
+   ],
+   "used_by_scripts": [
+    "scripts/backfill_eval_v2.py",
+    "scripts/backtest.py",
+    "scripts/build_eval_data.py",
+    "scripts/build_reasoner_data.py",
+    "scripts/build_training.py",
+    "scripts/build_training3.py",
+    "scripts/calibrate_brain3.py",
+    "scripts/citymap.py",
+    "scripts/contract_check.py",
+    "scripts/eval.py",
+    "scripts/eval_brain.py",
+    "scripts/eval_break_blend.py",
+    "scripts/eval_sports.py",
+    "scripts/export_decision_records.py",
+    "scripts/fetch_eval_data.py",
+    "scripts/leak_check.py",
+    "scripts/timing_report.py",
+    "scripts/train_brain.py",
+    "scripts/train_brain3.py",
+    "scripts/train_noggin_pick.py",
+    "scripts/tune.py"
+   ],
+   "used_by_tests": 24
+  },
+  "redzone.lab.backtest": {
+   "config": [
+    "delay",
+    "polling",
+    "sync"
+   ],
+   "data": [],
+   "doc": "Replay a real slate of past games through the scorer and decider, then grade it.",
+   "imports": [
+    "redzone.channels",
+    "redzone.config",
+    "redzone.decider.decider",
+    "redzone.decider.screen",
+    "redzone.lab",
+    "redzone.lab.cutgrade",
+    "redzone.lab.timing",
+    "redzone.models",
+    "redzone.scoring.drive",
+    "redzone.scoring.engine",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 1,
+   "lines": 1002,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/backtest.py",
+   "timing": {
+    "CATCHUP_2_S": 120.0,
+    "CATCHUP_3_S": 180.0,
+    "CATCHUP_S": 600.0,
+    "RESYNC_SD_S": 1.5,
+    "SCREEN_LAG_S": 43.0,
+    "STREAM_DELAY_S": 26.0
+   },
+   "used_by": [
+    "agent.kaggle.build_moments_kaggle",
+    "redzone.demo.engine",
+    "redzone.lab.cutgrade",
+    "redzone.lab.night.run",
+    "redzone.lab.optimize",
+    "redzone.lab.oracle",
+    "redzone.lab.reasoner_data",
+    "redzone.lab.replaycheck",
+    "redzone.lab.sportsgrade",
+    "redzone.lab.tune",
+    "redzone.noggin.pick"
+   ],
+   "used_by_scripts": [
+    "scripts/backtest.py",
+    "scripts/eval.py",
+    "scripts/eval_sports.py",
+    "scripts/leak_check.py",
+    "scripts/train_noggin_pick.py"
+   ],
+   "used_by_tests": 11
+  },
+  "redzone.lab.brain3cal": {
+   "config": [],
+   "data": [],
+   "doc": "Calibrate Brain v3's cautious restart bound (the decision core's break budget) per stoppage type.",
+   "imports": [
+    "redzone.lab.brain3data",
+    "redzone.scoring",
+    "redzone.scoring.brain",
+    "redzone.scoring.brain3"
+   ],
+   "json_loads": 0,
+   "lines": 157,
+   "main": false,
+   "owner": "MOMENT/BREAK",
+   "path": "redzone/lab/brain3cal.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/calibrate_brain3.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.lab.brain3data": {
+   "config": [],
+   "data": [],
+   "doc": "Brain v3 training tables: one row per logged event, with the v3 sequence features and labels.",
+   "imports": [
+    "redzone.lab",
+    "redzone.lab.datasets",
+    "redzone.lab.sportsdata",
+    "redzone.scoring.brain3"
+   ],
+   "json_loads": 0,
+   "lines": 318,
+   "main": false,
+   "owner": "MOMENT/BREAK",
+   "path": "redzone/lab/brain3data.py",
+   "timing": {
+    "MAX_DEAD_S": 1500.0,
+    "NBA_TV_TIMEOUT_S": 140.0,
+    "NFL_UNLOGGED_BREAK_S": 100.0
+   },
+   "used_by": [
+    "redzone.lab.brain3cal",
+    "redzone.lab.brain3fit"
+   ],
+   "used_by_scripts": [
+    "scripts/build_training3.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.lab.brain3fit": {
+   "config": [],
+   "data": [],
+   "doc": "Train and grade Brain v3 (``scripts/train_brain3.py`` is the CLI). Training only: needs lightgbm.",
+   "imports": [
+    "redzone.lab",
+    "redzone.lab.brain3data",
+    "redzone.lab.brainfit",
+    "redzone.models",
+    "redzone.scoring",
+    "redzone.scoring.brain",
+    "redzone.scoring.brain3",
+    "redzone.scoring.breaks",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 1,
+   "lines": 357,
+   "main": false,
+   "owner": "MOMENT/BREAK",
+   "path": "redzone/lab/brain3fit.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/train_brain3.py"
+   ],
+   "used_by_tests": 0
+  },
+  "redzone.lab.brainfit": {
+   "config": [],
+   "data": [],
+   "doc": "Train and grade the brain's per-league models (``scripts/train_brain.py`` is the CLI).",
+   "imports": [
+    "redzone.config",
+    "redzone.lab",
+    "redzone.lab.datasets",
+    "redzone.models",
+    "redzone.scoring",
+    "redzone.scoring.brain",
+    "redzone.scoring.breaks",
+    "redzone.scoring.engine",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 1,
+   "lines": 273,
+   "main": false,
+   "owner": "MOMENT/BREAK",
+   "path": "redzone/lab/brainfit.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.brain3fit",
+    "redzone.lab.breakblend"
+   ],
+   "used_by_scripts": [
+    "scripts/eval_brain.py",
+    "scripts/train_brain.py"
+   ],
+   "used_by_tests": 0
+  },
+  "redzone.lab.breakblend": {
+   "config": [],
+   "data": [],
+   "doc": "Fit and grade how the break forecast mixes the rules with the brain (``breaks.blend``).",
+   "imports": [
+    "redzone.config",
+    "redzone.lab",
+    "redzone.lab.brainfit",
+    "redzone.lab.datasets",
+    "redzone.lab.splits",
+    "redzone.models",
+    "redzone.scoring",
+    "redzone.scoring.brain",
+    "redzone.scoring.breaks",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 1,
+   "lines": 211,
+   "main": false,
+   "owner": "MOMENT/BREAK",
+   "path": "redzone/lab/breakblend.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/eval_break_blend.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.lab.citymap": {
+   "config": [],
+   "data": [],
+   "doc": "The city map: every module of redzone/ and agent/, what it reads (imports, config sections, data",
+   "imports": [
+    "redzone.contracts",
+    "redzone.contracts.map"
+   ],
+   "json_loads": 1,
+   "lines": 240,
+   "main": true,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/citymap.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/citymap.py",
+    "scripts/contract_check.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.lab.cutgrade": {
+   "config": [],
+   "data": [],
+   "doc": "Cut-timing scorecard: WHERE in each game we left, and WHERE we landed.",
+   "imports": [
+    "redzone.decider.screen",
+    "redzone.lab.backtest",
+    "redzone.lab.sportsgrade",
+    "redzone.models",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 0,
+   "lines": 266,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/cutgrade.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.backtest",
+    "redzone.lab.oracle",
+    "redzone.lab.sportsgrade",
+    "redzone.noggin.pick"
+   ],
+   "used_by_scripts": [
+    "scripts/eval.py"
+   ],
+   "used_by_tests": 3
+  },
+  "redzone.lab.datasets": {
+   "config": [],
+   "data": [],
+   "doc": "Training datasets: per-league game-state snapshots with break / key-moment / hotness labels.",
+   "imports": [],
+   "json_loads": 1,
+   "lines": 122,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/datasets.py",
+   "timing": {
+    "BREAK_HORIZON_S": 60.0
+   },
+   "used_by": [
+    "redzone.lab.brain3data",
+    "redzone.lab.brainfit",
+    "redzone.lab.breakblend",
+    "redzone.lab.sportsdata"
+   ],
+   "used_by_scripts": [
+    "scripts/build_training.py",
+    "scripts/train_brain.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.lab.decision_records": {
+   "config": [],
+   "data": [
+    "supervisor_cuts.jsonl",
+    "supervisor_moments.jsonl"
+   ],
+   "doc": "Decision records for the Teacher's nightly review (backlog lane 5 item 2, E23 under the self-taught rule).",
+   "imports": [],
+   "json_loads": 2,
+   "lines": 189,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/decision_records.py",
+   "timing": {
+    "OUTCOME_WINDOW_S": 300.0,
+    "SNAP_MAX_AGE_S": 180.0
+   },
+   "used_by": [
+    "redzone.web.phone_v2"
+   ],
+   "used_by_scripts": [
+    "scripts/export_decision_records.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.lab.evaldata": {
+   "config": [],
+   "data": [],
+   "doc": "One pinned eval dataset, so every thread, CI and the Mac grade on byte-identical nights.",
+   "imports": [
+    "redzone.config",
+    "redzone.contracts.switching"
+   ],
+   "json_loads": 4,
+   "lines": 160,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/evaldata.py",
+   "timing": {},
+   "used_by": [
+    "redzone.demo.__main__"
+   ],
+   "used_by_scripts": [
+    "scripts/backfill_eval_v2.py",
+    "scripts/build_eval_data.py",
+    "scripts/eval.py",
+    "scripts/eval_break_blend.py",
+    "scripts/eval_sports.py",
+    "scripts/fetch_eval_data.py",
+    "scripts/leak_check.py"
+   ],
+   "used_by_tests": 3
+  },
+  "redzone.lab.night": {
+   "config": [],
+   "data": [],
+   "doc": "The end-to-end night: the whole system through a replayed night, against fake sticks and a fake TV.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 11,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/night/__init__.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.night.__main__",
+    "redzone.lab.night.faults",
+    "redzone.lab.night.run"
+   ],
+   "used_by_scripts": [
+    "scripts/northstar.py"
+   ],
+   "used_by_tests": 8
+  },
+  "redzone.lab.night.__main__": {
+   "config": [],
+   "data": [],
+   "doc": "python -m redzone.lab.night [--hours H] [--start HH:MM] [--json out.json] ... (see run.py).",
+   "imports": [
+    "redzone.lab.night",
+    "redzone.lab.night.run",
+    "redzone.lab.night.vclock"
+   ],
+   "json_loads": 1,
+   "lines": 61,
+   "main": true,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/night/__main__.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.lab.night.faults": {
+   "config": [],
+   "data": [],
+   "doc": "Faults for the end-to-end night, and the hook to plug more in.",
+   "imports": [
+    "redzone.lab.night",
+    "redzone.lab.night.house"
+   ],
+   "json_loads": 0,
+   "lines": 422,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/night/faults.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.night.presses",
+    "redzone.lab.night.run"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "redzone.lab.night.house": {
+   "config": [],
+   "data": [],
+   "doc": "A fake living room for the end-to-end night: two Fire TV sticks and a TV, in memory.",
+   "imports": [
+    "redzone.screen_ocr",
+    "redzone.tuners",
+    "redzone.tuners.adb"
+   ],
+   "json_loads": 1,
+   "lines": 710,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/night/house.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.night.faults",
+    "redzone.lab.night.run"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.lab.night.presses": {
+   "config": [],
+   "data": [],
+   "doc": "Phone presses during the end-to-end night: does every button do what it says, and how fast?",
+   "imports": [
+    "redzone.lab.night.faults",
+    "redzone.models",
+    "redzone.noggin.profile"
+   ],
+   "json_loads": 0,
+   "lines": 405,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/night/presses.py",
+   "timing": {
+    "FORCED_WITHIN_S": 15.0,
+    "GIVE_UP_S": 120.0,
+    "GO_NOW_WITHIN_S": 3.0,
+    "RELEASE_WITHIN_S": 600.0,
+    "SAFE_GIVE_UP_S": 600.0
+   },
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.lab.night.run": {
+   "config": [
+    "control",
+    "hardening",
+    "playbooks",
+    "polling"
+   ],
+   "data": [
+    "agent.jsonl",
+    "redzone.db",
+    "screen.jsonl",
+    "supervisor.jsonl",
+    "tv_input.jsonl"
+   ],
+   "doc": "Run a whole replayed night through the real system, on a virtual clock. See __init__.py.",
+   "imports": [
+    "agent.watchdog",
+    "redzone",
+    "redzone.autonomy",
+    "redzone.channels",
+    "redzone.config",
+    "redzone.control",
+    "redzone.decider.decider",
+    "redzone.discovery",
+    "redzone.discovery.yttv",
+    "redzone.engine",
+    "redzone.governor",
+    "redzone.lab.backtest",
+    "redzone.lab.night",
+    "redzone.lab.night.faults",
+    "redzone.lab.night.house",
+    "redzone.lab.night.smartthings",
+    "redzone.lab.night.vclock",
+    "redzone.models",
+    "redzone.network",
+    "redzone.plan",
+    "redzone.recorder",
+    "redzone.reel",
+    "redzone.screen_ocr",
+    "redzone.sources",
+    "redzone.sources.espn",
+    "redzone.store",
+    "redzone.supervisor",
+    "redzone.tuners",
+    "redzone.tuners.screen_prompts",
+    "redzone.tv"
+   ],
+   "json_loads": 4,
+   "lines": 925,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/night/run.py",
+   "timing": {
+    "FAR_BEHIND_S": 120.0,
+    "FEED_LAG_S": 8.0
+   },
+   "used_by": [
+    "redzone.lab.night.__main__"
+   ],
+   "used_by_scripts": [
+    "scripts/leak_check.py"
+   ],
+   "used_by_tests": 7
+  },
+  "redzone.lab.night.smartthings": {
+   "config": [],
+   "data": [],
+   "doc": "[switch timing] The e2e night's TV with the SmartThings input change, at the latency measured on",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 83,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/night/smartthings.py",
+   "timing": {
+    "READBACK_S": 0.15
+   },
+   "used_by": [
+    "redzone.lab.night.run"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.lab.night.vclock": {
+   "config": [],
+   "data": [],
+   "doc": "Virtual time for the end-to-end night: hours of a real night run in minutes.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 160,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/night/vclock.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.night.__main__",
+    "redzone.lab.night.run"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.lab.optimize": {
+   "config": [
+    "teams"
+   ],
+   "data": [],
+   "doc": "Training lab: search decider settings against real past slates.",
+   "imports": [
+    "redzone.config",
+    "redzone.lab.backtest",
+    "redzone.models"
+   ],
+   "json_loads": 1,
+   "lines": 129,
+   "main": true,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/optimize.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.tune"
+   ],
+   "used_by_scripts": [
+    "scripts/eval.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.lab.oracle": {
+   "config": [],
+   "data": [],
+   "doc": "Hindsight oracle: the best schedule anyone could have run on an archived night (offline only).",
+   "imports": [
+    "redzone.lab",
+    "redzone.lab.backtest",
+    "redzone.lab.cutgrade",
+    "redzone.lab.sportsgrade",
+    "redzone.models",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 0,
+   "lines": 215,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/oracle.py",
+   "timing": {
+    "STEP_S": 5.0
+   },
+   "used_by": [
+    "redzone.noggin.pick"
+   ],
+   "used_by_scripts": [
+    "scripts/eval.py",
+    "scripts/eval_sports.py",
+    "scripts/train_noggin_pick.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.lab.prime_mv_fake": {
+   "config": [],
+   "data": [],
+   "doc": "A simulated Prime Video NBA player with multiview, for rehearsing scripts/prime_multiview_probe.py",
+   "imports": [
+    "redzone.tuners",
+    "redzone.tuners.prime_multiview"
+   ],
+   "json_loads": 0,
+   "lines": 142,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/prime_mv_fake.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/prime_multiview_probe.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.lab.reasoner_data": {
+   "config": [],
+   "data": [],
+   "doc": "Training rows for the live game reasoner, distilled from the archive (no paid APIs).",
+   "imports": [
+    "redzone.config",
+    "redzone.lab",
+    "redzone.lab.backtest",
+    "redzone.lab.sportsgrade",
+    "redzone.models",
+    "redzone.reasoner",
+    "redzone.reasoner.brief",
+    "redzone.scoring.engine",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 1,
+   "lines": 163,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "redzone/lab/reasoner_data.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.build_moments_kaggle"
+   ],
+   "used_by_scripts": [
+    "scripts/build_reasoner_data.py",
+    "scripts/eval_reasoner.py",
+    "scripts/export_reasoner_llm.py",
+    "scripts/train_reasoner.py"
+   ],
+   "used_by_tests": 0
+  },
+  "redzone.lab.replaycheck": {
+   "config": [
+    "decider"
+   ],
+   "data": [],
+   "doc": "Exact-date replay diagnostics. No live engine, provider login, device, or wallclock clock.",
+   "imports": [
+    "redzone.config",
+    "redzone.decider.screen",
+    "redzone.lab",
+    "redzone.lab.backtest",
+    "redzone.lab.sportsgrade",
+    "redzone.models",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 1,
+   "lines": 227,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/replaycheck.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/replay_check.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.lab.splits": {
+   "config": [],
+   "data": [],
+   "doc": "Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03).",
+   "imports": [],
+   "json_loads": 1,
+   "lines": 125,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/splits.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.breakblend",
+    "redzone.lab.tune"
+   ],
+   "used_by_scripts": [
+    "scripts/backfill_eval_v2.py",
+    "scripts/eval.py",
+    "scripts/eval_sports.py",
+    "scripts/leak_check.py"
+   ],
+   "used_by_tests": 4
+  },
+  "redzone.lab.sportsdata": {
+   "config": [],
+   "data": [],
+   "doc": "Turn free public play-by-play releases into labeled game-state snapshots.",
+   "imports": [
+    "redzone.lab.datasets",
+    "redzone.models",
+    "redzone.scoring.gameflow",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 1,
+   "lines": 805,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/sportsdata.py",
+   "timing": {},
+   "used_by": [
+    "agent.distill.jump",
+    "redzone.lab.brain3data"
+   ],
+   "used_by_scripts": [
+    "scripts/build_training.py"
+   ],
+   "used_by_tests": 3
+  },
+  "redzone.lab.sportsgrade": {
+   "config": [],
+   "data": [],
+   "doc": "League-aware report card for backtests (NFL, NBA, NHL, MLB).",
+   "imports": [
+    "redzone.decider.screen",
+    "redzone.lab",
+    "redzone.lab.backtest",
+    "redzone.lab.cutgrade",
+    "redzone.models",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 0,
+   "lines": 289,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/sportsgrade.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.build_moments_kaggle",
+    "redzone.lab.cutgrade",
+    "redzone.lab.oracle",
+    "redzone.lab.reasoner_data",
+    "redzone.lab.replaycheck",
+    "redzone.lab.tune",
+    "redzone.noggin.pick"
+   ],
+   "used_by_scripts": [
+    "scripts/eval.py",
+    "scripts/eval_sports.py",
+    "scripts/train_noggin_pick.py"
+   ],
+   "used_by_tests": 4
+  },
+  "redzone.lab.syncsim": {
+   "config": [],
+   "data": [],
+   "doc": "[auto sync] Sync-error scorecard: how far the delay the app uses is from the screen's real delay.",
+   "imports": [
+    "redzone.decider.screen"
+   ],
+   "json_loads": 2,
+   "lines": 286,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/syncsim.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/eval_sync.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.lab.timing": {
+   "config": [
+    "sources"
+   ],
+   "data": [],
+   "doc": "[switch timing] How late we learn about a dead ball, and what that leaves before it airs on screen.",
+   "imports": [],
+   "json_loads": 3,
+   "lines": 344,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/timing.py",
+   "timing": {
+    "MAX_LAG_S": 600.0,
+    "TARGET_S": 3.0,
+    "TRACK_GAP_S": 120.0
+   },
+   "used_by": [
+    "redzone.engine",
+    "redzone.lab.backtest"
+   ],
+   "used_by_scripts": [
+    "scripts/timing_report.py"
+   ],
+   "used_by_tests": 4
+  },
+  "redzone.lab.tune": {
+   "config": [
+    "decider",
+    "teams"
+   ],
+   "data": [],
+   "doc": "Auto-tune the decider's hand-picked knobs against the scorecards (CMA-ES, numpy only).",
+   "imports": [
+    "redzone.config",
+    "redzone.decider",
+    "redzone.decider.decider",
+    "redzone.lab",
+    "redzone.lab.backtest",
+    "redzone.lab.optimize",
+    "redzone.lab.splits",
+    "redzone.lab.sportsgrade",
+    "redzone.models"
+   ],
+   "json_loads": 3,
+   "lines": 477,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/lab/tune.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/tune.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.memory": {
+   "config": [],
+   "data": [],
+   "doc": "Project memory for the AI that repairs RedZone (watchdog, auto-fix brain). Stdlib only.",
+   "imports": [],
+   "json_loads": 1,
+   "lines": 151,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/memory.py",
+   "timing": {
+    "RECORD_EVERY_S": 86400.0
+   },
+   "used_by": [
+    "agent.watchdog"
+   ],
+   "used_by_scripts": [
+    "scripts/context_pack.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.models": {
+   "config": [],
+   "data": [],
+   "doc": "Source-agnostic game model. Every data source normalizes into these.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 210,
+   "main": false,
+   "owner": "INTEGRATION",
+   "path": "redzone/models.py",
+   "timing": {},
+   "used_by": [
+    "agent.distill.jump",
+    "agent.kaggle.build_moments_kaggle",
+    "redzone.autonomy",
+    "redzone.bets",
+    "redzone.channels",
+    "redzone.contracts.breaks",
+    "redzone.contracts.feeds",
+    "redzone.contracts.legacy",
+    "redzone.contracts.moment",
+    "redzone.contracts.world",
+    "redzone.decider.cuts",
+    "redzone.decider.decider",
+    "redzone.decider.screen",
+    "redzone.demo.engine",
+    "redzone.discovery.providers",
+    "redzone.engine",
+    "redzone.fantasy",
+    "redzone.lab.backtest",
+    "redzone.lab.brain3fit",
+    "redzone.lab.brainfit",
+    "redzone.lab.breakblend",
+    "redzone.lab.cutgrade",
+    "redzone.lab.night.presses",
+    "redzone.lab.night.run",
+    "redzone.lab.optimize",
+    "redzone.lab.oracle",
+    "redzone.lab.reasoner_data",
+    "redzone.lab.replaycheck",
+    "redzone.lab.sportsdata",
+    "redzone.lab.sportsgrade",
+    "redzone.lab.tune",
+    "redzone.noggin.factory",
+    "redzone.noggin.features",
+    "redzone.noggin.live",
+    "redzone.noggin.pick",
+    "redzone.plan",
+    "redzone.platform.agent_fix",
+    "redzone.platform.health",
+    "redzone.reasoner.brief",
+    "redzone.reasoner.reasoner",
+    "redzone.recorder",
+    "redzone.scoring.brain",
+    "redzone.scoring.brain3",
+    "redzone.scoring.breaks",
+    "redzone.scoring.drive",
+    "redzone.scoring.engine",
+    "redzone.scoring.garbage",
+    "redzone.sources.espn",
+    "redzone.sources.fastcast",
+    "redzone.sources.feeds",
+    "redzone.sources.leagues",
+    "redzone.sources.merge",
+    "redzone.standby",
+    "redzone.supervisor",
+    "redzone.views",
+    "redzone.web.phone_v2"
+   ],
+   "used_by_scripts": [
+    "scripts/backtest.py",
+    "scripts/build_reasoner_data.py",
+    "scripts/eval_sports.py",
+    "scripts/fault_drill.py",
+    "scripts/leak_check.py",
+    "scripts/noggin_factory.py",
+    "scripts/perf_probe.py",
+    "scripts/plan_tonight.py",
+    "scripts/replay_check.py",
+    "scripts/train_noggin_pick.py",
+    "scripts/train_noggin_timing.py"
+   ],
+   "used_by_tests": 61
+  },
+  "redzone.network": {
+   "config": [],
+   "data": [],
+   "doc": "Where is this Mac, and can it reach the sticks and the TV? Read-only facts about the network.",
+   "imports": [],
+   "json_loads": 1,
+   "lines": 586,
+   "main": true,
+   "owner": "PLATFORM",
+   "path": "redzone/network.py",
+   "timing": {
+    "CHECK_EVERY_S": 30.0,
+    "SWEEP_SETTLE_S": 1.5
+   },
+   "used_by": [
+    "redzone.autonomy",
+    "redzone.engine",
+    "redzone.lab.night.run",
+    "redzone.tvsetup"
+   ],
+   "used_by_scripts": [
+    "scripts/doctor.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.noggin": {
+   "config": [],
+   "data": [],
+   "doc": "The Noggin: one decision brain (docs/noggin.md).",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 2,
+   "main": false,
+   "owner": "NOGGIN",
+   "path": "redzone/noggin/__init__.py",
+   "timing": {},
+   "used_by": [
+    "redzone.decider.decider",
+    "redzone.noggin.live",
+    "redzone.noggin.predict_fit",
+    "redzone.noggin.timing_fit",
+    "redzone.noggin.wire"
+   ],
+   "used_by_scripts": [
+    "scripts/eval_sports.py",
+    "scripts/noggin_factory.py",
+    "scripts/northstar.py",
+    "scripts/train_noggin_pick.py",
+    "scripts/train_noggin_predict.py",
+    "scripts/train_noggin_timing.py"
+   ],
+   "used_by_tests": 7
+  },
+  "redzone.noggin.factory": {
+   "config": [],
+   "data": [],
+   "doc": "Noggin data factory: labeled dead-ball moments from free public play-by-play with real wall clocks.",
+   "imports": [
+    "redzone.models",
+    "redzone.noggin.features",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 1,
+   "lines": 292,
+   "main": false,
+   "owner": "NOGGIN",
+   "path": "redzone/noggin/factory.py",
+   "timing": {
+    "TWO_MIN_S": 120.0
+   },
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/noggin_factory.py",
+    "scripts/train_noggin_pick.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.noggin.features": {
+   "config": [],
+   "data": [],
+   "doc": "Noggin Timing features and window labels: numpy + stdlib only (the live app has no pandas).",
+   "imports": [
+    "redzone.decider",
+    "redzone.decider.cuts",
+    "redzone.models",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 0,
+   "lines": 171,
+   "main": false,
+   "owner": "NOGGIN",
+   "path": "redzone/noggin/features.py",
+   "timing": {
+    "MAX_LEN_S": 1500.0
+   },
+   "used_by": [
+    "redzone.noggin.factory",
+    "redzone.noggin.live",
+    "redzone.noggin.pick",
+    "redzone.noggin.predict",
+    "redzone.noggin.predict_fit",
+    "redzone.noggin.timing",
+    "redzone.noggin.timing_fit"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "redzone.noggin.live": {
+   "config": [
+    "noggin"
+   ],
+   "data": [],
+   "doc": "Noggin Timing v1 on the live path: a calibrated \"surely still dead\" bound for an open dead window.",
+   "imports": [
+    "redzone.models",
+    "redzone.noggin",
+    "redzone.noggin.features",
+    "redzone.noggin.predict",
+    "redzone.noggin.timing"
+   ],
+   "json_loads": 0,
+   "lines": 143,
+   "main": false,
+   "owner": "NOGGIN",
+   "path": "redzone/noggin/live.py",
+   "timing": {},
+   "used_by": [
+    "redzone.decider.decider"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.noggin.lookahead": {
+   "config": [],
+   "data": [],
+   "doc": "Clairvoyance: what the feed already knows that the screen hasn't shown yet (cycle 02, lane 2).",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 51,
+   "main": false,
+   "owner": "NOGGIN",
+   "path": "redzone/noggin/lookahead.py",
+   "timing": {},
+   "used_by": [
+    "redzone.decider.decider"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.noggin.pick": {
+   "config": [],
+   "data": [],
+   "doc": "Noggin Reflex PICK v1: which game should be on screen, learned by imitating the hindsight oracle.",
+   "imports": [
+    "redzone.lab",
+    "redzone.lab.backtest",
+    "redzone.lab.cutgrade",
+    "redzone.lab.oracle",
+    "redzone.lab.sportsgrade",
+    "redzone.models",
+    "redzone.noggin.features",
+    "redzone.noggin.timing",
+    "redzone.scoring.brain3",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 1,
+   "lines": 323,
+   "main": false,
+   "owner": "NOGGIN",
+   "path": "redzone/noggin/pick.py",
+   "timing": {},
+   "used_by": [
+    "redzone.decider.decider"
+   ],
+   "used_by_scripts": [
+    "scripts/eval_sports.py",
+    "scripts/train_noggin_pick.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.noggin.predict": {
+   "config": [],
+   "data": [],
+   "doc": "Noggin Reflex Predict v1: P(a big play in the next 30 / 60 / 120 s of play) at a restart (numpy only).",
+   "imports": [
+    "redzone.noggin.features",
+    "redzone.noggin.timing"
+   ],
+   "json_loads": 1,
+   "lines": 80,
+   "main": false,
+   "owner": "NOGGIN",
+   "path": "redzone/noggin/predict.py",
+   "timing": {},
+   "used_by": [
+    "redzone.noggin.live",
+    "redzone.noggin.predict_fit"
+   ],
+   "used_by_scripts": [
+    "scripts/train_noggin_predict.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.noggin.predict_fit": {
+   "config": [],
+   "data": [],
+   "doc": "Fit and grade Noggin Predict v1 (pandas + LightGBM; Kaggle CPU / cloud only, never the Mac).",
+   "imports": [
+    "redzone.noggin",
+    "redzone.noggin.features",
+    "redzone.noggin.predict",
+    "redzone.noggin.timing_fit",
+    "redzone.scoring.brain3"
+   ],
+   "json_loads": 0,
+   "lines": 151,
+   "main": false,
+   "owner": "NOGGIN",
+   "path": "redzone/noggin/predict_fit.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/train_noggin_predict.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.noggin.priority": {
+   "config": [
+    "core",
+    "noggin"
+   ],
+   "data": [],
+   "doc": "Noggin Priority: which game deserves the TV, in four layers applied in order (docs/noggin.md \u00a7 Priority).",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 227,
+   "main": false,
+   "owner": "NOGGIN",
+   "path": "redzone/noggin/priority.py",
+   "timing": {},
+   "used_by": [
+    "redzone.noggin.wire",
+    "redzone.web.phone_v2"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "redzone.noggin.profile": {
+   "config": [],
+   "data": [],
+   "doc": "Noggin profiles: one named set of flags, scored TOGETHER (planner, Nov 4 2:45 AM).",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 66,
+   "main": false,
+   "owner": "NOGGIN",
+   "path": "redzone/noggin/profile.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.night.presses"
+   ],
+   "used_by_scripts": [
+    "scripts/northstar.py"
+   ],
+   "used_by_tests": 3
+  },
+  "redzone.noggin.timing": {
+   "config": [],
+   "data": [],
+   "doc": "Noggin Timing v1: how long is this dead ball still dead? (docs/noggin.md, Phase 1; absorbs A3)",
+   "imports": [
+    "redzone.noggin.features",
+    "redzone.scoring.brain3"
+   ],
+   "json_loads": 1,
+   "lines": 224,
+   "main": false,
+   "owner": "NOGGIN",
+   "path": "redzone/noggin/timing.py",
+   "timing": {
+    "BIN_S": 5.0
+   },
+   "used_by": [
+    "redzone.noggin.live",
+    "redzone.noggin.pick",
+    "redzone.noggin.predict",
+    "redzone.noggin.timing_fit"
+   ],
+   "used_by_scripts": [
+    "scripts/train_noggin_timing.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.noggin.timing_fit": {
+   "config": [],
+   "data": [],
+   "doc": "Fit, calibrate and grade Noggin Timing v1 from the data factory's table (Kaggle CPU / Actions only).",
+   "imports": [
+    "redzone.noggin",
+    "redzone.noggin.features",
+    "redzone.noggin.timing"
+   ],
+   "json_loads": 0,
+   "lines": 150,
+   "main": false,
+   "owner": "NOGGIN",
+   "path": "redzone/noggin/timing_fit.py",
+   "timing": {},
+   "used_by": [
+    "redzone.noggin.predict_fit"
+   ],
+   "used_by_scripts": [
+    "scripts/train_noggin_timing.py"
+   ],
+   "used_by_tests": 0
+  },
+  "redzone.noggin.wire": {
+   "config": [],
+   "data": [],
+   "doc": "Noggin Priority -> decider wiring (flag `noggin.priority.enabled`, off by default).",
+   "imports": [
+    "redzone.noggin",
+    "redzone.noggin.priority"
+   ],
+   "json_loads": 0,
+   "lines": 40,
+   "main": false,
+   "owner": "NOGGIN",
+   "path": "redzone/noggin/wire.py",
+   "timing": {},
+   "used_by": [
+    "redzone.decider.decider"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.observability": {
+   "config": [],
+   "data": [
+    "agent.jsonl",
+    "supervisor.jsonl",
+    "supervisor_cuts.jsonl",
+    "supervisor_moments.jsonl"
+   ],
+   "doc": "The night, rolled up: what it showed, what it missed, what broke, what got fixed, and the error budget.",
+   "imports": [
+    "redzone",
+    "redzone.supervisor",
+    "redzone.trace"
+   ],
+   "json_loads": 1,
+   "lines": 302,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/observability.py",
+   "timing": {},
+   "used_by": [
+    "redzone.supervisor"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.plan": {
+   "config": [
+    "mode",
+    "plan",
+    "warmup"
+   ],
+   "data": [],
+   "doc": "Tonight's plan: every game on today's slate, where it will be watched, and whether that was",
+   "imports": [
+    "redzone.channels",
+    "redzone.models"
+   ],
+   "json_loads": 1,
+   "lines": 461,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/plan.py",
+   "timing": {
+    "GAP_S": 20.0,
+    "REBUILD_S": 60.0
+   },
+   "used_by": [
+    "redzone.engine",
+    "redzone.lab.night.run"
+   ],
+   "used_by_scripts": [
+    "scripts/plan_tonight.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.platform": {
+   "config": [],
+   "data": [],
+   "doc": "Platform: error handling, health, invariants and fault injection shared by every subsystem.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 2,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/platform/__init__.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.platform.agent_fix": {
+   "config": [
+    "hardening"
+   ],
+   "data": [],
+   "doc": "The watchdog's window into the app, and the narrow fixes it may ask the app to run.",
+   "imports": [
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 138,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/platform/agent_fix.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine",
+    "redzone.supervisor",
+    "redzone.web.server"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.platform.autofix": {
+   "config": [],
+   "data": [
+    "agent.jsonl",
+    "filed.jsonl",
+    "redzone.db",
+    "supervisor.jsonl",
+    "traces.jsonl"
+   ],
+   "doc": "Auto-fix, Mac side: when the watchdog meets a problem its rules and the local model can't fix,",
+   "imports": [],
+   "json_loads": 3,
+   "lines": 294,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/platform/autofix.py",
+   "timing": {},
+   "used_by": [
+    "agent.watchdog",
+    "redzone.supervisor"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.platform.breaker": {
+   "config": [],
+   "data": [],
+   "doc": "Circuit breaker: stop waiting on something that keeps hanging.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 101,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/platform/breaker.py",
+   "timing": {
+    "BACKOFF_S": 10.0,
+    "MAX_BACKOFF_S": 120.0
+   },
+   "used_by": [
+    "redzone.tuners.adb",
+    "redzone.tv"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 3
+  },
+  "redzone.platform.faults": {
+   "config": [],
+   "data": [],
+   "doc": "Fault injection: fake sticks, TV and feeds that fail on cue, for drills and end-to-end tests.",
+   "imports": [
+    "redzone.tuners.adb",
+    "redzone.tuners.tuners"
+   ],
+   "json_loads": 0,
+   "lines": 183,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/platform/faults.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/fault_drill.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.platform.health": {
+   "config": [
+    "control"
+   ],
+   "data": [],
+   "doc": "Runtime invariants and the Health report (contracts/health.py), checked every supervisor tick.",
+   "imports": [
+    "redzone.contracts.health",
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 200,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/platform/health.py",
+   "timing": {},
+   "used_by": [
+    "redzone.supervisor"
+   ],
+   "used_by_scripts": [
+    "scripts/fault_drill.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.platform.wake": {
+   "config": [],
+   "data": [],
+   "doc": "The Mac slept, or moved networks: everything that held a connection is stale (hardening.mac).",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 90,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/platform/wake.py",
+   "timing": {
+    "WAKE_GAP_S": 30.0
+   },
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.reasoner": {
+   "config": [],
+   "data": [],
+   "doc": "The live game reasoner: per-game \"what does this game have going\" readings.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 17,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "redzone/reasoner/__init__.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.build_moments_kaggle",
+    "redzone.engine",
+    "redzone.lab.reasoner_data",
+    "redzone.reasoner.head",
+    "redzone.reasoner.reasoner",
+    "redzone.scoring.engine"
+   ],
+   "used_by_scripts": [
+    "scripts/eval_reasoner.py",
+    "scripts/train_reasoner.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.reasoner.brief": {
+   "config": [],
+   "data": [],
+   "doc": "The brief: one game's live situation as numbers (for the head) and as compact text (for the model).",
+   "imports": [
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 231,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "redzone/reasoner/brief.py",
+   "timing": {},
+   "used_by": [
+    "agent.kaggle.build_moments_kaggle",
+    "redzone.engine",
+    "redzone.lab.reasoner_data",
+    "redzone.reasoner.head",
+    "redzone.reasoner.reasoner",
+    "redzone.scoring.engine"
+   ],
+   "used_by_scripts": [
+    "scripts/train_reasoner.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.reasoner.head": {
+   "config": [],
+   "data": [],
+   "doc": "The reasoner's fast head: lock_in odds from the brief's numbers (numpy only, < 1 ms).",
+   "imports": [
+    "redzone.reasoner",
+    "redzone.reasoner.brief",
+    "redzone.scoring.brain"
+   ],
+   "json_loads": 0,
+   "lines": 81,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "redzone/reasoner/head.py",
+   "timing": {},
+   "used_by": [
+    "redzone.reasoner.reasoner"
+   ],
+   "used_by_scripts": [
+    "scripts/eval_reasoner.py",
+    "scripts/train_reasoner.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.reasoner.reasoner": {
+   "config": [],
+   "data": [],
+   "doc": "The live game reasoner at runtime: one reading per live game, rebuilt on each new play.",
+   "imports": [
+    "redzone.jsonfind",
+    "redzone.models",
+    "redzone.reasoner",
+    "redzone.reasoner.brief",
+    "redzone.reasoner.head"
+   ],
+   "json_loads": 1,
+   "lines": 294,
+   "main": false,
+   "owner": "LOCAL AI",
+   "path": "redzone/reasoner/reasoner.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine",
+    "redzone.scoring.engine"
+   ],
+   "used_by_scripts": [
+    "scripts/eval_reasoner.py",
+    "scripts/export_reasoner_llm.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.recorded": {
+   "config": [
+    "mode",
+    "providers"
+   ],
+   "data": [],
+   "doc": "Explicit recorded-game navigation, isolated from live decisions and calibration.",
+   "imports": [
+    "redzone.screen_ocr",
+    "redzone.tuners.adb",
+    "redzone.tuners.prime_search"
+   ],
+   "json_loads": 0,
+   "lines": 246,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/recorded.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [
+    "scripts/find_yttv_code.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.recorder": {
+   "config": [],
+   "data": [
+    "nhl_seen.jsonl",
+    "plays.jsonl",
+    "race.jsonl",
+    "sync_anchors.jsonl"
+   ],
+   "doc": "Flight recorder: the real-world numbers the simulator needs.",
+   "imports": [
+    "redzone.models",
+    "redzone.sources",
+    "redzone.sources.espn",
+    "redzone.sources.leagues"
+   ],
+   "json_loads": 1,
+   "lines": 142,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/recorder.py",
+   "timing": {
+    "RACE_SETTLE_S": 90.0
+   },
+   "used_by": [
+    "redzone.engine",
+    "redzone.lab.night.run"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 5
+  },
+  "redzone.reel": {
+   "config": [
+    "reel",
+    "score"
+   ],
+   "data": [],
+   "doc": "Catch-up reel: 5+ plays you missed, back to back, in 30-60 s (RedZone's \"here's what you missed\").",
+   "imports": [
+    "redzone.governor"
+   ],
+   "json_loads": 0,
+   "lines": 565,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/reel.py",
+   "timing": {
+    "FALLBACK_S": 8.0,
+    "TAIL_S": 0.75,
+    "WARMUP_S": 2.0
+   },
+   "used_by": [
+    "redzone.engine",
+    "redzone.lab.night.run"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.scoring": {
+   "config": [],
+   "data": [],
+   "doc": "",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 1,
+   "main": false,
+   "owner": "MOMENT/BREAK",
+   "path": "redzone/scoring/__init__.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine",
+    "redzone.lab.brain3cal",
+    "redzone.lab.brain3fit",
+    "redzone.lab.brainfit",
+    "redzone.lab.breakblend",
+    "redzone.scoring.brain",
+    "redzone.scoring.brain3",
+    "redzone.scoring.drive",
+    "redzone.scoring.engine"
+   ],
+   "used_by_scripts": [
+    "scripts/eval_brain.py",
+    "scripts/train_brain.py",
+    "scripts/train_brain3.py",
+    "scripts/train_reasoner.py"
+   ],
+   "used_by_tests": 7
+  },
+  "redzone.scoring.brain": {
+   "config": [
+    "brain"
+   ],
+   "data": [],
+   "doc": "The learned brain: per-game break / key-moment / game-flow predictions from trained models.",
+   "imports": [
+    "redzone.models",
+    "redzone.scoring",
+    "redzone.scoring.brain3",
+    "redzone.scoring.gameflow"
+   ],
+   "json_loads": 1,
+   "lines": 740,
+   "main": false,
+   "owner": "MOMENT/BREAK",
+   "path": "redzone/scoring/brain.py",
+   "timing": {
+    "JOINED_LATE_S": 180.0
+   },
+   "used_by": [
+    "redzone.lab.brain3cal",
+    "redzone.lab.brain3fit",
+    "redzone.lab.brainfit",
+    "redzone.lab.breakblend",
+    "redzone.reasoner.head",
+    "redzone.scoring.brain3",
+    "redzone.scoring.engine"
+   ],
+   "used_by_scripts": [
+    "scripts/eval_brain.py",
+    "scripts/train_brain.py",
+    "scripts/train_brain3.py",
+    "scripts/train_reasoner.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.scoring.brain3": {
+   "config": [],
+   "data": [],
+   "doc": "Brain v3: one compact model per league, numpy only at runtime.",
+   "imports": [
+    "redzone.contracts.breaks",
+    "redzone.contracts.legacy",
+    "redzone.contracts.moment",
+    "redzone.models",
+    "redzone.scoring",
+    "redzone.scoring.brain",
+    "redzone.scoring.breaks"
+   ],
+   "json_loads": 2,
+   "lines": 459,
+   "main": false,
+   "owner": "MOMENT/BREAK",
+   "path": "redzone/scoring/brain3.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.brain3cal",
+    "redzone.lab.brain3data",
+    "redzone.lab.brain3fit",
+    "redzone.noggin.pick",
+    "redzone.noggin.predict_fit",
+    "redzone.noggin.timing",
+    "redzone.scoring.brain"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.scoring.breaks": {
+   "config": [],
+   "data": [],
+   "doc": "Break predictor: will this game go to a commercial in about the next minute of STREAM time, and",
+   "imports": [
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 348,
+   "main": false,
+   "owner": "MOMENT/BREAK",
+   "path": "redzone/scoring/breaks.py",
+   "timing": {
+    "HOLD_S": 75.0,
+    "MARK_SLACK_S": 30.0,
+    "VISIT_MIN_S": 90.0
+   },
+   "used_by": [
+    "redzone.engine",
+    "redzone.lab.brain3fit",
+    "redzone.lab.brainfit",
+    "redzone.lab.breakblend",
+    "redzone.scoring.brain3",
+    "redzone.scoring.drive"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 6
+  },
+  "redzone.scoring.drive": {
+   "config": [
+    "redzone_mode"
+   ],
+   "data": [],
+   "doc": "RedZone mode, part 1: is this NFL drive alive? (drive heat, 0..1)",
+   "imports": [
+    "redzone.models",
+    "redzone.scoring",
+    "redzone.scoring.breaks",
+    "redzone.scoring.engine"
+   ],
+   "json_loads": 0,
+   "lines": 209,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/scoring/drive.py",
+   "timing": {
+    "EXPLOSIVE_FADE_S": 150.0,
+    "HEAT_RELEASE_S": 40.0
+   },
+   "used_by": [
+    "redzone.demo.engine",
+    "redzone.engine",
+    "redzone.lab.backtest"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.scoring.engine": {
+   "config": [
+    "brain",
+    "reasoner",
+    "score"
+   ],
+   "data": [],
+   "doc": "Excitement score, 0-100, with a plain-English reason.",
+   "imports": [
+    "redzone.models",
+    "redzone.reasoner",
+    "redzone.reasoner.brief",
+    "redzone.reasoner.reasoner",
+    "redzone.scoring",
+    "redzone.scoring.brain",
+    "redzone.scoring.garbage"
+   ],
+   "json_loads": 0,
+   "lines": 835,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/scoring/engine.py",
+   "timing": {
+    "Scorer.LEAGUE_LIVE_S": 300.0,
+    "Scorer.MINE_LIVE_S": 60.0
+   },
+   "used_by": [
+    "redzone.decider.decider",
+    "redzone.engine",
+    "redzone.lab.backtest",
+    "redzone.lab.brainfit",
+    "redzone.lab.reasoner_data",
+    "redzone.scoring.drive"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 21
+  },
+  "redzone.scoring.gameflow": {
+   "config": [],
+   "data": [],
+   "doc": "Game-flow math shared by the training-data builder and the live brain (numpy only, no pandas).",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 121,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/scoring/gameflow.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.sportsdata",
+    "redzone.scoring.brain"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 0
+  },
+  "redzone.scoring.garbage": {
+   "config": [],
+   "data": [],
+   "doc": "Garbage time: the game is decided, so it stops competing for your TV \u2014 even your own team's.",
+   "imports": [
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 70,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/scoring/garbage.py",
+   "timing": {},
+   "used_by": [
+    "redzone.scoring.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "redzone.screen": {
+   "config": [],
+   "data": [],
+   "doc": "",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 1,
+   "main": false,
+   "owner": "SYNC",
+   "path": "redzone/screen/__init__.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.screen.audio": {
+   "config": [],
+   "data": [],
+   "doc": "Hear the TV to measure your stream delay automatically (optional, off by default).",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 117,
+   "main": false,
+   "owner": "SYNC",
+   "path": "redzone/screen/audio.py",
+   "timing": {
+    "BLOCK_S": 0.25
+   },
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.screen.boundary": {
+   "config": [],
+   "data": [],
+   "doc": "Stream delay measured automatically from show changes (no taps, no mic, no camera).",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 286,
+   "main": false,
+   "owner": "SYNC",
+   "path": "redzone/screen/boundary.py",
+   "timing": {
+    "CLOCK_TIGHT_MS": 2000.0,
+    "MAX_GAP_S": 3.0,
+    "MAX_SAMPLE_S": 120.0,
+    "MIN_SAMPLE_S": 5.0,
+    "NEAR_BOUNDARY_S": 150.0,
+    "QUARTER_S": 900.0,
+    "READ_EVERY_S": 0.5,
+    "WINDOW_S": 180.0
+   },
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.screen.scorebug": {
+   "config": [],
+   "data": [],
+   "doc": "Stream delay measured from the broadcast's own score bug (no taps, no keys pressed).",
+   "imports": [
+    "redzone.decider.sync"
+   ],
+   "json_loads": 0,
+   "lines": 371,
+   "main": false,
+   "owner": "SYNC",
+   "path": "redzone/screen/scorebug.py",
+   "timing": {
+    "AMBIGUOUS_S": 10.0,
+    "EVERY_S": 2.0,
+    "MAX_GAP_S": 9.0,
+    "MAX_SAMPLE_S": 120.0,
+    "MIN_SAMPLE_S": 5.0,
+    "PENDING_S": 120.0
+   },
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.screen_ocr": {
+   "config": [],
+   "data": [],
+   "doc": "Read local PNG menu text with Apple Vision; never capture or control a device.",
+   "imports": [
+    "redzone.governor"
+   ],
+   "json_loads": 1,
+   "lines": 318,
+   "main": true,
+   "owner": "SYNC",
+   "path": "redzone/screen_ocr.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine",
+    "redzone.lab.night.house",
+    "redzone.lab.night.run",
+    "redzone.recorded",
+    "redzone.tuners.adb",
+    "redzone.tuners.screen_prompts",
+    "redzone.tuners.tuners",
+    "redzone.tuners.yttv_search"
+   ],
+   "used_by_scripts": [
+    "scripts/find_yttv_code.py",
+    "scripts/multiview_probe.py",
+    "scripts/prime_search_trial.py"
+   ],
+   "used_by_tests": 5
+  },
+  "redzone.sources": {
+   "config": [],
+   "data": [],
+   "doc": "",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 1,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/sources/__init__.py",
+   "timing": {},
+   "used_by": [
+    "agent.distill.jump",
+    "redzone.demo.engine",
+    "redzone.discovery.yttv",
+    "redzone.engine",
+    "redzone.lab.backtest",
+    "redzone.lab.brain3fit",
+    "redzone.lab.brainfit",
+    "redzone.lab.breakblend",
+    "redzone.lab.cutgrade",
+    "redzone.lab.night.run",
+    "redzone.lab.oracle",
+    "redzone.lab.reasoner_data",
+    "redzone.lab.replaycheck",
+    "redzone.lab.sportsdata",
+    "redzone.lab.sportsgrade",
+    "redzone.noggin.factory",
+    "redzone.noggin.features",
+    "redzone.noggin.pick",
+    "redzone.recorder",
+    "redzone.sources.fastcast",
+    "redzone.views"
+   ],
+   "used_by_scripts": [
+    "scripts/eval_sports.py",
+    "scripts/noggin_factory.py",
+    "scripts/plan_tonight.py",
+    "scripts/providers_check.py",
+    "scripts/train_noggin_pick.py"
+   ],
+   "used_by_tests": 16
+  },
+  "redzone.sources.espn": {
+   "config": [],
+   "data": [],
+   "doc": "ESPN's free site API: the backbone for all four leagues.",
+   "imports": [
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 722,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/sources/espn.py",
+   "timing": {},
+   "used_by": [
+    "agent.distill.jump",
+    "redzone.demo.engine",
+    "redzone.engine",
+    "redzone.lab.backtest",
+    "redzone.lab.brain3fit",
+    "redzone.lab.brainfit",
+    "redzone.lab.breakblend",
+    "redzone.lab.cutgrade",
+    "redzone.lab.night.run",
+    "redzone.lab.oracle",
+    "redzone.lab.reasoner_data",
+    "redzone.lab.replaycheck",
+    "redzone.lab.sportsdata",
+    "redzone.lab.sportsgrade",
+    "redzone.noggin.factory",
+    "redzone.noggin.features",
+    "redzone.noggin.pick",
+    "redzone.recorder",
+    "redzone.sources.fastcast",
+    "redzone.sources.leagues",
+    "redzone.views"
+   ],
+   "used_by_scripts": [
+    "scripts/eval_sports.py",
+    "scripts/noggin_factory.py",
+    "scripts/plan_tonight.py",
+    "scripts/train_noggin_pick.py"
+   ],
+   "used_by_tests": 12
+  },
+  "redzone.sources.eventlinks": {
+   "config": [],
+   "data": [],
+   "doc": "Per-game streaming deep links (Prime Video GTIs, ESPN+/ESPN watch ids) with no login.",
+   "imports": [],
+   "json_loads": 1,
+   "lines": 716,
+   "main": true,
+   "owner": "PLATFORM",
+   "path": "redzone/sources/eventlinks.py",
+   "timing": {
+    "CACHE_TTL_S": 300.0
+   },
+   "used_by": [
+    "redzone.discovery.yttv",
+    "redzone.engine"
+   ],
+   "used_by_scripts": [
+    "scripts/plan_tonight.py",
+    "scripts/providers_check.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.sources.fastcast": {
+   "config": [],
+   "data": [],
+   "doc": "ESPN Fastcast: the push feed behind espn.com's live gamecasts.",
+   "imports": [
+    "redzone.models",
+    "redzone.sources",
+    "redzone.sources.espn",
+    "redzone.views"
+   ],
+   "json_loads": 4,
+   "lines": 1249,
+   "main": true,
+   "owner": "PLATFORM",
+   "path": "redzone/sources/fastcast.py",
+   "timing": {
+    "HEALTHY_SESSION_S": 60.0,
+    "IDLE_HANGUP_S": 60.0,
+    "MAX_BACKOFF_S": 300.0,
+    "MIN_BACKOFF_S": 2.0,
+    "NOT_LIVE_RETRY_S": 30.0,
+    "OPEN_TIMEOUT_S": 10.0,
+    "QUIET_LIMIT_S": 45.0,
+    "RESYNC_RETRY_S": 2.0,
+    "TICK_S": 1.0,
+    "TOPIC_MAX_RETRY_S": 300.0,
+    "WARN_EVERY_S": 60.0
+   },
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "redzone.sources.fastcast_check": {
+   "config": [],
+   "data": [],
+   "doc": "[fastcast live check] Is ESPN's push feed faster than polling, and does it say the same thing?",
+   "imports": [],
+   "json_loads": 1,
+   "lines": 229,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/sources/fastcast_check.py",
+   "timing": {
+    "BEHIND_S": 2.0,
+    "MIN_MEDIAN_LEAD_S": 1.0,
+    "PAIR_WINDOW_S": 120.0
+   },
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [
+    "scripts/fastcast_check.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.sources.feeds": {
+   "config": [],
+   "data": [],
+   "doc": "Feeds: each game's state plus how fresh it really is (contracts/feeds.py).",
+   "imports": [
+    "redzone.contracts.feeds",
+    "redzone.models",
+    "redzone.sources.http",
+    "redzone.sources.merge"
+   ],
+   "json_loads": 0,
+   "lines": 91,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/sources/feeds.py",
+   "timing": {},
+   "used_by": [
+    "redzone.demo.engine",
+    "redzone.engine"
+   ],
+   "used_by_scripts": [
+    "scripts/fault_drill.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.sources.http": {
+   "config": [],
+   "data": [],
+   "doc": "Polite HTTP for undocumented feeds: caching, ETags, and backoff on 403/429/5xx.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 162,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/sources/http.py",
+   "timing": {
+    "FEED_STALE_S": 5.0,
+    "LIVE_LIMITED_BACKOFF_S": 60.0,
+    "LIVE_MAX_BACKOFF_S": 10.0,
+    "MAX_BACKOFF_S": 600.0
+   },
+   "used_by": [
+    "redzone.engine",
+    "redzone.sources.feeds"
+   ],
+   "used_by_scripts": [
+    "scripts/fault_drill.py",
+    "scripts/plan_tonight.py"
+   ],
+   "used_by_tests": 3
+  },
+  "redzone.sources.leagues": {
+   "config": [],
+   "data": [],
+   "doc": "League feeds that are faster or richer than ESPN for some things.",
+   "imports": [
+    "redzone.models",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 0,
+   "lines": 356,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/sources/leagues.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine",
+    "redzone.recorder"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 4
+  },
+  "redzone.sources.merge": {
+   "config": [],
+   "data": [],
+   "doc": "Multi-source merge: several feeds report the same game; trust whoever is furthest ahead.",
+   "imports": [
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 289,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/sources/merge.py",
+   "timing": {
+    "BENCH_S": 300.0,
+    "OWNER_ERROR_HOLD_S": 30.0,
+    "REGRESSION_WINDOW_S": 300.0,
+    "STALE_AFTER_S": 60.0,
+    "STOPPAGE_OWNER_FRESH_S": 10.0
+   },
+   "used_by": [
+    "redzone.demo.engine",
+    "redzone.engine",
+    "redzone.sources.feeds"
+   ],
+   "used_by_scripts": [
+    "scripts/fault_drill.py"
+   ],
+   "used_by_tests": 6
+  },
+  "redzone.standby": {
+   "config": [
+    "two_stick"
+   ],
+   "data": [],
+   "doc": "Hot standby: what the hidden stick should be playing, so the next switch is a 1-2s input flip.",
+   "imports": [
+    "redzone.models"
+   ],
+   "json_loads": 0,
+   "lines": 299,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/standby.py",
+   "timing": {
+    "ShadowStick.FLIP_S": 3.0
+   },
+   "used_by": [
+    "redzone.demo.engine",
+    "redzone.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 4
+  },
+  "redzone.store": {
+   "config": [],
+   "data": [
+    "redzone.db"
+   ],
+   "doc": "SQLite log of everything the app decides and everything you tell it.",
+   "imports": [],
+   "json_loads": 1,
+   "lines": 186,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/store.py",
+   "timing": {},
+   "used_by": [
+    "redzone.demo.engine",
+    "redzone.engine",
+    "redzone.lab.night.run",
+    "redzone.supervisor",
+    "redzone.trace"
+   ],
+   "used_by_scripts": [
+    "scripts/fault_drill.py",
+    "scripts/perf_probe.py"
+   ],
+   "used_by_tests": 25
+  },
+  "redzone.supervisor": {
+   "config": [
+    "control",
+    "delay",
+    "mode",
+    "supervisor"
+   ],
+   "data": [
+    "supervisor.jsonl",
+    "supervisor_cuts.jsonl",
+    "supervisor_moments.jsonl"
+   ],
+   "doc": "Supervisor: the live system watches itself, so nobody has to.",
+   "imports": [
+    "redzone",
+    "redzone.calibration",
+    "redzone.channels",
+    "redzone.config",
+    "redzone.contracts.health",
+    "redzone.control",
+    "redzone.decider.decider",
+    "redzone.decider.screen",
+    "redzone.discovery.providers",
+    "redzone.models",
+    "redzone.observability",
+    "redzone.platform.agent_fix",
+    "redzone.platform.autofix",
+    "redzone.platform.health",
+    "redzone.store",
+    "redzone.trace",
+    "redzone.tuners",
+    "redzone.tuners.adb",
+    "redzone.tuners.providers",
+    "redzone.tuners.screen_prompts"
+   ],
+   "json_loads": 3,
+   "lines": 1483,
+   "main": true,
+   "owner": "PLATFORM",
+   "path": "redzone/supervisor.py",
+   "timing": {
+    "CUT_JUDGE_AFTER_S": 90.0,
+    "CUT_LOOKBACK_S": 900.0,
+    "REPORT_AFTER_S": 300.0
+   },
+   "used_by": [
+    "redzone.engine",
+    "redzone.lab.night.run",
+    "redzone.observability",
+    "redzone.trace"
+   ],
+   "used_by_scripts": [
+    "scripts/export_decision_records.py",
+    "scripts/fault_drill.py"
+   ],
+   "used_by_tests": 6
+  },
+  "redzone.sync_probe": {
+   "config": [
+    "mode",
+    "sync"
+   ],
+   "data": [
+    "sync_probe.jsonl"
+   ],
+   "doc": "[SYNC probe] What the sticks expose for auto-anchors and network features: read-only, automatic.",
+   "imports": [
+    "redzone.tuners.adb"
+   ],
+   "json_loads": 0,
+   "lines": 253,
+   "main": false,
+   "owner": "SYNC",
+   "path": "redzone/sync_probe.py",
+   "timing": {
+    "COND_WINDOW_S": 300.0,
+    "LOG_EVERY_S": 15.0,
+    "PROBE_EVERY_S": 5.0,
+    "RSSI_DROP_WINDOW_S": 120.0,
+    "UI_EVERY_S": 20.0,
+    "WIFI_EVERY_S": 15.0
+   },
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "redzone.trace": {
+   "config": [],
+   "data": [],
+   "doc": "One trace per switch: decision -> command -> picture confirmed, with the time each step took.",
+   "imports": [
+    "redzone.contracts.trace",
+    "redzone.store",
+    "redzone.supervisor"
+   ],
+   "json_loads": 1,
+   "lines": 302,
+   "main": true,
+   "owner": "PLATFORM",
+   "path": "redzone/trace.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine",
+    "redzone.observability",
+    "redzone.supervisor"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "redzone.tuners": {
+   "config": [],
+   "data": [],
+   "doc": "",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 1,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/tuners/__init__.py",
+   "timing": {},
+   "used_by": [
+    "redzone.control",
+    "redzone.engine",
+    "redzone.lab.night.house",
+    "redzone.lab.night.run",
+    "redzone.lab.prime_mv_fake",
+    "redzone.supervisor",
+    "redzone.tuners.tuners"
+   ],
+   "used_by_scripts": [
+    "scripts/prime_multiview_grade.py",
+    "scripts/prime_multiview_probe.py",
+    "scripts/providers_check.py"
+   ],
+   "used_by_tests": 15
+  },
+  "redzone.tuners.adb": {
+   "config": [],
+   "data": [],
+   "doc": "Talk to a Fire TV stick over the network with the adb command-line tool.",
+   "imports": [
+    "redzone.platform.breaker",
+    "redzone.screen_ocr"
+   ],
+   "json_loads": 0,
+   "lines": 747,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/tuners/adb.py",
+   "timing": {
+    "AWAKE_TTL_S": 60.0,
+    "CONNECT_RETRY_MAX_S": 9.0,
+    "HANDSHAKE_S": 3.0,
+    "LOCK_WAIT_S": 0.15
+   },
+   "used_by": [
+    "redzone.autonomy",
+    "redzone.control",
+    "redzone.discovery.stickio",
+    "redzone.discovery.yttv",
+    "redzone.lab.night.house",
+    "redzone.platform.faults",
+    "redzone.recorded",
+    "redzone.supervisor",
+    "redzone.sync_probe",
+    "redzone.tuners.prime_search",
+    "redzone.tuners.providers",
+    "redzone.tuners.screen_prompts",
+    "redzone.tuners.tuners",
+    "redzone.tuners.yttv_search",
+    "redzone.tvsetup"
+   ],
+   "used_by_scripts": [
+    "scripts/doctor.py",
+    "scripts/find_yttv_code.py",
+    "scripts/multiview_probe.py",
+    "scripts/prime_flip_probe.py",
+    "scripts/prime_multiview_probe.py",
+    "scripts/prime_search_trial.py",
+    "scripts/providers_check.py",
+    "scripts/rz.py",
+    "scripts/screen_lab.py"
+   ],
+   "used_by_tests": 24
+  },
+  "redzone.tuners.identity": {
+   "config": [],
+   "data": [],
+   "doc": "Conservative matchup evidence from fresh provider metadata.",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 39,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/tuners/identity.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.tuners.multiview": {
+   "config": [],
+   "data": [],
+   "doc": "YouTube TV multiview as a switch path (SWITCHING). OFF until the at-home probe has measured it",
+   "imports": [
+    "redzone.decider.core"
+   ],
+   "json_loads": 0,
+   "lines": 238,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/tuners/multiview.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/multiview_probe.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.tuners.prime_multiview": {
+   "config": [],
+   "data": [],
+   "doc": "Prime Video NBA multiview as a switch path (SWITCHING). OFF until a live calibration on a Prime",
+   "imports": [],
+   "json_loads": 1,
+   "lines": 292,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/tuners/prime_multiview.py",
+   "timing": {
+    "DEFAULT_TILE_P90_S": 2.0,
+    "DEFAULT_TILE_S": 1.0,
+    "GATE_UNDER_S": 2.0
+   },
+   "used_by": [
+    "redzone.control",
+    "redzone.engine",
+    "redzone.lab.prime_mv_fake",
+    "redzone.tuners.tuners"
+   ],
+   "used_by_scripts": [
+    "scripts/prime_multiview_grade.py",
+    "scripts/prime_multiview_probe.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.tuners.prime_search": {
+   "config": [],
+   "data": [],
+   "doc": "Bounded Prime replay-search proof, separate from the live switching engine.",
+   "imports": [
+    "redzone.discovery.providers",
+    "redzone.tuners.adb",
+    "redzone.tuners.profiles"
+   ],
+   "json_loads": 0,
+   "lines": 329,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/tuners/prime_search.py",
+   "timing": {},
+   "used_by": [
+    "redzone.recorded",
+    "redzone.tuners.tuners",
+    "redzone.tuners.yttv_search"
+   ],
+   "used_by_scripts": [
+    "scripts/find_yttv_code.py",
+    "scripts/prime_search_trial.py"
+   ],
+   "used_by_tests": 3
+  },
+  "redzone.tuners.profiles": {
+   "config": [],
+   "data": [],
+   "doc": "Select an explicitly configured profile using readable focus evidence only.",
+   "imports": [
+    "redzone.discovery.providers"
+   ],
+   "json_loads": 0,
+   "lines": 147,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/tuners/profiles.py",
+   "timing": {},
+   "used_by": [
+    "redzone.discovery.stickio",
+    "redzone.tuners.prime_search",
+    "redzone.tuners.providers",
+    "redzone.tuners.screen_prompts",
+    "redzone.tuners.tuners",
+    "redzone.tuners.yttv_search"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 2
+  },
+  "redzone.tuners.providers": {
+   "config": [],
+   "data": [],
+   "doc": "Tuners for the other streaming apps: Peacock, Fubo, Paramount+, HBO Max, Netflix, NFL,",
+   "imports": [
+    "redzone.discovery.providers",
+    "redzone.tuners.adb",
+    "redzone.tuners.profiles",
+    "redzone.tuners.tuners"
+   ],
+   "json_loads": 0,
+   "lines": 418,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/tuners/providers.py",
+   "timing": {},
+   "used_by": [
+    "redzone.discovery.runtime",
+    "redzone.supervisor"
+   ],
+   "used_by_scripts": [
+    "scripts/providers_check.py"
+   ],
+   "used_by_tests": 3
+  },
+  "redzone.tuners.screen_prompts": {
+   "config": [],
+   "data": [],
+   "doc": "Clear YouTube TV's own prompts from a screenshot: \"Who's watching?\" and \"Still watching?\".",
+   "imports": [
+    "redzone.discovery.providers",
+    "redzone.screen_ocr",
+    "redzone.tuners.adb",
+    "redzone.tuners.profiles"
+   ],
+   "json_loads": 0,
+   "lines": 391,
+   "main": true,
+   "owner": "SWITCHING",
+   "path": "redzone/tuners/screen_prompts.py",
+   "timing": {},
+   "used_by": [
+    "redzone.lab.night.run",
+    "redzone.supervisor",
+    "redzone.tuners.tuners"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.tuners.tuners": {
+   "config": [],
+   "data": [],
+   "doc": "Tuners: one class per streaming app. Add ESPN or Fubo later by writing one more.",
+   "imports": [
+    "redzone.channels",
+    "redzone.discovery.providers",
+    "redzone.discovery.yttv",
+    "redzone.screen_ocr",
+    "redzone.tuners",
+    "redzone.tuners.adb",
+    "redzone.tuners.prime_multiview",
+    "redzone.tuners.prime_search",
+    "redzone.tuners.profiles",
+    "redzone.tuners.screen_prompts",
+    "redzone.tuners.yttv_search"
+   ],
+   "json_loads": 0,
+   "lines": 776,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/tuners/tuners.py",
+   "timing": {
+    "PrimeTuner.PANEL_BLIND_S": 1.5,
+    "PrimeTuner.PANEL_WAIT_S": 3.0
+   },
+   "used_by": [
+    "redzone.autonomy",
+    "redzone.control",
+    "redzone.discovery.runtime",
+    "redzone.platform.faults",
+    "redzone.tuners.providers",
+    "redzone.tuners.yttv_search"
+   ],
+   "used_by_scripts": [
+    "scripts/multiview_probe.py",
+    "scripts/prime_flip_probe.py",
+    "scripts/prime_multiview_probe.py",
+    "scripts/providers_check.py",
+    "scripts/rz.py"
+   ],
+   "used_by_tests": 14
+  },
+  "redzone.tuners.yttv_search": {
+   "config": [],
+   "data": [],
+   "doc": "Bounded YouTube TV library inspection using observed menu geometry.",
+   "imports": [
+    "redzone.discovery",
+    "redzone.discovery.providers",
+    "redzone.discovery.stickio",
+    "redzone.discovery.yttv",
+    "redzone.screen_ocr",
+    "redzone.tuners.adb",
+    "redzone.tuners.prime_search",
+    "redzone.tuners.profiles",
+    "redzone.tuners.tuners"
+   ],
+   "json_loads": 0,
+   "lines": 892,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/tuners/yttv_search.py",
+   "timing": {
+    "HUNT_BUDGET_S": 120.0
+   },
+   "used_by": [
+    "redzone.tuners.tuners"
+   ],
+   "used_by_scripts": [
+    "scripts/find_yttv_code.py"
+   ],
+   "used_by_tests": 2
+  },
+  "redzone.tv": {
+   "config": [],
+   "data": [
+    "tv_input.jsonl"
+   ],
+   "doc": "Samsung TV: switch HDMI inputs (two-stick mode) and duck the volume (announcer).",
+   "imports": [
+    "redzone.platform.breaker"
+   ],
+   "json_loads": 2,
+   "lines": 767,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/tv.py",
+   "timing": {
+    "AUTH_RETRY_S": 3600.0,
+    "FAIL_BACKOFF_S": 300.0,
+    "LOCAL_TIMEOUT_S": 6.0,
+    "REFRESH_EARLY_S": 600.0,
+    "RETRY_AFTER_DEFAULT_S": 60.0,
+    "RETRY_AFTER_MAX_S": 300.0,
+    "ST_BREAK_MAX_S": 120.0,
+    "ST_BREAK_S": 30.0,
+    "ST_RETRY_GAP_S": 0.3,
+    "VERIFY_GAP_S": 0.3
+   },
+   "used_by": [
+    "redzone.control",
+    "redzone.fantasy",
+    "redzone.lab.night.run",
+    "redzone.tvsetup"
+   ],
+   "used_by_scripts": [
+    "scripts/fault_drill.py",
+    "scripts/tv_local_probe.py"
+   ],
+   "used_by_tests": 5
+  },
+  "redzone.tvsetup": {
+   "config": [],
+   "data": [],
+   "doc": "One-time TV setup for instant switching (scripts/tv_setup.py is the command; this is the logic,",
+   "imports": [
+    "redzone",
+    "redzone.autonomy",
+    "redzone.network",
+    "redzone.tuners.adb",
+    "redzone.tv"
+   ],
+   "json_loads": 1,
+   "lines": 603,
+   "main": false,
+   "owner": "SWITCHING",
+   "path": "redzone/tvsetup.py",
+   "timing": {},
+   "used_by": [],
+   "used_by_scripts": [
+    "scripts/stick_cec.py",
+    "scripts/tv_setup.py"
+   ],
+   "used_by_tests": 1
+  },
+  "redzone.userstate": {
+   "config": [],
+   "data": [],
+   "doc": "What you told the phone (pause, \"Watch this\", focus, lock), kept across service restarts.",
+   "imports": [],
+   "json_loads": 1,
+   "lines": 93,
+   "main": false,
+   "owner": "DECISION",
+   "path": "redzone/userstate.py",
+   "timing": {},
+   "used_by": [
+    "redzone.engine"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.views": {
+   "config": [],
+   "data": [],
+   "doc": "JSON shapes for the phone: game cards, game detail, team directory, rosters.",
+   "imports": [
+    "redzone.models",
+    "redzone.sources",
+    "redzone.sources.espn"
+   ],
+   "json_loads": 0,
+   "lines": 160,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/views.py",
+   "timing": {},
+   "used_by": [
+    "redzone.demo.engine",
+    "redzone.engine",
+    "redzone.sources.fastcast"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.web": {
+   "config": [],
+   "data": [],
+   "doc": "",
+   "imports": [],
+   "json_loads": 0,
+   "lines": 1,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/web/__init__.py",
+   "timing": {},
+   "used_by": [
+    "redzone.web.server"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 3
+  },
+  "redzone.web.phone_v2": {
+   "config": [
+    "phone",
+    "reel"
+   ],
+   "data": [
+    "northstar-history.jsonl",
+    "reel_requests.jsonl",
+    "supervisor_moments.jsonl"
+   ],
+   "doc": "Phone page v2 (flag `phone.v2`, default OFF): why each switch happened, rate it, \"I missed that\",",
+   "imports": [
+    "redzone.config",
+    "redzone.lab.decision_records",
+    "redzone.models",
+    "redzone.noggin.priority"
+   ],
+   "json_loads": 4,
+   "lines": 495,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/web/phone_v2.py",
+   "timing": {
+    "MISS_WINDOW_S": 600.0,
+    "REPLAY_DUE_S": 180.0
+   },
+   "used_by": [
+    "redzone.web.server"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 1
+  },
+  "redzone.web.server": {
+   "config": [
+    "mode"
+   ],
+   "data": [],
+   "doc": "Phone control page + JSON API. LAN only.",
+   "imports": [
+    "redzone.channels",
+    "redzone.config",
+    "redzone.engine",
+    "redzone.platform.agent_fix",
+    "redzone.web",
+    "redzone.web.phone_v2"
+   ],
+   "json_loads": 5,
+   "lines": 354,
+   "main": false,
+   "owner": "PLATFORM",
+   "path": "redzone/web/server.py",
+   "timing": {},
+   "used_by": [
+    "redzone.__main__",
+    "redzone.demo.__main__"
+   ],
+   "used_by_scripts": [],
+   "used_by_tests": 5
+  }
+ },
+ "violations": [
+  {
+   "detail": "FLIP_SETTLE_S = 3: a timing cost belongs in measured config (timing.* / calib.*)",
+   "key": "timing-literal|redzone.control.FLIP_SETTLE_S",
+   "lane": 3,
+   "module": "redzone.control",
+   "owner": "SWITCHING",
+   "rule": "timing-literal",
+   "where": "redzone/control.py:80"
+  },
+  {
+   "detail": "TV_FLIP_MAX_S = 6: a timing cost belongs in measured config (timing.* / calib.*)",
+   "key": "timing-literal|redzone.control.TV_FLIP_MAX_S",
+   "lane": 3,
+   "module": "redzone.control",
+   "owner": "SWITCHING",
+   "rule": "timing-literal",
+   "where": "redzone/control.py:88"
+  },
+  {
+   "detail": "FLIP_DEADLINE_S = 4.5: a timing cost belongs in measured config (timing.* / calib.*)",
+   "key": "timing-literal|redzone.control.FLIP_DEADLINE_S",
+   "lane": 3,
+   "module": "redzone.control",
+   "owner": "SWITCHING",
+   "rule": "timing-literal",
+   "where": "redzone/control.py:106"
+  },
+  {
+   "detail": "TUNE_SLACK_S = 3: a timing cost belongs in measured config (timing.* / calib.*)",
+   "key": "timing-literal|redzone.decider.decider.TUNE_SLACK_S",
+   "lane": 2,
+   "module": "redzone.decider.decider",
+   "owner": "DECISION",
+   "rule": "timing-literal",
+   "where": "redzone/decider/decider.py:212"
+  },
+  {
+   "detail": "TUNE_S = 5: a timing cost belongs in measured config (timing.* / calib.*)",
+   "key": "timing-literal|redzone.demo.engine.TUNE_S",
+   "lane": 4,
+   "module": "redzone.demo.engine",
+   "owner": "INTEGRATION",
+   "rule": "timing-literal",
+   "where": "redzone/demo/engine.py:45"
+  },
+  {
+   "detail": "ShadowStick.FLIP_S = 3: a timing cost belongs in measured config (timing.* / calib.*)",
+   "key": "timing-literal|redzone.standby.ShadowStick.FLIP_S",
+   "lane": 3,
+   "module": "redzone.standby",
+   "owner": "SWITCHING",
+   "rule": "timing-literal",
+   "where": "redzone/standby.py:234"
+  },
+  {
+   "detail": "SWITCH_S = 5.5: a timing cost belongs in measured config (timing.* / calib.*)",
+   "key": "timing-literal|agent.distill.jump.SWITCH_S",
+   "lane": 1,
+   "module": "agent.distill.jump",
+   "owner": "LOCAL AI",
+   "rule": "timing-literal",
+   "where": "agent/distill/jump.py:34"
+  },
+  {
+   "detail": "FEED_LAG_S is also defined in redzone.lab.night.run",
+   "key": "defined-twice|FEED_LAG_S@redzone.demo.engine",
+   "lane": 4,
+   "module": "redzone.demo.engine",
+   "owner": "INTEGRATION",
+   "rule": "defined-twice",
+   "where": "redzone/demo/engine.py:43"
+  },
+  {
+   "detail": "FEED_LAG_S is also defined in redzone.demo.engine",
+   "key": "defined-twice|FEED_LAG_S@redzone.lab.night.run",
+   "lane": 4,
+   "module": "redzone.lab.night.run",
+   "owner": "INTEGRATION",
+   "rule": "defined-twice",
+   "where": "redzone/lab/night/run.py:37"
+  },
+  {
+   "detail": "MAX_BACKOFF_S is also defined in redzone.sources.fastcast, redzone.sources.http",
+   "key": "defined-twice|MAX_BACKOFF_S@redzone.platform.breaker",
+   "lane": 4,
+   "module": "redzone.platform.breaker",
+   "owner": "PLATFORM",
+   "rule": "defined-twice",
+   "where": "redzone/platform/breaker.py:25"
+  },
+  {
+   "detail": "MAX_BACKOFF_S is also defined in redzone.platform.breaker, redzone.sources.http",
+   "key": "defined-twice|MAX_BACKOFF_S@redzone.sources.fastcast",
+   "lane": 4,
+   "module": "redzone.sources.fastcast",
+   "owner": "PLATFORM",
+   "rule": "defined-twice",
+   "where": "redzone/sources/fastcast.py:94"
+  },
+  {
+   "detail": "MAX_BACKOFF_S is also defined in redzone.platform.breaker, redzone.sources.fastcast",
+   "key": "defined-twice|MAX_BACKOFF_S@redzone.sources.http",
+   "lane": 4,
+   "module": "redzone.sources.http",
+   "owner": "PLATFORM",
+   "rule": "defined-twice",
+   "where": "redzone/sources/http.py:32"
+  },
+  {
+   "detail": "MAX_GAP_S is also defined in redzone.screen.scorebug",
+   "key": "defined-twice|MAX_GAP_S@redzone.screen.boundary",
+   "lane": 2,
+   "module": "redzone.screen.boundary",
+   "owner": "SYNC",
+   "rule": "defined-twice",
+   "where": "redzone/screen/boundary.py:40"
+  },
+  {
+   "detail": "MAX_GAP_S is also defined in redzone.screen.boundary",
+   "key": "defined-twice|MAX_GAP_S@redzone.screen.scorebug",
+   "lane": 2,
+   "module": "redzone.screen.scorebug",
+   "owner": "SYNC",
+   "rule": "defined-twice",
+   "where": "redzone/screen/scorebug.py:34"
+  },
+  {
+   "detail": "MAX_SAMPLE_S is also defined in redzone.screen.scorebug",
+   "key": "defined-twice|MAX_SAMPLE_S@redzone.screen.boundary",
+   "lane": 2,
+   "module": "redzone.screen.boundary",
+   "owner": "SYNC",
+   "rule": "defined-twice",
+   "where": "redzone/screen/boundary.py:38"
+  },
+  {
+   "detail": "MAX_SAMPLE_S is also defined in redzone.screen.boundary",
+   "key": "defined-twice|MAX_SAMPLE_S@redzone.screen.scorebug",
+   "lane": 2,
+   "module": "redzone.screen.scorebug",
+   "owner": "SYNC",
+   "rule": "defined-twice",
+   "where": "redzone/screen/scorebug.py:31"
+  },
+  {
+   "detail": "MIN_SAMPLE_S is also defined in redzone.screen.scorebug",
+   "key": "defined-twice|MIN_SAMPLE_S@redzone.screen.boundary",
+   "lane": 2,
+   "module": "redzone.screen.boundary",
+   "owner": "SYNC",
+   "rule": "defined-twice",
+   "where": "redzone/screen/boundary.py:37"
+  },
+  {
+   "detail": "MIN_SAMPLE_S is also defined in redzone.screen.boundary",
+   "key": "defined-twice|MIN_SAMPLE_S@redzone.screen.scorebug",
+   "lane": 2,
+   "module": "redzone.screen.scorebug",
+   "owner": "SYNC",
+   "rule": "defined-twice",
+   "where": "redzone/screen/scorebug.py:30"
+  },
+  {
+   "detail": "VISIT_MIN_S is also defined in redzone.scoring.breaks",
+   "key": "defined-twice|VISIT_MIN_S@redzone.decider.decider",
+   "lane": 2,
+   "module": "redzone.decider.decider",
+   "owner": "DECISION",
+   "rule": "defined-twice",
+   "where": "redzone/decider/decider.py:122"
+  },
+  {
+   "detail": "VISIT_MIN_S is also defined in redzone.decider.decider",
+   "key": "defined-twice|VISIT_MIN_S@redzone.scoring.breaks",
+   "lane": 1,
+   "module": "redzone.scoring.breaks",
+   "owner": "MOMENT/BREAK",
+   "rule": "defined-twice",
+   "where": "redzone/scoring/breaks.py:51"
+  },
+  {
+   "detail": "ESPN only in sources/",
+   "key": "boundary|ESPN only in sources/@redzone.autonomy",
+   "lane": 4,
+   "module": "redzone.autonomy",
+   "owner": "PLATFORM",
+   "rule": "boundary",
+   "where": "redzone/autonomy.py:85"
+  },
+  {
+   "detail": "ESPN only in sources/",
+   "key": "boundary|ESPN only in sources/@redzone.views",
+   "lane": 4,
+   "module": "redzone.views",
+   "owner": "PLATFORM",
+   "rule": "boundary",
+   "where": "redzone/views.py:23"
+  },
+  {
+   "detail": "ESPN only in sources/",
+   "key": "boundary|ESPN only in sources/@agent.kaggle.build_moments_kaggle",
+   "lane": 1,
+   "module": "agent.kaggle.build_moments_kaggle",
+   "owner": "LOCAL AI",
+   "rule": "boundary",
+   "where": "agent/kaggle/build_moments_kaggle.py:109"
+  },
+  {
+   "detail": "ESPN only in sources/",
+   "key": "boundary|ESPN only in sources/@agent.train.make_data",
+   "lane": 1,
+   "module": "agent.train.make_data",
+   "owner": "LOCAL AI",
+   "rule": "boundary",
+   "where": "agent/train/make_data.py:58"
+  },
+  {
+   "detail": "NHL api only in sources/",
+   "key": "boundary|NHL api only in sources/@agent.train.make_data",
+   "lane": 1,
+   "module": "agent.train.make_data",
+   "owner": "LOCAL AI",
+   "rule": "boundary",
+   "where": "agent/train/make_data.py:62"
+  },
+  {
+   "detail": "the TV's HDMI-CEC only in control/tuners",
+   "key": "boundary|the TV's HDMI-CEC only in control/tuners@redzone.autonomy",
+   "lane": 4,
+   "module": "redzone.autonomy",
+   "owner": "PLATFORM",
+   "rule": "boundary",
+   "where": "redzone/autonomy.py:527"
+  },
+  {
+   "detail": "redzone.demo.engine imports the scorer redzone.scoring.drive (route it through Watch Value)",
+   "key": "second-scoring-path|redzone.demo.engine->redzone.scoring.drive",
+   "lane": 4,
+   "module": "redzone.demo.engine",
+   "owner": "INTEGRATION",
+   "rule": "second-scoring-path",
+   "where": "redzone/demo/engine.py"
+  },
+  {
+   "detail": "redzone.web.phone_v2 imports the scorer redzone.noggin.priority (route it through Watch Value)",
+   "key": "second-scoring-path|redzone.web.phone_v2->redzone.noggin.priority",
+   "lane": 4,
+   "module": "redzone.web.phone_v2",
+   "owner": "PLATFORM",
+   "rule": "second-scoring-path",
+   "where": "redzone/web/phone_v2.py"
+  },
+  {
+   "detail": "nothing imports it and it is no entry point",
+   "key": "orphan|agent.kaggle.teacher_distill",
+   "lane": 1,
+   "module": "agent.kaggle.teacher_distill",
+   "owner": "LOCAL AI",
+   "rule": "orphan",
+   "where": "agent/kaggle/teacher_distill.py"
+  },
+  {
+   "detail": "nothing imports it and it is no entry point",
+   "key": "orphan|redzone.lab.night.presses",
+   "lane": 4,
+   "module": "redzone.lab.night.presses",
+   "owner": "INTEGRATION",
+   "rule": "orphan",
+   "where": "redzone/lab/night/presses.py"
+  },
+  {
+   "detail": "reached only from tests (1 files), no entry point uses it",
+   "key": "dead|redzone.tuners.identity",
+   "lane": 3,
+   "module": "redzone.tuners.identity",
+   "owner": "SWITCHING",
+   "rule": "dead",
+   "where": "redzone/tuners/identity.py"
+  }
+ ]
+}

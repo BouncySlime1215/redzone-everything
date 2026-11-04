@@ -69,6 +69,12 @@ jobs:
           else
             python scripts/check_memory.py
           fi
+      - name: contract checker (city map proof kernel)
+        # scripts/contract_check.py: fails on a contract violation not in docs/contract-baseline.json
+        # (timing costs as literals, a constant kept twice, an outside system reached outside its contract,
+        # a second scoring path, dead or orphan modules). The baseline only ever shrinks.
+        run: |
+          python scripts/contract_check.py | tee -a "$GITHUB_STEP_SUMMARY"
 
   data:
     # Fetch the pinned dataset once per tag, verify its sha256, and keep it in the Actions cache.

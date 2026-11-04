@@ -303,3 +303,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   screen and not flippable while it rebuilds, so nothing on the TV is cut). Too close to live: pause the gap
   minus 1.5 s (Nick's hold calibration); too far behind: reload at the live edge and hold again. Every
   detection and rebuild goes to data/buffer.jsonl -> live-night summary -> northstar "buffer drift recovered".
+- 2026-11-04 3:40 PM: **New CI gate: the contract checker (scripts/contract_check.py), report mode first** (Nick's
+  "one connected system", Cycle 05, lane 4 lead). Rules live in redzone/contracts/map.py: timing costs only from
+  measured config, no seconds constant kept twice, adb / SmartThings / ESPN / NHL / CEC only through their
+  contract's modules, one scoring path (scorers feed Watch Value), no dead or orphan modules. Today's 31
+  violations are the baseline (docs/contract-baseline.json, each with its owner's lane); CI fails on a new one
+  and the baseline only shrinks (Start Planner's ask). scripts/citymap.py writes docs/citymap.{md,json}
+  (northstar.yml regenerates it; North Star line contract_violations, gate 0, reads the json).

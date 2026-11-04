@@ -53,6 +53,7 @@ python scripts/fetch_eval_data.py    # pinned eval data eval-data-v1, once
 python scripts/ci_scorecard.py --nfl-n 2 --nights 4   # scorecards; run only the leagues you touch
 python scripts/release_gate.py heldout.json           # the 95% gates
 python scripts/check_memory.py       # links resolve, decisions logged (also runs in CI)
+python scripts/contract_check.py     # the city map's contract checker (CI); map: docs/citymap.md
 ```
 
 Before each PR: self-review, list the known risks, and add a before/after table with
