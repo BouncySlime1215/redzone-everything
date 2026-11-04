@@ -337,3 +337,32 @@ going in live (`decider.entry.crunch_now: live`). NBA dev nights (fit split), ca
 A crunch entry with no rewind in reach has to choose between landing mid-play and missing what happens
 while it waits; any wait costs plays. Full North Star, candidate column: dev mid-play 0.35 -> 0.23 per 100,
 locked 0.33 -> 0.17, every other line unchanged (dead air dev 18.90 -> 18.95, locked 20.35 -> 20.32).
+## Safety playbooks SAFE-01/02/03/05 (flag `playbooks.safe.enabled`, OFF)
+
+`redzone/decider/playbooks.py`, consulted after cut timing on every switch (and on replays for SAFE-05). Each
+one turns a switch into a hold and writes `playbook=<id>` into the decision's reason. Nick's buttons and the
+first pick are never held.
+
+| id | trigger | hold until |
+|---|---|---|
+| SAFE-01 | the target's feed is more than its poll cadence + 10 s old (or flagged dark) | the feed is fresh; if the game on screen is stale too, stay put |
+| SAFE-02 | the target channel's delay doubt is above 10 s | the entry lands on a dead ball at the full margin (no centred/urgent landing, no going in live) |
+| SAFE-03 | the sync probe's network condition is 9 or more (2+ buffering events a minute, or an RSSI drop) on a stick, in the last 5 min | the landing is a long break (TV timeout, period end, halftime, intermission, two-minute warning) |
+| SAFE-05 | the wall clock moved more than 5 s against the monotonic clock | every live game has had a fresh poll since, or 90 s |
+
+The SAFE-02 threshold sweep on NHL dev nights (candidate profile) is below. Flag on vs off at 10 s: dev and locked scorecards are identical
+for NBA, NHL and NFL.
+
+| sigma_s | mid-play entries | crunch live | big live |
+|---|---|---|---|
+| off | 1/242 | 80.6 | 44.7 |
+| 3 | 7/197 (live config) | 66.0 | 37.8 |
+| 6 | 0/217 | 72.4 | 42.3 |
+| 8 | 0/220 | 74.3 | 42.1 |
+| 10 | 1/242 | 80.6 | 44.7 |
+
+Night lab: `python -m redzone.lab.night --no-default-faults --faults redzone.lab.night.faults:safety --set
+playbooks.safe.enabled=true` injects `feed_stale` (every game but the one on screen, 15 min), `sync_wide` (12 s
+doubt, 10 min), `wifi_degrade` (15 min) and `clock_skew` (+30 s for 30 min, then back). Seeds 7, 11 and 13:
+every check passes with 0 mid-play cuts. The existing guards already hold most of these situations. The gate
+looked at 149 switches on seed 7 and held 6, all SAFE-05 at the backward clock jump.
