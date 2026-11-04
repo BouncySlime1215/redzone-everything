@@ -609,9 +609,12 @@ Locked, read once (seed 0):
 | NHL crunch live % | 81.7 | 78.7 | 80.9 | **76.2** |
 | NBA | equal everywhere | | | |
 
-The hidden-stick cue costs crunch time on locked (NFL -4.1, NHL -4.7 vs the calibrated seek; dev was
--1.9..+0.8): a crunch flip waits ~4-5 s for the seek. Rule #1 comes first, so the candidate takes it;
-the next step is cueing the hidden stick while the decider waits for the dead ball, not after.
+Locked seeds 1/2 (same configs, to size the noise): hidden cue vs calibrated seek, NFL crunch 69.9/71.6
+vs 73.7/73.7 and big live 61.4/60.0 vs 58.3/58.5; NHL crunch 78.7/82.1 vs 70.6/82.1, seen within 3 min
+76.0/76.0 vs 71.6/73.6. So the hidden cue costs NFL crunch 2-4 points (each rewind flip waits ~4-5 s for
+the seek) and the NHL crunch swing is noise. Pre-cueing during a wait can't win it back: on NFL dev seed
+0 none of 1188 cued entries followed a wait of 6 s or more (the plan rewinds at once). Whether a ~1 s
+live glimpse before an on-screen rewind counts as mid-play is Nick's call; the candidate assumes it does.
 
 ## Replay and resume (flag `replay.resume`, off)
 
