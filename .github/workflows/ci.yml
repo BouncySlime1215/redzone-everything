@@ -113,7 +113,8 @@ jobs:
     # Tests run even if the dataset job failed (a bad checksum must not hide test results).
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30   # base took 19m50s on 3.12 (Nov 4 12:12 run): three replayed-night tests (~3 min each)
+    timeout-minutes: 40   # base took 19m50s on 3.12 (Nov 4 12:12 run): three replayed-night tests (~3 min each);
+                          # +10 for a slow apt mirror (16 and 21 min on Nov 4), which the apt step now also caps
     strategy:
       fail-fast: false
       matrix:
@@ -126,7 +127,16 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
       - name: system tools (PortAudio for sounddevice, ffmpeg for the catch-up reel, as on the Mac)
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libportaudio2 ffmpeg
+        # A slow mirror took 16-21 min here (Nov 4) and starved pytest of the job's time: cap each try at
+        # 6 min, retry once, with apt's own per-request timeout and retries.
+        timeout-minutes: 14
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
+          for i in 1 2; do
+            timeout 360 sh -c "sudo apt-get $APT update -qq && sudo apt-get $APT install -y --no-install-recommends libportaudio2 ffmpeg" && exit 0
+            echo "::warning::apt try $i timed out or failed, retrying"
+          done
+          exit 1
       - run: pip install -r requirements.txt
       - uses: actions/download-artifact@v4
         if: needs.data.outputs.available == 'true'
