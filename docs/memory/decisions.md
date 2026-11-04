@@ -380,3 +380,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   ships OFF, and `decider.break_destination_min` stays 25. Both pre-registered arms failed the bar (NBA dead air only
   −1.0 / −0.8 vs −3.0 needed; NBA crunch live −1.3 on two seeds). **Why:** the binding limits on filling breaks are the
   halftime return-trip exit check and your-team stays, not the visit bar; see the experiments.md results log.
+- 2026-11-05 (lane 2, EXP-083, pre-registered at 51ef13b): `decider.break_destination_min` **stays 25**. The visit-bar-0
+  gain seen on EXP-029's seeds did not replicate on fresh seeds 4-6 (NHL crunch −0.3 vs +2.0 needed, one NBA mid-play
+  entry, NBA crunch −1.3 on every seed). **Why:** confirm on seeds you didn't look at before believing a side finding.
