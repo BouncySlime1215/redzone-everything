@@ -152,3 +152,13 @@ def test_the_file_carries_the_client_status(tmp_path):
     chk.tick(T + 60)
     import json
     assert json.loads((tmp_path / "fastcast_check.json").read_text())["client"]["last_error"] == "HTTP 403"
+
+
+def test_an_espn_refinement_of_the_play_type_is_not_a_disagreement():
+    """Live Nov 4 (wcbb 401913736): polling saw "Shot", FastCast later pushed the same play as "LayUpShot"
+    (ESPN edited it). That failed the whole check. A different type is still a disagreement."""
+    assert fcc._same_kind("Shot", "LayUpShot") and fcc._same_kind("Jump Shot", "jumpshot")
+    assert not fcc._same_kind("Turnover", "Jump Shot")
+    chk = FastcastCheck(started=T)
+    end = night(chk, games=1, lie=7)            # one play pushed as a Turnover: still a lie
+    assert chk.grade(end)["disagreements"] == 1
