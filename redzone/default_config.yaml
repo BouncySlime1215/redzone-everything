@@ -500,3 +500,6 @@ noggin:                    # docs/noggin.md
 
 phone:                     # the phone page (redzone/web)
   v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it
+
+report:                    # [night health] scripts/night_report.py -> docs/nights/YYYY-MM-DD.md every morning (northstar.yml)
+  nightly: false           # OFF until it passes its gates (matches the live log, PENDING with no night, nothing private)

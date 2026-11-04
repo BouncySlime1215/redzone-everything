@@ -72,6 +72,14 @@ def copy_rows(srcs: list[Path], dst: Path, since: float, until: float | None = N
     return rows
 
 
+def _clock_et(ts) -> str | None:
+    """Epoch seconds -> 'HH:MM' Eastern (the night's clock), None when not a time."""
+    if not isinstance(ts, (int, float)):
+        return None
+    from zoneinfo import ZoneInfo
+    return datetime.fromtimestamp(float(ts), ZoneInfo("America/New_York")).strftime("%H:%M")
+
+
 def p95(xs: list[float]) -> float | None:
     if not xs:
         return None
@@ -137,7 +145,25 @@ def summarize(got: dict[str, list[dict]]) -> dict:
         for k, v in (r.get("spans") or {}).items():
             if isinstance(v, (int, float)) and k not in ("total",):
                 spans.setdefault(k, []).append(float(v))
+    # [night health] Every cut that left or entered a play: when (ET), which game, why (the grade's
+    # reason); and what the supervisor fixed on its own (supervisor.jsonl kind=fix: rule, ok).
+    misses = []
+    for r in cuts:
+        for end, game in (("enter", r.get("to_label") or r.get("to")), ("leave", r.get("from_label") or r.get("from"))):
+            if r.get(end) == "play":
+                misses.append({"at": _clock_et(r.get("ts")), "game": str(game or "?"), "end": end,
+                               "why": str(r.get(f"{end}_why") or "")})
+    faults: dict[str, dict] = {}
+    for r in got.get("supervisor.jsonl", []):
+        if r.get("kind") == "fix" and r.get("rule"):
+            f = faults.setdefault(str(r["rule"]), {"n": 0, "failed": 0})
+            f["n"] += 1
+            f["failed"] += 0 if r.get("ok") else 1
     return {
+        "misses": misses[:50], "faults_fixed": dict(sorted(faults.items())),
+        "landings_dead": sum(1 for r in cuts if r.get("enter") == "dead"),
+        "landings_graded": sum(1 for r in cuts if r.get("enter") in ("dead", "play")),
+        "press_to_tv_p50_s": round(sorted(press)[len(press) // 2], 2) if press else None,
         "press_spans": {k: {"n": len(v), "p50_s": round(sorted(v)[len(v) // 2], 2), "p95_s": p95(v)}
                         for k, v in sorted(spans.items())},
         "landings": {"n": len(after), "after_dead_p50_s": after[len(after) // 2] if after else None,
@@ -165,7 +191,8 @@ def collect(data: Path, out: Path, since: float, until: float | None = None) -> 
     days = [(day0 + timedelta(days=i)).isoformat() for i in range((end - day0).days + 1)]
     srcs = {"sync_probe.jsonl": [data / "recordings" / d / "sync_probe.jsonl" for d in days],
             "tv_input.jsonl": [data / "tv_input.jsonl"], "supervisor_cuts.jsonl": [data / "supervisor_cuts.jsonl"],
-            "traces.jsonl": [data / "traces.jsonl"], "sync.jsonl": [data / "sync.jsonl"]}
+            "traces.jsonl": [data / "traces.jsonl"], "sync.jsonl": [data / "sync.jsonl"],
+            "supervisor.jsonl": [data / "supervisor.jsonl"]}
     got = {k: copy_rows(v, out / k, since, until) for k, v in srcs.items()}
     s = summarize(got)
     s["since"] = datetime.fromtimestamp(since).isoformat(timespec="seconds")

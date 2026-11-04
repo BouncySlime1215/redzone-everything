@@ -29,13 +29,18 @@ NIGHT = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # Aggregate fields from scripts/collect_live_test.summarize. Anything else is dropped.
 NUM_KEYS = ("switch_samples", "switch_p95_s", "switch_max_s", "tv_unverified", "cuts_graded",
             "entries_mid_play", "leaves_mid_play", "picture_p95_s", "press_samples", "press_to_tv_p95_s",
-            "press_no_picture")
+            "press_no_picture", "press_to_tv_p50_s", "landings_dead", "landings_graded")
 STR_KEYS = {"picture_within_3s": re.compile(r"^\d+/\d+$"),
             "since": re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$"),
             "until": re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$")}
 LANDING_KEYS = ("n", "after_dead_p50_s", "before_play_min_s", "before_play_p50_s")
 STICK = re.compile(r"^[A-Za-z0-9_-]{1,16}$")      # HDMI1 / HDMI2 / unknown
 ANCHOR_KEYS = ("n", "p50_s", "p95_s")
+# [night health] a miss: when (ET HH:MM), which game (a matchup label), which end, the grade's reason.
+MISS_PATS = {"at": re.compile(r"^\d{2}:\d{2}$"), "game": re.compile(r"^[A-Za-z0-9 @.&'()/:_-]{1,48}$"),
+             "end": re.compile(r"^(enter|leave)$"), "why": re.compile(r"^[A-Za-z0-9 _.,:;()/+%<>=~-]{0,100}$")}
+RULE = re.compile(r"^[a-z0-9_.-]{1,40}$")
+IPLIKE = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}")
 
 
 def _num(v):
@@ -60,6 +65,23 @@ def clean(summary: dict) -> dict:
         out["sync_anchor_err"] = {
             str(st): {k: v[k] for k in ANCHOR_KEYS if _num(v.get(k)) is not None}
             for st, v in sy.items() if STICK.match(str(st)) and isinstance(v, dict)}
+    ms = summary.get("misses")
+    if isinstance(ms, list):
+        keep = []
+        for m in ms[:50]:
+            if isinstance(m, dict):
+                c = {k: str(m.get(k) or "") for k in MISS_PATS}
+                c = {k: (v if MISS_PATS[k].match(v) and not IPLIKE.search(v) else "?") for k, v in c.items()}
+                keep.append(c)
+        out["misses"] = keep
+    ff = summary.get("faults_fixed")
+    if isinstance(ff, dict):
+        out["faults_fixed"] = {str(r): {k: v[k] for k in ("n", "failed") if _num(v.get(k)) is not None}
+                               for r, v in ff.items() if RULE.match(str(r)) and isinstance(v, dict)}
+    ps = summary.get("press_spans")
+    if isinstance(ps, dict):
+        out["press_spans"] = {str(k): {kk: v[kk] for kk in ANCHOR_KEYS if _num(v.get(kk)) is not None}
+                              for k, v in ps.items() if RULE.match(str(k)) and isinstance(v, dict)}
     rows = summary.get("rows")
     if isinstance(rows, dict):
         out["rows"] = {str(k): v for k, v in rows.items()

@@ -278,3 +278,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (half-step of median + settle) is unchanged at its shipped value. The night lab's SmartThings TV draws from
   the same quantiles. Also STK-05 (no flag: a stale or paused standby was never a usable one): media_session must
   read active and speed>0, and verify_standby re-tunes a paused / stale hidden stick at once.
+- 2026-11-04 3:05 PM: **report.nightly (default OFF): the night health report** (Nick's build (a), lane 4).
+  scripts/night_report.py writes docs/nights/YYYY-MM-DD.md each morning from the night's published live
+  summary (docs/live-nights/): the North Star lines one live night can grade (mid-play, landings in dead time
+  >= 98%, press-to-TV p95 <= 3 s), every miss (ET time, game, end, reason), sync error per stick, switch and
+  press latency, faults fixed. PENDING with no night. Off until it passes its gates; northstar.yml runs it.
