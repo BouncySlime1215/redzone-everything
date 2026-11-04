@@ -16,7 +16,7 @@ Nick, North Star delta (dev + locked, live + candidate) and a RAM/CPU line in ev
 - Landings in dead time: 97.5 (bar 98).
 - press_to_tv: 8.75 s (bar 3).
 - Playbook coverage: 33/78.
-- Candidate (lane 2 stack #116 → #125 → #131/#132): mid_play 0, NFL big live ~63 dev / 60 locked, σ p50 3 s.
+- Candidate (lane 2 stack #116 → #125 → #131/#132): mid_play 0, NFL big live ~55-58 dev / ~56 locked, σ p50 ~9 s (the earlier 63/60.7 and σ 3 s came from a sim leak: the YTTV position is a per-tune clock, so it can't pin the delay).
 - Real-hardware risk: the measured YTTV seek makes today's entries mid-play (locked NFL 12, NHL 14) until #132 lands.
 
 **Coverage push this cycle:** 33 → **≥ 50** marked playbook tests. Each lane owns the uncovered entries
@@ -42,7 +42,8 @@ listed under it; a marked night-lab test counts even when the behaviour behind i
    and on 2 NFL your-team big plays. Never start a catch-up with NHL crunch due inside it, and fix the 2
    NFL plays. Bar: release_gate.py on locked has no candidate line worse than live.
 3. **MediaSession content anchor** (in flight): the burst offset (~0.3 s) goes into the per-stick filter.
-   Bar: σ p50 below 3 s with coverage ≥ 95%; NFL/NHL big live and GAME-04 re-graded.
+   Bar: σ p50 down from the honest ~9 s at ≥ 95% coverage, with no landing information leaked from positions;
+   run scripts/burst_align.py on the first logged night to see whether the bursts line up with TV timeouts.
 4. **Self-calibration, sync half (#140)** to green: `data/calib/YYYY-MM-DD.json` `sync` section, 3-MAD guard.
 5. **NHL whistle detection** (#131 follow-up), then the entry-rewind extra-behind.
 - Coverage: SAFE-02, SAFE-03, SAFE-05, SYNC-01..03, GAME-07, GAME-08, GAME-11..14.
