@@ -337,6 +337,61 @@ going in live (`decider.entry.crunch_now: live`). NBA dev nights (fit split), ca
 A crunch entry with no rewind in reach has to choose between landing mid-play and missing what happens
 while it waits; any wait costs plays. Full North Star, candidate column: dev mid-play 0.35 -> 0.23 per 100,
 locked 0.33 -> 0.17, every other line unchanged (dead air dev 18.90 -> 18.95, locked 20.35 -> 20.32).
+
+## Clairvoyance: the lookahead view and GAME-04 (cycle 02, flag `noggin.lookahead.enabled`)
+
+With B=90 the screen runs about 100 s behind real life, and the feed is about 45 s behind, so the app sees roughly
+the next minute of every game before it airs. Big plays show up a median of 36 s ahead (4 NFL dev nights).
+`redzone/noggin/lookahead.py` gives that window per game: the plays and dead windows between screen-now
+(`now - mu`) and the newest data. It returns nothing when sigma is above 10 s (SAFE-02). GAME-04 in the decider:
+- On a stay, if another game has a big play ahead, it pre-tunes that game (`want`). It flips only when the
+  picture would land on a dead ball before the play, at most 45 s early.
+- On a break visit, it steers the visit to the game whose big play will air during the break.
+
+What limits it: on 4 NFL dev nights, 790 of 866 attempts were blocked by the game on screen's own leave gate. The
+current channel's delay doubt was above `decider.uncalibrated_sigma_s` (8 s), so rule #1 lets it leave only at
+official breaks. Tighter sync (SYNC-01..03, Wednesday's probe data) is what unlocks pre-emptive flips.
+
+| split | league | candidate before (rewind, no lookahead) → after (wait + lookahead) |
+|---|---|---|
+| dev | NFL | mid 0 → 0; big live 50.3 → 54.3; crunch 68.0 → 68.7; big seen 98.7 → 98.9; dead air 29.8 → 30.2 |
+| dev | NBA | mid 3/60 → 0/60; big live 81.7 → 77.5; crunch 90.9 → 90.0; big seen 84.5 → 80.3; dead air 19.4 |
+| dev | NHL | mid 1/242 → 0/244; big live 44.7 → 44.9; crunch 80.6 → 80.2; dead air 22.4 → 22.5 |
+| locked | NFL | mid 0 → 0; big live 49.0 → 52.9; crunch 68.1 → 68.1; dead air 29.2 → 29.7 |
+| locked | NBA | mid 2/24 → 0/24; big live 100 → 68.8; crunch 93.3 → 84.9 |
+| locked | NHL | mid 0 → 0; big live 48.1 → 48.6; crunch 84.7 → 84.7 |
+
+The NBA cost is all crunch_now=wait (the lookahead doesn't fire on NBA). `sources.nhl_primary` and its
+api-web lag (`nhl_wsc`, #75) were already in the candidate and its sims.
+
+### What-if: tighter sync (cycle 02, sizing SYNC-01..03)
+
+This is the candidate from #100 on dev nights, with every channel's stated delay doubt capped. It is a what-if, not a
+setting, and it's an upper bound: the true delay error is unchanged, and mid-play staying at about 0 is the only
+safety signal.
+
+| league | candidate (big live / crunch / mid) | cap 5 s | cap 3 s |
+|---|---|---|---|
+| NFL | 54.3 / 68.7 / 0 | 61.6 / 71.9 / 0 | 64.2 / 72.1 / 0 |
+| NBA | 77.5 / 90.0 / 0 of 60 | 80.3 / 91.6 / 1 of 66 | 81.7 / 91.9 / 0 of 67 |
+| NHL | 44.9 / 80.2 / 0 | 44.7 / 71.6 / 0 | 48.9 / 77.6 / 0 |
+
+Reproduce with `SIGCAP=3 python sigcap.py <league> ...`, which wraps scripts/eval_sports.py and patches
+`Delay.current_sigma`.
+
+**Crunch guard** (with `noggin.lookahead.enabled`): a catch-up replay of another game never takes the screen off a game
+inside its crunch window. The replay waits; it stays catchable for 10 minutes. Under the 3 s what-if those replays
+were the NHL crunch loss. Results:
+
+| | guard off | guard on |
+|---|---|---|
+| NHL crunch, 3 s cap | 77.6 | 78.7 |
+| NFL crunch, 3 s cap | 72.1 | 74.3 |
+| NHL crunch, candidate | 80.2 | 80.6 |
+
+Big plays live held under the cap: NFL 64.1, NBA 81.7, NHL 49.2. Dead air under the cap rose for NFL (29.8 → 30.6).
+The rest of the NHL gap is two nights (Oct 19 and Oct 27) where two crunches overlap and it picks the other one.
+That's GAME-05 (crunch overlaps), not a switch away from crunch time.
 ## Safety playbooks SAFE-01/02/03/05 (flag `playbooks.safe.enabled`, OFF)
 
 `redzone/decider/playbooks.py`, consulted after cut timing on every switch (and on replays for SAFE-05). Each
