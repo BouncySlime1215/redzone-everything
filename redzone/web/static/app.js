@@ -9,13 +9,13 @@ import {
 } from "./rz-core.js?v=41";
 import { patch, flash } from "./rz-dom.js?v=40";
 import { icon } from "./rz-ui.js?v=40";
-import { startStream, act } from "./rz-api.js?v=42";
+import { startStream, act } from "./rz-api.js?v=43";
 import { updateSheets, topSheet, closeSheet } from "./rz-sheet.js?v=40";
-import { renderNow, countdown } from "./rz-now.js?v=45";
+import { renderNow, countdown } from "./rz-now.js?v=47";
 import { renderGames } from "./rz-games.js?v=41";
 import { renderBets } from "./rz-bets.js?v=40";
 import { renderLab, loadLab } from "./rz-lab.js?v=40";
-import { renderSettings, announce } from "./rz-settings.js?v=45";
+import { renderSettings, announce } from "./rz-settings.js?v=47";
 import { loadTeams } from "./rz-detail.js?v=42";
 
 const TABS = ["now", "games", "bets", "lab", "settings"];
@@ -164,9 +164,32 @@ function tick() {
 }
 
 /* ---------- connection pill ---------- */
+// playbook=BTN-06: the phone lost the app. The Mac keeps every setting and goes on switching; what
+// the phone shows is the last state it heard, so after OFFLINE_BANNER_MS say so. It resyncs
+// (GET /api/state) the moment the stream is back, and taps sent meanwhile retry with their id.
+const OFFLINE_BANNER_MS = 10000;
+let offlineSince = 0, offlineTimer = null;
+
+function offlineBanner() {
+  const host = $("banners");
+  if (!host || host.querySelector('[data-key="b:offline"]')) return;
+  const at = new Date(offlineSince).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  host.insertAdjacentHTML("afterbegin", `<div class="banner banner--paused" data-key="b:offline">${icon("alert")}<div class="grow"><b>Phone offline</b>Showing what the app said at ${esc(at)}. The TV keeps going on its own; taps retry when the phone reconnects.</div></div>`);
+}
+
 function conn(state) {
   const el = $("conn");
   if (el.dataset.state === state) return;
+  if (state === "wait") {
+    offlineSince = offlineSince || Date.now();
+    clearTimeout(offlineTimer);
+    offlineTimer = setTimeout(offlineBanner, OFFLINE_BANNER_MS);
+  } else {
+    offlineSince = 0;
+    clearTimeout(offlineTimer);
+    const b = document.querySelector('[data-key="b:offline"]');
+    if (b) b.remove();
+  }
   el.dataset.state = state;
   el.querySelector("span").textContent = { live: "Connected", wait: "Reconnecting", mock: "Preview" }[state] || "Connecting";
   el.title = state === "live" ? "Connected to the RedZone app on your Mac" : "";

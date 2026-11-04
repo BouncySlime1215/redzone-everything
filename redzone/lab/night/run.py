@@ -113,6 +113,7 @@ class NightFeed:
         self.frozen = False          # feed_frozen: polls "succeed" (304 / same body) but nothing new
         self.rate_limited = False    # rate_limit: every poll answers 429
         self.slow_s = 0.0            # slow_poll: each poll's round trip takes this much longer
+        self.stale_games: set[str] = set()   # [playbooks SAFE-01] games whose feed stopped (fault feed_stale)
         self.games = night.games
         self.feeds = {r.gid: _feed(r, random.Random(r.gid), FEED_LAG_S, 3.0, None, 0.0, 0.0, 0.0,
                                    night.t0, night.t1) for _, r in self.games}
@@ -139,6 +140,8 @@ class NightFeed:
             return
         now = time.time()
         for spec, r in self.games:
+            if r.gid in self.stale_games:
+                continue
             f = self.feeds[r.gid]
             f.fresh_at = now
             i = self.idx[r.gid]
@@ -210,6 +213,7 @@ class Night:
     use_watchdog: bool = True
     games: list = field(default_factory=list)
     tv_path: str = "home"               # "home" (HOME/CEC flips only) | "smartthings" (the TV's input, measured latency)
+    cfg_set: dict | None = None         # dotted config overrides for the night ({"playbooks.safe.enabled": True})
 
     def __post_init__(self):
         self.api_down = False
@@ -250,6 +254,12 @@ class Night:
             "autonomy": {"enabled": False},
             "plan": {"verify": False},
         }
+        for k, v in (self.cfg_set or {}).items():
+            node = cfg
+            *path, leaf = k.split(".")
+            for part in path:
+                node = node.setdefault(part, {})
+            node[leaf] = v
         (d / "config.yaml").write_text(yaml.safe_dump(cfg))
         targets = {r.gid: spec.target for spec, r in self.games}
         (d / "channels.json").write_text(json.dumps({"codes": YTTV_CODES, "overrides": targets}))
@@ -547,6 +557,64 @@ def cuts(night: Night) -> tuple[list[dict], list[dict]]:
     return mid, every
 
 
+SAFE_FAULTS = ("feed_stale", "sync_wide", "wifi_degrade", "clock_skew")
+
+
+def _safe_checks(night: Night, check) -> None:
+    """[playbooks SAFE-01/02/03/05] The safety faults: no switch into a frozen feed, and no mid-play cut
+    while each fault holds. Holds per playbook are reported (they come from the decider's own count)."""
+    starts = [f for f in night.fault_log if f["name"] in SAFE_FAULTS and f["event"] == "start"]
+    if not starts:
+        return
+    e = night.engine
+    seen = dict(getattr(getattr(e.decider, "safety", None), "seen", {}) or {})
+    mid, _ = cuts(night)
+    for f in starts:
+        lo, hi = f["t"], f["t"] + max(float(f.get("dur") or 0.0), 120.0)
+        if f["name"] == "clock_skew":
+            hi += float(f.get("seconds", 30.0))
+        cut_in = [m for m in mid if lo <= m["t"] <= hi]
+        ev = list(getattr(getattr(e.decider, "safety", None), "events", []) or [])
+        flips = [x for x in night.house.shown if lo <= x.t <= hi and x.what == "playing"]
+        detail = {"at": _et(f["t"]), "dur": f.get("dur"), "mid_play": cut_in, "holds_night": seen,
+                  "gate_checked_night": getattr(getattr(e.decider, "safety", None), "checked", None),
+                  "tv_changes": len(flips), "flips": [(_et(x.t), x.cause, x.target) for x in flips][:6], "held": [(_et(t), pid, g) for t, pid, g in ev if lo <= t <= hi][:8]}
+        ok = not cut_in
+        if f["name"] == "feed_stale":
+            frozen = set(f.get("frozen") or [])
+            grace = float(e.cfg.get("polling.live_s", 10)) + float(e.cfg.get("playbooks.safe.feed_stale_s", 10)) + 15
+            tg = night.target_game
+            into = [(_et(x.t), x.target) for x in flips if tg.get(x.target) in frozen
+                    and f["t"] + grace <= x.t <= f["t"] + float(f["dur"])]
+            detail["switches_into_frozen"] = into
+            ok = ok and not into
+        check(f"safe_{f['name']}", ok, detail)
+
+
+def flip_playing(shown: list, within_s: float = 3.0) -> dict:
+    """flip_playing_3s (playbook SAFE-08): of the TV input changes (Shown rows with cause "input"), how
+    many showed the game playing within `within_s`. Measured, not graded: the North Star line is."""
+    took = []
+    for i, a in enumerate(shown):
+        if a.cause != "input":
+            continue
+        t = None
+        for b in shown[i + 1:]:
+            if b.cause == "input":
+                break
+            if b.what == "playing":
+                t = b.t - a.t
+                break
+        took.append(t)
+    ok = sorted(x for x in took if x is not None)
+    n = len(took)
+    return {"flips": n, "within_s": within_s,
+            "pct": round(100.0 * sum(x <= within_s for x in ok) / n, 1) if n else None,
+            "p50_s": round(ok[len(ok) // 2], 2) if ok else None,
+            "p95_s": round(ok[min(len(ok) - 1, max(0, -(-95 * len(ok) // 100) - 1))], 2) if ok else None,
+            "never": n - len(ok)}
+
+
 def _et(t: float) -> str:
     return datetime.fromtimestamp(t, ET).strftime("%-I:%M:%S %p")
 
@@ -727,9 +795,21 @@ def grade(night: Night) -> dict:
     ev = night.house.events
     shown_prompts = [x for x in ev if x[1] == "prompt_shown"]
     cleared = [x for x in ev if x[1] == "prompt_cleared"]
-    prompt_ok = all(any(c[0] >= p[0] and c[0] - p[0] <= 60 for c in cleared) for p in shown_prompts)
+    drops = [f for f in night.fault_log if f["name"] == "stick_drop" and f["event"] == "start"]
+
+    def clock_from(p) -> float:
+        # The 60 s count from when the stick can take a key: a prompt on a stick that dropped off
+        # adb (stick_drop, seed 2: 10 s after the prompt, for 87 s) can't be cleared by anyone.
+        t0 = p[0]
+        for d in sorted(drops, key=lambda d: d["t"]):
+            if d.get("host") == p[2] and d["t"] <= t0 + 60 and d["t"] + (d.get("dur") or 0) > t0:
+                t0 = d["t"] + (d.get("dur") or 0)
+        return t0
+    starts = [(p, clock_from(p)) for p in shown_prompts]
+    prompt_ok = all(any(c[0] >= p[0] and c[0] - t0 <= 60 and c[2] == p[2] for c in cleared) for p, t0 in starts)
     check("still_watching_cleared", prompt_ok,
-          {"shown": [_et(p[0]) for p in shown_prompts], "cleared": [_et(c[0]) for c in cleared]})
+          {"shown": [_et(p[0]) for p in shown_prompts], "cleared": [(_et(c[0]), c[3]) for c in cleared],
+           "clock_from": [_et(t0) for _, t0 in starts]})
     paused_by_center = [x for x in ev if x[1] == "center_paused_player"]
     check("no_center_in_player", not paused_by_center, {"events": [(_et(x[0]), x[2], x[3]) for x in paused_by_center]})
     wedges = [f for f in night.fault_log if f["name"] == "stick_wedge" and f["event"] == "start"]
@@ -741,6 +821,7 @@ def grade(night: Night) -> dict:
            if line.strip()] if (night.work / "data" / "supervisor.jsonl").exists() else []
     outages = [f for f in night.fault_log if f["name"] == "feed_outage" and f["event"] == "start"]
     stale_fixes = [x for x in sup if x.get("kind") == "fix" and x.get("rule") == "stale_feeds"]
+    _safe_checks(night, check)
     check("feed_outage_handled", all(any(0 <= x["ts"] - o["t"] <= o["dur"] + 60 for x in stale_fixes) for o in outages)
           if outages else True, {"outages": [(_et(o["t"]), round(o["dur"])) for o in outages],
                                  "supervisor_fixes": [(_et(x["ts"]), x.get("action")) for x in stale_fixes]})
@@ -766,6 +847,28 @@ def grade(night: Night) -> dict:
                    **{k: v for k, v in f.items() if k in ("host", "seconds", "scale", "hit")}})
     if pb:
         check("playbook_faults_no_midplay", all(x["mid_play_cuts"] == 0 for x in pb), pb)
+    # TV-03 / TV-04 outcomes (faults:tv). TV-03: while a person has the TV on another input, no input
+    # change of ours. TV-04: after the TV jumped to a rebooted stick by itself, seconds until it shows
+    # the game it was showing again (graded <= 30 s only with hardening.tv, which does the undo).
+    shown_all = night.house.shown
+    tvx = []
+    for f in night.fault_log:
+        if f["event"] != "start" or f["name"] not in ("tv_other_input", "cec_steal"):
+            continue
+        t = f["t"]
+        if f["name"] == "tv_other_input":
+            ours = [x for x in shown_all if t + 1 < x.t < t + float(f.get("dur") or 0) - 1 and x.cause == "input"]
+            tvx.append({"fault": f["name"], "et": _et(t), "ok": not ours, "our_input_changes": len(ours)})
+        else:
+            before = next((x for x in reversed(shown_all) if x.t < t - 0.01 and x.what == "playing"), None)
+            back = next((x for x in shown_all if x.t > t + 0.5 and before is not None and x.target == before.target
+                         and x.host == before.host and x.what == "playing"), None)
+            back_s = round(back.t - t, 1) if back is not None else None
+            need = bool(night.engine.cfg.get("hardening.tv", False))
+            tvx.append({"fault": f["name"], "et": _et(t), "back_s": back_s, "graded": need,
+                        "ok": (not need) or (back_s is not None and back_s <= 30.0)})
+    if tvx:
+        check("tv_faults_handled", all(x["ok"] for x in tvx), tvx)
     # The screen: how much of the live night showed a live game.
     live_s = shown_live = far_s = prompt_s = 0.0
     far: list = []
@@ -786,7 +889,7 @@ def grade(night: Night) -> dict:
     # back this far behind live; and how long a prompt sat on screen in all.
     check("tv_shows_games", coverage >= 0.75,
           {"playing_share_while_live": round(coverage, 3), "far_behind_share": round(far_s / live_s, 3) if live_s else 0.0,
-           "far_behind": far[:20], "prompt_on_screen_s": round(prompt_s)})
+           "far_behind": far[:20], "prompt_on_screen_s": round(prompt_s), "flip_playing": flip_playing(sh)})
     switches = e.store._db.execute("SELECT ok, dry_run, detail, kind FROM switches").fetchall() \
         if hasattr(e.store, "_db") else []
     tv_input = None
@@ -794,6 +897,11 @@ def grade(night: Night) -> dict:
         # [switch timing] every flip by the TV's own input, at the measured latency, readback-confirmed
         log = night.work / "data" / "tv_input.jsonl"
         rows_in = [json.loads(x) for x in log.read_text().splitlines() if x.strip()] if log.exists() else []
+        # An injected SmartThings outage (st_down, playbook=TV-02) fails the cloud path on purpose: those
+        # attempts are graded by the playbook check (the TV still switched by HOME), not here.
+        down = [(night.t0 + f.at, night.t0 + f.at + f.dur + 5) for f in getattr(night, "faults", [])
+                if f.name == "st_down"]
+        rows_in = [r for r in rows_in if not any(lo <= float(r.get("at") or 0) <= hi for lo, hi in down)]
         totals = sorted(r["total_s"] for r in rows_in if r.get("total_s") is not None and r.get("verified"))
         homes = sum(1 for d in night.house.sticks.values() for _, k in d.log if k == "HOME")
         med = totals[len(totals) // 2] if totals else None

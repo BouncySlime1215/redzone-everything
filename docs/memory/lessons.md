@@ -131,9 +131,55 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** /api/action had no tap identity. `engine.skipped` counted from the tap, not from when the TV left.
 - **Fix:** every phone tap carries an id (redzone/commands.py): a repeat id gets the first answer back, never a second run; the phone retries a lost answer with the same id. The skip's five minutes start once the TV is off the skipped game. Drill with taps lost and duplicated on purpose: 83 taps, 65 retried, 0 ran more or less than once; skips that never left 2 -> 0.
 - **Signals:** double tap, retry, duplicate, "Go now" mid-play, skip ignored, skip_stuck, not_once
+
+## "Go now" on the game on screen, tapped mid-switch, was ignored
+- **Symptom:** (controls drill, `mid_flip` press, 4 of 4) "Watch this" + "Go now" on the game you're leaving, tapped while the flip away from it is landing: the phone said "Holding on X", the TV landed on the other game and stayed there.
+- **Cause:** `_hold` saw `decider.current == gid` (current only moves once the flip lands) and treated it as already there; `_hold_check` then cleared "force" for the same reason, so the way back waited for a dead ball.
+- **Fix:** playbook=BTN-05: a hold of the current game while a switch away from it is pending queues the way back (it runs as soon as the flip lands; a flip is never cancelled halfway) and keeps "force". Drill: 4 of 4 land, ~10 s.
+- **Signals:** "Holding on" while the TV shows another game, mid_flip dropped, current vs pending target
+
 - 2026-11-04: **CI now checks playbook coverage and posts a RAM/CPU line.** Tests claim entries with
   `@pytest.mark.playbook("ID")`. `scripts/playbook_coverage.py --junit` fails CI only when an entry marked
   `done` has no passing test, or a test names an unknown id, so the 79 entries can be built top-down.
   `scripts/perf_probe.py` times the real `Engine.decide()` on 8 synthetic live games (300 ticks): it was
   p50 1.0 ms, p99 5.3 ms, 56 MB peak RSS at 1f5e751. Engine needs a running event loop, so the probe runs
   inside `asyncio.run`.
+
+## The TV-04 undo found nothing to go back to
+- **Symptom:** (night lab, cec_steal, hardening.tv on) seed 1: `_flip_to` refused the way back; seed 2: the undo
+  read the stick we left as playing ESPN, waited 4.5 s for the lock, then found it on FOX.
+- **Cause:** a stale `_exit_check` from the last switch still gated `_flip_to`; and once the readback adopted the
+  rebooted stick as main, the stick we left became "hidden", so the planner preloaded another game over it.
+- **Fix:** the undo clears `_exit_check` around its own flip, and `preload()` refuses while the undo is pending.
+- **Signals:** playbook=TV-04, "was re-tuned meanwhile", TV jumped by itself, CEC steal, rebooted stick
+
+- 2026-11-04: **The merge of #83 and #76 dropped the North Star candidate column without any error.** Both
+  PRs edited the same loop in scripts/northstar.py, and git merged them cleanly. #83's line reassigned
+  `results[split]` after #76 had added `["candidate"]` to it, so `--profile candidate` scored the profile and
+  then threw it away. Now the drill is passed to both tables and a test covers the column. Lesson: when two PRs
+  edit the same loop, read the merged loop, not only the conflict list.
+- 2026-11-04 (playbooks SAFE-05): "has every feed been heard from since the clock jump?" compared timestamps,
+  so after a BACKWARD jump every old stamp already looked later than the jump and the hold cleared at once
+  (night lab: a replay started 8 s after a -30 s jump). Compare each timeline's fresh_at with its value at
+  the jump instead. Also: a fault that widens the sync filter does nothing while a tap-calibrated base is
+  tighter (DelayBook only overlays a filter that is better), so the night fault widens the Delay itself.
+- 2026-11-04: **Prime multiview gate scored a 0.0 s switch as slow.** `pmv.gate` read `float(took or 1e9)`, so
+  a rounded 0.0 became 1e9. Found by the stick-free rehearsal (`prime_multiview_probe.py --fake`), where tile
+  switches are instant. Fix: only a missing time counts as slow. Use `is None`, never `or`, on numbers that can be 0.
+- 2026-11-04: **Clairvoyance replaced a crunch pre-tune with a big-play one.** While the leave gate held us on a
+  quiet game waiting for crunch time elsewhere (`want=<crunch game>`), GAME-04 turned the stay into its own wait
+  with `want=<big-play game>`, so the hidden stick would tune the wrong game. Dev scorecards didn't move (the gate
+  was the binding constraint), found by tallying decisions made while a crunch game sat elsewhere. Fix: a stay that
+  already wants a crunch game is left alone (crunch first). Check every layer that rewrites `want`.
+
+## "Still watching?" graded as missed on a stick nobody could reach
+- **Symptom:** (e2e night, seed 2, #86) `still_watching_cleared` failed: the prompt shown at 5:46:11 PM was cleared at 5:48:01, 110 s later.
+- **Cause:** the grader, not the app. A `stick_drop` took that stick off adb 10 s after the prompt, for 87 s; no key reaches a dropped stick. The reload of that game cleared it 14 s after it came back. The sim also logged no `prompt_cleared` when a new link replaced the player, only on CENTER.
+- **Fix:** the 60 s count from when the stick is reachable again (`clock_from` in the report), the clear must be on the same stick, and a relink logs `prompt_cleared (relink)`.
+- **Signals:** still_watching_cleared, prompt, stick_drop, STK-04, seed 2
+
+## The Linux test job hit its 20-minute limit
+- **Symptom:** (#108, Nov 4) `test (3.12)` was cancelled at 54% after 20 min; 3.13 finished in 18 min.
+- **Cause:** not one test. integration/next itself already took 19m50s on 3.12 (12:12 run): the e2e night, the playbook night (#86) and the SmartThings night take ~3 min each, and the drill night adds ~1 min. GitHub runners are ~1.6x slower than the cloud box (11.5 min there).
+- **Fix:** timeout-minutes 30 on the test job. The next step is to run the replayed nights in their own job, in parallel.
+- **Signals:** "The operation was canceled", test job cancelled, timeout-minutes

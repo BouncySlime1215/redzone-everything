@@ -276,6 +276,23 @@ one of the things Wednesday will settle. The next step builds break anchors (sam
 `break_end` plus the feed event wallclock) into `redzone/decider/sync.py`. delay_mu and delay_sigma are
 exposed through DelayBook for the Noggin.
 
+## Sync stack (Nov 4, overnight)
+
+- **Known moves keep the sync.** `DelayBook.set_behind(..., known_sd=0.5)` is used for the controller's holds
+  and stalls (`Engine._on_behind`), and it calls `SyncBook.shift`. The estimate moves by the measured amount and
+  gains 0.5 s of doubt. Before this, every booked stall re-synced the channel from its prior.
+- **Network condition → error bar.** `SyncProbe._condition` turns stalls per minute (last 5 min), RSSI below
+  -65 dBm and an RSSI drop of 10 dB or more within 2 min into `q_scale` (1 to 25). `SyncBook.condition`
+  multiplies the delay's random-walk noise by it, so `d.current_sigma()` grows faster on a bad link. That is
+  the variance the Reflex reads.
+- **Break anchors.** An ad label appearing or going in the hidden stick's UI tree is placed midway between
+  two reads (sd = gap/√12). It is matched to the game's last dead ball 10 to 240 s earlier:
+  z = t − wallclock − `start_bias_s` (15 ± 10 s, a prior). Every edge goes to
+  `recordings/<day>/sync_anchors.jsonl` (ts, target, stick, sample_kind, feed_wall, z) as the Noggin's labels.
+  It reaches the filter only with `sync.break_anchor.enabled`.
+- **Drift alarm.** `SyncBook.alarms` flags "measured" when the delay moved more than 5 s since it synced (a
+  restart keeps the plan, so a jump counts), and "predicted" when q_scale ≥ 9. Alarms are logged once per
+  5 min. `sync.drift_alarm.resync` re-tunes the hidden standby when no switch is pending (off by default).
 ## Sims score the feed actually in use (planner 2:45 AM item 3, Nov 4)
 
 `--real-lag` used to draw every league's feed lag from ESPN's summary profile, even when the config decides
@@ -320,3 +337,174 @@ going in live (`decider.entry.crunch_now: live`). NBA dev nights (fit split), ca
 A crunch entry with no rewind in reach has to choose between landing mid-play and missing what happens
 while it waits; any wait costs plays. Full North Star, candidate column: dev mid-play 0.35 -> 0.23 per 100,
 locked 0.33 -> 0.17, every other line unchanged (dead air dev 18.90 -> 18.95, locked 20.35 -> 20.32).
+
+## Clairvoyance: the lookahead view and GAME-04 (cycle 02, flag `noggin.lookahead.enabled`)
+
+With B=90 the screen runs about 100 s behind real life, and the feed is about 45 s behind, so the app sees roughly
+the next minute of every game before it airs. Big plays show up a median of 36 s ahead (4 NFL dev nights).
+`redzone/noggin/lookahead.py` gives that window per game: the plays and dead windows between screen-now
+(`now - mu`) and the newest data. It returns nothing when sigma is above 10 s (SAFE-02). GAME-04 in the decider:
+- On a stay, if another game has a big play ahead, it pre-tunes that game (`want`). It flips only when the
+  picture would land on a dead ball before the play, at most 45 s early.
+- On a break visit, it steers the visit to the game whose big play will air during the break.
+
+What limits it: on 4 NFL dev nights, 790 of 866 attempts were blocked by the game on screen's own leave gate. The
+current channel's delay doubt was above `decider.uncalibrated_sigma_s` (8 s), so rule #1 lets it leave only at
+official breaks. Tighter sync (SYNC-01..03, Wednesday's probe data) is what unlocks pre-emptive flips.
+
+| split | league | candidate before (rewind, no lookahead) → after (wait + lookahead) |
+|---|---|---|
+| dev | NFL | mid 0 → 0; big live 50.3 → 54.3; crunch 68.0 → 68.7; big seen 98.7 → 98.9; dead air 29.8 → 30.2 |
+| dev | NBA | mid 3/60 → 0/60; big live 81.7 → 77.5; crunch 90.9 → 90.0; big seen 84.5 → 80.3; dead air 19.4 |
+| dev | NHL | mid 1/242 → 0/244; big live 44.7 → 44.9; crunch 80.6 → 80.2; dead air 22.4 → 22.5 |
+| locked | NFL | mid 0 → 0; big live 49.0 → 52.9; crunch 68.1 → 68.1; dead air 29.2 → 29.7 |
+| locked | NBA | mid 2/24 → 0/24; big live 100 → 68.8; crunch 93.3 → 84.9 |
+| locked | NHL | mid 0 → 0; big live 48.1 → 48.6; crunch 84.7 → 84.7 |
+
+The NBA cost is all crunch_now=wait (the lookahead doesn't fire on NBA). `sources.nhl_primary` and its
+api-web lag (`nhl_wsc`, #75) were already in the candidate and its sims.
+
+### What-if: tighter sync (cycle 02, sizing SYNC-01..03)
+
+This is the candidate from #100 on dev nights, with every channel's stated delay doubt capped. It is a what-if, not a
+setting, and it's an upper bound: the true delay error is unchanged, and mid-play staying at about 0 is the only
+safety signal.
+
+| league | candidate (big live / crunch / mid) | cap 5 s | cap 3 s |
+|---|---|---|---|
+| NFL | 54.3 / 68.7 / 0 | 61.6 / 71.9 / 0 | 64.2 / 72.1 / 0 |
+| NBA | 77.5 / 90.0 / 0 of 60 | 80.3 / 91.6 / 1 of 66 | 81.7 / 91.9 / 0 of 67 |
+| NHL | 44.9 / 80.2 / 0 | 44.7 / 71.6 / 0 | 48.9 / 77.6 / 0 |
+
+Reproduce with `SIGCAP=3 python sigcap.py <league> ...`, which wraps scripts/eval_sports.py and patches
+`Delay.current_sigma`.
+
+**Crunch guard** (with `noggin.lookahead.enabled`): a catch-up replay of another game never takes the screen off a game
+inside its crunch window. The replay waits; it stays catchable for 10 minutes. Under the 3 s what-if those replays
+were the NHL crunch loss. Results:
+
+| | guard off | guard on |
+|---|---|---|
+| NHL crunch, 3 s cap | 77.6 | 78.7 |
+| NFL crunch, 3 s cap | 72.1 | 74.3 |
+| NHL crunch, candidate | 80.2 | 80.6 |
+
+Big plays live held under the cap: NFL 64.1, NBA 81.7, NHL 49.2. Dead air under the cap rose for NFL (29.8 → 30.6).
+The rest of the NHL gap is two nights (Oct 19 and Oct 27) where two crunches overlap and it picks the other one.
+That's GAME-05 (crunch overlaps), not a switch away from crunch time.
+## Safety playbooks SAFE-01/02/03/05 (flag `playbooks.safe.enabled`, OFF)
+
+`redzone/decider/playbooks.py`, consulted after cut timing on every switch (and on replays for SAFE-05). Each
+one turns a switch into a hold and writes `playbook=<id>` into the decision's reason. Nick's buttons and the
+first pick are never held.
+
+| id | trigger | hold until |
+|---|---|---|
+| SAFE-01 | the target's feed is more than its poll cadence + 10 s old (or flagged dark) | the feed is fresh; if the game on screen is stale too, stay put |
+| SAFE-02 | the target channel's delay doubt is above 10 s | the entry lands on a dead ball at the full margin (no centred/urgent landing, no going in live) |
+| SAFE-03 | the sync probe's network condition is 9 or more (2+ buffering events a minute, or an RSSI drop) on a stick, in the last 5 min | the landing is a long break (TV timeout, period end, halftime, intermission, two-minute warning) |
+| SAFE-05 | the wall clock moved more than 5 s against the monotonic clock | every live game has had a fresh poll since, or 90 s |
+
+The SAFE-02 threshold sweep on NHL dev nights (candidate profile) is below. Flag on vs off at 10 s: dev and locked scorecards are identical
+for NBA, NHL and NFL.
+
+| sigma_s | mid-play entries | crunch live | big live |
+|---|---|---|---|
+| off | 1/242 | 80.6 | 44.7 |
+| 3 | 7/197 (live config) | 66.0 | 37.8 |
+| 6 | 0/217 | 72.4 | 42.3 |
+| 8 | 0/220 | 74.3 | 42.1 |
+| 10 | 1/242 | 80.6 | 44.7 |
+
+Night lab: `python -m redzone.lab.night --no-default-faults --faults redzone.lab.night.faults:safety --set
+playbooks.safe.enabled=true` injects `feed_stale` (every game but the one on screen, 15 min), `sync_wide` (12 s
+doubt, 10 min), `wifi_degrade` (15 min) and `clock_skew` (+30 s for 30 min, then back). Seeds 7, 11 and 13:
+every check passes with 0 mid-play cuts. The existing guards already hold most of these situations. The gate
+looked at 149 switches on seed 7 and held 6, all SAFE-05 at the backward clock jump.
+
+## Scenario-tree lookup (flag `playbooks.game.enabled`, OFF)
+
+`redzone/decider/scenarios.py` (idea #19, Mac half). Each tick turns the slate into one state word per live game:
+`my_crunch`, `long_break`, `after_score`, `break`, `redzone`, `pp`, `crunch` or `live`. A table of branches then says
+what to do. First match wins; a file can replace the seeds (`playbooks.game.table`, the cloud tree's format). A live
+plan is dropped as soon as B leaves the state that justified it, and the slate is looked up again. A branch never
+acts while the leave gate says A is mid-play, and it never visits away from a game in crunch time. Seeds:
+GAME-03 (your team's crunch: go there, then hold), GAME-01 (NFL red zone during a long break on screen) and GAME-02
+(NHL power play after a score on screen).
+
+| split | league | flag | mid-play | crunch live | big live | big seen | dead air | your-team crunch |
+|---|---|---|---|---|---|---|---|---|
+| dev | NFL | off → on | 0 → 0 | 68.0 → 67.6 | 50.3 → 50.5 | 98.7 → 98.1 | 29.8 → 29.4 | 51/56 → 51/56 |
+| dev | NHL | off → on | 1/242 → 1/240 | 80.6 → 80.6 | 44.7 → 44.9 | 98.6 → 98.6 | 22.4 → 22.6 | 15/15 |
+| dev | NBA | off → on | 3/60 → 3/60 | 90.9 → 90.9 | 81.7 → 81.7 | 84.5 → 84.5 | 19.4 → 19.4 | 31/31 |
+| locked | NFL | off → on | 0 → 0 | 68.1 → 69.0 | 49.0 → 49.5 | 100 → 100 | 29.2 → 29.0 | 26/27 → 27/27 |
+| locked | NHL | off → on | 0 → 0 | 84.7 → 84.7 | 48.1 → 48.6 | 98.1 → 98.1 | 25.4 → 25.5 | 13/13 |
+
+On dev, GAME-01 fired 213 times and agreed with the generic break visit another 42. Its visits trade some
+crunch and big-play coverage for dead air, so it stays off until the cloud tree replaces the hand-written seed.
+
+## Honest sync doubt in the sims (cycle 03, Nov 4)
+
+`eval_sports.py --tune-jitter 6 [--break-anchors --set sync.break_anchor.enabled=true]` (backtest.run
+`tune_jitter_s`, `anchors`). Every on-screen tick is graded for honesty: the true error of the delay the app
+uses against its stated sigma (`per_night[].sync_honesty`: within 2 sigma, sigma <= 8 s, sigma <= 3 s).
+
+- **Until now the sims had no true delay error at all** (the app's delay = the screen's), so their ~9 s doubt
+  was pure pessimism. `--tune-jitter 6` adds what a YouTube TV tune really does (redzone/lab/syncsim.py): each
+  tune lands U(0, 6) s behind the live edge, unknown to the app, graded as a real offset of that visit.
+- `--break-anchors` feeds the filter only what live can feed it today: the ad break on screen of the game
+  you watch, matched to the feed's dead ball, weighted like `engine._break_event`. The true whistle -> ad gap
+  is drawn N(15, 10) by default (the config prior: an assumption until the Wednesday probe data).
+
+Candidate, dev, all with `--tune-jitter 6` (truth error p95 ~5 s everywhere):
+
+| run | NFL big live | NBA big live | NHL big live | NHL crunch | mid-play NFL/NBA/NHL | within 2 sigma | sigma <= 8 s (NFL/NBA/NHL) | sigma <= 3 s |
+|---|---|---|---|---|---|---|---|---|
+| no anchors (today) | 54.4 | 77.5 | 44.9 | 79.9 | 0 / 0 / 1 | 100% | 9 / 19 / 21% | 0% |
+| anchors, prior sd 10 | 54.4 | 78.9 | 44.0 | 74.4 | 0 / 0 / 1 | 100% | 12 / 31 / 34% | 0% |
+| anchors, sd 2 (what-if) | 54.4 | 76.1 | 43.7 | 75.7 | 0 / 1 / 0 | 100% | 45 / 91 / 51% | 0% |
+| doubt calibrated to 3 s (what-if cap) | **64.1** | **81.7** | **49.2** | 78.2 | 0 / 0 / 0 | 100% | 100% | 100% |
+| same, crunch_now=rewind | 64.1 | 90.1 | 49.2 | 78.2 | 0 / **5** / 0 | 100% | 100% | 100% |
+| no anchors, crunch_now=rewind | 54.4 | 81.7 | 44.9 | 80.2 | 0 / **4** / **2** | 100% | 9 / 19 / 21% | 0% |
+
+Locked (read once), wait: no anchors NFL 53.3 / NBA 68.8 / NHL 49.0, 0 mid-play; doubt at 3 s NFL 64.8 / NBA
+68.8 / NHL 57.2, 0 mid-play, within 2 sigma 100%.
+
+Reading: the doubt is honest (no misses) but about 3x too wide: the true error is ~5 s at p95, the stated 2
+sigma ~18 s. Break anchors at today's prior (sd 10 s) hardly narrow it, and the 4 s sync floor makes sigma <=
+3 s impossible by construction. A doubt calibrated to the real error reaches the cycle targets (NFL >= 60, NBA
+>= 77.5, NHL ~50) at 0 mid-play, but only if the real per-tune error is as small as syncsim assumes, which is
+what the Wednesday probe logs measure. Anchors also cost NHL crunch (79.9 -> 74.4) through re-syncs on tunes:
+not understood yet, keep `sync.break_anchor.enabled` off. With honest per-tune error, crunch_now=rewind
+makes mid-play entries (NBA 4-5, NHL 2) where wait makes 0-1: one more reason wait is the candidate default.
+
+### Self-calibrating doubt (NoiseCal, `delay.self_calibrate.enabled`, OFF)
+
+The doubt learns from the filter's own innovations, so it works live without ground truth. The first break
+anchor after each tune is compared with the delay that tune started from: r = z - mu = (true error) + (anchor
+noise, sd R). E[r^2] - R^2 is the real squared error, bias included. The stated doubt is the 95 % upper bound
+of that (chi-square on n residuals, n >= 20), floored at 2 s (the 4 s floor stays for the filter itself), and
+it never widens the aging model. The pool persists across nights (in the sims: across the nights of one run, in
+date order, so a night only learns from earlier ones).
+
+Candidate, `--tune-jitter 6 --break-anchors` + self-calibration, wait:
+
+| split | league | big live | crunch | mid-play | dead air | within 2 sigma | sigma <= 8 s | sigma <= 3 s | sigma p50 |
+|---|---|---|---|---|---|---|---|---|---|
+| dev | NFL | 54.4 -> **57.6** | 70.5 -> 71.2 | 0 | 30.0 -> 30.3 | 100% | 9 -> 66% | 0% | 9.0 -> 6.7 |
+| dev | NBA | 77.5 -> 78.9 | 90.0 -> 91.1 | 0 | 19.4 -> 19.5 | 100% | 19 -> 36% | 0% | 8.6 |
+| dev | NHL | 44.9 -> 44.2 | 79.9 -> 79.3 | 1 -> 1 | 22.5 -> 22.6 | 100% | 21 -> 77% | 0% | 7.3 |
+| locked | NFL | 53.3 -> **60.4** | 69.0 -> 71.6 | 0 | 29.4 -> 30.3 | 98.4% | 7 -> 70% | 29% | 5.3 |
+| locked | NBA | 68.8 | 84.9 | 0 | 24.1 | 100% | 19 -> 25% | 0% | 9.0 |
+| locked | NHL | 49.0 -> 48.6 | 76.2 -> 80.0 | 0 | 25.5 | 100% | 16 -> 33% | 0% | 9.0 |
+
+(before = no anchors with the same per-tune error.) Rewind, dev: NBA big live 83.1 with 3 mid-play entries,
+NHL 2: wait stays the default. With R = 10 s the bound tightens slowly (about 1/sqrt(n)): NFL, with the most
+tunes and breaks, gets there first. A tighter anchor (Thursday's probe refit of the 15 +- 10 s prior) is the
+lever for NBA/NHL.
+
+**NHL crunch drop with anchors (79.9 -> 74.4, seed 0)** is not systematic: seeds 1 and 2 give 78.0 -> 77.8 and
+82.1 -> 82.3, and the seed-to-seed spread is about 4 points. At seed 0, two nights (Oct 22 -10, Oct 27 -24) lose it
+and Oct 20 gains 5. The decision logs first diverge at a catch-up replay that starts 6 min earlier (the anchor
+lowered the doubt, so the gate opened sooner). From there the crunch picks differ, ending with a crunch wait
+stuck behind a 110 s rewound tune. A lab lesson: judge an NHL crunch delta under ~4 points over several seeds.

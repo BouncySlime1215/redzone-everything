@@ -40,6 +40,7 @@ g = presses.grade(night)
 g["seed"] = {seed}
 g["night_ok"] = rep.get("ok")
 g["night_failed"] = [{{k: c.get(k) for k in ("name", "detail")}} for c in rep.get("checks", []) if not c.get("ok")]
+g["mid_play"] = presses.classify_mid_play(rep, g)
 print("@@" + json.dumps(g, default=str))
 """
     p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=3600, cwd=ROOT)
@@ -87,7 +88,12 @@ def summary(runs: list[dict]) -> dict:
     s = {"nights": len(runs), "go_now_n": len(xs), "go_now_p50_s": q(0.5), "go_now_p95_s": q(0.95),
          "go_now_max_s": xs[-1] if xs else None,
          "go_now_within_3s_pct": round(100 * sum(x <= 3.0 for x in xs) / len(xs), 1) if xs else None}
-    for k in ("go_now_s", "open_go_s", "lock_s", "skip_s"):
+    for k in ("warm", "cold"):   # pre-tuned presses (a flip) and cold ones (a tune), reported apart
+        v = sorted(x for r in runs for x in r.get(k + "_s", []))
+        s[k] = {"n": len(v), "p50_s": v[len(v) // 2] if v else None,
+                "p95_s": v[min(len(v) - 1, int(0.95 * len(v)))] if v else None,
+                "within_3s_pct": round(100 * sum(x <= 3.0 for x in v) / len(v), 1) if v else None}
+    for k in ("go_now_s", "open_go_s", "mid_flip_s", "lock_s", "skip_s"):
         v = sorted(x for r in runs for x in r.get(k, []))
         s[k.replace("_s", "_median_s")] = v[len(v) // 2] if v else None
         s[k.replace("_s", "_max_s")] = v[-1] if v else None
@@ -96,6 +102,8 @@ def summary(runs: list[dict]) -> dict:
         s[k] = max(v) if v else None   # the worst night
     s["taps"] = sum(r.get("taps", 0) for r in runs)
     s["taps_retried"] = sum(r.get("taps_retried", 0) for r in runs)
+    for why in ("forced_go_now", "after_release", "unexplained"):
+        s["mid_play_" + why] = sum(1 for r in runs for m in r.get("mid_play", []) if m.get("why") == why)
     for k in ("dropped", "lock_broken", "pause_broken", "skip_stuck", "not_once", "lock_waited_out"):
         s[k] = sum(len(r.get(k, [])) for r in runs)
     n: dict = {}
@@ -115,12 +123,15 @@ def main(argv=None) -> int:
     ap.add_argument("--with-faults", action="store_true", help="also inject the night's default faults")
     ap.add_argument("--pretune", action="store_true", help="two_stick.pretune_on_open on")
     ap.add_argument("--flaky", action="store_true", help="lose and duplicate taps on the way (RZ_FLAKY=1)")
+    ap.add_argument("--profile", default=None, help="a Noggin profile's config overrides (redzone/noggin/profile.py)")
     ap.add_argument("--json", type=Path, default=None)
     a = ap.parse_args(argv)
     if a.pretune:
         os.environ["RZ_PRETUNE"] = "1"
     if a.flaky:
         os.environ["RZ_FLAKY"] = "1"
+    if a.profile:
+        os.environ["RZ_PROFILE"] = a.profile
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=min(4, a.seeds)) as ex:
         runs = list(ex.map(lambda s: one(s, a.tv, a.hours, a.with_faults), range(1, a.seeds + 1)))
@@ -130,7 +141,7 @@ def main(argv=None) -> int:
         a.json.write_text(text)
     print(json.dumps(out["summary"], indent=1))
     s = out["summary"]
-    bad = s["dropped"] or s["lock_broken"] or s["pause_broken"] or s["skip_stuck"] or s["not_once"] or s["errors"]
+    bad = s["mid_play_after_release"] or s["mid_play_unexplained"] or s["dropped"] or s["lock_broken"] or s["pause_broken"] or s["skip_stuck"] or s["not_once"] or s["errors"]
     return 1 if bad else 0
 
 
