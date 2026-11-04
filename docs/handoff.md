@@ -69,8 +69,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 4:00 AM, Kaggle:** V5 trained both students. **Watchdog done** (val_loss 0.0724). The game-reasoner trained, then OOM'd answering the test set (32 at a time on fp32). Patched run_students (redzone-code v4): reuse a saved adapter from the attached output, answer the FULL set in fp16 at batch 8 with progress lines. **V6 started 4:00 AM.** GPU used ~12/30 h this week.
-- **Operating loop live** (§6f): Start Planner → 5 lanes → End Planner/Integrator. The director is overseer (6-hourly audits) and owns Kaggle.
+- **2026-11-04 3:25 AM ET.** The loop is running: **Cycle 01 plan merged (#77)**. Merged since 2:45 AM: #72 (Noggin data factory + Timing v1, off), #73 (burst polling, off), #74 (stricter 10-min replay grading: live-or-replayed now reads 62%, an honest re-grade, not a behavior change), #75 (sims use the real per-source lag), #76 (candidate-Noggin profile + column; table not regenerated yet). Open: #78-#81.
+- **Usage:** 5% at 3:23 AM (line ~1.9%, +3.1). Kaggle V6 is running (likely retraining because the V5 adapter wasn't in the attached output); results ~6-9:30 AM.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
