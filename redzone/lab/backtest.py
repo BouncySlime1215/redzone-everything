@@ -31,6 +31,7 @@ from redzone.decider.screen import DelayBook
 from redzone.models import REAL_BREAKS, League, Phase
 from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal
+from redzone.lab import leverage
 from redzone.sources import espn
 
 ET = ZoneInfo("America/New_York")
@@ -129,11 +130,13 @@ class Report:
     drive_plays_live: int = 0        # ...of those, watched live start to finish
     drive_plays_other_sport: int = 0  # ...of those, missed while another sport was on screen
     drive_plays_on_redzone: int = 0  # ...of those, aired while the RedZone channel was on (it may have shown them)
+    mid_play_cuts_high: list = field(default_factory=list)   # mid-play leaves at a high-leverage moment
 
     @property
     def summary(self) -> dict:
         return {
             "mid_play_cuts": len(self.mid_play_cuts),
+            "mid_play_cuts_high": len(self.mid_play_cuts_high),
             "big_plays_seen": f"{self.big_plays_caught}/{self.big_plays}"
                               f" ({100 * self.big_plays_caught / max(1, self.big_plays):.0f}%)",
             "big_plays_live": f"{self.big_plays_live}/{self.big_plays}"
@@ -849,6 +852,7 @@ def tuning_blackout_seconds(watching: list[tuple[float, str | None]], tune_s: fl
 def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t0, t1, replayed) -> Report:
     by_id = {r.gid: r for r in replays}
     cuts = []
+    cuts_high: list = []   # the mid-play leaves at a high-leverage moment (redzone/lab/leverage.py)
     prev_kind = None
     offs = offsets_of(switches) if len(switches) == len(watching) else None
     left_off = leave_offsets(switches)
@@ -866,6 +870,8 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
                 continue
             if w - play_len <= screen_t <= w:
                 cuts.append((s.t, f"{r.matchup}: {(p.get('text') or '')[:70]}"))
+                if leverage.high_leverage(r.league, p):
+                    cuts_high.append(cuts[-1])
                 break
 
     big = live = mine = mine_live = caught = missed_on_replay = seen10 = my_seen10 = crunch_on_replay = 0
@@ -948,6 +954,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             causes[cause] = causes.get(cause, 0.0) + 10
         t += 10
     rep = Report(switches, cuts, big, live, mine, mine_live, dead, watched, (t1 - t0) / 3600, missed)
+    rep.mid_play_cuts_high = cuts_high
     rep.dead_causes = causes
     rep.tuning_blackout_s = tuning_blackout_seconds(watching, tune_s, t0, t1)
     from redzone.lab import cutgrade

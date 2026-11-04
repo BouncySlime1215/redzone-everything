@@ -73,3 +73,74 @@ def test_dp_matches_brute_force_on_small_nights():
         brute = max(best(blk, g) for g in range(G) if tab["land"][g, 0])
         sw = O.solve(n, obj, tab)
         assert abs(O.schedule_value(n, tab, obj, sw) - brute) < 1e-9, (trial, obj)
+
+
+def test_possession_start_oracle_matches_brute_force():
+    """[possession-start entry] solve_cue is exact for its model: on random small nights it finds the
+    same best value as enumerating every schedule over (game, offset behind live); with max_cue_s = 0 it
+    is solve; and cueing to the last dead ball is never worse than waiting for a live one."""
+    import math as _m
+    from functools import lru_cache
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from redzone.lab import oracle as O
+    rng = np.random.default_rng(11)
+    for trial in range(40):
+        G, K = 3, 12
+        tab = dict(big=(rng.random((G, K)) < .15) * 1.0, crunch=(rng.random((G, K)) < .2) * 1.0,
+                   mine=(rng.random((G, K)) < .05) * 1.0, dead=(rng.random((G, K)) < .3) * 1.0,
+                   leave=rng.random((G, K)) < .5, land=rng.random((G, K)) < .35)
+        tab["land"][rng.integers(G), 0] = True
+        tune = float(rng.choice([5.0, 10.0]))
+        cue_s = float(rng.choice([10.0, 20.0, 40.0]))
+        n = O.Night([SimpleNamespace(gid=f"g{g}") for g in range(G)], set(), 0.0, tune, 0.0, K * O.STEP_S)
+        obj = ("combined", "dead_air", "crunch_live")[trial % 3]
+        wb, wc, wm, wd, ws = O.OBJECTIVES[obj]
+        R = wb * tab["big"] + wc * tab["crunch"] + wm * tab["mine"] - wd * tab["dead"]
+        blk = max(1, int(_m.ceil(tune / O.STEP_S)))
+        M = int(cue_s // O.STEP_S)
+
+        @lru_cache(None)
+        def best(k, a, o):        # on game a, o steps behind live, at step k
+            if k >= K:
+                return 0.0
+            v = (R[a, k - o] if k - o >= 0 else 0.0) + best(k + 1, a, o)
+            if k - o >= 0 and tab["leave"][a, k - o] and k + blk <= K:
+                for b in range(G):
+                    ob = next((x for x in range(M + 1) if k - x >= 0 and tab["land"][b, k - x]), None)
+                    if b != a and ob is not None:
+                        v = max(v, -ws + best(k + blk, b, ob))
+            return v
+        brute = max(best(blk, g, 0) for g in range(G) if tab["land"][g, 0])
+        sw = O.solve_cue(n, obj, tab, max_cue_s=cue_s)
+        assert abs(O.schedule_value(n, tab, obj, sw) - brute) < 1e-9, (trial, obj)
+        live = O.schedule_value(n, tab, obj, O.solve(n, obj, tab))
+        assert O.schedule_value(n, tab, obj, sw) >= live - 1e-9
+        assert abs(O.schedule_value(n, tab, obj, O.solve_cue(n, obj, tab, max_cue_s=0.0)) - live) < 1e-9
+
+
+def test_cue_value_to_go_matches_the_forward_oracle():
+    """[DAgger] value_to_go_cue (backward) gives the same best value as solve_cue (forward)."""
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from redzone.lab import oracle as O
+    rng = np.random.default_rng(5)
+    for trial in range(30):
+        G, K = 3, 14
+        tab = dict(big=(rng.random((G, K)) < .15) * 1.0, crunch=(rng.random((G, K)) < .2) * 1.0,
+                   mine=(rng.random((G, K)) < .05) * 1.0, dead=(rng.random((G, K)) < .3) * 1.0,
+                   leave=rng.random((G, K)) < .5, land=rng.random((G, K)) < .35)
+        tab["land"][rng.integers(G), 0] = True
+        tune = float(rng.choice([5.0, 10.0]))
+        n = O.Night([SimpleNamespace(gid=f"g{g}") for g in range(G)], set(), 0.0, tune, 0.0, K * O.STEP_S)
+        obj = ("combined", "dead_air", "crunch_live")[trial % 3]
+        V, Rs, Ls, cue, blk, ws = O.value_to_go_cue(n, obj, tab, max_cue_s=20.0)
+        best = max(V[blk, g, 0] for g in range(G) if tab["land"][g, 0])
+        fwd = O.schedule_value(n, tab, obj, O.solve_cue(n, obj, tab, max_cue_s=20.0))
+        assert abs(best - fwd) < 1e-9, (trial, best, fwd)
+        q = O.cue_action_values(V, Rs, Ls, cue, blk, ws, blk, int(np.argmax(tab["land"][:, 0])), 0)
+        assert abs(q.max() - V[blk, int(np.argmax(tab["land"][:, 0])), 0]) < 1e-9

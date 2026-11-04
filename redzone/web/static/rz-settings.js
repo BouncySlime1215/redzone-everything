@@ -10,7 +10,7 @@ import { confirmSheet, toast } from "./rz-sheet.js?v=40";
 import { api, act } from "./rz-api.js?v=43";
 import { loadTeams, teamList } from "./rz-detail.js?v=42";
 import { showTeams } from "./rz-games.js?v=41";
-import { prioritySection } from "./rz-v2.js?v=8";
+import { prioritySection } from "./rz-v2.js?v=14";
 
 const ui = app.ui;
 ui.pending = ui.pending || {};

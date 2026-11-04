@@ -1,5 +1,7 @@
 """[calib.auto] Self-calibration: values re-measured each night from live telemetry, with no one's input.
 
+Serves: BTN-02 (press_to_tv_p95: the flip deadline the decider prices), STK-06 (hold_cal_s). Owner: lane 3.
+
 One dated file per night, data/calib/YYYY-MM-DD.json, shared by every lane that calibrates, one section
 per half (Start Planner, Nov 4): "timing" (lane 3: flip time, press-to-TV) and "sync" (lane 2: seek step,
 wake presses, per-channel delay):
