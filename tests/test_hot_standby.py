@@ -294,7 +294,7 @@ async def test_a_parked_replay_starts_the_instant_we_flip(two):
     await c._preload_task
     hid = c.hidden
     assert c.standby == ("youtubetv:espn", "p1") and c.parked.paused
-    assert rewind_presses(hid) >= 6 and hid.log[-1] == "KEYCODE_MEDIA_PAUSE"
+    assert rewind_presses(hid) >= 5 and hid.log[-1] == "KEYCODE_MEDIA_PAUSE"   # 60 s: 4 x 15 s + 1 wake press
     hid.log.clear()
     tuner.calls.clear()
     out = await c.execute("youtubetv:espn", replay_back_s=75, may_cut=lambda: True, replay_id="p1")
@@ -321,12 +321,12 @@ async def test_a_drifting_park_is_pulled_back_in_the_background(two):
     c.sticks[1].playing = "playing"
     assert c.preload("youtubetv:espn", back_s=60, replay_id="p1")
     await c._preload_task
-    c.parked.at -= 25
+    c.parked.at -= 35                                   # past 2 seek steps (2 x 15 s, measured Nov 4)
     hid = c.hidden
     hid.log.clear()
     c._maybe_reseek()                                   # keepalive does this every ~10s
     await c._preload_task
-    assert rewind_presses(hid) == 3 and c.standby == ("youtubetv:espn", "p1") and time.time() - c.parked.at < 1
+    assert rewind_presses(hid) == 4 and c.standby == ("youtubetv:espn", "p1") and time.time() - c.parked.at < 1
 
 
 async def test_a_live_switch_never_uses_parked_replay_footage(two):

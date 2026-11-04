@@ -461,8 +461,17 @@ def test_entry_rewind_lands_the_live_switch_behind_on_purpose(two):
     out = run(c.execute("youtubetv:espn", may_cut=lambda: True, entry_rewind_s=20.0))
     assert out.ok and "rewound 20s to the dead ball" in out.detail
     presses = sum(cmd.count("KEYCODE_MEDIA_REWIND") for cmd in c.main.log if isinstance(cmd, str))
-    assert presses == 2 and "KEYCODE_MEDIA_PLAY" in c.main.log
+    # 15 s a press (measured live Nov 4): 20 s -> 2 presses, plus 1 that only wakes YouTube TV's seek bar
+    assert presses == 3 and "KEYCODE_MEDIA_PLAY" in c.main.log
     assert c.on_target == "youtubetv:espn"
+
+
+def test_rewind_wake_press_is_configurable(two):
+    c, tuner = two
+    c.cfg.update({"replay": {"seek_wake_presses": 0, "seek_step_s": 10}})
+    assert run(c._rewind(c.main, 30.0))
+    presses = sum(cmd.count("KEYCODE_MEDIA_REWIND") for cmd in c.main.log if isinstance(cmd, str))
+    assert presses == 3
 
 
 def _flaky_standby(c, monkeypatch, bad):
