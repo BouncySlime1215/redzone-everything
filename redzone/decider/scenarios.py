@@ -15,7 +15,7 @@ Table format (JSON-able, one row per branch, first match wins; `scenarios.table`
   do      "visit" (switch to B; A stays home, come back at A's restart), "switch" (go to B), or
           "hold" (stay on A: a soft lock)
   back    "restart" (return to A when its break ends) or "" (no return planned)
-  a_crunch  false: never while A is in crunch time (crunch first, L1)
+  a_crunch  false: never while A (or any live game) is in crunch time (crunch first, L1)
 
 A live plan is kept until a branch's state stops matching (invalidation); then the slate is looked up
 again (re-plan). Lookup is a scan of a few rows per game (<1 ms). Every decision a branch makes carries
@@ -36,6 +36,12 @@ SEED = [
      "do": "switch", "back": ""},
     # GAME-01: A in a TV timeout / long break while B is in the red zone: B now, back to A at the restart.
     {"id": "GAME-01", "on": ["long_break"], "other": ["redzone"], "league": "nfl", "do": "visit", "back": "restart",
+     "a_crunch": False},
+    # GAME-21: a review / challenge in A is a break: B's big moment now, back to A at the restart.
+    {"id": "GAME-21", "on": ["review"], "other": ["redzone", "pp", "crunch"], "do": "visit", "back": "restart",
+     "a_crunch": False},
+    # GAME-22: an injury stoppage in A is a long break: same as a review.
+    {"id": "GAME-22", "on": ["injury"], "other": ["redzone", "pp", "crunch"], "do": "visit", "back": "restart",
      "a_crunch": False},
     # GAME-02: A just scored (dead after the score) while C has a power play: C next at its first whistle.
     {"id": "GAME-02", "on": ["after_score"], "other": ["pp"], "league": "nhl", "do": "visit", "back": "restart",
@@ -74,6 +80,8 @@ def state_of(dec, gid: str, x, now: float) -> str:
                 return "long_break"
             if land.state == "dead" and land.kind in ("score", "goal"):
                 return "after_score"
+            if land.state == "dead" and land.kind in ("review", "injury"):
+                return land.kind          # GAME-21 / GAME-22
         return "break"
     if s.lock == "red zone drive":
         return "redzone"
@@ -105,8 +113,8 @@ class Scenarios:
         for br in self.table:
             if slate[a] not in br["on"]:
                 continue
-            if br.get("a_crunch") is False and cands[a].scored.crunch:
-                continue
+            if br.get("a_crunch") is False and any(cands[g].scored.crunch for g in slate):
+                continue           # crunch first: a visit never runs while crunch time is on anywhere
             if not br["other"]:
                 return Plan(br, a, None)
             lg = br.get("league")

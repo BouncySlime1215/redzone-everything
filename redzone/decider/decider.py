@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 import time
 import math
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Callable
@@ -234,8 +234,9 @@ class Decider:
         self.cfg = cfg
         self.delays = delays
         self._clock = clock
+        self.overlap_why: Counter = Counter()   # [GAME-05] overlap calls (audit)
         self.lookahead_why: dict[str, int] = {}   # [GAME-04] outcomes by reason (audit)
-        self.scenarios = Scenarios(cfg)   # [scenario tree] GAME-01..03 seeds, flag playbooks.game.enabled (off)
+        self.scenarios = Scenarios(cfg)   # [scenario tree] GAME-01..03, 21, 22 seeds, flag playbooks.game.enabled (off)
         self.safety = Safety(cfg)   # [playbooks] SAFE-01/02/03/05, flag playbooks.safe.enabled (off)
         # The live controller knows whether THIS target is already ready. App-wide
         # average costs are useful for ranking, but cannot promise a deadline.
@@ -790,7 +791,7 @@ class Decider:
 
     def _scenario(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[scenario tree] The branch of the scenario table that matches the slate (redzone/decider/
-        scenarios.py, GAME-01..03), when it disagrees with the generic pick. Nick's buttons, a lock,
+        scenarios.py, GAME-01..03, 21, 22), when it disagrees with the generic pick. Nick's buttons, a lock,
         a focus mode, a replay in progress and safe mode win."""
         sc = self.scenarios
         if not sc.enabled() or self.current is None or d.kind == "user" or self.replaying or self.safe_mode \
@@ -870,6 +871,8 @@ class Decider:
         s = cur.scored
         if not visit and (s.crunch or s.lock or s.personal >= c.get("decider.crunch.hold_personal", 5)):
             return d
+        if d.want and d.want in cands and cands[d.want].scored.crunch:
+            return d                       # waiting to leave for crunch time: keep pre-tuning it (crunch first)
         maxs = float(c.get("noggin.lookahead.max_sigma_s", 10))
         mine = ahead(self.timelines.get(self.current), self.delays.get(cur.target), now, maxs)
         if mine is not None and mine.big is not None and not visit:
@@ -1386,8 +1389,9 @@ class Decider:
 
     def _crunch_pick(self, watchable: dict[str, Candidate], exclude: str | None = None) -> str | None:
         """The crunch game to be on. Breaks included: a stoppage is the time to get there."""
+        en = self.cfg.get("playbooks.game.empty_net", False)   # [GAME-09] a pulled goalie counts as crunch
         hot = [(self._crunch_rank(x.scored), gid) for gid, x in watchable.items()
-               if gid != exclude and x.scored.crunch]
+               if gid != exclude and (x.scored.crunch or (en and x.scored.lock == "empty net"))]
         return max(hot)[1] if hot else None
 
     def _crunch_outranks(self, a: Scored, b: Scored) -> bool:
@@ -1405,10 +1409,25 @@ class Decider:
         lp, lc = (core.league_rank(x.league.value, self.core.k) for x in (p, s_cur))
         if lp != lc:
             return lp > lc  # [core] the league order decides between crunch times; the other gets a replay after
+        if self.cfg.get("playbooks.game.crunch_overlap", False):
+            # [GAME-05] Two crunches, same tier: the higher stakes one stays live (sudden death, then
+            # inside the 2:00 window, then the closer score); the other is left for the time-shifted
+            # stick and the catch-up after.
+            hi, lo = self._overlap_stakes(p), self._overlap_stakes(s_cur)
+            if hi != lo:
+                self.overlap_why["higher" if hi > lo else "stay"] += 1
+                return hi > lo
+            self.overlap_why["equal"] += 1   # equal stakes: the hop at a stoppage below decides
         # Two crunches, same tier: hop only while this one is stopped and that one is live, so its
         # next snap airs first. Never for the last few seconds of a stoppage.
         return on_break and not p.is_break and pick not in self._screen_break and \
             self._break_remaining(self.current, cands, now) >= self.cfg.get("decider.crunch.hop_min_break_s", 20)
+
+    @staticmethod
+    def _overlap_stakes(s: Scored) -> tuple:
+        """[GAME-05] Stakes between two same-tier crunches: sudden death, then the graded 2:00
+        window, then how close the score is (to a tenth, so noise doesn't flip it)."""
+        return (s.lock == "overtime", s.crunch_now, round(s.closeness, 1))
 
     def _crunch_holds(self, s_cur: Scored) -> bool:
         """Stay through this crunch game's stoppages? Always for one you have a stake in (your

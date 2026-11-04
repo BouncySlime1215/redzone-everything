@@ -64,12 +64,12 @@ generalize them; until then each is a named rule, tested on replayed nights.
 | GAME-02 | TD/score in A, C has a power play (NHL) | C next at the first whistle | A replay reel if C's PP ends | replayed mixed nights | big_live_nhl | ② | new |
 | GAME-03 | your-team crunch starts | lock in (soft lock) until it ends or a blowout | none: L1 | replayed your-team nights | your_team_crunch | ② | partial (Priority L1) |
 | GAME-04 | buffer shows a big play in the next 30-60 s in game X (clairvoyance) | pre-tune X, flip at the dead ball before it airs | reel it within 10 min if missed | replayed nights with the buffer | big_live_* | ①② | new (cycle 02) |
-| GAME-05 | two crunches at once, same league | higher stakes (score margin, time, playoff) live, other time-shifted on the second stick | catch-up reel after | replayed overlap nights | crunch_* | ② | partial |
-| GAME-06 | two crunches, different leagues | league order live, other time-shifted | catch-up | mixed nights | league_order | ② | partial |
+| GAME-05 | two crunches at once, same league | higher stakes (score margin, time, playoff) live, other time-shifted on the second stick | catch-up reel after | replayed overlap nights | crunch_* | ② | built, flag `playbooks.game.crunch_overlap` off |
+| GAME-06 | two crunches, different leagues | league order live, other time-shifted | catch-up | mixed nights | league_order | ② | done (league order, tested) |
 | GAME-07 | NFL drive reaches the 20 | candidate for next switch (drive-in-20) | stay if current is crunch | replayed NFL | big_live_nfl | ② | exists (#62, off) |
 | GAME-08 | NBA final 2:00 within 5 | crunch priority; wait for dead ball | – | replayed NBA | crunch_nba | ② | partial |
-| GAME-09 | NHL empty net / 6-on-5 | top priority among non-your-team games | – | replayed NHL | big_live_nhl | ② | new |
-| GAME-10 | game goes to OT | crunch for its league | – | replayed | crunch_* | ② | partial |
+| GAME-09 | NHL empty net / 6-on-5 | top priority among non-your-team games | – | replayed NHL | big_live_nhl | ② | built, flag `playbooks.game.empty_net` off (live feed only) |
+| GAME-10 | game goes to OT | crunch for its league | – | replayed | crunch_* | ② | done (OT = crunch, tested) |
 | GAME-11 | blowout (win prob > 97%) | drop to idle priority; poll slower (attention budget) | resume if margin closes | replayed | crunch_*, CPU | ②③ | new |
 | GAME-12 | every game in break at once | best replay reel; else stay | stay on the break with the shortest expected length | replayed | dead_air (ceiling) | ② | partial (reels off) |
 | GAME-13 | big play missed live | catch-up reel in the next dead time ≤ 10 min | queue it after crunch | replayed | big_seen_10min | ② | partial (reels off) |
@@ -80,8 +80,8 @@ generalize them; until then each is a named rule, tested on replayed nights.
 | GAME-18 | NHL penalty shot / shootout | top priority | – | replayed | big_live_nhl | ② | new |
 | GAME-19 | NBA end-of-quarter heave window (< 5 s) | stay if already there; don't enter | – | replayed | mid_play | ② | new |
 | GAME-20 | live-odds swing > threshold (free source) | raise game priority | ignore if the source is stale | replayed with archived odds | big_live_* | ① | new (idea #6) |
-| GAME-21 | review / challenge in A | treat as a break: leave for B | back at the restart | replayed | dead_air | ② | new |
-| GAME-22 | injury stoppage | treat as a long break | – | replayed | dead_air | ② | new |
+| GAME-21 | review / challenge in A | treat as a break: leave for B | back at the restart | replayed | dead_air | ② | built, scenario row (flag `playbooks.game.enabled` off) |
+| GAME-22 | injury stoppage | treat as a long break | – | replayed | dead_air | ② | built, scenario row (flag `playbooks.game.enabled` off) |
 | GAME-23 | game delayed / weather | drop from the slate until it resumes | – | slate fixture | – | ② | new |
 | GAME-24 | new game starts while another is in crunch | don't leave crunch; time-shift the new game's start | – | replayed | crunch_* | ② | partial |
 

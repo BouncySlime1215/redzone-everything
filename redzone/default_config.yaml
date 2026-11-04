@@ -266,9 +266,11 @@ playbooks:
     net_window_s: 300
     skew_s: 5             # SAFE-05: wall vs monotonic jump that counts as clock skew
     reanchor_s: 90
-  game:                   # [scenario tree] GAME-01..03 branches (redzone/decider/scenarios.py), OFF
+  game:                   # [scenario tree] GAME-01..03, 21, 22 branches (redzone/decider/scenarios.py), OFF
     enabled: false
     table: ""             # a JSON branch table (the cloud-built tree); empty = the hand-written seeds
+    crunch_overlap: false # GAME-05: two same-tier crunches: higher stakes (OT, 2:00 window, score) stays live
+    empty_net: false      # GAME-09: an NHL pulled goalie counts as crunch time (live feed only: not in replays)
 screen:
   mic_calibration: false   # let the Mac's mic hear crowd roars to measure your delay (nothing is recorded)
 
