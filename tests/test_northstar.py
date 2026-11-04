@@ -258,3 +258,13 @@ def test_watch_value_and_contract_lines_are_pending_until_their_evidence_exists(
     assert r["wv_calibration_err"]["value"] == 4.0 and r["wv_rank_agree"]["value"] == 81.0
     assert r["contract_violations"]["status"] == ns.FAIL and "constant_twice 1" in r["contract_violations"]["detail"]
     assert rows_by(ns.table(cards(9), contracts={"violations": []}))["contract_violations"]["status"] == ns.PASS
+
+
+def test_crunch_exit_line_is_pending_until_graded_then_a_rate():
+    assert rows_by(ns.table(cards(9)))["crunch_exit_acc"]["status"] == ns.PENDING
+    c = cards(9)
+    for lg in ns.LEAGUES:
+        for x in c[lg]["metrics"]["per_night"]:
+            x["crunch_exits"], x["crunch_exits_ok"] = 4, 4
+    r = rows_by(ns.table(c))["crunch_exit_acc"]
+    assert r["value"] == 100.0 and r["status"] in (ns.PASS, ns.PENDING)

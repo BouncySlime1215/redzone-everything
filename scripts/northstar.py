@@ -76,6 +76,9 @@ METRICS = [
     ("your_team_big", "Your-team big plays seen (live or within 3 min)", "100%", 1, 100.0, 100.0),
     *[(f"crunch_live_{lg}", f"Crunch live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
     ("your_team_crunch", "Your-team crunch live", "100%", 1, 100.0, 100.0),
+    # Nick, Nov 4 4:15 PM: crunch is a learned state with an entry AND an exit (hysteresis); the exit is graded
+    # against the hindsight oracle. PENDING until a card carries crunch_exits / crunch_exits_ok per night.
+    ("crunch_exit_acc", "Crunch exit accuracy vs the hindsight oracle", ">= 95%", 1, 95.0, 100.0),
     ("league_order", "League order respected (no lower-league non-crunch over a higher-league crunch)", "100%", 1, 100.0, 100.0),
     # Nick, Nov 4 10:55 AM: the Noggin is fully self-taught, so no line is graded by Nick's taps.
     ("pct_of_oracle", "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)", ">= 95%", 1, 95.0, 100.0),
@@ -367,6 +370,12 @@ def system_rows(cards: dict, contracts: dict | None = None) -> list[dict]:
         worst = max(vals.values()) if META[key]["dir"] < 0 else min(vals.values())
         out.append(_row(key, round(worst, 2), None, None, INFO,
                         "worst league; " + ", ".join(f"{lg.upper()} {v:.1f}" for lg, v in vals.items()) + f" ({lbl})"))
+    if all("crunch_exits" in x for lg in LEAGUES for x in _per(cards, lg)) and any(_per(cards, lg) for lg in LEAGUES):
+        out.append(_rate("crunch_exit_acc", [(int(x.get("crunch_exits_ok") or 0), int(x.get("crunch_exits") or 0))
+                                             for lg in LEAGUES for x in _per(cards, lg)], 95.0))
+    else:
+        out.append(_row("crunch_exit_acc", None, None, None, PENDING,
+                        "no card grades crunch exits yet (learned crunch state, lanes 1+2)"))
     if contracts is None or "violations" not in contracts:
         out.append(_row("contract_violations", None, None, None, PENDING, "no docs/citymap.json yet (lane 4's checker)"))
     else:

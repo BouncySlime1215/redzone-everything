@@ -329,11 +329,15 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   layer at its most aggressive (Pick replace mode with no keep kinds, scenario tree, lookahead), leaves live
   crunch where the live default stays, and that Pick hands back the app's decision inside a crunch window.
   A candidate that fails it fails bar (B).
-- 2026-11-04 3:47 PM ET (Nick, via the overseer): **crunch = stay is ABSOLUTE**, over every score-based switch
-  including the app's own. The only ways out of a game in crunch: (1) a higher-priority crunch by league order
-  (NFL = CFB > NBA > NHL, MLB) or Nick's team (WSH/UNC) in crunch; (2) Nick's own button press (a control, not
-  training). Two same-league crunches: the higher Watch Value / leverage one wins, and the other gets a replay
-  within 3 min. Tests: `tests/test_crunch_floor.py`, one per exception. Lane 2 makes the default change. Two
-  strict-xfail tests mark what it must fix: the core's own score-based leave (99 vs 55), and a neutral crunch
-  timeout's break visit to a lower-league game. They turn red (XPASS) when it lands, so the marks come off with
-  it. The same-league "replay within 3 min" for the losing crunch is not built yet.
+- 2026-11-04 4:15 PM ET (Nick; REPLACES his 3:47 PM "crunch = stay is absolute"): **crunch is a learned state,
+  not a wall.** (1) The Noggin learns when a game ENTERS crunch and when it LEAVES it (lead blows out, game
+  decided, clock gone, the key moment passes), with hysteresis so it doesn't flicker. New North Star line
+  `crunch_exit_acc` (crunch exits matching the hindsight oracle, >= 95%; PENDING until a card carries
+  `crunch_exits` / `crunch_exits_ok` per night). (2) Crunch protects against LOW-value games only: a "bullshit
+  game" can never pull us out. Crunch vs crunch is decided by value (scenario tree + Watch Value, trained by
+  self-play against the oracle), e.g. leave the Bills' last 3 min for a Bears 1-minute drive, then catch up the
+  Bills from the hidden stick's buffer, or interleave at dead balls. (3) Hard rules are FLOORS only: never join
+  mid-play; never leave a high-leverage moment for a low-value game. League order and WSH/UNC are strong priors,
+  not walls; Nick's press is a control. Tests: `tests/test_crunch_floor.py` (floor: a low-value game never pulls
+  us out, live or at a break except an ad-break round trip; priors, the press and value-based crunch vs crunch).
+  The strict-xfail tests that forced an absolute stay are removed.
