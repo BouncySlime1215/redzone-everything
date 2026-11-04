@@ -71,9 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Waiting on Nick: say "cut RC6" to ship #132 seek fix + #173 gold-data capture before tonight; OK to stop Mac service for #171 rig check (phone thread, 41m)
-Cycle 06 review merged (nothing promoted); lane 4 tier question answered; Kaggle factory running 10218s; deploy healthy
-Usage 30%
+Lanes 2/4 and integrator went idle (only Noggin training working); sweep nudged coordinator to resume lane 4 step 7, lane 2 next task, merge #176.
+Lane 2 opened #180 (NHL your-team catch-ups 20/21). Kaggle factory still running; deploy healthy; usage 30%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
