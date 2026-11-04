@@ -40,6 +40,40 @@ This **replaces** the 4:05 "crunch = stay, absolute" line.
    - never leave a high-leverage moment for a low-value game;
    - league order and WSH/UNC are **strong priors**, not absolute walls.
 
+## Addendum: GAME IMPORTANCE, a per-game weight in Watch Value (Nick, 4:35 PM ET; extends #163)
+"How much does this game matter?" A weight is set before kickoff and updated live. It is **a weight, not a
+lock**: on a busy Sunday the big matchup gets more screen time, but the other games still get their
+red-zone trips and big plays.
+
+Inputs:
+1. **Playoff-race leverage:** how far this result moves each team's playoff or seeding odds, from standings
+   plus a quick season Monte Carlo, or ESPN's FPI/BPI playoff odds if a free endpoint exists. It grows
+   through the season (Week 15 > Week 2, April > November).
+2. **Matchup quality ("big boy matchups", e.g. Bills at Rams):** both teams' strength (records, a power
+   index or Elo), star power, rivalry, and the national-TV slot as a proxy.
+3. **Season scarcity:** an NFL game (17) weighs more than an NBA/NHL game (82).
+4. **Postseason** (#163): series state, Game 7, elimination.
+
+The weights are learned against the oracle (self-taught). Nick's teams stay preference multipliers.
+
+**Contract:** `Scored.importance` (a multiplier on WV, 1.0 = an ordinary game) and `Scored.stakes_line`
+(e.g. "AFC 1-seed race, top-5 matchup").
+
+**Line:** `importance_rank_agreement`, the rank agreement of pre-game importance with the oracle's realized
+value per slate (dev + locked).
+
+**Split:**
+- **①** builds the importance model and its features:
+  - Elo from the factory's results 2002+;
+  - standings and a season Monte Carlo for playoff odds (cloud);
+  - first, one quick check for a free, ToS-clean ESPN FPI/BPI odds endpoint, used only if it is clean;
+  - forward CV by whole seasons, locked untouched;
+  - the `stakes_line` from its top inputs.
+- **②** applies `importance` inside WV in the decider behind `scoring.watch_value` (a weight, never a lock).
+  Test: on a busy slate the big matchup's screen share rises while the other games keep their red-zone
+  trips and big plays (big live per league ≥ live).
+- **⑤** shows the per-game stakes line on the phone next to WV and its why, against a stub until ① sets it.
+
 ## ① Noggin training
 1. **Watch Value (HEAT 2.0)**, in flight: `Scored.watch_value` 0-100 + `watch_why`. Old scorers are feature
    providers. Lines: WV calibration error, rank agreement with the oracle.
