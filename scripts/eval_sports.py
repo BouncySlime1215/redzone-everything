@@ -108,6 +108,8 @@ def main():
                     help="grade one time split of the pinned window (redzone/lab/splits.py); test = LOCKED")
     ap.add_argument("--oracle", action="store_true",
                     help="also solve the hindsight oracle per night (redzone/lab/oracle.py): each line's ceiling")
+    ap.add_argument("--oracle-out", type=Path, default=None,
+                    help="with --oracle: write each night's oracle schedules + Pick labels to DIR/<league>_<night>.json")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                     help="override a config value for this run, e.g. replay.redzone_way=true")
     stress_args(ap)
@@ -156,14 +158,32 @@ def main():
             import numpy as np
             tab = O.tables(n, np.arange(n.t0, n.t1, O.STEP_S))
             per_night[-1]["oracle"] = {}
+            scheds = {}
             for obj in O.OBJECTIVES:
-                oc = O.grade(n, O.solve(n, obj, tab))
+                osw = O.solve(n, obj, tab)
+                scheds[obj] = osw
+                oc = O.grade(n, osw)
                 ocs = oc.cut.summary()
                 per_night[-1]["oracle"][obj] = {
                     "big": oc.big, "big_live": oc.big_live, "crunch": oc.crunch, "crunch_live": oc.crunch_live,
                     "my_crunch": oc.my_crunch, "my_crunch_live": oc.my_crunch_live, "mid_play_cuts": len(oc.cuts),
                     "entries": ocs["entries"], "entries_mid_play": ocs["entries_mid_play"],
                     "dead_s": round(oc.dead, 1), "watched_s": round(oc.watched, 1), "switches": oc.switches}
+            if a.oracle_out:
+                # Pick labels: the combined oracle's game at every 5 s step (the one picked, also while black)
+                steps = np.arange(n.t0, n.t1, O.STEP_S)
+                gi, on, cur = {r.gid: r for r in reps}, [], None
+                sw = sorted(scheds["combined"], key=lambda x: x.t)
+                j = 0
+                for t in steps:
+                    while j < len(sw) and sw[j].t <= t:
+                        cur, j = sw[j].to, j + 1
+                    on.append(cur if cur in gi else None)
+                a.oracle_out.mkdir(parents=True, exist_ok=True)
+                (a.oracle_out / f"{lg.value}_{day}.json").write_text(json.dumps({
+                    "night": day, "league": lg.value, "t0": n.t0, "step_s": O.STEP_S, "tune_s": n.tune_s,
+                    "schedules": {k: [dict(t=x.t, frm=x.frm, to=x.to) for x in v] for k, v in scheds.items()},
+                    "pick_labels": on}))
         if a.slates:
             print(" ", day, json.dumps(card.summary()))
             for t, what in card.cuts[:3]:

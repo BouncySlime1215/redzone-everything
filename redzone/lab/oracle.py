@@ -169,5 +169,46 @@ def solve(n: Night, objective: str = "combined", tab: dict | None = None) -> lis
     return out[::-1]
 
 
+def schedule_value(n: Night, tab: dict, objective: str, switches) -> float:
+    """The DP's own objective for a schedule (reward on the steps a game is on screen, black for tune_s
+    after each switch, minus the switch cost): what `solve` maximizes, for checks and brute force."""
+    wb, wc, wm, wd, ws = OBJECTIVES[objective]
+    R = wb * tab["big"] + wc * tab["crunch"] + wm * tab["mine"] - wd * tab["dead"]
+    K = R.shape[1]
+    blk = max(1, int(math.ceil(n.tune_s / STEP_S)))
+    gi = {r.gid: i for i, r in enumerate(n.replays)}
+    on = np.full(K, -1)
+    sw = sorted(switches, key=lambda s: s.t)
+    v = 0.0
+    for j, s in enumerate(sw):
+        k0 = int(round((s.t - n.t0) / STEP_S)) + blk
+        k1 = int(round((sw[j + 1].t - n.t0) / STEP_S)) if j + 1 < len(sw) else K
+        on[k0:k1] = gi[s.to]
+        if s.frm is not None:
+            v -= ws
+    return float(v + sum(R[g, k] for k, g in enumerate(on) if g >= 0))
+
+
 def grade(n: Night, switches) -> sportsgrade.Card:
     return sportsgrade.grade(n.replays, switches, n.mine, n.lag, n.tune_s, n.t0, n.t1, set())
+
+
+def counts(card) -> dict:
+    """A card's per-night counts, the shape the scorecards aggregate (eval_sports / eval --oracle)."""
+    cs = card.cut.summary()
+    return {"big": card.big, "big_live": card.big_live, "crunch": card.crunch, "crunch_live": card.crunch_live,
+            "my_crunch": card.my_crunch, "my_crunch_live": card.my_crunch_live, "mid_play_cuts": len(card.cuts),
+            "entries": cs["entries"], "entries_mid_play": cs["entries_mid_play"],
+            "dead_s": round(card.dead, 1), "watched_s": round(card.watched, 1), "switches": card.switches}
+
+
+def aggregate(rows: list[dict]) -> dict:
+    """Sum per-night counts and add the three percentages."""
+    tot: dict = {}
+    for x in rows:
+        for k, v in x.items():
+            tot[k] = tot.get(k, 0) + v
+    tot["big_live_pct"] = round(100 * tot.get("big_live", 0) / max(1, tot.get("big", 0)), 1)
+    tot["crunch_live_pct"] = round(100 * tot.get("crunch_live", 0) / max(1, tot.get("crunch", 0)), 1)
+    tot["dead_air_pct"] = round(100 * tot.get("dead_s", 0) / max(1, tot.get("watched_s", 0)), 1)
+    return tot

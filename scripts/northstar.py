@@ -58,7 +58,7 @@ FAULT_CHECK = {"stick_drop": "two_stick_recovers", "stick_wedge": "wedged_stick_
                "still_watching": "still_watching_cleared", "feed_outage": "feed_outage_handled",
                "flip_ignored": "tv_shows_games", "api_down": "no_crash"}
 
-ORACLE_LEAGUES = ("nba", "nhl")    # NFL's scorecard has its own grader (RedZone channel): not yet
+ORACLE_LEAGUES = ("nfl", "nba", "nhl")   # NFL: the app re-graded by sportsgrade beside the oracle (oracle_app)
 
 # key, label, target text, direction (+1 higher is better, -1 lower), bar, scale (for the roadmap's gap
 # normalisation: the size of a "whole" gap in this line's unit)
@@ -82,6 +82,11 @@ METRICS = [
     *[(f"oracle_gap_{m}_{lg}", f"Oracle gap: {lbl}, {lg.upper()} (ceiling - app, points)", "info", -1, None, None)
       for m, lbl in (("big_live", "big plays live"), ("crunch_live", "crunch live"), ("dead_air", "dead air"))
       for lg in ORACLE_LEAGUES],
+    # [oracle] the app as a share of the hindsight ceiling, worst of big live / crunch live / live air
+    *[(f"pct_of_oracle_{lg}", f"% of oracle, {lg.upper()} (worst of big live, crunch live, live air)", ">= 90%", 1,
+       90.0, 100.0) for lg in ORACLE_LEAGUES],
+    *[(f"ceiling_{m}_{lg}", f"Ceiling: {lbl}, {lg.upper()} (hindsight, live-only, 0 mid-play)", "info", d, None, None)
+      for m, lbl, d in (("dead_air", "dead air", -1), ("crunch_live", "crunch live", 1)) for lg in ORACLE_LEAGUES],
 ]
 META = {k: dict(label=lb, target=t, dir=d, bar=b, scale=s) for k, lb, t, d, b, s in METRICS}
 
@@ -296,16 +301,29 @@ def oracle_rows(cards: dict) -> list[dict]:
     for lg in ORACLE_LEAGUES:
         m = rg._m(cards.get(lg, {}))
         orc = m.get("oracle") or {}
+        shares = {}
         for key, obj, app_key in (("big_live", "big_live", "big_live_pct"), ("crunch_live", "crunch_live", "crunch_live_pct"),
                                   ("dead_air", "dead_air", "dead_air_pct")):
             o = (orc.get(obj) or {}).get(f"{key}_pct" if key != "dead_air" else "dead_air_pct")
-            app = m.get(app_key)
+            # NFL's card has its own grader: compare against the app re-graded by the oracle's (oracle_app)
+            app = (m.get("oracle_app") or {}).get(app_key, m.get(app_key)) if m.get("oracle_app") else m.get(app_key)
             if o is None or app is None:
                 continue
             gap = round((app - o) if key == "dead_air" else (o - app), 1)
             out.append(_row(f"oracle_gap_{key}_{lg}", gap, None, None, INFO,
                             f"ceiling {o}% vs app {app}% ({orc[obj].get('switches')} oracle switches, "
                             f"{orc[obj].get('entries_mid_play')} mid-play entries)"))
+            if key in ("dead_air", "crunch_live"):
+                out.append(_row(f"ceiling_{key}_{lg}", o, None, None, INFO, f"app {app}% on the same nights"))
+            # live air = 100 - dead air, so every share is 'more is better'
+            share = ((100 - app) / (100 - o) if key == "dead_air" else (app / o if o else None))
+            if share is not None:
+                shares[key] = round(100 * min(1.0, share), 1)
+        if len(shares) == 3:
+            worst = min(shares, key=shares.get)
+            v = shares[worst]
+            out.append(_row(f"pct_of_oracle_{lg}", v, None, None, PASS if v >= 90.0 else FAIL,
+                            ", ".join(f"{k} {x}%" for k, x in shares.items()) + f" of the ceiling (worst: {worst})"))
     return out
 
 

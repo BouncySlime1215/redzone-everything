@@ -64,9 +64,26 @@ def eval_set(n=16, end=None, split="all"):
     return (wsh[: n // 2] + rest[::step][:k])[:n]
 
 
+def _oracle_night(reps, mine, r) -> dict:
+    """[oracle] The hindsight ceiling of one slate, and the app's own switches graded by the SAME grader
+    (sportsgrade: NFL's backtest card counts plays its own way, so a share needs one grader on both)."""
+    import numpy as np
+
+    from redzone.lab import oracle as O
+    from redzone.lab import sportsgrade
+    n = O.Night(reps, mine, r.lag_true, 5.0, r.t0, r.t1)
+    tab = O.tables(n, np.arange(n.t0, n.t1, O.STEP_S))
+    out = {obj: O.counts(O.grade(n, O.solve(n, obj, tab))) for obj in O.OBJECTIVES}
+    out["app"] = O.counts(sportsgrade.grade(reps, r.switches, mine, r.lag_true, 5.0, r.t0, r.t1, r.replayed))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--slates", action="store_true")
+    ap.add_argument("--oracle", action="store_true",
+                    help="also solve the hindsight oracle per slate (redzone/lab/oracle.py): each line's ceiling, and "
+                         "the app's switches on the same grader (oracle_app)")
     ap.add_argument("--dead", action="store_true", help="print dead air by cause")
     ap.add_argument("--n", type=int, default=16)
     ap.add_argument("--split", choices=splits.SPLITS, default="all",
@@ -126,10 +143,13 @@ def main():
                behind=0.0, on_replay=0, drive=0, drive_live=0)
     causes: dict[str, float] = {}
     cut = CutCard()
+    oracle_nights = []
     per_night = []   # one row per slate: the unit of evidence for the release gate's night bootstrap
     for reps in eval_set(a.n, split=a.split):
         r = run(reps, cfg, set(cfg.get("teams.nfl")), **knobs)
         rc = r.cut.summary()
+        if a.oracle:
+            oracle_nights.append(_oracle_night(reps, set(cfg.get("teams.nfl")), r))
         per_night.append({"night": reps[0].gid, "entries": rc["entries"], "entries_mid_play": rc["entries_mid_play"],
                           "cuts": len(r.mid_play_cuts), "big": r.big_plays, "big_seen": r.big_plays_caught,
                           "big_seen_10m": r.big_seen_10m, "my_big": r.my_big_plays,
@@ -183,6 +203,12 @@ def main():
            "seconds": round(time.time() - t0),
            "eval_data": evaldata.stamp(), "eval_end": evaldata.window_end("nfl", EVAL_END),
            "per_night": per_night}
+    if a.oracle:
+        from redzone.lab import oracle as O
+        out["oracle"] = {obj: O.aggregate([x[obj] for x in oracle_nights]) for obj in O.OBJECTIVES}
+        out["oracle_app"] = O.aggregate([x["app"] for x in oracle_nights])
+        for row, x in zip(per_night, oracle_nights):
+            row["oracle"] = x
     print(json.dumps(out, indent=1))
     if a.dead:
         print("dead air by cause (points of dead_air_pct):")

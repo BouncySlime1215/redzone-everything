@@ -173,3 +173,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   nights: NBA big plays live ceiling 93.0 % (app 81.7), crunch 93.7 (90.9), dead air 11.2 (19.2); NHL goals live
   85.3 (44.7), crunch 87.9 (80.6), dead air 18.9 (22.4). The NBA >= 95 % big-plays-live gate is above the live-only
   ceiling on these nights.
+- 2026-11-04 10:15 AM (lane 1, cycle 02): **new North Star line `pct_of_oracle_{nfl,nba,nhl}`, target >= 90 %**
+  (Start Planner's cycle 02 plan): the app as a share of the hindsight ceiling on the same nights, the worst
+  of big live, crunch live and live air (100 - dead air). NFL compares the oracle with the app's switches
+  re-graded by sportsgrade (one grader on both). Plus INFO ceilings for dead air and crunch live. No default
+  changes. Dev: NFL 27.4, NBA 73.9, NHL 47.5 %; big live is the worst line in every league.
