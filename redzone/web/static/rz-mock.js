@@ -317,6 +317,22 @@ function mockV2(path, b) {
     const guess = b.game_id ? c.find((x) => x.game_id === b.game_id) : c[0];
     return { ok: true, guess, candidates: c, message: guess ? `Logged: ${guess.matchup} (${guess.text}, ${Math.floor(guess.ago_s / 60)} min ago)` : "Logged" };
   }
+  if (path === "/api/v2/slate") {
+    const now = Date.now() / 1000;
+    const L = { nfl: [190, 45], nba: [135, 25], nhl: [150, 35], mlb: [165, 30], cbb: [120, 20], cfb: [210, 50], wcbb: [120, 20] };
+    const gs = (STATE.games || []).filter((g) => g.phase === "live" || g.phase === "pre").slice(0, 9).map((g, i) => {
+      const [d, c] = L[g.league] || [150, 30];
+      const start = g.phase === "live" ? now - 3600 + i * 600 : now + 1800 + i * 1500;
+      const end = start + d * 60;
+      return { game_id: g.id, league: g.league, matchup: g.matchup, live: g.phase === "live", start, end, crunch: [end - c * 60, end], yours: !!g.mine };
+    });
+    const cl = [];
+    for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++) {
+      const t0 = Math.max(gs[i].crunch[0], gs[j].crunch[0]), t1 = Math.min(gs[i].crunch[1], gs[j].crunch[1]);
+      if (t1 - t0 > 120) { const [w, l] = gs[j].yours && !gs[i].yours ? [gs[j], gs[i]] : [gs[i], gs[j]]; cl.push({ t0, t1, games: [w.game_id, l.game_id], on_tv: w.matchup, second: [l.matchup], why: w.yours && !l.yours ? "your team" : "league order" }); }
+    }
+    return { enabled: true, now, games: gs, clashes: cl.sort((x, y) => x.t0 - y.t0).slice(0, 6), yours: gs.filter((g) => g.yours).length };
+  }
   if (path.startsWith("/api/v2/night")) {
     const now = Date.now() / 1000, t0 = now - 4 * 3600;
     const live = (STATE.games || []).slice(0, 5);

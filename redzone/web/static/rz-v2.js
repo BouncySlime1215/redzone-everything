@@ -57,7 +57,8 @@ ACTIONS["v2-vote"] = async (el) => {
 export function missedBar() {
   if (!v2.on) return "";
   return `<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
-    <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button></div>`;
+    <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button></div>`;
 }
 
 function missedSheet() {
@@ -218,3 +219,41 @@ function nightSheet() {
 ACTIONS["v2-night"] = () => { night.data = null; openSheet({ id: "v2-night", label: "The whole night", full: true, render: nightSheet }); loadNight(""); };
 ACTIONS["v2-night-day"] = (el) => { night.data = null; const s = sheetById("v2-night"); if (s) s.update(); loadNight(el.dataset.day); };
 ACTIONS["v2-night-filter"] = (el) => { night.filter = el.dataset.f; const s = sheetById("v2-night"); if (s) s.update(); };
+
+/* ---------- Slate preview: tonight ahead, crunch windows and who gets the TV when they collide ---------- */
+const slate = { data: null };
+
+async function loadSlate() {
+  try { slate.data = await api("/api/v2/slate"); } catch (e) { slate.data = { error: e.message }; }
+  const s = sheetById("v2-slate"); if (s) s.update();
+}
+
+function slateSheet() {
+  const d = slate.data;
+  if (!d) return `<h3>Tonight ahead</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Tonight ahead</h3><p class="lead">${esc(d.error)}</p>`;
+  const gs = arr(d.games);
+  if (!gs.length) return `<h3>Tonight ahead</h3><p class="lead">No games live or still to come today.</p>`;
+  const now = num(d.now);
+  const a = Math.min(now, ...gs.map((g) => g.start)), b = Math.max(...gs.map((g) => g.end)), span = Math.max(60, b - a);
+  const pct = (t) => (((t - a) / span) * 100).toFixed(2);
+  const ticks = [];
+  for (let t = Math.ceil(a / 3600) * 3600; t < b; t += 3600) ticks.push(`<i style="left:${pct(t)}%"><span>${esc(fmtTime(t).replace(":00", ""))}</span></i>`);
+  const rows = gs.map((g) => `<div class="v2-g">
+      <div class="v2-g-name ell">${g.yours ? icon("star", "ico--fill ico--xs") + " " : ""}${esc(g.matchup)} <small>${esc(String(g.league).toUpperCase())}${g.live ? " · live" : " · " + esc(fmtTime(g.start))}</small></div>
+      <div class="v2-g-track"><b class="v2-g-bar ${g.yours ? "v2-g-bar--yours" : ""}" style="left:${pct(g.start)}%;width:${(((g.end - g.start) / span) * 100).toFixed(2)}%"></b>
+        <b class="v2-g-crunch" style="left:${pct(g.crunch[0])}%;width:${(((g.crunch[1] - g.crunch[0]) / span) * 100).toFixed(2)}%" title="Crunch time"></b>
+        <i class="v2-now" style="left:${pct(now)}%"></i></div></div>`).join("");
+  const cl = arr(d.clashes);
+  const clashes = cl.length ? cl.map((c) => `<div class="v2-ev"><span class="v2-ev-ic">${icon("swap")}</span><div style="min-width:0">
+      <div class="v2-ev-top"><span class="m">${esc(c.on_tv)} on the TV</span><span class="t">${esc(fmtTime(c.t0))}–${esc(fmtTime(c.t1))}</span></div>
+      <div class="v2-ev-why">${esc(arr(c.second).join(", "))} ${arr(c.second).length > 1 ? "wait" : "waits"} on the second stick, then catch-up (${esc(c.why)}).</div></div></div>`).join("")
+    : `<div class="t2">No crunch times overlap tonight.</div>`;
+  return `<h3>Tonight ahead</h3>
+    <p class="lead">${gs.length} games, ${num(d.yours)} with your teams. Red = expected crunch time. Times are estimates from typical game lengths.</p>
+    <div class="v2-gantt">${rows}<div class="v2-ticks">${ticks.join("")}</div></div>
+    <div class="sheet-sec"><h4>When crunch times collide</h4><small>${cl.length}</small></div>
+    <div class="v2-evs">${clashes}</div>`;
+}
+
+ACTIONS["v2-slate"] = () => { slate.data = null; openSheet({ id: "v2-slate", label: "Tonight ahead", full: true, render: slateSheet }); loadSlate(); };

@@ -19,7 +19,8 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from redzone.noggin.priority import Preferences, suggest_from_feedback
+from redzone.models import PERIOD_S, REGULATION, Phase
+from redzone.noggin.priority import HardRules, Preferences, suggest_from_feedback
 
 # Reason text -> chip. First match per key wins; order = how chips are shown (most important first).
 CHIP_RULES: list[tuple[str, str, re.Pattern]] = [
@@ -155,6 +156,67 @@ def night_view(switches: list[dict], decisions: list[dict], taps: list[dict], na
                         "playbooks": dict(sorted(pb.items(), key=lambda kv: -kv[1]))}}
 
 
+# Slate preview: typical wall-clock length of a game and of its crunch window (the last stretch where
+# the decider's crunch rules kick in), in minutes. Rough public averages; only used for the preview.
+GAME_MIN = {"nfl": 190, "cfb": 210, "nba": 135, "cbb": 120, "wcbb": 120, "nhl": 150, "mlb": 165}
+CRUNCH_MIN = {"nfl": 45, "cfb": 50, "nba": 25, "cbb": 20, "wcbb": 20, "nhl": 35, "mlb": 30}
+
+
+def progress(g) -> float:
+    """0..1 of regulation played, from period and clock (MLB by inning)."""
+    lg = g.league
+    reg = REGULATION.get(lg) or 4
+    p = max(1, int(g.period or 1))
+    if not PERIOD_S.get(lg):
+        return min(1.0, (p - 1) / reg)
+    per = PERIOD_S[lg]
+    left = per if g.clock_s is None else max(0.0, min(per, float(g.clock_s)))
+    return min(1.0, ((p - 1) * per + (per - left)) / (reg * per))
+
+
+def slate_preview(games, rules: HardRules, now: float) -> dict:
+    """Tonight ahead, as a pure function of the board: each live or upcoming game's expected window
+    and crunch window, and every stretch where two or more crunch windows overlap, with who gets the
+    TV by the L1 order (your team, then league order) and who goes to the second stick / catch-up."""
+    rows = []
+    for gid, g in (games or {}).items():
+        if g.phase not in (Phase.PRE, Phase.LIVE) or (g.phase == Phase.PRE and not g.start_time):
+            continue
+        lg = g.league.value
+        dur = GAME_MIN.get(lg, 150) * 60.0
+        if g.phase == Phase.LIVE:
+            start = g.start_time or now
+            end = max(now + 300.0, now + dur * (1.0 - progress(g)))
+        else:
+            start = g.start_time
+            end = start + dur
+        c0 = max(start, end - CRUNCH_MIN.get(lg, 30) * 60.0)
+        yours = rules.is_yours(lg, (g.home.abbr, g.away.abbr))
+        rows.append({"game_id": gid, "league": lg, "matchup": getattr(g, "matchup", gid), "live": g.phase == Phase.LIVE,
+                     "start": start, "end": end, "crunch": [c0, end], "yours": yours,
+                     "rank": (0 if yours else 1, rules.league_rank(lg))})
+    rows.sort(key=lambda r: (r["start"], r["rank"]))
+    # sweep crunch windows: every boundary starts a new stretch with a fixed set of games in crunch
+    cuts = sorted({t for r in rows for t in r["crunch"]})
+    clashes = []
+    for a, b in zip(cuts, cuts[1:]):
+        inside = [r for r in rows if r["crunch"][0] <= a and r["crunch"][1] >= b]
+        if len(inside) < 2:
+            continue
+        inside.sort(key=lambda r: r["rank"])
+        ids = [r["game_id"] for r in inside]
+        if clashes and clashes[-1]["games"] == ids and abs(clashes[-1]["t1"] - a) < 1:
+            clashes[-1]["t1"] = b
+            continue
+        clashes.append({"t0": a, "t1": b, "games": ids, "on_tv": inside[0]["matchup"],
+                        "second": [r["matchup"] for r in inside[1:]],
+                        "why": "your team" if inside[0]["yours"] and not inside[1]["yours"] else "league order"})
+    for r in rows:
+        r.pop("rank")
+    return {"games": rows, "clashes": [c for c in clashes if c["t1"] - c["t0"] >= 120],
+            "yours": sum(1 for r in rows if r["yours"])}
+
+
 def router(engine) -> APIRouter:
     r = APIRouter(prefix="/api/v2")
 
@@ -230,6 +292,14 @@ def router(engine) -> APIRouter:
                         reverse=True)[:14]
         return {"enabled": True, "day": d.isoformat(), "t0": t0, "t1": t1, "now": now, "nights": nights,
                 **night_view(sws, decs, taps, engine._name, end)}
+
+    @r.get("/slate")
+    async def slate():
+        if not _enabled(engine):
+            return _off()
+        now = time.time()
+        return {"enabled": True, "now": now,
+                **slate_preview(getattr(engine.merger, "games", {}), HardRules.from_config(engine.cfg), now)}
 
     @r.get("/priority")
     async def get_priority():

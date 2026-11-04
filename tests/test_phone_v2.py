@@ -118,3 +118,39 @@ def test_night_route_reads_tonight(client, engine):
     assert r["events"][-1]["playbooks"] == ["CRUNCH-02"]
     assert client.get("/api/v2/night?day=2026-13-01").json()["ok"] is False
     assert phone_v2.night_of(phone_v2.night_window(phone_v2.date(2026, 11, 3))[0] + 20 * 3600).isoformat() == "2026-11-03"
+
+
+def _g(gid, league, home, away, start, phase="pre", period=None, clock=None):
+    from redzone.models import GameState, League, Phase, Team
+    return GameState(league=League(league), game_id=gid, home=Team(home), away=Team(away),
+                     phase=Phase(phase), start_time=start, period=period, clock_s=clock)
+
+
+def test_slate_preview_windows_and_crunch_clashes():
+    from redzone.noggin.priority import HardRules
+    rules = HardRules({"nba": frozenset({"WSH"})}, ("nfl", "cfb", "nba", "cbb", "wcbb", "nhl", "mlb"))
+    now = 0.0
+    games = {"nba1": _g("nba1", "nba", "WSH", "BOS", 3600.0),             # crunch 3600+135m-25m .. +135m
+             "nfl1": _g("nfl1", "nfl", "KC", "DAL", 3600.0 - 3300.0),     # ends 300+190m; crunch last 45 min
+             "nhl1": _g("nhl1", "nhl", "PIT", "NYR", 0.0, phase="live", period=3, clock=600.0),
+             "done": _g("done", "nhl", "A", "B", 0.0, phase="post")}
+    v = phone_v2.slate_preview(games, rules, now)
+    by = {r["game_id"]: r for r in v["games"]}
+    assert "done" not in by and v["yours"] == 1
+    assert by["nba1"]["end"] - by["nba1"]["start"] == 135 * 60
+    assert by["nhl1"]["live"] and abs(by["nhl1"]["end"] - 150 * 60 * (1 - 50 / 60)) < 1
+    clash = next(c for c in v["clashes"] if set(c["games"]) == {"nba1", "nfl1"})
+    assert clash["games"][0] == "nba1" and clash["why"] == "your team"   # your team beats NFL in crunch
+
+
+def test_progress_by_league():
+    assert phone_v2.progress(_g("x", "nba", "A", "B", 0, "live", period=4, clock=0.0)) == 1.0
+    assert phone_v2.progress(_g("x", "nfl", "A", "B", 0, "live", period=1, clock=900.0)) == 0.0
+    assert phone_v2.progress(_g("x", "mlb", "A", "B", 0, "live", period=5)) == 4 / 9
+
+
+def test_slate_route(client, engine):
+    assert client.get("/api/v2/slate").status_code == 404
+    _on(engine)
+    r = client.get("/api/v2/slate").json()
+    assert r["enabled"] and isinstance(r["games"], list) and isinstance(r["clashes"], list)
