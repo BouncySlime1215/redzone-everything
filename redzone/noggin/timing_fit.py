@@ -73,7 +73,9 @@ def fit(t: pd.DataFrame, league: str, rounds: int = 400, log=print) -> T.TimingM
               "trees": int(bst.num_trees()), "leaves": int(sum(len(a) for a in [arrays["value"]])),
               "features": len(T.MODEL_FEATURES), "numpy_vs_lgb_max_abs": diff,
               "train_nights": [tr.night.min(), tr.night.max()] if len(tr) else [],
-              "calib_nights": [ca.night.min(), ca.night.max()] if len(ca) else []}
+              "calib_nights": [ca.night.min(), ca.night.max()] if len(ca) else [],
+              # kinds with enough train rows to trust; the live hook falls back to the floor for any other
+              "kinds": sorted(str(k) for k, n in tr.kind.value_counts().items() if n >= MIN_GROUP)}
     return m
 
 

@@ -455,6 +455,9 @@ noggin:                    # docs/noggin.md
       switch_frequency: 1.0  # 0.5 calmer .. 2.0 busier
   timing:
     leagues: []            # Noggin Timing v1: calibrated dead-window bounds in place of cuts.FLOOR_S / MEDIAN_S
+  predict:
+    leagues: []            # Noggin Predict v1: P(big play in the next 60 s of play) as an L4 term in the Priority pick
+    points: 20             # term = points x (P - the league's base rate), bounded to +-points; needs priority.enabled
 
 phone:                     # the phone page (redzone/web)
   v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it
