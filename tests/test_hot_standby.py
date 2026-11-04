@@ -727,3 +727,56 @@ async def test_verify_standby_keeps_the_steady_evidence_fresh(two):
     c._verified_at = 0
     await c.verify_standby()
     assert c._steady.get(c.hidden.host, (None,))[0] == ("youtubetv:fox", 0)
+
+
+# --- playbook=TV-04: a stick that rebooted woke the TV onto itself ------------------------------
+
+@pytest.fixture
+def readback(two, monkeypatch):
+    c, tuner = two
+    monkeypatch.setattr(type(c.tv), "has_readback", property(lambda s: True))
+    return c, tuner
+
+
+async def _stolen(c):
+    """Stick a shows ESPN; then stick b (rebooted, on its home screen) takes the TV by HDMI-CEC."""
+    c.on_target = "youtubetv:espn"
+    c.main.remember(c.on_target, await c.main.playback('yttv.pkg'))
+    FakeStick.last_input_host = "a:5555"
+    await c._sync_from_tv()
+    c.sticks[1].playing, c.sticks[1].tuned = "none", None
+    FakeStick.last_input_host = "b:5555"
+    assert await c._sync_from_tv() and c.main.host == "b:5555"
+
+
+@pytest.mark.playbook("TV-04")
+async def test_a_cec_steal_is_undone_and_nothing_preloads_over_the_game_meanwhile(readback):
+    c, tuner = readback
+    c.cfg.update({"hardening": {"tv": True}})
+    await _stolen(c)
+    assert c._steal_task is not None
+    assert not c.preload("youtubetv:fox")       # the "hidden" stick is the game the TV jumped off
+    await asyncio.wait_for(c._steal_task, 5)
+    assert c.main.host == "a:5555" and c.on_target == "youtubetv:espn"
+    assert FakeStick.last_input_host == "a:5555" and tuner.calls == []
+
+
+async def test_a_cec_steal_is_left_alone_with_hardening_off(readback):
+    c, _ = readback
+    await _stolen(c)
+    assert c._steal_task is None and c.main.host == "b:5555"
+
+
+@pytest.mark.playbook("TV-04")
+async def test_a_jump_to_a_stick_playing_something_is_a_person_and_stays(readback):
+    c, _ = readback
+    c.cfg.update({"hardening": {"tv": True}})
+    c.on_target = "youtubetv:espn"
+    c.main.remember(c.on_target, await c.main.playback('yttv.pkg'))
+    FakeStick.last_input_host = "a:5555"
+    await c._sync_from_tv()
+    c.sticks[1].tuned = None                    # b plays something we never put there
+    FakeStick.last_input_host = "b:5555"
+    await c._sync_from_tv()
+    await asyncio.wait_for(c._steal_task, 5)
+    assert c.main.host == "b:5555"

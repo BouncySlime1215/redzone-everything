@@ -114,6 +114,7 @@ PLANNER_WISH_S = 3.0       # a refresh holds off while the planner asked for ano
 KEEP_CONFIRM_S = 2.0       # ...on two reads this far apart (a player that pauses a beat late isn't "ready")
 ASLEEP_RECHECK_S = 60.0    # a sleeping hidden stick: don't ask again (or preload) for this long
 VERIFY_SOON_S = 3.0        # after a flip, check the stick we left within a few seconds
+STEAL_LOCK_WAIT_S = 10.0   # playbook=TV-04: how long the undo waits for the sticks to be free
 STUCK_BUFFER_S = 20.0      # hardening.sticks: "buffering"/"connecting" this long is a stalled player, not a load
 STUCK_GAP_S = 30.0         # ...on reads at most this far apart (else it may have played in between)
 SEEK_LATE_OK_S = 1.0       # a rewind may land this far past its target (Missed.back_s leads the snap by 3s)
@@ -277,6 +278,7 @@ class Controller:
         self.prime_plan: list[str] = []          # engine: Prime NBA games for a multiview, best first
         self._flip_gen = 0                       # bumped on every flip: a CEC read that spans one is stale
         self._replay_shown: tuple[str, Any, int] | None = None   # (target, stick, flip gen) of a replay put on screen
+        self._steal_task: asyncio.Task | None = None     # playbook=TV-04 (_undo_steal)
         self._refresh_task: asyncio.Task | None = None   # after a flip: reload the game we left (see _refresh_left)
         self._refreshing: str | None = None      # the target the running preload is refreshing, if it is a refresh
         self._wish: tuple[str, float] | None = None   # the planner's latest preload ask (target, at), even if refused
@@ -454,12 +456,79 @@ class Controller:
         if changed:
             log.info("TV is showing %s (%s, TV readback)%s", stick.host, seen,
                      "; TV input known again" if self.input_unknown else "")
+            left, left_target = (self.main, self.on_target) if self.active != i and not self.input_unknown else (None, None)
             if self.active != i:
                 self.on_target = None
                 self._set_hidden(None, False)
             self.active = i
             self._input_known()
+            if left is not None and left_target and self.cfg.get("hardening.tv", False) \
+                    and not (self._steal_task and not self._steal_task.done()):
+                self._steal_task = asyncio.create_task(self._undo_steal(left, left_target, stick))
         return changed
+
+    async def _undo_steal(self, back: Stick, target: str, now_on: Stick) -> None:
+        """playbook=TV-04 (hardening.tv): the TV jumped by itself, not by our command, to a stick that
+        isn't playing anything (a stick that rebooted woke the TV over HDMI-CEC onto its home screen),
+        while the stick it left still plays our game. Put the TV straight back: the jump already cut
+        that game, so going back now only shortens the interruption. Never when the stick now on screen
+        plays a stream (a person may have picked it) or the one we left stopped."""
+        try:
+            pb_now = await now_on.playback(self._package(now_on, target))
+            mine = (now_on.tuned or {}).get("target")
+            if pb_now.get("read_ok") is False or (pb_now.get("state") == "playing"
+                                                 and not (mine and now_on.still_on(mine, pb_now))):
+                # Playing something we didn't put there: a person may have picked it. (A standby we
+                # tuned there ourselves, e.g. a reload that ran before the jump was seen, doesn't count.)
+                log.info("playbook=TV-04 %s is playing (or unreadable): a person may have picked it; left as is", now_on.host)
+                return
+            def ours(pb: dict) -> bool:
+                # Still our stream there: playing, or paused because it lost the TV input (CEC on).
+                return (back.tuned or {}).get("target") == target and pb.get("state") in ("playing", "paused")
+            if not ours(await back.playback(self._package(back, target))):
+                log.info("playbook=TV-04 %s no longer has %s: nothing to go back to", back.host, target)
+                return
+            try:
+                await asyncio.wait_for(self._lock.acquire(), STEAL_LOCK_WAIT_S)
+            except asyncio.TimeoutError:
+                log.info("playbook=TV-04 the sticks stayed busy %.0fs (switch=%s, preload=%s %s): no undo",
+                         STEAL_LOCK_WAIT_S, bool(self._task and not self._task.done()),
+                         bool(self._preload_task and not self._preload_task.done()), self._preloading)
+                return
+            self._lock.release()
+            async with self._lock:
+                if self.main is not now_on or self.input_unknown or (self._task and not self._task.done()):
+                    log.info("playbook=TV-04 a switch of ours took over meanwhile: no undo")
+                    return
+                if not ours(await back.playback(self._package(back, target))):
+                    log.info("playbook=TV-04 %s was re-tuned meanwhile: nothing to go back to", back.host)
+                    return
+                self._flipping = True
+                gate, self._exit_check = self._exit_check, None   # no switch of ours is waiting on a moment
+                try:
+                    flipped = await self._flip_to(back)
+                finally:
+                    self._flipping = False
+                    self._exit_check = gate
+                if not flipped:
+                    log.warning("playbook=TV-04 couldn't put the TV back on %s: %s", back.host, self.tv.last_error)
+                    return
+                self.active = self.sticks.index(back)
+                self._flip_gen += 1
+                self._flipping = True
+                try:   # on screen again, so pressing play can't cut anything (the re-assert ladder)
+                    how = await self._resume_playback(back, target, self._resume_wait(target))
+                finally:
+                    self._flipping = False
+                self.on_target = target
+                self._visible_bad_since = None if how else time.time()
+                log.info("playbook=TV-04 the TV jumped to %s by itself (not playing); back on %s (%s)",
+                         now_on.host, back.host, target)
+        except asyncio.CancelledError:
+            log.info("playbook=TV-04 undo cancelled")
+            raise
+        except Exception:   # undoing a steal must never break the controller
+            log.exception("playbook=TV-04 undo failed")
 
     async def sync_active_from_cec(self) -> bool:
         """Which stick is the TV showing? The TV's own readback (SmartThings) when it has one; else
@@ -2313,6 +2382,8 @@ class Controller:
         preload gap and replaces a planner preload still loading, never a switch."""
         if not (self.live_control and self.two_stick and target) or self.input_unknown:
             return False   # unknown input: the "hidden" stick may be the one on screen
+        if self._steal_task and not self._steal_task.done():
+            return False   # playbook=TV-04: the "hidden" stick is the game the TV jumped off; keep it
         if replay_id is None and (target == self.on_target or self._live_on_hidden(target)):
             return False
         if replay_id is not None and self._parked_for(target, replay_id):

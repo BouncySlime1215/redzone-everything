@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib
 import random
+import time
 from dataclasses import dataclass, field
 
 
@@ -183,8 +184,55 @@ class Buffering(Fault):
             d._stamp(a, h.PLAYING, d._live_pos(a))
 
 
+class StDown(Fault):
+    """playbook=TV-02: Samsung's cloud is down. Every SmartThings call fails (no input change, no
+    readback) for `dur` seconds; HOME/CEC on the stick still switches the TV."""
+    def start(self, world):
+        world.house.active_faults.setdefault("st_down", set()).add("*")
+        world.house.event("fault", "-", "smartthings down")
+
+    def stop(self, world):
+        world.house.active_faults.pop("st_down", None)
+
+
+class TvOtherInput(Fault):
+    """playbook=TV-03: a person picks another input on the TV remote (a game console, the cable box)
+    for `dur` seconds, then puts it back on the stick that was showing. While it's there, nothing of
+    ours is on screen, and switching the TV back would take it from them."""
+    def start(self, world):
+        h = world.house
+        self.info["back_to"] = h.tv.source.host if h.tv.source is not None else None
+        h.tv.other = "HDMI3"
+        h._switch_to(None)
+        h.event("fault", "-", "tv on another input")
+
+    def stop(self, world):
+        h = world.house
+        h.tv.other = None
+        back = h.sticks.get(self.info.get("back_to") or "")
+        if back is not None and h.tv.source is None:
+            h._switch_to(back)
+
+
+class CecSteal(Fault):
+    """playbook=TV-04: the hidden stick reboots (an update) and its HDMI-CEC wakes the TV onto it:
+    the TV jumps to the hidden stick by itself, mid-game."""
+    def start(self, world):
+        from redzone.lab.night import house as hmod
+        h = world.house
+        self.host = _pick(world, self.host or "hidden")
+        d = h.sticks[self.host]
+        # It rebooted: back on the launcher, every app closed, uptime from zero.
+        d.apps = {p: hmod.App(p) for p in d.apps}
+        d.fg = hmod.LAUNCHER
+        d.boot = time.monotonic()
+        h.event("fault", self.host, "cec steal")
+        h._switch_to(d)
+
+
 PLAYBOOK = {"feed_frozen": "FEED-02", "rate_limit": "FEED-06", "slow_poll": "MAC-05", "wifi_degrade": "SAFE-03",
-            "buffering": "NET-02"}   # fault kind -> docs/playbooks.md entry it exercises
+            "buffering": "NET-02", "stick_drop": "STK-01/02", "stick_wedge": "STK-03", "flip_ignored": "TV-01",
+            "st_down": "TV-02", "tv_other_input": "TV-03", "cec_steal": "TV-04"}   # fault kind -> docs/playbooks.md entry
 
 
 class FeedStale(Fault):
@@ -223,7 +271,8 @@ class SyncWide(Fault):
 KINDS = {"stick_drop": StickDrop, "stick_wedge": StickWedge, "still_watching": StillWatching,
          "feed_outage": FeedOutage, "flip_ignored": FlipIgnored, "api_down": ApiDown, "clock_skew": ClockSkew,
          "feed_frozen": FeedFrozen, "rate_limit": RateLimit, "slow_poll": SlowPoll, "wifi_degrade": WifiDegrade,
-         "buffering": Buffering, "feed_stale": FeedStale, "sync_wide": SyncWide}
+         "buffering": Buffering, "st_down": StDown, "tv_other_input": TvOtherInput, "cec_steal": CecSteal,
+         "feed_stale": FeedStale, "sync_wide": SyncWide}
 
 
 def from_spec(spec: dict) -> Fault:
@@ -297,6 +346,27 @@ def playbook(world, rng: random.Random) -> list[Fault]:
            WifiDegrade("wifi_degrade", when(0.55, 0.65), rng.uniform(300, 600), info={"scale": rng.choice([4.0, 8.0, 15.0])}),
            Buffering("buffering", when(0.70, 0.80), rng.uniform(8, 40), rng.choice(["visible", "hidden"]))]
     return sorted(out, key=lambda f: f.at)
+
+
+def tv(world, rng: random.Random) -> list[Fault]:
+    """`--faults redzone.lab.night.faults:tv`: the TV-02..04 playbook faults at seeded live times
+    (run with --tv smartthings). Graded like `playbook` plus the report's tv_faults_handled.
+    RZ_HARDENING_TV=1 turns hardening.tv on for the night (the TV-04 undo)."""
+    import os
+    if os.environ.get("RZ_HARDENING_TV") == "1":
+        world.engine.cfg.update({"hardening": {"tv": True}})
+    wins = world.live_windows
+    a, b = wins[0][0], max(hi for _, hi in wins)
+
+    def when(lo, hi):
+        for _ in range(200):
+            t = a + (b - a) * rng.uniform(lo, hi)
+            if any(w0 + 300 <= t <= w1 - 600 for w0, w1 in wins):
+                return t
+        return t
+    return sorted([StDown("st_down", when(0.15, 0.30), rng.uniform(300, 900)),
+                   TvOtherInput("tv_other_input", when(0.40, 0.55), rng.uniform(120, 420)),
+                   CecSteal("cec_steal", when(0.65, 0.80), 0.0, "hidden")], key=lambda f: f.at)
 
 
 def plug(spec: str, world, rng: random.Random) -> list[Fault]:

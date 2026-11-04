@@ -342,6 +342,7 @@ hardening:                 # error handling (PLATFORM). Each switch is off until
   feeds: false             # a live game whose ESPN polling went dark takes FastCast pushes until polling is back
   mac: false               # after the Mac sleeps or changes network: re-check network, reconnect sticks, resync the TV
   watchdog: false          # the watchdog may ask the app for narrow fixes (POST /api/agent/fix); off: it only tells you
+  tv: false                # the TV jumped by itself to a stick on its home screen (a reboot's HDMI-CEC): flip it back
 
 two_stick:
   cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,

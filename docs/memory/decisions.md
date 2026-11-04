@@ -211,6 +211,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   call on wait (rule #1). Candidate mid-play 0 on dev and locked in NBA/NHL/NFL. Cost of wait, NBA: dev big live
   81.7 -> 77.5, crunch 90.9 -> 90.0; locked big live 100 -> 68.8 (16 plays), crunch 93.3 -> 84.9. Lookahead: NFL dev
   big live 50.3 -> 54.3 (locked 49.0 -> 52.9), dead air +0.4 / +0.5. Revert wait with one line in profile.py.
+- 2026-11-04 10:00 AM: **TV-04 undo added OFF** (`hardening.tv: false`). When the TV jumps by itself
+  (SmartThings readback, no command of ours) to a stick that isn't playing, while the stick it left still
+  plays our game, the controller puts the TV straight back and no preload runs until it has. Night lab
+  (`--faults redzone.lab.night.faults:tv --tv smartthings`, seeds 1-2): back on the game in 20.1 s / 15.3 s
+  with it on; off, the TV stays on the rebooted stick's home screen until the next switch. It stays off
+  until a real CEC steal is seen on Nick's TV (the Wed test), because a wrong undo would take the TV from a person.
 - 2026-11-04 10:30 AM (noggin logic, playbooks): **Safety playbooks SAFE-01/02/03/05 ship OFF**
   (`playbooks.safe.enabled: false`, redzone/decider/playbooks.py). Each holds a switch and logs `playbook=<id>`.
   SAFE-02's threshold is 10 s, not the backlog's 3 s: the sims' normal delay doubt is 4-8 s (floor

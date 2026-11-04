@@ -50,7 +50,7 @@ crunch value, P2 = robustness, P3 = polish.
 | STK-03 | stick wedged (adb up, app frozen) | force-stop app, relaunch, re-tune | reboot stick via adb | stick_wedge | recovery | ③ | exists |
 | STK-04 | "Still watching?" prompt | dismiss on the hidden stick at once, visible stick at the next dead ball | relaunch app | still_watching (seed 9 miss) | recovery | ④ | partial (#64) |
 | TV-01 | SmartThings flip ignored | retry once; verify by input readback | LAN WebSocket KEY_HDMI fast path; else stay on current | flip_ignored, tv_input_ignored | switch_p95, recovery | ③ | partial |
-| TV-02 | SmartThings API down | LAN WebSocket path | CEC via the stick; else one-stick mode | api_down | recovery | ③ | partial |
+| TV-02 | SmartThings API down | LAN WebSocket path | CEC via the stick; else one-stick mode | api_down, st_down (faults:tv) | recovery | ③ | exists (HOME fallback; tested) |
 | MAC-01 | Mac about to sleep | caffeinate while games are live; persist state | on wake: restore state, re-verify sticks and TV input | new `mac_sleep` fault | recovery | ④ | partial (wake.py) |
 
 ## P1: big plays and crunch (the scenario tree's first branches)
@@ -113,8 +113,8 @@ generalize them; until then each is a named rule, tested on replayed nights.
 | MAC-06 | app process crash | supervisor restarts, restores state ≤ 10 s | safe mode | app_crash | recovery | ④ | exists |
 | MAC-07 | corrupt DB or config | start with defaults, keep TV control | – | fixture | recovery | ④ | partial (#24 closed; port) |
 | MAC-08 | disk nearly full | rotate logs and recordings | stop recordings | fixture | recovery | ④ | new |
-| TV-03 | TV turned off / other input by a person | stop flipping; wait for TV on our input | notify phone | new `tv_off` fault | recovery | ③ | new |
-| TV-04 | TV CEC wakes on a stick reboot and steals the input | revert input to the visible stick | – | new fault | recovery | ③ | new |
+| TV-03 | TV turned off / other input by a person | stop flipping; wait for TV on our input | notify phone | tv_other_input (faults:tv) | recovery | ③ | exists (never takes the TV back; tested) |
+| TV-04 | TV CEC wakes on a stick reboot and steals the input | revert input to the visible stick | – | cec_steal (faults:tv) | recovery | ③ | built, OFF (`hardening.tv`) |
 | SYNC-01 | drift alarm (measured or predicted > 5 s) | re-sync on the hidden stick at a dead ball | SAFE-02 | drift fixture | delay_err_p95 | ② | partial |
 | SYNC-02 | break anchor seen on screen | update the Kalman filter | – | probe replay | delay_err_p95 | ② | partial |
 | SYNC-03 | stall on a stick | shift the filter, don't reset | – | stall fixture | delay_err_p95 | ② | partial |
