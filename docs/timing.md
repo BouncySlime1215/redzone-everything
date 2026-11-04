@@ -363,3 +363,18 @@ official breaks. Tighter sync (SYNC-01..03, Wednesday's probe data) is what unlo
 
 The NBA cost is all crunch_now=wait (the lookahead doesn't fire on NBA). `sources.nhl_primary` and its
 api-web lag (`nhl_wsc`, #75) were already in the candidate and its sims.
+
+### What-if: tighter sync (cycle 02, sizing SYNC-01..03)
+
+This is the candidate from #100 on dev nights, with every channel's stated delay doubt capped. It is a what-if, not a
+setting, and it's an upper bound: the true delay error is unchanged, and mid-play staying at about 0 is the only
+safety signal.
+
+| league | candidate (big live / crunch / mid) | cap 5 s | cap 3 s |
+|---|---|---|---|
+| NFL | 54.3 / 68.7 / 0 | 61.6 / 71.9 / 0 | 64.2 / 72.1 / 0 |
+| NBA | 77.5 / 90.0 / 0 of 60 | 80.3 / 91.6 / 1 of 66 | 81.7 / 91.9 / 0 of 67 |
+| NHL | 44.9 / 80.2 / 0 | 44.7 / 71.6 / 0 | 48.9 / 77.6 / 0 |
+
+Reproduce with `SIGCAP=3 python sigcap.py <league> ...`, which wraps scripts/eval_sports.py and patches
+`Delay.current_sigma`.
