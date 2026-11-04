@@ -245,6 +245,7 @@ decider:
     personal_lead: 5       # your team / bet wins an overlap when its boost is this much bigger
     hop_min_break_s: 20    # hop to another live crunch only if this one's stoppage has this much left
     replays: true          # replays from other games during crunch stoppages, if surely back for the snap
+    instant_replays: true  # ...including instant replays of plays you saw (false: only plays you missed)
     shortest_break_s:      # ~10th pct, stoppage -> next scrimmage play logged, late Q4/OT, 2025 games
       {timeout: 30, injury: 27, review: 80, score_break: 110, two_minute_warning: 150, end_period: 180}
 

@@ -1641,7 +1641,10 @@ class Decider:
             return None
         # Back on screen before the snap, even if this poll is the last one before it.
         back = self._deadline_cost(self._target_of.get(gid)) + 6 + self.cfg.get("polling.live_s", 10)
-        return self._best_replay(cands, now, self._next_snap_s(gid, cands, now) - back, allow_seen=True, exclude=gid)
+        # decider.crunch.instant_replays=false: a crunch stoppage only takes a play you MISSED, never an
+        # instant replay of one you saw (the snap it can overrun is worth more than a second look)
+        return self._best_replay(cands, now, self._next_snap_s(gid, cands, now) - back,
+                                 allow_seen=bool(self.cfg.get("decider.crunch.instant_replays", True)), exclude=gid)
 
     def _next_snap_s(self, gid: str, cands, now: float) -> float:
         """Seconds until gid's next scrimmage snap could start airing on your screen (early side

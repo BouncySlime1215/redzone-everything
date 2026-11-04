@@ -245,3 +245,8 @@ def test_replay_window_counts_from_the_airing():
     assert dec._urgency(m, 1320.0) == 1.0
     old = Missed("g1", "p", "TD", "td", 1000.0, 90.0, due_s=600.0)
     assert dec._aired_age(old, 1250.0) == 250.0               # unknown airing: the feed time
+
+
+def test_candidate_crunch_stoppages_skip_instant_replays():
+    from redzone.noggin import profile
+    assert "decider.crunch.instant_replays=false" in profile.argv("candidate", "nfl")

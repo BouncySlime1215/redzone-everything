@@ -54,6 +54,9 @@ PROFILES: dict[str, dict] = {
             # only for now (3 seeds: big live +4, crunch +1.4..2.9; NHL loses 4-7 points of seen-in-3-min).
             "replay.window_s=180",
             "replay.window_leagues=[nfl]",
+            # [noggin logic] a crunch stoppage takes only a play you missed, never an instant replay of one
+            # you saw: NFL dev 3 seeds crunch live +0.8..2.2, crunch plays under a replay halved, NBA/NHL equal.
+            "decider.crunch.instant_replays=false",
             # [controls, cycle 03] Opening a game on the phone tunes it on the hidden stick while you
             # read the sheet, so "Go now" is a flip (press_to_tv_p95). Live default stays off.
             "two_stick.pretune_on_open=true",
