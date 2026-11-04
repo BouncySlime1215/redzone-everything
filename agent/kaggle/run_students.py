@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import random
+import shutil
 import subprocess
 import sys
 import time
@@ -40,6 +41,9 @@ def rank_for(job: str) -> int:
 LAST_LAYERS = int(os.environ.get("RZ_LORA_LAYERS", "0")) or None       # None: every layer
 TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 EPOCHS = {"game-reasoner": 2, "watchdog": 1}
+if os.environ.get("RZ_EPOCHS"):                 # [V8-quick] one epoch for every job
+    EPOCHS = {k: int(os.environ["RZ_EPOCHS"]) for k in EPOCHS}
+REUSE_BASE = os.environ.get("RZ_REUSE_BASE")    # [V8-quick] the previous round's base-model watchdog answers
 # BATCH 2 x ACCUM 4 = an effective batch of 8 (V4 ran out of memory on a T4 at BATCH 8)
 LR = float(os.environ.get("RZ_LR", "2e-4"))
 BATCH, ACCUM, MAX_LEN = 2, 4, 768
@@ -338,7 +342,11 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
 
     t1 = time.time()
     answered = {"student": answer(tests, out / "test_out.jsonl")}
-    if name == "watchdog":
+    if name == "watchdog" and REUSE_BASE and Path(REUSE_BASE).exists() and \
+            sum(1 for _ in open(REUSE_BASE)) == len(tests):            # same test set: the base can't have changed
+        shutil.copy(REUSE_BASE, out / "test_out_base.jsonl")
+        answered["base"] = {"reused": REUSE_BASE, "answered": len(tests), "of": len(tests)}
+    elif name == "watchdog":
         answered["base"] = answer(tests, out / "test_out_base.jsonl", adapter_on=False)
     answer_s = round(time.time() - t1)
     heartbeat(out, phase="done")
