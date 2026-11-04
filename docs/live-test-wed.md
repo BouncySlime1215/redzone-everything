@@ -64,6 +64,25 @@ Turn the buffer on (setup step above), then watch at least **4 more switches**.
 - [ ] Note any flip that **landed mid-play**, showed a **black screen or spinner**, or sat
       **at live** (the buffer didn't hold).
 
+## C. Optional: phone taps and the TV's local input keys (5 min)
+
+Skip this part if time is short. Run it between games or during a long break, since it switches
+the TV.
+
+- [ ] **Phone taps.** On the phone, open a game that isn't on the TV, then tap **Watch this** and
+      **Go now**. Count the seconds until that game is playing on the TV. Do it 3 times. The sim
+      drill says about 8.5 s when the game wasn't preloaded and about 3 s when it was. Each tap is
+      in `data/traces.jsonl` as a `decided` row with `"kind": "user"`.
+- [ ] **Local keys vs SmartThings** (about 1 minute, it flips the TV 6 times):
+
+  ```sh
+  .venv/bin/python scripts/tv_local_probe.py --rounds 3
+  ```
+
+  It times each flip, local key vs SmartThings, until the TV reports the new input, and writes
+  `data/tv_local_probe.json`. It changes no setting. If the TV shows **Allow**, press it. If the
+  local keys switched every time, the fast path can be turned on later with `scripts/tv_setup.py`.
+
 ## Record the results (5 min, after the games or the next morning)
 
 Grading needs about 90 s after each cut, so run these once the last switch has settled.

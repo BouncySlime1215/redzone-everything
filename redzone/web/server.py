@@ -54,6 +54,17 @@ def _target_from_link(link: str) -> str | None:
     return f"prime:{m.group(1)}" if m else None
 
 
+def _tap_status(engine: Engine, rec: dict) -> dict:
+    """"state" of a tap: failed | done | waiting (a "Watch this" the TV hasn't followed yet) and,
+    for a game tap, on_tv = that game is what the TV shows now."""
+    if not rec["ok"]:
+        return {"state": "failed"}
+    if rec["action"] in ("hold", "watch", "redzone", "focus") and rec.get("game_id"):
+        on = engine.decider.current == rec["game_id"]
+        return {"state": "done" if on else "waiting", "on_tv": on}
+    return {"state": "done"}
+
+
 def build_app(engine: Engine) -> FastAPI:
     app = FastAPI(title="RedZone Everything", docs_url=None, redoc_url=None)
 
@@ -137,13 +148,24 @@ def build_app(engine: Engine) -> FastAPI:
 
     @app.post("/api/action")
     async def action(body: dict):
-        try:
-            ok, msg = engine.action(str(body.get("action", "")), body.get("game_id"), body.get("value"))
-        except Exception as e:  # a bad tap never crashes the server
-            ok, msg = False, f"Something went wrong: {e}"
-        engine.decide()
-        engine.broadcast()
-        return {"ok": ok, "message": msg}
+        """One phone tap. With an "id" it runs once: a retry with the same id gets the first answer
+        back ("duplicate": true) instead of running again (redzone/commands.py)."""
+        act, gid, value = str(body.get("action", "")), body.get("game_id"), body.get("value")
+        rec = engine.commands.run(body.get("id"), act, gid, value, lambda: engine.action(act, gid, value))
+        if not rec["duplicate"]:
+            engine.decide()
+            engine.broadcast()
+        return {"ok": rec["ok"], "message": rec["message"], "id": rec["id"], "duplicate": rec["duplicate"],
+                **_tap_status(engine, rec)}
+
+    @app.get("/api/action/{cid}")
+    async def action_status(cid: str):
+        """A tap's status by id: what it answered, and whether the TV has done it yet."""
+        rec = engine.commands.status(cid)
+        if rec is None:
+            return JSONResponse({"ok": False, "message": "unknown or expired tap id"}, status_code=404)
+        return {"ok": rec["ok"], "message": rec["message"], "id": cid, "action": rec["action"],
+                "game_id": rec["game_id"], **_tap_status(engine, rec)}
 
     @app.post("/api/recorded/start")
     async def recorded_start(body: dict):
@@ -309,6 +331,20 @@ def build_app(engine: Engine) -> FastAPI:
             tmp.replace(f)
         return FileResponse(f, media_type=IMG_TYPES.get(ext, "image/png"),
                             headers={"Cache-Control": "public, max-age=604800, immutable"})
+
+    @app.post("/api/agent/fix")
+    async def agent_fix(body: dict, request: Request):
+        """The watchdog (agent/watchdog.py, same Mac) asks for one narrow fix. Local callers only:
+        the phone page never needs it. Off unless hardening.watchdog (redzone/platform/agent_fix.py)."""
+        host = request.client.host if request.client else ""
+        if host not in ("127.0.0.1", "::1", "localhost", "testclient"):
+            return JSONResponse({"ok": False, "message": "local only"}, status_code=403)
+        from redzone.platform.agent_fix import run_fix
+        try:
+            ok, msg = await run_fix(engine, str(body.get("fix", "")), str(body.get("target", "") or ""))
+        except Exception as e:   # a fix never takes the server down
+            ok, msg = False, f"crashed: {type(e).__name__}: {str(e)[:100]}"
+        return {"ok": ok, "message": msg}
 
     @app.get("/api/health")
     async def health():

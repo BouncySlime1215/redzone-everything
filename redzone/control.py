@@ -285,6 +285,7 @@ class Controller:
         self._flip_s: float | None = None       # HOME -> active source, of the last flip
         self.last_flip: dict | None = None       # the phone's latency book: flip_s / resume_s of the last flip
         self._visible_bad_since: float | None = None   # the stick on screen stopped playing at (watchdog)
+        self._visible_state = ""                       # ... and how: paused / frozen / none / stopped
         self._visible_fix_at = 0.0               # last watchdog repair (rate limit)
         self._loading_since: dict[tuple[str, str], tuple[float, float]] = {}   # (host, target) -> (first, last) loading read
         self._unknown_since = 0.0                # input became unknown at
@@ -674,6 +675,9 @@ class Controller:
                 stick, target, pb.get("state")):
             self._visible_bad_since = None
             return
+        # How it's dead, for the watchdog (redzone/platform/agent_fix.py): "playing" here means stuck loading.
+        st = str(pb.get("state") or "stopped")
+        self._visible_state = "frozen" if st in ("playing", "buffering", "connecting") else st
         if self._visible_bad_since is None:
             self._visible_bad_since = now
             log.info("%s (on screen) is %s, not playing %s; checking again in %.0fs", stick.host,
@@ -2297,13 +2301,14 @@ class Controller:
     # --- the hidden stick between switches ---------------------------------------------
 
     def preload(self, target: str | None, back_s: float | None = None, replay_id: str | None = None,
-                *, refresh: bool = False) -> bool:
+                *, refresh: bool = False, user: bool = False) -> bool:
         """Put the hidden stick on `target`: live, or parked on a replay (back_s from the live edge,
         replay_id). Returns True if a preload started. WHAT to preload is the engine's call
         (standby.Planner); this only refuses what can't or shouldn't happen right now.
         refresh=True is _refresh_left reloading the game we just left: it skips the preload gap and
         doesn't use it up, and the planner wins over it — a planner preload of another target
-        cancels it, even mid-tune."""
+        cancels it, even mid-tune. user=True is a game opened on the phone (engine._peek): it skips the
+        preload gap and replaces a planner preload still loading, never a switch."""
         if not (self.live_control and self.two_stick and target) or self.input_unknown:
             return False   # unknown input: the "hidden" stick may be the one on screen
         if replay_id is None and (target == self.on_target or self._live_on_hidden(target)):
@@ -2317,9 +2322,11 @@ class Controller:
         if not refresh and self._refreshing not in (None, target) and self._preload_task \
                 and not self._preload_task.done():
             displace = self._preload_task   # a refresh of the game we left: the planner's pick wins
+        elif user and self._preload_task and not self._preload_task.done() and self._preloading != (target, None):
+            displace = self._preload_task   # what you opened on the phone wins over the planner's guess
         busy = bool(self._task and not self._task.done()) if displace else self._busy()
         if busy or now < self._asleep_until or not self.can_tune(target) or not self._plays(self.hidden, target) \
-                or (not refresh and now - self._last_preload < MIN_PRELOAD_GAP_S):
+                or (not refresh and not user and now - self._last_preload < MIN_PRELOAD_GAP_S):
             return False
         if displace is not None:
             log.info("planner wants %s on the hidden stick: dropping the refresh of %s", target, self._refreshing)
@@ -2358,6 +2365,9 @@ class Controller:
                                                  host=hid.host)
                         return
                     self._set_hidden(target, True)
+                    # [controls] The tune's confirming read is the first of the two steady reads the
+                    # flip asks for: a "go now" right after this preload flips after one more read.
+                    self._note_steady(hid, target, (hid.tuned or {}).get("report") or {})
                     await self._maybe_build_multiview(hid, target, res)
                     hold = 0.0 if replay_id is not None else self._buffer_for(hid, target, res)
                     if hold:
@@ -2470,6 +2480,11 @@ class Controller:
         self._verified_at = time.time()
         if self.hidden_target != target or self.parked is not parked or self._busy():
             return   # it changed while we looked
+        if pb.get("read_ok") is not False and parked is None:
+            # [controls] The same steadiness evidence the flip asks for (no state change between two
+            # reads >= FLIP_STEADY_S apart), gathered here in the background: a "watch this now" on
+            # the preloaded game then flips after one read instead of waiting a second for a second.
+            self._note_steady(hid, target, pb)
         if pb.get("read_ok") is False:
             # adb didn't answer: that says nothing about the stream. Ask again soon, keep it.
             self._verified_at = time.time() - self._verify_every() + VERIFY_SOON_S
