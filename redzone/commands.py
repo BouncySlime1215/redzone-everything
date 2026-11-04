@@ -10,11 +10,14 @@ Taps without an id (old phone pages, scripts) run every time, as before.
 """
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
 from collections import OrderedDict
 from typing import Callable
+
+log = logging.getLogger(__name__)
 
 KEEP = 512            # remembered taps (a night has a few hundred at most)
 TTL_S = 15 * 60.0     # a retry this late is a new tap
@@ -51,6 +54,7 @@ class Commands:
             self._expire(now)
             seen = self._log.get(cid) if cid else None
             if seen is not None and now - seen["t"] <= self.ttl_s:
+                log.info("playbook=BTN-03 tap %s (%s) resent: answered from the log, not run again", cid, action)
                 self.duplicates += 1
                 seen["retries"] = seen.get("retries", 0) + 1
                 return {**seen, "duplicate": True}

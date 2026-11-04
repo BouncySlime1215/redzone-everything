@@ -55,7 +55,9 @@ export async function act(action, extra = {}, btn = null) {
     if (res && res.message) toast(res.message, res.ok === false ? "warn" : "ok");
     return res;
   } catch (e) {
-    toast(e.message || "That didn't work", "error");
+    // playbook=BTN-03: after the retries, say plainly the TV never got it (a 4xx keeps its own message).
+    const lost = e instanceof TypeError || /Server said 5\d\d/.test(e.message || "");
+    toast(lost ? "Not delivered: the app didn't answer. Tap again." : (e.message || "That didn't work"), "error");
     return null;
   } finally {
     if (btn) btn.removeAttribute("aria-busy");
