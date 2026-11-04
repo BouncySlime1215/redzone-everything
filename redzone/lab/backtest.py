@@ -299,7 +299,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
         channel_spread: float = 0.0, history: float = 0.0, delay_model: str | None = None,
         resync: bool = False, anchors: bool = False, tune_jitter_s: float = 0.0, feed_lag_model: str | None = None,
-        calibrate_targets: bool = False,
+        calibrate_targets: bool = False, decide_step: float | None = None,
         on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
@@ -405,37 +405,44 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     idx = {r.gid: -1 for r in replays}
     clock.t = t0
     rz_ok = bool(cfg.get("sunday_ticket", False))
+    dstep = decide_step or step
+    next_poll = t0
+    cands, states = {}, {}
     while clock.t <= t1:
-        cands = {}
-        states = {}
-        for r in replays:
-            f = feeds[r.gid]
-            silent = any(a <= clock.t < b for a, b in f.drops)
-            i = idx[r.gid]
-            if not silent:
-                f.fresh_at = clock.t
-                # Newest play that has arrived. A late play doesn't hold back the ones after it
-                # (out-of-order delivery); _deliver leaves it out until it lands.
-                k = i + 1
-                while k < len(r.plays):
-                    if f.arrive[k] <= clock.t:
-                        i = k
-                    elif k not in f.late_set:
-                        break
-                    k += 1
-            idx[r.gid] = i
-            if i < 0:
-                continue
-            g = _deliver(r, f, i, f.fresh_at)
-            if g is None:
-                continue
-            # parse_summary already stamps plays with their real wallclock.
-            dec.timeline(r.gid, r.league).observe(g)
-            states[r.gid] = g
-            if g.phase != Phase.LIVE:
-                continue
-            cands[r.gid] = Candidate(scorer.score(g, me), (targets or {}).get(r.gid, f"youtubetv:{r.gid}"),
-                                     stale=clock.t - f.fresh_at > 60)
+        # [decide step] the feed is polled every `step`; the live app decides every 0.5 s in between
+        # (engine._decide_loop), so gates that open for a few seconds are seen.
+        if clock.t + 1e-9 >= next_poll:
+            next_poll += step
+            cands = {}
+            states = {}
+            for r in replays:
+                f = feeds[r.gid]
+                silent = any(a <= clock.t < b for a, b in f.drops)
+                i = idx[r.gid]
+                if not silent:
+                    f.fresh_at = clock.t
+                    # Newest play that has arrived. A late play doesn't hold back the ones after it
+                    # (out-of-order delivery); _deliver leaves it out until it lands.
+                    k = i + 1
+                    while k < len(r.plays):
+                        if f.arrive[k] <= clock.t:
+                            i = k
+                        elif k not in f.late_set:
+                            break
+                        k += 1
+                idx[r.gid] = i
+                if i < 0:
+                    continue
+                g = _deliver(r, f, i, f.fresh_at)
+                if g is None:
+                    continue
+                # parse_summary already stamps plays with their real wallclock.
+                dec.timeline(r.gid, r.league).observe(g)
+                states[r.gid] = g
+                if g.phase != Phase.LIVE:
+                    continue
+                cands[r.gid] = Candidate(scorer.score(g, me), (targets or {}).get(r.gid, f"youtubetv:{r.gid}"),
+                                         stale=clock.t - f.fresh_at > 60)
         before = dec.current
         if on_tick is not None:
             on_tick(clock.t, dec)
@@ -450,12 +457,12 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         if sync is not None and resync:
             _resync_tick(delays, sync, decision, switches, tgt_of, lag_true, tune_s, clock.t, noise)
         elif sync is not None:
-            _anchor_tick(delays, sync, decision, switches, tgt_of, breaks, cfg, tune_s, clock.t, step)
+            _anchor_tick(delays, sync, decision, switches, tgt_of, breaks, cfg, tune_s, clock.t, dstep)
         _honesty_tick(delays, switches, targets, lag_true, tune_s, clock.t, honesty)
         if decision.action == "replay" and decision.replay and getattr(dec, "replay_until", None) is not None:
             replay_windows.append((decision.target, round(decision.replay.t), clock.t, dec.replay_until))
         _credit_completed_replays(replay_windows, watching, clock.t, replayed)
-        clock.t += step
+        clock.t += dstep
 
     _credit_completed_replays(replay_windows, watching, t1, replayed)
     rep = _grade(replays, switches, watching, my_teams, lag_true, play_len, tune_s, t0, t1, replayed)

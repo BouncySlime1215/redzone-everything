@@ -100,6 +100,7 @@ def knobs(a: argparse.Namespace) -> dict:
                 delay_model=getattr(a, "delay_model", None), resync=getattr(a, "resync", False),
                 anchors=getattr(a, "break_anchors", False), tune_jitter_s=getattr(a, "tune_jitter", 0.0),
                 feed_lag_model="measured" if getattr(a, "real_lag", False) else None,
+                decide_step=getattr(a, "decide_step", None),
                 **feed_lag_knobs(getattr(a, "feed_lag", None), getattr(a, "behind_live", None)))
 
 
@@ -109,6 +110,8 @@ def main():
     ap.add_argument("--nights", type=int, default=14)
     ap.add_argument("--slates", action="store_true")
     ap.add_argument("--step", type=float, default=None)
+    ap.add_argument("--decide-step", type=float, default=None,
+                    help="decide this often between feed polls (the live app: 0.5 s); default = --step")
     ap.add_argument("--end", default=None, help="last night to grade (YYYYMMDD); default eval.<league>_end")
     ap.add_argument("--split", choices=splits.SPLITS, default="all",
                     help="grade one time split of the pinned window (redzone/lab/splits.py); test = LOCKED")
