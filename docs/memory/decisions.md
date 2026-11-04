@@ -303,3 +303,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   screen and not flippable while it rebuilds, so nothing on the TV is cut). Too close to live: pause the gap
   minus 1.5 s (Nick's hold calibration); too far behind: reload at the live edge and hold again. Every
   detection and rebuild goes to data/buffer.jsonl -> live-night summary -> northstar "buffer drift recovered".
+- 2026-11-04: **two_stick.shadow.* and demo.* (new keys, values unchanged).** ShadowStick flip/tune/keep and demo
+  feed-lag/play-length/tune/sigma timings moved into default_config.yaml (two_stick.shadow.*, demo.*), values
+  unchanged; reason: one source of truth for timing (Nick, one connected system). Moving to measured values is a
+  separate decision.
