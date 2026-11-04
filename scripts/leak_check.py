@@ -29,10 +29,29 @@ ARCHIVE = ROOT / "data" / "archive"
 LEAGUES = ("nfl", "nba", "nhl")
 
 
+MIN_LOCKED = 8   # the release gate's minimum locked nights per league (cycle 01 plan, EVAL2)
+
+
 def _split(league: str):
-    from redzone.lab import splits
-    an = splits.archive_nights(ARCHIVE / league)
+    from redzone.lab import evaldata, splits
+    # Only nights inside the pin (window end), the same nights the scorecards grade: nights the live
+    # recorder adds later are fresh, never part of the locked split.
+    an = splits.archive_nights(ARCHIVE / league, evaldata.window_end(league, None))
     return an, splits.split_nights(an)
+
+
+def check_locked_nights() -> list[tuple[str, str, str]]:
+    """PASS when a league's locked set has >= MIN_LOCKED nights, else PENDING (thin data can't reach
+    PASS on the locked lines; it is not a leak, so it never fails the build). eval-data-v2 fixes v1's 4."""
+    out = []
+    for lg in LEAGUES:
+        if not (ARCHIVE / lg).exists():
+            continue
+        _, s = _split(lg)
+        n = len(s.test)
+        out.append(("PASS" if n >= MIN_LOCKED else "PENDING", f"locked_nights_{lg}",
+                    f"{n} locked nights (from {s.test[0] if s.test else '-'}), need >= {MIN_LOCKED}"))
+    return out
 
 
 def check_splits() -> list[tuple[str, str, str]]:
@@ -142,7 +161,7 @@ def check_known_errors(today: date | None = None) -> list[tuple[str, str, str]]:
 
 def run_all() -> list[tuple[str, str, str]]:
     rows = []
-    for fn in (check_splits, check_night_fixtures, check_replay_fields, check_model_stamps, check_known_errors):
+    for fn in (check_splits, check_locked_nights, check_night_fixtures, check_replay_fields, check_model_stamps, check_known_errors):
         try:
             rows += fn()
         except Exception as e:
