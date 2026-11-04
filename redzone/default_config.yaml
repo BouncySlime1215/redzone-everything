@@ -461,8 +461,9 @@ timing:
     default: 60
     max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
     apps: [youtubetv, primevideo]   # apps whose player pauses and resumes on the hidden stick
-    hold_overreport_s: 1.5 # [hold calibration] live lab, Nov 4: pause->play wall span over-reports the hold by
-                           # ~1.4 s; used only when the stick's position can't measure it (that is under 0.5 s)
+    hold_overreport_s: 0   # [hold calibration] fallback only (no stick positions): the wall span less this. 0 =
+                           # the span as is. At 1.5 it fought hold_cal_s (a rebuild's pause is already short by
+                           # 1.5 s), so the STK-06 watchdog rebuilt a 2.9 s gap forever on the night lab (Nov 4)
     hold_cal_s: -1.5       # a rebuild's pause is this much off the gap it closes (Nick's live hold calibration)
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it

@@ -1420,7 +1420,7 @@ class Controller:
             lag = ((un - ua) - (pn - pa)) / 1000.0
             if 0.0 < lag <= span_s + 5.0:
                 return round(lag, 1)
-        over = float(self.cfg.get("timing.behind_live_s.hold_overreport_s", 1.5) or 0.0)
+        over = float(self.cfg.get("timing.behind_live_s.hold_overreport_s", 0.0) or 0.0)
         return round(max(0.0, span_s - over), 1)
 
     async def _rewind(self, stick: Stick, back_s: float) -> bool:
