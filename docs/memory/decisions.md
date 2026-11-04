@@ -118,3 +118,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Valid split, on vs off: NFL big plays live 32.1 -> 34.9 %, within 10 min 90.7 -> 89.4 %, dead air 9.3 -> 9.6 %,
   0 mid-play cuts / entries either way. On together with `replay.redzone_way` it was worse (live 31.8, within
   10 min 85.4, 1 crunch play on a replay), so neither turns on until they're tuned together on more nights.
+- 2026-11-04 1:45 AM: **The Noggin is the #1 focus; everything combines into it** (Nick). One decision brain,
+  three layers (Reflex < 5 ms numpy timing/predict/pick; Mind 1.7B async priorities and words; Teacher 32B on
+  Kaggle offline), one training pipeline, one scoreboard (North Star). One owner, NOGGIN; A3 moves from TIMING
+  to Noggin Timing v1; the live time-shift buffer (#61) is the Reflex's input #1. Every PR names the North
+  Star line it moves. Gates: beat the current brain on locked unseen nights, shadow mode, OFF behind a flag.
+  Spec: `docs/noggin.md`.
