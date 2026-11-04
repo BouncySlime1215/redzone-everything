@@ -235,6 +235,9 @@ decider:
   wait_for_my_team_s: 1800  # your team tips within this: don't start on a basketball/hockey game we can't leave (uncalibrated)
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
   redzone_score: 45        # RedZone vs a game (0-100): stay on it unless a game beats this; any break goes there
+  leave:                   # [cut rules, Nick Nov 4 3:15 PM] never JOIN mid-play; LEAVING mid-play only at low leverage
+    low_leverage: []       # leagues where a low-leverage moment may be left mid-play ([] = never: today's rule)
+    sticky_closeness: 0.5  # down the stretch is sticky: a late game at least this close is never left mid-play
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
     hold_personal: 5       # stay through every stoppage of a crunch game with this much personal boost (your team, bet)
     hold_neutral_breaks: [two_minute_warning]  # ...and of any crunch game through these (the 2:00 warning is the way in)
