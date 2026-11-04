@@ -63,6 +63,8 @@ sources:
   fastcast_auto_enable: false  # turn fastcast on by itself once that check passes
   nhl_primary: false       # NHL api-web live play-by-play (~17 s behind the ice vs ESPN's ~43 s) owns NHL
                            # stoppages while fresh and feeds its plays to the timeline (docs/timing.md, A2)
+  trust_order: {nfl: [], nba: [], nhl: []}   # [FEED-01/03] e.g. nhl: [nhl, espn_summary]: fastest measured first owns
+                           # stoppages while fresh; on its errors/silence the next takes over; disagreements logged
   nba_primary: false       # NBA liveData play-by-play (real event times, published ~4-12 s after) owns NBA
                            # stoppages while fresh and feeds the timeline; OFF until a backtest + live night pass
   nba_shadow: true         # primary off: still poll it and log its plays (source nba_cdn) to plays.jsonl

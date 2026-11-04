@@ -233,3 +233,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   under `playbooks.game.enabled` (OFF).** Why off: GAME-05 is mixed (dev NHL crunch 80.6 -> 79.7, locked 76.2 -> 84.7 with
   every new flag on), and GAME-09 can't be graded on replays (ESPN has no empty-net signal). The scenario tree as a whole
   costs NFL big plays seen within 10 min 87.8 -> 84.3 (GAME-01 visits): keep `playbooks.game.enabled` off until fixed.
+- 2026-11-04 6:30 AM: **`sources.trust_order` added OFF** (empty lists per league, cycle 02 lane 4, FEED-01/03). When set,
+  the first fresh, unbenched, non-erroring source in the list owns a game's stoppage, the next takes over on its
+  errors/silence, and disagreements are counted (`Merger.disagreements`). Empty = the old nhl/nba_primary behavior.
+  `right_game` now reads `Store.taps()` from data/redzone.db when it exists (PENDING otherwise).

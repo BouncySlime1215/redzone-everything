@@ -185,3 +185,41 @@ def test_a_hostile_host_says_away_until_the_night_pins_it(tmp_path):
         assert gov.update(governor.sample()) == "normal" and gov.service_mb() is None
     finally:
         network.Probe, network.assess, governor.sample = saved
+
+
+# ---- playbook entries this night proves (docs/playbooks.md; scripts/playbook_coverage.py) ----------
+
+def _ok(night, name):
+    c = {x["name"]: x for x in night["checks"]}[name]
+    assert c["ok"], json.dumps(c["detail"], indent=1, default=str)[:3000]
+
+
+@pytest.mark.playbook("STK-01", "STK-02")
+def test_playbook_stick_drops_recover(night):
+    hosts = {f["host"] for f in night["faults"] if f["name"] == "stick_drop"}
+    assert len(hosts) >= 1
+    _ok(night, "two_stick_recovers")
+    _ok(night, "zero_midplay_cuts")
+
+
+@pytest.mark.playbook("STK-03")
+def test_playbook_wedged_stick(night):
+    _ok(night, "wedged_stick_reconnected")
+
+
+@pytest.mark.playbook("STK-04")
+def test_playbook_still_watching(night):
+    _ok(night, "still_watching_cleared")
+
+
+@pytest.mark.playbook("SAFE-01")
+def test_playbook_dark_feed_never_cut_into(night):
+    _ok(night, "feed_outage_handled")
+    _ok(night, "zero_midplay_cuts")
+
+
+@pytest.mark.playbook("MAC-06")
+def test_playbook_hung_app_restarted_and_restored(night):
+    _ok(night, "watchdog_fixes_what_it_should")
+    assert night["restarts"], "the hung app was never restarted"
+    _ok(night, "no_stuck_state")
