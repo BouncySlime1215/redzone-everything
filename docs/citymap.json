@@ -1,5 +1,396 @@
 {
  "modules": {
+  "agent/__init__.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "package",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "no docstring",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/distill/__init__.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "package",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Big teacher, small student: a large open model (run for free on a Kaggle GPU) writes labels and reasoning from archive game contexts; the 1.7B on the Mac lea...",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/distill/evaluate.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/distill/gold.py",
+    "agent/distill/jump.py",
+    "agent/distill/teacher.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "agent/kaggle/grade.py",
+    "scripts/distill.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "Score reasoner answers against what actually happened, on held-out (test) nights.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/distill/gold.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/distill/jump.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "agent/distill/evaluate.py",
+    "agent/kaggle/build_moments_kaggle.py",
+    "agent/kaggle/pack_data.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "Gold labels: Nick's rules applied exactly, written by Claude, for lock-in and jump-or-stay.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/distill/jump.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/sportsdata.py",
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "agent/distill/evaluate.py",
+    "agent/distill/gold.py",
+    "agent/kaggle/grade.py",
+    "agent/kaggle/pack_data.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "Jump-to-highlights vs stay: moments, context and hindsight labels from the archive.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/distill/split.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "agent/kaggle/build_moments_kaggle.py",
+    "agent/kaggle/pack_data.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "Split moments BY TIME, whole nights at a time, per league (Nick's no-overfitting rules 1, 2, 6).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/distill/student.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/distill/teacher.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "agent/kaggle/student_data.py",
+    "scripts/distill.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "Teacher words + hindsight targets -> mlx_lm chat datasets for the game-reasoner adapter.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/distill/teacher.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "agent/distill/evaluate.py",
+    "agent/distill/student.py",
+    "agent/kaggle/grade.py",
+    "agent/kaggle/pack_data.py",
+    "agent/kaggle/run_students.py",
+    "agent/kaggle/student_data.py",
+    "agent/kaggle/teacher_distill.py",
+    "scripts/distill.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "Teacher prompts, request files and answer parsing.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/__init__.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "package",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "no docstring",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/build_moments_kaggle.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/distill/gold.py",
+    "agent/distill/split.py",
+    "redzone/config.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/reasoner_data.py",
+    "redzone/lab/sportsgrade.py",
+    "redzone/models.py",
+    "redzone/reasoner/brief.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Round 2+: build MILLIONS of outcome-labeled reasoner moments inside the Kaggle notebook.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/build_notebook.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Turn a ``# %%`` percent-format script into a Kaggle/Jupyter notebook.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/constrained.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "agent/kaggle/run_students.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "[V7] JSON-constrained decoding: the student can only write its answer's own JSON shape.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/dequant.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "agent/kaggle/run_students.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "Dequantize the Mac's own base (mlx-community/Qwen3-1.7B-4bit) with numpy, no MLX needed.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/grade.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/distill/evaluate.py",
+    "agent/distill/jump.py",
+    "agent/distill/teacher.py",
+    "agent/policy.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Phase 3: grade today vs teacher vs student on the held-out nights.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/pack_data.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/distill/gold.py",
+    "agent/distill/jump.py",
+    "agent/distill/split.py",
+    "agent/distill/teacher.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Build the ONE upload-ready folder for the private Kaggle dataset `redzone-distill`.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/run_students.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/distill/teacher.py",
+    "agent/kaggle/constrained.py",
+    "agent/kaggle/dequant.py",
+    "agent/kaggle/student_data.py",
+    "agent/train/peft_to_mlx.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Phase 2 on Kaggle: LoRA-train one student adapter per job on the Mac's own base, answer the held-out prompts, and convert each adapter to mlx_lm format.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/run_teacher.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "agent/kaggle/teacher_distill.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "Phase 1 on Kaggle: the big teacher answers every request in the pack.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/student_data.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/distill/student.py",
+    "agent/distill/teacher.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "agent/kaggle/run_students.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "Training sets per adapter job from the pack + the teacher's answers.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/teacher_distill.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/distill/teacher.py",
+    "agent/kaggle/run_teacher.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "no docstring",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/llm.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/governor.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "agent/train/evaluate.py",
+    "agent/watchdog.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "The local model: Qwen3 1.7B (4-bit, MLX) on this Mac, with this project's LoRA adapter when present.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/policy.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/jsonfind.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "agent/kaggle/grade.py",
+    "agent/train/evaluate.py",
+    "agent/train/make_data.py",
+    "agent/watchdog.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "The watchdog's judgment: what's wrong and what (if anything) to do.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/train/__init__.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "package",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "no docstring",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/train/evaluate.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/llm.py",
+    "agent/policy.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Score the watchdog model on the held-out test set: exact action accuracy, overall and per kind.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/train/make_data.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/policy.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "Fine-tuning data for the watchdog model: app status -> the right action, as chat examples.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/train/peft_to_mlx.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "agent/kaggle/run_students.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "Turn a PEFT LoRA adapter (agent/train/train_peft.py) into mlx_lm's adapter format, the one the Mac loads: adapters.safetensors + adapter_config.json.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/watchdog.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/llm.py",
+    "agent/policy.py",
+    "redzone/governor.py",
+    "redzone/memory.py",
+    "redzone/platform/autofix.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/lab/night/run.py"
+   ],
+   "owner": "LOCAL AI",
+   "role": "RedZone watchdog: a separate, always-on process that keeps the app healthy without a person.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/__init__.py": {
    "contracts": [],
    "inputs": [],
@@ -134,6 +525,7 @@
    "inputs": [],
    "kind": "module",
    "outputs": [
+    "agent/kaggle/build_moments_kaggle.py",
     "redzone/__main__.py",
     "redzone/autonomy.py",
     "redzone/demo/engine.py",
@@ -1185,6 +1577,8 @@
    "inputs": [],
    "kind": "module",
    "outputs": [
+    "agent/llm.py",
+    "agent/watchdog.py",
     "redzone/autonomy.py",
     "redzone/engine.py",
     "redzone/lab/night/run.py",
@@ -1203,6 +1597,7 @@
    "inputs": [],
    "kind": "module",
    "outputs": [
+    "agent/policy.py",
     "redzone/reasoner/reasoner.py"
    ],
    "owner": "unowned",
@@ -1238,6 +1633,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "agent/kaggle/build_moments_kaggle.py",
     "redzone/demo/engine.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/night/run.py",
@@ -1535,6 +1931,7 @@
   "redzone/lab/night/run.py": {
    "contracts": [],
    "inputs": [
+    "agent/watchdog.py",
     "redzone/autonomy.py",
     "redzone/channels.py",
     "redzone/config.py",
@@ -1670,6 +2067,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "agent/kaggle/build_moments_kaggle.py",
     "scripts/build_reasoner_data.py",
     "scripts/eval_reasoner.py",
     "scripts/export_reasoner_llm.py",
@@ -1729,6 +2127,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "agent/distill/jump.py",
     "redzone/lab/brain3data.py",
     "scripts/build_training.py"
    ],
@@ -1749,6 +2148,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "agent/kaggle/build_moments_kaggle.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/oracle.py",
     "redzone/lab/reasoner_data.py",
@@ -1821,6 +2221,7 @@
    "inputs": [],
    "kind": "module",
    "outputs": [
+    "agent/watchdog.py",
     "scripts/context_pack.py"
    ],
    "owner": "unowned",
@@ -1834,6 +2235,8 @@
    "inputs": [],
    "kind": "module",
    "outputs": [
+    "agent/distill/jump.py",
+    "agent/kaggle/build_moments_kaggle.py",
     "redzone/autonomy.py",
     "redzone/bets.py",
     "redzone/channels.py",
@@ -2214,6 +2617,7 @@
    "inputs": [],
    "kind": "module",
    "outputs": [
+    "agent/watchdog.py",
     "redzone/supervisor.py"
    ],
    "owner": "PLATFORM",
@@ -2309,6 +2713,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "agent/kaggle/build_moments_kaggle.py",
     "redzone/engine.py",
     "redzone/lab/reasoner_data.py",
     "redzone/reasoner/head.py",
@@ -2688,6 +3093,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "agent/distill/jump.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
     "redzone/lab/backtest.py",
@@ -3577,7 +3983,11 @@
   },
   "scripts/distill.py": {
    "contracts": [],
-   "inputs": [],
+   "inputs": [
+    "agent/distill/evaluate.py",
+    "agent/distill/student.py",
+    "agent/distill/teacher.py"
+   ],
    "kind": "entry",
    "outputs": [],
    "owner": "unowned",
@@ -4079,7 +4489,9 @@
     "redzone/config.py"
    ],
    "kind": "entry",
-   "outputs": [],
+   "outputs": [
+    "scripts/service_runtime.py"
+   ],
    "owner": "PLATFORM",
    "role": "Prepare/manage the per-user launchd job; check/render never contact devices.",
    "serves": [
@@ -4090,7 +4502,8 @@
    "contracts": [],
    "inputs": [
     "redzone/__main__.py",
-    "redzone/config.py"
+    "redzone/config.py",
+    "scripts/service.py"
    ],
    "kind": "entry",
    "outputs": [],
@@ -4276,10 +4689,10 @@
   }
  },
  "summary": {
-  "modules": 222,
-  "orphans": 2,
+  "modules": 248,
+  "orphans": 10,
   "unowned": 97,
-  "untagged": 182
+  "untagged": 208
  },
  "version": 1
 }

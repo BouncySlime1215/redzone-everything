@@ -5,7 +5,8 @@
 
 Stdlib only and it never imports redzone, so it is safe on the live Mac.
 - role: first sentence of the module docstring.
-- inputs: redzone modules it imports (relative imports resolved) + contract names it uses.
+Covers redzone/**, agent/** (the LOCAL AI lane) and scripts/*.py.
+- inputs: redzone/agent/scripts modules it imports (relative imports resolved) + contract names it uses.
 - outputs: modules that import it + contract Protocols it implements (class X(BreakModel)).
 - owner: the 'File ownership' table in docs/architecture.md section 4, first match wins.
 - serves: playbook ids in its source (checked against docs/playbooks.md) + North Star metric
@@ -28,6 +29,7 @@ JSON_OUT = "docs/citymap.json"
 MD_OUT = "docs/citymap.md"
 TAGS = "docs/citymap_tags.json"
 LANES = ("DECISION", "MOMENT/BREAK", "LOCAL AI", "SWITCHING", "SYNC", "PLATFORM", "INTEGRATION")
+PACKAGES = ("redzone", "agent")
 PLAYBOOK_ID = re.compile(r"\b(?:APP|BTN|FEED|GAME|MAC|NET|SAFE|SLATE|STK|SYNC|TASTE|TV)-\d{2}\b")
 _TICKS = re.compile(r"`([^`]+)`")
 _BRACE = re.compile(r"\{([^{}]*)\}")
@@ -55,11 +57,12 @@ class Info:
 # ---- reading the repo -------------------------------------------------------------------------
 
 def module_files(root: Path) -> dict[str, str]:
-    """path -> kind for redzone/**/*.py and scripts/*.py."""
+    """path -> kind for redzone/**/*.py, agent/**/*.py and scripts/*.py."""
     out = {}
-    for p in sorted((root / "redzone").rglob("*.py")):
-        rel = p.relative_to(root).as_posix()
-        out[rel] = "package" if p.name == "__init__.py" else "module"
+    for pkg in PACKAGES:
+        for p in sorted((root / pkg).rglob("*.py")):
+            rel = p.relative_to(root).as_posix()
+            out[rel] = "package" if p.name == "__init__.py" else "module"
     for p in sorted((root / "scripts").glob("*.py")):
         out[p.relative_to(root).as_posix()] = "entry"
     return out
@@ -91,7 +94,7 @@ def _resolve_from(node: ast.ImportFrom, me: str, is_pkg: bool) -> str:
 
 
 def imports_of(tree: ast.Module, me: str, is_pkg: bool, names: dict[str, str]) -> tuple[set[str], set[str]]:
-    """(redzone module paths imported, names imported from redzone.contracts)."""
+    """(repo module paths imported, names imported from redzone.contracts)."""
     mods, used = set(), set()
 
     def add(name: str) -> bool:
@@ -109,7 +112,7 @@ def imports_of(tree: ast.Module, me: str, is_pkg: bool, names: dict[str, str]) -
                         break
         elif isinstance(node, ast.ImportFrom):
             src = _resolve_from(node, me, is_pkg)
-            if not src.startswith("redzone"):
+            if src.split(".")[0] not in (*PACKAGES, "scripts"):
                 continue
             for a in node.names:
                 if not add(f"{src}.{a.name}"):
@@ -233,7 +236,7 @@ def scan(root: Path) -> dict[str, Info]:
             trees[path] = ast.parse(src)
         except SyntaxError:
             trees[path] = None
-    names = {dotted(p): p for p, k in kinds.items() if k != "entry"}
+    names = {dotted(p): p for p in kinds}
     protocols = contract_protocols(trees)
     rules = ownership(root)
     ids = playbook_ids(root)
@@ -320,7 +323,7 @@ def render_md(graph: dict) -> str:
         f"**{s['modules']} modules**, {s['untagged']} untagged, {s['unowned']} unowned, "
         f"{s['orphans']} orphans (no importer).",
         "",
-        "inputs = redzone modules it imports + `uses:` contract names; outputs = modules that import it "
+        "inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it "
         "+ `implements:` contract Protocols. Long edge lists show the first "
         f"{SHOW_EDGES} (full lists in the JSON).",
     ]

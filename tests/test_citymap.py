@@ -52,7 +52,11 @@ def repo(tmp_path: Path) -> Path:
     _write(tmp_path, "redzone/pkg/c.py", "from ..b import X\nfrom .d import y\n")
     _write(tmp_path, "redzone/pkg/d.py", '"""D."""\ny = 2\n')
     _write(tmp_path, "redzone/lonely.py", '"""Nobody imports me."""\n')
-    _write(tmp_path, "scripts/run.py", '"""Entry point."""\nfrom redzone import a\n')
+    _write(tmp_path, "scripts/run.py", '"""Entry point."""\nfrom redzone import a\nfrom scripts import helper\n')
+    _write(tmp_path, "scripts/helper.py", '"""Helper script."""\n')
+    _write(tmp_path, "agent/__init__.py", "")
+    _write(tmp_path, "agent/policy.py", '"""Agent policy."""\nimport redzone.b\n')
+    _write(tmp_path, "agent/watchdog.py", '"""Watchdog."""\nfrom agent.policy import guard\n')
     _write(tmp_path, "docs/architecture.md", ARCH)
     _write(tmp_path, "docs/playbooks.md", "| id |\n|---|\n| STK-06 | pause buffer lost |\n")
     _write(tmp_path, "docs/northstar.md", NORTHSTAR)
@@ -70,6 +74,19 @@ def test_edges_both_ways(repo):
     assert "implements:BreakModel" in a["outputs"]
     assert "scripts/run.py" in a["outputs"] and m["scripts/run.py"]["kind"] == "entry"
     assert m["redzone/pkg/__init__.py"]["kind"] == "package"
+
+
+def test_agent_and_script_edges(repo):
+    m = citymap.build(repo)["modules"]
+    assert m["agent/watchdog.py"]["inputs"] == ["agent/policy.py"]
+    assert "agent/policy.py" in m["redzone/b.py"]["outputs"]
+    assert m["agent/__init__.py"]["kind"] == "package"
+    assert "scripts/run.py" in m["scripts/helper.py"]["outputs"]
+
+
+def test_tag_key_matching_nothing_exits_2(repo):
+    _write(repo, "docs/citymap_tags.json", json.dumps({"redzone/gone.py": ["STK-06"]}))
+    assert citymap.main(["--root", str(repo)]) == 2
 
 
 def test_relative_imports(repo):
@@ -121,5 +138,7 @@ def test_stable_and_check(repo):
 
 def test_real_repo_has_every_module():
     mods = citymap.build(ROOT)["modules"]
-    for p in sorted((ROOT / "redzone").rglob("*.py")):
+    files = [*(ROOT / "redzone").rglob("*.py"), *(ROOT / "agent").rglob("*.py"), *(ROOT / "scripts").glob("*.py")]
+    assert files
+    for p in files:
         assert p.relative_to(ROOT).as_posix() in mods

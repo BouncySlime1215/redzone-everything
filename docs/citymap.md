@@ -5,9 +5,9 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**222 modules**, 182 untagged, 97 unowned, 2 orphans (no importer).
+**248 modules**, 208 untagged, 97 unowned, 10 orphans (no importer).
 
-inputs = redzone modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
+inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
 ## DECISION (14)
 
@@ -38,6 +38,37 @@ inputs = redzone modules it imports + `uses:` contract names; outputs = modules 
 | `scripts/build_training.py` (entry) | Download free play-by-play data and build labeled training snapshots. | lab.datasets, lab.sportsdata -> - | untagged |
 | `scripts/eval_brain.py` (entry) | Brain vs the hand-written heuristics, through the live code path, on our own recorded ESPN games (data/archive: after every training game). | lab.brainfit, scoring.brain -> - | untagged |
 | `scripts/train_brain.py` (entry) | Train the brain's per-league models and print their held-out scorecard. | lab.brainfit, lab.datasets, scoring.brain -> - | untagged |
+
+## LOCAL AI (26)
+
+| module | role | inputs -> outputs | serves |
+|---|---|---|---|
+| `agent/__init__.py` (package) | no docstring | - -> - | untagged |
+| `agent/distill/__init__.py` (package) | Big teacher, small student: a large open model (run for free on a Kaggle GPU) writes labels and reasoning from archive game contexts; the 1.7B on the Mac lea... | - -> - | untagged |
+| `agent/distill/evaluate.py` | Score reasoner answers against what actually happened, on held-out (test) nights. | agent.distill.gold, agent.distill.jump, agent.distill.teacher -> agent.kaggle.grade, scripts.distill | untagged |
+| `agent/distill/gold.py` | Gold labels: Nick's rules applied exactly, written by Claude, for lock-in and jump-or-stay. | agent.distill.jump -> agent.distill.evaluate, agent.kaggle.build_moments_kaggle, agent.kaggle.pack_data | untagged |
+| `agent/distill/jump.py` | Jump-to-highlights vs stay: moments, context and hindsight labels from the archive. | lab.sportsdata, models, sources.espn -> agent.distill.evaluate, agent.distill.gold, agent.kaggle.grade, agent.kaggle.pack_data | untagged |
+| `agent/distill/split.py` | Split moments BY TIME, whole nights at a time, per league (Nick's no-overfitting rules 1, 2, 6). | - -> agent.kaggle.build_moments_kaggle, agent.kaggle.pack_data | untagged |
+| `agent/distill/student.py` | Teacher words + hindsight targets -> mlx_lm chat datasets for the game-reasoner adapter. | agent.distill.teacher -> agent.kaggle.student_data, scripts.distill | untagged |
+| `agent/distill/teacher.py` | Teacher prompts, request files and answer parsing. | - -> agent.distill.evaluate, agent.distill.student, agent.kaggle.grade, agent.kaggle.pack_data, agent.kaggle.run_students, agent.kaggle.student_data +2 | untagged |
+| `agent/kaggle/__init__.py` (package) | no docstring | - -> - | untagged |
+| `agent/kaggle/build_moments_kaggle.py` | Round 2+: build MILLIONS of outcome-labeled reasoner moments inside the Kaggle notebook. | agent.distill.gold, agent.distill.split, config, lab.backtest, lab.reasoner_data, lab.sportsgrade +2 -> - | untagged |
+| `agent/kaggle/build_notebook.py` | Turn a ``# %%`` percent-format script into a Kaggle/Jupyter notebook. | - -> - | untagged |
+| `agent/kaggle/constrained.py` | [V7] JSON-constrained decoding: the student can only write its answer's own JSON shape. | - -> agent.kaggle.run_students | untagged |
+| `agent/kaggle/dequant.py` | Dequantize the Mac's own base (mlx-community/Qwen3-1.7B-4bit) with numpy, no MLX needed. | - -> agent.kaggle.run_students | untagged |
+| `agent/kaggle/grade.py` | Phase 3: grade today vs teacher vs student on the held-out nights. | agent.distill.evaluate, agent.distill.jump, agent.distill.teacher, agent.policy -> - | untagged |
+| `agent/kaggle/pack_data.py` | Build the ONE upload-ready folder for the private Kaggle dataset `redzone-distill`. | agent.distill.gold, agent.distill.jump, agent.distill.split, agent.distill.teacher -> - | untagged |
+| `agent/kaggle/run_students.py` | Phase 2 on Kaggle: LoRA-train one student adapter per job on the Mac's own base, answer the held-out prompts, and convert each adapter to mlx_lm format. | agent.distill.teacher, agent.kaggle.constrained, agent.kaggle.dequant, agent.kaggle.student_data, agent.train.peft_to_mlx -> - | untagged |
+| `agent/kaggle/run_teacher.py` | Phase 1 on Kaggle: the big teacher answers every request in the pack. | - -> agent.kaggle.teacher_distill | untagged |
+| `agent/kaggle/student_data.py` | Training sets per adapter job from the pack + the teacher's answers. | agent.distill.student, agent.distill.teacher -> agent.kaggle.run_students | untagged |
+| `agent/kaggle/teacher_distill.py` | no docstring | agent.distill.teacher, agent.kaggle.run_teacher -> - | untagged |
+| `agent/llm.py` | The local model: Qwen3 1.7B (4-bit, MLX) on this Mac, with this project's LoRA adapter when present. | governor -> agent.train.evaluate, agent.watchdog | untagged |
+| `agent/policy.py` | The watchdog's judgment: what's wrong and what (if anything) to do. | jsonfind -> agent.kaggle.grade, agent.train.evaluate, agent.train.make_data, agent.watchdog | untagged |
+| `agent/train/__init__.py` (package) | no docstring | - -> - | untagged |
+| `agent/train/evaluate.py` | Score the watchdog model on the held-out test set: exact action accuracy, overall and per kind. | agent.llm, agent.policy -> - | untagged |
+| `agent/train/make_data.py` | Fine-tuning data for the watchdog model: app status -> the right action, as chat examples. | agent.policy -> - | untagged |
+| `agent/train/peft_to_mlx.py` | Turn a PEFT LoRA adapter (agent/train/train_peft.py) into mlx_lm's adapter format, the one the Mac loads: adapters.safetensors + adapter_config.json. | - -> agent.kaggle.run_students | untagged |
+| `agent/watchdog.py` | RedZone watchdog: a separate, always-on process that keeps the app healthy without a person. | agent.llm, agent.policy, governor, memory, platform.autofix -> lab.night.run | untagged |
 
 ## SWITCHING (31)
 
@@ -93,7 +124,7 @@ inputs = redzone modules it imports + `uses:` contract names; outputs = modules 
 | `redzone/autonomy.py` | Autonomy: the app runs itself. | channels, config, control, discovery.yttv, governor, models +3 -> discovery.runtime, lab.night.run, tvsetup | untagged |
 | `redzone/platform/__init__.py` (package) | Platform: error handling, health, invariants and fault injection shared by every subsystem. | - -> - | untagged |
 | `redzone/platform/agent_fix.py` | The watchdog's window into the app, and the narrow fixes it may ask the app to run. | models -> engine, supervisor, web.server | untagged |
-| `redzone/platform/autofix.py` | Auto-fix, Mac side: when the watchdog meets a problem its rules and the local model can't fix, file a GitHub issue labeled `auto-fix` with the evidence. | - -> supervisor | untagged |
+| `redzone/platform/autofix.py` | Auto-fix, Mac side: when the watchdog meets a problem its rules and the local model can't fix, file a GitHub issue labeled `auto-fix` with the evidence. | - -> agent.watchdog, supervisor | untagged |
 | `redzone/platform/breaker.py` | Circuit breaker: stop waiting on something that keeps hanging. | - -> tuners.adb, tv | untagged |
 | `redzone/platform/faults.py` | Fault injection: fake sticks, TV and feeds that fail on cue, for drills and end-to-end tests. | tuners.adb, tuners.tuners -> scripts.fault_drill | untagged |
 | `redzone/platform/health.py` | Runtime invariants and the Health report (contracts/health.py), checked every supervisor tick. | contracts.health, models, uses:Fault, uses:Fix, uses:HealthReport, uses:Severity -> supervisor, scripts.fault_drill | untagged |
@@ -101,7 +132,7 @@ inputs = redzone modules it imports + `uses:` contract names; outputs = modules 
 | `redzone/recorded.py` | Explicit recorded-game navigation, isolated from live decisions and calibration. | screen_ocr, tuners.adb, tuners.prime_search -> engine, scripts.find_yttv_code | untagged |
 | `redzone/recorder.py` | Flight recorder: the real-world numbers the simulator needs. | models, sources.espn, sources.leagues -> engine, lab.night.run | untagged |
 | `redzone/sources/__init__.py` (package) | no docstring | - -> - | untagged |
-| `redzone/sources/espn.py` | ESPN's free site API: the backbone for all four leagues. | models -> demo.engine, engine, lab.backtest, lab.brain3fit, lab.brainfit, lab.breakblend +18 | untagged |
+| `redzone/sources/espn.py` | ESPN's free site API: the backbone for all four leagues. | models -> agent.distill.jump, demo.engine, engine, lab.backtest, lab.brain3fit, lab.brainfit +19 | untagged |
 | `redzone/sources/eventlinks.py` | Per-game streaming deep links (Prime Video GTIs, ESPN+/ESPN watch ids) with no login. | - -> discovery.yttv, engine, scripts.plan_tonight, scripts.providers_check | untagged |
 | `redzone/sources/fastcast.py` | ESPN Fastcast: the push feed behind espn.com's live gamecasts. | models, sources.espn, views -> engine | untagged |
 | `redzone/sources/fastcast_check.py` | [fastcast live check] Is ESPN's push feed faster than polling, and does it say the same thing? | - -> engine, scripts.fastcast_check | untagged |
@@ -120,14 +151,14 @@ inputs = redzone modules it imports + `uses:` contract names; outputs = modules 
 | `scripts/download_recent.py` (entry) | Download public ESPN play-by-play for backtesting, never for live TV control. | - -> - | untagged |
 | `scripts/download_season.py` (entry) | Download a past NFL regular season (scoreboards + play-by-play) for the training lab. | - -> - | untagged |
 | `scripts/rz.py` (entry) | Hands-on stick tools for testing (Phase 2 and the Screen Lab). | channels, config, control, tuners.adb, tuners.tuners -> - | untagged |
-| `scripts/service.py` (entry) | Prepare/manage the per-user launchd job; check/render never contact devices. | config -> - | untagged |
-| `scripts/service_runtime.py` (entry) | launchd entry point. | __main__, config -> - | untagged |
+| `scripts/service.py` (entry) | Prepare/manage the per-user launchd job; check/render never contact devices. | config -> scripts.service_runtime | untagged |
+| `scripts/service_runtime.py` (entry) | launchd entry point. | __main__, config, scripts.service -> - | untagged |
 
 ## INTEGRATION (36)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> __main__, autonomy, demo.engine, engine, lab.backtest, lab.brainfit +25 | untagged |
+| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, demo.engine, engine, lab.backtest +26 | untagged |
 | `redzone/contracts/__init__.py` (package) | Interfaces every thread codes against. | contracts.breaks, contracts.budget, contracts.clock, contracts.feeds, contracts.flags, contracts.guard +55 -> - | untagged |
 | `redzone/contracts/breaks.py` | BreakModel contract: when a stoppage starts, what kind it is, how long it runs, when play restarts. | models -> contracts, contracts.legacy, contracts.views, contracts.world, scoring.brain3 | untagged |
 | `redzone/contracts/budget.py` | Per-tick latency budget, split across modules. | - -> contracts | untagged |
@@ -150,15 +181,15 @@ inputs = redzone modules it imports + `uses:` contract names; outputs = modules 
 | `redzone/demo/download.py` | Fetch one day's finished games (scoreboard + play-by-play) into data/demo/<day>/<league>/. | - -> demo.__main__ | untagged |
 | `redzone/demo/engine.py` | The real Engine, replaying a past day on a simulated clock. | channels, config, control, decider.decider, decider.screen, engine +9 -> demo.__main__ | untagged |
 | `redzone/engine.py` | The producer loop: poll every feed -> merge -> score -> decide -> act -> tell the phone. | bets, calibration, channels, commands, config, control +40 -> __main__, demo.engine, lab.night.run, web.server, scripts.fault_drill, scripts.perf_probe | BTN-04, BTN-05, FEED-01, SAFE-01, SAFE-03, STK-06 |
-| `redzone/lab/backtest.py` | Replay a real slate of past games through the scorer and decider, then grade it. | channels, config, decider.decider, decider.screen, lab.cutgrade, lab.timing +4 -> demo.engine, lab.cutgrade, lab.night.run, lab.optimize, lab.oracle, lab.reasoner_data +9 | untagged |
+| `redzone/lab/backtest.py` | Replay a real slate of past games through the scorer and decider, then grade it. | channels, config, decider.decider, decider.screen, lab.cutgrade, lab.timing +4 -> agent.kaggle.build_moments_kaggle, demo.engine, lab.cutgrade, lab.night.run, lab.optimize, lab.oracle +10 | untagged |
 | `redzone/lab/cutgrade.py` | Cut-timing scorecard: WHERE in each game we left, and WHERE we landed. | decider.screen, lab.backtest, lab.sportsgrade, models, sources.espn -> lab.backtest, lab.oracle, lab.sportsgrade, noggin.pick, scripts.eval | untagged |
 | `redzone/lab/datasets.py` | Training datasets: per-league game-state snapshots with break / key-moment / hotness labels. | - -> lab.brain3data, lab.brainfit, lab.breakblend, lab.sportsdata, scripts.build_training, scripts.train_brain | untagged |
 | `redzone/lab/optimize.py` | Training lab: search decider settings against real past slates. | config, lab.backtest, models -> lab.tune, scripts.eval | untagged |
 | `redzone/lab/replaycheck.py` | Exact-date replay diagnostics. | config, decider.screen, lab.backtest, lab.sportsgrade, models, sources.espn -> scripts.replay_check | untagged |
-| `redzone/lab/sportsdata.py` | Turn free public play-by-play releases into labeled game-state snapshots. | lab.datasets, models, scoring.gameflow, sources.espn -> lab.brain3data, scripts.build_training | untagged |
-| `redzone/lab/sportsgrade.py` | League-aware report card for backtests (NFL, NBA, NHL, MLB). | decider.screen, lab.backtest, lab.cutgrade, models, sources.espn -> lab.cutgrade, lab.oracle, lab.reasoner_data, lab.replaycheck, lab.tune, noggin.pick +3 | untagged |
+| `redzone/lab/sportsdata.py` | Turn free public play-by-play releases into labeled game-state snapshots. | lab.datasets, models, scoring.gameflow, sources.espn -> agent.distill.jump, lab.brain3data, scripts.build_training | untagged |
+| `redzone/lab/sportsgrade.py` | League-aware report card for backtests (NFL, NBA, NHL, MLB). | decider.screen, lab.backtest, lab.cutgrade, models, sources.espn -> agent.kaggle.build_moments_kaggle, lab.cutgrade, lab.oracle, lab.reasoner_data, lab.replaycheck, lab.tune +4 | untagged |
 | `redzone/lab/tune.py` | Auto-tune the decider's hand-picked knobs against the scorecards (CMA-ES, numpy only). | config, decider.decider, lab.backtest, lab.optimize, lab.splits, lab.sportsgrade +1 -> scripts.tune | untagged |
-| `redzone/models.py` | Source-agnostic game model. | - -> autonomy, bets, channels, contracts.breaks, contracts.feeds, contracts.legacy +59 | untagged |
+| `redzone/models.py` | Source-agnostic game model. | - -> agent.distill.jump, agent.kaggle.build_moments_kaggle, autonomy, bets, channels, contracts.breaks +61 | untagged |
 | `scripts/backtest.py` (entry) | Replay a past NFL Sunday through the app and print the report card. | config, lab.backtest, models -> - | untagged |
 | `scripts/eval.py` (entry) | The scorecard every change is judged by. | config, lab.backtest, lab.cutgrade, lab.evaldata, lab.optimize, lab.oracle +2 -> - | untagged |
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
@@ -176,8 +207,8 @@ inputs = redzone modules it imports + `uses:` contract names; outputs = modules 
 | `redzone/decider/playbooks.py` | Safety playbooks SAFE-01/02/03/05 (docs/playbooks.md, family flag `playbooks.safe.enabled`, OFF). | - -> decider.decider, decider.scenarios | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play cuts + entries (per 100 landings), SAFE-01, SAFE-02, SAFE-03, SAFE-05, Your-team crunch live |
 | `redzone/decider/scenarios.py` | Scenario-tree lookup on the Mac (idea #19, Mac half; docs/playbooks.md GAME-*). | decider.playbooks -> decider.decider | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), GAME-01, GAME-02, GAME-03, GAME-21, GAME-22, Landings in dead time, Mid-play cuts + entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/sync.py` | Automatic per-channel sync: each channel's screen delay tracked by a small Kalman filter, no taps. | contracts.sync, uses:SyncEstimate -> decider.screen, engine, screen.scorebug | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play cuts + entries (per 100 landings), Your-team crunch live |
-| `redzone/governor.py` | Resource governor: keep the Mac cool, quiet and with free disk while RedZone runs. | - -> autonomy, engine, lab.night.run, reel, screen_ocr, scripts.disk_guard | untagged |
-| `redzone/jsonfind.py` | One parser for a model's JSON answer (the reasoner and the watchdog both use it). | - -> reasoner.reasoner | untagged |
+| `redzone/governor.py` | Resource governor: keep the Mac cool, quiet and with free disk while RedZone runs. | - -> agent.llm, agent.watchdog, autonomy, engine, lab.night.run, reel +2 | untagged |
+| `redzone/jsonfind.py` | One parser for a model's JSON answer (the reasoner and the watchdog both use it). | - -> agent.policy, reasoner.reasoner | untagged |
 | `redzone/lab/__init__.py` (package) | no docstring | - -> - | untagged |
 | `redzone/lab/brain3cal.py` | Calibrate Brain v3's cautious restart bound (the decision core's break budget) per stoppage type. | lab.brain3data, scoring.brain, scoring.brain3 -> scripts.calibrate_brain3 | untagged |
 | `redzone/lab/brain3data.py` | Brain v3 training tables: one row per logged event, with the v3 sequence features and labels. | lab.datasets, lab.sportsdata, scoring.brain3 -> lab.brain3cal, lab.brain3fit, scripts.build_training3 | untagged |
@@ -190,16 +221,16 @@ inputs = redzone modules it imports + `uses:` contract names; outputs = modules 
 | `redzone/lab/night/faults.py` | Faults for the end-to-end night, and the hook to plug more in. | lab.night.house -> lab.night.presses, lab.night.run | FEED-02, FEED-06, MAC-05, NET-02, SAFE-01, SAFE-02, SAFE-03, STK-01, STK-03, STK-05, STK-06, TV-01, TV-02, TV-03, TV-04 |
 | `redzone/lab/night/house.py` | A fake living room for the end-to-end night: two Fire TV sticks and a TV, in memory. | screen_ocr, tuners.adb -> lab.night.faults, lab.night.run | STK-05 |
 | `redzone/lab/night/presses.py` | Phone presses during the end-to-end night: does every button do what it says, and how fast? | lab.night.faults, models, noggin.profile -> - | BTN-04, BTN-05 |
-| `redzone/lab/night/run.py` | Run a whole replayed night through the real system, on a virtual clock. | autonomy, channels, config, control, decider.decider, discovery.yttv +18 -> lab.night.__main__, scripts.leak_check | SAFE-01, SAFE-08, TV-02, TV-03, TV-04 |
+| `redzone/lab/night/run.py` | Run a whole replayed night through the real system, on a virtual clock. | agent.watchdog, autonomy, channels, config, control, decider.decider +19 -> lab.night.__main__, scripts.leak_check | SAFE-01, SAFE-08, TV-02, TV-03, TV-04 |
 | `redzone/lab/night/smartthings.py` | [switch timing] The e2e night's TV with the SmartThings input change, at the latency measured on the user's TV (live lab Nov 4 2026: 64 of 64 confirmed, 0 re... | - -> lab.night.run | untagged |
 | `redzone/lab/night/vclock.py` | Virtual time for the end-to-end night: hours of a real night run in minutes. | - -> lab.night.__main__, lab.night.run | untagged |
 | `redzone/lab/oracle.py` | Hindsight oracle: the best schedule anyone could have run on an archived night (offline only). | lab.backtest, lab.cutgrade, lab.sportsgrade, models, sources.espn -> noggin.pick, scripts.eval, scripts.eval_sports, scripts.train_noggin_pick | untagged |
 | `redzone/lab/prime_mv_fake.py` | A simulated Prime Video NBA player with multiview, for rehearsing scripts/prime_multiview_probe.py without a stick (`--fake`) and for its tests. | tuners.prime_multiview -> scripts.prime_multiview_probe | untagged |
-| `redzone/lab/reasoner_data.py` | Training rows for the live game reasoner, distilled from the archive (no paid APIs). | config, lab.backtest, lab.sportsgrade, models, reasoner.brief, scoring.engine +1 -> scripts.build_reasoner_data, scripts.eval_reasoner, scripts.export_reasoner_llm, scripts.train_reasoner | untagged |
+| `redzone/lab/reasoner_data.py` | Training rows for the live game reasoner, distilled from the archive (no paid APIs). | config, lab.backtest, lab.sportsgrade, models, reasoner.brief, scoring.engine +1 -> agent.kaggle.build_moments_kaggle, scripts.build_reasoner_data, scripts.eval_reasoner, scripts.export_reasoner_llm, scripts.train_reasoner | untagged |
 | `redzone/lab/splits.py` | Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03). | - -> lab.breakblend, lab.tune, scripts.backfill_eval_v2, scripts.eval, scripts.eval_sports, scripts.leak_check | untagged |
 | `redzone/lab/syncsim.py` | [auto sync] Sync-error scorecard: how far the delay the app uses is from the screen's real delay. | decider.screen -> scripts.eval_sync | untagged |
 | `redzone/lab/timing.py` | [switch timing] How late we learn about a dead ball, and what that leaves before it airs on screen. | - -> engine, lab.backtest, scripts.timing_report | untagged |
-| `redzone/memory.py` | Project memory for the AI that repairs RedZone (watchdog, auto-fix brain). | - -> scripts.context_pack | untagged |
+| `redzone/memory.py` | Project memory for the AI that repairs RedZone (watchdog, auto-fix brain). | - -> agent.watchdog, scripts.context_pack | untagged |
 | `redzone/network.py` | Where is this Mac, and can it reach the sticks and the TV? | - -> autonomy, engine, lab.night.run, tvsetup, scripts.doctor | untagged |
 | `redzone/noggin/__init__.py` (package) | The Noggin: one decision brain (docs/noggin.md). | - -> - | untagged |
 | `redzone/noggin/factory.py` | Noggin data factory: labeled dead-ball moments from free public play-by-play with real wall clocks. | models, noggin.features, sources.espn -> scripts.noggin_factory, scripts.train_noggin_pick | untagged |
@@ -216,7 +247,7 @@ inputs = redzone modules it imports + `uses:` contract names; outputs = modules 
 | `redzone/noggin/wire.py` | Noggin Priority -> decider wiring (flag `noggin.priority.enabled`, off by default). | noggin.priority -> decider.decider | untagged |
 | `redzone/observability.py` | The night, rolled up: what it showed, what it missed, what broke, what got fixed, and the error budget. | supervisor, trace -> supervisor | untagged |
 | `redzone/reasoner/__init__.py` (package) | The live game reasoner: per-game "what does this game have going" readings. | - -> - | untagged |
-| `redzone/reasoner/brief.py` | The brief: one game's live situation as numbers (for the head) and as compact text (for the model). | models -> engine, lab.reasoner_data, reasoner.head, reasoner.reasoner, scoring.engine, scripts.train_reasoner | untagged |
+| `redzone/reasoner/brief.py` | The brief: one game's live situation as numbers (for the head) and as compact text (for the model). | models -> agent.kaggle.build_moments_kaggle, engine, lab.reasoner_data, reasoner.head, reasoner.reasoner, scoring.engine +1 | untagged |
 | `redzone/reasoner/head.py` | The reasoner's fast head: lock_in odds from the brief's numbers (numpy only, < 1 ms). | reasoner.brief, scoring.brain -> reasoner.reasoner, scripts.eval_reasoner, scripts.train_reasoner | untagged |
 | `redzone/reasoner/reasoner.py` | The live game reasoner at runtime: one reading per live game, rebuilt on each new play. | jsonfind, models, reasoner.brief, reasoner.head -> engine, scoring.engine, scripts.eval_reasoner, scripts.export_reasoner_llm | untagged |
 | `redzone/scoring/__init__.py` (package) | no docstring | - -> - | untagged |
@@ -238,7 +269,7 @@ inputs = redzone modules it imports + `uses:` contract names; outputs = modules 
 | `scripts/controls_drill.py` (entry) | Phone controls drill: replay the end-to-end night with scripted phone presses and grade them. | - -> - | untagged |
 | `scripts/delay_report.py` (entry) | How well each channel's stream delay is predicted, from the delay samples the app has stored. | config, decider.screen -> - | untagged |
 | `scripts/disk_guard.py` (entry) | Disk guard for the Mac (~5 GB free): what is using space in this checkout, and a safe cleanup of the transfer folders that cloud build threads leave behind. | governor -> - | untagged |
-| `scripts/distill.py` (entry) | Big teacher -> small student, end to end. | - -> - | untagged |
+| `scripts/distill.py` (entry) | Big teacher -> small student, end to end. | agent.distill.evaluate, agent.distill.student, agent.distill.teacher -> - | untagged |
 | `scripts/eval_break_blend.py` (entry) | Held-out calibration of the break forecast's rules + brain blend (breaks.blend). | lab.breakblend, lab.evaldata -> - | untagged |
 | `scripts/eval_reasoner.py` (entry) | Scorecards with the live game reasoner on, cross-fitted: each night is scored by a head that never saw that night (data/training/reasoner_folds, from scripts... | config, lab.reasoner_data, reasoner.head, reasoner.reasoner -> - | untagged |
 | `scripts/eval_sync.py` (entry) | [auto sync] Sync-error scorecard: the delay the app uses vs the screen's real delay. | lab.syncsim -> - | untagged |
@@ -266,8 +297,34 @@ inputs = redzone modules it imports + `uses:` contract names; outputs = modules 
 | `scripts/tune.py` (entry) | Auto-tune the decider against the scorecards (see redzone/lab/tune.py). | lab.tune -> - | untagged |
 | `scripts/tv_local_probe.py` (entry) | Time the TV's local input keys against SmartThings, on Nick's TV (~1 minute, Nick at the TV). | tv -> - | untagged |
 
-## Untagged (182)
+## Untagged (208)
 
+- `agent/__init__.py`
+- `agent/distill/__init__.py`
+- `agent/distill/evaluate.py`
+- `agent/distill/gold.py`
+- `agent/distill/jump.py`
+- `agent/distill/split.py`
+- `agent/distill/student.py`
+- `agent/distill/teacher.py`
+- `agent/kaggle/__init__.py`
+- `agent/kaggle/build_moments_kaggle.py`
+- `agent/kaggle/build_notebook.py`
+- `agent/kaggle/constrained.py`
+- `agent/kaggle/dequant.py`
+- `agent/kaggle/grade.py`
+- `agent/kaggle/pack_data.py`
+- `agent/kaggle/run_students.py`
+- `agent/kaggle/run_teacher.py`
+- `agent/kaggle/student_data.py`
+- `agent/kaggle/teacher_distill.py`
+- `agent/llm.py`
+- `agent/policy.py`
+- `agent/train/__init__.py`
+- `agent/train/evaluate.py`
+- `agent/train/make_data.py`
+- `agent/train/peft_to_mlx.py`
+- `agent/watchdog.py`
 - `redzone/__init__.py`
 - `redzone/__main__.py`
 - `redzone/autonomy.py`
@@ -451,7 +508,15 @@ inputs = redzone modules it imports + `uses:` contract names; outputs = modules 
 - `scripts/tv_practice.py`
 - `scripts/tv_setup.py`
 
-## Orphans (no importer) (2)
+## Orphans (no importer) (10)
 
+- `agent/kaggle/build_moments_kaggle.py`
+- `agent/kaggle/build_notebook.py`
+- `agent/kaggle/grade.py`
+- `agent/kaggle/pack_data.py`
+- `agent/kaggle/run_students.py`
+- `agent/kaggle/teacher_distill.py`
+- `agent/train/evaluate.py`
+- `agent/train/make_data.py`
 - `redzone/lab/night/presses.py`
 - `redzone/tuners/identity.py`
