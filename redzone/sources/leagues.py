@@ -14,7 +14,7 @@ import copy
 import re
 import time
 
-from redzone.models import GameState, League, Phase, Stoppage
+from redzone.models import GameState, League, Phase, Play, Stoppage
 from redzone.sources.espn import _get, _int
 
 NHL_SCORE = "https://api-web.nhle.com/v1/score/{date}"
@@ -65,8 +65,56 @@ def parse_situation_code(code: str | None, home: str, away: str) -> tuple[str | 
     strength = f"{max(a_real, h_real)}v{min(a_real, h_real)}" if pp else f"{hsk}v{ask}"
     return pp, strength, empty
 
+# NHL play-by-play typeDescKey -> the decider's play kind. Kinds follow ESPN's (lower case, "_"), so
+# the screen model's marker / dead-ball rules match: a whistle-time penalty is a stoppage entry, while
+# a delayed penalty is called with the puck still live (it must not read as a dead ball: "delay").
+NHL_KIND = {"faceoff": "face_off", "stoppage": "stoppage", "penalty": "stoppage_penalty",
+            "delayed-penalty": "penalty_signal", "period-start": "period_start", "period-end": "end_period",
+            "game-end": "end_game", "goal": "goal", "shot-on-goal": "shot", "missed-shot": "missed_shot",
+            "blocked-shot": "blocked_shot", "hit": "hit", "giveaway": "giveaway", "takeaway": "takeaway"}
+NHL_TYPE_TEXT = {"faceoff": "Face Off", "stoppage": "Stoppage", "penalty": "Penalty", "goal": "Goal",
+                 "period-start": "Period Start", "period-end": "End Period", "game-end": "End Game"}
+NHL_PLAYS_KEPT = 30
 
-def enrich_nhl(g: GameState, score_game: dict, pbp: dict | None = None) -> GameState:
+
+def _mmss(s) -> float | None:
+    m = re.fullmatch(r"(\d+):(\d+)", str(s or ""))
+    return int(m.group(1)) * 60 + int(m.group(2)) if m else None
+
+
+def nhl_plays(pbp, seen: dict[str, float], now: float | None = None) -> list[Play]:
+    """The newest NHL play-by-play entries as Plays, for the decider's timeline.
+
+    The feed has no wallclock, so each play carries when WE first saw it (`seen`, kept by the
+    caller across polls); the screen model bounds its real time with the NHL feed's lag window
+    (screen.SOURCE_LAG_S). Ids are prefixed so they never collide with ESPN's."""
+    now = time.time() if now is None else now
+    plays = (pbp if isinstance(pbp, list) else (pbp or {}).get("plays")) or []
+    if not seen:
+        # First look at this game: what's already logged is history, with no time we could bound
+        # (a play first seen now may be minutes old). Remember it and pass on only what comes next.
+        seen.update({f"nhl{p.get('eventId')}": 0.0 for p in plays})
+        seen.setdefault("_primed", 0.0)
+        return []
+    out = []
+    for p in plays[-NHL_PLAYS_KEPT:]:
+        eid, key = p.get("eventId"), p.get("typeDescKey") or ""
+        if eid is None:
+            continue
+        pid = f"nhl{eid}"
+        t = seen.setdefault(pid, now)
+        if not t:
+            continue      # history from before we started watching
+        reason = _get(p, "details", "reason") or ""
+        kind = NHL_KIND.get(key, key.replace("-", "_")[:30])
+        out.append(Play(pid, f"{key} {reason}".strip()[:80], kind, key == "goal", None, t, "nhl",
+                        clock=_mmss(p.get("timeRemaining")), period=_int(_get(p, "periodDescriptor", "number")),
+                        type_text=NHL_TYPE_TEXT.get(key, key)))
+    return out
+
+
+def enrich_nhl(g: GameState, score_game: dict, pbp: dict | None = None,
+               seen: dict[str, float] | None = None) -> GameState:
     out = copy.deepcopy(g)
     out.sources = {}
     state = score_game.get("gameState")
@@ -86,6 +134,18 @@ def enrich_nhl(g: GameState, score_game: dict, pbp: dict | None = None) -> GameS
     if _get(score_game, "clock", "inIntermission"):
         out.stoppage = Stoppage.INTERMISSION if (out.period or 0) in (1, 2) else Stoppage.END_PERIOD
     code = score_game.get("situationCode") or _get(score_game, "situation", "situationCode")
+    if seen is not None and isinstance(pbp, dict):
+        # [NHL primary] the live play-by-play is fresher than /score: take its clock and plays.
+        secs = _get(pbp, "clock", "secondsRemaining")
+        if secs is not None and _int(_get(pbp, "periodDescriptor", "number")) == out.period:
+            out.clock_s = float(secs)
+        for side, team in (("homeTeam", out.home), ("awayTeam", out.away)):
+            sc = _get(pbp, side, "score")
+            if sc is not None and (team.score is None or _int(sc) >= team.score):
+                team.score = _int(sc)   # never below what another feed already showed
+        plays = nhl_plays(pbp, seen)
+        if plays:
+            out.recent_plays, out.last_play = plays, plays[-1]
     if pbp:
         # The NHL play-by-play body is usually {"plays": [...]}, but some games return a bare list.
         plays = (pbp if isinstance(pbp, list) else pbp.get("plays")) or []

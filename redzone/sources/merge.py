@@ -59,9 +59,17 @@ class SourceHealth:
     benched: bool = False
 
 
+STOPPAGE_OWNER_FRESH_S = 10.0   # an owner's copy this recent decides the game's stoppage
+
+
 class Merger:
-    def __init__(self, clock=time.time):
+    def __init__(self, clock=time.time, stoppage_owner: dict | None = None):
         self._clock = clock
+        # league -> source whose stoppage wins while its copy is fresh (NHL: api-web's live
+        # play-by-play, ~17 s behind the ice vs ESPN's ~43 s). Without it, a stale ESPN copy at the
+        # same stopped clock takes over on the tie-break and flips the whistle off and on again.
+        self.stoppage_owner = dict(stoppage_owner or {})
+        self._owner_at: dict[str, float] = {}     # game -> when its owner's copy last arrived
         self.games: dict[str, GameState] = {}
         self._per_source: dict[str, dict[str, GameState]] = defaultdict(dict)
         self.health: dict[str, SourceHealth] = defaultdict(SourceHealth)
@@ -75,6 +83,7 @@ class Merger:
 
     def update(self, source: str, g: GameState) -> GameState:
         now = self._clock()
+        g = self._owned_stoppage(source, g, now)
         h = self.health[source]
         bkey = (source, g.game_id)
         self._expire_bench(source, now)
@@ -121,6 +130,22 @@ class Merger:
         _fill_gaps(cur, g)
         cur.sources[source] = now
         return cur
+
+    def _owned_stoppage(self, source: str, g: GameState, now: float) -> GameState:
+        owner = self.stoppage_owner.get(g.league)
+        if owner is None:
+            return g
+        if source == owner:
+            self._owner_at[g.game_id] = now
+            return g
+        mine = self._per_source[owner].get(g.game_id)
+        if mine is None or now - self._owner_at.get(g.game_id, -1e18) > STOPPAGE_OWNER_FRESH_S:
+            return g          # the owner went quiet: the other feeds decide again
+        if g.stoppage == mine.stoppage:
+            return g
+        g = copy.copy(g)      # shallow: only the stoppage field differs from the caller's object
+        g.stoppage = mine.stoppage
+        return g
 
     def _expire_bench(self, source: str, now: float) -> None:
         """Lift benches older than BENCH_S. The source re-baselines for that game, so a feed

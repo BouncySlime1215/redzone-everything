@@ -63,6 +63,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 
 ## Product
 
+- 2026-11-04 12:35 AM: **NHL api-web live play-by-play is the primary NHL source (`sources.nhl_primary: true`, `polling.nhl_pbp_s: 3`).** It owns NHL stoppages while its copy is under 10 s old, and its plays reach the timeline bounded by a 2-60 s lag window. Why: Nick measured it at 16.7 s p50 behind the event vs ESPN summary 43.1 s and FastCast 25.3 s (ANA@VAN, Nov 3). Off switch: `sources.nhl_primary: false`.
 - 2026-11-03 3:05 PM: **NFL commercials and dead air go to 0**, with replays when every game is
   in a break. #21 accepted NBA dead air +0.5 and demo commercials +0.5 for NBA mid-play entries 38 → 15.
 - 2026-11-03: **Crunch overlaps:** top game live, the other time-shifted on the second stick,
