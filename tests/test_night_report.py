@@ -88,3 +88,15 @@ def test_misses_link_into_the_night_replay_viewer(tmp_path):
     js = (nr.ROOT / "redzone/web/static/rz-v2.js").read_text()
     pat = re.search(r"const m = /(.+?)/\.exec\(hash", js).group(1).replace("\\\\", "\\")
     assert re.match(pat, "#night=2026-11-04&at=00:15")
+
+
+def test_big_plays_seen_live_per_league_from_the_moments_log(tmp_path):
+    rows = _night_rows()
+    rows["supervisor_moments.jsonl"] = [{"league": "nba", "seen": True}, {"league": "nba", "seen": False},
+                                        {"league": "nhl", "seen": True}, {"league": "nba", "seen": False, "dry_run": True}]
+    s = clt.summarize(rows)
+    assert s["big_plays"] == {"nba": {"n": 2, "seen": 1}, "nhl": {"n": 1, "seen": 1}}
+    _write(tmp_path / "mac", s)
+    pl.publish([tmp_path / "mac"], tmp_path / "pub")
+    text = nr.write(NIGHT, [tmp_path / "pub"], tmp_path / "out").read_text()
+    assert "| Big plays seen live, NBA | >= 95% of oracle | 50.0% (1/2) | ℹ️ raw (no live oracle yet) |" in text

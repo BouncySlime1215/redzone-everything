@@ -82,6 +82,10 @@ def clean(summary: dict) -> dict:
     if isinstance(ps, dict):
         out["press_spans"] = {str(k): {kk: v[kk] for kk in ANCHOR_KEYS if _num(v.get(kk)) is not None}
                               for k, v in ps.items() if RULE.match(str(k)) and isinstance(v, dict)}
+    bp = summary.get("big_plays")   # [night health] big plays seen live, per league
+    if isinstance(bp, dict):
+        out["big_plays"] = {str(lg): {k: v[k] for k in ("n", "seen") if _num(v.get(k)) is not None}
+                            for lg, v in bp.items() if re.match(r"^[a-z]{2,5}$", str(lg)) and isinstance(v, dict)}
     bf = summary.get("buffer")     # [STK-06] hidden-stick buffer watchdog counts (#136)
     if isinstance(bf, dict):
         out["buffer"] = {k: bf[k] for k in ("detected", "lost", "recovered", "rebuild_failed", "err_p95_s")

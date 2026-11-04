@@ -159,7 +159,16 @@ def summarize(got: dict[str, list[dict]]) -> dict:
             f = faults.setdefault(str(r["rule"]), {"n": 0, "failed": 0})
             f["n"] += 1
             f["failed"] += 0 if r.get("ok") else 1
+    # [night health] big plays on screen when they aired, per league (supervisor track_moments; dry runs out)
+    bigs: dict[str, dict] = {}
+    for r in got.get("supervisor_moments.jsonl", []):
+        if r.get("dry_run"):
+            continue
+        b = bigs.setdefault(str(r.get("league") or "?"), {"n": 0, "seen": 0})
+        b["n"] += 1
+        b["seen"] += 1 if r.get("seen") else 0
     return {
+        "big_plays": dict(sorted(bigs.items())),
         "misses": misses[:50], "faults_fixed": dict(sorted(faults.items())),
         "landings_dead": sum(1 for r in cuts if r.get("enter") == "dead"),
         "landings_graded": sum(1 for r in cuts if r.get("enter") in ("dead", "play")),
@@ -192,7 +201,8 @@ def collect(data: Path, out: Path, since: float, until: float | None = None) -> 
     srcs = {"sync_probe.jsonl": [data / "recordings" / d / "sync_probe.jsonl" for d in days],
             "tv_input.jsonl": [data / "tv_input.jsonl"], "supervisor_cuts.jsonl": [data / "supervisor_cuts.jsonl"],
             "traces.jsonl": [data / "traces.jsonl"], "sync.jsonl": [data / "sync.jsonl"],
-            "supervisor.jsonl": [data / "supervisor.jsonl"]}
+            "supervisor.jsonl": [data / "supervisor.jsonl"],
+            "supervisor_moments.jsonl": [data / "supervisor_moments.jsonl"]}
     got = {k: copy_rows(v, out / k, since, until) for k, v in srcs.items()}
     s = summarize(got)
     s["since"] = datetime.fromtimestamp(since).isoformat(timespec="seconds")

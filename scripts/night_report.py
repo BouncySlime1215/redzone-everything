@@ -84,8 +84,15 @@ def lines_graded(s: dict) -> list[tuple[str, str, str, str]]:
     p = s.get("press_to_tv_p95_s")
     out.append(("Press-to-TV p95", f"<= {PRESS_BAR_S:g} s", f"{_v(p)} (n={s.get('press_samples', 0)})",
                 "⏳ PENDING" if p is None else ("✅ PASS" if p <= PRESS_BAR_S else "❌ FAIL")))
-    for name in ("Big plays seen live (per league, % of oracle)", "Big plays live or replayed within 3 min"):
-        out.append((name, "see North Star", "needs the night's play-by-play graded", "⏳ PENDING"))
+    bp = s.get("big_plays") or {}
+    for lg, b in sorted(bp.items()):
+        n, seen = b.get("n") or 0, b.get("seen") or 0
+        out.append((f"Big plays seen live, {lg.upper()}", ">= 95% of oracle",
+                    f"{round(100.0 * seen / n, 1)}% ({seen}/{n})" if n else "–",
+                    "ℹ️ raw (no live oracle yet)" if n else "⏳ PENDING"))
+    if not bp:
+        out.append(("Big plays seen live (per league)", ">= 95% of oracle", "no big plays logged", "⏳ PENDING"))
+    out.append(("Big plays live or replayed within 3 min", ">= 99%", "replays aren't in the live log yet", "⏳ PENDING"))
     return out
 
 
