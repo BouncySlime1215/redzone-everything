@@ -175,3 +175,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   bound: 0.56 % of restarts before the bound on 421 unseen public nights (today's FLOOR_S: 7.33 %) at the same
   tightness, ECE 0.053; on the NBA scorecard at B=90 (dev nights) entries mid-play 5/61 -> 5/61, so no gain to
   ship yet. The remaining NBA mid-play entries are entry policy (crunch_now live, 180 s wait cap), Noggin Pick.
+- 2026-11-04 10:30 AM (noggin logic, playbooks): **Safety playbooks SAFE-01/02/03/05 ship OFF**
+  (`playbooks.safe.enabled: false`, redzone/decider/playbooks.py). Each holds a switch and logs `playbook=<id>`.
+  SAFE-02's threshold is 10 s, not the backlog's 3 s: the sims' normal delay doubt is 4-8 s (floor
+  `delay.sync.min_sigma_s` 4, uncalibrated 8), and 3-8 s held normal entries (NHL dev crunch live 80.6 -> 66.0
+  at 3 s, 72.4 at 6 s, 74.3 at 8 s; 80.6 at 10 s). At 10 s, dev and locked scorecards are identical on and off;
+  the night lab (`--faults redzone.lab.night.faults:safety`, 3 seeds) passes with 0 mid-play cuts.

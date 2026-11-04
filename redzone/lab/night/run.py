@@ -110,6 +110,7 @@ class NightFeed:
         from redzone.lab.backtest import _feed
         self.night = night
         self.outage = False
+        self.frozen: set[str] = set()     # [playbooks SAFE-01] games whose feed stopped (fault feed_stale)
         self.games = night.games
         self.feeds = {r.gid: _feed(r, random.Random(r.gid), FEED_LAG_S, 3.0, None, 0.0, 0.0, 0.0,
                                    night.t0, night.t1) for _, r in self.games}
@@ -134,6 +135,8 @@ class NightFeed:
             return
         now = time.time()
         for spec, r in self.games:
+            if r.gid in self.frozen:
+                continue
             f = self.feeds[r.gid]
             f.fresh_at = now
             i = self.idx[r.gid]
@@ -205,6 +208,7 @@ class Night:
     use_watchdog: bool = True
     games: list = field(default_factory=list)
     tv_path: str = "home"               # "home" (HOME/CEC flips only) | "smartthings" (the TV's input, measured latency)
+    cfg_set: dict | None = None         # dotted config overrides for the night ({"playbooks.safe.enabled": True})
 
     def __post_init__(self):
         self.api_down = False
@@ -245,6 +249,12 @@ class Night:
             "autonomy": {"enabled": False},
             "plan": {"verify": False},
         }
+        for k, v in (self.cfg_set or {}).items():
+            node = cfg
+            *path, leaf = k.split(".")
+            for part in path:
+                node = node.setdefault(part, {})
+            node[leaf] = v
         (d / "config.yaml").write_text(yaml.safe_dump(cfg))
         targets = {r.gid: spec.target for spec, r in self.games}
         (d / "channels.json").write_text(json.dumps({"codes": YTTV_CODES, "overrides": targets}))
@@ -542,6 +552,40 @@ def cuts(night: Night) -> tuple[list[dict], list[dict]]:
     return mid, every
 
 
+SAFE_FAULTS = ("feed_stale", "sync_wide", "wifi_degrade", "clock_skew")
+
+
+def _safe_checks(night: Night, check) -> None:
+    """[playbooks SAFE-01/02/03/05] The safety faults: no switch into a frozen feed, and no mid-play cut
+    while each fault holds. Holds per playbook are reported (they come from the decider's own count)."""
+    starts = [f for f in night.fault_log if f["name"] in SAFE_FAULTS and f["event"] == "start"]
+    if not starts:
+        return
+    e = night.engine
+    seen = dict(getattr(getattr(e.decider, "safety", None), "seen", {}) or {})
+    mid, _ = cuts(night)
+    for f in starts:
+        lo, hi = f["t"], f["t"] + max(float(f.get("dur") or 0.0), 120.0)
+        if f["name"] == "clock_skew":
+            hi += float(f.get("seconds", 30.0))
+        cut_in = [m for m in mid if lo <= m["t"] <= hi]
+        ev = list(getattr(getattr(e.decider, "safety", None), "events", []) or [])
+        flips = [x for x in night.house.shown if lo <= x.t <= hi and x.what == "playing"]
+        detail = {"at": _et(f["t"]), "dur": f.get("dur"), "mid_play": cut_in, "holds_night": seen,
+                  "gate_checked_night": getattr(getattr(e.decider, "safety", None), "checked", None),
+                  "tv_changes": len(flips), "flips": [(_et(x.t), x.cause, x.target) for x in flips][:6], "held": [(_et(t), pid, g) for t, pid, g in ev if lo <= t <= hi][:8]}
+        ok = not cut_in
+        if f["name"] == "feed_stale":
+            frozen = set(f.get("frozen") or [])
+            grace = float(e.cfg.get("polling.live_s", 10)) + float(e.cfg.get("playbooks.safe.feed_stale_s", 10)) + 15
+            tg = night.target_game
+            into = [(_et(x.t), x.target) for x in flips if tg.get(x.target) in frozen
+                    and f["t"] + grace <= x.t <= f["t"] + float(f["dur"])]
+            detail["switches_into_frozen"] = into
+            ok = ok and not into
+        check(f"safe_{f['name']}", ok, detail)
+
+
 def _et(t: float) -> str:
     return datetime.fromtimestamp(t, ET).strftime("%-I:%M:%S %p")
 
@@ -736,6 +780,7 @@ def grade(night: Night) -> dict:
            if line.strip()] if (night.work / "data" / "supervisor.jsonl").exists() else []
     outages = [f for f in night.fault_log if f["name"] == "feed_outage" and f["event"] == "start"]
     stale_fixes = [x for x in sup if x.get("kind") == "fix" and x.get("rule") == "stale_feeds"]
+    _safe_checks(night, check)
     check("feed_outage_handled", all(any(0 <= x["ts"] - o["t"] <= o["dur"] + 60 for x in stale_fixes) for o in outages)
           if outages else True, {"outages": [(_et(o["t"]), round(o["dur"])) for o in outages],
                                  "supervisor_fixes": [(_et(x["ts"]), x.get("action")) for x in stale_fixes]})

@@ -36,6 +36,7 @@ from redzone.decider.screen import (AFTER_PLAY_BUFFER_S, CONTINUOUS, MIN_BREAK_S
                                     Timeline, break_on_arrival, catchable, final_play_aired, leave_gate,
                                     resume_lead, resume_play)
 from redzone.decider.cuts import EntryPlan, plan_entry
+from redzone.decider.playbooks import Safety
 from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
 from redzone.decider import core
 from redzone.decider.core import BreakView, CoreState, DecisionCore, Knobs, MomentView, Option, SwitchPath
@@ -231,6 +232,7 @@ class Decider:
         self.cfg = cfg
         self.delays = delays
         self._clock = clock
+        self.safety = Safety(cfg)   # [playbooks] SAFE-01/02/03/05, flag playbooks.safe.enabled (off)
         # The live controller knows whether THIS target is already ready. App-wide
         # average costs are useful for ranking, but cannot promise a deadline.
         # Offline simulations intentionally keep their configured timing model.
@@ -357,6 +359,7 @@ class Decider:
         d = self._decide(cands, now)
         d = self._hold_for_big(d, cands, now, home_before)
         d = self._time_entry(d, cands, now, home_before)
+        d = self._safe(d, cands, now, home_before)
         if not commit and d.action in ("switch", "replay"):
             # The simulator can commit synchronously. A real TV must confirm
             # the command first: a proposal is not a watched game or replay.
@@ -777,6 +780,23 @@ class Decider:
         state = State.REPLAY if self.after_replay else d.state
         return Decision(now, "stay", self.current, f"{plan.why}: {d.reason}", state, d.gate,
                         want=d.target)
+
+    def _safe(self, d: Decision, cands, now: float, home_before) -> Decision:
+        """[playbooks SAFE-01/02/03/05] A switch the safety playbooks hold (redzone/decider/playbooks.py)."""
+        sf = self.safety
+        if not sf.enabled():
+            return d
+        sf.tick()
+        hit = sf.check(self, d, cands, now)
+        if hit is None:
+            return d
+        pid, why = hit
+        sf.seen[pid] = sf.seen.get(pid, 0) + 1
+        sf.events.append((now, pid, d.target))
+        self.home_break_visit, self.home_return_at = home_before
+        state = State.REPLAY if self.after_replay else d.state
+        return Decision(now, "stay", self.current, f"playbook={pid}: {why}: {d.reason}", state, d.gate,
+                        want=d.target if d.action == "switch" else None)
 
     def _hold_for_big(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[cut timing] A big play is in the data but hasn't finished airing here yet: stay for it.

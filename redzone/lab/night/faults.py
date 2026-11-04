@@ -109,8 +109,57 @@ class ClockSkew(Fault):
         world.clock.skew -= float(self.info.get("seconds", 30.0))
 
 
+class FeedStale(Fault):
+    """[playbooks SAFE-01] Every live game's feed but the one on screen stops (one source wedged on
+    those games): any switch would go into a game whose feed is stale."""
+    def start(self, world):
+        cur = world.engine.decider.current
+        world.feed.frozen = {r.gid for _, r in world.feed.games if r.gid != cur}
+        self.info["frozen"] = sorted(world.feed.frozen)
+        world.house.event("fault", "-", f"feed stale on {len(world.feed.frozen)} games")
+
+    def stop(self, world):
+        world.feed.frozen = set()
+
+
+class SyncWide(Fault):
+    """[playbooks SAFE-02] Every channel's delay doubt jumps to `sd` seconds (sync lost: buffering, an app
+    restart) until the fault ends or a fresh calibration lands."""
+    def start(self, world):
+        e, now = world.engine, world.clock.time()
+        self._was = {}
+        for t in list(e.delays.book):
+            d = e.delays.get(t)
+            self._was[t] = (d.sigma, d.calibrated_at)
+            d.sigma = max(d.sigma, float(self.info.get("sd", 12.0)))
+        self.info["sigma"] = {t: round(e.delays.get(t).current_sigma(now), 1) for t in list(e.delays.book)}
+        world.house.event("fault", "-", "sync doubt widened")
+
+    def stop(self, world):
+        for t, (sig, cal) in getattr(self, "_was", {}).items():
+            d = world.engine.delays.get(t)
+            if d.calibrated_at == cal:      # not re-measured meanwhile
+                d.sigma = sig
+
+
+class WifiDegrade(Fault):
+    """[playbooks SAFE-03] The sync probe reports buffering + an RSSI drop on the stick on screen."""
+    def start(self, world):
+        e = world.engine
+        self.info["target"] = e.decider.target_of(e.decider.current) or "visible"
+        e._sync_condition(self.info["target"], float(self.info.get("q", 13.0)), {})
+        # The probe re-reports every few seconds on a real stick; stand in for that for the whole fault.
+        q, t = e.decider.safety.net[self.info["target"]]
+        e.decider.safety.net[self.info["target"]] = (q, t + self.dur)
+        world.house.event("fault", "-", "wifi degraded")
+
+    def stop(self, world):
+        world.engine._sync_condition(self.info.get("target", "visible"), 1.0, {})
+
+
 KINDS = {"stick_drop": StickDrop, "stick_wedge": StickWedge, "still_watching": StillWatching,
-         "feed_outage": FeedOutage, "flip_ignored": FlipIgnored, "api_down": ApiDown, "clock_skew": ClockSkew}
+         "feed_outage": FeedOutage, "flip_ignored": FlipIgnored, "api_down": ApiDown, "clock_skew": ClockSkew,
+         "feed_stale": FeedStale, "sync_wide": SyncWide, "wifi_degrade": WifiDegrade}
 
 
 def from_spec(spec: dict) -> Fault:
@@ -145,6 +194,24 @@ def default(rng: random.Random, live_windows: list[tuple[float, float]]) -> list
     faults.append(FlipIgnored("flip_ignored", when(0.60, 0.70), 0.0, "*"))
     faults.append(ApiDown("api_down", when(0.75, 0.85), 600.0))
     return sorted(faults, key=lambda f: f.at)
+
+
+def safety(world, rng: random.Random) -> list[Fault]:
+    """[playbooks SAFE-01/02/03/05] One fault per safety playbook, while games are live:
+    `python -m redzone.lab.night --faults redzone.lab.night.faults:safety --set playbooks.safe.enabled=true`."""
+    lw = world.live_windows
+    a, b = lw[0][0], max(hi for _, hi in lw)
+
+    def when(lo_frac: float, hi_frac: float) -> float:
+        for _ in range(200):
+            t = a + (b - a) * rng.uniform(lo_frac, hi_frac)
+            if any(lo + 300 <= t <= hi - 600 for lo, hi in lw):
+                return t
+        return t
+    return [FeedStale("feed_stale", when(0.10, 0.20), 900.0),
+            SyncWide("sync_wide", when(0.30, 0.40), 600.0, info={"sd": 12.0}),
+            WifiDegrade("wifi_degrade", when(0.50, 0.60), 900.0, info={"q": 13.0}),
+            ClockSkew("clock_skew", when(0.70, 0.80), 1800.0, info={"seconds": 30.0})]
 
 
 def plug(spec: str, world, rng: random.Random) -> list[Fault]:

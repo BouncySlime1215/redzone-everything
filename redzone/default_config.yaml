@@ -254,6 +254,18 @@ fantasy:                   # ESPN fantasy football (leave league_id empty to tur
   team_id: 0               # 0 = figure it out from your ESPN_SWID cookie
   season: 2026
 
+
+# [playbooks] Safety playbooks SAFE-01/02/03/05 (docs/playbooks.md, redzone/decider/playbooks.py): each holds a
+# switch and logs "playbook=<id>". OFF until the night lab and the North Star sets clear them.
+playbooks:
+  safe:
+    enabled: false
+    feed_stale_s: 10      # SAFE-01: target feed this far past its poll cadence = stale
+    sigma_s: 10           # SAFE-02: delay doubt above this = full-margin landings only (dev sweep: 3-8 s holds normal entries)
+    net_q: 9              # SAFE-03: sync probe network condition (>= 2 buffering/min or an RSSI drop)
+    net_window_s: 300
+    skew_s: 5             # SAFE-05: wall vs monotonic jump that counts as clock skew
+    reanchor_s: 90
 screen:
   mic_calibration: false   # let the Mac's mic hear crowd roars to measure your delay (nothing is recorded)
 

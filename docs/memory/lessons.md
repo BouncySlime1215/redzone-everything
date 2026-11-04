@@ -119,3 +119,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** `espn.parse_summary(upto=N)` filled `leaders` from the whole-game boxscore; the night's GAMES were picked before the splits existed.
 - **Fix:** leaders are filled only when `upto is None`; the night uses train-night games (NHL 401892578, NBA 401909860). `scripts/leak_check.py` (in CI) fails on locked games in the night, end-of-game fields in a replay, model stamps past the test start and expired KNOWN_ERRORS.
 - **Signals:** a replayed GameState with leaders or W-L records, a fixture id on a test night, `leak_check` FAIL
+- 2026-11-04 (playbooks SAFE-05): "has every feed been heard from since the clock jump?" compared timestamps,
+  so after a BACKWARD jump every old stamp already looked later than the jump and the hold cleared at once
+  (night lab: a replay started 8 s after a -30 s jump). Compare each timeline's fresh_at with its value at
+  the jump instead. Also: a fault that widens the sync filter does nothing while a tap-calibrated base is
+  tighter (DelayBook only overlays a filter that is better), so the night fault widens the Delay itself.

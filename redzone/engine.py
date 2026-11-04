@@ -97,6 +97,7 @@ class Engine:
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
+        self.decider.safety.feed_age = self._feed_age   # [playbooks SAFE-01]
         # Break visits: the game we leave keeps playing on the other stick, so the trip back is one
         # flip; with one stick it's a full tune of that game.
         # [time-shift buffer] hold each fresh hidden-stick tune B s behind live (timing.behind_live_s,
@@ -296,6 +297,17 @@ class Engine:
     def _sync_condition(self, target: str, q_scale: float, feats: dict) -> None:
         if self.sync is not None:
             self.sync.condition(target, q_scale)
+        self.decider.safety.condition(target, q_scale)   # [playbooks SAFE-03]
+
+    def _feed_age(self, gid: str) -> tuple[float, float] | None:
+        """[playbooks SAFE-01] (seconds since this game's feed last had fresh data, its poll cadence)."""
+        g = self.merger.games.get(gid)
+        if g is None:
+            return None
+        fresh = self.feeds.fresh_at(gid) or g.updated_at
+        if not fresh:
+            return None
+        return time.time() - fresh, float(self.feeds.cadence_of(gid))
 
     def _break_event(self, target: str, host: str, visible: bool, kind: str, t: float, sd: float) -> None:
         """[auto-anchors] An ad break started or ended on screen at t (SyncProbe). break_start is matched
