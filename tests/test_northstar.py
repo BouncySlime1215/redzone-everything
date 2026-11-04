@@ -33,14 +33,16 @@ def test_perfect_slice_passes_where_evidence_allows():
     assert r["landings_dead"]["status"] == ns.PASS
     assert r["big_live_nba"]["status"] == ns.PASS
     # live-or-replayed without replay age graded is an upper bound: never PASS
-    assert r["big_seen_10min"]["status"] == ns.PENDING
+    assert r["big_seen_3min"]["status"] == ns.PENDING and r["big_seen_2min"]["status"] == ns.PENDING
+    assert "big_seen_10min" not in r
     c = cards(9)
     for lg in ns.LEAGUES:
         for x in c[lg]["metrics"]["per_night"]:
-            x["big_seen_10m"] = x["big"]
-            x["my_big_seen_10m"] = x["my_big"] = 3
+            x["big_seen_3m"] = x["big_seen_2m"] = x["big"]
+            x["my_big_seen_3m"] = x["my_big"] = 3
     r2 = rows_by(ns.table(c))
-    assert r2["big_seen_10min"]["status"] == ns.PASS and r2["your_team_big"]["status"] == ns.PASS
+    assert r2["big_seen_3min"]["status"] == ns.PASS and r2["big_seen_2min"]["status"] == ns.PASS
+    assert r2["your_team_big"]["status"] == ns.PASS
     assert r["switch_p95"]["status"] == ns.PENDING        # only the 10 Nov 3 samples
     assert r["recovery"]["status"] == ns.PENDING          # no night run
     assert r["dead_air"]["status"] == ns.FAIL             # 10 % with a CI above 0
@@ -124,7 +126,8 @@ def test_priority_rows():
     assert r["crunch_live_nfl"]["status"] == ns.PENDING        # 80 % but the feasible ceiling isn't computed
     assert r["crunch_live_nfl"]["value"] == pytest.approx(80.0)
     assert r["your_team_crunch"]["status"] == ns.PASS
-    assert r["league_order"]["status"] == ns.PENDING and r["right_game"]["status"] == ns.PENDING
+    assert r["league_order"]["status"] == ns.PENDING and r["pct_of_oracle"]["status"] == ns.PENDING
+    assert "right_game" not in r
     assert rows_by(ns.table(cards(9)))["crunch_live_nba"]["status"] == ns.PASS
 
 
@@ -155,28 +158,13 @@ def test_profile_run_keeps_its_candidate_column(tmp_path, monkeypatch):
     assert rows_by(res["rows"])["mid_play"]["value"] > 0
 
 
-def test_right_game_reads_store_taps(tmp_path, monkeypatch):
-    import time as _time
-    from redzone.store import Store
-    assert ns.load_taps(tmp_path / "none.db") is None and not (tmp_path / "none.db").exists()
-    db = tmp_path / "redzone.db"
-    st = Store(db)
-    base = 1_793_000_000.0                       # an evening, Eastern
-    for night in range(9):
-        for k in range(8):
-            monkeypatch.setattr(_time, "time", lambda t=base + night * 86400 + k * 60: t)
-            st.feedback("g1", 1 if k else -1, "switch", {"reason": "crunch", "switch": k})
-    monkeypatch.setattr(_time, "time", lambda: base + 10 * 86400)
-    st.feedback("g1", 0, "missed", {})
-    st.feedback("g1", 0, "switch", {})          # cleared: not counted
-    monkeypatch.undo()
-    taps = ns.load_taps(db)
-    assert len(taps) == 74
-    r = ns.right_game_row(taps)
-    assert r["key"] == "right_game" and r["nights"] == 10
-    assert abs(r["value"] - 100 * 63 / 73) < 0.01 and r["status"] == ns.FAIL      # 86 % < 95 %
-    assert ns.right_game_row(None)["status"] == ns.PENDING
-
+def test_pct_of_oracle_is_the_mean_of_the_leagues():
+    """Self-taught rule (Nick, Nov 4 10:55 AM): the line that replaced right_game is graded by the oracle."""
+    rows = [ns._row(f"pct_of_oracle_{lg}", v, None, None, ns.PASS, "") for lg, v in zip(ns.ORACLE_LEAGUES, (59.0, 83.0, 53.0))]
+    r = ns.pct_of_oracle_row(rows)
+    assert r["key"] == "pct_of_oracle" and r["value"] == pytest.approx(65.0) and r["status"] == ns.FAIL
+    assert ns.pct_of_oracle_row(rows[:2])["status"] == ns.PENDING
+    assert not hasattr(ns, "load_taps") and not hasattr(ns, "right_game_row")
 
 def test_every_run_runs_the_controls_drill_unless_given_one(tmp_path, monkeypatch):
     """press_to_tv_p95 gets a sim value on every run (cycle 02 lane 3): no --controls-json -> drill runs."""
@@ -200,3 +188,34 @@ def test_press_row_reports_pre_tuned_and_cold_presses_apart():
                          "cold": {"n": 1, "p50_s": 8.5, "p95_s": 8.5}}, "runs": [{"go_now_s": [2.9, 3.1, 8.5]}]}
     row = ns.press_row(drill)
     assert "pre-tuned 2: p50 2.9 s, p95 3.1 s" in row["detail"] and "cold 1: p50 8.5 s" in row["detail"]
+
+
+def test_live_nights_section_is_pending_until_a_night_exists(tmp_path):
+    assert "PENDING" in "\n".join(ns.live_section(ns.load_live_nights([tmp_path / "none"])))
+    n = tmp_path / "live" / "2026-11-04"
+    n.mkdir(parents=True)
+    (n / "summary.json").write_text(json.dumps({"landings": {"n": 3, "after_dead_p50_s": 5.0, "before_play_p50_s": 9.0,
+                                                             "before_play_min_s": 2.0}, "entries_mid_play": 0,
+                                                "switch_p95_s": 2.2, "press_to_tv_p95_s": 3.4, "press_samples": 4,
+                                                "sync_anchor_err": {"HDMI1": {"n": 5, "p50_s": 1.0, "p95_s": 2.5}}}))
+    text = "\n".join(ns.live_section(ns.load_live_nights([tmp_path / "live"])))
+    assert "| 2026-11-04 | 3 | 5.0 s | 9.0 / 2.0 s | 0 | 2.2 s | 3.4 s (4) | HDMI1 2.5 s (n=5) |" in text
+    assert "PENDING" not in text
+
+
+def test_big_live_is_gated_on_95_pct_of_oracle():
+    """Nick, Nov 4 10:55 AM: big live per league passes at >= 95% of the hindsight ceiling, and every
+    oracle-backed row shows its gap to 100% of oracle."""
+    def rows(val, lo, ceil, share, status=ns.FAIL):
+        return [ns._row("big_live_nba", val, lo, 99.0, status, "x", 9),
+                {**ns._row("ceiling_big_live_nba", ceil, None, None, ns.INFO, ""), "share": share}]
+    r = rows(90.0, 89.0, 93.0, 96.8)               # 90 live vs a 93 ceiling: 96.8% of oracle, lo 95.7%
+    ns.apply_oracle_gates(r)
+    assert r[0]["status"] == ns.PASS and r[0]["oracle_share"] == 96.8 and "gap to 100% of oracle 3.2" in r[0]["detail"]
+    r = rows(80.0, 70.0, 93.0, 86.0, ns.PASS)
+    ns.apply_oracle_gates(r)
+    assert r[0]["status"] == ns.FAIL
+    r = rows(90.0, 80.0, 93.0, 96.8)               # point over the gate, CI lower end under it
+    ns.apply_oracle_gates(r)
+    assert r[0]["status"] == ns.PENDING
+    assert ns.META["landings_dead"]["bar"] == 98.0 and ns.META["pct_of_oracle"]["bar"] == 95.0

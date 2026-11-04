@@ -55,6 +55,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 
 ## Gates and quality
 
+- 2026-11-04 11:00 AM: **The replay window is 2-3 MINUTES max, not 10.** North Star `big_seen_10min` becomes `big_seen_3min` (live or replayed within 3 min, >= 99%), plus a stretch row `big_seen_2min`; `your_team_big` counts replays within 3 min. Graded on dev and locked, live and candidate (`backtest.CATCHUP_3_S`/`CATCHUP_2_S`). Product: the reel/replay queue (T2-T4 collision replays) targets the very next dead window; a replay that can't air within 3 min is skipped or folded into a later montage; clairvoyance and possession-start entry are the main way to see moments LIVE.
+- 2026-11-04 10:55 AM: **Gates raised and made honest against the hindsight oracle** (Nick: "95% was a compromise"). Big plays seen live per league: **>= 95% of oracle value** (the share of the DP ceiling on the same nights; ceilings now about NFL 91/93, NBA 93/100, NHL 85/90 dev/locked). Live or replayed within 10 min >= 99%. Mid-play cuts 0. Landings in dead time **>= 98%** (was 95%). `pct_of_oracle` rows gate at 95% (was 90%). Every oracle-backed row shows its gap to 100% of oracle. Pace brake lifted; hard stop at 89-90% of weekly usage.
 - 2026-11-04 12:45 AM: **Timing gate rows added** (overnight plan item 6): "entries mid-play = 0" and
   "landings in dead time >= 95%" (cuts away + entries, from the new `landings_in_dead_pct`), with the
   landing-offset histograms (`leave_to_restart_hist`, `entry_to_restart_hist`) on every league card.
@@ -98,6 +100,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 
 ## AI
 
+- 2026-11-04 10:55 AM: **The Noggin is fully self-taught: no training signal from Nick.** His 👍/👎, overrides, lock-ins and taps never feed any training, labelling, suggestion or grading path (crunch policy, Pick, Priority L2 suggestions, E23). Allowed sources: the hindsight oracle on archived nights, self-play/simulation, the Teacher's automated nightly review, objective pbp outcomes, stick/sync telemetry. His buttons stay controls only. North Star: `right_game` (agreement with his taps) is replaced by `pct_of_oracle` (% of hindsight-oracle value achieved, mean of NFL/NBA/NHL). `priority.suggest_from_feedback` removed.
 - 2026-11-03 2:37 PM: **Two tiers.** REFLEX = a local ~2 GB distilled student (Qwen3-1.7B, 4B only
   if needed) that says "I don't know" when unsure. BRAIN = Claude auto-fix through a GitHub issue →
   `claude-code-action` draft PR on his subscription token (`CLAUDE_CODE_OAUTH_TOKEN`, he adds it),
@@ -269,6 +272,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   candidate made 1 NHL mid-play entry on every seed (BUF @ WSH, an urgent landing after a game ended). After: 0 on
   all three seeds, NHL crunch 79.9 -> 81.3 (seed 0), every other line within 0.2, locked equal. The 6 s is
   syncsim's upper end until Thursday's probe refits it.
+- 2026-11-04: **two_stick.tv_flip_prior_s = {median: 1.89, max: 2.58}** (was 1.98 / 2.2, 10 samples). Nick's live
+  lab: 64/64 SmartThings flips confirmed, 0 retries, p50 1.89 s, p95 2.18 s, max 2.58 s, ack 0.31 s. The upper
+  bound stays the measured max because landing deadlines guard rule #1; decider.switch_cost.hdmi_flip
+  (half-step of median + settle) is unchanged at its shipped value. The night lab's SmartThings TV draws from
+  the same quantiles. Also STK-05 (no flag: a stale or paused standby was never a usable one): media_session must
+  read active and speed>0, and verify_standby re-tunes a paused / stale hidden stick at once.
 - 2026-11-04 3:30 PM (lane 2, Nick's crunch_now decision): **new key `decider.entry.possession_start` ships
   `off`** (off | crunch | all). Why: on dev with tune jitter (3 seeds) `crunch` is identical to the candidate's
   `wait` (which already rewinds to the last dead ball when one is in reach) and `all` costs NBA big live

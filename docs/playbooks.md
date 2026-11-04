@@ -13,7 +13,7 @@ and the PR shows its North Star line and RAM/CPU cost.
   A LOCK IN beats everything except rule #1 and safety.
 - Each entry is a pure function of the live state plus a small table (no model call on the Mac
   beyond the Reflex), costs <1 ms to check, and writes a reason string (`playbook=<id>`) into the
-  decision record so 👍/👎 and the End Planner can audit it.
+  decision record so the End Planner and the Teacher's automated review can audit it (never Nick's taps: the Noggin is self-taught).
 - Flag OFF until its test passes on seeded nights; one flag per family (`playbooks.<family>.enabled`).
 - **Night lab:** extend `redzone/lab/night/faults.py` KINDS (today: stick_drop, stick_wedge,
   still_watching, feed_outage, flip_ignored, api_down, clock_skew) with one fault/scenario per entry.
@@ -48,7 +48,9 @@ crunch value, P2 = robustness, P3 = polish.
 | STK-01 | visible stick drops (adb) | reconnect; if > 10 s, flip TV to hidden stick on current game | one-stick mode (STK-05) | stick_drop host=visible | recovery | ③ | done (e2e night two_stick_recovers) |
 | STK-02 | hidden stick drops | reconnect; meanwhile no pre-tune, flips become tune-in-place at dead balls | one-stick mode | stick_drop host=hidden | recovery | ③ | done (e2e night two_stick_recovers) |
 | STK-03 | stick wedged (adb up, app frozen) | force-stop app, relaunch, re-tune | reboot stick via adb | stick_wedge | recovery | ③ | done (e2e night wedged_stick_reconnected) |
+| STK-05 | hidden stick PAUSED (media_session state paused, or speed 0, or active=false), e.g. after a CEC flip | resume it, re-sync its delay estimate, then allow the flip | skip this flip; re-tune at the next dead ball | new `stick_paused` fault | flip_playing_3s, delay_err_p95 | ③ | new (live lab Nov 4) |
 | STK-04 | "Still watching?" prompt | dismiss on the hidden stick at once, visible stick at the next dead ball | relaunch app | still_watching (seed 9 miss) | recovery | ④ | partial (#64) |
+| STK-05 | hidden stick PAUSED off screen (HDMI-CEC pauses the stick a flip leaves; live lab Nov 4) or a stale state=3 PLAYING with active=false | media_session must read active + speed>0; verify_standby (every 15 s) drops it and re-tunes at the live edge at once (no preload gap) | at the flip: SAFE-08 skips it | stick_paused (mode stale / pause) | recovery, flip_playing_3s | ③ | done (tests/test_hot_standby.py, tests/test_night_playbook_faults.py) |
 | TV-01 | SmartThings flip ignored | retry once; verify by input readback | LAN WebSocket KEY_HDMI fast path; else stay on current | flip_ignored, tv_input_ignored | switch_p95, recovery | ③ | partial |
 | TV-02 | SmartThings API down | LAN WebSocket path | CEC via the stick; else one-stick mode | api_down, st_down (faults:tv) | recovery | ③ | exists (HOME fallback; tested) |
 | MAC-01 | Mac about to sleep | caffeinate while games are live; persist state | on wake: restore state, re-verify sticks and TV input | new `mac_sleep` fault | recovery | ④ | partial (wake.py) |
@@ -123,9 +125,9 @@ generalize them; until then each is a named rule, tested on replayed nights.
 
 | id | trigger | action | fallback | test | line | lane | status |
 |---|---|---|---|---|---|---|---|
-| TASTE-01 | Nick overrides a pick | log it; learn (idea #7) | – | replay with overrides | right_game | ① | new |
-| TASTE-02 | 👎 on a switch | lower that reason's weight for the night | – | replay | right_game | ① | new |
-| TASTE-03 | Nick watches a game > 10 min after a GO NOW | raise its priority for the night | – | replay | right_game | ① | new |
+| ~~TASTE-01~~ | Nick overrides a pick | **dropped** (Nick, Nov 4 10:55 AM: no training signal from Nick) | – | – | – | – | dropped |
+| ~~TASTE-02~~ | 👎 on a switch | **dropped** (Nick, Nov 4 10:55 AM: no training signal from Nick) | – | – | – | – | dropped |
+| ~~TASTE-03~~ | Nick watches a game > 10 min after a GO NOW | **dropped** (Nick, Nov 4 10:55 AM: no training signal from Nick) | – | – | – | – | dropped |
 | SLATE-01 | night starts | pull the cloud night plan; warm up lags | local plan | startup fixture | startup time | ④ | new (ideas #9, #14) |
 | SLATE-02 | night ends (last game final) | upload logs; stop polling; let the Mac cool | – | fixture | – | ④ | partial |
 

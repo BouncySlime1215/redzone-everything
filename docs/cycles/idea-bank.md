@@ -26,7 +26,7 @@ Lanes: ① Noggin training, ② Noggin logic/sync, ③ performance + controls, �
 | 4 | Millions of simulated nights from 20 yrs of pbp for offline self-improvement / RL | ① | `oracle_gap`, every candidate line on locked | 0 (offline only; the result ships as a #2 PICK update) | GH Actions / Kaggle | cycle 04+ |
 | 5 | Sync truth from the sticks (in progress: sync stack, break anchors) | ② | `delay_err_p95` ≤2 s, `flip_playing_3s` ≥99% | ≤20 MB, <1 ms/tick | none | in flight |
 | 6 | Live-odds swings as a crowd "big moment coming" signal (free sources only, no paid feeds) | ① feature, ④ source | `big_live_*` (+ in candidate), Predict PR-AUC | one poll/30 s, ≤5 MB | backtest on archived odds if a free archive exists | cycle 03 research, 04 build |
-| 7 | Learn Nick's taste from overrides, lock-ins and 👍/👎 | ① (needs lane ⑤ records + lane ③ commands) | `right_game` ≥95% | ≤5 MB table | nightly cloud fit | cycle 04+ (after records exist) |
+| 7 | ~~Learn Nick's taste from overrides, lock-ins and 👍/👎~~ **dropped** (Nick, Nov 4 10:55 AM: the Noggin is fully self-taught; his buttons are controls, never labels). Replaced by `pct_of_oracle` as the 'right game' measure | – | – | – | – | dropped |
 | 8 | Model ensemble + abstain: disagreement means hold | ① | `mid_play` 0, `landings_dead` ≥95% | ≤3 small models, <5 ms total | train offline | cycle 03 |
 
 ## Mac efficiency

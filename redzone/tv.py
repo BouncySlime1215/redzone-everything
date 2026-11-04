@@ -153,13 +153,24 @@ class SmartThingsAuth:
         self.last_kind = ""      # why the last token call failed: "" | "auth" (refused) | "down" (5xx/network/429)
         self._lock = asyncio.Lock()
         self._d: dict | None = None
+        self._stamp: tuple | None = None   # (mtime_ns, size) of the file self._d came from
 
     def load(self) -> dict:
-        if self._d is None:
+        """The saved tokens, re-read whenever the file changed on disk. Another process (tv_setup.py,
+        tv_local_probe.py) may refresh, and SmartThings rotates the refresh token on every refresh:
+        a copy cached here would then hold a dead refresh token and the app would lose the TV at
+        its next renewal."""
+        try:
+            st = self.path.stat()
+            stamp = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            stamp = None
+        if self._d is None or stamp != self._stamp:
             try:
                 self._d = json.loads(self.path.read_text())
             except (OSError, ValueError):
-                self._d = {}
+                self._d = self._d if self._d is not None else {}   # a torn read keeps the last good copy
+            self._stamp = stamp
         return self._d
 
     @property
@@ -176,6 +187,11 @@ class SmartThingsAuth:
         d = {**d, "saved": self.clock()}
         _write_private(self.path, d)
         self._d = d
+        try:
+            st = self.path.stat()
+            self._stamp = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            self._stamp = None
 
     def _basic(self, d: dict) -> str:
         return "Basic " + base64.b64encode(f"{d['client_id']}:{d.get('client_secret', '')}".encode()).decode()

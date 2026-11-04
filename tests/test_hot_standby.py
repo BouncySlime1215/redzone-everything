@@ -58,7 +58,10 @@ class FakeStick(Stick):
         return RunResult(True, "", 0.01)
 
     async def playback(self, package=None):
-        return {"state": self.playing, "pkg": package, "position": 0, "updated": 0}
+        r = {"state": self.playing, "pkg": package, "position": 0, "updated": 0}
+        if getattr(self, "active", None) is not None:
+            r["active"] = self.active
+        return r
 
 
 class FakeTuner:
@@ -170,6 +173,31 @@ async def test_verify_drops_a_flip_back_that_stopped_playing(two, monkeypatch):
     c._verified_at = 0
     await c.verify_standby()
     assert c.standby == (None, None)
+
+
+@pytest.mark.playbook("STK-05")
+@pytest.mark.parametrize("how", ["paused", "stale"])
+async def test_a_paused_or_stale_hidden_stick_is_resynced_before_any_flip(two, monkeypatch, how, caplog):
+    """Live lab, Nov 4: with HDMI-CEC on, a flip paused the stick it left and it never resumed; Fire OS
+    then reads a stale state=3 PLAYING with active=false. Either way it's dropped and re-tuned at once."""
+    monkeypatch.setattr(ctl, "REFRESH_POLL_S", 0.01)
+    c, tuner = two
+    c.on_target = "youtubetv:fox"
+    await c.execute("youtubetv:espn", may_cut=lambda: True)
+    await refreshed(c)
+    assert c.standby == ("youtubetv:fox", None) and c.hidden_ready
+    if how == "paused":
+        c.hidden.playing = "paused"
+    else:
+        c.hidden.active = False                          # still "playing", but the session is inactive
+    c._verified_at = 0
+    with caplog.at_level("INFO"):
+        await c.verify_standby()
+    assert c.standby == (None, None) and "playbook=STK-05" in caplog.text
+    c.hidden.playing, c.hidden.active = "playing", None
+    assert c.preload("youtubetv:fox")                   # no preload gap: the re-sync starts now
+    await asyncio.wait_for(c._preload_task, 2)
+    assert c.standby == ("youtubetv:fox", None) and c.hidden_ready
 
 
 # --- preloads vs switches ---------------------------------------------------------------------

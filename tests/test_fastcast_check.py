@@ -132,3 +132,23 @@ def test_script_exit_codes(tmp_path, capsys):
     assert m.main(["--data", str(tmp_path), "--day", "2026-11-03"]) == 2
     (tmp_path / "fastcast_check.json").write_text(json.dumps({"result": "pass"}))
     assert m.main(["--data", str(tmp_path), "--live"]) == 0 and "fastcast\": true" in capsys.readouterr().out
+
+
+def test_hours_without_live_games_dont_use_up_the_shadow_budget():
+    # [fastcast mac] a restart at midnight used to burn the 4 h on an empty slate ("0 plays over 0 games")
+    chk = FastcastCheck(started=T)
+    for k in range(0, int(fcc.MAX_SHADOW_S) + 3600, 60):
+        chk.watching(False, T + k)
+    g = chk.grade(T + fcc.MAX_SHADOW_S + 3600)
+    assert g["result"] == "pending" and g["watched_s"] == 0
+    for k in range(0, int(fcc.MAX_SHADOW_S) + 120, 60):       # then 4 h of live games
+        chk.watching(True, T + 20000 + k)
+    assert chk.grade(T + 20000 + fcc.MAX_SHADOW_S + 120)["result"] == "stopped"
+
+
+def test_the_file_carries_the_client_status(tmp_path):
+    chk = FastcastCheck(path=tmp_path / "fastcast_check.json", started=T)
+    chk.client = {"connected": False, "task": "running", "wanted": 2, "last_error": "HTTP 403"}
+    chk.tick(T + 60)
+    import json
+    assert json.loads((tmp_path / "fastcast_check.json").read_text())["client"]["last_error"] == "HTTP 403"

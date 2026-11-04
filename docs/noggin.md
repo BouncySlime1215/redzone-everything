@@ -22,6 +22,39 @@ three layers, one training pipeline, one scoreboard (the North Star, `docs/north
                             └──────────────────────────┘
 ```
 
+
+## 0. Self-taught rule (Nick, Nov 4 10:55 AM, hard)
+
+The Noggin is **fully self-taught. No training signal comes from Nick.** His 👍/👎, overrides, lock-ins and
+taps are never labels, features, suggestions or grades for any layer (Reflex, Pick and the crunch
+possession policy, Priority L2, the Mind, the Teacher's review, E23). His buttons are **controls only**
+(lock in, go now, pause, skip). The only allowed training and grading sources:
+1. the hindsight oracle on archived nights (DP-optimal schedules, `redzone/lab/oracle.py`);
+2. self-play and simulation over replayed and synthetic nights;
+3. the Teacher's automated nightly review;
+4. objective outcomes from play-by-play (big play happened, restart time, dead air) and the stick/sync
+   telemetry the app logs itself.
+
+"Right game" is measured as `pct_of_oracle` in northstar.py, never as agreement with Nick.
+
+## Replay window (Nick, Nov 4 11:00 AM): 2-3 minutes, never 10
+
+Nick follows several games at once and jumps for key moments as they happen; any key moment he missed is
+shown within **2-3 minutes** (the next dead moment). The reel/replay queue (T2/T3/T4 collision replays)
+targets the very next dead window. A replay that can't air within 3 min is skipped or folded into a later
+montage. Seeing the moment LIVE (clairvoyance + possession-start entry) is the main path; replay is the
+fallback. North Star: `big_seen_3min` >= 99% (gate) and `big_seen_2min` (stretch), dev and locked.
+
+## Crunch entry (Nick, Nov 4 10:45 AM): possession-start entry, AI-decided when
+
+Replaces both `crunch_now: wait` and `rewind`. With the time-shift buffer, the hidden stick cues to the
+target game's **last dead ball** (inbound / start of the current possession) before the flip, so entry is
+never mid-play, never waits for the next break, and the whole possession is seen. The **when** (jump /
+stay / replay-later, per possession) is a learned contextual policy: Pick trained by imitating the
+hindsight oracle (NBA nights first), plus Mind stakes features, under the self-taught rule. Collisions:
+one game live, the other queued for its next dead moment. North Star rows: possession-start entries %,
+and NBA big live and crunch live with the policy on, graded on locked nights.
+
 ## 1. The three layers
 
 | Layer | Runs | What it does | Absorbs |
@@ -90,7 +123,7 @@ for `q_lo(remaining | league, kind, e, rules)` instead of a constant. Behind `no
 | **Reflex fit** | Kaggle CPU / Actions | factory moments (train nights only) | LightGBM per league and head → exported to numpy `.npz` (Brain v3 pattern) + conformal offsets from the calibration nights |
 | **Teacher** | Kaggle GPU | moments, replayed nights | worded labels, night reviews, preference pairs |
 | **Mind fit** | Kaggle GPU | teacher rows (D19 recipe: LoRA r16-32, fp16 base + fp32 LoRA) | MLX adapter for the 1.7B student |
-| **Nightly self-review** | Mac records the night, cloud/Kaggle labels it at 5 AM | decision records (E23), 👍/👎 | new labels for both layers |
+| **Nightly self-review** | Mac records the night, cloud/Kaggle labels it at 5 AM | decision records (E23) + objective pbp outcomes + stick/sync telemetry, graded against the hindsight oracle (never Nick's taps) | new labels for both layers |
 
 **Splits (no-overfitting rule):** by whole nights (5 AM ET boundary), time-ordered: train = oldest,
 calibration = the next block, test = newest (`redzone/lab/splits.py`). The scorecard archive
@@ -156,7 +189,7 @@ Four layers, applied in order:
 | Layer | Source | What it holds | Can it be overridden? |
 |---|---|---|---|
 | **L1 Nick's hard rules** | config only (`teams`, `core.league_priority`, banned apps) | your-team (WSH: Commanders/Wizards/Capitals/Nationals; UNC) big plays 100 %; crunch time first; league order NFL > CFB > NBA > CBB > NHL > MLB; never Peacock | **never**, by AI or by any other layer |
-| **L2 Nick's preferences** | phone-page settings (`noggin.priority.prefs`) | bets weight, rivalries, NHL PP/OT boost, reels on/off, switch frequency; each clamped to a range | only by Nick; learned 👍/👎 suggestions are shown to him, never auto-applied (`suggest_from_feedback` returns `applied: false`) |
+| **L2 Nick's preferences** | phone-page settings (`noggin.priority.prefs`) | bets weight, rivalries, NHL PP/OT boost, reels on/off, switch frequency; each clamped to a range | only by Nick, by hand; nothing is learned or suggested from his taps (self-taught rule) |
 | **L3 Mind read** | the Mind, every 30-60 s | narrative and stakes numbers in [-1, 1]: comeback brewing, star heating up, playoff race, upset alert, bet decisive next | bounded: the total is capped at ±15 points and expires after its TTL (90 s); it can reorder games only inside the same L1 tier |
 | **L4 Reflex live value** | the Reflex, every tick | red-zone drive, close-late, power play, win-prob swing, restart countdown | it is the base score |
 
@@ -174,8 +207,9 @@ broken by game id. The night lab replays it and gets the same order and reasons.
 switch trace.
 
 **North Star rows** (sent to the harness thread): your-team big plays 100 %, crunch live ≥ 95 %,
-league order respected (no lower-league non-crunch over a higher-league crunch), and "right game"
-agreement with Nick's choices once 👍/👎 data exists.
+league order respected (no lower-league non-crunch over a higher-league crunch), and "right game" as
+`pct_of_oracle`: the share of the hindsight oracle's value achieved on the same nights (never agreement
+with Nick's taps).
 
 **Wiring (next).** The module is not yet on the live path. It goes in behind `noggin.priority.enabled`
 (OFF), first in shadow next to today's `score.league_weight` / crunch priority in the decider, and is

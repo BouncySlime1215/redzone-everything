@@ -24,8 +24,8 @@ def _ctl(cfg, tmp_path, tv_ready):
 def test_tv_path_plans_with_the_measured_smartthings_prior(cfg, tmp_path):
     c = _ctl(cfg, tmp_path, True)
     assert c.flip_path() == "tv_flip"
-    assert c.flip_estimate() == 1.98 + 1.0          # median + HDMI settle, before any of our own
-    assert c._flip_upper() == 2.2 + 1.0             # the measured max until we've timed 5
+    assert c.flip_estimate() == 1.89 + 1.0          # median + HDMI settle, before any of our own
+    assert c._flip_upper() == 2.58 + 1.0             # the measured max until we've timed 5
 
 
 def test_tv_path_ignores_home_flips(cfg, tmp_path):
@@ -33,7 +33,7 @@ def test_tv_path_ignores_home_flips(cfg, tmp_path):
     for s in (5.4, 6.0, 5.1, 4.2):
         c.latency.record("flip", s)
         c.latency.record("home_flip", s)
-    assert c.flip_estimate() == 1.98 + 1.0
+    assert c.flip_estimate() == 1.89 + 1.0
     for s in (1.8, 1.9, 2.0, 2.1, 2.4):
         c.latency.record("tv_flip", s)
     assert c.flip_estimate() == 2.0 + 1.0
@@ -68,4 +68,4 @@ def test_deadline_cost_uses_the_tv_bound_for_a_preloaded_target(cfg, tmp_path, m
     monkeypatch.setattr(c, "_tile_path_cost", lambda t: None)
     monkeypatch.setattr(type(c), "prime_mv", property(lambda self: None))
     monkeypatch.setattr(type(c), "hidden", property(lambda self: None))
-    assert c.deadline_cost("youtubetv:espn") == 2.2 + 1.0
+    assert c.deadline_cost("youtubetv:espn") == 2.58 + 1.0

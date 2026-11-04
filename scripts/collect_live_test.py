@@ -52,7 +52,7 @@ def _ts(row: dict) -> float | None:
     return None
 
 
-def copy_rows(srcs: list[Path], dst: Path, since: float) -> list[dict]:
+def copy_rows(srcs: list[Path], dst: Path, since: float, until: float | None = None) -> list[dict]:
     rows, out = [], []
     for p in srcs:
         if not p.exists():
@@ -64,7 +64,7 @@ def copy_rows(srcs: list[Path], dst: Path, since: float) -> list[dict]:
                 except json.JSONDecodeError:
                     continue
                 t = _ts(r) if isinstance(r, dict) else None
-                if t is None or t >= since:
+                if t is None or (t >= since and (until is None or t < until)):
                     rows.append(r)
                     out.append(redact(line.rstrip("\n")))
     if out:
@@ -79,19 +79,74 @@ def p95(xs: list[float]) -> float | None:
     return round(s[min(len(s) - 1, int(0.95 * len(s) + 0.999999) - 1)], 2)
 
 
+_SPAN_KEYS = {"queued_s": "queued", "safe_wait_s": "safe_wait", "tune_s": "tune", "flip_s": "flip",
+              "resume_s": "resume", "dead_air_s": "dead_air", "to_picture_s": "to_picture"}
+
+
+def switches(rows: list[dict]) -> list[dict]:
+    """data/traces.jsonl holds one TraceEvent per line (switch_id, stage, at, component, detail: redzone/
+    trace.py). Fold each switch's events into one flat record: kind, decided_at, cut_at, picture_at,
+    spans. Rows already flat (decided_at at top level) pass through."""
+    out, by = [], {}
+    for r in rows:
+        if "switch_id" not in r or "stage" not in r:
+            out.append(r)
+            continue
+        sw = by.get(r["switch_id"])
+        if sw is None:
+            sw = by[r["switch_id"]] = {"id": r["switch_id"], "spans": {}}
+            out.append(sw)
+        d, at = r.get("detail") or {}, r.get("at")
+        if r["stage"] == "decided":
+            sw.update(kind=d.get("kind"), action=d.get("action"), target=d.get("target"), decided_at=at)
+        elif r["stage"] == "picture":
+            sw["picture_at"] = at
+            if isinstance(d.get("dead_air_s"), (int, float)) and isinstance(at, (int, float)):
+                sw["cut_at"] = at - float(d["dead_air_s"])
+        elif r["stage"] in ("aborted", "failed"):
+            sw["failed"] = r["stage"]
+        for k, name in _SPAN_KEYS.items():
+            if isinstance(d.get(k), (int, float)):
+                sw["spans"][name] = float(d[k])
+    return out
+
+
 def summarize(got: dict[str, list[dict]]) -> dict:
     tv = [float(r["total_s"]) for r in got["tv_input.jsonl"]
           if r.get("verified") and isinstance(r.get("total_s"), (int, float))]
     cuts = got["supervisor_cuts.jsonl"]
-    tr = got["traces.jsonl"]
+    tr = switches(got["traces.jsonl"])
     pics = [(r.get("picture_at") or 0) - (r.get("cut_at") or 0) for r in tr if r.get("picture_at") and r.get("cut_at")]
     # Lane 3's press_to_tv_p95: a phone press (decided kind=user) -> the picture on the TV.
-    user = [r for r in tr if r.get("kind") == "user"]
+    # (pause / lock / skip are user decisions too, but not switches: only a switch can reach a picture.)
+    user = [r for r in tr if r.get("kind") == "user" and r.get("action") in (None, "switch")]
     press = [float(r["picture_at"]) - float(r["decided_at"]) for r in user
              if isinstance(r.get("picture_at"), (int, float)) and isinstance(r.get("decided_at"), (int, float))]
+    # [live nights] Where each landing came up in its dead ball (supervisor grade_cut offsets) and how
+    # far each sync anchor was from the delay we predicted, per stick (decider/sync.py err, stick).
+    after = sorted(float(r["enter_after_dead_s"]) for r in cuts if isinstance(r.get("enter_after_dead_s"), (int, float)))
+    before = sorted(float(r["enter_before_play_s"]) for r in cuts if isinstance(r.get("enter_before_play_s"), (int, float)))
+    anchors: dict[str, list[float]] = {}
+    for r in got.get("sync.jsonl", []):
+        if r.get("kind") in ("flip", "score", "clock", "tap") and isinstance(r.get("err"), (int, float)):
+            anchors.setdefault(str(r.get("stick") or "unknown"), []).append(abs(float(r["err"])))
+    # Where a press's time goes, app side vs the TV (trace.build spans): decide, queued (the lock),
+    # tune, safe_wait (a dead ball), flip (SmartThings), resume. p50 / p95 per span, user presses only.
+    spans: dict[str, list[float]] = {}
+    for r in user:
+        for k, v in (r.get("spans") or {}).items():
+            if isinstance(v, (int, float)) and k not in ("total",):
+                spans.setdefault(k, []).append(float(v))
     return {
+        "press_spans": {k: {"n": len(v), "p50_s": round(sorted(v)[len(v) // 2], 2), "p95_s": p95(v)}
+                        for k, v in sorted(spans.items())},
+        "landings": {"n": len(after), "after_dead_p50_s": after[len(after) // 2] if after else None,
+                     "before_play_min_s": before[0] if before else None,
+                     "before_play_p50_s": before[len(before) // 2] if before else None},
+        "sync_anchor_err": {k: {"n": len(v), "p50_s": sorted(v)[len(v) // 2], "p95_s": p95(v)}
+                            for k, v in sorted(anchors.items())},
         "rows": {k: len(v) for k, v in got.items()},
-        "switch_samples": len(tv), "switch_p95_s": p95(tv), "switch_max_s": max(tv) if tv else None,
+        "switch_samples": len(tv), "switch_p95_s": p95(tv), "switch_max_s": round(max(tv), 2) if tv else None,
         "tv_unverified": sum(1 for r in got["tv_input.jsonl"] if not r.get("verified")),
         "cuts_graded": len(cuts), "entries_mid_play": sum(1 for r in cuts if r.get("enter") == "play"),
         "leaves_mid_play": sum(1 for r in cuts if r.get("leave") == "play"),
@@ -100,6 +155,24 @@ def summarize(got: dict[str, list[dict]]) -> dict:
         "press_samples": len(press), "press_to_tv_p95_s": p95(press),
         "press_no_picture": len(user) - len(press),
     }
+
+
+def collect(data: Path, out: Path, since: float, until: float | None = None) -> dict:
+    """Collect [since, until) into `out` and write summary.json / summary.md; returns the summary."""
+    out.mkdir(parents=True, exist_ok=True)
+    day0 = datetime.fromtimestamp(since).date()
+    end = datetime.fromtimestamp(until).date() if until else datetime.now().date()
+    days = [(day0 + timedelta(days=i)).isoformat() for i in range((end - day0).days + 1)]
+    srcs = {"sync_probe.jsonl": [data / "recordings" / d / "sync_probe.jsonl" for d in days],
+            "tv_input.jsonl": [data / "tv_input.jsonl"], "supervisor_cuts.jsonl": [data / "supervisor_cuts.jsonl"],
+            "traces.jsonl": [data / "traces.jsonl"], "sync.jsonl": [data / "sync.jsonl"]}
+    got = {k: copy_rows(v, out / k, since, until) for k, v in srcs.items()}
+    s = summarize(got)
+    s["since"] = datetime.fromtimestamp(since).isoformat(timespec="seconds")
+    if until:
+        s["until"] = datetime.fromtimestamp(until).isoformat(timespec="seconds")
+    (out / "summary.json").write_text(json.dumps(s, indent=1))
+    return s
 
 
 def main(argv=None) -> int:
@@ -124,6 +197,7 @@ def main(argv=None) -> int:
         "tv_input.jsonl": copy_rows([a.data / "tv_input.jsonl"], a.out / "tv_input.jsonl", since),
         "supervisor_cuts.jsonl": copy_rows([a.data / "supervisor_cuts.jsonl"], a.out / "supervisor_cuts.jsonl", since),
         "traces.jsonl": copy_rows([a.data / "traces.jsonl"], a.out / "traces.jsonl", since),
+        "sync.jsonl": copy_rows([a.data / "sync.jsonl"], a.out / "sync.jsonl", since),
     }
     s = summarize(got)
     s["since"] = datetime.fromtimestamp(since).isoformat(timespec="seconds")
@@ -135,6 +209,12 @@ def main(argv=None) -> int:
           f"- Picture within 3 s: {s['picture_within_3s']}; cut -> picture p95 {s['picture_p95_s']} s",
           f"- Phone presses (decided kind=user -> picture): {s['press_samples']}, press-to-TV p95 "
           f"{s['press_to_tv_p95_s']} s, {s['press_no_picture']} never reached a picture",
+          "- Press spans (p50 / p95 s): " + (", ".join(f"{k} {v['p50_s']}/{v['p95_s']}"
+                                                      for k, v in s["press_spans"].items()) or "none"),
+          f"- Landings (dead ball): {s['landings']['n']}, came up {s['landings']['after_dead_p50_s']} s into it "
+          f"(p50), {s['landings']['before_play_p50_s']} s before play resumed (p50, min {s['landings']['before_play_min_s']})",
+          "- Sync anchor error by stick: " + (", ".join(f"{k} n={v['n']} p50 {v['p50_s']} s p95 {v['p95_s']} s"
+                                                       for k, v in s["sync_anchor_err"].items()) or "none"),
           f"- Rows: {', '.join(f'{k} {v}' for k, v in s['rows'].items())}", ""]
     (a.out / "summary.md").write_text("\n".join(md))
     print("\n".join(md))

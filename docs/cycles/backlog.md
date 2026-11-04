@@ -22,7 +22,7 @@ Sources: [idea-bank.md](idea-bank.md) (#1-#20), [playbooks.md](../playbooks.md) 
 8. Ensemble + abstain (idea #8, SAFE-04).
 9. Live-odds signal from free sources: research, then feature (idea #6, GAME-20).
 10. Simulated nights from 20 years of pbp for offline self-improvement (idea #4).
-11. Taste model from overrides, lock-ins and 👍/👎 (idea #7, TASTE-01..03), once records exist.
+11. ~~Taste model from Nick's taps~~ dropped (self-taught rule, Nov 4 10:55 AM).
 12. Mind (Kaggle, Nick launches): V6 full-set rounds, Teacher nightly review of decision records.
 
 ## ② Noggin logic / sync (always on)
@@ -72,7 +72,7 @@ rehearsal (#94). Next, all stick-free, small PRs, flag OFF, no change to switchi
    "switching… / on TV" confirmation, "not delivered, retrying" and stale-connection banners. Uses
    lane ③'s command API (id/ack/status) only; lane ③ owns the command path.
 2. Decision-record export for the Teacher's nightly review: one JSONL per night (record, reason,
-   playbook id, 👍/👎, missed), schema documented, ready for lane ① / Kaggle. No upload code.
+   playbook id, objective outcome from pbp; no 👍/👎 or other Nick taps, self-taught rule), schema documented, ready for lane ① / Kaggle. No upload code.
 3. Replay viewer overlays: the hindsight-oracle schedule next to what we did (when lane ①'s oracle
    lands; until then, a stub that reads a schedule file) and the missed-big-play markers.
 4. North Star trend page: render docs/northstar-history.jsonl (live vs candidate per line) on the phone

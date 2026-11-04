@@ -64,15 +64,21 @@ ORACLE_LEAGUES = ("nfl", "nba", "nhl")   # NFL: the app re-graded by sportsgrade
 # normalisation: the size of a "whole" gap in this line's unit)
 METRICS = [
     ("mid_play", "Mid-play cuts + entries (per 100 landings)", "0", -1, 0.0, 5.0),
-    ("landings_dead", "Landings in dead time", ">= 95%", 1, 95.0, 100.0),
+    ("landings_dead", "Landings in dead time", ">= 98%", 1, 98.0, 100.0),
     ("possession_start", "Entries at a possession start (dead ball, no play missed)", ">= 95%", 1, 95.0, 100.0),
-    *[(f"big_live_{lg}", f"Big plays seen live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
-    ("your_team_big", "Your-team big plays seen (live or within 10 min)", "100%", 1, 100.0, 100.0),
+    # Nick, Nov 4 10:55 AM: gates are honest against the hindsight ceiling: >= 95% OF ORACLE VALUE where the
+    # oracle ran (big_live_nfl/nba/nhl); leagues without an oracle keep the absolute 95% bar.
+    *[(f"big_live_{lg}", f"Big plays seen live, {lg.upper()}", ">= 95% of oracle" if lg in ("nfl", "nba", "nhl") else ">= 95%",
+       1, 95.0, 100.0) for lg in LEAGUES],
+    ("your_team_big", "Your-team big plays seen (live or within 3 min)", "100%", 1, 100.0, 100.0),
     *[(f"crunch_live_{lg}", f"Crunch live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
     ("your_team_crunch", "Your-team crunch live", "100%", 1, 100.0, 100.0),
     ("league_order", "League order respected (no lower-league non-crunch over a higher-league crunch)", "100%", 1, 100.0, 100.0),
-    ("right_game", "Right game: agreement with Nick's 👍/👎", ">= 95%", 1, 95.0, 100.0),
-    ("big_seen_10min", "Big plays live or replayed within 10 min", ">= 99%", 1, 99.0, 100.0),
+    # Nick, Nov 4 10:55 AM: the Noggin is fully self-taught, so no line is graded by Nick's taps.
+    ("pct_of_oracle", "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)", ">= 95%", 1, 95.0, 100.0),
+    # Nick, Nov 4 11:00 AM: a missed key moment must air within 2-3 min (the next dead moment), never 10.
+    ("big_seen_3min", "Big plays live or replayed within 3 min", ">= 99%", 1, 99.0, 100.0),
+    ("big_seen_2min", "Big plays live or replayed within 2 min (stretch)", ">= 99%", 1, 99.0, 100.0),
     ("switch_p95", "Switch time p95 (SmartThings input change)", "<= 3 s", -1, 3.0, 3.0),
     ("flips_settled", "Flips PLAYING within 3 s", ">= 99%", 1, 99.0, 100.0),
     ("delay_err_p95", "Per-stick delay error p95", "<= 2 s", -1, 2.0, 2.0),
@@ -85,10 +91,11 @@ METRICS = [
       for m, lbl in (("big_live", "big plays live"), ("crunch_live", "crunch live"), ("dead_air", "dead air"))
       for lg in ORACLE_LEAGUES],
     # [oracle] the app as a share of the hindsight ceiling, worst of big live / crunch live / live air
-    *[(f"pct_of_oracle_{lg}", f"% of oracle, {lg.upper()} (worst of big live, crunch live, live air)", ">= 90%", 1,
-       90.0, 100.0) for lg in ORACLE_LEAGUES],
+    *[(f"pct_of_oracle_{lg}", f"% of oracle, {lg.upper()} (worst of big live, crunch live, live air)", ">= 95%", 1,
+       95.0, 100.0) for lg in ORACLE_LEAGUES],
     *[(f"ceiling_{m}_{lg}", f"Ceiling: {lbl}, {lg.upper()} (hindsight, live-only, 0 mid-play)", "info", d, None, None)
-      for m, lbl, d in (("dead_air", "dead air", -1), ("crunch_live", "crunch live", 1)) for lg in ORACLE_LEAGUES],
+      for m, lbl, d in (("big_live", "big plays live", 1), ("dead_air", "dead air", -1), ("crunch_live", "crunch live", 1))
+      for lg in ORACLE_LEAGUES],
 ]
 META = {k: dict(label=lb, target=t, dir=d, bar=b, scale=s) for k, lb, t, d, b, s in METRICS}
 
@@ -214,44 +221,8 @@ def _boot_ratio(rows: list[tuple[float, float]], draws: int = rg.BOOT_DRAWS, see
     return point, rs[int(0.025 * draws)], rs[min(draws - 1, int(0.975 * draws))]
 
 
-def load_taps(db: Path | None) -> list[dict] | None:
-    """Phone v2 decision records (Store.taps()) from the live service's redzone.db; None when there is
-    no database here (CI, a cloud checkout). Only reads: a missing file is never created."""
-    if db is None or not Path(db).exists():
-        return None
-    try:
-        sys.path.insert(0, str(ROOT))
-        from redzone.store import Store
-        return Store(Path(db)).taps()
-    except Exception as e:   # an old schema, a locked file: the line stays PENDING, the table still renders
-        print(f"right_game: couldn't read {db}: {type(e).__name__}: {e}", file=sys.stderr)
-        return None
-
-
-def right_game_row(taps: list[dict] | None) -> dict:
-    """Agreement with Nick's taps: 👍 counts as right, 👎 and "I missed that" as wrong, a cleared tap
-    not at all. Rows are nights (US Eastern), so PASS needs the release gate's nights and decisions."""
-    if not taps:
-        return _row("right_game", None, None, None, PENDING,
-                    "no 👍/👎 decision records yet (E23); PENDING until Nick's taps exist")
-    from zoneinfo import ZoneInfo
-    et = ZoneInfo("America/New_York")
-    per: dict[str, list[int]] = {}
-    for t in taps:
-        if t.get("tap") not in ("up", "down", "missed"):
-            continue
-        night = dt.datetime.fromtimestamp(float(t["ts"]) - 6 * 3600, et).strftime("%Y%m%d")   # 1 AM counts as the night before
-        g = per.setdefault(night, [0, 0])
-        g[0] += t["tap"] == "up"
-        g[1] += 1
-    n_up = sum(g for g, _ in per.values())
-    n = sum(x for _, x in per.values())
-    return _rate("right_game", [tuple(v) for v in per.values()], 95.0,
-                 note=f"; {n_up}/{n} taps 👍 over {len(per)} nights (Store.taps)")
-
-
 def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] | None = None,
-          lag_profile: dict | None = None, controls: dict | None = None, taps: list[dict] | None = None) -> list[dict]:
+          lag_profile: dict | None = None, controls: dict | None = None) -> list[dict]:
     rows: list[dict] = []
     per = {lg: _per(cards, lg) for lg in LEAGUES}
     broken = [lg for lg in LEAGUES if not rg._m(cards.get(lg, {}))]
@@ -281,7 +252,7 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
 
     # 2. landings (both ends of every switch) in on-screen dead time
     rows.append(_rate("landings_dead", [(int(x.get("landings_dead") or 0), int(x.get("landings") or 0)) for x in every],
-                      95.0, note=note))
+                      98.0, note=note))
     # 2b. [possession start] entries that came up on a dead ball with no play missed (older cards: pending)
     rows.append(_rate("possession_start", [(int(x["possession_starts"]), int(x.get("entries") or 0))
                                            for x in every if "possession_starts" in x], 95.0, note=note))
@@ -289,13 +260,13 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
     for lg in LEAGUES:
         rows.append(_rate(f"big_live_{lg}", [(int(x.get("big_live") or 0), int(x.get("big") or 0)) for x in per[lg]],
                           95.0, note="" if per[lg] else f" ({lg.upper()} scorecard missing)"))
-    # 4. your-team big plays, live or replayed within 10 min where the scorecard grades replay age
-    # (big_seen_10m, the catch-up gate), else live only (older scorecards: NFL's my_big_live)
-    yt = [(int(x["my_big_seen_10m"]), int(x.get("my_big") or 0)) if "my_big_seen_10m" in x
+    # 4. your-team big plays, live or replayed within 3 min where the scorecard grades it (my_big_seen_3m),
+    # else live only (older scorecards: NFL's my_big_live)
+    yt = [(int(x["my_big_seen_3m"]), int(x.get("my_big") or 0)) if "my_big_seen_3m" in x
           else (int(x.get("my_big_live") or 0), int(x.get("my_big") or 0)) for x in every]
     r = _rate("your_team_big", yt, 100.0, note=note)
-    if not all("my_big_seen_10m" in x for x in every):
-        r["detail"] += "; some scorecards don't grade replay age: live only there"
+    if not all("my_big_seen_3m" in x for x in every):
+        r["detail"] += "; some scorecards don't grade the 3-min replay window: live only there"
     rows.append(r)
     # 4b. crunch live per league. Under the league order a lower-priority overlap that gets a replay is
     # not a miss, and that feasible ceiling isn't computed yet: a miss under 95 % reads PENDING (as in
@@ -309,19 +280,20 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
         rows.append(r)
     rows.append(_rate("your_team_crunch", [(int(x.get("my_crunch_live") or 0), int(x.get("my_crunch") or 0))
                                            for x in every], 100.0, note=note))
-    # 4c. Noggin priority lines (docs/noggin.md § Priority): need a mixed-league night grade and Nick's taps
+    # 4c. Noggin priority line (docs/noggin.md § Priority): needs a mixed-league night grade
     rows.append(_row("league_order", None, None, None, PENDING,
                      "needs a mixed-league night graded for overlaps (Noggin Priority module; the per-league "
                      "scorecards can't see a cross-league overlap)"))
-    rows.append(right_game_row(taps))
-    # 5. live or replayed within 10 min. With big_seen_10m (replay age graded) it can PASS; an older
-    # scorecard only has big_seen (a replay of any age), an upper bound that can FAIL but never PASS.
-    graded = bool(every) and all("big_seen_10m" in x for x in every)
-    fld = "big_seen_10m" if graded else "big_seen"
-    sub = ", ".join(f"{lg.upper()} {100.0 * sum(int(x.get(fld) or 0) for x in per[lg]) / max(1, sum(int(x.get('big') or 0) for x in per[lg])):.1f}%"
-                    for lg in LEAGUES if per[lg])
-    rows.append(_rate("big_seen_10min", [(int(x.get(fld) or 0), int(x.get("big") or 0)) for x in every], 99.0,
-                      upper_bound_only=not graded, note=f" [{sub}]" + note))
+    # 5. live or replayed within 3 min (gate) and 2 min (stretch). With the replay age graded
+    # (big_seen_3m / _2m) they can PASS; an older scorecard only has big_seen (a replay of any age), an
+    # upper bound that can FAIL but never PASS.
+    for key, fld_ok in (("big_seen_3min", "big_seen_3m"), ("big_seen_2min", "big_seen_2m")):
+        graded = bool(every) and all(fld_ok in x for x in every)
+        fld = fld_ok if graded else "big_seen"
+        sub = ", ".join(f"{lg.upper()} {100.0 * sum(int(x.get(fld) or 0) for x in per[lg]) / max(1, sum(int(x.get('big') or 0) for x in per[lg])):.1f}%"
+                        for lg in LEAGUES if per[lg])
+        rows.append(_rate(key, [(int(x.get(fld) or 0), int(x.get("big") or 0)) for x in every], 99.0,
+                          upper_bound_only=not graded, note=f" [{sub}]" + note))
     # 6. switch time p95: real TV samples if there are any, else the Nov 3 measurement (too few to prove p95)
     rows.append(switch_row(switch_s or []))
     # 6b. [sync plan, TIMING] flips that reach PLAYING within 3 s: Controller.settle_book {n, ok} as the
@@ -355,6 +327,7 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
         rows.append(_row(f"feed_lag_{lg}", qs.get(50), qs.get(10), qs.get(90), INFO,
                          f"{lag_profile.get('source')} p10-p90 {qs.get(10)}-{qs.get(90)} s, n={p['n']}, {p.get('basis')}{extra}"))
     rows += oracle_rows(cards)
+    apply_oracle_gates(rows)
     return rows
 
 
@@ -377,18 +350,63 @@ def oracle_rows(cards: dict) -> list[dict]:
             out.append(_row(f"oracle_gap_{key}_{lg}", gap, None, None, INFO,
                             f"ceiling {o}% vs app {app}% ({orc[obj].get('switches')} oracle switches, "
                             f"{orc[obj].get('entries_mid_play')} mid-play entries)"))
-            if key in ("dead_air", "crunch_live"):
-                out.append(_row(f"ceiling_{key}_{lg}", o, None, None, INFO, f"app {app}% on the same nights"))
+            out.append(_row(f"ceiling_{key}_{lg}", o, None, None, INFO, f"app {app}% on the same nights"))
             # live air = 100 - dead air, so every share is 'more is better'
             share = ((100 - app) / (100 - o) if key == "dead_air" else (app / o if o else None))
             if share is not None:
                 shares[key] = round(100 * min(1.0, share), 1)
+                out[-1]["share"] = shares[key]          # read by apply_oracle_gates
         if len(shares) == 3:
             worst = min(shares, key=shares.get)
             v = shares[worst]
-            out.append(_row(f"pct_of_oracle_{lg}", v, None, None, PASS if v >= 90.0 else FAIL,
+            out.append(_row(f"pct_of_oracle_{lg}", v, None, None, PASS if v >= 95.0 else FAIL,
                             ", ".join(f"{k} {x}%" for k, x in shares.items()) + f" of the ceiling (worst: {worst})"))
+    out.append(pct_of_oracle_row(out))
     return out
+
+
+ORACLE_GATE = 95.0   # % of the hindsight ceiling (Nick, Nov 4 10:55 AM)
+
+
+def apply_oracle_gates(rows: list[dict]) -> None:
+    """Gate big_live_<lg> on >= 95% OF ORACLE VALUE (the share of the hindsight ceiling on the same nights)
+    and add the gap to 100% of oracle to big live, crunch live and dead air. Rows without an oracle keep
+    their absolute gate; a slice too thin for the release gate stays PENDING."""
+    by = {r["key"]: r for r in rows}
+    for lg in ORACLE_LEAGUES:
+        for key in ("big_live", "crunch_live", "dead_air"):
+            row = by.get(f"{key}_{lg}" if key != "dead_air" else "dead_air")
+            ceil = by.get(f"ceiling_{key}_{lg}")
+            if row is None or ceil is None or ceil.get("share") is None:
+                continue
+            share = ceil["share"]
+            gap = f"{lg.upper()} {share}% of oracle (ceiling {ceil['value']}%), gap to 100% of oracle {round(100 - share, 1)} pts"
+            row["detail"] = (row.get("detail") or "") + "; " + gap
+            if key != "big_live" or row.get("value") in (None, 0):
+                continue
+            row["oracle_share"] = share
+            thin = row["status"] == PENDING
+            share_lo = share * (row["lo"] / row["value"]) if row.get("lo") is not None else None
+            if share < ORACLE_GATE:
+                row["status"] = FAIL
+            elif not thin and share_lo is not None and share_lo >= ORACLE_GATE:
+                row["status"] = PASS
+            else:
+                row["status"] = PENDING
+
+
+def pct_of_oracle_row(rows: list[dict]) -> dict:
+    """% of hindsight-oracle value achieved: the mean of the per-league pct_of_oracle rows (each the worst
+    of big live, crunch live and live air vs the DP ceiling). Self-taught by construction: graded against
+    the oracle on archived nights, never against Nick's taps (Nick, Nov 4 10:55 AM)."""
+    per = {r["key"][len("pct_of_oracle_"):]: r["value"] for r in rows
+           if r["key"].startswith("pct_of_oracle_") and r.get("value") is not None}
+    if set(per) != set(ORACLE_LEAGUES):
+        missing = ", ".join(lg.upper() for lg in ORACLE_LEAGUES if lg not in per)
+        return _row("pct_of_oracle", None, None, None, PENDING, f"needs the oracle for {missing} (--oracle)")
+    v = round(sum(per.values()) / len(per), 1)
+    return _row("pct_of_oracle", v, None, None, PASS if v >= 95.0 else FAIL,
+                ", ".join(f"{lg.upper()} {per[lg]}%" for lg in ORACLE_LEAGUES) + " (mean of the per-league rows)")
 
 
 def switch_row(xs: list[float]) -> dict:
@@ -540,7 +558,40 @@ def history_row(split: str, rows: list[dict], commit: str, when: str) -> dict:
             "lo": {r["key"]: r["lo"] for r in rows}}
 
 
-def render(results: dict, commit: str, when: str, history: Path) -> str:
+def load_live_nights(dirs: list[Path]) -> list[dict]:
+    """[live nights] Every live night the app collected itself (redzone/supervisor.py
+    collect_live_night -> <dir>/<night>/summary.json), oldest first."""
+    out = []
+    for d in dirs:
+        for f in sorted(Path(d).glob("*/summary.json")) if Path(d).is_dir() else []:
+            try:
+                out.append({"night": f.parent.name, **json.loads(f.read_text())})
+            except (OSError, ValueError):
+                continue
+    return out
+
+
+def live_section(nights: list[dict]) -> list[str]:
+    """Real nights on Nick's TV next to the sims: PENDING until one exists. Not graded yet: a line
+    moves to PASS/FAIL only through release_gate.py once there are enough nights."""
+    out = ["## Live nights (Nick's TV, logged by the app itself)", ""]
+    if not nights:
+        return out + ["⏳ PENDING: no live night collected yet (data/live_nights/<night>/summary.json, written "
+                      "after each night by the supervisor).", ""]
+    out += ["| night | landings (dead ball) | came up into it p50 | before play resumed p50 / min | entries mid-play | "
+            "switch p95 | press-to-TV p95 (n) | sync anchor error p95 by stick |",
+            "|---|---:|---:|---:|---:|---:|---:|---|"]
+    for n in nights[-14:]:
+        la = n.get("landings") or {}
+        sy = ", ".join(f"{k} {v.get('p95_s')} s (n={v.get('n')})" for k, v in (n.get("sync_anchor_err") or {}).items()) or "–"
+        out.append(f"| {n['night']} | {la.get('n', 0)} | {la.get('after_dead_p50_s', '–')} s | "
+                   f"{la.get('before_play_p50_s', '–')} / {la.get('before_play_min_s', '–')} s | "
+                   f"{n.get('entries_mid_play', '–')} | {n.get('switch_p95_s', '–')} s | "
+                   f"{n.get('press_to_tv_p95_s', '–')} s ({n.get('press_samples', 0)}) | {sy} |")
+    return out + [""]
+
+
+def render(results: dict, commit: str, when: str, history: Path, live: list[dict] | None = None) -> str:
     out = ["# North Star", "",
            f"Generated by `python scripts/northstar.py` on `{commit}` at {when} (pinned eval-data-v1, measured feed lag).",
            "Do not edit by hand: the nightly workflow (`.github/workflows/northstar.yml`) rewrites it and appends",
@@ -557,6 +608,7 @@ def render(results: dict, commit: str, when: str, history: Path) -> str:
             out += [f"Candidate profile `{cand['profile']}`: {cand.get('about', '')}.", ""]
         out += md_table(res["rows"], last_run(history, split), cand["rows"] if cand else None,
                         cand["profile"] if cand else "candidate") + [""]
+    out += live_section(live or [])
     return "\n".join(out)
 
 
@@ -664,9 +716,9 @@ def main(argv=None) -> int:
     ap.add_argument("--reuse-nights", type=Path, help="take the e2e nights from an earlier --json output")
     ap.add_argument("--switch-log", type=Path, action="append", default=None,
                     help="tv_input.jsonl file(s) with real switches (default: <root>/data/tv_input.jsonl)")
-    ap.add_argument("--taps-db", type=Path, default=None,
-                    help="redzone.db with Nick's phone taps for right_game (default: <root>/data/redzone.db if present)")
     ap.add_argument("--controls-json", type=Path, help="a scripts/controls_drill.py --json report (press_to_tv_p95)")
+    ap.add_argument("--live-dir", type=Path, action="append", default=None,
+                    help="folders of live nights (<night>/summary.json); default <root>/data/live_nights")
     ap.add_argument("--controls-seeds", type=int, default=2,
                     help="without --controls-json: run the controls drill this many nights (0 = skip)")
     ap.add_argument("--json", type=Path, help="write the raw results here (PR CI compares two of these)")
@@ -699,22 +751,23 @@ def main(argv=None) -> int:
     if drill is None and not a.delta:
         drill = run_drill(root, a.controls_seeds)
     xs = switch_samples(a.switch_log if a.switch_log is not None else [root / "data/tv_input.jsonl"])
-    taps = load_taps(a.taps_db or root / "data" / "redzone.db")
     results = {}
     for split in (("dev", "locked") if a.split == "both" else (a.split,)):
         cards = run_cards(root, split, oracle=a.oracle)
-        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill, taps)}
+        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill)}
         if a.profile:
             from redzone.noggin import profile as P
             cc = run_cards(root, split, profile=a.profile, oracle=a.oracle)
             results[split]["candidate"] = {"profile": a.profile, "about": P.PROFILES[a.profile].get("about", ""),
-                                           "cards": cc, "rows": table(cc, nights, xs, prof, drill, taps)}
+                                           "cards": cc, "rows": table(cc, nights, xs, prof, drill)}
+    live = load_live_nights(a.live_dir if a.live_dir is not None else [root / "data/live_nights"])
     commit = _git(root, "rev-parse", "--short", "HEAD")
     when = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     if a.json:
-        a.json.write_text(json.dumps({"commit": commit, "ts": when, **results, "nights": nights}, indent=1, default=str))
+        a.json.write_text(json.dumps({"commit": commit, "ts": when, **results, "nights": nights, "live_nights": live},
+                                     indent=1, default=str))
     if not a.no_write:
-        MD.write_text(render(results, commit, when, HISTORY))
+        MD.write_text(render(results, commit, when, HISTORY, live))
         with HISTORY.open("a") as f:
             for split, res in results.items():
                 f.write(json.dumps(history_row(split, res["rows"], commit, when)) + "\n")
