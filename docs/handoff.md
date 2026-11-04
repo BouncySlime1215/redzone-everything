@@ -71,7 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **Nick 10:55 AM: "fuck usage, push this."** Pace brake LIFTED: all 5 lanes + planners at full speed. The only usage rule left is the hard stop at ≥89% weekly (keep 10% for school). **Bar raised:** big-plays-live gate = ≥95% of ORACLE value per league (the raw 95% is infeasible: the oracle ceiling is NFL 91, NBA 93, NHL 85); live-or-replayed ≤3 min ≥99% (stretch ≤2 min; Nick: "2-3 min max, not 10"); mid-play 0; dead-time landings ≥98%; press-to-TV ≤3 s on real hardware.
+- **2026-11-04 11:25 AM ET.** RC5 deploy FAILED on the Mac (test_noggin_timing speed assert at background priority; app still on RC4). **RC5.1 cut: e8bbf8e** (CI queued); the lab deploys it when green. Merged: #117 (FastCast fix: the 4 h check started at app start, not when shadowing began), #118 and #123 (live nights log themselves into the North Star), #120 (live-lab addendum), #121 (honest gates: ≥95% of oracle, landings ≥98%, replay ≤3 min).
+- **Live lab:** CEC off, so the left stick keeps PLAYING (83/83). Flips p95 1.98 s (30/30). Pre-tune p50 2.3 s (4K Plus) / 3.7 s (2023). Pending: press-to-TV and buffer (need live games), the sync probe (YTTV UI tree empty). Usage 13% (brake lifted). V7 running.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
