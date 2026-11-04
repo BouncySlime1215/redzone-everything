@@ -110,7 +110,7 @@ def reasoner_big(rows: list[dict], teacher: list[dict], student: list[dict]) -> 
             sub = [r for r in rows if r["split"] == sp]
             if sub:
                 sc = evaluate.score(sub, preds)
-                gap[sp] = {k: sc[k] for k in ("n", "lock_acc", "unsafe_leave_pct")}
+                gap[sp] = {k: sc[k] for k in ("n", "lock_acc", "unsafe_leave_pct", "unsafe_leave_hi_pct")}
         res["gap"] = gap
         test = [r for r in rows if r["split"] == "test"]
         slices = {"crunch": lambda r: r.get("crunch") or r.get("crunch_next"), "early": lambda r: not r.get("late"),
@@ -121,7 +121,12 @@ def reasoner_big(rows: list[dict], teacher: list[dict], student: list[dict]) -> 
             sub = [r for r in test if f(r)]
             if sub:
                 sc = evaluate.score(sub, preds)
-                res["slices"][name] = {k: sc[k] for k in ("n", "lock_acc", "unsafe_leave_pct")}
+                res["slices"][name] = {k: sc[k] for k in ("n", "lock_acc", "unsafe_leave_pct", "unsafe_leave_hi_pct")}
+        # the same answers with the crunch=stay floor forced on every sticky row (the graded answer is the
+        # model's own, Nick 4:15 PM): shows how much the floor would still have to catch
+        fl = evaluate.score(test, evaluate.answers_for("student", rows, s, priors=True))
+        res["student_floored"] = {k: fl[k] for k in ("n", "lock_acc", "unsafe_leave_pct", "unsafe_leave_hi_pct",
+                                                     "unsafe_leave_lo_pct")}
         res["dont_know"] = _abstain(rows, preds)
     res["gate_split"] = {k: evaluate.gate_split(res, k, res.get("dont_know") if k == "student" else None)
                          for k in sources if k != "today"}
@@ -202,9 +207,13 @@ def md(rep: dict) -> str:
     for k, title in (("gap", "Train vs valid vs test (student; a gap over a few points = overfit)"),
                      ("slices", "Slices, dev-test (student)")):
         if r.get(k):
-            parts += [f"{title}:", "", "| | n | lock_acc | unsafe_leave_pct |", "|---|---|---|---|"]
-            parts += [f"| {n} | {v['n']} | {v['lock_acc']} | {v['unsafe_leave_pct']} |" for n, v in r[k].items()]
+            parts += [f"{title}:", "", "| | n | lock_acc | unsafe_leave_pct | high-leverage unsafe |", "|---|---|---|---|---|"]
+            parts += [f"| {n} | {v['n']} | {v['lock_acc']} | {v['unsafe_leave_pct']} | {v.get('unsafe_leave_hi_pct')} |"
+                      for n, v in r[k].items()]
             parts.append("")
+    if r.get("student_floored"):
+        parts += ["Student WITH the crunch=stay floor forced on sticky rows (graded rows above are its own answers): "
+                  + json.dumps(r["student_floored"]), ""]
     if r.get("dont_know"):
         parts += ["Calibrated \"I don't know\" (cut picked on valid, applied to dev-test): " +
                   json.dumps(r["dont_know"]), ""]
@@ -245,6 +254,23 @@ def md(rep: dict) -> str:
         for kk in kinds:
             parts.append(f"| {kk} | " + " | ".join(w[s]["by_kind"].get(kk, "") for s in w) + " |")
     return "\n".join(parts) + "\n"
+
+
+def short_grades(rep: dict, round_id: str = "", mode: str = "", wall_h: float | None = None) -> dict:
+    """The few numbers worth reading from Kaggle's Output tab: gates per source, watchdog, head AUCs + leak flags."""
+    r = rep.get("reasoner") or {}
+    out = {"round": round_id, "mode": mode, "wall_h": wall_h,
+           "reasoner_gate": {k: ("PASS" if not v else "FAIL: " + ", ".join(map(str, v))) for k, v in (r.get("gate") or {}).items()},
+           "reasoner_all": {k: {m: (r[k].get("all") or {}).get(m) for m in ("n", "lock_acc", "unsafe_leave_pct", "unsafe_leave_hi_pct", "unsafe_leave_lo_pct", "jump_acc")}
+                            for k in ("today", "head", "teacher", "student") if isinstance(r.get(k), dict)},
+           "student_floored": r.get("student_floored"),
+           "crunch_slice": (r.get("slices") or {}).get("crunch"),
+           "watchdog": {k: {m: v.get(m) for m in ("n", "accuracy", "gate")} for k, v in (rep.get("watchdog") or {}).items()
+                        if isinstance(v, dict)}}
+    head = (rep.get("build") or {}).get("head") or {}
+    out["head"] = {lg: {m: v.get(m) for m in ("base_rate", "auc_test", "auc_test_context_only", "auc_lift_over_context",
+                                              "auc_test_in_window", "leak_suspect", "near_perfect")} for lg, v in head.items()}
+    return out
 
 
 def main() -> None:

@@ -284,7 +284,43 @@ def train_head(lg: str, raw_dir: Path, plan: dict[str, str]) -> tuple[dict, dict
         v = auc_fn(y[m], p[m]) if m.any() else float("nan")
         gap[f"auc_{s}"] = round(v, 4) if math.isfinite(v) else None
         gap[f"rows_{s}"] = int(m.sum())
+    gap.update(context_baseline(lg, X, y, sp, feats, params, rounds, auc_fn))
     return dict(zip(keys, p.round(4).tolist())), gap
+
+
+CTX_FEATS = ("period", "clock_s", "abs_diff")
+
+
+def context_baseline(lg, X, y, sp, feats, params, rounds, auc_fn) -> dict:
+    """The same head on the game clock and margin only. The scorecard's crunch (and NBA's big) plays are
+    DEFINED by clock + margin, so y is nearly a function of these three numbers: a head that only matches
+    this baseline has learned the label's definition, not the game (V7 NBA: 0.999 vs 0.998). The head's
+    worth is its lift over the baseline, plus its AUC inside the label's own window (rows the clock can't sort)."""
+    import lightgbm as lgb
+    import numpy as np
+    idx = [feats.index(f) for f in CTX_FEATS if f in feats]
+    tr, te = sp == "train", sp == "test"
+    out: dict = {}
+    if len(idx) < len(CTX_FEATS) or not te.any() or len(set(y[te].tolist())) < 2:
+        return out
+    b = lgb.train(params, lgb.Dataset(X[tr][:, idx], y[tr]), rounds)
+    pc = b.predict(X[te][:, idx])
+    v = auc_fn(y[te], pc)
+    out["auc_test_context_only"] = round(v, 4) if math.isfinite(v) else None
+    full = lgb.train(params, lgb.Dataset(X[tr], y[tr], feature_name=feats), rounds)
+    ph = full.predict(X[te])
+    per, clk, d = (X[te][:, feats.index(f)] for f in CTX_FEATS)
+    last = {"nba": 4, "cbb": 2, "nhl": 3}.get(lg, 4)            # last regulation period
+    win = (per > last) | ((per == last) & (np.nan_to_num(clk, nan=1e9) <= 240) & (d <= 8))
+    if win.any() and len(set(y[te][win].tolist())) == 2:
+        out["auc_test_in_window"] = round(auc_fn(y[te][win], ph[win]), 4)
+        out["auc_test_in_window_context_only"] = round(auc_fn(y[te][win], pc[win]), 4)
+    a = auc_fn(y[te], ph)
+    lift = a - v if math.isfinite(a) and math.isfinite(v) else float("nan")
+    out["auc_lift_over_context"] = round(lift, 4) if math.isfinite(lift) else None
+    out["leak_suspect"] = bool(math.isfinite(lift) and lift < 0.01)    # the head adds nothing over the clock
+    out["near_perfect"] = bool(math.isfinite(a) and a >= 0.98)           # audit by hand before anything ships
+    return out
 
 
 # ---------------------------------------------------------------- 5. export
@@ -314,6 +350,7 @@ def export(lg: str, raw_dir: Path, plan: dict[str, str], head: dict, out_dir: Pa
                        "league": lg, "i": r["i"], "brief": brief_with(r, p, on_screen=rng.random() < 0.3),
                        "target": tgt, **{k: r[k] for k in ("y", "big_next", "crunch_next", "next_text", "garbage",
                                                           "crunch", "late", "mine")},
+                       "abs_diff": (r.get("facts") or {}).get("abs_diff"),
                        "t_big": None if math.isinf(r["t_big"]) else r["t_big"],
                        "t_break": None if math.isinf(r["t_break"]) else r["t_break"], "head_p": round(p, 4)}
                 g, _ = gold.gold_target({**row, "league": base})

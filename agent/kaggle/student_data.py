@@ -138,7 +138,9 @@ GRADE_PER_LEAGUE = {"test": 400, "valid": 150, "train": 100}   # dev-test, thres
 
 def weight(r: dict) -> float:
     """Pick weight: crunch and your-team moments up, real big plays up, the hardest up."""
-    return (1.0 + 2.0 * bool(r.get("crunch") or r.get("crunch_next")) + 2.0 * bool(r.get("mine"))
+    from agent.distill.evaluate import sticky
+    # V7: the crunch slice left 100% unsafely (n=125), so crunch and down-the-stretch rows weigh most
+    return (1.0 + 6.0 * bool(r.get("crunch") or r.get("crunch_next")) + 3.0 * sticky(r) + 2.0 * bool(r.get("mine"))
             + 1.5 * bool(r.get("y")) + 0.5 * float(r.get("hard") or 0.0))
 
 
@@ -203,12 +205,11 @@ def big_sets(pack: Path, moments: Path, answers: list[dict], n_train: int = BIG_
         valid += _reservoir([rows_dir / f"{lg}_valid.jsonl.gz"], MAX_VALID // len(leagues), weight, f"{seed}{lg}v")
         for s, n in GRADE_PER_LEAGUE.items():
             src = rows_dir / f"{lg}_{s}.jsonl.gz"
-            if s == "train":                          # the train side of the gap: rows it trained on
-                pool = [r for r in train if r["league"] == lg]
-                random.Random(f"{seed}{lg}gap").shuffle(pool)
-                grade_rows += [{**r, "split": "train"} for r in pool[:n]]
-            else:                                     # uniform (not weighted): what live play looks like
-                grade_rows += _reservoir([src], n, lambda r: 1.0, f"{seed}{lg}{s}g")
+            # uniform (not weighted): what live play looks like. V7 drew the train side from the WEIGHTED
+            # pick (crunch x3, hard rows up), so train looked worse than test (75.2/21.7 vs 82.2/7.6); every
+            # side is uniform now, train from train nights
+            rs = _reservoir([src], n, lambda r: 1.0, f"{seed}{lg}{s}g")
+            grade_rows += [{**r, "split": s} for r in rs]
     chats = {"train": [chat_of(system, r) for r in train], "valid": [chat_of(system, r) for r in valid]}
     merged = student.build({"train": train, "valid": valid}, chats, answers)
     tr = []
