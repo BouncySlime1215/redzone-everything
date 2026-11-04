@@ -71,9 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-RC6 cf480a4 Mac tests FAILED (citymap tag rename); no switch, RC5.1 still live; fix #193 -> RC6.1 at ~8 PM ET halftime
-Colab V8 notebook posted: kaggle-inputs 84fad55
-Usage 33%
+RC6.1 (9322c28) Mac tests started 23:40Z at background priority; RC5.1 still live, no switch yet
+Kaggle factory still running 14236s; usage 33%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
