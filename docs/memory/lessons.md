@@ -236,3 +236,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   so a 60 s hold came out 81.7 s (90 -> 111.6 s) in the night lab. Fix: the resume waits at most
   HOLD_RESUME_LOCK_S (1 s), then plays a stick nobody touched since the pause (a token that any _tune on
   that stick clears); `held` is only written if the token survived. Timed waits must not sit behind locks.
+- 2026-11-04 (lane 2, #132): **A standby that a failed switch tuned was never held.** A switch that tunes the
+  hidden stick itself (path "tuned") and then finds no safe moment leaves it at the live edge with held=0;
+  only preloads hold, and the STK-06 watchdog skipped held=0 by design. Now buffer_error reads an unheld
+  standby whose buffer is wanted, with no hold or preload under way, as 0 s behind, so the watchdog holds it.
