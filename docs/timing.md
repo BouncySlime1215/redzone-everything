@@ -392,3 +392,53 @@ were the NHL crunch loss. Results:
 Big plays live held under the cap: NFL 64.1, NBA 81.7, NHL 49.2. Dead air under the cap rose for NFL (29.8 → 30.6).
 The rest of the NHL gap is two nights (Oct 19 and Oct 27) where two crunches overlap and it picks the other one.
 That's GAME-05 (crunch overlaps), not a switch away from crunch time.
+## Safety playbooks SAFE-01/02/03/05 (flag `playbooks.safe.enabled`, OFF)
+
+`redzone/decider/playbooks.py`, consulted after cut timing on every switch (and on replays for SAFE-05). Each
+one turns a switch into a hold and writes `playbook=<id>` into the decision's reason. Nick's buttons and the
+first pick are never held.
+
+| id | trigger | hold until |
+|---|---|---|
+| SAFE-01 | the target's feed is more than its poll cadence + 10 s old (or flagged dark) | the feed is fresh; if the game on screen is stale too, stay put |
+| SAFE-02 | the target channel's delay doubt is above 10 s | the entry lands on a dead ball at the full margin (no centred/urgent landing, no going in live) |
+| SAFE-03 | the sync probe's network condition is 9 or more (2+ buffering events a minute, or an RSSI drop) on a stick, in the last 5 min | the landing is a long break (TV timeout, period end, halftime, intermission, two-minute warning) |
+| SAFE-05 | the wall clock moved more than 5 s against the monotonic clock | every live game has had a fresh poll since, or 90 s |
+
+The SAFE-02 threshold sweep on NHL dev nights (candidate profile) is below. Flag on vs off at 10 s: dev and locked scorecards are identical
+for NBA, NHL and NFL.
+
+| sigma_s | mid-play entries | crunch live | big live |
+|---|---|---|---|
+| off | 1/242 | 80.6 | 44.7 |
+| 3 | 7/197 (live config) | 66.0 | 37.8 |
+| 6 | 0/217 | 72.4 | 42.3 |
+| 8 | 0/220 | 74.3 | 42.1 |
+| 10 | 1/242 | 80.6 | 44.7 |
+
+Night lab: `python -m redzone.lab.night --no-default-faults --faults redzone.lab.night.faults:safety --set
+playbooks.safe.enabled=true` injects `feed_stale` (every game but the one on screen, 15 min), `sync_wide` (12 s
+doubt, 10 min), `wifi_degrade` (15 min) and `clock_skew` (+30 s for 30 min, then back). Seeds 7, 11 and 13:
+every check passes with 0 mid-play cuts. The existing guards already hold most of these situations. The gate
+looked at 149 switches on seed 7 and held 6, all SAFE-05 at the backward clock jump.
+
+## Scenario-tree lookup (flag `playbooks.game.enabled`, OFF)
+
+`redzone/decider/scenarios.py` (idea #19, Mac half). Each tick turns the slate into one state word per live game:
+`my_crunch`, `long_break`, `after_score`, `break`, `redzone`, `pp`, `crunch` or `live`. A table of branches then says
+what to do. First match wins; a file can replace the seeds (`playbooks.game.table`, the cloud tree's format). A live
+plan is dropped as soon as B leaves the state that justified it, and the slate is looked up again. A branch never
+acts while the leave gate says A is mid-play, and it never visits away from a game in crunch time. Seeds:
+GAME-03 (your team's crunch: go there, then hold), GAME-01 (NFL red zone during a long break on screen) and GAME-02
+(NHL power play after a score on screen).
+
+| split | league | flag | mid-play | crunch live | big live | big seen | dead air | your-team crunch |
+|---|---|---|---|---|---|---|---|---|
+| dev | NFL | off → on | 0 → 0 | 68.0 → 67.6 | 50.3 → 50.5 | 98.7 → 98.1 | 29.8 → 29.4 | 51/56 → 51/56 |
+| dev | NHL | off → on | 1/242 → 1/240 | 80.6 → 80.6 | 44.7 → 44.9 | 98.6 → 98.6 | 22.4 → 22.6 | 15/15 |
+| dev | NBA | off → on | 3/60 → 3/60 | 90.9 → 90.9 | 81.7 → 81.7 | 84.5 → 84.5 | 19.4 → 19.4 | 31/31 |
+| locked | NFL | off → on | 0 → 0 | 68.1 → 69.0 | 49.0 → 49.5 | 100 → 100 | 29.2 → 29.0 | 26/27 → 27/27 |
+| locked | NHL | off → on | 0 → 0 | 84.7 → 84.7 | 48.1 → 48.6 | 98.1 → 98.1 | 25.4 → 25.5 | 13/13 |
+
+On dev, GAME-01 fired 213 times and agreed with the generic break visit another 42. Its visits trade some
+crunch and big-play coverage for dead air, so it stays off until the cloud tree replaces the hand-written seed.

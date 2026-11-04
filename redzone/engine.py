@@ -99,6 +99,7 @@ class Engine:
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
+        self.decider.safety.feed_age = self._feed_age   # [playbooks SAFE-01]
         # Break visits: the game we leave keeps playing on the other stick, so the trip back is one
         # flip; with one stick it's a full tune of that game.
         # [time-shift buffer] hold each fresh hidden-stick tune B s behind live (timing.behind_live_s,
@@ -301,6 +302,17 @@ class Engine:
     def _sync_condition(self, target: str, q_scale: float, feats: dict) -> None:
         if self.sync is not None:
             self.sync.condition(target, q_scale)
+        self.decider.safety.condition(target, q_scale)   # [playbooks SAFE-03]
+
+    def _feed_age(self, gid: str) -> tuple[float, float] | None:
+        """[playbooks SAFE-01] (seconds since this game's feed last had fresh data, its poll cadence)."""
+        g = self.merger.games.get(gid)
+        if g is None:
+            return None
+        fresh = self.feeds.fresh_at(gid) or g.updated_at
+        if not fresh:
+            return None
+        return time.time() - fresh, float(self.feeds.cadence_of(gid))
 
     def _break_event(self, target: str, host: str, visible: bool, kind: str, t: float, sd: float) -> None:
         """[auto-anchors] An ad break started or ended on screen at t (SyncProbe). break_start is matched
@@ -1751,6 +1763,10 @@ class Engine:
         name = self._name(gid)
         p = self._pending_decision
         waiting = bool(self.hold and self.hold["game_id"] == gid and p is not None and p.target == gid)
+        # playbook=BTN-05: the game on screen, tapped while a switch AWAY from it is in flight (the
+        # flip can't be stopped halfway). It isn't "already there": queue the way back, which runs as
+        # soon as the flip lands. Before, it said "Holding on X" and the TV landed on the other game.
+        leaving = bool(dec.current == gid and p is not None and p.target not in (None, gid))
         prev = self.hold if self.hold and self.hold["game_id"] == gid else None
         self.hold = {"game_id": gid, "since": prev["since"] if prev else time.time(),
                      "auto_resume": prev["auto_resume"] if prev else True,
@@ -1759,9 +1775,12 @@ class Engine:
         u.paused = False   # holding IS the pause: autopilot won't switch away
         if waiting:
             return True, f"Switching to {name} now"
-        if dec.current == gid:
+        if dec.current == gid and not leaving:
             return True, f"Holding on {name} — tap Resume auto to hand back"
         self._act_manual(gid)
+        if leaving:
+            log.info("playbook=BTN-05 %s tapped mid-switch away from it: going back once the flip lands", gid)
+            return True, f"Back to {name} as soon as this switch lands"
         if force or self.cfg.get("mode.dry_run", True):
             return True, f"On {name} — holding here"
         return True, f"Switching to {name} at the next safe moment (tap again to go now)"
@@ -1803,6 +1822,8 @@ class Engine:
         p = self._pending_decision
         if h and p is not None and p.kind == "user" and p.target == h["game_id"]:
             self.control.cancel_pending()   # still waiting for a safe moment: don't go after all
+        if h:
+            log.info("playbook=BTN-04 released %s: autopilot picks again, leaving at the next dead ball", h["game_id"])
         return True, msg
 
     def _hold_check(self) -> None:
@@ -1814,8 +1835,9 @@ class Engine:
         if u.locked_game != gid:
             self.hold = None   # unlocked or re-locked elsewhere
             return
-        if self.decider.current == gid:
-            h["force"] = False
+        p = self._pending_decision
+        if self.decider.current == gid and not (p is not None and p.target not in (None, gid)):
+            h["force"] = False   # (not while a switch away from it is still landing: BTN-05)
         if gid == REDZONE:
             over, garbage = not redzone_on(self.merger.games.values()), False
         else:

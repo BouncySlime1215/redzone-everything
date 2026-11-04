@@ -66,10 +66,18 @@ Sources: [idea-bank.md](idea-bank.md) (#1-#20), [playbooks.md](../playbooks.md) 
 8. Robustness slices in northstar.py: sync ±3 s, feed 10 s stale, one stick down.
 
 ## ⑤ Features (lowest; never preempts ①-④)
-1. Phone v2: reason chips, 👍/👎, decision records (cycle 01).
-2. Night replay viewer (decision records + playbook ids on a timeline).
-3. Slate preview (tonight's plan from SLATE-01).
-4. Prime multiview live calibration.
+Done or in review: phone v2 (#79), night replay viewer (#88), slate preview (#91), multiview stick-free
+rehearsal (#94). Next, all stick-free, small PRs, flag OFF, no change to switching behavior:
+1. Phone states for Nick's buttons (UI half of BTN-01..06): LOCK IN badge until released, GO NOW
+   "switching… / on TV" confirmation, "not delivered, retrying" and stale-connection banners. Uses
+   lane ③'s command API (id/ack/status) only; lane ③ owns the command path.
+2. Decision-record export for the Teacher's nightly review: one JSONL per night (record, reason,
+   playbook id, 👍/👎, missed), schema documented, ready for lane ① / Kaggle. No upload code.
+3. Replay viewer overlays: the hindsight-oracle schedule next to what we did (when lane ①'s oracle
+   lands; until then, a stub that reads a schedule file) and the missed-big-play markers.
+4. North Star trend page: render docs/northstar-history.jsonl (live vs candidate per line) on the phone
+   page, read-only.
+5. "I missed that" → queue a catch-up reel request (record only; reels stay OFF).
 
 ## End Planner / Integrator
 1. Cycle reviews: keep / rework / drop against intent; merged scoreboard delta; `review.md`.
