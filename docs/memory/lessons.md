@@ -220,3 +220,6 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   out only the old section-7 slice (NFL `eval.py --n 2`, NBA/NHL from Oct 29), while eval-data-v1's LOCKED split
   has 19 NFL nights. Salvaging it as-is would have tuned on locked. Fix: hold out `splits.nights_for(..., "test")`
   as well. Any tool that excludes locked nights reads them from redzone/lab/splits.py, never from its own list.
+- 2026-11-04: **SAFE-01 only gated switches.** A catch-up replay is a cut into its game's channel too: in the
+  safety night (seed 1) a replay of a frozen-feed game went to its channel 88 s into the feed_stale fault. Any
+  playbook that guards "a cut into X" has to check every action that changes the TV (switch, replay, resume).

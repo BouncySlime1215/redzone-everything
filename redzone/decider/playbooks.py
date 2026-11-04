@@ -5,8 +5,8 @@ writes `playbook=<id>` into the decision's reason, so the End Planner and ðŸ‘/ð
 beats every playbook, so every action here is a HOLD (stay on the game on screen); none of them can
 cause a cut. Nick's own buttons (kind "user") and the night's first pick are never held.
 
-  SAFE-01  the target's feed is stale (> cadence + 10 s)      no cut into it; if the game on screen
-                                                              is stale too, stay put
+  SAFE-01  the target's feed is stale (> cadence + 10 s)      no cut into it, a catch-up of it included;
+                                                              if the game on screen is stale too, stay put
   SAFE-02  the target's delay doubt (sigma) > 3 s             no cut unless the entry lands on a dead
                                                               ball at the FULL margin (no "centred" or
                                                               "urgent" shortcut, no going in live)
@@ -116,6 +116,12 @@ class Safety:
         self.checked += 1
         if self._reanchoring(dec, now):
             return "SAFE-05", f"wall clock jumped {self.skew_s:+.0f} s; re-anchoring"
+        if d.action == "replay" and d.target and cands.get(d.target) is not None:
+            # A catch-up is a cut into that game's channel too (night lab seed 1: a replay of a frozen-feed
+            # game went to its channel 88 s into the fault). A finished game, out of cands, still replays.
+            why = self._stale(d.target, cands.get(d.target), dec.timelines.get(d.target), now)
+            if why:
+                return "SAFE-01", f"catch-up into a stale feed: {why}"
         if d.action != "switch" or not d.target:
             return None
         x = cands.get(d.target)

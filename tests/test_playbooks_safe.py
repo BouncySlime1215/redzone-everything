@@ -66,6 +66,18 @@ def test_safe01_no_cut_into_a_stale_feed(clk):
     assert s.check(dec, switch(), cands, clk.wall)[0] == "SAFE-01"
 
 
+def test_safe01_holds_a_catch_up_of_a_stale_game_too(clk):
+    """Night lab seed 1 (lane 4): a catch-up replay of a frozen-feed game cut to its channel mid-fault."""
+    s = safety()
+    dec, cands = world(clk, stale=True)
+    hit = s.check(dec, NS(action="replay", target="B", kind="replay", reason="x"), cands, clk.wall)
+    assert hit and hit[0] == "SAFE-01"
+    dec, cands = world(clk)
+    assert s.check(dec, NS(action="replay", target="B", kind="replay", reason="x"), cands, clk.wall) is None
+    del cands["B"]                                  # a finished game's catch-up: not a live feed to judge
+    assert s.check(dec, NS(action="replay", target="B", kind="replay", reason="x"), cands, clk.wall) is None
+
+
 def test_buttons_and_first_pick_are_never_held(clk):
     s = safety()
     dec, cands = world(clk, stale=True)
