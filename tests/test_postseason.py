@@ -78,14 +78,14 @@ def test_single_elimination_without_series():
 def test_ranked_matchup_regular_season():
     st = ps.parse(League.CBB, {"season": {"type": 2}}, rank_home=4, rank_away=9)
     assert st.ranked_matchup and not st.postseason
-    assert ps.bonus(st) == ps.DEFAULTS["ranked_both"] + ps.DEFAULTS["ranked_top10_both"]
+    assert ps.bonus(st) == ps.WEIGHTS["ranked_both"] + ps.WEIGHTS["ranked_top10_both"]
     assert ps.parse(League.CBB, {"season": {"type": 2}}, rank_home=99) is None   # ESPN's "unranked"
 
 
 def test_round_ladder_and_cap():
     title = ps.Stakes(postseason=True, rounds_left=0, elimination=True, decider=True)
     first = ps.Stakes(postseason=True, rounds_left=3)
-    assert ps.bonus(title) == ps.DEFAULTS["cap"]
+    assert ps.bonus(title) == ps.WEIGHTS["cap"]
     assert 0 < ps.bonus(first) < ps.bonus(ps.Stakes(postseason=True, rounds_left=1)) < ps.bonus(title)
     assert ps.bonus(None) == 0.0
 
@@ -93,7 +93,7 @@ def test_round_ladder_and_cap():
 def test_hooks_are_off_by_default():
     g = espn.parse_scoreboard(League.MLB, _board("espn_mlb_scoreboard_2025-11-01.json"))[0]
     assert ps.stakes_bonus(g, Cfg()) == 0.0 and ps.mind_terms(g, Cfg()) == {}
-    assert ps.stakes_bonus(g, ON) == ps.DEFAULTS["cap"]
+    assert ps.stakes_bonus(g, ON) == ps.WEIGHTS["cap"]
     terms = ps.mind_terms(g, ON)
     assert terms == {"playoff_race": 1.0}
     # The Noggin L3 term lands as bounded playoff-race points
@@ -105,7 +105,7 @@ def test_hooks_are_off_by_default():
 def test_weights_read_from_config():
     st = ps.Stakes(postseason=True)
     assert ps.bonus(st, Cfg({"score.postseason.base": 0.1})) == 0.1
-    assert ps.bonus(st, Cfg({"score.postseason.base": "junk"})) == ps.DEFAULTS["base"]
+    assert ps.bonus(st, Cfg({"score.postseason.base": "junk"})) == ps.WEIGHTS["base"]
 
 
 def test_bad_payloads_never_raise():
