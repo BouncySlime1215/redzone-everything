@@ -71,8 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-STATUS 16:10: usage 26%; Kaggle factory still running (5003s); deploy healthy; CI integration/next pending.
-STATUS: coordinator relayed NFM strategy shift (lane 1 + planners); experience-features thread idle 22m; diamond workflow done.
+Experience-features thread idle 32m: sweep nudged the coordinator to reassign or park it.
+Cycle 06 plan is open as PR #162 (29m); CI on integration/next pending on Merge #134; deploy healthy; Kaggle factory still running.
+Usage 26%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
