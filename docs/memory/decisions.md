@@ -389,3 +389,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `replay.pause_cue_grain_s` 0.5, `replay.hidden_seek_keys_s` 1.5, `decider.leave.tune_s` 6,
   `sync.probe.log_edge_sd_s` 1.0; the sim reads `two_stick.input_settle_s`. Unused `LIVELAB_FLIPS_S` dropped
   (samples stay in docs/livelab); the sim's position origin is 0 (any constant works).
+- 2026-11-04 (Nick, 6:50 PM ET): RC6 may switch DURING games, but only at halftime/intermission of the game on
+  screen. `scripts/deploy.py deploy --at-break` allows live games while the on-screen game's status is Halftime /
+  Intermission (NHL "End of 1st/2nd"), polls every 30 s, and keeps the 10-min health watch + auto-rollback. The
+  default (no flag) is unchanged: any live game defers. Reason: get RC6 on tonight without cutting into play.
