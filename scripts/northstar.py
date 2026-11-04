@@ -581,13 +581,12 @@ def main(argv=None) -> int:
     results = {}
     for split in (("dev", "locked") if a.split == "both" else (a.split,)):
         cards = run_cards(root, split)
-        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof)}
+        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill)}
         if a.profile:
             from redzone.noggin import profile as P
             cc = run_cards(root, split, profile=a.profile)
             results[split]["candidate"] = {"profile": a.profile, "about": P.PROFILES[a.profile].get("about", ""),
-                                           "cards": cc, "rows": table(cc, nights, xs, prof)}
-        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill)}
+                                           "cards": cc, "rows": table(cc, nights, xs, prof, drill)}
     commit = _git(root, "rev-parse", "--short", "HEAD")
     when = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     if a.json:

@@ -138,3 +138,61 @@ def test_dead_tracker_uses_the_hook_and_never_goes_below_coverage(model):
     assert with_model != base          # the calibrated bound replaces the table floor
     dt.seen(fresh_at=w.start + 400, lag=10)   # the data proves it lasted past where the model would stop
     assert dt._open_until(w) >= dt._covered()
+
+
+def _nfl_rows():
+    pd = pytest.importorskip("pandas")
+    base = dict(game_id="2023_01_A_B", timeout=0.0, touchdown=0.0, field_goal_result=None, extra_point_result=None,
+                interception=0.0, fumble_lost=0.0, sack=0.0, complete_pass=0.0, safety=0.0, sp=0.0,
+                total_home_score=0.0, total_away_score=0.0, season_type="REG", two_point_attempt=0.0)
+    t = lambda s: (T0 + timedelta(seconds=s)).strftime("%Y-%m-%dT%H:%M:%S.000Z")  # noqa: E731
+    rows = [
+        dict(play_id=1, time_of_day=t(0), time="02:40", qtr=2, play_type="run", desc="A runs"),
+        dict(play_id=2, time_of_day=t(30), time="02:10", qtr=2, play_type="pass", desc="A pass", complete_pass=1.0),
+        # the clock crosses 2:00 here: an unseen two-minute warning
+        dict(play_id=3, time_of_day=t(200), time="01:55", qtr=2, play_type="pass", desc="A pass TOUCHDOWN",
+             touchdown=1.0, sp=1.0, total_home_score=6.0),
+        dict(play_id=4, time_of_day=t(205), time="01:55", qtr=2, play_type="extra_point", desc="kick GOOD",
+             extra_point_result="good", total_home_score=7.0),
+        dict(play_id=5, time_of_day=None, time="00:00", qtr=2, play_type=None, desc="END QUARTER 2"),
+    ]
+    return pd.DataFrame([{**base, **r} for r in rows])
+
+
+def test_nfl_loader_looks_like_the_espn_feed():
+    pytest.importorskip("pandas")
+    from redzone.noggin import factory as FA
+    plays, skip = FA._plays_football(_nfl_rows())
+    types = [p["type"]["text"] for p in plays]
+    assert types == ["Rush", "Pass Reception", "Passing Touchdown", "End of Half"]   # XP folded into the TD
+    assert plays[-1]["wallclock"] == plays[-2]["wallclock"]        # ESPN stamps END QUARTER at the last play
+    assert len(skip) == 1 and skip[0][1] - skip[0][0] == pytest.approx(170.0)
+
+
+def test_hook_falls_back_for_kinds_the_model_never_saw():
+    class M:
+        info = {"kinds": ["huddle"]}
+
+        def reading(self, x, e, kind):
+            raise AssertionError("must not be asked")
+    hook = L.TimingHook(M(), League.NFL)
+    w = cuts.Window(start=100.0, end=None, kind="tv_timeout")
+    assert hook.reading(None, w, 10.0) is None
+
+
+def test_espn_summary_loader_runs_the_live_parser(tmp_path):
+    """NHL (and any league) from ESPN summaries: the same plays the live app reads, so the same windows."""
+    import gzip
+    import json
+    pytest.importorskip("pandas")
+    from redzone.noggin import factory as FA
+    rec = FA.espn_game({"header": {"id": "1", "season": {"type": 3}}, "plays": GAME})
+    assert rec and rec["season_type"] == 3 and set(rec["plays"][0]) <= set(FA.ESPN_KEEP)
+    assert FA.espn_game({"plays": [{"id": "1", "text": "x"}]}) is None      # no wallclock: nothing to label
+    p = tmp_path / "espn_2025.jsonl.gz"
+    with gzip.open(p, "wt") as f:
+        f.write(json.dumps(rec) + "\n")
+    t = FA.build_espn("nba", p)
+    direct = F.windows_for_game(League.NBA, GAME)
+    assert len(t) == len(direct) and t.playoff.eq(1).all()
+    assert list(t.length_s) == [w["length_s"] for w in direct]
