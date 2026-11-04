@@ -363,6 +363,15 @@ reel:                      # catch-up reel: 5+ plays you missed, back to back, 3
   cache_mb: 400            # trimmed clips kept on disk
   min_free_mb: 1500        # never download with less free disk than this
 
+timing:
+  behind_live_s:           # [time-shift buffer] hold each stream B s behind live so the feeds lead the screen
+    enabled: false         # OFF until Nick's live test (docs/live-test-wed.md); sim at B=90: NHL entries
+                           # mid-play 12 -> 0, NBA big seen 67.8 -> 87.4 %, NFL big seen 77.9 -> 97 % (docs/timing.md)
+    by_league: {nfl: 60, cfb: 60, nba: 90, cbb: 90, wcbb: 90, nhl: 90}
+    default: 60
+    max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
+    apps: [youtubetv, primevideo]   # apps whose player pauses and resumes on the hidden stick
+
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
   sigma_default: 15
