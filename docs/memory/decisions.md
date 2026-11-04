@@ -131,3 +131,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   ban decide first, then score. Valid split on vs off: NFL / NBA / NHL every line equal (NHL dead air 21.5 ->
   21.6, switches/h 5.5 -> 5.6): crunch and your team are already handled before `_best`. Mixed-league nights
   (demo card) are where it can move things; it stays off until the Mind / Reflex terms are wired.
+- 2026-11-04 8:10 AM: **SYNC probe ON by default** (`sync.probe.enabled: true`). Nick (1:45 AM): auto-anchors only,
+  no manual work, and a probe that runs by itself on Wednesday. It is read-only: it presses nothing, changes no
+  setting, uses its own adb process and skips every tick during a switch, flip or preload, in dry run, and when
+  the governor blocks OCR. It writes `recordings/<day>/sync_probe.jsonl`. The visible stick's UI tree is not dumped
+  (`sync.probe.visible_ui: false`) until a dump is shown not to stutter the picture. Decisions don't read it.

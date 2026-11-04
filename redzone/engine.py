@@ -133,6 +133,8 @@ class Engine:
         self.reeler = reel.Reeler(self.cfg)   # catch-up reel kept ready from the summaries' clips
         self._reel_task: asyncio.Task | None = None
         self.recorder = Recorder()
+        from redzone.sync_probe import SyncProbe
+        self.sync_probe = SyncProbe(self.cfg, self.control, lambda: self.recorder.root)   # [SYNC] read-only stick probe
         self._last_snapshot = 0.0
         self.mic = None
         self.fantasy = None   # latest fantasy.Matchup
@@ -171,6 +173,7 @@ class Engine:
         from redzone.governor import Governor
         # Backs optional work off when the Mac is busy, hot, on battery or short of disk (redzone/governor.py).
         self.governor = Governor.from_config(self.cfg, **({"root": data_dir.parent} if data_dir else {}))
+        self.sync_probe.governor = self.governor
         from redzone.supervisor import DATA as SUPERVISOR_DATA, Supervisor
         # Per-switch TraceEvents (redzone/contracts/trace.py): data/traces.jsonl; in memory without a data dir.
         self.trace_sink = (trace.JsonlTrace(data_dir.parent / "traces.jsonl") if data_dir
@@ -215,7 +218,8 @@ class Engine:
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
                              self._boundary_loop(), self._scorebug_loop(), self.tonight.run(),
-                             self.supervisor.run(), self.network.run(), self.governor.run())
+                             self.supervisor.run(), self.network.run(), self.governor.run(),
+                             self.sync_probe.run())
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)
