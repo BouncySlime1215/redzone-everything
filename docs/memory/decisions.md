@@ -393,3 +393,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   screen. `scripts/deploy.py deploy --at-break` allows live games while the on-screen game's status is Halftime /
   Intermission (NHL "End of 1st/2nd"), polls every 30 s, and keeps the 10-min health watch + auto-rollback. The
   default (no flag) is unchanged: any live game defers. Reason: get RC6 on tonight without cutting into play.
+- **2026-11-04 (lane 2, #174): `replay.crunch_block_tail`** (default `false`, candidate `true`). The crunch block also
+  holds until a game the feed ended in crunch time (an OT winner) has aired. Why: the OT winner reached the screen ~2 min
+  after the feed dropped the game, and a catch-up reel ran over it. NHL locked crunch live +2.5..2.6 on 3 seeds,
+  0 mid-play; dev big seen in 10 min −5..6 (catch-ups wait out the OT tail).

@@ -247,6 +247,7 @@ class Decider:
         # [replay and resume] the game paused for a catch-up replay: (game, when, its extra behind-live then)
         self.paused_for: tuple[str, float, float] | None = None
         self.resume_log: list[tuple[float, str, str, float]] = []   # (when, "replay"|"resume"|"skip", game, extra s)
+        self._crunch_tail: dict[str, tuple[float, str | None]] = {}   # gid -> (last seen in crunch, target)
         self.scenarios = Scenarios(cfg)   # [scenario tree] GAME-01..03, 21, 22 seeds, flag playbooks.game.enabled (off)
         self.safety = Safety(cfg)   # [playbooks] SAFE-01/02/03/05, flag playbooks.safe.enabled (off)
         # The live controller knows whether THIS target is already ready. App-wide
@@ -376,6 +377,11 @@ class Decider:
         now = self._clock()
         self.core.k = Knobs.from_cfg(self.cfg)   # config can change between ticks (tuner, phone)
         self._known.update({gid: x for gid, x in cands.items() if x.target})
+        if self.cfg.get("replay.crunch_block_tail", False):
+            now_t = self._clock()
+            for gid, x in cands.items():
+                if (x.scored.crunch or x.scored.crunch_now) and not getattr(x.scored, "garbage", False):
+                    self._crunch_tail[gid] = (now_t, x.target)
         hold = self.cfg.get("decider.crunch.hold_personal", 5)
         self._yours.update(gid for gid, x in cands.items() if x.scored.personal >= hold)
         cands = self._with_redzone(cands, redzone)
@@ -693,7 +699,23 @@ class Decider:
         if not self.cfg.get("replay.crunch_block", False):
             return False
         return any((x.scored.crunch or x.scored.crunch_now) and not getattr(x.scored, "garbage", False)
-                   for x in cands.values())
+                   for x in cands.values()) or self._crunch_still_airing(cands, self._clock())
+
+    def _crunch_still_airing(self, cands, now: float) -> bool:
+        """[crunch block, replay.crunch_block_tail] A game the feed has already ended in crunch time (an
+        OT winner) is still airing for a whole stream delay: its last plays reach the screen up to
+        delay mu + 2 sigma after the feed dropped it. Keep the block until then, else a catch-up reel
+        starts over the OT goal (NHL dev 20261027: 6 crunch plays aired under the reel)."""
+        if not self.cfg.get("replay.crunch_block_tail", False):
+            return False
+        for gid, (seen, target) in list(self._crunch_tail.items()):
+            if gid in cands:
+                continue
+            d = self.delays.get(target or "unknown")
+            if now - seen <= d.mu + 2 * d.current_sigma(now) + float(self.cfg.get("polling.live_s", 10)):
+                return True
+            del self._crunch_tail[gid]
+        return False
 
     def _break_remaining(self, gid: str, cands, now: float) -> float:
         """Conservative break budget, never a typical ad length treated as a deadline."""
