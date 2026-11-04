@@ -75,12 +75,21 @@ def grade_sample(test: list[dict], keep: set[str], n: int, seed: int = 7) -> lis
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--reasoner-dir", required=True)
+    ap.add_argument("--code-pack", help="only write rz_code.tar.gz here (round 2+) and stop")
+    ap.add_argument("--serving-src", default=str(ROOT), help="checkout whose redzone/ + scripts go in the code pack")
+    ap.add_argument("--reasoner-dir")
     ap.add_argument("--archive", default=str(ROOT / "data" / "archive"))
-    ap.add_argument("--watchdog-src", required=True)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--watchdog-src")
+    ap.add_argument("--out")
     ap.add_argument("--wd-per-kind", type=int, default=8)
+    ap.add_argument("--parts", help="also write the pack as rz_pack.part{aa,ab,..}.bin here (tar.gz split "
+                                    "into < PART_MB pieces: the Kaggle web upload caps files at 10 MB)")
     a = ap.parse_args()
+    if a.code_pack:
+        print(code_pack(Path(a.serving_src), Path(a.code_pack), overlay=ROOT))
+        return
+    if not (a.reasoner_dir and a.watchdog_src and a.out):
+        ap.error("--reasoner-dir, --watchdog-src and --out are required to build the data pack")
     t0 = time.time()
     out = Path(a.out)
     if out.exists():
@@ -189,6 +198,71 @@ def main() -> None:
     info["total_mb"] = round(sum(v["bytes"] for v in files.values()) / 1e6, 1)
     (out / "manifest.json").write_text(json.dumps(info, indent=1))
     print(json.dumps({k: v for k, v in info.items() if k != "files"}, indent=1))
+    if a.parts:
+        print("parts:", split_parts(out, Path(a.parts)))
+
+
+PART_MB = 9.5
+CODE_PACK_FILES = ["agent", "redzone", "scripts/export_reasoner_llm.py", "scripts/download_recent.py",
+                   "scripts/train_reasoner.py", "scripts/build_reasoner_data.py", "data/eval_config.yaml",
+                   "pyproject.toml"]
+
+
+def code_pack(src: Path, dest: Path, overlay: Path | None = None) -> dict:
+    """Round 2+: the small code pack (rz_code.tar.gz, top folder ``code/``) the notebook unpacks
+    instead of the pack's code: the serving code (redzone/, the exporter, the downloader) from
+    ``src`` (an integration/next checkout) with agent/{distill,kaggle,train} from ``overlay``.
+    No data, no secrets: the notebook downloads everything else from ESPN inside Kaggle."""
+    import io
+    import re
+    import tarfile
+    skip = re.compile(r"(__pycache__|\.pyc$|/models?/.*\.(gguf|safetensors)$|\.env|secret|token)", re.I)
+    buf = io.BytesIO()
+    names = []
+    with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=9) as t:
+        def add(path: Path, arc: str):
+            for p in ([path] if path.is_file() else sorted(path.rglob("*"))):
+                rel = arc if path.is_file() else f"{arc}/{p.relative_to(path)}"
+                if p.is_file() and not skip.search(rel):
+                    t.add(p, arcname=f"code/{rel}")
+                    names.append(rel)
+        for f in CODE_PACK_FILES:
+            top = f.split("/")[0]
+            if overlay is not None and top == "agent":
+                continue
+            if (src / f).exists():
+                add(src / f, f)
+        if overlay is not None:
+            for sub in ("agent",):
+                add(overlay / sub, sub)
+            for f in CODE_PACK_FILES:
+                if f.startswith("data/") and (overlay / f).exists() and not (src / f).exists():
+                    add(overlay / f, f)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(buf.getvalue())
+    return {"files": len(names), "bytes": dest.stat().st_size}
+
+
+def split_parts(pack: Path, dest: Path, part_bytes: int = int(PART_MB * 1_000_000)) -> list[str]:
+    """tar.gz the pack (top folder ``pack/``) and split it into rz_pack.partaa.bin, partab.bin, ...;
+    the notebook's first cell cats them back together in name order."""
+    import io
+    import string
+    import tarfile
+    dest.mkdir(parents=True, exist_ok=True)
+    for old in dest.glob("rz_pack.part*.bin"):
+        old.unlink()
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=6) as t:
+        t.add(pack, arcname="pack")
+    data = buf.getvalue()
+    names = []
+    for k in range(0, len(data), part_bytes):
+        i = k // part_bytes
+        name = f"rz_pack.part{string.ascii_lowercase[i // 26]}{string.ascii_lowercase[i % 26]}.bin"
+        (dest / name).write_bytes(data[k:k + part_bytes])
+        names.append(name)
+    return names
 
 
 def _first_system(path: Path) -> str:

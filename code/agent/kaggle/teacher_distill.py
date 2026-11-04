@@ -219,9 +219,12 @@ if queue and os.path.exists(f"{MOMENTS}/split_plan.json"):
             continue                  # round 2+ grades on the build's dev-test sample (phase 3)
         else:
             keep.append(q)
+    from agent.distill.teacher import balance_by_league
+    keep = balance_by_league(keep)            # every league gets answers before the budget runs out
     queue = f"{WORK}/teacher_requests_r2.jsonl"
     write_jsonl(queue, keep)
-    print("teacher queue after the time split:", len(keep))
+    print("teacher queue after the time split:", len(keep),
+          {k: sum(1 for q in keep if str(q.get("id", "")).split(":")[0] == k) for k in ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")})
 if queue:
     tail_h = BLIND_BUDGET_H + STUDENT_BUDGET_H + GRADE_RESERVE_H        # what must still fit after the teacher
     run(["agent/kaggle/run_teacher.py", "--requests", queue, "--out", WORK,
@@ -307,6 +310,15 @@ for f in ("grade_rows.jsonl", "jump_rows.jsonl"):
         os.makedirs(os.path.join(keep, "graded"), exist_ok=True)
         shutil.copy(os.path.join(gdir, f), os.path.join(keep, "graded", f))
 json.dump({"round": ROUND, "mode": MODE, "wall_h": round((time.time() - T0) / 3600, 2)}, open(os.path.join(keep, "round.json"), "w"))
+from agent.kaggle.grade import short_grades  # noqa: E402
+
+# grades.json at the output ROOT: the few numbers the overseer reads from Kaggle's Output tab (the log is cut)
+try:
+    rep = json.load(open(os.path.join(WORK, "report.json"))) if os.path.exists(os.path.join(WORK, "report.json")) else {}
+    json.dump(short_grades(rep, ROUND, MODE, round((time.time() - T0) / 3600, 2)), open(os.path.join(KW, "grades.json"), "w"), indent=1)
+    print("grades.json:", open(os.path.join(KW, "grades.json")).read())
+except Exception as e:  # noqa: BLE001 - the summary never fails the round
+    print("grades.json not written:", type(e).__name__, e)
 shutil.make_archive(f"{KW}/out", "zip", keep)
 # keep the version output small: the 3.4 GB dequantized base is rebuilt next session in ~2 min
 shutil.rmtree(os.path.join(WORK, "students", "base-deq"), ignore_errors=True)
