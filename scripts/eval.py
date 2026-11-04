@@ -121,8 +121,12 @@ def main():
                behind=0.0, on_replay=0, drive=0, drive_live=0)
     causes: dict[str, float] = {}
     cut = CutCard()
+    per_night = []   # one row per slate: the unit of evidence for the release gate's night bootstrap
     for reps in eval_set(a.n, split=a.split):
         r = run(reps, cfg, set(cfg.get("teams.nfl")), **knobs)
+        rc = r.cut.summary()
+        per_night.append({"night": reps[0].gid, "entries": rc["entries"], "entries_mid_play": rc["entries_mid_play"],
+                          "cuts": len(r.mid_play_cuts), "big": r.big_plays, "big_seen": r.big_plays_caught})
         tot["big"] += r.big_plays; tot["seen"] += r.big_plays_caught; tot["live"] += r.big_plays_live
         tot["cuts"] += len(r.mid_play_cuts); tot["dead"] += r.dead_air_s; tot["watched"] += r.watched_s
         tot["crunch"] += r.crunch; tot["crunch_live"] += r.crunch_live
@@ -158,7 +162,8 @@ def main():
            "big_missed_on_replay": tot["on_replay"],
            "big_plays": tot["big"], "crunch_plays": tot["crunch"], **cut.summary(),
            "seconds": round(time.time() - t0),
-           "eval_data": evaldata.stamp(), "eval_end": evaldata.window_end("nfl", EVAL_END)}
+           "eval_data": evaldata.stamp(), "eval_end": evaldata.window_end("nfl", EVAL_END),
+           "per_night": per_night}
     print(json.dumps(out, indent=1))
     if a.dead:
         print("dead air by cause (points of dead_air_pct):")

@@ -156,13 +156,9 @@ SYSTEM = (
 
 def parse_answer(text: str) -> Verdict | None:
     """The model's JSON answer, tolerant of thinking blocks and code fences; None if unusable."""
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
-    m = re.search(r"\{.*?\}", text, flags=re.S)
-    if not m:
-        return None
-    try:
-        d = json.loads(m.group(0))
-    except json.JSONDecodeError:
+    from redzone.jsonfind import first_json_object
+    d = first_json_object(text)
+    if d is None:
         return None
     a = str(d.get("action", "")).strip()
     if a not in ACTIONS:

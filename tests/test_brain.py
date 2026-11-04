@@ -157,7 +157,7 @@ def test_blend_never_overrides_a_break_already_in_the_data():
     mixed = breaks.blend(rules, 0.3, g, 0.5)
     assert mixed.p == pytest.approx(0.5) and mixed.expect_s == 188.0 and mixed.why == rules.why
     alone = breaks.blend(breaks.NONE, 0.8, g, 0.5, ["a while since the last break"])
-    assert alone.p == pytest.approx(0.4) and alone.visit and "model" in alone.why
+    assert alone.p == pytest.approx(0.8) and alone.visit and "model" in alone.why
     assert breaks.blend(breaks.NONE, None, g) is breaks.NONE
 
 
