@@ -84,6 +84,21 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
    `CLAUDE_CODE_OAUTH_TOKEN` himself).
 4. Data sources tier B (12–31).
 
+## 6b. Shift schedule (Nick, Nov 4)
+
+Two shifts every day, starting Wed Nov 4:
+- **Day shift, 9 AM-11 PM ET: the claude.ai project coordinator runs the work.**
+  - At 9 AM the director hands it the next queue: what landed overnight, what's next in priority
+    order, the usage pace, and open risks. The coordinator runs the threads all day.
+- **Night shift, 11 PM-9 AM ET: the director runs the work directly.**
+  - At 11 PM the coordinator posts an end-of-day summary (merged, in flight, blocked), finishes or
+    parks its threads, and the director takes over.
+  - Overnight the director starts cloud sessions from Claude Code (no browser relay), keeps Kaggle
+    training alive, and does hourly checks.
+- Each handoff is written into §5 STATUS, so either side can pick up cold.
+- Usage rules (§2) apply on both shifts: pace about 15% a day per Ultra account and keep the last 10%
+  of each account for school. Spread the work across both accounts.
+
 ## 7. How the director works (so a new session can take over)
 
 - **Every 10 minutes, in one pass:** usage guard → PRs/CI → Kaggle log → project threads → one
