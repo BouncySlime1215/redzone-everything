@@ -340,6 +340,21 @@ def slate_preview(games, rules: HardRules, now: float) -> dict:
             "yours": sum(1 for r in rows if r["yours"])}
 
 
+ALERT_AHEAD_S = 1800.0   # warn about a your-team crunch clash this far ahead
+
+
+def clash_alert(slate: dict, now: float, ahead: float = ALERT_AHEAD_S) -> dict | None:
+    """The next crunch clash that involves Nick's team, starting within `ahead` s (or under way), as one
+    phone banner: who gets the TV and who goes to the second stick / catch-up. Display only."""
+    yours = {g["game_id"] for g in slate.get("games") or [] if g.get("yours")}
+    for c in slate.get("clashes") or []:
+        if c["t1"] <= now or c["t0"] - now > ahead or not yours.intersection(c["games"]):
+            continue
+        return {"t0": c["t0"], "t1": c["t1"], "in_s": max(0, round(c["t0"] - now)), "on_tv": c["on_tv"],
+                "second": c["second"], "why": c["why"], "now": c["t0"] <= now}
+    return None
+
+
 def router(engine) -> APIRouter:
     r = APIRouter(prefix="/api/v2")
 
@@ -442,8 +457,8 @@ def router(engine) -> APIRouter:
         if not _enabled(engine):
             return _off()
         now = time.time()
-        return {"enabled": True, "now": now,
-                **slate_preview(getattr(engine.merger, "games", {}), HardRules.from_config(engine.cfg), now)}
+        v = slate_preview(getattr(engine.merger, "games", {}), HardRules.from_config(engine.cfg), now)
+        return {"enabled": True, "now": now, **v, "alert": clash_alert(v, now)}
 
     @r.get("/priority")
     async def get_priority():
