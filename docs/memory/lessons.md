@@ -248,3 +248,6 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - 2026-11-04: `_held_for` added `self.held` and the caller added `base_s` too, so a watchdog top-up (STK-06)
   booked the earlier hold twice. `_held_for` now returns only this pause; the caller adds what the stream
   already ran behind.
+- 2026-11-04: `hold_overreport_s` 1.5 (book a hold as the wall span less 1.5 s) fought `hold_cal_s` -1.5 (a
+  rebuild pauses 1.5 s short): the STK-06 watchdog booked every short rebuild as ~0 s and rebuilt the same
+  2.9 s gap forever on the night lab. The fallback now books the span as is (0); the stick-clock path measures.
