@@ -147,3 +147,36 @@ Mind/Teacher as numbers ("comeback brewing", "star heating up", "upset alert" em
 
 Gates are unchanged (section 4). **Every Noggin PR reports:** parameter count (trees × leaves or NN
 weights; LLM params for the Mind), feature count, training row count, RAM, and latency (p50/p99 per tick).
+
+## 8. Priority (Nick, Nov 4 2:05 AM: "priority is key")
+
+Its own module, `redzone/noggin/priority.py`, tests in `tests/test_noggin_priority.py`. Owner: NOGGIN.
+Four layers, applied in order:
+
+| Layer | Source | What it holds | Can it be overridden? |
+|---|---|---|---|
+| **L1 Nick's hard rules** | config only (`teams`, `core.league_priority`, banned apps) | your-team (WSH: Commanders/Wizards/Capitals/Nationals; UNC) big plays 100 %; crunch time first; league order NFL > CFB > NBA > CBB > NHL > MLB; never Peacock | **never**, by AI or by any other layer |
+| **L2 Nick's preferences** | phone-page settings (`noggin.priority.prefs`) | bets weight, rivalries, NHL PP/OT boost, reels on/off, switch frequency; each clamped to a range | only by Nick; learned 👍/👎 suggestions are shown to him, never auto-applied (`suggest_from_feedback` returns `applied: false`) |
+| **L3 Mind read** | the Mind, every 30-60 s | narrative and stakes numbers in [-1, 1]: comeback brewing, star heating up, playoff race, upset alert, bet decisive next | bounded: the total is capped at ±15 points and expires after its TTL (90 s); it can reorder games only inside the same L1 tier |
+| **L4 Reflex live value** | the Reflex, every tick | red-zone drive, close-late, power play, win-prob swing, restart countdown | it is the base score |
+
+**How L1 is impossible to break.** Games are sorted by the tuple `(tier, league rank inside crunch,
+−score, game id)`. Tier is computed from L1 alone (0 your team in a big moment or crunch, 1 crunch,
+2 the rest); L2-L4 only change `score`. A game on a banned app is never ranked. `violations()` audits a
+ranking, and a 2,000-slate property test feeds hostile L2-L4 inputs (huge weights, NaN, stale Mind
+reads) and asserts zero violations.
+
+**Deterministic.** `rank(games, rules, prefs, minds, now)` is pure: no clock reads, no randomness, ties
+broken by game id. The night lab replays it and gets the same order and reasons.
+
+**Reason strings.** Every ranked game carries its top three positive contributions, e.g.
+`UNC your team + run + your bet + rivalry` or `KU run + your bet + crunch`, for the phone page and the
+switch trace.
+
+**North Star rows** (sent to the harness thread): your-team big plays 100 %, crunch live ≥ 95 %,
+league order respected (no lower-league non-crunch over a higher-league crunch), and "right game"
+agreement with Nick's choices once 👍/👎 data exists.
+
+**Wiring (next).** The module is not yet on the live path. It goes in behind `noggin.priority.enabled`
+(OFF), first in shadow next to today's `score.league_weight` / crunch priority in the decider, and is
+scored on the same nights before it turns on.
