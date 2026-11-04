@@ -28,8 +28,19 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 - **Release gate:** 95% on locked, unseen data, with no overfitting (time splits, locked test,
   fresh nights, per-slice gates). Anything that misses ships OFF behind a flag.
 - **Constraints:** $0 budget (ask before spending). Never enter passwords or tokens. Keep the Mac
-  light (8 GB). No disruptive TV tests while he watches. **Stop all Claude work at 88% weekly
-  usage** (he keeps 10% for school). Keep ADHD-style replies: lead with the action, short.
+  light (8 GB). No disruptive TV tests while he watches. Keep ADHD-style replies: lead with the
+  action, short.
+- **USAGE RULES (Nick, Nov 4, 12:30 AM):**
+  - Nick has **two Claude Ultra accounts**: this one, upgraded Nov 4 (resets **Mon 8:00 PM ET**), and
+    the new one from Wed Nov 4 at 5 PM (its own weekly reset).
+  - **Spread work across both over the whole week. Never burn a week of usage in a day.**
+  - Pace each account in a straight line from its weekly reset to **90%** at the next reset, about
+    **13-15% per day**. Check it hourly.
+  - **Keep the last 10% of each account for Nick's school work.** At **≥89%**, pause the project and
+    stop the director jobs on that account.
+  - More than 5 points ahead of the line → cut to 1 thread. Behind the line → up to 5 threads.
+  - Research agents are expensive (a max-effort Fable agent is about 250-400k tokens), so use them
+    sparingly and prefer cheaper models.
 
 ## 3. Where everything lives
 
