@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from redzone import crunch
 from redzone.decider.screen import CONTINUOUS, _is_marker
 from redzone.lab import cutgrade, leverage
 from redzone.lab.backtest import (CATCHUP_2_S, CATCHUP_3_S, CATCHUP_S, lag_of, leave_offsets, offsets_of, on_screen, replayed_by,
@@ -127,16 +128,7 @@ def is_crunch(league: League, p: dict) -> bool:
     hs, as_ = espn._int(p.get("homeScore")), espn._int(p.get("awayScore"))
     if hs is None or as_ is None:
         return False
-    d = abs(hs - as_)
-    if league == League.NFL:
-        return per >= 5 or (per == 4 and c is not None and c <= 120 and d <= 8)
-    if league == League.NBA:
-        return per >= 5 or (per == 4 and c is not None and c <= 120 and d <= 5)
-    if league == League.NHL:
-        return per >= 4 or (per == 3 and c is not None and c <= 120 and d <= 1)
-    if league == League.MLB:
-        return per >= 8 and d <= 2
-    return False
+    return crunch.inside(crunch.row("graded", league), per, c, abs(hs - as_))   # [one brain] the crunch table
 
 
 def power_play_after(league: League, plays: list[dict]) -> list[bool]:

@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 import time as _real_time
 import yaml
 
-from redzone import engine as engine_mod, standby
+from redzone import crunch, engine as engine_mod, standby
 from redzone.channels import REDZONE_TARGET, ChannelMap, Where
 from redzone.config import Config, ConfigError, _deep_merge, default, validate
 from redzone.control import Controller, Outcome
@@ -46,7 +46,7 @@ TEAM_NAMES = {"nfl": "Commanders", "nba": "Wizards", "nhl": "Capitals"}
 def _crunch_counts(r: Replay, watching, lag_total: float, play_len: float, tune_s: float,
                    last_period: int = 4, margin: int = 8, period_len: float | None = None,
                    window: tuple[float, float] | None = None,
-                   offsets: list[float] | None = None) -> tuple[int, int]:
+                   offsets: list[float] | None = None, clock_s: float = 120.0) -> tuple[int, int]:
     """One game's crunch-time plays (final 2:00 of a one-score game, or OT): (how many, how many live).
     Uses backtest.crunch_counts when the backtest has it."""
     if hasattr(backtest, "crunch_counts"):
@@ -66,7 +66,7 @@ def _crunch_counts(r: Replay, watching, lag_total: float, play_len: float, tune_
                 and not p.get("scoringPlay"):
             continue
         close = hs is not None and as_ is not None and abs(hs - as_) <= margin
-        if not ((per == last_period and clk is not None and clk <= 120 and close) or per > last_period):
+        if not ((per == last_period and clk is not None and clk <= clock_s and close) or per > last_period):
             continue
         n += 1
         live += backtest.shows(watching, offsets, r.gid, w + lag_total - play_len, tune_s)
@@ -462,8 +462,9 @@ class DemoEngine(Engine):
 
         def crunch(r):
             hockey = r.league == League.NHL
-            return _crunch_counts(r, self.watching, lag, self.play_len_s, self.tune_s, 3 if hockey else 4,
-                                  1 if hockey else 8, 1200.0 if hockey else None, win, offs)
+            g = crunch.row("graded", League.NHL if hockey else League.NFL)   # [one brain] the crunch table
+            return _crunch_counts(r, self.watching, lag, self.play_len_s, self.tune_s, g.period,
+                                  g.margin, 1200.0 if hockey else None, win, offs, g.clock_s)
 
         # Big plays: NFL TDs/FGs/turnovers, NHL goals (every NBA bucket is a "scoring play": left out).
         big = {}

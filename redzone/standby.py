@@ -32,7 +32,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
-from redzone import config
+from redzone import config, crunch
 from redzone.models import ByLeague, GameState, League, Phase, pro_period
 
 NEXT, HOME, REPLAY, BREAK, MOMENT, BEST = -1, 0, 1, 2, 3, 4
@@ -57,8 +57,6 @@ class Option:
 
 # --- what kind of game is it right now ----------------------------------------------------------
 
-# Crunch time coming: (final period, seconds left at or under, max margin). Overtime counts if close.
-_CRUNCH = ByLeague({League.NFL: (4, 420, 8), League.NBA: (4, 360, 8), League.NHL: (3, 480, 1)})
 
 
 def crunch_soon(g: GameState) -> bool:
@@ -67,12 +65,7 @@ def crunch_soon(g: GameState) -> bool:
     if g.phase != Phase.LIVE or d is None:
         return False
     p = pro_period(g.league, g.period, g.clock_s)  # men's college halves read as NBA quarters
-    if g.league == League.MLB:
-        return p >= 8 and abs(d) <= 2
-    last, clock, margin = _CRUNCH[g.league]
-    if abs(d) > margin:
-        return False
-    return p > last or (p == last and g.clock_s is not None and g.clock_s <= clock)
+    return crunch.inside(crunch.row("soon", g.league.base), p, g.clock_s, d)   # [one brain] the crunch table
 
 
 def break_soon(g: GameState | None, s=None) -> bool:

@@ -244,6 +244,30 @@ decider:
     shortest_break_s:      # ~10th pct, stoppage -> next scrimmage play logged, late Q4/OT, 2025 games
       {timeout: 30, injury: 27, review: 80, score_break: 110, two_minute_warning: 150, end_period: 180}
 
+crunch:                    # [one brain, step 2] ONE crunch table (redzone/crunch.py), read by the scorer, standby,
+                           # the demo and the grading. period / clock_s (left, at or under; null = whole period on) / margin /
+                           # ot (crunch from this period on) / ot_close (OT still needs the margin). Values as shipped Nov 4.
+  run_up:                  # crunch_time: up a little before the graded window, to arrive at a stoppage
+    nfl: {period: 4, clock_s: 120, margin: 8, ot: 5}
+    nba: {period: 4, clock_s: 180, margin: 7, ot: 5}
+    nhl: {period: 3, clock_s: 180, margin: 1, ot: 4}
+    mlb: {period: 8, clock_s: null, margin: 2, ot: 10}
+  window:                  # crunch_window: the graded window the app aims at (NHL from 2:00)
+    nfl: {period: 4, clock_s: 120, margin: 8, ot: 5}
+    nba: {period: 4, clock_s: 180, margin: 7, ot: 5}
+    nhl: {period: 3, clock_s: 120, margin: 1, ot: 4}
+    mlb: {period: 8, clock_s: null, margin: 2, ot: 10}
+  graded:                  # the lab scorecard's crunch plays (sportsgrade.is_crunch, demo crunch counts)
+    nfl: {period: 4, clock_s: 120, margin: 8, ot: 5}
+    nba: {period: 4, clock_s: 120, margin: 5, ot: 5}
+    nhl: {period: 3, clock_s: 120, margin: 1, ot: 4}
+    mlb: {period: 8, clock_s: null, margin: 2}
+  soon:                    # standby.crunch_soon: crunch a few minutes off, pre-position the hidden stick
+    nfl: {period: 4, clock_s: 420, margin: 8, ot: 5, ot_close: true}
+    nba: {period: 4, clock_s: 360, margin: 8, ot: 5, ot_close: true}
+    nhl: {period: 3, clock_s: 480, margin: 1, ot: 4, ot_close: true}
+    mlb: {period: 8, clock_s: null, margin: 2}
+
 core:                      # the decision core's expected-value knobs (redzone/decider/core.py); the
                            # auto-tuner searches these plus decider.switch_margin / break_destination_min /
                            # locked_override_lead / return_tolerance. Defaults = the rules the core replaced.
