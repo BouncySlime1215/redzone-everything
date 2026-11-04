@@ -214,3 +214,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   last. Warm-up (warmup.pregame) puts the likeliest first pick there from T-10 min. Listed start times run
   early, so the window lasts until a game goes live (night lab: games went live 15 min after the listing).
   Also: Tonight rebuilds its plan every minute, so any state kept in the plan dict must be carried over.
+- 2026-11-04: **A hold's pause overshoots when a switch holds the lock.** `_hold` sleeps B s without the lock,
+  then waits for it to press play: a switch on the other stick in between stretched a 60 s hold to 81.7 s and a
+  90 s one to 111.6 s (night lab, seed 1). The recorded `held` was right, the target wasn't. The STK-06 watchdog
+  now catches and rebuilds it; resuming without waiting behind a whole switch would fix the cause.
+  - **Signals:** "buffer: ... held N s behind live" with N well over timing.behind_live_s

@@ -567,6 +567,12 @@ def load_live_nights(dirs: list[Path]) -> list[dict]:
     return out
 
 
+def _buf(n: dict) -> str:
+    """[STK-06] buffer drift recovered: rebuilt / detected that night (data/buffer.jsonl)."""
+    b = n.get("buffer") or {}
+    return f"{b.get('recovered', 0)}/{b['detected']}" if b.get("detected") else "–"
+
+
 def live_section(nights: list[dict]) -> list[str]:
     """Real nights on Nick's TV next to the sims: PENDING until one exists. Not graded yet: a line
     moves to PASS/FAIL only through release_gate.py once there are enough nights."""
@@ -575,15 +581,15 @@ def live_section(nights: list[dict]) -> list[str]:
         return out + ["⏳ PENDING: no live night collected yet (data/live_nights/<night>/summary.json, written "
                       "after each night by the supervisor).", ""]
     out += ["| night | landings (dead ball) | came up into it p50 | before play resumed p50 / min | entries mid-play | "
-            "switch p95 | press-to-TV p95 (n) | sync anchor error p95 by stick |",
-            "|---|---:|---:|---:|---:|---:|---:|---|"]
+            "switch p95 | press-to-TV p95 (n) | sync anchor error p95 by stick | buffer drift recovered |",
+            "|---|---:|---:|---:|---:|---:|---:|---|---:|"]
     for n in nights[-14:]:
         la = n.get("landings") or {}
         sy = ", ".join(f"{k} {v.get('p95_s')} s (n={v.get('n')})" for k, v in (n.get("sync_anchor_err") or {}).items()) or "–"
         out.append(f"| {n['night']} | {la.get('n', 0)} | {la.get('after_dead_p50_s', '–')} s | "
                    f"{la.get('before_play_p50_s', '–')} / {la.get('before_play_min_s', '–')} s | "
                    f"{n.get('entries_mid_play', '–')} | {n.get('switch_p95_s', '–')} s | "
-                   f"{n.get('press_to_tv_p95_s', '–')} s ({n.get('press_samples', 0)}) | {sy} |")
+                   f"{n.get('press_to_tv_p95_s', '–')} s ({n.get('press_samples', 0)}) | {sy} | {_buf(n)} |")
     return out + [""]
 
 
