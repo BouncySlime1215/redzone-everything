@@ -30,6 +30,31 @@ The draft release PR #37 is closed (Nick, Nov 3 10:45 PM); the deploy fetches `i
 | Memory systems (item 14) | MEMORY (#36 merged) | keep current |
 | Paused with a dependency | auto-tune #16, highlight jump #18 (brain break quantiles), reasoner (Kaggle adapter), brain leak-fix retrain | see queue |
 
+## Research queue A-E (Nick, Nov 3 11:30 PM; `docs/research/2026-11-03/00-PLAN.md`, #46)
+
+It merges into the overnight list; timing comes first. Architecture: GBMs and rules own timing; the 1.7B LLM
+writes words only, async. Gates only on unseen nights.
+
+| Item | Work | Owner |
+|---|---|---|
+| A1 | Honest baseline: `feed_lag` exposed in `scripts/eval.py` / `eval_sports.py`, re-run with measured lags (NBA 38, CBB 35, NFL 45, NHL 49 s) | TIMING |
+| A2 | FastCast on every league + league-origin feeds (NHL `clock.running`, NBA `timeActual`, MLB pitch times), per-source lag logged | TIMING |
+| A3 | One shared restart countdown (KM, then boosted hazard, then conformal lower bounds) replacing `jump.py`'s p10 and the 0.6x/1.6x quantiles | TIMING |
+| A4 | Rule features: national vs local break lengths, full TV-timeout rules per league | TIMING |
+| A5 | Per-(app, channel, tune) stream-delay Kalman filter fed by Prime clock OCR | TIMING (with SYNC) |
+| A6 | Commit a cut only at P_safe >= 99.5 % over the ~3.5 s flip + settle window; SmartThings ~2 s trip cost | TIMING |
+| A7 | Scorecard lines: landing/leave-offset histograms, % landings in dead time, mid-play per 100 switches (Wilson CI) | TIMING |
+| A8 | Hidden-stick prediction (next target in 180 s) | TIMING (after A3) |
+| B9 | Cluster-bootstrap over nights; PASS needs >= 8 nights, >= 60 decisions and lower bound >= 95 %, else PENDING | INTEGRATION |
+| B10 | Leaks: 2 locked games in the e2e night (NHL 401892626, NBA 401909906), `parse_summary` leaders, `scripts/leak_check.py` | INTEGRATION |
+| B11 | Reasoner gate split (rule conformance, calibration, ON/OFF non-inferiority, abstain) | LOCAL AI |
+| B12 | Realistic night lab (lag jitter, late plays, drops, resyncs from real traces) | INTEGRATION (after B9-B10) |
+| C13-C16 | Calibrated safe-now with abstain; next big play; stakes layer; reel ranker | MOMENT/BREAK (C13 with LOCAL AI) |
+| C17 | Watchdog 5 -> 12 guarded actions, all 13 kinds | ERRORS |
+| C18 | Bugs: `breaks.blend` 50/50 calibration, two JSON parsers, switch-cost constants disagreeing | INTEGRATION (switch costs with TIMING) |
+| D19-D22 | Kaggle student recipe (fp16 base + fp32 LoRA r16-32), teacher throughput, KD, historical label factory | LOCAL AI |
+| E23-E25 | Decision records + phone 👍/👎, shadow mode + SPRT rollback, BRAIN auto-fix on dev-test only | DECISION (E25 PLATFORM) |
+
 ## Queue (in order; at most 2 working threads)
 
 | # | Work | Owner | Resume point |
