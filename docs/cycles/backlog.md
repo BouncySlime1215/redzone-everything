@@ -10,6 +10,18 @@ every PR shows its North Star delta (dev + locked, live + candidate columns) and
 Sources: [idea-bank.md](idea-bank.md) (#1-#20), [playbooks.md](../playbooks.md) (entry ids),
 [roadmap.md](../roadmap.md), the sync plan.
 
+## Overseer queue (Nick, Nov 4 3:05 PM ET): next after each lane's current item, in this order
+Usual gates: graded on locked unseen nights, flags OFF until they pass, North Star delta (dev + locked,
+live + candidate) and a RAM/CPU line in every PR. No signal from Nick in any of it (self-taught rule).
+
+| # | build | lane | what "done" looks like | flag |
+|---|---|---|---|---|
+| a | **Night health report**, every morning | ④ | auto-written `docs/nights/YYYY-MM-DD.md` from the live-night logs: North Star lines for last night, misses (each with game, clock, reason), sync p95 per stick, press-to-TV p50/p95, faults recovered; PENDING rows when no night ran; no Nick input | `report.nightly` |
+| b | **Smarter stick assignment** | ② | the hottest game (by the decider's priority plus the hidden-stick prediction) goes on the 4K Plus (.150, HDMI1); the other stick pre-positions the predicted next game; zero extra flips or tunes vs today, mid_play 0, big live / crunch live up on dev and locked | `decider.stick_assign.v2` |
+| c | **Self-calibration** each night from live signals | ② sync half: YTTV seek step (#133) and per-channel delay; ③ timing half: flip time and press-to-TV | each value re-measured automatically from live telemetry (PlaybackState bursts #128, positions, flip logs), written to a dated calibration file the planner reads at the next start; outlier guard (refuse a value > 3 MAD from the last 5 nights); no Nick work | `calib.auto` |
+| d | **Pre-game warm-up** | ③ | 10 min before the first tip or kick, tune both sticks and build the pause buffer, so the first switch of the night is pre-tuned; night-lab test; no tune while Nick is watching another app on the TV | `warmup.pregame` |
+| e | **Buffer watchdog** | ③ | detect a lost pause buffer (stick resumed, jumped to live, or app restarted) or behind-live drift > 2 s from target, and rebuild it at the next dead ball, never mid-play; new playbook entry + fault kind `buffer_lost`; drift-recovered row in northstar | `buffer.watchdog` |
+
 ## ① Noggin training (always on)
 1. Reflex Predict v1 NBA (cycle 01).
 2. Clairvoyance model: Predict over the buffered-ahead feed horizon (idea #1, GAME-04).
