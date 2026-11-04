@@ -183,3 +183,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Cause:** not one test. integration/next itself already took 19m50s on 3.12 (12:12 run): the e2e night, the playbook night (#86) and the SmartThings night take ~3 min each, and the drill night adds ~1 min. GitHub runners are ~1.6x slower than the cloud box (11.5 min there).
 - **Fix:** timeout-minutes 30 on the test job. The next step is to run the replayed nights in their own job, in parallel.
 - **Signals:** "The operation was canceled", test job cancelled, timeout-minutes
+
+### FastCast never logged a row on the Mac (Nov 4)
+- **Symptom:** no `espn_fastcast` rows in any recording (Nov 2-4), and data/fastcast_check.json said "stopped: only 0 plays over 0 games in 4 h". The service log has no FastCast line at all: no connect, no warning.
+- **Cause (confirmed):** the live check's 4 h budget ran on wall time from boot. The service restarted at 00:03 ET with no live games, so the check spent its 4 h on an empty slate and switched FastCast off for good. **Not yet explained:** the Nov 3 19:25-23:45 run had live games, yet the client never logged a connect or an error.
+- **Fix:** the budget counts only time with live games subscribed (`FastcastCheck.watching`). Every minute, the file carries the client's own status (task state, wanted topics, connected, updates, last error), the engine logs when FastCast starts and how many games it watches, and a client task that dies is logged at ERROR. The next live night's file says where it stops.
+- **Signals:** fastcast_check.json `result: stopped` with `games: 0`; no `espn_fastcast` rows in recordings/*/plays.jsonl.
