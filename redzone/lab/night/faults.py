@@ -518,10 +518,13 @@ def app(world, rng: random.Random) -> list[Fault]:
             if any(w0 + 300 <= t <= w1 - 600 for w0, w1 in wins):
                 return t
         return t
-    return sorted([SearchMiss("search_miss", when(0.10, 0.25), rng.uniform(60, 180), "hidden"),
-                   UpdateDialog("update_dialog", when(0.30, 0.45), 300.0, "hidden"),
-                   UpdateDialog("update_dialog", when(0.50, 0.65), rng.uniform(300, 900), "hidden", {"mode": "sticky"}),
-                   WrongTune("wrong_tune", when(0.70, 0.85), 900.0, "hidden")], key=lambda f: f.at)
+    # The hidden stick re-tunes only when the standby plan changes, so each fault is armed long enough
+    # to meet a tune (the night's report says whether it fired: search_miss "hit", wrong_tune "fired").
+    t_wrong = when(0.55, 0.70)
+    return sorted([SearchMiss("search_miss", when(0.10, 0.25), rng.uniform(600, 1200), "hidden"),
+                   UpdateDialog("update_dialog", when(0.28, 0.38), 300.0, "hidden"),
+                   UpdateDialog("update_dialog", when(0.40, 0.55), rng.uniform(300, 900), "hidden", {"mode": "sticky"}),
+                   WrongTune("wrong_tune", t_wrong, max(900.0, b - t_wrong), "hidden")], key=lambda f: f.at)
 
 
 def plug(spec: str, world, rng: random.Random) -> list[Fault]:
