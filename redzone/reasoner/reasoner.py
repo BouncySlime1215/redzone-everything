@@ -81,7 +81,7 @@ EMPTY = Reading()
 def parse_answer(text: str) -> Narration | None:
     """The model's JSON, validated and clamped. None for anything unusable (never raises)."""
     from redzone.jsonfind import first_json_object
-    d = first_json_object(text)
+    d = first_json_object(text, accept=lambda x: x.get("lock_in") in LEVELS)
     if not isinstance(d, dict) or d.get("lock_in") not in LEVELS:
         return None
 
