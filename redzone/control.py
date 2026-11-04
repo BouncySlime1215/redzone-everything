@@ -279,6 +279,7 @@ class Controller:
         # Every playback report from any stick (the engine's show-change delay watcher), optional.
         self.on_playback: Callable[[Stick, dict], None] | None = None
         self.tv.corroborate = self._cec_corroborate
+        self.tv.hardening = self._st_hardening
         self._flip_how = ""                      # "tv:local" | "tv:smartthings" | "home" | "" (last flip)
         self._cec_on: dict[str, bool | None] = {}   # stick host -> its HDMI-CEC setting (None = unread)
         self._cec_read_at = 0.0
@@ -307,6 +308,13 @@ class Controller:
                 self.hdmi[st.host] = s["hdmi"]
         self.tv = SamsungTV.from_devices()
         self.tv.corroborate = self._cec_corroborate
+        self.tv.hardening = self._st_hardening
+
+    def _st_hardening(self) -> bool:
+        try:
+            return bool(self.cfg.get("hardening.smartthings", False))
+        except Exception:
+            return False
 
     def _observe_playback(self, stick: Stick, report: dict) -> None:
         if self.on_playback is not None:

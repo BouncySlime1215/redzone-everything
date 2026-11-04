@@ -23,7 +23,7 @@ The draft release PR #37 is closed (Nick, Nov 3 10:45 PM); the deploy fetches `i
 | Area | Owner | Now |
 |---|---|---|
 | Switch timing (Nick's items 1-7: dead-ball lag per source, live-delay offset per stick, restart prediction, SmartThings ~2 s trip cost, dwell/hysteresis, landing-offset scorecard line, e2e SmartThings latency) | TIMING thread (new, Nov 3 night) | working |
-| Error handling (items 8-12: SmartThings breaker + HOME/CEC fallback, stick recovery, feed fallback, Mac sleep/network/launchd, watchdog rate limits) | ERRORS thread (new, Nov 3 night) | working |
+| Error handling (items 8-12: SmartThings breaker + HOME/CEC fallback, stick recovery, feed fallback, Mac sleep/network/launchd, watchdog rate limits) | ERRORS thread (new, Nov 3 night) | PRs up, all OFF behind `hardening.*`: #44 SmartThings (adds the block; merge first), #48 sticks, #49 feeds, #50 Mac wake (stacked on #44), #45 watchdog cap (on). Turn each on after Nick's TV test |
 | Integration train, CI, release, housekeeping (items 13a-d, 14, 16) | INTEGRATION | #41 SmartThings OAuth + port map, #42 launchd off ~/Documents, #43 hostile-host e2e night + RC 4 pin_network: CI, then merge |
 | Kaggle teacher (item 13e: `pip uninstall torchao` on kaggle-inputs; V4 running with Nick's patch) | LOCAL AI (#13) | queued |
 | Prime multiview live-calibration plan (item 15, #40 flag off) | SWITCHING | queued |

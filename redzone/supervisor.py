@@ -61,6 +61,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from redzone import observability as obs
+from redzone.platform.health import PUSH as PUSH_FAULTS
 from redzone import trace
 
 log = logging.getLogger(__name__)
@@ -1024,6 +1025,12 @@ class Supervisor:
                               "component": f.component, "detail": f.detail})
                 if f.severity.value in ("error", "critical"):
                     log.warning("invariant broken: %s (%s): %s", f.code, f.component, f.detail)
+                if f.code in PUSH_FAULTS:
+                    # Only faults a person has to fix (a refused sign-in); once per appearance.
+                    try:
+                        await self.send_push(f"RedZone: {f.code}", f.detail, priority="high", tags="warning,tv")
+                    except Exception:
+                        log.exception("couldn't push fault %s", f.code)
         for k in sorted(self._faults_logged - keys):
             self._faults_logged.discard(k)
             self._record({"kind": "invariant_cleared", "code": k[0], "component": k[1]})

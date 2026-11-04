@@ -229,9 +229,83 @@ SCENARIOS = {
     "prompt_screen":       lambda: _switch("hidden", "prompt_screen"),
     "tv_flip_fail":        lambda: _switch("hidden", "tv_flip_fail", tv_fail=True),
     "feed_5xx":            _feed_5xx,
+    "st_outage":           lambda: _st_fault("outage"),
+    "st_429":              lambda: _st_fault("429"),
+    "st_auth":             lambda: _st_fault("auth"),
     "clock_skew":          _clock_skew,
     "corrupt_state":       _corrupt_state,
 }
+
+
+async def _st_fault(kind: str) -> dict:
+    """SmartThings fails (5xx/timeouts, 429 or a refused sign-in) for 10 flips, one every 60 s, then
+    comes back. Each flip either tries the cloud (a timed-out call costs its 8 s inside the flip) or
+    goes straight to HOME/CEC. Compared with hardening.smartthings off and on, on a fake cloud and a
+    fake clock (no TV, no network)."""
+    import httpx
+
+    from redzone import tv as tvmod
+    tvmod.VERIFY_GAP_S = tvmod.ST_RETRY_GAP_S = 0.0
+    res = {}
+    for hard in (False, True):
+        t = [1000.0]
+        down = [True]
+        timed_out = [0]
+        in_flips = [0]
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            if req.url.path == "/oauth/token":
+                if down[0] and kind == "auth":
+                    return httpx.Response(400, json={"error": "invalid_grant"})
+                return httpx.Response(200, json={"access_token": "new", "refresh_token": "r2", "expires_in": 86400})
+            if down[0]:
+                if kind == "outage":
+                    timed_out[0] += 1
+                    raise httpx.ReadTimeout("no reply", request=req)
+                if kind == "429":
+                    return httpx.Response(429, headers={"retry-after": "120"})
+                return httpx.Response(401)
+            if req.url.path == "/v1/devices":
+                return httpx.Response(200, json={"items": [{"deviceId": "tv-1", "components": [
+                    {"capabilities": [{"id": "mediaInputSource"}]}]}]})
+            if req.url.path.endswith("/status"):
+                return httpx.Response(200, json={"inputSource": {"value": "HDMI2"}})
+            return httpx.Response(200, json={})
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "st.json"
+            f.write_text(json.dumps({"client_id": "c", "client_secret": "s", "refresh_token": "r",
+                                     "access_token": "a", "expires_at": 10 ** 12, "refreshed_at": 10 ** 12}))
+            tr = httpx.MockTransport(handler)
+            tv = tvmod.SamsungTV(st_device="tv-1", auth=tvmod.SmartThingsAuth(f, transport=tr, clock=lambda: t[0]),
+                                 transport=tr, clock=lambda: t[0], hardening=lambda: hard)
+            tried = 0
+            for i in range(10):
+                if tv.paths():
+                    tried += 1
+                    before = timed_out[0]
+                    await tv.set_input("HDMI2", methods=tv.paths())
+                    in_flips[0] += timed_out[0] - before
+                t[0] += 30
+                await tv.maintain()
+                t[0] += 30
+            down[0] = False
+            if kind == "auth":   # the user re-runs tv_setup.py --smartthings
+                import os
+                os.utime(f, (t[0] + 1, t[0] + 1))
+                tv.auth._d = None
+            back = None
+            for s in range(0, 1200, 10):
+                t[0] += 10
+                await tv.maintain()
+                if tv.paths():
+                    back = s + 10
+                    break
+            res["on" if hard else "off"] = {"flips_that_tried_cloud": tried, "timeout_s_inside_flips": in_flips[0] * 8,
+                                            "recover_s": back, "fault": tv.st_fault or None}
+    on, off = res["on"], res["off"]
+    return {"ok": on["flips_that_tried_cloud"] <= 2 and on["recover_s"] is not None, "wall_s": None,
+            "mid_play_cuts": 0, "stuck": False, "flagged": True,
+            "detail": f"{kind}: 10 flips with SmartThings down, off vs on", "off": off, "on": on}
 
 
 async def run(names: list[str]) -> dict:
