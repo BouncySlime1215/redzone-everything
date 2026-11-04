@@ -71,10 +71,11 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- 15:05 overseer: Nick approved everything. Merged #128 into integration/next. Pushed the missing decisions.md line to #133 (CI rerunning; coordinator merges when green).
-- Queued 5 builds with the coordinator: night health report (lane 4), smarter stick assignment + self-calibration (lane 2/3), pre-game warm-up + buffer watchdog (lane 3). Flags off until gates pass.
-- Coordinator to triage old drafts #13 #16 #18 #20 #23 #24 (salvage, then close) and rewrite the docs/status.md queue.
-- Checked: the Mac's data/config.yaml has no replay.seek_step_s override, so #133's 15 s applies once deployed.
+- 15:00 HARNESS FULL THROTTLE (Nick: "why aren't the planners cooking"). Audit: only 1 of 6 threads was working, the planners were idle 2-3 h, and Cycle 04 was past its window with no review. Cause: the loop ran on events (a lane finishing), so a blocked lane stalled everything.
+- New loop rules sent to the coordinator: 90-min cycles on a clock (the End Planner reviews at T+90 no matter what, and the Start Planner follows within 10 min), every lane plan lists 3+ ranked tasks, no idle threads, Kaggle goes to the overseer (not Nick).
+- Harness kicker cron every 30 min (:22/:52) restarts idle threads and pushes overdue reviews.
+- Kaggle: launched the Noggin data factory on free CPU (notebook nickmatta/redzone-noggin-factory, dataset redzone-factory-code = pack cdf86ef), running ~11.5 h. V7 (notebooka466d7f817 v7) finished successfully (23,508 s): 13.6M Reflex rows, head AUC_test NFL 0.906 / CFB 0.804 / NBA 0.999 (suspiciously high, leakage check needed) / CBB 0.966 / NHL 0.719 / MLB 0.872. Student grade lines still to read from the output.
+- Closed #112 (superseded, as the integrator asked).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
