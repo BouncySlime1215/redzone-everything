@@ -1430,8 +1430,10 @@ class Controller:
 
     def _held_for(self, stick: Stick, target: str, pb: dict, span_s: float) -> float:
         """[hold calibration] How far behind live a hold really left the stream. Best: the stick's own
-        clock against its position since the tune anchor (clock elapsed - position elapsed: what the
-        live lab used, error under 0.5 s), on top of what was already booked. Else the wall span
+        clock against its position since the last anchor (clock elapsed - position elapsed: what the
+        live lab used, error under 0.5 s). Only this pause: the caller adds base_s, what the stream already
+        ran behind (a watchdog top-up re-anchors after the first hold, so adding self.held too counted it
+        twice and the STK-06 rebuild never converged). Else the wall span
         between the confirmed pause and the confirmed play less timing.behind_live_s.hold_overreport_s
         (live lab, Nov 4: that span over-reports by ~1.4 s; 1.5 s default)."""
         t = stick.tuned or {}
@@ -1440,9 +1442,9 @@ class Controller:
         if None not in (pa, ua, pn, un) and pa > 0 and pn > 0 and un >= ua:
             lag = ((un - ua) - (pn - pa)) / 1000.0
             if 0.0 < lag <= span_s + 5.0:
-                return round(self.held.get(target, 0.0) + lag, 1)
+                return round(lag, 1)
         over = float(self.cfg.get("timing.behind_live_s.hold_overreport_s", 1.5) or 0.0)
-        return round(max(0.0, span_s - over) + self.held.get(target, 0.0), 1)
+        return round(max(0.0, span_s - over), 1)
 
     async def _rewind(self, stick: Stick, back_s: float) -> bool:
         """Rewind about back_s and play. Whole presses, rounded UP: landing a few seconds early shows
