@@ -5,6 +5,7 @@ one stick and write data/prime_multiview_keys.json (what PrimeMultiviewTuner pre
     .venv/bin/python scripts/prime_multiview_probe.py --stick 100.110.165.181:5555 --gti GTI
     .venv/bin/python scripts/prime_multiview_probe.py --gti GTI --rounds 30 # more timed switches
     .venv/bin/python scripts/prime_multiview_probe.py --gti GTI --yes       # never ask (stops instead)
+    .venv/bin/python scripts/prime_multiview_probe.py --fake --gap 0        # rehearsal, no stick (~10 s)
 
 It takes that stick's screen for a few minutes, so run it with the app paused. It:
 
@@ -119,6 +120,16 @@ class Probe:
 
 
 async def run(a) -> dict:
+    if getattr(a, "fake", False):
+        # Rehearsal: the simulated Prime player (redzone/lab/prime_mv_fake.py). Nothing touches a stick,
+        # and the real key map is never overwritten.
+        from redzone.lab.prime_mv_fake import FakePrimeStick
+        stick = FakePrimeStick()
+        out = ROOT / "data" / "lab" / "prime_multiview" / ("rehearsal-" + time.strftime("%Y%m%d-%H%M%S"))
+        out.mkdir(parents=True, exist_ok=True)
+        if not a.label:
+            a.label = "Suns,Warriors"
+        return await probe(stick, a, out, stick.tune, keys_file=None)
     from redzone.tuners.adb import Stick
     from redzone.tuners.tuners import PrimeTuner
     d = json.loads(DEVICES.read_text()) if DEVICES.exists() else {}
@@ -134,12 +145,19 @@ async def run(a) -> dict:
         raise SystemExit(f"Can't reach {stick.host} over adb (same Wi-Fi? Tailscale quit?).")
     out = ROOT / "data" / "lab" / "prime_multiview" / time.strftime("%Y%m%d-%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
+    return await probe(stick, a, out, PrimeTuner().tune)
+
+
+async def probe(stick, a, out: Path, tune, keys_file: Path | None = pmv.KEYS_FILE) -> dict:
+    """Steps 1-5 on any stick-like object (`key`, `run`); `tune(stick, gti, target)` opens the first
+    game. keys_file=None never writes the key map (rehearsal)."""
     p = Probe(stick, out, ask=not a.yes)
-    res: dict = {"stick": stick.host, "out": str(out.relative_to(ROOT)), "error": None}
+    p.keys_file = keys_file
+    res: dict = {"stick": stick.host, "out": _rel(out), "error": None}
     km = pmv.KeyMap(stick=stick.host, measured_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"))
 
     # 1. The first game, by a normal tune.
-    t = await PrimeTuner().tune(stick, a.gti, f"prime:{a.gti}")
+    t = await tune(stick, a.gti, f"prime:{a.gti}")
     p.note("first game", ok=t.ok, took=round(t.took, 1), steps=t.steps[-3:])
     if not t.ok:
         res["error"] = f"couldn't open the Prime game: {t.error}"
@@ -277,29 +295,44 @@ async def run(a) -> dict:
     return finish(p, res, km)
 
 
+def _rel(path: Path) -> str:
+    try:
+        return str(Path(path).relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def finish(p: Probe, res: dict, km: pmv.KeyMap) -> dict:
     res["keys"] = km.to_dict()
     res["can_switch"], res["can_build"] = km.can_switch, km.can_build
     res["log"] = p.log
     (p.out / "probe.json").write_text(json.dumps(res, indent=1, default=str))
-    if km.can_switch:
-        pmv.KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        pmv.KEYS_FILE.write_text(json.dumps(km.to_dict(), indent=1))
-        print(f"\nWrote {pmv.KEYS_FILE.relative_to(ROOT)}.")
+    kf = getattr(p, "keys_file", pmv.KEYS_FILE)
+    if km.can_switch and kf is not None:
+        kf.parent.mkdir(parents=True, exist_ok=True)
+        kf.write_text(json.dumps(km.to_dict(), indent=1))
+        print(f"\nWrote {_rel(kf)}.")
     print("\nResult:", json.dumps({k: res.get(k) for k in ("error", "can_switch", "can_build", "gate_bench")}))
-    print(f"Saved {p.out.relative_to(ROOT)}/probe.json; send it to the coordinator.")
+    print(f"Saved {_rel(p.out)}/probe.json; send it to the coordinator.")
     return res
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--stick", help="HOST:5555 (default: the first stick with Prime Video)")
-    ap.add_argument("--gti", required=True, help="the Prime game's gti (the part after prime: in its target)")
+    ap.add_argument("--gti", help="the Prime game's gti (the part after prime: in its target)")
     ap.add_argument("--label", default="", help="words that name the first game on screen, comma separated")
     ap.add_argument("--rounds", type=int, default=20, help="timed tile switches (the gate needs >= 20)")
     ap.add_argument("--gap", type=float, default=2.0, help="seconds between timed switches")
     ap.add_argument("--yes", action="store_true", help="never ask; stop when something isn't found by itself")
+    ap.add_argument("--fake", action="store_true", help="rehearse against a simulated Prime player (no stick, "
+                    "never writes the key map); output goes to data/lab/prime_multiview/rehearsal-<time>/")
     a = ap.parse_args()
+    if not a.fake and not a.gti:
+        ap.error("--gti is required (or --fake to rehearse without a stick)")
+    if a.fake:
+        a.gti = a.gti or "amzn1.dv.gti.rehearsal"
+        a.yes = True
     res = asyncio.run(run(a))
     return 0 if res.get("error") is None else 1
 
