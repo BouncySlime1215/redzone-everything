@@ -44,13 +44,26 @@ class CutCard:
     rewinds: int = 0            # entries that came up behind live on purpose (DVR rewind to a dead ball)
     rewind_s: float = 0.0
     mid_entries: list = field(default_factory=list)
+    # [landing offsets] seconds of dead time left on screen when we cut away (leave) / when the new
+    # picture came up (entry), until play restarted; mid-play landings are their own bucket
+    leave_hist: dict = field(default_factory=dict)
+    entry_hist: dict = field(default_factory=dict)
 
     def add(self, o: "CutCard") -> None:
         for k, v in vars(o).items():
             if isinstance(v, list):
                 getattr(self, k).extend(v)
+            elif isinstance(v, dict):
+                mine = getattr(self, k)
+                for b, n in v.items():
+                    mine[b] = mine.get(b, 0) + n
             else:
                 setattr(self, k, getattr(self, k) + v)
+
+    def landed(self, which: str, dead: bool, left_s: float) -> None:
+        h = self.leave_hist if which == "leave" else self.entry_hist
+        b = hist_bucket(dead, left_s)
+        h[b] = h.get(b, 0) + 1
 
     def summary(self) -> dict:
         pct = lambda a, b: round(100 * a / max(1, b), 1)  # noqa: E731
@@ -62,7 +75,32 @@ class CutCard:
                 "leaves": self.leaves, "leaves_in_dead_pct": pct(self.leaves_in_dead, self.leaves),
                 "leaves_between_plays": self.leaves_between_plays,
                 "entry_rewinds": self.rewinds,
-                "entry_rewind_s": round(self.rewind_s / max(1, self.rewinds), 1)}
+                "entry_rewind_s": round(self.rewind_s / max(1, self.rewinds), 1),
+                # [landing offsets] the gate line: >= 95 % of landings (both ends) in on-screen dead time
+                "landings_in_dead_pct": pct(self.leaves_in_dead + self.leaves_between_plays
+                                            + self.entries - self.entries_mid_play, self.leaves + self.entries),
+                "leave_to_restart_hist": _ordered(self.leave_hist),
+                "entry_to_restart_hist": _ordered(self.entry_hist)}
+
+
+HIST_EDGES = (3, 10, 30, 60, 120)   # seconds of dead time left on screen until the restart
+
+
+def hist_bucket(dead: bool, left_s: float) -> str:
+    """'mid-play', or the dead time left until play restarts: '0-3', '3-10', ... '120+'."""
+    if not dead:
+        return "mid-play"
+    lo = 0
+    for e in HIST_EDGES:
+        if left_s < e:
+            return f"{lo}-{e}"
+        lo = e
+    return f"{HIST_EDGES[-1]}+"
+
+
+def _ordered(h: dict) -> dict:
+    keys = ["mid-play"] + [hist_bucket(True, x) for x in (0, *HIST_EDGES)]
+    return {k: h[k] for k in keys if h.get(k)}
 
 
 def _base(league: League) -> League:
@@ -170,7 +208,8 @@ def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
         if src is not None and not was_replay:
             card.leaves += 1
             st = s.t - lag_of(lag_true, src.gid) - left_off[n]
-            dead, _, _ = _dead_at(src.league, src.wall, src.plays, st)
+            dead, _, left = _dead_at(src.league, src.wall, src.plays, st)
+            card.landed("leave", dead, left)
             i = _idx(src.wall, st)
             stopped = 0 <= i and (espn.stoppage_for(src.league, src.plays[i]) != Stoppage.NONE or st > src.wall[-1])
             if dead and stopped:
@@ -194,6 +233,7 @@ def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
         nxt = switches[n + 1].t if n + 1 < len(switches) else float("inf")
         card.entries += 1
         dead, brk, wait = _dead_at(dst.league, dst.wall, dst.plays, st)
+        card.landed("entry", dead, wait)
         if not dead:
             card.entries_mid_play += 1
             card.mid_entries.append((s.t, s.kind, f"{dst.matchup}"))

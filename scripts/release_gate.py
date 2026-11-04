@@ -160,6 +160,12 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
             dead = 100.0 * (n - mid) / n
             add("entries at a dead ball >= 95%", name, dead >= 95.0, f"{dead:.1f}% ({n - mid}/{n}); no per-night counts: point estimate")
             add("entries mid-play <= 5%", name, 100.0 * mid / n <= 5.0, f"{100.0 * mid / n:.1f}% ({mid}/{n})")
+            # [landing offsets] Nick's Nov 4 timing gate: 0 mid-play entries, and >= 95 % of landings
+            # (cuts away and entries) inside on-screen dead time (histogram: *_to_restart_hist)
+            add("entries mid-play = 0", name, mid == 0, f"{mid}")
+            ld = m.get("cut_timing", m).get("landings_in_dead_pct")
+            if ld is not None:
+                add("landings in dead time >= 95%", name, ld >= 95.0, f"{ld}%")
             bn, bmid = _entries(_m(base.get(name, {})))
             if bmid is not None:
                 add("entries mid-play never above today", name, mid <= bmid, f"{mid} vs today {bmid}")
