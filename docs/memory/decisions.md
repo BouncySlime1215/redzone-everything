@@ -368,3 +368,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `UserState.commit`, survives a restart in data/user_state.json (dropped when stale or past its end time) and
   goes through the same tap id / ack / status as every other press. Reason: Cycle 08 add-on after EXP-004. The
   controls only carry it; the decider's use is lane 2's and the UI is lane 5's, so it ships off.
+- 2026-11-04 (lane 2, EXP-036, planner #183 cycle 08): **`decider.commitment.enabled`** (default `false`) reads
+  lane 3's `UserState.commit` (#194: `my_teams` / `stop_after {game_id}` / `end_at {at}`). A control only, never a training signal. It only turns switches and replays into stays,
+  declares "slate complete" (Decision kind `slate_complete`, `Decider.slate_done`) only on a dead ball on screen,
+  and every switch it lets through still passes entry timing and `_safe`; a user pick or lock wins; clearing the
+  commit reopens the slate. **Why:** P20/P19/P17 commitment controls; floors (never join mid-play) hold. Off
+  until lane 5's phone UI lands (lane 3's `phone.commit` gates the tap).

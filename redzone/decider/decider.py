@@ -294,6 +294,8 @@ class Decider:
         # Games that were ever yours (your team / bet) tonight: personal fades in garbage time and with
         # closeness, but a missed play from your team's game stays yours (replay.yours_first).
         self._yours: set[str] = set()
+        self.slate_done: str | None = None   # [EXP-036] why the slate is complete (a commitment ran out), else None
+        self._slate_for: dict | None = None   # the commitment slate_done belongs to
         # [mid-play guard] state for leaving a game that ended or dropped out of the feed
         self._known_target: dict[str, str] = {}
         self._gone: tuple | None = None   # ((game, arrived at), when it vanished without a final)
@@ -396,6 +398,7 @@ class Decider:
         d = self._crunch_guard(d, cands, now, home_before)
         d = self._pick(d, cands, now)
         d = self._hold_for_big(d, cands, now, home_before)
+        d = self._keep_commitment(d, cands, now, home_before)
         d = self._time_entry(d, cands, now, home_before)
         d = self._safe(d, cands, now, home_before)
         if not commit and d.action in ("switch", "replay"):
@@ -928,6 +931,74 @@ class Decider:
         return Decision(now, "stay", self.current, f"playbook={pid}: {why}: {d.reason}", state, d.gate,
                         want=d.target if d.action == "switch" else None)
 
+    # ----- [EXP-036] commitments (my teams / stop after this game / end at): controls, flag off -----------
+
+    def _commitment(self) -> dict | None:
+        cm = self.user.commit
+        if not self.cfg.get("decider.commitment.enabled") or not isinstance(cm, dict):
+            return None
+        return cm if cm.get("mode") in ("my_teams", "stop_after", "end_at") else None
+
+    def _mine(self, gid: str | None, cands: dict[str, Candidate]) -> bool:
+        x = cands.get(gid) if gid else None
+        hold = self.cfg.get("decider.crunch.hold_personal", 5)
+        return gid in self._yours or (x is not None and x.scored.personal >= hold)
+
+    def _keep_commitment(self, d: Decision, cands: dict[str, Candidate], now: float, home_before) -> Decision:
+        """Hold the decision to the standing commitment. It only ever turns a switch or a replay into a stay
+        (staying never joins mid-play), and declares the slate complete only on a dead ball on screen; the
+        entry-timing and safety overlays after it still apply to every switch it lets through. A user pick
+        or lock (kind "user") always wins. Changing or clearing the commitment reopens the slate."""
+        cm = self._commitment()
+        if cm is None or cm is not self._slate_for:
+            self.slate_done, self._slate_for = None, None
+        if cm is None or d.kind == "user" or self.user.locked_game:
+            return d
+        mode = cm["mode"]
+        if self.slate_done:
+            return self._commit_stay(d, now, home_before, f"slate complete: {self.slate_done}", "slate_complete")
+        ending = None
+        if mode == "end_at" and now >= float(cm.get("at") or 0.0):
+            ending = "your end time"
+        elif mode == "stop_after" and cm.get("game_id"):
+            g = cm["game_id"]
+            x = cands.get(g)
+            gone = x is None or not (x.scored.raw > 0 or x.scored.moment > 0 or x.scored.is_break)
+            if gone and g in self._known and (self.current != g or self._gone_hold(x, now) is None):
+                ending = "your game ended"
+        if ending:
+            if self._dead_on_screen(cands, now):
+                self.slate_done, self._slate_for = ending, cm
+                return self._commit_stay(d, now, home_before, f"slate complete: {ending}", "slate_complete")
+            return self._commit_stay(d, now, home_before, f"{ending}: stopping at the next dead ball", "",
+                                     keep=False)
+        if mode == "my_teams" and d.action in ("switch", "replay"):
+            g = d.replay.game_id if d.action == "replay" and d.replay else d.target
+            if g in PSEUDO or not self._mine(g, cands):
+                return self._commit_stay(d, now, home_before, f"only your teams: not {g}", "")
+        return d
+
+    def _dead_on_screen(self, cands: dict[str, Candidate], now: float) -> bool:
+        """Nothing live on screen to cut off: no game, a finished one whose last play has aired, a pseudo
+        channel, or the game on screen is in a dead ball (its leave gate is open)."""
+        if self.current is None or self.current in PSEUDO or self.replaying is not None:
+            return self.replaying is None
+        cur = cands.get(self.current)
+        if cur is None or not (cur.scored.raw > 0 or cur.scored.moment > 0 or cur.scored.is_break):
+            return self._gone_hold(cur, now) is None
+        gate = self._gate(cur, now)
+        return bool(gate and gate.safe)
+
+    def _commit_stay(self, d: Decision, now: float, home_before, why: str, kind: str,
+                     keep: bool = True) -> Decision:
+        """A stay in place of d, without a "want" elsewhere; with keep, an ordinary stay is left as it is."""
+        if keep and d.action == "stay" and not kind and not d.want:
+            return d
+        if d.action != "stay":
+            self.home_break_visit, self.home_return_at = home_before
+        return Decision(now, "stay", self.current, why if d.action == "stay" else f"{why} ({d.reason})",
+                        State.IDLE if kind else d.state, d.gate, kind=kind)
+
     def _crunch_guard(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[crunch guard, with noggin.lookahead.enabled] A catch-up replay of another game never takes the
         screen off a game inside its crunch window: the replay waits (it stays catchable for 10 min).
@@ -1201,6 +1272,9 @@ class Decider:
         cur = cands.get(self.current) if self.current else None
         watchable = {gid: x for gid, x in live.items()
                      if x.target and not x.stale and gid not in u.muted}
+        cm = self._commitment()
+        if cm is not None and cm["mode"] == "my_teams":   # [EXP-036] choose among your teams' games only
+            watchable = {gid: x for gid, x in watchable.items() if gid == self.current or self._mine(gid, cands)}
 
         if self.safe_mode:
             return Decision(now, "stay", self.current, "safe mode: too many errors — tap Resume", State.SAFE)
