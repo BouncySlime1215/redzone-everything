@@ -58,12 +58,12 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-03 7:14 PM ET.** **RC2 is GREEN** (`integration/release` 5c7727e). Nick deploys tonight per docs/tonight-checklist.md. The Mac still runs this MORNING's code.
-- **Project:** idle since 6:49 PM. At 7:14 the director queued 2 threads: Memory systems (lands before Wed 5 PM) and #18 highlight jump (95% gate on unseen nights, else OFF). #37 (RC1 review) is to be closed.
-- **Open PRs:** #13 #16 #18 #20 #23 #24 #26 #30 #37.
-- **Kaggle round 1, V2:** running 4 h 32 m; teacher at 12,800 of 81,372 (~59 tok/s). It stops at its 7 h budget (~9:50 PM); ETA ~1 AM. The round-2 notebook is ready on kaggle-inputs (handles both upload layouts); the director runs round 2.
-- **Usage:** 47% (slightly behind pace; the 10 PM checkpoint is <=55%).
-- **Waiting on Nick:** at home, deploy RC2 and add NFL RedZone + RedZone Replay to the YTTV library. **Wed 5 PM:** new account.
+- **2026-11-03 9:36 PM ET.** The Mac still runs this MORNING's code. The service crash-looped from 10:40 AM to 7:25 PM (launchd EX_CONFIG: macOS privacy blocks background jobs from ~/Documents). Fixed: Python got Full Disk Access, and the plist now runs `python -c` with chdir; its log moved to ~/Library/Logs/redzone/. The plist backup is in the director's scratchpad.
+- **Deploy:** RC2 5c7727e FAILED the local deploy test step 3 times: a 1800 s timeout, a brain3 speed assert at background priority, and e2e_night two_stick_recovers. Probable cause: the night test reads the real Mac's power manager. The integration-train thread is fixing it; RC3 is due ~9:45, then the deploy (~30 min), then TV pairing.
+- **Hardware (verified tonight):** TV 100.110.165.151 (ports 8001/8002 open, Power On with Mobile on, no "IP Remote" menu on this model). Sticks .150 (4K Plus, MAC 8c:19:52:81:69:d7) and .181 (4K, MAC 8c:2a:85:d8:68:e2), both on ADB. Nick bought a Warrky 2x1 manual HDMI switch, which the app can't control; both sticks connect directly to the TV.
+- **Open PRs:** #13 #16 #18 #20 #23 #24 #26 #37 #40 (Prime multiview tuner, flag off, CI green).
+- **Kaggle round 1, V2:** 6 h 52 m in; teacher at 20,992 of 81,372; the 7 h teacher budget ends ~9:50 PM, then the students train.
+- **Usage:** 48% (behind pace; the 10 PM checkpoint is <=55%).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
