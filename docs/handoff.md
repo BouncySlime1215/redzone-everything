@@ -149,6 +149,27 @@ Everything combines into one AI brain with three layers, one training pipeline a
 Nick's definition of performance: "faster, sharper, the logic behind everything better," and buttons
 that actually do what they say. Not a nicer UI.
 
+## 6f. THE OPERATING LOOP (Nick, Nov 4, 3:15 AM): this is how all work flows
+
+1. **START PLANNER** (project thread):
+   - Reads the End Planner's report, the codebase, `northstar.md`, the roadmap and the plans.
+   - Does outside research.
+   - Writes `docs/cycles/<NN>/plan.md`: 5 tasks, one per lane. Each has its intent ("what we're
+     looking for"), the North Star metric and delta, files, and dependencies.
+2. **5 WORKER LANES:** ① Noggin training, ② Noggin logic/sync, ③ performance + controls,
+   ④ app + integration hardening, ⑤ features (lowest).
+3. **END PLANNER / INTEGRATOR** (project thread):
+   - Judges each result against INTENT, not just whether tests pass: keep, rework or drop.
+   - Plans how all 5 fit together, merges, and runs `northstar.py`.
+   - Writes `docs/cycles/<NN>/review.md` and hands it to the Start Planner.
+4. Repeat. Cycles take about 3-4 h. Lanes ① and ② never sit idle.
+
+**OVERSEER = the director** (Claude Code session on Nick's Mac):
+- Keeps the threads organized and the loop healthy.
+- Every 6 h, runs an audit: what got done and where the scoreboard is. It only corrects drift, and
+  never sends a competing task list.
+- **Owns Kaggle and model training** and is the go-between for lanes ①-②.
+
 ## 7. How the director works (so a new session can take over)
 
 - **Every 10 minutes, in one pass:** usage guard → PRs/CI → Kaggle log → project threads → one
