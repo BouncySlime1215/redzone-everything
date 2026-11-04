@@ -193,3 +193,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   parse `active=`, require active and speed>0 in playback_ready, and verify_standby re-tunes a paused or stale
   hidden stick at once. Night-lab fault `stick_paused` (mode stale / pause).
   - **Signals:** standby "playing" but the picture behind live after a flip, state=3 with speed but no new `updated`
+- 2026-11-04: **The live-test collector read traces.jsonl in a format it never had.** data/traces.jsonl is one
+  TraceEvent per line (switch_id, stage, at, detail), but collect_live_test looked for flat decided_at /
+  picture_at rows, so press-to-TV and picture-within-3s would have come back empty from every real night. Its test
+  had used hand-made flat rows. Fix: fold the events per switch_id; the test now uses the real event shape.
+  - **Signals:** press_samples 0 with presses in the log; check collectors against a real data dir, not fixtures

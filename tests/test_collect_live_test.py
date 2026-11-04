@@ -73,3 +73,24 @@ def test_the_supervisor_collects_each_live_night_by_itself_once(tmp_path):
     s = json.loads((out / "summary.json").read_text())
     assert s["switch_samples"] == 1 and s["switch_p95_s"] == 2.0        # only that night's rows
     assert sup.collect_live_night(night) is None                         # once
+
+
+def test_trace_events_fold_into_one_switch_each(tmp_path):
+    """data/traces.jsonl is TraceEvents (redzone/trace.py), not flat records: press-to-TV must read them."""
+    import collect_live_test as c
+    now = time.time()
+    d = tmp_path / "data"
+    d.mkdir()
+    ev = lambda sid, stage, at, **det: {"switch_id": sid, "stage": stage, "at": now - at, "component": "x", "detail": det}
+    rows = [ev("a", "decided", 20, kind="user", action="switch", target="youtubetv:fox"),
+            ev("a", "guarded", 19.9, safe_wait_s=0.0, queued_s=0.1),
+            ev("a", "command", 19.8, path="preloaded", flip_s=1.9),
+            ev("a", "picture", 17.6, to_picture_s=2.4, dead_air_s=0.2),
+            ev("b", "decided", 10, kind="user", action="pause"),                  # not a switch
+            ev("c", "decided", 8, kind="user", action="switch"), ev("c", "aborted", 7),
+            ev("d", "decided", 5, kind="live", action="switch"), ev("d", "picture", 2, dead_air_s=0.5)]
+    (d / "traces.jsonl").write_text("\n".join(map(json.dumps, rows)) + "\n")
+    s = c.collect(d, tmp_path / "out", now - 3600, now)
+    assert s["press_samples"] == 1 and s["press_to_tv_p95_s"] == 2.4 and s["press_no_picture"] == 1
+    assert s["press_spans"]["flip"]["p50_s"] == 1.9 and s["press_spans"]["queued"]["p50_s"] == 0.1
+    assert s["picture_within_3s"] == "2/2"
