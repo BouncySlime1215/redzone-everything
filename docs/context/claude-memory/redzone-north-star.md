@@ -29,8 +29,13 @@ What Nick wants from RedZone Everything (as of 2026-11-03):
 **How Nick runs the work now**
 - Builds happen in the claude.ai Code Project "Training model for redzone" (coordinator + threads, repo BouncySlime1215/redzone-everything, base branch codex/resume-redzone, draft PRs into it).
 - My job: lock in context, steer the coordinator and its threads, and check for bugs and build faults. Make sure everything integrates as ONE system, not a sum of parts.
-- USAGE PACING (Nov 3): pace the work to reach ~90% at 5 PM Wed Nov 4 (~1.9%/h). Checkpoints: <=55% at 10 PM, <=62% at 8 AM, <=78% at 1 PM. Max 2 threads, 1 overnight. Pause at 89%. He uses the rest for school.
-- USAGE CAP: stop all RedZone Claude work at 90% weekly usage. At >=88%, pause the project (Project settings → Pause project) and stop the director cron. He needs the last 10% for school.
+- USAGE RULES (updated Nov 4, 12:30 AM; this replaces the Nov 3 "90% by Wed 5 PM" plan):
+  - Nick has TWO Claude Ultra accounts: this one (upgraded Nov 4, weekly reset Mon 8:00 PM ET) and the new one from Wed Nov 4, 5 PM.
+  - Spread work across both over the whole week. "Don't burn a week of usage in a day."
+  - Pace each account in a straight line from its reset to 90% at the next reset (about 13-15%/day). Check it hourly on claude.ai/settings/usage.
+  - Keep the last 10% of each account for school. At >=89%, pause the project and stop the director crons on that account.
+  - More than 5 points ahead → 1 thread. Behind → up to 5 threads.
+  - Research agents are expensive: on Nov 3 the 9 Fable max-effort agents plus 5 threads took 48% → 63% in 50 minutes. Use them sparingly and prefer cheaper models.
 - He chose to keep ALL project threads running in parallel even though usage was on pace to hit the weekly limit early (26% used on Tue Nov 3). Once those finish: at most 5 threads at once, the rest queued. Don't re-ask; mention usage only when it nears the limit.
 - He worries the project is discombobulated. Coordination is the coordinator's #1 job: architecture contract (docs/architecture.md), one owner per area, shared WorldState / clock / config, contract tests, golden nights, status board (docs/status.md), and one release PR that works as a whole.
 - "95% good minimum" release gate on held-out nights: 0 mid-play cuts; >=95% dead-ball landings; >=95% big plays seen per league; your-team 100%; reels >=95% in dead time; reasoner >=95% vs gold with unsafe leaves <=0.5%; watchdog >=95%; sync <2 s on >=95% of samples; >=95% preloaded switches under 3 s. A part that misses its gate ships OFF behind a flag.

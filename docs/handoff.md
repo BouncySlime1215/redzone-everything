@@ -69,10 +69,10 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-03 10:24 PM ET.** The Mac still runs this MORNING's code. **The RC3 deploy failed** (two_stick_recovers on the Mac). Root cause, found by the director: the night test's fake sticks at 10.0.0.x versus the Mac's real LAN make the real network monitor say AWAY, so the supervisor skips adb reconnects. Test isolation only; the real devices read HOME. The integration train is pinning the network monitor in the night test; then RC4, then the deploy.
-- **TV:** SmartThings OAuth works: **10/10 switches confirmed, median 1.98 s**. Its token, OAuth file and device id are in the director's rc2 worktree data/. After the deploy, run `scratchpad/apply_tv.py <rc2wt> <repo>`: it copies them into the live data/, sets input_method=smartthings and fixes the port map (.150 = HDMI1, .181 = HDMI2), then restarts the app. Today's code can't use OAuth (PAT in .env only).
-- **Kaggle V3** (students-only, reusing V2's 22,272 teacher answers) is running, started 10:13 PM, ETA ~1 AM; GPU quota 7.3 / 30 h used before it. redzone-code dataset v2 = the bf16 fix.
-- **Open PRs:** #13 #16 #18 #20 #23 #24 #26 #37 #40. **Usage:** 48%.
+- **2026-11-04 1:25 AM ET.** Live: RC4 8a47053 with SmartThings switching on. **The Noggin is the #1 focus (§6d).** Merged overnight: #47-#56, #58 (NHL api-web primary), #59 (RedZone-way reels, off), #60 (RC 5 gate triage), #62 (NFL drive-in-20, off). Open: #61 (live time-shift buffer), #63 (Wed test script), #64 (watchdog 12 actions), #65 (Noggin doc + Priority), #57.
+- **Usage:** 3% of Ultra at 1:23 AM (pace line ~0.6%; reset Mon 8 PM). 4 coordinator threads plus 1 approved cloud session (C18 bugs).
+- **Plans:** docs/plans/2026-11-04-0115 and -0125. The planner runs every 6 h (2/8/14/20). Kaggle V5 (Mind v0) ETA ~3 AM.
+- **Waiting on Nick:** Wed evening live test (docs/live-test-wed.md once #63 merges).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
