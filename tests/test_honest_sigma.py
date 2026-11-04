@@ -200,3 +200,19 @@ def test_replay_window_skips_stale_single_replays_in_its_leagues():
     assert dec._window(m1) == 0
     dec.cfg = {"replay.window_s": 180}
     assert dec._window(m2) == 180 and dec._due(m2) == 180
+
+
+def test_lookahead_scopes_to_its_leagues():
+    """[GAME-04] noggin.lookahead.leagues: the candidate chases only NFL plays (NHL locked crunch -0.9)."""
+    from types import SimpleNamespace as NS
+    from redzone.decider.decider import Decider
+    from redzone.noggin import profile
+    dec = Decider.__new__(Decider)
+    nfl, nhl = (NS(scored=NS(league=NS(base=NS(value=v)))) for v in ("nfl", "nhl"))
+    dec.cfg = {"noggin.lookahead.enabled": True, "noggin.lookahead.leagues": ["nfl"]}
+    assert dec._lookahead_on() and dec._lookahead_on(nfl) and not dec._lookahead_on(nhl)
+    dec.cfg = {"noggin.lookahead.enabled": True}
+    assert dec._lookahead_on(nhl)
+    dec.cfg = {"noggin.lookahead.leagues": ["nfl"]}
+    assert not dec._lookahead_on(nfl)
+    assert "noggin.lookahead.leagues=[nfl]" in profile.argv("candidate", "nhl")

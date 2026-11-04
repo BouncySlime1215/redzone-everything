@@ -503,6 +503,7 @@ noggin:                    # docs/noggin.md
     enabled: false         # flip to a game whose big play is visible ahead, landing on its last dead ball first
     max_sigma_s: 10        # no lookahead when the screen's position is this unsure (SAFE-02)
     lead_s: 45             # land at most this long before the play airs (a later dead ball is closer)
+    leagues: []            # only these leagues' games are chased or guarded ([] = every league)
   timing:
     leagues: []            # Noggin Timing v1: calibrated dead-window bounds in place of cuts.FLOOR_S / MEDIAN_S
   predict:

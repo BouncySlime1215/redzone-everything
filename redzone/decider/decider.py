@@ -914,14 +914,23 @@ class Decider:
         return Decision(now, "stay", self.current, f"playbook={pid}: {why}: {d.reason}", state, d.gate,
                         want=d.target if d.action == "switch" else None)
 
+    def _lookahead_on(self, x=None) -> bool:
+        """noggin.lookahead.enabled, scoped by noggin.lookahead.leagues ([] = every league) to the game x."""
+        if not self.cfg.get("noggin.lookahead.enabled", False):
+            return False
+        lgs = self.cfg.get("noggin.lookahead.leagues") or []
+        if not lgs or x is None:
+            return True
+        return x.scored.league.base.value in lgs
+
     def _crunch_guard(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[crunch guard, with noggin.lookahead.enabled] A catch-up replay of another game never takes the
         screen off a game inside its crunch window: the replay waits (it stays catchable for 10 min).
         Under tighter sync (the 3 s what-if) these replays cost NHL crunch live 80.2 -> 77.6."""
-        if d.action != "replay" or not self.cfg.get("noggin.lookahead.enabled", False) or self.current is None:
+        if d.action != "replay" or not self._lookahead_on() or self.current is None:
             return d
         cur = cands.get(self.current)
-        if cur is None or not cur.scored.crunch_now or (d.replay and d.replay.game_id == self.current):
+        if cur is None or not self._lookahead_on(cur) or not cur.scored.crunch_now or (d.replay and d.replay.game_id == self.current):
             return d
         self.lookahead_why["crunch_guard"] = self.lookahead_why.get("crunch_guard", 0) + 1
         self.home_break_visit, self.home_return_at = home_before
@@ -935,7 +944,7 @@ class Decider:
         can be left (the leave gate); entry timing and the safety playbooks still apply after it."""
         c = self.cfg
         visit = d.action == "switch" and d.kind == "break_visit"
-        if not c.get("noggin.lookahead.enabled", False) or not (d.action == "stay" or visit) or self.current is None \
+        if not self._lookahead_on() or not (d.action == "stay" or visit) or self.current is None \
                 or self.current in PSEUDO or self.replaying or self.safe_mode or self.user.paused \
                 or self.user.locked_game or self.user.focus_mode != FocusMode.AUTOPILOT:
             return d
@@ -953,7 +962,8 @@ class Decider:
             return d                       # our own big play is on its way: stay for it
         best = None
         for gid, x in cands.items():
-            if gid == self.current or gid in PSEUDO or not x.target or x.stale or gid in self.user.muted:
+            if gid == self.current or gid in PSEUDO or not x.target or x.stale or gid in self.user.muted \
+                    or not self._lookahead_on(x):
                 continue
             a = ahead(self.timelines.get(gid), self.delays.get(x.target), now, maxs)
             if a is not None and a.big is not None and (best is None or a.big.lo < best[1]):

@@ -28,7 +28,10 @@ PROFILES: dict[str, dict] = {
             "decider.entry.max_wait_s={}",
             # [noggin logic, cycle 02] Clairvoyance (GAME-04): pre-tune the game whose big play the
             # feed already shows ahead of the screen, and land on its last dead ball before it airs.
+            # NFL only (planner, Nov 4): 3 s sigma, 3 dev seeds + locked: NFL big live +5.4..5.5 dev,
+            # +4.9 locked, 0 mid-play; NHL crunch live is -0.9 on locked, so NHL/NBA stay off.
             "noggin.lookahead.enabled=true",
+            "noggin.lookahead.leagues=[nfl]",
             # [noggin logic, cycle 03, rule #1] A fresh tune comes up 0-6 s behind the live edge
             # (syncsim's YouTube TV prior, upper end; Thursday's probe refits it): entry margins take
             # that late side, and a switch off a finished game never takes the thin urgent landing.
