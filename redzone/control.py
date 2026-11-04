@@ -233,6 +233,7 @@ class Controller:
         self.tv = SamsungTV()
         self.on_target: str | None = None        # what the visible stick shows LIVE (None after a replay)
         self.active = 0                          # index of the stick on screen
+        self.calibrated_flip: tuple[float, float] | None = None   # [calib.auto] (median, max) TV flip
         self.hidden_target: str | None = None    # what the hidden stick is playing or loading
         self.hidden_ready = False                # ...and it's confirmed playing
         self._hidden_entry = 0.0                 # [seek model] entry rewind to run on the hidden stick before the flip
@@ -1081,6 +1082,8 @@ class Controller:
     def _tv_prior(self) -> tuple[float, float]:
         """(median, upper) of the TV input change before we've timed our own: the SmartThings
         switch measured on the user's TV, Nov 4 2026 (live lab Nov 4, CEC off: 30/30, median 1.89 s, max 2.02 s). The upper bound is the measured max: deadlines guard rule #1."""
+        if self.calibrated_flip is not None:
+            return self.calibrated_flip   # [calib.auto] last nights' accepted figures (redzone/calibration.py)
         from redzone.contracts.switching import flip_bound
         return flip_bound(self.cfg.get("two_stick.tv_flip_prior_s") or {})
 

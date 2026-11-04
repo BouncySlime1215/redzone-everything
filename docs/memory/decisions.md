@@ -308,3 +308,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Why: measured on both sticks (YouTube TV, `data/livelab/2026-11-04/seekcal.jsonl`): the first press of a batch
   only shows the seek bar, each further press is 15 s, plus a 2-4 s stall. The old 10 s quantum made a 60 s replay
   rewind land ~80 s back.
+- 2026-11-04: **calib.auto (new, default OFF).** Nick's 3:05 PM overseer queue item (c): each night's TV flip
+  time and press-to-TV are re-measured from the live logs into data/calib/<night>.json (one shared
+  file per night: a timing section, lane 2's sync section), with an outlier guard that refuses a value
+  more than 3 MADs from the last 5 nights. The files are written every night so the guard has history; with
+  calib.auto on, the next start plans the TV flip with the newest accepted median and max.
+- 2026-11-04: **warmup.pregame (new, default OFF), warmup.lead_min 10.** Overseer queue item (d): from 10 min
+  before the night's first listed start until a game goes live (listed starts run 5-15 min early), the
+  likeliest first pick of that window (your team, then league order) is preloaded on the HIDDEN stick, so the
+  first switch is a flip. Never the stick on screen, never while paused / dry run / a switch is in flight;
+  the pre-game checks stand aside meanwhile. Night lab seed 1: first switch 7.52 s cold tune -> 1.92 s flip.

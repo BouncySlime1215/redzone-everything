@@ -72,6 +72,8 @@ def test_the_supervisor_collects_each_live_night_by_itself_once(tmp_path):
     out = sup.collect_live_night(night)
     s = json.loads((out / "summary.json").read_text())
     assert s["switch_samples"] == 1 and s["switch_p95_s"] == 2.0        # only that night's rows
+    got = json.loads((tmp_path / "calib" / "2026-11-04.json").read_text())["timing"]
+    assert got["tv_flip_p50_s"]["value"] == 2.0 and not got["tv_flip_p50_s"]["accepted"]   # 1 sample: refused
     assert sup.collect_live_night(night) is None                         # once
 
 

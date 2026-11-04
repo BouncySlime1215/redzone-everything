@@ -220,3 +220,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   flip, so there is no free "use the fast stick" choice; what we can do is price the stick that will tune. Tunes now
   also book under `<app>@<model>`; tune_estimate uses it after 3, deadline_cost its p90 after 8. The decider's
   long-run switch_cost stays the shared figure, so the config doesn't flap with whichever stick is hidden.
+- 2026-11-04: **The night's first switch was always a cold tune.** Before any game is live the standby planner
+  has nothing to pre-position, and the pre-game checks leave the hidden stick on whichever game they checked
+  last. Warm-up (warmup.pregame) puts the likeliest first pick there from T-10 min. Listed start times run
+  early, so the window lasts until a game goes live (night lab: games went live 15 min after the listing).
+  Also: Tonight rebuilds its plan every minute, so any state kept in the plan dict must be carried over.
