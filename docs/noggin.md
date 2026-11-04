@@ -275,3 +275,20 @@ rate), needs `noggin.priority.enabled`), candidate NBA scorecard dev / locked: b
 100 → 100 %, crunch live 90.9 → 89.6 / 93.3 → 93.3 %, entries mid-play 5 → 4 / 4 → 4, dead air
 19.2 → 18.8 / 24.2 → 24.2 %. The NBA sim switches ~1.2 times an hour, so a pick-time term has little to act
 on. Ships OFF (`noggin.predict.leagues: []`) and does not join the candidate.
+
+**NHL factory + Timing v1 NHL + Predict v1 NHL** (built on a GitHub runner: the container can't reach
+ESPN). ESPN summaries 2011-2027, but ESPN NHL plays carry wallclocks only from the 2019-20 season on, so
+the table is 2020+: 6,247 train / 1,438 calib / 1,533 test games, 324k train windows (4.36M hazard rows).
+Regulation is 3 × 20 min (`features.REG`); a big play is every goal (sportsgrade's NHL rule).
+
+- Timing NHL (`models/timing_nhl.v1.npz`, 118 KB, 298 trees, 17 features): 0.36 % of restarts below the
+  2 % bound on the test nights vs FLOOR_S 1.16 %, mean bound 13.6 s vs 12.2 s, ECE 0.042.
+- Predict NHL (`models/predict_nhl.v1.npz`, 161 KB, 60 / 117 / 186 trees): test logloss 0.146 / 0.240 /
+  0.365 vs baseline 0.148 / 0.245 / 0.372 at 30 / 60 / 120 s; CV beats the baseline every fold at 60 and
+  120 s, not at 30 s (goals within 30 s are 3.4 %).
+- Candidate NHL scorecard, base / +Timing / +Timing+Predict, dev (66 games) and locked (34): every line
+  equal (dev mid-play 1 / 1 / 1, goals live 44.7 %, crunch 80.6 %, dead air 22.4 / 22.4 / 22.3 %; locked
+  mid-play 0, goals live 48.1 %, crunch 84.7 %). Predict at 80 or 300 points: still equal on dev.
+
+The NHL sim switches ~4 times an hour; the hindsight ceiling for goals live is 85 % (#89). The gap is the
+schedule, not the readings: next is Reflex PICK by imitation of the oracle. Both NHL models ship OFF.
