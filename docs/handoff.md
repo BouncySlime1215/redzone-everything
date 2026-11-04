@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Merged #165/#168 (one-brain 1-4) into next 6ab035b, 2334 tests pass; CI next pending. Kaggle factory still running 9649s.
-For overseer: lane 4 asks tier0 for bets/boosts + step 5 owner; coordinator asks to close #157, #112, #113. Usage 29%.
+Cycle 07 plan up as #176; lane 1: learned Watch Value beats clock score on locked nights (NBA 74 vs 66, NFL 59 vs 42); lane 2 opened #174 (NHL OT winner).
+Kaggle factory still running (9930s); CI integration/next running on 8cb0f6e; release green; deploy healthy; 30 open PRs; usage 29%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
