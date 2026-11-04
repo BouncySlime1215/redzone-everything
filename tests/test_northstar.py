@@ -159,7 +159,7 @@ def test_every_run_runs_the_controls_drill_unless_given_one(tmp_path, monkeypatc
     """press_to_tv_p95 gets a sim value on every run (cycle 02 lane 3): no --controls-json -> drill runs."""
     seen = []
     drill = {"summary": {"nights": 2, "go_now_within_3s_pct": 50.0, "taps": 10}, "runs": [{"go_now_s": [1.5, 2.5]}]}
-    monkeypatch.setattr(ns, "run_cards", lambda root, split, timeout=1800, profile=None: cards())
+    monkeypatch.setattr(ns, "run_cards", lambda root, split, **kw: cards())
     monkeypatch.setattr(ns, "run_drill", lambda root, seeds: seen.append(seeds) or drill)
     out = tmp_path / "ns.json"
     ns.main(["--split", "dev", "--no-write", "--json", str(out)])
