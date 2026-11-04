@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **12:10 PM live lab (real TV):** the time-shift buffer WORKS. The pause method held 90 s at 91.66 s with -0.32 s drift over 40 min (calibrating -1.5 s gives <0.5 s error). **YTTV seek bug:** a 15 s step plus the first press swallowed, while the app assumes 10 s, so rewinds overshoot ~15-20 s (lab PR coming). **Content-anchored sync signal found:** YTTV MediaSession bursts tied to the stream content give a stick-to-stick offset to ~0.3 s.
-- RC5.1 e8bbf8e CI running; #126 (relaxed speed budgets) merged, #127 (per-stick tune timing). Usage 15% (brake lifted). V7 running.
+- **2026-11-04 1:10 PM ET. RC5.1 e8bbf8e is DEPLOYED and HEALTHY on the Mac** (switched 8a47053 → e8bbf8e, verdict healthy). Every new behavior is behind flags (OFF), so the live lab turns them on one at a time on the real TV. CEC is off on both sticks; SmartThings switching is on.
+- **Usage** 16% (brake lifted). Lab pending: press-to-TV and tonight's NBA shadow run (7 PM+). Kaggle V7 running (ETA ~7:30 PM).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
