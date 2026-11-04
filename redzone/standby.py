@@ -233,8 +233,16 @@ class ShadowStick:
 
     FLIP_S = 3.0   # an input flip to a ready stick (measured median ~2.9 s)
 
-    def __init__(self, tune_s: float = 7.0, keep_s: float = 2.5, app_s: dict[str, float] | None = None):
+    def __init__(self, tune_s: float = 7.0, keep_s: float = 2.5, app_s: dict[str, float] | None = None,
+                 sticks: dict[str, float] | None = None, first_hidden: str | None = None):
         self.tune_s = tune_s
+        # Per-stick model (lab/stick_assign.py): stick name -> tune-time multiplier. Every switch
+        # flips the TV to the hidden stick (a miss tunes it first, control._execute_two), so the
+        # roles swap each time and the slow stick is hidden every other switch. None = one speed.
+        self.sticks = dict(sticks or {})
+        names = list(self.sticks)
+        self.hidden = first_hidden if first_hidden in self.sticks else (names[0] if names else None)
+        self.by_stick: dict[str, dict[str, int]] = {n: {"switches": 0, "hits": 0, "loading": 0} for n in names}
         # Per-app tune seconds (Prime ~30 s, YouTube TV ~5 s): a model where every tune is 7 s can't
         # see what a Prime preload is worth.
         self.app_s = dict(app_s or {})
@@ -252,9 +260,10 @@ class ShadowStick:
         self.break_hits = 0   # ... onto a stick already playing it
         self.by_app: dict[str, list[float]] = {}   # app -> seconds to picture, per switch
 
-    def tune_for(self, target: str | None) -> float:
+    def tune_for(self, target: str | None, stick: str | None = None) -> float:
         app = (target or "").split(":", 1)[0]
-        return float(self.app_s.get(app, self.tune_s))
+        s = float(self.app_s.get(app, self.tune_s))
+        return s * self.sticks.get(stick or self.hidden, 1.0) if self.sticks else s
 
     @property
     def standby(self) -> tuple[str | None, str | None]:
@@ -283,6 +292,13 @@ class ShadowStick:
             self.misses.append((now, to, self.target))
         if to:
             self.by_app.setdefault(to.split(":", 1)[0], []).append(secs)
+            if self.hidden is not None:
+                b = self.by_stick[self.hidden]
+                b["switches"] += 1
+                b["hits"] += hit
+                b["loading"] += (not hit) and (to, replay_id) == self.standby
+                # The TV is now on that stick; the other one holds the game we left.
+                self.hidden = next((n for n in self.sticks if n != self.hidden), self.hidden)
         kept = bool(left) and left.startswith("prime:")
         self.target, self.replay_id, self.ready_at = left, None, now + (self.keep_s if kept else self.tune_for(left))
         return hit
@@ -295,4 +311,5 @@ class ShadowStick:
                 "break_fill_rate": round(100 * self.break_hits / max(1, self.breaks), 1),
                 "seconds_to_picture": {a: {"switches": len(v), "mean_s": round(sum(v) / len(v), 1),
                                            "instant": sum(x <= self.FLIP_S for x in v)}
-                                       for a, v in sorted(self.by_app.items()) if v}}
+                                       for a, v in sorted(self.by_app.items()) if v},
+                **({"by_stick": self.by_stick} if self.sticks else {})}

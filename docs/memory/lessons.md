@@ -220,3 +220,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   out only the old section-7 slice (NFL `eval.py --n 2`, NBA/NHL from Oct 29), while eval-data-v1's LOCKED split
   has 19 NFL nights. Salvaging it as-is would have tuned on locked. Fix: hold out `splits.nights_for(..., "test")`
   as well. Any tool that excludes locked nights reads them from redzone/lab/splits.py, never from its own list.
+- 2026-11-04: **The two sticks' tune speeds barely matter to the hot standby; the guess does.** Modeling the
+  4K Plus (2.33 s) vs 4K 2023 (3.74 s) on the Nov 1 day (redzone/lab/stick_assign.py) moved hits by at most
+  2 of 396 and "still loading" by 2, whichever stick starts hidden: roles swap every switch, so speed
+  averages out. 61% of switches were cold because the hidden stick held the wrong game. Before building
+  per-stick policy, check the lever's size in the backtest; the standby's prediction is the real lever.
