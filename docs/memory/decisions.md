@@ -119,6 +119,17 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Valid split, on vs off: NFL big plays live 32.1 -> 34.9 %, within 10 min 90.7 -> 89.4 %, dead air 9.3 -> 9.6 %,
   0 mid-play cuts / entries either way. On together with `replay.redzone_way` it was worse (live 31.8, within
   10 min 85.4, 1 crunch play on a replay), so neither turns on until they're tuned together on more nights.
+- 2026-11-04 1:45 AM: **The Noggin is the #1 focus; everything combines into it** (Nick). One decision brain,
+  three layers (Reflex < 5 ms numpy timing/predict/pick; Mind 1.7B async priorities and words; Teacher 32B on
+  Kaggle offline), one training pipeline, one scoreboard (North Star). One owner, NOGGIN; A3 moves from TIMING
+  to Noggin Timing v1; the live time-shift buffer (#61) is the Reflex's input #1. Every PR names the North
+  Star line it moves. Gates: beat the current brain on locked unseen nights, shadow mode, OFF behind a flag.
+  Spec: `docs/noggin.md`.
+- 2026-11-04 7:45 AM: **Noggin Priority wired into `Decider._best`, OFF** (`noggin.priority.enabled: false`; Nick's
+  1:25 AM planner). On: L1 tiers (your team in a big moment > crunch by league order > open) and the Peacock
+  ban decide first, then score. Valid split on vs off: NFL / NBA / NHL every line equal (NHL dead air 21.5 ->
+  21.6, switches/h 5.5 -> 5.6): crunch and your team are already handled before `_best`. Mixed-league nights
+  (demo card) are where it can move things; it stays off until the Mind / Reflex terms are wired.
 - 2026-11-04 7:05 AM: **SYNC 1: flip only onto a steady PLAYING stream** (Nick, 1:30 AM sync plan). The preloaded
   path now needs the hidden stick to report PLAYING with no state change for `FLIP_STEADY_S` = 1 s (up to 3 s of
   buffering is waited out, else it's re-tuned). Buffering measured from the stick's own clock vs position is

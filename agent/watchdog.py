@@ -141,6 +141,8 @@ class Watchdog:
         except OSError:
             pass
         o.restarts_last_hour = sum(1 for t in self.restarts if now - t < 3600)
+        if st is None:
+            o.launchd_exit = launchd_last_exit()
         self.gov.refresh()
         o.errors = recent_errors(now=now)
         if st:
@@ -341,6 +343,18 @@ class Watchdog:
         if v.action != "none" or int(self._clock()) % 900 < CHECK_S:   # quiet checks: one row per 15 min
             _journal(row)
         return row
+
+
+def launchd_last_exit(label: str = LABEL) -> int | None:
+    """The app's launchd job's last exit code (`launchctl print`), None when unknown (not macOS, no
+    job, no answer). Read only while the app's API is down, so a healthy night never runs it."""
+    try:
+        r = subprocess.run(["launchctl", "print", f"gui/{os.getuid()}/{label}"],
+                           capture_output=True, text=True, timeout=5)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    m = re.search(r"last exit code = (-?\d+)", r.stdout or "")
+    return int(m.group(1)) if m else None
 
 
 def deploy_in_progress(now: float) -> bool:

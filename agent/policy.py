@@ -31,10 +31,12 @@ class Obs:
     disk_free_mb: float = 99999.0
     restarts_last_hour: int = 0
     errors: dict[str, int] = field(default_factory=dict)   # error signature -> count, last 15 min
+    launchd_exit: int | None = None   # the app's launchd job: last exit code (read only while the API is down)
 
     def text(self) -> str:
         """Compact, model-friendly description (also the training prompt)."""
         d = asdict(self)
+        d.pop("launchd_exit", None)       # not in the trained prompt; the rules handle it
         d["errors"] = [{"sig": k[:160], "n": v} for k, v in sorted(self.errors.items(), key=lambda t: -t[1])[:8]]
         return json.dumps(d, separators=(",", ":"))
 
@@ -81,8 +83,20 @@ def known(sig: str) -> tuple[str, str] | None:
     return None
 
 
+# launchd exit codes a restart can't fix: a person (or a deploy) has to change something first.
+LAUNCHD_FATAL = {
+    78: "launchd can't start the app (exit 78, EX_CONFIG): macOS privacy blocks a path under ~/Documents. "
+        "Re-install the job (scripts/service.py install) and check Full Disk Access for the venv's python3.12",
+    126: "launchd can't run the app's python (exit 126, not executable): rebuild the venv (scripts/deploy.py)",
+    127: "launchd can't find the app's python (exit 127): the venv is missing; re-run scripts/deploy.py",
+}
+
+
 def rules(o: Obs) -> Verdict | None:
     """The answer when there's a hard rule for it; None when only unknown errors are left."""
+    if not o.api_ok and o.launchd_exit in LAUNCHD_FATAL:
+        # Restarting would just fail the same way (and burn the restart cap): say what to fix.
+        return Verdict("notify", LAUNCHD_FATAL[o.launchd_exit])
     if not o.api_ok and o.api_fail_streak >= 2:
         return Verdict("restart_service", f"the app hasn't answered {o.api_fail_streak} checks in a row")
     if o.live_games and o.log_age_s >= STALE_LOG_S:
