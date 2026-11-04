@@ -79,14 +79,47 @@ def p95(xs: list[float]) -> float | None:
     return round(s[min(len(s) - 1, int(0.95 * len(s) + 0.999999) - 1)], 2)
 
 
+_SPAN_KEYS = {"queued_s": "queued", "safe_wait_s": "safe_wait", "tune_s": "tune", "flip_s": "flip",
+              "resume_s": "resume", "dead_air_s": "dead_air", "to_picture_s": "to_picture"}
+
+
+def switches(rows: list[dict]) -> list[dict]:
+    """data/traces.jsonl holds one TraceEvent per line (switch_id, stage, at, component, detail: redzone/
+    trace.py). Fold each switch's events into one flat record: kind, decided_at, cut_at, picture_at,
+    spans. Rows already flat (decided_at at top level) pass through."""
+    out, by = [], {}
+    for r in rows:
+        if "switch_id" not in r or "stage" not in r:
+            out.append(r)
+            continue
+        sw = by.get(r["switch_id"])
+        if sw is None:
+            sw = by[r["switch_id"]] = {"id": r["switch_id"], "spans": {}}
+            out.append(sw)
+        d, at = r.get("detail") or {}, r.get("at")
+        if r["stage"] == "decided":
+            sw.update(kind=d.get("kind"), action=d.get("action"), target=d.get("target"), decided_at=at)
+        elif r["stage"] == "picture":
+            sw["picture_at"] = at
+            if isinstance(d.get("dead_air_s"), (int, float)) and isinstance(at, (int, float)):
+                sw["cut_at"] = at - float(d["dead_air_s"])
+        elif r["stage"] in ("aborted", "failed"):
+            sw["failed"] = r["stage"]
+        for k, name in _SPAN_KEYS.items():
+            if isinstance(d.get(k), (int, float)):
+                sw["spans"][name] = float(d[k])
+    return out
+
+
 def summarize(got: dict[str, list[dict]]) -> dict:
     tv = [float(r["total_s"]) for r in got["tv_input.jsonl"]
           if r.get("verified") and isinstance(r.get("total_s"), (int, float))]
     cuts = got["supervisor_cuts.jsonl"]
-    tr = got["traces.jsonl"]
+    tr = switches(got["traces.jsonl"])
     pics = [(r.get("picture_at") or 0) - (r.get("cut_at") or 0) for r in tr if r.get("picture_at") and r.get("cut_at")]
     # Lane 3's press_to_tv_p95: a phone press (decided kind=user) -> the picture on the TV.
-    user = [r for r in tr if r.get("kind") == "user"]
+    # (pause / lock / skip are user decisions too, but not switches: only a switch can reach a picture.)
+    user = [r for r in tr if r.get("kind") == "user" and r.get("action") in (None, "switch")]
     press = [float(r["picture_at"]) - float(r["decided_at"]) for r in user
              if isinstance(r.get("picture_at"), (int, float)) and isinstance(r.get("decided_at"), (int, float))]
     # [live nights] Where each landing came up in its dead ball (supervisor grade_cut offsets) and how
@@ -113,7 +146,7 @@ def summarize(got: dict[str, list[dict]]) -> dict:
         "sync_anchor_err": {k: {"n": len(v), "p50_s": sorted(v)[len(v) // 2], "p95_s": p95(v)}
                             for k, v in sorted(anchors.items())},
         "rows": {k: len(v) for k, v in got.items()},
-        "switch_samples": len(tv), "switch_p95_s": p95(tv), "switch_max_s": max(tv) if tv else None,
+        "switch_samples": len(tv), "switch_p95_s": p95(tv), "switch_max_s": round(max(tv), 2) if tv else None,
         "tv_unverified": sum(1 for r in got["tv_input.jsonl"] if not r.get("verified")),
         "cuts_graded": len(cuts), "entries_mid_play": sum(1 for r in cuts if r.get("enter") == "play"),
         "leaves_mid_play": sum(1 for r in cuts if r.get("leave") == "play"),
