@@ -61,11 +61,22 @@ data factory scales to billions of examples on Kaggle. **No signal from Nick in 
   This comes right after the live-night logging. (b) A playing stick requires `speed > 0` **and** `active`
   (a stale state=3 with active=false lingers after backgrounding).
 
-## ④ App + integration hardening (only if reopened)
-Switch locked to v3 on Fri Nov 6; rebase #88/#91.
+### Addendum 2: brake lifted, gates raised (Nick, 10:55 AM)
+All 5 lanes and both planners run at full speed; the only usage rule is the hard stop at 89-90% weekly.
+**New gates** (PR #121): big live per league **>= 95% of oracle value** (ceilings ~NFL 91/93, NBA 93/100,
+NHL 85/90 dev/locked), live-or-replayed within 10 min >= 99%, mid-play 0, landings in dead time **>= 98%**.
+Every oracle-backed row shows its gap to 100% of oracle. Each lane's biggest lever:
+① Pick-v1 oracle imitation + the Mind V7 result; ② possession-start entry + clairvoyance + honest sync from
+the real hardware (YTTV position, CEC-pause guard); ③ press-to-TV <= 3 s on real hardware (flips are
+2.2 s p95, so the rest is app-side); ④ RC5 deploy + live-nights logging into northstar; ⑤ phone v2
+merges (#88/#91).
 
-## ⑤ Features (only if reopened)
-Decision-record export for the Teacher (objective outcomes only, no taps).
+## ④ App + integration hardening (reopened)
+RC5/RC5.1 deploy support for the live lab, live-nights logging wired into northstar with lane ③, the v3
+locked switch on Fri Nov 6.
+
+## ⑤ Features (reopened)
+Rebase and merge #88/#91 (UI conflict), then the Teacher export (objective outcomes only, no taps).
 
 ## Integrator
 ③ item 1 merges first: it has to be live on the Mac before tonight's test (it ships with the next
