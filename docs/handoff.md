@@ -69,9 +69,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- **2026-11-04 2:25 AM ET.** Live: RC4 with SmartThings on. Merged since 1:25 AM: #65 Noggin doc, #66 NBA liveData (shadow), #67 Priority wired (off), #69 North Star harness (northstar.py + roadmap). Open: #70 SYNC 1 (flip only onto steady PLAYING), #71 SYNC probe, #72 Noggin Phase 1 (NBA data factory 1.09M windows + Timing v1), #73 burst polling, #68 C18 bugs, #64 watchdog, #61 buffer, #63 test script, #57.
-- **Usage:** 4% at 2:23 AM (line ~1.2%; +2.8, under the 5-point brake). Sync is fully automatic (no taps; auto-anchors from on-screen ad breaks plus network-condition features).
-- **Kaggle V5** (Mind v0) ETA ~3 AM.
+- **2026-11-04 2:45 AM ET planner:** the North Star table exists (docs/northstar.md). Live default, dev nights: **2 PASS** (dead-time landings 97.5%, fault recovery 98.6%), **7 FAIL** (mid-play 2.45/100; big plays live NFL 25 / NBA 68 / NHL 41%; live-or-replayed 88.5%; your-team crunch 71.7%; dead air 22.5%), 7 pending. Key insight: all of tonight's fixes are OFF and scored alone. #1 is now the combined **candidate Noggin** column.
+- **Merged since 1:25 AM:** #61, #63, #65, #66, #67, #69, #70, #71. Open: #72 (Noggin Timing v1: 13× fewer early restarts, ECE 0.053), #73, #74, #68, #64. Kaggle V5 (Mind v0) running 3.8 h, ETA ~4-5 AM.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
