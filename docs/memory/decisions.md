@@ -303,3 +303,29 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   screen and not flippable while it rebuilds, so nothing on the TV is cut). Too close to live: pause the gap
   minus 1.5 s (Nick's hold calibration); too far behind: reload at the live edge and hold again. Every
   detection and rebuild goes to data/buffer.jsonl -> live-night summary -> northstar "buffer drift recovered".
+- 2026-11-04 3:15 PM ET (Nick): **PROMOTION BAR = strict (B); cut rules; North Star mid-play line split.** A
+  candidate flag goes ON in the next RC only if, on LOCKED nights: (a) mid-play entries = 0, hard PASS; (b) NBA
+  and NHL crunch live PASS and are >= live; (c) your-team gates PASS; (d) every other line is >= live, where
+  equal within the bootstrap CI counts as equal. Cut rules: never JOIN mid-play; leaving mid-play is OK at low
+  leverage, never at a high-leverage moment; down the stretch is sticky (learned leverage score, self-taught
+  from the oracle, rules only set the floors); league order NFL = CFB > NBA > NHL, MLB; MLB jumps in only for
+  key moments; multi-game conflicts go to the scenario tree. CLAUDE.md Rule #1 now reads "never JOIN
+  mid-play". northstar.py: `mid_play` counts entries only (gate 0), new `high_leverage_leaves` (gate 0, close
+  + late or overtime per `redzone/lab/leverage.py`) and `low_leverage_leaves` (info). Scorecards without
+  `cuts_high` read PENDING.
+- 2026-11-04 (integrator, promotion step): **highlight jump `jump_when_it_fits` is NOT promoted; `reel.play` and
+  the `highlight_jump` flag stay as they are.** Checked under bar (B) at the overseer's request. It is the naive
+  baseline in the Kaggle distill jump task (`agent/kaggle/grade.py`): 99.8% of reels in dead time, 0 big plays
+  missed. It can't pass bar (B) yet: (1) release_gate.py has no line for it, because the North Star sims never
+  play a reel, so there is nothing to grade on locked; (2) the 99.8% is on the distill pack's own test split,
+  which excludes the locked nights; (3) 99.8% is not 100%: about 1 jump in 500 comes back after the restart,
+  which is a mid-play JOIN and fails bar (a) outright. Next: model the reel jump in the night sim (return time =
+  reel + both switches vs the real break), grade it on locked as entries_mid_play, and require 0.
+- 2026-11-04 3:30 / 3:40 PM ET (Nick): **North Star gains three lines, all PENDING until their builders land:**
+  `wv_calibration_err` and `wv_rank_agree` (Heat 2.0 Watch Value, lanes 1+2; read from a card's
+  `metrics.watch_value` {calibration_err, rank_agree_pct}; gates TBD) and `contract_violations` (gate 0; read
+  from `docs/citymap.json` {"violations": [{rule, where}]}, which lane 4's city map checker writes). **Crunch
+  floor in the promotion step:** `tests/test_crunch_floor.py` checks that no named profile, and no override
+  layer at its most aggressive (Pick replace mode with no keep kinds, scenario tree, lookahead), leaves live
+  crunch where the live default stays, and that Pick hands back the app's decision inside a crunch window.
+  A candidate that fails it fails bar (B).
