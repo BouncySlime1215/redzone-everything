@@ -248,3 +248,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   dev NFL big plays seen within 10 min 87.8 -> 84.3 and crunch 70.7 -> 68.7. With both changes the tree is no worse
   than off on any league: dev NFL big live 54.4 -> 54.7, crunch 70.7 -> 71.0, 10-min seen 87.8 = 87.8, dead air 30.4 =;
   locked NFL equal (10-min seen 88.3 -> 88.6); NBA/NHL equal. `playbooks.game.enabled` stays OFF.
+- 2026-11-04 1:10 PM (lane 2, cycle 03, planner redirect): **new `delay.self_calibrate` block, OFF** (NoiseCal:
+  the stated doubt learned from break-anchor innovations, floor 2 s, never wider than the aging model). Why off:
+  sims only (live needs the residual pool persisted across nights), and the truth model it is graded against
+  (per-tune U(0, 6) s, gap 15 +- 10 s) is an assumption until Thursday's probe data. Measured (honest sims, wait):
+  dev NFL big live 54.4 -> 57.6, locked 53.3 -> 60.4, coverage 98.4-100%, 0 new mid-play entries.

@@ -442,3 +442,69 @@ GAME-03 (your team's crunch: go there, then hold), GAME-01 (NFL red zone during 
 
 On dev, GAME-01 fired 213 times and agreed with the generic break visit another 42. Its visits trade some
 crunch and big-play coverage for dead air, so it stays off until the cloud tree replaces the hand-written seed.
+
+## Honest sync doubt in the sims (cycle 03, Nov 4)
+
+`eval_sports.py --tune-jitter 6 [--break-anchors --set sync.break_anchor.enabled=true]` (backtest.run
+`tune_jitter_s`, `anchors`). Every on-screen tick is graded for honesty: the true error of the delay the app
+uses against its stated sigma (`per_night[].sync_honesty`: within 2 sigma, sigma <= 8 s, sigma <= 3 s).
+
+- **Until now the sims had no true delay error at all** (the app's delay = the screen's), so their ~9 s doubt
+  was pure pessimism. `--tune-jitter 6` adds what a YouTube TV tune really does (redzone/lab/syncsim.py): each
+  tune lands U(0, 6) s behind the live edge, unknown to the app, graded as a real offset of that visit.
+- `--break-anchors` feeds the filter only what live can feed it today: the ad break on screen of the game
+  you watch, matched to the feed's dead ball, weighted like `engine._break_event`. The true whistle -> ad gap
+  is drawn N(15, 10) by default (the config prior: an assumption until the Wednesday probe data).
+
+Candidate, dev, all with `--tune-jitter 6` (truth error p95 ~5 s everywhere):
+
+| run | NFL big live | NBA big live | NHL big live | NHL crunch | mid-play NFL/NBA/NHL | within 2 sigma | sigma <= 8 s (NFL/NBA/NHL) | sigma <= 3 s |
+|---|---|---|---|---|---|---|---|---|
+| no anchors (today) | 54.4 | 77.5 | 44.9 | 79.9 | 0 / 0 / 1 | 100% | 9 / 19 / 21% | 0% |
+| anchors, prior sd 10 | 54.4 | 78.9 | 44.0 | 74.4 | 0 / 0 / 1 | 100% | 12 / 31 / 34% | 0% |
+| anchors, sd 2 (what-if) | 54.4 | 76.1 | 43.7 | 75.7 | 0 / 1 / 0 | 100% | 45 / 91 / 51% | 0% |
+| doubt calibrated to 3 s (what-if cap) | **64.1** | **81.7** | **49.2** | 78.2 | 0 / 0 / 0 | 100% | 100% | 100% |
+| same, crunch_now=rewind | 64.1 | 90.1 | 49.2 | 78.2 | 0 / **5** / 0 | 100% | 100% | 100% |
+| no anchors, crunch_now=rewind | 54.4 | 81.7 | 44.9 | 80.2 | 0 / **4** / **2** | 100% | 9 / 19 / 21% | 0% |
+
+Locked (read once), wait: no anchors NFL 53.3 / NBA 68.8 / NHL 49.0, 0 mid-play; doubt at 3 s NFL 64.8 / NBA
+68.8 / NHL 57.2, 0 mid-play, within 2 sigma 100%.
+
+Reading: the doubt is honest (no misses) but about 3x too wide: the true error is ~5 s at p95, the stated 2
+sigma ~18 s. Break anchors at today's prior (sd 10 s) hardly narrow it, and the 4 s sync floor makes sigma <=
+3 s impossible by construction. A doubt calibrated to the real error reaches the cycle targets (NFL >= 60, NBA
+>= 77.5, NHL ~50) at 0 mid-play, but only if the real per-tune error is as small as syncsim assumes, which is
+what the Wednesday probe logs measure. Anchors also cost NHL crunch (79.9 -> 74.4) through re-syncs on tunes:
+not understood yet, keep `sync.break_anchor.enabled` off. With honest per-tune error, crunch_now=rewind
+makes mid-play entries (NBA 4-5, NHL 2) where wait makes 0-1: one more reason wait is the candidate default.
+
+### Self-calibrating doubt (NoiseCal, `delay.self_calibrate.enabled`, OFF)
+
+The doubt learns from the filter's own innovations, so it works live without ground truth. The first break
+anchor after each tune is compared with the delay that tune started from: r = z - mu = (true error) + (anchor
+noise, sd R). E[r^2] - R^2 is the real squared error, bias included. The stated doubt is the 95 % upper bound
+of that (chi-square on n residuals, n >= 20), floored at 2 s (the 4 s floor stays for the filter itself), and
+it never widens the aging model. The pool persists across nights (in the sims: across the nights of one run, in
+date order, so a night only learns from earlier ones).
+
+Candidate, `--tune-jitter 6 --break-anchors` + self-calibration, wait:
+
+| split | league | big live | crunch | mid-play | dead air | within 2 sigma | sigma <= 8 s | sigma <= 3 s | sigma p50 |
+|---|---|---|---|---|---|---|---|---|---|
+| dev | NFL | 54.4 -> **57.6** | 70.5 -> 71.2 | 0 | 30.0 -> 30.3 | 100% | 9 -> 66% | 0% | 9.0 -> 6.7 |
+| dev | NBA | 77.5 -> 78.9 | 90.0 -> 91.1 | 0 | 19.4 -> 19.5 | 100% | 19 -> 36% | 0% | 8.6 |
+| dev | NHL | 44.9 -> 44.2 | 79.9 -> 79.3 | 1 -> 1 | 22.5 -> 22.6 | 100% | 21 -> 77% | 0% | 7.3 |
+| locked | NFL | 53.3 -> **60.4** | 69.0 -> 71.6 | 0 | 29.4 -> 30.3 | 98.4% | 7 -> 70% | 29% | 5.3 |
+| locked | NBA | 68.8 | 84.9 | 0 | 24.1 | 100% | 19 -> 25% | 0% | 9.0 |
+| locked | NHL | 49.0 -> 48.6 | 76.2 -> 80.0 | 0 | 25.5 | 100% | 16 -> 33% | 0% | 9.0 |
+
+(before = no anchors with the same per-tune error.) Rewind, dev: NBA big live 83.1 with 3 mid-play entries,
+NHL 2: wait stays the default. With R = 10 s the bound tightens slowly (about 1/sqrt(n)): NFL, with the most
+tunes and breaks, gets there first. A tighter anchor (Thursday's probe refit of the 15 +- 10 s prior) is the
+lever for NBA/NHL.
+
+**NHL crunch drop with anchors (79.9 -> 74.4, seed 0)** is not systematic: seeds 1 and 2 give 78.0 -> 77.8 and
+82.1 -> 82.3, and the seed-to-seed spread is about 4 points. At seed 0, two nights (Oct 22 -10, Oct 27 -24) lose it
+and Oct 20 gains 5. The decision logs first diverge at a catch-up replay that starts 6 min earlier (the anchor
+lowered the doubt, so the gate opened sooner). From there the crunch picks differ, ending with a crunch wait
+stuck behind a 110 s rewound tune. A lab lesson: judge an NHL crunch delta under ~4 points over several seeds.
