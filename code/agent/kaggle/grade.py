@@ -230,23 +230,6 @@ def md(rep: dict) -> str:
     return "\n".join(parts) + "\n"
 
 
-def sampled_ids(path: Path) -> set[str] | None:
-    """[V6] The test ids the student answered when run_students answered a stratified sample (None: all)."""
-    if not path.exists():
-        return None
-    info = json.loads(path.read_text())
-    if info.get("mode") == "all":
-        return None
-    return {str(i).split("|", 1)[0] for i in info.get("ids", [])}
-
-
-def on_sample(rows: list[dict], keep: set[str] | None) -> list[dict]:
-    """Grade test rows only where the student was asked (valid rows stay: baselines fit on them)."""
-    if keep is None:
-        return rows
-    return [r for r in rows if r.get("split") != "test" or str(r["id"]) in keep]
-
-
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pack", required=True)
@@ -257,10 +240,9 @@ def main() -> None:
     teacher = _read(work / "teacher_out.jsonl")
     student = _read(work / "students" / "game-reasoner" / "test_out.jsonl")
     big = work / "students" / "data" / "game-reasoner"
-    keep = sampled_ids(work / "students" / "game-reasoner" / "answer_sample.json")
     if (big / "grade_rows.jsonl").exists():          # round 2+: the multi-season build
-        rep = {"reasoner": reasoner_big(on_sample(_read(big / "grade_rows.jsonl"), keep), teacher, student),
-               "jump": jumps(pack, teacher, student, on_sample(_read(big / "jump_rows.jsonl"), keep)),
+        rep = {"reasoner": reasoner_big(_read(big / "grade_rows.jsonl"), teacher, student),
+               "jump": jumps(pack, teacher, student, _read(big / "jump_rows.jsonl")),
                "watchdog": watchdog(pack, work)}
         mb = work.parent / "moments" / "build_report.json"
         if mb.exists():

@@ -28,7 +28,7 @@ To run the next round, add the previous version's output as an input and run it 
 ### V6 (code pack only, Nov 4)
 
 - Each student job's progress shows in the notebook output, prefixed `[job]`: step, loss and ETA every 50 steps, and answer batches done/total.
-- The round grade answers a stratified 1,500-row dev-test sample (by task and league). Set `RZ_ANSWER_ALL=1` to answer the full set for a release run.
+- Every round answers and grades the FULL test set (no sampling).
 - The frozen base runs in fp16; only the LoRA weights are fp32.
 - Each job writes `heartbeat.json`. There is an overall budget, `RZ_STUDENT_BUDGET_S` (default 4.5 h), so the run always ends with partial results and a grade.
 
