@@ -580,8 +580,10 @@ class Decider:
         exclude: a game not to replay (e.g. the crunch game you're about to go back to).
         yours: your team's missed plays clear the `top` bar (replay.yours_first); False while your
         team's own game is on screen, so its live snaps aren't traded for its old ones."""
+        crunch_on = not montage and self._crunch_on(cands)
         games = self._replay_pool(cands)
-        pool = [m for m in self.queue if m.game_id != exclude and self._replayable(games.get(m.game_id))]
+        pool = [m for m in self.queue if m.game_id != exclude and self._replayable(games.get(m.game_id))
+                and (not crunch_on or self._mine_cant_wait(m, now))]
         rw = self._rw()
         if rw and not montage:     # [T5] older plays wait for the end-of-window montage
             pool = [m for m in pool if now - m.t <= self.cfg.get("replay.max_age_s", 1800)]
@@ -621,6 +623,29 @@ class Decider:
                 return (mine, 1, 0, -m.t)
             return (mine, 0, 0, self._replay_value(m, now))
         return max(pool, key=rank, default=None)
+
+    def _mine_cant_wait(self, m: Missed, now: float) -> bool:
+        """Your team's missed play may break the crunch block in replay.crunch_block_mine_leagues (its own
+        game's league), once this long after it aired (NFL: its 3-min replay window can't wait out crunch)."""
+        if not m.mine:
+            return False
+        lgs = self.cfg.get("replay.crunch_block_mine_leagues") or []
+        x = self._known.get(m.game_id)
+        lg = getattr(getattr(getattr(getattr(x, "scored", None), "league", None), "base", None), "value", None)
+        if lg not in lgs:
+            return False
+        return now - (getattr(m, "aired", 0.0) or m.t) >= float(self.cfg.get("replay.crunch_block_mine_after_s", 90))
+
+    def _crunch_on(self, cands) -> bool:
+        """[crunch block, replay.crunch_block] A catch-up never starts while any live game is in crunch time
+        or its run-up (NHL: from 3:00 left in a close 3rd, and OT): its next play may come while the reel
+        is on. Cycle 04 review, locked: NHL crunch plays aired during a catch-up 2 -> 10 on the candidate.
+        Your team's missed plays wait too, except in replay.crunch_block_mine_leagues once
+        replay.crunch_block_mine_after_s has passed since they aired (_mine_cant_wait)."""
+        if not self.cfg.get("replay.crunch_block", False):
+            return False
+        return any((x.scored.crunch or x.scored.crunch_now) and not getattr(x.scored, "garbage", False)
+                   for x in cands.values())
 
     def _break_remaining(self, gid: str, cands, now: float) -> float:
         """Conservative break budget, never a typical ad length treated as a deadline."""
