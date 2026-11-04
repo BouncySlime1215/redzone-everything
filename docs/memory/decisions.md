@@ -98,6 +98,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 
 ## AI
 
+- 2026-11-04 10:55 AM: **The Noggin is fully self-taught: no training signal from Nick.** His 👍/👎, overrides, lock-ins and taps never feed any training, labelling, suggestion or grading path (crunch policy, Pick, Priority L2 suggestions, E23). Allowed sources: the hindsight oracle on archived nights, self-play/simulation, the Teacher's automated nightly review, objective pbp outcomes, stick/sync telemetry. His buttons stay controls only. North Star: `right_game` (agreement with his taps) is replaced by `pct_of_oracle` (% of hindsight-oracle value achieved, mean of NFL/NBA/NHL). `priority.suggest_from_feedback` removed.
 - 2026-11-03 2:37 PM: **Two tiers.** REFLEX = a local ~2 GB distilled student (Qwen3-1.7B, 4B only
   if needed) that says "I don't know" when unsure. BRAIN = Claude auto-fix through a GitHub issue →
   `claude-code-action` draft PR on his subscription token (`CLAUDE_CODE_OAUTH_TOKEN`, he adds it),
