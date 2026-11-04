@@ -37,7 +37,7 @@ def test_resume_scopes_to_its_leagues():
 
 def test_resume_replay_never_pauses_crunch_time_or_past_the_cap():
     dec = _dec({"replay.resume_cap_s": 90})
-    dec.current, dec.user = "g", NS(locked_game=None)
+    dec.current, dec.user, dec.timelines = "g", NS(locked_game=None), {}
     dec.queue = [Missed("h", "p", "goal", "goal", 900.0, 90.0, due_s=600.0, aired=990.0)]
     dec._replay_pool = lambda cands: {"h": object()}
     dec._replayable = lambda x: True
