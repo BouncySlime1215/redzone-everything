@@ -7,6 +7,7 @@ Updated on every merge into `integration/next` by INTEGRATION. Last update: 2026
 **Shifts (Nick, Nov 4 12:45 AM, handoff.md §6b):** day shift 9 AM-11 PM is Claude's threads; night shift 11 PM-9 AM is Nick's cloud sessions.
 **Release: RC 4 on `integration/release` = 8a47053** (RC 2 + deploy test-step fixes + the e2e night pinning
 the host and the network; no app change, so the gates are RC 2's: 59 pass, 10 fail, 27 pending, `docs/gate-report-rc3.md`).
+**RC 5 candidate f1034b5** (not cut): locked gate 49 pass / 16 fail / 52 pending, triage in `docs/gate-report-rc5.md`.
 The draft release PR #37 is closed (Nick, Nov 3 10:45 PM); the deploy fetches `integration/release`.
 
 ## Usage rules from the user (hard)
