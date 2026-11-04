@@ -161,3 +161,33 @@ async def test_a_dark_feed_never_makes_the_game_on_screen_unwatchable(cfg, tmp_p
     assert "1" in cands and not cands["1"].stale
     assert "2" in cands and cands["2"].stale
     await e.close()
+
+
+@pytest.mark.playbook("FEED-05")
+async def test_a_summary_we_cannot_read_counts_against_the_source_and_keeps_the_game(tmp_path):
+    """FEED-05: ESPN changes the summary's shape. The poll used to log it and move on, so the source still
+    looked healthy and kept stoppage ownership. Now each unreadable summary is a source error, and the
+    game keeps its last known state."""
+    from redzone.config import Config
+    from redzone.engine import Engine
+    from redzone.store import Store
+    e = Engine(Config(user_path=tmp_path / "config.yaml", history_dir=tmp_path / "hist"), Store(tmp_path / "rz.db"))
+    g0 = GameState(league=League.NBA, game_id="401909906", home=Team("LAL", score=50), away=Team("MEM", score=48),
+                   phase=Phase.LIVE)
+    e.merger.update("espn_summary", g0)
+
+    async def board(lg):
+        return []
+
+    async def none(*a, **k):
+        return None
+
+    async def weird(url, **k):
+        return {"header": {"competitions": "a string now"}, "plays": {"unexpected": True}}
+    e._scoreboard, e._league_feeds, e.fetcher.get_json = board, none, weird
+    before = e.merger.health["espn_summary"].errors
+    await e.poll()
+    await e.poll()
+    assert e.merger.health["espn_summary"].errors == before + 2
+    g = e.merger.games["401909906"]
+    assert (g.home.score, g.away.score, g.phase) == (50, 48, Phase.LIVE)

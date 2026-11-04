@@ -4,6 +4,7 @@ connection re-proves itself at once (fakes only):
 - recover() reconnects sticks, probes breakers, drops the TV socket, resyncs the input, restarts
   FastCast and clears HTTP backoffs, and never presses a key;
 - the engine runs it only with hardening.mac on, on a wake or a home/away change (not from "unknown")."""
+import pytest
 from types import SimpleNamespace
 
 from redzone.engine import Engine
@@ -128,3 +129,34 @@ async def test_engine_recovers_on_a_network_change_but_not_from_unknown():
     c.w += 10
     c.m += 10
     assert await Engine._after_wake(e) is None     # still away: nothing new
+
+
+@pytest.mark.playbook("MAC-01")
+def test_caffeinate_holds_the_mac_awake_only_while_games_are_live(tmp_path, monkeypatch):
+    """MAC-01's first response: caffeinate -i -s while any game is live (the Mac never sleeps mid-game),
+    once, and let it go when nothing is live or the app closes."""
+    from redzone import engine as eng
+    from redzone.config import Config
+    from redzone.store import Store
+    made = []
+
+    class P:
+        def __init__(self, cmd):
+            self.cmd, self.done = cmd, False
+            made.append(self)
+
+        def poll(self):
+            return 0 if self.done else None
+
+        def terminate(self):
+            self.done = True
+    monkeypatch.setattr(eng.subprocess, "Popen", P)
+    e = eng.Engine(Config(user_path=tmp_path / "config.yaml", history_dir=tmp_path / "hist"), Store(tmp_path / "rz.db"))
+    e._keep_awake(True)
+    e._keep_awake(True)                                   # already held: no second caffeinate
+    assert len(made) == 1 and made[0].cmd == ["caffeinate", "-i", "-s"] and not made[0].done
+    e._keep_awake(False)
+    assert made[0].done and e._caffeinate is None
+    monkeypatch.setattr(eng.subprocess, "Popen", lambda cmd: (_ for _ in ()).throw(OSError("no caffeinate")))
+    e._keep_awake(True)                                   # not a Mac: no crash, nothing held
+    assert e._caffeinate is None
