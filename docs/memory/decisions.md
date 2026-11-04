@@ -393,3 +393,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   screen. `scripts/deploy.py deploy --at-break` allows live games while the on-screen game's status is Halftime /
   Intermission (NHL "End of 1st/2nd"), polls every 30 s, and keeps the 10-min health watch + auto-rollback. The
   default (no flag) is unchanged: any live game defers. Reason: get RC6 on tonight without cutting into play.
+- 2026-11-04 (Nick, 6:40 PM ET): "training needs to be SHARP, grading even SHARPER." These are the 14 standing
+  grading and training rules in [docs/grading.md](../grading.md).
+  - The integrator writes and freezes the graders (`docs/grader_freeze.json`, versioned per release). The
+    training lanes never do.
+  - A new CI job, `graders` (`scripts/grading_check.py`), runs three checks:
+    - G1: a grader file differs from the freeze;
+    - G2: a running or done experiment is not pre-registered;
+    - G3: a running experiment moved its goalposts.
+  - Reason: grading has to be harder to fool than training.
