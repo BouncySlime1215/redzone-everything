@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Usage 29%. Lane 2 now Working (NHL crunch drop judged noise; fixing 4 missed your-team catch-ups). Integrator waiting: pick split #131 vs flag for lane 2.
-Factory still running 8221s; CI next in progress; deploy healthy; 30 open PRs.
+Integrator unblocked (overseer answered #131/#125/v3 count); lane 2 finished #131 (NHL dead-window leaves off), unblocking #132 and #146.
+Kaggle factory still running (8503s), no new errors; 30 open PRs; CI next in progress, release green; deploy healthy; usage 29%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
