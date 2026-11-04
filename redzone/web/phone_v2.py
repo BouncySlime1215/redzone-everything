@@ -34,7 +34,7 @@ CHIP_RULES: list[tuple[str, str, re.Pattern]] = [
 ]
 BIG_KINDS = {"td", "fg", "turnover", "goal", "hr", "safety", "interception", "fumble", "pick6",
              "dunk", "three", "and1", "buzzer", "penalty_shot", "grand_slam"}
-MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min, the same window as big_seen_10min
+MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min (a phone convenience; the graded window is big_seen_3min)
 
 
 def chips(reason: str | None, kind: str | None = None) -> list[dict]:

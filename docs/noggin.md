@@ -37,6 +37,14 @@ possession policy, Priority L2, the Mind, the Teacher's review, E23). His button
 
 "Right game" is measured as `pct_of_oracle` in northstar.py, never as agreement with Nick.
 
+## Replay window (Nick, Nov 4 11:00 AM): 2-3 minutes, never 10
+
+Nick follows several games at once and jumps for key moments as they happen; any key moment he missed is
+shown within **2-3 minutes** (the next dead moment). The reel/replay queue (T2/T3/T4 collision replays)
+targets the very next dead window. A replay that can't air within 3 min is skipped or folded into a later
+montage. Seeing the moment LIVE (clairvoyance + possession-start entry) is the main path; replay is the
+fallback. North Star: `big_seen_3min` >= 99% (gate) and `big_seen_2min` (stretch), dev and locked.
+
 ## Crunch entry (Nick, Nov 4 10:45 AM): possession-start entry, AI-decided when
 
 Replaces both `crunch_now: wait` and `rewind`. With the time-shift buffer, the hidden stick cues to the

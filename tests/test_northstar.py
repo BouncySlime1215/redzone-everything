@@ -33,14 +33,16 @@ def test_perfect_slice_passes_where_evidence_allows():
     assert r["landings_dead"]["status"] == ns.PASS
     assert r["big_live_nba"]["status"] == ns.PASS
     # live-or-replayed without replay age graded is an upper bound: never PASS
-    assert r["big_seen_10min"]["status"] == ns.PENDING
+    assert r["big_seen_3min"]["status"] == ns.PENDING and r["big_seen_2min"]["status"] == ns.PENDING
+    assert "big_seen_10min" not in r
     c = cards(9)
     for lg in ns.LEAGUES:
         for x in c[lg]["metrics"]["per_night"]:
-            x["big_seen_10m"] = x["big"]
-            x["my_big_seen_10m"] = x["my_big"] = 3
+            x["big_seen_3m"] = x["big_seen_2m"] = x["big"]
+            x["my_big_seen_3m"] = x["my_big"] = 3
     r2 = rows_by(ns.table(c))
-    assert r2["big_seen_10min"]["status"] == ns.PASS and r2["your_team_big"]["status"] == ns.PASS
+    assert r2["big_seen_3min"]["status"] == ns.PASS and r2["big_seen_2min"]["status"] == ns.PASS
+    assert r2["your_team_big"]["status"] == ns.PASS
     assert r["switch_p95"]["status"] == ns.PENDING        # only the 10 Nov 3 samples
     assert r["recovery"]["status"] == ns.PENDING          # no night run
     assert r["dead_air"]["status"] == ns.FAIL             # 10 % with a CI above 0

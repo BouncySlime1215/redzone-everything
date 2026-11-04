@@ -69,13 +69,15 @@ METRICS = [
     # oracle ran (big_live_nfl/nba/nhl); leagues without an oracle keep the absolute 95% bar.
     *[(f"big_live_{lg}", f"Big plays seen live, {lg.upper()}", ">= 95% of oracle" if lg in ("nfl", "nba", "nhl") else ">= 95%",
        1, 95.0, 100.0) for lg in LEAGUES],
-    ("your_team_big", "Your-team big plays seen (live or within 10 min)", "100%", 1, 100.0, 100.0),
+    ("your_team_big", "Your-team big plays seen (live or within 3 min)", "100%", 1, 100.0, 100.0),
     *[(f"crunch_live_{lg}", f"Crunch live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
     ("your_team_crunch", "Your-team crunch live", "100%", 1, 100.0, 100.0),
     ("league_order", "League order respected (no lower-league non-crunch over a higher-league crunch)", "100%", 1, 100.0, 100.0),
     # Nick, Nov 4 10:55 AM: the Noggin is fully self-taught, so no line is graded by Nick's taps.
     ("pct_of_oracle", "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)", ">= 95%", 1, 95.0, 100.0),
-    ("big_seen_10min", "Big plays live or replayed within 10 min", ">= 99%", 1, 99.0, 100.0),
+    # Nick, Nov 4 11:00 AM: a missed key moment must air within 2-3 min (the next dead moment), never 10.
+    ("big_seen_3min", "Big plays live or replayed within 3 min", ">= 99%", 1, 99.0, 100.0),
+    ("big_seen_2min", "Big plays live or replayed within 2 min (stretch)", ">= 99%", 1, 99.0, 100.0),
     ("switch_p95", "Switch time p95 (SmartThings input change)", "<= 3 s", -1, 3.0, 3.0),
     ("flips_settled", "Flips PLAYING within 3 s", ">= 99%", 1, 99.0, 100.0),
     ("delay_err_p95", "Per-stick delay error p95", "<= 2 s", -1, 2.0, 2.0),
@@ -254,13 +256,13 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
     for lg in LEAGUES:
         rows.append(_rate(f"big_live_{lg}", [(int(x.get("big_live") or 0), int(x.get("big") or 0)) for x in per[lg]],
                           95.0, note="" if per[lg] else f" ({lg.upper()} scorecard missing)"))
-    # 4. your-team big plays, live or replayed within 10 min where the scorecard grades replay age
-    # (big_seen_10m, the catch-up gate), else live only (older scorecards: NFL's my_big_live)
-    yt = [(int(x["my_big_seen_10m"]), int(x.get("my_big") or 0)) if "my_big_seen_10m" in x
+    # 4. your-team big plays, live or replayed within 3 min where the scorecard grades it (my_big_seen_3m),
+    # else live only (older scorecards: NFL's my_big_live)
+    yt = [(int(x["my_big_seen_3m"]), int(x.get("my_big") or 0)) if "my_big_seen_3m" in x
           else (int(x.get("my_big_live") or 0), int(x.get("my_big") or 0)) for x in every]
     r = _rate("your_team_big", yt, 100.0, note=note)
-    if not all("my_big_seen_10m" in x for x in every):
-        r["detail"] += "; some scorecards don't grade replay age: live only there"
+    if not all("my_big_seen_3m" in x for x in every):
+        r["detail"] += "; some scorecards don't grade the 3-min replay window: live only there"
     rows.append(r)
     # 4b. crunch live per league. Under the league order a lower-priority overlap that gets a replay is
     # not a miss, and that feasible ceiling isn't computed yet: a miss under 95 % reads PENDING (as in
@@ -278,14 +280,16 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
     rows.append(_row("league_order", None, None, None, PENDING,
                      "needs a mixed-league night graded for overlaps (Noggin Priority module; the per-league "
                      "scorecards can't see a cross-league overlap)"))
-    # 5. live or replayed within 10 min. With big_seen_10m (replay age graded) it can PASS; an older
-    # scorecard only has big_seen (a replay of any age), an upper bound that can FAIL but never PASS.
-    graded = bool(every) and all("big_seen_10m" in x for x in every)
-    fld = "big_seen_10m" if graded else "big_seen"
-    sub = ", ".join(f"{lg.upper()} {100.0 * sum(int(x.get(fld) or 0) for x in per[lg]) / max(1, sum(int(x.get('big') or 0) for x in per[lg])):.1f}%"
-                    for lg in LEAGUES if per[lg])
-    rows.append(_rate("big_seen_10min", [(int(x.get(fld) or 0), int(x.get("big") or 0)) for x in every], 99.0,
-                      upper_bound_only=not graded, note=f" [{sub}]" + note))
+    # 5. live or replayed within 3 min (gate) and 2 min (stretch). With the replay age graded
+    # (big_seen_3m / _2m) they can PASS; an older scorecard only has big_seen (a replay of any age), an
+    # upper bound that can FAIL but never PASS.
+    for key, fld_ok in (("big_seen_3min", "big_seen_3m"), ("big_seen_2min", "big_seen_2m")):
+        graded = bool(every) and all(fld_ok in x for x in every)
+        fld = fld_ok if graded else "big_seen"
+        sub = ", ".join(f"{lg.upper()} {100.0 * sum(int(x.get(fld) or 0) for x in per[lg]) / max(1, sum(int(x.get('big') or 0) for x in per[lg])):.1f}%"
+                        for lg in LEAGUES if per[lg])
+        rows.append(_rate(key, [(int(x.get(fld) or 0), int(x.get("big") or 0)) for x in every], 99.0,
+                          upper_bound_only=not graded, note=f" [{sub}]" + note))
     # 6. switch time p95: real TV samples if there are any, else the Nov 3 measurement (too few to prove p95)
     rows.append(switch_row(switch_s or []))
     # 6b. [sync plan, TIMING] flips that reach PLAYING within 3 s: Controller.settle_book {n, ok} as the
