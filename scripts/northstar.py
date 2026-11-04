@@ -64,14 +64,17 @@ ORACLE_LEAGUES = ("nfl", "nba", "nhl")   # NFL: the app re-graded by sportsgrade
 # normalisation: the size of a "whole" gap in this line's unit)
 METRICS = [
     ("mid_play", "Mid-play cuts + entries (per 100 landings)", "0", -1, 0.0, 5.0),
-    ("landings_dead", "Landings in dead time", ">= 95%", 1, 95.0, 100.0),
-    *[(f"big_live_{lg}", f"Big plays seen live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
+    ("landings_dead", "Landings in dead time", ">= 98%", 1, 98.0, 100.0),
+    # Nick, Nov 4 10:55 AM: gates are honest against the hindsight ceiling: >= 95% OF ORACLE VALUE where the
+    # oracle ran (big_live_nfl/nba/nhl); leagues without an oracle keep the absolute 95% bar.
+    *[(f"big_live_{lg}", f"Big plays seen live, {lg.upper()}", ">= 95% of oracle" if lg in ("nfl", "nba", "nhl") else ">= 95%",
+       1, 95.0, 100.0) for lg in LEAGUES],
     ("your_team_big", "Your-team big plays seen (live or within 10 min)", "100%", 1, 100.0, 100.0),
     *[(f"crunch_live_{lg}", f"Crunch live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
     ("your_team_crunch", "Your-team crunch live", "100%", 1, 100.0, 100.0),
     ("league_order", "League order respected (no lower-league non-crunch over a higher-league crunch)", "100%", 1, 100.0, 100.0),
     # Nick, Nov 4 10:55 AM: the Noggin is fully self-taught, so no line is graded by Nick's taps.
-    ("pct_of_oracle", "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)", ">= 90%", 1, 90.0, 100.0),
+    ("pct_of_oracle", "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)", ">= 95%", 1, 95.0, 100.0),
     ("big_seen_10min", "Big plays live or replayed within 10 min", ">= 99%", 1, 99.0, 100.0),
     ("switch_p95", "Switch time p95 (SmartThings input change)", "<= 3 s", -1, 3.0, 3.0),
     ("flips_settled", "Flips PLAYING within 3 s", ">= 99%", 1, 99.0, 100.0),
@@ -85,10 +88,11 @@ METRICS = [
       for m, lbl in (("big_live", "big plays live"), ("crunch_live", "crunch live"), ("dead_air", "dead air"))
       for lg in ORACLE_LEAGUES],
     # [oracle] the app as a share of the hindsight ceiling, worst of big live / crunch live / live air
-    *[(f"pct_of_oracle_{lg}", f"% of oracle, {lg.upper()} (worst of big live, crunch live, live air)", ">= 90%", 1,
-       90.0, 100.0) for lg in ORACLE_LEAGUES],
+    *[(f"pct_of_oracle_{lg}", f"% of oracle, {lg.upper()} (worst of big live, crunch live, live air)", ">= 95%", 1,
+       95.0, 100.0) for lg in ORACLE_LEAGUES],
     *[(f"ceiling_{m}_{lg}", f"Ceiling: {lbl}, {lg.upper()} (hindsight, live-only, 0 mid-play)", "info", d, None, None)
-      for m, lbl, d in (("dead_air", "dead air", -1), ("crunch_live", "crunch live", 1)) for lg in ORACLE_LEAGUES],
+      for m, lbl, d in (("big_live", "big plays live", 1), ("dead_air", "dead air", -1), ("crunch_live", "crunch live", 1))
+      for lg in ORACLE_LEAGUES],
 ]
 META = {k: dict(label=lb, target=t, dir=d, bar=b, scale=s) for k, lb, t, d, b, s in METRICS}
 
@@ -245,7 +249,7 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
 
     # 2. landings (both ends of every switch) in on-screen dead time
     rows.append(_rate("landings_dead", [(int(x.get("landings_dead") or 0), int(x.get("landings") or 0)) for x in every],
-                      95.0, note=note))
+                      98.0, note=note))
     # 3. big plays seen live, per league
     for lg in LEAGUES:
         rows.append(_rate(f"big_live_{lg}", [(int(x.get("big_live") or 0), int(x.get("big") or 0)) for x in per[lg]],
@@ -315,6 +319,7 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
         rows.append(_row(f"feed_lag_{lg}", qs.get(50), qs.get(10), qs.get(90), INFO,
                          f"{lag_profile.get('source')} p10-p90 {qs.get(10)}-{qs.get(90)} s, n={p['n']}, {p.get('basis')}{extra}"))
     rows += oracle_rows(cards)
+    apply_oracle_gates(rows)
     return rows
 
 
@@ -337,19 +342,49 @@ def oracle_rows(cards: dict) -> list[dict]:
             out.append(_row(f"oracle_gap_{key}_{lg}", gap, None, None, INFO,
                             f"ceiling {o}% vs app {app}% ({orc[obj].get('switches')} oracle switches, "
                             f"{orc[obj].get('entries_mid_play')} mid-play entries)"))
-            if key in ("dead_air", "crunch_live"):
-                out.append(_row(f"ceiling_{key}_{lg}", o, None, None, INFO, f"app {app}% on the same nights"))
+            out.append(_row(f"ceiling_{key}_{lg}", o, None, None, INFO, f"app {app}% on the same nights"))
             # live air = 100 - dead air, so every share is 'more is better'
             share = ((100 - app) / (100 - o) if key == "dead_air" else (app / o if o else None))
             if share is not None:
                 shares[key] = round(100 * min(1.0, share), 1)
+                out[-1]["share"] = shares[key]          # read by apply_oracle_gates
         if len(shares) == 3:
             worst = min(shares, key=shares.get)
             v = shares[worst]
-            out.append(_row(f"pct_of_oracle_{lg}", v, None, None, PASS if v >= 90.0 else FAIL,
+            out.append(_row(f"pct_of_oracle_{lg}", v, None, None, PASS if v >= 95.0 else FAIL,
                             ", ".join(f"{k} {x}%" for k, x in shares.items()) + f" of the ceiling (worst: {worst})"))
     out.append(pct_of_oracle_row(out))
     return out
+
+
+ORACLE_GATE = 95.0   # % of the hindsight ceiling (Nick, Nov 4 10:55 AM)
+
+
+def apply_oracle_gates(rows: list[dict]) -> None:
+    """Gate big_live_<lg> on >= 95% OF ORACLE VALUE (the share of the hindsight ceiling on the same nights)
+    and add the gap to 100% of oracle to big live, crunch live and dead air. Rows without an oracle keep
+    their absolute gate; a slice too thin for the release gate stays PENDING."""
+    by = {r["key"]: r for r in rows}
+    for lg in ORACLE_LEAGUES:
+        for key in ("big_live", "crunch_live", "dead_air"):
+            row = by.get(f"{key}_{lg}" if key != "dead_air" else "dead_air")
+            ceil = by.get(f"ceiling_{key}_{lg}")
+            if row is None or ceil is None or ceil.get("share") is None:
+                continue
+            share = ceil["share"]
+            gap = f"{lg.upper()} {share}% of oracle (ceiling {ceil['value']}%), gap to 100% of oracle {round(100 - share, 1)} pts"
+            row["detail"] = (row.get("detail") or "") + "; " + gap
+            if key != "big_live" or row.get("value") in (None, 0):
+                continue
+            row["oracle_share"] = share
+            thin = row["status"] == PENDING
+            share_lo = share * (row["lo"] / row["value"]) if row.get("lo") is not None else None
+            if share < ORACLE_GATE:
+                row["status"] = FAIL
+            elif not thin and share_lo is not None and share_lo >= ORACLE_GATE:
+                row["status"] = PASS
+            else:
+                row["status"] = PENDING
 
 
 def pct_of_oracle_row(rows: list[dict]) -> dict:
@@ -362,7 +397,7 @@ def pct_of_oracle_row(rows: list[dict]) -> dict:
         missing = ", ".join(lg.upper() for lg in ORACLE_LEAGUES if lg not in per)
         return _row("pct_of_oracle", None, None, None, PENDING, f"needs the oracle for {missing} (--oracle)")
     v = round(sum(per.values()) / len(per), 1)
-    return _row("pct_of_oracle", v, None, None, PASS if v >= 90.0 else FAIL,
+    return _row("pct_of_oracle", v, None, None, PASS if v >= 95.0 else FAIL,
                 ", ".join(f"{lg.upper()} {per[lg]}%" for lg in ORACLE_LEAGUES) + " (mean of the per-league rows)")
 
 

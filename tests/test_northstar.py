@@ -186,3 +186,21 @@ def test_press_row_reports_pre_tuned_and_cold_presses_apart():
                          "cold": {"n": 1, "p50_s": 8.5, "p95_s": 8.5}}, "runs": [{"go_now_s": [2.9, 3.1, 8.5]}]}
     row = ns.press_row(drill)
     assert "pre-tuned 2: p50 2.9 s, p95 3.1 s" in row["detail"] and "cold 1: p50 8.5 s" in row["detail"]
+
+
+def test_big_live_is_gated_on_95_pct_of_oracle():
+    """Nick, Nov 4 10:55 AM: big live per league passes at >= 95% of the hindsight ceiling, and every
+    oracle-backed row shows its gap to 100% of oracle."""
+    def rows(val, lo, ceil, share, status=ns.FAIL):
+        return [ns._row("big_live_nba", val, lo, 99.0, status, "x", 9),
+                {**ns._row("ceiling_big_live_nba", ceil, None, None, ns.INFO, ""), "share": share}]
+    r = rows(90.0, 89.0, 93.0, 96.8)               # 90 live vs a 93 ceiling: 96.8% of oracle, lo 95.7%
+    ns.apply_oracle_gates(r)
+    assert r[0]["status"] == ns.PASS and r[0]["oracle_share"] == 96.8 and "gap to 100% of oracle 3.2" in r[0]["detail"]
+    r = rows(80.0, 70.0, 93.0, 86.0, ns.PASS)
+    ns.apply_oracle_gates(r)
+    assert r[0]["status"] == ns.FAIL
+    r = rows(90.0, 80.0, 93.0, 96.8)               # point over the gate, CI lower end under it
+    ns.apply_oracle_gates(r)
+    assert r[0]["status"] == ns.PENDING
+    assert ns.META["landings_dead"]["bar"] == 98.0 and ns.META["pct_of_oracle"]["bar"] == 95.0
