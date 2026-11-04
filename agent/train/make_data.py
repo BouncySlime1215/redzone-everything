@@ -626,6 +626,53 @@ NOVEL: dict[str, dict[str, list[str]]] = {
     },
 }
 
+# [V7] More training wordings for the four kinds V6's watchdog missed most (paused 0/42, prompt 0/42,
+# frozen 2/42, upstream 5/42). Train only: valid and test wordings (and so the test rows) are unchanged.
+V7_EXTRA: dict[str, list[str]] = {'prompt': ["WARNING redzone.tuners.tuners: youtubetv: 'Are you still watching? Yes / No' card on screen",
+            'WARNING redzone.tuners.tuners: peacock: idle dialog asks to continue on the hidden stick',
+            "WARNING redzone.screen.ocr: frame text 'Still watching?' detected on the standby stick",
+            "WARNING redzone.tuners.firetv: focus is on an 'OK, keep watching' button on screen",
+            "WARNING redzone.tuners.tuners: prime video: resume-or-exit question waiting on the standby stick",
+            "WARNING redzone.tuners.tuners: fox one: 'Are you there?' popup on the hidden stick",
+            'WARNING redzone.tuners.tuners: espn: playback stops soon unless someone confirms (on screen)',
+            "WARNING redzone.screen.ocr: 'Keep watching' dialog with a countdown, standby stick",
+            'WARNING redzone.tuners.tuners: nba league pass: idle timeout dialog shown on screen',
+            'WARNING redzone.tuners.firetv: window com.amazon.tv.idle.ContinueDialog on the hidden stick'],
+ 'paused': ['WARNING redzone.tuners.firetv: PlaybackState=PAUSED reported by the standby stick',
+            'WARNING redzone.tuners.tuners: youtubetv: stream sits paused at the live edge on screen',
+            'WARNING redzone.control: player on the hidden stick is not playing (paused) after the input switch',
+            'WARNING redzone.screen.ocr: big play triangle over a still frame on screen',
+            'WARNING redzone.tuners.tuners: prime: playback paused when the stick lost focus (standby stick)',
+            'WARNING redzone.tuners.tuners: espn+: video paused itself mid-quarter on screen',
+            'WARNING redzone.tuners.firetv: media session paused, position not advancing on the hidden stick',
+            'WARNING redzone.tuners.tuners: fubo: player state paused after the HDMI handshake on screen',
+            'WARNING redzone.control: on-screen stick shows the pause icon and the timeline is not moving',
+            'WARNING redzone.tuners.tuners: max: player paused itself in the background (standby stick)'],
+ 'frozen': ['WARNING redzone.vision: frame identical for 110 s while the game clock runs (hidden stick)',
+            "WARNING redzone.tuners.tuners: youtubetv: 'Something went wrong. Retry' screen on screen",
+            'WARNING redzone.vision: solid black frame for 80 s on the standby stick',
+            'WARNING redzone.tuners.firetv: player stuck buffering for 3 min on the hidden stick',
+            "WARNING redzone.tuners.tuners: prime: error 'Video unavailable (7031)' on screen",
+            "WARNING redzone.screen.boundary: image hasn't changed in 2 min on the standby stick",
+            'WARNING redzone.vision: picture is a gray test card, no video, on screen',
+            'WARNING redzone.tuners.tuners: espn: loading wheel never stops on the standby stick',
+            'WARNING redzone.tuners.firetv: 0 fps rendered for 60 s on screen',
+            'WARNING redzone.screen.scorebug: the scorebug has been stuck for 4 min on the hidden stick'],
+ 'upstream': ['WARNING redzone.sources.http: cdn.espn.com 502 from the origin while scores update',
+              'WARNING redzone.sources.http: api-web.nhle.com returned an empty body',
+              'WARNING redzone.sources.mlb: statsapi.mlb.com live feed timestamp 5 min old',
+              'WARNING redzone.sources.http: httpx.ConnectError: [Errno 111] Connection refused (cdn.nba.com)',
+              'WARNING redzone.sources.fastcast: subscription to gp-football-nfl dropped',
+              'WARNING redzone.sources.http: site.api.espn.com 429 rate limited, retry-after 30',
+              'WARNING redzone.sources.cbb: ncaa scoreboard JSON truncated mid-array',
+              'WARNING redzone.sources.http: TLS handshake timeout to sports.core.api.espn.com',
+              'WARNING redzone.sources.nhl: api-web.nhle.com gamecenter landing 500 Internal Server Error',
+              "WARNING redzone.sources.http: espn summary endpoint came back without 'boxscore' (partial)"]}
+for _k, _ws in V7_EXTRA.items():
+    NOVEL[_k]["train"] += _ws
+# ... and three times the rows per train wording for them (16 -> 48).
+V7_BOOST = {k: 3 for k in V7_EXTRA}
+
 # Lines a stderr traceback leaves behind, one per log line (watchdog only skips bodies that
 # start with a space, "File ", "^" or "Traceback" right after the logger; "stderr: ..." isn't).
 FRAMES = {
@@ -969,12 +1016,13 @@ def check_split() -> None:
                     assert j < 0.5, f"{k}/{split} wording too close to train ({k2}, J={j:.2f}):\n  {w}\n  {t}"
 
 
-def build(rng: random.Random, split: str, per_wording: int, n_mixed: int, n_rules: int) -> list[dict]:
+def build(rng: random.Random, split: str, per_wording: int, n_mixed: int, n_rules: int,
+          boost: dict[str, int] | None = None) -> list[dict]:
     rows = []
     cos = NOVEL["cosmetic"][split]
     for kind, d in NOVEL.items():
         for w in d[split]:
-            rows += [sample(rng, kind, w, cos) for _ in range(per_wording)]
+            rows += [sample(rng, kind, w, cos) for _ in range(per_wording * (boost or {}).get(kind, 1))]
     words = {k: d[split] for k, d in NOVEL.items()}
     rows += [mixed_sample(rng, words) for _ in range(n_mixed)]
     rows += [rule_sample(rng) for _ in range(n_rules)]
@@ -984,7 +1032,7 @@ def build(rng: random.Random, split: str, per_wording: int, n_mixed: int, n_rule
 
 def main(seed: int = 7) -> None:
     check_split()
-    sets = {"train": build(random.Random(seed), "train", 16, 900, 800),
+    sets = {"train": build(random.Random(seed), "train", 16, 1200, 800, boost=V7_BOOST),
             "valid": build(random.Random(seed + 1), "valid", 3, 40, 40),
             "test": build(random.Random(seed + 2), "test", 7, 70, 70)}
     OUT.mkdir(parents=True, exist_ok=True)
