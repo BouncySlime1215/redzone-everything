@@ -1180,6 +1180,8 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .v2-cs { font: 800 10px/1 var(--font-display); letter-spacing: .1em; text-transform: uppercase; font-style: normal; color: var(--danger); margin-right: 6px; }
 .v2-cs--entering { color: var(--mine); }
 .v2-cs--leaving { color: var(--text-3); }
+.v2-stakes { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--text-1); }
+.v2-stakes .ico { width: 12px; height: 12px; color: var(--mine); }
 .v2-strip em { position: absolute; top: 8px; right: 10px; font: 700 10px/1 var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); font-style: normal; }
 .v2-wv { display: grid; gap: 10px; margin-top: 12px; }
 .v2-wv-row { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }

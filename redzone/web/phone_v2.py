@@ -366,6 +366,7 @@ def slate_preview(games, rules: HardRules, now: float) -> dict:
 
 
 CRUNCH_STATES = ("entering", "in", "leaving")
+STAKES_BIG, STAKES_SOME = 0.6, 0.3     # stub only: Scored.stakes (0..1) until lane 1 sets stakes_line
 
 
 def watch_values(scored: dict, games: dict) -> dict:
@@ -374,7 +375,9 @@ def watch_values(scored: dict, games: dict) -> dict:
     it does, the stub shows today's priority score clipped to 0-100 with its biggest factor, marked
     source="stub" so the phone says it's the old score.
     crunch_state: lane 1's crunch model sets `Scored.crunch_state` in CRUNCH_STATES; until then the stub
-    reads today's flags (crunch_now -> "in", crunch -> "entering"; "leaving" needs the model)."""
+    reads today's flags (crunch_now -> "in", crunch -> "entering"; "leaving" needs the model).
+    stakes_line: lane 1 sets `Scored.stakes_line` (e.g. "AFC 1-seed race, top-5 matchup"); until then the
+    stub turns Scored.stakes into "Big stakes" / "Some stakes" / ""."""
     rows = []
     for gid, s in (scored or {}).items():
         g = (games or {}).get(gid)
@@ -387,8 +390,12 @@ def watch_values(scored: dict, games: dict) -> dict:
         cs = getattr(s, "crunch_state", None)        # lane 1's crunch model: entering | in | leaving
         if cs not in CRUNCH_STATES:
             cs = "in" if getattr(s, "crunch_now", False) else ("entering" if getattr(s, "crunch", False) else None)
+        sl = getattr(s, "stakes_line", None)          # lane 1: e.g. "AFC 1-seed race, top-5 matchup"
+        if not isinstance(sl, str):
+            st = getattr(s, "stakes", 0.0) or 0.0
+            sl = "Big stakes" if st >= STAKES_BIG else ("Some stakes" if st >= STAKES_SOME else "")
         rows.append({"game_id": gid, "matchup": getattr(g, "matchup", gid) if g is not None else gid,
-                     "crunch_state": cs,
+                     "crunch_state": cs, "stakes_line": sl[:100],
                      "league": getattr(getattr(s, "league", None), "value", ""), "wv": int(round(max(0.0, min(100.0, val)))),
                      "why": str(why or "")[:120], "crunch": bool(getattr(s, "crunch", False)),
                      "is_break": bool(getattr(s, "is_break", False)), "source": "learned" if learned else "stub"})

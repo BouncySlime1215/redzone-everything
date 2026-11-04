@@ -353,7 +353,7 @@ function mockV2(path, b) {
   if (path === "/api/v2/watch") {
     const why = ["Tied, 2:10 left in the 4th", "Red zone, 3rd & goal", "Power play, down one", "Blowout, starters sitting", "Commercial break"];
     const games = (STATE.games || []).filter((g) => g.phase === "live" || g.state === "live").slice(0, 6).map((g, i) => ({ game_id: g.id, matchup: g.matchup,
-      league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, is_break: i === 4, source: "stub" }));
+      league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, stakes_line: ["AFC 1-seed race, top-5 matchup", "Rivalry game", "", "Wild-card push"][i] || "", is_break: i === 4, source: "stub" }));
     return { enabled: true, now: Date.now() / 1000, current: games[0] && games[0].game_id, games, source: games.length ? "stub" : null };
   }
   if (path.startsWith("/api/v2/trend")) {

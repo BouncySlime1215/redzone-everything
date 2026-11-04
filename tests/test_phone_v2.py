@@ -268,13 +268,17 @@ def test_watch_values_learned_field_or_stub():
     old["b"].watch_value, old["b"].watch_why = 12, ""
     v = phone_v2.watch_values(old, games)
     assert v["source"] == "learned" and v["games"][0] == {"game_id": "a", "matchup": "A @ B", "league": "nba", "wv": 63,
-                                                         "why": "Comeback brewing", "crunch_state": "entering", "crunch": True,
+                                                         "why": "Comeback brewing", "crunch_state": "entering", "stakes_line": "", "crunch": True,
                                                          "is_break": False, "source": "learned"}
     assert phone_v2.watch_values({}, {}) == {"games": [], "source": None}
     old["a"].crunch_now = True
     assert phone_v2.watch_values(old, games)["games"][0]["crunch_state"] == "in"       # stub from the flags
     old["a"].crunch_state = "leaving"                                                  # lane 1's model wins
     assert phone_v2.watch_values(old, games)["games"][0]["crunch_state"] == "leaving"
+    old["a"].stakes = 0.7
+    assert phone_v2.watch_values(old, games)["games"][0]["stakes_line"] == "Big stakes"           # stub
+    old["a"].stakes_line = "AFC 1-seed race, top-5 matchup"                                       # lane 1 wins
+    assert phone_v2.watch_values(old, games)["games"][0]["stakes_line"] == "AFC 1-seed race, top-5 matchup"
     old["b"].crunch_state = "bogus"
     assert phone_v2.watch_values(old, games)["games"][1]["crunch_state"] is None
 
