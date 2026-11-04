@@ -57,10 +57,9 @@ PROFILES: dict[str, dict] = {
             # [noggin logic] a crunch stoppage takes only a play you missed, never an instant replay of one
             # you saw: NFL dev 3 seeds crunch live +0.8..2.2, crunch plays under a replay halved, NBA/NHL equal.
             "decider.crunch.instant_replays=false",
-            # [whistle detection] NHL leaves also on the play-by-play's dead windows (a whistle whose
-            # faceoff landed in the same poll never reached the game state): dev 3 seeds seen-in-3-min
-            # +11..14, crunch +0.5..2.8, 0 mid-play; NBA made mid-play cuts, NFL gains nothing.
-            "decider.leave.dead_windows=[nhl]",
+            # [whistle detection] decider.leave.dead_windows=[nhl] is held OUT of the candidate (Nov 4,
+            # cycle 06): on the current stack, dev 3 seeds, it lifts seen-in-10-min +8..14 but NHL crunch
+            # on replay goes 7/6/0 -> 7/4/6 and your-team 21/21/20 -> 18/21/21, the promotion lines.
             # [controls, cycle 03] Opening a game on the phone tunes it on the hidden stick while you
             # read the sheet, so "Go now" is a flip (press_to_tv_p95). Live default stays off.
             "two_stick.pretune_on_open=true",

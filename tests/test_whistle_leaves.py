@@ -30,4 +30,4 @@ def test_only_in_its_leagues(monkeypatch):
     dec, cur = _dec(monkeypatch, league="nba")
     assert not dec._gate(cur, 1050.0).safe
     from redzone.noggin import profile
-    assert "decider.leave.dead_windows=[nhl]" in profile.argv("candidate", "nhl")
+    assert not any(a.startswith("decider.leave.dead_windows") for a in profile.argv("candidate", "nhl"))  # held out (cycle 06)
