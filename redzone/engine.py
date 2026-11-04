@@ -119,6 +119,12 @@ class Engine:
         if data_dir:
             from redzone import calibration
             self.control.calibrated_flip = calibration.flip_prior(self.cfg, data_dir.parent)
+            # [calib.auto] lane 2's sync half: seek fit + per-channel fresh-tune delay (in memory only)
+            from redzone.contracts.switching import set_calibrated_seek
+            sp = calibration.sync_prior(self.cfg, data_dir.parent)
+            set_calibrated_seek(sp["seek"])
+            self.delays.calibrated = sp["delays"]
+            self.control.seek_log_path = data_dir.parent / "seeks.jsonl"
         self.decider.safety.feed_age = self._feed_age   # [playbooks SAFE-01]
         # Break visits: the game we leave keeps playing on the other stick, so the trip back is one
         # flip; with one stick it's a full tune of that game.

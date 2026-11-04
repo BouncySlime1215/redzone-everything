@@ -45,6 +45,7 @@ LAG_SAMPLE_CAP_S = 180.0
 # (reaction time, the feed's wallclock rounding): stated 2 s, a real 6 s error cut 3 plays mid-play
 # (eval.py --sigma 2 --true-delay 41); 4 s held 0 cuts out to 8 s of error for ~0.3 pt dead air.
 MIN_TAP_SIGMA_S = 4.0
+CALIB_SIGMA_FLOOR_S = 2.0   # [calib.auto] a calibrated channel's prior is never surer than this
 STALE_DATA_S = 20.0        # older than this, "no play in the data" no longer means "no play on screen"
 # Conservative break durations used by the model (stoppage entry -> next snap). From 270 archived
 # NFL games: end of quarter p1 171 s, halftime p1 816 s, two-minute warning p1 55 s. Timeouts and
@@ -192,6 +193,7 @@ class DelayBook:
         self._sync_floor = MIN_TAP_SIGMA_S
         self.cal: NoiseCal | None = None                         # [self-calibrating doubt] see attach_cal
         self._fresh: set[str] = set()                            # tuned, no anchor yet since
+        self.calibrated: dict[str, tuple[float, float]] = {}     # [calib.auto] target -> (fresh-tune delay, sd)
 
     @staticmethod
     def app(target: str) -> str:
@@ -226,10 +228,18 @@ class DelayBook:
         from redzone.decider.sync import SyncBook
         self._sync_floor = float(min_sigma_s)
         self.sync = SyncBook(self._sync_prior, clock=self._clock, on_change=self._sync_changed, log_path=log_path)
+        # [calib.auto] each logged row carries the tune's deliberate offset, so a night's anchors give the
+        # channel's fresh-tune delay (calibration.delay_fit)
+        self.sync.behind_of = lambda t: self.book[t].behind if t in self.book else 0.0
         return self.sync
 
     def _sync_prior(self, target: str) -> tuple[float, float]:
         d = self.get(target)
+        cal = self.calibrated.get(target)
+        if cal is not None:
+            # [calib.auto] last nights' measured fresh-tune delay for this channel, plus what this tune is held
+            # / rewound behind live. A fresh tune's edge still varies ~4 s between sticks (live lab, Nov 4).
+            return cal[0] + d.behind, max(float(cal[1]), CALIB_SIGMA_FLOOR_S)
         mu, sigma = (d.base[0], d.base[1]) if d.base is not None else (d.mu, d.sigma)
         return mu, sigma
 

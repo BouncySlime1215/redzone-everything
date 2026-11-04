@@ -616,6 +616,26 @@ the seek) and the NHL crunch swing is noise. Pre-cueing during a wait can't win 
 0 none of 1188 cued entries followed a wait of 6 s or more (the plan rewinds at once). Whether a ~1 s
 live glimpse before an on-screen rewind counts as mid-play is Nick's call; the candidate assumes it does.
 
+## Self-calibration, sync half (flag `calib.auto`, off; overseer item c)
+
+Every night, with no one's input, the app re-measures what lane 2's planning assumes and writes it to the
+night's `data/calib/YYYY-MM-DD.json`, `sync` section (lane 3's `redzone/calibration.py` format; their
+`timing` section holds flip time and press-to-TV). The outlier guard refuses a value more than 3 MADs
+from the last 5 accepted nights; a refused value is never read back.
+
+- **Seek** (`yttv_seek_step_s`, `yttv_seek_wake_presses`, `yttv_seek_stall_s`): every entry rewind logs
+  one row to `data/seeks.jsonl` (`Controller._seek_sample`): the presses sent, and how far behind the
+  picture really went, from the stick's own clock against its position since the stream's anchor (the same
+  measurement the live lab did by hand). `calibration.seek_fit` reads the wake presses (the most presses that
+  moved < 1 s), the step (slope) and the stall (intercept).
+- **Per-channel delay** (`delay_s:<target>`, with its sd): `data/sync.jsonl` rows now carry `behind` (what
+  that tune was held or rewound behind live). `calibration.delay_fit` takes the median of the night's
+  used anchors less `behind`, needing at least 5.
+- At start with `calib.auto` on, `calibration.sync_prior` sets the seek model in memory
+  (`contracts.switching.set_calibrated_seek`) and gives each calibrated channel's sync filter last nights'
+  delay as its prior (`DelayBook.calibrated`), never surer than 2 s (a fresh tune's edge still varies ~4 s
+  between sticks). Nothing in the config file changes.
+
 ## Replay and resume (flag `replay.resume`, off)
 
 A catch-up replay costs buffer instead of live play. At the screen game's dead ball (the leave gate),

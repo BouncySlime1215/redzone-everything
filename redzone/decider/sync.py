@@ -231,6 +231,7 @@ class SyncBook:
         self.log_path = Path(log_path) if log_path else None
         self._was: dict[str, tuple[bool, bool]] = {}
         self._pos_logged: dict[str, float] = {}
+        self.behind_of = None   # [calib.auto] target -> s this tune is deliberately behind live (DelayBook)
 
     def _log(self, kind: str, target: str, t: float, **kw) -> None:
         f = self.filters.get(target)
@@ -246,6 +247,8 @@ class SyncBook:
                 return
             self._pos_logged[target] = t
         row = {"t": round(t, 3), "target": target, "kind": kind, **kw}
+        if self.behind_of is not None:
+            row["behind"] = round(float(self.behind_of(target) or 0.0), 2)
         if f is not None:
             row.update(mu=round(f.mu(t), 2), sd=round(f.sd(t), 2), synced=state[0], uncertain=state[1])
         try:

@@ -32,7 +32,10 @@ HISTORY = 5           # nights judged against
 MIN_HISTORY = 3       # fewer: accept (nothing to judge against)
 GUARD_MADS = 3.0      # refuse a value further than this many MADs from the history median
 MAD_FLOOR = 0.05      # ...where the MAD is at least 5% of that median (identical nights give MAD 0)
-MIN_SAMPLES = {"tv_flip_p50_s": 5, "tv_flip_p95_s": 10, "tv_flip_max_s": 10, "press_to_tv_p50_s": 3, "press_to_tv_p95_s": 10}
+MIN_SAMPLES = {"tv_flip_p50_s": 5, "tv_flip_p95_s": 10, "tv_flip_max_s": 10, "press_to_tv_p50_s": 3, "press_to_tv_p95_s": 10,
+               # lane 2's sync half: a seek fit needs a few batches; a channel's delay a few anchors
+               "yttv_seek_step_s": 4, "yttv_seek_wake_presses": 4, "yttv_seek_stall_s": 4}
+DELAY_MIN_ANCHORS = 5     # delay_s:<target> needs this many used anchors on the night
 
 
 def folder(root: Path) -> Path:
@@ -138,3 +141,107 @@ def flip_prior(cfg, root: Path) -> tuple[float, float] | None:
     log.info("calib.auto: TV flip prior median %.2f s (%s), max %.2f s (%s)",
              med["value"], med["night"], mx["value"], mx["night"])
     return round(med["value"], 2), round(mx["value"], 2)
+
+
+# --------------------------------------------------------------------- lane 2: the sync half
+
+ANCHOR_KINDS_SKIP = ("tune", "shift", "position")
+
+
+def seek_fit(rows: list[dict]) -> dict[str, tuple]:
+    """YouTube TV's seek from the night's seeks.jsonl ({"sent": presses, "landed_s": how far behind the
+    stick's own clock vs position says it went}), as the live lab measured it by hand on Nov 4.
+
+    wake presses: the largest press count that still moved the picture < 1 s (0 if none was seen);
+    step: the median of (landed - stall) per counted press, with stall the intercept of a least-squares line
+    through (presses that count, landed); stall: that intercept. Rows with one press that did nothing count
+    only toward the wake estimate."""
+    pts = [(int(r["sent"]), float(r["landed_s"])) for r in rows
+           if isinstance(r.get("sent"), int) and r.get("landed_s") is not None and r["sent"] > 0]
+    if not pts:
+        return {}
+    still = [n for n, x in pts if x < 1.0]
+    wake = max(still) if still else 0
+    moved = [(n - wake, x) for n, x in pts if n > wake and x >= 1.0]
+    out: dict[str, tuple] = {"yttv_seek_wake_presses": (float(wake), len(pts), "seeks.jsonl: presses that moved < 1 s")}
+    ns = sorted({n for n, _ in moved})
+    if len(moved) >= 2 and len(ns) >= 2:
+        mx = statistics.mean(n for n, _ in moved)
+        my = statistics.mean(x for _, x in moved)
+        sxx = sum((n - mx) ** 2 for n, _ in moved)
+        step = sum((n - mx) * (x - my) for n, x in moved) / sxx
+        stall = my - step * mx
+        out["yttv_seek_step_s"] = (step, len(moved), "seeks.jsonl: slope of landed vs counted presses")
+        out["yttv_seek_stall_s"] = (stall, len(moved), "seeks.jsonl: intercept (the seek's stall)")
+    elif moved:
+        # one press count only: the step can't be told from the stall; keep the measured stall's mid prior
+        pass
+    return out
+
+
+def delay_fit(rows: list[dict], lo: float | None = None, hi: float | None = None) -> dict[str, tuple]:
+    """Per-channel fresh-tune delay from the night's sync.jsonl: every anchor the filter USED, less what
+    that tune was deliberately held / rewound behind live (`behind`, logged with each row). The value is
+    the median, its spread 1.4826 MAD (floored at 0.5 s), keyed delay_s:<target>."""
+    by: dict[str, list[float]] = {}
+    for r in rows:
+        t = r.get("t")
+        if (lo is not None and (t is None or t < lo)) or (hi is not None and (t is None or t >= hi)):
+            continue
+        if r.get("kind") in ANCHOR_KINDS_SKIP or not r.get("used", False) or r.get("z") is None \
+                or "behind" not in r or not r.get("target"):
+            continue
+        by.setdefault(r["target"], []).append(float(r["z"]) - float(r["behind"] or 0.0))
+    out = {}
+    for target, xs in by.items():
+        if len(xs) < DELAY_MIN_ANCHORS:
+            continue
+        med = statistics.median(xs)
+        sd = max(0.5, 1.4826 * statistics.median(abs(x - med) for x in xs))
+        out[f"delay_s:{target}"] = (med, len(xs), "sync.jsonl: used anchors less the held/rewound offset", sd)
+    return out
+
+
+def _jsonl(path: Path, lo: float | None = None, hi: float | None = None) -> list[dict]:
+    rows = []
+    for p in (path.with_suffix(".jsonl.1"), path):
+        try:
+            for line in p.read_text().splitlines():
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                t = r.get("t")
+                if (lo is None or (t is not None and t >= lo)) and (hi is None or (t is not None and t < hi)):
+                    rows.append(r)
+        except OSError:
+            continue
+    return rows
+
+
+def sync_from_night(root: Path, lo: float, hi: float) -> dict[str, tuple]:
+    """Lane 2's sync half for the night [lo, hi): the seek fit and every channel's delay."""
+    root = Path(root)
+    return {**seek_fit(_jsonl(root / "seeks.jsonl", lo, hi)), **delay_fit(_jsonl(root / "sync.jsonl", lo, hi))}
+
+
+def sync_prior(cfg, root: Path) -> dict:
+    """At start, with calib.auto on: {"seek": SeekModel | None, "delays": {target: (mu, sd)}} from the
+    newest accepted nights. In memory only. Seek values outside sane bounds are ignored."""
+    if not cfg.get("calib.auto", False):
+        return {"seek": None, "delays": {}}
+    got = latest(root, "sync")
+    seek = None
+    step, wake, stall = (got.get(k) for k in ("yttv_seek_step_s", "yttv_seek_wake_presses", "yttv_seek_stall_s"))
+    if step is not None and 5.0 <= step["value"] <= 60.0:
+        from redzone.contracts.switching import seek_model
+        base = seek_model(cfg)
+        st = stall["value"] if stall is not None and 0.0 <= stall["value"] <= 10.0 else base.stall_mid
+        half = (base.stall_hi - base.stall_lo) / 2
+        seek = type(base)(step=round(step["value"], 2),
+                          swallowed=int(round(wake["value"])) if wake is not None and 0 <= wake["value"] <= 3 else base.swallowed,
+                          stall_lo=max(0.0, st - half), stall_hi=st + half, late_ok=base.late_ok)
+        log.info("calib.auto: seek %.1f s a press, %d wake, stall %.1f-%.1f s (%s)", seek.step, seek.swallowed,
+                 seek.stall_lo, seek.stall_hi, step["night"])
+    delays = {k.split(":", 1)[1]: (v["value"], v.get("sd", 3.0)) for k, v in got.items() if k.startswith("delay_s:")}
+    return {"seek": seek, "delays": delays}

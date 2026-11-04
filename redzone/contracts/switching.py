@@ -125,9 +125,20 @@ class SeekModel:
 YTTV_SEEK = SeekModel(step=15.0, swallowed=1, stall_lo=2.0, stall_hi=4.0)
 
 
+_CALIBRATED_SEEK: SeekModel | None = None
+
+
+def set_calibrated_seek(model: SeekModel | None) -> None:
+    """[calib.auto] last nights' accepted seek fit (redzone/calibration.sync_prior), in memory; None = config."""
+    global _CALIBRATED_SEEK
+    _CALIBRATED_SEEK = model
+
+
 def seek_model(cfg) -> SeekModel:
     """What control.py assumes about the rewind (replay.seek_step_s / seek_wake_presses /
-    seek_stall_min_s / seek_stall_max_s)."""
+    seek_stall_min_s / seek_stall_max_s), or the calibrated fit when calib.auto set one at start."""
+    if _CALIBRATED_SEEK is not None:
+        return _CALIBRATED_SEEK
     lo = float(cfg.get("replay.seek_stall_min_s", 0.0) or 0.0)
     hi = float(cfg.get("replay.seek_stall_max_s", lo) or 0.0)
     return SeekModel(step=float(cfg.get("replay.seek_step_s", 15) or 15),
