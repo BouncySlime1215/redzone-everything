@@ -158,6 +158,7 @@ def main():
                           # [north star] per-night counts so scripts/northstar.py can bootstrap every line
                           "big_live": r.big_plays_live, "my_big_live": r.my_big_plays_live,
                           "landings": r.cut.landings()[1], "landings_dead": r.cut.landings()[0],
+                          "suspense_sum": round(r.cut.suspense_sum, 3), "suspense_n": r.cut.suspense_n,   # [EXP-001]
                           "dead_s": round(r.dead_air_s, 1), "watched_s": round(r.watched_s, 1),
                           "crunch": r.crunch, "crunch_live": r.crunch_live,
                           "my_crunch": r.my_crunch, "my_crunch_live": r.my_crunch_live})

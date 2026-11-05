@@ -177,6 +177,7 @@ def main():
                           "big_live": card.big_live, "landings": card.cut.landings()[1],
                           "landings_dead": card.cut.landings()[0],
                           "possession_starts": card.cut.possession_starts,
+                          "suspense_sum": round(card.cut.suspense_sum, 3), "suspense_n": card.cut.suspense_n,   # [EXP-001]
                           "dead_s": round(card.dead, 1), "watched_s": round(card.watched, 1),
                           "crunch": card.crunch, "crunch_live": card.crunch_live,
                           "my_crunch": card.my_crunch, "my_crunch_live": card.my_crunch_live,
