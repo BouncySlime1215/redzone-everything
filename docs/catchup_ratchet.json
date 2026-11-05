@@ -1,0 +1,6 @@
+{
+  "_about": "Nick, Nov 5 2026 12:28 AM ET: the catch-up window is a ratchet, not a fixed bar. Each league's big plays must be seen (live or replayed) within its window on >= 99% (catchup_<league> in scripts/northstar.py). A league steps down the ladder after it holds the next window on locked nights for 2 releases in a row, and never steps back up. Only scripts/catchup_ratchet.py --record changes this file.",
+  "ladder_s": [180, 90, 30, 0],
+  "window_s": {"nfl": 180, "cfb": 180, "nba": 180, "cbb": 180, "nhl": 180, "mlb": 180},
+  "releases": []
+}

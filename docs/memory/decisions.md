@@ -715,3 +715,21 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   sports-language fine-tune. Kaggle CPU / HF only; stream, never mirror; personal-use tag; raw text only in a private
   Kaggle dataset, never in the public repo. First deliverable: a pre-registered EXP on whether recap-aligned labels raise %
   of oracle (dev first, locked once at the release read); if not, H stays small. H pauses first with C/D/F/G.
+- 2026-11-05 (Nick, 12:28 AM ET; gate change, integrator writes it): the catch-up window is a ratchet, not a fixed bar.
+  "Ideally 3 min comes down more and more as we get better." (1) Headline line per league `time_to_see_<lg>`: the
+  median and p90 seconds from a big play airing to it being on screen (0 = live, never seen = never), plus the shares
+  within 3 min, 90 s, 30 s and live. (2) Gate line per league `catchup_<lg>`: at least 99% of big plays seen within
+  the league's window in `docs/catchup_ratchet.json`, which starts at 180 s for every league. The ladder is 3 min,
+  90 s, 30 s, then live. After each release's locked read, `scripts/catchup_ratchet.py --record` steps a league down
+  once it has held the next window on locked nights for 2 releases in a row, and the window never loosens. (3) The
+  delay-and-react test (lane 2, arms A-D) reports these lines per arm. Grader freeze v14.
+- 2026-11-05 (lane 5, EXP-040 on): default `phone.worth: false` -> `true`. The one-tap "Was tonight worth it?" (1-5)
+  shows on the Slate complete card from tonight, so rated nights exist before Sunday's line. It stays EVALUATION ONLY
+  (data/worth.jsonl, graded by the frozen lab/worth.py; tests/test_worth.py fails if noggin, decider or scoring read it).
+  Reason: Cycle 14 (#261) item 2, Integrator's EXP-040 condition "phone.worth on in the next RC".
+- 2026-11-05 (integrator, grader review): #266 is accepted. EXP-301's delay-and-react grader (`redzone/lab/reactgrade.py`,
+  `scripts/reactgrade.py`, by lane 3) joins the frozen graders. It reads time to see through `backtest.time_to_see`
+  with the v14 encoding and takes each league's window from `docs/catchup_ratchet.json`. It zeroes an arm for any
+  honesty fault: a replay of an unheld play, a replay that starts too early, or a rewind with no buffer behind it.
+  The time-from-broadcast column is secondary and never decides a verdict. It imports nothing from
+  decider/noggin/scoring and reads no taps. Grader freeze v15.

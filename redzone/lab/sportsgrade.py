@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from redzone.decider.screen import CONTINUOUS, _is_marker
 from redzone.lab import cutgrade, leverage
-from redzone.lab.backtest import (CATCHUP_2_S, CATCHUP_3_S, CATCHUP_S, lag_of, leave_offsets, offsets_of, on_screen, replayed_by,
+from redzone.lab.backtest import (CATCHUP_2_S, CATCHUP_3_S, CATCHUP_S, lag_of, leave_offsets, offsets_of, on_screen, replayed_by, time_to_see,
                                   tuning_blackout_seconds, watched_whole)
 from redzone.grading import PLAY_LEN, RESUME_LEAD, is_big, is_crunch  # noqa: F401  [one brain] moved, step 3
 from redzone.grading import marker as _marker, play_clock as _clock, play_type as _type  # noqa: F401
@@ -42,6 +42,7 @@ class Card:
     big_seen_3m: int = 0       # live, or replayed within backtest.CATCHUP_3_S (the gate)
     big_seen_2m: int = 0       # ...within CATCHUP_2_S (stretch)
     my_big_seen_3m: int = 0
+    big_see_s: list = field(default_factory=list)   # [time to see] per big play (backtest.time_to_see)
     crunch_on_replay: int = 0  # crunch plays that aired while a catch-up replay was on screen
     crunch: int = 0
     crunch_live: int = 0
@@ -198,6 +199,7 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
                 soon3 = on or replayed_by(replayed, (r.gid, round(w)), w + lag + CATCHUP_3_S)
                 card.big_seen_3m += soon3
                 card.big_seen_2m += on or replayed_by(replayed, (r.gid, round(w)), w + lag + CATCHUP_2_S)
+                card.big_see_s.append(time_to_see(on, replayed, (r.gid, round(w)), w + lag))
                 if mine:
                     card.my_big += 1
                     card.my_big_seen_10m += soon

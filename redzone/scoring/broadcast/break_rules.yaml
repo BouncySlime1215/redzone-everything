@@ -1,0 +1,272 @@
+# [Data F] Broadcast-format table: when each league's commercial breaks fall and how long they run.
+# Rules are facts, paraphrased (never rulebook text). Every row has source_url + license.
+# personal-use, not for commercial release (data plan B). Company build re-checks on green sources.
+#
+# official_len_s : the rule's length of the break itself (null = no published number)
+# measured       : key into redzone/scoring/broadcast/break_lengths.json (scripts/measure_break_lengths.py):
+#                  feed stoppage -> real restart, train nights only. Measured runs ~15-20 s over the
+#                  official length (the restart: players back, faceoff / inbound / snap).
+# confidence     : verified = an official or primary page says it; unverified = secondary / best guess.
+# Engine constants that must agree with this file: tests/test_break_rules.py.
+version: 1
+as_of: "2026-11-05"
+license_default: "facts paraphrased from the cited public page; personal-use, not for commercial release"
+
+rules:
+  # ---------------------------------------------------------------- NBA
+  - id: nba_mandatory_1
+    league: nba
+    kind: media_timeout
+    trigger: "First dead ball after 6:59 of each quarter if no timeout yet this quarter; charged to the home team."
+    clock_marks_remaining_s: [420]
+    per_period: 1
+    official_len_s: {local: 165, national: 195}
+    measured: {league: nba, kind: timeout}
+    measured_note: "Train nights: local q50 182 s, ESPN 213, NBC 212 (n 38/30): the +30 s national rule shows up in the data."
+    exceptions: ["Any team timeout before the mark stands in for it (the first two timeouts of a quarter are the long ones)."]
+    since: "2017-18"
+    confidence: verified
+    source_url: "https://official.nba.com/rule-no-5-scoring-and-timing"
+  - id: nba_mandatory_2
+    league: nba
+    kind: media_timeout
+    trigger: "First dead ball after 2:59 if there has been no second timeout this quarter; charged to the team not yet charged."
+    clock_marks_remaining_s: [180]
+    per_period: 1
+    official_len_s: {local: 165, national: 195}
+    measured: {league: nba, kind: timeout}
+    exceptions: ["Not in overtime."]
+    since: "2017-18"
+    confidence: verified
+    source_url: "https://official.nba.com/rule-no-5-scoring-and-timing"
+  - id: nba_team_timeout
+    league: nba
+    kind: team_timeout
+    trigger: "Team timeout (3rd and later in a quarter are short commercial or none). 7 per team, at most 4 in Q4, at most 2 after 3:00 of Q4; 2 per OT."
+    official_len_s: 75
+    measured: {league: nba, kind: timeout}
+    since: "2017-18"
+    confidence: verified
+    source_url: "https://official.nba.com/rule-no-5-scoring-and-timing"
+  - id: nba_quarter_break
+    league: nba
+    kind: period_break
+    trigger: "End of Q1 and Q3 (and before each OT)."
+    official_len_s: {local: 150, national: 210}
+    measured: {league: nba, kind: end_period}
+    measured_note: "Train q50 local 162 s."
+    confidence: verified
+    source_url: "https://official.nba.com/rule-no-5-scoring-and-timing"
+  - id: nba_halftime
+    league: nba
+    kind: halftime
+    trigger: "Between Q2 and Q3."
+    official_len_s: 900
+    measured: {league: nba, kind: halftime}
+    confidence: verified
+    source_url: "https://official.nba.com/rule-no-5-scoring-and-timing"
+  - id: nba_network_split
+    league: nba
+    kind: network
+    trigger: "National = ESPN/ABC, NBC/Peacock, Prime Video, NBA TV (2025-26 deal). Local = regional / League Pass."
+    official_len_s: null
+    measured_note: "NBA TV timeouts measure like local (q50 182). Prime Video timeouts too few (n<8) to call yet."
+    confidence: unverified
+    source_url: "https://official.nba.com/rule-no-5-scoring-and-timing"
+
+  # ---------------------------------------------------------------- CBB (men's D1)
+  - id: cbb_media_timeouts
+    league: cbb
+    kind: media_timeout
+    trigger: "First dead ball under 16:00, 12:00, 8:00 and 4:00 of each half (4 per half)."
+    clock_marks_remaining_s: [960, 720, 480, 240]
+    per_period: 4
+    official_len_s: null
+    exceptions:
+      - "A team timeout or replay stop within 30 s before a mark, or any time after it, becomes that mark's media timeout."
+      - "The marks are set by each media agreement; some formats use other marks (check per conference/network)."
+      - "The first team timeout of the second half is extended to media length."
+    since: "2015-16"
+    confidence: verified
+    source_url: "https://s3.amazonaws.com/ncaaorg/championships/sports/basketball/rules/men/2020-21PRMBB_D1RSMediaTimeoutFormat.pdf"
+  - id: cbb_team_timeouts
+    league: cbb
+    kind: team_timeout
+    trigger: "Per team: three 30 s and one 60 s; 2 of the 30 s carry to the 2nd half; +1 30 s per extra period."
+    official_len_s: {short: 30, full: 60}
+    confidence: verified
+    source_url: "https://ncaaorg.s3.amazonaws.com/championships/sports/basketball/rules/men/2025-26PRMBB_RulesChanges.pdf"
+  - id: cbb_coach_challenge
+    league: cbb
+    kind: review
+    trigger: "Coach's challenge (new 2025-26): needs a timeout in hand; a won challenge keeps it. Own regime in the last 2:00 and OT."
+    official_len_s: null
+    since: "2025-26"
+    confidence: verified
+    source_url: "https://ncaaorg.s3.amazonaws.com/championships/sports/basketball/rules/men/2025-26PRMBB_RulesChanges.pdf"
+  - id: cbb_halftime
+    league: cbb
+    kind: halftime
+    trigger: "Between halves."
+    official_len_s: 900
+    measured_note: "Engine LEN cbb_half 980 s measured."
+    confidence: unverified
+    source_url: "https://en.wikipedia.org/wiki/Television_timeout"
+
+  # ---------------------------------------------------------------- NHL
+  - id: nhl_tv_timeouts
+    league: nhl
+    kind: media_timeout
+    trigger: "Three per period, at the first stoppage after 6, 10 and 14 minutes elapsed (14:00, 10:00, 6:00 remaining)."
+    clock_marks_remaining_s: [840, 600, 360]
+    per_period: 3
+    official_len_s: 120
+    measured: {league: nhl, kind: timeout}
+    measured_note: "Train q50 149 s (n 167), i.e. 120 s + ~29 s to the faceoff."
+    exceptions:
+      - "Not after a goal or an icing."
+      - "Not during a power play."
+      - "Not in the last 30 s of P1/P2 or the last 2:00 of P3; not within ~1 min of the previous one."
+      - "A skipped one is made up at a later stoppage."
+      - "Regular-season OT has none; playoff OT has one after 10:00."
+    confidence: unverified
+    source_url: "https://en.wikipedia.org/wiki/National_Hockey_League_rules"
+  - id: nhl_goal_break
+    league: nhl
+    kind: other
+    trigger: "After a goal: no TV timeout, a short reset (~45-55 s) to the faceoff."
+    official_len_s: null
+    measured: {league: nhl, kind: score_break}
+    confidence: verified
+    source_url: "https://en.wikipedia.org/wiki/National_Hockey_League_rules"
+  - id: nhl_intermission
+    league: nhl
+    kind: intermission
+    trigger: "Between periods."
+    official_len_s: {regular: 930, national_primetime: 1020, playoffs: 900}
+    measured: {league: nhl, kind: intermission}
+    measured_note: "Train q50 1131 s."
+    confidence: unverified
+    source_url: "https://hockeybydesign.com/2026/03/how-long-is-a-hockey-intermission/"
+  - id: nhl_team_timeout
+    league: nhl
+    kind: team_timeout
+    trigger: "One 30 s timeout per team per game; no commercial."
+    official_len_s: 30
+    confidence: verified
+    source_url: "https://en.wikipedia.org/wiki/National_Hockey_League_rules"
+
+  # ---------------------------------------------------------------- NFL
+  - id: nfl_score_break
+    league: nfl
+    kind: media_timeout
+    trigger: "After a TD (before the try or the kickoff) or a FG (before the kickoff); often a second break after the kickoff."
+    official_len_s: null
+    measured: {league: nfl, kind: score_break}
+    measured_note: "Train q50 192 s; FOX 183, CBS 195, NBC 204, Prime 206."
+    confidence: unverified
+    source_url: "https://en.wikipedia.org/wiki/Television_timeout"
+  - id: nfl_possession_break
+    league: nfl
+    kind: media_timeout
+    trigger: "After a punt or turnover the TV coordinator (orange gloves) may hold the snap for a commercial."
+    official_len_s: null
+    exceptions: ["Format count per quarter: ~4 per quarter, ~16-20 per game; under 2:00 of a half only team timeouts."]
+    confidence: unverified
+    source_url: "https://en.wikipedia.org/wiki/Television_timeout"
+  - id: nfl_team_timeout
+    league: nfl
+    kind: team_timeout
+    trigger: "Team timeout (3 per half). Commercial only if the format still owes one; else ~50 s."
+    official_len_s: null
+    measured: {league: nfl, kind: timeout}
+    measured_note: "Bimodal: q25 50 s (no ads), q50 136 s (ads)."
+    confidence: unverified
+    source_url: "https://en.wikipedia.org/wiki/Television_timeout"
+  - id: nfl_two_minute_warning
+    league: nfl
+    kind: media_timeout
+    trigger: "2:00 left in Q2 and Q4."
+    clock_marks_remaining_s: [120]
+    official_len_s: null
+    measured: {league: nfl, kind: two_minute_warning}
+    measured_note: "Train q50 160 s, tight (q25-q75 154-167)."
+    confidence: unverified
+    source_url: "https://en.wikipedia.org/wiki/Television_timeout"
+  - id: nfl_quarter_break
+    league: nfl
+    kind: period_break
+    trigger: "End of Q1 and Q3."
+    official_len_s: null
+    measured: {league: nfl, kind: end_period}
+    measured_note: "Train q50 195 s; Prime 203."
+    confidence: unverified
+    source_url: "https://en.wikipedia.org/wiki/Television_timeout"
+  - id: nfl_halftime
+    league: nfl
+    kind: halftime
+    trigger: "Between Q2 and Q3 (13:00 rule; longer on some national windows)."
+    official_len_s: 780
+    measured: {league: nfl, kind: halftime}
+    measured_note: "Train q50 850 s."
+    confidence: unverified
+    source_url: "https://operations.nfl.com"
+
+  # ---------------------------------------------------------------- CFB
+  - id: cfb_two_minute_timeout
+    league: cfb
+    kind: media_timeout
+    trigger: "Clock stops at 2:00 of Q2 and Q4; the broadcaster keeps at least one media timeout for it."
+    clock_marks_remaining_s: [120]
+    official_len_s: {no_media: 90}
+    since: "2024"
+    confidence: verified
+    source_url: "https://ncaaorg.s3.amazonaws.com/championships/sports/football/rules/Feb2024PRMFB_AnnualMeetingReport.pdf"
+  - id: cfb_first_down_clock
+    league: cfb
+    kind: other
+    trigger: "Clock no longer stops for first downs except under 2:00 of each half (fewer dead balls than before 2023)."
+    official_len_s: null
+    since: "2023"
+    confidence: verified
+    source_url: "https://www.cbssports.com/college-football/news/two-minute-warnings-have-arrived-in-college-football-but-they-arent-expected-to-lengthen-games"
+  - id: cfb_media_timeouts
+    league: cfb
+    kind: media_timeout
+    trigger: "Media timeouts after scores, changes of possession and quarter ends, by each conference's TV format (~4 per quarter)."
+    official_len_s: 120
+    confidence: unverified
+    source_url: "https://en.wikipedia.org/wiki/Television_timeout"
+  - id: cfb_halftime
+    league: cfb
+    kind: halftime
+    trigger: "Between Q2 and Q3."
+    official_len_s: 1200
+    confidence: unverified
+    source_url: "https://www.sportsdestinations.com/management/marketing-sponsorships/ncaa-tells-officials-shorten-all-game-delays-13276"
+
+  # ---------------------------------------------------------------- MLB
+  - id: mlb_inning_break
+    league: mlb
+    kind: inning_break
+    trigger: "Between half-innings."
+    official_len_s: {local: 120, national: 120, postseason: 175}
+    exceptions: ["Engine LEN mlb_inning 175 s measured (includes warm-up pitches + walk-up)."]
+    since: "2019 (lengths); pitch timer 2023"
+    confidence: verified
+    source_url: "https://www.mlb.com/glossary/rules/pace-of-play"
+  - id: mlb_pitching_change
+    league: mlb
+    kind: pitching_change
+    trigger: "Mid-inning pitching change; often a commercial on local broadcasts."
+    official_len_s: null
+    confidence: unverified
+    source_url: "https://en.wikipedia.org/wiki/Television_timeout"
+  - id: mlb_pace
+    league: mlb
+    kind: other
+    trigger: "Pitch timer 15 s bases empty / 18 s runners on; 30 s between batters; mound visits 4 per 9 innings."
+    official_len_s: null
+    since: "2024"
+    confidence: verified
+    source_url: "https://www.mlb.com/glossary/rules/pace-of-play"

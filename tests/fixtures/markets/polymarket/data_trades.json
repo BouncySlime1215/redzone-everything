@@ -1,0 +1,7 @@
+{"data": [
+  {"proxy_wallet": "0x56687bf447db6ffa42ffe2204a05edaa20f55839", "side": "BUY", "token_id": "222", "condition_id": "0xaaa1",
+   "size": 120.5, "price": 0.55, "timestamp": 1736987500, "title": "Lakers vs. Celtics", "slug": "nba-lal-bos-2025-01-15",
+   "icon": "https://example.invalid/i.png", "event_slug": "nba-lal-bos-2025-01-15", "outcome": "Celtics", "outcome_index": 1,
+   "name": "someone", "pseudonym": "Brave-Otter", "bio": "", "profile_image": "", "profile_image_optimized": "",
+   "transaction_hash": "0xdeadbeef"}
+], "pagination": {"has_more": false, "limit": 100, "next_cursor": null, "offset": 0}}

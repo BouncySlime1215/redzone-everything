@@ -1,0 +1,174 @@
+{
+ "markets": [
+  {
+   "id": "540817",
+   "question": "Lakers vs. Celtics",
+   "conditionId": "0xaaa1",
+   "slug": "nba-lal-bos-2025-01-15",
+   "outcomes": "[\"Lakers\", \"Celtics\"]",
+   "outcomePrices": "[\"0\", \"1\"]",
+   "clobTokenIds": "[\"111\", \"222\"]",
+   "gameStartTime": "2025-01-16 00:30:00+00",
+   "sportsMarketType": "moneyline",
+   "startDate": "2025-01-13T18:00:00Z",
+   "endDate": "2025-01-16T05:00:00Z",
+   "closed": true,
+   "volume": "512345.6",
+   "events": [
+    {
+     "id": "9001",
+     "title": "Lakers vs. Celtics",
+     "slug": "nba-lal-bos-2025-01-15",
+     "startDate": "2025-01-13T18:00:00Z",
+     "endDate": "2025-01-16T05:00:00Z",
+     "seriesSlug": "nba",
+     "eventDate": "2025-01-15",
+     "startTime": "2025-01-16T00:30:00Z"
+    }
+   ]
+  },
+  {
+   "id": "540818",
+   "question": "Will the Warriors beat the Knicks?",
+   "conditionId": "0xaaa2",
+   "slug": "will-the-warriors-beat-the-knicks",
+   "outcomes": "[\"Yes\", \"No\"]",
+   "outcomePrices": "[\"1\", \"0\"]",
+   "clobTokenIds": "[\"333\", \"444\"]",
+   "gameStartTime": "2025-01-17T00:30:00Z",
+   "sportsMarketType": "moneyline",
+   "startDate": "2025-01-14T18:00:00Z",
+   "endDate": "2025-01-17T05:00:00Z",
+   "closed": true,
+   "volume": "20000",
+   "events": [
+    {
+     "id": "9002",
+     "title": "Warriors vs. Knicks",
+     "slug": "nba-gs-ny-2025-01-16",
+     "seriesSlug": "nba",
+     "eventDate": "2025-01-16",
+     "startTime": "2025-01-17T00:30:00Z"
+    }
+   ]
+  },
+  {
+   "id": "540819",
+   "question": "Lakers vs. Celtics: 1H Spread -3.5",
+   "conditionId": "0xaaa3",
+   "slug": "nba-lal-bos-2025-01-15-spread-home-3pt5",
+   "outcomes": "[\"Lakers\", \"Celtics\"]",
+   "outcomePrices": "[\"0\", \"1\"]",
+   "clobTokenIds": "[\"555\", \"666\"]",
+   "gameStartTime": "2025-01-16 00:30:00+00",
+   "sportsMarketType": "spreads",
+   "closed": true,
+   "events": [
+    {
+     "id": "9001",
+     "title": "Lakers vs. Celtics",
+     "slug": "nba-lal-bos-2025-01-15"
+    }
+   ]
+  },
+  {
+   "id": "540820",
+   "question": "Will Arsenal FC win on 2025-01-15?",
+   "conditionId": "0xbbb1",
+   "slug": "epl-ars-che-2025-01-15-ars",
+   "outcomes": "[\"Yes\", \"No\"]",
+   "outcomePrices": "[\"1\", \"0\"]",
+   "clobTokenIds": "[\"777\", \"888\"]",
+   "gameStartTime": "2025-01-15T20:00:00Z",
+   "sportsMarketType": "moneyline",
+   "closed": true,
+   "events": [
+    {
+     "id": "9003",
+     "title": "Arsenal FC vs. Chelsea FC",
+     "slug": "epl-ars-che-2025-01-15"
+    }
+   ]
+  },
+  {
+   "id": "540821",
+   "question": "Will Chelsea FC win on 2025-01-15?",
+   "conditionId": "0xbbb2",
+   "slug": "epl-ars-che-2025-01-15-che",
+   "outcomes": "[\"Yes\", \"No\"]",
+   "outcomePrices": "[\"0\", \"1\"]",
+   "clobTokenIds": "[\"999\", \"000\"]",
+   "gameStartTime": "2025-01-15T20:00:00Z",
+   "sportsMarketType": "moneyline",
+   "closed": true,
+   "events": [
+    {
+     "id": "9003",
+     "title": "Arsenal FC vs. Chelsea FC",
+     "slug": "epl-ars-che-2025-01-15"
+    }
+   ]
+  },
+  {
+   "id": "540822",
+   "question": "Will Arsenal FC vs. Chelsea FC end in a draw?",
+   "conditionId": "0xbbb3",
+   "slug": "epl-ars-che-2025-01-15-draw",
+   "outcomes": "[\"Yes\", \"No\"]",
+   "outcomePrices": "[\"0\", \"1\"]",
+   "clobTokenIds": "[\"121\", \"122\"]",
+   "gameStartTime": "2025-01-15T20:00:00Z",
+   "sportsMarketType": "moneyline",
+   "closed": true,
+   "events": [
+    {
+     "id": "9003",
+     "title": "Arsenal FC vs. Chelsea FC",
+     "slug": "epl-ars-che-2025-01-15"
+    }
+   ]
+  },
+  {
+   "id": "601001",
+   "question": "Rockets vs. Thunder",
+   "conditionId": "0xccc1",
+   "slug": "nba-hou-okc-2025-10-21",
+   "outcomes": "[\"Rockets\", \"Thunder\"]",
+   "outcomePrices": "[\"0\", \"1\"]",
+   "clobTokenIds": "[\"1301\", \"1302\"]",
+   "gameStartTime": "2025-10-21 23:30:00+00",
+   "sportsMarketType": "moneyline",
+   "endDate": "2025-10-21T23:30:00Z",
+   "closed": true,
+   "events": [
+    {
+     "id": "9101",
+     "title": "NBA",
+     "slug": "nba-dailies-2025-10-21",
+     "gameId": 20022433
+    }
+   ]
+  },
+  {
+   "id": "500001",
+   "question": "Timberwolves vs. Suns",
+   "conditionId": "0xddd1",
+   "slug": "nba-min-phx-2024-04-20",
+   "outcomes": "[\"Timberwolves\", \"Suns\"]",
+   "outcomePrices": "[\"1\", \"0\"]",
+   "clobTokenIds": "[\"1401\", \"1402\"]",
+   "gameStartTime": "2024-04-20 19:30:00+00",
+   "sportsMarketType": "moneyline",
+   "endDate": "2024-04-20T12:00:00Z",
+   "closed": true,
+   "events": [
+    {
+     "id": "9201",
+     "title": "NBA",
+     "slug": "nba-dailies-2024-04-20"
+    }
+   ]
+  }
+ ],
+ "next_cursor": "eyJpZCI6NTQwODIyfQ=="
+}
