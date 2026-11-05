@@ -64,6 +64,8 @@ What Nick wants from RedZone Everything (as of 2026-11-03):
 
 - COMPUTE (Nick, Nov 4 7:30 PM): bought Colab Pro+ (~$50/mo, ~500 CU, A100/L4, background runs). Kaggle stays on ONE account (multi-account declined: ToS). Colab notebooks are self-contained (no Drive mount: the broad scopes were declined); the overseer launches them in Nick's browser. 'GO HARD': master plan v2 Phases 0-2 compressed to ~4 days (world model v1 Sat Nov 7, planner v1 + shadow on NFL Sunday Nov 8).
 
+- PROMOTION, take wins along the way (Nick, Nov 4 8:20 PM): the gates are goals and targets, not blockers for every gain. A change can go live PER LEAGUE when it beats live there and passes 0 mid-play entries. Never-join-mid-play stays absolute. The full targets still define 'done'.
+
 **Why:** These were stated across the Nov 2-4 sessions; this is the consolidated spec.
 
 **How to apply:** Check every coordinator thread and PR against this list. Keep ADHD-style replies.

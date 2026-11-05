@@ -71,9 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-RC6.1 approved NOW; Mac subset rerun of 2 flaky tests, no switch yet
-Colab: L4 wd 700/1436, A100 GR 150/7862, pilot step 1200 val 0.69
-Usage 37%; nudged #145 (phone lane waiting) + idle planner
+RC6.1 not switched: Mac permission guard blocked deploy; Nick must paste lane 4 command
+WM pilot: Nick to decide hoopR NBA licensing (#202) vs NFL-only 08b0f37
+Usage 38%; Colab wd 850/1436, GR 300/7862, pilot step 3200
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
