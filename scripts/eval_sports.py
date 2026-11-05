@@ -155,6 +155,7 @@ def main():
         for part in path:
             node = node.setdefault(part, {})
         node[last] = yaml.safe_load(val)
+    evaldata.flatten_league_overrides(cfg, lg.value)   # [grader v7] league-scoped defaults, as the app runs them
     mine = set(cfg.get(f"teams.{lg.value}") or ["WSH"])
     total = sportsgrade.Card(lg.value)
     t0 = time.time()

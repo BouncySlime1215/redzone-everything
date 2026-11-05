@@ -517,3 +517,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
     - the Prime pre-tune fix, if it's ready.
   - CFB, CBB and MLB keep live behavior until they're graded.
   - Every league-scoped set is graded with `league_promotion` on that league's dev cards and its one locked read.
+- 2026-11-05 (integrator, grader v7): `scripts/eval_sports.py` and `scripts/eval.py` flatten
+  `league_overrides[<graded league>]` onto the run's config, after `--set`
+  (`redzone/lab/evaldata.flatten_league_overrides`). A single-league scorecard therefore grades exactly the
+  league-scoped defaults RC7 ships. With no `league_overrides` nothing changes. Grader freeze v7.
