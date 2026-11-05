@@ -241,6 +241,10 @@ decider:
                              # pause: on the HIDDEN stick seek past the dead ball, play up to it, pause, flip, play
     possession_start: "off"  # [possession start] off | crunch | all: cue to the last dead ball before the possession, never wait while one is in reach
     confirmed_dead_only: false  # [data gap] a dead window opens only on a logged stoppage (a lone substitution means the stoppage is missing)
+    unknown_wait_leagues: []  # [EXP-089] never enter on a landing the data can't call ("play may be live"): rewind to a known dead ball or wait. Off ([]) until its gate passes
+    conformal:               # [EXP-024] conformal floor on entries: no landing on less doubt than tau x sigma (off until its gate passes)
+      enabled: false
+      tau: {nfl: 0, nba: 0, nhl: 0}   # per league, from conformal risk control on dev (alpha 0.005 a timed entry); 0 = no floor
     ended_strict: false  # [landing lag] a switch off a finished game never takes the urgent (thin-margin) landing
     crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
@@ -265,7 +269,13 @@ decider:
   wait_for_my_team_s: 1800  # your team tips within this: don't start on a basketball/hockey game we can't leave (uncalibrated)
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
   redzone_score: 45        # RedZone vs a game (0-100): stay on it unless a game beats this; any break goes there
+  leave:                   # [cut rules, Nick Nov 4 3:15 PM] never JOIN mid-play; LEAVING mid-play only at low leverage
+    low_leverage: []       # leagues where a low-leverage moment may be left mid-play ([] = never: today's rule)
+    sticky_closeness: 0.5  # down the stretch is sticky: a late game at least this close is never left mid-play
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
+    floor: true            # [SAFE-09] in a crunch window: no overlay or model leaves it for a non-crunch game, and
+    floor_low_value: 0     # ...no game below this value (watch value, else score) pulls us out. 0 = off: at 50 it
+                           # held dev but cost locked NFL crunch live -0.6/-3.9/0 (Nov 4); waits for watch value
     by_value: false        # [TREE-6 Mac half] crunch vs crunch by value (watch value, else score) with priors:
     value_league_prior: 5  # ...points per league-order step (NFL = CFB > NBA > NHL, MLB)
     value_mine_prior: 30   # ...points for your team / bet
@@ -614,6 +624,10 @@ noggin:                    # docs/noggin.md
 
 phone:                     # the phone page (redzone/web)
   v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it
+  commit: false            # [EXP-036] commitment controls (stay here, only my teams, stop after this game, end at a time), each at a dead ball; OFF until lanes 2/3 ship the "commit" action
+  worth: false             # [EXP-040] one-tap end-of-night "worth it?" (1-5) on the Slate complete card, works with v2 off. EVALUATION ONLY, never a training label
+  worth_probe_days: 7      # [EXP-040] the agency / regret probes show at most once per this many nights
+  why_tag_min: 70          # [EXP-035] "Why we're here" shows only at or over this 0-100 value; lab/decision_records grades the same number
 warmup:                    # [warmup.pregame] before the night's first game (redzone/plan.py Tonight._warmup)
   pregame: false           # put the likeliest first game on the HIDDEN stick before the first start (never the one on screen)
   lead_min: 10             # ...this many minutes before it
