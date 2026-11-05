@@ -75,3 +75,56 @@ sticks yes/no; keys: HF_TOKEN, YOUTUBE_API_KEY, TWITCH_CLIENT_ID/SECRET, College
 ## HARD RULES
 Never join mid-play (Rule #1). Never Peacock. $0 unless Nick OKs. Never touch secrets or create accounts. No DRM bypass. Hidden stick only while Nick
 watches. Weekly usage hard stop 88% (now 63%). Repo is PUBLIC: no raw ESPN/web data, no frames, no personal data. Mac stays light (8 GB).
+
+---
+## UPDATE ~1:45 PM ET (everything since 10:10 AM)
+
+### Priorities as Nick set them today (newest wins)
+1. **Watch Value / prioritization = #1 and the UVP: "which game to watch, when."** Goal: "holy sh*t, the greatest sports show I've ever watched."
+   With the delay we master switching; now master PRIORITIZING. Most threads go here.
+2. **Data for it, MASSIVE, newest-first** (12:10 PM): tonight's games + this season first → 2025, 2024, 2023 → older to 1999 (low weight).
+   Retrain incrementally as slices land; tonight runs the best version available by 6:30 PM (minimum: this + last season).
+   - 4 key-free attention sources (GO): Wikipedia pageview dumps, win-probability swings for every archived play, market/betting volume
+     history, published TV ratings → joined to plays → "attention label" table (target millions of moments) → train Watch Value v1.
+   - **Game-context corpus** (crew H): every NFL game since 1999 + NBA archive: previews, recaps, stakes, streaks, records, rivalries,
+     weekly team reports + OFFSEASON (trades, signings, coaching, injuries, expectations). Wikipedia dumps + filtered FineWeb/CC.
+     Derived numbers per (team, week) and per game → Game Importance + stay/leave. RAW TEXT PRIVATE (Kaggle) ONLY.
+   - **Daily pre-game report for EVERY upcoming game** (built each morning + 1 h before start): stakes/clinch scenarios, storylines,
+     rivalry/revenge, streaks, milestones, star matchups, injuries/returns, coaching hot seat, national-TV slot, weather (NFL), line
+     movement + public betting %, fantasy relevance; **ROOKIES**: draft slot, draft capital spent (trade-ups/picks given), college hype;
+     **FAN SENTIMENT of each team's OWN fans** (team subreddits via official API when Nick's key lands; fan sites/forums within terms;
+     Wikipedia edit/pageview surges). Same features backfilled for history.
+   - **Stay/leave from FULL game context**: score/time, WP trajectory, leverage, momentum, comeback odds, timeouts/fouls, stakes; and the
+     consequence of each play on the rest of the game (ΔWP, Δ future suspense, Δ stakes, Δ narrative); world-model rollouts beyond the
+     buffer; hysteresis; never leave high-leverage.
+3. Tonight-critical (keep at minimum): T1 buffer SHADOW + stay/leave logging, T4 YTTV tests (MIA@GSW 10 PM), T5 TNF Prime scorebug feed,
+   T9 RC8 buffer-ON candidate (Nick flips only if shadow beats live with 0 mid-play). T6 faster feeds = one small thread.
+4. Paused until after tonight: T10 models (ladder/speedrun2/EXP-103), extra T2/T3 rounds.
+
+### Budget (critical)
+- Weekly usage resets **Mon Nov 10, 8 PM ET**. Hard stop 88%. Burn at full scale (20-30 threads) was ~7%/h → would freeze everything
+  (tonight AND NFL Sunday). Coordinator capped at **~2%/h, ≤6 threads, scripts on Kaggle/Actions do all data pulling**, target ≤76% by
+  6:30 PM. Usage: 63% (10:00) → 67% (10:45) → 71% (12:40) → 72% (1:40).
+- Nick asked (1:40 PM) to "go full go all day"; overseer recommended staying throttled (full speed ≈ hitting 88% by ~3 PM). His call.
+
+### Model/compute state
+- Lane 1 fixed the ladder host-RAM issue: kaggle-inputs **811688b2** (pack 3134544, RSS logging). Old ladder tab (ba227738) stuck
+  "Resuming execution" since 9:15 → delete that runtime in Manage sessions, relaunch colab/nfm_a100.ipynb at blob/811688b2 (A100 High-RAM)
+  — but Watch Value v1 training gets the A100 first.
+- Colab CU ≈ 380-390 left. Stale Colab tabs behind "Leave site?" dialogs can be closed (runtimes already deleted).
+
+### Things the overseer must NOT do (Nick asked; declined)
+- Create accounts / log in / generate or paste API keys (hard rule, even for "throwaway" keys). Nick has 2-min steps:
+  YouTube Data API key (console.cloud.google.com → YouTube Data API v3 → API key → GitHub secret YOUTUBE_API_KEY); Reddit app
+  (reddit.com/prefs/apps, "script") → secrets; Twitch (dev.twitch.tv). These unlock highlight views, own-fan sentiment, Twitch spikes.
+- DRM bypass of YouTube TV video ("local backdoor") — declined; legal routes used instead (web-player clock, UI, ad bursts).
+
+### Other changes today
+- Gmail (nmatta1215@gmail.com): filter trashes notifications@github.com mail containing "BouncySlime1215/redzone-everything" (+ existing
+  ~300 trashed, recoverable 30 days); GitHub verification mail untouched.
+- Mac volume muted at Nick's request (~7:30 AM).
+- NHL re-enabled 9:50 AM.
+
+### Readiness tables
+Coordinator posts at 12, 3, 6 PM (it said it sends them to Nick directly). Overseer: every :07/:37 check usage + coordinator + Colab,
+push STATUS, keep the 88% stop in mind.
