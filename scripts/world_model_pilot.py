@@ -80,17 +80,38 @@ def fetch(league: str, year: int, raw: Path) -> Path | None:
     return dst
 
 
-def build_games(leagues, out: Path, smoke: bool) -> list[dict]:
-    """[{league, gid, night, tokens}] for every tokenized game."""
+def v2_edges(lg: str, years: list[int], out: Path) -> dict | None:
+    """Vocab v2 bucket edges for a league, fit once on its middle season (always a train season under split(): the
+    last 20% of nights are valid + test), then shared by every season."""
+    import noggin_tokens_v2 as V2
+    p = out / "tokens_v2" / f"{lg}_edges.json"
+    if p.exists():
+        return json.loads(p.read_text())
+    y = years[len(years) // 2]
+    raw = fetch(lg, y, out / "raw")
+    if raw is None:
+        return None
+    info = V2.build(TOKEN_LEAGUE.get(lg, lg), raw, y, out / "tokens_v2" / "fit" / lg)
+    p.write_text(json.dumps(info["edges"]))
+    return info["edges"]
+
+
+def build_games(leagues, out: Path, smoke: bool, vocab: int = 1) -> list[dict]:
+    """[{league, gid, night, tokens}] for every tokenized game (vocab 1: noggin_tokens; 2: noggin_tokens_v2)."""
     games = []
     for lg in leagues:
         years = SEASONS[lg][-1:] if smoke else SEASONS[lg]
+        edges = v2_edges(lg, years, out) if vocab == 2 else None
         for y in years:
             raw = fetch(lg, y, out / "raw")
             if raw is None:
                 continue
             tl = TOKEN_LEAGUE.get(lg, lg)
-            info = T.build(tl, raw, y, out / "tokens" / lg)
+            if vocab == 2:
+                import noggin_tokens_v2 as V2
+                info = V2.build(tl, raw, y, out / "tokens" / lg, edges=edges)
+            else:
+                info = T.build(tl, raw, y, out / "tokens" / lg)
             arr = np.load(out / "tokens" / lg / tl / f"{y}.npy")
             for gid, night, off, n, _ in info["index"]:
                 games.append({"league": lg, "gid": gid, "night": night, "tokens": arr[off:off + n]})
@@ -384,6 +405,7 @@ def main(argv=None) -> int:
     ap.add_argument("--smoke", action="store_true", help="CPU test: one season, a tiny model, a few steps")
     ap.add_argument("--from-tokens", type=Path, default=None,
                     help="train on the factory's token shards (<dir>/<league>/<year>.npy) instead of fetching")
+    ap.add_argument("--vocab", type=int, default=1, choices=(1, 2), help="2 = rich tokens (noggin_tokens_v2)")
     ap.add_argument("--extra-shards", type=Path, default=None,
                     help="synthetic token shards (synth_build.py augment, EXP-1401): train only, before valid, <=3x")
     a = ap.parse_args(argv)
@@ -400,8 +422,10 @@ def main(argv=None) -> int:
     if a.from_tokens:
         games, licenses = load_shards(a.from_tokens, a.leagues.split(","))
     else:
-        games = build_games(a.leagues.split(","), a.out, a.smoke)
+        games = build_games(a.leagues.split(","), a.out, a.smoke, a.vocab)
         licenses = {PERSONAL} if ESPN_DERIVED & set(a.leagues.split(",")) else {"open"}
+        for js in (a.out / "tokens").rglob("*.json") if a.vocab == 2 else ():   # v2 shards carry their own license
+            licenses.add(json.loads(js.read_text()).get("license", "open"))
     sp = split(games)
     starts = valid_start(games)
     print("first valid night:", json.dumps(starts), flush=True)
