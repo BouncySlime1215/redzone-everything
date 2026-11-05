@@ -39,6 +39,8 @@ GRADERS = (
     "redzone/lab/primegrade.py",
     "redzone/lab/delaygrade.py",
     "scripts/delay_grade.py",
+    "scripts/clock_truth_grade.py",
+    "scripts/entry_autopsy.py",
     "redzone/lab/outcome_label.py",
     "scripts/sync_grade.py",
     "agent/distill/evaluate.py",

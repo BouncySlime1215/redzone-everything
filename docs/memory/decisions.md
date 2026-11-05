@@ -828,3 +828,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   CGNAT 100.64.0.0/10 (kept as ts.<last octet>), Tailscale IPv6 fd7a:115c:a1e0::/48 and link-local 169.254/16, so the
   sticks' tailnet addresses never reach the shared live-test folder. Redaction only; no grading line changes.
   Grader freeze v25.
+- 2026-11-05 (integrator, grader v26; test writers EXP-744, #302): **NBA/CBB Rule #1 gets a second, independent
+  grader.** `scripts/clock_truth_grade.py` labels each entry live/dead/ambiguous from the play-by-play game clock alone
+  (lane 3's EXP-741 thresholds; no code shared with redzone.grading, cutgrade, espn.stoppage_for or the decider),
+  because cutgrade and the brain share one definition of "dead". v1 NBA dev: 0 of 64 entries live on both (CI
+  [0, 0]); the instrument does see live play (landings shifted -15 s: 10 live); at random moments the shared grader
+  errs toward "live" (the safe side). An NBA "0 mid-play" claim now needs both graders at 0. It and
+  `scripts/entry_autopsy.py` (its input) join the freeze. Grader freeze v26.

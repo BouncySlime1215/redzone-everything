@@ -4580,6 +4580,17 @@
     "untagged"
    ]
   },
+  "scripts/clock_truth_grade.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Clock-truth re-grade of entries (PROPOSAL, test writers, EXP-744).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/collect_live_test.py": {
    "contracts": [],
    "inputs": [],
@@ -5894,10 +5905,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 321,
+  "modules": 322,
   "orphans": 14,
-  "unowned": 161,
-  "untagged": 265
+  "unowned": 162,
+  "untagged": 266
  },
  "version": 1
 }

@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**321 modules**, 265 untagged, 161 unowned, 14 orphans (no importer).
+**322 modules**, 266 untagged, 162 unowned, 14 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -211,7 +211,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (161)
+## unowned (162)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -308,6 +308,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/ci_report.py` (entry) | Turn CI results into the PR comment: tests, lint, and the scorecard smoke run, PR vs base. | - -> - | untagged |
 | `scripts/ci_scorecard.py` (entry) | Fast scorecard smoke run for CI: a small, fixed slice of every scorecard, as one JSON file. | - -> - | untagged |
 | `scripts/citymap.py` (entry) | City map: one generated graph of every RedZone module (role, inputs -> outputs, owner, serves). | - -> - | untagged |
+| `scripts/clock_truth_grade.py` (entry) | Clock-truth re-grade of entries (PROPOSAL, test writers, EXP-744). | - -> - | untagged |
 | `scripts/collect_live_test.py` (entry) | Collect a live test's logs into one folder, with a summary the North Star harness reads (cycle 01 plan, task 4: "the sync-probe log and data/tv_input.jsonl u... | - -> - | STK-06, STK-07 |
 | `scripts/context_pack.py` (entry) | Build ONE markdown context pack for pasting into a brand-new AI session. | memory -> - | untagged |
 | `scripts/contract_check.py` (entry) | Proof kernel: check the whole redzone/ graph against the contract rules on every change. | - -> - | untagged |
@@ -377,7 +378,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/world_model_pilot.py` (entry) | World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end. | noggin.factory -> - | untagged |
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 
-## Untagged (265)
+## Untagged (266)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -562,6 +563,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/ci_report.py`
 - `scripts/ci_scorecard.py`
 - `scripts/citymap.py`
+- `scripts/clock_truth_grade.py`
 - `scripts/context_pack.py`
 - `scripts/contract_check.py`
 - `scripts/controls_drill.py`
