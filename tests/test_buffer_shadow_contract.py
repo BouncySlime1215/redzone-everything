@@ -208,3 +208,36 @@ def test_shadow_never_schedules_a_mid_play_entry(nights):
     res = bsg.grade(rows, on / "games")
     assert res["entries_graded_cutgrade"] >= 1, "the editor made no gradable entry on the night"
     assert res["R1"] == "PASS", json.dumps(res["live"], indent=1)[:3000]
+
+
+# ---- NBA slate: the editor switches between NBA games, so EXP-744 clock truth grades its entries ------------------
+
+@pytest.fixture(scope="module")
+def nba_night(tmp_path_factory):
+    if not SHADOW:
+        pytest.skip("redzone/buffer_shadow.py (lane 2) not on this branch yet")
+    tmp = tmp_path_factory.mktemp("nba")
+    work = tmp / "nba"
+    env = dict(os.environ, PYTHONPATH=str(ROOT) + os.pathsep + os.environ.get("PYTHONPATH", ""))
+    env.pop("RZ_NIGHT_TRACE", None)
+    # start_timed (EXP-739): with it off the night's first pick is untimed and, on this slate, lands 10 s after the
+    # tip (live under both graders). The buffer gate is read with the first pick timed like any entry.
+    args = [sys.executable, str(ROOT / "tests" / "night_nba_slate.py"), str(ROOT / "data" / "archive"),
+            "--tv", "smartthings", "--start", "20:55", "--hours", "1.5", "--seed", "1", "--no-default-faults",
+            "--set", "timing.behind_live_s.shadow=true", "--set", "decider.entry.start_timed=true",
+            "--work", str(work), "--json", str(tmp / "nba.json")]
+    p = subprocess.run(args, cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
+    if p.returncode == 3:
+        pytest.skip(p.stdout.strip())
+    assert (tmp / "nba.json").exists(), f"no report (exit {p.returncode}):\n{p.stdout[-2000:]}\n{p.stderr[-2000:]}"
+    return work
+
+
+@needs_shadow
+def test_shadow_nba_entries_are_dead_on_both_graders(nba_night):
+    rows = [json.loads(x) for x in (nba_night / "data" / "buffer_shadow.jsonl").read_text().splitlines() if x.strip()]
+    res = bsg.grade(rows, nba_night / "games")
+    assert res["S1"] == "PASS" and res["S2"] == "PASS", res["schema_problems"][:10]
+    clock = [e for e in res["entry_grades"] if e["clock_truth"] in ("dead", "live")]
+    assert len(clock) >= 2, f"clock truth graded {len(clock)} NBA entries: {res['entry_grades']}"
+    assert res["R1"] == "PASS", json.dumps(res["live"], indent=1)[:3000]
