@@ -467,6 +467,7 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   crunch_block_mine_leagues: []   # ...your team's missed play still goes in these leagues (its game's league)
   crunch_block_mine_after_s: 90    # ...once this long after it aired
   crunch_block_tail: false # ...and until a game the feed ended in crunch (an OT winner) has finished airing
+  when_alone: false        # a catch-up is still checked when no other game is worth switching to
   urgent_s: 1200           # in its last N seconds a missed play jumps the queue and beats dull live play
   clip_s: 15               # how long each replay plays
   seek_s: 6                # time spent rewinding to the play

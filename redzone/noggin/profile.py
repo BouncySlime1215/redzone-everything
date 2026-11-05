@@ -75,6 +75,10 @@ PROFILES: dict[str, dict] = {
             # aired: dev 3 seeds NHL crunch on replay 7/6/0 -> 0/0/0, crunch live +3.6/+2.7/+0.1, 0 mid-play;
             # big seen in 10 min -4.1..4.5 (catch-ups wait out the OT tail). NFL crunch +0.1..0.8, NBA equal.
             "replay.crunch_block_tail=true",
+            # [noggin logic, cycle 07] your team's missed play is still checked for a catch-up when no other
+            # game is worth switching to (its own game on a break): dev 3 seeds NHL your-team 19/21/18 ->
+            # 20/21/20, crunch =, 0 mid-play, dead air +0..0.4; NFL/NBA and locked unchanged.
+            "replay.when_alone=true",
             "replay.crunch_block_mine_leagues=[nfl]",
         ],
     },

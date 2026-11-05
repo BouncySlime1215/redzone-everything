@@ -1469,6 +1469,13 @@ class Decider:
 
         best = self._best(watchable, exclude=self.current)
         if best is None:
+            # [replay.when_alone] Nothing else live to switch to (your team's game on a break, say) is
+            # no reason to skip the catch-up check below: the missed play still beats this moment.
+            if gate_ok and not s_cur.lock and self.cfg.get("replay.when_alone", False):
+                rp = self._best_replay(cands, now, None, False, top=self._vs_replay(self.current, cands),
+                                       margin=self.core.k.switch_margin, yours=self.current not in self._yours)
+                if rp and rp.mine:   # your team's missed play only: other games' wait for a real break
+                    return self._replay_decision(rp, state, gate_txt, now)
             return Decision(now, "stay", self.current, s_cur.reason, state, gate_txt)
         b = cands[best]
         margin = self.core.k.switch_margin
