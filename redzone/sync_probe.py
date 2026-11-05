@@ -27,7 +27,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from redzone.tuners.adb import parse_playback
+from redzone import config, sync_edge
+from redzone.tuners.adb import EDGE_READ, parse_playback
 
 log = logging.getLogger(__name__)
 
@@ -196,6 +197,15 @@ class SyncProbe:
         self._ui_last: dict[str, tuple[float, bool, str | None]] = {}           # host -> (t, ad on, target)
         self._bursts: dict[str, BurstWatch] = {}                                 # host -> its burst onsets
         self._log_read: dict[str, float] = {}                                    # host -> last logcat read
+        # [SYNC A, EXP-800] each stick against its stream's live edge, every sync.edge.every_s (sync_edge.py)
+        self.edge = sync_edge.EdgeTracker()
+        self.delay_of: Callable[[str], tuple[float, float] | None] = lambda target: None   # engine: sync filter
+        self.edge_rows = 0
+        # [SYNC B] (target, row): a stick plays behind its live edge without the app asking for it; the engine
+        # re-links it to live (flags sync.edge.force_live / force_live_visible, off)
+        self.on_force_live: Callable[[str, dict], bool] | None = None
+        self._forced: dict[str, float] = {}   # target -> last re-link (one per force_gap_s)
+        self._full_at = 0.0
 
     def enabled(self) -> bool:
         return bool(self.cfg.get("sync.probe.enabled", True)) and not self.cfg.get("mode.dry_run", True)
@@ -235,9 +245,16 @@ class SyncProbe:
             host = stick.host
             row = {"t": round(now, 2), "host": host, "role": role, "target": target,
                    "app": (target or "").split(":", 1)[0] or None}
-            ms = parse_playback(await self._sh(stick, "dumpsys media_session"))
+            text = await self._sh(stick, EDGE_READ)
+            ms = parse_playback(text)
             row["ms"] = {k: ms.get(k) for k in ("state", "pkg", "position", "updated", "speed",
                                                 "title", "subtitle", "description") if ms.get(k) is not None}
+            # [SYNC A] YouTube TV refreshes `position` only on play / pause / seek / tune: the raw value is
+            # stale while it plays, so log the stick's uptime from the same read and the position now
+            up = sync_edge.parse_uptime(text)
+            row["uptime_ms"] = None if up is None else int(round(up * 1000))
+            pn = sync_edge.position_now(ms, up)
+            row["pos_now_s"] = None if pn is None else round(pn, 3)
             row["stall_s"] = stall_s(self._last.get(host), ms)
             row["state_changed"] = (self._last.get(host) or {}).get("updated") not in (None, ms.get("updated"))
             self._last[host] = ms
@@ -371,10 +388,95 @@ class SyncProbe:
         except OSError:
             log.exception("could not write the sync probe log")
 
+    def _edge_cfg(self, key: str):
+        """sync.edge.<key> from the live config, else the shipped default (no fallback numbers here)."""
+        v = self.cfg.get(f"sync.edge.{key}")
+        return config.default(f"sync.edge.{key}") if v is None else v
+
+    def edge_enabled(self) -> bool:
+        return bool(self.cfg.get("sync.edge.enabled")) and not self.cfg.get("mode.dry_run", True)
+
+    async def edge_tick(self, now: float | None = None) -> list[dict]:
+        """[SYNC A] One read-only `cat /proc/uptime; dumpsys media_session` per stick -> live-edge rows, and
+        the measured behind_live_s per stick handed to the controller (Controller.behind_live).
+        Runs while the app is paused and during switches too (a read presses nothing; the tune is exactly
+        when the landing is measured); skips only an unknown input and a critical Mac (governor)."""
+        if not self.edge_enabled():
+            return []
+        c = self.control
+        if getattr(c, "input_unknown", False) or (self.governor is not None and not self.governor.allow("ocr")):
+            return []
+        pairs = [(c.main, c.on_target, "visible")]
+        if getattr(c, "two_stick", False):
+            pairs.append((c.hidden, c.hidden_target, "hidden"))
+        rows = []
+        held = getattr(c, "held", {}) or {}
+        hdmi = getattr(c, "hdmi", {}) or {}
+        tuned = getattr(c, "tuned_at", {}) or {}
+        live = getattr(c, "behind_live", None)
+        for stick, target, role in pairs:
+            if stick is None or not target:
+                continue
+            name = str(hdmi.get(stick.host) or role).lower().replace(" ", "")   # never the stick's address
+            text = await self._sh(stick, EDGE_READ)
+            wall = time.time() if now is None else now
+            delay = None
+            try:
+                delay = self.delay_of(target)
+            except Exception:
+                log.debug("edge: no delay estimate for %s", target, exc_info=True)
+            row = self.edge.read(name, role, target, parse_playback(text), sync_edge.parse_uptime(text), wall,
+                                 pred_behind_s=float(held.get(target, 0.0)), tune_t=tuned.get(stick.host),
+                                 delay=delay)
+            if row is None:
+                continue
+            rows.append(row)
+            if isinstance(live, dict) and row.get("behind_live_s") is not None:
+                live[stick.host] = row["behind_live_s"]
+            real = getattr(c, "behind_real", None)
+            if isinstance(real, dict) and row.get("abs_behind_s") is not None:
+                real[stick.host] = row["abs_behind_s"]
+            if row.get("behind_live_s") is None or row.get("played_s", 0.0) < float(self._edge_cfg("settle_s")):
+                continue
+            # [SYNC B] behind its live edge by more than the app asked for (a stall, a pause it forgot, a bad landing)
+            if row["behind_live_s"] - row["pred_behind_s"] > float(self._edge_cfg("force_live_s")):
+                row["would_force"] = True
+                row["forced"] = self._force(target, row, wall)
+        root = self.root() if callable(self.root) else self.root
+        if rows and root is not None:
+            sync_edge.write_rows(rows, root)
+            self.edge_rows += len(rows)
+        return rows
+
+    def _force(self, target: str, row: dict, now: float) -> bool:
+        """[SYNC B] Re-link to live: the hidden stick with sync.edge.force_live, the one on screen with
+        sync.edge.force_live_visible (the engine adds: only on a dead ball). At most once per force_gap_s."""
+        flag = "force_live" if row["role"] == "hidden" else "force_live_visible"
+        if not self.cfg.get(f"sync.edge.{flag}") or self.on_force_live is None:
+            return False
+        if now - self._forced.get(target, float("-inf")) < float(self._edge_cfg("force_gap_s")):
+            return False
+        try:
+            ok = bool(self.on_force_live(target, row))
+        except Exception:
+            log.exception("force live failed on %s", target)
+            return False
+        if ok:
+            self._forced[target] = now
+        return ok
+
     async def run(self) -> None:
         while True:
+            now = time.time()
+            if now >= self._full_at:
+                self._full_at = now + PROBE_EVERY_S
+                try:
+                    await self.tick()
+                except Exception:
+                    log.exception("sync probe tick failed")
             try:
-                await self.tick()
+                await self.edge_tick()
             except Exception:
-                log.exception("sync probe tick failed")
-            await asyncio.sleep(PROBE_EVERY_S)
+                log.exception("sync edge tick failed")
+            every = float(self._edge_cfg("every_s")) if self.edge_enabled() else PROBE_EVERY_S
+            await asyncio.sleep(every)

@@ -646,6 +646,11 @@ def _adb_problem(text: str) -> str | None:
 
 # --- playback reports --------------------------------------------------------------------
 
+# [SYNC A] the live-edge reader's one read per stick: the boot clock MediaSession's `updated` counts in, and
+# the session itself, in one shell call so the two are read together (redzone/sync_edge.py).
+EDGE_READ = "cat /proc/uptime; dumpsys media_session"
+
+
 def parse_playback(text: str, package: str | None = None) -> dict:
     """Read `dumpsys media_session` (full or grep'd). A playing session wins; otherwise the last one."""
     empty = {"state": "none", "pkg": None, "position": None, "updated": None}
