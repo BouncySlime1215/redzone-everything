@@ -88,6 +88,8 @@ def reasoner_job(pack: Path, answers: list[dict]) -> dict:
 # claude/watchdog-v7-data: +10 train wordings and 3x rows for paused, prompt, frozen and upstream), so the
 # data pack needn't be re-uploaded. Valid and test (and their labels) are byte-identical to the pack's.
 WATCHDOG_TRAIN_V7 = Path(__file__).resolve().parent / "assets" / "watchdog_v7"
+# [V8.1, EXP-101] V7's rows + counterfactual rows (agent/kaggle/watchdog_cf.py); picked with RZ_WATCHDOG_TRAIN=v81.
+WATCHDOG_TRAIN_V81 = Path(__file__).resolve().parent / "assets" / "watchdog_v81"
 
 
 def watchdog_job(pack: Path) -> dict | None:
@@ -96,7 +98,9 @@ def watchdog_job(pack: Path) -> dict | None:
         return None
     test = [{"id": f"wd-test-{i}", "task": "watchdog", "messages": r["messages"][:2]}
             for i, r in enumerate(_rows(d, "test.jsonl"))]
-    tr = _rows(WATCHDOG_TRAIN_V7, "train.jsonl") or _rows(d, "train.jsonl")
+    import os
+    src = WATCHDOG_TRAIN_V81 if os.environ.get("RZ_WATCHDOG_TRAIN") == "v81" else WATCHDOG_TRAIN_V7
+    tr = _rows(src, "train.jsonl") or _rows(d, "train.jsonl")
     return {"train": tr, "valid": _rows(d, "valid.jsonl"), "test": test, "meta": []}
 
 

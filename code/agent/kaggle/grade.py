@@ -265,7 +265,8 @@ def short_grades(rep: dict, round_id: str = "", mode: str = "", wall_h: float | 
                             for k in ("today", "head", "teacher", "student") if isinstance(r.get(k), dict)},
            "student_floored": r.get("student_floored"),
            "crunch_slice": (r.get("slices") or {}).get("crunch"),
-           "watchdog": {k: {m: v.get(m) for m in ("n", "accuracy", "gate")} for k, v in (rep.get("watchdog") or {}).items()
+           "watchdog": {k: {m: v.get(m) for m in ("n", "accuracy", "unusable_json", "gate", "by_kind")}
+                        for k, v in (rep.get("watchdog") or {}).items()
                         if isinstance(v, dict)}}
     head = (rep.get("build") or {}).get("head") or {}
     out["head"] = {lg: {m: v.get(m) for m in ("base_rate", "auc_test", "auc_test_context_only", "auc_lift_over_context",

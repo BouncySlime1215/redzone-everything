@@ -1,0 +1,4378 @@
+{
+ "nhl:16": {
+  "team": {
+   "id": "16",
+   "abbr": "PIT",
+   "name": "Pittsburgh Penguins",
+   "short": "Penguins",
+   "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/pit.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/nhl/500-dark/pit.png",
+   "color": "000000",
+   "alt_color": "fdb71a",
+   "mine": false,
+   "record": "5-7",
+   "standing": "14th in Eastern Conference"
+  },
+  "roster": [
+   {
+    "id": "3114",
+    "name": "Sidney Crosby",
+    "short": "S. Crosby",
+    "jersey": "87",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3114.png"
+   },
+   {
+    "id": "4588004",
+    "name": "Connor Dewar",
+    "short": "C. Dewar",
+    "jersey": "19",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4588004.png"
+   },
+   {
+    "id": "5291947",
+    "name": "Ben Kindel",
+    "short": "B. Kindel",
+    "jersey": "81",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/5291947.png"
+   },
+   {
+    "id": "4697405",
+    "name": "Hendrix Lapierre",
+    "short": "H. Lapierre",
+    "jersey": "22",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4697405.png"
+   },
+   {
+    "id": "4316983",
+    "name": "Blake Lizotte",
+    "short": "B. Lizotte",
+    "jersey": "46",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4316983.png"
+   },
+   {
+    "id": "3124",
+    "name": "Evgeni Malkin",
+    "short": "E. Malkin",
+    "jersey": "71",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3124.png"
+   },
+   {
+    "id": "3942061",
+    "name": "Tommy Novak",
+    "short": "T. Novak",
+    "jersey": "18",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3942061.png"
+   },
+   {
+    "id": "5077308",
+    "name": "Andrei Kuzmenko",
+    "short": "A. Kuzmenko",
+    "jersey": "62",
+    "position": "LW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/5077308.png"
+   },
+   {
+    "id": "4565275",
+    "name": "Nick Robertson",
+    "short": "N. Robertson",
+    "jersey": "14",
+    "position": "LW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4565275.png"
+   },
+   {
+    "id": "5075840",
+    "name": "Elmer Soderblom",
+    "short": "E. Soderblom",
+    "jersey": "25",
+    "position": "LW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/5075840.png"
+   },
+   {
+    "id": "4063605",
+    "name": "Justin Brazeau",
+    "short": "J. Brazeau",
+    "jersey": "16",
+    "position": "RW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4063605.png"
+   },
+   {
+    "id": "4697404",
+    "name": "Egor Chinakhov",
+    "short": "E. Chinakhov",
+    "jersey": "59",
+    "position": "RW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4697404.png"
+   },
+   {
+    "id": "5172806",
+    "name": "Avery Hayes",
+    "short": "A. Hayes",
+    "jersey": "85",
+    "position": "RW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/5172806.png"
+   },
+   {
+    "id": "4874911",
+    "name": "Ville Koivunen",
+    "short": "V. Koivunen",
+    "jersey": "41",
+    "position": "RW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4874911.png"
+   },
+   {
+    "id": "2562629",
+    "name": "Rickard Rakell",
+    "short": "R. Rakell",
+    "jersey": "67",
+    "position": "RW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/2562629.png"
+   },
+   {
+    "id": "2591155",
+    "name": "Bryan Rust",
+    "short": "B. Rust",
+    "jersey": "17",
+    "position": "RW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/2591155.png"
+   },
+   {
+    "id": "5103825",
+    "name": "Declan Carlile",
+    "short": "D. Carlile",
+    "jersey": "72",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/5103825.png"
+   },
+   {
+    "id": "4063401",
+    "name": "Samuel Girard",
+    "short": "S. Girard",
+    "jersey": "49",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4063401.png"
+   },
+   {
+    "id": "3042122",
+    "name": "Ryan Graves",
+    "short": "R. Graves",
+    "jersey": "27",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3042122.png"
+   },
+   {
+    "id": "5164",
+    "name": "Erik Karlsson",
+    "short": "E. Karlsson",
+    "jersey": "65",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/5164.png"
+   },
+   {
+    "id": "4565264",
+    "name": "Kaedan Korczak",
+    "short": "K. Korczak",
+    "jersey": "6",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4565264.png"
+   },
+   {
+    "id": "3539",
+    "name": "Kris Letang",
+    "short": "K. Letang",
+    "jersey": "58",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3539.png"
+   },
+   {
+    "id": "5302544",
+    "name": "Chase Pietila",
+    "short": "C. Pietila",
+    "jersey": "44",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/5302544.png"
+   },
+   {
+    "id": "4697784",
+    "name": "Ilya Solovyov",
+    "short": "I. Solovyov",
+    "jersey": "7",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4697784.png"
+   },
+   {
+    "id": "4393406",
+    "name": "Spencer Stastney",
+    "short": "S. Stastney",
+    "jersey": "24",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4393406.png"
+   },
+   {
+    "id": "3025524",
+    "name": "Trevor van Riemsdyk",
+    "short": "T. van Riemsdyk",
+    "jersey": "57",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3025524.png"
+   },
+   {
+    "id": "5188366",
+    "name": "Sergei Murashov",
+    "short": "S. Murashov",
+    "jersey": "1",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/5188366.png"
+   },
+   {
+    "id": "4576894",
+    "name": "Arturs Silovs",
+    "short": "A. Silovs",
+    "jersey": "37",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4576894.png"
+   }
+  ],
+  "game": null
+ },
+ "nba:2": {
+  "team": {
+   "id": "2",
+   "abbr": "BOS",
+   "name": "Boston Celtics",
+   "short": "Celtics",
+   "logo": "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/nba/500-dark/bos.png",
+   "color": "008348",
+   "alt_color": "ffffff",
+   "mine": false,
+   "record": "5-1",
+   "standing": "2nd in Atlantic Division"
+  },
+  "roster": [
+   {
+    "id": "4433188",
+    "name": "Devin Carter",
+    "short": "D. Carter",
+    "jersey": "99",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4433188.png"
+   },
+   {
+    "id": "5142621",
+    "name": "Chris Cenac Jr.",
+    "short": "C. Cenac Jr.",
+    "jersey": "12",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5142621.png"
+   },
+   {
+    "id": "3195",
+    "name": "Mike Conley",
+    "short": "M. Conley",
+    "jersey": "45",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3195.png"
+   },
+   {
+    "id": "4277951",
+    "name": "Luka Garza",
+    "short": "L. Garza",
+    "jersey": "52",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4277951.png"
+   },
+   {
+    "id": "4251",
+    "name": "Paul George",
+    "short": "P. George",
+    "jersey": "13",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4251.png"
+   },
+   {
+    "id": "5175647",
+    "name": "Hugo Gonzalez",
+    "short": "H. Gonzalez",
+    "jersey": "28",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5175647.png"
+   },
+   {
+    "id": "4397251",
+    "name": "Ron Harper Jr.",
+    "short": "R. Harper Jr.",
+    "jersey": "8",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4397251.png"
+   },
+   {
+    "id": "4065804",
+    "name": "Sam Hauser",
+    "short": "S. Hauser",
+    "jersey": "30",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4065804.png"
+   },
+   {
+    "id": "5106283",
+    "name": "Dillon Mitchell",
+    "short": "D. Mitchell",
+    "jersey": "20",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5106283.png"
+   },
+   {
+    "id": "4066354",
+    "name": "Payton Pritchard",
+    "short": "P. Pritchard",
+    "jersey": "11",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4066354.png"
+   },
+   {
+    "id": "4397424",
+    "name": "Neemias Queta",
+    "short": "N. Queta",
+    "jersey": "88",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4397424.png"
+   },
+   {
+    "id": "4351852",
+    "name": "Mitchell Robinson",
+    "short": "M. Robinson",
+    "jersey": "4",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4351852.png"
+   },
+   {
+    "id": "4593841",
+    "name": "Baylor Scheierman",
+    "short": "B. Scheierman",
+    "jersey": "55",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4593841.png"
+   },
+   {
+    "id": "4065648",
+    "name": "Jayson Tatum",
+    "short": "J. Tatum",
+    "jersey": "0",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4065648.png"
+   },
+   {
+    "id": "4683689",
+    "name": "Jordan Walsh",
+    "short": "J. Walsh",
+    "jersey": "27",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4683689.png"
+   },
+   {
+    "id": "3078576",
+    "name": "Derrick White",
+    "short": "D. White",
+    "jersey": "9",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3078576.png"
+   },
+   {
+    "id": "4702745",
+    "name": "Amari Williams",
+    "short": "A. Williams",
+    "jersey": "77",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4702745.png"
+   }
+  ],
+  "game": null
+ },
+ "nfl:28": {
+  "team": {
+   "id": "28",
+   "abbr": "WSH",
+   "name": "Washington Commanders",
+   "short": "Commanders",
+   "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/wsh.png",
+   "color": "5a1414",
+   "alt_color": "ffb612",
+   "mine": true,
+   "record": "2-4-1",
+   "standing": "2nd in NFC East"
+  },
+  "roster": [
+   {
+    "id": "3115922",
+    "name": "Nick Allegretti",
+    "short": "N. Allegretti",
+    "jersey": "67",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3115922.png"
+   },
+   {
+    "id": "4048228",
+    "name": "John Bates",
+    "short": "J. Bates",
+    "jersey": "87",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4048228.png"
+   },
+   {
+    "id": "4361577",
+    "name": "Dyami Brown",
+    "short": "D. Brown",
+    "jersey": "6",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361577.png"
+   },
+   {
+    "id": "4567156",
+    "name": "Treylon Burks",
+    "short": "T. Burks",
+    "jersey": "13",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4567156.png"
+   },
+   {
+    "id": "4685030",
+    "name": "Brandon Coleman",
+    "short": "B. Coleman",
+    "jersey": "74",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685030.png"
+   },
+   {
+    "id": "4685326",
+    "name": "Josh Conerly Jr.",
+    "short": "J. Conerly Jr.",
+    "jersey": "72",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685326.png"
+   },
+   {
+    "id": "4262199",
+    "name": "Sam Cosmi",
+    "short": "S. Cosmi",
+    "jersey": "76",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4262199.png"
+   },
+   {
+    "id": "4575131",
+    "name": "Jacory Croskey-Merritt",
+    "short": "J. Croskey-Merritt",
+    "jersey": "22",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4575131.png"
+   },
+   {
+    "id": "4426348",
+    "name": "Jayden Daniels",
+    "short": "J. Daniels",
+    "jersey": "5",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426348.png"
+   },
+   {
+    "id": "2976212",
+    "name": "Stefon Diggs",
+    "short": "S. Diggs",
+    "jersey": "3",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2976212.png"
+   },
+   {
+    "id": "3068267",
+    "name": "Austin Ekeler",
+    "short": "A. Ekeler",
+    "jersey": "30",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3068267.png"
+   },
+   {
+    "id": "3917949",
+    "name": "Julian Good-Jones",
+    "short": "J. Good-Jones",
+    "jersey": "61",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3917949.png"
+   },
+   {
+    "id": "4683463",
+    "name": "Matt Gulbin",
+    "short": "M. Gulbin",
+    "jersey": "66",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4683463.png"
+   },
+   {
+    "id": "3930066",
+    "name": "Van Jefferson",
+    "short": "V. Jefferson",
+    "jersey": "12",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3930066.png"
+   },
+   {
+    "id": "4432722",
+    "name": "Athan Kaliakmanis",
+    "short": "A. Kaliakmanis",
+    "jersey": "16",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4432722.png"
+   },
+   {
+    "id": "4602667",
+    "name": "Jaylin Lane",
+    "short": "J. Lane",
+    "jersey": "83",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4602667.png"
+   },
+   {
+    "id": "2576980",
+    "name": "Marcus Mariota",
+    "short": "M. Mariota",
+    "jersey": "8",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2576980.png"
+   },
+   {
+    "id": "4426948",
+    "name": "Luke McCaffrey",
+    "short": "L. McCaffrey",
+    "jersey": "11",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426948.png"
+   },
+   {
+    "id": "4360635",
+    "name": "Chig Okonkwo",
+    "short": "C. Okonkwo",
+    "jersey": "85",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4360635.png"
+   },
+   {
+    "id": "2576736",
+    "name": "Lucas Patrick",
+    "short": "L. Patrick",
+    "jersey": "63",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2576736.png"
+   },
+   {
+    "id": "4244615",
+    "name": "Chris Paul",
+    "short": "C. Paul",
+    "jersey": "75",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4244615.png"
+   },
+   {
+    "id": "4421446",
+    "name": "Craig Reynolds",
+    "short": "C. Reynolds",
+    "jersey": "32",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4421446.png"
+   },
+   {
+    "id": "4690923",
+    "name": "Ben Sinnott",
+    "short": "B. Sinnott",
+    "jersey": "82",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4690923.png"
+   },
+   {
+    "id": "4605488",
+    "name": "Tanoa Togiai",
+    "short": "T. Togiai",
+    "jersey": "62",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4605488.png"
+   },
+   {
+    "id": "4697815",
+    "name": "Rachaad White",
+    "short": "R. White",
+    "jersey": "1",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4697815.png"
+   },
+   {
+    "id": "5081432",
+    "name": "Antonio Williams",
+    "short": "A. Williams",
+    "jersey": "14",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5081432.png"
+   },
+   {
+    "id": "3042702",
+    "name": "Andrew Wylie",
+    "short": "A. Wylie",
+    "jersey": "71",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3042702.png"
+   },
+   {
+    "id": "4361088",
+    "name": "Colson Yankoff",
+    "short": "C. Yankoff",
+    "jersey": "80",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361088.png"
+   },
+   {
+    "id": "3928979",
+    "name": "Dorance Armstrong",
+    "short": "D. Armstrong",
+    "jersey": "92",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3928979.png"
+   },
+   {
+    "id": "4428343",
+    "name": "Ricky Barber",
+    "short": "R. Barber",
+    "jersey": "50",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4428343.png"
+   },
+   {
+    "id": "4363097",
+    "name": "Percy Butler",
+    "short": "P. Butler",
+    "jersey": "35",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4363097.png"
+   },
+   {
+    "id": "4242205",
+    "name": "K'Lavon Chaisson",
+    "short": "K. Chaisson",
+    "jersey": "45",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4242205.png"
+   },
+   {
+    "id": "3916922",
+    "name": "Byron Cowart",
+    "short": "B. Cowart",
+    "jersey": "55",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3916922.png"
+   },
+   {
+    "id": "4426403",
+    "name": "Nick Cross",
+    "short": "N. Cross",
+    "jersey": "25",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426403.png"
+   },
+   {
+    "id": "3943270",
+    "name": "Rasul Douglas",
+    "short": "R. Douglas",
+    "jersey": "29",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3943270.png"
+   },
+   {
+    "id": "4261606",
+    "name": "Darren Hall",
+    "short": "D. Hall",
+    "jersey": "41",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4261606.png"
+   },
+   {
+    "id": "4361357",
+    "name": "Javontae Jean-Baptiste",
+    "short": "J. Jean-Baptiste",
+    "jersey": "41",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361357.png"
+   },
+   {
+    "id": "5081392",
+    "name": "Joshua Josephs",
+    "short": "J. Josephs",
+    "jersey": "48",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5081392.png"
+   },
+   {
+    "id": "4361090",
+    "name": "Ale Kaho",
+    "short": "A. Kaho",
+    "jersey": "51",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361090.png"
+   },
+   {
+    "id": "4259491",
+    "name": "Javon Kinlaw",
+    "short": "J. Kinlaw",
+    "jersey": "99",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4259491.png"
+   },
+   {
+    "id": "3127273",
+    "name": "Frankie Luvu",
+    "short": "F. Luvu",
+    "jersey": "4",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3127273.png"
+   },
+   {
+    "id": "4568617",
+    "name": "Jordan Magee",
+    "short": "J. Magee",
+    "jersey": "58",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4568617.png"
+   },
+   {
+    "id": "4360378",
+    "name": "Quan Martin",
+    "short": "Q. Martin",
+    "jersey": "20",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4360378.png"
+   },
+   {
+    "id": "4427984",
+    "name": "Kain Medrano",
+    "short": "K. Medrano",
+    "jersey": "56",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4427984.png"
+   },
+   {
+    "id": "2971586",
+    "name": "Fabian Moreau",
+    "short": "F. Moreau",
+    "jersey": "24",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2971586.png"
+   },
+   {
+    "id": "3929865",
+    "name": "Charles Omenihu",
+    "short": "C. Omenihu",
+    "jersey": "90",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3929865.png"
+   },
+   {
+    "id": "4361422",
+    "name": "Odafe Oweh",
+    "short": "O. Oweh",
+    "jersey": "98",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361422.png"
+   },
+   {
+    "id": "4572460",
+    "name": "Tyler Owens",
+    "short": "T. Owens",
+    "jersey": "18",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4572460.png"
+   },
+   {
+    "id": "3925354",
+    "name": "Daron Payne",
+    "short": "D. Payne",
+    "jersey": "94",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3925354.png"
+   },
+   {
+    "id": "3125248",
+    "name": "Jeremy Reaves",
+    "short": "J. Reaves",
+    "jersey": "39",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3125248.png"
+   },
+   {
+    "id": "4239694",
+    "name": "Amik Robertson",
+    "short": "A. Robertson",
+    "jersey": "2",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4239694.png"
+   },
+   {
+    "id": "4428414",
+    "name": "Mike Sainristil",
+    "short": "M. Sainristil",
+    "jersey": "0",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4428414.png"
+   },
+   {
+    "id": "3929956",
+    "name": "Tim Settle",
+    "short": "T. Settle",
+    "jersey": "97",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3929956.png"
+   },
+   {
+    "id": "5081807",
+    "name": "Sonny Styles",
+    "short": "S. Styles",
+    "jersey": "52",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5081807.png"
+   },
+   {
+    "id": "3886601",
+    "name": "Shy Tuttle",
+    "short": "S. Tuttle",
+    "jersey": "96",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3886601.png"
+   },
+   {
+    "id": "2980080",
+    "name": "Deatrich Wise Jr.",
+    "short": "D. Wise Jr.",
+    "jersey": "91",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2980080.png"
+   },
+   {
+    "id": "3122797",
+    "name": "Isaac Yiadom",
+    "short": "I. Yiadom",
+    "jersey": "37",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3122797.png"
+   },
+   {
+    "id": "17378",
+    "name": "Tyler Ott",
+    "short": "T. Ott",
+    "jersey": "69",
+    "position": "LS",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/17378.png"
+   },
+   {
+    "id": "5081335",
+    "name": "Drew Stevens",
+    "short": "D. Stevens",
+    "jersey": "19",
+    "position": "PK",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5081335.png"
+   },
+   {
+    "id": "16166",
+    "name": "Tress Way",
+    "short": "T. Way",
+    "jersey": "10",
+    "position": "P",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/16166.png"
+   },
+   {
+    "id": "4574689",
+    "name": "Trey Amos",
+    "short": "T. Amos",
+    "jersey": "23",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4574689.png"
+   },
+   {
+    "id": "4426901",
+    "name": "Leo Chenal",
+    "short": "L. Chenal",
+    "jersey": "54",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426901.png"
+   },
+   {
+    "id": "3121422",
+    "name": "Terry McLaurin",
+    "short": "T. McLaurin",
+    "jersey": "17",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3121422.png"
+   },
+   {
+    "id": "3127586",
+    "name": "Jeremy McNichols",
+    "short": "J. McNichols",
+    "jersey": "26",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3127586.png"
+   },
+   {
+    "id": "4430560",
+    "name": "Jer'Zhan Newton",
+    "short": "J. Newton",
+    "jersey": "95",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4430560.png"
+   },
+   {
+    "id": "3051890",
+    "name": "Laremy Tunsil",
+    "short": "L. Tunsil",
+    "jersey": "78",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3051890.png"
+   },
+   {
+    "id": "4683111",
+    "name": "Jaden Bradley",
+    "short": "J. Bradley",
+    "jersey": "86",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4683111.png"
+   },
+   {
+    "id": "4686092",
+    "name": "Fred Davis II",
+    "short": "F. Davis II",
+    "jersey": "38",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4686092.png"
+   },
+   {
+    "id": "4692796",
+    "name": "Nick DeGennaro",
+    "short": "N. DeGennaro",
+    "jersey": "",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4692796.png"
+   },
+   {
+    "id": "4361994",
+    "name": "Sam Hartman",
+    "short": "S. Hartman",
+    "jersey": "15",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361994.png"
+   },
+   {
+    "id": "4432333",
+    "name": "Kyle Kennard",
+    "short": "K. Kennard",
+    "jersey": "",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4432333.png"
+   },
+   {
+    "id": "4429185",
+    "name": "Austin Keys",
+    "short": "A. Keys",
+    "jersey": "57",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4429185.png"
+   },
+   {
+    "id": "5278092",
+    "name": "T.J. Maguranyanga",
+    "short": "T.J. Maguranyanga",
+    "jersey": "59",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5278092.png"
+   },
+   {
+    "id": "4875350",
+    "name": "Quentin Moore",
+    "short": "Q. Moore",
+    "jersey": "40",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4875350.png"
+   },
+   {
+    "id": "4682652",
+    "name": "Devin Neal",
+    "short": "D. Neal",
+    "jersey": "",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4682652.png"
+   },
+   {
+    "id": "5153070",
+    "name": "Esa Pole",
+    "short": "E. Pole",
+    "jersey": "",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5153070.png"
+   },
+   {
+    "id": "3123303",
+    "name": "Trent Scott",
+    "short": "T. Scott",
+    "jersey": "73",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3123303.png"
+   },
+   {
+    "id": "4361100",
+    "name": "Jack Westover",
+    "short": "J. Westover",
+    "jersey": "",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361100.png"
+   }
+  ],
+  "game": null
+ },
+ "nfl:12": {
+  "team": {
+   "id": "12",
+   "abbr": "KC",
+   "name": "Kansas City Chiefs",
+   "short": "Chiefs",
+   "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/kc.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/kc.png",
+   "color": "e31837",
+   "alt_color": "ffb612",
+   "mine": false,
+   "record": "5-2",
+   "standing": "2nd in AFC West"
+  },
+  "roster": [
+   {
+    "id": "4912218",
+    "name": "Cyrus Allen",
+    "short": "C. Allen",
+    "jersey": "13",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4912218.png"
+   },
+   {
+    "id": "5093923",
+    "name": "Andrew Armstrong",
+    "short": "A. Armstrong",
+    "jersey": "85",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5093923.png"
+   },
+   {
+    "id": "4566190",
+    "name": "Kahlil Benson",
+    "short": "K. Benson",
+    "jersey": "70",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4566190.png"
+   },
+   {
+    "id": "4431196",
+    "name": "Jake Briningstool",
+    "short": "J. Briningstool",
+    "jersey": "88",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4431196.png"
+   },
+   {
+    "id": "4043039",
+    "name": "Mike Caliendo",
+    "short": "M. Caliendo",
+    "jersey": "66",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4043039.png"
+   },
+   {
+    "id": "4373280",
+    "name": "Joshua Ezeudu",
+    "short": "J. Ezeudu",
+    "jersey": "73",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4373280.png"
+   },
+   {
+    "id": "4362887",
+    "name": "Justin Fields",
+    "short": "J. Fields",
+    "jersey": "6",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4362887.png"
+   },
+   {
+    "id": "4240472",
+    "name": "Noah Gray",
+    "short": "N. Gray",
+    "jersey": "83",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4240472.png"
+   },
+   {
+    "id": "4241385",
+    "name": "Creed Humphrey",
+    "short": "C. Humphrey",
+    "jersey": "52",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4241385.png"
+   },
+   {
+    "id": "4832955",
+    "name": "Emmett Johnson",
+    "short": "E. Johnson",
+    "jersey": "10",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4832955.png"
+   },
+   {
+    "id": "15847",
+    "name": "Travis Kelce",
+    "short": "T. Kelce",
+    "jersey": "87",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/15847.png"
+   },
+   {
+    "id": "3139477",
+    "name": "Patrick Mahomes",
+    "short": "P. Mahomes",
+    "jersey": "15",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3139477.png"
+   },
+   {
+    "id": "4043041",
+    "name": "Jaylon Moore",
+    "short": "J. Moore",
+    "jersey": "77",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4043041.png"
+   },
+   {
+    "id": "4367645",
+    "name": "Hunter Nourzad",
+    "short": "H. Nourzad",
+    "jersey": "64",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4367645.png"
+   },
+   {
+    "id": "4567747",
+    "name": "Garrett Nussmeier",
+    "short": "G. Nussmeier",
+    "jersey": "19",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4567747.png"
+   },
+   {
+    "id": "4685489",
+    "name": "Jaydn Ott",
+    "short": "J. Ott",
+    "jersey": "34",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685489.png"
+   },
+   {
+    "id": "4602984",
+    "name": "Diego Pounds",
+    "short": "D. Pounds",
+    "jersey": "61",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4602984.png"
+   },
+   {
+    "id": "4372716",
+    "name": "Nikko Remigio",
+    "short": "N. Remigio",
+    "jersey": "81",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4372716.png"
+   },
+   {
+    "id": "4428331",
+    "name": "Rashee Rice",
+    "short": "R. Rice",
+    "jersey": "4",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4428331.png"
+   },
+   {
+    "id": "5082630",
+    "name": "Jalen Royals",
+    "short": "J. Royals",
+    "jersey": "11",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5082630.png"
+   },
+   {
+    "id": "4242459",
+    "name": "Trey Smith",
+    "short": "T. Smith",
+    "jersey": "65",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4242459.png"
+   },
+   {
+    "id": "4431595",
+    "name": "Kingsley Suamataia",
+    "short": "K. Suamataia",
+    "jersey": "76",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4431595.png"
+   },
+   {
+    "id": "4372070",
+    "name": "Ben VanSumeren",
+    "short": "B. VanSumeren",
+    "jersey": "47",
+    "position": "FB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4372070.png"
+   },
+   {
+    "id": "4567048",
+    "name": "Kenneth Walker III",
+    "short": "K. Walker III",
+    "jersey": "9",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4567048.png"
+   },
+   {
+    "id": "3118892",
+    "name": "Justin Watson",
+    "short": "J. Watson",
+    "jersey": "84",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3118892.png"
+   },
+   {
+    "id": "4430723",
+    "name": "Jared Wiley",
+    "short": "J. Wiley",
+    "jersey": "12",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4430723.png"
+   },
+   {
+    "id": "4683062",
+    "name": "Xavier Worthy",
+    "short": "X. Worthy",
+    "jersey": "1",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4683062.png"
+   },
+   {
+    "id": "4612387",
+    "name": "Felix Anudike-Uzomah",
+    "short": "F. Anudike-Uzomah",
+    "jersey": "91",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4612387.png"
+   },
+   {
+    "id": "4602389",
+    "name": "Jeffrey Bassa",
+    "short": "J. Bassa",
+    "jersey": "31",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4602389.png"
+   },
+   {
+    "id": "4362759",
+    "name": "Nick Bolton",
+    "short": "N. Bolton",
+    "jersey": "32",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4362759.png"
+   },
+   {
+    "id": "4710706",
+    "name": "Jadon Canady",
+    "short": "J. Canady",
+    "jersey": "22",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4710706.png"
+   },
+   {
+    "id": "4036959",
+    "name": "Cole Christiansen",
+    "short": "C. Christiansen",
+    "jersey": "48",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4036959.png"
+   },
+   {
+    "id": "4249766",
+    "name": "Jack Cochrane",
+    "short": "J. Cochrane",
+    "jersey": "43",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4249766.png"
+   },
+   {
+    "id": "4361964",
+    "name": "Chamarri Conner",
+    "short": "C. Conner",
+    "jersey": "27",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361964.png"
+   },
+   {
+    "id": "4880124",
+    "name": "Mansoor Delane",
+    "short": "M. Delane",
+    "jersey": "5",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4880124.png"
+   },
+   {
+    "id": "4431561",
+    "name": "Bryson Eason",
+    "short": "B. Eason",
+    "jersey": "94",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4431561.png"
+   },
+   {
+    "id": "4035433",
+    "name": "Kristian Fulton",
+    "short": "K. Fulton",
+    "jersey": "8",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4035433.png"
+   },
+   {
+    "id": "4684432",
+    "name": "Ashton Gillotte",
+    "short": "A. Gillotte",
+    "jersey": "97",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4684432.png"
+   },
+   {
+    "id": "4039413",
+    "name": "Alohi Gilman",
+    "short": "A. Gilman",
+    "jersey": "17",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4039413.png"
+   },
+   {
+    "id": "4573152",
+    "name": "Marcus Harris",
+    "short": "M. Harris",
+    "jersey": "96",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4573152.png"
+   },
+   {
+    "id": "4685232",
+    "name": "Jaden Hicks",
+    "short": "J. Hicks",
+    "jersey": "21",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685232.png"
+   },
+   {
+    "id": "3044859",
+    "name": "Chris Jones",
+    "short": "C. Jones",
+    "jersey": "95",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3044859.png"
+   },
+   {
+    "id": "4426659",
+    "name": "George Karlaftis",
+    "short": "G. Karlaftis",
+    "jersey": "56",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426659.png"
+   },
+   {
+    "id": "4567826",
+    "name": "Cooper McDonald",
+    "short": "C. McDonald",
+    "jersey": "44",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4567826.png"
+   },
+   {
+    "id": "4685491",
+    "name": "Xavier Nwankpa",
+    "short": "X. Nwankpa",
+    "jersey": "29",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685491.png"
+   },
+   {
+    "id": "4837252",
+    "name": "Jack Pyburn",
+    "short": "J. Pyburn",
+    "jersey": "54",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4837252.png"
+   },
+   {
+    "id": "4428383",
+    "name": "Chris Roland-Wallace",
+    "short": "C. Roland-Wallace",
+    "jersey": "30",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4428383.png"
+   },
+   {
+    "id": "4361340",
+    "name": "Tyreke Smith",
+    "short": "T. Smith",
+    "jersey": "57",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361340.png"
+   },
+   {
+    "id": "5278708",
+    "name": "Melvin Smith Jr.",
+    "short": "M. Smith Jr.",
+    "jersey": "39",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5278708.png"
+   },
+   {
+    "id": "5081927",
+    "name": "R Mason Thomas",
+    "short": "R. Thomas",
+    "jersey": "51",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5081927.png"
+   },
+   {
+    "id": "4256074",
+    "name": "Khyiris Tonga",
+    "short": "K. Tonga",
+    "jersey": "92",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4256074.png"
+   },
+   {
+    "id": "3129310",
+    "name": "Drue Tranquill",
+    "short": "D. Tranquill",
+    "jersey": "23",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3129310.png"
+   },
+   {
+    "id": "4610705",
+    "name": "Nohl Williams",
+    "short": "N. Williams",
+    "jersey": "20",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4610705.png"
+   },
+   {
+    "id": "4871063",
+    "name": "Peter Woods",
+    "short": "P. Woods",
+    "jersey": "99",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4871063.png"
+   },
+   {
+    "id": "4361496",
+    "name": "Matt Araiza",
+    "short": "M. Araiza",
+    "jersey": "14",
+    "position": "P",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361496.png"
+   },
+   {
+    "id": "3055899",
+    "name": "Harrison Butker",
+    "short": "H. Butker",
+    "jersey": "7",
+    "position": "PK",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3055899.png"
+   },
+   {
+    "id": "16665",
+    "name": "James Winchester",
+    "short": "J. Winchester",
+    "jersey": "41",
+    "position": "LS",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/16665.png"
+   },
+   {
+    "id": "4885466",
+    "name": "Jeff Caldwell",
+    "short": "J. Caldwell",
+    "jersey": "8",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4885466.png"
+   },
+   {
+    "id": "4431534",
+    "name": "Ethan Downs",
+    "short": "E. Downs",
+    "jersey": "40",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4431534.png"
+   },
+   {
+    "id": "4708490",
+    "name": "John Michael Gyllenborg",
+    "short": "J. Gyllenborg",
+    "jersey": "84",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4708490.png"
+   },
+   {
+    "id": "4431142",
+    "name": "Jimmy Holiday",
+    "short": "J. Holiday",
+    "jersey": "82",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4431142.png"
+   },
+   {
+    "id": "4591008",
+    "name": "Omarr Norman-Lott",
+    "short": "O. Norman-Lott",
+    "jersey": "55",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4591008.png"
+   },
+   {
+    "id": "4569659",
+    "name": "Josh Simmons",
+    "short": "J. Simmons",
+    "jersey": "71",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4569659.png"
+   },
+   {
+    "id": "4596602",
+    "name": "Brashard Smith",
+    "short": "B. Smith",
+    "jersey": "24",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4596602.png"
+   },
+   {
+    "id": "4040432",
+    "name": "L'Jarius Sneed",
+    "short": "L. Sneed",
+    "jersey": "38",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4040432.png"
+   },
+   {
+    "id": "4362921",
+    "name": "Tyquan Thornton",
+    "short": "T. Thornton",
+    "jersey": "2",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4362921.png"
+   },
+   {
+    "id": "4370876",
+    "name": "Matt Waletzko",
+    "short": "M. Waletzko",
+    "jersey": "73",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4370876.png"
+   },
+   {
+    "id": "4605841",
+    "name": "Nate Carter",
+    "short": "N. Carter",
+    "jersey": "35",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4605841.png"
+   },
+   {
+    "id": "4571627",
+    "name": "Ethan Driskell",
+    "short": "E. Driskell",
+    "jersey": "75",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4571627.png"
+   },
+   {
+    "id": "4702908",
+    "name": "Omari Evans",
+    "short": "O. Evans",
+    "jersey": "7",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4702908.png"
+   },
+   {
+    "id": "4912338",
+    "name": "Aiden Fisher",
+    "short": "A. Fisher",
+    "jersey": "",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4912338.png"
+   },
+   {
+    "id": "4705926",
+    "name": "Michael Heldman",
+    "short": "M. Heldman",
+    "jersey": "",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4705926.png"
+   },
+   {
+    "id": "4291489",
+    "name": "Kader Kohou",
+    "short": "K. Kohou",
+    "jersey": "26",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4291489.png"
+   },
+   {
+    "id": "4682626",
+    "name": "Pete Nygra",
+    "short": "P. Nygra",
+    "jersey": "50",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4682626.png"
+   },
+   {
+    "id": "2977740",
+    "name": "Emmanuel Ogbah",
+    "short": "E. Ogbah",
+    "jersey": "50",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2977740.png"
+   },
+   {
+    "id": "4880312",
+    "name": "D'Arco Perkins-McAllister",
+    "short": "D. Perkins-McAllister",
+    "jersey": "19",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4880312.png"
+   },
+   {
+    "id": "5081093",
+    "name": "DeShon Singleton",
+    "short": "D. Singleton",
+    "jersey": "25",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5081093.png"
+   },
+   {
+    "id": "15683",
+    "name": "Justin Tucker",
+    "short": "J. Tucker",
+    "jersey": "",
+    "position": "PK",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/15683.png"
+   }
+  ],
+  "game": null
+ },
+ "nba:13": {
+  "team": {
+   "id": "13",
+   "abbr": "LAL",
+   "name": "Los Angeles Lakers",
+   "short": "Lakers",
+   "logo": "https://a.espncdn.com/i/teamlogos/nba/500/lal.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/nba/500-dark/lal.png",
+   "color": "552583",
+   "alt_color": "fdb927",
+   "mine": false,
+   "record": "5-2",
+   "standing": "1st in Pacific Division"
+  },
+  "roster": [
+   {
+    "id": "5113969",
+    "name": "Cameron Carr",
+    "short": "C. Carr",
+    "jersey": "43",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5113969.png"
+   },
+   {
+    "id": "3945274",
+    "name": "Luka Doncic",
+    "short": "L. Doncic",
+    "jersey": "77",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3945274.png"
+   },
+   {
+    "id": "4397014",
+    "name": "Quentin Grimes",
+    "short": "Q. Grimes",
+    "jersey": "5",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4397014.png"
+   },
+   {
+    "id": "4868423",
+    "name": "Jaden Hardy",
+    "short": "J. Hardy",
+    "jersey": "7",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4868423.png"
+   },
+   {
+    "id": "4683774",
+    "name": "Bronny James",
+    "short": "B. James",
+    "jersey": "9",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4683774.png"
+   },
+   {
+    "id": "4433599",
+    "name": "Arthur Kaluma",
+    "short": "A. Kaluma",
+    "jersey": "47",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4433599.png"
+   },
+   {
+    "id": "4433136",
+    "name": "Walker Kessler",
+    "short": "W. Kessler",
+    "jersey": "14",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4433136.png"
+   },
+   {
+    "id": "4592691",
+    "name": "Jake LaRavia",
+    "short": "J. LaRavia",
+    "jersey": "12",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4592691.png"
+   },
+   {
+    "id": "3155535",
+    "name": "Kevon Looney",
+    "short": "K. Looney",
+    "jersey": "55",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3155535.png"
+   },
+   {
+    "id": "4596528",
+    "name": "Lawson Lovering",
+    "short": "L. Lovering",
+    "jersey": "",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4596528.png"
+   },
+   {
+    "id": "4278580",
+    "name": "Sandro Mamukelashvili",
+    "short": "S. Mamukelashvili",
+    "jersey": "54",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4278580.png"
+   },
+   {
+    "id": "4702972",
+    "name": "Chris Manon",
+    "short": "C. Manon",
+    "jersey": "30",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4702972.png"
+   },
+   {
+    "id": "5114350",
+    "name": "AK Okereke",
+    "short": "A. Okereke",
+    "jersey": "31",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5114350.png"
+   },
+   {
+    "id": "4066457",
+    "name": "Austin Reaves",
+    "short": "A. Reaves",
+    "jersey": "15",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4066457.png"
+   },
+   {
+    "id": "4277811",
+    "name": "Collin Sexton",
+    "short": "C. Sexton",
+    "jersey": "10",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4277811.png"
+   },
+   {
+    "id": "5060631",
+    "name": "Adou Thiero",
+    "short": "A. Thiero",
+    "jersey": "1",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5060631.png"
+   },
+   {
+    "id": "3907498",
+    "name": "Matisse Thybulle",
+    "short": "M. Thybulle",
+    "jersey": "4",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3907498.png"
+   },
+   {
+    "id": "4278077",
+    "name": "Jarred Vanderbilt",
+    "short": "J. Vanderbilt",
+    "jersey": "2",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4278077.png"
+   },
+   {
+    "id": "4433137",
+    "name": "Ziaire Williams",
+    "short": "Z. Williams",
+    "jersey": "11",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4433137.png"
+   }
+  ],
+  "game": null
+ },
+ "nfl:3": {
+  "team": {
+   "id": "3",
+   "abbr": "CHI",
+   "name": "Chicago Bears",
+   "short": "Bears",
+   "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/chi.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/chi.png",
+   "color": "0b1c3a",
+   "alt_color": "e64100",
+   "mine": false,
+   "record": "5-2",
+   "standing": "5th in National Football Conference"
+  },
+  "roster": [
+   {
+    "id": "4434153",
+    "name": "Tyson Bagent",
+    "short": "T. Bagent",
+    "jersey": "17",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4434153.png"
+   },
+   {
+    "id": "5125873",
+    "name": "Theo Benedet",
+    "short": "T. Benedet",
+    "jersey": "79",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5125873.png"
+   },
+   {
+    "id": "3116729",
+    "name": "Garrett Bradbury",
+    "short": "G. Bradbury",
+    "jersey": "67",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3116729.png"
+   },
+   {
+    "id": "4685278",
+    "name": "Luther Burden III",
+    "short": "L. Burden III",
+    "jersey": "10",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685278.png"
+   },
+   {
+    "id": "5065495",
+    "name": "Kaden Davis",
+    "short": "K. Davis",
+    "jersey": "81",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5065495.png"
+   },
+   {
+    "id": "3930040",
+    "name": "Jonah Jackson",
+    "short": "J. Jackson",
+    "jersey": "73",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3930040.png"
+   },
+   {
+    "id": "4426386",
+    "name": "Roschon Johnson",
+    "short": "R. Johnson",
+    "jersey": "23",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426386.png"
+   },
+   {
+    "id": "4686907",
+    "name": "Logan Jones",
+    "short": "L. Jones",
+    "jersey": "54",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4686907.png"
+   },
+   {
+    "id": "15168",
+    "name": "Case Keenum",
+    "short": "C. Keenum",
+    "jersey": "11",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/15168.png"
+   },
+   {
+    "id": "4723086",
+    "name": "Colston Loveland",
+    "short": "C. Loveland",
+    "jersey": "84",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4723086.png"
+   },
+   {
+    "id": "4360319",
+    "name": "Jordan McFadden",
+    "short": "J. McFadden",
+    "jersey": "74",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4360319.png"
+   },
+   {
+    "id": "4608686",
+    "name": "Kyle Monangai",
+    "short": "K. Monangai",
+    "jersey": "25",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4608686.png"
+   },
+   {
+    "id": "4431580",
+    "name": "Miller Moss",
+    "short": "M. Moss",
+    "jersey": "16",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4431580.png"
+   },
+   {
+    "id": "4695895",
+    "name": "Luke Newman",
+    "short": "L. Newman",
+    "jersey": "65",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4695895.png"
+   },
+   {
+    "id": "4431299",
+    "name": "Rome Odunze",
+    "short": "R. Odunze",
+    "jersey": "15",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4431299.png"
+   },
+   {
+    "id": "2973405",
+    "name": "Kalif Raymond",
+    "short": "K. Raymond",
+    "jersey": "14",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2973405.png"
+   },
+   {
+    "id": "4685504",
+    "name": "Sam Roush",
+    "short": "S. Roush",
+    "jersey": "87",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685504.png"
+   },
+   {
+    "id": "4257364",
+    "name": "Zavier Scott",
+    "short": "Z. Scott",
+    "jersey": "30",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4257364.png"
+   },
+   {
+    "id": "4259545",
+    "name": "D'Andre Swift",
+    "short": "D. Swift",
+    "jersey": "4",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4259545.png"
+   },
+   {
+    "id": "4869748",
+    "name": "Zavion Thomas",
+    "short": "Z. Thomas",
+    "jersey": "13",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4869748.png"
+   },
+   {
+    "id": "2577773",
+    "name": "Joe Thuney",
+    "short": "J. Thuney",
+    "jersey": "62",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2577773.png"
+   },
+   {
+    "id": "4432595",
+    "name": "Ozzy Trapilo",
+    "short": "O. Trapilo",
+    "jersey": "75",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4432595.png"
+   },
+   {
+    "id": "5160110",
+    "name": "Jahdae Walker",
+    "short": "J. Walker",
+    "jersey": "9",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5160110.png"
+   },
+   {
+    "id": "4431611",
+    "name": "Caleb Williams",
+    "short": "C. Williams",
+    "jersey": "18",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4431611.png"
+   },
+   {
+    "id": "4426358",
+    "name": "Darnell Wright",
+    "short": "D. Wright",
+    "jersey": "58",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426358.png"
+   },
+   {
+    "id": "4240459",
+    "name": "Josh Blackwell",
+    "short": "J. Blackwell",
+    "jersey": "39",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4240459.png"
+   },
+   {
+    "id": "4683553",
+    "name": "Austin Booker",
+    "short": "A. Booker",
+    "jersey": "94",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4683553.png"
+   },
+   {
+    "id": "4036261",
+    "name": "Devin Bush",
+    "short": "D. Bush",
+    "jersey": "12",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4036261.png"
+   },
+   {
+    "id": "3124058",
+    "name": "Marcus Davenport",
+    "short": "M. Davenport",
+    "jersey": "52",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3124058.png"
+   },
+   {
+    "id": "3121544",
+    "name": "T.J. Edwards",
+    "short": "T.J. Edwards",
+    "jersey": "53",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3121544.png"
+   },
+   {
+    "id": "4911952",
+    "name": "Keyshaun Elliott",
+    "short": "K. Elliott",
+    "jersey": "49",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4911952.png"
+   },
+   {
+    "id": "3892883",
+    "name": "Neville Gallimore",
+    "short": "N. Gallimore",
+    "jersey": "90",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3892883.png"
+   },
+   {
+    "id": "4361093",
+    "name": "Kyler Gordon",
+    "short": "K. Gordon",
+    "jersey": "6",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361093.png"
+   },
+   {
+    "id": "4365629",
+    "name": "Daniel Hardy",
+    "short": "D. Hardy",
+    "jersey": "92",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4365629.png"
+   },
+   {
+    "id": "4242402",
+    "name": "Elijah Hicks",
+    "short": "E. Hicks",
+    "jersey": "22",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4242402.png"
+   },
+   {
+    "id": "4241007",
+    "name": "D'Marco Jackson",
+    "short": "D. Jackson",
+    "jersey": "48",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4241007.png"
+   },
+   {
+    "id": "2576492",
+    "name": "Grady Jarrett",
+    "short": "G. Jarrett",
+    "jersey": "50",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2576492.png"
+   },
+   {
+    "id": "4243253",
+    "name": "Jaylon Johnson",
+    "short": "J. Johnson",
+    "jersey": "1",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4243253.png"
+   },
+   {
+    "id": "3916577",
+    "name": "Cam Lewis",
+    "short": "C. Lewis",
+    "jersey": "21",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3916577.png"
+   },
+   {
+    "id": "4877376",
+    "name": "Jayden Loving",
+    "short": "J. Loving",
+    "jersey": "91",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4877376.png"
+   },
+   {
+    "id": "4259181",
+    "name": "James Lynch",
+    "short": "J. Lynch",
+    "jersey": "97",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4259181.png"
+   },
+   {
+    "id": "4870953",
+    "name": "Malik Muhammad II",
+    "short": "M. Muhammad II",
+    "jersey": "24",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4870953.png"
+   },
+   {
+    "id": "4429067",
+    "name": "Clark Phillips III",
+    "short": "C. Phillips III",
+    "jersey": "20",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4429067.png"
+   },
+   {
+    "id": "4372576",
+    "name": "Jack Sanborn",
+    "short": "J. Sanborn",
+    "jersey": "57",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4372576.png"
+   },
+   {
+    "id": "4430822",
+    "name": "Noah Sewell",
+    "short": "N. Sewell",
+    "jersey": "46",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4430822.png"
+   },
+   {
+    "id": "4035369",
+    "name": "Jeffery Simmons",
+    "short": "J. Simmons",
+    "jersey": "",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4035369.png"
+   },
+   {
+    "id": "4426374",
+    "name": "Tyrique Stevenson Sr.",
+    "short": "T. Stevenson Sr.",
+    "jersey": "29",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426374.png"
+   },
+   {
+    "id": "3116726",
+    "name": "Kentavius Street",
+    "short": "K. Street",
+    "jersey": "93",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3116726.png"
+   },
+   {
+    "id": "3134690",
+    "name": "Montez Sweat",
+    "short": "M. Sweat",
+    "jersey": "98",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3134690.png"
+   },
+   {
+    "id": "4954445",
+    "name": "Dillon Thieneman",
+    "short": "D. Thieneman",
+    "jersey": "31",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4954445.png"
+   },
+   {
+    "id": "4879561",
+    "name": "Skyler Thomas",
+    "short": "S. Thomas",
+    "jersey": "38",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4879561.png"
+   },
+   {
+    "id": "4432804",
+    "name": "Shemar Turner",
+    "short": "S. Turner",
+    "jersey": "95",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4432804.png"
+   },
+   {
+    "id": "4875381",
+    "name": "Jordan van den Berg",
+    "short": "J. van den Berg",
+    "jersey": "96",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4875381.png"
+   },
+   {
+    "id": "2980138",
+    "name": "Scott Daly",
+    "short": "S. Daly",
+    "jersey": "46",
+    "position": "LS",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2980138.png"
+   },
+   {
+    "id": "17427",
+    "name": "Cairo Santos",
+    "short": "C. Santos",
+    "jersey": "8",
+    "position": "PK",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/17427.png"
+   },
+   {
+    "id": "4686889",
+    "name": "Tory Taylor",
+    "short": "T. Taylor",
+    "jersey": "19",
+    "position": "P",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4686889.png"
+   },
+   {
+    "id": "4036032",
+    "name": "Brittain Brown",
+    "short": "B. Brown",
+    "jersey": "38",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4036032.png"
+   },
+   {
+    "id": "4239094",
+    "name": "Coby Bryant",
+    "short": "C. Bryant",
+    "jersey": "2",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4239094.png"
+   },
+   {
+    "id": "4245655",
+    "name": "Tony Fields II",
+    "short": "T. Fields II",
+    "jersey": "43",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4245655.png"
+   },
+   {
+    "id": "4917592",
+    "name": "Dallis Flowers",
+    "short": "D. Flowers",
+    "jersey": "37",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4917592.png"
+   },
+   {
+    "id": "4429970",
+    "name": "Ruben Hyppolite II",
+    "short": "R. Hyppolite II",
+    "jersey": "47",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4429970.png"
+   },
+   {
+    "id": "4251007",
+    "name": "Braxton Jones",
+    "short": "B. Jones",
+    "jersey": "70",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4251007.png"
+   },
+   {
+    "id": "4916349",
+    "name": "Nikola Kalinic",
+    "short": "N. Kalinic",
+    "jersey": "86",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4916349.png"
+   },
+   {
+    "id": "4258595",
+    "name": "Cole Kmet",
+    "short": "C. Kmet",
+    "jersey": "85",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4258595.png"
+   },
+   {
+    "id": "5150662",
+    "name": "Hayden Large",
+    "short": "H. Large",
+    "jersey": "43",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5150662.png"
+   },
+   {
+    "id": "4242659",
+    "name": "Dayo Odeyingbo",
+    "short": "D. Odeyingbo",
+    "jersey": "55",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4242659.png"
+   },
+   {
+    "id": "4241611",
+    "name": "Nephi Sewell",
+    "short": "N. Sewell",
+    "jersey": "45",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4241611.png"
+   },
+   {
+    "id": "4243315",
+    "name": "Salvon Ahmed",
+    "short": "S. Ahmed",
+    "jersey": "36",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4243315.png"
+   },
+   {
+    "id": "4709983",
+    "name": "Caden Barnett",
+    "short": "C. Barnett",
+    "jersey": "76",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4709983.png"
+   },
+   {
+    "id": "3929814",
+    "name": "Josh Butler",
+    "short": "J. Butler",
+    "jersey": "",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3929814.png"
+   },
+   {
+    "id": "3948283",
+    "name": "Stephen Carlson",
+    "short": "S. Carlson",
+    "jersey": "88",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3948283.png"
+   },
+   {
+    "id": "4696723",
+    "name": "Beau Gardner",
+    "short": "B. Gardner",
+    "jersey": "45",
+    "position": "LS",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4696723.png"
+   },
+   {
+    "id": "4379769",
+    "name": "Qadir Ismail",
+    "short": "Q. Ismail",
+    "jersey": "80",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4379769.png"
+   },
+   {
+    "id": "4240900",
+    "name": "Buddy Johnson",
+    "short": "B. Johnson",
+    "jersey": "47",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4240900.png"
+   },
+   {
+    "id": "4362103",
+    "name": "Christian Jones",
+    "short": "C. Jones",
+    "jersey": "",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4362103.png"
+   },
+   {
+    "id": "4360335",
+    "name": "Elijah Jones",
+    "short": "E. Jones",
+    "jersey": "",
+    "position": "DB",
+    "headshot": "https://a.espncdn.com/i/headshots/college-football/players/full/4360335.png"
+   },
+   {
+    "id": "4684963",
+    "name": "Wayne Matthews III",
+    "short": "W. Matthews III",
+    "jersey": "35",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4684963.png"
+   },
+   {
+    "id": "3914397",
+    "name": "Scotty Miller",
+    "short": "S. Miller",
+    "jersey": "35",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3914397.png"
+   },
+   {
+    "id": "4685183",
+    "name": "JP Richardson",
+    "short": "J. Richardson",
+    "jersey": "83",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685183.png"
+   },
+   {
+    "id": "4682641",
+    "name": "Marlen Sewell",
+    "short": "M. Sewell",
+    "jersey": "36",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4682641.png"
+   },
+   {
+    "id": "4372418",
+    "name": "Keidron Smith",
+    "short": "K. Smith",
+    "jersey": "",
+    "position": "DB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4372418.png"
+   }
+  ],
+  "game": null
+ },
+ "mlb:20": {
+  "team": {
+   "id": "20",
+   "abbr": "WSH",
+   "name": "Washington Nationals",
+   "short": "Nationals",
+   "logo": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/mlb/500-dark/wsh.png",
+   "color": "ab0003",
+   "alt_color": "11225b",
+   "mine": true,
+   "record": "77-85",
+   "standing": "1st in NL East"
+  },
+  "roster": [
+   {
+    "id": "4300668",
+    "name": "Andrew Alvarez",
+    "short": "A. Alvarez",
+    "jersey": "54",
+    "position": "SP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4300668.png"
+   },
+   {
+    "id": "4313143",
+    "name": "Clayton Beeter",
+    "short": "C. Beeter",
+    "jersey": "39",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4313143.png"
+   },
+   {
+    "id": "3459223",
+    "name": "Jake Bird",
+    "short": "J. Bird",
+    "jersey": "59",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/3459223.png"
+   },
+   {
+    "id": "4308037",
+    "name": "Cade Cavalli",
+    "short": "C. Cavalli",
+    "jersey": "24",
+    "position": "SP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4308037.png"
+   },
+   {
+    "id": "4622146",
+    "name": "Riley Cornelio",
+    "short": "R. Cornelio",
+    "jersey": "74",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4622146.png"
+   },
+   {
+    "id": "5196250",
+    "name": "Yovanny Cruz",
+    "short": "Y. Cruz",
+    "jersey": "48",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5196250.png"
+   },
+   {
+    "id": "4420174",
+    "name": "Will Dion",
+    "short": "W. Dion",
+    "jersey": "76",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4420174.png"
+   },
+   {
+    "id": "4863321",
+    "name": "Connelly Early",
+    "short": "C. Early",
+    "jersey": "19",
+    "position": "SP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4863321.png"
+   },
+   {
+    "id": "41165",
+    "name": "Josiah Gray",
+    "short": "J. Gray",
+    "jersey": "40",
+    "position": "SP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/41165.png"
+   },
+   {
+    "id": "4917686",
+    "name": "DJ Herz",
+    "short": "D. Herz",
+    "jersey": "77",
+    "position": "SP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4917686.png"
+   },
+   {
+    "id": "41290",
+    "name": "Jake Irvin",
+    "short": "J. Irvin",
+    "jersey": "27",
+    "position": "SP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/41290.png"
+   },
+   {
+    "id": "5007807",
+    "name": "Jackson Kent",
+    "short": "J. Kent",
+    "jersey": "25",
+    "position": "SP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5007807.png"
+   },
+   {
+    "id": "5014989",
+    "name": "Zak Kent",
+    "short": "Z. Kent",
+    "jersey": "57",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5014989.png"
+   },
+   {
+    "id": "4866810",
+    "name": "Brad Lord",
+    "short": "B. Lord",
+    "jersey": "41",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4866810.png"
+   },
+   {
+    "id": "39856",
+    "name": "Richard Lovelady",
+    "short": "R. Lovelady",
+    "jersey": "55",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/39856.png"
+   },
+   {
+    "id": "4415762",
+    "name": "Kyle Nicolas",
+    "short": "K. Nicolas",
+    "jersey": "62",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4415762.png"
+   },
+   {
+    "id": "4621424",
+    "name": "Carson Palmquist",
+    "short": "C. Palmquist",
+    "jersey": "51",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4621424.png"
+   },
+   {
+    "id": "4722916",
+    "name": "Luis Perales",
+    "short": "L. Perales",
+    "jersey": "43",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4722916.png"
+   },
+   {
+    "id": "5132036",
+    "name": "Orlando Ribalta",
+    "short": "O. Ribalta",
+    "jersey": "64",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5132036.png"
+   },
+   {
+    "id": "5201845",
+    "name": "Braxton Roxby",
+    "short": "B. Roxby",
+    "jersey": "90",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5201845.png"
+   },
+   {
+    "id": "4313208",
+    "name": "Paxton Schultz",
+    "short": "P. Schultz",
+    "jersey": "75",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4313208.png"
+   },
+   {
+    "id": "4719315",
+    "name": "Jared Simpson",
+    "short": "J. Simpson",
+    "jersey": "72",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4719315.png"
+   },
+   {
+    "id": "5131726",
+    "name": "Jack Sinclair",
+    "short": "J. Sinclair",
+    "jersey": "49",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5131726.png"
+   },
+   {
+    "id": "5337128",
+    "name": "Erik Tolman",
+    "short": "E. Tolman",
+    "jersey": "73",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5337128.png"
+   },
+   {
+    "id": "41552",
+    "name": "Gus Varland",
+    "short": "G. Varland",
+    "jersey": "47",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/41552.png"
+   },
+   {
+    "id": "4981345",
+    "name": "Eddy Yean",
+    "short": "E. Yean",
+    "jersey": "46",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4981345.png"
+   },
+   {
+    "id": "4872682",
+    "name": "Harry Ford",
+    "short": "H. Ford",
+    "jersey": "17",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4872682.png"
+   },
+   {
+    "id": "38827",
+    "name": "Keibert Ruiz",
+    "short": "K. Ruiz",
+    "jersey": "20",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/38827.png"
+   },
+   {
+    "id": "42402",
+    "name": "CJ Abrams",
+    "short": "C. Abrams",
+    "jersey": "5",
+    "position": "SS",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/42402.png"
+   },
+   {
+    "id": "42949",
+    "name": "Andres Chaparro",
+    "short": "A. Chaparro",
+    "jersey": "87",
+    "position": "1B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/42949.png"
+   },
+   {
+    "id": "4752203",
+    "name": "Nate Furman",
+    "short": "N. Furman",
+    "jersey": "56",
+    "position": "2B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4752203.png"
+   },
+   {
+    "id": "4872681",
+    "name": "Brady House",
+    "short": "B. House",
+    "jersey": "12",
+    "position": "3B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4872681.png"
+   },
+   {
+    "id": "4683376",
+    "name": "Yohandy Morales",
+    "short": "Y. Morales",
+    "jersey": "28",
+    "position": "1B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4683376.png"
+   },
+   {
+    "id": "4728688",
+    "name": "Nasim Nunez",
+    "short": "N. Nunez",
+    "jersey": "26",
+    "position": "2B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4728688.png"
+   },
+   {
+    "id": "5194635",
+    "name": "Abimelec Ortiz",
+    "short": "A. Ortiz",
+    "jersey": "81",
+    "position": "1B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5194635.png"
+   },
+   {
+    "id": "4722676",
+    "name": "Jorbit Vivas",
+    "short": "J. Vivas",
+    "jersey": "84",
+    "position": "3B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4722676.png"
+   },
+   {
+    "id": "4719511",
+    "name": "Dylan Crews",
+    "short": "D. Crews",
+    "jersey": "3",
+    "position": "RF",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4719511.png"
+   },
+   {
+    "id": "4917889",
+    "name": "Daylen Lile",
+    "short": "D. Lile",
+    "jersey": "4",
+    "position": "LF",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4917889.png"
+   },
+   {
+    "id": "5201571",
+    "name": "Andrew Pinckney",
+    "short": "A. Pinckney",
+    "jersey": "45",
+    "position": "LF",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5201571.png"
+   },
+   {
+    "id": "4918256",
+    "name": "James Wood",
+    "short": "J. Wood",
+    "jersey": "29",
+    "position": "RF",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4918256.png"
+   },
+   {
+    "id": "4414210",
+    "name": "Jacob Young",
+    "short": "J. Young",
+    "jersey": "30",
+    "position": "CF",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4414210.png"
+   },
+   {
+    "id": "42105",
+    "name": "Jose Tena",
+    "short": "J. Tena",
+    "jersey": "8",
+    "position": "DH",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/42105.png"
+   }
+  ],
+  "game": null
+ },
+ "mlb:21": {
+  "team": {
+   "id": "21",
+   "abbr": "NYM",
+   "name": "New York Mets",
+   "short": "Mets",
+   "logo": "https://a.espncdn.com/i/teamlogos/mlb/500/nym.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/mlb/500-dark/nym.png",
+   "color": "002d72",
+   "alt_color": "ff5910",
+   "mine": false,
+   "record": "74-88",
+   "standing": "1st in NL East"
+  },
+  "roster": [
+   {
+    "id": "4926295",
+    "name": "Philip Abner",
+    "short": "P. Abner",
+    "jersey": "57",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4926295.png"
+   },
+   {
+    "id": "41094",
+    "name": "Daniel Duarte",
+    "short": "D. Duarte",
+    "jersey": "54",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/41094.png"
+   },
+   {
+    "id": "4991251",
+    "name": "Justin Hagenman",
+    "short": "J. Hagenman",
+    "jersey": "47",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4991251.png"
+   },
+   {
+    "id": "4424442",
+    "name": "Nate Lavender",
+    "short": "N. Lavender",
+    "jersey": "94",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4424442.png"
+   },
+   {
+    "id": "33244",
+    "name": "Sean Manaea",
+    "short": "S. Manaea",
+    "jersey": "59",
+    "position": "SP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/33244.png"
+   },
+   {
+    "id": "4415756",
+    "name": "Chayce McDermott",
+    "short": "C. McDermott",
+    "jersey": "43",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4415756.png"
+   },
+   {
+    "id": "4433874",
+    "name": "Nolan McLean",
+    "short": "N. McLean",
+    "jersey": "26",
+    "position": "SP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4433874.png"
+   },
+   {
+    "id": "39716",
+    "name": "Tobias Myers",
+    "short": "T. Myers",
+    "jersey": "32",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/39716.png"
+   },
+   {
+    "id": "4717899",
+    "name": "Dedniel Nunez",
+    "short": "D. Nunez",
+    "jersey": "72",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4717899.png"
+   },
+   {
+    "id": "36089",
+    "name": "Cionel Perez",
+    "short": "C. Perez",
+    "jersey": "52",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/36089.png"
+   },
+   {
+    "id": "5291866",
+    "name": "Jonathan Pintaro",
+    "short": "J. Pintaro",
+    "jersey": "91",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5291866.png"
+   },
+   {
+    "id": "4637754",
+    "name": "Dylan Ross",
+    "short": "D. Ross",
+    "jersey": "66",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4637754.png"
+   },
+   {
+    "id": "4414215",
+    "name": "Christian Scott",
+    "short": "C. Scott",
+    "jersey": "45",
+    "position": "SP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4414215.png"
+   },
+   {
+    "id": "4142421",
+    "name": "Kodai Senga",
+    "short": "K. Senga",
+    "jersey": "34",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4142421.png"
+   },
+   {
+    "id": "30577",
+    "name": "Robert Stock",
+    "short": "R. Stock",
+    "jersey": "89",
+    "position": "SP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/30577.png"
+   },
+   {
+    "id": "5129576",
+    "name": "Zac Thornton",
+    "short": "Z. Thornton",
+    "jersey": "49",
+    "position": "SP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5129576.png"
+   },
+   {
+    "id": "5214984",
+    "name": "Jonah Tong",
+    "short": "J. Tong",
+    "jersey": "21",
+    "position": "SP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5214984.png"
+   },
+   {
+    "id": "4093773",
+    "name": "Austin Warren",
+    "short": "A. Warren",
+    "jersey": "44",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4093773.png"
+   },
+   {
+    "id": "4228387",
+    "name": "Jack Weisenburger",
+    "short": "J. Weisenburger",
+    "jersey": "82",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4228387.png"
+   },
+   {
+    "id": "4622175",
+    "name": "Cameron Weston",
+    "short": "C. Weston",
+    "jersey": "74",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4622175.png"
+   },
+   {
+    "id": "33224",
+    "name": "Devin Williams",
+    "short": "D. Williams",
+    "jersey": "38",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/33224.png"
+   },
+   {
+    "id": "5125168",
+    "name": "Jefry Yan",
+    "short": "J. Yan",
+    "jersey": "84",
+    "position": "RP",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5125168.png"
+   },
+   {
+    "id": "41253",
+    "name": "Francisco Alvarez",
+    "short": "F. Alvarez",
+    "jersey": "4",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/41253.png"
+   },
+   {
+    "id": "4009410",
+    "name": "Hayden Senger",
+    "short": "H. Senger",
+    "jersey": "6",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4009410.png"
+   },
+   {
+    "id": "33805",
+    "name": "Luis Torrens",
+    "short": "L. Torrens",
+    "jersey": "13",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/33805.png"
+   },
+   {
+    "id": "42414",
+    "name": "Brett Baty",
+    "short": "B. Baty",
+    "jersey": "7",
+    "position": "3B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/42414.png"
+   },
+   {
+    "id": "38904",
+    "name": "Bo Bichette",
+    "short": "B. Bichette",
+    "jersey": "19",
+    "position": "3B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/38904.png"
+   },
+   {
+    "id": "4995352",
+    "name": "Christian Cairo",
+    "short": "C. Cairo",
+    "jersey": "70",
+    "position": "SS",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4995352.png"
+   },
+   {
+    "id": "32129",
+    "name": "Francisco Lindor",
+    "short": "F. Lindor",
+    "jersey": "12",
+    "position": "SS",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/32129.png"
+   },
+   {
+    "id": "40978",
+    "name": "Ronny Mauricio",
+    "short": "R. Mauricio",
+    "jersey": "0",
+    "position": "SS",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/40978.png"
+   },
+   {
+    "id": "42927",
+    "name": "Christopher Morel",
+    "short": "C. Morel",
+    "jersey": "28",
+    "position": "1B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/42927.png"
+   },
+   {
+    "id": "42536",
+    "name": "Kyren Paris",
+    "short": "K. Paris",
+    "jersey": "19",
+    "position": "2B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/42536.png"
+   },
+   {
+    "id": "32146",
+    "name": "Marcus Semien",
+    "short": "M. Semien",
+    "jersey": "10",
+    "position": "2B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/32146.png"
+   },
+   {
+    "id": "41034",
+    "name": "Mark Vientos",
+    "short": "M. Vientos",
+    "jersey": "27",
+    "position": "1B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/41034.png"
+   },
+   {
+    "id": "4987650",
+    "name": "Eric Wagaman",
+    "short": "E. Wagaman",
+    "jersey": "39",
+    "position": "1B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4987650.png"
+   },
+   {
+    "id": "41575",
+    "name": "Jared Young",
+    "short": "J. Young",
+    "jersey": "29",
+    "position": "1B",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/41575.png"
+   },
+   {
+    "id": "4925604",
+    "name": "Carson Benge",
+    "short": "C. Benge",
+    "jersey": "3",
+    "position": "RF",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/4925604.png"
+   },
+   {
+    "id": "5208019",
+    "name": "A.J. Ewing",
+    "short": "A.J. Ewing",
+    "jersey": "9",
+    "position": "CF",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5208019.png"
+   },
+   {
+    "id": "5080768",
+    "name": "Nick Morabito",
+    "short": "N. Morabito",
+    "jersey": "55",
+    "position": "LF",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/5080768.png"
+   },
+   {
+    "id": "36969",
+    "name": "Juan Soto",
+    "short": "J. Soto",
+    "jersey": "22",
+    "position": "LF",
+    "headshot": "https://a.espncdn.com/i/headshots/mlb/players/full/36969.png"
+   }
+  ],
+  "game": null
+ },
+ "nba:27": {
+  "team": {
+   "id": "27",
+   "abbr": "WSH",
+   "name": "Washington Wizards",
+   "short": "Wizards",
+   "logo": "https://a.espncdn.com/i/teamlogos/nba/500/wsh.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/nba/500-dark/wsh.png",
+   "color": "e31837",
+   "alt_color": "002b5c",
+   "mine": true,
+   "record": "3-3",
+   "standing": "5th in Eastern Conference Division"
+  },
+  "roster": [
+   {
+    "id": "4278129",
+    "name": "Deandre Ayton",
+    "short": "D. Ayton",
+    "jersey": "8",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4278129.png"
+   },
+   {
+    "id": "4432187",
+    "name": "Reece Beekman",
+    "short": "R. Beekman",
+    "jersey": "26",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4432187.png"
+   },
+   {
+    "id": "4845374",
+    "name": "Bub Carrington",
+    "short": "B. Carrington",
+    "jersey": "7",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4845374.png"
+   },
+   {
+    "id": "4432907",
+    "name": "Justin Champagnie",
+    "short": "J. Champagnie",
+    "jersey": "9",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4432907.png"
+   },
+   {
+    "id": "5104155",
+    "name": "Bilal Coulibaly",
+    "short": "B. Coulibaly",
+    "jersey": "0",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5104155.png"
+   },
+   {
+    "id": "6583",
+    "name": "Anthony Davis",
+    "short": "A. Davis",
+    "jersey": "23",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/6583.png"
+   },
+   {
+    "id": "5142718",
+    "name": "AJ Dybantsa",
+    "short": "A. Dybantsa",
+    "jersey": "4",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5142718.png"
+   },
+   {
+    "id": "5174563",
+    "name": "Kyshawn George",
+    "short": "K. George",
+    "jersey": "18",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5174563.png"
+   },
+   {
+    "id": "2581184",
+    "name": "Anthony Gill",
+    "short": "A. Gill",
+    "jersey": "16",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/2581184.png"
+   },
+   {
+    "id": "5238230",
+    "name": "Tre Johnson",
+    "short": "T. Johnson",
+    "jersey": "12",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5238230.png"
+   },
+   {
+    "id": "4432819",
+    "name": "Tre Mann",
+    "short": "T. Mann",
+    "jersey": "1",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4432819.png"
+   },
+   {
+    "id": "6609",
+    "name": "Khris Middleton",
+    "short": "K. Middleton",
+    "jersey": "22",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/6609.png"
+   },
+   {
+    "id": "5105841",
+    "name": "Felix Okpara",
+    "short": "F. Okpara",
+    "jersey": "34",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5105841.png"
+   },
+   {
+    "id": "5144126",
+    "name": "Will Riley",
+    "short": "W. Riley",
+    "jersey": "27",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5144126.png"
+   },
+   {
+    "id": "5160992",
+    "name": "Alex Sarr",
+    "short": "A. Sarr",
+    "jersey": "20",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5160992.png"
+   },
+   {
+    "id": "4997537",
+    "name": "Tristan Vukcevic",
+    "short": "T. Vukcevic",
+    "jersey": "00",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4997537.png"
+   },
+   {
+    "id": "4606840",
+    "name": "Jamir Watkins",
+    "short": "J. Watkins",
+    "jersey": "5",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4606840.png"
+   },
+   {
+    "id": "4277905",
+    "name": "Trae Young",
+    "short": "T. Young",
+    "jersey": "3",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4277905.png"
+   }
+  ],
+  "game": null
+ },
+ "nba:7": {
+  "team": {
+   "id": "7",
+   "abbr": "DEN",
+   "name": "Denver Nuggets",
+   "short": "Nuggets",
+   "logo": "https://a.espncdn.com/i/teamlogos/nba/500/den.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/nba/500-dark/den.png",
+   "color": "0e2240",
+   "alt_color": "fec524",
+   "mine": false,
+   "record": "3-2",
+   "standing": "8th in Western Conference Division"
+  },
+  "roster": [
+   {
+    "id": "4277848",
+    "name": "Marvin Bagley III",
+    "short": "M. Bagley III",
+    "jersey": "3",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4277848.png"
+   },
+   {
+    "id": "4431767",
+    "name": "Christian Braun",
+    "short": "C. Braun",
+    "jersey": "0",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4431767.png"
+   },
+   {
+    "id": "4698719",
+    "name": "Trevon Brazile",
+    "short": "T. Brazile",
+    "jersey": "7",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4698719.png"
+   },
+   {
+    "id": "3978",
+    "name": "DeMar DeRozan",
+    "short": "D. DeRozan",
+    "jersey": "10",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3978.png"
+   },
+   {
+    "id": "4065813",
+    "name": "Alpha Diallo",
+    "short": "A. Diallo",
+    "jersey": "11",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4065813.png"
+   },
+   {
+    "id": "3064290",
+    "name": "Aaron Gordon",
+    "short": "A. Gordon",
+    "jersey": "32",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3064290.png"
+   },
+   {
+    "id": "4433607",
+    "name": "DaRon Holmes II",
+    "short": "D. Holmes II",
+    "jersey": "14",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4433607.png"
+   },
+   {
+    "id": "4565698",
+    "name": "Bryce Hopkins",
+    "short": "B. Hopkins",
+    "jersey": "13",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4565698.png"
+   },
+   {
+    "id": "3138196",
+    "name": "Cameron Johnson",
+    "short": "C. Johnson",
+    "jersey": "23",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3138196.png"
+   },
+   {
+    "id": "3112335",
+    "name": "Nikola Jokic",
+    "short": "N. Jokic",
+    "jersey": "15",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3112335.png"
+   },
+   {
+    "id": "4592427",
+    "name": "Spencer Jones",
+    "short": "S. Jones",
+    "jersey": "21",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4592427.png"
+   },
+   {
+    "id": "3135046",
+    "name": "Tyus Jones",
+    "short": "T. Jones",
+    "jersey": "5",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3135046.png"
+   },
+   {
+    "id": "3936299",
+    "name": "Jamal Murray",
+    "short": "J. Murray",
+    "jersey": "27",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/3936299.png"
+   },
+   {
+    "id": "4433629",
+    "name": "Ryan Nembhard",
+    "short": "R. Nembhard",
+    "jersey": "9",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4433629.png"
+   },
+   {
+    "id": "4431690",
+    "name": "Zeke Nnaji",
+    "short": "Z. Nnaji",
+    "jersey": "22",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4431690.png"
+   },
+   {
+    "id": "4432181",
+    "name": "Julian Strawther",
+    "short": "J. Strawther",
+    "jersey": "1",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/4432181.png"
+   },
+   {
+    "id": "5105592",
+    "name": "Cam Whitmore",
+    "short": "C. Whitmore",
+    "jersey": "00",
+    "position": "F",
+    "headshot": "https://a.espncdn.com/i/headshots/nba/players/full/5105592.png"
+   }
+  ],
+  "game": null
+ },
+ "nfl:6": {
+  "team": {
+   "id": "6",
+   "abbr": "DAL",
+   "name": "Dallas Cowboys",
+   "short": "Cowboys",
+   "logo": "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/nfl/500-dark/dal.png",
+   "color": "002a5c",
+   "alt_color": "b0b7bc",
+   "mine": false,
+   "record": "3-5",
+   "standing": "2nd in NFC East"
+  },
+  "roster": [
+   {
+    "id": "4685120",
+    "name": "T.J. Bass",
+    "short": "T.J. Bass",
+    "jersey": "66",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685120.png"
+   },
+   {
+    "id": "4426663",
+    "name": "Cooper Beebe",
+    "short": "C. Beebe",
+    "jersey": "56",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426663.png"
+   },
+   {
+    "id": "4685263",
+    "name": "Tyler Booker",
+    "short": "T. Booker",
+    "jersey": "52",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685263.png"
+   },
+   {
+    "id": "4808759",
+    "name": "Camden Brown",
+    "short": "C. Brown",
+    "jersey": "80",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4808759.png"
+   },
+   {
+    "id": "4696203",
+    "name": "Ajani Cornelius",
+    "short": "A. Cornelius",
+    "jersey": "65",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4696203.png"
+   },
+   {
+    "id": "4242355",
+    "name": "Jake Ferguson",
+    "short": "J. Ferguson",
+    "jersey": "87",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4242355.png"
+   },
+   {
+    "id": "5083754",
+    "name": "Ryan Flournoy",
+    "short": "R. Flournoy",
+    "jersey": "19",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5083754.png"
+   },
+   {
+    "id": "4429676",
+    "name": "Tyler Goodson",
+    "short": "T. Goodson",
+    "jersey": "32",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4429676.png"
+   },
+   {
+    "id": "4609048",
+    "name": "Tyler Guyton",
+    "short": "T. Guyton",
+    "jersey": "60",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4609048.png"
+   },
+   {
+    "id": "4426875",
+    "name": "Sam Howell",
+    "short": "S. Howell",
+    "jersey": "16",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426875.png"
+   },
+   {
+    "id": "4428990",
+    "name": "Broderick Jones",
+    "short": "B. Jones",
+    "jersey": "77",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4428990.png"
+   },
+   {
+    "id": "4241389",
+    "name": "CeeDee Lamb",
+    "short": "C. Lamb",
+    "jersey": "88",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4241389.png"
+   },
+   {
+    "id": "4383396",
+    "name": "Hunter Luepke",
+    "short": "H. Luepke",
+    "jersey": "30",
+    "position": "FB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4383396.png"
+   },
+   {
+    "id": "4426485",
+    "name": "Jonathan Mingo",
+    "short": "J. Mingo",
+    "jersey": "18",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426485.png"
+   },
+   {
+    "id": "4361988",
+    "name": "James Mitchell",
+    "short": "J. Mitchell",
+    "jersey": "84",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361988.png"
+   },
+   {
+    "id": "4426354",
+    "name": "George Pickens",
+    "short": "G. Pickens",
+    "jersey": "3",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426354.png"
+   },
+   {
+    "id": "2577417",
+    "name": "Dak Prescott",
+    "short": "D. Prescott",
+    "jersey": "4",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2577417.png"
+   },
+   {
+    "id": "4372096",
+    "name": "Luke Schoonmaker",
+    "short": "L. Schoonmaker",
+    "jersey": "86",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4372096.png"
+   },
+   {
+    "id": "4685554",
+    "name": "Drew Shelton",
+    "short": "D. Shelton",
+    "jersey": "67",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685554.png"
+   },
+   {
+    "id": "4568652",
+    "name": "Tyler Smith",
+    "short": "T. Smith",
+    "jersey": "73",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4568652.png"
+   },
+   {
+    "id": "4360967",
+    "name": "Brevyn Spann-Ford",
+    "short": "B. Spann-Ford",
+    "jersey": "89",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4360967.png"
+   },
+   {
+    "id": "3915834",
+    "name": "Terence Steele",
+    "short": "T. Steele",
+    "jersey": "78",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3915834.png"
+   },
+   {
+    "id": "3676833",
+    "name": "KaVontae Turpin",
+    "short": "K. Turpin",
+    "jersey": "9",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3676833.png"
+   },
+   {
+    "id": "4361579",
+    "name": "Javonte Williams",
+    "short": "J. Williams",
+    "jersey": "33",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4361579.png"
+   },
+   {
+    "id": "4685266",
+    "name": "Jaishawn Barham",
+    "short": "J. Barham",
+    "jersey": "55",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685266.png"
+   },
+   {
+    "id": "4429249",
+    "name": "Justin Barron",
+    "short": "J. Barron",
+    "jersey": "45",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4429249.png"
+   },
+   {
+    "id": "4241921",
+    "name": "Markquese Bell",
+    "short": "M. Bell",
+    "jersey": "14",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4241921.png"
+   },
+   {
+    "id": "4248911",
+    "name": "DaRon Bland",
+    "short": "D. Bland",
+    "jersey": "26",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4248911.png"
+   },
+   {
+    "id": "4595352",
+    "name": "Alijah Clark",
+    "short": "A. Clark",
+    "jersey": "11",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4595352.png"
+   },
+   {
+    "id": "3122752",
+    "name": "Kenny Clark",
+    "short": "K. Clark",
+    "jersey": "97",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3122752.png"
+   },
+   {
+    "id": "4870706",
+    "name": "Caleb Downs",
+    "short": "C. Downs",
+    "jersey": "13",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4870706.png"
+   },
+   {
+    "id": "4384549",
+    "name": "Cobie Durant",
+    "short": "C. Durant",
+    "jersey": "2",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4384549.png"
+   },
+   {
+    "id": "4683848",
+    "name": "Donovan Ezeiruaku",
+    "short": "D. Ezeiruaku",
+    "jersey": "6",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4683848.png"
+   },
+   {
+    "id": "4039170",
+    "name": "Elijah Garcia",
+    "short": "E. Garcia",
+    "jersey": "93",
+    "position": "DE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4039170.png"
+   },
+   {
+    "id": "4046523",
+    "name": "Rashan Gary",
+    "short": "R. Gary",
+    "jersey": "7",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4046523.png"
+   },
+   {
+    "id": "3121415",
+    "name": "Malik Hooker",
+    "short": "M. Hooker",
+    "jersey": "24",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3121415.png"
+   },
+   {
+    "id": "4240608",
+    "name": "James Houston",
+    "short": "J. Houston",
+    "jersey": "41",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4240608.png"
+   },
+   {
+    "id": "4685400",
+    "name": "Shemar James",
+    "short": "S. James",
+    "jersey": "50",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685400.png"
+   },
+   {
+    "id": "4360307",
+    "name": "Derion Kendrick",
+    "short": "D. Kendrick",
+    "jersey": "15",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4360307.png"
+   },
+   {
+    "id": "4710067",
+    "name": "Malachi Lawrence",
+    "short": "M. Lawrence",
+    "jersey": "57",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4710067.png"
+   },
+   {
+    "id": "3929850",
+    "name": "P.J. Locke",
+    "short": "P.J. Locke",
+    "jersey": "1",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3929850.png"
+   },
+   {
+    "id": "13976",
+    "name": "Von Miller",
+    "short": "V. Miller",
+    "jersey": "40",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/13976.png"
+   },
+   {
+    "id": "4367210",
+    "name": "Otito Ogbonnia",
+    "short": "O. Ogbonnia",
+    "jersey": "91",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4367210.png"
+   },
+   {
+    "id": "4362088",
+    "name": "DeMarvion Overshown",
+    "short": "D. Overshown",
+    "jersey": "0",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4362088.png"
+   },
+   {
+    "id": "4870960",
+    "name": "LT Overton",
+    "short": "L. Overton",
+    "jersey": "99",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4870960.png"
+   },
+   {
+    "id": "4426506",
+    "name": "Joey Porter Jr.",
+    "short": "J. Porter Jr.",
+    "jersey": "25",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4426506.png"
+   },
+   {
+    "id": "5095865",
+    "name": "Shavon Revel Jr.",
+    "short": "S. Revel Jr.",
+    "jersey": "28",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5095865.png"
+   },
+   {
+    "id": "4044448",
+    "name": "Curtis Robinson",
+    "short": "C. Robinson",
+    "jersey": "42",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4044448.png"
+   },
+   {
+    "id": "4259546",
+    "name": "Ameer Speed",
+    "short": "A. Speed",
+    "jersey": "23",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4259546.png"
+   },
+   {
+    "id": "4428584",
+    "name": "Reddy Steward",
+    "short": "R. Steward",
+    "jersey": "27",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4428584.png"
+   },
+   {
+    "id": "4360590",
+    "name": "Juanyeh Thomas",
+    "short": "J. Thomas",
+    "jersey": "43",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4360590.png"
+   },
+   {
+    "id": "4689333",
+    "name": "Tyrus Wheat",
+    "short": "T. Wheat",
+    "jersey": "59",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4689333.png"
+   },
+   {
+    "id": "4040982",
+    "name": "Quinnen Williams",
+    "short": "Q. Williams",
+    "jersey": "92",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4040982.png"
+   },
+   {
+    "id": "4428914",
+    "name": "Dee Winters",
+    "short": "D. Winters",
+    "jersey": "53",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4428914.png"
+   },
+   {
+    "id": "14950",
+    "name": "Bryan Anger",
+    "short": "B. Anger",
+    "jersey": "5",
+    "position": "P",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/14950.png"
+   },
+   {
+    "id": "3953687",
+    "name": "Brandon Aubrey",
+    "short": "B. Aubrey",
+    "jersey": "17",
+    "position": "PK",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3953687.png"
+   },
+   {
+    "id": "3052357",
+    "name": "Trent Sieg",
+    "short": "T. Sieg",
+    "jersey": "44",
+    "position": "LS",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3052357.png"
+   },
+   {
+    "id": "2980097",
+    "name": "Jonathan Bullard",
+    "short": "J. Bullard",
+    "jersey": "90",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/2980097.png"
+   },
+   {
+    "id": "4240603",
+    "name": "Malik Davis",
+    "short": "M. Davis",
+    "jersey": "20",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4240603.png"
+   },
+   {
+    "id": "4242442",
+    "name": "Princeton Fant",
+    "short": "P. Fant",
+    "jersey": "85",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4242442.png"
+   },
+   {
+    "id": "4431547",
+    "name": "Kelvin Gilliam Jr.",
+    "short": "K. Gilliam Jr.",
+    "jersey": "94",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4431547.png"
+   },
+   {
+    "id": "4044138",
+    "name": "Matt Hennessy",
+    "short": "M. Hennessy",
+    "jersey": "72",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4044138.png"
+   },
+   {
+    "id": "4427816",
+    "name": "Marist Liufau",
+    "short": "M. Liufau",
+    "jersey": "35",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4427816.png"
+   },
+   {
+    "id": "4702577",
+    "name": "Devin Moore",
+    "short": "D. Moore",
+    "jersey": "29",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4702577.png"
+   },
+   {
+    "id": "4043089",
+    "name": "Jalen Thompson",
+    "short": "J. Thompson",
+    "jersey": "34",
+    "position": "S",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4043089.png"
+   },
+   {
+    "id": "4429202",
+    "name": "Israel Abanikanda",
+    "short": "I. Abanikanda",
+    "jersey": "25",
+    "position": "RB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4429202.png"
+   },
+   {
+    "id": "4689364",
+    "name": "Tommy Dunn Jr.",
+    "short": "T. Dunn Jr.",
+    "jersey": "95",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4689364.png"
+   },
+   {
+    "id": "4367330",
+    "name": "Tyrek Funderburk",
+    "short": "T. Funderburk",
+    "jersey": "",
+    "position": "CB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4367330.png"
+   },
+   {
+    "id": "4685409",
+    "name": "Jordan Hudson",
+    "short": "J. Hudson",
+    "jersey": "18",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685409.png"
+   },
+   {
+    "id": "4363547",
+    "name": "Marcellus Johnson",
+    "short": "M. Johnson",
+    "jersey": "79",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4363547.png"
+   },
+   {
+    "id": "4574551",
+    "name": "Isaiah Land",
+    "short": "I. Land",
+    "jersey": "58",
+    "position": "LB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4574551.png"
+   },
+   {
+    "id": "3920591",
+    "name": "Nick Leverett",
+    "short": "N. Leverett",
+    "jersey": "51",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/3920591.png"
+   },
+   {
+    "id": "4570577",
+    "name": "Wanya Morris",
+    "short": "W. Morris",
+    "jersey": "",
+    "position": "OT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4570577.png"
+   },
+   {
+    "id": "5066095",
+    "name": "Adedayo Odeleye",
+    "short": "A. Odeleye",
+    "jersey": "96",
+    "position": "DT",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/5066095.png"
+   },
+   {
+    "id": "4685110",
+    "name": "Anthony Smith",
+    "short": "A. Smith",
+    "jersey": "83",
+    "position": "WR",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4685110.png"
+   },
+   {
+    "id": "4034946",
+    "name": "Kyle Trask",
+    "short": "K. Trask",
+    "jersey": "",
+    "position": "QB",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4034946.png"
+   },
+   {
+    "id": "4594749",
+    "name": "Michael Trigg",
+    "short": "M. Trigg",
+    "jersey": "46",
+    "position": "TE",
+    "headshot": "https://a.espncdn.com/i/headshots/nfl/players/full/4594749.png"
+   }
+  ],
+  "game": null
+ },
+ "nhl:23": {
+  "team": {
+   "id": "23",
+   "abbr": "WSH",
+   "name": "Washington Capitals",
+   "short": "Capitals",
+   "logo": "https://a.espncdn.com/i/teamlogos/nhl/500/wsh.png",
+   "logo_dark": "https://a.espncdn.com/i/teamlogos/nhl/500-dark/wsh.png",
+   "color": "d71830",
+   "alt_color": "0b1f41",
+   "mine": true,
+   "record": "8-5",
+   "standing": "10th in Eastern Conference"
+  },
+  "roster": [
+   {
+    "id": "4996093",
+    "name": "Ethen Frank",
+    "short": "E. Frank",
+    "jersey": "53",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4996093.png"
+   },
+   {
+    "id": "2563054",
+    "name": "Boone Jenner",
+    "short": "B. Jenner",
+    "jersey": "22",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/2563054.png"
+   },
+   {
+    "id": "4587943",
+    "name": "Aliaksei Protas",
+    "short": "A. Protas",
+    "jersey": "21",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4587943.png"
+   },
+   {
+    "id": "3899933",
+    "name": "Dylan Strome",
+    "short": "D. Strome",
+    "jersey": "17",
+    "position": "C",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3899933.png"
+   },
+   {
+    "id": "3904107",
+    "name": "Anthony Beauvillier",
+    "short": "A. Beauvillier",
+    "jersey": "72",
+    "position": "LW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3904107.png"
+   },
+   {
+    "id": "4024833",
+    "name": "Pierre-Luc Dubois",
+    "short": "P. Dubois",
+    "jersey": "80",
+    "position": "LW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4024833.png"
+   },
+   {
+    "id": "5080168",
+    "name": "Ivan Miroshnichenko",
+    "short": "I. Miroshnichenko",
+    "jersey": "63",
+    "position": "LW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/5080168.png"
+   },
+   {
+    "id": "3101",
+    "name": "Alex Ovechkin",
+    "short": "A. Ovechkin",
+    "jersey": "8",
+    "position": "LW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3101.png"
+   },
+   {
+    "id": "5229146",
+    "name": "Ilya Protas",
+    "short": "I. Protas",
+    "jersey": "62",
+    "position": "LW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/5229146.png"
+   },
+   {
+    "id": "4062251",
+    "name": "Jordan Kyrou",
+    "short": "J. Kyrou",
+    "jersey": "25",
+    "position": "RW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4062251.png"
+   },
+   {
+    "id": "5149172",
+    "name": "Ryan Leonard",
+    "short": "R. Leonard",
+    "jersey": "9",
+    "position": "RW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/5149172.png"
+   },
+   {
+    "id": "4697783",
+    "name": "Justin Sourdif",
+    "short": "J. Sourdif",
+    "jersey": "34",
+    "position": "RW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4697783.png"
+   },
+   {
+    "id": "3114766",
+    "name": "Alex Tuch",
+    "short": "A. Tuch",
+    "jersey": "89",
+    "position": "RW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3114766.png"
+   },
+   {
+    "id": "2970615",
+    "name": "Tom Wilson",
+    "short": "T. Wilson",
+    "jersey": "43",
+    "position": "RW",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/2970615.png"
+   },
+   {
+    "id": "4024950",
+    "name": "Jakob Chychrun",
+    "short": "J. Chychrun",
+    "jersey": "6",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4024950.png"
+   },
+   {
+    "id": "4392260",
+    "name": "Vincent Desharnais",
+    "short": "V. Desharnais",
+    "jersey": "73",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4392260.png"
+   },
+   {
+    "id": "4378677",
+    "name": "Martin Fehervary",
+    "short": "M. Fehervary",
+    "jersey": "42",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4378677.png"
+   },
+   {
+    "id": "5216918",
+    "name": "Cole Hutson",
+    "short": "C. Hutson",
+    "jersey": "44",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/5216918.png"
+   },
+   {
+    "id": "4233618",
+    "name": "Timothy Liljegren",
+    "short": "T. Liljegren",
+    "jersey": "27",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4233618.png"
+   },
+   {
+    "id": "3942924",
+    "name": "Matt Roy",
+    "short": "M. Roy",
+    "jersey": "3",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3942924.png"
+   },
+   {
+    "id": "4352803",
+    "name": "Rasmus Sandin",
+    "short": "R. Sandin",
+    "jersey": "38",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4352803.png"
+   },
+   {
+    "id": "4755690",
+    "name": "Jack St. Ivany",
+    "short": "J. St. Ivany",
+    "jersey": "6",
+    "position": "D",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4755690.png"
+   },
+   {
+    "id": "3095975",
+    "name": "Charlie Lindgren",
+    "short": "C. Lindgren",
+    "jersey": "79",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/3095975.png"
+   },
+   {
+    "id": "4697829",
+    "name": "Remi Poirier",
+    "short": "R. Poirier",
+    "jersey": "1",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4697829.png"
+   },
+   {
+    "id": "4272888",
+    "name": "Logan Thompson",
+    "short": "L. Thompson",
+    "jersey": "48",
+    "position": "G",
+    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4272888.png"
+   }
+  ],
+  "game": null
+ }
+}

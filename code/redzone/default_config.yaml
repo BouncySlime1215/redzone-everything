@@ -1,0 +1,604 @@
+# RedZone Everything — default settings.
+# Your edits live in data/config.yaml (made on first run). Every save from the
+# phone is checked against the limits in config.py and versioned so it can be undone.
+
+mode:
+  dry_run: true            # true = show what it WOULD do, never touch the TV
+  leagues: {nfl: true, nba: true, nhl: true, mlb: true, cbb: true, cfb: true, wcbb: true}
+
+sunday_ticket: true        # you have NFL Sunday Ticket (+ RedZone) on YouTube TV
+market: raleigh-durham
+
+server:
+  port: 8777
+
+teams:                     # your teams: biggest boost
+  nfl: [WSH]
+  nba: [WSH]
+  nhl: [WSH]
+  mlb: [WSH]
+  cbb: [UNC]               # college: ESPN abbreviations (North Carolina = UNC, ESPN team id 153)
+  cfb: [UNC]
+  wcbb: [UNC]
+
+college:                   # college boards are huge: only your teams' games and ranked games are followed
+  groups:                  # ESPN conference ids to also poll, so an unranked team of yours still shows
+    cbb: ["2"]             # ACC (men's basketball)
+    cfb: ["1"]             # ACC (football)
+    wcbb: ["2"]            # ACC (women's basketball)
+  top_n: 25                # follow games with a team ranked this high or better
+
+polling:
+  hot_s: 3                 # what's on, what's next, and tense games: every N seconds
+  live_s: 10               # every other live game
+  idle_s: 300              # poll every N seconds when nothing is live
+  nba_pbp_s: 3             # NBA liveData play-by-play per live NBA game (sources.nba_primary / nba_shadow)
+  nhl_pbp_s: 3             # NHL api-web play-by-play per live NHL game (sources.nhl_primary); 8 s when off
+  burst:                   # [sync 5] the on-screen game + its top challenger, only while a stoppage is likely
+    enabled: false         # (break forecast p >= break_p) or it's tense: summary + league pbp every every_s
+    every_s: 1.5           # floor 1 s; the poll loop runs at this rate while any burst game exists
+    break_p: 0.5
+    max_games: 2
+
+sync:
+  probe:
+    enabled: true          # [SYNC] read-only log of what the sticks expose (media_session, Wi-Fi, UI tree, logcat)
+                           # -> recordings/<day>/sync_probe.jsonl. Presses nothing; skips during switches.
+    visible_ui: false      # also dump the VISIBLE stick's UI tree (off: unmeasured whether a dump stutters video)
+    logcat_anchors: false  # [yttv anchors] ad edges from the player's logcat lines (YouTube TV has no UI text);
+                           # off until the probe's logged lines show YTTV's real ad strings
+    log_ad_start: ""       # regex override for an ad-start log line ("" = sync_probe.LOG_AD_START)
+    log_ad_end: ""         # ... and an ad-end line ("" = sync_probe.LOG_AD_END)
+    log_edge_sd_s: 1.0     # an ad edge read from the player's own log line: the player logs it as it renders it
+  break_anchor:            # [auto-anchors] ad break on screen <-> the feed's dead ball -> a delay sample
+    enabled: false         # logged always (recordings/<day>/sync_anchors.jsonl); fed to the filter only when on.
+    start_bias_s: 15       # whistle -> ad on screen, a PRIOR until the Wednesday probe data refits it
+    bias_sd_s: 10
+    min_s: 10              # plausible whistle -> ad-on-screen window (feed wall to screen time)
+    max_s: 240
+  drift_alarm:             # [SYNC 6] delay moved > limit_s since it synced, or the stick's network predicts it
+    limit_s: 5
+    resync: false          # re-tune the hidden stick's standby on an alarm (off until a live night shows alarms are real)
+
+sources:
+  fastcast: false          # ESPN's push feed: new plays the moment ESPN publishes them. Runs NEXT TO polling
+                           # (polling never stops). Off until the live check passes: see redzone/sources/fastcast.py
+  fastcast_check: true     # with fastcast off: run it in SHADOW on a few live games (logged, never merged) and grade
+                           # it against polling -> data/fastcast_check.json (redzone/sources/fastcast_check.py)
+  fastcast_auto_enable: false  # turn fastcast on by itself once that check passes
+  nhl_primary: false       # NHL api-web live play-by-play (~17 s behind the ice vs ESPN's ~43 s) owns NHL
+                           # stoppages while fresh and feeds its plays to the timeline (docs/timing.md, A2)
+  trust_order: {nfl: [], nba: [], nhl: []}   # [FEED-01/03] e.g. nhl: [nhl, espn_summary]: fastest measured first owns
+                           # stoppages while fresh; on its errors/silence the next takes over; disagreements logged
+  nba_primary: false       # NBA liveData play-by-play (real event times, published ~4-12 s after) owns NBA
+                           # stoppages while fresh and feeds the timeline; OFF until a backtest + live night pass
+  nba_shadow: true         # primary off: still poll it and log its plays (source nba_cdn) to plays.jsonl
+  nhl_shadow: true         # primary off: still poll api-web every polling.nhl_pbp_s and log each event's
+                           # first-seen time (data/recordings/<day>/nhl_seen.jsonl) for the gating backtest
+
+score:
+  neutral_cap: 0.9         # a neutral game tops out at 90; 90-100 is reserved for games you care about
+  # Your league order (NFL > CFB > NBA > NCAA hoops > NHL > MLB): a game's live moment is multiplied
+  # by its league's weight, so a dull game stays dull but an equal moment goes to the league you
+  # like more. Your teams and bets have their own boosts below.
+  league_weight: {nfl: 1.15, cfb: 1.10, nba: 1.05, cbb: 1.0, nhl: 0.95, mlb: 0.9, wcbb: 0.9}
+  personal_cap: 30
+  smoothing_half_life_s: 30
+  stakes:
+    both_good_pct: 0.600
+    both_good: 0.08
+    both_bad_pct: 0.350
+    both_bad: -0.10
+    close_spread: 3.0
+    close_spread_bonus: 0.05
+    big_spread: 10.0
+    big_spread_penalty: -0.05
+    national_tv: 0.03
+    min: 0.8
+    max: 1.2
+  postseason:              # redzone/scoring/postseason.py: series state, round, ranked matchups (idea: ArenaSwap)
+    enabled: false         # OFF until scored on playoff nights; the hook adds at most `cap` to the stakes multiplier
+    base: 0.02             # any postseason game
+    elimination: 0.05      # a loss ends someone's season
+    decider: 0.05          # winner takes it (Game 7, a one-game final)
+    round_step: 0.02       # round bonus = max_round_bonus - round_step * rounds left
+    max_round_bonus: 0.08  # the title game / series
+    ranked_both: 0.03      # college: both teams in the top 25
+    ranked_top10_both: 0.02
+    cap: 0.15
+  garbage:                 # decided games stop competing for the TV (your team's too); bets/fantasy still count
+    moment_mult: 0.12
+    comeback_boost: 12     # when a blowout gets close again
+    comeback_s: 240
+  personal:
+    my_team: 25            # scaled by how competitive the game is (0 in a blowout)
+    # ...times this per league, in your order: Commanders > UNC football > Wizards > UNC hoops >
+    # Capitals > Nationals.
+    my_team_league: {nfl: 1.0, cfb: 0.92, nba: 0.84, cbb: 0.78, wcbb: 0.6, nhl: 0.72, mlb: 0.64}
+    bet_max: 20
+    fantasy_mine: 12
+    fantasy_opponent: 8
+    manual_boost: 15
+    # Prime NBA multiview (tuners.prime_multiview): who may share it. Personal data, so the shipped
+    # defaults are empty; put yours in data/config.yaml. Entries are "league:ABBR" (the feed's
+    # team abbreviation).
+    multiview_exclude: []  # a game with one of these teams never joins a multiview (it goes on the other stick)
+    multiview_pin: []      # a game with one of these teams gets a tile first
+  nfl:
+    time: {q1: 5, q2: 10, q2_two_min: 25, q3: 15, q4_early: 25, q4_mid: 35, q4_late: 55, ot: 60}
+    field: {own: 5, opp_mid: 12, opp_deep: 20, red_zone: 30, inside_10: 38, goal_to_go: 7}
+    down: {third_short: 6, fourth_go: 15}
+    two_minute_drill: 15
+    uncertainty: 15
+    wp_swing: {threshold: 0.15, points: 15, fade_s: 120}
+    player_going_off: 8
+  nba:
+    time: {early: 8, q3: 12, q4: 25, q4_5min: 45, q4_2min: 58, q4_30s: 68, ot: 65}
+    last_shot: 15
+    run_10: 15
+    run_14: 20
+    run_fade_s: 120
+    comeback: 12
+    uncertainty: 10
+    player_going_off: 12
+  nhl:
+    time: {p1: 8, p2: 12, p3_early: 20, p3_mid: 30, p3_5min: 42, p3_2min: 52, ot: 70, shootout: 75}
+    power_play: 15
+    five_on_three: 25
+    power_play_p3_close: 22
+    power_play_lock_within: 2   # a power play holds the TV (and is worth a visit) within this many goals
+    imminent_pp_s: 30           # a power play's first N s of game clock count as an imminent goal chance
+    # ...and stay "imminent" this long after: a chase skips the whistle hold only then. -1 = off: the
+    # skip added 2 mid-play entries to the Nov 1 demo (WPG @ CAR, UTA @ PHI) and caught no extra goal.
+    imminent_hold_s: -1
+    empty_net: 30
+    penalty_shot: 40
+  mlb:
+    leverage_scale: 2.2
+    inning_mult: {early: 0.85, mid: 1.0, eighth: 1.1, ninth_plus: 1.2}
+    walk_off_spot: 15
+    no_hitter: {through_6: 25, through_7: 35, ninth: 50}
+
+brain:                     # learned models (redzone/scoring/brain.py, trained by scripts/train_brain.py)
+  enabled: false           # feed the brain's game flow / key-moment / break odds into the score and break forecast
+  version: 3               # 3 = Brain v3 (brain_models/<league>.v3.npz: stoppage odds/type/length, entry point,
+                           # big plays) where a league has one, else v2; 2 = v2 only
+  # Which leagues use each v3 part (scorecards + held-out nights, Nov 3; see docs/brain3/REPORT.md):
+  v3_score: [nfl]               # v3's big-play odds / game flow feed the score (else v2's). NBA/NHL stay on
+                                # v2's: v3 there cost NBA +2 missed plays and NHL +1 mid-play entry
+  v3_break_odds: []             # v3's long-break odds in the break forecast (else v2's, which are better
+                                # calibrated on held-out nights: NFL ECE 0.10 vs 0.26, NBA AUC 0.82 vs 0.77)
+  v3_lengths: [nfl, nba]        # v3's time-to-restart replaces the fixed break-length table (breaks.LEN);
+                                # NHL keeps the table (its median was measured on the same archive)
+  v3_entry: []                  # v3's time-to-restart as the expected end of a stoppage the data hasn't closed.
+                                # Off: uncapped it cost NFL your-team big plays and NBA mid-play entries, p10
+                                # cost NFL dead air, and p50 capped changed nothing. For the decision core to use
+  v3_entry_q: 50                # ...its 10th or 50th percentile
+  v3_entry_cap: true            # ...never later than the measured table median (it can only shorten a stop)
+  hot_points: 0            # moment points at game flow 100 (minus at 0; 50 = a median moment adds nothing)
+  key_points: 6            # moment points when a key moment in the next few minutes is a sure thing
+  break_weight: 0.5        # log-odds weight of the brain's break odds where the rules also see a break coming,
+                           # for leagues without a fitted break_blend (where the rules see nothing, the brain alone)
+  # Fitted log-odds blend where the rules see a break coming: logit p = a + b*logit(brain) + c*logit(rules)
+  # (scripts/eval_break_blend.py: forward folds on archive nights that are neither locked nor brain-training,
+  # Nov 4 2026). Held-out ECE, 50/50 -> fixed log-odds 0.5 -> this: NFL .169 -> .063 -> .054,
+  # NBA .126 -> .024 -> .023, NHL .144 -> .095 -> .027.
+  break_blend:
+    nfl: {a: 1.002, b: 0.3282, c: 0.9161}
+    nba: {a: 0.8576, b: 0.6289, c: 1.1204}
+    nhl: {a: 0.2209, b: 0.9402, c: 0.0351}
+  hot_reason_min: 85       # game flow at least this hot shows up in the reason line
+  # Per league (tuned on scripts/eval.py + eval_sports.py, Nov 3 2026): NFL's hand-tuned crunch logic
+  # did best untouched (the brain only shows its numbers and helps the break forecast there).
+  nfl: {hot_points: 0, key_points: 0}
+  nba: {hot_points: 0, key_points: 12}
+  nhl: {hot_points: 0, key_points: 6}
+  mlb: {hot_points: 0, key_points: 6}
+  # College: no replay-tested tuning yet, so the brain only shows its numbers there.
+  cbb: {hot_points: 0, key_points: 0}
+  wcbb: {hot_points: 0, key_points: 0}
+  cfb: {hot_points: 0, key_points: 0}
+
+reasoner:                  # live game reasoner (redzone/reasoner): lock_in per live game, rebuilt each play
+  enabled: false           # add lock_in points to the score (the fast head decides; scorecards in the PR)
+  must_points: 8           # moment points for must_see (never more than max_points; hard cap 15)
+  watch_points: 3          # moment points for watch
+  max_points: 12
+  yield_to_your_team: true # while your team's game is live and not decided, other games get no lock_in points
+  break_discount: 0        # scale lock_in points down by the brain's break odds (0 = off)
+  by_odds: 0               # 1 = points grow with the head's odds above odds_floor (crunch counts as sure)
+  odds_floor: 0.5
+  redzone_share: 1.0       # RedZone gets this share of its best NFL game's lock_in points (it shows that play, no ads)
+  during_breaks: false     # lock_in points while the game is in a real break (off: they only bought commercials)
+  model: true              # ask the local model (agent/llm_server.py, adapter game-reasoner) for the phone text
+  decide_with: head        # head (scorecard-tested) or model: whose lock_in the score uses
+  server_url: http://127.0.0.1:8779
+  min_interval_s: 20       # at most one model call per hot game this often (a score asks sooner)
+  max_tokens: 160
+  # Cross-fitted scorecards on integration/next, Nov 3 (docs/reasoner.md). NFL: every setting that
+  # raised big plays live also raised commercials (it pulled the TV off RedZone), so storyline only.
+  nfl: {must_points: 0, watch_points: 0}
+  nba: {must_points: 0, watch_points: 0}      # no gain on the NBA scorecard: storyline only
+  nhl: {must_points: 0, watch_points: 0}      # after PR #3 (entries mid-play 11 -> 5 already): 4 pts gave 5 -> 4 but big live -0.6
+
+decider:
+  switch_margin: 10
+  entry:
+    hold_only: [nhl, nba]     # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
+    rewind_only: []      # leagues whose entries land on a dead ball with a rewind when one fits, never wait
+    landing_lag_s: 0     # [landing lag] a fresh tune comes up up to this much later than the live edge (one-sided)
+    cue: seek                # [seek model] seek: rewind on screen after the flip (whole 15 s presses + a 2-4 s stall) |
+                             # pause: on the HIDDEN stick seek past the dead ball, play up to it, pause, flip, play
+    possession_start: "off"  # [possession start] off | crunch | all: cue to the last dead ball before the possession, never wait while one is in reach
+    confirmed_dead_only: false  # [data gap] a dead window opens only on a logged stoppage (a lone substitution means the stoppage is missing)
+    ended_strict: false  # [landing lag] a switch off a finished game never takes the urgent (thin-margin) landing
+    crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
+    max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
+    hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
+  # Seconds to the new picture, MEASURED (the one source of truth; contracts/switching.ConfigSwitchPaths):
+  # tunes = the Mac's LatencyBook medians (switch_speed.learn; pinned in eval-data-v1's eval_config.yaml);
+  # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.89 s) + the 1 s settle.
+  # Replaced by your own measured times as you use it (see switch_speed).
+  switch_cost: {youtubetv: 5.5, prime: 27, espn: 7.5, hdmi_flip: 3}
+  leave:
+    dead_windows: []       # [whistle detection] also leave on the play-by-play's dead windows in these leagues
+    tune_s: 6              # ...and the window must outlast this tune margin (a visit can't come back inside it)
+  return_tolerance: 5      # go back to the previous game if it's within this many points
+  break_destination_min: 25   # anything at least this good beats watching a commercial
+  chase_max_deficit: 15
+  must_see_score: 92
+  must_see_lead: 20
+  locked_override_lead: 20
+  manual_pause_s: 60
+  uncalibrated_sigma_s: 8  # above this delay uncertainty, only leave at official stoppages
+  sticky_visit_needs_calibration: true  # your game's break: only visit games whose delay is calibrated (else no way back until their own break)
+  wait_for_my_team_s: 1800  # your team tips within this: don't start on a basketball/hockey game we can't leave (uncalibrated)
+  redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
+  redzone_score: 45        # RedZone vs a game (0-100): stay on it unless a game beats this; any break goes there
+  crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
+    hold_personal: 5       # stay through every stoppage of a crunch game with this much personal boost (your team, bet)
+    hold_neutral_breaks: [two_minute_warning]  # ...and of any crunch game through these (the 2:00 warning is the way in)
+    personal_lead: 5       # your team / bet wins an overlap when its boost is this much bigger
+    hop_min_break_s: 20    # hop to another live crunch only if this one's stoppage has this much left
+    replays: true          # replays from other games during crunch stoppages, if surely back for the snap
+    instant_replays: true  # ...including instant replays of plays you saw (false: only plays you missed)
+    shortest_break_s:      # ~10th pct, stoppage -> next scrimmage play logged, late Q4/OT, 2025 games
+      {timeout: 30, injury: 27, review: 80, score_break: 110, two_minute_warning: 150, end_period: 180}
+
+crunch:                    # [one brain, step 2] ONE crunch table (redzone/crunch.py), read by the scorer, standby,
+                           # the demo and the grading. period / clock_s (left, at or under; null = whole period on) / margin /
+                           # ot (crunch from this period on) / ot_close (OT still needs the margin). Values as shipped Nov 4.
+  run_up:                  # crunch_time: up a little before the graded window, to arrive at a stoppage
+    nfl: {period: 4, clock_s: 120, margin: 8, ot: 5}
+    nba: {period: 4, clock_s: 180, margin: 7, ot: 5}
+    nhl: {period: 3, clock_s: 180, margin: 1, ot: 4}
+    mlb: {period: 8, clock_s: null, margin: 2, ot: 10}
+  window:                  # crunch_window: the graded window the app aims at (NHL from 2:00)
+    nfl: {period: 4, clock_s: 120, margin: 8, ot: 5}
+    nba: {period: 4, clock_s: 180, margin: 7, ot: 5}
+    nhl: {period: 3, clock_s: 120, margin: 1, ot: 4}
+    mlb: {period: 8, clock_s: null, margin: 2, ot: 10}
+  graded:                  # the lab scorecard's crunch plays (sportsgrade.is_crunch, demo crunch counts)
+    nfl: {period: 4, clock_s: 120, margin: 8, ot: 5}
+    nba: {period: 4, clock_s: 120, margin: 5, ot: 5}
+    nhl: {period: 3, clock_s: 120, margin: 1, ot: 4}
+    mlb: {period: 8, clock_s: null, margin: 2}
+  soon:                    # standby.crunch_soon: crunch a few minutes off, pre-position the hidden stick
+    nfl: {period: 4, clock_s: 420, margin: 8, ot: 5, ot_close: true}
+    nba: {period: 4, clock_s: 360, margin: 8, ot: 5, ot_close: true}
+    nhl: {period: 3, clock_s: 480, margin: 1, ot: 4, ot_close: true}
+    mlb: {period: 8, clock_s: null, margin: 2}
+
+core:                      # the decision core's expected-value knobs (redzone/decider/core.py); the
+                           # auto-tuner searches these plus decider.switch_margin / break_destination_min /
+                           # locked_override_lead / return_tolerance. Defaults = the rules the core replaced.
+  points_per_switch_s: 1.0 # each second of black screen costs this many points of lead
+  dead_air_penalty: 0.0    # points per second a commercial on screen costs
+  break_value_frac: 1.0    # share of an on-break game's value that still counts
+  break_risk: 0.0          # 0..1: discount a destination by the brain's chance it goes to break soon
+  lock_in_step: 10.0       # friction added per reasoner lock_in level to leave a game
+  reel_margin_s: 5.0       # the catch-up reel must fit its break with this much to spare
+  league_priority: [nfl, cfb, nba, cbb, wcbb, nhl, mlb]   # overlapping crunch times: first listed wins (after your team / bet)
+
+fantasy:                   # ESPN fantasy football (leave league_id empty to turn off)
+  league_id: ""
+  team_id: 0               # 0 = figure it out from your ESPN_SWID cookie
+  season: 2026
+
+
+# [playbooks] Safety playbooks SAFE-01/02/03/05 (docs/playbooks.md, redzone/decider/playbooks.py): each holds a
+# switch and logs "playbook=<id>". OFF until the night lab and the North Star sets clear them.
+playbooks:
+  safe:
+    enabled: false
+    feed_stale_s: 10      # SAFE-01: target feed this far past its poll cadence = stale
+    sigma_s: 10           # SAFE-02: delay doubt above this = full-margin landings only (dev sweep: 3-8 s holds normal entries)
+    net_q: 9              # SAFE-03: sync probe network condition (>= 2 buffering/min or an RSSI drop)
+    net_window_s: 300
+    skew_s: 5             # SAFE-05: wall vs monotonic jump that counts as clock skew
+    reanchor_s: 90
+  game:                   # [scenario tree] GAME-01..03, 21, 22 branches (redzone/decider/scenarios.py), OFF
+    enabled: false
+    table: ""             # a JSON branch table (the cloud-built tree); empty = the hand-written seeds
+    skip: [GAME-01]       # rows left out: GAME-01 visits cost NFL dev crunch 70.7 -> 69.3, big live 54.4 -> 53.5
+    crunch_overlap: false # GAME-05: two same-tier crunches: higher stakes (OT, 2:00 window, score) stays live
+    empty_net: false      # GAME-09: an NHL pulled goalie counts as crunch time (live feed only: not in replays)
+screen:
+  mic_calibration: false   # let the Mac's mic hear crowd roars to measure your delay (nothing is recorded)
+
+providers:
+  profiles:               # Exact names; an unreadable picker requires manual selection.
+    youtubetv: ""
+    prime: ""
+    espn: ""
+    peacock: ""
+    fubo: ""
+    paramount: ""
+    max: ""
+    netflix: ""
+    nflplus: ""
+    nba: ""
+    appletv: ""
+    dazn: ""
+
+autonomy:
+  enabled: true
+  discover_devices: false # first select your own TV/sticks with scripts/doctor.py
+  busy_score: 75          # postpone maintenance during an important game
+  selftest_may_wake: false
+  test_targets: {youtubetv: "", prime: "", espn: ""}
+
+supervisor:                # watches the live system and fixes what it can on its own (redzone/supervisor.py)
+  enabled: true
+  ntfy_topic: ""           # optional: push the nightly report to the free ntfy app (pick a hard-to-guess topic)
+  budget:                  # error budget, over the last window_nights nights that had switches (nightly report)
+    window_nights: 7
+    failure_pct: 5         # failed + picture-never-confirmed switches, % of live switches
+    mid_play_cuts: 0       # cuts that left a play on screen (judged from the feed ~90 s later)
+    dead_air_s: 10         # a cut whose new picture took longer than this is "slow"...
+    dead_air_pct: 10       # ...and this % of cuts may be slow
+    safe_mode_min: 10      # minutes in safe mode a night
+
+multiview:                 # YouTube TV multiview as a switch path (redzone/tuners/multiview.py)
+  enabled: false           # off until scripts/multiview_probe.py has measured it on the real sticks
+  tiles: 4                 # games in one multiview (YouTube TV's 2x2)
+  must_have: 2             # reopen only when one of the top this-many YTTV games isn't a tile
+  costs: {mv_open: 15.0, mv_expand: 1.5, mv_collapse: 1.0, mv_step: 0.35}   # seconds, until measured
+tuners:                    # per-app switch paths
+  prime_multiview: false   # Prime NBA multiview (redzone/tuners/prime_multiview.py): a switch between its
+                           # tiles is ~1 s of remote navigation, no relaunch. Off until a live Prime NBA
+                           # night passes the gate (>= 95% right tile under 2 s, 0 mid-play entries)
+  prime_tiles: 3           # games in one Prime multiview (1 main + 2 on the right)
+  prime_tile_s: 1.0        # seconds for a tile switch, until data/prime_multiview_keys.json has timings
+  prime_tile_p90_s: 2.0    # ...and its deadline bound
+autofix:                   # the watchdog files problems it can't fix as GitHub issues for Claude (docs/auto-fix.md)
+  enabled: true            # kill switch on the Mac side (the repo variable AUTOFIX_ENABLED=false stops the GitHub side)
+  max_per_day: 3           # at most this many issues a day
+  refile_days: 7           # the same error is filed at most once per this many days
+  repo: ""                 # owner/name; empty = this checkout's origin
+governor:                  # keeps the Mac cool and its disk free (redzone/governor.py); live switching is never slowed
+  enabled: true
+  every_s: 30              # look at the Mac this often
+  calm_s: 180              # a busy/hot/battery state must clear this long before work resumes
+  busy_load: 0.85          # 5-min load per CPU core above this: the Mac is busy (eco)
+  battery_eco: true        # on battery: eco (no reel downloads/lab/archive, slower OCR and idle polling)
+  battery_low_pct: 20      # on battery under this: critical (also no OCR, no local model)
+  swap_eco_mb: 1500        # swap in use above this: eco
+  disk_low_mb: 3000        # free disk under this: eco (no new downloads)
+  disk_critical_mb: 1500   # free disk under this: critical
+  service_soft_mb: 700     # the app's memory: shown as a warning above this
+  service_hard_mb: 1200    # ...the watchdog restarts the app above this (never during crunch time)
+  models_mb: 1500          # all local model processes together (watchdog + game reasoner)
+
+hardening:                 # error handling (PLATFORM). Each switch is off until a live night proves it.
+  smartthings: false       # SmartThings breaker, 429 Retry-After, auth fault + phone push (redzone/tv.py)
+  sticks: false            # a player "buffering" 20 s+ is stalled: resume the visible stick, reload the standby
+  feeds: false             # a live game whose ESPN polling went dark takes FastCast pushes until polling is back
+  mac: false               # after the Mac sleeps or changes network: re-check network, reconnect sticks, resync the TV
+  watchdog: false          # the watchdog may ask the app for narrow fixes (POST /api/agent/fix); off: it only tells you
+  tv: false                # the TV jumped by itself to a stick on its home screen (a reboot's HDMI-CEC): flip it back
+
+two_stick:
+  standby_repause_s: 600     # [APP-04] the same standby pausing again within this long is a blocked app (a forced update)
+  cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,
+                           # set up by scripts/tv_setup.py, goes first when it's proven)
+  enabled: true            # with two Fire OS sticks: tune the hidden one, flip the TV input at a safe moment
+  hold_s: 20               # keep the hidden stick on a game at least this long before re-tuning it...
+  min_gain: 8              # ...and then only for one this many points better (your game's return and
+                           # a replay about to play take it right away)
+  verify_s: 15             # check the hidden stick is still playing this often
+  pretune_on_open: false   # opening a live game on the phone pre-tunes it on the hidden stick (90 s), so
+                           # "Watch this" / "Go now" is a ~3 s flip instead of a ~8 s tune + flip
+  input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
+  tv_flip_prior_s: {median: 1.89, p95: 1.98, max: 2.02}  # the TV's own input change (SmartThings) before
+                           # we've timed 5: the live lab on your TV, Nov 4, CEC off (30/30; with CEC on it was
+                           # p95 2.18, max 2.58). The decider plans flips with the median, bounds them with the max.
+  keep_cec_off: true       # a stick whose HDMI-CEC you turned off (scripts/stick_cec.py) gets it back on only
+                           # for a HOME fallback onto it, then off again (so losing the input never pauses it)
+  park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long
+  shadow:                  # the hidden stick as modeled in replays/backtests (standby.ShadowStick); values unchanged
+    flip_s: 3.0            # input flip to a ready stick (measured median ~2.9 s); moving to tv_flip_prior_s +
+                           # input_settle_s changes behavior, so it's a separate decision
+    tune_s: 7.0            # a tune, for an app with no decider.switch_cost entry
+    keep_s: 2.5            # a Prime game we left keeps playing: ready again after this long
+
+demo:                      # replay simulator timing (redzone/demo/engine.py); values unchanged
+  feed_lag_s: 8.0          # a play reaches the app this long after it happens (same as the backtest)
+  play_len_s: 7.0          # a play's length on screen, for grading
+  tune_s: 5.0              # the replay's picture is up this long after a switch
+  calibrated_sigma_s: 3.0  # delay uncertainty of a calibrated game
+
+plan:                      # tonight's plan (data/plan_YYYYMMDD.json, the phone's "Tonight's plan" card)
+  verify: true             # before each start window, play each planned source on the HIDDEN stick (never the one on screen)
+  verify_lead_min: 20      # ...starting this many minutes before the window, while autopilot is idle
+
+switch_speed:              # every real tune and input flip is timed; the decider plans with the medians
+  learn: true              # keep decider.switch_cost up to date from those measurements
+  sync_every_s: 300        # at most this often (sooner when two-stick mode turns on or off)
+
+redzone_mode:              # whip-around like NFL RedZone (scoring/drive.py; decider _drive_takeover, _nfl_priority)
+  enabled: true
+  hot_heat: 0.5            # drive heat (0-1, scoring/drive.py) that counts as "a drive is alive": ~a moving drive past midfield
+  takeover_heat: 0.65      # ...a drive this hot is worth leaving the whip-around for (see drive_over_redzone)
+  drive_over_redzone: true # on the RedZone channel and a game we can tune has a live drive: watch that drive ourselves
+  takeover_break_p: 0.5    # ...and only when its break forecast (scoring/breaks.py) is under this: no tuning into a commercial
+  drive_in_20: false       # a tunable NFL drive inside the 20 elsewhere: go there at the next dead ball (and before
+                           # more catch-up replays). OFF: valid split +2.8 pts NFL big plays live, -1.3 within 10 min
+  drive_in_20_from_redzone: true   # ...also from the RedZone channel (that's where most of the gain was)
+  drive_in_20_after_replay: false  # ...and cut a catch-up chain short for one (on: -4 pts within 10 min)
+  min_redzone_s: 20        # ...but only after this long on the channel: no bouncing on every poll
+  redzone_lift: 8          # RedZone gains up to this many points with the hottest drive (it's showing it), vs ordinary games
+  nfl_priority: true       # while an NFL drive is live, other sports' non-crunch moments rank below it (your teams,
+                           # crunch, your focus game, and leagues you rank above the NFL in score.league_weight exempt)
+  priority_gap: 15         # ...those other games are held this many points under the hottest drive
+  heat_points: 0           # NFL game score lift per unit of heat. 8 cost big plays and your-team plays on the NFL scorecard
+  dead_damp: 0             # share of score lost to punt-fest signs. 0.25 cost big plays on the NFL scorecard
+
+replay:                    # catch-up replays of big plays you missed (YouTube TV can rewind live TV)
+  enabled: true
+  yours_first: true        # your team's missed big plays: replayed before other games' and over ordinary live play
+  apps: [youtubetv]        # apps where rewinding live TV works
+  max_age_s: 1800          # don't replay anything older than this
+  crunch_block: false      # [crunch block] no catch-up starts while any live game is in crunch time / its run-up
+  crunch_block_mine_leagues: []   # ...your team's missed play still goes in these leagues (its game's league)
+  crunch_block_mine_after_s: 90    # ...once this long after it aired
+  urgent_s: 1200           # in its last N seconds a missed play jumps the queue and beats dull live play
+  clip_s: 15               # how long each replay plays
+  seek_s: 6                # time spent rewinding to the play
+  instant_window_s: 900    # when everything's on a break, re-show great plays from the last 15 min
+  seek_key: KEYCODE_MEDIA_REWIND
+  seek_step_s: 15          # seconds per rewind press: YouTube TV steps 15 s (live lab, Nov 4; was 10)
+  seek_wake_presses: 1  # the first press of each batch does nothing (live lab, Nov 4): one extra is sent
+  seek_stall_min_s: 2      # each seek stalls the picture 2-4 s (live lab, Nov 4), which lands it that much
+  seek_stall_max_s: 4      # further behind
+  seek_press_s: 0.25       # [seek model] the stick takes seek presses at about this pace
+  pause_keys_s: 0.5        # ...then the pause / play keys
+  pause_err_s: 0.25        # a pause cue's landing error, calibrated (the lab's pause hold: well under 0.5 s)
+  pause_cue_grain_s: 0.5   # a pause cue's landing grain (the lab's pause hold: +1.66 s raw, under 0.5 s calibrated)
+  hidden_seek_keys_s: 1.5  # a hidden-stick seek's presses + PLAY before the flip (the stall comes on top)
+  redzone_way: false       # catch-up the RedZone way (Nick, Nov 4; OFF until its gate passes): lull, "meanwhile",
+                           # collision and end-of-night montage triggers (redzone/decider/decider.py)
+  catchup_s: 600           # each missed big play replayed within this; its value halves every catchup_s
+  collision_s: 180         # missed because another big play was on screen: replayed within this
+  window_s: 0              # [replay window] Nick, Nov 4: a missed moment airs within this (180 = 3 min, the next
+                           # dead moment) or is skipped / folded into the montage; 0 = off
+  window_leagues: []       # ...only these leagues' plays ([] = every league)
+  window_fill: false       # ...past the window a play may still fill dead time (never displacing live play)
+  resume: false            # [replay and resume] a missed play airs at the screen game's dead ball: pause it, show
+                           # the catch-up, resume on the same frame (costs buffer, not live play); repaid by
+                           # skipping ahead in its next break. Hardware gate: pause/resume on the same frame.
+  resume_leagues: []       # only these leagues' screen games pause ([] = every league)
+  resume_window_s: 180     # only plays that aired within this long (Nick: 3 minutes)
+  resume_cap_s: 60         # never run more than this far behind the usual buffer
+  resume_crunch_share: 0.0 # in crunch time only this share of the cap (0 = never pause crunch time)
+  resume_min_skip_s: 10    # skip ahead in a break only if it wins back at least this much
+  resume_pause_s: 1.0      # the pause command's ack: a stoppage on screen this much longer is enough to pause
+  lull_score: 45           # no live game at this score or above (and no crunch / lock): a replay takes the dead ball
+  meanwhile_s: 120         # the screen's game just scored: plays elsewhere within this of it go first
+  montage_age_s: 14400     # nothing live: every missed big play still on the DVR, however old
+
+reel:                      # catch-up reel: 5+ plays you missed, back to back, 30-60 s (redzone/reel.py)
+  enabled: true            # find, download and trim clips as they post (ESPN's in-game highlights)
+  play: false              # put reels on the TV (off until the Fire TV player is checked on the stick)
+  score: 40                # how the reel ranks as a break destination (live games >= break_destination_min win)
+  min_clips: 5
+  min_s: 30
+  max_s: 60
+  max_age_s: 1800          # plays older than this don't make a reel
+  parallel: 2              # clips prepared at once (download + trim, ~3 s CPU each)
+  cache_mb: 400            # trimmed clips kept on disk
+  min_free_mb: 1500        # never download with less free disk than this
+
+timing:
+  behind_live_s:           # [time-shift buffer] hold each stream B s behind live so the feeds lead the screen
+    enabled: false         # OFF until Nick's live test (docs/live-test-wed.md); sim at B=90: NHL entries
+                           # mid-play 12 -> 0, NBA big seen 67.8 -> 87.4 %, NFL big seen 77.9 -> 97 % (docs/timing.md)
+    by_league: {nfl: 60, cfb: 60, nba: 90, cbb: 90, wcbb: 90, nhl: 90}
+    default: 60
+    max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
+    apps: [youtubetv, primevideo]   # apps whose player pauses and resumes on the hidden stick
+    hold_overreport_s: 0   # [hold calibration] fallback only (no stick positions): the wall span less this. 0 =
+                           # the span as is. At 1.5 it fought hold_cal_s (a rebuild's pause is already short by
+                           # 1.5 s), so the STK-06 watchdog rebuilt a 2.9 s gap forever on the night lab (Nov 4)
+    hold_cal_s: -1.5       # a rebuild's pause is this much off the gap it closes (Nick's live hold calibration)
+
+delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
+  default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
+  sigma_default: 15
+  model: channel           # channel: predict each channel (channels of one app differ, truTV 22 s vs FS1 42 s); legacy: one figure per app
+  sync:                    # every channel's delay found automatically (redzone/decider/sync.py), no taps
+    enabled: true          # Kalman filter per channel: show flips, score bug (score + clock), stick position, taps
+    min_sigma_s: 4         # a synced channel's stated doubt never goes below this (the gates' tested floor)
+    log: true              # every signal + estimate to data/sync.jsonl (scripts/eval_sync.py --log grades it)
+  self_calibrate:          # [self-calibrating doubt] stated doubt learned from break-anchor innovations (NoiseCal), OFF
+    enabled: false         # sims only so far (eval_sports --break-anchors); live needs the pool persisted across nights
+    min_n: 20              # residuals (first anchor after a tune) before it speaks
+    min_sigma_s: 2         # floor of the learned doubt (the 4 s sync floor stays for the filter itself)
+
+break_lengths_s:           # typical commercial lengths used to plan catch-ups
+  nfl: {timeout: 75, tv_timeout: 120, score_break: 150, end_period: 120, two_minute_warning: 150, halftime: 780}
+  nba: {timeout: 90, end_period: 130, halftime: 900}
+  nhl: {timeout: 120, end_period: 150, intermission: 1130}
+  mlb: {end_period: 130, pitching_change: 150}
+
+flags:                       # kill switches, one per subsystem (redzone/contracts/flags.py). On = allowed to run
+  brain_v3: true             # (the subsystem's own setting still decides if it's enabled). Off = its degraded mode.
+  hype_v2: true
+  break_model: true
+  reasoner: true
+  watchdog_model: true
+  reel: true
+  highlight_jump: true
+  drive_priority: true
+  trip_budget: true
+  nhl_rules: true
+  tv_flip: true
+  preload: true
+  sync_predictor: true
+  auto_tune: true
+  fastcast: true
+
+noggin:                    # docs/noggin.md
+  priority:
+    enabled: false         # pick the best game by the Noggin Priority order (L1 hard rules, then score). OFF until measured
+    banned_apps: [peacock]
+    prefs:                 # L2: Nick's preferences, set from the phone page (phone.v2). Only the score moves
+      bets_weight: 1.0     # x your bet's sweat term (0-2)
+      rivalry_points: 6.0  # points added for a rivalry game (0-15)
+      nhl_pp_ot_boost: 1.0 # x the NHL power-play / overtime term (0-2)
+      reels: true          # catch-up reels allowed
+      switch_frequency: 1.0  # 0.5 calmer .. 2.0 busier
+  pick:                    # Reflex PICK v1 (redzone/noggin/pick.py): the hindsight-oracle imitation picks the game
+    enabled: false         # replace the app's pick (never over your team, never in a replay); needs the time-shift buffer
+    shadow: false          # log what PICK would do (Decider.pick_log) beside the app's own decision
+    leagues: [nba]         # leagues with a model (models/pick_<league>.v1.npz)
+    model: v1              # models/pick_<league>.<model>.npz (cue90: trained on the possession-start oracle)
+    tune_s: 5.0            # the black screen PICK plans around per switch
+    mode: breaks           # breaks: PICK only fills a break on screen while the app stays | stays | replace
+    min_gap_s: 0           # switch-rate cap: PICK alone never flips again this soon after a switch (0 = off)
+    keep_kinds: [user, crunch, home, must_see, live]   # the app's switch kinds PICK never overrides
+  possession:              # [possession start] the learned jump / stay policy (Decider.possession_policy)
+    enabled: false         # stay on the game on screen when PICK-cue scores it above the rule's target (off)
+    shadow: false          # log what it would say (Decider.possession_log)
+    leagues: [nba]         # leagues with a model (models/pick_<league>.<model>.npz)
+    model: cue90           # PICK trained on the possession-start hindsight oracle (oracle.solve_cue, 90 s)
+  lookahead:                # [GAME-04 clairvoyance] the feed's plays that haven't aired yet (redzone/noggin/lookahead.py)
+    enabled: false         # flip to a game whose big play is visible ahead, landing on its last dead ball first
+    max_sigma_s: 10        # no lookahead when the screen's position is this unsure (SAFE-02)
+    lead_s: 45             # land at most this long before the play airs (a later dead ball is closer)
+    leagues: []            # only these leagues' games are chased or guarded ([] = every league)
+  timing:
+    leagues: []            # Noggin Timing v1: calibrated dead-window bounds in place of cuts.FLOOR_S / MEDIAN_S
+  predict:
+    leagues: []            # Noggin Predict v1: P(big play in the next 60 s of play) as an L4 term in the Priority pick
+    points: 20             # term = points x (P - the league's base rate), bounded to +-points; needs priority.enabled
+
+phone:                     # the phone page (redzone/web)
+  v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it
+warmup:                    # [warmup.pregame] before the night's first game (redzone/plan.py Tonight._warmup)
+  pregame: false           # put the likeliest first game on the HIDDEN stick before the first start (never the one on screen)
+  lead_min: 10             # ...this many minutes before it
+buffer:                    # [buffer.watchdog] playbook STK-06 (redzone/control.py _buffer_watch)
+  watchdog: false          # rebuild a lost / drifting (> 2 s) hidden-stick hold at that game's next dead ball
+calib:                     # [calib.auto] values re-measured each night from live logs (data/calib/<night>.json)
+  auto: false              # read last nights' accepted flip time back at start (OFF until it's proven on live nights)
