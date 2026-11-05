@@ -46,7 +46,7 @@ FLAG = "noggin.belief.enabled"
 
 
 def enabled(cfg) -> bool:
-    """The experiment's flag. OFF unless a config sets it (it is not in default_config.yaml)."""
+    """The experiment's flag (default_config: noggin.belief.enabled false)."""
     return bool(cfg.get(FLAG, False)) if cfg is not None else False
 
 
@@ -271,6 +271,25 @@ class BeliefBook:
         self.filters: dict[str, ChannelBelief] = {}
         self.rhythms: dict[str, Rhythm] = {}
         self.log_path = None
+        self.behind_of = None   # [calib.auto] parity with SyncBook: logged rows carry the tune's offset
+
+    def _log(self, kind: str, target: str, t: float, **kw) -> None:
+        """[wired, lane 2] The same data/sync.jsonl rows SyncBook writes (eval_sync, sync_truth read them)."""
+        if self.log_path is None:
+            return
+        import json
+        from pathlib import Path
+        row = {"t": round(t, 3), "target": target, "kind": kind, "tracker": "belief", **kw}
+        if self.behind_of is not None:
+            row["behind"] = round(float(self.behind_of(target) or 0.0), 2)
+        f = self.filters.get(target)
+        if f is not None:
+            row.update(mu=round(f.mu(t), 2), sd=round(f.sd(t), 2), synced=f.synced(t), uncertain=f.uncertain(t))
+        try:
+            with Path(self.log_path).open("a") as fh:
+                fh.write(json.dumps(row) + "\n")
+        except OSError:
+            pass
 
     def get(self, target: str) -> ChannelBelief:
         f = self.filters.get(target)
@@ -289,13 +308,16 @@ class BeliefBook:
             r = self.rhythms[target] = Rhythm(sd0, self.p.rhythm_k0, self.p.resid_cap)
         return r
 
-    def tuned(self, target: str, t: float | None = None) -> None:
+    def tuned(self, target: str, t: float | None = None, new_stream: bool = True) -> None:
+        """A new tune, or (new_stream False) a seek / pause on this one: either way the base is kept and
+        only the landing offset re-drawn with the channel's current rewind (SyncBook parity)."""
         t = self._clock() if t is None else t
         f = self.filters.get(target)
         if f is None:
             self.get(target)
         else:
             f.retune(t, float(self._behind(target) or 0.0))
+        self._log("tune" if new_stream else "seek", target, t)
         self.on_change(target)
 
     def shift(self, target: str, delta: float, sd: float = 0.5, t: float | None = None) -> None:
@@ -334,9 +356,12 @@ class BeliefBook:
             ok = f.update(t, z, rh.logpdf)
             if ok:
                 rh.update(resid, t)
+            self._log(kind, target, t, z=round(z, 2), used=ok, err=round(resid, 2), **({"stick": stick} if stick else {}))
         else:
             s = float(sd) if sd else 4.0
+            err = round(z - f.mu(t), 2)
             ok = f.update(t, z, lambda r: -0.5 * (r / s) ** 2)
+            self._log(kind, target, t, z=round(z, 2), used=ok, err=err, **({"stick": stick} if stick else {}))
         self.on_change(target)
         return ok
 
@@ -369,10 +394,18 @@ class BeliefDelayBook(DelayBook):
     belief_seed: int = 0
 
     def attach_sync(self, min_sigma_s: float = 4.0, log_path=None):
-        self._sync_floor = float(min_sigma_s)
-        self.sync = BeliefBook(self._sync_prior, behind=lambda tg: self.get(tg).behind, clock=self._clock,
-                               on_change=self._sync_changed, params=self.belief_params, seed=self.belief_seed)
-        return self.sync
+        return attach(self, min_sigma_s, log_path, self.belief_params, self.belief_seed)
+
+
+def attach(book: DelayBook, min_sigma_s: float = 4.0, log_path=None, params: BeliefParams | None = None,
+           seed: int = 0) -> BeliefBook:
+    """[wired, lane 2] Give a DelayBook the belief tracker as its sync (engine, when noggin.belief.enabled)."""
+    book._sync_floor = float(min_sigma_s)
+    book.sync = BeliefBook(book._sync_prior, behind=lambda tg: book.get(tg).behind, clock=book._clock,
+                           on_change=book._sync_changed, params=params, seed=seed)
+    book.sync.log_path = log_path
+    book.sync.behind_of = lambda tg: book.book[tg].behind if tg in book.book else 0.0
+    return book.sync
 
 
 class FeedLagBelief:

@@ -573,3 +573,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   95% night-bootstrap lower bound, at least 4 rated nights a side, and PENDING otherwise. Nick's ratings stay
   evaluation-only (`tests/test_worth.py` scans noggin/decider/scoring). Note: 4 nights is a thin minimum, so treat an early
   PASS as provisional until 8. Grader freeze v9.
+- **2026-11-05 (lane 2, EXP-023 wiring):** new key `noggin.belief.enabled` (default `false`). When it's on, the
+  engine uses the belief tracker (#223) as its delay sync in place of the Kalman filter, and it logs the
+  same data/sync.jsonl rows. It stays OFF: #223's dev bar failed on NBA and NHL (rule #1 clause, and NHL short
+  of 2 s), though it cut delay error p95 in every league. Why wire it now: Nick's RC7 requirement 2 (sync
+  p95 ≤ 2 s) gets graded from those logs.

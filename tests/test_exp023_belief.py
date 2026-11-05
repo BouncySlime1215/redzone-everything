@@ -139,3 +139,18 @@ def test_harness_refuses_locked_nights(tmp_path):
     spec.loader.exec_module(mod)
     with pytest.raises(SystemExit):
         next(mod.load_nights(tmp_path, League.NBA, "test"))
+
+
+def test_engine_wiring_logs_the_same_rows_as_the_kalman_sync(tmp_path):
+    """[wired, lane 2] attach() gives a DelayBook the tracker; it logs sync.jsonl rows sync_truth reads."""
+    import json
+    from redzone.decider.screen import DelayBook
+    from redzone.noggin import belief
+    book = DelayBook({"youtubetv": 40.0}, 4.0, clock=lambda: 1000.0)
+    s = belief.attach(book, 3.0, tmp_path / "sync.jsonl")
+    assert book.sync is s and book._sync_floor == 3.0
+    s.tuned("youtubetv:fox", 1000.0, new_stream=False)
+    s.measure("youtubetv:fox", 44.0, "score", t=1001.0, sd=2.0, stick="HDMI1")
+    rows = [json.loads(x) for x in (tmp_path / "sync.jsonl").read_text().splitlines()]
+    assert [r["kind"] for r in rows] == ["seek", "score"]
+    assert rows[1]["stick"] == "HDMI1" and rows[1]["z"] == 44.0 and rows[1]["err"] is not None
