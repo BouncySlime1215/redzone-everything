@@ -23,3 +23,35 @@ group 87.3 %, without consequence 68.3 %, without history 61.4 %, without your-t
 Second finding: the full-hindsight ceiling itself makes 45 floor-violating leaves, so the 100 % should be the
 floored oracle. Both fixes are pre-registered as [EXP-1714](../prereg/exp-1714.md) (code in
 `scripts/stay_leave.py fit1714 / grade1714`), not yet run: paused by the overseer's budget throttle (10:45 AM).
+
+## EXP-1714 (two heads, floored ceiling), valid, oracle #322 @ 52c03c6, feed lag 8 s
+
+| Pooled, % of floored oracle | % [CI] | Δ vs A0 [CI] | switches/h |
+|---|---|---|---|
+| A0 v1 past mean | 87.0 [80.6, 92.8] | | 5.0 |
+| B1 two heads | 91.5 [84.2, 94.9] | +4.5 [-4.0, +10.9] | 6.4 |
+
+NBA 100 vs 88.2 (+11.8, CI [5.5, 14.7]); NFL 93.7 vs 82.6 (+11.0, CI [4.6, 16.0]); NHL 73.2 vs 78.9. **FAIL** on its
+bar (pooled CI includes 0, NHL worse, switches +27 %). Floors 0.
+
+## EXP-125 (two heads + hysteresis band), valid, at the MEASURED feed lag (p90: NBA 70, NFL 62, NHL 75 s) and at 8 s
+
+| Pooled, % of floored oracle | feed lag p90 | feed lag 8 s |
+|---|---|---|
+| A0 v1 past mean | 81.2 | 87.0 |
+| B1 two heads (m = 0) | 75.7 (Δ -5.5, CI [-19.2, +10.9]) | 91.5 |
+| band m = 0.25 / 0.5 / 1.0 | 72.2 / 60.1 / 50.0 | 75.8 / 77.4 / 61.3 |
+
+**FAIL.** The band lowers % of oracle at every m (it cuts switches by holding on games that have gone quiet). At the
+measured feed lag the window is ~10 s, the decision is almost all beyond-window value, and the learned heads no
+longer beat the placeholder (NFL +9.8 with a CI spanning 0; NBA -6.4; NHL -9.9). Floors 0 everywhere.
+
+## Where this leaves stay/leave (rows tried on the same 9 valid nights: EXP-1712, 1713, 1714, 125)
+
+1. The safety floors work: 0 high-leverage or crunch leaves and 0 mid-play joins on every arm. The unfloored
+   hindsight oracle makes ~45 such leaves, so the floored ceiling is the honest 100 %.
+2. A learned game-context value helps only when the buffer window is wide (8 s feed lag). At today's measured feed
+   lag it does not, so faster feeds (T6) are worth more to stay/leave than a better regressor.
+3. Stop tuning on these 9 nights (forking paths). Next, pre-registered and NOT run: EXP-126, a pairwise ranker across
+   games live at the same minute, trained on the eval-data-v3 pin (more NBA/NHL dev nights, Fri Nov 6) and graded at
+   the measured feed lag. The locked read stays the integrator's, once.
