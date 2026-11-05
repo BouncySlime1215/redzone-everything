@@ -1,5 +1,5 @@
 {
- "about": "Data scout ledger (Nick 11:35 PM Nov 4 2026, EXP-097). Candidates found by the scout, license-checked and ranked by new information per GB. Pulled data is counted in docs/data-ledger.json (the Data Division crews A-F, docs/plans/2026-11-05-data-division.md); this file is the pipeline in front of it. Render with: python scripts/scout_ledger.py Scout experiment ids: EXP-1600-1699. Owner = the crew that pulls it (A pbp, B context, D markets); 'scout' = still being probed.",
+ "about": "Data scout ledger (Nick 11:35 PM Nov 4 2026, EXP-097). Candidates found by the scout, license-checked and ranked by new information per GB. Pulled data is counted in docs/data-ledger.json (the Data Division crews A-F, docs/plans/2026-11-05-data-division.md); this file is the pipeline in front of it. Render with: python scripts/scout_ledger.py Scout experiment ids: EXP-1600-1699. Owner = the crew that pulls it (A pbp, B context, D markets); 'scout' = still being probed. Video principle (Nick 12:15 AM): extract features on the fly (numbers, timestamps), never store raw video.",
  "token_rule": "tokens = events x 6 for event streams (noggin_tokens vocab v1). Three kinds, counted separately (Nick 11:50 PM): 'events' = new real plays/pitches/balls; 'context-new' = external facts we did not have (odds, weather, refs, injuries, TV slot), counted ONCE per game as unique tokens, with as-fed tokens (repeated on every play by vocab v2) shown only in the why line; 'derived' = computed from data we already hold (WP, leverage, momentum, timeouts left, lineups, player-to-date, standings and playoff odds, rest and travel): adds tokens per play but no new knowledge. Synthetic and augmentation (mirror, re-timing) are never in this file; they are capped at 3x real in data-ledger.md.",
  "info_per_gb_rule": "score = new_tokens_m x novelty / raw_gb. novelty 1.5 = adds wall-clock timing we lack; 1.0 = new sport, league or level; 0.5 = more of a league we already hold.",
  "verdicts": {
@@ -465,7 +465,7 @@
    "est_tokens_m": 48,
    "novelty": 1.0,
    "raw_gb": 8,
-   "why": "newest in-game tracking (opened Oct 8 2026); adds to the 2019-2026 BDB rows already in the catalog",
+   "why": "TOP priority for tracking (Nick 12:15 AM). newest in-game tracking (opened Oct 8 2026); adds to the 2019-2026 BDB rows already in the catalog",
    "status": "needs-nick",
    "owner": "crew A",
    "needs_nick": "join the Big Data Bowl 2027 competition on Kaggle and accept its rules",
@@ -597,6 +597,48 @@
    "needs_nick": "free Odds API key (already on the pending list)",
    "probe": "",
    "kind": "events"
+  },
+  {
+   "id": "cfbd-api",
+   "kind": "events",
+   "cycle": 13,
+   "priority": 1,
+   "name": "CollegeFootballData API (plays, drives, lines, games)",
+   "sports": "CFB",
+   "years": "2001-2026",
+   "access": "REST v2, free key Nick adds as a Kaggle secret; Academic tier 3,000 calls/month (unc.edu)",
+   "verdict": "yellow",
+   "license": "CFBD terms: free key, attribution; already in catalog #202 (Nick 12:15 AM confirms)",
+   "est_events_m": 4,
+   "est_tokens_m": 24,
+   "novelty": 1.0,
+   "raw_gb": 1,
+   "why": "the only non-ESPN CFB play-by-play; lines feed crew B's v2-lines for CFB",
+   "status": "needs-nick",
+   "owner": "crew A",
+   "needs_nick": "register the free CFBD key and add it as a Kaggle secret",
+   "probe": ""
+  },
+  {
+   "id": "cc-video-metadata",
+   "kind": "context-new",
+   "cycle": 13,
+   "priority": 4,
+   "name": "Creative Commons sports video, features on the fly only (YouTube Data API videoLicense=creativeCommon, Vimeo CC filter)",
+   "sports": "all",
+   "years": "any",
+   "access": "search metadata via the YouTube Data API (Nick's free key); any frames are processed in memory into numbers/timestamps, raw video never stored",
+   "verdict": "yellow",
+   "license": "CC BY (YouTube's only CC option) per video, credit the uploader; YouTube API policy: refresh or delete stored metadata within 30 days. Low priority (Nick 12:15 AM): only if a use emerges, e.g. dead-ball vision labels",
+   "est_events_m": 0,
+   "est_tokens_m": 0,
+   "novelty": 1.0,
+   "raw_gb": 0.05,
+   "why": "parked until a use emerges",
+   "status": "parked",
+   "owner": "crew C",
+   "needs_nick": "none",
+   "probe": ""
   }
  ],
  "red_found": [
@@ -621,8 +663,12 @@
    "why": "scrape sites whose terms forbid it"
   },
   {
-   "name": "FBref / Sports-Reference soccer",
-   "why": "terms forbid AI training and automated access (same as the catalog's PFR row)"
+   "name": "Sports-Reference family (Pro-Football-, Basketball-, Hockey-, Baseball-Reference, FBref, Stathead)",
+   "why": "Terms §5(09) bar automated access without written permission; §5(11) bars using content to train or prompt AI models or ML. Skipped per Nick's 12:15 AM rule (checked Nov 5 04:28 UTC). Bot page: 20 requests/min (10 for FBref/Stathead), jail up to a day"
+  },
+  {
+   "name": "Sports-1M, UCF101 (action recognition)",
+   "why": "Nick 12:15 AM: skip, they don't help break, timing or excitement"
   }
  ]
 }
