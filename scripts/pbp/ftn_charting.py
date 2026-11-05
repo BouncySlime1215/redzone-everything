@@ -23,7 +23,7 @@ except ImportError:
 
 URL = "https://github.com/nflverse/nflverse-data/releases/download/ftn_charting/ftn_charting_{y}.parquet"
 LICENSE = "FTN Data via nflverse (CC BY-SA 4.0, share-alike); plan B personal use; credit FTN Data via nflverse"
-SOURCE = "nfl_ftn_charting"
+SOURCE = "ftn_charting"
 UA = "redzone-personal-research/1.0"
 LAST_SEASON = 2024                # 2025 overlaps the locked NFL window
 FLAGS = ["is_no_huddle", "is_motion", "is_play_action", "is_screen_pass", "is_rpo", "is_trick_play",

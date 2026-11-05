@@ -31,10 +31,10 @@ def test_locked_season_never_pulled(tmp_path):
 
 
 def test_ledger_counts_charting_apart(tmp_path):
-    d = tmp_path / "nfl_ftn_charting"
+    d = tmp_path / "ftn_charting"
     d.mkdir()
     (d / "2024.parquet.json").write_text(json.dumps({
-        "source": "nfl_ftn_charting", "league": "nfl", "season": 2024, "license": FT.LICENSE, "tag": FT.schema.PERSONAL,
+        "source": "ftn_charting", "league": "nfl", "season": 2024, "license": FT.LICENSE, "tag": FT.schema.PERSONAL,
         "data_plan": "B", "games": 2, "events": 10, "v1_tokens": 60, "bytes": 1, "rows_are": "per-play charting flags"}))
     s = ledger.summarize(ledger.collect([tmp_path]))
     assert s["charting"]["v1_tokens"] == 60 and s["total"]["v1_tokens"] == 0

@@ -261,7 +261,7 @@
    "kind": "events"
   },
   {
-   "source": "nfl_ftn_charting",
+   "source": "ftn_charting",
    "league": "nfl",
    "seasons": "2022-2024",
    "shards": 3,
