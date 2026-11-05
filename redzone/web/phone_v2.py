@@ -556,6 +556,26 @@ def progress(g) -> float:
     return min(1.0, ((p - 1) * per + (per - left)) / (reg * per))
 
 
+# EXP-035 "why we're here": the tag shows only when the game on screen is at or over a fixed, logged
+# threshold on the 0-100 scale (learned watch value when it exists, else today's score), so a label never
+# claims more than the number behind it. lab/decision_records grades every switch that crossed it:
+# "alerted but nothing happened" = no big play in that game within its outcome window. The threshold is
+# config phone.why_tag_min (one number for the phone and the grader).
+
+
+def why_tag(s, threshold: float) -> dict | None:
+    """The tag for the game on screen (a Scored), or None when it's under the threshold or has no why."""
+    if s is None:
+        return None
+    learned = s.watch_value is not None
+    val = float(s.watch_value) if learned else float(s.score)
+    text = ((s.watch_why if learned else "") or s.factor or s.reason or "").strip()
+    if val < threshold or not text:
+        return None
+    return {"text": text[:100], "value": int(round(min(100.0, val))), "threshold": threshold,
+            "source": "learned" if learned else "stub"}
+
+
 RISING_MIN = 1.0    # watch_rising (points per minute) at or above this shows an up arrow, at or below -this a down one
 
 
@@ -775,7 +795,9 @@ def router(engine) -> APIRouter:
     async def watch():
         if not _enabled(engine):
             return _off()
-        return {"enabled": True, "now": time.time(), "current": getattr(engine.decider, "current", None),
+        cur = engine.decider.current
+        return {"enabled": True, "now": time.time(), "current": cur,
+                "why_tag": why_tag(engine.scored.get(cur), float(engine.cfg.get("phone.why_tag_min"))) if cur else None,
                 **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}))}
 
     @r.get("/provenance")

@@ -526,3 +526,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `evaldata.config_behind_live`. A tree whose defaults turn the buffer on is now graded with it. On 2 NBA nights,
   `--set timing.behind_live_s.enabled=true` and `--behind-live 90` give identical cards. With the shipped defaults (off),
   nothing changes. Grader freeze v8.
+- 2026-11-04 (lane 5, #185, EXP-035): new default `phone.why_tag_min: 70` (0-100). The phone's "Why we're here"
+  label shows only when the game on screen is at or over it (learned watch value, else today's score), and
+  lab/decision_records grades every switch over it for "alerted but nothing happened". Reason: the Start Planner
+  (Cycle 08, #183) asked for one source for numbers; 70 is a starting point, to move only with an EXP result.

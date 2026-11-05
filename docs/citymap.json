@@ -543,6 +543,7 @@
     "redzone/lab/backtest.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
+    "redzone/lab/decision_records.py",
     "redzone/lab/evaldata.py",
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
@@ -1898,7 +1899,9 @@
   },
   "redzone/lab/decision_records.py": {
    "contracts": [],
-   "inputs": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
    "kind": "module",
    "outputs": [
     "redzone/web/phone_v2.py",
