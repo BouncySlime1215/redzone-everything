@@ -34,7 +34,7 @@ paste the stack trace (it has no secrets): the reflection path needs a different
     python tools/rzseek/prime_night.py log <stick A> <stick B> --out data/reports/b1_2026-11-05.jsonl
     python tools/rzseek/prime_night.py report data/reports/b1_2026-11-05.jsonl
 
-Read-only (no key press), sticks written as stick1/stick2. The report says per stick x content whether the
+Read-only (no key press), sticks written as stickA/stickB. The report says per stick x content whether the
 position is an epoch (> 1e12: the frame's wall clock, so E = seconds behind real life) or a counter, how flat E
 stays between state updates, unexplained jumps per hour (B1 pass: <= 2), and each pause's rise in E against
 its length.

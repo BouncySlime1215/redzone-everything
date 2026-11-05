@@ -4,7 +4,7 @@
     python tools/rzseek/prime_night.py report data/reports/b1_<night>.jsonl
 
 Read-only: one `cat /proc/uptime; dumpsys media_session` per stick per tick (the same read the app's probe
-makes), never a key press. Sticks are written as stick1, stick2 ... in the order given, never by address.
+makes), never a key press. Sticks are written as stickA, stickB ... in the order given, never by address.
 
 `report` answers tonight's questions per stick x content (package + title):
   * epoch or counter: is the position above 1e12 (the frame's wall clock in ms, Prime NBA on Nov 4) or a
@@ -51,7 +51,7 @@ def read(host: str) -> dict:
 
 def log(hosts: list[str], out: Path, every: float) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
-    names = {h: f"stick{i + 1}" for i, h in enumerate(hosts)}
+    names = {h: f"stick{chr(65 + i)}" for i, h in enumerate(hosts)}
     with out.open("a") as f:
         while True:
             t = time.time()
