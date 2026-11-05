@@ -22,6 +22,7 @@ Row schema (one JSON object per line; crews write these field names, extra field
     plan        "A" (catalog green) or "B" (personal use, Nick 11:20 PM Nov 4)
     asof_ts     when the value was known (ISO 8601, UTC)          context rows only
     use_ts      the decision instant the value feeds (ISO 8601)   context rows only
+    game_key    canonical game identity across sources, "<league>:<YYYYMMDD>:<away>@<home>" (D8)
     tokens      vocab-v2 token count of the row
     unmapped    vocab-v2 tokens with no id (counted toward the < 1% bar)
     features    {name: number} numeric features (for the single-feature AUC scan)
@@ -35,6 +36,9 @@ Checks (ids are proposals; the integrator renames them on freeze):
     D5 synth     synthetic tokens <= 3x real tokens (EXP-097 cap)
     D6 vocab     unmapped tokens < 1% per league (EXP-003 bar, extended to vocab v2 and every level)
     D7 leak scan any single numeric feature with AUC > .98 against --label-col is a red flag (grading rule 5)
+    D8 identity  (EXP-721) the same real game from two sources (game_key = canonical league:date:away@home) never
+                 sits in two splits, and its tokens count as new information once: the cross-source duplicate
+                 token share is reported, and FAILs above 1% when the duplicates are marked kind=events
 """
 from __future__ import annotations
 
@@ -239,6 +243,38 @@ def d7_leakscan(rows: list[dict], label_col: str | None) -> list[tuple[str, str]
     return [("PASS", f"D7 {len(names)} features, none above AUC {AUC_FLAG}")]
 
 
+def d8_identity(rows: list[dict]) -> list[tuple[str, str]]:
+    keyed = [r for r in rows if r.get("game_key")]
+    if not keyed:
+        return [("PENDING", "D8 no game_key column")]
+    sources = defaultdict(set)
+    splits_of = defaultdict(set)
+    for r in keyed:
+        sources[r["game_key"]].add(r.get("source"))
+        if r.get("split"):
+            splits_of[r["game_key"]].add(r["split"])
+    out = []
+    multi_split = sorted(k for k, s in splits_of.items() if len(s) > 1)
+    if multi_split:
+        out.append(("FAIL", f"D8 {len(multi_split)} games in two splits across sources (first {multi_split[:3]})"))
+    multi = {k for k, s in sources.items() if len(s) > 1}
+    tok = Counter()
+    first_src = {k: min(map(str, sources[k])) for k in multi}
+    for r in keyed:
+        n = int(r.get("tokens") or 0)
+        tok["all"] += n
+        if r["game_key"] in multi and str(r.get("source")) != first_src[r["game_key"]] and r.get("kind") == "events":
+            tok["dup_events"] += n
+    share = tok["dup_events"] / tok["all"] if tok["all"] else 0.0
+    if share > DUP_MAX:
+        out.append(("FAIL", f"D8 {share:.2%} of tokens are a second source's copy of a game marked kind=events "
+                            f"({len(multi)} games); mark them derived or drop them (bar <= {DUP_MAX:.0%})"))
+    if not out:
+        out.append(("PASS", f"D8 {len(sources)} games, {len(multi)} from more than one source, "
+                            f"cross-source event duplicates {share:.2%}"))
+    return out
+
+
 def grade(rows: list[dict], locked: dict[str, set[str]] | None = None,
           label_col: str | None = None) -> list[tuple[str, str]]:
     """locked: league -> YYYYMMDD nights; None reads them from the archive via redzone/lab/splits.py."""
@@ -248,7 +284,7 @@ def grade(rows: list[dict], locked: dict[str, set[str]] | None = None,
     if res[0][0] == "FAIL":
         return res
     return (res + d1_license(rows) + d2_asof(rows) + d3_dedupe(rows) + d4_splits(rows, locked)
-            + d5_synth(rows) + d6_vocab(rows) + d7_leakscan(rows, label_col))
+            + d5_synth(rows) + d6_vocab(rows) + d7_leakscan(rows, label_col) + d8_identity(rows))
 
 
 def main(argv: list[str] | None = None) -> int:

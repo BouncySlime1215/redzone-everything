@@ -112,3 +112,21 @@ def test_auc_ties():
     assert dlg.auc([1, 1, 1, 1], [0, 1, 0, 1]) == 0.5
     assert dlg.auc([0, 1, 2, 3], [0, 0, 1, 1]) == 1.0
     assert dlg.auc([1, 2], [1, 1]) is None
+
+
+def test_cross_source_game_in_two_splits_fails():
+    rows = [row("a1", "2025-01-01", "train", source="cdn", game_key="nba:20250101:BOS@WAS", seq=1),
+            row("e9", "2025-01-01", "test", source="espn", game_key="nba:20250101:BOS@WAS", seq=2)]
+    assert "FAIL" in status(dlg.grade(rows, locked={"nba": set()}), "D8")
+
+
+def test_cross_source_event_copies_count_once():
+    rows = [row("a1", "2025-01-01", "train", source="cdn", game_key="nba:20250101:BOS@WAS", seq=1),
+            row("e9", "2025-01-01", "train", source="espn", game_key="nba:20250101:BOS@WAS", seq=2)]
+    assert status(dlg.grade(rows, locked={"nba": set()}), "D8") == ["FAIL"]
+    rows[1]["kind"] = "derived"
+    assert status(dlg.grade(rows, locked={"nba": set()}), "D8") == ["PASS"]
+
+
+def test_no_game_key_is_pending():
+    assert status(dlg.grade(clean(), locked={"nba": set()}), "D8") == ["PENDING"]
