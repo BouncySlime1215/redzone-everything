@@ -538,3 +538,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   league an entry never takes a landing the data can't call ("play may be live"): it rewinds to a known dead ball
   or waits. Why: RC6.1's 3 NFL live mid-play entries on the North Star card were all this case; dev 3 -> 0 and
   fresh seeds 8 -> 1 with plays missed on entry down. Off until the release read.
+- **2026-11-05 (lane 2, #214): `decider.entry.conformal`** (enabled `false`, tau 0 for NFL/NBA/NHL; EXP-024). The
+  conformal floor: no entry lands on less doubt than tau x sigma. Why: dev calibration put NFL's bound at 0.0012
+  mid-play per timed entry with tau 0 (no floor needed); NBA and NHL are underpowered. Off; tau stays 0.
