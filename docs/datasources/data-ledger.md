@@ -43,3 +43,11 @@ Copy this block, set the cycle number and date, and fill every column.
 - Waiting on Nick (keys, Rules tabs, sign-offs), with the date asked:
 - Decisions logged in docs/memory/decisions.md this cycle:
 - License changes spotted (re-check any source whose terms changed):
+
+## Data Division A (play-by-play crew)
+
+New pbp sources land as play-table shards (scripts/pbp/schema.py) and are counted in
+[pbp-ledger.md](pbp-ledger.md), generated from the landed shards' sidecars. Every token there is a real event (new
+information). Nov 5 2026 05:00 UTC: StatsBomb open data, all 80 competition-seasons, 3,961 matches, 13.9M events,
+83.5M v1 tokens, 0 games dropped. Tagged yellow (StatsBomb user agreement, credit StatsBomb). Held privately in the
+project files under data-a/pbp/statsbomb (135 MB).
