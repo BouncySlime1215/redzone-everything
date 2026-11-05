@@ -37,4 +37,4 @@ def test_season_title_and_title_map(tmp_path):
 
 def test_game_days_cover_utc_rollover():
     days = whb.game_days("nba", 2025)
-    assert len(days) > 150 and days == sorted(days)
+    assert len(days) > 150 and days == sorted(days, reverse=True)

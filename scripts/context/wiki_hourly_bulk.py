@@ -172,7 +172,7 @@ def game_days(league: str, season: int) -> list[str]:
     k = pd.to_datetime(g["start_utc"], utc=True)
     days = set(k.dt.strftime("%Y-%m-%d")) | set((k + pd.Timedelta(hours=4)).dt.strftime("%Y-%m-%d"))
     today = time.strftime("%Y-%m-%d", time.gmtime())   # the daily file appears the next day
-    return sorted(d for d in days if d < today)
+    return sorted((d for d in days if d < today), reverse=True)   # newest first (Nick 12:10 PM)
 
 
 def pull_day(day: str, titles, pat_file: Path) -> dict[tuple, int] | None:
