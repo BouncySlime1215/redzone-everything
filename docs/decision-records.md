@@ -42,3 +42,28 @@ With phone v2 on, "I missed that" also adds a line to `data/reel_requests.jsonl`
 3-minute rule). `state` is `recorded_reels_off` while `reel.play` is false (the default) and `queued` once
 reels can play. It's a control request, like a button press: the decision-record export, the Teacher and
 every training or grading path ignore it (self-taught rule). Nothing plays it yet.
+
+## Crunch timeline in the replay viewer (learned vs hindsight)
+
+The "Whole night" sheet draws one pair of tracks per game: the learned crunch state (#166) on top, the
+hindsight oracle's crunch below, with each game's entry and exit delta. Misses come first, and the header
+says how many exits were right. It reads `data/crunch/<night>.json`, written offline by lane 1's grader
+with the same rule as `scripts/train_watch_value.crunch_card` (first-on / last-on within `tol_s`):
+
+```json
+{"tol_s": 60, "games": {"<game id>": {"learned": [[t0, t1], ...], "oracle": [[t0, t1], ...]}}}
+```
+
+When there's no file, the learned side is sampled from each switch's `trace.provenance.crunch_state`
+(#173, `{"to": state, "from": state}` or a bare state) and the hindsight side shows as pending.
+
+## Live night: the morning gold-data check
+
+`GET /api/v2/capture?day=` (the "Live night" sheet) answers one question: did last night become gold data?
+- **Auto-log:** `data/live_nights/<night>/summary.json` from the supervisor's `collect_live_night`.
+- **Provenance:** how many switches carry `trace.provenance`, and which modules spoke.
+- **Held buffer:** `control.held` right now (tonight only), and `data/buffer.jsonl` kinds for the night.
+- **Night report:** `data/reports/<night>.md` or `docs/nights/<night>.md`, readable in the sheet through
+  `/api/v2/capture/report`.
+
+It's read only and makes no writes.
