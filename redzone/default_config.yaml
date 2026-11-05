@@ -606,3 +606,7 @@ calib:                     # [calib.auto] values re-measured each night from liv
 
 report:                    # [night health] scripts/night_report.py -> docs/nights/YYYY-MM-DD.md every morning (northstar.yml)
   nightly: true            # ON (cycle 07): its gates pass in tests/test_night_report.py (matches the live log, PENDING with no night, nothing private)
+
+shadow:                    # [shadow] EXP-004: the candidate decider runs silently beside live (redzone/shadow.py)
+  enabled: false           # OFF until a replayed night shows it fits (<= 150 MB extra RSS, no TV commands)
+  profile: candidate       # which Noggin profile (redzone/noggin/profile.py); its calls go to data/shadow.jsonl

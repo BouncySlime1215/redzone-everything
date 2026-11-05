@@ -438,3 +438,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   are self-contained: public inputs at a pinned commit, no Drive mount, no secrets, grades.json printed. The
   overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
   frozen, locked is read once (Sunday).
+- 2026-11-04 (lane 3, EXP-004, shadow mode Mac half): new config keys `shadow.enabled: false` and
+  `shadow.profile: candidate`. With the flag on, a second Decider (the Noggin profile's overrides on today's
+  config) sees the same candidates and play-by-play as live, sends no TV commands, never writes the delay book,
+  and logs its calls to data/shadow.jsonl for next-morning scoring; any error turns it off for the night.
+  Reason: Cycle 08 plan (#183) step 3 and Nick's grading rules (final judges locked, then shadow live, then real
+  hardware). Ships off until measured on a replayed night.
