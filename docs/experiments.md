@@ -154,6 +154,8 @@ lines are inputs to importance only: never shown and never a betting prompt.
 | C17 | EXP-1714 | W (Watch Value v2) | STAY/LEAVE v1.1: two heads (reward without the your-team term + crunch count) and the floored oracle as the 100 % ([prereg](prereg/exp-1714.md)). | % of floored oracle; 0 floor leaves, 0 mid-play entries | CPU / ~1 | lane ① | B1 - A0 >= +1.0 pt, CI > 0 | 8 valid per league | **FAIL (valid)**: 91.5 vs 87.0 % of floored oracle, CI [-4.0, +10.9], switches +27 % (8 s feed lag) |
 | C17 | EXP-125 | W (stay/leave) | EXP-1714 + hysteresis band; graded at the measured feed-lag p90 ([prereg](prereg/exp-125.md)). | % of floored oracle | CPU / ~1 | lane ① | C - A0 >= +1.0, CI > 0 | 8 valid per league | **FAIL (valid)**: band hurts at every m; at p90 B1 75.7 vs A0 81.2 |
 | C17 | EXP-126 | W (stay/leave) | Pairwise ranker across live games at the measured feed lag, on pin v3 ([prereg](prereg/exp-126.md)). | % of floored oracle | CPU / ~1 | lane ① | R1 - A0 >= +1.0, CI > 0 | 8 valid per league (v3) | **FAIL on v1 valid** (75.2 vs 81.2 at p90; not nominated); re-run on v3 |
+| C17 | EXP-127 | W (stay/leave) | + crew H pregame context (stakes, rivalry, records, national TV) ([prereg](prereg/exp-127.md)). | % of floored oracle, p90 | CPU / ~1 | lane ① | X1 - A0 >= +1.0, CI > 0 | 8 valid per league | pre-registered, one run when tables land |
+| C17 | EXP-128 | W (stay/leave) | Newest-first: this + last season in train ([prereg](prereg/exp-128.md)). | % of floored oracle, p90 | CPU / ~1 | lane ① | N1 - A0 >= +1.0, CI > 0 | 8 valid per league | **FAIL (valid)**: 74.0 vs 81.2; NFL 90.7 vs 74.4 (CI > 0, PENDING) |
 
 ## Phase 1: timing brain (to ~Wed Nov 11)
 

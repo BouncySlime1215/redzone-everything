@@ -55,3 +55,17 @@ longer beat the placeholder (NFL +9.8 with a CI spanning 0; NBA -6.4; NHL -9.9).
 3. Stop tuning on these 9 nights (forking paths). Next, pre-registered and NOT run: EXP-126, a pairwise ranker across
    games live at the same minute, trained on the eval-data-v3 pin (more NBA/NHL dev nights, Fri Nov 6) and graded at
    the measured feed lag. The locked read stays the integrator's, once.
+
+## EXP-126 (relative-value ranker) and EXP-128 (last season added to train), valid, % of floored oracle
+
+| Pooled | feed lag p90 | feed lag 8 s |
+|---|---|---|
+| A0 v1 past mean | 81.2 | 87.0 |
+| B1 (EXP-1714) | 75.7 | 91.5 |
+| R1 ranker (EXP-126) | 75.2 (Δ -6.0, CI [-20.3, +9.7]) | n/a |
+| N1 + last season (EXP-128) | 74.0 (Δ -7.2, CI [-45.9, +12.4]) | 81.2 |
+
+Both **FAIL**. EXP-128 trained on this season (pin v1 train) + last season (36 NBA/NHL nights Mar-Oct 2026 from pin v2,
+weight 0.5). Per league at p90: **NFL 90.7 vs 74.4 (Δ +16.2, CI [4.8, 22.6])**, NBA 35.3 vs 88.2 (2 nights, CI
+[0, 98]), NHL 29.6 vs 43.7. Every league is PENDING (< 8 valid nights); the NFL signal is the only CI clear of 0 so
+far and needs the v3 pin / locked read to mean anything. Floors 0 everywhere. Rows tried on these 9 nights: 7.
