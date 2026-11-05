@@ -1,0 +1,2 @@
+nba: 92 archive games, 92 with context on both sides, nights 20261020..20261101
+nfl: 286 archive games, 269 with context on both sides, nights 20250905..20261101
