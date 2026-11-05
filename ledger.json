@@ -1,0 +1,16 @@
+{
+ "updated": "2026-11-05T07:54Z",
+ "sources": {
+  "nhl": {
+   "clips": 35043,
+   "linked": 24659,
+   "tokens_new": 140172,
+   "tokens_derived": 70086,
+   "bytes": 975531,
+   "license": "NHL api-web, NHL.com terms; plan B personal use",
+   "tag": "personal-use, not for commercial release"
+  }
+ },
+ "total_new": 140172,
+ "total_derived": 70086
+}
