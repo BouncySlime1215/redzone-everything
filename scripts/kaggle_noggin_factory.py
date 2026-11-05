@@ -47,6 +47,13 @@ PLAN = {
     "mlb": (list(range(2024, 1973, -1)), 0),   # Retrosheet (green, Wave 1): tokens only, no wall clocks; 2025+ held out
 }
 APIWEB_BEFORE = 2020   # NHL seasons before 2019-20 tokenize from api-web (docs/data-sources.md)
+# [#202, Nick's A/B call] Green-only unless RZ_DATA_PLAN=B: hoopR NBA/CBB are ESPN-derived and NHL/CFB read
+# ESPN's site API, all red in the catalog for training. Green = nflverse NFL, NBA.com cdn NBA (shufinskiy mirror,
+# seasons ending 2021-26), Retrosheet MLB.
+DATA_PLAN = os.environ.get("RZ_DATA_PLAN", "")
+GREEN = DATA_PLAN != "B"
+if GREEN:
+    PLAN = {"nfl": PLAN["nfl"], "nba": (list(range(2026, 2020, -1)), 20), "mlb": PLAN["mlb"]}
 if os.environ.get("RZ_LEAGUES"):
     PLAN = {k: v for k, v in PLAN.items() if k in os.environ["RZ_LEAGUES"].split(",")}
 os.makedirs(OUT, exist_ok=True)
@@ -74,16 +81,21 @@ if not SMOKE:
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "pandas", "pyarrow", "requests", "pyyaml"], check=False)
 # resume: everything an attached previous output finished (moments shards, self-play parts, their json)
 prev = sorted(glob.glob(f"{INP}/**/factory/manifest.json", recursive=True))
+RED_LEAGUES = ("nba", "cbb", "nhl", "cfb")       # red sources unless the previous output was itself green
 for m in prev:
     src = os.path.dirname(m)
+    prev_green = json.load(open(m)).get("data_plan") == "green"
     for f in glob.glob(f"{src}/**/*", recursive=True):
-        dst = f"{OUT}/{os.path.relpath(f, src)}"
+        rel = os.path.relpath(f, src)
+        if GREEN and not prev_green and len(rel.split(os.sep)) > 1 and rel.split(os.sep)[1] in RED_LEAGUES:
+            continue                              # never carry hoopR / ESPN shards into a green run
+        dst = f"{OUT}/{rel}"
         if os.path.isfile(f) and not f.endswith(("manifest.json", ".tmp")) and not os.path.exists(dst):
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy(f, dst)
 print("resumed from", prev, "| moments shards", len(glob.glob(f"{OUT}/moments/*/*.json")),
       "| self-play parts", len(glob.glob(f"{OUT}/selfplay/*/*/part-*.parquet")),
-      "| jobs", JOBS, "| plan", {k: (len(v[0]), v[1]) for k, v in PLAN.items()})
+      "| jobs", JOBS, "| data plan", DATA_PLAN or "green only", "| plan", {k: (len(v[0]), v[1]) for k, v in PLAN.items()})
 DEADLINE = T0 + SESSION_H * 3600 - 900          # every job stops starting new work 15 min before the end
 
 
@@ -111,10 +123,22 @@ def season_job(league, year, synthetic, deadline):
         os.remove(raw)
         return dict(res, s=round(time.time() - t0))
     mo = f"{OUT}/moments/{league}/{year}.parquet"
+    cdn = GREEN and league == "nba"            # green NBA: NBA.com cdn in hoopR schema, never hoopR itself
+    cdn_raw = f"{RAW}/nba/cdn_{year}.parquet"
+    if cdn and not os.path.exists(cdn_raw) and time.time() < deadline:
+        import nba_cdn_plays as CDN
+        got = CDN.fetch_season(year - 1, __import__("pathlib").Path(f"{RAW}/cdn_tmp"))   # cdn names the start year
+        if got is not None:
+            os.makedirs(os.path.dirname(cdn_raw), exist_ok=True)
+            os.replace(got, cdn_raw)
     if not os.path.exists(mo[:-8] + ".json"):
         if time.time() > deadline:
             return dict(res, skipped="session deadline")
-        y, t = NF._one((league, year, RAW, True, 40 if SMOKE else None))
+        if cdn:
+            t = F.build("nba", __import__("pathlib").Path(cdn_raw), max_games=40 if SMOKE else None) \
+                if os.path.exists(cdn_raw) else None
+        else:
+            y, t = NF._one((league, year, RAW, True, 40 if SMOKE else None))
         if t is not None and len(t):
             n_all = len(t)
             t = F.drop_eval_nights(t, league)
@@ -129,12 +153,12 @@ def season_job(league, year, synthetic, deadline):
         json.dump(info, open(mo[:-8] + ".json", "w"))
     res["moments"] = json.load(open(mo[:-8] + ".json"))["rows"]
     espn_src = bool(F.SOURCES[league].get("espn"))
-    raw = f"{RAW}/{league}/{'espn' if espn_src else 'pbp'}_{year}{'.jsonl.gz' if espn_src else '.parquet'}"
+    raw = cdn_raw if cdn else f"{RAW}/{league}/{'espn' if espn_src else 'pbp'}_{year}{'.jsonl.gz' if espn_src else '.parquet'}"
     spj = f"{OUT}/selfplay/{league}/{year}.json"
     sp_done = os.path.exists(spj) and json.load(open(spj)).get("complete")
     tkj = f"{OUT}/tokens/{league}/{year}.json"
     tk_done = os.path.exists(tkj) and json.load(open(tkj)).get("complete")
-    if ((synthetic and not sp_done) or not tk_done) and not os.path.exists(raw) and time.time() < deadline:
+    if ((synthetic and not sp_done) or not tk_done) and not os.path.exists(raw) and not cdn and time.time() < deadline:
         if espn_src:
             NF.fetch_espn_season(league, year, __import__("pathlib").Path(raw), max_games=40 if SMOKE else None)
         else:
@@ -158,7 +182,7 @@ def season_job(league, year, synthetic, deadline):
         res["selfplay_complete"] = sp["complete"]
     elif sp_done:
         res["selfplay"] = json.load(open(spj))["rows"]
-    for p in glob.glob(f"{RAW}/{league}/*{year}*"):
+    for p in glob.glob(f"{RAW}/{league}/*{year}*") + glob.glob(f"{RAW}/cdn_tmp/nba/*{year - 1}*"):
         os.remove(p)
     res["seconds"] = round(time.time() - t0)
     return res
@@ -209,6 +233,7 @@ for f in sorted(glob.glob(f"{OUT}/tokens/*/*.json")):         # NFM event tokens
         L[k] = L.get(k, 0) + int(v)
     L.setdefault("sources", {})
     L["sources"][i.get("source", "?")] = L["sources"].get(i.get("source", "?"), 0) + int(i.get("tokens") or 0)
+man["data_plan"] = "green" if GREEN else DATA_PLAN
 man["total_tokens"] = sum(v.get("tokens", 0) for v in man["leagues"].values())
 # DATA LEDGER (Nick 5:00 PM): tokens per league and source, real vs synthetic, crunch / OT / comeback / blowout share
 man["ledger"] = {lg: {"tokens_real": v.get("tokens", 0), "sources": v.get("sources", {}),

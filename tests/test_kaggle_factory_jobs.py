@@ -27,15 +27,19 @@ from redzone.models import PERIOD_S, REGULATION, League  # noqa: E402
 SCRIPT = ROOT / "scripts" / "kaggle_noggin_factory.py"
 
 
-def _notebook_defs():
-    """PLAN and season_job from the notebook script, without running its setup cells."""
+def _notebook_defs(data_plan: str = "B"):
+    """PLAN and season_job from the notebook script, without running its setup cells. data_plan "B" = every
+    league (red sources too); anything else = the green-only plan (the notebook's default)."""
     tree = ast.parse(SCRIPT.read_text())
-    plan = next(n for n in tree.body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "PLAN")
+    names = ("PLAN", "APIWEB_BEFORE", "DATA_PLAN", "GREEN")
+    head = [n for n in tree.body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") in names]
+    gate = [n for n in tree.body if isinstance(n, ast.If) and getattr(n.test, "id", "") == "GREEN"]
     job = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "season_job")
-    consts = [n for n in tree.body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "APIWEB_BEFORE"]
-    ns = {"range": range, "list": list}
-    exec(compile(ast.Module([plan], []), str(SCRIPT), "exec"), ns)
-    return ns["PLAN"], ast.Module(consts + [job], [])
+    env = {**os.environ, "RZ_DATA_PLAN": data_plan}
+    ns = {"range": range, "list": list, "os": type("O", (), {"environ": env})}
+    exec(compile(ast.Module(head + gate, []), str(SCRIPT), "exec"), ns)
+    keep = [n for n in head if n.targets[0].id == "APIWEB_BEFORE"]
+    return ns["PLAN"], ast.Module(keep + [ast.parse(f"GREEN = {ns['GREEN']}").body[0], job], [])
 
 
 def _basketball_game(league: str, gid: str, start: datetime, home: str, away: str) -> list[dict]:
@@ -253,3 +257,31 @@ def test_old_nhl_seasons_tokenize_from_apiweb(tmp_path, monkeypatch):
     assert res["tokens"] > 0 and info["games"] == 2 and info["source"] == "nhl-api-web"   # the eval-window game is dropped
     assert info["coverage"]["no_wall_games"] == 2
     assert not glob.glob(f"{ns['RAW']}/nhl/*")
+
+
+def test_green_plan_is_the_default_and_nba_comes_from_the_cdn(tmp_path, monkeypatch):
+    """[#202] Without RZ_DATA_PLAN=B: nflverse NFL, NBA.com cdn NBA, Retrosheet MLB only; hoopR is never fetched."""
+    import nba_cdn_plays as CDN
+    plan, job = _notebook_defs("")
+    assert set(plan) == {"nfl", "nba", "mlb"}
+    ns = {"OUT": str(tmp_path / "factory"), "RAW": str(tmp_path / "raw"), "SMOKE": False,
+          "time": time, "os": os, "json": json, "glob": glob, "dict": dict, "round": round, "bool": bool,
+          "len": len, "int": int, "__import__": __import__}
+    exec(compile(job, str(SCRIPT), "exec"), ns)
+
+    def no_hoopr(*a, **k):
+        raise AssertionError("hoopR / ESPN fetched in a green run")
+    monkeypatch.setattr(NF, "_fetch", no_hoopr)
+    monkeypatch.setattr(NF, "fetch_espn_season", no_hoopr)
+
+    def cdn(start_year, out):
+        dst = Path(out) / "nba" / f"cdn_{start_year}.parquet"
+        _write_pbp("nba", start_year + 1, dst)
+        return dst
+    monkeypatch.setattr(CDN, "fetch_season", cdn)
+    years, synthetic = plan["nba"]
+    res = ns["season_job"]("nba", years[0] - 3, 1, time.time() + 600)
+    assert "error" not in res and res["moments"] > 0 and res["tokens"] > 0 and res.get("selfplay", 0) > 0, res
+    info = json.loads(Path(ns["OUT"], "tokens", "nba", f"{years[0] - 3}.json").read_text())
+    assert "cdn" in json.dumps(info.get("source", info)).lower(), info
+    assert not glob.glob(f"{ns['RAW']}/nba/*"), "the raw season is deleted after the job"
