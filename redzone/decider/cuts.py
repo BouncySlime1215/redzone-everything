@@ -475,7 +475,7 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
                can_rewind: bool, step: float = 10.0, max_back: float = 60.0,
                relaxed: float | None = None, cost_lo: float | None = None,
                urgent: float | None = None, lag: float = 0.0, possession: bool = False,
-               stall: tuple[float, float] = (0.0, 0.0)) -> EntryPlan:
+               stall: tuple[float, float] = (0.0, 0.0), unknown_ok: bool = True) -> EntryPlan:
     """How to come into this game: as is (the picture lands on a dead ball), with a short rewind so
     it lands on the dead ball just before the restart we'd otherwise join mid-play, or not yet.
 
@@ -494,7 +494,10 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
     doubt beyond the landing lag (the hidden stick is positioned there before the flip).
 
     stall: [seek model] the picture lands k + stall behind for a rewind of k (whole steps); a pause cue
-    on the hidden stick passes step ~0.5 and no stall (it plays up to the dead ball and pauses there)."""
+    on the hidden stick passes step ~0.5 and no stall (it plays up to the dead ball and pauses there).
+
+    unknown_ok: [EXP-089] False: a landing the data can't call ("play may be live") never enters as is;
+    it takes a rewind to a known dead ball or waits (rule #1)."""
     x1 = now + cost - mu
     x00 = now + min(cost, cost if cost_lo is None else cost_lo) - mu
 
@@ -502,7 +505,7 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
         return x00 - max(0.0, lag - m)
     x0 = lo(margin)
     here = dt.landing(x0 - margin, x1 + margin)
-    if here.state == "dead" or (here.state == "unknown" and not can_rewind):
+    if here.state == "dead" or (here.state == "unknown" and not can_rewind and unknown_ok):
         # Football/baseball with no play known to be on screen: the leave gate's own rule.
         return EntryPlan(True, 0.0, here, here.why)
     strict = _rewind(dt, x0, x1, margin, step, max_back, stall) if can_rewind else None
@@ -532,7 +535,7 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
         if cue is not None:
             cue.why += " (possession start)"
             return cue
-    if here.state == "unknown":
+    if here.state == "unknown" and unknown_ok:
         return EntryPlan(True, 0.0, here, here.why)
     return EntryPlan(False, 0.0, here, f"waiting for a dead ball to come in ({here.why})")
 
