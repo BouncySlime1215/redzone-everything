@@ -168,7 +168,7 @@ on locked.
 | id | covers | why | allowed remainder | success bar | nights needed | status |
 |---|---|---|---|---|---|---|
 | EXP-077 | M55 | Betting-line movement as a live news sensor is wager-driven switching, which §5.1 excludes. | Pre-game lines as a hidden data prior only (EXP-031). | n/a | n/a | line |
-| EXP-078 | M19 (market part) | Same: live market odds are not a ranking input. | WP from our own models; pre-game line as prior. | n/a | n/a | line |
+| EXP-078 | M19 (market part) | Live market odds are not a ranking input. | **Approved (Nick, 7:28 PM ET Nov 4):** betting closing lines as a HIDDEN check only, for WP calibration and evaluation (EXP-002 and its locked read). They are never a feature, never shown, and never a nudge toward betting. | n/a | n/a | line |
 | EXP-079 | M23 | Inverse RL from producers' choices needs licensed video or producer logs, and there is no $0, terms-compliant source. | Revisit if a licensed source appears. | n/a | n/a | hold |
 | EXP-080 | M40 + "Company (later)" | Federated personalization, Drama API, shared cloud brain, licensed audio/video: company stage, which needs money and Nick's OK. | None now. | n/a | n/a | hold |
 | EXP-081 | M62 | The guardrail is now the binding line (§5) and the metrics (§6). | Applied to every row above. | n/a | n/a | standing |
