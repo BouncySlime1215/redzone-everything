@@ -137,7 +137,9 @@ jobs:
     # Tests run even if the dataset job failed (a bad checksum must not hide test results).
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30   # base took 19m50s on 3.12 (Nov 4 12:12 run): three replayed-night tests (~3 min each)
+    timeout-minutes: 45   # base took 19m50s on 3.12 (Nov 4 12:12 run): three replayed-night tests (~3 min each);
+                          # +10 for a slow apt mirror (16 and 21 min on Nov 4), which the apt step now also caps;
+                          # +5: with ~20 PRs at once (go wide, Nov 4) one leg ran past 30 min on slow runners
     strategy:
       fail-fast: false
       matrix:
@@ -150,7 +152,16 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
       - name: system tools (PortAudio for sounddevice, ffmpeg for the catch-up reel, as on the Mac)
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libportaudio2 ffmpeg
+        # A slow mirror took 16-21 min here (Nov 4) and starved pytest of the job's time: cap each try at
+        # 6 min, retry once, with apt's own per-request timeout and retries.
+        timeout-minutes: 14
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
+          for i in 1 2; do
+            timeout 360 sh -c "sudo apt-get $APT update -qq && sudo apt-get $APT install -y --no-install-recommends libportaudio2 ffmpeg" && exit 0
+            echo "::warning::apt try $i timed out or failed, retrying"
+          done
+          exit 1
       - run: pip install -r requirements.txt
       - uses: actions/download-artifact@v4
         if: needs.data.outputs.available == 'true'
@@ -169,9 +180,24 @@ jobs:
           shopt -s nullglob
           e2e=(tests/test_e2e*.py)
           if [ ${#e2e[@]} -eq 0 ]; then echo "no end-to-end night test in this branch yet"; exit 0; fi
-          python -m pytest -q -rs -p no:cacheprovider "${e2e[@]}"
-      - name: pytest (mac_only tests are skipped by name on Linux)
-        run: python -m pytest -q -rs -p no:cacheprovider --junitxml=pytest-${{ matrix.python }}.xml
+          python -m pytest -q -rs -p no:cacheprovider --junitxml=e2e-${{ matrix.python }}.xml "${e2e[@]}"
+      - name: pytest (mac_only tests are skipped by name on Linux; the e2e nights ran in the step above)
+        # The e2e nights take ~3 min each; running them twice pushed the job past its limit (Nov 4, #145, #173).
+        run: python -m pytest -q -rs -p no:cacheprovider --ignore-glob='tests/test_e2e*.py' --junitxml=unit-${{ matrix.python }}.xml
+      - name: one junit report (unit + e2e) for playbook coverage and the CI comment
+        if: always()
+        run: |
+          python - "${{ matrix.python }}" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          from pathlib import Path
+          py = sys.argv[1]
+          root = ET.Element("testsuites")
+          for f in (f"e2e-{py}.xml", f"unit-{py}.xml"):
+              if Path(f).exists():
+                  r = ET.parse(f).getroot()
+                  root.extend(r.iter("testsuite") if r.tag == "testsuites" else [r])
+          ET.ElementTree(root).write(f"pytest-{py}.xml", encoding="utf-8", xml_declaration=True)
+          PY
       - name: playbook coverage (a `done` entry must have a marked test that passed)
         run: python scripts/playbook_coverage.py --junit pytest-${{ matrix.python }}.xml
       - uses: actions/upload-artifact@v4
