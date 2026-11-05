@@ -12,7 +12,7 @@ from redzone.models import LEAGUE_ORDER, League, league_index, league_order
 from redzone.noggin import priority as P
 
 ROOT = Path(__file__).resolve().parents[1]
-OLD = ("nfl", "cfb", "nba", "cbb", "wcbb", "nhl", "mlb")   # the copies this step replaced (core, priority)
+OLD = ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")   # the copies step 1 replaced, minus wcbb (Nick, Nov 4: off, unlisted)
 
 
 class Cfg(dict):
@@ -24,13 +24,13 @@ def test_the_order_is_the_north_star_order_and_the_config_default():
     assert tuple(x.value for x in LEAGUE_ORDER) == OLD == league_order()
     shipped = yaml.safe_load((ROOT / "redzone" / "default_config.yaml").read_text())["core"]["league_priority"]
     assert tuple(shipped) == OLD
-    assert set(LEAGUE_ORDER) == set(League)
+    assert set(LEAGUE_ORDER) == set(League) - {League.WCBB}
 
 
 def test_core_and_priority_ranks_are_unchanged():
     k = core.Knobs()
     rules = P.HardRules()
-    for lg in OLD + ("xfl", ""):
+    for lg in OLD + ("xfl", "", "wcbb"):
         old_core = len(OLD) - OLD.index(lg) if lg in OLD else 0
         old_pri = OLD.index(lg) if lg in OLD else len(OLD)
         assert core.league_rank(lg, k) == old_core
@@ -47,7 +47,7 @@ def test_a_config_override_reaches_every_reader():
 
 def test_the_plan_orders_college_by_the_same_order():
     pos = plan.LEAGUE_POS
-    assert sorted(pos, key=pos.get) == list(LEAGUE_ORDER)
+    assert sorted(pos, key=pos.get) == list(LEAGUE_ORDER) and League.WCBB not in pos
     # pro leagues keep their old relative order (NFL > NBA > NHL > MLB); college now slots in by the
     # North Star order instead of after everything (the one listed behaviour change, plan only)
     assert pos[League.NFL] < pos[League.NBA] < pos[League.NHL] < pos[League.MLB]
@@ -67,6 +67,14 @@ def test_no_other_runtime_module_keeps_its_own_copy():
 
 def test_league_weight_follows_the_order_except_the_logged_exception():
     w = yaml.safe_load((ROOT / "redzone" / "default_config.yaml").read_text())["score"]["league_weight"]
-    known = {("wcbb", "nhl")}   # wcbb 0.9 < nhl 0.95: fixing it is its own decision (onebrain-migration step 1)
+    known = set()   # wcbb (0.9 < nhl 0.95) left the order with Nick's Nov 4 ruling
     bad = {(a, b) for i, a in enumerate(OLD) for b in OLD[i + 1:] if w[a] < w[b]}
     assert bad == known, bad
+
+
+def test_wcbb_is_off_by_default_and_ranks_last():
+    """[Nick, Nov 4 7:55 PM ET] Women's basketball isn't one of his leagues: off, out of the order."""
+    cfg = yaml.safe_load((ROOT / "redzone" / "default_config.yaml").read_text())
+    assert cfg["mode"]["leagues"]["wcbb"] is False
+    assert "wcbb" not in cfg["core"]["league_priority"]
+    assert core.league_rank("wcbb", core.Knobs()) == 0 and league_index(League.WCBB) == len(LEAGUE_ORDER)

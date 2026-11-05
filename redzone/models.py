@@ -34,8 +34,8 @@ _BASE = {League.CBB: League.NBA, League.WCBB: League.NBA, League.CFB: League.NFL
 # [one brain, step 1] THE league order (North Star: NFL > CFB > NBA > CBB > NHL > MLB; Nick, Nov 3:
 # overlapping crunch times, first listed wins after your team / bet). Every ranking reads it through
 # league_order(cfg), which honours the config key core.league_priority. Never copy it.
-LEAGUE_ORDER: tuple[League, ...] = (League.NFL, League.CFB, League.NBA, League.CBB, League.WCBB,
-                                    League.NHL, League.MLB)
+# WCBB is not one of Nick's leagues (Nick, Nov 4 7:55 PM ET): off by default and unlisted, so it ranks last.
+LEAGUE_ORDER: tuple[League, ...] = (League.NFL, League.CFB, League.NBA, League.CBB, League.NHL, League.MLB)
 
 
 def league_order(cfg=None) -> tuple[str, ...]:
