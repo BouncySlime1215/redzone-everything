@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT))
 from redzone import buffer_rc8 as R  # noqa: E402
 from redzone.config import Config  # noqa: E402
 
+LEAGUE_NEEDS = {"nba": ["start_timed"]}   # planner, after lane 3's autopsy (Nov 5): NBA ships start_timed with RC8
 NEEDS = {"start_timed": "decider.entry.start_timed=true"}   # lane 3's st arm: shipped only when the verdict needs it
 LEAGUES = ("nba", "nfl", "nhl")   # graded tonight (NBA first, then NFL); others stay live
 ITEM_NAMES = {"1_rule1": "Rule #1 (0 mid-play, every run + shadow)", "2_beats_live": "Beats live (sweep, >= 8 nights)",
@@ -51,11 +52,15 @@ def shadow_rows(shadow: dict | None) -> list[dict]:
             for e in shadow.get("entry_grades") or []]
 
 
-def sweep_runs(lg_verdict: dict | None, chosen_only: bool = False) -> list[dict]:
+def needs_for(lg: str | None, v: dict | None) -> list[str]:
+    return sorted(set((v or {}).get("needs") or []) | set(LEAGUE_NEEDS.get(lg or "", [])))
+
+
+def sweep_runs(lg_verdict: dict | None, chosen_only: bool = False, lg: str | None = None) -> list[dict]:
     runs = list((lg_verdict or {}).get("runs") or [])
     b = (lg_verdict or {}).get("chosen_b")
     if chosen_only and b is not None:
-        needs = (lg_verdict or {}).get("needs") or []
+        needs = needs_for(lg, lg_verdict)
         arm = "st" if "start_timed" in needs else "main"
         runs = [r for r in runs if r.get("b") == b and r.get("arm", "main") == arm]
     return runs
@@ -65,7 +70,7 @@ def flip_cmd(lg: str, v: dict | None, b: float | None) -> str | None:
     """The command that ships B (gate v28's max rule) with any flag the verdict needs."""
     if not v or not v.get("chosen_b") or b is None:
         return None
-    extra = "".join(f" --set {NEEDS[n]}" for n in (v.get("needs") or []) if n in NEEDS)
+    extra = "".join(f" --set {NEEDS[n]}" for n in needs_for(lg, v) if n in NEEDS)
     return f"python scripts/rc8_flip.py {lg} on --seconds {float(b):g}{extra}"
 
 
@@ -103,7 +108,7 @@ def report(cfg, sweep: dict | None, shadow: dict | None, card: dict | None = Non
     for lg in leagues:
         v = sv.get(lg)
         # Rule #1 at the B that would ship (the sweep's pick); the whole grid is shown alongside
-        state, detail = R.gate_league(lg, sweep_runs(v, chosen_only=True) if v else [], rows if shadow else None,
+        state, detail = R.gate_league(lg, sweep_runs(v, chosen_only=True, lg=lg) if v else [], rows if shadow else None,
                                       sweep=v, sync=(sync or {}).get(lg), locked=(locked or {}).get(lg))
         if not shadow_ok_struct:   # the editor touched a stick or the log is malformed: veto everywhere
             detail["items"]["3_shadow"]["state"] = R.FAIL
