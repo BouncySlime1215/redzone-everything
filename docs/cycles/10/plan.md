@@ -12,11 +12,9 @@
   parallel, and those ids are taken.
 
 ## The two blockers right now
-1. **RC6.1 never switched.** `deploy.jsonl` ends at the tests step on 9322c28 (32 lines). So tonight's live night
-   runs RC5.1, and **#173's gold-data capture is not on the Mac**.
-   - ④ + Int: read why the deploy stopped at tests. Then deploy with `--at-break` (#188) at the next dead ball,
-     or say plainly that tonight stays on RC5.1.
-   - EXP-008 and EXP-084 (sync from tonight's logs) depend on this.
+1. **RC6.1 isn't switched yet.** The Mac tests are green. The **Mac permission guard** blocked the deploy, and it
+   switches once Nick pastes lane ④'s command (a user-hands action). Until then, tonight runs RC5.1 and #173's
+   gold-data capture is not on the Mac. EXP-008 and EXP-084 (sync from tonight's logs) depend on it.
 2. **Merge throughput.** There are 51 open PRs. The integrator's order this hour:
    - **#145** first: review it and re-freeze the graders, or say what blocks it. This is Nick's sweep item, and
      lane ③ is waiting on it.
@@ -72,13 +70,13 @@
 3. **EXP-023:** the belief tracker in the decider (with ③), by Friday.
 
 ## ③ Performance + controls
-1. **RC6.1 switch** with ④: find why the deploy stopped at tests, so tonight's gold data can still be captured.
+1. **RC6.1:** once Nick pastes lane ④'s command, confirm the switch and that gold capture is live.
 2. **EXP-084:** sync calibration from whatever logs tonight produces, even on RC5.1.
 3. **#145 → merged** (integrator), then the real GO NOW p95.
 4. **EXP-004:** Mac shadow (#187), ready for Sunday's NFL night.
 
 ## ④ App + integration hardening
-1. **The deploy stall** (RC6.1 at the tests step on 9322c28): diagnose it and report in one line.
+1. **RC6.1 deploy:** the command is with Nick (Mac permission guard). Confirm the switch after he runs it.
 2. **EXP-003:** the one-event-language contract with ① (due Thursday).
 3. **EXP-017:** the v3 locked switch on Friday (#149). Sunday's PASS needs it.
 4. **EXP-004/005 scoring half:** the morning shadow score + DR estimator.
