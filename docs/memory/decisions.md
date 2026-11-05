@@ -656,3 +656,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Workers' outputs are trusted with no second review, except a license line per source (B rules). 1-2 test writers write
   pre-registered experiments and graders. Lanes 1-4 keep the body. Pace to <= 85% weekly by Mon 8 PM ET (hard stop 89%).
   Org, id blocks and checkpoints: docs/plans/2026-11-05-data-division.md.
+- **2026-11-05 (Nick, 12:30 AM ET): Data Division type G, attention and hype at scale** (ids 1700s): legal, public
+  signals of what people watched and cared about per moment (Twitch Helix viewer curves, highlight view velocity, hourly
+  pageviews, Trends, public minute ratings, excitement-index datasets, prediction-market volume, official-API subreddit
+  volume, open academic engagement datasets) as learned labels for Watch Value and the reward model. Each source names the
+  label or feature it feeds and its information per GB. Vision and antenna skipped. G labels are judged by lift on % of
+  oracle and worth-it, never used to optimize watch time.
