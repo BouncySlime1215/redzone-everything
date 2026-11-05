@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-SYNC #1 (Nick 2:10 AM). Real-stick YTTV tests: joins land at live within ~0.5 s per channel (ESPN 46,803.0 s +-0.3, TNT 46,792.7 +-0.7); exact behind-live meter from media_session extrapolated by /proc/uptime (30 s pause read +30.01 s); re-link to live 2.5 s; tune 0.9-4.1 s. docs/sync/2026-11-05-yttv-live-edge-tests.md (503e837). Lane 2 ordered to ship behind_live_s + auto re-link >2 s. Absolute latency still unknown (needs an on-screen anchor; camera asked of Nick).
-EXP-103 rerun on L4 at 57 min (~75 min run), grades next sweep. 545 CU. Usage 55%.
+Kaggle factory v1 DONE: 1.62B rows (NBA 1.06M moments + 969M self-play; NHL 477k + 644M; NFL 464k; CBB 493k). Bugs: CBB failed every season (KeyError League.CBB / no wallclock column), NHL 2015-19 no wallclocks; 28 seasons skipped at deadline. Factory v2 relaunched 2:44 AM on pack c2215ad (plan B default) + previous output.
+EXP-103 rerun: training done again (valid 0.3346); grading silent 15+ min with L4 GPU mem 16.8/22.5 GB: likely the step that killed run 1. Lane 1 asked to batch/cap the grader. Usage 55%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
