@@ -102,12 +102,17 @@ def build_games(leagues, out: Path, smoke: bool) -> list[dict]:
 
 
 def split(games: list[dict]) -> dict[str, list[dict]]:
-    nights = sorted({g["night"] for g in games})
-    n = len(nights)
-    va0, te0 = nights[int(n * 0.8)], nights[int(n * 0.9)]
+    """Time split by whole night, per league: each league's own last 10% of nights is test, the 10% before is valid.
+    A pooled cut would put every test night in whichever league's data runs latest (NBA cdn ends 2025, Retrosheet
+    2024), leaving that league with no train rows and the others with no test rows."""
     out = {"train": [], "valid": [], "test": []}
-    for g in games:
-        out["test" if g["night"] >= te0 else "valid" if g["night"] >= va0 else "train"].append(g)
+    for lg in sorted({g["league"] for g in games}):
+        mine = [g for g in games if g["league"] == lg]
+        nights = sorted({g["night"] for g in mine})
+        n = len(nights)
+        va0, te0 = nights[int(n * 0.8)], nights[int(n * 0.9)]
+        for g in mine:
+            out["test" if g["night"] >= te0 else "valid" if g["night"] >= va0 else "train"].append(g)
     return out
 
 
@@ -426,6 +431,10 @@ def main(argv=None) -> int:
     trn = grade(model, by_t[-200:], base, a.ctx, dev)
     trn_old = grade(model, by_t[:200], base, a.ctx, dev)
     val = grade(model, sp["valid"], base, a.ctx, dev)
+    per_league = {lg: {k: grade(model, [g for g in sp["test"] if g["league"] == lg], base, a.ctx, dev)[k]
+                       for k in ("next_kind_acc", "next_kind_acc_bigram", "break_dt_mae_s", "break_dt_mae_s_baseline",
+                                 "stop_ece", "stop_ece_baseline", "games")}
+                  for lg in sorted({g["league"] for g in sp["test"]})}
     seasons = sorted({g["night"][:4] for g in sp["test"]})
     per_season = {y: {k: grade(model, [g for g in sp["test"] if g["night"][:4] == y], base, a.ctx, dev)[k]
                       for k in ("next_kind_acc", "next_kind_acc_bigram", "break_dt_mae_s", "break_dt_mae_s_baseline")}
@@ -435,7 +444,7 @@ def main(argv=None) -> int:
          "recipe": {"d": a.d, "layers": a.layers, "heads": a.heads, "ctx": a.ctx, "batch": a.batch, "lr": a.lr, "dropout": a.dropout, "weight_decay": a.weight_decay,
                     "params_m": round(n_params / 1e6, 1), "steps": step, "epochs_seen": round(step * a.batch / max(1, len(tr)), 2)},
          "learning_curve": curve, "best_valid_loss": best,
-         "test": test, "train_slice": {k: trn[k] for k in ("next_kind_acc", "stop_ece", "break_dt_mae_s")},
+         "test": test, "test_by_league": per_league, "train_slice": {k: trn[k] for k in ("next_kind_acc", "stop_ece", "break_dt_mae_s")},
          "gap": {"train_recent_200": {k: trn[k] for k in ("next_kind_acc", "break_dt_mae_s", "break_dt_mae_s_baseline")},
                  "train_earliest_200": {k: trn_old[k] for k in ("next_kind_acc", "break_dt_mae_s",
                                                                 "break_dt_mae_s_baseline")},

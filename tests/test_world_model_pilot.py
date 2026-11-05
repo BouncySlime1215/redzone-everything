@@ -32,6 +32,18 @@ def test_split_is_by_whole_night_in_time_order():
     assert max(tr) < min(va) <= max(va) < min(te) and not (tr & va or va & te)
 
 
+def test_split_gives_every_league_its_own_test_nights():
+    nba = [_game(i, f"202501{d:02d}") for i, d in enumerate(range(1, 21))]
+    mlb = [{**_game(100 + i, f"202406{d:02d}"), "league": "mlb", "gid": f"m{i}"} for i, d in enumerate(range(1, 21))]
+    sp = W.split(nba + mlb)
+    for k in ("train", "valid", "test"):
+        assert {g["league"] for g in sp[k]} == {"nba", "mlb"}
+    for lg in ("nba", "mlb"):
+        tr = {g["night"] for g in sp["train"] if g["league"] == lg}
+        te = {g["night"] for g in sp["test"] if g["league"] == lg}
+        assert max(tr) < min(te)
+
+
 def test_windows_cut_on_whole_events():
     w = W.windows([_game(0, "20250101")], ctx=24, rng=np.random.default_rng(0))
     assert w.shape[1] == 25 and len(w) == -(-(3 + 180 + 1 - 1) // 24)
