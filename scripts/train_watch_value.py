@@ -267,7 +267,7 @@ def aux_targets(rows: list[dict], by_game: dict, wv: np.ndarray, train_mask: np.
 
 
 def league(lg: str, archive: Path, cfg, out_dir: Path, crunch_dir: Path = ROOT / "data" / "crunch",
-           arm: str = "A0", series: list | None = None, seed: int = 0) -> dict:
+           arm: str = "A0", series: list | None = None, seed: int = 0, dev_only: bool = False) -> dict:
     from redzone.lab import reasoner_data as RD
     from redzone.lab import splits
     from redzone.models import League
@@ -307,7 +307,8 @@ def league(lg: str, archive: Path, cfg, out_dir: Path, crunch_dir: Path = ROOT /
     rep = {"league": lg, "rows": {s: int((split == s).sum()) for s in ("train", "valid", "test")},
            "nights": {s: len(getattr(sp, s)) for s in ("train", "valid", "test")}, "features": len(feats),
            "trees": {"wv": n_wv, "pb": n_pb, "cr": n_cr}, "crunch_label_rate": round(float(cr.mean()), 4), "aux": aux_info}
-    for name, m in (("dev", va), ("locked", te)):            # locked: graded once, never tuned on
+    # locked: graded once, never tuned on. --dev-only (EXP-1405 nominee runs) never touches it.
+    for name, m in (("dev", va),) + ((() if dev_only else (("locked", te),))):
         sub = [rows[k] for k in np.where(m)[0]]
         rep[name] = card(sub, m_wv.predict(X[m], num_iteration=n_wv), wv[m], cal, realize)
         rep[name + "_context_only"] = card(sub, m_cx.predict(X[m][:, ci], num_iteration=n_cx), wv[m], cal_cx, realize)
@@ -362,6 +363,7 @@ def main(argv=None) -> int:
     ap.add_argument("--aux-source", type=Path, default=None,
                     help="JSON spec {source, paths[, terms]} for the engagement label (arms A1/A2)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--dev-only", action="store_true", help="skip the locked card (nominee runs pick on valid only)")
     a = ap.parse_args(argv)
     series = None
     if a.aux_source is not None:
@@ -374,7 +376,7 @@ def main(argv=None) -> int:
     tmp = Path(tempfile.mkdtemp()) / "watch_value_config.yaml"
     tmp.write_text(text)
     cfg = Config(user_path=tmp)
-    rep = {lg: league(lg, a.archive, cfg, a.out, a.crunch_dir, a.aux_arm, series, a.seed) for lg in a.leagues}
+    rep = {lg: league(lg, a.archive, cfg, a.out, a.crunch_dir, a.aux_arm, series, a.seed, a.dev_only) for lg in a.leagues}
     a.report.parent.mkdir(parents=True, exist_ok=True)
     a.report.write_text(json.dumps(rep, indent=1))
     print(json.dumps(rep, indent=1))
