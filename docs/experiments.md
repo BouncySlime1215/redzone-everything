@@ -43,6 +43,10 @@ Costs are planner estimates. Lanes correct them in their PRs.
 - Once it is `running`, its hypothesis, line, bar and nights are frozen. Change them by registering a new EXP id.
 - `set before running` means the owning lane writes the bar in its PR before the first run.
 
+**New ids** (to avoid clashes): ids up to EXP-099 are the planner's. Each lane registers new rows from its own
+block: ① EXP-100-199, ② EXP-200-299, ③ EXP-300-399, ④ EXP-400-499, ⑤ EXP-500-599, Integrator EXP-600-699. Ids
+already in use (EXP-088, EXP-089) keep their numbers.
+
 **Lanes:** ① Noggin training, ② logic/sync, ③ performance + controls, ④ app + CI, ⑤ features, Int = Integrator.
 
 ## Phase 0: foundations (now to Fri Nov 6)
@@ -116,9 +120,9 @@ on locked.
 | 35 | EXP-035 | P14 | A "why we're here" tag tied to a logged threshold (watch_why + suspense) keeps labels honest. Measure: the "alerted but nothing happened" rate. | Right game agreement (evaluation) | 0 / ~2 | ⑤ | set before running | set before running | next |
 | 36 | EXP-036 | P20, P19, P17 (finale) | Commitment controls ("stay here", "only my teams", "stop after this game", "end at 11:30", each waiting for a dead ball), a wind-down after the last high-leverage window, and a "Slate complete" state. | Phone press to TV p95; guardrails: late-night hours, sessions after slate complete | 0 / ~5 | ⑤③ | set before running | set before running | next |
 | 37 | EXP-037 | P13 | A one-question context line ("Down 3, 1:12 left, no timeouts") frames only questions the game will answer soon. | Right game agreement (evaluation) | 0 / ~2 | ⑤ | set before running | set before running | next |
-| 38 | EXP-038 | P12, E4 | A 2-3 s orientation beat on every switch (teams, score, clock, situation) as a corner overlay, never covering play. Measure: overrides within 30 s. | Right game agreement (evaluation) | 0 / ~2 | ⑤ | set before running | set before running | queued |
-| 39 | EXP-039 | P15 | A quiet "also close" strip resolves curiosity without forcing a switch. | Big plays live or replayed within 3 min | 0 / ~2 | ⑤ | set before running | set before running | queued |
-| 40 | EXP-040 | §6 metrics | A one-tap end-of-night "worth it?" rating (1-5) on the slate-complete screen, plus once-a-week agency / regret probes. **Evaluation only**; never a training label. | New evaluation line; warning rule: watch time up while rating down blocks a change | 0 / ~2 | ⑤④ | set before running | set before running | queued |
+| 38 | EXP-038 | P12, E4 | A 2-3 s orientation beat on every switch (teams, score, clock, situation) as a corner overlay, never covering play. Measure: overrides within 30 s. | Right game agreement (evaluation) | 0 / ~2 | ⑤ | Phone only (#221): the rig has no TV overlay path, because the sticks only switch inputs. A TV corner overlay needs a new display path, which is Nick's hardware call. Bar: the override rate within 30 s of a switch, upper bound of (on − off) < 0. Pre-registered in docs/lanes/experience.md | ≥ 6 whole nights per side (alternated by night) | queued |
+| 39 | EXP-039 | P15 | A quiet "also close" strip resolves curiosity without forcing a switch. | Big plays live or replayed within 3 min | 0 / ~2 | ⑤ | Text only (#222). Bar: the manual-switch share, upper bound of (on − off) < 0; guardrail: big plays ≤ 3 min not worse. Pre-registered in docs/lanes/experience.md | ≥ 6 whole nights per side | queued |
+| 40 | EXP-040 | §6 metrics | A one-tap end-of-night "worth it?" rating (1-5) on the slate-complete screen, plus once-a-week agency / regret probes. **Evaluation only**; never a training label. | New evaluation line; warning rule: watch time up while rating down blocks a change | 0 / ~2 | ⑤④ | Pre-registered by lane 5 (docs/lanes/experience.md; graded by scripts/worth_line.py, which the integrator freezes). PASS: ≥ 4 rated nights per side and a 95% bootstrap lower bound of cand − live ≥ −0.25. FAIL: upper bound < −0.25. Otherwise PENDING. Ratings are evaluation only (tests/test_worth.py fails if noggin, decider or scoring reads them) | ≥ 4 rated nights per side. A shadow candidate can't be rated, so the candidate side needs nights where it drives the TV | queued |
 | 41 | EXP-041 | P21, E3 | 👍/👎 per switch. Allowed: evaluation only (the existing Right game agreement line). Excluded: fitting weights on it (E3), by the self-taught rule. | Right game agreement (evaluation) | 0 / ~1 | ⑤ | set before running | set before running | line (training use); queued (evaluation) |
 | 42 | EXP-042 | P16 | Variety only as a tiebreaker; no fixed switch sting. | Right game agreement; Mid-play entries unchanged | 0 / ~1 | ② | set before running | set before running | queued |
 | 43 | EXP-043 | P22 | Followed players as a config multiplier; group mode is evaluated separately from the solo gates. | Right game agreement (low priority) | 0 / ~2 | ①⑤ | set before running | set before running | queued |
@@ -173,7 +177,7 @@ on locked.
 | id | covers | why | allowed remainder | success bar | nights needed | status |
 |---|---|---|---|---|---|---|
 | EXP-077 | M55 | Betting-line movement as a live news sensor is wager-driven switching, which §5.1 excludes. | Pre-game lines as a hidden data prior only (EXP-031). | n/a | n/a | line |
-| EXP-078 | M19 (market part) | Same: live market odds are not a ranking input. | WP from our own models; pre-game line as prior. | n/a | n/a | line |
+| EXP-078 | M19 (market part) | Live market odds are not a ranking input. | **Approved (Nick, 7:28 PM ET Nov 4):** betting closing lines as a HIDDEN check only, for WP calibration and evaluation (EXP-002 and its locked read). They are never a feature, never shown, and never a nudge toward betting. | n/a | n/a | line |
 | EXP-079 | M23 | Inverse RL from producers' choices needs licensed video or producer logs, and there is no $0, terms-compliant source. | Revisit if a licensed source appears. | n/a | n/a | hold |
 | EXP-080 | M40 + "Company (later)" | Federated personalization, Drama API, shared cloud brain, licensed audio/video: company stage, which needs money and Nick's OK. | None now. | n/a | n/a | hold |
 | EXP-081 | M62 | The guardrail is now the binding line (§5) and the metrics (§6). | Applied to every row above. | n/a | n/a | standing |

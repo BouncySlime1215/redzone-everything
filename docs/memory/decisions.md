@@ -472,6 +472,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   are self-contained: public inputs at a pinned commit, no Drive mount, no secrets, grades.json printed. The
   overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
   frozen, locked is read once (Sunday).
+- 2026-11-05 00:28 UTC (Nick 7:28 PM ET, via the coordinator): **betting closing lines approved as a HIDDEN check only**:
+  usable for win-probability calibration and evaluation (EXP-002), never as a model feature, never shown, never a
+  nudge toward betting. Live line moves as a switching signal stay excluded (EXP-077, playbook §5). Reason: the
+  calibration needs an outside reference, and the line forbids betting features.
 - 2026-11-04 (lane 3, Cycle 06 #1, Start Planner #162): new flag `buffer.hold_left` (default **off**), plus
   `buffer.hold_left_apps` [youtubetv] and `buffer.hold_left_slop_s` 3.0 (playbook STK-07). When on, the game we leave
   stays paused on the stick we left, at the dead ball we left it on, so going back is a flip plus a catch-up from there.
