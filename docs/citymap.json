@@ -451,7 +451,9 @@
     "redzone/models.py"
    ],
    "kind": "module",
-   "outputs": [],
+   "outputs": [
+    "redzone/engine.py"
+   ],
    "owner": "DECISION",
    "role": "How much is a bet sweating right now?",
    "serves": [
@@ -468,6 +470,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "redzone/supervisor.py",
     "scripts/sync_fit.py"
    ],
@@ -490,6 +493,7 @@
     "redzone/demo/engine.py",
     "redzone/discovery/providers.py",
     "redzone/discovery/yttv.py",
+    "redzone/engine.py",
     "redzone/lab/backtest.py",
     "redzone/lab/night/run.py",
     "redzone/plan.py",
@@ -516,7 +520,9 @@
    "contracts": [],
    "inputs": [],
    "kind": "module",
-   "outputs": [],
+   "outputs": [
+    "redzone/engine.py"
+   ],
    "owner": "unowned",
    "role": "Phone commands that land exactly once: an id, an ack, a status, and safe retries.",
    "serves": [
@@ -535,6 +541,7 @@
     "redzone/crunch.py",
     "redzone/decider/decider.py",
     "redzone/demo/engine.py",
+    "redzone/engine.py",
     "redzone/lab/backtest.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
@@ -935,6 +942,7 @@
     "redzone/contracts/world.py",
     "redzone/control.py",
     "redzone/decider/decider.py",
+    "redzone/engine.py",
     "redzone/lab/backtest.py",
     "redzone/lab/evaldata.py"
    ],
@@ -1076,6 +1084,7 @@
    "outputs": [
     "redzone/autonomy.py",
     "redzone/demo/engine.py",
+    "redzone/engine.py",
     "redzone/lab/night/run.py",
     "redzone/supervisor.py",
     "scripts/fault_drill.py",
@@ -1212,6 +1221,7 @@
    "outputs": [
     "redzone/contracts/legacy.py",
     "redzone/demo/engine.py",
+    "redzone/engine.py",
     "redzone/lab/backtest.py",
     "redzone/lab/night/run.py",
     "redzone/lab/tune.py",
@@ -1317,6 +1327,7 @@
    "outputs": [
     "redzone/decider/decider.py",
     "redzone/demo/engine.py",
+    "redzone/engine.py",
     "redzone/grading.py",
     "redzone/lab/backtest.py",
     "redzone/lab/cutgrade.py",
@@ -1350,6 +1361,7 @@
    "kind": "module",
    "outputs": [
     "redzone/decider/screen.py",
+    "redzone/engine.py",
     "redzone/screen/scorebug.py"
    ],
    "owner": "unowned",
@@ -1496,7 +1508,9 @@
     "redzone/tuners/tuners.py"
    ],
    "kind": "module",
-   "outputs": [],
+   "outputs": [
+    "redzone/engine.py"
+   ],
    "owner": "SWITCHING",
    "role": "Connect recovered provider discovery and background maintenance to the engine.",
    "serves": [
@@ -1565,8 +1579,60 @@
    ]
   },
   "redzone/engine.py": {
-   "contracts": [],
-   "inputs": [],
+   "contracts": [
+    "set_calibrated_seek"
+   ],
+   "inputs": [
+    "redzone/bets.py",
+    "redzone/calibration.py",
+    "redzone/channels.py",
+    "redzone/commands.py",
+    "redzone/config.py",
+    "redzone/contracts/switching.py",
+    "redzone/control.py",
+    "redzone/decider/decider.py",
+    "redzone/decider/screen.py",
+    "redzone/decider/sync.py",
+    "redzone/discovery/runtime.py",
+    "redzone/fantasy.py",
+    "redzone/governor.py",
+    "redzone/grading.py",
+    "redzone/models.py",
+    "redzone/network.py",
+    "redzone/noggin/belief.py",
+    "redzone/plan.py",
+    "redzone/platform/agent_fix.py",
+    "redzone/platform/wake.py",
+    "redzone/reasoner/brief.py",
+    "redzone/reasoner/reasoner.py",
+    "redzone/recorded.py",
+    "redzone/recorder.py",
+    "redzone/reel.py",
+    "redzone/scoring/breaks.py",
+    "redzone/scoring/drive.py",
+    "redzone/scoring/engine.py",
+    "redzone/screen/audio.py",
+    "redzone/screen/boundary.py",
+    "redzone/screen/scorebug.py",
+    "redzone/screen_ocr.py",
+    "redzone/sources/espn.py",
+    "redzone/sources/eventlinks.py",
+    "redzone/sources/fastcast.py",
+    "redzone/sources/fastcast_check.py",
+    "redzone/sources/feeds.py",
+    "redzone/sources/http.py",
+    "redzone/sources/leagues.py",
+    "redzone/sources/merge.py",
+    "redzone/standby.py",
+    "redzone/store.py",
+    "redzone/supervisor.py",
+    "redzone/sync_probe.py",
+    "redzone/trace.py",
+    "redzone/tuners/prime_multiview.py",
+    "redzone/userstate.py",
+    "redzone/views.py",
+    "uses:set_calibrated_seek"
+   ],
    "kind": "module",
    "outputs": [
     "redzone/__main__.py",
@@ -1577,7 +1643,7 @@
     "scripts/perf_probe.py"
    ],
    "owner": "INTEGRATION",
-   "role": "unparsed",
+   "role": "The producer loop: poll every feed -> merge -> score -> decide -> act -> tell the phone.",
    "serves": [
     "BTN-04",
     "BTN-05",
@@ -1594,7 +1660,9 @@
     "redzone/tv.py"
    ],
    "kind": "module",
-   "outputs": [],
+   "outputs": [
+    "redzone/engine.py"
+   ],
    "owner": "DECISION",
    "role": "ESPN Fantasy Football: boost games where your (or your opponent's) starters are about to score.",
    "serves": [
@@ -1609,6 +1677,7 @@
     "agent/llm.py",
     "agent/watchdog.py",
     "redzone/autonomy.py",
+    "redzone/engine.py",
     "redzone/lab/night/run.py",
     "redzone/reel.py",
     "redzone/screen_ocr.py",
@@ -1630,6 +1699,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "redzone/lab/backtest.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/oracle.py",
@@ -2404,6 +2474,7 @@
     "redzone/decider/screen.py",
     "redzone/demo/engine.py",
     "redzone/discovery/providers.py",
+    "redzone/engine.py",
     "redzone/fantasy.py",
     "redzone/grading.py",
     "redzone/lab/backtest.py",
@@ -2502,6 +2573,7 @@
    "kind": "module",
    "outputs": [
     "redzone/autonomy.py",
+    "redzone/engine.py",
     "redzone/lab/night/run.py",
     "redzone/tvsetup.py",
     "scripts/doctor.py"
@@ -2530,6 +2602,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "scripts/exp023_belief.py"
    ],
    "owner": "unowned",
@@ -2778,6 +2851,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "redzone/lab/night/run.py",
     "scripts/plan_tonight.py"
    ],
@@ -2805,6 +2879,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "redzone/supervisor.py",
     "redzone/web/server.py"
    ],
@@ -2888,7 +2963,9 @@
    "contracts": [],
    "inputs": [],
    "kind": "module",
-   "outputs": [],
+   "outputs": [
+    "redzone/engine.py"
+   ],
    "owner": "PLATFORM",
    "role": "The Mac slept, or moved networks: everything that held a connection is stale (hardening.mac).",
    "serves": [
@@ -2914,6 +2991,7 @@
    "kind": "module",
    "outputs": [
     "agent/kaggle/build_moments_kaggle.py",
+    "redzone/engine.py",
     "redzone/lab/reasoner_data.py",
     "redzone/reasoner/head.py",
     "redzone/reasoner/reasoner.py",
@@ -2955,6 +3033,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "redzone/scoring/engine.py",
     "scripts/eval_reasoner.py",
     "scripts/export_reasoner_llm.py"
@@ -2974,6 +3053,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "scripts/find_yttv_code.py"
    ],
    "owner": "PLATFORM",
@@ -2991,6 +3071,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "redzone/lab/night/run.py"
    ],
    "owner": "PLATFORM",
@@ -3006,6 +3087,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "redzone/lab/night/run.py"
    ],
    "owner": "DECISION",
@@ -3111,6 +3193,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "redzone/lab/brain3fit.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
@@ -3134,6 +3217,7 @@
    "kind": "module",
    "outputs": [
     "redzone/demo/engine.py",
+    "redzone/engine.py",
     "redzone/lab/backtest.py"
    ],
    "owner": "DECISION",
@@ -3157,6 +3241,7 @@
    "kind": "module",
    "outputs": [
     "redzone/decider/decider.py",
+    "redzone/engine.py",
     "redzone/lab/backtest.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/reasoner_data.py",
@@ -3229,7 +3314,9 @@
    "contracts": [],
    "inputs": [],
    "kind": "module",
-   "outputs": [],
+   "outputs": [
+    "redzone/engine.py"
+   ],
    "owner": "SYNC",
    "role": "Hear the TV to measure your stream delay automatically (optional, off by default).",
    "serves": [
@@ -3240,7 +3327,9 @@
    "contracts": [],
    "inputs": [],
    "kind": "module",
-   "outputs": [],
+   "outputs": [
+    "redzone/engine.py"
+   ],
    "owner": "SYNC",
    "role": "Stream delay measured automatically from show changes (no taps, no mic, no camera).",
    "serves": [
@@ -3253,7 +3342,9 @@
     "redzone/decider/sync.py"
    ],
    "kind": "module",
-   "outputs": [],
+   "outputs": [
+    "redzone/engine.py"
+   ],
    "owner": "SYNC",
    "role": "Stream delay measured from the broadcast's own score bug (no taps, no keys pressed).",
    "serves": [
@@ -3267,6 +3358,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "redzone/lab/night/house.py",
     "redzone/lab/night/run.py",
     "redzone/recorded.py",
@@ -3306,6 +3398,7 @@
     "agent/distill/jump.py",
     "redzone/contracts/events.py",
     "redzone/demo/engine.py",
+    "redzone/engine.py",
     "redzone/grading.py",
     "redzone/lab/backtest.py",
     "redzone/lab/brain3fit.py",
@@ -3344,6 +3437,7 @@
    "kind": "module",
    "outputs": [
     "redzone/discovery/yttv.py",
+    "redzone/engine.py",
     "scripts/plan_tonight.py",
     "scripts/providers_check.py"
    ],
@@ -3361,7 +3455,9 @@
     "redzone/views.py"
    ],
    "kind": "module",
-   "outputs": [],
+   "outputs": [
+    "redzone/engine.py"
+   ],
    "owner": "PLATFORM",
    "role": "ESPN Fastcast: the push feed behind espn.com's live gamecasts.",
    "serves": [
@@ -3373,6 +3469,7 @@
    "inputs": [],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "scripts/fastcast_check.py"
    ],
    "owner": "PLATFORM",
@@ -3397,6 +3494,7 @@
    "kind": "module",
    "outputs": [
     "redzone/demo/engine.py",
+    "redzone/engine.py",
     "scripts/fault_drill.py"
    ],
    "owner": "PLATFORM",
@@ -3410,6 +3508,7 @@
    "inputs": [],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "redzone/sources/feeds.py",
     "scripts/fault_drill.py",
     "scripts/plan_tonight.py"
@@ -3428,6 +3527,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "redzone/recorder.py"
    ],
    "owner": "PLATFORM",
@@ -3444,6 +3544,7 @@
    "kind": "module",
    "outputs": [
     "redzone/demo/engine.py",
+    "redzone/engine.py",
     "redzone/sources/feeds.py",
     "scripts/fault_drill.py"
    ],
@@ -3462,7 +3563,8 @@
    ],
    "kind": "module",
    "outputs": [
-    "redzone/demo/engine.py"
+    "redzone/demo/engine.py",
+    "redzone/engine.py"
    ],
    "owner": "SWITCHING",
    "role": "Hot standby: what the hidden stick should be playing, so the next switch is a 1-2s input flip.",
@@ -3479,6 +3581,7 @@
    "kind": "module",
    "outputs": [
     "redzone/demo/engine.py",
+    "redzone/engine.py",
     "redzone/lab/night/run.py",
     "redzone/supervisor.py",
     "redzone/trace.py",
@@ -3518,6 +3621,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "redzone/lab/night/run.py",
     "redzone/observability.py",
     "redzone/trace.py",
@@ -3539,6 +3643,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "scripts/burst_align.py",
     "scripts/sync_fit.py"
    ],
@@ -3566,6 +3671,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/engine.py",
     "redzone/observability.py",
     "redzone/supervisor.py",
     "redzone/web/phone_v2.py"
@@ -3671,6 +3777,7 @@
    "kind": "module",
    "outputs": [
     "redzone/control.py",
+    "redzone/engine.py",
     "redzone/lab/prime_mv_fake.py",
     "redzone/tuners/tuners.py",
     "scripts/prime_multiview_grade.py",
@@ -3886,7 +3993,9 @@
    "contracts": [],
    "inputs": [],
    "kind": "module",
-   "outputs": [],
+   "outputs": [
+    "redzone/engine.py"
+   ],
    "owner": "DECISION",
    "role": "What you told the phone (pause, \"Watch this\", focus, lock), kept across service restarts.",
    "serves": [
@@ -3902,6 +4011,7 @@
    "kind": "module",
    "outputs": [
     "redzone/demo/engine.py",
+    "redzone/engine.py",
     "redzone/sources/fastcast.py"
    ],
    "owner": "PLATFORM",
@@ -5117,7 +5227,7 @@
  },
  "summary": {
   "modules": 275,
-  "orphans": 20,
+  "orphans": 10,
   "unowned": 116,
   "untagged": 220
  },
