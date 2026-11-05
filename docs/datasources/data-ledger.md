@@ -54,4 +54,8 @@ D's and are not in these rows. Data is in the private project folder (`data-b/sh
 |---|---|---|---|---:|---:|---:|---:|---|
 | nflverse schedules, injuries, officials, team stats | yellow | done | NFL 1999-2026 | 7,548 | 163,413 | 96,398 | 67,015 | nflverse CC-BY-4.0, credit nflverse |
 | Retrosheet game logs + event-file `info` records | yellow | done | MLB 2000-2025 | 61,634 | 555,991 | 494,357 | 61,634 | Retrosheet: free with its required notice ("The information used here was obtained free of charge from and is copyrighted by Retrosheet...") |
-| **Crew B total** | | | | 69,182 | **719,404** | **590,755** | **128,649** | |
+| Our standings, Elo and playoff-odds sims (stakes swing) | yellow (derived) | done | NFL 1999-2026 | 7,413 | 208,488 | 0 | 208,488 | derived from nflverse schedules (CC-BY-4.0) |
+| Our standings, Elo and playoff-odds sims (stakes swing) | yellow (derived) | done | MLB 2000-2025 | 61,634 | 1,787,386 | 0 | 1,787,386 | derived from Retrosheet game logs (Retrosheet notice) |
+| Open-Meteo archive weather (NFL, MLB outdoor) | yellow (CC BY 4.0, non-commercial) | planned (cloud run) | | | | | | Open-Meteo CC BY 4.0, credit Open-Meteo |
+| CFBD media, rankings, records, talent, games | yellow | blocked (Nick's CFBD key) | | | | | | CollegeFootballData.com free tier, credit CFBD |
+| **Crew B total** | | | | 69,182 | **2,715,278** | **590,755** | **2,124,523** | |

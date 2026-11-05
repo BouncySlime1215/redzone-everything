@@ -1,0 +1,22 @@
+[
+ {
+  "id": 401001,
+  "season": 2023,
+  "week": 1,
+  "gameIndoors": false,
+  "temperature": 88.2,
+  "windSpeed": 6.9,
+  "precipitation": 0.0,
+  "snowfall": 0.0
+ },
+ {
+  "id": 401003,
+  "season": 2023,
+  "week": 3,
+  "gameIndoors": true,
+  "temperature": 70.0,
+  "windSpeed": 0.0,
+  "precipitation": 0.0,
+  "snowfall": 0.0
+ }
+]

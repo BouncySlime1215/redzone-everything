@@ -1,0 +1,20 @@
+[
+ {
+  "id": 3958,
+  "name": "Kenan Memorial Stadium",
+  "latitude": 35.9069,
+  "longitude": -79.0479,
+  "timezone": "America/New_York",
+  "dome": false,
+  "constructionYear": 1927
+ },
+ {
+  "id": 9,
+  "name": "Somewhere Dome",
+  "location": {
+   "x": 30.0,
+   "y": -90.0
+  },
+  "dome": true
+ }
+]

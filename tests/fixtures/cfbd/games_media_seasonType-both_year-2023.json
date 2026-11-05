@@ -1,0 +1,30 @@
+[
+ {
+  "id": 401001,
+  "season": 2023,
+  "week": 1,
+  "mediaType": "tv",
+  "outlet": "ABC"
+ },
+ {
+  "id": 401002,
+  "season": 2023,
+  "week": 2,
+  "mediaType": "tv",
+  "outlet": "ACC Network"
+ },
+ {
+  "id": 401002,
+  "season": 2023,
+  "week": 2,
+  "mediaType": "radio",
+  "outlet": "Tar Heel Sports Network"
+ },
+ {
+  "id": 401003,
+  "season": 2023,
+  "week": 3,
+  "mediaType": "web",
+  "outlet": "ESPN+"
+ }
+]
