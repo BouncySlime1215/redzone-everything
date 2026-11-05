@@ -423,6 +423,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   to `two_stick.standby_repause_s: 600` in default_config.yaml, value unchanged; postseason.py's ROUNDS / DEFAULTS /
   _rank renamed ROUNDS_LEFT / WEIGHTS / _poll_rank (no behavior change). Reason: the contract kernel (K1/K2/K4)
   flagged them as new on merge; one definition per fact, timings in config (Nick, one connected system).
+- **2026-11-04 (Nick 3:15 PM rule + overseer V7 review):** the Mind reasoner gate adds `unsafe_leave_hi_pct` <= 0 (a high-leverage unsafe leave, meaning sticky now or a crunch play due, is a hard 0); low-leverage unsafe leaves are reported as info (`unsafe_leave_lo_pct`). Sticky rows are crunch, or late within NBA/CBB 6, NFL/CFB 8, NHL 1, MLB 2. Superseded the same day by Nick's 4:15 PM correction: crunch is a LEARNED state, so `evaluate.CRUNCH_STAY_PRIOR` is off and the graded answer is the model's own. The report shows a 'floored' view (prior forced on) beside it, and the floor itself (never leave a high-leverage moment for a low-value game) lives in the decider. Why: V7's crunch slice left 100% unsafely (n=125).
 - 2026-11-04 (Nick 6:10 PM, via the overseer): **official direction** = docs/plans/2026-11-04-noggin-master-plan.md +
   docs/research/watch-science-playbook.md (copied from codex/resume-redzone 51908ba). All ideas live in ONE ranked
   queue, docs/experiments.md; Phase 0 starts now (suspense S = E[(ΔWP)^2] line + WV input, one event language,

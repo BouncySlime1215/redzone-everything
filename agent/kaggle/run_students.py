@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import random
+import shutil
 import subprocess
 import sys
 import time
@@ -40,6 +41,9 @@ def rank_for(job: str) -> int:
 LAST_LAYERS = int(os.environ.get("RZ_LORA_LAYERS", "0")) or None       # None: every layer
 TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 EPOCHS = {"game-reasoner": 2, "watchdog": 1}
+if os.environ.get("RZ_EPOCHS"):                 # [V8-quick] one epoch for every job
+    EPOCHS = {k: int(os.environ["RZ_EPOCHS"]) for k in EPOCHS}
+REUSE_BASE = os.environ.get("RZ_REUSE_BASE")    # [V8-quick] the previous round's base-model watchdog answers
 # BATCH 2 x ACCUM 4 = an effective batch of 8 (V4 ran out of memory on a T4 at BATCH 8)
 LR = float(os.environ.get("RZ_LR", "2e-4"))
 BATCH, ACCUM, MAX_LEN = 2, 4, 768
@@ -64,6 +68,18 @@ ANSWER_LOG_ROWS = 400
 CONSTRAINED = os.environ.get("RZ_CONSTRAINED", "1") == "1"
 MAX_NEW = 192
 SMOKE = os.environ.get("RZ_SMOKE") == "1"
+# [Colab V8] resumable runs: a free Colab session can drop at any time, so the work dir lives on Drive and
+# RZ_CKPT_S > 0 saves a training checkpoint (LoRA + optimizer + data position) that often; answers append and
+# a rerun skips the rows already answered; a job is done only when its train_report.json exists.
+CKPT_S = float(os.environ.get("RZ_CKPT_S", "0"))
+# [Colab V8] one GPU runs the jobs one after another: each job gets its share of what is left of the budget
+# (RZ_JOB_WEIGHTS "watchdog:1,game-reasoner:5", default from its rows), in RZ_JOB_ORDER (default: by name),
+# and its answer reserve is its own test rows x RZ_ANSWER_S_PER_ROW (when set; else RZ_ANSWER_RESERVE_S).
+ANSWER_S_PER_ROW = float(os.environ.get("RZ_ANSWER_S_PER_ROW", "0"))
+# RZ_FINISH_TRAINING=1: when the budget ends training, checkpoint and stop (exit PAUSED) instead of keeping the
+# partly trained adapter, so the next session trains to the end (more sessions, the full recipe).
+FINISH_TRAINING = os.environ.get("RZ_FINISH_TRAINING") == "1"
+PAUSED = 4                                    # job exit code: checkpointed, rerun to continue
 FP16_OVERFLOW = 3                             # job exit code: rerun it once on a float32 base     # CPU smoke test: tiny model, few steps
 
 
@@ -94,7 +110,7 @@ def base_dir(work: Path) -> Path:
     """Download the Mac's 4-bit base and dequantize it once (float16 HF checkpoint)."""
     if os.environ.get("RZ_BASE_DIR"):                  # CPU smoke tests: a tiny local model
         return Path(os.environ["RZ_BASE_DIR"])
-    out = work / "base-deq"
+    out = Path(os.environ["RZ_BASE_CACHE"]) if os.environ.get("RZ_BASE_CACHE") else work / "base-deq"  # [Colab] local disk
     if (out / "model.safetensors").exists():
         return out
     from huggingface_hub import snapshot_download
@@ -125,9 +141,41 @@ def recipe_of(name: str) -> str:
     return f"{RECIPE} r{rank_for(name)} lr{LR} layers{LAST_LAYERS or 'all'}"
 
 
-def previous_adapter(name: str, roots: list[Path] | None = None) -> Path | None:
+def train_sha(job_dir: Path) -> str | None:
+    """sha256 (16 hex) of the job's training rows: an adapter is reused only for the very same data."""
+    import hashlib
+    f = job_dir / "train.jsonl"
+    if not f.exists():
+        return None
+    d = hashlib.sha256()
+    with open(f, "rb") as fh:
+        for b in iter(lambda: fh.read(1 << 20), b""):
+            d.update(b)
+    return d.hexdigest()[:16]
+
+
+def _reusable(d: Path, name: str, sha: str | None) -> bool:
+    """A finished adapter: weights, this recipe, and (when the data hash is known) this exact training data.
+    [V8] V7's output is attached for its teacher answers; same recipe stamp, different data: not reused."""
+    if not ((d / "adapter_config.json").exists() and
+            ((d / "adapter_model.safetensors").exists() or (d / "adapter_model.bin").exists())):
+        return False
+    if _stamp(d) != recipe_of(name):
+        return False
+    return sha is None or _read(d / "train_sha.txt") == sha
+
+
+def _read(f: Path) -> str | None:
+    try:
+        return f.read_text().strip()
+    except OSError:
+        return None
+
+
+def previous_adapter(name: str, roots: list[Path] | None = None, sha: str | None = None) -> Path | None:
     """[V6, Nick's V5 fix] A trained adapter for this job in an attached notebook output
     (/kaggle/input/**/students/<job>/peft), so a crash after training never costs the training again.
+    [V8] With ``sha`` (train_job always passes it) only an adapter trained on the same rows counts.
     RZ_RETRAIN=1 always retrains."""
     if os.environ.get("RZ_RETRAIN") == "1":
         return None
@@ -137,16 +185,29 @@ def previous_adapter(name: str, roots: list[Path] | None = None) -> Path | None:
     for root in roots:
         if root.is_dir():
             found += [c.parent for c in root.glob(f"**/students/{name}/peft/adapter_config.json")
-                      if ((c.parent / "adapter_model.safetensors").exists() or (c.parent / "adapter_model.bin").exists())
-                      and _stamp(c.parent) == recipe_of(name)]      # [V7] V6's adapters (r16, old data) don't count
+                      if _reusable(c.parent, name, sha)]      # [V7] V6's adapters (r16, old data) don't count
     return max(found, key=lambda d: (d / "adapter_config.json").stat().st_mtime) if found else None
 
 
 def _stamp(d: Path) -> str | None:
-    try:
-        return (d / "recipe.txt").read_text().strip()
-    except OSError:
-        return None
+    return _read(d / "recipe.txt")
+
+
+def answered_ids(path: Path) -> set[str]:
+    """[Colab V8] ids already answered in a test_out file; a torn last line (a disconnect mid-write) is dropped
+    and the file rewritten without it, so appending stays valid JSON lines."""
+    if not path.exists():
+        return set()
+    good, ids = [], set()
+    for line in open(path):
+        try:
+            ids.add(json.loads(line)["id"])
+            good.append(line if line.endswith("\n") else line + "\n")
+        except (ValueError, KeyError, TypeError):
+            continue
+    with open(path, "w") as f:
+        f.writelines(good)
+    return ids
 
 
 def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
@@ -181,12 +242,15 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
     valid = [encode(r) for r in rd("valid.jsonl")][:400]
     train = [x for x in train if any(v != -100 for v in x[1])]      # an answer cut off by MAX_LEN teaches nothing
 
-    def batches(rows, shuffle):
+    def order(rows, shuffle):
         idx = sorted(range(len(rows)), key=lambda i: len(rows[i][0]))      # length buckets: little padding
         groups = [idx[i:i + BATCH] for i in range(0, len(idx), BATCH)]
         if shuffle:
-            random.shuffle(groups)
-        for g in groups:
+            random.shuffle(groups)          # seeded: a resumed run replays the same order
+        return groups
+
+    def batches(rows, shuffle, groups=None):
+        for g in groups if groups is not None else order(rows, shuffle):
             n = max(len(rows[i][0]) for i in g)
             ids = torch.full((len(g), n), tok.pad_token_id)
             lab = torch.full((len(g), n), -100)
@@ -205,8 +269,13 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
     model.gradient_checkpointing_enable()
     model.enable_input_require_grads()
     n_layers = model.config.num_hidden_layers
-    prev = previous_adapter(name)
-    log, step, stopped, steps = [], 0, False, 0
+    sha = train_sha(job_dir)
+    prev = (out / "peft") if _reusable(out / "peft", name, sha) else previous_adapter(name, sha=sha)
+    log, step, stopped, steps, resumes = [], 0, False, 0, 0
+    n_test = sum(1 for _ in open(job_dir / "test.jsonl")) if (job_dir / "test.jsonl").exists() else 0
+    reserve = ANSWER_S_PER_ROW * n_test * (2 if name == "watchdog" and not REUSE_BASE else 1) if ANSWER_S_PER_ROW \
+        else ANSWER_RESERVE_S
+    ck = out / "ckpt" / "state.pt"
     if prev is not None:
         from peft import PeftModel
         print(f"{name}: reusing the trained adapter {prev} (RZ_RETRAIN=1 retrains)", flush=True)
@@ -238,10 +307,39 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
             model.train()
             return round(tot / max(1, n), 4)
 
-        heartbeat(out, phase="val0")
-        log.append({"step": 0, "val_loss": val_loss()})
+        start_ep, skip, bad_loss = 0, 0, 0
+        st = torch.load(ck, map_location=dev, weights_only=False) if ck.exists() else None
+        if st is not None and st.get("recipe") == recipe_of(name) and st.get("sha") == sha:
+            from peft import set_peft_model_state_dict
+            set_peft_model_state_dict(model, st["lora"])
+            opt.load_state_dict(st["opt"])
+            sched.load_state_dict(st["sched"])
+            scaler.load_state_dict(st["scaler"])
+            log, step, start_ep, skip, bad_loss = st["log"], st["step"], st["ep"], st["micro"], st["bad_loss"]
+            torch.set_rng_state(st["rng"].cpu())
+            resumes = st.get("resumes", 0) + 1
+            log.append({"resumed_at_step": step, "epoch": start_ep + 1})
+            print(f"{name}: resumed from the checkpoint at step {step}/{steps} (epoch {start_ep + 1})", flush=True)
+            heartbeat(out, phase="resumed", step=step, steps=steps)
+        else:
+            heartbeat(out, phase="val0")
+            log.append({"step": 0, "val_loss": val_loss()})
         model.train()
         stopped = False
+        last_ck = time.time()
+
+        def save_ckpt(ep, micro):
+            """LoRA + optimizer + scheduler + scaler + the data position, atomically (tmp, then rename)."""
+            from peft import get_peft_model_state_dict
+            ck.parent.mkdir(parents=True, exist_ok=True)
+            tmp = ck.with_suffix(".tmp")
+            torch.save({"lora": get_peft_model_state_dict(model), "opt": opt.state_dict(), "sched": sched.state_dict(),
+                        "scaler": scaler.state_dict(), "log": log, "step": step, "ep": ep, "micro": micro,
+                        "bad_loss": bad_loss, "rng": torch.get_rng_state(), "recipe": recipe_of(name), "sha": sha,
+                        "resumes": resumes, "ts": round(time.time())}, tmp)
+            tmp.replace(ck)
+            print(f"{name}: checkpoint at step {step}/{steps}", flush=True)
+
         def opt_step():
             scaler.unscale_(opt)
             torch.nn.utils.clip_grad_norm_(params, 1.0)
@@ -250,10 +348,12 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
             opt.zero_grad(set_to_none=True)
             sched.step()
 
-        bad_loss = 0
         for ep in range(epochs):
-            micro = 0
-            for ids, lab, att in batches(train, True):
+            groups = order(train, True)              # every epoch draws its order, even a skipped one
+            if ep < start_ep:
+                continue
+            micro = skip if ep == start_ep else 0
+            for ids, lab, att in batches(train, True, groups[micro:]):
                 with torch.autocast(**amp):
                     loss = answer_loss(model, ids, lab, att)
                 if not torch.isfinite(loss):
@@ -270,7 +370,16 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
                 if step % 50 == 0:
                     print(f"{name} step {step}/{steps} loss {loss.item():.4f} eta {_eta(step, steps, t0)}", flush=True)
                     heartbeat(out, phase="train", step=step, steps=steps, loss=round(loss.item(), 4))
-                if time.time() - t0 > TIME_PER_JOB_S or time.time() > deadline() - ANSWER_RESERVE_S:
+                if CKPT_S and time.time() - last_ck > CKPT_S:
+                    save_ckpt(ep, micro)
+                    last_ck = time.time()
+                if time.time() - t0 > TIME_PER_JOB_S or time.time() > deadline() - reserve:
+                    if FINISH_TRAINING and CKPT_S:
+                        save_ckpt(ep, micro)
+                        print(f"{name}: budget reached at step {step}/{steps}; checkpointed, rerun to continue",
+                              flush=True)
+                        heartbeat(out, phase="paused", step=step, steps=steps)
+                        raise SystemExit(PAUSED)
                     print(f"{name}: training time cap at step {step}/{steps}", flush=True)
                     stopped = True
                     break
@@ -282,9 +391,22 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
             if stopped:
                 break
     peft_dir = out / "peft"
-    model.save_pretrained(peft_dir)
-    (peft_dir / "recipe.txt").write_text(recipe_of(name))
     train_s = round(time.time() - t0)
+    if prev == peft_dir:            # [Colab V8] this job's own adapter from an earlier session: keep its training log
+        try:
+            tl = json.load(open(peft_dir / "train_log.json"))
+            step, stopped, log, resumes = tl["steps"], tl["stopped_early"], tl["log"] + log, tl["ckpt_resumes"]
+            train_s = tl["train_s"]
+        except (OSError, ValueError, KeyError):
+            pass
+    else:
+        model.save_pretrained(peft_dir)
+        (peft_dir / "recipe.txt").write_text(recipe_of(name))
+        json.dump({"steps": step, "stopped_early": stopped, "log": log, "ckpt_resumes": resumes, "train_s": train_s},
+                  open(peft_dir / "train_log.json", "w"))
+        if sha:
+            (peft_dir / "train_sha.txt").write_text(sha)     # written last: the adapter is complete
+    shutil.rmtree(out / "ckpt", ignore_errors=True)
     # [V6] convert first: a run stopped during the answers still leaves a usable Mac adapter
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from agent.train.peft_to_mlx import convert
@@ -300,9 +422,14 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
 
     def answer(rows, path: Path, adapter_on=True) -> dict:
         """Answers in batches, appended as they come (a stop keeps every finished batch)."""
+        have = answered_ids(path)                  # [Colab V8] a rerun answers only what is left
+        if have:
+            print(f"{name}: {len(have)} answers already in {path.name}; answering the rest", flush=True)
+        prior = sum(1 for r in rows if r["id"] in have)
+        rows = [r for r in rows if r["id"] not in have]
         nb = (len(rows) + ANSWER_BATCH - 1) // ANSWER_BATCH
         ta, done, cut, forced = time.time(), 0, False, 0
-        with open(path, "w") as f:
+        with open(path, "a") as f:
             for b, i in enumerate(range(0, len(rows), ANSWER_BATCH)):
                 if time.time() > deadline():
                     print(f"{name}: wall-clock budget reached at answer batch {b}/{nb}; keeping {done} answers", flush=True)
@@ -333,22 +460,51 @@ def train_job(name: str, job_dir: Path, base: Path, out: Path) -> None:
                     print(f"{name} answers {'' if adapter_on else '(no adapter) '}batch {b + 1}/{nb} "
                           f"({done}/{len(rows)} rows) eta {_eta(b + 1, nb, ta)}", flush=True)
                     heartbeat(out, phase="answer" if adapter_on else "answer_base", batch=b + 1, batches=nb)
-        return {"answered": done, "of": len(rows), "cut_by_budget": cut, "constrained": CONSTRAINED,
-                "forced_tokens": forced}
+        return {"answered": prior + done, "of": prior + len(rows), "this_session": done, "cut_by_budget": cut,
+                "constrained": CONSTRAINED, "forced_tokens": forced}
 
     t1 = time.time()
     answered = {"student": answer(tests, out / "test_out.jsonl")}
-    if name == "watchdog":
+    if name == "watchdog" and REUSE_BASE and Path(REUSE_BASE).exists() and \
+            sum(1 for _ in open(REUSE_BASE)) == len(tests):            # same test set: the base can't have changed
+        shutil.copy(REUSE_BASE, out / "test_out_base.jsonl")
+        answered["base"] = {"reused": REUSE_BASE, "answered": len(tests), "of": len(tests)}
+    elif name == "watchdog":
         answered["base"] = answer(tests, out / "test_out_base.jsonl", adapter_on=False)
     answer_s = round(time.time() - t1)
-    heartbeat(out, phase="done")
+    complete = not any(v.get("cut_by_budget") for v in answered.values())
+    heartbeat(out, phase="done" if complete else "answers_cut")
+    if not complete:
+        print(f"{name}: answers cut by the budget; a rerun in the same work dir answers the rest", flush=True)
 
     json.dump({"job": name, "base": BASE_REPO + " (dequantized)", "rank": rank_for(name), "alpha": 2 * rank_for(name),
                "last_layers": LAST_LAYERS or n_layers, "lr": LR, "base_dtype": BASE_DTYPE, "batch": BATCH * ACCUM, "targets": TARGETS, "train_rows": len(train), "steps": step,
-               "stopped_early": stopped, "log": log, "train_s": train_s, "answer_s": answer_s, "answered": answered,
+               "complete": complete, "stopped_early": stopped, "ckpt_resumes": resumes, "train_sha": sha, "log": log, "train_s": train_s, "answer_s": answer_s, "answered": answered,
                "mlx": mlx_cfg},
               open(out / "train_report.json", "w"), indent=1)
     print(name, "done", flush=True)
+
+
+def job_done(d: Path) -> bool:
+    """[Colab V8] done = train_report.json says complete (older reports without the field: mlx adapter present)."""
+    try:
+        rep = json.load(open(d / "train_report.json"))
+    except (OSError, ValueError):
+        return False
+    return bool(rep.get("complete", (d / "mlx" / "adapters.safetensors").exists()))
+
+
+def job_order(info: dict) -> list[str]:
+    """RZ_JOB_ORDER ("watchdog,game-reasoner"), then any other job by name."""
+    want = [x for x in os.environ.get("RZ_JOB_ORDER", "").split(",") if x in info]
+    return want + sorted(x for x in info if x not in want)
+
+
+def job_weights(info: dict) -> dict[str, float]:
+    """RZ_JOB_WEIGHTS ("watchdog:1,game-reasoner:5"), else train rows x epochs + 4 x test rows."""
+    env = dict(kv.split(":") for kv in os.environ.get("RZ_JOB_WEIGHTS", "").split(",") if ":" in kv)
+    return {nm: float(env[nm]) if nm in env else
+            max(1.0, v.get("train", 0) * EPOCHS.get(nm, 1) + 4 * v.get("test", 0)) for nm, v in info.items()}
 
 
 def main() -> None:
@@ -382,6 +538,10 @@ def main() -> None:
     if a.prepare_only:
         return
     info = {k: v for k, v in info.items() if not k.startswith("_")}
+    if os.environ.get("RZ_JOBS"):                 # [Colab] e.g. "watchdog": train only these jobs this run
+        keep = set(os.environ["RZ_JOBS"].split(","))
+        info = {k: v for k, v in info.items() if k in keep}
+        print("jobs this run:", sorted(info), flush=True)
     base_dir(out)
     import threading
 
@@ -391,11 +551,11 @@ def main() -> None:
     dl = t_start + BUDGET_S
     print(f"student phase budget {BUDGET_S / 3600:.1f} h (deadline in {BUDGET_S / 60:.0f} min)", flush=True)
 
-    def launch(name: str, env: dict, mode: str = "w"):
+    def launch(name: str, env: dict, mode: str = "w", job_dl: float | None = None):
         """Start one job; [V6] tee its output to <job>/train.log AND the notebook's stdout, prefixed."""
         log = open(out / name / "train.log", mode)
         p = subprocess.Popen([sys.executable, __file__, "--pack", a.pack, "--out", a.out, "--job", name],
-                             env={**env, "RZ_DEADLINE": str(dl), "PYTHONUNBUFFERED": "1"},
+                             env={**env, "RZ_DEADLINE": str(job_dl or dl), "PYTHONUNBUFFERED": "1"},
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
 
         def pump():
@@ -436,14 +596,23 @@ def main() -> None:
                   + " | ".join(parts), flush=True)
     threading.Thread(target=status, daemon=True).start()
 
+    names = job_order(info)
+    todo = [nm for nm in names if not job_done(out / nm)]
+    for nm in names:
+        if nm not in todo:
+            print(nm, "already done (train_report.json complete); skipping", flush=True)
+    w = job_weights(info)
     procs = []
-    for k, name in enumerate(sorted(info)):
-        if (out / name / "mlx" / "adapters.safetensors").exists():
-            print(name, "already trained; skipping", flush=True)
-            continue
+    for k, name in enumerate(todo):
         (out / name).mkdir(parents=True, exist_ok=True)
         env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(k % n_gpu)}
-        p = launch(name, env)
+        job_dl = None
+        if n_gpu == 1 and len(todo) > 1:              # [Colab V8] one GPU: a share of what is left, by weight
+            left = todo[k:]
+            job_dl = time.time() + max(0.0, dl - time.time()) * w[name] / sum(w[x] for x in left)
+            print(f"{name}: {(job_dl - time.time()) / 60:.0f} min of the {(dl - time.time()) / 60:.0f} min left",
+                  flush=True)
+        p = launch(name, env, mode="a", job_dl=job_dl)
         procs.append((name, p, env))
         if k % n_gpu == n_gpu - 1:          # more jobs than GPUs: wait for this round
             for nm, q, _ in procs:
@@ -455,6 +624,8 @@ def main() -> None:
             print(name, "overflowed on the float16 base; retrying on float32", flush=True)
             p = launch(name, {**env, "RZ_BASE_DTYPE": "float32"}, mode="a")
             rc = wait(name, p)
+        if rc == PAUSED:
+            print(name, "checkpointed by the budget; rerun to continue its training", flush=True)
         if rc != 0:
             bad.append(name)
     for name, _, _ in procs:

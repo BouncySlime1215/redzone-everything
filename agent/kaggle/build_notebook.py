@@ -40,15 +40,49 @@ def cells_of(src: str) -> list[dict]:
     return cells
 
 
-def build(src: Path, dst: Path) -> None:
+def build(src: Path, dst: Path, gpu: str = "T4") -> None:
     nb = {"cells": cells_of(src.read_text()), "nbformat": 4, "nbformat_minor": 5,
           "metadata": {"kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"},
                        "language_info": {"name": "python"},
                        "kaggle": {"accelerator": "nvidiaTeslaT4", "isInternetEnabled": True, "isGpuEnabled": True}}}
+    if src.stem.startswith("colab"):        # [Colab V8] a Colab notebook asks for a T4 by itself
+        nb["metadata"] = {"kernelspec": nb["metadata"]["kernelspec"], "language_info": {"name": "python"},
+                          "accelerator": "GPU", "colab": {"provenance": [], "gpuType": gpu}}
     dst.write_text(json.dumps(nb, indent=1) + "\n")
 
 
+# [Colab, Nick Nov 4 7:30 PM] self-contained Colab notebooks from one template (colab_students.py); the PIN is
+# filled in when the notebook is copied to kaggle-inputs (the pack's own commit).
+COLAB = {
+    "v8_watchdog_l4": dict(TITLE="V8 watchdog, uncapped (EXP-085): the V8 run stopped it at step ~450 of 1436.",
+                           GPU="L4", JOBS="watchdog", ANSWERS="", SESSION_H="2.5", STUDENT_H="2.2", EPOCHS="", WATCHDOG_TRAIN=""),
+    "v81_watchdog_l4": dict(TITLE="V8.1 watchdog (EXP-101): V7's rows + counterfactual rows on the conditional kinds.",
+                            GPU="L4", JOBS="watchdog", ANSWERS="", SESSION_H="2.5", STUDENT_H="2.2", EPOCHS="",
+                            WATCHDOG_TRAIN="v81"),
+    "v82_students_l4": dict(TITLE="V8.2 students (EXP-087): the full recipe on the new teacher labels.",
+                            GPU="L4", JOBS="game-reasoner,watchdog", ANSWERS="__ANSWERS__", SESSION_H="4.5",
+                            STUDENT_H="4.0", EPOCHS="", WATCHDOG_TRAIN=""),
+}
+
+
+def build_colab(name: str, out_dir: Path) -> Path:
+    src = (HERE / "colab_students.py").read_text()
+    for k, v in COLAB[name].items():
+        src = src.replace(f"__{k}__", v)
+    tmp = out_dir / f"colab_{name}.py"             # the colab_ stem gives it Colab metadata (its GPU asked for)
+    tmp.write_text(src)
+    build(tmp, out_dir / f"colab_{name}.ipynb", COLAB[name]["GPU"])
+    tmp.unlink()
+    return out_dir / f"colab_{name}.ipynb"
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--colab"]:
+        out = Path(sys.argv[2])
+        out.mkdir(parents=True, exist_ok=True)
+        for n in COLAB:
+            print("wrote", build_colab(n, out))
+        raise SystemExit(0)
     names = sys.argv[1:] or ["teacher_distill"]
     for n in names:
         build(HERE / f"{n}.py", HERE / f"{n}.ipynb")
