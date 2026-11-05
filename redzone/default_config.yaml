@@ -583,6 +583,8 @@ timing:
     shadow: true           # [Nick 9:10 AM Nov 5, buffer = main architecture] with enabled off: an editor decider runs
                            # every game B s behind live and logs each decision to data/buffer_shadow.jsonl; no stick
                            # or screen change (redzone/buffer_shadow.py). Lane 3 grades it vs live for the RC8 gate
+    shadow_overrides: {"decider.entry.start_timed": true}   # the editor's own settings (flat dotted keys); the live
+                           # decider keeps its own (planner: the night lab's untimed NBA start joined 10 s after tip)
     apps: [youtubetv, primevideo]   # apps whose player pauses and resumes on the hidden stick
     hold_overreport_s: 0   # [hold calibration] fallback only (no stick positions): the wall span less this. 0 =
                            # the span as is. At 1.5 it fought hold_cal_s (a rebuild's pause is already short by

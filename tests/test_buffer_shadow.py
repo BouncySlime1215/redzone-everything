@@ -128,3 +128,8 @@ def test_stay_leave_rows_carry_context_and_adaptive_terms(engine, tmp_path, monk
         assert k in c
     if r["behind_adaptive_s"] is not None:
         assert r["floor_s"] <= r["behind_adaptive_s"] <= r["cap_s"] == 90
+
+
+def test_editor_times_its_first_pick_live_decider_untouched(engine):  # noqa: F811
+    assert engine.buffer_shadow.editor.cfg.get("decider.entry.start_timed") is True
+    assert engine.decider.cfg.get("decider.entry.start_timed") is False

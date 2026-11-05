@@ -18,6 +18,21 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 
+class EditorConfig:
+    """The live config with timing.behind_live_s.shadow_overrides (flat dotted keys) on top, for the editor
+    only: tonight's log grades the editor RC8 would ship (planner: start_timed), the live decider is untouched."""
+
+    def __init__(self, cfg):
+        self._cfg = cfg
+
+    def get(self, key, default=None):
+        over = self._cfg.get("timing.behind_live_s.shadow_overrides") or {}
+        return over[key] if key in over else self._cfg.get(key, default)
+
+    def __getattr__(self, name):
+        return getattr(self._cfg, name)
+
+
 class BufferedDelays:
     """The live DelayBook seen B s later: get(target).mu += B(target). Writes are ignored (the editor
     holds nothing; the live book is the controller's)."""
@@ -70,7 +85,7 @@ class BufferShadow:
         from redzone.decider.decider import Decider
         self.cfg, self.live, self.behind_of, self.log_path, self._clock = cfg, live_decider, behind_of, log_path, clock
         self.delays = BufferedDelays(live_decider.delays, behind_of)
-        self.editor = Decider(cfg, self.delays, clock=clock)
+        self.editor = Decider(EditorConfig(cfg), self.delays, clock=clock)
         self.editor.timelines = live_decider.timelines   # one play-by-play history, read by both
         self._last: tuple | None = None
         self.n_rows = 0
