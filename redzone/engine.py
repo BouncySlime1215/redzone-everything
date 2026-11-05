@@ -1418,6 +1418,8 @@ class Engine:
                     return True
                 forced[0] = False
                 return not self._hold_waits(d) or self.safe_to_leave(before, required_s=8.0)
+            if time.time() < d.at + float(getattr(d, "defer_s", 0.0) or 0.0):
+                return False   # [EXP-803 A1] the break's tail: cut at the planned moment, not before
             return self._entry_valid(d, target) and (time.time() >= replay_exit if replay_exit is not None
                                                      else self.safe_to_leave(before, required_s=8.0))
         self.control.submit(target, back, done, may_cut=may_cut,
