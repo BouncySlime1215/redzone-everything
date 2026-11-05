@@ -326,7 +326,6 @@ class Scorer:
                       watch_value=wr.watch_value if wr else None, watch_why=wr.watch_why if wr else "",
                       watch_terms=dict(wr.watch_terms) if wr else {}, watch_rising=wr.watch_rising if wr else None,
                       crunch_state=wr.crunch_state if wr else None,
-                      stakes_line=(postseason.reason(g) or None) if wr and postseason.enabled(c) else None,
                       late=is_late(g),
                       factor="garbage time" if h.garbage else factor, factors=factors,
                       crunch_now=crunch_window(g),
