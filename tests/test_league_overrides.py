@@ -45,17 +45,17 @@ def test_a_group_override_replaces_the_whole_group(scoped):
     assert config.for_league(cfg, "decider.entry.max_wait_s.nba", "cbb") == cfg.get("decider.entry.max_wait_s.nba")
 
 
-def test_shipped_scopes_nfl_and_leaves_the_rest_live(cfg):
-    """RC6.3: NFL runs its graded set; NBA runs live behavior plus EXP-204 only (its set cost your-team
-    crunch under the live-resync harness); every other league is live."""
+def test_shipped_is_live_plus_exp204(cfg):
+    """RC6.3: NBA and NFL run live behavior plus EXP-204 only (the 17-key set failed the live-resync
+    harness); every other league is live. The time-shift buffer ships nowhere until it passes --resync."""
     over = cfg.get("league_overrides")
     assert {k for k, v in over.items() if v} == {"nba", "nfl"}
-    assert set(over["nba"]) == {"decider.mine_late_max_lead_wp"}
-    for lg in ("nba", "nhl", "cbb", "cfb", "wcbb", "mlb"):
+    for lg in ("nba", "nfl"):
+        assert set(over[lg]) == {"decider.mine_late_max_lead_wp"}
+    for lg in ("nba", "nfl", "nhl", "cbb", "cfb", "wcbb", "mlb"):
         assert config.for_league(cfg, "noggin.priority.enabled", lg) is False
         assert config.for_league(cfg, "timing.behind_live_s.enabled", lg) is False
-    assert config.for_league(cfg, "timing.behind_live_s.enabled", "nfl") is True
-    assert config.any_league(cfg, "timing.behind_live_s.enabled")
+    assert not config.any_league(cfg, "timing.behind_live_s.enabled")
     assert not cfg.get("timing.behind_live_s.enabled")   # the global toggle stays off
 
 

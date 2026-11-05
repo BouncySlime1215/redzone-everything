@@ -609,3 +609,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (`eval_sports nba --resync`) the set took your-team crunch live 31/31 -> 17/31 (a 100% gate); leave-one-out pins it on
   the time-shift buffer (`timing.behind_live_s.enabled`), and without the buffer big seen / crunch live still trail live.
   From now on every league set is graded on both harnesses (honest and --resync).
+- 2026-11-05 (integrator, RC6.3; Nick's call pending, default until he answers): `league_overrides.nfl` also drops the
+  17-key set (EXP-203) and keeps only EXP-204. Under --resync the set cost NFL big seen 97.2 -> 93.0, your-team big seen
+  29/29 -> 28/29, dead air 8.8 -> 12.8. Reverting this one commit restores the NFL set if Nick picks it.
