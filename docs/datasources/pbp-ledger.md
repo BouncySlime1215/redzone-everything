@@ -30,4 +30,4 @@ Only shards that landed in the private Kaggle dataset count. Every token here is
 | statsbomb | liga_profesional | 1981-1998 | 2 | 6,658 | 0.0 | 0.00 | - | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | fifa_u20_world_cup | 1979-1979 | 1 | 3,245 | 0.0 | 0.00 | - | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | north_american_league | 1977-1977 | 1 | 3,205 | 0.0 | 0.00 | - | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
-| **Total** | | | 3,961 | 13,911,986 | 83.5 | 0.14 | | |
+| **Total events** | | | | 3,961 | 13,911,986 | 83.5 | 0.14 | | |

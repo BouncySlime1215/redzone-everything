@@ -136,8 +136,8 @@ def to_frame(rows: list[dict]):
     df = pd.DataFrame(rows, columns=list(COLUMNS))
     for c in INT:
         df[c] = df[c].astype("Int32")
-    for c in FLOAT:
-        df[c] = df[c].astype("float32")
+    for c in FLOAT:     # wall_ts needs float64: float32 rounds unix seconds to ~128 s steps
+        df[c] = df[c].astype("float64" if c == "wall_ts" else "float32")
     return df
 
 

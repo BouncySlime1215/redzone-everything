@@ -25,6 +25,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tarfile
 import time
@@ -32,6 +33,7 @@ import traceback
 from pathlib import Path
 
 T0 = time.time()
+subprocess.run([sys.executable, "-m", "pip", "install", "-q", "py7zr"], check=False)   # SportVU archives (.7z)
 SESSION_H = float(os.environ.get("RZ_SESSION_H", "11.3"))
 KW = Path(os.environ.get("RZ_KAGGLE_WORKING", "/kaggle/working"))
 INP = Path(os.environ.get("RZ_KAGGLE_INPUT", "/kaggle/input"))
@@ -58,7 +60,7 @@ if CODE_B64 and not (CODE / "pbp").exists():
             tar.extractall(CODE)
 sys.path.insert(0, str(CODE))
 sys.path.insert(0, str(Path.cwd() / "scripts"))
-from pbp import cricsheet, mlb_statsapi, statsbomb, tennis, wehoop, wyscout  # noqa: E402
+from pbp import cricsheet, mlb_statsapi, sportvu, statsbomb, tennis, wehoop, wyscout  # noqa: E402
 from pbp.schema import PERSONAL  # noqa: E402
 
 # resume: copy finished shards (and their sidecars) from a previous version's output
@@ -104,6 +106,7 @@ if "files" in JOBS:
     run("statsbomb", statsbomb.pull_all, OUT, competitions=None)
     run("wyscout", wyscout.pull_all, OUT)
     run("tennis", tennis.pull_all, OUT)
+    run("sportvu", sportvu.pull_all, OUT)
 
 # %%
 if "baseball" in JOBS:

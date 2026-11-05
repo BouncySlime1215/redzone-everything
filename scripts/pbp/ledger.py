@@ -59,12 +59,15 @@ def summarize(rows: list[dict]) -> dict:
             b[k] += int(m.get(k) or 0)
         b["seasons"].add(int(m["season"]))
         b["license"], b["tag"] = m.get("license", ""), m.get("tag", "")
+        b["kind"] = "tracking" if "tracking" in str(m.get("rows_are", "")) else "events"
     out = []
     for (src, lg), b in sorted(by.items(), key=lambda kv: -kv[1]["v1_tokens"]):
         s = sorted(b.pop("seasons"))
         out.append({"source": src, "league": lg, "seasons": f"{s[0]}-{s[-1]}" if s else "", **b})
-    tot = {k: sum(r[k] for r in out) for k in ("shards", "games", "events", "v1_tokens", "bytes")}
-    return {"rows": out, "total": tot}
+    keys = ("shards", "games", "events", "v1_tokens", "bytes")
+    tot = {k: sum(r[k] for r in out if r["kind"] == "events") for k in keys}
+    trk = {k: sum(r[k] for r in out if r["kind"] == "tracking") for k in keys}
+    return {"rows": out, "total": tot, "tracking": trk}
 
 
 def render(s: dict) -> str:
@@ -79,8 +82,13 @@ def render(s: dict) -> str:
         lines.append(f"| {r['source']} | {r['league']} | {r['seasons']} | {r['games']:,} | {r['events']:,} | "
                      f"{r['v1_tokens'] / 1e6:.1f} | {r['bytes'] / 1e9:.2f} | {r['tag'] or '-'} | {r['license']} |")
     t = s["total"]
-    lines += [f"| **Total** | | | {t['games']:,} | {t['events']:,} | {t['v1_tokens'] / 1e6:.1f} | "
-              f"{t['bytes'] / 1e9:.2f} | | |", ""]
+    k = s.get("tracking") or {}
+    lines += [f"| **Total events** | | | | {t['games']:,} | {t['events']:,} | {t['v1_tokens'] / 1e6:.1f} | "
+              f"{t['bytes'] / 1e9:.2f} | | |"]
+    if k.get("shards"):
+        lines += [f"| **Total tracking** | | | | {k['games']:,} | {k['events']:,} | {k['v1_tokens'] / 1e6:.1f} | "
+                  f"{k['bytes'] / 1e9:.2f} | | |"]
+    lines.append("")
     return "\n".join(lines)
 
 
