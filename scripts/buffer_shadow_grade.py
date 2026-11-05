@@ -32,7 +32,7 @@ NULLABLE = {"league": str, "gid": str, "stick": str, "role": str, "source": str,
 ENTRY = {"to": str, "picture_at": NUM, "mu": NUM, "sd": NUM, "arena_at": NUM}
 ROLES = {"hidden", "visible"}
 STICK_ACTIONS = {"hold", "seek", "pause", "resume"}   # item D (seek reliability): hidden stick only
-EDITOR_KINDS = {"entry", "decision"}                 # the editor's own rows: no stick at all
+EDITOR_KINDS = {"entry", "decision", "stay_leave"}               # the editor's own rows (entry, decision, stay_leave): no stick at all
 ARENA_TOL_S = 1.0
 
 
