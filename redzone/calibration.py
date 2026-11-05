@@ -212,7 +212,7 @@ def delay_fit(rows: list[dict], lo: float | None = None, hi: float | None = None
     return out
 
 
-def _jsonl(path: Path, lo: float | None = None, hi: float | None = None) -> list[dict]:
+def night_rows(path: Path, lo: float | None = None, hi: float | None = None) -> list[dict]:
     rows = []
     for p in (path.with_suffix(".jsonl.1"), path):
         try:
@@ -232,7 +232,7 @@ def _jsonl(path: Path, lo: float | None = None, hi: float | None = None) -> list
 def sync_from_night(root: Path, lo: float, hi: float) -> dict[str, tuple]:
     """Lane 2's sync half for the night [lo, hi): the seek fit and every channel's delay."""
     root = Path(root)
-    return {**seek_fit(_jsonl(root / "seeks.jsonl", lo, hi)), **delay_fit(_jsonl(root / "sync.jsonl", lo, hi))}
+    return {**seek_fit(night_rows(root / "seeks.jsonl", lo, hi)), **delay_fit(night_rows(root / "sync.jsonl", lo, hi))}
 
 
 def sync_prior(cfg, root: Path) -> dict:

@@ -327,6 +327,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   likeliest first pick of that window (your team, then league order) is preloaded on the HIDDEN stick, so the
   first switch is a flip. Never the stick on screen, never while paused / dry run / a switch is in flight;
   the pre-game checks stand aside meanwhile. Night lab seed 1: first switch 7.52 s cold tune -> 1.92 s flip.
+- 2026-11-04: **sync.probe.bursts true (new, logging only), sync.burst_anchor.enabled false (new), gap_s 15 /
+  gap_sd_s 10 (priors).** YTTV MediaSession bursts are content-tied (live lab); their onsets are logged with the
+  feed's last dead ball so a night can show whether they follow TV timeouts (scripts/burst_align.py). Off as an
+  anchor until then. Also: the sync filter's origin is per TUNE (YTTV position restarts near 46,790 s at every
+  tune), and `--positions` in the sims is now that per-tune clock (honest NFL big live ~5 points lower).
 - 2026-11-04: **buffer.watchdog (new, default OFF); timing.behind_live_s.hold_cal_s -1.5.** Overseer queue item (e),
   playbook STK-06: a hidden-stick hold more than 2 s off its target (read off the stick's own clock since the
   hold re-anchored it) is rebuilt at its game's next dead ball, or after 90 s without one (the stick is off
@@ -469,3 +474,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-05 (lane 3, EXP-084, #140 brought up to integration/next): `calib.sigma_floor_s: 2.0` replaces the
   module constant CALIB_SIGMA_FLOOR_S in decider/screen.py (value unchanged; calibration.sync_prior applies it).
   Reason: the contract kernel flagged it as a new K2 timing literal on merge; timings live in config.
+- 2026-11-05 (lane 3, EXP-084, #140 brought up to integration/next): `calib.sigma_floor_s: 2.0` replaces the
+  module constant CALIB_SIGMA_FLOOR_S in decider/screen.py (value unchanged; calibration.sync_prior applies it).
+  Reason: the contract kernel flagged it as a new K2 timing literal on merge; timings live in config.
+- 2026-11-05 (lane 3, EXP-084, #146 brought up to integration/next): the burst detector's timings move from
+  sync_probe constants to config, values unchanged: `sync.probe.burst_gap_s: 300`, `burst_after_tune_s: 30`,
+  `burst_confirm_s: 60`, `burst_sd_s: 0.3`. The sims' YTTV position origin is 0 instead of 46,790 s (any shared
+  per-tune origin gives the same filter result). Reason: K2 flagged them as new timing literals on merge.

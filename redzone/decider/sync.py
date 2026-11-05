@@ -14,12 +14,16 @@ Signals, each a linear measurement of that state:
     score bug clock OCR vs the feed's play clock       d          ~1.5 s (see clock_sample)
     "I just saw it" tap / crowd roar (mic)             d          4 s / 3 s
     stick playback position, clock pinned (YTTV)       o + d      the clock pin's half width (~0.5 s)
+    MediaSession burst on a stick (YTTV, see burst())  d (rel.)   ~0.3 s against the other stick's
 
-The position read is what makes it fast: once one flip or score has fixed the origin, every later
-read on that channel, after any tune or seek, gives the delay at once (d = wall - origin - position).
+YouTube TV's position is a per-TUNE clock, not the channel's timeline (live lab, Nov 4: every fresh
+tune starts near the same position, 46,790 s, whatever the hour). So the origin o belongs to one
+tune of a channel: once a flip, a score or an anchor has fixed it, every later read on that tune,
+after any seek or pause, gives the delay at once (d = wall - origin - position). A new tune forgets
+it. A seek or pause on the same tune keeps it: that is the read that times a rewind or a hold.
 
-A tune or a seek makes the delay unknown again (re-sync): d's doubt is reset to the predictor's
-prior (delaymodel.py), the drift is forgotten, the origin is kept. A measurement more than GATE
+A new tune, a seek or a pause makes the delay unknown again (re-sync): d's doubt is reset to the
+predictor's prior (delaymodel.py) and the drift is forgotten. Only a new tune forgets the origin. A measurement more than GATE
 sigmas from the prediction is not used and the channel is flagged uncertain; two in a row from
 different moments mean the stream really jumped, and the filter restarts from the newest one.
 
@@ -76,9 +80,15 @@ class ChannelSync:
     plan_mu: float | None = None               # [SYNC 6] the delay when it (re)synced: drift is measured from it
 
     # ------------------------------------------------------------------ model
-    def reset(self, t: float, mu: float, sd: float) -> None:
-        """A tune or a seek: the delay is unknown again (prior mu +- sd), the drift too; origin kept."""
+    def reset(self, t: float, mu: float, sd: float, new_stream: bool = False) -> None:
+        """A tune or a seek: the delay is unknown again (prior mu +- sd), the drift too. The origin is
+        kept over a seek or pause on the same tune and forgotten on a new tune (YTTV's position is a
+        per-tune clock: before this, a re-tune's first reads were rejected and the channel was flagged
+        uncertain for UNCERTAIN_HOLD_S)."""
         self._predict(t)
+        if new_stream:
+            self.has_origin, self.o_ref = False, None
+            self.x[2] = 0.0
         self.x[0], self.x[1] = mu, 0.0
         for i in range(3):
             self.P[0][i] = self.P[i][0] = 0.0
@@ -269,12 +279,12 @@ class SyncBook:
             f.reset(t, mu, sd)
         return f
 
-    def tuned(self, target: str, t: float | None = None) -> None:
-        """A new tune, or a seek on this one: re-sync."""
+    def tuned(self, target: str, t: float | None = None, new_stream: bool = True) -> None:
+        """A new tune (new_stream), or a seek or pause on this one (same stream: origin kept): re-sync."""
         t = self._clock() if t is None else t
         mu, sd = self._prior(target)
-        self.get(target).reset(t, mu, sd)
-        self._log("tune", target, t, prior=round(mu, 2), prior_sd=round(sd, 2))
+        self.get(target).reset(t, mu, sd, new_stream=new_stream)
+        self._log("tune" if new_stream else "seek", target, t, prior=round(mu, 2), prior_sd=round(sd, 2))
         self.on_change(target)
 
     def shift(self, target: str, delta: float, sd: float = 0.5, t: float | None = None) -> None:
