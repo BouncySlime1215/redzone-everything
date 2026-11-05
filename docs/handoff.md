@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Colab: EXP-103 world model v2 on L4 (18.6M params, 74M train tokens), step ~2600/5044, valid loss 0.343 and falling. Teacher EXP-086 (plan B) building moments 22k/28k games, then ~2.3 h of asks. Usage 50%.
-Queue: crew E commentary notebook (#251, ~43 CU A100) launches after the Teacher A100 frees. Factory relaunch at 2:37 uses 5c5db9e. Nick keys pending: YOUTUBE_API_KEY, TWITCH_CLIENT_ID/SECRET, CFBD.
+EXP-103 world model v2 (18.6M, L4): training done at step 5000, valid loss 1.03 -> 0.334 and still creeping down (not saturated). Grading now. Teacher EXP-086 plan B: 28k games built; fast heads CBB AUC 0.967 (leak_suspect: lift over context only 0.007), NHL 0.719; Teacher asks running. Usage 51%.
+Open for Nick: RC7 ship call in lane 2 (ship Thu afternoon + grade sync live on TNF, recommended); CFL key; AHL/ECHL marked red (bot terms). Commentary notebook (43 CU) waits for the Teacher A100.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
