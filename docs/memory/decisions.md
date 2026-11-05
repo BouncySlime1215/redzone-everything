@@ -604,3 +604,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   that forced entry on its own (lane 3's forced go-now line), never as a decider mid-play entry, and never as a training
   label. New standing rule: no deploys and no Mac-side experiments while games are live and Nick is watching. The Mac
   stays plugged in on game nights.
+- 2026-11-05 (integrator + lane 2, RC6.3 candidate; deploy waits on Nick's OK): `league_overrides.nba` drops the 17-key
+  promoted set and keeps only EXP-204 (`decider.mine_late_max_lead_wp: 0.95`). Reason: under the live-resync harness
+  (`eval_sports nba --resync`) the set took your-team crunch live 31/31 -> 17/31 (a 100% gate); leave-one-out pins it on
+  the time-shift buffer (`timing.behind_live_s.enabled`), and without the buffer big seen / crunch live still trail live.
+  From now on every league set is graded on both harnesses (honest and --resync).
