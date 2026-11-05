@@ -66,7 +66,7 @@ def test_article_features_and_tables():
     assert f["offseason"]["off_signings"] == 2 and f["offseason"]["off_departures"] == 1
     assert f["offseason"]["off_tag_injury"] >= 2
     assert f["summaries"][1]["tag_rivalry"] == 1 and f["summaries"][1]["tag_comeback"] == 1
-    games, weeks, ts = W.season_tables("nfl", 2024, "WAS", f, 1, 2, {"WAS": hash("coach one")})
+    games, weeks, ts = W.season_tables("nfl", 2024, "WAS", f, 1, 2, {"WAS": "x"})
     assert ts["coach_change"] == 1
     assert [x["streak_in"] for x in games] == [0, 1, -1, -2, 1]
     assert games[2]["win_pct_in"] == 0.5
@@ -156,3 +156,22 @@ def test_nflverse_event_and_divisions():
     assert e["gid"] == "401547600" and e["home"] == "WSH" and e["start"] == "2023-12-31T18:00Z"
     assert e["national"] == [] and e["done"]
     assert N.div_map(2001)["SEA"] == ("AFC", "") and "HOU" not in N.div_map(2001)
+
+
+def test_pull_newest_first_and_merges(tmp_path):
+    class Two(FakeWiki):
+        def members(self, cat):
+            if "rivalries" in cat:
+                return []
+            y = cat.split(":")[1][:4]
+            return [{"pageid": int(y), "title": f"{y} Washington Commanders season"}]
+    w = Two()
+    order = []
+    orig = w.members
+    w.members = lambda cat: (order.append(cat), orig(cat))[1]
+    W.pull("nfl", 2023, 2024, tmp_path, wiki=w)
+    assert "2024" in order[0] and "2023" in order[1]                         # newest first
+    led = W.pull("nfl", 2022, 2022, tmp_path, wiki=Two())                    # a later slice merges, not replaces
+    assert led["seasons_done"] == [2024, 2023, 2022] and led["team_seasons"] == 3
+    ts = list(csv.DictReader((tmp_path / "nfl" / "team_season.csv").open()))
+    assert {r["coach_change"] for r in ts} <= {"0", ""}                        # same coach every season

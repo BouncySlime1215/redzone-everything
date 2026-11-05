@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import io
 import json
 import re
@@ -276,7 +277,7 @@ def article_features(html: str, league: str, season: int) -> dict:
             uniq.append(g)
     coach = next((v for k, v in w["infobox"].items() if k.startswith("head coach") or k == "coach"), "")
     return {"games": uniq, "summaries": summaries, "offseason": off, "total": total,
-            "coach_key": hash(coach.strip().lower()) if coach else None}
+            "coach_key": hashlib.sha1(coach.strip().lower().encode()).hexdigest()[:10] if coach else None}
 
 
 # ---- network (Actions only) ----------------------------------------------------------------------------------
@@ -365,7 +366,7 @@ def season_tables(league: str, season: int, team: str, feats: dict, pageid: int,
         else:
             t += 1
             streak = 0
-    team_season = {**base, "games": len(games_out), "coach_change": coach_change, **off,
+    team_season = {**base, "games": len(games_out), "coach_change": coach_change, "coach_key": cc or "", **off,
                    "article_words": feats["total"]["words"], **{k: v for k, v in feats["total"].items()
                                                                 if k.startswith("tag_")}}
     return games_out, list(weeks.values()), team_season
@@ -413,14 +414,51 @@ def write_csv(path: Path, rows: list[dict]) -> None:
         wr.writerows(rows)
 
 
-def pull(league: str, first: int, last: int, out: Path, wiki: Wiki | None = None, limit: int = 0) -> dict:
+def _read(path: Path) -> list[dict]:
+    return list(csv.DictReader(path.open())) if path.exists() else []
+
+
+def _coach_pass(seasons: list[dict], weeks: list[dict]) -> None:
+    """coach_change = this season's head coach differs from the team's previous season (needs both articles)."""
+    key = {(r["team"], int(r["season"])): r.get("coach_key") or "" for r in seasons}
+    for rows in (seasons, weeks):
+        for r in rows:
+            a, b = key.get((r["team"], int(r["season"]))), key.get((r["team"], int(r["season"]) - 1))
+            r["coach_change"] = int(a != b) if (a and b) else ""
+
+
+def pull(league: str, first: int, last: int, out: Path, wiki: Wiki | None = None, limit: int = 0,
+         rivalries: bool = True) -> dict:
+    """Newest season first (Nick 12:10 PM: recent context weighs most). Each season is merged into the outputs
+    already in out/<league>/ and written at once, so a slice is usable the moment it lands."""
     wiki = wiki or Wiki()
-    games, weeks, seasons, rivals = [], [], [], []
-    prev_coach: dict = {}
+    d = out / league
+    games, weeks, seasons, rivals = (_read(d / f) for f in ("games.csv", "team_week.csv", "team_season.csv",
+                                                             "rivalries.csv"))
+    old = json.loads((d / "ledger.json").read_text()) if (d / "ledger.json").exists() else {}
     articles = 0
-    for season, cat in season_titles(league, first, last):
+    done_seasons = set(old.get("seasons_done", []))
+
+    def flush():
+        _coach_pass(seasons, weeks)
+        for name, rows in (("games.csv", games), ("team_week.csv", weeks), ("team_season.csv", seasons),
+                           ("rivalries.csv", rivals)):
+            write_csv(d / name, rows)
+        led = {"league": league, "seasons_done": sorted(done_seasons, reverse=True),
+               "articles": old.get("articles", 0) + articles, "team_seasons": len(seasons), "games": len(games),
+               "games_with_writeup": sum(1 for g in games if g.get("writeup_words_postgame") not in (None, "")),
+               "team_weeks": len(weeks), "rivalries": len(rivals),
+               "api_calls": old.get("api_calls", 0) + wiki.calls, "bytes_read": old.get("bytes_read", 0) + wiki.bytes,
+               "license": LICENSE, "tag": TAG, "raw_text_stored": False,
+               "built_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        (d / "ledger.json").write_text(json.dumps(led, indent=1))
+        return led
+
+    led = {}
+    for season, cat in sorted(season_titles(league, first, last), reverse=True):
         mem = wiki.members(cat)
         print(f"{league} {season}: {len(mem)} articles in {cat}", flush=True)
+        g_s, w_s, t_s = [], [], []
         for m in mem:
             team = team_of_title(m["title"], league)
             if not team or not m["title"].endswith("season"):
@@ -430,34 +468,31 @@ def pull(league: str, first: int, last: int, out: Path, wiki: Wiki | None = None
                 continue
             articles += 1
             g, wk, ts = season_tables(league, season, team, article_features(html, league, season), m["pageid"], rev,
-                                      prev_coach)
-            games += g
-            weeks += wk
-            seasons.append(ts)
+                                      {})
+            g_s += g
+            w_s += wk
+            t_s.append(ts)
             if limit and articles >= limit:
                 break
+        keep = (lambda rows: [r for r in rows if int(r["season"]) != season])
+        games, weeks, seasons = keep(games) + g_s, keep(weeks) + w_s, keep(seasons) + t_s
+        done_seasons.add(season)
+        led = flush()
         if limit and articles >= limit:
             break
-    for m in wiki.members(RIVALRY_CATS[league]):
-        if "rivalry" not in m["title"].lower():
-            continue
-        html, rev = wiki.html(m["pageid"])
-        if html:
-            articles += 1
-            r = rivalry_row(league, m["title"], html, m["pageid"], rev)
-            if r:
-                rivals.append(r)
-    d = out / league
-    write_csv(d / "games.csv", games)
-    write_csv(d / "team_week.csv", weeks)
-    write_csv(d / "team_season.csv", seasons)
-    write_csv(d / "rivalries.csv", rivals)
-    led = {"league": league, "seasons": [first, last], "articles": articles, "team_seasons": len(seasons),
-           "games": len(games), "games_with_writeup": sum(1 for g in games if g.get("writeup_words_postgame")),
-           "team_weeks": len(weeks), "rivalries": len(rivals), "api_calls": wiki.calls,
-           "bytes_read": wiki.bytes, "license": LICENSE, "tag": TAG, "raw_text_stored": False,
-           "built_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    (d / "ledger.json").write_text(json.dumps(led, indent=1))
+    if rivalries:
+        new = []
+        for m in wiki.members(RIVALRY_CATS[league]):
+            if "rivalry" not in m["title"].lower():
+                continue
+            html, rev = wiki.html(m["pageid"])
+            if html:
+                articles += 1
+                r = rivalry_row(league, m["title"], html, m["pageid"], rev)
+                if r:
+                    new.append(r)
+        rivals = new or rivals
+        led = flush()
     return led
 
 
@@ -466,7 +501,7 @@ def coverage(out: Path) -> list[dict]:
     for p in sorted(out.glob("*/ledger.json")):
         rows.append(json.loads(p.read_text()))
     for r in rows:
-        print(f"{r['league'].upper()}: games {r['games']} (write-ups {r['games_with_writeup']}), team-weeks "
+        print(f"{r['league'].upper()} seasons {r.get('seasons_done')}: games {r['games']} (write-ups {r['games_with_writeup']}), team-weeks "
               f"{r['team_weeks']}, team-seasons {r['team_seasons']}, rivalries {r['rivalries']}, articles "
               f"{r['articles']}, {r['bytes_read'] / 1e6:.0f} MB read")
     return rows
@@ -480,12 +515,13 @@ def main(argv=None) -> int:
     ap.add_argument("--last", type=int, default=2026)
     ap.add_argument("--limit", type=int, default=0, help="stop after N articles (smoke runs)")
     ap.add_argument("--out", type=Path, default=Path("out"))
+    ap.add_argument("--no-rivalries", action="store_true")
     a = ap.parse_args(argv)
     if a.cmd == "coverage":
         coverage(a.out)
         return 0
     first = a.first or (1999 if a.league == "nfl" else 2001)
-    print(json.dumps(pull(a.league, first, a.last, a.out, limit=a.limit), indent=1))
+    print(json.dumps(pull(a.league, first, a.last, a.out, limit=a.limit, rivalries=not a.no_rivalries), indent=1))
     return 0
 
 
