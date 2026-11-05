@@ -157,6 +157,7 @@ lines are inputs to importance only: never shown and never a betting prompt.
 | C17 | EXP-127 | W (stay/leave) | + crew H pregame context (stakes, rivalry, records, national TV) ([prereg](prereg/exp-127.md)). | % of floored oracle, p90 | CPU / ~1 | lane ① | X1 - A0 >= +1.0, CI > 0 | 8 valid per league | **FAIL (valid)**: 81.6 vs 81.2 at p90 (CI spans 0); +5.9 over B1 |
 | C17 | EXP-128 | W (stay/leave) | Newest-first: this + last season in train ([prereg](prereg/exp-128.md)). | % of floored oracle, p90 | CPU / ~1 | lane ① | N1 - A0 >= +1.0, CI > 0 | 8 valid per league | **FAIL (valid)**: 74.0 vs 81.2; NFL 90.7 vs 74.4 (CI > 0, PENDING) |
 | C17 | EXP-129 | W (stay/leave) | NFL N1 (EXP-128 model, frozen) on fresh NFL slates from Nov 8 ([prereg](prereg/exp-129.md)). | % of floored oracle, p90 (grader v31) | CPU / ~1 | lane ① | N1 - A0 >= +1.0, CI > 0, switches/h <= A0 + 10 % | >= 8 fresh nights, >= 60 leaves | PENDING (pre-registered) |
+| C17 | EXP-130 | W (stay/leave) | B1 weighted by the ledger's stay_leave_timing episodes (WV loop cause #2) ([prereg](prereg/exp-130.md)). | % of floored oracle, p90 (grader v31) | CPU / ~1 | lane ① | C1 - A0 >= +1.0, CI > 0; C1 >= B1 | >= 8 v3-new/live NBA nights | PENDING (pre-registered) |
 
 ## Phase 1: timing brain (to ~Wed Nov 11)
 
