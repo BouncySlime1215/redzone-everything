@@ -33,6 +33,7 @@ EXPERIMENTS = "docs/experiments.md"
 GRADERS = (
     "redzone/grading.py",
     "scripts/collect_live_test.py",
+    "scripts/license_check.py",
     "redzone/lab/backtest.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/sportsgrade.py",

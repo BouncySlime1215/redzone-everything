@@ -276,6 +276,14 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   candidate made 1 NHL mid-play entry on every seed (BUF @ WSH, an urgent landing after a game ended). After: 0 on
   all three seeds, NHL crunch 79.9 -> 81.3 (seed 0), every other line within 0.2, locked equal. The 6 s is
   syncsim's upper end until Thursday's probe refits it.
+- 2026-11-04 (Nick, 15:06 UTC scale order): the Noggin data factory runs on free Kaggle CPU
+  (`scripts/kaggle_noggin_factory.py`, resumable season shards + oracle self-play parts, all 4 loaded
+  leagues back to 2002 where wall clocks exist). The `noggin-factory.yml` push trigger is removed (manual
+  dispatch only), because the repo's GitHub Actions minutes are capped. Every lane 1 PR reports rows per league.
+- 2026-11-04 (Nick, 5:00 PM data-scale order; lane 1): the factory plan grows to **NFL 1999+ (tokens only before
+  2011), WCBB 2006+ (wehoop) and CFB 2004+ (ESPN's whole FBS board)**. CFB gets a scorecard cut,
+  `EVAL_FIRST_NIGHT["cfb"] = 20250801` (the whole 2025 season stays unseen, like NFL), and a test now fails if any
+  planned league has no cut. Sources and terms: docs/data-sources.md. CFBD waits on Nick's key; MLB Statcast on his OK.
 - 2026-11-04: **two_stick.tv_flip_prior_s = {median: 1.89, max: 2.58}** (was 1.98 / 2.2, 10 samples). Nick's live
   lab: 64/64 SmartThings flips confirmed, 0 retries, p50 1.89 s, p95 2.18 s, max 2.58 s, ack 0.31 s. The upper
   bound stays the measured max because landing deadlines guard rule #1; decider.switch_cost.hdmi_flip
@@ -472,6 +480,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   are self-contained: public inputs at a pinned commit, no Drive mount, no secrets, grades.json printed. The
   overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
   frozen, locked is read once (Sunday).
+- 2026-11-05 00:28 UTC (Nick 7:28 PM ET, via the coordinator): **betting closing lines approved as a HIDDEN check only**:
+  usable for win-probability calibration and evaluation (EXP-002), never as a model feature, never shown, never a
+  nudge toward betting. Live line moves as a switching signal stay excluded (EXP-077, playbook §5). Reason: the
+  calibration needs an outside reference, and the line forbids betting features.
 - 2026-11-04 (lane 3, Cycle 06 #1, Start Planner #162): new flag `buffer.hold_left` (default **off**), plus
   `buffer.hold_left_apps` [youtubetv] and `buffer.hold_left_slop_s` 3.0 (playbook STK-07). When on, the game we leave
   stays paused on the stick we left, at the dead ball we left it on, so going back is a flip plus a catch-up from there.
@@ -547,6 +559,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `evaldata.config_behind_live`. A tree whose defaults turn the buffer on is now graded with it. On 2 NBA nights,
   `--set timing.behind_live_s.enabled=true` and `--behind-live 90` give identical cards. With the shipped defaults (off),
   nothing changes. Grader freeze v8.
+- **2026-11-04 (Nick 7:55 PM, "TURN OFF WOMEN'S BASKETBALL"):** WCBB is out of the noggin factory plan, the training pack sources and therefore the data ledger (docs/data-sources.md row: dropped). Nick's leagues are NFL, CFB, NBA, CBB (men's), NHL, MLB only. Why: it isn't one of his leagues, so its tokens must not count toward his data scale. The live default (mode.leagues.wcbb=false) is lane 4's change.
+- 2026-11-05 (lane 1, #169, Wave 1 #3): **MLB gets a factory cut: `EVAL_FIRST_NIGHT["mlb"] = "20250301"`**, so all of 2025
+  is held out for a future MLB scorecard and locked set. Retrosheet event files (green, notice required) feed the
+  factory's MLB event tokens, 1974-2024, via scripts/retrosheet_plays.py. They carry no wall clocks, so time tokens are
+  UNK and never invented. Why: MLB had no cut (the `.get` default is no cut), and the first MLB pull must not be able
+  to reach a future eval night.
 - 2026-11-04 (lane 5, #185, EXP-035): new default `phone.why_tag_min: 70` (0-100). The phone's "Why we're here"
   label shows only when the game on screen is at or over it (learned watch value, else today's score), and
   lab/decision_records grades every switch over it for "alerted but nothing happened". Reason: the Start Planner
@@ -573,6 +591,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   95% night-bootstrap lower bound, at least 4 rated nights a side, and PENDING otherwise. Nick's ratings stay
   evaluation-only (`tests/test_worth.py` scans noggin/decider/scoring). Note: 4 nights is a thin minimum, so treat an early
   PASS as provisional until 8. Grader freeze v9.
+- 2026-11-05 (lane 1, #169): the Kaggle noggin factory gets a data-plan gate, `RZ_DATA_PLAN`. **Default "B"**
+  (Nick 11:20 PM ET Nov 4, logged on #241): every source, including hoopR NBA/CBB, ESPN NHL/CFB and NHL api-web for
+  old NHL seasons, with `manifest.json` `"license": "personal-use, not for commercial release"`. "A" = green only
+  (nflverse NFL, NBA.com cdn NBA, Retrosheet MLB) for a company version; a green run never copies in red shards.
 - 2026-11-05 (Nick, Nov 4 9:45 PM ET, RC7 scope; integrator writes the lines): RC7 ships only if three gates pass on
   locked nights plus real hardware. (1) `press_to_tv_p95` ≤ 3 s on real presses, with a Prime sub-gate: presses tagged
   `app: prime` need their own p95 ≤ 3 s over at least 5 presses, and any Prime press that never reaches the TV fails the
@@ -599,11 +621,34 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   decider's own NEXT and your focus game), so a tap back is a flip. Why: Nov 4 live, 16 phone presses to Prime ~2 min apart,
   11 cold (~30 s) because a planner guess took the hidden stick. Lab night ping-pong drill (32 presses, seeds 1-2): warm
   0/32 -> 31/32, Prime press 46 s -> ~3 s. 0 = off (instant rollback via /api/settings). Standby only: no switch timing change.
+- **2026-11-05 (Nick, 10:55 PM ET): no deploys and no Mac-side experiments while games are live and Nick is
+  watching; the Mac stays plugged in on game nights.** A standing rule for every lane. Why: tonight's mid-game deploys and
+  rollbacks. Same message: RC6.2 (1bf4150) deploys with the TV off, and a second Go now tap switches at once, even
+  mid-play (his explicit control; one tap still waits for a dead ball).
 - 2026-11-05 (Nick, Nov 4 10:55 PM ET): RC6.2 (1bf4150) approved and deployed with the TV off. A SECOND "Go now" tap
   switches instantly, even mid-play: it's Nick's explicit control. One tap still waits for a dead ball. Graders count
   that forced entry on its own (lane 3's forced go-now line), never as a decider mid-play entry, and never as a training
   label. New standing rule: no deploys and no Mac-side experiments while games are live and Nick is watching. The Mac
   stays plugged in on game nights.
+- **2026-11-05 (Nick, 11:10 PM ET): two 24/7 brain engines.** (1) A context and hype data engine (lane 1, cloud CPU
+  only, never the Mac): importance and buzz signals per game for all six leagues; an LLM reader stores derived numbers and
+  the URL, never article text, only from allowlisted sites whose terms allow it. **Betting lines and line moves become
+  inputs to importance** (market expectation, upset odds), widening the Nov 4 hidden-check-only rule; they are never
+  shown and never nudge betting. (2) A test factory (integrator): drafted experiments and graders, nightmare nights from
+  dev history, off-policy grading of every logged night. YouTube TV DVR/screens are out (DRM). Plans:
+  docs/plans/2026-11-05-brain-engines.md (EXP-090..093) and docs/plans/2026-11-05-test-factory.md (F1-F7).
+- **2026-11-05 (Nick, 11:20 PM ET): data = B, "and way more of these sources, since it's a personal project."** The brain
+  may train on ESPN-derived data (hoopR NBA/CBB, ESPN pbp), NHL api-web + shifts, Baseball Savant/Statcast and other
+  public sports APIs with restrictive terms. **Personal use only:** every dataset and model trained on them is tagged
+  "personal-use, not for commercial release"; a company version retrains on green data later. Guardrails that still hold:
+  public endpoints only; no logins, paywalls, CAPTCHAs or bot-block bypasses; respect rate limits and robots (cache, back
+  off); no pirated streams; articles read for derived numbers, never stored as full text; never touch Nick's credentials.
+  Replaces the "skip Savant" call (6:10 PM). Teacher EXP-086 runs on B; Saturday's world model is sized for B (~100M).
+- **2026-11-05 (Nick, 11:35 PM ET): a standing data scout loop**, "100x more unique data sources and data types, agents
+  hunting 24/7" (lane 1 + a dedicated scout thread). Find, license-check (B rules for personal use), rank by new
+  information per GB, add to the factory; the ledger in docs/datasources grows every cycle, to several billion tokens this
+  month (EXP-097). Synthetic self-play is capped at ~3x real. Paid feeds need Nick's OK. Broadcast video/audio is out
+  (company stage, licensing).
 - 2026-11-05 (lane 5, EXP-038): new defaults `phone.orient: false`, `phone.orient_beat_s: 3`,
   `phone.orient_override_s: 30`. A 2-3 s orientation beat (score, clock, one situation fact, and the context line
   when late and close) in a corner of the phone after each switch. The TV has no overlay path on this rig (the
@@ -623,3 +668,35 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   producer is lane 3: set `forced` on the trace of a double-tap switch. `scripts/collect_live_test.py` joins the frozen
   graders. (2) `PLAY_LEN` and `RESUME_LEAD` become `ByLeague` tables, so CFB and CBB read their pro league's row. That
   fixes the KeyError in oracle.py on college replays (lane 1). Pro leagues are unchanged. Grader freeze v11.
+- **2026-11-05 (Nick, 12:05 AM ET): reorg, "THE BRAIN IS THE MAIN FOCUS".** A Data Division: one data planner per
+  type (A play-by-play, B context and hype, C media metadata with no video downloads ever, D markets, E synthetic and
+  teacher, F broadcast formats), each with a 24/7 crew that lands event tokens (vocab v2) in the factory and ledger.
+  Workers' outputs are trusted with no second review, except a license line per source (B rules). 1-2 test writers write
+  pre-registered experiments and graders. Lanes 1-4 keep the body. Pace to <= 85% weekly by Mon 8 PM ET (hard stop 89%).
+  Org, id blocks and checkpoints: docs/plans/2026-11-05-data-division.md.
+- **2026-11-05 (lane 2, EXP-023 wiring):** new key `noggin.belief.enabled` (default `false`). When it's on, the
+  engine uses the belief tracker (#223) as its delay sync in place of the Kalman filter, and it logs the
+  same data/sync.jsonl rows. It stays OFF: #223's dev bar failed on NBA and NHL (rule #1 clause, and NHL short
+  of 2 s), though it cut delay error p95 in every league. Why wire it now: Nick's RC7 requirement 2 (sync
+  p95 ≤ 2 s) gets graded from those logs.
+- 2026-11-05 (integrator, Test Factory F8, for Nick's Nov 4 11:20 PM data-B call): `scripts/license_check.py` runs in
+  CI (graders job). Any JSON ledger in docs/datasources, and any pack manifest or grades.json passed to it, must give
+  every source row a license line. A source classed `restrictive` in `docs/datasources/terms.json` (ESPN, hoopR, NHL
+  api-web and shifts, Statcast, StatsBomb) needs the tag "personal-use, not for commercial release". Unclassified sources
+  WARN until the scouts classify them (`--strict` fails them). Grader freeze v12.
+- **2026-11-05 (Nick, 10:55 PM ET): a second "Go now" tap switches at once, even mid-play.** It is his explicit
+  control; one tap ("Watch this") still waits for a dead ball. Why: with the hidden stick preloaded (#229/#233) a forced
+  press flips in ~2-3 s wherever the play is (ping-pong drill: forced mid-play cuts 2 -> 7, unexplained 2 -> 0). Rule #1
+  covers autopilot entries; forced presses are graded separately (presses.classify_mid_play "forced_go_now").
+- **2026-11-05 (lane 3, RC7 requirement 1, Nick 9:45 PM): `two_stick.pretune_on_open: true` for every league** (was on
+  for NBA/NFL only through #227's league overrides). Opening a live game on the phone tunes it on the hidden stick while
+  you read, so "Go now" is a flip. Controls drill (2 seeds, smartthings TV): open-then-go median 8.33 s -> 3.06 s, go-now
+  p50 8.25 -> 3.06 s; 0 mid-play cuts of any kind and 0 dropped presses either way. Rollback: set it false in settings.
+- 2026-11-05 (lane 5, EXP-043 display): new defaults `phone.follow: false` and `noggin.priority.prefs.followed_players: []`.
+  With the flag on, the phone edits the followed-players list and shows a text-only "Following" line naming the live
+  games they're in. Lane 1 owns the weight that reads the list (its own flag and grader). Reason: Cycle 12 (#236) item
+  2, playbook P22.
+- 2026-11-05 (lane 5, Last night card): new defaults `phone.last_night: false` and `phone.last_night_hours: 6`. With
+  the flag on, Now shows a morning card (6 AM to noon ET) with last night's worth-it, mid-play entries, high-leverage
+  leaves, dead air and which release ran, read from the night report, data/worth.jsonl and data/deploy/state.json.
+  Reason: Cycle 12 (#236) item 3.

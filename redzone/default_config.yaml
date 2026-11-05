@@ -438,7 +438,7 @@ two_stick:
   hand_back_s: 600         # for this long after you pick a game on the phone, the game you left keeps the
                            # hidden stick (ranked with your game's return), so a tap back is a ~2 s flip.
                            # 0 = off. Nov 4: 11 of 16 phone presses to Prime were cold (~30 s), ~2 min apart.
-  pretune_on_open: false   # opening a live game on the phone pre-tunes it on the hidden stick (90 s), so
+  pretune_on_open: true    # opening a live game on the phone pre-tunes it on the hidden stick (90 s), so
                            # "Watch this" / "Go now" is a ~3 s flip instead of a ~8 s tune + flip
   input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
   tv_flip_prior_s: {median: 1.89, p95: 1.98, max: 2.02}  # the TV's own input change (SmartThings) before
@@ -592,6 +592,8 @@ flags:                       # kill switches, one per subsystem (redzone/contrac
   fastcast: true
 
 noggin:                    # docs/noggin.md
+  belief:
+    enabled: false         # [EXP-023] the belief tracker (redzone/noggin/belief.py) as the delay sync in place of the Kalman filter. OFF: its dev bar failed (#223)
   priority:
     enabled: false         # pick the best game by the Noggin Priority order (L1 hard rules, then score). OFF until measured
     banned_apps: [peacock]
@@ -601,6 +603,7 @@ noggin:                    # docs/noggin.md
       nhl_pp_ot_boost: 1.0 # x the NHL power-play / overtime term (0-2)
       reels: true          # catch-up reels allowed
       switch_frequency: 1.0  # 0.5 calmer .. 2.0 busier
+      followed_players: []   # [EXP-043] players you follow, set from the phone (phone.follow). The phone only SHOWS where they are live; lane 1 owns any weight
   pick:                    # Reflex PICK v1 (redzone/noggin/pick.py): the hindsight-oracle imitation picks the game
     enabled: false         # replace the app's pick (never over your team, never in a replay); needs the time-shift buffer
     shadow: false          # log what PICK would do (Decider.pick_log) beside the app's own decision
@@ -637,6 +640,9 @@ phone:                     # the phone page (redzone/web)
   orient_override_s: 30    # [EXP-038] a user switch this soon after an automatic one counts as an override (lab/orient.py)
   worth: false             # [EXP-040] one-tap end-of-night "worth it?" (1-5) on the Slate complete card, works with v2 off. EVALUATION ONLY, never a training label
   worth_probe_days: 7      # [EXP-040] the agency / regret probes show at most once per this many nights
+  follow: false            # [EXP-043] "Following" on the phone: edit followed players and see which live games they are in (display only); OFF until EXP-043 is graded
+  last_night: false        # morning "Last night" card on Now: worth it, mid-play entries, high-leverage leaves, dead air, which release ran (display only)
+  last_night_hours: 6      # ...shown for this many hours after the night ends (6 AM ET), so 6 AM to noon
   why_tag_min: 70          # [EXP-035] "Why we're here" shows only at or over this 0-100 value; lab/decision_records grades the same number
 warmup:                    # [warmup.pregame] before the night's first game (redzone/plan.py Tonight._warmup)
   pregame: false           # put the likeliest first game on the HIDDEN stick before the first start (never the one on screen)

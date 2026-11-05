@@ -47,11 +47,29 @@ def _call(base: str, path: str, body: dict | None = None, timeout: float = 10.0)
         return json.loads(r.read().decode())
 
 
-def pick(state: dict, kind: str, last: str | None) -> tuple[str, str] | None:
-    """(game_id, warm|cold): the standby game for a warm press, any other live game for a cold one."""
+APPS = {"prime": "prime", "youtubetv": "yttv"}   # target prefix -> the "app" tag northstar's Prime sub-gate reads
+
+
+def app_of(target: str | None) -> str | None:
+    """"prime" / "yttv" (else the target's own prefix) for a tuner target, None when unknown."""
+    if not target or ":" not in target:
+        return None
+    pre = target.split(":", 1)[0]
+    return APPS.get(pre, pre)
+
+
+def game_app(state: dict, gid: str) -> str | None:
+    g = next((x for x in state.get("games") or [] if x.get("id") == gid), None)
+    return app_of(((g or {}).get("where") or {}).get("target"))
+
+
+def pick(state: dict, kind: str, last: str | None, app: str | None = None) -> tuple[str, str] | None:
+    """(game_id, warm|cold): the standby game for a warm press, any other live game for a cold one.
+    app: only games on that app ("prime" / "yttv")."""
     cur = (state.get("now") or {}).get("game_id") or (state.get("now") or {}).get("id")
     sb = state.get("standby") or {}
-    live = [g["id"] for g in state.get("games") or [] if g.get("phase") == "live" and g["id"] != cur]
+    live = [g["id"] for g in state.get("games") or [] if g.get("phase") == "live" and g["id"] != cur
+            and (app is None or game_app(state, g["id"]) == app)]
     if kind in ("warm", "any") and sb.get("ready") and sb.get("game_id") in live:
         return sb["game_id"], "warm"
     cold = [g for g in live if g not in (sb.get("game_id"), last)]
@@ -106,6 +124,9 @@ def main(argv=None) -> int:
     ap.add_argument("--presses", type=int, default=10)
     ap.add_argument("--gap", type=float, default=45.0, help="seconds between presses (lets the hidden stick re-tune)")
     ap.add_argument("--kind", choices=("alternate", "warm", "cold"), default="alternate")
+    ap.add_argument("--app", choices=sorted(set(APPS.values())), default=None,
+                    help="every other press goes to a game on this app, the presses between go to any other "
+                         "game (back and forth, as people do): northstar grades Prime presses on their own")
     ap.add_argument("--timeout", type=float, default=40.0)
     ap.add_argument("--json", help="write the per-press rows here (default: data/press_probe/<when>.json)")
     ap.add_argument("--db", type=Path, default=ROOT / "data/redzone.db", help="the app's database (read-only)")
@@ -129,7 +150,8 @@ def main(argv=None) -> int:
         for i in range(a.presses):
             want = a.kind if a.kind != "alternate" else ("warm" if i % 2 == 0 else "cold")
             st = _call(a.url, "/api/state")
-            got = pick(st, want, last) or pick(st, "any", last)
+            app = a.app if i % 2 == 0 else None   # --app: back and forth, so its game is the one you left
+            got = pick(st, want, last, app) or pick(st, "any", last, app)
             if got is None:
                 print("no live game to press (other than the one on screen): stopping")
                 break
@@ -145,7 +167,7 @@ def main(argv=None) -> int:
             t_on = round(time.time() - t0, 2) if on else None
             time.sleep(1.0)   # the engine stores the switch row right after the picture
             seg = segments(t0, t_on, trace_for(a.db, gid, t0, time.time()))
-            rows.append({"i": i, "game_id": gid, "kind": kind, "ok": bool(r.get("ok")), "tap_to_tv_s": t_on,
+            rows.append({"i": i, "game_id": gid, "kind": kind, "app": game_app(st, gid), "ok": bool(r.get("ok")), "tap_to_tv_s": t_on,
                          "message": r.get("message"), "at": round(t0, 2), "segments": seg})
             split = " ".join(f"{k} {v:.2f}" for k, v in seg.items() if v)
             print(f"press {i + 1}: {kind:4} {gid}: " + (f"{t_on:.2f} s" if t_on is not None else
@@ -170,6 +192,10 @@ def main(argv=None) -> int:
                   "missed": sum(1 for r in rows if r["kind"] == k and r["tap_to_tv_s"] is None)}
     allx = [r["tap_to_tv_s"] for r in rows if r["tap_to_tv_s"] is not None]
     out["all"] = {"n": len(allx), "p50_s": p(allx, .5), "p95_s": p(allx, .95)}
+    for app in sorted({r["app"] for r in rows if r.get("app")}):
+        xs = [r["tap_to_tv_s"] for r in rows if r.get("app") == app and r["tap_to_tv_s"] is not None]
+        out[app] = {"n": len(xs), "p95_s": p(xs, .95),
+                    "missed": sum(1 for r in rows if r.get("app") == app and r["tap_to_tv_s"] is None)}
     out["segments"] = summarize_segments(rows)
     print(json.dumps(out, indent=1))
     path = Path(a.json) if a.json else ROOT / "data/press_probe" / time.strftime("%Y%m%d-%H%M%S.json")
