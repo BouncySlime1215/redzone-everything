@@ -71,7 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-3:40 PM: usage still flat at 73% after the 3:10 unblock order; threads likely still waiting on Nick. Next sweep: answer each waiting thread directly with safe defaults so they resume; check the 3 PM readiness table.
+Sweep: usage 73% (hard stop 88%). Coordinator is actively working the 3:10 unblock order (1h+ running), so threads are not stalled.
+Colab: no new finished runs; EXP-107 ladder relaunch at kaggle-inputs 811688b2 still queued behind Watch Value training.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
