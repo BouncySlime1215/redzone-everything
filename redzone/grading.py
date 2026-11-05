@@ -16,12 +16,11 @@ from dataclasses import dataclass
 
 from redzone import crunch
 from redzone.decider.screen import CONTINUOUS, _is_marker
-from redzone.models import REAL_BREAKS, REGULATION, ByLeague, League, Stoppage
+from redzone.models import REAL_BREAKS, League, Stoppage
 from redzone.sources import espn
 
-# college leagues read their pro league's row (ByLeague): CBB/WCBB as NBA, CFB as NFL
-PLAY_LEN = ByLeague({League.NFL: 7.0, League.MLB: 6.0, League.NBA: 0.0, League.NHL: 0.0})
-RESUME_LEAD = ByLeague({League.NBA: 26.0, League.NHL: 5.0})   # play can restart this long before the next logged action
+PLAY_LEN = {League.NFL: 7.0, League.MLB: 6.0, League.NBA: 0.0, League.NHL: 0.0}
+RESUME_LEAD = {League.NBA: 26.0, League.NHL: 5.0}   # play can restart this long before the next logged action
 
 # Play types that mean the ball is dead (whistle, timeout, review, period end). Lower-case substrings.
 DEAD_WORDS = ("timeout", "foul", "free throw", "stoppage", "penalty", "end of", "end period", "review",
@@ -100,8 +99,6 @@ def is_dead_ball(league: str, typ: str) -> bool:
 
 def is_big(league: League, p: dict, prev: dict | None) -> bool:
     t = play_type(p)
-    reg = REGULATION.get(league, 4)        # CBB plays two halves: its "fourth quarter" is the second half
-    league = league.base
     if league == League.NFL:
         return bool(p.get("scoringPlay")) or "interception" in t or "fumble recovery (opponent)" in t \
             or bool(p.get("isTurnover"))
@@ -114,7 +111,7 @@ def is_big(league: League, p: dict, prev: dict | None) -> bool:
             return False
         per = espn._int(espn._get(p, "period", "number")) or 0
         c = play_clock(league, p)
-        if per < reg or c is None or c > 120 or prev is None:
+        if per < 4 or c is None or c > 120 or prev is None:
             return False
         hs, as_ = espn._int(prev.get("homeScore")), espn._int(prev.get("awayScore"))
         return hs is not None and as_ is not None and abs(hs - as_) <= 5
