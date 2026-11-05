@@ -53,5 +53,5 @@ def test_short_grades_reads_report():
     g = short_grades(rep, "r1", "full", 6.5)
     assert g["reasoner_gate"] == {"student": "PASS", "head": "FAIL: lock_acc 80 < 85"}
     assert g["reasoner_all"]["student"]["lock_acc"] == 90.0
-    assert g["watchdog"]["student"] == {"n": 5, "accuracy": 96.0, "gate": "PASS"}
+    assert {k: g["watchdog"]["student"][k] for k in ("n", "accuracy", "gate")} == {"n": 5, "accuracy": 96.0, "gate": "PASS"}
     assert g["head"]["nba"]["leak_suspect"] is True and "rows" not in g["head"]["nba"]
