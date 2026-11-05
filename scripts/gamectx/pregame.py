@@ -262,14 +262,17 @@ def history(league: str, archive: Path, ctx: Path | None, out: Path, full: bool 
 
 # ---- network (Actions only) ----------------------------------------------------------------------------------
 def fetch(league: str, d0: str, d1: str) -> dict:
-    url = (f"https://site.api.espn.com/apis/site/v2/sports/{SPORT[league]}/scoreboard?dates={d0}-{d1}&limit=1000")
+    rng = d0 if d0 == d1 else f"{d0}-{d1}"
+    url = f"https://site.api.espn.com/apis/site/v2/sports/{SPORT[league]}/scoreboard?dates={rng}&limit=1000"
     for k in range(4):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "redzone-gamectx/0.1"})
             with urllib.request.urlopen(req, timeout=60) as r:
                 return json.loads(r.read())
         except Exception as e:  # noqa: BLE001
-            print(f"  retry {k}: {type(e).__name__}", file=sys.stderr)
+            print(f"  retry {k}: {type(e).__name__} {getattr(e, 'code', '')} {url[-60:]}", file=sys.stderr)
+            if getattr(e, "code", None) in (400, 404):
+                break
             time.sleep(2 ** k * 5)
     return {}
 
@@ -280,7 +283,12 @@ def fetch_range(league: str, d0: datetime, d1: datetime) -> list[dict]:
     out, seen, a = [], set(), d0
     while a <= d1:
         b = min(a + timedelta(days=27), d1)
-        for e in events_of(fetch(league, a.strftime("%Y%m%d"), b.strftime("%Y%m%d"))):
+        got = fetch(league, a.strftime("%Y%m%d"), b.strftime("%Y%m%d"))
+        if not got.get("events"):          # range refused: fall back to one call per day
+            got = {"events": [e for k in range((b - a).days + 1)
+                              for e in fetch(league, *(2 * [(a + timedelta(days=k)).strftime("%Y%m%d")]))
+                              .get("events", [])]}
+        for e in events_of(got):
             if e["gid"] not in seen:
                 seen.add(e["gid"])
                 out.append(e)
