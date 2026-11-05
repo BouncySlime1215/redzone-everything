@@ -100,7 +100,7 @@ on locked.
 | 25 | EXP-025 | P7 | Arrive at the dead ball BEFORE the big play: predict the next high-leverage snap and switch at the stoppage before it. Measure: seconds of build-up seen per big play. | Big plays seen live; Landings in dead time | 0 / ~4 | ② | set before running | set before running | queued |
 | 26 | EXP-026 | M1, M20, M32, P9, P17, E5 | Catch-up ordering as a scheduling problem with spoiler control and peak-end ordering. Open threads are resolved at their next dead ball, and at most 1-2 are visible. | Big plays live or replayed within 3 min | 0 / ~6 | ②⑤ | set before running | set before running | queued |
 | 27 | EXP-027 | P11, P5, M21 | Surprise drives replays and never cut-ins. KL surprise over the full outcome distribution handles OT and shootouts; a rarity bonus comes later from the world model. | Big plays live or replayed within 3 min; Mid-play entries unchanged | 0 / ~3 | ①② | set before running | set before running | queued |
-| 28 | EXP-028 | P8, M25, E8 | Minimum dwell time plus a hysteresis margin, swept offline. Pick the knee where ping-pong falls without losing crunch; whiplash is a learned cost. | Crunch live; guardrails: switches per hour, ping-pong | 0 / ~3 | ② | set before running | set before running | queued |
+| 28 | EXP-028 | P8, M25, E8 | Minimum dwell time plus a hysteresis margin, swept offline. Pick the knee where ping-pong falls without losing crunch; whiplash is a learned cost. | Crunch live; guardrails: switches per hour, ping-pong | 0 / ~3 | ② | Offline sweep only, no promotion from this row. Hysteresis = `decider.switch_margin` in {6, 10 (live), 14, 18}; no dwell knob exists yet, so dwell is out of scope here (a later row if the knee says it matters). Grid fixed a priori. Dev (`fit`) only, all nights, NFL, NBA and NHL, seeds 0/1/2, honest knobs, candidate profile, frozen grader. Read: crunch live, big live, dead air and switches/hour from the grader, plus ping-pong (A -> B -> A within 120 s, per hour). Ping-pong comes from a read-only scratch count over the sim's switch log, as a diagnostic, until the integrator adds it to the grader. Knee = the smallest margin past which ping-pong stops falling by >= 20% per step, provided crunch live is within 1.0 of margin 10 in every league. Any margin change found here needs its own pre-registered row (fresh seeds, then locked once) before it ships. Pre-registered by lane 2, Nov 5 ~03:00 UTC, before any run. | dev all fit nights NFL + NBA + NHL x seeds 0-2 x 4 margins | done: no knee; margin stays 10 |
 | 29 | EXP-029 | P10 | Fill known breaks (commercials, halftime, intermissions) with the best other live game. | Dead air | 0 / ~3 | ② | set before running | set before running | queued |
 | 30 | EXP-030 | P2, P6 | Care × suspense. WSH/UNC and league order are **strong priors with floors** (Nick, 4:15 PM, supersedes the playbook's "hard rule" wording). Followed players are a config multiplier. | Your-team crunch live; Your-team big plays | 0 / ~2 | ① | set before running | set before running | queued |
 | 31 | EXP-031 | P4 | An "upset in progress" term: surprise weighted by how unlikely the current state was before the game. The pre-game line is a hidden prior only and is never shown. | % of oracle | 0 / ~2 | ① | set before running | set before running | queued |
@@ -188,6 +188,17 @@ on locked.
   - NBA identical; mid-play entries and high-leverage leaves 0.
 
   Locked was not read. It ships OFF (#189). The retry uses lane 1's watch value as the value.
+
+- **EXP-028** (Nov 5, ~03:40 UTC; offline sweep, pre-registered at af11105). No knee: `decider.switch_margin` barely
+  matters. Seeds 0/1/2, dev; ping-pong = A → B → A within 120 s per hour (scratch count, diagnostic only).
+  - NFL, m 6 / 10 / 14 / 18: crunch live 71.4 / 71.6 / 71.5 / 71.7 (seed means), switches/h 9.4 / 9.4 / 9.6 / 9.7,
+    ping-pong 2.36 / 2.46 / 2.53 / 2.64 per hour. Ping-pong rises slightly with the margin, so it is the designed
+    home ↔ break-visit / RedZone round trip, not hysteresis churn.
+  - NBA: identical for 6 and 10; 14 and 18 cost big live −0.9 (77.5/77.5/84.5 → 76.1/77.5/83.1). Ping-pong ~0.
+  - NHL: crunch live 81.0 / 80.8 / 81.8 / 81.9; m 18 raises crunch-in-replay 0/8/0 → 7/10/0. Ping-pong 0.10-0.18 per hour.
+  - Mid-play entries and high-leverage leaves are 0 at every margin.
+  - Read: ping-pong is already rare outside NFL's designed visits, and the margin doesn't move crunch beyond seed noise.
+    `switch_margin` stays 10, and no dwell knob is needed. Nothing ships from this row.
 
 ## Coverage check
 
