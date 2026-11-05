@@ -22,7 +22,7 @@ from dataclasses import asdict, dataclass
 
 import numpy as np
 
-CAUSES = ("bad_label", "switch_cost", "stay_leave_timing", "break_estimate", "feed_lag", "sync_error",
+MISTAKE_CAUSES = ("bad_label", "switch_cost", "stay_leave_timing", "break_estimate", "feed_lag", "sync_error",
           "wrong_game_value")
 
 
@@ -154,5 +154,5 @@ def to_jsonl(rows: list[Mistake]) -> str:
     return "".join(json.dumps(asdict(r)) + "\n" for r in rows)
 
 
-__all__ = ["CAUSES", "Mistake", "assert_not_locked", "ledger", "on_screen", "sample_weights", "summarize", "to_jsonl",
+__all__ = ["MISTAKE_CAUSES", "Mistake", "assert_not_locked", "ledger", "on_screen", "sample_weights", "summarize", "to_jsonl",
            "math"]
