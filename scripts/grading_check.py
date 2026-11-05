@@ -41,6 +41,8 @@ GRADERS = (
     "scripts/delay_grade.py",
     "scripts/clock_truth_grade.py",
     "scripts/entry_autopsy.py",
+    "scripts/attention_labels.py",
+    "scripts/wv_aux_label.py",
     "redzone/lab/outcome_label.py",
     "scripts/sync_grade.py",
     "agent/distill/evaluate.py",
