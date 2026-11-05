@@ -82,3 +82,19 @@ def test_stick_addresses_never_reach_the_output():
                                                          for r in night()]
     out = str(S.exp800(rows)) + str(S.exp801(rows + _two_tunes("pos")))
     assert all(a not in out for a in addr) and "stick1|youtubetv" in out and "stick2" in out
+
+
+def test_a_prime_epoch_position_measures_absolute_delay_per_stick_and_a_counter_does_not():
+    wall0 = 1_793_900_000.0                                   # a real wall clock, so the epoch is in ms
+    epoch = [row(wall0 + k, wall0 + k, wall0 + k - 6.4, app="prime", stick="10.0.0.150:5555", ch="prime_nba")
+             for k in range(0, 300, 10)]
+    counter = [row(wall0 + k, wall0 + k, 86368.0 + k, app="prime", stick="10.0.0.181:5555", ch="prime_nba")
+               for k in range(0, 300, 10)]
+    for r in epoch + counter:
+        r["uptime_ms"] = UP0 + (r["t"] - wall0) * 1000
+        r["ms"]["updated"] = r["uptime_ms"]
+    out = S.exp800(epoch + counter)
+    assert S.is_epoch(epoch[0]["ms"]) and not S.is_epoch(counter[0]["ms"])
+    assert list(out["absolute_by_stick"]) == ["stick1|prime"]
+    assert abs(out["absolute_by_stick"]["stick1|prime"]["median_s"] - 6.4) < 1e-3
+    assert out["absolute_latency"]["prime_nba"].startswith("PENDING")   # channel anchors stay a separate input
