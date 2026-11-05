@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "docs" / "datasources" / "scout.json"
 OUT = ROOT / "docs" / "datasources" / "scout-ledger.md"
 VERDICTS = ("green", "yellow", "yellow-B")          # red never sits in "sources"
-STATUSES = ("probe", "hold", "parked", "needs-nick", "ready-for-lane1", "pulling", "done", "dropped")
+STATUSES = ("probe", "hold", "parked", "needs-nick", "ready", "pulling", "done", "dropped")
 REAL_DONE = ("pulling", "done")
 KINDS = ("events", "context-new", "derived")
 NEEDED = ("id", "kind", "cycle", "priority", "name", "access", "verdict", "license", "est_tokens_m", "novelty",
@@ -86,7 +86,7 @@ def render(d: dict) -> str:
         L.append(f"| {k} | {len(rows)} | {sum(s['est_tokens_m'] for s in rows):g} |")
     L.append(f"| **New information (events + context-new)** | {len(src)} | {sum(s['est_tokens_m'] for s in src):g} |")
     L += ["", "## New-information totals by status and verdict", "", "| Bucket | Sources | Est. tokens (M) |", "|---|---:|---:|"]
-    buckets = [("Ready for lane 1", lambda s: s["status"] == "ready-for-lane1"),
+    buckets = [("Ready for a crew", lambda s: s["status"] == "ready"),
                ("Pulling or done (real)", lambda s: s["status"] in REAL_DONE),
                ("Probe / hold (scout)", lambda s: s["status"] in ("probe", "hold")),
                ("Needs Nick", lambda s: s["status"] == "needs-nick"),
