@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Usage 73% at ~2:10 PM with 8 threads (Nick's firm cap). Safety net at 84% -> 3 threads. 3 PM readiness table next.
+Usage flat at 73% (~2:40 PM), 8 threads. 3 PM readiness table due; 84% safety net armed.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
