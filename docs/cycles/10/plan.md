@@ -58,8 +58,9 @@
 ## ① Noggin training
 1. **EXP-006 / 085:** V8 on the A100 rerun, plus the watchdog. Print grades.json; the overseer posts out.zip to a
    release.
-2. **colab/world_model_pilot.ipynb**: the overseer is waiting on this commit. Ship it today as a self-contained
-   notebook at a pinned SHA (EXP-047 pilot; the 50M size check).
+2. **EXP-100, the world-model pilot** (colab/world_model_pilot.ipynb at kaggle-inputs 76f4f4e, ~30M params): it has
+   been running on an A100 since ~8:05 PM. Its grades.json (throughput, `sizing_100m`) sizes Saturday's EXP-047.
+   The 25M/50M size check stays Saturday's L4 row.
 3. **Wave 1 ingest into the next factory pack** (#202's plan): nflverse 1999+, NHL api-web + shifts, Retrosheet.
    Fill the ledger rows. Respect each source's terms and rate limits.
 4. **EXP-086/087** (Teacher 32B, V8.2) on Thursday, each pre-registered.
