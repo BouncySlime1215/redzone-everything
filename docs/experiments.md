@@ -190,10 +190,8 @@ on locked.
 
 | id | covers | why | allowed remainder | success bar | nights needed | status |
 |---|---|---|---|---|---|---|
-| EXP-077 | M55 | Betting-line movement as a live news sensor is wager-driven switching, which §5.1 excludes. | Pre-game lines as a hidden data prior only (EXP-031). | n/a | n/a | line |
-| EXP-078 | M19 (market part) | Live market odds are not a ranking input. | **Approved (Nick, 7:28 PM ET Nov 4):** betting closing lines as a HIDDEN check only, for WP calibration and evaluation (EXP-002 and its locked read). They are never a feature, never shown, and never a nudge toward betting. | n/a | n/a | line |
 | EXP-077 | M55 | Betting lines as a switching trigger on their own, or anything shown or nudging betting, stays excluded (§5.1). | **Widened by Nick, 11:10 PM Nov 4:** lines and line moves are inputs to game importance and buzz (EXP-091/092), never shown, never a betting prompt. | n/a | n/a | line |
-| EXP-078 | M19 (market part) | Our WP stays our own model; market odds never replace it. | Market expectation is an importance input (EXP-091) and a hidden WP calibration check. | n/a | n/a | line |
+| EXP-078 | M19 (market part) | Our WP stays our own model; market odds never replace it. | Market expectation is an importance input (EXP-091) and a hidden WP calibration check (hidden check approved by Nick 7:28 PM Nov 4; widened 11:10 PM). | n/a | n/a | line |
 | EXP-079 | M23 | Inverse RL from producers' choices needs licensed video or producer logs, and there is no $0, terms-compliant source. | Revisit if a licensed source appears. | n/a | n/a | hold |
 | EXP-080 | M40 + "Company (later)" | Federated personalization, Drama API, shared cloud brain, licensed audio/video: company stage, which needs money and Nick's OK. | None now. | n/a | n/a | hold |
 | EXP-081 | M62 | The guardrail is now the binding line (§5) and the metrics (§6). | Applied to every row above. | n/a | n/a | standing |
