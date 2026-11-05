@@ -604,3 +604,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   that forced entry on its own (lane 3's forced go-now line), never as a decider mid-play entry, and never as a training
   label. New standing rule: no deploys and no Mac-side experiments while games are live and Nick is watching. The Mac
   stays plugged in on game nights.
+- 2026-11-05 (integrator, grader v11): two changes. (1) A live cut whose trace says `"forced": true` (Nick's second "Go
+  now" tap) is graded on its own line, `entries_mid_play_forced`, and never counts toward `entries_mid_play`. Its
+  producer is lane 3: set `forced` on the trace of a double-tap switch. `scripts/collect_live_test.py` joins the frozen
+  graders. (2) `PLAY_LEN` and `RESUME_LEAD` become `ByLeague` tables, so CFB and CBB read their pro league's row. That
+  fixes the KeyError in oracle.py on college replays (lane 1). Pro leagues are unchanged. Grader freeze v11.
