@@ -913,8 +913,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (lane 3's sweep is the graded one) and is not frozen. Grader freeze v31.
 - 2026-11-05 3:15 PM ET (overseer default, Nick can override; reason "Nick 3:10 PM: decide for him within the
   rules"), logged by the integrator for the planner:
-  1. **T4 YTTV key tests:** auto-switching on Nick's screen is NOT paused; key tests run on the hidden stick only,
-     before 6 PM (no disruptive tests while he watches).
+  1. **T4 YTTV key tests are DEFERRED** (no YTTV game airs before 6 PM, and a stick session needs Nick's own words).
+     Auto-switching on Nick's screen is NOT paused; the read-only 10 PM tests run as planned.
   2. **Chrome "Allow JavaScript from Apple Events" stays OFF** (Mac security setting); ui_12 stays skipped.
   3. **fast_feeds.enabled: true for tonight, shadow polling only** (no screen change; tested in #323/#337). Lane 4
      sets it at the stage; the shipped default stays false.
