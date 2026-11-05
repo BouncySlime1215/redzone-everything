@@ -43,6 +43,7 @@ GROUPS = {   # field -> group (EXP-1405 ablations name groups, not columns)
     "season": ["month_frac", "playoffs"],
 }
 SEED = 1700
+HALF_LIFE_W = 0.5   # per-season weight decay (Nick 12:10 PM: recent context carries the most weight)
 
 
 def _shards(lg: str) -> pd.DataFrame:
@@ -119,9 +120,9 @@ def pair_agree(t: pd.DataFrame, score: np.ndarray) -> float:
 
 def season_split(t: pd.DataFrame) -> dict:
     ss = sorted(t.season.astype(int).unique())
-    if len(ss) < 8:     # NBA: Data A ids join B's schedule from 2020 only (nba_game_id), so one season each
-        return {"train": ss[:-2], "valid": ss[-2:-1], "test": ss[-1:]}
-    return {"train": ss[:-4], "valid": ss[-4:-2], "test": ss[-2:]}
+    # Nick 12:10 PM: newest-first. Valid = the newest season Data A has; everything older trains, recency-weighted.
+    # (The eval-data locked nights are 2025-26+ and are not in Data A, so nothing here is locked.)
+    return {"train": ss[:-1], "valid": ss[-1:], "test": []}
 
 
 def train(lg: str, t: pd.DataFrame, drop_groups: tuple = ()) -> tuple[object, dict]:
@@ -131,13 +132,15 @@ def train(lg: str, t: pd.DataFrame, drop_groups: tuple = ()) -> tuple[object, di
     t = t.assign(part=t.season.astype(int).map(part))
     cols = feat_cols(t, drop_groups)
     tr, va = t[t.part == "train"], t[t.part == "valid"]
+    age = max(sp["train"]) - tr.season.astype(int)
+    wt = HALF_LIFE_W ** age                              # last season 1.0, two back 0.5, ... (low weight for old)
     p = dict(objective="regression", learning_rate=0.05, num_leaves=31, min_data_in_leaf=50,
              feature_fraction=0.8, bagging_fraction=0.8, bagging_freq=1, seed=SEED, verbose=-1)
-    m = lgb.train(p, lgb.Dataset(tr[cols], tr.y), 2000, valid_sets=[lgb.Dataset(va[cols], va.y)],
+    m = lgb.train(p, lgb.Dataset(tr[cols], tr.y, weight=wt), 2000, valid_sets=[lgb.Dataset(va[cols], va.y)],
                   callbacks=[lgb.early_stopping(100, verbose=False)])
     rep = {"seasons": {k: [int(v[0]), int(v[-1])] if v else [] for k, v in sp.items()}, "features": len(cols),
            "drop_groups": list(drop_groups), "best_iter": m.best_iteration}
-    for k in ("train", "valid"):          # test seasons stay unread here: the nominee is picked on valid only
+    for k in ("train", "valid"):
         d = t[t.part == k]
         rep[f"{k}_games"] = len(d)
         rep[f"{k}_pair_agree"] = pair_agree(d, m.predict(d[cols], num_iteration=m.best_iteration))
