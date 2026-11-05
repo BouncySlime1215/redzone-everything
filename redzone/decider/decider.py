@@ -2071,8 +2071,20 @@ class Decider:
                 dead = leave_gate(gtl, d, now, 99.0).on_screen_break
             else:
                 dead = break_on_arrival(gtl, d, now, now + self._deadline_cost(x.target))
-            if dead:
+            if dead or self._owed_on_arrival(x):
                 self._screen_break.add(gid)
+
+    def _owed_on_arrival(self, x: Candidate) -> bool:
+        """[EXP-020, decider.break_owed.enabled] Its rulebook-owed long break (NBA mandatory, CBB media, NHL
+        TV timeout) is due within window_s of game clock: you'd land and get a commercial at the next
+        whistle. Never applied to a crunch game (the crunch rules pick those)."""
+        c = self.cfg
+        if not c.get("decider.break_owed.enabled"):
+            return False
+        owed = x.scored.factors.get("owed_s")
+        win = (c.get("decider.break_owed.window_s") or {}).get(x.scored.league.value)
+        return owed is not None and win is not None and not (x.scored.crunch or x.scored.crunch_now) \
+            and float(owed) <= float(win)
 
     def _home_due(self, home: str, x: Candidate, now: float) -> bool:
         """Time to head back to the game we left for its break? Stay away as long as possible:

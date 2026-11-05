@@ -179,6 +179,42 @@ def _owed(clock: float, marks: tuple, clocks: tuple) -> bool:
     return any(clock <= m for m in open_)
 
 
+def _open_marks(marks: tuple, clocks: tuple) -> list:
+    """The marks no long break has used yet (same matching as _owed)."""
+    open_ = list(marks)
+    for c in clocks:
+        if c is None:
+            continue
+        m = next((m for m in open_ if c <= m + MARK_SLACK_S), None)
+        if m is not None:
+            open_.remove(m)
+    return open_
+
+
+def owed_in(g: GameState | None, clocks: tuple = ()) -> float | None:
+    """[EXP-020, lane 2] Rulebook countdown: game-clock seconds until the next owed long break's mark
+    (0 = owed now, at the next whistle), or None when the rules owe none (or excuse it). NBA: mandatory
+    #1 under 7:00 and #2 under 3:00 of each regulation quarter. CBB: media under 16/12/8/4 of each half.
+    NHL: TV timeouts after 6/10/14 minutes elapsed, never on a power play, in the last 30 s of P1/P2 or
+    the last 2:00 of P3 (and a goal or icing stoppage doesn't take one: the next stoppage does)."""
+    if g is None or g.phase != Phase.LIVE or g.clock_s is None:
+        return None
+    lg, clk = g.league, float(g.clock_s)
+    p = pro_period(lg, g.period, clk)
+    if lg == League.CBB:
+        marks = _open_marks(CBB_MARKS, clocks) if (g.period or 0) <= 2 else []
+    elif lg == League.NBA:
+        marks = list(NBA_MARKS[len(clocks):]) if p <= 4 else []
+    elif lg == League.NHL:
+        if p > 3 or g.situation.power_play or (p in (1, 2) and clk <= 30) or (p == 3 and clk <= 120):
+            return None
+        marks = _open_marks(NHL_MARKS, clocks)
+    else:
+        return None
+    nxt = [clk - m for m in marks]
+    return max(0.0, min(nxt, key=lambda d: (d > 0, abs(d)))) if nxt else None
+
+
 def _now(g: GameState, n: int) -> Forecast | None:
     """A break already in the data: no guess, just how long."""
     s = g.stoppage
