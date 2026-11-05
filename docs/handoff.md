@@ -71,8 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Usage 69% (throttle holding ~2%/h). Lane 1 host-RAM fix landed (kaggle-inputs 811688b2); ladder relaunch queued behind Watch Value v1 training for the A100.
-Nick asked the overseer to create accounts/get API keys: declined (hard rule); he has 2-min YouTube key steps; key-free attention sources (Wikipedia dumps, WP swings, market history, ratings) proceeding.
+Nick 11:50 AM: GO on 4 key-free Watch Value sources; crew H builds a GAME-CONTEXT CORPUS: every NFL game since 1999 + NBA archive (previews, recaps, stakes, weekly + offseason team reports) from Wikipedia dumps + filtered FineWeb/CC; derived features feed Game Importance + stay/leave; raw text private only. Usage 69%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
