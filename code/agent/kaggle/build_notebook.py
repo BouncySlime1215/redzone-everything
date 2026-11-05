@@ -40,14 +40,14 @@ def cells_of(src: str) -> list[dict]:
     return cells
 
 
-def build(src: Path, dst: Path) -> None:
+def build(src: Path, dst: Path, gpu: str = "T4") -> None:
     nb = {"cells": cells_of(src.read_text()), "nbformat": 4, "nbformat_minor": 5,
           "metadata": {"kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"},
                        "language_info": {"name": "python"},
                        "kaggle": {"accelerator": "nvidiaTeslaT4", "isInternetEnabled": True, "isGpuEnabled": True}}}
     if src.stem.startswith("colab"):        # [Colab V8] a Colab notebook asks for a T4 by itself
         nb["metadata"] = {"kernelspec": nb["metadata"]["kernelspec"], "language_info": {"name": "python"},
-                          "accelerator": "GPU", "colab": {"provenance": [], "gpuType": "T4"}}
+                          "accelerator": "GPU", "colab": {"provenance": [], "gpuType": gpu}}
     dst.write_text(json.dumps(nb, indent=1) + "\n")
 
 
@@ -69,9 +69,9 @@ def build_colab(name: str, out_dir: Path) -> Path:
     src = (HERE / "colab_students.py").read_text()
     for k, v in COLAB[name].items():
         src = src.replace(f"__{k}__", v)
-    tmp = out_dir / f"{name}.py"
+    tmp = out_dir / f"colab_{name}.py"             # the colab_ stem gives it Colab metadata (its GPU asked for)
     tmp.write_text(src)
-    build(tmp, out_dir / f"colab_{name}.ipynb")
+    build(tmp, out_dir / f"colab_{name}.ipynb", COLAB[name]["GPU"])
     tmp.unlink()
     return out_dir / f"colab_{name}.ipynb"
 
