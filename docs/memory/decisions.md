@@ -371,3 +371,4 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   to `two_stick.standby_repause_s: 600` in default_config.yaml, value unchanged; postseason.py's ROUNDS / DEFAULTS /
   _rank renamed ROUNDS_LEFT / WEIGHTS / _poll_rank (no behavior change). Reason: the contract kernel (K1/K2/K4)
   flagged them as new on merge; one definition per fact, timings in config (Nick, one connected system).
+- **2026-11-04 (Nick 7:55 PM, "TURN OFF WOMEN'S BASKETBALL"):** WCBB is out of the noggin factory plan, the training pack sources and therefore the data ledger (docs/data-sources.md row: dropped). Nick's leagues are NFL, CFB, NBA, CBB (men's), NHL, MLB only. Why: it isn't one of his leagues, so its tokens must not count toward his data scale. The live default (mode.leagues.wcbb=false) is lane 4's change.

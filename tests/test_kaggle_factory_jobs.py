@@ -149,7 +149,7 @@ def test_season_job_runs_for_every_league_in_plan(tmp_path, monkeypatch):
     monkeypatch.setattr(NF, "fetch_espn_season", lambda league, year, dest, **k: _write_espn(league, year, Path(dest)))
     monkeypatch.setattr(NF, "_fetch", lambda url, dest: _write_pbp(Path(dest).parent.name,
                                                                   int(Path(dest).stem.split("_")[-1]), Path(dest)))
-    assert set(plan) >= {"nba", "nfl", "nhl", "cbb", "wcbb", "cfb"}
+    assert set(plan) >= {"nba", "nfl", "nhl", "cbb", "cfb"} and "wcbb" not in plan   # Nick 7:55 PM: no WCBB
     for league, (years, synthetic) in plan.items():
         res = ns["season_job"](league, years[0] - 3, min(synthetic, 1), time.time() + 600)
         assert "error" not in res, (league, res)

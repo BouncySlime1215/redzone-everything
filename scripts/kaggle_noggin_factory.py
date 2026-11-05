@@ -42,7 +42,7 @@ PLAN = {
     "nfl": (list(range(2025, 1998, -1)), 0),    # nflverse 1999+; before 2011 no snap clock: tokens only (DT from game clock)
     "nhl": (list(range(2026, 2010, -1)), 20),   # ESPN wall clocks from 2019-20 on: older seasons give 0 rows
     "cbb": (list(range(2026, 2005, -1)), 4),
-    "wcbb": (list(range(2026, 2005, -1)), 4),  # wehoop (MIT); docs/data-sources.md
+    # wcbb dropped (Nick Nov 4 7:55 PM): not one of Nick's leagues, out of every pack and the ledger
     "cfb": (list(range(2025, 2003, -1)), 0),   # ESPN FBS board (Kaggle only; ESPN is blocked from the cloud)
 }
 APIWEB_BEFORE = 2020   # NHL seasons before 2019-20 tokenize from api-web (docs/data-sources.md)

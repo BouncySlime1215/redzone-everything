@@ -40,9 +40,7 @@ SOURCES = {
     "cbb": dict(name="hoopR ESPN men's college basketball play-by-play via sportsdataverse-data",
                 license="MIT (hoopR); underlying ESPN data for personal/non-commercial use",
                 files={"cbb_2026.parquet": f"{SDV}/espn_mens_college_basketball_pbp/play_by_play_2026.parquet"}),
-    "wcbb": dict(name="wehoop ESPN women's college basketball play-by-play via sportsdataverse-data",
-                 license="MIT (wehoop); underlying ESPN data for personal/non-commercial use",
-                 files={"wcbb_2026.parquet": f"{SDV}/espn_womens_college_basketball_pbp/play_by_play_2026.parquet"}),
+    # wcbb dropped (Nick Nov 4 7:55 PM): not one of Nick's leagues
     "nhl": dict(name="fastRhockey NHL play-by-play (NHL public API) via sportsdataverse-data",
                 license="MIT (fastRhockey); NHL data for personal/non-commercial use",
                 files={f"nhl_{y}.parquet": f"{SDV}/nhl_pbp_full/play_by_play_{y}.parquet" for y in (2025, 2026)}),
