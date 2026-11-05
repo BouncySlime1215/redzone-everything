@@ -46,6 +46,15 @@ def _shards(root: Path):
         yield meta.parent.name, meta, json.loads(meta.read_text())
 
 
+def _index(m: dict) -> list:
+    """The game index rows [gid, night, offset, length, ...]: v1 shards keep them in "games", v2 in "index"."""
+    return m["index"] if isinstance(m.get("index"), list) else m["games"]
+
+
+def _vocab(m: dict) -> int:
+    return int(m.get("vocab_version") or m.get("vocab") or 1)
+
+
 def augment(a) -> dict:
     rng = np.random.default_rng(a.seed)
     real: dict[str, int] = {}
@@ -53,7 +62,7 @@ def augment(a) -> dict:
     for lg, meta, m in _shards(a.shards):
         if m.get("synthetic"):
             continue
-        real[lg] = real.get(lg, 0) + int(m.get("tokens") or sum(g[3] for g in m["games"]))
+        real[lg] = real.get(lg, 0) + int(m.get("tokens") or sum(g[3] for g in _index(m)))
         shards.setdefault(lg, []).append((meta, m))
     prior = {lg: int(x) for lg, _, x in (s.partition("=") for s in a.other_synthetic) if x}
     per: dict[str, dict] = {}
@@ -64,9 +73,12 @@ def augment(a) -> dict:
         skipped_nights = 0
         for meta, m in items:
             toks = np.load(meta.with_suffix(".npy"), mmap_mode="r")
+            v2 = _vocab(m) >= 2
             for aug in ("mirror", "retime"):
+                if aug == "mirror" and v2:
+                    continue                          # v2 mirror = re-tokenize from raw (synth.py docstring)
                 out, games, off = [], [], 0
-                for gid, night, o, n in m["games"]:
+                for gid, night, o, n, *_ in _index(m):
                     if str(night) >= a.train_before:
                         skipped_nights += aug == "mirror"
                         continue
@@ -84,10 +96,15 @@ def augment(a) -> dict:
                 dst = a.out / lg
                 dst.mkdir(parents=True, exist_ok=True)
                 np.save(dst / f"{meta.stem}.{aug}.npy", np.concatenate(out).astype(np.uint16))
-                (dst / f"{meta.stem}.{aug}.json").write_text(json.dumps({
-                    "synthetic": True, "complete": True, "tags": ["synthetic", aug], "aug": aug, "source_shard": f"{lg}/{meta.name}", "license": S.LICENSE,
-                    "vocab": V.VOCAB_VERSION, "train_before": a.train_before, "seed": a.seed,
-                    "jitter": a.jitter if aug == "retime" else None, "tokens": off, "games": games}) + "\n")
+                info = {"synthetic": True, "complete": True, "tags": ["synthetic", aug], "aug": aug,
+                        "source_shard": f"{lg}/{meta.name}", "license": S.LICENSE, "train_before": a.train_before,
+                        "seed": a.seed, "jitter": a.jitter if aug == "retime" else None, "tokens": off}
+                if v2:                                 # v2 readers: index rows + the source's vocab and edges
+                    info.update({k: m[k] for k in ("league", "season", "vocab_version", "vocab_size", "edges")
+                                 if k in m}, games=len(games), index=games)
+                else:
+                    info.update(vocab=V.VOCAB_VERSION, games=games)
+                (dst / f"{meta.stem}.{aug}.json").write_text(json.dumps(info) + "\n")
         per[lg] = {"real_tokens": real[lg], "synthetic_tokens": prior.get(lg, 0) + sum(made.values()),
                    "mirror_tokens": made["mirror"], "retime_tokens": made["retime"],
                    "held_out_games_skipped": skipped_nights}
@@ -99,7 +116,7 @@ def augment(a) -> dict:
 
 
 def teacher(a) -> dict:
-    rows, bad, skipped = {}, 0, 0
+    rows, bad, skipped, text_only = {}, 0, 0, {}
     a.out.mkdir(parents=True, exist_ok=True)
     (a.out / "teacher").mkdir(exist_ok=True)
     with open(a.answers) as f, open(a.out / "teacher" / "text.jsonl", "w") as tx:
@@ -112,7 +129,10 @@ def teacher(a) -> dict:
                 bad += "|jump" not in str(ans.get("id", ""))
                 skipped += "|jump" in str(ans.get("id", ""))
                 continue
-            rows.setdefault(r.league, []).append(r)
+            if S.informative(r):
+                rows.setdefault(r.league, []).append(r)
+            else:
+                text_only[r.league] = text_only.get(r.league, 0) + 1
             tx.write(json.dumps({"league": r.league, "game_id": r.game_id, "moment": r.moment,
                                  "hindsight": r.hindsight, "model": ans.get("model"), **r.text,
                                  "license": S.LICENSE, "synthetic": True}) + "\n")
@@ -124,6 +144,8 @@ def teacher(a) -> dict:
                             tokens=np.array([r.tokens for r in rs], np.uint16))
         per[lg] = {"answers": len(rs), "hindsight": sum(r.hindsight for r in rs),
                    "synthetic_tokens": len(rs) * S.TEACHER_TOKENS}
+    for lg, n in text_only.items():
+        per.setdefault(lg, {"answers": 0, "hindsight": 0, "synthetic_tokens": 0})["text_only"] = n
     man = {"kind": "teacher", "built": _now(), "license": S.LICENSE, "vocab": S.TEACHER_VOCAB_VERSION,
            "vocab_size": S.TEACHER_VOCAB, "source": str(a.answers.name), "unreadable": bad, "skipped_other_tasks": skipped,
            "use": "grounded (hindsight) and blind: auxiliary target only, never context; commentary (causal, mode 2): may be context", "per_league": per}

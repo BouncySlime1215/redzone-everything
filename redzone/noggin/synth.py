@@ -62,21 +62,32 @@ def _dt_bounds(b: int) -> tuple[float, float]:
     return max(0.0, lo), hi
 
 
+def event_starts(t: np.ndarray) -> np.ndarray:
+    """Positions of every event's KIND id. In v1 and v2 alike an event opens with the 6 v1 ids (KIND DT CLOCK
+    MARGIN PTS STOP); v2's (FIELD VALUE) pairs and pregame context use ids >= the v1 vocab, so a KIND id can only
+    be an event start."""
+    a = np.asarray(t)
+    idx = np.nonzero((a >= V.KIND0) & (a < V.DT0))[0]
+    return idx[idx + 5 < len(a)]
+
+
 def retime_game(t: np.ndarray, rng: np.random.Generator, jitter: float = 0.10) -> np.ndarray:
-    """Scale live gaps by one per-game factor; gaps that follow a stoppage keep their recorded bucket."""
+    """Scale live gaps by one per-game factor; gaps that follow a stoppage keep their recorded bucket. Works on
+    vocab v1 and v2 games (only the DT id of each event changes)."""
     out = np.array(t, dtype=np.uint16, copy=True)
-    ev = _events(out)
-    if not len(ev):
+    starts = event_starts(out)
+    if not len(starts):
         return out
     f = float(rng.uniform(1.0 - jitter, 1.0 + jitter))
     live_stop = V.STOP0 + V.STOPS.index("none")
-    prev_stop = np.concatenate([[live_stop], ev[:-1, 5]])        # the game's first gap counts as live
-    for i in np.nonzero(prev_stop == live_stop)[0]:
-        d = int(ev[i, 1])
+    stops = out[starts + 5]
+    prev_stop = np.concatenate([[live_stop], stops[:-1]])        # the game's first gap counts as live
+    for p in starts[prev_stop == live_stop]:
+        d = int(out[p + 1])
         if d == V.UNK_DT or not (V.DT0 <= d < V.DT0 + V.DT_BUCKETS):
             continue
         lo, hi = _dt_bounds(d - V.DT0)
-        ev[i, 1] = V.dt_token(rng.uniform(lo, hi) * f)
+        out[p + 1] = V.dt_token(rng.uniform(lo, hi) * f)
     return out
 
 
@@ -130,6 +141,14 @@ class TeacherRow:
     hindsight: bool
     tokens: tuple[int, ...]
     text: dict = field(default_factory=dict)        # storyline / why / next, for the Mind (never tokenized)
+
+
+def informative(r: TeacherRow) -> bool:
+    """False when every labelled slot is "missing" (e.g. EXP-086 grounded answers carry only storyline / why /
+    next): such a row is text for the Mind, and its 6 ids would be filler that inflates the synthetic count."""
+    missing = {T_LOCK0 + len(LOCKS), T_SAFE0 + 2, T_CONF0 + CONF_BUCKETS, T_STAY0 + STAY_BUCKETS,
+               T_IMP0 + IMP_BUCKETS, T_NEXT0 + len(NEXTS)}
+    return any(t not in missing for t in r.tokens[2:])
 
 
 def teacher_tokens(answer: dict) -> TeacherRow | None:

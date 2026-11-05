@@ -126,3 +126,46 @@ def test_causal_commentary_queue_and_tokens(tmp_path):
     assert r.tokens == (S.T_LEAGUE0 + V.BOS_LEAGUES.index("nba"), S.T_MODE0 + 2, S.T_LOCK0 + 1, S.T_IMP0 + 7,
                         S.T_NEXT0, S.T_CONF0 + 6)
     assert not r.hindsight and max(r.tokens) < S.TEACHER_VOCAB
+
+
+def test_text_only_answers_are_not_counted_as_tokens(tmp_path):
+    p = tmp_path / "t.jsonl"
+    p.write_text(json.dumps({"id": "nhl:5:1|grounded", "text": '{"storyline": "s", "why": "w", "next": "n"}'}) + "\n")
+    assert B.main(["teacher", "--answers", str(p), "--out", str(tmp_path / "syn")]) == 0
+    man = json.loads((tmp_path / "syn" / "manifest_teacher.json").read_text())
+    assert man["per_league"]["nhl"] == {"answers": 0, "hindsight": 0, "synthetic_tokens": 0, "text_only": 1}
+    assert not (tmp_path / "syn" / "teacher" / "nhl.npz").exists()
+    assert "storyline" in (tmp_path / "syn" / "teacher" / "text.jsonl").read_text()
+
+
+def v2_game(n=60, seed=3):
+    """v1 event groups with v2-style (FIELD VALUE) pairs (ids above the v1 vocab) after each, plus a context block."""
+    rng = np.random.default_rng(seed)
+    hi = V.VOCAB_SIZE
+    out = [V.BOS0 + 2, V.TEAM0 + 5, V.TEAM0 + 9, hi, hi + 7, hi + 900, hi + 1]
+    for i in range(n):
+        stop = TO if i % 6 == 5 else LIVE
+        out += [V.KIND0 + int(rng.integers(0, 50)), V.DT0 + int(rng.integers(0, 20)), V.CLOCK0 + i % 60,
+                V.MARGIN0 + V.MARGIN_CAP, V.PTS0, stop]
+        out += [hi + 2 + int(rng.integers(0, 50)), hi + 1100 + int(rng.integers(0, 16))] * int(rng.integers(0, 4))
+    return np.asarray(out + [V.EOS], np.uint16)
+
+
+def test_retime_v2_only_moves_live_dt_ids(tmp_path):
+    g = v2_game()
+    r = S.retime_game(g, np.random.default_rng(2))
+    st = S.event_starts(g)
+    assert len(st) == 60
+    changed = np.nonzero(r != g)[0]
+    assert set(changed) <= set(st + 1)                              # only DT ids, never a field pair
+    after_stop = st[1:][g[st[:-1] + 5] != LIVE]
+    assert np.array_equal(r[after_stop + 1], g[after_stop + 1])     # break gaps untouched
+    (tmp_path / "tok" / "nba").mkdir(parents=True)
+    np.save(tmp_path / "tok" / "nba" / "2016.npy", g)
+    (tmp_path / "tok" / "nba" / "2016.json").write_text(json.dumps({
+        "vocab_version": 2, "vocab_size": 20001, "tokens": len(g), "games": 1, "real": True,
+        "index": [["g1", "20160101", 0, len(g), 0]]}))
+    B.main(["augment", "--shards", str(tmp_path / "tok"), "--out", str(tmp_path / "syn"), "--train-before", "20190901"])
+    assert not (tmp_path / "syn" / "nba" / "2016.mirror.json").exists()
+    meta = json.loads((tmp_path / "syn" / "nba" / "2016.retime.json").read_text())
+    assert meta["vocab_version"] == 2 and meta["games"] == 1 and meta["index"][0][0] == "g1~retime"

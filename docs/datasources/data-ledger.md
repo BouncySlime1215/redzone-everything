@@ -98,3 +98,10 @@ D's and are not in these rows. Data is in the private project folder (`data-b/sh
 | Open-Meteo archive weather (NFL, MLB outdoor) | yellow (CC BY 4.0, non-commercial) | planned (cloud run) | | | | | | Open-Meteo CC BY 4.0, credit Open-Meteo |
 | CFBD media, rankings, records, talent, games | yellow | blocked (Nick's CFBD key) | | | | | | CollegeFootballData.com free tier, credit CFBD |
 | **Crew B total** | | | | 69,182 | **2,715,278** | **590,755** | **2,124,523** | |
+
+### EXP-086 Teacher tokens (EXP-1400), landed Nov 5 06:46 UTC, private Kaggle only
+
+449 blind answers -> 2,694 teacher-v1 tokens (CBB 900, MLB 894, NHL 900); 3,600 grounded answers -> text only; 1 unreadable.
+**Aux only, all leagues.** Nick 1:50 AM: the CBB lock label is label leakage (it is the clock/crunch rule; context-only AUC 0.960
+vs 0.967), so CBB lock numbers are out of every scorecard; NHL shows the same in-window pattern (context-only 0.976) and is
+PENDING. Both wait on lane 3's real-outcome relabel and a >= 600-per-league blind re-grade.
