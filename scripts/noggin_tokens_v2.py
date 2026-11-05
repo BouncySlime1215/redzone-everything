@@ -76,6 +76,18 @@ FIELDS: dict[str, dict[str, tuple[str, str, str]]] = {
         "epa": ("epa", "num", "derived"), "wpa": ("wpa", "num", "derived"), "cp": ("cp", "num", "derived"),
         "xpass": ("xpass", "num", "derived"), "success": ("success", "cat", "derived"),
     },
+    # NBA.com cdn log (scripts/nba_cdn_plays.py keeps these as x_<col>); side is the acting team vs the home team
+    "nba": {
+        "side": ("side", "cat", "new"), "sub_type": ("x_subType", "cat", "new"), "actor": ("x_personId", "cat", "new"),
+        "assist": ("x_assistPersonId", "cat", "new"), "shot_x": ("x_x", "num", "new"), "shot_y": ("x_y", "num", "new"),
+        "shot_dist": ("x_shotDistance", "num", "new"), "shot_result": ("x_shotResult", "cat", "new"),
+        "descriptor": ("x_descriptor", "cat", "new"), "area": ("x_area", "cat", "new"),
+    },
+    # Retrosheet event files (scripts/retrosheet_plays.py keeps these in each play's "x")
+    "mlb": {
+        "batter": ("batter", "cat", "new"), "pitcher": ("pitcher", "cat", "new"), "balls": ("balls", "cat", "new"),
+        "strikes": ("strikes", "cat", "new"), "pitches": ("pitches", "num", "new"), "bat_home": ("bat_home", "cat", "new"),
+    },
 }
 
 
@@ -177,18 +189,18 @@ def context(facts, home: str, first_ts: float | None) -> tuple[list[int], int, i
     return toks, new + 2, der
 
 
-def encode_game(league: str, plays: list[dict], home: str, away: str, rows: dict | None, fields: dict,
+def encode_game(league: str, plays: list[dict], home: str, away: str, rows: list | None, fields: dict,
                 edges: dict, facts=None) -> tuple[np.ndarray, dict]:
-    """v1 tokens with extras after each event's 6 tokens. rows: play id -> source row dict."""
+    """v1 tokens with extras after each event's 6 tokens. rows: one source row dict (or None) per play."""
     from redzone.sources import espn
     base = V1.encode_game(league, plays, home, away)
     head, ev, eos = base[:3].tolist(), base[3:-1].reshape(-1, V1.TOKENS_PER_EVENT), int(base[-1])
     ts = [t for t in (espn._ts(p.get("wallclock")) for p in plays) if t is not None]
     ctx, cn, cd = context(facts, home, ts[0] if ts else None)
     out, cnt = head + ctx, {"base": len(head) + 1 + ev.size, "new": 0, "derived": 0, "ctx_new": cn, "ctx_derived": cd}
-    for p, e in zip(plays, ev):
+    for i, e in enumerate(ev):
         out += e.tolist()
-        r = (rows or {}).get(str(p.get("id", "")).rsplit(":", 1)[-1])
+        r = rows[i] if rows is not None and i < len(rows) else None
         if r is not None:
             x, n, d = extras(r, fields, edges)
             out += x
@@ -206,62 +218,91 @@ def nfl_rows(g) -> dict[str, dict]:
     return {str(int(r["play_id"])): r for r in g.to_dict("records")}
 
 
-def build(league: str, raw: Path, year: int, out: Path, facts_dir: Path | None = None,
-          train_before: str | None = None, edges: dict | None = None) -> dict:
-    """One season's v2 shard: <out>/<league>/<year>.npy + .json (index rows as v1, plus a ledger block)."""
+def season_games(league: str, raw: Path, fields: dict):
+    """(gid, night, plays, home, away, rows) per game; rows line up with plays (None where a play has no extras)."""
     import pandas as pd
     import pyarrow.parquet as pq
 
     from redzone.noggin import factory as F
+    raw = Path(raw)
+    if league == "nfl":
+        have = set(pq.read_schema(raw).names)
+        need = {c for c, *_ in fields.values()} | {"first_down_rush", "first_down_pass", "first_down_penalty"}
+        df = pd.read_parquet(raw, columns=sorted((set(F.NFL_COLS) | {"home_team", "away_team", "game_date"} | need)
+                                                 & have))
+        df = df[df.qtr.notna()].sort_values(["game_id", "play_id"], kind="stable")
+        cut = F.EVAL_FIRST_NIGHT.get(league, "99999999")
+        for gid, g in df.groupby("game_id", sort=False):
+            walled = g.time_of_day.map(lambda v: isinstance(v, str)).any() if "time_of_day" in g else False
+            plays, _ = F._plays_football(g, need_wall=bool(walled))
+            night = V1._night(plays, g)
+            if night is None or night >= cut:
+                continue
+            by = nfl_rows(g)
+            rows = [by.get(str(p.get("id", "")).rsplit(":", 1)[-1]) for p in plays]
+            yield str(gid), night, plays, str(g.home_team.iloc[0]), str(g.away_team.iloc[0]), rows
+        return
+    xs = None
+    if str(raw).endswith(".parquet"):
+        cols = [c for c in pq.read_schema(raw).names if c.startswith("x_")] + ["id"]
+        if len(cols) > 1:
+            x = pd.read_parquet(raw, columns=cols)
+            xs = {str(r["id"]): r for r in x.to_dict("records")}
+    for gid, night, plays, home, away in V1.games_of(league, raw):
+        if xs is not None:
+            rows = []
+            for p in plays:
+                r = xs.get(str(p.get("id", "")))
+                if r is not None and isinstance(r.get("x_teamTricode"), str):
+                    r = {**r, "side": "home" if r["x_teamTricode"] == home else "away"}
+                rows.append(r)
+        else:
+            rows = [p.get("x") for p in plays]
+        yield gid, night, plays, home, away, rows
+
+
+def build(league: str, raw: Path, year: int, out: Path, facts_dir: Path | None = None,
+          train_before: str | None = None, edges: dict | None = None) -> dict:
+    """One season's v2 shard: <out>/<league>/<year>.npy + .json (index rows as v1, plus a ledger block)."""
+    import pandas as pd
     if league not in FIELDS:
-        raise SystemExit(f"{league}: no v2 fields yet (waiting on crew A's play table)")
+        raise SystemExit(f"{league}: no v2 fields yet")
     fields = FIELDS[league]
     d = Path(out) / league
     js = d / f"{year}.json"
     if js.exists() and json.loads(js.read_text()).get("complete"):
         return json.loads(js.read_text())
     d.mkdir(parents=True, exist_ok=True)
-    have = set(pq.read_schema(raw).names)
-    need = {c for c, *_ in fields.values()} | {"first_down_rush", "first_down_pass", "first_down_penalty"}
-    df = pd.read_parquet(raw, columns=sorted((set(F.NFL_COLS) | {"home_team", "away_team", "game_date"} | need)
-                                             & have))
-    df = df[df.qtr.notna()].sort_values(["game_id", "play_id"], kind="stable")
-    if edges is None:
-        mask = None
-        if train_before:
-            mask = pd.to_datetime(df.game_date).dt.strftime("%Y%m%d") < train_before
-        edges = fit_edges(df.assign(first_down=0), fields, mask)
+    games_all = [g for g in season_games(league, raw, fields) if len(g[2]) >= 10]
+    if edges is None:                                   # train nights only
+        rows = [r for g in games_all if not train_before or g[1] < train_before for r in g[5] if r is not None]
+        edges = fit_edges(pd.DataFrame(rows), fields) if rows else {}
     facts = None
     if facts_dir is not None and (Path(facts_dir) / league / f"{year}.parquet").exists():
         facts = pd.read_parquet(Path(facts_dir) / league / f"{year}.parquet")
     by_game = {k: v for k, v in facts.groupby("game_id")} if facts is not None else {}
-    cut = F.EVAL_FIRST_NIGHT.get(league, "99999999")
     parts, games, off = [], [], 0
     led = {"base": 0, "new": 0, "derived": 0, "ctx_new": 0, "ctx_derived": 0}
-    for gid, g in df.groupby("game_id", sort=False):
-        walled = g.time_of_day.map(lambda v: isinstance(v, str)).any() if "time_of_day" in g else False
-        plays, _ = F._plays_football(g, need_wall=bool(walled))
-        night = V1._night(plays, g)
-        if night is None or night >= cut or len(plays) < 10:
-            continue
-        home, away = str(g.home_team.iloc[0]), str(g.away_team.iloc[0])
-        t, c = encode_game(league, plays, home, away, nfl_rows(g), fields, edges, by_game.get(gid))
+    for gid, night, plays, home, away, rows in games_all:
+        t, c = encode_game(league, plays, home, away, rows, fields, edges, by_game.get(gid))
         for k in led:
             led[k] += c[k]
         tg = V1.game_tags(league, V1.encode_game(league, plays, home, away))
         parts.append(t)
-        games.append([str(gid), night, off, int(len(t)), int(tg["ot"]) | int(tg["comeback"]) << 1
+        games.append([gid, night, off, int(len(t)), int(tg["ot"]) | int(tg["comeback"]) << 1
                       | int(tg["blowout"]) << 2])
         off += len(t)
     arr = np.concatenate(parts) if parts else np.zeros(0, np.uint16)
     np.save(d / f"{year}.npy.tmp", arr)
     os.replace(d / f"{year}.npy.tmp.npy", d / f"{year}.npy")
     events = int(sum(is_event_start(arr)))
+    src = V1.source_of(league, raw)
+    restrictive = facts is not None or any(k in src.lower() for k in ("espn", "hoopr", "api-web", "nba-cdn"))
     info = {"league": league, "season": year, "tokens": int(len(arr)), "games": len(games), "events": events,
             "tokens_per_event": round(len(arr) / max(1, events), 1), "vocab_version": VOCAB_VERSION,
-            "vocab_size": VOCAB_SIZE, "real": True, "source": V1.source_of(league, raw),
+            "vocab_size": VOCAB_SIZE, "real": True, "source": src,
             "context_source": "data-b (PR #255)" if facts is not None else None,
-            "license": PERSONAL if facts is not None else "open (nflverse CC-BY 4.0)",
+            "license": PERSONAL if restrictive else f"open ({src})",
             "ledger": led, "edges": edges, "train_before": train_before, "complete": True, "index": games}
     js.write_text(json.dumps(info))
     return info

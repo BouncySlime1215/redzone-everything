@@ -59,3 +59,13 @@ def test_world_model_windows_tile_on_kind_tokens():
     assert cs[0] == 0 and all(t[c] == k for c in cs[1:]) and all(b - a <= 20 for a, b in zip(cs, cs[1:]))
     kpos, dpos, spos = W.positions(t)
     assert len(kpos) == 4 and (t[dpos] == V1.DT0).all() and (t[spos] == V1.STOP0).all()
+
+
+def test_retrosheet_plays_keep_the_v2_extras():
+    import retrosheet_plays as R
+    txt = "\n".join(["id,ANA202404050", "info,visteam,BAL", "info,hometeam,ANA", "start,p1,P One,1,0,1",
+                     "start,p2,P Two,0,0,1", "play,1,0,bat01,32,BCFBS,K"])
+    p = R.parse(txt)[0]["plays"][0]
+    assert p["x"] == {"batter": "bat01", "pitcher": "p1", "balls": 3, "strikes": 2, "pitches": 5, "bat_home": False}
+    toks, new, der = V2.extras(p["x"], V2.FIELDS["mlb"], {"pitches": [3.0, 6.0]})
+    assert len(toks) == 12 and (new, der) == (12, 0)

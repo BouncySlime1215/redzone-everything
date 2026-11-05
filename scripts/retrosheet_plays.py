@@ -99,6 +99,11 @@ def parse(text: str) -> list[dict]:
             if r:
                 g["score"][0 if side == "0" else 1] += r      # side 0 = visitors batting
             p = _entry(g, kind(ev), ev)
+            cnt, pitches = f[4], f[5]
+            p["x"] = {"batter": f[3], "pitcher": pitcher.get("1" if side == "0" else "0", ""),   # vocab v2 extras
+                      "balls": int(cnt[0]) if cnt[:1].isdigit() else None,
+                      "strikes": int(cnt[1]) if cnt[1:2].isdigit() else None,
+                      "pitches": sum(c.isalpha() for c in pitches) or None, "bat_home": side == "1"}
             if r:
                 p["scoringPlay"], p["scoreValue"] = True, r
             g["plays"].append(p)
