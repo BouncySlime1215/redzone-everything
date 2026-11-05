@@ -25,7 +25,8 @@ class PausingStick(FakeStick):
 @pytest.fixture
 def held(two, monkeypatch):   # noqa: F811
     c, tuner = two
-    c.cfg.update({"timing": {"behind_live_s": {"enabled": True, "max_s": 90, "apps": ["youtubetv"]}}})
+    c.cfg.update({"timing": {"behind_live_s": {"enabled": True, "max_s": 90, "apps": ["youtubetv"],
+                                               "hold_overreport_s": 0.0}}})
     stick = PausingStick("b:5555", display={"input": "HDMI1"}, hdmi="HDMI2")
     c.sticks[1] = stick
     calls = []
@@ -97,3 +98,55 @@ def test_landing_keeps_held_offsets(cfg):
     dec.target_of = lambda gid: "youtubetv:a" if gid == "A" else None
     dec._land_behind("A", 10.0)
     assert book.get("youtubetv:a").behind == 100.0 and book.get("youtubetv:b").behind == 0.0
+
+
+def test_hold_is_measured_on_the_sticks_own_clock(held):
+    """[hold calibration] live lab, Nov 4: the pause->play wall span over-reports a hold by ~1.4 s.
+    The stick's clock against its position since the tune anchor is what the lab measured (+1.66 s
+    on B=90 raw, under 0.5 s this way); the wall span less 1.5 s is only the fallback."""
+    c, tuner, stick, calls = held
+    stick.tuned = {"target": "youtubetv:fox",
+                   "report": {"state": "playing", "position": 600_000, "updated": 1_000_000}}
+    # 92.4 s of wall span; the stick's clock ran 101.66 s while the position moved 10 s -> 91.66 behind
+    pb = {"state": "playing", "position": 610_000, "updated": 1_101_660}
+    assert c._held_for(stick, "youtubetv:fox", pb, 92.4) == 91.7
+    # no positions: the calibrated wall span
+    c.cfg.update({"timing": {"behind_live_s": {"hold_overreport_s": 1.5}}})
+    assert c._held_for(stick, "youtubetv:fox", {"state": "playing"}, 93.1) == 91.6
+    # a position from some other stream (not this target's anchor) is never trusted
+    stick.tuned = {"target": "youtubetv:cbs", "report": {"position": 1, "updated": 1}}
+    assert c._held_for(stick, "youtubetv:fox", pb, 93.1) == 91.6
+
+
+def test_the_resume_is_on_time_while_a_switch_holds_the_lock(held, monkeypatch):
+    """Night lab: a 60 s hold came out 81.7 s because the resume queued behind a switch waiting on a
+    safe moment with the lock. Now it waits at most HOLD_RESUME_LOCK_S for it."""
+    c, tuner, stick, calls = held
+    monkeypatch.setattr(ctl, "HOLD_RESUME_LOCK_S", 0.05)
+    c.behind_of = lambda target: 0.2
+
+    async def go():
+        assert c.preload("youtubetv:fox")
+        await asyncio.sleep(0.1)                  # paused, waiting out the hold
+        async with c._lock:                       # a switch takes the lock for far longer
+            await asyncio.sleep(0.6)
+            assert c._preload_task.done() and c.hidden_ready
+        await c._preload_task
+    asyncio.run(go())
+    assert stick.log[-1] == "KEYCODE_MEDIA_PLAY" and c.held["youtubetv:fox"] < 0.5
+
+
+def test_a_retune_during_the_hold_leaves_the_offset_unwritten(held, monkeypatch):
+    c, tuner, stick, calls = held
+    monkeypatch.setattr(ctl, "HOLD_RESUME_LOCK_S", 0.05)
+    c.behind_of = lambda target: 0.3
+
+    async def go():
+        assert c.preload("youtubetv:fox")
+        await asyncio.sleep(0.1)
+        async with c._lock:                       # a switch re-tunes the same stick at the live edge
+            await c._tune(stick, "youtubetv:fox")
+            await asyncio.sleep(0.5)
+        await c._preload_task
+    asyncio.run(go())
+    assert "youtubetv:fox" not in c.held          # not "held behind live": it's at the live edge

@@ -3,10 +3,17 @@
 import json
 import time
 
+import pytest
+
 from test_app import client, engine  # noqa: F401  (fixtures)
 
 from redzone.models import Play
 from redzone.web import phone_v2
+
+
+@pytest.fixture(autouse=True)
+def _tmp_reel_requests(tmp_path, monkeypatch):
+    monkeypatch.setattr(phone_v2, "REEL_REQUESTS", tmp_path / "reel_requests.jsonl")
 
 
 def _on(engine):
@@ -71,6 +78,17 @@ def test_missed_finds_the_big_play_off_screen(client, engine):
     vote, note, game = engine.store._x("SELECT vote, note, game FROM feedback").fetchall()[-1]
     assert (vote, note, game) == (0, "missed", gids[1])
     assert engine.store.taps()[-1]["tap"] == "missed" and engine.store.taps()[-1]["guess"]["play_id"] == "p9"
+    req = r["reel_request"]                                   # record only: reels are off by default
+    assert req["play_id"] == "p9" and req["state"] == "recorded_reels_off" and req["due_by"] - req["ts"] == 180.0
+    assert "reels are off" in r["message"]
+    assert json.loads(phone_v2.REEL_REQUESTS.read_text().splitlines()[-1])["game_id"] == gids[1]
+
+
+def test_reel_request_shape():
+    g = {"game_id": "g", "matchup": "A @ B", "play_id": "p", "kind": "td", "text": "x" * 300, "ago_s": 40}
+    r = phone_v2.reel_request(g, 1000.0, reel_play=True)
+    assert r["state"] == "queued" and r["due_by"] == 1180.0 and len(r["text"]) == 160 and r["play_ago_s"] == 40
+    assert phone_v2.reel_request(None, 1000.0, True) is None
 
 
 def test_missed_ignores_old_and_small_plays():
@@ -153,3 +171,320 @@ def test_slate_route(client, engine):
     _on(engine)
     r = client.get("/api/v2/slate").json()
     assert r["enabled"] and isinstance(r["games"], list) and isinstance(r["clashes"], list)
+
+
+def test_oracle_overlay_agreement_and_markers(tmp_path):
+    segs = [{"t0": 0.0, "t1": 100.0, "game": "a", "matchup": "A"}, {"t0": 100.0, "t1": 200.0, "game": "b", "matchup": "B"}]
+    f = tmp_path / "o.json"
+    f.write_text(json.dumps({"objective": "combined", "switches": [{"t": 50.0, "to": "b"}, {"t": 0.0, "to": "a"}]}))
+    o = phone_v2.read_oracle(f)
+    assert [x["t"] for x in o["switches"]] == [0.0, 50.0]                  # sorted
+    moments = [{"ts": 60.0, "game": "b", "kind": "dunk", "seen": False}, {"ts": 150.0, "game": "b", "kind": "3pt", "seen": True},
+               {"ts": 500.0, "game": "b", "kind": "late", "seen": True}]   # after the end: dropped
+    v = phone_v2.oracle_overlay(segs, o, moments, lambda g: g.upper(), end=200.0)
+    assert v["oracle"]["agree_pct"] == 75.0                                  # 50 s of a + 100 s of b, of 200
+    assert [(s["game"], s["t1"]) for s in v["oracle"]["segments"]] == [("a", 50.0), ("b", 200.0)]
+    assert v["big"] == {"plays": 2, "seen": 1, "missed": 1}
+    assert v["markers"][0] == {"ts": 60.0, "game": "b", "matchup": "B", "kind": "dunk", "label": "", "seen": False, "on": "A"}
+    none = phone_v2.oracle_overlay(segs, None, [], str, end=200.0)
+    assert none["oracle"] is None and none["markers"] == []
+    f.write_text("{not json")
+    assert phone_v2.read_oracle(f) is None and phone_v2.read_oracle(tmp_path / "missing.json") is None
+
+
+def test_night_route_carries_the_overlay(client, engine, tmp_path, monkeypatch):
+    _on(engine)
+    gid = next(iter(engine.merger.games))
+    _switch(engine, gid)
+    day = phone_v2.night_of(time.time()).isoformat()
+    (tmp_path / "oracle").mkdir()
+    (tmp_path / "oracle" / f"{day}.json").write_text(json.dumps({"switches": [{"t": time.time() - 5, "to": gid}]}))
+    (tmp_path / "m.jsonl").write_text(json.dumps({"ts": time.time(), "game": gid, "kind": "td", "seen": False}) + "\n")
+    monkeypatch.setattr(phone_v2, "ORACLE_DIR", tmp_path / "oracle")
+    monkeypatch.setattr(phone_v2, "MOMENTS", tmp_path / "m.jsonl")
+    r = client.get("/api/v2/night").json()
+    assert r["oracle"]["objective"] == "combined" and r["oracle"]["segments"][0]["game"] == gid
+    assert r["big"]["missed"] == 1 and r["markers"][0]["on"]
+
+
+def test_trend_lines_match_the_harness():
+    from scripts.northstar import META
+    for key, _label, bar, d in phone_v2.TREND_LINES:
+        assert key in META and META[key]["bar"] == bar and META[key]["dir"] == d, key
+
+
+def test_trend_series_and_gap(tmp_path):
+    rows = [{"split": "dev", "ts": "t1", "commit": "a", "values": {"mid_play": 3.0, "landings_dead": 96.0},
+             "status": {"mid_play": "FAIL", "landings_dead": "FAIL"}},
+            {"split": "locked", "ts": "t1", "commit": "a", "values": {"mid_play": 9.0}},
+            {"split": "dev", "ts": "t2", "commit": "b", "values": {"mid_play": 1.5, "landings_dead": 99.0},
+             "status": {"mid_play": "FAIL", "landings_dead": "PASS"}}]
+    v = phone_v2.trend(rows, "dev")
+    by = {x["key"]: x for x in v["lines"]}
+    assert v["runs"] == 2 and v["commit"] == "b" and v["passing"] == 1
+    assert by["mid_play"]["better"] == 1.5 and by["mid_play"]["gap"] == 1.5            # lower is better
+    assert by["landings_dead"]["better"] == 3.0 and by["landings_dead"]["gap"] == 0.0
+    assert by["pct_of_oracle"]["latest"] is None and by["pct_of_oracle"]["gap"] is None
+    assert phone_v2.trend(rows, "locked")["lines"][0]["latest"] == 9.0
+    f = tmp_path / "h.jsonl"
+    f.write_text(json.dumps(rows[0]) + "\nbroken\n")
+    assert len(phone_v2.read_history(f)) == 1 and phone_v2.read_history(tmp_path / "none") == []
+
+
+def test_trend_route(client, engine):
+    assert client.get("/api/v2/trend").status_code == 404
+    _on(engine)
+    r = client.get("/api/v2/trend").json()                 # the real docs/northstar-history.jsonl
+    assert r["enabled"] and r["split"] == "dev" and len(r["lines"]) == len(phone_v2.TREND_LINES)
+    assert client.get("/api/v2/trend?split=x").json()["ok"] is False
+
+
+def test_clash_alert_only_for_your_team_soon():
+    slate = {"games": [{"game_id": "w", "yours": True}, {"game_id": "x", "yours": False}, {"game_id": "y", "yours": False}],
+             "clashes": [{"t0": 100.0, "t1": 900.0, "games": ["x", "y"], "on_tv": "X", "second": ["Y"], "why": "league order"},
+                         {"t0": 1000.0, "t1": 1800.0, "games": ["w", "x"], "on_tv": "W", "second": ["X"], "why": "your team"}]}
+    a = phone_v2.clash_alert(slate, now=0.0)
+    assert a["on_tv"] == "W" and a["in_s"] == 1000 and a["now"] is False      # not the x/y clash
+    assert phone_v2.clash_alert(slate, now=1200.0)["now"] is True
+    assert phone_v2.clash_alert(slate, now=0.0, ahead=500.0) is None
+    assert phone_v2.clash_alert(slate, now=2000.0) is None
+
+
+def test_slate_route_carries_the_alert(client, engine):
+    _on(engine)
+    assert "alert" in client.get("/api/v2/slate").json()
+
+
+def test_watch_values_learned_field_or_stub():
+    from types import SimpleNamespace as NS
+    from redzone.models import League, Phase as P
+    from redzone.scoring.engine import Scored
+
+    def sc(gid, lg, score, factor="", reason="", crunch=False, is_break=False):
+        return Scored(gid, League(lg), score, score, 0.0, 0.0, 0.0, reason, [], is_break, None, None, 0.0,
+                      crunch=crunch, factor=factor)
+    games = {"a": NS(matchup="A @ B", phase=P.LIVE), "b": NS(matchup="C @ D", phase=P.LIVE), "z": NS(matchup="done", phase=P.POST)}
+    old = {"a": sc("a", "nba", 140.0, factor="Tied late", reason="r", crunch=True),
+           "b": sc("b", "nhl", -3.0, reason="Break", is_break=True), "z": sc("z", "nhl", 50.0)}
+    v = phone_v2.watch_values(old, games)
+    assert v["source"] == "stub" and [(r["game_id"], r["wv"], r["why"]) for r in v["games"]] == [("a", 100, "Tied late"), ("b", 0, "Break")]
+    old["a"].watch_value, old["a"].watch_why = 63.4, "Comeback brewing"
+    old["b"].watch_value = 12
+    v = phone_v2.watch_values(old, games)
+    assert v["source"] == "learned" and v["games"][0] == {"game_id": "a", "matchup": "A @ B", "league": "nba", "wv": 63,
+                                                         "why": "Comeback brewing", "crunch_state": "entering", "stakes_line": "",
+                                                         "stakes_pending": True,
+                                                         "crunch": True, "is_break": False, "source": "learned"}
+    assert v["games"][1]["why"] == "Break"                                             # no watch_why: the reason
+    assert phone_v2.watch_values({}, {}) == {"games": [], "source": None}
+    old["a"].crunch_now = True
+    assert phone_v2.watch_values(old, games)["games"][0]["crunch_state"] == "in"       # stub from the flags
+    old["a"].crunch_state = "leaving"                                                  # lane 1's model wins
+    assert phone_v2.watch_values(old, games)["games"][0]["crunch_state"] == "leaving"
+    old["a"].stakes = 0.7
+    assert phone_v2.watch_values(old, games)["games"][0]["stakes_line"] == "Big stakes"           # stub
+    old["a"].stakes_line = "AFC 1-seed race, top-5 matchup"                                       # lane 1 wins
+    g0 = phone_v2.watch_values(old, games)["games"][0]
+    assert g0["stakes_line"] == "AFC 1-seed race, top-5 matchup" and g0["stakes_pending"] is False
+    old["b"].crunch_state = "bogus"
+    assert phone_v2.watch_values(old, games)["games"][1]["crunch_state"] is None
+
+
+def test_watch_route(client, engine):
+    assert client.get("/api/v2/watch").status_code == 404
+    _on(engine)
+    r = client.get("/api/v2/watch").json()
+    assert r["enabled"] and isinstance(r["games"], list)
+
+
+def test_plan_marks_catchups_and_interleaves():
+    sw = [{"ts": 1.0, "to_game": "a", "kind": "better", "reason": "x", "ok": 1},
+          {"ts": 2.0, "to_game": "b", "kind": "replay", "reason": "catch-up plan=crunch-overlap", "ok": 1},
+          {"ts": 3.0, "to_game": "reel", "kind": "better", "reason": "reel", "ok": 0, "dry_run": 1},
+          {"ts": 4.0, "to_game": "c", "kind": "break_visit", "reason": "a in commercial", "ok": 0},
+          {"ts": 5.0, "to_game": "a", "kind": "return", "reason": "back", "ok": 1}]
+    m = phone_v2.plan_marks(sw, lambda g: g.upper())
+    assert [(x["type"], x["matchup"]) for x in m] == [("catchup", "B"), ("catchup", "Catch-up reel"), ("interleave", "C"), ("interleave", "A")]
+    assert m[0]["plan"] == "crunch-overlap" and m[1]["ok"] is True and m[2]["ok"] is False
+
+
+def test_night_route_carries_plan_marks(client, engine):
+    _on(engine)
+    gid = next(iter(engine.merger.games))
+    engine.store._x("INSERT INTO switches (ts, frm, to_game, target, kind, reason, dry_run, ok, detail) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)", (time.time(), None, gid, "a", "replay", "catch-up", 0, 1, "{}"))
+    r = client.get("/api/v2/night").json()
+    assert r["plan_counts"]["catchup"] >= 1 and r["plan_marks"][-1]["type"] == "catchup"
+
+
+def test_provenance_from_trace_fields_or_stub():
+    trace = {"trace": {"id": "s1", "decided_at": 100.0, "kind": "crunch", "steps": [["safe_done", 3.0], ["flip_start", 3.2]],
+                       "spans": {"safe_wait": 3.0}, "path": "flip", "picture_confirmed": True, "picture_at": 105.0,
+                       "enter_delay": {"mu": 44.0, "sigma": 2.0}}}
+    row = {"ts": 100.0, "frm": "a", "to_game": "b", "kind": "crunch", "reason": "Crunch time playbook=CRUNCH-02 plan=overlap",
+           "ok": 1, "dry_run": 0, "detail": json.dumps(trace)}
+    v = phone_v2.provenance_view(row, lambda g: g.upper())
+    assert v["source"] == "stub" and v["key"] == "100.000|b" and v["to"] == "B"
+    assert [c["stage"] for c in v["chain"]] == ["decided", "guarded", "command", "picture"]
+    assert [p["module"] for p in v["parts"]] == ["decider", "playbook", "planner", "sync", "guard"]
+    trace["trace"]["provenance"] = {"planner": "overlap", "watch_value": {"to": 88}, "extra": 1}
+    row["detail"] = json.dumps(trace)
+    v = phone_v2.provenance_view(row, str)
+    assert v["source"] == "trace" and [p["module"] for p in v["parts"]] == ["watch_value", "planner", "extra"]
+    row["detail"] = "{}"
+    assert phone_v2.provenance_view(row, str)["chain"] == [] and phone_v2.provenance_view(row, str)["has_trace"] is False
+
+
+def test_provenance_route(client, engine):
+    assert client.get("/api/v2/provenance?key=1|a").status_code == 404
+    _on(engine)
+    gid = next(iter(engine.merger.games))
+    _switch(engine, gid)
+    sw = client.get("/api/v2/switches").json()["switches"][0]
+    r = client.get(f"/api/v2/provenance?key={sw['key']}").json()
+    assert r["ok"] and r["source"] == "stub" and r["parts"][0]["module"] == "decider"
+    assert client.get("/api/v2/provenance?key=nope").json()["ok"] is False
+    assert client.get("/api/v2/provenance?key=1.0|zzz").json()["ok"] is False
+
+
+def test_held_view_holding_coming_back_and_catchup():
+    from redzone.decider.decider import Missed
+    q = [Missed("c", "p1", "Goal", "goal", t=900.0, value=80, replayed=True),
+         Missed("c", "p2", "Ovechkin one-timer", "goal", t=950.0, value=90, mine=True, due_s=180.0)]
+    v = phone_v2.held_view("b", True, 84.04, "b", 1240.0, q, "a", str.upper, now=1000.0)
+    assert v["held"] == {"game_id": "b", "matchup": "B", "ready": True, "behind_s": 84.0}
+    assert v["back"]["in_s"] == 240 and v["back"]["text"] == "back to B within 4 min"
+    assert v["catchup"]["label"] == "Ovechkin one-timer" and v["catchup"]["due_in_s"] == 130 and v["queued"] == 1
+    assert phone_v2.held_view(None, False, 0.0, None, None, [], "a", str, 0.0) is None
+    assert phone_v2.held_view(None, False, 0.0, "a", None, [], "a", str, 0.0)["back"] is None   # already home
+
+
+def test_held_route(client, engine):
+    assert client.get("/api/v2/held").status_code == 404
+    _on(engine)
+    r = client.get("/api/v2/held").json()
+    assert r["enabled"] and "view" in r
+
+
+def test_ledger_view_pending_then_folded(tmp_path):
+    from redzone.web import ledger as DL
+    v = DL.view(DL.read(tmp_path / "missing.json"))
+    assert v["pending"] and [r["league"] for r in v["rows"]][:3] == ["nfl", "cfb", "nba"]
+    assert v["totals"]["pct_of_target"] == 0.0 and len(v["nfm"]["milestones"]) == len(DL.DEFAULT_MILESTONES)
+    assert "PENDING" in DL.table(v)
+    man = {"nfl": {"source": "nflverse", "license": "CC-BY", "seasons": "2002-2025", "windows": 1200,
+                   "splits": {"train": {"games": 90, "nights": 30}, "test": {"games": 10, "nights": 4}}}, "bad": 3}
+    led = DL.fold_manifest({"leagues": {"nfl": {"real_tokens": 4e8}}}, man, "2026-11-04T22:00Z")
+    nfl = led["leagues"]["nfl"]
+    assert (nfl["games"], nfl["nights"], nfl["windows"], nfl["real_tokens"]) == (100, 34, 1200, 4e8)
+    led["leagues"]["xfl"] = {"synthetic_tokens": 1e8}
+    led["nfm"] = {"milestones": [{"name": "pretrain", "status": "running"}, {"name": "x", "status": "weird"}, {"bad": 1}]}
+    v = DL.view(led)
+    assert not v["pending"] and v["rows"][-1]["league"] == "xfl" and v["totals"]["pct_of_target"] == 50.0
+    assert [m["status"] for m in v["nfm"]["milestones"]] == ["running", "next"] and v["updated"] == "2026-11-04T22:00Z"
+    assert "| NFL | nflverse (CC-BY) | 400.0M |" in DL.table(v)
+
+
+def test_ledger_script_folds_a_manifest(tmp_path, capsys):
+    import json
+    import scripts.data_ledger as cli
+    led, man = tmp_path / "led.json", tmp_path / "manifest.json"
+    man.write_text(json.dumps({"nba": {"source": "nba_api", "windows": 7, "splits": {}}}))
+    assert cli.main(["--ledger", str(led), "--manifest", str(man)]) == 0
+    assert json.loads(led.read_text())["leagues"]["nba"]["windows"] == 7 and "| NBA | nba_api |" in capsys.readouterr().out
+    assert cli.main(["--ledger", str(led), "--manifest", str(tmp_path / "nope.json")]) == 2
+
+
+def test_ledger_route(client, engine, tmp_path, monkeypatch):
+    assert client.get("/api/v2/ledger").status_code == 404
+    _on(engine)
+    monkeypatch.setattr(phone_v2.ledger_mod, "LEDGER_FILE", tmp_path / "none.json")
+    r = client.get("/api/v2/ledger").json()
+    assert r["enabled"] and r["pending"] and r["nfm"]["done"] == 0
+
+
+def test_provenance_orders_lane3_control_last():
+    assert phone_v2.PROV_ORDER[0] == "decider" and phone_v2.PROV_ORDER[-1] == "control"   # lane 3 #173 keys
+
+
+def test_ledger_folds_the_kaggle_factory_manifest():
+    from redzone.web import ledger as DL
+    man = {"total_tokens": 3_000_000,
+           "leagues": {"nba": {"seasons": {"2023": {"tokens": {"games": 60}}, "2024": {"tokens": {"games": 40}}}}},
+           "ledger": {"nba": {"tokens_real": 3_000_000, "sources": {"nba_cdn": 1_000_000, "nba_api": 2_000_000},
+                              "selfplay_rows_synthetic": 500, "moments_rows_real": 9000, "crunch_event_share_pct": 12.5,
+                              "ot_games": 5, "comeback_games": 10, "blowout_games": 25, "no_wall_games": 0}}}
+    keep = {"nfm": {"milestones": [{"name": "pretrain", "status": "running"}]}}
+    led = DL.fold_manifest(keep, man, "t")
+    nba = led["leagues"]["nba"]
+    assert nba["source"] == "nba_api, nba_cdn" and nba["seasons"] == "2023-2024" and nba["games"] == 100
+    assert (nba["real_tokens"], nba["synthetic_tokens"], nba["windows"]) == (3e6, 0, 9000)
+    assert (nba["crunch_share"], nba["ot_share"], nba["comeback_share"], nba["blowout_share"]) == (0.125, 0.05, 0.1, 0.25)
+    assert led["nfm"] == keep["nfm"] and led["total_tokens"] == 3_000_000
+    row = next(r for r in DL.view(led)["rows"] if r["league"] == "nba")
+    assert not row["pending"] and "| NBA | nba_api, nba_cdn | 3.0M | 0 | 9,000 | 12% | 5% / 10% / 25% |" in DL.table(DL.view(led))
+
+
+def test_capture_view_counts_provenance_autolog_held_and_report():
+    import json
+    prov = {"trace": {"id": "t", "provenance": {"guard": {"ok": True}, "decider": {"kind": "better"}, "zz": 1}}}
+    sws = [{"ts": 1.0, "detail": json.dumps(prov)}, {"ts": 2.0, "detail": json.dumps({"trace": {"id": "u"}})},
+           {"ts": 3.0, "detail": "{}"}]
+    summary = {"rows": {"traces.jsonl": 2, "bad": "x"}, "cuts_graded": 2, "entries_mid_play": 0, "switch_p95_s": 2.2}
+    v = phone_v2.capture_view("2026-11-04", sws, summary, [{"kind": "drift"}, {"kind": "recovered"}, {"kind": "drift"}],
+                              "2026-11-04.md", {"HDMI2": 62.46})
+    assert (v["switches"], v["with_trace"], v["with_provenance"]) == (3, 2, 1)
+    assert [k["module"] for k in v["provenance_keys"]] == ["decider", "guard", "zz"]        # PROV_ORDER, then the rest
+    assert v["autolog"]["rows"] == {"traces.jsonl": 2} and v["autolog"]["entries_mid_play"] == 0
+    assert v["held"] == {"now": {"HDMI2": 62.5}, "log": {"drift": 2, "recovered": 1}}
+    assert [c["ok"] for c in v["checks"]] == [True, False, True] and v["gold"] is False
+    empty = phone_v2.capture_view("2026-11-05", [], None, [], None)
+    assert empty["autolog"] is None and empty["gold"] is False and empty["held"]["now"] == {}
+
+
+def test_capture_routes(client, engine, tmp_path, monkeypatch):
+    assert client.get("/api/v2/capture").status_code == 404
+    _on(engine)
+    monkeypatch.setattr(phone_v2, "LIVE_NIGHTS", tmp_path / "ln")
+    monkeypatch.setattr(phone_v2, "REPORTS", (tmp_path / "rep",))
+    monkeypatch.setattr(phone_v2, "BUFFER_LOG", tmp_path / "buffer.jsonl")
+    gid = next(iter(engine.merger.games))
+    _switch(engine, gid)
+    r = client.get("/api/v2/capture").json()
+    assert r["enabled"] and r["switches"] == 1 and r["report"] is None and r["autolog"] is None
+    night = r["night"]
+    (tmp_path / "ln" / night).mkdir(parents=True)
+    (tmp_path / "ln" / night / "summary.json").write_text('{"rows": {"traces.jsonl": 1}, "cuts_graded": 1}')
+    (tmp_path / "rep").mkdir()
+    (tmp_path / "rep" / f"{night}.md").write_text("# report")
+    r = client.get(f"/api/v2/capture?day={night}").json()
+    assert r["autolog"]["cuts_graded"] == 1 and r["report"] == f"{night}.md"
+    assert client.get(f"/api/v2/capture/report?day={night}").json() == {"ok": True, "day": night, "text": "# report"}
+    assert client.get("/api/v2/capture?day=x").json()["ok"] is False
+    assert client.get("/api/v2/capture/report?day=2020-01-01").json()["ok"] is False
+
+
+def test_crunch_timeline_graded_and_from_provenance(tmp_path):
+    import json
+    f = tmp_path / "c.json"
+    f.write_text(json.dumps({"tol_s": 60, "games": {
+        "a": {"learned": [[100, 400], [500, 900]], "oracle": [[130, 950]]},       # entry -30 ok, exit -50 ok
+        "b": {"learned": [[100, 200]], "oracle": [[100, 500]]},                    # exit -300: a miss
+        "c": {"learned": [], "oracle": [[0, 10]]}, "d": {"learned": [[5, 1]]}}}))  # never on; a bad span drops
+    c = phone_v2.read_crunch(f)
+    assert c["games"]["d"]["learned"] == [] and phone_v2.read_crunch(tmp_path / "none.json") is None
+    v = phone_v2.crunch_timeline(c, [], str.upper)
+    by = {g["game"]: g for g in v["games"]}
+    assert (by["a"]["entry_s"], by["a"]["exit_s"], by["a"]["exit_ok"]) == (-30.0, -50.0, True)
+    assert by["b"]["exit_ok"] is False and by["c"]["exit_ok"] is False and "exit_ok" not in by["d"]
+    assert (v["source"], v["exits"], v["exits_ok"], v["entries_ok"]) == ("graded", 3, 1, 2)
+    assert v["games"][0]["game"] in ("b", "c")                                     # misses first
+    sw = [{"ts": 10.0, "to_game": "x", "frm": "y",
+           "detail": json.dumps({"trace": {"id": "t", "provenance": {"crunch_state": {"to": "in", "from": "leaving"}}}})},
+          {"ts": 20.0, "to_game": "y", "frm": None, "detail": json.dumps({"trace": {"provenance": {"crunch_state": "entering"}}})},
+          {"ts": 30.0, "to_game": "z", "detail": json.dumps({"trace": {"provenance": {"crunch_state": "bogus"}}})}]
+    v = phone_v2.crunch_timeline(None, sw, str.upper)
+    pts = {g["game"]: g["points"] for g in v["games"]}
+    assert v["source"] == "provenance" and pts == {"x": [{"ts": 10.0, "state": "in"}],
+                                                   "y": [{"ts": 10.0, "state": "leaving"}, {"ts": 20.0, "state": "entering"}]}
+    assert phone_v2.crunch_timeline(None, [], str)["source"] is None

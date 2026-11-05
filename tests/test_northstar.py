@@ -11,8 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import northstar as ns  # noqa: E402
 
 
-def night(i, *, cuts=0, mid=0, land=40, dead_land=40, big=10, live=10, seen=10, my_big=0, my_live=0, crunch_live=10):
-    return {"night": f"2026100{i}", "cuts": cuts, "entries_mid_play": mid, "landings": land,
+def night(i, *, cuts=0, cuts_high=0, mid=0, land=40, dead_land=40, big=10, live=10, seen=10, my_big=0, my_live=0, crunch_live=10):
+    return {"night": f"2026100{i}", "cuts": cuts, "cuts_high": cuts_high, "entries_mid_play": mid, "landings": land,
             "landings_dead": dead_land, "big": big, "big_live": live, "big_seen": seen,
             "my_big": my_big, "my_big_live": my_live, "dead_s": 100.0, "watched_s": 1000.0,
             "crunch": 10, "crunch_live": crunch_live, "my_crunch": 3, "my_crunch_live": 3}
@@ -52,6 +52,32 @@ def test_one_mid_play_entry_fails_rule_one():
     r = rows_by(ns.table(cards(9, mid=1)))
     assert r["mid_play"]["status"] == ns.FAIL
     assert r["mid_play"]["value"] == pytest.approx(2.5)
+
+
+def test_high_leverage_leave_fails_and_low_leverage_leave_is_info():
+    r = rows_by(ns.table(cards(9, cuts=2, cuts_high=1)))
+    assert r["high_leverage_leaves"]["status"] == ns.FAIL
+    assert r["high_leverage_leaves"]["value"] == pytest.approx(2.5)
+    assert r["low_leverage_leaves"]["status"] == ns.INFO
+    assert r["low_leverage_leaves"]["value"] == pytest.approx(2.5)
+    # a leave is not an entry: rule #1 (never JOIN mid-play) is untouched
+    assert r["mid_play"]["status"] == ns.PASS and r["mid_play"]["value"] == 0.0
+
+
+def test_low_leverage_leaves_alone_pass():
+    r = rows_by(ns.table(cards(9, cuts=3)))
+    assert r["high_leverage_leaves"]["status"] == ns.PASS
+    assert r["low_leverage_leaves"]["value"] == pytest.approx(7.5)
+
+
+def test_cards_without_leverage_read_pending():
+    c = cards(9, cuts=1)
+    for lg in ns.LEAGUES:
+        for x in c[lg]["metrics"]["per_night"]:
+            x.pop("cuts_high", None)
+    r = rows_by(ns.table(c))
+    assert r["high_leverage_leaves"]["status"] == ns.PENDING
+    assert "no cuts_high" in r["high_leverage_leaves"]["detail"]
 
 
 def test_too_few_nights_is_pending_not_pass():
@@ -197,9 +223,10 @@ def test_live_nights_section_is_pending_until_a_night_exists(tmp_path):
     (n / "summary.json").write_text(json.dumps({"landings": {"n": 3, "after_dead_p50_s": 5.0, "before_play_p50_s": 9.0,
                                                              "before_play_min_s": 2.0}, "entries_mid_play": 0,
                                                 "switch_p95_s": 2.2, "press_to_tv_p95_s": 3.4, "press_samples": 4,
-                                                "sync_anchor_err": {"HDMI1": {"n": 5, "p50_s": 1.0, "p95_s": 2.5}}}))
+                                                "sync_anchor_err": {"HDMI1": {"n": 5, "p50_s": 1.0, "p95_s": 2.5}},
+                                                "buffer": {"detected": 2, "recovered": 1}}))
     text = "\n".join(ns.live_section(ns.load_live_nights([tmp_path / "live"])))
-    assert "| 2026-11-04 | 3 | 5.0 s | 9.0 / 2.0 s | 0 | 2.2 s | 3.4 s (4) | HDMI1 2.5 s (n=5) |" in text
+    assert "| 2026-11-04 | 3 | 5.0 s | 9.0 / 2.0 s | 0 | 2.2 s | 3.4 s (4) | HDMI1 2.5 s (n=5) | 1/2 |" in text
     assert "PENDING" not in text
 
 
@@ -219,3 +246,25 @@ def test_big_live_is_gated_on_95_pct_of_oracle():
     ns.apply_oracle_gates(r)
     assert r[0]["status"] == ns.PENDING
     assert ns.META["landings_dead"]["bar"] == 98.0 and ns.META["pct_of_oracle"]["bar"] == 95.0
+
+
+def test_watch_value_and_contract_lines_are_pending_until_their_evidence_exists():
+    r = rows_by(ns.table(cards(9)))
+    for k in ("wv_calibration_err", "wv_rank_agree", "contract_violations"):
+        assert r[k]["status"] == ns.PENDING
+    c = cards(9)
+    c["nba"]["metrics"]["watch_value"] = {"calibration_err": 4.0, "rank_agree_pct": 81.0}
+    r = rows_by(ns.table(c, contracts={"violations": [{"rule": "constant_twice", "where": "standby.FLIP_S"}]}))
+    assert r["wv_calibration_err"]["value"] == 4.0 and r["wv_rank_agree"]["value"] == 81.0
+    assert r["contract_violations"]["status"] == ns.FAIL and "constant_twice 1" in r["contract_violations"]["detail"]
+    assert rows_by(ns.table(cards(9), contracts={"violations": []}))["contract_violations"]["status"] == ns.PASS
+
+
+def test_crunch_exit_line_is_pending_until_graded_then_a_rate():
+    assert rows_by(ns.table(cards(9)))["crunch_exit_acc"]["status"] == ns.PENDING
+    c = cards(9)
+    for lg in ns.LEAGUES:
+        for x in c[lg]["metrics"]["per_night"]:
+            x["crunch_exits"], x["crunch_exits_ok"] = 4, 4
+    r = rows_by(ns.table(c))["crunch_exit_acc"]
+    assert r["value"] == 100.0 and r["status"] in (ns.PASS, ns.PENDING)

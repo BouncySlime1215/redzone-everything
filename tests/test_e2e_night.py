@@ -37,8 +37,7 @@ def _data_snapshot() -> dict:
     return {str(p.relative_to(d)): p.stat().st_mtime_ns for p in d.rglob("*") if p.is_file()}
 
 
-@pytest.fixture(scope="module")
-def night(tmp_path_factory):
+def _run_night(tmp_path_factory, *extra: str) -> dict:
     if not _fixtures_present():
         pytest.skip("the night's ESPN fixtures are not in tests/fixtures")
     work = tmp_path_factory.mktemp("night")
@@ -47,8 +46,8 @@ def night(tmp_path_factory):
     env = dict(os.environ, PYTHONPATH=str(ROOT) + os.pathsep + os.environ.get("PYTHONPATH", ""))
     env.pop("RZ_NIGHT_TRACE", None)
     env["RZ_NIGHT_HOSTILE_HOST"] = "1"   # another subnet, a tunnel, a busy Mac: the night must not see any of it
-    proc = subprocess.run([sys.executable, "-m", "redzone.lab.night", "--json", str(out), "--work", str(work / "w")],
-                          cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
+    proc = subprocess.run([sys.executable, "-m", "redzone.lab.night", "--json", str(out), "--work", str(work / "w"),
+                           *extra], cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
     assert out.exists(), f"the night wrote no report (exit {proc.returncode}):\n{proc.stdout[-3000:]}\n{proc.stderr[-3000:]}"
     report = json.loads(out.read_text())
     report["_exit"] = proc.returncode
@@ -56,11 +55,28 @@ def night(tmp_path_factory):
     return report
 
 
+@pytest.fixture(scope="module")
+def night(tmp_path_factory):
+    return _run_night(tmp_path_factory)
+
+
+@pytest.fixture(scope="module")
+def night_seed2(tmp_path_factory):
+    """Seed 2: its visible stick comes back from an adb drop right before a "Still watching?" (#164)."""
+    return _run_night(tmp_path_factory, "--seed", "2")
+
+
 @pytest.mark.parametrize("name", CHECKS)
 def test_night_check(night, name):
     checks = {c["name"]: c for c in night["checks"]}
     assert name in checks, f"the night did not grade {name}"
     assert checks[name]["ok"], json.dumps(checks[name]["detail"], indent=1, default=str)[:4000]
+
+
+@pytest.mark.parametrize("name", ["still_watching_cleared", "zero_midplay_cuts"])
+def test_seed2_night_check(night_seed2, name):
+    """Seed 1 alone hid a 110 s "Still watching?" on a screen the app had forgotten after a drop."""
+    test_night_check(night_seed2, name)
 
 
 @pytest.mark.playbook("STK-01", "STK-02")

@@ -25,9 +25,10 @@ from pathlib import Path
 
 import numpy as np
 
-from redzone.lab import cutgrade, sportsgrade
-from redzone.lab.backtest import SwitchLog, lag_of
-from redzone.models import League
+from redzone import grading
+from redzone.grading import SwitchLog, lag_of
+from redzone.models import REAL_BREAKS, League
+from redzone.models_rt.forest import MODEL_DIRS
 from redzone.noggin.features import REG
 from redzone.sources import espn
 
@@ -37,7 +38,7 @@ PICK_FEATURES = ("leave_ok", "land_ok", "dead_screen", "ahead_big", "ahead_crunc
                  "margin_rank", "left_rank")
 # p90 of each league's measured detection lag (redzone/lab/feed_lag_profile.json, Nov 2-3 2026)
 FEED_LAG_P90 = {League.NBA: 70.0, League.NHL: 75.0, League.NFL: 62.0, League.CBB: 46.0}
-MODEL_DIR = Path(__file__).resolve().parent / "models"
+MODEL_DIR = MODEL_DIRS["noggin"]
 
 
 def _secs(clock) -> float:
@@ -61,12 +62,12 @@ def _per_play(league: League, plays: list[dict]) -> dict:
     prev = None
     hs = as_ = 0.0
     for i, p in enumerate(plays):
-        big[i] = sportsgrade.is_big(league, p, prev)
-        marker = sportsgrade._marker(sportsgrade._type(p))
-        crunch[i] = sportsgrade.is_crunch(league, p) and not marker
+        big[i] = grading.is_big(league, p, prev)
+        marker = grading.marker(grading.play_type(p))
+        crunch[i] = grading.is_crunch(league, p) and not marker
         st = espn.stoppage_for(league, p)
         stop[i] = st != espn.Stoppage.NONE
-        brk[i] = st in sportsgrade.REAL_BREAKS
+        brk[i] = st in REAL_BREAKS
         action[i] = not stop[i] and not marker
         per[i] = espn._int(espn._get(p, "period", "number")) or 0
         clock[i] = _secs(espn._get(p, "clock", "displayValue"))
@@ -129,6 +130,32 @@ def features_for_night(replays, tab: dict, steps: np.ndarray, lag, mine: set, fe
     return X
 
 
+CUE_FEATURES = ("cue_s", "cue_ahead_big", "cue_ahead_crunch", "cue_ahead_plays")
+
+
+def cue_features(replays, cue: np.ndarray, steps: np.ndarray, lag, feed_lag: float | None = None) -> np.ndarray:
+    """[possession-start entry] (G, K, 4): what landing on each game now, cued cue[g, k] steps behind live,
+    would replay before the live picture: the offset and the big / crunch / action plays between the cue point
+    and the feed head. Only delivered plays (wall <= t - feed lag p90), as for PICK_FEATURES."""
+    G, K = len(replays), len(steps)
+    E = np.zeros((G, K, len(CUE_FEATURES)), np.float32)
+    for g, r in enumerate(replays):
+        if not getattr(r, "wall", None):
+            continue
+        fl = FEED_LAG_P90.get(r.league, 70.0) if feed_lag is None else feed_lag
+        W = np.asarray(r.wall, float)
+        pp = _per_play(r.league, r.plays)
+        o = np.where(cue[g] >= 0, cue[g], 0) * 5.0
+        ik = np.searchsorted(W, steps - fl, side="right") - 1
+        isc = np.searchsorted(W, steps - lag_of(lag, r.gid) - o, side="right") - 1
+        ahead = lambda cs: np.where(ik > isc, cs[ik + 1] - cs[isc + 1], 0.0)   # noqa: E731
+        E[g, :, 0] = np.where(cue[g] >= 0, o, -5.0)
+        E[g, :, 1] = ahead(pp["cbig"])
+        E[g, :, 2] = ahead(pp["ccrunch"])
+        E[g, :, 3] = ahead(pp["caction"])
+    return E
+
+
 def oracle_on(switches: list[SwitchLog], replays, steps: np.ndarray, tune_s: float) -> np.ndarray:
     """(K,) index of the game the oracle has on screen (or picked, while black) at each step."""
     gi = {r.gid: i for i, r in enumerate(replays)}
@@ -148,20 +175,25 @@ def my_hot(X: np.ndarray) -> np.ndarray:
 
 
 def rollout(score: np.ndarray, X: np.ndarray, replays, steps: np.ndarray, tune_s: float, margin: float = 0.1,
-            objective: str = "pick") -> list[SwitchLog]:
-    """Run the policy over one night: score (G, K) from the model, the rules from X. SwitchLog in time order."""
+            objective: str = "pick", cue: np.ndarray | None = None) -> list[SwitchLog]:
+    """Run the policy over one night: score (G, K) from the model, the rules from X. SwitchLog in time order.
+
+    cue (oracle.cue_steps, [possession-start entry]): a switch lands on the target's last dead ball, cue[b, k]
+    steps behind live (-1 = none in reach), and the picture then leaves on a dead ball of what it shows."""
     col = {f: i for i, f in enumerate(PICK_FEATURES)}
     G, K = score.shape
     blk = max(1, int(math.ceil(tune_s / 5.0)))
     leave, land = X[:, :, col["leave_ok"]] > 0, X[:, :, col["land_ok"]] > 0
+    if cue is not None:
+        land = cue >= 0
     my_crunch = my_hot(X)
     k = 0
     first = np.where(land[:, 0], score[:, 0], -np.inf)
     a = int(np.argmax(first))
     out = [SwitchLog(float(steps[0]), None, replays[a].gid, "start", objective)]
-    k = blk
+    k, off = blk, 0
     while k < K:
-        if leave[a, k] and not my_crunch[a, k]:
+        if k - off >= 0 and leave[a, k - off] and not my_crunch[a, k]:
             cand = land[:, k].copy()
             cand[a] = False
             if cand.any():
@@ -169,8 +201,10 @@ def rollout(score: np.ndarray, X: np.ndarray, replays, steps: np.ndarray, tune_s
                 s = np.where(forced if forced.any() else cand, score[:, k], -np.inf)
                 b = int(np.argmax(s))
                 if forced.any() or s[b] - score[a, k] > margin:
-                    out.append(SwitchLog(float(steps[k]), replays[a].gid, replays[b].gid, "pick", objective))
-                    a = b
+                    o = int(cue[b, k]) if cue is not None else 0
+                    out.append(SwitchLog(float(steps[k]), replays[a].gid, replays[b].gid, "pick", objective,
+                                         offset=float(o * 5.0)))
+                    a, off = b, o
                     k += blk
                     continue
         k += 1
@@ -221,18 +255,16 @@ class PickModel:
 
     @classmethod
     def load(cls, path: Path) -> "PickModel":
-        import json
-        with np.load(path, allow_pickle=False) as z:
-            meta = json.loads(bytes(z["meta"]).decode())
-            arrays = {k: z[k] for k in z.files if k != "meta"}
-        return cls(arrays, meta)
+        from redzone.models_rt.forest import load_npz   # [one brain] the one loader
+        return cls(*load_npz(path))
 
 
 _MODELS: dict = {}
 
 
-def model_for(league: str, model_dir: Path | None = None) -> PickModel | None:
-    p = (model_dir or MODEL_DIR) / f"pick_{league}.v1.npz"
+def model_for(league: str, model_dir: Path | None = None, name: str = "v1") -> PickModel | None:
+    """models/pick_<league>.<name>.npz: v1 = the live oracle's imitation, cue90 = the possession-start one."""
+    p = (model_dir or MODEL_DIR) / f"pick_{league}.{name}.npz"
     if p not in _MODELS:
         _MODELS[p] = PickModel.load(p) if p.exists() else None
     return _MODELS[p]
@@ -272,12 +304,11 @@ class LiveGame:
 
 
 def live_choice(games: list[LiveGame], current: str | None, now: float, lags: dict, mine: set, tune_s: float,
-                model: PickModel) -> tuple[str | None, dict]:
+                model: PickModel, cue_s: float | None = None) -> tuple[str | None, dict]:
     """PICK at one tick: the game to switch to now (None = stay), and the scores. Same features and rule as
     `rollout`, from the plays delivered so far (the feed lag p90 cut keeps it to what training saw)."""
     from types import SimpleNamespace
 
-    from redzone.lab import oracle as O
     steps = np.array([now])
     G = len(games)
     leave, land, dead = np.zeros((G, 1), bool), np.zeros((G, 1), bool), np.zeros((G, 1))
@@ -287,16 +318,20 @@ def live_choice(games: list[LiveGame], current: str | None, now: float, lags: di
             continue
         lag = float(lags.get(r.gid, 0.0))
         st, sl = now - lag, now + tune_s - lag
-        leave[g, 0] = O._clean_leave(r.league, r.wall, r.plays, st) and cutgrade._dead_at(r.league, r.wall, r.plays, st)[0]
-        land[g, 0] = (sl < r.wall[0] or sl > r.wall[-1]) or cutgrade._dead_at(r.league, r.wall, r.plays, sl)[0]
+        leave[g, 0] = grading.clean_leave(r.league, r.wall, r.plays, st) and grading.dead_at(r.league, r.wall, r.plays, st)[0]
+        land[g, 0] = (sl < r.wall[0] or sl > r.wall[-1]) or grading.dead_at(r.league, r.wall, r.plays, sl)[0]
+        if cue_s and not land[g, 0]:
+            # [possession start] a cue model lands on the last dead ball up to cue_s behind live (as trained)
+            land[g, 0] = any(grading.dead_at(r.league, r.wall, r.plays, sl - 5.0 * j)[0]
+                             for j in range(1, int(cue_s // 5.0) + 1))
         if r.wall[0] <= st <= r.wall[-1]:
-            i = cutgrade._idx(r.wall, st)
-            dead[g, 0] = espn.stoppage_for(r.league, r.plays[max(0, i)]) in sportsgrade.REAL_BREAKS
+            i = grading.idx(r.wall, st)
+            dead[g, 0] = espn.stoppage_for(r.league, r.plays[max(0, i)]) in REAL_BREAKS
         else:
             dead[g, 0] = 1.0
     reps = [r if r.wall else SimpleNamespace(league=r.league, gid=r.gid, matchup=r.matchup, wall=[math.inf],
                                              plays=[{}]) for r in games]
-    from redzone.lab.backtest import Lags
+    from redzone.grading import Lags
     lagmap = Lags(0.0, {k: float(v) for k, v in lags.items()})
     X = features_for_night(reps, dict(leave=leave, land=land, dead=dead), steps, lagmap, mine)
     sc = model.proba(X[:, 0, :])

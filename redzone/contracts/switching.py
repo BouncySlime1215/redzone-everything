@@ -8,6 +8,7 @@ completed switch (LatencyBook). Units: seconds from command sent to picture conf
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from redzone.decider.core import SwitchPath
@@ -44,10 +45,88 @@ def deadline(paths: tuple[SwitchPath, ...]) -> float:
 # ConfigSwitchPaths below, so it reads the same numbers the controller falls back to:
 #   tunes      decider.switch_cost.<app>: the Mac's measured medians (switch_speed.learn wrote them
 #              to data/config.yaml; eval-data-v1 pinned that snapshot), shipped in default_config.yaml
-#   TV flip    two_stick.tv_flip_prior_s (SmartThings setInputSource on the user's TV, Nov 4 2026:
-#              64/64 confirmed in the Nov 4 live lab, p50 1.89 s, p95 2.18 s) + two_stick.input_settle_s, exactly as
+#   TV flip    two_stick.tv_flip_prior_s (SmartThings setInputSource on the user's TV, Nov 3 2026:
+#              live lab Nov 4, CEC off: 30/30, p50 1.89 s, p95 1.98 s, max 2.02 s) + two_stick.input_settle_s, exactly as
 #              Controller.flip_estimate / _flip_upper price the tv_flip path before 5 own samples.
 TUNE_APPS = ("youtubetv", "prime", "espn")
+# [live lab] SmartThings input flips on the user's TV, Nov 4 2026 (docs/livelab-2026-11-04.md on the Mac):
+# command to confirmed readback, 64/64 confirmed, 0 retries. p50 1.89, p95 2.18, max 2.58 s.
+FLIP_PRIOR_CEC_ON = {"median": 1.89, "p95": 2.18, "max": 2.58}   # those 64 flips (CEC on)
+# [live lab, Nick Nov 4 11:35 AM] with HDMI-CEC off the stick we leave keeps PLAYING (83/83) and the
+# flip tightens: 30/30, p50 1.89 s, p95 1.98 s, max 2.02 s. The planner's prior.
+FLIP_PRIOR = {"median": 1.89, "p95": 1.98, "max": 2.02}
+# Hidden-stick pre-tune to PLAYING (same live lab), by ADB model code: prefer the 4K Plus for hot pre-tunes.
+PRETUNE_PRIOR_S = {
+    "AFTMA08C15": {"name": "Fire TV Stick 4K Plus", "median": 2.33, "p95": 3.06},
+    "AFTKM": {"name": "Fire TV Stick 4K (2023)", "median": 3.74, "p95": 5.50},
+}
+
+
+def sample_prior(prior: dict, rng) -> float:
+    """One draw from a measured (median, p95[, max]) prior: a lognormal through the median and p95,
+    clipped at the measured max. The sims' spread for flips and pre-tunes."""
+    import math
+    med, p95 = float(prior["median"]), float(prior.get("p95", prior["median"]))
+    sd = math.log(max(p95, med) / med) / 1.645
+    x = med * math.exp(rng.gauss(0.0, sd))
+    return min(x, float(prior["max"])) if "max" in prior else x
+
+
+def flip_bound(prior: dict) -> tuple[float, float]:
+    """(median, planning upper bound) of the TV flip prior. The bound is the measured max: landing
+    deadlines guard rule #1 (decisions.md, Nov 4); the p95 only where no max was measured."""
+    med = float(prior.get("median", FLIP_PRIOR["median"]))
+    hi = prior.get("max", prior.get("p95", FLIP_PRIOR["max"]))
+    return med, max(med, float(hi))
+
+
+@dataclass(frozen=True)
+class SeekModel:
+    """YouTube TV's DVR rewind as the stick really does it (live lab, Nov 4 2026, Nick 12:10 PM):
+    each press steps `step` s, the FIRST press of a batch is swallowed, and each seek stalls the
+    picture `stall_lo`..`stall_hi` s (the stall adds to how far behind the picture lands). A "60 s"
+    rewind of 6 presses at an assumed 10 s step landed 75-80 s back, a "20 s" one 15-19 s back.
+
+    effective(back_s): the presses that count, rounded UP so the landing is never short of back_s
+    by more than late_ok (a replay shows its snap; an entry's plan already holds the stall).
+    sent(back_s): what control.py sends (effective + swallowed). landing(n_eff, stall): how far
+    behind the picture comes up."""
+    step: float = 15.0
+    swallowed: int = 0
+    stall_lo: float = 0.0
+    stall_hi: float = 0.0
+    late_ok: float = 1.0
+
+    @property
+    def stall_mid(self) -> float:
+        return (self.stall_lo + self.stall_hi) / 2
+
+    def effective(self, back_s: float) -> int:
+        import math
+        return min(60, max(0, math.ceil((back_s - self.late_ok - self.stall_lo) / self.step - 1e-9)))
+
+    def sent(self, back_s: float) -> int:
+        n = self.effective(back_s)
+        return n + self.swallowed if n else 0
+
+    def landed(self, sent: int, stall: float | None = None) -> float:
+        """Seconds behind for `sent` presses on THIS model's stick (stall: the mid by default)."""
+        n = max(0, sent - self.swallowed)
+        return n * self.step + (self.stall_mid if stall is None else stall) if sent else 0.0
+
+
+# The stick as measured (the sims' truth). Config replay.seek_* is what control.py ASSUMES.
+YTTV_SEEK = SeekModel(step=15.0, swallowed=1, stall_lo=2.0, stall_hi=4.0)
+
+
+def seek_model(cfg) -> SeekModel:
+    """What control.py assumes about the rewind (replay.seek_step_s / seek_wake_presses /
+    seek_stall_min_s / seek_stall_max_s)."""
+    lo = float(cfg.get("replay.seek_stall_min_s", 0.0) or 0.0)
+    hi = float(cfg.get("replay.seek_stall_max_s", lo) or 0.0)
+    return SeekModel(step=float(cfg.get("replay.seek_step_s", 15) or 15),
+                     swallowed=int(cfg.get("replay.seek_wake_presses", 0) or 0),
+                     stall_lo=min(lo, hi), stall_hi=max(lo, hi))
 
 
 def half_step(x: float) -> float:
@@ -70,9 +149,8 @@ class ConfigSwitchPaths:
 
     def flip(self) -> SwitchPath:
         settle = float(self._get("two_stick.input_settle_s", 1.0))
-        prior = self._get("two_stick.tv_flip_prior_s", {}) or {}
-        med, mx = float(prior.get("median", 1.89)), float(prior.get("max", 2.58))
-        return SwitchPath(TV_FLIP, med + settle, max(med, mx) + settle)
+        med, hi = flip_bound(self._get("two_stick.tv_flip_prior_s", {}) or {})
+        return SwitchPath(TV_FLIP, med + settle, hi + settle)
 
     def tune(self, app: str) -> float:
         return float(self._get(f"decider.switch_cost.{app}", 5.0))

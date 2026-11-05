@@ -13,6 +13,7 @@ import json
 import re
 import time
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter
@@ -20,6 +21,7 @@ from fastapi.responses import JSONResponse
 
 from redzone.models import PERIOD_S, REGULATION, Phase
 from redzone.noggin.priority import HardRules, Preferences
+from redzone.web import ledger as ledger_mod
 
 # Reason text -> chip. First match per key wins; order = how chips are shown (most important first).
 CHIP_RULES: list[tuple[str, str, re.Pattern]] = [
@@ -40,6 +42,16 @@ BIG_KINDS = {"td", "fg", "turnover", "goal", "hr", "safety", "interception", "fu
 ET = ZoneInfo("America/New_York")
 NIGHT_START_H = 6       # a "night" runs 6 AM ET to 6 AM ET the next day, so a 1 AM switch is last night
 PLAYBOOK = re.compile(r"playbook=([A-Za-z]+-\d+)")
+DATA = Path(__file__).resolve().parent.parent.parent / "data"
+ORACLE_DIR = DATA / "oracle"            # <night>.json: the hindsight oracle's schedule for that night
+MOMENTS = DATA / "supervisor_moments.jsonl"   # every big play, judged from the feed: seen live or not
+HISTORY = DATA.parent / "docs" / "northstar-history.jsonl"   # scripts/northstar.py appends a row per run
+LIVE_NIGHTS = DATA / "live_nights"         # <night>/summary.json: the supervisor's auto-log (collect_live_night)
+REPORTS = (DATA / "reports", DATA.parent / "docs" / "nights")   # <night>.md: night report (supervisor, lane 4 #137)
+BUFFER_LOG = DATA / "buffer.jsonl"        # STK-06 holds that went bad and their rebuilds (control._buffer_log)
+CRUNCH_DIR = DATA / "crunch"              # <night>.json: learned crunch spans vs the oracle's (lane 1 grader)
+REEL_REQUESTS = DATA / "reel_requests.jsonl"   # "I missed that" -> a catch-up request (record only)
+REPLAY_DUE_S = 180.0    # Nick, Nov 4 11:00 AM: a missed key moment airs within 3 min, at the next dead moment
 MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min, a phone convenience; the graded window is big_seen_3min
 
 
@@ -94,6 +106,18 @@ def miss_candidates(games, on_screen: str | None, now: float, window: float = MI
                         "text": p.text, "kind": p.kind, "ago_s": round(now - at)})
     out.sort(key=lambda r: r["ago_s"])
     return out
+
+
+def reel_request(guess: dict | None, now: float, reel_play: bool) -> dict | None:
+    """A catch-up request for the play Nick says he missed: replay it at the next dead moment, due within
+    REPLAY_DUE_S. RECORD ONLY: nothing reads these to train, grade or suggest (self-taught rule), and with
+    `reel.play` off (the default) nothing plays them either; the state says so. None without a play."""
+    if not guess:
+        return None
+    return {"ts": round(now, 3), "game_id": guess["game_id"], "matchup": guess.get("matchup"),
+            "play_id": guess.get("play_id"), "kind": guess.get("kind"), "text": (guess.get("text") or "")[:160],
+            "play_ago_s": guess.get("ago_s"), "due_by": round(now + REPLAY_DUE_S, 3),
+            "state": "queued" if reel_play else "recorded_reels_off"}
 
 
 def night_window(day: date) -> tuple[float, float]:
@@ -153,6 +177,288 @@ def night_view(switches: list[dict], decisions: list[dict], taps: list[dict], na
                         "on_air": sorted(({"matchup": k, "s": round(v)} for k, v in on_air.items()),
                                          key=lambda r: -r["s"])[:8],
                         "playbooks": dict(sorted(pb.items(), key=lambda kv: -kv[1]))}}
+
+
+def read_oracle(path: Path) -> dict | None:
+    """The oracle schedule file for one night, or None. Format (docs/decision-records.md):
+    {"objective": "combined", "switches": [{"t": <unix s>, "to": <game id>}, ...]} in time order; written
+    offline from the archived night by the hindsight oracle (redzone/lab/oracle.py). A bad file is None."""
+    try:
+        d = json.loads(Path(path).read_text())
+        sw = [{"t": float(x["t"]), "to": str(x["to"])} for x in d.get("switches") or []]
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return None
+    return {"objective": str(d.get("objective") or "combined"), "switches": sorted(sw, key=lambda x: x["t"])}
+
+
+# Crunch timeline: the learned crunch state (#166) beside the hindsight oracle's crunch, per game, so the
+# crunch_exit_acc misses are visible. data/crunch/<night>.json (written offline by lane 1's grader, the same
+# rule as scripts/train_watch_value.crunch_card):
+#   {"tol_s": 60, "games": {"<gid>": {"learned": [[t0, t1], ...], "oracle": [[t0, t1], ...]}}}
+# Entry / exit is the first-on / last-on time of each; it's right when within tol_s of the oracle's. Until
+# the file exists, the learned side is sampled from the switches' provenance (crunch_state, #173) and the
+# oracle side is pending.
+def read_crunch(path: Path) -> dict | None:
+    try:
+        d = json.loads(Path(path).read_text())
+        games = {str(g): {k: sorted([float(a), float(b)] for a, b in (v.get(k) or []) if float(b) > float(a))
+                          for k in ("learned", "oracle")} for g, v in (d.get("games") or {}).items()}
+        tol = float(d["tol_s"])      # the grader's tolerance (train_watch_value.EXIT_TOL_S); required
+    except (OSError, ValueError, TypeError, AttributeError, KeyError):
+        return None
+    return {"tol_s": tol, "games": games}
+
+
+def crunch_timeline(crunch: dict | None, switches: list[dict], name) -> dict:
+    """Per game: learned and oracle crunch spans, entry / exit deltas and whether each is within tol_s."""
+    from redzone import trace as tr
+    rows, tol = [], None
+    if crunch:
+        tol = crunch["tol_s"]
+        for gid, v in crunch["games"].items():
+            le, orc = v["learned"], v["oracle"]
+            r = {"game": gid, "matchup": name(gid), "learned": le, "oracle": orc, "points": []}
+            if le and orc:
+                r["entry_s"], r["exit_s"] = round(le[0][0] - orc[0][0], 1), round(le[-1][1] - orc[-1][1], 1)
+                r["entry_ok"], r["exit_ok"] = abs(r["entry_s"]) <= tol, abs(r["exit_s"]) <= tol
+            elif orc:
+                r["entry_ok"] = r["exit_ok"] = False        # the oracle saw crunch; the model never did
+            rows.append(r)
+    else:
+        pts: dict[str, list] = {}
+        for s in switches:
+            p = (tr.of_row(s) or {}).get("provenance")
+            cs = p.get("crunch_state") if isinstance(p, dict) else None
+            sides = cs if isinstance(cs, dict) else {"to": cs}
+            for side, gid in (("to", s.get("to_game")), ("from", s.get("frm"))):
+                st = sides.get(side)
+                if gid and isinstance(st, str) and st in CRUNCH_STATES:
+                    pts.setdefault(gid, []).append({"ts": float(s["ts"]), "state": st})
+        rows = [{"game": g, "matchup": name(g), "learned": [], "oracle": [], "points": p} for g, p in pts.items()]
+    graded = [r for r in rows if "exit_ok" in r]
+    rows.sort(key=lambda r: (r.get("exit_ok", True), r["game"]))     # misses first
+    return {"source": "graded" if crunch else ("provenance" if rows else None), "tol_s": tol, "games": rows,
+            "exits": len(graded), "exits_ok": sum(1 for r in graded if r["exit_ok"]),
+            "entries_ok": sum(1 for r in graded if r["entry_ok"])}
+
+
+def _on_at(segs: list[dict], ts: float, key: str = "game") -> str | None:
+    for sg in segs:
+        if sg["t0"] <= ts < sg["t1"]:
+            return sg[key]
+    return None
+
+
+# Provenance: which module contributed what to one switch. Lane 3's trace may carry a `provenance` dict
+# (module -> what it said, e.g. {"watch_value": {...}, "crunch_state": "in", "importance": 0.8,
+# "floors": [...], "planner": "crunch-overlap"}); until it does, the stub rebuilds what the row already
+# holds: the decider's reason and kind, chips and playbook ids, the delays it planned with, and the
+# guard's last check. Read only: nothing here is on the decision path.
+PROV_ORDER = ("decider", "watch_value", "crunch_state", "importance", "stakes", "floors", "planner", "playbook", "guard",
+              "control")   # lane 3: path, flip, resume, STK-07 left-hold
+
+
+def provenance_view(row: dict, name) -> dict:
+    """One switch as a chain of stages (trace contract events) plus each module's contribution."""
+    from redzone import trace as tr
+    t = tr.of_row(row) or {}
+    chain = [{"stage": e.stage.value, "at": e.at, "component": e.component, "detail": e.detail}
+             for e in (tr.events(t) if t else [])]
+    reason = row.get("reason") or ""
+    given = t.get("provenance")
+    if isinstance(given, dict) and given:
+        parts = [{"module": k, "value": given[k]} for k in PROV_ORDER if k in given]
+        parts += [{"module": k, "value": v} for k, v in given.items() if k not in PROV_ORDER]
+        source = "trace"
+    else:
+        parts = [{"module": "decider", "value": {"kind": row.get("kind") or "", "reason": reason}}]
+        if playbooks(reason):
+            parts.append({"module": "playbook", "value": playbooks(reason)})
+        if PLAN.search(reason):
+            parts.append({"module": "planner", "value": PLAN.search(reason).group(1)})
+        if t.get("leave_delay") or t.get("enter_delay"):
+            parts.append({"module": "sync", "value": {"leave": t.get("leave_delay"), "enter": t.get("enter_delay")}})
+        g = next((c for c in chain if c["stage"] == "guarded"), None)
+        if g:
+            parts.append({"module": "guard", "value": g["detail"]})
+        source = "stub"
+    return {"key": _switch_key(row["ts"], row.get("to_game")), "ts": row["ts"], "from": name(row["frm"]) if row.get("frm") else "",
+            "to": name(row.get("to_game")) if row.get("to_game") else "", "kind": row.get("kind") or "",
+            "ok": bool(row.get("ok")), "dry_run": bool(row.get("dry_run")), "chips": chips(reason, row.get("kind")),
+            "chain": chain, "parts": parts, "source": source, "has_trace": bool(t)}
+
+
+def capture_view(night: str, switches: list[dict], summary: dict | None, buffer_rows: list[dict],
+                 report: str | None, held_now: dict | None = None) -> dict:
+    """"Live night" morning view: did tonight become gold data? The supervisor's auto-log
+    (data/live_nights/<night>/summary.json), how many switches carry lane 3's provenance (#173) and which
+    modules spoke, the hidden stick's held buffer (control.held now; data/buffer.jsonl for the night), and
+    the night report if one is written. Read only: every input is already read."""
+    from redzone import trace as tr
+    keys: dict[str, int] = {}
+    with_prov = with_trace = 0
+    for row in switches:
+        t = tr.of_row(row) or {}
+        with_trace += bool(t)
+        p = t.get("provenance")
+        if isinstance(p, dict) and p:
+            with_prov += 1
+            for k in p:
+                keys[k] = keys.get(k, 0) + 1
+    order = [k for k in PROV_ORDER if k in keys] + sorted(k for k in keys if k not in PROV_ORDER)
+    s = summary if isinstance(summary, dict) else None
+    auto = None
+    if s is not None:
+        auto = {"rows": {k: v for k, v in (s.get("rows") or {}).items() if isinstance(v, int)},
+                **{k: s.get(k) for k in ("cuts_graded", "entries_mid_play", "leaves_mid_play", "switch_p95_s",
+                                         "picture_within_3s", "press_to_tv_p95_s")}}
+    kinds: dict[str, int] = {}
+    for r in buffer_rows:
+        kinds[str(r.get("kind") or "?")] = kinds.get(str(r.get("kind") or "?"), 0) + 1
+    n = len(switches)
+    checks = [{"key": "autolog", "label": "Auto-log collected", "ok": auto is not None},
+              {"key": "provenance", "label": "Switches with provenance", "ok": bool(n) and with_prov == n},
+              {"key": "report", "label": "Night report written", "ok": report is not None}]
+    return {"night": night, "switches": n, "with_trace": with_trace, "with_provenance": with_prov,
+            "provenance_keys": [{"module": k, "n": keys[k]} for k in order], "autolog": auto,
+            "held": {"now": {k: round(float(v), 1) for k, v in (held_now or {}).items()}, "log": kinds},
+            "report": report, "checks": checks, "gold": all(c["ok"] for c in checks)}
+
+
+def held_view(hidden_game: str | None, hidden_ready: bool, behind_s: float, home: str | None,
+              home_return_at: float | None, queue: list, current: str | None, name, now: float) -> dict | None:
+    """Crunch vs crunch, "held + coming back": the game the hidden stick holds, how far behind live it
+    is held (the time-shift buffer), when we head back to the game we left for a break, and the next
+    catch-up in line. Display only. None when the hidden stick holds nothing and nothing is queued."""
+    nxt = next((m for m in queue if not m.replayed), None)
+    if not hidden_game and not home and nxt is None:
+        return None
+    back = None
+    if home and home != current:
+        back = {"game_id": home, "matchup": name(home), "kind": "return",
+                "in_s": max(0, round(home_return_at - now)) if home_return_at else None,
+                "text": f"back to {name(home)}" + (f" within {max(1, round((home_return_at - now) / 60))} min"
+                                                   if home_return_at and home_return_at > now else " at its restart")}
+    catch = None
+    if nxt is not None:
+        catch = {"game_id": nxt.game_id, "matchup": name(nxt.game_id), "kind": nxt.kind, "label": nxt.label[:100],
+                 "ago_s": max(0, round(now - nxt.t)), "mine": nxt.mine,
+                 "due_in_s": max(0, round(nxt.t + nxt.due_s - now)) if nxt.due_s else None,
+                 "text": "catch-up at the next dead moment"}
+    return {"held": {"game_id": hidden_game, "matchup": name(hidden_game) if hidden_game else "",
+                     "ready": bool(hidden_ready), "behind_s": round(behind_s, 1)} if hidden_game else None,
+            "back": back, "catchup": catch, "queued": sum(1 for m in queue if not m.replayed)}
+
+
+CATCHUP_KINDS = {"replay"}                                # a catch-up replay of a missed play
+INTERLEAVE_KINDS = {"break_visit", "return"}             # visit another game in a break, then come back
+PLAN = re.compile(r"\bplan=([A-Za-z0-9_-]+)")
+
+
+def plan_marks(switches: list[dict], name) -> list[dict]:
+    """The planner's catch-ups and interleaves on the night's switches, oldest first, for the replay
+    viewer: a catch-up is a replay of a missed play or the catch-up reel; an interleave is a break visit
+    to another game and the return home. A `plan=<name>` tag in the reason is kept (multi-step plans)."""
+    out = []
+    for sw in switches:
+        kind, to = sw.get("kind") or "", sw.get("to_game")
+        if kind in CATCHUP_KINDS or to == "reel":
+            typ = "catchup"
+        elif kind in INTERLEAVE_KINDS:
+            typ = "interleave"
+        else:
+            continue
+        m = PLAN.search(sw.get("reason") or "")
+        out.append({"ts": sw["ts"], "type": typ, "kind": kind, "game": to,
+                    "matchup": "Catch-up reel" if to == "reel" else name(to), "reason": sw.get("reason") or "",
+                    "plan": m.group(1) if m else None, "ok": bool(sw.get("ok")) or bool(sw.get("dry_run"))})
+    return out
+
+
+def oracle_overlay(segments: list[dict], oracle: dict | None, moments: list[dict], name, end: float) -> dict:
+    """What the hindsight oracle would have shown next to what we did, and a marker per big play.
+    agree_pct: share of our on-screen time showing the oracle's game; markers: each big play in the
+    window (seen live or missed, judged from the feed by the supervisor), with what was on at the time."""
+    osegs = []
+    if oracle:
+        sw = oracle["switches"]
+        for i, x in enumerate(sw):
+            t1 = min(end, sw[i + 1]["t"]) if i + 1 < len(sw) else end
+            if t1 > x["t"]:
+                osegs.append({"t0": x["t"], "t1": t1, "game": x["to"], "matchup": name(x["to"])})
+    agree = total = 0.0
+    if osegs:
+        for sg in segments:
+            total += sg["t1"] - sg["t0"]
+            for o in osegs:
+                lo, hi = max(sg["t0"], o["t0"]), min(sg["t1"], o["t1"])
+                if hi > lo and o["game"] == sg["game"]:
+                    agree += hi - lo
+    t0 = segments[0]["t0"] if segments else None
+    markers = [{"ts": float(m["ts"]), "game": m.get("game"), "matchup": m.get("matchup") or name(m.get("game")),
+                "kind": m.get("kind") or "", "label": (m.get("label") or "")[:80], "seen": bool(m.get("seen")),
+                "on": name(_on_at(segments, float(m["ts"]))) if _on_at(segments, float(m["ts"])) else ""}
+               for m in moments if t0 is not None and t0 <= float(m["ts"]) < end]
+    return {"oracle": {"objective": oracle["objective"], "segments": osegs,
+                       "agree_pct": round(100 * agree / total, 1) if total else None} if oracle else None,
+            "markers": markers,
+            "big": {"plays": len(markers), "seen": sum(1 for m in markers if m["seen"]),
+                    "missed": sum(1 for m in markers if not m["seen"])}}
+
+
+# North Star trend: the headline lines on the phone, short labels. key, label, bar, direction (+1 higher is
+# better). tests/test_phone_v2.py checks every key, bar and direction against scripts/northstar.py METRICS.
+TREND_LINES = [
+    ("mid_play", "Mid-play cuts per 100 landings", 0.0, -1),
+    ("landings_dead", "Landings in dead time %", 98.0, 1),
+    ("pct_of_oracle", "% of hindsight-oracle value", 95.0, 1),
+    ("big_live_nfl", "Big plays live, NFL %", 95.0, 1),
+    ("big_live_nba", "Big plays live, NBA %", 95.0, 1),
+    ("big_live_nhl", "Big plays live, NHL %", 95.0, 1),
+    ("big_seen_3min", "Big plays seen within 3 min %", 99.0, 1),
+    ("your_team_big", "Your-team big plays seen %", 100.0, 1),
+    ("your_team_crunch", "Your-team crunch live %", 100.0, 1),
+    ("crunch_live_nfl", "Crunch live, NFL %", 95.0, 1),
+    ("crunch_live_nba", "Crunch live, NBA %", 95.0, 1),
+    ("crunch_live_nhl", "Crunch live, NHL %", 95.0, 1),
+    ("dead_air", "Dead air %", 0.0, -1),
+    ("switch_p95", "Switch time p95 (s)", 3.0, -1),
+    ("press_to_tv_p95", "Phone press to TV p95 (s)", 3.0, -1),
+]
+
+
+def trend(rows: list[dict], split: str = "dev", last: int = 30) -> dict:
+    """The North Star history for one split as one series per headline line, oldest first. Each line:
+    points (ts, commit, v, status), latest value and status, change since the first point (in the good
+    direction = positive `better`), and the gap to its bar. Read-only: the harness writes the file."""
+    rows = [r for r in rows if r.get("split") == split][-last:]
+    lines = []
+    for key, label, bar, d in TREND_LINES:
+        pts = [{"ts": r.get("ts"), "commit": r.get("commit"), "v": (r.get("values") or {}).get(key),
+                "status": (r.get("status") or {}).get(key)} for r in rows]
+        have = [p for p in pts if isinstance(p["v"], (int, float))]
+        first, latest = (have[0]["v"], have[-1]["v"]) if have else (None, None)
+        lines.append({"key": key, "label": label, "bar": bar, "dir": d, "points": pts, "latest": latest,
+                      "status": pts[-1]["status"] if pts else None,
+                      "better": round((latest - first) * d, 2) if have else None,
+                      "gap": round(max(0.0, (bar - latest) * d), 2) if have else None})
+    return {"split": split, "runs": len(rows), "commit": rows[-1].get("commit") if rows else None,
+            "ts": rows[-1].get("ts") if rows else None, "lines": lines,
+            "passing": sum(1 for x in lines if x["status"] == "PASS")}
+
+
+def read_history(path: Path) -> list[dict]:
+    try:
+        text = Path(path).read_text()
+    except OSError:
+        return []
+    out = []
+    for line in text.splitlines():
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
 
 
 # Slate preview: typical wall-clock length of a game and of its crunch window (the last stretch where
@@ -216,6 +522,59 @@ def slate_preview(games, rules: HardRules, now: float) -> dict:
             "yours": sum(1 for r in rows if r["yours"])}
 
 
+CRUNCH_STATES = ("entering", "in", "leaving")
+STAKES_BIG, STAKES_SOME = 0.6, 0.3     # stub only: Scored.stakes (0..1) until lane 1 sets stakes_line
+
+
+def watch_values(scored: dict, games: dict) -> dict:
+    """Each live game's 0-100 watch value and its one-line why, best first (display only).
+    Contract with lane 1 (HEAT 2.0): Scored.watch_value (0-100) and Scored.watch_why. While watch_value is
+    None, the stub shows today's priority score clipped to 0-100 with its biggest factor, marked
+    source="stub" so the phone says it's the old score.
+    crunch_state: lane 1's crunch model sets `Scored.crunch_state` in CRUNCH_STATES; until then the stub
+    reads today's flags (crunch_now -> "in", crunch -> "entering"; "leaving" needs the model).
+    stakes_line: lane 1 sets `Scored.stakes_line` (e.g. "AFC 1-seed race, top-5 matchup"); until then the
+    stub turns Scored.stakes into "Big stakes" / "Some stakes" / ""."""
+    rows = []
+    for gid, s in (scored or {}).items():
+        g = (games or {}).get(gid)
+        if g is not None and g.phase != Phase.LIVE:
+            continue
+        learned = s.watch_value is not None
+        val = float(s.watch_value) if learned else float(s.score)
+        why = (s.watch_why if learned else "") or s.factor or s.reason
+        cs = s.crunch_state                           # lane 1's crunch model: entering | in | leaving
+        if cs not in CRUNCH_STATES:
+            cs = "in" if s.crunch_now else ("entering" if s.crunch else None)
+        sl = s.stakes_line                            # lane 1: e.g. "AFC 1-seed race, top-5 matchup"
+        stakes_pending = sl is None                   # the phone says "pending" until the model writes it
+        if sl is None:
+            sl = "Big stakes" if s.stakes >= STAKES_BIG else ("Some stakes" if s.stakes >= STAKES_SOME else "")
+        rows.append({"game_id": gid, "matchup": g.matchup if g is not None else gid,
+                     "crunch_state": cs, "stakes_line": sl[:100], "stakes_pending": stakes_pending,
+                     "league": s.league.value, "wv": int(round(max(0.0, min(100.0, val)))),
+                     "why": str(why or "")[:120], "crunch": bool(s.crunch),
+                     "is_break": bool(s.is_break), "source": "learned" if learned else "stub"})
+    rows.sort(key=lambda r: -r["wv"])
+    return {"games": rows, "source": "learned" if rows and all(r["source"] == "learned" for r in rows)
+            else ("stub" if rows else None)}
+
+
+ALERT_AHEAD_S = 1800.0   # warn about a your-team crunch clash this far ahead
+
+
+def clash_alert(slate: dict, now: float, ahead: float = ALERT_AHEAD_S) -> dict | None:
+    """The next crunch clash that involves Nick's team, starting within `ahead` s (or under way), as one
+    phone banner: who gets the TV and who goes to the second stick / catch-up. Display only."""
+    yours = {g["game_id"] for g in slate.get("games") or [] if g.get("yours")}
+    for c in slate.get("clashes") or []:
+        if c["t1"] <= now or c["t0"] - now > ahead or not yours.intersection(c["games"]):
+            continue
+        return {"t0": c["t0"], "t1": c["t1"], "in_s": max(0, round(c["t0"] - now)), "on_tv": c["on_tv"],
+                "second": c["second"], "why": c["why"], "now": c["t0"] <= now}
+    return None
+
+
 def router(engine) -> APIRouter:
     r = APIRouter(prefix="/api/v2")
 
@@ -265,11 +624,20 @@ def router(engine) -> APIRouter:
         engine.store.feedback(guess["game_id"] if guess else pick, 0, note="missed",
                               context={"on_screen": cur, "guess": guess, "candidates": cands[:5],
                                        "note": str(body.get("note") or "")[:200]})
+        req = reel_request(guess, now, bool(engine.cfg.get("reel.play", False)))
+        if req:
+            try:
+                with REEL_REQUESTS.open("a") as f:
+                    f.write(json.dumps(req) + "\n")
+            except OSError:
+                req = None   # a full disk or read-only data dir: the tap is still logged above
         if guess:
             msg = f"Logged: {guess['matchup']} ({guess['text'] or guess['kind']}, {guess['ago_s'] // 60} min ago)"
+            if req:
+                msg += ". Queued for a catch-up replay" if req["state"] == "queued" else ". Saved for catch-up (reels are off)"
         else:
             msg = "Logged. No big play found in the feeds; it still counts as a miss"
-        return {"ok": True, "message": msg, "guess": guess, "candidates": cands[:5]}
+        return {"ok": True, "message": msg, "guess": guess, "candidates": cands[:5], "reel_request": req}
 
     @r.get("/night")
     async def night(day: str = ""):
@@ -289,16 +657,103 @@ def router(engine) -> APIRouter:
         end = min(t1, now) if last is None else min(t1, now, max(last, sws[-1]["ts"] if sws else last))
         nights = sorted({night_of(ts).isoformat() for ts in engine.store.switch_days(21)} | {night_of(now).isoformat()},
                         reverse=True)[:14]
-        return {"enabled": True, "day": d.isoformat(), "t0": t0, "t1": t1, "now": now, "nights": nights,
-                **night_view(sws, decs, taps, engine._name, end)}
+        view = night_view(sws, decs, taps, engine._name, end)
+        from redzone.lab.decision_records import read_jsonl
+        over = oracle_overlay(view["segments"], read_oracle(ORACLE_DIR / f"{d.isoformat()}.json"),
+                              read_jsonl(MOMENTS, t0, t1), engine._name, end)
+        marks = plan_marks(sws, engine._name)
+        crunch = crunch_timeline(read_crunch(CRUNCH_DIR / f"{d.isoformat()}.json"), sws, engine._name)
+        return {"crunch": crunch, "enabled": True, "day": d.isoformat(), "t0": t0, "t1": t1, "now": now, "nights": nights,
+                **view, **over, "plan_marks": marks,
+                "plan_counts": {"catchup": sum(1 for m in marks if m["type"] == "catchup"),
+                                "interleave": sum(1 for m in marks if m["type"] == "interleave")}}
+
+    @r.get("/trend")
+    async def get_trend(split: str = "dev"):
+        if not _enabled(engine):
+            return _off()
+        if split not in ("dev", "locked"):
+            return {"ok": False, "message": "split is dev or locked"}
+        return {"enabled": True, **trend(read_history(HISTORY), split)}
+
+    @r.get("/watch")
+    async def watch():
+        if not _enabled(engine):
+            return _off()
+        return {"enabled": True, "now": time.time(), "current": getattr(engine.decider, "current", None),
+                **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}))}
+
+    @r.get("/provenance")
+    async def get_provenance(key: str = ""):
+        if not _enabled(engine):
+            return _off()
+        try:
+            ts = float(key.split("|", 1)[0])
+        except ValueError:
+            return {"ok": False, "message": "key is <ts>|<game>"}
+        row = next((w for w in engine.store.switches_between(ts - 0.01, ts + 0.01)
+                    if _switch_key(w["ts"], w["to_game"]) == key), None)
+        if row is None:
+            return {"ok": False, "message": "No switch with that key"}
+        return {"ok": True, "enabled": True, **provenance_view(row, engine._name)}
+
+    @r.get("/capture")
+    async def capture(day: str = ""):
+        if not _enabled(engine):
+            return _off()
+        now = time.time()
+        try:
+            d = date.fromisoformat(day) if day else night_of(now)
+        except ValueError:
+            return {"ok": False, "message": "day is YYYY-MM-DD"}
+        from redzone.supervisor import read_jsonl as rows_between
+        t0, t1 = night_window(d)
+        try:
+            summary = json.loads((LIVE_NIGHTS / d.isoformat() / "summary.json").read_text())
+        except (OSError, ValueError):
+            summary = None
+        rep = next((p for p in (base / f"{d.isoformat()}.md" for base in REPORTS) if p.exists()), None)
+        held_now = dict(engine.control.held) if t0 <= now < t1 else {}
+        v = capture_view(d.isoformat(), engine.store.switches_between(t0, t1), summary,
+                         rows_between(BUFFER_LOG, t0, t1), rep.name if rep else None, held_now)
+        return {"enabled": True, "now": now, **v}
+
+    @r.get("/capture/report")
+    async def capture_report(day: str = ""):
+        if not _enabled(engine):
+            return _off()
+        try:
+            d = date.fromisoformat(day)
+        except ValueError:
+            return {"ok": False, "message": "day is YYYY-MM-DD"}
+        rep = next((p for p in (base / f"{d.isoformat()}.md" for base in REPORTS) if p.exists()), None)
+        return {"ok": rep is not None, "day": d.isoformat(), "text": rep.read_text(errors="replace")[:60000] if rep else ""}
+
+    @r.get("/held")
+    async def held():
+        if not _enabled(engine):
+            return _off()
+        c, dec, now = engine.control, engine.decider, time.time()
+        t = c.hidden_target if c.two_stick else None
+        gid = next((g for g, w in engine.where.items() if getattr(w, "target", None) == t), None) if t else None
+        return {"enabled": True, "now": now,
+                "view": held_view(gid, c.hidden_ready, float(c.held.get(t, 0.0)) if t else 0.0,
+                                  dec.home_break_visit, dec.home_return_at, list(dec.queue), dec.current,
+                                  engine._name, now)}
+
+    @r.get("/ledger")
+    async def ledger():
+        if not _enabled(engine):
+            return _off()
+        return {"enabled": True, **ledger_mod.view(ledger_mod.read(ledger_mod.LEDGER_FILE))}
 
     @r.get("/slate")
     async def slate():
         if not _enabled(engine):
             return _off()
         now = time.time()
-        return {"enabled": True, "now": now,
-                **slate_preview(getattr(engine.merger, "games", {}), HardRules.from_config(engine.cfg), now)}
+        v = slate_preview(getattr(engine.merger, "games", {}), HardRules.from_config(engine.cfg), now)
+        return {"enabled": True, "now": now, **v, "alert": clash_alert(v, now)}
 
     @r.get("/priority")
     async def get_priority():
