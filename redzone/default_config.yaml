@@ -240,6 +240,7 @@ decider:
     cue: seek                # [seek model] seek: rewind on screen after the flip (whole 15 s presses + a 2-4 s stall) |
                              # pause: on the HIDDEN stick seek past the dead ball, play up to it, pause, flip, play
     possession_start: "off"  # [possession start] off | crunch | all: cue to the last dead ball before the possession, never wait while one is in reach
+    restart_landing_s: 0     # [EXP-205] > 0: never come up on a dead ball more than this many s before the restart; wait instead (0 = off)
     confirmed_dead_only: false  # [data gap] a dead window opens only on a logged stoppage (a lone substitution means the stoppage is missing)
     unknown_wait_leagues: []  # [EXP-089] never enter on a landing the data can't call ("play may be live"): rewind to a known dead ball or wait. Off ([]) until its gate passes
     conformal:               # [EXP-024] conformal floor on entries: no landing on less doubt than tau x sigma (off until its gate passes)

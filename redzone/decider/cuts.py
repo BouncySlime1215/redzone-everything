@@ -477,7 +477,7 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
                relaxed: float | None = None, cost_lo: float | None = None,
                urgent: float | None = None, lag: float = 0.0, possession: bool = False,
                stall: tuple[float, float] = (0.0, 0.0), unknown_ok: bool = True,
-               floor: float = 0.0) -> EntryPlan:
+               floor: float = 0.0, restart_s: float = 0.0) -> EntryPlan:
     """How to come into this game: as is (the picture lands on a dead ball), with a short rewind so
     it lands on the dead ball just before the restart we'd otherwise join mid-play, or not yet.
 
@@ -503,7 +503,14 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
 
     floor: [EXP-024 conformal floor] no pass lands on less doubt than this (s): the centred, urgent and
     possession passes are raised to it, and an unknown landing never enters as is. The plan's `slack`
-    is scored either way, for calibration."""
+    is scored either way, for calibration.
+
+    restart_s: [EXP-205 restart landing] > 0: never come up inside a dead window with more than this
+    much of it left (Nick, Nov 4 9:45 PM: never join in the middle of a commercial or timeout; land just
+    before play resumes). A landing as is that would come up earlier waits (the TV stays where it is
+    and the hidden stick holds the target) until the expected restart (resume_eta: the logged restart,
+    else the learned / median break length) is within restart_s; a break that ends early is caught by
+    the rewind passes, which land on the latest dead ball before the restart."""
     if floor > 0:
         unknown_ok = False
         margin = max(margin, floor)
@@ -520,6 +527,19 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
             k = plan.rewind_s - (slo + shi) / 2
             a, x1 = a - k - shi, x1 - k - slo
         plan.slack = landing_slack(dt, a, x1)
+        if restart_s > 0 and not plan.rewind_s:
+            mid = (a + x1) / 2
+            end = plan.landing.resume if plan.landing is not None else None
+            if end is None:
+                # The restart isn't logged yet: wait for it (with the time-shift buffer the feed logs it
+                # before it airs; without, the rewind passes land on the dead ball just before it).
+                return EntryPlan(False, 0.0, plan.landing, "dead ball: waiting for its restart to be logged",
+                                 plan.slack)
+            # the latest the picture can come up (its doubt included) is within restart_s of the restart
+            if end - (x1 + margin) > restart_s:
+                return EntryPlan(False, 0.0, plan.landing,
+                                 f"dead ball {end - mid:.0f}s from the restart: waiting to land just before it",
+                                 plan.slack)
     return plan
 
 

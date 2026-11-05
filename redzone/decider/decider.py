@@ -854,7 +854,8 @@ class Decider:
                               cost_lo=lo_cost + float(self.cfg.get("replay.hidden_seek_keys_s")),
                               urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
                               lag=float(self._lc("decider.entry.landing_lag_s", x, 0.0)), possession=possession,
-                              unknown_ok=unknown_ok, floor=floor)
+                              unknown_ok=unknown_ok, floor=floor,
+                              restart_s=float(self._lc("decider.entry.restart_landing_s", x, 0.0)))
             if plan.ok and plan.rewind_s:
                 plan.rewind_s += sk.stall_mid
             return plan
@@ -867,7 +868,8 @@ class Decider:
                           cost_lo=min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S))),
                           urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
                           lag=float(self._lc("decider.entry.landing_lag_s", x, 0.0)), possession=possession,
-                          unknown_ok=unknown_ok, floor=floor)
+                          unknown_ok=unknown_ok, floor=floor,
+                              restart_s=float(self._lc("decider.entry.restart_landing_s", x, 0.0)))
 
     def _cut_timed(self, gid: str | None, cands) -> bool:
         """Cut timing is on for this game's league (decider.entry.leagues). Scorecards, Nov 3: NFL
