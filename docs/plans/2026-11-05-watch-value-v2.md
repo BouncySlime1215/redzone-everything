@@ -201,17 +201,43 @@ Each one uses the shared harness or the #166 trainer, seeds 0/1/2, a night-clust
 development, and locked nights read once by the integrator. A row that fails does not ship. One that passes
 ships flag-off until the release gate.
 
-## 5. Model and learning (lane ① owns, to fill)
+## 5. Model and learning (lane ①)
 
-<!-- LANE 1: model and RL parts. Proposed by G, lane 1 decides:
-- Pairwise ranking across games live at the same minute (LambdaRank; Burges et al. 2005), with labels from §2.6 and
-  pairs only between games that were both live and both covered by the label source.
-- The buffer DP and oracle use the realized surprise inside B and the model beyond B.
-- Inverse RL from whip-around producers (Ng & Russell 2000; Ziebart et al. 2008) needs a licensed producer log;
-  stays on hold (EXP-079) unless one appears.
-- Distill to Reflex for the live path. -->
+**5.1 The value the editor plans with.** The buffer splits the decision into two parts.
+- *Inside the window* (buffer + stream delay − feed lag − tune, about 70 s at B = 60): the plays are known, so
+  the windowed-hindsight oracle (`oracle.solve_window`, #322) plans with an exact DP over them. That is where
+  §2.1's surprise is an observation.
+- *Beyond the window*: every live game needs a value for the next minutes. v1 used each game's past mean
+  reward (`oracle.beyond_value`), a placeholder. **v2 learns it from the game's full context**
+  (`redzone/lab/stay_leave.py`): state, the recent plays' consequence, history and stakes (§2b), mapped to the
+  realized reward over the next 300 s of that game's screen time. The DP then compares staying against the best
+  alternative minus the switch cost, and EXP-1713 adds the hysteresis band. That is §2b's rollout value in its
+  first form: a learned value-to-go at the window's edge, with the exact DP as the rollout inside it.
+- Labels are real outcomes (play-by-play through the oracle's reward). Engagement labels (§2.6) join as
+  auxiliary targets only after EXP-1704 passes per source.
 
-_Lane ① fills this section._
+**5.2 Learners, in order.**
+1. Gradient-boosted regression of value-to-go on context (EXP-1712, now). Small, CPU, auditable by ablation.
+2. Pairwise ranking across games live at the same minute (LambdaRank; Burges et al. 2005), with pairs only
+   between games that were both live and both covered by the label source. It drops the need for a calibrated
+   scale across leagues, which is what "which game now" needs.
+3. Longer rollouts beyond the window from the event-token world model (EXP-103), scored by the same value head.
+   It enters only if it beats 1-2 on % of oracle.
+4. Inverse RL from whip-around producers (Ng & Russell 2000; Ziebart et al. 2008) needs a licensed producer
+   log; it stays on hold (EXP-079) unless one appears.
+5. Distill the winner to Reflex for the live path. The live rule is `stay_leave.decide` (hard floors first).
+
+**5.3 What the model never sees or learns from.** Nick's viewing and button presses, Teacher outputs as
+labels, synthesized engagement labels, and any locked night. The training manifest (`stay_leave.manifest`,
+written to fit.json) lists every night and label source a fit read, and a test checks it against the locked
+split.
+
+**5.4 Shadow logging tonight.** Lane 2 logs `stay_leave.FIELDS` per decision (the context features, the
+predicted values of staying and of the best alternative, the band, whether the floor held). Tomorrow's grade
+replays those rows against the hindsight oracle (regret, crunch-exit accuracy, high-leverage leaves).
+
+**5.5 First results.** See the EXP-1712 row in docs/experiments.md and
+`docs/reports/exp-1712-stay-leave-v1.md`.
 
 ## 6. Teacher and synthetic data (Data E)
 

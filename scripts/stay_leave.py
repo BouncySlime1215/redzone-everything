@@ -45,15 +45,16 @@ def nights(league, split: str):
         t1 = max(r.wall[-1] for r in reps) + 600.0
         n = O.Night(reps, SL.MINE, STREAM_DELAY_S + BUFFER_S, TUNE_S, t0, t1)
         tab = O.tables(n, np.arange(n.t0, n.t1, O.STEP_S))
-        F, HL = SL.context(n, tab)
-        yield day, n, tab, F, HL
+        F, _hl = SL.context(n, tab)
+        yield day, n, tab, F, SL.floor_table(n, F.shape[1])      # the no-leave floor: high leverage OR crunch
 
 
 def load(leagues, split, cache: Path | None):
     """[(league, day, n, tab, F, HL)], tables cached per split (they take most of the time)."""
     p = cache / f"nights_{split}.pkl" if cache else None
     if p and p.exists():
-        return pickle.loads(p.read_bytes())
+        out = pickle.loads(p.read_bytes())
+        return [(lg, d, n, tab, F, SL.floor_table(n, F.shape[1])) for lg, d, n, tab, F, _HL in out]
     out = []
     for lg in leagues:
         t = time.time()

@@ -18,7 +18,8 @@ best alternative minus the switch cost (`solve_policy`). EXP-1713 adds a hystere
 switches.
 
 HARD FLOORS, never learned: never join mid-play (the oracle's land table), never cut mid-play (its leave
-table), and never leave a game whose last play on screen is high-leverage (`leverage.high_leverage`).
+table), and never leave a game whose last play on screen is high-leverage (`leverage.high_leverage`) or inside
+the crunch table's app/graded window (`redzone/crunch.py`: NBA 3:00 within 7 is wider than CLOSE_LATE's 6).
 
 Live path: `decide(ctx, state)` is the same rule for one decision, for the shadow log (lane 2 logs `FIELDS`).
 WP is the label-only Brownian model of `outcome_label.win_prob` (a fixed formula, no learned WP).
@@ -31,10 +32,11 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from redzone import crunch as CR
 from redzone.lab import oracle as O
 from redzone.lab import sportsgrade
 from redzone.lab.backtest import SwitchLog, lag_of
-from redzone.lab.leverage import CLOSE_LATE, high_leverage
+from redzone.lab.leverage import CLOSE_LATE, _left_s, high_leverage
 from redzone.lab.outcome_label import WP_SPREAD, game_left, win_prob
 from redzone.models import PERIOD_S, REGULATION, League
 from redzone.sources import espn
@@ -175,6 +177,34 @@ def context(n: O.Night, tab: dict, objective: str = "combined") -> tuple[np.ndar
         F[g] = np.stack([f[c] for c in FEATURES], axis=-1)
         HL[g] = hl
     return F, HL
+
+
+def in_crunch(league, period, clock_s, margin) -> bool:
+    """The crunch table's app window or graded window (redzone/crunch.py), e.g. NBA 3:00 left within 7."""
+    return any(CR.inside(CR.row(kind, league), int(period or 0), clock_s, margin) for kind in ("window", "graded"))
+
+
+def floor_play(league: League, p: dict) -> bool:
+    """The no-leave floor for one play on screen: high leverage (close and late, OT) OR inside crunch."""
+    if high_leverage(league, p):
+        return True
+    hs, as_ = espn._int(p.get("homeScore")), espn._int(p.get("awayScore"))
+    if hs is None or as_ is None:
+        return False
+    per = espn._int(espn._get(p, "period", "number")) or 0
+    return in_crunch(league, per, _left_s(league, p), hs - as_)
+
+
+def floor_table(n: O.Night, K: int) -> np.ndarray:
+    """FLOOR[g, k]: the game's last play on screen at step k is under the no-leave floor (a finished game never)."""
+    out = np.zeros((len(n.replays), K), bool)
+    for g, r in enumerate(n.replays):
+        lag, plen = lag_of(n.lag, r.gid), sportsgrade.PLAY_LEN[r.league]
+        kp = np.array([int((w + lag - plen - n.t0) // O.STEP_S) for w in r.wall])
+        fl = np.array([floor_play(r.league, p) for p in r.plays])
+        idx = np.searchsorted(kp, np.arange(K), side="right") - 1
+        out[g] = (idx >= 0) & (idx < len(r.plays) - 1) & fl[np.maximum(idx, 0)]
+    return out
 
 
 def label(R: np.ndarray, hz: int = HZ) -> np.ndarray:
@@ -382,6 +412,7 @@ class Decision:
 class State:
     switches: list = field(default_factory=list)      # timestamps (s) of our recent switches
     m: float = 0.5                                    # band per recent switch (EXP-1713 picks it on valid)
+    dwell_s: float = 60.0                             # no voluntary leave within this long of our last switch
 
 
 def high_leverage_ctx(league, period, clock_s, home, away) -> bool:
@@ -420,9 +451,14 @@ def decide(ctx: dict, state: State | None = None) -> tuple[Decision, State]:
     m = band(st, ts)
     hl = bool(ctx.get("high_leverage")) or high_leverage_ctx(ctx.get("league"), ctx.get("period"), ctx.get("clock_s"),
                                                               ctx.get("home_score"), ctx.get("away_score"))
+    if not hl and ctx.get("home_score") is not None and ctx.get("away_score") is not None and ctx.get("league"):
+        hl = in_crunch(ctx["league"], ctx.get("period"), ctx.get("clock_s"),
+                       int(ctx["home_score"]) - int(ctx["away_score"]))
     gid = best["game_id"] if best else None
     if hl:
         return Decision("stay", v_stay, v_alt, gid, m, True, "high-leverage floor"), st
+    if st.switches and ts - st.switches[-1] < st.dwell_s:
+        return Decision("stay", v_stay, v_alt, gid, m, False, "minimum dwell after our last switch"), st
     if best is None or not v_alt > v_stay + m:
         return Decision("stay", v_stay, v_alt, gid, m, False, "alternative inside the hysteresis band"), st
     st.switches = [t for t in st.switches if ts - t < 15 * 60] + [ts]
