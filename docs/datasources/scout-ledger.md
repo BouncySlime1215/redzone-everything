@@ -19,15 +19,15 @@ Derived rows are listed after the ranking and never count toward new information
 | 2 | nba | NBA.com stats pbp 1996-2024 (shufinskiy/nba_data nbastats + shotdetail) | 0 | events | yellow-B (personal-use, not for commercial release) | 100.3 | 4 | 25.1 | done | crew A | none | NBA.com ToS private non-commercial; catalog #202 yellow; personal use under plan B, tag personal-use |
 | 3 | nba | NBA.com liveData pbp with wall clocks (timeActual), 2019-20 to 2025-26 | 0 | events | yellow-B (personal-use, not for commercial release) | 26 | 2 | 19.5 | pulling | lane 1 | none | NBA.com ToS §1/§9 personal non-commercial; catalog #202 yellow (private, credit NBA.com); personal use under plan B |
 | 4 | nba | NBA.com liveData forward collection (every finished game, nightly) | 0 | events | yellow-B (personal-use, not for commercial release) | 3.3 | 0.3 | 16.5 | probe | crew A | none (needs the overseer's private Kaggle dataset path: the public repo cannot hold plan-B rows) | NBA.com ToS personal non-commercial; catalog #202 yellow; personal use under plan B |
-| 5 | nba | NBA shot detail: x/y location, distance, zone per shot (shufinskiy/nba_data shotdetail) | 0 | context-new | yellow-B (personal-use, not for commercial release) | 17.4 | 1.5 | 11.6 | ready | crew A | none | NBA.com stats terms via the Apache-2.0 shufinskiy/nba_data mirror; plan B personal use, not for commercial release; private Kaggle dataset only, never a public branch (crew B nba_terms_review) |
-| 6 | nba | v2 context: injury report status at game time | 0 | context-new | yellow-B (personal-use, not for commercial release) | 2.1 | 0.2 | 10.5 | ready | crew B | none | nflverse CC-BY-4.0; NBA archive release licence unverified; ESPN-derived only under plan B for personal use |
-| 7 | nba | v2 context: national TV slot / network per game | 0 | context-new | yellow | 0.4 | 0.05 | 8.0 | ready | crew B | none | CC-BY-4.0 / CC BY-SA 4.0 (facts only, credit Wikipedia) |
-| 8 | nba | NBA Last Two Minute reports (atlhawksfanatic/L2M) | 0 | context-new | green | 0.35 | 0.05 | 7.0 | ready | crew B | none | MIT repo over public NBA reports; credit both |
-| 9 | nba | v2 context: referee / umpire crew per game | 0 | context-new | yellow-B (personal-use, not for commercial release) | 0.6 | 0.1 | 6.0 | ready | crew B | none | nflverse CC-BY-4.0; nbadb per dataset licence field; Retrosheet notice (green); NHL api-web only under plan B for personal use |
-| 10 | nba | v2 context: pregame line + total per game (all six leagues) | 0 | context-new | yellow-B (personal-use, not for commercial release) | 1.1 | 0.3 | 3.7 | ready | crew B | none | nflverse CC-BY-4.0; SBRO no licence (Nick logs it); ESPN-derived only under plan B for personal use. Lines are importance inputs only, never shown, never a nudge |
-| 11 | nba | NBA season schedule with national TV broadcasters (cdn.nba.com scheduleLeagueV2) | 0 | context-new | yellow-B (personal-use, not for commercial release) | 0.05 | 0.01 | 1.5 | dropped | crew F | none | NBA.com ToS §1/§9 personal non-commercial; personal use under plan B, tag personal-use |
-| 12 | nba | nbadb Kaggle 'basketball' (wyattowalsh): game_info game_time + attendance, officials, arenas | 0 | context-new | yellow | 0.6 | 2.5 | 0.2 | ready | crew B | none | Kaggle dataset licence field (read on attach; catalog #202); NBA.com ToS §9 private use; tag personal-use |
-| 13 | nba | NBA player matchups (who guarded whom, partial possessions) per game | 1 | context-new | yellow-B (personal-use, not for commercial release) | 12 | 0.5 | 24.0 | ready | crew A | none | NBA.com stats terms via the Apache-2.0 shufinskiy/nba_data mirror; plan B personal use, not for commercial release; private Kaggle dataset only, never a public branch (crew B nba_terms_review) |
+| 5 | nba | v2 context: injury report status at game time | 0 | context-new | yellow-B (personal-use, not for commercial release) | 2.1 | 0.2 | 10.5 | ready | crew B | none | nflverse CC-BY-4.0; NBA archive release licence unverified; ESPN-derived only under plan B for personal use |
+| 6 | nba | v2 context: national TV slot / network per game | 0 | context-new | yellow | 0.4 | 0.05 | 8.0 | ready | crew B | none | CC-BY-4.0 / CC BY-SA 4.0 (facts only, credit Wikipedia) |
+| 7 | nba | NBA Last Two Minute reports (atlhawksfanatic/L2M) | 0 | context-new | green | 0.35 | 0.05 | 7.0 | ready | crew B | none | MIT repo over public NBA reports; credit both |
+| 8 | nba | v2 context: referee / umpire crew per game | 0 | context-new | yellow-B (personal-use, not for commercial release) | 0.6 | 0.1 | 6.0 | ready | crew B | none | nflverse CC-BY-4.0; nbadb per dataset licence field; Retrosheet notice (green); NHL api-web only under plan B for personal use |
+| 9 | nba | v2 context: pregame line + total per game (all six leagues) | 0 | context-new | yellow-B (personal-use, not for commercial release) | 1.1 | 0.3 | 3.7 | ready | crew B | none | nflverse CC-BY-4.0; SBRO no licence (Nick logs it); ESPN-derived only under plan B for personal use. Lines are importance inputs only, never shown, never a nudge |
+| 10 | nba | NBA season schedule with national TV broadcasters (cdn.nba.com scheduleLeagueV2) | 0 | context-new | yellow-B (personal-use, not for commercial release) | 0.05 | 0.01 | 1.5 | dropped | crew F | none | NBA.com ToS §1/§9 personal non-commercial; personal use under plan B, tag personal-use |
+| 11 | nba | nbadb Kaggle 'basketball' (wyattowalsh): game_info game_time + attendance, officials, arenas | 0 | context-new | yellow | 0.6 | 2.5 | 0.2 | ready | crew B | none | Kaggle dataset licence field (read on attach; catalog #202); NBA.com ToS §9 private use; tag personal-use |
+| 12 | nba | NBA shot detail: x/y location, distance, zone per shot (shufinskiy/nba_data shotdetail) | 0 | context-new | yellow-B (personal-use, not for commercial release) | 0 | 1.5 | 0.0 | dropped | crew A | none | NBA.com stats terms via the Apache-2.0 shufinskiy/nba_data mirror; plan B personal use, not for commercial release; private Kaggle dataset only, never a public branch (crew B nba_terms_review) |
+| 13 | nba | NBA player matchups (who guarded whom, partial possessions) per game | 1 | context-new | yellow-B (personal-use, not for commercial release) | 12 | 0.5 | 24.0 | parked | crew A | none | NBA.com stats terms via the Apache-2.0 shufinskiy/nba_data mirror; plan B personal use, not for commercial release; private Kaggle dataset only, never a public branch (crew B nba_terms_review) |
 | 14 | nba | data.nba.com play-by-play with on-court x/y for every action | 1 | context-new | yellow-B (personal-use, not for commercial release) | 11 | 2 | 5.5 | probe | crew A | none | NBA.com stats terms via the Apache-2.0 shufinskiy/nba_data mirror; plan B personal use, not for commercial release; private Kaggle dataset only, never a public branch (crew B nba_terms_review) |
 | 15 | nba | NBA daily referee assignments (official.nba.com), forward only | 1 | context-new | yellow-B (personal-use, not for commercial release) | 0.02 | 0.001 | 0.4 | probe | crew B | none | NBA.com terms; personal use under plan B; RED if its terms bar bots (Sports-Reference rule) |
 | 16 | nba | NBA.com stats pbp for the 621 SportVU games (sealneaward mirror, data/events) | 2 | events | yellow-B (personal-use, not for commercial release) | 1.7 | 0.1 | 8.5 | done | crew A | none | NBA/STATS content, no licence; personal use under plan B only |
@@ -78,23 +78,23 @@ Derived rows are listed after the ranking and never count toward new information
 | Kind | Sources | Est. tokens (M) |
 |---|---:|---:|
 | events | 33 | 3434.6 |
-| context-new | 17 | 68.16 |
+| context-new | 17 | 50.76 |
 | derived | 2 | 5700 |
-| **New information (events + context-new)** | 50 | 3502.76 |
+| **New information (events + context-new)** | 50 | 3485.36 |
 
 ## New-information totals by status and verdict
 
 | Bucket | Sources | Est. tokens (M) |
 |---|---:|---:|
-| Ready for a crew | 21 | 894.25 |
+| Ready for a crew | 19 | 864.85 |
 | Pulling or done (real) | 7 | 229.03 |
 | Probe / hold (scout) | 9 | 236.32 |
 | Needs Nick | 5 | 2076.5 |
-| Parked | 7 | 66.61 |
+| Parked | 8 | 78.61 |
 | Verdict green | 4 | 76.25 |
 | Verdict yellow | 15 | 2184.04 |
-| Verdict yellow-B | 31 | 1242.47 |
-| **All new-information candidates** | 50 | 3502.76 |
+| Verdict yellow-B | 31 | 1225.07 |
+| **All new-information candidates** | 50 | 3485.36 |
 
 ## Growth by cycle (candidates added, cumulative)
 
@@ -105,7 +105,7 @@ Derived rows are listed after the ranking and never count toward new information
 | 15 | 3 | 16.1 | 1329.1 |
 | 16 | 6 | 2130.55 | 3459.65 |
 | 17 | 4 | 0.91 | 3460.56 |
-| 18 | 4 | 42.2 | 3502.76 |
+| 18 | 4 | 24.8 | 3485.36 |
 
 ## Why each source
 
@@ -113,7 +113,6 @@ Derived rows are listed after the ranking and never count toward new information
 - **NBA.com stats pbp 1996-2024 (shufinskiy/nba_data nbastats + shotdetail)** (NBA, 1996-97 to 2023-24, regular season + playoffs): ~30 NBA seasons of events with 10-digit ids that join SportVU and cdn; shot x/y on ~35% of rows. LANDING (crew A, Nov 5 07:00 UTC; 2005-06 = 1,230 games, 554k events). LANDED (crew A pbp-ledger, 07:40 UTC): 100.3M v1 tokens Access: shufinskiy GitHub/Kaggle tar.xz mirror; never touches stats.nba.com.
 - **NBA.com liveData pbp with wall clocks (timeActual), 2019-20 to 2025-26** (NBA, 2019-2026): the NBA fix: real wall-clock time on every event, so timeouts, reviews and quarter breaks (where 21% of NBA entries land mid-commercial) have measured lengths per game. Lane 1 already parses these files (#181). History comes from the GitHub/Kaggle tar.xz, so it never calls NBA.com and the stats.nba.com 403 (#275) does not apply. Already in the factory via lane 1's #169 nba_cdn_plays; crew A will not pull a second copy and instead measures stoppage lengths from timeActual Access: shufinskiy/nba_data cdnnba tar.xz (GitHub/Kaggle mirror) for history; never touches stats.nba.com.
 - **NBA.com liveData forward collection (every finished game, nightly)** (NBA, 2026-27 on): this season's nights with wall clocks, so the NBA graded set grows past 60 decisions per gate and matches the live feed exactly. The media crew saw stats.nba.com 403 an honest client (#275); the CDN is a different host, so probe it, don't assume Access: cdn.nba.com liveData (static JSON on the CDN, not stats.nba.com). GATE before any run: scripts/scout_probe.py --only nba-cdn-nightly from the job runner must show robots OK and HTTP 200 with the honest User-Agent; any 403/429 = stop, never work around it. FALLBACK if blocked: ESPN game summaries (plan B, restrictive; the live app already records them for eval-data) for the same nights.
-- **NBA shot detail: x/y location, distance, zone per shot (shufinskiy/nba_data shotdetail)** (NBA, 1996-97 to 2024-25 incl playoffs): where a shot comes from is not in our pbp tokens: rim vs three changes make probability, run odds and crunch value, so the model can tell a big look from a routine one Access: GitHub release files of shufinskiy/nba_data (honest client, no stats.nba.com calls); numbers only, no description text.
 - **v2 context: injury report status at game time** (NFL, NBA (+NHL/MLB via plan B), NFL 2009+, NBA 2018-12+): ~20 tokens per game (who is out or questionable, by role and star rank); must be the report as of tip/kick time, never later (leakage) Access: nflverse load_injuries(); NBA official injury report archive (sportsdataverse-data release); ESPN injuries in sportsdataverse releases for NHL/MLB/CBB (plan B).
 - **v2 context: national TV slot / network per game** (all six, NFL 1999+; others patchy): national window = importance prior; 2 tokens per game Access: nflverse schedules; Wikipedia season broadcast tables (CC BY-SA, facts only); Nick's own stick logs for 2026+.
 - **NBA Last Two Minute reports (atlhawksfanatic/L2M)** (NBA, 2014-15 to 2024-25): 4,479 crunch games the league itself picked, with reviewed calls = long safe stoppages in NBA crunch time (crunch live 90.1%) Access: bulk CSV from GitHub.
@@ -121,7 +120,8 @@ Derived rows are listed after the ranking and never count toward new information
 - **v2 context: pregame line + total per game (all six leagues)** (all six, NFL 1999+, CFB 2013+, NBA/NHL/MLB ~2007+): ~190k games x 6 tokens (spread, total, implied WP, favourite side, line move open-close, closing source). As fed on every play: ~95M plays x 3 = ~285M tokens, but that is repetition, not new knowledge Access: nflverse schedules (spread_line, total_line); CFBD /lines (key pending); SBRO archive via Wayback for NBA/NHL/MLB/CBB 2007-2022; ESPN pickcenter rows in sportsdataverse releases for 2022+ (plan B).
 - **NBA season schedule with national TV broadcasters (cdn.nba.com scheduleLeagueV2)** (NBA, 2019-20+ (one static file per season)): the national-vs-local key for crew F's NBA break table: Rule 5 = 165 s local vs 195 s national, and F's national cells are only n 15-30. ~7 files total. DROPPED: crew B's nba-national-tv.csv already joined into the cdn table (#250) Access: one fetch per season of the static CDN schedule JSON (broadcasters.nationalTvBroadcasters per game); honest User-Agent; robots first; stop on 403, fall back to Wikipedia national TV tables.
 - **nbadb Kaggle 'basketball' (wyattowalsh): game_info game_time + attendance, officials, arenas** (NBA, 1946+ (pbp ~1996+)): total game duration per game: the cheapest check on summed break lengths for every NBA game, plus officials and arena per game Access: attach the Kaggle dataset wyattowalsh/basketball in a notebook.
-- **NBA player matchups (who guarded whom, partial possessions) per game** (NBA, 2017-18 to 2024-25): star-on-star matchups are a hype and leverage signal we hold nowhere; feeds player context in tokenizer v2 Access: GitHub release files of shufinskiy/nba_data (honest client, no stats.nba.com calls); numbers only, no description text.
+- **NBA shot detail: x/y location, distance, zone per shot (shufinskiy/nba_data shotdetail)** (NBA, 1996-97 to 2024-25 incl playoffs): already in: crew A joined shot x/y per event into every nba_stats_pbp shard (1996-2025 incl playoffs); distance and zone are derived from x/y, so nothing new to count Access: GitHub release files of shufinskiy/nba_data (honest client, no stats.nba.com calls); numbers only, no description text.
+- **NBA player matchups (who guarded whom, partial possessions) per game** (NBA, 2017-18 to 2024-25): per-game player-vs-defender totals (232k rows/season), not per play (crew A checked 2024): no help for dead-ball timing or event tokens; parked unless lane 1 asks for player context Access: GitHub release files of shufinskiy/nba_data (honest client, no stats.nba.com calls); numbers only, no description text.
 - **data.nba.com play-by-play with on-court x/y for every action** (NBA, 2016-17 to 2024-25): court location for rebounds, turnovers and fouls (not just shots): fast-break starts are visible, so we can tell transition (a fine moment to leave) from a set half court Access: GitHub release files of shufinskiy/nba_data (honest client, no stats.nba.com calls); numbers only, no description text.
 - **NBA daily referee assignments (official.nba.com), forward only** (NBA, 2026-27 forward): crew ids before tip for tonight's games (nbadb covers history); whistle pace per crew feeds dead-air and break length Access: one page per game day; read robots and terms first; numbers only (crew chief/referee/umpire ids per game).
 - **NBA.com stats pbp for the 621 SportVU games (sealneaward mirror, data/events)** (NBA, 2015-16): LANDED (crew A): 287k events; joins pbp to the tracking frames Access: GitHub CSV in the same mirror.
