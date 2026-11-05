@@ -95,6 +95,8 @@ jobs:
           fi
       - name: license tags (F8, personal-use data)
         run: python scripts/license_check.py
+      - name: Context-only label leak check (v17)
+        run: python scripts/label_leak_check.py
 
   data:
     # Fetch the pinned dataset once per tag, verify its sha256, and keep it in the Actions cache.
