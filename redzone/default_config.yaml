@@ -421,6 +421,9 @@ two_stick:
   min_gain: 8              # ...and then only for one this many points better (your game's return and
                            # a replay about to play take it right away)
   verify_s: 15             # check the hidden stick is still playing this often
+  hand_back_s: 600         # for this long after you pick a game on the phone, the game you left keeps the
+                           # hidden stick (ranked with your game's return), so a tap back is a ~2 s flip.
+                           # 0 = off. Nov 4: 11 of 16 phone presses to Prime were cold (~30 s), ~2 min apart.
   pretune_on_open: false   # opening a live game on the phone pre-tunes it on the hidden stick (90 s), so
                            # "Watch this" / "Go now" is a ~3 s flip instead of a ~8 s tune + flip
   input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
