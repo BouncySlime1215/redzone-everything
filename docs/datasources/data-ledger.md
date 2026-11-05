@@ -58,3 +58,16 @@ Copy this block, set the cycle number and date, and fill every column.
 |---|---|---|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|
 | League rulebooks + ops pages (NBA Rule 5, NCAA MBB/FB, MLB pace of play; Wikipedia for gaps) | 1 | green (facts, paraphrased) | done (v1) | 2025-26 / 2026 rules | 27 | 10 | 270 | 270 | 0.00 | repo `redzone/scoring/broadcast/break_rules.yaml` | yes | yes (source_url per row) | none | NFL and CFB TV formats mostly unverified; NHL marks from secondary sources |
 | Measured break lengths (eval-data-v1 archive, ESPN summaries, train nights) | 1 | yellow (ESPN-derived, plan B personal-use) | done (v1) | NFL 2025, NBA/NHL Oct 2026 | 14,169 breaks → 120 cells | 7 | 840 | 840 | 0.00 | repo `redzone/scoring/broadcast/break_lengths.json` | no, not allowed | yes | none | Derived numbers only; locked nights never read |
+## Synthetic and teacher rows (Data planner E, EXP-1400..1499)
+
+Every synthetic row is counted apart from real, tagged synthetic=true and "personal-use, not for commercial
+release", and the cap is code: `python scripts/synth_build.py check SYN` fails if any league's synthetic tokens
+exceed 3x its real tokens (EXP-097). Self-play token equivalents are passed in with `--other-synthetic`.
+
+| Source | Kind | Built from | Where | License | Counts toward 3x cap | Status |
+|---|---|---|---|---|---|---|
+| Home/away mirror | augmentation, vocab v1 | factory token shards, train nights only (`--train-before`) | SYN/<league>/<year>.mirror.npy | inherits the source shard; personal-use | yes | code ready (EXP-1401) |
+| Tempo re-time (live gaps x 0.9-1.1, breaks untouched) | augmentation, vocab v1 | same | SYN/<league>/<year>.retime.npy | inherits; personal-use | yes | code ready (EXP-1401) |
+| Teacher 32B answers | teacher-v1 side channel (aux target only) | EXP-086 teacher_out.jsonl, train nights only | SYN/teacher/<league>.npz + text.jsonl | personal-use (Qwen3 Apache-2.0 model; plan B moments) | yes | waiting on the EXP-086 run (EXP-1400) |
+| Teacher 32B causal commentary | teacher-v1 mode 2 (may be context) | build_moments train plays, brief only | SYN/teacher/<league>.npz + text.jsonl | personal-use (plan B moments) | yes | notebook ready (EXP-1402) |
+| Factory self-play | PICK rows (#122, #152) | real seasons, re-timed slates | factory shards | personal-use | yes, as token equivalents | lane ① runs it |
