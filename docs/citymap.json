@@ -4263,6 +4263,17 @@
     "untagged"
    ]
   },
+  "scripts/catchup_ratchet.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[time to see, Nick Nov 5 2026 12:28 AM ET] The catch-up window ratchet (docs/catchup_ratchet.json).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/check_memory.py": {
    "contracts": [],
    "inputs": [],
@@ -5452,10 +5463,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 291,
+  "modules": 292,
   "orphans": 10,
-  "unowned": 132,
-  "untagged": 236
+  "unowned": 133,
+  "untagged": 237
  },
  "version": 1
 }

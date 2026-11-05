@@ -715,6 +715,14 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   sports-language fine-tune. Kaggle CPU / HF only; stream, never mirror; personal-use tag; raw text only in a private
   Kaggle dataset, never in the public repo. First deliverable: a pre-registered EXP on whether recap-aligned labels raise %
   of oracle (dev first, locked once at the release read); if not, H stays small. H pauses first with C/D/F/G.
+- 2026-11-05 (Nick, 12:28 AM ET; gate change, integrator writes it): the catch-up window is a ratchet, not a fixed bar.
+  "Ideally 3 min comes down more and more as we get better." (1) Headline line per league `time_to_see_<lg>`: the
+  median and p90 seconds from a big play airing to it being on screen (0 = live, never seen = never), plus the shares
+  within 3 min, 90 s, 30 s and live. (2) Gate line per league `catchup_<lg>`: at least 99% of big plays seen within
+  the league's window in `docs/catchup_ratchet.json`, which starts at 180 s for every league. The ladder is 3 min,
+  90 s, 30 s, then live. After each release's locked read, `scripts/catchup_ratchet.py --record` steps a league down
+  once it has held the next window on locked nights for 2 releases in a row, and the window never loosens. (3) The
+  delay-and-react test (lane 2, arms A-D) reports these lines per arm. Grader freeze v14.
 - 2026-11-05 (Nick, 12:25 AM "yes test it"; lane 2 EXP-209): new keys `decider.react.mode` (default "off") and
   `decider.react.chase` (default false): OFFLINE delay-and-react arms (B react, C hybrid, D hybrid + chase + hidden-stick
   buffer) for the scorecard only. Live behavior is unchanged; nothing goes live from this test without the normal gate.

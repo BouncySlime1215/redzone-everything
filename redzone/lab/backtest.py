@@ -111,6 +111,7 @@ class Report:
     big_seen_3m: int = 0             # live or replayed within CATCHUP_3_S (the gate, Nick Nov 4 11:00 AM)
     big_seen_2m: int = 0             # ...within CATCHUP_2_S (stretch)
     my_big_seen_3m: int = 0          # your team's, within CATCHUP_3_S
+    big_see_s: list = field(default_factory=list)   # [time to see] per big play: time_to_see()
     crunch_on_replay: int = 0        # crunch plays that aired while a catch-up replay was on screen
     drive_plays: int = 0             # NFL scrimmage plays on drives that scored or reached the red zone
     drive_plays_live: int = 0        # ...of those, watched live start to finish
@@ -152,6 +153,22 @@ CATCHUP_S = 600.0   # "seen" for the reel gate: live, or replayed within 10 min 
 # Nick, Nov 4 11:00 AM: the replay window is 2-3 MINUTES max. 3 min is the gate, 2 min the stretch row.
 CATCHUP_3_S = 180.0
 CATCHUP_2_S = 120.0
+
+
+# [time to see, Nick Nov 5 12:28 AM] the catch-up window ladder, seconds: 3 min now, then 90 s, 30 s, live. A league
+# steps down after holding the tighter window on locked nights for 2 releases in a row (scripts/catchup_ratchet.py).
+CATCHUP_LADDER = (180.0, 90.0, 30.0, 0.0)
+
+
+def time_to_see(on: bool, replayed, key, air: float) -> float | None:
+    """Seconds from a big play airing until it was on screen: 0 = live; the catch-up replay's finish less the
+    airing; inf = never seen; None = replayed at an unknown time (an old plain set)."""
+    if on:
+        return 0.0
+    if key not in replayed:
+        return float("inf")
+    at = replayed.get(key) if isinstance(replayed, dict) else None
+    return None if at is None else max(0.0, float(at) - air)
 
 
 def replayed_by(replayed, key, deadline: float) -> bool:
@@ -837,6 +854,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
 
     big = live = mine = mine_live = caught = missed_on_replay = seen10 = my_seen10 = crunch_on_replay = 0
     seen3 = seen2 = my_seen3 = 0
+    see_s: list = []
     missed = []
     for r in replays:
         for w, p in zip(r.wall, r.plays):
@@ -853,6 +871,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             soon3 = on or replayed_by(replayed, (r.gid, round(w)), air + CATCHUP_3_S)
             seen3 += soon3
             seen2 += on or replayed_by(replayed, (r.gid, round(w)), air + CATCHUP_2_S)
+            see_s.append(time_to_see(on, replayed, (r.gid, round(w)), air))
             ours = any(a in my_teams for a in r.matchup.replace("@", " ").split())
             if ours:
                 mine += 1
@@ -924,6 +943,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
     rep.big_missed_on_replay = missed_on_replay
     rep.big_seen_10m, rep.my_big_seen_10m, rep.crunch_on_replay = seen10, my_seen10, crunch_on_replay
     rep.big_seen_3m, rep.big_seen_2m, rep.my_big_seen_3m = seen3, seen2, my_seen3
+    rep.big_see_s = see_s
     rep.drive_plays, rep.drive_plays_live, rep.drive_plays_other_sport, rep.drive_plays_on_redzone = drive_coverage(
         replays, watching, lag_total, play_len, tune_s, t1)
     rep.big_plays_caught = caught
