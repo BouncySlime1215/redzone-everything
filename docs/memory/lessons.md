@@ -267,3 +267,5 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   had landed earlier, and the tags only broke once the table was regenerated. A `[skip ci]` commit can still break
   the suite, so run the full suite on the exact tree you cut, not on the PRs before the nightly merge.
 - 2026-11-04 (RC6 cut): after merging a base commit that was only docs (the [skip ci] nightly table) I ran only the targeted tests. That base commit renamed a North Star line, and `test_citymap` failed on the Mac's deploy test step. The deploy stopped there and nothing switched. **Fix:** after any base merge, run the full suite again before handing an RC SHA to lane 4. A docs-only commit can still break a test that reads docs.
+- 2026-11-05 (lane 3): the "Channel delays" autonomy job kept a manual tap path ("waiting for one I-just-saw-it
+  tap") long after calibration went automatic. Grep /api/health job summaries for anything that waits on Nick.

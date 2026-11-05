@@ -143,27 +143,26 @@ class Hooks:
         self.toasts.append(msg)
 
 
-def test_phone_stops_asking_once_the_app_is_settled():
+def test_channel_timing_is_automatic_and_never_asks_for_a_tap():
+    # Nick, Nov 4: the "Channel delays" job sat on "waiting for one I-just-saw-it tap". Manual work is out.
     from redzone.autonomy import Calibrator
     c = Clock()
     b = book(c)
     hooks = Hooks(b, "youtubetv:espn")
     cal = Calibrator(hooks, {}, clock=c)
-    assert cal.on_tune("youtubetv:espn") == "tap" and len(hooks.toasts) == 1   # first night: ask
-    b.calibrate("youtubetv:espn", 40.0)
-    cal.poll()
-    assert "40s behind live" in hooks.toasts[-1]
-    c.t += 3600
+    assert cal.on_tune("youtubetv:espn") == "auto" and hooks.toasts == []
+    assert "tap" not in cal.summary()[1] and "ad breaks" in cal.summary()[1]
+    b.calibrate("youtubetv:espn", 40.0)                     # an automatic anchor timed it
+    assert cal.poll() == ["youtubetv:espn"] and hooks.toasts == [] and cal.summary() == (True, cal.summary()[1])
     hooks.on_screen = "youtubetv:tnt"
-    assert cal.on_tune("youtubetv:tnt") == "tap"            # one tap isn't settled yet: ask on a new channel
+    assert cal.on_tune("youtubetv:tnt") == "auto"
+    c.t += Calibrator.WATCH_S + 1                           # never timed: the watch ends quietly
+    assert cal.poll() == [] and "youtubetv:tnt" not in cal.watches and hooks.toasts == []
+    assert cal.on_tune("youtubetv:tnt") is None             # not re-watched every tune for a week
     for t, s in (("youtubetv:tnt", 42.0), ("youtubetv:fox", 41.0)):
         b.calibrate(t, s)
-    cal.poll()
-    hooks.on_screen = "youtubetv:nbc"
-    n = len(hooks.toasts)
-    assert cal.on_tune("youtubetv:nbc") is None and len(hooks.toasts) == n   # settled: never nag again
-    hooks.on_screen = "prime:tnf"
-    assert cal.on_tune("prime:tnf") == "tap"                                 # other apps still learn
+    assert cal.on_tune("youtubetv:nbc") is None             # the app is settled
+    assert cal.on_tune("prime:tnf") == "auto" and hooks.toasts == []
 
 
 def test_engine_start_reloads_taps_from_the_store(tmp_path):
