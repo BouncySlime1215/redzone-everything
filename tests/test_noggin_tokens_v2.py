@@ -102,3 +102,36 @@ def test_tracking_joins_on_game_period_and_nearest_clock(tmp_path):
     out = V2.join_track(ev, p)
     assert list(out.trk_x[:2]) == [0.1, 0.2] and pd.isna(out.trk_x[2])          # period 2 has no tracking
     assert list(out.wall_ts[:2]) == [1000.0, 1050.0]
+
+
+def test_play_table_mirror_swaps_sides_on_train_nights_only(tmp_path):
+    rows = []
+    for gi in range(10):
+        for i in range(12):
+            rows.append({"source": "nba_stats_pbp", "sport": "basketball", "league": "nba", "game_id": f"g{gi}",
+                         "night": f"201601{gi + 1:02d}", "seq": i, "home": "ATL", "away": "DET", "period": 1 + i // 6,
+                         "clock_s": float(700 - i * 50), "wall_ts": None, "home_score": 2 * (i // 3),
+                         "away_score": i // 4, "kind": "made_shot" if i % 3 == 2 else "rebound", "stop": "none",
+                         "side": "home" if i % 2 else "away", "possession": "away" if i % 2 else "home",
+                         "actor_id": f"p{i}", "x": 0.3, "y": 0.2, "license": "NBA.com ToS"})
+    src = tmp_path / "nba_stats_pbp" / "nba" / "2016.parquet"
+    src.parent.mkdir(parents=True)
+    df = pd.DataFrame(rows)
+    df.to_parquet(src)
+    real = V2.build_table(src, tmp_path / "out")
+    syn = V2.build_table(src, tmp_path / "out", mirror=True)
+    assert syn["synthetic"] and not syn["real"] and syn["tags"] == ["synthetic", "mirror"]
+    assert syn["license"] == V2.PERSONAL and syn["edges"] == real["edges"]
+    assert syn["games"] == 8 and all(g[1] < real["train_before"] and g[0].endswith("~mirror") for g in syn["index"])
+    m = V2.mirror_table(df)
+    assert (m.home == "DET").all() and (m.home_score == df.away_score).all() and (m.x == df.x).all()
+    assert (m.side == df.side.map({"home": "away", "away": "home"})).all() and (m.actor_id == df.actor_id).all()
+    a = np.load(tmp_path / "out" / "nba" / "2016.npy")
+    b = np.load(tmp_path / "out" / "nba" / "2016.mirror.npy")
+    ga, gb = real["index"][0], syn["index"][0]
+    ta, tb = a[ga[2]:ga[2] + ga[3]], b[gb[2]:gb[2] + gb[3]]
+    assert (ta[1], ta[2]) == (tb[2], tb[1])                                    # HOME / AWAY team tokens swap
+    ev = V2.is_event_start(ta)
+    c = V1.MARGIN0 + V1.MARGIN_CAP
+    assert np.array_equal(tb[np.nonzero(ev)[0] + 3].astype(int) - c, -(ta[np.nonzero(ev)[0] + 3].astype(int) - c))
+    assert (tb.max() < V2.VOCAB_SIZE) and len(ta) == len(tb)
