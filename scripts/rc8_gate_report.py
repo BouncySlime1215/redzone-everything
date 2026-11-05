@@ -82,6 +82,16 @@ def oracle_line(oracles: dict | None, lg: str) -> str:
     return " | ".join(parts)
 
 
+def grid_line(v: dict | None) -> str:
+    """Rule #1 per arm and B, honest/resync mid-play summed over seeds (B=0 is the live control)."""
+    cells: dict[str, dict[str, int]] = {}
+    for r in (v or {}).get("runs") or []:
+        k = f"{r.get('arm', 'main')}-B{r.get('b')}"
+        cells.setdefault(k, {}).setdefault(r.get("harness", "?"), 0)
+        cells[k][r.get("harness", "?")] += int(r.get("entries_mid_play") or 0)
+    return ", ".join(f"{k} {c.get('honest', '-')}/{c.get('resync', '-')}" for k, c in cells.items())
+
+
 def report(cfg, sweep: dict | None, shadow: dict | None, card: dict | None = None, sync: dict | None = None,
            locked: dict | None = None, leagues=LEAGUES, oracles: dict | None = None) -> dict:
     sv = (sweep or {}).get("leagues") or {}
@@ -104,7 +114,8 @@ def report(cfg, sweep: dict | None, shadow: dict | None, card: dict | None = Non
         detail.update({"state": state, "rc8_on_now": R.is_on(cfg, lg), "adaptive": parts,
                        "grid_mid_play_total": sum(int(r.get("entries_mid_play") or 0) for r in grid),
                        "grid_runs": len(grid), "shadow_card": (card or {}).get(lg),
-                       "oracle": oracle_line(oracles, lg),
+                       "oracle": oracle_line(oracles, lg), "grid": grid_line(v),
+                       "breaches": (v or {}).get("breaches_by_arm"),
                        "sweep_b": (v or {}).get("chosen_b"), "guardrails": (v or {}).get("guardrails")})
         sb, why = R.ship_b(cfg, lg, (v or {}).get("chosen_b"),
                            mid_play_night=detail["items"]["1_rule1"]["shadow_live"] > 0)
@@ -142,6 +153,9 @@ def to_md(r: dict) -> str:
               f"- Sweep: verdict {i2.get('verdict') or 'not in yet'}, B {i2.get('chosen_b')}, needs "
               f"{i2.get('needs') or 'nothing'}, {i2.get('fit_nights') or 0} fit nights, primary "
               f"{json.dumps(i2.get('primary')) if i2.get('primary') else 'n/a'}.",
+              f"- Rule #1 by arm and B (mid-play honest/resync, 3 seeds; B0 = live control): {d['grid'] or 'n/a'}.",
+              "- Why no B holds: " + ("; ".join(f"{k}: {', '.join(x)}" for k, x in (d.get("breaches") or {}).items())
+                                     or "n/a") + ".",
               "- Guardrails: " + (", ".join(f"{k} {'ok' if g.get('ok') else 'MISS'} ({g.get('value')})"
                                              for k, g in (d.get("guardrails") or {}).items()) or "n/a") + ".",
               f"- Oracle ceiling by B (lane 1, % of hindsight big plays, descriptive): {d['oracle'] or 'n/a'}.",
