@@ -1,0 +1,7 @@
+== fusion_02_robust_vs_kalman  mode=DRY-RUN (recorded files)
+   days=['2026-11-04', '2026-11-05'] rows=9718 samples=9154 sessions=71 plays=16451 anchors=1 families=['burst_pod_title'] boot={'hdmi2': 1793650371.76, 'hdmi1': 1793752328.89}
+   [real] espn    hdmi1  n=  1 kalman=23.35+-5.76 huber=17.56+-8.05 iv=17.56 med=17.56 outliers=0 -> fail
+   [synthetic] espn    hdmi1  n= 12 kalman=27.09+-0.81 huber=27.02+-0.36 iv=26.6 med=26.86 outliers=3 -> PASS  huber_err=-0.38 iv_err=-0.8
+   [synthetic] espn    hdmi2  n= 12 kalman=27.16+-0.54 huber=27.3+-0.36 iv=27.54 med=27.64 outliers=2 -> PASS  huber_err=0.4 iv_err=0.64
+   [synthetic] tnt     hdmi2  n= 12 kalman=31.17+-0.84 huber=31.38+-0.35 iv=31.41 med=31.07 outliers=0 -> PASS  huber_err=0.18 iv_err=0.21
+SUMMARY fusion_02_robust_vs_kalman: 0/1 real groups estimator-stable -> /private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/fusion_02_robust_vs_kalman.jsonl

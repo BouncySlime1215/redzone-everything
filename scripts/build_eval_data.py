@@ -72,6 +72,8 @@ def main():
     ap.add_argument("--window", action="append", required=True, help="league:YYYYMMDD:YYYYMMDD")
     ap.add_argument("--demo", action="append", default=[], help="demo day YYYYMMDD (data/demo/<day>)")
     ap.add_argument("--no-lock", action="store_true", help="don't rewrite eval-data.lock.json")
+    ap.add_argument("--dev-before", action="append", default=[],
+                    help="league:YYYYMMDD: nights before it are dev only, never locked (EXP-735, splits.dev_before)")
     ap.add_argument("--lock", type=Path, default=None,
                     help="write the lock here instead (e.g. eval-data-v2.lock.json, next to v1)")
     a = ap.parse_args()
@@ -80,6 +82,8 @@ def main():
         lg, start, end = w.split(":")
         window[lg] = {"start": start, "end": end}
     lock = build(a.data.resolve(), a.out, a.tag, window, a.demo)
+    if a.dev_before:
+        lock["dev_before"] = dict(x.split(":") for x in a.dev_before)
     text = json.dumps(lock, indent=1, sort_keys=True) + "\n"
     if not a.no_lock:
         dest = a.lock or evaldata.LOCK

@@ -305,3 +305,33 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   keyed by tuner target, and there was none. `_hold` now refuses a game whose channel is known to be untunable, once.
 
 - **Nov 5 2026 (Data A #259):** CI's test jobs had no pyarrow, so every play-table shard test failed with "Unable to find a usable engine". Fix: `requirements-ci.txt` (requirements.txt + pandas + pyarrow) for CI test jobs only; the Mac keeps requirements.txt. Data-crew tests that write parquet rely on it; don't importorskip them away.
+
+### The lock label was our own rule (EXP-086 CBB, Nov 5)
+- **Symptom:** the CBB fast head called 96.7% of blind lock moments; the flag said leak_suspect, and lane 3 first read it as a false alarm.
+- **Cause:** `y` = a big or crunch play within H s, and crunch (plus NBA/CBB big = clutch buckets) is defined by period, clock and margin, which the model also sees. Clock-only AUC 0.996 on NBA test nights.
+- **Fix:** grade lock calls on `y_out` (outcome_label.py: lead change/catch or a win-probability swing), checked by scripts/label_leak_check.py. A label is only a label if clock-only AUC < 0.95, read on train/valid nights, never on locked (lane 3's first read used locked nights by mistake).
+- **Signals:** head ≈ clock-only AUC, lift < 0.01, near-perfect lock accuracy, CBB, NBA
+- **Nov 5 2026 (lane 4, sync program):** the Mac deploy runs the test suite next to the live sticks, and nothing stopped a test from shelling out to the real adb (Homebrew's /opt/homebrew/bin/adb exists there, not on Linux CI), so a stray test could press keys on the TV. Fix: `tests/conftest.py _no_real_devices` makes the real adb fail as "missing" (what CI sees) and blocks real SmartThings hosts; `tests/fake_adb.py` scripts and httpx MockTransports still work (`tests/test_no_real_devices.py`).
+- 2026-11-05 (integrator, #298 review): **a switch's timing lives in two places in the backtest.** `SwitchLog.leave_dt` /
+  `arrive_dt` move the landing cutgrade sees, but `watching` (what every on-screen line reads through `_on_screen_game`)
+  is appended at the decision time. Anything that delays the cut (the pause cue today, EXP-803's defer) must move
+  both, or big live / crunch live / dead air credit the destination before the TV shows it. The pause cue's gap is
+  pre-existing (seconds, not tens of seconds); fix it under a grader freeze with a before/after.
+
+- **Nov 5 2026 (lane 4, live-log collection):** `collect_live_test.py` masked RFC1918 LAN addresses but not the sticks' Tailscale 100.64.0.0/10 addresses, so the shared copies leaked them (lane 2 masked them by hand). Fix: the redactor also masks 100.64/10 (`ts.<last octet>`), Tailscale's fd7a:115c:a1e0::/48 IPv6 and 169.254/16 link-local; public addresses stay.
+- 2026-11-05 (lane 2, from lane 4's read of the Nov 4-5 probe logs): sync_probe.stall_s compared the stick clock with the position without checking that both reports were playing at normal speed. A pause or backgrounded app counted its whole pause as a stall (up to 11,000 s), and a seek forward or live-edge jump came out negative (-44,000 s summed), so stalls_per_min and the probe's link-quality scale were polluted. Now it returns None unless both reports are playing at ~1x, after a forward jump (< -1 s), or across more than 10 minutes.
+- 2026-11-05 (integrator): **a pytest exit code piped through `| tail` is tail's, not pytest's.** Batch 2 (ced1dd03)
+  went to integration/next with 4 failing tests because the suite wrapper read `exit 0`. Run the suite to a log and
+  check `$?` (or grep "failed") before any push. Two of the four were stale expectations after NHL's EXP-303 package
+  went ON; one was the warm-up e2e (the night opens on NHL, whose timed start already pre-tunes the first pick, so the
+  test now holds NHL's start untimed in both arms via the night lab's new `--set league_overrides.<lg>.<key>`); the
+  last, test_night_leaves_repo_data_alone, only fails under `pytest -n` (another worker writes the shared data/).
+
+- **Nov 5 2026 (lane 1, windowed oracle #322):** the first buffer sweep solved every window with an 8 s feed lag
+  (a knobs default) while the measured p90 is 62-75 s, so "window % of full" read 88-100% for a feed we don't
+  have; NBA leave/land also peek 26 s past a cell (grading.RESUME_LEAD), which the window didn't reserve, and the
+  window was floored at blk+1 so a too-slow feed still planned on unrevealed steps (T2/T3 testers, #328). Fix:
+  per-league measured lag (p90 default, primary p50 as a second set), the look-ahead reserved in window_steps, no
+  switches without a revealed window, first pick waits for a dead ball, night-bootstrap CIs, and the oracle moved
+  out of the frozen grader file into redzone/lab/oracle_window.py. Lesson: an oracle's information set must come
+  from measured numbers and from everything the grader itself reads, and a second tester should re-derive both.

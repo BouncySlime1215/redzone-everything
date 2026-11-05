@@ -188,6 +188,7 @@ class Decision:
     want: str | None = None   # the game it wants to switch to while it waits for a safe moment
     rewind_s: float = 0.0     # [cut timing] land this far behind live (whole seek steps) on a dead ball
     cue: str = ""             # [seek model] "pause": the hidden stick cues the rewind before the flip
+    defer_s: float = 0.0      # [EXP-803 A1] cut this long after the decision (a break's tail inside one tick)
 
 
 @dataclass
@@ -318,6 +319,8 @@ class Decider:
     def timeline(self, game_id: str, league: League) -> Timeline:
         if game_id not in self.timelines:
             tl = self.timelines[game_id] = Timeline(league, clock=self._clock)
+            tl.lag_prior = float(_config.for_league(self.cfg, "delay.feed_lag_prior_s", league.value,
+                                                    _config.default("delay.feed_lag_prior_s")))
             from redzone.noggin.live import hook_for   # [noggin] Timing v1, off unless noggin.timing.leagues
             tl.dead.noggin = hook_for(self.cfg, league)
             if self._pick_on(league):
@@ -820,6 +823,20 @@ class Decider:
     def entry_plan(self, gid: str, cands: dict[str, Candidate], now: float, cost: float | None = None,
                    urgent: bool = False, possession: bool = False) -> EntryPlan | None:
         """How to come into gid right now (None: no timing evidence, e.g. RedZone or no timeline)."""
+        tl = self.timelines.get(gid)
+        x = cands.get(gid) or self._known.get(gid)
+        if tl is None or x is None:
+            return self._entry_plan(gid, cands, now, cost, urgent, possession)
+        # [EXP-211] an open stoppage counts as dead only as far as a feed this slow would already show the
+        # restart: an unmeasured lag reads 10 s, which landed NHL entries after the faceoff (EXP-303).
+        tl.dead.lag_floor = float(self._lc("decider.entry.lag_floor_s", x, 0.0) or 0.0)
+        try:
+            return self._entry_plan(gid, cands, now, cost, urgent, possession)
+        finally:
+            tl.dead.lag_floor = 0.0
+
+    def _entry_plan(self, gid: str, cands: dict[str, Candidate], now: float, cost: float | None,
+                    urgent: bool, possession: bool) -> EntryPlan | None:
         c = self.cfg
         if gid in PSEUDO or not c.get("decider.entry.enabled", True):
             return None
@@ -890,8 +907,10 @@ class Decider:
         scorecards Nov 3: mid-play entries 165 -> 15, crunch live 87.5 -> 88.3%, big plays seen
         99.7 -> 99.5%. The rest of cut timing (holding for a big play, stretching a stoppage) cost
         hockey crunch time, so it stays football-only."""
-        if x is None or d.kind == "start":
+        if x is None:
             return False
+        if d.kind == "start" and not self._lc("decider.entry.start_timed", x, False):
+            return False   # [EXP-739] off: the night's first pick goes in live (6 of 8 NHL mid-play entries, #302)
         if x.scored.crunch_now and self._crunch_entry_mode(x) == "live":
             return False
         if x.scored.crunch and not x.scored.crunch_now and \
@@ -951,6 +970,17 @@ class Decider:
         plan = self.entry_plan(d.target, cands, now, urgent=urgent or pos, possession=pos)
         if plan is None:
             return d
+        if plan.ok and not plan.rewind_s and not (urgent or pos):
+            wait = self._break_tail_wait(d.target, x, cands, now)
+            if 0 < wait <= float(self.cfg.get("polling.live_s", 10)) and self.cfg.get("decider.entry.break_tail_defer"):
+                d.defer_s = round(wait, 1)   # [EXP-803 A1] the tail comes inside this tick: cut then, not a tick late
+                wait = 0.0
+            if wait > 0:
+                # [EXP-728/736] the picture would come up early in the break: hold on what's on screen
+                self.home_break_visit, self.home_return_at = home_before
+                state = State.REPLAY if self.after_replay else d.state
+                return Decision(now, "stay", self.current, f"break tail: in {wait:.0f}s: {d.reason}", state,
+                                d.gate, want=d.target)
         if plan.ok:
             d.rewind_s = plan.rewind_s
             if plan.rewind_s and self._lc("decider.entry.cue", x, "seek") in ("pause", "hidden"):
@@ -983,6 +1013,56 @@ class Decider:
         state = State.REPLAY if self.after_replay else d.state
         return Decision(now, "stay", self.current, f"{plan.why}: {d.reason}", state, d.gate,
                         want=d.target)
+
+    def _break_tail_wait(self, gid: str, x, cands, now: float) -> float:
+        """[EXP-728/736, decider.entry.break_tail: leagues] Seconds to hold a switch into a game in a break so
+        its picture comes up at most decider.entry.break_tail_s before the restart: the logged restart, else
+        the break's early-side length (break_tail_q of EXP-1500's table), both on the early side of the delay.
+        0 = go now (no break, off for the league, the game on screen is in crunch, or no length known)."""
+        if x is None or not x.target:
+            return 0.0
+        if x.scored.league.value not in (self.cfg.get("decider.entry.break_tail") or []):
+            return 0.0
+        cur = cands.get(self.current or "")
+        if cur is not None and cur.scored.crunch_now:
+            return 0.0          # the game on screen matters now: no reason to linger there, nor to rush
+        tl = self.timelines.get(gid)
+        if tl is None or not tl.dead.marks:
+            return 0.0
+        from redzone.decider import break_tail
+        cost = self.entry_cost(x.target) if self.entry_cost is not None else self._deadline_cost(x.target)
+        if not math.isfinite(cost):
+            return 0.0
+        d = self.delays.get(x.target)
+        base = d.mu - d.behind - 2 * d.current_sigma(now)   # a fresh tune shows the live edge; early side
+        arrive = now + cost - base                           # the real time on screen when the picture comes up
+        ws = tl.dead.windows()
+        i = next((i for i in range(len(ws) - 1, -1, -1) if ws[i].start <= arrive), None)
+        if i is None or (ws[i].end is not None and ws[i].end <= arrive):
+            return 0.0          # live play on arrival
+        # A dead stretch is often several windows back to back (a foul, its free throws, then the timeout):
+        # the break is the stretch, its restart the last window's.
+        gap = float(self.cfg.get("decider.entry.break_tail_chain_s"))
+        while i + 1 < len(ws) and ws[i].end is not None and ws[i + 1].start - ws[i].end <= gap:
+            i += 1
+        w = ws[i]
+        kind = break_tail.WINDOW_KIND.get(w.kind)
+        if kind is None:
+            return 0.0          # not a break the table knows (a whistle stretch)
+        if w.end is not None:
+            restart = w.end
+        else:
+            n = break_tail.length(x.scored.league.base.value, kind, x.target,
+                                  str(self.cfg.get("decider.entry.break_tail_q")))
+            if w.kind == "timeout_long" and x.scored.league.base == League.NBA \
+                    and self.cfg.get("decider.entry.break_tail_tv_split"):
+                # [EXP-803 A3] a full NBA timeout carries the TV break: its own early-side length, not the
+                # "timeout" row that mixes in short timeouts (q25 126 s vs ~170-210 s, Data F's cdn rows)
+                n = float(self.cfg.get("decider.entry.break_tail_tv_timeout_s"))
+            if n is None:
+                return 0.0
+            restart = w.start + n
+        return max(0.0, restart - arrive - float(self.cfg.get("decider.entry.break_tail_s")))
 
     def _scenario(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[scenario tree] The branch of the scenario table that matches the slate (redzone/decider/

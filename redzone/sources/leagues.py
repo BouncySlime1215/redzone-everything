@@ -11,7 +11,7 @@ Field names verified against tests/fixtures (Nov 2026).
 from __future__ import annotations
 
 import copy
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 import time
 
@@ -235,10 +235,15 @@ def enrich_nba(g: GameState, gm: dict, pbp: dict | None = None,
 
 
 def _iso_ts(s) -> float | None:
+    """ISO stamp -> epoch. Feed stamps are UTC, so one with no offset is read as UTC, not as the
+    Mac's local time (which put it 4-5 h off in ET, T6-4)."""
+    if not s:
+        return None
     try:
-        return datetime.fromisoformat(str(s).replace("Z", "+00:00")).timestamp() if s else None
+        d = datetime.fromisoformat(str(s).replace("Z", "+00:00"))
     except ValueError:
         return None
+    return (d if d.tzinfo else d.replace(tzinfo=timezone.utc)).timestamp()
 
 
 def _nba_kind(a: dict) -> str:

@@ -7,6 +7,10 @@
     folds = 5 forward-chaining folds over train+valid for every tuning decision: fold k trains on
             blocks 0..k and validates on block k+1. Report the mean AND the worst fold.
 
+Older seasons as dev only (EXP-735, grader v21): a pin may carry `dev_before` {league: YYYYMMDD}. Nights before
+that date are train/valid only and never locked; the locked block is then the newest >= 25 % of the nights on or
+after it (the current season). A pin without it (eval-data-v1) splits exactly as before. Use `league_split`.
+
 A night is never split across sets, and so a game (all its plays) never is either: every split here
 is a set of nights, and a game belongs to the night it started (US Eastern).
 """
@@ -33,16 +37,36 @@ class Split:
         return (self.valid or self.train or ("",))[-1]
 
 
-def split_nights(nights: Iterable[str], test_frac: float = TEST_FRAC, valid_frac: float = VALID_FRAC) -> Split:
-    """nights: 'YYYYMMDD' strings. Oldest go to train, the next block to valid, the newest to test."""
+def split_nights(nights: Iterable[str], test_frac: float = TEST_FRAC, valid_frac: float = VALID_FRAC,
+                 dev_before: str | None = None) -> Split:
+    """nights: 'YYYYMMDD' strings. Oldest go to train, the next block to valid, the newest to test.
+    dev_before: nights before it can only be train/valid; test is the newest test_frac of the rest."""
     ns = sorted(set(nights))
     n = len(ns)
     if n == 0:
         return Split((), (), ())
-    n_test = math.ceil(n * test_frac - 1e-9)   # at least test_frac of the nights, at least one
-    n_valid = max(1, int(round(n * valid_frac))) if n - n_test >= 2 else 0
-    n_train = n - n_test - n_valid
+    cur = [x for x in ns if dev_before is None or x >= dev_before]
+    if not cur:                                  # nothing in the current season yet: all dev, nothing locked
+        n_valid = max(1, int(round(n * valid_frac))) if n >= 2 else 0
+        return Split(tuple(ns[:n - n_valid]), tuple(ns[n - n_valid:]), ())
+    n_test = math.ceil(len(cur) * test_frac - 1e-9)   # at least test_frac of the (current) nights, at least one
+    rest = n - n_test
+    n_valid = max(1, int(round((n if dev_before is None else len(cur)) * valid_frac))) if rest >= 2 else 0
+    n_valid = min(n_valid, max(0, rest - 1)) if dev_before is not None else n_valid
+    n_train = rest - n_valid
     return Split(tuple(ns[:n_train]), tuple(ns[n_train:n_train + n_valid]), tuple(ns[n_train + n_valid:]))
+
+
+def dev_before(league: str) -> str | None:
+    """The active pin's dev-only cut for this league (None: plain 25 % newest)."""
+    from redzone.lab import evaldata
+    lock = evaldata.load_lock(evaldata.LOCK) or {}
+    return (lock.get("dev_before") or {}).get(league)
+
+
+def league_split(league: str, nights: Iterable[str]) -> Split:
+    """The split every scorecard, leak check and model uses for this league under the active pin."""
+    return split_nights(nights, dev_before=dev_before(league))
 
 
 def folds(nights: Sequence[str], k: int = FOLDS) -> list[tuple[tuple[str, ...], tuple[str, ...]]]:
@@ -120,5 +144,6 @@ def nights_for(league_dir, which: str, end: str | None = None) -> set[str] | Non
     """The nights of one split of an archive (None for 'all'). Scorecards take --split from here."""
     if which == "all":
         return None
-    s = split_nights(archive_nights(league_dir, end))
+    from pathlib import Path
+    s = league_split(Path(league_dir).name, archive_nights(league_dir, end))
     return set({"train": s.train, "valid": s.valid, "test": s.test, "fit": s.train + s.valid}[which])

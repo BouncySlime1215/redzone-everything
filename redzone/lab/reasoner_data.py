@@ -9,6 +9,11 @@ text), and label it from what actually happened next on the wall clock:
   y          big_next or crunch_next, and not garbage time: "worth being on live right now"
   t_big      seconds to the next big play (inf if none before the game ends)
   t_break    seconds to the next real break (timeout, end of period, ...), for "how long to stay"
+  y_out      [EXP-302] the lock label from REAL outcomes (outcome_label: a lead change/catch or a win
+             probability swing in the next few minutes), plus its parts flip, wp_swing, close_finish;
+  y_out2     the same over twice the horizon (the outcome truth's "watch" level).
+             `y` is defined by the clock and margin the model sees (NBA clock-only AUC 0.996), so grade
+             lock calls on y_out (Nick, Nov 5 1:50 AM).
 
 Rows carry their night (ET date of the scoreboard that lists the game) so whole nights are held
 out together: the head is cross-fitted by night (each night scored by a model that never saw it),
@@ -23,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from redzone.config import Config
-from redzone.lab import sportsgrade
+from redzone.lab import outcome_label, sportsgrade
 from redzone.lab.backtest import Replay
 from redzone.models import REAL_BREAKS, League, Phase
 from redzone.reasoner import brief
@@ -78,6 +83,11 @@ class Row:
     matchup: str
     league: str
     in_break: bool
+    y_out: int = 0
+    flip: int = 0
+    wp_swing: int = 0
+    close_finish: int = 0
+    y_out2: int = 0          # y_out over twice the horizon: the "watch" level of the outcome lock truth
 
     def as_dict(self) -> dict:
         return dict(self.__dict__)
@@ -101,6 +111,8 @@ def game_rows(lg: League, r: Replay, night: str, cfg: Config, my_teams: set[str]
     scorer = Scorer(cfg, clock=clock)
     me = Personal(my_teams={x: set(my_teams) for x in League})
     big, crunch, brk = _plays_meta(lg, r)
+    out = outcome_label.label_game(lg, r.plays, r.wall)
+    out2 = outcome_label.label_game(lg, r.plays, r.wall, horizon=2 * outcome_label.HORIZON[lg])
     H = HORIZON_S[lg.base.value]
     n = len(r.plays)
     rows: list[Row] = []
@@ -136,7 +148,7 @@ def game_rows(lg: League, r: Replay, night: str, cfg: Config, my_teams: set[str]
                         nxt_big[i + 1] - w if i + 1 <= n else math.inf,
                         nxt_brk[i + 1] - w if i + 1 <= n else math.inf, nt,
                         ctx.mine, s.garbage, s.crunch, s.late, g.matchup, lg.value,
-                        g.stoppage in REAL_BREAKS))
+                        g.stoppage in REAL_BREAKS, **out[i], y_out2=out2[i]["y_out"]))
     return rows
 
 

@@ -1,0 +1,28 @@
+== fusion_12_report  mode=DRY-RUN (recorded files)
+   days=['2026-11-04', '2026-11-05'] rows=9718 samples=9154 sessions=71 plays=16451 anchors=1 families=['burst_pod_title'] boot={'hdmi2': 1793650371.76, 'hdmi1': 1793752328.89}
+
+channel   stick   D_edge    sd   n    D_now  goal       families
+espn      hdmi1    23.35  5.76   1    23.35  INSUFFICIENT burst_pod_title=17.6+-8.0(n1)
+
+result file                                 rows  result        mode     time
+fusion_02_robust_vs_kalman.jsonl               6  FAIL          dry-run  11-05 03:28:49
+fusion_03_two_tunes.jsonl                     11  PASS          dry-run  11-05 03:28:49
+fusion_04_two_sticks.jsonl                    19  FAIL          dry-run  11-05 03:28:49
+fusion_05_two_families.jsonl                   6  FAIL          dry-run  11-05 03:28:49
+fusion_06_heldout.jsonl                        6  FAIL          dry-run  11-05 03:28:50
+fusion_07_shadow_join.jsonl                    5  FAIL          dry-run  11-05 03:28:50
+fusion_08_e_invariance.jsonl                   3  PASS          dry-run  11-05 03:28:50
+fusion_09_app_audit.jsonl                      7  FAIL          dry-run  11-05 03:28:50
+fusion_10_n_needed.jsonl                       6  FAIL          dry-run  11-05 03:28:50
+fusion_11_synthetic_selftest.jsonl             3  PASS          dry-run  11-05 03:28:51
+mechanics_01_landing_repeat.jsonl             40  PASS          dry-run  11-05 03:28:49
+mechanics_02_landing_drift.jsonl              13  PASS          dry-run  11-05 03:28:49
+mechanics_03_tune_latency.jsonl               13  None          dry-run  11-05 03:28:49
+mechanics_04_seek_keys.jsonl                  34  None          dry-run  11-05 03:28:49
+mechanics_05_session_monitor.jsonl             6  PASS          dry-run  11-05 03:28:49
+mechanics_06_pause_rejoin.jsonl                7  None          dry-run  11-05 03:28:50
+mechanics_07_cross_stick.jsonl                23  PASS          dry-run  11-05 03:28:50
+mechanics_08_wifi_stall.jsonl                 36  FAIL          dry-run  11-05 03:28:50
+mechanics_09_ui_probe.jsonl                    3  no summary row  -        -
+
+SUMMARY fusion_12_report: 0/1 (channel, stick) at the 1 s goal; 19 result files -> /private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/fusion_12_report.jsonl + /private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/fusion_12_report.md

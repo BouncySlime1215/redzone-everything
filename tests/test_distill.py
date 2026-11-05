@@ -169,6 +169,11 @@ def test_compare_fits_baselines_on_valid_and_scores_test_only():
             [row(20, "test", key=85, head=0.85), row(21, "test", lock="none", t_big=None, safe="yes", key=15, head=0.2)])
     teach = {f"{rows[-2]['id']}|blind": {"id": "x", "text": GOOD}}
     res = evaluate.compare(rows, {"today": None, "head": None, "teacher": teach})
+    assert res["today"]["all"]["lock_acc"] is None                       # no y_out: the old truth copies the crunch rule
+    assert res["today"]["all"]["lock_excluded_rows"] == 2
+    for r in rows:                                                       # v19: outcome truth (EXP-302)
+        r["y_out"] = int(r["target"]["lock_in"] == "must_see")
+    res = evaluate.compare(rows, {"today": None, "head": None, "teacher": teach})
     assert res["today"]["all"]["n"] == 2 and res["today"]["all"]["lock_acc"] == 100.0
     assert res["head"]["all"]["must_see_precision"] == 100.0
     assert res["teacher"]["all"]["answered_pct"] == 50.0 and res["teacher"]["all"]["usable_json_pct"] == 100.0

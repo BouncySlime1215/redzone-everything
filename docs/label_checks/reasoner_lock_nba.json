@@ -1,0 +1,30 @@
+{
+ "name": "reasoner_lock",
+ "league": "nba",
+ "label": "y_out",
+ "kind": "lock",
+ "n": 17412,
+ "base_rate": 0.1581,
+ "single": {
+  "period": 0.5688,
+  "clock_s": 0.5825,
+  "abs_diff": 0.8509,
+  "in_break": 0.5167,
+  "crunch": 0.5082,
+  "garbage": 0.5621,
+  "late": 0.5267,
+  "mine": 0.5028
+ },
+ "joint_auc": 0.8427,
+ "max_auc": 0.8509,
+ "features": [
+  "period",
+  "clock_s",
+  "abs_diff",
+  "in_break",
+  "crunch",
+  "garbage",
+  "late",
+  "mine"
+ ]
+}

@@ -1,0 +1,8 @@
+== fusion_07_shadow_join  mode=DRY-RUN (recorded files)
+   days=['2026-11-04', '2026-11-05'] rows=9718 samples=9154 sessions=71 plays=16451 anchors=1 families=['burst_pod_title'] boot={'hdmi2': 1793650371.76, 'hdmi1': 1793752328.89}
+   event pod_return espn hdmi1 11-04 19:36:01: no other anchors (WOULD predict)
+   [real] espn hdmi1: windows=117 D_true=unknown -> WOULD simulate joins once both exist (D_hat=23.3+-5.8)
+   [synthetic] espn    hdmi1  D_hat=27.09+-0.81 D_true=27.4 windows=117 joins=105 skips=12 MID_PLAY=0 join_rate=0.9  | app-prior-only policy: joins=88 mid_play=0
+   [synthetic] espn    hdmi2  D_hat=27.16+-0.54 D_true=26.9 windows=117 joins=106 skips=11 MID_PLAY=0 join_rate=0.91  | app-prior-only policy: joins=88 mid_play=0
+   [synthetic] tnt hdmi2: windows=0 D_true=known -> WOULD simulate joins once both exist (D_hat=31.2+-0.8)
+SUMMARY fusion_07_shadow_join: restart events scored=0 within2s_ok=False; mid-play joins real=0 synthetic=0 -> /private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/fusion_07_shadow_join.jsonl

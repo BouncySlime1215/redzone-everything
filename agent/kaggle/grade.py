@@ -193,6 +193,7 @@ def md(rep: dict) -> str:
     r = rep["reasoner"]
     parts = ["## Game reasoner, dev-test nights (the locked test set is never graded here)", "",
              f"Nights: {', '.join(r['test_nights'])}", ""]
+    parts += [f"lock_acc leaves out {lg.upper()}: {why}" for lg, why in evaluate.LOCK_EXCLUDED.items()] + [""]
     for lg in ["all", "nfl", "cfb", "nba", "cbb", "nhl", "mlb"]:
         if lg in r.get("today", {}):
             parts += [f"### {lg}", "", evaluate.table(r, lg), ""]

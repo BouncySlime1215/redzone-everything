@@ -159,6 +159,29 @@ def use_shipped_switch_costs(cfg) -> dict:
     return costs
 
 
+def apply_set(cfg, kv: str) -> None:
+    """[grader v24] One `--set dotted.key=yaml` onto the run's config. A key under `league_overrides.<league>.` is
+    stored FLAT (league_overrides[<league>]["a.b.c"] = v), the same shape the app's config.for_league reads, so it
+    overrides that one setting. Nesting it ({"a": {"b": {"c": v}}}) made flatten_league_overrides replace the whole
+    "a" group with that one key (EXP-803 A2, lane 2, Nov 5): every other setting in the group was lost for the run."""
+    import yaml
+    key, _, val = kv.partition("=")
+    value = yaml.safe_load(val)
+    parts = key.split(".")
+    if len(parts) > 3 and parts[0] == "league_overrides":
+        lo = cfg.data.get("league_overrides") or {}
+        cfg.data["league_overrides"] = lo
+        if not isinstance(lo.get(parts[1]), dict):
+            lo[parts[1]] = {}
+        lo[parts[1]][".".join(parts[2:])] = value
+        return
+    node = cfg.data
+    *path, last = parts
+    for part in path:
+        node = node.setdefault(part, {})
+    node[last] = value
+
+
 def flatten_league_overrides(cfg, league: str) -> dict:
     """[per-league promotion, grader v7] Apply `league_overrides[<league>]` (dotted key -> value) onto the run's
     config, so a single-league scorecard grades exactly what the app runs for that league. Applied AFTER --set, so a

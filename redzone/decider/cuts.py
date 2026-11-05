@@ -278,6 +278,9 @@ class DeadTracker:
         # it has been dead (and when it restarted) is unknown (NBA GS @ DEN, Nov 4: a 70 s rewind
         # into such a gap landed mid-play). Set from decider.entry.confirmed_dead_only.
         self.confirmed_only = False
+        # [EXP-211] the feed lag a landing assumes at least (decider.entry.lag_floor_s, set per plan by the
+        # decider): until a game's lag is measured it reads 10 s, but NHL's real feed lag runs ~50 s.
+        self.lag_floor = 0.0
 
     # ---- input
     def add(self, pid: str, lo: float, hi: float, kind: str, text: str, type_text: str,
@@ -413,7 +416,7 @@ class DeadTracker:
         if self.fresh_at is None:
             return None
         lg = _lg(self.league)
-        return self.fresh_at - self.lag - PLAY_S.get(lg, 0.0) - SILENT_S.get(lg, 0.0) - (
+        return self.fresh_at - max(self.lag, self.lag_floor) - PLAY_S.get(lg, 0.0) - SILENT_S.get(lg, 0.0) - (
             0.0 if lg in (League.NFL, League.MLB) else 2.0)
 
     @staticmethod

@@ -37,6 +37,68 @@ def _tv_files_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(tv, "INPUT_LOG", tmp_path / "tv_input.jsonl")
 
 
+def _is_real_adb(prog) -> bool:
+    """The real adb binary (Homebrew, PATH), not a tests/fake_adb.py script under a tmp dir."""
+    import os
+    import shutil
+    import tempfile
+    p = os.path.realpath(os.fspath(prog))
+    if os.path.basename(p) != "adb":
+        return False
+    tmp = os.path.realpath(tempfile.gettempdir())
+    if p.startswith(tmp + os.sep) or "/pytest-of-" in p:
+        return False
+    real = {os.path.realpath(x) for x in (shutil.which("adb"), "/opt/homebrew/bin/adb", "/usr/local/bin/adb") if x}
+    return p in real or not os.path.exists(p) or os.path.dirname(p) in {os.path.dirname(r) for r in real}
+
+
+_REAL_HOSTS = ("api.smartthings.com", "auth-global.api.smartthings.com")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_devices(monkeypatch):
+    """No test reaches a real Fire TV stick or SmartThings. On the Mac the deploy step runs this suite
+    next to the live sticks, so a test that shelled out to the real adb could press keys on Nick's TV.
+    A real adb call fails as if adb were missing (what Linux CI already sees); a fake_adb script still runs.
+    SmartThings calls fail as a connect error unless the test hands in its own transport."""
+    import asyncio
+    import subprocess
+
+    import httpx
+
+    real_exec, real_popen = asyncio.create_subprocess_exec, subprocess.Popen.__init__
+
+    async def guarded_exec(program, *args, **kw):
+        if _is_real_adb(program):
+            raise FileNotFoundError(f"tests may not run the real adb ({program})")
+        return await real_exec(program, *args, **kw)
+
+    def guarded_popen(self, args, *a, **kw):
+        prog = args if isinstance(args, (str, bytes)) or not hasattr(args, "__iter__") else list(args)[0]
+        if not kw.get("shell") and _is_real_adb(prog):
+            raise FileNotFoundError(f"tests may not run the real adb ({prog})")
+        return real_popen(self, args, *a, **kw)
+
+    real_async, real_sync = httpx.AsyncHTTPTransport.handle_async_request, httpx.HTTPTransport.handle_request
+
+    def _check(request):
+        if request.url.host in _REAL_HOSTS:
+            raise httpx.ConnectError("tests may not call the real SmartThings", request=request)
+
+    async def guarded_async(self, request):
+        _check(request)
+        return await real_async(self, request)
+
+    def guarded_sync(self, request):
+        _check(request)
+        return real_sync(self, request)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", guarded_exec)
+    monkeypatch.setattr(subprocess.Popen, "__init__", guarded_popen)
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", guarded_async)
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", guarded_sync)
+
+
 @pytest.fixture
 def cfg(tmp_path):
     return Config(user_path=tmp_path / "config.yaml", history_dir=tmp_path / "hist")
