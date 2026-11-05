@@ -2142,7 +2142,27 @@ class Decider:
             until = tl.dead.dead_until(now - d.mu - m)
             if until is not None and until >= now - d.mu + m + float(self.cfg.get("decider.leave.tune_s")):
                 return Gate(True, "dead ball on screen (play-by-play)")
+        if not g.safe and getattr(tl, "events", None) and self._leavable(cur):
+            # [cut rules, Nick Nov 4 3:15 PM] Leaving mid-play is fine at LOW leverage (Q1-Q3, a game
+            # that isn't close, right after a score): you lose the end of an ordinary play, never an entry.
+            return Gate(True, "low-leverage moment: leaving mid-play is OK")
         return g
+
+    def _leavable(self, cur: Candidate) -> bool:
+        """[cut rules, decider.leave.low_leverage] May the screen leave this game mid-play? Only at low
+        leverage: never in crunch time or its run-up, a locked moment (red zone, power play, OT...), your
+        team's game, or a close game late (decider.leave.sticky_*: down the stretch is sticky)."""
+        lgs = self.cfg.get("decider.leave.low_leverage") or []
+        s = cur.scored
+        if s.league.base.value not in lgs:
+            return False
+        if s.crunch or s.crunch_now or s.lock or s.imminent or s.pre_moment:
+            return False
+        if s.personal >= float(self.cfg.get("decider.crunch.hold_personal", 5)):
+            return False
+        if s.late and not s.garbage and s.closeness >= float(self.cfg.get("decider.leave.sticky_closeness", 0.5)):
+            return False
+        return True
 
     def _mark_screen_breaks(self, watchable: dict[str, Candidate], now: float) -> None:
         """A game whose break is still showing on screen is a bad destination even if the data

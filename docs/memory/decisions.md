@@ -397,6 +397,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   under a catch-up 2 -> 10. No catch-up starts while any live game is in crunch time or its run-up; your team's
   missed play waits too, except in NFL after 90 s (its 3-min window can't wait out crunch). Locked, 3 seeds,
   honest sims: crunch plays under a replay NFL 7-13 -> 0-1, NHL 0/10/9 -> 3/3/3; your-team plays = or better.
+- 2026-11-04: **decider.leave.low_leverage (new, default [] = today's rule; candidate [nfl, nba]),
+  decider.leave.sticky_closeness 0.5.** Nick 3:15 PM cut rules: never JOIN mid-play; LEAVING mid-play is OK at
+  low leverage; down the stretch is sticky. The floor: never crunch or its run-up, a locked moment, your team's
+  game, or a late game at closeness >= 0.5. NHL stays off (dev: 1-3 mid-play entries, big live -5). The learned
+  leverage score comes next and may only make this stricter.
 - 2026-11-04 (lane 1, cycle 04): new config keys `noggin.possession.{enabled,shadow,leagues,model}` (the learned
   jump / stay policy for lane 2's possession-start hook, PICK-cue trained on `oracle.solve_cue`) and
   `noggin.pick.model` (default `v1`). All are off or unchanged by default. Why off: on NBA dev the veto leaves the rule
