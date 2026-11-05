@@ -1,5 +1,6 @@
 """Tests for the data landing grader proposal (EXP-705)."""
 import importlib.util
+import json
 from pathlib import Path
 
 _spec = importlib.util.spec_from_file_location(
@@ -27,7 +28,7 @@ def clean():
 
 
 def test_clean_landing_passes():
-    res = dlg.grade(clean())
+    res = dlg.grade(clean(), locked={"nba": set()})
     assert not [r for r in res if r[0] == "FAIL"], res
 
 
@@ -56,10 +57,30 @@ def test_duplicates_over_one_percent_fail():
     assert status(dlg.grade(rows), "D3") == ["FAIL"]
 
 
-def test_game_in_two_splits_and_locked_night_fail():
+def test_game_in_two_splits_fails():
     rows = clean() + [row("g1", "2025-01-01", "valid", seq=7)]
-    assert "FAIL" in status(dlg.grade(rows), "D4")
-    assert "FAIL" in status(dlg.grade(clean(), locked={"2025-01-03"}), "D4")
+    assert "FAIL" in status(dlg.grade(rows, locked={"nba": set()}), "D4")
+
+
+def test_locked_nights_come_from_splits_over_the_archive(tmp_path):
+    lg = tmp_path / "nba"
+    lg.mkdir()
+    nights = [f"202501{d:02d}" for d in range(1, 21)]
+    for i, n in enumerate(nights):
+        (lg / f"scoreboard_{n}.json").write_text(json.dumps({"events": [{"id": f"g{i}"}]}))
+    locked = dlg.locked_nights(tmp_path, ["nba"])
+    from redzone.lab import splits
+    want = set(splits.split_nights(splits.archive_nights(lg)).test)
+    assert locked["nba"] == want and want  # the split's own test nights, nothing typed in
+    last = sorted(want)[-1]
+    bad = [row("gx", f"{last[:4]}-{last[4:6]}-{last[6:]}", "test", seq=1)]
+    assert "FAIL" in status(dlg.grade(bad, locked=locked), "D4")
+    ok = [row("gy", "2025-01-01", "train", seq=2)]
+    assert "FAIL" not in status(dlg.grade(ok, locked=locked), "D4")
+
+
+def test_league_without_archive_is_pending_not_pass():
+    assert "PENDING" in status(dlg.grade(clean(), locked={}), "D4")
 
 
 def test_split_out_of_time_order_fails():

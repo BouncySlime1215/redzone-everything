@@ -3,8 +3,11 @@
 Grades a dataset a Data Division crew landed in the factory, BEFORE any model trains on it. It grades the data,
 never a model, so it can run on every shard as it lands (Kaggle CPU or CI, $0).
 
-    python scripts/data_landing_grade.py shard.jsonl [more.jsonl ...] [--locked-nights locked.txt]
-        [--manifest manifest.json] [--label-col y] [--json]
+    python scripts/data_landing_grade.py shard.jsonl [more.jsonl ...] [--label-col y] [--json]
+
+The locked nights come from redzone/lab/splits.py over data/archive/<league>/ (the same split leak_check.py and the
+scorecards use, up to the eval pin's window end). They are never typed in. No archive for a league = that league's
+locked check is PENDING.
 
 Exit 1 on any FAIL. PENDING (cannot be checked: a field is missing on every row) never fails.
 
@@ -28,6 +31,7 @@ Checks (ids are proposals; the integrator renames them on freeze):
     D2 as-of     no context value known after the instant it feeds (asof_ts <= use_ts); 0 allowed
     D3 dedupe    duplicate share over (source, league, game_id, row key) <= 1% (grading rule 14)
     D4 splits    no game in two splits; split order follows night order per league; no locked night present
+                 (locked = splits.split_nights(...).test per league, read from the archive, never hardcoded)
     D5 synth     synthetic tokens <= 3x real tokens (EXP-097 cap)
     D6 vocab     unmapped tokens < 1% per league (EXP-003 bar, extended to vocab v2 and every level)
     D7 leak scan any single numeric feature with AUC > .98 against --label-col is a red flag (grading rule 5)
@@ -41,6 +45,10 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+ARCHIVE = ROOT / "data" / "archive"
 PERSONAL_USE = "personal-use, not for commercial release"
 DUP_MAX = 0.01
 SYNTH_MAX = 3.0
@@ -62,6 +70,26 @@ def load(paths: list[Path]) -> list[dict]:
 
 def _ts(s: str) -> datetime:
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def _night(s: str) -> str:
+    return str(s).replace("-", "")
+
+
+def locked_nights(archive: Path = ARCHIVE, leagues=None) -> dict[str, set[str]]:
+    """league -> locked (test) nights as YYYYMMDD, from redzone/lab/splits.py over the archive (as leak_check.py)."""
+    from redzone.lab import splits
+    try:
+        from redzone.lab import evaldata
+        end = evaldata.window_end
+    except Exception:  # noqa: BLE001  (no eval pin: whole archive)
+        end = lambda lg, d: d  # noqa: E731
+    out = {}
+    for lg in leagues or sorted(p.name for p in Path(archive).glob("*") if p.is_dir()):
+        d = Path(archive) / lg
+        if d.is_dir():
+            out[lg] = set(splits.split_nights(splits.archive_nights(d, end(lg, None))).test)
+    return out
 
 
 def d0_schema(rows: list[dict]) -> list[tuple[str, str]]:
@@ -111,14 +139,19 @@ def d3_dedupe(rows: list[dict]) -> list[tuple[str, str]]:
     return [(tag, f"D3 duplicate share {share:.2%} (bar <= {DUP_MAX:.0%})")]
 
 
-def d4_splits(rows: list[dict], locked: set[str]) -> list[tuple[str, str]]:
+def d4_splits(rows: list[dict], locked: dict[str, set[str]]) -> list[tuple[str, str]]:
     out = []
-    hit = sorted({r["night"] for r in rows if r.get("night") in locked})
+    leagues = sorted({str(r.get("league")) for r in rows})
+    hit = sorted({(r.get("league"), r["night"]) for r in rows
+                  if _night(r.get("night", "")) in locked.get(r.get("league"), ())})
     if hit:
-        out.append(("FAIL", f"D4 {len(hit)} locked nights present (first {hit[:3]}); locked is never landed"))
+        out.append(("FAIL", f"D4 {len(hit)} locked league-nights present (first {hit[:3]}); locked is never landed"))
+    no_arch = [lg for lg in leagues if lg not in locked]
+    if no_arch:
+        out.append(("PENDING", f"D4 no archive split for {', '.join(no_arch)}: locked-night check not run"))
     with_split = [r for r in rows if r.get("split")]
     if not with_split:
-        return out or [("PENDING", "D4 no split column" + ("" if locked else " and no locked list"))]
+        return out or [("PENDING", "D4 no split column")]
     games = defaultdict(set)
     for r in with_split:
         games[(r.get("league"), r["game_id"])].add(r["split"])
@@ -136,7 +169,9 @@ def d4_splits(rows: list[dict], locked: set[str]) -> list[tuple[str, str]]:
         for a, b in zip(named, named[1:]):
             if sps[a][1] >= sps[b][0]:
                 out.append(("FAIL", f"D4 {lg}: {a} ends {sps[a][1]} on/after {b} starts {sps[b][0]} (time split)"))
-    return out or [("PASS", f"D4 {len(games)} games, splits disjoint and time-ordered per league")]
+    if not [o for o in out if o[0] == "FAIL"]:
+        out.append(("PASS", f"D4 {len(games)} games, splits disjoint and time-ordered per league"))
+    return out
 
 
 def d5_synth(rows: list[dict]) -> list[tuple[str, str]]:
@@ -204,25 +239,27 @@ def d7_leakscan(rows: list[dict], label_col: str | None) -> list[tuple[str, str]
     return [("PASS", f"D7 {len(names)} features, none above AUC {AUC_FLAG}")]
 
 
-def grade(rows: list[dict], locked: set[str] = frozenset(), label_col: str | None = None) -> list[tuple[str, str]]:
+def grade(rows: list[dict], locked: dict[str, set[str]] | None = None,
+          label_col: str | None = None) -> list[tuple[str, str]]:
+    """locked: league -> YYYYMMDD nights; None reads them from the archive via redzone/lab/splits.py."""
+    if locked is None:
+        locked = locked_nights(ARCHIVE, sorted({str(r.get("league")) for r in rows}))
     res = d0_schema(rows)
     if res[0][0] == "FAIL":
         return res
-    return (res + d1_license(rows) + d2_asof(rows) + d3_dedupe(rows) + d4_splits(rows, set(locked))
+    return (res + d1_license(rows) + d2_asof(rows) + d3_dedupe(rows) + d4_splits(rows, locked)
             + d5_synth(rows) + d6_vocab(rows) + d7_leakscan(rows, label_col))
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("paths", nargs="+", type=Path)
-    ap.add_argument("--locked-nights", type=Path, help="text file, one YYYY-MM-DD per line")
+    ap.add_argument("--archive", type=Path, default=ARCHIVE, help="data/archive root (locked nights via splits.py)")
     ap.add_argument("--label-col")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
-    locked = set()
-    if a.locked_nights:
-        locked = {ln.strip() for ln in a.locked_nights.read_text().splitlines() if ln.strip()}
-    res = grade(load(a.paths), locked, a.label_col)
+    rows = load(a.paths)
+    res = grade(rows, locked_nights(a.archive, sorted({str(r.get("league")) for r in rows})), a.label_col)
     if a.json:
         print(json.dumps([{"status": s, "check": m} for s, m in res], indent=1))
     else:
