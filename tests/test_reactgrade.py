@@ -72,9 +72,10 @@ def test_a_rewind_needs_a_buffer():
     assert r["faults"]["rewind_unbuffered"] == 0
 
 
-def _fake(arm, night, seen, entries=0, faults=0, sw=4, crunch_live=5, dead=100.0):
+def _fake(arm, night, seen, entries=0, faults=0, sw=4, crunch_live=5, dead=100.0, late=0):
+    """`seen` big plays live, plus `late` more seen by replay inside the window (60 s after airing)."""
     return {"arm": arm, "night": night, "split": "fit", "league": "nfl", "cond": "", "big": 5,
-            "big_live": seen, "tts": [0.0] * seen + [-1.0] * (5 - seen), "crunch": 5, "crunch_live": crunch_live,
+            "big_live": seen, "tts": [0.0] * seen + [60.0] * late + [-1.0] * (5 - seen - late), "crunch": 5, "crunch_live": crunch_live,
             "my_crunch": 0, "my_crunch_live": 0, "entries_mid_play": entries, "mid_play_cuts_high": 0,
             "dead_s": dead, "watched_s": 3600.0, "switches": sw, "replays": 0, "hours": 1.0, "behind": [0.0] * 10,
             "faults": {"replay_unheld": faults}, "oracle_big_live": 5, "buffer_s": 0.0}
@@ -119,3 +120,12 @@ def test_ratchet_ladder_is_reported():
     r["tts"] = [0.0, None, -1.0, 40.0, 200.0]          # None = replayed at an unknown time: never counted as seen
     m = R.metrics([r])
     assert m["tts_unknown"] == 1 and m["seen_le_90_pct"] == 40.0 and m["seen_le_180_pct"] == 40.0
+
+
+def test_a_win_cannot_trade_live_plays_for_late_replays():
+    # B sees more inside the window (4 vs 3 of 5) but only 2 live, against A's 3: big live down 20 points.
+    nights = [f"2026100{i}" for i in range(1, 10)]
+    rows = [_fake("A", n, 3) for n in nights] + [_fake("B", n, 2, late=2) for n in nights]
+    b = R.report(rows, "fit")["nfl|"]["arms"]["B"]
+    assert b["seen_window_pct"] > R.report(rows, "fit")["nfl|"]["arms"]["A"]["seen_window_pct"]
+    assert b["verdict"] == "NO_WIN"
