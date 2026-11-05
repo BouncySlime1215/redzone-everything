@@ -326,3 +326,12 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   went ON; one was the warm-up e2e (the night opens on NHL, whose timed start already pre-tunes the first pick, so the
   test now holds NHL's start untimed in both arms via the night lab's new `--set league_overrides.<lg>.<key>`); the
   last, test_night_leaves_repo_data_alone, only fails under `pytest -n` (another worker writes the shared data/).
+
+- **Nov 5 2026 (lane 1, windowed oracle #322):** the first buffer sweep solved every window with an 8 s feed lag
+  (a knobs default) while the measured p90 is 62-75 s, so "window % of full" read 88-100% for a feed we don't
+  have; NBA leave/land also peek 26 s past a cell (grading.RESUME_LEAD), which the window didn't reserve, and the
+  window was floored at blk+1 so a too-slow feed still planned on unrevealed steps (T2/T3 testers, #328). Fix:
+  per-league measured lag (p90 default, primary p50 as a second set), the look-ahead reserved in window_steps, no
+  switches without a revealed window, first pick waits for a dead ball, night-bootstrap CIs, and the oracle moved
+  out of the frozen grader file into redzone/lab/oracle_window.py. Lesson: an oracle's information set must come
+  from measured numbers and from everything the grader itself reads, and a second tester should re-derive both.
