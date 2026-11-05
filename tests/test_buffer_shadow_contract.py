@@ -177,7 +177,7 @@ def nights(tmp_path_factory):
     if not SHADOW:
         pytest.skip("redzone/buffer_shadow.py (lane 2) not on this branch yet")
     tmp = tmp_path_factory.mktemp("nights")
-    off = _night(tmp, "off")
+    off = _night(tmp, "off", "timing.behind_live_s.shadow=false")   # shadow defaults on (lane 2, #326)
     on = _night(tmp, "shadow", "timing.behind_live_s.shadow=true")
     return off, on
 
