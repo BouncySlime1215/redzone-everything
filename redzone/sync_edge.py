@@ -25,6 +25,11 @@ E = wall - pos_now IS how far the picture runs behind real life: `abs_behind_s`,
 filter's delay belief minus it. The other stick's Prime position was a 24 h counter (a different content type?):
 only positions above EPOCH_POSITION count. YouTube TV's absolute latency still needs an on-screen anchor per channel.
 
+K (Nick, 3:30 AM): the Prime score bug's clock / score samples measure the screen's delay behind the ARENA (Nov 4:
+15.8-16.2 s, sd 1.5); the epoch gives the screen's delay behind the FRAME CLOCK (6.4 s, sd ~0.1). Their difference
+K = arena - frame clock (~9.6 s) is a property of the stream, fused per target by inverse variance (`frame_k`):
+20 reads at sd 1.5 -> 0.34 s. Then epoch_delay_s = E + K is the screen's delay every second, not every score.
+
 Rows (lane 3's syncgrade, #279) go to data/sync_truth/edge/<night>.jsonl, a subfolder, so the v10 grader's
 data/sync_truth/*.jsonl glob never mixes them with its anchor rows. Sticks are named by HDMI input, never
 by address.
@@ -46,6 +51,9 @@ log = logging.getLogger(__name__)
 _UPTIME = re.compile(r"^\s*(\d+\.\d+)\s+\d+\.\d+\s*$", re.M)
 LANDINGS_KEPT = 20      # per channel, for the leave-one-out landing median
 LANDINGS_MIN = 3
+K_KEPT = 40             # per target, the last K samples fused
+K_GATE = 3.0            # after K_GATE_N samples, one further than this many sds from the fused K is left out
+K_GATE_N = 5
 EPOCH_POSITION = 1e12   # [Prime] a position above this is the wall clock stamped on the frame (ms since 1970)
 
 
@@ -88,6 +96,33 @@ class EdgeTracker:
     """Per stick: the current tune and every read against it. Pure: no I/O, no clocks of its own."""
     tunes: dict[str, _Tune] = field(default_factory=dict)            # stick -> current tune
     landings: dict[str, list[float]] = field(default_factory=dict)   # target -> landing positions
+    epoch_at: dict[str, tuple[float, float]] = field(default_factory=dict)   # target -> (wall, E) last epoch read
+    k: dict[str, list[tuple[float, float]]] = field(default_factory=dict)   # target -> K samples (value, sd)
+    k_out: dict[str, int] = field(default_factory=dict)                     # target -> samples gated out
+
+    def k_of(self, target: str) -> tuple[float, float, int] | None:
+        """K = arena - frame clock for this target: (inverse-variance mean, its sd, samples), None before any."""
+        ks = self.k.get(target)
+        if not ks:
+            return None
+        w = [1.0 / (sd * sd) for _, sd in ks]
+        return sum(wi * z for wi, (z, _) in zip(w, ks)) / sum(w), sum(w) ** -0.5, len(ks)
+
+    def frame_k(self, target: str, delay_s: float, t: float, sd: float, pair_s: float) -> float | None:
+        """A score-bug delay sample (screen behind the arena at t) -> one K sample, paired with this target's
+        latest epoch read (screen behind the frame clock) when that is at most pair_s old. Returns the sample."""
+        last = self.epoch_at.get(target)
+        if last is None or abs(t - last[0]) > pair_s or sd <= 0:
+            return None
+        z = delay_s - last[1]
+        cur = self.k_of(target)
+        if cur is not None and cur[2] >= K_GATE_N and abs(z - cur[0]) > K_GATE * (sd * sd + cur[1] ** 2) ** 0.5:
+            self.k_out[target] = self.k_out.get(target, 0) + 1
+            return None
+        ks = self.k.setdefault(target, [])
+        ks.append((z, sd))
+        del ks[:-K_KEPT]
+        return z
 
     def read(self, stick: str, role: str, target: str | None, ms: dict, uptime_s: float | None, wall: float,
              pred_behind_s: float = 0.0, tune_t: float | None = None,
@@ -112,6 +147,10 @@ class EdgeTracker:
         row["pos_now_s"], row["E_s"] = round(p, 3), round(e, 3)
         if (ms.get("position") or 0) > EPOCH_POSITION:
             row["epoch"], row["abs_behind_s"] = True, round(e, 3)
+            self.epoch_at[target] = (wall, e)
+            k = self.k_of(target)
+            if k is not None:
+                row.update(k_s=round(k[0], 2), k_sd_s=round(k[1], 2), k_n=k[2], epoch_delay_s=round(e + k[0], 2))
             if delay is not None:
                 row["abs_err_s"] = round(delay[0] - e, 2)
         if tu.e_land is None and playing:
