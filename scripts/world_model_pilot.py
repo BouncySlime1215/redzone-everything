@@ -107,7 +107,7 @@ def data_hash(games) -> str:
 
 
 # ---------------------------------------------------------------------------------------------- model
-def make_model(vocab: int, d: int, layers: int, heads: int, ctx: int):
+def make_model(vocab: int, d: int, layers: int, heads: int, ctx: int, dropout: float = 0.0):
     import torch
     import torch.nn as nn
 
@@ -116,13 +116,14 @@ def make_model(vocab: int, d: int, layers: int, heads: int, ctx: int):
             super().__init__()
             self.ln1, self.ln2 = nn.LayerNorm(d), nn.LayerNorm(d)
             self.qkv, self.proj = nn.Linear(d, 3 * d), nn.Linear(d, d)
-            self.mlp = nn.Sequential(nn.Linear(d, 4 * d), nn.GELU(), nn.Linear(4 * d, d))
+            self.mlp = nn.Sequential(nn.Linear(d, 4 * d), nn.GELU(), nn.Linear(4 * d, d), nn.Dropout(dropout))
+            self.drop = nn.Dropout(dropout)
 
         def forward(self, x):
             b, t, _ = x.shape
             q, k, v = self.qkv(self.ln1(x)).view(b, t, 3, heads, d // heads).permute(2, 0, 3, 1, 4)
             a = torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=True)
-            x = x + self.proj(a.transpose(1, 2).reshape(b, t, d))
+            x = x + self.drop(self.proj(a.transpose(1, 2).reshape(b, t, d)))
             return x + self.mlp(self.ln2(x))
 
     class WM(nn.Module):
@@ -301,6 +302,8 @@ def main(argv=None) -> int:
     ap.add_argument("--ctx", type=int, default=1020)          # 170 events
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--lr", type=float, default=6e-4)
+    ap.add_argument("--dropout", type=float, default=0.1)
+    ap.add_argument("--weight-decay", type=float, default=0.1)
     ap.add_argument("--smoke", action="store_true", help="CPU test: one season, a tiny model, a few steps")
     a = ap.parse_args(argv)
     if a.smoke:
@@ -320,12 +323,12 @@ def main(argv=None) -> int:
                   "first": min((g["night"] for g in v), default=None), "last": max((g["night"] for g in v), default=None)}
               for k, v in sp.items()}
     print("split:", json.dumps(counts), flush=True)
-    model = make_model(T.VOCAB_SIZE, a.d, a.layers, a.heads, a.ctx).to(dev)
+    model = make_model(T.VOCAB_SIZE, a.d, a.layers, a.heads, a.ctx, a.dropout).to(dev)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"model: {n_params / 1e6:.1f}M params on {dev}", flush=True)
     tr = windows(sp["train"], a.ctx, rng)
     va = windows(sp["valid"], a.ctx, rng)[:256]
-    opt = torch.optim.AdamW(model.parameters(), lr=a.lr, betas=(0.9, 0.95), weight_decay=0.1)
+    opt = torch.optim.AdamW(model.parameters(), lr=a.lr, betas=(0.9, 0.95), weight_decay=a.weight_decay)
     est_steps = max(50, int(a.minutes * 60 * 2))            # refined after the first 20 steps
     amp = dict(device_type=dev, dtype=torch.bfloat16, enabled=dev == "cuda")
     loss_fn = torch.nn.CrossEntropyLoss(ignore_index=T.PAD)
@@ -403,13 +406,28 @@ def main(argv=None) -> int:
     test = grade(model, sp["test"], base, a.ctx, dev)
     inf_toks = sum(len(g["tokens"]) for g in sp["test"])
     inf_s = time.time() - ti
-    trn = grade(model, sp["train"][:200], base, a.ctx, dev)       # the train side of the gap
+    # The gap, split so overfitting and a season shift can be told apart (pilot 1: the train slice was the
+    # EARLIEST 200 games, 2001, vs test 2022-24): train games nearest the test window vs the earliest, valid,
+    # and test per season.
+    by_t = sorted(sp["train"], key=lambda g: g["night"])
+    trn = grade(model, by_t[-200:], base, a.ctx, dev)
+    trn_old = grade(model, by_t[:200], base, a.ctx, dev)
+    val = grade(model, sp["valid"], base, a.ctx, dev)
+    seasons = sorted({g["night"][:4] for g in sp["test"]})
+    per_season = {y: {k: grade(model, [g for g in sp["test"] if g["night"][:4] == y], base, a.ctx, dev)[k]
+                      for k in ("next_kind_acc", "next_kind_acc_bigram", "break_dt_mae_s", "break_dt_mae_s_baseline")}
+                  for y in seasons}
     g = {"exp": "EXP-100", "seed": SEED, "data_sha256_16": data_hash(games), "vocab": T.VOCAB_VERSION,
          "vocab_size": T.VOCAB_SIZE, "leagues": a.leagues, "split": counts, "selection": "valid loss (early stop)",
-         "recipe": {"d": a.d, "layers": a.layers, "heads": a.heads, "ctx": a.ctx, "batch": a.batch, "lr": a.lr,
+         "recipe": {"d": a.d, "layers": a.layers, "heads": a.heads, "ctx": a.ctx, "batch": a.batch, "lr": a.lr, "dropout": a.dropout, "weight_decay": a.weight_decay,
                     "params_m": round(n_params / 1e6, 1), "steps": step, "epochs_seen": round(step * a.batch / max(1, len(tr)), 2)},
          "learning_curve": curve, "best_valid_loss": best,
          "test": test, "train_slice": {k: trn[k] for k in ("next_kind_acc", "stop_ece", "break_dt_mae_s")},
+         "gap": {"train_recent_200": {k: trn[k] for k in ("next_kind_acc", "break_dt_mae_s", "break_dt_mae_s_baseline")},
+                 "train_earliest_200": {k: trn_old[k] for k in ("next_kind_acc", "break_dt_mae_s",
+                                                                "break_dt_mae_s_baseline")},
+                 "valid": {k: val[k] for k in ("next_kind_acc", "break_dt_mae_s", "break_dt_mae_s_baseline")},
+                 "test_by_year": per_season},
          "throughput": {"device": torch.cuda.get_device_name(0) if dev == "cuda" else "cpu",
                         "train_tokens_per_s": round(toks / max(1e-9, train_s)),
                         "eval_tokens_per_s": round(inf_toks / max(1e-9, inf_s)),
