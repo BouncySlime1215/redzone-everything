@@ -28,7 +28,7 @@ NHL, MLB and CBB go ahead only through shared code or data.
 ## Sync program status
 | part | PR | state |
 |---|---|---|
-| A + B: per-stick live-edge meter (shadow) + re-link to live | #281 (flags off) | open: lane ② |
+| A + B: per-stick live-edge meter (shadow) + re-link to live | #281: `sync.edge.enabled` (read-only shadow reader) ships **on**, so tonight is logged; the re-tune / re-link flags ship **off** | open: lane ② |
 | A2: `rzseek`, reads and seeks a stick's media session over adb | #287 (tool only) | open |
 | EXP-800/801 grader (syncgrade) | #279, frozen as v18 | merged |
 | Prime absolute delay, as a grader proposal | #285 | open: integrator |
@@ -46,9 +46,9 @@ NHL, MLB and CBB go ahead only through shared code or data.
 ## Next ranked work (only the changes from Cycle 16)
 | unit | 1st | 2nd | 3rd |
 |---|---|---|---|
-| ② | Land #281 (the A+B meter and re-link, flags off) and #287 (`rzseek`), ready for the afternoon window | EXP-803's belief-band entry on NBA dev, once EXP-735's nights land (it folds in EXP-205) | NFL EXP-205 |
+| ② | Land #281 (shadow reader `sync.edge.enabled` on, re-tune flags off) and #287 (`rzseek`), ready for the afternoon window | EXP-803's belief-band entry on NBA dev, once EXP-735's nights land (it folds in EXP-205) | NFL EXP-205 |
 | ③ | The afternoon real-TV press run on YTTV + Prime, daytime and with Nick's OK. Grade it with v18 syncgrade and #288 primegrade | The truth rows for EXP-800 on TNF tonight (shadow only) | — |
-| ④ | #282: the RC7 checklist with the sync program, staged on Nick's card | Land #281 / #287 in the RC7 candidate, flags off | EXP-017 v3 with NBA nights first |
+| ④ | #282: the RC7 checklist with the sync program, staged on Nick's card, showing the on/off split | Land #281 / #287 in the RC7 candidate: shadow reader on, re-tune flags off | EXP-017 v3 with NBA nights first |
 | Int | EXP-735, the NBA 2025-26 dev nights | Freeze reviews for #284, #285 and #288 before TNF | The RC6.3 verdict |
 | test writers | #277 batch 3 merged, then EXP-700 / 703 NBA autopsies | — | — |
 | A | NBA wall-clock pbp and nightly liveData (#276), which feed EXP-735 | The EXP-802 lag probe, tonight on Kaggle if Nick starts it | NFL BDB archive (waits on Nick) |
