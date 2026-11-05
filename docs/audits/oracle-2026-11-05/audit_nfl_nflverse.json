@@ -1,0 +1,24 @@
+{
+ "games": 544,
+ "plays": 93294,
+ "big_plays": 5974,
+ "big_awpa_p50": 0.0414,
+ "all_awpa_p50": 0.0128,
+ "big_with_awpa_under_2pct": 31.3,
+ "big_when_decided_pct": 15.5,
+ "big_in_q4_with_margin_17plus_pct": 5.8,
+ "top1pct_wpa_plays_counted_big_pct": 61.7,
+ "top1pct_wpa_plays_missed_examples": {
+  "pass": 221,
+  "field_goal": 41,
+  "run": 39,
+  "punt": 32,
+  "no_play": 18
+ },
+ "pair_agree_vs_excitement": {
+  "count_of_big": 54.4,
+  "top_swings": 79.1
+ },
+ "tag": "personal-use, not for commercial release",
+ "seasons": "2023-2024 REG, locked nights excluded"
+}

@@ -1,0 +1,28 @@
+{
+ "games": 713,
+ "nights": 157,
+ "vs_volume": {
+  "v1": [
+   62.6,
+   1547
+  ],
+  "v2": [
+   62.5,
+   1547
+  ],
+  "v2s": [
+   62.6,
+   1547
+  ],
+  "closeness": [
+   65.6,
+   1547
+  ]
+ },
+ "note": "pair-weighted within-night agreement with log volume; (score, pairs)",
+ "tag": "personal-use, not for commercial release",
+ "v2_minus_v1_ci95_approx": [
+  -2.4,
+  2.2
+ ]
+}
