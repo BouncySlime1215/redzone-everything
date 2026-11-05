@@ -1,5 +1,5 @@
 {
- "about": "Data scout ledger (Nick 11:35 PM Nov 4 2026, EXP-097). Candidates found by the scout, license-checked and ranked by new information per GB. Pulled data is counted in docs/data-ledger.json (the Data Division crews A-F, docs/plans/2026-11-05-data-division.md); this file is the pipeline in front of it. Render with: python scripts/scout_ledger.py Scout experiment ids: EXP-1600-1699. Owner = the crew that pulls it (A pbp, B context, D markets); 'scout' = still being probed. Video principle (Nick 12:15 AM): extract features on the fly (numbers, timestamps), never store raw video.",
+ "about": "Data scout ledger (Nick 11:35 PM Nov 4 2026, EXP-097). Candidates found by the scout, license-checked and ranked by new information per GB. Pulled data is counted in docs/data-ledger.json (the Data Division crews A-F, docs/plans/2026-11-05-data-division.md); this file is the pipeline in front of it. Render with: python scripts/scout_ledger.py Scout experiment ids: EXP-1600-1699. Owner = the crew that pulls it (A pbp, B context, D markets); 'scout' = still being probed. Video principle (Nick 12:15 AM): extract features on the fly (numbers, timestamps), never store raw video. Rank order (Nick 2:00 AM Nov 5): NBA impact first, then NFL, then shared basketball/football pretraining, then other sports (shared pretraining only).",
  "token_rule": "tokens = events x 6 for event streams (noggin_tokens vocab v1). Three kinds, counted separately (Nick 11:50 PM): 'events' = new real plays/pitches/balls; 'context-new' = external facts we did not have (odds, weather, refs, injuries, TV slot), counted ONCE per game as unique tokens, with as-fed tokens (repeated on every play by vocab v2) shown only in the why line; 'derived' = computed from data we already hold (WP, leverage, momentum, timeouts left, lineups, player-to-date, standings and playoff odds, rest and travel): adds tokens per play but no new knowledge. Synthetic and augmentation (mirror, re-timing) are never in this file; they are capped at 3x real in data-ledger.md.",
  "info_per_gb_rule": "score = new_tokens_m x novelty / raw_gb. novelty 1.5 = adds wall-clock timing we lack; 1.0 = new sport, league or level; 0.5 = more of a league we already hold.",
  "verdicts": {
@@ -29,7 +29,8 @@
    "status": "ready",
    "owner": "crew B",
    "needs_nick": "none",
-   "probe": ""
+   "probe": "",
+   "focus": "nba"
   },
   {
    "id": "v2-live-lines",
@@ -50,7 +51,8 @@
    "status": "ready",
    "owner": "crew D",
    "needs_nick": "none",
-   "probe": "https://gamma-api.polymarket.com/events?limit=1"
+   "probe": "https://gamma-api.polymarket.com/events?limit=1",
+   "focus": "nba"
   },
   {
    "id": "v2-weather",
@@ -71,7 +73,8 @@
    "status": "ready",
    "owner": "crew B",
    "needs_nick": "none",
-   "probe": ""
+   "probe": "",
+   "focus": "nfl"
   },
   {
    "id": "v2-refs",
@@ -92,7 +95,8 @@
    "status": "ready",
    "owner": "crew B",
    "needs_nick": "none",
-   "probe": ""
+   "probe": "",
+   "focus": "nba"
   },
   {
    "id": "v2-injuries",
@@ -113,7 +117,8 @@
    "status": "ready",
    "owner": "crew B",
    "needs_nick": "none",
-   "probe": ""
+   "probe": "",
+   "focus": "nba"
   },
   {
    "id": "v2-tv-slot",
@@ -134,7 +139,8 @@
    "status": "ready",
    "owner": "crew B",
    "needs_nick": "none",
-   "probe": ""
+   "probe": "",
+   "focus": "nba"
   },
   {
    "id": "v2-derived",
@@ -155,7 +161,8 @@
    "status": "ready",
    "owner": "crew A",
    "needs_nick": "none",
-   "probe": ""
+   "probe": "",
+   "focus": "nba"
   },
   {
    "id": "milb-statsapi",
@@ -176,7 +183,8 @@
    "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://statsapi.mlb.com/api/v1/schedule?sportId=11&date=2025-07-15",
-   "kind": "events"
+   "kind": "events",
+   "focus": "other"
   },
   {
    "id": "mlb-statsapi-gumbo",
@@ -197,7 +205,8 @@
    "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=2025-07-15",
-   "kind": "events"
+   "kind": "events",
+   "focus": "other"
   },
   {
    "id": "wehoop",
@@ -218,7 +227,8 @@
    "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://github.com/sportsdataverse/wehoop-wbb-data/releases",
-   "kind": "events"
+   "kind": "events",
+   "focus": "shared-basketball"
   },
   {
    "id": "cricsheet",
@@ -239,7 +249,8 @@
    "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://cricsheet.org/downloads/",
-   "kind": "events"
+   "kind": "events",
+   "focus": "other"
   },
   {
    "id": "statsbomb-open",
@@ -260,7 +271,8 @@
    "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://raw.githubusercontent.com/statsbomb/open-data/master/data/competitions.json",
-   "kind": "events"
+   "kind": "events",
+   "focus": "other"
   },
   {
    "id": "wyscout-public",
@@ -281,7 +293,8 @@
    "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://figshare.com/collections/Soccer_match_event_dataset/4415000/2",
-   "kind": "events"
+   "kind": "events",
+   "focus": "other"
   },
   {
    "id": "ncaa-casablanca",
@@ -302,7 +315,8 @@
    "owner": "scout",
    "needs_nick": "none",
    "probe": "https://data.ncaa.com/casablanca/scoreboard/basketball-men/d2/2025/02/15/scoreboard.json",
-   "kind": "events"
+   "kind": "events",
+   "focus": "shared-basketball"
   },
   {
    "id": "euroleague-api",
@@ -323,7 +337,8 @@
    "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://api-live.euroleague.net/v1/results?seasonCode=E2024",
-   "kind": "events"
+   "kind": "events",
+   "focus": "shared-basketball"
   },
   {
    "id": "gleague",
@@ -344,7 +359,8 @@
    "owner": "scout",
    "needs_nick": "none",
    "probe": "https://cdn.nba.com/static/json/liveData/playbyplay/playbyplay_2032400001.json",
-   "kind": "events"
+   "kind": "events",
+   "focus": "shared-basketball"
   },
   {
    "id": "tennis-pbp",
@@ -365,7 +381,8 @@
    "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://github.com/JeffSackmann/tennis_MatchChartingProject",
-   "kind": "events"
+   "kind": "events",
+   "focus": "other"
   },
   {
    "id": "npb",
@@ -386,7 +403,8 @@
    "owner": "scout",
    "needs_nick": "none",
    "probe": "https://npb.jp/robots.txt",
-   "kind": "events"
+   "kind": "events",
+   "focus": "other"
   },
   {
    "id": "kbo",
@@ -407,7 +425,8 @@
    "owner": "scout",
    "needs_nick": "none",
    "probe": "https://www.koreabaseball.com/robots.txt",
-   "kind": "events"
+   "kind": "events",
+   "focus": "other"
   },
   {
    "id": "fiba-livestats",
@@ -428,7 +447,8 @@
    "owner": "scout",
    "needs_nick": "none",
    "probe": "",
-   "kind": "events"
+   "kind": "events",
+   "focus": "shared-basketball"
   },
   {
    "id": "bdb-2027",
@@ -449,7 +469,8 @@
    "owner": "crew A",
    "needs_nick": "join the Big Data Bowl 2027 competition on Kaggle and accept its rules",
    "probe": "https://www.kaggle.com/competitions",
-   "kind": "events"
+   "kind": "events",
+   "focus": "nfl"
   },
   {
    "id": "nhl-edge",
@@ -470,7 +491,8 @@
    "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://api-web.nhle.com/v1/edge/team-landing/now",
-   "kind": "events"
+   "kind": "events",
+   "focus": "other"
   },
   {
    "id": "soccer-tracking-open",
@@ -491,7 +513,8 @@
    "owner": "scout",
    "needs_nick": "none",
    "probe": "https://huggingface.co/datasets/pysport/idsse-data",
-   "kind": "events"
+   "kind": "events",
+   "focus": "other"
   },
   {
    "id": "statcast-full",
@@ -512,7 +535,8 @@
    "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://baseballsavant.mlb.com/robots.txt",
-   "kind": "events"
+   "kind": "events",
+   "focus": "other"
   },
   {
    "id": "polymarket-history",
@@ -533,7 +557,8 @@
    "owner": "crew D",
    "needs_nick": "none",
    "probe": "https://gamma-api.polymarket.com/events?limit=1",
-   "kind": "events"
+   "kind": "events",
+   "focus": "nba"
   },
   {
    "id": "football-data-couk",
@@ -554,7 +579,8 @@
    "owner": "crew D",
    "needs_nick": "none",
    "probe": "https://www.football-data.co.uk/data.php",
-   "kind": "events"
+   "kind": "events",
+   "focus": "other"
   },
   {
    "id": "odds-api-free",
@@ -575,7 +601,8 @@
    "owner": "crew D",
    "needs_nick": "free Odds API key (already on the pending list)",
    "probe": "",
-   "kind": "events"
+   "kind": "events",
+   "focus": "nba"
   },
   {
    "id": "cfbd-api",
@@ -596,7 +623,8 @@
    "status": "needs-nick",
    "owner": "crew A",
    "needs_nick": "register the free CFBD key and add it as a Kaggle secret",
-   "probe": ""
+   "probe": "",
+   "focus": "shared-football"
   },
   {
    "id": "cc-video-metadata",
@@ -617,7 +645,8 @@
    "status": "parked",
    "owner": "crew C",
    "needs_nick": "none",
-   "probe": ""
+   "probe": "",
+   "focus": "other"
   },
   {
    "id": "sportvu-2015",
@@ -638,7 +667,8 @@
    "status": "done",
    "owner": "crew A",
    "needs_nick": "none",
-   "probe": ""
+   "probe": "",
+   "focus": "nba"
   },
   {
    "id": "liiga",
@@ -659,7 +689,8 @@
    "status": "probe",
    "owner": "scout",
    "needs_nick": "none",
-   "probe": "https://liiga.fi/robots.txt"
+   "probe": "https://liiga.fi/robots.txt",
+   "focus": "other"
   },
   {
    "id": "cfl-api",
@@ -680,7 +711,8 @@
    "status": "needs-nick",
    "owner": "crew A",
    "needs_nick": "request a CFL API key (free on request) if Nick wants Canadian football",
-   "probe": ""
+   "probe": "",
+   "focus": "shared-football"
   },
   {
    "id": "f1-timing",
@@ -701,7 +733,8 @@
    "status": "parked",
    "owner": "scout",
    "needs_nick": "none",
-   "probe": ""
+   "probe": "",
+   "focus": "other"
   },
   {
    "id": "afl-fitzroy",
@@ -722,7 +755,8 @@
    "status": "parked",
    "owner": "scout",
    "needs_nick": "none",
-   "probe": ""
+   "probe": "",
+   "focus": "other"
   },
   {
    "id": "nba-stats-events-2015",
@@ -743,7 +777,8 @@
    "status": "done",
    "owner": "crew A",
    "needs_nick": "none",
-   "probe": ""
+   "probe": "",
+   "focus": "nba"
   },
   {
    "id": "statsbomb-amf",
@@ -764,7 +799,8 @@
    "status": "done",
    "owner": "crew A",
    "needs_nick": "none",
-   "probe": "https://github.com/statsbomb/amf-open-data"
+   "probe": "https://github.com/statsbomb/amf-open-data",
+   "focus": "nfl"
   },
   {
    "id": "acb",
@@ -785,7 +821,74 @@
    "status": "probe",
    "owner": "scout",
    "needs_nick": "none",
-   "probe": "https://www.acb.com/robots.txt"
+   "probe": "https://www.acb.com/robots.txt",
+   "focus": "shared-basketball"
+  },
+  {
+   "id": "nba-cdn-wallclock",
+   "kind": "events",
+   "cycle": 16,
+   "priority": 0,
+   "focus": "nba",
+   "name": "NBA.com liveData pbp with wall clocks (timeActual), 2019-20 to 2025-26",
+   "sports": "NBA",
+   "years": "2019-2026",
+   "access": "shufinskiy/nba_data cdnnba tar.xz (GitHub/Kaggle mirror) for history; never touches stats.nba.com",
+   "verdict": "yellow-B",
+   "license": "NBA.com ToS §1/§9 personal non-commercial; catalog #202 yellow (private, credit NBA.com); personal use under plan B",
+   "est_events_m": 4.4,
+   "est_tokens_m": 26,
+   "novelty": 1.5,
+   "raw_gb": 2,
+   "why": "the NBA fix: real wall-clock time on every event, so timeouts, reviews and quarter breaks (where 21% of NBA entries land mid-commercial) have measured lengths per game. Lane 1 already parses these files (#181)",
+   "status": "ready",
+   "owner": "crew A",
+   "needs_nick": "none",
+   "probe": ""
+  },
+  {
+   "id": "nba-l2m",
+   "kind": "context-new",
+   "cycle": 16,
+   "priority": 0,
+   "focus": "nba",
+   "name": "NBA Last Two Minute reports (atlhawksfanatic/L2M)",
+   "sports": "NBA",
+   "years": "2014-15 to 2024-25",
+   "access": "bulk CSV from GitHub",
+   "verdict": "green",
+   "license": "MIT repo over public NBA reports; credit both",
+   "est_events_m": 0.06,
+   "est_tokens_m": 0.35,
+   "novelty": 1.0,
+   "raw_gb": 0.05,
+   "why": "4,479 crunch games the league itself picked, with reviewed calls = long safe stoppages in NBA crunch time (crunch live 90.1%)",
+   "status": "ready",
+   "owner": "crew B",
+   "needs_nick": "none",
+   "probe": ""
+  },
+  {
+   "id": "nba-cdn-nightly",
+   "kind": "events",
+   "cycle": 16,
+   "priority": 0,
+   "focus": "nba",
+   "name": "NBA.com liveData forward collection (every finished game, nightly)",
+   "sports": "NBA",
+   "years": "2026-27 on",
+   "access": "one polite fetch per finished game (~10 a night) from cdn.nba.com liveData on a GitHub Actions schedule; robots first",
+   "verdict": "yellow-B",
+   "license": "NBA.com ToS personal non-commercial; catalog #202 yellow; personal use under plan B",
+   "est_events_m": 0.55,
+   "est_tokens_m": 3.3,
+   "novelty": 1.5,
+   "raw_gb": 0.3,
+   "why": "this season's nights with wall clocks, so the NBA graded set grows past 60 decisions per gate and matches the live feed exactly",
+   "status": "ready",
+   "owner": "crew A",
+   "needs_nick": "none",
+   "probe": "https://cdn.nba.com/robots.txt"
   }
  ],
  "red_found": [
