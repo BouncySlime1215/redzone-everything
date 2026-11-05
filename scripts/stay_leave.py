@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from redzone.lab import oracle as O  # noqa: E402
 from redzone.lab import splits  # noqa: E402
 from redzone.lab import stay_leave as SL  # noqa: E402
+from redzone.lab import stay_leave_ctx as SLC  # noqa: E402
 from redzone.lab.backtest import STREAM_DELAY_S  # noqa: E402
 
 BUFFER_S, FEED_LAG_S, TUNE_S = 60.0, 8.0, 5.0
@@ -159,7 +160,8 @@ def summarize(arms: dict) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("fit", "grade", "fit1714", "grade1714", "grade125", "exp126", "exp128"))
+    ap.add_argument("cmd", choices=("fit", "grade", "fit1714", "grade1714", "grade125", "exp126", "exp128", "exp127"))
+    ap.add_argument("--ctx", type=Path, nargs="*", default=[], help="exp127: crew H pregame CSVs (richest first)")
     ap.add_argument("--extra-root", type=Path, default=None, help="exp128: root holding data/archive of eval-data-v2")
     ap.add_argument("--leagues", default="nba,nfl,nhl")
     ap.add_argument("--split", default="valid", choices=("valid", "test", "train"))
@@ -239,6 +241,42 @@ def main(argv=None) -> int:
         res["extra_nights"] = sorted({f"{lg}:{d}" for lg, d, *_ in ex})
         res["max_iter"] = sel_all
         (a.out / "exp128_valid.json").write_text(json.dumps(res, indent=1, default=float))
+        print("done", flush=True)
+        return 0
+    if a.cmd == "exp127":
+        from redzone.noggin import pick as PK
+        table = SLC.load_tables(a.ctx)
+        tr, va = load(leagues, "train", a.cache), load(leagues, "valid", a.cache)
+
+        def ext(data):
+            return [(lg, d, n, tab, SLC.extend(F, d, [r.gid for r in n.replays], table), HL)
+                    for lg, d, n, tab, F, HL in data]
+        tr, va = ext(tr), ext(va)
+        found = {lg: float(np.mean([F[:, 0, -1].mean() for lg2, _d, _n, _t, F, _h in tr + va if lg2 == lg] or [0]))
+                 for lg in {x[0] for x in tr}}
+        print("ctx rows", len(table), "found share", found, flush=True)
+        heads = {}
+        for tgt in ("nomine", "crunch"):
+            Xt, yt = xy(tr, tgt)
+            Xv, yv = xy(va, tgt)
+            sel = {mi: float(np.mean((SL.fit(Xt, yt, mi).predict(Xv) - yv) ** 2)) for mi in SL.MAX_ITER_GRID}
+            heads[tgt] = SL.fit(Xt, yt, min(sel, key=sel.get))
+        x1 = SL.TwoHead(heads["nomine"], heads["crunch"])
+        b1 = pickle.loads((a.out / "model1714.pkl").read_bytes())["all"]
+        nf = len(SL.CONTEXT_FEATURES)
+        res = {"ctx_found_share": found, "ctx_files": [str(c) for c in a.ctx]}
+        for fl_mode in ("p90", "8"):
+            arms = {k: {} for k in ("full", "A0_past120", "B1_two_heads", "X1_context")}
+            for lg, day, n, tab, F, HL in va:
+                fl = PK.FEED_LAG_P90.get(League(lg), 60.0) if fl_mode == "p90" else 8.0
+                sch = {"full": O.solve(n, "combined", SL.floored(tab, HL)),
+                       "A0_past120": SL.solve_policy(n, fl, tab, F[..., :nf], HL, None, horizon_s=120.0),
+                       "B1_two_heads": SL.solve_policy(n, fl, tab, F[..., :nf], HL, b1),
+                       "X1_context": SL.solve_policy(n, fl, tab, F, HL, x1)}
+                for k, sw in sch.items():
+                    arms[k].setdefault(lg, []).append({"night": day, **SL.night_metrics(n, tab, HL, sw)})
+            res[fl_mode] = {"summary": summarize(arms), "nights": arms}
+        (a.out / "exp127_valid.json").write_text(json.dumps(res, indent=1, default=float))
         print("done", flush=True)
         return 0
     if a.cmd == "exp126":
