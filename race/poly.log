@@ -1,0 +1,2 @@
+{"markets": 1, "games": ["nfl:20261106:JAX@BAL"]}
+{"ticks": 172, "triggers": 0, "reconnects": 0, "file": "out/markets_live/polymarket/nfl/20261105.jsonl", "clock": "recv_ts is this host's UTC clock; keep NTP on", "started": "2026-11-05T14:38:49.522578+00:00"}
