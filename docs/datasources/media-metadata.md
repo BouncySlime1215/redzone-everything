@@ -13,15 +13,31 @@ An editor clipping a play, and how fast people watch it, is a human-made **impor
 the pbp feeds don't carry. It is a small token count but high new information per GB. Feeds the brain's
 importance / worth-it head as a hindsight label, never as a live input it can't have at decision time.
 
+## Priority (Nick 2:00 AM Nov 5): NBA first, then NFL
+
+Queue re-ranked by NBA impact, then NFL. MLB and NHL backfills already running finish (shared data); no new
+MLB/NHL/CBB work starts.
+
+1. **C7 ESPN game-summary videos, NBA + NFL** (new, no key, B): clips ESPN attached to each game, 2024-25 and
+   2025-26 to now. Runs on `media-factory/espn`.
+2. **C4 YouTube @NBA then @NFL** (needs Nick's key): view velocity + daily Top-10.
+3. **C3 NBA direct**: blocked. cdn.nba.com answered 403 to our honest client on the first call (Nov 5 04:31
+   UTC run); stopped, no bypass. NBA coverage comes from C7 + C4 instead.
+4. C1 MLB, C2 NHL: finishing the running backfills only.
+
+Honest scope: media metadata is a hindsight "this play mattered" label for big-plays-seen/live and the
+importance head. It does not fix NBA mid-commercial entries or dead air; those are lane 2 timing work.
+
 ## Crew and sources
 
 | Worker | Source | What we keep | Link to play | Verdict + licence line | Key | Status |
 |---|---|---|---|---|---|---|
 | C1 | MLB Stats API `/game/{pk}/content` | highlight id, headline keywords, taxonomy + player/team tags, publish time, duration | `guid` / play id, gamePk | yellow-B: MLBAM notice, non-commercial individual use; plan B personal use | none | backfill 2023-2025 on `media-factory/mlb` |
 | C2 | NHL api-web `/gamecenter/{id}/landing` + `/right-rail` | per-goal highlight clip id, strength, shot type, period/time; recap + condensed game ids | `eventId` | yellow-B: NHL.com terms restrict scraping; plan B personal use | none | backfill 2023-24 to now on `media-factory/nhl` |
-| C3 | NBA `playbyplayv3` (`videoAvailable`) | which events the NBA clipped | `actionNumber` | yellow-B: NBA.com terms, personal use. Honest UA only; a block or silence stops it (no header spoofing) | none | probe on `media-factory/nba` |
+| C3 | NBA `playbyplayv3` (`videoAvailable`) | which events the NBA clipped | `actionNumber` | yellow-B: NBA.com terms, personal use. Honest UA only; a block or silence stops it (no header spoofing) | none | **blocked**: cdn.nba.com 403 on first call, stopped |
 | C4 | YouTube Data API v3, official channels (@NFL @NBA @NHL @MLB @MarchMadness @ESPNCFB) | title keywords, upload time, duration, views/likes/comments per snapshot, view velocity, chapters, daily Top-10 | title keywords -> game (lane 1 joins) | yellow-B: API Services ToS + Developer Policies; stored stats refreshed or deleted within 30 days; personal use | **Nick: `YOUTUBE_API_KEY` Actions secret** | waiting on key |
 | C6 | YouTube search `videoLicense=creativeCommon` (sports) | PARKED, low priority (Nick 12:15 AM): only if a use emerges, e.g. teaching a vision model what a dead ball looks like. Features extracted on the fly, raw video never stored | n/a | CC BY per video (attribution) | same key | parked |
+| C7 | ESPN site API game summary `videos` (NBA, NFL; CBB/CFB optional) | clip id, headline keywords, duration, publish time, athlete ids, linked play id where present | play id when ESPN tags it | yellow-B: ESPN public API, personal non-commercial use; plan B | none | backfill 2024-25 + 2025-26 on `media-factory/espn` |
 | C5 | Video understanding on public links | report only | n/a | see below | n/a | done (report) |
 
 Quota: YouTube snapshot of 6 channels x 1,000 videos = ~130 units (10k/day free). MLB/NHL at 1 request/s.
