@@ -1,0 +1,40 @@
+# SkyPilot task: the portable trainer on any cloud / Kubernetes / SLURM pool SkyPilot can reach (compute exchange d).
+# Nick launches:  sky launch -c rz-nfm sky/nfm_train.yaml --env PRESET=150m --secret HF_TOKEN
+# (sky check shows which pools his credentials enable; Longleaf / ACCESS / NAIRR via SkyPilot's SLURM or Kubernetes
+# support once granted). Shards come from the private HF dataset; checkpoints go to the private HF model repo every
+# 30 min, so a preempted or timed-out job resumes on any site with the same RUN name.
+name: rz-nfm
+
+resources:
+  any_of:                       # first that is available wins; SkyPilot fails over between them
+    - accelerators: A100:1
+    - accelerators: A100-80GB:1
+    - accelerators: L40S:1
+    - accelerators: tpu-v5e-8
+    - accelerators: tpu-v4-8
+  use_spot: true                # resumable, so preemptible capacity is fine
+  disk_size: 100
+
+envs:
+  PRESET: 150m
+  RUN: EXP-107-150m
+  SHARDS: hf:BouncySlime1215/rz-shards
+  CKPTS: hf:BouncySlime1215/rz-ckpts
+  TRAIN_TOKENS: "1.2e9"
+
+secrets:
+  HF_TOKEN: null                # Nick passes it with --secret HF_TOKEN; never in this file
+
+workdir: .
+
+setup: |
+  pip install -q numpy pandas pyarrow huggingface_hub torch
+  if ls /dev/accel* >/dev/null 2>&1; then
+    pip install -q "torch_xla[tpu]" -f https://storage.googleapis.com/libtpu-releases/index.html
+  fi
+
+run: |
+  if ls /dev/accel* >/dev/null 2>&1; then export PJRT_DEVICE=TPU; fi
+  python scripts/nfm_train.py --out ~/rz/$RUN --shards-from $SHARDS --shards-set v2 \
+    --exchange $CKPTS --run $RUN --preset $PRESET --ctx 2048 --batch 64 \
+    --train-tokens $TRAIN_TOKENS --minutes 600 --exp EXP-107

@@ -1,0 +1,14 @@
+{
+ "note": "Compute exchange ledger (lane 1, Nick 1:15 AM Nov 5). Credits/hours per source, expiry, and what ran where with its grade. No secrets here: tokens live in each site's secret store, added by Nick. Status 'applied' = Nick applied, not granted yet; the router skips anything not 'active'.",
+ "updated": "2026-11-05T06:30:00Z",
+ "sources": {
+  "kaggle_tpu": {"status": "active", "kind": "tpu", "accel": "TPU v5e-8", "chips": 8, "a100_equiv": 4.0, "hours_left_week": 20, "max_session_h": 9, "resets": "weekly", "expires": null, "launcher": "kaggle", "good_for": ["pretrain", "sweep", "eval"]},
+  "kaggle_gpu": {"status": "active", "kind": "gpu", "accel": "2x T4 / P100", "chips": 2, "a100_equiv": 0.35, "hours_left_week": 30, "max_session_h": 12, "resets": "weekly", "expires": null, "launcher": "kaggle", "good_for": ["sweep", "eval", "data"]},
+  "colab_pro_plus": {"status": "active", "kind": "gpu", "accel": "A100 40GB", "chips": 1, "a100_equiv": 1.0, "cu_left": 400, "cu_reserve": 100, "cu_per_a100_h": 13, "max_session_h": 24, "resets": "monthly", "expires": null, "launcher": "colab", "good_for": ["pretrain", "sweep", "eval"]},
+  "unc_longleaf": {"status": "applied", "kind": "slurm", "accel": "A100 / L40", "chips": 4, "a100_equiv": 4.0, "hours_left": null, "expires": null, "launcher": "skypilot-slurm", "good_for": ["pretrain"]},
+  "trc": {"status": "applied", "kind": "tpu", "accel": "TPU v4/v5e pods", "chips": 32, "a100_equiv": 16.0, "hours_left": null, "expires": null, "launcher": "skypilot-gcp", "good_for": ["pretrain"]},
+  "access_nairr": {"status": "applied", "kind": "slurm", "accel": "A100/H100", "chips": 8, "a100_equiv": 10.0, "hours_left": null, "expires": null, "launcher": "skypilot-slurm", "good_for": ["pretrain"]},
+  "azure_students": {"status": "applied", "kind": "cloud", "accel": "credits ($100)", "chips": 1, "a100_equiv": 1.0, "hours_left": null, "expires": null, "launcher": "skypilot-azure", "good_for": ["eval"], "costs_money": true}
+ },
+ "runs": []
+}

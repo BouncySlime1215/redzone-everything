@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ("noggin_factory.py", "noggin_selfplay.py", "train_noggin_pick.py", "kaggle_noggin_factory.py",
            "noggin_tokens.py", "nhl_apiweb.py", "world_model_pilot.py",
-           "retrosheet_plays.py", "nba_cdn_plays.py", "exp022_tpp.py", "green_summaries.py")
+           "retrosheet_plays.py", "nba_cdn_plays.py", "exp022_tpp.py", "exp110_fimpp.py", "green_summaries.py", "noggin_tokens_v2.py", "nfm_train.py")
 SKIP = ("__pycache__", ".pyc", ".db", ".sqlite", ".env", ".log")
 
 
@@ -56,6 +56,8 @@ def main(argv=None) -> int:
                 tar.add(p, f"rz/{p.relative_to(ROOT)}")
         for s in SCRIPTS:
             tar.add(ROOT / "scripts" / s, f"rz/scripts/{s}")
+        for p in sorted((ROOT / "scripts" / "exchange").glob("*.py")):     # compute exchange (store, ckpt, DiLoCo)
+            tar.add(p, f"rz/scripts/exchange/{p.name}")
         tar.add(ROOT / "requirements.txt", "rz/requirements.txt")
     nb = out / "kaggle_noggin_factory.ipynb"
     nb.write_text(json.dumps(notebook(ROOT / "scripts" / "kaggle_noggin_factory.py"), indent=1))
