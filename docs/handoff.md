@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-V8 L4 watchdog rerun started (weights loaded); V8 main UI reconnecting
-RC6.1 tests still running (since 7:24), RC5.1 live; usage 36%
+V8 L4 watchdog training: step 100/1436, ETA ~55 min; V8 main UI still reconnecting
+RC6.1 tests still running (no new deploy lines); usage 36%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
