@@ -71,8 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Coordinator asks overseer for pilot grades.json test block (confidence bounds)
-V8 watchdog 1350/1436, game-reasoner 800/7862; usage 39%
+NHL rule#1 trade question waiting on Nick (review thread)
+L4 watchdog trained, grading test rows; A100 GR step 958/7862
+Usage 39%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
