@@ -155,6 +155,9 @@ def main():
         for part in path:
             node = node.setdefault(part, {})
         node[last] = yaml.safe_load(val)
+    evaldata.flatten_league_overrides(cfg, lg.value)   # [grader v7] league-scoped defaults, as the app runs them
+    if getattr(a, "behind_live", None) is None:   # [grader v8] the buffer the config turns on
+        a.behind_live = evaldata.config_behind_live(cfg, lg.value)
     mine = set(cfg.get(f"teams.{lg.value}") or ["WSH"])
     total = sportsgrade.Card(lg.value)
     t0 = time.time()

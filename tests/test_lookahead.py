@@ -110,3 +110,30 @@ def test_crunch_block_starts_no_catch_up_while_any_game_is_in_crunch():
     dec.cfg = Cfg({})                                  # off by default
     cands["C"].scored.garbage = False
     assert not dec._crunch_on(cands)
+
+
+def test_low_leverage_leave_rules_and_sticky_floors():
+    """[cut rules, Nick Nov 4 3:15 PM] Never JOIN mid-play; LEAVING mid-play is OK at low leverage only.
+    Down the stretch (close and late), crunch, locked moments and your team's game are sticky."""
+    from redzone.decider.decider import Decider
+    from redzone.decider.screen import DelayBook
+
+    class Cfg(dict):
+        def get(self, k, default=None):
+            return super().get(k, default)
+
+    def cand(**kw):
+        base = dict(league=NS(base=NS(value="nba")), crunch=False, crunch_now=False, lock=None, imminent=False,
+                    pre_moment=None, personal=0.0, late=False, garbage=False, closeness=0.9)
+        base.update(kw)
+        return NS(target="youtubetv:a", stale=False, scored=NS(**base))
+    dec = Decider(Cfg({"decider.leave.low_leverage": ["nfl", "nba"]}), DelayBook({}, 15.0))
+    assert dec._leavable(cand())                                       # Q2 of a close game: leavable
+    assert not dec._leavable(cand(late=True))                          # close and late: sticky
+    assert dec._leavable(cand(late=True, closeness=0.3))               # late but not close: leavable
+    assert not dec._leavable(cand(late=True, closeness=0.9, garbage=False, crunch=True))
+    assert not dec._leavable(cand(lock="red zone"))
+    assert not dec._leavable(cand(personal=5.0))                       # your team's game
+    assert not dec._leavable(cand(league=NS(base=NS(value="nhl"))))    # hockey: off (dev: 1-3 mid-play entries)
+    dec.cfg = Cfg({})
+    assert not dec._leavable(cand())                                   # off by default
