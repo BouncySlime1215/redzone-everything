@@ -103,7 +103,7 @@ class BufferShadow:
                    "league": lg, "gid": d.target, "stick": None, "role": None, "behind_s": b,
                    "action": d.action, "target": target, "reason": d.reason, "decision_kind": getattr(d, "kind", ""),
                    "state": getattr(d.state, "value", str(d.state)), "rewind_s": getattr(d, "rewind_s", 0.0),
-                   "editor_on": self.editor.current, "live_on": self.live.current}
+                   "editor_on": self.editor.current, "live_on": self.live.current, "source": None}
             if target:
                 ld = self.live.delays.get(target)
                 row["source"] = getattr(ld, "source", "prior")
