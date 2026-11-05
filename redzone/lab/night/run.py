@@ -255,8 +255,8 @@ class Night:
             "plan": {"verify": False},
         }
         for k, v in (self.cfg_set or {}).items():
-            if k.startswith("league_overrides."):     # league_overrides.<lg>.<flat dotted key>, as evaldata.apply_set
-                _, lg, flat = k.split(".", 2)
+            if k.startswith("league_overrides.") and k.count(".") >= 2:   # league_overrides.<lg>.<flat dotted key>,
+                _, lg, flat = k.split(".", 2)                              # as evaldata.apply_set
                 cfg.setdefault("league_overrides", {}).setdefault(lg, {})[flat] = v
                 continue
             node = cfg
