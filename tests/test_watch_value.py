@@ -213,6 +213,8 @@ def test_aux_arms_change_only_the_target_never_the_features():
         assert ys[arm].shape == wv.shape and (ys[arm] >= 0).all() and (ys[arm] <= 1).all()
     assert np.array_equal(ys["A0"], wv)
     assert not np.array_equal(ys["A1"], wv) and not np.array_equal(ys["A1"], ys["A2"])
+    for arm in TW.ARMS:   # T8 tester finding 1: valid/locked rows keep the swing label in every arm
+        assert np.array_equal(ys[arm][~train], wv[~train]), arm
     with pytest.raises(ValueError):
         TW.aux_targets(rows, by_game, wv, train, "A1", None)
 

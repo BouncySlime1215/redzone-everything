@@ -258,8 +258,11 @@ def aux_targets(rows: list[dict], by_game: dict, wv: np.ndarray, train_mask: np.
             aux = AL.attention_label(gr, _teams(rows[ks[0]].get("matchup", "")), series)
             if arm == "A2":
                 aux = WX.placebo(aux, seed * 100003 + g)
-        y[ks] = WX.mix(wv[ks], aux, AUX_MIX)
-        info["covered_train"] += int((np.isfinite(aux) & train_mask[ks]).sum())
+        tr = train_mask[ks]
+        # engagement goes on TRAIN rows only: valid/locked rows keep y = wv, so early stopping, CV folds and every
+        # grade read the swing label, never an attention label (T8 tester finding 1)
+        y[ks] = np.where(tr, WX.mix(wv[ks], aux, AUX_MIX), wv[ks])
+        info["covered_train"] += int((np.isfinite(aux) & tr).sum())
     return y, info
 
 
@@ -280,7 +283,10 @@ def league(lg: str, archive: Path, cfg, out_dir: Path, crunch_dir: Path = ROOT /
         a, b = labels([rows[k] for k in ks], HORIZON_S[lg])
         wv[ks], pb[ks] = a, b
         cr[ks] = crunch_labels([rows[k] for k in ks], lg)
-    sp = splits.split_nights({r["night"] for r in rows})
+    # the shared per-league split (respects the pin's dev_before); older bases only have split_nights (finding 2)
+    _split = getattr(splits, "league_split", None)
+    nights = {r["night"] for r in rows}
+    sp = _split(lg, nights) if _split else splits.split_nights(nights)
     part = {n: s for s, ns in (("train", sp.train), ("valid", sp.valid), ("test", sp.test)) for n in ns}
     split = np.array([part[r["night"]] for r in rows])
     feats = features_for(League(lg).base.value)
