@@ -50,3 +50,19 @@ def test_grade_leads_and_leader():
     assert res["summary"]["polymarket"]["median_lead_s"] == 6.5
     assert res["summary"]["espn_summary"]["share_ahead_of_screen"] == 0.0
     assert res["leader"] == "app_feed"
+
+
+
+
+def test_one_trigger_per_score_and_in_order_matching():
+    screens = [{"screen_ts": 1000.0, "app_feed_ts": 985.0, "target": "p"},
+               {"screen_ts": 1040.0, "app_feed_ts": 1025.0, "target": "p"}]
+    espn = [{"source": "espn_summary", "recv_ts": 0.0, "score": [0, 0], "prev": None},
+            {"source": "espn_summary", "recv_ts": 1035.0, "score": [0, 3], "prev": [0, 0]},
+            {"source": "espn_summary", "recv_ts": 1060.0, "score": [7, 3], "prev": [0, 3]}]
+    poly = [{"row": "trigger", "game_key": "nfl:1:g", "recv_ts": 990.0}]
+    res = R.grade(screens, espn, poly, "nfl:1:g")
+    a, b = res["rows"]
+    assert a["lead_s"]["espn_summary"] == -35.0 and a["score"] == [0, 3]       # first change -> first screen
+    assert b["lead_s"]["espn_summary"] == -20.0 and b["score"] == [7, 3]       # never reused, never crossed
+    assert "polymarket" in a["lead_s"] and "polymarket" not in b["lead_s"]    # one trigger, one score

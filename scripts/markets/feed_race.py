@@ -97,7 +97,8 @@ def screen_rows(sync_lines, since: float, until: float, target_hint: str = "") -
         t, z = float(r["t"]), float(r["z"])
         tgt = str(r.get("target") or "")
         if since <= t <= until and (not target_hint or target_hint.lower() in tgt.lower()):
-            out.append({"screen_ts": t, "app_feed_ts": t - z, "target": tgt})
+            out.append({"screen_ts": t, "app_feed_ts": t - z, "target": tgt,
+                        **({"score": list(r["score"])} if r.get("score") else {})})
     return sorted(out, key=lambda x: x["screen_ts"])
 
 
@@ -110,20 +111,30 @@ def grade(screens: list[dict], espn: list[dict], poly: list[dict], game_key: str
     for r in espn:
         if r.get("prev") is not None:              # the first poll of a source is not a score change
             by_src.setdefault(r["source"], []).append(r)
-    events, used = [], {s: set() for s in by_src}
+    # sync.jsonl score rows carry no score, so a source's changes are matched IN ORDER (scores happen in the same
+    # order everywhere): each screen change takes the nearest later-unused row after the last match, never crossing.
+    for rows in by_src.values():
+        rows.sort(key=lambda r: r["recv_ts"])
+    events, last = [], {s: -1 for s in by_src}
+    t_used = -1
     for s in screens:
         ev = {"screen_ts": s["screen_ts"], "target": s["target"], "lead_s": {"app_feed": s["screen_ts"] - s["app_feed_ts"]}}
         for src, rows in by_src.items():
+            want = s.get("score")                  # when the screen read carries the score (#326), match on it
             cand = [(abs(r["recv_ts"] - s["screen_ts"]), i) for i, r in enumerate(rows)
-                    if i not in used[src] and abs(r["recv_ts"] - s["screen_ts"]) <= MATCH_S]
+                    if i > last[src] and abs(r["recv_ts"] - s["screen_ts"]) <= MATCH_S
+                    and (want is None or list(r["score"]) == list(want))]
             if cand:
                 i = min(cand)[1]
-                used[src].add(i)
+                last[src] = i
                 ev["lead_s"][src] = s["screen_ts"] - rows[i]["recv_ts"]
                 ev.setdefault("score", rows[i]["score"])
-        p = [t for t in trig if s["screen_ts"] - POLY_BEFORE_S <= t <= s["screen_ts"] + POLY_AFTER_S]
+        # each market trigger counts for one score at most (the first unused one in the window)
+        p = [(j, t) for j, t in enumerate(trig)
+             if j > t_used and s["screen_ts"] - POLY_BEFORE_S <= t <= s["screen_ts"] + POLY_AFTER_S]
         if p:
-            ev["lead_s"]["polymarket"] = s["screen_ts"] - p[0]
+            t_used = p[0][0]
+            ev["lead_s"]["polymarket"] = s["screen_ts"] - p[0][1]
         events.append(ev)
     srcs = sorted({k for e in events for k in e["lead_s"]})
     summary = {}
@@ -145,6 +156,7 @@ def poll_espn(teams: set[str], hours: float, out: Path) -> None:
     s = requests.Session()
     s.headers["User-Agent"] = UA
     cache: dict[str, dict] = {}
+    backoff: dict[str, float] = {}
     log, ev_id, stop = ChangeLog(), None, time.time() + hours * 3600
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("a") as fh:
@@ -167,9 +179,16 @@ def poll_espn(teams: set[str], hours: float, out: Path) -> None:
                     time.sleep(POLL_S)
                     continue
                 recv = time.time()
-                if r.status_code == 429:
-                    time.sleep(30)
+                if r.status_code in (403, 429) or r.status_code >= 500:   # back off: rate-limit manners
+                    backoff[name] = min(300.0, backoff.get(name, 2.5) * 2)  # 5 s, doubling, like sources/http.py
+                    try:
+                        wait = max(backoff[name], float(r.headers.get("Retry-After") or 0))
+                    except ValueError:
+                        wait = backoff[name]
+                    print(f"{name}: HTTP {r.status_code}, backing off {wait:.0f} s", file=sys.stderr)
+                    time.sleep(wait)
                     continue
+                backoff.pop(name, None)
                 if r.status_code == 200:
                     cache[name] = {"etag": r.headers.get("ETag"), "lm": r.headers.get("Last-Modified")}
                     doc = r.json()
