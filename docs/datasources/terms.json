@@ -93,6 +93,11 @@
     "nick_live_nights": "open",
     "teacher": "open",
     "self_play": "open",
-    "oracle": "open"
+    "oracle": "open",
+    "liiga": "restrictive",
+    "cfl": "restrictive",
+    "f1_timing": "restrictive",
+    "fastf1": "restrictive",
+    "afl": "restrictive"
   }
 }
