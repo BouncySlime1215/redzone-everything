@@ -17,3 +17,12 @@ def test_no_overrides_changes_nothing():
     cfg = SimpleNamespace(data={"decider": {"entry": {"cue": "seek"}}})
     assert evaldata.flatten_league_overrides(cfg, "nhl") == {}
     assert cfg.data == {"decider": {"entry": {"cue": "seek"}}}
+
+
+def test_buffer_comes_from_the_config_when_enabled():
+    on = SimpleNamespace(data={"timing": {"behind_live_s": {"enabled": True, "by_league": {"nba": 90, "nfl": 60},
+                                                            "default": 60}}})
+    assert evaldata.config_behind_live(on, "nba") == 90.0
+    assert evaldata.config_behind_live(on, "mlb") == 60.0
+    off = SimpleNamespace(data={"timing": {"behind_live_s": {"enabled": False, "by_league": {"nba": 90}}}})
+    assert evaldata.config_behind_live(off, "nba") is None

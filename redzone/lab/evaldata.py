@@ -171,3 +171,15 @@ def flatten_league_overrides(cfg, league: str) -> dict:
             node = node.setdefault(part, {})
         node[last] = value
     return dict(over)
+
+
+def config_behind_live(cfg, league: str) -> float | None:
+    """[grader v8] The time-shift buffer the app would run for `league` from its own config
+    (timing.behind_live_s: enabled, by_league, default), or None when it's off. Scorecards use it when no
+    --behind-live is given, so a tree whose defaults turn the buffer on is graded with it. Serves: release gate."""
+    tb = ((cfg.data.get("timing") or {}).get("behind_live_s") or {})
+    if not tb.get("enabled"):
+        return None
+    by = tb.get("by_league") or {}
+    v = by.get(league, tb.get("default"))
+    return float(v) if v is not None else None

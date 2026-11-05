@@ -521,6 +521,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `league_overrides[<graded league>]` onto the run's config, after `--set`
   (`redzone/lab/evaldata.flatten_league_overrides`). A single-league scorecard therefore grades exactly the
   league-scoped defaults RC7 ships. With no `league_overrides` nothing changes. Grader freeze v7.
+- 2026-11-05 (integrator, grader v8, lane 2's catch): when no `--behind-live` is given, scorecards take the time-shift buffer
+  from the flattened config (`timing.behind_live_s`: enabled, by_league, default), through
+  `evaldata.config_behind_live`. A tree whose defaults turn the buffer on is now graded with it. On 2 NBA nights,
+  `--set timing.behind_live_s.enabled=true` and `--behind-live 90` give identical cards. With the shipped defaults (off),
+  nothing changes. Grader freeze v8.
 - **2026-11-05 (lane 2, RC7):** new default `league_overrides` (redzone/default_config.yaml). NBA and NHL run the
   promoted set; NFL runs EXP-203; CFB, CBB, WCBB and MLB keep live behavior. Overrides are keyed by the FULL
   league (`cbb` never inherits `nba`'s). Why: Nick, Nov 4 8:20 / 8:40 PM, per-league promotion as
