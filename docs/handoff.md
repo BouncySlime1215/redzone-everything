@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick 1:55 PM FIRM: 8 concurrent threads all day. Safety net: at 84% usage before games end, drop to 3 threads (T1 buffer shadow, T4 YTTV, T5 TNF). 88% hard stop stands. Usage 72%.
+Usage 73% at ~2:10 PM with 8 threads (Nick's firm cap). Safety net at 84% -> 3 threads. 3 PM readiness table next.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
