@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**272 modules**, 217 untagged, 113 unowned, 10 orphans (no importer).
+**274 modules**, 219 untagged, 115 unowned, 10 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -210,7 +210,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (113)
+## unowned (115)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -243,13 +243,14 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/night/smartthings.py` | [switch timing] The e2e night's TV with the SmartThings input change, at the latency measured on the user's TV (live lab Nov 4 2026: 64 of 64 confirmed, 0 re... | - -> lab.night.run | untagged |
 | `redzone/lab/night/vclock.py` | Virtual time for the end-to-end night: hours of a real night run in minutes. | - -> lab.night.__main__, lab.night.run | untagged |
 | `redzone/lab/night_ab.py` | Whole-night A/B for display experiments (lane 5): one number per night on each side, a bootstrap interval on mean(on) - mean(off), and a PASS / FAIL / PENDIN... | - -> lab.also_close | untagged |
+| `redzone/lab/offpolicy.py` | [EXP-005] Off-policy grading: how a NEW decider would have done on nights the live one already ran, from the live decisions' logged option sets and propensit... | lab.worth -> scripts.offpolicy_score | untagged |
 | `redzone/lab/oracle.py` | Hindsight oracle: the best schedule anyone could have run on an archived night (offline only). | grading, lab.backtest, lab.cutgrade, lab.sportsgrade, models, sources.espn -> scripts.eval, scripts.eval_sports, scripts.train_noggin_pick, scripts.train_noggin_pick_dagger | untagged |
 | `redzone/lab/orient.py` | [EXP-038] Grade the orientation beat: do overrides right after an automatic switch drop when the phone shows a 2-3 s "who, score, clock, one fact" beat? | config -> scripts.also_close_line, scripts.orient_line | untagged |
 | `redzone/lab/reasoner_data.py` | Training rows for the live game reasoner, distilled from the archive (no paid APIs). | config, lab.backtest, lab.sportsgrade, models, reasoner.brief, scoring.engine +1 -> agent.kaggle.build_moments_kaggle, scripts.build_reasoner_data, scripts.eval_reasoner, scripts.export_reasoner_llm, scripts.train_reasoner | untagged |
 | `redzone/lab/splits.py` | Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03). | - -> lab.breakblend, lab.tune, scripts.backfill_eval_v2, scripts.eval, scripts.eval_sports, scripts.leak_check | untagged |
 | `redzone/lab/syncsim.py` | [auto sync] Sync-error scorecard: how far the delay the app uses is from the screen's real delay. | decider.screen -> scripts.eval_sync | untagged |
 | `redzone/lab/timing.py` | [switch timing] How late we learn about a dead ball, and what that leaves before it airs on screen. | grading -> lab.backtest, scripts.burst_align, scripts.timing_report | untagged |
-| `redzone/lab/worth.py` | [EXP-040] The end-of-night "worth it?" rating as an evaluation line (watch-science playbook §6). | - -> scripts.worth_line | untagged |
+| `redzone/lab/worth.py` | [EXP-040] The end-of-night "worth it?" rating as an evaluation line (watch-science playbook §6). | - -> lab.offpolicy, scripts.worth_line | untagged |
 | `redzone/memory.py` | Project memory for the AI that repairs RedZone (watchdog, auto-fix brain). | - -> agent.watchdog, scripts.context_pack | untagged |
 | `redzone/models_rt/__init__.py` (package) | [one brain, step 4] Runtime model code shared by every tree model (forest.py). | - -> - | untagged |
 | `redzone/models_rt/forest.py` | [one brain, step 4] One tree walker and one model loader (docs/onebrain-migration.md). | - -> noggin.pick, noggin.predict, noggin.timing, reasoner.head, scoring.brain, scoring.brain3 | untagged |
@@ -310,6 +311,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/night_report.py` (entry) | Night health report: one page per night, written every morning to docs/nights/YYYY-MM-DD.md (cycle 04 build (a), lane 4). | config -> - | STK-06 |
 | `scripts/noggin_factory.py` (entry) | Noggin data factory: labeled dead-ball moments from public play-by-play (redzone/noggin/factory.py). | models, noggin.factory, sources.espn -> - | untagged |
 | `scripts/northstar.py` (entry) | The North Star table: where we are against "perfect", in one place, with honest error bars. | lab.cutgrade, noggin.profile -> - | STK-06 |
+| `scripts/offpolicy_score.py` (entry) | [EXP-005] Score a candidate decider off-policy on logged nights (redzone/lab/offpolicy.py). | lab.offpolicy -> - | untagged |
 | `scripts/orient_line.py` (entry) | [EXP-038] Print the orientation-beat line: override rates on nights with phone.orient on vs off. | lab.orient, web.phone_v2 -> - | untagged |
 | `scripts/perf_probe.py` (entry) | RAM/CPU line for the PR comment: the live decide() tick on a synthetic slate, startup, and peak RSS. | config, engine, models, store -> - | untagged |
 | `scripts/playbook_coverage.py` (entry) | Playbook coverage (docs/playbooks.md): which entries have a night-lab / unit test that RAN and passed. | - -> - | SAFE-01 |
@@ -328,7 +330,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/tv_local_probe.py` (entry) | Time the TV's local input keys against SmartThings, on Nick's TV (~1 minute, Nick at the TV). | tv -> - | untagged |
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 
-## Untagged (217)
+## Untagged (219)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -412,6 +414,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/night/smartthings.py`
 - `redzone/lab/night/vclock.py`
 - `redzone/lab/night_ab.py`
+- `redzone/lab/offpolicy.py`
 - `redzone/lab/optimize.py`
 - `redzone/lab/oracle.py`
 - `redzone/lab/orient.py`
@@ -520,6 +523,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/leak_check.py`
 - `scripts/multiview_probe.py`
 - `scripts/noggin_factory.py`
+- `scripts/offpolicy_score.py`
 - `scripts/orient_line.py`
 - `scripts/perf_probe.py`
 - `scripts/plan_tonight.py`
