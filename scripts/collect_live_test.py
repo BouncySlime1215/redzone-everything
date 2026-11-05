@@ -204,8 +204,16 @@ def summarize(got: dict[str, list[dict]]) -> dict:
         "switch_samples": len(tv), "switch_p50_s": round(sorted(tv)[len(tv) // 2], 2) if tv else None,
         "switch_p95_s": p95(tv), "switch_max_s": round(max(tv), 2) if tv else None,
         "tv_unverified": sum(1 for r in got["tv_input.jsonl"] if not r.get("verified")),
-        "cuts_graded": len(cuts), "entries_mid_play": sum(1 for r in cuts if r.get("enter") == "play" and not r.get("forced")),
+        # [lane 3, Nov 5] Rule #1 counts the entries the app chose. A phone tap (kind user) goes where you
+        # sent it: its own line, like the double "Go now" (forced). "unknown" = no dead window known.
+        "cuts_graded": len(cuts),
+        "entries_mid_play": sum(1 for r in cuts if r.get("enter") == "play" and not r.get("forced")
+                                and r.get("kind") != "user"),
+        "entries_mid_play_user": sum(1 for r in cuts if r.get("enter") == "play" and not r.get("forced")
+                                     and r.get("kind") == "user"),
         "entries_mid_play_forced": sum(1 for r in cuts if r.get("enter") == "play" and r.get("forced")),
+        "entries_unknown": sum(1 for r in cuts if r.get("enter") == "unknown"),
+        "entries_measured_delay": sum(1 for r in cuts if (r.get("enter_delay") or {}).get("src") == "measured"),
         "leaves_mid_play": sum(1 for r in cuts if r.get("leave") == "play"),
         "picture_within_3s": f"{sum(1 for x in pics if x <= 3)}/{len(pics)}" if pics else None,
         "picture_p95_s": p95(pics),
@@ -295,7 +303,10 @@ def main(argv=None) -> int:
     md = [f"# Live test logs since {s['since']}", "",
           f"- Switches (TV-confirmed): {s['switch_samples']}, p95 {s['switch_p95_s']} s, max {s['switch_max_s']} s, "
           f"unverified {s['tv_unverified']}",
-          f"- Cuts graded: {s['cuts_graded']}; entries mid-play {s['entries_mid_play']} (+{s.get('entries_mid_play_forced', 0)} on your double Go now), leaves mid-play {s['leaves_mid_play']}",
+          f"- Cuts graded: {s['cuts_graded']}; entries mid-play {s['entries_mid_play']} chosen by the app "
+          f"(+{s.get('entries_mid_play_user', 0)} on your taps, +{s.get('entries_mid_play_forced', 0)} on your double "
+          f"Go now; {s.get('entries_unknown', 0)} unknown: no dead ball on record; "
+          f"{s.get('entries_measured_delay', 0)} graded on a measured delay), leaves mid-play {s['leaves_mid_play']}",
           f"- Picture within 3 s: {s['picture_within_3s']}; cut -> picture p95 {s['picture_p95_s']} s",
           f"- Phone presses (decided kind=user -> picture): {s['press_samples']}, press-to-TV p95 "
           f"{s['press_to_tv_p95_s']} s, {s['press_no_picture']} never reached a picture",
