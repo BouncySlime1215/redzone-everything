@@ -42,10 +42,10 @@ RUNUP = {League.NBA: (4, 120.0, 240.0, 6, 0.5), League.NHL: (3, 120.0, 240.0, 1,
 
 MIN_HAZARD = 0.3        # a target needs at least this
 MARGIN = 0.15           # ...and this much more than what's on screen
-MIN_GAP_S = 60.0        # never a pre-big switch within this long of the last switch
-HOLD_S = {League.NFL: 240.0, League.NBA: 240.0, League.NHL: 180.0}   # hold the build-up at most this long
+PREBIG_MIN_GAP = 60.0        # never a pre-big switch within this long of the last switch
+PREBIG_HOLD = {League.NFL: 240.0, League.NBA: 240.0, League.NHL: 180.0}   # hold the build-up at most this long
 KEEP_KINDS = {"user", "crunch", "must_see", "ended", "home", "return", "resume", "skip", "replay_resume", "start"}
-KIND = "prebig"
+PREBIG_KIND = "prebig"
 
 
 @dataclass
@@ -104,10 +104,10 @@ def apply(dec, d, cands: dict, now: float):
     cur = dec.current
     on = cands.get(cur) if cur else None
 
-    # 1. Holding the build-up: stay on the game we came for while its signal lasts (and HOLD_S at most).
+    # 1. Holding the build-up: stay on the game we came for while its signal lasts (and PREBIG_HOLD at most).
     if st and cur == st[0] and on is not None:
         lg = on.scored.league.base
-        if now - max(st[1], dec.since) <= HOLD_S.get(lg, 180.0) and signal(on.scored, dec.timelines.get(cur)).hazard >= MIN_HAZARD:
+        if now - max(st[1], dec.since) <= PREBIG_HOLD.get(lg, 180.0) and signal(on.scored, dec.timelines.get(cur)).hazard >= MIN_HAZARD:
             if d.action == "switch" and d.target != cur and d.kind not in KEEP_KINDS \
                     and d.target not in dec._yours:
                 x = cands.get(d.target)
@@ -124,7 +124,7 @@ def apply(dec, d, cands: dict, now: float):
     if cur is not None:
         if on is None or cur in dec._yours or on.scored.crunch or on.scored.crunch_now or on.scored.lock:
             return d
-    if dec.history and now - dec.history[-1][0] < MIN_GAP_S:
+    if dec.history and now - dec.history[-1][0] < PREBIG_MIN_GAP:
         return d
     here = signal(on.scored, dec.timelines.get(cur)).hazard if on is not None else 0.0
     best, why = None, None
@@ -143,7 +143,7 @@ def apply(dec, d, cands: dict, now: float):
                             d.state, gate.why if gate else "", want=best)
     dec._prebig = (best, now, why.label)
     return Decision(now, "switch", best, f"prebig: {why.label} ({why.hazard:.2f} vs {here:.2f})",
-                    d.state if isinstance(d.state, State) else State.WATCHING, kind=KIND)
+                    d.state if isinstance(d.state, State) else State.WATCHING, kind=PREBIG_KIND)
 
 
 def with_prebig(decider_cls):

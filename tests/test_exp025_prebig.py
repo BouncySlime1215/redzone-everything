@@ -82,7 +82,7 @@ def test_switches_to_the_game_about_to_have_a_big_snap():
     dec = fake_dec()
     cands = {"a": cand(scored()), "b": cand(scored(pre="3rd & goal"))}
     out = prebig.apply(dec, stay(), cands, 1000.0)
-    assert out.action == "switch" and out.target == "b" and out.kind == prebig.KIND
+    assert out.action == "switch" and out.target == "b" and out.kind == prebig.PREBIG_KIND
 
 
 def test_waits_for_the_leave_gate():

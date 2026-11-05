@@ -2,7 +2,7 @@
 
 SECONDARY info line, computed here (not a frozen grader): for every graded big play (grading.is_big)
 that was watched live start to finish, how many seconds of THAT game the screen had already shown,
-continuously, before the play started airing (capped at CAP_S, so one long stay doesn't dominate).
+continuously, before the play started airing (capped at BUILDUP_CAP, so one long stay doesn't dominate).
 A big play not seen live counts 0 in the all-plays mean. Uses the archive's true wallclocks and the
 true screen lag, like sportsgrade.
 
@@ -18,8 +18,8 @@ from redzone.grading import PLAY_LEN, is_big, lag_of
 from redzone.lab import backtest
 from redzone.lab.backtest import offsets_of, watched_whole
 
-CAP_S = 180.0
-ARRIVED_S = 20.0   # "arrived before it": at least this much of the build-up on screen
+BUILDUP_CAP = 180.0
+ARRIVED_MIN = 20.0   # "arrived before it": at least this much of the build-up on screen
 
 
 def visit_before(watching, offsets, gid: str, start: float, end: float, tune_s: float) -> float | None:
@@ -52,7 +52,7 @@ def buildup(replays, switches, lag_true, tune_s: float, horizon: float) -> list[
                 start = end - PLAY_LEN.get(lg, 0.0)
                 if watched_whole(watching, r.gid, start, end, tune_s, horizon, offs):
                     v = visit_before(watching, offs, r.gid, start, end, tune_s)
-                    out.append(min(CAP_S, max(0.0, v if v is not None else 0.0)))
+                    out.append(min(BUILDUP_CAP, max(0.0, v if v is not None else 0.0)))
                 else:
                     out.append(None)
             prev = p
@@ -64,7 +64,7 @@ def summarize(values: list[float | None]) -> dict:
     return {"big": len(values), "big_live": len(live),
             "buildup_median_s": round(statistics.median(live), 1) if live else None,
             "buildup_mean_all_s": round(sum(live) / len(values), 1) if values else None,
-            "arrived_before": sum(v >= ARRIVED_S for v in live)}
+            "arrived_before": sum(v >= ARRIVED_MIN for v in live)}
 
 
 @contextlib.contextmanager
