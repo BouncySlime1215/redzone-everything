@@ -4,6 +4,8 @@ New-information tokens = emitted market events from observed prices x 6 (`script
 Derived tokens (anything we compute from prices) are counted on their own row with novelty 0.
 Every row is tagged `personal-use, not for commercial release` (plan B). Inputs only: never shown, never a nudge.
 
+Queue order (Nick 2:00 AM Nov 5): NBA first, then NFL; other leagues only as shared code or pretraining.
+
 | Source | Leagues | Years | Verdict (license line) | Status | Est. new-info tokens | Landed new-info tokens | Derived tokens | Nick action |
 |---|---|---|---|---|---:|---:|---:|---|
 | Polymarket public APIs ([polymarket.md](polymarket.md)) | six product + pretraining | 2024-07+ | yellow-B: documented public read APIs need no account; ToS §4.2 bars bots on the Site and data resale by market firms, §5.1 personal revocable license; personal-use, not for commercial release | code ready, Kaggle run pending (EXP-1300) | ~10-11M product, +12-24M pretraining | 0 | 0 | none |
