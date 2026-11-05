@@ -77,3 +77,18 @@ the probe must also log `/proc/uptime` (or the extrapolated value).**
   different content type (Prime Video Channels / linear) or player path. Test on TNF tonight on both sticks.
 - **Code change (lane 2):** in the probe/controller, if the Prime position > 1e12 ms, treat it as an epoch and expose
   `prime_behind_s = now - pos_now` per stick. This alone gives Prime sync to well under a second vs Amazon's clock.
+
+## Update ~3:35 AM: Prime pinned to the real game (Nick: "Yes, read it")
+
+- **Nick approved (3:30 AM): code may screenshot Prime's picture to read the scorebug** (score + game clock).
+  Numbers only are stored; no frames are kept. Prime isn't DRM-blanked in `screencap` (YouTube TV is), so this
+  isn't a bypass of anything.
+- `data/sync.jsonl` (Nov 4) already has 2 Prime scorebug clock samples from the app's sync filter:
+  **screen = 15.8 s and 16.2 s behind the real game** (sd 1.5).
+- Prime `position` (epoch) puts the screen **6.4 s behind Amazon's frame clock**. So **Amazon's frame clock ≈
+  arena - 9.6 s**, and on screen: real_time = position_epoch - ~9.6 s, every second, code only.
+- YouTube TV ESPN: the app's prior is 29 s (sd 8); the ad-burst estimate is ~20-30 s. Consistent.
+- **Next (lane 2, for TNF tonight):** (1) make Prime's epoch position a sync signal (sd ~0.1 s relative);
+  (2) take scorebug clock reads at the highest safe cadence while a Prime game is on (screenrecord at 640x360
+  if screencap is too slow, ~7 s per frame on HDMI1); (3) fuse into K = arena - frame clock per Prime stream.
+  Target sd <= 0.5 s after ~20 reads. Then the shadow join test (C4) gates mid-air joins.
