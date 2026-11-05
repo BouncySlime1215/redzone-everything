@@ -114,3 +114,16 @@ reach nba.com). `context-nba.yml` refuses to run until `docs/datasources/terms.j
 `"nba_terms_review": "allowed"`. If the terms forbid automated collection, these jobs are dropped and NBA injuries
 come from another public source (for example hoopR/ESPN injury fields under plan B, after their own check).
 The first test run (Nov 1-4, 2025) was cancelled while queued, before any request to nba.com.
+
+### Terms review (Nov 5, 2026, 2:35 AM ET)
+
+nba.com's terms of use (21 sections) were read. They contain no clause on robots, scraping, crawling or AI use.
+They allow downloading material "for your personal, noncommercial use" (section 1), but forbid republishing
+Basketball Content (section 1). NBA Statistics may be used only for private, noncommercial purposes, with credit to
+NBA.com, and not in a public database of comprehensive league statistics (section 9).
+
+Result: the pull is allowed for this personal project, but **not on GitHub Actions**, because that job pushes its
+outputs to a public branch. The hold in `context-nba.yml` stays. The pull runs on Kaggle CPU instead and writes only to the private
+`context-features` dataset, still checking robots.txt first. Command for the overseer:
+`python scripts/context/nba_injuries.py injuries --from 2018-12-01 --to <today> --out /kaggle/working/nba-inj` (add `--player-box` hoopR player_box parquet files for star_out)
+(see the script's `--help`). The license line credits NBA.com.
