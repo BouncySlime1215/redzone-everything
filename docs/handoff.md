@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick 12:00 PM: UVP = which game to watch when. Ordered: daily pre-game report for every upcoming game (stakes, storylines, rookies + draft capital + hype, own-fan sentiment, injuries, line moves, milestones...) + historical backfill; train the prioritization model fast (first graded version tonight, bigger this weekend).
+Nick 12:10 PM: newest-first data + incremental training (this season -> last 2-3 seasons -> older); tonight runs the best available prioritization model. Fan sentiment newest-first; Reddit key pending.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
