@@ -92,6 +92,19 @@
    "kind": "events"
   },
   {
+   "source": "statsbomb_amf",
+   "league": "nfl",
+   "seasons": "2017-2022",
+   "shards": 6,
+   "games": 108,
+   "events": 729079,
+   "v1_tokens": 4374906,
+   "bytes": 10733180,
+   "license": "StatsBomb Public Data User Agreement (amf-open-data): research and genuine interest; credit StatsBomb + logo if published; plan B personal use",
+   "tag": "personal-use, not for commercial release",
+   "kind": "events"
+  },
+  {
    "source": "statsbomb",
    "league": "nwsl",
    "seasons": "2018-2023",
@@ -353,11 +366,11 @@
   }
  ],
  "total": {
-  "shards": 81,
-  "games": 4582,
-  "events": 14199169,
-  "v1_tokens": 85213342,
-  "bytes": 141968980
+  "shards": 87,
+  "games": 4690,
+  "events": 14928248,
+  "v1_tokens": 89588248,
+  "bytes": 152702160
  },
  "tracking": {
   "shards": 2,

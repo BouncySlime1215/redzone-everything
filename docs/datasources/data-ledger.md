@@ -63,3 +63,6 @@ project files under data-a/pbp/statsbomb (135 MB).
 Nov 5 2026 06:05 UTC: SportVU NBA tracking 2015-16, 621 games (94 not in the dump, 4 dropped), 2.05M rows of 1 Hz
 wall-clock summaries (ball position, speed, handler, live/dead; side table: team speed, spacing, ball height). Counted
 as tracking, apart from events. Personal-use tag; derived numbers only, never re-uploaded. data-a/pbp/nba_sportvu + sportvu_extra (103 MB).
+Nov 5 2026 06:40 UTC: NBA.com stats pbp for those 621 games (287k events, 10-digit ids, joins SportVU). StatsBomb
+American football (#TB12DB): 108 NFL games 2017-22, 729k events (about 60% are pathing/engagement annotations; ~0.4k
+core play actions per game), plus low-frequency tracking 2021-22 (37 games, 31k rows, counted as tracking). Personal-use tag.

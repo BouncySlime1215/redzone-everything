@@ -1,0 +1,22 @@
+[
+ {
+  "game_id": 1502070,
+  "game_date": "2021-09-19",
+  "nfl_game_id": "2021_02_ATL_TB",
+  "competition_id": 1409,
+  "competition_name": "NFL",
+  "season_id": 224,
+  "season_name": 2021,
+  "home_team": {
+   "name": "Tampa Bay Buccaneers",
+   "team_id": 1000947,
+   "nfl_team_id": "TB"
+  },
+  "away_team": {
+   "name": "Atlanta Falcons",
+   "team_id": 1001395,
+   "nfl_team_id": "ATL"
+  },
+  "url": "https://raw.githubusercontent.com/statsbomb/amf-open-data/main/data/tracking/SB_tracking_20210919_ATL_TB.json.gz"
+ }
+]
