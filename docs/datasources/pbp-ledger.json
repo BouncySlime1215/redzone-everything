@@ -14,6 +14,19 @@
    "kind": "events"
   },
   {
+   "source": "sportvu",
+   "league": "nba",
+   "seasons": "2016-2016",
+   "shards": 1,
+   "games": 621,
+   "events": 2054040,
+   "v1_tokens": 12326724,
+   "bytes": 34154398,
+   "license": "SportVU 2015-16 (NBA/STATS LLC content, mirror has no licence); plan B personal use, private training only, never re-upload; credit NBA / STATS LLC",
+   "tag": "personal-use, not for commercial release",
+   "kind": "tracking"
+  },
+  {
    "source": "statsbomb",
    "league": "ligue_1",
    "seasons": "2016-2023",
@@ -311,20 +324,33 @@
    "license": "StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published)",
    "tag": "personal-use, not for commercial release",
    "kind": "events"
+  },
+  {
+   "source": "sportvu_extra",
+   "league": "nba",
+   "seasons": "2016-2016",
+   "shards": 1,
+   "games": 0,
+   "events": 0,
+   "v1_tokens": 0,
+   "bytes": 72584434,
+   "license": "SportVU 2015-16 (NBA/STATS LLC content, mirror has no licence); plan B personal use, private training only, never re-upload; credit NBA / STATS LLC",
+   "tag": "personal-use, not for commercial release",
+   "kind": "events"
   }
  ],
  "total": {
-  "shards": 80,
+  "shards": 81,
   "games": 3961,
   "events": 13911986,
   "v1_tokens": 83487760,
-  "bytes": 140347155
+  "bytes": 212931589
  },
  "tracking": {
-  "shards": 0,
-  "games": 0,
-  "events": 0,
-  "v1_tokens": 0,
-  "bytes": 0
+  "shards": 1,
+  "games": 621,
+  "events": 2054040,
+  "v1_tokens": 12326724,
+  "bytes": 34154398
  }
 }

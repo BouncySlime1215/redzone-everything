@@ -7,6 +7,7 @@ Only shards that landed in the private Kaggle dataset count. Every token here is
 | Source | League | Seasons | Games | Events | v1 tokens (M) | GB | Tag | License line |
 |---|---|---|---:|---:|---:|---:|---|---|
 | statsbomb | la_liga | 1974-2021 | 867 | 3,132,716 | 18.8 | 0.03 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
+| sportvu | nba | 2016-2016 | 621 | 2,054,040 | 12.3 | 0.03 | personal-use, not for commercial release | SportVU 2015-16 (NBA/STATS LLC content, mirror has no licence); plan B personal use, private training only, never re-upload; credit NBA / STATS LLC |
 | statsbomb | ligue_1 | 2016-2023 | 435 | 1,589,849 | 9.5 | 0.02 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | fa_women_s_super_league | 2019-2024 | 457 | 1,587,305 | 9.5 | 0.02 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | premier_league | 2004-2016 | 418 | 1,443,174 | 8.7 | 0.01 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
@@ -30,4 +31,6 @@ Only shards that landed in the private Kaggle dataset count. Every token here is
 | statsbomb | liga_profesional | 1981-1998 | 2 | 6,658 | 0.0 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | fifa_u20_world_cup | 1979-1979 | 1 | 3,245 | 0.0 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | north_american_league | 1977-1977 | 1 | 3,205 | 0.0 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
-| **Total events** | | | | 3,961 | 13,911,986 | 83.5 | 0.14 | | |
+| sportvu_extra | nba | 2016-2016 | 0 | 0 | 0.0 | 0.07 | personal-use, not for commercial release | SportVU 2015-16 (NBA/STATS LLC content, mirror has no licence); plan B personal use, private training only, never re-upload; credit NBA / STATS LLC |
+| **Total events** | | | | 3,961 | 13,911,986 | 83.5 | 0.21 | | |
+| **Total tracking** | | | | 621 | 2,054,040 | 12.3 | 0.03 | | |

@@ -60,3 +60,6 @@ New pbp sources land as play-table shards (scripts/pbp/schema.py) and are counte
 information). Nov 5 2026 05:00 UTC: StatsBomb open data, all 80 competition-seasons, 3,961 matches, 13.9M events,
 83.5M v1 tokens, 0 games dropped. Tagged personal-use (StatsBomb user agreement, credit StatsBomb; terms.json class restrictive). Held privately in the
 project files under data-a/pbp/statsbomb (135 MB).
+Nov 5 2026 06:05 UTC: SportVU NBA tracking 2015-16, 621 games (94 not in the dump, 4 dropped), 2.05M rows of 1 Hz
+wall-clock summaries (ball position, speed, handler, live/dead; side table: team speed, spacing, ball height). Counted
+as tracking, apart from events. Personal-use tag; derived numbers only, never re-uploaded. data-a/pbp/nba_sportvu + sportvu_extra (103 MB).
