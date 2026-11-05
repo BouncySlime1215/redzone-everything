@@ -146,7 +146,7 @@ def test_floor_holds_even_when_hysteresis_state_says_leave():
     m = _model()
     st = None
     for i in range(6):                                 # build up a state on a low-leverage blowout
-        _, _, st = _decide(m, ctx(League.NBA, 2, 400 - i * 10, 70, 40, stay=10.0, alt=90.0, ts=float(i * 30)), st)
+        _, _, st = _decide(m, ctx(League.NBA, 2, 400 - i * 10, 70, 40, stay=0.0, alt=9.0, ts=float(i * 30)), st)
     _, act, _ = _decide(m, ctx(League.NBA, 4, 60, 101, 100, stay=0.0, alt=HUGE, ts=400.0), st)
     assert act == "stay"
 
@@ -156,7 +156,7 @@ def test_the_model_is_not_stuck_on_stay(lg, per, left, h, a):
     """Sanity: the floor test means nothing if the model never leaves. A dead low-leverage game with a far
     better alternative must leave."""
     m = _model()
-    _, act, _ = _decide(m, ctx(lg, per, left, h, a, stay=1.0, alt=99.0))
+    _, act, _ = _decide(m, ctx(lg, per, left, h, a, stay=0.0, alt=9.0))
     assert act == "leave"
 
 
@@ -168,38 +168,60 @@ def _low(stay, alt, ts, **k):
 
 def test_an_alternative_barely_above_staying_does_not_trigger_a_leave():
     m = _model()
-    _, act, _ = _decide(m, _low(50.0, 50.0 + 1e-6, 0.0))
+    _, act, _ = _decide(m, _low(4.0, 4.0 + 1e-6, 0.0))
     assert act == "stay"
 
 
 def test_margin_never_shrinks_as_recent_switches_pile_up():
+    """Force a leave every 70 s (past any 60 s dwell) with a huge gap; the band the model reports must not
+    shrink from one switch to the next and must end wider than it started."""
     m = _model()
     margins, st = [], None
     for k in range(5):
-        d, _, st = _decide(m, _low(50.0, 50.5, 600.0 + k, recent_switches=k), None)
-        mg = getattr(d, "margin", None)
-        if mg is None:
-            pytest.skip("decision has no .margin; hysteresis covered by the oscillation test only")
-        margins.append(float(mg))
+        d, act, st = _decide(m, _low(0.0, 9.0, 1000.0 + 70.0 * k), st)
+        if getattr(d, "margin", None) is None:
+            pytest.skip("decision has no .margin; hysteresis covered by the two-game tests only")
+        assert act == "leave", f"step {k}: a 9-point gap after 70 s did not leave"
+        margins.append(float(d.margin))
     assert all(b >= a - 1e-9 for a, b in zip(margins, margins[1:])), margins
     assert margins[-1] > margins[0], f"margin flat in recent switches: {margins}"
 
 
-def test_noise_between_two_games_does_not_cause_whiplash():
-    """Two low-leverage games whose values trade a +-2 lead (on the 0-100 Watch Value scale) every 20 s for
-    10 minutes. The caller swaps the screen on every leave, as the app does. Noise this small is whiplash bait:
-    at most 2 switches allowed (Zillmann carry-over, Dixit band of inaction; spec §2b)."""
-    m = _model()
-    st, on, switches = None, "A", 0
-    for i in range(30):
-        va, vb = (50.0, 48.0) if i % 2 == 0 else (48.0, 50.0)
+def _two_game_switches(m, base: float, amp: float, steps: int = 30, dt: float = 20.0) -> list[float]:
+    """Two low-leverage games trade a +-amp lead every dt seconds; the caller swaps the screen on every leave,
+    as the app does. Returns the times of the switches."""
+    st, on, at = None, "A", []
+    for i in range(steps):
+        va, vb = (base + amp, base - amp) if i % 2 == 0 else (base - amp, base + amp)
         stay, alt = (va, vb) if on == "A" else (vb, va)
-        c = _low(stay, alt, float(i * 20))
+        c = _low(stay, alt, float(i * dt))
         c["game_id"], c["alts"][0]["game_id"] = on, ("B" if on == "A" else "A")
         _, act, st = _decide(m, c, st)
         if act == "leave":
-            on, switches = ("B" if on == "A" else "A"), switches + 1
-    assert switches <= 2, f"{switches} switches in 10 min on +-2 noise"
+            on = "B" if on == "A" else "A"
+            at.append(i * dt)
+    return at
+
+
+MAX_SWITCHES_10MIN = 5   # tester's proposal (about one switch per 2 min at worst); the integrator may set it
+
+
+# Value scale (builder, 14:37 UTC): the oracle's combined reward over the next 300 s of screen time, typically
+# 0-10 (big play 3, crunch play 1). +-0.3 = small noise (tests the band), +-2 = a large swing (tests the dwell).
+
+def test_small_noise_between_two_games_does_not_cause_whiplash():
+    """+-0.3 traded every 20 s for 10 min is noise: at most 2 switches (Dixit band of inaction; spec §2b)."""
+    at = _two_game_switches(_model(), base=4.0, amp=0.3)
+    assert len(at) <= 2, f"{len(at)} switches in 10 min on +-0.3 noise at {at}"
+
+
+def test_large_swings_still_respect_a_minimum_dwell():
+    """+-2 traded every 20 s: the model may follow, but never two voluntary switches within 60 s
+    (Zillmann carry-over; builder's State.dwell_s = 60) and no more than 5 in 10 minutes."""
+    at = _two_game_switches(_model(), base=4.0, amp=2.0)
+    gaps = [b - a for a, b in zip(at, at[1:])]
+    assert all(g >= 60.0 for g in gaps), f"switches {gaps} s apart"
+    assert len(at) <= MAX_SWITCHES_10MIN, f"{len(at)} switches in 10 min (cap {MAX_SWITCHES_10MIN})"
 
 
 def test_a_clear_and_lasting_gap_still_leaves():
@@ -207,7 +229,7 @@ def test_a_clear_and_lasting_gap_still_leaves():
     m = _model()
     st, acts = None, []
     for i in range(10):
-        _, act, st = _decide(m, _low(10.0, 90.0, float(i * 20)), st)
+        _, act, st = _decide(m, _low(0.5, 9.0, float(i * 20)), st)
         acts.append(act)
     assert "leave" in acts, acts
 
