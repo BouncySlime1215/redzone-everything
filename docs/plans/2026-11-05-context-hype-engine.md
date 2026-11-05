@@ -1,4 +1,8 @@
-# Context & Hype data engine (lane 1): plan and first sources
+# Context & Hype data engine (lane 1): build notes
+
+The planner's plan is canonical: docs/plans/2026-11-05-brain-engines.md (#241), with EXP-090..093 pre-registered
+there, and the betting-as-input decision logged there. This file is lane 1's build detail under it: output
+schema, runtime and delivery, and how each part is graded.
 
 Nick, Nov 4 11:10 PM ET: "the brain is the biggest issue." Engine 1 of two. It runs 24/7 on cloud CPU
 (Kaggle, Colab as a backup), never on the Mac. For every game and team in NFL, CFB, NBA, CBB, NHL and MLB it
@@ -7,7 +11,7 @@ and Game Importance: **pregame_importance** per game, and **live_buzz** per game
 data and the integrator owns the tests (engine 2, the test factory).
 
 Serves: North Star "Watch Value / Game Importance" lines (crunch live %, your-team gates through better slate
-ranking); owner: lane 1. Pre-registered as EXP-104 (docs/experiments.md) before anything is graded.
+ranking); owner: lane 1. Experiments: EXP-090 (sources 1-6 flowing), EXP-091 (pregame_importance in WV), EXP-092 (live buzz), EXP-093 (LLM reader).
 
 ## Hard rules
 
@@ -22,7 +26,7 @@ ranking); owner: lane 1. Pre-registered as EXP-104 (docs/experiments.md) before 
    reading and do not forbid AI use. RSS and official feeds come first. The allowlist starts EMPTY, so wave 3 runs
    only after each site is reviewed.
 4. **Betting lines are inputs to importance, never a nudge to bet** (Nick 11:10 PM; this replaces the Nov 4
-   "hidden check only" rule for this use, logged in decisions.md). Lines and line moves are read as market
+   "hidden check only" rule for this use, logged in decisions.md by #241). Lines and line moves are read as market
    expectation and upset odds. Nothing about odds, lines or betting is ever shown on the TV or phone, and the
    objective never rewards betting behaviour.
 5. **No leakage.** pregame_importance uses only data timestamped before kickoff. live_buzz at minute t uses only
@@ -84,21 +88,21 @@ review of the first ~20 feeds is a lane 1 task, and each one gets a catalog row 
   derived numbers (no raw rows) to a release asset through a fine-grained token Nick adds as a Kaggle secret.
   Until one is picked, the engine runs shadow only. Its numbers are graded offline and never read live.
 
-## Grading (EXP-104, pre-registered)
+## Grading (EXP-091 bars on #241; the extra checks lane 1 adds)
 
 The bar: on test nights (time split by whole night, per league, locked untouched), the slate ranking that adds
 pregame_importance to today's Game Importance beats today's on the hindsight oracle's watch value per night.
 Paired, with a cluster bootstrap over nights; the CI lower bound must be above 0. ≥ 8 test nights per league,
 else PENDING. Report each part's ablation, ECE for importance, and a leakage check (adversarial validation near
-chance; any single-feature AUC > .98 is a red flag). live_buzz is graded separately (EXP-105, later): does
+chance; any single-feature AUC > .98 is a red flag). live_buzz is EXP-092: does
 buzz at minute t predict a big play or crunch in the next 15 minutes beyond the game-state baseline?
 
 ## First steps (lane 1, this cycle)
 
-1. Catalog rows confirmed for the wave 1 sources (all present); add the Nick 11:10 PM betting-as-input note.
+1. Catalog rows confirmed for the wave 1 sources (all present). The betting note and decisions line come with #241.
 2. `scripts/context/wiki_pageviews.py` and `scripts/context/gdelt_buzz.py`: team -> article and team -> GDELT name
    maps for all six leagues (Wikidata IDs, so namesakes don't collide), a backfill of 2019-2025 on Kaggle, and
    the first tables.
 3. Pregame parts from data we already have green: stakes (sims), closeness (our WP prior until lines are approved),
    national TV, rivalry, records.
-4. EXP-104 grade on the backfill, in shadow.
+4. EXP-090 first: sources 1-6 flowing daily into the private Kaggle dataset `context-features`; then EXP-091 graded on the backfill, in shadow.

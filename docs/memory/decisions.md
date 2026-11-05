@@ -604,9 +604,3 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   that forced entry on its own (lane 3's forced go-now line), never as a decider mid-play entry, and never as a training
   label. New standing rule: no deploys and no Mac-side experiments while games are live and Nick is watching. The Mac
   stays plugged in on game nights.
-- 2026-11-05 (Nick 11:10 PM ET Nov 4, "CONTEXT & HYPE DATA ENGINE"): **betting lines and line moves may be inputs to
-  game importance** (market expectation and upset odds), "never to nudge betting". This narrows the Nov 4 "betting
-  data is a hidden check only" rule for that one use: lines are still never shown on the TV or phone, never a
-  label, and the objective never rewards betting. Lane 1 owns the engine (24/7 on Kaggle/Colab CPU, never the
-  Mac); the LLM extractor stores derived numbers + source URL only, from allowlisted sites whose terms allow it.
-  Plan: docs/plans/2026-11-05-context-hype-engine.md.
