@@ -701,3 +701,22 @@ def test_orient_route_needs_both_flags(client, engine):
     assert client.get("/api/v2/status").json()["orient"] is True
     r = client.get("/api/v2/orient?game=nope").json()
     assert r["enabled"] is True and r["beat"] is None and r["beat_s"] == 3
+
+
+def test_also_close_lists_other_late_close_games_in_league_order():
+    games = {"on": _late("nfl", 20, 17, 4, 60), "nhl": _late("nhl", 1, 1, 3, 90), "nba": _late("nba", 99, 100, 4, 30),
+             "blow": _late("nba", 130, 90, 4, 30), "early": _late("nfl", 7, 7, 1, 600)}
+    for gid, g in games.items():
+        g.game_id = gid
+    order = ("nfl", "cfb", "nba", "cbb", "wcbb", "nhl", "mlb")
+    rows = phone_v2.also_close(games, "on", order)
+    assert [r["game_id"] for r in rows] == ["nba", "nhl"]                     # NFL on screen; NBA before NHL
+    assert rows[0]["context"] == "HOM down 1, 0:30 left"
+    assert len(phone_v2.also_close({**games, "on": games["on"]}, None, order)) == phone_v2.ALSO_CLOSE_MAX
+
+
+def test_watch_also_close_behind_its_flag(client, engine):
+    _on(engine)
+    assert client.get("/api/v2/watch").json()["also_close"] == []
+    engine.cfg.update({"phone": {"v2": True, "also_close": True}})
+    assert client.get("/api/v2/watch").json()["also_close"] == []                # no late, close games in the fixture

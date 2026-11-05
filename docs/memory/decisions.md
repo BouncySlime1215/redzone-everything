@@ -609,3 +609,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   when late and close) in a corner of the phone after each switch. The TV has no overlay path on this rig (the
   sticks only switch inputs), so the beat is phone-only for now. Graded by redzone/lab/orient.py (override rate
   within 30 s, whole nights alternated on/off; bar in docs/lanes/experience.md). Reason: Cycle 11 (#217), playbook P12.
+- 2026-11-05 (lane 5, EXP-039): new default `phone.also_close: false`. An "Also close" line under the phone's watch
+  strip lists up to 2 other live games that are late and within one score (the EXP-037 context line), in league
+  order, as plain text with no Watch button. Graded by redzone/lab/also_close.py (manual-switch share per night,
+  whole nights alternated; bar in docs/lanes/experience.md). Reason: Cycle 11 (#217), playbook P15.

@@ -20,7 +20,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from redzone.crunch import ONE_SCORE_NFL
-from redzone.models import PERIOD_S, REGULATION, League, Phase
+from redzone.models import PERIOD_S, REGULATION, League, Phase, league_order
 from redzone.noggin.priority import HardRules, Preferences
 from redzone.web import ledger as ledger_mod
 
@@ -680,6 +680,27 @@ def orientation(g) -> dict | None:
             "clock": clock, "fact": fact, "context": context_line(g)}
 
 
+ALSO_CLOSE_MAX = 2   # [EXP-039] at most this many: a quiet line, not a second scoreboard
+
+
+def also_close(games: dict, current: str | None, order: tuple[str, ...]) -> list[dict]:
+    """[EXP-039] Other live games that are late and within one score right now (context_line says so),
+    in league order, at most ALSO_CLOSE_MAX. It answers "is anything else close?" without a switch: the
+    phone shows it as text with no Watch button. The game on screen is never listed."""
+    rows = []
+    for gid, g in (games or {}).items():
+        if gid == current:
+            continue
+        ctx = context_line(g)
+        if ctx:
+            rows.append({"game_id": gid, "matchup": g.matchup, "league": g.league.value, "context": ctx,
+                         "rank": order.index(g.league.value) if g.league.value in order else len(order)})
+    rows.sort(key=lambda r: (r["rank"], r["matchup"]))
+    for r in rows:
+        r.pop("rank")
+    return rows[:ALSO_CLOSE_MAX]
+
+
 RISING_MIN = 1.0    # watch_rising (points per minute) at or above this shows an up arrow, at or below -this a down one
 
 
@@ -988,6 +1009,8 @@ def router(engine) -> APIRouter:
         cur = engine.decider.current
         return {"enabled": True, "now": time.time(), "current": cur,
                 "why_tag": why_tag(engine.scored.get(cur), float(engine.cfg.get("phone.why_tag_min"))) if cur else None,
+                "also_close": also_close(getattr(engine.merger, "games", {}), cur, league_order(engine.cfg))
+                if engine.cfg.get("phone.also_close") else [],
                 **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}))}
 
     @r.get("/orient")
