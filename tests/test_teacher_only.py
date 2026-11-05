@@ -15,14 +15,17 @@ sys.path.insert(0, str(ROOT))
 from agent.kaggle import teacher_only as TO  # noqa: E402
 
 
-def test_espn_builder_needs_plan_b_and_green_is_not_built():
+def test_espn_builder_needs_plan_b_and_green_needs_plan_a_and_its_archive():
     with pytest.raises(TO.DataGate, match="red"):
         TO.gate("", "espn")
     with pytest.raises(TO.DataGate, match="red"):
         TO.gate("A", "espn")
     TO.gate("B", "espn")
-    with pytest.raises(TO.DataGate, match="green moment builder"):
+    with pytest.raises(TO.DataGate, match="plan A"):
+        TO.gate("B", "green", "/x")
+    with pytest.raises(TO.DataGate, match="RZ_BUILD_ARCHIVE"):
         TO.gate("A", "green")
+    TO.gate("A", "green", "/x")
 
 
 def test_refuses_to_run_without_plan_b(tmp_path):
