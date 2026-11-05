@@ -25,9 +25,20 @@ from collections import defaultdict
 from datetime import datetime
 _STICKS = (__import__("os").environ.get("RZ_STICKS") or "hdmi1:5555,hdmi2:5555").split(",")  # stick addresses stay off the public repo: set RZ_STICKS=host1,host2 on the Mac
 
-SYNC = "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync"
-REPO = "/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone"
-RESULTS = f"{SYNC}/yttv_tests/results"
+def _sync_dir():
+    """RZ_SYNC, else Nick's Nov 4 scratchpad if it still exists (reference PNGs, codec logs), else this bank's parent."""
+    import os as _os
+    env = _os.environ.get("RZ_SYNC")
+    if env:
+        return env
+    old = "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync"
+    here = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
+    return old if _os.path.isdir(old) else here
+
+
+SYNC = _sync_dir()
+REPO = __import__("os").environ.get("RZ_REPO") or "/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone"
+RESULTS = __import__("os").path.join(__import__("os").path.dirname(__import__("os").path.dirname(__import__("os").path.abspath(__file__))), "results")
 REC = f"{REPO}/data/recordings"
 sys.path.insert(0, SYNC)
 sys.path.insert(0, REPO)

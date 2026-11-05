@@ -97,6 +97,7 @@ def main():
             verdict[f"{h}@{day}"] = v
             boots.setdefault(h, {})[day] = round(est, 3)
             out.write("stickday", host=h, day=day, **v)
+    os.makedirs(T.CACHE, exist_ok=True)
     json.dump(boots, open(os.path.join(T.CACHE, "boots.json"), "w"), indent=1)
     judged = [v for v in verdict.values() if v["p10_minus_live"] is not None]
     ok = [abs(v["p10_minus_live"]) <= 0.5 for v in judged]
