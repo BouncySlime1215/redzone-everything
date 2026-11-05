@@ -152,7 +152,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ci.txt
       - name: system tools (PortAudio for sounddevice, ffmpeg for the catch-up reel, as on the Mac)
         # A slow mirror took 16-21 min here (Nov 4) and starved pytest of the job's time: cap each try at
         # 6 min, retry once, with apt's own per-request timeout and retries.
@@ -164,7 +166,7 @@ jobs:
             echo "::warning::apt try $i timed out or failed, retrying"
           done
           exit 1
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements-ci.txt    # requirements.txt + pandas/pyarrow for the data-crew shard tests
       - uses: actions/download-artifact@v4
         if: needs.data.outputs.available == 'true'
         with:

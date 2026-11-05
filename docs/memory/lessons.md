@@ -300,3 +300,5 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   explicit `Scored.mine` / `Scored.high_leverage` flags (the grader's CLOSE_LATE table, kept equal by a test) and
   the full league. Lesson: a floor must be checked by what it protects (team membership, leverage), never by a
   score that other features can lower.
+
+- **Nov 5 2026 (Data A #259):** CI's test jobs had no pyarrow, so every play-table shard test failed with "Unable to find a usable engine". Fix: `requirements-ci.txt` (requirements.txt + pandas + pyarrow) for CI test jobs only; the Mac keeps requirements.txt. Data-crew tests that write parquet rely on it; don't importorskip them away.
