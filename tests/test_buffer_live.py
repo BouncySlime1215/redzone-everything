@@ -116,3 +116,37 @@ def test_hold_is_measured_on_the_sticks_own_clock(held):
     # a position from some other stream (not this target's anchor) is never trusted
     stick.tuned = {"target": "youtubetv:cbs", "report": {"position": 1, "updated": 1}}
     assert c._held_for(stick, "youtubetv:fox", pb, 93.1) == 91.6
+
+
+def test_the_resume_is_on_time_while_a_switch_holds_the_lock(held, monkeypatch):
+    """Night lab: a 60 s hold came out 81.7 s because the resume queued behind a switch waiting on a
+    safe moment with the lock. Now it waits at most HOLD_RESUME_LOCK_S for it."""
+    c, tuner, stick, calls = held
+    monkeypatch.setattr(ctl, "HOLD_RESUME_LOCK_S", 0.05)
+    c.behind_of = lambda target: 0.2
+
+    async def go():
+        assert c.preload("youtubetv:fox")
+        await asyncio.sleep(0.1)                  # paused, waiting out the hold
+        async with c._lock:                       # a switch takes the lock for far longer
+            await asyncio.sleep(0.6)
+            assert c._preload_task.done() and c.hidden_ready
+        await c._preload_task
+    asyncio.run(go())
+    assert stick.log[-1] == "KEYCODE_MEDIA_PLAY" and c.held["youtubetv:fox"] < 0.5
+
+
+def test_a_retune_during_the_hold_leaves_the_offset_unwritten(held, monkeypatch):
+    c, tuner, stick, calls = held
+    monkeypatch.setattr(ctl, "HOLD_RESUME_LOCK_S", 0.05)
+    c.behind_of = lambda target: 0.3
+
+    async def go():
+        assert c.preload("youtubetv:fox")
+        await asyncio.sleep(0.1)
+        async with c._lock:                       # a switch re-tunes the same stick at the live edge
+            await c._tune(stick, "youtubetv:fox")
+            await asyncio.sleep(0.5)
+        await c._preload_task
+    asyncio.run(go())
+    assert "youtubetv:fox" not in c.held          # not "held behind live": it's at the live edge

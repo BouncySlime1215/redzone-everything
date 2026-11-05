@@ -105,9 +105,6 @@ START_RETRY_MAX_S = 60.0
 # switch you made by hand goes straight in.
 ENTRY_EXEMPT = {"user", "resume", "skip"}   # resume/skip land on a planned frame of the same tune
 PICK_KEEPS = {"user", "crunch", "home", "must_see", "live"}   # [noggin PICK] app-only switch kinds
-LEAVE_TUNE_S = 6.0
-HIDDEN_SEEK_KEYS_S = 1.5  # [seek model] a hidden-stick seek's presses + PLAY before the flip (the stall comes on top)
-PAUSE_CUE_GRAIN_S = 0.5   # [seek model] a pause cue's landing grain (the lab's pause hold: +1.66 s raw, under 0.5 s calibrated)        # leave_gate's own tune margin: a visit can't come back inside the window
 ENTRY_SLACK_S = 2.0       # the tune's own timing doubt, on top of the delay's 2 sigma
 # Once the delay's doubt grows (sigma drifts up between calibrations) no landing fits a 30 s huddle
 # with the full margin: then centre it in the dead window with this much doubt. A miss here joins a
@@ -245,10 +242,12 @@ class Decider:
         # [possession start] the per-possession jump / stay policy: (decision, candidate, now) -> "jump" |
         # "stay". None = jump (the rule default). Self-taught only (oracle imitation, simulation, play-by-play
         # outcomes); Nick's buttons are controls, never labels (Nov 4 hard rule).
-        self.possession_policy = None
+        self.possession_policy = self._possession_pick   # jump unless noggin.possession is on (default off)
+        self.possession_log: deque = deque(maxlen=2000)  # [noggin possession] (t, on, target, policy says)
         # [replay and resume] the game paused for a catch-up replay: (game, when, its extra behind-live then)
         self.paused_for: tuple[str, float, float] | None = None
         self.resume_log: list[tuple[float, str, str, float]] = []   # (when, "replay"|"resume"|"skip", game, extra s)
+        self._crunch_tail: dict[str, tuple[float, str | None]] = {}   # gid -> (last seen in crunch, target)
         self.scenarios = Scenarios(cfg)   # [scenario tree] GAME-01..03, 21, 22 seeds, flag playbooks.game.enabled (off)
         self.safety = Safety(cfg)   # [playbooks] SAFE-01/02/03/05, flag playbooks.safe.enabled (off)
         # The live controller knows whether THIS target is already ready. App-wide
@@ -323,8 +322,15 @@ class Decider:
         return self.timelines[game_id]
 
     def _pick_on(self, league: League) -> bool:
-        """[noggin PICK] on (or in shadow) for this league, with a model to run."""
-        if not (self.cfg.get("noggin.pick.enabled", False) or self.cfg.get("noggin.pick.shadow", False)):
+        """[noggin PICK] on (or in shadow) for this league, with a model to run (PICK itself, or the
+        possession policy's PICK-cue model)."""
+        c = self.cfg
+        if (c.get("noggin.possession.enabled", False) or c.get("noggin.possession.shadow", False)) \
+                and league.value in (c.get("noggin.possession.leagues") or []):
+            from redzone.noggin.pick import model_for
+            if model_for(league.value, name=str(c.get("noggin.possession.model", "cue90"))) is not None:
+                return True
+        if not (c.get("noggin.pick.enabled", False) or c.get("noggin.pick.shadow", False)):
             return False
         if league.value not in (self.cfg.get("noggin.pick.leagues") or []):
             return False
@@ -371,6 +377,11 @@ class Decider:
         now = self._clock()
         self.core.k = Knobs.from_cfg(self.cfg)   # config can change between ticks (tuner, phone)
         self._known.update({gid: x for gid, x in cands.items() if x.target})
+        if self.cfg.get("replay.crunch_block_tail", False):
+            now_t = self._clock()
+            for gid, x in cands.items():
+                if (x.scored.crunch or x.scored.crunch_now) and not getattr(x.scored, "garbage", False):
+                    self._crunch_tail[gid] = (now_t, x.target)
         hold = self.cfg.get("decider.crunch.hold_personal", 5)
         self._yours.update(gid for gid, x in cands.items() if x.scored.personal >= hold)
         cands = self._with_redzone(cands, redzone)
@@ -619,8 +630,10 @@ class Decider:
         exclude: a game not to replay (e.g. the crunch game you're about to go back to).
         yours: your team's missed plays clear the `top` bar (replay.yours_first); False while your
         team's own game is on screen, so its live snaps aren't traded for its old ones."""
+        crunch_on = not montage and self._crunch_on(cands)
         games = self._replay_pool(cands)
-        pool = [m for m in self.queue if m.game_id != exclude and self._replayable(games.get(m.game_id))]
+        pool = [m for m in self.queue if m.game_id != exclude and self._replayable(games.get(m.game_id))
+                and (not crunch_on or self._mine_cant_wait(m, now))]
         rw = self._rw()
         if rw and not montage:     # [T5] older plays wait for the end-of-window montage
             pool = [m for m in pool if now - m.t <= self.cfg.get("replay.max_age_s", 1800)]
@@ -664,6 +677,45 @@ class Decider:
                 return (mine, 1, 0, -m.t)
             return (mine, 0, 0, self._replay_value(m, now))
         return max(pool, key=rank, default=None)
+
+    def _mine_cant_wait(self, m: Missed, now: float) -> bool:
+        """Your team's missed play may break the crunch block in replay.crunch_block_mine_leagues (its own
+        game's league), once this long after it aired (NFL: its 3-min replay window can't wait out crunch)."""
+        if not m.mine:
+            return False
+        lgs = self.cfg.get("replay.crunch_block_mine_leagues") or []
+        x = self._known.get(m.game_id)
+        lg = getattr(getattr(getattr(getattr(x, "scored", None), "league", None), "base", None), "value", None)
+        if lg not in lgs:
+            return False
+        return now - (getattr(m, "aired", 0.0) or m.t) >= float(self.cfg.get("replay.crunch_block_mine_after_s", 90))
+
+    def _crunch_on(self, cands) -> bool:
+        """[crunch block, replay.crunch_block] A catch-up never starts while any live game is in crunch time
+        or its run-up (NHL: from 3:00 left in a close 3rd, and OT): its next play may come while the reel
+        is on. Cycle 04 review, locked: NHL crunch plays aired during a catch-up 2 -> 10 on the candidate.
+        Your team's missed plays wait too, except in replay.crunch_block_mine_leagues once
+        replay.crunch_block_mine_after_s has passed since they aired (_mine_cant_wait)."""
+        if not self.cfg.get("replay.crunch_block", False):
+            return False
+        return any((x.scored.crunch or x.scored.crunch_now) and not getattr(x.scored, "garbage", False)
+                   for x in cands.values()) or self._crunch_still_airing(cands, self._clock())
+
+    def _crunch_still_airing(self, cands, now: float) -> bool:
+        """[crunch block, replay.crunch_block_tail] A game the feed has already ended in crunch time (an
+        OT winner) is still airing for a whole stream delay: its last plays reach the screen up to
+        delay mu + 2 sigma after the feed dropped it. Keep the block until then, else a catch-up reel
+        starts over the OT goal (NHL dev 20261027: 6 crunch plays aired under the reel)."""
+        if not self.cfg.get("replay.crunch_block_tail", False):
+            return False
+        for gid, (seen, target) in list(self._crunch_tail.items()):
+            if gid in cands:
+                continue
+            d = self.delays.get(target or "unknown")
+            if now - seen <= d.mu + 2 * d.current_sigma(now) + float(self.cfg.get("polling.live_s", 10)):
+                return True
+            del self._crunch_tail[gid]
+        return False
 
     def _break_remaining(self, gid: str, cands, now: float) -> float:
         """Conservative break budget, never a typical ad length treated as a deadline."""
@@ -774,11 +826,11 @@ class Decider:
         if cue == "hidden" and can:
             # [seek model] seek on the hidden stick, then flip: the stall passes before the flip and
             # puts the stream just as far behind, so the picture's content doesn't depend on it (no
-            # stall doubt); the flip waits for the presses (HIDDEN_SEEK_KEYS_S) and the stall (mid).
-            plan = plan_entry(tl.dead, base_mu, margin, now, cost + HIDDEN_SEEK_KEYS_S, can_rewind=can,
+            # stall doubt); the flip waits for the presses (replay.hidden_seek_keys_s) and the stall (mid).
+            plan = plan_entry(tl.dead, base_mu, margin, now, cost + float(self.cfg.get("replay.hidden_seek_keys_s")), can_rewind=can,
                               step=sk.step, max_back=float(c.get("decider.entry.max_rewind_s", ENTRY_MAX_REWIND_S)),
                               relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
-                              cost_lo=lo_cost + HIDDEN_SEEK_KEYS_S,
+                              cost_lo=lo_cost + float(self.cfg.get("replay.hidden_seek_keys_s")),
                               urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
                               lag=float(c.get("decider.entry.landing_lag_s", 0.0)), possession=possession)
             if plan.ok and plan.rewind_s:
@@ -786,7 +838,7 @@ class Decider:
             return plan
         return plan_entry(tl.dead, base_mu, margin, now, cost, can_rewind=can,
                           # [seek model] a pause cue lands where it pauses (half-second grain, no stall)
-                          step=PAUSE_CUE_GRAIN_S if pause else sk.step,
+                          step=float(self.cfg.get("replay.pause_cue_grain_s")) if pause else sk.step,
                           stall=(0.0, 0.0) if pause else (sk.stall_lo, sk.stall_hi),
                           max_back=float(c.get("decider.entry.max_rewind_s", ENTRY_MAX_REWIND_S)),
                           relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
@@ -1052,6 +1104,52 @@ class Decider:
         return Decision(now, "switch", gid, f"{tag} ({tb - land:.0f} s after we land)", d.state, d.gate,
                         kind="chase")
 
+    def _pick_scores(self, cands: dict, now: float, model_name: str = "v1", tune: float = 5.0):
+        """(cur, scores) from the Reflex PICK model on the live books of every target game, or None when PICK
+        can't score this tick (fewer than 2 live games, no model, the buffer shorter than the feed lag p90)."""
+        from redzone.noggin import pick as PK
+        games, lags = [], {}
+        for gid, x in cands.items():
+            tl = self.timelines.get(gid)
+            if tl is None or tl.live is None or not x.target:
+                continue
+            fl = sorted(tl._lags)[len(tl._lags) // 2] if tl._lags else tl.lag_est()
+            lags[gid] = fl + self.delays.get(x.target).mu
+            games.append(tl.live)
+        if len(games) < 2:
+            return None
+        league = games[0].league
+        model = PK.model_for(league.value, name=model_name)
+        if model is None or min(lags.values()) < PK.FEED_LAG_P90.get(league, 70.0) + tune:
+            return None
+        mine = {t for g in games if g.gid in self._yours for t in g.matchup.split(" @ ")}
+        cur = self.current if self.current in lags else None
+        _, scores = PK.live_choice(games, cur, now, lags, mine, tune, model, model.meta.get("info", {}).get("cue_s"))
+        return cur, scores, model
+
+    def _possession_pick(self, d: Decision, x: Candidate | None, now: float) -> str:
+        """[noggin possession] The per-possession jump / stay policy for a possession-start entry: Reflex PICK
+        trained on the possession-start hindsight oracle (oracle.solve_cue, labels from the oracle only,
+        never from Nick). "stay" only when the model scores the game on screen above the rule's target by
+        the model's margin. Your team's games (both ways) and anything PICK can't score stay the rule's call
+        (jump). noggin.possession.enabled (off) acts; .shadow only logs."""
+        c = self.cfg
+        on, shadow = c.get("noggin.possession.enabled", False), c.get("noggin.possession.shadow", False)
+        if not (on or shadow) or not d.target or d.target in self._yours or self.current in self._yours:
+            return "jump"
+        if x is None or x.scored.league.base.value not in (c.get("noggin.possession.leagues") or []):
+            return "jump"
+        got = self._pick_scores(self._known, now, str(c.get("noggin.possession.model", "cue90")),
+                                float(c.get("noggin.pick.tune_s", 5.0)))
+        if got is None:
+            return "jump"
+        cur, scores, model = got
+        say = "jump"
+        if cur is not None and d.target in scores and scores[cur] - scores[d.target] > model.margin:
+            say = "stay"
+        self.possession_log.append((now, cur, d.target, say))
+        return say if on else "jump"
+
     def _pick(self, d: Decision, cands, now: float) -> Decision:
         """[noggin PICK] Reflex PICK (redzone/noggin/pick.py): the game the hindsight-oracle imitation wants on
         screen. Shadow logs it beside the app's own decision. Enabled, mode "breaks" (the default) only lets
@@ -1076,13 +1174,13 @@ class Decider:
         if len(games) < 2:
             return d
         league = games[0].league
-        model = PK.model_for(league.value)
+        model = PK.model_for(league.value, name=str(self.cfg.get("noggin.pick.model", "v1")))
         tune = float(self.cfg.get("noggin.pick.tune_s", 5.0))
         if model is None or min(lags.values()) < PK.FEED_LAG_P90.get(league, 70.0) + tune:
             return d
         mine = {t for g in games if g.gid in self._yours for t in g.matchup.split(" @ ")}
         cur = self.current if self.current in lags else None
-        target, scores = PK.live_choice(games, cur, now, lags, mine, tune, model)
+        target, scores = PK.live_choice(games, cur, now, lags, mine, tune, model, model.meta.get("info", {}).get("cue_s"))
         self.pick_log.append((now, cur, target, d.action, d.target))
         if shadow and not self.cfg.get("noggin.pick.enabled", False):
             return d
@@ -1954,7 +2052,7 @@ class Decider:
             # poll) is still a dead ball. Safe only if the whole doubt band on screen is inside it.
             m = 2 * d.current_sigma(now)
             until = tl.dead.dead_until(now - d.mu - m)
-            if until is not None and until >= now - d.mu + m + LEAVE_TUNE_S:
+            if until is not None and until >= now - d.mu + m + float(self.cfg.get("decider.leave.tune_s")):
                 return Gate(True, "dead ball on screen (play-by-play)")
         return g
 

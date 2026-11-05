@@ -1,0 +1,9 @@
+# Pinned scorecard config (eval-data). Account profile names are left out: grading never reads them.
+mode:
+  dry_run: false
+decider:
+  switch_cost:
+    youtubetv: 5.5
+    prime: 27.0
+    espn: 7.5
+    hdmi_flip: 4.0

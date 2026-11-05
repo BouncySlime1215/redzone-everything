@@ -14,7 +14,8 @@ import time
 from dataclasses import dataclass, field
 
 from redzone.models import PERIOD_S, REAL_BREAKS, REGULATION, ByLeague, GameState, League, Phase, Stoppage, pro_period
-from redzone.scoring import garbage
+from redzone import crunch
+from redzone.scoring import garbage, postseason
 from redzone.scoring.brain import Brain
 from redzone.reasoner import brief as rbrief
 from redzone.reasoner.reasoner import Reasoner, lock_points
@@ -51,7 +52,7 @@ def closeness(g: GameState) -> float:
     return 0.1
 
 
-ONE_SCORE = {League.NFL: 8}
+ONE_SCORE = {League.NFL: crunch.ONE_SCORE_NFL}
 
 
 def crunch_time(g: GameState) -> bool:
@@ -67,20 +68,7 @@ def crunch_time(g: GameState) -> bool:
     if g.stoppage == Stoppage.HALFTIME:
         # College halftime can arrive as "period 2, 0:00" (OSU@BYU, Nov 2): never the end of a game.
         return False
-    q, d, clk = _q(g), g.score_diff, g.clock_s
-    if d is None:
-        return False
-    if g.league.base == League.NFL:
-        if q >= 5:
-            return True
-        return q == 4 and clk is not None and clk <= 120 and abs(d) <= ONE_SCORE[League.NFL]
-    if g.league.base == League.NBA:
-        return q >= 5 or (q == 4 and clk is not None and clk <= 180 and abs(d) <= 7)
-    if g.league == League.NHL:
-        return q >= 4 or (q == 3 and clk is not None and clk <= 180 and abs(d) <= 1)
-    if g.league == League.MLB:
-        return q >= 10 or (q >= 8 and abs(d) <= 2)
-    return False
+    return crunch.inside(crunch.row("run_up", g.league.base), _q(g), g.clock_s, g.score_diff)
 
 
 # --- per-game memory (runs, WP swings, smoothing) ---------------------------
@@ -176,6 +164,11 @@ class Scored:
     factors: dict[str, float] = field(default_factory=dict)  # context points by name (debug/UI)
     brain: dict = field(default_factory=dict)  # learned brain's reading (hotness, key/break odds, reasons)
     reasoner: dict = field(default_factory=dict)  # live game reasoner: lock_in, odds, the model's storyline
+    # [HEAT 2.0, lane 1 sets these; the phone's Watch value surface reads them (phone_v2.watch_values)]
+    watch_value: float | None = None   # learned 0-100 watch value; None = not computed yet (phone shows a stub)
+    watch_why: str = ""                # one line: why that value
+    crunch_state: str | None = None    # crunch model: "entering" | "in" | "leaving"; None = not computed
+    stakes_line: str | None = None     # e.g. "AFC 1-seed race, top-5 matchup"; None = not computed
 
     @property
     def display(self) -> int:
@@ -307,7 +300,8 @@ class Scorer:
                       imminent=h.imminent_at is not None
                       and now - h.imminent_at <= c.get("score.nhl.imminent_hold_s", -1),
                       brain=reading.as_dict() if reading is not None and reading.hotness is not None else {},
-                      reasoner=rr.as_dict() if rr is not None and rr.p is not None else {})
+                      reasoner=rr.as_dict() if rr is not None and rr.p is not None else {},
+                      stakes_line=postseason.reason(g) or None)   # [#163] the phone's stakes line (display only)
 
     MINE_LIVE_S = 60.0      # your team's game counts as on this long after its last live, close poll
     LEAGUE_LIVE_S = 300.0   # a league counts as "on tonight" this long after its last live game
@@ -344,6 +338,7 @@ class Scorer:
                 s += c.get("score.stakes.big_spread_penalty")
         if g.national_tv:
             s += c.get("score.stakes.national_tv", 0)
+        s += postseason.stakes_bonus(g, c)   # [#163 playoff stakes] 0 unless score.postseason.enabled
         return max(c.get("score.stakes.min"), min(c.get("score.stakes.max"), s))
 
     def _personal(self, g: GameState, me: Personal, k: float, garbage_time: bool = False) -> tuple[float, list[str]]:
@@ -542,7 +537,7 @@ def _nfl(g, h, k, now, c):
             d = dw["fourth_go"]
 
     drill = 0.0
-    if q >= 4 and clk is not None and clk <= 120 and off_diff is not None and -8 <= off_diff <= 0:
+    if crunch.trailing_drill(q, clk, off_diff):
         drill = c.get("score.nfl.two_minute_drill")
 
     wp = g.home_win_prob
@@ -695,11 +690,7 @@ def crunch_window(g: GameState) -> bool:
     """The graded crunch window. Same as crunch_time except NHL, whose flag goes up at 3:00 so we
     can get there at a stoppage: inside 2:00 (or OT) every second counts, before it a whistle is
     worth waiting for on the way in."""
-    if not crunch_time(g):
-        return False
-    if g.league != League.NHL or _q(g) >= 4:
-        return True
-    return g.clock_s is not None and g.clock_s <= 120
+    return crunch_time(g) and crunch.inside(crunch.row("window", g.league.base), _q(g), g.clock_s, g.score_diff)
 
 
 def nhl_goal_imminent(g, h: History, c) -> bool:

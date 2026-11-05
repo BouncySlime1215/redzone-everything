@@ -12,3 +12,7 @@ it under `/mnt/project-files/live-nights/`), then
     python scripts/publish_live_nights.py /mnt/project-files/live-nights
 
 and open a PR with the new folders. Never commit the raw `*.jsonl` files (the repo is public).
+
+Each summary also carries the night's misses (ET time, matchup label, which end, the grade's reason;
+labels that look like an address become `?`) and the supervisor's fixes by rule. With
+`report.nightly` on, `scripts/night_report.py` turns the newest night into `docs/nights/YYYY-MM-DD.md`.

@@ -73,8 +73,8 @@ def test_a_night_is_written_guarded_and_read_back_only_when_on(tmp_path):
 def test_a_calibrated_channel_starts_its_filter_from_last_nights_delay():
     book = DelayBook({"youtubetv": 45.0}, 15.0)
     book.attach_sync()
-    book.calibrated = {"youtubetv:espn": (26.2, 0.8)}
-    assert book._sync_prior("youtubetv:espn") == (26.2, 2.0)       # never surer than the 2 s floor
+    book.calibrated = {"youtubetv:espn": (26.2, 2.0)}                # as calibration.sync_prior hands it over
+    assert book._sync_prior("youtubetv:espn") == (26.2, 2.0)
     book.set_behind("youtubetv:espn", 90.0)
     assert book._sync_prior("youtubetv:espn")[0] == pytest.approx(116.2)
     assert book._sync_prior("youtubetv:fox") == (45.0, 15.0)        # uncalibrated: as before
@@ -106,3 +106,9 @@ def test_the_controller_logs_what_each_seek_really_did(tmp_path):
     row = json.loads((tmp_path / "seeks.jsonl").read_text())
     assert row["sent"] == 2 and row["landed_s"] == 23.0 and row["model"] == "AFTKM"
     assert c._seek_sample(stick, "youtubetv:fox", 18.0, {"position": 1, "updated": 2}) is None
+
+
+def test_a_calibrated_delay_is_never_surer_than_the_configured_floor(tmp_path):
+    cal.merge(tmp_path, date(2026, 11, 1), {"delay_s:youtubetv:espn": (26.2, 9, "test", 0.8)}, section="sync")
+    c = _cfg(True)
+    assert cal.sync_prior(c, tmp_path)["delays"] == {"youtubetv:espn": (26.2, c.get("calib.sigma_floor_s"))}

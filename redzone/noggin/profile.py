@@ -57,10 +57,9 @@ PROFILES: dict[str, dict] = {
             # [noggin logic] a crunch stoppage takes only a play you missed, never an instant replay of one
             # you saw: NFL dev 3 seeds crunch live +0.8..2.2, crunch plays under a replay halved, NBA/NHL equal.
             "decider.crunch.instant_replays=false",
-            # [whistle detection] NHL leaves also on the play-by-play's dead windows (a whistle whose
-            # faceoff landed in the same poll never reached the game state): dev 3 seeds seen-in-3-min
-            # +11..14, crunch +0.5..2.8, 0 mid-play; NBA made mid-play cuts, NFL gains nothing.
-            "decider.leave.dead_windows=[nhl]",
+            # [whistle detection] decider.leave.dead_windows=[nhl] is held OUT of the candidate (Nov 4,
+            # cycle 06): on the current stack, dev 3 seeds, it lifts seen-in-10-min +8..14 but NHL crunch
+            # on replay goes 7/6/0 -> 7/4/6 and your-team 21/21/20 -> 18/21/21, the promotion lines.
             # [seek model] live lab, Nov 4: entry rewinds run on the hidden stick before the flip, so the
             # live edge never shows mid-play first (NFL 270-345 such glimpses per dev seed) and the 2-4 s
             # seek stall passes off screen. Dev 3 seeds: 0 mid-play, NFL big live +0.8..1.7 vs seeking on screen.
@@ -68,6 +67,15 @@ PROFILES: dict[str, dict] = {
             # [controls, cycle 03] Opening a game on the phone tunes it on the hidden stick while you
             # read the sheet, so "Go now" is a flip (press_to_tv_p95). Live default stays off.
             "two_stick.pretune_on_open=true",
+            # [noggin logic, cycle 05 promotion blocker] No catch-up starts while any live game is in crunch
+            # time or its run-up. Your team's missed play waits too, except in NFL, where it goes 90 s after
+            # it aired (its 3-min replay window can't wait out crunch). Locked, 3 seeds, vs live: no line worse.
+            "replay.crunch_block=true",
+            # [noggin logic, cycle 06] ...and until a game the feed ended in crunch time (an OT winner) has
+            # aired: dev 3 seeds NHL crunch on replay 7/6/0 -> 0/0/0, crunch live +3.6/+2.7/+0.1, 0 mid-play;
+            # big seen in 10 min -4.1..4.5 (catch-ups wait out the OT tail). NFL crunch +0.1..0.8, NBA equal.
+            "replay.crunch_block_tail=true",
+            "replay.crunch_block_mine_leagues=[nfl]",
         ],
     },
 }

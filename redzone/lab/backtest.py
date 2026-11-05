@@ -28,9 +28,11 @@ from redzone.channels import REDZONE_TARGET, redzone_on
 from redzone.config import Config
 from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode
 from redzone.decider.screen import DelayBook
+from redzone.grading import Lags, SwitchLog, idx as _bisect, lag_of  # noqa: F401  [one brain] moved, step 3
 from redzone.models import REAL_BREAKS, League, Phase
 from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal
+from redzone.lab import leverage
 from redzone.sources import espn
 
 ET = ZoneInfo("America/New_York")
@@ -80,20 +82,6 @@ class Replay:
 
 
 @dataclass
-class SwitchLog:
-    t: float
-    frm: str | None
-    to: str
-    kind: str
-    reason: str
-    offset: float = 0.0   # [cut timing] the picture came up this far behind live (a rewind on entry)
-    jitter: float = 0.0   # [auto-anchors] of which: the tune's own unknown landing behind the live edge
-    arrive_dt: float = 0.0  # [live lab] the picture came up this much later (+) or sooner than tune_s
-    leave_dt: float = 0.0   # [seek model] the screen left the old game this much after the decision (a pause cue)
-    flash: float = 0.0      # [seek model] s of the LIVE edge shown before an on-screen rewind takes hold
-
-
-@dataclass
 class Report:
     switches: list[SwitchLog]
     mid_play_cuts: list[tuple[float, str]]
@@ -128,11 +116,13 @@ class Report:
     drive_plays_live: int = 0        # ...of those, watched live start to finish
     drive_plays_other_sport: int = 0  # ...of those, missed while another sport was on screen
     drive_plays_on_redzone: int = 0  # ...of those, aired while the RedZone channel was on (it may have shown them)
+    mid_play_cuts_high: list = field(default_factory=list)   # mid-play leaves at a high-leverage moment
 
     @property
     def summary(self) -> dict:
         return {
             "mid_play_cuts": len(self.mid_play_cuts),
+            "mid_play_cuts_high": len(self.mid_play_cuts_high),
             "big_plays_seen": f"{self.big_plays_caught}/{self.big_plays}"
                               f" ({100 * self.big_plays_caught / max(1, self.big_plays):.0f}%)",
             "big_plays_live": f"{self.big_plays_live}/{self.big_plays}"
@@ -192,19 +182,6 @@ class _Feed:
 
 
 
-class Lags(float):
-    """Real life -> your screen: one figure (every channel alike), with per-game overrides when the
-    channels run different delays (the per-channel delay scenario). Behaves as the plain float."""
-
-    def __new__(cls, default: float, per: dict[str, float] | None = None):
-        x = super().__new__(cls, default)
-        x.per = dict(per or {})
-        return x
-
-    def of(self, gid: str | None) -> float:
-        return self.per.get(gid or "", float(self))
-
-
 SCREEN_LAG_S = 43.0   # run()'s default real life -> screen (feed_lag 8 + delay 35)
 
 
@@ -229,11 +206,6 @@ def feed_lag_knobs(feed_lag: float | None, behind_live: float | None = None,
     if behind_live is None:
         return {"feed_lag": fl, "delay": SCREEN_LAG_S - fl}
     return {"feed_lag": fl, "delay": stream_delay + float(behind_live) - fl, "calibrate_targets": True}
-
-
-def lag_of(lag: float, gid: str | None) -> float:
-    """This game's real-life -> screen lag (the plain figure when channels don't differ)."""
-    return lag.of(gid) if isinstance(lag, Lags) else lag
 
 
 def channel_scenario(replays, targets, feed_lag: float, delay: float, spread: float, history: float,
@@ -489,13 +461,13 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             switches[-1].jitter = j
         if (flip_dist or pretune_dist) and len(switches) > n_sw and switches[-1].kind != "replay":
             # [live lab] the TV flip's measured spread around its median (CEC off, 30 flips, Nov 4)
-            from redzone.contracts.switching import FLIP_PRIOR, INPUT_SETTLE_S, PRETUNE_PRIOR_S, sample_prior
+            from redzone.contracts.switching import FLIP_PRIOR, PRETUNE_PRIOR_S, sample_prior
             flip = sample_prior(FLIP_PRIOR, flip_rng)
             if pretune_dist:
                 # every switch a cold pre-tune on the hidden stick, the two sticks taking turns
                 # (pessimistic: a hot standby is a flip alone): pre-tune + flip + HDMI settle vs tune_s
                 stick = list(PRETUNE_PRIOR_S.values())[len(switches) % len(PRETUNE_PRIOR_S)]
-                switches[-1].arrive_dt = sample_prior(stick, flip_rng) + flip + INPUT_SETTLE_S - tune_s
+                switches[-1].arrive_dt = sample_prior(stick, flip_rng) + flip + float(cfg.get("two_stick.input_settle_s")) - tune_s
             else:
                 switches[-1].arrive_dt = flip - FLIP_PRIOR["median"]
         if real_seek and len(switches) > n_sw and switches[-1].kind not in ("replay", "resume", "skip"):
@@ -623,9 +595,6 @@ def _anchor_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict
             delays.anchor(target, ts - w - bias, "break", ts, (1.0 + bias_sd * bias_sd) ** 0.5)
 
 
-POSITION_ORIGIN_S = 1.7e9     # [yttv position] a channel's stream origin in the sim (any constant works)
-
-
 def _position_tick(sync, switches: list, tgt_of: dict, lag_true, delays: DelayBook, tune_s: float,
                    now: float) -> None:
     """[yttv position] The stick on screen reports its playback position each tick (YouTube TV on the
@@ -638,7 +607,7 @@ def _position_tick(sync, switches: list, tgt_of: dict, lag_true, delays: DelayBo
     if not str(target).startswith("youtubetv"):
         return
     true = lag_of(lag_true, last.to) + delays.get(target).behind + last.jitter
-    sync.position(target, now - POSITION_ORIGIN_S - true, t=now)
+    sync.position(target, now - true, t=now)   # stream origin 0: any constant works
 
 
 def _honesty_tick(delays: DelayBook, switches: list, targets, lag_true, tune_s: float, now: float,
@@ -665,12 +634,6 @@ def honesty_summary(rows: list[tuple[float, float]]) -> dict:
             "err_p95": round(err[min(n - 1, int(0.95 * n))], 2)}
 
 
-# [seek model] a pause cue on the hidden stick: seek presses at ~this pace, then the pause/play keys
-SEEK_PRESS_S = 0.25
-PAUSE_KEYS_S = 0.5
-PAUSE_ERR_S = 0.25      # the lab's pause hold, calibrated: error well under 0.5 s
-
-
 def seek_cue(sw: "SwitchLog", decision, cfg, rng) -> None:
     """[seek model] Re-land an entry rewind the way the stick really does it (live lab, Nov 4).
 
@@ -685,12 +648,13 @@ def seek_cue(sw: "SwitchLog", decision, cfg, rng) -> None:
     if r <= 0:
         return
     t = YTTV_SEEK
+    press, keys, perr = (float(cfg.get(k)) for k in ("replay.seek_press_s", "replay.pause_keys_s", "replay.pause_err_s"))
     stall = rng.uniform(t.stall_lo, t.stall_hi)
     if getattr(decision, "cue", "") == "pause":
-        eff = max(1, math.ceil((r + PAUSE_ERR_S * 2 - t.stall_lo) / t.step - 1e-9))
+        eff = max(1, math.ceil((r + perr * 2 - t.stall_lo) / t.step - 1e-9))
         over = eff * t.step + stall - r                       # played forward up to the dead ball
-        cue_t = SEEK_PRESS_S * (eff + t.swallowed) + stall + over + PAUSE_KEYS_S
-        err = max(-2 * PAUSE_ERR_S, min(2 * PAUSE_ERR_S, rng.gauss(0.0, PAUSE_ERR_S)))
+        cue_t = press * (eff + t.swallowed) + stall + over + keys
+        err = max(-2 * perr, min(2 * perr, rng.gauss(0.0, perr)))
         # paused content: the flip's own spread and the fresh tune's landing don't move it
         sw.offset = r + cue_t + sw.arrive_dt + err
         sw.jitter = 0.0
@@ -700,13 +664,13 @@ def seek_cue(sw: "SwitchLog", decision, cfg, rng) -> None:
     sent = seek_model(cfg).sent(r)
     if getattr(decision, "cue", "") == "hidden":
         # seek on the hidden stick, then flip: no live glimpse, the flip waits for presses + stall
-        cue_t = SEEK_PRESS_S * sent + PAUSE_KEYS_S + stall
+        cue_t = press * sent + keys + stall
         sw.offset = sw.jitter + t.landed(sent, stall)
         sw.arrive_dt += cue_t
         sw.leave_dt = cue_t
         return
     sw.offset = sw.jitter + t.landed(sent, stall)
-    sw.flash = SEEK_PRESS_S * sent + PAUSE_KEYS_S if sent else 0.0
+    sw.flash = press * sent + keys if sent else 0.0
 
 
 def _record(decision, before: str | None, t: float, switches: list[SwitchLog],
@@ -843,6 +807,7 @@ def tuning_blackout_seconds(watching: list[tuple[float, str | None]], tune_s: fl
 def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t0, t1, replayed) -> Report:
     by_id = {r.gid: r for r in replays}
     cuts = []
+    cuts_high: list = []   # the mid-play leaves at a high-leverage moment (redzone/lab/leverage.py)
     prev_kind = None
     offs = offsets_of(switches) if len(switches) == len(watching) else None
     left_off = leave_offsets(switches)
@@ -860,6 +825,8 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
                 continue
             if w - play_len <= screen_t <= w:
                 cuts.append((s.t, f"{r.matchup}: {(p.get('text') or '')[:70]}"))
+                if leverage.high_leverage(r.league, p):
+                    cuts_high.append(cuts[-1])
                 break
 
     big = live = mine = mine_live = caught = missed_on_replay = seen10 = my_seen10 = crunch_on_replay = 0
@@ -942,6 +909,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             causes[cause] = causes.get(cause, 0.0) + 10
         t += 10
     rep = Report(switches, cuts, big, live, mine, mine_live, dead, watched, (t1 - t0) / 3600, missed)
+    rep.mid_play_cuts_high = cuts_high
     rep.dead_causes = causes
     rep.tuning_blackout_s = tuning_blackout_seconds(watching, tune_s, t0, t1)
     from redzone.lab import cutgrade
@@ -1080,17 +1048,6 @@ def _redzone_on_screen(replays: list[Replay], screen_t: float) -> bool:
     """Was RedZone on the air at this (screen) time? Same rule the decider is fed."""
     states = [r.state_at(i) for r in replays if (i := _bisect(r.wall, screen_t)) >= 0]
     return redzone_on(g for g in states if g)
-
-
-def _bisect(wall: list[float], t: float) -> int:
-    lo, hi = 0, len(wall)
-    while lo < hi:
-        mid = (lo + hi) // 2
-        if wall[mid] <= t:
-            lo = mid + 1
-        else:
-            hi = mid
-    return lo - 1
 
 
 class _Clock:

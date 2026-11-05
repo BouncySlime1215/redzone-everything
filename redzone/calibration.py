@@ -1,5 +1,7 @@
 """[calib.auto] Self-calibration: values re-measured each night from live telemetry, with no one's input.
 
+Serves: BTN-02 (press_to_tv_p95: the flip deadline the decider prices), STK-06 (hold_cal_s). Owner: lane 3.
+
 One dated file per night, data/calib/YYYY-MM-DD.json, shared by every lane that calibrates, one section
 per half (Start Planner, Nov 4): "timing" (lane 3: flip time, press-to-TV) and "sync" (lane 2: seek step,
 wake presses, per-channel delay):
@@ -131,16 +133,24 @@ def timing_from_summary(s: dict) -> dict[str, tuple[float, int, str]]:
 def flip_prior(cfg, root: Path) -> tuple[float, float] | None:
     """At start, with calib.auto on: the (median, max) TV flip the planner uses before 5 flips of its
     own (in place of two_stick.tv_flip_prior_s), from the newest accepted nights. In memory only: the
-    config file is untouched. None when off or nothing accepted yet."""
+    config file is untouched. None when off or nothing accepted yet.
+
+    The median moves both ways. The max is a landing deadline's upper bound (rule #1), so calibration
+    may only RAISE it: the larger of the shipped prior's max, the newest night's max and every accepted
+    night's max in the guard's history (a quiet night's low max never shrinks it)."""
     if not cfg.get("calib.auto", False):
         return None
     got = latest(root)
     med, mx = got.get("tv_flip_p50_s"), got.get("tv_flip_max_s")
-    if med is None or mx is None or mx["value"] < med["value"]:
+    if med is None or mx is None:
         return None
-    log.info("calib.auto: TV flip prior median %.2f s (%s), max %.2f s (%s)",
-             med["value"], med["night"], mx["value"], mx["night"])
-    return round(med["value"], 2), round(mx["value"], 2)
+    shipped = float((cfg.get("two_stick.tv_flip_prior_s") or {}).get("max", 2.58))
+    upper = max([shipped, mx["value"]] + history(root, "tv_flip_max_s", "9999-12-31"))
+    if upper < med["value"]:
+        return None
+    log.info("calib.auto: TV flip prior median %.2f s (%s), max %.2f s (never below the shipped %.2f s)",
+             med["value"], med["night"], upper, shipped)
+    return round(med["value"], 2), round(upper, 2)
 
 
 # --------------------------------------------------------------------- lane 2: the sync half
@@ -243,5 +253,7 @@ def sync_prior(cfg, root: Path) -> dict:
                           stall_lo=max(0.0, st - half), stall_hi=st + half, late_ok=base.late_ok)
         log.info("calib.auto: seek %.1f s a press, %d wake, stall %.1f-%.1f s (%s)", seek.step, seek.swallowed,
                  seek.stall_lo, seek.stall_hi, step["night"])
-    delays = {k.split(":", 1)[1]: (v["value"], v.get("sd", 3.0)) for k, v in got.items() if k.startswith("delay_s:")}
+    floor = float(cfg.get("calib.sigma_floor_s"))   # a calibrated channel's prior is never surer than this
+    delays = {k.split(":", 1)[1]: (v["value"], max(float(v.get("sd", floor)), floor))
+              for k, v in got.items() if k.startswith("delay_s:")}
     return {"seek": seek, "delays": delays}

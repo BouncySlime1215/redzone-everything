@@ -96,3 +96,45 @@ def test_trace_events_fold_into_one_switch_each(tmp_path):
     assert s["press_samples"] == 1 and s["press_to_tv_p95_s"] == 2.4 and s["press_no_picture"] == 1
     assert s["press_spans"]["flip"]["p50_s"] == 1.9 and s["press_spans"]["queued"]["p50_s"] == 0.1
     assert s["picture_within_3s"] == "2/2"
+
+
+def test_buffer_rows_summarize_stk06(tmp_path):
+    import collect_live_test as c
+    now = time.time()
+    d = tmp_path / "data"
+    d.mkdir()
+    rows = [{"ts": now - 50, "kind": "lost", "target": "youtubetv:fox", "stick": "HDMI2", "behind_s": 0.0, "err_s": -90.0},
+            {"ts": now - 40, "kind": "recovered", "target": "youtubetv:fox", "stick": "HDMI2", "behind_s": 88.6},
+            {"ts": now - 30, "kind": "drift", "target": "youtubetv:espn", "stick": "HDMI1", "behind_s": 96.1, "err_s": 6.1}]
+    (d / "buffer.jsonl").write_text("\n".join(map(json.dumps, rows)) + "\n")
+    s = c.collect(d, tmp_path / "out", now - 3600, now)
+    assert s["buffer"] == {"detected": 2, "lost": 1, "recovered": 1, "rebuild_failed": 0, "err_p95_s": 90.0}
+
+
+def test_a_live_night_keeps_each_switch_provenance_and_the_left_hold_rows(tmp_path):
+    """Gold data (Cycle 07 #1): the night folder keeps every switch row with its trace and provenance
+    (from the app's DB, read-only), and counts STK-07 left-game holds."""
+    import collect_live_test as c
+    from redzone.store import Store
+    now = time.time()
+    d = tmp_path / "data"
+    d.mkdir()
+    st = Store(d / "redzone.db")
+    prov = {"decider": {"kind": "better"}, "control": {"path": "left hold"}, "playbook": ["STK-07"]}
+    st.switch(ts=now - 60, frm="a", to_game="b", target="youtubetv:espn", kind="better", reason="r", event_ts=None,
+              cmd_ts=now - 60, confirmed_ts=now - 57, ok=True, dry_run=False, detail={"trace": {"provenance": prov}})
+    st.switch(ts=now - 7200, frm="b", to_game="a", target="youtubetv:fox", kind="better", reason="r", event_ts=None,
+              cmd_ts=now - 7200, confirmed_ts=None, ok=True, dry_run=False, detail={})   # before the window
+    st.switch(ts=now - 30, frm="b", to_game="a", target="youtubetv:fox", kind="user", reason="r", event_ts=None,
+              cmd_ts=now - 30, confirmed_ts=None, ok=False, dry_run=False, detail={"took": 1})   # no trace
+    rows = [{"ts": now - 59, "kind": "left_held", "target": "youtubetv:fox"},
+            {"ts": now - 20, "kind": "left_resumed", "target": "youtubetv:fox", "behind_s": 40.0},
+            {"ts": now - 10, "kind": "left_expired", "target": "youtubetv:espn"}]
+    (d / "buffer.jsonl").write_text("\n".join(map(json.dumps, rows)) + "\n")
+    s = c.collect(d, tmp_path / "out", now - 3600, now)
+    assert s["left_hold"] == {"held": 1, "resumed": 1, "expired": 1, "lost": 0}
+    assert s["provenance"] == {"switches": 2, "with_provenance": 1, "modules": ["control", "decider", "playbook"],
+                               "playbooks_fired": {"STK-07": 1}}
+    kept = [json.loads(x) for x in (tmp_path / "out" / "switches.jsonl").read_text().splitlines()]
+    assert kept[0]["detail"]["trace"]["provenance"] == prov and len(kept) == 2
+    assert c.copy_switches(tmp_path / "none.db", tmp_path / "x.jsonl", 0) == []

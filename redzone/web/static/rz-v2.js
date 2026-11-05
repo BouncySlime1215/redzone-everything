@@ -9,13 +9,46 @@ import { toast, openSheet, closeSheet, sheetById } from "./rz-sheet.js?v=40";
 
 const v2 = { on: false, checked: false, rows: new Map(), head: "", loading: false, prio: null, missed: null };
 
-async function check() {
-  if (v2.checked) return;
-  v2.checked = true;
-  try { v2.on = !!(await api("/api/v2/status")).enabled; } catch { v2.on = false; }
-  if (v2.on) hooks.render();
+let checking = null;
+function check() {
+  if (!checking) {
+    v2.checked = true;
+    checking = (async () => {
+      try { v2.on = !!(await api("/api/v2/status")).enabled; } catch { v2.on = false; }
+      if (v2.on) { hooks.render(); pollAlert(); pollStrip(); }
+    })();
+  }
+  return checking;
 }
 check();
+
+/* A your-team crunch clash coming up in the next 30 min: one line above the bar (display only). */
+let alert = null;
+function pollAlert() {
+  api("/api/v2/slate").then((r) => { const a = (r && r.alert) || null; const was = JSON.stringify(alert); alert = a; if (JSON.stringify(a) !== was) hooks.renderScreen("now"); })
+    .catch(() => {}).finally(() => setTimeout(pollAlert, 60000));
+}
+/* Top 3 watch values on the Now screen, refreshed every 15 s (read only; tap for the full sheet). */
+let strip = null;
+function pollStrip() {
+  api("/api/v2/watch").then((r) => {
+    const top = arr(r && r.games).slice(0, 3).map((g) => ({ ...g, on: g.game_id === r.current }));
+    const next = JSON.stringify({ top, src: r && r.source });
+    if (next !== JSON.stringify(strip)) { strip = { top, src: r && r.source }; hooks.renderScreen("now"); }
+  }).catch(() => {}).finally(() => setTimeout(pollStrip, 15000));
+}
+function watchStrip() {
+  if (!strip || !strip.top.length) return "";
+  return `<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
+    `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc([g.why, g.stakes_line].filter(Boolean).join(" · "))}</small></span></span>`).join("")}
+    ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>`;
+}
+
+function alertLine() {
+  if (!alert) return "";
+  const when = alert.now ? "Now" : alert.in_s < 90 ? "In a minute" : `In ${Math.round(alert.in_s / 60)} min`;
+  return `<button class="v2-alert" data-act="v2-slate">${icon("alert")}<span><b>${esc(when)}: crunch times overlap.</b> ${esc(alert.on_tv)} gets the TV (${esc(alert.why)}); ${esc(arr(alert.second).join(", "))} on the second stick.</span></button>`;
+}
 
 /** Refetch chips + votes when the newest switch changes. */
 function sync(S) {
@@ -56,9 +89,11 @@ ACTIONS["v2-vote"] = async (el) => {
 /** The "I missed that" bar above Recent switches. */
 export function missedBar() {
   if (!v2.on) return "";
-  return `<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
+  return `${alertLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
-    <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button></div>`;
+    <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button></div>`;
 }
 
 function missedSheet() {
@@ -147,7 +182,7 @@ CHANGES["v2-reels"] = (el) => savePrio({ reels: !!el.checked });
 
 /* ---------- Night replay viewer: what was on, every switch, hold and tap, with playbook ids ---------- */
 const PAL = 8;   // segment colors cycle through .v2-c0 .. .v2-c7 (app.css)
-const night = { day: "", data: null, loading: false, filter: "all" };
+const night = { day: "", data: null, loading: false, filter: "all", at: null };   // at: epoch s to highlight (a deep link)
 
 function colorOf(matchup, order) {
   let i = order.indexOf(matchup);
@@ -182,8 +217,19 @@ function nightSheet() {
     const ticks = [];
     const first = Math.ceil(a / 3600) * 3600;
     for (let t = first; t < b; t += 3600) ticks.push(`<i style="left:${(((t - a) / span) * 100).toFixed(2)}%"><span>${esc(fmtTime(t).replace(":00", ""))}</span></i>`);
-    ribbon = `<div class="v2-ribbon" role="img" aria-label="What was on the TV, ${esc(fmtTime(a))} to ${esc(fmtTime(b))}">${segs.map((sg) =>
-      `<b class="v2-c${colorOf(sg.matchup, order)}" style="left:${(((sg.t0 - a) / span) * 100).toFixed(2)}%;width:${Math.max(0.4, ((sg.t1 - sg.t0) / span) * 100).toFixed(2)}%" title="${attr(sg.matchup)} ${attr(fmtTime(sg.t0))}"></b>`).join("")}</div>
+    const bars = (list) => list.filter((sg) => sg.t1 > a && sg.t0 < b).map((sg) =>
+      `<b class="v2-c${colorOf(sg.matchup, order)}" style="left:${(((Math.max(sg.t0, a) - a) / span) * 100).toFixed(2)}%;width:${Math.max(0.4, ((Math.min(sg.t1, b) - Math.max(sg.t0, a)) / span) * 100).toFixed(2)}%" title="${attr(sg.matchup)} ${attr(fmtTime(sg.t0))}"></b>`).join("");
+    const marks = arr(d.markers).filter((m) => m.ts >= a && m.ts < b).map((m) =>
+      `<em class="v2-mark${m.seen ? "" : " v2-mark--miss"}" style="left:${(((m.ts - a) / span) * 100).toFixed(2)}%" title="${attr(`${m.seen ? "Seen live" : "Missed"}: ${m.matchup} ${m.kind} ${fmtTime(m.ts)}`)}"></em>`).join("");
+    const pm = arr(d.plan_marks).filter((m) => m.ts >= a && m.ts < b);
+    const lane = pm.length ? `<div class="v2-rlabel">What the planner chose: <span class="v2-pm-key v2-pm--catchup">▲</span> catch-up <span class="v2-pm-key v2-pm--interleave">◆</span> break visit / return</div>
+      <div class="v2-pmlane" role="img" aria-label="${attr(`${num((d.plan_counts || {}).catchup)} catch-ups and ${num((d.plan_counts || {}).interleave)} break visits`)}">${pm.map((m) =>
+        `<i class="v2-pm v2-pm--${attr(m.type)}${m.ok ? "" : " v2-pm--fail"}" style="left:${(((m.ts - a) / span) * 100).toFixed(2)}%" title="${attr(`${m.type === "catchup" ? "Catch-up" : m.kind === "return" ? "Back home" : "Break visit"}: ${m.matchup} ${fmtTime(m.ts)}${m.plan ? " (plan " + m.plan + ")" : ""}`)}">${m.type === "catchup" ? "▲" : "◆"}</i>`).join("")}</div>` : "";
+    const o = d.oracle;
+    ribbon = `<div class="v2-ribbon" role="img" aria-label="What was on the TV, ${esc(fmtTime(a))} to ${esc(fmtTime(b))}">${bars(segs)}${marks}</div>
+      ${lane}
+      ${o ? `<div class="v2-rlabel">Best possible (hindsight)${o.agree_pct != null ? ` · we matched ${esc(String(o.agree_pct))}% of the time` : ""}</div>
+      <div class="v2-ribbon v2-ribbon--oracle" role="img" aria-label="What the hindsight oracle would have shown">${bars(arr(o.segments))}</div>` : ""}
       <div class="v2-ticks">${ticks.join("")}</div>
       <div class="v2-legend">${arr(sm.on_air).map((r) => `<span><i class="v2-c${colorOf(r.matchup, order)}"></i>${esc(r.matchup)} <small>${esc(fmtDur(r.s))}</small></span>`).join("")}</div>`;
   }
@@ -199,7 +245,8 @@ function nightSheet() {
       e.type === "switch" && e.dry_run ? `<span class="tag tag--would">Would switch</span>` : "",
       e.type === "switch" && !e.ok && !e.dry_run ? `<span class="tag tag--fail">Failed</span>` : "",
     ].join("");
-    return `<div class="v2-ev v2-ev--${attr(e.type)}"><span class="v2-ev-ic">${icon(ic)}</span><div style="min-width:0">
+    const hit = night.at && Math.abs(num(e.ts) - night.at) <= 120 ? " v2-ev--hit" : "";
+    return `<div class="v2-ev v2-ev--${attr(e.type)}${hit}"><span class="v2-ev-ic">${icon(ic)}</span><div style="min-width:0">
       <div class="v2-ev-top"><span class="m ell">${esc(title)}</span><span class="t">${esc(fmtTime(e.ts))}</span></div>
       ${e.reason ? `<div class="v2-ev-why">${esc(String(e.reason).replace(/\s*playbook=\S+/g, ""))}</div>` : ""}${tags ? `<div class="v2-why">${tags}</div>` : ""}</div></div>`;
   };
@@ -208,7 +255,8 @@ function nightSheet() {
     <div class="v2-tiles"><div class="stile"><b>${num(sm.switches)}</b><span>Switches</span></div>
       <div class="stile"><b>${num(sm.games)}</b><span>Games shown</span></div>
       <div class="stile"><b>${num(taps.up)}/${num(taps.down)}</b><span>👍 / 👎</span></div>
-      <div class="stile"><b>${num(taps.missed)}</b><span>Missed</span></div></div>
+      <div class="stile"><b>${num(taps.missed)}</b><span>Missed</span></div>
+      ${d.big && d.big.plays ? `<div class="stile"><b>${num(d.big.seen)}/${num(d.big.plays)}</b><span>Big plays live</span></div>` : ""}</div>
     <div class="sheet-sec"><h4>What was on</h4>${sm.failed ? `<small>${num(sm.failed)} failed</small>` : ""}</div>${ribbon}
     ${pb.length ? `<div class="sheet-sec"><h4>Playbooks used</h4></div><div class="v2-why">${pb.map(([k, n]) => `<span class="tag tag--kind">${esc(k)} × ${num(n)}</span>`).join("")}</div>` : ""}
     <div class="sheet-sec"><h4>Timeline</h4><small>newest first</small></div>
@@ -216,9 +264,95 @@ function nightSheet() {
     <div class="v2-evs">${evs.length ? evs.map(row).join("") : `<div class="t2">Nothing here.</div>`}</div>`;
 }
 
-ACTIONS["v2-night"] = () => { night.data = null; openSheet({ id: "v2-night", label: "The whole night", full: true, render: nightSheet }); loadNight(""); };
+ACTIONS["v2-night"] = () => { night.data = null; night.at = null; openSheet({ id: "v2-night", label: "The whole night", full: true, render: nightSheet }); loadNight(""); };
 ACTIONS["v2-night-day"] = (el) => { night.data = null; const s = sheetById("v2-night"); if (s) s.update(); loadNight(el.dataset.day); };
+/* Deep link from the night health report (scripts/night_report.py): #night=YYYY-MM-DD&at=HH:MM (ET; a time
+   before noon is after midnight, the same night) opens the whole night on that day, the miss highlighted. */
+export function nightFromHash(hash = (typeof location !== "undefined" ? location.hash : "")) {
+  const m = /^#night=(\d{4}-\d{2}-\d{2})(?:&at=(\d{2}):(\d{2}))?$/.exec(hash || "");
+  if (!m) return null;
+  let at = null;
+  if (m[2]) {
+    const d = new Date(`${m[1]}T${m[2]}:${m[3]}:00`);
+    if (+m[2] < 12) d.setDate(d.getDate() + 1);
+    at = d.getTime() / 1000;
+  }
+  return { day: m[1], at };
+}
+async function openNightLink() {
+  const l = nightFromHash();
+  if (!l) return;
+  await check();
+  if (!v2.on) return;   // the viewer is phone v2 (flag phone.v2)
+  night.data = null; night.filter = "all"; night.at = l.at;
+  openSheet({ id: "v2-night", label: "The whole night", full: true, render: nightSheet });
+  loadNight(l.day).then(() => { try { document.querySelector(".v2-ev--hit")?.scrollIntoView({ block: "center" }); } catch { /* no DOM */ } });
+}
+try { if (typeof window !== "undefined") { window.addEventListener("hashchange", openNightLink); setTimeout(openNightLink, 0); } } catch { /* no DOM */ }
 ACTIONS["v2-night-filter"] = (el) => { night.filter = el.dataset.f; const s = sheetById("v2-night"); if (s) s.update(); };
+
+/* ---------- Watch value: each live game's 0-100 and its one-line why (read only) ---------- */
+const watchS = { data: null, timer: null };
+async function loadWatch() {
+  try { watchS.data = await api("/api/v2/watch"); } catch (e) { watchS.data = { error: e.message }; }
+  const s = sheetById("v2-watch");
+  if (s) { s.update(); clearTimeout(watchS.timer); watchS.timer = setTimeout(loadWatch, 10000); }
+}
+const CRUNCH_TXT = { entering: "Crunch soon", in: "Crunch", leaving: "Crunch ending" };
+function watchSheet() {
+  const d = watchS.data;
+  if (!d) return `<h3>Watch value</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Watch value</h3><p class="lead">${esc(d.error)}</p>`;
+  const gs = arr(d.games);
+  if (!gs.length) return `<h3>Watch value</h3><p class="lead">No live games right now.</p>`;
+  const note = d.source === "learned" ? "The Noggin's learned watch value, updated every few seconds."
+    : "Preview: today's priority score until the learned watch value ships.";
+  return `<h3>Watch value</h3><p class="lead">${esc(note)}</p>
+    <div class="v2-wv">${gs.map((g) => `<div class="v2-wv-row${g.game_id === d.current ? " on" : ""}">
+      <div class="v2-wv-top"><span class="m ell">${esc(g.matchup)}</span>${g.game_id === d.current ? `<span class="tag tag--kind">On TV</span>` : ""}${g.crunch_state ? `<span class="tag tag--fail">${esc(CRUNCH_TXT[g.crunch_state] || "Crunch")}</span>` : ""}${g.is_break ? `<span class="tag">Break</span>` : ""}<b>${num(g.wv)}</b></div>
+      <div class="v2-wv-bar"><i style="width:${Math.max(2, Math.min(100, g.wv))}%"></i></div>
+      ${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}${g.stakes_line ? `<div class="v2-stakes">${icon("target")}${esc(g.stakes_line)}</div>` : ""}</div>`).join("")}</div>`;
+}
+ACTIONS["v2-watch"] = () => { watchS.data = null; openSheet({ id: "v2-watch", label: "Watch value", full: true, render: watchSheet, onClose: () => clearTimeout(watchS.timer) }); loadWatch(); };
+
+/* ---------- North Star trend: each headline line over the harness runs, read-only ---------- */
+const trendS = { data: null, split: "dev" };
+async function loadTrend() {
+  try { trendS.data = await api(`/api/v2/trend?split=${trendS.split}`); } catch (e) { trendS.data = { error: e.message }; }
+  const s = sheetById("v2-trend"); if (s) s.update();
+}
+const STAT = { PASS: "pass", FAIL: "fail" };
+function spark(l) {
+  const pts = arr(l.points).map((p, i) => [i, p.v]).filter(([, v]) => typeof v === "number");
+  if (!pts.length) return `<svg class="v2-spark" viewBox="0 0 100 28"></svg>`;
+  const vs = pts.map(([, v]) => v).concat(l.bar), lo = Math.min(...vs), hi = Math.max(...vs), n = Math.max(1, arr(l.points).length - 1);
+  const y = (v) => (hi === lo ? 14 : 25 - ((v - lo) / (hi - lo)) * 22).toFixed(1), x = (i) => ((i / n) * 100).toFixed(1);
+  return `<svg class="v2-spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
+    <line x1="0" x2="100" y1="${y(l.bar)}" y2="${y(l.bar)}" class="v2-spark-bar"/>
+    <polyline points="${pts.map(([i, v]) => `${x(i)},${y(v)}`).join(" ")}" class="v2-spark-line"/>
+    <circle cx="${x(pts[pts.length - 1][0])}" cy="${y(pts[pts.length - 1][1])}" r="2.2" class="v2-spark-dot"/></svg>`;
+}
+function trendSheet() {
+  const d = trendS.data;
+  if (!d) return `<h3>How close to perfect</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>How close to perfect</h3><p class="lead">${esc(d.error)}</p>`;
+  const tabs = [["dev", "Dev nights"], ["locked", "Locked test nights"]].map(([k, l]) =>
+    `<button class="v2-day" data-act="v2-trend-split" data-f="${k}" aria-pressed="${trendS.split === k}">${l}</button>`).join("");
+  if (!d.runs) return `<h3>How close to perfect</h3><div class="v2-days">${tabs}</div><p class="lead">No North Star runs yet.</p>`;
+  const fmt = (v) => (typeof v === "number" ? (Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2)).replace(/\.0+$/, "") : "–");
+  const rows = arr(d.lines).map((l) => `<div class="v2-trend">
+      <div class="v2-trend-top"><span class="m">${esc(l.label)}</span><span class="tag tag--${STAT[l.status] || "kind"}">${esc(l.status || "–")}</span></div>
+      <div class="v2-trend-mid">${spark(l)}<div class="v2-trend-num"><b>${fmt(l.latest)}</b><small>bar ${fmt(l.bar)}${l.gap ? ` · ${fmt(l.gap)} to go` : ""}</small>
+      ${typeof l.better === "number" && l.better !== 0 ? `<small class="${l.better > 0 ? "up" : "down"}">${l.better > 0 ? "▲" : "▼"} ${fmt(Math.abs(l.better))} since first run</small>` : ""}</div></div></div>`).join("");
+  return `<h3>How close to perfect</h3>
+    <div class="v2-days">${tabs}</div>
+    <div class="v2-tiles"><div class="stile"><b>${num(d.passing)}/${num(arr(d.lines).length)}</b><span>Lines passing</span></div>
+      <div class="stile"><b>${num(d.runs)}</b><span>Runs</span></div>
+      <div class="stile"><b>${esc(String(d.commit || "–"))}</b><span>${esc(String(d.ts || ""))}</span></div></div>
+    <div class="v2-trends">${rows}</div>`;
+}
+ACTIONS["v2-trend"] = () => { trendS.data = null; openSheet({ id: "v2-trend", label: "How close to perfect", full: true, render: trendSheet }); loadTrend(); };
+ACTIONS["v2-trend-split"] = (el) => { trendS.split = el.dataset.f; trendS.data = null; const s = sheetById("v2-trend"); if (s) s.update(); loadTrend(); };
 
 /* ---------- Slate preview: tonight ahead, crunch windows and who gets the TV when they collide ---------- */
 const slate = { data: null };
