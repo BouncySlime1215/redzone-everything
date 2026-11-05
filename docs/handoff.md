@@ -71,9 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-World-model pilot ready: colab/world_model_pilot.ipynb 76f4f4e (kaggle-inputs)
-L4 watchdog 400/1436; A100 reasoner 100/7862 (ETA 388 min > 156 min budget); RC6.1 tests still running
-usage 37%
+- 20:05 Colab Pro+ running: world model PILOT (EXP-100, colab/world_model_pilot.ipynb @76f4f4e) on A100 (~1.6 h, ~21 CU); V8 game-reasoner UNCAPPED on A100 (SESSION_H 7.5, ~90 CU, teacher answers from release mind-inputs-v7); V8 watchdog uncapped on L4. RC6.1: Nick said 'deploy whenever'; Mac subset + deploy --skip-tests --at-break (CI full suite green). Go-wide workflow running up to 20 experiments as draft PRs. Live: Prime cold tune ~26 s (top RC7 fix); Mac on battery.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
