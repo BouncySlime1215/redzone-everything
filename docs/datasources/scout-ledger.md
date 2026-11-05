@@ -38,8 +38,8 @@ Derived rows are listed after the ranking and never count toward new information
 | 21 | nfl | FTN charting via nflverse (is_no_huddle, motion, play action per play) | 0 | context-new | yellow | 0.83 | 0.05 | 16.6 | done | crew A | none | CC BY-SA 4.0, credit "FTN Data via nflverse"; share-alike only if we publish a derived dataset |
 | 22 | nfl | v2 context: game-time weather for outdoor NFL, CFB, MLB | 0 | context-new | green | 1.9 | 1.2 | 2.4 | ready | crew B | none | NOAA public domain / CC0 (Open-Meteo CC BY 4.0, non-commercial free tier) |
 | 23 | nfl | NFL national TV per game from Wikipedia season broadcast tables | 0 | context-new | yellow | 0.01 | 0.01 | 0.3 | parked | crew F | none | CC BY-SA 4.0 facts only; credit Wikipedia; no text stored |
-| 24 | nfl | NFL Next Gen Stats weekly passing/rushing/receiving (nflverse nextgen_stats release) | 1 | context-new | yellow | 1.8 | 0.03 | 36.0 | ready | crew B | none | nflverse release under CC-BY-4.0 (terms.json nflverse open); upstream NFL Next Gen Stats; personal use, not for commercial release |
-| 25 | nfl | NFL weekly depth charts (starter vs backup at every position) via nflverse | 1 | context-new | yellow | 2.1 | 0.2 | 10.5 | ready | crew B | none | nflverse release (terms.json nflverse open); upstream team depth charts; personal use, not for commercial release |
+| 24 | nfl | NFL weekly depth charts (starter vs backup at every position) via nflverse | 1 | context-new | yellow | 2.1 | 0.2 | 10.5 | ready | crew B | none | nflverse release (terms.json nflverse open); upstream team depth charts; personal use, not for commercial release |
+| 25 | nfl | NFL Next Gen Stats weekly passing/rushing/receiving (nflverse nextgen_stats release) | 1 | context-new | yellow | 0.27 | 0.03 | 5.4 | done | crew B | none | nflverse release under CC-BY-4.0 (terms.json nflverse open); upstream NFL Next Gen Stats; personal use, not for commercial release |
 | 26 | nfl | NFL Big Data Bowl 2027 (combine + in-game tracking, 10 Hz) | 2 | events | yellow | 48 | 8 | 6.0 | needs-nick | crew A | join the Big Data Bowl 2027 competition on Kaggle and accept its rules | competition rules (non-commercial research); Nick joins and accepts the rules tab himself on his Kaggle account |
 | 27 | nfl | StatsBomb American football open data (TB12DB: plays, events, low- and high-frequency tracking) | 2 | events | yellow | 4.4 | 20 | 0.3 | done | crew A | none | StatsBomb Public Data User Agreement (same LICENSE.pdf as soccer open data; already classed restrictive in terms.json): research/personal use, credit StatsBomb + logo if published; tag personal-use |
 | 28 | shared-basketball | wehoop WNBA + women's college basketball pbp (sportsdataverse release parquet) | 1 | events | yellow-B (personal-use, not for commercial release) | 270 | 3 | 90.0 | ready | crew A | none | ESPN-derived (Disney ToU bars AI training); usable only under plan B for personal use |
@@ -80,23 +80,23 @@ Derived rows are listed after the ranking and never count toward new information
 | Kind | Sources | Est. tokens (M) |
 |---|---:|---:|
 | events | 33 | 3434.6 |
-| context-new | 18 | 52.86 |
+| context-new | 18 | 51.33 |
 | derived | 3 | 5700 |
-| **New information (events + context-new)** | 51 | 3487.46 |
+| **New information (events + context-new)** | 51 | 3485.93 |
 
 ## New-information totals by status and verdict
 
 | Bucket | Sources | Est. tokens (M) |
 |---|---:|---:|
-| Ready for a crew | 20 | 866.95 |
-| Pulling or done (real) | 7 | 229.03 |
+| Ready for a crew | 19 | 865.15 |
+| Pulling or done (real) | 8 | 229.3 |
 | Probe / hold (scout) | 9 | 236.32 |
 | Needs Nick | 5 | 2076.5 |
 | Parked | 8 | 78.61 |
 | Verdict green | 4 | 76.25 |
-| Verdict yellow | 16 | 2186.14 |
+| Verdict yellow | 16 | 2184.61 |
 | Verdict yellow-B | 31 | 1225.07 |
-| **All new-information candidates** | 51 | 3487.46 |
+| **All new-information candidates** | 51 | 3485.93 |
 
 ## Growth by cycle (candidates added, cumulative)
 
@@ -107,8 +107,8 @@ Derived rows are listed after the ranking and never count toward new information
 | 15 | 3 | 16.1 | 1329.1 |
 | 16 | 6 | 2130.55 | 3459.65 |
 | 17 | 4 | 0.91 | 3460.56 |
-| 18 | 4 | 24.8 | 3485.36 |
-| 19 | 1 | 2.1 | 3487.46 |
+| 18 | 4 | 23.27 | 3483.83 |
+| 19 | 1 | 2.1 | 3485.93 |
 
 ## Why each source
 
@@ -135,8 +135,8 @@ Derived rows are listed after the ranking and never count toward new information
 - **FTN charting via nflverse (is_no_huddle, motion, play action per play)** (NFL, 2022-2024 (2025 held out: overlaps the locked set)): is_no_huddle is a direct label for when the next snap comes fast, i.e. a break that is NOT a break: the key to stopping NFL entries that wait out a break that never comes Access: nflreadpy load_ftn_charting() (nflverse release parquet).
 - **v2 context: game-time weather for outdoor NFL, CFB, MLB** (NFL, CFB, MLB, 1999+): ~80k outdoor games x ~4 game hours x 6 vars (temp, wind speed, wind dir vs field bearing, precip, gust, lightning flag). As fed: ~31M outdoor plays x 4 Access: NOAA GHCNh hourly (s3://noaa-ghcnh-pds, no sign-in) nearest station; Open-Meteo ERA5 as backup; nflverse temp/wind columns already in pbp.
 - **NFL national TV per game from Wikipedia season broadcast tables** (NFL, 2011+): crew F's NFL table has slot (primetime vs Sunday-day) but no network; national windows run longer breaks. Joins on date + teams. PARKED by crew F: 63.5k nflverse breaks show little primetime/day difference and per-network cells differ ~10 s; NFL 196/196 is entry policy, revisit if EXP-205 shows network matters Access: Wikipedia wikitext dumps (or the REST page HTML once per season page), parsed to game -> network on Kaggle.
-- **NFL Next Gen Stats weekly passing/rushing/receiving (nflverse nextgen_stats release)** (NFL, 2016-2025): tracking-derived player form (time to throw, separation, yards over expected) as pre-game player context while BDB waits on Nick Access: nflreadpy load_nextgen_stats() (nflverse release parquet).
 - **NFL weekly depth charts (starter vs backup at every position) via nflverse** (NFL, 2001-2025): a backup QB or missing star changes how much a game is worth watching; injuries say who is hurt, depth charts say who actually starts. Count only week-over-week starter changes per game, so tokens stay context-new Access: nflreadpy load_depth_charts() (nflverse release parquet).
+- **NFL Next Gen Stats weekly passing/rushing/receiving (nflverse nextgen_stats release)** (NFL, 2016-2025): tracking-derived player form (time to throw, separation, yards over expected) as pre-game player context while BDB waits on Nick. Landed by crew B (#280): 44.6k pregame team-form facts, 2016-2026 Access: nflreadpy load_nextgen_stats() (nflverse release parquet).
 - **NFL Big Data Bowl 2027 (combine + in-game tracking, 10 Hz)** (NFL, 2023-2025): TOP priority for tracking (Nick 12:15 AM). newest in-game tracking (opened Oct 8 2026); adds to the 2019-2026 BDB rows already in the catalog Access: Kaggle competition attach; data stays in Kaggle.
 - **StatsBomb American football open data (TB12DB: plays, events, low- and high-frequency tracking)** (NFL, 2017-2022 (plays); 2021-22 low-frequency tracking): the only free NFL in-game player tracking outside the Big Data Bowl, with StatsBomb event tags on each play: snap, whistle and huddle timing for ~140 games. Tracking frames count apart from events LANDED (crew A, Nov 5 06:26 UTC): 108 games, 729k events, 4.4M v1 tokens (~60% pathing/engagement annotations); LFT 37 games, 31k rows counted as tracking; HFT deferred Access: GitHub statsbomb/amf-open-data (CSV/Parquet/json.gz per game) + full-season tracking zips on AWS S3 linked from the README.
 - **wehoop WNBA + women's college basketball pbp (sportsdataverse release parquet)** (WNBA, WBB, WNBA 2002+, WBB 2005+): same clock-and-timeout grammar as CBB at a different level; WCBB is off for the product but this is pretraining only Access: pre-built GitHub release parquet; never call ESPN.
