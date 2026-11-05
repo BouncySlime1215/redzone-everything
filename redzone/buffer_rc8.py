@@ -142,7 +142,9 @@ def gate_league(league: str, sim_runs: list[dict] | None, shadow_rows: list[dict
     mid = sum(int(r.get("entries_mid_play") or 0) for r in runs)
     ct = sum(int(r.get("clock_truth_live") or 0) for r in runs)
     sh_live = sum(1 for r in sh if r.get("label") == "live" or r.get("clock_truth") == "live")
-    first = sum(int(r.get("first_pick_mid_play") or 0) for r in runs)   # first picks (and after restarts): own line
+    # first picks (and after restarts): own line; None = the runs don't report it (never read as 0)
+    first = (sum(int(r.get("first_pick_mid_play") or 0) for r in runs)
+             if any("first_pick_mid_play" in r for r in runs) else None)
     sh_first = sum(1 for r in sh if r.get("first_pick") and (r.get("label") == "live" or r.get("clock_truth") == "live"))
     harn = {h: sum(1 for r in runs if r.get("harness") == h) for h in HARNESSES}
     if mid or ct or sh_live or first:
