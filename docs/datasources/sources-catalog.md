@@ -13,6 +13,8 @@ Rules that apply to every row: $0 only, never touch keys (Nick adds them as Kagg
 scrape a site whose terms forbid it, collect on Kaggle CPU (never the Mac), keep raw data in the
 **private** Kaggle dataset, and never commit raw rows to this public repo.
 
+**Betting data is a hidden check only** (overseer, Nov 4 2026). That covers closing lines, CFBD `/lines`, SBRO and Polymarket. Use it only to calibrate and evaluate our WP, crunch and stakes heads. It is never a model feature, a training label or a weight, and it is never shown on the TV or phone (playbook §5: no betting hooks).
+
 "Counted" = the new, de-duplicated values this source adds to the running total in
 [ingest-plan.md](ingest-plan.md). It is lower than "realistic" when another source already holds
 the same events.
@@ -66,10 +68,10 @@ M = million values, B = billion values.
 
 | Source | Leagues | Years | Realistic (counted) | Access | Verdict + reason | Cost | Noggin use |
 |---|---|---|---|---|---|---|---|
-| Polymarket documented APIs (+ Polygon on-chain fills) | All six | 2022-present (dense 2024+) | 250M (250M) | gamma-api, clob `/prices-history`, data-api `/trades`; no key; back off on limits | Yellow, Nick sign-off: §4.2 data bar targets capital-market clients, not individuals; never scrape the HTML site; read-only (US persons cannot trade, no VPN); hash or drop wallet addresses; log in decisions.md | $0 | Per-minute in-game probability; entropy p(1-p) = crunch-time label; trade gaps = break detector |
+| Polymarket documented APIs (+ Polygon on-chain fills) | All six | 2022-present (dense 2024+) | 250M (250M) | gamma-api, clob `/prices-history`, data-api `/trades`; no key; back off on limits | Yellow, Nick sign-off: §4.2 data bar targets capital-market clients, not individuals; never scrape the HTML site; read-only (US persons cannot trade, no VPN); hash or drop wallet addresses; log in decisions.md | $0 | Hidden calibration/eval check only (overseer, Nov 4): per-minute in-game probability vs our WP/crunch heads. Never a feature or training label, and nothing betting-related is ever shown |
 | CFBD `/lines` | CFB | 2013-present | 0.65M (in CFBD row) | ~13 calls total | Yellow: same CFBD terms | $0 | Opening vs closing spread, total = pace |
 | Kaggle NFL Scores and Betting (tobycrabtree) | NFL | 1966-present | 0.11M new (1966-98) (0.11M) | Kaggle dataset, stays in Kaggle | Yellow: Nick checks the license field; use only if CC0, CC-BY or ODbL; skip the HF mirror | $0 | Older NFL closeness priors |
-| Sportsbook Reviews Online archive (Wayback only) | NFL, NBA, NHL, MLB (+CFB/CBB via Wayback) | ~2007-2022 | 5M (5M) | Archived .xlsx through the Wayback CDX, slow; never run the FinnedAI scraper | Yellow, Nick approves and logs it: no license, odds are weakly copyrightable facts | $0 | Opening-to-closing move = news signal; only free NHL/MLB line history |
+| Sportsbook Reviews Online archive (Wayback only) | NFL, NBA, NHL, MLB (+CFB/CBB via Wayback) | ~2007-2022 | 5M (5M) | Archived .xlsx through the Wayback CDX, slow; never run the FinnedAI scraper | Yellow, Nick approves and logs it: no license, odds are weakly copyrightable facts | $0 | Hidden calibration/eval check only: closing lines vs our WP (only free NHL/MLB line history) |
 | The Odds API free tier (forward only) | All six | Forward | 3M per year (3M) | Free key Nick adds; ~1 snapshot a day fits the credit cap | Yellow: terms allow storage and ML training; no resale; historical is paid, so never | $0 | Morning slate prior (closeness, total) |
 
 ## 5. Coaching and decision behavior
@@ -120,7 +122,7 @@ Retrosheet substitutions). New here:
 |---|---|---|---|---|---|---|---|
 | League media-timeout rule tables (hand-coded) | All six | By rule era | 0.009M (0.009M) | Read rulebooks, paraphrase into YAML in the repo | Green: rules are facts; do not copy PDF text | $0 | Hard priors: CBB under-16/12/8/4, NBA after 7:00 and 3:00, NHL after 14/10/6, MLB inning breaks and pitch clock |
 | Win probability and Game Excitement Index (derived) | All six | 2002+ | 200M (200M, derived) | Run open packages over the pbp we hold; MLB WP from our own Retrosheet run-expectancy model | Green: outputs are ours (never use the MLB winProbability endpoint) | $0 | Hindsight oracle reward; running GEI as a world-model target |
-| Our live-night logs (TraceEvents, auto-log #118) | Whatever is live | 2026+ | 20M per season (20M) | Nightly upload to the private Kaggle dataset | Green: ours; redact tokens and device IDs | $0 | Gold labels: real latency, mid-play entries, Nick's overrides (weight 10-50x) |
+| Our live-night logs (TraceEvents, auto-log #118) | Whatever is live | 2026+ | 20M per season (20M) | Nightly upload to the private Kaggle dataset | Green: ours; redact tokens and device IDs | $0 | Gold labels: real latency, mid-play entries (weight 10-50x). Nick's overrides: evaluation only, never a label (self-taught rule) |
 | SYNTHETIC A: slate re-mixer + play re-timer | All | n/a | 1.0B stored cache (synthetic) | Our simulator on Kaggle CPU | Green: seed only from green/yellow sources | $0 | Planner self-play; collision-heavy slates |
 | SYNTHETIC B: WP counterfactual rollouts | All | n/a | 1.0B stored cache (synthetic) | Our code | Green: same seed rule; never enters eval or the locked set | $0 | Rare states: comebacks, OT, walk-offs, coach-policy branches |
 

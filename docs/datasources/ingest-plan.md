@@ -48,8 +48,9 @@ learns from.
 5. **Derived values add nothing new.** WP, GEI, solar position, travel and playoff-odds summaries
    are functions of data we already hold. They are useful features, but they are not new data.
    Solar position is computed on the fly and not stored.
-6. **Our live-night logs are worth the most per row** (real latency, mid-play entries, Nick's
-   overrides). Weight them 10-50x.
+6. **Our live-night logs are worth the most per row** (real latency, mid-play entries).
+   Weight them 10-50x. Nick's presses and overrides are **controls only, never a training label or weight**
+   (the self-taught rule); they may appear only as an evaluation-only line.
 
 ## 2. Ranked waves
 
@@ -61,7 +62,7 @@ must-watch).
 | Rank | Source | Counted | Stored | Why this rank |
 |---:|---|---:|---:|---|
 | 1 | Media-timeout and break rule tables (hand-coded YAML) | 9k | ~0 | Near-deterministic "break owed" prior for CBB, NBA and NHL; directly serves Rule #1 |
-| 2 | Our live-night logs (auto-log #118) | 20M/season | 0.2 GB/season | Gold labels; the only real latency and override data |
+| 2 | Our live-night logs (auto-log #118) | 20M/season | 0.2 GB/season | Gold labels; the only real latency data (overrides: evaluation only, never a label) |
 | 3 | Retrosheet events + game logs + Chadwick register | 1.55B | ~2 GB | The only green play-by-play; any use allowed; best seed for synthetic baseball |
 | 4 | NBA L2M reports | 3.5M | ~0.01 GB | League-picked crunch-time games, review stoppages |
 | 5 | FiveThirtyEight Elo/forecasts (mirror now, before it disappears) | 9M | ~0.05 GB | Pregame priors and upset-in-progress trigger |
@@ -196,7 +197,7 @@ How each main source maps:
 | Rule tables | Not rows: a `break_owed` feature computed per event | Next guaranteed stoppage |
 | Polymarket | Per-minute side table keyed by `game_id` + wall minute | Market entropy, trade-gap break detector |
 | Weather, GLM, Elo, travel, standings, hype | `context_ref` tables (pregame and per-hour) | Conditioning, delay risk, must-watch prior |
-| Live-night logs | Our own TraceEvents, joined by `game_id` + `wall_s` | Gold mid-play, latency and preference labels |
+| Live-night logs | Our own TraceEvents, joined by `game_id` + `wall_s` | Gold mid-play and latency labels (no preference labels from Nick: self-taught rule) |
 
 ## 5. The 10 most creative ideas
 
@@ -228,5 +229,6 @@ How each main source maps:
     (small `|go_boost|`, 4th-and-1 late, 2-point try down 8) predicts interest before the snap, so
     the planner switches in at the dead ball before the decision.
 
-Runners-up: market entropy p(1-p) from Polymarket as a crunch-time label; Nick's remote overrides
-as 50x-weighted pairwise preferences; point-in-time playoff-leverage replay as a stakes token.
+Runners-up: point-in-time playoff-leverage replay as a stakes token. (Dropped: Polymarket entropy as a
+crunch-time label, because market data is a hidden calibration/eval check only (overseer, Nov 4), and Nick's
+overrides as preferences, because of the self-taught rule.)
