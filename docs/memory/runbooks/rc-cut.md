@@ -17,7 +17,8 @@ exact `integration/next` SHA the Integrator handed over into `integration/releas
 | RC6 | cf480a4 | Nov 4 23:34 | failed the Mac test step (stale city map tag; #193) |
 | RC6.1 | 9322c28 | Nov 4 23:39 | live 9:14 PM ET Nov 4; two false health rollbacks (benched feeds counted as failing; #232) |
 | RC6.2 | 1bf4150 | Nov 5 03:40 | tree = next 90b6c98; #232 health fix, #227, #229, #231, grader v10 lines; deployed 10:55 PM ET Nov 4, TV off |
-| RC7 | | Thu Nov 5 afternoon ET | before TNF 8:15 PM ET |
+| RC6.3 | 39597ea | Nov 5 20:58 | tree = next 88a3b0b, graders v31; RC7 gates not met, so a point release. NHL EXP-303 package, #310 YTTV timed taps, #281 edge reader and fast_feeds in shadow, rc8_on off; Nick yes on the card 3:55 PM ET |
+| RC7 | | | after the sync, Prime and mid_break gates pass |
 
 Add a row here **and** a `"<sha7>": "RCx"` line to `docs/releases.json` (the phone's "Last night" card) at every cut.
 
