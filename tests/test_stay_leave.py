@@ -39,3 +39,17 @@ def test_manifest_never_lists_locked_nights():
     man = SL.manifest({"nba": s})
     assert not (set(man["nba"]["train_nights"]) | set(man["nba"]["valid_nights"])) & set(s.test)
     assert not any(w in src for src in man["label_sources"] for w in ("teacher", "nick", "press", "userstate"))
+
+
+def test_dwell_backs_off_under_whiplash():
+    st = SL.State(m=0.5)
+    flips, on = 0, "a"
+    for i in range(30):                                  # 10 min, the lead trades every 20 s
+        ts = 20.0 * i
+        other = "b" if on == "a" else "a"
+        ctx = {"league": "nba", "period": 1, "clock_s": 600, "home_score": 10, "away_score": 30, "ts": ts,
+               "value": 3.0 if i % 2 else 1.0, "alts": [{"game_id": other, "value": 1.0 if i % 2 else 3.0}]}
+        d, st = SL.decide(ctx, st)
+        if d.action == "leave":
+            flips, on = flips + 1, other
+    assert flips <= 5

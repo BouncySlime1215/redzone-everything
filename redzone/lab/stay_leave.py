@@ -438,6 +438,16 @@ def band(state: State, ts: float) -> float:
     return state.m * (1 + k)
 
 
+def dwell(state: State, ts: float) -> float:
+    """Minimum time on a game after our last switch: dwell_s x (1 + switches in the last 15 min before it),
+    so whiplash between two games that trade the lead backs off (0, 60, 180, 420 s ...)."""
+    if not state.switches:
+        return 0.0
+    last = state.switches[-1]
+    k = sum(1 for t in state.switches[:-1] if last - t < 15 * 60)
+    return state.dwell_s * (1 + k)
+
+
 def decide(ctx: dict, state: State | None = None) -> tuple[Decision, State]:
     """One stay/leave decision for the game on screen. ctx: league, period, clock_s (left in period),
     home_score, away_score, value (this game's predicted value; `value_stay` also read), alts [{game_id, value}],
@@ -457,7 +467,7 @@ def decide(ctx: dict, state: State | None = None) -> tuple[Decision, State]:
     gid = best["game_id"] if best else None
     if hl:
         return Decision("stay", v_stay, v_alt, gid, m, True, "high-leverage floor"), st
-    if st.switches and ts - st.switches[-1] < st.dwell_s:
+    if st.switches and ts - st.switches[-1] < dwell(st, ts):
         return Decision("stay", v_stay, v_alt, gid, m, False, "minimum dwell after our last switch"), st
     if best is None or not v_alt > v_stay + m:
         return Decision("stay", v_stay, v_alt, gid, m, False, "alternative inside the hysteresis band"), st
