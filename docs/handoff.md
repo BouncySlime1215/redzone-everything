@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Ladder (ba227738) kernel dropped 9:15 AM ~1 h in; Colab reconnecting; plan: Run all to resume from the 30-min checkpoint; suspect host-RAM OOM (EXP-103 same pattern). Lane 1 told.
-Lane 2: TNF tonight adds the hidden-Prime-stick scorebug as the fastest NFL feed (vs espn_fastcast/summary, Kalshi). Usage 63%.
+Nick 9:50 AM: "done directing, get it done by tonight." Coordinator given full autonomy + 6:30 PM deadline, 8 items with owners, readiness tables at 12/3/6 PM. Checklist: scratchpad tonight.md.
+NHL re-enabled. Ladder kernel died 9:15; resume on reconnect. Usage 63%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
