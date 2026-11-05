@@ -821,6 +821,20 @@ class Decider:
     def entry_plan(self, gid: str, cands: dict[str, Candidate], now: float, cost: float | None = None,
                    urgent: bool = False, possession: bool = False) -> EntryPlan | None:
         """How to come into gid right now (None: no timing evidence, e.g. RedZone or no timeline)."""
+        tl = self.timelines.get(gid)
+        x = cands.get(gid) or self._known.get(gid)
+        if tl is None or x is None:
+            return self._entry_plan(gid, cands, now, cost, urgent, possession)
+        # [EXP-211] an open stoppage counts as dead only as far as a feed this slow would already show the
+        # restart: an unmeasured lag reads 10 s, which landed NHL entries after the faceoff (EXP-303).
+        tl.dead.lag_floor = float(self._lc("decider.entry.lag_floor_s", x, 0.0) or 0.0)
+        try:
+            return self._entry_plan(gid, cands, now, cost, urgent, possession)
+        finally:
+            tl.dead.lag_floor = 0.0
+
+    def _entry_plan(self, gid: str, cands: dict[str, Candidate], now: float, cost: float | None,
+                    urgent: bool, possession: bool) -> EntryPlan | None:
         c = self.cfg
         if gid in PSEUDO or not c.get("decider.entry.enabled", True):
             return None
