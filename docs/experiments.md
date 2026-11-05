@@ -111,6 +111,7 @@ Arms, each behind its own flag, all off:
 - **A2 delay precision**: a target whose stick has a fresh live-edge meter row (YTTV: a tune landed on the edge, `sync_edge`), or a ready Prime K (`sync.edge.epoch_signal`), gets a delay floor of 1 s instead of 3 (`delay.sync.edge_floor_s`). In the sim this is a what-if (`--sigma 1`). It counts only if EXP-800's live grade (syncgrade, |pred − meter| p95 ≤ 2 s) passes on real rows. Otherwise A2 is reported, not shipped.
 - **A3 TV timeouts split**: NBA `timeout_long` windows use a TV-timeout length row (crew F's cdn.nba.com national-TV key; until it lands, a period's first two timeouts), not the mixed "timeout" row (q25 126 s vs ~180-200 s).
 - **A4**: A1 + A2 + A3, with EXP-737 and EXP-738 on.
+- **A5 feed-lag prior** (planner Nov 5 ~12:30 UTC, after EXP-303; pre-registered before any v3 run): a game whose feed lag no play has measured yet assumes its league's measured q90 (`delay.feed_lag_prior_s` via league_overrides: nba 69.7, nfl 62.5, from redzone/lab/feed_lag_profile.json; taken from the profile, not tuned) instead of the shared 10 s. Arm: `--set league_overrides.nba.delay.feed_lag_prior_s=69.7` (needs grader v24's flat --set). Reported alone with A1-A3 (same Holm family); not part of A4.
 
 Primary: NBA entries mid-commercial (cutgrade, > 10 s left) per 100 entries, eval-data-v3 dev, `eval_sports.py nba --real-lag`, plain and `--resync`, seeds 0/1/2.
 - PASS (A4): ≤ 10 per 100, and the night-bootstrap upper bound is below A0's lower bound.

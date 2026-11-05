@@ -623,6 +623,8 @@ delay:                     # seconds your screen runs behind real life, per app;
   scorebug_hidden: true    # [Nick 9:25 AM Nov 5] also read the bug on the hidden stick while its Prime preload is live
                            # (our fastest NFL "feed", ~16 s behind the arena); numbers only, never frames
   scorebug_log: true       # every bug read (score, clock, period, down) to data/scorebug_reads.jsonl for the feed race
+  feed_lag_prior_s: 10      # [EXP-803 A5] feed lag assumed for a game until a play measures it (per league via
+                           # league_overrides; measured q90: nba 69.7, nfl 62.5, nhl 71.3, redzone/lab/feed_lag_profile.json)
   scorebug_band: false     # [Nick Nov 5 3:30 AM, "Yes, read it"] Prime score bug: read only the lower third as raw
                            # pixels (no PNG encode on the stick, ~6.5 s a frame now); numbers kept, never frames
   sync:                    # every channel's delay found automatically (redzone/decider/sync.py), no taps
