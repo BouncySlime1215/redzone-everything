@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick 11:20 AM: WATCH VALUE TRAINING is #1 (most threads) within the ~2-3%/h budget; tonight minimum kept (T1 buffer shadow, T4 YTTV tests, T5 TNF scorebug, T9 RC8); T6 small; T10 + T2/T3 extras paused. Usage 68%.
+Nick 11:30 AM: source + train MASSIVE Watch Value attention data today before games (highlight views, Wikipedia pageviews dumps, Reddit volume, Twitch, ratings, market volume, WP swings for millions of plays) via Kaggle/Actions scripts; train WV v1; grade on locked nights. Usage 68%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
