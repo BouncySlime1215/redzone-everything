@@ -54,7 +54,7 @@ def test_end_to_end_on_fixture_archive(tmp_path):
         assert plan[lg][str(night)] == "train"                         # only train nights are ever asked
 
 
-def test_colab_teacher_notebook_is_gated_and_self_contained(tmp_path):
+def test_colab_teacher_notebook_is_plan_b_and_self_contained(tmp_path):
     import ast
 
     from agent.kaggle.build_notebook import build
@@ -65,5 +65,5 @@ def test_colab_teacher_notebook_is_gated_and_self_contained(tmp_path):
     code = "\n".join("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code")
     ast.parse(code)
     assert nb["metadata"]["colab"]["gpuType"] == "A100"
-    assert 'DATA_PLAN = ""' in code and "codeload.github.com" in code and "drive" not in code.lower()
+    assert 'DATA_PLAN = "B"' in code and "codeload.github.com" in code and "drive" not in code.lower()   # Nick 11:20 PM: B
     assert "token" not in code.lower() and "secret" not in code.lower()
