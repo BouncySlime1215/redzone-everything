@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Colab drop at 12:27 AM: both runs lost their kernels mid-job (disks kept). Teacher EXP-086 relaunched 12:45 via Run all (resumes built games; MLB head AUC 0.872, lift 0.104 = honest; CBB leak_suspect stands). EXP-103 runtime stuck 'Resuming execution' after training finished (valid 0.334); re-check 1:07, rerun on L4 (~7 CU) if still stuck. 552 CU left; 2 'Unknown notebook' GPU sessions left alone (likely V8 background runs). Usage 52%.
-Research: 'Noggin training advances 2026' report done (reports/). Top 5: time/stoppage hazard heads, Muon vs tuned AdamW, mid-play shield, regularize+ensemble+distill, planner on averaged sampled futures. Sweet-spot ETA: 250M shadow ~Nov 14, 1B live ~Dec 1 with a grant / ~Dec 12 free.
+EXP-086 Teacher plan B DONE, bar PASS (4,050/4,050, valid JSON >=99.9%). Blind lock head vs Teacher: CBB 96.7/93.3 (head leak-suspect), MLB 56.7/57.0, NHL 57.3/70.0 (Teacher +12.7). Report docs/kaggle/exp-086-teacher-planb-grades.md (7250d78); teacher_out held locally (personal use, not published). A100 runtime deleted.
+EXP-103: stuck runtime deleted; fresh Run all allocating at 1:16 AM (~1.3 h, grades ~2:30 AM). 545 CU left. Usage 52%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
