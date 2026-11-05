@@ -727,3 +727,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   shows on the Slate complete card from tonight, so rated nights exist before Sunday's line. It stays EVALUATION ONLY
   (data/worth.jsonl, graded by the frozen lab/worth.py; tests/test_worth.py fails if noggin, decider or scoring read it).
   Reason: Cycle 14 (#261) item 2, Integrator's EXP-040 condition "phone.worth on in the next RC".
+- 2026-11-05 (integrator, grader review): #266 is accepted. EXP-301's delay-and-react grader (`redzone/lab/reactgrade.py`,
+  `scripts/reactgrade.py`, by lane 3) joins the frozen graders. It reads time to see through `backtest.time_to_see`
+  with the v14 encoding and takes each league's window from `docs/catchup_ratchet.json`. It zeroes an arm for any
+  honesty fault: a replay of an unheld play, a replay that starts too early, or a rewind with no buffer behind it.
+  The time-from-broadcast column is secondary and never decides a verdict. It imports nothing from
+  decider/noggin/scoring and reads no taps. Grader freeze v15.

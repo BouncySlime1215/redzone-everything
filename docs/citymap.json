@@ -169,6 +169,17 @@
     "untagged"
    ]
   },
+  "agent/kaggle/commentary_queue.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "[EXP-1402, Data planner E] Causal per-play commentary requests for the 32B Teacher, TRAIN nights only.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "agent/kaggle/constrained.py": {
    "contracts": [],
    "inputs": [],
@@ -773,7 +784,9 @@
    ],
    "kind": "module",
    "outputs": [
-    "redzone/contracts/__init__.py"
+    "redzone/contracts/__init__.py",
+    "redzone/noggin/synth.py",
+    "scripts/synth_build.py"
    ],
    "owner": "INTEGRATION",
    "role": "[EXP-003] One event language for every sport: each play of any league becomes one typed Event built from a few shared primitives (what kind of thing happened...",
@@ -1703,6 +1716,7 @@
     "redzone/lab/backtest.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/reactgrade.py",
     "redzone/lab/sportsgrade.py",
     "redzone/lab/timing.py",
     "redzone/noggin/pick.py"
@@ -1789,6 +1803,7 @@
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/reactgrade.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/sportsgrade.py",
@@ -1798,6 +1813,7 @@
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/leak_check.py",
+    "scripts/measure_break_lengths.py",
     "scripts/noggin_selfplay.py",
     "scripts/train_noggin_pick.py"
    ],
@@ -1925,6 +1941,7 @@
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
     "scripts/eval.py",
+    "scripts/measure_break_lengths.py",
     "scripts/northstar.py"
    ],
    "owner": "INTEGRATION",
@@ -2230,6 +2247,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/lab/reactgrade.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
     "scripts/noggin_selfplay.py",
@@ -2273,6 +2291,24 @@
     "Flips PLAYING within 3 s",
     "STK-03",
     "STK-04"
+   ]
+  },
+  "redzone/lab/reactgrade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/grading.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/oracle.py",
+    "redzone/lab/sportsgrade.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/reactgrade.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-301] Grader for the delay-and-react test (Nick, Nov 5 12:25 AM and 12:28 AM ET).",
+   "serves": [
+    "untagged"
    ]
   },
   "redzone/lab/reasoner_data.py": {
@@ -2332,6 +2368,7 @@
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/leak_check.py",
+    "scripts/measure_break_lengths.py",
     "scripts/switch_eval_pin.py"
    ],
    "owner": "unowned",
@@ -2375,6 +2412,7 @@
    "outputs": [
     "agent/kaggle/build_moments_kaggle.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/reactgrade.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/tune.py",
@@ -2544,6 +2582,7 @@
     "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/leak_check.py",
+    "scripts/measure_break_lengths.py",
     "scripts/noggin_factory.py",
     "scripts/noggin_tokens.py",
     "scripts/perf_probe.py",
@@ -2801,6 +2840,21 @@
    "role": "Noggin profiles: one named set of flags, scored TOGETHER (planner, Nov 4 2:45 AM).",
    "serves": [
     "GAME-04"
+   ]
+  },
+  "redzone/noggin/synth.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/contracts/events.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/synth_build.py"
+   ],
+   "owner": "unowned",
+   "role": "[Data division E] Synthetic and teacher tokens for the NFM, with the 3x-real cap enforced in code.",
+   "serves": [
+    "untagged"
    ]
   },
   "redzone/noggin/timing.py": {
@@ -3453,6 +3507,7 @@
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/green_summaries.py",
+    "scripts/measure_break_lengths.py",
     "scripts/noggin_factory.py",
     "scripts/noggin_tokens.py",
     "scripts/plan_tonight.py",
@@ -4141,6 +4196,17 @@
     "Big plays live or replayed within 3 min"
    ]
   },
+  "scripts/attention_pull.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Data Division G: attention at scale.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/autofix_guard.py": {
    "contracts": [],
    "inputs": [],
@@ -4786,6 +4852,34 @@
     "untagged"
    ]
   },
+  "scripts/measure_break_lengths.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/lab/splits.py",
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[Data F] Measured break lengths by league x network x break kind, from the pinned archive.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/media_pull.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Media metadata workers (Data Division, type C): which plays got clipped, and how much people watched.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/multiview_probe.py": {
    "contracts": [],
    "inputs": [
@@ -5085,6 +5179,19 @@
     "STK-06"
    ]
   },
+  "scripts/reactgrade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/reactgrade.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-301] Grade the delay-and-react arms (lane 2's EXP-209 rows) per league and condition.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/release_gate.py": {
    "contracts": [],
    "inputs": [],
@@ -5253,6 +5360,20 @@
    "outputs": [],
    "owner": "unowned",
    "role": "[RC7 req.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/synth_build.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/contracts/events.py",
+    "redzone/noggin/synth.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[Data division E] Build synthetic + teacher token shards for the NFM, inside the 3x-real cap.",
    "serves": [
     "untagged"
    ]
@@ -5463,10 +5584,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 292,
-  "orphans": 10,
-  "unowned": 133,
-  "untagged": 237
+  "modules": 300,
+  "orphans": 11,
+  "unowned": 140,
+  "untagged": 245
  },
  "version": 1
 }
