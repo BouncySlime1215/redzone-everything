@@ -294,6 +294,8 @@ class Decider:
         # Last known candidate per game. A final drops out of the live candidates, but its last
         # plays still air (and stay on the DVR) for a while: keep them judgeable and replayable.
         self._known: dict[str, Candidate] = {}
+        self.planner = None              # [EXP-056] a noggin.planner.Planner, consulted in shadow only
+        self.planner_log = None          # [EXP-056] noggin.planner.ShadowLog of (decision, plan) per tick
         # Games that were ever yours (your team / bet) tonight: personal fades in garbage time and with
         # closeness, but a missed play from your team's game stays yours (replay.yours_first).
         self._yours: set[str] = set()
@@ -370,6 +372,28 @@ class Decider:
 
     # ----- the decision -----------------------------------------------------
 
+    def _shadow_plan(self, d: Decision, cands, now: float) -> None:
+        """[EXP-056] Ask the planner what it would do this tick; log it next to the decision. Never acts,
+        and a planner that raises is logged as no opinion (the decider's tick must not depend on it)."""
+        from redzone.noggin import planner as P
+        if self.planner_log is None:
+            self.planner_log = P.ShadowLog()
+        hold = self.cfg.get("decider.crunch.hold_personal", 5)
+        opts = []
+        for gid, x in cands.items():
+            s = x.scored
+            opts.append(P.OptionView(gid, getattr(getattr(s, "league", None), "value", ""), x.target,
+                                     float(s.score), bool(s.crunch), s.personal >= hold, bool(s.is_break),
+                                     float((self.entry_cost or self._deadline_cost)(x.target)) if x.target else 0.0))
+        inp = P.PlanInput(now, self.current, getattr(self, "hidden_target", None), tuple(opts),
+                          d.action, d.target)
+        try:
+            plan = self.planner.plan(inp)
+        except Exception:
+            log.exception("planner (shadow) failed: no opinion this tick")
+            plan = None
+        self.planner_log.add(inp, plan)
+
     def decide(self, cands: dict[str, Candidate], redzone: str | None = None, *, commit: bool = True,
                reel: tuple[str, float] | None = None) -> Decision:
         """`redzone` is the RedZone channel's tuner target while it's on the air, else None.
@@ -407,6 +431,8 @@ class Decider:
         d = self._time_entry(d, cands, now, home_before)
         d = self._crunch_floor(d, d0, cands, now, home_before)
         d = self._safe(d, cands, now, home_before)
+        if self.planner is not None and self.cfg.get("noggin.planner.mode") == "shadow":
+            self._shadow_plan(d, cands, now)   # [EXP-056] record only: the TV follows d
         if not commit and d.action in ("switch", "replay"):
             # The simulator can commit synchronously. A real TV must confirm
             # the command first: a proposal is not a watched game or replay.
