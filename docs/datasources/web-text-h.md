@@ -45,6 +45,23 @@ the data's terms before landing.
 | masgitcode/kalshi-odds-archive | none stated | Kalshi NFL price snapshots | D | Kalshi is RED (D, Nov 5): do not use |
 | JacobiusMakes/awesome-sports-betting-data | CC0 | curated list of odds datasets | D | a pointer list, not data |
 
+## Queue order (Nick, 2:00 AM ET Nov 5: NBA first, then NFL)
+
+Every H job runs NBA first, then NFL. NHL, MLB, CFB and CBB run only where the same code or pass covers
+them at no extra cost.
+
+1. **H1 + H2, NBA:** filter FineWeb and the late-October 2026 Common Crawl to NBA recaps first, and align
+   them to NBA train nights. The NBA recap head (soft labels) trains on 2019-25 NBA games.
+2. **H1 + H2, NFL:** the NFL 2025 season (train nights are inside FineWeb's crawl range), then NFL history
+   for the head.
+3. **H3 Wikipedia:** NBA rivalry and notable-game numbers first, then NFL, handed to B for game importance.
+4. Other leagues: only as a by-product of passes 1-3.
+
+**Known limit:** EXP-1800 needs 8 or more valid nights per league. The NBA window has 9 nights in total,
+so NBA reads **PENDING** until the archive grows. This is the same gap as Nick's ask for 60 or more graded
+NBA decisions per gate. NFL can be graded now. H does not grow nights itself; it labels whatever nights
+the archive holds.
+
 ## Crew H (jobs, not always-on agents)
 
 - **H1 FineWeb filter:** a Kaggle CPU notebook streams FineWeb parquet by row group, reads `url` first,
