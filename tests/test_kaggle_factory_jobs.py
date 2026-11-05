@@ -295,3 +295,53 @@ def test_default_plan_is_b_and_tagged_personal_use():
     assert 'man["license"]' in src and "personal-use, not for commercial release" in src
     plan, _ = _notebook_defs("B")
     assert set(plan) == {"nba", "nfl", "nhl", "cbb", "cfb", "mlb"}
+
+
+def _job_ns(tmp_path, monkeypatch):
+    plan, job = _notebook_defs()
+    ns = {"OUT": str(tmp_path / "factory"), "RAW": str(tmp_path / "raw"), "SMOKE": False,
+          "time": time, "os": os, "json": json, "glob": glob, "dict": dict, "round": round, "bool": bool,
+          "len": len, "int": int, "__import__": __import__}
+    exec(compile(job, str(SCRIPT), "exec"), ns)
+    return plan, ns
+
+
+def test_cbb_season_without_a_wallclock_column_still_tokenizes(tmp_path, monkeypatch):
+    """Nov 5 run: hoopR CBB 2015-20 has no wallclock column -> ArrowInvalid in self-play and tokens. Now: 0 moments,
+    0 self-play (nothing to solve without wall clocks), tokens from the game clock."""
+    _, ns = _job_ns(tmp_path, monkeypatch)
+
+    def _no_wall(url, dest):
+        _write_pbp("cbb", 2018, Path(dest))
+        d = pd.read_parquet(dest)
+        d["game_date"] = pd.to_datetime(d.wallclock).dt.strftime("%Y-%m-%d")      # hoopR carries game_date
+        d.drop(columns=["wallclock"]).to_parquet(dest, index=False)
+        return True
+    monkeypatch.setattr(NF, "_fetch", _no_wall)
+    res = ns["season_job"]("cbb", 2018, 1, time.time() + 600)
+    assert "error" not in res and res["moments"] == 0 and res.get("selfplay", 0) == 0, res
+    assert res["tokens"] > 0, res
+
+
+def test_nhl_before_2019_20_skips_espn_and_tokenizes_from_apiweb(tmp_path, monkeypatch):
+    """Nov 5 run: ESPN NHL 2015-19 gave 0 of ~1,450 games with wall clocks, after fetching every summary. Now the
+    ESPN fetch is skipped (0 moments, no self-play) and the season's tokens come from api-web."""
+    _, ns = _job_ns(tmp_path, monkeypatch)
+    called = []
+    monkeypatch.setattr(NF, "fetch_espn_season", lambda *a, **k: called.append(a) or True)
+    import nhl_apiweb
+
+    def _apiweb(year, dest, max_games=None):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(dest, "wt") as f:
+            for gid, start, home, away in _nights(year):
+                plays = [dict(p, wallclock=None) for p in _hockey_game(gid, start, home, away)]
+                f.write(json.dumps({"id": gid, "season_type": 2, "plays": plays, "matchup": f"{away} @ {home}",
+                                    "date": start.strftime("%Y-%m-%d")}) + "\n")
+        return dest
+    monkeypatch.setattr(nhl_apiweb, "fetch_season", _apiweb)
+    res = ns["season_job"]("nhl", 2017, 20, time.time() + 600)
+    assert not called, "no ESPN summaries fetched for a season with no wall clocks"
+    assert "error" not in res and res["moments"] == 0 and "selfplay" not in res, res
+    note = json.loads(Path(ns["OUT"], "moments", "nhl", "2017.json").read_text())["note"]
+    assert "2019-20" in note

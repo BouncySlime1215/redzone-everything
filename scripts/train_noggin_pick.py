@@ -84,7 +84,10 @@ def season_nights(league: str, path: Path) -> dict:
     from redzone.lab.backtest import Replay
     from redzone.noggin import factory as FA
     from redzone.sources import espn
+    import pyarrow.parquet as pq
     lg = League(league)
+    if "wallclock" not in pq.read_schema(path).names:   # hoopR CBB 2015-20: no wall clocks, no nights to solve
+        return {}
     df = pd.read_parquet(path, columns=COLS)
     df["sq"] = pd.to_numeric(df.sequence_number, errors="coerce")
     out: dict[str, list] = {}

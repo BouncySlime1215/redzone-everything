@@ -137,6 +137,11 @@ def season_job(league, year, synthetic, deadline):
         os.remove(raw)
         return dict(res, s=round(time.time() - t0))
     mo = f"{OUT}/moments/{league}/{year}.parquet"
+    # ESPN has no NHL wall clocks before 2019-20 (run of Nov 5: 0 of ~1,450 games per season): no moments and no
+    # self-play to build there, so skip the ~1,450 summary fetches; the season's tokens come from api-web below.
+    no_wall = league == "nhl" and year < APIWEB_BEFORE
+    if no_wall:
+        synthetic = 0
     cdn = GREEN and league == "nba"            # green NBA: NBA.com cdn in hoopR schema, never hoopR itself
     cdn_raw = f"{RAW}/nba/cdn_{year}.parquet"
     if cdn and not os.path.exists(cdn_raw) and time.time() < deadline:
@@ -148,7 +153,9 @@ def season_job(league, year, synthetic, deadline):
     if not os.path.exists(mo[:-8] + ".json"):
         if time.time() > deadline:
             return dict(res, skipped="session deadline")
-        if cdn:
+        if no_wall:
+            t = None
+        elif cdn:
             t = F.build("nba", __import__("pathlib").Path(cdn_raw), max_games=40 if SMOKE else None) \
                 if os.path.exists(cdn_raw) else None
         else:
@@ -162,7 +169,8 @@ def season_job(league, year, synthetic, deadline):
             info = {"rows": int(len(t)), "dropped_eval_window": int(n_all - len(t)), "complete": True,
                     "nights": int(t["night"].nunique()) if "night" in t else None}
         else:
-            info = {"rows": 0, "complete": True, "note": "no data (season missing or no wall clocks)"}
+            info = {"rows": 0, "complete": True, "note": "no ESPN wall clocks before 2019-20" if no_wall else
+                    "no data (season missing or no wall clocks)"}
         os.makedirs(os.path.dirname(mo), exist_ok=True)      # a no-data season still records that it is done
         json.dump(info, open(mo[:-8] + ".json", "w"))
         tag(mo[:-8] + ".json")
@@ -173,7 +181,8 @@ def season_job(league, year, synthetic, deadline):
     sp_done = os.path.exists(spj) and json.load(open(spj)).get("complete")
     tkj = f"{OUT}/tokens/{league}/{year}.json"
     tk_done = os.path.exists(tkj) and json.load(open(tkj)).get("complete")
-    if ((synthetic and not sp_done) or not tk_done) and not os.path.exists(raw) and not cdn and time.time() < deadline:
+    if ((synthetic and not sp_done) or not tk_done) and not os.path.exists(raw) and not cdn and not no_wall \
+            and time.time() < deadline:
         if espn_src:
             NF.fetch_espn_season(league, year, __import__("pathlib").Path(raw), max_games=40 if SMOKE else None)
         else:

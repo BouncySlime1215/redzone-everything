@@ -329,18 +329,24 @@ def boot(per_game: list[tuple], fn, n=300, seed=SEED):
     return [round(float(np.percentile(vals, 2.5)), 4), round(float(np.percentile(vals, 97.5)), 4)] if vals else None
 
 
-def grade(model, games, base, ctx, dev) -> dict:
-    """Per game: kind hits (model, bigram), stop probs (model, freq) + labels, break dt errors (model, median)."""
+def grade_rows(model, games, base, ctx, dev, label: str = "", log_every: int = 200) -> list[dict]:
+    """Per game: kind hits (model, bigram), stop probs (model, freq) + labels, break dt errors (model, median).
+    Memory-flat: each window's logits are cut to the kind/stop/dt columns and moved to the CPU before the next
+    window runs (EXP-103 run 1 died here holding whole-game float32 logits over the full vocab on the GPU)."""
     import torch
     rows = []
     model.eval()
-    stop_none = T.STOP0 + T.STOPS.index("none")
-    stop_ids = torch.arange(T.STOP0, T.STOP0 + len(T.STOPS), device=dev)
-    dt_ids = torch.arange(T.DT0, T.DT0 + T.DT_BUCKETS, device=dev)
-    kind_ids = torch.arange(T.KIND0, T.DT0, device=dev)
-    mid = torch.tensor(DT_MID, device=dev, dtype=torch.float32)
+    nk, ns, nd = T.DT0 - T.KIND0, len(T.STOPS), T.DT_BUCKETS
+    cols = torch.cat([torch.arange(T.KIND0, T.DT0), torch.arange(T.STOP0, T.STOP0 + ns),
+                      torch.arange(T.DT0, T.DT0 + nd)]).to(dev)
+    none_i = T.STOPS.index("none")
+    mid = torch.tensor(DT_MID, dtype=torch.float32)
+    t0 = time.time()
     with torch.no_grad():
-        for g in games:
+        for gi, g in enumerate(games):
+            if log_every and gi and gi % log_every == 0:
+                mem = f", gpu {torch.cuda.memory_allocated() / 2**30:.1f} GB" if dev == "cuda" else ""
+                print(f"  grade {label}: {gi}/{len(games)} games, {time.time() - t0:.0f} s{mem}", flush=True)
             t = g["tokens"].astype(np.int64)
             k, dpos, s = positions(t)
             if len(k) < 3:
@@ -350,24 +356,33 @@ def grade(model, games, base, ctx, dev) -> dict:
             for a, b in zip(cs[:-1], cs[1:]):           # windows that tile the game, on event boundaries
                 x = torch.tensor(t[a:b], device=dev)[None]
                 with torch.autocast(device_type=dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
-                    logits.append(model(x)[0].float())
-            lg = torch.cat(logits)                      # lg[i] predicts token i+1
-            r = {"kind": [], "kind_b": [], "p": [], "p_b": [], "y": [], "dt": [], "dt_b": []}
+                    out = model(x)[0]
+                logits.append(out[:, cols].float().cpu())
+                del out
+            lg = torch.cat(logits)                      # lg[i] predicts token i+1; columns kind | stop | dt
+            r = {"league": g.get("league"), "night": g.get("night"),
+                 "kind": [], "kind_b": [], "p": [], "p_b": [], "y": [], "dt": [], "dt_b": []}
             for i in range(1, len(k)):
-                pk = T.KIND0 + int(lg[k[i] - 1][kind_ids].argmax())
+                pk = T.KIND0 + int(lg[k[i] - 1, :nk].argmax())
                 r["kind"].append(pk == t[k[i]])
                 r["kind_b"].append(base["next"].get(int(t[k[i - 1]]), -1) == t[k[i]])
-                ps = torch.softmax(lg[s[i] - 1][stop_ids], 0)
-                r["p"].append(float(1 - ps[stop_none - T.STOP0]))
+                ps = torch.softmax(lg[s[i] - 1, nk:nk + ns], 0)
+                r["p"].append(float(1 - ps[none_i]))
                 r["p_b"].append(base["p_stop"].get(int(t[k[i]]), base["p_prior"]))
                 r["y"].append(stop_name(t[s[i]]) != "none")
                 nm = stop_name(t[s[i - 1]])
                 if nm in BREAKS and t[dpos[i]] != T.UNK_DT:
                     true = DT_MID[int(t[dpos[i]]) - T.DT0]
-                    pd_ = torch.softmax(lg[dpos[i] - 1][dt_ids], 0)
+                    pd_ = torch.softmax(lg[dpos[i] - 1, nk + ns:], 0)
                     r["dt"].append(abs(float((pd_ * mid).sum()) - true))
                     r["dt_b"].append(abs(base["dt_med"].get(nm, true) - true))
             rows.append(r)
+    if label:
+        print(f"  grade {label}: done, {len(rows)} games, {time.time() - t0:.0f} s", flush=True)
+    return rows
+
+
+def summarize(rows: list[dict]) -> dict:
     cat = lambda pick, key: [v for r in pick for v in r[key]]   # noqa: E731
     mean = lambda pick, key: float(np.mean(cat(pick, key))) if cat(pick, key) else None   # noqa: E731
     out = {}
@@ -385,6 +400,10 @@ def grade(model, games, base, ctx, dev) -> dict:
     return out
 
 
+def grade(model, games, base, ctx, dev, label: str = "") -> dict:
+    return summarize(grade_rows(model, games, base, ctx, dev, label))
+
+
 # ---------------------------------------------------------------------------------------------- train
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
@@ -392,6 +411,8 @@ def main(argv=None) -> int:
     ap.add_argument("--leagues", default="nfl,nba,mlb", help="plan A default; add nba_espn only with Nick's yes")
     ap.add_argument("--allow-espn-derived", action="store_true", help="only once Nick says yes (Wave 5)")
     ap.add_argument("--minutes", type=float, default=60.0, help="training wall-clock budget")
+    ap.add_argument("--eval-mem-frac", type=float, default=0.85,
+                    help="cap this process's GPU memory while grading (fraction of the card; 0 = no cap)")
     ap.add_argument("--exp", default="EXP-100", help="experiments.md id written to grades.json")
     ap.add_argument("--d", type=int, default=512)
     ap.add_argument("--layers", type=int, default=8)
@@ -519,26 +540,41 @@ def main(argv=None) -> int:
     if v < best or not best_path.exists():
         torch.save(model.state_dict(), best_path)
     model.load_state_dict(torch.load(best_path, map_location=dev))         # chosen on VALID
+    del opt                                                                 # free optimizer state before grading
+    if dev == "cuda":
+        torch.cuda.empty_cache()
+        if a.eval_mem_frac:
+            torch.cuda.set_per_process_memory_fraction(a.eval_mem_frac)
     ti = time.time()
     base = baselines(sp["train"])
-    test = grade(model, sp["test"], base, a.ctx, dev)
+    partial = {"exp": a.exp, "partial": True, "best_valid_loss": best, "learning_curve": curve}
+
+    def checkpoint_grades(key, val):                # grades.json grows as each section lands (a crash keeps them)
+        partial[key] = val
+        (a.out / "grades.json").write_text(json.dumps(partial, indent=1))
+        print(f"grades.json: {key} written", flush=True)
+
+    test_rows = grade_rows(model, sp["test"], base, a.ctx, dev, "test")
+    test = summarize(test_rows)
     inf_toks = sum(len(g["tokens"]) for g in sp["test"])
     inf_s = time.time() - ti
+    checkpoint_grades("test", test)
+    keys = ("next_kind_acc", "next_kind_acc_bigram", "break_dt_mae_s", "break_dt_mae_s_baseline", "stop_ece",
+            "stop_ece_baseline", "games")
+    per_league = {lg: {k: summarize([r for r in test_rows if r["league"] == lg])[k] for k in keys}
+                  for lg in sorted({r["league"] for r in test_rows})}
+    checkpoint_grades("test_by_league", per_league)
+    seasons = sorted({r["night"][:4] for r in test_rows})
+    per_season = {y: {k: summarize([r for r in test_rows if r["night"][:4] == y])[k] for k in keys[:4]}
+                  for y in seasons}
+    checkpoint_grades("test_by_year", per_season)
     # The gap, split so overfitting and a season shift can be told apart (pilot 1: the train slice was the
     # EARLIEST 200 games, 2001, vs test 2022-24): train games nearest the test window vs the earliest, valid,
     # and test per season.
     by_t = sorted(sp["train"], key=lambda g: g["night"])
-    trn = grade(model, by_t[-200:], base, a.ctx, dev)
-    trn_old = grade(model, by_t[:200], base, a.ctx, dev)
-    val = grade(model, sp["valid"], base, a.ctx, dev)
-    per_league = {lg: {k: grade(model, [g for g in sp["test"] if g["league"] == lg], base, a.ctx, dev)[k]
-                       for k in ("next_kind_acc", "next_kind_acc_bigram", "break_dt_mae_s", "break_dt_mae_s_baseline",
-                                 "stop_ece", "stop_ece_baseline", "games")}
-                  for lg in sorted({g["league"] for g in sp["test"]})}
-    seasons = sorted({g["night"][:4] for g in sp["test"]})
-    per_season = {y: {k: grade(model, [g for g in sp["test"] if g["night"][:4] == y], base, a.ctx, dev)[k]
-                      for k in ("next_kind_acc", "next_kind_acc_bigram", "break_dt_mae_s", "break_dt_mae_s_baseline")}
-                  for y in seasons}
+    trn = grade(model, by_t[-200:], base, a.ctx, dev, "train_recent")
+    trn_old = grade(model, by_t[:200], base, a.ctx, dev, "train_earliest")
+    val = grade(model, sp["valid"], base, a.ctx, dev, "valid")
     g = {"exp": a.exp, "seed": SEED,
          "license": PERSONAL if any(x != "open" and not x.startswith("open") for x in licenses) else "open", "data_sha256_16": data_hash(games), "vocab": 2 if vocab > T.VOCAB_SIZE else T.VOCAB_VERSION,
          "vocab_size": vocab, "leagues": a.leagues, "split": counts,

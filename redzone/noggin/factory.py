@@ -72,7 +72,7 @@ def _plays_basketball(g: pd.DataFrame) -> list[dict]:
     for r in g.itertuples(index=False):
         out.append({"id": str(r.id), "sequenceNumber": r.sequence_number, "type": {"text": s(r.type_text)},
                     "text": s(r.text), "period": {"number": r.period_number},
-                    "clock": {"displayValue": s(r.clock_display_value)}, "wallclock": s(r.wallclock),
+                    "clock": {"displayValue": s(r.clock_display_value)}, "wallclock": s(getattr(r, "wallclock", None)),
                     "scoringPlay": bool(r.scoring_play) if r.scoring_play == r.scoring_play else False,
                     "scoreValue": r.score_value, "homeScore": r.home_score, "awayScore": r.away_score})
     return out
