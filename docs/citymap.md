@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**259 modules**, 208 untagged, 101 unowned, 10 orphans (no importer).
+**261 modules**, 209 untagged, 103 unowned, 10 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -74,8 +74,8 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/channels.py` | Where can you actually watch a game? | models -> autonomy, control, demo.engine, discovery.providers, discovery.yttv, engine +13 | untagged |
-| `redzone/control.py` | Turns decisions into TV actions. | channels, config, contracts.switching, tuners.adb, tuners.prime_multiview, tuners.tuners +3 -> autonomy, demo.engine, engine, lab.night.run, supervisor, scripts.fault_drill +2 | APP-04, BTN-05, Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), SAFE-08, STK-01, STK-02, STK-05, STK-06, Switch time p95 (SmartThings input change), TV-04 |
+| `redzone/channels.py` | Where can you actually watch a game? | models -> autonomy, control, demo.engine, discovery.providers, discovery.yttv, engine +14 | untagged |
+| `redzone/control.py` | Turns decisions into TV actions. | channels, config, contracts.switching, tuners.adb, tuners.prime_multiview, tuners.tuners +3 -> autonomy, demo.engine, engine, lab.night.run, supervisor, scripts.fault_drill +3 | APP-04, BTN-05, Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), SAFE-08, STK-01, STK-02, STK-05, STK-06, STK-07, Switch time p95 (SmartThings input change), TV-04 |
 | `redzone/discovery/__init__.py` (package) | Finding where things are watchable, by itself. | - -> - | untagged |
 | `redzone/discovery/lounge.py` | Ask the YouTube TV app on a stick which video id it is playing, over the network, no login. | - -> discovery.yttv, scripts.find_yttv_code | untagged |
 | `redzone/discovery/providers.py` | Provider candidates: installed apps, learned access failures, and per-game routes. | channels, models -> discovery.runtime, discovery.search, discovery.stickio, supervisor, tuners.prime_search, tuners.profiles +6 | untagged |
@@ -123,7 +123,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/lab/decision_records.py` | Decision records for the Teacher's nightly review (backlog lane 5 item 2, E23 under the self-taught rule). | - -> web.phone_v2, scripts.export_decision_records | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL), Landings in dead time, Mid-play entries (per 100 landings) |
 | `redzone/lab/prime_mv_fake.py` | A simulated Prime Video NBA player with multiview, for rehearsing scripts/prime_multiview_probe.py without a stick (`--fake`) and for its tests. | tuners.prime_multiview -> scripts.prime_multiview_probe | Flips PLAYING within 3 s, STK-03, STK-04 |
 | `redzone/web/ledger.py` | Data ledger + NFM status (lane 5, Start Planner item 3; cycle 06 "Data ledger" standing section). | - -> web.phone_v2, scripts.data_ledger | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL) |
-| `redzone/web/phone_v2.py` | Phone page v2 (flag `phone.v2`, default OFF): why each switch happened, rate it, "I missed that", and the Noggin Priority L2 sliders. | config, lab.decision_records, models, noggin.priority, supervisor, trace +1 -> web.server | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL), Big plays live or replayed within 3 min, STK-06, Your-team big plays seen (live or within 3 min) |
+| `redzone/web/phone_v2.py` | Phone page v2 (flag `phone.v2`, default OFF): why each switch happened, rate it, "I missed that", and the Noggin Priority L2 sliders. | config, lab.decision_records, models, noggin.priority, supervisor, trace +1 -> web.server | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL), Big plays live or replayed within 3 min, STK-06, STK-07, Your-team big plays seen (live or within 3 min) |
 | `scripts/data_ledger.py` (entry) | Data ledger: fold a factory manifest into docs/data-ledger.json and print the cycle plan's table. | web.ledger -> - | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL) |
 | `scripts/export_decision_records.py` (entry) | Export one night's decision records as JSONL for the Teacher's nightly review (schema in redzone/lab/decision_records.py and docs/decision-records.md). | lab.decision_records, supervisor -> - | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL) |
 | `scripts/prime_multiview_grade.py` (entry) | Grade a live Prime NBA multiview night against the turn-on gate (redzone/tuners/prime_multiview.py). | tuners.prime_multiview -> - | Landings in dead time, Mid-play entries (per 100 landings), STK-03 |
@@ -170,7 +170,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, control, crunch, demo.engine +30 | untagged |
+| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, control, crunch, demo.engine +31 | untagged |
 | `redzone/contracts/__init__.py` (package) | Interfaces every thread codes against. | contracts.breaks, contracts.budget, contracts.clock, contracts.feeds, contracts.flags, contracts.guard +55 -> - | untagged |
 | `redzone/contracts/breaks.py` | BreakModel contract: when a stoppage starts, what kind it is, how long it runs, when play restarts. | models -> contracts, contracts.legacy, contracts.views, contracts.world, scoring.brain3 | untagged |
 | `redzone/contracts/budget.py` | Per-tick latency budget, split across modules. | - -> contracts | untagged |
@@ -207,7 +207,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (101)
+## unowned (103)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -280,7 +280,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `scripts/ci_report.py` (entry) | Turn CI results into the PR comment: tests, lint, and the scorecard smoke run, PR vs base. | - -> - | untagged |
 | `scripts/ci_scorecard.py` (entry) | Fast scorecard smoke run for CI: a small, fixed slice of every scorecard, as one JSON file. | - -> - | untagged |
 | `scripts/citymap.py` (entry) | City map: one generated graph of every RedZone module (role, inputs -> outputs, owner, serves). | - -> - | untagged |
-| `scripts/collect_live_test.py` (entry) | Collect a live test's logs into one folder, with a summary the North Star harness reads (cycle 01 plan, task 4: "the sync-probe log and data/tv_input.jsonl u... | - -> - | STK-06 |
+| `scripts/collect_live_test.py` (entry) | Collect a live test's logs into one folder, with a summary the North Star harness reads (cycle 01 plan, task 4: "the sync-probe log and data/tv_input.jsonl u... | - -> - | STK-06, STK-07 |
 | `scripts/context_pack.py` (entry) | Build ONE markdown context pack for pasting into a brand-new AI session. | memory -> - | untagged |
 | `scripts/contract_check.py` (entry) | Proof kernel: check the whole redzone/ graph against the contract rules on every change. | - -> - | untagged |
 | `scripts/controls_drill.py` (entry) | Phone controls drill: replay the end-to-end night with scripted phone presses and grade them. | - -> - | untagged |
@@ -294,6 +294,8 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `scripts/fastcast_check.py` (entry) | [fastcast live check] Grade ESPN FastCast against polling from a night's flight recorder. | sources.fastcast_check -> - | untagged |
 | `scripts/fault_drill.py` (entry) | Fault drill: run the real Controller / Fetcher / Engine against injected faults and score them. | channels, config, control, decider.decider, engine, models +8 -> - | untagged |
 | `scripts/fetch_eval_data.py` (entry) | Fetch the pinned eval dataset (eval-data.lock.json) into data/, verified, so every thread and CI grades on the same nights. | lab.evaldata -> - | untagged |
+| `scripts/grading_check.py` (entry) | Grading rules in CI (docs/grading.md; Nick, Nov 4 2026 6:40 PM ET: "grading even SHARPER"). | - -> - | untagged |
+| `scripts/hold_left_probe.py` (entry) | [STK-07 rig check] Hold the left game, then go back to it: does it play on from the dead ball we left? | channels, config, control -> - | STK-07 |
 | `scripts/leak_check.py` (entry) | Leakage checks for evaluation (research 05 §3, `docs/research/2026-11-03/05-eval-and-learning-loop.md`). | lab.backtest, lab.evaldata, lab.night.run, lab.splits, models -> - | untagged |
 | `scripts/multiview_probe.py` (entry) | At home, ~5 minutes, before the games: measure YouTube TV multiview on a real stick. | channels, screen_ocr, tuners.adb, tuners.multiview, tuners.tuners -> - | untagged |
 | `scripts/night_report.py` (entry) | Night health report: one page per night, written every morning to docs/nights/YYYY-MM-DD.md (cycle 04 build (a), lane 4). | config -> - | STK-06 |
@@ -313,7 +315,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `scripts/tune.py` (entry) | Auto-tune the decider against the scorecards (see redzone/lab/tune.py). | lab.tune -> - | untagged |
 | `scripts/tv_local_probe.py` (entry) | Time the TV's local input keys against SmartThings, on Nick's TV (~1 minute, Nick at the TV). | tv -> - | untagged |
 
-## Untagged (208)
+## Untagged (209)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -496,6 +498,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 - `scripts/fault_drill.py`
 - `scripts/fetch_eval_data.py`
 - `scripts/find_yttv_code.py`
+- `scripts/grading_check.py`
 - `scripts/leak_check.py`
 - `scripts/multiview_probe.py`
 - `scripts/noggin_factory.py`

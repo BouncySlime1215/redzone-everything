@@ -497,6 +497,7 @@
     "scripts/eval_sports.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
+    "scripts/hold_left_probe.py",
     "scripts/multiview_probe.py",
     "scripts/plan_tonight.py",
     "scripts/rz.py",
@@ -554,6 +555,7 @@
     "scripts/eval_sports.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
+    "scripts/hold_left_probe.py",
     "scripts/night_report.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
@@ -1045,6 +1047,7 @@
     "redzone/lab/night/run.py",
     "redzone/supervisor.py",
     "scripts/fault_drill.py",
+    "scripts/hold_left_probe.py",
     "scripts/rz.py",
     "scripts/tv_practice.py"
    ],
@@ -1060,6 +1063,7 @@
     "STK-02",
     "STK-05",
     "STK-06",
+    "STK-07",
     "Switch time p95 (SmartThings input change)",
     "TV-04"
    ]
@@ -3921,6 +3925,7 @@
     "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)",
     "Big plays live or replayed within 3 min",
     "STK-06",
+    "STK-07",
     "Your-team big plays seen (live or within 3 min)"
    ]
   },
@@ -4104,7 +4109,8 @@
    "owner": "unowned",
    "role": "Collect a live test's logs into one folder, with a summary the North Star harness reads (cycle 01 plan, task 4: \"the sync-probe log and data/tv_input.jsonl u...",
    "serves": [
-    "STK-06"
+    "STK-06",
+    "STK-07"
    ]
   },
   "scripts/context_pack.py": {
@@ -4442,6 +4448,32 @@
    "role": "Find the YouTube TV watch code (tv.youtube.com/watch/<code>) of a channel we lack, on a SPARE stick.",
    "serves": [
     "untagged"
+   ]
+  },
+  "scripts/grading_check.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Grading rules in CI (docs/grading.md; Nick, Nov 4 2026 6:40 PM ET: \"grading even SHARPER\").",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/hold_left_probe.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/config.py",
+    "redzone/control.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[STK-07 rig check] Hold the left game, then go back to it: does it play on from the dead ball we left?",
+   "serves": [
+    "STK-07"
    ]
   },
   "scripts/leak_check.py": {
@@ -4932,10 +4964,10 @@
   }
  },
  "summary": {
-  "modules": 259,
+  "modules": 261,
   "orphans": 10,
-  "unowned": 101,
-  "untagged": 208
+  "unowned": 103,
+  "untagged": 209
  },
  "version": 1
 }
