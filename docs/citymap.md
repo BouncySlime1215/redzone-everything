@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**266 modules**, 213 untagged, 108 unowned, 10 orphans (no importer).
+**267 modules**, 214 untagged, 109 unowned, 10 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -209,7 +209,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (108)
+## unowned (109)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -242,7 +242,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/night/vclock.py` | Virtual time for the end-to-end night: hours of a real night run in minutes. | - -> lab.night.__main__, lab.night.run | untagged |
 | `redzone/lab/oracle.py` | Hindsight oracle: the best schedule anyone could have run on an archived night (offline only). | grading, lab.backtest, lab.cutgrade, lab.sportsgrade, models, sources.espn -> scripts.eval, scripts.eval_sports, scripts.train_noggin_pick, scripts.train_noggin_pick_dagger | untagged |
 | `redzone/lab/reasoner_data.py` | Training rows for the live game reasoner, distilled from the archive (no paid APIs). | config, lab.backtest, lab.sportsgrade, models, reasoner.brief, scoring.engine +1 -> agent.kaggle.build_moments_kaggle, scripts.build_reasoner_data, scripts.eval_reasoner, scripts.export_reasoner_llm, scripts.train_reasoner | untagged |
-| `redzone/lab/splits.py` | Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03). | - -> lab.breakblend, lab.tune, scripts.backfill_eval_v2, scripts.eval, scripts.eval_sports, scripts.leak_check | untagged |
+| `redzone/lab/splits.py` | Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03). | - -> lab.breakblend, lab.tune, scripts.backfill_eval_v2, scripts.eval, scripts.eval_sports, scripts.leak_check +1 | untagged |
 | `redzone/lab/syncsim.py` | [auto sync] Sync-error scorecard: how far the delay the app uses is from the screen's real delay. | decider.screen -> scripts.eval_sync | untagged |
 | `redzone/lab/timing.py` | [switch timing] How late we learn about a dead ball, and what that leaves before it airs on screen. | grading -> lab.backtest, scripts.burst_align, scripts.timing_report | untagged |
 | `redzone/lab/worth.py` | [EXP-040] The end-of-night "worth it?" rating as an evaluation line (watch-science playbook §6). | - -> scripts.worth_line | untagged |
@@ -310,6 +310,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/press_probe.py` (entry) | [press-to-TV, real hardware] Press GO NOW on the running app the way the phone does, and time each press from the tap to the game playing on the TV. | - -> - | BTN-01 |
 | `scripts/publish_live_nights.py` (entry) | Publish live-night summaries into the repo so the North Star workflow grades real nights (cycle 04, lane 4: "live nights into northstar"). | - -> - | STK-06 |
 | `scripts/release_gate.py` (entry) | The release gate ("95% good minimum", the user's rule of 2026-11-03), checked on HELD-OUT nights. | - -> - | untagged |
+| `scripts/switch_eval_pin.py` (entry) | Switch the default eval-data pin to a newly published release (Fri Nov 6: eval-data-v3), in one go. | lab.splits -> - | untagged |
 | `scripts/sync_fit.py` (entry) | [sync fit] EXP-084: one live night's sync calibration and delay error, from the app's own logs. | calibration, sync_probe -> - | untagged |
 | `scripts/timing_report.py` (entry) | [switch timing] Dead-ball detection lag per source and league, and the on-screen lead it leaves. | lab.timing -> - | untagged |
 | `scripts/train_brain3.py` (entry) | Train Brain v3 (one compact model per league) and print its test-night scorecard. | lab.brain3fit, scoring.brain -> - | untagged |
@@ -322,7 +323,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/tv_local_probe.py` (entry) | Time the TV's local input keys against SmartThings, on Nick's TV (~1 minute, Nick at the TV). | tv -> - | untagged |
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 
-## Untagged (213)
+## Untagged (214)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -523,6 +524,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/service.py`
 - `scripts/service_runtime.py`
 - `scripts/stick_cec.py`
+- `scripts/switch_eval_pin.py`
 - `scripts/sync_fit.py`
 - `scripts/timing_report.py`
 - `scripts/train_brain.py`

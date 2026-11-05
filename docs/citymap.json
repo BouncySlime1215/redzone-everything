@@ -2235,7 +2235,8 @@
     "scripts/backfill_eval_v2.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
-    "scripts/leak_check.py"
+    "scripts/leak_check.py",
+    "scripts/switch_eval_pin.py"
    ],
    "owner": "unowned",
    "role": "Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03).",
@@ -4854,6 +4855,19 @@
     "untagged"
    ]
   },
+  "scripts/switch_eval_pin.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/splits.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Switch the default eval-data pin to a newly published release (Fri Nov 6: eval-data-v3), in one go.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/sync_fit.py": {
    "contracts": [],
    "inputs": [
@@ -5061,10 +5075,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 266,
+  "modules": 267,
   "orphans": 10,
-  "unowned": 108,
-  "untagged": 213
+  "unowned": 109,
+  "untagged": 214
  },
  "version": 1
 }
