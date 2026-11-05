@@ -2092,7 +2092,7 @@ class Decider:
             until = tl.dead.dead_until(now - d.mu - m)
             if until is not None and until >= now - d.mu + m + float(self.cfg.get("decider.leave.tune_s")):
                 return Gate(True, "dead ball on screen (play-by-play)")
-        if not g.safe and tl.events and self._leavable(cur):
+        if not g.safe and getattr(tl, "events", None) and self._leavable(cur):
             # [cut rules, Nick Nov 4 3:15 PM] Leaving mid-play is fine at LOW leverage (Q1-Q3, a game
             # that isn't close, right after a score): you lose the end of an ordinary play, never an entry.
             return Gate(True, "low-leverage moment: leaving mid-play is OK")
