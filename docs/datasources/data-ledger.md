@@ -111,4 +111,5 @@ D's and are not in these rows. Data is in the private project folder (`data-b/sh
 | Wikipedia pageviews + edits (buzz, test run) | green | done (test) | NFL Oct 5-8 2025 | 13 | 1,352 | 1,352 | 0 | Wikimedia CC0 |
 | Wikipedia pageviews + edits (buzz, test run 2) | green | done (test) | NBA + NFL Nov 1-4 2025 | 31 | 3,016 | 3,016 | 0 | Wikimedia CC0 |
 | Wikipedia + GDELT news (buzz, test run 3, GDELT fix) | green / yellow (cite GDELT) | done (test) | NBA + NFL Nov 2-4 2025 | 22 | 2,894 | 2,894 | 0 | Wikimedia CC0; GDELT free and open, cite The GDELT Project |
-| **Cycle 16 total** | | | | | **1,297,610** | **44,592** | **1,253,018** | |
+| NFL Next Gen Stats weekly (nflverse release), pregame team form | yellow-B (upstream NFL) | done | NFL 2016-2026 | 2,858 | 44,579 | 44,579 | 0 | nflverse release (CC-BY-4.0) of NFL Next Gen Stats; personal-use, not for commercial release |
+| **Cycle 16 total** | | | | | **1,342,189** | **89,171** | **1,253,018** | |
