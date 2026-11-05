@@ -2,7 +2,7 @@
 """Data scout ledger: check docs/datasources/scout.json and render scout-ledger.md, ranked by new information per GB.
 
 Serves: EXP-097 (Nick 11:35 PM Nov 4: 100x more data sources, scout loop). Owner: the scout thread writes
-scout.json each cycle; lane 1 flips status to pulling/done and replaces estimates with factory counts.
+scout.json each cycle; the owning crew (A-F) flips status to pulling/done and replaces estimates with factory counts.
 Light: stdlib only, reads one small JSON file.
 
     python scripts/scout_ledger.py            # check + rewrite docs/datasources/scout-ledger.md

@@ -1,5 +1,5 @@
 {
- "about": "Data scout ledger (Nick 11:35 PM Nov 4 2026, EXP-097). Candidates found by the scout, license-checked and ranked by new information per GB. Pulled data is counted in docs/data-ledger.json (lane 1); this file is the pipeline in front of it. Render with: python scripts/scout_ledger.py",
+ "about": "Data scout ledger (Nick 11:35 PM Nov 4 2026, EXP-097). Candidates found by the scout, license-checked and ranked by new information per GB. Pulled data is counted in docs/data-ledger.json (the Data Division crews A-F, docs/plans/2026-11-05-data-division.md); this file is the pipeline in front of it. Render with: python scripts/scout_ledger.py Scout experiment ids: EXP-1600-1699. Owner = the crew that pulls it (A pbp, B context, D markets); 'scout' = still being probed.",
  "token_rule": "tokens = events x 6 for event streams (noggin_tokens vocab v1). Three kinds, counted separately (Nick 11:50 PM): 'events' = new real plays/pitches/balls; 'context-new' = external facts we did not have (odds, weather, refs, injuries, TV slot), counted ONCE per game as unique tokens, with as-fed tokens (repeated on every play by vocab v2) shown only in the why line; 'derived' = computed from data we already hold (WP, leverage, momentum, timeouts left, lineups, player-to-date, standings and playoff odds, rest and travel): adds tokens per play but no new knowledge. Synthetic and augmentation (mirror, re-timing) are never in this file; they are capped at 3x real in data-ledger.md.",
  "info_per_gb_rule": "score = new_tokens_m x novelty / raw_gb. novelty 1.5 = adds wall-clock timing we lack; 1.0 = new sport, league or level; 0.5 = more of a league we already hold.",
  "verdicts": {
@@ -27,7 +27,7 @@
    "raw_gb": 0.3,
    "why": "~190k games x 6 tokens (spread, total, implied WP, favourite side, line move open-close, closing source). As fed on every play: ~95M plays x 3 = ~285M tokens, but that is repetition, not new knowledge",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew B",
    "needs_nick": "none",
    "probe": ""
   },
@@ -48,7 +48,7 @@
    "raw_gb": 0.5,
    "why": "the only free in-game line source; ~6k games 2024+ x ~500 minute ticks x 6 tokens. Gap: nothing free before 2024",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew D",
    "needs_nick": "none",
    "probe": "https://gamma-api.polymarket.com/events?limit=1"
   },
@@ -69,7 +69,7 @@
    "raw_gb": 1.2,
    "why": "~80k outdoor games x ~4 game hours x 6 vars (temp, wind speed, wind dir vs field bearing, precip, gust, lightning flag). As fed: ~31M outdoor plays x 4",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew B",
    "needs_nick": "none",
    "probe": ""
   },
@@ -90,7 +90,7 @@
    "raw_gb": 0.1,
    "why": "crew ids per game; tendencies (flags per game, review rate, whistle pace) are DERIVED from those ids, see v2-derived",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew B",
    "needs_nick": "none",
    "probe": ""
   },
@@ -111,7 +111,7 @@
    "raw_gb": 0.2,
    "why": "~20 tokens per game (who is out or questionable, by role and star rank); must be the report as of tip/kick time, never later (leakage)",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew B",
    "needs_nick": "none",
    "probe": ""
   },
@@ -132,7 +132,7 @@
    "raw_gb": 0.05,
    "why": "national window = importance prior; 2 tokens per game",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew B",
    "needs_nick": "none",
    "probe": ""
   },
@@ -153,7 +153,7 @@
    "raw_gb": 0,
    "why": "~95M plays held x ~60 extra tokens to reach the 50-100 per play target. Novelty 0 on purpose: it is a lens on data we have, so it never counts toward the new-information goal",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew A",
    "needs_nick": "none",
    "probe": ""
   },
@@ -173,7 +173,7 @@
    "raw_gb": 60,
    "why": "~150k games of pitch sequences with startTime/endTime per pitch event: wall-clock pitch timing and breaks at 4 levels, the biggest new baseball grammar we can reach",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://statsapi.mlb.com/api/v1/schedule?sportId=11&date=2025-07-15",
    "kind": "events"
@@ -194,7 +194,7 @@
    "raw_gb": 30,
    "why": "Retrosheet has the events but no wall clocks; this adds real pitch-to-pitch and between-inning timing for MLB",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=2025-07-15",
    "kind": "events"
@@ -215,7 +215,7 @@
    "raw_gb": 3,
    "why": "same clock-and-timeout grammar as CBB at a different level; WCBB is off for the product but this is pretraining only",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://github.com/sportsdataverse/wehoop-wbb-data/releases",
    "kind": "events"
@@ -236,7 +236,7 @@
    "raw_gb": 0.6,
    "why": "the densest momentum-and-breaks sequence data per GB we found: overs, wickets, drinks and innings breaks; T20 has a broadcast-length shape",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://cricsheet.org/downloads/",
    "kind": "events"
@@ -257,7 +257,7 @@
    "raw_gb": 5,
    "why": "timestamped events for ~3.5k matches: a running clock with stoppages, a different break grammar from US sports",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://raw.githubusercontent.com/statsbomb/open-data/master/data/competitions.json",
    "kind": "events"
@@ -278,7 +278,7 @@
    "raw_gb": 2,
    "why": "1,941 full matches with event times; overlaps StatsBomb only a little",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://figshare.com/collections/Soccer_match_event_dataset/4415000/2",
    "kind": "events"
@@ -383,7 +383,7 @@
    "raw_gb": 0.5,
    "why": "momentum without a game clock: points, changeovers and set breaks, with elapsed time in the slam files",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://github.com/JeffSackmann/tennis_MatchChartingProject",
    "kind": "events"
@@ -467,7 +467,7 @@
    "raw_gb": 8,
    "why": "newest in-game tracking (opened Oct 8 2026); adds to the 2019-2026 BDB rows already in the catalog",
    "status": "needs-nick",
-   "owner": "lane1",
+   "owner": "crew A",
    "needs_nick": "join the Big Data Bowl 2027 competition on Kaggle and accept its rules",
    "probe": "https://www.kaggle.com/competitions",
    "kind": "events"
@@ -488,7 +488,7 @@
    "raw_gb": 0.5,
    "why": "player and team speed priors for pace and rush likelihood; small but unique",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://api-web.nhle.com/v1/edge/team-landing/now",
    "kind": "events"
@@ -530,7 +530,7 @@
    "raw_gb": 3,
    "why": "pitch physics for six more seasons; overlaps GUMBO events, so novelty is low at vocab v1",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew A",
    "needs_nick": "none",
    "probe": "https://baseballsavant.mlb.com/robots.txt",
    "kind": "events"
@@ -551,7 +551,7 @@
    "raw_gb": 1,
    "why": "the only free source of minute-level live line moves for US games",
    "status": "ready-for-lane1",
-   "owner": "lane1",
+   "owner": "crew D",
    "needs_nick": "none",
    "probe": "https://gamma-api.polymarket.com/events?limit=1",
    "kind": "events"
@@ -572,7 +572,7 @@
    "raw_gb": 0.2,
    "why": "closing-odds calibration for the soccer pretraining rows; tiny",
    "status": "parked",
-   "owner": "scout",
+   "owner": "crew D",
    "needs_nick": "none",
    "probe": "https://www.football-data.co.uk/data.php",
    "kind": "events"
@@ -593,7 +593,7 @@
    "raw_gb": 0.05,
    "why": "daily slate prior",
    "status": "needs-nick",
-   "owner": "lane1",
+   "owner": "crew D",
    "needs_nick": "free Odds API key (already on the pending list)",
    "probe": "",
    "kind": "events"
