@@ -47,3 +47,29 @@ def test_never_peacock(on):
 def test_a_your_team_lock_that_is_not_a_big_moment_stays_open_tier(on):
     w = {"wsh": _c("wsh", 30, lock="some other hold", personal=10.0), "x": _c("x", 90)}
     assert on._best(w, None) == "x"
+
+
+def test_pick_rows_reach_the_recorder_and_a_bad_sink_never_breaks_a_decision(dec, tmp_path):  # noqa: F811
+    """Live lab Nov 4: PICK in shadow on the Mac wrote only to an in-memory deque, so nothing could be read
+    back. Rows (and why it's silent) now go to recordings/<day>/pick_shadow.jsonl."""
+    import json
+    from redzone.recorder import Recorder
+    rec = Recorder(tmp_path)
+    dec.on_pick = rec.pick
+    dec._emit_pick({"t": 1.0, "on": "a", "pick": "b", "app_action": "stay", "app_target": None, "agree": False})
+    files = list(tmp_path.glob("recordings/*/pick_shadow.jsonl"))
+    assert len(files) == 1 and json.loads(files[0].read_text())["pick"] == "b"
+
+    def boom(row):
+        raise OSError("disk full")
+    dec.on_pick = boom
+    dec._emit_pick({"t": 2.0})          # swallowed and logged
+
+
+def test_engine_wires_pick_rows_to_its_recorder(cfg, tmp_path, monkeypatch):
+    from redzone.engine import Engine
+    from redzone.recorder import Recorder
+    e = Engine(cfg)
+    e.recorder = Recorder(tmp_path)
+    e.decider._emit_pick({"t": 1.0, "gated": "screen lag 40s < feed p90 + tune 75s"})
+    assert list(tmp_path.glob("recordings/*/pick_shadow.jsonl"))

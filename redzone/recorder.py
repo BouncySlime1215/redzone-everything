@@ -44,6 +44,10 @@ class Recorder:
             for r in rows:
                 f.write(json.dumps(r, separators=(",", ":")) + "\n")
 
+    def pick(self, row: dict) -> None:
+        """[noggin PICK] What PICK chose beside the app's decision (shadow or on), or why it stayed silent."""
+        self._write("pick_shadow.jsonl", [row])
+
     def sync_anchor(self, row: dict) -> None:
         """[auto-anchors] One on-screen break edge (matched feed event) or drift alarm per row."""
         self._write("sync_anchors.jsonl", [row])
