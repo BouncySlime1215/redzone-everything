@@ -99,11 +99,12 @@ def nfl_games(path: Path, max_games: int | None = None):
                 drives.append({"plays": []})
                 cur = dn
             drives[-1]["plays"].append(p)
-        summ = {"header": header(str(gid), home, away, plays[0]["wallclock"],
+        gid = str(gid).replace("_", "")                 # Replay.load reads the id after the last "_" of the file name
+        summ = {"header": header(gid, home, away, plays[0]["wallclock"],
                                  (_num(last["homeScore"]) or 0, _num(last["awayScore"]) or 0),
                                  g.season_type.iloc[0] == "POST"),
                 "drives": {"previous": drives}}
-        yield str(gid), summ
+        yield gid, summ
 
 
 def nba_games(path: Path, max_games: int | None = None):

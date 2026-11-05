@@ -36,3 +36,11 @@ def test_write_drops_nights_on_or_after_the_factory_cut(tmp_path):
     assert rep["games"] == 1
     sb = json.loads(next((tmp_path / "a" / "nba").glob("scoreboard_*.json")).read_text())
     assert sb["events"] == [{"id": "cdn0022400001"}]
+
+
+def test_game_ids_have_no_underscore():
+    # backtest.Replay.load takes the id after the last "_" of summary_<gid>.json: "2024_01_BAL_KC" would read "KC"
+    import inspect
+    assert 'replace("_", "")' in inspect.getsource(G.nfl_games)
+    (gid, _), = list(G.nba_games(_nba(Path(__import__("tempfile").mkdtemp()), "2024-11-13")))
+    assert "_" not in gid
