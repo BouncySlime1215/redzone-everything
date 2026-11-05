@@ -472,6 +472,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         decisions.append(decision)
         n_sw = len(switches)
         _record(decision, before, clock.t, switches, watching, replayed)
+        _apply_defer(decision, switches, watching, n_sw, step)
         if tune_jitter_s > 0 and len(switches) > n_sw and switches[-1].kind != "replay":
             j = jitter_rng.uniform(0.0, tune_jitter_s)
             switches[-1].offset += j
@@ -694,6 +695,22 @@ def seek_cue(sw: "SwitchLog", decision, cfg, rng) -> None:
         return
     sw.offset = sw.jitter + t.landed(sent, stall)
     sw.flash = press * sent + keys if sent else 0.0
+
+
+def _apply_defer(decision, switches: list[SwitchLog], watching: list[tuple[float, str | None]], n_sw: int,
+                 step: float) -> None:
+    """[EXP-803 A1] A switch decided now but cut defer_s later: the OLD game stays on screen until then, for
+    every line (watching drives big/crunch live and dead air; leave_dt / arrive_dt drive cutgrade). Capped at
+    one step, so the next decision (a step later) always sorts after the deferred cut and watching stays in
+    time order."""
+    defer = min(float(getattr(decision, "defer_s", 0.0) or 0.0), step)
+    if defer <= 0 or len(switches) <= n_sw:
+        return
+    switches[-1].leave_dt += defer
+    switches[-1].arrive_dt += defer
+    at, what = watching[-1]
+    watching[-1] = (at + defer, what)
+    assert len(watching) < 2 or watching[-2][0] <= watching[-1][0], "watching out of time order"
 
 
 def _record(decision, before: str | None, t: float, switches: list[SwitchLog],

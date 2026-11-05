@@ -131,12 +131,7 @@ def main():
     if a.no_redzone:
         cfg.data["sunday_ticket"] = False
     for kv in a.set:
-        key, _, val = kv.partition("=")
-        node = cfg.data
-        *path, last = key.split(".")
-        for part in path:
-            node = node.setdefault(part, {})
-        node[last] = yaml.safe_load(val)
+        evaldata.apply_set(cfg, kv)
     evaldata.flatten_league_overrides(cfg, "nfl")   # [grader v7] league-scoped defaults, as the app runs them
     if a.behind_live is None and evaldata.config_behind_live(cfg, "nfl") is not None:   # [grader v8]
         knobs.update(feed_lag_knobs(a.feed_lag, evaldata.config_behind_live(cfg, "nfl")))

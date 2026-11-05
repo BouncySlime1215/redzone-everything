@@ -149,12 +149,7 @@ def main():
         sys.exit(f"{pinned} has settings the app rejects ({cfg.rejected}): refusing to grade on a partial config")
     evaldata.use_shipped_switch_costs(cfg)   # one source of truth for switch costs (contracts/switching.py)
     for kv in a.set:
-        key, _, val = kv.partition("=")
-        node = cfg.data
-        *path, last = key.split(".")
-        for part in path:
-            node = node.setdefault(part, {})
-        node[last] = yaml.safe_load(val)
+        evaldata.apply_set(cfg, kv)
     evaldata.flatten_league_overrides(cfg, lg.value)   # [grader v7] league-scoped defaults, as the app runs them
     if getattr(a, "behind_live", None) is None:   # [grader v8] the buffer the config turns on
         a.behind_live = evaldata.config_behind_live(cfg, lg.value)
