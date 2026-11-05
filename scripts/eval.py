@@ -157,7 +157,7 @@ def main():
                           "cuts": len(r.mid_play_cuts), "cuts_high": len(r.mid_play_cuts_high), "big": r.big_plays, "big_seen": r.big_plays_caught,
                           "big_seen_10m": r.big_seen_10m, "my_big": r.my_big_plays,
                           "my_big_seen_10m": r.my_big_seen_10m, "crunch_on_replay": r.crunch_on_replay,
-                          "big_seen_3m": r.big_seen_3m, "big_seen_2m": r.big_seen_2m, "my_big_seen_3m": r.my_big_seen_3m,
+                          "big_seen_3m": r.big_seen_3m, "big_seen_2m": r.big_seen_2m, "big_see_s": [-1.0 if x == float("inf") else (None if x is None else round(x, 1)) for x in r.big_see_s], "my_big_seen_3m": r.my_big_seen_3m,
                           # [north star] per-night counts so scripts/northstar.py can bootstrap every line
                           "big_live": r.big_plays_live, "my_big_live": r.my_big_plays_live,
                           "landings": r.cut.landings()[1], "landings_dead": r.cut.landings()[0],

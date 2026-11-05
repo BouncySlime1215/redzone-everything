@@ -14,8 +14,10 @@ function check() {
   if (!checking) {
     v2.checked = true;
     checking = (async () => {
-      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; v2.worth = !!st.worth; v2.orient = !!st.orient; } catch { v2.on = false; }
+      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; v2.worth = !!st.worth; v2.orient = !!st.orient; v2.follow = !!st.follow; v2.lastNight = !!st.last_night; } catch { v2.on = false; }
       if (v2.on) { hooks.render(); pollAlert(); pollStrip(); pollHeld(); }
+      if (v2.on && v2.follow) pollFollow();
+      if (v2.on && v2.lastNight) pollLastNight();
       if (v2.worth) pollWorth();
     })();
   }
@@ -50,14 +52,79 @@ function alsoClose() {
   if (!a.length) return "";
   return `<div class="v2-also" role="note"><b>Also close</b>${a.map((g) => `<span><span class="m">${esc(g.matchup)}</span> ${esc(g.context)}</span>`).join("")}</div>`;
 }
+/* EXP-043: followed players. One quiet "Following" line naming the live games they're in (text only, no
+   Watch button), and a names box in Your priorities. Display only: lane 1 owns any weight on the pick. */
+let followV = null;
+function pollFollow() {
+  api("/api/v2/follow").then((r) => {
+    const next = r && r.enabled ? { players: arr(r.players), live: arr(r.live), max: num(r.max, 12) } : null;
+    if (JSON.stringify(next) !== JSON.stringify(followV)) { followV = next; hooks.renderScreen("now"); hooks.renderScreen("settings"); }
+  }).catch(() => {}).finally(() => setTimeout(pollFollow, 30000));
+}
+function followLine() {
+  const rows = followV ? followV.live : [];
+  if (!rows.length) return "";
+  return `<div class="v2-also v2-follow" role="note"><b>Following</b>${rows.map((g) =>
+    `<span><span class="m">${esc(arr(g.players).map((p) => p.player).join(", "))}</span> ${esc(g.matchup)}${g.on ? " (on now)" : ""}${arr(g.players)[0] && g.players[0].text ? ` · ${esc(g.players[0].text)}` : ""}</span>`).join("")}</div>`;
+}
+function followCard() {
+  if (!v2.follow || !followV) return "";
+  return `<div class="set-r"><div class="grow"><div class="t1">Players you follow</div>
+    <div class="t2">Names, comma separated (up to ${followV.max}). The Now screen shows which live games they're in.</div>
+    <input id="v2-follow-in" class="input" style="margin-top:8px;width:100%" type="text" data-keep data-change="v2-follow" value="${attr(followV.players.join(", "))}" placeholder="Nikola Jokic, Alex Ovechkin" aria-label="Players you follow" autocomplete="off"></div></div>`;
+}
+CHANGES["v2-follow"] = async (el) => {
+  try {
+    const r = await api("/api/v2/follow", { body: { players: String(el.value || "").split(",") } });
+    if (r.ok && followV) { followV.players = arr(r.players); el.value = followV.players.join(", "); }
+    toast(r.message, r.ok ? "ok" : "warn");
+  } catch (err) { toast(err.message || "That didn't work", "error"); }
+};
+/* Morning "Last night" card (phone.last_night): worth it, rule #1 lines, dead air and which release ran.
+   Read only; shown 6 AM to noon ET, and "Got it" hides it for that night on this phone only. */
+let lastNight = null;
+const LN_KEY = "rz-lastnight-dismissed";
+function lnDismissed(night) { try { return localStorage.getItem(LN_KEY) === night; } catch { return false; } }
+function pollLastNight() {
+  api("/api/v2/lastnight").then((r) => {
+    const next = r && r.enabled ? r : null;
+    if (JSON.stringify(next) !== JSON.stringify(lastNight)) { lastNight = next; hooks.renderScreen("now"); }
+  }).catch(() => {}).finally(() => setTimeout(pollLastNight, 600000));
+}
+const LN_EVENT = { deployed: "deployed", rolled_back: "rolled back", manual_rollback: "rolled back by hand", rollback_failed: "rollback FAILED" };
+function relName(c, n) { return n ? `${n} (${c})` : c || "unknown"; }
+function lastNightCard() {
+  const n = lastNight;
+  if (!n || !n.show || lnDismissed(n.night)) return "";
+  const pend = `<i>pending</i>`;
+  const v = (x, unit = "") => (x == null ? pend : `${esc(Math.round(x * 10) / 10)}${unit}`);
+  const rel = n.release;
+  const changes = rel ? arr(rel.changes).map((c) => c.result === "rolled_back"
+    ? `${esc(relName(c.commit, c.name))} rolled back to ${esc(relName(c.from, c.from_name))} at ${esc(fmtTime(c.at))}`
+    : `${esc(relName(c.commit, c.name))} ${esc(LN_EVENT[c.result] || c.result || "")} at ${esc(fmtTime(c.at))}`) : [];
+  const day = new Date(`${n.night}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return `<div class="v2-ln" data-key="v2-ln" role="note"><div class="v2-ln-h"><b>Last night</b><span>${esc(day)}</span>
+    <button class="btn btn--ghost btn--sm" data-act="v2-ln-hide">Got it</button></div>
+    <dl>
+      <div><dt>Ran</dt><dd>${rel ? esc(relName(rel.commit, rel.name)) : pend}</dd></div>
+      <div><dt>Worth it</dt><dd>${n.worth == null ? `<i>not rated</i>` : `${esc(n.worth)}/5`}</dd></div>
+      <div><dt>Mid-play entries</dt><dd class="${n.mid_play_entries > 0 ? "bad" : ""}">${v(n.mid_play_entries)}</dd></div>
+      <div><dt>High-leverage leaves</dt><dd class="${n.high_leverage_leaves > 0 ? "bad" : ""}">${v(n.high_leverage_leaves)}</dd></div>
+      <div><dt>Dead air</dt><dd>${v(n.dead_air_pct, "%")}</dd></div>
+    </dl>${changes.length ? `<div class="t2">${changes.join(" · ")}</div>` : ""}</div>`;
+}
+ACTIONS["v2-ln-hide"] = () => {
+  try { if (lastNight) localStorage.setItem(LN_KEY, lastNight.night); } catch { /* per-phone convenience only */ }
+  hooks.renderScreen("now");
+};
 function watchStrip() {
-  if (!strip || !strip.top.length) return alsoClose();
+  if (!strip || !strip.top.length) return alsoClose() + followLine();
   // EXP-035: a plain label, only over a logged threshold; no banner, sting or animation (playbook §5)
   const t = strip.tag;
   const tag = t ? `<div class="v2-why" title="${attr(`Shown because it is ${t.value} on the 0-100 scale (threshold ${t.threshold})`)}"><b>Why we're here</b> ${esc(t.text)}</div>` : "";
   return `${tag}<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
     `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc([g.context || g.why, g.stakes_line].filter(Boolean).join(" · "))}</small></span></span>`).join("")}
-    ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>${alsoClose()}`;
+    ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>${alsoClose()}${followLine()}`;
 }
 
 /* Crunch vs crunch: what the hidden stick holds, how far behind, and what comes back when (display only). */
@@ -202,7 +269,7 @@ export function missedBar() {
   if (v2.worth && worth && worth.complete) return slateCompleteCard();   // EXP-040: shows even with v2 off
   if (!v2.on) return "";
   if (slateDone) return slateCompleteCard();
-  return `${alertLine()}${heldLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
+  return `${lastNightCard()}${alertLine()}${heldLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
     ${v2.commit ? `<button class="btn btn--ghost" data-act="v2-commit-open">${icon("lock")}Commit${commitState() ? ": " + esc(COMMIT_TXT[commitState().mode] || "on") : ""}</button>` : ""}
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
@@ -276,7 +343,7 @@ export function prioritySection() {
   const learned = `<div class="t2" style="margin-top:10px">${sugg.length
     ? `From your ${p.votes} ratings: ${sugg.map((s) => `${esc(s.suggest === "less" ? "less" : "more")} <b>${esc(s.term)}</b>`).join(", ")}. Suggestions only; nothing changes until you move a slider.`
     : `Your sliders are the only way these change; the Noggin teaches itself and never learns from your ratings.`}</div>`;
-  return `${head}<div class="card set" data-key="v2prio">${rows}${reels}<div class="card-pad">${learned}</div></div>`;
+  return `${head}<div class="card set" data-key="v2prio">${rows}${reels}${followCard()}<div class="card-pad">${learned}</div></div>`;
 }
 
 async function savePrio(changes) {
@@ -685,7 +752,11 @@ ACTIONS["v2-slate"] = () => { slate.data = null; openSheet({ id: "v2-slate", lab
    A dropped live connection for 8 s shows a banner: taps may not reach the TV. Display only. */
 const GAME_TAPS = new Set(["hold", "watch", "redzone", "focus"]);
 const POLL_MS = 1000, POLL_FOR_MS = 25000;
-const tap = { el: null, timer: null, hide: null };
+const tap = { el: null, timer: null, hide: null, waitGid: null, forced: null };
+/* Nick, Nov 4 10:55 PM: ONE tap waits for a dead ball; a SECOND "Go now" tap switches instantly, even mid-play.
+   The second tap is his call, so the bar says so ("Your call") instead of reading like the autopilot's.
+   A second tap is the force value, or another tap on the game we're still waiting on. Display only. */
+const GO_NOW_TXT = (name) => `Your call: switching to ${name} now, even mid-play`;
 
 function tapBar() {
   if (!tap.el) {
@@ -717,11 +788,21 @@ function follow(id, gid, t0 = Date.now()) {
   tap.timer = setTimeout(async () => {
     let st = null;
     try { st = await api(`/api/action/${encodeURIComponent(id)}`); } catch { st = null; }
-    if (st && st.on_tv) { showTap("ok", "check", `On your TV: ${gameName(gid)}`, 3000); return; }
+    if (st && st.on_tv) { tapLanded(gid); return; }
     if (st && st.state === "failed") { showTap("bad", "alert", st.message || "That didn't work", 5000); return; }
-    if (Date.now() - t0 > POLL_FOR_MS) { showTap("wait", "hourglass", `Still waiting for a safe moment in ${gameName(gid)}`, 6000); return; }
+    if (Date.now() - t0 > POLL_FOR_MS) {
+      showTap(tap.forced === gid ? "you" : "wait", "hourglass", tap.forced === gid ? `Still switching to ${gameName(gid)} (your call)`
+        : `Still waiting for a safe moment in ${gameName(gid)}`, 6000);
+      return;
+    }
     follow(id, gid, t0);
   }, POLL_MS);
+}
+
+function tapLanded(gid) {
+  const mine = tap.forced === gid;
+  tap.waitGid = tap.forced = null;
+  showTap(mine ? "you" : "ok", mine ? "zap" : "check", `On your TV: ${gameName(gid)}${mine ? " · your call" : ""}`, mine ? 4000 : 3000);
 }
 
 export function onTap(d) {
@@ -732,8 +813,12 @@ export function onTap(d) {
   if (d.phase !== "answer" || !d.res) return;
   const r = d.res, gid = d.body.game_id;
   if (!GAME_TAPS.has(action) || !gid || r.ok === false) { if (tap.el && tap.el.dataset.kind === "wait") tap.el.hidden = true; return; }
-  if (r.on_tv) { showTap("ok", "check", `On your TV: ${gameName(gid)}`, 3000); return; }
-  showTap("wait", "swap", d.body.value === "force" ? `Switching to ${gameName(gid)} now…` : `Switching to ${gameName(gid)} at the next safe moment…`);
+  const second = d.body.value === "force" || (tap.waitGid === gid && action === "hold");
+  if (second) tap.forced = gid;
+  else if (tap.forced !== gid) tap.forced = null;
+  if (r.on_tv) { tapLanded(gid); return; }
+  if (second) showTap("you", "zap", GO_NOW_TXT(gameName(gid)));
+  else { tap.waitGid = gid; showTap("wait", "swap", `Switching to ${gameName(gid)} at the next safe moment. Tap Go now to switch right away.`); }
   follow(r.id || d.id, gid);
 }
 try { window.addEventListener("rz:tap", (e) => onTap(e.detail)); } catch { /* no window */ }

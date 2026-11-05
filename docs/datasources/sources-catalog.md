@@ -13,7 +13,7 @@ Rules that apply to every row: $0 only, never touch keys (Nick adds them as Kagg
 scrape a site whose terms forbid it, collect on Kaggle CPU (never the Mac), keep raw data in the
 **private** Kaggle dataset, and never commit raw rows to this public repo.
 
-**Betting data is a hidden check only** (overseer, Nov 4 2026). That covers closing lines, CFBD `/lines`, SBRO and Polymarket. Use it only to calibrate and evaluate our WP, crunch and stakes heads. It is never a model feature, a training label or a weight, and it is never shown on the TV or phone (playbook §5: no betting hooks).
+**Update, Nick 11:10 PM Nov 4:** betting lines and line moves may also be **inputs to game importance and buzz** (the context engine, [brain engines plan](../plans/2026-11-05-brain-engines.md)); they are still never shown and never a betting prompt. The earlier rule: **betting data is a hidden check only** (overseer, Nov 4 2026). That covers closing lines, CFBD `/lines`, SBRO and Polymarket. Use it only to calibrate and evaluate our WP, crunch and stakes heads. It is never a model feature, a training label or a weight, and it is never shown on the TV or phone (playbook §5: no betting hooks).
 
 "Counted" = the new, de-duplicated values this source adds to the running total in
 [ingest-plan.md](ingest-plan.md). It is lower than "realistic" when another source already holds
@@ -54,6 +54,8 @@ M = million values, B = billion values.
 | ncaahoopR_data (Luke Benz) | CBB | ~2015-2025 useful | 400M (0, duplicates hoopR MBB) | Shallow clone | Yellow, ESPN-gated: no license; only the spread-aware WP column is new | $0 | CBB drama label (optional) |
 
 ## 3. NHL and MLB
+
+> **NHL api-web and shift charts are not in this section on purpose (lane 1, Nov 5):** `api-web.nhle.com` play-by-play and `api.nhle.com` shift charts are covered by the "NHL.com APIs in bulk" row under *Not using, and why* (cautious verdict, NHL.com ToS). Some wave-1 lists (overseer 8:28 PM Nov 4) named "NHL api-web + shifts" as green; this catalog does not. They stay off (`RZ_NHL_APIWEB` unset) until Nick accepts the risk in decisions.md (the open A/B data call). Until then there is no catalog-OK NHL source with stoppages and wall clocks: MoneyPuck has shots only.
 
 | Source | Leagues | Years | Realistic (counted) | Access | Verdict + reason | Cost | Noggin use |
 |---|---|---|---|---|---|---|---|
