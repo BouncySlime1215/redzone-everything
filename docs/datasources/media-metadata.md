@@ -5,6 +5,8 @@ ever downloaded**: only public JSON metadata (clip ids, tags, headlines, publish
 Workers run on free GitHub runners via `.github/workflows/media-factory.yml` (push `media-factory/<src>`),
 never on the Mac. Every row carries `tag: "personal-use, not for commercial release"` and its licence line.
 
+Standing principle (Nick 12:15 AM): extract features on the fly (numbers, timestamps), never store raw video.
+
 ## Why it matters
 
 An editor clipping a play, and how fast people watch it, is a human-made **importance label** per play that
@@ -19,6 +21,7 @@ importance / worth-it head as a hindsight label, never as a live input it can't 
 | C2 | NHL api-web `/gamecenter/{id}/landing` + `/right-rail` | per-goal highlight clip id, strength, shot type, period/time; recap + condensed game ids | `eventId` | yellow-B: NHL.com terms restrict scraping; plan B personal use | none | backfill 2023-24 to now on `media-factory/nhl` |
 | C3 | NBA `playbyplayv3` (`videoAvailable`) | which events the NBA clipped | `actionNumber` | yellow-B: NBA.com terms, personal use. Honest UA only; a block or silence stops it (no header spoofing) | none | probe on `media-factory/nba` |
 | C4 | YouTube Data API v3, official channels (@NFL @NBA @NHL @MLB @MarchMadness @ESPNCFB) | title keywords, upload time, duration, views/likes/comments per snapshot, view velocity, chapters, daily Top-10 | title keywords -> game (lane 1 joins) | yellow-B: API Services ToS + Developer Policies; stored stats refreshed or deleted within 30 days; personal use | **Nick: `YOUTUBE_API_KEY` Actions secret** | waiting on key |
+| C6 | YouTube search `videoLicense=creativeCommon` (sports) | PARKED, low priority (Nick 12:15 AM): only if a use emerges, e.g. teaching a vision model what a dead ball looks like. Features extracted on the fly, raw video never stored | n/a | CC BY per video (attribution) | same key | parked |
 | C5 | Video understanding on public links | report only | n/a | see below | n/a | done (report) |
 
 Quota: YouTube snapshot of 6 channels x 1,000 videos = ~130 units (10k/day free). MLB/NHL at 1 request/s.
