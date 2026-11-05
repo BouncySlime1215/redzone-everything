@@ -164,7 +164,8 @@ def main(argv=None) -> int:
     answers = []
     if (a.out / "teacher_out.jsonl").exists():
         answers = [json.loads(x) for x in open(a.out / "teacher_out.jsonl") if x.strip()]
-    g = {"exp": a.exp, "seed": SEED, "leagues": a.leagues, "source": a.source,
+    g = {"exp": a.exp, "seed": SEED,
+         "license": "open (green sources only)" if a.source == "green" else "personal-use, not for commercial release", "leagues": a.leagues, "source": a.source,
          "data_plan": os.environ.get("RZ_DATA_PLAN"), "code_pack": os.environ.get("RZ_CODE_PACK"),
          "split": "by whole night (build_moments split_plan.json); only TRAIN nights asked; locked never downloaded",
          **grades(reqs, answers, blind_rows, fit_rows), "wall_h": round((time.time() - t0) / 3600, 2)}
