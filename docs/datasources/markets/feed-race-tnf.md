@@ -27,3 +27,14 @@ The app's own source race (`recordings/*/race.jsonl`, A2) still ranks its feeds 
 - Polymarket fires on big swings, not on every score. A late field goal in a blowout may not move the price 3 points, so its `n` is smaller.
 - The cloud box and the Mac must both be NTP-synced. The residual is about 0.1 s.
 - Matching is by time: a source's sighting must fall within 120 s of the screen onset. Two scores inside 120 s can swap. The ESPN rows carry the score, so check those by hand.
+
+## Fallback when the live app has no score-bug read (RC6.2, Nov 5)
+
+RC6.2 (live tonight) does not include the Prime score-bug read (#290), so it writes no `sync.jsonl` score rows and
+there is no screen onset to grade against. The `order` mode ranks the sources by first-seen instead, labelled
+**"source order only, no screen lead"**: Polymarket triggers, the cloud ESPN scoreboard and summary, and the app's own
+feeds from RC6.2's read-only `data/recordings/<day>/race.jsonl` (prefixed `app:`; the matching game is picked by score
+overlap). Copy race.jsonl off the Mac after the game only, read-only.
+
+    python scripts/markets/feed_race.py order --espn race_derived.jsonl --poly race_derived.jsonl \
+        --app-race race.jsonl --game-key nfl:20261105:JAX@BAL --out out/race/order.json
