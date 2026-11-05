@@ -71,9 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Cycle 10 plan #213 merged; 5 lanes working on next experiments; Cycle 11 plan PR #217 open
-V8 GR step 1900/7862; V8.1 watchdog (EXP-101) running on L4
-Usage 41%
+Colab: A100 GR step 2050/7862 (~3.1h left); L4 V8.1 WD step 150/1688 (~1h)
+Phone lane needs Nick card approval (read-only Mac folder); NHL green/red data call open
+Usage 41%, battery 38%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
