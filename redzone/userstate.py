@@ -1,4 +1,4 @@
-"""What you told the phone (pause, "Watch this", focus, lock), kept across service restarts.
+"""What you told the phone (pause, "Watch this", focus, lock, commit), kept across service restarts.
 
 A restart (launchd, a crash, an update) used to drop all of it: a paused TV started switching
 again and a held game was abandoned. It lives in a small JSON file next to the config
@@ -19,6 +19,28 @@ log = logging.getLogger(__name__)
 
 STALE_S = 6 * 3600.0
 HOLD_KEYS = ("game_id", "since", "auto_resume")
+COMMIT_MODES = ("my_teams", "stop_after", "end_at")   # [commit] EXP-036
+
+
+def commit_value(value, game_id: str | None, now: float | None) -> tuple[dict | None, str | None]:
+    """A phone commit made safe to keep: ({mode, game_id?, at?}, None), (None, None) to clear, or
+    (None, why) when it can't be used. stop_after needs a game; a new end_at needs a time still ahead
+    (now=None skips that: a restored end_at that passed while we were down still ends tonight's slate)."""
+    if value is None or value == "off" or (isinstance(value, dict) and value.get("mode") in (None, "off")):
+        return None, None
+    if not isinstance(value, dict) or value.get("mode") not in COMMIT_MODES:
+        return None, f"Pick one of: {', '.join(COMMIT_MODES)}"
+    mode = value["mode"]
+    if mode == "my_teams":
+        return {"mode": mode}, None
+    if mode == "stop_after":
+        gid = value.get("game_id") or game_id
+        return ({"mode": mode, "game_id": gid}, None) if isinstance(gid, str) and gid else (None, "Pick a game to stop after")
+    try:
+        at = float(value.get("at"))
+    except (TypeError, ValueError):
+        return None, "Pick a time to end at"
+    return ({"mode": mode, "at": at}, None) if now is None or at > now else (None, "That time has already passed")
 
 
 def capture(user, hold: dict | None) -> dict:
@@ -30,6 +52,7 @@ def capture(user, hold: dict | None) -> dict:
         "focus_mode": getattr(user.focus_mode, "value", user.focus_mode),
         "hold": {k: hold.get(k) for k in HOLD_KEYS} if hold else None,
         "muted": sorted(getattr(user, "muted", set()) or ()),
+        "commit": user.commit,
     }
 
 
@@ -54,7 +77,7 @@ def load(path: Path, now: float | None = None) -> dict | None:
     except (TypeError, ValueError):
         saved = 0.0
     out = {"paused": bool(d.get("paused")), "locked_game": None, "focus_game": None,
-           "focus_mode": "autopilot", "hold": None}
+           "focus_mode": "autopilot", "hold": None, "commit": None}
     if now - saved <= STALE_S:
         hold = d.get("hold")
         if isinstance(hold, dict) and isinstance(hold.get("game_id"), str):
@@ -65,6 +88,7 @@ def load(path: Path, now: float | None = None) -> dict | None:
                 out[k] = d[k]
         if isinstance(d.get("focus_mode"), str):
             out["focus_mode"] = d["focus_mode"]
+        out["commit"] = commit_value(d.get("commit"), None, None)[0]   # kept for the night, even an end_at now past
     # Muted games stay muted all night (games that can't play here, the user's own mutes).
     if now - saved <= 12 * 3600 and isinstance(d.get("muted"), list):
         out["muted"] = [g for g in d["muted"] if isinstance(g, str)]
@@ -77,6 +101,7 @@ def apply(state: dict, user, focus_mode_type) -> dict | None:
     user.muted = set(state.get("muted") or ())
     user.locked_game = state.get("locked_game")
     user.focus_game = state.get("focus_game")
+    user.commit = state.get("commit")
     try:
         user.focus_mode = focus_mode_type(state.get("focus_mode") or "autopilot")
     except ValueError:
