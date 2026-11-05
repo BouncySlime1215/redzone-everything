@@ -71,8 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Colab: L4 watchdog step 550/1436 (~31 min); A100 game-reasoner restarted (7.5 h), loading; A100 world-model pilot EXP-100 building data
-RC6.1: Mac subset tests running, switch at next halftime/intermission; RC5.1 live. Usage 37%
+RC6.1 approved NOW; Mac subset rerun of 2 flaky tests, no switch yet
+Colab: L4 wd 700/1436, A100 GR 150/7862, pilot step 1200 val 0.69
+Usage 37%; nudged #145 (phone lane waiting) + idle planner
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
