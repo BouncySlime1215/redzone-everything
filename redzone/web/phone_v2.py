@@ -717,6 +717,87 @@ def also_close(games: dict, current: str | None, order: tuple[str, ...]) -> list
     return rows[:ALSO_CLOSE_MAX]
 
 
+FOLLOW_MAX = 12        # [EXP-043] followed players kept at most (a short list, not a fantasy roster)
+FOLLOW_NAME_MAX = 40   # characters per name
+
+
+def follow_names(raw) -> list[str] | None:
+    """[EXP-043] Clean a followed-players list from the phone: trimmed, 2-40 characters, letters and
+    . ' - and spaces only, case-insensitive duplicates dropped, at most FOLLOW_MAX. None when it isn't a list."""
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    if not isinstance(raw, list):
+        return None
+    out, seen = [], set()
+    for x in raw:
+        if not isinstance(x, str):
+            continue
+        n = " ".join(x.split())[:FOLLOW_NAME_MAX]
+        if len(n) < 2 or not re.fullmatch(r"[A-Za-z\u00C0-\u024F.'\- ]+", n) or n.lower() in seen:
+            continue
+        seen.add(n.lower())
+        out.append(n)
+    return out[:FOLLOW_MAX]
+
+
+def _surname(name: str) -> str:
+    parts = [p for p in name.lower().replace(".", " ").split() if p not in ("jr", "sr", "ii", "iii", "iv")]
+    return parts[-1] if parts else ""
+
+
+def followed_in(g, players: list[str]) -> list[dict]:
+    """[EXP-043] Which followed players show up in this game right now, and where: "spotlight" (the
+    latest big play), "leader" (a top performer) or "flag" (a going-off line like "Jokic 38 pts").
+    Full names match leaders and the spotlight exactly (case-insensitive); the short forms ("N. Jokic",
+    flag lines) match on the surname as a whole word. One row per player, the most specific place wins."""
+    if g is None or not players:
+        return []
+    out = []
+    for name in players:
+        full, sur = name.lower(), _surname(name)
+        if not sur:
+            continue
+        word = re.compile(rf"(?<![a-z]){re.escape(sur)}(?![a-z])")
+
+        def hit(d) -> bool:
+            n, sh = str((d or {}).get("name") or "").lower(), str((d or {}).get("short") or "").lower()
+            if n:   # a full name on the row is decisive: "Keenan Allen" never matches Josh Allen's row
+                return n == full or (" " not in full and _surname(n) == sur)
+            if not (sh and word.search(sh)):
+                return False
+            # "J. Allen": the initial must agree with the followed first name when both exist
+            return " " not in full or " " not in sh.strip() or sh.strip()[0] == full[0]
+
+        sp = g.spotlight if isinstance(getattr(g, "spotlight", None), dict) else None
+        if sp and hit(sp):
+            out.append({"player": name, "where": "spotlight", "text": str(sp.get("text") or "")[:80]})
+            continue
+        lead = next((d for d in (getattr(g, "leaders", None) or []) if isinstance(d, dict) and hit(d)), None)
+        if lead:
+            out.append({"player": name, "where": "leader",
+                        "text": " ".join(str(lead.get(k) or "") for k in ("short", "stat")).strip()[:80]})
+            continue
+        flag = next((f for f in (getattr(g, "player_flags", None) or []) if word.search(str(f).lower())), None)
+        if flag:
+            out.append({"player": name, "where": "flag", "text": str(flag)[:80]})
+    return out
+
+
+def follow_view(games: dict, players: list[str], current: str | None) -> list[dict]:
+    """[EXP-043] Live games with a followed player in them, the game on screen first, then by matchup.
+    Display only: no score, rank or switch reads it (lane 1 owns any weight)."""
+    rows = []
+    for gid, g in (games or {}).items():
+        if getattr(g, "phase", None) != Phase.LIVE:
+            continue
+        hits = followed_in(g, players)
+        if hits:
+            rows.append({"game_id": gid, "matchup": g.matchup, "league": g.league.value,
+                         "on": gid == current, "players": hits})
+    rows.sort(key=lambda r: (not r["on"], r["matchup"]))
+    return rows
+
+
 RISING_MIN = 1.0    # watch_rising (points per minute) at or above this shows an up arrow, at or below -this a down one
 
 
@@ -893,7 +974,8 @@ def router(engine) -> APIRouter:
     async def status():
         return {"enabled": _enabled(engine), "commit": _enabled(engine) and bool(engine.cfg.get("phone.commit")),
                 "orient": _enabled(engine) and bool(engine.cfg.get("phone.orient")),
-                "worth": bool(engine.cfg.get("phone.worth"))}
+                "worth": bool(engine.cfg.get("phone.worth")),
+                "follow": _enabled(engine) and bool(engine.cfg.get("phone.follow"))}
 
     def _worth_now():
         now = time.time()
@@ -1028,6 +1110,30 @@ def router(engine) -> APIRouter:
                 "also_close": also_close(getattr(engine.merger, "games", {}), cur, league_order(engine.cfg))
                 if engine.cfg.get("phone.also_close") else [],
                 **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}))}
+
+    @r.get("/follow")
+    async def get_follow():
+        # [EXP-043] followed players: the list and where they are live now; flag phone.follow (off) on top of phone.v2
+        if not _enabled(engine) or not engine.cfg.get("phone.follow"):
+            return _off()
+        players = follow_names(engine.cfg.get("noggin.priority.prefs.followed_players") or []) or []
+        return {"enabled": True, "players": players, "max": FOLLOW_MAX,
+                "live": follow_view(getattr(engine.merger, "games", {}), players, engine.decider.current)}
+
+    @r.post("/follow")
+    async def set_follow(body: dict):
+        if not _enabled(engine) or not engine.cfg.get("phone.follow"):
+            return _off()
+        players = follow_names((body or {}).get("players"))
+        if players is None:
+            return {"ok": False, "message": "players must be a list of names"}
+        from redzone.config import ConfigError
+        try:
+            engine.cfg.update({"noggin": {"priority": {"prefs": {"followed_players": players}}}})
+        except ConfigError as e:
+            return {"ok": False, "message": str(e)}
+        engine.broadcast()
+        return {"ok": True, "message": "Saved" if players else "Cleared", "players": players}
 
     @r.get("/orient")
     async def orient(game: str = ""):

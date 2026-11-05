@@ -587,3 +587,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   EXP-026 re-run picks), shows at most 2 at once ("+N more waiting"), and is spoiler-safe: "A play you missed", with
   no names, play type or score until it plays. Reason: Cycle 11 (#217) item 3, playbook P9/P17 (spoiler control,
   1-2 open threads visible).
+- 2026-11-05 (lane 5, EXP-043 display): new defaults `phone.follow: false` and `noggin.priority.prefs.followed_players: []`.
+  With the flag on, the phone edits the followed-players list and shows a text-only "Following" line naming the live
+  games they're in. Lane 1 owns the weight that reads the list (its own flag and grader). Reason: Cycle 12 (#236) item
+  2, playbook P22.
