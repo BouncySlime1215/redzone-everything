@@ -34,7 +34,7 @@ _STICKS = (__import__("os").environ.get("RZ_STICKS") or "hdmi1:5555,hdmi2:5555")
 HERE = os.path.dirname(os.path.abspath(__file__))
 SYNC = os.path.abspath(os.path.join(HERE, "..", ".."))           # scratchpad/sync
 RESULTS = os.path.abspath(os.path.join(HERE, "..", "results"))
-REPO = "/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone"
+REPO = __import__("os").environ.get("RZ_REPO") or "/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone"
 DATA = os.path.join(REPO, "data")
 REC = os.path.join(DATA, "recordings")
 for p in (SYNC, REPO):

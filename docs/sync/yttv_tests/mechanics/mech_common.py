@@ -28,10 +28,20 @@ import urllib.request
 from pathlib import Path
 _STICKS = (__import__("os").environ.get("RZ_STICKS") or "hdmi1:5555,hdmi2:5555").split(",")  # stick addresses stay off the public repo: set RZ_STICKS=host1,host2 on the Mac
 
-SYNC = Path("/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/"
-            "db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync")
-REPO = Path("/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone")
-RESULTS = SYNC / "yttv_tests" / "results"
+def _sync_dir():
+    """RZ_SYNC, else Nick's Nov 4 scratchpad if it still exists (reference PNGs, codec logs), else this bank's parent."""
+    import os as _os
+    env = _os.environ.get("RZ_SYNC")
+    if env:
+        return env
+    old = "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync"
+    here = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
+    return old if _os.path.isdir(old) else here
+
+
+SYNC = Path(_sync_dir())
+REPO = Path(__import__("os").environ.get("RZ_REPO") or "/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone")
+RESULTS = Path(__file__).resolve().parent.parent / "results"
 REC = REPO / "data" / "recordings"
 for p in (str(SYNC), str(REPO)):
     if p not in sys.path:

@@ -8,6 +8,23 @@ python3 run_all.py --dry-run          # 58 tests on the 2026-11-04 recordings; a
 python3 run_all.py --list             # the ranked try order
 ```
 
+## Running from the repo checkout (test writers, Nov 5)
+
+The bank runs from `docs/sync/yttv_tests` in the repo, as well as from the old scratchpad. Paths resolve like this:
+- `manifest.json` holds paths relative to this folder.
+- Results go to `results/` here, and the truth cache to `truth/cache/`. Both are gitignored.
+- `RZ_REPO` sets the RedZone checkout that holds `data/recordings`. It defaults to the Mac path.
+- `RZ_SYNC` sets the folder with `t1_retune.py` and the reference PNGs (cc_ui.png, a3_cc_focus.png, f1.png, a3_ui.png,
+  f2.png, cc_3.png). It defaults to the Nov 4 scratchpad if that still exists, and to `docs/sync` otherwise.
+  **Those files are not in the repo.** The ui and mechanics tests need them, and macOS clears `/private/tmp` on reboot,
+  so check that they exist before tonight.
+
+Smoke run, Nov 5 in the cloud: the Nov 4 recordings were the masked sync_probe plus plays. A stand-in `t1_retune` raised
+on any stick call, and none was raised. Results:
+- `run_all.py --dry-run`: 53 of 61 tests exit 0. The 7 ui tests fail only on the missing reference PNGs, and truth_09
+  failed on a missing cache folder, which is now fixed.
+- Every command in "Run order for tonight" resolves. The nbatv deep link is `ykTstVbuNpg` in all four libs.
+
 ## What this is
 
 58 tests in 5 families. Each one estimates **D**: how many seconds the YTTV picture is behind the real
