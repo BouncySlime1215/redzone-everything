@@ -977,7 +977,10 @@ class Engine:
     def _source_health(self) -> None:
         now = time.time()
         for name, h in self.merger.health.items():
-            self.source_status[name] = {"name": name, "ok": (now - h.last_ok) < 120 and not h.benched,
+            # ok = reachable and fresh. A bench (merge.py: this source's copy regressed against a faster
+            # feed for some game) is reported on its own: the source still works, so it isn't a failing
+            # feed (RC6.1 rolled back twice when deploy.py counted benches as failures, Nov 4).
+            self.source_status[name] = {"name": name, "ok": (now - h.last_ok) < 120,
                                         "age_s": round(now - h.last_ok) if h.last_ok else None,
                                         "errors": h.errors, "benched": h.benched}
 
