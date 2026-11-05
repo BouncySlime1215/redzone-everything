@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-EXP-109b seed check (L4, ~9 CU) produced no new grades (pre-fix pack ef13442); EXP-110 exit 1 again. INCONCLUSIVE; lane 1 asked to re-pin to 8b2ea86; L4 freed.
-Ladder (ba227738) A100 42 min in, healthy. Usage 63%.
+NICK DECISION 9:10 AM: time-shift buffer (60-90 s behind live) is the main architecture; brain = editor. Tonight: buffer SHADOW on every game (lane 2), replay sim + buffer sweep (lanes 3+1), windowed-hindsight oracle teacher (lane 1), seek reliability; RC8 buffer-on prep if shadow beats live with 0 mid-play.
+Also ordered: faster feeds (nba_cdn primary at 1 s, NHL api-web, MLB statsapi, TNF feed race, Kalshi trigger) and Watch Value on real attention labels. Usage 63%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
