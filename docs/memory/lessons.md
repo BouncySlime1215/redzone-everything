@@ -305,3 +305,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   keyed by tuner target, and there was none. `_hold` now refuses a game whose channel is known to be untunable, once.
 
 - **Nov 5 2026 (Data A #259):** CI's test jobs had no pyarrow, so every play-table shard test failed with "Unable to find a usable engine". Fix: `requirements-ci.txt` (requirements.txt + pandas + pyarrow) for CI test jobs only; the Mac keeps requirements.txt. Data-crew tests that write parquet rely on it; don't importorskip them away.
+
+### The lock label was our own rule (EXP-086 CBB, Nov 5)
+- **Symptom:** the CBB fast head called 96.7% of blind lock moments; the flag said leak_suspect, and lane 3 first read it as a false alarm.
+- **Cause:** `y` = a big or crunch play within H s, and crunch (plus NBA/CBB big = clutch buckets) is defined by period, clock and margin, which the model also sees. Clock-only AUC 0.996 on NBA test nights.
+- **Fix:** grade lock calls on `y_out` (outcome_label.py: lead change/catch or a win-probability swing), checked by scripts/label_leak_check.py. A label is only a label if clock-only AUC < 0.95, read on train/valid nights, never on locked (lane 3's first read used locked nights by mistake).
+- **Signals:** head ≈ clock-only AUC, lift < 0.01, near-perfect lock accuracy, CBB, NBA
