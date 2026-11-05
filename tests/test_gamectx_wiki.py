@@ -100,3 +100,20 @@ def test_pull_writes_numbers_only(tmp_path):
     for phrase in ("rivalry game", "late comeback", "Short one", "Lead paragraph", "Dallas Cowboys", "Coach Two"):
         assert phrase not in blob                                                # no article text leaves
     assert json.loads((tmp_path / "nfl" / "ledger.json").read_text())["team_weeks"] >= 5
+
+
+def test_archive_join_pregame_only(tmp_path):
+    from gamectx import archive_join as J
+    W.pull("nfl", 2024, 2024, tmp_path, wiki=FakeWiki())
+    arch = tmp_path / "archive" / "nfl"
+    arch.mkdir(parents=True)
+    ev = {"events": [{"id": "401", "competitions": [{"competitors": [
+        {"homeAway": "home", "team": {"abbreviation": "PHI"}},
+        {"homeAway": "away", "team": {"abbreviation": "WSH"}}]}]}]}
+    (arch / "scoreboard_20240929.json").write_text(json.dumps(ev))
+    rows = J.join(tmp_path, tmp_path / "archive", "nfl")
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["gid"] == "401" and r["night"] == "20240929" and r["ctx_found_away"] == 1 and r["ctx_found_home"] == 0
+    assert r["away_win_pct_in"] == 0.5 and r["away_streak_in"] == -1 and r["away_off_signings"] == 2
+    assert not any("postgame" in k or k.endswith("result") or "margin" in k for k in r)

@@ -24,6 +24,11 @@ jobs:
       - name: NFL (1999 .. 2026)
         if: always()
         run: python scripts/gamectx/wiki_context.py pull --league nfl --out out
+      - name: join to the archive (pregame rows per night + gid, for T8)
+        if: always()
+        run: |
+          python scripts/fetch_eval_data.py
+          python scripts/gamectx/archive_join.py --ctx out --archive data/archive --out out | tee out/join.txt
       - name: coverage
         if: always()
         run: python scripts/gamectx/wiki_context.py coverage --out out | tee out/coverage.txt
