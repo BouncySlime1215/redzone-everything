@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Handoff doc updated 1:45 PM (docs/handoff-overseer-2026-11-05.md): Watch Value #1 + newest-first massive data, game-context corpus, daily pre-game reports (rookies, draft capital, own-fan sentiment), budget cap math, ladder fix 811688b2, declined asks, Gmail/NHL changes. Usage 72%.
+Nick 1:55 PM FIRM: 8 concurrent threads all day. Safety net: at 84% usage before games end, drop to 3 threads (T1 buffer shadow, T4 YTTV, T5 TNF). 88% hard stop stands. Usage 72%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
