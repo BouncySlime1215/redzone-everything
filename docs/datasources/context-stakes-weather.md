@@ -123,3 +123,6 @@ rows), `tests/test_context_weather_cfbd.py` (Open-Meteo fixture in the documente
 unit checks, one call per venue-season, domes skipped, forecast-after-kickoff dropped, CFBD
 fixtures for prior-week polls, prior-game post-game stats, media tiers, indoor weather, venues
 hook, missing key).
+
+
+**Chunked Actions runs (Nov 5):** push `data-b-weather/nfl-<first>-<last>`; outputs land on `data-b-out/weather-nfl-<first>-<last>`. Each chunk fits its own edges, so a chunk after the train cutoff has empty edges; once all chunks land, merge them and refit edges on train games before handing to lane 1.

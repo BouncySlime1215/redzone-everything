@@ -438,3 +438,22 @@ def test_rest_history_covers_only_up_to_the_newest_returned_day(idx, tmp_path, m
     cov = store.covered_ts(SRC_PV, 0, 2**40, team="nba:WAS")
     assert cov == {parse_utc(f"2024-01-0{d}") for d in range(1, 6)}      # 1st..5th; 6th-9th not yet known
     assert store.covered_ts(SRC_PV, 0, 2**40, team="nba:BOS") == set()
+
+
+def test_gdelt_capped_backfill_pulls_the_game_window_first(monkeypatch):
+    import gdelt_buzz as G
+
+    seen = []
+
+    class _Store:
+        def covered_ts(self, *a):
+            return set()
+
+        def flush(self):
+            pass
+
+    monkeypatch.setattr(G, "pull_file", lambda http, idx, store, t: seen.append(t) or True)
+    times = list(range(0, 100 * 900, 900))
+    G.pull_files(None, None, _Store(), times, max_files=10, first_from=95 * 900)
+    assert seen[:5] == [95 * 900, 96 * 900, 97 * 900, 98 * 900, 99 * 900]
+    assert seen[5:] == [94 * 900, 93 * 900, 92 * 900, 91 * 900, 90 * 900]
