@@ -414,3 +414,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   my teams, stop after this game, end at a time) send the agreed `commit {mode, game_id?, at?}` action, which every
   mode applies at a dead ball, and a "Slate complete, 0 live games" state ends the night with nothing after it.
   OFF until lanes 2/3 ship the action. Reason: Start Planner Cycle 08 (#183), playbook §5.
+- 2026-11-05 (lane 5, EXP-040): new defaults `phone.worth: false` and `phone.worth_probe_days: 7`. One tap
+  "Was tonight worth it?" (1-5) on the Slate complete card, its own flag so it can run with phone.v2 off; the
+  agency / regret probes (playbook §6) at most once per 7 nights, only after the rating. Rows go to
+  data/worth.jsonl and are EVALUATION ONLY: redzone/lab/worth.py grades "worth it >= live" (pre-registered bar in
+  docs/lanes/experience.md); tests/test_worth.py fails if noggin, decider or scoring code reads them. Reason:
+  Start Planner Cycle 09 (#200), Sunday Nov 8 promotion bar includes "worth it >= live".

@@ -1233,6 +1233,13 @@ button.v2-held { width: 100%; text-align: left; font: inherit; font-size: 13px; 
 .v2-done { display: grid; gap: 4px; margin: 12px 0; padding: 18px 16px; border-radius: 14px; background: var(--surface-2); text-align: center; }
 .v2-done b { font: 700 18px/1.2 var(--font-display); }
 .v2-done span { color: var(--text-3); font-size: 13px; }
+.v2-worth { display: grid; gap: 6px; margin-top: 12px; }
+.v2-worth p { margin: 6px 0 0; font-size: 14px; color: var(--text-2); }
+.v2-scale { display: flex; gap: 6px; justify-content: center; }
+.v2-sc { min-width: 44px; min-height: 44px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface-1); color: var(--text-1); font-weight: 600; }
+.v2-sc.on { background: var(--text-1); border-color: var(--text-1); color: var(--text-inv); }
+.v2-scale--yn .v2-sc { min-width: 72px; }
+.v2-scale-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-3); padding: 0 4px; }
 .pick small { display: block; color: var(--text-3); font-size: 12px; }
 .v2-trend { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
 .v2-trend-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

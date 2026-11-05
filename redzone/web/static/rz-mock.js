@@ -145,6 +145,8 @@ function gameForTeam(lg, id) {
 }
 
 const TAPS = {};
+const MW = {};   // EXP-040 mock: tonight's worth row
+
 export async function mockApi(path, { method, body } = {}) {
   await sleep(140 + Math.random() * 160);
   const m = (method || (body !== undefined ? "POST" : "GET")).toUpperCase();
@@ -319,7 +321,12 @@ const V2_RULES = [["yours", "Your team", /your team|UNC|WSH|Commanders|Capitals|
   ["redzone", "Red zone", /red ?zone|goal[- ]to[- ]go/i], ["score", "Score", /touchdown|goal|scor/i], ["break", "Break elsewhere", /break|timeout|commercial/i],
   ["replay", "Catch-up", /replay|catch[- ]up|missed/i], ["manual", "You picked", /you (picked|asked)|manual/i]];
 function mockV2(path, b) {
-  if (path === "/api/v2/status") return { enabled: Q.has("v2"), commit: Q.has("v2") };
+  if (path === "/api/v2/status") return { enabled: Q.has("v2"), commit: Q.has("v2"), worth: Q.has("v2") };
+  if (path === "/api/v2/worth") {   // EXP-040 preview: ?mock&v2&done shows the card; ?probe adds the weekly probes
+    MW.night = MW.night || { night: "2026-11-08", complete: Q.has("done"), finished: 9, rating: null, agency: null, regret: null };
+    if (Object.keys(b).length) { Object.assign(MW.night, b); return { ok: true, message: "Thanks, noted", row: { ...MW.night } }; }
+    return { enabled: true, ...MW.night, probe_due: Q.has("probe") && MW.night.agency == null };
+  }
   if (path === "/api/v2/switches") return { enabled: true, switches: (STATE.log || []).map((l) => {
     const key = `${l.ts}|${l.to}`;
     const chips = V2_RULES.filter(([, , rx]) => rx.test(`${l.reason || ""} ${l.kind || ""}`)).slice(0, 4).map(([key, label]) => ({ key, label }));
