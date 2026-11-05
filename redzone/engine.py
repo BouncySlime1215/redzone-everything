@@ -150,6 +150,7 @@ class Engine:
         self.scorebug = scorebug.ScoreBugWatcher(on_sample=self._scorebug_sample, on_tune=self._sync_tune,
                                                  on_clock=self._sync_clock)
         self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
+        self._hand_left: tuple[str, float] | None = None   # (game you left by hand, when): standby.options hand_back
         # owed TV timeouts per game: when a break is coming (+ the learned brain, when brain.enabled)
         self.breaks = breaks.BreakBook(brain=self._break_brain)
         self._cost_mode: bool | None = None         # two-stick mode when switch costs were last synced
@@ -1635,11 +1636,22 @@ class Engine:
         if replay is None and not (home or dec.replaying):
             replay = self._replay_standby(cands)
         return standby.options(cands, current=dec.current, home=home, back_to=dec.stack[-1] if dec.stack else None,
+                               hand_back=self._hand_back(),
                                muted=u.muted, games=self.merger.games, my_teams=self._my_teams(), replay=replay,
                                tunable=self.control.can_tune, save_s=self.control.tune_estimate,
                                return_bonus=float(self.cfg.get("decider.switch_margin", 10)),
                                want=getattr(self.last_decision, "want", None), brk=brk, brk_why=why,
                                replay_sure=sure)
+
+    def _hand_back(self) -> str | None:
+        """The game you left by hand within two_stick.hand_back_s, while it's still the one you'd go back to."""
+        left = self._hand_left
+        win = float(self.cfg.get("two_stick.hand_back_s"))
+        dec = self.decider
+        if not left or win <= 0 or time.time() - left[1] > win or left[0] == dec.current \
+                or not dec.stack or dec.stack[-1] != left[0]:
+            return None
+        return left[0]
 
     def _break_brain(self):
         """(brain, blend weights, v3 lengths) for the break forecast, or (None, 0) with the brain off.
@@ -1986,6 +1998,8 @@ class Engine:
         w = self.where.get(gid)
         target = getattr(w, "target", None)
         before = self.decider.current
+        if before and before != gid and not replay:
+            self._hand_left = (before, time.time())   # standby: a tap back to it is likely (hand_back_s)
         cands = {gid: Candidate(self.scored[gid], target)} if gid in self.scored else {}
         d = Decision(time.time(), "replay" if replay else "switch", gid,
                      "you selected this replay" if replay else "you selected this game", State.PAUSED,

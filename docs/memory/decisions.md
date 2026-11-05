@@ -594,3 +594,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (seeds 0-2): 0 mid-play; NFL and NBA identical on every line; NHL crunch live −0.5, so NHL stays at 1.0.
   Pre-registered arm pick: tie → 0.95. Not a strict promotion pass: no line improved. It ships as Nick's
   definition of "close", with no line worse.
+- **2026-11-05 (lane 3, RC7 fast track, Nick 9:30 PM "implement please"): `two_stick.hand_back_s: 600`** (new, on). For 10 min
+  after you pick a game on the phone, the game you left keeps the hidden stick (ranked with your game's return, below the
+  decider's own NEXT and your focus game), so a tap back is a flip. Why: Nov 4 live, 16 phone presses to Prime ~2 min apart,
+  11 cold (~30 s) because a planner guess took the hidden stick. Lab night ping-pong drill (32 presses, seeds 1-2): warm
+  0/32 -> 31/32, Prime press 46 s -> ~3 s. 0 = off (instant rollback via /api/settings). Standby only: no switch timing change.

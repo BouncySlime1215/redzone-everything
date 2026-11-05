@@ -278,3 +278,6 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   ok:false, and deploy.py's Health.of counted every ok:false as a failing feed. Fix (RC7): ok = reachable and
   fresh, benched reported on its own, and deploy.py's source_failing() ignores a bench on a fresh source in both
   the old and the new shape. A health watch must compare like with like across versions.
+- **2026-11-05: a phone pick's way back lost the hidden stick to a guess.** The standby planner ranked the game you just
+  left as "best" (+10), so any "moment" guess outranked it by class and took the hidden stick; Prime then cost a ~30 s
+  re-tune on the tap back (11 of 16 live presses, Nov 4). Fix: `two_stick.hand_back_s`. Drill: `redzone.lab.night.presses:pingpong`.
