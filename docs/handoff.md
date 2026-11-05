@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep: usage 73%. Tonight's work is merged and ready for the freeze; the only thing waiting on Nick is the 5-6:30 PM deploy with the TV off.
-Overseer launched the EXP-1404 outcome-labels notebook on Colab CPU (code a961d6c2, ~15-30 min, ~0 CU). Its zip goes to Data planner E for the locked re-grade (personal use, not committed).
+NICK ORDER: continuous Watch Value loop (what game, when, interleave): more data, more training, no stopping at cycle end. Sent to coordinator; first deliverable is why closest-game beats our NBA models. 8 threads, 84%/88% limits and the locked-set rule unchanged.
+RC6.3 is staged and needs Nick's yes or hold on the card in the 'Harden the app and integration' thread before the 5-6:30 PM deploy.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
