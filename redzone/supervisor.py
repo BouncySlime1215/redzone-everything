@@ -980,7 +980,7 @@ class Supervisor:
             if now < float(t["cut_at"]) + CUT_JUDGE_AFTER_S:
                 continue
             self._cuts_judged[t["id"]] = None
-            g = grade_cut(t, timelines)
+            g = grade_cut(t, timelines, getattr(self.e, "delays", None))
             if g is not None:
                 append_jsonl(self.cuts_path, g)
                 if g.get("leave") == "play":
@@ -1197,9 +1197,17 @@ def build_report(night: date, store: Any, root: Path, now: float | None = None) 
     return rep["text"], rep["summary"]
 
 
-def grade_cut(t: dict, timelines: dict) -> dict | None:
+def grade_cut(t: dict, timelines: dict, delays: Any = None) -> dict | None:
     """Both ends of one live cut from its trace, against the game timelines the decider keeps.
-    leave/enter: "dead" | "play" | "unknown" | None (not graded: a replay, RedZone, a reel, no data)."""
+    leave/enter: "dead" | "play" | "unknown" | None (not graded: a replay, RedZone, a reel, no data).
+
+    [lane 3, Nov 5: Wed Nov 4's 17/30] Two honesty rules. (1) A landing no dead window covers is
+    "unknown", not "play": the decider may treat it as play, but nothing showed a play on screen.
+    (2) The screen time comes from the best delay known when the cut is graded: `delays` (the app's
+    DelayBook) once the channel is measured and tighter than the one the switch planned with, else
+    the planned one; `<end>_delay` records which (src "measured" | "planned"). Wednesday's Prime cuts
+    were graded on the unsynced 40 +/- 15 s prior while the stick measured ~16 s."""
+    from redzone.decider.cuts import NO_DEAD_WHY
     cut, pic = t.get("cut_at"), t.get("picture_at")
     if cut is None:
         return None
@@ -1210,11 +1218,29 @@ def grade_cut(t: dict, timelines: dict) -> dict | None:
            "forced": bool(t.get("forced")),
            "leave": None, "leave_why": "", "enter": None, "enter_why": ""}
 
-    def land(gid, at, delay, offsets: bool = False):
+    def graded_delay(target, planned):
+        """(delay, src): the book's figure once this channel is measured and tighter, else the plan's."""
+        if delays is None or not target:
+            return planned, "planned"
+        try:
+            if not delays.measured(target):
+                return planned, "planned"
+            d = delays.get(target)
+            sig = (planned or {}).get("sigma")
+            if planned and planned.get("mu") is not None and sig is not None and float(d.sigma) >= float(sig):
+                return planned, "planned"
+            return {"mu": round(float(d.mu), 2), "sigma": round(float(d.sigma), 2)}, "measured"
+        except Exception:
+            log.debug("measured delay unavailable", exc_info=True)
+            return planned, "planned"
+
+    def land(gid, at, delay, end, target=None, offsets: bool = False):
         tl = timelines.get(gid or "")
         dead = getattr(tl, "dead", None)
+        delay, src = graded_delay(target, delay)
         if dead is None or not delay or delay.get("mu") is None:
             return None, ""
+        rec[f"{end}_delay"] = {**delay, "src": src}
         x = float(at) - float(delay["mu"])    # the real (feed) time the screen showed at that moment
         try:
             got = dead.landing(x, x)
@@ -1232,12 +1258,14 @@ def grade_cut(t: dict, timelines: dict) -> dict | None:
                     rec["enter_before_play_s"] = round(got.resume - x, 1)
             except Exception:
                 log.debug("landing offsets unavailable", exc_info=True)
-        return got.state, f"{got.why}{' (' + got.kind + ')' if got.kind else ''}"
+        state = "unknown" if got.why == NO_DEAD_WHY else got.state
+        return state, f"{got.why}{' (' + got.kind + ')' if got.kind else ''}"
 
     if t.get("from") and not t.get("from_replay"):
-        rec["leave"], rec["leave_why"] = land(t["from"], cut, t.get("leave_delay"))
+        rec["leave"], rec["leave_why"] = land(t["from"], cut, t.get("leave_delay"), "leave", t.get("from_target"))
     if pic is not None and t.get("action") != "replay":
-        rec["enter"], rec["enter_why"] = land(t.get("to"), pic, t.get("enter_delay"), offsets=True)
+        rec["enter"], rec["enter_why"] = land(t.get("to"), pic, t.get("enter_delay"), "enter", t.get("target"),
+                                              offsets=True)
     if rec["leave"] is None and rec["enter"] is None:
         return None
     return rec

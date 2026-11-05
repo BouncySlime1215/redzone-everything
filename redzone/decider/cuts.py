@@ -228,6 +228,11 @@ class Window:
     exact: bool = False     # end worked out from the game clock / a logged faceoff / the next snap
 
 
+# The landing the data can't call: no dead window known at that real time. The decider reads it as "play"
+# in NBA/NHL/CBB (cautious), but the live cut grader reports it as "unknown", never as a confirmed play.
+NO_DEAD_WHY = "play may be live"
+
+
 @dataclass
 class Landing:
     state: str                    # "dead" | "play" | "unknown"
@@ -472,7 +477,7 @@ class DeadTracker:
             if w.end is not None and x0 < w.end:
                 return Landing("play", w.kind, w.end, "play resumes while you land")
             break
-        return Landing("unknown" if lg in (League.NFL, League.MLB) else "play", why="play may be live")
+        return Landing("unknown" if lg in (League.NFL, League.MLB) else "play", why=NO_DEAD_WHY)
 
 
 def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: float, *,
