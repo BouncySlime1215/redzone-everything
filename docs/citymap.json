@@ -555,6 +555,7 @@
     "scripts/eval_sports.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
+    "scripts/night_report.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
     "scripts/replay_check.py",
@@ -898,6 +899,9 @@
    "outputs": [
     "redzone/contracts/__init__.py",
     "redzone/contracts/world.py",
+    "redzone/control.py",
+    "redzone/decider/decider.py",
+    "redzone/lab/backtest.py",
     "redzone/lab/evaldata.py"
    ],
    "owner": "INTEGRATION",
@@ -1019,14 +1023,20 @@
    ]
   },
   "redzone/control.py": {
-   "contracts": [],
+   "contracts": [
+    "flip_bound",
+    "seek_model"
+   ],
    "inputs": [
     "redzone/channels.py",
     "redzone/config.py",
+    "redzone/contracts/switching.py",
     "redzone/tuners/adb.py",
     "redzone/tuners/prime_multiview.py",
     "redzone/tuners/tuners.py",
-    "redzone/tv.py"
+    "redzone/tv.py",
+    "uses:flip_bound",
+    "uses:seek_model"
    ],
    "kind": "module",
    "outputs": [
@@ -1087,7 +1097,7 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
@@ -1114,7 +1124,7 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
@@ -1138,13 +1148,16 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
   "redzone/decider/decider.py": {
-   "contracts": [],
+   "contracts": [
+    "seek_model"
+   ],
    "inputs": [
+    "redzone/contracts/switching.py",
     "redzone/decider/core.py",
     "redzone/decider/cuts.py",
     "redzone/decider/playbooks.py",
@@ -1155,7 +1168,8 @@
     "redzone/noggin/lookahead.py",
     "redzone/noggin/pick.py",
     "redzone/noggin/wire.py",
-    "redzone/scoring/engine.py"
+    "redzone/scoring/engine.py",
+    "uses:seek_model"
    ],
    "kind": "module",
    "outputs": [
@@ -1180,7 +1194,7 @@
     "GAME-05",
     "GAME-09",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "SAFE-01",
     "Your-team crunch live"
    ]
@@ -1200,7 +1214,7 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
@@ -1220,7 +1234,7 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "SAFE-01",
     "SAFE-02",
     "SAFE-03",
@@ -1250,7 +1264,7 @@
     "GAME-21",
     "GAME-22",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
@@ -1284,7 +1298,7 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
@@ -1310,7 +1324,7 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
@@ -1672,10 +1686,17 @@
    ]
   },
   "redzone/lab/backtest.py": {
-   "contracts": [],
+   "contracts": [
+    "FLIP_PRIOR",
+    "PRETUNE_PRIOR_S",
+    "YTTV_SEEK",
+    "sample_prior",
+    "seek_model"
+   ],
    "inputs": [
     "redzone/channels.py",
     "redzone/config.py",
+    "redzone/contracts/switching.py",
     "redzone/decider/decider.py",
     "redzone/decider/screen.py",
     "redzone/grading.py",
@@ -1685,7 +1706,12 @@
     "redzone/models.py",
     "redzone/scoring/drive.py",
     "redzone/scoring/engine.py",
-    "redzone/sources/espn.py"
+    "redzone/sources/espn.py",
+    "uses:FLIP_PRIOR",
+    "uses:PRETUNE_PRIOR_S",
+    "uses:YTTV_SEEK",
+    "uses:sample_prior",
+    "uses:seek_model"
    ],
    "kind": "module",
    "outputs": [
@@ -1869,7 +1895,7 @@
    "serves": [
     "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)"
+    "Mid-play entries (per 100 landings)"
    ]
   },
   "redzone/lab/evaldata.py": {
@@ -3073,7 +3099,8 @@
     "redzone/reasoner/brief.py",
     "redzone/reasoner/reasoner.py",
     "redzone/scoring/brain.py",
-    "redzone/scoring/garbage.py"
+    "redzone/scoring/garbage.py",
+    "redzone/scoring/postseason.py"
    ],
    "kind": "module",
    "outputs": [
@@ -3126,6 +3153,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/scoring/engine.py",
     "redzone/sources/espn.py"
    ],
    "owner": "unowned",
@@ -4453,6 +4481,19 @@
     "untagged"
    ]
   },
+  "scripts/night_report.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Night health report: one page per night, written every morning to docs/nights/YYYY-MM-DD.md (cycle 04 build (a), lane 4).",
+   "serves": [
+    "STK-06"
+   ]
+  },
   "scripts/noggin_factory.py": {
    "contracts": [],
    "inputs": [
@@ -4553,7 +4594,7 @@
    "role": "Grade a live Prime NBA multiview night against the turn-on gate (redzone/tuners/prime_multiview.py).",
    "serves": [
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "STK-03"
    ]
   },
@@ -4615,7 +4656,7 @@
    "owner": "unowned",
    "role": "Publish live-night summaries into the repo so the North Star workflow grades real nights (cycle 04, lane 4: \"live nights into northstar\").",
    "serves": [
-    "untagged"
+    "STK-06"
    ]
   },
   "scripts/release_gate.py": {
@@ -4897,10 +4938,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 258,
+  "modules": 259,
   "orphans": 10,
-  "unowned": 100,
-  "untagged": 209
+  "unowned": 101,
+  "untagged": 208
  },
  "version": 1
 }

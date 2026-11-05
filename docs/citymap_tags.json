@@ -1,6 +1,6 @@
 {
  "redzone/decider/*": [
-  "Mid-play cuts + entries (per 100 landings)",
+  "Mid-play entries (per 100 landings)",
   "Landings in dead time",
   "Entries at a possession start (dead ball, no play missed)",
   "Crunch live, NFL",
@@ -56,7 +56,7 @@
  ],
  "redzone/lab/decision_records.py": [
   "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)",
-  "Mid-play cuts + entries (per 100 landings)",
+  "Mid-play entries (per 100 landings)",
   "Landings in dead time"
  ],
  "scripts/export_decision_records.py": [
@@ -76,7 +76,7 @@
   "STK-04"
  ],
  "scripts/prime_multiview_grade.py": [
-  "Mid-play cuts + entries (per 100 landings)",
+  "Mid-play entries (per 100 landings)",
   "Landings in dead time",
   "STK-03"
  ],
