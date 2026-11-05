@@ -438,3 +438,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   are self-contained: public inputs at a pinned commit, no Drive mount, no secrets, grades.json printed. The
   overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
   frozen, locked is read once (Sunday).
+- 2026-11-04 (lane 3, EXP-036, commit command path): new config key `phone.commit: false`, plus a new phone
+  action `commit {mode: my_teams|stop_after|end_at, game_id?, at?}` (or `off`) that lands on
+  `UserState.commit`, survives a restart in data/user_state.json (dropped when stale; an end_at that passed while down is kept) and
+  goes through the same tap id / ack / status as every other press. Reason: Cycle 08 add-on after EXP-004. The
+  controls only carry it; the decider's use is lane 2's and the UI is lane 5's, so it ships off.

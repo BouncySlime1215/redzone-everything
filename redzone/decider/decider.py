@@ -223,6 +223,9 @@ class UserState:
     focus_mode: FocusMode = FocusMode.AUTOPILOT
     muted: set[str] = field(default_factory=set)
     manual_until: float = 0.0
+    # [commit] EXP-036: what you committed to from the phone ({mode: my_teams|stop_after|end_at, game_id?, at?}),
+    # None = nothing. Carried here by the controls (redzone/userstate.py); what the decider does with it is lane 2's.
+    commit: dict | None = None
 
 
 @dataclass

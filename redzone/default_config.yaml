@@ -595,6 +595,7 @@ noggin:                    # docs/noggin.md
     points: 20             # term = points x (P - the league's base rate), bounded to +-points; needs priority.enabled
 
 phone:                     # the phone page (redzone/web)
+  commit: false            # [commit] EXP-036: accept the commit tap (my_teams | stop_after | end_at) and keep it in user_state.json. OFF until lane 2 reads it
   v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it
 warmup:                    # [warmup.pregame] before the night's first game (redzone/plan.py Tonight._warmup)
   pregame: false           # put the likeliest first game on the HIDDEN stick before the first start (never the one on screen)
