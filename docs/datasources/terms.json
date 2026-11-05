@@ -121,7 +121,12 @@
     "nba_ref_assignments": "restrictive",
     "nba_cdn_schedule": "restrictive",
     "ftn_charting": "restrictive",
-    "wikipedia_tv_tables": "open"
+    "wikipedia_tv_tables": "open",
+    "nba_shotdetail": "restrictive",
+    "nba_matchups": "restrictive",
+    "nba_datanba_coords": "restrictive",
+    "nfl_ngs_weekly": "open",
+    "nflverse_pfr": "red"
   },
   "nba_terms_review": "private-only (read 2026-11-05 by data crew B): nba.com terms of use have no clause on automated access or AI; they allow downloading for personal, noncommercial use (s.1), forbid republishing Basketball Content (s.1), and limit NBA Statistics to private noncommercial use with NBA.com credit and no comprehensive public database (s.9). So: run on Kaggle into the private dataset only; never push outputs to a public branch or artifact."
 }
