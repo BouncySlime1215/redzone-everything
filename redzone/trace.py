@@ -119,10 +119,13 @@ def _delay(book: Any, target: str | None) -> dict | None:
 
 def build(d: Any, before: str | None, target: str | None, out: Any, submitted_at: float, *,
           delays: Any = None, before_target: str | None = None, labels: dict | None = None,
-          from_replay: bool = False, now: float | None = None, provenance: dict | None = None) -> dict:
+          from_replay: bool = False, now: float | None = None, provenance: dict | None = None,
+          forced: bool = False) -> dict:
     """The trace for one finished switch (any outcome, dry runs included). `provenance` is
     {module: what it contributed} (Engine._provenance + Outcome.provenance): the phone's Trace sheet
-    reads it from switches.detail.trace.provenance."""
+    reads it from switches.detail.trace.provenance. forced: the cut went through on your second
+    "Go now" tap (Nick, Nov 5: it switches at once, even mid-play); graded apart from the
+    never-join-mid-play line (entries_mid_play_forced)."""
     now = time.time() if now is None else now
     marks = [(str(n), float(t)) for n, t in (getattr(out, "marks", None) or [])]
     decided = float(getattr(d, "at", None) or submitted_at)
@@ -175,6 +178,7 @@ def build(d: Any, before: str | None, target: str | None, out: Any, submitted_at
         "leave_delay": _delay(delays, before_target),
         "enter_delay": _delay(delays, target),
         "provenance": dict(provenance or {}),
+        "forced": bool(forced),
     }
     rec["stages"] = [[e.stage.value, _r(e.at)] for e in events(rec)]
     return rec
@@ -193,7 +197,8 @@ def events(t: dict) -> list:
                                   {k: v for k, v in detail.items() if v is not None}))
 
     add("decided", t.get("decided_at"), "decider", kind=t.get("kind"), action=t.get("action"),
-        frm=t.get("from"), to=t.get("to"), target=t.get("target"), reason=t.get("reason"))
+        frm=t.get("from"), to=t.get("to"), target=t.get("target"), reason=t.get("reason"),
+        forced=True if t.get("forced") else None)
     from redzone.supervisor import NOT_THE_TARGET   # held back / cancelled / refused: not a failure
     held = bool(t.get("dry_run")) or (not t.get("ok") and
                                       str(t.get("detail") or "").lower().startswith(NOT_THE_TARGET))

@@ -281,3 +281,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **2026-11-05: a phone pick's way back lost the hidden stick to a guess.** The standby planner ranked the game you just
   left as "best" (+10), so any "moment" guess outranked it by class and took the hidden stick; Prime then cost a ~30 s
   re-tune on the tap back (11 of 16 live presses, Nov 4). Fix: `two_stick.hand_back_s`. Drill: `redzone.lab.night.presses:pingpong`.
+- **2026-11-05: a forced "Go now" has to be told apart from a mid-play entry.** Nick allows the second tap to cut at
+  once; without a mark, every forced press counted against never-join-mid-play. Only the switch whose `may_cut` went
+  through on `Engine._forced_go` (held game, `hold.force`) carries `trace.forced`; a single tap that waits for the
+  dead ball, and every autopilot switch, never does.
