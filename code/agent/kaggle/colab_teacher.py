@@ -5,7 +5,8 @@
 # happened (beside the fast head), and hands you teacher_out.jsonl for the students.
 # No Drive, no secrets, nothing to upload: the code comes from the public `kaggle-inputs` branch at a pinned commit.
 #
-# **Data gate (Nick's A/B call, decisions.md):** as shipped `DATA_PLAN = ""` and the run stops at once.
+# **Data plan (Nick 11:20 PM Nov 4: B, personal use only, decisions.md):** as shipped `DATA_PLAN = "B"`. Every output
+# is tagged "personal-use, not for commercial release".
 # - `"A"` (EXP-102, catalog-OK only): NFL + NBA moments rebuilt from nflverse and NBA.com cdn play-by-play.
 # - `"B"` (EXP-086): CBB, NHL, MLB moments from ESPN's site API, which the #202 catalog rates red for training.
 #
@@ -15,7 +16,7 @@
 # %%
 PIN = "__PIN__"                 # kaggle-inputs commit: code pack + data (+ the factory pack for plan A)
 REPO = "BouncySlime1215/redzone-everything"
-DATA_PLAN = ""                  # "A" or "B" only after Nick picks it; "" stops before any download
+DATA_PLAN = "B"                 # Nick 11:20 PM Nov 4: DATA = B (personal use only); "A" = the green NFL+NBA run
 LEAGUES = {"A": "nfl nba", "B": "cbb nhl mlb"}.get(DATA_PLAN, "")
 EXP = {"A": "EXP-102", "B": "EXP-086"}.get(DATA_PLAN, "")
 # grounded rows per league, sized so the whole queue (+1/8 blind) fits TEACHER_H at ~30 answers/min (~4,050 asks):

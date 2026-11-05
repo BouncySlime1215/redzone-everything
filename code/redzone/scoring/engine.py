@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 from redzone.models import PERIOD_S, REAL_BREAKS, REGULATION, ByLeague, GameState, League, Phase, Stoppage, pro_period
 from redzone import crunch
-from redzone.scoring import garbage
+from redzone.scoring import garbage, postseason
 from redzone.scoring.brain import Brain
 from redzone.reasoner import brief as rbrief
 from redzone.reasoner.reasoner import Reasoner, lock_points
@@ -167,6 +167,8 @@ class Scored:
     # [HEAT 2.0, lane 1 sets these; the phone's Watch value surface reads them (phone_v2.watch_values)]
     watch_value: float | None = None   # learned 0-100 watch value; None = not computed yet (phone shows a stub)
     watch_why: str = ""                # one line: why that value
+    watch_terms: dict = field(default_factory=dict)   # p_big, impact, leverage, stakes_mult, story, garbage
+    watch_rising: float | None = None  # d(watch_value)/dt, points per minute
     crunch_state: str | None = None    # crunch model: "entering" | "in" | "leaving"; None = not computed
     stakes_line: str | None = None     # e.g. "AFC 1-seed race, top-5 matchup"; None = not computed
 
@@ -300,7 +302,8 @@ class Scorer:
                       imminent=h.imminent_at is not None
                       and now - h.imminent_at <= c.get("score.nhl.imminent_hold_s", -1),
                       brain=reading.as_dict() if reading is not None and reading.hotness is not None else {},
-                      reasoner=rr.as_dict() if rr is not None and rr.p is not None else {})
+                      reasoner=rr.as_dict() if rr is not None and rr.p is not None else {},
+                      stakes_line=postseason.reason(g) or None)   # [#163] the phone's stakes line (display only)
 
     MINE_LIVE_S = 60.0      # your team's game counts as on this long after its last live, close poll
     LEAGUE_LIVE_S = 300.0   # a league counts as "on tonight" this long after its last live game
@@ -337,6 +340,7 @@ class Scorer:
                 s += c.get("score.stakes.big_spread_penalty")
         if g.national_tv:
             s += c.get("score.stakes.national_tv", 0)
+        s += postseason.stakes_bonus(g, c)   # [#163 playoff stakes] 0 unless score.postseason.enabled
         return max(c.get("score.stakes.min"), min(c.get("score.stakes.max"), s))
 
     def _personal(self, g: GameState, me: Personal, k: float, garbage_time: bool = False) -> tuple[float, list[str]]:
