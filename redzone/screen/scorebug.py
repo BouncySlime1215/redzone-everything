@@ -40,6 +40,9 @@ _NUM = re.compile(r"\d{1,3}")
 _PERIOD = re.compile(r"\b(HALFTIME|HALF|FINAL(?:/OT)?|END OF (?:THE )?(?:1ST|2ND|3RD|4TH|Q[1-4]|OT)"
                      r"|[1-4](?:ST|ND|RD|TH)|Q[1-4]|\d?OT)\b")
 _CLOCK = re.compile(r"\b(\d{1,2}:\d{2}|\d{1,2}\.\d)\b")
+# [Nick 9:25 AM Nov 5, TNF race] football's down & distance, e.g. "3RD & 7", "1ST & GOAL" (read before the period,
+# which has the same "3RD" spelling)
+_DOWN = re.compile(r"\b([1-4])(?:ST|ND|RD|TH)\s*(?:&|AND)\s*(\d{1,2}|GOAL|GL|INCHES)\b")
 
 
 def clock_seconds(text: str) -> float | None:
@@ -84,6 +87,7 @@ class Bug:
     away: int
     period: str = ""
     clock: str = ""
+    down: str = ""   # football: "3&7", "1&GOAL"; "" elsewhere / unread
 
     @property
     def score(self) -> tuple[int, int]:
@@ -137,8 +141,12 @@ def parse_bug(observations, home, away, lower_from: float = LOWER_FROM) -> Bug |
     left, right = (v1, v2) if x1 < x2 else (v2, v1)
     home_s, away_s = (left, right) if hx < ax else (right, left)
     text = " ".join(o.text.upper() for o in rows if top <= o.y <= bottom + 0.1)
+    dn = _DOWN.search(text)
+    if dn:
+        text = text[:dn.start()] + " " + text[dn.end():]
     p, c = _PERIOD.search(text), _CLOCK.search(text)
-    return Bug(home_s, away_s, p.group(1) if p else "", c.group(1) if c else "")
+    return Bug(home_s, away_s, p.group(1) if p else "", c.group(1) if c else "",
+               f"{dn.group(1)}&{dn.group(2)}" if dn else "")
 
 
 @dataclass

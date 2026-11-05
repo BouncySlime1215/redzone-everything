@@ -80,3 +80,7 @@ Ask Nick only if he wants to request written research authorization from Kalshi 
 "with prior written authorization").
 
 License line for the ledger: `red: Kalshi Developer Agreement §1/§4.1.1 requires Exchange membership to use the API; §3.1 bans storing data except for own trading`.
+
+## Re-check, Nov 5 2026 14:20 UTC (Nick 9:05 AM asked for Kalshi "per its terms" as a fast trigger)
+
+Still **red**. The Developer Agreement v1.1 has not changed. §1: accessing the API is acceptance. §3: use is limited to a member's own trading. §3.1: no collecting, caching or storing data. §3.5: no use of the API "for benchmarking or competitive purposes" or to monitor performance, which covers a feed-lag race. §4.1.1: you must be a Kalshi member. No non-member, research or public-data exception exists, and the only written-permission clause covers sharing (§3.1). The trigger therefore uses Polymarket's public market WebSocket (`scripts/markets/poly_live_trigger.py`, yellow-B, shadow log only).

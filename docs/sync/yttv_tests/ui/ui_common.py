@@ -32,10 +32,20 @@ import urllib.request
 from pathlib import Path
 _STICKS = (__import__("os").environ.get("RZ_STICKS") or "hdmi1:5555,hdmi2:5555").split(",")  # stick addresses stay off the public repo: set RZ_STICKS=host1,host2 on the Mac
 
-REPO = Path("/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone")
-SYNC = Path("/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/"
-            "db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync")
-TESTS = SYNC / "yttv_tests"
+REPO = Path(__import__("os").environ.get("RZ_REPO") or "/Users/nick_matta/Documents/Codex/2026-11-02/task-2/redzone")
+def _sync_dir():
+    """RZ_SYNC, else Nick's Nov 4 scratchpad if it still exists (reference PNGs, codec logs), else this bank's parent."""
+    import os as _os
+    env = _os.environ.get("RZ_SYNC")
+    if env:
+        return env
+    old = "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync"
+    here = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
+    return old if _os.path.isdir(old) else here
+
+
+SYNC = Path(_sync_dir())
+TESTS = Path(__file__).resolve().parent.parent
 RESULTS = TESTS / "results"
 WORK = TESTS / "work"
 RECIPES = TESTS / "ui" / "recipes.json"
@@ -259,8 +269,14 @@ def screencap(host: str, path: Path) -> float:
     return (t0 + time.time()) / 2
 
 
+class FixtureMissing(FileNotFoundError):
+    """A dry run's reference PNG (Mac-only, kept off the public repo) is not on this machine."""
+
+
 def fixture(name: str) -> tuple[Path, float]:
     p = FIX[name]
+    if not p.exists():
+        raise FixtureMissing(f"reference PNG {p.name} not in RZ_SYNC={SYNC} (Mac-only; live runs don't need it)")
     return p, p.stat().st_mtime
 
 
@@ -613,6 +629,10 @@ def run(test_id: str, doc: str, live, dry, extra=None) -> int:
     try:
         summ = dry(args, out) if args.dry_run else live(args, g, out)
         out.write("summary", **(summ or {}))
+    except FixtureMissing as e:
+        # dry run only (live never reads fixtures): report SKIP honestly instead of a crash, exit 0
+        out.write("summary", skipped="fixture_missing", why=str(e), pass_=None)
+        print(f"[{test_id}] SKIP dry fixture check: {e}", file=sys.stderr)
     except KeyboardInterrupt:
         out.write("aborted", why="ctrl-c")
     finally:

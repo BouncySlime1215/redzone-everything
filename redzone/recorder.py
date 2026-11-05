@@ -44,6 +44,11 @@ class Recorder:
             for r in rows:
                 f.write(json.dumps(r, separators=(",", ":")) + "\n")
 
+    def fast_feed(self, rows: list[dict]) -> None:
+        """[tracker item 5] Fast league-feed events with when we first saw them (sources/fastfeeds.py,
+        shadow only); scripts/fast_feed_race.py lines them up with ESPN's plays.jsonl."""
+        self._write("fast_feeds.jsonl", rows)
+
     def sync_anchor(self, row: dict) -> None:
         """[auto-anchors] One on-screen break edge (matched feed event) or drift alarm per row."""
         self._write("sync_anchors.jsonl", [row])

@@ -18,8 +18,21 @@ PROCEDURE (hidden stick only):
      Clock: first frame showing (period, clock) equal to a summary play's -> sample D_clock.
   3. BACK x2, re-tune.
 
+CLOCK READINGS -> results/obs.jsonl (Nick, Nov 5 4:20 AM: feed truth_08 / truth_11). Each (period, clock)
+the panel shows for the first time appends one row {game, channel, period, clock, obs_wall, obs_sigma, edge,
+src, panel_mode}. edge=True when the frame before showed a LARGER clock in the same period: the display (ceil of the true
+clock) reached this value somewhere in the gap, so obs_wall = the gap's midpoint and obs_sigma = gap/sqrt(12)
+(uniform). Otherwise (first frame, new period) edge=False and obs_wall = the frame's capture wall; truth_08 then
+reads it as a ceil display. During the run rows go to a run-local file (work/ui_07_stats_panel.<start>.obs.jsonl);
+at the end they are routed by what the score samples say the panel is: synced to the playhead -> results/obs.jsonl
+(truth_08/11 input); realtime (median D < 8 s: a fast feed, not the screen) -> results/obs_realtime.jsonl;
+no score sample to tell -> results/obs_unverified.jsonl. Only a synced panel's clock is a screen observation.
+Dry runs write work/ui_07_stats_panel.dryrun.obs.jsonl, never results/.
+
 PASS: >= 4 score samples with MAD <= 1.0 s (panel synced; coincidental integers make outliers, so MAD not sd) -- report 'realtime' when median D < 8 s.
 """
+import json
+import math
 import random
 import re
 import sys
@@ -40,6 +53,18 @@ def extra(ap):
     ap.add_argument("--league", default="nba")
 
 
+def clock_s(text):
+    """'5:42' -> 342.0, '45.6' -> 45.6 (truthlib.clock_text's rule); None if unreadable."""
+    try:
+        t = (text or "").strip()
+        if ":" in t:
+            a, b = t.split(":")
+            return int(a) * 60 + float(b)
+        return float(t)
+    except ValueError:
+        return None
+
+
 def parse_panel(o: dict) -> dict:
     ints, clock, per = set(), None, None
     for t in o["obs"]:
@@ -57,10 +82,35 @@ def parse_panel(o: dict) -> dict:
 
 
 class Est:
-    def __init__(self):
+    def __init__(self, obs_path=None, game=None, channel=None):
         self.prev_ints, self.prev_w, self.done, self.samples, self.clock_samples = set(), None, set(), [], []
+        self.obs_path, self.game, self.channel, self.prev_clk, self.seen_clk, self.obs = obs_path, game, channel, None, set(), []
+
+    def clock_obs(self, w, panel):
+        """One obs row per (period, clock) value the panel shows for the first time."""
+        c = clock_s(panel["clock"]) if panel["clock"] else None
+        if c is None or not panel["period"]:
+            return None
+        key = (panel["period"], panel["clock"])
+        prev = self.prev_clk
+        self.prev_clk = (panel["period"], c, w)
+        if key in self.seen_clk:
+            return None
+        self.seen_clk.add(key)
+        edge = bool(prev and prev[0] == panel["period"] and prev[1] > c)
+        gap = w - prev[2] if edge else 0.0
+        row = dict(game=self.game, channel=self.channel, period=panel["period"], clock=panel["clock"],
+                   obs_wall=round(w - gap / 2, 3), obs_sigma=round(gap / math.sqrt(12), 3) if edge else 0.25,
+                   edge=edge, src="ui_07")
+        self.obs.append(row)
+        if self.obs_path:
+            self.obs_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.obs_path, "a") as f:
+                f.write(json.dumps(row) + "\n")
+        return row
 
     def feed(self, w, panel, plays):
+        self.clock_obs(w, panel)
         onset = w - (w - self.prev_w) / 2 if self.prev_w else w
         new = []
         scores = {}
@@ -100,7 +150,8 @@ def live(args, g, out):
         return dict(panel=False, pass_=False)
     g.key("DPAD_CENTER"); time.sleep(2)
     U.save_recipe("stats_panel", dict(keys=nav["keys"] + ["DPAD_CENTER"], label=nav["text"]))
-    est, plays, last = Est(), [], 0.0
+    run_obs = U.WORK / f"{ID}.{int(time.time())}.obs.jsonl"
+    est, plays, last = Est(run_obs, args.game, args.channel), [], 0.0
     t_end = time.time() + args.minutes * 60
     while time.time() < t_end:
         if time.time() - last > 15 and args.game:
@@ -115,7 +166,16 @@ def live(args, g, out):
     s = U.summarize(est.samples)
     mode = "realtime" if s.get("n") and s["median"] < 8 else "synced"
     ok = s.get("n", 0) >= 4 and s.get("mad", 9) <= 1.0
-    return dict(score=s, clock=U.summarize(est.clock_samples), panel_mode=mode, pass_=bool(ok))
+    route = "obs.jsonl" if mode == "synced" and s.get("n") else ("obs_realtime.jsonl" if s.get("n") else "obs_unverified.jsonl")
+    tag = mode if s.get("n") else "unknown"
+    if est.obs:
+        U.RESULTS.mkdir(parents=True, exist_ok=True)
+        with open(U.RESULTS / route, "a") as f:
+            for r in est.obs:
+                f.write(json.dumps({**r, "panel_mode": tag}) + "\n")
+    out.write("obs_routed", rows=len(est.obs), to=route, panel_mode=tag, run_file=str(run_obs))
+    return dict(score=s, clock=U.summarize(est.clock_samples), panel_mode=mode, obs_rows=len(est.obs), obs_to=route,
+                obs_edges=sum(r["edge"] for r in est.obs), pass_=bool(ok))
 
 
 def dry(args, out):
@@ -143,13 +203,29 @@ def dry(args, out):
             t += args.every
     s = U.summarize(est.samples)
     out.write("synthetic", D_true=D_true, est=s)
+    # obs.jsonl rows: a running clock (ceil display) sampled every --every s; an edge row's obs_wall must sit
+    # within half a gap of the true tick.
+    ck = Est(U.WORK / f"{ID}.dryrun.obs.jsonl", args.game, args.channel)
+    if ck.obs_path.exists():
+        ck.obs_path.unlink()
+    t0, errs = 1_793_900_000.0, []
+    for k in range(200):
+        t = t0 + k * args.every + 0.37
+        true = 300.0 - (t - t0)
+        shown = math.ceil(true)
+        row = ck.clock_obs(t, dict(clock=f"{int(shown // 60)}:{int(shown % 60):02d}", period=2))
+        if row and row["edge"]:
+            errs.append(abs(row["obs_wall"] - (t0 + 300.0 - shown)))
+    out.write("obs_synthetic", rows=len(ck.obs), edges=len(errs), max_err=round(max(errs), 3) if errs else None,
+              half_gap=args.every / 2, path=str(ck.obs_path))
     p, w = U.fixture("overlay")
     pan = parse_panel(U.ocr(p))
     out.write("fixture_parse", png=str(p), ints=sorted(pan["ints"]), clock=pan["clock"], period=pan["period"])
     out.write("would", steps=["tune", "DPAD_DOWN", "RIGHT.. until /stats|scores/", "CENTER", "poll screencap",
                               "BACK BACK", "re-tune"])
     return dict(synthetic_median_err=round(s["median"] - D_true, 2) if s.get("n") else None, synthetic_n=s.get("n"),
-                pass_=None)
+                obs_edges=len(errs), obs_max_err=round(max(errs), 3) if errs else None,
+                obs_ok=bool(errs) and max(errs) <= args.every / 2 + 1e-6, pass_=None)
 
 
 if __name__ == "__main__":

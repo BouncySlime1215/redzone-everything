@@ -73,3 +73,15 @@ def test_lag_floor_off_by_default_and_narrows_coverage():
     base = t._covered()
     t.lag_floor = 91.0
     assert t._covered() == base - 81.0
+def test_feed_lag_prior_default_and_override():
+    """[EXP-803 A5] delay.feed_lag_prior_s ships 10 (today's constant); a league override seeds new timelines."""
+    from redzone.config import Config, default
+    from redzone.decider.decider import Decider
+    from redzone.decider.screen import DelayBook
+    from redzone.models import League
+    assert default("delay.feed_lag_prior_s") == 10
+    cfg = Config()
+    cfg.data.setdefault("league_overrides", {}).setdefault("nba", {})["delay.feed_lag_prior_s"] = 69.7
+    d = Decider(cfg, DelayBook({"youtubetv": 40.0}, sigma_default=15.0))
+    assert d.timeline("g1", League.NBA).lag_est() == 69.7
+    assert d.timeline("g2", League.NHL).lag_est() == 10

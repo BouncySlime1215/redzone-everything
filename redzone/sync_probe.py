@@ -170,14 +170,20 @@ def ui_text(xml: str) -> str:
 
 
 def stall_s(prev: dict | None, cur: dict) -> float | None:
-    """Seconds the stream fell behind its own clock since `prev` (same app): a buffer or a pause.
-    None = can't tell (other app, no positions, a seek back)."""
+    """Seconds the stream fell behind its own clock since `prev` (same app, both reports playing at
+    normal speed): a buffer. None = can't tell: another app, no positions, a pause or background (the
+    clock runs while the position is frozen, which read as 11,000 s stalls on Nov 4-5), a seek forward
+    or live-edge jump (negative), or a position more than 10 minutes stale."""
     if not prev or prev.get("pkg") != cur.get("pkg"):
         return None
+    for r in (prev, cur):
+        if str(r.get("state")).lower() not in ("playing", "3") or abs(float(r.get("speed") or 0.0) - 1.0) > 0.05:
+            return None
     pa, ua, pn, un = prev.get("position"), prev.get("updated"), cur.get("position"), cur.get("updated")
-    if None in (pa, ua, pn, un) or pa <= 0 or pn <= 0 or un < ua:
+    if None in (pa, ua, pn, un) or pa <= 0 or pn <= 0 or un < ua or un - ua > 600_000:
         return None
-    return round(((un - ua) - (pn - pa)) / 1000.0, 2)
+    s = ((un - ua) - (pn - pa)) / 1000.0
+    return None if s < -1.0 else round(max(s, 0.0), 2)
 
 
 class SyncProbe:

@@ -178,6 +178,8 @@ def main():
                           "dead_s": round(card.dead, 1), "watched_s": round(card.watched, 1),
                           "crunch": card.crunch, "crunch_live": card.crunch_live,
                           "my_crunch": card.my_crunch, "my_crunch_live": card.my_crunch_live,
+                          "big_from_start": card.big_from_start, "crunch_from_start": card.crunch_from_start,
+                          "my_crunch_from_start": card.my_crunch_from_start,
                           "sync_honesty": rep.sync_honesty})
         # [replay and resume] how far the screen ran behind its usual place (rewinds, pauses)
         from redzone.lab.backtest import behind_extra, weighted_pct
