@@ -182,3 +182,26 @@ def test_pull_newest_first_and_merges(tmp_path):
     assert led["seasons_done"] == [2024, 2023, 2022] and led["team_seasons"] == 3
     ts = list(csv.DictReader((tmp_path / "nfl" / "team_season.csv").open()))
     assert {r["coach_change"] for r in ts} <= {"0", ""}                        # same coach every season
+
+
+def test_recap_highlights_match_plays_only():
+    import importlib
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "gamectx"))
+    R = importlib.import_module("recap_highlights")
+    story = ('<p>Jo <a href="https://x/nba/player/_/id/7/jo-doe">Jo Doe</a> hit a 3-pointer to make it 98-95 '
+             'with 1:02 left. The Hawks won 101-99.</p>')
+    js = {"header": {"competitions": [{"competitors": [{"homeAway": "home", "team": {"id": "1", "abbreviation": "ATL"}},
+                                                       {"homeAway": "away", "team": {"id": "2", "abbreviation": "BOS"}}]}]},
+          "plays": [{"sequenceNumber": "10", "period": {"number": 4}, "clock": {"displayValue": "1:02"},
+                     "team": {"id": "1"}, "homeScore": 98, "awayScore": 95, "scoringPlay": True,
+                     "text": "Jo Doe makes 26-foot three point jumper", "participants": [{"athlete": {"id": "7"}}]},
+                    {"sequenceNumber": "11", "period": {"number": 4}, "clock": {"displayValue": "0:00"},
+                     "team": {"id": "1"}, "homeScore": 101, "awayScore": 99, "scoringPlay": True,
+                     "text": "Al Roe makes layup", "participants": []}]}
+    plays, _ = R.plays_of("nba", js)
+    hits = []
+    for sent, ids, names in R.sentences(story):
+        b, sc, f = R.match("nba", plays, ids, names, R.anchors("nba", sent), (99, 101))
+        if b:
+            hits.append((b["seq"], b["team"], f))
+    assert hits == [("10", "ATL", "player+clock+score+action")]   # final-score sentence skipped
