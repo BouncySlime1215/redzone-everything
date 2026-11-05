@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Oracle audit landed: the new big-play target failed its pre-registered test, so the current target stays. NBA: old grader did favor closest game; an NBA-only reward gets graded on Friday's new nights. NFL keeps the old rule.
-EXP-1404 finished (66,048 rows), runtime deleted, labels with Data E. RC6.3 cut as 39597ea5, dry-run running. Usage 74%.
+Usage 75%. Watch Value loop is running and its first mistake ledger is done. PR #350 (draft) covers nightly % of oracle, the windowed target and Watch Value gates; sync truth rows are with lane 2.
+Windowed oracle isn't usable as a target yet (15 s window, placeholder beyond it). RC6.3 dry-run still running; deploy after 5 PM once Nick confirms the TV is off.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
