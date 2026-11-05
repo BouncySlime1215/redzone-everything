@@ -1,0 +1,30 @@
+{
+ "name": "reasoner_watch",
+ "league": "nba",
+ "label": "y_out2",
+ "kind": "lock",
+ "n": 17412,
+ "base_rate": 0.2351,
+ "single": {
+  "period": 0.5763,
+  "clock_s": 0.5736,
+  "abs_diff": 0.8675,
+  "in_break": 0.506,
+  "crunch": 0.5051,
+  "garbage": 0.5684,
+  "late": 0.5312,
+  "mine": 0.5015
+ },
+ "joint_auc": 0.8621,
+ "max_auc": 0.8675,
+ "features": [
+  "period",
+  "clock_s",
+  "abs_diff",
+  "in_break",
+  "crunch",
+  "garbage",
+  "late",
+  "mine"
+ ]
+}
