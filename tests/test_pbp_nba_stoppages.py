@@ -36,3 +36,20 @@ def test_timeouts_free_throws_and_period_break():
     assert [t for t, *_ in out if t.startswith("timeout")] == ["timeout_long", "timeout_long", "timeout_short"]
     assert ("period_break", 160) in kinds
     assert S.bucket(130) == "3-2" and S.bucket(500) == "12-7"
+
+
+def test_tv_join_splits_national_and_local(tmp_path, monkeypatch):
+    tv = tmp_path / "tv.csv"
+    tv.write_text("date,home,away,network,national,broadcast_known,nba_game_id\n"
+                  "2025-01-01,BOS,NYK,TNT,True,True,0022400001\n2025-01-01,CHA,ORL,,False,True,0022400002\n"
+                  "2025-01-01,MIA,DET,,False,False,0022400003\n")
+    m = S.load_tv(tv)
+    assert m == {"0022400001": "national", "0022400002": "local"}
+    rows = [("PT12M00.00S", "2025-01-01T00:00:00Z", 1, "period", "start"),
+            ("PT11M50.00S", "2025-01-01T00:00:10Z", 1, "foul", "personal"),
+            ("PT11M50.00S", "2025-01-01T00:00:30Z", 1, "freethrow", "1 of 1"),
+            ("PT11M40.00S", "2025-01-01T00:00:50Z", 1, "2pt", "Layup")]
+    d = pd.concat([_g(rows).assign(gameId=g) for g in (22400001, 22400002, 22400003)])
+    monkeypatch.setattr(S, "load_season", lambda y, raw: d)
+    nets = sorted(r["network"] for r in S.table([2024], tv=m)["rows"])
+    assert nets == ["local", "national", "unknown"]
