@@ -187,12 +187,17 @@ class BufferShadow:
         here = self._context(on, cands)
         alt = self._context(best[1], cands) if best else None
         b = float(self.behind_of(here["target"]) or 0.0) if here and here.get("target") else 0.0
+        try:
+            lag = round(float(self.live.delays.get(here["target"]).mu) + b, 2) if here and here.get("target") else None
+        except Exception:
+            lag = None
         self._write({"ts": round(now, 2), "mode": "shadow", "kind": "stay_leave", "action": "leave" if leave else "stay",
                      "league": here["league"] if here else None, "gid": on, "stick": None, "role": None, "behind_s": b,
                      "source": None, "to": d.target if leave else None, "reason": d.reason,
                      "decision_kind": getattr(d, "kind", ""), "value_stay": here["value"] if here else None,
                      "value_best_alt": alt["value"] if alt else None, "best_alt": best[1] if best else None,
                      "value_gap": round(here["value"] - alt["value"], 2) if here and alt else None,
+                     "screen_lag_s": lag, "alts": [{"game_id": g, "value": round(v, 2)} for v, g in sorted(alts, reverse=True)],
                      "context": here, "alt_context": alt,
                      **self.adaptive(here.get("target") if here else None, here["league"] if here else None)})
 
