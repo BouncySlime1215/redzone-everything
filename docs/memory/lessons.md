@@ -285,3 +285,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   on the live-sync harness (`eval_sports --resync`, which models the Kalman sync filter that live runs). The cause was
   the time-shift buffer key, `timing.behind_live_s.enabled`. The rule now: grade every league set on BOTH harnesses
   before it ships (Test Factory F4), and a set that is worse on either one doesn't promote.
+- **2026-11-05: a forced "Go now" has to be told apart from a mid-play entry.** Nick allows the second tap to cut at
+  once; without a mark, every forced press counted against never-join-mid-play. Only the switch whose `may_cut` went
+  through on `Engine._forced_go` (held game, `hold.force`) carries `trace.forced`; a single tap that waits for the
+  dead ball, and every autopilot switch, never does.
