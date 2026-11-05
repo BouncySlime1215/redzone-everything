@@ -32,7 +32,8 @@ polling:
   hot_s: 3                 # what's on, what's next, and tense games: every N seconds
   live_s: 10               # every other live game
   idle_s: 300              # poll every N seconds when nothing is live
-  nba_pbp_s: 3             # NBA liveData play-by-play per live NBA game (sources.nba_primary / nba_shadow)
+  nba_pbp_s: 1             # [Nick 9:05 AM Nov 5] 1 s, conditional GET (ETag/If-Modified-Since); NBA liveData play-by-play per live NBA game (sources.nba_primary / nba_shadow)
+  league_fast: true        # [Nick 9:05 AM] league pbp on its own loop at nba_pbp_s / nhl_pbp_s (engine._league_fast_loop)
   nhl_pbp_s: 3             # NHL api-web play-by-play per live NHL game (sources.nhl_primary); 8 s when off
   burst:                   # [sync 5] the on-screen game + its top challenger, only while a stoppage is likely
     enabled: false         # (break forecast p >= break_p) or it's tense: summary + league pbp every every_s
@@ -98,7 +99,7 @@ sources:
                            # stoppages while fresh and feeds its plays to the timeline (docs/timing.md, A2)
   trust_order: {nfl: [], nba: [], nhl: []}   # [FEED-01/03] e.g. nhl: [nhl, espn_summary]: fastest measured first owns
                            # stoppages while fresh; on its errors/silence the next takes over; disagreements logged
-  nba_primary: false       # NBA liveData play-by-play (real event times, published ~4-12 s after) owns NBA
+  nba_primary: true        # [Nick 9:05 AM Nov 5: primary for every NBA game; Wed lags p50 12 s vs ESPN 36 s] NBA liveData play-by-play (real event times, published ~4-12 s after) owns NBA
                            # stoppages while fresh and feeds the timeline; OFF until a backtest + live night pass
   nba_shadow: true         # primary off: still poll it and log its plays (source nba_cdn) to plays.jsonl
   nhl_shadow: true         # primary off: still poll api-web every polling.nhl_pbp_s and log each event's
@@ -579,6 +580,9 @@ timing:
     by_league: {nfl: 60, cfb: 60, nba: 90, cbb: 90, wcbb: 90, nhl: 90}
     default: 60
     max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
+    shadow: true           # [Nick 9:10 AM Nov 5, buffer = main architecture] with enabled off: an editor decider runs
+                           # every game B s behind live and logs each decision to data/buffer_shadow.jsonl; no stick
+                           # or screen change (redzone/buffer_shadow.py). Lane 3 grades it vs live for the RC8 gate
     apps: [youtubetv, primevideo]   # apps whose player pauses and resumes on the hidden stick
     hold_overreport_s: 0   # [hold calibration] fallback only (no stick positions): the wall span less this. 0 =
                            # the span as is. At 1.5 it fought hold_cal_s (a rebuild's pause is already short by
@@ -589,6 +593,9 @@ delay:                     # seconds your screen runs behind real life, per app;
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
   sigma_default: 15
   model: channel           # channel: predict each channel (channels of one app differ, truTV 22 s vs FS1 42 s); legacy: one figure per app
+  scorebug_hidden: true    # [Nick 9:25 AM Nov 5] also read the bug on the hidden stick while its Prime preload is live
+                           # (our fastest NFL "feed", ~16 s behind the arena); numbers only, never frames
+  scorebug_log: true       # every bug read (score, clock, period, down) to data/scorebug_reads.jsonl for the feed race
   scorebug_band: false     # [Nick Nov 5 3:30 AM, "Yes, read it"] Prime score bug: read only the lower third as raw
                            # pixels (no PNG encode on the stick, ~6.5 s a frame now); numbers kept, never frames
   sync:                    # every channel's delay found automatically (redzone/decider/sync.py), no taps
