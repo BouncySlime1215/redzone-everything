@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Usage 75%. Watch Value loop is running and its first mistake ledger is done. PR #350 (draft) covers nightly % of oracle, the windowed target and Watch Value gates; sync truth rows are with lane 2.
-Windowed oracle isn't usable as a target yet (15 s window, placeholder beyond it). RC6.3 dry-run still running; deploy after 5 PM once Nick confirms the TV is off.
+RC6.3 at risk: dry-run tests are 50 min in on a loaded Mac and hit the 60-min timeout about 5:26 PM. The real deploy reruns them, which may miss the 6:30 window. RC6.2 stays live; nothing changed.
+Waiting on Nick: TV off, and OK to skip the rerun if the dry-run passes on the same commit (39597ea5). Usage 75%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
