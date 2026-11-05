@@ -44,10 +44,12 @@ PROFILES: dict[str, dict] = {
             # [noggin logic, rule #1] A lone substitution (its stoppage missing from the data) opens no
             # dead window: the last candidate mid-play entry (NBA GS @ DEN) rewound 70 s into one.
             "decider.entry.confirmed_dead_only=true",
-            # [noggin logic, live lab Nov 4] YouTube TV's playback position (4K Plus) pins each channel's
-            # delay once its origin is known (title flips, ad-break anchors): the filter's floor drops to
-            # 3 s. Honest sims (jitter, flip spread, anchors, positions), 3 seeds: 2-sigma coverage
-            # >= 98%, sigma p50 9 -> 3 s, 0 mid-play, NFL big live +4-5, NHL +2-3.
+            # [noggin logic, live lab Nov 4] Ad-break anchors feed the filter and its floor is 3 s. NOT a
+            # position gain: YouTube TV's position is a per-tune clock (every tune starts near 46,790 s),
+            # so it carries no landing information. The old "+4-5 NFL big live, sigma p50 3 s" came from
+            # a sim that read positions off a channel origin (fixed in #146). Honest sims, 3 seeds:
+            # sigma p50 9 s, 2-sigma coverage >= 95%. YTTV shows no ad text on the Mac, so live break
+            # anchors wait on the burst anchor (sync.burst_anchor, scripts/burst_align.py).
             "sync.break_anchor.enabled=true",
             "delay.sync.min_sigma_s=3",
             # [noggin logic, Nick Nov 4 11:00 AM] a missed moment airs within 3 min or not singly: NFL
@@ -75,6 +77,10 @@ PROFILES: dict[str, dict] = {
             # aired: dev 3 seeds NHL crunch on replay 7/6/0 -> 0/0/0, crunch live +3.6/+2.7/+0.1, 0 mid-play;
             # big seen in 10 min -4.1..4.5 (catch-ups wait out the OT tail). NFL crunch +0.1..0.8, NBA equal.
             "replay.crunch_block_tail=true",
+            # [noggin logic, cycle 07] your team's missed play is still checked for a catch-up when no other
+            # game is worth switching to (its own game on a break): dev 3 seeds NHL your-team 19/21/18 ->
+            # 20/21/20, crunch =, 0 mid-play, dead air +0..0.4; NFL/NBA and locked unchanged.
+            "replay.when_alone=true",
             "replay.crunch_block_mine_leagues=[nfl]",
         ],
     },

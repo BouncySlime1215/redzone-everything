@@ -1469,6 +1469,13 @@ class Decider:
 
         best = self._best(watchable, exclude=self.current)
         if best is None:
+            # [replay.when_alone] Nothing else live to switch to (your team's game on a break, say) is
+            # no reason to skip the catch-up check below: the missed play still beats this moment.
+            if gate_ok and not s_cur.lock and self.cfg.get("replay.when_alone", False):
+                rp = self._best_replay(cands, now, None, False, top=self._vs_replay(self.current, cands),
+                                       margin=self.core.k.switch_margin, yours=self.current not in self._yours)
+                if rp and rp.mine:   # your team's missed play only: other games' wait for a real break
+                    return self._replay_decision(rp, state, gate_txt, now)
             return Decision(now, "stay", self.current, s_cur.reason, state, gate_txt)
         b = cands[best]
         margin = self.core.k.switch_margin
@@ -1785,8 +1792,31 @@ class Decider:
 
     def _crunch_rank(self, s: Scored) -> tuple:
         """When crunch times overlap: your teams and bets first, then the league order
-        (core.league_priority: NFL > CFB > NBA > ...), then the closest score, then the moment."""
+        (core.league_priority: NFL > CFB > NBA > ...), then the closest score, then the moment.
+        With decider.crunch.by_value: the value with those as priors (_crunch_value)."""
+        if self.cfg.get("decider.crunch.by_value", False):
+            return (self._crunch_value(s),)
         return (round(s.personal), core.league_rank(s.league.value, self.core.k), s.closeness, s.score)
+
+    def _crunch_value(self, s: Scored) -> float:
+        """[crunch by value, TREE-6 Mac half; Nick Nov 4 4:15 PM] Crunch vs crunch is decided by value: watch
+        value once it ships (else today's score), with the league order (NFL = CFB > NBA > NHL, MLB) and your
+        teams as strong priors, not walls: decider.crunch.value_league_prior points per league step,
+        value_mine_prior for your team / bet. The game left behind stays catchable (its missed plays are
+        catch-up candidates; lane 3's hidden-stick hold makes that a buffer catch-up)."""
+        c = self.cfg
+        hold = c.get("decider.crunch.hold_personal", 5)
+        mine = float(c.get("decider.crunch.value_mine_prior")) if s.personal >= hold else 0.0
+        wv = getattr(s, "watch_value", None)
+        base = float(s.score) if wv is None else float(wv)   # watch value once lane 1 fills it, else the score
+        return base + mine + float(c.get("decider.crunch.value_league_prior")) * self._value_league_rank(s.league.value)
+
+    def _value_league_rank(self, league: str) -> int:
+        """core.league_rank with NFL = CFB (Nick, Nov 4 3:15 PM)."""
+        lg = league.lower()
+        if lg in ("nfl", "cfb"):
+            return max(core.league_rank("nfl", self.core.k), core.league_rank("cfb", self.core.k))
+        return core.league_rank(lg, self.core.k)
 
     def _crunch_pick(self, watchable: dict[str, Candidate], exclude: str | None = None) -> str | None:
         """The crunch game to be on. Breaks included: a stoppage is the time to get there."""
@@ -1804,6 +1834,14 @@ class Decider:
         if not s_cur.crunch:
             return True   # get there before its first crunch snap
         p = cands[pick].scored
+        if self.cfg.get("decider.crunch.by_value", False):
+            # [crunch by value] jump when the other crunch is worth clearly more (the Bills' last 3 min vs a
+            # Bears 1-minute drive); otherwise only the stoppage hop below
+            if self._crunch_value(p) >= self._crunch_value(s_cur) + float(self.cfg.get("decider.crunch.value_margin")):
+                self.overlap_why["value"] += 1
+                return True
+            return on_break and not p.is_break and pick not in self._screen_break and \
+                self._break_remaining(self.current, cands, now) >= self.cfg.get("decider.crunch.hop_min_break_s", 20)
         dp = p.personal - s_cur.personal
         if abs(dp) >= self.cfg.get("decider.crunch.personal_lead", 5):
             return dp > 0   # your team (then your bet) wins an overlap outright

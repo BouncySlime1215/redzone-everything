@@ -44,6 +44,7 @@ class SwitchLog:
     arrive_dt: float = 0.0  # [live lab] the picture came up this much later (+) or sooner than tune_s
     leave_dt: float = 0.0   # [seek model] the screen left the old game this much after the decision (a pause cue)
     flash: float = 0.0      # [seek model] s of the LIVE edge shown before an on-screen rewind takes hold
+    pos_true0: float | None = None   # [yttv position] the true delay when this tune's position clock started
 
 
 class Lags(float):

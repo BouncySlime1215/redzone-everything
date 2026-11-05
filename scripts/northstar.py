@@ -238,7 +238,8 @@ def _boot_ratio(rows: list[tuple[float, float]], draws: int = rg.BOOT_DRAWS, see
 
 
 def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] | None = None,
-          lag_profile: dict | None = None, controls: dict | None = None, contracts: dict | None = None) -> list[dict]:
+          lag_profile: dict | None = None, controls: dict | None = None, contracts: dict | None = None,
+          presses: list[dict] | None = None) -> list[dict]:
     rows: list[dict] = []
     per = {lg: _per(cards, lg) for lg in LEAGUES}
     broken = [lg for lg in LEAGUES if not rg._m(cards.get(lg, {}))]
@@ -320,7 +321,7 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
     rows.append(_row("delay_err_p95", None, None, None, PENDING,
                      "not measured: needs the break-anchor delay estimator (on-screen break start/end vs feed "
                      "event time) and Wednesday's probe logs"))
-    rows.append(press_row(controls))
+    rows.append(press_row(controls, presses))
     # 7. dead air
     d = [(float(x.get("dead_s") or 0), float(x.get("watched_s") or 0)) for x in every]
     point, lo, hi = _boot_ratio(d)
@@ -543,10 +544,67 @@ def settle_row(nights: list[dict] | None) -> dict:
     r = _rate("flips_settled", per, 99.0)
     r["detail"] += "; e2e fault nights (fake TV), picture-checked flips only"
     return r
-def press_row(drill: dict | None) -> dict:
-    """press_to_tv_p95 from the controls drill (scripts/controls_drill.py: phone presses in the replayed
-    night, fake sticks and TV timed like the real ones). The sim can FAIL the line, since a real press
-    is never faster than the sim's; it can't PASS it: that needs real presses on Nick's TV."""
+REAL_PRESSES_MIN = 20   # real presses before a p95 means anything (the 95th of 20 is the worst-but-one)
+
+
+def press_samples(dirs: list[Path]) -> list[dict]:
+    """[press-to-TV, real hardware] Every real GO NOW press scripts/press_probe.py timed on Nick's TV
+    (data/press_probe/*.json), oldest first: {"kind", "tap_to_tv_s" (None = never reached the TV), "segments"}."""
+    out = []
+    for d in dirs:
+        for f in sorted(Path(d).glob("*.json")) if Path(d).is_dir() else []:
+            try:
+                out += [r for r in json.loads(f.read_text()).get("presses", []) if isinstance(r, dict)]
+            except (OSError, ValueError, AttributeError):
+                continue
+    return out
+
+
+def real_press_row(presses: list[dict]) -> dict | None:
+    """press_to_tv_p95 graded on REAL presses: PASS/FAIL once there are REAL_PRESSES_MIN of them (a press
+    that never reached the TV counts as a miss and fails the line). None = no real press yet."""
+    if not presses:
+        return None
+    xs = sorted(float(r["tap_to_tv_s"]) for r in presses if isinstance(r.get("tap_to_tv_s"), (int, float)))
+    missed = len(presses) - len(xs)
+    p95 = xs[min(len(xs) - 1, math.ceil(0.95 * len(xs)) - 1)] if xs else None
+    det = f"real presses on Nick's TV (scripts/press_probe.py): {len(presses)}, {missed} never reached the TV"
+    for k, name in (("warm", "pre-tuned"), ("cold", "cold")):
+        v = sorted(float(r["tap_to_tv_s"]) for r in presses
+                   if r.get("kind") == k and isinstance(r.get("tap_to_tv_s"), (int, float)))
+        if v:
+            det += f"; {name} {len(v)}: p50 {v[len(v) // 2]:.2f} s, p95 {v[min(len(v) - 1, math.ceil(0.95 * len(v)) - 1)]:.2f} s"
+    seg: dict[str, list[float]] = {}
+    for r in presses:
+        for k, v in (r.get("segments") or {}).items():
+            if isinstance(v, (int, float)):
+                seg.setdefault(k, []).append(float(v))
+    if seg:
+        det += "; where it goes (p50): " + ", ".join(f"{k} {sorted(v)[len(v) // 2]:.2f}" for k, v in seg.items())
+    if missed or (p95 is not None and p95 > 3.0 and len(presses) >= REAL_PRESSES_MIN):
+        return _row("press_to_tv_p95", None if p95 is None else round(p95, 2), None, None, FAIL, det)
+    if len(presses) < REAL_PRESSES_MIN:
+        return _row("press_to_tv_p95", None if p95 is None else round(p95, 2), None, None, PENDING,
+                    det + f"; PENDING until {REAL_PRESSES_MIN} real presses")
+    return _row("press_to_tv_p95", round(p95, 2), None, None, PASS, det)
+
+
+def press_row(drill: dict | None, presses: list[dict] | None = None) -> dict:
+    """press_to_tv_p95: real presses on Nick's TV decide it once there are enough of them (real_press_row);
+    until then the controls drill (scripts/controls_drill.py: phone presses in the replayed night, fake
+    sticks and TV timed like the real ones). The sim can FAIL the line, since a real press is never faster
+    than the sim's; it can't PASS it: that needs real presses on Nick's TV."""
+    real = real_press_row(presses or [])
+    if real is not None and (real["status"] != PENDING or not (drill or {}).get("runs")):
+        return real
+    row = sim_press_row(drill)
+    if real is not None:
+        row["detail"] += f"; {real['detail']}"
+    return row
+
+
+def sim_press_row(drill: dict | None) -> dict:
+    """press_to_tv_p95 from the controls drill alone (see press_row)."""
     s = (drill or {}).get("summary") or {}
     xs = sorted(x for r in (drill or {}).get("runs", []) for x in r.get("go_now_s", []) + r.get("open_go_s", []))
     if not xs:
@@ -826,6 +884,8 @@ def main(argv=None) -> int:
     ap.add_argument("--switch-log", type=Path, action="append", default=None,
                     help="tv_input.jsonl file(s) with real switches (default: <root>/data/tv_input.jsonl)")
     ap.add_argument("--controls-json", type=Path, help="a scripts/controls_drill.py --json report (press_to_tv_p95)")
+    ap.add_argument("--press-dir", type=Path, action="append", default=None,
+                    help="folders of real press runs (scripts/press_probe.py); default <root>/data/press_probe")
     ap.add_argument("--live-dir", type=Path, action="append", default=None,
                     help="folders of live nights (<night>/summary.json); default <root>/data/live_nights")
     ap.add_argument("--controls-seeds", type=int, default=2,
@@ -860,16 +920,18 @@ def main(argv=None) -> int:
     if drill is None and not a.delta:
         drill = run_drill(root, a.controls_seeds)
     xs = switch_samples(a.switch_log if a.switch_log is not None else [root / "data/tv_input.jsonl"])
+    presses = press_samples(a.press_dir if a.press_dir is not None else [root / "data/press_probe"])
     contracts = load_contracts(root)
     results = {}
     for split in (("dev", "locked") if a.split == "both" else (a.split,)):
         cards = run_cards(root, split, oracle=a.oracle)
-        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill, contracts)}
+        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill, contracts, presses=presses)}
         if a.profile:
             from redzone.noggin import profile as P
             cc = run_cards(root, split, profile=a.profile, oracle=a.oracle)
             results[split]["candidate"] = {"profile": a.profile, "about": P.PROFILES[a.profile].get("about", ""),
-                                           "cards": cc, "rows": table(cc, nights, xs, prof, drill, contracts)}
+                                           "cards": cc, "rows": table(cc, nights, xs, prof, drill, contracts,
+                                                                      presses=presses)}
     live = load_live_nights(a.live_dir if a.live_dir is not None else [root / "data/live_nights"])
     commit = _git(root, "rev-parse", "--short", "HEAD")
     when = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

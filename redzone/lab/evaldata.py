@@ -157,3 +157,29 @@ def use_shipped_switch_costs(cfg) -> dict:
     costs = ConfigSwitchPaths(shipped).costs()
     cfg.data.setdefault("decider", {})["switch_cost"] = dict(costs)
     return costs
+
+
+def flatten_league_overrides(cfg, league: str) -> dict:
+    """[per-league promotion, grader v7] Apply `league_overrides[<league>]` (dotted key -> value) onto the run's
+    config, so a single-league scorecard grades exactly what the app runs for that league. Applied AFTER --set, so a
+    --set of league_overrides itself is honored. Returns the flattened keys (for the report). Serves: release gate."""
+    over = ((cfg.data.get("league_overrides") or {}).get(league) or {})
+    for dotted, value in over.items():
+        node = cfg.data
+        *path, last = str(dotted).split(".")
+        for part in path:
+            node = node.setdefault(part, {})
+        node[last] = value
+    return dict(over)
+
+
+def config_behind_live(cfg, league: str) -> float | None:
+    """[grader v8] The time-shift buffer the app would run for `league` from its own config
+    (timing.behind_live_s: enabled, by_league, default), or None when it's off. Scorecards use it when no
+    --behind-live is given, so a tree whose defaults turn the buffer on is graded with it. Serves: release gate."""
+    tb = ((cfg.data.get("timing") or {}).get("behind_live_s") or {})
+    if not tb.get("enabled"):
+        return None
+    by = tb.get("by_league") or {}
+    v = by.get(league, tb.get("default"))
+    return float(v) if v is not None else None

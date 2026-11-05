@@ -55,6 +55,8 @@ M = million values, B = billion values.
 
 ## 3. NHL and MLB
 
+> **NHL api-web and shift charts are not in this section on purpose (lane 1, Nov 5):** `api-web.nhle.com` play-by-play and `api.nhle.com` shift charts are covered by the "NHL.com APIs in bulk" row under *Not using, and why* (cautious verdict, NHL.com ToS). Some wave-1 lists (overseer 8:28 PM Nov 4) named "NHL api-web + shifts" as green; this catalog does not. They stay off (`RZ_NHL_APIWEB` unset) until Nick accepts the risk in decisions.md (the open A/B data call). Until then there is no catalog-OK NHL source with stoppages and wall clocks: MoneyPuck has shots only.
+
 | Source | Leagues | Years | Realistic (counted) | Access | Verdict + reason | Cost | Noggin use |
 |---|---|---|---|---|---|---|---|
 | Retrosheet event files + game logs + ejections/umpires/parks | MLB | pbp 1910s-2025 (pitch sequences reliable ~1988+); game logs 1871-2025 | 1.53B (1.53B) | Bulk zips, expanded with Chadwick tools on Kaggle | Green: any use including commercial; the exact Retrosheet notice must appear in the README, dataset card and model card | $0 | Baseball token stream, our own WE/leverage tables, game-duration and HP-umpire labels; best seed for synthetic games |

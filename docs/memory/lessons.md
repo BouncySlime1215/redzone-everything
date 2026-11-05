@@ -230,6 +230,11 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   last. Warm-up (warmup.pregame) puts the likeliest first pick there from T-10 min. Listed start times run
   early, so the window lasts until a game goes live (night lab: games went live 15 min after the listing).
   Also: Tonight rebuilds its plan every minute, so any state kept in the plan dict must be carried over.
+- 2026-11-04: **YouTube TV's playback position is a per-tune clock, not the channel's timeline.** Every fresh tune
+  starts near 46,790 s. The sync filter kept the "channel origin" across tunes, so a re-tune's reads were
+  rejected and the channel flagged uncertain for 5 min; the sims read positions off a channel origin and so
+  knew each tune's unknown landing for free (NFL big live ~5 points too good). Check what a device field
+  means on two tunes before modelling it.
 - 2026-11-04: **A hold's pause overshoots when a switch holds the lock.** `_hold` sleeps B s without the lock,
   then waits for it to press play: a switch on the other stick in between stretched a 60 s hold to 81.7 s and a
   90 s one to 111.6 s (night lab, seed 1). The recorded `held` was right, the target wasn't. The STK-06 watchdog
