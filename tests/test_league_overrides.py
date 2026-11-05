@@ -30,7 +30,9 @@ def test_a_group_override_replaces_the_whole_group(cfg):
 
 def test_rc7_scopes_nba_nfl_and_leaves_the_rest_live(cfg):
     over = cfg.get("league_overrides")
-    assert {k for k, v in over.items() if v} == {"nba", "nfl"}   # NHL live until Nick OKs its trade
+    assert {k for k, v in over.items() if v} == {"nba", "nfl", "nhl"}
+    # NHL carries only its Rule #1 entry package (EXP-303, Nick 9:50 AM Nov 5); everything else stays live
+    assert set(over["nhl"]) == {"decider.entry.start_timed", "decider.entry.crunch_now", "decider.entry.lag_floor_s"}
     for lg in ("nhl", "cbb", "cfb", "wcbb", "mlb"):
         assert config.for_league(cfg, "noggin.priority.enabled", lg) is False
         assert config.for_league(cfg, "timing.behind_live_s.enabled", lg) is False
@@ -59,7 +61,7 @@ def test_crunch_block_follows_the_crunch_games_league(cfg):
 def test_entry_keys_follow_the_destination(cfg):
     dec = Decider(cfg, DelayBook(40.0, 3.0))
     assert dec._crunch_entry_mode(_x("nba")) == "wait"
-    assert dec._crunch_entry_mode(_x("nhl")) == cfg.get("decider.entry.crunch_now")
+    assert dec._crunch_entry_mode(_x("nhl")) == "wait"                       # EXP-740 in the NHL package
     assert dec._crunch_entry_mode(_x("cbb")) == cfg.get("decider.entry.crunch_now")
     assert dec._lc("decider.entry.landing_lag_s", _x("nfl")) == 6
     assert dec._lc("decider.entry.landing_lag_s", _x("mlb"), 0.0) == cfg.get("decider.entry.landing_lag_s", 0.0)
