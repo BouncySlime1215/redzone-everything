@@ -211,6 +211,10 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Fix:** `decider.entry.confirmed_dead_only` (candidate on): a lone substitution opens no window, so a rewind falls back to an earlier logged stoppage or the entry waits.
 - **Signals:** a rewind of 50 s or more into NBA; a window of kind `substitution` with no stronger kind.
 
+- 2026-11-04 **Replay window measured from the wrong clock.** `Missed.t` is when the feed had the play; Nick's "within 3 minutes" runs from when it aired on the TV, a whole stream delay later (~2 min with the time-shift buffer). The window filter and its urgency ramp used `t`, so they allowed ~1 minute. Now `Missed.aired` (feed time + screen delay) drives both. Check which clock a deadline means before tuning it.
+- 2026-11-04 **NBA technicals without "foul" in the type were live play.** ESPN types like "Defensive 3-Seconds Technical" or "Coach Technical" mapped to Stoppage.NONE, so the grader called a leave 72 s into a timeout a mid-play cut (DET @ NY, Oct 27, found by lane 1). `espn.stoppage_for` now maps technical/flagrant to WHISTLE; the app's screen model already treated them as dead.
+
+- 2026-11-04 **The sims trusted the rewind to land where the plan said.** `backtest` set an entry's offset to `rewind_s` exactly, so 0 mid-play entries looked proven while the stick stepped 15 s (not 10), swallowed the first press and stalled 2-4 s. With the real seek, today's code made 32-37 mid-play entries per dev seed in NFL and NHL. Model the hardware's actual response (`--real-seek`, `contracts.switching.YTTV_SEEK`) and grade from the commands the app really sends, not from what it meant.
 - 2026-11-04: **Two sticks are not one tune speed.** Live lab: hidden-stick tune to PLAYING p50 2.33 s / p95 3.06 s on
   the 4K Plus vs 3.74 / 5.50 s on the 4K 2023, but every tune went into one shared median. The roles swap on every
   flip, so there is no free "use the fast stick" choice; what we can do is price the stick that will tune. Tunes now
@@ -225,6 +229,11 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   last. Warm-up (warmup.pregame) puts the likeliest first pick there from T-10 min. Listed start times run
   early, so the window lasts until a game goes live (night lab: games went live 15 min after the listing).
   Also: Tonight rebuilds its plan every minute, so any state kept in the plan dict must be carried over.
+- 2026-11-04: **YouTube TV's playback position is a per-tune clock, not the channel's timeline.** Every fresh tune
+  starts near 46,790 s. The sync filter kept the "channel origin" across tunes, so a re-tune's reads were
+  rejected and the channel flagged uncertain for 5 min; the sims read positions off a channel origin and so
+  knew each tune's unknown landing for free (NFL big live ~5 points too good). Check what a device field
+  means on two tunes before modelling it.
 - 2026-11-04: **A hold's pause overshoots when a switch holds the lock.** `_hold` sleeps B s without the lock,
   then waits for it to press play: a switch on the other stick in between stretched a 60 s hold to 81.7 s and a
   90 s one to 111.6 s (night lab, seed 1). The recorded `held` was right, the target wasn't. The STK-06 watchdog
@@ -236,3 +245,39 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   so a 60 s hold came out 81.7 s (90 -> 111.6 s) in the night lab. Fix: the resume waits at most
   HOLD_RESUME_LOCK_S (1 s), then plays a stick nobody touched since the pause (a token that any _tune on
   that stick clears); `held` is only written if the token survived. Timed waits must not sit behind locks.
+- 2026-11-04: `_held_for` added `self.held` and the caller added `base_s` too, so a watchdog top-up (STK-06)
+  booked the earlier hold twice. `_held_for` now returns only this pause; the caller adds what the stream
+  already ran behind.
+- 2026-11-04: `hold_overreport_s` 1.5 (book a hold as the wall span less 1.5 s) fought `hold_cal_s` -1.5 (a
+  rebuild pauses 1.5 s short): the STK-06 watchdog booked every short rebuild as ~0 s and rebuilt the same
+  2.9 s gap forever on the night lab. The fallback now books the span as is (0); the stick-clock path measures.
+- 2026-11-04 (lane 2, #132): **A standby that a failed switch tuned was never held.** A switch that tunes the
+  hidden stick itself (path "tuned") and then finds no safe moment leaves it at the live edge with held=0;
+  only preloads hold, and the STK-06 watchdog skipped held=0 by design. Now buffer_error reads an unheld
+  standby whose buffer is wanted, with no hold or preload under way, as 0 s behind, so the watchdog holds it.
+- 2026-11-04 (lane 3, #167, found by lane 2): **A fault at a fixed time can land inside the recovery it tests.** The
+  STK-06 drift fault at t=4700 fell inside the rebuild hold that the unheld-standby detection starts (with #132), so no
+  drift row was ever written. buffer_lost now takes `wait_s` and hits the first held, playing standby after `at`; the
+  test reads the drift error relative to the hold's last booked value (a rebuild books 88.6 of 90 s).
+- 2026-11-04: **A screen we forgot is a screen nobody watches.** Night lab seed 2: the stick on screen came back
+  from an adb drop, `_forget` (hardening.sticks off) cleared on_target, and the during-a-switch screen check
+  returned on "no target", so a "Still watching?" sat 110 s (limit 60). Now a forgotten screen still gets a
+  prompt-only check (CENTER only on a prompt read from a screenshot): cleared at 46 s, 2/2 reruns pass.
+  Seed 1 alone (CI) never showed it; run a second seed before calling a night clean.
+- 2026-11-04 (one brain step 2, #168): `from redzone import crunch` in demo/engine.py was shadowed by a local `def crunch(r)` in the same function scope, so the demo card crashed with "'function' object has no attribute 'row'". Unit tests never reach the demo summary; only CI's scorecard job did. Fix: import the module under a name no local uses (`crunch as crunch_table`), and run `python -m redzone.demo 20261101 --summary --json` before pushing anything that touches demo/.
+- **Nov 4, crunch block lifted under an OT winner (lane 2).** A game the feed ends in OT drops out of the candidates while its last plays are still a stream delay from the screen, so `replay.crunch_block` saw no crunch and a catch-up reel ran over the OT goal (NHL dev night 20261027: 6 crunch plays on replay). Fix: `replay.crunch_block_tail` keeps the block until mu + 2 sigma + a poll after the game was last seen in crunch.
+- 2026-11-04 (RC6): the Mac deploy's test step failed on tests/test_citymap.py: docs/citymap_tags.json still tagged
+  modules "Mid-play cuts + entries (per 100 landings)", but the nightly northstar table (700e4d4, `[skip ci]`)
+  regenerated docs/northstar.md with northstar.py's renamed line "Mid-play entries (per 100 landings)". The rename
+  had landed earlier, and the tags only broke once the table was regenerated. A `[skip ci]` commit can still break
+  the suite, so run the full suite on the exact tree you cut, not on the PRs before the nightly merge.
+- 2026-11-04 (RC6 cut): after merging a base commit that was only docs (the [skip ci] nightly table) I ran only the targeted tests. That base commit renamed a North Star line, and `test_citymap` failed on the Mac's deploy test step. The deploy stopped there and nothing switched. **Fix:** after any base merge, run the full suite again before handing an RC SHA to lane 4. A docs-only commit can still break a test that reads docs.
+- 2026-11-04 (RC6.1): the deploy health watch rolled RC6.1 back twice on "N sports feeds failing vs 0 before",
+  though nothing was down. merge.py benches a source for a game when its copy regresses against a faster feed,
+  and RC6.1's NBA/NHL feeds run ahead of ESPN, so ESPN got benched. engine._source_health reported a bench as
+  ok:false, and deploy.py's Health.of counted every ok:false as a failing feed. Fix (RC7): ok = reachable and
+  fresh, benched reported on its own, and deploy.py's source_failing() ignores a bench on a fresh source in both
+  the old and the new shape. A health watch must compare like with like across versions.
+- **2026-11-05: a phone pick's way back lost the hidden stick to a guess.** The standby planner ranked the game you just
+  left as "best" (+10), so any "moment" guess outranked it by class and took the hidden stick; Prime then cost a ~30 s
+  re-tune on the tap back (11 of 16 live presses, Nov 4). Fix: `two_stick.hand_back_s`. Drill: `redzone.lab.night.presses:pingpong`.

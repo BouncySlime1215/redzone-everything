@@ -242,6 +242,7 @@ class EntryPlan:
     rewind_s: float = 0.0   # land this far behind the live edge (whole seek steps)
     landing: Landing | None = None
     why: str = ""
+    slack: float | None = None   # [EXP-024] the widest delay error (s, either way) the landing still lands dead
 
 
 def _is_action(lg: League, m: Mark) -> bool:
@@ -474,7 +475,9 @@ class DeadTracker:
 def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: float, *,
                can_rewind: bool, step: float = 10.0, max_back: float = 60.0,
                relaxed: float | None = None, cost_lo: float | None = None,
-               urgent: float | None = None, lag: float = 0.0, possession: bool = False) -> EntryPlan:
+               urgent: float | None = None, lag: float = 0.0, possession: bool = False,
+               stall: tuple[float, float] = (0.0, 0.0), unknown_ok: bool = True,
+               floor: float = 0.0) -> EntryPlan:
     """How to come into this game: as is (the picture lands on a dead ball), with a short rewind so
     it lands on the dead ball just before the restart we'd otherwise join mid-play, or not yet.
 
@@ -490,7 +493,53 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
 
     possession: [possession start] never wait for the next dead ball while one is in reach behind the
     picture: after the urgent pass, cue to the last dead ball before the current possession with no
-    doubt beyond the landing lag (the hidden stick is positioned there before the flip)."""
+    doubt beyond the landing lag (the hidden stick is positioned there before the flip).
+
+    stall: [seek model] the picture lands k + stall behind for a rewind of k (whole steps); a pause cue
+    on the hidden stick passes step ~0.5 and no stall (it plays up to the dead ball and pauses there).
+
+    unknown_ok: [EXP-089] False: a landing the data can't call ("play may be live") never enters as is;
+    it takes a rewind to a known dead ball or waits (rule #1).
+
+    floor: [EXP-024 conformal floor] no pass lands on less doubt than this (s): the centred, urgent and
+    possession passes are raised to it, and an unknown landing never enters as is. The plan's `slack`
+    is scored either way, for calibration."""
+    if floor > 0:
+        unknown_ok = False
+        margin = max(margin, floor)
+        relaxed = None if relaxed is None else max(relaxed, floor)
+        urgent = None if urgent is None else max(urgent, floor)
+    plan = _plan_entry(dt, mu, margin, now, cost, can_rewind=can_rewind, step=step, max_back=max_back,
+                       relaxed=relaxed, cost_lo=cost_lo, urgent=urgent, lag=lag, possession=possession,
+                       stall=stall, unknown_ok=unknown_ok, floor=floor)
+    if plan.ok:
+        x1 = now + cost - mu
+        a = now + min(cost, cost if cost_lo is None else cost_lo) - mu - lag
+        if plan.rewind_s:
+            slo, shi = stall
+            k = plan.rewind_s - (slo + shi) / 2
+            a, x1 = a - k - shi, x1 - k - slo
+        plan.slack = landing_slack(dt, a, x1)
+    return plan
+
+
+def landing_slack(dt: DeadTracker, a: float, b: float, cap: float = 60.0) -> float:
+    """[EXP-024] The widest m (s) for which all of [a - m, b + m] lands dead: 0 when [a, b] doesn't."""
+    if dt.landing(a, b).state != "dead":
+        return 0.0
+    lo, hi = 0.0, cap
+    if dt.landing(a - hi, b + hi).state == "dead":
+        return cap
+    while hi - lo > 0.25:
+        m = (lo + hi) / 2
+        lo, hi = (m, hi) if dt.landing(a - m, b + m).state == "dead" else (lo, m)
+    return lo
+
+
+def _plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: float, *,
+                can_rewind: bool, step: float, max_back: float, relaxed: float | None, cost_lo: float | None,
+                urgent: float | None, lag: float, possession: bool, stall: tuple[float, float],
+                unknown_ok: bool, floor: float) -> EntryPlan:
     x1 = now + cost - mu
     x00 = now + min(cost, cost if cost_lo is None else cost_lo) - mu
 
@@ -498,15 +547,15 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
         return x00 - max(0.0, lag - m)
     x0 = lo(margin)
     here = dt.landing(x0 - margin, x1 + margin)
-    if here.state == "dead" or (here.state == "unknown" and not can_rewind):
+    if here.state == "dead" or (here.state == "unknown" and not can_rewind and unknown_ok):
         # Football/baseball with no play known to be on screen: the leave gate's own rule.
         return EntryPlan(True, 0.0, here, here.why)
-    strict = _rewind(dt, x0, x1, margin, step, max_back) if can_rewind else None
+    strict = _rewind(dt, x0, x1, margin, step, max_back, stall) if can_rewind else None
     if relaxed is not None and relaxed < margin:
         soft = dt.landing(lo(relaxed) - relaxed, x1 + relaxed)
-        if soft.state == "dead" and (strict is None or strict.rewind_s > step):
+        if soft.state == "dead" and (strict is None or strict.rewind_s > step + stall[1]):
             return EntryPlan(True, 0.0, soft, soft.why + " (centred)")
-        loose = _rewind(dt, lo(relaxed), x1, relaxed, step, max_back) if can_rewind else None
+        loose = _rewind(dt, lo(relaxed), x1, relaxed, step, max_back, stall) if can_rewind else None
         # The full margin wins unless it costs more than one extra seek step.
         if loose is not None and (strict is None or strict.rewind_s > loose.rewind_s + step):
             loose.why += " (centred)"
@@ -519,22 +568,26 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
         last = dt.landing(lo(urgent) - urgent, x1 + urgent)
         if last.state == "dead":
             return EntryPlan(True, 0.0, last, last.why + " (urgent)")
-        quick = _rewind(dt, lo(urgent), x1, urgent, step, max_back) if can_rewind else None
+        quick = _rewind(dt, lo(urgent), x1, urgent, step, max_back, stall) if can_rewind else None
         if quick is not None:
             quick.why += " (urgent)"
             return quick
     if possession and can_rewind:
-        cue = _rewind(dt, lo(0.0), x1, 0.0, step, max_back)
+        cue = _rewind(dt, lo(floor), x1, floor, step, max_back, stall)
         if cue is not None:
             cue.why += " (possession start)"
             return cue
-    if here.state == "unknown":
+    if here.state == "unknown" and unknown_ok:
         return EntryPlan(True, 0.0, here, here.why)
     return EntryPlan(False, 0.0, here, f"waiting for a dead ball to come in ({here.why})")
 
 
-def _rewind(dt: DeadTracker, x0: float, x1: float, m: float, step: float, max_back: float) -> EntryPlan | None:
-    """The shortest rewind k (whole seek steps) that puts all of [x0 - k, x1 - k] on a dead ball, doubt m."""
+def _rewind(dt: DeadTracker, x0: float, x1: float, m: float, step: float, max_back: float,
+            stall: tuple[float, float] = (0.0, 0.0)) -> EntryPlan | None:
+    """The shortest rewind k (whole seek steps) that puts all of [x0 - k - stall, x1 - k - stall] on a
+    dead ball, doubt m. [seek model] each seek also stalls the picture stall[0]..stall[1] s, which lands
+    it that much further behind: the plan holds the whole range and rewind_s is k + the mid stall."""
+    slo, shi = stall
     if max_back < step:
         return None
     for w in reversed(dt.windows()):
@@ -544,13 +597,14 @@ def _rewind(dt: DeadTracker, x0: float, x1: float, m: float, step: float, max_ba
         if x0 - until > max_back + m:
             break
         # The latest landing in the window: the picture comes up just before the restart.
-        k = max(step, math.ceil((x1 + m - until) / step) * step)
+        k = max(step, math.ceil((x1 + m - slo - until) / step - 1e-9) * step)
         if k > max_back:
             break
-        if x0 - k - m < w.start:
+        if x0 - k - shi - m < w.start:
             continue
-        land = dt.landing(x0 - k - m, x1 - k + m)
+        land = dt.landing(x0 - k - shi - m, x1 - k - slo + m)
         if land.state != "dead":
             continue
-        return EntryPlan(True, k, land, f"rewinding {k:.0f}s to the dead ball before the play")
+        back = k + (slo + shi) / 2
+        return EntryPlan(True, back, land, f"rewinding {back:.0f}s to the dead ball before the play")
     return None

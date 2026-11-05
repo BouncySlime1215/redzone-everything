@@ -63,6 +63,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "two_stick.min_gain": (0, 100),
     "two_stick.input_settle_s": (0, 10),
     "two_stick.park_max_s": (30, 1800),
+    "two_stick.shadow": (0.1, 60),   # replay/backtest stick timings (standby.ShadowStick)
     "two_stick": (0, 3600),
     "switch_speed.sync_every_s": (60, 3600),
     "autonomy.busy_score": (0, 100),
@@ -86,6 +87,9 @@ LIMITS: dict[str, tuple[float, float]] = {
     "supervisor.budget.dead_air_s": (1, 300),
     "supervisor.budget.dead_air_pct": (0, 100),
     "supervisor.budget.safe_mode_min": (0, 1440),
+    "phone.why_tag_min": (0, 100),
+    "phone.worth_probe_days": (1, 60),
+    "demo": (0, 60),   # replay simulator timings (redzone/demo/engine.py)
 }
 
 # Former rate/dwell limits are deliberately inactive. Old saved files and lab
@@ -104,8 +108,74 @@ def without_retired(cfg: dict, path: str = "") -> dict:
     return out
 
 
+_DEFAULTS: dict | None = None
+
+
+def default(dotted: str, fallback=None):
+    """A value from default_config.yaml, for code that has no live Config (read once, cached)."""
+    global _DEFAULTS
+    if _DEFAULTS is None:
+        _DEFAULTS = yaml.safe_load(DEFAULTS.read_text())
+    node = _DEFAULTS
+    for part in dotted.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return fallback
+        node = node[part]
+    return copy.deepcopy(node)
+
+
 class ConfigError(ValueError):
     pass
+
+
+_MISSING = object()
+
+
+def for_league(cfg, dotted: str, league: str | None, default=None):
+    """[league overrides, Nick Nov 4 8:20 PM: promote per league] The value of a setting for a game of
+    this league: league_overrides.<league> (a flat map of dotted keys) wins over the global setting,
+    so a league can run a graded set while the others keep live behavior. A key that names a group
+    (decider.entry.max_wait_s) replaces that whole group for the league."""
+    if league:
+        over = cfg.get(f"league_overrides.{league}") or {}
+        if over:
+            parts = dotted.split(".")
+            for i in range(len(parts), 0, -1):
+                key = ".".join(parts[:i])
+                if key in over:
+                    node = over[key]
+                    for part in parts[i:]:
+                        if not isinstance(node, dict) or part not in node:
+                            return default
+                        node = node[part]
+                    return node
+    return cfg.get(dotted, default)
+
+
+def any_league(cfg, dotted: str) -> bool:
+    """[league overrides] The setting is on globally or for any league (a gate that a per-league check
+    then narrows, e.g. the time-shift buffer's controller side)."""
+    if cfg.get(dotted):
+        return True
+    return any(bool(for_league(cfg, dotted, lg)) for lg in (cfg.get("league_overrides") or {}))
+
+
+def _validate_league_overrides(over, defaults: dict) -> None:
+    if not isinstance(over, dict):
+        raise ConfigError("'league_overrides' must be a group of settings")
+    for lg, keys in over.items():
+        if not isinstance(keys, dict):
+            raise ConfigError(f"'league_overrides.{lg}' must be a group of settings")
+        for dotted, v in keys.items():
+            parts = str(dotted).split(".")
+            node = defaults
+            for part in parts[:-1]:
+                if not isinstance(node, dict) or part not in node:
+                    raise ConfigError(f"Unknown setting 'league_overrides.{lg}.{dotted}'")
+                node = node[part]
+            if not isinstance(node, dict) or parts[-1] not in node:
+                raise ConfigError(f"Unknown setting 'league_overrides.{lg}.{dotted}'")
+            validate({parts[-1]: v}, node, ".".join(parts[:-1]))
 
 
 def _deep_merge(base: dict, over: dict) -> dict:
@@ -130,6 +200,9 @@ def _limit_for(path: str) -> tuple[float, float] | None:
 def validate(cfg: dict, defaults: dict, path: str = "") -> None:
     for k, v in cfg.items():
         p = f"{path}.{k}" if path else k
+        if p == "league_overrides":
+            _validate_league_overrides(v, defaults)
+            continue
         if k not in defaults:
             # Team lists and league toggles are open-ended; everything else must exist.
             if not path.startswith(("teams", "mode.leagues", "replay.apps")):
@@ -164,6 +237,21 @@ def prune(cfg: dict, defaults: dict, path: str = "") -> tuple[dict, list[str]]:
     for k, v in cfg.items():
         p = f"{path}.{k}" if path else k
         d = defaults.get(k) if isinstance(defaults, dict) else None
+        if p == "league_overrides" and isinstance(v, dict):
+            # [league overrides] one bad key costs only that key, as everywhere else
+            sub = {}
+            for lg, keys in v.items():
+                for dotted, val in (keys.items() if isinstance(keys, dict) else []):
+                    try:
+                        _validate_league_overrides({lg: {dotted: val}}, defaults)
+                    except ConfigError as e:
+                        dropped.append(str(e))
+                        continue
+                    sub.setdefault(lg, {})[dotted] = val
+                if not isinstance(keys, dict):
+                    dropped.append(f"'league_overrides.{lg}' must be a group of settings")
+            kept[k] = sub
+            continue
         if isinstance(d, dict) and isinstance(v, dict):
             sub, why = prune(v, d, p)
             kept[k] = sub

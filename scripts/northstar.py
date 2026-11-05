@@ -43,7 +43,11 @@ import release_gate as rg  # noqa: E402
 
 PASS, FAIL, PENDING, INFO = rg.PASS, rg.FAIL, rg.PENDING, "INFO"
 SPLITS = {"dev": "fit", "locked": "test"}
+# Nick's leagues (Nick, Nov 4 2026 7:55 PM ET: "TURN OFF WOMEN'S BASKETBALL"). The North Star never scores a league
+# outside this set; WCBB is out of every scorecard, gate and ledger line.
+NICKS_LEAGUES = ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")
 LEAGUES = ("nfl", "nba", "nhl")
+assert set(LEAGUES) <= set(NICKS_LEAGUES), "North Star scores only Nick's leagues"
 MD = ROOT / "docs/northstar.md"
 HISTORY = ROOT / "docs/northstar-history.jsonl"
 ROADMAP_SRC = ROOT / "docs/roadmap.json"
@@ -63,7 +67,13 @@ ORACLE_LEAGUES = ("nfl", "nba", "nhl")   # NFL: the app re-graded by sportsgrade
 # key, label, target text, direction (+1 higher is better, -1 lower), bar, scale (for the roadmap's gap
 # normalisation: the size of a "whole" gap in this line's unit)
 METRICS = [
-    ("mid_play", "Mid-play cuts + entries (per 100 landings)", "0", -1, 0.0, 5.0),
+    # Nick, Nov 4 3:15 PM: never JOIN mid-play (hard 0); leaving mid-play is allowed at low leverage only
+    ("mid_play", "Mid-play entries (per 100 landings)", "0", -1, 0.0, 5.0),
+    # Nick, Nov 4 9:45 PM (RC7 gate 3): never join at a break, land just before the restart
+    ("mid_break", "Entries mid-commercial (in a break with > 10 s left before the restart; per 100 entries)", "0",
+     -1, 0.0, 5.0),
+    ("high_leverage_leaves", "High-leverage mid-play leaves (close + late or OT; per 100 landings)", "0", -1, 0.0, 5.0),
+    ("low_leverage_leaves", "Low-leverage mid-play leaves (allowed; per 100 landings)", "info", -1, None, None),
     ("landings_dead", "Landings in dead time", ">= 98%", 1, 98.0, 100.0),
     ("possession_start", "Entries at a possession start (dead ball, no play missed)", ">= 95%", 1, 95.0, 100.0),
     # Nick, Nov 4 10:55 AM: gates are honest against the hindsight ceiling: >= 95% OF ORACLE VALUE where the
@@ -73,6 +83,9 @@ METRICS = [
     ("your_team_big", "Your-team big plays seen (live or within 3 min)", "100%", 1, 100.0, 100.0),
     *[(f"crunch_live_{lg}", f"Crunch live, {lg.upper()}", ">= 95%", 1, 95.0, 100.0) for lg in LEAGUES],
     ("your_team_crunch", "Your-team crunch live", "100%", 1, 100.0, 100.0),
+    # Nick, Nov 4 4:15 PM: crunch is a learned state with an entry AND an exit (hysteresis); the exit is graded
+    # against the hindsight oracle. PENDING until a card carries crunch_exits / crunch_exits_ok per night.
+    ("crunch_exit_acc", "Crunch exit accuracy vs the hindsight oracle", ">= 95%", 1, 95.0, 100.0),
     ("league_order", "League order respected (no lower-league non-crunch over a higher-league crunch)", "100%", 1, 100.0, 100.0),
     # Nick, Nov 4 10:55 AM: the Noggin is fully self-taught, so no line is graded by Nick's taps.
     ("pct_of_oracle", "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)", ">= 95%", 1, 95.0, 100.0),
@@ -84,6 +97,12 @@ METRICS = [
     ("delay_err_p95", "Per-stick delay error p95", "<= 2 s", -1, 2.0, 2.0),
     ("press_to_tv_p95", "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)", "<= 3 s", -1, 3.0, 3.0),
     ("dead_air", "Dead air (commercials/breaks on screen)", "0%", -1, 0.0, 100.0),
+    # Nick, Nov 4 3:30 PM: Heat 2.0, one learned Watch Value per game (0-100, 50 = league-median live moment,
+    # 90+ = top 5%), self-taught from what happened next. Gates TBD; PENDING until a card carries `watch_value`.
+    ("wv_calibration_err", "Watch Value calibration error (reliability curve, locked; points)", "gate TBD", -1, None, None),
+    ("wv_rank_agree", "Watch Value rank agreement with the oracle (pairwise, %)", "gate TBD", 1, None, None),
+    # Nick, Nov 4 3:40 PM: the city map's contract checker (lane 4). PENDING until it writes docs/citymap.json.
+    ("contract_violations", "Contract violations (city map checker)", "0", -1, 0.0, 10.0),
     ("recovery", "Faults recovered without Nick (e2e night)", ">= 95%", 1, 95.0, 100.0),
     *[(f"feed_lag_{lg}", f"Honest feed lag in use, {lg.upper()} (p50)", "info", -1, None, None) for lg in LEAGUES],
     # [oracle] hindsight ceiling - app, same nights, same grader (redzone/lab/oracle.py; --oracle)
@@ -222,22 +241,24 @@ def _boot_ratio(rows: list[tuple[float, float]], draws: int = rg.BOOT_DRAWS, see
 
 
 def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] | None = None,
-          lag_profile: dict | None = None, controls: dict | None = None) -> list[dict]:
+          lag_profile: dict | None = None, controls: dict | None = None, contracts: dict | None = None,
+          presses: list[dict] | None = None, sync_truth: list[dict] | None = None) -> list[dict]:
     rows: list[dict] = []
     per = {lg: _per(cards, lg) for lg in LEAGUES}
     broken = [lg for lg in LEAGUES if not rg._m(cards.get(lg, {}))]
     note = f" (missing: {', '.join(broken)})" if broken else ""
     every = [x for lg in LEAGUES for x in per[lg]]
 
-    # 1. mid-play cuts + entries: hard 0. 0 events in N landings bounds the rate at 3/N (rule of three).
-    ev = [(int(x.get("cuts") or 0) + int(x.get("entries_mid_play") or 0), int(x.get("landings") or 0)) for x in every]
+    # 1. mid-play ENTRIES: hard 0 (Nick, Nov 4 3:15 PM: never join mid-play). 0 events in N landings bounds
+    # the rate at 3/N (rule of three). Leaves are split by leverage below.
+    ev = [(int(x.get("entries_mid_play") or 0), int(x.get("landings") or 0)) for x in every]
     n_land = sum(n for _, n in ev)
     n_ev = sum(e for e, _ in ev)
     if not n_land:
         rows.append(_row("mid_play", None, None, None, PENDING, "no landings counted (old scorecard?)" + note))
     else:
         point, lo, hi = _boot_ratio(ev)
-        by = ", ".join(f"{lg.upper()} {sum(int(x.get('cuts') or 0) + int(x.get('entries_mid_play') or 0) for x in per[lg])}"
+        by = ", ".join(f"{lg.upper()} {sum(int(x.get('entries_mid_play') or 0) for x in per[lg])}"
                        for lg in LEAGUES if per[lg])
         if n_ev:
             st, det = FAIL, f"{n_ev} in {n_land} landings ({by})"
@@ -249,6 +270,8 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
             lo = hi = 0.0
             hi = round(300.0 / n_land, 2)
         rows.append(_row("mid_play", round(point, 2), round(lo, 2), round(hi, 2), st, det + note, len(ev)))
+    rows.append(break_row(cards, every, note))
+    rows += leave_rows(per, every, n_land, note)
 
     # 2. landings (both ends of every switch) in on-screen dead time
     rows.append(_rate("landings_dead", [(int(x.get("landings_dead") or 0), int(x.get("landings") or 0)) for x in every],
@@ -299,10 +322,8 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
     # 6b. [sync plan, TIMING] flips that reach PLAYING within 3 s: Controller.settle_book {n, ok} as the
     # e2e night reports it (a switch whose picture was never checked is not in n)
     rows.append(settle_row(nights))
-    rows.append(_row("delay_err_p95", None, None, None, PENDING,
-                     "not measured: needs the break-anchor delay estimator (on-screen break start/end vs feed "
-                     "event time) and Wednesday's probe logs"))
-    rows.append(press_row(controls))
+    rows.append(sync_row(sync_truth or []))
+    rows.append(press_row(controls, presses))
     # 7. dead air
     d = [(float(x.get("dead_s") or 0), float(x.get("watched_s") or 0)) for x in every]
     point, lo, hi = _boot_ratio(d)
@@ -326,9 +347,90 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
         extra = " ; NHL api-web wsc measured 16.7 s p50 (not wired yet, #58)" if lg == "nhl" else ""
         rows.append(_row(f"feed_lag_{lg}", qs.get(50), qs.get(10), qs.get(90), INFO,
                          f"{lag_profile.get('source')} p10-p90 {qs.get(10)}-{qs.get(90)} s, n={p['n']}, {p.get('basis')}{extra}"))
+    rows += system_rows(cards, contracts)
     rows += oracle_rows(cards)
     apply_oracle_gates(rows)
     return rows
+
+
+def load_contracts(root: Path) -> dict | None:
+    """The contract kernel's verdict (scripts/contract_check.py, lane 4, Nick Nov 4 3:40 PM): every hard
+    violation now, and how many are new against docs/contract_baseline.json. None if the kernel isn't there."""
+    try:
+        import contract_check as kc
+    except ImportError:
+        return None
+    try:
+        found, _ = kc.check(root)
+        res = kc.compare(found, kc.read_baseline(root / kc.BASELINE))
+    except (OSError, ValueError):
+        return None
+    return {"violations": [{"rule": v.rule, "where": v.path} for v in res["violations"]],
+            "new": len(res["new"]), "baseline": res["baseline"]}
+
+
+def system_rows(cards: dict, contracts: dict | None = None) -> list[dict]:
+    """Watch Value (Heat 2.0) and the city map: lines Nick asked for on Nov 4 before their builders landed.
+    Each reads PENDING until its evidence exists, never PASS by default."""
+    out = []
+    wv = {lg: rg._m(cards.get(lg, {})).get("watch_value") for lg in LEAGUES}
+    wv = {lg: v for lg, v in wv.items() if v}
+    for key, field_, lbl in (("wv_calibration_err", "calibration_err", "calibration error"),
+                             ("wv_rank_agree", "rank_agree_pct", "rank agreement")):
+        vals = {lg: v.get(field_) for lg, v in wv.items() if v.get(field_) is not None}
+        if not vals:
+            out.append(_row(key, None, None, None, PENDING, "no card carries watch_value yet (Heat 2.0, lanes 1+2)"))
+            continue
+        worst = max(vals.values()) if META[key]["dir"] < 0 else min(vals.values())
+        out.append(_row(key, round(worst, 2), None, None, INFO,
+                        "worst league; " + ", ".join(f"{lg.upper()} {v:.1f}" for lg, v in vals.items()) + f" ({lbl})"))
+    if all("crunch_exits" in x for lg in LEAGUES for x in _per(cards, lg)) and any(_per(cards, lg) for lg in LEAGUES):
+        out.append(_rate("crunch_exit_acc", [(int(x.get("crunch_exits_ok") or 0), int(x.get("crunch_exits") or 0))
+                                             for lg in LEAGUES for x in _per(cards, lg)], 95.0))
+    else:
+        out.append(_row("crunch_exit_acc", None, None, None, PENDING,
+                        "no card grades crunch exits yet (learned crunch state, lanes 1+2)"))
+    if contracts is None or "violations" not in contracts:
+        out.append(_row("contract_violations", None, None, None, PENDING, "contract kernel not found (scripts/contract_check.py)"))
+    else:
+        v = contracts["violations"] or []
+        rules: dict[str, int] = {}
+        for x in v:
+            rules[str(x.get("rule", "?"))] = rules.get(str(x.get("rule", "?")), 0) + 1
+        base = (f"; {contracts['new']} new vs baseline {contracts['baseline']}"
+                if contracts.get("baseline") is not None else "")
+        out.append(_row("contract_violations", len(v), None, None, PASS if not v else FAIL,
+                        ("none" if not v else ", ".join(f"{k} {n}" for k, n in sorted(rules.items()))) + base))
+    return out
+
+
+def leave_rows(per: dict, every: list[dict], n_land: int, note: str = "") -> list[dict]:
+    """Mid-play LEAVES split by leverage (redzone/lab/leverage.py, Nick Nov 4 3:15 PM): a high-leverage leave
+    (close + late, or overtime) is a hard 0; a low-leverage one (after a score, in transition, early or not
+    close) is allowed and shown as info. Older cards without `cuts_high` read PENDING, never PASS."""
+    if not n_land:
+        return [_row("high_leverage_leaves", None, None, None, PENDING, "no landings counted" + note),
+                _row("low_leverage_leaves", None, None, None, INFO, "no landings counted" + note)]
+    if not all("cuts_high" in x for x in every):
+        cuts = sum(int(x.get("cuts") or 0) for x in every)
+        return [_row("high_leverage_leaves", None, None, None, PENDING,
+                     f"{cuts} mid-play leaves, leverage not graded (older scorecard: no cuts_high)" + note),
+                _row("low_leverage_leaves", None, None, None, INFO, f"{cuts} mid-play leaves, not split" + note)]
+    hi_ev = [(int(x.get("cuts_high") or 0), int(x.get("landings") or 0)) for x in every]
+    n_hi = sum(e for e, _ in hi_ev)
+    n_lo = sum(int(x.get("cuts") or 0) for x in every) - n_hi
+    by = ", ".join(f"{lg.upper()} {sum(int(x.get('cuts_high') or 0) for x in per[lg])}" for lg in LEAGUES if per[lg])
+    if n_hi:
+        point, lo, hi = _boot_ratio(hi_ev)
+        r = _row("high_leverage_leaves", round(point, 2), round(lo, 2), round(hi, 2), FAIL,
+                 f"{n_hi} in {n_land} landings ({by})" + note, len(hi_ev))
+    else:
+        st = PASS if len(hi_ev) >= rg.MIN_NIGHTS and n_land >= 600 else PENDING
+        r = _row("high_leverage_leaves", 0.0, 0.0, round(300.0 / n_land, 2), st,
+                 f"0 in {n_land} landings; true rate {rg.zero_bound(n_land)}" + note, len(hi_ev))
+    lo_r = _row("low_leverage_leaves", round(100.0 * n_lo / n_land, 2), None, None, INFO,
+                f"{n_lo} in {n_land} landings (allowed: after a score, in transition, early or not close)" + note)
+    return [r, lo_r]
 
 
 def oracle_rows(cards: dict) -> list[dict]:
@@ -444,10 +546,159 @@ def settle_row(nights: list[dict] | None) -> dict:
     r = _rate("flips_settled", per, 99.0)
     r["detail"] += "; e2e fault nights (fake TV), picture-checked flips only"
     return r
-def press_row(drill: dict | None) -> dict:
-    """press_to_tv_p95 from the controls drill (scripts/controls_drill.py: phone presses in the replayed
-    night, fake sticks and TV timed like the real ones). The sim can FAIL the line, since a real press
-    is never faster than the sim's; it can't PASS it: that needs real presses on Nick's TV."""
+def break_row(cards: dict, every: list[dict], note: str = "") -> dict:
+    """[RC7 gate 3, Nick Nov 4 9:45 PM] entries that landed mid-commercial: inside a break with more than
+    cutgrade.BREAK_TAIL_BAR of dead time left before the restart. Hard 0, like mid-play. PENDING on a card
+    that doesn't count it per night (older scorecards)."""
+    from redzone.lab.cutgrade import BREAK_TAIL_BAR
+    if not every or any("entries_mid_break" not in x for x in every):
+        return _row("mid_break", None, None, None, PENDING, "no mid-commercial count on this scorecard" + note)
+    ev = [(int(x["entries_mid_break"]), int(x.get("entries") or 0)) for x in every]
+    n_ent, n_ev = sum(n for _, n in ev), sum(e for e, _ in ev)
+    if not n_ent:
+        return _row("mid_break", None, None, None, PENDING, "no entries counted" + note)
+    point, lo, hi = _boot_ratio(ev)
+    by, tail = [], 0
+    for lg in LEAGUES:
+        m = rg._m(cards.get(lg, {}))
+        if m:
+            by.append(f"{lg.upper()} {m.get('entries_mid_break', '?')} (in a break at all {m.get('entries_in_break', '?')})")
+            h = m.get("entry_to_restart_hist") or {}
+            tail += int(h.get("0-3") or 0) + int(h.get("3-10") or 0)
+    det = (f"{n_ev} of {n_ent} entries landed with > {BREAK_TAIL_BAR:.0f} s of break left [{', '.join(by)}]; "
+           f"{tail} entries came up <= 10 s before the restart")
+    if n_ev:
+        return _row("mid_break", round(point, 2), round(lo, 2), round(hi, 2), FAIL, det + note, len(ev))
+    st = PASS if len(ev) >= rg.MIN_NIGHTS else PENDING
+    if st == PENDING:
+        det += f"; needs >= {rg.MIN_NIGHTS} nights"
+    return _row("mid_break", 0.0, 0.0, round(300.0 / n_ent, 2), st, det + note, len(ev))
+
+
+SYNC_ROWS_MIN = 200     # truth rows per stick before its p95 means anything
+SYNC_NIGHTS_MIN = 2     # nights of truth rows before the line can PASS
+
+
+def sync_samples(dirs: list[Path]) -> list[dict]:
+    """[RC7 gate 2] Sync truth rows (data/sync_truth/*.jsonl), one per anchor: {"stick", "night", "t",
+    "est_behind_s" (what the app believed), "true_behind_s" (from gold-data capture, #140 or a YTTV anchor)}.
+    Automatic only: a row from a manual tap is not truth (it's Nick's input, rule: no training or grading
+    signal from Nick), so rows with "source": "tap" are dropped."""
+    out = []
+    for d in dirs:
+        for f in sorted(Path(d).glob("*.jsonl")) if Path(d).is_dir() else []:
+            try:
+                for line in f.read_text().splitlines():
+                    r = json.loads(line) if line.strip() else None
+                    if isinstance(r, dict) and r.get("source") != "tap":
+                        out.append(r | {"night": r.get("night") or f.stem})
+            except (OSError, ValueError):
+                continue
+    return out
+
+
+def sync_row(rows: list[dict]) -> dict:
+    """delay_err_p95: per stick, the p95 of |estimated - true| seconds behind live. The line is the WORST
+    stick. PASS needs every stick <= 2 s with >= SYNC_ROWS_MIN rows over >= SYNC_NIGHTS_MIN nights; one
+    stick over 2 s with enough rows FAILs it."""
+    errs: dict[str, list[float]] = {}
+    nights: dict[str, set] = {}
+    for r in rows:
+        e, t = r.get("est_behind_s"), r.get("true_behind_s")
+        if isinstance(e, (int, float)) and isinstance(t, (int, float)) and r.get("stick"):
+            errs.setdefault(str(r["stick"]), []).append(abs(float(e) - float(t)))
+            nights.setdefault(str(r["stick"]), set()).add(r["night"])
+    if not errs:
+        return _row("delay_err_p95", None, None, None, PENDING,
+                    "no sync truth rows yet (data/sync_truth/*.jsonl: gold data, #140 and YTTV anchors)")
+    q = lambda v: sorted(v)[min(len(v) - 1, math.ceil(0.95 * len(v)) - 1)]  # noqa: E731
+    per = {k: (q(v), len(v), len(nights[k])) for k, v in sorted(errs.items())}
+    worst = max(p for p, _, _ in per.values())
+    det = "per stick: " + ", ".join(f"{k} p95 {p:.2f} s ({n} rows, {nn} nights)" for k, (p, n, nn) in per.items())
+    if any(p > 2.0 and n >= SYNC_ROWS_MIN for p, n, _ in per.values()):
+        return _row("delay_err_p95", round(worst, 2), None, None, FAIL, det)
+    short = [k for k, (_, n, nn) in per.items() if n < SYNC_ROWS_MIN or nn < SYNC_NIGHTS_MIN]
+    if short or len(per) < 2:
+        why = (f"{', '.join(short)} under {SYNC_ROWS_MIN} rows or {SYNC_NIGHTS_MIN} nights" if short
+               else "only one stick has truth rows")
+        return _row("delay_err_p95", round(worst, 2), None, None, PENDING, det + f"; PENDING: {why}")
+    return _row("delay_err_p95", round(worst, 2), None, None, PASS, det)
+
+
+REAL_PRESSES_MIN = 20   # real presses before a p95 means anything (the 95th of 20 is the worst-but-one)
+PRIME_PRESSES_MIN = 5   # real Prime presses before the Prime sub-gate can pass
+
+
+def press_samples(dirs: list[Path]) -> list[dict]:
+    """[press-to-TV, real hardware] Every real GO NOW press scripts/press_probe.py timed on Nick's TV
+    (data/press_probe/*.json), oldest first: {"kind", "tap_to_tv_s" (None = never reached the TV), "segments"}."""
+    out = []
+    for d in dirs:
+        for f in sorted(Path(d).glob("*.json")) if Path(d).is_dir() else []:
+            try:
+                out += [r for r in json.loads(f.read_text()).get("presses", []) if isinstance(r, dict)]
+            except (OSError, ValueError, AttributeError):
+                continue
+    return out
+
+
+def real_press_row(presses: list[dict]) -> dict | None:
+    """press_to_tv_p95 graded on REAL presses: PASS/FAIL once there are REAL_PRESSES_MIN of them (a press
+    that never reached the TV counts as a miss and fails the line). None = no real press yet."""
+    if not presses:
+        return None
+    xs = sorted(float(r["tap_to_tv_s"]) for r in presses if isinstance(r.get("tap_to_tv_s"), (int, float)))
+    missed = len(presses) - len(xs)
+    p95 = xs[min(len(xs) - 1, math.ceil(0.95 * len(xs)) - 1)] if xs else None
+    det = f"real presses on Nick's TV (scripts/press_probe.py): {len(presses)}, {missed} never reached the TV"
+    for k, name in (("warm", "pre-tuned"), ("cold", "cold")):
+        v = sorted(float(r["tap_to_tv_s"]) for r in presses
+                   if r.get("kind") == k and isinstance(r.get("tap_to_tv_s"), (int, float)))
+        if v:
+            det += f"; {name} {len(v)}: p50 {v[len(v) // 2]:.2f} s, p95 {v[min(len(v) - 1, math.ceil(0.95 * len(v)) - 1)]:.2f} s"
+    seg: dict[str, list[float]] = {}
+    for r in presses:
+        for k, v in (r.get("segments") or {}).items():
+            if isinstance(v, (int, float)):
+                seg.setdefault(k, []).append(float(v))
+    if seg:
+        det += "; where it goes (p50): " + ", ".join(f"{k} {sorted(v)[len(v) // 2]:.2f}" for k, v in seg.items())
+    # [RC7 gate 1, Nick Nov 4 9:45 PM: "including Prime"] Prime is graded on its own: a fast YTTV p95 can't
+    # hide a slow Prime press. A press names its app ("app": "prime" / "yttv"); one without it can't count.
+    pv = sorted(float(r["tap_to_tv_s"]) for r in presses
+                if str(r.get("app") or "").lower() == "prime" and isinstance(r.get("tap_to_tv_s"), (int, float)))
+    p_miss = sum(1 for r in presses if str(r.get("app") or "").lower() == "prime"
+                 and not isinstance(r.get("tap_to_tv_s"), (int, float)))
+    pp95 = pv[min(len(pv) - 1, math.ceil(0.95 * len(pv)) - 1)] if pv else None
+    det += (f"; Prime {len(pv)}: p95 {pp95:.2f} s" if pv else "; Prime: no press tagged app=prime yet")
+    prime_fail = p_miss or (pp95 is not None and pp95 > 3.0 and len(pv) >= PRIME_PRESSES_MIN)
+    if missed or prime_fail or (p95 is not None and p95 > 3.0 and len(presses) >= REAL_PRESSES_MIN):
+        return _row("press_to_tv_p95", None if p95 is None else round(p95, 2), None, None, FAIL, det)
+    if len(presses) < REAL_PRESSES_MIN:
+        return _row("press_to_tv_p95", None if p95 is None else round(p95, 2), None, None, PENDING,
+                    det + f"; PENDING until {REAL_PRESSES_MIN} real presses")
+    if len(pv) < PRIME_PRESSES_MIN:
+        return _row("press_to_tv_p95", round(p95, 2), None, None, PENDING,
+                    det + f"; PENDING until {PRIME_PRESSES_MIN} real Prime presses")
+    return _row("press_to_tv_p95", round(p95, 2), None, None, PASS, det)
+
+
+def press_row(drill: dict | None, presses: list[dict] | None = None) -> dict:
+    """press_to_tv_p95: real presses on Nick's TV decide it once there are enough of them (real_press_row);
+    until then the controls drill (scripts/controls_drill.py: phone presses in the replayed night, fake
+    sticks and TV timed like the real ones). The sim can FAIL the line, since a real press is never faster
+    than the sim's; it can't PASS it: that needs real presses on Nick's TV."""
+    real = real_press_row(presses or [])
+    if real is not None and (real["status"] != PENDING or not (drill or {}).get("runs")):
+        return real
+    row = sim_press_row(drill)
+    if real is not None:
+        row["detail"] += f"; {real['detail']}"
+    return row
+
+
+def sim_press_row(drill: dict | None) -> dict:
+    """press_to_tv_p95 from the controls drill alone (see press_row)."""
     s = (drill or {}).get("summary") or {}
     xs = sorted(x for r in (drill or {}).get("runs", []) for x in r.get("go_now_s", []) + r.get("open_go_s", []))
     if not xs:
@@ -495,9 +746,13 @@ def recovery_row(nights: list[dict] | None) -> dict:
 def _fmt(key, v) -> str:
     if v is None:
         return "n/a"
-    if key in ("switch_p95", "press_to_tv_p95") or key.startswith("feed_lag"):
-        return f"{v:.2f} s" if key in ("switch_p95", "press_to_tv_p95") else f"{v:.1f} s"
-    return f"{v:.2f}" if key == "mid_play" else f"{v:.1f}%"
+    if key in ("switch_p95", "press_to_tv_p95", "delay_err_p95") or key.startswith("feed_lag"):
+        return f"{v:.2f} s" if key in ("switch_p95", "press_to_tv_p95", "delay_err_p95") else f"{v:.1f} s"
+    if key == "contract_violations":
+        return str(int(v))
+    if key == "wv_calibration_err":
+        return f"{v:.1f} pts"
+    return f"{v:.2f}" if key in ("mid_play", "mid_break", "high_leverage_leaves", "low_leverage_leaves") else f"{v:.1f}%"
 
 
 def _delta(key, now, before) -> str:
@@ -507,7 +762,7 @@ def _delta(key, now, before) -> str:
     if abs(d) < 1e-9:
         return "0"
     better = (d > 0) == (META[key]["dir"] > 0)
-    return f"{'+' if d > 0 else ''}{d:.2f}{' s' if key in ('switch_p95', 'press_to_tv_p95') else ''} {'🟢' if better else '🔴'}"
+    return f"{'+' if d > 0 else ''}{d:.2f}{' s' if key in ('switch_p95', 'press_to_tv_p95', 'delay_err_p95') else ''} {'🟢' if better else '🔴'}"
 
 
 def last_run(history: Path, split: str) -> dict | None:
@@ -723,6 +978,10 @@ def main(argv=None) -> int:
     ap.add_argument("--switch-log", type=Path, action="append", default=None,
                     help="tv_input.jsonl file(s) with real switches (default: <root>/data/tv_input.jsonl)")
     ap.add_argument("--controls-json", type=Path, help="a scripts/controls_drill.py --json report (press_to_tv_p95)")
+    ap.add_argument("--press-dir", type=Path, action="append", default=None,
+                    help="folders of real press runs (scripts/press_probe.py); default <root>/data/press_probe")
+    ap.add_argument("--sync-dir", type=Path, action="append", default=None,
+                    help="folders of sync truth rows (*.jsonl); default <root>/data/sync_truth")
     ap.add_argument("--live-dir", type=Path, action="append", default=None,
                     help="folders of live nights (<night>/summary.json); default <root>/data/live_nights")
     ap.add_argument("--controls-seeds", type=int, default=2,
@@ -757,15 +1016,20 @@ def main(argv=None) -> int:
     if drill is None and not a.delta:
         drill = run_drill(root, a.controls_seeds)
     xs = switch_samples(a.switch_log if a.switch_log is not None else [root / "data/tv_input.jsonl"])
+    presses = press_samples(a.press_dir if a.press_dir is not None else [root / "data/press_probe"])
+    truth = sync_samples(a.sync_dir if a.sync_dir is not None else [root / "data/sync_truth"])
+    contracts = load_contracts(root)
     results = {}
     for split in (("dev", "locked") if a.split == "both" else (a.split,)):
         cards = run_cards(root, split, oracle=a.oracle)
-        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill)}
+        results[split] = {"cards": cards, "rows": table(cards, nights, xs, prof, drill, contracts, presses=presses,
+                                                 sync_truth=truth)}
         if a.profile:
             from redzone.noggin import profile as P
             cc = run_cards(root, split, profile=a.profile, oracle=a.oracle)
             results[split]["candidate"] = {"profile": a.profile, "about": P.PROFILES[a.profile].get("about", ""),
-                                           "cards": cc, "rows": table(cc, nights, xs, prof, drill)}
+                                           "cards": cc, "rows": table(cc, nights, xs, prof, drill, contracts,
+                                                                      presses=presses, sync_truth=truth)}
     live = load_live_nights(a.live_dir if a.live_dir is not None else [root / "data/live_nights"])
     commit = _git(root, "rev-parse", "--short", "HEAD")
     when = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

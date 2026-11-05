@@ -16,6 +16,10 @@ see. So the options are ranked by what the next switch most likely needs, highes
              in a lull 20+ points behind the best game) — never in garbage time, your team's included.
   d) BEST    the best other live game. The game we just left counts extra: going back is common.
 
+A game you just left BY HAND (a phone pick, two_stick.hand_back_s ago at most) ranks with (a): people
+flip back and forth between two games by hand, and a Prime game dropped for a guess costs a ~30 s
+re-tune on the next tap back (Nov 4: 11 of 16 phone presses to Prime were cold, ~2 min apart).
+
 Above all of them, NEXT is the decider's own word, not a guess: a switch it already wants and only
 waits on a safe moment for (Decision.want), e.g. the trip home at the end of a break visit.
 
@@ -32,6 +36,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
+from redzone import config, crunch
 from redzone.models import ByLeague, GameState, League, Phase, pro_period
 
 NEXT, HOME, REPLAY, BREAK, MOMENT, BEST = -1, 0, 1, 2, 3, 4
@@ -56,8 +61,6 @@ class Option:
 
 # --- what kind of game is it right now ----------------------------------------------------------
 
-# Crunch time coming: (final period, seconds left at or under, max margin). Overtime counts if close.
-_CRUNCH = ByLeague({League.NFL: (4, 420, 8), League.NBA: (4, 360, 8), League.NHL: (3, 480, 1)})
 
 
 def crunch_soon(g: GameState) -> bool:
@@ -66,12 +69,7 @@ def crunch_soon(g: GameState) -> bool:
     if g.phase != Phase.LIVE or d is None:
         return False
     p = pro_period(g.league, g.period, g.clock_s)  # men's college halves read as NBA quarters
-    if g.league == League.MLB:
-        return p >= 8 and abs(d) <= 2
-    last, clock, margin = _CRUNCH[g.league]
-    if abs(d) > margin:
-        return False
-    return p > last or (p == last and g.clock_s is not None and g.clock_s <= clock)
+    return crunch.inside(crunch.row("soon", g.league.base), p, g.clock_s, d)   # [one brain] the crunch table
 
 
 def break_soon(g: GameState | None, s=None) -> bool:
@@ -128,7 +126,7 @@ def options(cands: dict, *, current: str | None, home: str | None = None, back_t
             replay: Option | None = None, tunable: Callable[[str], bool] = lambda t: True,
             save_s: Callable[[str], float] = lambda t: 0.0, return_bonus: float = RETURN_BONUS,
             want: str | None = None, brk: str | None = None, brk_why: str = "",
-            replay_sure: bool = False) -> list[Option]:
+            replay_sure: bool = False, hand_back: str | None = None) -> list[Option]:
     """Every game the hidden stick could usefully hold, best first.
 
     Never: what's on screen, a muted game, a stale feed, a channel we can't tune (no link, app not
@@ -137,7 +135,9 @@ def options(cands: dict, *, current: str | None, home: str | None = None, back_t
     while it's within reach of the best game: in a lull 20+ points behind, it's not where we go next.
 
     brk: where the decider will spend the break the game on screen is about to take (BREAK).
-    replay_sure: the replay is the decider's own pick for that break, not a guess: keep it."""
+    replay_sure: the replay is the decider's own pick for that break, not a guess: keep it.
+    hand_back: the game you just left by hand (phone pick): ranked with your game's return (HOME),
+    below the decider's own NEXT and below your focus game's return when there is one."""
     games, my_teams = games or {}, my_teams or {}
     out = [replay] if replay is not None and tunable(replay.target) else []
     ok = {gid: x for gid, x in cands.items()
@@ -152,6 +152,10 @@ def options(cands: dict, *, current: str | None, home: str | None = None, back_t
             continue
         if gid == home:
             out.append(Option(gid, x.target, HOME, s.score, "your game — back the moment its break ends"))
+            continue
+        if gid == hand_back and home is None and not x.stale:
+            out.append(Option(gid, x.target, HOME, s.score + save_s(x.target),
+                              "the game you just left: a tap back is likely"))
             continue
         # Crunch time and your team late and close are where the decider goes even mid-stoppage
         # (a timeout is the way in): keep them eligible through their breaks.
@@ -231,16 +235,22 @@ class ShadowStick:
 
     Hit rate = switches that landed on a stick already playing the destination (a 1-3s flip)."""
 
-    FLIP_S = 3.0   # an input flip to a ready stick (measured median ~2.9 s)
+    def __init__(self, tune_s: float | None = None, keep_s: float | None = None,
+                 app_s: dict[str, float] | None = None, flip_s: float | None = None, cfg=None):
+        def knob(value, key):   # two_stick.shadow.* from cfg, else default_config.yaml
+            if value is not None:
+                return float(value)
+            dotted = f"two_stick.shadow.{key}"
+            return float(cfg.get(dotted, config.default(dotted)) if cfg is not None else config.default(dotted))
 
-    def __init__(self, tune_s: float = 7.0, keep_s: float = 2.5, app_s: dict[str, float] | None = None):
-        self.tune_s = tune_s
+        self.FLIP_S = knob(flip_s, "flip_s")   # an input flip to a ready stick
+        self.tune_s = knob(tune_s, "tune_s")
         # Per-app tune seconds (Prime ~30 s, YouTube TV ~5 s): a model where every tune is 7 s can't
         # see what a Prime preload is worth.
         self.app_s = dict(app_s or {})
         # A Prime game we leave keeps playing live on its stick (control._kept_playing): ready again
         # once two playback reads confirm it, not after a re-tune.
-        self.keep_s = keep_s
+        self.keep_s = knob(keep_s, "keep_s")
         self.target: str | None = None
         self.replay_id: str | None = None
         self.ready_at = 0.0

@@ -145,6 +145,59 @@ async def test_engine_saves_one_trace_per_switch(cfg, tmp_path):
     await engine.close()
 
 
+async def test_a_switch_trace_says_which_module_contributed_what(cfg, tmp_path):
+    """[provenance] Cycle 06 #2: switches.detail.trace.provenance is {module: value} (lane 5's Trace
+    sheet reads it): the decider's call, the scoring of both games, the guard, and the controller's part."""
+    cfg.update({"mode": {"dry_run": False}})
+    store = Store(tmp_path / "t.db")
+    engine = Engine(cfg, store)
+    engine.decider.current = "old"
+    callbacks = []
+    engine.control.submit = lambda *args, **kwargs: callbacks.append(args[2])
+    engine.decider.target_of = lambda gid: "youtubetv:espn"
+
+    def sc(score, crunch=False):
+        return SimpleNamespace(scored=SimpleNamespace(score=score, moment=40.0, factor="4th & goal", stakes=12.0,
+                                                      personal=0.0, closeness=0.8, crunch=crunch, crunch_now=False,
+                                                      late=crunch, lock=None), target="youtubetv:espn")
+    d = Decision(T, "switch", "new", "better game", State.WATCHING, kind="better", gate="margin")
+    engine._act(d, "old", {"new": sc(81.04, crunch=True), "old": sc(40.0)})
+    callbacks[0](_out(path="preloaded", confirmed_at=T + 3, waited=1.24, marks=[("flip_start", T + 2), ("flip_done", T + 3)],
+                      provenance={"control": {"path": "preloaded", "flip": "tv:smartthings"}, "playbook": []}))
+    p = trace.of_row(store.recent_switches(5)[0])["provenance"]
+    assert p["decider"] == {"action": "switch", "kind": "better", "gate": "margin", "state": "watching",
+                            "reason": "better game"}
+    assert p["importance"]["to"] == 81.0 and p["importance"]["from"] == 40.0 and p["importance"]["factor"] == "4th & goal"
+    assert p["crunch_state"]["to"]["crunch"] and not p["crunch_state"]["from"]["crunch"]
+    assert p["stakes"]["to"] == 12.0
+    assert p["guard"] == {"rule": "no mid-play cut", "waited_s": 1.2, "let_through": True}
+    assert p["control"]["flip"] == "tv:smartthings" and p["playbook"] == []
+    await engine.close()
+
+
+async def test_the_controller_names_its_path_flip_and_resume(two):
+    c = two
+    out = await c.execute("youtubetv:espn", may_cut=lambda: True)
+    ctl_part = out.provenance["control"]
+    assert out.ok and ctl_part["path"] == out.path and ctl_part["stick"] == "HDMI2"
+    assert ctl_part["flip"] and "resume" in ctl_part and out.provenance["playbook"] == []
+    assert c._why is None                                   # a preload after this notes nothing
+
+
+async def test_a_playbook_that_fires_mid_switch_is_in_its_provenance(two):
+    c = two
+    c.preload("youtubetv:espn")
+    await c._preload_task
+    hid = c.hidden
+
+    async def steady(stick, target):   # steady at the decision...
+        hid.playing = "paused"         # ...then it paused before the flip's last read
+        return {}
+    c._steady_playing = steady
+    out = await c.execute("youtubetv:espn", may_cut=lambda: True)
+    assert not out.ok and out.path == "preloaded" and out.provenance["playbook"] == ["SAFE-08"]
+
+
 # --- cut grading -----------------------------------------------------------------------------
 
 class Dead:

@@ -137,6 +137,9 @@ def main():
         for part in path:
             node = node.setdefault(part, {})
         node[last] = yaml.safe_load(val)
+    evaldata.flatten_league_overrides(cfg, "nfl")   # [grader v7] league-scoped defaults, as the app runs them
+    if a.behind_live is None and evaldata.config_behind_live(cfg, "nfl") is not None:   # [grader v8]
+        knobs.update(feed_lag_knobs(a.feed_lag, evaldata.config_behind_live(cfg, "nfl")))
     t0 = time.time()
     tot = dict(big=0, seen=0, live=0, cuts=0, dead=0.0, watched=0.0, crunch=0, crunch_live=0,
                my_crunch=0, my_crunch_live=0, switches=0, hours=0.0, my_big=0, my_seen=0, blackout=0.0,
@@ -150,8 +153,8 @@ def main():
         rc = r.cut.summary()
         if a.oracle:
             oracle_nights.append(_oracle_night(reps, set(cfg.get("teams.nfl")), r))
-        per_night.append({"night": reps[0].gid, "entries": rc["entries"], "entries_mid_play": rc["entries_mid_play"],
-                          "cuts": len(r.mid_play_cuts), "big": r.big_plays, "big_seen": r.big_plays_caught,
+        per_night.append({"night": reps[0].gid, "entries": rc["entries"], "entries_mid_play": rc["entries_mid_play"], "entries_mid_break": rc["entries_mid_break"],
+                          "cuts": len(r.mid_play_cuts), "cuts_high": len(r.mid_play_cuts_high), "big": r.big_plays, "big_seen": r.big_plays_caught,
                           "big_seen_10m": r.big_seen_10m, "my_big": r.my_big_plays,
                           "my_big_seen_10m": r.my_big_seen_10m, "crunch_on_replay": r.crunch_on_replay,
                           "big_seen_3m": r.big_seen_3m, "big_seen_2m": r.big_seen_2m, "my_big_seen_3m": r.my_big_seen_3m,

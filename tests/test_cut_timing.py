@@ -135,6 +135,7 @@ def test_delaybook_behind_is_part_of_mu_until_a_fresh_tune():
 
 def _decider(cfg, clock):
     from redzone.decider.decider import Decider
+    cfg.defaults["league_overrides"] = cfg.data["league_overrides"] = {}   # live cut timing (NFL's RC7 set: tests elsewhere)
     dec = Decider(cfg, DelayBook({"youtubetv": 40.0, "prime": 40.0}, 3.0, clock=clock), clock=clock)
     dec.entry_cost = lambda target: 5.0
     return dec
@@ -161,8 +162,9 @@ def test_decider_rewinds_into_the_huddle_instead_of_joining_mid_play(cfg, clock)
     _feed(dec)
     clock.t = 1070.0        # the picture would come up at real 1035: the 1030-1040 snap
     d = dec.decide(_cands("youtubetv:b"))
-    assert d.action == "switch" and d.target == "b" and d.rewind_s == 20.0
-    assert dec.delays.get("youtubetv:b").behind == 20.0 and dec.delays.get("youtubetv:b").mu == 60.0
+    # [seek model] one 15 s step + the 3 s mid stall (live lab, Nov 4: the stall lands it further back)
+    assert d.action == "switch" and d.target == "b" and d.rewind_s == 18.0
+    assert dec.delays.get("youtubetv:b").behind == 18.0 and dec.delays.get("youtubetv:b").mu == 58.0
 
 
 def test_decider_waits_for_a_dead_ball_where_it_cannot_rewind(cfg, clock):

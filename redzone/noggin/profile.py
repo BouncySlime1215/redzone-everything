@@ -28,7 +28,10 @@ PROFILES: dict[str, dict] = {
             "decider.entry.max_wait_s={}",
             # [noggin logic, cycle 02] Clairvoyance (GAME-04): pre-tune the game whose big play the
             # feed already shows ahead of the screen, and land on its last dead ball before it airs.
+            # NFL only (planner, Nov 4): 3 s sigma, 3 dev seeds + locked: NFL big live +5.4..5.5 dev,
+            # +4.9 locked, 0 mid-play; NHL crunch live is -0.9 on locked, so NHL/NBA stay off.
             "noggin.lookahead.enabled=true",
+            "noggin.lookahead.leagues=[nfl]",
             # [noggin logic, cycle 03, rule #1] A fresh tune comes up 0-6 s behind the live edge
             # (syncsim's YouTube TV prior, upper end; Thursday's probe refits it): entry margins take
             # that late side, and a switch off a finished game never takes the thin urgent landing.
@@ -41,9 +44,49 @@ PROFILES: dict[str, dict] = {
             # [noggin logic, rule #1] A lone substitution (its stoppage missing from the data) opens no
             # dead window: the last candidate mid-play entry (NBA GS @ DEN) rewound 70 s into one.
             "decider.entry.confirmed_dead_only=true",
+            # [noggin logic, live lab Nov 4] Ad-break anchors feed the filter and its floor is 3 s. NOT a
+            # position gain: YouTube TV's position is a per-tune clock (every tune starts near 46,790 s),
+            # so it carries no landing information. The old "+4-5 NFL big live, sigma p50 3 s" came from
+            # a sim that read positions off a channel origin (fixed in #146). Honest sims, 3 seeds:
+            # sigma p50 9 s, 2-sigma coverage >= 95%. YTTV shows no ad text on the Mac, so live break
+            # anchors wait on the burst anchor (sync.burst_anchor, scripts/burst_align.py).
+            "sync.break_anchor.enabled=true",
+            "delay.sync.min_sigma_s=3",
+            # [noggin logic, Nick Nov 4 11:00 AM] a missed moment airs within 3 min or not singly: NFL
+            # only for now (3 seeds: big live +4, crunch +1.4..2.9; NHL loses 4-7 points of seen-in-3-min).
+            "replay.window_s=180",
+            "replay.window_leagues=[nfl]",
+            # [noggin logic] a crunch stoppage takes only a play you missed, never an instant replay of one
+            # you saw: NFL dev 3 seeds crunch live +0.8..2.2, crunch plays under a replay halved, NBA/NHL equal.
+            "decider.crunch.instant_replays=false",
+            # [whistle detection] decider.leave.dead_windows=[nhl] is held OUT of the candidate (Nov 4,
+            # cycle 06): on the current stack, dev 3 seeds, it lifts seen-in-10-min +8..14 but NHL crunch
+            # on replay goes 7/6/0 -> 7/4/6 and your-team 21/21/20 -> 18/21/21, the promotion lines.
+            # [seek model] live lab, Nov 4: entry rewinds run on the hidden stick before the flip, so the
+            # live edge never shows mid-play first (NFL 270-345 such glimpses per dev seed) and the 2-4 s
+            # seek stall passes off screen. Dev 3 seeds: 0 mid-play, NFL big live +0.8..1.7 vs seeking on screen.
+            "decider.entry.cue=hidden",
             # [controls, cycle 03] Opening a game on the phone tunes it on the hidden stick while you
             # read the sheet, so "Go now" is a flip (press_to_tv_p95). Live default stays off.
             "two_stick.pretune_on_open=true",
+            # [noggin logic, cycle 05 promotion blocker] No catch-up starts while any live game is in crunch
+            # time or its run-up. Your team's missed play waits too, except in NFL, where it goes 90 s after
+            # it aired (its 3-min replay window can't wait out crunch). Locked, 3 seeds, vs live: no line worse.
+            "replay.crunch_block=true",
+            # [noggin logic, cycle 06] ...and until a game the feed ended in crunch time (an OT winner) has
+            # aired: dev 3 seeds NHL crunch on replay 7/6/0 -> 0/0/0, crunch live +3.6/+2.7/+0.1, 0 mid-play;
+            # big seen in 10 min -4.1..4.5 (catch-ups wait out the OT tail). NFL crunch +0.1..0.8, NBA equal.
+            "replay.crunch_block_tail=true",
+            # [noggin logic, cycle 07] your team's missed play is still checked for a catch-up when no other
+            # game is worth switching to (its own game on a break): dev 3 seeds NHL your-team 19/21/18 ->
+            # 20/21/20, crunch =, 0 mid-play, dead air +0..0.4; NFL/NBA and locked unchanged.
+            "replay.when_alone=true",
+            "replay.crunch_block_mine_leagues=[nfl]",
+            # [noggin logic, Nick Nov 4 3:15 PM cut rules] Leaving mid-play is OK at low leverage (never
+            # crunch / its run-up, a locked moment, your team's game, or close-and-late: sticky). NFL + NBA:
+            # locked NFL big live +1.3..3.7, seen within 10 min +4..5, your-team 40-41 -> 41-43 of 43; NBA
+            # equal. 0 mid-play entries. NHL off: dev 1-3 mid-play entries and big live -5.
+            "decider.leave.low_leverage=[nfl,nba]",
         ],
     },
 }

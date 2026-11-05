@@ -549,3 +549,157 @@ missed. Candidate, dev, `--tune-jitter 6`, 3 seeds: the candidate's crunch `wait
 the last dead ball by rewind whenever one is in reach, so `crunch` changes nothing and the share is
 already 96.9-100%. `all` costs NBA on seed 0 (big live 77.5 -> 73.2, crunch 90.0 -> 85.3), so it
 stays off. Locked: equal for all three.
+
+## YouTube TV seek, as measured (live lab, Nov 4 12:10 PM)
+
+The lab found three things about YouTube TV's DVR rewind: a press steps **15 s** (the app assumed 10),
+the **first press of each batch is swallowed**, and each seek **stalls the picture 2-4 s**, which leaves
+it that much further behind. A "60 s" rewind landed 75-80 s back and a "20 s" one 15-19 s back. Every
+entry rewind (possession start, crunch, rewind-only leagues) therefore landed somewhere the planner
+never checked.
+
+- `contracts.switching.SeekModel` holds it: `YTTV_SEEK` (15 s, 1 swallowed, 2-4 s) is the stick as
+  measured; `seek_model(cfg)` is what control.py assumes (`replay.seek_step_s: 15`,
+  `seek_wake_presses: 1`, `seek_stall_min_s: 2`, `seek_stall_max_s: 4`). control.py sends one extra
+  press, and the planner (`cuts._rewind`) lands a rewind of k at k + 2..4 s and checks the whole range.
+- `decider.entry.cue`: `seek` (default) rewinds the visible stick after the flip, so the live edge is
+  on screen for the presses first; `hidden` (candidate) rewinds the hidden stick before the flip. The stall
+  passes off screen and puts the stream exactly as far behind as it takes, so the content that comes up
+  doesn't depend on it; the flip waits ~1.5 s + the stall. `pause` (seek past it on the hidden stick, play
+  up to the dead ball, pause, flip) is graded and loses: the flip waits up to ~19 s and the old game gets
+  left mid-play.
+- Sims: `--real-seek` re-lands every entry rewind from the presses control.py sends
+  (`backtest.seek_cue`). New grades per night: `rewinds`, `flash_mid_play` (an on-screen rewind whose
+  live edge showed play first) and `plays_missed_entry`.
+- Hold calibration: a time-shift hold is measured on the stick's own clock against its position since the
+  tune anchor (`Controller._held_for`, error under 0.5 s). The wall span from pause to play over-reports by
+  ~1.4 s, so it is only the fallback, less `timing.behind_live_s.hold_overreport_s` (1.5).
+
+Candidate, honest dev config (`--tune-jitter 6 --flip-dist --break-anchors --positions --real-lag`),
+seeds 0/1/2:
+
+| | today's code (10 s assumed) | calibrated seek | hidden-stick cue |
+|---|---|---|---|
+| NFL mid-play entries | 33/32/34 | 0/0/0 | 0/0/0 |
+| NFL mid-play cuts | 44/44/63 | 0/0/0 | 0/0/0 |
+| NFL live-edge glimpses mid-play | 345/312/341 | 332/270/304 | 0/0/0 |
+| NFL big live % | 57.6/57.0/56.5 | 60.2/60.3/59.7 | 61.4/61.1/61.4 |
+| NFL crunch live % | 74.4/73.7/72.9 | 73.4/71.8/72.3 | 71.5/70.8/72.7 |
+| NHL mid-play entries | 37/35/32 | 0/0/0 | 0/0/0 |
+| NHL mid-play cuts | 86/76/76 | 0/0/0 | 0/0/0 |
+| NHL landings in dead time % | 83.7/85.6/86.2 | 100/100/100 | 100/100/100 |
+| NHL big live % | 44.7/42.8/44.4 | 46.1/47.8/46.1 | 45.2/47.0/46.3 |
+| NHL crunch live % | 77.6/77.4/80.8 | 77.8/82.6/79.7 | 76.5/83.4/81.2 |
+| NBA mid-play entries / cuts | 1/1/1, 2/3/1 | 0, 0 | 0, 0 |
+
+What the planner believed before (rewinds landing exactly where planned) was 0 mid-play with NFL big live
+62.5/62.3/61.7 and NHL 49.4/47.0/49.4: those numbers were never real on the TV.
+
+Locked, read once (seed 0):
+
+| | believed before | today's code | calibrated seek | hidden-stick cue |
+|---|---|---|---|---|
+| NFL mid-play entries / cuts | 0 / 0 | 12 / 24 | 0 / 0 | 0 / 0 |
+| NFL live-edge glimpses mid-play | 0 | 127 | 126 | 0 |
+| NFL big live % | 59.4 | 53.8 | 57.6 | 59.5 |
+| NFL crunch live % | 74.6 | 73.1 | 71.3 | **67.2** |
+| NHL mid-play entries / cuts | 0 / 0 | 14 / 38 | 0 / 0 | 0 / 0 |
+| NHL landings in dead time % | 100 | 86.6 | 100 | 100 |
+| NHL big live % / seen within 3 min % | 51.0 / 72.1 | 46.6 / 68.3 | 49.5 / 72.6 | 49.0 / 75.5 |
+| NHL crunch live % | 81.7 | 78.7 | 80.9 | **76.2** |
+| NBA | equal everywhere | | | |
+
+Locked seeds 1/2 (same configs, to size the noise): hidden cue vs calibrated seek, NFL crunch 69.9/71.6
+vs 73.7/73.7 and big live 61.4/60.0 vs 58.3/58.5; NHL crunch 78.7/82.1 vs 70.6/82.1, seen within 3 min
+76.0/76.0 vs 71.6/73.6. So the hidden cue costs NFL crunch 2-4 points (each rewind flip waits ~4-5 s for
+the seek) and the NHL crunch swing is noise. Pre-cueing during a wait can't win it back: on NFL dev seed
+0 none of 1188 cued entries followed a wait of 6 s or more (the plan rewinds at once). Whether a ~1 s
+live glimpse before an on-screen rewind counts as mid-play is Nick's call; the candidate assumes it does.
+
+## Self-calibration, sync half (flag `calib.auto`, off; overseer item c)
+
+Every night, with no one's input, the app re-measures what lane 2's planning assumes and writes it to the
+night's `data/calib/YYYY-MM-DD.json`, `sync` section (lane 3's `redzone/calibration.py` format; their
+`timing` section holds flip time and press-to-TV). The outlier guard refuses a value more than 3 MADs
+from the last 5 accepted nights; a refused value is never read back.
+
+- **Seek** (`yttv_seek_step_s`, `yttv_seek_wake_presses`, `yttv_seek_stall_s`): every entry rewind logs
+  one row to `data/seeks.jsonl` (`Controller._seek_sample`): the presses sent, and how far behind the
+  picture really went, from the stick's own clock against its position since the stream's anchor (the same
+  measurement the live lab did by hand). `calibration.seek_fit` reads the wake presses (the most presses that
+  moved < 1 s), the step (slope) and the stall (intercept).
+- **Per-channel delay** (`delay_s:<target>`, with its sd): `data/sync.jsonl` rows now carry `behind` (what
+  that tune was held or rewound behind live). `calibration.delay_fit` takes the median of the night's
+  used anchors less `behind`, needing at least 5.
+- At start with `calib.auto` on, `calibration.sync_prior` sets the seek model in memory
+  (`contracts.switching.set_calibrated_seek`) and gives each calibrated channel's sync filter last nights'
+  delay as its prior (`DelayBook.calibrated`), never surer than 2 s (a fresh tune's edge still varies ~4 s
+  between sticks). Nothing in the config file changes.
+
+## YouTube TV position is a per-tune clock; MediaSession bursts (live lab, Nov 4)
+
+**Found in the lab's logs (adwatch.jsonl).** Every fresh YouTube TV tune starts near the same playback
+position, ~46,790 s (seen at 7 tunes over 4 h, both sticks), whatever the hour. So a position read is a clock
+for ONE tune: it times a seek, a pause or a stall on that tune to ~0.3 s, but it says nothing about how far
+behind live a new tune landed. The filter (decider/sync.py) used to keep the channel's origin across tunes,
+so a re-tune's first reads disagreed by hours, were rejected, and flagged the channel uncertain for 5 min
+before it restarted. The origin is now per tune: a new tune forgets it (`SyncBook.tuned(new_stream=True)`,
+BoundaryWatcher tells a new tune from a seek or pause), a seek or pause keeps it.
+
+The sims had the same mistake: `--positions` read `wall - channel origin - true delay`, which handed the
+filter each tune's unknown landing (tune_jitter 0-6 s) for free. Now it is a per-tune clock that moves only
+when the stream moves under the same tune (backtest._position_tick). Honest candidate config, seeds 0-2,
+sync honesty pooled over on-screen ticks (cov = true error within 2 sigma):
+
+| split | league | cov 2 sigma | sigma <= 3 s | sigma p50 | err p50 | big live | crunch | mid-play entries |
+|---|---|---|---|---|---|---|---|---|
+| dev | NFL | 99.8-100 -> 98.5-100 | 93.5 -> 47.6 | 3.0 -> 9.0 | 2.7-4.0 -> 2.8-3.2 | 61.1-61.4 -> 54.7-57.7 | 70.8-72.7 -> 69.2-71.0 | 0 -> 0 |
+| dev | NHL | 97.1-100 -> 94.9-99.6 | 90 -> 40.5 | 3.0 -> 8.8-8.9 | 2.8-3.8 -> 3.0-3.9 | 45.2-47.0 -> 46.3-47.0 | 76.5-83.4 -> 76.7-81.7 | 0 -> 0/0/1 |
+| locked | NFL | 99.6-100 -> 99.7-100 | 94.6 -> 34-50 | 3.0 -> 9.0 | 2.6-4.1 -> 2.5-3.2 | 59.5-61.4 -> 55.8-56.7 | 67.2-71.6 -> 70.1-72.5 | 0 -> 0 |
+| locked | NHL | 96.6-100 -> 96.7-100 | 91.8 -> 35.5-39.5 | 3.0 -> 9.0 | 2.9-4.0 -> 3.0-3.6 | 48.1-49.5 -> 50.5-52.9 | 76.2-82.1 -> 77.0-80.4 | 0 -> 0/1/0 |
+
+(NBA reads no YTTV positions in the sim: unchanged.) The old NFL big-live figures were ~5 points too
+good. The new mid-play entries (one NHL night on dev, one on locked) are the sim being honest about a
+re-tune's unknown landing, not a code change on the Mac.
+
+**MediaSession bursts are the content anchor.** `onPlaybackStateChanged` fires in bursts (4-8 updates over
+1-2 min, 15-30 min apart) at the same stream position on both sticks and exactly one hold later on a held
+stick. `sync_probe.BurstWatch` finds each onset: a playing update after a 300 s quiet gap, confirmed by a
+second within 60 s, with the 30 s after any tune, seek, pause or PLAY ignored. On the lab's 5 h of logs it
+finds the 5 real bursts on both sticks and nothing else (the lone updates and the pause/resume lines drop
+out). The onset goes to the engine as a `burst` screen event and is logged in sync_anchors.jsonl with the
+feed's last dead ball, its play type and the delay the app believed (`delay_mu`, `delay_sd`).
+
+What it can't do yet: a burst only becomes a delay anchor if it follows something on the feed by a steady
+gap. If bursts are TV breaks, every YTTV channel, on screen or hidden, gets an anchor it has no other way
+to get (YTTV has no UI text and logs no ad lines). `scripts/burst_align.py` answers that from one night
+(bursts vs the feed's dead balls, against random moments as the null); `sync.burst_anchor.enabled` stays
+off until it does, with `gap_s` / `gap_sd_s` fitted from it. Comparing two tunes by a shared burst only
+works while both sticks play the same channel, which the app never does by design, so that use stays
+in the lab (it is how the hold was measured to 0.3 s).
+
+## Replay and resume (flag `replay.resume`, off)
+
+A catch-up replay costs buffer instead of live play. At the screen game's dead ball (the leave gate),
+the app pauses that stick, flips to the replay parked on the hidden stick, then flips back and
+unpauses on the same frame, so we leave and land on one dead ball (rule #1). The screen now runs that
+much further behind its buffer. It wins the time back by skipping ahead inside its next commercial or
+TV timeout (`replay.resume_min_skip_s`), or by any switch away, which comes back to a fresh tune.
+
+Limits:
+- `replay.resume_window_s` (180): only plays that aired within 3 minutes.
+- `replay.resume_cap_s`: never run further behind the buffer than this, counting entry rewinds.
+- `replay.resume_crunch_share` (0): crunch time is never paused.
+
+The sims report `behind_extra_p95_s` and `behind_extra_max_s` (per night and pooled) and `resumes`.
+
+**Hardware gate (night-lab step for lane 3's next probe).** On each stick model (4K Plus, 4K 2023), on
+YouTube TV live with DVR:
+1. Note the playback position, then send a media PAUSE over adb.
+2. Flip the TV input away for 20 s and then 60 s, and flip back.
+3. Send PLAY and read the position again.
+
+Pass: playback resumes within ~1 s of PLAY, on the same frame (position delta ≤ 0.5 s plus the time
+before PLAY), with no ad insertion, no "Are you still watching" prompt and no jump to live, in 20 of
+20 trials per model. Log `pause_ack_s`, `resume_ack_s`, the position deltas and any UI dump. Until
+this passes, the sims' zero-cost pause is unproven and the flag stays off.

@@ -4,18 +4,76 @@
 
 import { app, ACTIONS, CHANGES, INPUTS, hooks, attr, esc, num, arr, fmtTime, fmtDur } from "./rz-core.js?v=41";
 import { icon, sec } from "./rz-ui.js?v=40";
-import { api } from "./rz-api.js?v=43";
+import { api, act } from "./rz-api.js?v=43";
 import { toast, openSheet, closeSheet, sheetById } from "./rz-sheet.js?v=40";
 
-const v2 = { on: false, checked: false, rows: new Map(), head: "", loading: false, prio: null, missed: null };
+const v2 = { on: false, commit: false, checked: false, rows: new Map(), head: "", loading: false, prio: null, missed: null };
 
-async function check() {
-  if (v2.checked) return;
-  v2.checked = true;
-  try { v2.on = !!(await api("/api/v2/status")).enabled; } catch { v2.on = false; }
-  if (v2.on) hooks.render();
+let checking = null;
+function check() {
+  if (!checking) {
+    v2.checked = true;
+    checking = (async () => {
+      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; v2.worth = !!st.worth; } catch { v2.on = false; }
+      if (v2.on) { hooks.render(); pollAlert(); pollStrip(); pollHeld(); }
+      if (v2.worth) pollWorth();
+    })();
+  }
+  return checking;
 }
 check();
+
+/* A your-team crunch clash coming up in the next 30 min: one line above the bar (display only). */
+let alert = null;
+let slateDone = null;   // EXP-036: {finished} once nothing is live or still to start tonight
+function pollAlert() {
+  api("/api/v2/slate").then((r) => {
+    const a = (r && r.alert) || null, done = r && r.complete ? { finished: r.finished } : null;
+    const was = JSON.stringify([alert, slateDone]); alert = a; slateDone = done;
+    if (JSON.stringify([a, done]) !== was) hooks.renderScreen("now");
+  })
+    .catch(() => {}).finally(() => setTimeout(pollAlert, 60000));
+}
+/* Top 3 watch values on the Now screen, refreshed every 15 s (read only; tap for the full sheet). */
+let strip = null;
+function pollStrip() {
+  api("/api/v2/watch").then((r) => {
+    const top = arr(r && r.games).slice(0, 3).map((g) => ({ ...g, on: g.game_id === r.current }));
+    const next = { top, src: r && r.source, tag: (r && r.why_tag) || null };
+    if (JSON.stringify(next) !== JSON.stringify(strip)) { strip = next; hooks.renderScreen("now"); }
+  }).catch(() => {}).finally(() => setTimeout(pollStrip, 15000));
+}
+function watchStrip() {
+  if (!strip || !strip.top.length) return "";
+  // EXP-035: a plain label, only over a logged threshold; no banner, sting or animation (playbook §5)
+  const t = strip.tag;
+  const tag = t ? `<div class="v2-why" title="${attr(`Shown because it is ${t.value} on the 0-100 scale (threshold ${t.threshold})`)}"><b>Why we're here</b> ${esc(t.text)}</div>` : "";
+  return `${tag}<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
+    `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc([g.context || g.why, g.stakes_line].filter(Boolean).join(" · "))}</small></span></span>`).join("")}
+    ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>`;
+}
+
+/* Crunch vs crunch: what the hidden stick holds, how far behind, and what comes back when (display only). */
+let heldV = null;
+function pollHeld() {
+  api("/api/v2/held").then((r) => { const v = (r && r.view) || null; if (JSON.stringify(v) !== JSON.stringify(heldV)) { heldV = v; hooks.renderScreen("now"); } })
+    .catch(() => {}).finally(() => setTimeout(pollHeld, 10000));
+}
+function heldLine() {
+  const v = heldV;
+  if (!v || (!v.held && !v.back && !v.catchup)) return "";
+  const rows = [];
+  if (v.held) rows.push(`<span><b>Holding</b> ${esc(v.held.matchup)}${v.held.behind_s ? ` · ${esc(fmtDur(v.held.behind_s))} behind live` : ""}${v.held.ready ? "" : " · loading"}</span>`);
+  if (v.back) rows.push(`<span><b>Coming back</b> ${esc(v.back.text)}</span>`);
+  if (v.catchup) rows.push(`<span><b>Next catch-up</b> ${esc(v.catchup.matchup)}: ${esc(v.catchup.label || v.catchup.kind)}${v.queued > 1 ? ` (+${num(v.queued - 1)} more)` : ""}</span>`);
+  return `<button class="v2-held" data-key="v2-held" data-act="v2-catchup" aria-label="Catch-up queue">${icon("hourglass")}<div>${rows.join("")}</div></button>`;
+}
+
+function alertLine() {
+  if (!alert) return "";
+  const when = alert.now ? "Now" : alert.in_s < 90 ? "In a minute" : `In ${Math.round(alert.in_s / 60)} min`;
+  return `<button class="v2-alert" data-act="v2-slate">${icon("alert")}<span><b>${esc(when)}: crunch times overlap.</b> ${esc(alert.on_tv)} gets the TV (${esc(alert.why)}); ${esc(arr(alert.second).join(", "))} on the second stick.</span></button>`;
+}
 
 /** Refetch chips + votes when the newest switch changes. */
 function sync(S) {
@@ -54,11 +112,81 @@ ACTIONS["v2-vote"] = async (el) => {
 };
 
 /** The "I missed that" bar above Recent switches. */
+/* EXP-036: "Slate complete" ends the night; nothing comes after it (no autoplay, no "up next", no counters). */
+/* EXP-040: one tap "worth it?" on the Slate complete card (its own flag phone.worth, works with v2 off).
+   EVALUATION ONLY: data/worth.jsonl grades releases and is never a training label. Plain wording, no
+   streaks, no counters, nothing after it (playbook §5 / §6). The agency / regret probes come at most once
+   a week, only after the rating. */
+let worth = null;
+function pollWorth() {
+  api("/api/v2/worth").then((r) => { const was = JSON.stringify(worth); worth = r && r.enabled ? r : null; if (JSON.stringify(worth) !== was) hooks.renderScreen("now"); })
+    .catch(() => {}).finally(() => setTimeout(pollWorth, 60000));
+}
+function scale(k, on, lo, hi) {
+  return `<div class="v2-scale" role="group">${[1, 2, 3, 4, 5].map((n) =>
+    `<button class="v2-sc${on === n ? " on" : ""}" data-act="v2-worth" data-k="${k}" data-v="${n}" aria-pressed="${on === n}" aria-label="${n} of 5">${n}</button>`).join("")}</div>
+    <div class="v2-scale-ends"><span>${esc(lo)}</span><span>${esc(hi)}</span></div>`;
+}
+function worthBlock() {
+  if (!v2.worth || !worth || !worth.complete) return "";
+  const probes = worth.rating && worth.probe_due ? `<p>I chose what I watched tonight</p>${scale("agency", worth.agency, "Not really", "Fully")}
+    <p>I watched longer than I meant to</p><div class="v2-scale v2-scale--yn">${[["yes", true], ["no", false]].map(([t, b]) =>
+      `<button class="v2-sc${worth.regret === b ? " on" : ""}" data-act="v2-worth" data-k="regret" data-v="${t}" aria-pressed="${worth.regret === b}">${t === "yes" ? "Yes" : "No"}</button>`).join("")}</div>` : "";
+  return `<div class="v2-worth"><p>Was tonight worth it?</p>${scale("rating", worth.rating, "Not worth it", "Worth it")}${probes}</div>`;
+}
+ACTIONS["v2-worth"] = async (el) => {
+  const k = el.dataset.k, v = k === "regret" ? el.dataset.v === "yes" : Number(el.dataset.v);
+  try {
+    const r = await api("/api/v2/worth", { body: { [k]: v } });
+    if (r && r.row && worth) { worth = { ...worth, ...r.row }; hooks.renderScreen("now"); }
+  } catch (e) { toast(e.message || "Couldn't save that"); }
+};
+
+function slateCompleteCard() {
+  const fin = slateDone ? slateDone.finished : worth ? worth.finished : 0;
+  return `<div class="v2-done" data-key="v2-done"><b>Slate complete</b><span>0 live games · ${num(fin)} finished tonight</span>${worthBlock()}</div>`;
+}
+/* EXP-036 commitment controls: each one is a request the decider honours at the next dead ball. */
+// the engine snapshot's mode.commit {mode, game_id, at} once lanes 2/3 ship the action (contract: Cycle 08 #183)
+function commitState() { return (app.S && app.S.mode && app.S.mode.commit) || null; }
+const curGame = () => (app.S && app.S.now && app.S.now.game_id) || null;
+const COMMIT_TXT = { my_teams: "Only my teams", stop_after: "Stop after this game", end_at: "End at" };
+function commitSheet() {
+  const c = commitState(), cur = curGame(), on = (m) => c && c.mode === m;
+  const at = (c && c.mode === "end_at" && c.at) ? new Date(c.at * 1000) : null;
+  return `<h3>Commit</h3><p class="lead">Each one waits for a dead ball. Nothing here changes the TV mid-play.</p>
+    <div class="pick-list">
+      <button class="pick" data-act="v2-commit-hold" aria-pressed="false">${icon("lock")}Stay here<small>Keep this game until you tap Resume auto</small></button>
+      <button class="pick" data-act="v2-commit" data-mode="my_teams" aria-pressed="${!!on("my_teams")}">${icon("star")}Only my teams<small>Switch only between your teams' games</small></button>
+      <button class="pick" data-act="v2-commit" data-mode="stop_after" aria-pressed="${!!on("stop_after")}"${cur ? "" : " disabled"}>${icon("octagon")}Stop after this game<small>When it ends, stop switching</small></button>
+      <label class="pick">${icon("moon")}End at <input type="time" data-act-input="v2-commit-at" value="${at ? `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}` : "23:30"}"><button class="btn btn--ghost" data-act="v2-commit-end">Set</button></label>
+    </div>
+    ${c ? `<p class="lead">Now: <b>${esc(COMMIT_TXT[c.mode] || c.mode)}${at ? " " + esc(fmtTime(c.at)) : ""}</b> <button class="btn btn--ghost" data-act="v2-commit-clear">Clear</button></p>` : ""}`;
+}
+ACTIONS["v2-commit-open"] = () => openSheet({ id: "v2-commit", label: "Commit", render: commitSheet });
+ACTIONS["v2-commit-hold"] = (el) => act("hold", {}, el);
+ACTIONS["v2-commit"] = (el) => act("commit", { value: el.dataset.mode === "stop_after" ? { mode: "stop_after", game_id: curGame() } : { mode: el.dataset.mode } }, el);
+ACTIONS["v2-commit-end"] = (el) => {
+  const inp = document.querySelector('[data-act-input="v2-commit-at"]'), [h, m] = String((inp && inp.value) || "23:30").split(":").map(Number);
+  const t = new Date(); t.setHours(h, m, 0, 0); if (t.getTime() < Date.now() - 3600e3) t.setDate(t.getDate() + 1);
+  return act("commit", { value: { mode: "end_at", at: Math.round(t.getTime() / 1000) } }, el);
+};
+ACTIONS["v2-commit-clear"] = (el) => act("commit", { value: "off" }, el);  // #194: "off" clears it
+
 export function missedBar() {
+  if (v2.worth && worth && worth.complete) return slateCompleteCard();   // EXP-040: shows even with v2 off
   if (!v2.on) return "";
-  return `<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
+  if (slateDone) return slateCompleteCard();
+  return `${alertLine()}${heldLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
+    ${v2.commit ? `<button class="btn btn--ghost" data-act="v2-commit-open">${icon("lock")}Commit${commitState() ? ": " + esc(COMMIT_TXT[commitState().mode] || "on") : ""}</button>` : ""}
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
-    <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button></div>`;
+    <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-catchup">${icon("hourglass")}Catch-up queue: held games and what's waiting</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-scorecard">${icon("shield")}Night scorecard: the release gate, night by night</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-capture">${icon("moon")}Live night: did it become gold data?</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-ledger">${icon("activity")}Data + NFM: what the Noggin learns from</button></div>`;
 }
 
 function missedSheet() {
@@ -147,7 +275,7 @@ CHANGES["v2-reels"] = (el) => savePrio({ reels: !!el.checked });
 
 /* ---------- Night replay viewer: what was on, every switch, hold and tap, with playbook ids ---------- */
 const PAL = 8;   // segment colors cycle through .v2-c0 .. .v2-c7 (app.css)
-const night = { day: "", data: null, loading: false, filter: "all" };
+const night = { day: "", data: null, loading: false, filter: "all", at: null };   // at: epoch s to highlight (a deep link)
 
 function colorOf(matchup, order) {
   let i = order.indexOf(matchup);
@@ -182,9 +310,32 @@ function nightSheet() {
     const ticks = [];
     const first = Math.ceil(a / 3600) * 3600;
     for (let t = first; t < b; t += 3600) ticks.push(`<i style="left:${(((t - a) / span) * 100).toFixed(2)}%"><span>${esc(fmtTime(t).replace(":00", ""))}</span></i>`);
-    ribbon = `<div class="v2-ribbon" role="img" aria-label="What was on the TV, ${esc(fmtTime(a))} to ${esc(fmtTime(b))}">${segs.map((sg) =>
-      `<b class="v2-c${colorOf(sg.matchup, order)}" style="left:${(((sg.t0 - a) / span) * 100).toFixed(2)}%;width:${Math.max(0.4, ((sg.t1 - sg.t0) / span) * 100).toFixed(2)}%" title="${attr(sg.matchup)} ${attr(fmtTime(sg.t0))}"></b>`).join("")}</div>
+    const bars = (list) => list.filter((sg) => sg.t1 > a && sg.t0 < b).map((sg) =>
+      `<b class="v2-c${colorOf(sg.matchup, order)}" style="left:${(((Math.max(sg.t0, a) - a) / span) * 100).toFixed(2)}%;width:${Math.max(0.4, ((Math.min(sg.t1, b) - Math.max(sg.t0, a)) / span) * 100).toFixed(2)}%" title="${attr(sg.matchup)} ${attr(fmtTime(sg.t0))}"></b>`).join("");
+    const marks = arr(d.markers).filter((m) => m.ts >= a && m.ts < b).map((m) =>
+      `<em class="v2-mark${m.seen ? "" : " v2-mark--miss"}" style="left:${(((m.ts - a) / span) * 100).toFixed(2)}%" title="${attr(`${m.seen ? "Seen live" : "Missed"}: ${m.matchup} ${m.kind} ${fmtTime(m.ts)}`)}"></em>`).join("");
+    const pm = arr(d.plan_marks).filter((m) => m.ts >= a && m.ts < b);
+    const lane = pm.length ? `<div class="v2-rlabel">What the planner chose: <span class="v2-pm-key v2-pm--catchup">▲</span> catch-up <span class="v2-pm-key v2-pm--interleave">◆</span> break visit / return</div>
+      <div class="v2-pmlane" role="img" aria-label="${attr(`${num((d.plan_counts || {}).catchup)} catch-ups and ${num((d.plan_counts || {}).interleave)} break visits`)}">${pm.map((m) =>
+        `<i class="v2-pm v2-pm--${attr(m.type)}${m.ok ? "" : " v2-pm--fail"}" style="left:${(((m.ts - a) / span) * 100).toFixed(2)}%" title="${attr(`${m.type === "catchup" ? "Catch-up" : m.kind === "return" ? "Back home" : "Break visit"}: ${m.matchup} ${fmtTime(m.ts)}${m.plan ? " (plan " + m.plan + ")" : ""}`)}">${m.type === "catchup" ? "▲" : "◆"}</i>`).join("")}</div>` : "";
+    const o = d.oracle, cr = d.crunch || {};
+    const X = (t) => (((Math.max(a, Math.min(b, t)) - a) / span) * 100).toFixed(2);
+    const spanBars = (list, cls) => arr(list).filter(([t0, t1]) => t1 > a && t0 < b).map(([t0, t1]) =>
+      `<b class="${cls}" style="left:${X(t0)}%;width:${Math.max(0.4, X(t1) - X(t0)).toFixed(2)}%"></b>`).join("");
+    const dlt = (s) => (typeof s === "number" ? `${s > 0 ? "+" : ""}${Math.round(s)} s` : "–");
+    const crunchRows = arr(cr.games).map((g) => `<div class="v2-cr">
+        <div class="v2-cr-top"><span class="m">${esc(g.matchup)}</span>${"exit_ok" in g ? `<span class="tag tag--${g.exit_ok ? "pass" : "fail"}">exit ${esc(dlt(g.exit_s))}</span>
+          <span class="tag tag--${g.entry_ok ? "pass" : "fail"}">entry ${esc(dlt(g.entry_s))}</span>` : ""}</div>
+        <div class="v2-cr-track" title="Learned">${spanBars(g.learned, "v2-cr-l")}${arr(g.points).map((p) => `<i class="v2-cs--${attr(p.state)}" style="left:${X(p.ts)}%" title="${attr(`${CRUNCH_TXT[p.state] || p.state} ${fmtTime(p.ts)}`)}"></i>`).join("")}</div>
+        <div class="v2-cr-track v2-cr-track--o" title="Hindsight">${spanBars(g.oracle, "v2-cr-o")}</div></div>`).join("");
+    const crunchBox = cr.source ? `<div class="v2-rlabel">Crunch: learned (top) vs hindsight (bottom)${cr.source === "graded"
+      ? ` · exits right ${num(cr.exits_ok)}/${num(cr.exits)} (within ${num(cr.tol_s)} s)` : " · hindsight pending: learned states from switch traces"}</div><div class="v2-crs">${crunchRows}</div>` : "";
+    ribbon = `<div class="v2-ribbon" role="img" aria-label="What was on the TV, ${esc(fmtTime(a))} to ${esc(fmtTime(b))}">${bars(segs)}${marks}</div>
+      ${lane}
+      ${o ? `<div class="v2-rlabel">Best possible (hindsight)${o.agree_pct != null ? ` · we matched ${esc(String(o.agree_pct))}% of the time` : ""}</div>
+      <div class="v2-ribbon v2-ribbon--oracle" role="img" aria-label="What the hindsight oracle would have shown">${bars(arr(o.segments))}</div>` : ""}
       <div class="v2-ticks">${ticks.join("")}</div>
+      ${crunchBox}
       <div class="v2-legend">${arr(sm.on_air).map((r) => `<span><i class="v2-c${colorOf(r.matchup, order)}"></i>${esc(r.matchup)} <small>${esc(fmtDur(r.s))}</small></span>`).join("")}</div>`;
   }
   const pb = Object.entries(sm.playbooks || {});
@@ -198,8 +349,10 @@ function nightSheet() {
       ...arr(e.playbooks).map((p) => `<span class="tag tag--kind">${esc(p)}</span>`),
       e.type === "switch" && e.dry_run ? `<span class="tag tag--would">Would switch</span>` : "",
       e.type === "switch" && !e.ok && !e.dry_run ? `<span class="tag tag--fail">Failed</span>` : "",
+      e.type === "switch" && e.key ? `<button class="v2-trace-btn" data-act="v2-prov" data-key="${attr(e.key)}">${icon("activity")}Trace</button>` : "",
     ].join("");
-    return `<div class="v2-ev v2-ev--${attr(e.type)}"><span class="v2-ev-ic">${icon(ic)}</span><div style="min-width:0">
+    const hit = night.at && Math.abs(num(e.ts) - night.at) <= 120 ? " v2-ev--hit" : "";
+    return `<div class="v2-ev v2-ev--${attr(e.type)}${hit}"><span class="v2-ev-ic">${icon(ic)}</span><div style="min-width:0">
       <div class="v2-ev-top"><span class="m ell">${esc(title)}</span><span class="t">${esc(fmtTime(e.ts))}</span></div>
       ${e.reason ? `<div class="v2-ev-why">${esc(String(e.reason).replace(/\s*playbook=\S+/g, ""))}</div>` : ""}${tags ? `<div class="v2-why">${tags}</div>` : ""}</div></div>`;
   };
@@ -208,7 +361,8 @@ function nightSheet() {
     <div class="v2-tiles"><div class="stile"><b>${num(sm.switches)}</b><span>Switches</span></div>
       <div class="stile"><b>${num(sm.games)}</b><span>Games shown</span></div>
       <div class="stile"><b>${num(taps.up)}/${num(taps.down)}</b><span>👍 / 👎</span></div>
-      <div class="stile"><b>${num(taps.missed)}</b><span>Missed</span></div></div>
+      <div class="stile"><b>${num(taps.missed)}</b><span>Missed</span></div>
+      ${d.big && d.big.plays ? `<div class="stile"><b>${num(d.big.seen)}/${num(d.big.plays)}</b><span>Big plays live</span></div>` : ""}</div>
     <div class="sheet-sec"><h4>What was on</h4>${sm.failed ? `<small>${num(sm.failed)} failed</small>` : ""}</div>${ribbon}
     ${pb.length ? `<div class="sheet-sec"><h4>Playbooks used</h4></div><div class="v2-why">${pb.map(([k, n]) => `<span class="tag tag--kind">${esc(k)} × ${num(n)}</span>`).join("")}</div>` : ""}
     <div class="sheet-sec"><h4>Timeline</h4><small>newest first</small></div>
@@ -216,9 +370,249 @@ function nightSheet() {
     <div class="v2-evs">${evs.length ? evs.map(row).join("") : `<div class="t2">Nothing here.</div>`}</div>`;
 }
 
-ACTIONS["v2-night"] = () => { night.data = null; openSheet({ id: "v2-night", label: "The whole night", full: true, render: nightSheet }); loadNight(""); };
+ACTIONS["v2-night"] = () => { night.data = null; night.at = null; openSheet({ id: "v2-night", label: "The whole night", full: true, render: nightSheet }); loadNight(""); };
 ACTIONS["v2-night-day"] = (el) => { night.data = null; const s = sheetById("v2-night"); if (s) s.update(); loadNight(el.dataset.day); };
+/* Deep link from the night health report (scripts/night_report.py): #night=YYYY-MM-DD&at=HH:MM (ET; a time
+   before noon is after midnight, the same night) opens the whole night on that day, the miss highlighted. */
+export function nightFromHash(hash = (typeof location !== "undefined" ? location.hash : "")) {
+  const m = /^#night=(\d{4}-\d{2}-\d{2})(?:&at=(\d{2}):(\d{2}))?$/.exec(hash || "");
+  if (!m) return null;
+  let at = null;
+  if (m[2]) {
+    const d = new Date(`${m[1]}T${m[2]}:${m[3]}:00`);
+    if (+m[2] < 12) d.setDate(d.getDate() + 1);
+    at = d.getTime() / 1000;
+  }
+  return { day: m[1], at };
+}
+async function openNightLink() {
+  const l = nightFromHash();
+  if (!l) return;
+  await check();
+  if (!v2.on) return;   // the viewer is phone v2 (flag phone.v2)
+  night.data = null; night.filter = "all"; night.at = l.at;
+  openSheet({ id: "v2-night", label: "The whole night", full: true, render: nightSheet });
+  loadNight(l.day).then(() => { try { document.querySelector(".v2-ev--hit")?.scrollIntoView({ block: "center" }); } catch { /* no DOM */ } });
+}
+try { if (typeof window !== "undefined") { window.addEventListener("hashchange", openNightLink); setTimeout(openNightLink, 0); } } catch { /* no DOM */ }
 ACTIONS["v2-night-filter"] = (el) => { night.filter = el.dataset.f; const s = sheetById("v2-night"); if (s) s.update(); };
+
+/* ---------- Watch value: each live game's 0-100 and its one-line why (read only) ---------- */
+const watchS = { data: null, timer: null };
+async function loadWatch() {
+  try { watchS.data = await api("/api/v2/watch"); } catch (e) { watchS.data = { error: e.message }; }
+  const s = sheetById("v2-watch");
+  if (s) { s.update(); clearTimeout(watchS.timer); watchS.timer = setTimeout(loadWatch, 10000); }
+}
+const CRUNCH_TXT = { entering: "Crunch soon", in: "Crunch", leaving: "Crunch ending" };
+function watchSheet() {
+  const d = watchS.data;
+  if (!d) return `<h3>Watch value</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Watch value</h3><p class="lead">${esc(d.error)}</p>`;
+  const gs = arr(d.games);
+  if (!gs.length) return `<h3>Watch value</h3><p class="lead">No live games right now.</p>`;
+  const note = d.source === "learned" ? "The Noggin's learned watch value, updated every few seconds."
+    : "Preview: today's priority score until the learned watch value ships.";
+  return `<h3>Watch value</h3><p class="lead">${esc(note)}</p>
+    <div class="v2-wv">${gs.map((g) => `<div class="v2-wv-row${g.game_id === d.current ? " on" : ""}">
+      <div class="v2-wv-top"><span class="m ell">${esc(g.matchup)}</span>${g.game_id === d.current ? `<span class="tag tag--kind">On TV</span>` : ""}${g.crunch_state ? `<span class="tag tag--fail">${esc(CRUNCH_TXT[g.crunch_state] || "Crunch")}</span>` : ""}${g.is_break ? `<span class="tag">Break</span>` : ""}<b>${num(g.wv)}</b></div>
+      <div class="v2-wv-bar"><i style="width:${Math.max(2, Math.min(100, g.wv))}%"></i></div>
+      ${g.context ? `<div class="v2-ev-why v2-ctx">${esc(g.context)}</div>` : ""}${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}${g.stakes_line ? `<div class="v2-stakes${g.stakes_rough ? " v2-stakes--pending" : ""}">${icon("target")}${esc(g.stakes_line)}${g.stakes_rough ? " <small>(rough)</small>" : ""}</div>` : ""}</div>`).join("")}</div>`;
+}
+ACTIONS["v2-watch"] = () => { watchS.data = null; openSheet({ id: "v2-watch", label: "Watch value", full: true, render: watchSheet, onClose: () => clearTimeout(watchS.timer) }); loadWatch(); };
+
+/* ---------- Provenance: which module contributed what to one switch (from its trace) ---------- */
+const prov = { data: null };
+const STAGE_TXT = { decided: "Decided", guarded: "Guard checked", rechecked: "Re-checked", command: "Command sent", picture: "Picture on TV", aborted: "Held back", failed: "Failed" };
+const MOD_TXT = { watch_value: "Watch value", crunch_state: "Crunch state", importance: "Importance", stakes: "Stakes", floors: "Floors", planner: "Planner", playbook: "Playbook", guard: "Guard", control: "Control", decider: "Decider", sync: "Sync (delays)" };
+const short = (v) => (v == null ? "–" : typeof v === "object" ? Object.entries(Array.isArray(v) ? { ...v } : v).filter(([, x]) => x != null && x !== "")
+  .map(([k, x]) => (Array.isArray(v) ? String(typeof x === "object" ? JSON.stringify(x) : x) : `${k}: ${typeof x === "object" ? JSON.stringify(x) : x}`)).join(" · ") : String(v));
+function provSheet() {
+  const d = prov.data;
+  if (!d) return `<h3>Switch trace</h3><p class="lead">Loading…</p>`;
+  if (d.error || d.ok === false) return `<h3>Switch trace</h3><p class="lead">${esc(d.error || d.message || "Not found")}</p>`;
+  const t0 = arr(d.chain).length ? d.chain[0].at : d.ts;
+  return `<h3>Switch trace</h3>
+    <p class="lead">${esc(d.from ? `${d.from} → ${d.to}` : d.to)} · ${esc(fmtTime(d.ts))}${d.source === "stub" ? " · rebuilt from the switch log (no provenance fields yet)" : ""}</p>
+    <div class="v2-why">${arr(d.chips).map((c) => `<span class="v2-chip v2-chip--${attr(c.key)}">${esc(c.label)}</span>`).join("")}</div>
+    <div class="sheet-sec"><h4>Who contributed</h4></div>
+    <div class="v2-prov">${arr(d.parts).map((p) => `<div class="v2-prov-row"><b>${esc(MOD_TXT[p.module] || p.module)}</b><span>${esc(short(p.value))}</span></div>`).join("")}</div>
+    <div class="sheet-sec"><h4>Timeline</h4>${d.has_trace ? "" : "<small>no trace stored</small>"}</div>
+    <div class="v2-prov">${arr(d.chain).map((c) => `<div class="v2-prov-row"><b>${esc(STAGE_TXT[c.stage] || c.stage)} <small>+${(c.at - t0).toFixed(1)} s</small></b><span>${esc(c.component)}${Object.keys(c.detail || {}).length ? " · " + esc(short(c.detail)) : ""}</span></div>`).join("")}</div>`;
+}
+ACTIONS["v2-prov"] = async (el) => {
+  prov.data = null; openSheet({ id: "v2-prov", label: "Switch trace", full: true, render: provSheet });
+  try { prov.data = await api(`/api/v2/provenance?key=${encodeURIComponent(el.dataset.key)}`); } catch (e) { prov.data = { error: e.message }; }
+  const s = sheetById("v2-prov"); if (s) s.update();
+};
+
+/* ---------- North Star trend: each headline line over the harness runs, read-only ---------- */
+const trendS = { data: null, split: "dev" };
+async function loadTrend() {
+  try { trendS.data = await api(`/api/v2/trend?split=${trendS.split}`); } catch (e) { trendS.data = { error: e.message }; }
+  const s = sheetById("v2-trend"); if (s) s.update();
+}
+const STAT = { PASS: "pass", FAIL: "fail" };
+function spark(l) {
+  const pts = arr(l.points).map((p, i) => [i, p.v]).filter(([, v]) => typeof v === "number");
+  if (!pts.length) return `<svg class="v2-spark" viewBox="0 0 100 28"></svg>`;
+  const vs = pts.map(([, v]) => v).concat(l.bar), lo = Math.min(...vs), hi = Math.max(...vs), n = Math.max(1, arr(l.points).length - 1);
+  const y = (v) => (hi === lo ? 14 : 25 - ((v - lo) / (hi - lo)) * 22).toFixed(1), x = (i) => ((i / n) * 100).toFixed(1);
+  return `<svg class="v2-spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
+    <line x1="0" x2="100" y1="${y(l.bar)}" y2="${y(l.bar)}" class="v2-spark-bar"/>
+    <polyline points="${pts.map(([i, v]) => `${x(i)},${y(v)}`).join(" ")}" class="v2-spark-line"/>
+    <circle cx="${x(pts[pts.length - 1][0])}" cy="${y(pts[pts.length - 1][1])}" r="2.2" class="v2-spark-dot"/></svg>`;
+}
+function trendSheet() {
+  const d = trendS.data;
+  if (!d) return `<h3>How close to perfect</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>How close to perfect</h3><p class="lead">${esc(d.error)}</p>`;
+  const tabs = [["dev", "Dev nights"], ["locked", "Locked test nights"]].map(([k, l]) =>
+    `<button class="v2-day" data-act="v2-trend-split" data-f="${k}" aria-pressed="${trendS.split === k}">${l}</button>`).join("");
+  if (!d.runs) return `<h3>How close to perfect</h3><div class="v2-days">${tabs}</div><p class="lead">No North Star runs yet.</p>`;
+  const fmt = (v) => (typeof v === "number" ? (Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2)).replace(/\.0+$/, "") : "–");
+  const rows = arr(d.lines).map((l) => `<div class="v2-trend">
+      <div class="v2-trend-top"><span class="m">${esc(l.label)}</span><span class="tag tag--${STAT[l.status] || "kind"}">${esc(l.status || "–")}</span></div>
+      <div class="v2-trend-mid">${spark(l)}<div class="v2-trend-num"><b>${fmt(l.latest)}</b><small>bar ${fmt(l.bar)}${l.gap ? ` · ${fmt(l.gap)} to go` : ""}</small>
+      ${typeof l.better === "number" && l.better !== 0 ? `<small class="${l.better > 0 ? "up" : "down"}">${l.better > 0 ? "▲" : "▼"} ${fmt(Math.abs(l.better))} since first run</small>` : ""}</div></div></div>`).join("");
+  return `<h3>How close to perfect</h3>
+    <div class="v2-days">${tabs}</div>
+    <div class="v2-tiles"><div class="stile"><b>${num(d.passing)}/${num(arr(d.lines).length)}</b><span>Lines passing</span></div>
+      <div class="stile"><b>${num(d.runs)}</b><span>Runs</span></div>
+      <div class="stile"><b>${esc(String(d.commit || "–"))}</b><span>${esc(String(d.ts || ""))}</span></div></div>
+    <div class="v2-trends">${rows}</div>`;
+}
+ACTIONS["v2-trend"] = () => { trendS.data = null; openSheet({ id: "v2-trend", label: "How close to perfect", full: true, render: trendSheet }); loadTrend(); };
+ACTIONS["v2-trend-split"] = (el) => { trendS.split = el.dataset.f; trendS.data = null; const s = sheetById("v2-trend"); if (s) s.update(); loadTrend(); };
+
+/* ---------- Night scorecard: the release gate's per-night lines and their trend ---------- */
+const scS = { data: null };
+function scorecardSheet() {
+  const d = scS.data;
+  if (!d) return `<h3>Night scorecard</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Night scorecard</h3><p class="lead">${esc(d.error)}</p>`;
+  if (!arr(d.nights).length) return `<h3>Night scorecard</h3><p class="lead">No night reports yet: the supervisor writes one after 6 AM ET.</p>`;
+  const fmt = (v) => (typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(1)) : "–");
+  const ST = { PASS: "pass", FAIL: "fail", OVER: "would" };
+  const rows = arr(d.lines).map((l) => `<div class="v2-trend">
+      <div class="v2-trend-top"><span class="m">${esc(l.label)}${l.hard ? " <small>(hard)</small>" : ""}</span><span class="tag tag--${ST[l.status] || "kind"}">${esc(l.status || "pending")}</span></div>
+      <div class="v2-trend-mid">${spark(l)}<div class="v2-trend-num"><b>${fmt(l.latest)}</b><small>${l.measured ? `${num(l.nights_at_bar)}/${num(l.measured)} nights at ${fmt(l.bar)}` : "not measured yet"}</small></div></div></div>`).join("");
+  return `<h3>Night scorecard</h3>
+    <div class="v2-tiles"><div class="stile"><b>${d.gate == null ? "–" : d.gate ? "Pass" : "Fail"}</b><span>Hard lines, ${esc(d.last || "")}</span></div>
+      <div class="stile"><b>${num(arr(d.nights).length)}</b><span>Nights</span></div></div>
+    <div class="v2-trends">${rows}</div>`;
+}
+ACTIONS["v2-scorecard"] = async () => {
+  scS.data = null; openSheet({ id: "v2-scorecard", label: "Night scorecard", full: true, render: scorecardSheet });
+  try { scS.data = await api("/api/v2/scorecard"); } catch (e) { scS.data = { error: e.message }; }
+  const s = sheetById("v2-scorecard"); if (s) s.update();
+};
+
+/* ---------- Catch-up queue: what the hidden stick holds, tonight's left-game holds, and every catch-up waiting ---------- */
+const cq = { data: null };
+async function loadCatchup() {
+  try { cq.data = await api("/api/v2/catchup"); } catch (e) { cq.data = { error: e.message }; }
+  const s = sheetById("v2-catchup"); if (s) s.update();
+}
+const END_TXT = { resumed: ["pass", "Resumed"], expired: ["fail", "Hit the cap"], lost: ["fail", "Lost"] };
+function catchupSheet() {
+  const d = cq.data;
+  if (!d) return `<h3>Catch-up queue</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Catch-up queue</h3><p class="lead">${esc(d.error)}</p>`;
+  const c = d.counts || {}, h = d.hidden;
+  const dead = (x) => (x === true ? `<span class="tag tag--pass">dead ball now</span>` : x === false ? `<span class="tag tag--kind">in play</span>` : "");
+  const hid = h ? `<div class="v2-led"><div class="v2-led-top"><b>Hidden stick</b><span class="m">${esc(h.matchup || "nothing")}</span></div>
+      <div class="v2-led-nums"><span><b>${h.behind_s ? esc(fmtDur(h.behind_s)) : "live"}</b> behind live</span><span><b>${h.ready ? "ready" : "loading"}</b></span></div>${dead(h.dead_now)}</div>` : `<p class="lead">One stick only: nothing can be held.</p>`;
+  const q = arr(d.queue).map((m) => `<div class="v2-ev"><span class="v2-ev-ic">${icon(m.mine ? "star" : "replay")}</span><div style="min-width:0">
+      <div class="v2-ev-top"><span class="m">${esc(m.matchup)}</span><span class="t">${esc(fmtDur(m.ago_s))} ago</span></div>
+      <div class="v2-ev-why">${esc(m.label || m.kind)}${m.due_in_s != null ? ` · replay within ${esc(fmtDur(m.due_in_s))}` : ""}</div>
+      <div>${m.must ? `<span class="tag tag--fail">missed for another big play</span> ` : ""}${m.mine ? `<span class="tag tag--pass">your team</span> ` : ""}${dead(m.dead_now)}</div></div></div>`).join("");
+  const holds = arr(d.holds).map((x) => `<div class="v2-ms"><span class="tag tag--${x.open ? "kind" : (END_TXT[x.end] || ["kind"])[0]}">${x.open ? "holding" : esc((END_TXT[x.end] || [, "ended"])[1])}</span>
+      <span>${esc(x.matchup)} <small>held ${esc(fmtTime(x.held_at))} · ${esc(fmtDur(x.age_s))} behind${x.ended_at ? ` · ended ${esc(fmtTime(x.ended_at))}` : ""}</small></span></div>`).join("");
+  const on = d.on_screen;
+  // crunch vs crunch at a glance (multiview stub): the TV's game live, the other held behind it on the hidden stick
+  const mv = on && h && h.game_id && h.game_id !== on.game_id ? `<div class="v2-mv" role="img" aria-label="${attr(`${on.matchup} live on the TV, ${h.matchup} held ${fmtDur(h.behind_s || 0)} behind`)}">
+      <div class="v2-mv-tile v2-mv-tile--live"><small>On the TV · live</small><b>${esc(on.matchup)}</b></div>
+      <div class="v2-mv-tile"><small>Held · ${h.behind_s ? esc(fmtDur(h.behind_s)) + " behind" : "at the live edge"}</small><b>${esc(h.matchup)}</b></div></div>` : "";
+  return `<h3>Catch-up queue</h3>${mv}
+    <div class="v2-tiles"><div class="stile"><b>${num(c.queued)}</b><span>Waiting</span></div>
+      <div class="stile"><b>${num(c.yours)}</b><span>Your team</span></div>
+      <div class="stile"><b>${num(c.resumed)}/${num(c.held)}</b><span>Left-game holds resumed</span></div></div>
+    ${hid}
+    <h4>Waiting to be caught up</h4>${q || `<p class="lead">Nothing waiting.</p>`}
+    <h4>Tonight's left-game holds</h4><div class="v2-mss">${holds || `<p class="lead">None yet (STK-07 holds the game we leave at its dead ball).</p>`}</div>`;
+}
+ACTIONS["v2-catchup"] = () => { cq.data = null; openSheet({ id: "v2-catchup", label: "Catch-up queue", full: true, render: catchupSheet }); loadCatchup(); };
+
+/* ---------- Live night: the morning check that last night became gold data (auto-log, provenance, held, report) ---------- */
+const cap = { data: null, day: "", report: null };
+const shiftDay = (d, n) => { const t = new Date(`${d}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+async function loadCapture() {
+  try { cap.data = await api(`/api/v2/capture${cap.day ? `?day=${cap.day}` : ""}`); if (cap.data && cap.data.night) cap.day = cap.data.night; } catch (e) { cap.data = { error: e.message }; }
+  const s = sheetById("v2-capture"); if (s) s.update();
+}
+function captureSheet() {
+  const d = cap.data;
+  if (!d) return `<h3>Live night</h3><p class="lead">Loading…</p>`;
+  if (d.error || d.ok === false) return `<h3>Live night</h3><p class="lead">${esc(d.error || d.message)}</p>`;
+  if (cap.report != null) return `<h3>Night report · ${esc(d.night)}</h3><button class="v2-day" data-act="v2-capture-back">Back</button><pre class="v2-report">${esc(cap.report)}</pre>`;
+  const nav = `<div class="v2-days"><button class="v2-day" data-act="v2-capture-day" data-n="-1">◀ ${esc(shiftDay(d.night, -1))}</button>
+    <button class="v2-day" aria-pressed="true">${esc(d.night)}</button><button class="v2-day" data-act="v2-capture-day" data-n="1">${esc(shiftDay(d.night, 1))} ▶</button></div>`;
+  const checks = arr(d.checks).map((c) => `<div class="v2-ms"><span class="tag tag--${c.ok ? "pass" : "fail"}">${c.ok ? "yes" : "no"}</span><span>${esc(c.label)}</span></div>`).join("");
+  const a = d.autolog, kv = (k, v) => `<span><b>${v == null ? "–" : esc(String(v))}</b> ${esc(k)}</span>`;
+  const auto = a ? `<div class="v2-led"><div class="v2-led-nums">${kv("cuts graded", a.cuts_graded)}${kv("mid-play entries", a.entries_mid_play)}${kv("switch p95 s", a.switch_p95_s)}${kv("picture ≤ 3 s", a.picture_within_3s)}${kv("press→TV p95 s", a.press_to_tv_p95_s)}${kv("mid-play leaves", a.leaves_mid_play)}</div>
+      <small>${Object.entries(a.rows || {}).map(([k, n]) => `${esc(k)} ${num(n)}`).join(" · ")}</small></div>` : `<p class="lead">No auto-log yet: the supervisor collects it after 6 AM ET.</p>`;
+  const prov = arr(d.provenance_keys).length ? arr(d.provenance_keys).map((p) => `<span class="chip">${esc(MOD_TXT[p.module] || p.module)} ${num(p.n)}</span>`).join(" ") : `<span class="m">No provenance yet (lane 3's traces).</span>`;
+  const h = d.held || {}, now = Object.entries(h.now || {}), log = Object.entries(h.log || {});
+  return `<h3>Live night</h3>${nav}
+    <div class="v2-tiles"><div class="stile"><b>${d.gold ? "Gold" : "Not yet"}</b><span>All checks</span></div>
+      <div class="stile"><b>${num(d.with_provenance)}/${num(d.switches)}</b><span>Switches with provenance</span></div>
+      <div class="stile"><b>${num(d.with_trace)}</b><span>With a trace</span></div></div>
+    <div class="v2-mss">${checks}</div>
+    <h4>Auto-log</h4>${auto}
+    <h4>Who spoke (provenance)</h4><div class="v2-chips">${prov}</div>
+    <h4>Held buffer</h4><p class="lead">${now.length ? now.map(([t, s]) => `${esc(t)} held ${num(s)} s behind live.`).join(" ") : "Nothing held right now."}${log.length ? ` Log: ${log.map(([k, n]) => `${esc(k)} ${num(n)}`).join(", ")}.` : ""}</p>
+    ${d.report ? `<button class="btn btn--ghost" data-act="v2-capture-report">${icon("replay")}Open the night report</button>` : `<p class="lead">No night report for this night.</p>`}`;
+}
+ACTIONS["v2-capture"] = () => { cap.data = null; cap.day = ""; cap.report = null; openSheet({ id: "v2-capture", label: "Live night", full: true, render: captureSheet }); loadCapture(); };
+ACTIONS["v2-capture-day"] = (el) => { cap.day = shiftDay(cap.day, Number(el.dataset.n)); cap.data = null; cap.report = null; const s = sheetById("v2-capture"); if (s) s.update(); loadCapture(); };
+ACTIONS["v2-capture-report"] = async () => {
+  try { const r = await api(`/api/v2/capture/report?day=${cap.day}`); cap.report = r.text || "(empty)"; } catch (e) { cap.report = e.message; }
+  const s = sheetById("v2-capture"); if (s) s.update();
+};
+ACTIONS["v2-capture-back"] = () => { cap.report = null; const s = sheetById("v2-capture"); if (s) s.update(); };
+
+/* ---------- Data ledger + NFM status: tokens per league, real vs synthetic, and the model's milestones ---------- */
+const ledgerS = { data: null };
+const MS_TAG = { done: "pass", running: "kind", next: "kind", blocked: "fail" };
+function ledgerSheet() {
+  const d = ledgerS.data;
+  if (!d) return `<h3>Data + NFM</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Data + NFM</h3><p class="lead">${esc(d.error)}</p>`;
+  const big = (v) => (typeof v !== "number" ? "PENDING" : v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e5 ? `${(v / 1e6).toFixed(1)}M` : Math.round(v).toLocaleString());
+  const pct = (v) => (typeof v === "number" ? `${Math.round(v * 100)}%` : "–");
+  const t = d.totals || {}, nfm = d.nfm || {};
+  const rows = arr(d.rows).filter((r) => !r.pending || r.source).map((r) => `<div class="v2-led">
+      <div class="v2-led-top"><b>${esc(String(r.league).toUpperCase())}</b><span class="m">${esc(r.source || "source pending")}${r.license ? ` · ${esc(r.license)}` : ""}</span></div>
+      <div class="v2-led-nums"><span><b>${big(r.real_tokens)}</b> real</span><span><b>${big(r.synthetic_tokens)}</b> synthetic</span>
+        <span><b>${big(r.windows)}</b> windows</span><span><b>${pct(r.crunch_share)}</b> crunch</span></div>
+      ${r.seasons || r.games ? `<small>${esc(r.seasons || "")}${r.games ? ` · ${big(r.games)} games` : ""}${r.nights ? ` · ${big(r.nights)} nights` : ""}</small>` : ""}</div>`).join("");
+  const ms = arr(nfm.milestones).map((m) => `<div class="v2-ms"><span class="tag tag--${MS_TAG[m.status] || "kind"}">${esc(m.status)}</span>
+      <span>${esc(m.name)}${m.at ? ` <small>${esc(m.at)}</small>` : ""}${m.note ? `<small>${esc(m.note)}</small>` : ""}</span></div>`).join("");
+  return `<h3>Data + NFM</h3>
+    <p class="lead">${d.pending ? "Waiting on the first factory run: every number below is PENDING until lane 1 writes the ledger." : `Ledger updated ${esc(d.updated || "–")}.`}</p>
+    <div class="v2-tiles"><div class="stile"><b>${big(t.real_tokens)}</b><span>Real tokens</span></div>
+      <div class="stile"><b>${big(t.synthetic_tokens)}</b><span>Synthetic (self-play)</span></div>
+      <div class="stile"><b>${typeof t.pct_of_target === "number" ? `${t.pct_of_target}%` : "–"}</b><span>of ${big(t.tokens_target)} target</span></div></div>
+    <div class="v2-leds">${rows || `<p class="lead">No league has data yet.</p>`}</div>
+    <h4>NFM milestones · ${num(nfm.done)}/${num(arr(nfm.milestones).length)} done</h4>
+    <div class="v2-mss">${ms}</div>`;
+}
+ACTIONS["v2-ledger"] = async () => {
+  ledgerS.data = null; openSheet({ id: "v2-ledger", label: "Data + NFM", full: true, render: ledgerSheet });
+  try { ledgerS.data = await api("/api/v2/ledger"); } catch (e) { ledgerS.data = { error: e.message }; }
+  const s = sheetById("v2-ledger"); if (s) s.update();
+};
 
 /* ---------- Slate preview: tonight ahead, crunch windows and who gets the TV when they collide ---------- */
 const slate = { data: null };
@@ -240,7 +634,8 @@ function slateSheet() {
   const ticks = [];
   for (let t = Math.ceil(a / 3600) * 3600; t < b; t += 3600) ticks.push(`<i style="left:${pct(t)}%"><span>${esc(fmtTime(t).replace(":00", ""))}</span></i>`);
   const rows = gs.map((g) => `<div class="v2-g">
-      <div class="v2-g-name ell">${g.yours ? icon("star", "ico--fill ico--xs") + " " : ""}${esc(g.matchup)} <small>${esc(String(g.league).toUpperCase())}${g.live ? " · live" : " · " + esc(fmtTime(g.start))}</small></div>
+      <div class="v2-g-name ell">${g.yours ? icon("star", "ico--fill ico--xs") + " " : ""}${esc(g.matchup)} <small>${esc(String(g.league).toUpperCase())}${g.live ? " · live" : " · " + esc(fmtTime(g.start))}</small>${g.wv ? `<span class="v2-g-wv" title="${attr(`Watch value ${g.wv.value}${g.wv.rising != null ? `, ${g.wv.rising > 0 ? "+" : ""}${g.wv.rising}/min` : ""}`)}"><b>${num(g.wv.value)}</b>${g.wv.arrow ? `<i class="v2-g-wv--${attr(g.wv.arrow)}">${g.wv.arrow === "up" ? "▲" : "▼"}</i>` : ""}</span>` : ""}</div>
+      ${g.wv && g.wv.why ? `<div class="v2-g-why ell">${esc(g.wv.why)}</div>` : ""}
       <div class="v2-g-track"><b class="v2-g-bar ${g.yours ? "v2-g-bar--yours" : ""}" style="left:${pct(g.start)}%;width:${(((g.end - g.start) / span) * 100).toFixed(2)}%"></b>
         <b class="v2-g-crunch" style="left:${pct(g.crunch[0])}%;width:${(((g.crunch[1] - g.crunch[0]) / span) * 100).toFixed(2)}%" title="Crunch time"></b>
         <i class="v2-now" style="left:${pct(now)}%"></i></div></div>`).join("");
