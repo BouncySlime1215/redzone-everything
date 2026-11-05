@@ -243,10 +243,25 @@ def _plan(ok, rewind=0.0):
     return EntryPlan(ok=ok, rewind_s=rewind, landing=None, why="test")
 
 
-def test_tap_timed_flag_ships_off():
-    """[EXP-741] decider.entry.user_timed is off until lane 3's grade turns it on."""
+def test_tap_timed_defaults_yttv_only():
+    """[EXP-741] on for YouTube TV taps (lane 3: 0 live landings, waits 0-63 s with the 15 s rewind fallback);
+    Prime taps go as before; the score-bug gate only logs (shadow)."""
     from redzone.config import default
-    assert default("decider.entry.user_timed") is False
+    assert default("decider.entry.user_timed") is True
+    assert default("decider.entry.user_timed_targets") == ["youtubetv"]
+    assert default("decider.entry.user_rewind_after_s") == 15
+    assert default("decider.entry.user_rewind_max_s") is None
+    assert default("decider.entry.user_bug_gate") == "shadow"
+
+
+def test_prime_single_tap_unchanged_by_default(engine, monkeypatch):
+    """[EXP-741 scope] a Prime single tap is not timed by default, even with play live in the target."""
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(False))
+    a = _live(engine)[0]
+    engine.scored.setdefault(a, next(iter(engine.scored.values())))
+    d = Decision(time.time(), "switch", a, "you selected this game", State.PAUSED, kind="user")
+    assert engine._tap_lands_dead(d, "prime:abc") is True
+    assert engine._tap_lands_dead(d, "youtubetv:espn") is False
 
 
 def test_tap_timed_waits_for_a_dead_ball_in_the_game_it_joins(engine, monkeypatch):
@@ -270,8 +285,9 @@ def test_tap_timed_off_changes_nothing_and_go_now_still_cuts_mid_play(engine, mo
     monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(False))   # play live in the target
     a = _live(engine)[0]
     d = Decision(time.time(), "switch", a, "you selected this game", State.PAUSED, kind="user")
+    engine.cfg.update({"decider": {"entry": {"user_timed": False}}})
     assert engine._tap_lands_dead(d, "youtubetv:espn") is True          # flag off
-    engine.cfg.update({"decider": {"entry": {"user_timed": True}}})
+    engine.cfg.update({"decider": {"entry": {"user_timed": True, "user_timed_targets": []}}})
     first, cut, forced = _submit_one(engine, monkeypatch, force=True)   # the second "Go now" tap
     assert (cut, forced) == (True, True)
     first, cut, forced = _submit_one(engine, monkeypatch, force=False, dead_ball_after=True)
@@ -282,7 +298,6 @@ def test_tap_rewind_fallback_after_grace(engine, monkeypatch):
     """[EXP-741 B] decider.entry.user_rewind_after_s: a tap that needs a rewind waits out the grace, then
     goes with that rewind armed on the switch at the cut (lane 3: no-rewind taps waited > 180 s)."""
     from redzone.config import default
-    assert default("decider.entry.user_rewind_after_s") is None        # ships off
     engine.cfg.update({"decider": {"entry": {"user_timed": True, "user_rewind_after_s": 15}}})
     a = _live(engine)[0]
     engine.scored.setdefault(a, next(iter(engine.scored.values())))
@@ -313,7 +328,6 @@ def test_arm_entry_rewind_sets_the_hidden_seek_only_on_the_hidden_cue():
 def test_tap_rewind_cap_keeps_waiting(engine, monkeypatch):
     """[EXP-741 D] decider.entry.user_rewind_max_s: a tap never rewinds further than the cap."""
     from redzone.config import default
-    assert default("decider.entry.user_rewind_max_s") is None
     engine.cfg.update({"decider": {"entry": {"user_timed": True, "user_rewind_after_s": 15, "user_rewind_max_s": 60}}})
     a = _live(engine)[0]
     engine.scored.setdefault(a, next(iter(engine.scored.values())))
@@ -344,8 +358,7 @@ def test_tap_bug_gate_on_prime(engine, monkeypatch):
     """[EXP-741 E] user_bug_gate on: the hidden stick's bug clock decides a Prime tap; unreadable -> feed plan."""
     from redzone.config import default
     from redzone.screen.scorebug import Bug
-    assert default("decider.entry.user_bug_gate") == "off"
-    engine.cfg.update({"decider": {"entry": {"user_timed": True, "user_bug_gate": "on"}}})
+    engine.cfg.update({"decider": {"entry": {"user_timed": True, "user_bug_gate": "on", "user_timed_targets": []}}})
     a = _live(engine)[0]
     engine.scored.setdefault(a, next(iter(engine.scored.values())))
     d = Decision(time.time(), "switch", a, "you selected this game", State.PAUSED, kind="user")

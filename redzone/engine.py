@@ -501,6 +501,11 @@ class Engine:
                         self.scorebug.reset()
                         break
                     self.scorebug.observe(f["stick"].host, f["target"], f["tune"], f["t0"], bug, tl)
+                    if g is not None and str(for_league(self.cfg, "decider.entry.user_bug_gate", g.league.value,
+                                                        "off") or "off") == "shadow":
+                        # [EXP-741 E shadow] every Prime bug read logged as clock numbers: lane 3 grades
+                        # stopped/running against the play-by-play with no tap ever waiting
+                        self.tap_bug.add(f["target"], f["t0"], bug, visible=f["visible"], why="watch")
             except Exception:
                 log.exception("score bug read failed")
                 self.scorebug.reset()
@@ -2010,6 +2015,9 @@ class Engine:
         lg = getattr(getattr(g, "league", None), "value", None)
         if d.action != "switch" or not for_league(self.cfg, "decider.entry.user_timed", lg, False):
             return True
+        scope = for_league(self.cfg, "decider.entry.user_timed_targets", lg, None) or []
+        if scope and not any(str(target or "").startswith(f"{p}:") for p in scope):
+            return True   # [EXP-741 scope] e.g. [youtubetv]: Prime taps go as before until arm E grades
         if d.target not in self.scored:
             return True
         cands1 = {d.target: Candidate(self.scored[d.target], target)}
