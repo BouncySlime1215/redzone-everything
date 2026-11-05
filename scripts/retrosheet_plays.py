@@ -140,7 +140,7 @@ def fetch_season(year: int, out: Path) -> Path | None:
     games = []
     for row in teams.splitlines():
         t = row.split(",")
-        if len(t) < 2 or t[1] not in ("A", "N") or "all star" in row.lower():
+        if len(t) < 2 or t[1] not in ("A", "N") or t[0] in ("ALS", "NLS") or "all-star" in row.lower() or "all star" in row.lower():
             continue
         time.sleep(MIN_GAP_S)
         txt = _get(MIRROR.format(y=year, name=f"{year}{t[0]}.EV{t[1]}"))

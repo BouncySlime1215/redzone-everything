@@ -51,5 +51,5 @@ def test_grade_runs_end_to_end_on_a_tiny_model():
 
 def test_espn_derived_nba_needs_nicks_yes(tmp_path):
     with pytest.raises(SystemExit, match="ESPN-derived"):
-        W.main(["--out", str(tmp_path), "--leagues", "nba,nfl", "--smoke"])
-    assert "nba" in W.ESPN_DERIVED and min(W.SEASONS["nfl"]) == 2001
+        W.main(["--out", str(tmp_path), "--leagues", "nba_espn,nfl", "--smoke"])
+    assert "nba_espn" in W.ESPN_DERIVED and min(W.SEASONS["nfl"]) == 2001 and "nba" not in W.ESPN_DERIVED

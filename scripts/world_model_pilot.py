@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end.
 
-    python scripts/world_model_pilot.py --out /content/wm [--leagues nfl] [--minutes 60] [--smoke]
+    python scripts/world_model_pilot.py --out /content/wm [--leagues nfl,nba,mlb] [--minutes 60] [--smoke]
 
 Serves: North Star "% of hindsight-oracle value achieved" (the world model the planner searches, master plan v2);
 owner: lane 1 (Noggin training). Plumbing proof for Saturday's ~100M run (Nick, Nov 4 8:00 PM), not the product.
 
-1. Data: public play-by-play from GitHub releases only (nflverse NFL 2001-2024 by default; hoopR NBA only with --allow-espn-derived; see
+1. Data: public play-by-play from GitHub releases only (plan A: nflverse NFL 2001-24, NBA.com cdn NBA 2020-25, Retrosheet MLB 1974-2024; hoopR NBA = nba_espn, only
+   with --allow-espn-derived; see
    docs/data-sources.md), tokenized by scripts/noggin_tokens.py (vocab v1: 6 tokens per event = kind, dt, clock,
    margin, points, stoppage; one BOS per game + both teams). The factory's EVAL_FIRST_NIGHT cut drops every game
    on or after the scorecard window, so no locked or scorecard night is ever downloaded or tokenized.
@@ -41,12 +42,16 @@ import noggin_tokens as T  # noqa: E402
 
 SEED = 7
 # NFL 2025 sits past the factory cut (scorecard + locked window), so it is never fetched
-SEASONS = {"nba": list(range(2019, 2027)), "nfl": list(range(2001, 2025))}
+# Seasons by END year. nba = NBA.com cdn log (catalog yellow, OK; 2020-21 on); mlb = Retrosheet (green, no clocks);
+# nba_espn = hoopR (ESPN-derived, gated below).
+SEASONS = {"nba": list(range(2021, 2026)), "nba_espn": list(range(2019, 2027)), "nfl": list(range(2001, 2025)),
+           "mlb": list(range(1974, 2025))}
 # NFL 1999-2000 lack play wallclocks in nflverse (71% / 17% of gaps read 0 s, vs ~2.5% from 2003 on), so their
 # time-to-next labels are wrong; they start in 2001 (3.7%).
 # hoopR NBA is an ESPN-derived release: Wave 5, default OFF until Nick decides (docs/datasources/sources-catalog.md;
 # Disney's terms bar AI training). It is read only with --allow-espn-derived.
-ESPN_DERIVED = {"nba"}
+ESPN_DERIVED = {"nba_espn"}
+TOKEN_LEAGUE = {"nba_espn": "nba"}          # the vocab's league for each data key
 BREAKS = ("timeout", "two_minute_warning", "end_period", "halftime", "intermission", "review", "injury",
           "pitching_change", "score_break")
 # dt bucket b covers [2^(b/2.6) - 1, 2^((b+1)/2.6) - 1) seconds (noggin_tokens.dt_token); its midpoint in seconds
@@ -56,7 +61,13 @@ DT_MID = np.array([(2 ** (b / 2.6) - 1 + 2 ** ((b + 1) / 2.6) - 1) / 2 for b in 
 # ---------------------------------------------------------------------------------------------- data
 def fetch(league: str, year: int, raw: Path) -> Path | None:
     from redzone.noggin import factory as F
-    url = F.SOURCES[league]["url"].format(y=year)
+    if league == "nba":
+        import nba_cdn_plays
+        return nba_cdn_plays.fetch_season(year - 1, raw)          # cdn files are named by the start year
+    if league == "mlb":
+        import retrosheet_plays
+        return retrosheet_plays.fetch_season(year, raw)
+    url = F.SOURCES[TOKEN_LEAGUE.get(league, league)]["url"].format(y=year)
     dst = raw / league / f"{year}.parquet"
     if not dst.exists():
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -78,13 +89,15 @@ def build_games(leagues, out: Path, smoke: bool) -> list[dict]:
             raw = fetch(lg, y, out / "raw")
             if raw is None:
                 continue
-            info = T.build(lg, raw, y, out / "tokens")
-            arr = np.load(out / "tokens" / lg / f"{y}.npy")
+            tl = TOKEN_LEAGUE.get(lg, lg)
+            info = T.build(tl, raw, y, out / "tokens" / lg)
+            arr = np.load(out / "tokens" / lg / tl / f"{y}.npy")
             for gid, night, off, n, _ in info["index"]:
                 games.append({"league": lg, "gid": gid, "night": night, "tokens": arr[off:off + n]})
             print(f"{lg} {y}: {info['games']} games, {info['tokens']:,} tokens", flush=True)
-            if smoke:
-                games = games[:120]
+            if smoke:                                     # a small slice of each league
+                keep = [g for g in games if g["league"] != lg] + [g for g in games if g["league"] == lg][:120]
+                games = keep
     return games
 
 
@@ -293,7 +306,7 @@ def main(argv=None) -> int:
     import torch
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--leagues", default="nfl")
+    ap.add_argument("--leagues", default="nfl,nba,mlb", help="plan A default; add nba_espn only with Nick's yes")
     ap.add_argument("--allow-espn-derived", action="store_true", help="only once Nick says yes (Wave 5)")
     ap.add_argument("--minutes", type=float, default=60.0, help="training wall-clock budget")
     ap.add_argument("--d", type=int, default=512)

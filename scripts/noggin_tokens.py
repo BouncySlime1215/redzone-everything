@@ -200,6 +200,8 @@ def source_of(league: str, raw: Path) -> str:
         return "nhl-api-web"
     if n.startswith("retro_"):
         return "retrosheet"
+    if n.startswith("cdn_"):
+        return "nba-cdn (shufinskiy/nba_data)"
     if n.endswith(".jsonl.gz"):
         return "espn-site-api"
     return {"nfl": "nflverse", "cfb": "nflverse"}.get(league, "sportsdataverse-hoopR" if league in ("nba", "cbb")
