@@ -144,3 +144,24 @@ def test_training_and_answers_resume_after_a_disconnect(tmp_path):
     assert sorted(ids) == sorted(f"wd-test-{i}" for i in range(6))
     rep = json.loads((out / "watchdog" / "train_report.json").read_text())
     assert rep["complete"] and rep["steps"] == 8 and rep["answered"]["student"]["answered"] == 6
+
+
+def test_watchdog_v81_rows_are_v7_plus_counterfactuals_and_opt_in(tmp_path, monkeypatch):
+    """[EXP-101] RZ_WATCHDOG_TRAIN=v81 swaps in V7's rows + counterfactual rows; valid/test stay the pack's."""
+    import gzip
+
+    from agent.kaggle import student_data as S
+    v7 = [json.loads(x) for x in gzip.open(S.WATCHDOG_TRAIN_V7 / "train.jsonl.gz", "rt")]
+    v81 = [json.loads(x) for x in gzip.open(S.WATCHDOG_TRAIN_V81 / "train.jsonl.gz", "rt")]
+    assert v81[:len(v7)] == v7 and len(v81) - len(v7) >= 2000
+    d = tmp_path / "data" / "watchdog"
+    d.mkdir(parents=True)
+    row = {"messages": [{"role": "system", "content": "s"}, {"role": "user", "content": "u"},
+                        {"role": "assistant", "content": "{}"}]}
+    for f in ("train.jsonl", "valid.jsonl", "test.jsonl"):
+        (d / f).write_text(json.dumps(row) + "\n")
+    monkeypatch.delenv("RZ_WATCHDOG_TRAIN", raising=False)
+    assert len(S.watchdog_job(tmp_path)["train"]) == len(v7)
+    monkeypatch.setenv("RZ_WATCHDOG_TRAIN", "v81")
+    j = S.watchdog_job(tmp_path)
+    assert len(j["train"]) == len(v81) and len(j["valid"]) == 1 and len(j["test"]) == 1

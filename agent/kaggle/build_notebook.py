@@ -55,10 +55,13 @@ def build(src: Path, dst: Path) -> None:
 # filled in when the notebook is copied to kaggle-inputs (the pack's own commit).
 COLAB = {
     "v8_watchdog_l4": dict(TITLE="V8 watchdog, uncapped (EXP-085): the V8 run stopped it at step ~450 of 1436.",
-                           GPU="L4", JOBS="watchdog", ANSWERS="", SESSION_H="2.5", STUDENT_H="2.2", EPOCHS=""),
+                           GPU="L4", JOBS="watchdog", ANSWERS="", SESSION_H="2.5", STUDENT_H="2.2", EPOCHS="", WATCHDOG_TRAIN=""),
+    "v81_watchdog_l4": dict(TITLE="V8.1 watchdog (EXP-101): V7's rows + counterfactual rows on the conditional kinds.",
+                            GPU="L4", JOBS="watchdog", ANSWERS="", SESSION_H="2.5", STUDENT_H="2.2", EPOCHS="",
+                            WATCHDOG_TRAIN="v81"),
     "v82_students_l4": dict(TITLE="V8.2 students (EXP-087): the full recipe on the new teacher labels.",
                             GPU="L4", JOBS="game-reasoner,watchdog", ANSWERS="__ANSWERS__", SESSION_H="4.5",
-                            STUDENT_H="4.0", EPOCHS=""),
+                            STUDENT_H="4.0", EPOCHS="", WATCHDOG_TRAIN=""),
 }
 
 

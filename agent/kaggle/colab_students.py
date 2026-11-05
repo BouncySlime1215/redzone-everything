@@ -17,6 +17,7 @@ ANSWERS_URL = "__ANSWERS__"     # public teacher answers (.zip with teacher_out.
 SESSION_H = float("__SESSION_H__")       # the whole run's budget
 STUDENT_H = float("__STUDENT_H__")       # of it, the students (train + answer every test row); grading gets the rest
 EPOCHS = "__EPOCHS__"           # "" = the recipe's own (game-reasoner 2, watchdog 1)
+WATCHDOG_TRAIN = "__WATCHDOG_TRAIN__"   # "" = V7's rows; "v81" = + counterfactual rows (EXP-101)
 CKPT_MIN = 30
 CU_PER_H = {"A100": 13.0, "L4": 5.0, "T4": 2.0}    # Colab compute units per GPU-hour (Nov 2026)
 
@@ -96,7 +97,8 @@ env = {**os.environ,
        "RZ_PREV_ROOTS": "",                        # only this run's own adapters are ever reused
        "RZ_CODE_PACK": f"kaggle-inputs@{PIN}",
        "PYTHONUNBUFFERED": "1",
-       **({"RZ_EPOCHS": EPOCHS} if EPOCHS else {})}
+       **({"RZ_EPOCHS": EPOCHS} if EPOCHS else {}),
+       **({"RZ_WATCHDOG_TRAIN": WATCHDOG_TRAIN} if WATCHDOG_TRAIN else {})}
 log_path = f"{RUN}/run_{time.strftime('%Y%m%d-%H%M')}.log"
 with open(log_path, "w") as log:
     p = subprocess.Popen([sys.executable, "-u", f"{CODE}/code/agent/kaggle/teacher_distill.py"], cwd=RUN,
