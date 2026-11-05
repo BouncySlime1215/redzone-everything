@@ -2091,6 +2091,21 @@
     "Mid-play entries (per 100 landings)"
    ]
   },
+  "redzone/lab/delaygrade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/reactgrade.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/delay_grade.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-803] Delay precision grader, matching EXP-803's pre-registration exactly (#296, rescoped Cycle 19 #295).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/evaldata.py": {
    "contracts": [
     "ConfigSwitchPaths"
@@ -2443,6 +2458,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/lab/delaygrade.py",
     "scripts/reactgrade.py"
    ],
    "owner": "unowned",
@@ -4638,6 +4654,19 @@
     "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)"
    ]
   },
+  "scripts/delay_grade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/delaygrade.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-803] Grade delay-precision arms against the base arm (redzone/lab/delaygrade.py).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/delay_report.py": {
    "contracts": [],
    "inputs": [
@@ -5865,10 +5894,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 319,
+  "modules": 321,
   "orphans": 14,
-  "unowned": 159,
-  "untagged": 263
+  "unowned": 161,
+  "untagged": 265
  },
  "version": 1
 }
