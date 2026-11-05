@@ -29,6 +29,7 @@ grades the features themselves.
 | F4 | **Two-harness grading** (tonight's lesson) | Every league set is graded on the honest harness *and* the live-sync (`--resync`) harness, and a set promotes only if it passes both. RC6.2's NBA set passed one harness and lost your-team crunch on the other. | CI + integrator review |
 | F5 | **Off-policy grading of every logged night** | Each live night (`data/live_nights`, decision records) is replayed through the candidate brain on that night's real play-by-play and graded against live and the oracle on the same lines. Once exploration is on (Friday, flag, ≤5%, propensity logged), importance-weighted and doubly robust estimates are added with night-bootstrap CIs. | Kaggle nightly, after each night |
 | F6 | **Experiment writer** | Each cycle, it turns gaps on the scorecard (the worst FAIL lines, ranked by the roadmap's gap score) into pre-registered experiment rows and edge-case sets for the lanes to pick up. | Integrator cycle (hourly) |
+| F8 | **License-tag check** (Nick, Nov 4 11:20 PM: data B) | CI fails if any dataset manifest, Kaggle pack, or model card (grades.json) built from a restrictive-terms source (ESPN, hoopR, NHL api-web, Statcast...) lacks `"license": "personal-use, not for commercial release"`. Sources are listed in `docs/datasources`. | CI, every PR |
 | F7 | **Brain-change hook** | A `factory` CI job on any PR touching `redzone/noggin`, `redzone/decider` or `league_overrides`. It runs F2 + F3 (small) + F4 and posts one delta table on the PR. | CI, every PR |
 
 "24/7" means the scripts and scheduled jobs run around the clock. The agent work (F6, grader reviews) runs in the
@@ -42,7 +43,7 @@ integrator's hourly cycle, inside the usage brake (pause at 88%).
    `grading_check.py` G4 (pins may only go up), as grader freeze v12.
 3. **Thu–Fri.** F3: a small CI edge set (benched source, stick offline, lag spike, Prime cold), then the full set on
    Kaggle.
-4. **Fri.** F5 on Wednesday's and Thursday's live nights (gold capture). F7 CI job.
+4. **Fri.** F8 license-tag check (as soon as lane 1's manifests carry the field). F5 on Wednesday's and Thursday's live nights (gold capture). F7 CI job.
 5. **Sat.** F6 runs every cycle.
 
 ## First sources (for F1 and F5; all already in the repo)
