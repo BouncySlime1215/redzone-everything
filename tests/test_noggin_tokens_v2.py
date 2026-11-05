@@ -69,3 +69,23 @@ def test_retrosheet_plays_keep_the_v2_extras():
     assert p["x"] == {"batter": "bat01", "pitcher": "p1", "balls": 3, "strikes": 2, "pitches": 5, "bat_home": False}
     toks, new, der = V2.extras(p["x"], V2.FIELDS["mlb"], {"pitches": [3.0, 6.0]})
     assert len(toks) == 12 and (new, der) == (12, 0)
+
+
+def test_play_table_shard_tokenizes_with_train_only_edges(tmp_path):
+    rows = []
+    for gi in range(10):
+        for i in range(12):
+            rows.append({"source": "statsbomb", "sport": "soccer", "league": "x_league", "game_id": f"g{gi}",
+                         "night": f"202401{gi + 1:02d}", "seq": i, "home": "A", "away": "B", "period": 1 + i // 6,
+                         "elapsed_s": float(i * 60), "wall_ts": None, "home_score": i // 10, "away_score": 0,
+                         "kind": "pass" if i % 2 else "shot", "stop": "none", "side": "home", "possession": "",
+                         "actor_id": f"p{i}", "x": i / 12 + gi, "y": 0.5, "license": "StatsBomb terms"})
+    src = tmp_path / "statsbomb" / "x_league" / "2024.parquet"
+    src.parent.mkdir(parents=True)
+    pd.DataFrame(rows).to_parquet(src)
+    info = V2.build_table(src, tmp_path / "out")
+    assert info["games"] == 10 and info["events"] == 120 and info["train_before"] == "20240109"
+    assert max(info["edges"]["x"]) < 8 and "possession" not in info["edges"]          # fit on nights before the cut
+    assert info["license"] == V2.PERSONAL and info["ledger"]["base"] == 10 * (4 + 72)
+    arr = np.load(tmp_path / "out" / "x_league" / "2024.npy")
+    assert arr.max() < V2.VOCAB_SIZE and V2.BOS2_0 <= arr[0] < V2.VOCAB_SIZE

@@ -49,7 +49,9 @@ CTX_CLOSE = CTX_OPEN + 1
 FIELD0 = CTX_CLOSE + 1
 BKT0 = FIELD0 + FIELD_SLOTS
 CAT0 = BKT0 + BUCKETS
-VOCAB_SIZE = CAT0 + CAT_SLOTS
+LEAGUE_SLOTS = 256                           # BOS for play-table leagues outside v1's 7 (soccer, MiLB, WNBA ...)
+BOS2_0 = CAT0 + CAT_SLOTS
+VOCAB_SIZE = BOS2_0 + LEAGUE_SLOTS
 assert VOCAB_SIZE < 65536
 
 KIND_LO, KIND_HI = V1.KIND0, V1.DT0          # a KIND id starts every event
@@ -308,6 +310,101 @@ def build(league: str, raw: Path, year: int, out: Path, facts_dir: Path | None =
     return info
 
 
+# ---------------------------------------------------------------------------------------- crew A play table (#259)
+TABLE_PERIOD_S = {"soccer": 2700.0, "basketball": 600.0, "hockey": 1200.0, "football": 900.0, "cricket": 0.0,
+                  "baseball": 0.0}
+TABLE_FIELDS = {  # play-table column -> (num|cat, new|derived): scripts/pbp/schema.py FIELD_META minus what v1 carries
+    "side": ("cat", "new"), "possession": ("cat", "derived"), "sub_kind": ("cat", "new"), "actor_id": ("cat", "new"),
+    "actor2_id": ("cat", "new"), "x": ("num", "new"), "y": ("num", "new"), "value": ("num", "new"),
+    "outs": ("cat", "derived"), "balls": ("cat", "derived"), "strikes": ("cat", "derived"), "bases": ("cat", "derived"),
+}
+
+
+def table_game(g, sport: str, league: str, fields: dict, edges: dict) -> tuple[np.ndarray, dict]:
+    """One game of crew A's play table -> v2 tokens. v1 group from kind/period/clock/scores/stop; DT from wall_ts,
+    else from elapsed_s within a period (the game clock, as v1 does without wall clocks); a new BOS per league."""
+    import pandas as pd
+    nb = len(V1.BASES) * V1.KIND_SLOTS
+    out = [BOS2_0 + _slot(f"{sport}:{league}", LEAGUE_SLOTS),
+           V1.TEAM0 + _slot(f"{league}:{g.home.iloc[0]}", len(V1.BASES) * V1.TEAM_SLOTS),
+           V1.TEAM0 + _slot(f"{league}:{g.away.iloc[0]}", len(V1.BASES) * V1.TEAM_SLOTS)]
+    per_s = TABLE_PERIOD_S.get(sport) or float(pd.to_numeric(g.elapsed_s, errors="coerce").max() or 0) or None
+    cnt = {"base": 4, "new": 0, "derived": 0, "ctx_new": 0, "ctx_derived": 0}
+    last_w = last_e = last_p = None
+    ph = pa = 0
+    for r in g.to_dict("records"):
+        w = None if _missing(r.get("wall_ts")) else float(r["wall_ts"])
+        per = 1 if _missing(r.get("period")) else int(r["period"])
+        e = None if _missing(r.get("elapsed_s")) else float(r["elapsed_s"])
+        dt = (w - last_w) if w is not None and last_w is not None else (
+            e - last_e if e is not None and last_e is not None and per == last_p else None)
+        last_w, last_e, last_p = w if w is not None else last_w, e if e is not None else last_e, per
+        frac = 0.0 if e is None or not per_s else max(0.0, min(0.999, e / per_s))
+        hs = ph if _missing(r.get("home_score")) else int(r["home_score"])
+        as_ = pa if _missing(r.get("away_score")) else int(r["away_score"])
+        dh, da = max(0, hs - ph), max(0, as_ - pa)
+        ph, pa = hs, as_
+        stop = r.get("stop") or "unknown"
+        out += [V1.KIND0 + _slot(f"{sport}:{r.get('kind') or '?'}", nb), V1.dt_token(dt),
+                V1.CLOCK0 + (max(1, min(V1.MAX_PERIOD, per)) - 1) * V1.CLOCK_BUCKETS + int(frac * V1.CLOCK_BUCKETS),
+                V1.MARGIN0 + V1.MARGIN_CAP + max(-V1.MARGIN_CAP, min(V1.MARGIN_CAP, hs - as_)),
+                V1.PTS0 + (min(7, dh) if dh else 8 + min(7, da) if da else 0),
+                V1.STOP0 + (V1.STOPS.index(stop) if stop in V1.STOPS else V1.STOPS.index("unknown"))]
+        cnt["base"] += 6
+        x, n, d = extras(r, fields, edges)
+        out += x
+        cnt["new"] += n
+        cnt["derived"] += d
+    out.append(V1.EOS)
+    return np.asarray(out, np.uint16), cnt
+
+
+def build_table(src: Path, out: Path, train_before: str | None = None) -> dict:
+    """One crew A shard (<root>/<source>/<league>/<season>.parquet) -> <out>/<league>/<season>.npy + .json."""
+    import pandas as pd
+    df = pd.read_parquet(src)
+    league, season = src.parent.name, src.stem
+    d = Path(out) / league
+    js = d / f"{season}.json"
+    if js.exists() and json.loads(js.read_text()).get("complete"):
+        return json.loads(js.read_text())
+    d.mkdir(parents=True, exist_ok=True)
+    fields = {c: (c, *TABLE_FIELDS[c]) for c in TABLE_FIELDS if c in df and df[c].notna().any()
+              and not (df[c].dtype == object and (df[c] == "").all())}
+    fields = {k: v for k, v in fields.items() if not (df[k].astype(str) == "").all()}
+    if not train_before and len(df):        # default: the world model's own valid start (split(): 80% of nights)
+        nights = sorted(df.night.unique())
+        train_before = nights[int(len(nights) * 0.8)]
+    tr = df[df.night < train_before]
+    edges = fit_edges(tr, fields)
+    df = df.sort_values(["game_id", "seq"], kind="stable")
+    parts, games, off = [], [], 0
+    led = {"base": 0, "new": 0, "derived": 0, "ctx_new": 0, "ctx_derived": 0}
+    sport = str(df.sport.iloc[0]) if len(df) else "?"
+    for gid, g in df.groupby("game_id", sort=False):
+        if len(g) < 10:
+            continue
+        t, c = table_game(g, sport, league, fields, edges)
+        for k in led:
+            led[k] += c[k]
+        parts.append(t)
+        games.append([str(gid), str(g.night.iloc[0]), off, int(len(t)), 0])
+        off += len(t)
+    arr = np.concatenate(parts) if parts else np.zeros(0, np.uint16)
+    np.save(d / f"{season}.npy.tmp", arr)
+    os.replace(d / f"{season}.npy.tmp.npy", d / f"{season}.npy")
+    lic = str(df.license.iloc[0]) if len(df) and "license" in df else ""
+    events = int(sum(is_event_start(arr)))
+    info = {"league": league, "sport": sport, "season": season, "tokens": int(len(arr)), "games": len(games),
+            "events": events, "tokens_per_event": round(len(arr) / max(1, events), 1),
+            "vocab_version": VOCAB_VERSION, "vocab_size": VOCAB_SIZE, "real": True,
+            "source": str(df.source.iloc[0]) if len(df) else "?", "source_license": lic,
+            "license": lic if lic.startswith("open") else PERSONAL, "ledger": led, "edges": edges,
+            "train_before": train_before, "complete": True, "index": games}
+    js.write_text(json.dumps(info))
+    return info
+
+
 def ledger_line(infos: list[dict]) -> str:
     """One ledger line: tokens/play and total, derived and new-information kept apart."""
     tot = sum(i["tokens"] for i in infos)
@@ -319,6 +416,16 @@ def ledger_line(infos: list[dict]) -> str:
 
 
 def main(argv=None) -> int:
+    if (argv or sys.argv[1:])[:1] == ["table"]:                # crew A play-table shards
+        tp = argparse.ArgumentParser()
+        tp.add_argument("cmd")
+        tp.add_argument("srcs", nargs="+", type=Path)
+        tp.add_argument("--out", type=Path, required=True)
+        tp.add_argument("--train-before", default=None)
+        b = tp.parse_args(argv)
+        infos = [build_table(p, b.out, b.train_before) for p in b.srcs]
+        print(ledger_line(infos))
+        return 0
     ap = argparse.ArgumentParser()
     ap.add_argument("league")
     ap.add_argument("raw", type=Path)
