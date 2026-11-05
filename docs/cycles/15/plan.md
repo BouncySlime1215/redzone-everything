@@ -26,7 +26,7 @@
 ## Waiting on Nick
 - **RC7 and sync p95** (the card in the planner thread). RC7's own telemetry is the only way to measure sync. My
   recommendation: ship RC7 Thursday afternoon and grade sync on TNF night, with the sync flag going off if it misses.
-- **NBA keep-or-revert:**
+- **NBA keep-or-revert (now the integrator's RC6.3 card):**
   - #258 is "NBA set + EXP-208 gate", the RC6.3 option.
   - #246 is "live for NBA".
   - Under `--resync`, the NBA set still trails live on big plays seen and crunch live (lane ②).
@@ -37,11 +37,12 @@
 |---|---:|
 | New-information tokens found | **1.41 B** (1.39 B events + 24 M context-new) |
 | Landed so far (StatsBomb, crew A count) | 87 M |
-| Ready this cycle: EuroLeague (34 M), HockeyTech AHL/ECHL/CHL under B (58 M), SportVU 2015-16 (48 M, yellow-B) | 140 M |
+| Ready this cycle: EuroLeague (34 M), SportVU 2015-16 (48 M, yellow-B) | 82 M |
 | Probe: Liiga 7 M. Waits on Nick's key: CFL 1.5 M | 8.5 M |
 | Derived state (zero novelty, counted separately) | 5.7 B |
 
-- **Red this cycle:** the Sports-Reference family (its terms §5 ban bots and AI use).
+- **Red this cycle:** the Sports-Reference family (its terms §5 ban bots and AI use), and HockeyTech AHL/ECHL (the
+  AHL's terms bar bots, the same precedent). HockeyTech stays out unless Nick overrides.
 - **Parked:**
   - F1 timing;
   - AFL (no play-by-play);
@@ -56,10 +57,10 @@
 | ① body | Teacher EXP-086 + EXP-103: their grades.json and CU spent; the all-sources factory pack (~2:37 AM ET) with tags | Saturday's world model for B (~100 M params). #264 (portable trainer, 5B MoE config): keep Saturday at the size the data supports, and treat the 5B config as later work, with any extra CU checked against the reserve first | EXP-022 design for Friday |
 | ② | EXP-205 with crew F's break tables (#250) | A biased-prior knob so EXP-207 (sync carry) can be graded | EXP-209 delay-and-react arms (#265) with ③'s EXP-301 grader (#266); then EXP-056 (#240) |
 | ③ | The Prime press run this afternoon (daytime, Nick's OK) | EXP-301 grader (#266) | Morning gold check (EXP-008) |
-| ④ | The RC7 cut runbook (#243), staged on Nick's sync answer | Land #215 (EXP-003) | EXP-017, v3 locked for Friday |
+| ④ | #243, #215, #219 and #149 are merged (05:05). The RC7 cut, once Nick answers the sync question | EXP-017, v3 locked for Friday | — |
 | ⑤ | #262: `phone.worth` on by default, evaluation only. Its decisions.md line goes in the same PR | EXP-040 rating flow ready for Sunday | EXP-043 follow-ups |
 | Int | Merge the crews' landings (#248, #250, #251, #253, #255, #256, #259, #263) once F8 passes | Freeze graders for EXP-700, 703 and 704 (test writers #249) | Verdicts on #246 / #258 for Nick; the RC7 gate read |
-| A | Land EuroLeague, HockeyTech and SportVU (scout ready list), after #259's converters | MiLB pitch-by-pitch | wehoop |
+| A | Land EuroLeague and SportVU (scout ready list), after #259's converters | MiLB pitch-by-pitch | wehoop |
 | B | #255 first landing; then EXP-090 rows across all six leagues | Wikimedia hourly pageviews | GDELT |
 | C | Clip tags (MLB / NHL, no key) from #248 | YouTube waits on Nick's key | The video-understanding API terms and price check |
 | D | Polymarket history (#253) | The Kalshi license read | The Odds API waits on Nick's key |
