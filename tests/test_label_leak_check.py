@@ -60,13 +60,27 @@ def test_committed_reports_pass_ci():
     assert L.main([]) == 0
 
 
-def test_lock_acc_excluded(monkeypatch):
-    assert {"nfl", "nba", "cbb", "nhl"} <= set(evaluate.LOCK_EXCLUDED)
+def test_lock_acc_outcome_truth_and_exclusions(monkeypatch):
+    assert {"cbb", "cfb", "mlb"} <= set(evaluate.LOCK_EXCLUDED)
     monkeypatch.setattr(evaluate, "LOCK_EXCLUDED", {"cbb": "leak"})
     tgt = {"lock_in": "must_see", "safe_to_leave": "no"}
-    rows = [{"id": f"c{i}", "league": "cbb", "y": 1, "target": tgt} for i in range(5)]
-    rows += [{"id": f"n{i}", "league": "nba", "y": 1, "target": tgt} for i in range(5)]
-    preds = {r["id"]: {"lock_in": "none" if r["league"] == "nba" else "must_see", "safe_to_leave": "no"} for r in rows}
+    rows = [{"id": f"c{i}", "league": "cbb", "y": 1, "y_out": 1, "target": tgt} for i in range(5)]
+    rows += [{"id": f"n{i}", "league": "nba", "y": 1, "y_out": 0, "y_out2": 1, "target": tgt} for i in range(5)]
+    rows += [{"id": f"o{i}", "league": "nba", "y": 1, "target": tgt} for i in range(3)]   # pre-#278 row: no y_out
+    assert evaluate.truth_lock(rows[5]) == "watch"                    # outcome truth, not the crunch-rule target
+    preds = {r["id"]: {"lock_in": "watch" if r["league"] == "nba" else "must_see", "safe_to_leave": "no"} for r in rows}
     s = evaluate.score(rows, preds)
-    assert s["lock_acc"] == 0.0 and s["lock_excluded_rows"] == 5     # CBB's perfect calls don't count
+    assert s["lock_acc"] == 100.0 and s["lock_excluded_rows"] == 8    # 5 CBB (excluded) + 3 without y_out
     assert evaluate.score(rows[:5], preds)["lock_acc"] is None        # a CBB-only card has no lock number
+
+
+def test_every_graded_league_has_passing_label_reports():
+    """A league leaves LOCK_EXCLUDED only with PASSing lock and watch reports (never by hand)."""
+    import json
+    for lg in ("nfl", "cfb", "nba", "cbb", "nhl", "mlb"):
+        if lg in evaluate.LOCK_EXCLUDED:
+            continue
+        for name in ("reasoner_lock", "reasoner_watch"):
+            p = L.REPORTS / f"{name}_{lg}.json"
+            assert p.exists(), p
+            assert L.judge(json.loads(p.read_text()), excluded={})[0] == "PASS", p

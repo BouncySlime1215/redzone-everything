@@ -2087,6 +2087,7 @@
    "kind": "module",
    "outputs": [
     "redzone/lab/backtest.py",
+    "redzone/lab/outcome_label.py",
     "redzone/lab/sportsgrade.py"
    ],
    "owner": "unowned",
@@ -2341,6 +2342,23 @@
     "untagged"
    ]
   },
+  "redzone/lab/outcome_label.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/leverage.py",
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/lab/reasoner_data.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-302] The lock label from REAL outcomes, not from our own clock/crunch rule (Nick, Nov 5 1:50 AM ET).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/prime_mv_fake.py": {
    "contracts": [],
    "inputs": [
@@ -2381,6 +2399,7 @@
    "inputs": [
     "redzone/config.py",
     "redzone/lab/backtest.py",
+    "redzone/lab/outcome_label.py",
     "redzone/lab/sportsgrade.py",
     "redzone/models.py",
     "redzone/reasoner/brief.py",
@@ -2624,6 +2643,7 @@
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/outcome_label.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/sportsdata.py",
@@ -3573,6 +3593,7 @@
     "redzone/lab/leverage.py",
     "redzone/lab/night/run.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/outcome_label.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/sportsdata.py",
@@ -5726,10 +5747,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 311,
+  "modules": 312,
   "orphans": 14,
-  "unowned": 151,
-  "untagged": 256
+  "unowned": 152,
+  "untagged": 257
  },
  "version": 1
 }

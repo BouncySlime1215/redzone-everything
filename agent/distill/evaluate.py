@@ -26,13 +26,13 @@ from agent.distill.teacher import clean_reasoner, eta_s, extract_json
 
 _KEY = re.compile(r"key soon (\d+)%")
 
-# Leagues whose lock_in label is out of every scorecard (grader freeze v17). The graded truth (target.lock_in
-# via export_reasoner_llm.target and gold.py) is must_see whenever the CURRENT crunch flag holds, a fact the
-# model sees, so lock_acc rewards copying our own crunch rule (lane 3, Nov 5). CBB showed it first: context-only
-# AUC 0.960 vs the head's 0.967 (Nick, Nov 5 1:50 AM); NHL's in-window context-only AUC is 0.976. Every league is
-# out until truth_lock comes from real outcomes (EXP-302, y_out) and scripts/label_leak_check.py passes on it.
-_WHY = "lock truth copies the crunch rule (context-only AUC >= 0.95); relabel from real outcomes pending (EXP-302)"
-LOCK_EXCLUDED = {lg: _WHY for lg in ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")}
+# Leagues whose lock_acc is out of every scorecard. v17: the old truth (target.lock_in via gold.py) is must_see whenever
+# the CURRENT crunch flag holds, so lock_acc rewarded copying our crunch rule (CBB context-only AUC 0.960, NBA 0.995;
+# Nick, Nov 5 1:50 AM). v19: truth_lock comes from real outcomes (EXP-302 y_out / y_out2), and a league leaves this
+# list only when docs/label_checks/reasoner_lock_<lg>.json and reasoner_watch_<lg>.json PASS
+# (scripts/label_leak_check.py; a test enforces it). NBA 0.851/0.868, NFL 0.752/0.749, NHL 0.771/0.756 (train/valid).
+_WHY = "no outcome-label (y_out) rows checked yet; the old lock truth copies the crunch rule (context-only AUC >= 0.95)"
+LOCK_EXCLUDED = {lg: _WHY for lg in ("cfb", "cbb", "mlb")}
 
 
 def pct(a, b):
@@ -48,7 +48,18 @@ def big_soon(r: dict) -> bool:
 
 
 def truth_lock(r: dict) -> str:
-    return r["target"]["lock_in"]
+    """Hindsight lock truth from REAL outcomes (EXP-302, grader v19): a lead change/catch or a >= 0.20 win-probability
+    swing within the league horizon N is must_see, within 2N is watch, else none. Never the crunch/clock rule (gold.py
+    stays the student's training target, never grading truth). Rows built before #278 keep the old label and are
+    left out of lock_acc (lock_graded)."""
+    if r.get("y_out") is None:
+        return r["target"]["lock_in"]
+    return "must_see" if r["y_out"] else ("watch" if r.get("y_out2") else "none")
+
+
+def lock_graded(r: dict) -> bool:
+    """Does this row count toward lock_acc? Only outcome-labelled rows in a league whose label check passed."""
+    return r.get("y_out") is not None and r.get("league") not in LOCK_EXCLUDED
 
 
 def truth_safe(r: dict) -> bool:
@@ -124,7 +135,7 @@ def score(rows: list[dict], preds: dict[str, dict | None]) -> dict:
             errs.append(abs(e - float(r["t_big"])))
     pct = lambda a, b: round(100.0 * a / b, 1) if b else None  # noqa: E731
     prec = ms_hit / len(ms) if ms else None
-    lock_rows = [(r, p) for r, p in usable if r.get("league") not in LOCK_EXCLUDED]
+    lock_rows = [(r, p) for r, p in usable if lock_graded(r)]
     return {
         "n": n, "answered_pct": pct(answered, n), "usable_json_pct": pct(len(usable), answered),
         "big_base_rate_pct": pct(base, n),

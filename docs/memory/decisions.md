@@ -764,3 +764,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   is measured, never filled from an assumed lag. EXP-801: tunes land within 3 s of the channel's live edge, with the
   reference pinned per app (YTTV: landing position, measured constant by the overseer; others: E at landing), never
   picked from the data. Sticks print as stick1, stick2 (public repo). Grader freeze v18.
+- 2026-11-05 (integrator, grader v19): **lock truth comes from real outcomes** (lane 3, EXP-302, #278/#283).
+  `evaluate.truth_lock` is must_see when y_out (a lead change/catch or a >= 0.20 win-probability swing within the
+  league's pre-registered horizon N: NBA/CBB 180 s, NFL/NHL 300 s, MLB 600 s), watch when y_out2 (2N), else none;
+  never the crunch/clock rule (gold.py stays the student's training target only). Context-only AUC on train/valid,
+  lock / watch: NBA 0.851 / 0.868, NFL 0.752 / 0.749, NHL 0.771 / 0.756, all < 0.95, so NBA, NFL and NHL lock_acc
+  returns; CFB, CBB and MLB stay out until their reports pass, and rows without y_out never count. A test fails if a
+  league is graded without PASSing lock and watch reports. `redzone/lab/outcome_label.py` joins the freeze.
+  Grader freeze v19.
