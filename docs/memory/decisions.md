@@ -449,3 +449,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   strip lists up to 2 other live games that are late and within one score (the EXP-037 context line), in league
   order, as plain text with no Watch button. Graded by redzone/lab/also_close.py (manual-switch share per night,
   whole nights alternated; bar in docs/lanes/experience.md). Reason: Cycle 11 (#217), playbook P15.
+- 2026-11-05 (lane 5, EXP-026 display): new defaults `phone.catchup_view: false`, `phone.catchup_visible: 2`. With
+  the flag on, the phone's catch-up queue follows the decider's own queue order (what plays next, whatever order the
+  EXP-026 re-run picks), shows at most 2 at once ("+N more waiting"), and is spoiler-safe: "A play you missed", with
+  no names, play type or score until it plays. Reason: Cycle 11 (#217) item 3, playbook P9/P17 (spoiler control,
+  1-2 open threads visible).
