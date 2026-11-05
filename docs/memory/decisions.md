@@ -573,3 +573,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   95% night-bootstrap lower bound, at least 4 rated nights a side, and PENDING otherwise. Nick's ratings stay
   evaluation-only (`tests/test_worth.py` scans noggin/decider/scoring). Note: 4 nights is a thin minimum, so treat an early
   PASS as provisional until 8. Grader freeze v9.
+- 2026-11-05 (Nick, Nov 4 9:45 PM ET, RC7 scope; integrator writes the lines): RC7 ships only if three gates pass on
+  locked nights plus real hardware. (1) `press_to_tv_p95` ≤ 3 s on real presses, with a Prime sub-gate: presses tagged
+  `app: prime` need their own p95 ≤ 3 s over at least 5 presses, and any Prime press that never reaches the TV fails the
+  line. (2) `delay_err_p95` ≤ 2 s per stick, worst stick decides, from `data/sync_truth/*.jsonl` (est vs true seconds
+  behind live from gold data, #140 and YTTV anchors; manual taps are dropped). PASS needs both sticks with ≥ 200 rows
+  over ≥ 2 nights. (3) `mid_break` = 0: an entry that lands in a commercial break with more than 10 s of dead time left
+  before the restart (`cutgrade.BREAK_TAIL_BAR`) is mid-commercial. Mid-play stays its own hard 0. Grader freeze v10.

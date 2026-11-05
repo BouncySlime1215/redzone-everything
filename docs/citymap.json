@@ -1873,7 +1873,8 @@
     "redzone/lab/backtest.py",
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
-    "scripts/eval.py"
+    "scripts/eval.py",
+    "scripts/northstar.py"
    ],
    "owner": "INTEGRATION",
    "role": "Cut-timing scorecard: WHERE in each game we left, and WHERE we landed.",
@@ -4591,6 +4592,7 @@
   "scripts/northstar.py": {
    "contracts": [],
    "inputs": [
+    "redzone/lab/cutgrade.py",
     "redzone/noggin/profile.py"
    ],
    "kind": "entry",
