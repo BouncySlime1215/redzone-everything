@@ -508,3 +508,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   live default, not just leave it out. CFB, CBB and MLB stay ungraded under the global keys.
 - 2026-11-05 (integrator): `league_promotion` now also compares `big_seen_pct`, after lane 2 caught NFL big seen falling
   89 → 78 on a set the old line list would have passed. Grader freeze v6.
+- 2026-11-05 (overseer, 8:40 PM ET), **this replaces the two lines above about the bd3c88f set and EXP-203's live post.** No
+  global settings set goes live through `/api/settings`. Per-league promotion ships as **league-scoped defaults in an RC**,
+  through deploy.py (tests, health watch, rollback):
+  - **RC7**, cut and deployed Thursday afternoon before TNF at 8:15 PM ET, carries:
+    - EXP-203 for NFL only (NFL-scoped keys);
+    - lane 2's league-scoped NBA/NHL set, graded on NBA and NHL;
+    - the Prime pre-tune fix, if it's ready.
+  - CFB, CBB and MLB keep live behavior until they're graded.
+  - Every league-scoped set is graded with `league_promotion` on that league's dev cards and its one locked read.
