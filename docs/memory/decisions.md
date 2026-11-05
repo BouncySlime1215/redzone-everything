@@ -715,3 +715,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   sports-language fine-tune. Kaggle CPU / HF only; stream, never mirror; personal-use tag; raw text only in a private
   Kaggle dataset, never in the public repo. First deliverable: a pre-registered EXP on whether recap-aligned labels raise %
   of oracle (dev first, locked once at the release read); if not, H stays small. H pauses first with C/D/F/G.
+- 2026-11-05 (Nick, 12:25 AM "yes test it"; lane 2 EXP-209): new keys `decider.react.mode` (default "off") and
+  `decider.react.chase` (default false): OFFLINE delay-and-react arms (B react, C hybrid, D hybrid + chase + hidden-stick
+  buffer) for the scorecard only. Live behavior is unchanged; nothing goes live from this test without the normal gate.

@@ -233,6 +233,10 @@ reasoner:                  # live game reasoner (redzone/reasoner): lock_in per 
 
 decider:
   switch_margin: 10
+  react:                   # [EXP-209 delay-and-react, Nick Nov 5 12:25 AM] OFFLINE arms only, never live without the gate
+    mode: "off"            # "off" = the director as it ships; "react" = only replays (no predicted switch); "hybrid" =
+                           # predict only crunch / locked / pre-moment / close-and-late, replay the rest
+    chase: false           # in a react arm, still switch to a big play the feed shows before it airs (arm D)
   entry:
     hold_only: [nhl, nba]     # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
     rewind_only: []      # leagues whose entries land on a dead ball with a rewind when one fits, never wait

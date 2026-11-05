@@ -395,6 +395,7 @@ class Decider:
         cands = self._nfl_priority(cands)
         self._learn_entries(cands)
         self._scan_missed(cands, now)
+        cands = self._react_filter(cands)
         if self.replaying:
             if self.safe_mode or self.user.paused or self.on_screen_at(now) != "replay":
                 self.abort_replay()
@@ -1483,7 +1484,7 @@ class Decider:
         crunch = self._crunch_time(cands, watchable, s_cur, on_break, gate_ok, gate_txt, state, now)
         if crunch:
             return crunch
-        chase = self._chase(watchable, s_cur, now) if gate_ok and not s_cur.lock else None
+        chase = self._chase(watchable, s_cur, now) if gate_ok and not s_cur.lock and self._react_chase() else None
         # [chained visit] Already away from home on a break visit: the game we're visiting can hit its
         # own break. Never let that become the new "home" — a WSH halftime visit to MIN@CLE chained
         # into an OKC visit at CLE's halftime and lost the way back to WSH for 2 hours (Oct 26 replay).
@@ -1600,6 +1601,39 @@ class Decider:
         if now - last > cap_s + d.mu:
             return 0.0
         return max(0.0, until - now)
+
+    # ----- delay-and-react arms (EXP-209, offline test; decider.react.mode, default off) ---------------
+
+    REACT_PENALTY = 1000.0
+
+    def _react_filter(self, cands: dict[str, Candidate]) -> dict[str, Candidate]:
+        """[EXP-209, Nick Nov 5 12:25 AM] Offline arms of "be a few seconds behind and react":
+        "react"  : never switch on a prediction. Other games look unwatchable (score - REACT_PENALTY, no crunch /
+                   lock / pre-moment flags) unless the screen's game has ended; missed plays come back as
+                   catch-up replays (the replay path, unchanged).
+        "hybrid" : predict only where the situation says so (crunch, a locked moment such as red zone / power
+                   play / two-minute drill, a pre-moment, close and late); every other switch is a replay.
+        Off ("off", the default): the director as it ships."""
+        mode = self.cfg.get("decider.react.mode", "off")
+        if mode not in ("react", "hybrid") or self.current not in cands:
+            return cands
+        out = {}
+        for gid, x in cands.items():
+            s = x.scored
+            situational = bool(s.crunch or s.crunch_now or s.lock or s.pre_moment
+                               or getattr(s, "high_leverage", False))
+            if gid == self.current or gid in PSEUDO or (mode == "hybrid" and situational):
+                out[gid] = x
+                continue
+            out[gid] = replace(x, scored=replace(s, score=s.score - self.REACT_PENALTY, crunch=False, crunch_now=False,
+                                                 lock=None, pre_moment=None, imminent=False, high_leverage=False))
+        return out
+
+    def _react_chase(self) -> bool:
+        """Chasing a big play the feed shows before it airs is off in the react arms unless decider.react.chase."""
+        if self.cfg.get("decider.react.mode", "off") not in ("react", "hybrid"):
+            return True
+        return bool(self.cfg.get("decider.react.chase", False))
 
     # ----- chase helpers ------------------------------------------------------
 
