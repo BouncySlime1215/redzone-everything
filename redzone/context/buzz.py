@@ -27,6 +27,7 @@ from urllib.parse import unquote
 import numpy as np
 
 from redzone.context.tokens import PERSONAL_USE, Fact
+from redzone.models import LEAGUE_ORDER
 
 log = logging.getLogger("buzz")
 
@@ -35,10 +36,11 @@ BUZZ_REPO = Path(__file__).resolve().parents[2]
 SEED_CSV = Path(__file__).with_name("teams_seed.csv")
 TEAMS_CSV = BUZZ_REPO / "data/context/teams.csv"
 BUZZ_DIR = BUZZ_REPO / "data/context/buzz"
-BUZZ_LEAGUES = ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")
+# The one-brain league order (redzone.models), minus WCBB, which is off for the product (Nick, Nov 4 7:55 PM).
+BUZZ_LEAGUES = tuple(lg.value for lg in LEAGUE_ORDER if lg.value != "wcbb")
 
 SRC_PV, SRC_ED, SRC_GD = "wikimedia-pageviews", "wikimedia-edits", "gdelt-gkg"
-LICENSE = {
+SOURCE_LICENSE = {
     SRC_PV: f"Wikimedia pageview data CC0; {PERSONAL_USE}",
     SRC_ED: f"Wikimedia EventStreams, CC0 metadata; {PERSONAL_USE}",
     SRC_GD: f"GDELT: free and open, cite The GDELT Project; {PERSONAL_USE}",
@@ -386,7 +388,7 @@ class Signals:
 def _fact(game_id, team, asof, field, value, source) -> Fact | None:
     if value is None or not np.isfinite(value):
         return None
-    return Fact(game_id, team, iso(asof), field, float(value), "new", source, LICENSE[source])
+    return Fact(game_id, team, iso(asof), field, float(value), "new", source, SOURCE_LICENSE[source])
 
 
 def pregame_facts(games: list[dict], S: Signals) -> list[Fact]:

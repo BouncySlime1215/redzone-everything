@@ -4,7 +4,8 @@
 #   push to data-b-run/<from>_<to> -> backfill  -> pushes to data-b-out/backfill-<from>_<to>
 #     (or put scripts/context/buzz_chunk.json {"from","to","max_files","stride","leagues"} on the branch)
 #   workflow_dispatch              -> either mode
-# Note: `schedule` only fires from the default branch, so hourly live starts once Nick merges this there.
+# Note: GitHub fires `schedule` only from the default branch, and we never merge to main, so hourly live
+# runs come from a Kaggle scheduled notebook (or workflow_dispatch) instead; push-triggered backfills work today.
 # Each run first restores the previous state (signals + coverage + facts) from its out branch, so re-runs resume.
 # Only derived numbers are pushed: fact shards, per-team count signals, coverage, teams.csv. No raw files.
 name: context-buzz

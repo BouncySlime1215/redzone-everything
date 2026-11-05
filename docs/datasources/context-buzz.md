@@ -97,7 +97,7 @@ python scripts/context/gdelt_buzz.py backfill --from 2024-01-01 --to 2024-01-08 
 GitHub Actions: push a branch `data-b-run/<from>_<to>` (e.g. `data-b-run/2023-10-01_2023-11-01`), or put
 `scripts/context/buzz_chunk.json` (`{"from","to","max_files","stride","leagues"}`) on any `data-b-run/**`
 branch. Output goes to `data-b-out/backfill-<from>_<to>` (re-push the same branch to resume: covered files
-are skipped). Hourly live (`7 * * * *`) runs from the default branch only and writes `data-b-out/live`.
+are skipped). Hourly live: GitHub fires `schedule` only from the default branch and we never merge to main, so live runs come from a Kaggle scheduled notebook calling `run_buzz.py live` (or a workflow_dispatch); output goes to `data-b-out/live`.
 Both also upload a 30-day artifact. Out branches hold `facts/<league>_<season>.parquet`, the count signals
 and coverage (needed to resume and for baselines), `manifest_<mode>.json` and `meta/teams.csv`.
 
