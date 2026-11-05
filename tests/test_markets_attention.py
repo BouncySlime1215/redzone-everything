@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts" / "markets"))
 
-import attention_labels as A  # noqa: E402
+import market_attention as A  # noqa: E402
 
 
 def test_minutes_and_games(tmp_path):

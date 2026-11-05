@@ -5,7 +5,7 @@ Per game minute: how far the market moved (|dp| over 1 and 5 minutes) and whethe
 total traded volume, live swing count and live range. Derived numbers only: no price levels, no trades, no
 wallets. Kalshi is not used (red). Personal-use, not for commercial release.
 
-    python scripts/markets/attention_labels.py --in out/markets --out out/attention
+    python scripts/markets/market_attention.py --in out/markets --out out/attention
       -> out/attention/market_minutes.csv  (game_key, minute_ts, live, min_from_start, abs_dp_1m, abs_dp_5m)
          out/attention/market_games.csv    (game_key, league, start_ts, volume_usd, live_minutes, swings_3pt, live_range)
 """

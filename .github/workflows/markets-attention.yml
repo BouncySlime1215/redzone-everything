@@ -32,7 +32,7 @@ jobs:
           # a run branch ending in -nba or -nfl runs that league only
           if [[ "$R" =~ -(nba|nfl)$ && "${BASH_REMATCH[1]}" != "${{ matrix.league }}" ]]; then echo "SKIP=1" >> "$GITHUB_ENV"; exit 0; fi
           python scripts/markets/polymarket.py --league ${{ matrix.league }} --start "$START" --end "$END" --out out/markets
-          python scripts/markets/attention_labels.py --in out/markets --out out/attention
+          python scripts/markets/market_attention.py --in out/markets --out out/attention
       - name: push derived labels
         if: always()
         run: |
