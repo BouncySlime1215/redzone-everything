@@ -137,7 +137,8 @@ def _menu_tile(g, out, pattern) -> tuple[bool, dict]:
     bd = next((m.group(0) for t in texts for m in [BDELAY.search(t)] if m), None)
     out.write("menu", tiles=texts[:20], broadcast_delay=bd)
     for i in range(8):
-        if rx.search(ft):
+        if rx.search(ft) and not re.search(r"broadcast|delay", ft, re.I):
+            # never CENTER while the focus text mentions Broadcast delay (Nick hasn't decided to change it)
             g.key("DPAD_CENTER"); time.sleep(2)
             return True, dict(broadcast_delay=bd, steps=i)
         if re.search(r"broadcast", ft, re.I) is None and _on_scrubber(ft):

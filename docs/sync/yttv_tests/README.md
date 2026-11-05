@@ -16,14 +16,20 @@ The bank runs from `docs/sync/yttv_tests` in the repo, as well as from the old s
 - `RZ_REPO` sets the RedZone checkout that holds `data/recordings`. It defaults to the Mac path.
 - `RZ_SYNC` sets the folder with `t1_retune.py` and the reference PNGs (cc_ui.png, a3_cc_focus.png, f1.png, a3_ui.png,
   f2.png, cc_3.png). It defaults to the Nov 4 scratchpad if that still exists, and to `docs/sync` otherwise.
-  **Those files are not in the repo.** The ui and mechanics tests need them, and macOS clears `/private/tmp` on reboot,
-  so check that they exist before tonight.
+- **`t1_retune.py` is now in the repo** at `docs/sync/t1_retune.py` (T4, Nov 5): the same surface the bank imports
+  (`PKG`, `CODES`, `sh`, `read`, `tune`), adb only, no stick addresses. So if macOS cleared `/private/tmp` on reboot,
+  every family still imports. Set `RZ_STICKS=host1,host2` on the Mac as before.
+- **The reference PNGs stay off the public repo.** Only the ui tests' `--dry-run` fixture checks read them; live runs
+  never do. When a PNG is missing, that dry run now ends as `SKIP (fixture_missing)` with exit 0 instead of a crash.
 
-Smoke run, Nov 5 in the cloud: the Nov 4 recordings were the masked sync_probe plus plays. A stand-in `t1_retune` raised
-on any stick call, and none was raised. Results:
-- `run_all.py --dry-run`: 53 of 61 tests exit 0. The 7 ui tests fail only on the missing reference PNGs, and truth_09
-  failed on a missing cache folder, which is now fixed.
-- Every command in "Run order for tonight" resolves. The nbatv deep link is `ykTstVbuNpg` in all four libs.
+Smoke runs, Nov 5 in the cloud (no adb on the box; a stub `adb` logged every call):
+- Test writers (#320): masked sync_probe plus plays, stand-in `t1_retune`: 53 of 61 exit 0 (7 ui = missing PNGs,
+  truth_09 = cache folder, fixed).
+- T4: Nov 4 plays only, the **real** repo `t1_retune`, `--game 401909937 --channel nbatv`: **61 of 61 exit 0, zero adb
+  calls.** The ui_07 clock-to-obs synthetic writes edge rows within half a poll gap of the true tick. truth_01 and
+  ui_05 grade FAIL there only because the cloud can't reach ESPN/NBA cdn and has no sync_probe; step 1 below checks
+  truth_01 for real on the Mac.
+- Every command in "Run order for tonight" resolves. The nbatv deep link is `ykTstVbuNpg` in all libs.
 
 ## What this is
 
@@ -72,7 +78,8 @@ time. Key tests run one at a time on the hidden stick.
    `python3 run_all.py --only ui_10,ui_07,ui_08,ui_02 --channel nbatv --game 401909937 --minutes 8`
    (This needs either auto-switching paused or `--allow-app-active`; see "Needs a decision".)
 6. **After the game (about 1 minute):** truth checks and the report.
-   `python3 run_all.py --only truth_02,truth_04,truth_07,fusion --game 401909937`
+   `python3 run_all.py --only truth_02,truth_04,truth_07,truth_08,truth_11,fusion --game 401909937`
+   (truth_08 and truth_11 read `results/obs.jsonl`, which ui_07 writes in step 5 when its panel is synced to the picture.)
 
 ### Added for tonight (overseer 7:35 AM): the web player's reference clock
 
@@ -127,8 +134,10 @@ The rest follow in `--list` order. mechanics_02 (240 minutes) goes last, and fus
    `--allow-app-active`. That risks the app pre-rolling the standby stick while a test has it paused or rewound.
 2. **Tonight's channel.** The only NBA game with exact truth (pbp timeActual) is on NBA TV at 10 PM.
    Earlier CBB games on ESPN2, truTV and FS1 only have ESPN wallclock truth, at about 2 s p90 for college games. That is good enough to learn whether in-game ad pods exist, but not to grade 1 s accuracy.
-3. **truth_08 and truth_11** (clock-reading to D) need `results/obs.jsonl` rows `{game, period, clock, obs_wall, channel}`.
-   No test writes that file yet, so run_all skips both live. Decide whether ui_07 should write it.
+3. ~~truth_08 and truth_11 need `results/obs.jsonl`.~~ **Done (Nick, 4:20 AM: yes).** ui_07 now writes one row per new
+   (period, clock) the Stats panel shows: `{game, channel, period, clock, obs_wall, obs_sigma, edge, src, panel_mode}`.
+   Rows go to `results/obs.jsonl` only when ui_07's score samples say the panel follows the picture; a realtime panel
+   goes to `obs_realtime.jsonl` and an unproven one to `obs_unverified.jsonl`, so truth_08/11 never grade a feed clock.
 4. **ui_06 captions** toggles CC on the hidden stick (`--enable-cc`). Earlier captures showed no
    caption text in the UI layer, so it ranks low. Keep it or drop it.
 

@@ -269,8 +269,14 @@ def screencap(host: str, path: Path) -> float:
     return (t0 + time.time()) / 2
 
 
+class FixtureMissing(FileNotFoundError):
+    """A dry run's reference PNG (Mac-only, kept off the public repo) is not on this machine."""
+
+
 def fixture(name: str) -> tuple[Path, float]:
     p = FIX[name]
+    if not p.exists():
+        raise FixtureMissing(f"reference PNG {p.name} not in RZ_SYNC={SYNC} (Mac-only; live runs don't need it)")
     return p, p.stat().st_mtime
 
 
@@ -623,6 +629,10 @@ def run(test_id: str, doc: str, live, dry, extra=None) -> int:
     try:
         summ = dry(args, out) if args.dry_run else live(args, g, out)
         out.write("summary", **(summ or {}))
+    except FixtureMissing as e:
+        # dry run only (live never reads fixtures): report SKIP honestly instead of a crash, exit 0
+        out.write("summary", skipped="fixture_missing", why=str(e), pass_=None)
+        print(f"[{test_id}] SKIP dry fixture check: {e}", file=sys.stderr)
     except KeyboardInterrupt:
         out.write("aborted", why="ctrl-c")
     finally:
