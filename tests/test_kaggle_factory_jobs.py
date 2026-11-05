@@ -29,17 +29,18 @@ SCRIPT = ROOT / "scripts" / "kaggle_noggin_factory.py"
 
 def _notebook_defs(data_plan: str = "B"):
     """PLAN and season_job from the notebook script, without running its setup cells. data_plan "B" = every
-    league (red sources too); anything else = the green-only plan (the notebook's default)."""
+    league, restrictive-terms sources too (the notebook's default since Nick's Nov 4 11:20 PM call); "A" = green."""
     tree = ast.parse(SCRIPT.read_text())
-    names = ("PLAN", "APIWEB_BEFORE", "DATA_PLAN", "GREEN")
+    names = ("PLAN", "APIWEB_BEFORE", "DATA_PLAN", "GREEN", "PERSONAL")
     head = [n for n in tree.body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") in names]
     gate = [n for n in tree.body if isinstance(n, ast.If) and getattr(n.test, "id", "") == "GREEN"]
     job = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "season_job")
+    helpers = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("tag", "league_green")]
     env = {**os.environ, "RZ_DATA_PLAN": data_plan}
     ns = {"range": range, "list": list, "os": type("O", (), {"environ": env})}
     exec(compile(ast.Module(head + gate, []), str(SCRIPT), "exec"), ns)
-    keep = [n for n in head if n.targets[0].id == "APIWEB_BEFORE"]
-    return ns["PLAN"], ast.Module(keep + [ast.parse(f"GREEN = {ns['GREEN']}").body[0], job], [])
+    keep = [n for n in head if n.targets[0].id in ("APIWEB_BEFORE", "PERSONAL")]
+    return ns["PLAN"], ast.Module(keep + [ast.parse(f"GREEN = {ns['GREEN']}").body[0], *helpers, job], [])
 
 
 def _basketball_game(league: str, gid: str, start: datetime, home: str, away: str) -> list[dict]:
@@ -182,6 +183,8 @@ def test_season_job_runs_for_every_league_in_plan(tmp_path, monkeypatch):
         assert res.get("tokens", 0) > 0, (league, res)            # NFM event tokens, every league
         info = json.loads(Path(ns["OUT"], "tokens", league, f"{years[0] - 3}.json").read_text())
         assert info["complete"] and info["games"] == 6 and info["events"] > 0
+        assert info["license"] == ("open (green sources only)" if league in ("nfl", "mlb")
+                                   else "personal-use, not for commercial release"), (league, info)
         assert not glob.glob(f"{ns['RAW']}/{league}/*"), "the raw season is deleted after the job"
 
 
@@ -248,10 +251,11 @@ def test_old_nhl_seasons_tokenize_from_apiweb(tmp_path, monkeypatch):
         return True
     monkeypatch.setattr(NA, "fetch_season", fake)
     monkeypatch.delenv("RZ_NHL_APIWEB", raising=False)
-    assert not ns["season_job"]("nhl", 2015, 0, time.time() + 600).get("tokens")   # [#202] off by default (NHL.com ToS)
+    ns["GREEN"] = True                     # plan A (green): api-web stays off without the explicit opt-in
+    assert not ns["season_job"]("nhl", 2015, 0, time.time() + 600).get("tokens")
     shutil.rmtree(ns["OUT"], ignore_errors=True)
     shutil.rmtree(ns["RAW"], ignore_errors=True)
-    monkeypatch.setenv("RZ_NHL_APIWEB", "1")
+    ns["GREEN"] = False                    # plan B (Nick 11:20 PM, personal use): on by default
     res = ns["season_job"]("nhl", 2015, 0, time.time() + 600)
     info = json.loads(Path(ns["OUT"], "tokens", "nhl", "2015.json").read_text())
     assert res["tokens"] > 0 and info["games"] == 2 and info["source"] == "nhl-api-web"   # the eval-window game is dropped
@@ -259,10 +263,10 @@ def test_old_nhl_seasons_tokenize_from_apiweb(tmp_path, monkeypatch):
     assert not glob.glob(f"{ns['RAW']}/nhl/*")
 
 
-def test_green_plan_is_the_default_and_nba_comes_from_the_cdn(tmp_path, monkeypatch):
-    """[#202] Without RZ_DATA_PLAN=B: nflverse NFL, NBA.com cdn NBA, Retrosheet MLB only; hoopR is never fetched."""
+def test_green_plan_a_uses_only_green_sources_and_nba_comes_from_the_cdn(tmp_path, monkeypatch):
+    """RZ_DATA_PLAN=A (a company version): nflverse NFL, NBA.com cdn NBA, Retrosheet MLB only; hoopR never fetched."""
     import nba_cdn_plays as CDN
-    plan, job = _notebook_defs("")
+    plan, job = _notebook_defs("A")
     assert set(plan) == {"nfl", "nba", "mlb"}
     ns = {"OUT": str(tmp_path / "factory"), "RAW": str(tmp_path / "raw"), "SMOKE": False,
           "time": time, "os": os, "json": json, "glob": glob, "dict": dict, "round": round, "bool": bool,
@@ -285,3 +289,11 @@ def test_green_plan_is_the_default_and_nba_comes_from_the_cdn(tmp_path, monkeypa
     info = json.loads(Path(ns["OUT"], "tokens", "nba", f"{years[0] - 3}.json").read_text())
     assert "cdn" in json.dumps(info.get("source", info)).lower(), info
     assert not glob.glob(f"{ns['RAW']}/nba/*"), "the raw season is deleted after the job"
+
+
+def test_default_plan_is_b_and_tagged_personal_use():
+    src = SCRIPT.read_text()
+    assert 'os.environ.get("RZ_DATA_PLAN", "B")' in src
+    assert 'man["license"]' in src and "personal-use, not for commercial release" in src
+    plan, _ = _notebook_defs("B")
+    assert set(plan) == {"nba", "nfl", "nhl", "cbb", "cfb", "mlb"}

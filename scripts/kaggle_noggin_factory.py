@@ -47,10 +47,11 @@ PLAN = {
     "mlb": (list(range(2024, 1973, -1)), 0),   # Retrosheet (green, Wave 1): tokens only, no wall clocks; 2025+ held out
 }
 APIWEB_BEFORE = 2020   # NHL seasons before 2019-20 tokenize from api-web (docs/data-sources.md)
-# [#202, Nick's A/B call] Green-only unless RZ_DATA_PLAN=B: hoopR NBA/CBB are ESPN-derived and NHL/CFB read
-# ESPN's site API, all red in the catalog for training. Green = nflverse NFL, NBA.com cdn NBA (shufinskiy mirror,
-# seasons ending 2021-26), Retrosheet MLB.
-DATA_PLAN = os.environ.get("RZ_DATA_PLAN", "")
+# [Nick 11:20 PM Nov 4: DATA = B, personal use only] Every source by default: hoopR NBA/CBB (ESPN-derived), ESPN
+# NHL/CFB summaries, NHL api-web for old NHL seasons. Everything built is tagged LICENSE ("personal-use, not for
+# commercial release"); a company version retrains green (RZ_DATA_PLAN=A: nflverse NFL, NBA.com cdn NBA, Retrosheet).
+DATA_PLAN = os.environ.get("RZ_DATA_PLAN", "B")
+PERSONAL = "personal-use, not for commercial release"
 GREEN = DATA_PLAN != "B"
 if GREEN:
     PLAN = {"nfl": PLAN["nfl"], "nba": (list(range(2026, 2020, -1)), 20), "mlb": PLAN["mlb"]}
@@ -95,11 +96,23 @@ for m in prev:
             shutil.copy(f, dst)
 print("resumed from", prev, "| moments shards", len(glob.glob(f"{OUT}/moments/*/*.json")),
       "| self-play parts", len(glob.glob(f"{OUT}/selfplay/*/*/part-*.parquet")),
-      "| jobs", JOBS, "| data plan", DATA_PLAN or "green only", "| plan", {k: (len(v[0]), v[1]) for k, v in PLAN.items()})
+      "| jobs", JOBS, "| data plan", "green only" if GREEN else f"{DATA_PLAN} ({PERSONAL})", "| plan", {k: (len(v[0]), v[1]) for k, v in PLAN.items()})
 DEADLINE = T0 + SESSION_H * 3600 - 900          # every job stops starting new work 15 min before the end
 
 
 # %%
+def tag(path):
+    """Test Factory F8: every shard's json says whether restrictive-terms sources went into it."""
+    if os.path.exists(path):
+        d = json.load(open(path))
+        d["license"] = "open (green sources only)" if GREEN or league_green(path) else PERSONAL
+        json.dump(d, open(path, "w"))
+
+
+def league_green(path):
+    return "/mlb/" in path or "/nfl/" in path              # Retrosheet and nflverse are open in either plan
+
+
 def season_job(league, year, synthetic, deadline):
     """One season: moments shard, then (basketball) the self-play shard; the raw file is deleted after."""
     import noggin_factory as NF
@@ -120,6 +133,7 @@ def season_job(league, year, synthetic, deadline):
         if raw is None:
             return dict(res, tokens=0, note="no Retrosheet event files")
         res["tokens"] = NT.build("mlb", raw, year, P(f"{OUT}/tokens"))["tokens"]
+        tag(tkj)
         os.remove(raw)
         return dict(res, s=round(time.time() - t0))
     mo = f"{OUT}/moments/{league}/{year}.parquet"
@@ -151,6 +165,7 @@ def season_job(league, year, synthetic, deadline):
             info = {"rows": 0, "complete": True, "note": "no data (season missing or no wall clocks)"}
         os.makedirs(os.path.dirname(mo), exist_ok=True)      # a no-data season still records that it is done
         json.dump(info, open(mo[:-8] + ".json", "w"))
+        tag(mo[:-8] + ".json")
     res["moments"] = json.load(open(mo[:-8] + ".json"))["rows"]
     espn_src = bool(F.SOURCES[league].get("espn"))
     raw = cdn_raw if cdn else f"{RAW}/{league}/{'espn' if espn_src else 'pbp'}_{year}{'.jsonl.gz' if espn_src else '.parquet'}"
@@ -165,7 +180,8 @@ def season_job(league, year, synthetic, deadline):
             NF._fetch(F.SOURCES[league]["url"].format(y=year), __import__("pathlib").Path(raw))
     # [#202] NHL.com's terms forbid bulk harvesting: api-web stays OFF unless Nick accepts the risk in
     # decisions.md (RZ_NHL_APIWEB=1); NHL history then comes from MoneyPuck's listed files instead.
-    if league == "nhl" and year < APIWEB_BEFORE and os.environ.get("RZ_NHL_APIWEB") == "1" and not tk_done \
+    if league == "nhl" and year < APIWEB_BEFORE and (os.environ.get("RZ_NHL_APIWEB") == "1" or not GREEN) \
+            and not tk_done \
             and time.time() < deadline:
         import nhl_apiweb                     # ESPN has no NHL wall clocks before 2019-20: the NHL's own feed
         raw = f"{RAW}/nhl/apiweb_{year}.jsonl.gz"
@@ -173,12 +189,14 @@ def season_job(league, year, synthetic, deadline):
     if not tk_done and os.path.exists(raw) and time.time() < deadline:     # NFM event tokens (every league)
         import noggin_tokens as NT
         res["tokens"] = NT.build(league, __import__("pathlib").Path(raw), year, __import__("pathlib").Path(f"{OUT}/tokens"))["tokens"]
+        tag(tkj)
     elif tk_done:
         res["tokens"] = json.load(open(tkj))["tokens"]
     if synthetic and not sp_done and os.path.exists(raw) and time.time() < deadline:
         sp = SP.build(league, __import__("pathlib").Path(raw), year, __import__("pathlib").Path(f"{OUT}/selfplay"),
                       1 if SMOKE else synthetic, 7, 1, deadline - time.time())
         res["selfplay"] = sp["rows"]
+        tag(spj)
         res["selfplay_complete"] = sp["complete"]
     elif sp_done:
         res["selfplay"] = json.load(open(spj))["rows"]
@@ -234,6 +252,7 @@ for f in sorted(glob.glob(f"{OUT}/tokens/*/*.json")):         # NFM event tokens
     L.setdefault("sources", {})
     L["sources"][i.get("source", "?")] = L["sources"].get(i.get("source", "?"), 0) + int(i.get("tokens") or 0)
 man["data_plan"] = "green" if GREEN else DATA_PLAN
+man["license"] = "open (green sources only)" if GREEN else PERSONAL   # Test Factory F8 checks this field
 man["total_tokens"] = sum(v.get("tokens", 0) for v in man["leagues"].values())
 # DATA LEDGER (Nick 5:00 PM): tokens per league and source, real vs synthetic, crunch / OT / comeback / blowout share
 man["ledger"] = {lg: {"tokens_real": v.get("tokens", 0), "sources": v.get("sources", {}),
