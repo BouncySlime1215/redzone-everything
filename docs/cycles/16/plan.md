@@ -42,14 +42,14 @@
 | ③ | The real-TV press run this afternoon, NBA apps first (requirement 1), daytime only | The EXP-084 delay fit on NBA and NFL streams, handed to ② | EXP-301 grader on NBA nights |
 | ① body | Teacher EXP-086 and EXP-103: grades.json and CU spent, with NBA and NFL heads reported first | Saturday's B-sized world model: NBA and NFL held-out losses as the headline numbers | An NBA possession-start / break head from SportVU + nba_stats events |
 | ④ | The RC7 cut, staged on Nick's sync answer | EXP-017 v3 locked, **with NBA nights first** so the NBA gates reach ≥ 60 decisions | NFL locked nights next |
-| ⑤ | EXP-040 rating flow ready for Sunday (NFL Sunday) | Phone display work only where NBA or NFL uses it | — |
+| ⑤ | EXP-040 is done: `phone.worth` is on by default, checked end to end, and its decisions line has landed. The worth line reads PENDING until Sunday | EXP-043 follow-ups with NBA players first, once lane ① lands its weight | — |
 | Int | **Grow the NBA graded set to ≥ 60 decisions per gate** (F1/F3 nightmare and edge nights from NBA history first) | F4 two-harness grading as a required column, NBA first (the RC6.2 NBA buffer lesson) | #258 RC6.3 (NBA) for Nick; review #206 against the freeze; re-run #186 and #187 CI |
-| A | NBA: hoopR NBA 2002-26, SportVU, nba_stats events; then NFL: nflverse 1999+, StatsBomb AMF (NFL tracking) | EuroLeague and ACB as shared basketball pretraining | Other sports continue as shared pretraining tokens only |
-| B | NBA context first: injuries, refs, rest and back-to-backs, standings; then NFL | Hourly pageviews for NBA and NFL teams | Other leagues only as shared code |
+| A | NBA: NBA.com liveData with wall clocks 2019-26 (26 M, measured break lengths) and a nightly liveData collector (it grows the NBA graded set), hoopR NBA 2002-26, SportVU, nba_stats events; then NFL: nflverse 1999+, StatsBomb AMF (NFL tracking) | EuroLeague and ACB as shared basketball pretraining | Other sports continue as shared pretraining tokens only |
+| B | NBA context first: injuries, refs (NBA L2M, green), rest and back-to-backs, standings; then NFL | Hourly pageviews for NBA and NFL teams | Other leagues only as shared code |
 | C | NBA video events and clip tags first, then NFL | YouTube for official NBA and NFL channels (waits on Nick's key) | — |
-| D | NBA and NFL lines and moves first (Polymarket, line history) | Kalshi, NBA and NFL only | — |
+| D | NBA and NFL lines and moves first: Polymarket (yellow-B) plus the SBRO and nflverse line history (#271) | — | Kalshi is **red** (Developer Agreement §4.1.1 limits the API to members; §3.1 bans storing data). Off unless Nick gets written research permission |
 | E | Teacher commentary on NBA plays first, then NFL | Self-play on NBA nights (within the 3x cap) | — |
-| F | **The NBA TV-timeout and media-break table, then the NFL table (commercial pods, two-minute warning, after-score breaks), handed to ② for EXP-205** | Network-specific rules for NBA and NFL | Other leagues later |
+| F | **Done on #250 (207dc41) and with ②:** the NBA mandatory timeouts (165 s local / 195 s national, long q50 local 187, national ~217) and the NFL after-score, after-change, two-minute-warning and TV-timeout lengths per network. NFL pod counts aren't public, so the measured lengths stand in. F's probe: mid-commercial entries come from entry policy, so EXP-205 is the lever | Network-specific rules for NBA and NFL | Other leagues later |
 | G | NBA and NFL attention curves (Twitch viewer curves wait on Nick's token) | — | — |
 | H | EXP-1800 on NBA and NFL recaps only | — | — |
 | Scout | NBA and NFL sources first (StatsBomb AMF is ready for A) | Shared basketball / football pretraining | Liiga / NCAA probes, low priority |
