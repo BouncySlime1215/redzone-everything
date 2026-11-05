@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick 10:00 AM: unlimited lanes, ALL done today. 10 dedicated threads T1-T10 ordered (buffer shadow, replay sim, oracle teacher, YTTV tests, TNF scorebug feed, faster feeds, SEEK_TO helper, Watch Value v2 + stay/leave, RC8 buffer-ON candidate, models). 6:30 PM deadline. Usage 63%.
+ACCOUNT SWITCH TODAY: full overseer handoff at docs/handoff-overseer-2026-11-05.md (tonight's 10-item plan + 20-30 threads, Nick decisions, sync findings, training state, open asks, rules). Read it first.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
