@@ -61,6 +61,23 @@ FLOAT = ("clock_s", "elapsed_s", "wall_ts", "x", "y", "value")
 COLUMNS = STR + INT + FLOAT
 REQUIRED = ("source", "sport", "league", "level", "season", "game_id", "night", "seq", "kind", "license")
 
+# For tokenizer v2 (lane 1): each field as (num | cat | key | meta, new | derived). Keys: (source, game_id) identify a
+# game, seq is the play order. "new" = observed in the source; "derived" = computed by the converter from other rows
+# (counts, running state). Edges for num fields are fit by lane 1 on train nights only.
+FIELD_META = {
+    "source": ("key", "new"), "game_id": ("key", "new"), "seq": ("key", "new"),
+    "sport": ("cat", "new"), "league": ("cat", "new"), "level": ("cat", "new"), "season": ("meta", "new"),
+    "night": ("meta", "new"), "home": ("cat", "new"), "away": ("cat", "new"),
+    "period": ("num", "new"), "clock_s": ("num", "new"), "elapsed_s": ("num", "new"), "wall_ts": ("num", "new"),
+    "home_score": ("num", "new"), "away_score": ("num", "new"), "side": ("cat", "new"),
+    "possession": ("cat", "derived"), "kind": ("cat", "new"), "sub_kind": ("cat", "new"),
+    "actor_id": ("cat", "new"), "actor2_id": ("cat", "new"), "x": ("num", "new"), "y": ("num", "new"),
+    "value": ("num", "new"), "outs": ("num", "derived"), "balls": ("num", "derived"),
+    "strikes": ("num", "derived"), "bases": ("cat", "derived"), "stop": ("cat", "derived"),
+    "license": ("meta", "new"), "tag": ("meta", "new"),
+}
+assert set(FIELD_META) == set(COLUMNS)
+
 # Token estimates (honest split, Nick 11:50 PM): events x 6 is vocab v1 (noggin_tokens). Tokenizer v2's rich
 # fields are counted by lane 1; here only the event count and v1 tokens are claimed as NEW information.
 V1_TOKENS_PER_EVENT = 6
