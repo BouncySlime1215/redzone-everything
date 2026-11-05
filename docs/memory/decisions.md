@@ -745,13 +745,15 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   its results are in. Grader freeze v16, together with the red-source rule above.
 - 2026-11-05 (Nick, 1:50 AM; integrator, grader v17): **CBB lock numbers are out of every scorecard.** The CBB hindsight
   lock label comes from the clock/crunch rule, and context alone predicts it (context-only AUC 0.960, full head 0.967),
-  so EXP-086's CBB "head beats Teacher" row measured the rule. `agent/distill/evaluate.LOCK_EXCLUDED` drops CBB rows from
-  `lock_acc` (a CBB-only card shows none), and CBB Teacher tokens are aux-only until fixed. New CI check
+  so EXP-086's CBB "head beats Teacher" row measured the rule. Lane 3 found it is wider: the graded truth target.lock_in
+  is must_see whenever the current crunch flag holds (a fact the model sees), in every league (NHL in-window 0.976).
+  So `agent/distill/evaluate.LOCK_EXCLUDED` drops `lock_acc` in ALL leagues until truth_lock comes from real outcomes
+  (EXP-302 y_out, #278); EXP-086's lock rows (CBB, NHL +12.7, MLB) are not evidence. CBB Teacher tokens are aux-only. New CI check
   `scripts/label_leak_check.py`: any label that context-only features (period, clock, score gap, crunch/late/garbage,
   your team) predict with AUC ≥ 0.95 FAILs, cross-fitted by whole night; reports with derived numbers only live in
   docs/label_checks/. Lane 3 relabels lock from real outcomes in the next N minutes, re-grades head vs Teacher in all
-  3 leagues on ≥ 600 blind moments per league with bootstrap CIs, and commits a report per league; CBB comes back
-  only when its report PASSes. evaluate.py and gold.py (the label) join the freeze. Grader freeze v17.
+  3 leagues on ≥ 600 blind moments per league with bootstrap CIs, and commits a report per league from dev nights only
+  (never locked); a league's lock_acc comes back only when its report PASSes. evaluate.py and gold.py (the label) join the freeze. Grader freeze v17.
 - 2026-11-05 (Nick, 2:00 AM): **priority is NBA first, then NFL.** Every queue re-ranks by NBA impact, then NFL; NHL,
   MLB and CBB work continues only where it's shared code or data. NBA's graded set grows until every NBA gate has
   ≥ 60 decisions (release_gate.MIN_DECISIONS = 60 already holds PASS back below that; locked NBA has 16 big plays

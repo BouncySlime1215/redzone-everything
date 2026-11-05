@@ -1,13 +1,13 @@
 {
   "version": 17,
-  "frozen_at": "2026-11-05T07:01Z",
+  "frozen_at": "2026-11-05T07:05Z",
   "by": "integrator",
   "files": {
     "redzone/grading.py": "7d42683f7d7acea9241108fd6279d4fb8b3d48db61fa3222f5a5bf81f890ab4e",
     "scripts/collect_live_test.py": "b7e198b23866a56cfb902d9fd63868fac219843cae84b139ab09761c11073e65",
     "scripts/license_check.py": "f7c573a4b72e43d74be8796fa09a264724cfe8af5f1938c01a51520e040a2885",
     "scripts/label_leak_check.py": "ce4e4f2bf4048e567025168e8ae855099e4e91386278d07cd9b3e616e20a2f7a",
-    "agent/distill/evaluate.py": "7fa66d3819c7ea05012eae9fff5cbd4fe34d3c9f950ee5bb183ace9f2ac0d18b",
+    "agent/distill/evaluate.py": "f566cf53c8c0f8234d179411e9b2734e7df5a8ec2d4fa55fe67dc8c6fb235d76",
     "agent/distill/gold.py": "0102efd272f582bf3deb54939e5c127fc21dc78aef9178ad27828be40c5bd764",
     "scripts/catchup_ratchet.py": "7263085b120230fb91049895adb7ef84cb51e02ec77a1437aff569b2d6a906d6",
     "redzone/lab/reactgrade.py": "b49c336a2178d73c2e92291464b965626c17df672d78bdaf51f0943425a794b6",

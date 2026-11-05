@@ -26,11 +26,15 @@ from agent.distill.teacher import clean_reasoner, eta_s, extract_json
 
 _KEY = re.compile(r"key soon (\d+)%")
 
-# Leagues whose lock_in label is out of every scorecard (grader freeze v17). CBB: the hindsight lock label
-# comes from the clock/crunch rule, so context alone predicts it (context-only AUC 0.960 vs the head's
-# 0.967); a lock_acc there measures the rule, not the model. Nick, Nov 5 1:50 AM: excluded until lane 3
-# relabels it from real outcomes and scripts/label_leak_check.py passes on the new label.
-LOCK_EXCLUDED = {"cbb": "lock label leaks (context-only AUC 0.960); relabel from real outcomes pending"}
+# Leagues whose lock_in label is out of every scorecard (grader freeze v17). The graded truth (target.lock_in
+# via export_reasoner_llm.target and gold.py) is must_see whenever the CURRENT crunch flag holds, a fact the
+# model sees, so lock_acc rewards copying our own crunch rule (lane 3, Nov 5). CBB showed it first: context-only
+# AUC 0.960 vs the head's 0.967 (Nick, Nov 5 1:50 AM); NHL's in-window context-only AUC is 0.976. Every league is
+# out until truth_lock comes from real outcomes (EXP-302, y_out) and scripts/label_leak_check.py passes on it.
+_WHY = "lock truth copies the crunch rule (context-only AUC >= 0.95); relabel from real outcomes pending (EXP-302)"
+LOCK_EXCLUDED = {lg: _WHY for lg in ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")}
+
+
 def pct(a, b):
     return round(100.0 * a / b, 1) if b else None
 

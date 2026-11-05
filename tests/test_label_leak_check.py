@@ -60,8 +60,9 @@ def test_committed_reports_pass_ci():
     assert L.main([]) == 0
 
 
-def test_cbb_lock_acc_excluded():
-    assert "cbb" in evaluate.LOCK_EXCLUDED
+def test_lock_acc_excluded(monkeypatch):
+    assert {"nfl", "nba", "cbb", "nhl"} <= set(evaluate.LOCK_EXCLUDED)
+    monkeypatch.setattr(evaluate, "LOCK_EXCLUDED", {"cbb": "leak"})
     tgt = {"lock_in": "must_see", "safe_to_leave": "no"}
     rows = [{"id": f"c{i}", "league": "cbb", "y": 1, "target": tgt} for i in range(5)]
     rows += [{"id": f"n{i}", "league": "nba", "y": 1, "target": tgt} for i in range(5)]
