@@ -900,3 +900,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   cap). Ship B = max(sweep point, formula/ratchet, floor), back to 90 after a mid-play night. RC6.2's
   `timing.behind_live_s.enabled` (NBA/NFL hold) unchanged. `scripts/rc8_gate_report.py` reads the pre-registered gate
   as written (shadow = veto only; missing first-pick line = PENDING). No decision changes with the shipped defaults.
+- 2026-11-05 (integrator, grader v30; T9 #331 0b08d96): `scripts/rc8_gate_report.py` refrozen after review. The
+  changes are reporting plus one arm choice: NBA's verdict is read on lane 3's `st` arm (start_timed on with RC8, the
+  planner's call after the autopsy). That choice came after the sweep was read; it changes no verdict tonight (NBA
+  fails switches 1.58x and your-team crunch on every arm), and it applies to RC8's next read from fresh nights. The
+  switch guardrail counts non-replay switches (integrator ruling on lane 3's sweep: NFL B=75 1.80x, LIVE). No bar
+  moved. Grader freeze v30.

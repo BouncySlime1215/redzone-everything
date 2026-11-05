@@ -17,7 +17,8 @@ A league's buffer turns ON in RC8 (`timing.behind_live_s` scoped to that league,
    - primary: big plays shown from the start (from the previous dead ball; `big_from_start`, grader v28, #316),
      CI lower bound of buffer - live > 0. The live arm is the same harness with `--behind-live 0` (the stream's own
      delay), and the sweep also reports one run at the old default lag for continuity;
-   - guardrails, each on both harnesses: crunch live (shown from the start) not down by more than 1.0 pt; your-team
+   - guardrails, each on both harnesses (switches = non-replay switches, integrator ruling Nov 5): crunch live (shown
+     from the start) not down by more than 1.0 pt; your-team
      crunch 100%; dead air not up by more than 0.5 pt; switches per hour <= 1.5x live; plays missed on entry not up
      by more than 5% relative.
    The buffer value is the sweep point (45/60/75/90 s) with the best primary among those that hold every guardrail,

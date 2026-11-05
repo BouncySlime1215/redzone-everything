@@ -1,6 +1,6 @@
 {
-  "version": 29,
-  "frozen_at": "2026-11-05T14:58Z",
+  "version": 30,
+  "frozen_at": "2026-11-05T16:10Z",
   "by": "integrator",
   "files": {
     "redzone/grading.py": "6e21906a6a952a6f8fa9b1e594dbf7ab5d595cfea3925627c6ad2be65c2c84a7",
@@ -13,7 +13,7 @@
     "scripts/delay_grade.py": "9d14eca3b6f69ee1a5c5b9e8b8853e986a352dc815dee2f106df03b6389f03b7",
     "scripts/clock_truth_grade.py": "a71aa11ce17a18b5eacb2319b1f12cb105905aa40ae0385b79bc2765c51377e7",
     "scripts/buffer_shadow_grade.py": "1c4117ac5f99a4140b0ca94454a005e47d4affe1ac2ecfcd27e30b0321b22ab9",
-    "scripts/rc8_gate_report.py": "81c17d2b0cbe36696b4aa5bb10610960bf6b71b6960aa63920cb99f63718f54b",
+    "scripts/rc8_gate_report.py": "89c4693c53e3c079aafbc87a78972615ea2e6cda34cfb4ef4a71d54a11267808",
     "scripts/entry_autopsy.py": "2793139e8ab35e5d822719564129de97b2382de752f6961cc89e26444319bb63",
     "scripts/attention_labels.py": "dad74ebc92e24c30c4a88aa29041d75533012ab9e5dc56a8b385d22d92a8d54e",
     "scripts/wv_aux_label.py": "becf4458d4553a87908d03d26b2432e945ff4bbefb5d53fca4bf76b1f518db96",
