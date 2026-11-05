@@ -1,0 +1,30 @@
+{
+ "name": "reasoner_lock",
+ "league": "nfl",
+ "label": "y_out",
+ "kind": "lock",
+ "n": 18543,
+ "base_rate": 0.1021,
+ "single": {
+  "period": 0.5003,
+  "clock_s": 0.5168,
+  "abs_diff": 0.7069,
+  "in_break": 0.5515,
+  "crunch": 0.5458,
+  "garbage": 0.551,
+  "late": 0.5063,
+  "mine": 0.5069
+ },
+ "joint_auc": 0.7522,
+ "max_auc": 0.7522,
+ "features": [
+  "period",
+  "clock_s",
+  "abs_diff",
+  "in_break",
+  "crunch",
+  "garbage",
+  "late",
+  "mine"
+ ]
+}
