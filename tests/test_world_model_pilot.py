@@ -66,3 +66,18 @@ def test_espn_derived_nba_needs_nicks_yes(tmp_path):
     with pytest.raises(SystemExit, match="ESPN-derived"):
         W.main(["--out", str(tmp_path), "--leagues", "nba_espn,nfl", "--smoke"])
     assert "nba_espn" in W.ESPN_DERIVED and min(W.SEASONS["nfl"]) == 2001 and "nba" not in W.ESPN_DERIVED
+
+
+def test_extra_shards_join_train_only_before_valid_and_capped_at_3x():
+    real = [_game(i, f"202501{d:02d}") for i, d in enumerate(range(1, 21))]
+    sp = W.split(real)
+    starts = W.valid_start(real)
+    assert starts["nba"] == min(g["night"] for g in sp["valid"])
+    syn = [{**_game(200 + i, f"202501{d:02d}"), "gid": f"s{i}"} for i, d in enumerate(range(1, 21))]
+    train, rep = W.add_extra(sp["train"], syn, starts)
+    added = [g for g in train if g.get("synthetic")]
+    assert added and all(g["night"] < starts["nba"] for g in added)
+    assert rep["dropped_not_before_valid"] == 4 and 0 < rep["ratio_by_league"]["nba"] <= W.SYNTH_CAP
+    too_many = [{**g, "gid": f"{g['gid']}x{k}"} for k in range(4) for g in syn[:16]]
+    with pytest.raises(SystemExit):
+        W.add_extra(sp["train"], too_many, starts)

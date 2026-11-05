@@ -101,6 +101,27 @@ def build_games(leagues, out: Path, smoke: bool) -> list[dict]:
     return games
 
 
+PERSONAL = "personal-use, not for commercial release"
+
+
+def load_shards(root: Path, leagues) -> tuple[list[dict], set[str]]:
+    """The factory's event-token shards (<root>/<league>/<year>.npy + .json), no download. Returns the games and the
+    set of shard licenses (a restrictive-terms shard makes the model personal-use)."""
+    games, lic = [], set()
+    for lg in leagues:
+        for js in sorted((root / lg).glob("*.json")):
+            info = json.loads(js.read_text())
+            if not info.get("complete") or not (js.with_suffix(".npy")).exists():
+                continue
+            arr = np.load(js.with_suffix(".npy"), mmap_mode="r")
+            lic.add(info.get("license") or (PERSONAL if "espn" in str(info.get("source", "")).lower()
+                                            or "hoopr" in str(info.get("source", "")).lower() else "open"))
+            for gid, night, off, n, *_ in info["index"]:
+                games.append({"league": lg, "gid": gid, "night": night, "tokens": np.asarray(arr[off:off + n])})
+            print(f"{lg} {js.stem}: {info['games']} games, {info['tokens']:,} tokens ({info.get('source')})", flush=True)
+    return games, lic
+
+
 def split(games: list[dict]) -> dict[str, list[dict]]:
     """Time split by whole night, per league: each league's own last 10% of nights is test, the 10% before is valid.
     A pooled cut would put every test night in whichever league's data runs latest (NBA cdn ends 2025, Retrosheet
@@ -114,6 +135,32 @@ def split(games: list[dict]) -> dict[str, list[dict]]:
         for g in mine:
             out["test" if g["night"] >= te0 else "valid" if g["night"] >= va0 else "train"].append(g)
     return out
+
+
+def valid_start(games: list[dict]) -> dict[str, str]:
+    """Each league's first valid night under split(): extra (synthetic) games must sit strictly before it."""
+    out = {}
+    for lg in sorted({g["league"] for g in games}):
+        nights = sorted({g["night"] for g in games if g["league"] == lg})
+        out[lg] = nights[int(len(nights) * 0.8)]
+    return out
+
+
+SYNTH_CAP = 3.0                                         # Nick 11:50 PM: synthetic <= ~3x real, per league
+
+
+def add_extra(train: list[dict], extra: list[dict], starts: dict[str, str]) -> tuple[list[dict], dict]:
+    """Synthetic shards (EXP-1401 mirror / re-time) join TRAIN only: drop any game on or after its league's first
+    valid night (or of a league with no real data), and refuse more than SYNTH_CAP x the league's real train tokens."""
+    real = {lg: sum(len(g["tokens"]) for g in train if g["league"] == lg) for lg in starts}
+    keep = [g for g in extra if g["league"] in starts and g["night"] < starts[g["league"]]]
+    syn = {lg: sum(len(g["tokens"]) for g in keep if g["league"] == lg) for lg in starts}
+    over = {lg: round(syn[lg] / max(1, real[lg]), 2) for lg in starts if syn[lg] > SYNTH_CAP * real[lg]}
+    if over:
+        raise SystemExit(f"synthetic > {SYNTH_CAP}x real train tokens: {over}")
+    rep = {"games": len(keep), "dropped_not_before_valid": len(extra) - len(keep),
+           "ratio_by_league": {lg: round(syn[lg] / max(1, real[lg]), 3) for lg in starts}}
+    return train + [{**g, "synthetic": True} for g in keep], rep
 
 
 def data_hash(games) -> str:
@@ -324,6 +371,10 @@ def main(argv=None) -> int:
     ap.add_argument("--dropout", type=float, default=0.1)
     ap.add_argument("--weight-decay", type=float, default=0.1)
     ap.add_argument("--smoke", action="store_true", help="CPU test: one season, a tiny model, a few steps")
+    ap.add_argument("--from-tokens", type=Path, default=None,
+                    help="train on the factory's token shards (<dir>/<league>/<year>.npy) instead of fetching")
+    ap.add_argument("--extra-shards", type=Path, default=None,
+                    help="synthetic token shards (synth_build.py augment, EXP-1401): train only, before valid, <=3x")
     a = ap.parse_args(argv)
     if a.smoke:
         a.d, a.layers, a.heads, a.ctx, a.batch, a.minutes = 64, 2, 2, 120, 8, 0.3
@@ -334,9 +385,21 @@ def main(argv=None) -> int:
     a.out.mkdir(parents=True, exist_ok=True)
     blocked = ESPN_DERIVED & set(a.leagues.split(",")) if not a.allow_espn_derived else set()
     if blocked:
-        raise SystemExit(f"{sorted(blocked)}: ESPN-derived release, default OFF until Nick decides (Wave 5)")
-    games = build_games(a.leagues.split(","), a.out, a.smoke)
+        raise SystemExit(f"{sorted(blocked)}: ESPN-derived release; pass --allow-espn-derived (plan B, personal use)")
+    if a.from_tokens:
+        games, licenses = load_shards(a.from_tokens, a.leagues.split(","))
+    else:
+        games = build_games(a.leagues.split(","), a.out, a.smoke)
+        licenses = {PERSONAL} if ESPN_DERIVED & set(a.leagues.split(",")) else {"open"}
     sp = split(games)
+    starts = valid_start(games)
+    print("first valid night:", json.dumps(starts), flush=True)
+    extra_rep = None
+    if a.extra_shards:
+        extra, xlic = load_shards(a.extra_shards, a.leagues.split(","))
+        licenses |= xlic
+        sp["train"], extra_rep = add_extra(sp["train"], extra, starts)
+        print("extra:", json.dumps(extra_rep), flush=True)
     counts = {k: {"games": len(v), "tokens": int(sum(len(g["tokens"]) for g in v)),
                   "nights": len({g["night"] for g in v}),
                   "first": min((g["night"] for g in v), default=None), "last": max((g["night"] for g in v), default=None)}
@@ -440,8 +503,10 @@ def main(argv=None) -> int:
     per_season = {y: {k: grade(model, [g for g in sp["test"] if g["night"][:4] == y], base, a.ctx, dev)[k]
                       for k in ("next_kind_acc", "next_kind_acc_bigram", "break_dt_mae_s", "break_dt_mae_s_baseline")}
                   for y in seasons}
-    g = {"exp": a.exp, "seed": SEED, "data_sha256_16": data_hash(games), "vocab": T.VOCAB_VERSION,
-         "vocab_size": T.VOCAB_SIZE, "leagues": a.leagues, "split": counts, "selection": "valid loss (early stop)",
+    g = {"exp": a.exp, "seed": SEED,
+         "license": PERSONAL if any(x != "open" and not x.startswith("open") for x in licenses) else "open", "data_sha256_16": data_hash(games), "vocab": T.VOCAB_VERSION,
+         "vocab_size": T.VOCAB_SIZE, "leagues": a.leagues, "split": counts,
+         "valid_first_night": starts, "extra_shards": extra_rep, "selection": "valid loss (early stop)",
          "recipe": {"d": a.d, "layers": a.layers, "heads": a.heads, "ctx": a.ctx, "batch": a.batch, "lr": a.lr, "dropout": a.dropout, "weight_decay": a.weight_decay,
                     "params_m": round(n_params / 1e6, 1), "steps": step, "epochs_seen": round(step * a.batch / max(1, len(tr)), 2)},
          "learning_curve": curve, "best_valid_loss": best,
