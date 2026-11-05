@@ -314,6 +314,7 @@ def main(argv=None) -> int:
     ap.add_argument("--leagues", default="nfl,nba,mlb", help="plan A default; add nba_espn only with Nick's yes")
     ap.add_argument("--allow-espn-derived", action="store_true", help="only once Nick says yes (Wave 5)")
     ap.add_argument("--minutes", type=float, default=60.0, help="training wall-clock budget")
+    ap.add_argument("--exp", default="EXP-100", help="experiments.md id written to grades.json")
     ap.add_argument("--d", type=int, default=512)
     ap.add_argument("--layers", type=int, default=8)
     ap.add_argument("--heads", type=int, default=8)
@@ -439,7 +440,7 @@ def main(argv=None) -> int:
     per_season = {y: {k: grade(model, [g for g in sp["test"] if g["night"][:4] == y], base, a.ctx, dev)[k]
                       for k in ("next_kind_acc", "next_kind_acc_bigram", "break_dt_mae_s", "break_dt_mae_s_baseline")}
                   for y in seasons}
-    g = {"exp": "EXP-100", "seed": SEED, "data_sha256_16": data_hash(games), "vocab": T.VOCAB_VERSION,
+    g = {"exp": a.exp, "seed": SEED, "data_sha256_16": data_hash(games), "vocab": T.VOCAB_VERSION,
          "vocab_size": T.VOCAB_SIZE, "leagues": a.leagues, "split": counts, "selection": "valid loss (early stop)",
          "recipe": {"d": a.d, "layers": a.layers, "heads": a.heads, "ctx": a.ctx, "batch": a.batch, "lr": a.lr, "dropout": a.dropout, "weight_decay": a.weight_decay,
                     "params_m": round(n_params / 1e6, 1), "steps": step, "epochs_seen": round(step * a.batch / max(1, len(tr)), 2)},
