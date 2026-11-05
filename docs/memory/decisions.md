@@ -466,3 +466,15 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   - It doesn't wait for every league. Never-join-mid-play stays absolute, and the full gates still define "done".
   - The code is `scripts/release_gate.py league_promotion` (grader freeze v4).
   - It replaces bar (B)'s all-leagues requirement for per-league go-lives.
+- 2026-11-05 (Nick via overseer, 8:30 PM ET): **rule #1 wins the NHL trade.** The RC6.1 candidate set,
+  `/mnt/project-files/lane2/nba-candidate-settings.json`, is promoted for **NBA and NHL** under the per-league rule.
+  - **NBA:** a clean PASS. Mid-play entries drop to 0 from 42 (dev) and 21 (locked), and every line is better.
+  - **NHL:** a PASS by Nick's call. Mid-play joins drop 28 → 0 on dev and 8 → 0 on locked. Big live improves, from 41 to 46 on dev
+    and from 42 to 53 on locked. The cost is about 1 point of crunch live (dev 81.2 → 80.3, locked 82.7 → 81.6) and
+    0.6-0.8 more dead air.
+  - **NFL:** FAILS. Big seen drops from 89.3 to 77.6 on dev and from 88.2 to 82.9 on locked. The keys are global, so before the first NFL or CFB
+    game the set must be rolled back, or replaced by an NFL-passing set (EXP-200).
+  - **Ungraded leagues:** CBB and MLB get the global keys without a grade.
+  - **Deploy:** through `/api/settings` by the overseer only, with an instant rollback to the saved live settings.
+  - **Follow-ups:** win back NHL's crunch point and dead air with no mid-play join, for example with an earlier pre-tune or
+    better intermission timing.
