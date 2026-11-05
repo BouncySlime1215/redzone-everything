@@ -1,0 +1,13 @@
+{
+ "name": "reasoner_lock",
+ "league": "cbb",
+ "label": "target.lock_in=must_see",
+ "kind": "lock",
+ "source": "EXP-086 fast-head build (Kaggle, Nov 5 ~1:15 AM): head AUC 0.967, context-only 0.960 (Nick, 1:50 AM). Derived numbers only; rerun with scripts/label_leak_check.py when lane 3 relabels.",
+ "n": null,
+ "base_rate": null,
+ "single": {},
+ "joint_auc": 0.96,
+ "max_auc": 0.96,
+ "features": []
+}

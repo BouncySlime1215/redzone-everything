@@ -163,11 +163,15 @@ def test_score_counts_unsafe_leaves_and_lift():
     assert s["unsafe_leave_pct"] == 0.0 and s["eta_mae_s"] == 30.0
 
 
-def test_compare_fits_baselines_on_valid_and_scores_test_only():
+def test_compare_fits_baselines_on_valid_and_scores_test_only(monkeypatch):
     rows = ([row(i, "valid", key=90, head=0.9) for i in range(5)] +
             [row(i + 5, "valid", lock="none", t_big=None, safe="yes", key=10, head=0.1) for i in range(5)] +
             [row(20, "test", key=85, head=0.85), row(21, "test", lock="none", t_big=None, safe="yes", key=15, head=0.2)])
     teach = {f"{rows[-2]['id']}|blind": {"id": "x", "text": GOOD}}
+    res = evaluate.compare(rows, {"today": None, "head": None, "teacher": teach})
+    assert res["today"]["all"]["lock_acc"] is None                       # v17: lock truth copies the crunch rule
+    assert res["today"]["all"]["lock_excluded_rows"] == 2
+    monkeypatch.setattr(evaluate, "LOCK_EXCLUDED", {})                  # the arithmetic, once truth is outcomes
     res = evaluate.compare(rows, {"today": None, "head": None, "teacher": teach})
     assert res["today"]["all"]["n"] == 2 and res["today"]["all"]["lock_acc"] == 100.0
     assert res["head"]["all"]["must_see_precision"] == 100.0

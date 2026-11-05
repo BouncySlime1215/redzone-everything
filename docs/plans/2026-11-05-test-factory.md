@@ -35,16 +35,30 @@ grades the features themselves.
 "24/7" means the scripts and scheduled jobs run around the clock. The agent work (F6, grader reviews) runs in the
 integrator's hourly cycle, inside the usage brake (pause at 88%).
 
-## First steps
+## First steps (re-ranked Nov 5, 2:00 AM: NBA first, then NFL)
 
-1. **Thu morning.** F4: `--resync` becomes the second column of every per-league grade, so the RC6.3 call is made on
-   both harnesses.
-2. **Thu.** F1 + F2: the first 10 nightmare nights from dev history go into `tests/golden/`, with a ratchet test and a
-   `grading_check.py` G4 (pins may only go up), as grader freeze v12.
-3. **Thu–Fri.** F3: a small CI edge set (benched source, stick offline, lag spike, Prime cold), then the full set on
-   Kaggle.
-4. **Fri.** F8 license-tag check (as soon as lane 1's manifests carry the field). F5 on Wednesday's and Thursday's live nights (gold capture). F7 CI job.
-5. **Sat.** F6 runs every cycle.
+Nick: "I really only care about NBA and NFL, mostly NBA." Every factory queue runs NBA work first, then NFL. NHL,
+MLB and CBB get factory time only where the code or data is shared.
+
+1. **NBA graded set to ≥ 60 decisions per gate.** `release_gate.MIN_DECISIONS = 60` already keeps a gate PENDING
+   below that. Today dev has 71 NBA big plays over 9 nights and locked has 16 over 4, at about 4 to 8 big plays a
+   night. So locked needs about 15 NBA nights, and dev and locked together about 60. The test writers' power read
+   (EXP-726, #277) says the CI decides dead air at ~16 NBA nights, mid-commercial ~23, crunch ~44, big plays seen
+   ~100. Sources, in order: EXP-735 adds the 2025-26 NBA season as dev nights (fastest, ahead of F1/F3); eval-data-v3
+   (#149) widens the NBA window; Nick's live NBA nights (gold capture) count as fresh nights;
+   F1 mines dev NBA history. Golden and perturbed nights never count toward the 60, because they're tests, not the
+   graded set.
+2. **F1 + F2, NBA first.** The first golden nights are NBA: WSH @ CHI Oct 24 (stuck hold), #257's floor cases, and the
+   NBA mid-commercial entries (33 of 34 NBA entries that landed in a break had > 10 s left). Then NFL: two-minute
+   drills against a your-team game, and the 196/196 NFL break entries. Ratchet test and G4 as grader freeze v18.
+3. **F4 two-harness grading becomes a required column, NBA first.** The RC6.3 NBA call is made on both harnesses.
+   Then NFL.
+4. **F3 edge cases, NBA then NFL:** benched source, stick offline, lag spike, Prime cold, and break-restart timing
+   errors (the mid-commercial gap). Small set in CI, then the full set on Kaggle.
+5. **F8** is live (v12). **F5** on Wednesday's and Thursday's live NBA nights first. **F7** CI job.
+6. **F6** runs every cycle, ranking scorecard gaps by NBA impact, then NFL.
+7. **Label leak check** (v17, `scripts/label_leak_check.py`): every label any model trains on gets a context-only
+   AUC report in docs/label_checks/. CBB lock is out of every scorecard until its relabel passes.
 
 ## First sources (for F1 and F5; all already in the repo)
 

@@ -25,6 +25,16 @@ from typing import Iterable
 from agent.distill.teacher import clean_reasoner, eta_s, extract_json
 
 _KEY = re.compile(r"key soon (\d+)%")
+
+# Leagues whose lock_in label is out of every scorecard (grader freeze v17). The graded truth (target.lock_in
+# via export_reasoner_llm.target and gold.py) is must_see whenever the CURRENT crunch flag holds, a fact the
+# model sees, so lock_acc rewards copying our own crunch rule (lane 3, Nov 5). CBB showed it first: context-only
+# AUC 0.960 vs the head's 0.967 (Nick, Nov 5 1:50 AM); NHL's in-window context-only AUC is 0.976. Every league is
+# out until truth_lock comes from real outcomes (EXP-302, y_out) and scripts/label_leak_check.py passes on it.
+_WHY = "lock truth copies the crunch rule (context-only AUC >= 0.95); relabel from real outcomes pending (EXP-302)"
+LOCK_EXCLUDED = {lg: _WHY for lg in ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")}
+
+
 def pct(a, b):
     return round(100.0 * a / b, 1) if b else None
 
@@ -114,6 +124,7 @@ def score(rows: list[dict], preds: dict[str, dict | None]) -> dict:
             errs.append(abs(e - float(r["t_big"])))
     pct = lambda a, b: round(100.0 * a / b, 1) if b else None  # noqa: E731
     prec = ms_hit / len(ms) if ms else None
+    lock_rows = [(r, p) for r, p in usable if r.get("league") not in LOCK_EXCLUDED]
     return {
         "n": n, "answered_pct": pct(answered, n), "usable_json_pct": pct(len(usable), answered),
         "big_base_rate_pct": pct(base, n),
@@ -121,7 +132,8 @@ def score(rows: list[dict], preds: dict[str, dict | None]) -> dict:
         "must_see_precision": pct(ms_hit, len(ms)),
         "must_see_recall": pct(sum(p["lock_in"] == "must_see" for _, p in big), len(big)),
         "must_see_lift": round(prec / (base / n), 2) if (prec is not None and base) else None,
-        "lock_acc": pct(sum(p["lock_in"] == truth_lock(r) for r, p in usable), len(usable)),
+        "lock_acc": pct(sum(p["lock_in"] == truth_lock(r) for r, p in lock_rows), len(lock_rows)),
+        "lock_excluded_rows": len(usable) - len(lock_rows),
         "leave_allowed_pct": pct(len(safe_said), len(usable)),
         "unsafe_leave_pct": pct(sum(not truth_safe(r) for r in safe_said), len(safe_said)),
         "over_cautious_pct": pct(sum(truth_safe(r) for r in stay_said), len(stay_said)),
