@@ -71,7 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick approved RC6.3 (88a3b0b) at 3:55 PM. Lane 4 cuts integration/release; overseer dry-runs, then deploys in the 5-6:30 PM window once Nick confirms the TV is off, then turns on fast_feeds shadow polling.
+NICK ORDER: oracle audit plus every missing piece (nightly oracle score, windowed target, Watch Value gates, sync truth), then a mistake-ledger loop: each decision compared with the windowed oracle, cause logged, next arm trained on it.
+Evidence rule: each new night is scored first, before the model sees it, then moves into training. Locked set stays out of the ledger.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
