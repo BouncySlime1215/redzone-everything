@@ -938,3 +938,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
     low-swing NFL plays. oracle.py v1 stays the frozen reference for every current line until v2's code lands as its
     own frozen file and passes its acceptance on fit nights (it needs the human highlight set first). Nothing in RC6.3
     or integration/release changes. Grader freeze v32.
+- 2026-11-05 (integrator; WV loop #348): **EXP-1721 (oracle reward v2) FAILS, graded once on fit nights against
+  crew H's recap highlight set.** NBA zero-value games 54.4% -> 1.5% (criterion 1 passes); NBA highlight recall
+  52.2 -> 58.7, CI -4.9..+18.1, short of the +10 bar (92 plays over 9 nights); NFL recall 82.7 -> 67.4, CI -19..-11
+  (recaps name nearly every score, as v1 does). `redzone/lab/oracle.py` v1 stays the frozen reference; no tuning on
+  these nights. Next: EXP-1722 (NBA-only big_v2, NFL unchanged), pre-registered before eval-data-v3's new NBA nights.
