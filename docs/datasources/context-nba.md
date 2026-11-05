@@ -105,3 +105,12 @@ as `--schedule` (run_buzz reads `.gz`). Full versions with scores are at
   because `schedule` only fires from main (same note as context-buzz).
 - Referee history before 2015, and for non-L2M games, is not held. The GitHub-hosted officials datasets we know of
   (nbadb / wyattowalsh Kaggle) were not reachable here, so that part is skipped.
+
+## Hold (Nov 5, 2026, 2:15 AM ET)
+
+The injury-report and referee-assignment jobs (nba.com hosts) are **on hold**. The guardrails require respecting a
+site's terms as well as robots.txt, and nba.com's terms of use have not been read yet (this cloud container cannot
+reach nba.com). `context-nba.yml` refuses to run until `docs/datasources/terms.json` has
+`"nba_terms_review": "allowed"`. If the terms forbid automated collection, these jobs are dropped and NBA injuries
+come from another public source (for example hoopR/ESPN injury fields under plan B, after their own check).
+The first test run (Nov 1-4, 2025) was cancelled while queued, before any request to nba.com.

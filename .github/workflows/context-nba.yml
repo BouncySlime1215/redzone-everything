@@ -23,6 +23,11 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      - name: terms hold (coordinator, Nov 5 2:15 AM ET)
+        # ON HOLD until someone reads nba.com's terms of use and records that they allow this automated pull.
+        # Lift by setting "nba_terms_review": "allowed" in docs/datasources/terms.json with the date and reviewer.
+        run: |
+          python3 -c "import json,sys; t=json.load(open('docs/datasources/terms.json')); sys.exit(0 if t.get('nba_terms_review')=='allowed' else 'context-nba is on hold: nba.com terms not reviewed (docs/datasources/context-nba.md)')"
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - run: pip install pandas pyarrow pdfplumber
