@@ -62,6 +62,8 @@ What Nick wants from RedZone Everything (as of 2026-11-03):
 
 - SHARP TRAINING, SHARPER GRADING (Nick, Nov 4 6:40 PM): graders are written and frozen by the integrator, never by the training lane. Pre-register experiments. Grade against real outcomes + the oracle, not teacher labels. Bootstrap CIs over nights, with PENDING when underpowered. Per-slice reports. Automatic leakage checks (adversarial validation; AUC > .98 = red flag). Calibration. A golden nightmare-night regression suite. Ablations. Reproducible runs. Selection on valid only. Spec in docs/grading.md.
 
+- COMPUTE (Nick, Nov 4 7:30 PM): bought Colab Pro+ (~$50/mo, ~500 CU, A100/L4, background runs). Kaggle stays on ONE account (multi-account declined: ToS). Colab notebooks are self-contained (no Drive mount: the broad scopes were declined); the overseer launches them in Nick's browser. 'GO HARD': master plan v2 Phases 0-2 compressed to ~4 days (world model v1 Sat Nov 7, planner v1 + shadow on NFL Sunday Nov 8).
+
 **Why:** These were stated across the Nov 2-4 sessions; this is the consolidated spec.
 
 **How to apply:** Check every coordinator thread and PR against this list. Keep ADHD-style replies.

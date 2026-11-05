@@ -71,8 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-V8 Colab: watchdog step 50/1436, eta 129 min (budget 40 min)
-RC6.1 Mac tests still running (36 min); RC5.1 live; usage 34%
+- 19:30 NICK bought COLAB PRO+ (~500 CU/mo, A100/L4, background runs) and said 'GO HARD, done in a few days'. Plan compressed: Thu teacher gaps on A100 + V8.2 + factory re-run + suspense/one-language; Fri event tokens + timing/belief/conformal; Sat WORLD MODEL v1 pretrain (A100); Sun planner v1 + shadow on NFL Sunday. The overseer launches the Colab runs. Grading rules still bind.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
