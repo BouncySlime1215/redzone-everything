@@ -135,6 +135,7 @@ def test_delaybook_behind_is_part_of_mu_until_a_fresh_tune():
 
 def _decider(cfg, clock):
     from redzone.decider.decider import Decider
+    cfg.defaults["league_overrides"] = cfg.data["league_overrides"] = {}   # live cut timing (NFL's RC7 set: tests elsewhere)
     dec = Decider(cfg, DelayBook({"youtubetv": 40.0, "prime": 40.0}, 3.0, clock=clock), clock=clock)
     dec.entry_cost = lambda target: 5.0
     return dec
