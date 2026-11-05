@@ -28,6 +28,20 @@
 | NFL | Entries landed in a break | 196 of 196 | The never-join-at-a-break rule fails hardest here |
 | NFL | Crunch live | 66.9% | |
 
+**Power check (test writers, EXP-726, NBA dev, 9 nights, real lag).** No NBA rate line can PASS or FAIL on its CI
+with 9 nights.
+
+| NBA line | Now [CI] | Nights needed for ±5 pt |
+|---|---|---:|
+| Big plays seen live | 78.9% [66, 100] | ~100 |
+| Crunch live | 90.1% [78, 100] | ~44 |
+| Mid-commercial | **33 of 64 entries = 51.6%** (the 21% used the wrong denominator) | ~23 |
+| Dead air | — | ~16 |
+
+- **EXP-735** adds the 2025-26 NBA season (NBA cdn, green) as dev nights before the locked start, until every NBA gate
+  has at least 60 decisions.
+- **EXP-732** checks whether NFL's 196/196 "in a break" counts the normal gap between plays as a break.
+
 ## RC7 (integrator's read: FAIL / PENDING / PENDING)
 | Requirement | Owner | Status |
 |---|---|---|
