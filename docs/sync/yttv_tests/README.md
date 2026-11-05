@@ -8,6 +8,29 @@ python3 run_all.py --dry-run          # 58 tests on the 2026-11-04 recordings; a
 python3 run_all.py --list             # the ranked try order
 ```
 
+## Running from the repo checkout (test writers, Nov 5)
+
+The bank runs from `docs/sync/yttv_tests` in the repo, as well as from the old scratchpad. Paths resolve like this:
+- `manifest.json` holds paths relative to this folder.
+- Results go to `results/` here, and the truth cache to `truth/cache/`. Both are gitignored.
+- `RZ_REPO` sets the RedZone checkout that holds `data/recordings`. It defaults to the Mac path.
+- `RZ_SYNC` sets the folder with `t1_retune.py` and the reference PNGs (cc_ui.png, a3_cc_focus.png, f1.png, a3_ui.png,
+  f2.png, cc_3.png). It defaults to the Nov 4 scratchpad if that still exists, and to `docs/sync` otherwise.
+- **`t1_retune.py` is now in the repo** at `docs/sync/t1_retune.py` (T4, Nov 5): the same surface the bank imports
+  (`PKG`, `CODES`, `sh`, `read`, `tune`), adb only, no stick addresses. So if macOS cleared `/private/tmp` on reboot,
+  every family still imports. Set `RZ_STICKS=host1,host2` on the Mac as before.
+- **The reference PNGs stay off the public repo.** Only the ui tests' `--dry-run` fixture checks read them; live runs
+  never do. When a PNG is missing, that dry run now ends as `SKIP (fixture_missing)` with exit 0 instead of a crash.
+
+Smoke runs, Nov 5 in the cloud (no adb on the box; a stub `adb` logged every call):
+- Test writers (#320): masked sync_probe plus plays, stand-in `t1_retune`: 53 of 61 exit 0 (7 ui = missing PNGs,
+  truth_09 = cache folder, fixed).
+- T4: Nov 4 plays only, the **real** repo `t1_retune`, `--game 401909937 --channel nbatv`: **61 of 61 exit 0, zero adb
+  calls.** The ui_07 clock-to-obs synthetic writes edge rows within half a poll gap of the true tick. truth_01 and
+  ui_05 grade FAIL there only because the cloud can't reach ESPN/NBA cdn and has no sync_probe; step 1 below checks
+  truth_01 for real on the Mac.
+- Every command in "Run order for tonight" resolves. The nbatv deep link is `ykTstVbuNpg` in all libs.
+
 ## What this is
 
 58 tests in 5 families. Each one estimates **D**: how many seconds the YTTV picture is behind the real
@@ -55,7 +78,19 @@ time. Key tests run one at a time on the hidden stick.
    `python3 run_all.py --only ui_10,ui_07,ui_08,ui_02 --channel nbatv --game 401909937 --minutes 8`
    (This needs either auto-switching paused or `--allow-app-active`; see "Needs a decision".)
 6. **After the game (about 1 minute):** truth checks and the report.
-   `python3 run_all.py --only truth_02,truth_04,truth_07,fusion --game 401909937`
+   `python3 run_all.py --only truth_02,truth_04,truth_07,truth_08,truth_11,fusion --game 401909937`
+   (truth_08 and truth_11 read `results/obs.jsonl`, which ui_07 writes in step 5 when its panel is synced to the picture.)
+
+### Added for tonight (overseer 7:35 AM): the web player's reference clock
+
+The YTTV web player in Chrome on the Mac reports the epoch of the frame it plays (`getMediaReferenceTime()`, steady to 0.1 s at the live head: ESPN 23.1-23.2 s behind). That gives a third clock with no picture capture. Three tests use it:
+
+- **ui_12 web reference** (read-only, the whole night). Open tv.youtube.com in Chrome on the Mac, muted, on the channel under test. Chrome's View > Developer > "Allow JavaScript from Apple Events" must be on; the test prints that hint and stops if it's off, and never changes it. Run it next to ui_05 so program boundaries line up:
+  `python3 run_all.py --only ui_12,ui_05 --channel nbatv --minutes 120`
+- **ui_13 Stats for nerds** (hidden stick, keys, about 5 minutes, at a dead ball). Checks whether the TV app's overlay prints a live latency or ingest time:
+  `python3 run_all.py --only ui_13 --channel nbatv --minutes 5`
+- **fusion_13 web align** (after the above, files only). Matches each stick's title flip to the web's ingest epoch at the same boundary, giving each stick's offset to the ingest clock and the gap between the two sticks. A ~10 s gap would point at YTTV's per-device Broadcast Delay setting. The test only measures it; changing the setting is Nick's call.
+  `python3 run_all.py --only fusion_13`
 
 Every run ends with `fusion_12_report`: one row per channel and stick with D, sd, n anchors, the
 families that agree, and PASS (sd ≤ 1 s), MARGINAL (≤ 2 s), FAIL, or INSUFFICIENT (n < 3).
@@ -99,8 +134,10 @@ The rest follow in `--list` order. mechanics_02 (240 minutes) goes last, and fus
    `--allow-app-active`. That risks the app pre-rolling the standby stick while a test has it paused or rewound.
 2. **Tonight's channel.** The only NBA game with exact truth (pbp timeActual) is on NBA TV at 10 PM.
    Earlier CBB games on ESPN2, truTV and FS1 only have ESPN wallclock truth, at about 2 s p90 for college games. That is good enough to learn whether in-game ad pods exist, but not to grade 1 s accuracy.
-3. **truth_08 and truth_11** (clock-reading to D) need `results/obs.jsonl` rows `{game, period, clock, obs_wall, channel}`.
-   No test writes that file yet, so run_all skips both live. Decide whether ui_07 should write it.
+3. ~~truth_08 and truth_11 need `results/obs.jsonl`.~~ **Done (Nick, 4:20 AM: yes).** ui_07 now writes one row per new
+   (period, clock) the Stats panel shows: `{game, channel, period, clock, obs_wall, obs_sigma, edge, src, panel_mode}`.
+   Rows go to `results/obs.jsonl` only when ui_07's score samples say the panel follows the picture; a realtime panel
+   goes to `obs_realtime.jsonl` and an unproven one to `obs_unverified.jsonl`, so truth_08/11 never grade a feed clock.
 4. **ui_06 captions** toggles CC on the hidden stick (`--enable-cc`). Earlier captures showed no
    caption text in the UI layer, so it ranks low. Keep it or drop it.
 

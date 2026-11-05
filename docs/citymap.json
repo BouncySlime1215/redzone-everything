@@ -472,6 +472,38 @@
     "untagged"
    ]
   },
+  "redzone/buffer_rc8.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py",
+    "scripts/rc8_flip.py",
+    "scripts/rc8_gate_report.py"
+   ],
+   "owner": "unowned",
+   "role": "[RC8] The time-shift buffer ON release, per league (Nick, Nov 5 2026 9:10 / 9:35 AM).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/buffer_shadow.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/decider/decider.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py"
+   ],
+   "owner": "unowned",
+   "role": "[time-shift buffer, SHADOW] Nick, 9:10 AM Nov 5: \"the time-shift buffer is now the main architecture\".",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/calibration.py": {
    "contracts": [
     "seek_model"
@@ -550,6 +582,7 @@
     "agent/kaggle/build_moments_kaggle.py",
     "redzone/__main__.py",
     "redzone/autonomy.py",
+    "redzone/buffer_rc8.py",
     "redzone/control.py",
     "redzone/crunch.py",
     "redzone/decider/decider.py",
@@ -584,6 +617,8 @@
     "scripts/night_report.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
+    "scripts/rc8_flip.py",
+    "scripts/rc8_gate_report.py",
     "scripts/replay_check.py",
     "scripts/rz.py",
     "scripts/service.py",
@@ -1334,6 +1369,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/buffer_shadow.py",
     "redzone/contracts/legacy.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
@@ -1700,6 +1736,8 @@
    ],
    "inputs": [
     "redzone/bets.py",
+    "redzone/buffer_rc8.py",
+    "redzone/buffer_shadow.py",
     "redzone/calibration.py",
     "redzone/channels.py",
     "redzone/commands.py",
@@ -1730,11 +1768,13 @@
     "redzone/screen/audio.py",
     "redzone/screen/boundary.py",
     "redzone/screen/scorebug.py",
+    "redzone/screen/tap_bug.py",
     "redzone/screen_ocr.py",
     "redzone/sources/espn.py",
     "redzone/sources/eventlinks.py",
     "redzone/sources/fastcast.py",
     "redzone/sources/fastcast_check.py",
+    "redzone/sources/fastfeeds.py",
     "redzone/sources/feeds.py",
     "redzone/sources/http.py",
     "redzone/sources/leagues.py",
@@ -1912,6 +1952,7 @@
     "redzone/lab/sportsgrade.py",
     "redzone/lab/tune.py",
     "scripts/backtest.py",
+    "scripts/buffer_shadow_grade.py",
     "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
@@ -2044,6 +2085,7 @@
     "redzone/lab/backtest.py",
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
+    "scripts/buffer_shadow_grade.py",
     "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/measure_break_lengths.py",
@@ -2745,6 +2787,7 @@
     "redzone/scoring/postseason.py",
     "redzone/sources/espn.py",
     "redzone/sources/fastcast.py",
+    "redzone/sources/fastfeeds.py",
     "redzone/sources/feeds.py",
     "redzone/sources/leagues.py",
     "redzone/sources/merge.py",
@@ -2753,6 +2796,7 @@
     "redzone/views.py",
     "redzone/web/phone_v2.py",
     "scripts/backtest.py",
+    "scripts/buffer_shadow_grade.py",
     "scripts/build_reasoner_data.py",
     "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
@@ -2764,6 +2808,7 @@
     "scripts/noggin_tokens.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
+    "scripts/rc8_flip.py",
     "scripts/replay_check.py",
     "scripts/train_noggin_pick.py",
     "scripts/train_noggin_timing.py"
@@ -3605,10 +3650,26 @@
    ],
    "kind": "module",
    "outputs": [
-    "redzone/engine.py"
+    "redzone/engine.py",
+    "redzone/screen/tap_bug.py"
    ],
    "owner": "SYNC",
    "role": "Stream delay measured from the broadcast's own score bug (no taps, no keys pressed).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/screen/tap_bug.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/screen/scorebug.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py"
+   ],
+   "owner": "SYNC",
+   "role": "[EXP-741 E, decider.entry.user_bug_gate] The Prime score bug's game clock as a tap's dead-ball signal.",
    "serves": [
     "untagged"
    ]
@@ -3680,6 +3741,7 @@
     "redzone/noggin/pick.py",
     "redzone/recorder.py",
     "redzone/sources/fastcast.py",
+    "redzone/sources/fastfeeds.py",
     "redzone/sources/leagues.py",
     "redzone/views.py",
     "scripts/entry_autopsy.py",
@@ -3745,6 +3807,24 @@
     "untagged"
    ]
   },
+  "redzone/sources/fastfeeds.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/models.py",
+    "redzone/sources/espn.py",
+    "redzone/sources/http.py",
+    "redzone/sources/leagues.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py"
+   ],
+   "owner": "PLATFORM",
+   "role": "[tracker item 5, Nov 5] Fast league feeds in SHADOW: polled faster than ESPN, logged, never merged.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/sources/feeds.py": {
    "contracts": [
     "FeedSnapshot",
@@ -3776,6 +3856,7 @@
    "kind": "module",
    "outputs": [
     "redzone/engine.py",
+    "redzone/sources/fastfeeds.py",
     "redzone/sources/feeds.py",
     "scripts/fault_drill.py",
     "scripts/plan_tonight.py"
@@ -3795,7 +3876,8 @@
    "kind": "module",
    "outputs": [
     "redzone/engine.py",
-    "redzone/recorder.py"
+    "redzone/recorder.py",
+    "redzone/sources/fastfeeds.py"
    ],
    "owner": "PLATFORM",
    "role": "League feeds that are faster or richer than ESPN for some things.",
@@ -4392,6 +4474,19 @@
     "Big plays live or replayed within 3 min"
    ]
   },
+  "scripts/attention_labels.py": {
+   "contracts": [],
+   "inputs": [
+    "scripts/wv_aux_label.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Data G: per-play human-attention labels for Watch Value (EXP-1704), plus the WP-only drama baseline.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/attention_pull.py": {
    "contracts": [],
    "inputs": [],
@@ -4439,6 +4534,21 @@
    "outputs": [],
    "owner": "INTEGRATION",
    "role": "Replay a past NFL Sunday through the app and print the report card.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/buffer_shadow_grade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/models.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Time-shift buffer shadow log: schema + Rule #1 (PROPOSAL, test writers, Cycle 24).",
    "serves": [
     "untagged"
    ]
@@ -4959,6 +5069,17 @@
     "untagged"
    ]
   },
+  "scripts/fast_feed_race.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[tracker item 5] The feed lag race: fast league feeds (fast_feeds.jsonl) vs ESPN (plays.jsonl), per league.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/fastcast_check.py": {
    "contracts": [],
    "inputs": [
@@ -5475,6 +5596,35 @@
     "STK-06"
    ]
   },
+  "scripts/rc8_flip.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/buffer_rc8.py",
+    "redzone/config.py",
+    "redzone/models.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[RC8] Turn the time-shift buffer ON (or back OFF) for ONE league.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/rc8_gate_report.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/buffer_rc8.py",
+    "redzone/config.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[RC8] Per-league report of the pre-registered buffer gate (docs/plans/2026-11-05-rc8-buffer-gate.md) for Nick.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/reactgrade.py": {
    "contracts": [],
    "inputs": [
@@ -5899,16 +6049,29 @@
    "serves": [
     "untagged"
    ]
+  },
+  "scripts/wv_aux_label.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [
+    "scripts/attention_labels.py"
+   ],
+   "owner": "unowned",
+   "role": "Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804).",
+   "serves": [
+    "untagged"
+   ]
   }
  },
  "pages": {
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 322,
+  "modules": 332,
   "orphans": 14,
-  "unowned": 162,
-  "untagged": 266
+  "unowned": 170,
+  "untagged": 276
  },
  "version": 1
 }

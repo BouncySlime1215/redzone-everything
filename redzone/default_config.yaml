@@ -32,7 +32,8 @@ polling:
   hot_s: 3                 # what's on, what's next, and tense games: every N seconds
   live_s: 10               # every other live game
   idle_s: 300              # poll every N seconds when nothing is live
-  nba_pbp_s: 3             # NBA liveData play-by-play per live NBA game (sources.nba_primary / nba_shadow)
+  nba_pbp_s: 1             # [Nick 9:05 AM Nov 5] 1 s, conditional GET (ETag/If-Modified-Since); NBA liveData play-by-play per live NBA game (sources.nba_primary / nba_shadow)
+  league_fast: true        # [Nick 9:05 AM] league pbp on its own loop at nba_pbp_s / nhl_pbp_s (engine._league_fast_loop)
   nhl_pbp_s: 3             # NHL api-web play-by-play per live NHL game (sources.nhl_primary); 8 s when off
   burst:                   # [sync 5] the on-screen game + its top challenger, only while a stoppage is likely
     enabled: false         # (break forecast p >= break_p) or it's tense: summary + league pbp every every_s
@@ -98,11 +99,22 @@ sources:
                            # stoppages while fresh and feeds its plays to the timeline (docs/timing.md, A2)
   trust_order: {nfl: [], nba: [], nhl: []}   # [FEED-01/03] e.g. nhl: [nhl, espn_summary]: fastest measured first owns
                            # stoppages while fresh; on its errors/silence the next takes over; disagreements logged
-  nba_primary: false       # NBA liveData play-by-play (real event times, published ~4-12 s after) owns NBA
+  nba_primary: true        # [Nick 9:05 AM Nov 5: primary for every NBA game; Wed lags p50 12 s vs ESPN 36 s] NBA liveData play-by-play (real event times, published ~4-12 s after) owns NBA
                            # stoppages while fresh and feeds the timeline; OFF until a backtest + live night pass
   nba_shadow: true         # primary off: still poll it and log its plays (source nba_cdn) to plays.jsonl
   nhl_shadow: true         # primary off: still poll api-web every polling.nhl_pbp_s and log each event's
                            # first-seen time (data/recordings/<day>/nhl_seen.jsonl) for the gating backtest
+fast_feeds:                # [tracker item 5, Nov 5] league feeds polled faster than ESPN, in SHADOW: each new event's
+                           # first-seen time goes to data/recordings/<day>/fast_feeds.jsonl, never to the merger
+                           # (redzone/sources/fastfeeds.py; scripts/fast_feed_race.py measures the lag race vs ESPN)
+  enabled: false           # OFF until Nick or lane 4 turns it on for a shadow night
+  leagues: [nhl, mlb]      # which feeds run while enabled. NBA is left out: lane 2's polling.league_fast (#326)
+                           # already polls nba_cdn at 1 s into plays.jsonl, which the race reads; don't poll it twice
+  nba_s: 1                 # NBA liveData play-by-play (public S3 mirror), per live game
+  nhl_s: 2                 # NHL api-web play-by-play, per live game
+  mlb_s: 3                 # MLB statsapi feed/live, per live game
+  board_s: 15              # each league's scoreboard / schedule (game id lookup)
+  max_games: 8             # per league, so a full slate can't multiply the request rate
 
 score:
   neutral_cap: 0.9         # a neutral game tops out at 90; 90-100 is reserved for games you care about
@@ -267,6 +279,20 @@ decider:
     crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
+    user_timed: true         # [EXP-741] one phone tap also waits until the joined game's picture would come up on a dead
+                             # ball (Nick Nov 4 10:55 PM); the second "Go now" tap still cuts at once. Off: a tap only
+                             # waits for a safe moment to leave the game on screen (Wed Nov 4 live: 15 taps landed mid-play)
+    user_rewind_after_s: 15  # [EXP-741 B] with user_timed: after this many seconds a tap also takes a landing that needs
+                             # a rewind to the last dead ball (YTTV), armed at the cut; null = never (no-rewind taps waited
+                             # > 180 s on 12/20 NBA taps, lane 3). Graded arm: 15
+    user_timed_targets: [youtubetv]  # [EXP-741 scope] targets (app prefixes) a timed tap applies to; [] = all. Prime
+                             # taps go as before: lane 3 graded YTTV+rewind 0 live, waits 0-63 s; Prime p50 199 s
+    user_rewind_max_s: null  # [EXP-741 D] a tap never rewinds further than this (a longer one keeps waiting); null = no cap.
+                             # Graded arm: 60 (arm B rewound one tap 123 s behind live)
+    user_bug_gate: shadow    # [EXP-741 E] off | shadow | on: a tap onto Prime lands when the score bug's clock on the hidden
+                             # stick has stopped (two equal reads >= 1.5 s apart, newest <= 5 s old), waits while it runs,
+                             # and uses the feed plan only when unreadable; shadow only logs every Prime bug clock read to
+                             # data/tap_bug.jsonl (taps never wait for it; gradable with user_timed off)
     start_timed: false       # [EXP-739] the night's first pick waits for a whistle / rewinds like any entry (off: goes in
                              # live, which landed 6 NHL first picks 10-32 s after the opening faceoff, autopsy #302)
     lag_floor_s: 0           # [EXP-211] an open stoppage counts as dead only as far as a feed at least this slow would
@@ -579,16 +605,45 @@ timing:
     by_league: {nfl: 60, cfb: 60, nba: 90, cbb: 90, wcbb: 90, nhl: 90}
     default: 60
     max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
+    shadow: true           # [Nick 9:10 AM Nov 5, buffer = main architecture] with enabled off: an editor decider runs
+                           # every game B s behind live and logs each decision to data/buffer_shadow.jsonl; no stick
+                           # or screen change (redzone/buffer_shadow.py). Lane 3 grades it vs live for the RC8 gate
+    shadow_overrides: {"decider.entry.start_timed": true}   # the editor's own settings (flat dotted keys); the live
+                           # decider keeps its own (planner: the night lab's untimed NBA start joined 10 s after tip)
     apps: [youtubetv, primevideo]   # apps whose player pauses and resumes on the hidden stick
     hold_overreport_s: 0   # [hold calibration] fallback only (no stick positions): the wall span less this. 0 =
                            # the span as is. At 1.5 it fought hold_cal_s (a rebuild's pause is already short by
                            # 1.5 s), so the STK-06 watchdog rebuilt a 2.9 s gap forever on the night lab (Nov 4)
     hold_cal_s: -1.5       # a rebuild's pause is this much off the gap it closes (Nick's live hold calibration)
+    rc8_on: false          # [RC8, Nick Nov 5 9:10 AM] the buffer-ON release, per league ONLY (league_overrides.<lg>):
+                           # the stream is held B s behind live with B from the adaptive formula below (it implies
+                           # the hold above for that league). Nick flips it himself (scripts/rc8_flip.py); the
+                           # pre-registered gate (docs/plans/2026-11-05-rc8-buffer-gate.md) is reported per league
+                           # by scripts/rc8_gate_report.py. Ships false everywhere. Code: redzone/buffer_rc8.py
+    rc8_fixed_s: 0         # a league pinned to this B instead of the formula (0 = the formula)
+    adaptive:              # [Nick 9:35 AM] B = feed-lag p95 + sync error + tune/seek + margin, never 0
+      floor_s: 15          # hard floor: a play is always known before it's shown (Nick: ~10-15 s; gate v28: 15 in RC8,
+                           # 10 s is Nick's later call)
+      ratchet_step: 15     # gate v28: B ratchets down at most this much per release, only after a locked read held
+      margin_s: 5
+      sync_err_s: 2        # RC7 bar: per-stick sync p95 <= 2 s
+      tune_seek_s: 6       # a fresh tune or a seek on the hidden stick (scorecard tune 5 s + settle)
+      stream_delay_credit_s: 0   # s of the app's own stream delay credited against feed lag (0 = Nick's formula
+                                 # as written; only lowered after a locked gate holds)
+      feed_lag_p95_s: {nfl: 62, cfb: 62, nba: 70, cbb: 46, wcbb: 46, nhl: 75, mlb: 60}   # P90 PLACEHOLDERS
+                                 # (noggin.pick.FEED_LAG_P90) until T6's per-league feed-lag table gives real p95s
+      approved_min_s: {nfl: 0, cfb: 0, nba: 0, cbb: 0, wcbb: 0, nhl: 0, mlb: 0}   # the lowest B a LOCKED gate
+                                 # approved per league; 0 = none yet, so a held league never goes below its live B
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
   sigma_default: 15
   model: channel           # channel: predict each channel (channels of one app differ, truTV 22 s vs FS1 42 s); legacy: one figure per app
+  scorebug_hidden: true    # [Nick 9:25 AM Nov 5] also read the bug on the hidden stick while its Prime preload is live
+                           # (our fastest NFL "feed", ~16 s behind the arena); numbers only, never frames
+  scorebug_log: true       # every bug read (score, clock, period, down) to data/scorebug_reads.jsonl for the feed race
+  feed_lag_prior_s: 10      # [EXP-803 A5] feed lag assumed for a game until a play measures it (per league via
+                           # league_overrides; measured q90: nba 69.7, nfl 62.5, nhl 71.3, redzone/lab/feed_lag_profile.json)
   scorebug_band: false     # [Nick Nov 5 3:30 AM, "Yes, read it"] Prime score bug: read only the lower third as raw
                            # pixels (no PNG encode on the stick, ~6.5 s a frame now); numbers kept, never frames
   sync:                    # every channel's delay found automatically (redzone/decider/sync.py), no taps
@@ -716,9 +771,13 @@ league_overrides:          # [league overrides, Nick Nov 4 8:20/8:40 PM] per-lea
     two_stick.pretune_on_open: true
     replay.crunch_block: true
     decider.mine_late_max_lead_wp: 0.95   # [EXP-204] ATL up 12 with 9:09 left (WP ~0.99) is not close; 6 pts / 6 min (~0.91) is
-  nhl: {}                  # RC7 fast track (integrator, Nov 5): NHL stays on live behavior until Nick OKs its trade
-                           # (locked: mid-play 8 -> 0, crunch live 82.7 -> 78.6, dead air +0.8). The graded set is
-                           # NBA's block above; /mnt/project-files/lane2/rc7-nhl-confirm-pr227.json has its grades.
+  nhl:                     # [EXP-303 package, Nick Nov 5 9:50 AM "NHL is re-enabled"] Rule #1 fix for NHL only; every
+                           # other NHL setting stays on live behavior. Dev (lane 3, 6 runs): mid-play 8 -> 0; locked once
+                           # (integrator, 4 nights, 6 runs): mid-play 18 -> 1, missed 13 -> 0, your-team crunch 13/13
+                           # (/mnt/project-files/integrator/nhl-exp303-locked/README.md).
+    decider.entry.start_timed: true    # [EXP-739] the night's first pick waits for a whistle / rewinds
+    decider.entry.crunch_now: "wait"   # [EXP-740]
+    decider.entry.lag_floor_s: 71.3    # [EXP-211] NHL measured feed lag q90 (redzone/lab/feed_lag_profile.json)
   nfl:
     timing.behind_live_s.enabled: true
     noggin.priority.enabled: true

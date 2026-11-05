@@ -158,7 +158,9 @@ def main():
                           "landings": r.cut.landings()[1], "landings_dead": r.cut.landings()[0],
                           "dead_s": round(r.dead_air_s, 1), "watched_s": round(r.watched_s, 1),
                           "crunch": r.crunch, "crunch_live": r.crunch_live,
-                          "my_crunch": r.my_crunch, "my_crunch_live": r.my_crunch_live})
+                          "my_crunch": r.my_crunch, "my_crunch_live": r.my_crunch_live,
+                          "big_from_start": r.big_from_start, "crunch_from_start": r.crunch_from_start,
+                          "my_crunch_from_start": r.my_crunch_from_start})
         tot["big"] += r.big_plays; tot["seen"] += r.big_plays_caught; tot["live"] += r.big_plays_live
         tot["cuts"] += len(r.mid_play_cuts); tot["dead"] += r.dead_air_s; tot["watched"] += r.watched_s
         tot["crunch"] += r.crunch; tot["crunch_live"] += r.crunch_live
@@ -198,6 +200,8 @@ def main():
            "big_seen_10m_pct": pct(tot.get("seen10", 0), tot["big"]),
            "your_team_big_seen_10m": f"{tot.get('my_seen10', 0)}/{tot['my_big']}",
            "crunch_on_replay": tot.get("crunch_on_replay", 0),
+           "big_from_start_pct": pct(sum(x["big_from_start"] for x in per_night), tot["big"]),
+           "crunch_from_start_pct": pct(sum(x["crunch_from_start"] for x in per_night), tot["crunch"]),
            "big_plays": tot["big"], "crunch_plays": tot["crunch"], **cut.summary(),
            "seconds": round(time.time() - t0),
            "eval_data": evaldata.stamp(), "eval_end": evaldata.window_end("nfl", EVAL_END),
