@@ -824,6 +824,10 @@ class Decider:
         pause = cue == "pause"
         # [EXP-089] these leagues never enter on a landing the data can't call (rule #1)
         unknown_ok = x.scored.league.base.value not in (c.get("decider.entry.unknown_wait_leagues") or [])
+        # [EXP-024 conformal floor] no landing on less doubt than tau sigmas (tau calibrated per league on dev)
+        floor = 0.0
+        if c.get("decider.entry.conformal.enabled"):
+            floor = float(c.get(f"decider.entry.conformal.tau.{x.scored.league.base.value}") or 0.0) * d.current_sigma(now)
         lo_cost = min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S)))
         if cue == "hidden" and can:
             # [seek model] seek on the hidden stick, then flip: the stall passes before the flip and
@@ -835,7 +839,7 @@ class Decider:
                               cost_lo=lo_cost + float(self.cfg.get("replay.hidden_seek_keys_s")),
                               urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
                               lag=float(c.get("decider.entry.landing_lag_s", 0.0)), possession=possession,
-                              unknown_ok=unknown_ok)
+                              unknown_ok=unknown_ok, floor=floor)
             if plan.ok and plan.rewind_s:
                 plan.rewind_s += sk.stall_mid
             return plan
@@ -848,7 +852,7 @@ class Decider:
                           cost_lo=min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S))),
                           urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
                           lag=float(c.get("decider.entry.landing_lag_s", 0.0)), possession=possession,
-                          unknown_ok=unknown_ok)
+                          unknown_ok=unknown_ok, floor=floor)
 
     def _cut_timed(self, gid: str | None, cands) -> bool:
         """Cut timing is on for this game's league (decider.entry.leagues). Scorecards, Nov 3: NFL
