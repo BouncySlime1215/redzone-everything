@@ -45,7 +45,8 @@ def main(argv: list[str] | None = None) -> int:
     path = decision_records.write(recs, a.out / f"{night.isoformat()}.jsonl")
     c = recs[0]["counts"]
     print(f"{path}: {c['decisions']} decisions, {c['switches']} switches, {c['moments']} big plays "
-          f"({c['big_seen']} seen), {c['entries_mid_play']} mid-play entries of {c['landings_graded']} graded")
+          f"({c['big_seen']} seen), {c['entries_mid_play']} mid-play entries of {c['landings_graded']} graded, "
+          f"{c['alerts']} alerts ({c['alerts_nothing_happened']} with nothing after)")
     return 0
 
 

@@ -1031,6 +1031,8 @@ class Supervisor:
                 # whether or not calib.auto is on (the guard needs history); read back only when it is.
                 from redzone import calibration
                 calibration.merge(self.root, night, calibration.timing_from_summary(s))
+                # lane 2's sync half: the night's seek fit and per-channel delays (seeks.jsonl, sync.jsonl)
+                calibration.merge(self.root, night, calibration.sync_from_night(self.root, lo, hi), section="sync")
             except Exception:
                 log.exception("calibration write failed for %s", night)
             self._record({"kind": "report", "rule": "live_night", "key": night.isoformat(), "path": str(out),

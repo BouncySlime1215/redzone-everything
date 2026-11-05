@@ -1,6 +1,6 @@
 {
  "redzone/decider/*": [
-  "Mid-play cuts + entries (per 100 landings)",
+  "Mid-play entries (per 100 landings)",
   "Landings in dead time",
   "Entries at a possession start (dead ball, no play missed)",
   "Crunch live, NFL",
@@ -48,5 +48,39 @@
  "redzone/reel.py": [
   "Big plays live or replayed within 3 min",
   "Big plays live or replayed within 2 min (stretch)"
+ ],
+ "redzone/web/phone_v2.py": [
+  "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)",
+  "Big plays live or replayed within 3 min",
+  "Your-team big plays seen (live or within 3 min)"
+ ],
+ "redzone/lab/decision_records.py": [
+  "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)",
+  "Mid-play entries (per 100 landings)",
+  "Landings in dead time"
+ ],
+ "scripts/export_decision_records.py": [
+  "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)"
+ ],
+ "scripts/data_ledger.py": [
+  "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)"
+ ],
+ "redzone/lab/prime_mv_fake.py": [
+  "Flips PLAYING within 3 s",
+  "STK-03",
+  "STK-04"
+ ],
+ "scripts/prime_multiview_probe.py": [
+  "Flips PLAYING within 3 s",
+  "STK-03",
+  "STK-04"
+ ],
+ "scripts/prime_multiview_grade.py": [
+  "Mid-play entries (per 100 landings)",
+  "Landings in dead time",
+  "STK-03"
+ ],
+ "redzone/web/ledger.py": [
+  "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)"
  ]
 }
