@@ -137,6 +137,7 @@ def main():
         for part in path:
             node = node.setdefault(part, {})
         node[last] = yaml.safe_load(val)
+    evaldata.flatten_league_overrides(cfg, "nfl")   # [grader v7] league-scoped defaults, as the app runs them
     t0 = time.time()
     tot = dict(big=0, seen=0, live=0, cuts=0, dead=0.0, watched=0.0, crunch=0, crunch_live=0,
                my_crunch=0, my_crunch_live=0, switches=0, hours=0.0, my_big=0, my_seen=0, blackout=0.0,

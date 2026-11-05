@@ -157,3 +157,17 @@ def use_shipped_switch_costs(cfg) -> dict:
     costs = ConfigSwitchPaths(shipped).costs()
     cfg.data.setdefault("decider", {})["switch_cost"] = dict(costs)
     return costs
+
+
+def flatten_league_overrides(cfg, league: str) -> dict:
+    """[per-league promotion, grader v7] Apply `league_overrides[<league>]` (dotted key -> value) onto the run's
+    config, so a single-league scorecard grades exactly what the app runs for that league. Applied AFTER --set, so a
+    --set of league_overrides itself is honored. Returns the flattened keys (for the report). Serves: release gate."""
+    over = ((cfg.data.get("league_overrides") or {}).get(league) or {})
+    for dotted, value in over.items():
+        node = cfg.data
+        *path, last = str(dotted).split(".")
+        for part in path:
+            node = node.setdefault(part, {})
+        node[last] = value
+    return dict(over)
