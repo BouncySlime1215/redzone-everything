@@ -125,7 +125,8 @@ def main(argv=None) -> int:
     ap.add_argument("--gap", type=float, default=45.0, help="seconds between presses (lets the hidden stick re-tune)")
     ap.add_argument("--kind", choices=("alternate", "warm", "cold"), default="alternate")
     ap.add_argument("--app", choices=sorted(set(APPS.values())), default=None,
-                    help="press only games on this app (northstar grades Prime presses on their own)")
+                    help="every other press goes to a game on this app, the presses between go to any other "
+                         "game (back and forth, as people do): northstar grades Prime presses on their own")
     ap.add_argument("--timeout", type=float, default=40.0)
     ap.add_argument("--json", help="write the per-press rows here (default: data/press_probe/<when>.json)")
     ap.add_argument("--db", type=Path, default=ROOT / "data/redzone.db", help="the app's database (read-only)")
@@ -149,7 +150,8 @@ def main(argv=None) -> int:
         for i in range(a.presses):
             want = a.kind if a.kind != "alternate" else ("warm" if i % 2 == 0 else "cold")
             st = _call(a.url, "/api/state")
-            got = pick(st, want, last, a.app) or pick(st, "any", last, a.app)
+            app = a.app if i % 2 == 0 else None   # --app: back and forth, so its game is the one you left
+            got = pick(st, want, last, app) or pick(st, "any", last, app)
             if got is None:
                 print("no live game to press (other than the one on screen): stopping")
                 break
