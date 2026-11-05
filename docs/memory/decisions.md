@@ -389,6 +389,17 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   to `two_stick.standby_repause_s: 600` in default_config.yaml, value unchanged; postseason.py's ROUNDS / DEFAULTS /
   _rank renamed ROUNDS_LEFT / WEIGHTS / _poll_rank (no behavior change). Reason: the contract kernel (K1/K2/K4)
   flagged them as new on merge; one definition per fact, timings in config (Nick, one connected system).
+- **2026-11-04 (lane 2, EXP-005 logging half): `decider.log_options`** (default `false`). Each decision can carry its
+  option set (stay, a switch to each live game, the best catch-up) with the facts it was judged on and the policy's
+  propensities (deterministic: 1.0 for the one taken). Logging only: NHL dev seed 0 sim JSON identical on vs off.
+  Randomizing near-ties stays on hold until Nick OKs it.
+- 2026-11-04 (Nick 7:21 PM ET, via planner): **EXP-005 exploration approved with limits**, built OFF
+  (`decider.explore.enabled: false`, rate 0.05 capped at 5%, margin 3, seed 0). Only between switches the decider
+  already chose (better / break_visit / live) and live games within the margin; it runs before entry timing,
+  the crunch floor and `_safe`, so it can never join mid-play. Hard-excluded: crunch, down the stretch (late),
+  your team or bet (personal >= hold_personal), any lock, a waiting catch-up, user lock/pause, safe mode,
+  replays. Propensities logged per decision (#186). Stays off until Friday's v3 locked set lands; promotion
+  uses the normal bar. **Why:** off-policy grading needs logged randomness on near ties.
 - **2026-11-04 (lane 2, #132): seek-model timings moved into config, values unchanged** (onebrain K2: no timing
   literals in code). `replay.seek_press_s` 0.25, `replay.pause_keys_s` 0.5, `replay.pause_err_s` 0.25,
   `replay.pause_cue_grain_s` 0.5, `replay.hidden_seek_keys_s` 1.5, `decider.leave.tune_s` 6,

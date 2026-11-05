@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import time
 import math
+import random
 from collections import Counter, deque
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -104,6 +105,7 @@ START_RETRY_MAX_S = 60.0
 # to the dead ball before the play we'd otherwise join mid-way, or after waiting for one. Only a
 # switch you made by hand goes straight in.
 ENTRY_EXEMPT = {"user", "resume", "skip"}   # resume/skip land on a planned frame of the same tune
+EXPLORE_KINDS = {"better", "break_visit", "live"}   # [EXP-005] ordinary switches only: never crunch/home/user/chase
 PICK_KEEPS = {"user", "crunch", "home", "must_see", "live"}   # [noggin PICK] app-only switch kinds
 ENTRY_SLACK_S = 2.0       # the tune's own timing doubt, on top of the delay's 2 sigma
 # Once the delay's doubt grows (sigma drifts up between calibrations) no landing fits a 30 s huddle
@@ -186,6 +188,10 @@ class Decision:
     replay: "Missed | None" = None
     want: str | None = None   # the game it wants to switch to while it waits for a safe moment
     rewind_s: float = 0.0     # [cut timing] land this far behind live (whole seek steps) on a dead ball
+    # [EXP-005 off-policy logging, decider.log_options] every option this decision could have taken, with the
+    # policy's probability of each (the decider is deterministic: 1.0 for the one taken, 0 for the rest)
+    options: tuple = ()
+    propensity: float = 1.0
     cue: str = ""             # [seek model] "pause": the hidden stick cues the rewind before the flip
 
 
@@ -278,6 +284,9 @@ class Decider:
         self.safe_mode = False
         self.safe_since = 0.0   # when safe mode last turned on (for the timed auto-resume)
         self.timelines: dict[str, Timeline] = {}
+        self._explore_rng: random.Random | None = None   # [EXP-005] seeded (decider.explore.seed)
+        self._explore_probs: dict[str, float] = {}
+        self.explore_count = 0
         self.log: deque[Decision] = deque(maxlen=500)
         self._screen_break: set[str] = set()
         # Catch-up replays
@@ -399,6 +408,7 @@ class Decider:
                 self.after_replay = True
         home_before = (self.home_break_visit, self.home_return_at)
         d = self._decide(cands, now)
+        d = self._explore(d, cands)
         d = self._scenario(d, cands, now, home_before)
         d = self._clairvoyant(d, cands, now, home_before)
         d = self._crunch_guard(d, cands, now, home_before)
@@ -411,7 +421,7 @@ class Decider:
             # the command first: a proposal is not a watched game or replay.
             self._proposal_home = (d, self.home_break_visit, self.home_return_at)
             self.home_break_visit, self.home_return_at = home_before
-            self.log.append(d)
+            self._log_decision(d, cands)
             return d
         if d.action == "switch" and d.target:
             if d.target == self.current and not self.after_replay and d.kind != "skip":
@@ -425,8 +435,102 @@ class Decider:
         elif d.action == "replay" and d.replay:
             self._pause_for(d, now)
             self._start_replay(d.replay, cands, now)
-        self.log.append(d)
+        self._log_decision(d, cands)
         return d
+
+    # ----- [EXP-005] exploration (Nick Nov 4 7:21 PM: approved with limits; off until v3 locked lands) ---
+
+    def _explore(self, d: Decision, cands: dict[str, Candidate]) -> Decision:
+        """decider.explore.enabled: now and then take a near-tie alternative instead of the chosen switch, so
+        logged nights can grade other policies off-policy. Only between switches the decider already chose
+        to make (its gate passed) and live games within decider.explore.margin of the chosen one; the
+        alternative still goes through every overlay after this (entry timing, the crunch floor, _safe),
+        so it can never join mid-play. Never in crunch, down the stretch, around your team, or while a
+        catch-up waits. At most decider.explore.rate (capped at 5%) of decisions. Sets d.propensity."""
+        c = self.cfg
+        if not c.get("decider.explore.enabled", False):
+            return d
+        rate = min(0.05, float(c.get("decider.explore.rate")))
+        alts = self._explore_set(d, cands, float(c.get("decider.explore.margin")))
+        if not alts or rate <= 0:
+            return d
+        if self._explore_rng is None:
+            self._explore_rng = random.Random(int(c.get("decider.explore.seed")))
+        n = len(alts) + 1
+        p_each = rate / n
+        self._explore_probs = {d.target: 1.0 - rate + p_each, **{g: p_each for g in alts}}
+        if self._explore_rng.random() >= rate:
+            d.propensity = self._explore_probs[d.target]
+            return d
+        g = self._explore_rng.choice([d.target] + alts)
+        self.explore_count += g != d.target
+        out = d if g == d.target else Decision(d.at, "switch", g, f"explore (near tie with {d.target}): "
+                                               + cands[g].scored.reason, d.state, d.gate, kind="explore")
+        out.propensity = self._explore_probs[g]
+        return out
+
+    def _explore_set(self, d: Decision, cands: dict[str, Candidate], margin: float) -> list[str]:
+        """The live games a switch could go to instead, or [] when exploration is excluded here."""
+        if d.action != "switch" or not d.target or d.target in PSEUDO or d.kind not in EXPLORE_KINDS:
+            return []
+        if self.user.locked_game or self.user.paused or self.safe_mode or self.replaying is not None:
+            return []
+        if any(not m.seen_live and not m.replayed for m in self.queue):
+            return []                                   # a catch-up is waiting: never trade it for exploring
+        cur = cands.get(self.current) if self.current else None
+        chosen = cands.get(d.target)
+        if chosen is None or any(self._explore_excluded(x) for x in (cur, chosen) if x is not None):
+            return []
+        v = float(chosen.scored.score)
+        return sorted(g for g, x in cands.items()
+                      if g not in (d.target, self.current) and g not in PSEUDO and not x.stale
+                      and not x.scored.is_break and g not in self._screen_break
+                      and not self._explore_excluded(x) and abs(float(x.scored.score) - v) <= margin)
+
+    def _explore_excluded(self, x: Candidate) -> bool:
+        """Hard exclusions: crunch, down the stretch (late), your team or bet, any lock."""
+        s = x.scored
+        hold = self.cfg.get("decider.crunch.hold_personal", 5)
+        return bool(s.crunch or s.crunch_now or s.late or s.lock or s.personal >= hold)
+
+    def _log_decision(self, d: Decision, cands: dict[str, Candidate]) -> None:
+        """[EXP-005] Keep the decision; with decider.log_options also its option set and propensities, so
+        a doubly robust estimator can grade another policy on logged nights. Logging only: the option set
+        is read after the choice is made and never feeds back into it."""
+        if self.cfg.get("decider.log_options", False):
+            try:
+                d.options = self._option_set(d, cands)
+            except Exception:   # a log line must never cost the decision
+                log.exception("option set failed")
+        self.log.append(d)
+
+    def _option_set(self, d: Decision, cands: dict[str, Candidate]) -> tuple:
+        """Stay, a switch to each live game, and the best catch-up replay, each with the facts it was
+        judged on (score, watch value, break, crunch) and the policy's probability of taking it."""
+        def facts(gid):
+            x = cands.get(gid)
+            if x is None:
+                return {}
+            s = x.scored
+            wv = getattr(s, "watch_value", None)
+            return {"score": round(float(s.score), 1), "wv": None if wv is None else round(float(wv), 1),
+                    "brk": bool(s.is_break), "crunch": bool(s.crunch or s.crunch_now), "stale": bool(x.stale)}
+        taken = (d.action if d.action != "switch" or d.target != self.current else "stay",
+                 d.target if d.action != "stay" else self.current)
+        opts = [("stay", self.current)] + [("switch", g) for g in cands if g != self.current and g not in PSEUDO]
+        rp = d.replay if d.action == "replay" else next((m for m in self.queue if not m.replayed), None)
+        if rp is not None:
+            opts.append(("replay", rp.game_id))
+        # exploration's propensities hold only while the switch it drew survived the overlays after it
+        probs = self._explore_probs if d.action == "switch" and d.target in self._explore_probs else {}
+        self._explore_probs = {}
+        out = []
+        for a, g in dict.fromkeys(opts):
+            p = probs.get(g, 0.0) if (a == "switch" and probs) else (1.0 if (a, g) == taken else 0.0)
+            out.append({"a": a, "g": g, "p": round(p, 4), **facts(g)})
+        if not any(o["p"] for o in out):   # a pseudo channel (RedZone, the reel) or a decision we didn't list
+            out.append({"a": d.action, "g": d.target, "p": 1.0, **facts(d.target)})
+        return tuple(out)
 
     def confirm(self, d: Decision, cands: dict[str, Candidate]) -> None:
         """Commit an observed playback change, with screen time from confirmation."""

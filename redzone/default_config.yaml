@@ -240,6 +240,12 @@ decider:
   # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.89 s) + the 1 s settle.
   # Replaced by your own measured times as you use it (see switch_speed).
   switch_cost: {youtubetv: 5.5, prime: 27, espn: 7.5, hdmi_flip: 3}
+  log_options: false       # [EXP-005] log every decision's option set + propensities (logging only, no behavior)
+  explore:                 # [EXP-005] off-policy exploration (Nick Nov 4 7:21 PM: approved with limits)
+    enabled: false         # OFF until Friday's v3 locked set lands
+    rate: 0.05             # share of eligible decisions that pick uniformly among the near ties (capped at 5%)
+    margin: 3              # near tie: live games within this many points of the chosen switch
+    seed: 0                # the explorer's own random stream (reproducible runs)
   leave:
     dead_windows: []       # [whistle detection] also leave on the play-by-play's dead windows in these leagues
     tune_s: 6              # ...and the window must outlast this tune margin (a visit can't come back inside it)
