@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep: usage 73% (hard stop 88%). Coordinator is actively working the 3:10 unblock order (1h+ running), so threads are not stalled.
-Colab: no new finished runs; EXP-107 ladder relaunch at kaggle-inputs 811688b2 still queued behind Watch Value training.
+Sweep: usage 73%. Coordinator reports everything for tonight merged and ready for the freeze; YouTube TV tests pass 61/61. Prioritization and stay/leave are held for the next release (NBA keeps closest-game).
+Waiting only on Nick: the 5-6:30 PM deploy with the TV off. Overseer will launch the EXP-1404 labels notebook (Colab CPU, ~30 min) next sweep.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
