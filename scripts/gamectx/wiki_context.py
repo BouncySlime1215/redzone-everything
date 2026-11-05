@@ -537,7 +537,9 @@ def pull(league: str, first: int, last: int, out: Path, wiki: Wiki | None = None
             break
     if rivalries:
         new = []
-        for m in wiki.members(RIVALRY_CATS[league]):
+        mem = wiki.members(RIVALRY_CATS[league])
+        print(f"{league} rivalries: {len(mem)} category members", flush=True)
+        for m in mem:
             if "rivalry" not in m["title"].lower():
                 continue
             html, rev = wiki.html(m["pageid"])

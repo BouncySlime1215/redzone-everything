@@ -210,10 +210,10 @@ def report(league: str, season_events: list[dict], targets: list[dict], ctx: Pat
         for side, team, opp, home in (("home", h, a, 1), ("away", a, h, 0)):
             for k, v in book.team_side(team, opp, t, home).items():
                 row[f"{side}_{k}"] = v
-            g = AJ.find(games, m.get(team, team), m.get(opp, opp), night) if games else None
-            for k, v in AJ.side(side, g, weeks).items():
-                if any(k.endswith(c) for c in AJ.OFF_COLS):
-                    row[k] = v
+            # offseason numbers come from the team-season's week-0 row, so upcoming games (no result yet) get them too
+            w0 = weeks.get((m.get(team, team), str(_season_of(league, e)), "0"))
+            for c in AJ.OFF_COLS:
+                row[f"{side}_{c}"] = AJ._num(w0.get(c)) if w0 else ""
         rows.append(row)
     return rows
 
