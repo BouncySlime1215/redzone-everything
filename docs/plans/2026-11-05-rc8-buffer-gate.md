@@ -14,7 +14,9 @@ A league's buffer turns ON in RC8 (`timing.behind_live_s` scoped to that league,
    own line and never count here.
 2. **It beats live (sim sweep, dev nights only, >= 8 nights per league, seeds 0-2).** Against the same nights with the
    buffer off, paired night bootstrap:
-   - primary: big plays shown from the start (from the previous dead ball), CI lower bound of buffer - live > 0;
+   - primary: big plays shown from the start (from the previous dead ball; `big_from_start`, grader v28, #316),
+     CI lower bound of buffer - live > 0. The live arm is the same harness with `--behind-live 0` (the stream's own
+     delay), and the sweep also reports one run at the old default lag for continuity;
    - guardrails, each on both harnesses: crunch live (shown from the start) not down by more than 1.0 pt; your-team
      crunch 100%; dead air not up by more than 0.5 pt; switches per hour <= 1.5x live; plays missed on entry not up
      by more than 5% relative.
@@ -30,6 +32,26 @@ A league's buffer turns ON in RC8 (`timing.behind_live_s` scoped to that league,
 
 A league that misses any of 1-5 stays live in RC8, behind its flag. Rule #1 never changes. While Nick watches,
 only the hidden stick is touched.
+
+## Buffer size policy (Nick, Nov 5 9:35 AM ET)
+
+The buffer shrinks as feeds and sync improve, but it never reaches 0. Per league:
+
+    behind_live_s = feed-lag p95 + sync error p95 + tune/seek time p95 + safety margin,   capped at 90 s
+
+- **Inputs are measured, not tuned.** Feed-lag p95 comes from lane 2's per-league feed-lag table, sync error p95 from
+  the EXP-800 sync grader on the shadow logs, tune/seek p95 from lane 2's seek-reliability measurement per app/channel.
+  Each input is read on train+valid nights only; locked never sets any of them.
+- **Hard floor.** The buffer is never below 15 s in RC8 (Nick: "start ~10-15 s"; we start at the top of that range).
+  The floor exists so a play is always known from the feed before its first frame is shown. Lowering the floor itself
+  to 10 s is a separate decision for Nick, after a release whose locked gates hold at 15 s.
+- **Ratchet down only, one step per release, only after locked gates hold.** A league's buffer can go down only when
+  (a) the current value passed sections 1-5 above on a locked read at a release, and (b) the new, smaller value
+  (recomputed from the formula, never below the floor) passes the same sim sweep and shadow veto on fresh nights.
+  One step per release, at most 15 s per step. It goes back up at once (to the last value that held) if any shadow
+  or live night shows a mid-play entry, or if a re-measured input pushes the formula above the current value.
+- RC8 sets each passing league to max(sweep point from section 2, formula, floor), so the measured inputs can only
+  raise the buffer, never cut it below what was graded.
 
 ## Steps
 

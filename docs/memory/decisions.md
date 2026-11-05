@@ -853,8 +853,18 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `wv-attention-labels`; later sources (S6 Twitch) get their own row. Labels are training targets only, train nights
   only, never features; the objective stays "worth it" (no engagement traps). Locked read once by the integrator at
   the next release. Grader freeze v27.
-- 2026-11-05 (lane 3, grader PROPOSAL for the integrator to freeze): new scorecard line "big plays shown from the
-  start" (big_from_start, crunch_from_start, my_crunch_from_start) for the RC8 buffer gate's primary. A big play counts
-  when the screen had its game from the moment the ball went live after the last dead ball (grading.restart_before =
-  resume_after of the last stoppage or score) through the end of the play; football: the play's own snap (= big live).
-  Additive only: no existing line, default or bar changes. Reason: Nick 9:10 AM "% big plays shown FROM THE START".
+- 2026-11-05 (integrator, grader v28; lane 3 #316): **new scorecard line "big plays shown from the start"**
+  (big_from_start, crunch_from_start, my_crunch_from_start), the RC8 buffer gate's primary. A big play counts when the
+  screen had its game from the moment the ball went live after the last dead ball (grading.restart_before =
+  resume_after of the last stoppage or score) through the end of the play; football and baseball: the play's own snap
+  (= big live). Both of lane 3's calls accepted: a made basket is a dead ball for the restart (it is one under the
+  rules, and dead_at already treats it so), and the control is the same harness with `--behind-live 0`, not the old
+  43 s scorecard lag, with one run at the old default lag kept in the sweep for continuity. Additive only: no existing line,
+  default or bar changes. Frozen before any sweep or shadow number is read. Reason: Nick 9:10 AM "% big plays shown
+  FROM THE START". Grader freeze v28.
+- 2026-11-05 (Nick, 9:35 AM ET; integrator): **buffer size policy, adaptive per league, never 0.** "Make it adaptive
+  per league: buffer = feed-lag p95 + sync error + tune/seek time + safety margin; ratchet down only after
+  locked-night gates hold; set a hard floor (start ~10-15 s) so a play is always known before it's shown." Written
+  into docs/plans/2026-11-05-rc8-buffer-gate.md: inputs measured on train+valid only, hard floor 15 s in RC8 (10 s is
+  Nick's later call), down one step (<= 15 s) per release and only after a locked read held, straight back up on any
+  mid-play night, RC8 value = max(sweep point, formula, floor).
