@@ -1,0 +1,129 @@
+[run_all 03:40:47] DRY RUN on 2026-11-04 recordings: 58 tests, 3 at a time, no stick touched
+[run_all 03:40:47] truth_01                           rc=0      0.2s  PASS
+[run_all 03:40:47] mechanics_12                       rc=0      0.2s  N/A
+[run_all 03:40:47] truth_09                           rc=0      0.1s  PASS
+[run_all 03:40:48] truth_10                           rc=0      0.2s  N/A
+[run_all 03:40:48] ui_05                              rc=0      0.2s  PASS
+[run_all 03:40:48] ads_02                             rc=0      0.3s  FAIL
+[run_all 03:40:48] ui_11                              rc=0      0.2s  N/A
+[run_all 03:40:48] ads_04                             rc=0      0.3s  FAIL
+[run_all 03:40:48] ads_05                             rc=0      0.2s  PASS
+[run_all 03:40:48] truth_06                           rc=0      0.2s  PASS
+[run_all 03:40:48] truth_05                           rc=0      0.2s  PASS
+[run_all 03:40:48] ads_01                             rc=0      0.2s  pass
+[run_all 03:40:49] ads_03                             rc=0      0.3s  FAIL
+[run_all 03:40:49] ads_06                             rc=0      0.9s  FAIL
+[run_all 03:40:49] ads_07                             rc=0      0.3s  FAIL
+[run_all 03:40:49] ads_11                             rc=0      0.2s  PASS
+[run_all 03:40:49] ads_10                             rc=0      0.3s  FAIL
+[run_all 03:40:49] ads_12                             rc=0      0.2s  FAIL
+[run_all 03:40:49] ads_09                             rc=0      0.2s  PASS
+[run_all 03:40:49] mechanics_05                       rc=0      0.2s  PASS
+[run_all 03:40:49] ads_08                             rc=0      0.3s  FAIL
+[run_all 03:40:49] mechanics_08                       rc=0      0.2s  PASS
+[run_all 03:40:49] ui_09                              rc=0      0.2s  N/A
+[run_all 03:40:49] truth_02                           rc=0      0.2s  PASS
+[run_all 03:40:50] truth_03                           rc=0      0.3s  PASS
+[run_all 03:40:50] truth_07                           rc=0      0.2s  PASS
+[run_all 03:40:50] truth_04                           rc=0      0.4s  PASS
+[run_all 03:40:50] truth_08                           rc=0      0.2s  PASS
+[run_all 03:40:50] truth_11                           rc=0      0.2s  PASS
+[run_all 03:40:51] ui_10                              rc=0      0.7s  N/A
+[run_all 03:40:51] ui_08                              rc=0      0.2s  N/A
+[run_all 03:40:51] mechanics_09                       rc=0      2.0s  PASS
+[run_all 03:40:51] mechanics_01                       rc=0      0.2s  N/A
+[run_all 03:40:52] ui_07                              rc=0      1.9s  N/A
+[run_all 03:40:52] ui_02                              rc=0      1.1s  N/A
+[run_all 03:40:52] mechanics_11                       rc=0      0.2s  FAIL
+[run_all 03:40:52] mechanics_07                       rc=0      0.2s  PASS
+[run_all 03:40:52] mechanics_06                       rc=0      0.2s  N/A
+[run_all 03:40:53] ui_04                              rc=0      0.5s  N/A
+[run_all 03:40:53] ui_01                              rc=0      0.4s  N/A
+[run_all 03:40:53] ui_03                              rc=0      1.4s  N/A
+[run_all 03:40:53] mechanics_03                       rc=0      0.2s  N/A
+[run_all 03:40:53] mechanics_04                       rc=0      0.2s  N/A
+[run_all 03:40:53] mechanics_10                       rc=0      0.2s  PASS
+[run_all 03:40:53] mechanics_02                       rc=0      0.2s  PASS
+[run_all 03:40:53] ui_06                              rc=0      0.9s  N/A
+[run_all 03:40:54] fusion_03_two_tunes                rc=0      0.2s  PASS
+[run_all 03:40:54] fusion_02_robust_vs_kalman         rc=0      0.2s  FAIL
+[run_all 03:40:54] fusion_01_kalman_fuse              rc=0      0.2s  FAIL
+[run_all 03:40:54] fusion_05_two_families             rc=0      0.2s  FAIL
+[run_all 03:40:54] fusion_04_two_sticks               rc=0      0.2s  FAIL
+[run_all 03:40:54] fusion_06_heldout                  rc=0      0.2s  FAIL
+[run_all 03:40:54] fusion_09_app_audit                rc=0      0.2s  FAIL
+[run_all 03:40:54] fusion_08_e_invariance             rc=0      0.2s  PASS
+[run_all 03:40:54] fusion_07_shadow_join              rc=0      0.2s  FAIL
+[run_all 03:40:54] fusion_11_synthetic_selftest       rc=0      0.1s  PASS
+[run_all 03:40:54] fusion_10_n_needed                 rc=0      0.2s  FAIL
+[run_all 03:40:54] fusion_12_report                   rc=0      0.2s  FAIL
+
+# YTTV delay report (DRY-RUN)
+
+| channel | stick | D_edge (s) | sd (s) | n | families | D_now (s) | goal 1-2 s |
+|---|---|---|---|---|---|---|---|
+| espn | hdmi1 | 23.39 | 5.69 | 1 | ads_pod_end=17.7+-8.0(n1) | 23.39 | INSUFFICIENT |
+
+## Tests
+
+| result file | rows | result | mode | time |
+|---|---|---|---|---|
+| ads_01_pod_cadence.dryrun.jsonl | 22 | PASS | dry-run | 11-05 03:40:48 |
+| ads_02_pod_vs_timeout.dryrun.jsonl | 5 | FAIL | dry-run | 11-05 03:40:48 |
+| ads_03_break_length_rules.dryrun.jsonl | 6 | FAIL | dry-run | 11-05 03:40:49 |
+| ads_04_period_halftime_anchor.dryrun.jsonl | 10 | FAIL | dry-run | 11-05 03:40:48 |
+| ads_05_cross_stick_pods.dryrun.jsonl | 4 | PASS | dry-run | 11-05 03:40:48 |
+| ads_06_bitrate_lag_scan.dryrun.jsonl | 5 | FAIL | dry-run | 11-05 03:40:49 |
+| ads_07_vpud_resolution.dryrun.jsonl | 29 | FAIL | dry-run | 11-05 03:40:49 |
+| ads_08_logcat_enrichment.dryrun.jsonl | 25 | FAIL | dry-run | 11-05 03:40:49 |
+| ads_09_whad_event_clock.dryrun.jsonl | 5 | PASS | dry-run | 11-05 03:40:49 |
+| ads_10_break_regression.dryrun.jsonl | 14 | FAIL | dry-run | 11-05 03:40:49 |
+| ads_11_E_invariance_pods.dryrun.jsonl | 22 | PASS | dry-run | 11-05 03:40:49 |
+| ads_12_pod_end_predict.dryrun.jsonl | 22 | FAIL | dry-run | 11-05 03:40:49 |
+| fusion_01_kalman_fuse.dryrun.jsonl | 6 | FAIL | dry-run | 11-05 03:40:54 |
+| fusion_02_robust_vs_kalman.dryrun.jsonl | 6 | FAIL | dry-run | 11-05 03:40:54 |
+| fusion_03_two_tunes.dryrun.jsonl | 8 | PASS | dry-run | 11-05 03:40:54 |
+| fusion_04_two_sticks.dryrun.jsonl | 8 | FAIL | dry-run | 11-05 03:40:54 |
+| fusion_05_two_families.dryrun.jsonl | 6 | FAIL | dry-run | 11-05 03:40:54 |
+| fusion_06_heldout.dryrun.jsonl | 6 | FAIL | dry-run | 11-05 03:40:54 |
+| fusion_07_shadow_join.dryrun.jsonl | 5 | FAIL | dry-run | 11-05 03:40:54 |
+| fusion_08_e_invariance.dryrun.jsonl | 3 | PASS | dry-run | 11-05 03:40:54 |
+| fusion_09_app_audit.dryrun.jsonl | 7 | FAIL | dry-run | 11-05 03:40:54 |
+| fusion_10_n_needed.dryrun.jsonl | 6 | FAIL | dry-run | 11-05 03:40:54 |
+| fusion_11_synthetic_selftest.dryrun.jsonl | 3 | PASS | dry-run | 11-05 03:40:54 |
+| mechanics_01_landing_repeat.dryrun.jsonl | 23 | None | dry-run | 11-05 03:40:51 |
+| mechanics_02_landing_drift.dryrun.jsonl | 9 | PASS | dry-run | 11-05 03:40:53 |
+| mechanics_03_tune_latency.dryrun.jsonl | 13 | None | dry-run | 11-05 03:40:53 |
+| mechanics_04_seek_keys.dryrun.jsonl | 20 | None | dry-run | 11-05 03:40:53 |
+| mechanics_05_session_monitor.dryrun.jsonl | 6 | PASS | dry-run | 11-05 03:40:49 |
+| mechanics_06_pause_rejoin.dryrun.jsonl | 7 | None | dry-run | 11-05 03:40:52 |
+| mechanics_07_cross_stick.dryrun.jsonl | 20 | PASS | dry-run | 11-05 03:40:52 |
+| mechanics_08_wifi_stall.dryrun.jsonl | 36 | PASS | dry-run | 11-05 03:40:49 |
+| mechanics_09_ui_probe.dryrun.jsonl | 14 | PASS | dry-run | 11-05 03:40:51 |
+| mechanics_10_dvr_window.dryrun.jsonl | 16 | PASS | dry-run | 11-05 03:40:53 |
+| mechanics_11_relink_live.dryrun.jsonl | 26 | FAIL | dry-run | 11-05 03:40:52 |
+| mechanics_12_clock_check.dryrun.jsonl | 8 | None | dry-run | 11-05 03:40:47 |
+| truth_01_build_cache.dryrun.jsonl | 16 | PASS | dry-run | 11-05 03:40:47 |
+| truth_02_rigidity_nba.dryrun.jsonl | 16 | PASS | dry-run | 11-05 03:40:49 |
+| truth_03_rigidity_espn_leagues.dryrun.jsonl | 23 | PASS | dry-run | 11-05 03:40:49 |
+| truth_04_espn_vs_nba_agreement.dryrun.jsonl | 309 | PASS | dry-run | 11-05 03:40:50 |
+| truth_05_feed_lags.dryrun.jsonl | 9 | PASS | dry-run | 11-05 03:40:48 |
+| truth_06_stoppage_walls.dryrun.jsonl | 215 | PASS | dry-run | 11-05 03:40:48 |
+| truth_07_heldout_prediction.dryrun.jsonl | 16 | PASS | dry-run | 11-05 03:40:50 |
+| truth_08_d_from_clock.dryrun.jsonl | 295 | PASS | dry-run | 11-05 03:40:50 |
+| truth_09_stick_clock.dryrun.jsonl | 4 | PASS | dry-run | 11-05 03:40:47 |
+| truth_10_d_from_adpods.dryrun.jsonl | 22 | None | dry-run | 11-05 03:40:48 |
+| truth_11_edge_offset_calibration.dryrun.jsonl | 35 | PASS | dry-run | 11-05 03:40:50 |
+| ui_01_live_badge.dryrun.jsonl | 4 | None | dry-run | 11-05 03:40:53 |
+| ui_02_scrub_label.dryrun.jsonl | 5 | None | dry-run | 11-05 03:40:52 |
+| ui_03_knob_pixel.dryrun.jsonl | 5 | None | dry-run | 11-05 03:40:53 |
+| ui_04_bar_live_edge.dryrun.jsonl | 4 | None | dry-run | 11-05 03:40:53 |
+| ui_05_title_flip_epg.dryrun.jsonl | 30 | PASS | dry-run | 11-05 03:40:48 |
+| ui_06_captions_ocr.dryrun.jsonl | 6 | None | dry-run | 11-05 03:40:53 |
+| ui_07_stats_panel.dryrun.jsonl | 5 | None | dry-run | 11-05 03:40:52 |
+| ui_08_key_plays_seek.dryrun.jsonl | 8 | None | dry-run | 11-05 03:40:51 |
+| ui_09_text_without_pixels.dryrun.jsonl | 5 | None | dry-run | 11-05 03:40:49 |
+| ui_10_focus_recipes.dryrun.jsonl | 5 | None | dry-run | 11-05 03:40:51 |
+| ui_11_epg_clock_monitor.dryrun.jsonl | 12 | None | dry-run | 11-05 03:40:48 |
+
+[run_all 03:40:54] done: 58/58 exited 0; logs /private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047

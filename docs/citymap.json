@@ -1241,6 +1241,25 @@
     "Your-team crunch live"
    ]
   },
+  "redzone/decider/break_tail.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/decider/decider.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-728 / EXP-736] Land late in a break, not early: the restart a break is predicted to end at.",
+   "serves": [
+    "Crunch live, NBA",
+    "Crunch live, NFL",
+    "Crunch live, NHL",
+    "Entries at a possession start (dead ball, no play missed)",
+    "Landings in dead time",
+    "Mid-play entries (per 100 landings)",
+    "Your-team crunch live"
+   ]
+  },
   "redzone/decider/core.py": {
    "contracts": [],
    "inputs": [
@@ -1299,6 +1318,7 @@
    "inputs": [
     "redzone/config.py",
     "redzone/contracts/switching.py",
+    "redzone/decider/break_tail.py",
     "redzone/decider/core.py",
     "redzone/decider/cuts.py",
     "redzone/decider/playbooks.py",
@@ -1457,7 +1477,8 @@
    "outputs": [
     "redzone/decider/screen.py",
     "redzone/engine.py",
-    "redzone/screen/scorebug.py"
+    "redzone/screen/scorebug.py",
+    "redzone/sync_probe.py"
    ],
    "owner": "unowned",
    "role": "Automatic per-channel sync: each channel's screen delay tracked by a small Kalman filter, no taps.",
@@ -1891,6 +1912,7 @@
     "redzone/lab/sportsgrade.py",
     "redzone/lab/tune.py",
     "scripts/backtest.py",
+    "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
@@ -2022,6 +2044,7 @@
     "redzone/lab/backtest.py",
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
+    "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/measure_break_lengths.py",
     "scripts/northstar.py"
@@ -2066,6 +2089,21 @@
     "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)",
     "Landings in dead time",
     "Mid-play entries (per 100 landings)"
+   ]
+  },
+  "redzone/lab/delaygrade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/reactgrade.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/delay_grade.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-803] Delay precision grader, matching EXP-803's pre-registration exactly (#296, rescoped Cycle 19 #295).",
+   "serves": [
+    "untagged"
    ]
   },
   "redzone/lab/evaldata.py": {
@@ -2420,6 +2458,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/lab/delaygrade.py",
     "scripts/reactgrade.py"
    ],
    "owner": "unowned",
@@ -2715,6 +2754,7 @@
     "redzone/web/phone_v2.py",
     "scripts/backtest.py",
     "scripts/build_reasoner_data.py",
+    "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
@@ -3642,6 +3682,7 @@
     "redzone/sources/fastcast.py",
     "redzone/sources/leagues.py",
     "redzone/views.py",
+    "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/green_summaries.py",
@@ -3880,6 +3921,7 @@
    "contracts": [],
    "inputs": [
     "redzone/config.py",
+    "redzone/decider/sync.py",
     "redzone/sync_edge.py",
     "redzone/tuners/adb.py"
    ],
@@ -4612,6 +4654,19 @@
     "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)"
    ]
   },
+  "scripts/delay_grade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/delaygrade.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-803] Grade delay-precision arms against the base arm (redzone/lab/delaygrade.py).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/delay_report.py": {
    "contracts": [],
    "inputs": [
@@ -4697,6 +4752,22 @@
    "outputs": [],
    "owner": "PLATFORM",
    "role": "Download a past NFL regular season (scoreboards + play-by-play) for the training lab.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/entry_autopsy.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Entry autopsy (PROPOSAL, test writers; EXP-700 / EXP-727 / EXP-736).",
    "serves": [
     "untagged"
    ]
@@ -4946,6 +5017,17 @@
    "outputs": [],
    "owner": "SWITCHING",
    "role": "Find the YouTube TV watch code (tv.youtube.com/watch/<code>) of a channel we lack, on a SPARE stick.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/gate_power.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "How many nights does a gate need?",
    "serves": [
     "untagged"
    ]
@@ -5812,10 +5894,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 316,
+  "modules": 321,
   "orphans": 14,
-  "unowned": 156,
-  "untagged": 261
+  "unowned": 161,
+  "untagged": 265
  },
  "version": 1
 }

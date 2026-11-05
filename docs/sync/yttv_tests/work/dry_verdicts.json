@@ -1,0 +1,408 @@
+{
+ "truth_01": {
+  "id": "truth_01",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/truth_01.log"
+ },
+ "mechanics_12": {
+  "id": "mechanics_12",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/mechanics_12.log"
+ },
+ "truth_09": {
+  "id": "truth_09",
+  "rc": 0,
+  "secs": 0.1,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/truth_09.log"
+ },
+ "ads_02": {
+  "id": "ads_02",
+  "rc": 0,
+  "secs": 0.3,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ads_02.log"
+ },
+ "truth_10": {
+  "id": "truth_10",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/truth_10.log"
+ },
+ "ui_05": {
+  "id": "ui_05",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ui_05.log"
+ },
+ "ui_11": {
+  "id": "ui_11",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ui_11.log"
+ },
+ "ads_06": {
+  "id": "ads_06",
+  "rc": 0,
+  "secs": 0.9,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ads_06.log"
+ },
+ "ads_04": {
+  "id": "ads_04",
+  "rc": 0,
+  "secs": 0.3,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ads_04.log"
+ },
+ "ads_05": {
+  "id": "ads_05",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ads_05.log"
+ },
+ "truth_06": {
+  "id": "truth_06",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/truth_06.log"
+ },
+ "truth_05": {
+  "id": "truth_05",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/truth_05.log"
+ },
+ "ads_01": {
+  "id": "ads_01",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "pass",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ads_01.log"
+ },
+ "ads_03": {
+  "id": "ads_03",
+  "rc": 0,
+  "secs": 0.3,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ads_03.log"
+ },
+ "ads_07": {
+  "id": "ads_07",
+  "rc": 0,
+  "secs": 0.3,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ads_07.log"
+ },
+ "ads_10": {
+  "id": "ads_10",
+  "rc": 0,
+  "secs": 0.3,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ads_10.log"
+ },
+ "ads_11": {
+  "id": "ads_11",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ads_11.log"
+ },
+ "ads_12": {
+  "id": "ads_12",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ads_12.log"
+ },
+ "ads_09": {
+  "id": "ads_09",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ads_09.log"
+ },
+ "ads_08": {
+  "id": "ads_08",
+  "rc": 0,
+  "secs": 0.3,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ads_08.log"
+ },
+ "mechanics_05": {
+  "id": "mechanics_05",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/mechanics_05.log"
+ },
+ "ui_09": {
+  "id": "ui_09",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ui_09.log"
+ },
+ "mechanics_08": {
+  "id": "mechanics_08",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/mechanics_08.log"
+ },
+ "mechanics_09": {
+  "id": "mechanics_09",
+  "rc": 0,
+  "secs": 2.0,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/mechanics_09.log"
+ },
+ "truth_02": {
+  "id": "truth_02",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/truth_02.log"
+ },
+ "truth_03": {
+  "id": "truth_03",
+  "rc": 0,
+  "secs": 0.3,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/truth_03.log"
+ },
+ "truth_04": {
+  "id": "truth_04",
+  "rc": 0,
+  "secs": 0.4,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/truth_04.log"
+ },
+ "truth_07": {
+  "id": "truth_07",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/truth_07.log"
+ },
+ "truth_08": {
+  "id": "truth_08",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/truth_08.log"
+ },
+ "truth_11": {
+  "id": "truth_11",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/truth_11.log"
+ },
+ "ui_10": {
+  "id": "ui_10",
+  "rc": 0,
+  "secs": 0.7,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ui_10.log"
+ },
+ "ui_07": {
+  "id": "ui_07",
+  "rc": 0,
+  "secs": 1.9,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ui_07.log"
+ },
+ "ui_08": {
+  "id": "ui_08",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ui_08.log"
+ },
+ "ui_02": {
+  "id": "ui_02",
+  "rc": 0,
+  "secs": 1.1,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ui_02.log"
+ },
+ "mechanics_01": {
+  "id": "mechanics_01",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/mechanics_01.log"
+ },
+ "ui_03": {
+  "id": "ui_03",
+  "rc": 0,
+  "secs": 1.4,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ui_03.log"
+ },
+ "mechanics_11": {
+  "id": "mechanics_11",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/mechanics_11.log"
+ },
+ "mechanics_07": {
+  "id": "mechanics_07",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/mechanics_07.log"
+ },
+ "mechanics_06": {
+  "id": "mechanics_06",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/mechanics_06.log"
+ },
+ "ui_04": {
+  "id": "ui_04",
+  "rc": 0,
+  "secs": 0.5,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ui_04.log"
+ },
+ "ui_01": {
+  "id": "ui_01",
+  "rc": 0,
+  "secs": 0.4,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ui_01.log"
+ },
+ "ui_06": {
+  "id": "ui_06",
+  "rc": 0,
+  "secs": 0.9,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/ui_06.log"
+ },
+ "mechanics_03": {
+  "id": "mechanics_03",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/mechanics_03.log"
+ },
+ "mechanics_04": {
+  "id": "mechanics_04",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "N/A",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/mechanics_04.log"
+ },
+ "mechanics_10": {
+  "id": "mechanics_10",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/mechanics_10.log"
+ },
+ "mechanics_02": {
+  "id": "mechanics_02",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/mechanics_02.log"
+ },
+ "fusion_01_kalman_fuse": {
+  "id": "fusion_01_kalman_fuse",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/fusion_01_kalman_fuse.log"
+ },
+ "fusion_02_robust_vs_kalman": {
+  "id": "fusion_02_robust_vs_kalman",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/fusion_02_robust_vs_kalman.log"
+ },
+ "fusion_03_two_tunes": {
+  "id": "fusion_03_two_tunes",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/fusion_03_two_tunes.log"
+ },
+ "fusion_04_two_sticks": {
+  "id": "fusion_04_two_sticks",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/fusion_04_two_sticks.log"
+ },
+ "fusion_05_two_families": {
+  "id": "fusion_05_two_families",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/fusion_05_two_families.log"
+ },
+ "fusion_06_heldout": {
+  "id": "fusion_06_heldout",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/fusion_06_heldout.log"
+ },
+ "fusion_07_shadow_join": {
+  "id": "fusion_07_shadow_join",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/fusion_07_shadow_join.log"
+ },
+ "fusion_08_e_invariance": {
+  "id": "fusion_08_e_invariance",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/fusion_08_e_invariance.log"
+ },
+ "fusion_09_app_audit": {
+  "id": "fusion_09_app_audit",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/fusion_09_app_audit.log"
+ },
+ "fusion_10_n_needed": {
+  "id": "fusion_10_n_needed",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/fusion_10_n_needed.log"
+ },
+ "fusion_11_synthetic_selftest": {
+  "id": "fusion_11_synthetic_selftest",
+  "rc": 0,
+  "secs": 0.1,
+  "verdict": "PASS",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/fusion_11_synthetic_selftest.log"
+ },
+ "fusion_12_report": {
+  "id": "fusion_12_report",
+  "rc": 0,
+  "secs": 0.2,
+  "verdict": "FAIL",
+  "log": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/logs/dry_20261105_034047/fusion_12_report.log"
+ }
+}

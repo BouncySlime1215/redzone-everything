@@ -5,13 +5,38 @@
       "name": "wv-aux-labels",
       "declared": "2026-11-05",
       "by": "test writers (EXP-722)",
-      "arms": ["EXP-1702:g-a", "EXP-1702:g-b", "EXP-1702:b-wiki", "EXP-1702:c-velocity", "EXP-1800", "EXP-713"]
+      "arms": [
+        "EXP-1702:g-a",
+        "EXP-1702:g-b",
+        "EXP-1702:b-wiki",
+        "EXP-1702:c-velocity",
+        "EXP-1800",
+        "EXP-713"
+      ]
     },
     {
       "name": "wv-importance-inputs",
       "declared": "2026-11-05",
       "by": "test writers (EXP-722)",
-      "arms": ["EXP-091", "EXP-092", "EXP-1301", "EXP-1802", "EXP-715"]
+      "arms": [
+        "EXP-091",
+        "EXP-092",
+        "EXP-1301",
+        "EXP-1802",
+        "EXP-715"
+      ]
+    },
+    {
+      "name": "nba-delay-precision",
+      "declared": "2026-11-05",
+      "by": "integrator (EXP-803, #296; before any v3 grade)",
+      "arms": [
+        "EXP-803:A1",
+        "EXP-803:A2",
+        "EXP-803:A3"
+      ],
+      "control": "EXP-803:A0",
+      "note": "A4 (A1+A2+A3 combined) is the single PASS arm, graded unadjusted"
     }
   ]
 }

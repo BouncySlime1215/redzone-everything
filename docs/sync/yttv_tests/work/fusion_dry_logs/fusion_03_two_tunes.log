@@ -1,0 +1,12 @@
+== fusion_03_two_tunes  mode=DRY-RUN (recorded files)
+   days=['2026-11-04', '2026-11-05'] rows=9718 samples=9154 sessions=71 plays=16451 anchors=1 families=['burst_pod_title'] boot={'hdmi2': 1793650371.76, 'hdmi1': 1793752328.89}
+   accnetwork hdmi1  landings=  1 edge=  1 L=46790.15 sd=None mad_sd=0.0 range=0.0 outliers=0 anchor_sessions=0 -> insufficient
+   espn       hdmi1  landings= 16 edge= 11 L=46790.18 sd=0.08 mad_sd=0.08 range=0.26 outliers=5 anchor_sessions=1 -> pass
+   espn       hdmi2  landings= 25 edge= 19 L=46800.31 sd=0.19 mad_sd=0.21 range=0.68 outliers=6 anchor_sessions=0 -> pass
+   espn2      hdmi2  landings=  1 edge=  1 L=46800.48 sd=None mad_sd=0.0 range=0.0 outliers=0 anchor_sessions=0 -> insufficient
+   espnews    hdmi1  landings=  1 edge=  1 L=46790.46 sd=None mad_sd=0.0 range=0.0 outliers=0 anchor_sessions=0 -> insufficient
+   nflnetwork hdmi2  landings=  1 edge=  1 L=46796.15 sd=None mad_sd=0.0 range=0.0 outliers=0 anchor_sessions=0 -> insufficient
+   tnt        hdmi1  landings=  8 edge=  8 L=46790.2 sd=0.26 mad_sd=0.15 range=0.92 outliers=0 anchor_sessions=0 -> pass
+   tnt        hdmi2  landings=  9 edge=  6 L=46790.26 sd=0.04 mad_sd=0.06 range=0.14 outliers=3 anchor_sessions=0 -> pass
+   usa        hdmi2  landings=  1 edge=  1 L=46790.13 sd=None mad_sd=0.0 range=0.0 outliers=0 anchor_sessions=0 -> insufficient
+SUMMARY fusion_03_two_tunes: 4/4 (channel, stick) groups land repeatably (<=0.5 s) -> /private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/fusion_03_two_tunes.jsonl

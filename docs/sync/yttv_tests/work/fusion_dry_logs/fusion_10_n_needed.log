@@ -1,0 +1,21 @@
+== fusion_10_n_needed  mode=DRY-RUN (recorded files)
+   days=['2026-11-04', '2026-11-05'] rows=9718 samples=9154 sessions=71 plays=16451 anchors=1 families=['burst_pod_title'] boot={'hdmi2': 1793650371.76, 'hdmi1': 1793752328.89}
+   [real] espn hdmi1:
+        *fused*          n=1 (need >= 3)
+        burst_pod_title  n=1 (need >= 3)
+   [synthetic] espn hdmi1:
+        *fused*          n= 12 stated=1.5 scatter=2.71 calib=1.8 need(1s)=8 need(2s)=2 boot_sd=0.91
+        burst_pod        n=  4 stated=6.0 scatter=9.14 calib=1.52 need(1s)=84 need(2s)=21 boot_sd=6.57
+        scoreline        n=  4 stated=1.5 scatter=2.82 calib=1.88 need(1s)=8 need(2s)=2 boot_sd=1.75
+        ui_clock         n=  4 stated=0.8 scatter=0.72 calib=0.9 need(1s)=1 need(2s)=1 boot_sd=0.4 PASS
+   [synthetic] espn hdmi2:
+        *fused*          n= 12 stated=1.5 scatter=1.56 calib=1.04 need(1s)=3 need(2s)=1 boot_sd=0.42 PASS
+        burst_pod        n=  4 stated=6.0 scatter=6.22 calib=1.04 need(1s)=39 need(2s)=10 boot_sd=4.91
+        scoreline        n=  4 stated=1.5 scatter=1.14 calib=0.76 need(1s)=3 need(2s)=1 boot_sd=1.69
+        ui_clock         n=  4 stated=0.8 scatter=0.54 calib=0.68 need(1s)=1 need(2s)=1 boot_sd=0.21 PASS
+   [synthetic] tnt hdmi2:
+        *fused*          n= 12 stated=1.5 scatter=1.58 calib=1.05 need(1s)=3 need(2s)=1 boot_sd=0.31 PASS
+        burst_pod        n=  4 stated=6.0 scatter=9.43 calib=1.57 need(1s)=90 need(2s)=23 boot_sd=3.64
+        scoreline        n=  4 stated=1.5 scatter=1.76 calib=1.17 need(1s)=4 need(2s)=1 boot_sd=0.97 PASS
+        ui_clock         n=  4 stated=0.8 scatter=0.64 calib=0.8 need(1s)=1 need(2s)=1 boot_sd=0.25 PASS
+SUMMARY fusion_10_n_needed: 0/0 real groups have enough anchors for sd<=1 s -> /private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/fusion_10_n_needed.jsonl

@@ -1,0 +1,8 @@
+== fusion_09_app_audit  mode=DRY-RUN (recorded files)
+   days=['2026-11-04', '2026-11-05'] rows=9718 samples=9154 sessions=71 plays=16451 anchors=1 families=['burst_pod_title'] boot={'hdmi2': 1793650371.76, 'hdmi1': 1793752328.89}
+   accn      app: n=2 synced=0.0 last mu=42.03 sd=15.22 | fusion: - | diff=None -> fail
+   espn      app: n=13 synced=0.0 last mu=29.07 sd=8.0 | fusion: hdmi1 23.3+-5.8(n1) | diff=5.72 -> fail
+   espnews   app: n=113 synced=0.0 last mu=42.03 sd=30.0 | fusion: - | diff=None -> fail
+   tnt       app: n=12 synced=0.0 last mu=42.03 sd=15.22 | fusion: - | diff=None -> fail
+   trutv     app: n=4 synced=0.0 last mu=25.42 sd=8.0 | fusion: - | diff=None -> fail
+SUMMARY fusion_09_app_audit: 0/5 channels have a trustworthy (<=1-2 s) YTTV delay -> /private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/fusion_09_app_audit.jsonl
