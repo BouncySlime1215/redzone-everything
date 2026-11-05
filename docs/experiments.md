@@ -191,6 +191,14 @@ on locked.
 | 75 | EXP-075 | M3 | A diffusion "dream" world model samples many plausible next-5-minute futures per game for the planner. | % of oracle | ~15 / ~10 | ① | set before running | set before running | queued (GPU-bound) |
 | 76 | EXP-076 | M18 | A causal world model answers what-ifs ("timeout here?"). | Diagnostic | ~4 / ~6 | ① | set before running | set before running | queued |
 
+## Data division F: broadcast-format tables (EXP-1500-1599)
+
+Tables live in `redzone/scoring/broadcast/`: `break_rules.yaml` (per-league rules, sourced, license line per row) and `break_lengths.json` (measured league × network × break kind, train nights only, `scripts/measure_break_lengths.py`). They feed EXP-205 (never join at a break). Owner: Data Planner F.
+
+| rank | id | covers | hypothesis | North Star line | cost GPU-h / agent-h | lane | success bar | nights needed | status |
+|---:|---|---|---|---|---|---|---|---|---|
+| F1 | EXP-1500 | W (RC7 gate 3), EXP-205 input | For long breaks (timeout, end of period, score break, two-minute warning), predicting the restart with the per-network median from `break_lengths.json` (fallback: the league × kind median when a network has < 8 train rows) beats the league-only median. The rulebook's +30 s on NBA national timeouts (mandatory 165 s local, 195 s national) is the mechanism: on train nights NBA local timeouts measure q50 182 s, ESPN 213, NBC 212. **Disclosure:** an exploratory dev read over ALL break kinds was run before this row was written (NBA MAE −1.1%, NFL +0.3%, NHL +0.2%; NBA/NHL had only 2 valid nights), so dev is spent and this row is graded only on fresh nights. | Entries mid-break (EXP-205); Landings in dead time | 0 / ~1 | Data F → ② | Fresh archive nights after 2026-11-01 (never read when this row was written), table frozen at this commit: (a) NBA long-break restart MAE down ≥ 5% vs league-only, night-bootstrap 95% CI upper bound < 0; (b) the share of NBA national long breaks where the league-only median predicts a restart > 10 s early (a would-be mid-break landing) falls by ≥ 20% relative; (c) NFL and NHL long-break MAE not up by more than 1%. Table only: no decider change in this row; lane 2 decides whether EXP-205 uses it. Pre-registered by Data F, Nov 5 ~04:40 UTC. | ≥ 8 fresh NBA nights (with ≥ 2 national games each); ≥ 8 NFL and NHL nights | pre-registered |
+
 ## Hold and line (not scheduled)
 
 | id | covers | why | allowed remainder | success bar | nights needed | status |
