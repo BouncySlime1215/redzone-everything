@@ -452,3 +452,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Past timing.behind_live_s.max_s (one definition, Nick's 90 s cap), or if it resumes by itself, it is reloaded at the
   live edge (the STK-06 guard). Why off: night lab seed 1 has 0 mid-play both ways and identical cuts (52), but no
   return came within the cap, so the catch-up path has only unit tests. It needs the lab rig first.
+- 2026-11-05 (integrator, grader review): #145 is accepted. `press_to_tv_p95` now grades REAL presses from data/press_probe/:
+  - PASS or FAIL once there are 20 or more presses;
+  - any press that never reaches the TV is an immediate FAIL;
+  - below 20 presses it shows PENDING, with the sim drill as the fallback, and the sim can still never PASS the line.
+  Grader freeze v3. No number changes until a rig run saves presses.
