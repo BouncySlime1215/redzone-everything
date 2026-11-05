@@ -2114,6 +2114,19 @@
     "untagged"
    ]
   },
+  "redzone/lab/offpolicy.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "scripts/offpolicy_score.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-005] Off-policy grading: how a NEW decider would have done on nights the live one already ran, from the live decisions' logged option sets and propensit...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/optimize.py": {
    "contracts": [],
    "inputs": [
@@ -4582,6 +4595,19 @@
     "STK-06"
    ]
   },
+  "scripts/offpolicy_score.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/offpolicy.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-005] Score a candidate decider off-policy on logged nights (redzone/lab/offpolicy.py).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/perf_probe.py": {
    "contracts": [],
    "inputs": [
@@ -5020,10 +5046,10 @@
   }
  },
  "summary": {
-  "modules": 264,
+  "modules": 266,
   "orphans": 10,
-  "unowned": 106,
-  "untagged": 211
+  "unowned": 108,
+  "untagged": 213
  },
  "version": 1
 }
