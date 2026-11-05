@@ -23,6 +23,9 @@ def _night(tmp, on: bool) -> tuple[dict, list[dict]]:
     env.pop("RZ_NIGHT_TRACE", None)
     proc = subprocess.run([sys.executable, "-m", "redzone.lab.night", "--tv", "smartthings", "--hours", "1.3",
                            "--start", "15:40", "--no-default-faults", "--set", f"warmup.pregame={str(on).lower()}",
+                           # the night opens on NHL, whose timed start (EXP-739, NHL package) already pre-tunes the
+                           # first pick; keep it untimed in both arms so this compares the warm-up alone
+                           "--set", "league_overrides.nhl.decider.entry.start_timed=false",
                            "--json", str(out), "--work", str(work)],
                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
     assert out.exists(), f"no report (exit {proc.returncode}):\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}"

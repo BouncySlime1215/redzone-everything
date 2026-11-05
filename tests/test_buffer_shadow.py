@@ -133,3 +133,25 @@ def test_stay_leave_rows_carry_context_and_adaptive_terms(engine, tmp_path, monk
 def test_editor_times_its_first_pick_live_decider_untouched(engine):  # noqa: F811
     assert engine.buffer_shadow.editor.cfg.get("decider.entry.start_timed") is True
     assert engine.decider.cfg.get("decider.entry.start_timed") is False
+
+
+def test_a_switch_away_is_logged_as_a_leave_of_the_old_game(tmp_path):
+    from types import SimpleNamespace as O
+    live = Decider(_cfg(), DelayBook({"youtubetv": 45.0}, 15.0))
+    sh = BufferShadow(live.cfg, live, lambda t: 60.0, tmp_path / "s.jsonl")
+    sh.editor.current = "A"
+
+    def decide(cands, rz, commit=True):
+        sh.editor.current = "B"
+        return O(action="switch", target="B", reason="better", kind="better", state=O(value="watching"), rewind_s=0.0)
+
+    sh.editor.decide = decide
+    sc = lambda v: O(score=v, moment=0, stakes=1, personal=0, closeness=0, lead_wp=None, watch_value=None, watch_terms={},  # noqa: E731
+                     stakes_line=None, crunch=False, crunch_now=False, crunch_state=None, late=False, high_leverage=False,
+                     garbage=False, mine=False, is_break=False, lock=None, pre_moment=None, tags=[], reason="", league=None)
+    cands = {"A": O(scored=sc(40.0), target="youtubetv:a"), "B": O(scored=sc(70.0), target="youtubetv:b")}
+    sh.tick(cands)
+    rows = [json.loads(x) for x in (tmp_path / "s.jsonl").read_text().splitlines()]
+    sl = [r for r in rows if r["kind"] == "stay_leave"]
+    assert sl and sl[0]["action"] == "leave" and sl[0]["gid"] == "A" and sl[0]["to"] == "B"
+    assert sl[0]["value_stay"] == 40.0 and sl[0]["value_best_alt"] == 70.0

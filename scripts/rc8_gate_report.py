@@ -27,7 +27,8 @@ sys.path.insert(0, str(ROOT))
 from redzone import buffer_rc8 as R  # noqa: E402
 from redzone.config import Config  # noqa: E402
 
-NEEDS: dict = {}   # flags a verdict may need beyond R.COMPANIONS (start_timed now always ships with RC8)
+LEAGUE_NEEDS = {"nba": ["start_timed"]}   # planner, after lane 3's autopsy (Nov 5): NBA ships start_timed with RC8
+NEEDS = {"start_timed": "decider.entry.start_timed=true"}   # lane 3's st arm: shipped only when the verdict needs it
 LEAGUES = ("nba", "nfl", "nhl")   # graded tonight (NBA first, then NFL); others stay live
 ITEM_NAMES = {"1_rule1": "Rule #1 (0 mid-play, every run + shadow)", "2_beats_live": "Beats live (sweep, >= 8 nights)",
               "3_shadow": "Tonight's shadow (veto only)", "4_locked": "Locked read at the cut",
@@ -51,12 +52,16 @@ def shadow_rows(shadow: dict | None) -> list[dict]:
             for e in shadow.get("entry_grades") or []]
 
 
-def sweep_runs(lg_verdict: dict | None, chosen_only: bool = False) -> list[dict]:
+def needs_for(lg: str | None, v: dict | None) -> list[str]:
+    return sorted(set((v or {}).get("needs") or []) | set(LEAGUE_NEEDS.get(lg or "", [])))
+
+
+def sweep_runs(lg_verdict: dict | None, chosen_only: bool = False, lg: str | None = None) -> list[dict]:
     runs = list((lg_verdict or {}).get("runs") or [])
     b = (lg_verdict or {}).get("chosen_b")
     if chosen_only and b is not None:
-        needs = (lg_verdict or {}).get("needs") or []
-        arm = "st" if ("start_timed" in needs or "decider.entry.start_timed" in R.COMPANIONS) else "main"
+        needs = needs_for(lg, lg_verdict)
+        arm = "st" if "start_timed" in needs else "main"
         runs = [r for r in runs if r.get("b") == b and r.get("arm", "main") == arm]
     return runs
 
@@ -65,7 +70,7 @@ def flip_cmd(lg: str, v: dict | None, b: float | None) -> str | None:
     """The command that ships B (gate v28's max rule) with any flag the verdict needs."""
     if not v or not v.get("chosen_b") or b is None:
         return None
-    extra = "".join(f" --set {NEEDS[n]}" for n in (v.get("needs") or []) if n in NEEDS)
+    extra = "".join(f" --set {NEEDS[n]}" for n in needs_for(lg, v) if n in NEEDS)
     return f"python scripts/rc8_flip.py {lg} on --seconds {float(b):g}{extra}"
 
 
@@ -82,6 +87,16 @@ def oracle_line(oracles: dict | None, lg: str) -> str:
     return " | ".join(parts)
 
 
+def grid_line(v: dict | None) -> str:
+    """Rule #1 per arm and B, honest/resync mid-play summed over seeds (B=0 is the live control)."""
+    cells: dict[str, dict[str, int]] = {}
+    for r in (v or {}).get("runs") or []:
+        k = f"{r.get('arm', 'main')}-B{r.get('b')}"
+        cells.setdefault(k, {}).setdefault(r.get("harness", "?"), 0)
+        cells[k][r.get("harness", "?")] += int(r.get("entries_mid_play") or 0)
+    return ", ".join(f"{k} {c.get('honest', '-')}/{c.get('resync', '-')}" for k, c in cells.items())
+
+
 def report(cfg, sweep: dict | None, shadow: dict | None, card: dict | None = None, sync: dict | None = None,
            locked: dict | None = None, leagues=LEAGUES, oracles: dict | None = None) -> dict:
     sv = (sweep or {}).get("leagues") or {}
@@ -93,7 +108,7 @@ def report(cfg, sweep: dict | None, shadow: dict | None, card: dict | None = Non
     for lg in leagues:
         v = sv.get(lg)
         # Rule #1 at the B that would ship (the sweep's pick); the whole grid is shown alongside
-        state, detail = R.gate_league(lg, sweep_runs(v, chosen_only=True) if v else [], rows if shadow else None,
+        state, detail = R.gate_league(lg, sweep_runs(v, chosen_only=True, lg=lg) if v else [], rows if shadow else None,
                                       sweep=v, sync=(sync or {}).get(lg), locked=(locked or {}).get(lg))
         if not shadow_ok_struct:   # the editor touched a stick or the log is malformed: veto everywhere
             detail["items"]["3_shadow"]["state"] = R.FAIL
@@ -104,7 +119,8 @@ def report(cfg, sweep: dict | None, shadow: dict | None, card: dict | None = Non
         detail.update({"state": state, "rc8_on_now": R.is_on(cfg, lg), "adaptive": parts,
                        "grid_mid_play_total": sum(int(r.get("entries_mid_play") or 0) for r in grid),
                        "grid_runs": len(grid), "shadow_card": (card or {}).get(lg),
-                       "oracle": oracle_line(oracles, lg),
+                       "oracle": oracle_line(oracles, lg), "grid": grid_line(v),
+                       "breaches": (v or {}).get("breaches_by_arm"),
                        "sweep_b": (v or {}).get("chosen_b"), "guardrails": (v or {}).get("guardrails")})
         sb, why = R.ship_b(cfg, lg, (v or {}).get("chosen_b"),
                            mid_play_night=detail["items"]["1_rule1"]["shadow_live"] > 0)
@@ -142,6 +158,9 @@ def to_md(r: dict) -> str:
               f"- Sweep: verdict {i2.get('verdict') or 'not in yet'}, B {i2.get('chosen_b')}, needs "
               f"{i2.get('needs') or 'nothing'}, {i2.get('fit_nights') or 0} fit nights, primary "
               f"{json.dumps(i2.get('primary')) if i2.get('primary') else 'n/a'}.",
+              f"- Rule #1 by arm and B (mid-play honest/resync, 3 seeds; B0 = live control): {d['grid'] or 'n/a'}.",
+              "- Why no B holds: " + ("; ".join(f"{k}: {', '.join(x)}" for k, x in (d.get("breaches") or {}).items())
+                                     or "n/a") + ".",
               "- Guardrails: " + (", ".join(f"{k} {'ok' if g.get('ok') else 'MISS'} ({g.get('value')})"
                                              for k, g in (d.get("guardrails") or {}).items()) or "n/a") + ".",
               f"- Oracle ceiling by B (lane 1, % of hindsight big plays, descriptive): {d['oracle'] or 'n/a'}.",
