@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-NICK DECISION 9:10 AM: time-shift buffer (60-90 s behind live) is the main architecture; brain = editor. Tonight: buffer SHADOW on every game (lane 2), replay sim + buffer sweep (lanes 3+1), windowed-hindsight oracle teacher (lane 1), seek reliability; RC8 buffer-on prep if shadow beats live with 0 mid-play.
-Also ordered: faster feeds (nba_cdn primary at 1 s, NHL api-web, MLB statsapi, TNF feed race, Kalshi trigger) and Watch Value on real attention labels. Usage 63%.
+Ladder (ba227738) kernel dropped 9:15 AM ~1 h in; Colab reconnecting; plan: Run all to resume from the 30-min checkpoint; suspect host-RAM OOM (EXP-103 same pattern). Lane 1 told.
+Lane 2: TNF tonight adds the hidden-Prime-stick scorebug as the fastest NFL feed (vs espn_fastcast/summary, Kalshi). Usage 63%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
