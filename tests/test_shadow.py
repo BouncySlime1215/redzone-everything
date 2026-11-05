@@ -55,3 +55,13 @@ def test_a_quiet_night_logs_only_the_changes_not_every_tick(tmp_path):
         sh.tick({}, None, live, "stay")
     rows = [json.loads(x) for x in (tmp_path / "shadow.jsonl").read_text().splitlines()]
     assert [(r["on"], r["live_on"]) for r in rows] == [("a", "b"), ("a", "a")] and sh.calls == 100
+
+
+def test_the_demo_engines_own_shadow_stick_is_not_mistaken_for_the_shadow_decider(tmp_path):
+    # CI scorecard on #187: DemoEngine.shadow is a standby.ShadowStick, so Engine.decide must use its own name.
+    from redzone.engine import Engine
+    from redzone.store import Store
+    e = Engine(Config(user_path=tmp_path / "c.yaml", history_dir=tmp_path / "h"), Store(tmp_path / "t.db"))
+    e.shadow = object()   # what DemoEngine puts there
+    assert e.shadow_decider is None
+    e.decide()            # raised AttributeError: 'ShadowStick' object has no attribute 'tick'
