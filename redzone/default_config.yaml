@@ -269,6 +269,10 @@ decider:
   wait_for_my_team_s: 1800  # your team tips within this: don't start on a basketball/hockey game we can't leave (uncalibrated)
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
   redzone_score: 45        # RedZone vs a game (0-100): stay on it unless a game beats this; any break goes there
+  # [EXP-204] your team "late and close" also needs the leader's win probability at or below this cap
+  # (ESPN's WP when the feed has it, else a margin model). 1.0 = off (live: any Q4 that isn't garbage
+  # time holds). Crunch time always holds. Nick, Nov 4: ATL up 12 with 9:09 left held WSH all night.
+  mine_late_max_lead_wp: 1.0
   leave:                   # [cut rules, Nick Nov 4 3:15 PM] never JOIN mid-play; LEAVING mid-play only at low leverage
     low_leverage: []       # leagues where a low-leverage moment may be left mid-play ([] = never: today's rule)
     sticky_closeness: 0.5  # down the stretch is sticky: a late game at least this close is never left mid-play
@@ -664,6 +668,7 @@ league_overrides:          # [league overrides, Nick Nov 4 8:20/8:40 PM] per-lea
     decider.entry.cue: "hidden"
     two_stick.pretune_on_open: true
     replay.crunch_block: true
+    decider.mine_late_max_lead_wp: 0.95   # [EXP-204] ATL up 12 with 9:09 left (WP ~0.99) is not close; 6 pts / 6 min (~0.91) is
   nhl: {}                  # RC7 fast track (integrator, Nov 5): NHL stays on live behavior until Nick OKs its trade
                            # (locked: mid-play 8 -> 0, crunch live 82.7 -> 78.6, dead air +0.8). The graded set is
                            # NBA's block above; /mnt/project-files/lane2/rc7-nhl-confirm-pr227.json has its grades.
@@ -685,3 +690,4 @@ league_overrides:          # [league overrides, Nick Nov 4 8:20/8:40 PM] per-lea
     decider.entry.cue: "hidden"
     two_stick.pretune_on_open: true
     replay.crunch_block: true
+    decider.mine_late_max_lead_wp: 0.95   # [EXP-204] ATL up 12 with 9:09 left (WP ~0.99) is not close; 6 pts / 6 min (~0.91) is

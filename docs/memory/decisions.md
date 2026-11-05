@@ -587,3 +587,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   NBA and NFL pass `league_promotion`; NHL passes with the trade Nick accepted (mid-play 28 → 0 dev,
   8 → 0 locked). Rollback for one league: set that league's keys back under `league_overrides.<league>`,
   or redeploy without it.
+- **2026-11-05 (lane 2, EXP-204, RC7 fast track):** new key `decider.mine_late_max_lead_wp` (global default 1.0 =
+  off). `league_overrides` sets it to 0.95 for NFL and NBA. Your team late (and not garbage) holds the TV only
+  while the leader's win probability is ≤ 0.95; crunch time always holds. Why: Nick, Nov 4 9:30 PM. ATL up 12
+  with 9:09 left (WP ~0.99) held WSH all night, and his "close" is ~6 points / ~6 minutes (WP ~0.91). Dev
+  (seeds 0-2): 0 mid-play; NFL and NBA identical on every line; NHL crunch live −0.5, so NHL stays at 1.0.
+  Pre-registered arm pick: tie → 0.95. Not a strict promotion pass: no line improved. It ships as Nick's
+  definition of "close", with no line worse.
