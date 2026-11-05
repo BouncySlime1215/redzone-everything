@@ -77,7 +77,14 @@ def _wrapped(replays, switches, lag_true, tune_s):
             ss = s.t + (getattr(s, "leave_dt", 0.0) or 0.0) - lag_of(lag_true, src.gid)
             sd, sb, sw = cutgrade._dead_at(src.league, src.wall, src.plays, ss)
             src_state = "break" if sb else ("dead" if sd else "live")
-        ROWS.append({"kind": s.kind, "reason": (s.reason or "")[:80], "matchup": getattr(dst, "matchup", dst.gid),
+        import datetime as _dt
+        ROWS.append({"gid": dst.gid, "league": dst.league.value, "t": round(s.t, 1),
+                     "night_et": _dt.datetime.fromtimestamp(st - 5 * 3600, _dt.timezone.utc).strftime("%Y%m%d"),
+                     "jitter": round(getattr(s, "jitter", 0.0) or 0.0, 1), "flash": round(getattr(s, "flash", 0.0) or 0.0, 1),
+                     "arrive_dt": round(getattr(s, "arrive_dt", 0.0) or 0.0, 1),
+                     "landing_play": (dst.plays[i].get("text") or dst.plays[i].get("type", {}).get("text") or "")[:70] if i >= 0 else "",
+                     "s_after_play": round(st - dst.wall[i], 1) if i >= 0 else None,
+                     "kind": s.kind, "reason": (s.reason or "")[:80], "matchup": getattr(dst, "matchup", dst.gid),
                      "mid_play": not dead, "in_break": bool(brk), "mid_break": bool(brk and wait > BREAK_TAIL_BAR),
                      "wait_s": round(wait, 1), "stop": _stop_before(dst.league, dst.plays, i) if dead else "live",
                      "source": src_state, "offset": round(off, 1)})
