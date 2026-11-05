@@ -32,24 +32,24 @@ Phases 0-2 into ~4 days.
 
 | when | job | GPU | hours | CU | lane | EXP |
 |---|---|---|---:|---:|---|---|
-| Wed night | V8 Mind (in flight, finishes ~10:45 PM ET) | as launched | n/a | ~15 (est.) | ① | EXP-006 |
-| Wed night | V8 watchdog rerun, uncapped | L4 | 3 | 15 | ① | EXP-085 |
-| Thu | 32B Teacher for the starved CBB / NHL / MLB label queue (4-bit, batched) | A100 | 4 | 52 | ① | EXP-086 |
-| Thu | V8.2 students from the new Teacher labels | L4 | 3 | 15 | ① | EXP-087 |
+| Wed night | V8 Mind (in flight, finishes ~10:45 PM ET) | T4 | ~3.6 | ~7 | ① | EXP-006 |
+| Wed night | V8 watchdog rerun, uncapped (1436 steps; V8 did ~450 in 40 min on a T4, so ~2.1 h T4 ≈ ~1 h L4, + 686 answers ×2) | L4 | ~1.5 | ~8 | ① | EXP-085 |
+| Thu | 32B Teacher (AWQ, vLLM) for the starved CBB / NHL / MLB label queue; stops when the queue is empty | A100 | 2-4 | 26-52 | ① | EXP-086 |
+| Thu | V8.2 students from the new Teacher labels, full recipe (reasoner 2 epochs ~33k rows, watchdog 1 epoch, all 5.5k + 686 test rows answered) | L4 | ~3.5 | ~18 | ① | EXP-087 |
 | Thu | Factory re-run with the newest pack | Kaggle CPU | n/a | 0 | ① | EXP-049 |
 | Thu | Suspense S + WP calibration + one-event-language spec | CPU | n/a | 0 | ①④ | EXP-001/002/003 |
 | Fri | Event-token shards from the factory | Kaggle CPU (Colab CPU fallback) | ~5 | 0-5 | ① | EXP-007 |
-| Fri | Point-process timing model (breaks, scores, crunch entry/exit) | L4 | 4 | 20 | ① | EXP-022 |
+| Fri | Point-process timing model (breaks, scores, crunch entry/exit); a small model, T4 is enough | T4 or L4 | 2-4 | 5-20 | ① | EXP-022 |
 | Fri | Belief tracker + conformal floor | CPU | n/a | 0 | ②③ | EXP-023/024 |
-| Sat | **World model v1 pretrain** (~100M params; ~0.5-1B tokens × ≤ 3 epochs) plus heads | A100 | 8 | 104 | ① | EXP-047 |
-| Sat | Size check first: a 50M run on the same shards | L4 | 2 | 10 | ① | EXP-047 |
-| Sun | **Planner v1** (search over the world model + conservative offline RL on real nights) | L4 | 6 | 30 | ①② | EXP-056/057 |
+| Sat | **World model v1 pretrain** (~0.5B real event tokens in the ledger estimate; 100M params × 3 epochs ≈ 9e17 FLOPs ≈ 2 h A100 at 40%) plus heads and evals | A100 | ~3-4 | ~40-52 | ① | EXP-047 |
+| Sat | Size check first: 25M and 50M runs on the same shards (compute-optimal for ~0.5B tokens is ~25M) | L4 | 2 | 10 | ① | EXP-047 |
+| Sun | **Planner v1** (search over the world model + conservative offline RL on real nights) | L4 | 3-6 | 15-30 | ①② | EXP-056/057 |
 | Sun | Locked grading (the release read) + shadow mode Sunday night | CPU / Mac | n/a | 0 | Int ③④ | EXP-004 |
-| | **Planned total** | | | **~256-261** | | |
-| | Re-run slack | | | ~140 | | |
+| | **Planned total** | | | **~130-200** (lane ① estimate, Nov 5 00:30 UTC) | | |
+| | Re-run slack | | | ~200 | | |
 | | **Reserve (not to be spent)** | | | **100** | | |
 
-Compute note for the pretrain: 6·N·D for 100M params × 1B tokens is 6e17 FLOPs, about 1.3 h on an A100 at
+Lane ① CU basis: CU = GPU-hours × rate (A100 13, L4 5, T4 2), with 0.2-0.3 h of setup per notebook. L4 ≈ 2-2.5× T4 and A100 ≈ 2.6× L4 on this workload, so CU per FLOP is about the same on A100 and L4: A100 buys wall-clock, not savings. Every notebook prints its own CU spent at the end, and this table gets corrected from those numbers. Compute note for the pretrain: 6·N·D for 100M params × 1B tokens is 6e17 FLOPs, about 1.3 h on an A100 at
 ~40% utilization. So 8 h covers ≤ 3 epochs, the heads and evals. For ~1B tokens the compute-optimal size is
 ~50M params, so the 50M run decides whether 100M is worth it (add tokens before size).
 
