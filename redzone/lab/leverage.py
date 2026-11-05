@@ -10,8 +10,9 @@ from __future__ import annotations
 from redzone.models import PERIOD_S, League
 from redzone.sources import espn
 
-# (final period, seconds left in it, max margin) that count as close + late; overtime always counts
-CLOSE_LATE = {League.NFL: (4, 300, 8), League.NBA: (4, 360, 6), League.NHL: (3, 300, 1)}
+# (final period, seconds left in it, max margin) that count as close + late; overtime always counts.
+# One table for the grader and the decider's leave floor (scoring.engine.high_leverage).
+from redzone.scoring.engine import CLOSE_LATE  # noqa: E402,F401
 
 
 def _left_s(league: League, p: dict) -> float | None:

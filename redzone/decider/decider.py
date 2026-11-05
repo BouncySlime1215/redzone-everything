@@ -298,6 +298,9 @@ class Decider:
         # Games that were ever yours (your team / bet) tonight: personal fades in garbage time and with
         # closeness, but a missed play from your team's game stays yours (replay.yours_first).
         self._yours: set[str] = set()
+        # [leave floor, EXP-208] when the FEED last showed each game close-and-late / OT: the screen runs a
+        # delay behind the feed, so it can still be showing that moment after the feed has moved on
+        self._high_lev_at: dict[str, float] = {}
         # [mid-play guard] state for leaving a game that ended or dropped out of the feed
         self._known_target: dict[str, str] = {}
         self._gone: tuple | None = None   # ((game, arrived at), when it vanished without a final)
@@ -385,6 +388,8 @@ class Decider:
                     self._crunch_tail[gid] = (now_t, x.target)
         hold = self.cfg.get("decider.crunch.hold_personal", 5)
         self._yours.update(gid for gid, x in cands.items() if x.scored.personal >= hold)
+        now_hl = self._clock()
+        self._high_lev_at.update({gid: now_hl for gid, x in cands.items() if getattr(x.scored, "high_leverage", False)})
         cands = self._with_redzone(cands, redzone)
         cands = self._with_reel(cands, reel)
         cands = self._nfl_priority(cands)
@@ -2156,20 +2161,31 @@ class Decider:
             until = tl.dead.dead_until(now - d.mu - m)
             if until is not None and until >= now - d.mu + m + float(self.cfg.get("decider.leave.tune_s")):
                 return Gate(True, "dead ball on screen (play-by-play)")
-        if not g.safe and getattr(tl, "events", None) and self._leavable(cur):
+        if not g.safe and getattr(tl, "events", None) and self._leavable(cur, now, d):
             # [cut rules, Nick Nov 4 3:15 PM] Leaving mid-play is fine at LOW leverage (Q1-Q3, a game
             # that isn't close, right after a score): you lose the end of an ordinary play, never an entry.
             return Gate(True, "low-leverage moment: leaving mid-play is OK")
         return g
 
-    def _leavable(self, cur: Candidate) -> bool:
+    def _leavable(self, cur: Candidate, now: float | None = None, d=None) -> bool:
         """[cut rules, decider.leave.low_leverage] May the screen leave this game mid-play? Only at low
         leverage: never in crunch time or its run-up, a locked moment (red zone, power play, OT...), your
-        team's game, or a close game late (decider.leave.sticky_*: down the stretch is sticky)."""
+        team's game, or a close game late (decider.leave.sticky_*: down the stretch is sticky).
+        [leave floor, EXP-208] Keyed on the FULL league (CBB is not NBA). Your team's game is never left
+        mid-play, whatever its personal score (Q1 WSH sat under hold_personal), and neither is a
+        close-and-late / overtime moment (scoring.engine.high_leverage, the grader's floor)."""
         lgs = self.cfg.get("decider.leave.low_leverage") or []
         s = cur.scored
-        if s.league.base.value not in lgs:
+        if s.league.value not in lgs:
             return False
+        if getattr(s, "mine", False) or getattr(s, "high_leverage", False) or s.game_id in self._yours:
+            return False
+        hl = self._high_lev_at.get(s.game_id)
+        if hl is not None and now is not None:
+            # the screen shows the feed of ~mu ago (+ its doubt): close-and-late then is still on screen now
+            on_screen = (d.mu + 2 * d.current_sigma(now)) if d is not None else 180.0
+            if now - hl <= on_screen:
+                return False
         if s.crunch or s.crunch_now or s.lock or s.imminent or s.pre_moment:
             return False
         if s.personal >= float(self.cfg.get("decider.crunch.hold_personal", 5)):

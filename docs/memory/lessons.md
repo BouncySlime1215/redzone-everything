@@ -285,3 +285,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   on the live-sync harness (`eval_sports --resync`, which models the Kalman sync filter that live runs). The cause was
   the time-shift buffer key, `timing.behind_live_s.enabled`. The rule now: grade every league set on BOTH harnesses
   before it ships (Test Factory F4), and a set that is worse on either one doesn't promote.
+- 2026-11-05 (lane 2, EXP-208): the low-leverage leave gate (`decider.leave.low_leverage`) promised "never your
+  team's game" but checked `personal >= hold_personal`, and garbage time zeroes your team's personal boost, so a
+  decided WSH game could be left mid-play. It also keyed on `league.base`, so "nba" switched it on for CBB. Fixed with
+  explicit `Scored.mine` / `Scored.high_leverage` flags (the grader's CLOSE_LATE table, kept equal by a test) and
+  the full league. Lesson: a floor must be checked by what it protects (team membership, leverage), never by a
+  score that other features can lower.
