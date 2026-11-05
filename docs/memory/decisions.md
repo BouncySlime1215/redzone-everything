@@ -506,3 +506,5 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 
   It replaces the NFL rollback before Thursday Night Football. Removing a key through `/api/settings` must SET it back to its
   live default, not just leave it out. CFB, CBB and MLB stay ungraded under the global keys.
+- 2026-11-05 (integrator): `league_promotion` now also compares `big_seen_pct`, after lane 2 caught NFL big seen falling
+  89 → 78 on a set the old line list would have passed. Grader freeze v6.

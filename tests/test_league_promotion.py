@@ -36,3 +36,10 @@ def test_equal_is_not_a_win():
 
 def test_missing_split_is_pending():
     assert rg.league_promotion(both(card()), {"dev": {"nba": card(big=70.0)}}, "nba")[0] == rg.PENDING
+
+
+def test_big_seen_drop_blocks():
+    """Lane 2's NFL catch (Nov 5): big seen 89 -> 78 must fail even when big live improves."""
+    live = both({"metrics": {**card()["metrics"], "big_seen_pct": 89.0}})
+    cand = both({"metrics": {**card(big=70.0)["metrics"], "big_seen_pct": 78.0}})
+    assert rg.league_promotion(live, cand, "nba")[0] == rg.FAIL
