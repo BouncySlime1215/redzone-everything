@@ -1,0 +1,649 @@
+league,abbr,name,enwiki,former_titles,former_abbrs,aliases,active,qid,venue_qid,venue_lat,venue_lon
+nfl,ARI,Arizona Cardinals,Arizona_Cardinals,,,,1,Q224164,Q756433,33.5275,-112.2625
+nfl,ATL,Atlanta Falcons,Atlanta_Falcons,,,,1,Q272059,Q7007552,33.755277777,-84.400833333
+nfl,BAL,Baltimore Ravens,Baltimore_Ravens,,,,1,Q276539,Q1141336,39.278055555,-76.622777777
+nfl,BUF,Buffalo Bills,Buffalo_Bills,,,,1,Q221626,Q1475645,42.773611111,-78.786944444
+nfl,CAR,Carolina Panthers,Carolina_Panthers,,,,1,Q330120,Q806673,35.225833333,-80.852777777
+nfl,CHI,Chicago Bears,Chicago_Bears,,,,1,Q205033,Q1132413,41.8625,-87.616666666
+nfl,CIN,Cincinnati Bengals,Cincinnati_Bengals,,,,1,Q223511,Q1632294,39.095444444,-84.516038888
+nfl,CLE,Cleveland Browns,Cleveland_Browns,,,,1,Q223527,Q1100756,41.506111111,-81.699444444
+nfl,DAL,Dallas Cowboys,Dallas_Cowboys,,,,1,Q204862,Q838284,32.74769,-97.09288
+nfl,DEN,Denver Broncos,Denver_Broncos,,,,1,Q223507,Q1046135,39.743888888,-105.02
+nfl,DET,Detroit Lions,Detroit_Lions,,,,1,Q271880,Q1142586,42.34,-83.045555555
+nfl,GB,Green Bay Packers,Green_Bay_Packers,,,,1,Q213837,Q860790,44.501388888,-88.062222222
+nfl,HOU,Houston Texans,Houston_Texans,,,,1,Q223514,Q1058864,29.684722222,-95.410833333
+nfl,IND,Indianapolis Colts,Indianapolis_Colts,,,,1,Q193753,Q867160,39.760056,-86.163806
+nfl,JAX,Jacksonville Jaguars,Jacksonville_Jaguars,,,,1,Q272223,Q635117,30.323889,-81.6375
+nfl,KC,Kansas City Chiefs,Kansas_City_Chiefs,,,,1,Q223522,Q544553,39.048888888,-94.483888888
+nfl,LA,Los Angeles Rams,Los_Angeles_Rams,St._Louis_Rams,STL|LAR,St. Louis Rams,1,Q337377,Q19520501,33.9504,-118.338
+nfl,LAC,Los Angeles Chargers,Los_Angeles_Chargers,San_Diego_Chargers,SD,San Diego Chargers,1,Q272220,Q19520501,33.9504,-118.338
+nfl,LV,Las Vegas Raiders,Las_Vegas_Raiders,Oakland_Raiders,OAK,Oakland Raiders,1,Q324523,Q27768421,36.090777777,-115.183
+nfl,MIA,Miami Dolphins,Miami_Dolphins,,,,1,Q223243,Q864339,25.958055555,-80.238888888
+nfl,MIN,Minnesota Vikings,Minnesota_Vikings,,,,1,Q221150,Q7929512,44.973889,-93.258056
+nfl,NE,New England Patriots,New_England_Patriots,,,,1,Q193390,Q373355,42.090944444,-71.264344444
+nfl,NO,New Orleans Saints,New_Orleans_Saints,,,,1,Q172435,Q756452,29.950833333,-90.081111111
+nfl,NYG,New York Giants,New_York_Giants,,,,1,Q190618,Q10862290,40.813611111,-74.074444444
+nfl,NYJ,New York Jets,New_York_Jets,,,,1,Q219602,Q10862290,40.813611111,-74.074444444
+nfl,PHI,Philadelphia Eagles,Philadelphia_Eagles,,,,1,Q219714,Q1052370,39.90089,-75.16776
+nfl,PIT,Pittsburgh Steelers,Pittsburgh_Steelers,,,,1,Q191477,Q1067148,40.446666666,-80.015833333
+nfl,SEA,Seattle Seahawks,Seattle_Seahawks,,,,1,Q221878,Q612736,47.595277777,-122.331666666
+nfl,SF,San Francisco 49ers,San_Francisco_49ers,,,,1,Q337758,Q7419343,37.4034,-121.97
+nfl,TB,Tampa Bay Buccaneers,Tampa_Bay_Buccaneers,,,,1,Q320476,Q1141343,27.975833333,-82.503333333
+nfl,TEN,Tennessee Titans,Tennessee_Titans,,,,1,Q320484,Q1142992,36.166388888,-86.771388888
+nfl,WAS,Washington Commanders,Washington_Commanders,Washington_Redskins|Washington_Football_Team,WSH,Washington Redskins|Washington Football Team,1,Q212654,Q583085,38.907777777,-76.864444444
+nba,ATL,Atlanta Hawks,Atlanta_Hawks,,,,1,Q159893,Q1123297,33.757222222,-84.396388888
+nba,BKN,Brooklyn Nets,Brooklyn_Nets,,BRK|NJN|NJ,,1,Q572134,Q807966,40.68265,-73.974689
+nba,BOS,Boston Celtics,Boston_Celtics,,,,1,Q131371,Q432105,42.366388888,-71.062222222
+nba,CHA,Charlotte Hornets,Charlotte_Hornets,,CHO,,1,Q163480,Q983870,35.225,-80.839166666
+nba,CHI,Chicago Bulls,Chicago_Bulls,,,,1,Q128109,Q639975,41.880555555,-87.674166666
+nba,CLE,Cleveland Cavaliers,Cleveland_Cavaliers,,,,1,Q162990,Q387157,41.496388888,-81.688055555
+nba,DAL,Dallas Mavericks,Dallas_Mavericks,,,,1,Q132893,Q463345,32.790555555,-96.810277777
+nba,DEN,Denver Nuggets,Denver_Nuggets,,,,1,Q162954,Q795470,39.748611111,-105.0075
+nba,DET,Detroit Pistons,Detroit_Pistons,,,,1,Q169661,Q18154984,42.3412,-83.0549
+nba,GSW,Golden State Warriors,Golden_State_Warriors,,GS,,1,Q157376,Q15262098,37.767833333,-122.387388888
+nba,HOU,Houston Rockets,Houston_Rockets,,,,1,Q161345,Q1166157,29.750833333,-95.362222222
+nba,IND,Indiana Pacers,Indiana_Pacers,,,,1,Q170329,Q545007,39.763888888,-86.155555555
+nba,LAC,Los Angeles Clippers,Los_Angeles_Clippers,,,,1,Q976396,Q186080,34.043055555,-118.267222222
+nba,LAL,Los Angeles Lakers,Los_Angeles_Lakers,,,,1,Q121783,Q186080,34.043055555,-118.267222222
+nba,MEM,Memphis Grizzlies,Memphis_Grizzlies,,,,1,Q165529,Q641212,35.138333333,-90.050555555
+nba,MIA,Miami Heat,Miami_Heat,,,,1,Q169138,Q420129,25.781388888,-80.188055555
+nba,MIL,Milwaukee Bucks,Milwaukee_Bucks,,,,1,Q169637,Q20372160,43.0451,-87.9182
+nba,MIN,Minnesota Timberwolves,Minnesota_Timberwolves,,,,1,Q170558,Q282675,44.979444444,-93.276111111
+nba,NOP,New Orleans Pelicans,New_Orleans_Pelicans,,NO|NOR,,1,Q172339,Q1515840,29.948888888,-90.081944444
+nba,NYK,New York Knicks,New_York_Knicks,,NY,,1,Q131364,Q186125,40.750501,-73.993453
+nba,OKC,Oklahoma City Thunder,Oklahoma_City_Thunder,,,,1,Q180950,Q665434,35.463333,-97.515
+nba,ORL,Orlando Magic,Orlando_Magic,,,,1,Q161337,Q481795,28.539167,-81.383611
+nba,PHI,Philadelphia 76ers,Philadelphia_76ers,,,,1,Q138089,Q818735,39.90115,-75.17197
+nba,PHX,Phoenix Suns,Phoenix_Suns,,PHO,,1,Q164177,Q1538690,33.445833333,-112.071388888
+nba,POR,Portland Trail Blazers,Portland_Trail_Blazers,,,,1,Q167253,Q1347442,45.531666666,-122.666666666
+nba,SAC,Sacramento Kings,Sacramento_Kings,,,,1,Q166105,Q7011384,38.58,-121.5
+nba,SAS,San Antonio Spurs,San_Antonio_Spurs,,SA,,1,Q159729,Q298573,29.426944444,-98.4375
+nba,TOR,Toronto Raptors,Toronto_Raptors,,,,1,Q132880,Q406972,43.643333333,-79.379166666
+nba,UTA,Utah Jazz,Utah_Jazz,,UTAH,,1,Q170649,Q82294,40.768333,-111.901111
+nba,WAS,Washington Wizards,Washington_Wizards,,WSH,,1,Q169165,Q223240,38.898055555,-77.020833333
+nhl,ANA,Anaheim Ducks,Anaheim_Ducks,,,,1,Q192751,Q774138,33.807777777,-117.876666666
+nhl,ARI,Arizona Coyotes,Arizona_Coyotes,,PHX,,0,Q206312,,,
+nhl,BOS,Boston Bruins,Boston_Bruins,,,,1,Q194121,Q432105,42.366388888,-71.062222222
+nhl,BUF,Buffalo Sabres,Buffalo_Sabres,,,,1,Q131206,Q1110789,42.875,-78.876388888
+nhl,CAR,Carolina Hurricanes,Carolina_Hurricanes,,,,1,Q201857,Q39177,35.803333333,-78.721944444
+nhl,CBJ,Columbus Blue Jackets,Columbus_Blue_Jackets,,,,1,Q207507,Q166503,39.969283333,-83.006111111
+nhl,CGY,Calgary Flames,Calgary_Flames,,,,1,Q194126,Q1140083,51.0375,-114.051944444
+nhl,CHI,Chicago Blackhawks,Chicago_Blackhawks,,,,1,Q209636,Q639975,41.880555555,-87.674166666
+nhl,COL,Colorado Avalanche,Colorado_Avalanche,,,,1,Q206297,Q795470,39.748611111,-105.0075
+nhl,DAL,Dallas Stars,Dallas_Stars,,,,1,Q208652,Q463345,32.790555555,-96.810277777
+nhl,DET,Detroit Red Wings,Detroit_Red_Wings,,,,1,Q194116,Q18154984,42.3412,-83.0549
+nhl,EDM,Edmonton Oilers,Edmonton_Oilers,,,,1,Q205973,Q5339036,53.546944444,-113.497777777
+nhl,FLA,Florida Panthers,Florida_Panthers,,,,1,Q204623,Q795526,26.158333333,-80.325555555
+nhl,LAK,Los Angeles Kings,Los_Angeles_Kings,,LA,,1,Q203008,Q186080,34.043055555,-118.267222222
+nhl,MIN,Minnesota Wild,Minnesota_Wild,,,,1,Q206357,Q1421388,44.944722222,-93.101111111
+nhl,MTL,Montreal Canadiens,Montreal_Canadiens,,,Montréal Canadiens,1,Q188143,Q522282,45.496111111,-73.569444444
+nhl,NJD,New Jersey Devils,New_Jersey_Devils,,NJ,,1,Q192081,Q849027,40.733611,-74.171111
+nhl,NSH,Nashville Predators,Nashville_Predators,,,,1,Q207980,Q302869,36.159166666,-86.778611111
+nhl,NYI,New York Islanders,New_York_Islanders,,,,1,Q194369,Q48742753,40.712094,-73.727157
+nhl,NYR,New York Rangers,New_York_Rangers,,,,1,Q188984,Q186125,40.750501,-73.993453
+nhl,OTT,Ottawa Senators,Ottawa_Senators,,,,1,Q203013,Q1327290,45.296944444,-75.927222222
+nhl,PHI,Philadelphia Flyers,Philadelphia_Flyers,,,,1,Q192083,Q818735,39.90115,-75.17197
+nhl,PIT,Pittsburgh Penguins,Pittsburgh_Penguins,,,,1,Q193643,Q595460,40.4394,-79.9892
+nhl,SEA,Seattle Kraken,Seattle_Kraken,,,,1,Q59422166,Q977529,47.622222222,-122.354166666
+nhl,SJS,San Jose Sharks,San_Jose_Sharks,,SJ,,1,Q206381,Q261863,37.332777777,-121.901111111
+nhl,STL,St. Louis Blues,St._Louis_Blues,,,,1,Q207735,Q1067700,38.626667,-90.2025
+nhl,TBL,Tampa Bay Lightning,Tampa_Bay_Lightning,,TB,,1,Q201864,Q940199,27.942777777,-82.451944444
+nhl,TOR,Toronto Maple Leafs,Toronto_Maple_Leafs,,,,1,Q203384,Q406972,43.643333333,-79.379166666
+nhl,UTA,Utah Mammoth,Utah_Mammoth,Utah_Hockey_Club,UTAH,Utah Hockey Club,1,Q125520712,Q82294,40.768333,-111.901111
+nhl,VAN,Vancouver Canucks,Vancouver_Canucks,,,,1,Q192890,Q517318,49.277777777,-123.108888888
+nhl,VGK,Vegas Golden Knights,Vegas_Golden_Knights,,VEG,,1,Q24725640,Q3338973,36.102916666,-115.178361111
+nhl,WPG,Winnipeg Jets,Winnipeg_Jets,,,,1,Q472741,Q656928,49.892777777,-97.143611111
+nhl,WSH,Washington Capitals,Washington_Capitals,,WAS,,1,Q204627,Q223240,38.898055555,-77.020833333
+mlb,ARI,Arizona Diamondbacks,Arizona_Diamondbacks,,AZ,,1,Q670376,Q1068011,33.445277777,-112.066944444
+mlb,ATH,Athletics,Athletics_(baseball),Oakland_Athletics,OAK,Oakland Athletics|Oakland A's|Sacramento Athletics|Las Vegas Athletics,1,Q504339,Q3418115,38.580372222,-121.5138
+mlb,ATL,Atlanta Braves,Atlanta_Braves,,,,1,Q461595,Q17003430,33.8912,-84.4683
+mlb,BAL,Baltimore Orioles,Baltimore_Orioles,,,,1,Q650816,Q1141174,39.283888888,-76.621666666
+mlb,BOS,Boston Red Sox,Boston_Red_Sox,,,,1,Q213959,Q49136,42.346388888,-71.0975
+mlb,CHC,Chicago Cubs,Chicago_Cubs,,,,1,Q246782,Q1052807,41.948055555,-87.655555555
+mlb,CIN,Cincinnati Reds,Cincinnati_Reds,,,,1,Q826751,Q979975,39.097222222,-84.506944444
+mlb,CLE,Cleveland Guardians,Cleveland_Guardians,Cleveland_Indians,,Cleveland Indians,1,Q642553,Q1154053,41.495833333,-81.685277777
+mlb,COL,Colorado Rockies,Colorado_Rockies,,,,1,Q388858,Q1129916,39.756111111,-104.994166666
+mlb,CWS,Chicago White Sox,Chicago_White_Sox,,CHW,,1,Q335169,Q633613,41.83,-87.633888888
+mlb,DET,Detroit Tigers,Detroit_Tigers,,,,1,Q650855,Q868482,42.339166666,-83.048611111
+mlb,HOU,Houston Astros,Houston_Astros,,,,1,Q848117,Q1193671,29.756944444,-95.355555555
+mlb,KC,Kansas City Royals,Kansas_City_Royals,,KCR,,1,Q744530,Q1737017,39.051388888,-94.480555555
+mlb,LAA,Los Angeles Angels,Los_Angeles_Angels,,,,1,Q743309,Q531897,33.800277777,-117.882777777
+mlb,LAD,Los Angeles Dodgers,Los_Angeles_Dodgers,,,,1,Q334634,Q247420,34.073611111,-118.24
+mlb,MIA,Miami Marlins,Miami_Marlins,,,,1,Q652879,Q1368138,25.778056,-80.219722
+mlb,MIL,Milwaukee Brewers,Milwaukee_Brewers,,,,1,Q848103,Q1339293,43.028333333,-87.971111111
+mlb,MIN,Minnesota Twins,Minnesota_Twins,,,,1,Q604879,Q1156635,44.981667,-93.278333
+mlb,NYM,New York Mets,New_York_Mets,,,,1,Q692417,Q1072882,40.756986,-73.845783
+mlb,NYY,New York Yankees,New_York_Yankees,,,,1,Q213417,Q753529,40.829569,-73.926392
+mlb,PHI,Philadelphia Phillies,Philadelphia_Phillies,,,,1,Q650840,Q912770,39.905833333,-75.166666666
+mlb,PIT,Pittsburgh Pirates,Pittsburgh_Pirates,,,,1,Q653772,Q1151177,40.446944444,-80.005833333
+mlb,SD,San Diego Padres,San_Diego_Padres,,SDP,,1,Q721134,Q1194586,32.707333,-117.156944
+mlb,SEA,Seattle Mariners,Seattle_Mariners,,,,1,Q466586,Q1193117,47.591388888,-122.3325
+mlb,SF,San Francisco Giants,San_Francisco_Giants,,SFG,,1,Q308966,Q298585,37.778333333,-122.389444444
+mlb,STL,St. Louis Cardinals,St._Louis_Cardinals,,,,1,Q504309,Q253546,38.6225,-90.193056
+mlb,TB,Tampa Bay Rays,Tampa_Bay_Rays,,TBR,,1,Q650865,Q1810119,27.768333333,-82.653333333
+mlb,TEX,Texas Rangers,Texas_Rangers_(baseball),,,,1,Q329816,Q1634492,32.751388888,-97.082777777
+mlb,TOR,Toronto Blue Jays,Toronto_Blue_Jays,,,,1,Q650829,Q76318,43.641388888,-79.389166666
+mlb,WSH,Washington Nationals,Washington_Nationals,,WSN|WAS,,1,Q825838,Q517545,38.8725,-77.007777777
+cfb,Air Force Falcons,Air Force Falcons,Air_Force_Falcons_football,,,,1,Q3064747,Q907843,38.996944,-104.842222
+cfb,Akron Zips,Akron Zips,Akron_Zips_football,,,,1,Q4701705,Q6030359,41.0723,-81.508
+cfb,Alabama Crimson Tide,Alabama Crimson Tide,Alabama_Crimson_Tide_football,,,,1,Q4705216,Q995161,33.207777777,-87.550555555
+cfb,Alcorn State Braves,Alcorn State Braves,Alcorn_State_Braves_football,,,,1,Q4713362,Q6115296,31.873545,-91.134918
+cfb,Appalachian State Mountaineers,Appalachian State Mountaineers,Appalachian_State_Mountaineers_football,,,,1,Q4780862,Q6404623,36.2117,-81.6856
+cfb,Arizona State Sun Devils,Arizona State Sun Devils,Arizona_State_Sun_Devils_football,,,,1,Q4791426,Q1849318,33.426388888,-111.9325
+cfb,Arizona Wildcats,Arizona Wildcats,Arizona_Wildcats_football,,,,1,Q4791461,Q947065,32.228889,-110.948889
+cfb,Arkansas Razorbacks,Arkansas Razorbacks,Arkansas_Razorbacks_football,,,,1,Q4791842,Q1124181,36.0681,-94.1789
+cfb,Arkansas State Red Wolves,Arkansas State Red Wolves,Arkansas_State_Red_Wolves_football,,,,1,Q4791873,Q6541587,35.8489,-90.6672
+cfb,Army Black Knights,Army Black Knights,Army_Black_Knights_football,,,,1,Q16148024,Q3311487,41.3875,-73.964166666
+cfb,Auburn Tigers,Auburn Tigers,Auburn_Tigers_football,,,,1,Q4819311,Q945548,32.602222222,-85.489166666
+cfb,BYU Cougars,BYU Cougars,BYU_Cougars_football,,,,1,Q3632326,Q907890,40.2575,-111.654444
+cfb,Ball State Cardinals,Ball State Cardinals,Ball_State_Cardinals_football,,,,1,Q4851217,Q7431225,40.2161,-85.4167
+cfb,Baylor Bears,Baylor Bears,Baylor_Bears_football,,,,1,Q4874596,Q4874608,31.5302,-97.1485
+cfb,Boise State Broncos,Boise State Broncos,Boise_State_Broncos_football,,,,1,Q16192112,Q2926064,43.6028,-116.196
+cfb,Boston College Eagles,Boston College Eagles,Boston_College_Eagles_football,,,,1,Q4947822,Q598070,42.335,-71.166388888
+cfb,Boston University Terriers,Boston University Terriers,Boston_University_Terriers_football,,,,1,Q4948191,Q3339834,42.35343,-71.119273
+cfb,Bowling Green Falcons,Bowling Green Falcons,Bowling_Green_Falcons_football,,,,1,Q16953142,Q5303813,41.3781,-83.6225
+cfb,Brown Bears,Brown Bears,Brown_Bears_football,,,,1,Q4976051,Q4976267,41.8422,-71.3944
+cfb,Bucknell Bison,Bucknell Bison,Bucknell_Bison_football,,,,1,Q4983429,Q5113658,40.951872,-76.885403
+cfb,Buffalo Bulls,Buffalo Bulls,Buffalo_Bulls_football,,,,1,Q4985682,Q7894992,42.999167,-78.7775
+cfb,Cal State Fullerton Titans,Cal State Fullerton Titans,Cal_State_Fullerton_Titans_football,,,,1,Q5018219,Q6587494,33.8866,-117.887
+cfb,California Golden Bears,California Golden Bears,California_Golden_Bears_football,,,,1,Q3650742,Q1026837,37.871111111,-122.250833333
+cfb,Centenary Gentlemen,Centenary Gentlemen,Centenary_Gentlemen_football,,,,1,Q20804933,,,
+cfb,Central Michigan Chippewas,Central Michigan Chippewas,Central_Michigan_Chippewas_football,,,,1,Q5061427,Q6385914,43.5775,-84.770833
+cfb,Charlotte 49ers,Charlotte 49ers,Charlotte_49ers_football,,,,1,Q16155388,Q14707992,35.3106,-80.7403
+cfb,Chattanooga Mocs,Chattanooga Mocs,Chattanooga_Mocs_football,,,,1,Q5087885,Q5450585,35.036374,-85.315762
+cfb,Chicago Maroons,Chicago Maroons,Chicago_Maroons_football,,,,1,Q5095699,Q7596914,41.7939,-87.6039
+cfb,Cincinnati Bearcats,Cincinnati Bearcats,Cincinnati_Bearcats_football,,,,1,Q5120214,Q3342107,39.131111111,-84.516111111
+cfb,Clemson Tigers,Clemson Tigers,Clemson_Tigers_football,,,,1,Q5131553,Q543579,34.678611111,-82.843055555
+cfb,Coastal Carolina Chanticleers,Coastal Carolina Chanticleers,Coastal_Carolina_Chanticleers_football,,,,1,Q5138260,Q4975053,33.793,-79.0177
+cfb,Colgate Raiders,Colgate Raiders,Colgate_Raiders_football,,,,1,Q5144783,Q4760893,42.816944,-75.5452
+cfb,Colorado Buffaloes,Colorado Buffaloes,Colorado_Buffaloes_football,,,,1,Q5148746,Q3075131,40.009444,-105.266944
+cfb,Colorado College Tigers,Colorado College Tigers,Colorado_College_Tigers_football,,,,1,Q22094812,,,
+cfb,Colorado State Rams,Colorado State Rams,Colorado_State_Rams_football,,,,1,Q5148952,Q23995882,40.569781,-105.087949
+cfb,Columbia Lions,Columbia Lions,Columbia_Lions_football,,,,1,Q5149756,Q7346228,40.873224,-73.916452
+cfb,Cornell Big Red,Cornell Big Red,Cornell_Big_Red_football,,,,1,Q5171501,Q3475468,42.444086,-76.478656
+cfb,Dartmouth Big Green,Dartmouth Big Green,Dartmouth_Big_Green_football,,,,1,Q5225674,Q6815406,43.701111,-72.284167
+cfb,Davidson Wildcats,Davidson Wildcats,Davidson_Wildcats_football,,,,1,Q5241668,Q7330349,35.4996,-80.8428
+cfb,Dayton Flyers,Dayton Flyers,Dayton_Flyers_football,,,,1,Q5243529,Q7980654,39.7367,-84.1981
+cfb,Delaware Fightin' Blue Hens,Delaware Fightin' Blue Hens,Delaware_Fightin'_Blue_Hens_football,,,,1,Q5253290,Q14685363,39.6617,-75.7488
+cfb,Denver Pioneers,Denver Pioneers,Denver_Pioneers_football,,,,1,Q28444578,,,
+cfb,Detroit Titans,Detroit Titans,Detroit_Titans_football,,,,1,Q5266029,Q7895339,42.4158,-83.1366
+cfb,Drake Bulldogs,Drake Bulldogs,Drake_Bulldogs_football,,,,1,Q5305589,Q5305622,41.605,-93.655
+cfb,Duke Blue Devils,Duke Blue Devils,Duke_Blue_Devils_football,,,,1,Q5312733,Q3565475,35.995278,-78.941667
+cfb,Duquesne Dukes,Duquesne Dukes,Duquesne_Dukes_football,,,,1,Q5316085,Q4799198,40.4356,-79.99
+cfb,East Carolina Pirates,East Carolina Pirates,East_Carolina_Pirates_football,,,,1,Q5328013,Q3038295,35.5964,-77.3653
+cfb,East Tennessee State Buccaneers,East Tennessee State Buccaneers,East_Tennessee_State_Buccaneers_football,,,,1,Q5329507,Q20717546,36.32555556,-82.36944444
+cfb,Eastern Michigan Eagles,Eastern Michigan Eagles,Eastern_Michigan_Eagles_football,,,,1,Q5330296,Q14716273,42.2558,-83.6472
+cfb,FIU Panthers,FIU Panthers,FIU_Panthers_football,,,,1,Q5425987,Q1388701,25.7525,-80.377778
+cfb,Florida A&M Rattlers,Florida A&M Rattlers,Florida_A&M_Rattlers_football,,,,1,Q5461167,Q4955406,30.426111,-84.291667
+cfb,Florida Atlantic Owls,Florida Atlantic Owls,Florida_Atlantic_Owls_football,,,,1,Q5461197,Q5513195,26.375278,-80.100278
+cfb,Florida Gators,Florida Gators,Florida_Gators_football,,,,1,Q5461394,Q816516,29.65,-82.348611
+cfb,Florida State Seminoles,Florida State Seminoles,Florida_State_Seminoles_football,,,,1,Q5461626,Q1233077,30.438055555,-84.304444444
+cfb,Fordham Rams,Fordham Rams,Fordham_Rams_football,,,,1,Q5468071,Q5140992,40.861667,-73.882778
+cfb,Fresno State Bulldogs,Fresno State Bulldogs,Fresno_State_Bulldogs_football,,,,1,Q5503200,Q583581,36.8144,-119.758
+cfb,Furman Paladins,Furman Paladins,Furman_Paladins_football,,,,1,Q5509586,Q7126368,34.9202,-82.4371
+cfb,Georgetown Hoyas,Georgetown Hoyas,Georgetown_Hoyas_football,,,,1,Q5547004,Q6934411,38.908016,-77.07532
+cfb,Georgia Bulldogs,Georgia Bulldogs,Georgia_Bulldogs_football,,,,1,Q5547370,Q2221660,33.949722222,-83.373333333
+cfb,Georgia Southern Eagles,Georgia Southern Eagles,Georgia_Southern_Eagles_football,,,,1,Q5547724,Q7155374,32.4122,-81.7831
+cfb,Georgia State Panthers,Georgia State Panthers,Georgia_State_Panthers_football,,,,1,Q5547755,Q28449162,33.735277777,-84.389444444
+cfb,Georgia Tech Yellow Jackets,Georgia Tech Yellow Jackets,Georgia_Tech_Yellow_Jackets_football,,,,1,Q5547838,Q2907951,33.7725,-84.392777777
+cfb,Grambling State Tigers,Grambling State Tigers,Grambling_State_Tigers_football,,,,1,Q5593614,Q5336453,32.5209,-92.7213
+cfb,Hardin-Simmons Cowboys,Hardin-Simmons Cowboys,Hardin–Simmons_Cowboys_football,Hardin-Simmons_Cowboys_football,,,1,Q28444599,,,
+cfb,Harvard Crimson,Harvard Crimson,Harvard_Crimson_football,,,,1,Q5676339,Q1587879,42.366663869,-71.126767226
+cfb,Hawaii Rainbow Warriors,Hawaii Rainbow Warriors,Hawaii_Rainbow_Warriors_football,,,,1,Q5684443,Q1697292,21.372777777,-157.93
+cfb,Holy Cross Crusaders,Holy Cross Crusaders,Holy_Cross_Crusaders_football,,,,1,Q16147643,Q5455506,42.241014,-71.810667
+cfb,Houston Cougars,Houston Cougars,Houston_Cougars_football,,,,1,Q5916446,Q14711138,29.72194444,-95.34916667
+cfb,Idaho Vandals,Idaho Vandals,Idaho_Vandals_football,,,,1,Q5987483,Q6403974,46.7264,-117.018
+cfb,Illinois Fighting Illini,Illinois Fighting Illini,Illinois_Fighting_Illini_football,,,,1,Q5999483,Q3305514,40.099166666,-88.235833333
+cfb,Illinois State Redbirds,Illinois State Redbirds,Illinois_State_Redbirds_football,,,,1,Q5999762,Q14687520,40.5119,-88.9967
+cfb,Indiana Hoosiers,Indiana Hoosiers,Indiana_Hoosiers_football,,,,1,Q16969745,Q3305509,39.180833,-86.525556
+cfb,Indiana State Sycamores,Indiana State Sycamores,Indiana_State_Sycamores_football,,,,1,Q6023511,Q6815524,39.4747,-87.3669
+cfb,Iowa Hawkeyes,Iowa Hawkeyes,Iowa_Hawkeyes_football,,,,1,Q6064430,Q3197181,41.658611,-91.551111
+cfb,Iowa State Cyclones,Iowa State Cyclones,Iowa_State_Cyclones_football,,,,1,Q6064618,Q3157332,42.014167,-93.635833
+cfb,Jackson State Tigers,Jackson State Tigers,Jackson_State_Tigers_football,,,,1,Q6117383,Q606901,32.329639,-90.179778
+cfb,Jacksonville State Gamecocks,Jacksonville State Gamecocks,Jacksonville_State_Gamecocks_football,,,,1,Q6118033,Q6108965,33.8203,-85.7664
+cfb,James Madison Dukes,James Madison Dukes,James_Madison_Dukes_football,,,,1,Q6138754,Q4966496,38.4353,-78.8731
+cfb,Kansas Jayhawks,Kansas Jayhawks,Kansas_Jayhawks_football,,,,1,Q6365000,Q3305513,38.963056,-95.246389
+cfb,Kansas State Wildcats,Kansas State Wildcats,Kansas_State_Wildcats_football,,,,1,Q6365097,Q2903355,39.201944,-96.593889
+cfb,Kennesaw State Owls,Kennesaw State Owls,Kennesaw_State_Owls_football,,,,1,Q16155459,Q6389756,34.028938888,-84.567611111
+cfb,Kent State Golden Flashes,Kent State Golden Flashes,Kent_State_Golden_Flashes_football,,,,1,Q3814673,Q5284768,41.139167,-81.313333
+cfb,Kentucky Wildcats,Kentucky Wildcats,Kentucky_Wildcats_football,,,,1,Q6392427,Q517268,38.022777777,-84.505277777
+cfb,LSU Tigers,LSU Tigers,LSU_Tigers_football,,,,1,Q6460028,Q1594708,30.411944,-91.185556
+cfb,Lafayette Leopards,Lafayette Leopards,Lafayette_Leopards_football,,,,1,Q6471460,Q5454793,40.7008,-75.2106
+cfb,Lamar Cardinals,Lamar Cardinals,Lamar_Cardinals_football,,,,1,Q6480841,Q7252818,30.0431,-94.07
+cfb,Lehigh Engineers,Lehigh Engineers,Lehigh_Mountain_Hawks_football,Lehigh_Engineers_football,,,1,Q6518816,Q5583470,40.5889,-75.3553
+cfb,Liberty Flames,Liberty Flames,Liberty_Flames_football,,,,1,Q6541718,Q8021099,37.354,-79.175
+cfb,Long Beach State 49ers,Long Beach State 49ers,Long_Beach_State_49ers_football,,,,1,Q6672353,Q7923658,33.8282,-118.136
+cfb,Louisiana Ragin' Cajuns,Louisiana Ragin' Cajuns,Louisiana_Ragin'_Cajuns_football,,,,1,Q47004363,Q5018009,30.215833,-92.041944
+cfb,Louisiana Tech Bulldogs,Louisiana Tech Bulldogs,Louisiana_Tech_Bulldogs_football,,,,1,Q16155502,Q6208302,32.532222,-92.655833
+cfb,Louisiana-Monroe Warhawks,Louisiana-Monroe Warhawks,Louisiana–Monroe_Warhawks_football,Louisiana-Monroe_Warhawks_football,,,1,Q6689418,Q6744512,32.530833,-92.065833
+cfb,Louisville Cardinals,Louisville Cardinals,Louisville_Cardinals_football,,,,1,Q6689457,Q3362725,38.205833333,-85.758888888
+cfb,Loyola Lions,Loyola Lions,Loyola_Marymount_Lions,Loyola_Lions_football,,,1,Q6694580,,,
+cfb,Marquette Warriors,Marquette Warriors,Marquette_Golden_Avalanche_football,Marquette_Warriors_football,,,1,Q6772589,Q6772620,43.035833333,-87.960833333
+cfb,Marshall Thundering Herd,Marshall Thundering Herd,Marshall_Thundering_Herd_football,,,,1,Q6773805,Q3179563,38.425,-82.4208
+cfb,Maryland Terrapins,Maryland Terrapins,Maryland_Terrapins_football,,,,1,Q6781508,Q2929171,38.990277777,-76.947222222
+cfb,McNeese Cowboys,McNeese Cowboys,McNeese_Cowboys_football,,,,1,Q6802513,Q14691617,30.1733,-93.21
+cfb,Memphis Tigers,Memphis Tigers,Memphis_Tigers_football,,,,1,Q4290276,Q3237803,35.121111111,-89.9775
+cfb,Miami Hurricanes,Miami Hurricanes,Miami_Hurricanes_football,,,,1,Q6827329,Q864339,25.958055555,-80.238888888
+cfb,Miami RedHawks,Miami RedHawks,Miami_RedHawks_football,,,,1,Q16969862,Q8046702,39.5194,-84.7328
+cfb,Michigan State Spartans,Michigan State Spartans,Michigan_State_Spartans_football,,,,1,Q6837710,Q2164621,42.728056,-84.484722
+cfb,Michigan Wolverines,Michigan Wolverines,Michigan_Wolverines_football,,,,1,Q6837794,Q1640118,42.265833333,-83.748611111
+cfb,Middle Tennessee Blue Raiders,Middle Tennessee Blue Raiders,Middle_Tennessee_Blue_Raiders_football,,,,1,Q6841614,Q14709982,35.8511,-86.3683
+cfb,Minnesota Golden Gophers,Minnesota Golden Gophers,Minnesota_Golden_Gophers_football,,,,1,Q6868253,Q3512039,44.976389,-93.224444
+cfb,Mississippi State Bulldogs,Mississippi State Bulldogs,Mississippi_State_Bulldogs_football,,,,1,Q6879318,Q949608,33.456389,-88.793611
+cfb,Missouri State Bears,Missouri State Bears,Missouri_State_Bears_football,,,,1,Q16969875,Q7202020,37.197653,-93.279772
+cfb,Missouri Tigers,Missouri Tigers,Missouri_Tigers_football,,,,1,Q6879748,Q1320105,38.935833,-92.333056
+cfb,Montana Grizzlies,Montana Grizzlies,Montana_Grizzlies_football,,,,1,Q6904264,Q7972603,46.864217,-113.981497
+cfb,Montana State Bobcats,Montana State Bobcats,Montana_State_Bobcats_football,,,,1,Q16969880,Q4935782,45.6592,-111.049
+cfb,NC State Wolfpack,NC State Wolfpack,NC_State_Wolfpack_football,,,,1,Q6953250,Q945172,35.800833333,-78.719444444
+cfb,NYU Violets,NYU Violets,NYU_Violets_football,,,,1,Q21187948,,,
+cfb,Navy Midshipmen,Navy Midshipmen,Navy_Midshipmen_football,,,,1,Q6982660,Q3337331,38.984722,-76.506944
+cfb,Nebraska Cornhuskers,Nebraska Cornhuskers,Nebraska_Cornhuskers_football,,,,1,Q6984693,Q383557,40.821022711,-96.705499407
+cfb,Nevada Wolf Pack,Nevada Wolf Pack,Nevada_Wolf_Pack_football,,,,1,Q7003651,Q6588235,39.546944,-119.8175
+cfb,New Mexico Lobos,New Mexico Lobos,New_Mexico_Lobos_football,,,,1,Q17107975,Q936242,35.066944,-106.628333
+cfb,New Mexico State Aggies,New Mexico State Aggies,New_Mexico_State_Aggies_football,,,,1,Q16969907,Q4692211,32.279722,-106.741111
+cfb,North Carolina Tar Heels,North Carolina Tar Heels,North_Carolina_Tar_Heels_football,,,,1,Q7054630,Q1627986,35.906944,-79.047778
+cfb,North Dakota State Bison,North Dakota State Bison,North_Dakota_State_Bison_football,,,,1,Q7055045,Q5435127,46.903036,-96.80155
+cfb,North Texas Mean Green,North Texas Mean Green,North_Texas_Mean_Green_football,,,,1,Q7056973,Q11597,33.203611111,-97.159444444
+cfb,Northern Arizona Lumberjacks,Northern Arizona Lumberjacks,Northern_Arizona_Lumberjacks_football,,,,1,Q7058128,Q7962575,35.1805,-111.652
+cfb,Northern Colorado Bears,Northern Colorado Bears,Northern_Colorado_Bears_football,,,,1,Q7058248,Q7063639,40.403056,-104.705278
+cfb,Northern Illinois Huskies,Northern Illinois Huskies,Northern_Illinois_Huskies_football,,,,1,Q7058416,Q5949339,41.9339,-88.7778
+cfb,Northwestern Wildcats,Northwestern Wildcats,Northwestern_Wildcats_football,,,,1,Q7060413,Q3453774,42.087509448,-87.700625415
+cfb,Notre Dame Fighting Irish,Notre Dame Fighting Irish,Notre_Dame_Fighting_Irish_football,,,,1,Q16147495,Q847043,41.69833,-86.23389
+cfb,Ohio Bobcats,Ohio Bobcats,Ohio_Bobcats_football,,,,1,Q7080752,Q7159081,39.3211,-82.1028
+cfb,Ohio State Buckeyes,Ohio State Buckeyes,Ohio_State_Buckeyes_football,,,,1,Q7080909,Q774694,40.001667,-83.019722
+cfb,Oklahoma Sooners,Oklahoma Sooners,Oklahoma_Sooners_football,,,,1,Q10608114,Q1496586,35.205833333,-97.4425
+cfb,Oklahoma State Cowboys,Oklahoma State Cowboys,Oklahoma_State_Cowboys_football,,,,1,Q7082345,Q2910505,36.125833333,-97.066388888
+cfb,Old Dominion Monarchs,Old Dominion Monarchs,Old_Dominion_Monarchs_football,,,,1,Q16197521,Q5468640,36.8889,-76.3049
+cfb,Ole Miss Rebels,Ole Miss Rebels,Ole_Miss_Rebels_football,,,,1,Q7085897,Q3555083,34.361944,-89.534167
+cfb,Oregon Ducks,Oregon Ducks,Oregon_Ducks_football,,,,1,Q7101185,Q2873102,44.058333333,-123.068611111
+cfb,Oregon State Beavers,Oregon State Beavers,Oregon_State_Beavers_football,,,,1,Q7101350,Q782386,44.559444444,-123.281388888
+cfb,Pacific Tigers,Pacific Tigers,Pacific_Tigers_football,,,,1,Q7122732,Q6588440,37.977906,-121.317097
+cfb,Penn Quakers,Penn Quakers,Penn_Quakers_football,,,,1,Q7163212,Q5491503,39.95,-75.19
+cfb,Penn State Nittany Lions,Penn State Nittany Lions,Penn_State_Nittany_Lions_football,,,,1,Q7163267,Q692816,40.812222222,-77.856111111
+cfb,Pittsburgh Panthers,Pittsburgh Panthers,Pittsburgh_Panthers_football,,,,1,Q7199341,Q1067148,40.446666666,-80.015833333
+cfb,Princeton Tigers,Princeton Tigers,Princeton_Tigers_football,,,,1,Q7245012,Q6587721,40.345755,-74.65003
+cfb,Purdue Boilermakers,Purdue Boilermakers,Purdue_Boilermakers_football,,,,1,Q7260970,Q3442733,40.4344,-86.9183
+cfb,Rice Owls,Rice Owls,Rice_Owls_football,,,,1,Q7323034,Q1857419,29.716388888,-95.409166666
+cfb,Richmond Spiders,Richmond Spiders,Richmond_Spiders_football,,,,1,Q7330996,Q5321803,37.5809,-77.5368
+cfb,Rutgers Scarlet Knights,Rutgers Scarlet Knights,Rutgers_Scarlet_Knights_football,,,,1,Q7382803,Q3453599,40.513611111,-74.465277777
+cfb,SMU Mustangs,SMU Mustangs,SMU_Mustangs_football,,,,1,Q7391404,Q390127,32.836644,-96.783994
+cfb,Sacramento State Hornets,Sacramento State Hornets,Sacramento_State_Hornets_football,,,,1,Q7397029,Q9004779,38.555672,-121.422903
+cfb,Sam Houston Bearkats,Sam Houston Bearkats,Sam_Houston_Bearkats_football,,,,1,Q7407656,Q4950911,30.713889,-95.541667
+cfb,San Diego State Aztecs,San Diego State Aztecs,San_Diego_State_Aztecs_football,,,,1,Q7413723,Q100272042,32.784444444,-117.122833333
+cfb,San Jose State Spartans,San Jose State Spartans,San_Jose_State_Spartans_football,,,,1,Q7414486,Q2165358,37.319722222,-121.868333333
+cfb,South Alabama Jaguars,South Alabama Jaguars,South_Alabama_Jaguars_football,,,,1,Q7565931,Q83590158,30.696904,-88.192013
+cfb,South Carolina Gamecocks,South Carolina Gamecocks,South_Carolina_Gamecocks_football,,,,1,Q7566583,Q940522,33.973055555,-81.019166666
+cfb,South Florida Bulls,South Florida Bulls,South_Florida_Bulls_football,,,,1,Q16155578,Q1141343,27.975833333,-82.503333333
+cfb,Southern Illinois Salukis,Southern Illinois Salukis,Southern_Illinois_Salukis_football,,,,1,Q7570021,Q7406284,37.7085,-89.21624
+cfb,Southern Miss Golden Eagles,Southern Miss Golden Eagles,Southern_Miss_Golden_Eagles_football,,,,1,Q7570145,Q3272445,31.328889,-89.331389
+cfb,Stanford Cardinal,Stanford Cardinal,Stanford_Cardinal_football,,,,1,Q7598725,Q692470,37.434444444,-122.161111111
+cfb,Syracuse Orange,Syracuse Orange,Syracuse_Orange_football,,,,1,Q7663046,Q2739617,43.036111111,-76.136388888
+cfb,TCU Horned Frogs,TCU Horned Frogs,TCU_Horned_Frogs_football,,,,1,Q7669786,Q473943,32.709722222,-97.368055555
+cfb,Temple Owls,Temple Owls,Temple_Owls_football,,,,1,Q7698629,Q1052370,39.90089,-75.16776
+cfb,Tennessee State Tigers,Tennessee State Tigers,Tennessee_State_Tigers_football,,,,1,Q7700197,Q1142992,36.166388888,-86.771388888
+cfb,Tennessee Volunteers,Tennessee Volunteers,Tennessee_Volunteers_football,,,,1,Q12070759,Q1984022,35.955,-83.925
+cfb,Texas A&M Aggies,Texas A&M Aggies,Texas_A&M_Aggies_football,,,,1,Q7707428,Q945223,30.60992,-96.34052
+cfb,Texas Longhorns,Texas Longhorns,Texas_Longhorns_football,,,,1,Q7707821,Q1166591,30.283666666,-97.732555555
+cfb,Texas State Bobcats,Texas State Bobcats,Texas_State_Bobcats_football,,,,1,Q7708021,Q14710340,29.8911,-97.9256
+cfb,Texas Tech Red Raiders,Texas Tech Red Raiders,Texas_Tech_Red_Raiders_football,,,,1,Q7708123,Q3183551,33.5911,-101.873
+cfb,Texas–Arlington Mavericks,Texas–Arlington Mavericks,UT_Arlington_Mavericks_football,Texas–Arlington_Mavericks_football,,,1,Q7708310,Q6794182,32.729166666,-97.126666666
+cfb,The Citadel Bulldogs,The Citadel Bulldogs,The_Citadel_Bulldogs_football,,,,1,Q7723116,Q6268319,32.793709,-79.955882
+cfb,Toledo Rockets,Toledo Rockets,Toledo_Rockets_football,,,,1,Q7814180,Q5567033,41.6569,-83.6136
+cfb,Troy Trojans,Troy Trojans,Troy_Trojans_football,,,,1,Q7847015,Q7923659,31.7994,-85.9519
+cfb,Tulane Green Wave,Tulane Green Wave,Tulane_Green_Wave_football,,,,1,Q7851919,Q8060993,29.94482,-90.116816
+cfb,Tulsa Golden Hurricane,Tulsa Golden Hurricane,Tulsa_Golden_Hurricane_football,,,,1,Q7887215,Q3486226,36.148611111,-95.943888888
+cfb,U Sports,U Sports,U_Sports_football,,,,1,Q693005,,,
+cfb,UAB Blazers,UAB Blazers,UAB_Blazers_football,,,,1,Q7863701,Q83506289,33.527777777,-86.808888888
+cfb,UCF Knights,UCF Knights,UCF_Knights_football,,,,1,Q16969982,Q2925356,28.6091,-81.1924
+cfb,UCLA Bruins,UCLA Bruins,UCLA_Bruins_football,,,,1,Q7864004,Q582280,34.1614,-118.1676
+cfb,UConn Huskies,UConn Huskies,UConn_Huskies_football,,,,1,Q16959086,Q3113144,41.759722,-72.618889
+cfb,UMass Minutemen,UMass Minutemen,UMass_Minutemen_football,,,,1,Q7865167,Q6588293,42.3773,-72.536
+cfb,UNLV Rebels,UNLV Rebels,UNLV_Rebels_football,,,,1,Q7865358,Q27768421,36.090777777,-115.183
+cfb,USC Trojans,USC Trojans,USC_Trojans_football,,,,1,Q7866357,Q849784,34.014167,-118.287778
+cfb,UTEP Miners,UTEP Miners,UTEP_Miners_football,,,,1,Q16155625,Q3503735,31.773,-106.508
+cfb,UTSA Roadrunners,UTSA Roadrunners,UTSA_Roadrunners_football,,,,1,Q7876032,Q1618347,29.416944444,-98.478888888
+cfb,Utah State Aggies,Utah State Aggies,Utah_State_Aggies_football,,,,1,Q7902409,Q7363266,41.751667,-111.811667
+cfb,Utah Utes,Utah Utes,Utah_Utes_football,,,,1,Q7902498,Q922761,40.76,-111.848888888
+cfb,VMI Keydets,VMI Keydets,VMI_Keydets_football,,,,1,Q7907264,Q4737461,37.7889,-79.435
+cfb,Vanderbilt Commodores,Vanderbilt Commodores,Vanderbilt_Commodores_football,,,,1,Q16147849,Q3554494,36.144166666,-86.808888888
+cfb,Villanova Wildcats,Villanova Wildcats,Villanova_Wildcats_football,,,,1,Q7930885,Q7930882,40.033055555,-75.336666666
+cfb,Virginia Cavaliers,Virginia Cavaliers,Virginia_Cavaliers_football,,,,1,Q16155633,Q1133538,38.031111111,-78.513611111
+cfb,Virginia Tech Hokies,Virginia Tech Hokies,Virginia_Tech_Hokies_football,,,,1,Q7934612,Q3217144,37.22,-80.418056
+cfb,Wake Forest Demon Deacons,Wake Forest Demon Deacons,Wake_Forest_Demon_Deacons_football,,,,1,Q1463567,Q1028275,36.130556,-80.254722
+cfb,Washington Huskies,Washington Huskies,Washington_Huskies_football,,,,1,Q7971948,Q1136463,47.650277777,-122.301666666
+cfb,Washington State Cougars,Washington State Cougars,Washington_State_Cougars_football,,,,1,Q7972235,Q2409690,46.732,-117.16
+cfb,West Texas A&M Buffaloes,West Texas A&M Buffaloes,West_Texas_A&M_Buffaloes_football,,,,1,Q7986646,Q6410023,35.011944,-101.916667
+cfb,West Virginia Mountaineers,West Virginia Mountaineers,West_Virginia_Mountaineers_football,,,,1,Q937935,Q1179474,39.650277777,-79.954722222
+cfb,Western Carolina Catamounts,Western Carolina Catamounts,Western_Carolina_Catamounts_football,,,,1,Q7987686,Q4934322,35.3047,-83.1825
+cfb,Western Kentucky Hilltoppers,Western Kentucky Hilltoppers,Western_Kentucky_Hilltoppers_football,,,,1,Q7951979,Q5912732,36.9847,-86.4594
+cfb,Western Michigan Broncos,Western Michigan Broncos,Western_Michigan_Broncos_football,,,,1,Q7988069,Q7961584,42.285833,-85.601111
+cfb,Western Reserve Red Cats,Western Reserve Red Cats,Case_Western_Reserve_Spartans_football,Western_Reserve_Red_Cats_football,,,1,Q22021967,,,
+cfb,Wichita State Shockers,Wichita State Shockers,Wichita_State_Shockers_football,,,,1,Q7998160,Q5065580,37.7217,-97.295519
+cfb,William & Mary Tribe,William & Mary Tribe,William_&_Mary_Tribe_football,,,,1,Q8003847,Q8063521,37.2728,-76.7142
+cfb,Wisconsin Badgers,Wisconsin Badgers,Wisconsin_Badgers_football,,,,1,Q8027119,Q1029941,43.07,-89.412777777
+cfb,Wyoming Cowboys,Wyoming Cowboys,Wyoming_Cowboys_football,,,,1,Q8040321,Q3566222,41.311667,-105.568333
+cfb,Xavier Musketeers,Xavier Musketeers,Xavier_Musketeers_football,,,,1,Q16147900,Q5169855,39.1485,-84.4785
+cfb,Yale Bulldogs,Yale Bulldogs,Yale_Bulldogs_football,,,,1,Q15408526,Q1535796,41.313056,-72.960556
+cbb,Abilene Christian Wildcats,Abilene Christian Wildcats,Abilene_Christian_Wildcats_men's_basketball,,,,1,Q16205693,Q6907198,32.470351,-99.709218
+cbb,Air Force Falcons,Air Force Falcons,Air_Force_Falcons_men's_basketball,,,,1,Q4697901,Q4697876,39.0159,-104.889
+cbb,Akron Zips,Akron Zips,Akron_Zips_men's_basketball,,,,1,Q4701706,Q6128242,41.0758,-81.5086
+cbb,Alabama Crimson Tide,Alabama Crimson Tide,Alabama_Crimson_Tide_men's_basketball,,,,1,Q4705230,Q5142988,33.2029,-87.5397
+cbb,Albany Great Danes,Albany Great Danes,Albany_Great_Danes_men's_basketball,,,,1,Q4709319,Q7389663,42.681667,-73.828333
+cbb,American Eagles,American Eagles,American_Eagles_men's_basketball,,,,1,Q4743654,Q4887040,38.937778,-77.09
+cbb,Appalachian State Mountaineers,Appalachian State Mountaineers,Appalachian_State_Mountaineers_men's_basketball,,,,1,Q16961758,Q5541949,36.2106,-81.6759
+cbb,Arizona State Sun Devils,Arizona State Sun Devils,Arizona_State_Sun_Devils_men's_basketball,,,,1,Q4791430,Q770570,33.4245,-111.931
+cbb,Arizona Wildcats,Arizona Wildcats,Arizona_Wildcats_men's_basketball,,,,1,Q4791464,Q3303672,32.2303,-110.946
+cbb,Arkansas Razorbacks,Arkansas Razorbacks,Arkansas_Razorbacks_men's_basketball,,,,1,Q3866524,Q2927497,36.0615,-94.1782
+cbb,Arkansas State Red Wolves,Arkansas State Red Wolves,Arkansas_State_Red_Wolves_men's_basketball,,,,1,Q4791872,Q5166591,35.8454,-90.6703
+cbb,Arkansas–Pine Bluff Golden Lions,Arkansas–Pine Bluff Golden Lions,Arkansas–Pine_Bluff_Golden_Lions_men's_basketball,,,,1,Q4791932,Q6323534,34.2438,-92.0174
+cbb,Army Black Knights,Army Black Knights,Army_Black_Knights_men's_basketball,,,,1,Q4794097,Q5111237,41.3864,-73.9657
+cbb,Auburn Tigers,Auburn Tigers,Auburn_Tigers_men's_basketball,,,,1,Q4819312,Q4819242,32.6025,-85.493
+cbb,Austin Peay Governors,Austin Peay Governors,Austin_Peay_Governors_men's_basketball,,,,1,Q4823226,Q110978899,36.529444444,-87.359722222
+cbb,BYU Cougars,BYU Cougars,BYU_Cougars_men's_basketball,,,,1,Q4836900,Q14711804,40.2542,-111.649
+cbb,Ball State Cardinals,Ball State Cardinals,Ball_State_Cardinals_men's_basketball,,,,1,Q4851219,Q6230987,40.206944444,-85.406111111
+cbb,Baylor Bears,Baylor Bears,Baylor_Bears_men's_basketball,,,,1,Q4874594,Q5445295,31.547929,-97.105665
+cbb,Bellarmine Knights,Bellarmine Knights,Bellarmine_Knights_men's_basketball,,,,1,Q85746459,Q842991,38.200294,-85.741886
+cbb,Belmont Bruins,Belmont Bruins,Belmont_Bruins_men's_basketball,,,,1,Q4884333,Q5194639,36.132222222,-86.794444444
+cbb,Bethune–Cookman Wildcats,Bethune–Cookman Wildcats,Bethune–Cookman_Wildcats_men's_basketball,,,,1,Q4898117,Q6908154,29.2109,-81.031
+cbb,Binghamton Bearcats,Binghamton Bearcats,Binghamton_Bearcats_men's_basketball,,,,1,Q4914237,Q4914258,42.093333,-75.971944
+cbb,Boise State Broncos,Boise State Broncos,Boise_State_Broncos_men's_basketball,,,,1,Q4938462,Q14687332,43.6036,-116.199
+cbb,Boston College Eagles,Boston College Eagles,Boston_College_Eagles_men's_basketball,,,,1,Q4947826,Q598342,42.335,-71.1675
+cbb,Boston University Terriers,Boston University Terriers,Boston_University_Terriers_men's_basketball,,,,1,Q4948192,Q5048302,42.353930555,-71.120355555
+cbb,Bowling Green Falcons,Bowling Green Falcons,Bowling_Green_Falcons_men's_basketball,,,,1,Q4951155,Q7624253,41.3753,-83.6247
+cbb,Bradley Braves,Bradley Braves,Bradley_Braves_men's_basketball,,,,1,Q4954887,Q3375001,40.6925,-89.5942
+cbb,Brown Bears,Brown Bears,Brown_Bears_men's_basketball,,,,1,Q4976050,Q7200010,41.831688,-71.398132
+cbb,Bryant Bulldogs,Bryant Bulldogs,Bryant_Bulldogs_men's_basketball,,,,1,Q4980556,Q5066064,41.921,-71.5396
+cbb,Bucknell Bison,Bucknell Bison,Bucknell_Bison_men's_basketball,,,,1,Q4983430,Q7555027,40.957,-76.8871
+cbb,Buffalo Bulls,Buffalo Bulls,Buffalo_Bulls_men's_basketball,,,,1,Q4985683,Q4737428,43.0,-78.7811
+cbb,Butler Bulldogs,Butler Bulldogs,Butler_Bulldogs_men's_basketball,,,,1,Q5002582,Q3785713,39.84361,-86.1675
+cbb,Cal Poly Mustangs,Cal Poly Mustangs,Cal_Poly_Mustangs_men's_basketball,,,,1,Q5018187,Q6918621,35.2989,-120.659
+cbb,Cal State Bakersfield Roadrunners,Cal State Bakersfield Roadrunners,Cal_State_Bakersfield_Roadrunners_men's_basketball,,,,1,Q5018218,Q5985043,35.3475,-119.102778
+cbb,Cal State Fullerton Titans,Cal State Fullerton Titans,Cal_State_Fullerton_Titans_men's_basketball,,,,1,Q5018221,Q2436828,33.883,-117.886
+cbb,Cal State Northridge Matadors,Cal State Northridge Matadors,Cal_State_Northridge_Matadors_men's_basketball,,,,1,Q23016577,Q6785946,34.242,-118.526
+cbb,California Baptist Lancers,California Baptist Lancers,California_Baptist_Lancers_men's_basketball,,,,1,Q54958864,Q60790285,33.5548,-117.253
+cbb,California Golden Bears,California Golden Bears,California_Golden_Bears_men's_basketball,,,,1,Q5020508,Q5636556,37.8694,-122.262
+cbb,Canisius Golden Griffins,Canisius Golden Griffins,Canisius_Golden_Griffins_men's_basketball,,,,1,Q5032450,Q6425644,42.9209,-78.8575
+cbb,Central Connecticut Blue Devils,Central Connecticut Blue Devils,Central_Connecticut_Blue_Devils_men's_basketball,,,,1,Q5060643,Q14715152,41.693,-72.7649
+cbb,Central Michigan Chippewas,Central Michigan Chippewas,Central_Michigan_Chippewas_men's_basketball,,,,1,Q5061429,Q6801524,43.5809,-84.7739
+cbb,Charleston Cougars,Charleston Cougars,Charleston_Cougars_men's_basketball,,,,1,Q5146661,Q7669887,32.785556,-79.934444
+cbb,Charleston Southern Buccaneers,Charleston Southern Buccaneers,Charleston_Southern_Buccaneers_men's_basketball,,,,1,Q5084177,Q5014419,32.980822,-80.067125
+cbb,Charlotte 49ers,Charlotte 49ers,Charlotte_49ers_men's_basketball,,,,1,Q5085814,Q5210429,35.306111,-80.734444
+cbb,Chattanooga Mocs,Chattanooga Mocs,Chattanooga_Mocs_men's_basketball,,,,1,Q5087884,Q14710053,35.0504,-85.3009
+cbb,Chicago State Cougars,Chicago State Cougars,Chicago_State_Cougars_men's_basketball,,,,1,Q5095788,Q5371507,41.7165,-87.6084
+cbb,Cincinnati Bearcats,Cincinnati Bearcats,Cincinnati_Bearcats_men's_basketball,,,,1,Q5120215,Q5447559,39.1311,-84.5142
+cbb,Clemson Tigers,Clemson Tigers,Clemson_Tigers_men's_basketball,,,,1,Q5131568,Q3256736,34.6803,-82.8464
+cbb,Cleveland State Vikings,Cleveland State Vikings,Cleveland_State_Vikings_men's_basketball,,,,1,Q5132247,Q3569735,41.499166666,-81.676944444
+cbb,Coastal Carolina Chanticleers,Coastal Carolina Chanticleers,Coastal_Carolina_Chanticleers_men's_basketball,,,,1,Q5138261,Q5636057,33.7992,-79.0156
+cbb,Colgate Raiders,Colgate Raiders,Colgate_Raiders_men's_basketball,,,,1,Q5144784,Q5175589,42.815,-75.5428
+cbb,Colorado Buffaloes,Colorado Buffaloes,Colorado_Buffaloes_men's_basketball,,,,1,Q5148747,Q5168058,40.004639,-105.260583
+cbb,Colorado State Rams,Colorado State Rams,Colorado_State_Rams_men's_basketball,,,,1,Q5148953,Q6887415,40.575661111,-105.093208333
+cbb,Columbia Lions,Columbia Lions,Columbia_Lions_men's_basketball,,,,1,Q5149758,Q6535611,40.8098,-73.9617
+cbb,Coppin State Eagles,Coppin State Eagles,Coppin_State_Eagles_men's_basketball,,,,1,Q5168877,Q7189554,39.3155,-76.6574
+cbb,Cornell Big Red,Cornell Big Red,Cornell_Big_Red_men's_basketball,,,,1,Q5171502,Q7018419,42.445794,-76.476581
+cbb,Creighton Bluejays,Creighton Bluejays,Creighton_Bluejays_men's_basketball,,,,1,Q5183999,Q769480,41.262667,-95.928206
+cbb,Dartmouth Big Green,Dartmouth Big Green,Dartmouth_Big_Green_men's_basketball,,,,1,Q5225675,Q6515784,43.703056,-72.283333
+cbb,Davidson Wildcats,Davidson Wildcats,Davidson_Wildcats_men's_basketball,,,,1,Q5241672,Q6245698,35.4993,-80.8405
+cbb,Dayton Flyers,Dayton Flyers,Dayton_Flyers_men's_basketball,,,,1,Q5243530,Q7895321,39.7356,-84.2
+cbb,DePaul Blue Demons,DePaul Blue Demons,DePaul_Blue_Demons_men's_basketball,,,,1,Q5244031,Q16991688,41.853611111,-87.621388888
+cbb,Delaware Fightin' Blue Hens,Delaware Fightin' Blue Hens,Delaware_Fightin'_Blue_Hens_men's_basketball,,,,1,Q5253294,Q4932016,39.6606,-75.7486
+cbb,Delaware State Hornets,Delaware State Hornets,Delaware_State_Hornets_men's_basketball,,,,1,Q5253361,Q6815425,39.1876,-75.5434
+cbb,Denver Pioneers,Denver Pioneers,Denver_Pioneers_men's_basketball,,,,1,Q5259763,Q14684923,39.682222222,-104.961666666
+cbb,Detroit Mercy Titans,Detroit Mercy Titans,Detroit_Mercy_Titans_men's_basketball,,,,1,Q5266031,Q5021351,42.414167,-83.135833
+cbb,Drake Bulldogs,Drake Bulldogs,Drake_Bulldogs_men's_basketball,,,,1,Q5305588,Q6421747,41.6044,-93.6519
+cbb,Drexel Dragons,Drexel Dragons,Drexel_Dragons_men's_basketball,,,,1,Q5307337,Q5226785,39.9564,-75.1908
+cbb,Duke Blue Devils,Duke Blue Devils,Duke_Blue_Devils_men's_basketball,,,,1,Q4171772,Q2934766,35.997527777,-78.942305555
+cbb,Duquesne Dukes,Duquesne Dukes,Duquesne_Dukes_men's_basketball,,,,1,Q5316086,Q7128830,40.4374,-79.9879
+cbb,East Carolina Pirates,East Carolina Pirates,East_Carolina_Pirates_men's_basketball,,,,1,Q5328022,Q8020980,35.5974,-77.3672
+cbb,East Tennessee State Buccaneers,East Tennessee State Buccaneers,East_Tennessee_State_Buccaneers_men's_basketball,,,,1,Q5329506,Q5500551,36.3244,-82.375
+cbb,East Texas A&M Lions,East Texas A&M Lions,East_Texas_A&M_Lions_men's_basketball,,,,1,Q22096317,Q7707424,33.2453,-95.9076
+cbb,Eastern Illinois Panthers,Eastern Illinois Panthers,Eastern_Illinois_Panthers_men's_basketball,,,,1,Q5330213,Q967237,39.4804,-88.1788
+cbb,Eastern Michigan Eagles,Eastern Michigan Eagles,Eastern_Michigan_Eagles_men's_basketball,,,,1,Q5330297,Q5166593,42.254444,-83.647222
+cbb,Eastern Washington Eagles,Eastern Washington Eagles,Eastern_Washington_Eagles_men's_basketball,,,,1,Q5330566,Q7306996,47.4911,-117.589
+cbb,Elon Phoenix,Elon Phoenix,Elon_Phoenix_men's_basketball,,,,1,Q5367126,Q60764031,36.108071559,-79.510795003
+cbb,Evansville Purple Aces,Evansville Purple Aces,Evansville_Purple_Aces_men's_basketball,,,,1,Q5416038,Q3077061,37.972189,-87.567844
+cbb,FIU Panthers,FIU Panthers,FIU_Panthers_men's_basketball,,,,1,Q5425988,Q7863118,25.756926,-80.379627
+cbb,Fairfield Stags,Fairfield Stags,Fairfield_Stags_men's_basketball,,,,1,Q5430350,Q117309355,41.160174875,-73.25683127
+cbb,Fairleigh Dickinson Knights,Fairleigh Dickinson Knights,Fairleigh_Dickinson_Knights_men's_basketball,,,,1,Q5430527,Q7370490,40.896,-74.0348
+cbb,Florida Atlantic Owls,Florida Atlantic Owls,Florida_Atlantic_Owls_men's_basketball,,,,1,Q5461198,Q5424511,26.372222,-80.109167
+cbb,Florida Gators,Florida Gators,Florida_Gators_men's_basketball,,,,1,Q5461408,Q7071713,29.649444,-82.351111
+cbb,Florida Gulf Coast Eagles,Florida Gulf Coast Eagles,Florida_Gulf_Coast_Eagles_men's_basketball,,,,1,Q5461433,Q4726355,26.471111,-81.764722
+cbb,Florida State Seminoles,Florida State Seminoles,Florida_State_Seminoles_men's_basketball,,,,1,Q5461625,Q1240053,30.4378,-84.2865
+cbb,Fordham Rams,Fordham Rams,Fordham_Rams_men's_basketball,,,,1,Q5468075,Q3442380,40.8621,-73.8838
+cbb,Fresno State Bulldogs,Fresno State Bulldogs,Fresno_State_Bulldogs_men's_basketball,,,,1,Q5503202,Q3474506,36.809722,-119.738611
+cbb,Furman Paladins,Furman Paladins,Furman_Paladins_men's_basketball,,,,1,Q5509587,Q7806809,34.917977,-82.437394
+cbb,Gardner–Webb Runnin' Bulldogs,Gardner–Webb Runnin' Bulldogs,Gardner–Webb_Runnin'_Bulldogs_men's_basketball,,,,1,Q5522633,Q7152985,35.2465,-81.6695
+cbb,George Mason Patriots,George Mason Patriots,George_Mason_Patriots_men's_basketball,,,,1,Q5542207,Q7148003,38.8269,-77.3097
+cbb,George Washington Revolutionaries,George Washington Revolutionaries,George_Washington_Revolutionaries_men's_basketball,,,,1,Q2984247,Q5077180,38.89677,-77.04853
+cbb,Georgetown Hoyas,Georgetown Hoyas,Georgetown_Hoyas_men's_basketball,,,,1,Q5547005,Q223240,38.898055555,-77.020833333
+cbb,Georgia Southern Eagles,Georgia Southern Eagles,Georgia_Southern_Eagles_men's_basketball,,,,1,Q5547726,Q5649097,32.4278,-81.7794
+cbb,Georgia State Panthers,Georgia State Panthers,Georgia_State_Panthers_men's_basketball,,,,1,Q5547756,Q104417655,33.7425,-84.389444444
+cbb,Georgia Tech Yellow Jackets,Georgia Tech Yellow Jackets,Georgia_Tech_Yellow_Jackets_men's_basketball,,,,1,Q5547839,Q1492102,33.780833333,-84.392777777
+cbb,Gonzaga Bulldogs,Gonzaga Bulldogs,Gonzaga_Bulldogs_men's_basketball,,,,1,Q5582139,Q6800179,47.6653,-117.399
+cbb,Grambling State Tigers,Grambling State Tigers,Grambling_State_Tigers_men's_basketball,,,,1,Q5593615,Q5499409,32.520284,-92.723578
+cbb,Grand Canyon Antelopes,Grand Canyon Antelopes,Grand_Canyon_Antelopes_men's_basketball,,,,1,Q5594343,Q5513053,33.509,-112.129
+cbb,Green Bay Phoenix,Green Bay Phoenix,Green_Bay_Phoenix_men's_basketball,,,,1,Q5602345,Q1420815,44.499547,-88.055049
+cbb,Hampton Pirates,Hampton Pirates,Hampton_Pirates_basketball,Hampton_Pirates_men's_basketball,,,1,Q5646267,Q5646174,37.0197,-76.3311
+cbb,Harvard Crimson,Harvard Crimson,Harvard_Crimson_men's_basketball,,,,1,Q13400912,Q6502663,42.3682,-71.1253
+cbb,High Point Panthers,High Point Panthers,High_Point_Panthers_men's_basketball,,,,1,Q16197479,Q107582581,35.978562,-79.996562
+cbb,Hofstra Pride,Hofstra Pride,Hofstra_Pride_men's_basketball,,,,1,Q5876892,Q5876870,40.719681,-73.596865
+cbb,Holy Cross Crusaders,Holy Cross Crusaders,Holy_Cross_Crusaders_men's_basketball,,,,1,Q5885211,Q5674109,42.235046,-71.806381
+cbb,Houston Christian Huskies,Houston Christian Huskies,Houston_Christian_Huskies_men's_basketball,,,,1,Q5916389,Q7490319,29.695,-95.5169
+cbb,Houston Cougars,Houston Cougars,Houston_Cougars_men's_basketball,,,,1,Q5916449,Q5876764,29.724722,-95.346944
+cbb,IU Indy Jaguars,IU Indy Jaguars,IU_Indy_Jaguars_men's_basketball,,,,1,Q5975427,Q14688354,39.8275,-86.135
+cbb,Idaho State Bengals,Idaho State Bengals,Idaho_State_Bengals_men's_basketball,,,,1,Q5987434,Q5884522,42.8697,-112.428
+cbb,Idaho Vandals,Idaho Vandals,Idaho_Vandals_men's_basketball,,,,1,Q5987486,Q97654602,46.726610752,-117.017209731
+cbb,Illinois Fighting Illini,Illinois Fighting Illini,Illinois_Fighting_Illini_men's_basketball,,,,1,Q5999485,Q2867017,40.0963,-88.236
+cbb,Illinois State Redbirds,Illinois State Redbirds,Illinois_State_Redbirds_men's_basketball,,,,1,Q5999766,Q7305470,40.510606,-88.999011
+cbb,Incarnate Word Cardinals,Incarnate Word Cardinals,Incarnate_Word_Cardinals_men's_basketball,,,,1,Q16155453,Q6800852,29.4681,-98.4694
+cbb,Indiana Hoosiers,Indiana Hoosiers,Indiana_Hoosiers_men's_basketball,,,,1,Q6023245,Q4808661,39.180833,-86.522222
+cbb,Indiana State Sycamores,Indiana State Sycamores,Indiana_State_Sycamores_men's_basketball,,,,1,Q3798085,Q5936153,39.4683,-87.405
+cbb,Iona Gaels,Iona Gaels,Iona_Gaels_men's_basketball,,,,1,Q6063497,Q5956988,40.92664,-73.784325
+cbb,Iowa Hawkeyes,Iowa Hawkeyes,Iowa_Hawkeyes_men's_basketball,,,,1,Q16969748,Q5047562,41.663611,-91.554444
+cbb,Iowa State Cyclones,Iowa State Cyclones,Iowa_State_Cyclones_men's_basketball,,,,1,Q6064625,Q3135692,42.02101,-93.634763
+cbb,Jacksonville Dolphins,Jacksonville Dolphins,Jacksonville_Dolphins_men's_basketball,,,,1,Q6117957,Q7658826,30.3503,-81.605
+cbb,Jacksonville State Gamecocks,Jacksonville State Gamecocks,Jacksonville_State_Gamecocks_men's_basketball,,,,1,Q6118035,Q7172127,33.824,-85.773
+cbb,James Madison Dukes,James Madison Dukes,James_Madison_Dukes_men's_basketball,,,,1,Q6138757,Q96471962,38.430436676,-78.859574442
+cbb,Kansas City Roos,Kansas City Roos,Kansas_City_Roos_men's_basketball,,,,1,Q7865113,Q7658758,39.0355,-94.5788
+cbb,Kansas Jayhawks,Kansas Jayhawks,Kansas_Jayhawks_men's_basketball,,,,1,Q6365002,Q2837888,38.954305555,-95.252394444
+cbb,Kansas State Wildcats,Kansas State Wildcats,Kansas_State_Wildcats_men's_basketball,,,,1,Q6365104,Q2923640,39.200361,-96.593833
+cbb,Kennesaw State Owls,Kennesaw State Owls,Kennesaw_State_Owls_men's_basketball,,,,1,Q6389747,Q6338312,34.0369,-84.5803
+cbb,Kent State Golden Flashes,Kent State Golden Flashes,Kent_State_Golden_Flashes_men's_basketball,,,,1,Q6391908,Q12061677,41.148,-81.344
+cbb,Kentucky Wildcats,Kentucky Wildcats,Kentucky_Wildcats_men's_basketball,,,,1,Q6392428,Q842965,38.049444444,-84.502777777
+cbb,LIU Sharks,LIU Sharks,LIU_Sharks_men's_basketball,,,,1,Q6672662,Q7981583,40.6906,-73.9792
+cbb,LSU New Orleans Privateers,LSU New Orleans Privateers,LSU_New_Orleans_Privateers_men's_basketball,,,,1,Q7010766,Q6478725,30.03,-90.050556
+cbb,LSU Tigers,LSU Tigers,LSU_Tigers_men's_basketball,,,,1,Q6460027,Q3738031,30.4142,-91.1845
+cbb,La Salle Explorers,La Salle Explorers,La_Salle_Explorers_men's_basketball,,,,1,Q6465104,Q7815960,40.04,-75.1565
+cbb,Lafayette Leopards,Lafayette Leopards,Lafayette_Leopards_men's_basketball,,,,1,Q6471461,Q6414958,40.7019,-75.2107
+cbb,Le Moyne Dolphins,Le Moyne Dolphins,Le_Moyne_Dolphins_men's_basketball,,,,1,Q108303170,Q121795964,43.050266,-76.084988
+cbb,Lehigh Mountain Hawks,Lehigh Mountain Hawks,Lehigh_Mountain_Hawks_men's_basketball,,,,1,Q6518817,Q7595785,40.585277777,-75.3575
+cbb,Lindenwood Lions,Lindenwood Lions,Lindenwood_Lions_men's_basketball,,,,1,Q108303340,Q7344180,38.7891,-90.5035
+cbb,Lipscomb Bisons,Lipscomb Bisons,Lipscomb_Bisons_men's_basketball,,,,1,Q6557022,Q4731511,36.103833333,-86.798836111
+cbb,Little Rock Trojans,Little Rock Trojans,Little_Rock_Trojans_men's_basketball,,,,1,Q4791928,Q14680970,34.7278,-92.3397
+cbb,Long Beach State Beach,Long Beach State Beach,Long_Beach_State_Beach_men's_basketball,,,,1,Q16969843,Q3565858,33.7872,-118.114
+cbb,Longwood Lancers,Longwood Lancers,Longwood_Lancers_men's_basketball,,,,1,Q6674528,Q5723526,37.2973,-78.3957
+cbb,Louisiana Ragin' Cajuns,Louisiana Ragin' Cajuns,Louisiana_Ragin'_Cajuns_men's_basketball,,,,1,Q16969605,Q1026099,30.218444444,-92.039055555
+cbb,Louisiana–Monroe Warhawks,Louisiana–Monroe Warhawks,Louisiana–Monroe_Warhawks_men's_basketball,,,,1,Q6689419,Q5434412,32.531,-92.069
+cbb,Louisville Cardinals,Louisville Cardinals,Louisville_Cardinals_men's_basketball,,,,1,Q26879782,Q10516134,38.2575,-85.753889
+cbb,Loyola Greyhounds,Loyola Greyhounds,Loyola_Greyhounds_men's_basketball,,,,1,Q6694557,Q7310510,39.3468,-76.6186
+cbb,Loyola Marymount Lions,Loyola Marymount Lions,Loyola_Marymount_Lions_men's_basketball,,,,1,Q6694581,Q1515071,33.967695,-118.415601
+cbb,Loyola Ramblers,Loyola Ramblers,Loyola_Ramblers_men's_basketball,,,,1,Q16201569,Q6284225,42.0006,-87.6589
+cbb,Maine Black Bears,Maine Black Bears,Maine_Black_Bears_men's_basketball,,,,1,Q6736319,Q4721945,44.904539,-68.673617
+cbb,Marist Red Foxes,Marist Red Foxes,Marist_Red_Foxes_men's_basketball,,,,1,Q6765683,Q14706918,41.7184,-73.934
+cbb,Marquette Golden Eagles,Marquette Golden Eagles,Marquette_Golden_Eagles_men's_basketball,,,,1,Q6772588,Q20372160,43.0451,-87.9182
+cbb,Marshall Thundering Herd,Marshall Thundering Herd,Marshall_Thundering_Herd_men's_basketball,,,,1,Q16969608,Q5024834,38.4249,-82.4266
+cbb,Maryland Eastern Shore Hawks,Maryland Eastern Shore Hawks,Maryland_Eastern_Shore_Hawks_men's_basketball,,,,1,Q7865101,Q5962440,38.2112,-75.6872
+cbb,Maryland Terrapins,Maryland Terrapins,Maryland_Terrapins_men's_basketball,,,,1,Q15055268,Q2985114,38.995416666,-76.941555555
+cbb,Memphis Tigers,Memphis Tigers,Memphis_Tigers_men's_basketball,,,,1,Q6719876,Q641212,35.138333333,-90.050555555
+cbb,Mercer Bears,Mercer Bears,Mercer_Bears_men's_basketball,,,,1,Q6818263,Q5685116,32.82972222,-83.65194444
+cbb,Merrimack Warriors,Merrimack Warriors,Merrimack_Warriors_men's_basketball,,,,1,Q65090137,,,
+cbb,Miami Hurricanes,Miami Hurricanes,Miami_Hurricanes_men's_basketball,,,,1,Q6827331,Q2882577,25.715,-80.279167
+cbb,Miami RedHawks,Miami RedHawks,Miami_RedHawks_men's_basketball,,,,1,Q6827387,Q14716720,39.5172,-84.7345
+cbb,Michigan State Spartans,Michigan State Spartans,Michigan_State_Spartans_men's_basketball,,,,1,Q3856893,Q2924511,42.728227,-84.492396
+cbb,Michigan Wolverines,Michigan Wolverines,Michigan_Wolverines_men's_basketball,,,,1,Q6837797,Q3091213,42.265037,-83.746768
+cbb,Middle Tennessee Blue Raiders,Middle Tennessee Blue Raiders,Middle_Tennessee_Blue_Raiders_men's_basketball,,,,1,Q6841617,Q6938924,35.852467,-86.369803
+cbb,Milwaukee Panthers,Milwaukee Panthers,Milwaukee_Panthers_men's_basketball,,,,1,Q16202119,Q1142808,43.042222222,-87.916944444
+cbb,Minnesota Golden Gophers,Minnesota Golden Gophers,Minnesota_Golden_Gophers_men's_basketball,,,,1,Q6868278,Q8020979,44.976944444,-93.228333333
+cbb,Missouri Tigers,Missouri Tigers,Missouri_Tigers_men's_basketball,,,,1,Q6879753,Q3317355,38.9324,-92.333
+cbb,Monmouth Hawks,Monmouth Hawks,Monmouth_Hawks_men's_basketball,,,,1,Q6901088,Q6935047,40.279475,-74.007583
+cbb,Montana State Bobcats,Montana State Bobcats,Montana_State_Bobcats_men's_basketball,,,,1,Q6904323,Q8037239,45.6633,-111.051
+cbb,Morehead State Eagles,Morehead State Eagles,Morehead_State_Eagles_men's_basketball,,,,1,Q6911262,Q5365920,38.1888,-83.429
+cbb,Morgan State Bears,Morgan State Bears,Morgan_State_Bears_basketball,Morgan_State_Bears_men's_basketball,,,1,Q6911853,Q7680233,39.3425,-76.585
+cbb,Mount St. Mary's Mountaineers,Mount St. Mary's Mountaineers,Mount_St._Mary's_Mountaineers_men's_basketball,,,,1,Q6923800,Q6423100,39.6795,-77.3464
+cbb,Murray State Racers,Murray State Racers,Murray_State_Racers_men's_basketball,,,,1,Q6939475,Q5010807,36.6227,-88.3203
+cbb,NC State Wolfpack,NC State Wolfpack,NC_State_Wolfpack_men's_basketball,,,,1,Q6953251,Q39177,35.803333333,-78.721944444
+cbb,NJIT Highlanders,NJIT Highlanders,NJIT_Highlanders_men's_basketball,,,,1,Q6954436,Q22097124,40.7453,-74.183
+cbb,Navy Midshipmen,Navy Midshipmen,Navy_Midshipmen_men's_basketball,,,,1,Q6982661,Q4737452,38.9845,-76.4878
+cbb,Nebraska Cornhuskers,Nebraska Cornhuskers,Nebraska_Cornhuskers_men's_basketball,,,,1,Q6984696,Q7196282,40.817778,-96.713333
+cbb,Nevada Wolf Pack,Nevada Wolf Pack,Nevada_Wolf_Pack_men's_basketball,,,,1,Q16969645,Q6503641,39.545069,-119.818269
+cbb,New Hampshire Wildcats,New Hampshire Wildcats,New_Hampshire_Wildcats_men's_basketball,,,,1,Q7008336,Q6704137,43.1386,-70.9381
+cbb,New Haven Chargers,New Haven Chargers,New_Haven_Chargers_men's_basketball,,,,1,Q108303422,,,
+cbb,New Mexico Lobos,New Mexico Lobos,New_Mexico_Lobos_men's_basketball,,,,1,Q7010200,Q7757281,35.067,-106.632
+cbb,New Mexico State Aggies,New Mexico State Aggies,New_Mexico_State_Aggies_men's_basketball,,,,1,Q7010242,Q7129595,32.284,-106.7422
+cbb,Niagara Purple Eagles,Niagara Purple Eagles,Niagara_Purple_Eagles_men's_basketball,,,,1,Q7023759,Q5518825,43.137,-79.038
+cbb,Nicholls Colonels,Nicholls Colonels,Nicholls_Colonels_men's_basketball,,,,1,Q16155552,Q7619843,29.7923,-90.8013
+cbb,Norfolk State Spartans,Norfolk State Spartans,Norfolk_State_Spartans_men's_basketball,,,,1,Q7051115,Q6283292,36.848,-76.2582
+cbb,North Alabama Lions,North Alabama Lions,North_Alabama_Lions_men's_basketball,,,,1,Q7053681,Q5462298,34.8084,-87.6837
+cbb,North Carolina A&T Aggies,North Carolina A&T Aggies,North_Carolina_A&T_Aggies_men's_basketball,,,,1,Q7054411,Q5169740,36.076783,-79.768849
+cbb,North Carolina Central Eagles,North Carolina Central Eagles,North_Carolina_Central_Eagles_men's_basketball,,,,1,Q7054444,Q6802191,35.975884,-78.897745
+cbb,North Carolina Tar Heels,North Carolina Tar Heels,North_Carolina_Tar_Heels_men's_basketball,,,,1,Q4412061,Q3020664,35.899722,-79.043889
+cbb,North Dakota Fighting Hawks,North Dakota Fighting Hawks,North_Dakota_Fighting_Hawks_men's_basketball,,,,1,Q7895962,Q4898807,47.9277,-97.0725
+cbb,North Dakota State Bison,North Dakota State Bison,North_Dakota_State_Bison_men's_basketball,,,,1,Q7055048,Q4918378,46.9004,-96.799
+cbb,North Florida Ospreys,North Florida Ospreys,North_Florida_Ospreys_men's_basketball,,,,1,Q7055360,Q7865266,30.2734,-81.5079
+cbb,North Texas Mean Green,North Texas Mean Green,North_Texas_Mean_Green_men's_basketball,,,,1,Q7056974,Q7865411,33.2083,-97.1539
+cbb,Northeastern Huskies,Northeastern Huskies,Northeastern_Huskies_men's_basketball,,,,1,Q7058025,Q919959,42.3411,-71.0844
+cbb,Northern Arizona Lumberjacks,Northern Arizona Lumberjacks,Northern_Arizona_Lumberjacks_men's_basketball,,,,1,Q7058130,Q7962575,35.1805,-111.652
+cbb,Northern Colorado Bears,Northern Colorado Bears,Northern_Colorado_Bears_men's_basketball,,,,1,Q7058251,Q5002708,40.402251,-104.703097
+cbb,Northern Illinois Huskies,Northern Illinois Huskies,Northern_Illinois_Huskies_men's_basketball,,,,1,Q29057032,Q5166594,41.9351,-88.7856
+cbb,Northern Iowa Panthers,Northern Iowa Panthers,Northern_Iowa_Panthers_men's_basketball,,,,1,Q7058443,Q14689246,42.514377,-92.467268
+cbb,Northern Kentucky Norse,Northern Kentucky Norse,Northern_Kentucky_Norse_men's_basketball,,,,1,Q7058600,Q7715555,39.0323,-84.4589
+cbb,Northwestern Wildcats,Northwestern Wildcats,Northwestern_Wildcats_men's_basketball,,,,1,Q7060415,Q7981834,42.0669,-87.6928
+cbb,Notre Dame Fighting Irish,Notre Dame Fighting Irish,Notre_Dame_Fighting_Irish_men's_basketball,,,,1,Q7063408,Q5339714,41.6984,-86.2313
+cbb,Oakland Golden Grizzlies,Oakland Golden Grizzlies,Oakland_Golden_Grizzlies_men's_basketball,,,,1,Q7074000,Q4813778,42.674,-83.2132
+cbb,Ohio Bobcats,Ohio Bobcats,Ohio_Bobcats_men's_basketball,,,,1,Q4391894,Q5166595,39.3231,-82.1056
+cbb,Ohio State Buckeyes,Ohio State Buckeyes,Ohio_State_Buckeyes_men's_basketball,,,,1,Q7080912,Q783033,40.0075,-83.0251
+cbb,Oklahoma Sooners,Oklahoma Sooners,Oklahoma_Sooners_men's_basketball,,,,1,Q7082332,Q6662666,35.1875,-97.444444444
+cbb,Ole Miss Rebels,Ole Miss Rebels,Ole_Miss_Rebels_men's_basketball,,,,1,Q7085896,Q21196637,34.36316389,-89.53545278
+cbb,Omaha Mavericks,Omaha Mavericks,Omaha_Mavericks_men's_basketball,,,,1,Q6984823,Q18159007,41.2361,-96.0129
+cbb,Oral Roberts Golden Eagles,Oral Roberts Golden Eagles,Oral_Roberts_Golden_Eagles_men's_basketball,,,,1,Q7099371,Q6721376,36.0479,-95.9557
+cbb,Oregon Ducks,Oregon Ducks,Oregon_Ducks_men's_basketball,,,,1,Q7101188,Q14709065,44.045,-123.066
+cbb,Oregon State Beavers,Oregon State Beavers,Oregon_State_Beavers_men's_basketball,,,,1,Q7101351,Q3106019,44.561262,-123.280597
+cbb,Pacific Tigers,Pacific Tigers,Pacific_Tigers_men's_basketball,,,,1,Q7122734,Q4717019,37.976669,-121.315095
+cbb,Penn Quakers,Penn Quakers,Penn_Quakers_men's_basketball,,,,1,Q7163213,Q7127443,39.95115,-75.18866
+cbb,Pepperdine Waves,Pepperdine Waves,Pepperdine_Waves_men's_basketball,,,,1,Q7166404,Q5451976,34.0386,-118.71
+cbb,Pittsburgh Panthers,Pittsburgh Panthers,Pittsburgh_Panthers_men's_basketball,,,,1,Q7199342,Q3377004,40.4438,-79.9623
+cbb,Portland Pilots,Portland Pilots,Portland_Pilots_men's_basketball,,,,1,Q7231997,Q5098869,45.575,-122.728333
+cbb,Portland State Vikings,Portland State Vikings,Portland_State_Vikings_men's_basketball,,,,1,Q16191917,Q7177140,45.510987,-122.687471
+cbb,Presbyterian Blue Hose,Presbyterian Blue Hose,Presbyterian_Blue_Hose_men's_basketball,,,,1,Q7240723,Q7698831,34.465,-81.869
+cbb,Princeton Tigers,Princeton Tigers,Princeton_Tigers_men's_basketball,,,,1,Q7245013,Q6121616,40.343449,-74.648595
+cbb,Providence Friars,Providence Friars,Providence_Friars_men's_basketball,,,,1,Q7252420,Q1266006,41.8236,-71.4183
+cbb,Purdue Boilermakers,Purdue Boilermakers,Purdue_Boilermakers_men's_basketball,,,,1,Q7260972,Q6724456,40.4333,-86.9161
+cbb,Purdue Fort Wayne Mastodons,Purdue Fort Wayne Mastodons,Purdue_Fort_Wayne_Mastodons_men's_basketball,,,,1,Q5973015,Q1144284,41.115556,-85.124444
+cbb,Queens Royals,Queens Royals,Queens_Royals_men's_basketball,,,,1,Q108303474,Q117302112,35.188682868,-80.83512359
+cbb,Quinnipiac Bobcats,Quinnipiac Bobcats,Quinnipiac_Bobcats_men's_basketball,,,,1,Q7272307,Q14715126,41.4201,-72.8941
+cbb,Radford Highlanders,Radford Highlanders,Radford_Highlanders_men's_basketball,,,,1,Q7280156,Q5249837,37.1386,-80.5418
+cbb,Rhode Island Rams,Rhode Island Rams,Rhode_Island_Rams_men's_basketball,,,,1,Q7320948,Q7383947,41.4875,-71.5356
+cbb,Rice Owls,Rice Owls,Rice_Owls_men's_basketball,,,,1,Q7323035,Q7851279,29.715102,-95.403895
+cbb,Richmond Spiders,Richmond Spiders,Richmond_Spiders_men's_basketball,,,,1,Q7331001,Q7352941,37.5807,-77.539
+cbb,Rider Broncs,Rider Broncs,Rider_Broncs_men's_basketball,,,,1,Q7332604,Q4737442,40.2788,-74.7354
+cbb,Robert Morris Colonials,Robert Morris Colonials,Robert_Morris_Colonials_men's_basketball,,,,1,Q7347816,Q55636411,40.520212,-80.21476
+cbb,Rutgers Scarlet Knights,Rutgers Scarlet Knights,Rutgers_Scarlet_Knights_men's_basketball,,,,1,Q7382804,Q6686804,40.525278,-74.441111
+cbb,SIU Edwardsville Cougars,SIU Edwardsville Cougars,SIU_Edwardsville_Cougars_men's_basketball,,,,1,Q16969672,Q7908143,38.796,-89.9999
+cbb,SMU Mustangs,SMU Mustangs,SMU_Mustangs_men's_basketball,,,,1,Q7391418,Q9035055,32.840431,-96.780659
+cbb,Sacramento State Hornets,Sacramento State Hornets,Sacramento_State_Hornets_men's_basketball,,,,1,Q7397030,Q5141934,38.5619,-121.427
+cbb,Sacred Heart Pioneers,Sacred Heart Pioneers,Sacred_Heart_Pioneers_men's_basketball,,,,1,Q7397248,Q8010553,41.2194,-73.2446
+cbb,Saint Joseph's Hawks,Saint Joseph's Hawks,Saint_Joseph's_Hawks_men's_basketball,,,,1,Q7401513,Q5638522,39.995277777,-75.234722222
+cbb,Saint Louis Billikens,Saint Louis Billikens,Saint_Louis_Billikens_men's_basketball,,,,1,Q16969659,Q5067770,38.6325,-90.228
+cbb,Saint Mary's Gaels,Saint Mary's Gaels,Saint_Mary's_Gaels_men's_basketball,,,,1,Q7401834,Q6801857,37.8412,-122.106
+cbb,Saint Peter's Peacocks,Saint Peter's Peacocks,Saint_Peter's_Peacocks_men's_basketball,,,,1,Q7402069,Q8048703,40.7276,-74.0732
+cbb,Sam Houston Bearkats,Sam Houston Bearkats,Sam_Houston_Bearkats_men's_basketball,,,,1,Q7407657,Q4893295,30.712902,-95.54621
+cbb,Samford Bulldogs,Samford Bulldogs,Samford_Bulldogs_men's_basketball,,,,1,Q7409313,Q7172003,33.4638,-86.7973
+cbb,San Diego State Aztecs,San Diego State Aztecs,San_Diego_State_Aztecs_men's_basketball,,,,1,Q7413724,Q3557958,32.77375,-117.074583
+cbb,San Diego Toreros,San Diego Toreros,San_Diego_Toreros_men's_basketball,,,,1,Q7413752,Q6179228,32.7745,-117.184
+cbb,San Francisco Dons,San Francisco Dons,San_Francisco_Dons_men's_basketball,,,,1,Q7414000,Q781955,37.7769,-122.449
+cbb,San Jose State Spartans,San Jose State Spartans,San_Jose_State_Spartans_men's_basketball,,,,1,Q7414487,Q5416693,37.3354,-121.88
+cbb,Santa Clara Broncos,Santa Clara Broncos,Santa_Clara_Broncos_men's_basketball,,,,1,Q7419314,Q6510695,37.3491,-121.935
+cbb,Seattle Redhawks,Seattle Redhawks,Seattle_Redhawks_men's_basketball,,,,1,Q7442160,Q977529,47.622222222,-122.354166666
+cbb,Seton Hall Pirates,Seton Hall Pirates,Seton_Hall_Pirates_men's_basketball,,,,1,Q7456785,Q849027,40.733611,-74.171111
+cbb,Siena Saints,Siena Saints,Siena_Saints_men's_basketball,,,,1,Q605188,Q1143334,42.648611,-73.754722
+cbb,South Alabama Jaguars,South Alabama Jaguars,South_Alabama_Jaguars_men's_basketball,,,,1,Q16155238,Q6881164,30.6923,-88.1797
+cbb,South Carolina Gamecocks,South Carolina Gamecocks,South_Carolina_Gamecocks_men's_basketball,,,,1,Q7566582,Q1110887,33.995,-81.037222222
+cbb,South Dakota Coyotes,South Dakota Coyotes,South_Dakota_Coyotes_men's_basketball,,,,1,Q7566957,Q28147975,42.790111111,-96.927805555
+cbb,South Dakota State Jackrabbits,South Dakota State Jackrabbits,South_Dakota_State_Jackrabbits_men's_basketball,,,,1,Q7566991,Q5506147,44.317984,-96.779058
+cbb,South Florida Bulls,South Florida Bulls,South_Florida_Bulls_men's_basketball,,,,1,Q7567233,Q7866414,28.059236,-82.406472
+cbb,Southeast Missouri State Redhawks,Southeast Missouri State Redhawks,Southeast_Missouri_State_Redhawks_men's_basketball,,,,1,Q7569370,Q7502975,37.32,-89.5271
+cbb,Southern Illinois Salukis,Southern Illinois Salukis,Southern_Illinois_Salukis_men's_basketball,,,,1,Q7570022,Q7390519,37.7083,-89.2186
+cbb,Southern Indiana Screaming Eagles,Southern Indiana Screaming Eagles,Southern_Indiana_Screaming_Eagles_men's_basketball,,,,1,Q108303428,Q117060114,37.96178307,-87.674158701
+cbb,Southern Utah Thunderbirds,Southern Utah Thunderbirds,Southern_Utah_Thunderbirds_men's_basketball,,,,1,Q7570583,Q5063055,37.675556,-113.073056
+cbb,St. Bonaventure Bonnies,St. Bonaventure Bonnies,St._Bonaventure_Bonnies_men's_basketball,,,,1,Q7587315,Q7310165,42.0794,-78.485
+cbb,St. John's Red Storm,St. John's Red Storm,St._John's_Red_Storm_men's_basketball,,,,1,Q7588820,Q186125,40.750501,-73.993453
+cbb,St. Thomas Tommies (Minnesota),St. Thomas Tommies (Minnesota),St._Thomas_Tommies_(Minnesota)_men's_basketball,,,,1,Q106610141,Q107529052,44.943562,-93.190438
+cbb,Stanford Cardinal,Stanford Cardinal,Stanford_Cardinal_men's_basketball,,,,1,Q7598726,Q6754048,37.4296,-122.161
+cbb,Stetson Hatters,Stetson Hatters,Stetson_Hatters_men's_basketball,,,,1,Q7611656,Q5339988,29.0396,-81.3018
+cbb,Stonehill Skyhawks,Stonehill Skyhawks,Stonehill_Skyhawks_men's_basketball,,,,1,Q108303073,Q111914269,42.0576,-71.0789
+cbb,Stony Brook Seawolves,Stony Brook Seawolves,Stony_Brook_Seawolves_men's_basketball,,,,1,Q7619513,Q7619522,40.9174,-73.126
+cbb,Syracuse Orange,Syracuse Orange,Syracuse_Orange_men's_basketball,,,,1,Q15718182,Q2739617,43.036111111,-76.136388888
+cbb,TCU Horned Frogs,TCU Horned Frogs,TCU_Horned_Frogs_men's_basketball,,,,1,Q7669783,Q5219503,32.708774,-97.36673
+cbb,Tarleton State Texans,Tarleton State Texans,Tarleton_State_Texans_men's_basketball,,,,1,Q96407840,,,
+cbb,Temple Owls,Temple Owls,Temple_Owls_men's_basketball,,,,1,Q7698630,Q3237605,39.97982,-75.15859
+cbb,Tennessee Tech Golden Eagles,Tennessee Tech Golden Eagles,Tennessee_Tech_Golden_Eagles_men's_basketball,,,,1,Q7700205,Q5331884,36.178451,-85.509894
+cbb,Texas A&M Aggies,Texas A&M Aggies,Texas_A&M_Aggies_men's_basketball,,,,1,Q7707439,Q14711273,30.6058,-96.3462
+cbb,Texas A&M–Corpus Christi Islanders,Texas A&M–Corpus Christi Islanders,Texas_A&M–Corpus_Christi_Islanders_men's_basketball,,,,1,Q7707482,Q3298928,27.8073,-97.3936
+cbb,Texas Longhorns,Texas Longhorns,Texas_Longhorns_men's_basketball,,,,1,Q7707830,Q79477138,30.280972222,-97.730472222
+cbb,Texas State Bobcats,Texas State Bobcats,Texas_State_Bobcats_men's_basketball,,,,1,Q7708022,Q7620946,29.888527,-97.932483
+cbb,Toledo Rockets,Toledo Rockets,Toledo_Rockets_men's_basketball,,,,1,Q16969684,Q7427699,41.660068,-83.609739
+cbb,Towson Tigers,Towson Tigers,Towson_Tigers_men's_basketball,,,,1,Q16969972,Q7830317,39.3864,-76.6162
+cbb,Troy Trojans,Troy Trojans,Troy_Trojans_men's_basketball,,,,1,Q7847016,Q7845099,31.80222222,-85.95472222
+cbb,Tulane Green Wave,Tulane Green Wave,Tulane_Green_Wave_men's_basketball,,,,1,Q7851927,Q5267618,29.938611,-90.120556
+cbb,Tulsa Golden Hurricane,Tulsa Golden Hurricane,Tulsa_Golden_Hurricane_men's_basketball,,,,1,Q7852335,Q7319634,36.148611,-95.941944
+cbb,UAB Blazers,UAB Blazers,UAB_Blazers_men's_basketball,,,,1,Q7863702,Q4865769,33.502164,-86.809244
+cbb,UC Davis Aggies,UC Davis Aggies,UC_Davis_Aggies_men's_basketball,,,,1,Q7864152,Q7756394,38.541859,-121.759629
+cbb,UC Irvine Anteaters,UC Irvine Anteaters,UC_Irvine_Anteaters_men's_basketball,,,,1,Q7864172,Q4960606,33.649422,-117.847064
+cbb,UC Riverside Highlanders,UC Riverside Highlanders,UC_Riverside_Highlanders_men's_basketball,,,,1,Q7864184,Q7864187,33.9789,-117.328
+cbb,UC San Diego Tritons,UC San Diego Tritons,UC_San_Diego_Tritons_men's_basketball,,,,1,Q54958351,,,
+cbb,UC Santa Barbara Gauchos,UC Santa Barbara Gauchos,UC_Santa_Barbara_Gauchos_men's_basketball,,,,1,Q7864190,Q7864189,34.413774,-119.851313
+cbb,UCF Knights,UCF Knights,UCF_Knights_men's_basketball,,,,1,Q7863945,Q7863939,28.607323,-81.19729
+cbb,UCLA Bruins,UCLA Bruins,UCLA_Bruins_men's_basketball,,,,1,Q3615392,Q1126193,34.0702,-118.447
+cbb,UConn Huskies,UConn Huskies,UConn_Huskies_men's_basketball,,,,1,Q5161550,Q1783634,41.7683,-72.6769
+cbb,UIC Flames,UIC Flames,UIC_Flames_men's_basketball,,,,1,Q7864700,Q3547208,41.8747,-87.6561
+cbb,UMBC Retrievers,UMBC Retrievers,UMBC_Retrievers_men's_basketball,,,,1,Q7865081,Q42377015,39.252367,-76.707428
+cbb,UMass Lowell River Hawks,UMass Lowell River Hawks,UMass_Lowell_River_Hawks_men's_basketball,,,,1,Q16969987,Q2076478,42.6502,-71.3132
+cbb,UNC Asheville Bulldogs,UNC Asheville Bulldogs,UNC_Asheville_Bulldogs_men's_basketball,,,,1,Q7865223,Q14708007,35.618,-82.568
+cbb,UNC Greensboro Spartans,UNC Greensboro Spartans,UNC_Greensboro_Spartans_men's_basketball,,,,1,Q7865227,Q842952,36.059722222,-79.825555555
+cbb,UNC Wilmington Seahawks,UNC Wilmington Seahawks,UNC_Wilmington_Seahawks_men's_basketball,,,,1,Q23302448,Q7835756,34.225,-77.8783
+cbb,USC Trojans,USC Trojans,USC_Trojans_men's_basketball,,,,1,Q7866372,Q3094568,34.0213,-118.28
+cbb,USC Upstate Spartans,USC Upstate Spartans,USC_Upstate_Spartans_men's_basketball,,,,1,Q7566650,Q5512137,34.9967,-81.9688
+cbb,UT Arlington Mavericks,UT Arlington Mavericks,UT_Arlington_Mavericks_men's_basketball,,,,1,Q7708311,Q2982974,32.73041,-97.108181
+cbb,UT Martin Skyhawks,UT Martin Skyhawks,UT_Martin_Skyhawks_men's_basketball,,,,1,Q7700265,Q7818163,36.3436,-88.8681
+cbb,UT Rio Grande Valley Vaqueros,UT Rio Grande Valley Vaqueros,UT_Rio_Grande_Valley_Vaqueros_men's_basketball,,,,1,Q22096199,Q7876019,26.3104,-98.1779
+cbb,UTSA Roadrunners,UTSA Roadrunners,UTSA_Roadrunners_men's_basketball,,,,1,Q7876033,Q5166596,29.582382,-98.621502
+cbb,Utah State Aggies,Utah State Aggies,Utah_State_Aggies_men's_basketball,,,,1,Q7902410,Q14711876,41.74768,-111.81197
+cbb,Utah Tech Trailblazers,Utah Tech Trailblazers,Utah_Tech_Trailblazers_men's_basketball,,,,1,Q96376477,,,
+cbb,Utah Utes,Utah Utes,Utah_Utes_men's_basketball,,,,1,Q7902515,Q6271169,40.7621,-111.839
+cbb,Utah Valley Wolverines,Utah Valley Wolverines,Utah_Valley_Wolverines_men's_basketball,,,,1,Q7902520,Q7863923,40.2787,-111.717
+cbb,VCU Rams,VCU Rams,VCU_Rams_men's_basketball,,,,1,Q7906653,Q7626383,37.552873,-77.45283
+cbb,Valparaiso Beacons,Valparaiso Beacons,Valparaiso_Beacons_men's_basketball,,,,1,Q7912570,Q4815594,41.4642,-87.0483
+cbb,Vanderbilt Commodores,Vanderbilt Commodores,Vanderbilt_Commodores_men's_basketball,,,,1,Q4103322,Q14687223,46.7267835,-117.013968935
+cbb,Vermont Catamounts,Vermont Catamounts,Vermont_Catamounts_men's_basketball,,,,1,Q7921688,Q7146623,44.4703,-73.1947
+cbb,Villanova Wildcats,Villanova Wildcats,Villanova_Wildcats_men's_basketball,,,,1,Q7930886,Q818735,39.90115,-75.17197
+cbb,Virginia Cavaliers,Virginia Cavaliers,Virginia_Cavaliers_men's_basketball,,,,1,Q4112016,Q3182265,38.046,-78.5069
+cbb,Virginia Tech Hokies,Virginia Tech Hokies,Virginia_Tech_Hokies_men's_basketball,,,,1,Q7934614,Q5049290,37.222222,-80.418889
+cbb,Wagner Seahawks,Wagner Seahawks,Wagner_Seahawks_men's_basketball,,,,1,Q7959622,Q7578171,40.615,-74.0958
+cbb,Wake Forest Demon Deacons,Wake Forest Demon Deacons,Wake_Forest_Demon_Deacons_men's_basketball,,,,1,Q7960924,Q3219903,36.127866,-80.257628
+cbb,Washington Huskies,Washington Huskies,Washington_Huskies_men's_basketball,,,,1,Q7971960,Q4708490,47.652,-122.302
+cbb,Washington State Cougars,Washington State Cougars,Washington_State_Cougars_men's_basketball,,,,1,Q3720211,Q4876832,46.735,-117.158
+cbb,Weber State Wildcats,Weber State Wildcats,Weber_State_Wildcats_men's_basketball,,,,1,Q6166662,Q5249906,41.1825,-111.945
+cbb,West Florida Argonauts,West Florida Argonauts,West_Florida_Argonauts_men's_basketball,,,,1,Q107876653,Q141159088,30.545624458,-87.221032226
+cbb,West Georgia Wolves,West Georgia Wolves,West_Georgia_Wolves_men's_basketball,,,,1,Q108303187,Q126391728,33.5761,-85.1039
+cbb,West Virginia Mountaineers,West Virginia Mountaineers,West_Virginia_Mountaineers_men's_basketball,,,,1,Q7986870,Q3564821,39.649385,-79.981445
+cbb,Western Carolina Catamounts,Western Carolina Catamounts,Western_Carolina_Catamounts_men's_basketball,,,,1,Q7987687,Q7290206,35.3038,-83.1823
+cbb,Western Illinois Leathernecks,Western Illinois Leathernecks,Western_Illinois_Leathernecks_men's_basketball,,,,1,Q7987944,Q7987888,40.471589,-90.685201
+cbb,Western Michigan Broncos,Western Michigan Broncos,Western_Michigan_Broncos_men's_basketball,,,,1,Q7988070,Q7894513,42.283372,-85.60845
+cbb,Wichita State Shockers,Wichita State Shockers,Wichita_State_Shockers_men's_basketball,,,,1,Q7998162,Q5079859,37.721667,-97.2975
+cbb,William & Mary Tribe,William & Mary Tribe,William_&_Mary_Tribe_men's_basketball,,,,1,Q8003863,Q8003841,37.2735,-76.7197
+cbb,Winthrop Eagles,Winthrop Eagles,Winthrop_Eagles_men's_basketball,,,,1,Q8026564,Q8026560,34.94959,-81.0123
+cbb,Wisconsin Badgers,Wisconsin Badgers,Wisconsin_Badgers_men's_basketball,,,,1,Q8027120,Q1578408,43.06942,-89.396972
+cbb,Wofford Terriers,Wofford Terriers,Wofford_Terriers_men's_basketball,,,,1,Q8029050,Q4888886,34.9603,-81.9328
+cbb,Wright State Raiders,Wright State Raiders,Wright_State_Raiders_men's_basketball,,,,1,Q8038263,Q1362595,39.7819,-84.0525
+cbb,Xavier Musketeers,Xavier Musketeers,Xavier_Musketeers_men's_basketball,,,,1,Q8043283,Q5121105,39.1501,-84.4719
+cbb,Yale Bulldogs,Yale Bulldogs,Yale_Bulldogs_men's_basketball,,,,1,Q8047353,Q7156836,41.313611,-72.930556
+cbb,Youngstown State Penguins,Youngstown State Penguins,Youngstown_State_Penguins_men's_basketball,,,,1,Q8058669,Q4879784,41.1081,-80.6489
