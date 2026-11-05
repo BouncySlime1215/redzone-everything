@@ -347,7 +347,7 @@
       "name": "NBA G League pbp (stats.gleague.nba.com / cdn liveData)",
       "sports": "basketball (minor)",
       "years": "2016-17+ (probe)",
-      "access": "same JSON shape as NBA stats/liveData; one polite call per game; stop at the first 403 (bot block = red)",
+      "access": "same JSON shape as NBA stats/liveData; one polite call per game; stop at the first 403 (bot block = red); second route: hoopR nbagl_pbp() (stats.gleague.nba.com, NBA.com class: private Kaggle only, honest client, stop on 403)",
       "verdict": "yellow-B",
       "license": "NBA.com ToS personal non-commercial; under plan B for personal use",
       "est_events_m": 3.2,
@@ -1153,6 +1153,50 @@
       "owner": "crew B",
       "needs_nick": "none",
       "probe": ""
+    },
+    {
+      "id": "nfl-depth-charts",
+      "kind": "context-new",
+      "cycle": 19,
+      "priority": 1,
+      "focus": "nfl",
+      "name": "NFL weekly depth charts (starter vs backup at every position) via nflverse",
+      "sports": "NFL",
+      "years": "2001-2025",
+      "access": "nflreadpy load_depth_charts() (nflverse release parquet)",
+      "verdict": "yellow",
+      "license": "nflverse release (terms.json nflverse open); upstream team depth charts; personal use, not for commercial release",
+      "est_events_m": 0.35,
+      "est_tokens_m": 2.1,
+      "novelty": 1.0,
+      "raw_gb": 0.2,
+      "why": "a backup QB or missing star changes how much a game is worth watching; injuries say who is hurt, depth charts say who actually starts. Count only week-over-week starter changes per game, so tokens stay context-new",
+      "status": "ready",
+      "owner": "crew B",
+      "needs_nick": "none",
+      "probe": ""
+    },
+    {
+      "id": "nba-cup-stakes",
+      "kind": "derived",
+      "cycle": 19,
+      "priority": 2,
+      "focus": "nba",
+      "name": "NBA Cup (in-season tournament) group stakes per game: group standings, point differential tiebreak, knockout",
+      "sports": "NBA",
+      "years": "2023-24 forward",
+      "access": "computed from our schedule and results (crew B stakes code); no new pull",
+      "verdict": "green",
+      "license": "our own computation over public results",
+      "est_events_m": 0.0,
+      "est_tokens_m": 0.0,
+      "novelty": 0,
+      "raw_gb": 0.0,
+      "why": "Cup group games are worth more than a normal November game, and margin matters in garbage time (point differential tiebreak), which keeps a blowout worth a look. Feeds the importance field in tokenizer v2; no new information",
+      "status": "ready",
+      "owner": "crew B",
+      "needs_nick": "none",
+      "probe": ""
     }
   ],
   "red_found": [
@@ -1191,6 +1235,10 @@
     {
       "name": "nflverse tables sourced from Pro-Football-Reference (snap_counts, pfr_advstats, pfr ids)",
       "why": "nflverse re-hosts them, but the origin is Sports-Reference, whose terms bar automated pulls and AI use (Nick 12:15 AM); same rule. The rest of nflverse stays open."
+    },
+    {
+      "name": "gabriel1200/site_Data NBA tracking/hustle CSVs",
+      "why": "mixes Basketball-Reference tables (Sports-Reference rule) with NBA.com season totals, and has no stated license; season totals add little per GB anyway. Skipped."
     }
   ]
 }
