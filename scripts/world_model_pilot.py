@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end.
 
-    python scripts/world_model_pilot.py --out /content/wm [--leagues nba,nfl] [--minutes 60] [--smoke]
+    python scripts/world_model_pilot.py --out /content/wm [--leagues nfl] [--minutes 60] [--smoke]
 
 Serves: North Star "% of hindsight-oracle value achieved" (the world model the planner searches, master plan v2);
 owner: lane 1 (Noggin training). Plumbing proof for Saturday's ~100M run (Nick, Nov 4 8:00 PM), not the product.
 
-1. Data: public play-by-play from GitHub releases only (sportsdataverse hoopR NBA, nflverse NFL; see
+1. Data: public play-by-play from GitHub releases only (nflverse NFL 2001-2024 by default; hoopR NBA only with --allow-espn-derived; see
    docs/data-sources.md), tokenized by scripts/noggin_tokens.py (vocab v1: 6 tokens per event = kind, dt, clock,
    margin, points, stoppage; one BOS per game + both teams). The factory's EVAL_FIRST_NIGHT cut drops every game
    on or after the scorecard window, so no locked or scorecard night is ever downloaded or tokenized.
@@ -41,7 +41,12 @@ import noggin_tokens as T  # noqa: E402
 
 SEED = 7
 # NFL 2025 sits past the factory cut (scorecard + locked window), so it is never fetched
-SEASONS = {"nba": list(range(2019, 2027)), "nfl": list(range(2016, 2025))}
+SEASONS = {"nba": list(range(2019, 2027)), "nfl": list(range(2001, 2025))}
+# NFL 1999-2000 lack play wallclocks in nflverse (71% / 17% of gaps read 0 s, vs ~2.5% from 2003 on), so their
+# time-to-next labels are wrong; they start in 2001 (3.7%).
+# hoopR NBA is an ESPN-derived release: Wave 5, default OFF until Nick decides (docs/datasources/sources-catalog.md;
+# Disney's terms bar AI training). It is read only with --allow-espn-derived.
+ESPN_DERIVED = {"nba"}
 BREAKS = ("timeout", "two_minute_warning", "end_period", "halftime", "intermission", "review", "injury",
           "pitching_change", "score_break")
 # dt bucket b covers [2^(b/2.6) - 1, 2^((b+1)/2.6) - 1) seconds (noggin_tokens.dt_token); its midpoint in seconds
@@ -287,7 +292,8 @@ def main(argv=None) -> int:
     import torch
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--leagues", default="nba,nfl")
+    ap.add_argument("--leagues", default="nfl")
+    ap.add_argument("--allow-espn-derived", action="store_true", help="only once Nick says yes (Wave 5)")
     ap.add_argument("--minutes", type=float, default=60.0, help="training wall-clock budget")
     ap.add_argument("--d", type=int, default=512)
     ap.add_argument("--layers", type=int, default=8)
@@ -304,6 +310,9 @@ def main(argv=None) -> int:
     rng = np.random.default_rng(SEED)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     a.out.mkdir(parents=True, exist_ok=True)
+    blocked = ESPN_DERIVED & set(a.leagues.split(",")) if not a.allow_espn_derived else set()
+    if blocked:
+        raise SystemExit(f"{sorted(blocked)}: ESPN-derived release, default OFF until Nick decides (Wave 5)")
     games = build_games(a.leagues.split(","), a.out, a.smoke)
     sp = split(games)
     counts = {k: {"games": len(v), "tokens": int(sum(len(g["tokens"]) for g in v)),

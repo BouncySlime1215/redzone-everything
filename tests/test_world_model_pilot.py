@@ -47,3 +47,9 @@ def test_grade_runs_end_to_end_on_a_tiny_model():
     assert g["games"] == 4 and g["next_kind_acc"]["n"] == 4 * 29
     assert 0 <= g["next_kind_acc"]["value"] <= 1 and g["break_dt_mae_s"]["n"] > 0
     assert g["stop_ece_baseline"]["value"] is not None and g["stop_brier"] is not None
+
+
+def test_espn_derived_nba_needs_nicks_yes(tmp_path):
+    with pytest.raises(SystemExit, match="ESPN-derived"):
+        W.main(["--out", str(tmp_path), "--leagues", "nba,nfl", "--smoke"])
+    assert "nba" in W.ESPN_DERIVED and min(W.SEASONS["nfl"]) == 2001
