@@ -71,7 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick confirmed: oracle audit comes before more Watch Value training; new training arms are held until it lands. Audit work goes to integration/next and does not touch RC6.3.
+Oracle audit landed: the new big-play target failed its pre-registered test, so the current target stays. NBA: old grader did favor closest game; an NBA-only reward gets graded on Friday's new nights. NFL keeps the old rule.
+EXP-1404 finished (66,048 rows), runtime deleted, labels with Data E. RC6.3 cut as 39597ea5, dry-run running. Usage 74%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
