@@ -19,7 +19,8 @@ Sources (free, public; licenses in SOURCES):
     wcbb  wehoop ESPN WBB pbp
     nfl   nflfastR / nflverse pbp (`time_of_day` = the snap, like ESPN's NFL wallclock; 2011+)
     nhl   ESPN summaries (fastRhockey / the NHL feeds carry no wall clock): the live parser on the live shape
-Queued (loaders not written yet): cfb (cfbfastR 2014+), mlb (pitch timestamps 2008+). See docs/noggin.md § Phases.
+    cfb   ESPN summaries, the whole FBS board (groups=80), 2004+
+Queued (loader not written yet): mlb (pitch timestamps 2008+). See docs/noggin.md § Phases.
 """
 from __future__ import annotations
 
@@ -45,13 +46,17 @@ SOURCES = {
     # ESPN summaries carry each play's wallclock (what the live app reads): fetched by
     # scripts/noggin_factory.py on a runner that can reach ESPN (GitHub Actions), never this container.
     "nhl": dict(espn=True, first=2011, license="ESPN public site API; personal/non-commercial use"),
+    # CFB: ESPN summaries carry the snap wallclock like the NFL feed; groups=80 is the whole FBS board, not ESPN's
+    # default featured games. cfbfastR-data stops at 2020 and CFBD needs Nick's key (docs/data-sources.md).
+    "cfb": dict(espn=True, first=2004, board="&groups=80&limit=300",
+                license="ESPN public site API; personal/non-commercial use"),
     "nfl": dict(url="https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{y}.parquet",
                 first=2011, license="CC-BY 4.0 (nflverse data); underlying NFL data for personal/non-commercial use"),
 }
 # First night of the pinned scorecard window (data/eval_pin.json, eval-data-v1). Nothing on or after it
 # is ever written by the factory. College has no scorecard yet; it uses the NBA date as a safe cut.
-EVAL_FIRST_NIGHT = {"nba": "20261020", "cbb": "20261020", "wcbb": "20261020", "nfl": "20250905",
-                    "nhl": "20261019"}
+EVAL_FIRST_NIGHT = {"nba": "20261020", "cbb": "20261020", "wcbb": "20261020", "nfl": "20250905", "cfb": "20250801",
+                    "nhl": "20261019", "mlb": "20250301"}   # MLB: no scorecard yet; all of 2025 is held out for one
 
 def night_of(epoch: float) -> str:
     t = pd.Timestamp(epoch, unit="s", tz="UTC").tz_convert("America/New_York") - pd.Timedelta(hours=5)
@@ -119,9 +124,10 @@ def _nfl_type(r) -> str:
 TWO_MIN_S = 120.0
 
 
-def _plays_football(g: pd.DataFrame) -> tuple[list[dict], list[tuple[float, float]]]:
+def _plays_football(g: pd.DataFrame, need_wall: bool = True) -> tuple[list[dict], list[tuple[float, float]]]:
     """nflfastR rows -> the ESPN summary play dicts the live parser reads (NFL), made to look like the
     ESPN feed the live tracker sees (data/archive/nfl, 150 games):
+    - need_wall=False (NFM tokens only, seasons before 2011 have no time_of_day) keeps every play, wallclock None;
     - the extra point / two-point try folds into the touchdown entry (ESPN has no separate entry);
     - END QUARTER / END GAME rows (no time_of_day in nflfastR) take the previous play's wallclock, which
       is exactly what ESPN stamps (median 0 s);
@@ -137,7 +143,7 @@ def _plays_football(g: pd.DataFrame) -> tuple[list[dict], list[tuple[float, floa
             continue
         q = int(r.qtr) if r.qtr == r.qtr else None
         wall = r.time_of_day if isinstance(r.time_of_day, str) else None
-        if wall is None:
+        if wall is None and need_wall:
             if tt not in ("End Period", "End of Half", "End of Game") or prev_w is None:
                 continue
             wall = prev_w
@@ -197,7 +203,10 @@ def espn_game(summary: dict) -> dict | None:
     if not any(p.get("wallclock") for p in plays):
         return None
     hdr = summary.get("header") or {}
-    return {"id": str(hdr.get("id") or ""), "season_type": (hdr.get("season") or {}).get("type"), "plays": plays}
+    side = {c.get("homeAway"): (c.get("team") or {}).get("abbreviation") or "?"
+            for c in ((hdr.get("competitions") or [{}])[0].get("competitors") or [])}
+    return {"id": str(hdr.get("id") or ""), "season_type": (hdr.get("season") or {}).get("type"), "plays": plays,
+            "matchup": f"{side.get('away', '?')} @ {side.get('home', '?')}"}
 
 
 def build_espn(league: str, path: Path, max_games: int | None = None) -> pd.DataFrame:

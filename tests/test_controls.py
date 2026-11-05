@@ -116,6 +116,7 @@ def peeking(engine, monkeypatch):
 
 def test_opening_a_game_does_nothing_with_the_flag_off(peeking):
     e, calls = peeking
+    e.cfg.update({"two_stick": {"pretune_on_open": False}})   # on by default since RC7: off is still a no-op
     assert e.action("peek", "g2") == (True, "")
     assert calls == [] and e.peek is None
 

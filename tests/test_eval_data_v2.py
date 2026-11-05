@@ -92,3 +92,24 @@ def test_locked_nights_that_were_dev_in_the_default_pin_fail(tmp_path, monkeypat
     monkeypatch.setattr(evaldata, "window_end", lambda league, default=None: None)
     rows = lc.check_locked_unseen_by_previous_pin()
     assert rows and rows[0][0] == "FAIL" and "20261028" in rows[0][2]
+
+
+def test_old_nights_are_never_the_noggins_locked_nights():
+    """A backfilled old night lands in the pin's dev (tunable) slice, so it must sit before the Noggin's
+    own locked start (agent/distill/split.py BIG_CUTS), and inside the build's window."""
+    import re
+    from pathlib import Path
+    import backfill_eval_v2 as bf
+    from agent.distill.split import BIG_CUTS
+    for lg, (start, end) in bf.OLD_SEASON.items():
+        assert end < BIG_CUTS[lg][2], (lg, end, BIG_CUTS[lg][2])
+        assert bf.WINDOW_START[lg] <= start
+    wf = (Path(bf.ROOT) / ".github/workflows/eval-data-v2.yml").read_text()
+    for lg, st in bf.WINDOW_START.items():
+        assert re.search(rf"--window {lg}:{st}:\$END", wf), lg
+
+
+def test_switch_eval_pin_finds_every_pinned_tag_line():
+    import switch_eval_pin as sw
+    got = sw.edit_files("eval-data-v9", dry=True)
+    assert {g.split(":")[0] for g in got} == {".github/workflows/ci.yml", ".github/workflows/northstar.yml", "CLAUDE.md"}

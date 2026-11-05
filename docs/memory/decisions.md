@@ -276,6 +276,14 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   candidate made 1 NHL mid-play entry on every seed (BUF @ WSH, an urgent landing after a game ended). After: 0 on
   all three seeds, NHL crunch 79.9 -> 81.3 (seed 0), every other line within 0.2, locked equal. The 6 s is
   syncsim's upper end until Thursday's probe refits it.
+- 2026-11-04 (Nick, 15:06 UTC scale order): the Noggin data factory runs on free Kaggle CPU
+  (`scripts/kaggle_noggin_factory.py`, resumable season shards + oracle self-play parts, all 4 loaded
+  leagues back to 2002 where wall clocks exist). The `noggin-factory.yml` push trigger is removed (manual
+  dispatch only), because the repo's GitHub Actions minutes are capped. Every lane 1 PR reports rows per league.
+- 2026-11-04 (Nick, 5:00 PM data-scale order; lane 1): the factory plan grows to **NFL 1999+ (tokens only before
+  2011), WCBB 2006+ (wehoop) and CFB 2004+ (ESPN's whole FBS board)**. CFB gets a scorecard cut,
+  `EVAL_FIRST_NIGHT["cfb"] = 20250801` (the whole 2025 season stays unseen, like NFL), and a test now fails if any
+  planned league has no cut. Sources and terms: docs/data-sources.md. CFBD waits on Nick's key; MLB Statcast on his OK.
 - 2026-11-04: **two_stick.tv_flip_prior_s = {median: 1.89, max: 2.58}** (was 1.98 / 2.2, 10 samples). Nick's live
   lab: 64/64 SmartThings flips confirmed, 0 retries, p50 1.89 s, p95 2.18 s, max 2.58 s, ack 0.31 s. The upper
   bound stays the measured max because landing deadlines guard rule #1; decider.switch_cost.hdmi_flip
@@ -551,6 +559,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `evaldata.config_behind_live`. A tree whose defaults turn the buffer on is now graded with it. On 2 NBA nights,
   `--set timing.behind_live_s.enabled=true` and `--behind-live 90` give identical cards. With the shipped defaults (off),
   nothing changes. Grader freeze v8.
+- **2026-11-04 (Nick 7:55 PM, "TURN OFF WOMEN'S BASKETBALL"):** WCBB is out of the noggin factory plan, the training pack sources and therefore the data ledger (docs/data-sources.md row: dropped). Nick's leagues are NFL, CFB, NBA, CBB (men's), NHL, MLB only. Why: it isn't one of his leagues, so its tokens must not count toward his data scale. The live default (mode.leagues.wcbb=false) is lane 4's change.
+- 2026-11-05 (lane 1, #169, Wave 1 #3): **MLB gets a factory cut: `EVAL_FIRST_NIGHT["mlb"] = "20250301"`**, so all of 2025
+  is held out for a future MLB scorecard and locked set. Retrosheet event files (green, notice required) feed the
+  factory's MLB event tokens, 1974-2024, via scripts/retrosheet_plays.py. They carry no wall clocks, so time tokens are
+  UNK and never invented. Why: MLB had no cut (the `.get` default is no cut), and the first MLB pull must not be able
+  to reach a future eval night.
 - 2026-11-04 (lane 5, #185, EXP-035): new default `phone.why_tag_min: 70` (0-100). The phone's "Why we're here"
   label shows only when the game on screen is at or over it (learned watch value, else today's score), and
   lab/decision_records grades every switch over it for "alerted but nothing happened". Reason: the Start Planner
@@ -577,6 +591,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   95% night-bootstrap lower bound, at least 4 rated nights a side, and PENDING otherwise. Nick's ratings stay
   evaluation-only (`tests/test_worth.py` scans noggin/decider/scoring). Note: 4 nights is a thin minimum, so treat an early
   PASS as provisional until 8. Grader freeze v9.
+- 2026-11-05 (lane 1, #169): the Kaggle noggin factory gets a data-plan gate, `RZ_DATA_PLAN`. **Default "B"**
+  (Nick 11:20 PM ET Nov 4, logged on #241): every source, including hoopR NBA/CBB, ESPN NHL/CFB and NHL api-web for
+  old NHL seasons, with `manifest.json` `"license": "personal-use, not for commercial release"`. "A" = green only
+  (nflverse NFL, NBA.com cdn NBA, Retrosheet MLB) for a company version; a green run never copies in red shards.
 - 2026-11-05 (Nick, Nov 4 9:45 PM ET, RC7 scope; integrator writes the lines): RC7 ships only if three gates pass on
   locked nights plus real hardware. (1) `press_to_tv_p95` ≤ 3 s on real presses, with a Prime sub-gate: presses tagged
   `app: prime` need their own p95 ≤ 3 s over at least 5 presses, and any Prime press that never reaches the TV fails the
@@ -656,6 +674,30 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Workers' outputs are trusted with no second review, except a license line per source (B rules). 1-2 test writers write
   pre-registered experiments and graders. Lanes 1-4 keep the body. Pace to <= 85% weekly by Mon 8 PM ET (hard stop 89%).
   Org, id blocks and checkpoints: docs/plans/2026-11-05-data-division.md.
+- **2026-11-05 (Nick, 12:30 AM ET): Data Division type G, attention and hype at scale** (ids 1700s): legal, public
+  signals of what people watched and cared about per moment (Twitch Helix viewer curves, highlight view velocity, hourly
+  pageviews, Trends, public minute ratings, excitement-index datasets, prediction-market volume, official-API subreddit
+  volume, open academic engagement datasets) as learned labels for Watch Value and the reward model. Each source names the
+  label or feature it feeds and its information per GB. Vision and antenna skipped. G labels are judged by lift on % of
+  oracle and worth-it, never used to optimize watch time.
+- **2026-11-05 (lane 2, EXP-023 wiring):** new key `noggin.belief.enabled` (default `false`). When it's on, the
+  engine uses the belief tracker (#223) as its delay sync in place of the Kalman filter, and it logs the
+  same data/sync.jsonl rows. It stays OFF: #223's dev bar failed on NBA and NHL (rule #1 clause, and NHL short
+  of 2 s), though it cut delay error p95 in every league. Why wire it now: Nick's RC7 requirement 2 (sync
+  p95 ≤ 2 s) gets graded from those logs.
+- 2026-11-05 (integrator, Test Factory F8, for Nick's Nov 4 11:20 PM data-B call): `scripts/license_check.py` runs in
+  CI (graders job). Any JSON ledger in docs/datasources, and any pack manifest or grades.json passed to it, must give
+  every source row a license line. A source classed `restrictive` in `docs/datasources/terms.json` (ESPN, hoopR, NHL
+  api-web and shifts, Statcast, StatsBomb) needs the tag "personal-use, not for commercial release". Unclassified sources
+  WARN until the scouts classify them (`--strict` fails them). Grader freeze v12.
+- **2026-11-05 (Nick, 10:55 PM ET): a second "Go now" tap switches at once, even mid-play.** It is his explicit
+  control; one tap ("Watch this") still waits for a dead ball. Why: with the hidden stick preloaded (#229/#233) a forced
+  press flips in ~2-3 s wherever the play is (ping-pong drill: forced mid-play cuts 2 -> 7, unexplained 2 -> 0). Rule #1
+  covers autopilot entries; forced presses are graded separately (presses.classify_mid_play "forced_go_now").
+- **2026-11-05 (lane 3, RC7 requirement 1, Nick 9:45 PM): `two_stick.pretune_on_open: true` for every league** (was on
+  for NBA/NFL only through #227's league overrides). Opening a live game on the phone tunes it on the hidden stick while
+  you read, so "Go now" is a flip. Controls drill (2 seeds, smartthings TV): open-then-go median 8.33 s -> 3.06 s, go-now
+  p50 8.25 -> 3.06 s; 0 mid-play cuts of any kind and 0 dropped presses either way. Rollback: set it false in settings.
 - 2026-11-05 (lane 5, EXP-043 display): new defaults `phone.follow: false` and `noggin.priority.prefs.followed_players: []`.
   With the flag on, the phone edits the followed-players list and shows a text-only "Following" line naming the live
   games they're in. Lane 1 owns the weight that reads the list (its own flag and grader). Reason: Cycle 12 (#236) item
@@ -664,6 +706,23 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   the flag on, Now shows a morning card (6 AM to noon ET) with last night's worth-it, mid-play entries, high-leverage
   leaves, dead air and which release ran, read from the night report, data/worth.jsonl and data/deploy/state.json.
   Reason: Cycle 12 (#236) item 3.
+- 2026-11-05 (integrator, grader v13): `license_check.py` reads a top-level `"sources"` list of records as ledger rows.
+  Before, it read the whole file as one model card, which failed on the scouts' scout.json. A model card still names its
+  sources as strings. Grader freeze v13.
+- **2026-11-05 (Nick, 11:50 PM ET, relayed 04:51 UTC): Data Division type H, web-scale sports text** (ids 1800s):
+  FineWeb/Common Crawl streamed and filtered to sports (ODC-By), Wikipedia dumps (CC BY-SA), GitHub open datasets, open
+  books (low priority). Feeds recap-aligned hindsight importance labels, matchup storyline features and the Mind's
+  sports-language fine-tune. Kaggle CPU / HF only; stream, never mirror; personal-use tag; raw text only in a private
+  Kaggle dataset, never in the public repo. First deliverable: a pre-registered EXP on whether recap-aligned labels raise %
+  of oracle (dev first, locked once at the release read); if not, H stays small. H pauses first with C/D/F/G.
+- 2026-11-05 (Nick, 12:28 AM ET; gate change, integrator writes it): the catch-up window is a ratchet, not a fixed bar.
+  "Ideally 3 min comes down more and more as we get better." (1) Headline line per league `time_to_see_<lg>`: the
+  median and p90 seconds from a big play airing to it being on screen (0 = live, never seen = never), plus the shares
+  within 3 min, 90 s, 30 s and live. (2) Gate line per league `catchup_<lg>`: at least 99% of big plays seen within
+  the league's window in `docs/catchup_ratchet.json`, which starts at 180 s for every league. The ladder is 3 min,
+  90 s, 30 s, then live. After each release's locked read, `scripts/catchup_ratchet.py --record` steps a league down
+  once it has held the next window on locked nights for 2 releases in a row, and the window never loosens. (3) The
+  delay-and-react test (lane 2, arms A-D) reports these lines per arm. Grader freeze v14.
 - 2026-11-05 (lane 5, EXP-040 on): default `phone.worth: false` -> `true`. The one-tap "Was tonight worth it?" (1-5)
   shows on the Slate complete card from tonight, so rated nights exist before Sunday's line. It stays EVALUATION ONLY
   (data/worth.jsonl, graded by the frozen lab/worth.py; tests/test_worth.py fails if noggin, decider or scoring read it).

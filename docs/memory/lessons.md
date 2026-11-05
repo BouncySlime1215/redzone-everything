@@ -187,6 +187,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   the delay the app believed, so a 2 s "urgent" landing always looked safe. With a real tune's 0-6 s late landing,
   one NHL entry was mid-play on every seed. Fix: thin-margin landings cover a one-sided landing lag, and "ended"
   switches never take the urgent path. Grade entry changes with `--tune-jitter 6` on several seeds.
+- 2026-11-04, the Kaggle factory's first run failed every CBB season with KeyError <League.CBB>: the oracle (self-play labels) indexes sportsgrade.PLAY_LEN / RESUME_LEAD by the replay's league, and those were plain dicts of pro leagues; is_big / is_crunch also compared league == League.NBA and hard-coded period 4, so CBB would have had zero big or crunch plays even without the crash. Fix: ByLeague tables (college reads its pro row) and the last regulation period from models.REGULATION (CBB: the 2nd half). tests/test_kaggle_factory_jobs.py runs season_job for every league in PLAN offline.
 - 2026-11-04: **"PLAYING" on Fire OS can be a stale report.** Live lab: with HDMI-CEC on, every flip paused the
   stick we left and it never resumed, and after backgrounding media_session kept a stale state=3 with
   active=false. Our readback grepped no `active=` line, so a frozen stick read as playing. Fix (STK-05): grep and
@@ -251,6 +252,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - 2026-11-04: `hold_overreport_s` 1.5 (book a hold as the wall span less 1.5 s) fought `hold_cal_s` -1.5 (a
   rebuild pauses 1.5 s short): the STK-06 watchdog booked every short rebuild as ~0 s and rebuilt the same
   2.9 s gap forever on the night lab. The fallback now books the span as is (0); the stick-clock path measures.
+- 2026-11-04 (lane 1, factory): a season with no data wrote its `done` marker into a folder that only a
+  season WITH rows had created, so the first no-data season of a league crashed the job (found by the NHL
+  api-web test). Create the folder before writing any marker.
 - 2026-11-04 (lane 2, #132): **A standby that a failed switch tuned was never held.** A switch that tunes the
   hidden stick itself (path "tuned") and then finds no safe moment leaves it at the live edge with held=0;
   only preloads hold, and the STK-06 watchdog skipped held=0 by design. Now buffer_error reads an unheld
@@ -272,6 +276,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   had landed earlier, and the tags only broke once the table was regenerated. A `[skip ci]` commit can still break
   the suite, so run the full suite on the exact tree you cut, not on the PRs before the nightly merge.
 - 2026-11-04 (RC6 cut): after merging a base commit that was only docs (the [skip ci] nightly table) I ran only the targeted tests. That base commit renamed a North Star line, and `test_citymap` failed on the Mac's deploy test step. The deploy stopped there and nothing switched. **Fix:** after any base merge, run the full suite again before handing an RC SHA to lane 4. A docs-only commit can still break a test that reads docs.
+- 2026-11-05 (world model pilot, plan A leagues): the pilot cut train/valid/test on the pooled nights of all leagues. Once Retrosheet (ends 2024) and NBA cdn (ends 2025) sat side by side, every test night was NBA and NBA had no train rows: NBA's bigram baseline scored 0.0. **Fix:** split each league on its own nights (`split()` per league) and grade `test_by_league`. A time split must be per league when the leagues' date ranges differ.
 - 2026-11-04 (RC6.1): the deploy health watch rolled RC6.1 back twice on "N sports feeds failing vs 0 before",
   though nothing was down. merge.py benches a source for a game when its copy regresses against a faster feed,
   and RC6.1's NBA/NHL feeds run ahead of ESPN, so ESPN got benched. engine._source_health reported a bench as
@@ -285,3 +290,13 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   on the live-sync harness (`eval_sports --resync`, which models the Kalman sync filter that live runs). The cause was
   the time-shift buffer key, `timing.behind_live_s.enabled`. The rule now: grade every league set on BOTH harnesses
   before it ships (Test Factory F4), and a set that is worse on either one doesn't promote.
+- **2026-11-05: a forced "Go now" has to be told apart from a mid-play entry.** Nick allows the second tap to cut at
+  once; without a mark, every forced press counted against never-join-mid-play. Only the switch whose `may_cut` went
+  through on `Engine._forced_go` (held game, `hold.force`) carries `trace.forced`; a single tap that waits for the
+  dead ball, and every autopilot switch, never does.
+- 2026-11-05 (lane 2, EXP-208): the low-leverage leave gate (`decider.leave.low_leverage`) promised "never your
+  team's game" but checked `personal >= hold_personal`, and garbage time zeroes your team's personal boost, so a
+  decided WSH game could be left mid-play. It also keyed on `league.base`, so "nba" switched it on for CBB. Fixed with
+  explicit `Scored.mine` / `Scored.high_leverage` flags (the grader's CLOSE_LATE table, kept equal by a test) and
+  the full league. Lesson: a floor must be checked by what it protects (team membership, leverage), never by a
+  score that other features can lower.
