@@ -41,10 +41,10 @@ def test_grade_leads_and_leader():
     espn = [{"source": "espn_summary", "recv_ts": 900.0, "score": [0, 0], "prev": None},
             {"source": "espn_summary", "recv_ts": 1030.0, "score": [0, 7], "prev": [0, 0]},     # 30 s after screen
             {"source": "espn_summary", "recv_ts": 2040.0, "score": [3, 7], "prev": [0, 7]}]
-    poly = [{"row": "trigger", "game_key": "g", "recv_ts": 992.0},                               # 8 s before screen
+    poly = [{"row": "trigger", "game_key": "nfl:20261106:g", "recv_ts": 992.0},                               # 8 s before screen
             {"row": "trigger", "game_key": "other", "recv_ts": 1999.0},
-            {"row": "trigger", "game_key": "g", "recv_ts": 1995.0}]
-    res = R.grade(screens, espn, poly, "g")
+            {"row": "trigger", "game_key": "nfl:20261105:g", "recv_ts": 1995.0}]
+    res = R.grade(screens, espn, poly, "nfl:20261105:g")
     assert res["events"] == 2
     assert res["rows"][0]["lead_s"] == {"app_feed": 16.0, "espn_summary": -30.0, "polymarket": 8.0}
     assert res["summary"]["polymarket"]["median_lead_s"] == 6.5

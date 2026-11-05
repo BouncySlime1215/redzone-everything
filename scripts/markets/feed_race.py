@@ -103,7 +103,9 @@ def screen_rows(sync_lines, since: float, until: float, target_hint: str = "") -
 
 def grade(screens: list[dict], espn: list[dict], poly: list[dict], game_key: str) -> dict:
     """Per screen score change: when each source first had it, and its lead over the screen (s, + = earlier)."""
-    trig = sorted(r["recv_ts"] for r in poly if r.get("row") == "trigger" and r.get("game_key") == game_key)
+    matchup = game_key.split(":")[-1]          # Polymarket slugs may date a night game by its UTC day
+    trig = sorted(r["recv_ts"] for r in poly if r.get("row") == "trigger"
+                  and str(r.get("game_key", "")).split(":")[-1] == matchup)
     by_src: dict[str, list[dict]] = {}
     for r in espn:
         if r.get("prev") is not None:              # the first poll of a source is not a score change

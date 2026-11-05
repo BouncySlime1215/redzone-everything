@@ -131,7 +131,8 @@ def tonight_markets(league: str, date: str, max_markets: int | None = None) -> d
         page = c.get(f"{PM.GAMMA}/markets/keyset", params) or {}
         for m in page.get("markets") or []:
             pm = PM.parse_market(m, league, ordering)
-            if pm and (pm["day"] == day or PM.local_date(pm["start_ts"]) == day):
+            if pm and PM.local_date(pm["start_ts"]) == day:      # slug dates can be UTC: use the US Eastern start
+                pm["check"] = {k: m.get(k) for k in ("question", "outcomes", "outcomePrices", "slug")}
                 out[pm["market_id"]] = pm
         cur = page.get("next_cursor")
         if not cur or (max_markets and len(out) >= max_markets):
@@ -179,7 +180,8 @@ def main(argv=None) -> int:
     ap.add_argument("--max-markets", type=int)
     a = ap.parse_args(argv)
     mk = tonight_markets(a.league, a.date, a.max_markets)
-    print(json.dumps({"markets": len(mk), "games": sorted({m["game_key"] for m in mk.values()})}))
+    print(json.dumps({"markets": len(mk), "games": sorted({m["game_key"] for m in mk.values()}),
+                      "check": [{**m["check"], "invert": m["invert"]} for m in mk.values()]}))
     if not mk:
         return 1
     path = a.out / PM.SOURCE / a.league / f"{a.date.replace('-', '')}.jsonl"
