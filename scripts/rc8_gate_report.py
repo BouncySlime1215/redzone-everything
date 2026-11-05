@@ -122,7 +122,7 @@ def to_md(r: dict) -> str:
               f"- Rule #1 at the shipped B: {i1['sim_mid_play']} mid-play over {i1['sim_runs']} sweep runs "
               f"(per harness {i1['runs_per_harness']}), clock-truth live {i1['clock_truth_live']}; whole grid: "
               f"{d['grid_mid_play_total']} mid-play over {d['grid_runs']} runs. First picks (own line): "
-              f"{i1['first_pick_mid_play']} mid-play in the sweep, {i1['shadow_first_pick_live']} live in the shadow. Shadow: {i1['shadow_entries']} "
+              f"{'MISSING (PENDING)' if i1['first_pick_mid_play'] is None else i1['first_pick_mid_play']} mid-play in the sweep, {i1['shadow_first_pick_live']} live in the shadow. Shadow: {i1['shadow_entries']} "
               f"entries, {i1['shadow_live']} live.",
               f"- Sweep: verdict {i2.get('verdict') or 'not in yet'}, B {i2.get('chosen_b')}, needs "
               f"{i2.get('needs') or 'nothing'}, {i2.get('fit_nights') or 0} fit nights, primary "

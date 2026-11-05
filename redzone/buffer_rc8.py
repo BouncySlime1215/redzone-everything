@@ -149,7 +149,7 @@ def gate_league(league: str, sim_runs: list[dict] | None, shadow_rows: list[dict
     harn = {h: sum(1 for r in runs if r.get("harness") == h) for h in HARNESSES}
     if mid or ct or sh_live or first:
         s1 = FAIL
-    elif not runs or not all(harn.values()) or not sh:
+    elif not runs or not all(harn.values()) or not sh or first is None:   # a Rule #1 line never passes on absent data
         s1 = PENDING
     else:
         s1 = PASS

@@ -164,7 +164,7 @@ def test_controller_gate_opens_for_an_rc8_only_league(cfg):
 # ------------------------------------------------------------------------------------------ the gate
 def _runs(mid=0, nights=9, harnesses=("honest", "resync")):
     return [{"b": 75, "arm": "main", "harness": h, "seed": s, "nights": nights, "entries_mid_play": mid,
-             "clock_truth_live": 0} for h in harnesses for s in range(3)]
+             "clock_truth_live": 0, "first_pick_mid_play": 0} for h in harnesses for s in range(3)]
 
 
 def test_gate_pending_without_inputs():
@@ -235,3 +235,9 @@ def test_first_picks_are_their_own_rule1_line():
     runs = [dict(r, first_pick_mid_play=1 if i == 0 else 0) for i, r in enumerate(_runs())]
     st, d = R.gate_league("nba", runs, [{"league": "nba", "label": "dead"}])
     assert st == R.FAIL and d["items"]["1_rule1"]["first_pick_mid_play"] == 1
+
+
+def test_missing_first_pick_field_is_pending_never_pass():
+    runs = [{k: v for k, v in r.items() if k != "first_pick_mid_play"} for r in _runs()]
+    st, d = R.gate_league("nba", runs, [{"league": "nba", "label": "dead"}])
+    assert d["items"]["1_rule1"]["state"] == R.PENDING and d["items"]["1_rule1"]["first_pick_mid_play"] is None
