@@ -255,6 +255,10 @@ class Night:
             "plan": {"verify": False},
         }
         for k, v in (self.cfg_set or {}).items():
+            if k.startswith("league_overrides."):     # league_overrides.<lg>.<flat dotted key>, as evaldata.apply_set
+                _, lg, flat = k.split(".", 2)
+                cfg.setdefault("league_overrides", {}).setdefault(lg, {})[flat] = v
+                continue
             node = cfg
             *path, leaf = k.split(".")
             for part in path:
