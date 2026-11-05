@@ -723,3 +723,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   90 s, 30 s, then live. After each release's locked read, `scripts/catchup_ratchet.py --record` steps a league down
   once it has held the next window on locked nights for 2 releases in a row, and the window never loosens. (3) The
   delay-and-react test (lane 2, arms A-D) reports these lines per arm. Grader freeze v14.
+- 2026-11-05 (Nick, 12:25 AM "yes test it"; lane 2 EXP-209): new keys `decider.react.mode` (default "off") and
+  `decider.react.chase` (default false): OFFLINE delay-and-react arms (B react, C hybrid, D hybrid + chase + hidden-stick
+  buffer) for the scorecard only. Live behavior is unchanged; nothing goes live from this test without the normal gate.
