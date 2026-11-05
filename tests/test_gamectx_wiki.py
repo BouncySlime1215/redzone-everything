@@ -170,12 +170,12 @@ def test_pull_newest_first_and_merges(tmp_path):
             return []
 
         def resolve(self, titles):
-            t = next(t for t in titles if "Washington" in t)
-            return [{"pageid": int(t[:4]), "title": t}]
+            t = next((t for t in titles if "Washington" in t and t.endswith("season")), None)
+            return [{"pageid": int(t[:4]), "title": t}] if t else []
     w = Two()
     order = []
     orig = w.resolve
-    w.resolve = lambda titles: (order.append(titles[0]), orig(titles))[1]
+    w.resolve = lambda titles: (order.append(titles[0]) if titles[0].endswith("season") else None, orig(titles))[1]
     W.pull("nfl", 2023, 2024, tmp_path, wiki=w)
     assert "2024" in order[0] and "2023" in order[1]                         # newest first
     led = W.pull("nfl", 2022, 2022, tmp_path, wiki=Two())                    # a later slice merges, not replaces
