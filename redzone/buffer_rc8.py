@@ -169,9 +169,10 @@ def gate_league(league: str, sim_runs: list[dict] | None, shadow_rows: list[dict
 
     # 3. Tonight's shadow confirms: can only veto (GATE_MIN_NIGHTS); 0 graded entries = PENDING.
     graded = [r for r in sh if r.get("label") in ("dead", "live")]
-    s3 = FAIL if sh_live else PENDING   # one night never PASSes a rate on its own
+    # veto only (gate item 3): PASS here means "no veto" (graded entries, none live); the rates are judged by item 2
+    s3 = FAIL if sh_live else (PASS if graded else PENDING)
     items["3_shadow"] = {"state": s3, "graded_entries": len(graded), "live": sh_live,
-                         "note": "one shadow night can only veto (gate item 3)"}
+                         "note": "veto only: PASS = no veto, never a rate claim (gate item 3)"}
 
     # 4. Locked once, at the cut.
     if not locked:

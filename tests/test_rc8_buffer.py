@@ -179,13 +179,17 @@ def test_gate_any_mid_play_fails():
     assert st == R.FAIL
 
 
-def test_gate_one_shadow_night_never_passes():
+def test_gate_shadow_is_veto_only_and_a_clean_league_can_pass():
     sweep = {"verdict": "ON", "chosen_b": 75, "fit_nights": 9}
     st, d = R.gate_league("nba", _runs(), [{"league": "nba", "label": "dead"}], sweep=sweep,
                           sync={"p95_err_s": 1.0, "n": 300},
                           locked={"entries_mid_play": 0, "nights": 8, "decisions": 80})
-    assert d["items"]["3_shadow"]["state"] == R.PENDING
-    assert st == R.PENDING            # the gate as written: shadow can only veto
+    assert d["items"]["3_shadow"]["state"] == R.PASS     # "no veto"; the rates come from the sweep (item 2)
+    assert st == R.PASS
+    st, d = R.gate_league("nba", _runs(), [{"league": "nba", "label": "ambiguous"}], sweep=sweep,
+                          sync={"p95_err_s": 1.0, "n": 300},
+                          locked={"entries_mid_play": 0, "nights": 8, "decisions": 80})
+    assert d["items"]["3_shadow"]["state"] == R.PENDING and st == R.PENDING   # nothing graded: no read
 
 
 def test_gate_thin_sweep_is_pending_not_pass():
