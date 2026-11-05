@@ -925,3 +925,16 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   7. **No prioritization model ships or gets a locked read tonight** (T8 stay/leave failed valid; WV attention arms
      below A0; GI v2 not pre-registered until #345). A0 stays.
   Still waiting on Nick only: keys, the Kaggle ID check, and the RC8 flip.
+- 2026-11-05 (integrator, grader v32; Nick 4:50 PM / ~5 PM: audit the oracle before more Watch Value training):
+  - **EXP-1720 (GI v3 NBA, #347) metric, bar and harness frozen** (`scripts/gi_v3_nba.py` joins the freeze): pair-weighted
+    within-night agreement vs realized volume; pass = G3 − C0 lower 95% bound > 0 and point ≥ +2.0 on fresh 2026-27 NBA
+    nights after this commit (≥ 8 nights / 60 pairs first read, ≥ 40 nights firm). The 2025-26 dev pass (+5.5, CI
+    +2.7..+8.5) and the 60 already-seen 2026-27 games are not evidence (the metric was picked after seeing them).
+  - **EXP-1715 (GI v2 NFL, #345) prereg accepted; its harness freeze waits** on `scripts/game_importance.py`, which
+    lives on #317 (held for two leakage fixes: aux labels in valid/locked targets, split_nights instead of
+    league_split). Fresh nights count only from that freeze.
+  - **EXP-1721 (oracle reward v2, #348) prereg and audit accepted, not yet a gate.** The audit confirms the v1 oracle
+    structurally favors closest-game in the NBA (57.5% of games worth 0; Spearman −0.83 vs final margin) and counts
+    low-swing NFL plays. oracle.py v1 stays the frozen reference for every current line until v2's code lands as its
+    own frozen file and passes its acceptance on fit nights (it needs the human highlight set first). Nothing in RC6.3
+    or integration/release changes. Grader freeze v32.

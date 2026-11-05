@@ -5205,6 +5205,17 @@
     "untagged"
    ]
   },
+  "scripts/gi_v3_nba.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "GI v3 NBA (WV loop cycle 1, prereg /mnt/project-files/wv-loop/prereg-gi-v3-nba.md).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/grading_check.py": {
    "contracts": [],
    "inputs": [],
@@ -6109,10 +6120,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 334,
+  "modules": 335,
   "orphans": 14,
-  "unowned": 172,
-  "untagged": 278
+  "unowned": 173,
+  "untagged": 279
  },
  "version": 1
 }
