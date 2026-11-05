@@ -411,6 +411,15 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   screen. `scripts/deploy.py deploy --at-break` allows live games while the on-screen game's status is Halftime /
   Intermission (NHL "End of 1st/2nd"), polls every 30 s, and keeps the 10-min health watch + auto-rollback. The
   default (no flag) is unchanged: any live game defers. Reason: get RC6 on tonight without cutting into play.
+- 2026-11-04 (Nick, 6:40 PM ET): "training needs to be SHARP, grading even SHARPER." These are the 14 standing
+  grading and training rules in [docs/grading.md](../grading.md).
+  - The integrator writes and freezes the graders (`docs/grader_freeze.json`, versioned per release). The
+    training lanes never do.
+  - A new CI job, `graders` (`scripts/grading_check.py`), runs three checks:
+    - G1: a grader file differs from the freeze;
+    - G2: a running or done experiment is not pre-registered;
+    - G3: a running experiment moved its goalposts.
+  - Reason: grading has to be harder to fool than training.
 - **2026-11-04 (lane 2, #174): `replay.crunch_block_tail`** (default `false`, candidate `true`). The crunch block also
   holds until a game the feed ended in crunch time (an OT winner) has aired. Why: the OT winner reached the screen ~2 min
   after the feed dropped the game, and a catch-up reel ran over it. NHL locked crunch live +2.5..2.6 on 3 seeds,
@@ -419,3 +428,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   report (scripts/night_report.py, northstar.yml's 10:00 UTC run) writes docs/nights/YYYY-MM-DD.md from the published
   live-night summary. Its gates pass in tests/test_night_report.py: matches the live log through publish, PENDING with
   no night or no games, no private strings published. Report only: nothing on the TV changes. Off again: set it false.
+- 2026-11-04 (Nick, 7:55 PM ET): women's basketball is OFF. Nick's leagues are NFL, CFB, NBA, CBB (men's), NHL and MLB
+  only. The North Star and release gate never score WCBB: `scripts/northstar.py NICKS_LEAGUES`, with a test. The grader
+  freeze was re-stamped. The default_config change (wcbb false, out of league_priority) is a separate PR.
+- 2026-11-05 00:21 UTC (Nick 7:30 PM ET Nov 4, via the coordinator): **Colab Pro+ bought by Nick** (~$50/mo, ~500 CU,
+  A100/L4, background runs). This is Nick's own spend; the $0 rule still binds every agent (no other spending
+  without asking). **Master plan v2 Phases 0-2 are compressed to finish by Sun Nov 8**:
+  docs/plans/2026-11-05-compressed-4day.md, planned ~256-261 CU, keeping ≥ 100 CU in reserve. Colab notebooks
+  are self-contained: public inputs at a pinned commit, no Drive mount, no secrets, grades.json printed. The
+  overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
+  frozen, locked is read once (Sunday).
