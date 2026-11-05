@@ -237,7 +237,7 @@ Plan: [media-metadata.md](datasources/media-metadata.md). No video is ever downl
 |---:|---|---|---|---|---|---|---|---|---|
 | 1200 | EXP-1200 | data C | Land clip tags for MLB (2023-2025) and NHL (2023-24 to now) from public JSON, no key. | Data ledger new-info tokens | 0 / ~2 | C | `media-out/mlb` and `media-out/nhl` hold rows with a licence line + personal-use tag on 100%; >=80% of MLB clips and >=95% of NHL goal clips link to a game event id; ledger.json reports new vs derived tokens; 0 duplicate clip ids | n/a (data) | done: NHL pass, MLB linkage fail (56% < 80%) |
 | 1201 | EXP-1201 | data C, importance head | "Was clipped" is a hindsight importance label: among MLB plays, P(clipped) rises with WPA leverage, and a leverage model's top-decile plays are clipped >=3x as often as the median decile. | Lift over context-only baseline (label quality) | ~0.5 / ~3 | C + ① | On the time-split valid seasons only (2025 locked, untouched): Spearman(leverage decile, clip rate) >=0.6 with cluster-bootstrap CI by game excluding 0; report per kind. Fail = label is noise, keep it out of training | n/a (data) | queued (after 1200) |
-| 1203 | EXP-1203 | data C, NBA + NFL first (Nick 2:00 AM) | ESPN game-summary clips cover NBA and NFL games with no key. | Data ledger new-info tokens; big plays seen/live label | 0 / ~1 | C | `media-out/espn` holds NBA 2024-25 + 2025-26 and NFL 2024 + 2025 rows, licence line + personal-use tag on 100%, >=90% of completed games with >=1 clip, 0 duplicate clip ids; share with a play id reported per league | n/a (data) | running |
+| 1203 | EXP-1203 | data C, NBA + NFL first (Nick 2:00 AM) | ESPN game-summary clips cover NBA and NFL games with no key. | Data ledger new-info tokens; big plays seen/live label | 0 / ~1 | C | `media-out/espn` holds NBA 2024-25 + 2025-26 and NFL 2024 + 2025 rows, licence line + personal-use tag on 100%, >=90% of completed games with >=1 clip, 0 duplicate clip ids; share with a play id reported per league | n/a (data) | done: FAIL (ESPN keeps clips only ~3 weeks; history unrecoverable) |
 | 1202 | EXP-1202 | data C | YouTube official-channel snapshots every 6 h give view velocity and a daily Top-10 per league. | Data ledger | 0 / ~1 | C | 7 days of snapshots for all 6 channels, stats refreshed <=30 days, velocity on >=90% of videos after the 2nd snapshot | n/a | blocked (Nick: YOUTUBE_API_KEY secret) |
 ## Data Division D: markets (EXP-1300-1399, planner D)
 
@@ -329,6 +329,10 @@ causal Teacher commentary, and how often dev has been read.
 
 ## Results log
 
+- **EXP-1203** (Nov 5, 09:10 UTC, media C). Bar pre-registered in #275. Licence + tag 100%: PASS. 0 duplicates:
+  PASS. Games with >=1 clip: NBA 217 games, NFL 11, against ~1,500 NBA and ~560 NFL completed games in the
+  window: **FAIL**. ESPN only keeps summary clips for about the last 3 weeks (1,615 of 1,660 rows are Oct-Nov 2026).
+  Play-id share 0% (parser gap, shape probe added). Next: daily forward pull for NBA; NFL needs YouTube.
 - **EXP-1200** (Nov 5, 07:40 UTC, media C). Bar pre-registered in #248. Licence + tag 100%: PASS. 0 duplicate clip
   ids: PASS. NHL goal clips linked to an event id 21,945/21,945 (100%, bar 95%): PASS. MLB clips linked
   88,431/157,247 (56%, bar 80%): **FAIL**. MLB rows stay in the factory, but EXP-1201 may use only linked rows.

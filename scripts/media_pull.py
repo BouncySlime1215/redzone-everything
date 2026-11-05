@@ -345,6 +345,20 @@ ESPN_PATH = {"nba": "basketball/nba", "nfl": "football/nfl", "cbb": "basketball/
              "cfb": "football/college-football"}
 
 
+def _shape(x, depth=0):
+    """Key structure of one clip record (key names and value types only, no URLs or text), to fix the parser."""
+    if isinstance(x, dict) and depth < 4:
+        return {k: _shape(v, depth + 1) for k, v in x.items() if "url" not in k.lower() and k != "links"}
+    if isinstance(x, list) and x and depth < 4:
+        return [_shape(x[0], depth + 1)]
+    return type(x).__name__ if not isinstance(x, (int, float)) and not (isinstance(x, str) and len(x) < 24 and x.isidentifier()) else x
+
+
+def _shape_once(path: Path, v: dict) -> None:
+    if not path.exists():
+        path.write_text(json.dumps(_shape(v), indent=1) + "\n")
+
+
 def pull_espn(http: Http, sink: Sink, start: str, end: str, max_games: int, leagues: list[str]) -> None:
     """Per game: the clips ESPN attached to the game summary (headline, duration, publish time, linked
     athletes/plays where present). Metadata only; video URLs are never fetched or stored."""
@@ -362,9 +376,10 @@ def pull_espn(http: Http, sink: Sink, start: str, end: str, max_games: int, leag
                 summ = http.get(f"{ESPN}/{ESPN_PATH[lg]}/summary?event={gid}") or {}
                 start_t = ev.get("date")
                 for v in summ.get("videos") or []:
+                    _shape_once(sink.dir / "video_shape.json", v)
                     kws = [k for k in (v.get("keywords") or []) if isinstance(k, str)]
-                    ath = [f"athlete:{c.get('athleteId') or c.get('id')}" for c in (v.get("categories") or [])
-                           if (c.get("type") == "athlete")]
+                    ath = [f"athlete:{c.get('athleteId') or (c.get('athlete') or {}).get('id') or c.get('id')}"
+                           for c in (v.get("categories") or []) if c.get("type") == "athlete" or c.get("athlete")]
                     play = next((str(c.get("playId") or c.get("id")) for c in (v.get("categories") or [])
                                  if c.get("type") in ("play", "event") and (c.get("playId") or c.get("id"))), None)
                     pub = v.get("originalPublishDate") or v.get("lastModified")
