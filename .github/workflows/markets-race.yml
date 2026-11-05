@@ -19,7 +19,7 @@ concurrency:
 jobs:
   race:
     runs-on: ubuntu-latest
-    permissions: {contents: read}
+    permissions: {contents: write}
     timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
@@ -37,11 +37,22 @@ jobs:
           wc -l out/race/espn.jsonl out/markets_live/polymarket/nfl/*.jsonl 2>/dev/null || true
           grep -c '"row": "trigger"' out/markets_live/polymarket/nfl/*.jsonl 2>/dev/null || true
           tail -5 out/race/poly.log out/race/espn.log 2>/dev/null || true
+      - name: push logs to markets-race-out/<date> (so crew D can grade without artifact access)
+        if: always()
+        env:
+          D: ${{ inputs.date || '2026-11-05' }}
+        run: |
+          B="markets-race-out/${D//-/}-${{ github.run_id }}"
+          mkdir -p /tmp/o && cp -r out/race out/markets_live /tmp/o/ 2>/dev/null || true
+          git config user.name "redzone-markets-bot"; git config user.email "actions@users.noreply.github.com"
+          git checkout --orphan "$B" && git rm -rq --cached . && git clean -fdq -e /tmp
+          cp -r /tmp/o/* . 2>/dev/null || true
+          git add race markets_live 2>/dev/null || true
+          git commit -qm "markets race logs ${D} (shadow; personal-use, not for commercial release)" && git push -q origin "$B" && echo "pushed $B"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: markets-race-${{ inputs.date || '2026-11-05' }}
           path: |
-            out/race/
-            out/markets_live/
+            /tmp/o/
           retention-days: 30
