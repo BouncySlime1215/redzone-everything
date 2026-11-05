@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**308 modules**, 253 untagged, 148 unowned, 14 orphans (no importer).
+**309 modules**, 254 untagged, 149 unowned, 14 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -45,7 +45,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 |---|---|---|---|
 | `agent/__init__.py` (package) | no docstring | - -> - | untagged |
 | `agent/distill/__init__.py` (package) | Big teacher, small student: a large open model (run for free on a Kaggle GPU) writes labels and reasoning from archive game contexts; the 1.7B on the Mac lea... | - -> - | untagged |
-| `agent/distill/evaluate.py` | Score reasoner answers against what actually happened, on held-out (test) nights. | agent.distill.gold, agent.distill.jump, agent.distill.teacher -> agent.kaggle.grade, scripts.distill | untagged |
+| `agent/distill/evaluate.py` | Score reasoner answers against what actually happened, on held-out (test) nights. | agent.distill.gold, agent.distill.jump, agent.distill.teacher -> agent.kaggle.grade, scripts.distill, scripts.label_leak_check | untagged |
 | `agent/distill/gold.py` | Gold labels: Nick's rules applied exactly, written by Claude, for lock-in and jump-or-stay. | agent.distill.jump -> agent.distill.evaluate, agent.kaggle.build_moments_kaggle, agent.kaggle.pack_data | untagged |
 | `agent/distill/jump.py` | Jump-to-highlights vs stay: moments, context and hindsight labels from the archive. | lab.sportsdata, models, sources.espn -> agent.distill.evaluate, agent.distill.gold, agent.kaggle.grade, agent.kaggle.pack_data | untagged |
 | `agent/distill/split.py` | Split moments BY TIME, whole nights at a time, per league (Nick's no-overfitting rules 1, 2, 6). | - -> agent.kaggle.build_moments_kaggle, agent.kaggle.pack_data | untagged |
@@ -211,7 +211,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (148)
+## unowned (149)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -324,6 +324,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/hold_left_probe.py` (entry) | [STK-07 rig check] Hold the left game, then go back to it: does it play on from the dead ball we left? | channels, config, control -> - | STK-07 |
 | `scripts/kaggle_noggin_factory.py` (entry) | no docstring | noggin.factory -> - | untagged |
 | `scripts/kaggle_pbp_crew.py` (entry) | no docstring | - -> - | untagged |
+| `scripts/label_leak_check.py` (entry) | Context-only label leak check (grader freeze v17; Nick, Nov 5 1:50 AM). | agent.distill.evaluate -> - | untagged |
 | `scripts/leak_check.py` (entry) | Leakage checks for evaluation (research 05 §3, `docs/research/2026-11-03/05-eval-and-learning-loop.md`). | lab.backtest, lab.evaldata, lab.night.run, lab.splits, models -> - | untagged |
 | `scripts/license_check.py` (entry) | F8 license-tag check (Test Factory; Nick, Nov 4 2026 11:20 PM ET, data B). | - -> - | untagged |
 | `scripts/measure_break_lengths.py` (entry) | [Data F] Measured break lengths by league x network x break kind, from the pinned archive. | lab.backtest, lab.cutgrade, lab.splits, models, sources.espn -> - | untagged |
@@ -364,7 +365,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/world_model_pilot.py` (entry) | World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end. | noggin.factory -> - | untagged |
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 
-## Untagged (253)
+## Untagged (254)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -572,6 +573,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/green_summaries.py`
 - `scripts/kaggle_noggin_factory.py`
 - `scripts/kaggle_pbp_crew.py`
+- `scripts/label_leak_check.py`
 - `scripts/leak_check.py`
 - `scripts/license_check.py`
 - `scripts/measure_break_lengths.py`

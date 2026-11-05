@@ -32,7 +32,8 @@
    "kind": "module",
    "outputs": [
     "agent/kaggle/grade.py",
-    "scripts/distill.py"
+    "scripts/distill.py",
+    "scripts/label_leak_check.py"
    ],
    "owner": "LOCAL AI",
    "role": "Score reasoner answers against what actually happened, on held-out (test) nights.",
@@ -4926,6 +4927,19 @@
     "untagged"
    ]
   },
+  "scripts/label_leak_check.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/distill/evaluate.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Context-only label leak check (grader freeze v17; Nick, Nov 5 1:50 AM).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/leak_check.py": {
    "contracts": [],
    "inputs": [
@@ -5686,10 +5700,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 308,
+  "modules": 309,
   "orphans": 14,
-  "unowned": 148,
-  "untagged": 253
+  "unowned": 149,
+  "untagged": 254
  },
  "version": 1
 }
