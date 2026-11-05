@@ -8,6 +8,13 @@ The truth (docs/sync/2026-11-05-yttv-live-edge-tests.md on codex/resume-redzone 
                                                               fresh tune (a deep link lands at the live edge
                                                               +/- 0.5 s); a pause or stall adds to it exactly
 
+Prime Video (Nick, Nov 5 3:15 AM, same doc): its media_session position can be an EPOCH in ms, the wall-clock
+time stamped on the frame on screen (position >= EPOCH_FLOOR). Then E itself IS the absolute delay behind the
+real world, measured per stick: 6.3-7.0 s, median 6.4 s, 19 readings over 3 h on one stick. Another stick's Prime
+position was a 24 h counter (86,368 s rising), which is a plain stream position and gives no absolute. Only epoch
+rows feed `absolute_by_stick`. YTTV's ~20-30 s (ad bursts vs plays.jsonl wall) is a first ESTIMATE, not an
+anchor: a channel's absolute stays PENDING until a measured anchor is passed in.
+
 Nick's rule: no number is truth until measured. This grades what the meter measures (distance behind the live
 edge, per stick) and leaves absolute latency (live edge vs the real world) PENDING until a channel has an
 on-screen anchor (`anchors`), never filled in from an assumed lag such as ESPN's ~44 s.
@@ -41,7 +48,8 @@ MIN_TUNES = 20
 # Any other app (Prime) compares E at landing until it has its own measurement.
 REF_BY_APP = {"youtubetv": "pos_s"}
 REF_DEFAULT = "E_land"
-LAND_WAIT = 25.0    # seconds after a tune command within which it must reach PLAYING to count as landed
+LAND_WAIT = 25.0
+EPOCH_FLOOR = 1e12  # a media_session position at or above this is an epoch in ms (Prime), not a stream offset    # seconds after a tune command within which it must reach PLAYING to count as landed
 
 
 def pos_now(ms: dict, uptime_ms: float | None) -> float | None:
@@ -57,6 +65,12 @@ def origin(row: dict) -> float | None:
     """E = wall - pos_now: when this stream's position 0 was, on the wall clock."""
     pn = pos_now(row.get("ms") or {}, row.get("uptime_ms"))
     return None if pn is None else float(row["t"]) - pn / 1000.0
+
+
+def is_epoch(ms: dict) -> bool:
+    """True when the position is a wall-clock epoch (ms) rather than an offset into the stream."""
+    p = ms.get("position")
+    return p is not None and float(p) >= EPOCH_FLOOR
 
 
 def _pct(xs: list[float], q: float) -> float | None:
@@ -124,6 +138,14 @@ def exp800(rows: list[dict], anchors: dict | None = None) -> dict:
         out[f"{stick}|{app}"] = {"n": len(xs), "behind_err_p95_s": round(p95, 2), "verdict": verdict}
     chans = sorted({r.get("channel") for r in graded if r.get("channel")})
     out["absolute_latency"] = {c: ((anchors or {}).get(c) or "PENDING: no on-screen anchor yet") for c in chans}
+    absolute: dict[str, list[float]] = defaultdict(list)
+    for r in graded:
+        ms = r.get("ms") or {}
+        if r["E"] is not None and ms.get("state") == "playing" and is_epoch(ms):
+            absolute[f'{names[r["stick"]]}|{r.get("app")}'].append(r["E"])
+    out["absolute_by_stick"] = {k: {"n": len(xs), "median_s": round(median(xs), 2), "p95_s": round(_pct(xs, 0.95), 2),
+                                    "source": "media_session epoch position (measured)"}
+                                for k, xs in sorted(absolute.items())}
     return out
 
 
