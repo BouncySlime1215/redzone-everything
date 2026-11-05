@@ -1,8 +1,8 @@
 """[EXP-803] Grade delay-precision arms against the base arm (redzone/lab/delaygrade.py).
 
-    python scripts/delay_grade.py RUNS_DIR [--base base] [--min-nights 23] [--md out.md] [--json out.json]
+    python scripts/delay_grade.py RUNS_DIR [--base A0] [--min-nights 23] [--md out.md] [--json out.json]
 
-RUNS_DIR holds eval_sports.py outputs named <harness>-<seed>-<arm>.json (e.g. resync-1-tick5.json).
+RUNS_DIR holds eval_sports.py outputs named <harness>-<seed>-<arm>.json (e.g. resync-1-A2.json); arms A0-A4 (#296).
 --min-nights is for reading a non-gating split only; the verdict's floor is EXP-803's (23 NBA dev nights).
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ def main(argv=None) -> int:
     from redzone.lab import delaygrade as G
     ap = argparse.ArgumentParser()
     ap.add_argument("runs", type=Path)
-    ap.add_argument("--base", default="base")
+    ap.add_argument("--base", default=G.CONTROL_ARM)
     ap.add_argument("--min-nights", type=int, default=G.MIN_NIGHTS_803)
     ap.add_argument("--md", type=Path)
     ap.add_argument("--json", type=Path)

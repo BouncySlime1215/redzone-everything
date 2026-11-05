@@ -1,31 +1,30 @@
-"""[EXP-803] Delay precision grader (Cycle 19 rescope, #295): does a tighter delay belief land entries late in the
-break without lying about it? Frozen BEFORE lane 2's arms run (lane 3, Nov 5).
+"""[EXP-803] Delay precision grader, matching EXP-803's pre-registration exactly (#296, rescoped Cycle 19 #295).
+Frozen BEFORE lane 2's arms run (lane 3, Nov 5).
 
-Input: `scripts/eval_sports.py` JSON outputs, one per (harness, seed, arm), each with `per_night` rows. Arms are
-compared with the base arm on the SAME harness (plain / resync / ...), seeds of a night pooled into that night's
-cluster, paired bootstrap over nights (the same resampled nights for every arm).
+Input: `scripts/eval_sports.py` JSON outputs, one per (harness, seed, arm), named <harness>-<seed>-<arm>.json, each
+with `per_night` rows. Arms (#296): A0 control (flags off), A1 finer tick, A2 delay precision, A3 TV-timeout split,
+A4 = A1 + A2 + A3 (+ EXP-737/738). Each arm is compared with A0 on the SAME harness (plain / resync), seeds of a
+night pooled into that night's cluster; the night bootstrap resamples the same nights for every arm.
 
-Per arm vs base, per harness:
-  primary     entries mid-commercial per 100 entries (eval_sports `entries_mid_break`: landed in a break with more
-              than cutgrade's BREAK_TAIL_BAR left)
-  precision   delay band sigma p50 (sync_honesty.sigma_p50, entry-weighted mean over nights), reported vs base
-  honesty     band coverage: pooled share of truth rows within 2 sigma >= HONEST_2SIGMA. A narrower band that stops
-              covering the truth is a lie, so it FAILs the arm however good the entries look.
-  hard zeros  mid-play entries: the arm may add none (pooled count <= base) -- rule #1
-  guardrails  (EXP-728's, per seed, as pre-registered there): crunch live % and big live % not down by more than
-              SEED_PTS on any seed; plays missed on entry up at most MISSED_REL relative (pooled); dead air not up
-              (paired CI lower bound of arm - base <= 0)
-Verdict:
+Primary: NBA entries mid-commercial (eval_sports `entries_mid_break`, cutgrade's > 10 s left) per 100 entries.
+Guardrails, EVERY seed of the harness (#296): mid-play entries 0 added; plays_missed_entry up <= MISSED_REL relative;
+  big seen live (eval_sports `big_live`: big plays seen live) and crunch live not down > SEED_PTS; dead air not up
+  > DEAD_UP_PTS. Per seed, on that seed's pooled nights (arm minus A0).
+Honesty (lane 3, kept by the integrator): band coverage, the pooled share of truth rows within 2 sigma, must stay
+  >= HONEST_2SIGMA. A narrower band that stops covering the truth FAILs the arm.
+Verdict per arm:
   PENDING  fewer than MIN_NIGHTS_803 paired nights (EXP-803 row: >= 23 NBA dev nights, EXP-735)
-  FAIL     a hard zero broken or band coverage under HONEST_2SIGMA
-  WIN      mid-commercial CI upper bound (arm - base) < 0, sigma p50 below base, every guardrail held
-  LOSE     mid-commercial CI lower bound > 0
-  NO_WIN   anything else
-  gate     reported beside the verdict: the row's bar (mid-commercial MIDCOM_GATE per 100) and EXP-728's
-           (<= MIDCOM_BAR per 100) on the arm's point estimate; a WIN that misses the gate still ships OFF.
+  FAIL     a mid-play entry added on any seed, or band coverage < HONEST_2SIGMA
+  A4 (the gated, combined arm, unadjusted): PASS when mid-commercial <= MIDCOM_GATE per 100 AND its night-bootstrap
+           upper bound is below A0's lower bound AND every guardrail held; else NO_PASS
+  A1-A3 (one family, declared by the integrator in docs/families.json as FAMILY, ids EXP-803:<arm>): reported alone,
+           with a Holm-adjusted one-sided p (H1: fewer mid-commercial entries than A0) from scripts/family_holm.py
+           over the family's declared arms. LIFT when p_holm <= HOLM_ALPHA and every guardrail held; else NO_LIFT.
+  Reported beside, never the verdict: sigma p50, EXP-728's <= MIDCOM_BAR per 100, the paired CI of arm - A0.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 from collections import defaultdict
@@ -37,11 +36,18 @@ from redzone.lab.reactgrade import DRAWS
 
 MIN_NIGHTS_803 = 23
 HONEST_2SIGMA = 0.95   # pooled share of truth rows inside the 2-sigma band
-MIDCOM_GATE = 0.0      # mid-commercial entries per 100: EXP-803's row
+MIDCOM_GATE = 10.0     # A4 passes at <= this many mid-commercial entries per 100 (#296)
 MIDCOM_BAR = 5.0       # EXP-728's pre-registered bar, reported beside it
-SEED_PTS = 1.0         # crunch live / big live may not fall by more than this on any seed (EXP-728)
-MISSED_REL = 0.05      # plays missed on entry may rise at most this much, relative (EXP-728)
+SEED_PTS = 1.0         # big seen live / crunch live may not fall by more than this on any seed (#296)
+DEAD_UP_PTS = 0.5      # dead air may not rise by more than this on any seed (#296)
+MISSED_REL = 0.05      # plays missed on entry may rise at most this much, relative, on any seed (#296)
 DELAY_SEED = 803
+CONTROL_ARM = "A0"
+GATED_ARM = "A4"
+FAMILY = "nba-delay-precision"
+FAMILY_ROW = "EXP-803"
+HOLM_ALPHA = 0.05
+_HOLM = Path(__file__).resolve().parents[2] / "scripts" / "family_holm.py"
 _NAME = re.compile(r"^(?P<harness>[A-Za-z0-9_]+)-(?P<seed>\d+)-(?P<arm>[A-Za-z0-9_@.]+)\.json$")
 
 
@@ -89,75 +95,102 @@ def _by_night(runs: list[dict]) -> dict[str, list[dict]]:
     return out
 
 
-def _paired_ci(base: dict[str, list[dict]], arm: dict[str, list[dict]], nights: list[str], key: str,
-               draws: int = DRAWS, seed: int = DELAY_SEED) -> tuple[float, float] | None:
+def _boot(nights_of: dict[str, dict[str, list[dict]]], nights: list[str], key: str, draws: int = DRAWS,
+          seed: int = DELAY_SEED) -> dict[str, list[float]]:
+    """Per arm, `key` on each night-bootstrap resample; the SAME resampled nights for every arm."""
     rng = np.random.default_rng(seed)
-    idx = np.arange(len(nights))
-    diffs = []
+    out: dict[str, list[float]] = {a: [] for a in nights_of}
     for _ in range(draws):
-        pick = [nights[i] for i in rng.choice(idx, size=len(idx), replace=True)]
-        a = _rates(_sums([x for n in pick for x in arm[n]]))[key]
-        b = _rates(_sums([x for n in pick for x in base[n]]))[key]
-        if a is not None and b is not None:
-            diffs.append(a - b)
-    if not diffs:
+        pick = [nights[i] for i in rng.choice(len(nights), size=len(nights), replace=True)]
+        for a, by in nights_of.items():
+            out[a].append(_rates(_sums([x for n in pick for x in by[n]]))[key])
+    return out
+
+
+def _ci(xs: list) -> tuple[float, float] | None:
+    v = [x for x in xs if x is not None]
+    if not v:
         return None
-    lo, hi = np.percentile(diffs, [2.5, 97.5])
+    lo, hi = np.percentile(v, [2.5, 97.5])
     return round(float(lo), 2), round(float(hi), 2)
 
 
-def grade(runs: list[dict], base_arm: str = "base", min_nights: int = MIN_NIGHTS_803) -> dict:
-    """{harness: {arms: {arm: rates + per-seed deltas + CIs + verdict}, nights}}."""
+def _holm_module():
+    spec = importlib.util.spec_from_file_location("family_holm", _HOLM)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _seed_checks(hr: list[dict], arm: str, base_arm: str, nights: list[str]) -> dict:
+    """Arm minus A0 on every seed both ran, on the paired nights: the #296 guardrails per seed."""
+    per_seed = {}
+    for s in sorted({r["seed"] for r in hr if r["arm"] == arm} & {r["seed"] for r in hr if r["arm"] == base_arm}):
+        ra, rb = (_rates(_sums([x for r in hr if r["arm"] == a and r["seed"] == s for x in r["per_night"]
+                                if str(x["night"]) in nights])) for a in (arm, base_arm))
+        d = (lambda k: None if ra[k] is None or rb[k] is None else round(ra[k] - rb[k], 2))
+        per_seed[s] = {"midcom_per_100": d("midcom_per_100"), "big_seen_live_pct": d("big_live_pct"),
+                       "crunch_live_pct": d("crunch_live_pct"), "dead_air_pct": d("dead_air_pct"),
+                       "mid_play_added": ra["entries_mid_play"] - rb["entries_mid_play"],
+                       "missed_ok": ra["plays_missed_entry"] <= rb["plays_missed_entry"] * (1 + MISSED_REL)}
+    v = list(per_seed.values())
+    guards = {"mid_play": all(x["mid_play_added"] <= 0 for x in v),
+              "plays_missed": all(x["missed_ok"] for x in v),
+              "big_seen_live": all((x["big_seen_live_pct"] or 0) >= -SEED_PTS for x in v),
+              "crunch_live": all((x["crunch_live_pct"] or 0) >= -SEED_PTS for x in v),
+              "dead_air": all((x["dead_air_pct"] or 0) <= DEAD_UP_PTS for x in v)}
+    return {"per_seed_delta": per_seed, "guardrails": guards}
+
+
+def grade(runs: list[dict], base_arm: str = CONTROL_ARM, min_nights: int = MIN_NIGHTS_803,
+          families: dict | None = None, gated: str = GATED_ARM) -> dict:
+    """{harness: {nights, arms: {arm: rates + per-seed deltas + CIs + verdict}, family}}."""
+    holm = _holm_module()
+    fams = holm.load_families() if families is None else families
     out = {}
     for harness in sorted({r["harness"] for r in runs}):
         hr = [r for r in runs if r["harness"] == harness]
         if not any(r["arm"] == base_arm for r in hr):
-            out[harness] = {"error": f"base arm {base_arm!r} missing"}
+            out[harness] = {"error": f"control arm {base_arm!r} missing"}
             continue
         arms = sorted({r["arm"] for r in hr})
         nights_of = {a: _by_night([r for r in hr if r["arm"] == a]) for a in arms}
         nights = sorted(set.intersection(*(set(v) for v in nights_of.values())))
-        b_n = nights_of[base_arm]
-        base = _rates(_sums([x for n in nights for x in b_n[n]]))
-        res = {base_arm: {**base, "verdict": "BASE"}}
+        boot = _boot(nights_of, nights, "midcom_per_100") if len(nights) >= 2 else {a: [] for a in arms}
+        base = _rates(_sums([x for n in nights for x in nights_of[base_arm][n]]))
+        res = {base_arm: {**base, "ci_rate": _ci(boot[base_arm]), "verdict": "CONTROL"}}
+        fam_in = {"family": FAMILY, "arms": []}
         for a in arms:
             if a == base_arm:
                 continue
-            a_n = nights_of[a]
-            m = _rates(_sums([x for n in nights for x in a_n[n]]))
-            seeds = sorted({r["seed"] for r in hr if r["arm"] == a} & {r["seed"] for r in hr if r["arm"] == base_arm})
-            per_seed = {}
-            for s in seeds:
-                ra = _rates(_sums([x for r in hr if r["arm"] == a and r["seed"] == s for x in r["per_night"]
-                                   if str(x["night"]) in nights]))
-                rb = _rates(_sums([x for r in hr if r["arm"] == base_arm and r["seed"] == s for x in r["per_night"]
-                                   if str(x["night"]) in nights]))
-                per_seed[s] = {k: (None if ra[k] is None or rb[k] is None else round(ra[k] - rb[k], 2))
-                               for k in ("midcom_per_100", "crunch_live_pct", "big_live_pct", "dead_air_pct")}
-            ci = {k: _paired_ci(b_n, a_n, nights, k) for k in ("midcom_per_100", "dead_air_pct")} if len(nights) >= 2 else {}
-            guards = {
-                "crunch_live": all((d["crunch_live_pct"] or 0) >= -SEED_PTS for d in per_seed.values()),
-                "big_live": all((d["big_live_pct"] or 0) >= -SEED_PTS for d in per_seed.values()),
-                "plays_missed": m["plays_missed_entry"] <= base["plays_missed_entry"] * (1 + MISSED_REL),
-                "dead_air": bool(ci.get("dead_air_pct")) and ci["dead_air_pct"][0] <= 0}
-            hard = m["entries_mid_play"] > base["entries_mid_play"]
-            dishonest = m["coverage_2sigma"] is not None and m["coverage_2sigma"] < HONEST_2SIGMA
-            mc = ci.get("midcom_per_100")
+            m = _rates(_sums([x for n in nights for x in nights_of[a][n]]))
+            chk = _seed_checks(hr, a, base_arm, nights)
+            diffs = [x - y for x, y in zip(boot[a], boot[base_arm]) if x is not None and y is not None]
+            if a != gated:
+                fam_in["arms"].append({"id": f"{FAMILY_ROW}:{a}", "deltas": [-d for d in diffs]})  # H1: fewer
+            res[a] = {**m, **chk, "ci_rate": _ci(boot[a]), "ci_vs_control": _ci(diffs),
+                      "band_dishonest": m["coverage_2sigma"] is not None and m["coverage_2sigma"] < HONEST_2SIGMA,
+                      "bar_728": m["midcom_per_100"] is not None and m["midcom_per_100"] <= MIDCOM_BAR}
+        fam_out = {r["id"]: r for r in holm.grade(fam_in, fams, HOLM_ALPHA)} if fam_in["arms"] else {}
+        for a, m in res.items():
+            if a == base_arm:
+                continue
+            fam = fam_out.get(f"{FAMILY_ROW}:{a}") or fam_out.get(FAMILY)
+            m["holm"] = None if a == gated else fam
             if len(nights) < min_nights:
-                v = "PENDING"
-            elif hard or dishonest:
-                v = "FAIL"
-            elif mc and mc[1] < 0 and (m["sigma_p50"] or 0) < (base["sigma_p50"] or 0) and all(guards.values()):
-                v = "WIN"
-            elif mc and mc[0] > 0:
-                v = "LOSE"
+                m["verdict"] = "PENDING"
+            elif not m["guardrails"]["mid_play"] or m["band_dishonest"]:
+                m["verdict"] = "FAIL"
+            elif a == gated:
+                lo0, hi4 = (res[base_arm]["ci_rate"] or (None, None))[0], (m["ci_rate"] or (None, None))[1]
+                ok = (m["midcom_per_100"] is not None and m["midcom_per_100"] <= MIDCOM_GATE and lo0 is not None
+                      and hi4 is not None and hi4 < lo0 and all(m["guardrails"].values()))
+                m["verdict"] = "PASS" if ok else "NO_PASS"
             else:
-                v = "NO_WIN"
-            mpc = m["midcom_per_100"]
-            res[a] = {**m, "per_seed_delta": per_seed, "ci_vs_base": ci, "guardrails": guards,
-                      "mid_play_added": hard, "band_dishonest": dishonest, "verdict": v,
-                      "gate_803": mpc is not None and mpc <= MIDCOM_GATE, "bar_728": mpc is not None and mpc <= MIDCOM_BAR}
-        out[harness] = {"nights": len(nights), "arms": res}
+                lift = bool(fam) and fam.get("status") == "PASS" and all(m["guardrails"].values())
+                m["verdict"] = "LIFT" if lift else "NO_LIFT"
+        out[harness] = {"nights": len(nights), "arms": res, "family": FAMILY,
+                        "family_declared": FAMILY in fams}
     return out
 
 
@@ -168,16 +201,18 @@ def markdown(rep: dict) -> str:
             lines.append(f"### {h}: {r['error']}")
             continue
         lines += [f"### {h} ({r['nights']} nights)", "",
-                  "| arm | midcom/100 | CI vs base | sigma p50 | 2-sigma coverage | mid-play | missed | crunch live | "
-                  "big live | dead air | guardrails | verdict | <=5/100 |", "|" + "---|" * 13]
+                  "| arm | midcom/100 | rate CI | CI vs A0 | Holm p | sigma p50 | 2-sigma coverage | mid-play | missed | "
+                  "crunch live | big seen live | dead air | guardrails | verdict | <=5/100 |", "|" + "---|" * 15]
         for a, m in r["arms"].items():
             f = (lambda x, d=1: "-" if x is None else f"{x:.{d}f}")
-            ci = (m.get("ci_vs_base") or {}).get("midcom_per_100")
-            g = m.get("guardrails")
-            lines.append(f"| {a} | {f(m['midcom_per_100'])} | {ci or '-'} | {f(m['sigma_p50'], 2)} | "
+            g, hp = m.get("guardrails"), m.get("holm") or {}
+            lines.append(f"| {a} | {f(m['midcom_per_100'])} | {m.get('ci_rate') or '-'} | {m.get('ci_vs_control') or '-'} | "
+                         f"{hp.get('p_holm', hp.get('status', '-')) if hp else '-'} | {f(m['sigma_p50'], 2)} | "
                          f"{f(m['coverage_2sigma'], 3)} | {m['entries_mid_play']} | {m['plays_missed_entry']} | "
                          f"{f(m['crunch_live_pct'])} | {f(m['big_live_pct'])} | {f(m['dead_air_pct'])} | "
                          f"{'-' if g is None else ', '.join(k for k, ok in g.items() if not ok) or 'held'} | "
                          f"{m['verdict']} | {m.get('bar_728', '-')} |")
+        if not r.get("family_declared", True):
+            lines.append(f"Family {r['family']} is not declared in docs/families.json yet: A1-A3 cannot read LIFT.")
         lines.append("")
     return "\n".join(lines)
