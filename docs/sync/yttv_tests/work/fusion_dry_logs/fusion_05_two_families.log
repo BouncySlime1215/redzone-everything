@@ -1,0 +1,17 @@
+== fusion_05_two_families  mode=DRY-RUN (recorded files)
+   days=['2026-11-04', '2026-11-05'] rows=9718 samples=9154 sessions=71 plays=16451 anchors=1 families=['burst_pod_title'] boot={'hdmi2': 1793650371.76, 'hdmi1': 1793752328.89}
+   [real] espn    hdmi1  burst_pod_title=17.6+-8.0(n1)
+        (WOULD compare once two families each have >= 2 anchors here)
+   [synthetic] espn    hdmi1  ui_clock=27.5+-0.4(n4) burst_pod=25.3+-3.3(n4) scoreline=23.3+-0.8(n4)
+        burst_pod vs scoreline: diff=2.02 z=0.6 -> DISAGREE
+        burst_pod vs ui_clock: diff=-2.16 z=-0.66 -> DISAGREE
+        scoreline vs ui_clock: diff=-4.18 z=-4.61 -> DISAGREE
+   [synthetic] espn    hdmi2  ui_clock=27.3+-0.4(n4) burst_pod=34.2+-3.2(n4) scoreline=27.0+-0.8(n4)
+        burst_pod vs scoreline: diff=7.2 z=2.19 -> DISAGREE
+        burst_pod vs ui_clock: diff=6.89 z=2.14 -> DISAGREE
+        scoreline vs ui_clock: diff=-0.3 z=-0.33 -> ok
+   [synthetic] tnt     hdmi2  ui_clock=31.4+-0.4(n4) burst_pod=34.1+-3.1(n4) scoreline=30.9+-0.8(n4)
+        burst_pod vs scoreline: diff=3.26 z=1.03 -> DISAGREE
+        burst_pod vs ui_clock: diff=2.7 z=0.87 -> DISAGREE
+        scoreline vs ui_clock: diff=-0.56 z=-0.64 -> ok
+SUMMARY fusion_05_two_families: families agree in 0/0 real groups -> /private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/fusion_05_two_families.jsonl
