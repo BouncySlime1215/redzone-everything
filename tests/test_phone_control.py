@@ -324,3 +324,75 @@ def test_tap_rewind_cap_keeps_waiting(engine, monkeypatch):
     assert engine._tap_lands_dead(old, "youtubetv:espn") is False and armed == []
     monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(True, 45.0))
     assert engine._tap_lands_dead(old, "youtubetv:espn") is True and armed == [45.0]
+
+
+def test_tap_never_lands_on_play_may_be_live(engine, monkeypatch):
+    """[EXP-741 F] entry_plan's 'unknown' landing (play may be live) is ok for autopilot, never for a tap."""
+    from redzone.decider.cuts import EntryPlan, Landing
+    engine.cfg.update({"decider": {"entry": {"user_timed": True}}})
+    a = _live(engine)[0]
+    engine.scored.setdefault(a, next(iter(engine.scored.values())))
+    d = Decision(time.time(), "switch", a, "you selected this game", State.PAUSED, kind="user")
+    monkeypatch.setattr(engine.decider, "entry_plan",
+                        lambda *x, **k: EntryPlan(True, 0.0, Landing("unknown", why="play may be live")))
+    assert engine._tap_lands_dead(d, "youtubetv:espn") is False
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: EntryPlan(True, 0.0, Landing("dead", "foul")))
+    assert engine._tap_lands_dead(d, "youtubetv:espn") is True
+
+
+def test_tap_bug_gate_on_prime(engine, monkeypatch):
+    """[EXP-741 E] user_bug_gate on: the hidden stick's bug clock decides a Prime tap; unreadable -> feed plan."""
+    from redzone.config import default
+    from redzone.screen.scorebug import Bug
+    assert default("decider.entry.user_bug_gate") == "off"
+    engine.cfg.update({"decider": {"entry": {"user_timed": True, "user_bug_gate": "on"}}})
+    a = _live(engine)[0]
+    engine.scored.setdefault(a, next(iter(engine.scored.values())))
+    d = Decision(time.time(), "switch", a, "you selected this game", State.PAUSED, kind="user")
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(False))   # feed says wait
+    tgt, now = "prime:x", time.time()
+    engine.tap_bug.reset()
+    assert engine._tap_lands_dead(d, tgt) is False                                     # unreadable: feed plan
+    engine.tap_bug.add(tgt, now - 3, Bug(50, 48, "3RD", "7:21"))
+    engine.tap_bug.add(tgt, now - 1, Bug(50, 48, "3RD", "7:21"))
+    assert engine._tap_lands_dead(d, tgt) is True                                      # clock stopped
+    engine.tap_bug.add(tgt, now, Bug(50, 48, "3RD", "7:19"))
+    assert engine._tap_lands_dead(d, tgt) is False                                     # running again
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(True))
+    assert engine._tap_lands_dead(d, tgt) is False                                     # bug beats the feed
+    engine.cfg.update({"decider": {"entry": {"user_bug_gate": "shadow"}}})
+    assert engine._tap_lands_dead(d, tgt) is True                                      # shadow: feed decides
+
+
+def test_tap_bug_reads():
+    from redzone.screen.scorebug import Bug
+    from redzone.screen.tap_bug import TapBug
+    tb, t = TapBug(), 1000.0
+    assert tb.says("p", t) == "unknown"
+    tb.add("p", t, Bug(1, 2, "2ND", "45.6"))
+    tb.add("p", t + 0.5, Bug(1, 2, "2ND", "45.6"))
+    assert tb.says("p", t + 1) == "unknown"            # too close together to call
+    tb.add("p", t + 2, Bug(1, 2, "2ND", "45.6"))
+    assert tb.says("p", t + 3) == "stopped"
+    assert tb.says("p", t + 8) == "unknown"            # stale
+    tb.add("p", t + 4, None)                            # unreadable frame doesn't count
+    assert tb.says("p", t + 5) == "stopped"
+    tb.add("p", t + 6, Bug(1, 2, "3RD", "12:00"))
+    assert tb.says("p", t + 6) == "unknown"            # period changed
+
+
+def test_tap_rewind_grace_counts_from_the_tap_not_the_retry(engine, monkeypatch):
+    """A held tap is re-submitted after each 25 s safe-wait give-up: the grace counts from the hold."""
+    engine.cfg.update({"decider": {"entry": {"user_timed": True, "user_rewind_after_s": 15}}})
+    a = _live(engine)[0]
+    engine.scored.setdefault(a, next(iter(engine.scored.values())))
+    monkeypatch.setattr(engine.control, "arm_entry_rewind", lambda s: None, raising=False)
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(True, 30.0))
+    d = Decision(time.time(), "switch", a, "you locked this game", State.PAUSED, kind="user")
+    engine.hold = None
+    assert engine._tap_lands_dead(d, "youtubetv:espn") is False
+    engine.hold = {"game_id": a, "since": time.time() - 40, "force": False}
+    try:
+        assert engine._tap_lands_dead(d, "youtubetv:espn") is True
+    finally:
+        engine.hold = None

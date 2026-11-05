@@ -261,6 +261,7 @@ class Controller:
         self._hidden_entry = 0.0                 # [seek model] entry rewind to run on the hidden stick before the flip
         self._hidden_entry_done = False
         self._entry_rewind = 0.0                 # [EXP-741 B] the running switch's entry rewind (arm_entry_rewind)
+        self._safe_waiting = False               # [EXP-741 E] a switch is waiting for its moment (tap_bug_frames)
         self._entry_cue = ""
         self.seek_log_path = None                # [calib.auto] data/seeks.jsonl: one row per measured seek
         self._last_seek_sent = 0
@@ -418,6 +419,24 @@ class Controller:
                 and (h.tuned or {}).get("target") == ht):
             out.append((h, ht, False))
         return out
+
+    async def tap_bug_frames(self, target: str, band_from: float | None = None) -> list[dict]:
+        """[EXP-741 E] One frame of the hidden stick while a switch to `target` (a live Prime game, already
+        playing there) waits for its moment: the tap's score-bug clock read. Never presses a key. Empty
+        unless the switch is in that wait, and dropped if a flip or retune started while capturing."""
+        h = self.hidden
+        if not (self._safe_waiting and self.live_control and not self._flipping and not self.input_unknown
+                and h is not None and target.startswith("prime:") and self.hidden_target == target
+                and (h.tuned or {}).get("target") == target and self._live_on_hidden(target)):
+            return []
+        gen, tune, t0 = self._flip_gen, h.tuned, time.time()
+        png = await h.screencap_band(band_from, timeout=15) if band_from is not None else b""
+        if not png:
+            png = await h.screencap(timeout=15)
+        t1 = time.time()
+        if not png or gen != self._flip_gen or self._flipping or h.tuned is not tune or not self._safe_waiting:
+            return []
+        return [{"stick": h, "target": target, "visible": False, "tune": tune, "png": png, "t0": t0, "t1": t1}]
 
     async def scorebug_frames(self, hidden: bool = False, band_from: float | None = None) -> list[dict]:
         """One screenshot of each stick scorebug_sticks() names: {stick, target, visible, tune, png,
@@ -1707,8 +1726,15 @@ class Controller:
         "no safe moment" waits in a row."""
         t0 = time.monotonic()
         look_at = t0 + WAIT_SCREEN_LOOK_S
+        try:
+            return await self._wait_safe_loop(may_cut, t0, look_at)
+        finally:
+            self._safe_waiting = False
+
+    async def _wait_safe_loop(self, may_cut, t0: float, look_at: float) -> float | None:
         while may_cut is not None and not may_cut():
             mine = self._task is asyncio.current_task()
+            self._safe_waiting = mine
             if mine:
                 self.stage.update(stage="waiting_safe_exit", reason="waiting for the current screen's safe exit window")
             if time.monotonic() - t0 >= MAX_SAFE_WAIT_S:

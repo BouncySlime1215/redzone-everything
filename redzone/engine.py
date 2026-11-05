@@ -144,6 +144,9 @@ class Engine:
         # [buffer.watchdog STK-06] a lost hold is rebuilt only while that game is in a dead ball
         self.control.dead_ball = self._target_dead
         self.control.buffer_log_path = data_dir.parent / "buffer.jsonl" if data_dir else None
+        # [EXP-741 E] a waiting tap's Prime score-bug clock reads, numbers only: data/tap_bug.jsonl
+        from redzone.screen.tap_bug import TapBug
+        self.tap_bug = TapBug(data_dir.parent / "tap_bug.jsonl" if data_dir else None)
         self.decider.return_cost = lambda t: (self.control.flip_estimate() if self.control.two_stick
                                               else self.control.deadline_cost(t))
         # Stream delay measured from YouTube TV show changes on the quarter hour (no taps needed).
@@ -459,6 +462,13 @@ class Engine:
             wait = scorebug.EVERY_S
             try:
                 frames = []
+                tap = self._tap_bug_target()
+                if tap is not None:
+                    # [EXP-741 E] a tap waits on a Prime game: read its clock on the hidden stick
+                    if self.governor.allow("ocr"):
+                        await self._tap_bug_read(tap)
+                    await asyncio.sleep(max(0.2, scorebug.EVERY_S - (time.time() - t)))
+                    continue
                 if (self.cfg.get("mode.dry_run", True) or self._pending_decision is not None
                         or self.decider.replaying or self.decider.after_replay):
                     self.scorebug.reset()
@@ -496,6 +506,30 @@ class Engine:
                 self.scorebug.reset()
                 wait = 10.0
             await asyncio.sleep(max(0.2, wait - (time.time() - t)))
+
+    def _tap_bug_target(self) -> str | None:
+        """[EXP-741 E] The Prime target a single tap is waiting on, when user_bug_gate is shadow or on."""
+        d = self._pending_decision
+        if d is None or d.kind != "user" or d.action != "switch" or self.cfg.get("mode.dry_run", True):
+            return None
+        g = self.merger.games.get(d.target or "")
+        lg = getattr(getattr(g, "league", None), "value", None)
+        if str(for_league(self.cfg, "decider.entry.user_bug_gate", lg, "off") or "off") not in ("shadow", "on"):
+            return None
+        target = getattr(self.where.get(d.target or ""), "target", None)
+        return target if g is not None and str(target or "").startswith("prime:") else None
+
+    async def _tap_bug_read(self, target: str) -> None:
+        from redzone.screen_ocr import recognize
+        d = self._pending_decision
+        g = self.merger.games.get(getattr(d, "target", None) or "")
+        if g is None:
+            return
+        band = scorebug.LOWER_FROM if self.cfg.get("delay.scorebug_band") else None
+        for f in await self.control.tap_bug_frames(target, band):
+            bug = await asyncio.to_thread(scorebug.read_png, f["png"], g.home, g.away, recognize)
+            if self._pending_decision is d:
+                self.tap_bug.add(target, f["t0"], bug, why="tap")
 
     async def _boundary_loop(self) -> None:
         """Read the YouTube TV sticks every ~0.5 s for 3 minutes either side of each quarter hour (as it
@@ -1980,18 +2014,31 @@ class Engine:
             return True
         cands1 = {d.target: Candidate(self.scored[d.target], target)}
         now = time.time()
+        after = for_league(self.cfg, "decider.entry.user_rewind_after_s", lg, None)
+        arm = getattr(self.control, "arm_entry_rewind", None)
+        gate = str(for_league(self.cfg, "decider.entry.user_bug_gate", lg, "off") or "off")
+        if gate in ("shadow", "on") and str(target or "").startswith("prime:"):
+            # [EXP-741 E] the bug's clock on the hidden stick: no feed lag (stopped = dead ball)
+            say = self.tap_bug.says(target, now)
+            self.tap_bug.note(target, say, now, gate)
+            if gate == "on" and say != "unknown":
+                if say == "stopped" and arm is not None and after is not None:
+                    arm(0.0)
+                return say == "stopped"
         plan = self.decider.entry_plan(d.target, cands1, now, self.control.deadline_cost(target))
         if plan is None:
             return True
         if not plan.ok:
             return False
-        after = for_league(self.cfg, "decider.entry.user_rewind_after_s", lg, None)
-        if plan.rewind_s and (after is None or now - d.at < float(after)):
+        if not plan.rewind_s and getattr(plan.landing, "state", "dead") != "dead":
+            return False   # [EXP-741 F] "play may be live" is fine for autopilot, never for a tap (lane 3: 4/15 live)
+        h = self.hold
+        tapped = min(d.at, float(h.get("since") or d.at)) if h and h.get("game_id") == d.target else d.at
+        if plan.rewind_s and (after is None or now - tapped < float(after)):
             return False
         cap = for_league(self.cfg, "decider.entry.user_rewind_max_s", lg, None)
         if plan.rewind_s and cap is not None and plan.rewind_s > float(cap):
             return False   # [EXP-741 D] never this far behind live on a tap: keep waiting for a nearer dead ball
-        arm = getattr(self.control, "arm_entry_rewind", None)
         if arm is not None and after is not None:
             arm(plan.rewind_s)
         return True
