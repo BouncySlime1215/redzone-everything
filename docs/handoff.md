@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-STATUS: phone lane asks overseer for 2 read-only Mac pulls (per-stick delay-error script; Prime press context + 6 failures/1 abort)
-STATUS: A100 GR step 2200/7862 eta ~181m; L4 V8.1 WD step 300/1688 eta ~49m; factory running 6.4h; usage 41%
+STATUS: phone lane asks overseer to check data/redzone.db switches for the 16 Prime press ids (analysis on hold)
+STATUS: usage 42%; V8 GR 2350/7862, V8.1 WD 450/1688; RC6.1 deploy still waiting
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
