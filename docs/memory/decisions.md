@@ -892,3 +892,22 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   both cutgrade and clock truth) and `scripts/rc8_gate_report.py` (#331, T9: applies docs/plans/2026-11-05-rc8-buffer-gate.md
   as written, shadow veto-only, < 8 nights PENDING, ship B = max(sweep, formula/ratchet, 15 s floor), cap 90) join the
   freeze, so no bar moves once shadow rows exist. Grader freeze v29.
+- 2026-11-05 (T9, #331; Nick 9:10 / 9:35 AM, integrator gate v28, planner): **RC8 buffer-ON ships behind
+  `timing.behind_live_s.rc8_on`, false everywhere**, honored only under `league_overrides.<league>`; Nick flips one
+  league himself (`scripts/rc8_flip.py`, which also sets that league's hold key; `decider.entry.start_timed` ships only
+  when the sweep verdict's arm needs it, via `--set`; rollback writes explicit false/0 and restores both to shipped). New `timing.behind_live_s.adaptive` (floor 15 s limited to 10-15,
+  ratchet step 15 s limited to 0-15, feed-lag terms are p90 placeholders until T6) and `max_s` limited to 90 (Nick's
+  cap). Ship B = max(sweep point, formula/ratchet, floor), back to 90 after a mid-play night. RC6.2's
+  `timing.behind_live_s.enabled` (NBA/NFL hold) unchanged. `scripts/rc8_gate_report.py` reads the pre-registered gate
+  as written (shadow = veto only; missing first-pick line = PENDING). No decision changes with the shipped defaults.
+- 2026-11-05 (integrator, grader v30; T9 #331 0b08d96): `scripts/rc8_gate_report.py` refrozen after review. The
+  changes are reporting plus one arm choice: NBA's verdict is read on lane 3's `st` arm (start_timed on with RC8, the
+  planner's call after the autopsy). That choice came after the sweep was read; it changes no verdict tonight (NBA
+  fails switches 1.58x and your-team crunch on every arm), and it applies to RC8's next read from fresh nights. The
+  switch guardrail counts non-replay switches (integrator ruling on lane 3's sweep: NFL B=75 1.80x, LIVE). No bar
+  moved. Grader freeze v30.
+- 2026-11-05 (integrator, grader v31; lane 1 #322): the windowed-hindsight oracle `redzone/lab/oracle_window.py`
+  joins the freeze beside oracle.py (which it reuses unchanged): measured per-league feed lag (p90 default), reserves
+  grading.RESUME_LEAD, never plans without a revealed window, first pick on a dead ball. It is the RC8 report's
+  descriptive ceiling ("% of oracle"), never a gate. `scripts/buffer_sweep.py` stays lane 1's descriptive sweep
+  (lane 3's sweep is the graded one) and is not frozen. Grader freeze v31.

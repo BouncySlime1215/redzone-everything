@@ -320,3 +320,18 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 
 - **Nov 5 2026 (lane 4, live-log collection):** `collect_live_test.py` masked RFC1918 LAN addresses but not the sticks' Tailscale 100.64.0.0/10 addresses, so the shared copies leaked them (lane 2 masked them by hand). Fix: the redactor also masks 100.64/10 (`ts.<last octet>`), Tailscale's fd7a:115c:a1e0::/48 IPv6 and 169.254/16 link-local; public addresses stay.
 - 2026-11-05 (lane 2, from lane 4's read of the Nov 4-5 probe logs): sync_probe.stall_s compared the stick clock with the position without checking that both reports were playing at normal speed. A pause or backgrounded app counted its whole pause as a stall (up to 11,000 s), and a seek forward or live-edge jump came out negative (-44,000 s summed), so stalls_per_min and the probe's link-quality scale were polluted. Now it returns None unless both reports are playing at ~1x, after a forward jump (< -1 s), or across more than 10 minutes.
+- 2026-11-05 (integrator): **a pytest exit code piped through `| tail` is tail's, not pytest's.** Batch 2 (ced1dd03)
+  went to integration/next with 4 failing tests because the suite wrapper read `exit 0`. Run the suite to a log and
+  check `$?` (or grep "failed") before any push. Two of the four were stale expectations after NHL's EXP-303 package
+  went ON; one was the warm-up e2e (the night opens on NHL, whose timed start already pre-tunes the first pick, so the
+  test now holds NHL's start untimed in both arms via the night lab's new `--set league_overrides.<lg>.<key>`); the
+  last, test_night_leaves_repo_data_alone, only fails under `pytest -n` (another worker writes the shared data/).
+
+- **Nov 5 2026 (lane 1, windowed oracle #322):** the first buffer sweep solved every window with an 8 s feed lag
+  (a knobs default) while the measured p90 is 62-75 s, so "window % of full" read 88-100% for a feed we don't
+  have; NBA leave/land also peek 26 s past a cell (grading.RESUME_LEAD), which the window didn't reserve, and the
+  window was floored at blk+1 so a too-slow feed still planned on unrevealed steps (T2/T3 testers, #328). Fix:
+  per-league measured lag (p90 default, primary p50 as a second set), the look-ahead reserved in window_steps, no
+  switches without a revealed window, first pick waits for a dead ball, night-bootstrap CIs, and the oracle moved
+  out of the frozen grader file into redzone/lab/oracle_window.py. Lesson: an oracle's information set must come
+  from measured numbers and from everything the grader itself reads, and a second tester should re-derive both.

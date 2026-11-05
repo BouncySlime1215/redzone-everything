@@ -244,8 +244,8 @@ it on one league at a time the moment the evidence is in, and back off the same 
 - **Gate report.** `python scripts/rc8_gate_report.py --shadow <buffer_shadow_grade.py --json>` reads lane 3's sweep
   verdict (`/mnt/project-files/lane3/buffer-sweep/verdict.json`) and shows the five pre-registered items per league
   (docs/plans/2026-11-05-rc8-buffer-gate.md) as PASS / FAIL / PENDING, Rule #1 at the B that would ship and across the
-  whole grid, the formula B with its parts, and the flip command for `ship_b` (plus `start_timed` when the verdict
-  needs it). It never loosens a bar: one shadow night can only veto.
+  whole grid, the formula B with its parts, and the flip command for `ship_b` (plus `start_timed` only when the verdict's
+  arm needs it). It never loosens a bar: one shadow night can only veto.
 - **Flip.** `python scripts/rc8_flip.py <league> on [--seconds B] [--set key=value]` posts only that league's keys to
   the running app (`/api/settings`, effective on the next fresh hidden-stick tune); `off` writes explicit
   false / 0 (settings deep-merge, so a deleted key would stay on). `--dry-run` shows the change and the B; `--status`
