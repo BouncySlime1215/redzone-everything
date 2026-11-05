@@ -1,0 +1,14 @@
+{
+  "_about": "F8 (docs/plans/2026-11-05-test-factory.md): each data source's terms class. 'restrictive' = public data whose terms limit use (Nick, Nov 4 11:20 PM ET: allowed for this personal project, but every dataset and model built on it is tagged personal-use). 'open' = a license that allows reuse. The data scouts own this table; scripts/license_check.py reads it. A source not listed here is flagged until it's classified.",
+  "tag": "personal-use, not for commercial release",
+  "sources": {
+    "espn": "restrictive",
+    "hoopr": "restrictive",
+    "nhl_api_web": "restrictive",
+    "nhl_shifts": "restrictive",
+    "statcast": "restrictive",
+    "baseball_savant": "restrictive",
+    "statsbomb": "restrictive",
+    "synthetic": "open"
+  }
+}

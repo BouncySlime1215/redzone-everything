@@ -661,3 +661,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   same data/sync.jsonl rows. It stays OFF: #223's dev bar failed on NBA and NHL (rule #1 clause, and NHL short
   of 2 s), though it cut delay error p95 in every league. Why wire it now: Nick's RC7 requirement 2 (sync
   p95 ≤ 2 s) gets graded from those logs.
+- 2026-11-05 (integrator, Test Factory F8, for Nick's Nov 4 11:20 PM data-B call): `scripts/license_check.py` runs in
+  CI (graders job). Any JSON ledger in docs/datasources, and any pack manifest or grades.json passed to it, must give
+  every source row a license line. A source classed `restrictive` in `docs/datasources/terms.json` (ESPN, hoopR, NHL
+  api-web and shifts, Statcast, StatsBomb) needs the tag "personal-use, not for commercial release". Unclassified sources
+  WARN until the scouts classify them (`--strict` fails them). Grader freeze v12.
