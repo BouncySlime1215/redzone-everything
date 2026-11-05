@@ -107,45 +107,12 @@ class Delay:
     # [auto sync] the per-channel predictor's own figure, kept while a synced filter overrides mu/sigma
     base: tuple | None = None
 
-    # [self-calibrating doubt] the app's measured error (NoiseCal), when it has enough residuals; never widens
-    cal_sigma: float | None = None
-
     def current_sigma(self, now: float) -> float:
         if self.calibrated_at is None:
-            model = self.sigma
-        else:
-            # Stream delay is stable unless the stream buffers (see buffered()); doubt grows slowly.
-            model = self.sigma + min(self.drift_cap, max(0.0, now - self.calibrated_at) / 900.0)
-        return model if self.cal_sigma is None else min(model, self.cal_sigma)
-
-
-class NoiseCal:
-    """[self-calibrating doubt] How wrong a fresh tune's delay really is, learned from the filter's own
-    innovations, so it works live without ground truth. The first anchor after each tune is compared
-    with the delay the app was using: residual r = z - mu = (true error) + (anchor noise, sd R). Then
-    E[r^2] - R^2 is the app's real squared error, mean included. The stated doubt is the 95 % upper
-    bound of that (chi-square on n residuals), floored at min_sigma_s, and only once n >= min_n. It
-    persists across nights (the pool lives as long as the object), so a night starts from the last."""
-
-    def __init__(self, min_n: int = 20, min_sigma_s: float = 2.0, keep: int = 400):
-        self.min_n, self.min_sigma_s, self.keep = int(min_n), float(min_sigma_s), int(keep)
-        self.pool: dict[str, deque] = {}       # app -> (r, R)
-
-    def add(self, app: str, r: float, anchor_sd: float) -> None:
-        self.pool.setdefault(app, deque(maxlen=self.keep)).append((float(r), float(anchor_sd)))
-
-    def sigma(self, app: str) -> float | None:
-        rows = self.pool.get(app) or ()
-        n = len(rows)
-        if n < self.min_n:
-            return None
-        ms = sum(r * r for r, _ in rows) / n
-        noise = sum(sd * sd for _, sd in rows) / n
-        # one-sided 95 % upper bound on E[r^2] (Wilson-Hilferty chi-square quantile, n dof)
-        z = 1.645
-        lo_q = n * (1 - 2 / (9 * n) - z * (2 / (9 * n)) ** 0.5) ** 3
-        upper = ms * n / max(1e-9, lo_q)
-        return max(self.min_sigma_s, math.sqrt(max(0.0, upper - noise)))
+            return self.sigma
+        # Stream delay is stable unless the stream buffers (see buffered()); doubt grows slowly.
+        drift = min(self.drift_cap, max(0.0, now - self.calibrated_at) / 900.0)
+        return self.sigma + drift
 
 
 def _estimate(taps: list[tuple[float, float]], now: float) -> tuple[float, float, float]:
@@ -190,8 +157,6 @@ class DelayBook:
         self.sync = None                                         # [auto sync] SyncBook, see attach_sync
         self.held: dict[str, float] = {}                         # [time-shift buffer] target -> s held behind live
         self._sync_floor = MIN_TAP_SIGMA_S
-        self.cal: NoiseCal | None = None                         # [self-calibrating doubt] see attach_cal
-        self._fresh: set[str] = set()                            # tuned, no anchor yet since
 
     @staticmethod
     def app(target: str) -> str:
@@ -213,8 +178,6 @@ class DelayBook:
     def get(self, target: str) -> Delay:
         if target not in self.book:
             self.book[target] = Delay(self._defaults.get(self.app(target), 40.0), self._sigma_default)
-            if self.cal is not None:
-                self.book[target].cal_sigma = self.cal.sigma(self.app(target))
             self._refresh(target)
         return self.book[target]
 
@@ -239,28 +202,8 @@ class DelayBook:
 
     def tuned(self, target: str) -> None:
         """A new tune or a seek on this channel: its filter re-syncs (no-op without sync)."""
-        self._fresh.add(target)
         if self.sync is not None:
             self.sync.tuned(target)
-
-    def attach_cal(self, cal: "NoiseCal") -> "NoiseCal":
-        """[self-calibrating doubt] Learn the real error from anchor innovations (NoiseCal)."""
-        self.cal = cal
-        for t, d in self.book.items():
-            d.cal_sigma = cal.sigma(self.app(t))
-        return cal
-
-    def anchor(self, target: str, z: float, kind: str, t: float, sd: float) -> bool:
-        """An absolute delay sample (a break anchor): its innovation feeds NoiseCal (first one after a
-        tune only: the error of the delay a fresh tune starts from), then the filter."""
-        if self.cal is not None and target in self._fresh:
-            self._fresh.discard(target)
-            self.cal.add(self.app(target), z - self.get(target).mu, sd)
-            c = self.cal.sigma(self.app(target))
-            for tt, d in self.book.items():
-                if self.app(tt) == self.app(target):
-                    d.cal_sigma = c
-        return bool(self.sync.measure(target, z, kind, t, sd)) if self.sync is not None else False
 
     def _refresh(self, target: str) -> None:
         d = self.book[target]
@@ -605,7 +548,6 @@ class Timeline:
         # Break-length hints for planning break visits (Decider only; no leave gate reads these).
         self.break_kind = ""                  # ESPN kind of the play that started the current break
         self.period_timeouts: int | None = None  # timeouts this period so far; None = joined mid-period
-        self.live = None                      # [noggin PICK] pick.LiveGame when noggin.pick is on (or shadow)
 
     def lag_est(self) -> float:
         """How far behind real life this game's feed runs (recent worst case)."""
@@ -631,9 +573,6 @@ class Timeline:
         if g.last_play and plays and plays[-1].id != g.last_play.id:
             plays.append(g.last_play)
         new = [p for p in plays if p.id and p.id not in self._seen_ids]
-        if self.live is not None:
-            self.live.matchup = g.matchup or self.live.matchup
-            self.live.add(plays)
         first_poll = not self._seen_ids
         action = [p for p in new if not _is_marker(p.kind, self.league)]
         scorers = [p for p in new if p.scoring]

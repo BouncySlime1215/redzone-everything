@@ -9,8 +9,9 @@ is NFL / NBA / NHL only); owner: lane 1 (Noggin training).
 
 Data gate (Nick's A/B call, #202 catalog): the moment builder (build_moments_kaggle.py) pulls ESPN's site API,
 which the catalog rates red for training (Disney ToU). This script refuses to run that builder unless
-RZ_DATA_PLAN=B, the value it takes once Nick picks plan B and decisions.md says so. Plan A (EXP-102) needs the
-green moment builder (nflverse / NBA.com cdn), which is not built yet; it refuses that too until it exists.
+RZ_DATA_PLAN=B, the value it takes once Nick picks plan B and decisions.md says so. Plan A (EXP-102,
+RZ_DATA_PLAN=A, --source green) reads the archive scripts/green_summaries.py writes from nflverse NFL and NBA.com cdn
+NBA (RZ_BUILD_ARCHIVE); it refuses any other league.
 
 1. Moments: build_moments_kaggle.py --leagues ... (its time split by whole night; locked >= 25% per league; locked
    games are never downloaded, asserted there).
@@ -19,8 +20,8 @@ green moment builder (nflverse / NBA.com cdn), which is not built yet; it refuse
    against real outcomes. No valid, test or locked row is ever asked.
 3. Teacher: run_teacher.py (Qwen3-32B-AWQ on vLLM, falling back to 14B), resumable from teacher_out.jsonl.
 4. Grades (printed + grades.json): answered share and valid-JSON share per league (bar: >= 90% answered, >= 99%
-   valid), and per league the blind lock accuracy against the hindsight target beside "today" (the rules), with
-   counts. Agreement with any student is not a line here (grading rule 3).
+   valid), and per league the blind lock accuracy against the hindsight target beside the fast head's (out of fold,
+   cuts fitted on the other sampled train rows) and "today"'s (None while briefs carry no brain line), with counts. Agreement with any student is not a line here (grading rule 3).
 """
 from __future__ import annotations
 
@@ -39,6 +40,7 @@ sys.path.insert(0, str(ROOT))
 
 SEED = 7
 BLIND_EVERY = 8           # every 8th sampled train row is also asked blind (the real-outcome grade)
+GREEN_LEAGUES = {"nfl", "nba"}   # scripts/green_summaries.py (nflverse, NBA.com cdn)
 PER_LEAGUE = 6000         # grounded requests per league, at most (the 32B answers ~25-40/min on one A100)
 
 
@@ -46,12 +48,15 @@ class DataGate(SystemExit):
     pass
 
 
-def gate(plan: str, source: str) -> None:
+def gate(plan: str, source: str, archive: str = "") -> None:
     if source == "espn" and plan != "B":
         raise DataGate("the ESPN moment builder is red in the #202 catalog: set RZ_DATA_PLAN=B only after Nick picks "
                        "plan B (decisions.md); plan A uses --source green")
     if source == "green":
-        raise DataGate("--source green needs the green moment builder (EXP-102), which is not built yet")
+        if plan != "A":
+            raise DataGate("--source green is the plan A path (EXP-102): set RZ_DATA_PLAN=A only after Nick picks plan A")
+        if not archive:
+            raise DataGate("--source green reads the archive scripts/green_summaries.py writes: set RZ_BUILD_ARCHIVE")
 
 
 def read_rows(moments: Path, league: str, split: str) -> list[dict]:
@@ -62,26 +67,26 @@ def read_rows(moments: Path, league: str, split: str) -> list[dict]:
         return [json.loads(x) for x in f if x.strip()]
 
 
-def queue(moments: Path, leagues: list[str], system: str, per_league: int = PER_LEAGUE) -> tuple[list, list]:
-    """(requests, blind_rows): TRAIN rows only; the blind sample is graded against its hindsight target."""
+def queue(moments: Path, leagues: list[str], system: str, per_league: int = PER_LEAGUE) -> tuple[list, list, list]:
+    """(requests, blind_rows, fit_rows): TRAIN rows only. The blind sample is graded against its hindsight target;
+    the rest of the sampled rows (never asked blind) fit "today"'s per-league cuts, as valid rows do in compare."""
     from agent.distill.teacher import reasoner_requests
     rng = random.Random(SEED)
-    reqs, blind_rows = [], []
+    reqs, blind_rows, fit_rows = [], [], []
     for lg in leagues:
         rows = [r for r in read_rows(moments, lg, "train") if r.get("split") == "train"]
         rng.shuffle(rows)
         rows = rows[:per_league]
         for i, r in enumerate(rows):
-            if i % BLIND_EVERY == 0:
-                blind_rows.append(r)
+            (blind_rows if i % BLIND_EVERY == 0 else fit_rows).append(r)
         reqs += reasoner_requests(rows, system, grounded_splits=("train",), blind_splits=())
         reqs += reasoner_requests([{**r, "split": "test"} for r in rows[::BLIND_EVERY]], system,
                                   grounded_splits=(), blind_splits=("test",))
     assert all(r.get("split") == "train" for r in blind_rows), "only train nights are ever asked"
-    return reqs, blind_rows
+    return reqs, blind_rows, fit_rows
 
 
-def grades(reqs: list[dict], answers: list[dict], blind_rows: list[dict]) -> dict:
+def grades(reqs: list[dict], answers: list[dict], blind_rows: list[dict], fit_rows: list[dict] = ()) -> dict:
     from agent.distill import evaluate
     from agent.distill.teacher import extract_json, index_answers
     by_id = {a["id"]: a for a in answers}
@@ -94,11 +99,13 @@ def grades(reqs: list[dict], answers: list[dict], blind_rows: list[dict]) -> dic
                                  "answered_pct": round(100 * len(got) / max(1, len(mine)), 1),
                                  "valid_json_pct": round(100 * len(ok) / max(1, len(got)), 1)}
     t = index_answers(a for a in answers if a.get("task") == "reasoner_blind")
-    rows = [{**r, "split": "test"} for r in blind_rows]
+    rows = [{**r, "split": "test"} for r in blind_rows] + [{**r, "split": "valid"} for r in fit_rows]
     if t and rows:
-        res = evaluate.compare(rows, {"today": None, "teacher": t})
+        # "today" reads the brain line, which round 2's briefs leave out (no brain leak), so it is None by design;
+        # "head" is the fast head's out-of-fold odds on those nights: the baseline the Teacher must beat
+        res = evaluate.compare(rows, {"today": None, "head": None, "teacher": t})
         for lg, v in out["per_league"].items():
-            for src in ("today", "teacher"):
+            for src in ("today", "head", "teacher"):
                 s = (res.get(src) or {}).get(lg) or {}
                 v[f"blind_lock_acc_{src}"] = s.get("lock_acc")
                 v[f"blind_n_{src}"] = s.get("n")
@@ -119,7 +126,11 @@ def main(argv=None) -> int:
     ap.add_argument("--exp", default="EXP-086")
     ap.add_argument("--system", type=Path, default=None, help="the pack's data/reasoner/system.txt")
     a = ap.parse_args(argv)
-    gate(os.environ.get("RZ_DATA_PLAN", ""), a.source)
+    gate(os.environ.get("RZ_DATA_PLAN", ""), a.source, os.environ.get("RZ_BUILD_ARCHIVE", ""))
+    if a.source == "green":
+        bad = set(a.leagues) - GREEN_LEAGUES
+        if bad:
+            raise DataGate(f"no green moment source for {sorted(bad)} yet (green: {sorted(GREEN_LEAGUES)})")
     t0 = time.time()
     a.out.mkdir(parents=True, exist_ok=True)
     moments = a.out / "moments"
@@ -131,7 +142,7 @@ def main(argv=None) -> int:
                        cwd=ROOT, env=env, check=True)
     from agent.distill.teacher import STUDENT_SYSTEM
     system = a.system.read_text() if a.system and a.system.exists() else STUDENT_SYSTEM
-    reqs, blind_rows = queue(moments, a.leagues, system, a.per_league)
+    reqs, blind_rows, fit_rows = queue(moments, a.leagues, system, a.per_league)
     rq = a.out / "teacher_requests.jsonl"
     with open(rq, "w") as f:
         for r in reqs:
@@ -146,7 +157,7 @@ def main(argv=None) -> int:
     g = {"exp": a.exp, "seed": SEED, "leagues": a.leagues, "source": a.source,
          "data_plan": os.environ.get("RZ_DATA_PLAN"), "code_pack": os.environ.get("RZ_CODE_PACK"),
          "split": "by whole night (build_moments split_plan.json); only TRAIN nights asked; locked never downloaded",
-         **grades(reqs, answers, blind_rows), "wall_h": round((time.time() - t0) / 3600, 2)}
+         **grades(reqs, answers, blind_rows, fit_rows), "wall_h": round((time.time() - t0) / 3600, 2)}
     (a.out / "grades.json").write_text(json.dumps(g, indent=1))
     print("===== grades.json =====")
     print(json.dumps(g, indent=1))

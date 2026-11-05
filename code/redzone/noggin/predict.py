@@ -15,10 +15,9 @@ from pathlib import Path
 import numpy as np
 
 from redzone.noggin.features import PREDICT_FEATURES, PREDICT_HORIZONS
-from redzone.models_rt.forest import MODEL_DIRS, load_npz
 from redzone.noggin.timing import Forest
 
-MODEL_DIR = MODEL_DIRS["noggin"]
+MODEL_DIR = Path(__file__).resolve().parent / "models"
 _ARRAYS = ("feat", "thr", "left", "right", "dleft", "miss", "value", "roots")
 
 
@@ -55,7 +54,10 @@ class PredictModel:
 
 
 def load(path: Path) -> PredictModel:
-    z, meta = load_npz(path, PREDICT_FEATURES)   # [one brain] the one loader (models_rt.forest)
+    z = np.load(path)
+    meta = json.loads(bytes(z["meta"]).decode())
+    if meta.get("features") != list(PREDICT_FEATURES):
+        raise ValueError(f"{path}: features {meta.get('features')} != {list(PREDICT_FEATURES)}")
     forests, iso = {}, {}
     for hz in meta["horizons"]:
         arrays = {a: z[f"h{hz}_{a}"] for a in _ARRAYS}

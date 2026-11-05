@@ -15,13 +15,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from redzone.decider.screen import CONTINUOUS, _is_marker
-from redzone.lab import cutgrade, leverage
-from redzone.lab.backtest import (CATCHUP_2_S, CATCHUP_3_S, CATCHUP_S, lag_of, leave_offsets, offsets_of, on_screen, replayed_by,
+from redzone.lab import cutgrade
+from redzone.lab.backtest import (CATCHUP_S, lag_of, leave_offsets, offsets_of, on_screen, replayed_by,
                                   tuning_blackout_seconds, watched_whole)
-from redzone.grading import PLAY_LEN, RESUME_LEAD, is_big, is_crunch  # noqa: F401  [one brain] moved, step 3
-from redzone.grading import marker as _marker, play_clock as _clock, play_type as _type  # noqa: F401
 from redzone.models import REAL_BREAKS, League, Stoppage
 from redzone.sources import espn
+
+PLAY_LEN = {League.NFL: 7.0, League.MLB: 6.0, League.NBA: 0.0, League.NHL: 0.0}
+RESUME_LEAD = {League.NBA: 26.0, League.NHL: 5.0}   # play can restart this long before the next logged action
 
 
 @dataclass
@@ -32,16 +33,12 @@ class Card:
     switches: int = 0
     replays: int = 0
     cuts: list = field(default_factory=list)
-    cuts_high: list = field(default_factory=list)   # the mid-play leaves at a high-leverage moment (leverage.py)
     big: int = 0
     big_live: int = 0
     big_seen: int = 0
     big_seen_10m: int = 0      # live, or replayed within backtest.CATCHUP_S of airing
     my_big: int = 0
     my_big_seen_10m: int = 0
-    big_seen_3m: int = 0       # live, or replayed within backtest.CATCHUP_3_S (the gate)
-    big_seen_2m: int = 0       # ...within CATCHUP_2_S (stretch)
-    my_big_seen_3m: int = 0
     crunch_on_replay: int = 0  # crunch plays that aired while a catch-up replay was on screen
     crunch: int = 0
     crunch_live: int = 0
@@ -66,7 +63,7 @@ class Card:
 
     def summary(self) -> dict:
         pct = lambda a, b: round(100 * a / max(1, b), 1)
-        return {"league": self.league, "games": self.games, "mid_play_cuts": len(self.cuts), "mid_play_cuts_high": len(self.cuts_high),
+        return {"league": self.league, "games": self.games, "mid_play_cuts": len(self.cuts),
                 "dead_air_pct": pct(self.dead, self.watched), "big_seen_pct": pct(self.big_seen, self.big),
                 "big_live_pct": pct(self.big_live, self.big), "crunch_live_pct": pct(self.crunch_live, self.crunch),
                 "your_team_crunch_live_pct": pct(self.my_crunch_live, self.my_crunch),
@@ -82,6 +79,60 @@ class Card:
                     "pp_goals_live_pct": pct(self.pp_goals_live, self.pp_goals),
                     "pp_goals": self.pp_goals} if self.league == League.NHL.value else {}),
                 **self.cut.summary()}
+
+
+def _type(p: dict) -> str:
+    if (espn._get(p, "alternativeType", "type") == "lineup-change"
+            or (espn._get(p, "alternativeType", "text") or "").lower() == "lineup change"):
+        return "lineup_change"
+    return (espn._get(p, "type", "text") or "").lower()
+
+
+def _clock(league: League, p: dict) -> float | None:
+    c = espn._clock_s(espn._get(p, "clock", "displayValue"))
+    if c is not None and league == League.NHL:
+        per = espn._int(espn._get(p, "period", "number")) or 1
+        c = max(0.0, (300 if per >= 4 else 1200) - c)
+    return c
+
+
+def is_big(league: League, p: dict, prev: dict | None) -> bool:
+    t = _type(p)
+    if league == League.NFL:
+        return bool(p.get("scoringPlay")) or "interception" in t or "fumble recovery (opponent)" in t \
+            or bool(p.get("isTurnover"))
+    if league == League.NHL:
+        return t == "goal" or bool(p.get("scoringPlay"))
+    if league == League.MLB:
+        return bool(p.get("scoringPlay")) or "home run" in t
+    if league == League.NBA:
+        if not p.get("scoringPlay") or "free throw" in t:
+            return False
+        per = espn._int(espn._get(p, "period", "number")) or 0
+        c = _clock(league, p)
+        if per < 4 or c is None or c > 120 or prev is None:
+            return False
+        hs, as_ = espn._int(prev.get("homeScore")), espn._int(prev.get("awayScore"))
+        return hs is not None and as_ is not None and abs(hs - as_) <= 5
+    return False
+
+
+def is_crunch(league: League, p: dict) -> bool:
+    per = espn._int(espn._get(p, "period", "number")) or 0
+    c = _clock(league, p)
+    hs, as_ = espn._int(p.get("homeScore")), espn._int(p.get("awayScore"))
+    if hs is None or as_ is None:
+        return False
+    d = abs(hs - as_)
+    if league == League.NFL:
+        return per >= 5 or (per == 4 and c is not None and c <= 120 and d <= 8)
+    if league == League.NBA:
+        return per >= 5 or (per == 4 and c is not None and c <= 120 and d <= 5)
+    if league == League.NHL:
+        return per >= 4 or (per == 3 and c is not None and c <= 120 and d <= 1)
+    if league == League.MLB:
+        return per >= 8 and d <= 2
+    return False
 
 
 def power_play_after(league: League, plays: list[dict]) -> list[bool]:
@@ -103,6 +154,11 @@ def power_play_after(league: League, plays: list[dict]) -> list[bool]:
 
 def is_pp_goal(league: League, p: dict) -> bool:
     return league == League.NHL and _type(p) == "goal" and espn._get(p, "strength", "abbreviation") == "power-play"
+
+
+def _marker(t: str) -> bool:
+    return any(k in t for k in ("timeout", "end ", "end of", "two-minute", "coin toss", "period start",
+                                "start inning", "start batter", "end batter", "end inning", "lineup_change"))
 
 
 def _on_screen(watching: list[tuple[float, str]], t: float, tune_s: float) -> str | None:
@@ -170,13 +226,9 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
         r = by_id.get(s.frm or "")
         if r is None or was_replay:
             continue
-        screen_t = s.t - lag_of(lag_total, r.gid) - lo
-        ok, what = _clean_cut(league, r.wall, r.plays, screen_t)
+        ok, what = _clean_cut(league, r.wall, r.plays, s.t - lag_of(lag_total, r.gid) - lo)
         if not ok:
             card.cuts.append((s.t, f"{r.matchup}: {what}"))
-            at = max((k for k, w in enumerate(r.wall) if w <= screen_t), default=0)
-            if leverage.high_leverage(league, r.plays[at] if r.plays else None):
-                card.cuts_high.append((s.t, f"{r.matchup}: {what}"))
 
     replayed = replayed or set()
     for r in replays:
@@ -195,13 +247,9 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
                 card.big_seen += on or (r.gid, round(w)) in replayed
                 soon = on or replayed_by(replayed, (r.gid, round(w)), w + lag + CATCHUP_S)
                 card.big_seen_10m += soon
-                soon3 = on or replayed_by(replayed, (r.gid, round(w)), w + lag + CATCHUP_3_S)
-                card.big_seen_3m += soon3
-                card.big_seen_2m += on or replayed_by(replayed, (r.gid, round(w)), w + lag + CATCHUP_2_S)
                 if mine:
                     card.my_big += 1
                     card.my_big_seen_10m += soon
-                    card.my_big_seen_3m += soon3
             t = _type(p)
             if is_crunch(league, p) and not _marker(t):
                 card.crunch += 1

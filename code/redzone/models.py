@@ -30,25 +30,6 @@ class League(str, Enum):
 
 
 _BASE = {League.CBB: League.NBA, League.WCBB: League.NBA, League.CFB: League.NFL}
-
-# [one brain, step 1] THE league order (North Star: NFL > CFB > NBA > CBB > NHL > MLB; Nick, Nov 3:
-# overlapping crunch times, first listed wins after your team / bet). Every ranking reads it through
-# league_order(cfg), which honours the config key core.league_priority. Never copy it.
-LEAGUE_ORDER: tuple[League, ...] = (League.NFL, League.CFB, League.NBA, League.CBB, League.WCBB,
-                                    League.NHL, League.MLB)
-
-
-def league_order(cfg=None) -> tuple[str, ...]:
-    """League values, first = highest priority: core.league_priority when set, else LEAGUE_ORDER."""
-    got = cfg.get("core.league_priority") if cfg is not None else None
-    return tuple(str(x).lower() for x in got) if got else tuple(lg.value for lg in LEAGUE_ORDER)
-
-
-def league_index(league, cfg=None, order: tuple[str, ...] | None = None) -> int:
-    """0 = first in the league order; an unlisted league comes after every listed one."""
-    lp = order if order is not None else league_order(cfg)
-    v = getattr(league, "value", league)
-    return lp.index(v) if v in lp else len(lp)
 # Periods in regulation and seconds per period (MLB: innings, untimed).
 REGULATION = {League.NFL: 4, League.NBA: 4, League.NHL: 3, League.MLB: 9,
               League.CBB: 2, League.WCBB: 4, League.CFB: 4}
@@ -208,7 +189,6 @@ class GameState:
     odds_text: str = ""             # "SEA -3 · O/U 46.5"
     leaders: list[dict] = field(default_factory=list)   # top performers: label, name, short, headshot, stat, team
     spotlight: dict | None = None   # player in the latest big play: name, short, headshot, team, text
-    stakes: object | None = None    # scoring.postseason.Stakes: series / round / ranks (None = nothing to say)
     venue_info: dict = field(default_factory=dict)      # id, name, city, image, indoor
     last_play: Play | None = None
     recent_plays: list[Play] = field(default_factory=list)

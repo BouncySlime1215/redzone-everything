@@ -21,7 +21,6 @@ from pathlib import Path
 
 import numpy as np
 
-from redzone.models_rt.forest import MODEL_DIRS, Nodes, load_npz
 from redzone.noggin.features import FEATURES
 
 BIN_S = 5.0
@@ -29,7 +28,7 @@ HORIZON_BINS = 72            # 6 minutes of bins; past it the last hazard repeat
 ALPHA = 0.02                 # P(restart before the lower bound) target
 E_BUCKETS = (0.0, 15.0, 45.0, 90.0, 150.0, 1e9)   # conformal groups by elapsed time
 MODEL_FEATURES = FEATURES + ("elapsed",)
-MODEL_DIR = MODEL_DIRS["noggin"]
+MODEL_DIR = Path(__file__).resolve().parent / "models"
 
 
 # ---------------------------------------------------------------- training rows
@@ -51,18 +50,35 @@ def expand(t, max_bins: int = HORIZON_BINS):
 # ---------------------------------------------------------------- numpy forest (batched)
 
 class Forest:
-    """A flattened LightGBM ensemble walked in batches (models_rt.forest.Nodes, the one walker)."""
-
     def __init__(self, arrays: dict, meta: dict):
-        self.nodes = Nodes(arrays, int(meta["depth"]))
-        n = self.nodes
-        self.feat, self.thr, self.left, self.right, self.dleft = n.feat, n.thr, n.left, n.right, n.dleft
-        self.miss, self.value, self.roots, self.depth = n.miss, n.value, n.roots, n.depth
+        self.feat = arrays["feat"].astype(np.int64)
+        self.thr = arrays["thr"].astype(np.float64)
+        self.left = arrays["left"].astype(np.int64)
+        self.right = arrays["right"].astype(np.int64)
+        self.dleft = arrays["dleft"].astype(bool)
+        self.miss = arrays["miss"].astype(np.int8)
+        self.value = arrays["value"].astype(np.float64)
+        self.roots = arrays["roots"].astype(np.int64)
+        self.depth = int(meta["depth"])
         self.init = float(meta.get("init", 0.0))
+        self.miss_zero, self.miss_nan = self.miss == 1, self.miss == 2
 
     def raw(self, X: np.ndarray) -> np.ndarray:
         """X (n, F) -> raw margin (n,). Same split rules as LightGBM (float32 features)."""
-        return self.value[self.nodes.leaves_batch(X)].sum(axis=1) + self.init
+        X = np.asarray(X, dtype=np.float32).astype(np.float64)
+        n = len(X)
+        idx = np.broadcast_to(self.roots, (n, len(self.roots))).copy()
+        rows = np.arange(n)[:, None]
+        for _ in range(self.depth):
+            f = self.feat[idx]
+            v = X[rows, f]
+            nan = np.isnan(v)
+            mn = self.miss_nan[idx]
+            v = np.where(nan & ~mn, 0.0, v)
+            to_default = (self.miss_zero[idx] & (np.abs(v) <= 1e-35)) | (mn & nan)
+            go_left = np.where(to_default, self.dleft[idx], v <= self.thr[idx])
+            idx = np.where(go_left, self.left[idx], self.right[idx])
+        return self.value[idx].sum(axis=1) + self.init
 
 
 def flatten_lgb(booster) -> tuple[dict, dict]:
@@ -159,7 +175,9 @@ def bucket(e0: float) -> int:
 
 
 def load(path: Path) -> TimingModel:
-    arrays, meta = load_npz(path)
+    with np.load(path, allow_pickle=False) as z:
+        meta = json.loads(bytes(z["meta"]).decode())
+        arrays = {k: z[k] for k in z.files if k != "meta"}
     if tuple(meta["features"]) != MODEL_FEATURES:
         raise ValueError(f"feature mismatch in {path}")
     m = TimingModel(meta["league"], Forest(arrays, meta), list(meta["offsets"]), float(meta["alpha"]),

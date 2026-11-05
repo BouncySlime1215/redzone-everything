@@ -119,10 +119,8 @@ def _delay(book: Any, target: str | None) -> dict | None:
 
 def build(d: Any, before: str | None, target: str | None, out: Any, submitted_at: float, *,
           delays: Any = None, before_target: str | None = None, labels: dict | None = None,
-          from_replay: bool = False, now: float | None = None, provenance: dict | None = None) -> dict:
-    """The trace for one finished switch (any outcome, dry runs included). `provenance` is
-    {module: what it contributed} (Engine._provenance + Outcome.provenance): the phone's Trace sheet
-    reads it from switches.detail.trace.provenance."""
+          from_replay: bool = False, now: float | None = None) -> dict:
+    """The trace for one finished switch (any outcome, dry runs included)."""
     now = time.time() if now is None else now
     marks = [(str(n), float(t)) for n, t in (getattr(out, "marks", None) or [])]
     decided = float(getattr(d, "at", None) or submitted_at)
@@ -174,7 +172,6 @@ def build(d: Any, before: str | None, target: str | None, out: Any, submitted_at
         "steps": [[n, _r(t - decided)] for n, t in marks],
         "leave_delay": _delay(delays, before_target),
         "enter_delay": _delay(delays, target),
-        "provenance": dict(provenance or {}),
     }
     rec["stages"] = [[e.stage.value, _r(e.at)] for e in events(rec)]
     return rec

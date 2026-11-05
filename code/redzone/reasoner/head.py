@@ -16,12 +16,11 @@ import logging
 from pathlib import Path
 
 from redzone.reasoner import brief
-from redzone.models_rt.forest import MODEL_DIRS
 from redzone.scoring.brain import Trees, load
 
 log = logging.getLogger(__name__)
 
-MODEL_DIR = MODEL_DIRS["reasoner"]
+MODEL_DIR = Path(__file__).resolve().parent / "models"
 LEVELS = ("none", "watch", "must_see")
 
 

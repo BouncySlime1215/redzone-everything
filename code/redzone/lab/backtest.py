@@ -14,7 +14,6 @@ Report card (what "good" means):
 from __future__ import annotations
 
 import json
-import math
 import random
 import zlib
 from dataclasses import dataclass, field
@@ -28,11 +27,9 @@ from redzone.channels import REDZONE_TARGET, redzone_on
 from redzone.config import Config
 from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode
 from redzone.decider.screen import DelayBook
-from redzone.grading import Lags, SwitchLog, idx as _bisect, lag_of  # noqa: F401  [one brain] moved, step 3
 from redzone.models import REAL_BREAKS, League, Phase
 from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal
-from redzone.lab import leverage
 from redzone.sources import espn
 
 ET = ZoneInfo("America/New_York")
@@ -82,6 +79,16 @@ class Replay:
 
 
 @dataclass
+class SwitchLog:
+    t: float
+    frm: str | None
+    to: str
+    kind: str
+    reason: str
+    offset: float = 0.0   # [cut timing] the picture came up this far behind live (a rewind on entry)
+
+
+@dataclass
 class Report:
     switches: list[SwitchLog]
     mid_play_cuts: list[tuple[float, str]]
@@ -94,7 +101,6 @@ class Report:
     hours: float
     missed: list[tuple[float, str, str]]
     decisions: list = field(default_factory=list)
-    sync_honesty: dict = field(default_factory=dict)   # [auto-anchors] honesty_summary of the on-screen delay
     big_plays_caught: int = 0
     crunch: int = 0
     crunch_live: int = 0
@@ -108,21 +114,16 @@ class Report:
     big_missed_on_replay: int = 0    # big plays that aired (anywhere) while we sat on a replay
     big_seen_10m: int = 0            # big plays seen live or replayed within CATCHUP_S of airing
     my_big_seen_10m: int = 0         # ...of your team's
-    big_seen_3m: int = 0             # live or replayed within CATCHUP_3_S (the gate, Nick Nov 4 11:00 AM)
-    big_seen_2m: int = 0             # ...within CATCHUP_2_S (stretch)
-    my_big_seen_3m: int = 0          # your team's, within CATCHUP_3_S
     crunch_on_replay: int = 0        # crunch plays that aired while a catch-up replay was on screen
     drive_plays: int = 0             # NFL scrimmage plays on drives that scored or reached the red zone
     drive_plays_live: int = 0        # ...of those, watched live start to finish
     drive_plays_other_sport: int = 0  # ...of those, missed while another sport was on screen
     drive_plays_on_redzone: int = 0  # ...of those, aired while the RedZone channel was on (it may have shown them)
-    mid_play_cuts_high: list = field(default_factory=list)   # mid-play leaves at a high-leverage moment
 
     @property
     def summary(self) -> dict:
         return {
             "mid_play_cuts": len(self.mid_play_cuts),
-            "mid_play_cuts_high": len(self.mid_play_cuts_high),
             "big_plays_seen": f"{self.big_plays_caught}/{self.big_plays}"
                               f" ({100 * self.big_plays_caught / max(1, self.big_plays):.0f}%)",
             "big_plays_live": f"{self.big_plays_live}/{self.big_plays}"
@@ -149,9 +150,6 @@ class Report:
 
 
 CATCHUP_S = 600.0   # "seen" for the reel gate: live, or replayed within 10 min of airing (Nick, Nov 4)
-# Nick, Nov 4 11:00 AM: the replay window is 2-3 MINUTES max. 3 min is the gate, 2 min the stretch row.
-CATCHUP_3_S = 180.0
-CATCHUP_2_S = 120.0
 
 
 def replayed_by(replayed, key, deadline: float) -> bool:
@@ -182,6 +180,19 @@ class _Feed:
 
 
 
+class Lags(float):
+    """Real life -> your screen: one figure (every channel alike), with per-game overrides when the
+    channels run different delays (the per-channel delay scenario). Behaves as the plain float."""
+
+    def __new__(cls, default: float, per: dict[str, float] | None = None):
+        x = super().__new__(cls, default)
+        x.per = dict(per or {})
+        return x
+
+    def of(self, gid: str | None) -> float:
+        return self.per.get(gid or "", float(self))
+
+
 SCREEN_LAG_S = 43.0   # run()'s default real life -> screen (feed_lag 8 + delay 35)
 
 
@@ -206,6 +217,11 @@ def feed_lag_knobs(feed_lag: float | None, behind_live: float | None = None,
     if behind_live is None:
         return {"feed_lag": fl, "delay": SCREEN_LAG_S - fl}
     return {"feed_lag": fl, "delay": stream_delay + float(behind_live) - fl, "calibrate_targets": True}
+
+
+def lag_of(lag: float, gid: str | None) -> float:
+    """This game's real-life -> screen lag (the plain figure when channels don't differ)."""
+    return lag.of(gid) if isinstance(lag, Lags) else lag
 
 
 def channel_scenario(replays, targets, feed_lag: float, delay: float, spread: float, history: float,
@@ -299,10 +315,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         true_delay: float | None = None, sigma: float = 3.0, lag_jitter: tuple[float, float] | None = None,
         drop: float = 0.0, late_plays: float = 0.0, no_wallclock: float = 0.0, seed: int = 0,
         channel_spread: float = 0.0, history: float = 0.0, delay_model: str | None = None,
-        resync: bool = False, anchors: bool = False, tune_jitter_s: float = 0.0, flip_dist: bool = False, positions: bool = False,
-        pretune_dist: bool = False, real_seek: bool = False,
-        feed_lag_model: str | None = None,
-        calibrate_targets: bool = False,
+        resync: bool = False, feed_lag_model: str | None = None, calibrate_targets: bool = False,
         on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
@@ -324,22 +337,6 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
                     seeded). Channels off screen keep their last figure and age the way live ages them
                     (sigma floored at delay.sync.min_sigma_s, doubt growing to the settled cap, stale
                     after 30 min). Without it, every channel keeps the kickoff calibration.
-      anchors       [auto-anchors, needs sync.break_anchor.enabled] the filter is attached as live
-                    attaches it and fed ONLY what live can feed it today: each ad break on the screen of
-                    the game you're watching, matched to the feed's dead ball (engine._break_event). The
-                    true whistle -> ad-on-screen gap is drawn per break (sync.break_anchor.true_gap_s /
-                    true_gap_sd_s, default = the config prior: an assumption until the Wednesday probe
-                    data). Every on-screen second is graded for honesty (Report.sync_honesty).
-      positions     [yttv position] with anchors: the stick on screen reports its playback position
-      flip_dist     [live lab] each picture comes up with the measured TV flip's spread around tune_s
-      pretune_dist  [live lab] ...or a cold hidden-stick pre-tune (4K Plus / 4K 2023 in turn) + flip + settle
-      real_seek     [seek model] an entry rewind is done the way YouTube TV really seeks (YTTV_SEEK: 15 s
-                    steps, first press swallowed, a 2-4 s stall) from the presses control.py SENDS for
-                    the configured replay.seek_* model; a pause cue (decision.cue) lands where planned
-                    but flips later by the hidden stick's cue time (seek_cue below)
-      tune_jitter_s [auto-anchors] each tune lands U(0, S) s behind the live edge, unknown to the app (a
-                    YouTube TV tune, redzone/lab/syncsim.py: 0-6 s). Graded as a real offset of that
-                    visit, so the delay the app believes is wrong by it until something re-syncs it.
       feed_lag_model  [switch timing] "measured": each play reaches the app after a lag drawn from the
                     league's MEASURED detection lag (redzone/lab/feed_lag_profile.json, the flight
                     recorder's espn_summary rows; seeded, in order), instead of the fixed feed_lag.
@@ -385,21 +382,13 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             d.calibrated_at = t0
             d.sigma = sigma
     sync = None
-    anchors = anchors and bool(cfg.get("sync.break_anchor.enabled", False))
-    if resync or anchors:
+    if resync:
         sync = _attach_resync(delays, cfg, pinned=None if channel_spread > 0 else
                               {((targets or {}).get(r.gid, f"youtubetv:{r.gid}") if calibrate_targets
                                                           else f"youtubetv:{r.gid}"): (lag_total, sigma, t0)
                                                          for r in replays})
         tgt_of = {r.gid: (targets or {}).get(r.gid, f"youtubetv:{r.gid}") for r in replays}
         noise = random.Random(seed * 7_000_003 + 17)
-        breaks = ad_breaks(replays, lag_true, cfg, random.Random(seed * 9_000_011 + 5)) if anchors else {}
-        if anchors and cfg.get("delay.self_calibrate.enabled", False):
-            delays.attach_cal(noise_cal(cfg, replays[0].league if replays else None))
-    jitter_rng = random.Random(seed * 5_000_011 + 3)
-    flip_rng = random.Random(seed * 5_000_011 + 7)   # its own stream: the tune jitter draws stay the same
-    seek_rng = random.Random(seed * 5_000_011 + 13)  # [seek model] stalls and pause errors, own stream
-    honesty: list[tuple[float, float]] = []   # (error of the delay used, its sigma), each on-screen tick
     sampler = None
     if feed_lag_model == "measured":
         from redzone.lab.timing import LagSampler, sources_in_use
@@ -453,32 +442,9 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             on_tick(clock.t, dec)
         decision = dec.decide(cands, REDZONE_TARGET if rz_ok and redzone_on(states.values()) else None)
         decisions.append(decision)
-        n_sw = len(switches)
         _record(decision, before, clock.t, switches, watching, replayed)
-        if tune_jitter_s > 0 and len(switches) > n_sw and switches[-1].kind != "replay":
-            j = jitter_rng.uniform(0.0, tune_jitter_s)
-            switches[-1].offset += j
-            switches[-1].jitter = j
-        if (flip_dist or pretune_dist) and len(switches) > n_sw and switches[-1].kind != "replay":
-            # [live lab] the TV flip's measured spread around its median (CEC off, 30 flips, Nov 4)
-            from redzone.contracts.switching import FLIP_PRIOR, PRETUNE_PRIOR_S, sample_prior
-            flip = sample_prior(FLIP_PRIOR, flip_rng)
-            if pretune_dist:
-                # every switch a cold pre-tune on the hidden stick, the two sticks taking turns
-                # (pessimistic: a hot standby is a flip alone): pre-tune + flip + HDMI settle vs tune_s
-                stick = list(PRETUNE_PRIOR_S.values())[len(switches) % len(PRETUNE_PRIOR_S)]
-                switches[-1].arrive_dt = sample_prior(stick, flip_rng) + flip + float(cfg.get("two_stick.input_settle_s")) - tune_s
-            else:
-                switches[-1].arrive_dt = flip - FLIP_PRIOR["median"]
-        if real_seek and len(switches) > n_sw and switches[-1].kind not in ("replay", "resume", "skip"):
-            seek_cue(switches[-1], decision, cfg, seek_rng)
-        if sync is not None and resync:
+        if sync is not None:
             _resync_tick(delays, sync, decision, switches, tgt_of, lag_true, tune_s, clock.t, noise)
-        elif sync is not None:
-            _anchor_tick(delays, sync, decision, switches, tgt_of, breaks, cfg, tune_s, clock.t, step)
-            if positions:
-                _position_tick(sync, switches, tgt_of, lag_true, delays, tune_s, clock.t)
-        _honesty_tick(delays, switches, targets, lag_true, tune_s, clock.t, honesty)
         if decision.action == "replay" and decision.replay and getattr(dec, "replay_until", None) is not None:
             replay_windows.append((decision.target, round(decision.replay.t), clock.t, dec.replay_until))
         _credit_completed_replays(replay_windows, watching, clock.t, replayed)
@@ -489,7 +455,6 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     rep.decisions = decisions
     rep.replayed, rep.t0, rep.t1, rep.lag_total = replayed, t0, t1, lag_total
     rep.lag_true = lag_true
-    rep.sync_honesty = honesty_summary(honesty)
     return rep
 
 
@@ -527,150 +492,6 @@ def _resync_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict
     d = delays.get(target)
     sync.measure(target, lag_of(lag_true, last.to) + d.behind + noise.gauss(0, RESYNC_SD_S),
                  "clock", t=now, sd=RESYNC_SD_S)
-
-
-# [auto-anchors] Plays the broadcast follows with an ad break. NHL: ESPN says only "Stoppage", so the TV
-# timeouts are the first stoppage after 6:00, 10:00 and 14:00 have been played in a period.
-_AD_BREAK = ("official timeout", "full timeout", "end period", "period end", "end of half", "two-minute warning",
-             "end of regulation", "halftime")
-_NHL_TV_MARKS = (14 * 60, 10 * 60, 6 * 60)   # seconds LEFT in a 20:00 period
-
-
-def ad_breaks(replays, lag_true, cfg, rng: random.Random) -> dict[str, list[tuple[float, float]]]:
-    """game -> [(feed wallclock of the dead ball, true screen time the ad comes up)], the latter without
-    the time-shift buffer (added at match time). The gap is drawn per break."""
-    mu = float(cfg.get("sync.break_anchor.true_gap_s", cfg.get("sync.break_anchor.start_bias_s", 15.0)))
-    sd = float(cfg.get("sync.break_anchor.true_gap_sd_s", cfg.get("sync.break_anchor.bias_sd_s", 10.0)))
-    out: dict[str, list[tuple[float, float]]] = {}
-    for r in replays:
-        rows, done = [], set()
-        for w, p in zip(r.wall, r.plays):
-            t = (espn._get(p, "type", "text") or "").lower()
-            hit = any(k in t for k in _AD_BREAK)
-            if not hit and r.league == League.NHL and t == "stoppage":
-                per = espn._int(espn._get(p, "period", "number")) or 0
-                clk = espn._clock_s(espn._get(p, "clock", "displayValue"))
-                for m in _NHL_TV_MARKS:
-                    if clk is not None and clk <= m and (per, m) not in done:
-                        done.update((per, mm) for mm in _NHL_TV_MARKS if mm >= m)
-                        hit = True
-                        break
-            if hit and w:
-                gap = min(90.0, max(2.0, rng.gauss(mu, sd)))
-                rows.append((w, w + lag_of(lag_true, r.gid) + gap))
-        out[r.gid] = rows
-    return out
-
-
-_CALS: dict = {}   # [self-calibrating doubt] league -> NoiseCal, kept across the nights of one run (live: across nights)
-
-
-def noise_cal(cfg, league):
-    """The run's NoiseCal for this league: nights are run in date order, so a night only ever starts from
-    earlier nights' residuals (forward-only, like live)."""
-    from redzone.decider.screen import NoiseCal
-    key = (getattr(league, "value", league), int(cfg.get("delay.self_calibrate.min_n", 20)),
-           float(cfg.get("delay.self_calibrate.min_sigma_s", 2.0)))
-    if key not in _CALS:
-        _CALS[key] = NoiseCal(min_n=key[1], min_sigma_s=key[2])
-    return _CALS[key]
-
-
-def _anchor_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict, breaks: dict, cfg,
-                 tune_s: float, now: float, step: float) -> None:
-    """A tune re-syncs its channel (as live); an ad break that comes up on the screen of the game being
-    watched in this tick gives one anchor, matched and weighted the way engine._break_event does."""
-    if decision.action == "switch" and decision.target in tgt_of and switches and switches[-1].t == now:
-        delays.tuned(tgt_of[decision.target])
-    last = switches[-1] if switches else None
-    if last is None or last.kind == "replay" or last.to not in tgt_of:
-        return
-    target = tgt_of[last.to]
-    d = delays.get(target)
-    bias = float(cfg.get("sync.break_anchor.start_bias_s", 15.0))
-    bias_sd = float(cfg.get("sync.break_anchor.bias_sd_s", 10.0))
-    for w, ts in breaks.get(last.to, ()):
-        ts += d.behind + last.jitter
-        if now - step < ts <= now and ts - last.t >= tune_s:
-            delays.anchor(target, ts - w - bias, "break", ts, (1.0 + bias_sd * bias_sd) ** 0.5)
-
-
-def _position_tick(sync, switches: list, tgt_of: dict, lag_true, delays: DelayBook, tune_s: float,
-                   now: float) -> None:
-    """[yttv position] The stick on screen reports its playback position each tick (YouTube TV on the
-    4K Plus, live lab Nov 4): position = wall - origin - true screen delay. Exact here; the live read's
-    doubt is the clock pin (sync.POSITION_SIGMA_S). Only YouTube TV channels report it."""
-    last = switches[-1] if switches else None
-    if last is None or last.kind == "replay" or last.to not in tgt_of or now - last.t < tune_s:
-        return
-    target = tgt_of[last.to]
-    if not str(target).startswith("youtubetv"):
-        return
-    true = lag_of(lag_true, last.to) + delays.get(target).behind + last.jitter
-    sync.position(target, now - true, t=now)   # stream origin 0: any constant works
-
-
-def _honesty_tick(delays: DelayBook, switches: list, targets, lag_true, tune_s: float, now: float,
-                  out: list) -> None:
-    """The game on screen (picture up, not a replay): the delay the app uses vs the true one."""
-    last = switches[-1] if switches else None
-    if last is None or last.kind == "replay" or not last.to or now - last.t < tune_s or last.to == REDZONE:
-        return
-    d = delays.get((targets or {}).get(last.to, f"youtubetv:{last.to}"))
-    out.append((d.mu - (lag_of(lag_true, last.to) + d.behind + last.jitter), d.current_sigma(now)))
-
-
-def honesty_summary(rows: list[tuple[float, float]]) -> dict:
-    """Is the stated doubt honest (true error within 2 sigma >= 95% of on-screen ticks) and small?"""
-    if not rows:
-        return {"n": 0}
-    n = len(rows)
-    err = sorted(abs(e) for e, _ in rows)
-    sig = sorted(s for _, s in rows)
-    return {"n": n, "within_2sigma": round(sum(abs(e) <= 2 * s for e, s in rows) / n, 4),
-            "sigma_le_8": round(sum(s <= 8 for _, s in rows) / n, 4),
-            "sigma_le_3": round(sum(s <= 3 for _, s in rows) / n, 4),
-            "sigma_p50": round(sig[n // 2], 2), "err_p50": round(err[n // 2], 2),
-            "err_p95": round(err[min(n - 1, int(0.95 * n))], 2)}
-
-
-def seek_cue(sw: "SwitchLog", decision, cfg, rng) -> None:
-    """[seek model] Re-land an entry rewind the way the stick really does it (live lab, Nov 4).
-
-    seek (on screen, after the flip): control.py sends seek_model(cfg).sent(r) presses; YTTV_SEEK
-      says where that lands (15 s a press, the first swallowed, + a 2-4 s stall). The live edge shows
-      for the presses' time first (sw.flash).
-    pause (decision.cue == "pause"): on the hidden stick seek PAST the dead ball, play up to it, pause,
-      then flip and play. It lands where planned (+/- the pause error) whatever the flip costs, but the
-      flip (and leaving the old game) comes later by the cue time."""
-    from redzone.contracts.switching import YTTV_SEEK, seek_model
-    r = float(getattr(decision, "rewind_s", 0.0) or 0.0)
-    if r <= 0:
-        return
-    t = YTTV_SEEK
-    press, keys, perr = (float(cfg.get(k)) for k in ("replay.seek_press_s", "replay.pause_keys_s", "replay.pause_err_s"))
-    stall = rng.uniform(t.stall_lo, t.stall_hi)
-    if getattr(decision, "cue", "") == "pause":
-        eff = max(1, math.ceil((r + perr * 2 - t.stall_lo) / t.step - 1e-9))
-        over = eff * t.step + stall - r                       # played forward up to the dead ball
-        cue_t = press * (eff + t.swallowed) + stall + over + keys
-        err = max(-2 * perr, min(2 * perr, rng.gauss(0.0, perr)))
-        # paused content: the flip's own spread and the fresh tune's landing don't move it
-        sw.offset = r + cue_t + sw.arrive_dt + err
-        sw.jitter = 0.0
-        sw.arrive_dt += cue_t
-        sw.leave_dt = cue_t
-        return
-    sent = seek_model(cfg).sent(r)
-    if getattr(decision, "cue", "") == "hidden":
-        # seek on the hidden stick, then flip: no live glimpse, the flip waits for presses + stall
-        cue_t = press * sent + keys + stall
-        sw.offset = sw.jitter + t.landed(sent, stall)
-        sw.arrive_dt += cue_t
-        sw.leave_dt = cue_t
-        return
-    sw.offset = sw.jitter + t.landed(sent, stall)
-    sw.flash = press * sent + keys if sent else 0.0
 
 
 def _record(decision, before: str | None, t: float, switches: list[SwitchLog],
@@ -807,7 +628,6 @@ def tuning_blackout_seconds(watching: list[tuple[float, str | None]], tune_s: fl
 def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t0, t1, replayed) -> Report:
     by_id = {r.gid: r for r in replays}
     cuts = []
-    cuts_high: list = []   # the mid-play leaves at a high-leverage moment (redzone/lab/leverage.py)
     prev_kind = None
     offs = offsets_of(switches) if len(switches) == len(watching) else None
     left_off = leave_offsets(switches)
@@ -825,12 +645,9 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
                 continue
             if w - play_len <= screen_t <= w:
                 cuts.append((s.t, f"{r.matchup}: {(p.get('text') or '')[:70]}"))
-                if leverage.high_leverage(r.league, p):
-                    cuts_high.append(cuts[-1])
                 break
 
     big = live = mine = mine_live = caught = missed_on_replay = seen10 = my_seen10 = crunch_on_replay = 0
-    seen3 = seen2 = my_seen3 = 0
     missed = []
     for r in replays:
         for w, p in zip(r.wall, r.plays):
@@ -844,15 +661,11 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             caught += on or rep_seen
             soon = on or replayed_by(replayed, (r.gid, round(w)), air + CATCHUP_S)
             seen10 += soon
-            soon3 = on or replayed_by(replayed, (r.gid, round(w)), air + CATCHUP_3_S)
-            seen3 += soon3
-            seen2 += on or replayed_by(replayed, (r.gid, round(w)), air + CATCHUP_2_S)
             ours = any(a in my_teams for a in r.matchup.replace("@", " ").split())
             if ours:
                 mine += 1
                 mine_live += on or rep_seen
                 my_seen10 += soon
-                my_seen3 += soon3
             if not on and (_on_screen_game(watching, air - play_len, tune_s) or "").startswith("replay:"):
                 missed_on_replay += 1   # aired while we sat on a replay: live was given up for old footage
             if not (on or rep_seen):
@@ -909,7 +722,6 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             causes[cause] = causes.get(cause, 0.0) + 10
         t += 10
     rep = Report(switches, cuts, big, live, mine, mine_live, dead, watched, (t1 - t0) / 3600, missed)
-    rep.mid_play_cuts_high = cuts_high
     rep.dead_causes = causes
     rep.tuning_blackout_s = tuning_blackout_seconds(watching, tune_s, t0, t1)
     from redzone.lab import cutgrade
@@ -917,37 +729,11 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
     rep.behind_live_s = behind_live_seconds(watching, t0, t1)
     rep.big_missed_on_replay = missed_on_replay
     rep.big_seen_10m, rep.my_big_seen_10m, rep.crunch_on_replay = seen10, my_seen10, crunch_on_replay
-    rep.big_seen_3m, rep.big_seen_2m, rep.my_big_seen_3m = seen3, seen2, my_seen3
     rep.drive_plays, rep.drive_plays_live, rep.drive_plays_other_sport, rep.drive_plays_on_redzone = drive_coverage(
         replays, watching, lag_total, play_len, tune_s, t1)
     rep.big_plays_caught = caught
     rep.crunch, rep.crunch_live, rep.my_crunch, rep.my_crunch_live = crunch, crunch_live, my_crunch, my_crunch_live
     return rep
-
-
-def behind_extra(switches: list, t1: float) -> list[tuple[float, float]]:
-    """[replay and resume] (seconds, extra s behind its usual place) per live stretch on screen: the
-    rewinds on entry and the pauses for replays, never the tune's own landing jitter. Replays excluded."""
-    out = []
-    for i, s in enumerate(switches):
-        end = switches[i + 1].t if i + 1 < len(switches) else t1
-        if s.kind == "replay" or end <= s.t:
-            continue
-        out.append((end - s.t, max(0.0, (s.offset or 0.0) - (s.jitter or 0.0))))
-    return out
-
-
-def weighted_pct(pairs: list[tuple[float, float]], q: float) -> float:
-    """The time-weighted q-quantile of (weight, value) pairs (0 when empty)."""
-    tot = sum(w for w, _ in pairs)
-    if tot <= 0:
-        return 0.0
-    acc = 0.0
-    for w, v in sorted(pairs, key=lambda p: p[1]):
-        acc += w
-        if acc >= q * tot:
-            return v
-    return max(v for _, v in pairs)
 
 
 def behind_live_seconds(watching: list[tuple[float, str | None]], t0: float, t1: float) -> float:
@@ -1048,6 +834,17 @@ def _redzone_on_screen(replays: list[Replay], screen_t: float) -> bool:
     """Was RedZone on the air at this (screen) time? Same rule the decider is fed."""
     states = [r.state_at(i) for r in replays if (i := _bisect(r.wall, screen_t)) >= 0]
     return redzone_on(g for g in states if g)
+
+
+def _bisect(wall: list[float], t: float) -> int:
+    lo, hi = 0, len(wall)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if wall[mid] <= t:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo - 1
 
 
 class _Clock:

@@ -125,12 +125,11 @@ class Press(Fault):
                 self.rec = {"t": time.time(), "action": self.name, "skipped": "no other live game"}
                 log.append(self.rec)
                 return
-            warm = _warm(world, _target(world, gid))
             first = _press(world, "hold", gid)
             if self.name == "go_now":   # the second tap while it waits = "now"
                 second = _press(world, "hold", gid, "force")
                 first = {**first, "ok": first["ok"] and second["ok"], "msg": second["msg"]}
-            self.rec = {**first, "kind": self.name, "target": _target(world, gid), "warm": warm}
+            self.rec = {**first, "kind": self.name, "target": _target(world, gid)}
         elif self.name == "pause":
             self.rec = {**_press(world, "pause"), "kind": "pause"}
         elif self.name == "skip":
@@ -151,7 +150,6 @@ class Press(Fault):
             self.rec.update(pending=False, skipped="no other live game mid-flip")
             return
         gid = self.rng.choice(gids)
-        self.rec["warm"] = _warm(world, _target(world, gid))
         first = _press(world, "hold", gid)
         second = _press(world, "hold", gid, "force")
         self.rec.update(t=first["t"], gid=gid, target=_target(world, gid), ok=first["ok"] and second["ok"],
@@ -167,7 +165,6 @@ class Press(Fault):
             return
         if self.name == "open_go":
             gid = self.rec["gid"]
-            self.rec["warm"] = _warm(world, _target(world, gid))
             first = _press(world, "hold", gid)
             second = _press(world, "hold", gid, "force")
             self.rec.update(t=first["t"], ok=first["ok"] and second["ok"], msg=second["msg"],
@@ -217,30 +214,6 @@ def _arm_flips(world) -> None:
     c._flip_to = flip
 
 
-def apply_profile(cfg, name: str) -> None:
-    """A Noggin profile's config overrides (redzone/noggin/profile.py "set"), as scripts/eval.py --set."""
-    import yaml
-    from redzone.noggin.profile import PROFILES
-    for kv in PROFILES[name].get("set") or []:
-        key, _, val = kv.partition("=")
-        node: dict = {}
-        top = node
-        *path, last = key.split(".")
-        for part in path:
-            node = node.setdefault(part, {})
-        node[last] = yaml.safe_load(val)
-        cfg.update(top)
-
-
-def _warm(world, target: str | None) -> bool:
-    """Was the pressed game already live and ready on the hidden stick (a flip, not a tune)? A catch-up
-    replay parked on that channel doesn't count: a live press never uses parked replay footage, so it
-    is a tune (cycle 03: those were the "pre-tuned" presses that took 8.5 s)."""
-    c = getattr(world.engine, "control", None)
-    return bool(c is not None and target and getattr(c, "hidden_target", None) == target
-                and getattr(c, "hidden_ready", False) and getattr(c, "parked", None) is None)
-
-
 def controls(world, rng: random.Random) -> list[Fault]:
     """A few of each press per night, at seeded times while at least two games are live."""
     _time_ticks(world)
@@ -260,8 +233,6 @@ def controls(world, rng: random.Random) -> list[Fault]:
     picks = sorted(rng.sample(times, min(len(times), 16)))
     if os.environ.get("RZ_PRETUNE") == "1":
         world.engine.cfg.update({"two_stick": {"pretune_on_open": True}})
-    if os.environ.get("RZ_PROFILE"):
-        apply_profile(world.engine.cfg, os.environ["RZ_PROFILE"])
     plan = ["go_now"] * 4 + ["open_go"] * 4 + ["lock"] * 3 + ["pause"] * 3 + ["skip"] * 2
     rng.shuffle(plan)
     last = -1e9
@@ -323,7 +294,7 @@ def _playing_at(shown: list, target: str, t0: float, t1: float) -> float | None:
 def grade(world) -> dict:
     shown = world.house.shown
     out = {"go_now_s": [], "open_go_s": [], "mid_flip_s": [], "lock_s": [], "skip_s": [], "dropped": [], "lock_broken": [], "pause_broken": [],
-           "skip_stuck": [], "lock_waited_out": [], "n": {}, "warm_s": [], "cold_s": []}
+           "skip_stuck": [], "lock_waited_out": [], "n": {}}
     out["press_at"] = [(r.get("kind") or r.get("action"), round(r["t"], 1)) for r in getattr(world, "presses", [])]
     out["released_at"] = [round(r["released"], 1) for r in getattr(world, "presses", [])
                           if r.get("kind") == "lock" and r.get("released")]
@@ -360,8 +331,6 @@ def grade(world) -> dict:
                 continue
             if kind in ("go_now", "open_go", "mid_flip"):
                 out[kind + "_s"].append(round(at - r["t"], 2))
-                if kind != "mid_flip":   # pre-tuned (the hidden stick had it) vs a cold tune, apart
-                    out["warm_s" if r.get("warm") else "cold_s"].append(round(at - r["t"], 2))
             else:
                 out["lock_s"].append(round(at - r["t"], 1))
                 end = r.get("released", float("inf"))

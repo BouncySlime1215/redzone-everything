@@ -22,9 +22,9 @@ from zoneinfo import ZoneInfo
 import time as _real_time
 import yaml
 
-from redzone import crunch as crunch_table, engine as engine_mod, standby
+from redzone import engine as engine_mod, standby
 from redzone.channels import REDZONE_TARGET, ChannelMap, Where
-from redzone.config import Config, ConfigError, _deep_merge, default, validate
+from redzone.config import Config, ConfigError, _deep_merge, validate
 from redzone.control import Controller, Outcome
 from redzone.decider.decider import REDZONE, Decider
 from redzone.decider.screen import DelayBook
@@ -40,13 +40,17 @@ from redzone.store import Store
 
 ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parent.parent.parent
+FEED_LAG_S = 8.0      # a play reaches the app this long after it happens (same as the backtest)
+PLAY_LEN_S = 7.0
+TUNE_S = 5.0
+CALIBRATED_SIGMA_S = 3.0
 TEAM_NAMES = {"nfl": "Commanders", "nba": "Wizards", "nhl": "Capitals"}
 
 
 def _crunch_counts(r: Replay, watching, lag_total: float, play_len: float, tune_s: float,
                    last_period: int = 4, margin: int = 8, period_len: float | None = None,
                    window: tuple[float, float] | None = None,
-                   offsets: list[float] | None = None, clock_s: float = 120.0) -> tuple[int, int]:
+                   offsets: list[float] | None = None) -> tuple[int, int]:
     """One game's crunch-time plays (final 2:00 of a one-score game, or OT): (how many, how many live).
     Uses backtest.crunch_counts when the backtest has it."""
     if hasattr(backtest, "crunch_counts"):
@@ -66,7 +70,7 @@ def _crunch_counts(r: Replay, watching, lag_total: float, play_len: float, tune_
                 and not p.get("scoringPlay"):
             continue
         close = hs is not None and as_ is not None and abs(hs - as_) <= margin
-        if not ((per == last_period and clk is not None and clk <= clock_s and close) or per > last_period):
+        if not ((per == last_period and clk is not None and clk <= 120 and close) or per > last_period):
             continue
         n += 1
         live += backtest.shows(watching, offsets, r.gid, w + lag_total - play_len, tune_s)
@@ -248,12 +252,6 @@ class DemoEngine(Engine):
                  calibrated: bool = True):
         work = work or (ROOT / "data" / "demo" / "_run")
         self.clock = SimClock()
-        # Timing, from default_config.yaml demo.* (a play reaches the app feed_lag_s after it happens,
-        # same as the backtest; the replay's picture is up tune_s after a switch).
-        t = {k: float(cfg.get(f"demo.{k}", default(f"demo.{k}")))
-             for k in ("feed_lag_s", "play_len_s", "tune_s", "calibrated_sigma_s")}
-        self.feed_lag_s, self.play_len_s = t["feed_lag_s"], t["play_len_s"]
-        self.tune_s, self.calibrated_sigma_s = t["tune_s"], t["calibrated_sigma_s"]
         super().__init__(cfg, store=Store(Path(":memory:")))
         clock = self.clock
         self.channels = DemoChannels(path=work / "channels.json")
@@ -265,13 +263,12 @@ class DemoEngine(Engine):
         self.delays = DelayBook(self.cfg.get("delay.default"), self.cfg.get("delay.sigma_default"), clock=clock,
                                 model=self.cfg.get("delay.model", "channel"))
         self.decider = Decider(self.cfg, self.delays, clock=clock)
-        self.decider.entry_cost = lambda target: self.tune_s   # [cut timing] the replay's picture is up tune_s after a switch
+        self.decider.entry_cost = lambda target: TUNE_S   # [cut timing] the replay's picture is up TUNE_S after a switch
         self.control = InertController(self.cfg, self.channels, clock)
         # The hidden stick, modeled: what the real standby Planner would have had ready at each switch.
         self.planner = standby.Planner(self.cfg, clock=clock)
         self.shadow = standby.ShadowStick(app_s={a: float(v) for a, v in (self.cfg.get("decider.switch_cost") or {}).items()
-                                                 if a != "hdmi_flip"},
-                                         cfg=self.cfg)
+                                                 if a != "hdmi_flip"})
         self.started = 0.0
         self.replays = replays
         self.tv = tv
@@ -282,7 +279,7 @@ class DemoEngine(Engine):
         self.t0 = min(r.wall[0] for r in replays) - 600
         self.t1 = max(r.wall[-1] for r in replays) + 300
         self.clock.t = self.t0
-        self.replay_feeds = {r.gid: _feed(r, random.Random(zlib.crc32(r.gid.encode())), self.feed_lag_s, step,
+        self.replay_feeds = {r.gid: _feed(r, random.Random(zlib.crc32(r.gid.encode())), FEED_LAG_S, step,
                                    None, 0.0, 0.0, 0.0, self.t0, self.t1) for r in replays}
         self.idx = {r.gid: -1 for r in replays}
         self.switches: list[backtest.SwitchLog] = []
@@ -341,7 +338,7 @@ class DemoEngine(Engine):
     def _calibrate(self, target: str, now: float) -> None:
         d = self.delays.get(target)
         if d.calibrated_at is None or now - d.calibrated_at > 1800:
-            d.calibrated_at, d.sigma = now, self.calibrated_sigma_s
+            d.calibrated_at, d.sigma = now, CALIBRATED_SIGMA_S
 
     def advance(self, until: float) -> None:
         """Run the engine from now to `until` (sim time), one step at a time."""
@@ -451,8 +448,8 @@ class DemoEngine(Engine):
         t1 = min(end or self.t1, self.clock())
         lag = float((self.cfg.get("delay.default") or {}).get("youtubetv", 45))
         backtest._credit_completed_replays(self.replay_windows, self.watching, t1, self.replayed)
-        rep = backtest._grade(self.replays, self.switches, self.watching, self.my_teams, lag, self.play_len_s,
-                              self.tune_s, t0, t1, self.replayed)
+        rep = backtest._grade(self.replays, self.switches, self.watching, self.my_teams, lag, PLAY_LEN_S,
+                              TUNE_S, t0, t1, self.replayed)
         sw = [x for x in self.switches if t0 <= x.t <= t1]
         hours = max(0.1, (t1 - t0) / 3600)
         cuts = [(t, w) for t, w in rep.mid_play_cuts if t0 <= t <= t1]
@@ -462,9 +459,8 @@ class DemoEngine(Engine):
 
         def crunch(r):
             hockey = r.league == League.NHL
-            g = crunch_table.row("graded", League.NHL if hockey else League.NFL)   # [one brain] the crunch table
-            return _crunch_counts(r, self.watching, lag, self.play_len_s, self.tune_s, g.period,
-                                  g.margin, 1200.0 if hockey else None, win, offs, g.clock_s)
+            return _crunch_counts(r, self.watching, lag, PLAY_LEN_S, TUNE_S, 3 if hockey else 4,
+                                  1 if hockey else 8, 1200.0 if hockey else None, win, offs)
 
         # Big plays: NFL TDs/FGs/turnovers, NHL goals (every NBA bucket is a "scoring play": left out).
         big = {}
@@ -476,9 +472,9 @@ class DemoEngine(Engine):
                     if not backtest._is_big(pl) or not (t0 <= w + lag <= t1):
                         continue
                     n += 1
-                    on = backtest._on_screen_game(self.watching, w + lag - self.play_len_s, self.tune_s)
+                    on = backtest._on_screen_game(self.watching, w + lag - PLAY_LEN_S, TUNE_S)
                     on_replay += (on or "").startswith("replay:")
-                    if backtest.shows(self.watching, offs, r.gid, w + lag - self.play_len_s, self.tune_s):
+                    if backtest.shows(self.watching, offs, r.gid, w + lag - PLAY_LEN_S, TUNE_S):
                         on = r.gid
                     if on == r.gid:
                         live += 1

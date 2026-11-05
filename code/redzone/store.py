@@ -119,21 +119,8 @@ class Store:
         """Fold the write-ahead log back into the database file so it can't grow without bound."""
         self._x("PRAGMA wal_checkpoint(TRUNCATE)")
 
-    def decisions_between(self, t0: float, t1: float, limit: int = 2000) -> list[dict]:
-        """Logged decisions with t0 <= ts < t1, oldest first (the engine logs only reason changes and
-        non-stay actions, so a night is a few hundred rows)."""
-        cur = self._x("SELECT ts, action, game, kind, state, gate, reason FROM decisions WHERE ts >= ? AND ts < ? "
-                      "ORDER BY ts LIMIT ?", (t0, t1, limit))
-        cols = [c[0] for c in cur.description]
-        return [dict(zip(cols, r)) for r in cur.fetchall()]
-
-    def switch_days(self, n: int = 14) -> list[float]:
-        """The newest switch time of each of the last `n` distinct UTC days that have any, newest first."""
-        cur = self._x("SELECT MAX(ts) FROM switches GROUP BY CAST(ts / 86400 AS INTEGER) ORDER BY 1 DESC LIMIT ?", (n,))
-        return [r[0] for r in cur.fetchall()]
-
     def taps(self, since: float = 0.0) -> list[dict]:
-        """Phone v2 decision records, oldest first, for the phone page only (no training or grading path reads them: self-taught rule, Nov 4):
+        """Phone v2 decision records, oldest first, for northstar.py's right_game line:
         {ts, game, tap: "up" | "down" | "clear" | "missed", reason, switch, guess}. Rows without
         note 'switch' or 'missed' (the old one-tap vote) are left out."""
         out = []

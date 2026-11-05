@@ -23,7 +23,7 @@ from typing import Callable, Iterable
 from zoneinfo import ZoneInfo
 
 from redzone.channels import PRETTY, describe
-from redzone.models import GameState, League, Phase, league_order
+from redzone.models import GameState, League, Phase
 
 log = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
@@ -34,9 +34,7 @@ STOP_S = 2 * 60           # ...and no new check starts this close to the start
 WINDOW_S = 15 * 60        # games starting within 15 minutes of the first form one window
 GAP_S = 20.0              # breathing room between two checks
 REBUILD_S = 60.0          # the plan follows the slate (new links, your corrections) every minute
-LEAGUE_POS = {League(v): i for i, v in enumerate(league_order())}   # [one brain, step 1] models.LEAGUE_ORDER
-WARMUP_LEAD_S = 10 * 60   # [warmup.pregame] the first window's likely first game goes on the hidden stick this early
-WARMUP_LATE_S = 30 * 60   # ...and is kept until it goes live: listed starts run late (tip / kick ~5-15 min after)
+LEAGUE_ORDER = {League.NFL: 0, League.NBA: 1, League.NHL: 2, League.MLB: 3}
 
 # Measured on the real sticks (2026-11-02). Shown next to any game that depends on the app.
 APP_NOTES = {
@@ -143,7 +141,7 @@ def build_plan(games: Iterable[GameState], choose: Callable[[GameState], object]
             "gaps": gaps,
             "check": {"state": "pending" if status == "ready" else "n/a", "target": None, "at": None, "detail": ""},
         })
-    entries.sort(key=lambda e: (e["start"] or 0, not e["mine"], LEAGUE_POS.get(League(e["league"]), 9)))
+    entries.sort(key=lambda e: (e["start"] or 0, not e["mine"], LEAGUE_ORDER.get(League(e["league"]), 9)))
     return {"day": day.isoformat(), "built": now, "games": entries, "windows": windows(entries),
             "gaps": sorted({x for e in entries for x in e["gaps"]}), "note": ""}
 
@@ -212,21 +210,6 @@ def due(plan: dict, now: float, lead_s: float = LEAD_S) -> list[str]:
         if t and t not in out:
             out.append(t)
     return out
-
-
-def warmup_target(plan: dict, now: float, lead_s: float = WARMUP_LEAD_S) -> tuple[str, float] | None:
-    """[warmup.pregame] (target, window start) to warm now: the night's FIRST start window, from lead_s
-    before its listed start until a game goes live (at most WARMUP_LATE_S after the listed start). Its likeliest first pick: your team, then league
-    order (models.LEAGUE_ORDER: NFL > CFB > NBA > CBB > NHL > MLB), then the earliest start. None outside that time or with no tunable game."""
-    if any(e["phase"] == Phase.LIVE.value for e in plan["games"]):
-        return None
-    first = next(iter(plan.get("windows") or []), None)
-    if first is None or not (first["start"] - lead_s <= now < first["start"] + WARMUP_LATE_S):
-        return None
-    ids = set(first["games"])
-    cands = [e for e in plan["games"] if e["game_id"] in ids and e["status"] == "ready" and _target(e)]
-    cands.sort(key=lambda e: (not e["mine"], LEAGUE_POS.get(League(e["league"]), 9), e["start"] or 0))
-    return (_target(cands[0]), first["start"]) if cands else None
 
 
 def save(plan: dict, data_dir: Path = DATA) -> Path:
@@ -309,17 +292,15 @@ class Tonight:
         new = build_plan(list(e.merger.games.values()), self._choose, my_teams=e.cfg.get("teams") or {},
                          day=day, now=now, leagues=e._leagues())
         new = carry_checks(new, old)
-        if old and old.get("warmup"):
-            new["warmup"] = old["warmup"]   # [warmup.pregame] its state outlives the minute rebuilds
         self._save_quiet(new)
         self.plan, self._built_at = new, now
         return new
 
     # checking
-    def idle_reason(self, check: bool = True) -> str | None:
-        """Why the hidden stick can't be used for a check (or, check=False, the warm-up) right now."""
+    def idle_reason(self) -> str | None:
+        """Why the hidden stick can't be used for a check right now (None = it can)."""
         e, c = self.engine, self.engine.control
-        if check and not e.cfg.get("plan.verify", True):
+        if not e.cfg.get("plan.verify", True):
             return "pre-game checks are off in settings"
         if e.cfg.get("mode.dry_run", True):
             return "dry run: the sticks are not touched"
@@ -346,11 +327,6 @@ class Tonight:
         if self.plan is None or now - self._built_at >= REBUILD_S or self.plan.get("day") != day_of(now).isoformat():
             self.rebuild()
         plan = self.plan
-        if self.engine.cfg.get("warmup.pregame", False) and self._warmup(plan, now):
-            # The warm stick holds the first game from here on: a check of another game would re-tune it.
-            expire(plan, now + LEAD_S, "not checked: the warm-up holds the hidden stick")
-            self._save_quiet(plan)
-            return
         targets = due(plan, now, float(self.engine.cfg.get("plan.verify_lead_min", 20)) * 60)
         why = self.idle_reason() if targets else None
         if why:
@@ -360,32 +336,6 @@ class Tonight:
             self._save_quiet(plan)
             return
         await self._check(plan, targets[0])
-
-    def _warmup(self, plan: dict, now: float) -> bool:
-        """[warmup.pregame] Put the night's likeliest first game on the HIDDEN stick ~10 min before the
-        first start, live (and held behind live when the time-shift buffer is on: a fresh hidden tune
-        builds it), so the first switch is a flip. Never the stick on screen: whatever you're watching
-        there stays. Returns True while the warm-up owns the hidden stick (checks then stand aside)."""
-        got = warmup_target(plan, now, float(self.engine.cfg.get("warmup.lead_min", 10)) * 60)
-        if got is None:
-            return False
-        target, start = got
-        c = self.engine.control
-        w = plan.setdefault("warmup", {})
-        if c.standby == (target, None) and c.hidden_ready:
-            if w.get("state") != "ready":
-                w.update(target=target, state="ready", at=now, window=start)
-                log.info("warm-up: %s is ready on the hidden stick %.0f min before the first start",
-                         target, (start - now) / 60)
-            return True
-        why = self.idle_reason(check=False)
-        if why:
-            w.update(target=target, state="waiting", detail=why, window=start)
-            return False
-        if c.preload(target):
-            w.update(target=target, state="tuning", at=now, window=start)
-            log.info("warm-up: tuning %s on the hidden stick for the first start", target)
-        return True
 
     async def _check(self, plan: dict, target: str) -> None:
         task = self.engine.control.verify_hidden(target)

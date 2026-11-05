@@ -32,7 +32,6 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
-from redzone import config, crunch
 from redzone.models import ByLeague, GameState, League, Phase, pro_period
 
 NEXT, HOME, REPLAY, BREAK, MOMENT, BEST = -1, 0, 1, 2, 3, 4
@@ -57,6 +56,8 @@ class Option:
 
 # --- what kind of game is it right now ----------------------------------------------------------
 
+# Crunch time coming: (final period, seconds left at or under, max margin). Overtime counts if close.
+_CRUNCH = ByLeague({League.NFL: (4, 420, 8), League.NBA: (4, 360, 8), League.NHL: (3, 480, 1)})
 
 
 def crunch_soon(g: GameState) -> bool:
@@ -65,7 +66,12 @@ def crunch_soon(g: GameState) -> bool:
     if g.phase != Phase.LIVE or d is None:
         return False
     p = pro_period(g.league, g.period, g.clock_s)  # men's college halves read as NBA quarters
-    return crunch.inside(crunch.row("soon", g.league.base), p, g.clock_s, d)   # [one brain] the crunch table
+    if g.league == League.MLB:
+        return p >= 8 and abs(d) <= 2
+    last, clock, margin = _CRUNCH[g.league]
+    if abs(d) > margin:
+        return False
+    return p > last or (p == last and g.clock_s is not None and g.clock_s <= clock)
 
 
 def break_soon(g: GameState | None, s=None) -> bool:
@@ -225,22 +231,16 @@ class ShadowStick:
 
     Hit rate = switches that landed on a stick already playing the destination (a 1-3s flip)."""
 
-    def __init__(self, tune_s: float | None = None, keep_s: float | None = None,
-                 app_s: dict[str, float] | None = None, flip_s: float | None = None, cfg=None):
-        def knob(value, key):   # two_stick.shadow.* from cfg, else default_config.yaml
-            if value is not None:
-                return float(value)
-            dotted = f"two_stick.shadow.{key}"
-            return float(cfg.get(dotted, config.default(dotted)) if cfg is not None else config.default(dotted))
+    FLIP_S = 3.0   # an input flip to a ready stick (measured median ~2.9 s)
 
-        self.FLIP_S = knob(flip_s, "flip_s")   # an input flip to a ready stick
-        self.tune_s = knob(tune_s, "tune_s")
+    def __init__(self, tune_s: float = 7.0, keep_s: float = 2.5, app_s: dict[str, float] | None = None):
+        self.tune_s = tune_s
         # Per-app tune seconds (Prime ~30 s, YouTube TV ~5 s): a model where every tune is 7 s can't
         # see what a Prime preload is worth.
         self.app_s = dict(app_s or {})
         # A Prime game we leave keeps playing live on its stick (control._kept_playing): ready again
         # once two playback reads confirm it, not after a re-tune.
-        self.keep_s = knob(keep_s, "keep_s")
+        self.keep_s = keep_s
         self.target: str | None = None
         self.replay_id: str | None = None
         self.ready_at = 0.0
