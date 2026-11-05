@@ -327,3 +327,78 @@ def aggregate(rows: list[dict]) -> dict:
     tot["crunch_live_pct"] = round(100 * tot.get("crunch_live", 0) / max(1, tot.get("crunch", 0)), 1)
     tot["dead_air_pct"] = round(100 * tot.get("dead_s", 0) / max(1, tot.get("watched_s", 0)), 1)
     return tot
+
+
+# ---------------------------------------------------------------------------------- [time-shift buffer] windowed
+def window_steps(lag: float, feed_lag: float, tune_s: float) -> int:
+    """How many 5 s steps of the screen's future a decision can see: the screen runs `lag` s behind real life,
+    a play is known `feed_lag` s after it happened, and a switch needs `tune_s` to land. The buffer's look-ahead
+    (Nick 9:10 AM Nov 5): buffer - feed lag - tune/seek."""
+    return max(0, int((lag - feed_lag - tune_s) // STEP_S))
+
+
+def beyond_value(R: np.ndarray, k: int, horizon: int, memory: int = 120) -> np.ndarray:
+    """[learned part, v1 placeholder] Value per game beyond the window: its mean reward per step over the last
+    `memory` KNOWN steps (10 min), times `horizon` steps. Uses only the past, never the hidden future; the
+    Watch Value v2 model replaces it."""
+    lo = max(0, k - memory)
+    if k <= lo:
+        return np.zeros(R.shape[0])
+    return R[:, lo:k].mean(axis=1) * horizon
+
+
+def solve_window(n: Night, feed_lag: float, objective: str = "combined", tab: dict | None = None,
+                 horizon_s: float = 120.0) -> list[SwitchLog]:
+    """[time-shift buffer] The windowed-hindsight oracle: at every 5 s step it plans with exact DP over only
+    what the buffer has revealed (W = window_steps(lag, feed_lag, tune_s) steps of the screen's future, plays
+    the feed has delivered), values the end of the window with `beyond_value` (the past only), takes the first
+    move and replans. Same moves, rules and grader as `solve` (switch on a clean leave, land on a dead ball,
+    black for tune_s): the ceiling a real buffered app could reach with a perfect in-window optimizer.
+    `solve` (full hindsight) is the ceiling of everything; % oracle = this / that."""
+    wb, wc, wm, wd, ws = OBJECTIVES[objective]
+    steps = np.arange(n.t0, n.t1, STEP_S)
+    tab = tab or tables(n, steps)
+    R = wb * tab["big"] + wc * tab["crunch"] + wm * tab["mine"] - wd * tab["dead"]
+    G, K = R.shape
+    blk = max(1, int(math.ceil(n.tune_s / STEP_S)))
+    lags = [lag_of(n.lag, r.gid) for r in n.replays]
+    W = max(blk + 1, min(window_steps(lg, feed_lag, n.tune_s) for lg in lags))
+    hz = int(horizon_s // STEP_S)
+    NEG = -1e18
+    gi = np.arange(G)
+
+    def plan(k: int) -> np.ndarray:
+        """V[j, g]: the best value from step k + j on game g (deciding then), known steps only."""
+        e = min(K, k + W)                          # steps k .. e-1 are known
+        Vn = beyond_value(R, k, hz) if e < K else np.zeros(G)     # nothing after the night ends
+        V = np.zeros((e - k + blk + 1, G))
+        V[e - k:] = Vn                             # past the window: the beyond value (also while black)
+        for j in range(e - k - 1, -1, -1):         # backward DP over the window, j = step k + j
+            kk = k + j
+            v = R[:, kk] + V[j + 1]
+            tgt = np.where(tab["land"][:, kk], V[j + blk] - ws, NEG)
+            order = np.argsort(-tgt)
+            b1, b2 = tgt[order[0]], (tgt[order[1]] if G > 1 else NEG)
+            alt = np.where(gi == order[0], b2, b1)
+            v = np.where(tab["leave"][:, kk] & (alt > v), alt, v)
+            V[j] = v
+        return V
+
+    out: list[SwitchLog] = []
+    k = blk
+    V = plan(k)
+    first = [g for g in range(G) if tab["land"][g, 0]] or list(range(G))
+    cur = max(first, key=lambda g: V[0, g])        # the first pick lands at step blk, like `solve`
+    out.append(SwitchLog(float(n.t0), None, n.replays[cur].gid, "start", objective))
+    while k < K:
+        V = plan(k)
+        stay = R[cur, k] + V[1, cur]
+        cand = np.where(tab["land"][:, k] & (gi != cur), V[blk] - ws, NEG)
+        b = int(np.argmax(cand))
+        if not (tab["leave"][cur, k] and k + blk <= K and cand[b] > stay):
+            k += 1
+            continue
+        out.append(SwitchLog(float(steps[k]), n.replays[cur].gid, n.replays[b].gid, "oracle_window", objective))
+        cur = b
+        k += blk
+    return out
