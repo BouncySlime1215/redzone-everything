@@ -585,6 +585,8 @@ delay:                     # seconds your screen runs behind real life, per app;
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
   sigma_default: 15
   model: channel           # channel: predict each channel (channels of one app differ, truTV 22 s vs FS1 42 s); legacy: one figure per app
+  feed_lag_prior_s: 10      # [EXP-803 A5] feed lag assumed for a game until a play measures it (per league via
+                           # league_overrides; measured q90: nba 69.7, nfl 62.5, nhl 71.3, redzone/lab/feed_lag_profile.json)
   scorebug_band: false     # [Nick Nov 5 3:30 AM, "Yes, read it"] Prime score bug: read only the lower third as raw
                            # pixels (no PNG encode on the stick, ~6.5 s a frame now); numbers kept, never frames
   sync:                    # every channel's delay found automatically (redzone/decider/sync.py), no taps

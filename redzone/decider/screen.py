@@ -599,6 +599,9 @@ class Timeline:
     def __init__(self, league: League, clock=time.time):
         self.league = league
         self._clock = clock
+        # [EXP-803 A5] the feed lag assumed until this game's lag is measured (delay.feed_lag_prior_s,
+        # set per league by the decider)
+        self.lag_prior = LAG_EST_DEFAULT_S
         self.events: deque[Event] = deque(maxlen=200)
         self.scores: deque[Event] = deque(maxlen=60)   # score changes (kind "score"), oldest first
         # [auto sync] (wallclock, period, game clock s left) of timed plays: the score bug's clock is
@@ -621,7 +624,7 @@ class Timeline:
 
     def lag_est(self) -> float:
         """How far behind real life this game's feed runs (recent worst case)."""
-        return max(self._lags) if self._lags else LAG_EST_DEFAULT_S
+        return max(self._lags) if self._lags else self.lag_prior
 
     def _nba_clutch(self, p, g: GameState) -> bool:
         """NBA highlight: a field goal in the last 2:00 of Q4/OT within 5 (what the scorecard counts).

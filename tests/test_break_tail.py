@@ -55,3 +55,17 @@ def test_defer_keeps_the_old_game_on_screen_until_the_cut():
     s3 = [SwitchLog(t, "old", "new", "ended", "x", 0.0)]
     bt_._apply_defer(SimpleNamespace(defer_s=0.0), s3, w3, 0, step=10.0)
     assert w3 == [(t, "new")] and s3[0].leave_dt == 0.0
+
+
+def test_feed_lag_prior_default_and_override():
+    """[EXP-803 A5] delay.feed_lag_prior_s ships 10 (today's constant); a league override seeds new timelines."""
+    from redzone.config import Config, default
+    from redzone.decider.decider import Decider
+    from redzone.decider.screen import DelayBook
+    from redzone.models import League
+    assert default("delay.feed_lag_prior_s") == 10
+    cfg = Config()
+    cfg.data.setdefault("league_overrides", {}).setdefault("nba", {})["delay.feed_lag_prior_s"] = 69.7
+    d = Decider(cfg, DelayBook({"youtubetv": 40.0}, sigma_default=15.0))
+    assert d.timeline("g1", League.NBA).lag_est() == 69.7
+    assert d.timeline("g2", League.NHL).lag_est() == 10
