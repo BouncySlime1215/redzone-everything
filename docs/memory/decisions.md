@@ -853,3 +853,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `wv-attention-labels`; later sources (S6 Twitch) get their own row. Labels are training targets only, train nights
   only, never features; the objective stays "worth it" (no engagement traps). Locked read once by the integrator at
   the next release. Grader freeze v27.
+- 2026-11-05 (lane 3, grader PROPOSAL for the integrator to freeze): new scorecard line "big plays shown from the
+  start" (big_from_start, crunch_from_start, my_crunch_from_start) for the RC8 buffer gate's primary. A big play counts
+  when the screen had its game from the moment the ball went live after the last dead ball (grading.restart_before =
+  resume_after of the last stoppage or score) through the end of the play; football: the play's own snap (= big live).
+  Additive only: no existing line, default or bar changes. Reason: Nick 9:10 AM "% big plays shown FROM THE START".
