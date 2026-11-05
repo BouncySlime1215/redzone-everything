@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-EXP-109 speedrun DONE 5:33 AM (~29.5 CU): winner E = Muon+WSD+modded-nanoGPT bundle+torch.compile, valid 0.3234, 2.07x faster to 0.334 than AdamW base; compile alone 1.5x; Muon or bundle alone hurt. F docmask and EXP-110 (OpenFIM pip) failed. Report b8f4fc80; A100 disconnected; lane 1 asked for an E-pinned ladder on Colab.
-Commentary EXP-1402 Teacher still running (~6:45 AM). Usage 60%.
+Launched EXP-107 scaling ladder (nfm_a100, recipe E, 18m/60m/150m) on Colab A100 6:10 AM, ~4.5 h / ~60 CU. Next: speedrun2 seed check when the commentary A100 frees (~6:45).
+Commentary EXP-1402 Teacher running. ~390 CU after these. Usage 61%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
