@@ -4598,6 +4598,17 @@
     "SAFE-01"
    ]
   },
+  "scripts/press_probe.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[press-to-TV, real hardware] Press GO NOW on the running app the way the phone does, and time each press from the tap to the game playing on the TV.",
+   "serves": [
+    "BTN-01"
+   ]
+  },
   "scripts/prime_flip_probe.py": {
    "contracts": [],
    "inputs": [
@@ -4964,9 +4975,9 @@
   }
  },
  "summary": {
-  "modules": 261,
+  "modules": 262,
   "orphans": 10,
-  "unowned": 103,
+  "unowned": 104,
   "untagged": 209
  },
  "version": 1
