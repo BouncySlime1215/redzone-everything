@@ -383,10 +383,13 @@ def pull_espn(http: Http, sink: Sink, start: str, end: str, max_games: int, leag
                     play = next((str(c.get("playId") or c.get("id")) for c in (v.get("categories") or [])
                                  if c.get("type") in ("play", "event") and (c.get("playId") or c.get("id"))), None)
                     pub = v.get("originalPublishDate") or v.get("lastModified")
+                    bundle = (v.get("ad") or {}).get("bundle") or ""            # e.g. nba_top_plays
+                    cov = (v.get("tracking") or {}).get("coverageType") or ""
                     text = f"{v.get('headline') or ''} {v.get('description') or ''} {' '.join(kws)}"
                     sink.add(dict(src="espn", league=lg, game_id=gid, event_id=play, clip_id=f"espn:{v.get('id')}",
                                   published=pub, event_time=start_t, duration_s=v.get("duration"),
-                                  kind=kind_of(text), tags=ath + [f"kw:{k.lower()}" for k in kws[:8]],
+                                  kind=kind_of(text), tags=ath + [f"kw:{k.lower()}" for k in kws[:8]] +
+                                  ([f"bundle:{bundle}"] if bundle else []) + ([f"coverage:{cov}"] if cov else []),
                                   title_kw=_kw(v.get("headline"))), f"{ymd[:4]}-{ymd[4:6]}")
                 sink.flush()
                 n += 1

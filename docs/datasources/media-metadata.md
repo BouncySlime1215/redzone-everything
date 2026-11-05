@@ -48,7 +48,7 @@ Quota: YouTube snapshot of 6 channels x 1,000 videos = ~130 units (10k/day free)
 |---|---|---:|---:|---:|---:|---:|---|
 | C1 MLB | 2023-2025 seasons | 157,247 | 88,431 (56%) | 629k | 314k | 12.1 MB | unlinked are mostly features/interviews ("other" 34k), condensed 7.4k, recaps 6.3k, plus 8.8k HR clips without a play guid |
 | C2 NHL | 2023-10-10 to 2026-11-04 | 35,043 | goals 24,659 of 24,659 (100%) | ~140k | ~70k | 0.8 MB | 4,091 games; + 6.5k recaps, 3.9k condensed games. First run cancelled at 07:04 UTC (not the timeout); torn gzip tails repaired with 0 rows lost; resumed and finished |
-| C7 ESPN NBA | 2024-09-05 to 2026-11-04 | 1,647 | 0 | 6.6k (with NFL) | 3.3k | 0.06 MB | 217 games. **ESPN keeps summary clips only for recent games**: 1,615 of 1,660 rows are from Oct-Nov 2026. History is gone; only a daily forward pull works. Play ids and athlete ids not parsed yet (shape probe added) |
+| C7 ESPN NBA | 2024-09-05 to 2026-11-04 | 1,647 | 0 | 6.6k (with NFL) | 3.3k | 0.06 MB | 217 games. **ESPN keeps summary clips only for recent games**: 1,615 of 1,660 rows are from Oct-Nov 2026. History is gone; only a daily forward pull works. Shape probe (Nov 5): ESPN clip records carry no play, athlete or keyword fields, so play linkage from ESPN is impossible; we keep the `ad.bundle` (e.g. `nba_top_plays`) and coverage type as tags |
 | C7 ESPN NFL | same | 13 | 0 | | | | NFL game summaries carry almost no clips. NFL coverage has to come from YouTube @NFL (key) |
 | C3 NBA direct | n/a | 0 | n/a | 0 | 0 | 0 | blocked: 403 |
 
