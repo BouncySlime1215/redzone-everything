@@ -43,3 +43,16 @@ Copy this block, set the cycle number and date, and fill every column.
 - Waiting on Nick (keys, Rules tabs, sign-offs), with the date asked:
 - Decisions logged in docs/memory/decisions.md this cycle:
 - License changes spotted (re-check any source whose terms changed):
+
+## Synthetic and teacher rows (Data planner E, EXP-1400..1499)
+
+Every synthetic row is counted apart from real, tagged synthetic=true and "personal-use, not for commercial
+release", and the cap is code: `python scripts/synth_build.py check SYN` fails if any league's synthetic tokens
+exceed 3x its real tokens (EXP-097). Self-play token equivalents are passed in with `--other-synthetic`.
+
+| Source | Kind | Built from | Where | License | Counts toward 3x cap | Status |
+|---|---|---|---|---|---|---|
+| Home/away mirror | augmentation, vocab v1 | factory token shards, train nights only (`--train-before`) | SYN/<league>/<year>.mirror.npy | inherits the source shard; personal-use | yes | code ready (EXP-1401) |
+| Tempo re-time (live gaps x 0.9-1.1, breaks untouched) | augmentation, vocab v1 | same | SYN/<league>/<year>.retime.npy | inherits; personal-use | yes | code ready (EXP-1401) |
+| Teacher 32B answers | teacher-v1 side channel (aux target only) | EXP-086 teacher_out.jsonl, train nights only | SYN/teacher/<league>.npz + text.jsonl | personal-use (Qwen3 Apache-2.0 model; plan B moments) | yes | waiting on the EXP-086 run (EXP-1400) |
+| Factory self-play | PICK rows (#122, #152) | real seasons, re-timed slates | factory shards | personal-use | yes, as token equivalents | lane ① runs it |
