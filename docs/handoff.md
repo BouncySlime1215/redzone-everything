@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Kaggle factory v1 DONE: 1.62B rows (NBA 1.06M moments + 969M self-play; NHL 477k + 644M; NFL 464k; CBB 493k). Bugs: CBB failed every season (KeyError League.CBB / no wallclock column), NHL 2015-19 no wallclocks; 28 seasons skipped at deadline. Factory v2 relaunched 2:44 AM on pack c2215ad (plan B default) + previous output.
-EXP-103 rerun: training done again (valid 0.3346); grading silent 15+ min with L4 GPU mem 16.8/22.5 GB: likely the step that killed run 1. Lane 1 asked to batch/cap the grader. Usage 55%.
+SYNC: Prime media_session position = epoch frame time; screen 6.4 s behind Amazon's clock (19 readings, Nov 4); YTTV ESPN ~20-30 s behind the real game from ad bursts vs plays.jsonl wall (1 break). Overnight harness + bitrate loggers running; diamond planners running. docs/sync (a9b1ab39).
+EXP-103 died at grading twice (runtime gone); waiting on lane 1's grader fix. Factory v2 running on Kaggle. Mac on battery 53% (unplugged). 2 unknown + v8_watchdog Colab sessions ~10.6 CU/h. Usage 56%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
