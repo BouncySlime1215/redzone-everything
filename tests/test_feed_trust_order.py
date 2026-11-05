@@ -68,6 +68,10 @@ def test_engine_reads_the_trust_order_flag(tmp_path):
     from redzone.store import Store
     cfg = Config(user_path=tmp_path / "c.yaml", history_dir=tmp_path / "h")
     cfg.defaults["league_overrides"] = cfg.data["league_overrides"] = {}   # live behavior: no league runs a promoted set
-    assert Engine(cfg, Store(tmp_path / "a.db")).merger.stoppage_owner == {}
+    # [Nick 9:05 AM Nov 5] nba_cdn is primary by default: it owns NBA stoppages
+    assert Engine(cfg, Store(tmp_path / "a.db")).merger.stoppage_owner == {League.NBA: ["nba"]}
     cfg.update({"sources": {"trust_order": {"nhl": ["nhl", "espn_summary"]}}})
-    assert Engine(cfg, Store(tmp_path / "b.db")).merger.stoppage_owner == {League.NHL: ["nhl", "espn_summary"]}
+    assert Engine(cfg, Store(tmp_path / "b.db")).merger.stoppage_owner == {League.NBA: ["nba"],
+                                                                            League.NHL: ["nhl", "espn_summary"]}
+    cfg.update({"sources": {"nba_primary": False}})
+    assert Engine(cfg, Store(tmp_path / "c.db")).merger.stoppage_owner == {League.NHL: ["nhl", "espn_summary"]}
