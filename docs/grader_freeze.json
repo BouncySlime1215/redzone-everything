@@ -1,6 +1,6 @@
 {
-  "version": 8,
-  "frozen_at": "2026-11-05T01:49Z",
+  "version": 9,
+  "frozen_at": "2026-11-05T02:13Z",
   "by": "integrator",
   "files": {
     "redzone/grading.py": "068bd51e94b63cb312a1ab807c381dea28ea119169a8f6d16b78c23fe8b6df02",
@@ -17,6 +17,8 @@
     "scripts/eval_sports.py": "7da13c54ed7371cb540736dddfdaa71af6ab700b49ec6562753ecbcb6d89b463",
     "scripts/ci_scorecard.py": "0cf746adc8cb6a79cf9dbe198aa1f070081e5381b19c3213c3df184ce64b6139",
     "scripts/leak_check.py": "d49c81b30e114456f1e534f73ca672d2c2e062f6c747cb3d44b68ca963f71fb8",
-    "scripts/grading_check.py": "c50d1a00d94d40a0b0b9c4d51cb2b18e59b5bcf63d0df39a07087d5d416d29a6"
+    "scripts/grading_check.py": "d0c8346b591aade379c0e7ca08453a156e9d8adbbaed3dd8023b27b715477b80",
+    "redzone/lab/worth.py": "071682c97eab57ee3a14fff0ace0dc1140bed4d05a43c9f54ab8ae8982b9e46b",
+    "scripts/worth_line.py": "bbd2f663e0fd71da599583768553f0ffa305a0d99d1d390e4ae58c59c58075d8"
   }
 }
