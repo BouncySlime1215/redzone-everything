@@ -4,9 +4,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
+import pytest  # noqa: E402
+
+pd = pytest.importorskip("pandas")
+pytest.importorskip("pyarrow")
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT))
 

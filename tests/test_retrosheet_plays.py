@@ -4,6 +4,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -46,6 +48,7 @@ def test_runs_counts_moves_home_and_errors_that_save_the_runner():
 
 
 def test_tokenizes_with_unknown_time_and_mlb_stoppages(tmp_path):
+    pytest.importorskip("pandas")                      # CI test jobs have no pandas
     import gzip
     import json
 

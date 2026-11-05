@@ -3,8 +3,10 @@ import json
 import sys
 from pathlib import Path
 
-import pandas as pd
+import pytest  # noqa: E402
 
+pd = pytest.importorskip("pandas")
+pytest.importorskip("pyarrow")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import green_summaries as G  # noqa: E402
 
