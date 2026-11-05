@@ -124,6 +124,21 @@ def season_titles(league: str, first: int, last: int) -> list[tuple[int, str]]:
     return out
 
 
+def rivalry_titles(league: str) -> list[str]:
+    table = NFL if league == "nfl" else NBA
+    by_team = {}
+    for nick, ab in table.items():
+        by_team.setdefault(ab, []).append(nick)
+    teams = sorted(by_team)
+    out = []
+    for i, a in enumerate(teams):
+        for b in teams[i + 1:]:
+            for na in by_team[a]:
+                for nb in by_team[b]:
+                    out += [f"{na}–{nb} rivalry", f"{nb}–{na} rivalry"]
+    return out
+
+
 RIVALRY_CATS = {"nfl": "Category:National Football League rivalries",
                 "nba": "Category:National Basketball Association rivalries"}
 
@@ -538,7 +553,11 @@ def pull(league: str, first: int, last: int, out: Path, wiki: Wiki | None = None
     if rivalries:
         new = []
         mem = wiki.members(RIVALRY_CATS[league])
-        print(f"{league} rivalries: {len(mem)} category members", flush=True)
+        if not mem:   # category title not found: try "<A>–<B> rivalry" for every franchise pair (redirects followed)
+            mem = wiki.resolve(rivalry_titles(league))
+        seen_ids = set()
+        mem = [m for m in mem if not (m["pageid"] in seen_ids or seen_ids.add(m["pageid"]))]
+        print(f"{league} rivalries: {len(mem)} articles", flush=True)
         for m in mem:
             if "rivalry" not in m["title"].lower():
                 continue

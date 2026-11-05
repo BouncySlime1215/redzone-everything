@@ -283,17 +283,15 @@ def fetch_range(league: str, d0: datetime, d1: datetime) -> list[dict]:
     out, seen, a = [], set(), d0
     while a <= d1:
         b = min(a + timedelta(days=27), d1)
-        got = fetch(league, a.strftime("%Y%m%d"), b.strftime("%Y%m%d"))
-        if not got.get("events"):          # range refused: fall back to one call per day
-            got = {"events": [e for k in range((b - a).days + 1)
+        # the public scoreboard answers 400 to date ranges (seen Nov 5), so ask one day at a time
+        got = {"events": [e for k in range((b - a).days + 1)
                               for e in fetch(league, *(2 * [(a + timedelta(days=k)).strftime("%Y%m%d")]))
-                              .get("events", [])]}
+                          .get("events", [])]}
         for e in events_of(got):
             if e["gid"] not in seen:
                 seen.add(e["gid"])
                 out.append(e)
         a = b + timedelta(days=1)
-        time.sleep(1)
     return out
 
 
