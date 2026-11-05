@@ -67,3 +67,11 @@ Set on Nov 5, 2026, before any line night. It is graded by `python scripts/also_
 - **FAIL:** the lower bound is > 0. That would mean the line pulls switches instead of informing.
 - **PENDING:** anything else.
 - **Guardrail:** "Big plays live or replayed within 3 min" must not drop on line nights.
+
+### EXP-026 display: catch-up order, spoiler-safe (phone)
+
+This is the lane 5 half of EXP-026. The decider half (queue order and deadline) is #199 and its re-run. It is set on Nov 5, 2026.
+
+- **What it is (`phone.catchup_view`, off):** the catch-up queue in the decider's own order, so it shows what plays next. At most `phone.catchup_visible` (2) catch-ups are shown at once, with "+N more waiting". Every entry reads "A play you missed": no player names, no play type and no score until the replay runs.
+- **Ship gates (tests):** 0 spoiler leaks in any phone response with the flag on (`test_catchup_view_spoiler_safe_decider_order_and_visible_cap` checks names, play types and scores), and never more than `catchup_visible` entries shown.
+- **Outcome line:** EXP-026's own "Big plays live or replayed within 3 min" belongs to the decider half. The display makes no outcome claim of its own, so it can't pass the decider's bar by itself.

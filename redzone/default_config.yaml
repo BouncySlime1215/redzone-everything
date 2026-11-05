@@ -629,6 +629,8 @@ noggin:                    # docs/noggin.md
 phone:                     # the phone page (redzone/web)
   v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it
   commit: false            # [EXP-036] commitment controls (stay here, only my teams, stop after this game, end at a time), each at a dead ball; OFF until lanes 2/3 ship the "commit" action
+  catchup_view: false      # [EXP-026 display] catch-up queue in the decider's own order, spoiler-safe ("A play you missed": no names, play type or score until it plays), only catchup_visible shown
+  catchup_visible: 2       # [EXP-026 display] open catch-ups visible at once (the playbook's 1-2)
   also_close: false        # [EXP-039] a quiet "Also close" line under the watch strip: other live games late and within one score, as text with no Watch button; OFF until EXP-039 is graded
   orient: false            # [EXP-038] a 2-3 s orientation beat on the phone after each switch (teams, score, clock, one fact); OFF until EXP-038 is graded
   orient_beat_s: 3         # [EXP-038] how long the beat stays up (the playbook's 2-3 s)

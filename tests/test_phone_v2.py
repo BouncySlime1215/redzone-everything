@@ -720,3 +720,20 @@ def test_watch_also_close_behind_its_flag(client, engine):
     assert client.get("/api/v2/watch").json()["also_close"] == []
     engine.cfg.update({"phone": {"v2": True, "also_close": True}})
     assert client.get("/api/v2/watch").json()["also_close"] == []                # no late, close games in the fixture
+
+
+def test_catchup_view_spoiler_safe_decider_order_and_visible_cap():
+    from redzone.decider.decider import Missed
+    q = [Missed("b", "p1", "Ovechkin goal, WSH leads 3-2", "goal", 380.0, 50.0),
+         Missed("a", "p2", "Allen 34-yd TD to Diggs", "td", 390.0, 70.0, mine=True, due_s=180.0),
+         Missed("c", "p4", "Tucker 52-yd FG good", "fg", 395.0, 30.0, must=True)]
+    v = phone_v2.catchup_queue([], {}, None, False, {}, q, {}, str.upper, now=430.0, view={"visible": 2})
+    assert [i["game_id"] for i in v["queue"]] == ["b", "a"]                              # the decider's order, first 2
+    assert v["more"] == 1 and v["spoiler_safe"] is True and v["counts"]["queued"] == 3 and v["counts"]["yours"] == 1
+    text = json.dumps(v)
+    for leak in ("Ovechkin", "Allen", "Tucker", "goal", "td", "fg", "3-2"):
+        assert leak not in text, leak                                                   # nothing spoils the play
+    h = phone_v2.held_view(None, False, 0.0, None, None, q, None, str.upper, 430.0, spoiler_safe=True)
+    assert h["catchup"]["label"] == phone_v2.SPOILER_SAFE_LABEL and "Ovechkin" not in json.dumps(h)
+    off = phone_v2.catchup_queue([], {}, None, False, {}, q, {}, str.upper, now=430.0)
+    assert off["spoiler_safe"] is False and off["more"] == 0 and len(off["queue"]) == 3
