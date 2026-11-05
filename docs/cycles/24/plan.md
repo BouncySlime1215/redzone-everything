@@ -43,3 +43,45 @@ The config already exists: `timing.behind_live_s` (off; by_league NFL/CFB 60, NB
 ## Waiting on Nick
 
 The tonight deploy card (lane 4), the NHL Rule #1 package card, the RC7 sync card (superseded by tonight's RC if Nick agrees), RC6.3.
+
+## Addendum, 14:20 UTC: Nick's 9:35 AM directives
+
+### 1. Watch Value v2 spec: due this week (crew G leads, with lane 1)
+
+- **File:** `docs/plans/2026-11-xx-watch-value-v2.md`, literature-backed with papers cited.
+  - **Neuroscience:** reward prediction error and surprise, anticipation ramps, habituation and novelty decay, arousal regulation.
+  - **Psychology:** peak-end, Ely-Frankel-Kamenica suspense and surprise, narrative transport, stakes.
+  - **Sociology:** collective attention, contagion velocity, rivalries and storylines.
+  - **Physiology:** published fan heart-rate and arousal studies, as labels for game states.
+  - **Math:** expected future peak arousal inside the buffer window × stakes × novelty − whiplash.
+  - **ML/RL:**
+    - pairwise ranking on real attention labels: highlight view velocity, minute-level viewership curves, Twitch, Reddit and Wikipedia spikes, and market volume;
+    - inverse RL from whip-around producers;
+    - the buffer makes the next ~60 s of surprise *known*.
+- **Every component** names a real data source and a pre-registered EXP (crew G 1700s, lane 1 100s), graded by % of oracle on locked nights.
+- **Objective (binding):** "worth it", per the playbook §5 line. Attention labels measure worth. Holding attention is not itself the objective. No dark patterns, neutral wording in public docs, and Nick's own viewing and buttons are never labels.
+- **Order:** NBA first, then NFL.
+- **Off tonight's critical path:** lane 1's tonight work is the replay sim engine (B), and the spec work starts after that.
+
+### 2. Adaptive per-league buffer policy (lane 2 owns, integrator gates)
+
+- **Buffer per league:** `buffer = feed-lag p95 + sync error + tune/seek time + safety margin`.
+- **Hard floor:** 10-15 s, so a play is always known before it's shown. The cap stays at 90 s.
+- **Ratchet down** only after locked-night gates hold, one step at a time. The buffer never reaches 0.
+- **Tonight:** the shadow keeps the fixed `by_league` values, and it **logs each term** (feed lag, sync error, tune/seek cost) per stick, so Friday can fit the formula.
+- **Integrator:** adds the ratchet rule to the RC8 gate. Each step down needs its own locked-night PASS with 0 mid-play on both graders.
+
+### 3. Nick's 9:45 AM order: STAY vs LEAVE from full game context
+
+- **Model (lane 1 builds and trains; crew G folds it into the Watch Value v2 spec):** a per-game "game state + consequence" model.
+  - **(a) Context:** score and time, the WP trajectory, leverage (the max WP swing still possible), runs, comeback odds,
+    timeouts, fouls and possessions left, and stakes (standings, playoff odds, tiebreakers, rivalry, milestones, storylines, Nick's teams).
+  - **(b) Consequence of this play:** ΔWP, Δ expected future suspense, Δ stakes, Δ narrative.
+  - **(c) STAY/LEAVE:** expected future watch value over the next N min (world-model rollouts beyond the buffer) vs the best
+    alternative, plus the switch and whiplash cost, with hysteresis. **It never leaves high leverage** (Rule #1 and the crunch rules stand).
+  - **Training:** the windowed-hindsight oracle plus longer-horizon rollouts.
+- **Tonight (lane 2, in the shadow log, fields only, no new logic before the freeze):** every stay/leave decision with the
+  context fields the brain already computes (score/time, WP, leverage, crunch flag, stakes inputs) and the predicted value of
+  staying vs the best alternative.
+- **Grade (lanes 3 + 1, pre-registered, integrator freezes):** on locked nights, regret vs the hindsight oracle and crunch-exit
+  accuracy. Tonight's shadow log is the first live read, graded on Friday. NBA first, then NFL.
