@@ -186,6 +186,18 @@ on locked.
 | 75 | EXP-075 | M3 | A diffusion "dream" world model samples many plausible next-5-minute futures per game for the planner. | % of oracle | ~15 / ~10 | ① | set before running | set before running | queued (GPU-bound) |
 | 76 | EXP-076 | M18 | A causal world model answers what-ifs ("timeout here?"). | Diagnostic | ~4 / ~6 | ① | set before running | set before running | queued |
 
+## Data Division A: play-by-play at every league and level (Nick, 12:05 AM Nov 5; [data division](plans/2026-11-05-data-division.md))
+
+Data Planner A's block is EXP-1000 to 1099. These are data rows: they land real events in the private Kaggle dataset and in
+[pbp-ledger.md](datasources/pbp-ledger.md). Each one is graded by the ledger, not by a brain metric. Every source carries a license line. Every plan-B
+shard and every model trained on one is tagged "personal-use, not for commercial release". Pulls run only on
+Kaggle, Colab or Actions CPU, never on the Mac. Only real events count as new information: derived per-play
+state (tokenizer v2) and augmentation are counted elsewhere.
+
+| rank | id | covers | hypothesis | North Star line | cost GPU-h / agent-h | lane | success bar | nights needed | status |
+|---:|---|---|---|---|---|---|---|---|---|
+| 1 | EXP-1000 | EXP-097, world-model pretraining | The crew's first wave (MiLB AAA to Single-A and MLB GUMBO 2008-24 via the MLB Stats API, wehoop WNBA + women's college, StatsBomb open data, Wyscout public events, Cricsheet) lands as play-table shards (scripts/pbp/schema.py) in one resumable Kaggle CPU notebook. | Data scale (real tokens) | 0 GPU (Kaggle CPU) / ~4 | A (Data Division) | By Sat Nov 7 08:00 ET: >= 300M real v1 tokens landed (pbp-ledger.md total, events x 6 + 4 per game). Every shard has a license line, every plan-B shard carries the personal-use tag (`ledger.py --check` passes), 0 product-league rows on or after EVAL_FIRST_NIGHT, and >= 99% of fetched games pass schema.validate | n/a (data row) | running |
+
 ## Hold and line (not scheduled)
 
 | id | covers | why | allowed remainder | success bar | nights needed | status |
