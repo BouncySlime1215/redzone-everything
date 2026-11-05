@@ -92,3 +92,19 @@ the probe must also log `/proc/uptime` (or the extrapolated value).**
   (2) take scorebug clock reads at the highest safe cadence while a Prime game is on (screenrecord at 640x360
   if screencap is too slow, ~7 s per frame on HDMI1); (3) fuse into K = arena - frame clock per Prime stream.
   Target sd <= 0.5 s after ~20 reads. Then the shadow join test (C4) gates mid-air joins.
+
+## Update ~7:35 AM: YouTube TV's WEB player exposes a real clock (the Mac route)
+
+- tv.youtube.com in Chrome (Nick signed in), ESPN, muted. The player object `#movie_player` exposes
+  `getMediaReferenceTime()` = **epoch seconds of the frame playing** (`getProgressState().ingestionTime`), plus
+  `isAtLiveHead`, seekable range and `getVideoStats()` (client WEB_UNPLUGGED, live: "dvr").
+- `now - getMediaReferenceTime()` = **23.13, 23.21, 23.21, 23.21 s** at the live head: steady to ~0.1 s.
+  So the YTTV web stream runs ~23.2 s behind YouTube's ingest clock (ingest ≈ arena - a few s, like Prime's 9.6 s).
+- No picture capture, no DRM involvement: these are the player's own timing APIs in Nick's own browser.
+- **Bridge to the Fire sticks (tests for tonight):**
+  1. YTTV TV app "Stats for nerds" overlay (UI, readable by screencap/OCR): does it show live latency / ingest time?
+  2. Both on the same channel: web vs stick, aligned on a shared event (program boundary, scorebug/score change via
+     the Stats panel, or national ad-pod start) → per-stick offset to the ingest clock.
+  3. The Broadcast Delay setting (Default vs Decreased, ~9-10 s per reports) likely explains the ~10 s landing gap
+     between the two sticks; set both the same (Decreased) before tonight, with Nick's OK.
+- Mac cost: one muted 1080p tab ≈ light; pause it when not measuring.
