@@ -20,7 +20,7 @@ Mac; no spending; keys are made by Nick and added as Actions secrets, never past
 |---|---|---|
 | G1 live collectors | Bluesky Jetstream minute counts; Twitch Helix sports viewer curves | `attention-factory/<src>-*` push runs, one per evening slate (up to 5h55m) |
 | G2 published ratings | per-game TV viewers (and quarter peaks where printed) from league and network press releases | one-shot pull per week; numbers only |
-| G3 label builder | joins G1 + B's Wikipedia hourly + C's YouTube velocity + D's market volume into one `attention` label per (game, minute), and runs the lift tests | CPU job after each night; owns EXP-1701/1702 |
+| G3 label builder | joins G1 + B's Wikipedia hourly + C's YouTube velocity into one `attention` label per (game, minute), and runs the lift tests | CPU job after each night; owns EXP-1701/1702 |
 
 ## Sources
 
@@ -29,7 +29,7 @@ Mac; no spending; keys are made by Nick and added as Actions secrets, never past
 | G-a | Bluesky Jetstream (public firehose, no key) | **landing** (EXP-1700) | Public AT Protocol data via Jetstream, no auth; counts per term per minute only, no text or DIDs; plan B, personal use, not for commercial release | label `attention_minute`: per-team mention spike (z vs that team's own baseline), lag 0-5 min | measured by the ledger after the first run (expect ~0.1-0.2M label tokens/day at < 1 MB/day) |
 | G-b | Twitch Helix `/streams`, Sports category | code ready, **needs Nick's key** (EXP-1703) | Twitch Developer Services Agreement, free app token; aggregate viewers only; plan B, personal use | label `live_viewers_minute`: viewer curve per team term (watch parties, official co-streams) | same shape as G-a, ~1 row/min |
 | G-c | League and network press releases (NFL, NBA, NHL, ESPN, NBC, Fox, CBS, Amazon) | planned (G2) | Public press releases read for numbers only; plan B | label `game_viewers` (game level, plus quarter peaks when printed) | tiny storage, few thousand rows/season; highest value per row |
-| G-d | D's prediction-market ticks (volume field) | read only | D's license lines | label `market_attention_minute` (volume spike) | counted in D's ledger, not ours |
+| G-d | D's prediction-market ticks (volume field) | **held for Nick** | D's license lines | would be label `market_attention_minute` (volume spike); held because Nick's rule says market data is an input only, never a label | counted in D's ledger, not ours |
 | G-e | B's Wikipedia hourly pageviews, C's YouTube view velocity, B's Trends | read only | B's and C's license lines | labels `wiki_hourly`, `highlight_velocity` (hindsight) | counted in B's and C's ledgers |
 | G-f | Academic suspense, arousal and audience datasets (open licenses) | G3 hunt | per dataset; only open licenses | eval-only priors if sports-specific | honest prior: most are small and off-domain (movies, music); kept only if they have sports moments with timestamps |
 
