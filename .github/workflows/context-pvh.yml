@@ -1,0 +1,63 @@
+# Data crew B: bulk Wikipedia hourly pageviews (teams, team-season articles, players) for Watch Value attention
+# labels (EXP-1704, Nick 11:30 AM Nov 5). Free GitHub runners only, never the Mac or Claude. Push a branch
+# data-b-pvh/<name> carrying scripts/context/pvh_chunk.json {"jobs": [{"league": "nba", "season": 2025}, ...]}.
+# Each job pushes derived hourly counts (CC0) to data-b-out/pvh-<league>-<season> and resumes from it on re-run.
+# Wikimedia asks for few parallel dump downloads, so max-parallel stays small.
+name: context-pvh
+on:
+  push:
+    branches: ["data-b-pvh/**"]
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      jobs: ${{ steps.m.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        run: echo "jobs=$(python3 -c 'import json;print(json.dumps(json.load(open("scripts/context/pvh_chunk.json"))["jobs"]))')" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: entities (Wikidata)
+        run: python scripts/context/wiki_hourly_bulk.py entities --leagues nba,nfl --out /tmp/meta
+      - uses: actions/upload-artifact@v4
+        with: {name: pvh-entities, path: /tmp/meta/entities.csv, retention-days: 30}
+  pull:
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        job: ${{ fromJSON(needs.setup.outputs.jobs) }}
+    env:
+      LEAGUE: ${{ matrix.job.league }}
+      SEASON: ${{ matrix.job.season }}
+      OUTBR: data-b-out/pvh-${{ matrix.job.league }}-${{ matrix.job.season }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements-ci.txt && sudo apt-get install -y -qq lbzip2
+      - uses: actions/download-artifact@v4
+        with: {name: pvh-entities, path: /tmp/meta}
+      - name: restore previous days from the out branch
+        run: |
+          mkdir -p /tmp/out
+          if git fetch -q --depth 1 origin "refs/heads/$OUTBR"; then git archive FETCH_HEAD | tar -x -C /tmp/out; fi
+          ls /tmp/out/hourly 2>/dev/null | wc -l
+      - name: pull
+        run: python scripts/context/wiki_hourly_bulk.py run --league "$LEAGUE" --season "$SEASON" --entities /tmp/meta/entities.csv --out /tmp/out --max-minutes 320
+      - name: push derived outputs to the out branch
+        if: always()
+        run: |
+          cp /tmp/meta/entities.csv /tmp/out/ 2>/dev/null || true
+          rm -f /tmp/out/patterns.txt
+          cd /tmp/out && du -sh . && ls hourly 2>/dev/null | wc -l
+          [ -d hourly ] || exit 0
+          git init -q -b "$OUTBR" && git add -A
+          git -c user.name=context-pvh -c user.email=context-pvh@users.noreply.github.com \
+            commit -qm "context-pvh $LEAGUE $SEASON from $GITHUB_SHA (run $GITHUB_RUN_ID)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY" "HEAD:refs/heads/$OUTBR"
