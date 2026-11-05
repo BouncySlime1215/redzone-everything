@@ -32,5 +32,5 @@ Only shards that landed in the private Kaggle dataset count. Every token here is
 | statsbomb | fifa_u20_world_cup | 1979-1979 | 1 | 3,245 | 0.0 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | north_american_league | 1977-1977 | 1 | 3,205 | 0.0 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | sportvu_extra | nba | 2016-2016 | 0 | 0 | 0.0 | 0.07 | personal-use, not for commercial release | SportVU 2015-16 (NBA/STATS LLC content, mirror has no licence); plan B personal use, private training only, never re-upload; credit NBA / STATS LLC |
-| **Total events** | | | | 3,961 | 13,911,986 | 83.5 | 0.21 | | |
-| **Total tracking** | | | | 621 | 2,054,040 | 12.3 | 0.03 | | |
+| **Total events** | | | | 3,961 | 13,911,986 | 83.5 | 0.14 | | |
+| **Total tracking** | | | | 621 | 2,054,040 | 12.3 | 0.11 | | |

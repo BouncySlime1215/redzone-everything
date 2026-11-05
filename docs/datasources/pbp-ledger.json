@@ -336,21 +336,21 @@
    "bytes": 72584434,
    "license": "SportVU 2015-16 (NBA/STATS LLC content, mirror has no licence); plan B personal use, private training only, never re-upload; credit NBA / STATS LLC",
    "tag": "personal-use, not for commercial release",
-   "kind": "events"
+   "kind": "tracking"
   }
  ],
  "total": {
-  "shards": 81,
+  "shards": 80,
   "games": 3961,
   "events": 13911986,
   "v1_tokens": 83487760,
-  "bytes": 212931589
+  "bytes": 140347155
  },
  "tracking": {
-  "shards": 1,
+  "shards": 2,
   "games": 621,
   "events": 2054040,
   "v1_tokens": 12326724,
-  "bytes": 34154398
+  "bytes": 106738832
  }
 }

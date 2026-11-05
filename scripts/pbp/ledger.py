@@ -59,7 +59,8 @@ def summarize(rows: list[dict]) -> dict:
             b[k] += int(m.get(k) or 0)
         b["seasons"].add(int(m["season"]))
         b["license"], b["tag"] = m.get("license", ""), m.get("tag", "")
-        b["kind"] = "tracking" if "tracking" in str(m.get("rows_are", "")) else "events"
+        b["kind"] = ("tracking" if "tracking" in str(m.get("rows_are", "")) or str(m.get("source", "")).endswith("_extra")
+                     else "events")
     out = []
     for (src, lg), b in sorted(by.items(), key=lambda kv: -kv[1]["v1_tokens"]):
         s = sorted(b.pop("seasons"))
