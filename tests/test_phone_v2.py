@@ -423,3 +423,68 @@ def test_ledger_folds_the_kaggle_factory_manifest():
     assert led["nfm"] == keep["nfm"] and led["total_tokens"] == 3_000_000
     row = next(r for r in DL.view(led)["rows"] if r["league"] == "nba")
     assert not row["pending"] and "| NBA | nba_api, nba_cdn | 3.0M | 0 | 9,000 | 12% | 5% / 10% / 25% |" in DL.table(DL.view(led))
+
+
+def test_capture_view_counts_provenance_autolog_held_and_report():
+    import json
+    prov = {"trace": {"id": "t", "provenance": {"guard": {"ok": True}, "decider": {"kind": "better"}, "zz": 1}}}
+    sws = [{"ts": 1.0, "detail": json.dumps(prov)}, {"ts": 2.0, "detail": json.dumps({"trace": {"id": "u"}})},
+           {"ts": 3.0, "detail": "{}"}]
+    summary = {"rows": {"traces.jsonl": 2, "bad": "x"}, "cuts_graded": 2, "entries_mid_play": 0, "switch_p95_s": 2.2}
+    v = phone_v2.capture_view("2026-11-04", sws, summary, [{"kind": "drift"}, {"kind": "recovered"}, {"kind": "drift"}],
+                              "2026-11-04.md", {"HDMI2": 62.46})
+    assert (v["switches"], v["with_trace"], v["with_provenance"]) == (3, 2, 1)
+    assert [k["module"] for k in v["provenance_keys"]] == ["decider", "guard", "zz"]        # PROV_ORDER, then the rest
+    assert v["autolog"]["rows"] == {"traces.jsonl": 2} and v["autolog"]["entries_mid_play"] == 0
+    assert v["held"] == {"now": {"HDMI2": 62.5}, "log": {"drift": 2, "recovered": 1}}
+    assert [c["ok"] for c in v["checks"]] == [True, False, True] and v["gold"] is False
+    empty = phone_v2.capture_view("2026-11-05", [], None, [], None)
+    assert empty["autolog"] is None and empty["gold"] is False and empty["held"]["now"] == {}
+
+
+def test_capture_routes(client, engine, tmp_path, monkeypatch):
+    assert client.get("/api/v2/capture").status_code == 404
+    _on(engine)
+    monkeypatch.setattr(phone_v2, "LIVE_NIGHTS", tmp_path / "ln")
+    monkeypatch.setattr(phone_v2, "REPORTS", (tmp_path / "rep",))
+    monkeypatch.setattr(phone_v2, "BUFFER_LOG", tmp_path / "buffer.jsonl")
+    gid = next(iter(engine.merger.games))
+    _switch(engine, gid)
+    r = client.get("/api/v2/capture").json()
+    assert r["enabled"] and r["switches"] == 1 and r["report"] is None and r["autolog"] is None
+    night = r["night"]
+    (tmp_path / "ln" / night).mkdir(parents=True)
+    (tmp_path / "ln" / night / "summary.json").write_text('{"rows": {"traces.jsonl": 1}, "cuts_graded": 1}')
+    (tmp_path / "rep").mkdir()
+    (tmp_path / "rep" / f"{night}.md").write_text("# report")
+    r = client.get(f"/api/v2/capture?day={night}").json()
+    assert r["autolog"]["cuts_graded"] == 1 and r["report"] == f"{night}.md"
+    assert client.get(f"/api/v2/capture/report?day={night}").json() == {"ok": True, "day": night, "text": "# report"}
+    assert client.get("/api/v2/capture?day=x").json()["ok"] is False
+    assert client.get("/api/v2/capture/report?day=2020-01-01").json()["ok"] is False
+
+
+def test_crunch_timeline_graded_and_from_provenance(tmp_path):
+    import json
+    f = tmp_path / "c.json"
+    f.write_text(json.dumps({"tol_s": 60, "games": {
+        "a": {"learned": [[100, 400], [500, 900]], "oracle": [[130, 950]]},       # entry -30 ok, exit -50 ok
+        "b": {"learned": [[100, 200]], "oracle": [[100, 500]]},                    # exit -300: a miss
+        "c": {"learned": [], "oracle": [[0, 10]]}, "d": {"learned": [[5, 1]]}}}))  # never on; a bad span drops
+    c = phone_v2.read_crunch(f)
+    assert c["games"]["d"]["learned"] == [] and phone_v2.read_crunch(tmp_path / "none.json") is None
+    v = phone_v2.crunch_timeline(c, [], str.upper)
+    by = {g["game"]: g for g in v["games"]}
+    assert (by["a"]["entry_s"], by["a"]["exit_s"], by["a"]["exit_ok"]) == (-30.0, -50.0, True)
+    assert by["b"]["exit_ok"] is False and by["c"]["exit_ok"] is False and "exit_ok" not in by["d"]
+    assert (v["source"], v["exits"], v["exits_ok"], v["entries_ok"]) == ("graded", 3, 1, 2)
+    assert v["games"][0]["game"] in ("b", "c")                                     # misses first
+    sw = [{"ts": 10.0, "to_game": "x", "frm": "y",
+           "detail": json.dumps({"trace": {"id": "t", "provenance": {"crunch_state": {"to": "in", "from": "leaving"}}}})},
+          {"ts": 20.0, "to_game": "y", "frm": None, "detail": json.dumps({"trace": {"provenance": {"crunch_state": "entering"}}})},
+          {"ts": 30.0, "to_game": "z", "detail": json.dumps({"trace": {"provenance": {"crunch_state": "bogus"}}})}]
+    v = phone_v2.crunch_timeline(None, sw, str.upper)
+    pts = {g["game"]: g["points"] for g in v["games"]}
+    assert v["source"] == "provenance" and pts == {"x": [{"ts": 10.0, "state": "in"}],
+                                                   "y": [{"ts": 10.0, "state": "leaving"}, {"ts": 20.0, "state": "entering"}]}
+    assert phone_v2.crunch_timeline(None, [], str)["source"] is None

@@ -110,6 +110,7 @@ export function missedBar() {
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
     <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>
     <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-capture">${icon("moon")}Live night: did it become gold data?</button>
     <button class="btn btn--ghost v2-span" data-act="v2-ledger">${icon("activity")}Data + NFM: what the Noggin learns from</button></div>`;
 }
 
@@ -242,12 +243,24 @@ function nightSheet() {
     const lane = pm.length ? `<div class="v2-rlabel">What the planner chose: <span class="v2-pm-key v2-pm--catchup">▲</span> catch-up <span class="v2-pm-key v2-pm--interleave">◆</span> break visit / return</div>
       <div class="v2-pmlane" role="img" aria-label="${attr(`${num((d.plan_counts || {}).catchup)} catch-ups and ${num((d.plan_counts || {}).interleave)} break visits`)}">${pm.map((m) =>
         `<i class="v2-pm v2-pm--${attr(m.type)}${m.ok ? "" : " v2-pm--fail"}" style="left:${(((m.ts - a) / span) * 100).toFixed(2)}%" title="${attr(`${m.type === "catchup" ? "Catch-up" : m.kind === "return" ? "Back home" : "Break visit"}: ${m.matchup} ${fmtTime(m.ts)}${m.plan ? " (plan " + m.plan + ")" : ""}`)}">${m.type === "catchup" ? "▲" : "◆"}</i>`).join("")}</div>` : "";
-    const o = d.oracle;
+    const o = d.oracle, cr = d.crunch || {};
+    const X = (t) => (((Math.max(a, Math.min(b, t)) - a) / span) * 100).toFixed(2);
+    const spanBars = (list, cls) => arr(list).filter(([t0, t1]) => t1 > a && t0 < b).map(([t0, t1]) =>
+      `<b class="${cls}" style="left:${X(t0)}%;width:${Math.max(0.4, X(t1) - X(t0)).toFixed(2)}%"></b>`).join("");
+    const dlt = (s) => (typeof s === "number" ? `${s > 0 ? "+" : ""}${Math.round(s)} s` : "–");
+    const crunchRows = arr(cr.games).map((g) => `<div class="v2-cr">
+        <div class="v2-cr-top"><span class="m">${esc(g.matchup)}</span>${"exit_ok" in g ? `<span class="tag tag--${g.exit_ok ? "pass" : "fail"}">exit ${esc(dlt(g.exit_s))}</span>
+          <span class="tag tag--${g.entry_ok ? "pass" : "fail"}">entry ${esc(dlt(g.entry_s))}</span>` : ""}</div>
+        <div class="v2-cr-track" title="Learned">${spanBars(g.learned, "v2-cr-l")}${arr(g.points).map((p) => `<i class="v2-cs--${attr(p.state)}" style="left:${X(p.ts)}%" title="${attr(`${CRUNCH_TXT[p.state] || p.state} ${fmtTime(p.ts)}`)}"></i>`).join("")}</div>
+        <div class="v2-cr-track v2-cr-track--o" title="Hindsight">${spanBars(g.oracle, "v2-cr-o")}</div></div>`).join("");
+    const crunchBox = cr.source ? `<div class="v2-rlabel">Crunch: learned (top) vs hindsight (bottom)${cr.source === "graded"
+      ? ` · exits right ${num(cr.exits_ok)}/${num(cr.exits)} (within ${num(cr.tol_s)} s)` : " · hindsight pending: learned states from switch traces"}</div><div class="v2-crs">${crunchRows}</div>` : "";
     ribbon = `<div class="v2-ribbon" role="img" aria-label="What was on the TV, ${esc(fmtTime(a))} to ${esc(fmtTime(b))}">${bars(segs)}${marks}</div>
       ${lane}
       ${o ? `<div class="v2-rlabel">Best possible (hindsight)${o.agree_pct != null ? ` · we matched ${esc(String(o.agree_pct))}% of the time` : ""}</div>
       <div class="v2-ribbon v2-ribbon--oracle" role="img" aria-label="What the hindsight oracle would have shown">${bars(arr(o.segments))}</div>` : ""}
       <div class="v2-ticks">${ticks.join("")}</div>
+      ${crunchBox}
       <div class="v2-legend">${arr(sm.on_air).map((r) => `<span><i class="v2-c${colorOf(r.matchup, order)}"></i>${esc(r.matchup)} <small>${esc(fmtDur(r.s))}</small></span>`).join("")}</div>`;
   }
   const pb = Object.entries(sm.playbooks || {});
@@ -396,6 +409,44 @@ function trendSheet() {
 }
 ACTIONS["v2-trend"] = () => { trendS.data = null; openSheet({ id: "v2-trend", label: "How close to perfect", full: true, render: trendSheet }); loadTrend(); };
 ACTIONS["v2-trend-split"] = (el) => { trendS.split = el.dataset.f; trendS.data = null; const s = sheetById("v2-trend"); if (s) s.update(); loadTrend(); };
+
+/* ---------- Live night: the morning check that last night became gold data (auto-log, provenance, held, report) ---------- */
+const cap = { data: null, day: "", report: null };
+const shiftDay = (d, n) => { const t = new Date(`${d}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+async function loadCapture() {
+  try { cap.data = await api(`/api/v2/capture${cap.day ? `?day=${cap.day}` : ""}`); if (cap.data && cap.data.night) cap.day = cap.data.night; } catch (e) { cap.data = { error: e.message }; }
+  const s = sheetById("v2-capture"); if (s) s.update();
+}
+function captureSheet() {
+  const d = cap.data;
+  if (!d) return `<h3>Live night</h3><p class="lead">Loading…</p>`;
+  if (d.error || d.ok === false) return `<h3>Live night</h3><p class="lead">${esc(d.error || d.message)}</p>`;
+  if (cap.report != null) return `<h3>Night report · ${esc(d.night)}</h3><button class="v2-day" data-act="v2-capture-back">Back</button><pre class="v2-report">${esc(cap.report)}</pre>`;
+  const nav = `<div class="v2-days"><button class="v2-day" data-act="v2-capture-day" data-n="-1">◀ ${esc(shiftDay(d.night, -1))}</button>
+    <button class="v2-day" aria-pressed="true">${esc(d.night)}</button><button class="v2-day" data-act="v2-capture-day" data-n="1">${esc(shiftDay(d.night, 1))} ▶</button></div>`;
+  const checks = arr(d.checks).map((c) => `<div class="v2-ms"><span class="tag tag--${c.ok ? "pass" : "fail"}">${c.ok ? "yes" : "no"}</span><span>${esc(c.label)}</span></div>`).join("");
+  const a = d.autolog, kv = (k, v) => `<span><b>${v == null ? "–" : esc(String(v))}</b> ${esc(k)}</span>`;
+  const auto = a ? `<div class="v2-led"><div class="v2-led-nums">${kv("cuts graded", a.cuts_graded)}${kv("mid-play entries", a.entries_mid_play)}${kv("switch p95 s", a.switch_p95_s)}${kv("picture ≤ 3 s", a.picture_within_3s)}${kv("press→TV p95 s", a.press_to_tv_p95_s)}${kv("mid-play leaves", a.leaves_mid_play)}</div>
+      <small>${Object.entries(a.rows || {}).map(([k, n]) => `${esc(k)} ${num(n)}`).join(" · ")}</small></div>` : `<p class="lead">No auto-log yet: the supervisor collects it after 6 AM ET.</p>`;
+  const prov = arr(d.provenance_keys).length ? arr(d.provenance_keys).map((p) => `<span class="chip">${esc(MOD_TXT[p.module] || p.module)} ${num(p.n)}</span>`).join(" ") : `<span class="m">No provenance yet (lane 3's traces).</span>`;
+  const h = d.held || {}, now = Object.entries(h.now || {}), log = Object.entries(h.log || {});
+  return `<h3>Live night</h3>${nav}
+    <div class="v2-tiles"><div class="stile"><b>${d.gold ? "Gold" : "Not yet"}</b><span>All checks</span></div>
+      <div class="stile"><b>${num(d.with_provenance)}/${num(d.switches)}</b><span>Switches with provenance</span></div>
+      <div class="stile"><b>${num(d.with_trace)}</b><span>With a trace</span></div></div>
+    <div class="v2-mss">${checks}</div>
+    <h4>Auto-log</h4>${auto}
+    <h4>Who spoke (provenance)</h4><div class="v2-chips">${prov}</div>
+    <h4>Held buffer</h4><p class="lead">${now.length ? now.map(([t, s]) => `${esc(t)} held ${num(s)} s behind live.`).join(" ") : "Nothing held right now."}${log.length ? ` Log: ${log.map(([k, n]) => `${esc(k)} ${num(n)}`).join(", ")}.` : ""}</p>
+    ${d.report ? `<button class="btn btn--ghost" data-act="v2-capture-report">${icon("replay")}Open the night report</button>` : `<p class="lead">No night report for this night.</p>`}`;
+}
+ACTIONS["v2-capture"] = () => { cap.data = null; cap.day = ""; cap.report = null; openSheet({ id: "v2-capture", label: "Live night", full: true, render: captureSheet }); loadCapture(); };
+ACTIONS["v2-capture-day"] = (el) => { cap.day = shiftDay(cap.day, Number(el.dataset.n)); cap.data = null; cap.report = null; const s = sheetById("v2-capture"); if (s) s.update(); loadCapture(); };
+ACTIONS["v2-capture-report"] = async () => {
+  try { const r = await api(`/api/v2/capture/report?day=${cap.day}`); cap.report = r.text || "(empty)"; } catch (e) { cap.report = e.message; }
+  const s = sheetById("v2-capture"); if (s) s.update();
+};
+ACTIONS["v2-capture-back"] = () => { cap.report = null; const s = sheetById("v2-capture"); if (s) s.update(); };
 
 /* ---------- Data ledger + NFM status: tokens per league, real vs synthetic, and the model's milestones ---------- */
 const ledgerS = { data: null };

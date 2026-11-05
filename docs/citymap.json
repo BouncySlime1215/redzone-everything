@@ -3483,6 +3483,7 @@
     "redzone/lab/night/run.py",
     "redzone/observability.py",
     "redzone/trace.py",
+    "redzone/web/phone_v2.py",
     "scripts/export_decision_records.py",
     "scripts/fault_drill.py"
    ],
@@ -3906,6 +3907,7 @@
     "redzone/lab/decision_records.py",
     "redzone/models.py",
     "redzone/noggin/priority.py",
+    "redzone/supervisor.py",
     "redzone/trace.py",
     "redzone/web/ledger.py"
    ],
@@ -3918,6 +3920,7 @@
    "serves": [
     "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)",
     "Big plays live or replayed within 3 min",
+    "STK-06",
     "Your-team big plays seen (live or within 3 min)"
    ]
   },
