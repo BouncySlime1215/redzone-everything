@@ -308,3 +308,19 @@ def test_arm_entry_rewind_sets_the_hidden_seek_only_on_the_hidden_cue():
     c._entry_cue = "seek"
     c.arm_entry_rewind(30)
     assert (c._entry_rewind, c._hidden_entry) == (30.0, 0.0)
+
+
+def test_tap_rewind_cap_keeps_waiting(engine, monkeypatch):
+    """[EXP-741 D] decider.entry.user_rewind_max_s: a tap never rewinds further than the cap."""
+    from redzone.config import default
+    assert default("decider.entry.user_rewind_max_s") is None
+    engine.cfg.update({"decider": {"entry": {"user_timed": True, "user_rewind_after_s": 15, "user_rewind_max_s": 60}}})
+    a = _live(engine)[0]
+    engine.scored.setdefault(a, next(iter(engine.scored.values())))
+    armed = []
+    monkeypatch.setattr(engine.control, "arm_entry_rewind", lambda s: armed.append(s), raising=False)
+    old = Decision(time.time() - 30, "switch", a, "you selected this game", State.PAUSED, kind="user")
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(True, 93.0))
+    assert engine._tap_lands_dead(old, "youtubetv:espn") is False and armed == []
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(True, 45.0))
+    assert engine._tap_lands_dead(old, "youtubetv:espn") is True and armed == [45.0]

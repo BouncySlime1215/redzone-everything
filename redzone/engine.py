@@ -1988,6 +1988,9 @@ class Engine:
         after = for_league(self.cfg, "decider.entry.user_rewind_after_s", lg, None)
         if plan.rewind_s and (after is None or now - d.at < float(after)):
             return False
+        cap = for_league(self.cfg, "decider.entry.user_rewind_max_s", lg, None)
+        if plan.rewind_s and cap is not None and plan.rewind_s > float(cap):
+            return False   # [EXP-741 D] never this far behind live on a tap: keep waiting for a nearer dead ball
         arm = getattr(self.control, "arm_entry_rewind", None)
         if arm is not None and after is not None:
             arm(plan.rewind_s)

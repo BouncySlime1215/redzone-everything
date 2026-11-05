@@ -273,6 +273,8 @@ decider:
     user_rewind_after_s: null  # [EXP-741 B] with user_timed: after this many seconds a tap also takes a landing that needs
                              # a rewind to the last dead ball (YTTV), armed at the cut; null = never (no-rewind taps waited
                              # > 180 s on 12/20 NBA taps, lane 3). Graded arm: 15
+    user_rewind_max_s: null  # [EXP-741 D] a tap never rewinds further than this (a longer one keeps waiting); null = no cap.
+                             # Graded arm: 60 (arm B rewound one tap 123 s behind live)
     start_timed: false       # [EXP-739] the night's first pick waits for a whistle / rewinds like any entry (off: goes in
                              # live, which landed 6 NHL first picks 10-32 s after the opening faceoff, autopsy #302)
     lag_floor_s: 0           # [EXP-211] an open stoppage counts as dead only as far as a feed at least this slow would
