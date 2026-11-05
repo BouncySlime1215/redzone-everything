@@ -161,8 +161,9 @@ def test_decider_rewinds_into_the_huddle_instead_of_joining_mid_play(cfg, clock)
     _feed(dec)
     clock.t = 1070.0        # the picture would come up at real 1035: the 1030-1040 snap
     d = dec.decide(_cands("youtubetv:b"))
-    assert d.action == "switch" and d.target == "b" and d.rewind_s == 20.0
-    assert dec.delays.get("youtubetv:b").behind == 20.0 and dec.delays.get("youtubetv:b").mu == 60.0
+    # [seek model] one 15 s step + the 3 s mid stall (live lab, Nov 4: the stall lands it further back)
+    assert d.action == "switch" and d.target == "b" and d.rewind_s == 18.0
+    assert dec.delays.get("youtubetv:b").behind == 18.0 and dec.delays.get("youtubetv:b").mu == 58.0
 
 
 def test_decider_waits_for_a_dead_ball_where_it_cannot_rewind(cfg, clock):
