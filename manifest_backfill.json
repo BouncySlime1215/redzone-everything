@@ -1,0 +1,32 @@
+{
+ "mode": "backfill",
+ "ran_at": "2026-11-05T16:03:17Z",
+ "from": "2025-09-04",
+ "to": "2025-10-01",
+ "games": 64,
+ "facts_this_run": 5978,
+ "by_field": {
+  "edit_rate_live_z": 5120,
+  "pageviews_live_z": 602,
+  "pageviews_z": 128,
+  "edit_rate_z": 128
+ },
+ "shards": {
+  "nfl_2025": {
+   "facts": 5978,
+   "new": 5978,
+   "derived": 0,
+   "games": 64,
+   "fields": [
+    "edit_rate_live_z",
+    "edit_rate_z",
+    "pageviews_live_z",
+    "pageviews_z"
+   ],
+   "sources": [
+    "wikimedia-edits",
+    "wikimedia-pageviews"
+   ]
+  }
+ }
+}

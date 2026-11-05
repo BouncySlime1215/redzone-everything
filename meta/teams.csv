@@ -1,0 +1,33 @@
+league,abbr,name,enwiki,former_titles,former_abbrs,aliases,active,qid,venue_qid,venue_lat,venue_lon
+nfl,ARI,Arizona Cardinals,Arizona_Cardinals,,,,1,Q224164,Q756433,33.5275,-112.2625
+nfl,ATL,Atlanta Falcons,Atlanta_Falcons,,,,1,Q272059,Q7007552,33.755277777,-84.400833333
+nfl,BAL,Baltimore Ravens,Baltimore_Ravens,,,,1,Q276539,Q1141336,39.278055555,-76.622777777
+nfl,BUF,Buffalo Bills,Buffalo_Bills,,,,1,Q221626,Q1475645,42.773611111,-78.786944444
+nfl,CAR,Carolina Panthers,Carolina_Panthers,,,,1,Q330120,Q806673,35.225833333,-80.852777777
+nfl,CHI,Chicago Bears,Chicago_Bears,,,,1,Q205033,Q1132413,41.8625,-87.616666666
+nfl,CIN,Cincinnati Bengals,Cincinnati_Bengals,,,,1,Q223511,Q1632294,39.095444444,-84.516038888
+nfl,CLE,Cleveland Browns,Cleveland_Browns,,,,1,Q223527,Q1100756,41.506111111,-81.699444444
+nfl,DAL,Dallas Cowboys,Dallas_Cowboys,,,,1,Q204862,Q838284,32.74769,-97.09288
+nfl,DEN,Denver Broncos,Denver_Broncos,,,,1,Q223507,Q1046135,39.743888888,-105.02
+nfl,DET,Detroit Lions,Detroit_Lions,,,,1,Q271880,Q1142586,42.34,-83.045555555
+nfl,GB,Green Bay Packers,Green_Bay_Packers,,,,1,Q213837,Q860790,44.501388888,-88.062222222
+nfl,HOU,Houston Texans,Houston_Texans,,,,1,Q223514,Q1058864,29.684722222,-95.410833333
+nfl,IND,Indianapolis Colts,Indianapolis_Colts,,,,1,Q193753,Q867160,39.760056,-86.163806
+nfl,JAX,Jacksonville Jaguars,Jacksonville_Jaguars,,,,1,Q272223,Q635117,30.323889,-81.6375
+nfl,KC,Kansas City Chiefs,Kansas_City_Chiefs,,,,1,Q223522,Q544553,39.048888888,-94.483888888
+nfl,LA,Los Angeles Rams,Los_Angeles_Rams,St._Louis_Rams,STL|LAR,St. Louis Rams,1,Q337377,Q19520501,33.9504,-118.338
+nfl,LAC,Los Angeles Chargers,Los_Angeles_Chargers,San_Diego_Chargers,SD,San Diego Chargers,1,Q272220,Q19520501,33.9504,-118.338
+nfl,LV,Las Vegas Raiders,Las_Vegas_Raiders,Oakland_Raiders,OAK,Oakland Raiders,1,Q324523,Q27768421,36.090777777,-115.183
+nfl,MIA,Miami Dolphins,Miami_Dolphins,,,,1,Q223243,Q864339,25.958055555,-80.238888888
+nfl,MIN,Minnesota Vikings,Minnesota_Vikings,,,,1,Q221150,Q7929512,44.973889,-93.258056
+nfl,NE,New England Patriots,New_England_Patriots,,,,1,Q193390,Q373355,42.090944444,-71.264344444
+nfl,NO,New Orleans Saints,New_Orleans_Saints,,,,1,Q172435,Q756452,29.950833333,-90.081111111
+nfl,NYG,New York Giants,New_York_Giants,,,,1,Q190618,Q10862290,40.813611111,-74.074444444
+nfl,NYJ,New York Jets,New_York_Jets,,,,1,Q219602,Q10862290,40.813611111,-74.074444444
+nfl,PHI,Philadelphia Eagles,Philadelphia_Eagles,,,,1,Q219714,Q1052370,39.90089,-75.16776
+nfl,PIT,Pittsburgh Steelers,Pittsburgh_Steelers,,,,1,Q191477,Q1067148,40.446666666,-80.015833333
+nfl,SEA,Seattle Seahawks,Seattle_Seahawks,,,,1,Q221878,Q612736,47.595277777,-122.331666666
+nfl,SF,San Francisco 49ers,San_Francisco_49ers,,,,1,Q337758,Q7419343,37.4034,-121.97
+nfl,TB,Tampa Bay Buccaneers,Tampa_Bay_Buccaneers,,,,1,Q320476,Q1141343,27.975833333,-82.503333333
+nfl,TEN,Tennessee Titans,Tennessee_Titans,,,,1,Q320484,Q1142992,36.166388888,-86.771388888
+nfl,WAS,Washington Commanders,Washington_Commanders,Washington_Redskins|Washington_Football_Team,WSH,Washington Redskins|Washington Football Team,1,Q212654,Q583085,38.907777777,-76.864444444
