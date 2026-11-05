@@ -534,3 +534,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   my teams, stop after this game, end at a time) send the agreed `commit {mode, game_id?, at?}` action, which every
   mode applies at a dead ball, and a "Slate complete, 0 live games" state ends the night with nothing after it.
   OFF until lanes 2/3 ship the action. Reason: Start Planner Cycle 08 (#183), playbook §5.
+- **2026-11-05 (lane 2, #212): `decider.entry.unknown_wait_leagues`** (default `[]`, off; EXP-089). In a listed
+  league an entry never takes a landing the data can't call ("play may be live"): it rewinds to a known dead ball
+  or waits. Why: RC6.1's 3 NFL live mid-play entries on the North Star card were all this case; dev 3 -> 0 and
+  fresh seeds 8 -> 1 with plays missed on entry down. Off until the release read.
