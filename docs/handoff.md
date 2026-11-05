@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-EXP-103 rerun on L4, executing 27 min at 1:45 AM (data build), grades ~2:30 AM. teacher_out.jsonl handed to crew E as a private thread attachment (not published). Lane 3: CBB 'leak' is a false alarm (NCAA crunch rules make the game clock predict lock); CBB lock scores can't judge Teacher vs student.
-Coordinator: compute exchange built (#269: HF shards, checkpoints, SkyPilot + Kaggle/Colab adapters, ledger, DiLoCo trainer EXP-111), needs Nick's HF_TOKEN as a Colab/Kaggle secret. All 2,821 tests pass on next; RC7 has 1 failing gate (mid-commercial joins). Waiting on Nick: NBA card + RC7 sync card. Usage 53%.
+SYNC #1 (Nick 2:10 AM). Real-stick YTTV tests: joins land at live within ~0.5 s per channel (ESPN 46,803.0 s +-0.3, TNT 46,792.7 +-0.7); exact behind-live meter from media_session extrapolated by /proc/uptime (30 s pause read +30.01 s); re-link to live 2.5 s; tune 0.9-4.1 s. docs/sync/2026-11-05-yttv-live-edge-tests.md (503e837). Lane 2 ordered to ship behind_live_s + auto re-link >2 s. Absolute latency still unknown (needs an on-screen anchor; camera asked of Nick).
+EXP-103 rerun on L4 at 57 min (~75 min run), grades next sweep. 545 CU. Usage 55%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
