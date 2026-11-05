@@ -190,8 +190,10 @@ class DelayBook:
         self.sync = None                                         # [auto sync] SyncBook, see attach_sync
         self.held: dict[str, float] = {}                         # [time-shift buffer] target -> s held behind live
         self._sync_floor = MIN_TAP_SIGMA_S
+        self.sync_floor_for = None   # [league overrides] target -> its floor (engine), else _sync_floor
         self.cal: NoiseCal | None = None                         # [self-calibrating doubt] see attach_cal
         self._fresh: set[str] = set()                            # tuned, no anchor yet since
+        self.calibrated: dict[str, tuple[float, float]] = {}     # [calib.auto] target -> (fresh-tune delay, sd)
 
     @staticmethod
     def app(target: str) -> str:
@@ -226,10 +228,19 @@ class DelayBook:
         from redzone.decider.sync import SyncBook
         self._sync_floor = float(min_sigma_s)
         self.sync = SyncBook(self._sync_prior, clock=self._clock, on_change=self._sync_changed, log_path=log_path)
+        # [calib.auto] each logged row carries the tune's deliberate offset, so a night's anchors give the
+        # channel's fresh-tune delay (calibration.delay_fit)
+        self.sync.behind_of = lambda t: self.book[t].behind if t in self.book else 0.0
         return self.sync
 
     def _sync_prior(self, target: str) -> tuple[float, float]:
         d = self.get(target)
+        cal = self.calibrated.get(target)
+        if cal is not None:
+            # [calib.auto] last nights' measured fresh-tune delay for this channel, plus what this tune is held
+            # / rewound behind live. A fresh tune's edge still varies ~4 s between sticks (live lab, Nov 4).
+            # The sd arrives floored at calib.sigma_floor_s (calibration.sync_prior).
+            return cal[0] + d.behind, float(cal[1])
         mu, sigma = (d.base[0], d.base[1]) if d.base is not None else (d.mu, d.sigma)
         return mu, sigma
 
@@ -275,7 +286,8 @@ class DelayBook:
             return
         d.base = (d.mu, d.sigma, d.calibrated_at, d.source, d.drift_cap)
         f = self.sync.filters[target]
-        d.mu, d.sigma, d.calibrated_at = est[0], max(self._sync_floor, est[1]), f.updated
+        floor = self.sync_floor_for(target) if self.sync_floor_for is not None else self._sync_floor
+        d.mu, d.sigma, d.calibrated_at = est[0], max(floor, est[1]), f.updated
         d.source, d.drift_cap = "sync", SETTLED_DRIFT_S
 
     def _refresh_model(self, target: str) -> None:
@@ -494,7 +506,7 @@ class DelayBook:
             if known_sd is not None and behind_s > 0:
                 self.sync.shift(target, delta, known_sd)   # [SYNC 1] a measured move: keep the sync
             else:
-                self.sync.tuned(target)        # a seek: the screen delay moved, re-sync
+                self.sync.tuned(target, new_stream=False)   # a seek: the screen delay moved, re-sync
 
     def buffered(self, target: str) -> None:
         """The stream stalled: it's now further behind, and we're less sure by how much."""
@@ -504,7 +516,7 @@ class DelayBook:
         if d.base is not None:
             d.base = (d.base[0] + 3.0, d.base[1] + 5.0) + d.base[2:]
         if self.sync is not None:
-            self.sync.tuned(target)            # stalled: re-sync from the next signal
+            self.sync.tuned(target, new_stream=False)   # stalled: re-sync from the next signal
 
 
 _MARKERS = ("timeout", "end_", "two-minute", "period_end", "period_start", "start_inning",

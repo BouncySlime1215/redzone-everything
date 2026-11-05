@@ -286,6 +286,49 @@ def controls(world, rng: random.Random) -> list[Fault]:
     return out
 
 
+class PingPong(Press):
+    """A "Watch this" + "Go now" for a fixed game: people flipping back and forth by hand."""
+
+    def __init__(self, at: float, gid: str):
+        super().__init__("go_now", at)
+        self.gid = gid
+
+    def start(self, world):
+        log = world.__dict__.setdefault("presses", [])
+        if world.engine.decider.current == self.gid:
+            self.rec = {"t": time.time(), "action": self.name, "skipped": "already on it"}
+        else:
+            warm = _warm(world, _target(world, self.gid))
+            first = _press(world, "hold", self.gid)
+            second = _press(world, "hold", self.gid, "force")
+            self.rec = {**first, "ok": first["ok"] and second["ok"], "msg": second["msg"], "kind": "go_now",
+                        "target": _target(world, self.gid), "warm": warm}
+        log.append(self.rec)
+
+
+def pingpong(world, rng: random.Random) -> list[Fault]:
+    """Nov 4 live: a Prime game and the game on screen, "Go now" back and forth every PINGPONG_EVERY_MIN
+    by hand, PINGPONG_N times, while both are live (redzone.lab.night.presses:pingpong)."""
+    _time_ticks(world)
+    games = [(r.gid, spec.target) for spec, r in world.games]
+    prime = next((g for g, t in games if t.startswith("prime:")), None)
+    if prime is None:
+        return []
+    wins = {r.gid: (r.wall[0] - world.t0, r.wall[-1] - world.t0) for _, r in world.games}
+    lo, hi = wins[prime]
+    # The other game: the first one still live when the Prime game starts (the game on screen you flip from).
+    other = next((g for g, _ in games if g != prime and wins[g][0] < lo < wins[g][1]), None)
+    if other is None:
+        return []
+    start = max(lo, wins[other][0]) + 600
+    every = PINGPONG_EVERY_MIN * 60
+    return [PingPong(start + i * every, prime if i % 2 == 0 else other) for i in range(PINGPONG_N)
+            if start + i * every < min(hi, wins[other][1]) - 300]
+
+
+PINGPONG_EVERY_MIN = 2   # Nov 4 live: a press every ~2 minutes
+PINGPONG_N = 32
+
 FORCED_WITHIN_S = 15.0   # a mid-play cut this soon after a "Go now" is that press's doing
 RELEASE_WITHIN_S = 600.0
 
