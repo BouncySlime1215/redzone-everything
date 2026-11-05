@@ -542,10 +542,11 @@ class Decider:
     # (_holds_replays / _crunch_replay already budget that).
 
     def _lg(self, x) -> str | None:
-        """[league overrides] The base league of a candidate or game id (None: unknown)."""
+        """[league overrides] The league of a candidate or game id, as league_overrides keys it: the
+        full league (CBB is "cbb", never NBA's overrides; CFB is "cfb"). None: unknown."""
         if isinstance(x, str):
             x = self._known.get(x)
-        return getattr(getattr(getattr(getattr(x, "scored", None), "league", None), "base", None), "value", None)
+        return getattr(getattr(getattr(x, "scored", None), "league", None), "value", None)
 
     def _lc(self, dotted: str, x, default=None):
         """[league overrides] A setting as it reads for the league of this candidate / game id."""
@@ -955,7 +956,7 @@ class Decider:
         # waiting costs the most: a finished game on screen, or a final period. In basketball the next
         # dead ball can be minutes away (NBA Oct 23: a 3.5-minute wait on a final game into crunch time).
         lg = x.scored.league.base.value if x is not None else ""
-        cap = _config.for_league(self.cfg, f"decider.entry.max_wait_s.{lg}", lg)
+        cap = _config.for_league(self.cfg, f"decider.entry.max_wait_s.{lg}", self._lg(x))
         w = self._entry_wait
         if w is None or w[0] != d.target or now - w[2] > 3 * float(self.cfg.get("polling.live_s", 10)):
             w = (d.target, now, now)
@@ -2245,7 +2246,11 @@ class Decider:
             values = {o.id: core.rate(o, self.core.k) for o in opts}
             for g in values:
                 values[g] += self._predict_points(g, watchable[g])
-            return wire.pick(self.cfg, watchable, [o.id for o in opts], yours, values)
+            best = wire.pick(self.cfg, watchable, [o.id for o in opts], yours, values)
+            if best is None:
+                return None   # every option on a banned app (never Peacock)
+            # [nhl pp] the live guard below holds here too: the priority tiers rank a power play
+            # (a big moment) over your team late-but-not-crunch, which the live rule never allowed
         if watchable[best].scored.lock == "power play":
             # [nhl pp] A power play is always worth a look, but never over your team late and close
             # (Oct 29 replay: back from a catch-up onto NYI @ MIN's power play instead of WSH, tied late).

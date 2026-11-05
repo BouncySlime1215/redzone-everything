@@ -521,3 +521,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `league_overrides[<graded league>]` onto the run's config, after `--set`
   (`redzone/lab/evaldata.flatten_league_overrides`). A single-league scorecard therefore grades exactly the
   league-scoped defaults RC7 ships. With no `league_overrides` nothing changes. Grader freeze v7.
+- **2026-11-05 (lane 2, RC7):** new default `league_overrides` (redzone/default_config.yaml). NBA and NHL run the
+  promoted set; NFL runs EXP-203; CFB, CBB, WCBB and MLB keep live behavior. Overrides are keyed by the FULL
+  league (`cbb` never inherits `nba`'s). Why: Nick, Nov 4 8:20 / 8:40 PM, per-league promotion as
+  league-scoped defaults shipped in RC7 (not global /api/settings posts). Graded dev + locked with grader v8:
+  NBA and NFL pass `league_promotion`; NHL passes with the trade Nick accepted (mid-play 28 → 0 dev,
+  8 → 0 locked). Rollback for one league: set that league's keys back under `league_overrides.<league>`,
+  or redeploy without it.

@@ -327,7 +327,7 @@ class Engine:
         g = self.merger.games.get(gid or "")
         if g is None or g.phase != Phase.LIVE:
             return 0.0
-        if not for_league(self.cfg, "timing.behind_live_s.enabled", g.league.base.value, False):
+        if not for_league(self.cfg, "timing.behind_live_s.enabled", g.league.value, False):
             return 0.0   # [league overrides] the buffer runs per league
         by = self.cfg.get("timing.behind_live_s.by_league") or {}
         b = by.get(g.league.value, by.get(g.league.base.value, self.cfg.get("timing.behind_live_s.default", 0)))
@@ -386,7 +386,7 @@ class Engine:
                 z = t - w - bias
                 row.update(feed_wall=round(w, 2), z=round(z, 2), feed_type=next(
                     (p.type_text or p.kind for p in dead if p.wallclock == w), None) if burst else None)
-                if for_league(self.cfg, f"{key}.enabled", g.league.base.value, False):
+                if for_league(self.cfg, f"{key}.enabled", g.league.value, False):
                     row["used"] = bool(self.sync is not None and self.delays.anchor(
                         target, z, "burst" if burst else "break", t, (sd * sd + bias_sd * bias_sd) ** 0.5))
         try:
@@ -421,7 +421,7 @@ class Engine:
     def _league_of(self, target: str) -> str | None:
         """[league overrides] The base league of the game this target shows (None: unknown)."""
         g = self.merger.games.get(self._game_on(target, False) or "")
-        return g.league.base.value if g is not None else None
+        return g.league.value if g is not None else None
 
     def _game_on(self, target: str, visible: bool) -> str | None:
         """The game the engine thinks this target shows (the current one first, for the visible stick)."""
@@ -1899,7 +1899,7 @@ class Engine:
         The planner leaves the hidden stick alone for PEEK_HOLD_S. Silent: the message is empty."""
         g = self.merger.games.get(gid or "")
         if not gid or gid == self.decider.current or not for_league(
-                self.cfg, "two_stick.pretune_on_open", g.league.base.value if g is not None else None, False):
+                self.cfg, "two_stick.pretune_on_open", g.league.value if g is not None else None, False):
             return True, ""
         target = getattr(self.where.get(gid), "target", None)
         if g is None or g.phase != Phase.LIVE or not target or self.decider.user.paused:

@@ -92,6 +92,7 @@ def test_probe_break_edges():
 
 
 def test_engine_matches_a_break_start_to_the_feeds_dead_ball(cfg, tmp_path, monkeypatch):
+    cfg.defaults["league_overrides"] = cfg.data["league_overrides"] = {}   # live behavior: break anchors logged only
     from redzone.engine import Engine
     from redzone.models import GameState, League, Phase, Play, Team
     from redzone.recorder import Recorder
