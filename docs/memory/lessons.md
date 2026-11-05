@@ -319,3 +319,12 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   pre-existing (seconds, not tens of seconds); fix it under a grader freeze with a before/after.
 
 - **Nov 5 2026 (lane 4, live-log collection):** `collect_live_test.py` masked RFC1918 LAN addresses but not the sticks' Tailscale 100.64.0.0/10 addresses, so the shared copies leaked them (lane 2 masked them by hand). Fix: the redactor also masks 100.64/10 (`ts.<last octet>`), Tailscale's fd7a:115c:a1e0::/48 IPv6 and 169.254/16 link-local; public addresses stay.
+
+- **Nov 5 2026 (lane 1, windowed oracle #322):** the first buffer sweep solved every window with an 8 s feed lag
+  (a knobs default) while the measured p90 is 62-75 s, so "window % of full" read 88-100% for a feed we don't
+  have; NBA leave/land also peek 26 s past a cell (grading.RESUME_LEAD), which the window didn't reserve, and the
+  window was floored at blk+1 so a too-slow feed still planned on unrevealed steps (T2/T3 testers, #328). Fix:
+  per-league measured lag (p90 default, primary p50 as a second set), the look-ahead reserved in window_steps, no
+  switches without a revealed window, first pick waits for a dead ball, night-bootstrap CIs, and the oracle moved
+  out of the frozen grader file into redzone/lab/oracle_window.py. Lesson: an oracle's information set must come
+  from measured numbers and from everything the grader itself reads, and a second tester should re-derive both.

@@ -7,7 +7,7 @@ For every archived night of the FIT split (train + valid; the locked nights are 
 and per buffer B (s behind the stream's live edge, so the screen runs STREAM_DELAY_S + B behind real life):
 
   full     oracle.solve: full hindsight, the ceiling of everything (the same at every B, up to the night's edges)
-  window   oracle.solve_window: exact DP over only what the buffer reveals (B + stream delay - feed lag - tune),
+  window   oracle_window.solve_window: exact DP over only what the buffer reveals (B + stream delay - feed lag - tune),
            the past for anything beyond: the ceiling of a buffered app with a perfect in-window optimizer
 
 Both graded by sportsgrade.grade, the app's own grader. Writes <out>/<B>/<league>.json, one row per night:
@@ -33,12 +33,17 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from redzone.lab import oracle as O  # noqa: E402
+from redzone.lab import oracle_window as OW  # noqa: E402
 from redzone.lab.backtest import STREAM_DELAY_S  # noqa: E402
 from redzone.models import League  # noqa: E402
 
 TUNE_S = 5.0
 SYNC_ERR_S = 2.0          # RC7 gate: sync p95 <= 2 s per stick
 MARGIN_S = 5.0
+MIN_NIGHTS = 20           # below this an arm's % oracle is PENDING (grading rule 4)
+# Feed lag (s from a play to the app knowing it) of tonight's PRIMARY source, p50, per league: NBA = nba_cdn
+# (data A feed race, ~11.5 s); NFL = ESPN (~37 s, race p50); NHL = ESPN until api-web is measured (assumed same).
+PRIMARY_FEED_LAG = {"nba": 11.5, "nfl": 37.0, "nhl": 37.0, "cbb": 37.0}
 
 
 def adaptive_buffer(league: str, feed_lag_p90: float | None = None, tune_s: float = TUNE_S,
@@ -49,6 +54,28 @@ def adaptive_buffer(league: str, feed_lag_p90: float | None = None, tune_s: floa
     from redzone.noggin import pick as PK
     fl = feed_lag_p90 if feed_lag_p90 is not None else PK.FEED_LAG_P90.get(League(league), 60.0)
     return round(max(floor_s, fl + sync_err_s + tune_s + margin_s - STREAM_DELAY_S), 1)
+
+
+def feed_lag_for(league: str, mode: str) -> float:
+    """--feed-lag: 'primary' (p50 of tonight's primary source, the ceiling), 'p90' (PK.FEED_LAG_P90, the
+    guarantee) or a number of seconds."""
+    if mode == "primary":
+        return PRIMARY_FEED_LAG.get(league, 37.0)
+    if mode == "p90":
+        from redzone.noggin import pick as PK
+        return PK.FEED_LAG_P90.get(League(league), 60.0)
+    return float(mode)
+
+
+def bootstrap_pct(rs: dict, iters: int = 2000, seed: int = 0) -> list[float] | None:
+    """95% night-bootstrap CI on window big_live / full big_live (ratio of sums, whole nights resampled)."""
+    w = np.array([r["window"]["big_live"] for r in rs.values()], float)
+    f = np.array([r["full"]["big_live"] for r in rs.values()], float)
+    if len(w) < 2:
+        return None
+    idx = np.random.default_rng(seed).integers(0, len(w), (iters, len(w)))
+    pct = 100 * w[idx].sum(1) / np.maximum(1, f[idx].sum(1))
+    return [round(float(np.percentile(pct, 2.5)), 1), round(float(np.percentile(pct, 97.5)), 1)]
 
 
 def row(card) -> dict:
@@ -68,10 +95,12 @@ def nights(league: League, split: str, end: str | None):
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--leagues", default="nba,nfl,nhl")
-    ap.add_argument("--buffers", default="45,60,75,90")
+    ap.add_argument("--buffers", default="0,45,60,75,90")
     ap.add_argument("--adaptive", action="store_true", default=True)
     ap.add_argument("--floor", type=float, default=12.0)
-    ap.add_argument("--feed-lag", type=float, default=8.0, help="s from a play to the app knowing it (knobs default)")
+    ap.add_argument("--feed-lag", default="p90",
+                    help="'p90' (measured per league, PK.FEED_LAG_P90; the guarantee, default), "
+                         "'primary' (p50 of tonight's primary feed, the ceiling), or seconds")
     ap.add_argument("--split", default="fit", choices=("fit", "train", "valid"), help="never the locked nights")
     ap.add_argument("--end", default=None)
     ap.add_argument("--max-nights", type=int, default=0)
@@ -81,9 +110,10 @@ def main(argv=None) -> int:
     summary = {}
     for lg in a.leagues.split(","):
         league = League(lg)
+        fl = feed_lag_for(lg, a.feed_lag)
         arms = {str(int(b)): float(b) for b in a.buffers.split(",")}
         if a.adaptive:
-            b = adaptive_buffer(lg, floor_s=a.floor)
+            b = adaptive_buffer(lg, feed_lag_p90=fl, floor_s=a.floor)   # sized and solved with the same lag
             arms[f"adaptive_{b:g}"] = b
         rows: dict[str, dict] = {k: {} for k in arms}
         t_lg = time.time()
@@ -92,15 +122,14 @@ def main(argv=None) -> int:
                 break
             t0 = min(r.wall[0] for r in reps) - 600.0
             t1 = max(r.wall[-1] for r in reps) + 600.0
-            full = None
             for key, b in arms.items():
                 n = O.Night(reps, mine, STREAM_DELAY_S + b, TUNE_S, t0, t1)
                 tab = O.tables(n, np.arange(n.t0, n.t1, O.STEP_S))
-                if full is None:                     # full hindsight: the same schedule shape at every B
-                    full = row(O.grade(n, O.solve(n, "combined", tab)))
-                win = row(O.grade(n, O.solve_window(n, a.feed_lag, "combined", tab)))
+                full = row(O.grade(n, O.solve(n, "combined", tab)))     # solved and graded per arm
+                win = row(O.grade(n, OW.solve_window(n, fl, "combined", tab)))
                 rows[key][day] = {"league": lg, "buffer_s": b, "screen_lag_s": STREAM_DELAY_S + b,
-                                  "window_s": O.window_steps(STREAM_DELAY_S + b, a.feed_lag, TUNE_S) * O.STEP_S,
+                                  "feed_lag_s": fl, "feed_lag_mode": a.feed_lag,
+                                  "window_s": OW.window_steps(STREAM_DELAY_S + b, fl, TUNE_S) * O.STEP_S,
                                   "full": full, "window": win}
             print(f"{lg} {day}: {len(reps)} games, {time.time() - t_lg:.0f} s", flush=True)
         for key, rs in rows.items():
@@ -112,8 +141,10 @@ def main(argv=None) -> int:
                                                                           "dead_s", "watched_s")}
                    for o in ("full", "window")}
             pct = round(100 * tot["window"]["big_live"] / max(1, tot["full"]["big_live"]), 1)
-            summary.setdefault(lg, {})[key] = {"nights": len(rs), **{f"{o}_{k}": v for o in tot for k, v in tot[o].items()},
-                                               "window_pct_of_full_big_live": pct}
+            summary.setdefault(lg, {})[key] = {"nights": len(rs), "buffer_s": arms[key], "feed_lag_s": fl,
+                                               **{f"{o}_{k}": v for o in tot for k, v in tot[o].items()},
+                                               "window_pct_of_full_big_live": pct, "ci95": bootstrap_pct(rs),
+                                               "status": "PENDING" if len(rs) < MIN_NIGHTS else "ok"}
     (a.out / "summary.json").write_text(json.dumps(summary, indent=1))
     print(json.dumps(summary, indent=1))
     return 0
