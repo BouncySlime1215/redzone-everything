@@ -71,8 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-V8: L4 watchdog step 150/1436 (~49m); A100 game-reasoner backup started (156 min budget)
-RC6.1 Mac tests still running since 19:24; RC5.1 live. Usage 36%
+World-model pilot ready: colab/world_model_pilot.ipynb 76f4f4e (kaggle-inputs)
+L4 watchdog 400/1436; A100 reasoner 100/7862 (ETA 388 min > 156 min budget); RC6.1 tests still running
+usage 37%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
