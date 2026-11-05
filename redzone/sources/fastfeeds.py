@@ -2,7 +2,8 @@
 
 Three public endpoints, each on its own cadence (config `fast_feeds`, all OFF by default):
 
-    NBA  liveData play-by-play (S3 mirror of cdn.nba.com)   every fast_feeds.nba_s   (1 s)
+    NBA  liveData play-by-play (S3 mirror of cdn.nba.com)   every fast_feeds.nba_s   (1 s; off by default:
+         lane 2's polling.league_fast already polls it at 1 s into plays.jsonl, #326)
     NHL  api-web.nhle.com play-by-play                       every fast_feeds.nhl_s   (2 s)
     MLB  statsapi.mlb.com feed/live                          every fast_feeds.mlb_s   (3 s)
 

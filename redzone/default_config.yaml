@@ -107,7 +107,8 @@ fast_feeds:                # [tracker item 5, Nov 5] league feeds polled faster 
                            # first-seen time goes to data/recordings/<day>/fast_feeds.jsonl, never to the merger
                            # (redzone/sources/fastfeeds.py; scripts/fast_feed_race.py measures the lag race vs ESPN)
   enabled: false           # OFF until Nick or lane 4 turns it on for a shadow night
-  leagues: [nba, nhl, mlb] # which feeds run while enabled
+  leagues: [nhl, mlb]      # which feeds run while enabled. NBA is left out: lane 2's polling.league_fast (#326)
+                           # already polls nba_cdn at 1 s into plays.jsonl, which the race reads; don't poll it twice
   nba_s: 1                 # NBA liveData play-by-play (public S3 mirror), per live game
   nhl_s: 2                 # NHL api-web play-by-play, per live game
   mlb_s: 3                 # MLB statsapi feed/live, per live game
