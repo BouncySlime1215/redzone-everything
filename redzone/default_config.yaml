@@ -584,6 +584,23 @@ timing:
                            # the span as is. At 1.5 it fought hold_cal_s (a rebuild's pause is already short by
                            # 1.5 s), so the STK-06 watchdog rebuilt a 2.9 s gap forever on the night lab (Nov 4)
     hold_cal_s: -1.5       # a rebuild's pause is this much off the gap it closes (Nick's live hold calibration)
+    rc8_on: false          # [RC8, Nick Nov 5 9:10 AM] the buffer-ON release, per league ONLY (league_overrides.<lg>):
+                           # the stream is held B s behind live with B from the adaptive formula below (it implies
+                           # the hold above for that league). Nick flips it himself (scripts/rc8_flip.py); the
+                           # pre-registered gate (docs/plans/2026-11-05-rc8-buffer-gate.md) is reported per league
+                           # by scripts/rc8_gate_report.py. Ships false everywhere. Code: redzone/buffer_rc8.py
+    rc8_fixed_s: 0         # a league pinned to this B instead of the formula (0 = the formula)
+    adaptive:              # [Nick 9:35 AM] B = feed-lag p95 + sync error + tune/seek + margin, never 0
+      floor_s: 12          # hard floor: a play is always known before it's shown (Nick: ~10-15 s)
+      margin_s: 5
+      sync_err_s: 2        # RC7 bar: per-stick sync p95 <= 2 s
+      tune_seek_s: 6       # a fresh tune or a seek on the hidden stick (scorecard tune 5 s + settle)
+      stream_delay_credit_s: 0   # s of the app's own stream delay credited against feed lag (0 = Nick's formula
+                                 # as written; only lowered after a locked gate holds)
+      feed_lag_p95_s: {nfl: 62, cfb: 62, nba: 70, cbb: 46, wcbb: 46, nhl: 75, mlb: 60}   # noggin.pick.FEED_LAG_P90
+                                 # until lane 2's per-league feed-lag table (T6) gives real p95s
+      approved_min_s: {nfl: 0, cfb: 0, nba: 0, cbb: 0, wcbb: 0, nhl: 0, mlb: 0}   # the lowest B a LOCKED gate
+                                 # approved per league (ratchet); 0 = none yet, so B never goes below by_league
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback

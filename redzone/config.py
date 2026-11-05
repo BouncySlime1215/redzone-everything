@@ -92,6 +92,10 @@ LIMITS: dict[str, tuple[float, float]] = {
     "phone.orient_beat_s": (1, 10),
     "phone.catchup_visible": (1, 5),
     "phone.orient_override_s": (5, 300), "phone.last_night_hours": (1, 18),
+    "timing.behind_live_s.adaptive.floor_s": (10, 15),   # [RC8] Nick: a hard floor of ~10-15 s, never 0
+    "timing.behind_live_s.adaptive": (0, 180),
+    "timing.behind_live_s.rc8_fixed_s": (0, 90),
+    "timing.behind_live_s.max_s": (0, 90),             # Nick's cap: never more than 90 s behind live
     "demo": (0, 60),   # replay simulator timings (redzone/demo/engine.py)
 }
 

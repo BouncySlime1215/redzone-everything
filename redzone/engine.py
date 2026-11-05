@@ -15,6 +15,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from redzone import bets as betlib
+from redzone import buffer_rc8
 from redzone import reel, standby, trace, userstate, views
 from redzone.reel import REEL_DIR
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
@@ -343,6 +344,14 @@ class Engine:
         g = self.merger.games.get(gid or "")
         if g is None or g.phase != Phase.LIVE:
             return 0.0
+        if buffer_rc8.is_on(self.cfg, g.league.value):   # [RC8] Nick flipped this league: adaptive (or pinned) B
+            try:
+                return buffer_rc8.buffer_for(self.cfg, g.league.value)[0]
+            except (ValueError, TypeError):
+                log.exception("rc8: buffer_for(%s); falling back to the fixed per-league buffer", g.league.value)
+                by = self.cfg.get("timing.behind_live_s.by_league") or {}
+                b = by.get(g.league.value, self.cfg.get("timing.behind_live_s.default", 60))
+                return max(0.0, min(float(b or 0.0), float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
         if not for_league(self.cfg, "timing.behind_live_s.enabled", g.league.value, False):
             return 0.0   # [league overrides] the buffer runs per league
         by = self.cfg.get("timing.behind_live_s.by_league") or {}

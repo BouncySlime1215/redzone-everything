@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**324 modules**, 268 untagged, 164 unowned, 14 orphans (no importer).
+**327 modules**, 271 untagged, 167 unowned, 14 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -173,7 +173,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, control, crunch, decider.decider +36 | untagged |
+| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, buffer_rc8, control, crunch +39 | untagged |
 | `redzone/contracts/__init__.py` (package) | Interfaces every thread codes against. | contracts.breaks, contracts.budget, contracts.clock, contracts.events, contracts.feeds, contracts.flags +61 -> - | untagged |
 | `redzone/contracts/breaks.py` | BreakModel contract: when a stoppage starts, what kind it is, how long it runs, when play restarts. | models -> contracts, contracts.legacy, contracts.views, contracts.world, scoring.brain3 | untagged |
 | `redzone/contracts/budget.py` | Per-tick latency budget, split across modules. | - -> contracts | untagged |
@@ -196,7 +196,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/demo/__main__.py` | Replay demo: watch how the app WOULD have switched during a past day's real games. | __main__, demo.download, demo.engine, lab.evaldata, web.server -> - | untagged |
 | `redzone/demo/download.py` | Fetch one day's finished games (scoreboard + play-by-play) into data/demo/<day>/<league>/. | - -> demo.__main__ | untagged |
 | `redzone/demo/engine.py` | The real Engine, replaying a past day on a simulated clock. | channels, config, control, crunch, decider.decider, decider.screen +10 -> demo.__main__ | untagged |
-| `redzone/engine.py` | The producer loop: poll every feed -> merge -> score -> decide -> act -> tell the phone. | bets, calibration, channels, commands, config, contracts.switching +43 -> __main__, demo.engine, lab.night.run, web.server, scripts.fault_drill, scripts.perf_probe | BTN-04, BTN-05, FEED-01, SAFE-01, SAFE-03, STK-06 |
+| `redzone/engine.py` | The producer loop: poll every feed -> merge -> score -> decide -> act -> tell the phone. | bets, buffer_rc8, calibration, channels, commands, config +44 -> __main__, demo.engine, lab.night.run, web.server, scripts.fault_drill, scripts.perf_probe | BTN-04, BTN-05, FEED-01, SAFE-01, SAFE-03, STK-06 |
 | `redzone/lab/backtest.py` | Replay a real slate of past games through the scorer and decider, then grade it. | channels, config, contracts.switching, decider.decider, decider.screen, grading +12 -> agent.kaggle.build_moments_kaggle, demo.engine, lab.cutgrade, lab.night.run, lab.optimize, lab.oracle +14 | untagged |
 | `redzone/lab/cutgrade.py` | Cut-timing scorecard: WHERE in each game we left, and WHERE we landed. | decider.screen, grading, lab.backtest, models, sources.espn -> lab.backtest, lab.oracle, lab.sportsgrade, scripts.entry_autopsy, scripts.eval, scripts.measure_break_lengths +1 | untagged |
 | `redzone/lab/datasets.py` | Training datasets: per-league game-state snapshots with break / key-moment / hotness labels. | - -> lab.brain3data, lab.brainfit, lab.breakblend, lab.sportsdata, scripts.build_training, scripts.train_brain | untagged |
@@ -205,17 +205,18 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/sportsdata.py` | Turn free public play-by-play releases into labeled game-state snapshots. | lab.datasets, models, scoring.gameflow, sources.espn -> agent.distill.jump, lab.brain3data, scripts.build_training | untagged |
 | `redzone/lab/sportsgrade.py` | League-aware report card for backtests (NFL, NBA, NHL, MLB). | decider.screen, grading, lab.backtest, lab.cutgrade, lab.leverage, models +1 -> agent.kaggle.build_moments_kaggle, lab.oracle, lab.reactgrade, lab.reasoner_data, lab.replaycheck, lab.tune +4 | untagged |
 | `redzone/lab/tune.py` | Auto-tune the decider's hand-picked knobs against the scorecards (CMA-ES, numpy only). | config, decider.decider, lab.backtest, lab.optimize, lab.splits, lab.sportsgrade +1 -> scripts.tune | untagged |
-| `redzone/models.py` | Source-agnostic game model. | - -> agent.distill.jump, agent.kaggle.build_moments_kaggle, autonomy, bets, channels, context.buzz +73 | untagged |
+| `redzone/models.py` | Source-agnostic game model. | - -> agent.distill.jump, agent.kaggle.build_moments_kaggle, autonomy, bets, channels, context.buzz +74 | untagged |
 | `scripts/backtest.py` (entry) | Replay a past NFL Sunday through the app and print the report card. | config, lab.backtest, models -> - | untagged |
 | `scripts/eval.py` (entry) | The scorecard every change is judged by. | config, lab.backtest, lab.cutgrade, lab.evaldata, lab.optimize, lab.oracle +2 -> - | untagged |
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (164)
+## unowned (167)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
 | `redzone/__init__.py` (package) | no docstring | - -> - | untagged |
+| `redzone/buffer_rc8.py` | [RC8] The time-shift buffer ON release, per league (Nick, Nov 5 2026 9:10 / 9:35 AM). | config -> engine, scripts.rc8_flip, scripts.rc8_gate_report | untagged |
 | `redzone/calibration.py` | [calib.auto] Self-calibration: values re-measured each night from live telemetry, with no one's input. | contracts.switching, uses:seek_model -> engine, supervisor, scripts.sync_fit | BTN-02, STK-06 |
 | `redzone/commands.py` | Phone commands that land exactly once: an id, an ack, a status, and safe retries. | - -> engine | BTN-03 |
 | `redzone/context/__init__.py` (package) | Context & hype data (Data Planner B): injuries, refs, weather, standings, buzz. | - -> - | untagged |
@@ -356,6 +357,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/playbook_coverage.py` (entry) | Playbook coverage (docs/playbooks.md): which entries have a night-lab / unit test that RAN and passed. | - -> - | SAFE-01 |
 | `scripts/press_probe.py` (entry) | [press-to-TV, real hardware] Press GO NOW on the running app the way the phone does, and time each press from the tap to the game playing on the TV. | - -> - | BTN-01 |
 | `scripts/publish_live_nights.py` (entry) | Publish live-night summaries into the repo so the North Star workflow grades real nights (cycle 04, lane 4: "live nights into northstar"). | - -> - | STK-06 |
+| `scripts/rc8_flip.py` (entry) | [RC8] Turn the time-shift buffer ON (or back OFF) for ONE league. | buffer_rc8, config, models -> - | untagged |
+| `scripts/rc8_gate_report.py` (entry) | [RC8] Per-league report of the pre-registered buffer gate (docs/plans/2026-11-05-rc8-buffer-gate.md) for Nick. | buffer_rc8, config -> - | untagged |
 | `scripts/reactgrade.py` (entry) | [EXP-301] Grade the delay-and-react arms (lane 2's EXP-209 rows) per league and condition. | lab.reactgrade -> - | untagged |
 | `scripts/release_gate.py` (entry) | The release gate ("95% good minimum", the user's rule of 2026-11-03), checked on HELD-OUT nights. | - -> - | untagged |
 | `scripts/retrosheet_plays.py` (entry) | Retrosheet event files -> the ESPN-format MLB play dicts the tokenizer reads (Wave 1, green). | noggin.factory -> - | untagged |
@@ -380,7 +383,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 | `scripts/wv_aux_label.py` (entry) | Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804). | - -> scripts.attention_labels | untagged |
 
-## Untagged (268)
+## Untagged (271)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -413,6 +416,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/__main__.py`
 - `redzone/autonomy.py`
 - `redzone/bets.py`
+- `redzone/buffer_rc8.py`
 - `redzone/channels.py`
 - `redzone/config.py`
 - `redzone/context/__init__.py`
@@ -618,6 +622,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/prime_flip_probe.py`
 - `scripts/prime_search_trial.py`
 - `scripts/providers_check.py`
+- `scripts/rc8_flip.py`
+- `scripts/rc8_gate_report.py`
 - `scripts/reactgrade.py`
 - `scripts/release_gate.py`
 - `scripts/replay_check.py`

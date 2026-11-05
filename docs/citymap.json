@@ -472,6 +472,23 @@
     "untagged"
    ]
   },
+  "redzone/buffer_rc8.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py",
+    "scripts/rc8_flip.py",
+    "scripts/rc8_gate_report.py"
+   ],
+   "owner": "unowned",
+   "role": "[RC8] The time-shift buffer ON release, per league (Nick, Nov 5 2026 9:10 / 9:35 AM).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/calibration.py": {
    "contracts": [
     "seek_model"
@@ -550,6 +567,7 @@
     "agent/kaggle/build_moments_kaggle.py",
     "redzone/__main__.py",
     "redzone/autonomy.py",
+    "redzone/buffer_rc8.py",
     "redzone/control.py",
     "redzone/crunch.py",
     "redzone/decider/decider.py",
@@ -584,6 +602,8 @@
     "scripts/night_report.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
+    "scripts/rc8_flip.py",
+    "scripts/rc8_gate_report.py",
     "scripts/replay_check.py",
     "scripts/rz.py",
     "scripts/service.py",
@@ -1700,6 +1720,7 @@
    ],
    "inputs": [
     "redzone/bets.py",
+    "redzone/buffer_rc8.py",
     "redzone/calibration.py",
     "redzone/channels.py",
     "redzone/commands.py",
@@ -2764,6 +2785,7 @@
     "scripts/noggin_tokens.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
+    "scripts/rc8_flip.py",
     "scripts/replay_check.py",
     "scripts/train_noggin_pick.py",
     "scripts/train_noggin_timing.py"
@@ -5488,6 +5510,35 @@
     "STK-06"
    ]
   },
+  "scripts/rc8_flip.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/buffer_rc8.py",
+    "redzone/config.py",
+    "redzone/models.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[RC8] Turn the time-shift buffer ON (or back OFF) for ONE league.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/rc8_gate_report.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/buffer_rc8.py",
+    "redzone/config.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[RC8] Per-league report of the pre-registered buffer gate (docs/plans/2026-11-05-rc8-buffer-gate.md) for Nick.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/reactgrade.py": {
    "contracts": [],
    "inputs": [
@@ -5931,10 +5982,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 324,
+  "modules": 327,
   "orphans": 14,
-  "unowned": 164,
-  "untagged": 268
+  "unowned": 167,
+  "untagged": 271
  },
  "version": 1
 }
