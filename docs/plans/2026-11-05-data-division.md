@@ -67,6 +67,8 @@ the self-taught rule holds. The objective is still "worth it", not watch time:
 - a G label is judged only by its lift on % of oracle and the worth-it line;
 - a G label is never used to optimize minutes watched;
 - G labels are never shown as a nudge.
+- G data is labels and evaluation only, never a same-moment input (planner G). G reads B's, C's and D's outputs
+  and never re-pulls their sources.
 
 ## Pacing (usage 42% weekly at 12:05 AM Thu; hard stop 89%; target ≤ 85% at Mon 8 PM ET)
 - **The crews' 24/7 is jobs, not agents.**
