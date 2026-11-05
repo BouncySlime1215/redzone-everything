@@ -150,7 +150,7 @@ def run_backfill(a, idx, store, http, http_slow) -> tuple[list, list, tuple]:
     n_h = wiki_pageviews.pull_hours(http, idx, store, hours, a.hour_files, budget * 0.3)
     budget = a.max_minutes * 60 - (time.monotonic() - t_start)
     n_gd = gdelt_buzz.pull_files(http_slow, idx, store, gdelt_buzz.file_times(t0 - 28 * DAY, t1, a.stride),
-                                 a.max_files, budget)
+                                 a.max_files, budget, first_from=t0 - DAY)
     log.info("backfill pulls: REST %d req, edit titles %d, dump hours %d, gdelt files %d", n_pv, n_ed, n_h, n_gd)
     return games, games, (None, None)
 

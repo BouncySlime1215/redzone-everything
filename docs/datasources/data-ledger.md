@@ -109,4 +109,5 @@ D's and are not in these rows. Data is in the private project folder (`data-b/sh
 | NBA Last Two Minute reports (atlhawksfanatic/L2M) | green | done | 2014-15 to 2024-25 | 4,484 | 35,698 | 26,804 | 8,894 | L2M MIT over public NBA reports; credit L2M and the NBA |
 | NBA official injury report archive | yellow-B | code ready (Actions run) | | | | | | NBA official injury report, public; personal-use, not for commercial release |
 | Wikipedia pageviews + edits (buzz, test run) | green | done (test) | NFL Oct 5-8 2025 | 13 | 1,352 | 1,352 | 0 | Wikimedia CC0 |
-| **Cycle 16 total** | | | | | **1,291,700** | **38,682** | **1,253,018** | |
+| Wikipedia pageviews + edits (buzz, test run 2) | green | done (test) | NBA + NFL Nov 1-4 2025 | 31 | 3,016 | 3,016 | 0 | Wikimedia CC0 |
+| **Cycle 16 total** | | | | | **1,294,716** | **41,698** | **1,253,018** | |
