@@ -4548,7 +4548,7 @@
    "kind": "entry",
    "outputs": [],
    "owner": "unowned",
-   "role": "Time-shift buffer shadow log: schema + Rule #1 (PROPOSAL, test writers, Cycle 24).",
+   "role": "Time-shift buffer shadow log: schema + Rule #1 (test writers, Cycle 24).",
    "serves": [
     "untagged"
    ]
