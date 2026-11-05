@@ -94,3 +94,11 @@ Cycle 12 (#236) item 3. It is display only and makes no outcome claim, so it has
 - **What it is (`phone.last_night`, off):** from 6 AM ET for `phone.last_night_hours` (6) hours, a card on Now with last night's worth-it rating (EXP-040, evaluation only), mid-play entries, high-leverage leaves, dead air %, the release that ran (by RC name from `docs/releases.json`, else the commit), and any deploy or rollback inside the night ("RC6 rolled back to RC5.1 at 9:14 PM").
 - **Ship gates (tests):** a line nobody measured shows "pending", never 0; a failed rollback shows the release as unknown rather than a guess; the route 404s with either flag off.
 - **Upkeep:** lane 4 adds a line to `docs/releases.json` when it cuts an RC.
+
+### Second "Go now" tap reads as Nick's call (phone)
+
+Cycle 13 (#241) item 2, following Nick's Nov 4 10:55 PM decision: one tap waits for a dead ball, and a second "Go now" tap switches instantly, even mid-play. Lane 3 owns the command. This is display only, inside the v2 tap bar (`phone.v2`).
+
+- A first tap shows "Switching to X at the next safe moment. Tap Go now to switch right away."
+- A second tap (the `force` value, or another hold tap on the game it's still waiting on) shows "Your call: switching to X now, even mid-play", and when it lands, "On your TV: X · your call", with a gold icon instead of the autopilot's colors.
+- The hold banner says the same thing in words. Graders count a forced entry on lane 3's own forced go-now line, never as a decider mid-play entry, and never as a training label.

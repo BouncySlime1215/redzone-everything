@@ -1328,3 +1328,4 @@ button.v2-held { width: 100%; text-align: left; font: inherit; font-size: 13px; 
 .v2-tap[data-kind="ok"] .ico { color: var(--success-ink); }
 .v2-tap[data-kind="bad"] .ico, .v2-tap[data-kind="stale"] .ico { color: var(--danger-ink); }
 .v2-tap[data-kind="wait"] .ico { color: var(--info-ink); }
+.v2-tap[data-kind="you"] .ico { color: var(--mine-ink); }   /* a second Go now tap: Nick's own call */
