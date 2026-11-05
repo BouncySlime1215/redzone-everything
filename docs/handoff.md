@@ -71,9 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-V8 Colab training started (watchdog job first, 192 min budget)
-RC6.1 Mac tests still running; RC5.1 live
-Usage 34%
+V8 Colab: watchdog step 50/1436, eta 129 min (budget 40 min)
+RC6.1 Mac tests still running (36 min); RC5.1 live; usage 34%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
