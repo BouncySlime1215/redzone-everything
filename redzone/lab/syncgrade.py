@@ -20,11 +20,9 @@ Rows (one per stick per probe tick, lane 2's sync_probe after the uptime fix):
 Lines:
   EXP-800  per stick and app: |pred_behind_s - behind| p95 <= MAX_ERR on >= MIN_TRUTH_ROWS rows; absolute PENDING
   EXP-801  per tune: tune-to-playing seconds, and whether it landed within LIVE_TOL of the channel's live edge
-           (its landing vs the median landing of the OTHER tunes on that channel); PASS when >= SHARE
-           of >= MIN_TUNES tunes did. Landings are compared on a per-channel reference that is stable across
-           tunes made at different wall times: the landing position (YTTV deep links land at a constant
-           position per channel: ESPN 46,803.0 +/- 0.3 s, n=7) or E at landing (a stream whose origin holds),
-           whichever has the smaller spread (median absolute deviation) on that channel; reported as `ref`.
+           (its landing vs the median landing of the OTHER tunes of that app on that channel); PASS when
+           >= SHARE of >= MIN_TUNES tunes did. The reference is PINNED per app from a measured mechanism, never
+           picked from the night's data (REF_BY_APP); both spreads are reported so a wrong pin shows up.
 
 Stick ids (serials, IP:port) never leave this module: output names them stick1, stick2, ... in first-seen order.
 """
@@ -38,6 +36,11 @@ MIN_TRUTH_ROWS = 200      # truth rows per stick before EXP-800 can PASS or FAIL
 LIVE_TOL = 3.0      # seconds from the live edge that still counts as landing live (EXP-801)
 SHARE = 0.95        # share of tunes that must land live (EXP-801)
 MIN_TUNES = 20
+# Landing reference per app, frozen. youtubetv: deep links land at a constant stream position per channel
+# (overseer, Nov 5 2:30 AM, docs/sync/2026-11-05-yttv-live-edge-tests.md: ESPN 46,803.0 +/- 0.3 s, n=7).
+# Any other app (Prime) compares E at landing until it has its own measurement.
+REF_BY_APP = {"youtubetv": "pos_s"}
+REF_DEFAULT = "E_land"
 LAND_WAIT = 25.0    # seconds after a tune command within which it must reach PLAYING to count as landed
 
 
@@ -134,12 +137,13 @@ def exp801(rows: list[dict]) -> dict:
         by_stick[names[x["stick"]]] += 1
     by_ch: dict[str, list[dict]] = defaultdict(list)
     for x in lands:
-        by_ch[x.get("channel") or "?"].append(x)
+        by_ch[f'{x.get("app") or "?"}|{x.get("channel") or "?"}'].append(x)
     graded = []
     refs = {}
     for ch, xs in sorted(by_ch.items()):
-        key = "pos_s" if _mad([x["pos_s"] for x in xs]) <= _mad([x["E_land"] for x in xs]) else "E_land"
-        refs[ch] = key
+        key = REF_BY_APP.get(xs[0].get("app"), REF_DEFAULT)
+        refs[ch] = {"ref": key, "mad_pos_s": round(_mad([x["pos_s"] for x in xs]), 2),
+                    "mad_E_s": round(_mad([x["E_land"] for x in xs]), 2)}
         for i, x in enumerate(xs):
             others = [y[key] for j, y in enumerate(xs) if j != i]
             off = x[key] - median(others) if others else None

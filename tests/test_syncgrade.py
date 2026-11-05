@@ -56,21 +56,24 @@ def test_a_tune_that_never_plays_is_not_a_landing():
     assert lands == []                                            # PLAYING came 39 s later: past LAND_WAIT
 
 
-def _two_tunes(constant):
+def _two_tunes(constant, app="youtubetv"):
     """Two live-edge tunes on one channel 10 min apart. YTTV lands at a constant position; a stream whose
     origin holds lands at a position that grew with the wall clock (constant E). Both must read live."""
     rows = []
     for k, t0 in enumerate((1000.0, 1600.0)):
         land = 46803.0 if constant == "pos" else 46803.0 + (t0 - 1000.0)
-        rows.append(row(t0 + 2.0, t0 + 2.0, land, tune_t=t0, stick=f"s{k}"))
+        rows.append(row(t0 + 2.0, t0 + 2.0, land, tune_t=t0, stick=f"s{k}", app=app))
     return rows
 
 
-def test_exp801_reads_live_edge_tunes_10_min_apart_as_live_on_either_reference():
-    for constant, ref in (("pos", "pos_s"), ("E", "E_land")):
-        out = S.exp801(_two_tunes(constant))
-        assert out["graded"] == 2 and out["live_share"] == 1.0 and out["ref"]["espn"] == ref
-        assert out["verdict"] == "PENDING"                        # 2 tunes, short of MIN_TUNES
+def test_exp801_reads_live_edge_tunes_10_min_apart_as_live_on_the_pinned_reference():
+    out = S.exp801(_two_tunes("pos"))                             # YTTV: pinned to the landing position
+    assert out["graded"] == 2 and out["live_share"] == 1.0 and out["verdict"] == "PENDING"
+    assert out["ref"]["youtubetv|espn"] == {"ref": "pos_s", "mad_pos_s": 0.0, "mad_E_s": 300.0}
+    out = S.exp801(_two_tunes("E", app="prime"))                  # Prime: E until measured
+    assert out["live_share"] == 1.0 and out["ref"]["prime|espn"]["ref"] == "E_land"
+    # The pin is never re-picked from the data: a YTTV night that holds E instead reads off the edge.
+    assert S.exp801(_two_tunes("E"))["live_share"] == 0.0
 
 
 def test_stick_addresses_never_reach_the_output():
