@@ -1,6 +1,6 @@
 """[EXP-301] Grade the delay-and-react arms (lane 2's EXP-209 rows) per league and condition.
 
-    python scripts/reactgrade.py ROWS.jsonl [...] --split fit [--window 180] [--md out.md] [--json out.json]
+    python scripts/reactgrade.py ROWS.jsonl [...] --split fit [--window S] [--md out.md] [--json out.json]
 
 The rows come from redzone.lab.reactgrade.night_row, one per (arm, night, league, seed). `--split test`
 is the locked set: scored once, at the end, for the release decision only.
@@ -20,7 +20,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("rows", nargs="+", type=Path)
     ap.add_argument("--split", default="fit")
-    ap.add_argument("--window", type=float, default=180.0)
+    ap.add_argument("--window", type=float, default=None, help="seconds; default: each league's ratchet window")
     ap.add_argument("--md", type=Path)
     ap.add_argument("--json", type=Path)
     a = ap.parse_args(argv)
