@@ -811,3 +811,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   now; A4 is unadjusted. #293's break_tail (EXP-728) FAILed (lane 2 and lane 3's own 12 runs) and ships OFF.
   Grader freeze v22.
 - 2026-11-05 (planner cycle 19, EXP-803 arms pre-registered in #296, lane 2): new `decider.entry.break_tail_defer: false` (A1: a break tail due inside one decide tick is cut at its moment via `Decision.defer_s`, honored by the backtest's leave/arrive and the engine's may_cut), `break_tail_tv_split: false` with `break_tail_tv_timeout_s: 170` (A3: NBA full timeouts use an early-side TV-timeout length instead of the mixed "timeout" row; 170 = Data F's cdn q10, local 170.3 / national 176.7). A2 is a sim what-if (`league_overrides.nba.delay.sync.min_sigma_s=1`, `--sigma 1`) with no new key. Why: delay precision (EXP-728's failure trace). All off until EXP-803's one graded read on eval-data-v3 NBA dev.
+- 2026-11-05 (integrator, grader v23): #298 changes the frozen backtest for EXP-803 A1. `_apply_defer` moves a deferred
+  cut's `watching` entry together with leave_dt/arrive_dt, so every on-screen line keeps the old game on screen until
+  the cut; defer is capped at one sim step, so `watching` stays time-ordered (asserted). defer_s is 0 unless
+  `decider.entry.break_tail_defer` is on, so every grade is unchanged (A1 sanity run on v1 seed 0 identical).
+  Frozen before the v3 grade. Grader freeze v23.

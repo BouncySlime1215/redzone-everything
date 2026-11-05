@@ -1,6 +1,6 @@
 {
-  "version": 22,
-  "frozen_at": "2026-11-05T10:23Z",
+  "version": 23,
+  "frozen_at": "2026-11-05T10:49Z",
   "by": "integrator",
   "files": {
     "redzone/grading.py": "7d42683f7d7acea9241108fd6279d4fb8b3d48db61fa3222f5a5bf81f890ab4e",
@@ -21,7 +21,7 @@
     "scripts/data_landing_grade.py": "47e38dce1a30e1c649797d326eb03c5e7df69cc610d0d8c4447ca939881c3654",
     "scripts/family_holm.py": "d590b8e455d2d54b646a2ddcdbc5eede8f86aa70cf3a7016f690019a67207ef6",
     "docs/families.json": "7913471e024c631686b5a46df586259c1185701938b9009902b4d3fa17c7a091",
-    "redzone/lab/backtest.py": "a450ee13e5edc42b65a4f660b4a33e9a22d73bf54ff2a28932531d68402b437d",
+    "redzone/lab/backtest.py": "53cd8e25d7ecb64ede4b8f09cc453b1a6e83a9862b44164ec78ba96e0815b10e",
     "redzone/lab/cutgrade.py": "16e3f7dfbbe12aa08af71189258a2bcf53aab18ceca33661e941d70aafa7720e",
     "redzone/lab/sportsgrade.py": "f5a17381a11861c4ac9610a822f8360470a4ba1bb34079835da95e1f98577c62",
     "redzone/lab/oracle.py": "9b19515d315310019186773fc8c344f1867ffc99ed382dba6113c5a1fef38faf",

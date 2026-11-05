@@ -312,3 +312,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Fix:** grade lock calls on `y_out` (outcome_label.py: lead change/catch or a win-probability swing), checked by scripts/label_leak_check.py. A label is only a label if clock-only AUC < 0.95, read on train/valid nights, never on locked (lane 3's first read used locked nights by mistake).
 - **Signals:** head ≈ clock-only AUC, lift < 0.01, near-perfect lock accuracy, CBB, NBA
 - **Nov 5 2026 (lane 4, sync program):** the Mac deploy runs the test suite next to the live sticks, and nothing stopped a test from shelling out to the real adb (Homebrew's /opt/homebrew/bin/adb exists there, not on Linux CI), so a stray test could press keys on the TV. Fix: `tests/conftest.py _no_real_devices` makes the real adb fail as "missing" (what CI sees) and blocks real SmartThings hosts; `tests/fake_adb.py` scripts and httpx MockTransports still work (`tests/test_no_real_devices.py`).
+- 2026-11-05 (integrator, #298 review): **a switch's timing lives in two places in the backtest.** `SwitchLog.leave_dt` /
+  `arrive_dt` move the landing cutgrade sees, but `watching` (what every on-screen line reads through `_on_screen_game`)
+  is appended at the decision time. Anything that delays the cut (the pause cue today, EXP-803's defer) must move
+  both, or big live / crunch live / dead air credit the destination before the TV shows it. The pause cue's gap is
+  pre-existing (seconds, not tens of seconds); fix it under a grader freeze with a before/after.
