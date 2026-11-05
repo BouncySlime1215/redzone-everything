@@ -752,7 +752,11 @@ ACTIONS["v2-slate"] = () => { slate.data = null; openSheet({ id: "v2-slate", lab
    A dropped live connection for 8 s shows a banner: taps may not reach the TV. Display only. */
 const GAME_TAPS = new Set(["hold", "watch", "redzone", "focus"]);
 const POLL_MS = 1000, POLL_FOR_MS = 25000;
-const tap = { el: null, timer: null, hide: null };
+const tap = { el: null, timer: null, hide: null, waitGid: null, forced: null };
+/* Nick, Nov 4 10:55 PM: ONE tap waits for a dead ball; a SECOND "Go now" tap switches instantly, even mid-play.
+   The second tap is his call, so the bar says so ("Your call") instead of reading like the autopilot's.
+   A second tap is the force value, or another tap on the game we're still waiting on. Display only. */
+const GO_NOW_TXT = (name) => `Your call: switching to ${name} now, even mid-play`;
 
 function tapBar() {
   if (!tap.el) {
@@ -784,11 +788,21 @@ function follow(id, gid, t0 = Date.now()) {
   tap.timer = setTimeout(async () => {
     let st = null;
     try { st = await api(`/api/action/${encodeURIComponent(id)}`); } catch { st = null; }
-    if (st && st.on_tv) { showTap("ok", "check", `On your TV: ${gameName(gid)}`, 3000); return; }
+    if (st && st.on_tv) { tapLanded(gid); return; }
     if (st && st.state === "failed") { showTap("bad", "alert", st.message || "That didn't work", 5000); return; }
-    if (Date.now() - t0 > POLL_FOR_MS) { showTap("wait", "hourglass", `Still waiting for a safe moment in ${gameName(gid)}`, 6000); return; }
+    if (Date.now() - t0 > POLL_FOR_MS) {
+      showTap(tap.forced === gid ? "you" : "wait", "hourglass", tap.forced === gid ? `Still switching to ${gameName(gid)} (your call)`
+        : `Still waiting for a safe moment in ${gameName(gid)}`, 6000);
+      return;
+    }
     follow(id, gid, t0);
   }, POLL_MS);
+}
+
+function tapLanded(gid) {
+  const mine = tap.forced === gid;
+  tap.waitGid = tap.forced = null;
+  showTap(mine ? "you" : "ok", mine ? "zap" : "check", `On your TV: ${gameName(gid)}${mine ? " · your call" : ""}`, mine ? 4000 : 3000);
 }
 
 export function onTap(d) {
@@ -799,8 +813,12 @@ export function onTap(d) {
   if (d.phase !== "answer" || !d.res) return;
   const r = d.res, gid = d.body.game_id;
   if (!GAME_TAPS.has(action) || !gid || r.ok === false) { if (tap.el && tap.el.dataset.kind === "wait") tap.el.hidden = true; return; }
-  if (r.on_tv) { showTap("ok", "check", `On your TV: ${gameName(gid)}`, 3000); return; }
-  showTap("wait", "swap", d.body.value === "force" ? `Switching to ${gameName(gid)} now…` : `Switching to ${gameName(gid)} at the next safe moment…`);
+  const second = d.body.value === "force" || (tap.waitGid === gid && action === "hold");
+  if (second) tap.forced = gid;
+  else if (tap.forced !== gid) tap.forced = null;
+  if (r.on_tv) { tapLanded(gid); return; }
+  if (second) showTap("you", "zap", GO_NOW_TXT(gameName(gid)));
+  else { tap.waitGid = gid; showTap("wait", "swap", `Switching to ${gameName(gid)} at the next safe moment. Tap Go now to switch right away.`); }
   follow(r.id || d.id, gid);
 }
 try { window.addEventListener("rz:tap", (e) => onTap(e.detail)); } catch { /* no window */ }
