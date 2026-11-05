@@ -15,7 +15,9 @@ from dataclasses import dataclass, field
 
 from redzone.models import PERIOD_S, REAL_BREAKS, REGULATION, ByLeague, GameState, League, Phase, Stoppage, pro_period
 from redzone import crunch
-from redzone.scoring import garbage, postseason
+import numpy as np
+
+from redzone.scoring import gameflow, garbage, postseason
 from redzone.scoring.brain import Brain
 from redzone.reasoner import brief as rbrief
 from redzone.reasoner.reasoner import Reasoner, lock_points
@@ -53,6 +55,36 @@ def closeness(g: GameState) -> float:
 
 
 ONE_SCORE = {League.NFL: crunch.ONE_SCORE_NFL}
+
+FOOTBALL_SIGMA = 13.86   # final-margin s.d. over a full 60-minute football game (Stern 1991)
+
+
+def lead_wp(g: GameState) -> float | None:
+    """[EXP-204] The leading side's win probability, 0.5..1 (None: no score, or MLB). ESPN's when the
+    feed has it; else a margin model with the time left: football normal margin, basketball
+    `wp_basketball`, hockey `wp_hockey` (leader read as home)."""
+    if g.home_win_prob is not None:
+        p = float(g.home_win_prob)
+        return max(p, 1.0 - p)
+    d = g.score_diff
+    lg = g.league.value
+    if d is None or g.league.base == League.MLB or lg not in gameflow.SPEC:
+        return None
+    a = abs(int(d))
+    if a == 0:
+        return 0.5
+    sp = gameflow.SPEC[lg]
+    total = float(sp["period_s"] * sp["n_reg"])
+    el = float(gameflow.game_elapsed(lg, np.array([g.period or 1]), np.array([float(g.clock_s or 0)]))[0])
+    t_rem = max(0.0, total - el)
+    if g.league.base == League.NBA:
+        p = float(gameflow.wp_basketball(lg, np.array([a]), np.array([t_rem]), 0.0)[0])
+    elif g.league.base == League.NHL:
+        p = float(gameflow.wp_hockey(np.array([a]), np.array([t_rem]))[0])
+    else:
+        frac = t_rem / total
+        p = 1.0 if frac <= 0 else float(gameflow.phi(a / (FOOTBALL_SIGMA * math.sqrt(frac))))
+    return max(p, 1.0 - p)
 
 
 def crunch_time(g: GameState) -> bool:
@@ -167,6 +199,7 @@ class Scored:
     # [HEAT 2.0, lane 1 sets these; the phone's Watch value surface reads them (phone_v2.watch_values)]
     watch_value: float | None = None   # learned 0-100 watch value; None = not computed yet (phone shows a stub)
     watch_why: str = ""                # one line: why that value
+    lead_wp: float | None = None       # [EXP-204] the leader's win probability (0.5..1); None = unknown
     crunch_state: str | None = None    # crunch model: "entering" | "in" | "leaving"; None = not computed
     stakes_line: str | None = None     # e.g. "AFC 1-seed race, top-5 matchup"; None = not computed
 
@@ -294,7 +327,7 @@ class Scorer:
             tags = tags + ["garbage time"]
         return Scored(g.game_id, g.league, shown, raw, m, s, p, reason, tags,
                       is_break, None if is_break else lock, pre, k, garbage=h.garbage, crunch=crunch_time(g),
-                      late=is_late(g),
+                      late=is_late(g), lead_wp=lead_wp(g),
                       factor="garbage time" if h.garbage else factor, factors=factors,
                       crunch_now=crunch_window(g),
                       imminent=h.imminent_at is not None

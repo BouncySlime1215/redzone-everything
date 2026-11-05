@@ -265,6 +265,10 @@ decider:
   wait_for_my_team_s: 1800  # your team tips within this: don't start on a basketball/hockey game we can't leave (uncalibrated)
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
   redzone_score: 45        # RedZone vs a game (0-100): stay on it unless a game beats this; any break goes there
+  # [EXP-204] your team "late and close" also needs the leader's win probability at or below this cap
+  # (ESPN's WP when the feed has it, else a margin model). 1.0 = off (live: any Q4 that isn't garbage
+  # time holds). Crunch time always holds. Nick, Nov 4: ATL up 12 with 9:09 left held WSH all night.
+  mine_late_max_lead_wp: 1.0
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
     by_value: false        # [TREE-6 Mac half] crunch vs crunch by value (watch value, else score) with priors:
     value_league_prior: 5  # ...points per league-order step (NFL = CFB > NBA > NHL, MLB)

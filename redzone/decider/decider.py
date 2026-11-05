@@ -2483,10 +2483,17 @@ class Decider:
                         state, gate_txt, kind="break_visit")
 
     def _mine_late(self, s) -> bool:
-        """Your team (or your bet) in its final period, not decided and still competitive."""
-        return bool(getattr(s, "late", False) and not s.garbage
-                    and s.personal >= self.cfg.get("decider.crunch.hold_personal", 5)
-                    and s.closeness >= self.cfg.get("decider.mine_late_closeness", 0.2))
+        """Your team (or your bet) in its final period, not decided and still competitive. [EXP-204]
+        Outside crunch time, "close" also needs the leader's win probability at or below the league's
+        decider.mine_late_max_lead_wp (1.0 = off): ATL up 12 with 9:09 left is not close (Nick, Nov 4)."""
+        if not (getattr(s, "late", False) and not s.garbage
+                and s.personal >= self.cfg.get("decider.crunch.hold_personal", 5)
+                and s.closeness >= self.cfg.get("decider.mine_late_closeness", 0.2)):
+            return False
+        cap = float(_config.for_league(self.cfg, "decider.mine_late_max_lead_wp",
+                                       getattr(getattr(s, "league", None), "value", None)))
+        wp = getattr(s, "lead_wp", None)
+        return bool(getattr(s, "crunch", False) or cap >= 1.0 or wp is None or wp <= cap)
 
     def _sticky_home(self, gid: str, watchable, entry: bool = False) -> bool:
         """A game whose next play you must be back for. entry=True: one worth an urgent (tighter)
