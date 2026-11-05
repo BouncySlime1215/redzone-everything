@@ -466,3 +466,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   - It doesn't wait for every league. Never-join-mid-play stays absolute, and the full gates still define "done".
   - The code is `scripts/release_gate.py league_promotion` (grader freeze v4).
   - It replaces bar (B)'s all-leagues requirement for per-league go-lives.
+- 2026-11-05 (lane 3, EXP-084, #140 brought up to integration/next): `calib.sigma_floor_s: 2.0` replaces the
+  module constant CALIB_SIGMA_FLOOR_S in decider/screen.py (value unchanged; calibration.sync_prior applies it).
+  Reason: the contract kernel flagged it as a new K2 timing literal on merge; timings live in config.

@@ -613,6 +613,7 @@ buffer:                    # [buffer.watchdog] playbook STK-06 (redzone/control.
   hold_left_slop_s: 3.0    # the pause must land this close to the flip that left it (else: reload at live, as before)
 calib:                     # [calib.auto] values re-measured each night from live logs (data/calib/<night>.json)
   auto: false              # read last nights' accepted flip time back at start (OFF until it's proven on live nights)
+  sigma_floor_s: 2.0       # a calibrated channel's delay prior is never surer than this (a fresh tune's edge varies ~4 s between sticks)
 
 report:                    # [night health] scripts/night_report.py -> docs/nights/YYYY-MM-DD.md every morning (northstar.yml)
   nightly: true            # ON (cycle 07): its gates pass in tests/test_night_report.py (matches the live log, PENDING with no night, nothing private)
