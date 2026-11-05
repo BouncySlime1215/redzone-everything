@@ -461,12 +461,18 @@
    ]
   },
   "redzone/calibration.py": {
-   "contracts": [],
-   "inputs": [],
+   "contracts": [
+    "seek_model"
+   ],
+   "inputs": [
+    "redzone/contracts/switching.py",
+    "uses:seek_model"
+   ],
    "kind": "module",
    "outputs": [
     "redzone/engine.py",
-    "redzone/supervisor.py"
+    "redzone/supervisor.py",
+    "scripts/sync_fit.py"
    ],
    "owner": "unowned",
    "role": "[calib.auto] Self-calibration: values re-measured each night from live telemetry, with no one's input.",
@@ -545,6 +551,7 @@
     "redzone/lab/tune.py",
     "redzone/standby.py",
     "redzone/supervisor.py",
+    "redzone/sync_probe.py",
     "redzone/web/phone_v2.py",
     "redzone/web/server.py",
     "scripts/backtest.py",
@@ -898,10 +905,12 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/calibration.py",
     "redzone/contracts/__init__.py",
     "redzone/contracts/world.py",
     "redzone/control.py",
     "redzone/decider/decider.py",
+    "redzone/engine.py",
     "redzone/lab/backtest.py",
     "redzone/lab/evaldata.py"
    ],
@@ -1534,13 +1543,16 @@
    ]
   },
   "redzone/engine.py": {
-   "contracts": [],
+   "contracts": [
+    "set_calibrated_seek"
+   ],
    "inputs": [
     "redzone/bets.py",
     "redzone/calibration.py",
     "redzone/channels.py",
     "redzone/commands.py",
     "redzone/config.py",
+    "redzone/contracts/switching.py",
     "redzone/control.py",
     "redzone/decider/decider.py",
     "redzone/decider/screen.py",
@@ -1581,7 +1593,8 @@
     "redzone/trace.py",
     "redzone/tuners/prime_multiview.py",
     "redzone/userstate.py",
-    "redzone/views.py"
+    "redzone/views.py",
+    "uses:set_calibrated_seek"
    ],
    "kind": "module",
    "outputs": [
@@ -2293,6 +2306,7 @@
    "kind": "module",
    "outputs": [
     "redzone/lab/backtest.py",
+    "scripts/burst_align.py",
     "scripts/timing_report.py"
    ],
    "owner": "unowned",
@@ -3500,11 +3514,14 @@
   "redzone/sync_probe.py": {
    "contracts": [],
    "inputs": [
+    "redzone/config.py",
     "redzone/tuners/adb.py"
    ],
    "kind": "module",
    "outputs": [
-    "redzone/engine.py"
+    "redzone/engine.py",
+    "scripts/burst_align.py",
+    "scripts/sync_fit.py"
    ],
    "owner": "unowned",
    "role": "[SYNC probe] What the sticks expose for auto-anchors and network features: read-only, automatic.",
@@ -4040,6 +4057,20 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Build the Brain v3 training tables (run in the cloud, never on the Mac: ~6M events, a few GB RAM).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/burst_align.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/timing.py",
+    "redzone/sync_probe.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[burst anchor] Do YouTube TV's MediaSession bursts line up with the feed's TV timeouts?",
    "serves": [
     "untagged"
    ]
@@ -4798,6 +4829,20 @@
     "untagged"
    ]
   },
+  "scripts/sync_fit.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/calibration.py",
+    "redzone/sync_probe.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[sync fit] EXP-084: one live night's sync calibration and delay error, from the app's own logs.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/timing_report.py": {
    "contracts": [],
    "inputs": [
@@ -4975,10 +5020,10 @@
   }
  },
  "summary": {
-  "modules": 262,
+  "modules": 264,
   "orphans": 10,
-  "unowned": 104,
-  "untagged": 209
+  "unowned": 106,
+  "untagged": 211
  },
  "version": 1
 }

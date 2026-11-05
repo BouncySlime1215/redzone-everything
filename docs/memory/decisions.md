@@ -481,3 +481,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   sync_probe constants to config, values unchanged: `sync.probe.burst_gap_s: 300`, `burst_after_tune_s: 30`,
   `burst_confirm_s: 60`, `burst_sd_s: 0.3`. The sims' YTTV position origin is 0 instead of 46,790 s (any shared
   per-tune origin gives the same filter result). Reason: K2 flagged them as new timing literals on merge.
+- 2026-11-05 (integrator, grader review): #146 is accepted. `backtest._position_tick` treats YouTube TV's position as a
+  per-TUNE clock, as the live lab measured: every fresh tune starts near 46,790 s. `grading.SwitchLog.pos_true0` records
+  the true delay at the start of each tune. Before this the sim handed the filter each tune's unknown landing for free.
+  It only affects `--positions` runs; NHL over 6 nights is identical. Grader freeze v5.
