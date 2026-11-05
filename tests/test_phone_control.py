@@ -133,3 +133,13 @@ def test_redzone_button_only_when_on_the_air(client, engine):
     assert r["ok"], r
     assert engine.hold["game_id"] == REDZONE and engine.decider.current == REDZONE
     assert client.get("/api/state").json()["mode"]["redzone_on"] is True
+
+
+def test_watch_this_refuses_a_game_with_no_channel_instead_of_retrying(engine):
+    # Nov 4 live: a hold on a game with no channel failed "no channel for this game" 13 times in 6 s
+    from redzone.channels import Where
+    a = _live(engine)[0]
+    engine.cfg.update({"mode": {"dry_run": False}})
+    engine.where[a] = Where(None, "no channel", "unknown", False)
+    ok, msg = engine.action("hold", a)
+    assert not ok and "No channel" in msg and engine.hold is None and engine.decider.user.locked_game is None

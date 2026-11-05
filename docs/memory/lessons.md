@@ -285,3 +285,6 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   on the live-sync harness (`eval_sports --resync`, which models the Kalman sync filter that live runs). The cause was
   the time-shift buffer key, `timing.behind_live_s.enabled`. The rule now: grade every league set on BOTH harnesses
   before it ships (Test Factory F4), and a set that is worse on either one doesn't promote.
+- **2026-11-05: "Watch this" on a game with no channel retried every 0.5 s.** Live Nov 4 (RC6.1, 10:04 PM ET): 13
+  failed "you locked this game" switches in 6 s ("no channel for this game") until another tap. The fail cooldown is
+  keyed by tuner target, and there was none. `_hold` now refuses a game whose channel is known to be untunable, once.

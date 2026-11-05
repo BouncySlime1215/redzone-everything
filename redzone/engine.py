@@ -1883,6 +1883,11 @@ class Engine:
         g = self.merger.games.get(gid)
         if gid != REDZONE and (g is None or g.phase != Phase.LIVE):
             return False, f"{self._name(gid)} isn't live"
+        w = self.where.get(gid)
+        if gid != REDZONE and not self.cfg.get("mode.dry_run", True) and w is not None and not (w.target and w.tunable):
+            # Nov 4 live: a hold on a game with no channel retried "you locked this game" every 0.5 s
+            # (13 failed switches in 6 s) until another tap. Say so once instead.
+            return False, f"No channel to tune for {self._name(gid)}"
         name = self._name(gid)
         p = self._pending_decision
         waiting = bool(self.hold and self.hold["game_id"] == gid and p is not None and p.target == gid)
