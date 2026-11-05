@@ -603,3 +603,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   watching; the Mac stays plugged in on game nights.** A standing rule for every lane. Why: tonight's mid-game deploys and
   rollbacks. Same message: RC6.2 (1bf4150) deploys with the TV off, and a second Go now tap switches at once, even
   mid-play (his explicit control; one tap still waits for a dead ball).
+- 2026-11-05 (Nick, Nov 4 10:55 PM ET): RC6.2 (1bf4150) approved and deployed with the TV off. A SECOND "Go now" tap
+  switches instantly, even mid-play: it's Nick's explicit control. One tap still waits for a dead ball. Graders count
+  that forced entry on its own (lane 3's forced go-now line), never as a decider mid-play entry, and never as a training
+  label. New standing rule: no deploys and no Mac-side experiments while games are live and Nick is watching. The Mac
+  stays plugged in on game nights.
