@@ -11,7 +11,7 @@ RX = ap.compile_terms(ap.load_terms())
 
 
 def test_terms_match_whole_words_hashtags_and_longest():
-    assert ap.match_terms("RED WINGS win in OT!! #Touchdown", RX) == {"red wings", "touchdown"}
+    assert ap.match_terms("Commanders win in OT!! #Touchdown", RX) == {"commanders", "touchdown"}
     assert ap.match_terms("the wingspan of a hawkish ravenous fan", RX) == set()
     assert ap.match_terms("Commanders commanders COMMANDERS", RX) == {"commanders"}
 

@@ -18,7 +18,7 @@ Mac; no spending; keys are made by Nick and added as Actions secrets, never past
 
 1. **NBA:** G3 builds and scores the attention label on NBA games first (EXP-1701 reads NBA nights first and reports NBA on its own). Twitch and G2 press-release viewers start with NBA (ESPN/ABC, NBC/Peacock, Amazon games).
 2. **NFL:** second, using TNF, SNF, MNF and the Sunday slate.
-3. **NHL, MLB, CBB:** their terms stay in the same collector at zero extra cost (shared job), but no G analysis time goes to them.
+3. **NHL, MLB, CBB:** not collected (Cycle 16, #274). Their term lists were removed from `scripts/attention_terms.json`; nicknames shared with NBA/NFL teams (kings, jets, panthers, cardinals, giants) stay and get resolved to the team playing.
 
 
 ## Crew
