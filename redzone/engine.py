@@ -850,7 +850,8 @@ class Engine:
                 self.summaries[s.game_id] = data
                 self.merger.update("espn_summary", s)
         await asyncio.gather(*(one(g) for g in live))
-        await self._league_feeds(live)
+        if not (self.cfg.get("polling.league_fast", True) and getattr(self, "_fast_loop_on", False)):
+            await self._league_feeds(live)   # else the running _league_fast_loop owns them: one caller, no duplicates
         self._source_health()
         self.recorder.race(self.merger)
         await self._archive_finished()
@@ -941,6 +942,7 @@ class Engine:
         play-by-play feeds on their own cadence (polling.nba_pbp_s / nhl_pbp_s), not the ~3 s poll loop's.
         Each fetch is conditional (sources/http.py), so an unchanged feed costs a 304. New plays go straight
         to the timelines the decider reads."""
+        self._fast_loop_on = True
         while True:
             every = max(1.0, min(float(self.cfg.get("polling.nba_pbp_s", 3)), float(self.cfg.get("polling.nhl_pbp_s", 3))))
             t0 = time.time()
