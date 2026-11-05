@@ -71,9 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-STATUS: Colab V8 at step 150/1436 but toolbar shows Connecting/Resuming execution since 7:23 PM (Pro+ popup)
-STATUS: RC6.1 deploy restarted 7:24 PM after clean NHL check; Mac tests rerunning; RC5.1 live
-STATUS: usage 35%
+V8 watchdog advancing: step 250/1436, eta 89 min; Colab UI still says Connecting but output moves
+RC6.1 Mac tests still running (since 7:24); RC5.1 live
+Usage 35%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
