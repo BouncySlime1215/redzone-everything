@@ -49,7 +49,9 @@ def main(argv=None) -> int:
     ap.add_argument("--league", nargs="+", default=["nba", "nhl"])
     ap.add_argument("--split", default="valid", choices=["train", "valid", "fit"], help="dev nights only")
     ap.add_argument("--nights", type=int, default=0, help="the newest N nights of the split (0 = all)")
-    ap.add_argument("--budget", type=int, default=48, help="search evaluations per night (grid and reruns extra)")
+    ap.add_argument("--max-games", type=int, default=0,
+                    help="skip slates with more games than this (cost cap on the light Mac; 0 = no cap)")
+    ap.add_argument("--budget",type=int, default=48, help="search evaluations per night (grid and reruns extra)")
     ap.add_argument("--seed", type=int, default=0, help="search seed")
     ap.add_argument("--reruns", type=int, default=3)
     ap.add_argument("--max-repro", type=int, default=3, help="distinct finds reproduced per night")
@@ -83,7 +85,7 @@ def main(argv=None) -> int:
             if night in locked:
                 raise SystemExit(f"refusing locked night {night}")
             reps, targets = R.load_night(arch, lg, night, a.data / "_eval_channels.json")
-            if len(reps) < 2:
+            if len(reps) < 2 or (a.max_games and len(reps) > a.max_games):
                 continue
             t0 = time.time()
             res = R.hunt_night(R.backtest_evaluator(reps, targets, cfg, mine), a.budget, a.seed,
