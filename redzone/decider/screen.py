@@ -190,6 +190,7 @@ class DelayBook:
         self.sync = None                                         # [auto sync] SyncBook, see attach_sync
         self.held: dict[str, float] = {}                         # [time-shift buffer] target -> s held behind live
         self._sync_floor = MIN_TAP_SIGMA_S
+        self.sync_floor_for = None   # [league overrides] target -> its floor (engine), else _sync_floor
         self.cal: NoiseCal | None = None                         # [self-calibrating doubt] see attach_cal
         self._fresh: set[str] = set()                            # tuned, no anchor yet since
         self.calibrated: dict[str, tuple[float, float]] = {}     # [calib.auto] target -> (fresh-tune delay, sd)
@@ -285,7 +286,8 @@ class DelayBook:
             return
         d.base = (d.mu, d.sigma, d.calibrated_at, d.source, d.drift_cap)
         f = self.sync.filters[target]
-        d.mu, d.sigma, d.calibrated_at = est[0], max(self._sync_floor, est[1]), f.updated
+        floor = self.sync_floor_for(target) if self.sync_floor_for is not None else self._sync_floor
+        d.mu, d.sigma, d.calibrated_at = est[0], max(floor, est[1]), f.updated
         d.source, d.drift_cap = "sync", SETTLED_DRIFT_S
 
     def _refresh_model(self, target: str) -> None:

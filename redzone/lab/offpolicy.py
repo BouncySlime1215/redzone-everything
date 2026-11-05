@@ -25,12 +25,13 @@ import random
 from dataclasses import dataclass, field
 from typing import Callable, Sequence
 
+from redzone.lab.worth import BOOT_DRAWS      # one bootstrap draw count for every lab grader
+
 Option = dict           # {"a": action, "g": game id, "p": propensity, ...facts}, as #186 logs them
 Policy = Callable[["Logged"], Sequence[float]]       # new policy: a probability per option, same order
 Model = Callable[["Logged", int], float]             # reward model: q(row, option index)
 
 W_MAX = 20.0            # clip importance weights (a 5 % explore rate gives at most ~20)
-BOOT_DRAWS = 2000
 
 
 @dataclass(frozen=True)

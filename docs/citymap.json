@@ -538,11 +538,13 @@
     "redzone/autonomy.py",
     "redzone/control.py",
     "redzone/crunch.py",
+    "redzone/decider/decider.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
     "redzone/lab/backtest.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
+    "redzone/lab/decision_records.py",
     "redzone/lab/evaldata.py",
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
@@ -1088,7 +1090,8 @@
     "redzone/grading.py",
     "redzone/scoring/drive.py",
     "redzone/scoring/engine.py",
-    "redzone/standby.py"
+    "redzone/standby.py",
+    "redzone/web/phone_v2.py"
    ],
    "owner": "unowned",
    "role": "[one brain, step 2] One crunch table (docs/onebrain-migration.md).",
@@ -1169,6 +1172,7 @@
     "seek_model"
    ],
    "inputs": [
+    "redzone/config.py",
     "redzone/contracts/switching.py",
     "redzone/decider/core.py",
     "redzone/decider/cuts.py",
@@ -1208,6 +1212,7 @@
     "Landings in dead time",
     "Mid-play entries (per 100 landings)",
     "SAFE-01",
+    "SAFE-09",
     "Your-team crunch live"
    ]
   },
@@ -1870,7 +1875,8 @@
     "redzone/lab/backtest.py",
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
-    "scripts/eval.py"
+    "scripts/eval.py",
+    "scripts/northstar.py"
    ],
    "owner": "INTEGRATION",
    "role": "Cut-timing scorecard: WHERE in each game we left, and WHERE we landed.",
@@ -1898,7 +1904,9 @@
   },
   "redzone/lab/decision_records.py": {
    "contracts": [],
-   "inputs": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
    "kind": "module",
    "outputs": [
     "redzone/web/phone_v2.py",
@@ -2116,7 +2124,9 @@
   },
   "redzone/lab/offpolicy.py": {
    "contracts": [],
-   "inputs": [],
+   "inputs": [
+    "redzone/lab/worth.py"
+   ],
    "kind": "module",
    "outputs": [
     "scripts/offpolicy_score.py"
@@ -2345,6 +2355,20 @@
    ],
    "owner": "INTEGRATION",
    "role": "Auto-tune the decider's hand-picked knobs against the scorecards (CMA-ES, numpy only).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/worth.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/lab/offpolicy.py",
+    "scripts/worth_line.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-040] The end-of-night \"worth it?\" rating as an evaluation line (watch-science playbook §6).",
    "serves": [
     "untagged"
    ]
@@ -3127,6 +3151,7 @@
     "redzone/reasoner/brief.py",
     "redzone/reasoner/reasoner.py",
     "redzone/scoring/brain.py",
+    "redzone/scoring/gameflow.py",
     "redzone/scoring/garbage.py",
     "redzone/scoring/postseason.py"
    ],
@@ -3151,7 +3176,8 @@
    "kind": "module",
    "outputs": [
     "redzone/lab/sportsdata.py",
-    "redzone/scoring/brain.py"
+    "redzone/scoring/brain.py",
+    "redzone/scoring/engine.py"
    ],
    "owner": "DECISION",
    "role": "Game-flow math shared by the training-data builder and the live brain (numpy only, no pandas).",
@@ -3938,6 +3964,7 @@
    "contracts": [],
    "inputs": [
     "redzone/config.py",
+    "redzone/crunch.py",
     "redzone/lab/decision_records.py",
     "redzone/models.py",
     "redzone/noggin/priority.py",
@@ -4585,6 +4612,7 @@
   "scripts/northstar.py": {
    "contracts": [],
    "inputs": [
+    "redzone/lab/cutgrade.py",
     "redzone/noggin/profile.py"
    ],
    "kind": "entry",
@@ -5043,13 +5071,29 @@
    "serves": [
     "untagged"
    ]
+  },
+  "scripts/worth_line.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/worth.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-040] Print the \"worth it >= live\" evaluation line from data/worth.jsonl.",
+   "serves": [
+    "untagged"
+   ]
   }
  },
+ "pages": {
+  "EXPERIENCE": "lanes/experience.md"
+ },
  "summary": {
-  "modules": 266,
+  "modules": 268,
   "orphans": 10,
-  "unowned": 108,
-  "untagged": 213
+  "unowned": 110,
+  "untagged": 215
  },
  "version": 1
 }
