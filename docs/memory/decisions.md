@@ -457,3 +457,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   - any press that never reaches the TV is an immediate FAIL;
   - below 20 presses it shows PENDING, with the sim drill as the fallback, and the sim can still never PASS the line.
   Grader freeze v3. No number changes until a rig run saves presses.
+- 2026-11-05 (Nick, 8:20 PM ET): "the gains are big; the gates are goals and targets, keep working to them, but take
+  the wins along the way." There is a new PER-LEAGUE promotion rule:
+  - A candidate change may go live in one league when, in THAT league, it has 0 mid-play entries on dev AND locked and
+    beats live on both. Beating live means no key line is worse and at least one is better.
+  - The candidate is graded with the EXACT settings set that goes live, through `/api/settings`, with an instant
+    rollback. Other leagues stay untouched.
+  - It doesn't wait for every league. Never-join-mid-play stays absolute, and the full gates still define "done".
+  - The code is `scripts/release_gate.py league_promotion` (grader freeze v4).
+  - It replaces bar (B)'s all-leagues requirement for per-league go-lives.
