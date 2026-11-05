@@ -259,6 +259,11 @@ decider:
     crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
+    break_tail: []           # [EXP-728/736] leagues whose entries into a break wait to land <= break_tail_s before the
+                             # restart (redzone/decider/break_tail.py); [] = off until its gate passes
+    break_tail_s: 10         # cutgrade's BREAK_TAIL_BAR: landing with more than this left is "mid-commercial"
+    break_tail_q: q25        # the break-length quantile the restart is predicted with (low: errs early)
+    break_tail_chain_s: 3    # dead windows this close together are one stretch (foul, free throws, timeout)
   # Seconds to the new picture, MEASURED (the one source of truth; contracts/switching.ConfigSwitchPaths):
   # tunes = the Mac's LatencyBook medians (switch_speed.learn; pinned in eval-data-v1's eval_config.yaml);
   # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.89 s) + the 1 s settle.
