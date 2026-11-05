@@ -568,3 +568,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   data/worth.jsonl and are EVALUATION ONLY: redzone/lab/worth.py grades "worth it >= live" (pre-registered bar in
   docs/lanes/experience.md); tests/test_worth.py fails if noggin, decider or scoring code reads them. Reason:
   Start Planner Cycle 09 (#200), Sunday Nov 8 promotion bar includes "worth it >= live".
+- 2026-11-05 (integrator, grader review): #205 is accepted. The EXP-040 "worth it ≥ live" line (`redzone/lab/worth.py`,
+  `scripts/worth_line.py`) joins the frozen graders. The bar is non-inferior by at most 0.25 on the 1-5 scale, with the
+  95% night-bootstrap lower bound, at least 4 rated nights a side, and PENDING otherwise. Nick's ratings stay
+  evaluation-only (`tests/test_worth.py` scans noggin/decider/scoring). Note: 4 nights is a thin minimum, so treat an early
+  PASS as provisional until 8. Grader freeze v9.
