@@ -842,3 +842,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   ON only for leagues that pass the gate pre-registered in docs/plans/2026-11-05-rc8-buffer-gate.md (0 mid-play on
   every run and both harnesses, beats live on big plays shown from the start, guardrails, tonight's shadow confirms,
   locked once), and Nick flips it. Rule #1 never changes; hidden stick only while Nick watches.
+- 2026-11-05 (lane 3, grader PROPOSAL for the integrator to freeze): new scorecard line "big plays shown from the
+  start" (big_from_start, crunch_from_start, my_crunch_from_start) for the RC8 buffer gate's primary. A big play counts
+  when the screen had its game from the moment the ball went live after the last dead ball (grading.restart_before =
+  resume_after of the last stoppage or score) through the end of the play; football: the play's own snap (= big live).
+  Additive only: no existing line, default or bar changes. Reason: Nick 9:10 AM "% big plays shown FROM THE START".

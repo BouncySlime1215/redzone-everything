@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from redzone.decider.screen import CONTINUOUS, _is_marker
 from redzone.lab import cutgrade, leverage
-from redzone.lab.backtest import (CATCHUP_2_S, CATCHUP_3_S, CATCHUP_S, lag_of, leave_offsets, offsets_of, on_screen, replayed_by, time_to_see,
+from redzone.lab.backtest import (CATCHUP_2_S, CATCHUP_3_S, CATCHUP_S, from_start, lag_of, leave_offsets, offsets_of, on_screen, replayed_by, time_to_see,
                                   tuning_blackout_seconds, watched_whole)
 from redzone.grading import PLAY_LEN, RESUME_LEAD, is_big, is_crunch  # noqa: F401  [one brain] moved, step 3
 from redzone.grading import marker as _marker, play_clock as _clock, play_type as _type  # noqa: F401
@@ -44,6 +44,9 @@ class Card:
     my_big_seen_3m: int = 0
     big_see_s: list = field(default_factory=list)   # [time to see] per big play (backtest.time_to_see)
     crunch_on_replay: int = 0  # crunch plays that aired while a catch-up replay was on screen
+    big_from_start: int = 0    # [from the start] big plays on screen from the previous dead ball through the end
+    crunch_from_start: int = 0
+    my_crunch_from_start: int = 0
     crunch: int = 0
     crunch_live: int = 0
     my_crunch: int = 0
@@ -72,6 +75,9 @@ class Card:
                 "big_live_pct": pct(self.big_live, self.big), "crunch_live_pct": pct(self.crunch_live, self.crunch),
                 "your_team_crunch_live_pct": pct(self.my_crunch_live, self.my_crunch),
                 "your_team_crunch_live": f"{self.my_crunch_live}/{self.my_crunch}",   # 0/0 is "none", not 0 %
+                "big_from_start_pct": pct(self.big_from_start, self.big),
+                "crunch_from_start_pct": pct(self.crunch_from_start, self.crunch),
+                "your_team_crunch_from_start": f"{self.my_crunch_from_start}/{self.my_crunch}",
                 "tuning_blackout_s": round(self.tuning_blackout_s, 1),
                 "tuning_blackout_pct": pct(self.tuning_blackout_s, self.hours * 3600),
                 "switches_per_hour": round(self.switches / max(0.1, self.hours), 1),
@@ -183,16 +189,18 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
     for r in replays:
         mine = bool({r.matchup.split(" @ ")[0], r.matchup.split(" @ ")[-1]} & my_teams)
         prev = None
-        for w, p in zip(r.wall, r.plays):
+        for k, (w, p) in enumerate(zip(r.wall, r.plays)):
             lag = lag_of(lag_total, r.gid)
             air = w + lag - PLAY_LEN[league]
             on = watched_whole(watching, r.gid, air, w + lag, tune_s, t1, offs)
+            fs = on and from_start(watching, r, k, lag, tune_s, t1, offs)
             if is_pp_goal(league, p):
                 card.pp_goals += 1
                 card.pp_goals_live += on
             if is_big(league, p, prev):
                 card.big += 1
                 card.big_live += on
+                card.big_from_start += fs
                 card.big_seen += on or (r.gid, round(w)) in replayed
                 soon = on or replayed_by(replayed, (r.gid, round(w)), w + lag + CATCHUP_S)
                 card.big_seen_10m += soon
@@ -208,11 +216,13 @@ def grade(replays, switches, my_teams: set[str], lag_total: float, tune_s: float
             if is_crunch(league, p) and not _marker(t):
                 card.crunch += 1
                 card.crunch_live += on
+                card.crunch_from_start += fs
                 if not on and (_on_screen(watching, air, tune_s) or "").startswith("replay:"):
                     card.crunch_on_replay += 1
                 if mine:
                     card.my_crunch += 1
                     card.my_crunch_live += on
+                    card.my_crunch_from_start += fs
             prev = p
 
     pp_after = {r.gid: power_play_after(league, r.plays) for r in replays}
