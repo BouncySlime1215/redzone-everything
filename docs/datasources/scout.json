@@ -994,8 +994,8 @@
    "est_tokens_m": 0.05,
    "novelty": 1.5,
    "raw_gb": 0.01,
-   "why": "the national-vs-local key for crew F's NBA break table: Rule 5 = 165 s local vs 195 s national, and F's national cells are only n 15-30. ~7 files total",
-   "status": "probe",
+   "why": "the national-vs-local key for crew F's NBA break table: Rule 5 = 165 s local vs 195 s national, and F's national cells are only n 15-30. ~7 files total. DROPPED: crew B's nba-national-tv.csv already joined into the cdn table (#250)",
+   "status": "dropped",
    "owner": "crew F",
    "needs_nick": "none",
    "probe": "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"
@@ -1038,8 +1038,8 @@
    "est_tokens_m": 0.01,
    "novelty": 1.5,
    "raw_gb": 0.01,
-   "why": "crew F's NFL table has slot (primetime vs Sunday-day) but no network; national windows run longer breaks. Joins on date + teams",
-   "status": "ready",
+   "why": "crew F's NFL table has slot (primetime vs Sunday-day) but no network; national windows run longer breaks. Joins on date + teams. PARKED by crew F: 63.5k nflverse breaks show little primetime/day difference and per-network cells differ ~10 s; NFL 196/196 is entry policy, revisit if EXP-205 shows network matters",
+   "status": "parked",
    "owner": "crew F",
    "needs_nick": "none",
    "probe": ""
