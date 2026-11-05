@@ -1236,6 +1236,17 @@ button.v2-held { width: 100%; text-align: left; font: inherit; font-size: 13px; 
 .v2-also { display: grid; gap: 2px; margin: 6px 0 0; padding: 6px 10px; font-size: 12px; color: var(--text-3); }
 .v2-also b { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
 .v2-also .m { color: var(--text-2); font-weight: 600; }
+.v2-ln { margin: 0 0 10px; padding: 12px 14px; border-radius: 14px; background: var(--surface-1); border: 1px solid var(--line-1); }
+.v2-ln-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.v2-ln-h b { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-2); }
+.v2-ln-h span { flex: 1; font-size: 12px; color: var(--text-3); }
+.v2-ln dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px 12px; margin: 0; }
+.v2-ln dl div { min-width: 0; }
+.v2-ln dt { font-size: 11px; color: var(--text-3); }
+.v2-ln dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-1); }
+.v2-ln dd.bad { color: var(--danger-ink); }
+.v2-ln dd i { font-weight: 400; color: var(--text-3); }
+.v2-ln .t2 { margin-top: 8px; }
 .v2-beat { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 64px); right: 12px; z-index: 60; max-width: min(260px, calc(100vw - 24px));
   display: grid; gap: 2px; padding: 8px 12px; border-radius: 12px; background: var(--glass); border: 1px solid var(--line-2);
   box-shadow: var(--e-2); pointer-events: none; opacity: 0; transform: translateY(-4px); transition: opacity .2s, transform .2s; }

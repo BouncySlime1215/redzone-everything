@@ -691,3 +691,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   With the flag on, the phone edits the followed-players list and shows a text-only "Following" line naming the live
   games they're in. Lane 1 owns the weight that reads the list (its own flag and grader). Reason: Cycle 12 (#236) item
   2, playbook P22.
+- 2026-11-05 (lane 5, Last night card): new defaults `phone.last_night: false` and `phone.last_night_hours: 6`. With
+  the flag on, Now shows a morning card (6 AM to noon ET) with last night's worth-it, mid-play entries, high-leverage
+  leaves, dead air and which release ran, read from the night report, data/worth.jsonl and data/deploy/state.json.
+  Reason: Cycle 12 (#236) item 3.

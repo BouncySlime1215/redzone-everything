@@ -52,6 +52,8 @@ REPORTS = (DATA / "reports", DATA.parent / "docs" / "nights")   # <night>.md: ni
 BUFFER_LOG = DATA / "buffer.jsonl"        # STK-06 holds that went bad and their rebuilds (control._buffer_log)
 CRUNCH_DIR = DATA / "crunch"              # <night>.json: learned crunch spans vs the oracle's (lane 1 grader)
 WORTH_LOG = DATA / "worth.jsonl"          # [EXP-040] "worth it?" per night: EVALUATION ONLY, never a training label
+DEPLOY_STATE = DATA / "deploy" / "state.json"   # scripts/deploy.py: good commit + deploy / rollback history
+RELEASE_NAMES = DATA.parent / "docs" / "releases.json"   # {"<7-char commit>": "RC6.1", ...} (lane 4 keeps it)
 REEL_REQUESTS = DATA / "reel_requests.jsonl"   # "I missed that" -> a catch-up request (record only)
 REPLAY_DUE_S = 180.0    # Nick, Nov 4 11:00 AM: a missed key moment airs within 3 min, at the next dead moment
 MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min, a phone convenience; the graded window is big_seen_3min
@@ -390,6 +392,50 @@ def night_scorecard(nights: list[tuple[str, dict | None, dict | None]]) -> dict:
     hard_ok = [ln["status"] == "PASS" for ln in lines if ln["hard"] and ln["latest"] is not None]
     return {"nights": [n for n, _, _ in rows], "last": last, "lines": lines,
             "gate": None if not hard_ok else all(hard_ok)}
+
+
+def _short(c) -> str | None:
+    return str(c)[:7] if c else None
+
+
+def release_that_ran(state: dict, t0: float, t1: float, names: dict) -> dict | None:
+    """Which release drove the TV at the end of the night [t0, t1), from scripts/deploy.py's state.json:
+    the last history entry before t1 ("deployed" or "manual_rollback" -> its commit; "rolled_back" -> the
+    commit it went back to), else the last good commit. `changes` lists every deploy / rollback inside the
+    night, so "RC6 rolled back to RC5.1" shows. None when there's no deploy record at all."""
+    state = state if isinstance(state, dict) else {}
+    hist = sorted((h for h in state.get("history") or [] if isinstance(h, dict)
+                   and isinstance(h.get("at"), (int, float))), key=lambda h: h["at"])
+    nm = lambda c: names.get(_short(c)) if c else None   # noqa: E731
+    before = [h for h in hist if h["at"] < t1]
+    if before:
+        last = before[-1]
+        res = last.get("result")
+        ran = last.get("from") if res == "rolled_back" else None if res == "rollback_failed" else last.get("commit")
+    else:
+        ran = (state.get("good") or {}).get("commit")
+    changes = [{"result": h.get("result"), "commit": _short(h.get("commit")), "name": nm(h.get("commit")),
+                "from": _short(h.get("from")), "from_name": nm(h.get("from")), "at": h["at"]}
+               for h in hist if t0 <= h["at"] < t1]
+    if not ran and not changes:
+        return None
+    return {"commit": _short(ran), "name": nm(ran), "changes": changes}
+
+
+LAST_NIGHT_LINES = ("mid_play_entries", "high_leverage_leaves", "dead_air_pct")
+
+
+def last_night_card(night: str, metrics: dict | None, summary: dict | None, worth: dict | None,
+                    release: dict | None) -> dict:
+    """The morning "Last night" card: worth it (EXP-040, evaluation only), mid-play entries and high-leverage
+    leaves (hard, bar 0), dead air %, and which release ran. A line nobody measured is None (pending), never 0."""
+    m, s = metrics or {}, summary or {}
+    lines = {k: _night_line(k, m, s) for k in LAST_NIGHT_LINES}
+    hard = [lines[k] for k in ("mid_play_entries", "high_leverage_leaves") if lines[k] is not None]
+    r = (worth or {}).get("rating")
+    return {"night": night, "worth": r if isinstance(r, int) and 1 <= r <= 5 else None, **lines,
+            "rule1": None if not hard else all(v <= 0 for v in hard), "release": release,
+            "measured": any(v is not None for v in lines.values())}
 
 
 LEFT_END = {"left_resumed": "resumed", "left_expired": "expired", "left_lost": "lost"}   # STK-07 (#171)
@@ -975,7 +1021,8 @@ def router(engine) -> APIRouter:
         return {"enabled": _enabled(engine), "commit": _enabled(engine) and bool(engine.cfg.get("phone.commit")),
                 "orient": _enabled(engine) and bool(engine.cfg.get("phone.orient")),
                 "worth": bool(engine.cfg.get("phone.worth")),
-                "follow": _enabled(engine) and bool(engine.cfg.get("phone.follow"))}
+                "follow": _enabled(engine) and bool(engine.cfg.get("phone.follow")),
+                "last_night": _enabled(engine) and bool(engine.cfg.get("phone.last_night"))}
 
     def _worth_now():
         now = time.time()
@@ -1208,6 +1255,30 @@ def router(engine) -> APIRouter:
         nights = [(d, next((m for m in (load(b / f"{d}.json") for b in REPORTS) if m), None),
                    load(LIVE_NIGHTS / d / "summary.json")) for d in days]
         return {"enabled": True, **night_scorecard(nights)}
+
+    @r.get("/lastnight")
+    async def lastnight():
+        # the morning "Last night" card; flag phone.last_night (off) on top of phone.v2. Read only
+        if not _enabled(engine) or not engine.cfg.get("phone.last_night"):
+            return _off()
+        now = time.time()
+        today = night_of(now)
+        night = (today - timedelta(days=1)).isoformat()
+        hours = (now - night_window(today)[0]) / 3600.0
+        show = hours < float(engine.cfg.get("phone.last_night_hours"))
+
+        def load(p: Path):
+            try:
+                return json.loads(p.read_text())
+            except (OSError, ValueError):
+                return None
+        metrics = next((m for m in (load(b / f"{night}.json") for b in REPORTS) if isinstance(m, dict)), None)
+        names = load(RELEASE_NAMES)
+        t0, t1 = night_window(date.fromisoformat(night))
+        rel = release_that_ran(load(DEPLOY_STATE) or {}, t0, t1, names if isinstance(names, dict) else {})
+        return {"enabled": True, "show": show,
+                **last_night_card(night, metrics, load(LIVE_NIGHTS / night / "summary.json"),
+                                  worth_rows().get(night), rel)}
 
     @r.get("/catchup")
     async def catchup():

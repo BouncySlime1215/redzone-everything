@@ -14,9 +14,10 @@ function check() {
   if (!checking) {
     v2.checked = true;
     checking = (async () => {
-      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; v2.worth = !!st.worth; v2.orient = !!st.orient; v2.follow = !!st.follow; } catch { v2.on = false; }
+      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; v2.worth = !!st.worth; v2.orient = !!st.orient; v2.follow = !!st.follow; v2.lastNight = !!st.last_night; } catch { v2.on = false; }
       if (v2.on) { hooks.render(); pollAlert(); pollStrip(); pollHeld(); }
       if (v2.on && v2.follow) pollFollow();
+      if (v2.on && v2.lastNight) pollLastNight();
       if (v2.worth) pollWorth();
     })();
   }
@@ -78,6 +79,43 @@ CHANGES["v2-follow"] = async (el) => {
     if (r.ok && followV) { followV.players = arr(r.players); el.value = followV.players.join(", "); }
     toast(r.message, r.ok ? "ok" : "warn");
   } catch (err) { toast(err.message || "That didn't work", "error"); }
+};
+/* Morning "Last night" card (phone.last_night): worth it, rule #1 lines, dead air and which release ran.
+   Read only; shown 6 AM to noon ET, and "Got it" hides it for that night on this phone only. */
+let lastNight = null;
+const LN_KEY = "rz-lastnight-dismissed";
+function lnDismissed(night) { try { return localStorage.getItem(LN_KEY) === night; } catch { return false; } }
+function pollLastNight() {
+  api("/api/v2/lastnight").then((r) => {
+    const next = r && r.enabled ? r : null;
+    if (JSON.stringify(next) !== JSON.stringify(lastNight)) { lastNight = next; hooks.renderScreen("now"); }
+  }).catch(() => {}).finally(() => setTimeout(pollLastNight, 600000));
+}
+const LN_EVENT = { deployed: "deployed", rolled_back: "rolled back", manual_rollback: "rolled back by hand", rollback_failed: "rollback FAILED" };
+function relName(c, n) { return n ? `${n} (${c})` : c || "unknown"; }
+function lastNightCard() {
+  const n = lastNight;
+  if (!n || !n.show || lnDismissed(n.night)) return "";
+  const pend = `<i>pending</i>`;
+  const v = (x, unit = "") => (x == null ? pend : `${esc(Math.round(x * 10) / 10)}${unit}`);
+  const rel = n.release;
+  const changes = rel ? arr(rel.changes).map((c) => c.result === "rolled_back"
+    ? `${esc(relName(c.commit, c.name))} rolled back to ${esc(relName(c.from, c.from_name))} at ${esc(fmtTime(c.at))}`
+    : `${esc(relName(c.commit, c.name))} ${esc(LN_EVENT[c.result] || c.result || "")} at ${esc(fmtTime(c.at))}`) : [];
+  const day = new Date(`${n.night}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return `<div class="v2-ln" data-key="v2-ln" role="note"><div class="v2-ln-h"><b>Last night</b><span>${esc(day)}</span>
+    <button class="btn btn--ghost btn--sm" data-act="v2-ln-hide">Got it</button></div>
+    <dl>
+      <div><dt>Ran</dt><dd>${rel ? esc(relName(rel.commit, rel.name)) : pend}</dd></div>
+      <div><dt>Worth it</dt><dd>${n.worth == null ? `<i>not rated</i>` : `${esc(n.worth)}/5`}</dd></div>
+      <div><dt>Mid-play entries</dt><dd class="${n.mid_play_entries > 0 ? "bad" : ""}">${v(n.mid_play_entries)}</dd></div>
+      <div><dt>High-leverage leaves</dt><dd class="${n.high_leverage_leaves > 0 ? "bad" : ""}">${v(n.high_leverage_leaves)}</dd></div>
+      <div><dt>Dead air</dt><dd>${v(n.dead_air_pct, "%")}</dd></div>
+    </dl>${changes.length ? `<div class="t2">${changes.join(" · ")}</div>` : ""}</div>`;
+}
+ACTIONS["v2-ln-hide"] = () => {
+  try { if (lastNight) localStorage.setItem(LN_KEY, lastNight.night); } catch { /* per-phone convenience only */ }
+  hooks.renderScreen("now");
 };
 function watchStrip() {
   if (!strip || !strip.top.length) return alsoClose() + followLine();
@@ -231,7 +269,7 @@ export function missedBar() {
   if (v2.worth && worth && worth.complete) return slateCompleteCard();   // EXP-040: shows even with v2 off
   if (!v2.on) return "";
   if (slateDone) return slateCompleteCard();
-  return `${alertLine()}${heldLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
+  return `${lastNightCard()}${alertLine()}${heldLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
     ${v2.commit ? `<button class="btn btn--ghost" data-act="v2-commit-open">${icon("lock")}Commit${commitState() ? ": " + esc(COMMIT_TXT[commitState().mode] || "on") : ""}</button>` : ""}
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
