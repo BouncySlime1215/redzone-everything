@@ -94,8 +94,7 @@ def test_flip_touches_one_league_and_rollback_survives_a_merge(cfg):
     new = R.flip(src, "nba", 60)
     assert src == {"league_overrides": {"nba": {"decider.entry.landing_lag_s": 7}}}   # pure
     assert new["nba"] == {"decider.entry.landing_lag_s": 7, R.RC8_FLAG: True, R.RC8_FIXED: 60.0,
-                          "decider.entry.start_timed": True,   # RC8 ships start_timed for the flipped league
-                          "timing.behind_live_s.enabled": True}
+                          "timing.behind_live_s.enabled": True}   # start_timed only via --set, per the verdict
     cfg.update({"league_overrides": R.flip(cfg.overrides, "nba")})
     assert R.is_on(cfg, "nba") and not R.is_on(cfg, "nfl") and not R.is_on(cfg, "nhl")
     assert cfg.get(R.RC8_FLAG) is False                                         # never a global key
@@ -220,7 +219,7 @@ def test_gate_report_runs_with_and_without_inputs(tmp_path, cfg):
     assert nba["grid_mid_play_total"] == 6 + 2                    # the whole grid is still shown
     # gate v28: B = max(sweep 75, formula/ratchet/floor 90)
     assert nba["ship_b"] == 90.0
-    assert nba["flip_cmd"] == "python scripts/rc8_flip.py nba on --seconds 90"   # start_timed rides the flip
+    assert nba["flip_cmd"] == "python scripts/rc8_flip.py nba on --seconds 90 --set decider.entry.start_timed=true"
     assert nba["state"] == R.PENDING                            # locked + one-night shadow still pending
     bad = dict(shadow, S2="FAIL")
     assert m.report(cfg, sweep, bad)["leagues"]["nba"]["state"] == R.FAIL

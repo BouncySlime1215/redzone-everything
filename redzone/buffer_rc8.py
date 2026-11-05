@@ -28,10 +28,12 @@ FLOOR_RANGE = config.LIMITS["timing.behind_live_s.adaptive.floor_s"]      # Nick
 RATCHET_STEP = float(config.default("timing.behind_live_s.adaptive.ratchet_step", 15))   # gate v28 (s)
 GATE_MIN_NIGHTS = 8              # the gate's floor per league per harness
 HARNESSES = ("honest", "resync")
-# Turned on with RC8 for the flipped league (planner, Nov 5): the editor runs with start_timed on; without it an
-# NBA first pick joins mid-play (#318). Rollback restores the shipped value for that league.
-# The hold key is set too (rc8_on already implies it in the engine/controller), so the league's state reads plainly.
-COMPANIONS = {"decider.entry.start_timed": True, "timing.behind_live_s.enabled": True}
+# Set with RC8 for the flipped league (rc8_on already implies the hold in the engine/controller; the key makes the
+# league's state read plainly). start_timed is NOT a fixed companion: it ships only when the sweep verdict's arm needs
+# it (planner, Nov 5: lane 3's st-B90 NBA arm added a mid-play entry), via rc8_flip --set. Rollback restores both
+# keys to the shipped value for that league.
+COMPANIONS = {"timing.behind_live_s.enabled": True}
+RESTORED = ("timing.behind_live_s.enabled", "decider.entry.start_timed")
 SYNC_BAR = float(config.default("timing.behind_live_s.adaptive.sync_err_s", 2.0))   # gate item 5 (EXP-800, s)
 PASS, FAIL, PENDING = "PASS", "FAIL", "PENDING"
 
@@ -235,7 +237,7 @@ def rollback(cfg_data: dict, league: str) -> dict:
     blk = dict(over.get(league) or {})
     blk[RC8_FLAG] = False
     blk[RC8_FIXED] = 0
-    for k in COMPANIONS:
+    for k in RESTORED:
         blk[k] = _shipped(league, k)
     over[league] = blk
     return over

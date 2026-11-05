@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT))
 from redzone import buffer_rc8 as R  # noqa: E402
 from redzone.config import Config  # noqa: E402
 
-NEEDS: dict = {}   # flags a verdict may need beyond R.COMPANIONS (start_timed now always ships with RC8)
+NEEDS = {"start_timed": "decider.entry.start_timed=true"}   # lane 3's st arm: shipped only when the verdict needs it
 LEAGUES = ("nba", "nfl", "nhl")   # graded tonight (NBA first, then NFL); others stay live
 ITEM_NAMES = {"1_rule1": "Rule #1 (0 mid-play, every run + shadow)", "2_beats_live": "Beats live (sweep, >= 8 nights)",
               "3_shadow": "Tonight's shadow (veto only)", "4_locked": "Locked read at the cut",
@@ -56,7 +56,7 @@ def sweep_runs(lg_verdict: dict | None, chosen_only: bool = False) -> list[dict]
     b = (lg_verdict or {}).get("chosen_b")
     if chosen_only and b is not None:
         needs = (lg_verdict or {}).get("needs") or []
-        arm = "st" if ("start_timed" in needs or "decider.entry.start_timed" in R.COMPANIONS) else "main"
+        arm = "st" if "start_timed" in needs else "main"
         runs = [r for r in runs if r.get("b") == b and r.get("arm", "main") == arm]
     return runs
 

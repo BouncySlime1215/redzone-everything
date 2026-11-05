@@ -850,8 +850,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   the next release. Grader freeze v27.
 - 2026-11-05 (T9, #331; Nick 9:10 / 9:35 AM, integrator gate v28, planner): **RC8 buffer-ON ships behind
   `timing.behind_live_s.rc8_on`, false everywhere**, honored only under `league_overrides.<league>`; Nick flips one
-  league himself (`scripts/rc8_flip.py`, which also turns `decider.entry.start_timed` on for that league; rollback
-  writes explicit false/0 and restores start_timed). New `timing.behind_live_s.adaptive` (floor 15 s limited to 10-15,
+  league himself (`scripts/rc8_flip.py`, which also sets that league's hold key; `decider.entry.start_timed` ships only
+  when the sweep verdict's arm needs it, via `--set`; rollback writes explicit false/0 and restores both to shipped). New `timing.behind_live_s.adaptive` (floor 15 s limited to 10-15,
   ratchet step 15 s limited to 0-15, feed-lag terms are p90 placeholders until T6) and `max_s` limited to 90 (Nick's
   cap). Ship B = max(sweep point, formula/ratchet, floor), back to 90 after a mid-play night. RC6.2's
   `timing.behind_live_s.enabled` (NBA/NFL hold) unchanged. `scripts/rc8_gate_report.py` reads the pre-registered gate
