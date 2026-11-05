@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-EXP-107 ladder (recipe E) A100 57 min in, ETA ~10:45 AM. EXP-109b seed check got an L4 (no A100 free); A-vs-E within-run comparison still fair; 27 min in.
-Nick is up (morning summary sent). Usage 61%.
+EXP-107 ladder run 1 FAILED (14.8 CU): 18m crashed at the checkpoint sync (sync.push AttributeError), 60m/150m CUDA OOM; 18m was memorizing (train 0.28 vs valid 0.50, 5.5 epochs). Report 25977819; lane 1 fixing; A100 freed.
+YTTV web player gives an ingest clock (23.2 s behind, steady to 0.1 s), 9376769b. Seed check on L4 running. Usage 62%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
