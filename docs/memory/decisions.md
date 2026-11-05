@@ -615,3 +615,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   shown and never nudge betting. (2) A test factory (integrator): drafted experiments and graders, nightmare nights from
   dev history, off-policy grading of every logged night. YouTube TV DVR/screens are out (DRM). Plans:
   docs/plans/2026-11-05-brain-engines.md (EXP-090..093) and docs/plans/2026-11-05-test-factory.md (F1-F7).
+- **2026-11-05 (Nick, 11:20 PM ET): data = B, "and way more of these sources, since it's a personal project."** The brain
+  may train on ESPN-derived data (hoopR NBA/CBB, ESPN pbp), NHL api-web + shifts, Baseball Savant/Statcast and other
+  public sports APIs with restrictive terms. **Personal use only:** every dataset and model trained on them is tagged
+  "personal-use, not for commercial release"; a company version retrains on green data later. Guardrails that still hold:
+  public endpoints only; no logins, paywalls, CAPTCHAs or bot-block bypasses; respect rate limits and robots (cache, back
+  off); no pirated streams; articles read for derived numbers, never stored as full text; never touch Nick's credentials.
+  Replaces the "skip Savant" call (6:10 PM). Teacher EXP-086 runs on B; Saturday's world model is sized for B (~100M).

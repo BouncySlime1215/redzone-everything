@@ -22,9 +22,10 @@ nights needed before it starts (grading rule 2). Use your own id block (planner 
   - This applies to every lane. Mac work is scheduled for the daytime: tomorrow afternoon, before TNF.
 - **Launches (the overseer):**
   - EXP-103 (green world model, A100, c5d4b7c) starts tonight.
-  - Teacher 5a903ca waits on Nick's A/B call.
+  - **Nick picked data B (11:20 PM).** Teacher 5a903ca (32B, the CBB / NHL / MLB queue) launches on an A100 tonight
+    once lane ① unblocks it (EXP-086).
   - The factory event-token run (d55d661) starts when the current Kaggle factory run ends, around 2:30 AM ET. It
-    runs green-only unless Nick picks B.
+    uses **all** sources (ESPN-derived, NHL api-web + shifts, Statcast), tagged personal-use.
   - EXP-022 stays on Friday.
 - **Lane 2's top priority for RC7 is the sync fix.** It unblocks "never join at a break": 35% of today's entries
   landed mid-commercial.
@@ -51,7 +52,6 @@ nights needed before it starts (grading rule 2). Use your own id block (planner 
   - #240 is EXP-056 (the planner interface).
   - #218, #225, #226 and #228 still need verdicts.
 - **Still waiting on Nick:**
-  - the A/B data call (Teacher EXP-086 vs EXP-102);
   - the NHL api-web risk call;
   - the CFBD key;
   - the TV overlay path for EXP-038.
@@ -69,12 +69,14 @@ nights needed before it starts (grading rule 2). Use your own id block (planner 
 | CFB (CFBD) | PENDING | waiting on Nick's key |
 | live nights (gold) | first since 9:40 PM | lane ③ check in the morning |
 
-The factory event-token run (d55d661) fills the green rows overnight. Plan A is about 100 M tokens.
+**Data B (Nick, 11:20 PM):** the red rows are now in, for personal use only. Every dataset and model trained on them
+is tagged "personal-use, not for commercial release". The factory run (d55d661 or newer) fills all rows overnight,
+about 400 M tokens (plan B in the 4-day plan).
 
 ## Lanes: the next ranked work
 | lane | 1st | 2nd | 3rd |
 |---|---|---|---|
-| ① | Support the overnight launches: EXP-103 grades.json and its CU line; the factory d55d661 green-only shards hashed into the ledger (EXP-007) | Land #169 and #230 (EXP-103 pre-registration); get the Teacher 5a903ca and EXP-102 notebooks ready for either A/B answer | EXP-022 point-process design ready for Friday; correct the CU table from the printed numbers |
+| ① | **Data B now:** unblock Teacher 5a903ca for the A100 tonight (EXP-086); the factory pack (d55d661 or newer) on ALL sources, personal-use tags on every shard, hashed into the ledger (EXP-007); EXP-103's grades.json and CU line | Land #169 and #230 (EXP-103 pre-registration); get the Teacher 5a903ca and EXP-102 notebooks ready for either A/B answer | EXP-022 point-process design ready for Friday; correct the CU table from the printed numbers |
 | ② | **Sync p95 ≤ 2 s (requirement 2, top priority):** #235's producer on tonight's sync.jsonl, fold in lane ③'s EXP-084 fit, report delay_err_p95 per stick on dev | Then re-grade EXP-205 (never join at a break) against its frozen bar; land #237 behind its flag | EXP-056 planner interface (#240) for Sunday |
 | ③ | **Switches ≤ 3 s (requirement 1):** prepare the real-TV Prime press run for tomorrow afternoon before games (Nick OKs it in the Mac session), #233 + #234 ready | EXP-084 delay fit from the RC6.1 / RC6.2 logs, handed to lane ② | The morning gold-capture check (EXP-008); EXP-004 Mac shadow (#187) for Sunday, daytime only |
 | ④ | Watch the RC6.2 deploy health with the overseer; record RC6.2 in the RC history | The RC7 cut checklist: the v10 lines, the second-tap rule, the no-deploy-while-live window (cut by the afternoon, before TNF 8:15 PM ET) | Land #215 (EXP-003) and #219 (EXP-005 DR); then EXP-017 v3 locked for Friday |
@@ -86,5 +88,5 @@ The factory event-token run (d55d661) fills the green rows overnight. Plan A is 
   and "never join at a break" stays a known miss in the RC7 notes.
 - **The no-deploy-while-live rule** leaves RC7 a window only from the afternoon until TNF at 8:15 PM ET. The
   Prime press run uses the same window.
-- **Nick's A/B call** gates the Thursday A100 Teacher slot. Without an answer by the morning, EXP-102 (green)
-  runs instead.
+- **Data B adds personal-use risk only.** Each source keeps its guardrails: public endpoints, rate limits, no logins
+  or bot-block bypasses. A company version retrains on green data later.

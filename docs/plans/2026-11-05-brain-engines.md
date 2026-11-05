@@ -65,11 +65,17 @@ matters and how people feel about it. The output feeds Watch Value and game impo
 | 11 | National-TV slots | from league schedule feeds already in the catalog | per source | start now (NFL) |
 | 12 | Allowlisted RSS (league and team official feeds first) through the LLM reader | hype 0-1, storyline tags, key players | each domain gets its own license line | allowlist PR first |
 
-**Red, never used:**
-- sportsbook and line-movement sites (DraftKings, FanDuel, Covers, Action Network, VSiN);
-- ESPN odds and predictor feeds;
-- Reddit and Pushshift;
-- pytrends.
+**Data B (Nick, 11:20 PM) applies here too.** ESPN-derived and other restricted public sources may feed
+the engine for personal use, tagged "personal-use, not for commercial release". The guardrails still hold:
+public endpoints only; no logins, paywalls, CAPTCHAs or bot-block bypasses; respect rate limits and robots.
+
+**Lane ① re-checks the catalog's red rows under B.** A row comes back only if it passes the guardrails. These stay
+out until that check says otherwise:
+- sportsbook and line-movement sites (bot blocking, and terms that forbid automation);
+- Reddit (API approval and login) and Pushshift dumps;
+- pytrends (Google blocks it).
+
+The ESPN odds and predictor feeds are public endpoints, so they may come back under B.
 
 These are listed with reasons in the catalog's "Not using" table.
 
