@@ -26,13 +26,15 @@ def _switch(engine, to, reason="Crunch time: UNC down 2, red zone"):
 
 
 def test_off_by_default_and_every_route_refuses(client, engine):
-    assert client.get("/api/v2/status").json() == {"enabled": False, "commit": False, "orient": False, "worth": False}
+    assert client.get("/api/v2/status").json() == {"enabled": False, "commit": False, "orient": False, "worth": False,
+                                                     "follow": False}
     assert client.get("/api/v2/worth").status_code == 404 and client.post("/api/v2/worth", json={"rating": 4}).status_code == 404
     assert client.get("/api/v2/switches").status_code == 404
     assert client.post("/api/v2/vote", json={"key": "x", "vote": 1}).status_code == 404
     assert client.post("/api/v2/missed", json={}).status_code == 404
     assert client.get("/api/v2/priority").status_code == 404
     assert client.post("/api/v2/priority", json={"bets_weight": 2}).status_code == 404
+    assert client.get("/api/v2/follow").status_code == 404
 
 
 def test_chips_read_the_reason_text():
@@ -592,7 +594,8 @@ def test_why_tag_only_over_the_threshold():
 
 def test_status_says_whether_commit_controls_are_on(client, engine):
     _on(engine)
-    assert client.get("/api/v2/status").json() == {"enabled": True, "commit": False, "orient": False, "worth": False}   # phone.commit default off
+    assert client.get("/api/v2/status").json() == {"enabled": True, "commit": False, "orient": False, "worth": False,
+                                                     "follow": False}   # phone.commit default off
     engine.cfg.update({"phone": {"commit": True}})
     assert client.get("/api/v2/status").json()["commit"] is True
 
@@ -737,3 +740,52 @@ def test_catchup_view_spoiler_safe_decider_order_and_visible_cap():
     assert h["catchup"]["label"] == phone_v2.SPOILER_SAFE_LABEL and "Ovechkin" not in json.dumps(h)
     off = phone_v2.catchup_queue([], {}, None, False, {}, q, {}, str.upper, now=430.0)
     assert off["spoiler_safe"] is False and off["more"] == 0 and len(off["queue"]) == 3
+
+
+def test_follow_names_are_cleaned():
+    assert phone_v2.follow_names(["  Nikola  Jokic", "nikola jokic", "x", "Tatum; drop", "Bryce Harper", 3]) == \
+        ["Nikola Jokic", "Bryce Harper"]                                        # trimmed, deduped, safe text only
+    assert phone_v2.follow_names("Josh Allen, Ovechkin") == ["Josh Allen", "Ovechkin"]
+    assert len(phone_v2.follow_names([f"Player {chr(65 + i)}" for i in range(20)])) == phone_v2.FOLLOW_MAX
+    assert phone_v2.follow_names({"a": 1}) is None and phone_v2.follow_names([]) == []
+
+
+def test_followed_in_finds_spotlight_leader_and_flag_without_namesakes():
+    g = _late("nfl", 20, 17, 4, 60)
+    g.spotlight = {"name": "Josh Allen", "short": "J. Allen", "text": "Allen 12-yd TD run"}
+    g.leaders = [{"short": "N. Jokic", "stat": "38 PTS"}]
+    g.player_flags = ["Ovechkin 2 G"]
+    rows = {r["player"]: r for r in phone_v2.followed_in(g, ["Josh Allen", "Keenan Allen", "Nikola Jokic",
+                                                              "Kevin Jokic", "Alex Ovechkin", "Allen"])}
+    assert rows["Josh Allen"]["where"] == "spotlight" and rows["Josh Allen"]["text"] == "Allen 12-yd TD run"
+    assert rows["Nikola Jokic"] == {"player": "Nikola Jokic", "where": "leader", "text": "N. Jokic 38 PTS"}
+    assert rows["Alex Ovechkin"]["where"] == "flag"
+    assert rows["Allen"]["where"] == "spotlight"                           # a surname alone matches the surname
+    assert "Keenan Allen" not in rows and "Kevin Jokic" not in rows          # full name / initial must agree
+    assert phone_v2.followed_in(g, []) == [] and phone_v2.followed_in(None, ["Josh Allen"]) == []
+
+
+def test_follow_view_lists_live_games_on_screen_first():
+    from redzone.models import Phase as P
+    a, b, done = _late("nba", 99, 100, 4, 30), _late("nhl", 1, 1, 3, 90), _late("nba", 1, 1, 1, 1)
+    a.leaders, b.player_flags, done.player_flags = [{"name": "Nikola Jokic"}], ["Ovechkin 2 G"], ["Jokic 40 pts"]
+    done.phase = P.POST
+    rows = phone_v2.follow_view({"a": a, "b": b, "done": done}, ["Nikola Jokic", "Ovechkin"], "b")
+    assert [r["game_id"] for r in rows] == ["b", "a"] and rows[0]["on"] is True   # final games never listed
+
+
+def test_follow_route_needs_both_flags_and_saves_to_the_prefs_key(client, engine):
+    _on(engine)
+    assert client.get("/api/v2/follow").status_code == 404                    # phone.follow off
+    assert client.post("/api/v2/follow", json={"players": ["Nikola Jokic"]}).status_code == 404
+    engine.cfg.update({"phone": {"v2": True, "follow": True}})
+    assert client.get("/api/v2/status").json()["follow"] is True
+    r = client.post("/api/v2/follow", json={"players": ["Nikola Jokic", "nikola jokic", "Alex Ovechkin"]}).json()
+    assert r["ok"] is True and r["players"] == ["Nikola Jokic", "Alex Ovechkin"]
+    assert engine.cfg.get("noggin.priority.prefs.followed_players") == ["Nikola Jokic", "Alex Ovechkin"]
+    got = client.get("/api/v2/follow").json()
+    assert got["enabled"] is True and got["players"] == ["Nikola Jokic", "Alex Ovechkin"] and got["live"] == []
+    assert client.post("/api/v2/follow", json={"players": 5}).json()["ok"] is False
+    assert client.post("/api/v2/follow", json={"players": []}).json()["message"] == "Cleared"
+    assert engine.cfg.get("noggin.priority.prefs.bets_weight") == 1.0       # the other prefs are untouched
+

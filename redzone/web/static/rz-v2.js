@@ -14,8 +14,9 @@ function check() {
   if (!checking) {
     v2.checked = true;
     checking = (async () => {
-      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; v2.worth = !!st.worth; v2.orient = !!st.orient; } catch { v2.on = false; }
+      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; v2.worth = !!st.worth; v2.orient = !!st.orient; v2.follow = !!st.follow; } catch { v2.on = false; }
       if (v2.on) { hooks.render(); pollAlert(); pollStrip(); pollHeld(); }
+      if (v2.on && v2.follow) pollFollow();
       if (v2.worth) pollWorth();
     })();
   }
@@ -50,14 +51,42 @@ function alsoClose() {
   if (!a.length) return "";
   return `<div class="v2-also" role="note"><b>Also close</b>${a.map((g) => `<span><span class="m">${esc(g.matchup)}</span> ${esc(g.context)}</span>`).join("")}</div>`;
 }
+/* EXP-043: followed players. One quiet "Following" line naming the live games they're in (text only, no
+   Watch button), and a names box in Your priorities. Display only: lane 1 owns any weight on the pick. */
+let followV = null;
+function pollFollow() {
+  api("/api/v2/follow").then((r) => {
+    const next = r && r.enabled ? { players: arr(r.players), live: arr(r.live), max: num(r.max, 12) } : null;
+    if (JSON.stringify(next) !== JSON.stringify(followV)) { followV = next; hooks.renderScreen("now"); hooks.renderScreen("settings"); }
+  }).catch(() => {}).finally(() => setTimeout(pollFollow, 30000));
+}
+function followLine() {
+  const rows = followV ? followV.live : [];
+  if (!rows.length) return "";
+  return `<div class="v2-also v2-follow" role="note"><b>Following</b>${rows.map((g) =>
+    `<span><span class="m">${esc(arr(g.players).map((p) => p.player).join(", "))}</span> ${esc(g.matchup)}${g.on ? " (on now)" : ""}${arr(g.players)[0] && g.players[0].text ? ` · ${esc(g.players[0].text)}` : ""}</span>`).join("")}</div>`;
+}
+function followCard() {
+  if (!v2.follow || !followV) return "";
+  return `<div class="set-r"><div class="grow"><div class="t1">Players you follow</div>
+    <div class="t2">Names, comma separated (up to ${followV.max}). The Now screen shows which live games they're in.</div>
+    <input id="v2-follow-in" class="input" style="margin-top:8px;width:100%" type="text" data-keep data-change="v2-follow" value="${attr(followV.players.join(", "))}" placeholder="Nikola Jokic, Alex Ovechkin" aria-label="Players you follow" autocomplete="off"></div></div>`;
+}
+CHANGES["v2-follow"] = async (el) => {
+  try {
+    const r = await api("/api/v2/follow", { body: { players: String(el.value || "").split(",") } });
+    if (r.ok && followV) { followV.players = arr(r.players); el.value = followV.players.join(", "); }
+    toast(r.message, r.ok ? "ok" : "warn");
+  } catch (err) { toast(err.message || "That didn't work", "error"); }
+};
 function watchStrip() {
-  if (!strip || !strip.top.length) return alsoClose();
+  if (!strip || !strip.top.length) return alsoClose() + followLine();
   // EXP-035: a plain label, only over a logged threshold; no banner, sting or animation (playbook §5)
   const t = strip.tag;
   const tag = t ? `<div class="v2-why" title="${attr(`Shown because it is ${t.value} on the 0-100 scale (threshold ${t.threshold})`)}"><b>Why we're here</b> ${esc(t.text)}</div>` : "";
   return `${tag}<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
     `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc([g.context || g.why, g.stakes_line].filter(Boolean).join(" · "))}</small></span></span>`).join("")}
-    ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>${alsoClose()}`;
+    ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>${alsoClose()}${followLine()}`;
 }
 
 /* Crunch vs crunch: what the hidden stick holds, how far behind, and what comes back when (display only). */
@@ -276,7 +305,7 @@ export function prioritySection() {
   const learned = `<div class="t2" style="margin-top:10px">${sugg.length
     ? `From your ${p.votes} ratings: ${sugg.map((s) => `${esc(s.suggest === "less" ? "less" : "more")} <b>${esc(s.term)}</b>`).join(", ")}. Suggestions only; nothing changes until you move a slider.`
     : `Your sliders are the only way these change; the Noggin teaches itself and never learns from your ratings.`}</div>`;
-  return `${head}<div class="card set" data-key="v2prio">${rows}${reels}<div class="card-pad">${learned}</div></div>`;
+  return `${head}<div class="card set" data-key="v2prio">${rows}${reels}${followCard()}<div class="card-pad">${learned}</div></div>`;
 }
 
 async function savePrio(changes) {

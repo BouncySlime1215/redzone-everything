@@ -687,3 +687,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   for NBA/NFL only through #227's league overrides). Opening a live game on the phone tunes it on the hidden stick while
   you read, so "Go now" is a flip. Controls drill (2 seeds, smartthings TV): open-then-go median 8.33 s -> 3.06 s, go-now
   p50 8.25 -> 3.06 s; 0 mid-play cuts of any kind and 0 dropped presses either way. Rollback: set it false in settings.
+- 2026-11-05 (lane 5, EXP-043 display): new defaults `phone.follow: false` and `noggin.priority.prefs.followed_players: []`.
+  With the flag on, the phone edits the followed-players list and shows a text-only "Following" line naming the live
+  games they're in. Lane 1 owns the weight that reads the list (its own flag and grader). Reason: Cycle 12 (#236) item
+  2, playbook P22.

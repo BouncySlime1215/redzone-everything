@@ -603,6 +603,7 @@ noggin:                    # docs/noggin.md
       nhl_pp_ot_boost: 1.0 # x the NHL power-play / overtime term (0-2)
       reels: true          # catch-up reels allowed
       switch_frequency: 1.0  # 0.5 calmer .. 2.0 busier
+      followed_players: []   # [EXP-043] players you follow, set from the phone (phone.follow). The phone only SHOWS where they are live; lane 1 owns any weight
   pick:                    # Reflex PICK v1 (redzone/noggin/pick.py): the hindsight-oracle imitation picks the game
     enabled: false         # replace the app's pick (never over your team, never in a replay); needs the time-shift buffer
     shadow: false          # log what PICK would do (Decider.pick_log) beside the app's own decision
@@ -639,6 +640,7 @@ phone:                     # the phone page (redzone/web)
   orient_override_s: 30    # [EXP-038] a user switch this soon after an automatic one counts as an override (lab/orient.py)
   worth: false             # [EXP-040] one-tap end-of-night "worth it?" (1-5) on the Slate complete card, works with v2 off. EVALUATION ONLY, never a training label
   worth_probe_days: 7      # [EXP-040] the agency / regret probes show at most once per this many nights
+  follow: false            # [EXP-043] "Following" on the phone: edit followed players and see which live games they are in (display only); OFF until EXP-043 is graded
   why_tag_min: 70          # [EXP-035] "Why we're here" shows only at or over this 0-100 value; lab/decision_records grades the same number
 warmup:                    # [warmup.pregame] before the night's first game (redzone/plan.py Tonight._warmup)
   pregame: false           # put the likeliest first game on the HIDDEN stick before the first start (never the one on screen)

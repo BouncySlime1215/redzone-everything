@@ -19,6 +19,7 @@ There's a mock preview at `/static/index.html?mock&v2` (data in `rz-mock.js`). O
 | `GET /api/v2/status` | `enabled` (`phone.v2`) and `commit` (`phone.commit`, EXP-036) | config only. The commit sheet sends `act("commit", {mode: my_teams/stop_after/end_at, game_id, at})`; lanes 2/3 own the action and apply it only at a dead ball. Controls only, never a training signal |
 | `GET/POST /api/v2/worth` | EXP-040 "Was tonight worth it?" (1-5) on the Slate complete card, plus the weekly agency/regret probes. Own flag `phone.worth`; works with `phone.v2` off | `data/worth.jsonl` (evaluation only, graded by `redzone/lab/worth.py`) |
 | `GET /api/v2/orient?game=` | EXP-038 orientation beat after a switch: `score`, `clock`, one `fact`, the late/close `context`. Flag `phone.orient` (off) on top of `phone.v2` | `GameState` score, clock, situation |
+| `GET/POST /api/v2/follow` | EXP-043 followed players: the names box in Your priorities and a quiet "Following" line on Now (which live games they're in). Flag `phone.follow` (off) on top of `phone.v2` | config `noggin.priority.prefs.followed_players`; `GameState.spotlight`, `leaders`, `player_flags` |
 | `GET /api/v2/trend?split=` | How close to perfect | `docs/northstar-history.jsonl` |
 | `GET /api/v2/scorecard?n=` | Night scorecard: release-gate lines per night | `data/reports/<night>.json` or `docs/nights/<night>.json` (`mid_play_entries`/`landed_mid_play`, `high_leverage_leaves`, `plays_missed_entry`, `dead_air_pct`), `data/live_nights/<night>/summary.json`. Missing keys show as pending |
 | `GET /api/v2/capture?day=`, `/capture/report` | Live night: did it become gold data | `data/live_nights/<night>/summary.json`, `trace.provenance` coverage, `control.held`, `data/buffer.jsonl`, the night report `.md` |
@@ -75,3 +76,12 @@ This is the lane 5 half of EXP-026. The decider half (queue order and deadline) 
 - **What it is (`phone.catchup_view`, off):** the catch-up queue in the decider's own order, so it shows what plays next. At most `phone.catchup_visible` (2) catch-ups are shown at once, with "+N more waiting". Every entry reads "A play you missed": no player names, no play type and no score until the replay runs.
 - **Ship gates (tests):** 0 spoiler leaks in any phone response with the flag on (`test_catchup_view_spoiler_safe_decider_order_and_visible_cap` checks names, play types and scores), and never more than `catchup_visible` entries shown.
 - **Outcome line:** EXP-026's own "Big plays live or replayed within 3 min" belongs to the decider half. The display makes no outcome claim of its own, so it can't pass the decider's bar by itself.
+
+### EXP-043 display: followed players (phone)
+
+This is the lane 5 half of EXP-043. Lane 1 owns the weight (how much a followed player moves the pick). It is set on Nov 5, 2026, before any night with the flag on.
+
+- **What it is (`phone.follow`, off):** a names box in Your priorities saved to `noggin.priority.prefs.followed_players` (at most 12 names), and a "Following" line under the watch strip naming the live games those players are in right now (spotlight, leaders or a going-off flag). It's text only, with no Watch button. Nothing in the decider, scoring or Noggin reads the list until lane 1 adds its weight behind its own flag.
+- **Ship gates (tests):** names are cleaned (trimmed, deduped, letters only, at most 12); a full name never matches a namesake ("Keenan Allen" is not Josh Allen, "K. Jokic" is not Nikola Jokic); finished games are never listed; both routes 404 with either flag off.
+- **Guardrail:** the manual-switch share (`redzone/lab/also_close.py` `manual_share`, the night as the unit) must not rise on `phone.follow` nights. A rise would mean the line pulls switches instead of informing. Same bar as EXP-039: at least 6 nights per side, FAIL if the 95% bootstrap lower bound of share(on) − share(off) is > 0.
+- **Outcome line:** Right game agreement (low priority) belongs to lane 1's weight, graded on the locked and dev nights. Group mode is graded separately from the solo gates. The display makes no outcome claim of its own.
