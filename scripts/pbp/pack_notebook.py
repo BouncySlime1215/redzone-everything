@@ -3,7 +3,7 @@
 
 Serves: EXP-1000. Owner: Data Planner A.
 
-    python scripts/pbp/pack_notebook.py OUT_DIR [--jobs files|baseball]   # -> OUT_DIR/rz_pbp_crew_<jobs>.ipynb
+    python scripts/pbp/pack_notebook.py OUT_DIR [--jobs files|baseball|euro]   # -> OUT_DIR/rz_pbp_crew_<jobs>.ipynb
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULES = ("__init__.py", "schema.py", "mlb_statsapi.py", "wehoop.py", "statsbomb.py", "wyscout.py", "cricsheet.py",
-           "tennis.py", "sportvu.py")
+           "tennis.py", "sportvu.py", "euroleague.py")
 
 
 def code_b64() -> str:

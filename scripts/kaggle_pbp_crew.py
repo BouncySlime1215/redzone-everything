@@ -15,6 +15,8 @@
 # - `files`: wehoop WNBA + WCBB, Cricsheet, StatsBomb, Wyscout. These are file downloads, about one session.
 # - `baseball`: MiLB AAA to Single-A, then MLB 2008-24 via the MLB Stats API. This is a polite crawl capped at
 #   1 request/s, resumable and newest season first, and takes several sessions.
+# - `euro`: EuroLeague (E) then EuroCup (U) via the EuroLeague live API, newest season first, game codes probed
+#   1.. until 20 empties, capped at 1 request/s, resumable from the raw cache.
 #
 # **Guardrails:** public endpoints only, no keys, no logins, rate limits respected, no video.
 
@@ -60,7 +62,7 @@ if CODE_B64 and not (CODE / "pbp").exists():
             tar.extractall(CODE)
 sys.path.insert(0, str(CODE))
 sys.path.insert(0, str(Path.cwd() / "scripts"))
-from pbp import cricsheet, mlb_statsapi, sportvu, statsbomb, tennis, wehoop, wyscout  # noqa: E402
+from pbp import cricsheet, euroleague, mlb_statsapi, sportvu, statsbomb, tennis, wehoop, wyscout  # noqa: E402
 from pbp.schema import PERSONAL  # noqa: E402
 
 # resume: copy finished shards (and their sidecars) from a previous version's output
@@ -118,6 +120,17 @@ if "baseball" in JOBS:
             break
         if not have(OUT / mlb_statsapi.LEAGUES[sid], y):
             run(f"mlb_statsapi/{sid}/{y}", mlb_statsapi.pull_season, sid, y, OUT, max_games=5 if SMOKE else None)
+
+# %%
+if "euro" in JOBS:
+    # EuroLeague first, then EuroCup; season labels = end year (E2025 -> 2026), newest first
+    lo, hi = euroleague.SEASON_CODES
+    for lg in ("euroleague", "eurocup"):
+        for y in range(hi + 1, lo, -1)[: 1 if SMOKE else None]:
+            if left_s() < 1800:
+                break
+            if not have(OUT / lg, y):
+                run(f"euroleague/{lg}/{y}", euroleague.pull_season, lg, y, OUT, max_games=5 if SMOKE else None)
 
 # %%
 # manifest + ledger check: every shard has a license line; every plan-B shard carries the personal-use tag
