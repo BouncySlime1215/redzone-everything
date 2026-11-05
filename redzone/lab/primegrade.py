@@ -38,6 +38,14 @@ PAIR_WIN = 1.0       # s, two sticks' rows this close in wall time are compared
 LAND_SD_MAX = 0.5    # s, sd of E at Prime landings per channel (A4)
 KM_SPREAD = 2.0      # s, Key Moments clip epoch minus feed time, max - min (B2)
 MIN_KM = 5
+# Sample floors (grading rule 4: an underpowered line reads PENDING, never PASS). A FAIL may still fire below a
+# floor when the evidence is already conclusive (a jump over FLAT_TOL, a pause off by more than PAUSE_TOL, more
+# than JUMPS_PER_H jumps inside the first hour, a Key Moments spread already over KM_SPREAD).
+MIN_QUIET_STEPS = 20  # unexplained re-anchors before A4 flat can PASS (A4's 15 min at 10-60 s anchors gives 15-90)
+MIN_PLAY_H = 1.0      # playing hours before B1 can PASS
+MIN_PAUSES = 3        # commanded pauses before the pause line can PASS
+MIN_PAIRS = 30        # two-stick row pairs before stick agreement can PASS or FAIL
+MIN_LANDINGS = 5      # Prime landings per channel before landing sd can PASS or FAIL (A4 runs 7 re-tunes)
 
 
 def _wall_of_update(r: dict) -> float:
@@ -72,6 +80,12 @@ def _playing_hours(rs: list[dict]) -> float:
     return (max(ts) - min(ts)) / 3600.0 if len(ts) > 1 else 0.0
 
 
+def _b1(jumps: int, hours: float, quiet: int) -> str:
+    if hours >= MIN_PLAY_H and quiet:
+        return "PASS" if jumps / hours <= JUMPS_PER_H else "FAIL"
+    return "FAIL" if jumps > JUMPS_PER_H * MIN_PLAY_H else "PENDING"   # already over the first hour's allowance
+
+
 def flat(rows: list[dict]) -> dict:
     """A4/B1: drift slope, unexplained jumps and jumps per playing hour, per stick and app."""
     names = _stick_names(rows)
@@ -91,8 +105,8 @@ def flat(rows: list[dict]) -> dict:
             "reanchors": len(ss), "unexplained": len(quiet), "drift_s_per_s": round(slope, 5),
             "jumps": len(jumps), "jumps_per_h": None if rate is None else round(rate, 2),
             "max_jump_s": round(max((abs(s["dE"] - slope * s["dt"]) for s in jumps), default=0.0), 2),
-            "a4_flat": "PENDING" if not quiet else ("PASS" if not jumps else "FAIL"),
-            "b1_flat": "PENDING" if rate is None or not quiet else ("PASS" if rate <= JUMPS_PER_H else "FAIL")}
+            "a4_flat": "FAIL" if jumps else ("PASS" if len(quiet) >= MIN_QUIET_STEPS else "PENDING"),
+            "b1_flat": _b1(len(jumps), hours, len(quiet))}
     return out
 
 
@@ -107,7 +121,7 @@ def pauses(rows: list[dict], commands: list[dict]) -> dict:
         if across:
             errs.append(abs(across[0]["dE"] - (float(c["play_t"]) - float(c["pause_t"]))))
     return {"n": len(errs), "max_err_s": round(max(errs), 3) if errs else None,
-            "verdict": "PENDING" if not errs else ("PASS" if max(errs) <= PAUSE_TOL else "FAIL")}
+            "verdict": "FAIL" if errs and max(errs) > PAUSE_TOL else ("PASS" if len(errs) >= MIN_PAUSES else "PENDING")}
 
 
 def sticks_agree(rows: list[dict]) -> dict:
@@ -131,7 +145,8 @@ def sticks_agree(rows: list[dict]) -> dict:
                 if diffs:
                     m = median(diffs)
                     out[f"{ch}|{names[a]}~{names[b]}"] = {"n": len(diffs), "median_abs_s": round(m, 3),
-                                                          "verdict": "PASS" if m <= STICK_AGREE else "FAIL"}
+                                                          "verdict": "PENDING" if len(diffs) < MIN_PAIRS else
+                                                          ("PASS" if m <= STICK_AGREE else "FAIL")}
     return out
 
 
@@ -143,7 +158,7 @@ def landings(rows: list[dict]) -> dict:
         if x.get("app") == "prime":
             by[x.get("channel") or "?"].append(x["E_land"])
     return {ch: {"n": len(es), "sd_s": round(pstdev(es), 3),
-                 "verdict": "PENDING" if len(es) < 2 else ("PASS" if pstdev(es) <= LAND_SD_MAX else "FAIL")}
+                 "verdict": "PENDING" if len(es) < MIN_LANDINGS else ("PASS" if pstdev(es) <= LAND_SD_MAX else "FAIL")}
             for ch, es in sorted(by.items())}
 
 
@@ -165,7 +180,7 @@ def key_moments(seeks: list[dict]) -> dict:
     spread = max(d) - min(d) if d else None
     return {"n": len(d), "median_s": round(median(d), 2) if d else None,
             "spread_s": None if spread is None else round(spread, 2),
-            "verdict": "PENDING" if len(d) < MIN_KM else ("PASS" if spread <= KM_SPREAD else "FAIL")}
+            "verdict": "FAIL" if spread is not None and spread > KM_SPREAD else ("PASS" if len(d) >= MIN_KM else "PENDING")}
 
 
 def grade(rows: list[dict], seeks: list[dict] | None = None, pause_cmds: list[dict] | None = None) -> dict:
