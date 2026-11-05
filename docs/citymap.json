@@ -1210,6 +1210,7 @@
     "Landings in dead time",
     "Mid-play entries (per 100 landings)",
     "SAFE-01",
+    "SAFE-09",
     "Your-team crunch live"
    ]
   },
@@ -2336,6 +2337,19 @@
    ],
    "owner": "INTEGRATION",
    "role": "Auto-tune the decider's hand-picked knobs against the scorecards (CMA-ES, numpy only).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/worth.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "scripts/worth_line.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-040] The end-of-night \"worth it?\" rating as an evaluation line (watch-science playbook §6).",
    "serves": [
     "untagged"
    ]
@@ -5022,16 +5036,29 @@
    "serves": [
     "untagged"
    ]
+  },
+  "scripts/worth_line.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/worth.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-040] Print the \"worth it >= live\" evaluation line from data/worth.jsonl.",
+   "serves": [
+    "untagged"
+   ]
   }
  },
  "pages": {
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 264,
+  "modules": 266,
   "orphans": 10,
-  "unowned": 106,
-  "untagged": 211
+  "unowned": 108,
+  "untagged": 213
  },
  "version": 1
 }
