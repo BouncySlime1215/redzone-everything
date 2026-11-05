@@ -13,7 +13,7 @@ def test_roll_sum_and_label_are_past_and_future_windows():
 
 def test_floor_beats_any_alternative():
     for lg, per, clock in (("nfl", 4, 120), ("nba", 4, 60), ("nhl", 3, 100), ("nba", 5, 200), ("mlb", 8, None)):
-        d, _ = SL.decide({"league": lg, "period": per, "clock_s": clock, "home_score": 10, "away_score": 9,
+        d, _ = SL.stay_or_leave({"league": lg, "period": per, "clock_s": clock, "home_score": 10, "away_score": 9,
                           "value": 0.0, "alts": [{"game_id": "x", "value": 1e9}], "ts": 0})
         assert d.action == "stay" and d.floor, lg
 
@@ -21,9 +21,9 @@ def test_floor_beats_any_alternative():
 def test_low_leverage_leaves_only_past_the_band():
     ctx = {"league": "nba", "period": 1, "clock_s": 600, "home_score": 10, "away_score": 30, "value": 1.0, "ts": 0}
     st = SL.State(m=0.5)
-    d, st = SL.decide({**ctx, "alts": [{"game_id": "a", "value": 1.4}]}, st)
+    d, st = SL.stay_or_leave({**ctx, "alts": [{"game_id": "a", "value": 1.4}]}, st)
     assert d.action == "stay"
-    d, st = SL.decide({**ctx, "alts": [{"game_id": "a", "value": 1.6}]}, st)
+    d, st = SL.stay_or_leave({**ctx, "alts": [{"game_id": "a", "value": 1.6}]}, st)
     assert d.action == "leave" and d.alt_game_id == "a"
     assert SL.band(st, 10) == 1.0 and SL.band(st, 10 + 16 * 60) == 0.5
 
@@ -49,7 +49,7 @@ def test_dwell_backs_off_under_whiplash():
         other = "b" if on == "a" else "a"
         ctx = {"league": "nba", "period": 1, "clock_s": 600, "home_score": 10, "away_score": 30, "ts": ts,
                "value": 3.0 if i % 2 else 1.0, "alts": [{"game_id": other, "value": 1.0 if i % 2 else 3.0}]}
-        d, st = SL.decide(ctx, st)
+        d, st = SL.stay_or_leave(ctx, st)
         if d.action == "leave":
             flips, on = flips + 1, other
     assert flips <= 5

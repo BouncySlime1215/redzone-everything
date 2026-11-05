@@ -10,7 +10,7 @@ the WHOLE game, not the single play:
   history      big / crunch plays per minute, dead-air share, the v1 past-mean reward
   stakes       your team (WSH / UNC). Standings and playoff odds join when B's table is wired.
 
-A gradient-boosted regressor maps those to the game's expected reward over the next `HORIZON_S` of its screen
+A gradient-boosted regressor maps those to the game's expected reward over the next `LABEL_HORIZON` of its screen
 time (label = the realized `oracle.OBJECTIVES["combined"]` reward from real play-by-play: never a Teacher
 output, never Nick's viewing or buttons). That value replaces the windowed oracle's past-only placeholder
 (`oracle.beyond_value`) at the end of what the buffer reveals, and the same exact DP compares staying with the
@@ -21,9 +21,9 @@ HARD FLOORS, never learned: never join mid-play (the oracle's land table), never
 table), and never leave a game whose last play on screen is high-leverage (`leverage.high_leverage`) or inside
 the crunch table's app/graded window (`redzone/crunch.py`: NBA 3:00 within 7 is wider than CLOSE_LATE's 6).
 
-Live path: `decide(ctx, state)` is the same rule for one decision, for the shadow log (lane 2 logs `FIELDS`).
+Live path: `stay_or_leave(ctx, state)` is the same rule for one decision, for the shadow log (lane 2 logs `FIELDS`).
 WP is the label-only Brownian model of `outcome_label.win_prob` (a fixed formula, no learned WP).
-Offline only except `decide`; flag `decider.stay_leave.learned` (off).
+Offline only except `stay_or_leave`; flag `decider.stay_leave.learned` (off).
 """
 from __future__ import annotations
 
@@ -41,12 +41,11 @@ from redzone.lab.outcome_label import WP_SPREAD, game_left, win_prob
 from redzone.models import PERIOD_S, REGULATION, League
 from redzone.sources import espn
 
-HORIZON_S = 300.0                        # the label: realized reward over the next 5 min of screen time
-HZ = int(HORIZON_S // O.STEP_S)
+LABEL_HORIZON = 300.0                        # the label: realized reward over the next 5 min of screen time
+HZ = int(LABEL_HORIZON // O.STEP_S)
 MIN5, MIN10, MIN15 = 60, 120, 180        # steps
 SCORE_UNIT = {League.NBA: 2.0, League.CBB: 2.0, League.NFL: 7.0, League.CFB: 7.0, League.NHL: 1.0,
               League.MLB: 1.0}
-LEAGUES = (League.NBA, League.NFL, League.NHL)
 MINE = {"WSH", "UNC"}
 
 GROUPS = {
@@ -57,10 +56,10 @@ GROUPS = {
     "your_team": ["mine"],
     "league": ["lg_nba", "lg_nfl", "lg_nhl"],
 }
-FEATURES = [f for g in GROUPS.values() for f in g]
+CONTEXT_FEATURES = [f for g in GROUPS.values() for f in g]
 # What the shadow log records per stay/leave decision (lane 2, tonight), so tomorrow's grade can replay it.
 FIELDS = ["ts", "game_id", "league", "action", "value_stay", "value_alt", "alt_game_id", "margin", "floor",
-          "reason", "recent_switches", *FEATURES]
+          "reason", "recent_switches", *CONTEXT_FEATURES]
 # What the label is built from (the tester asserts none of these is a Teacher output or Nick's own viewing).
 LABEL_SOURCES = ["espn_play_by_play", "oracle_combined_reward"]
 HP = {"learning_rate": 0.05, "max_leaf_nodes": 15, "min_samples_leaf": 40, "l2_regularization": 0.1}
@@ -162,10 +161,10 @@ def reward(tab: dict, objective: str = "combined") -> np.ndarray:
 
 
 def context(n: O.Night, tab: dict, objective: str = "combined") -> tuple[np.ndarray, np.ndarray]:
-    """F[g, k, f] (FEATURES order) and the high-leverage table hl[g, k], from what is on screen at step k."""
+    """F[g, k, f] (CONTEXT_FEATURES order) and the high-leverage table hl[g, k], from what is on screen at step k."""
     R = reward(tab, objective)
     G, K = R.shape
-    F = np.zeros((G, K, len(FEATURES)))
+    F = np.zeros((G, K, len(CONTEXT_FEATURES)))
     HL = np.zeros((G, K), bool)
     big5, big15 = _roll_sum(tab["big"], MIN5) / 5, _roll_sum(tab["big"], MIN15) / 15
     cr5, dead5 = _roll_sum(tab["crunch"], MIN5) / 5, _roll_sum(tab["dead"], MIN5) / MIN5
@@ -174,7 +173,7 @@ def context(n: O.Night, tab: dict, objective: str = "combined") -> tuple[np.ndar
         teams = {r.matchup.split(" @ ")[0], r.matchup.split(" @ ")[-1]}
         f, hl = _game_rows(r.league, r, lag_of(n.lag, r.gid), n.t0, K, bool(teams & n.mine))
         f.update(big_5=big5[g], big_15=big15[g], crunch_5=cr5[g], dead_5=dead5[g], past_mean_10=pm[g])
-        F[g] = np.stack([f[c] for c in FEATURES], axis=-1)
+        F[g] = np.stack([f[c] for c in CONTEXT_FEATURES], axis=-1)
         HL[g] = hl
     return F, HL
 
@@ -215,7 +214,7 @@ def label(R: np.ndarray, hz: int = HZ) -> np.ndarray:
 # ---------------------------------------------------------------------------------------------- model
 @dataclass
 class Model:
-    """Seeds-averaged regressors over FEATURES; `drop` zeroes feature groups (ablations)."""
+    """Seeds-averaged regressors over CONTEXT_FEATURES; `drop` zeroes feature groups (ablations)."""
     regs: list = field(default_factory=list)
     drop: tuple = ()
 
@@ -225,7 +224,7 @@ class Model:
         X = X.copy()
         for gname in self.drop:
             for c in GROUPS[gname]:
-                X[..., FEATURES.index(c)] = 0.0
+                X[..., CONTEXT_FEATURES.index(c)] = 0.0
         return X
 
     def predict(self, X: np.ndarray) -> np.ndarray:
@@ -242,7 +241,7 @@ class TwoHead:
     w_mine: float = O.OBJECTIVES["combined"][2]
 
     def predict(self, X: np.ndarray) -> np.ndarray:
-        mine = X[..., FEATURES.index("mine")]
+        mine = X[..., CONTEXT_FEATURES.index("mine")]
         return self.base.predict(X) + self.w_mine * mine * np.maximum(0.0, self.crunch.predict(X))
 
 
@@ -271,14 +270,14 @@ def rows(F: np.ndarray, Y: np.ndarray, every: int = 6) -> tuple[np.ndarray, np.n
     G, K, _ = F.shape
     ks = np.arange(0, K - HZ, every)
     X, y = F[:, ks].reshape(-1, F.shape[-1]), Y[:, ks].reshape(-1)
-    live = (X[:, FEATURES.index("started")] > 0) & (X[:, FEATURES.index("over")] == 0)
+    live = (X[:, CONTEXT_FEATURES.index("started")] > 0) & (X[:, CONTEXT_FEATURES.index("over")] == 0)
     return X[live], y[live]
 
 
 # ---------------------------------------------------------------------------------------------- policy
 def solve_policy(n: O.Night, feed_lag: float, tab: dict, F: np.ndarray, HL: np.ndarray, model: Model | None,
                  objective: str = "combined", margin: float = 0.0, floor: bool = True,
-                 horizon_s: float = HORIZON_S) -> list[SwitchLog]:
+                 horizon_s: float = LABEL_HORIZON) -> list[SwitchLog]:
     """`oracle.solve_window` with (a) the beyond-window value from `model` (None = the v1 past mean),
     (b) the high-leverage floor in the DP and at the decision, (c) a hysteresis band at the decision:
     leave only if best alternative > stay + margin * (1 + switches in the last 15 min)."""
@@ -470,7 +469,7 @@ def dwell(state: State, ts: float) -> float:
     return state.dwell_s * (1 + k)
 
 
-def decide(ctx: dict, state: State | None = None) -> tuple[Decision, State]:
+def stay_or_leave(ctx: dict, state: State | None = None) -> tuple[Decision, State]:
     """One stay/leave decision for the game on screen. ctx: league, period, clock_s (left in period),
     home_score, away_score, value (this game's predicted value; `value_stay` also read), alts [{game_id, value}],
     ts, optionally high_leverage (True forces the floor too). The floor is checked first and always wins."""

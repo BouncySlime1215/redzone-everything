@@ -225,7 +225,7 @@ ships flag-off until the release gate.
    It enters only if it beats 1-2 on % of oracle.
 4. Inverse RL from whip-around producers (Ng & Russell 2000; Ziebart et al. 2008) needs a licensed producer
    log; it stays on hold (EXP-079) unless one appears.
-5. Distill the winner to Reflex for the live path. The live rule is `stay_leave.decide` (hard floors first).
+5. Distill the winner to Reflex for the live path. The live rule is `stay_leave.stay_or_leave` (hard floors first).
 
 **5.3 What the model never sees or learns from.** Nick's viewing and button presses, Teacher outputs as
 labels, synthesized engagement labels, and any locked night. The training manifest (`stay_leave.manifest`,

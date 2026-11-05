@@ -137,7 +137,7 @@ def main(argv=None) -> int:
     sp = league_splits(leagues)
     if a.cmd == "fit1714":
         tr, va = load(leagues, "train", a.cache), load(leagues, "valid", a.cache)
-        heads, info = {}, {"exp": "EXP-1714", "features": SL.FEATURES, "hp": SL.HP, "manifest": SL.manifest(sp)}
+        heads, info = {}, {"exp": "EXP-1714", "features": SL.CONTEXT_FEATURES, "hp": SL.HP, "manifest": SL.manifest(sp)}
         for tgt in ("nomine", "crunch"):
             Xt, yt = xy(tr, tgt)
             Xv, yv = xy(va, tgt)
@@ -183,7 +183,7 @@ def main(argv=None) -> int:
             print(mi, sel[mi], flush=True)
         best = min(sel, key=lambda k: sel[k]["valid_mse"])
         model = SL.fit(Xt, yt, best)
-        base_mse = float(np.mean((Xv[:, SL.FEATURES.index("past_mean_10")] * SL.HZ - yv) ** 2))
+        base_mse = float(np.mean((Xv[:, SL.CONTEXT_FEATURES.index("past_mean_10")] * SL.HZ - yv) ** 2))
         # hysteresis margin, on VALID nights only (EXP-1713): the best % of oracle, ties to the larger band
         msel = {}
         for mg in SL.MARGIN_GRID:
@@ -197,10 +197,10 @@ def main(argv=None) -> int:
         abl = {g: SL.fit(Xt, yt, best, drop=(g,)) for g in ("state", "consequence", "history", "your_team")}
         (a.out / "model.pkl").write_bytes(pickle.dumps({"model": model, "margin": margin, "max_iter": best,
                                                         "ablations": abl}))
-        info = {"exp": "EXP-1712/1713", "features": SL.FEATURES, "hp": SL.HP, "max_iter_select": sel,
+        info = {"exp": "EXP-1712/1713", "features": SL.CONTEXT_FEATURES, "hp": SL.HP, "max_iter_select": sel,
                 "max_iter": best, "valid_mse_past_mean_baseline": base_mse, "margin_select": msel, "margin": margin,
                 "rows": {"train": int(len(yt)), "valid": int(len(yv))}, "buffer_s": BUFFER_S,
-                "feed_lag_s": FEED_LAG_S, "tune_s": TUNE_S, "horizon_s": SL.HORIZON_S,
+                "feed_lag_s": FEED_LAG_S, "tune_s": TUNE_S, "horizon_s": SL.LABEL_HORIZON,
                 "manifest": SL.manifest(sp)}
         (a.out / "fit.json").write_text(json.dumps(info, indent=1))
         print(json.dumps({k: info[k] for k in ("max_iter", "margin", "valid_mse_past_mean_baseline")}, indent=1))
