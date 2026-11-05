@@ -174,6 +174,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 |---|---|---|---|
 | `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, control, crunch, decider.decider +35 | untagged |
 | `redzone/contracts/__init__.py` (package) | Interfaces every thread codes against. | contracts.breaks, contracts.budget, contracts.clock, contracts.events, contracts.feeds, contracts.flags +61 -> - | untagged |
+| `redzone/contracts/__init__.py` (package) | Interfaces every thread codes against. | contracts.breaks, contracts.budget, contracts.clock, contracts.feeds, contracts.flags, contracts.guard +55 -> - | untagged |
 | `redzone/contracts/breaks.py` | BreakModel contract: when a stoppage starts, what kind it is, how long it runs, when play restarts. | models -> contracts, contracts.legacy, contracts.views, contracts.world, scoring.brain3 | untagged |
 | `redzone/contracts/budget.py` | Per-tick latency budget, split across modules. | - -> contracts | untagged |
 | `redzone/contracts/clock.py` | One clock: wall time, feed (data) time and per-channel screen time. | contracts.sync, uses:SyncEstimate -> contracts, contracts.views, contracts.world | untagged |
