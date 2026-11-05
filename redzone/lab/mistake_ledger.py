@@ -141,11 +141,18 @@ def summarize(rows: list[Mistake]) -> dict:
     return dict(sorted(by.items(), key=lambda kv: -kv[1]["value_lost"]))
 
 
-def sample_weights(rows: list[Mistake], K: int, floor: float = 1.0) -> np.ndarray:
-    """Per-step training weight: 1 + value lost of the episode covering the step (hard-case mining)."""
+def sample_weights(rows: list[Mistake], K: int, floor: float = 1.0, cap: float = 9.0, pad: int = 12,
+                   scale: float | None = None) -> np.ndarray:
+    """Per-step training weight (hard-case mining, EXP-1723 B2 / EXP-130): steps inside an episode (padded by `pad` steps,
+    12 = 1 min) get floor + min(cap, value_lost / scale), scale = the median value lost of `rows` unless given (pass the
+    median of SEEN nights' episodes in a forward chain). Overlaps keep the larger weight."""
     w = np.full(K, floor)
+    if not rows:
+        return w
+    sc = scale if scale else float(np.median([r.value_lost for r in rows])) or 1.0
     for r in rows:
-        w[r.k0:r.k1] += r.value_lost / max(1, r.k1 - r.k0) * (r.k1 - r.k0) ** 0.5
+        a, b = max(0, r.k0 - pad), min(K, r.k1 + pad)
+        w[a:b] = np.maximum(w[a:b], floor + min(cap, r.value_lost / sc))
     return w
 
 
