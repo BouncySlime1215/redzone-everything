@@ -277,3 +277,16 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   the suite, so run the full suite on the exact tree you cut, not on the PRs before the nightly merge.
 - 2026-11-04 (RC6 cut): after merging a base commit that was only docs (the [skip ci] nightly table) I ran only the targeted tests. That base commit renamed a North Star line, and `test_citymap` failed on the Mac's deploy test step. The deploy stopped there and nothing switched. **Fix:** after any base merge, run the full suite again before handing an RC SHA to lane 4. A docs-only commit can still break a test that reads docs.
 - 2026-11-05 (world model pilot, plan A leagues): the pilot cut train/valid/test on the pooled nights of all leagues. Once Retrosheet (ends 2024) and NBA cdn (ends 2025) sat side by side, every test night was NBA and NBA had no train rows: NBA's bigram baseline scored 0.0. **Fix:** split each league on its own nights (`split()` per league) and grade `test_by_league`. A time split must be per league when the leagues' date ranges differ.
+- 2026-11-04 (RC6.1): the deploy health watch rolled RC6.1 back twice on "N sports feeds failing vs 0 before",
+  though nothing was down. merge.py benches a source for a game when its copy regresses against a faster feed,
+  and RC6.1's NBA/NHL feeds run ahead of ESPN, so ESPN got benched. engine._source_health reported a bench as
+  ok:false, and deploy.py's Health.of counted every ok:false as a failing feed. Fix (RC7): ok = reachable and
+  fresh, benched reported on its own, and deploy.py's source_failing() ignores a bench on a fresh source in both
+  the old and the new shape. A health watch must compare like with like across versions.
+- **2026-11-05: a phone pick's way back lost the hidden stick to a guess.** The standby planner ranked the game you just
+  left as "best" (+10), so any "moment" guess outranked it by class and took the hidden stick; Prime then cost a ~30 s
+  re-tune on the tap back (11 of 16 live presses, Nov 4). Fix: `two_stick.hand_back_s`. Drill: `redzone.lab.night.presses:pingpong`.
+- 2026-11-05 (integrator): RC6.2's NBA league set passed on the honest harness but lost your-team crunch live 31/31 → 17/31
+  on the live-sync harness (`eval_sports --resync`, which models the Kalman sync filter that live runs). The cause was
+  the time-shift buffer key, `timing.behind_live_s.enabled`. The rule now: grade every league set on BOTH harnesses
+  before it ships (Test Factory F4), and a set that is worse on either one doesn't promote.

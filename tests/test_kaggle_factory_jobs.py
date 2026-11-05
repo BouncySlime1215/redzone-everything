@@ -170,8 +170,6 @@ def test_season_job_runs_for_every_league_in_plan(tmp_path, monkeypatch):
     monkeypatch.setattr(RS, "fetch_season", _retro)
     assert set(plan) >= {"nba", "nfl", "nhl", "cbb", "cfb", "mlb"} and "wcbb" not in plan   # Nick 7:55 PM: no WCBB
     for league, (years, synthetic) in plan.items():
-        if league == "cbb":     # moments + tokens only: CBB self-play comes back with grader freeze v11 (college rows)
-            synthetic = 0
         res = ns["season_job"](league, years[0] - 3, min(synthetic, 1), time.time() + 600)
         assert "error" not in res, (league, res)
         if league == "mlb":                   # Retrosheet: event tokens only (no wall clocks, no moments)

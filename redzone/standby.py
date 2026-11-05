@@ -16,6 +16,10 @@ see. So the options are ranked by what the next switch most likely needs, highes
              in a lull 20+ points behind the best game) — never in garbage time, your team's included.
   d) BEST    the best other live game. The game we just left counts extra: going back is common.
 
+A game you just left BY HAND (a phone pick, two_stick.hand_back_s ago at most) ranks with (a): people
+flip back and forth between two games by hand, and a Prime game dropped for a guess costs a ~30 s
+re-tune on the next tap back (Nov 4: 11 of 16 phone presses to Prime were cold, ~2 min apart).
+
 Above all of them, NEXT is the decider's own word, not a guess: a switch it already wants and only
 waits on a safe moment for (Decision.want), e.g. the trip home at the end of a break visit.
 
@@ -122,7 +126,7 @@ def options(cands: dict, *, current: str | None, home: str | None = None, back_t
             replay: Option | None = None, tunable: Callable[[str], bool] = lambda t: True,
             save_s: Callable[[str], float] = lambda t: 0.0, return_bonus: float = RETURN_BONUS,
             want: str | None = None, brk: str | None = None, brk_why: str = "",
-            replay_sure: bool = False) -> list[Option]:
+            replay_sure: bool = False, hand_back: str | None = None) -> list[Option]:
     """Every game the hidden stick could usefully hold, best first.
 
     Never: what's on screen, a muted game, a stale feed, a channel we can't tune (no link, app not
@@ -131,7 +135,9 @@ def options(cands: dict, *, current: str | None, home: str | None = None, back_t
     while it's within reach of the best game: in a lull 20+ points behind, it's not where we go next.
 
     brk: where the decider will spend the break the game on screen is about to take (BREAK).
-    replay_sure: the replay is the decider's own pick for that break, not a guess: keep it."""
+    replay_sure: the replay is the decider's own pick for that break, not a guess: keep it.
+    hand_back: the game you just left by hand (phone pick): ranked with your game's return (HOME),
+    below the decider's own NEXT and below your focus game's return when there is one."""
     games, my_teams = games or {}, my_teams or {}
     out = [replay] if replay is not None and tunable(replay.target) else []
     ok = {gid: x for gid, x in cands.items()
@@ -146,6 +152,10 @@ def options(cands: dict, *, current: str | None, home: str | None = None, back_t
             continue
         if gid == home:
             out.append(Option(gid, x.target, HOME, s.score, "your game — back the moment its break ends"))
+            continue
+        if gid == hand_back and home is None and not x.stale:
+            out.append(Option(gid, x.target, HOME, s.score + save_s(x.target),
+                              "the game you just left: a tap back is likely"))
             continue
         # Crunch time and your team late and close are where the decider goes even mid-stoppage
         # (a timeout is the way in): keep them eligible through their breaks.

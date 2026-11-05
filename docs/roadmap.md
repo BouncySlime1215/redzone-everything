@@ -1,6 +1,6 @@
 # Roadmap
 
-Ranked by `python scripts/northstar.py` from [roadmap.json](roadmap.json) against [northstar.md](northstar.md) (dev-test nights) on `82ae167` at 2026-11-05 00:58 UTC. Edit roadmap.json, not this file.
+Ranked by `python scripts/northstar.py` from [roadmap.json](roadmap.json) against [northstar.md](northstar.md) (dev-test nights) on `777323f` at 2026-11-05 03:19 UTC. Edit roadmap.json, not this file.
 
 **Score** = (gap to target × expected impact) / effort, gap and impact in units of the line's scale (100 points for a rate, 5 per 100 landings for mid-play, 3 s for switch time), ×2 on rule #1 (mid-play); the gap is measured from the conservative end of the CI, so a PENDING line still has one. Expected deltas are estimates until the PR measures them. **Order:** the director's priority (`priority` in roadmap.json, set each morning) first, then everything else by score.
 

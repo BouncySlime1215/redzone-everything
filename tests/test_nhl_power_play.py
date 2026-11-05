@@ -136,6 +136,7 @@ def test_only_an_imminent_chance_lets_a_chase_skip_the_whistle_hold(dec):  # noq
 
 
 def test_crunch_run_up_waits_for_a_whistle_but_the_last_two_minutes_do_not(dec):  # noqa: F811
+    dec.cfg.defaults["league_overrides"] = dec.cfg.data["league_overrides"] = {}   # live behavior (decider.entry.crunch_now live)
     from redzone.decider.decider import Decision, State
     d = Decision(0, "switch", "b", "crunch time", State.WATCHING, kind="crunch")
     run_up = nsc("b", 70, crunch=True)
@@ -192,6 +193,7 @@ def test_scorecard_counts_power_play_time_and_goals():
 
 
 def test_crunch_last_two_minutes_plans_a_rewind_landing_but_never_waits(dec):  # noqa: F811
+    dec.cfg.defaults["league_overrides"] = dec.cfg.data["league_overrides"] = {}   # live behavior (decider.entry.crunch_now live)
     from redzone.decider.decider import Decision, State
     d = Decision(0, "switch", "b", "crunch time", State.WATCHING, kind="crunch")
     now = nsc("b", 70, crunch=True)

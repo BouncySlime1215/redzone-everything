@@ -591,3 +591,53 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (Nick 11:20 PM ET Nov 4, logged on #241): every source, including hoopR NBA/CBB, ESPN NHL/CFB and NHL api-web for
   old NHL seasons, with `manifest.json` `"license": "personal-use, not for commercial release"`. "A" = green only
   (nflverse NFL, NBA.com cdn NBA, Retrosheet MLB) for a company version; a green run never copies in red shards.
+- 2026-11-05 (Nick, Nov 4 9:45 PM ET, RC7 scope; integrator writes the lines): RC7 ships only if three gates pass on
+  locked nights plus real hardware. (1) `press_to_tv_p95` ≤ 3 s on real presses, with a Prime sub-gate: presses tagged
+  `app: prime` need their own p95 ≤ 3 s over at least 5 presses, and any Prime press that never reaches the TV fails the
+  line. (2) `delay_err_p95` ≤ 2 s per stick, worst stick decides, from `data/sync_truth/*.jsonl` (est vs true seconds
+  behind live from gold data, #140 and YTTV anchors; manual taps are dropped). PASS needs both sticks with ≥ 200 rows
+  over ≥ 2 nights. (3) `mid_break` = 0: an entry that lands in a commercial break with more than 10 s of dead time left
+  before the restart (`cutgrade.BREAK_TAIL_BAR`) is mid-commercial. Mid-play stays its own hard 0. Grader freeze v10.
+- **2026-11-05 (lane 2, RC7):** new default `league_overrides` (redzone/default_config.yaml). NBA and NHL run the
+  promoted set; NFL runs EXP-203; CFB, CBB, WCBB and MLB keep live behavior. Overrides are keyed by the FULL
+  league (`cbb` never inherits `nba`'s). Why: Nick, Nov 4 8:20 / 8:40 PM, per-league promotion as
+  league-scoped defaults shipped in RC7 (not global /api/settings posts). Graded dev + locked with grader v8:
+  NBA and NFL pass `league_promotion`; NHL passes with the trade Nick accepted (mid-play 28 → 0 dev,
+  8 → 0 locked). Rollback for one league: set that league's keys back under `league_overrides.<league>`,
+  or redeploy without it.
+- **2026-11-05 (lane 2, EXP-204, RC7 fast track):** new key `decider.mine_late_max_lead_wp` (global default 1.0 =
+  off). `league_overrides` sets it to 0.95 for NFL and NBA. Your team late (and not garbage) holds the TV only
+  while the leader's win probability is ≤ 0.95; crunch time always holds. Why: Nick, Nov 4 9:30 PM. ATL up 12
+  with 9:09 left (WP ~0.99) held WSH all night, and his "close" is ~6 points / ~6 minutes (WP ~0.91). Dev
+  (seeds 0-2): 0 mid-play; NFL and NBA identical on every line; NHL crunch live −0.5, so NHL stays at 1.0.
+  Pre-registered arm pick: tie → 0.95. Not a strict promotion pass: no line improved. It ships as Nick's
+  definition of "close", with no line worse.
+- **2026-11-05 (lane 3, RC7 fast track, Nick 9:30 PM "implement please"): `two_stick.hand_back_s: 600`** (new, on). For 10 min
+  after you pick a game on the phone, the game you left keeps the hidden stick (ranked with your game's return, below the
+  decider's own NEXT and your focus game), so a tap back is a flip. Why: Nov 4 live, 16 phone presses to Prime ~2 min apart,
+  11 cold (~30 s) because a planner guess took the hidden stick. Lab night ping-pong drill (32 presses, seeds 1-2): warm
+  0/32 -> 31/32, Prime press 46 s -> ~3 s. 0 = off (instant rollback via /api/settings). Standby only: no switch timing change.
+- 2026-11-05 (Nick, Nov 4 10:55 PM ET): RC6.2 (1bf4150) approved and deployed with the TV off. A SECOND "Go now" tap
+  switches instantly, even mid-play: it's Nick's explicit control. One tap still waits for a dead ball. Graders count
+  that forced entry on its own (lane 3's forced go-now line), never as a decider mid-play entry, and never as a training
+  label. New standing rule: no deploys and no Mac-side experiments while games are live and Nick is watching. The Mac
+  stays plugged in on game nights.
+- 2026-11-05 (lane 5, EXP-038): new defaults `phone.orient: false`, `phone.orient_beat_s: 3`,
+  `phone.orient_override_s: 30`. A 2-3 s orientation beat (score, clock, one situation fact, and the context line
+  when late and close) in a corner of the phone after each switch. The TV has no overlay path on this rig (the
+  sticks only switch inputs), so the beat is phone-only for now. Graded by redzone/lab/orient.py (override rate
+  within 30 s, whole nights alternated on/off; bar in docs/lanes/experience.md). Reason: Cycle 11 (#217), playbook P12.
+- 2026-11-05 (lane 5, EXP-039): new default `phone.also_close: false`. An "Also close" line under the phone's watch
+  strip lists up to 2 other live games that are late and within one score (the EXP-037 context line), in league
+  order, as plain text with no Watch button. Graded by redzone/lab/also_close.py (manual-switch share per night,
+  whole nights alternated; bar in docs/lanes/experience.md). Reason: Cycle 11 (#217), playbook P15.
+- 2026-11-05 (lane 5, EXP-026 display): new defaults `phone.catchup_view: false`, `phone.catchup_visible: 2`. With
+  the flag on, the phone's catch-up queue follows the decider's own queue order (what plays next, whatever order the
+  EXP-026 re-run picks), shows at most 2 at once ("+N more waiting"), and is spoiler-safe: "A play you missed", with
+  no names, play type or score until it plays. Reason: Cycle 11 (#217) item 3, playbook P9/P17 (spoiler control,
+  1-2 open threads visible).
+- 2026-11-05 (integrator, grader v11): two changes. (1) A live cut whose trace says `"forced": true` (Nick's second "Go
+  now" tap) is graded on its own line, `entries_mid_play_forced`, and never counts toward `entries_mid_play`. Its
+  producer is lane 3: set `forced` on the trace of a double-tap switch. `scripts/collect_live_test.py` joins the frozen
+  graders. (2) `PLAY_LEN` and `RESUME_LEAD` become `ByLeague` tables, so CFB and CBB read their pro league's row. That
+  fixes the KeyError in oracle.py on college replays (lane 1). Pro leagues are unchanged. Grader freeze v11.
