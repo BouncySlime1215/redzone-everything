@@ -52,3 +52,14 @@ Copy this block, set the cycle number and date, and fill every column.
 | nflverse pbp 1999-2024 | 2 | yellow (attribution, private raw) | pulling (already in the factory plan) | 1999-2024 | ~1.2M plays | 6 tokens/event | 0 until the Kaggle run | 0 | ~0.1 tokens | factory pack | no (private raw) | yes | none | 1999-2000 have no wall clocks: tokens use the game-clock dt fallback; the world model pilot starts at 2001 |
 | NHL shift charts (api.nhle.com) | 2 | blocked | blocked | none | 0 | | 0 | 0 | 0 | | | | yes: the open NHL card (MoneyPuck or api-web) | Same NHL.com terms issue as api-web; held with it |
 | hoopR NBA / MBB (ESPN-derived) | 5 | yellow, ESPN-gated | blocked for new packs until Nick decides | (in pack 79fd9c0 shards) | | | 0 | (existing shards) | | 79fd9c0 | not allowed | yes | yes: the pilot card (Nov 5) | The world model pilot defaults to NFL only; NBA needs --allow-espn-derived |
+
+## Data Division A (play-by-play crew)
+
+New pbp sources land as play-table shards (scripts/pbp/schema.py) and are counted in
+[pbp-ledger.md](pbp-ledger.md), generated from the landed shards' sidecars. Every token there is a real event (new
+information). Nov 5 2026 05:00 UTC: StatsBomb open data, all 80 competition-seasons, 3,961 matches, 13.9M events,
+83.5M v1 tokens, 0 games dropped. Tagged personal-use (StatsBomb user agreement, credit StatsBomb; terms.json class restrictive). Held privately in the
+project files under data-a/pbp/statsbomb (135 MB).
+Nov 5 2026 06:05 UTC: SportVU NBA tracking 2015-16, 621 games (94 not in the dump, 4 dropped), 2.05M rows of 1 Hz
+wall-clock summaries (ball position, speed, handler, live/dead; side table: team speed, spacing, ball height). Counted
+as tracking, apart from events. Personal-use tag; derived numbers only, never re-uploaded. data-a/pbp/nba_sportvu + sportvu_extra (103 MB).
