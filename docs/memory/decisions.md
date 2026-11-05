@@ -587,3 +587,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   95% night-bootstrap lower bound, at least 4 rated nights a side, and PENDING otherwise. Nick's ratings stay
   evaluation-only (`tests/test_worth.py` scans noggin/decider/scoring). Note: 4 nights is a thin minimum, so treat an early
   PASS as provisional until 8. Grader freeze v9.
+- 2026-11-05 (lane 1, #169, Nick 10:55 PM ET "green-only unless Nick picks B"): **the Kaggle noggin factory runs
+  green-only by default.** Without `RZ_DATA_PLAN=B` its plan is NFL (nflverse), NBA (NBA.com cdn via
+  shufinskiy/nba_data, seasons ending 2021-26) and MLB (Retrosheet); hoopR NBA/CBB and ESPN NHL/CFB are left out and
+  their shards are never copied in from a red previous output. Why: #202 rates those sources red for training until
+  Nick's A/B call.
