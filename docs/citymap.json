@@ -1241,6 +1241,25 @@
     "Your-team crunch live"
    ]
   },
+  "redzone/decider/break_tail.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/decider/decider.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-728 / EXP-736] Land late in a break, not early: the restart a break is predicted to end at.",
+   "serves": [
+    "Crunch live, NBA",
+    "Crunch live, NFL",
+    "Crunch live, NHL",
+    "Entries at a possession start (dead ball, no play missed)",
+    "Landings in dead time",
+    "Mid-play entries (per 100 landings)",
+    "Your-team crunch live"
+   ]
+  },
   "redzone/decider/core.py": {
    "contracts": [],
    "inputs": [
@@ -1299,6 +1318,7 @@
    "inputs": [
     "redzone/config.py",
     "redzone/contracts/switching.py",
+    "redzone/decider/break_tail.py",
     "redzone/decider/core.py",
     "redzone/decider/cuts.py",
     "redzone/decider/playbooks.py",
@@ -5845,9 +5865,9 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 318,
+  "modules": 319,
   "orphans": 14,
-  "unowned": 158,
+  "unowned": 159,
   "untagged": 263
  },
  "version": 1
