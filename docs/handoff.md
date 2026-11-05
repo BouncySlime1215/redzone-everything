@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-STATUS: phone lane asks overseer to check data/redzone.db switches for the 16 Prime press ids (analysis on hold)
-STATUS: usage 42%; V8 GR 2350/7862, V8.1 WD 450/1688; RC6.1 deploy still waiting
+RC6.1 health watch FAILED: 2 feeds failing vs 1, errors 2->9; auto-rollback to e8bbf8ebe (RC5.1) at 9:25 PM
+Colab GR 2550/7862, V8.1 WD 600/1688; factory running; usage 42%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
