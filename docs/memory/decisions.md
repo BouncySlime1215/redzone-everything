@@ -376,6 +376,22 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   not walls; Nick's press is a control. Tests: `tests/test_crunch_floor.py` (floor: a low-value game never pulls
   us out, live or at a break except an ad-break round trip; priors, the press and value-based crunch vs crunch).
   The strict-xfail tests that forced an absolute stay are removed.
+- 2026-11-04 3:47 PM ET (Nick, via the overseer): **crunch = stay is ABSOLUTE**, over every score-based switch
+  including the app's own. The only ways out of a game in crunch: (1) a higher-priority crunch by league order
+  (NFL = CFB > NBA > NHL, MLB) or Nick's team (WSH/UNC) in crunch; (2) Nick's own button press (a control, not
+  training). Two same-league crunches: the higher Watch Value / leverage one wins, and the other gets a replay
+  within 3 min. Tests: `tests/test_crunch_floor.py`, one per exception. Lane 2 makes the default change. Two
+  strict-xfail tests mark what it must fix: the core's own score-based leave (99 vs 55), and a neutral crunch
+  timeout's break visit to a lower-league game. They turn red (XPASS) when it lands, so the marks come off with
+  it. The same-league "replay within 3 min" for the losing crunch is not built yet.
+- 2026-11-04 (lane 2, #160): **crunch floors (SAFE-09)** per Nick's 4:15 PM correction. `decider.crunch.floor: true`:
+  while the screen is in a crunch window, no overlay or model (scenario, clairvoyance, PICK, later the Mind and
+  watch value) turns the app's own decision into a leave for a non-crunch game; crunch vs crunch and ad-break
+  round trips stay the app's (and later the value model's) call. Live default identical on dev and locked;
+  candidate identical on dev (3 seeds, all leagues). The low-value floor `decider.crunch.floor_low_value`
+  ships at 0 (off): at 50 on today's score it helped dev NFL (crunch live +0.3..1.2, mid-play entries 10 -> 8,
+  crunch under a replay 70 -> 49) but cost locked NFL crunch live 64.2/61.2/64.2 -> 63.6/57.3/64.2 (locked read
+  once). It waits for watch value, which is the value the floor should read.
 - 2026-11-04: **replay.crunch_block (new, default OFF; candidate ON), crunch_block_mine_leagues [] (candidate
   [nfl]), crunch_block_mine_after_s 90.** Cycle 04 review's promotion blocker: on locked, NHL crunch plays aired
   under a catch-up 2 -> 10. No catch-up starts while any live game is in crunch time or its run-up; your team's

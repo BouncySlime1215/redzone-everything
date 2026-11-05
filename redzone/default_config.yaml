@@ -270,6 +270,9 @@ decider:
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
   redzone_score: 45        # RedZone vs a game (0-100): stay on it unless a game beats this; any break goes there
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
+    floor: true            # [SAFE-09] in a crunch window: no overlay or model leaves it for a non-crunch game, and
+    floor_low_value: 0     # ...no game below this value (watch value, else score) pulls us out. 0 = off: at 50 it
+                           # held dev but cost locked NFL crunch live -0.6/-3.9/0 (Nov 4); waits for watch value
     by_value: false        # [TREE-6 Mac half] crunch vs crunch by value (watch value, else score) with priors:
     value_league_prior: 5  # ...points per league-order step (NFL = CFB > NBA > NHL, MLB)
     value_mine_prior: 30   # ...points for your team / bet
