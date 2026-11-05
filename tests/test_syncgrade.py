@@ -34,7 +34,7 @@ def test_extrapolation_keeps_E_flat_and_a_30_s_pause_reads_30_s_behind():
 
 def test_exp800_grades_the_controllers_belief_and_never_invents_absolute_latency():
     out = S.exp800(night(pred_after_pause=0.0))                  # the controller missed the pause
-    assert out["s1|youtubetv"]["behind_err_p95_s"] == 30.0 and out["s1|youtubetv"]["verdict"] == "PENDING"
+    assert out["stick1|youtubetv"]["behind_err_p95_s"] == 30.0 and out["stick1|youtubetv"]["verdict"] == "PENDING"
     assert out["absolute_latency"]["espn"].startswith("PENDING")
     assert S.exp800(night(), anchors={"espn": 31.5})["absolute_latency"]["espn"] == 31.5
 
@@ -54,3 +54,28 @@ def test_a_tune_that_never_plays_is_not_a_landing():
     rows = [row(100, 50, 46000), row(105, 50, 46000, state="buffering", tune_t=101), row(140, 140, 46803, tune_t=101)]
     _, lands = S.meter(rows)
     assert lands == []                                            # PLAYING came 39 s later: past LAND_WAIT
+
+
+def _two_tunes(constant):
+    """Two live-edge tunes on one channel 10 min apart. YTTV lands at a constant position; a stream whose
+    origin holds lands at a position that grew with the wall clock (constant E). Both must read live."""
+    rows = []
+    for k, t0 in enumerate((1000.0, 1600.0)):
+        land = 46803.0 if constant == "pos" else 46803.0 + (t0 - 1000.0)
+        rows.append(row(t0 + 2.0, t0 + 2.0, land, tune_t=t0, stick=f"s{k}"))
+    return rows
+
+
+def test_exp801_reads_live_edge_tunes_10_min_apart_as_live_on_either_reference():
+    for constant, ref in (("pos", "pos_s"), ("E", "E_land")):
+        out = S.exp801(_two_tunes(constant))
+        assert out["graded"] == 2 and out["live_share"] == 1.0 and out["ref"]["espn"] == ref
+        assert out["verdict"] == "PENDING"                        # 2 tunes, short of MIN_TUNES
+
+
+def test_stick_addresses_never_reach_the_output():
+    addr = ["192.168.1.47:5555", "G070VM1234567890"]
+    rows = [{**r, "stick": addr[0]} for r in night()] + [{**r, "stick": addr[1], "t": r["t"] + 0.5}
+                                                         for r in night()]
+    out = str(S.exp800(rows)) + str(S.exp801(rows + _two_tunes("pos")))
+    assert all(a not in out for a in addr) and "stick1|youtubetv" in out and "stick2" in out

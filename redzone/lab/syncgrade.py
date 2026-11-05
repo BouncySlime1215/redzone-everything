@@ -20,8 +20,13 @@ Rows (one per stick per probe tick, lane 2's sync_probe after the uptime fix):
 Lines:
   EXP-800  per stick and app: |pred_behind_s - behind| p95 <= MAX_ERR on >= MIN_TRUTH_ROWS rows; absolute PENDING
   EXP-801  per tune: tune-to-playing seconds, and whether it landed within LIVE_TOL of the channel's live edge
-           (its landing position vs the median landing of the OTHER tunes on that channel); PASS when >= SHARE
-           of >= MIN_TUNES tunes did
+           (its landing vs the median landing of the OTHER tunes on that channel); PASS when >= SHARE
+           of >= MIN_TUNES tunes did. Landings are compared on a per-channel reference that is stable across
+           tunes made at different wall times: the landing position (YTTV deep links land at a constant
+           position per channel: ESPN 46,803.0 +/- 0.3 s, n=7) or E at landing (a stream whose origin holds),
+           whichever has the smaller spread (median absolute deviation) on that channel; reported as `ref`.
+
+Stick ids (serials, IP:port) never leave this module: output names them stick1, stick2, ... in first-seen order.
 """
 from __future__ import annotations
 
@@ -29,7 +34,7 @@ from collections import defaultdict
 from statistics import median
 
 MAX_ERR = 2.0       # seconds, EXP-800 bar (p95 per stick)
-MIN_TRUTH_ROWS = 200      # truth rows per stick before EXP-800 can PASS or FAIL
+MIN_TRUTH_ROWS = 200      # truth rows per stick before EXP-800 can PASS or FAIL (northstar's sync_row bar)
 LIVE_TOL = 3.0      # seconds from the live edge that still counts as landing live (EXP-801)
 SHARE = 0.95        # share of tunes that must land live (EXP-801)
 MIN_TUNES = 20
@@ -58,6 +63,19 @@ def _pct(xs: list[float], q: float) -> float | None:
     return s[min(len(s) - 1, int(q * (len(s) - 1) + 0.5))]
 
 
+def _stick_names(rows: list[dict]) -> dict:
+    """Raw stick id -> stick1, stick2, ... in first-seen (wall) order; the raw id may be an address."""
+    names: dict = {}
+    for r in sorted(rows, key=lambda r: r["t"]):
+        names.setdefault(r["stick"], f"stick{len(names) + 1}")
+    return names
+
+
+def _mad(xs: list[float]) -> float:
+    m = median(xs)
+    return median([abs(x - m) for x in xs])
+
+
 def meter(rows: list[dict]) -> tuple[list[dict], list[dict]]:
     """(rows with behind_s added, landings). A landing = the first PLAYING row after a tune command whose
     media_session `updated` changed from before the command, within LAND_WAIT."""
@@ -79,7 +97,8 @@ def meter(rows: list[dict]) -> tuple[list[dict], list[dict]]:
                     and ms.get("updated") != upd_before and r["t"] - last_tune <= LAND_WAIT:
                 landed, e_land = True, e
                 lands.append({"stick": stick, "app": r.get("app"), "channel": r.get("channel"), "t": r["t"],
-                              "tune_s": r["t"] - last_tune, "pos_s": pos_now(ms, r.get("uptime_ms")) / 1000.0})
+                              "tune_s": r["t"] - last_tune, "pos_s": pos_now(ms, r.get("uptime_ms")) / 1000.0,
+                              "E_land": e})
             behind = (e - e_land) if (e is not None and e_land is not None and ms.get("state") == "playing") else None
             out.append({**r, "E": e, "behind_s": behind})
             prev = r
@@ -90,10 +109,11 @@ def exp800(rows: list[dict], anchors: dict | None = None) -> dict:
     """Per (stick, app): the controller's behind-live belief vs the meter. Absolute latency per channel is
     PENDING unless `anchors` gives a measured on-screen anchor for it."""
     graded, _ = meter(rows)
+    names = _stick_names(rows)
     errs: dict[tuple, list[float]] = defaultdict(list)
     for r in graded:
         if r["behind_s"] is not None and r.get("pred_behind_s") is not None:
-            errs[(r["stick"], r.get("app"))].append(abs(float(r["pred_behind_s"]) - r["behind_s"]))
+            errs[(names[r["stick"]], r.get("app"))].append(abs(float(r["pred_behind_s"]) - r["behind_s"]))
     out = {}
     for (stick, app), xs in sorted(errs.items()):
         p95 = _pct(xs, 0.95)
@@ -108,14 +128,21 @@ def exp801(rows: list[dict]) -> dict:
     """Each tune: tune-to-playing time, and landing within LIVE_TOL of the channel's live edge (leave-one-out:
     a tune is never its own reference)."""
     _, lands = meter(rows)
+    names = _stick_names(rows)
+    by_stick: dict[str, int] = defaultdict(int)
+    for x in lands:
+        by_stick[names[x["stick"]]] += 1
     by_ch: dict[str, list[dict]] = defaultdict(list)
     for x in lands:
         by_ch[x.get("channel") or "?"].append(x)
     graded = []
-    for ch, xs in by_ch.items():
+    refs = {}
+    for ch, xs in sorted(by_ch.items()):
+        key = "pos_s" if _mad([x["pos_s"] for x in xs]) <= _mad([x["E_land"] for x in xs]) else "E_land"
+        refs[ch] = key
         for i, x in enumerate(xs):
-            others = [y["pos_s"] for j, y in enumerate(xs) if j != i]
-            off = x["pos_s"] - median(others) if others else None
+            others = [y[key] for j, y in enumerate(xs) if j != i]
+            off = x[key] - median(others) if others else None
             graded.append({**x, "edge_off_s": off, "live": None if off is None else abs(off) <= LIVE_TOL})
     known = [g for g in graded if g["live"] is not None]
     share = sum(g["live"] for g in known) / len(known) if known else None
@@ -125,6 +152,6 @@ def exp801(rows: list[dict]) -> dict:
     for app in sorted({g.get("app") for g in graded if g.get("app")}):
         ts = [g["tune_s"] for g in graded if g.get("app") == app]
         per_app[app] = {"n": len(ts), "tune_to_playing_p50_s": round(median(ts), 2), "p95_s": round(_pct(ts, 0.95), 2)}
-    return {"tunes": len(graded), "graded": len(known), "live_share": None if share is None else round(share, 3),
+    return {"tunes": len(graded), "graded": len(known), "ref": refs, "live_share": None if share is None else round(share, 3),
             "tune_to_playing_p95_s": None if not tune_s else round(_pct(tune_s, 0.95), 2), "per_app": per_app,
-            "verdict": verdict}
+            "tunes_per_stick": dict(sorted(by_stick.items())), "verdict": verdict}
