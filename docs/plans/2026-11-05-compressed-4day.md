@@ -115,6 +115,10 @@ from what passed.
   locked read.
 
 ## Risks
+- **Worth it ≥ live can't be read on Sunday.** A shadow candidate never drives the TV, so its nights can't be
+  rated, and the line stays PENDING (EXP-040, #204). Sunday's live nights build the live baseline (that needs
+  `phone.worth: true` on the Mac through the normal deploy). The candidate side needs whole nights where it
+  drives the TV, after it passes everything else.
 - **Locked evidence:** NBA/NHL have only 4 locked nights until v3 lands Friday. A Sunday PASS depends on v3
   landing on time.
 - **Friday is the most crowded day** (three timing components). If one slips, the planner uses the trees for
