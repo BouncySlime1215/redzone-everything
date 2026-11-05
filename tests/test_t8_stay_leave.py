@@ -75,7 +75,8 @@ def ctx(league: League, period: int, left_s: float, home: int, away: int, *, sta
 
 
 def _decide(m, c, state=None):
-    out = m.decide(c, state)
+    fn = getattr(m, "stay_or_leave", None) or m.decide        # renamed in #333 (contract_check K1)
+    out = fn(c, state)
     d, st = out if isinstance(out, tuple) else (out, state)
     act = str(getattr(d, "action", d)).lower()
     assert act in ("stay", "leave"), f"unexpected action {act!r}"
@@ -408,6 +409,42 @@ def test_fit_reads_train_and_valid_only(monkeypatch, tmp_path):
         return []
 
     monkeypatch.setattr(S, "load", spy)
-    with pytest.raises(Stop):
-        S.main(["fit", "--out", str(tmp_path), "--leagues", "nba"])
-    assert asked and set(asked) <= {"train", "valid"}, asked
+    for cmd in ("fit", "fit1714"):
+        asked.clear()
+        try:
+            with pytest.raises(Stop):
+                S.main([cmd, "--out", str(tmp_path), "--leagues", "nba"])
+        except SystemExit:                                   # this branch's script has no such command
+            continue
+        assert asked and set(asked) <= {"train", "valid"}, (cmd, asked)
+
+
+# ---- 6. EXP-1714: the floored ceiling and the your-team term -----------------------------------------------
+
+def test_floored_oracle_never_leaves_under_the_floor():
+    """EXP-1714's primary 100 % is oracle.solve on the floored table: it must make 0 floor leaves itself,
+    while the unfloored oracle does make some (the 45 the builder found), so the check has teeth."""
+    S, m = _script()
+    if not hasattr(m, "floored"):
+        pytest.skip("no floored() yet")
+    from redzone.lab import oracle as O
+    floored_hl, full_hl = 0, 0
+    for _day, n, tab, _F, HL in _train_nights(S, League.NFL, 2):
+        floored_hl += m.night_metrics(n, tab, HL, O.solve(n, "combined", m.floored(tab, HL)))["hl_leaves"]
+        full_hl += m.night_metrics(n, tab, HL, O.solve(n, "combined", tab))["hl_leaves"]
+    assert floored_hl == 0
+    assert full_hl > 0
+
+
+def test_head_one_label_ignores_your_team():
+    """Nick's teams enter as stakes only: head 1's label (reward_nomine) must not move when the your-team
+    column changes."""
+    import numpy as np
+    m = _model()
+    if not hasattr(m, "reward_nomine"):
+        pytest.skip("no reward_nomine() yet")
+    rng = np.random.default_rng(0)
+    tab = {k: rng.integers(0, 2, (3, 50)).astype(float) for k in ("big", "crunch", "mine", "dead")}
+    a = m.reward_nomine(tab)
+    tab["mine"] = 1.0 - tab["mine"]
+    assert np.array_equal(a, m.reward_nomine(tab))
