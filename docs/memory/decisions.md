@@ -656,9 +656,23 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Workers' outputs are trusted with no second review, except a license line per source (B rules). 1-2 test writers write
   pre-registered experiments and graders. Lanes 1-4 keep the body. Pace to <= 85% weekly by Mon 8 PM ET (hard stop 89%).
   Org, id blocks and checkpoints: docs/plans/2026-11-05-data-division.md.
+<<<<<<< HEAD
 - **2026-11-05 (Nick, 12:30 AM ET): Data Division type G, attention and hype at scale** (ids 1700s): legal, public
   signals of what people watched and cared about per moment (Twitch Helix viewer curves, highlight view velocity, hourly
   pageviews, Trends, public minute ratings, excitement-index datasets, prediction-market volume, official-API subreddit
   volume, open academic engagement datasets) as learned labels for Watch Value and the reward model. Each source names the
   label or feature it feeds and its information per GB. Vision and antenna skipped. G labels are judged by lift on % of
   oracle and worth-it, never used to optimize watch time.
+=======
+- **2026-11-05 (lane 2, EXP-023 wiring):** new key `noggin.belief.enabled` (default `false`). When it's on, the
+  engine uses the belief tracker (#223) as its delay sync in place of the Kalman filter, and it logs the
+  same data/sync.jsonl rows. It stays OFF: #223's dev bar failed on NBA and NHL (rule #1 clause, and NHL short
+  of 2 s), though it cut delay error p95 in every league. Why wire it now: Nick's RC7 requirement 2 (sync
+  p95 ≤ 2 s) gets graded from those logs.
+>>>>>>> origin/integration/next
+- **2026-11-05 (Nick, 11:50 PM ET, relayed 04:51 UTC): Data Division type H, web-scale sports text** (ids 1800s):
+  FineWeb/Common Crawl streamed and filtered to sports (ODC-By), Wikipedia dumps (CC BY-SA), GitHub open datasets, open
+  books (low priority). Feeds recap-aligned hindsight importance labels, matchup storyline features and the Mind's
+  sports-language fine-tune. Kaggle CPU / HF only; stream, never mirror; personal-use tag; raw text only in a private
+  Kaggle dataset, never in the public repo. First deliverable: a pre-registered EXP on whether recap-aligned labels raise %
+  of oracle (dev first, locked once at the release read); if not, H stays small. H pauses first with C/D/F/G.

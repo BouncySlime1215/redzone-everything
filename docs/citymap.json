@@ -501,6 +501,7 @@
     "redzone/tuners/tuners.py",
     "redzone/web/server.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
     "scripts/hold_left_probe.py",
@@ -563,6 +564,7 @@
     "scripts/eval.py",
     "scripts/eval_reasoner.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
     "scripts/hold_left_probe.py",
@@ -1332,6 +1334,7 @@
     "redzone/lab/replaycheck.py",
     "redzone/lab/sportsgrade.py",
     "redzone/lab/syncsim.py",
+    "redzone/noggin/belief.py",
     "redzone/supervisor.py",
     "scripts/delay_report.py"
    ],
@@ -1596,6 +1599,7 @@
     "redzone/grading.py",
     "redzone/models.py",
     "redzone/network.py",
+    "redzone/noggin/belief.py",
     "redzone/plan.py",
     "redzone/platform/agent_fix.py",
     "redzone/platform/wake.py",
@@ -1792,6 +1796,7 @@
     "scripts/backtest.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/leak_check.py",
     "scripts/train_noggin_pick.py"
    ],
@@ -1980,6 +1985,7 @@
     "scripts/eval.py",
     "scripts/eval_break_blend.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fetch_eval_data.py",
     "scripts/leak_check.py"
    ],
@@ -2307,6 +2313,7 @@
     "scripts/backfill_eval_v2.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/leak_check.py"
    ],
    "owner": "unowned",
@@ -2355,6 +2362,7 @@
     "redzone/lab/tune.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/train_noggin_pick.py"
    ],
    "owner": "INTEGRATION",
@@ -2387,6 +2395,7 @@
    "outputs": [
     "redzone/lab/backtest.py",
     "scripts/burst_align.py",
+    "scripts/exp023_belief.py",
     "scripts/timing_report.py"
    ],
    "owner": "unowned",
@@ -2513,6 +2522,7 @@
     "scripts/backtest.py",
     "scripts/build_reasoner_data.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/leak_check.py",
     "scripts/noggin_factory.py",
@@ -2581,6 +2591,22 @@
    "outputs": [],
    "owner": "unowned",
    "role": "The Noggin: one decision brain (docs/noggin.md).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/noggin/belief.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/decider/screen.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py",
+    "scripts/exp023_belief.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-023] Belief tracker: a per-game particle filter for the TV lag and the feed lag, with an online Bayesian model of each broadcast's break rhythm.",
    "serves": [
     "untagged"
    ]
@@ -3394,6 +3420,7 @@
     "redzone/sources/leagues.py",
     "redzone/views.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/noggin_factory.py",
     "scripts/plan_tonight.py",
     "scripts/train_noggin_pick.py"
@@ -4495,6 +4522,28 @@
     "untagged"
    ]
   },
+  "scripts/exp023_belief.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/config.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/evaldata.py",
+    "redzone/lab/splits.py",
+    "redzone/lab/sportsgrade.py",
+    "redzone/lab/timing.py",
+    "redzone/models.py",
+    "redzone/noggin/belief.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-023] Belief tracker vs the DelayBook baseline, on DEV nights only (docs/prereg/exp-023.md).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/export_decision_records.py": {
    "contracts": [],
    "inputs": [
@@ -4973,6 +5022,17 @@
     "untagged"
    ]
   },
+  "scripts/sync_truth.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[RC7 req.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/timing_report.py": {
    "contracts": [],
    "inputs": [
@@ -5166,10 +5226,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 272,
+  "modules": 275,
   "orphans": 10,
-  "unowned": 113,
-  "untagged": 217
+  "unowned": 116,
+  "untagged": 220
  },
  "version": 1
 }

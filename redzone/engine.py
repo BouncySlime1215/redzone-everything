@@ -110,9 +110,14 @@ class Engine:
         # (redzone/decider/sync.py); every signal is logged to data/sync.jsonl for scripts/eval_sync.py.
         self.sync = None
         if self.cfg.get("delay.sync.enabled", True):
-            self.sync = self.delays.attach_sync(
-                min_sigma_s=float(self.cfg.get("delay.sync.min_sigma_s", 4.0)),
-                log_path=data_dir.parent / "sync.jsonl" if data_dir and self.cfg.get("delay.sync.log", True) else None)
+            sync_kw = dict(min_sigma_s=float(self.cfg.get("delay.sync.min_sigma_s", 4.0)),
+                           log_path=data_dir.parent / "sync.jsonl" if data_dir and self.cfg.get("delay.sync.log", True) else None)
+            from redzone.noggin import belief as _belief
+            if _belief.enabled(self.cfg):
+                # [EXP-023, flag off] the belief tracker in place of the Kalman sync: same calls, same log rows
+                self.sync = _belief.attach(self.delays, **sync_kw)
+            else:
+                self.sync = self.delays.attach_sync(**sync_kw)
             # [league overrides] each channel's floor follows the league of the game it shows
             self.delays.sync_floor_for = lambda target: float(for_league(
                 self.cfg, "delay.sync.min_sigma_s", self._league_of(target), 4.0))

@@ -592,6 +592,8 @@ flags:                       # kill switches, one per subsystem (redzone/contrac
   fastcast: true
 
 noggin:                    # docs/noggin.md
+  belief:
+    enabled: false         # [EXP-023] the belief tracker (redzone/noggin/belief.py) as the delay sync in place of the Kalman filter. OFF: its dev bar failed (#223)
   priority:
     enabled: false         # pick the best game by the Noggin Priority order (L1 hard rules, then score). OFF until measured
     banned_apps: [peacock]
