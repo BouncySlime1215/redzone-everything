@@ -1,14 +1,17 @@
 {
-  "version": 15,
-  "frozen_at": "2026-11-05T05:56Z",
+  "version": 16,
+  "frozen_at": "2026-11-05T06:15Z",
   "by": "integrator",
   "files": {
     "redzone/grading.py": "7d42683f7d7acea9241108fd6279d4fb8b3d48db61fa3222f5a5bf81f890ab4e",
     "scripts/collect_live_test.py": "b7e198b23866a56cfb902d9fd63868fac219843cae84b139ab09761c11073e65",
-    "scripts/license_check.py": "183eb3ad0e2d3842b23d56188dddf690f53cdc198129fc2a114f9b3df6c1b23d",
+    "scripts/license_check.py": "f7c573a4b72e43d74be8796fa09a264724cfe8af5f1938c01a51520e040a2885",
     "scripts/catchup_ratchet.py": "7263085b120230fb91049895adb7ef84cb51e02ec77a1437aff569b2d6a906d6",
     "redzone/lab/reactgrade.py": "b49c336a2178d73c2e92291464b965626c17df672d78bdaf51f0943425a794b6",
     "scripts/reactgrade.py": "d3cf6a53e610f8e50fe213e989ef67d3452eb62f9525622c619a06d44a731739",
+    "scripts/data_landing_grade.py": "1cac9411a9eb58cb657fecaa679d096edfaae2ed73a92a319e49ebda18b49cb0",
+    "scripts/family_holm.py": "d590b8e455d2d54b646a2ddcdbc5eede8f86aa70cf3a7016f690019a67207ef6",
+    "docs/families.json": "46a0f7566cdecc00305c827504abed7dfd14fc457de33d2564233459848ce48a",
     "redzone/lab/backtest.py": "a450ee13e5edc42b65a4f660b4a33e9a22d73bf54ff2a28932531d68402b437d",
     "redzone/lab/cutgrade.py": "16e3f7dfbbe12aa08af71189258a2bcf53aab18ceca33661e941d70aafa7720e",
     "redzone/lab/sportsgrade.py": "f5a17381a11861c4ac9610a822f8360470a4ba1bb34079835da95e1f98577c62",
@@ -22,7 +25,7 @@
     "scripts/eval_sports.py": "7d3c54f147c59a8224cb59562b62087bcd0bd2f1547ac98b2f38a70fb47fefa3",
     "scripts/ci_scorecard.py": "0cf746adc8cb6a79cf9dbe198aa1f070081e5381b19c3213c3df184ce64b6139",
     "scripts/leak_check.py": "d49c81b30e114456f1e534f73ca672d2c2e062f6c747cb3d44b68ca963f71fb8",
-    "scripts/grading_check.py": "f1f49ab380551ad782519e5391dce753a52659e443b9273a6724d474b52338a2",
+    "scripts/grading_check.py": "93de1cddd43cd809efeafd1d691e047d4d68b8455f0ab579a07e560a54d579c8",
     "redzone/lab/worth.py": "071682c97eab57ee3a14fff0ace0dc1140bed4d05a43c9f54ab8ae8982b9e46b",
     "scripts/worth_line.py": "bbd2f663e0fd71da599583768553f0ffa305a0d99d1d390e4ae58c59c58075d8"
   }

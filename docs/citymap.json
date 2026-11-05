@@ -594,6 +594,69 @@
     "untagged"
    ]
   },
+  "redzone/context/__init__.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "package",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Context & hype data (Data Planner B): injuries, refs, weather, standings, buzz.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/context/buzz.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/context/tokens.py",
+    "redzone/models.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "BUZZ core for Data Crew B: Wikipedia pageviews, Wikipedia edit rate and GDELT news volume/tone.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/context/schedules.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Schedule + results loaders shared by the context scripts (stakes, weather).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/context/standings.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/context/tokens.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Point-in-time standings, online Elo and a playoff-odds Monte Carlo, league-generic (Crew B, worker B3).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/context/tokens.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/context/buzz.py",
+    "redzone/context/standings.py"
+   ],
+   "owner": "unowned",
+   "role": "Context fact shards for Data Planner B, in lane 1's vocab v2 hand-off format.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/contracts/__init__.py": {
    "contracts": [
     "BUDGET_MS",
@@ -2000,6 +2063,7 @@
     "redzone/demo/__main__.py",
     "scripts/backfill_eval_v2.py",
     "scripts/build_eval_data.py",
+    "scripts/data_landing_grade.py",
     "scripts/eval.py",
     "scripts/eval_break_blend.py",
     "scripts/eval_sports.py",
@@ -2364,6 +2428,7 @@
     "redzone/lab/breakblend.py",
     "redzone/lab/tune.py",
     "scripts/backfill_eval_v2.py",
+    "scripts/data_landing_grade.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
@@ -2519,6 +2584,7 @@
     "redzone/autonomy.py",
     "redzone/bets.py",
     "redzone/channels.py",
+    "redzone/context/buzz.py",
     "redzone/contracts/breaks.py",
     "redzone/contracts/events.py",
     "redzone/contracts/feeds.py",
@@ -4431,6 +4497,20 @@
     "untagged"
    ]
   },
+  "scripts/data_landing_grade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/evaldata.py",
+    "redzone/lab/splits.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Data landing grader (PROPOSAL, test writers, Nov 5 2026; EXP-705).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/data_ledger.py": {
    "contracts": [],
    "inputs": [
@@ -4698,6 +4778,17 @@
     "untagged"
    ]
   },
+  "scripts/family_holm.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Family-wise correction for experiments that share dev nights (PROPOSAL, test writers, EXP-722).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/fastcast_check.py": {
    "contracts": [],
    "inputs": [
@@ -4816,6 +4907,17 @@
    "inputs": [
     "redzone/noggin/factory.py"
    ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "no docstring",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/kaggle_pbp_crew.py": {
+   "contracts": [],
+   "inputs": [],
    "kind": "entry",
    "outputs": [],
    "owner": "unowned",
@@ -5584,10 +5686,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 300,
-  "orphans": 11,
-  "unowned": 140,
-  "untagged": 245
+  "modules": 308,
+  "orphans": 14,
+  "unowned": 148,
+  "untagged": 253
  },
  "version": 1
 }

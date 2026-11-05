@@ -736,3 +736,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-05 (integrator, grader v16): `license_check.py` FAILs any row that names a source of class `red` in
   docs/datasources/terms.json: its terms ban bots or AI use (scouts, #263: hockeytech/ahl/echl, the Sports-Reference
   family, fbref, stats_ncaa_org). Never pull it, even with the personal-use tag. Grader freeze v16.
+- 2026-11-05 (integrator, grader review): #249 and #268 are accepted from the test writers. `scripts/data_landing_grade.py`
+  (EXP-705) grades a landed shard before anything trains on it. It checks the license and personal-use tag, as-of
+  leakage, dedupe ≤ 1%, splits that are disjoint and time-ordered with no locked night (read from
+  redzone/lab/splits.py), synthetic ≤ 3x, unmapped tokens < 1%, single-feature AUC ≤ .98, and D8: one canonical
+  game_key per game across sources. `scripts/family_holm.py` applies Holm correction over the families declared in
+  `docs/families.json`. Both scripts and the families file join the freeze, so no family can gain or drop an arm once
+  its results are in. Grader freeze v16, together with the red-source rule above.

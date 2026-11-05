@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**300 modules**, 245 untagged, 140 unowned, 11 orphans (no importer).
+**308 modules**, 253 untagged, 148 unowned, 14 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -205,19 +205,24 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/sportsdata.py` | Turn free public play-by-play releases into labeled game-state snapshots. | lab.datasets, models, scoring.gameflow, sources.espn -> agent.distill.jump, lab.brain3data, scripts.build_training | untagged |
 | `redzone/lab/sportsgrade.py` | League-aware report card for backtests (NFL, NBA, NHL, MLB). | decider.screen, grading, lab.backtest, lab.cutgrade, lab.leverage, models +1 -> agent.kaggle.build_moments_kaggle, lab.oracle, lab.reactgrade, lab.reasoner_data, lab.replaycheck, lab.tune +4 | untagged |
 | `redzone/lab/tune.py` | Auto-tune the decider's hand-picked knobs against the scorecards (CMA-ES, numpy only). | config, decider.decider, lab.backtest, lab.optimize, lab.splits, lab.sportsgrade +1 -> scripts.tune | untagged |
-| `redzone/models.py` | Source-agnostic game model. | - -> agent.distill.jump, agent.kaggle.build_moments_kaggle, autonomy, bets, channels, contracts.breaks +70 | untagged |
+| `redzone/models.py` | Source-agnostic game model. | - -> agent.distill.jump, agent.kaggle.build_moments_kaggle, autonomy, bets, channels, context.buzz +71 | untagged |
 | `scripts/backtest.py` (entry) | Replay a past NFL Sunday through the app and print the report card. | config, lab.backtest, models -> - | untagged |
 | `scripts/eval.py` (entry) | The scorecard every change is judged by. | config, lab.backtest, lab.cutgrade, lab.evaldata, lab.optimize, lab.oracle +2 -> - | untagged |
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (140)
+## unowned (148)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
 | `redzone/__init__.py` (package) | no docstring | - -> - | untagged |
 | `redzone/calibration.py` | [calib.auto] Self-calibration: values re-measured each night from live telemetry, with no one's input. | contracts.switching, uses:seek_model -> engine, supervisor, scripts.sync_fit | BTN-02, STK-06 |
 | `redzone/commands.py` | Phone commands that land exactly once: an id, an ack, a status, and safe retries. | - -> engine | BTN-03 |
+| `redzone/context/__init__.py` (package) | Context & hype data (Data Planner B): injuries, refs, weather, standings, buzz. | - -> - | untagged |
+| `redzone/context/buzz.py` | BUZZ core for Data Crew B: Wikipedia pageviews, Wikipedia edit rate and GDELT news volume/tone. | context.tokens, models -> - | untagged |
+| `redzone/context/schedules.py` | Schedule + results loaders shared by the context scripts (stakes, weather). | - -> - | untagged |
+| `redzone/context/standings.py` | Point-in-time standings, online Elo and a playoff-odds Monte Carlo, league-generic (Crew B, worker B3). | context.tokens -> - | untagged |
+| `redzone/context/tokens.py` | Context fact shards for Data Planner B, in lane 1's vocab v2 hand-off format. | - -> context.buzz, context.standings | untagged |
 | `redzone/crunch.py` | [one brain, step 2] One crunch table (docs/onebrain-migration.md). | config -> demo.engine, grading, scoring.drive, scoring.engine, standby, web.phone_v2 | untagged |
 | `redzone/decider/__init__.py` (package) | no docstring | - -> - | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/delaymodel.py` | Per-channel stream-delay predictor: how far each channel's picture runs behind real life. | - -> decider.screen | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
@@ -233,7 +238,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/brain3data.py` | Brain v3 training tables: one row per logged event, with the v3 sequence features and labels. | lab.datasets, lab.sportsdata, scoring.brain3 -> lab.brain3cal, lab.brain3fit, scripts.build_training3 | untagged |
 | `redzone/lab/brain3fit.py` | Train and grade Brain v3 (``scripts/train_brain3.py`` is the CLI). | lab.brain3data, lab.brainfit, models, scoring.brain, scoring.brain3, scoring.breaks +1 -> scripts.train_brain3 | untagged |
 | `redzone/lab/breakblend.py` | Fit and grade how the break forecast mixes the rules with the brain (``breaks.blend``). | config, lab.brainfit, lab.datasets, lab.splits, models, scoring.brain +2 -> scripts.eval_break_blend | untagged |
-| `redzone/lab/evaldata.py` | One pinned eval dataset, so every thread, CI and the Mac grade on byte-identical nights. | config, contracts.switching, uses:ConfigSwitchPaths -> demo.__main__, scripts.backfill_eval_v2, scripts.build_eval_data, scripts.eval, scripts.eval_break_blend, scripts.eval_sports +3 | untagged |
+| `redzone/lab/evaldata.py` | One pinned eval dataset, so every thread, CI and the Mac grade on byte-identical nights. | config, contracts.switching, uses:ConfigSwitchPaths -> demo.__main__, scripts.backfill_eval_v2, scripts.build_eval_data, scripts.data_landing_grade, scripts.eval, scripts.eval_break_blend +4 | untagged |
 | `redzone/lab/leverage.py` | Leverage floor for a mid-play LEAVE (Nick, Nov 4 3:15 PM ET). | models, sources.espn -> lab.backtest, lab.sportsgrade | untagged |
 | `redzone/lab/night/__init__.py` (package) | The end-to-end night: the whole system through a replayed night, against fake sticks and a fake TV. | - -> - | untagged |
 | `redzone/lab/night/__main__.py` | python -m redzone.lab.night [--hours H] [--start HH:MM] [--json out.json] ... | lab.night.run, lab.night.vclock -> - | untagged |
@@ -249,7 +254,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/orient.py` | [EXP-038] Grade the orientation beat: do overrides right after an automatic switch drop when the phone shows a 2-3 s "who, score, clock, one fact" beat? | config -> scripts.also_close_line, scripts.orient_line | untagged |
 | `redzone/lab/reactgrade.py` | [EXP-301] Grader for the delay-and-react test (Nick, Nov 5 12:25 AM and 12:28 AM ET). | grading, lab.backtest, lab.oracle, lab.sportsgrade -> scripts.reactgrade | untagged |
 | `redzone/lab/reasoner_data.py` | Training rows for the live game reasoner, distilled from the archive (no paid APIs). | config, lab.backtest, lab.sportsgrade, models, reasoner.brief, scoring.engine +1 -> agent.kaggle.build_moments_kaggle, scripts.build_reasoner_data, scripts.eval_reasoner, scripts.export_reasoner_llm, scripts.train_reasoner | untagged |
-| `redzone/lab/splits.py` | Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03). | - -> lab.breakblend, lab.tune, scripts.backfill_eval_v2, scripts.eval, scripts.eval_sports, scripts.exp023_belief +3 | untagged |
+| `redzone/lab/splits.py` | Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03). | - -> lab.breakblend, lab.tune, scripts.backfill_eval_v2, scripts.data_landing_grade, scripts.eval, scripts.eval_sports +4 | untagged |
 | `redzone/lab/syncsim.py` | [auto sync] Sync-error scorecard: how far the delay the app uses is from the screen's real delay. | decider.screen -> scripts.eval_sync | untagged |
 | `redzone/lab/timing.py` | [switch timing] How late we learn about a dead ball, and what that leaves before it airs on screen. | grading -> lab.backtest, scripts.burst_align, scripts.exp023_belief, scripts.timing_report | untagged |
 | `redzone/lab/worth.py` | [EXP-040] The end-of-night "worth it?" rating as an evaluation line (watch-science playbook §6). | - -> lab.offpolicy, scripts.worth_line | untagged |
@@ -300,6 +305,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/context_pack.py` (entry) | Build ONE markdown context pack for pasting into a brand-new AI session. | memory -> - | untagged |
 | `scripts/contract_check.py` (entry) | Proof kernel: check the whole redzone/ graph against the contract rules on every change. | - -> - | untagged |
 | `scripts/controls_drill.py` (entry) | Phone controls drill: replay the end-to-end night with scripted phone presses and grade them. | - -> - | untagged |
+| `scripts/data_landing_grade.py` (entry) | Data landing grader (PROPOSAL, test writers, Nov 5 2026; EXP-705). | lab.evaldata, lab.splits -> - | untagged |
 | `scripts/delay_report.py` (entry) | How well each channel's stream delay is predicted, from the delay samples the app has stored. | config, decider.screen -> - | untagged |
 | `scripts/disk_guard.py` (entry) | Disk guard for the Mac (~5 GB free): what is using space in this checkout, and a safe cleanup of the transfer folders that cloud build threads leave behind. | governor -> - | untagged |
 | `scripts/distill.py` (entry) | Big teacher -> small student, end to end. | agent.distill.evaluate, agent.distill.student, agent.distill.teacher -> - | untagged |
@@ -309,6 +315,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/exp022_tpp.py` (entry) | [EXP-022] The event-token world model read as a timing point process vs Noggin Timing v1's trees, on green data. | noggin.factory, noggin.features, noggin.timing, noggin.timing_fit -> - | untagged |
 | `scripts/exp023_belief.py` (entry) | [EXP-023] Belief tracker vs the DelayBook baseline, on DEV nights only (docs/prereg/exp-023.md). | channels, config, lab.backtest, lab.evaldata, lab.splits, lab.sportsgrade +4 -> - | untagged |
 | `scripts/export_reasoner_llm.py` (entry) | Export briefs + hindsight targets for the game-reasoner language model (LoRA on the shared base). | lab.reasoner_data, reasoner.reasoner -> - | untagged |
+| `scripts/family_holm.py` (entry) | Family-wise correction for experiments that share dev nights (PROPOSAL, test writers, EXP-722). | - -> - | untagged |
 | `scripts/fastcast_check.py` (entry) | [fastcast live check] Grade ESPN FastCast against polling from a night's flight recorder. | sources.fastcast_check -> - | untagged |
 | `scripts/fault_drill.py` (entry) | Fault drill: run the real Controller / Fetcher / Engine against injected faults and score them. | channels, config, control, decider.decider, engine, models +8 -> - | untagged |
 | `scripts/fetch_eval_data.py` (entry) | Fetch the pinned eval dataset (eval-data.lock.json) into data/, verified, so every thread and CI grades on the same nights. | lab.evaldata -> - | untagged |
@@ -316,6 +323,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/green_summaries.py` (entry) | [EXP-102] Green moment source: nflverse NFL and NBA.com cdn NBA play-by-play -> ESPN-summary-shaped archives, so the reasoner moment builder (agent/kaggle/bu... | noggin.factory, sources.espn -> - | untagged |
 | `scripts/hold_left_probe.py` (entry) | [STK-07 rig check] Hold the left game, then go back to it: does it play on from the dead ball we left? | channels, config, control -> - | STK-07 |
 | `scripts/kaggle_noggin_factory.py` (entry) | no docstring | noggin.factory -> - | untagged |
+| `scripts/kaggle_pbp_crew.py` (entry) | no docstring | - -> - | untagged |
 | `scripts/leak_check.py` (entry) | Leakage checks for evaluation (research 05 §3, `docs/research/2026-11-03/05-eval-and-learning-loop.md`). | lab.backtest, lab.evaldata, lab.night.run, lab.splits, models -> - | untagged |
 | `scripts/license_check.py` (entry) | F8 license-tag check (Test Factory; Nick, Nov 4 2026 11:20 PM ET, data B). | - -> - | untagged |
 | `scripts/measure_break_lengths.py` (entry) | [Data F] Measured break lengths by league x network x break kind, from the pinned archive. | lab.backtest, lab.cutgrade, lab.splits, models, sources.espn -> - | untagged |
@@ -356,7 +364,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/world_model_pilot.py` (entry) | World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end. | noggin.factory -> - | untagged |
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 
-## Untagged (245)
+## Untagged (253)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -391,6 +399,11 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/bets.py`
 - `redzone/channels.py`
 - `redzone/config.py`
+- `redzone/context/__init__.py`
+- `redzone/context/buzz.py`
+- `redzone/context/schedules.py`
+- `redzone/context/standings.py`
+- `redzone/context/tokens.py`
 - `redzone/contracts/__init__.py`
 - `redzone/contracts/breaks.py`
 - `redzone/contracts/budget.py`
@@ -533,6 +546,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/context_pack.py`
 - `scripts/contract_check.py`
 - `scripts/controls_drill.py`
+- `scripts/data_landing_grade.py`
 - `scripts/delay_report.py`
 - `scripts/deploy.py`
 - `scripts/disk_guard.py`
@@ -549,6 +563,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/exp022_tpp.py`
 - `scripts/exp023_belief.py`
 - `scripts/export_reasoner_llm.py`
+- `scripts/family_holm.py`
 - `scripts/fastcast_check.py`
 - `scripts/fault_drill.py`
 - `scripts/fetch_eval_data.py`
@@ -556,6 +571,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/grading_check.py`
 - `scripts/green_summaries.py`
 - `scripts/kaggle_noggin_factory.py`
+- `scripts/kaggle_pbp_crew.py`
 - `scripts/leak_check.py`
 - `scripts/license_check.py`
 - `scripts/measure_break_lengths.py`
@@ -604,7 +620,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/world_model_pilot.py`
 - `scripts/worth_line.py`
 
-## Orphans (no importer) (11)
+## Orphans (no importer) (14)
 
 - `agent/kaggle/build_moments_kaggle.py`
 - `agent/kaggle/build_notebook.py`
@@ -615,5 +631,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `agent/kaggle/teacher_distill.py`
 - `agent/train/evaluate.py`
 - `agent/train/make_data.py`
+- `redzone/context/buzz.py`
+- `redzone/context/schedules.py`
+- `redzone/context/standings.py`
 - `redzone/lab/night/presses.py`
 - `redzone/tuners/identity.py`
