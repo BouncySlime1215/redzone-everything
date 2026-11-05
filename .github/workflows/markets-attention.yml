@@ -28,17 +28,21 @@ jobs:
       - run: pip -q install requests
       - name: pull + derive
         run: |
-          S="${{ matrix.window }}"; START="${S%%:*}"; END="${S##*:}"
+          S="${{ matrix.window }}"; START="${S%%:*}"; END="${S##*:}"; R="${GITHUB_REF_NAME}"
+          # a run branch ending in -nba or -nfl runs that league only
+          if [[ "$R" =~ -(nba|nfl)$ && "${BASH_REMATCH[1]}" != "${{ matrix.league }}" ]]; then echo "SKIP=1" >> "$GITHUB_ENV"; exit 0; fi
           python scripts/markets/polymarket.py --league ${{ matrix.league }} --start "$START" --end "$END" --out out/markets
           python scripts/markets/attention_labels.py --in out/markets --out out/attention
       - name: push derived labels
         if: always()
         run: |
+          [ "${SKIP:-0}" = 1 ] && exit 0
           S="${{ matrix.window }}"; B="markets-attn-out/${{ matrix.league }}-${S%%:*}-${{ github.run_id }}"
           mkdir -p /tmp/d && cp out/attention/* /tmp/d/ 2>/dev/null || exit 0
           git config user.name "redzone-markets-bot"; git config user.email "actions@users.noreply.github.com"
           git checkout -q --orphan "$B" && git rm -rq --cached . && git clean -fdq
-          cp /tmp/d/* . && git add market_minutes.csv market_games.csv counts.json
+          cp /tmp/d/* . && gzip -9 market_minutes.csv          # GitHub rejects files > 100 MB (NBA season ~150 MB raw)
+          git add market_minutes.csv.gz market_games.csv counts.json
           git commit -qm "market attention labels ${{ matrix.league }} ${S} (derived; personal-use, not for commercial release)"
           git push -q origin "$B" && echo "pushed $B" && cat counts.json
       - uses: actions/upload-artifact@v4

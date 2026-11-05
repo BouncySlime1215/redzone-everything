@@ -291,7 +291,12 @@ class Client:
                 time.sleep(wait)
             self._last = time.monotonic()
             self.n += 1
-            r = self.s.get(url, params=params, timeout=30)
+            try:
+                r = self.s.get(url, params=params, timeout=30)
+            except Exception as e:  # noqa: BLE001 - timeouts / resets: back off and retry, never crash a long pull
+                print(f"  {type(e).__name__} on {url}; retry", file=sys.stderr)
+                time.sleep(min(60.0, 2.0 ** attempt))
+                continue
             if r.status_code == 200:
                 return r.json()
             if r.status_code in (429, 500, 502, 503, 504):
