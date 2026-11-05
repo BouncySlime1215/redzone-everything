@@ -400,8 +400,26 @@ def pull_espn(http: Http, sink: Sink, start: str, end: str, max_games: int, leag
 
 # ---------------------------------------------------------------- C4: YouTube official channels
 YT = "https://www.googleapis.com/youtube/v3"
-YT_HANDLES = {"nfl": "@NFL", "nba": "@NBA", "nhl": "@NHL", "mlb": "@MLB", "cbb": "@MarchMadness",
-              "cfb": "@ESPNCFB"}
+# (league, handle, team abbrev or "") -- NBA first, then NFL (Nick 2:00 AM). A handle that doesn't resolve is
+# logged and skipped, never guessed at further.
+YT_LEAGUE = [("nba", "@NBA", ""), ("nfl", "@NFL", ""), ("nhl", "@NHL", ""), ("mlb", "@MLB", ""),
+             ("cbb", "@MarchMadness", ""), ("cfb", "@ESPNCFB", "")]
+YT_TEAMS = [("nba", h, t) for t, h in (
+    ("WAS", "@washwizards"), ("BOS", "@celtics"), ("LAL", "@lakers"), ("GSW", "@warriors"), ("CHI", "@chicagobulls"),
+    ("NYK", "@nyknicks"), ("MIL", "@bucks"), ("MIA", "@miamiheat"), ("PHI", "@sixers"), ("PHX", "@suns"),
+    ("DAL", "@dallasmavs"), ("DEN", "@nuggets"), ("OKC", "@okcthunder"), ("CLE", "@cavs"), ("MIN", "@timberwolves"),
+    ("IND", "@pacers"), ("LAC", "@laclippers"), ("NOP", "@pelicans"), ("SAC", "@sacramentokings"),
+    ("HOU", "@houstonrockets"), ("MEM", "@memgrizz"), ("SAS", "@spurs"), ("POR", "@trailblazers"), ("UTA", "@utahjazz"),
+    ("ORL", "@orlandomagic"), ("CHA", "@hornets"), ("ATL", "@atlhawks"), ("DET", "@detroitpistons"),
+    ("BKN", "@brooklynnets"), ("TOR", "@raptors"))] + [("nfl", h, t) for t, h in (
+    ("WSH", "@commanders"), ("DAL", "@dallascowboys"), ("PHI", "@eagles"), ("NYG", "@giants"), ("KC", "@chiefs"),
+    ("BUF", "@buffalobills"), ("BAL", "@ravens"), ("SF", "@49ers"), ("GB", "@packers"), ("DET", "@detroitlions"),
+    ("NE", "@patriots"), ("PIT", "@steelers"), ("CIN", "@bengals"), ("MIA", "@miamidolphins"), ("CHI", "@chicagobears"),
+    ("LAR", "@rams"), ("SEA", "@seahawks"), ("MIN", "@vikings"), ("NYJ", "@nyjets"), ("DEN", "@denverbroncos"),
+    ("LV", "@raiders"), ("LAC", "@chargers"), ("HOU", "@houstontexans"), ("IND", "@colts"), ("JAX", "@jaguars"),
+    ("TEN", "@titans"), ("CLE", "@clevelandbrowns"), ("ATL", "@atlantafalcons"), ("CAR", "@panthers"),
+    ("NO", "@saints"), ("TB", "@buccaneers"), ("ARI", "@azcardinals"))]
+YT_HANDLES = YT_LEAGUE + YT_TEAMS
 _CHAP = re.compile(r"^\s*((?:\d{1,2}:)?\d{1,2}:\d{2})\s+(.+)$", re.M)
 
 
@@ -413,17 +431,21 @@ def _iso_dur(s: str | None) -> float | None:
 def pull_yt(http: Http, sink: Sink, out: Path, pages: int) -> None:
     key = os.environ.get("YOUTUBE_API_KEY", "")
     if not key:
-        print("yt: no YOUTUBE_API_KEY; skipping (Nick adds it as a GitHub Actions secret)", flush=True)
+        print("yt: no YOUTUBE_API_KEY yet (Nick adds it as a GitHub Actions secret); using public RSS feeds", flush=True)
+        pull_ytrss(http, sink, out)
         return
     snap = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
     prev_f = out / "yt" / "last_views.json"
     prev = json.loads(prev_f.read_text()) if prev_f.exists() else {}
     now_views: dict[str, list] = {}
-    for lg, handle in YT_HANDLES.items():
+    ids_f = out / "yt" / "channels.json"
+    ids = json.loads(ids_f.read_text()) if ids_f.exists() else {}
+    for lg, handle, team in YT_HANDLES:
         ch = http.get(f"{YT}/channels?part=contentDetails&forHandle={urllib.parse.quote(handle)}&key={key}") or {}
         if not ch.get("items"):
             print(f"yt {handle}: not found", flush=True)
             continue
+        ids[handle] = ch["items"][0]["id"]
         uploads = ch["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
         tok, vids = "", []
         for _ in range(pages):
@@ -451,7 +473,8 @@ def pull_yt(http: Http, sink: Sink, out: Path, pages: int) -> None:
                 rows.append(dict(src="yt", league=lg, game_id=None, event_id=None, clip_id=v["id"],
                                  published=sn.get("publishedAt"), event_time=None,
                                  duration_s=_iso_dur((v.get("contentDetails") or {}).get("duration")),
-                                 kind=kind_of(sn.get("title")), tags=[f"channel:{handle}"],
+                                 kind=kind_of(sn.get("title")),
+                                 tags=[f"channel:{handle}"] + ([f"team:{team}"] if team else []),
                                  title_kw=_kw(sn.get("title")), views=views,
                                  likes=int(st["likeCount"]) if "likeCount" in st else None,
                                  comments=int(st["commentCount"]) if "commentCount" in st else None,
@@ -463,6 +486,64 @@ def pull_yt(http: Http, sink: Sink, out: Path, pages: int) -> None:
             sink.add(r, snap[:7])
         print(f"yt {handle}: {len(rows)} videos, calls {http.calls}", flush=True)
     prev.update(now_views)
+    prev_f.write_text(json.dumps(prev))
+    ids_f.write_text(json.dumps(ids, indent=1))
+
+
+# ---------------------------------------------------------------- C4b: YouTube public RSS feeds (no key)
+RSS_USERS = [("nba", "NBA"), ("nfl", "NFL")]   # legacy usernames; once the key lands, channels.json ids are used
+
+
+def pull_ytrss(http: Http, sink: Sink, out: Path) -> None:
+    """YouTube's public per-channel Atom feed: the latest ~15 uploads with view counts. Snapshots every run
+    give view velocity for new clips. Metadata only. Uses channel ids from channels.json when present."""
+    import xml.etree.ElementTree as ET
+    ns = {"a": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015",
+          "m": "http://search.yahoo.com/mrss/"}
+    snap = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
+    prev_f = out / "yt" / "last_views.json"
+    prev_f.parent.mkdir(parents=True, exist_ok=True)
+    prev = json.loads(prev_f.read_text()) if prev_f.exists() else {}
+    ids_f = out / "yt" / "channels.json"
+    feeds = [(lg, f"user={u}", f"@{u}", "") for lg, u in RSS_USERS]
+    if ids_f.exists():
+        team = {h: (lg, t) for lg, h, t in YT_HANDLES}
+        feeds = [(team.get(h, ("", ""))[0], f"channel_id={cid}", h, team.get(h, ("", ""))[1])
+                 for h, cid in json.loads(ids_f.read_text()).items()]
+    for lg, q, handle, tm in feeds:
+        req = urllib.request.Request(f"https://www.youtube.com/feeds/videos.xml?{q}", headers={"User-Agent": UA})
+        time.sleep(http.gap)
+        http.calls += 1
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                root = ET.fromstring(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403, 429):
+                raise Blocked(f"{e.code} on youtube.com feeds") from e
+            print(f"ytrss {handle}: {e.code}", flush=True)
+            continue
+        except (urllib.error.URLError, TimeoutError, ET.ParseError, OSError) as e:
+            print(f"ytrss {handle}: {type(e).__name__}", flush=True)
+            continue
+        n = 0
+        for e in root.findall("a:entry", ns):
+            vid = e.findtext("yt:videoId", "", ns)
+            st = e.find("m:group/m:community/m:statistics", ns)
+            views = int(st.get("views")) if st is not None and st.get("views") else None
+            p = prev.get(vid)
+            vel = None
+            if p and views is not None:
+                hrs = max((_ts(snap.replace("Z", ":00Z")) - _ts(p[1])) / 3600, 1e-3)
+                vel = max(0.0, (views - p[0]) / hrs)
+            if views is not None:
+                prev[vid] = [views, snap.replace("Z", ":00Z")]
+            title = e.findtext("a:title", "", ns)
+            sink.add(dict(src="yt", league=lg, game_id=None, event_id=None, clip_id=vid,
+                          published=e.findtext("a:published", None, ns), event_time=None, duration_s=None,
+                          kind=kind_of(title), tags=[f"channel:{handle}", "via:rss"] + ([f"team:{tm}"] if tm else []),
+                          title_kw=_kw(title), views=views, vel=vel, snap_utc=snap), snap[:7])
+            n += 1
+        print(f"ytrss {handle}: {n} entries", flush=True)
     prev_f.write_text(json.dumps(prev))
 
 
@@ -502,7 +583,7 @@ def ledger(out: Path) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("source", choices=["espn", "mlb", "nhl", "nba", "yt", "ledger"])
+    ap.add_argument("source", choices=["espn", "mlb", "nhl", "nba", "yt", "ytrss", "ledger"])
     ap.add_argument("--leagues", default="nba,nfl", help="espn: comma list of nba,nfl,cbb,cfb")
     ap.add_argument("--start", default=(date.today() - timedelta(days=2)).isoformat())
     ap.add_argument("--end", default=(date.today() - timedelta(days=1)).isoformat())
@@ -514,12 +595,14 @@ def main(argv: list[str] | None = None) -> int:
     if a.source == "ledger":
         print(json.dumps(ledger(a.out), indent=1))
         return 0
-    http, sink = Http(a.gap), Sink(a.out, a.source)
+    http, sink = Http(a.gap), Sink(a.out, "yt" if a.source == "ytrss" else a.source)
     try:
         if a.source == "mlb":
             pull_mlb(http, sink, a.start, a.end, a.max_games)
         elif a.source == "nhl":
             pull_nhl(http, sink, a.start, a.end, a.max_games)
+        elif a.source == "ytrss":
+            pull_ytrss(http, sink, a.out)
         elif a.source == "espn":
             pull_espn(http, sink, a.start, a.end, a.max_games, a.leagues.split(","))
         elif a.source == "nba":
