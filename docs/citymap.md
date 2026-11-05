@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**289 modules**, 234 untagged, 130 unowned, 10 orphans (no importer).
+**291 modules**, 236 untagged, 132 unowned, 10 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -210,7 +210,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (130)
+## unowned (132)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -330,6 +330,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/publish_live_nights.py` (entry) | Publish live-night summaries into the repo so the North Star workflow grades real nights (cycle 04, lane 4: "live nights into northstar"). | - -> - | STK-06 |
 | `scripts/release_gate.py` (entry) | The release gate ("95% good minimum", the user's rule of 2026-11-03), checked on HELD-OUT nights. | - -> - | untagged |
 | `scripts/retrosheet_plays.py` (entry) | Retrosheet event files -> the ESPN-format MLB play dicts the tokenizer reads (Wave 1, green). | noggin.factory -> - | untagged |
+| `scripts/scout_ledger.py` (entry) | Data scout ledger: check docs/datasources/scout.json and render scout-ledger.md, ranked by new information per GB. | - -> - | untagged |
+| `scripts/scout_probe.py` (entry) | Data scout probe: for each scout.json source, read the host's robots.txt and fetch ONE probe URL. | - -> - | untagged |
 | `scripts/switch_eval_pin.py` (entry) | Switch the default eval-data pin to a newly published release (Fri Nov 6: eval-data-v3), in one go. | lab.splits -> - | untagged |
 | `scripts/sync_fit.py` (entry) | [sync fit] EXP-084: one live night's sync calibration and delay error, from the app's own logs. | calibration, sync_probe -> - | untagged |
 | `scripts/sync_truth.py` (entry) | [RC7 req. | - -> - | untagged |
@@ -345,7 +347,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/world_model_pilot.py` (entry) | World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end. | noggin.factory -> - | untagged |
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 
-## Untagged (234)
+## Untagged (236)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -560,6 +562,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/replay_check.py`
 - `scripts/retrosheet_plays.py`
 - `scripts/rz.py`
+- `scripts/scout_ledger.py`
+- `scripts/scout_probe.py`
 - `scripts/screen_lab.py`
 - `scripts/service.py`
 - `scripts/service_runtime.py`
