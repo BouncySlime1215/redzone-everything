@@ -66,3 +66,7 @@ as tracking, apart from events. Personal-use tag; derived numbers only, never re
 Nov 5 2026 06:40 UTC: NBA.com stats pbp for those 621 games (287k events, 10-digit ids, joins SportVU). StatsBomb
 American football (#TB12DB): 108 NFL games 2017-22, 729k events (about 60% are pathing/engagement annotations; ~0.4k
 core play actions per game), plus low-frequency tracking 2021-22 (37 games, 31k rows, counted as tracking). Personal-use tag.
+Nov 5 2026 07:20 UTC (NBA first, Nick 2:00 AM): NBA.com stats play-by-play 1996-97 to 2024-25, regular season +
+playoffs (58 shards), 36,668 games, 16.7M events, 100.3M v1 tokens, 0 games dropped; shot x/y joined from shotdetail
+on ~35% of rows. 10-digit NBA ids. Personal-use tag. data-a/pbp/nba_stats_pbp (106 MB). Totals now 31.6M events,
+189.9M v1 tokens + 2.05M tracking rows.

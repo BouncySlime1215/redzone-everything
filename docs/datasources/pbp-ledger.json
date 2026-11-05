@@ -1,6 +1,19 @@
 {
  "rows": [
   {
+   "source": "nba_stats_pbp",
+   "league": "nba",
+   "seasons": "1997-2025",
+   "shards": 58,
+   "games": 36668,
+   "events": 16699012,
+   "v1_tokens": 100340744,
+   "bytes": 110337134,
+   "license": "NBA.com stats play-by-play 1996-2025 (NBA.com ToS: private, non-commercial use) via shufinskiy/nba_data (Apache-2.0 packaging); plan B personal use, never redistributed; credit NBA.com",
+   "tag": "personal-use, not for commercial release",
+   "kind": "events"
+  },
+  {
    "source": "statsbomb",
    "league": "la_liga",
    "seasons": "1974-2021",
@@ -366,11 +379,11 @@
   }
  ],
  "total": {
-  "shards": 87,
-  "games": 4690,
-  "events": 14928248,
-  "v1_tokens": 89588248,
-  "bytes": 152702160
+  "shards": 145,
+  "games": 41358,
+  "events": 31627260,
+  "v1_tokens": 189928992,
+  "bytes": 263039294
  },
  "tracking": {
   "shards": 2,

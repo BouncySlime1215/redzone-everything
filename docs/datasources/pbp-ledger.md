@@ -6,6 +6,7 @@ Only shards that landed in the private Kaggle dataset count. Every token here is
 
 | Source | League | Seasons | Games | Events | v1 tokens (M) | GB | Tag | License line |
 |---|---|---|---:|---:|---:|---:|---|---|
+| nba_stats_pbp | nba | 1997-2025 | 36,668 | 16,699,012 | 100.3 | 0.11 | personal-use, not for commercial release | NBA.com stats play-by-play 1996-2025 (NBA.com ToS: private, non-commercial use) via shufinskiy/nba_data (Apache-2.0 packaging); plan B personal use, never redistributed; credit NBA.com |
 | statsbomb | la_liga | 1974-2021 | 867 | 3,132,716 | 18.8 | 0.03 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | sportvu | nba | 2016-2016 | 621 | 2,054,040 | 12.3 | 0.03 | personal-use, not for commercial release | SportVU 2015-16 (NBA/STATS LLC content, mirror has no licence); plan B personal use, private training only, never re-upload; credit NBA / STATS LLC |
 | statsbomb | ligue_1 | 2016-2023 | 435 | 1,589,849 | 9.5 | 0.02 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
@@ -34,5 +35,5 @@ Only shards that landed in the private Kaggle dataset count. Every token here is
 | statsbomb | fifa_u20_world_cup | 1979-1979 | 1 | 3,245 | 0.0 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | north_american_league | 1977-1977 | 1 | 3,205 | 0.0 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | sportvu_extra | nba | 2016-2016 | 0 | 0 | 0.0 | 0.07 | personal-use, not for commercial release | SportVU 2015-16 (NBA/STATS LLC content, mirror has no licence); plan B personal use, private training only, never re-upload; credit NBA / STATS LLC |
-| **Total events** | | | | 4,690 | 14,928,248 | 89.6 | 0.15 | | |
+| **Total events** | | | | 41,358 | 31,627,260 | 189.9 | 0.26 | | |
 | **Total tracking** | | | | 621 | 2,054,040 | 12.3 | 0.11 | | |
