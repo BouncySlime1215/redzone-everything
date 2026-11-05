@@ -59,6 +59,7 @@ GRADERS = (
     "redzone/lab/cutgrade.py",
     "redzone/lab/sportsgrade.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/oracle_window.py",
     "redzone/lab/leverage.py",
     "redzone/lab/splits.py",
     "redzone/lab/evaldata.py",

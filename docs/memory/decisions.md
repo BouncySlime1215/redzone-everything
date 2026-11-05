@@ -906,3 +906,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   fails switches 1.58x and your-team crunch on every arm), and it applies to RC8's next read from fresh nights. The
   switch guardrail counts non-replay switches (integrator ruling on lane 3's sweep: NFL B=75 1.80x, LIVE). No bar
   moved. Grader freeze v30.
+- 2026-11-05 (integrator, grader v31; lane 1 #322): the windowed-hindsight oracle `redzone/lab/oracle_window.py`
+  joins the freeze beside oracle.py (which it reuses unchanged): measured per-league feed lag (p90 default), reserves
+  grading.RESUME_LEAD, never plans without a revealed window, first pick on a dead ball. It is the RC8 report's
+  descriptive ceiling ("% of oracle"), never a gate. `scripts/buffer_sweep.py` stays lane 1's descriptive sweep
+  (lane 3's sweep is the graded one) and is not frozen. Grader freeze v31.

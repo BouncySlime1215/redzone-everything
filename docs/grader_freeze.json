@@ -1,6 +1,6 @@
 {
-  "version": 30,
-  "frozen_at": "2026-11-05T16:10Z",
+  "version": 31,
+  "frozen_at": "2026-11-05T16:31Z",
   "by": "integrator",
   "files": {
     "redzone/grading.py": "6e21906a6a952a6f8fa9b1e594dbf7ab5d595cfea3925627c6ad2be65c2c84a7",
@@ -31,6 +31,7 @@
     "redzone/lab/cutgrade.py": "16e3f7dfbbe12aa08af71189258a2bcf53aab18ceca33661e941d70aafa7720e",
     "redzone/lab/sportsgrade.py": "b4defd64bf2d796392aedae6de73010b00f3099304b9a80a9862f5bf14fba622",
     "redzone/lab/oracle.py": "9b19515d315310019186773fc8c344f1867ffc99ed382dba6113c5a1fef38faf",
+    "redzone/lab/oracle_window.py": "dc431ce0560e515383a508e8c9904315c763c73bd3e1ac2298f71a4d04dfb2cb",
     "redzone/lab/leverage.py": "3e2401299fd26b3b29be19069b1443aa6ef3ef2a08a14d325cd83d90e1afa07b",
     "redzone/lab/splits.py": "e4ed07cda279458e0d74a34552d584d9f7fc1ae74ed7647a0a98f1009c03bc8c",
     "redzone/lab/evaldata.py": "5bc113a81e9c76033b7fdcc29e314a7f883836ad9a8597fd082ce4700b531377",
@@ -40,7 +41,7 @@
     "scripts/eval_sports.py": "211fa80255428570582690285fcae0a5a3bcd60af00af86b4d13bbbef68e1dc7",
     "scripts/ci_scorecard.py": "0cf746adc8cb6a79cf9dbe198aa1f070081e5381b19c3213c3df184ce64b6139",
     "scripts/leak_check.py": "dfa6a7007ab659f9da2e25fcddb25f1a2c297a5fdd7939ef03995f7e1411222a",
-    "scripts/grading_check.py": "dda973a1b2e6b9771ced7a659cf0e3866471e6b33957123d27708a844d025996",
+    "scripts/grading_check.py": "52237084301591e4e968557de6e76d3b767200325dfaa1e1e087675326b3f1f2",
     "redzone/lab/worth.py": "071682c97eab57ee3a14fff0ace0dc1140bed4d05a43c9f54ab8ae8982b9e46b",
     "scripts/worth_line.py": "bbd2f663e0fd71da599583768553f0ffa305a0d99d1d390e4ae58c59c58075d8"
   }

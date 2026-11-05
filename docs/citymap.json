@@ -1859,6 +1859,7 @@
     "redzone/lab/backtest.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/oracle_window.py",
     "redzone/lab/reactgrade.py",
     "redzone/lab/sportsgrade.py",
     "redzone/lab/timing.py",
@@ -1946,6 +1947,7 @@
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/oracle_window.py",
     "redzone/lab/reactgrade.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
@@ -1953,6 +1955,7 @@
     "redzone/lab/tune.py",
     "scripts/backtest.py",
     "scripts/buffer_shadow_grade.py",
+    "scripts/buffer_sweep.py",
     "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
@@ -2412,7 +2415,9 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/lab/oracle_window.py",
     "redzone/lab/reactgrade.py",
+    "scripts/buffer_sweep.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
     "scripts/noggin_selfplay.py",
@@ -2421,6 +2426,23 @@
    ],
    "owner": "unowned",
    "role": "Hindsight oracle: the best schedule anyone could have run on an archived night (offline only).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/oracle_window.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/grading.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/oracle.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/buffer_sweep.py"
+   ],
+   "owner": "unowned",
+   "role": "[time-shift buffer] The windowed-hindsight oracle (Nick 9:10 AM Nov 5): exact DP over only what the buffer reveals, past-only value beyond the window.",
    "serves": [
     "untagged"
    ]
@@ -2797,6 +2819,7 @@
     "redzone/web/phone_v2.py",
     "scripts/backtest.py",
     "scripts/buffer_shadow_grade.py",
+    "scripts/buffer_sweep.py",
     "scripts/build_reasoner_data.py",
     "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
@@ -2986,6 +3009,7 @@
    "kind": "module",
    "outputs": [
     "redzone/decider/decider.py",
+    "scripts/buffer_sweep.py",
     "scripts/eval_sports.py",
     "scripts/noggin_selfplay.py",
     "scripts/train_noggin_pick.py",
@@ -4553,6 +4577,23 @@
     "untagged"
    ]
   },
+  "scripts/buffer_sweep.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/oracle.py",
+    "redzone/lab/oracle_window.py",
+    "redzone/models.py",
+    "redzone/noggin/pick.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[time-shift buffer] Oracle side of the buffer sweep (Nick 9:10 AM Nov 5, parts B + C).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/build_eval_data.py": {
    "contracts": [],
    "inputs": [
@@ -6068,10 +6109,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 332,
+  "modules": 334,
   "orphans": 14,
-  "unowned": 170,
-  "untagged": 276
+  "unowned": 172,
+  "untagged": 278
  },
  "version": 1
 }
