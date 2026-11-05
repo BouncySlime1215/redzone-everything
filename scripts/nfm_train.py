@@ -95,6 +95,22 @@ def count_params(vocab: int, d: int, layers: int, heads: int = 0, experts: int =
 RECIPE_KEYS = ("qk_norm", "relu2", "untie", "softcap", "value_emb", "doc_mask")
 
 
+_FLEX = None
+
+
+def _flex():
+    """flex_attention, compiled once (eager flex materializes the full score matrix: slow and memory-hungry)."""
+    global _FLEX
+    if _FLEX is None:
+        import torch
+        from torch.nn.attention.flex_attention import flex_attention
+        try:
+            _FLEX = torch.compile(flex_attention, dynamic=False)
+        except Exception:  # noqa: BLE001 - no compiler: eager flex still gives the right answer
+            _FLEX = flex_attention
+    return _FLEX
+
+
 def build_model(vocab: int, d: int, layers: int, heads: int, experts: int = 0, top_k: int = 2,
                 ffn_mult: float = 4.0, dropout: float = 0.0, capacity: float = 1.25, qk_norm: bool = False,
                 relu2: bool = False, untie: bool = False, softcap: float = 0.0, value_emb: bool = False,
@@ -200,8 +216,8 @@ def build_model(vocab: int, d: int, layers: int, heads: int, experts: int = 0, t
             if mask is None:
                 a = F.scaled_dot_product_attention(q, k, v, is_causal=True)   # flash kernel on GPU
             elif callable(getattr(mask, "as_tuple", None)) or type(mask).__name__ == "BlockMask":
-                from torch.nn.attention.flex_attention import flex_attention
-                a = flex_attention(q, k, v, block_mask=mask)
+                dt = v.dtype if not torch.is_autocast_enabled("cuda") else torch.get_autocast_dtype("cuda")
+                a = _flex()(q.to(dt), k.to(dt), v.to(dt), block_mask=mask)    # flex is not autocast-aware
             else:
                 a = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)
             x = x + self.drop(self.proj(a.transpose(1, 2).reshape(b, t, d)))
@@ -214,6 +230,7 @@ def build_model(vocab: int, d: int, layers: int, heads: int, experts: int = 0, t
     def doc_ids(idx):
         return torch.cumsum(is_bos.to(idx.device)[idx].int(), -1)          # b t: game number inside the window
 
+    @torch.compiler.disable                    # built outside the compiled graph (EXP-109 F died under --compile)
     def make_mask(idx):
         b, t = idx.shape
         doc = doc_ids(idx)
@@ -397,6 +414,7 @@ def main(argv=None) -> int:
     ap.add_argument("--grade-games", type=int, default=400, help="test games graded per league (CPU/GPU pass)")
     ap.add_argument("--device", default="auto", choices=("auto", "xla", "cuda", "cpu"))
     ap.add_argument("--exp", default="EXP-106")
+    ap.add_argument("--seed", type=int, default=SEED, help="init + batch order (EXP-109 seed check); split is unchanged")
     ap.add_argument("--throughput-only", action="store_true", help="EXP-106: time steps, no grading")
     # EXP-109 speedrun recipe (each piece ablated; adopt only what helps)
     ap.add_argument("--muon", action="store_true", help="Muon for hidden matrices, AdamW for the rest")
@@ -417,7 +435,7 @@ def main(argv=None) -> int:
     ap.add_argument("--run", default="", help="run name on the exchange (default <exp>-<preset>)")
     a = ap.parse_args(argv)
     import torch
-    torch.manual_seed(SEED)
+    torch.manual_seed(a.seed)
     kind, dev, chips = device(a.device)
     a.out.mkdir(parents=True, exist_ok=True)
     ck_dir = a.ckpt_dir or a.out
@@ -479,7 +497,7 @@ def main(argv=None) -> int:
         opt.load_state_dict(st["opt"])
         step, best, curve, t_train = st["step"], st["best"], st["curve"], st.get("t_train", 0.0)
         print(f"resumed at step {step}", flush=True)
-    data = Batches(train, a.ctx, a.batch)
+    data = Batches(train, a.ctx, a.batch, seed=a.seed)
     vdata = Batches(valid, a.ctx, a.batch, seed=SEED + 1) if len(valid) > a.ctx + 1 else None
     # T4 / P100 (Kaggle GPU) have no bf16 units: fp16 autocast with a grad scaler there, bf16 everywhere else
     fp16 = kind == "cuda" and torch.cuda.get_device_capability()[0] < 8
@@ -579,7 +597,7 @@ def main(argv=None) -> int:
                 valid_by_league[lg] = round(evaluate(16, Batches(s_lg, a.ctx, a.batch, seed=SEED + 2)), 4)
     tps = tp_tok / max(tp_t, 1e-9)
     flops_tok = 6 * np_["non_embedding_active"] + 12 * cfg["layers"] * a.ctx * cfg["d"]
-    g = {"exp": a.exp, "seed": SEED, "preset": a.preset, "params": np_, "vocab_size": vocab, "ctx": a.ctx,
+    g = {"exp": a.exp, "seed": a.seed, "preset": a.preset, "params": np_, "vocab_size": vocab, "ctx": a.ctx,
          "batch": a.batch, "steps": step, "planned_steps": total, "tokens_seen": step * tok_per_step,
          "train_tokens_unique": int(len(train)), "epochs": round(step * tok_per_step / max(1, len(train)), 2),
          "best_valid_loss": None if best == float("inf") else round(best, 4), "learning_curve": curve,
