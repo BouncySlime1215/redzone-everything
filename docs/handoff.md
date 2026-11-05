@@ -71,8 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-NICK ORDER: oracle audit plus every missing piece (nightly oracle score, windowed target, Watch Value gates, sync truth), then a mistake-ledger loop: each decision compared with the windowed oracle, cause logged, next arm trained on it.
-Evidence rule: each new night is scored first, before the model sees it, then moves into training. Locked set stays out of the ledger.
+Nick confirmed: oracle audit comes before more Watch Value training; new training arms are held until it lands. Audit work goes to integration/next and does not touch RC6.3.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
