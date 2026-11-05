@@ -821,6 +821,20 @@ class Decider:
     def entry_plan(self, gid: str, cands: dict[str, Candidate], now: float, cost: float | None = None,
                    urgent: bool = False, possession: bool = False) -> EntryPlan | None:
         """How to come into gid right now (None: no timing evidence, e.g. RedZone or no timeline)."""
+        tl = self.timelines.get(gid)
+        x = cands.get(gid) or self._known.get(gid)
+        if tl is None or x is None:
+            return self._entry_plan(gid, cands, now, cost, urgent, possession)
+        # [EXP-211] an open stoppage counts as dead only as far as a feed this slow would already show the
+        # restart: an unmeasured lag reads 10 s, which landed NHL entries after the faceoff (EXP-303).
+        tl.dead.lag_floor = float(self._lc("decider.entry.lag_floor_s", x, 0.0) or 0.0)
+        try:
+            return self._entry_plan(gid, cands, now, cost, urgent, possession)
+        finally:
+            tl.dead.lag_floor = 0.0
+
+    def _entry_plan(self, gid: str, cands: dict[str, Candidate], now: float, cost: float | None,
+                    urgent: bool, possession: bool) -> EntryPlan | None:
         c = self.cfg
         if gid in PSEUDO or not c.get("decider.entry.enabled", True):
             return None
@@ -891,8 +905,10 @@ class Decider:
         scorecards Nov 3: mid-play entries 165 -> 15, crunch live 87.5 -> 88.3%, big plays seen
         99.7 -> 99.5%. The rest of cut timing (holding for a big play, stretching a stoppage) cost
         hockey crunch time, so it stays football-only."""
-        if x is None or d.kind == "start":
+        if x is None:
             return False
+        if d.kind == "start" and not self._lc("decider.entry.start_timed", x, False):
+            return False   # [EXP-739] off: the night's first pick goes in live (6 of 8 NHL mid-play entries, #302)
         if x.scored.crunch_now and self._crunch_entry_mode(x) == "live":
             return False
         if x.scored.crunch and not x.scored.crunch_now and \

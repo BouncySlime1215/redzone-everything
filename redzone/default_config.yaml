@@ -267,6 +267,10 @@ decider:
     crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
+    start_timed: false       # [EXP-739] the night's first pick waits for a whistle / rewinds like any entry (off: goes in
+                             # live, which landed 6 NHL first picks 10-32 s after the opening faceoff, autopsy #302)
+    lag_floor_s: 0           # [EXP-211] an open stoppage counts as dead only as far as a feed at least this slow would
+                             # show the restart (0 = off; graded NHL value 71.3 = feed lag q90, EXP-303)
     break_tail: []           # [EXP-728/736] leagues whose entries into a break wait to land <= break_tail_s before the
                              # restart (redzone/decider/break_tail.py); [] = off until its gate passes
     break_tail_s: 10         # cutgrade's BREAK_TAIL_BAR: landing with more than this left is "mid-commercial"
