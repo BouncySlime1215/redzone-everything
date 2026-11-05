@@ -36,8 +36,12 @@ from redzone.lab import splits  # noqa: E402
 
 ARCH = ROOT / "data" / "archive"
 LEAGUES = ("nfl", "nba", "nhl")
-# Last season's regular-season stretch to draw your-team nights from (newest first).
-OLD_SEASON = {"nba": ("20260101", "20260412"), "nhl": ("20260101", "20260416")}
+# Last season's regular-season stretch to draw your-team nights from (newest first). It ends BEFORE the
+# Noggin's locked start (agent/distill/split.py BIG_CUTS: nba/nhl locked from 20260201), so an old night
+# that lands in this pin's dev (tunable) slice is never one of the Noggin's locked nights. v2 drew from
+# Jan 1 - Apr 16 2026: its Feb-Apr nights were Noggin-locked (tests/test_eval_data_v2.py guards this now).
+OLD_SEASON = {"nba": ("20251021", "20260131"), "nhl": ("20251007", "20260131")}
+WINDOW_START = {"nfl": "20250905", "nba": "20251021", "nhl": "20251007"}   # eval-data-v2.yml --window starts
 
 
 def _d(s: str) -> date:

@@ -1344,6 +1344,8 @@ class Engine:
             if self.decider.replaying:
                 self.decider.abort_replay()
 
+        forced = [False]   # [Nick, Nov 5] set by may_cut: this cut went through on a second "Go now" tap
+
         def done(out):
             if self._pending_decision is not d:
                 return
@@ -1375,7 +1377,7 @@ class Engine:
                 detail["trace"] = trace.build(d, before, target, out, cmd_ts, delays=self.delays,
                                               before_target=before_target, labels=self._trace_labels(before, d.target),
                                               from_replay=replay_exit is not None,
-                                              provenance={**prov, **out.provenance})
+                                              provenance={**prov, **out.provenance}, forced=forced[0])
                 trace.emit(self.trace_sink, detail["trace"])
             except Exception:   # a trace must never cost the switch its row
                 log.exception("switch trace failed")
@@ -1394,12 +1396,19 @@ class Engine:
                 self.toast(f"Couldn't switch: {out.detail[:80]}", "error")
             self.broadcast()
         self._pending_done = done
-        self.control.submit(target, back, done, may_cut=lambda: (
-                            not self.decider.user.paused and not self.cfg.get("mode.dry_run", True)
-                            and ((d.kind == "user" and (not self._hold_waits(d) or self.safe_to_leave(before, required_s=8.0)))
-                                 or (d.kind != "user" and self._entry_valid(d, target)
-                                 and (time.time() >= replay_exit if replay_exit is not None
-                                      else self.safe_to_leave(before, required_s=8.0))))),
+
+        def may_cut() -> bool:
+            if self.decider.user.paused or self.cfg.get("mode.dry_run", True):
+                return False
+            if d.kind == "user":
+                if self._forced_go(d):
+                    forced[0] = True   # the cut goes through on your second tap, not on a safe moment
+                    return True
+                forced[0] = False
+                return not self._hold_waits(d) or self.safe_to_leave(before, required_s=8.0)
+            return self._entry_valid(d, target) and (time.time() >= replay_exit if replay_exit is not None
+                                                     else self.safe_to_leave(before, required_s=8.0))
+        self.control.submit(target, back, done, may_cut=may_cut,
                             replay_id=d.replay.pid if d.replay else None,
                             entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0,
                             entry_cue=getattr(d, "cue", "") if d.action == "switch" else "")
@@ -1934,6 +1943,11 @@ class Engine:
             self.peek = None
             return False
         return True
+
+    def _forced_go(self, d: Decision) -> bool:
+        """Your second "Go now" tap on the held game: it cuts at once, even mid-play (Nick, Nov 5)."""
+        h = self.hold
+        return bool(h and d.kind == "user" and d.action == "switch" and d.target == h["game_id"] and h.get("force"))
 
     def _hold_waits(self, d: Decision) -> bool:
         """A switch to the held game honors the never-cut-mid-play rule unless you forced it."""
