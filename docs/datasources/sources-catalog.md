@@ -13,6 +13,8 @@ Rules that apply to every row: $0 only, never touch keys (Nick adds them as Kagg
 scrape a site whose terms forbid it, collect on Kaggle CPU (never the Mac), keep raw data in the
 **private** Kaggle dataset, and never commit raw rows to this public repo.
 
+**Update (Nick, Nov 4 11:10 PM ET):** for the Context & Hype engine, betting lines and line moves may be read as INPUTS to game importance (market expectation, upset odds), never to nudge betting and never shown ([plan](../plans/2026-11-05-context-hype-engine.md)). Everything else below still holds.
+
 **Betting data is a hidden check only** (overseer, Nov 4 2026). That covers closing lines, CFBD `/lines`, SBRO and Polymarket. Use it only to calibrate and evaluate our WP, crunch and stakes heads. It is never a model feature, a training label or a weight, and it is never shown on the TV or phone (playbook §5: no betting hooks).
 
 "Counted" = the new, de-duplicated values this source adds to the running total in
