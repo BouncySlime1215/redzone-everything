@@ -1,0 +1,39 @@
+{
+ "id": 50363991,
+ "cerebroId": "str",
+ "source": "espn",
+ "headline": "str",
+ "description": "str",
+ "lastModified": "str",
+ "originalPublishDate": "str",
+ "duration": 72,
+ "timeRestrictions": {
+  "embargoDate": "str",
+  "expirationDate": "str"
+ },
+ "deviceRestrictions": {
+  "devices": [
+   "settop"
+  ],
+  "type": "whitelist"
+ },
+ "geoRestrictions": {
+  "countries": [
+   "PR"
+  ],
+  "type": "whitelist"
+ },
+ "thumbnail": "str",
+ "ad": {
+  "bundle": "nba_top_plays",
+  "sport": "nba"
+ },
+ "tracking": {
+  "coverageType": "str",
+  "leagueName": "NBA",
+  "program": "str",
+  "sportName": "basketball",
+  "trackingId": "str",
+  "trackingName": "str"
+ }
+}

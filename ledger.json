@@ -1,0 +1,16 @@
+{
+ "updated": "2026-11-05T11:18Z",
+ "sources": {
+  "espn": {
+   "clips": 1660,
+   "linked": 0,
+   "tokens_new": 6640,
+   "tokens_derived": 3320,
+   "bytes": 62567,
+   "license": "ESPN public site API (game summary videos), personal non-commercial use; plan B personal use",
+   "tag": "personal-use, not for commercial release"
+  }
+ },
+ "total_new": 6640,
+ "total_derived": 3320
+}
