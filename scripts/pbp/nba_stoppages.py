@@ -15,7 +15,7 @@ review (challenge timeout or instant replay), timeout_long (1st and 2nd timeout 
 timeout_short (3rd and later), free_throws, foul, violation, turnover, other. Cells: season x type x period group
 (q1-q4, ot) x clock bucket (12-7, 7-3, 3-2, 2-0 min left) with n, q05, q10, q25, q50, q75, q90 seconds.
 network: "national" / "local" per game from crew B's schedule (--tv nba-national-tv.csv, joined on nba_game_id;
-national = ESPN/ABC/TNT/NBA TV/Prime/NBC/Peacock), "unknown" when the game has no broadcast row.
+national = ESPN/ABC/TNT/NBA TV/Prime/NBC/Peacock), "unknown" only when the game is missing from the list.
 Source: shufinskiy/nba_data cdnnba_<y>.tar.xz (NBA.com ToS private non-commercial; plan B personal use). Numbers
 only, no rows are copied. Season keys are start years; 2025 (2025-26) is kept apart and every game on or after the
 NBA locked/scorecard window (EVAL_FIRST_NIGHT) is excluded.
@@ -119,12 +119,12 @@ def load_season(y: int, raw: Path | None):
 
 
 def load_tv(path: Path | None) -> dict:
-    """crew B's nba-national-tv.csv -> {10-digit nba game id: "national" | "local"} (broadcast_known rows only)."""
+    """crew B's nba-national-tv.csv -> {10-digit nba game id: "national" | "local"}. The national list is complete
+    every season (crew B), so national=False is local even where ESPN lost the local broadcaster (2021-23)."""
     if not path:
         return {}
     import pandas as pd
-    d = pd.read_csv(path, dtype={"nba_game_id": str})
-    d = d[d.broadcast_known.astype(str).str.lower() == "true"].dropna(subset=["nba_game_id"])
+    d = pd.read_csv(path, dtype={"nba_game_id": str}).dropna(subset=["nba_game_id"])
     return {g.zfill(10): ("national" if str(n).lower() == "true" else "local")
             for g, n in zip(d.nba_game_id, d.national)}
 
