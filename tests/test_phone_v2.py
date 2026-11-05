@@ -27,7 +27,7 @@ def _switch(engine, to, reason="Crunch time: UNC down 2, red zone"):
 
 def test_off_by_default_and_every_route_refuses(client, engine):
     assert client.get("/api/v2/status").json() == {"enabled": False, "commit": False, "orient": False, "worth": False,
-                                                     "follow": False}
+                                                     "follow": False, "last_night": False}
     assert client.get("/api/v2/worth").status_code == 404 and client.post("/api/v2/worth", json={"rating": 4}).status_code == 404
     assert client.get("/api/v2/switches").status_code == 404
     assert client.post("/api/v2/vote", json={"key": "x", "vote": 1}).status_code == 404
@@ -35,6 +35,7 @@ def test_off_by_default_and_every_route_refuses(client, engine):
     assert client.get("/api/v2/priority").status_code == 404
     assert client.post("/api/v2/priority", json={"bets_weight": 2}).status_code == 404
     assert client.get("/api/v2/follow").status_code == 404
+    assert client.get("/api/v2/lastnight").status_code == 404
 
 
 def test_chips_read_the_reason_text():
@@ -595,7 +596,7 @@ def test_why_tag_only_over_the_threshold():
 def test_status_says_whether_commit_controls_are_on(client, engine):
     _on(engine)
     assert client.get("/api/v2/status").json() == {"enabled": True, "commit": False, "orient": False, "worth": False,
-                                                     "follow": False}   # phone.commit default off
+                                                     "follow": False, "last_night": False}   # phone.commit default off
     engine.cfg.update({"phone": {"commit": True}})
     assert client.get("/api/v2/status").json()["commit"] is True
 
@@ -789,3 +790,56 @@ def test_follow_route_needs_both_flags_and_saves_to_the_prefs_key(client, engine
     assert client.post("/api/v2/follow", json={"players": []}).json()["message"] == "Cleared"
     assert engine.cfg.get("noggin.priority.prefs.bets_weight") == 1.0       # the other prefs are untouched
 
+
+
+def test_release_that_ran_reads_deploys_and_rollbacks():
+    names = {"e8bbf8e": "RC5.1", "cf480a4": "RC6"}
+    st = {"good": {"commit": "e8bbf8e0000"},
+          "history": [{"commit": "e8bbf8e0000", "from": "4602c630000", "result": "deployed", "at": 50.0},
+                      {"commit": "cf480a40000", "from": "e8bbf8e0000", "result": "rolled_back", "at": 150.0}]}
+    r = phone_v2.release_that_ran(st, 100.0, 200.0, names)
+    assert r["commit"] == "e8bbf8e" and r["name"] == "RC5.1"                 # RC6 rolled back: RC5.1 ran
+    assert r["changes"] == [{"result": "rolled_back", "commit": "cf480a4", "name": "RC6", "from": "e8bbf8e",
+                             "from_name": "RC5.1", "at": 150.0}]
+    assert phone_v2.release_that_ran(st, 0.0, 100.0, names)["name"] == "RC5.1"   # before the rollback
+    assert phone_v2.release_that_ran(st, 0.0, 100.0, names)["changes"][0]["result"] == "deployed"
+    assert phone_v2.release_that_ran({"good": {"commit": "abcdef123"}}, 0, 1, {}) == \
+        {"commit": "abcdef1", "name": None, "changes": []}                   # no history: the last good commit
+    assert phone_v2.release_that_ran({}, 0, 1, names) is None and phone_v2.release_that_ran(None, 0, 1, {}) is None
+    failed = {"history": [{"commit": "cf480a40000", "result": "rollback_failed", "at": 150.0}]}
+    assert phone_v2.release_that_ran(failed, 100.0, 200.0, names)["commit"] is None   # unknown, never guessed
+
+
+def test_last_night_card_pending_is_never_zero():
+    c = phone_v2.last_night_card("2026-11-04", None, None, None, None)
+    assert c["mid_play_entries"] is None and c["dead_air_pct"] is None and c["rule1"] is None
+    assert c["measured"] is False and c["worth"] is None and c["release"] is None
+    c = phone_v2.last_night_card("2026-11-04", {"dead_air_pct": 3.4, "high_leverage_leaves": 0},
+                                 {"entries_mid_play": 1}, {"rating": 4}, {"commit": "e8bbf8e"})
+    assert c["mid_play_entries"] == 1.0 and c["rule1"] is False and c["worth"] == 4 and c["dead_air_pct"] == 3.4
+    assert phone_v2.last_night_card("n", {}, {}, {"rating": 9}, None)["worth"] is None
+
+
+def test_lastnight_route_reads_the_files(client, engine, tmp_path, monkeypatch):
+    from datetime import timedelta
+    _on(engine)
+    assert client.get("/api/v2/lastnight").status_code == 404                  # phone.last_night off
+    engine.cfg.update({"phone": {"v2": True, "last_night": True}})
+    assert client.get("/api/v2/status").json()["last_night"] is True
+    night = (phone_v2.night_of(time.time()) - timedelta(days=1)).isoformat()
+    rep = tmp_path / "reports"
+    rep.mkdir()
+    (rep / f"{night}.json").write_text(json.dumps({"mid_play_entries": 0, "high_leverage_leaves": 0, "dead_air_pct": 2.5}))
+    (tmp_path / "worth.jsonl").write_text(json.dumps({"night": night, "rating": 5}) + "\n")
+    t0, _ = phone_v2.night_window(phone_v2.date.fromisoformat(night))
+    (tmp_path / "state.json").write_text(json.dumps({"history": [{"commit": "9322c28ff", "result": "deployed", "at": t0 + 60}]}))
+    (tmp_path / "releases.json").write_text(json.dumps({"9322c28": "RC6.1"}))
+    monkeypatch.setattr(phone_v2, "REPORTS", (rep,))
+    monkeypatch.setattr(phone_v2, "LIVE_NIGHTS", tmp_path / "none")
+    monkeypatch.setattr(phone_v2, "WORTH_LOG", tmp_path / "worth.jsonl")
+    monkeypatch.setattr(phone_v2, "DEPLOY_STATE", tmp_path / "state.json")
+    monkeypatch.setattr(phone_v2, "RELEASE_NAMES", tmp_path / "releases.json")
+    r = client.get("/api/v2/lastnight").json()
+    assert r["night"] == night and r["worth"] == 5 and r["mid_play_entries"] == 0.0 and r["rule1"] is True
+    assert r["release"]["name"] == "RC6.1" and r["release"]["changes"][0]["result"] == "deployed"
+    assert isinstance(r["show"], bool)

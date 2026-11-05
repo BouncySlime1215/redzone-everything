@@ -20,6 +20,7 @@ There's a mock preview at `/static/index.html?mock&v2` (data in `rz-mock.js`). O
 | `GET/POST /api/v2/worth` | EXP-040 "Was tonight worth it?" (1-5) on the Slate complete card, plus the weekly agency/regret probes. Own flag `phone.worth`; works with `phone.v2` off | `data/worth.jsonl` (evaluation only, graded by `redzone/lab/worth.py`) |
 | `GET /api/v2/orient?game=` | EXP-038 orientation beat after a switch: `score`, `clock`, one `fact`, the late/close `context`. Flag `phone.orient` (off) on top of `phone.v2` | `GameState` score, clock, situation |
 | `GET/POST /api/v2/follow` | EXP-043 followed players: the names box in Your priorities and a quiet "Following" line on Now (which live games they're in). Flag `phone.follow` (off) on top of `phone.v2` | config `noggin.priority.prefs.followed_players`; `GameState.spotlight`, `leaders`, `player_flags` |
+| `GET /api/v2/lastnight` | Morning "Last night" card on Now (6 AM to noon ET, "Got it" hides it on that phone): worth it, mid-play entries, high-leverage leaves, dead air, which release ran and any deploy / rollback that night. Flag `phone.last_night` (off) on top of `phone.v2` | `data/reports/<night>.json` or `docs/nights/<night>.json`, `data/live_nights/<night>/summary.json`, `data/worth.jsonl`, `data/deploy/state.json` (`history`, `good`), `docs/releases.json` (RC names) |
 | `GET /api/v2/trend?split=` | How close to perfect | `docs/northstar-history.jsonl` |
 | `GET /api/v2/scorecard?n=` | Night scorecard: release-gate lines per night | `data/reports/<night>.json` or `docs/nights/<night>.json` (`mid_play_entries`/`landed_mid_play`, `high_leverage_leaves`, `plays_missed_entry`, `dead_air_pct`), `data/live_nights/<night>/summary.json`. Missing keys show as pending |
 | `GET /api/v2/capture?day=`, `/capture/report` | Live night: did it become gold data | `data/live_nights/<night>/summary.json`, `trace.provenance` coverage, `control.held`, `data/buffer.jsonl`, the night report `.md` |
@@ -85,3 +86,11 @@ This is the lane 5 half of EXP-043. Lane 1 owns the weight (how much a followed 
 - **Ship gates (tests):** names are cleaned (trimmed, deduped, letters only, at most 12); a full name never matches a namesake ("Keenan Allen" is not Josh Allen, "K. Jokic" is not Nikola Jokic); finished games are never listed; both routes 404 with either flag off.
 - **Guardrail:** the manual-switch share (`redzone/lab/also_close.py` `manual_share`, the night as the unit) must not rise on `phone.follow` nights. A rise would mean the line pulls switches instead of informing. Same bar as EXP-039: at least 6 nights per side, FAIL if the 95% bootstrap lower bound of share(on) − share(off) is > 0.
 - **Outcome line:** Right game agreement (low priority) belongs to lane 1's weight, graded on the locked and dev nights. Group mode is graded separately from the solo gates. The display makes no outcome claim of its own.
+
+### Morning "Last night" card (phone)
+
+Cycle 12 (#236) item 3. It is display only and makes no outcome claim, so it has ship gates instead of a bar. Set on Nov 5, 2026.
+
+- **What it is (`phone.last_night`, off):** from 6 AM ET for `phone.last_night_hours` (6) hours, a card on Now with last night's worth-it rating (EXP-040, evaluation only), mid-play entries, high-leverage leaves, dead air %, the release that ran (by RC name from `docs/releases.json`, else the commit), and any deploy or rollback inside the night ("RC6 rolled back to RC5.1 at 9:14 PM").
+- **Ship gates (tests):** a line nobody measured shows "pending", never 0; a failed rollback shows the release as unknown rather than a guess; the route 404s with either flag off.
+- **Upkeep:** lane 4 adds a line to `docs/releases.json` when it cuts an RC.

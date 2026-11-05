@@ -321,7 +321,9 @@ const V2_RULES = [["yours", "Your team", /your team|UNC|WSH|Commanders|Capitals|
   ["redzone", "Red zone", /red ?zone|goal[- ]to[- ]go/i], ["score", "Score", /touchdown|goal|scor/i], ["break", "Break elsewhere", /break|timeout|commercial/i],
   ["replay", "Catch-up", /replay|catch[- ]up|missed/i], ["manual", "You picked", /you (picked|asked)|manual/i]];
 function mockV2(path, b) {
-  if (path === "/api/v2/status") return { enabled: Q.has("v2"), commit: Q.has("v2"), worth: Q.has("v2"), orient: Q.has("v2"), follow: Q.has("v2") };
+  if (path === "/api/v2/status") return { enabled: Q.has("v2"), commit: Q.has("v2"), worth: Q.has("v2"), orient: Q.has("v2"), follow: Q.has("v2"), last_night: Q.has("v2") };
+  if (path === "/api/v2/lastnight") return { enabled: true, show: true, night: "2026-11-04", worth: 4, mid_play_entries: 0, high_leverage_leaves: 0, dead_air_pct: 3.4, rule1: true, measured: true,
+    release: { commit: "e8bbf8e", name: "RC5.1", changes: [{ result: "rolled_back", commit: "cf480a4", name: "RC6", from: "e8bbf8e", from_name: "RC5.1", at: Date.now() / 1000 - 50000 }] } };
   if (path === "/api/v2/follow") {   // EXP-043 preview
     if (Object.keys(b).length) {
       const players = [...new Set(String(b.players || "").split(",").map((x) => x.trim()).filter((x) => x.length > 1))].slice(0, 12);

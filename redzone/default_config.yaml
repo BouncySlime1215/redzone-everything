@@ -632,6 +632,8 @@ phone:                     # the phone page (redzone/web)
   worth: false             # [EXP-040] one-tap end-of-night "worth it?" (1-5) on the Slate complete card, works with v2 off. EVALUATION ONLY, never a training label
   worth_probe_days: 7      # [EXP-040] the agency / regret probes show at most once per this many nights
   follow: false            # [EXP-043] "Following" on the phone: edit followed players and see which live games they are in (display only); OFF until EXP-043 is graded
+  last_night: false        # morning "Last night" card on Now: worth it, mid-play entries, high-leverage leaves, dead air, which release ran (display only)
+  last_night_hours: 6      # ...shown for this many hours after the night ends (6 AM ET), so 6 AM to noon
   why_tag_min: 70          # [EXP-035] "Why we're here" shows only at or over this 0-100 value; lab/decision_records grades the same number
 warmup:                    # [warmup.pregame] before the night's first game (redzone/plan.py Tonight._warmup)
   pregame: false           # put the likeliest first game on the HIDDEN stick before the first start (never the one on screen)
