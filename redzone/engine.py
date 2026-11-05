@@ -1899,7 +1899,7 @@ class Engine:
         The planner leaves the hidden stick alone for PEEK_HOLD_S. Silent: the message is empty."""
         g = self.merger.games.get(gid or "")
         if not gid or gid == self.decider.current or not for_league(
-                self.cfg, "two_stick.pretune_on_open", g.league.value if g is not None else None, False):
+                self.cfg, "two_stick.pretune_on_open", getattr(getattr(g, "league", None), "value", None), False):
             return True, ""
         target = getattr(self.where.get(gid), "target", None)
         if g is None or g.phase != Phase.LIVE or not target or self.decider.user.paused:
