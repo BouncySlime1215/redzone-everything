@@ -538,6 +538,10 @@ def main() -> None:
     if a.prepare_only:
         return
     info = {k: v for k, v in info.items() if not k.startswith("_")}
+    if os.environ.get("RZ_JOBS"):                 # [Colab] e.g. "watchdog": train only these jobs this run
+        keep = set(os.environ["RZ_JOBS"].split(","))
+        info = {k: v for k, v in info.items() if k in keep}
+        print("jobs this run:", sorted(info), flush=True)
     base_dir(out)
     import threading
 

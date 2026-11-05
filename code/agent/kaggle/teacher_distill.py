@@ -145,7 +145,7 @@ STUDENTS_ONLY = MODE == "students"
 if STUDENTS_ONLY:
     from agent.kaggle.run_teacher import load_done
     answers = load_done(PREV)                     # every attached teacher_out, one answer per id
-    if not answers:
+    if not answers and os.environ.get("RZ_JOBS", "") != "watchdog":   # the watchdog never reads teacher answers
         raise SystemExit('MODE="students" needs the previous version\'s output (with teacher_out.jsonl) attached')
     with open(os.path.join(WORK, "teacher_out.jsonl"), "w") as f:
         for v in answers.values():
@@ -365,7 +365,8 @@ try:
         except (OSError, ValueError):
             cov[job] = None
     g["coverage"] = cov
-    g["complete"] = all(v and v.get("complete") for v in cov.values())
+    ran = [j for j in os.environ.get("RZ_JOBS", "game-reasoner,watchdog").split(",") if j in cov]
+    g["complete"] = all(cov[j] and cov[j].get("complete") for j in ran)
     json.dump(g, open(os.path.join(KW, "grades.json"), "w"), indent=1)
     print("grades.json:", open(os.path.join(KW, "grades.json")).read())
 except Exception as e:  # noqa: BLE001 - the summary never fails the round
