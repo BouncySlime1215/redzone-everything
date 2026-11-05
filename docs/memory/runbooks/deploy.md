@@ -9,4 +9,6 @@ Full detail: the docstring of `scripts/deploy.py` and [tonight-checklist.md](../
 5. First deploy on a Mac without the script: use the bootstrap one-liner in the checklist.
 6. Log: `data/deploy/deploy.jsonl`; status: `.venv/bin/python scripts/deploy.py status`.
 
+**Sync test scripts (`docs/sync/yttv_tests`).** They read the sticks from `RZ_STICKS=<hdmi1 host:port>,<hdmi2 host:port>`; without it they fall back to placeholders that reach nothing. On the Mac, set it in the shell from the Mac's own stick config before running them (`export RZ_STICKS=...`). Never commit the addresses or put them in a tracked file: the repo is public. Run them only when Nick isn't watching.
+
 Never deploy from `main` or an unmerged branch. Untracked local data never blocks a deploy (#34).
