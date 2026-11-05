@@ -1,0 +1,48 @@
+# Data Division G (attention) on a free GitHub runner: never the Mac, never GPU quota, counts only.
+# Push attention-factory/<src>-<anything> (src = bsky | twitch) to run that collector for N minutes
+# (scripts/attention_minutes.txt on the run branch, else 345 = one evening slate). Outputs (per-minute
+# count rows, jsonl.gz, + ledger.json) are pushed to attention-out/<src>, read back first so runs append.
+# Labels/eval only: never a same-moment brain input. Personal-use, not for commercial release.
+name: attention-factory
+on:
+  push:
+    branches: ["attention-factory/**"]
+concurrency:
+  group: attention-${{ github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: source + minutes
+        run: |
+          S="${GITHUB_REF_NAME#attention-factory/}"; S="${S%%-*}"
+          echo "SRC=$S" >> "$GITHUB_ENV"
+          M=345; [ -f scripts/attention_minutes.txt ] && M="$(head -1 scripts/attention_minutes.txt)"
+          echo "MINUTES=$M" >> "$GITHUB_ENV"; echo "src=$S minutes=$M"
+      - run: pip install -q websockets==14.1
+      - name: restore previous outputs (incremental)
+        run: |
+          mkdir -p out
+          git fetch --depth 1 origin "attention-out/$SRC" 2>/dev/null && git --work-tree=out checkout FETCH_HEAD -- . 2>/dev/null || true
+          git reset -q; ls -laR out | head -40
+      - name: pull
+        env:
+          TWITCH_CLIENT_ID: "${{ secrets.TWITCH_CLIENT_ID }}"
+          TWITCH_CLIENT_SECRET: "${{ secrets.TWITCH_CLIENT_SECRET }}"
+        run: python scripts/attention_pull.py "$SRC" --out out --minutes "$MINUTES"
+      - name: ledger
+        if: always()
+        run: python scripts/attention_pull.py ledger --out out
+      - name: push outputs to attention-out/<src>
+        if: always()
+        run: |
+          cd out && rm -rf .git && git init -q -b "attention-out/$SRC" && git add -A
+          git -c user.name=attention-factory -c user.email=attention-factory@users.noreply.github.com \
+            commit -qm "attention-factory $SRC outputs from $GITHUB_SHA (run $GITHUB_RUN_ID); personal-use, not for commercial release"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY" "HEAD:refs/heads/attention-out/$SRC"
