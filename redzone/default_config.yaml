@@ -256,6 +256,10 @@ decider:
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
   redzone_score: 45        # RedZone vs a game (0-100): stay on it unless a game beats this; any break goes there
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
+    by_value: false        # [TREE-6 Mac half] crunch vs crunch by value (watch value, else score) with priors:
+    value_league_prior: 5  # ...points per league-order step (NFL = CFB > NBA > NHL, MLB)
+    value_mine_prior: 30   # ...points for your team / bet
+    value_margin: 10       # ...jump only when the other crunch is worth this much more
     hold_personal: 5       # stay through every stoppage of a crunch game with this much personal boost (your team, bet)
     hold_neutral_breaks: [two_minute_warning]  # ...and of any crunch game through these (the 2:00 warning is the way in)
     personal_lead: 5       # your team / bet wins an overlap when its boost is this much bigger

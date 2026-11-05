@@ -396,6 +396,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   time; **RedZone never adds betting features** (pre-game lines only as a hidden data prior); no artificial
   suspense, autoplay or pull-back nudges, streaks or viewer sensors. Nick's taps and ratings stay evaluation-only
   (self-taught rule). Baseball Savant skipped for now (terms unclear; MLB last and out of season). RC6 = #132 + #173.
+- **2026-11-04 (lane 2, EXP-018): `decider.crunch.by_value` ships OFF** (with `value_league_prior` 5, `value_mine_prior`
+  30, `value_margin` 10). Pre-registered bar failed with the score as the value: dev NFL crunch live −1.0/−2.1/−1.0,
+  NHL crunch-in-replay 0/8/0 → 0/11/5. Retried once lane 1's watch value is wired in.
 - 2026-11-04 (Nick 7:21 PM ET, via the overseer): **off-policy exploration approved with limits** (EXP-005). New flag
   `decider.explore.enabled`, off by default, and not started until Friday's v3 locked set lands. It may only pick
   between options that are both already safe (dead ball, no mid-play) and within a small value margin, on at most 5% of
