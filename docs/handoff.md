@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-EXP-1402 commentary DONE 6:31 AM (41.9 CU): 66,048 causal per-play answers; importance AUC NBA 0.955 / CBB 0.957 (SUSPECT: same clock-label leak pattern), NFL 0.581, CFB 0.588, MLB 0.585, NHL 0.539. Report a5e37664; output handed privately to crew E; A100 freed.
-Running: EXP-107 ladder (recipe E) A100; EXP-109b seed check launched ~6:50 AM. Usage 61%.
+EXP-107 ladder (recipe E) A100 57 min in, ETA ~10:45 AM. EXP-109b seed check got an L4 (no A100 free); A-vs-E within-run comparison still fair; 27 min in.
+Nick is up (morning summary sent). Usage 61%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
