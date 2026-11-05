@@ -1608,7 +1608,7 @@ class Controller:
             self._seek_anchor.pop(stick.host, None)
         self._last_seek = None
         if target and self.cfg.get("replay.seek_to.enabled", False):
-            from redzone.seek_to import describe, seek_to
+            from redzone.tuners.seek_to import describe, seek_to
             t0 = time.monotonic()
             res = await seek_to(stick, back_s, app=target.split(":", 1)[0], cfg=self.cfg,
                                 pkg=self._package(stick, target))

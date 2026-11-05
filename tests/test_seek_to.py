@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from redzone import seek_to as st
+from redzone.tuners import seek_to as st
 from redzone.tuners.adb import RunResult
 
 PKG = "com.amazon.firetv.youtube.tv"

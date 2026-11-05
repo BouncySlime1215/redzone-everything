@@ -548,6 +548,7 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
     tolerance_s: 1.0       # landing error accepted; short by more than this is topped up with presses
     dex_path: tools/rzseek/rzseek.dex   # built on the Mac with tools/rzseek/build.sh, pushed once per stick
     prime_key_step_s: 10   # the key fallback on Prime: a REWIND press steps 10 s (docs/timing.md)...
+    poll_s: 0.05           # how often the stick's session is re-read while a seek settles
     prime_key_swallowed: 0 # ...and none is swallowed (YouTube TV uses seek_step_s / seek_wake_presses above)
   redzone_way: false       # catch-up the RedZone way (Nick, Nov 4; OFF until its gate passes): lull, "meanwhile",
                            # collision and end-of-night montage triggers (redzone/decider/decider.py)

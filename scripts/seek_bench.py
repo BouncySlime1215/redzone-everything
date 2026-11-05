@@ -40,7 +40,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from redzone import seek_to as st  # noqa: E402
+from redzone.tuners import seek_to as st  # noqa: E402
 
 STATE_URL = "http://localhost:8778/api/state"
 JUMP_S = 2.0
