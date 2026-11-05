@@ -71,8 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-NICK ORDER: continuous Watch Value loop (what game, when, interleave): more data, more training, no stopping at cycle end. Sent to coordinator; first deliverable is why closest-game beats our NBA models. 8 threads, 84%/88% limits and the locked-set rule unchanged.
-RC6.3 is staged and needs Nick's yes or hold on the card in the 'Harden the app and integration' thread before the 5-6:30 PM deploy.
+Nick approved RC6.3 (88a3b0b) at 3:55 PM. Lane 4 cuts integration/release; overseer dry-runs, then deploys in the 5-6:30 PM window once Nick confirms the TV is off, then turns on fast_feeds shadow polling.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
