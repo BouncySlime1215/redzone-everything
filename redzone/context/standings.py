@@ -49,6 +49,8 @@ class LeagueConfig:
     asof_lead: pd.Timedelta = field(default_factory=lambda: pd.Timedelta(minutes=30))
     snapshot: str = "kickoff"        # "kickoff": asof = kickoff - lead; "day": asof = the game's day start (see day_start)
     day_start_hour_utc: int = 9      # for snapshot == "day": asof = game date at this UTC hour
+    # extra finish-line targets per season, e.g. NBA {"top10": (0, 10)} -> top10_odds, top10_odds_swing facts
+    extra_targets: Callable[[int], dict[str, tuple[int, int]]] | None = None
 
 
 # --------------------------------------------------------------------------------------------- Elo
@@ -175,6 +177,11 @@ def compute_season(games: pd.DataFrame, cfg: LeagueConfig, elo: Elo, *, now_utc:
     reg = g[g["game_type"] == "REG"]
     teams = sorted(set(reg["home"]) | set(reg["away"]))
     st = Structure.build(cfg, season, teams)
+    extra = {}
+    for name, (pd_, wc_) in (cfg.extra_targets(season) if cfg.extra_targets else {}).items():
+        xs = Structure.build(cfg, season, teams)
+        xs.per_div, xs.wildcards = pd_, wc_
+        extra[name] = xs
     tix = {t: i for i, t in enumerate(st.teams)}
     lic = cfg.license
 
@@ -270,17 +277,27 @@ def compute_season(games: pd.DataFrame, cfg: LeagueConfig, elo: Elo, *, now_utc:
             Hw = base.copy(); Hw[:, h] += 1
             Aw = base.copy(); Aw[:, a] += 1
             mh, ma = st.made(Hw), st.made(Aw)
-            odds = {}
+            odds, po = {}, {}
             for team, i, pw, mw, ml in ((home, h, p_home, mh, ma), (away, a, 1 - p_home, ma, mh)):
                 ow, ol = float(mw[:, i].mean()), float(ml[:, i].mean())
                 odds[team] = abs(ow - ol)
                 F(team, "wins", W[i]); F(team, "losses", L[i])
                 F(team, "win_pct", None if np.isnan(wpct[i]) else round(float(wpct[i]), 4))
                 F(team, "div_rank", div_rank[i]); F(team, "games_back", gb[i])
-                F(team, "playoff_odds", round(pw * ow + (1 - pw) * ol, 4))
+                po[team] = pw * ow + (1 - pw) * ol
+                F(team, "playoff_odds", round(po[team], 4))
                 F(team, "playoff_odds_if_win", round(ow, 4)); F(team, "playoff_odds_if_loss", round(ol, 4))
                 F(team, "playoff_odds_swing", round(odds[team], 4))
                 F(team, "clinch_status", status[i])
+            for name, xs in extra.items():
+                xh, xa = xs.made(Hw), xs.made(Aw)
+                for team, i, pw, mw, ml in ((home, h, p_home, xh, xa), (away, a, 1 - p_home, xa, xh)):
+                    ow, ol = float(mw[:, i].mean()), float(ml[:, i].mean())
+                    xo = pw * ow + (1 - pw) * ol
+                    F(team, f"{name}_odds", round(xo, 4))
+                    if name == "top10":   # P(seed 7-10), the play-in band
+                        F(team, "playin_odds", round(max(xo - po[team], 0.0), 4))
+                    F(team, f"{name}_odds_swing", round(abs(ow - ol), 4))
             F(None, "stakes_swing_max", round(max(odds.values()), 4))
             F(None, "stakes_swing_sum", round(sum(odds.values()), 4))
     # apply the rest of the season to Elo so it carries over
@@ -372,4 +389,40 @@ NFL = LeagueConfig("nfl", nfl_divisions, nfl_playoff, NFL_LICENSE, elo_k=20.0, e
                    sims=1000, snapshot="kickoff")
 MLB = LeagueConfig("mlb", mlb_divisions, mlb_playoff, MLB_LICENSE, elo_k=4.0, elo_hfa=24.0, elo_mov=False,
                    sims=500, snapshot="day")
-STAKES_LEAGUES = {"nfl": NFL, "mlb": MLB}
+
+# NBA (ESPN / hoopR abbreviations; season = start year, 2004 = 2004-05). Six divisions unchanged since 2004-05;
+# relocations keep the slot: NJ -> BKN (2012), SEA -> OKC (2008), New Orleans/Oklahoma City Hornets = NO.
+_NBA_ALIAS = {"NJ": "BKN", "SEA": "OKC"}
+_NBA = _divmap({
+    ("East", "Atlantic"): ["BOS", "BKN", "NY", "PHI", "TOR"], ("East", "Central"): ["CHI", "CLE", "DET", "IND", "MIL"],
+    ("East", "Southeast"): ["ATL", "CHA", "MIA", "ORL", "WSH"],
+    ("West", "Northwest"): ["DEN", "MIN", "OKC", "POR", "UTAH"], ("West", "Pacific"): ["GS", "LAC", "LAL", "PHX", "SAC"],
+    ("West", "Southwest"): ["DAL", "HOU", "MEM", "NO", "SA"],
+}, _NBA_ALIAS)
+NBA_TEAMS = frozenset(_NBA)
+
+
+def nba_divisions(season: int) -> dict[str, tuple[str, str]]:
+    return _NBA
+
+
+def nba_playoff(season: int) -> tuple[int, int]:
+    """`playoff_odds` target. Since 2020-21 = a top-6 seed (direct playoff spot; 7-10 go to the play-in).
+    2015-16..2019-20: top 8 per conference. Through 2014-15: division winners were guaranteed a spot (+7)."""
+    if season >= 2020:
+        return 0, 6
+    return (1, 7) if season <= 2014 else (0, 8)
+
+
+def nba_extra(season: int) -> dict[str, tuple[int, int]]:
+    """Play-in era: top10_odds = P(top-10 seed: playoffs or play-in). playin_odds = top10 - playoff (derived later)."""
+    return {"top10": (0, 10)} if season >= 2020 else {}
+
+
+NBA_LICENSE = ("derived from sportsdataverse hoopR NBA schedules (MIT; ESPN-derived data); "
+               "personal-use, not for commercial release")
+# 538-style NBA Elo: K 20 with a MOV multiplier ~1 -> K 10 with this (log) multiplier; home edge ~80 (recent years
+# smaller than 538's 100); regress 1/4 to the mean each season.
+NBA = LeagueConfig("nba", nba_divisions, nba_playoff, NBA_LICENSE, elo_k=10.0, elo_hfa=80.0, elo_regress=0.25,
+                   elo_mov=True, sims=400, snapshot="kickoff", extra_targets=nba_extra)
+STAKES_LEAGUES = {"nfl": NFL, "mlb": MLB, "nba": NBA}

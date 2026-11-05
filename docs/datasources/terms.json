@@ -32,6 +32,7 @@
     "nbadb": "restrictive",
     "nba_l2m": "open",
     "nba_injury_archive": "restrictive",
+    "nba_ref_assignments": "restrictive",
     "cbbdata": "restrictive",
     "march_mania": "restrictive",
     "ncaahoopr": "restrictive",
