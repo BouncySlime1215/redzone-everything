@@ -7,7 +7,7 @@ What is checked, per the T6 order:
   3. Clock alignment: feed wallclocks parse to the right UTC epoch whatever the machine's time zone.
   4. Failover: when the fast feed goes dark the old feed (ESPN) owns the game again, and comes back after.
 
-Tests marked xfail are FINDINGS against the current code (reported to the builders); each says what to fix.
+Findings T6-1..T6-5 were fixed in #337; their tests now run as plain regression tests.
 They are non-strict so integration/next stays green; drop the marker when the fix lands.
 """
 from __future__ import annotations
@@ -29,6 +29,7 @@ NBA_PBP = leagues.NBA_PBP.format(id="0022600123")
 NBA_BOARD = leagues.NBA_SCOREBOARD
 NHL_PBP = leagues.NHL_PBP.format(id="2026020229")
 MLB_LIVE = leagues.MLB_LIVE.format(pk="776655")
+OTHER_FEED = "https://data.example.org/feed.json"
 ESPN_SUMMARY = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401"
 
 
@@ -131,10 +132,6 @@ async def test_min_interval_one_second_poll_matches_the_order():
     await f.close()
 
 
-@pytest.mark.xfail(reason="FINDING T6-1: concurrent get_json on one URL (asyncio.gather over games / sticks) "
-                          "waits on the per-URL lock, then fetches again without re-checking min_interval: "
-                          "N callers = N requests in the same instant. Re-check the cache inside the lock.",
-                   strict=False)
 async def test_concurrent_callers_for_one_url_make_one_request():
     clk, srv = Clock(), Server()
 
@@ -168,21 +165,24 @@ async def test_5xx_backs_off_and_sends_nothing_while_backing_off():
 
 
 async def test_backoff_doubles_and_resets_on_a_304():
+    # a non-live host: live feeds (ESPN, nba_cdn, NHL, MLB) cap an outage at 10 s (T6-3), so the doubling past 10 s
+    # is checked on an ordinary host
+    url = OTHER_FEED
     clk, srv = Clock(), Server()
     f = fetcher(srv, clk)
-    await f.get_json(NHL_PBP)
+    await f.get_json(url)
     srv.status = 503
     waits = []
     for _ in range(4):
         start = clk.t
-        await f.get_json(NHL_PBP)
-        while f.backing_off(NHL_PBP):
+        await f.get_json(url)
+        while f.backing_off(url):
             clk.t += 0.5
         waits.append(round(clk.t - start))
     assert waits == [5, 10, 20, 40]
     srv.status = None
-    await f.get_json(NHL_PBP)                        # 304 (same ETag) clears the backoff
-    assert not f.backing_off(NHL_PBP)
+    await f.get_json(url)                        # 304 (same ETag) clears the backoff
+    assert not f.backing_off(url)
     await f.close()
 
 
@@ -210,11 +210,6 @@ async def test_a_burst_of_failures_counts_once():
     await f.close()
 
 
-@pytest.mark.xfail(reason="FINDING T6-2: backoff is per HOST. The NBA scoreboard and every game's playbyplay "
-                          "share one S3 host, and S3 answers 403 for a key that doesn't exist yet (pbp before "
-                          "tip, or the unverified playbyplay_{id} path). One 403 then blinds the NBA scoreboard "
-                          "for 60 s+ (doubling to 10 min). Back off per URL for 403/404-style misses, or keep "
-                          "the scoreboard out of a pbp miss.", strict=False)
 async def test_a_missing_pbp_key_does_not_blind_the_nba_scoreboard():
     def handler(req: httpx.Request) -> httpx.Response:
         if "playbyplay" in str(req.url):
@@ -229,10 +224,6 @@ async def test_a_missing_pbp_key_does_not_blind_the_nba_scoreboard():
     await f.close()
 
 
-@pytest.mark.xfail(reason="FINDING T6-3: LIVE_HOSTS is only espn.com, so a 5xx blip on a fast feed made "
-                          "primary (nba_cdn S3 mirror, api-web.nhle.com, statsapi.mlb.com) doubles up to "
-                          "MAX_BACKOFF_S = 600 s. As a primary feed it should get the live cap (10 s) like ESPN.",
-                   strict=False)
 @pytest.mark.parametrize("url", [NBA_PBP, NHL_PBP, MLB_LIVE])
 async def test_a_fast_primary_feed_is_retried_within_the_live_cap(url):
     clk, srv = Clock(), Server()
@@ -360,9 +351,6 @@ def test_nba_time_actual_parses_to_utc_epoch():
     assert leagues._iso_ts("") is None and leagues._iso_ts("garbage") is None and leagues._iso_ts(None) is None
 
 
-@pytest.mark.xfail(reason="FINDING T6-4: _iso_ts on a stamp with no offset ('2026-11-06T00:10:00') returns "
-                          "LOCAL time, so on the Mac (ET) a naive feed stamp is off by 4-5 h. Feed stamps are "
-                          "UTC: treat a naive one as UTC (or reject it).", strict=False)
 def test_a_naive_stamp_is_read_as_utc_not_mac_local_time(monkeypatch):
     if not hasattr(time, "tzset"):
         pytest.skip("needs tzset")
@@ -463,11 +451,6 @@ async def test_a_dark_fast_feed_does_not_make_the_game_stale_while_espn_is_fresh
     await f.close()
 
 
-@pytest.mark.xfail(reason="FINDING T6-5: FeedBook.stale() flags the game when ANY of its URLs backs off and the "
-                          "freshest copy is >= one cadence old. With primary on, a backing-off nba_cdn makes a game "
-                          "with a perfectly fresh ESPN summary read stale at every poll boundary (age == cadence), "
-                          "so it flickers unenterable. Only the freshest URL's backoff should count, or use "
-                          "age > cadence.", strict=False)
 async def test_a_dark_fast_feed_does_not_flicker_the_game_stale_at_the_poll_boundary():
     clk = Clock()
 
