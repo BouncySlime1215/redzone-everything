@@ -125,6 +125,7 @@ def main(argv=None) -> int:
 
     st = {"plays_B1": None, "plays_B2": None, "w_row": np.ones(len(rows)), "seen": []}
     iso1, iso2 = WB.IsoMap(), WB.IsoMap()
+    seen_led: dict[str, tuple] = {}      # night -> (ledger rows, K, t0, {gid: screen lag}) for B2's weights
     seen_data: dict[str, tuple] = {}     # night -> (gids, steps, lag, R, t0) for refitting iso2 after a retrain
     per_night: list[dict] = []
     ledgers: list = []
@@ -168,17 +169,26 @@ def main(argv=None) -> int:
         led = ML.ledger(day, lg, R, tab, gids, app_on, orc_on, n.t0, O.STEP_S, locked=locked,
                         app_switch_steps=sw(rep.switches), oracle_switch_steps=sw(full), blk=blk)
         ledgers.extend(led)
-        lw = ML.sample_weights(led, len(steps))
-        for gid in gids:                                   # this night's plays get the ledger weight of their step
-            ks = by_game.get(gid, [])
-            if ks:
-                ks = np.asarray(ks)
-                st["w_row"][ks] = WB.step_weights(lw, n.t0, O.STEP_S, wall[ks] + float(O.lag_of(n.lag, gid)))
+        seen_led[day] = (led, len(steps), n.t0, {gid: float(O.lag_of(n.lag, gid)) for gid in gids})
         seen_data[day] = (gids, steps, n.lag, R)
         return row
 
+    def reweight() -> None:
+        """B2 weights (mistake_ledger.sample_weights, #349 b31caf4): every seen night's episodes, scale = the median
+        value lost over ALL seen nights' episodes (recomputed as the chain grows); a play gets its screen step's weight."""
+        lost = [r.value_lost for led, *_ in seen_led.values() for r in led]
+        scale = float(np.median(lost)) if lost else None
+        for led, K, t0, lags in seen_led.values():
+            lw = ML.sample_weights(led, K, scale=scale)
+            for gid, lag in lags.items():
+                ks = by_game.get(gid, [])
+                if ks:
+                    ks = np.asarray(ks)
+                    st["w_row"][ks] = WB.step_weights(lw, t0, O.STEP_S, wall[ks] + lag)
+
     def refit(seen) -> None:
         st["seen"] = list(seen)
+        reweight()
         refit_wv("B1", np.ones(len(rows)))
         refit_wv("B2", st["w_row"])
         for arm, iso in (("B1", iso1), ("B2", iso2)):
