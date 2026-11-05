@@ -48,3 +48,19 @@ the probe must also log `/proc/uptime` (or the extrapolated value).**
    If yes, that's an exact on-screen anchor every break.
 3. Prime: the same position/E tests on TNF tonight (hidden stick, before kickoff and during).
 4. Absolute latency: once one anchor exists per channel, compare the feed's play wall-clock times.
+
+## Update ~3:00 AM: absolute delay from commercials (code only)
+
+- **Ground truth already exists in our own recordings.** `data/recordings/<day>/plays.jsonl` stores each play's real-world
+  time (`wall`, from the NBA cdn / ESPN feeds) and when we received it. Measured arrival lag: **nba_cdn ~5-20 s,
+  espn_summary ~25-50 s, espn_fastcast ~25-40 s** (not the "44 s" constant).
+- **YouTube TV commercials are visible to code.** During ad pods, media_session `updated` fires once per spot (every
+  ~10-16 s, position advancing exactly by the spot length). 32 bursts found on Nov 4-5.
+- **First absolute estimate (one break):** PHI timeout 19:32:07 real; play resumed with a made 3 at 19:35:44 real.
+  Stick .150 on ESPN showed 3 ad spots 19:35:16 / :31 / :46, pod end ~19:36:01, and the controller cut there at
+  19:36:13. **pod_end - first_play = +17.6 s → the YTTV ESPN live edge ≈ 20-30 s behind the real game** (±~8 s, one break).
+- Limits: DAI pods are per-device (the two sticks' pods differ), and a stick must be parked on the game's channel
+  during the break. **Plan for the next live NBA night:** park the hidden stick on a live game when it's free, run
+  `burst_align.py`, and average over many breaks per channel/stick.
+- Background loggers now running: decoder bitrate every 5 s per stick (`codec_logger.sh`) and an overnight
+  live-edge/pause/twin harness on the hidden stick (`overnight.py`).
