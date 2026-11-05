@@ -48,7 +48,7 @@ _SIGMA = {"nba": 16.5, "cbb": 14.5, "wcbb": 14.5, "nfl": 16.5, "cfb": 16.5}
 _HOCKEY_RATE = 3.05 / 3600.0
 _HOCKEY_HOME_EXTRA = 0.52          # gameflow.wp_hockey: a tie goes to OT at 52/48
 # NHL regular-season 3-on-3 OT: ~60 % of OTs end before the shootout -> total OT goal rate per s.
-_NHL_OT_S = 300.0
+_NHL_OT_S = float(SPEC["nhl"]["ot_s"])   # regular-season OT length (gameflow.SPEC)
 _NHL_OT_RATE = -math.log(0.4) / _NHL_OT_S
 _EPS = 1e-9
 _FIRST_SCORE_MAX = {"nfl": 8, "cfb": 8, "nba": 4, "cbb": 4, "wcbb": 4, "nhl": 1}
