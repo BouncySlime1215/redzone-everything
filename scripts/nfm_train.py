@@ -481,8 +481,11 @@ def main(argv=None) -> int:
         print(f"resumed at step {step}", flush=True)
     data = Batches(train, a.ctx, a.batch)
     vdata = Batches(valid, a.ctx, a.batch, seed=SEED + 1) if len(valid) > a.ctx + 1 else None
-    amp = dict(device_type="cuda" if kind == "cuda" else "xla" if kind == "xla" else "cpu", dtype=torch.bfloat16,
-               enabled=kind != "cpu")
+    # T4 / P100 (Kaggle GPU) have no bf16 units: fp16 autocast with a grad scaler there, bf16 everywhere else
+    fp16 = kind == "cuda" and torch.cuda.get_device_capability()[0] < 8
+    amp = dict(device_type="cuda" if kind == "cuda" else "xla" if kind == "xla" else "cpu",
+               dtype=torch.float16 if fp16 else torch.bfloat16, enabled=kind != "cpu")
+    scaler = torch.amp.GradScaler("cuda", enabled=fp16)
 
     def sync():
         if kind == "xla":
@@ -530,9 +533,13 @@ def main(argv=None) -> int:
         ts = time.time()
         _, loss = loss_of(x)
         opt.zero_grad(set_to_none=True)
-        loss.backward()
+        scaler.scale(loss).backward()
+        for o in opt.opts:
+            scaler.unscale_(o)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        opt.step()
+        for o in opt.opts:
+            scaler.step(o)
+        scaler.update()
         sync()
         step += 1
         if step == 20:
@@ -582,7 +589,8 @@ def main(argv=None) -> int:
                         "achieved_tflops": round(tps * flops_tok / 1e12, 2), "warmup_steps_excluded": 20 if warm else 0},
          "train_minutes": round(t_train / 60, 1), "selection": "valid loss (best.pt)",
          "recipe": {**recipe, "muon": a.muon, "muon_lr": a.muon_lr if a.muon else None, "sched": a.sched,
-                    "compile": a.compile, "lr": a.lr, "warmup": a.warmup},
+                    "compile": a.compile, "lr": a.lr, "warmup": a.warmup,
+                    "amp": "fp16+scaler" if fp16 else "bf16" if kind != "cpu" else "fp32"},
          "target": {"loss": a.target_loss, "reached": hit} if a.target_loss else None,
          "license": PERSONAL if any(x != "open" and not str(x).startswith("open") for x in licenses) else "open",
          "data_sha256_16": W.data_hash(games), "split": {k: len(v) for k, v in sp.items()}}

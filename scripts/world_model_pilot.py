@@ -341,6 +341,7 @@ def grade_rows(model, games, base, ctx, dev, label: str = "", log_every: int = 2
                       torch.arange(T.DT0, T.DT0 + nd)]).to(dev)
     none_i = T.STOPS.index("none")
     mid = torch.tensor(DT_MID, dtype=torch.float32)
+    half = torch.float16 if dev == "cuda" and torch.cuda.get_device_capability()[0] < 8 else torch.bfloat16  # T4/P100
     t0 = time.time()
     with torch.no_grad():
         for gi, g in enumerate(games):
@@ -357,7 +358,7 @@ def grade_rows(model, games, base, ctx, dev, label: str = "", log_every: int = 2
             cs = cuts(t, ctx) + [len(t) - 1]
             for a, b in zip(cs[:-1], cs[1:]):           # windows that tile the game, on event boundaries
                 x = torch.tensor(t[a:b], device=dev)[None]
-                with torch.autocast(device_type=dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
+                with torch.autocast(device_type=dev, dtype=half, enabled=dev == "cuda"):
                     out = model(x)[0]
                 logits.append(out[:, cols].float().cpu())
                 del out
