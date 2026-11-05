@@ -743,4 +743,3 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   game_key per game across sources. `scripts/family_holm.py` applies Holm correction over the families declared in
   `docs/families.json`. Both scripts and the families file join the freeze, so no family can gain or drop an arm once
   its results are in. Grader freeze v16, together with the red-source rule above.
-- 2026-11-05 01:50 ET (Nick): the CBB lock score is label leakage (our own clock rule), not a false alarm. Lock calls are graded on real outcomes in the next minutes (`y_out`, EXP-302), on >= 600 blind moments per league with night-bootstrap CIs; a label that clock + margin alone predict at AUC >= 0.95 fails (scripts/label_audit.py; the CI wiring is the integrator's). Until the re-grade reads, CBB lock numbers stay out of every scorecard. Why: "def a leak or low data".

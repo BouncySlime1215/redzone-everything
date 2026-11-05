@@ -14,12 +14,13 @@ it starts from:
                ends inside the window ends at 1 / 0 / 0.5. MLB has no game clock: no wp_swing.
   close_finish the game ended inside the window with a final margin of one score or less (FINISH_MARGIN).
                Reported only, NOT in y_out: on its own it is our rule again (clock-only AUC 0.98-0.99 on
-               the NBA, NHL and NFL archives), because near the end the margin already says it.
+               NBA and NFL valid nights), because near the end the margin already says it.
 
   y_out = flip or wp_swing
 
-`context_auc` is the check Nick asked for: how well period + clock + margin alone (binned, rates learned on
-train nights) predict a label on test nights. A label at or above CONTEXT_AUC_MAX is our own rule again.
+`context_auc`: how well period + clock + margin alone (binned, rates learned on one set of nights) predict a
+label on another. A label at or above CONTEXT_AUC_MAX is our own rule again. CI runs the integrator's
+scripts/label_leak_check.py; read either on train/valid nights only, never on locked ones.
 """
 from __future__ import annotations
 

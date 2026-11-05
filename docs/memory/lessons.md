@@ -309,5 +309,5 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 ### The lock label was our own rule (EXP-086 CBB, Nov 5)
 - **Symptom:** the CBB fast head called 96.7% of blind lock moments; the flag said leak_suspect, and lane 3 first read it as a false alarm.
 - **Cause:** `y` = a big or crunch play within H s, and crunch (plus NBA/CBB big = clutch buckets) is defined by period, clock and margin, which the model also sees. Clock-only AUC 0.996 on NBA test nights.
-- **Fix:** grade lock calls on `y_out` (outcome_label.py: lead change/catch or a win-probability swing), audited with scripts/label_audit.py. A label is only a label if clock-only AUC < 0.95.
+- **Fix:** grade lock calls on `y_out` (outcome_label.py: lead change/catch or a win-probability swing), checked by scripts/label_leak_check.py. A label is only a label if clock-only AUC < 0.95, read on train/valid nights, never on locked (lane 3's first read used locked nights by mistake).
 - **Signals:** head ≈ clock-only AUC, lift < 0.01, near-perfect lock accuracy, CBB, NBA
