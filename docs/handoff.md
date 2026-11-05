@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-NFL-only world model pilot done (exit 0): next-event acc 43.2% vs bigram 37.2%, break-time MAE 46s vs 62s baseline.
-V8 watchdog 1200/1436, game-reasoner 650/7862; RC6.1 deploy still waiting on live games. Usage 38%.
+Coordinator asks overseer for pilot grades.json test block (confidence bounds)
+V8 watchdog 1350/1436, game-reasoner 800/7862; usage 39%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
