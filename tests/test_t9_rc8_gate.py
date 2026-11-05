@@ -60,7 +60,8 @@ def test_no_override_in_the_shipped_defaults_turns_rc8_on():
 def _runs(mid=None, nights=8):
     """A clean sweep: both harnesses, seeds 0-2, >= 8 nights; `mid` = {(harness, seed): n mid-play entries}."""
     mid = mid or {}
-    return [{"harness": h, "seed": s, "nights": nights, "entries": 120, "entries_mid_play": mid.get((h, s), 0)}
+    return [{"harness": h, "seed": s, "nights": nights, "entries": 120, "entries_mid_play": mid.get((h, s), 0),
+             "clock_truth_live": 0, "first_pick_mid_play": 0}
             for h in ("honest", "resync") for s in (0, 1, 2)]
 
 
@@ -100,6 +101,22 @@ def test_clock_truth_mid_play_in_the_sim_fails_the_league():
     runs = _runs()
     runs[4]["clock_truth_live"] = 1
     assert m.gate_league("nba", runs, _shadow(), **_all_clean())[0] == "FAIL"
+
+
+def test_a_mid_play_first_pick_in_the_sim_fails_the_league():
+    """#318: an NBA first pick (start, no prior game) joining mid-play is Rule #1 too."""
+    m = _rc8()
+    runs = _runs()
+    runs[1]["first_pick_mid_play"] = 1
+    assert m.gate_league("nba", runs, _shadow(), **_all_clean())[0] == "FAIL"
+
+
+def test_a_missing_first_pick_line_cannot_pass():
+    m = _rc8()
+    runs = _runs()
+    for r in runs:
+        del r["first_pick_mid_play"]
+    assert m.gate_league("nba", runs, _shadow(), **_all_clean())[0] != "PASS"
 
 
 def test_a_mid_play_locked_read_fails_the_league():
@@ -154,13 +171,15 @@ def _shipped_overrides(cfg) -> dict:
     return copy.deepcopy(cfg.get("league_overrides") or {})
 
 
-def _effective(over: dict) -> dict:
-    """league_overrides with the RC8 keys at their OFF values dropped: rollback may write rc8_on: false
-    explicitly (it must, to survive Config.update's deep merge) and still equal the shipped set."""
-    off = {RC8_KEY: False, "timing.behind_live_s.rc8_fixed_s": 0}
+def _effective(over: dict, shipped: dict, cfg) -> dict:
+    """league_overrides with every key that only restates what ships dropped: rollback must write rc8_on: false,
+    rc8_fixed_s: 0 and companions (start_timed) at their shipped value explicitly, to survive Config.update's
+    deep merge, and still equal the shipped set."""
     out = {}
     for lg, keys in over.items():
-        kept = {k: v for k, v in (keys or {}).items() if not (k in off and v == off[k])}
+        base = shipped.get(lg) or {}
+        kept = {k: v for k, v in (keys or {}).items()
+                if not (k not in base and v == cfg.get(k, False if k == RC8_KEY else 0))}
         if kept:
             out[lg] = kept
     return out
@@ -189,7 +208,7 @@ def test_flip_then_rollback_restores_the_shipped_overrides_exactly(cfg, league):
     data = copy.deepcopy(cfg.data)
     data["league_overrides"] = m.flip(data, league, 60)
     restored = m.rollback(data, league)
-    assert _effective(restored) == _effective(before)
+    assert _effective(restored, before, cfg) == _effective(before, before, cfg)
     assert (restored.get(league) or {}).get(RC8_KEY, False) is False
 
 
@@ -225,7 +244,7 @@ def test_rollback_of_a_league_never_flipped_is_a_no_op(cfg):
     m = _rc8()
     before = _shipped_overrides(cfg)
     after = m.rollback(copy.deepcopy(cfg.data), "mlb")
-    assert _effective(after) == _effective(before)
+    assert _effective(after, before, cfg) == _effective(before, before, cfg)
 
 
 # --------------------------------------------------------------------------------------------- 4. floor + cap
@@ -398,3 +417,21 @@ def test_ship_b_stays_inside_floor_and_cap_and_goes_to_cap_after_a_mid_play_nigh
             b, why = m.ship_b(cfg, lg, sweep)
             assert FLOOR_LO <= b <= CAP, (lg, sweep, b, why)
         assert m.ship_b(cfg, lg, 45, mid_play_night=True)[0] == pytest.approx(CAP)
+
+
+def test_flip_companions_ride_one_league_and_rollback_restores_their_shipped_value(tmp_path):
+    """Every key flip() writes (rc8_on, rc8_fixed_s, companions such as start_timed) reads back, after rollback
+    through the real config and a restart, exactly as shipped, for every league."""
+    m = _rc8()
+    c = config.Config(user_path=tmp_path / "c.yaml", history_dir=tmp_path / "h")
+    flipped = m.flip(copy.deepcopy(c.data), "nba")
+    keys = set(flipped["nba"]) - set((c.get("league_overrides") or {}).get("nba") or {}) | {RC8_KEY}
+    before = {(lg, k): config.for_league(c, k, lg) for lg in LEAGUES for k in keys}
+    c.update({"league_overrides": flipped})
+    for k in getattr(m, "COMPANIONS", {}):
+        assert config.for_league(c, k, "nba") == m.COMPANIONS[k], k
+    for lg in set(LEAGUES) - {"nba"}:
+        assert all(config.for_league(c, k, lg) == before[(lg, k)] for k in keys), lg
+    c.update({"league_overrides": m.rollback(copy.deepcopy(c.data), "nba")})
+    c2 = config.Config(user_path=tmp_path / "c.yaml", history_dir=tmp_path / "h")
+    assert {(lg, k): config.for_league(c2, k, lg) for lg in LEAGUES for k in keys} == before

@@ -42,6 +42,8 @@ def _flip_key():
 def test_dry_run_flip_of_one_league_in_the_replay_sim(tmp_path, cfg):
     from redzone.lab.night import run as night_run
     key, rc8 = _flip_key()
+    # The exact keys the flip tool writes for the league (RC8 flag + companions such as start_timed).
+    nhl_set = rc8.flip(dict(cfg.data), "nhl")["nhl"] if rc8 is not None else {key: True}
     if not all((night_run.FIX / f"{g.fixture}.json").exists() for g in night_run.GAMES):
         pytest.skip("the night's ESPN fixtures are not in tests/fixtures")
     out, work = tmp_path / "night.json", tmp_path / "w"
@@ -50,7 +52,7 @@ def test_dry_run_flip_of_one_league_in_the_replay_sim(tmp_path, cfg):
     env.pop("RZ_NIGHT_TRACE", None)
     proc = subprocess.run([sys.executable, "-m", "redzone.lab.night", "--tv", "smartthings",
                            "--seed", "1", "--no-default-faults",
-                           "--set", "league_overrides.nhl=" + json.dumps({key: True}),
+                           "--set", "league_overrides.nhl=" + json.dumps(nhl_set),
                            "--json", str(out), "--work", str(work)],
                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
     assert out.exists(), f"no report (exit {proc.returncode}):\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}"
