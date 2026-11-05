@@ -7,6 +7,7 @@ import ast
 import glob
 import gzip
 import json
+import shutil
 import os
 import sys
 import time
@@ -224,6 +225,11 @@ def test_old_nhl_seasons_tokenize_from_apiweb(tmp_path, monkeypatch):
                 f.write(json.dumps(g) + "\n")
         return True
     monkeypatch.setattr(NA, "fetch_season", fake)
+    monkeypatch.delenv("RZ_NHL_APIWEB", raising=False)
+    assert not ns["season_job"]("nhl", 2015, 0, time.time() + 600).get("tokens")   # [#202] off by default (NHL.com ToS)
+    shutil.rmtree(ns["OUT"], ignore_errors=True)
+    shutil.rmtree(ns["RAW"], ignore_errors=True)
+    monkeypatch.setenv("RZ_NHL_APIWEB", "1")
     res = ns["season_job"]("nhl", 2015, 0, time.time() + 600)
     info = json.loads(Path(ns["OUT"], "tokens", "nhl", "2015.json").read_text())
     assert res["tokens"] > 0 and info["games"] == 2 and info["source"] == "nhl-api-web"   # the eval-window game is dropped

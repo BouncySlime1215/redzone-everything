@@ -123,7 +123,10 @@ def season_job(league, year, synthetic, deadline):
             NF.fetch_espn_season(league, year, __import__("pathlib").Path(raw), max_games=40 if SMOKE else None)
         else:
             NF._fetch(F.SOURCES[league]["url"].format(y=year), __import__("pathlib").Path(raw))
-    if league == "nhl" and year < APIWEB_BEFORE and not tk_done and time.time() < deadline:
+    # [#202] NHL.com's terms forbid bulk harvesting: api-web stays OFF unless Nick accepts the risk in
+    # decisions.md (RZ_NHL_APIWEB=1); NHL history then comes from MoneyPuck's listed files instead.
+    if league == "nhl" and year < APIWEB_BEFORE and os.environ.get("RZ_NHL_APIWEB") == "1" and not tk_done \
+            and time.time() < deadline:
         import nhl_apiweb                     # ESPN has no NHL wall clocks before 2019-20: the NHL's own feed
         raw = f"{RAW}/nhl/apiweb_{year}.jsonl.gz"
         nhl_apiweb.fetch_season(year, __import__("pathlib").Path(raw), max_games=40 if SMOKE else None)
