@@ -478,3 +478,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   - **Deploy:** through `/api/settings` by the overseer only, with an instant rollback to the saved live settings.
   - **Follow-ups:** win back NHL's crunch point and dead air with no mid-play join, for example with an earlier pre-tune or
     better intermission timing.
+- 2026-11-05 (integrator, 8:40 PM ET, grading EXP-203): the EXP-203 set (`/mnt/project-files/lane2/exp203-settings.json`,
+  17 keys) is the promoted set minus its NFL-scoped keys. It was graded with `league_promotion`, plus big_seen_pct, on
+  seed sums for dev and the one locked read:
+  - **NBA: PASS.**
+  - **NFL: PASS.** Mid-play entries go 4 → 0 and 1 → 0, big seen 89 → 94 and 88 → 99, dead air 35 → 30. Nothing is worse.
+  - **NHL:** the same as the promoted set, so it FAILs only on the trade Nick accepted (rule #1 wins).
+
+  It replaces the NFL rollback before Thursday Night Football. Removing a key through `/api/settings` must SET it back to its
+  live default, not just leave it out. CFB, CBB and MLB stay ungraded under the global keys.
