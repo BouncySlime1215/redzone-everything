@@ -323,7 +323,8 @@ async def test_a_parked_replay_starts_the_instant_we_flip(two):
     await c._preload_task
     hid = c.hidden
     assert c.standby == ("youtubetv:espn", "p1") and c.parked.paused
-    assert rewind_presses(hid) >= 6 and hid.log[-1] == "KEYCODE_MEDIA_PAUSE"
+    # [seek model] 60 s back = 4 presses of 15 s (+ the stall) + the one YouTube TV swallows
+    assert rewind_presses(hid) >= 5 and hid.log[-1] == "KEYCODE_MEDIA_PAUSE"
     hid.log.clear()
     tuner.calls.clear()
     out = await c.execute("youtubetv:espn", replay_back_s=75, may_cut=lambda: True, replay_id="p1")
@@ -342,7 +343,8 @@ async def test_a_parked_replay_that_drifted_is_pulled_back(two):
     hid = c.hidden
     hid.log.clear()
     out = await c.execute("youtubetv:espn", replay_back_s=95, may_cut=lambda: True, replay_id="p1")
-    assert out.ok and out.path == "parked replay" and rewind_presses(hid) == 3   # 30s of drift, 10s presses
+    # 30 s of drift: 2 presses of 15 s (+ a 2-4 s stall) + the swallowed one
+    assert out.ok and out.path == "parked replay" and rewind_presses(hid) == 3
 
 
 async def test_a_drifting_park_is_pulled_back_in_the_background(two):
@@ -350,12 +352,12 @@ async def test_a_drifting_park_is_pulled_back_in_the_background(two):
     c.sticks[1].playing = "playing"
     assert c.preload("youtubetv:espn", back_s=60, replay_id="p1")
     await c._preload_task
-    c.parked.at -= 25
+    c.parked.at -= 35                                   # past 2 steps of 15 s: time to pull it back
     hid = c.hidden
     hid.log.clear()
     c._maybe_reseek()                                   # keepalive does this every ~10s
     await c._preload_task
-    assert rewind_presses(hid) == 3 and c.standby == ("youtubetv:espn", "p1") and time.time() - c.parked.at < 1
+    assert rewind_presses(hid) == 4 and c.standby == ("youtubetv:espn", "p1") and time.time() - c.parked.at < 1
 
 
 async def test_a_live_switch_never_uses_parked_replay_footage(two):
@@ -379,7 +381,8 @@ async def test_an_unparked_replay_holds_still_while_waiting_for_a_safe_moment(tw
 
 
 async def test_single_stick_replay_rewind_counts_the_tune_time(cfg, tmp_path, monkeypatch):
-    cfg.update({"mode": {"dry_run": False}, "replay": {"seek_step_s": 0.5}})
+    cfg.update({"mode": {"dry_run": False}, "replay": {"seek_step_s": 0.5, "seek_wake_presses": 0,
+                                                                "seek_stall_min_s": 0, "seek_stall_max_s": 0}})
     ch = ChannelMap(tmp_path / "ch.json")
     ch.codes["espn"] = "AAAAAAAAAAA"
     c = ctl.Controller(cfg, ch)
@@ -828,7 +831,15 @@ def test_buffer_error_reads_a_jump_to_live_and_a_drift_off_the_sticks_own_clock(
     assert c.buffer_error(c.hidden, "youtubetv:fox", pb(220_000, 530_000)) == (0.0, -90.0)         # jumped to live
     assert c.buffer_error(c.hidden, "youtubetv:fox", pb(124_000, 530_000)) == (96.0, 6.0)          # fell 6 s behind
     c.held.pop("youtubetv:fox")
-    assert c.buffer_error(c.hidden, "youtubetv:fox", pb(130_000, 530_000)) is None                 # no hold: not judged
+    c.cfg.update({"timing": {"behind_live_s": {"enabled": True, "apps": ["youtubetv"]}}})
+    # Unheld but wanted, and nobody holding it (a switch tuned it, then found no safe moment):
+    # judged as 0 s behind, so the watchdog holds it (lane 2's #132 night).
+    assert c.buffer_error(c.hidden, "youtubetv:fox", pb(130_000, 530_000)) == (0.0, -90.0)
+    c._holding = (c.hidden, "youtubetv:fox", object())                                            # a hold under way
+    assert c.buffer_error(c.hidden, "youtubetv:fox", pb(130_000, 530_000)) is None
+    c._holding = None
+    c.cfg.update({"timing": {"behind_live_s": {"enabled": False}}})
+    assert c.buffer_error(c.hidden, "youtubetv:fox", pb(130_000, 530_000)) is None                 # no buffer wanted
 
 
 @pytest.mark.playbook("STK-06")

@@ -1,0 +1,236 @@
+# Cycle 05 plan (Start Planner), Wed Nov 4, 19:55 to 21:25 UTC (90-min clock)
+
+**New loop rules (Nick, 2:45 PM ET):** cycles are 90 minutes on a clock. At T+90 the End Planner reviews
+whatever has landed, and the Start Planner writes the next plan within 10 minutes. **No idle threads:** each
+lane below has 3+ ranked tasks. When a task finishes or blocks (CI, Kaggle, hardware), go straight to the
+next one; waiting on CI is not work. **Kaggle goes to the overseer** (factory pack cdf86ef is launching now).
+Lab hardware (TV + sticks) is on all day, so use it for anything that needs real timing.
+**From:** [cycle 04 review](../04/review.md) (f7e53bb: % of oracle 64.8 dev / 59.1 locked, unchanged, because no
+candidate change landed; nothing promoted), Nick's live-lab sync findings (12:10 PM) and the 3:05 PM overseer queue (backlog.md, top).
+**Rules as always:** graded on locked unseen nights, flags OFF until they pass, mid_play 0, no signal from
+Nick, North Star delta (dev + locked, live + candidate) and a RAM/CPU line in every PR.
+
+**Where we are (dev, live column, post-#121 gates):**
+- Big live: NFL 25.2 / NBA 67.6 / NHL 41.4, against ≥95% of oracle.
+- Seen within 3 min: 49.7 (bar 99).
+- Landings in dead time: 97.5 (bar 98).
+- press_to_tv: 8.75 s (bar 3).
+- Playbook coverage: 33/78.
+- Candidate (lane 2 stack #116 → #125 → #131/#132): mid_play 0, NFL big live ~55-58 dev / ~56 locked, σ p50 ~9 s (the earlier 63/60.7 and σ 3 s came from a sim leak: the YTTV position is a per-tune clock, so it can't pin the delay).
+- Real-hardware risk: the measured YTTV seek makes today's entries mid-play (locked NFL 12, NHL 14) until #132 lands.
+
+**Coverage push this cycle:** 33 → **≥ 50** marked playbook tests. Each lane owns the uncovered entries
+listed under it; a marked night-lab test counts even when the behaviour behind it stays flag-off.
+
+## ① Noggin training
+1. **Reflex on existing shards while the factory runs:** train the Pick/possession policy (#129) on
+   whatever shards exist, forward CV by whole nights. Report rows per league and the decider-level result,
+   not only the rollout. Bar: NBA crunch live with the policy ≥ the rule-based possession default on dev
+   and locked, mid_play 0, % of oracle up.
+2. **Oracle self-play eval:** a harness that grades any policy against the oracle on synthetic nights
+   (factory self-play) as well as archived ones, with a pct_of_oracle row per source. This is the eval
+   the billions of rows will feed.
+3. **Mind salvage (#138) to green**, V7 support only. Then SAFE-04 (ensemble + abstain), with a marked test.
+- Coverage: SAFE-04.
+
+## ② Noggin logic / sync
+1. **Land the rule #1 seek stack:** #132 must follow #133 (take #132's `_rewind`: one wake press, not two),
+   plus the crunch pre-cue recovery (the ~4-pt locked crunch cost of #132). Bar: mid_play 0 with the measured
+   seek on dev and locked; crunch locked back to its pre-#132 level.
+2. **Promotion blocker (cycle 04 review):** the candidate passes every rule #1 gate on locked, but it is
+   worse than live on NHL crunch (crunch plays aired during a catch-up replay 2 → 10; crunch live 89 → 76)
+   and on 2 NFL your-team big plays. Never start a catch-up with NHL crunch due inside it, and fix the 2
+   NFL plays. Bar: release_gate.py on locked has no candidate line worse than live.
+3. **MediaSession content anchor** (in flight): the burst offset (~0.3 s) goes into the per-stick filter.
+   Bar: σ p50 down from the honest ~9 s at ≥ 95% coverage, with no landing information leaked from positions;
+   run scripts/burst_align.py on the first logged night to see whether the bursts line up with TV timeouts.
+4. **Self-calibration, sync half (#140)** to green: `data/calib/YYYY-MM-DD.json` `sync` section, 3-MAD guard.
+5. **NHL whistle detection** (#131 follow-up), then the entry-rewind extra-behind.
+- Coverage: SAFE-02, SAFE-03, SAFE-05, SYNC-01..03, GAME-07, GAME-08, GAME-11..14.
+
+## ③ Performance + controls
+1. **GO NOW ≤ 3 s press-to-TV on real hardware** (lab is on): measure each segment (phone → Mac → stick → TV)
+   with the pre-tune and cold paths split; fix the largest app-side segment. Bar: a real p95 row in northstar.
+2. **#136 to green:** (c) timing half (same calib file, `timing` section), (d) pre-game warm-up, (e) buffer
+   watchdog STK-06 with the `buffer_lost` fault.
+3. **Stick assignment (overseer b, reframed):** with two sticks every new tune goes to the hidden stick, so
+   "hottest game on the 4K Plus" can't hold at zero extra flips. The levers are the night's first assignment
+   and a standby planner that weighs each stick's tune speed (4K Plus pre-tunes 2.33 s vs 3.74 s p50). Build
+   the per-stick standby model in the backtest first so the delta is measurable. Flag `decider.stick_assign.v2`.
+4. **LOCK IN hold** end to end on real hardware (BTN-04 release, BTN-06 phone offline).
+- Coverage: BTN-04, BTN-06, STK-01, STK-02, TV-01, MAC-02..05.
+
+## ④ App + integration hardening
+1. **Night health report (#137)** to green, then its follow-ups: misses linked to the replay viewer, and
+   PENDING handling for a night with no games.
+2. **#139 LAN redaction** merge; then the night-lab fault kinds for the FEED/NET/APP entries.
+3. **Locked switch to eval-data v3 on Fri Nov 6:** prep it now so it's a one-line flip.
+- Coverage: FEED-02, FEED-04..07, NET-01..03, APP-01..07, MAC-01, MAC-08, SLATE-01, SLATE-02.
+
+## ⑤ Features (reopened; lowest, never preempts ①-④)
+1. **Teacher decision-record export:** one JSONL per night, objective outcomes only, no taps.
+2. **Replay viewer oracle overlay:** the oracle's schedule next to what we did, plus missed-big-play markers.
+3. North Star trend page from docs/northstar-history.jsonl (read-only).
+4. **"I missed that"** records a catch-up reel request for the next dead window (3-min rule); reels stay OFF.
+(Button states are already merged as #96.)
+
+## Addendum: one connected system, the "city map" (Nick, 3:40 PM ET). Lane ④ leads, every lane follows
+**Why:** 154 modules / 49k lines with seams:
+- several brains score games in parallel (scoring/engine, drive heat, brain, brain3, noggin/priority,
+  reasoner, decider);
+- flip and tune costs are hard-coded in two places (standby `FLIP_S=3.0`, demo `TUNE_S=5.0`) instead of the
+  measured ~2 s;
+- there are 82 separate `json.loads` sites.
+
+The model is a checked-dependency build (Axiom's Lean formalization of the Stacks Project): every
+piece builds on the others through checked contracts.
+
+**Lane ④ (lead), now item 1:**
+1. a **generated city map**: `docs/citymap.md` plus a graph from imports and `redzone/contracts`, regenerated in
+   CI, showing each module's inputs → outputs and its owner;
+2. a **contract checker** in CI (the "proof kernel") that fails on:
+   - a constant defined twice (timing costs come only from measured config / `data/calib`);
+   - a module bypassing its contract (e.g. stick I/O outside `tuners/`);
+   - orphan or dead modules;
+   - a second scoring path;
+3. the North Star line **`contract_violations` = 0**.
+
+Land the checker in report mode first, listing today's violations, then make it fail-on-new. Each violation
+burns down in the lane that owns the module.
+
+**How lanes ①-③ route through the map:**
+- **① Noggin training:** WV (Heat 2.0) is the one scoring output. The old scorers (scoring/engine, drive heat,
+  brain, brain3, noggin/priority, reasoner) become **feature providers** feeding WV, never competing
+  deciders. Lane ① declares WV's input features in its contract.
+- **② Logic / sync:** the **Noggin is the single decision entry**. Migrate each old scorer out of the decider
+  one by one, each behind a **parity test on locked nights** (same or better on every bar (B) line), in
+  step with the WV wiring. Use one JSON loader for the feed paths lane ② owns.
+- **③ Controls:** `FLIP_S` / `TUNE_S` and every other timing cost come from the measured calibration (#136 /
+  `data/calib`), not constants. All stick and TV I/O goes through `tuners/`. **Every TV action and decision is
+  traced with its provenance** (which module contributed what), so the End Planner can audit the chain. This
+  extends the traces from #118.
+- **⑤:** no new scoring or I/O path. The UI reads WV and traces only.
+
+## Addendum: HEAT 2.0, a learned watch value (Nick, 3:30 PM ET). This is the top item for lanes ① and ②
+**Why:** the heat scores feel off. Monday's Bears game read ~30 at a big Q3 moment. Today's heat
+(redzone/scoring/drive.py) is hand-weighted (0.45 EP + 0.30 yards + 0.25 explosive, plus bumps) and adds
+at most `redzone_mode.heat_points` on top of a time-weighted base. That value is 0 in default_config.yaml,
+so live, the base scorer alone sets the number, and a Q3 moment can never read high.
+
+**What:** one learned **watch value (WV)** per game, recomputed every play:
+- **WV** = expected "want to see" over the next ~3 min = P(big play or score soon) × impact
+  + leverage (the win-prob swing at stake, including Q1-Q3 one-score games)
+  + story (comeback, lead changes, records)
+  − blowout / garbage time.
+- **Stakes** (Nick's teams, bets, fantasy) are **preference multipliers in config**, never training
+  labels (self-taught rule).
+- **Labels** are what happened next (the hindsight oracle) over the factory rows.
+- **Calibrated 0-100:** 50 = the league-median live moment, 90+ = the top 5% (must-see), checked by
+  reliability curves on locked nights.
+- A one-line **"why"** per game for the UI.
+
+**Non-crunch switching** (nothing here touches crunch):
+- Be on the highest-WV game. NFL plays like RedZone: red zone, explosive drives, 3rd/4th downs, the
+  2-minute drill.
+- Switch only at dead balls.
+- Pre-tune the hidden stick to the game whose WV is rising (e.g. a drive crossing midfield).
+- Use catch-up reels for big plays missed elsewhere (3-min rule).
+
+**Crunch floor:** the live app's rule floor (crunch = stay) sits above the Mind and every model. The Mind's
+100% crunch unsafe-leaves is a training-data failure (crunch is under-weighted). Keep the floor, and add a
+test that **no candidate bypasses it**.
+
+**Split:**
+- **Lane ① owns the model** and makes it item 1, ahead of everything else:
+  - a WV Reflex head per league trained on factory rows with oracle labels, forward CV by whole nights,
+    locked untouched, < 5 ms;
+  - this **absorbs lane ②'s leverage score** (it's WV's leverage term) **and the MLB key-moment head**
+    (MLB WV: RISP late and close, no-hit bids, walk-off spots);
+  - a `why` string from its top contributions;
+  - lines: **WV calibration error** (ECE on 0-100 bins, reliability curve) and **rank agreement with the
+    oracle** (Spearman / top-1 per tick), dev + locked.
+- **Lane ② owns the decision**:
+  - after the seek stack and `replay.crunch_block` (both nearly done, both promotion blockers), wire WV into
+    the decider behind `scoring.watch_value` (off): highest-WV at dead balls, rising-WV pre-tune, sticky
+    down the stretch as a WV floor, low-leverage leaves from WV;
+  - retire drive.py heat in the candidate;
+  - the **crunch-floor test** (every candidate profile, the Mind, Pick and WV: crunch = stay holds; a
+    marked SAFE test);
+  - lines: big plays live per league (the existing rows), mid_play_entries 0, high_leverage_leaves 0,
+    crunch ≥ live.
+- **Lane ⑤:** the per-game "why" line on the phone, read-only, once lane ① exposes it.
+
+## Addendum: Nick's promotion bar and cut rules (3:15 PM ET), built into this cycle
+**Promotion bar (strict B).** A candidate flag turns ON in the next RC only if, on **locked** nights:
+- (a) mid-play **entries** = 0, a hard PASS;
+- (b) NBA and NHL crunch live PASSES and is ≥ live. The NHL crunch-in-replay regression (89 → 76) blocks
+  until `replay.crunch_block` lands;
+- (c) every your-team gate PASSES;
+- (d) every other line is ≥ live. Equal within the bootstrap CI counts as equal.
+
+**Cut rules:**
+1. **Never JOIN mid-play.** The entry rule is unchanged and absolute.
+2. **Leaving mid-play is OK at low leverage**: right after a score, in transition, in Q1-Q3, or in a
+   non-close game. Never leave a high-leverage moment. The North Star line "mid-play cuts + entries"
+   splits into **`mid_play_entries`** (target 0) and **`high_leverage_leaves`** (target 0); low-leverage
+   leaves are reported as info.
+3. **Down the stretch is sticky.** When a game is close and late (e.g. NBA within ~6 points with under
+   ~6 min left in Q4, going back and forth), don't leave unless a higher-priority crunch needs the screen.
+   A **learned leverage score** (win-prob swing, margin, time left, lead changes), self-taught from the
+   oracle, decides sticky vs leavable. Rules only set the floors.
+4. League order is unchanged.
+5. **MLB:** mostly dead air, so the AI detects the key moments (RISP late and close, no-hitters, walk-off
+   spots) and jumps in only for those.
+6. **Multi-game conflicts** are handled by planning 5-10 min ahead across all games with the scenario tree
+   (roadmap TREE-6, cycle 06+).
+
+**Owners and re-ranking:**
+- **Lane ②, now ranked:** (1) the seek stack; (2) `replay.crunch_block`, the promotion blocker; (3) **rules 2
+  and 3**: split the North Star line (backtest fields `mid_play_entries`, `leaves_high_lev`, `leaves_low_lev`,
+  plus the northstar.py rows), the learned leverage score (oracle-labelled, forward CV by whole nights,
+  locked untouched), and sticky down-the-stretch. Bar: entries 0 and high-leverage leaves 0 on dev and
+  locked; NBA/NHL crunch live ≥ live; switches allowed by low-leverage leaves show up as big live and
+  % of oracle gains. (4) the MediaSession anchor; (5) #140; (6) NHL whistle detection.
+- **Lane ①, new item 2:** an **MLB key-moment head** (Reflex) trained on the factory's MLB shards with
+  objective labels (leverage index or win-prob swing, RISP late and close, no-hit bids, walk-off spots).
+  Bar: recall of key moments ≥ 95% at a dead-air cost no worse than today, on locked MLB nights. The
+  oracle self-play eval moves to item 3.
+- **Integrator:** log the decision in decisions.md; grade cycle 05 promotions with release_gate on bar (B).
+
+## Outside research, one focused lookup per lane (Start Planner, 20:05 UTC)
+- **① DAgger, not plain behavior cloning.** Our oracle is a DP over the archived night, so it can label
+  *any* state, including the off-oracle states our own policy drifts into. Train the possession policy
+  (#129) with DAgger rounds: roll out the policy, ask the oracle what it would do at each visited
+  state, aggregate, retrain. This fixes the covariate shift that plain imitation leaves, which is the
+  usual reason a policy that "beats the rule in rollout" doesn't beat it inside the decider. Report the
+  decider-level result per round.
+  Sources: [Ross et al., DAgger (arXiv 1011.0686)](https://ar5iv.labs.arxiv.org/html/1011.0686),
+  [Imitation Learning survey (arXiv 2106.12177)](https://arxiv.org/pdf/2106.12177).
+- **② NHL TV timeouts are scheduled.** There are three per period, at the first stoppage after the 6:00,
+  10:00 and 14:00 elapsed marks (not after an icing; it moves to the next stoppage; verify the exact exceptions in the rulebook). That
+  gives a predictable ~2-min dead window per segment for whistle detection, the replay-and-resume
+  repay and the NHL replay window. Faceoff timing after icing is regulated (no line change for the
+  icing team). Encode both as priors in NHL whistle detection.
+  Sources: [NHL rules](https://en.wikipedia.org/wiki/National_Hockey_League_rules),
+  [NHL rulebook 2021-22](https://media.nhl.com/site/asset/public/ext/2021-22/2021-22Rules.pdf),
+  [the hurry-up faceoff](https://thehockeywriters.com/the-death-of-the-hurry-up-faceoff/).
+- **③ ADBTuner / ah4c (Channels DVR community)** tune YouTube TV channels on Fire TV and Android TV over
+  adb with deep links (`am start` with a channel intent) instead of key sequences. Read their YTTV tune
+  recipes and measured tune times before the GO NOW probe (#145). A deep-link tune could cut the
+  cold path well under today's 8.5 s. Read-only research; nothing is installed on the Mac.
+  Sources: [ADBTuner thread](https://community.getchannels.com/t/adbtuner-a-channel-tuning-application-for-networked-google-tv-android-tv-devices/36822/251),
+  [ah4c thread](https://community.getchannels.com/t/androidhdmi-for-channels-ah4c-a-virtual-channel-tuner-using-hdmi-encoder-s-streaming-stick-s/38976/300).
+- **④ espnscrapeR / sportsdataverse** document ESPN's free pbp endpoints, including the per-play
+  wallclock, for NFL and CFB. Use them as the reference for the feed-fault tests (FEED-0x) and the
+  night report's schema checks.
+  Sources: [espnscrapeR get_nfl_pbp](https://rdrr.io/github/jthomasmock/espnscrapeR/man/get_nfl_pbp.html),
+  [cfbfastR news](https://sportsdataverse.r-universe.dev/cfbfastR/NEWS).
+- **⑤** No outside lookup needed (UI over our own data).
+
+**Lab window:** the TV and sticks belong to lane ③ from 3:10 to 3:45 PM ET for the GO NOW probe (#145).
+**Promotion bar:** the question is with Nick. Until his answer comes, every lane keeps producing candidates.
+
+## Integrator (at T+0 and T+90)
+- **Merge order:** #133 then #132 (never release one alone) → #116/#125 → #139 → #137/#136/#140 → lane 1.
+- **T+90 (21:15 UTC review):** review cycle 05 with the coverage count and every lane's delta; the Start Planner writes cycle 06
+  within 10 min.

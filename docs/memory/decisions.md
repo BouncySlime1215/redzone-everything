@@ -7,6 +7,10 @@ enforces it in CI. Gate changes in architecture.md §7 need a line too (by hand)
 
 Format: `- YYYY-MM-DD: **decision.** Why.`
 
+## ArenaSwap ideas (Nov 4)
+
+- 2026-11-04: **New `score.postseason` block ships OFF (`enabled: false`).** Postseason stakes (elimination game, Game 7 / one-game final, rounds left to the title, ranked college matchups) parsed from the ESPN scoreboard we already poll, offered to the scorer and the Noggin as hooks (`redzone/scoring/postseason.py`). Why: the stakes multiplier can't tell a Game 7 from a regular-season game; it stays off until a playoff-night scorecard shows no rise in mid-play entries, plays missed on entry or dead air. Idea from ArenaSwap (ideas only, our own code).
+
 ## Research bugs C18 (Nov 4)
 
 - 2026-11-04: **The break blend uses per-league log-odds coefficients fitted on held-out nights (`brain.break_blend`)**, replacing the fixed 0.5 log-odds weight #51 shipped; leagues without a fit keep `break_weight`. Why: held-out ECE (forward folds on archive nights that are neither locked nor brain-training) NFL .063 -> .054 (Brier .167 -> .147), NBA .024 -> .023, NHL .095 -> .027; the original 50/50 mix was .169 / .126 / .144. `brain.enabled` stays false, so the scorecards are unchanged.
@@ -278,6 +282,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (half-step of median + settle) is unchanged at its shipped value. The night lab's SmartThings TV draws from
   the same quantiles. Also STK-05 (no flag: a stale or paused standby was never a usable one): media_session must
   read active and speed>0, and verify_standby re-tunes a paused / stale hidden stick at once.
+- 2026-11-04 3:05 PM: **report.nightly (default OFF): the night health report** (Nick's build (a), lane 4).
+  scripts/night_report.py writes docs/nights/YYYY-MM-DD.md each morning from the night's published live
+  summary (docs/live-nights/): the North Star lines one live night can grade (mid-play, landings in dead time
+  >= 98%, press-to-TV p95 <= 3 s), every miss (ET time, game, end, reason), sync error per stick, switch and
+  press latency, faults fixed. PENDING with no night. Off until it passes its gates; northstar.yml runs it.
 - 2026-11-04 3:30 PM (lane 2, Nick's crunch_now decision): **new key `decider.entry.possession_start` ships
   `off`** (off | crunch | all). Why: on dev with tune jitter (3 seeds) `crunch` is identical to the candidate's
   `wait` (which already rewinds to the last dead ball when one is in reach) and `all` costs NBA big live
@@ -287,6 +296,27 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   true)**: a dead window opens only on a logged stoppage; a lone substitution (its stoppage missing from the data)
   opens none. Why: the candidate's last mid-play entry (NBA GS @ DEN, dev seed 2) was a 70 s rewind into such a
   gap. Dev jitter 6: NBA mid-play 1 -> 0 (seed 2), NBA crunch 87.9 -> 86.9 (seed 1), dead air +0.1..0.3, rest equal.
+- 2026-11-04 5:00 PM (lane 2, live lab): **`two_stick.tv_flip_prior_s` = {median 1.89, p95 2.18, max 2.58}** (Superseded: the bound stays the measured max; CEC-off prior below.)
+  (was 1.98 / 2.2 from 10 flips; the planning bound is now the p95) from Nick's 64 SmartThings flips. Sims gain
+  `--flip-dist` and `--positions`. **Candidate: `sync.break_anchor.enabled=true`, `delay.sync.min_sigma_s=3`.**
+  Why: with YTTV's playback position the honest sims hold 2-sigma coverage >= 98% at a 3 s floor (2 s fell to
+  94% on NHL), 0 mid-play, NFL big live 54.3 -> 58.8 / 54.5 -> 59.5 / 54.7 -> 58.7, NHL +1.9..2.6, locked NFL
+  53.5 -> 57.2, NHL 50.0 -> 54.8. New flag `sync.probe.logcat_anchors` (off): ad edges from YTTV's logcat.
+- 2026-11-04 5:30 PM (lane 2, Nick's 3-minute replay window): **new `replay.window_s` (0 = off) and
+  `replay.window_leagues`; candidate `window_s=180`, `[nfl]`**. A missed moment airs within 3 min or only in the
+  montage. NFL, 3 seeds: big live +4, crunch +1.4..2.9; NHL lost 4-7 points of seen-within-3-min and gained
+  2-3 points of dead air, so NFL only until that's understood.
+
+- 2026-11-04 (planner, lane 2): `noggin.lookahead.leagues` (default [] = every league) scopes GAME-04 clairvoyance; the candidate runs it for NFL only. Honest sims (3 s sigma): NFL big live +5.4..5.5 on 3 dev seeds, +4.9 locked, 0 mid-play; NHL locked crunch live -0.9, so NHL and NBA stay off.
+- 2026-11-04 (Nick 11:35 AM live lab, lane 2): **`two_stick.tv_flip_prior_s` = CEC-off flips {median 1.89, p95 1.98, max 2.02}** (30/30; CEC on was p95 2.18, max 2.58), so the planning bound (the measured max: landing deadlines guard rule #1) drops 2.58 -> 2.02 s. Hidden-stick pre-tune to PLAYING by model in `contracts.switching.PRETUNE_PRIOR_S` (4K Plus 2.33/3.06, 4K 2023 3.74/5.50; prefer the 4K Plus for hot pre-tunes). Sims: `--flip-dist` draws the CEC-off prior; `--pretune-dist` makes every switch a cold pre-tune (pessimistic): 0 mid-play, NFL big live -0.4, NHL crunch -1.0 vs the planner's 5 s.
+- 2026-11-04 (lane 2): **the 3-minute replay window counts from when the play aired on screen**, not from when the feed had it (that was ~2 min earlier with the time-shift buffer, so the window was really ~1 min). NFL dev seeds 1/2: seen within 3 min +2.7/+1.5, big live -0.7/-1.3, 0 mid-play. NHL still loses 1 point of seen-within-3-min with the window, so it stays NFL only.
+- 2026-11-04 (planner, lane 2): `decider.crunch.instant_replays` (default true); **candidate false**: a crunch stoppage takes only a play you missed, never an instant replay of one you saw. It answers the locked NFL crunch drop from the window-origin fix. Dev, 3 seeds: crunch live +0.8..2.2, crunch plays under a replay 19/13/21 -> 9/4/11, big live -0.6..+0.5; NBA/NHL equal. Locked, report only: crunch 71.6 -> 74.6, big live 60.7 -> 59.4, seen within 10 min 78.7 -> 86.6, 0 mid-play.
+- 2026-11-04 (planner, lane 2): **`decider.leave.dead_windows`** (default [] = off); **candidate [nhl]**. NHL leaves also use the play-by-play's dead windows (cuts.DeadTracker, what entries already land on). A whistle whose faceoff arrived in the same poll never reached the game state, so the leave gate caught only 47% of on-screen dead time; the windows catch 71%, with 0 false-safe ticks. NHL dev 3 seeds: seen within 3 min 64.5/63.8/63.6 -> 76.4/78.0/75.2, big live +1.1..4.0, crunch +0.5..2.8, dead air -0.2..-0.5, 0 mid-play cuts or entries. Locked, read once: seen within 3 min 63.5 -> 72.1, crunch 78.7 -> 81.7, big live 51.9 -> 51.0, dead air 25.8 -> 24.8, 0 mid-play. NBA made 1-2 mid-play cuts and NFL gained nothing, so NHL only.
+- 2026-11-04 (Nick 12:10 PM live lab, lane 2): **`replay.seek_step_s` 10 -> 15, new `replay.seek_wake_presses: 1`, `seek_stall_min_s: 2`, `seek_stall_max_s: 4`.** Measured reason at the top: YouTube TV steps 15 s a press, swallows the first press of each batch and stalls 2-4 s, so today's code lands entry rewinds where nobody checked. Honest sims with the real seek (`--real-seek`), today's code vs calibrated: NFL dev 32-34 -> 0 mid-play entries and 44-63 -> 0 cuts, NHL 32-37 -> 0 and 76-86 -> 0; locked NFL 12 -> 0 / 24 -> 0, NHL 14 -> 0 / 38 -> 0. **`decider.entry.cue`** (default `seek`); **candidate `hidden`**: rewind the hidden stick before the flip, so the live edge never shows mid-play first (NFL dev 270-345 glimpses -> 0). Dev: 0 mid-play, NFL big live +0.8..1.7. Locked: crunch -4.1 NFL, -4.7 NHL vs the calibrated seek; rule #1 first. `pause` loses (late flips cut mid-play). `timing.behind_live_s.hold_overreport_s: 1.5`: a hold is measured on the stick's clock vs position; the wall span less 1.5 s is the fallback.
+- 2026-11-04 3:00 PM (live lab, #133): **`replay.seek_step_s` 10 -> 15 and new `replay.seek_wake_presses: 1`**.
+  Why: measured on both sticks (YouTube TV, `data/livelab/2026-11-04/seekcal.jsonl`): the first press of a batch
+  only shows the seek bar, each further press is 15 s, plus a 2-4 s stall. The old 10 s quantum made a 60 s replay
+  rewind land ~80 s back.
 - 2026-11-04: **calib.auto (new, default OFF).** Nick's 3:05 PM overseer queue item (c): each night's TV flip
   time and press-to-TV are re-measured from the live logs into data/calib/<night>.json (one shared
   file per night: a timing section, lane 2's sync section), with an outlier guard that refuses a value
@@ -357,3 +387,89 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   ships at 0 (off): at 50 on today's score it helped dev NFL (crunch live +0.3..1.2, mid-play entries 10 -> 8,
   crunch under a replay 70 -> 49) but cost locked NFL crunch live 64.2/61.2/64.2 -> 63.6/57.3/64.2 (locked read
   once). It waits for watch value, which is the value the floor should read.
+- 2026-11-04: **replay.crunch_block (new, default OFF; candidate ON), crunch_block_mine_leagues [] (candidate
+  [nfl]), crunch_block_mine_after_s 90.** Cycle 04 review's promotion blocker: on locked, NHL crunch plays aired
+  under a catch-up 2 -> 10. No catch-up starts while any live game is in crunch time or its run-up; your team's
+  missed play waits too, except in NFL after 90 s (its 3-min window can't wait out crunch). Locked, 3 seeds,
+  honest sims: crunch plays under a replay NFL 7-13 -> 0-1, NHL 0/10/9 -> 3/3/3; your-team plays = or better.
+- 2026-11-04 (lane 1, cycle 04): new config keys `noggin.possession.{enabled,shadow,leagues,model}` (the learned
+  jump / stay policy for lane 2's possession-start hook, PICK-cue trained on `oracle.solve_cue`) and
+  `noggin.pick.model` (default `v1`). All are off or unchanged by default. Why off: on NBA dev the veto leaves the rule
+  default unchanged (77.5 / 90.0) and the `all` scope adds a mid-play cut. The pure rollout beats the rule (85.9 / 91.9),
+  but the decider path doesn't carry that gain yet. docs/noggin.md §13.
+- 2026-11-04: **two_stick.shadow.* and demo.* (new keys, values unchanged).** ShadowStick flip/tune/keep and demo
+  feed-lag/play-length/tune/sigma timings moved into default_config.yaml (two_stick.shadow.*, demo.*), values
+  unchanged; reason: one source of truth for timing (Nick, one connected system). Moving to measured values is a
+  separate decision.
+- 2026-11-04 (lane 4, #168, one brain merge with integration/next): `control.STANDBY_REPAUSE_S` (APP-04, #164) moves
+  to `two_stick.standby_repause_s: 600` in default_config.yaml, value unchanged; postseason.py's ROUNDS / DEFAULTS /
+  _rank renamed ROUNDS_LEFT / WEIGHTS / _poll_rank (no behavior change). Reason: the contract kernel (K1/K2/K4)
+  flagged them as new on merge; one definition per fact, timings in config (Nick, one connected system).
+- 2026-11-04 (Nick 6:10 PM, via the overseer): **official direction** = docs/plans/2026-11-04-noggin-master-plan.md +
+  docs/research/watch-science-playbook.md (copied from codex/resume-redzone 51908ba). All ideas live in ONE ranked
+  queue, docs/experiments.md; Phase 0 starts now (suspense S = E[(ΔWP)^2] line + WV input, one event language,
+  nightly shadow, off-policy grading). The playbook's §5 line is binding: the objective is "worth it", not watch
+  time; **RedZone never adds betting features** (pre-game lines only as a hidden data prior); no artificial
+  suspense, autoplay or pull-back nudges, streaks or viewer sensors. Nick's taps and ratings stay evaluation-only
+  (self-taught rule). Baseball Savant skipped for now (terms unclear; MLB last and out of season). RC6 = #132 + #173.
+- **2026-11-04 (lane 2, EXP-018): `decider.crunch.by_value` ships OFF** (with `value_league_prior` 5, `value_mine_prior`
+  30, `value_margin` 10). Pre-registered bar failed with the score as the value: dev NFL crunch live −1.0/−2.1/−1.0,
+  NHL crunch-in-replay 0/8/0 → 0/11/5. Retried once lane 1's watch value is wired in.
+- 2026-11-04 (Nick 7:21 PM ET, via the overseer): **off-policy exploration approved with limits** (EXP-005). New flag
+  `decider.explore.enabled`, off by default, and not started until Friday's v3 locked set lands. It may only pick
+  between options that are both already safe (dead ball, no mid-play) and within a small value margin, on at most 5% of
+  decisions, and never in crunch, down the stretch, your-team moments or the catch-up queue. Every decision logs its
+  propensity so the doubly robust estimator is valid. Promotion goes through the normal bar (worth it ≥ live).
+  Reason: grade new brains on logged nights without running them live.
+- **2026-11-04 (lane 2, #132): seek-model timings moved into config, values unchanged** (onebrain K2: no timing
+  literals in code). `replay.seek_press_s` 0.25, `replay.pause_keys_s` 0.5, `replay.pause_err_s` 0.25,
+  `replay.pause_cue_grain_s` 0.5, `replay.hidden_seek_keys_s` 1.5, `decider.leave.tune_s` 6,
+  `sync.probe.log_edge_sd_s` 1.0; the sim reads `two_stick.input_settle_s`. Unused `LIVELAB_FLIPS_S` dropped
+  (samples stay in docs/livelab); the sim's position origin is 0 (any constant works).
+- 2026-11-04 (Nick, 6:50 PM ET): RC6 may switch DURING games, but only at halftime/intermission of the game on
+  screen. `scripts/deploy.py deploy --at-break` allows live games while the on-screen game's status is Halftime /
+  Intermission (NHL "End of 1st/2nd"), polls every 30 s, and keeps the 10-min health watch + auto-rollback. The
+  default (no flag) is unchanged: any live game defers. Reason: get RC6 on tonight without cutting into play.
+- 2026-11-04 (Nick, 6:40 PM ET): "training needs to be SHARP, grading even SHARPER." These are the 14 standing
+  grading and training rules in [docs/grading.md](../grading.md).
+  - The integrator writes and freezes the graders (`docs/grader_freeze.json`, versioned per release). The
+    training lanes never do.
+  - A new CI job, `graders` (`scripts/grading_check.py`), runs three checks:
+    - G1: a grader file differs from the freeze;
+    - G2: a running or done experiment is not pre-registered;
+    - G3: a running experiment moved its goalposts.
+  - Reason: grading has to be harder to fool than training.
+- **2026-11-04 (lane 2, #174): `replay.crunch_block_tail`** (default `false`, candidate `true`). The crunch block also
+  holds until a game the feed ended in crunch time (an OT winner) has aired. Why: the OT winner reached the screen ~2 min
+  after the feed dropped the game, and a catch-up reel ran over it. NHL locked crunch live +2.5..2.6 on 3 seeds,
+  0 mid-play; dev big seen in 10 min −5..6 (catch-ups wait out the OT tail).
+- **2026-11-04 (lane 2, cycle 07): `replay.when_alone`** (default `false`, candidate `true`). When no other game is worth
+  switching to, the decider used to stay without checking for a catch-up, so a missed WSH goal waited while WSH's own
+  game sat on a break (dev NHL night 20261028). Now your team's missed play still gets its catch-up then (other games'
+  plays still wait). Dev NHL your-team 19/21/18 -> 20/21/20 of 21, crunch equal, 0 mid-play, dead air +0..0.4;
+  NFL, NBA and locked unchanged.
+- 2026-11-04 (lane 4, cycle 07 plan #176 "night report live tonight"): `report.nightly` default ON. The night health
+  report (scripts/night_report.py, northstar.yml's 10:00 UTC run) writes docs/nights/YYYY-MM-DD.md from the published
+  live-night summary. Its gates pass in tests/test_night_report.py: matches the live log through publish, PENDING with
+  no night or no games, no private strings published. Report only: nothing on the TV changes. Off again: set it false.
+- 2026-11-04 (Nick, 7:55 PM ET): women's basketball is OFF. Nick's leagues are NFL, CFB, NBA, CBB (men's), NHL and MLB
+  only. The North Star and release gate never score WCBB: `scripts/northstar.py NICKS_LEAGUES`, with a test. The grader
+  freeze was re-stamped. The default_config change (wcbb false, out of league_priority) is a separate PR.
+- 2026-11-05 00:21 UTC (Nick 7:30 PM ET Nov 4, via the coordinator): **Colab Pro+ bought by Nick** (~$50/mo, ~500 CU,
+  A100/L4, background runs). This is Nick's own spend; the $0 rule still binds every agent (no other spending
+  without asking). **Master plan v2 Phases 0-2 are compressed to finish by Sun Nov 8**:
+  docs/plans/2026-11-05-compressed-4day.md, planned ~256-261 CU, keeping ≥ 100 CU in reserve. Colab notebooks
+  are self-contained: public inputs at a pinned commit, no Drive mount, no secrets, grades.json printed. The
+  overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
+  frozen, locked is read once (Sunday).
+- 2026-11-04 (lane 3, Cycle 06 #1, Start Planner #162): new flag `buffer.hold_left` (default **off**), plus
+  `buffer.hold_left_apps` [youtubetv] and `buffer.hold_left_slop_s` 3.0 (playbook STK-07). When on, the game we leave
+  stays paused on the stick we left, at the dead ball we left it on, so going back is a flip plus a catch-up from there.
+  Past timing.behind_live_s.max_s (one definition, Nick's 90 s cap), or if it resumes by itself, it is reloaded at the
+  live edge (the STK-06 guard). Why off: night lab seed 1 has 0 mid-play both ways and identical cuts (52), but no
+  return came within the cap, so the catch-up path has only unit tests. It needs the lab rig first.
+- 2026-11-05 (integrator, grader review): #145 is accepted. `press_to_tv_p95` now grades REAL presses from data/press_probe/:
+  - PASS or FAIL once there are 20 or more presses;
+  - any press that never reaches the TV is an immediate FAIL;
+  - below 20 presses it shows PENDING, with the sim drill as the fallback, and the sim can still never PASS the line.
+  Grader freeze v3. No number changes until a rig run saves presses.
