@@ -410,6 +410,11 @@ def main(argv=None) -> int:
     ap.add_argument("--doc-mask", action="store_true", help="no attention across games inside a packed window")
     ap.add_argument("--compile", action="store_true", help="torch.compile (CUDA); XLA is always traced")
     ap.add_argument("--target-loss", type=float, default=0.0, help="record tokens + hours to reach this valid loss")
+    # compute exchange (docs/plans/2026-11-05-compute-exchange.md): shared shards + checkpoints across sites
+    ap.add_argument("--shards-from", default="", help="pull --tokens from a store first (hf:<owner>/<repo> or dir)")
+    ap.add_argument("--shards-set", default="v2")
+    ap.add_argument("--exchange", default="", help="checkpoint store (hf:<owner>/<repo>, private model repo, or dir)")
+    ap.add_argument("--run", default="", help="run name on the exchange (default <exp>-<preset>)")
     a = ap.parse_args(argv)
     import torch
     torch.manual_seed(SEED)
@@ -418,6 +423,12 @@ def main(argv=None) -> int:
     ck_dir = a.ckpt_dir or a.out
     ck_dir.mkdir(parents=True, exist_ok=True)
 
+    if a.shards_from:
+        sys.path.insert(0, str(ROOT / "scripts" / "exchange"))
+        import shards as XS
+        a.tokens = a.tokens or a.out / "shards"
+        print("exchange:", XS.pull(a.shards_from, a.tokens, a.shards_set, a.leagues.split(",")), "shards pulled",
+              flush=True)
     if a.tokens:
         games, licenses = W.load_shards(a.tokens, a.leagues.split(","))
     else:                                                          # self-contained notebooks (Kaggle / Colab)
@@ -455,6 +466,13 @@ def main(argv=None) -> int:
         shard = lambda t: xs.mark_sharding(t, mesh, ("data", None))   # noqa: E731 - batch split across chips
     step, best, curve, t_train = 0, float("inf"), [], 0.0
     ck = ck_dir / "ckpt.pt"
+    sync = None
+    if a.exchange:
+        sys.path.insert(0, str(ROOT / "scripts" / "exchange"))
+        from ckpt import CkptSync
+        sync = CkptSync(a.exchange, a.run or f"{a.exp}-{a.preset}")
+        local = torch.load(ck, map_location="cpu", weights_only=False)["step"] if ck.exists() else -1
+        sync.pull(ck, local)                                       # a newer checkpoint from any site wins
     if ck.exists():                                                # resume
         st = torch.load(ck, map_location="cpu", weights_only=False)
         model.load_state_dict(st["model"])
@@ -538,9 +556,13 @@ def main(argv=None) -> int:
         t_train = t_prev + time.time() - t0
         if time.time() - last_ck > a.ckpt_min * 60:
             save(ck)
+            if sync:
+                sync.push(ck, step, None if best == float("inf") else best, ck_dir / "best.pt")
             last_ck = time.time()
     t_train = t_prev + time.time() - t0
     save(ck)
+    if sync:
+        sync.push(ck, step, None if best == float("inf") else best, ck_dir / "best.pt")
     valid_by_league = {}
     if (ck_dir / "best.pt").exists():                               # per-league valid loss of the selected model
         model.load_state_dict(torch.load(ck_dir / "best.pt", map_location="cpu", weights_only=False)["model"])

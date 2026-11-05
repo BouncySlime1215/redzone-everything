@@ -56,6 +56,8 @@ def main(argv=None) -> int:
                 tar.add(p, f"rz/{p.relative_to(ROOT)}")
         for s in SCRIPTS:
             tar.add(ROOT / "scripts" / s, f"rz/scripts/{s}")
+        for p in sorted((ROOT / "scripts" / "exchange").glob("*.py")):     # compute exchange (store, ckpt, DiLoCo)
+            tar.add(p, f"rz/scripts/exchange/{p.name}")
         tar.add(ROOT / "requirements.txt", "rz/requirements.txt")
     nb = out / "kaggle_noggin_factory.ipynb"
     nb.write_text(json.dumps(notebook(ROOT / "scripts" / "kaggle_noggin_factory.py"), indent=1))
