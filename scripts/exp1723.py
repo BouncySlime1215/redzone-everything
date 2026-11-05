@@ -5,14 +5,15 @@
 
 Arms, per night, inside the forward chain (redzone/lab/forward_chain.Chain over FIT nights, oldest first):
   B0  oracle_window.solve_window with the v1 past-mean beyond value (control)
-  B1  beyond value = IsoMap(WV A0) (redzone/noggin/models/watch_<lg>.v1.npz, no reweighting)
-  B2  B1 with WV retrained on mistake_ledger.sample_weights of the nights already seen
+  B1  beyond value = IsoMap(WV), WV = the A0 recipe (train_watch_value: wv head, same features, PARAMS) refit on
+      the SEEN nights only, unit weights (prereg amendment 21:35 UTC: the shipped A0 file saw these nights)
+  B2  B1 with the WV fit weighted by mistake_ledger.sample_weights (app vs full hindsight) of the seen nights
+  Inner early stopping: the last 20 % of seen nights (>= 1); B1/B2 need 2 seen nights, before that they are B0.
   plus the app (backtest.run) and full hindsight (oracle.solve) as 100 %.
 Each night is graded FIRST with maps / models fit on earlier nights only; then its ledger (app vs full hindsight)
 is written; then it joins the iso fits and B2's weights. Locked nights never enter (Chain raises).
 
-Caveat written into the output: WV A0 itself was trained on this pin's train nights, so on v1 history B1/B2's WV
-is in-sample there; only v3's new nights (Friday) and live nights are counting evidence (prereg).
+v1 fit nights are dev history; the counting nights are v3's new nights (Friday) and live nights (prereg).
 Runs where the pinned eval archive lives (cloud box / Kaggle), never on the Mac. Output: derived numbers only.
 personal-use, not for commercial release.
 """
@@ -52,12 +53,30 @@ def wv_rows(lg: str, cfg_path: Path) -> tuple[list[dict], list[str]]:
     return rows, features_for(League(lg).base.value)
 
 
-def a0_raw(lg: str, X: np.ndarray) -> tuple[np.ndarray, int]:
-    from redzone.noggin import watch as W
-    from redzone.scoring.brain import load
-    trees, info = load(W.WV_MODEL_DIR / f"watch_{lg}.v1.npz")
-    wv = trees["wv"]
-    return np.array([wv.raw(x)[0] for x in X]), len(wv.roots)
+def fit_wv(X: np.ndarray, y: np.ndarray, w: np.ndarray, night_of: np.ndarray, seen: list[str], feats: list[str],
+           params: dict) -> np.ndarray | None:
+    """The A0 recipe on seen nights only: lightgbm regression, early stopping (40) on the last 20 % of seen nights.
+    Returns the prediction for every row (None with < 2 seen nights)."""
+    import lightgbm as lgb
+    seen = sorted(seen)
+    if len(seen) < 2:
+        return None
+    n_va = max(1, int(round(0.2 * len(seen))))
+    tr, va = np.isin(night_of, seen[:-n_va]), np.isin(night_of, seen[-n_va:])
+    if tr.sum() < 200 or va.sum() < 20:
+        return None
+    p = dict(params, objective="regression")
+    d = lgb.Dataset(X[tr], y[tr], weight=w[tr], feature_name=feats)
+    b = lgb.train(p, d, 800, valid_sets=[lgb.Dataset(X[va], y[va], weight=w[va], reference=d)],
+                  callbacks=[lgb.early_stopping(40, verbose=False)])
+    return b.predict(X, num_iteration=max(20, b.best_iteration))
+
+
+def info_pool(rows: list[dict]) -> dict:
+    """Information only (WV loop thread): the pool with full > 0 alone, your-team crunch nights kept."""
+    full = np.array([r["v_full"] for r in rows])
+    return {"nights": len(rows), **{k: WB.pooled_pct(np.array([r[f"v_{k}"] for r in rows]), full)["pct"]
+                                    for k in ("app", "B0", "B1", "B2")}}
 
 
 def main(argv=None) -> int:
@@ -85,7 +104,6 @@ def main(argv=None) -> int:
         raise SystemExit("no win probability on the WV rows: WV facts would be empty")
     rows = [r for r in rows if r["night"] not in locked]              # locked plays never even get a WV here
     X = TW.matrix(rows, feats).astype(np.float64)
-    raw_a0, n_trees = a0_raw(lg, X)
     HZ = float(cfg.get("scoring.watch_horizon_s")[lg])               # noqa: N806
     by_game: dict[str, list[int]] = {}
     for k, r in enumerate(rows):
@@ -95,7 +113,6 @@ def main(argv=None) -> int:
         y_wv[ks] = TW.labels([rows[k] for k in ks], HZ)[0]
     night_of = np.array([r["night"] for r in rows])
     wall = np.array([r["wall"] if r.get("wall") is not None else np.nan for r in rows], float)
-    train_mask = np.isin(night_of, list(sp.train))                  # A0's own training rows (pin train nights)
 
     def plays_of(pred: np.ndarray) -> dict:
         out = {}
@@ -106,20 +123,15 @@ def main(argv=None) -> int:
             out[gid] = (wall[ks], pred[ks])
         return out
 
-    plays_a0 = plays_of(raw_a0)
-    st = {"pred_b2": None, "plays_b2": None, "w_row": np.ones(len(rows))}
+    st = {"plays_B1": None, "plays_B2": None, "w_row": np.ones(len(rows)), "seen": []}
     iso1, iso2 = WB.IsoMap(), WB.IsoMap()
     seen_data: dict[str, tuple] = {}     # night -> (gids, steps, lag, R, t0) for refitting iso2 after a retrain
     per_night: list[dict] = []
     ledgers: list = []
 
-    def retrain_b2() -> None:
-        import lightgbm as lgb
-        p = dict(TW.PARAMS, objective="regression")
-        d = lgb.Dataset(X[train_mask], y_wv[train_mask], weight=st["w_row"][train_mask], feature_name=feats)
-        b = lgb.train(p, d, n_trees)                                   # A0's own tree count: no valid peek
-        st["pred_b2"] = b.predict(X)
-        st["plays_b2"] = plays_of(st["pred_b2"])
+    def refit_wv(arm: str, w: np.ndarray) -> None:
+        pred = fit_wv(X, y_wv, w, night_of, st["seen"], feats, TW.PARAMS)
+        st[f"plays_{arm}"] = plays_of(pred) if pred is not None else None
 
     def first_pass(day: str, reps, targets) -> dict:
         rep = run(reps, cfg, {"WSH", "UNC"}, targets=targets, **feed_lag_knobs(fl, a.buffer))
@@ -132,16 +144,18 @@ def main(argv=None) -> int:
         W = WB.window_of(n, fl)
         full = O.solve(n, "combined", tab)
         b0 = OW.solve_window(n, fl, "combined", tab)
-        g1 = WB.wv_grid(gids, plays_a0, steps, n.lag)
-        b1 = WB.solve_with(n, fl, tab, WB.beyond_from_wv(g1, iso1, W)) if iso1.f is not None else b0
-        b2 = b0
-        if iso2.f is not None and st["plays_b2"] is not None:
-            g2 = WB.wv_grid(gids, st["plays_b2"], steps, n.lag)
-            b2 = WB.solve_with(n, fl, tab, WB.beyond_from_wv(g2, iso2, W))
+        sched = {}
+        for arm, iso in (("B1", iso1), ("B2", iso2)):
+            sched[arm] = b0
+            if iso.f is not None and st[f"plays_{arm}"] is not None:
+                g = WB.wv_grid(gids, st[f"plays_{arm}"], steps, n.lag)
+                sched[arm] = WB.solve_with(n, fl, tab, WB.beyond_from_wv(g, iso, W))
+        b1, b2 = sched["B1"], sched["B2"]
         val = {k: O.schedule_value(n, tab, "combined", s) for k, s in
                (("full", full), ("app", rep.switches), ("B0", b0), ("B1", b1), ("B2", b2))}
         row = {"night": day, "games": len(reps), "W_steps": W, "your_team_crunch": bool(tab["mine"].sum() > 0),
-               "b1_fallback": iso1.f is None, "b2_fallback": iso2.f is None or st["plays_b2"] is None,
+               "b1_fallback": b1 is b0, "b2_fallback": b2 is b0, "seen_before": len(st["seen"]),
+               "b2_rows_weighted": int((st["w_row"] > 1.0).sum()),
                **{f"v_{k}": round(float(v), 3) for k, v in val.items()},
                **{f"switches_{k}": len(s) for k, s in (("app", rep.switches), ("B0", b0), ("B1", b1), ("B2", b2))}}
         per_night.append(row)
@@ -160,17 +174,21 @@ def main(argv=None) -> int:
             if ks:
                 ks = np.asarray(ks)
                 st["w_row"][ks] = WB.step_weights(lw, n.t0, O.STEP_S, wall[ks] + float(O.lag_of(n.lag, gid)))
-        iso1.add(*WB.iso_pairs(g1, R, HORIZON_STEPS))
         seen_data[day] = (gids, steps, n.lag, R)
         return row
 
-    def refit(_seen) -> None:
-        iso1.refit()
-        retrain_b2()
-        iso2.x, iso2.y = [], []
-        for gids, steps, lag, R in seen_data.values():
-            iso2.add(*WB.iso_pairs(WB.wv_grid(gids, st["plays_b2"], steps, lag), R, HORIZON_STEPS))
-        iso2.refit()
+    def refit(seen) -> None:
+        st["seen"] = list(seen)
+        refit_wv("B1", np.ones(len(rows)))
+        refit_wv("B2", st["w_row"])
+        for arm, iso in (("B1", iso1), ("B2", iso2)):
+            iso.x, iso.y = [], []
+            if st[f"plays_{arm}"] is None:
+                iso.f = None
+                continue
+            for gids, steps, lag, R in seen_data.values():
+                iso.add(*WB.iso_pairs(WB.wv_grid(gids, st[f"plays_{arm}"], steps, lag), R, HORIZON_STEPS))
+            iso.refit()
 
     ch = FC.Chain(locked=locked)
     fit_nights = set(sp.train + sp.valid)
@@ -196,6 +214,7 @@ def main(argv=None) -> int:
             "nights_excluded": {"your_team_crunch": sum(r["your_team_crunch"] for r in per_night),
                                 "full_value_not_positive": sum((not r["your_team_crunch"]) and r["v_full"] <= 0 for r in per_night)},
             "pct_of_full": {k: WB.pooled_pct(v, full) for k, v in arms.items()},
+            "info_pool_full_positive_only": info_pool([r for r in per_night if r["v_full"] > 0]),
             "B1_minus_B0": WB.delta_ci(arms["B1"], arms["B0"], full), "B2_minus_B0": WB.delta_ci(arms["B2"], arms["B0"], full),
             "B1_minus_app": WB.delta_ci(arms["B1"], arms["app"], full), "B2_minus_app": WB.delta_ci(arms["B2"], arms["app"], full),
             "ledger_causes_app_vs_full": ML.summarize(ledgers), "locked_nights_read": 0,
