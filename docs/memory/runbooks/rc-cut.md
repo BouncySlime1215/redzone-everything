@@ -38,6 +38,11 @@ Add a row here **and** a `"<sha7>": "RCx"` line to `docs/releases.json` (the pho
      `python scripts/northstar.py --split dev --no-write --json head.json` and the same with
      `--root <checkout of the live RC>`. Mid-play entries, high-leverage leaves, plays missed on entry and dead air
      must not get worse; post the before/after table.
+   - **Flags as staged.** Read each flag from the candidate's own config (`Config(user_path=<tmp>).get(key)`), not
+     from memory: every new flag ships at the value its PR and decisions.md line say. From RC8 (#331) on:
+     `timing.behind_live_s.rc8_on` is false in every league. After the deploy, on the Mac,
+     `python scripts/rc8_flip.py --status` must show rc8_on false for every league. Nick flips leagues himself
+     (`rc8_flip.py <league> on --seconds <B>`, rollback `... off`, `--dry-run` first); a flip takes no deploy.
 4. **Merge.** `git checkout -B rc-cut origin/integration/release && git merge --no-ff <sha> -m "RCx: merge
    integration/next <sha> into integration/release"` with the contents, checks and session trailer in the body.
    `git diff <sha> HEAD` must be empty. Push `rc-cut:integration/release`.
