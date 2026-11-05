@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Colab: EXP-109 speedrun 1 h 57 min (should finish ~6 AM); commentary EXP-1402 Teacher stage since 4:29 AM (10.2M-play queue, 2 h budget, priority plays first), done ~6:45 AM.
-No failures. Usage 60%.
+EXP-109 speedrun DONE 5:33 AM (~29.5 CU): winner E = Muon+WSD+modded-nanoGPT bundle+torch.compile, valid 0.3234, 2.07x faster to 0.334 than AdamW base; compile alone 1.5x; Muon or bundle alone hurt. F docmask and EXP-110 (OpenFIM pip) failed. Report b8f4fc80; A100 disconnected; lane 1 asked for an E-pinned ladder on Colab.
+Commentary EXP-1402 Teacher still running (~6:45 AM). Usage 60%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
