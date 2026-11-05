@@ -137,8 +137,9 @@ jobs:
     # Tests run even if the dataset job failed (a bad checksum must not hide test results).
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40   # base took 19m50s on 3.12 (Nov 4 12:12 run): three replayed-night tests (~3 min each);
-                          # +10 for a slow apt mirror (16 and 21 min on Nov 4), which the apt step now also caps
+    timeout-minutes: 45   # base took 19m50s on 3.12 (Nov 4 12:12 run): three replayed-night tests (~3 min each);
+                          # +10 for a slow apt mirror (16 and 21 min on Nov 4), which the apt step now also caps;
+                          # +5: with ~20 PRs at once (go wide, Nov 4) one leg ran past 30 min on slow runners
     strategy:
       fail-fast: false
       matrix:
