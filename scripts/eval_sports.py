@@ -155,6 +155,9 @@ def main():
         for part in path:
             node = node.setdefault(part, {})
         node[last] = yaml.safe_load(val)
+    evaldata.flatten_league_overrides(cfg, lg.value)   # [grader v7] league-scoped defaults, as the app runs them
+    if getattr(a, "behind_live", None) is None:   # [grader v8] the buffer the config turns on
+        a.behind_live = evaldata.config_behind_live(cfg, lg.value)
     mine = set(cfg.get(f"teams.{lg.value}") or ["WSH"])
     total = sportsgrade.Card(lg.value)
     t0 = time.time()
@@ -167,7 +170,7 @@ def main():
         card = sportsgrade.grade(reps, rep.switches, mine, rep.lag_true, 5.0, rep.t0, rep.t1, rep.replayed)
         total.add(card)
         cs = card.cut.summary()
-        per_night.append({"night": day, "entries": cs["entries"], "entries_mid_play": cs["entries_mid_play"],
+        per_night.append({"night": day, "entries": cs["entries"], "entries_mid_play": cs["entries_mid_play"], "entries_mid_break": cs["entries_mid_break"],
                           "cuts": len(card.cuts), "cuts_high": len(card.cuts_high), "big": card.big, "big_seen": card.big_seen,
                           "big_seen_10m": card.big_seen_10m, "my_big": card.my_big,
                           "my_big_seen_10m": card.my_big_seen_10m, "crunch_on_replay": card.crunch_on_replay,

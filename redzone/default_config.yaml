@@ -49,6 +49,12 @@ sync:
                            # off until the probe's logged lines show YTTV's real ad strings
     log_ad_start: ""       # regex override for an ad-start log line ("" = sync_probe.LOG_AD_START)
     log_ad_end: ""         # ... and an ad-end line ("" = sync_probe.LOG_AD_END)
+    bursts: true           # [burst anchor] YTTV MediaSession bursts (content-tied, live lab Nov 4) -> logged as
+                           # "burst" rows in sync_anchors.jsonl with the feed's dead ball they follow
+    burst_gap_s: 300.0     # a quiet gap this long before an update makes it a new burst's onset
+    burst_after_tune_s: 30.0   # updates this soon after a tune, seek or pause are the player settling
+    burst_confirm_s: 60.0  # ...and a second update within this confirms it (a burst has 4-8)
+    burst_sd_s: 0.3        # the onset's doubt on the stick's own clock (burst vs position: 0.1-0.4 s)
     log_edge_sd_s: 1.0     # an ad edge read from the player's own log line: the player logs it as it renders it
   break_anchor:            # [auto-anchors] ad break on screen <-> the feed's dead ball -> a delay sample
     enabled: false         # logged always (recordings/<day>/sync_anchors.jsonl); fed to the filter only when on.
@@ -56,6 +62,10 @@ sync:
     bias_sd_s: 10
     min_s: 10              # plausible whistle -> ad-on-screen window (feed wall to screen time)
     max_s: 240
+  burst_anchor:            # [burst anchor] a burst onset <-> the feed's last dead ball -> a delay sample
+    enabled: false         # off until a live night shows bursts line up with TV timeouts (scripts/burst_align.py)
+    gap_s: 15              # dead ball -> burst on screen: a PRIOR; burst_align.py fits it
+    gap_sd_s: 10
   drift_alarm:             # [SYNC 6] delay moved > limit_s since it synced, or the stick's network predicts it
     limit_s: 5
     resync: false          # re-tune the hidden stick's standby on an alarm (off until a live night shows alarms are real)
@@ -231,6 +241,10 @@ decider:
                              # pause: on the HIDDEN stick seek past the dead ball, play up to it, pause, flip, play
     possession_start: "off"  # [possession start] off | crunch | all: cue to the last dead ball before the possession, never wait while one is in reach
     confirmed_dead_only: false  # [data gap] a dead window opens only on a logged stoppage (a lone substitution means the stoppage is missing)
+    unknown_wait_leagues: []  # [EXP-089] never enter on a landing the data can't call ("play may be live"): rewind to a known dead ball or wait. Off ([]) until its gate passes
+    conformal:               # [EXP-024] conformal floor on entries: no landing on less doubt than tau x sigma (off until its gate passes)
+      enabled: false
+      tau: {nfl: 0, nba: 0, nhl: 0}   # per league, from conformal risk control on dev (alpha 0.005 a timed entry); 0 = no floor
     ended_strict: false  # [landing lag] a switch off a finished game never takes the urgent (thin-margin) landing
     crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
@@ -255,7 +269,21 @@ decider:
   wait_for_my_team_s: 1800  # your team tips within this: don't start on a basketball/hockey game we can't leave (uncalibrated)
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
   redzone_score: 45        # RedZone vs a game (0-100): stay on it unless a game beats this; any break goes there
+  # [EXP-204] your team "late and close" also needs the leader's win probability at or below this cap
+  # (ESPN's WP when the feed has it, else a margin model). 1.0 = off (live: any Q4 that isn't garbage
+  # time holds). Crunch time always holds. Nick, Nov 4: ATL up 12 with 9:09 left held WSH all night.
+  mine_late_max_lead_wp: 1.0
+  leave:                   # [cut rules, Nick Nov 4 3:15 PM] never JOIN mid-play; LEAVING mid-play only at low leverage
+    low_leverage: []       # leagues where a low-leverage moment may be left mid-play ([] = never: today's rule)
+    sticky_closeness: 0.5  # down the stretch is sticky: a late game at least this close is never left mid-play
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
+    floor: true            # [SAFE-09] in a crunch window: no overlay or model leaves it for a non-crunch game, and
+    floor_low_value: 0     # ...no game below this value (watch value, else score) pulls us out. 0 = off: at 50 it
+                           # held dev but cost locked NFL crunch live -0.6/-3.9/0 (Nov 4); waits for watch value
+    by_value: false        # [TREE-6 Mac half] crunch vs crunch by value (watch value, else score) with priors:
+    value_league_prior: 5  # ...points per league-order step (NFL = CFB > NBA > NHL, MLB)
+    value_mine_prior: 30   # ...points for your team / bet
+    value_margin: 10       # ...jump only when the other crunch is worth this much more
     hold_personal: 5       # stay through every stoppage of a crunch game with this much personal boost (your team, bet)
     hold_neutral_breaks: [two_minute_warning]  # ...and of any crunch game through these (the 2:00 warning is the way in)
     personal_lead: 5       # your team / bet wins an overlap when its boost is this much bigger
@@ -407,6 +435,9 @@ two_stick:
   min_gain: 8              # ...and then only for one this many points better (your game's return and
                            # a replay about to play take it right away)
   verify_s: 15             # check the hidden stick is still playing this often
+  hand_back_s: 600         # for this long after you pick a game on the phone, the game you left keeps the
+                           # hidden stick (ranked with your game's return), so a tap back is a ~2 s flip.
+                           # 0 = off. Nov 4: 11 of 16 phone presses to Prime were cold (~30 s), ~2 min apart.
   pretune_on_open: false   # opening a live game on the phone pre-tunes it on the hidden stick (90 s), so
                            # "Watch this" / "Go now" is a ~3 s flip instead of a ~8 s tune + flip
   input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
@@ -462,6 +493,8 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   crunch_block: false      # [crunch block] no catch-up starts while any live game is in crunch time / its run-up
   crunch_block_mine_leagues: []   # ...your team's missed play still goes in these leagues (its game's league)
   crunch_block_mine_after_s: 90    # ...once this long after it aired
+  crunch_block_tail: false # ...and until a game the feed ended in crunch (an OT winner) has finished airing
+  when_alone: false        # a catch-up is still checked when no other game is worth switching to
   urgent_s: 1200           # in its last N seconds a missed play jumps the queue and beats dull live play
   clip_s: 15               # how long each replay plays
   seek_s: 6                # time spent rewinding to the play
@@ -595,10 +628,69 @@ noggin:                    # docs/noggin.md
 
 phone:                     # the phone page (redzone/web)
   v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it
+  commit: false            # [EXP-036] commitment controls (stay here, only my teams, stop after this game, end at a time), each at a dead ball; OFF until lanes 2/3 ship the "commit" action
+  worth: false             # [EXP-040] one-tap end-of-night "worth it?" (1-5) on the Slate complete card, works with v2 off. EVALUATION ONLY, never a training label
+  worth_probe_days: 7      # [EXP-040] the agency / regret probes show at most once per this many nights
+  why_tag_min: 70          # [EXP-035] "Why we're here" shows only at or over this 0-100 value; lab/decision_records grades the same number
 warmup:                    # [warmup.pregame] before the night's first game (redzone/plan.py Tonight._warmup)
   pregame: false           # put the likeliest first game on the HIDDEN stick before the first start (never the one on screen)
   lead_min: 10             # ...this many minutes before it
 buffer:                    # [buffer.watchdog] playbook STK-06 (redzone/control.py _buffer_watch)
   watchdog: false          # rebuild a lost / drifting (> 2 s) hidden-stick hold at that game's next dead ball
+  hold_left: false         # playbook STK-07: the game we leave stays paused on the stick we left at that dead
+                           # ball, so going back starts there (a catch-up) instead of at the live edge. It is
+                           # reloaded at the live edge once it's timing.behind_live_s.max_s behind (OFF until the lab rig)
+  hold_left_apps: [youtubetv]   # apps whose left-game pause is proven to resume where it paused
+  hold_left_slop_s: 3.0    # the pause must land this close to the flip that left it (else: reload at live, as before)
 calib:                     # [calib.auto] values re-measured each night from live logs (data/calib/<night>.json)
   auto: false              # read last nights' accepted flip time back at start (OFF until it's proven on live nights)
+  sigma_floor_s: 2.0       # a calibrated channel's delay prior is never surer than this (a fresh tune's edge varies ~4 s between sticks)
+
+report:                    # [night health] scripts/night_report.py -> docs/nights/YYYY-MM-DD.md every morning (northstar.yml)
+  nightly: true            # ON (cycle 07): its gates pass in tests/test_night_report.py (matches the live log, PENDING with no night, nothing private)
+
+league_overrides:          # [league overrides, Nick Nov 4 8:20/8:40 PM] per-league promotion: a league runs its graded set,
+                           # every other league keeps live behavior. Flat dotted keys (config.for_league). RC7: NBA runs
+                           # the promoted candidate set, NHL stays live (below), NFL runs EXP-203 (dev + locked
+                           # passed); CBB, CFB, WCBB and MLB stay on live behavior until graded.
+  nba:
+    timing.behind_live_s.enabled: true
+    noggin.priority.enabled: true
+    replay.redzone_way: true
+    noggin.timing.leagues: ["nba"]
+    sources.nhl_primary: true
+    decider.entry.crunch_now: "wait"
+    decider.entry.max_wait_s: {}
+    decider.entry.landing_lag_s: 6
+    decider.entry.ended_strict: true
+    decider.entry.possession_start: "crunch"
+    decider.entry.confirmed_dead_only: true
+    sync.break_anchor.enabled: true
+    delay.sync.min_sigma_s: 3
+    decider.crunch.instant_replays: false
+    decider.entry.cue: "hidden"
+    two_stick.pretune_on_open: true
+    replay.crunch_block: true
+    decider.mine_late_max_lead_wp: 0.95   # [EXP-204] ATL up 12 with 9:09 left (WP ~0.99) is not close; 6 pts / 6 min (~0.91) is
+  nhl: {}                  # RC7 fast track (integrator, Nov 5): NHL stays on live behavior until Nick OKs its trade
+                           # (locked: mid-play 8 -> 0, crunch live 82.7 -> 78.6, dead air +0.8). The graded set is
+                           # NBA's block above; /mnt/project-files/lane2/rc7-nhl-confirm-pr227.json has its grades.
+  nfl:
+    timing.behind_live_s.enabled: true
+    noggin.priority.enabled: true
+    replay.redzone_way: true
+    noggin.timing.leagues: ["nba"]
+    sources.nhl_primary: true
+    decider.entry.crunch_now: "wait"
+    decider.entry.max_wait_s: {}
+    decider.entry.landing_lag_s: 6
+    decider.entry.ended_strict: true
+    decider.entry.possession_start: "crunch"
+    decider.entry.confirmed_dead_only: true
+    sync.break_anchor.enabled: true
+    delay.sync.min_sigma_s: 3
+    decider.crunch.instant_replays: false
+    decider.entry.cue: "hidden"
+    two_stick.pretune_on_open: true
+    replay.crunch_block: true
+    decider.mine_late_max_lead_wp: 0.95   # [EXP-204] ATL up 12 with 9:09 left (WP ~0.99) is not close; 6 pts / 6 min (~0.91) is

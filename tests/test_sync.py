@@ -40,13 +40,20 @@ def test_one_flip_plus_position_reads_sync_within_two_minutes_and_after_every_tu
         s.position("youtubetv:espn", pos(c.t, true_delay), t=c.t)
     f = s.get("youtubetv:espn")
     assert f.has_origin and abs(f.mu(c.t) - true_delay) < 2.0
-    # a new tune lands 7 s further behind the live edge: the first position read re-syncs it, no flip
+    # a seek on the SAME tune moves the picture 15 s back: the first position read re-syncs it, no flip
     c.t += 60
-    s.tuned("youtubetv:espn", c.t)
+    s.tuned("youtubetv:espn", c.t, new_stream=False)
     assert s.estimate("youtubetv:espn") is None
     c.t += 3
-    s.position("youtubetv:espn", pos(c.t, true_delay + 7.0), t=c.t)
-    assert abs(f.mu(c.t) - (true_delay + 7.0)) < 2.0
+    s.position("youtubetv:espn", pos(c.t, true_delay + 15.0), t=c.t)
+    assert abs(f.mu(c.t) - (true_delay + 15.0)) < 2.0
+    # a NEW tune: YTTV's position is a per-tune clock (live lab, Nov 4), so its reads can't place it
+    c.t += 60
+    s.tuned("youtubetv:espn", c.t)
+    c.t += 3
+    s.position("youtubetv:espn", 46_790.0 + 3.0, t=c.t)
+    assert not f.has_origin and f.rejected == 0 and not f.uncertain(c.t)
+    assert abs(f.sd(c.t) - 15.0) < 0.5                                   # still the prior's doubt
 
 
 def test_scores_alone_converge_under_two_seconds():

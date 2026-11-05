@@ -18,7 +18,7 @@ from redzone import bets as betlib
 from redzone import reel, standby, trace, userstate, views
 from redzone.reel import REEL_DIR
 from redzone.channels import REDZONE_TARGET, SETUP_CHANNELS, ChannelMap, describe, redzone_on
-from redzone.config import Config, ConfigError
+from redzone.config import Config, ConfigError, for_league
 from redzone.control import Controller, Outcome
 from redzone.decider.decider import REDZONE, REEL, Candidate, Decider, Decision, FocusMode, Missed, State
 from redzone.decider.screen import (PLAY_LEN_S, TAP_HISTORY_S, Delay, DelayBook, break_on_arrival, catchable,
@@ -67,7 +67,7 @@ class Engine:
         self.channels = ChannelMap()
         self.fetcher = Fetcher()
         # [NHL primary] api-web's live play-by-play owns NHL stoppages while it's fresh.
-        self._nhl_primary = bool(self.cfg.get("sources.nhl_primary", False))
+        self._nhl_primary = bool(for_league(self.cfg, "sources.nhl_primary", "nhl", False))
         # With primary off: still poll api-web at the fast rate and log when each event first
         # reached us (data/recordings/<day>/nhl_seen.jsonl), so the backtest that gates it has data.
         self._nhl_shadow = not self._nhl_primary and bool(self.cfg.get("sources.nhl_shadow", True))
@@ -113,12 +113,21 @@ class Engine:
             self.sync = self.delays.attach_sync(
                 min_sigma_s=float(self.cfg.get("delay.sync.min_sigma_s", 4.0)),
                 log_path=data_dir.parent / "sync.jsonl" if data_dir and self.cfg.get("delay.sync.log", True) else None)
+            # [league overrides] each channel's floor follows the league of the game it shows
+            self.delays.sync_floor_for = lambda target: float(for_league(
+                self.cfg, "delay.sync.min_sigma_s", self._league_of(target), 4.0))
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
         if data_dir:
             from redzone import calibration
             self.control.calibrated_flip = calibration.flip_prior(self.cfg, data_dir.parent)
+            # [calib.auto] lane 2's sync half: seek fit + per-channel fresh-tune delay (in memory only)
+            from redzone.contracts.switching import set_calibrated_seek
+            sp = calibration.sync_prior(self.cfg, data_dir.parent)
+            set_calibrated_seek(sp["seek"])
+            self.delays.calibrated = sp["delays"]
+            self.control.seek_log_path = data_dir.parent / "seeks.jsonl"
         self.decider.safety.feed_age = self._feed_age   # [playbooks SAFE-01]
         # Break visits: the game we leave keeps playing on the other stick, so the trip back is one
         # flip; with one stick it's a full tune of that game.
@@ -141,6 +150,7 @@ class Engine:
         self.scorebug = scorebug.ScoreBugWatcher(on_sample=self._scorebug_sample, on_tune=self._sync_tune,
                                                  on_clock=self._sync_clock)
         self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
+        self._hand_left: tuple[str, float] | None = None   # (game you left by hand, when): standby.options hand_back
         # owed TV timeouts per game: when a break is coming (+ the learned brain, when brain.enabled)
         self.breaks = breaks.BreakBook(brain=self._break_brain)
         self._cost_mode: bool | None = None         # two-stick mode when switch costs were last synced
@@ -284,10 +294,10 @@ class Engine:
             except Exception:
                 log.exception("sync: could not use a position read on %s", target)
 
-    def _sync_tune(self, target: str, wall: float) -> None:
+    def _sync_tune(self, target: str, wall: float, new_stream: bool = True) -> None:
         if self.sync is not None:
             try:
-                self.sync.tuned(target, wall)
+                self.sync.tuned(target, wall, new_stream=new_stream)
             except Exception:
                 log.exception("sync: could not re-sync %s", target)
 
@@ -314,12 +324,12 @@ class Engine:
 
     def _behind_of(self, target: str) -> float:
         """[time-shift buffer] Seconds to hold this target behind live: per league, 0 when off."""
-        if not self.cfg.get("timing.behind_live_s.enabled", False):
-            return 0.0
         gid = self._game_on(target, False)
         g = self.merger.games.get(gid or "")
         if g is None or g.phase != Phase.LIVE:
             return 0.0
+        if not for_league(self.cfg, "timing.behind_live_s.enabled", g.league.value, False):
+            return 0.0   # [league overrides] the buffer runs per league
         by = self.cfg.get("timing.behind_live_s.by_league") or {}
         b = by.get(g.league.value, by.get(g.league.base.value, self.cfg.get("timing.behind_live_s.default", 0)))
         return max(0.0, min(float(b or 0.0), float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
@@ -358,19 +368,28 @@ class Engine:
         g = self.merger.games.get(gid or "")
         row = {"ts": round(t, 2), "target": target, "stick": host, "sample_kind": kind, "game": gid,
                "edge_sd": round(sd, 2), "feed_wall": None, "z": None, "used": False}
-        if g is not None and kind == "break_start":
+        burst = kind == "burst"   # [burst anchor] a content-tied MediaSession burst (sync_probe.BurstWatch)
+        if burst:
+            try:   # what the app believed then: tonight's rows tell whether bursts line up with TV timeouts
+                d = self.delays.get(target)
+                row.update(delay_mu=round(float(d.mu), 2), delay_sd=round(float(d.current_sigma(t)), 2))
+            except Exception:
+                pass
+        if g is not None and kind in ("break_start", "burst"):
             lo, hi = float(self.cfg.get("sync.break_anchor.min_s", 10)), float(self.cfg.get("sync.break_anchor.max_s", 240))
             dead = [p for p in g.recent_plays if p.wallclock and lo <= t - p.wallclock <= hi
                     and (is_dead_ball(g.league.value, p.type_text or p.kind) or p.scoring)]
             if dead:
                 w = max(p.wallclock for p in dead)
-                bias = float(self.cfg.get("sync.break_anchor.start_bias_s", 15.0))
-                bias_sd = float(self.cfg.get("sync.break_anchor.bias_sd_s", 10.0))
+                key = "sync.burst_anchor" if burst else "sync.break_anchor"
+                bias = float(self.cfg.get(f"{key}.gap_s" if burst else f"{key}.start_bias_s", 15.0))
+                bias_sd = float(self.cfg.get(f"{key}.gap_sd_s" if burst else f"{key}.bias_sd_s", 10.0))
                 z = t - w - bias
-                row.update(feed_wall=round(w, 2), z=round(z, 2))
-                if self.cfg.get("sync.break_anchor.enabled", False):
+                row.update(feed_wall=round(w, 2), z=round(z, 2), feed_type=next(
+                    (p.type_text or p.kind for p in dead if p.wallclock == w), None) if burst else None)
+                if for_league(self.cfg, f"{key}.enabled", g.league.value, False):
                     row["used"] = bool(self.sync is not None and self.delays.anchor(
-                        target, z, "break", t, (sd * sd + bias_sd * bias_sd) ** 0.5))
+                        target, z, "burst" if burst else "break", t, (sd * sd + bias_sd * bias_sd) ** 0.5))
         try:
             self.recorder.sync_anchor(row)
         except Exception:
@@ -399,6 +418,11 @@ class Engine:
                     and c.hidden_ready and self._pending_decision is None):
                 c.preload(a["target"], refresh=True)
         return out
+
+    def _league_of(self, target: str) -> str | None:
+        """[league overrides] The base league of the game this target shows (None: unknown)."""
+        g = self.merger.games.get(self._game_on(target, False) or "")
+        return g.league.value if g is not None else None
 
     def _game_on(self, target: str, visible: bool) -> str | None:
         """The game the engine thinks this target shows (the current one first, for the visible stick)."""
@@ -962,7 +986,10 @@ class Engine:
     def _source_health(self) -> None:
         now = time.time()
         for name, h in self.merger.health.items():
-            self.source_status[name] = {"name": name, "ok": (now - h.last_ok) < 120 and not h.benched,
+            # ok = reachable and fresh. A bench (merge.py: this source's copy regressed against a faster
+            # feed for some game) is reported on its own: the source still works, so it isn't a failing
+            # feed (RC6.1 rolled back twice when deploy.py counted benches as failures, Nov 4).
+            self.source_status[name] = {"name": name, "ok": (now - h.last_ok) < 120,
                                         "age_s": round(now - h.last_ok) if h.last_ok else None,
                                         "errors": h.errors, "benched": h.benched}
 
@@ -1609,11 +1636,22 @@ class Engine:
         if replay is None and not (home or dec.replaying):
             replay = self._replay_standby(cands)
         return standby.options(cands, current=dec.current, home=home, back_to=dec.stack[-1] if dec.stack else None,
+                               hand_back=self._hand_back(),
                                muted=u.muted, games=self.merger.games, my_teams=self._my_teams(), replay=replay,
                                tunable=self.control.can_tune, save_s=self.control.tune_estimate,
                                return_bonus=float(self.cfg.get("decider.switch_margin", 10)),
                                want=getattr(self.last_decision, "want", None), brk=brk, brk_why=why,
                                replay_sure=sure)
+
+    def _hand_back(self) -> str | None:
+        """The game you left by hand within two_stick.hand_back_s, while it's still the one you'd go back to."""
+        left = self._hand_left
+        win = float(self.cfg.get("two_stick.hand_back_s"))
+        dec = self.decider
+        if not left or win <= 0 or time.time() - left[1] > win or left[0] == dec.current \
+                or not dec.stack or dec.stack[-1] != left[0]:
+            return None
+        return left[0]
 
     def _break_brain(self):
         """(brain, blend weights, v3 lengths) for the break forecast, or (None, 0) with the brain off.
@@ -1874,9 +1912,10 @@ class Engine:
         """A live game opened on the phone (two_stick.pretune_on_open): tune it on the hidden stick now,
         so the "Watch this" / "Go now" that usually follows is a flip (~3 s), not a tune + flip (~8 s).
         The planner leaves the hidden stick alone for PEEK_HOLD_S. Silent: the message is empty."""
-        if not self.cfg.get("two_stick.pretune_on_open", False) or not gid or gid == self.decider.current:
+        g = self.merger.games.get(gid or "")
+        if not gid or gid == self.decider.current or not for_league(
+                self.cfg, "two_stick.pretune_on_open", getattr(getattr(g, "league", None), "value", None), False):
             return True, ""
-        g = self.merger.games.get(gid)
         target = getattr(self.where.get(gid), "target", None)
         if g is None or g.phase != Phase.LIVE or not target or self.decider.user.paused:
             return True, ""
@@ -1959,6 +1998,8 @@ class Engine:
         w = self.where.get(gid)
         target = getattr(w, "target", None)
         before = self.decider.current
+        if before and before != gid and not replay:
+            self._hand_left = (before, time.time())   # standby: a tap back to it is likely (hand_back_s)
         cands = {gid: Candidate(self.scored[gid], target)} if gid in self.scored else {}
         d = Decision(time.time(), "replay" if replay else "switch", gid,
                      "you selected this replay" if replay else "you selected this game", State.PAUSED,
