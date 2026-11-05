@@ -115,6 +115,8 @@
     "nba_cdn_wallclock": "restrictive",
     "nba_cdn_nightly": "restrictive",
     "nba_stats_pbp": "restrictive",
-    "nba_cdn_plays": "restrictive"
+    "nba_cdn_plays": "restrictive",
+    "bdb_archive": "restrictive",
+    "nfl_break_lengths": "open"
   }
 }
