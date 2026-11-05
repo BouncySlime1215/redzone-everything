@@ -80,7 +80,8 @@ the archive holds.
 
 ## Experiments (EXP-1800..1899)
 
-- **EXP-1800** (pre-registered, [prereg/exp-1800.md](../prereg/exp-1800.md)): recap-aligned importance labels
+- **EXP-1804** (pre-registered, [prereg/exp-1804.md](../prereg/exp-1804.md)): EXP-1800 scoped to NBA + NFL, bar per league. Supersedes EXP-1800, which never ran.
+- **EXP-1800** (superseded; was pre-registered, [prereg/exp-1800.md](../prereg/exp-1800.md)): recap-aligned importance labels
   vs % of oracle. The gate for everything else in H.
 - **EXP-1801:** the landing bar for H1 + H2 (alignment precision ≥ 90%, 0 raw text in the repo, B tag).
 - **EXP-1802:** Wikipedia rivalry / storyline features as game-importance inputs (queued after B's
