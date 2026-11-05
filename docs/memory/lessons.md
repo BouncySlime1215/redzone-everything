@@ -303,3 +303,5 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **2026-11-05: "Watch this" on a game with no channel retried every 0.5 s.** Live Nov 4 (RC6.1, 10:04 PM ET): 13
   failed "you locked this game" switches in 6 s ("no channel for this game") until another tap. The fail cooldown is
   keyed by tuner target, and there was none. `_hold` now refuses a game whose channel is known to be untunable, once.
+
+- **Nov 5 2026 (Data A #259):** CI's test jobs had no pyarrow, so every play-table shard test failed with "Unable to find a usable engine". Fix: `requirements-ci.txt` (requirements.txt + pandas + pyarrow) for CI test jobs only; the Mac keeps requirements.txt. Data-crew tests that write parquet rely on it; don't importorskip them away.

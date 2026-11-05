@@ -71,3 +71,14 @@ exceed 3x its real tokens (EXP-097). Self-play token equivalents are passed in w
 | Teacher 32B answers | teacher-v1 side channel (aux target only) | EXP-086 teacher_out.jsonl, train nights only | SYN/teacher/<league>.npz + text.jsonl | personal-use (Qwen3 Apache-2.0 model; plan B moments) | yes | waiting on the EXP-086 run (EXP-1400) |
 | Teacher 32B causal commentary | teacher-v1 mode 2 (may be context) | build_moments train plays, brief only | SYN/teacher/<league>.npz + text.jsonl | personal-use (plan B moments) | yes | notebook ready (EXP-1402) |
 | Factory self-play | PICK rows (#122, #152) | real seasons, re-timed slates | factory shards | personal-use | yes, as token equivalents | lane ① runs it |
+
+## Data Division A (play-by-play crew)
+
+New pbp sources land as play-table shards (scripts/pbp/schema.py) and are counted in
+[pbp-ledger.md](pbp-ledger.md), generated from the landed shards' sidecars. Every token there is a real event (new
+information). Nov 5 2026 05:00 UTC: StatsBomb open data, all 80 competition-seasons, 3,961 matches, 13.9M events,
+83.5M v1 tokens, 0 games dropped. Tagged personal-use (StatsBomb user agreement, credit StatsBomb; terms.json class restrictive). Held privately in the
+project files under data-a/pbp/statsbomb (135 MB).
+Nov 5 2026 06:05 UTC: SportVU NBA tracking 2015-16, 621 games (94 not in the dump, 4 dropped), 2.05M rows of 1 Hz
+wall-clock summaries (ball position, speed, handler, live/dead; side table: team speed, spacing, ball height). Counted
+as tracking, apart from events. Personal-use tag; derived numbers only, never re-uploaded. data-a/pbp/nba_sportvu + sportvu_extra (103 MB).

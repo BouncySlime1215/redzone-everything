@@ -1,0 +1,1311 @@
+{
+ "copyright": "hand-written test fixture in the shape of the MLB Stats API GUMBO feed (no real data)",
+ "gamePk": 745000,
+ "link": "/api/v1.1/game/745000/feed/live",
+ "gameData": {
+  "game": {
+   "pk": 745000,
+   "type": "R",
+   "season": "2024"
+  },
+  "datetime": {
+   "dateTime": "2024-04-12T23:10:00Z",
+   "officialDate": "2024-04-12"
+  },
+  "status": {
+   "abstractGameState": "Final",
+   "codedGameState": "F"
+  },
+  "teams": {
+   "away": {
+    "id": 147,
+    "abbreviation": "NYY"
+   },
+   "home": {
+    "id": 111,
+    "abbreviation": "BOS"
+   }
+  }
+ },
+ "liveData": {
+  "plays": {
+   "allPlays": [
+    {
+     "about": {
+      "atBatIndex": 0,
+      "halfInning": "top",
+      "isTopInning": true,
+      "inning": 1,
+      "startTime": "2024-04-12T23:10:27.000Z",
+      "endTime": "2024-04-12T23:11:11.000Z",
+      "isComplete": true,
+      "isScoringPlay": false
+     },
+     "result": {
+      "type": "atBat",
+      "event": "Single",
+      "eventType": "single",
+      "description": "",
+      "rbi": 0,
+      "awayScore": 0,
+      "homeScore": 0
+     },
+     "count": {
+      "balls": 0,
+      "strikes": 0,
+      "outs": 0
+     },
+     "matchup": {
+      "batter": {
+       "id": 1
+      },
+      "pitcher": {
+       "id": 900
+      },
+      "postOnFirst": {
+       "id": 1
+      }
+     },
+     "runners": [
+      {
+       "movement": {
+        "originBase": null,
+        "start": null,
+        "end": "1B",
+        "outBase": null,
+        "isOut": false,
+        "outNumber": null
+       },
+       "details": {
+        "event": "single",
+        "eventType": "single",
+        "runner": {
+         "id": 1
+        },
+        "playIndex": 2,
+        "isScoringEvent": false
+       }
+      }
+     ],
+     "playEvents": [
+      {
+       "index": 0,
+       "pitchNumber": 1,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:10:27.000Z",
+       "endTime": "2024-04-12T23:10:27.000Z",
+       "playId": "p-0001",
+       "details": {
+        "call": {
+         "code": "B",
+         "description": "Ball"
+        },
+        "description": "Ball",
+        "code": "B",
+        "isInPlay": false,
+        "isStrike": false,
+        "isBall": true,
+        "type": {
+         "code": "FF",
+         "description": "FF"
+        }
+       },
+       "count": {
+        "balls": 1,
+        "strikes": 0,
+        "outs": 0
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 0.9,
+         "pZ": 1.2
+        }
+       }
+      },
+      {
+       "index": 1,
+       "pitchNumber": 2,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:10:49.000Z",
+       "endTime": "2024-04-12T23:10:49.000Z",
+       "playId": "p-0002",
+       "details": {
+        "call": {
+         "code": "C",
+         "description": "Called Strike"
+        },
+        "description": "Called Strike",
+        "code": "C",
+        "isInPlay": false,
+        "isStrike": true,
+        "isBall": false,
+        "type": {
+         "code": "SL",
+         "description": "SL"
+        }
+       },
+       "count": {
+        "balls": 1,
+        "strikes": 1,
+        "outs": 0
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 0.1,
+         "pZ": 2.4
+        }
+       }
+      },
+      {
+       "index": 2,
+       "pitchNumber": 3,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:11:11.000Z",
+       "endTime": "2024-04-12T23:11:11.000Z",
+       "playId": "p-0003",
+       "details": {
+        "call": {
+         "code": "D",
+         "description": "In play, no out"
+        },
+        "description": "In play, no out",
+        "code": "D",
+        "isInPlay": true,
+        "isStrike": false,
+        "isBall": false,
+        "type": {
+         "code": "FF",
+         "description": "FF"
+        }
+       },
+       "count": {
+        "balls": 1,
+        "strikes": 1,
+        "outs": 0
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": -0.3,
+         "pZ": 2.8
+        }
+       }
+      }
+     ]
+    },
+    {
+     "about": {
+      "atBatIndex": 1,
+      "halfInning": "top",
+      "isTopInning": true,
+      "inning": 1,
+      "startTime": "2024-04-12T23:11:33.000Z",
+      "endTime": "2024-04-12T23:13:01.000Z",
+      "isComplete": true,
+      "isScoringPlay": true
+     },
+     "result": {
+      "type": "atBat",
+      "event": "Double",
+      "eventType": "double",
+      "description": "",
+      "rbi": 1,
+      "awayScore": 1,
+      "homeScore": 0
+     },
+     "count": {
+      "balls": 0,
+      "strikes": 0,
+      "outs": 0
+     },
+     "matchup": {
+      "batter": {
+       "id": 2
+      },
+      "pitcher": {
+       "id": 900
+      },
+      "postOnSecond": {
+       "id": 2
+      }
+     },
+     "runners": [
+      {
+       "movement": {
+        "originBase": "1B",
+        "start": "1B",
+        "end": "2B",
+        "outBase": null,
+        "isOut": false,
+        "outNumber": null
+       },
+       "details": {
+        "event": "stolen_base_2b",
+        "eventType": "stolen_base_2b",
+        "runner": {
+         "id": 1
+        },
+        "playIndex": 2,
+        "isScoringEvent": false
+       }
+      },
+      {
+       "movement": {
+        "originBase": "2B",
+        "start": "2B",
+        "end": "score",
+        "outBase": null,
+        "isOut": false,
+        "outNumber": null
+       },
+       "details": {
+        "event": "double",
+        "eventType": "double",
+        "runner": {
+         "id": 1
+        },
+        "playIndex": 4,
+        "isScoringEvent": true
+       }
+      },
+      {
+       "movement": {
+        "originBase": null,
+        "start": null,
+        "end": "2B",
+        "outBase": null,
+        "isOut": false,
+        "outNumber": null
+       },
+       "details": {
+        "event": "double",
+        "eventType": "double",
+        "runner": {
+         "id": 2
+        },
+        "playIndex": 4,
+        "isScoringEvent": false
+       }
+      }
+     ],
+     "playEvents": [
+      {
+       "index": 0,
+       "isPitch": false,
+       "type": "pickoff",
+       "startTime": "2024-04-12T23:11:33.000Z",
+       "endTime": "2024-04-12T23:11:33.000Z",
+       "details": {
+        "description": "Pickoff Attempt 1B",
+        "code": "1"
+       },
+       "count": {}
+      },
+      {
+       "index": 1,
+       "pitchNumber": 1,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:11:55.000Z",
+       "endTime": "2024-04-12T23:11:55.000Z",
+       "playId": "p-0005",
+       "details": {
+        "call": {
+         "code": "B",
+         "description": "Ball"
+        },
+        "description": "Ball",
+        "code": "B",
+        "isInPlay": false,
+        "isStrike": false,
+        "isBall": true,
+        "type": {
+         "code": "SI",
+         "description": "SI"
+        }
+       },
+       "count": {
+        "balls": 1,
+        "strikes": 0,
+        "outs": 0
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": -1.6,
+         "pZ": 1.0
+        }
+       }
+      },
+      {
+       "index": 2,
+       "isPitch": false,
+       "type": "action",
+       "startTime": "2024-04-12T23:12:17.000Z",
+       "endTime": "2024-04-12T23:12:17.000Z",
+       "details": {
+        "description": "Stolen Base 2B: Runner 1 steals 2nd base.",
+        "eventType": "stolen_base_2b",
+        "event": "Stolen Base 2B"
+       },
+       "count": {}
+      },
+      {
+       "index": 3,
+       "pitchNumber": 2,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:12:39.000Z",
+       "endTime": "2024-04-12T23:12:39.000Z",
+       "playId": "p-0007",
+       "details": {
+        "call": {
+         "code": "S",
+         "description": "Swinging Strike"
+        },
+        "description": "Swinging Strike",
+        "code": "S",
+        "isInPlay": false,
+        "isStrike": true,
+        "isBall": false,
+        "type": {
+         "code": "CH",
+         "description": "CH"
+        }
+       },
+       "count": {
+        "balls": 1,
+        "strikes": 1,
+        "outs": 0
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 0.4,
+         "pZ": 1.4
+        }
+       }
+      },
+      {
+       "index": 4,
+       "pitchNumber": 3,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:13:01.000Z",
+       "endTime": "2024-04-12T23:13:01.000Z",
+       "playId": "p-0008",
+       "details": {
+        "call": {
+         "code": "E",
+         "description": "In play, run(s)"
+        },
+        "description": "In play, run(s)",
+        "code": "E",
+        "isInPlay": true,
+        "isStrike": false,
+        "isBall": false,
+        "type": {
+         "code": "FF",
+         "description": "FF"
+        }
+       },
+       "count": {
+        "balls": 1,
+        "strikes": 1,
+        "outs": 0
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 0.0,
+         "pZ": 2.5
+        }
+       }
+      }
+     ]
+    },
+    {
+     "about": {
+      "atBatIndex": 2,
+      "halfInning": "top",
+      "isTopInning": true,
+      "inning": 1,
+      "startTime": "2024-04-12T23:13:23.000Z",
+      "endTime": "2024-04-12T23:13:23.000Z",
+      "isComplete": true,
+      "isScoringPlay": false
+     },
+     "result": {
+      "type": "atBat",
+      "event": "Field Out",
+      "eventType": "field_out",
+      "description": "",
+      "rbi": 0,
+      "awayScore": 1,
+      "homeScore": 0
+     },
+     "count": {
+      "balls": 0,
+      "strikes": 0,
+      "outs": 1
+     },
+     "matchup": {
+      "batter": {
+       "id": 3
+      },
+      "pitcher": {
+       "id": 900
+      },
+      "postOnThird": {
+       "id": 2
+      }
+     },
+     "runners": [
+      {
+       "movement": {
+        "originBase": null,
+        "start": null,
+        "end": null,
+        "outBase": null,
+        "isOut": true,
+        "outNumber": 1
+       },
+       "details": {
+        "event": "field_out",
+        "eventType": "field_out",
+        "runner": {
+         "id": 3
+        },
+        "playIndex": 0,
+        "isScoringEvent": false
+       }
+      },
+      {
+       "movement": {
+        "originBase": "2B",
+        "start": "2B",
+        "end": "3B",
+        "outBase": null,
+        "isOut": false,
+        "outNumber": null
+       },
+       "details": {
+        "event": "field_out",
+        "eventType": "field_out",
+        "runner": {
+         "id": 2
+        },
+        "playIndex": 0,
+        "isScoringEvent": false
+       }
+      }
+     ],
+     "playEvents": [
+      {
+       "index": 0,
+       "pitchNumber": 1,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:13:23.000Z",
+       "endTime": "2024-04-12T23:13:23.000Z",
+       "playId": "p-0009",
+       "details": {
+        "call": {
+         "code": "X",
+         "description": "In play, out(s)"
+        },
+        "description": "In play, out(s)",
+        "code": "X",
+        "isInPlay": true,
+        "isStrike": false,
+        "isBall": false,
+        "type": {
+         "code": "SL",
+         "description": "SL"
+        }
+       },
+       "count": {
+        "balls": 0,
+        "strikes": 0,
+        "outs": 0
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 0.6,
+         "pZ": 1.9
+        }
+       }
+      }
+     ]
+    },
+    {
+     "about": {
+      "atBatIndex": 3,
+      "halfInning": "top",
+      "isTopInning": true,
+      "inning": 1,
+      "startTime": "2024-04-12T23:13:45.000Z",
+      "endTime": "2024-04-12T23:14:51.000Z",
+      "isComplete": true,
+      "isScoringPlay": false
+     },
+     "result": {
+      "type": "atBat",
+      "event": "Strikeout",
+      "eventType": "strikeout",
+      "description": "",
+      "rbi": 0,
+      "awayScore": 1,
+      "homeScore": 0
+     },
+     "count": {
+      "balls": 0,
+      "strikes": 0,
+      "outs": 2
+     },
+     "matchup": {
+      "batter": {
+       "id": 4
+      },
+      "pitcher": {
+       "id": 901
+      },
+      "postOnThird": {
+       "id": 2
+      }
+     },
+     "runners": [
+      {
+       "movement": {
+        "originBase": null,
+        "start": null,
+        "end": null,
+        "outBase": null,
+        "isOut": true,
+        "outNumber": 2
+       },
+       "details": {
+        "event": "strikeout",
+        "eventType": "strikeout",
+        "runner": {
+         "id": 4
+        },
+        "playIndex": 3,
+        "isScoringEvent": false
+       }
+      }
+     ],
+     "playEvents": [
+      {
+       "index": 0,
+       "isPitch": false,
+       "type": "action",
+       "startTime": "2024-04-12T23:13:45.000Z",
+       "endTime": "2024-04-12T23:13:45.000Z",
+       "details": {
+        "description": "Pitching Change: 901 replaces 900.",
+        "eventType": "pitching_substitution",
+        "event": "Pitching Change"
+       },
+       "count": {},
+       "player": {
+        "id": 901
+       },
+       "isSubstitution": true
+      },
+      {
+       "index": 1,
+       "pitchNumber": 1,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:14:07.000Z",
+       "endTime": "2024-04-12T23:14:07.000Z",
+       "playId": "p-0011",
+       "details": {
+        "call": {
+         "code": "C",
+         "description": "Called Strike"
+        },
+        "description": "Called Strike",
+        "code": "C",
+        "isInPlay": false,
+        "isStrike": true,
+        "isBall": false,
+        "type": {
+         "code": "FC",
+         "description": "FC"
+        }
+       },
+       "count": {
+        "balls": 0,
+        "strikes": 1,
+        "outs": 1
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 0.2,
+         "pZ": 2.2
+        }
+       }
+      },
+      {
+       "index": 2,
+       "pitchNumber": 2,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:14:29.000Z",
+       "endTime": "2024-04-12T23:14:29.000Z",
+       "playId": "p-0012",
+       "details": {
+        "call": {
+         "code": "S",
+         "description": "Swinging Strike"
+        },
+        "description": "Swinging Strike",
+        "code": "S",
+        "isInPlay": false,
+        "isStrike": true,
+        "isBall": false,
+        "type": {
+         "code": "SL",
+         "description": "SL"
+        }
+       },
+       "count": {
+        "balls": 0,
+        "strikes": 2,
+        "outs": 1
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 1.1,
+         "pZ": 1.3
+        }
+       }
+      },
+      {
+       "index": 3,
+       "pitchNumber": 3,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:14:51.000Z",
+       "endTime": "2024-04-12T23:14:51.000Z",
+       "playId": "p-0013",
+       "details": {
+        "call": {
+         "code": "S",
+         "description": "Swinging Strike"
+        },
+        "description": "Swinging Strike",
+        "code": "S",
+        "isInPlay": false,
+        "isStrike": true,
+        "isBall": false,
+        "type": {
+         "code": "SL",
+         "description": "SL"
+        }
+       },
+       "count": {
+        "balls": 0,
+        "strikes": 3,
+        "outs": 1
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 1.3,
+         "pZ": 0.9
+        }
+       }
+      }
+     ]
+    },
+    {
+     "about": {
+      "atBatIndex": 4,
+      "halfInning": "top",
+      "isTopInning": true,
+      "inning": 1,
+      "startTime": "2024-04-12T23:15:13.000Z",
+      "endTime": "2024-04-12T23:15:13.000Z",
+      "isComplete": true,
+      "isScoringPlay": false
+     },
+     "result": {
+      "type": "atBat",
+      "event": "Field Out",
+      "eventType": "field_out",
+      "description": "",
+      "rbi": 0,
+      "awayScore": 1,
+      "homeScore": 0
+     },
+     "count": {
+      "balls": 0,
+      "strikes": 0,
+      "outs": 3
+     },
+     "matchup": {
+      "batter": {
+       "id": 5
+      },
+      "pitcher": {
+       "id": 901
+      },
+      "postOnThird": {
+       "id": 2
+      }
+     },
+     "runners": [
+      {
+       "movement": {
+        "originBase": null,
+        "start": null,
+        "end": null,
+        "outBase": null,
+        "isOut": true,
+        "outNumber": 3
+       },
+       "details": {
+        "event": "field_out",
+        "eventType": "field_out",
+        "runner": {
+         "id": 5
+        },
+        "playIndex": 0,
+        "isScoringEvent": false
+       }
+      }
+     ],
+     "playEvents": [
+      {
+       "index": 0,
+       "pitchNumber": 1,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:15:13.000Z",
+       "endTime": "2024-04-12T23:15:13.000Z",
+       "playId": "p-0014",
+       "details": {
+        "call": {
+         "code": "X",
+         "description": "In play, out(s)"
+        },
+        "description": "In play, out(s)",
+        "code": "X",
+        "isInPlay": true,
+        "isStrike": false,
+        "isBall": false,
+        "type": {
+         "code": "FC",
+         "description": "FC"
+        }
+       },
+       "count": {
+        "balls": 0,
+        "strikes": 0,
+        "outs": 2
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": -0.5,
+         "pZ": 3.1
+        }
+       }
+      }
+     ]
+    },
+    {
+     "about": {
+      "atBatIndex": 5,
+      "halfInning": "bottom",
+      "isTopInning": false,
+      "inning": 1,
+      "startTime": "2024-04-12T23:15:35.000Z",
+      "endTime": "2024-04-12T23:15:57.000Z",
+      "isComplete": true,
+      "isScoringPlay": true
+     },
+     "result": {
+      "type": "atBat",
+      "event": "Home Run",
+      "eventType": "home_run",
+      "description": "",
+      "rbi": 1,
+      "awayScore": 1,
+      "homeScore": 1
+     },
+     "count": {
+      "balls": 0,
+      "strikes": 0,
+      "outs": 0
+     },
+     "matchup": {
+      "batter": {
+       "id": 11
+      },
+      "pitcher": {
+       "id": 800
+      }
+     },
+     "runners": [
+      {
+       "movement": {
+        "originBase": null,
+        "start": null,
+        "end": "score",
+        "outBase": null,
+        "isOut": false,
+        "outNumber": null
+       },
+       "details": {
+        "event": "home_run",
+        "eventType": "home_run",
+        "runner": {
+         "id": 11
+        },
+        "playIndex": 1,
+        "isScoringEvent": true
+       }
+      }
+     ],
+     "playEvents": [
+      {
+       "index": 0,
+       "pitchNumber": 1,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:15:35.000Z",
+       "endTime": "2024-04-12T23:15:35.000Z",
+       "playId": "p-0015",
+       "details": {
+        "call": {
+         "code": "B",
+         "description": "Ball"
+        },
+        "description": "Ball",
+        "code": "B",
+        "isInPlay": false,
+        "isStrike": false,
+        "isBall": true,
+        "type": {
+         "code": "FF",
+         "description": "FF"
+        }
+       },
+       "count": {
+        "balls": 1,
+        "strikes": 0,
+        "outs": 0
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 1.4,
+         "pZ": 3.6
+        }
+       }
+      },
+      {
+       "index": 1,
+       "pitchNumber": 2,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:15:57.000Z",
+       "endTime": "2024-04-12T23:15:57.000Z",
+       "playId": "p-0016",
+       "details": {
+        "call": {
+         "code": "E",
+         "description": "In play, run(s)"
+        },
+        "description": "In play, run(s)",
+        "code": "E",
+        "isInPlay": true,
+        "isStrike": false,
+        "isBall": false,
+        "type": {
+         "code": "FF",
+         "description": "FF"
+        }
+       },
+       "count": {
+        "balls": 1,
+        "strikes": 0,
+        "outs": 0
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 0.1,
+         "pZ": 2.9
+        }
+       }
+      }
+     ]
+    },
+    {
+     "about": {
+      "atBatIndex": 6,
+      "halfInning": "bottom",
+      "isTopInning": false,
+      "inning": 1,
+      "startTime": "2024-04-12T23:16:19.000Z",
+      "endTime": "2024-04-12T23:16:19.000Z",
+      "isComplete": true,
+      "isScoringPlay": false
+     },
+     "result": {
+      "type": "atBat",
+      "event": "Field Out",
+      "eventType": "field_out",
+      "description": "",
+      "rbi": 0,
+      "awayScore": 1,
+      "homeScore": 1
+     },
+     "count": {
+      "balls": 0,
+      "strikes": 0,
+      "outs": 1
+     },
+     "matchup": {
+      "batter": {
+       "id": 12
+      },
+      "pitcher": {
+       "id": 800
+      }
+     },
+     "runners": [
+      {
+       "movement": {
+        "originBase": null,
+        "start": null,
+        "end": null,
+        "outBase": null,
+        "isOut": true,
+        "outNumber": 1
+       },
+       "details": {
+        "event": "field_out",
+        "eventType": "field_out",
+        "runner": {
+         "id": 12
+        },
+        "playIndex": 0,
+        "isScoringEvent": false
+       }
+      }
+     ],
+     "playEvents": [
+      {
+       "index": 0,
+       "pitchNumber": 1,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:16:19.000Z",
+       "endTime": "2024-04-12T23:16:19.000Z",
+       "playId": "p-0017",
+       "details": {
+        "call": {
+         "code": "X",
+         "description": "In play, out(s)"
+        },
+        "description": "In play, out(s)",
+        "code": "X",
+        "isInPlay": true,
+        "isStrike": false,
+        "isBall": false,
+        "type": {
+         "code": "CU",
+         "description": "CU"
+        }
+       },
+       "count": {
+        "balls": 0,
+        "strikes": 0,
+        "outs": 0
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": -0.2,
+         "pZ": 1.8
+        }
+       }
+      }
+     ]
+    },
+    {
+     "about": {
+      "atBatIndex": 7,
+      "halfInning": "bottom",
+      "isTopInning": false,
+      "inning": 1,
+      "startTime": "2024-04-12T23:16:41.000Z",
+      "endTime": "2024-04-12T23:16:41.000Z",
+      "isComplete": true,
+      "isScoringPlay": false
+     },
+     "result": {
+      "type": "atBat",
+      "event": "Field Out",
+      "eventType": "field_out",
+      "description": "",
+      "rbi": 0,
+      "awayScore": 1,
+      "homeScore": 1
+     },
+     "count": {
+      "balls": 0,
+      "strikes": 0,
+      "outs": 2
+     },
+     "matchup": {
+      "batter": {
+       "id": 13
+      },
+      "pitcher": {
+       "id": 800
+      }
+     },
+     "runners": [
+      {
+       "movement": {
+        "originBase": null,
+        "start": null,
+        "end": null,
+        "outBase": null,
+        "isOut": true,
+        "outNumber": 2
+       },
+       "details": {
+        "event": "field_out",
+        "eventType": "field_out",
+        "runner": {
+         "id": 13
+        },
+        "playIndex": 0,
+        "isScoringEvent": false
+       }
+      }
+     ],
+     "playEvents": [
+      {
+       "index": 0,
+       "pitchNumber": 1,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:16:41.000Z",
+       "endTime": "2024-04-12T23:16:41.000Z",
+       "playId": "p-0018",
+       "details": {
+        "call": {
+         "code": "X",
+         "description": "In play, out(s)"
+        },
+        "description": "In play, out(s)",
+        "code": "X",
+        "isInPlay": true,
+        "isStrike": false,
+        "isBall": false,
+        "type": {
+         "code": "FF",
+         "description": "FF"
+        }
+       },
+       "count": {
+        "balls": 0,
+        "strikes": 0,
+        "outs": 1
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 0.3,
+         "pZ": 2.6
+        }
+       }
+      }
+     ]
+    },
+    {
+     "about": {
+      "atBatIndex": 8,
+      "halfInning": "bottom",
+      "isTopInning": false,
+      "inning": 1,
+      "startTime": "2024-04-12T23:17:03.000Z",
+      "endTime": "2024-04-12T23:17:47.000Z",
+      "isComplete": true,
+      "isScoringPlay": false
+     },
+     "result": {
+      "type": "atBat",
+      "event": "Strikeout",
+      "eventType": "strikeout",
+      "description": "",
+      "rbi": 0,
+      "awayScore": 1,
+      "homeScore": 1
+     },
+     "count": {
+      "balls": 0,
+      "strikes": 0,
+      "outs": 3
+     },
+     "matchup": {
+      "batter": {
+       "id": 14
+      },
+      "pitcher": {
+       "id": 800
+      }
+     },
+     "runners": [
+      {
+       "movement": {
+        "originBase": null,
+        "start": null,
+        "end": null,
+        "outBase": null,
+        "isOut": true,
+        "outNumber": 3
+       },
+       "details": {
+        "event": "strikeout",
+        "eventType": "strikeout",
+        "runner": {
+         "id": 14
+        },
+        "playIndex": 2,
+        "isScoringEvent": false
+       }
+      }
+     ],
+     "playEvents": [
+      {
+       "index": 0,
+       "pitchNumber": 1,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:17:03.000Z",
+       "endTime": "2024-04-12T23:17:03.000Z",
+       "playId": "p-0019",
+       "details": {
+        "call": {
+         "code": "C",
+         "description": "Called Strike"
+        },
+        "description": "Called Strike",
+        "code": "C",
+        "isInPlay": false,
+        "isStrike": true,
+        "isBall": false,
+        "type": {
+         "code": "FF",
+         "description": "FF"
+        }
+       },
+       "count": {
+        "balls": 0,
+        "strikes": 1,
+        "outs": 2
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 0.0,
+         "pZ": 2.4
+        }
+       }
+      },
+      {
+       "index": 1,
+       "pitchNumber": 2,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:17:25.000Z",
+       "endTime": "2024-04-12T23:17:25.000Z",
+       "playId": "p-0020",
+       "details": {
+        "call": {
+         "code": "S",
+         "description": "Swinging Strike"
+        },
+        "description": "Swinging Strike",
+        "code": "S",
+        "isInPlay": false,
+        "isStrike": true,
+        "isBall": false,
+        "type": {
+         "code": "SL",
+         "description": "SL"
+        }
+       },
+       "count": {
+        "balls": 0,
+        "strikes": 2,
+        "outs": 2
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 1.0,
+         "pZ": 1.1
+        }
+       }
+      },
+      {
+       "index": 2,
+       "pitchNumber": 3,
+       "isPitch": true,
+       "type": "pitch",
+       "startTime": "2024-04-12T23:17:47.000Z",
+       "endTime": "2024-04-12T23:17:47.000Z",
+       "playId": "p-0021",
+       "details": {
+        "call": {
+         "code": "S",
+         "description": "Swinging Strike"
+        },
+        "description": "Swinging Strike",
+        "code": "S",
+        "isInPlay": false,
+        "isStrike": true,
+        "isBall": false,
+        "type": {
+         "code": "CU",
+         "description": "CU"
+        }
+       },
+       "count": {
+        "balls": 0,
+        "strikes": 3,
+        "outs": 2
+       },
+       "pitchData": {
+        "startSpeed": 94.1,
+        "coordinates": {
+         "pX": 0.5,
+         "pZ": 0.6
+        }
+       }
+      }
+     ]
+    }
+   ]
+  }
+ }
+}
