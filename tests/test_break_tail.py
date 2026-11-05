@@ -25,3 +25,33 @@ def test_exp803_arms_ship_off():
     assert config.default("decider.entry.break_tail_tv_split") is False
     assert 150 <= config.default("decider.entry.break_tail_tv_timeout_s") <= 180
     assert {f.name: f.default for f in dataclasses.fields(Decision)}["defer_s"] == 0.0
+
+
+def test_defer_keeps_the_old_game_on_screen_until_the_cut():
+    """[EXP-803 A1, integrator review] during a deferred cut the TV still shows the OLD game for every line:
+    a big play there is on screen (live), the destination's break is not (no dead air credited to it)."""
+    from types import SimpleNamespace
+
+    from redzone.grading import SwitchLog
+    from redzone.lab import backtest as bt_
+
+    t, tune = 1000.0, 5.0
+    watching = [(0.0, "old")]
+    switches = [SwitchLog(t, "old", "new", "ended", "x", 0.0)]
+    watching.append((t, "new"))
+    bt_._apply_defer(SimpleNamespace(defer_s=6.0), switches, watching, 0, step=10.0)
+    assert watching[-1] == (t + 6.0, "new")
+    assert switches[-1].leave_dt == 6.0 and switches[-1].arrive_dt == 6.0
+    assert bt_._on_screen_game(watching, t + 5.5, tune) == "old"     # the old game's play during the defer: seen
+    assert bt_._on_screen_game(watching, t + 8.0, tune) is None      # the tune after the cut: black, not "new"
+    assert bt_._on_screen_game(watching, t + 11.5, tune) == "new"
+    # never more than one step, so the next decision sorts after the cut
+    w2 = [(0.0, "old"), (t, "new")]
+    s2 = [SwitchLog(t, "old", "new", "ended", "x", 0.0)]
+    bt_._apply_defer(SimpleNamespace(defer_s=25.0), s2, w2, 0, step=10.0)
+    assert w2[-1][0] == t + 10.0
+    # no defer: untouched
+    w3 = [(t, "new")]
+    s3 = [SwitchLog(t, "old", "new", "ended", "x", 0.0)]
+    bt_._apply_defer(SimpleNamespace(defer_s=0.0), s3, w3, 0, step=10.0)
+    assert w3 == [(t, "new")] and s3[0].leave_dt == 0.0
