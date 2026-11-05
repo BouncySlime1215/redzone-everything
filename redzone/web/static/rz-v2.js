@@ -9,11 +9,16 @@ import { toast, openSheet, closeSheet, sheetById } from "./rz-sheet.js?v=40";
 
 const v2 = { on: false, checked: false, rows: new Map(), head: "", loading: false, prio: null, missed: null };
 
-async function check() {
-  if (v2.checked) return;
-  v2.checked = true;
-  try { v2.on = !!(await api("/api/v2/status")).enabled; } catch { v2.on = false; }
-  if (v2.on) { hooks.render(); pollAlert(); pollStrip(); pollHeld(); }
+let checking = null;
+function check() {
+  if (!checking) {
+    v2.checked = true;
+    checking = (async () => {
+      try { v2.on = !!(await api("/api/v2/status")).enabled; } catch { v2.on = false; }
+      if (v2.on) { hooks.render(); pollAlert(); pollStrip(); pollHeld(); }
+    })();
+  }
+  return checking;
 }
 check();
 
@@ -194,7 +199,7 @@ CHANGES["v2-reels"] = (el) => savePrio({ reels: !!el.checked });
 
 /* ---------- Night replay viewer: what was on, every switch, hold and tap, with playbook ids ---------- */
 const PAL = 8;   // segment colors cycle through .v2-c0 .. .v2-c7 (app.css)
-const night = { day: "", data: null, loading: false, filter: "all" };
+const night = { day: "", data: null, loading: false, filter: "all", at: null };   // at: epoch s to highlight (a deep link)
 
 function colorOf(matchup, order) {
   let i = order.indexOf(matchup);
@@ -258,7 +263,8 @@ function nightSheet() {
       e.type === "switch" && !e.ok && !e.dry_run ? `<span class="tag tag--fail">Failed</span>` : "",
       e.type === "switch" && e.key ? `<button class="v2-trace-btn" data-act="v2-prov" data-key="${attr(e.key)}">${icon("activity")}Trace</button>` : "",
     ].join("");
-    return `<div class="v2-ev v2-ev--${attr(e.type)}"><span class="v2-ev-ic">${icon(ic)}</span><div style="min-width:0">
+    const hit = night.at && Math.abs(num(e.ts) - night.at) <= 120 ? " v2-ev--hit" : "";
+    return `<div class="v2-ev v2-ev--${attr(e.type)}${hit}"><span class="v2-ev-ic">${icon(ic)}</span><div style="min-width:0">
       <div class="v2-ev-top"><span class="m ell">${esc(title)}</span><span class="t">${esc(fmtTime(e.ts))}</span></div>
       ${e.reason ? `<div class="v2-ev-why">${esc(String(e.reason).replace(/\s*playbook=\S+/g, ""))}</div>` : ""}${tags ? `<div class="v2-why">${tags}</div>` : ""}</div></div>`;
   };
@@ -276,8 +282,31 @@ function nightSheet() {
     <div class="v2-evs">${evs.length ? evs.map(row).join("") : `<div class="t2">Nothing here.</div>`}</div>`;
 }
 
-ACTIONS["v2-night"] = () => { night.data = null; openSheet({ id: "v2-night", label: "The whole night", full: true, render: nightSheet }); loadNight(""); };
+ACTIONS["v2-night"] = () => { night.data = null; night.at = null; openSheet({ id: "v2-night", label: "The whole night", full: true, render: nightSheet }); loadNight(""); };
 ACTIONS["v2-night-day"] = (el) => { night.data = null; const s = sheetById("v2-night"); if (s) s.update(); loadNight(el.dataset.day); };
+/* Deep link from the night health report (scripts/night_report.py): #night=YYYY-MM-DD&at=HH:MM (ET; a time
+   before noon is after midnight, the same night) opens the whole night on that day, the miss highlighted. */
+export function nightFromHash(hash = (typeof location !== "undefined" ? location.hash : "")) {
+  const m = /^#night=(\d{4}-\d{2}-\d{2})(?:&at=(\d{2}):(\d{2}))?$/.exec(hash || "");
+  if (!m) return null;
+  let at = null;
+  if (m[2]) {
+    const d = new Date(`${m[1]}T${m[2]}:${m[3]}:00`);
+    if (+m[2] < 12) d.setDate(d.getDate() + 1);
+    at = d.getTime() / 1000;
+  }
+  return { day: m[1], at };
+}
+async function openNightLink() {
+  const l = nightFromHash();
+  if (!l) return;
+  await check();
+  if (!v2.on) return;   // the viewer is phone v2 (flag phone.v2)
+  night.data = null; night.filter = "all"; night.at = l.at;
+  openSheet({ id: "v2-night", label: "The whole night", full: true, render: nightSheet });
+  loadNight(l.day).then(() => { try { document.querySelector(".v2-ev--hit")?.scrollIntoView({ block: "center" }); } catch { /* no DOM */ } });
+}
+try { if (typeof window !== "undefined") { window.addEventListener("hashchange", openNightLink); setTimeout(openNightLink, 0); } } catch { /* no DOM */ }
 ACTIONS["v2-night-filter"] = (el) => { night.filter = el.dataset.f; const s = sheetById("v2-night"); if (s) s.update(); };
 
 /* ---------- Watch value: each live game's 0-100 and its one-line why (read only) ---------- */
