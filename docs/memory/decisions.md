@@ -664,3 +664,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   the flag on, Now shows a morning card (6 AM to noon ET) with last night's worth-it, mid-play entries, high-leverage
   leaves, dead air and which release ran, read from the night report, data/worth.jsonl and data/deploy/state.json.
   Reason: Cycle 12 (#236) item 3.
+- 2026-11-05 (lane 5, EXP-040 on): default `phone.worth: false` -> `true`. The one-tap "Was tonight worth it?" (1-5)
+  shows on the Slate complete card from tonight, so rated nights exist before Sunday's line. It stays EVALUATION ONLY
+  (data/worth.jsonl, graded by the frozen lab/worth.py; tests/test_worth.py fails if noggin, decider or scoring read it).
+  Reason: Cycle 14 (#261) item 2, Integrator's EXP-040 condition "phone.worth on in the next RC".

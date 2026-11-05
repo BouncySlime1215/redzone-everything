@@ -26,8 +26,10 @@ def _switch(engine, to, reason="Crunch time: UNC down 2, red zone"):
 
 
 def test_off_by_default_and_every_route_refuses(client, engine):
-    assert client.get("/api/v2/status").json() == {"enabled": False, "commit": False, "orient": False, "worth": False,
+    assert client.get("/api/v2/status").json() == {"enabled": False, "commit": False, "orient": False, "worth": True,
                                                      "follow": False, "last_night": False}
+    assert client.get("/api/v2/worth").status_code == 200        # EXP-040 is ON by default from Nov 5 (works with v2 off)
+    engine.cfg.update({"phone": {"worth": False}})
     assert client.get("/api/v2/worth").status_code == 404 and client.post("/api/v2/worth", json={"rating": 4}).status_code == 404
     assert client.get("/api/v2/switches").status_code == 404
     assert client.post("/api/v2/vote", json={"key": "x", "vote": 1}).status_code == 404
@@ -595,7 +597,7 @@ def test_why_tag_only_over_the_threshold():
 
 def test_status_says_whether_commit_controls_are_on(client, engine):
     _on(engine)
-    assert client.get("/api/v2/status").json() == {"enabled": True, "commit": False, "orient": False, "worth": False,
+    assert client.get("/api/v2/status").json() == {"enabled": True, "commit": False, "orient": False, "worth": True,
                                                      "follow": False, "last_night": False}   # phone.commit default off
     engine.cfg.update({"phone": {"commit": True}})
     assert client.get("/api/v2/status").json()["commit"] is True
