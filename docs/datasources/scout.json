@@ -9,7 +9,7 @@
   "red": "not using (bot-block, login, paywall, or terms we cannot meet even under B)"
  },
  "personal_use_tag": "personal-use, not for commercial release",
- "sources": [
+ "candidates": [
   {
    "id": "v2-lines",
    "kind": "context-new",

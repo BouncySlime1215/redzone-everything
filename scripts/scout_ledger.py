@@ -33,7 +33,7 @@ def score(s: dict) -> float:
 
 def check(d: dict) -> list[str]:
     errs, seen = [], set()
-    for s in d.get("sources", []):
+    for s in d.get("candidates", []):
         sid = s.get("id", "?")
         for k in NEEDED:
             if k not in s or s[k] in ("", None) and k != "needs_nick":
@@ -57,7 +57,7 @@ def check(d: dict) -> list[str]:
 
 
 def render(d: dict) -> str:
-    allsrc = d["sources"]
+    allsrc = d["candidates"]
     src = sorted([s for s in allsrc if s["kind"] != "derived"], key=score, reverse=True)
     der = [s for s in allsrc if s["kind"] == "derived"]
     tag = d["personal_use_tag"]
@@ -134,9 +134,9 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         return 0
     a.out.write_text(md)
-    new = sum(s["est_tokens_m"] for s in d["sources"] if s["kind"] != "derived")
-    der = sum(s["est_tokens_m"] for s in d["sources"] if s["kind"] == "derived")
-    print(f"wrote {a.out} ({len(d['sources'])} sources; new-information {new:g}M, derived {der:g}M est. tokens)")
+    new = sum(s["est_tokens_m"] for s in d["candidates"] if s["kind"] != "derived")
+    der = sum(s["est_tokens_m"] for s in d["candidates"] if s["kind"] == "derived")
+    print(f"wrote {a.out} ({len(d['candidates'])} sources; new-information {new:g}M, derived {der:g}M est. tokens)")
     return 0
 
 

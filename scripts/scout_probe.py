@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     d = json.load(open(a.json))
     res = []
-    for s in d["sources"]:
+    for s in d["candidates"]:
         url = s.get("probe", "")
         if not url or (a.only and s["id"] not in a.only):
             continue

@@ -15,9 +15,9 @@ def test_scout_json_valid_and_rendered():
 
 def test_red_rows_and_bad_b_rows_rejected():
     d = json.loads(SL.SRC.read_text())
-    s = dict(d["sources"][0], id="x-red", verdict="red")
-    t = dict(d["sources"][0], id="x-b", verdict="yellow-B", license="no terms read")
-    errs = SL.check({"sources": [s, t]})
+    s = dict(d["candidates"][0], id="x-red", verdict="red")
+    t = dict(d["candidates"][0], id="x-b", verdict="yellow-B", license="no terms read")
+    errs = SL.check({"candidates": [s, t]})
     assert any("x-red" in e for e in errs) and any("x-b" in e for e in errs)
 
 
