@@ -1,0 +1,72 @@
+# Data Crew B / NBA (worker B4): official injury report + referee assignments -> context fact shards.
+# Runs on a free GitHub runner (the Claude container cannot reach nba.com). Spec: docs/datasources/context-nba.md.
+#   push to data-b-nba-run/<from>_<to>  -> injury backfill for [from, to)  -> data-b-out/nba-inj-<from>_<to>
+#   workflow_dispatch mode=live          -> today's injury report + referee assignments -> data-b-out/nba-live
+# Every request first checks the host's robots.txt and the run aborts if the path is disallowed.
+# Only counts, statuses and official ids are pushed: no PDF or page is stored.
+name: context-nba
+on:
+  push:
+    branches: ["data-b-nba-run/**"]
+  workflow_dispatch:
+    inputs:
+      mode: {description: "live | backfill", default: live}
+      from: {description: "backfill start (YYYY-MM-DD)", default: ""}
+      to: {description: "backfill end, exclusive (YYYY-MM-DD)", default: ""}
+concurrency:
+  group: context-nba-${{ github.ref_name }}-${{ inputs.mode || 'backfill' }}
+  cancel-in-progress: false
+jobs:
+  nba:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: terms hold (coordinator, Nov 5 2:15 AM ET)
+        # ON HOLD for Actions: nba.com terms (read Nov 5) allow personal noncommercial use but forbid republishing, and this job pushes to a public branch. Run on Kaggle (private dataset) instead; see docs/datasources/context-nba.md.
+        # Lift by setting "nba_terms_review": "allowed" in docs/datasources/terms.json with the date and reviewer.
+        run: |
+          python3 -c "import json,sys; t=json.load(open('docs/datasources/terms.json')); sys.exit(0 if t.get('nba_terms_review')=='allowed' else 'context-nba is on hold: nba.com terms not reviewed (docs/datasources/context-nba.md)')"
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install pandas pyarrow pdfplumber
+      - name: parameters
+        run: |
+          MODE=live; FROM="${{ inputs.from }}"; TO="${{ inputs.to }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then MODE="${{ inputs.mode }}"
+          else MODE=backfill; CHUNK="${GITHUB_REF_NAME#data-b-nba-run/}"; FROM="${CHUNK%_*}"; TO="${CHUNK#*_}"; fi
+          OUTBR="data-b-out/nba-live"; [ "$MODE" = backfill ] && OUTBR="data-b-out/nba-inj-${FROM}_${TO}"
+          printf 'MODE=%s\nFROM=%s\nTO=%s\nOUTBR=%s\n' "$MODE" "$FROM" "$TO" "$OUTBR" >> "$GITHUB_ENV"
+      - name: inputs (hoopR player box for star minutes, L2M names -> official ids)
+        continue-on-error: true
+        run: |
+          mkdir -p raw out
+          Y=$(python -c "import datetime as d;t=d.date.fromisoformat('${FROM:-$(date +%F)}');print(t.year+1 if t.month>=7 else t.year)")
+          curl -fsSL -o raw/player_box.parquet \
+            "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_nba_player_boxscores/player_box_${Y}.parquet"
+          curl -fsSL -o raw/L2M.csv "https://raw.githubusercontent.com/atlhawksfanatic/L2M/master/1-tidy/L2M/L2M_stats_nba.csv"
+      - name: restore previous facts
+        run: |
+          if git fetch -q --depth 1 origin "refs/heads/$OUTBR"; then git archive FETCH_HEAD | tar -x -C out; fi
+      - name: injuries
+        run: |
+          PB=""; [ -f raw/player_box.parquet ] && PB="--player-box raw/player_box.parquet"
+          if [ "$MODE" = backfill ]; then
+            python scripts/context/nba_injuries.py injuries --from "$FROM" --to "$TO" --out out $PB --max-minutes 100
+          else
+            python scripts/context/nba_injuries.py injuries --live --out out $PB
+          fi
+      - name: referees (live only; history comes from L2M)
+        if: env.MODE == 'live'
+        continue-on-error: true
+        run: |
+          L=""; [ -f raw/L2M.csv ] && L="--l2m raw/L2M.csv"
+          python scripts/context/nba_injuries.py refs --out out $L
+      - name: push facts to the out branch
+        if: always()
+        run: |
+          cd out && ls -la && git init -q -b "$OUTBR" && git add -A
+          git -c user.name=context-nba -c user.email=context-nba@users.noreply.github.com \
+            commit -qm "context-nba $MODE ${FROM}..${TO} from $GITHUB_SHA (run $GITHUB_RUN_ID)" || exit 0
+          git push -f "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY" "HEAD:refs/heads/$OUTBR"
