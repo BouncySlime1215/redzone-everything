@@ -8,7 +8,7 @@ Checked, per the T5 order:
   4. Polite polling in the race poller: ETag / If-Modified-Since, and backoff on 403 / 429 / 5xx.
 
 Tests that need code not yet on integration/next (feed_race.py from #315, the read log from #326) skip until
-it lands. xfail tests are FINDINGS (reported to the builders), non-strict so CI stays green.
+it lands. Findings T5-1..T5-3 were fixed in #315; their tests now run as plain regression tests.
 """
 from __future__ import annotations
 
@@ -234,9 +234,6 @@ def test_race_lead_sign_and_app_feed_alignment():
     json.dumps(res)
 
 
-@pytest.mark.xfail(reason="FINDING T5-1: grade() lets one Polymarket trigger count for several screen score "
-                          "changes (no 'used' set, unlike the ESPN rows). A TD at 1000 and the PAT at 1050 both "
-                          "claim a trigger at 990, inflating polymarket's n and lead.", strict=False)
 def test_race_one_market_trigger_counts_for_one_score_only():
     R = _race()
     sync = [json.dumps({"kind": "score", "target": "prime:tnf", "t": t, "z": 16.0}) for t in (1000.0, 1050.0)]
@@ -246,10 +243,6 @@ def test_race_one_market_trigger_counts_for_one_score_only():
     assert res["summary"]["polymarket"]["n"] == 1
 
 
-@pytest.mark.xfail(reason="FINDING T5-2: grade() matches an ESPN sighting to the nearest screen change within "
-                          "120 s by time only, never by score. If ESPN skips a score (TD 0-6 then PAT 0-7 inside "
-                          "one poll), its 0-7 row is credited to the 0-6 screen change. Match on score when the "
-                          "screen row has one (#326's scorebug_reads.jsonl does).", strict=False)
 def test_race_matches_sightings_by_score_not_just_time():
     R = _race()
     screens = [{"screen_ts": 1000.0, "app_feed_ts": 990.0, "target": "prime:tnf", "score": [0, 6]},
@@ -331,10 +324,6 @@ def test_race_poller_sends_conditional_gets_and_a_304_is_no_change(tmp_path, mon
     assert per_s <= 1.05                                               # 2 sources, each every 2 s
 
 
-@pytest.mark.xfail(reason="FINDING T5-3: poll_espn keeps polling at its normal 2 s rate through 403 and 5xx (only "
-                          "429 pauses, a fixed 30 s, Retry-After ignored). A 403 is a 'go away': back off "
-                          "(5 s doubling, honour Retry-After) like redzone/sources/http.py, so the race never "
-                          "hammers ESPN or looks like a bot-block bypass.", strict=False)
 @pytest.mark.parametrize("status", [403, 503])
 def test_race_poller_backs_off_on_403_and_5xx(status, tmp_path, monkeypatch):
     R = _race()
