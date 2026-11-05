@@ -438,3 +438,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   are self-contained: public inputs at a pinned commit, no Drive mount, no secrets, grades.json printed. The
   overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
   frozen, locked is read once (Sunday).
+- 2026-11-05 (lane 3, Nick's live finding 4): the "Channel delays" job (autonomy.Calibrator) no longer asks for an
+  "I just saw it" tap. A new channel is watched for 30 min and timed only from automatic signals (ad-break
+  anchors, scorebug, show boundaries, playback position, the mic when on); untimed, it keeps its app's delay.
+  Reason: Nick rejected manual calibration work ("waiting for one I-just-saw-it tap" on /api/health tonight).

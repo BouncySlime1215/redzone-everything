@@ -1355,28 +1355,26 @@ def seed_delays(delays: Any, history: dict[str, tuple[float, float, float]]) -> 
 class _Watch:
     target: str
     started: float
-    mode: str            # "mic" (measuring by itself) | "tap" (asking for one "I just saw it")
-    asked: bool = False
+    mode: str            # "mic" (the crowd-roar match) | "auto" (break anchors, scorebug, show boundaries)
 
 
 class Calibrator:
-    """The first time a channel is on screen, get its stream delay measured once. With the mic on it
-    measures by itself; otherwise one phone toast asks for a single "I just saw it" tap. Asks are
-    spaced out, only about what's on screen now, and never repeated for a week."""
+    """The first time a channel is on screen, watch for its stream delay to get measured, from automatic
+    signals only: ad-break anchors, the scorebug clock, show boundaries, playback position (and the mic
+    when it's on). It never asks for an "I just saw it" tap (Nick, Nov 4: no manual calibration work).
+    A channel that isn't timed within WATCH_S stays on its app's delay until a later tune times it."""
 
     WATCH_S = 30 * 60
-    ASK_GAP_S = 20 * 60
-    REASK_S = 7 * 86400
+    REWATCH_S = 7 * 86400
 
     def __init__(self, hooks: Any, memory: dict, clock: Callable[[], float] = time.time):
         self.hooks, self.memory, self.clock = hooks, memory, clock
         self.watches: dict[str, _Watch] = {}
-        self.last_ask = -math.inf
         self.timed: list[str] = []
         self.dirty = False
 
     def calibrated(self, target: str) -> bool:
-        measured = getattr(self.hooks.delays, "measured", None)   # own tap, or its app is settled
+        measured = getattr(self.hooks.delays, "measured", None)   # its own sample, or its app is settled
         if measured is not None:
             return measured(target)
         d = getattr(self.hooks.delays, "book", {}).get(target)
@@ -1384,51 +1382,31 @@ class Calibrator:
 
     def on_tune(self, target: str | None, replay: bool = False) -> str | None:
         """The engine just put `target` on screen. Starts a one-time watch if its delay was never
-        measured; returns "mic" / "tap" for what it started, else None. Replays are skipped: a
+        measured; returns "mic" / "auto" for what it started, else None. Replays are skipped: a
         rewound stream's delay says nothing about the live one."""
         if not target or replay or self.hooks.delays is None or ":" not in target:
             return None
         if self.calibrated(target) or target in self.watches:
             return None
-        asked = self.memory.setdefault("asked", {}).get(target)
-        if asked and self.clock() - asked < self.REASK_S:
+        seen = self.memory.setdefault("watched", {}).get(target)
+        if seen and self.clock() - seen < self.REWATCH_S:
             return None
-        w = _Watch(target, self.clock(), "mic" if self.hooks.mic_on() else "tap")
+        w = _Watch(target, self.clock(), "mic" if self.hooks.mic_on() else "auto")
         self.watches[target] = w
-        if w.mode == "tap":
-            self._ask(w)
+        self.memory["watched"][target] = w.started
+        self.dirty = True
         return w.mode
 
-    def _ask(self, w: _Watch) -> bool:
-        now = self.clock()
-        if now - self.last_ask < self.ASK_GAP_S or self.hooks.current_target() not in (None, w.target):
-            return False   # asked recently, or it isn't on screen right now: ask later
-        self.hooks.toast(f"New channel: {describe(w.target)}. Tap “I just saw it” the moment the next play "
-                         "ends on your TV — one tap times this channel.", "info")
-        w.asked, self.last_ask = True, now
-        self.memory.setdefault("asked", {})[w.target] = now
-        self.dirty = True
-        return True
-
     def poll(self) -> list[str]:
-        """Every pass: finish watches that got measured, turn silent mic watches into one ask,
-        and drop the rest after 30 minutes. Returns channels that just got timed."""
+        """Every pass: finish watches that got measured and drop the rest after WATCH_S. Returns
+        channels that just got timed. Nothing here asks you for anything."""
         now, done = self.clock(), []
         for t, w in list(self.watches.items()):
             if self.calibrated(t):
                 del self.watches[t]
                 done.append(t)
-                if w.asked:
-                    mu = self.hooks.delays.book[t].mu
-                    self.hooks.toast(f"Thanks — {describe(t)} runs {mu:.0f}s behind live", "info")
             elif now - w.started > self.WATCH_S:
-                if w.mode == "mic" and not w.asked:   # no big play for the mic to time it by: ask once
-                    w.mode, w.started = "tap", now
-                    self._ask(w)
-                else:
-                    del self.watches[t]
-            elif w.mode == "tap" and not w.asked:
-                self._ask(w)
+                del self.watches[t]
         self.timed = (done + self.timed)[:5]
         return done
 
@@ -1439,7 +1417,7 @@ class Calibrator:
         w = max(self.watches.values(), key=lambda x: x.started)
         if w.mode == "mic":
             return None, f"Listening to time {describe(w.target)}"
-        return None, f"Waiting for one “I just saw it” tap on {describe(w.target)}"
+        return None, f"Timing {describe(w.target)} from ad breaks and the scorebug"
 
 
 # ============================================================================ the app's hooks
@@ -1960,11 +1938,12 @@ class Autonomy:
                                                "at": self.clock(), "version": chk.version}
 
     def _save_state(self) -> None:
-        asked = self.memory["calibration"].get("asked")
-        if isinstance(asked, dict):   # per-event targets pile up; a month of memory is plenty
+        self.memory["calibration"].pop("asked", None)   # the old tap asks (removed Nov 5)
+        watched = self.memory["calibration"].get("watched")
+        if isinstance(watched, dict):   # per-event targets pile up; a month of memory is plenty
             cutoff = self.clock() - 30 * 86400
-            for t in [t for t, ts in asked.items() if not isinstance(ts, (int, float)) or ts < cutoff]:
-                del asked[t]
+            for t in [t for t, ts in watched.items() if not isinstance(ts, (int, float)) or ts < cutoff]:
+                del watched[t]
         try:
             write_json(self.paths.state, self.memory)
         except OSError as e:
