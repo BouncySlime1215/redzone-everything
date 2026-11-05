@@ -1457,7 +1457,8 @@
    "outputs": [
     "redzone/decider/screen.py",
     "redzone/engine.py",
-    "redzone/screen/scorebug.py"
+    "redzone/screen/scorebug.py",
+    "redzone/sync_probe.py"
    ],
    "owner": "unowned",
    "role": "Automatic per-channel sync: each channel's screen delay tracked by a small Kalman filter, no taps.",
@@ -3880,6 +3881,7 @@
    "contracts": [],
    "inputs": [
     "redzone/config.py",
+    "redzone/decider/sync.py",
     "redzone/sync_edge.py",
     "redzone/tuners/adb.py"
    ],
