@@ -580,3 +580,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   NBA and NFL pass `league_promotion`; NHL passes with the trade Nick accepted (mid-play 28 → 0 dev,
   8 → 0 locked). Rollback for one league: set that league's keys back under `league_overrides.<league>`,
   or redeploy without it.
+- **2026-11-05 (lane 3, RC7 requirement 1, Nick 9:45 PM): `two_stick.pretune_on_open: true` for every league** (was on
+  for NBA/NFL only through #227's league overrides). Opening a live game on the phone tunes it on the hidden stick while
+  you read, so "Go now" is a flip. Controls drill (2 seeds, smartthings TV): open-then-go median 8.33 s -> 3.06 s, go-now
+  p50 8.25 -> 3.06 s; 0 mid-play cuts of any kind and 0 dropped presses either way. Rollback: set it false in settings.
