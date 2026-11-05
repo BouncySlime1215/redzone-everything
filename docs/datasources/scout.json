@@ -326,27 +326,6 @@
    "kind": "events"
   },
   {
-   "id": "hockeytech",
-   "cycle": 13,
-   "priority": 1,
-   "name": "HockeyTech feeds: AHL, ECHL, OHL, WHL, QMJHL, USHL",
-   "sports": "hockey (minors, junior)",
-   "years": "probe (about 2017+)",
-   "access": "lscluster.hockeytech.com/feed/index.php, which the league sites call with a public client key",
-   "verdict": "yellow-B",
-   "license": "AHL terms bar robots/spiders/page-scrape and commercial copying (same class as the ESPN clause plan B accepted). The feed is called with the public client key the league sites ship to every browser: not a login, paywall or CAPTCHA. Personal use under plan B only; <=1 request/2 s; stop at the first 403. Nick can veto. Read Nov 5 05:15 UTC",
-   "est_events_m": 9.6,
-   "est_tokens_m": 58,
-   "novelty": 1.0,
-   "raw_gb": 2.4,
-   "why": "~6k games a year of pro and junior hockey: shot, faceoff and penalty sequences with stoppages",
-   "status": "ready",
-   "owner": "crew A",
-   "needs_nick": "none",
-   "probe": "https://lscluster.hockeytech.com/robots.txt",
-   "kind": "events"
-  },
-  {
    "id": "gleague",
    "cycle": 13,
    "priority": 1,
@@ -774,6 +753,10 @@
   {
    "name": "Sports-1M, UCF101 (action recognition)",
    "why": "Nick 12:15 AM: skip, they don't help break, timing or excitement"
+  },
+  {
+   "name": "HockeyTech feeds (AHL, ECHL, CHL/OHL/WHL/QMJHL, USHL)",
+   "why": "AHL terms bar robots, spiders and page-scraping; same rule as Sports-Reference (Nick 12:15 AM: skip if automated pulls are forbidden). Junior leagues on the same feed are skipped with it. Nick can override."
   }
  ]
 }

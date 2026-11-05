@@ -22,33 +22,32 @@ Derived rows are listed after the ranking and never count toward new information
 | 5 | EuroLeague + EuroCup live API (pbp, shots, box) | 1 | events | yellow-B (personal-use, not for commercial release) | 34 | 1 | 34.0 | ready | crew A | none | EuroLeague terms §8f: EuroLeague Statistics may be used for private, non-commercial purposes, not in a public stats database without consent; §4e bars robots on EuroLeagueTV (video), not the stats API. Personal use under plan B, never republished. Read Nov 5 05:15 UTC |
 | 6 | Tennis Match Charting Project (shot by shot) | 1 | events | yellow | 15 | 0.5 | 30.0 | ready | crew A | none | CC BY-NC-SA 4.0 (credit Jeff Sackmann, link the original repos, non-commercial, share-alike on any published derivative). A CC licence cannot be revoked for copies already released, so the mirror is usable; the author pulled the repos, so treat slam pbp as low-priority and drop it if he asks. Rechecked Nov 5 04:45 UTC |
 | 7 | Polymarket prices-history + trades (free, no key) | 3 | events | yellow-B (personal-use, not for commercial release) | 30 | 1 | 30.0 | ready | crew D | none | catalog had Nick sign-off pending; plan B covers personal use. Lines are importance inputs only, never shown or used to nudge |
-| 8 | HockeyTech feeds: AHL, ECHL, OHL, WHL, QMJHL, USHL | 1 | events | yellow-B (personal-use, not for commercial release) | 58 | 2.4 | 24.2 | ready | crew A | none | AHL terms bar robots/spiders/page-scrape and commercial copying (same class as the ESPN clause plan B accepted). The feed is called with the public client key the league sites ship to every browser: not a login, paywall or CAPTCHA. Personal use under plan B only; <=1 request/2 s; stop at the first 403. Nick can veto. Read Nov 5 05:15 UTC |
-| 9 | CollegeFootballData API (plays, drives, lines, games) | 1 | events | yellow | 24 | 1 | 24.0 | needs-nick | crew A | register the free CFBD key and add it as a Kaggle secret | CFBD terms: free key, attribution; already in catalog #202 (Nick 12:15 AM confirms) |
-| 10 | NBA G League pbp (stats.gleague.nba.com / cdn liveData) | 1 | events | yellow-B (personal-use, not for commercial release) | 19 | 1 | 19.0 | probe | scout | none | NBA.com ToS personal non-commercial; under plan B for personal use |
-| 11 | StatsBomb open data (events + 360 freeze frames) | 1 | events | yellow | 87 | 5 | 17.4 | pulling | crew A | none | StatsBomb user agreement (LICENSE.pdf): research and personal interest; credit StatsBomb and use their logo if we publish anything |
-| 12 | CFL API play-by-play | 1 | events | yellow | 1.5 | 0.1 | 15.0 | needs-nick | crew A | request a CFL API key (free on request) if Nick wants Canadian football | CFL API terms come with the key; Nick requests and adds it himself |
-| 13 | NCAA.com game center pbp, all divisions (basketball M/W, baseball, hockey, football, soccer) | 1 | events | yellow-B (personal-use, not for commercial release) | 150 | 12 | 12.5 | probe | scout | none | ncaa.com terms page did not render for the scout (Nov 5 05:15 UTC); public JSON, no login; personal use under plan B only. Crew A runs scripts/scout_probe.py --only ncaa-casablanca on Kaggle first; stats.ncaa.org is RED (Akamai bot block) |
-| 14 | v2 context: injury report status at game time | 0 | context-new | yellow-B (personal-use, not for commercial release) | 2.1 | 0.2 | 10.5 | ready | crew B | none | nflverse CC-BY-4.0; NBA archive release licence unverified; ESPN-derived only under plan B for personal use |
-| 15 | FIBA LiveStats (Genius Sports) public game JSON: NBL, European domestic leagues, FIBA events | 1 | events | yellow-B (personal-use, not for commercial release) | 60 | 3 | 10.0 | parked | scout | none | HOLD: Genius Sports terms likely bar reuse; read before any pull; personal use under plan B only; Genius sells this feed as official betting data, so expect enforcement: lowest priority |
-| 16 | NHL EDGE aggregates (skating speed, bursts, zone time, shot speed) | 2 | events | yellow-B (personal-use, not for commercial release) | 5 | 0.5 | 10.0 | ready | crew A | none | NHL.com ToS bars harvesting; plan B personal use only |
-| 17 | v2 context: national TV slot / network per game | 0 | context-new | yellow | 0.4 | 0.05 | 8.0 | ready | crew B | none | CC-BY-4.0 / CC BY-SA 4.0 (facts only, credit Wikipedia) |
-| 18 | MiLB pitch-by-pitch via MLB Stats API (AAA, AA, High-A, Single-A) | 1 | events | yellow-B (personal-use, not for commercial release) | 300 | 60 | 7.5 | ready | crew A | none | MLBAM copyright notice allows individual, non-commercial, non-bulk use; a bulk pull is only OK under plan B for personal use |
-| 19 | football-data.co.uk results + opening/closing odds | 3 | events | yellow-B (personal-use, not for commercial release) | 3 | 0.2 | 7.5 | parked | crew D | none | site says use is for private individuals only, not data training products using bots or AI. Same class as the ESPN clause; only under plan B, personal use |
-| 20 | Liiga (Finnish pro hockey) game events API | 1 | events | yellow-B (personal-use, not for commercial release) | 7 | 0.5 | 7.0 | probe | scout | none | liiga.fi terms not yet read; public JSON, no login; personal use under plan B only |
-| 21 | NFL Big Data Bowl 2027 (combine + in-game tracking, 10 Hz) | 2 | events | yellow | 48 | 8 | 6.0 | needs-nick | crew A | join the Big Data Bowl 2027 competition on Kaggle and accept its rules | competition rules (non-commercial research); Nick joins and accepts the rules tab himself on his Kaggle account |
-| 22 | v2 context: referee / umpire crew per game | 0 | context-new | yellow-B (personal-use, not for commercial release) | 0.6 | 0.1 | 6.0 | ready | crew B | none | nflverse CC-BY-4.0; nbadb per dataset licence field; Retrosheet notice (green); NHL api-web only under plan B for personal use |
-| 23 | Wyscout public soccer events (Pappalardo et al. 2019) | 1 | events | green | 20 | 2 | 5.0 | ready | crew A | none | CC BY 4.0 (metadata CC0); cite Pappalardo et al., Scientific Data 2019 |
-| 24 | NBA SportVU tracking 2015-16 (linouk23 / sealneaward mirrors, same ~631 games) | 2 | events | yellow-B (personal-use, not for commercial release) | 48 | 10 | 4.8 | ready | crew A | none | no repo licence; NBA/STATS LLC content; catalog #202 needed Nick's sign-off, now covered by plan B for personal use; private, credit NBA/STATS, never re-upload raw |
-| 25 | Statcast pitch-level 2015-2020 (extends the 2021-25 scoped row) | 2 | events | yellow-B (personal-use, not for commercial release) | 26 | 3 | 4.3 | ready | crew A | none | MLBAM notice; the full range is only OK under plan B for personal use |
-| 26 | MLB GUMBO live feed 2008-2025 (wall clocks on every pitch) | 1 | events | yellow-B (personal-use, not for commercial release) | 84 | 30 | 4.2 | ready | crew A | none | MLBAM notice, bulk only under plan B for personal use (catalog row moved from red to yellow-B by the data-B decision) |
-| 27 | NPB game text (npb.jp) | 1 | events | yellow-B (personal-use, not for commercial release) | 23 | 3 | 3.8 | probe | scout | none | npb.jp terms not read; HTML only, store derived numbers, never page text; Yahoo pitch-by-pitch is RED (terms); personal use under plan B only |
-| 28 | v2 context: pregame line + total per game (all six leagues) | 0 | context-new | yellow-B (personal-use, not for commercial release) | 1.1 | 0.3 | 3.7 | ready | crew B | none | nflverse CC-BY-4.0; SBRO no licence (Nick logs it); ESPN-derived only under plan B for personal use. Lines are importance inputs only, never shown, never a nudge |
-| 29 | KBO game relay (koreabaseball.com) | 1 | events | yellow-B (personal-use, not for commercial release) | 13 | 2 | 3.2 | probe | scout | none | KBO site terms not read; derived numbers only; personal use under plan B only |
-| 30 | v2 context: game-time weather for outdoor NFL, CFB, MLB | 0 | context-new | green | 1.9 | 1.2 | 2.4 | ready | crew B | none | NOAA public domain / CC0 (Open-Meteo CC BY 4.0, non-commercial free tier) |
-| 31 | AFL via fitzRoy (AFL API, AFL Tables, Footywire) | 1 | events | yellow-B (personal-use, not for commercial release) | 0.6 | 0.2 | 1.5 | parked | scout | none | MIT package code; data from AFL sites with no open licence; personal use under plan B only |
-| 32 | Formula 1 timing via FastF1 (laps, stints, race control: safety cars, red flags) | 2 | events | yellow-B (personal-use, not for commercial release) | 2 | 2 | 1.0 | parked | scout | none | F1 timing is Formula One's data; FastF1 is MIT code only. Personal use under plan B only |
-| 33 | Open soccer tracking: IDSSE Bundesliga (7 matches, 25 fps), Metrica samples (3), SkillCorner (10, 10 fps) | 2 | events | yellow | 1 | 4 | 0.2 | parked | scout | none | IDSSE CC BY 4.0 (green); Metrica sample terms on repo; SkillCorner asks for credit, no named licence |
-| 34 | Creative Commons sports video, features on the fly only (YouTube Data API videoLicense=creativeCommon, Vimeo CC filter) | 4 | context-new | yellow | 0 | 0.05 | 0.0 | parked | crew C | none | CC BY (YouTube's only CC option) per video, credit the uploader; YouTube API policy: refresh or delete stored metadata within 30 days. Low priority (Nick 12:15 AM): only if a use emerges, e.g. dead-ball vision labels |
+| 8 | CollegeFootballData API (plays, drives, lines, games) | 1 | events | yellow | 24 | 1 | 24.0 | needs-nick | crew A | register the free CFBD key and add it as a Kaggle secret | CFBD terms: free key, attribution; already in catalog #202 (Nick 12:15 AM confirms) |
+| 9 | NBA G League pbp (stats.gleague.nba.com / cdn liveData) | 1 | events | yellow-B (personal-use, not for commercial release) | 19 | 1 | 19.0 | probe | scout | none | NBA.com ToS personal non-commercial; under plan B for personal use |
+| 10 | StatsBomb open data (events + 360 freeze frames) | 1 | events | yellow | 87 | 5 | 17.4 | pulling | crew A | none | StatsBomb user agreement (LICENSE.pdf): research and personal interest; credit StatsBomb and use their logo if we publish anything |
+| 11 | CFL API play-by-play | 1 | events | yellow | 1.5 | 0.1 | 15.0 | needs-nick | crew A | request a CFL API key (free on request) if Nick wants Canadian football | CFL API terms come with the key; Nick requests and adds it himself |
+| 12 | NCAA.com game center pbp, all divisions (basketball M/W, baseball, hockey, football, soccer) | 1 | events | yellow-B (personal-use, not for commercial release) | 150 | 12 | 12.5 | probe | scout | none | ncaa.com terms page did not render for the scout (Nov 5 05:15 UTC); public JSON, no login; personal use under plan B only. Crew A runs scripts/scout_probe.py --only ncaa-casablanca on Kaggle first; stats.ncaa.org is RED (Akamai bot block) |
+| 13 | v2 context: injury report status at game time | 0 | context-new | yellow-B (personal-use, not for commercial release) | 2.1 | 0.2 | 10.5 | ready | crew B | none | nflverse CC-BY-4.0; NBA archive release licence unverified; ESPN-derived only under plan B for personal use |
+| 14 | FIBA LiveStats (Genius Sports) public game JSON: NBL, European domestic leagues, FIBA events | 1 | events | yellow-B (personal-use, not for commercial release) | 60 | 3 | 10.0 | parked | scout | none | HOLD: Genius Sports terms likely bar reuse; read before any pull; personal use under plan B only; Genius sells this feed as official betting data, so expect enforcement: lowest priority |
+| 15 | NHL EDGE aggregates (skating speed, bursts, zone time, shot speed) | 2 | events | yellow-B (personal-use, not for commercial release) | 5 | 0.5 | 10.0 | ready | crew A | none | NHL.com ToS bars harvesting; plan B personal use only |
+| 16 | v2 context: national TV slot / network per game | 0 | context-new | yellow | 0.4 | 0.05 | 8.0 | ready | crew B | none | CC-BY-4.0 / CC BY-SA 4.0 (facts only, credit Wikipedia) |
+| 17 | MiLB pitch-by-pitch via MLB Stats API (AAA, AA, High-A, Single-A) | 1 | events | yellow-B (personal-use, not for commercial release) | 300 | 60 | 7.5 | ready | crew A | none | MLBAM copyright notice allows individual, non-commercial, non-bulk use; a bulk pull is only OK under plan B for personal use |
+| 18 | football-data.co.uk results + opening/closing odds | 3 | events | yellow-B (personal-use, not for commercial release) | 3 | 0.2 | 7.5 | parked | crew D | none | site says use is for private individuals only, not data training products using bots or AI. Same class as the ESPN clause; only under plan B, personal use |
+| 19 | Liiga (Finnish pro hockey) game events API | 1 | events | yellow-B (personal-use, not for commercial release) | 7 | 0.5 | 7.0 | probe | scout | none | liiga.fi terms not yet read; public JSON, no login; personal use under plan B only |
+| 20 | NFL Big Data Bowl 2027 (combine + in-game tracking, 10 Hz) | 2 | events | yellow | 48 | 8 | 6.0 | needs-nick | crew A | join the Big Data Bowl 2027 competition on Kaggle and accept its rules | competition rules (non-commercial research); Nick joins and accepts the rules tab himself on his Kaggle account |
+| 21 | v2 context: referee / umpire crew per game | 0 | context-new | yellow-B (personal-use, not for commercial release) | 0.6 | 0.1 | 6.0 | ready | crew B | none | nflverse CC-BY-4.0; nbadb per dataset licence field; Retrosheet notice (green); NHL api-web only under plan B for personal use |
+| 22 | Wyscout public soccer events (Pappalardo et al. 2019) | 1 | events | green | 20 | 2 | 5.0 | ready | crew A | none | CC BY 4.0 (metadata CC0); cite Pappalardo et al., Scientific Data 2019 |
+| 23 | NBA SportVU tracking 2015-16 (linouk23 / sealneaward mirrors, same ~631 games) | 2 | events | yellow-B (personal-use, not for commercial release) | 48 | 10 | 4.8 | ready | crew A | none | no repo licence; NBA/STATS LLC content; catalog #202 needed Nick's sign-off, now covered by plan B for personal use; private, credit NBA/STATS, never re-upload raw |
+| 24 | Statcast pitch-level 2015-2020 (extends the 2021-25 scoped row) | 2 | events | yellow-B (personal-use, not for commercial release) | 26 | 3 | 4.3 | ready | crew A | none | MLBAM notice; the full range is only OK under plan B for personal use |
+| 25 | MLB GUMBO live feed 2008-2025 (wall clocks on every pitch) | 1 | events | yellow-B (personal-use, not for commercial release) | 84 | 30 | 4.2 | ready | crew A | none | MLBAM notice, bulk only under plan B for personal use (catalog row moved from red to yellow-B by the data-B decision) |
+| 26 | NPB game text (npb.jp) | 1 | events | yellow-B (personal-use, not for commercial release) | 23 | 3 | 3.8 | probe | scout | none | npb.jp terms not read; HTML only, store derived numbers, never page text; Yahoo pitch-by-pitch is RED (terms); personal use under plan B only |
+| 27 | v2 context: pregame line + total per game (all six leagues) | 0 | context-new | yellow-B (personal-use, not for commercial release) | 1.1 | 0.3 | 3.7 | ready | crew B | none | nflverse CC-BY-4.0; SBRO no licence (Nick logs it); ESPN-derived only under plan B for personal use. Lines are importance inputs only, never shown, never a nudge |
+| 28 | KBO game relay (koreabaseball.com) | 1 | events | yellow-B (personal-use, not for commercial release) | 13 | 2 | 3.2 | probe | scout | none | KBO site terms not read; derived numbers only; personal use under plan B only |
+| 29 | v2 context: game-time weather for outdoor NFL, CFB, MLB | 0 | context-new | green | 1.9 | 1.2 | 2.4 | ready | crew B | none | NOAA public domain / CC0 (Open-Meteo CC BY 4.0, non-commercial free tier) |
+| 30 | AFL via fitzRoy (AFL API, AFL Tables, Footywire) | 1 | events | yellow-B (personal-use, not for commercial release) | 0.6 | 0.2 | 1.5 | parked | scout | none | MIT package code; data from AFL sites with no open licence; personal use under plan B only |
+| 31 | Formula 1 timing via FastF1 (laps, stints, race control: safety cars, red flags) | 2 | events | yellow-B (personal-use, not for commercial release) | 2 | 2 | 1.0 | parked | scout | none | F1 timing is Formula One's data; FastF1 is MIT code only. Personal use under plan B only |
+| 32 | Open soccer tracking: IDSSE Bundesliga (7 matches, 25 fps), Metrica samples (3), SkillCorner (10, 10 fps) | 2 | events | yellow | 1 | 4 | 0.2 | parked | scout | none | IDSSE CC BY 4.0 (green); Metrica sample terms on repo; SkillCorner asks for credit, no named licence |
+| 33 | Creative Commons sports video, features on the fly only (YouTube Data API videoLicense=creativeCommon, Vimeo CC filter) | 4 | context-new | yellow | 0 | 0.05 | 0.0 | parked | crew C | none | CC BY (YouTube's only CC option) per video, credit the uploader; YouTube API policy: refresh or delete stored metadata within 30 days. Low priority (Nick 12:15 AM): only if a use emerges, e.g. dead-ball vision labels |
 
 ## Derived (no new knowledge)
 
@@ -60,31 +59,31 @@ Derived rows are listed after the ranking and never count toward new information
 
 | Kind | Sources | Est. tokens (M) |
 |---|---:|---:|
-| events | 27 | 1386.1 |
+| events | 26 | 1328.1 |
 | context-new | 7 | 24.1 |
 | derived | 1 | 5700 |
-| **New information (events + context-new)** | 34 | 1410.2 |
+| **New information (events + context-new)** | 33 | 1352.2 |
 
 ## New-information totals by status and verdict
 
 | Bucket | Sources | Est. tokens (M) |
 |---|---:|---:|
-| Ready for a crew | 18 | 968.1 |
+| Ready for a crew | 17 | 910.1 |
 | Pulling or done (real) | 1 | 87 |
 | Probe / hold (scout) | 5 | 212 |
 | Needs Nick | 4 | 76.5 |
 | Parked | 6 | 66.6 |
 | Verdict green | 3 | 75.9 |
 | Verdict yellow | 9 | 179.9 |
-| Verdict yellow-B | 22 | 1154.4 |
-| **All new-information candidates** | 34 | 1410.2 |
+| Verdict yellow-B | 21 | 1096.4 |
+| **All new-information candidates** | 33 | 1352.2 |
 
 ## Growth by cycle (candidates added, cumulative)
 
 | Cycle | Added | Est. tokens added (M) | Cumulative (M) |
 |---|---:|---:|---:|
-| 13 | 29 | 1351.1 | 1351.1 |
-| 14 | 5 | 59.1 | 1410.2 |
+| 13 | 28 | 1293.1 | 1293.1 |
+| 14 | 5 | 59.1 | 1352.2 |
 
 ## Why each source
 
@@ -95,7 +94,6 @@ Derived rows are listed after the ranking and never count toward new information
 - **EuroLeague + EuroCup live API (pbp, shots, box)** (basketball (Europe), 2007-08 to 2025-26): FIBA rules (10-minute quarters, different timeout rules) give the clock model a second basketball rulebook Access: api-live.euroleague.net v1/v2 (Swagger), no key; euroleague-api python package (GPLv3, code only).
 - **Tennis Match Charting Project (shot by shot)** (tennis, MCP 1970s-2026; slams 2011+): momentum without a game clock: points, changeovers and set breaks. Slam point-by-point mirror dropped by crew A (author withdrew the repos) Access: MCP: GitHub JeffSackmann/tennis_MatchChartingProject (still public, the only repo left on his profile). Slam point-by-point 2011-2024: GitHub repos tennis_slam_pointbypoint and tennis_atp now 404 (withdrawn ~Nov 2026); use the CC BY-NC-SA mirror huggingface.co/datasets/Aneeshers/tennis-sackmann-archive (slam_pointbypoint/, 166 CSVs, 797 MB total).
 - **Polymarket prices-history + trades (free, no key)** (all six, 2022+ (dense 2024+)): the only free source of minute-level live line moves for US games Access: gamma-api + clob /prices-history; back off on 429.
-- **HockeyTech feeds: AHL, ECHL, OHL, WHL, QMJHL, USHL** (hockey (minors, junior), probe (about 2017+)): ~6k games a year of pro and junior hockey: shot, faceoff and penalty sequences with stoppages Access: lscluster.hockeytech.com/feed/index.php, which the league sites call with a public client key.
 - **CollegeFootballData API (plays, drives, lines, games)** (CFB, 2001-2026): the only non-ESPN CFB play-by-play; lines feed crew B's v2-lines for CFB Access: REST v2, free key Nick adds as a Kaggle secret; Academic tier 3,000 calls/month (unc.edu).
 - **NBA G League pbp (stats.gleague.nba.com / cdn liveData)** (basketball (minor), 2016-17+ (probe)): NBA rules at a lower level with more timeouts and resets Access: same JSON shape as NBA stats/liveData; one polite call per game; stop at the first 403 (bot block = red).
 - **StatsBomb open data (events + 360 freeze frames)** (soccer, selected competitions, 1958-2025): timestamped events for ~3.5k matches: a running clock with stoppages, a different break grammar from US sports Crew A count Nov 5 04:40 UTC: 3,961 matches, ~87M v1 tokens Access: GitHub repo statsbomb/open-data (zip or statsbombpy).
@@ -134,3 +132,4 @@ Derived rows are listed after the ranking and never count toward new information
 | Apify odds and DraftKings scrapers | scrape sites whose terms forbid it |
 | Sports-Reference family (Pro-Football-, Basketball-, Hockey-, Baseball-Reference, FBref, Stathead) | Terms §5(09) bar automated access without written permission; §5(11) bars using content to train or prompt AI models or ML. Skipped per Nick's 12:15 AM rule (checked Nov 5 04:28 UTC). Bot page: 20 requests/min (10 for FBref/Stathead), jail up to a day |
 | Sports-1M, UCF101 (action recognition) | Nick 12:15 AM: skip, they don't help break, timing or excitement |
+| HockeyTech feeds (AHL, ECHL, CHL/OHL/WHL/QMJHL, USHL) | AHL terms bar robots, spiders and page-scraping; same rule as Sports-Reference (Nick 12:15 AM: skip if automated pulls are forbidden). Junior leagues on the same feed are skipped with it. Nick can override. |
