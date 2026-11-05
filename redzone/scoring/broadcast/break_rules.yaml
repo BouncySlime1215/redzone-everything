@@ -21,8 +21,8 @@ rules:
     clock_marks_remaining_s: [420]
     per_period: 1
     official_len_s: {local: 165, national: 195}
-    measured: {league: nba, kind: timeout}
-    measured_note: "Train nights: local q50 182 s, ESPN 213, NBC 212 (n 38/30): the +30 s national rule shows up in the data."
+    measured: {league: nba, kind: timeout_long}
+    measured_note: "1st/2nd timeout of a quarter, train q50: local 187 s, NBC 217, ESPN 217, Prime 218 (n 286/21/29/15); earlier read on all timeouts: local 182 s, ESPN 213, NBC 212 (n 38/30): the +30 s national rule shows up in the data."
     exceptions: ["Any team timeout before the mark stands in for it (the first two timeouts of a quarter are the long ones)."]
     since: "2017-18"
     confidence: verified
@@ -34,7 +34,7 @@ rules:
     clock_marks_remaining_s: [180]
     per_period: 1
     official_len_s: {local: 165, national: 195}
-    measured: {league: nba, kind: timeout}
+    measured: {league: nba, kind: timeout_long}
     exceptions: ["Not in overtime."]
     since: "2017-18"
     confidence: verified
@@ -44,7 +44,7 @@ rules:
     kind: team_timeout
     trigger: "Team timeout (3rd and later in a quarter are short commercial or none). 7 per team, at most 4 in Q4, at most 2 after 3:00 of Q4; 2 per OT."
     official_len_s: 75
-    measured: {league: nba, kind: timeout}
+    measured: {league: nba, kind: timeout_short}
     since: "2017-18"
     confidence: verified
     source_url: "https://official.nba.com/rule-no-5-scoring-and-timing"

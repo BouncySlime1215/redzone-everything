@@ -28,7 +28,7 @@ from redzone.models import League, Stoppage  # noqa: E402
 from redzone.sources import espn  # noqa: E402
 
 OUT = ROOT / "redzone" / "scoring" / "broadcast" / "break_lengths.json"
-QS = (0.1, 0.25, 0.5, 0.75, 0.9)
+QS = (0.05, 0.1, 0.25, 0.5, 0.75, 0.9)
 MIN_N = 8            # fewer rows than this: the cell falls back to the league x kind row
 MAX_LEN_S = 1500.0   # longer than this is a delay / feed gap, not a break
 
@@ -57,14 +57,25 @@ def rows(league: League, which: str) -> list[dict]:
             r = Replay.load(league, f) if f.exists() else None
             if not r:
                 continue
-            net, prev = network(e), Stoppage.NONE
+            net, prev, per, n_to = network(e), Stoppage.NONE, None, 0
             for i, p in enumerate(r.plays):
                 k = espn.stoppage_for(league, p)
+                pd = espn._int(espn._get(p, "period", "number"))
+                if pd != per:
+                    per, n_to = pd, 0
                 if k not in (Stoppage.NONE, Stoppage.UNKNOWN) and k != prev:
+                    kind = k.value
+                    if league == League.NBA and k == Stoppage.TIMEOUT:
+                        # NBA: the first two timeouts of a quarter are the long (mandatory-length) ones
+                        n_to += 1
+                        kind = "timeout_long" if n_to <= 2 else "timeout_short"
                     res = cutgrade.resume_after(league, r.wall, r.plays, i)
                     if res != float("inf") and r.wall[i] is not None and 0 < res - r.wall[i] <= MAX_LEN_S:
-                        out.append({"league": league.value, "night": night, "game": e["id"], "network": net,
-                                    "kind": k.value, "len_s": round(res - r.wall[i], 1)})
+                        row = {"league": league.value, "night": night, "game": e["id"], "network": net,
+                               "kind": kind, "len_s": round(res - r.wall[i], 1)}
+                        out.append(row)
+                        if kind != k.value:   # NBA long/short also count in the plain "timeout" cell
+                            out.append({**row, "kind": k.value, "split_row": True})
                 prev = k
     return out
 
@@ -101,6 +112,7 @@ def main() -> int:
     a = ap.parse_args()
     train = [x for lg in a.leagues for x in rows(League(lg), "train")]
     tab = table(train)
+    train = [x for x in train if not x.get("split_row")]
     if a.split == "train":
         OUT.parent.mkdir(parents=True, exist_ok=True)
         OUT.write_text(json.dumps({"source": "eval-data-v1 archive, train nights only (redzone.lab.splits)",
@@ -113,7 +125,7 @@ def main() -> int:
     val = [x for lg in a.leagues for x in rows(League(lg), "valid")]
     rep = {}
     for lg in a.leagues:
-        v = [x for x in val if x["league"] == lg]
+        v = [x for x in val if x["league"] == lg and not x.get("split_row")]
         errs = defaultdict(lambda: [[], []])
         for x in v:
             pn, pl = predict(tab, lg, x["kind"], x["network"]), predict(tab, lg, x["kind"], x["network"], False)
