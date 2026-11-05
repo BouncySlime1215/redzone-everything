@@ -317,3 +317,4 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   is appended at the decision time. Anything that delays the cut (the pause cue today, EXP-803's defer) must move
   both, or big live / crunch live / dead air credit the destination before the TV shows it. The pause cue's gap is
   pre-existing (seconds, not tens of seconds); fix it under a grader freeze with a before/after.
+- 2026-11-05 (lane 2, from lane 4's read of the Nov 4-5 probe logs): sync_probe.stall_s compared the stick clock with the position without checking that both reports were playing at normal speed. A pause or backgrounded app counted its whole pause as a stall (up to 11,000 s), and a seek forward or live-edge jump came out negative (-44,000 s summed), so stalls_per_min and the probe's link-quality scale were polluted. Now it returns None unless both reports are playing at ~1x, after a forward jump (< -1 s), or across more than 10 minutes.
