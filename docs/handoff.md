@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Mac still on battery at 6:20 PM; phone alert sent to Nick. RC6.3 not deployed, RC6.2 live.
-Watch Value cycle 5 first clear win: NBA slate ranker with pre-game market price 65.5% vs closest-game 56.3% (+9.2, range +5.4 to +12.8), draft PR 354. Caveat: price and grading volume both come from markets; real test is Friday's fresh nights. Usage 75%.
+Mac still on battery at 6:20 PM; phone alert sent. RC6.3 not deployed, RC6.2 live. RC6.2 lacks the buffer shadow and feed-race code, so tonight's shadow logging won't run unless RC6.3 ships.
+Watch Value cycle 5 first clear win: NBA slate ranker with pre-game market price 65.5% vs closest-game 56.3% (+9.2), draft PR 354; market-circular caveat, real test Friday. Usage 75%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
