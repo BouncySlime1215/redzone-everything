@@ -130,6 +130,7 @@ def main(argv=None) -> int:
     ap.add_argument("--split", default="valid", choices=("valid", "test", "train"))
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--cache", type=Path, default=None)
+    ap.add_argument("--feed-lag", default="8", help="grade125: seconds, or p90 = noggin.pick.FEED_LAG_P90 per league")
     a = ap.parse_args(argv)
     from redzone.models import League
     leagues = [League(x) for x in a.leagues.split(",")]
@@ -172,17 +173,20 @@ def main(argv=None) -> int:
         return 0
     if a.cmd == "grade125":
         blob = pickle.loads((a.out / "model1714.pkl").read_bytes())
-        arms = {k: {} for k in ("full", "A0_past120", *[f"C_m{m:g}" for m in SL.MARGIN_GRID])}
+        from redzone.noggin import pick as PK
+        arms = {k: {} for k in ("full", "A0_past120", "B1_m0", *[f"C_m{m:g}" for m in SL.MARGIN_GRID])}
         for lg, day, n, tab, F, HL in load(leagues, a.split, a.cache):
+            fl = PK.FEED_LAG_P90.get(League(lg), 60.0) if a.feed_lag == "p90" else float(a.feed_lag)
             sch = {"full": O.solve(n, "combined", SL.floored(tab, HL)),
-                   "A0_past120": SL.solve_policy(n, FEED_LAG_S, tab, F, HL, None, horizon_s=120.0)}
+                   "A0_past120": SL.solve_policy(n, fl, tab, F, HL, None, horizon_s=120.0),
+                   "B1_m0": SL.solve_policy(n, fl, tab, F, HL, blob["all"])}
             for m in SL.MARGIN_GRID:
-                sch[f"C_m{m:g}"] = SL.solve_policy(n, FEED_LAG_S, tab, F, HL, blob["all"], margin=m)
+                sch[f"C_m{m:g}"] = SL.solve_policy(n, fl, tab, F, HL, blob["all"], margin=m)
             for k, sw in sch.items():
                 arms[k].setdefault(lg, []).append({"night": day, **SL.night_metrics(n, tab, HL, sw)})
             print(f"  {lg} {day}", flush=True)
         summ = summarize(arms)
-        (a.out / f"grade125_{a.split}.json").write_text(json.dumps({"summary": summ, "nights": arms}, indent=1,
+        (a.out / f"grade125_{a.split}_fl{a.feed_lag}.json").write_text(json.dumps({"summary": summ, "nights": arms}, indent=1,
                                                                    default=float))
         print(json.dumps(summ, indent=1, default=float))
         return 0
