@@ -48,8 +48,8 @@ Derived rows are listed after the ranking and never count toward new information
 | 31 | AFL via fitzRoy (AFL API, AFL Tables, Footywire) | 1 | events | yellow-B (personal-use, not for commercial release) | 0.6 | 0.2 | 1.5 | parked | scout | none | MIT package code; data from AFL sites with no open licence; personal use under plan B only |
 | 32 | NBA SportVU tracking 2015-16 (linouk23 / sealneaward mirrors, same ~631 games) | 2 | events | yellow-B (personal-use, not for commercial release) | 12.3 | 10 | 1.2 | done | crew A | none | no repo licence; NBA/STATS LLC content; catalog #202 needed Nick's sign-off, now covered by plan B for personal use; private, credit NBA/STATS, never re-upload raw |
 | 33 | Formula 1 timing via FastF1 (laps, stints, race control: safety cars, red flags) | 2 | events | yellow-B (personal-use, not for commercial release) | 2 | 2 | 1.0 | parked | scout | none | F1 timing is Formula One's data; FastF1 is MIT code only. Personal use under plan B only |
-| 34 | Open soccer tracking: IDSSE Bundesliga (7 matches, 25 fps), Metrica samples (3), SkillCorner (10, 10 fps) | 2 | events | yellow | 1 | 4 | 0.2 | parked | scout | none | IDSSE CC BY 4.0 (green); Metrica sample terms on repo; SkillCorner asks for credit, no named licence |
-| 35 | StatsBomb American football open data (TB12DB: plays, events, low- and high-frequency tracking) | 2 | events | yellow | 3 | 20 | 0.2 | ready | crew A | none | StatsBomb Public Data User Agreement (same LICENSE.pdf as soccer open data; already classed restrictive in terms.json): research/personal use, credit StatsBomb + logo if published; tag personal-use |
+| 34 | StatsBomb American football open data (TB12DB: plays, events, low- and high-frequency tracking) | 2 | events | yellow | 4.4 | 20 | 0.3 | done | crew A | none | StatsBomb Public Data User Agreement (same LICENSE.pdf as soccer open data; already classed restrictive in terms.json): research/personal use, credit StatsBomb + logo if published; tag personal-use |
+| 35 | Open soccer tracking: IDSSE Bundesliga (7 matches, 25 fps), Metrica samples (3), SkillCorner (10, 10 fps) | 2 | events | yellow | 1 | 4 | 0.2 | parked | scout | none | IDSSE CC BY 4.0 (green); Metrica sample terms on repo; SkillCorner asks for credit, no named licence |
 | 36 | Creative Commons sports video, features on the fly only (YouTube Data API videoLicense=creativeCommon, Vimeo CC filter) | 4 | context-new | yellow | 0 | 0.05 | 0.0 | parked | crew C | none | CC BY (YouTube's only CC option) per video, credit the uploader; YouTube API policy: refresh or delete stored metadata within 30 days. Low priority (Nick 12:15 AM): only if a use emerges, e.g. dead-ball vision labels |
 
 ## Derived (no new knowledge)
@@ -62,24 +62,24 @@ Derived rows are listed after the ranking and never count toward new information
 
 | Kind | Sources | Est. tokens (M) |
 |---|---:|---:|
-| events | 29 | 1303.6 |
+| events | 29 | 1305 |
 | context-new | 7 | 24.1 |
 | derived | 1 | 5700 |
-| **New information (events + context-new)** | 36 | 1327.7 |
+| **New information (events + context-new)** | 36 | 1329.1 |
 
 ## New-information totals by status and verdict
 
 | Bucket | Sources | Est. tokens (M) |
 |---|---:|---:|
-| Ready for a crew | 17 | 865.1 |
-| Pulling or done (real) | 3 | 97.5 |
+| Ready for a crew | 16 | 862.1 |
+| Pulling or done (real) | 4 | 101.9 |
 | Probe / hold (scout) | 6 | 222 |
 | Needs Nick | 4 | 76.5 |
 | Parked | 6 | 66.6 |
 | Verdict green | 3 | 75.9 |
-| Verdict yellow | 10 | 179.4 |
+| Verdict yellow | 10 | 180.8 |
 | Verdict yellow-B | 23 | 1072.4 |
-| **All new-information candidates** | 36 | 1327.7 |
+| **All new-information candidates** | 36 | 1329.1 |
 
 ## Growth by cycle (candidates added, cumulative)
 
@@ -87,7 +87,7 @@ Derived rows are listed after the ranking and never count toward new information
 |---|---:|---:|---:|
 | 13 | 28 | 1289.6 | 1289.6 |
 | 14 | 5 | 23.4 | 1313 |
-| 15 | 3 | 14.7 | 1327.7 |
+| 15 | 3 | 16.1 | 1329.1 |
 
 ## Why each source
 
@@ -124,8 +124,8 @@ Derived rows are listed after the ranking and never count toward new information
 - **AFL via fitzRoy (AFL API, AFL Tables, Footywire)** (Australian football, 1897+ (results), 2012+ (player stats)): match and player level only, no play-by-play or timestamps, so it adds almost nothing to the world model Access: fitzRoy R package.
 - **NBA SportVU tracking 2015-16 (linouk23 / sealneaward mirrors, same ~631 games)** (NBA, Oct 2015 - Jan 2016): 25 Hz tracking reduced to 1 Hz derived summaries (crew A). LANDED: 621 games, 2.05M rows, 12.3M v1 tokens (counted as tracking, apart from events) Access: GitHub 7z JSON; one mirror only, count once.
 - **Formula 1 timing via FastF1 (laps, stints, race control: safety cars, red flags)** (motorsport, 2018+): safety cars and red flags are pure 'break' events with a known restart; small Access: FastF1 python package (F1 live-timing archive) + Jolpica for results; cache locally, few calls.
+- **StatsBomb American football open data (TB12DB: plays, events, low- and high-frequency tracking)** (NFL, 2017-2022 (plays); 2021-22 low-frequency tracking): the only free NFL in-game player tracking outside the Big Data Bowl, with StatsBomb event tags on each play: snap, whistle and huddle timing for ~140 games. Tracking frames count apart from events LANDED (crew A, Nov 5 06:26 UTC): 108 games, 729k events, 4.4M v1 tokens (~60% pathing/engagement annotations); LFT 37 games, 31k rows counted as tracking; HFT deferred Access: GitHub statsbomb/amf-open-data (CSV/Parquet/json.gz per game) + full-season tracking zips on AWS S3 linked from the README.
 - **Open soccer tracking: IDSSE Bundesliga (7 matches, 25 fps), Metrica samples (3), SkillCorner (10, 10 fps)** (soccer, 2019-2025): only matters for a v2 vocab with frame tokens; ball-in-play vs dead-ball labels at 25 fps Access: HF dataset pysport/idsse-data, GitHub metrica-sports/sample-data, SkillCorner/opendata; kloppy loads all three.
-- **StatsBomb American football open data (TB12DB: plays, events, low- and high-frequency tracking)** (NFL, 2016-2022 (Tom Brady games)): the only free NFL in-game player tracking outside the Big Data Bowl, with StatsBomb event tags on each play: snap, whistle and huddle timing for ~140 games. Tracking frames count apart from events Access: GitHub statsbomb/amf-open-data (CSV/Parquet/json.gz per game) + full-season tracking zips on AWS S3 linked from the README.
 - **Creative Commons sports video, features on the fly only (YouTube Data API videoLicense=creativeCommon, Vimeo CC filter)** (all, any): parked until a use emerges Access: search metadata via the YouTube Data API (Nick's free key); any frames are processed in memory into numbers/timestamps, raw video never stored.
 
 ## Found and rejected (red)

@@ -110,6 +110,7 @@
     "stats_ncaa_org": "red",
     "nba_stats_events": "restrictive",
     "statsbomb_amf": "restrictive",
-    "acb": "restrictive"
+    "acb": "restrictive",
+    "statsbomb_amf_lft": "restrictive"
   }
 }
