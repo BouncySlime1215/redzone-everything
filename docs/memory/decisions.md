@@ -816,3 +816,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   the cut; defer is capped at one sim step, so `watching` stays time-ordered (asserted). defer_s is 0 unless
   `decider.entry.break_tail_defer` is on, so every grade is unchanged (A1 sanity run on v1 seed 0 identical).
   Frozen before the v3 grade. Grader freeze v23.
+- 2026-11-05 (integrator, grader v24; lane 2's report): **`--set league_overrides.<lg>.a.b.c=v` now writes one flat
+  key**, `league_overrides[<lg>]["a.b.c"]`, the shape `config.for_league` reads (`evaldata.apply_set`, used by
+  eval.py and eval_sports.py). Before, the key nested and `flatten_league_overrides` then replaced the whole `a` group
+  with it, so every other setting in that group was lost for the run. Any league_overrides --set read before v24 is
+  void: EXP-803 A2's v1 smoke read (33 -> 30/61) was on a config with no delay group, so it is discarded and re-run.
+  A plain --set (no league_overrides) still nests as before. Grader freeze v24.
