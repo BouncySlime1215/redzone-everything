@@ -69,3 +69,22 @@ Both **FAIL**. EXP-128 trained on this season (pin v1 train) + last season (36 N
 weight 0.5). Per league at p90: **NFL 90.7 vs 74.4 (Δ +16.2, CI [4.8, 22.6])**, NBA 35.3 vs 88.2 (2 nights, CI
 [0, 98]), NHL 29.6 vs 43.7. Every league is PENDING (< 8 valid nights); the NFL signal is the only CI clear of 0 so
 far and needs the v3 pin / locked read to mean anything. Floors 0 everywhere. Rows tried on these 9 nights: 7.
+
+## EXP-127 (+ crew H pregame context), valid, % of floored oracle
+
+Tables joined (one run, per the prereg): gamectx-out/nflverse `nfl/pregame_report_nflverse.csv` (a17443e), gamectx-out/wiki
+slice 1 `nfl/` + `nba/pregame_archive.csv` (68842de). Context found on 100 % of NBA and NFL archive games, 0 % NHL.
+
+| Pooled | feed lag p90 | feed lag 8 s |
+|---|---|---|
+| A0 v1 past mean | 81.2 | 87.0 |
+| B1 (EXP-1714) | 75.7 | 91.5 |
+| X1 = B1 + context | 81.6 (Δ vs A0 +0.4, CI [-7.0, +10.3]) | 91.1 (Δ +4.1, CI [-1.7, +11.1]) |
+
+**FAIL** (CI includes 0 at p90). The context lifts B1 by +5.9 pts at p90 (NBA 82.4, NFL 82.2 vs A0 74.4, NHL
+unchanged) but does not clear the placeholder. Floors 0 everywhere. Rows tried on these 9 nights: 8.
+
+## Seasons in the stay/leave models (Nov 5, 1:40 PM ET)
+- B1 / X1: this season only (pin v1 train: NBA Oct 20-26 2026, NHL Oct 19-26 2026, NFL Sep 5 - Nov 20 2025).
+- N1 (EXP-128): + last season NBA Mar 10 - Jun 2026 and NHL Mar 11 - Apr 2026 (pin v2, weight 0.5).
+- X1 context: NFL pregame table covers 1999-2026 but joins only to archive nights; NBA 2026-27 (wiki slice 1).
