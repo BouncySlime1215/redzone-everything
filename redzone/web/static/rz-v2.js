@@ -4,18 +4,19 @@
 
 import { app, ACTIONS, CHANGES, INPUTS, hooks, attr, esc, num, arr, fmtTime, fmtDur } from "./rz-core.js?v=41";
 import { icon, sec } from "./rz-ui.js?v=40";
-import { api } from "./rz-api.js?v=43";
+import { api, act } from "./rz-api.js?v=43";
 import { toast, openSheet, closeSheet, sheetById } from "./rz-sheet.js?v=40";
 
-const v2 = { on: false, checked: false, rows: new Map(), head: "", loading: false, prio: null, missed: null };
+const v2 = { on: false, commit: false, checked: false, rows: new Map(), head: "", loading: false, prio: null, missed: null };
 
 let checking = null;
 function check() {
   if (!checking) {
     v2.checked = true;
     checking = (async () => {
-      try { v2.on = !!(await api("/api/v2/status")).enabled; } catch { v2.on = false; }
+      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; v2.worth = !!st.worth; } catch { v2.on = false; }
       if (v2.on) { hooks.render(); pollAlert(); pollStrip(); pollHeld(); }
+      if (v2.worth) pollWorth();
     })();
   }
   return checking;
@@ -24,8 +25,13 @@ check();
 
 /* A your-team crunch clash coming up in the next 30 min: one line above the bar (display only). */
 let alert = null;
+let slateDone = null;   // EXP-036: {finished} once nothing is live or still to start tonight
 function pollAlert() {
-  api("/api/v2/slate").then((r) => { const a = (r && r.alert) || null; const was = JSON.stringify(alert); alert = a; if (JSON.stringify(a) !== was) hooks.renderScreen("now"); })
+  api("/api/v2/slate").then((r) => {
+    const a = (r && r.alert) || null, done = r && r.complete ? { finished: r.finished } : null;
+    const was = JSON.stringify([alert, slateDone]); alert = a; slateDone = done;
+    if (JSON.stringify([a, done]) !== was) hooks.renderScreen("now");
+  })
     .catch(() => {}).finally(() => setTimeout(pollAlert, 60000));
 }
 /* Top 3 watch values on the Now screen, refreshed every 15 s (read only; tap for the full sheet). */
@@ -33,14 +39,17 @@ let strip = null;
 function pollStrip() {
   api("/api/v2/watch").then((r) => {
     const top = arr(r && r.games).slice(0, 3).map((g) => ({ ...g, on: g.game_id === r.current }));
-    const next = JSON.stringify({ top, src: r && r.source });
-    if (next !== JSON.stringify(strip)) { strip = { top, src: r && r.source }; hooks.renderScreen("now"); }
+    const next = { top, src: r && r.source, tag: (r && r.why_tag) || null };
+    if (JSON.stringify(next) !== JSON.stringify(strip)) { strip = next; hooks.renderScreen("now"); }
   }).catch(() => {}).finally(() => setTimeout(pollStrip, 15000));
 }
 function watchStrip() {
   if (!strip || !strip.top.length) return "";
-  return `<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
-    `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc([g.why, g.stakes_line].filter(Boolean).join(" · "))}</small></span></span>`).join("")}
+  // EXP-035: a plain label, only over a logged threshold; no banner, sting or animation (playbook §5)
+  const t = strip.tag;
+  const tag = t ? `<div class="v2-why" title="${attr(`Shown because it is ${t.value} on the 0-100 scale (threshold ${t.threshold})`)}"><b>Why we're here</b> ${esc(t.text)}</div>` : "";
+  return `${tag}<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
+    `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc([g.context || g.why, g.stakes_line].filter(Boolean).join(" · "))}</small></span></span>`).join("")}
     ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>`;
 }
 
@@ -57,7 +66,7 @@ function heldLine() {
   if (v.held) rows.push(`<span><b>Holding</b> ${esc(v.held.matchup)}${v.held.behind_s ? ` · ${esc(fmtDur(v.held.behind_s))} behind live` : ""}${v.held.ready ? "" : " · loading"}</span>`);
   if (v.back) rows.push(`<span><b>Coming back</b> ${esc(v.back.text)}</span>`);
   if (v.catchup) rows.push(`<span><b>Next catch-up</b> ${esc(v.catchup.matchup)}: ${esc(v.catchup.label || v.catchup.kind)}${v.queued > 1 ? ` (+${num(v.queued - 1)} more)` : ""}</span>`);
-  return `<div class="v2-held" data-key="v2-held">${icon("hourglass")}<div>${rows.join("")}</div></div>`;
+  return `<button class="v2-held" data-key="v2-held" data-act="v2-catchup" aria-label="Catch-up queue">${icon("hourglass")}<div>${rows.join("")}</div></button>`;
 }
 
 function alertLine() {
@@ -103,13 +112,79 @@ ACTIONS["v2-vote"] = async (el) => {
 };
 
 /** The "I missed that" bar above Recent switches. */
+/* EXP-036: "Slate complete" ends the night; nothing comes after it (no autoplay, no "up next", no counters). */
+/* EXP-040: one tap "worth it?" on the Slate complete card (its own flag phone.worth, works with v2 off).
+   EVALUATION ONLY: data/worth.jsonl grades releases and is never a training label. Plain wording, no
+   streaks, no counters, nothing after it (playbook §5 / §6). The agency / regret probes come at most once
+   a week, only after the rating. */
+let worth = null;
+function pollWorth() {
+  api("/api/v2/worth").then((r) => { const was = JSON.stringify(worth); worth = r && r.enabled ? r : null; if (JSON.stringify(worth) !== was) hooks.renderScreen("now"); })
+    .catch(() => {}).finally(() => setTimeout(pollWorth, 60000));
+}
+function scale(k, on, lo, hi) {
+  return `<div class="v2-scale" role="group">${[1, 2, 3, 4, 5].map((n) =>
+    `<button class="v2-sc${on === n ? " on" : ""}" data-act="v2-worth" data-k="${k}" data-v="${n}" aria-pressed="${on === n}" aria-label="${n} of 5">${n}</button>`).join("")}</div>
+    <div class="v2-scale-ends"><span>${esc(lo)}</span><span>${esc(hi)}</span></div>`;
+}
+function worthBlock() {
+  if (!v2.worth || !worth || !worth.complete) return "";
+  const probes = worth.rating && worth.probe_due ? `<p>I chose what I watched tonight</p>${scale("agency", worth.agency, "Not really", "Fully")}
+    <p>I watched longer than I meant to</p><div class="v2-scale v2-scale--yn">${[["yes", true], ["no", false]].map(([t, b]) =>
+      `<button class="v2-sc${worth.regret === b ? " on" : ""}" data-act="v2-worth" data-k="regret" data-v="${t}" aria-pressed="${worth.regret === b}">${t === "yes" ? "Yes" : "No"}</button>`).join("")}</div>` : "";
+  return `<div class="v2-worth"><p>Was tonight worth it?</p>${scale("rating", worth.rating, "Not worth it", "Worth it")}${probes}</div>`;
+}
+ACTIONS["v2-worth"] = async (el) => {
+  const k = el.dataset.k, v = k === "regret" ? el.dataset.v === "yes" : Number(el.dataset.v);
+  try {
+    const r = await api("/api/v2/worth", { body: { [k]: v } });
+    if (r && r.row && worth) { worth = { ...worth, ...r.row }; hooks.renderScreen("now"); }
+  } catch (e) { toast(e.message || "Couldn't save that"); }
+};
+
+function slateCompleteCard() {
+  const fin = slateDone ? slateDone.finished : worth ? worth.finished : 0;
+  return `<div class="v2-done" data-key="v2-done"><b>Slate complete</b><span>0 live games · ${num(fin)} finished tonight</span>${worthBlock()}</div>`;
+}
+/* EXP-036 commitment controls: each one is a request the decider honours at the next dead ball. */
+// the engine snapshot's mode.commit {mode, game_id, at} once lanes 2/3 ship the action (contract: Cycle 08 #183)
+function commitState() { return (app.S && app.S.mode && app.S.mode.commit) || null; }
+const curGame = () => (app.S && app.S.now && app.S.now.game_id) || null;
+const COMMIT_TXT = { my_teams: "Only my teams", stop_after: "Stop after this game", end_at: "End at" };
+function commitSheet() {
+  const c = commitState(), cur = curGame(), on = (m) => c && c.mode === m;
+  const at = (c && c.mode === "end_at" && c.at) ? new Date(c.at * 1000) : null;
+  return `<h3>Commit</h3><p class="lead">Each one waits for a dead ball. Nothing here changes the TV mid-play.</p>
+    <div class="pick-list">
+      <button class="pick" data-act="v2-commit-hold" aria-pressed="false">${icon("lock")}Stay here<small>Keep this game until you tap Resume auto</small></button>
+      <button class="pick" data-act="v2-commit" data-mode="my_teams" aria-pressed="${!!on("my_teams")}">${icon("star")}Only my teams<small>Switch only between your teams' games</small></button>
+      <button class="pick" data-act="v2-commit" data-mode="stop_after" aria-pressed="${!!on("stop_after")}"${cur ? "" : " disabled"}>${icon("octagon")}Stop after this game<small>When it ends, stop switching</small></button>
+      <label class="pick">${icon("moon")}End at <input type="time" data-act-input="v2-commit-at" value="${at ? `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}` : "23:30"}"><button class="btn btn--ghost" data-act="v2-commit-end">Set</button></label>
+    </div>
+    ${c ? `<p class="lead">Now: <b>${esc(COMMIT_TXT[c.mode] || c.mode)}${at ? " " + esc(fmtTime(c.at)) : ""}</b> <button class="btn btn--ghost" data-act="v2-commit-clear">Clear</button></p>` : ""}`;
+}
+ACTIONS["v2-commit-open"] = () => openSheet({ id: "v2-commit", label: "Commit", render: commitSheet });
+ACTIONS["v2-commit-hold"] = (el) => act("hold", {}, el);
+ACTIONS["v2-commit"] = (el) => act("commit", { value: el.dataset.mode === "stop_after" ? { mode: "stop_after", game_id: curGame() } : { mode: el.dataset.mode } }, el);
+ACTIONS["v2-commit-end"] = (el) => {
+  const inp = document.querySelector('[data-act-input="v2-commit-at"]'), [h, m] = String((inp && inp.value) || "23:30").split(":").map(Number);
+  const t = new Date(); t.setHours(h, m, 0, 0); if (t.getTime() < Date.now() - 3600e3) t.setDate(t.getDate() + 1);
+  return act("commit", { value: { mode: "end_at", at: Math.round(t.getTime() / 1000) } }, el);
+};
+ACTIONS["v2-commit-clear"] = (el) => act("commit", { value: "off" }, el);  // #194: "off" clears it
+
 export function missedBar() {
+  if (v2.worth && worth && worth.complete) return slateCompleteCard();   // EXP-040: shows even with v2 off
   if (!v2.on) return "";
+  if (slateDone) return slateCompleteCard();
   return `${alertLine()}${heldLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
+    ${v2.commit ? `<button class="btn btn--ghost" data-act="v2-commit-open">${icon("lock")}Commit${commitState() ? ": " + esc(COMMIT_TXT[commitState().mode] || "on") : ""}</button>` : ""}
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
     <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>
     <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-catchup">${icon("hourglass")}Catch-up queue: held games and what's waiting</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-scorecard">${icon("shield")}Night scorecard: the release gate, night by night</button>
     <button class="btn btn--ghost v2-span" data-act="v2-capture">${icon("moon")}Live night: did it become gold data?</button>
     <button class="btn btn--ghost v2-span" data-act="v2-ledger">${icon("activity")}Data + NFM: what the Noggin learns from</button></div>`;
 }
@@ -342,7 +417,7 @@ function watchSheet() {
     <div class="v2-wv">${gs.map((g) => `<div class="v2-wv-row${g.game_id === d.current ? " on" : ""}">
       <div class="v2-wv-top"><span class="m ell">${esc(g.matchup)}</span>${g.game_id === d.current ? `<span class="tag tag--kind">On TV</span>` : ""}${g.crunch_state ? `<span class="tag tag--fail">${esc(CRUNCH_TXT[g.crunch_state] || "Crunch")}</span>` : ""}${g.is_break ? `<span class="tag">Break</span>` : ""}<b>${num(g.wv)}</b></div>
       <div class="v2-wv-bar"><i style="width:${Math.max(2, Math.min(100, g.wv))}%"></i></div>
-      ${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}${g.stakes_line || g.stakes_pending ? `<div class="v2-stakes${g.stakes_pending ? " v2-stakes--pending" : ""}">${icon("target")}${esc(g.stakes_line || "Stakes")}${g.stakes_pending ? " <small>(model pending)</small>" : ""}</div>` : ""}</div>`).join("")}</div>`;
+      ${g.context ? `<div class="v2-ev-why v2-ctx">${esc(g.context)}</div>` : ""}${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}${g.stakes_line ? `<div class="v2-stakes${g.stakes_rough ? " v2-stakes--pending" : ""}">${icon("target")}${esc(g.stakes_line)}${g.stakes_rough ? " <small>(rough)</small>" : ""}</div>` : ""}</div>`).join("")}</div>`;
 }
 ACTIONS["v2-watch"] = () => { watchS.data = null; openSheet({ id: "v2-watch", label: "Watch value", full: true, render: watchSheet, onClose: () => clearTimeout(watchS.timer) }); loadWatch(); };
 
@@ -409,6 +484,65 @@ function trendSheet() {
 }
 ACTIONS["v2-trend"] = () => { trendS.data = null; openSheet({ id: "v2-trend", label: "How close to perfect", full: true, render: trendSheet }); loadTrend(); };
 ACTIONS["v2-trend-split"] = (el) => { trendS.split = el.dataset.f; trendS.data = null; const s = sheetById("v2-trend"); if (s) s.update(); loadTrend(); };
+
+/* ---------- Night scorecard: the release gate's per-night lines and their trend ---------- */
+const scS = { data: null };
+function scorecardSheet() {
+  const d = scS.data;
+  if (!d) return `<h3>Night scorecard</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Night scorecard</h3><p class="lead">${esc(d.error)}</p>`;
+  if (!arr(d.nights).length) return `<h3>Night scorecard</h3><p class="lead">No night reports yet: the supervisor writes one after 6 AM ET.</p>`;
+  const fmt = (v) => (typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(1)) : "–");
+  const ST = { PASS: "pass", FAIL: "fail", OVER: "would" };
+  const rows = arr(d.lines).map((l) => `<div class="v2-trend">
+      <div class="v2-trend-top"><span class="m">${esc(l.label)}${l.hard ? " <small>(hard)</small>" : ""}</span><span class="tag tag--${ST[l.status] || "kind"}">${esc(l.status || "pending")}</span></div>
+      <div class="v2-trend-mid">${spark(l)}<div class="v2-trend-num"><b>${fmt(l.latest)}</b><small>${l.measured ? `${num(l.nights_at_bar)}/${num(l.measured)} nights at ${fmt(l.bar)}` : "not measured yet"}</small></div></div></div>`).join("");
+  return `<h3>Night scorecard</h3>
+    <div class="v2-tiles"><div class="stile"><b>${d.gate == null ? "–" : d.gate ? "Pass" : "Fail"}</b><span>Hard lines, ${esc(d.last || "")}</span></div>
+      <div class="stile"><b>${num(arr(d.nights).length)}</b><span>Nights</span></div></div>
+    <div class="v2-trends">${rows}</div>`;
+}
+ACTIONS["v2-scorecard"] = async () => {
+  scS.data = null; openSheet({ id: "v2-scorecard", label: "Night scorecard", full: true, render: scorecardSheet });
+  try { scS.data = await api("/api/v2/scorecard"); } catch (e) { scS.data = { error: e.message }; }
+  const s = sheetById("v2-scorecard"); if (s) s.update();
+};
+
+/* ---------- Catch-up queue: what the hidden stick holds, tonight's left-game holds, and every catch-up waiting ---------- */
+const cq = { data: null };
+async function loadCatchup() {
+  try { cq.data = await api("/api/v2/catchup"); } catch (e) { cq.data = { error: e.message }; }
+  const s = sheetById("v2-catchup"); if (s) s.update();
+}
+const END_TXT = { resumed: ["pass", "Resumed"], expired: ["fail", "Hit the cap"], lost: ["fail", "Lost"] };
+function catchupSheet() {
+  const d = cq.data;
+  if (!d) return `<h3>Catch-up queue</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Catch-up queue</h3><p class="lead">${esc(d.error)}</p>`;
+  const c = d.counts || {}, h = d.hidden;
+  const dead = (x) => (x === true ? `<span class="tag tag--pass">dead ball now</span>` : x === false ? `<span class="tag tag--kind">in play</span>` : "");
+  const hid = h ? `<div class="v2-led"><div class="v2-led-top"><b>Hidden stick</b><span class="m">${esc(h.matchup || "nothing")}</span></div>
+      <div class="v2-led-nums"><span><b>${h.behind_s ? esc(fmtDur(h.behind_s)) : "live"}</b> behind live</span><span><b>${h.ready ? "ready" : "loading"}</b></span></div>${dead(h.dead_now)}</div>` : `<p class="lead">One stick only: nothing can be held.</p>`;
+  const q = arr(d.queue).map((m) => `<div class="v2-ev"><span class="v2-ev-ic">${icon(m.mine ? "star" : "replay")}</span><div style="min-width:0">
+      <div class="v2-ev-top"><span class="m">${esc(m.matchup)}</span><span class="t">${esc(fmtDur(m.ago_s))} ago</span></div>
+      <div class="v2-ev-why">${esc(m.label || m.kind)}${m.due_in_s != null ? ` · replay within ${esc(fmtDur(m.due_in_s))}` : ""}</div>
+      <div>${m.must ? `<span class="tag tag--fail">missed for another big play</span> ` : ""}${m.mine ? `<span class="tag tag--pass">your team</span> ` : ""}${dead(m.dead_now)}</div></div></div>`).join("");
+  const holds = arr(d.holds).map((x) => `<div class="v2-ms"><span class="tag tag--${x.open ? "kind" : (END_TXT[x.end] || ["kind"])[0]}">${x.open ? "holding" : esc((END_TXT[x.end] || [, "ended"])[1])}</span>
+      <span>${esc(x.matchup)} <small>held ${esc(fmtTime(x.held_at))} · ${esc(fmtDur(x.age_s))} behind${x.ended_at ? ` · ended ${esc(fmtTime(x.ended_at))}` : ""}</small></span></div>`).join("");
+  const on = d.on_screen;
+  // crunch vs crunch at a glance (multiview stub): the TV's game live, the other held behind it on the hidden stick
+  const mv = on && h && h.game_id && h.game_id !== on.game_id ? `<div class="v2-mv" role="img" aria-label="${attr(`${on.matchup} live on the TV, ${h.matchup} held ${fmtDur(h.behind_s || 0)} behind`)}">
+      <div class="v2-mv-tile v2-mv-tile--live"><small>On the TV · live</small><b>${esc(on.matchup)}</b></div>
+      <div class="v2-mv-tile"><small>Held · ${h.behind_s ? esc(fmtDur(h.behind_s)) + " behind" : "at the live edge"}</small><b>${esc(h.matchup)}</b></div></div>` : "";
+  return `<h3>Catch-up queue</h3>${mv}
+    <div class="v2-tiles"><div class="stile"><b>${num(c.queued)}</b><span>Waiting</span></div>
+      <div class="stile"><b>${num(c.yours)}</b><span>Your team</span></div>
+      <div class="stile"><b>${num(c.resumed)}/${num(c.held)}</b><span>Left-game holds resumed</span></div></div>
+    ${hid}
+    <h4>Waiting to be caught up</h4>${q || `<p class="lead">Nothing waiting.</p>`}
+    <h4>Tonight's left-game holds</h4><div class="v2-mss">${holds || `<p class="lead">None yet (STK-07 holds the game we leave at its dead ball).</p>`}</div>`;
+}
+ACTIONS["v2-catchup"] = () => { cq.data = null; openSheet({ id: "v2-catchup", label: "Catch-up queue", full: true, render: catchupSheet }); loadCatchup(); };
 
 /* ---------- Live night: the morning check that last night became gold data (auto-log, provenance, held, report) ---------- */
 const cap = { data: null, day: "", report: null };
@@ -500,7 +634,8 @@ function slateSheet() {
   const ticks = [];
   for (let t = Math.ceil(a / 3600) * 3600; t < b; t += 3600) ticks.push(`<i style="left:${pct(t)}%"><span>${esc(fmtTime(t).replace(":00", ""))}</span></i>`);
   const rows = gs.map((g) => `<div class="v2-g">
-      <div class="v2-g-name ell">${g.yours ? icon("star", "ico--fill ico--xs") + " " : ""}${esc(g.matchup)} <small>${esc(String(g.league).toUpperCase())}${g.live ? " · live" : " · " + esc(fmtTime(g.start))}</small></div>
+      <div class="v2-g-name ell">${g.yours ? icon("star", "ico--fill ico--xs") + " " : ""}${esc(g.matchup)} <small>${esc(String(g.league).toUpperCase())}${g.live ? " · live" : " · " + esc(fmtTime(g.start))}</small>${g.wv ? `<span class="v2-g-wv" title="${attr(`Watch value ${g.wv.value}${g.wv.rising != null ? `, ${g.wv.rising > 0 ? "+" : ""}${g.wv.rising}/min` : ""}`)}"><b>${num(g.wv.value)}</b>${g.wv.arrow ? `<i class="v2-g-wv--${attr(g.wv.arrow)}">${g.wv.arrow === "up" ? "▲" : "▼"}</i>` : ""}</span>` : ""}</div>
+      ${g.wv && g.wv.why ? `<div class="v2-g-why ell">${esc(g.wv.why)}</div>` : ""}
       <div class="v2-g-track"><b class="v2-g-bar ${g.yours ? "v2-g-bar--yours" : ""}" style="left:${pct(g.start)}%;width:${(((g.end - g.start) / span) * 100).toFixed(2)}%"></b>
         <b class="v2-g-crunch" style="left:${pct(g.crunch[0])}%;width:${(((g.crunch[1] - g.crunch[0]) / span) * 100).toFixed(2)}%" title="Crunch time"></b>
         <i class="v2-now" style="left:${pct(now)}%"></i></div></div>`).join("");

@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**264 modules**, 211 untagged, 106 unowned, 10 orphans (no importer).
+**266 modules**, 213 untagged, 108 unowned, 10 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -16,7 +16,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/bets.py` | How much is a bet sweating right now? | models -> engine | untagged |
 | `redzone/decider/core.py` | The decision core: ONE expected-value function that every action is chosen by. | models -> contracts, contracts.guard, contracts.legacy, contracts.switching, contracts.views, decider.decider +1 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/cuts.py` | Cut timing: WHEN to leave a game and WHEN to come into one. | models -> decider.decider, decider.screen, noggin.features, scripts.train_noggin_timing | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
-| `redzone/decider/decider.py` | The switch decider: a producer that never cuts you off mid-play. | contracts.switching, decider.core, decider.cuts, decider.playbooks, decider.scenarios, decider.screen +7 -> contracts.legacy, demo.engine, engine, lab.backtest, lab.night.run, lab.tune +2 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), GAME-01, GAME-04, GAME-05, GAME-09, Landings in dead time, Mid-play entries (per 100 landings), SAFE-01, Your-team crunch live |
+| `redzone/decider/decider.py` | The switch decider: a producer that never cuts you off mid-play. | contracts.switching, decider.core, decider.cuts, decider.playbooks, decider.scenarios, decider.screen +7 -> contracts.legacy, demo.engine, engine, lab.backtest, lab.night.run, lab.tune +2 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), GAME-01, GAME-04, GAME-05, GAME-09, Landings in dead time, Mid-play entries (per 100 landings), SAFE-01, SAFE-09, Your-team crunch live |
 | `redzone/decider/screen.py` | What's on your screen right now, estimated from the data and the stream delay. | decider.cuts, decider.delaymodel, decider.sync, models -> decider.decider, demo.engine, engine, grading, lab.backtest, lab.cutgrade +5 | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/fantasy.py` | ESPN Fantasy Football: boost games where your (or your opponent's) starters are about to score. | models, tv -> engine | untagged |
 | `redzone/plan.py` | Tonight's plan: every game on today's slate, where it will be watched, and whether that was checked on the hidden stick before it started. | channels, models -> engine, lab.night.run, scripts.plan_tonight | League order respected (no lower-league non-crunch over a higher-league crunch) |
@@ -118,12 +118,14 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 
 ## EXPERIENCE (8)
 
+Lane page: [lanes/experience.md](lanes/experience.md)
+
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/lab/decision_records.py` | Decision records for the Teacher's nightly review (backlog lane 5 item 2, E23 under the self-taught rule). | - -> web.phone_v2, scripts.export_decision_records | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL), Landings in dead time, Mid-play entries (per 100 landings) |
+| `redzone/lab/decision_records.py` | Decision records for the Teacher's nightly review (backlog lane 5 item 2, E23 under the self-taught rule). | config -> web.phone_v2, scripts.export_decision_records | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL), Landings in dead time, Mid-play entries (per 100 landings) |
 | `redzone/lab/prime_mv_fake.py` | A simulated Prime Video NBA player with multiview, for rehearsing scripts/prime_multiview_probe.py without a stick (`--fake`) and for its tests. | tuners.prime_multiview -> scripts.prime_multiview_probe | Flips PLAYING within 3 s, STK-03, STK-04 |
 | `redzone/web/ledger.py` | Data ledger + NFM status (lane 5, Start Planner item 3; cycle 06 "Data ledger" standing section). | - -> web.phone_v2, scripts.data_ledger | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL) |
-| `redzone/web/phone_v2.py` | Phone page v2 (flag `phone.v2`, default OFF): why each switch happened, rate it, "I missed that", and the Noggin Priority L2 sliders. | config, lab.decision_records, models, noggin.priority, supervisor, trace +1 -> web.server | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL), Big plays live or replayed within 3 min, STK-06, STK-07, Your-team big plays seen (live or within 3 min) |
+| `redzone/web/phone_v2.py` | Phone page v2 (flag `phone.v2`, default OFF): why each switch happened, rate it, "I missed that", and the Noggin Priority L2 sliders. | config, crunch, lab.decision_records, models, noggin.priority, supervisor +2 -> web.server | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL), Big plays live or replayed within 3 min, STK-06, STK-07, Your-team big plays seen (live or within 3 min) |
 | `scripts/data_ledger.py` (entry) | Data ledger: fold a factory manifest into docs/data-ledger.json and print the cycle plan's table. | web.ledger -> - | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL) |
 | `scripts/export_decision_records.py` (entry) | Export one night's decision records as JSONL for the Teacher's nightly review (schema in redzone/lab/decision_records.py and docs/decision-records.md). | lab.decision_records, supervisor -> - | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL) |
 | `scripts/prime_multiview_grade.py` (entry) | Grade a live Prime NBA multiview night against the turn-on gate (redzone/tuners/prime_multiview.py). | tuners.prime_multiview -> - | Landings in dead time, Mid-play entries (per 100 landings), STK-03 |
@@ -170,7 +172,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, control, crunch, demo.engine +32 | untagged |
+| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, control, crunch, demo.engine +33 | untagged |
 | `redzone/contracts/__init__.py` (package) | Interfaces every thread codes against. | contracts.breaks, contracts.budget, contracts.clock, contracts.feeds, contracts.flags, contracts.guard +55 -> - | untagged |
 | `redzone/contracts/breaks.py` | BreakModel contract: when a stoppage starts, what kind it is, how long it runs, when play restarts. | models -> contracts, contracts.legacy, contracts.views, contracts.world, scoring.brain3 | untagged |
 | `redzone/contracts/budget.py` | Per-tick latency budget, split across modules. | - -> contracts | untagged |
@@ -207,14 +209,14 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (106)
+## unowned (108)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
 | `redzone/__init__.py` (package) | no docstring | - -> - | untagged |
 | `redzone/calibration.py` | [calib.auto] Self-calibration: values re-measured each night from live telemetry, with no one's input. | contracts.switching, uses:seek_model -> engine, supervisor, scripts.sync_fit | BTN-02, STK-06 |
 | `redzone/commands.py` | Phone commands that land exactly once: an id, an ack, a status, and safe retries. | - -> engine | BTN-03 |
-| `redzone/crunch.py` | [one brain, step 2] One crunch table (docs/onebrain-migration.md). | config -> demo.engine, grading, scoring.drive, scoring.engine, standby | untagged |
+| `redzone/crunch.py` | [one brain, step 2] One crunch table (docs/onebrain-migration.md). | config -> demo.engine, grading, scoring.drive, scoring.engine, standby, web.phone_v2 | untagged |
 | `redzone/decider/__init__.py` (package) | no docstring | - -> - | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/delaymodel.py` | Per-channel stream-delay predictor: how far each channel's picture runs behind real life. | - -> decider.screen | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/playbooks.py` | Safety playbooks SAFE-01/02/03/05 (docs/playbooks.md, family flag `playbooks.safe.enabled`, OFF). | - -> decider.decider, decider.scenarios | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), SAFE-01, SAFE-02, SAFE-03, SAFE-05, Your-team crunch live |
@@ -243,6 +245,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/lab/splits.py` | Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03). | - -> lab.breakblend, lab.tune, scripts.backfill_eval_v2, scripts.eval, scripts.eval_sports, scripts.leak_check | untagged |
 | `redzone/lab/syncsim.py` | [auto sync] Sync-error scorecard: how far the delay the app uses is from the screen's real delay. | decider.screen -> scripts.eval_sync | untagged |
 | `redzone/lab/timing.py` | [switch timing] How late we learn about a dead ball, and what that leaves before it airs on screen. | grading -> lab.backtest, scripts.burst_align, scripts.timing_report | untagged |
+| `redzone/lab/worth.py` | [EXP-040] The end-of-night "worth it?" rating as an evaluation line (watch-science playbook §6). | - -> scripts.worth_line | untagged |
 | `redzone/memory.py` | Project memory for the AI that repairs RedZone (watchdog, auto-fix brain). | - -> agent.watchdog, scripts.context_pack | untagged |
 | `redzone/models_rt/__init__.py` (package) | [one brain, step 4] Runtime model code shared by every tree model (forest.py). | - -> - | untagged |
 | `redzone/models_rt/forest.py` | [one brain, step 4] One tree walker and one model loader (docs/onebrain-migration.md). | - -> noggin.pick, noggin.predict, noggin.timing, reasoner.head, scoring.brain, scoring.brain3 | untagged |
@@ -317,8 +320,9 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `scripts/train_reasoner.py` (entry) | Train the reasoner's fast head (lock_in odds) per league, cross-fitted by night. | lab.reasoner_data, reasoner.brief, reasoner.head, scoring.brain -> - | untagged |
 | `scripts/tune.py` (entry) | Auto-tune the decider against the scorecards (see redzone/lab/tune.py). | lab.tune -> - | untagged |
 | `scripts/tv_local_probe.py` (entry) | Time the TV's local input keys against SmartThings, on Nick's TV (~1 minute, Nick at the TV). | tv -> - | untagged |
+| `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 
-## Untagged (211)
+## Untagged (213)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -410,6 +414,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 - `redzone/lab/syncsim.py`
 - `redzone/lab/timing.py`
 - `redzone/lab/tune.py`
+- `redzone/lab/worth.py`
 - `redzone/memory.py`
 - `redzone/models.py`
 - `redzone/models_rt/__init__.py`
@@ -531,6 +536,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 - `scripts/tv_local_probe.py`
 - `scripts/tv_practice.py`
 - `scripts/tv_setup.py`
+- `scripts/worth_line.py`
 
 ## Orphans (no importer) (10)
 
