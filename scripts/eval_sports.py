@@ -212,18 +212,18 @@ def main():
             plan = [(obj, obj, None) for obj in O.OBJECTIVES]
             if a.cue_max_s > 0:
                 plan += [(f"{obj}_cue", obj, a.cue_max_s) for obj in O.OBJECTIVES]
-            # [time-shift buffer, Nick Nov 5 ~5 PM] a buffered show's target is the WINDOWED oracle (what the buffer
-            # reveals at the measured feed-lag p90); the full-hindsight ceiling stays beside it as <obj>_full.
+            # [time-shift buffer, Nick Nov 5 ~5 PM] a buffered show also reports the WINDOWED oracle (what the buffer
+            # reveals at the measured feed-lag p90) as <obj>_window, INFORMATION ONLY: full hindsight stays the gate
+            # ceiling until the window's beyond value is a real model (integrator, v31; the v1 placeholder scores
+            # below the app on NBA fit nights, WV loop Nov 5).
             buffered = bool(getattr(a, "behind_live", None))
             if buffered:
                 from redzone.lab import oracle_window as OW
                 fl90 = _feed_lag_p90(lg.value)
             for key, obj, cue in plan:
                 if buffered and cue is None:
-                    per_night[-1]["oracle"][f"{obj}_full"] = O.counts(O.grade(n, O.solve(n, obj, tab)))
-                    osw = OW.solve_window(n, fl90, obj, tab)
-                else:
-                    osw = O.solve(n, obj, tab) if cue is None else O.solve_cue(n, obj, tab, max_cue_s=cue)
+                    per_night[-1]["oracle"][f"{obj}_window"] = O.counts(O.grade(n, OW.solve_window(n, fl90, obj, tab)))
+                osw = O.solve(n, obj, tab) if cue is None else O.solve_cue(n, obj, tab, max_cue_s=cue)
                 if cue is not None:
                     per_night[-1]["oracle"][key] = O.counts(O.grade(n, osw))
                     continue
