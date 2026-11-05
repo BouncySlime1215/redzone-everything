@@ -700,3 +700,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   the flag on, Now shows a morning card (6 AM to noon ET) with last night's worth-it, mid-play entries, high-leverage
   leaves, dead air and which release ran, read from the night report, data/worth.jsonl and data/deploy/state.json.
   Reason: Cycle 12 (#236) item 3.
+- 2026-11-05 (integrator, grader v13): `license_check.py` reads a top-level `"sources"` list of records as ledger rows.
+  Before, it read the whole file as one model card, which failed on the scouts' scout.json. A model card still names its
+  sources as strings. Grader freeze v13.

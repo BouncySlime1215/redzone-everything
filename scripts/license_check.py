@@ -45,8 +45,13 @@ def _rows(doc) -> list[dict]:
         return [r for r in doc if isinstance(r, dict)]
     if not isinstance(doc, dict):
         return []
-    out = [doc] if ("source" in doc or "sources" in doc) else []
-    for k in ("rows", "shards", "datasets", "files", "sources_used"):
+    # a model card names its sources as strings; a ledger may list them as records under "sources"
+    srcs = doc.get("sources")
+    card = "source" in doc or (isinstance(srcs, list) and all(isinstance(x, str) for x in srcs)) or isinstance(srcs, str)
+    out = [doc] if card else []
+    for k in ("rows", "shards", "datasets", "files", "sources_used", "sources"):
+        if k == "sources" and card:
+            continue
         if isinstance(doc.get(k), list):
             out += [r for r in doc[k] if isinstance(r, dict)]
     return out

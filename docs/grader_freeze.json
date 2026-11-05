@@ -1,11 +1,11 @@
 {
-  "version": 12,
-  "frozen_at": "2026-11-05T05:03Z",
+  "version": 13,
+  "frozen_at": "2026-11-05T05:07Z",
   "by": "integrator",
   "files": {
     "redzone/grading.py": "7d42683f7d7acea9241108fd6279d4fb8b3d48db61fa3222f5a5bf81f890ab4e",
     "scripts/collect_live_test.py": "b7e198b23866a56cfb902d9fd63868fac219843cae84b139ab09761c11073e65",
-    "scripts/license_check.py": "e78601e9d8ddf31ba76cb898530624d88ba576eb476741862faeb0fdb8f855e3",
+    "scripts/license_check.py": "183eb3ad0e2d3842b23d56188dddf690f53cdc198129fc2a114f9b3df6c1b23d",
     "redzone/lab/backtest.py": "6ba8e0ff640cb2349b0bdedbd5deb275582493d163b0ee749dd445bef9e26551",
     "redzone/lab/cutgrade.py": "16e3f7dfbbe12aa08af71189258a2bcf53aab18ceca33661e941d70aafa7720e",
     "redzone/lab/sportsgrade.py": "bb5592638d91b72202d5c2ee9c97aac9cbe0fbbed7198a9bdb1e6211cfa802b1",
