@@ -110,4 +110,5 @@ D's and are not in these rows. Data is in the private project folder (`data-b/sh
 | NBA official injury report archive | yellow-B | code ready (Actions run) | | | | | | NBA official injury report, public; personal-use, not for commercial release |
 | Wikipedia pageviews + edits (buzz, test run) | green | done (test) | NFL Oct 5-8 2025 | 13 | 1,352 | 1,352 | 0 | Wikimedia CC0 |
 | Wikipedia pageviews + edits (buzz, test run 2) | green | done (test) | NBA + NFL Nov 1-4 2025 | 31 | 3,016 | 3,016 | 0 | Wikimedia CC0 |
-| **Cycle 16 total** | | | | | **1,294,716** | **41,698** | **1,253,018** | |
+| Wikipedia + GDELT news (buzz, test run 3, GDELT fix) | green / yellow (cite GDELT) | done (test) | NBA + NFL Nov 2-4 2025 | 22 | 2,894 | 2,894 | 0 | Wikimedia CC0; GDELT free and open, cite The GDELT Project |
+| **Cycle 16 total** | | | | | **1,297,610** | **44,592** | **1,253,018** | |
