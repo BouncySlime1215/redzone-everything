@@ -32,7 +32,9 @@ Phases 0-2 into ~4 days.
 
 | when | job | GPU | hours | CU | lane | EXP |
 |---|---|---|---:|---:|---|---|
-| Wed night | V8 Mind (in flight, finishes ~10:45 PM ET) | T4 | ~3.6 | ~7 | ① | EXP-006 |
+| Wed night | V8 Mind, first try (T4 tab stuck after the Pro+ upgrade; spent up to its cap) | T4 | ≤ 3.6 | ≤ 7 | ① | EXP-006 |
+| Wed night | V8 game-reasoner rerun, uncapped (SESSION_H 7.5, from release mind-inputs-v7; Nick 8:05 PM). 7.5 h is the cap, not the estimate: the round ends when every test row is answered, so the A100 spend is likely ~2-3 h ≈ 26-40 CU | A100 | ≤ 7.5 | ≤ 98 (Nick: ~90) | ① | EXP-006 |
+| Wed night | World model pilot (colab/world_model_pilot.ipynb @ kaggle-inputs 76f4f4e; 75 min train + data + grading) | A100 | ~1.6 | ~21 | ① | EXP-100 |
 | Wed night | V8 watchdog rerun, uncapped (1436 steps; V8 did ~450 in 40 min on a T4, so ~2.1 h T4 ≈ ~1 h L4, + 686 answers ×2) | L4 | ~1.5 | ~8 | ① | EXP-085 |
 | Thu | 32B Teacher (AWQ, vLLM) for the starved CBB / NHL / MLB label queue; stops when the queue is empty | A100 | 2-4 | 26-52 | ① | EXP-086 |
 | Thu | V8.2 students from the new Teacher labels, full recipe (reasoner 2 epochs ~33k rows, watchdog 1 epoch, all 5.5k + 686 test rows answered) | L4 | ~3.5 | ~18 | ① | EXP-087 |
@@ -45,8 +47,8 @@ Phases 0-2 into ~4 days.
 | Sat | Size check first: 25M and 50M runs on the same shards (compute-optimal for ~0.5B tokens is ~25M) | L4 | 2 | 10 | ① | EXP-047 |
 | Sun | **Planner v1** (search over the world model + conservative offline RL on real nights) | L4 | 3-6 | 15-30 | ①② | EXP-056/057 |
 | Sun | Locked grading (the release read) + shadow mode Sunday night | CPU / Mac | n/a | 0 | Int ③④ | EXP-004 |
-| | **Planned total** | | | **~130-200** (lane ① estimate, Nov 5 00:30 UTC) | | |
-| | Re-run slack | | | ~200 | | |
+| | **Planned total** | | | **~175-310** (lane ① estimate, Nov 5 01:05 UTC: + the A100 reasoner rerun at 26-98 and EXP-100 at ~21; the top end assumes the rerun burns its whole 7.5 h cap) | | |
+| | Re-run slack | | | ~90-225 | | |
 | | **Reserve (not to be spent)** | | | **100** | | |
 
 Lane ① CU basis: CU = GPU-hours × rate (A100 13, L4 5, T4 2), with 0.2-0.3 h of setup per notebook. L4 ≈ 2-2.5× T4 and A100 ≈ 2.6× L4 on this workload, so CU per FLOP is about the same on A100 and L4: A100 buys wall-clock, not savings. Every notebook prints its own CU spent at the end, and this table gets corrected from those numbers. Compute note for the pretrain: 6·N·D for 100M params × 1B tokens is 6e17 FLOPs, about 1.3 h on an A100 at
