@@ -510,6 +510,7 @@
     "redzone/lab/night/run.py",
     "redzone/plan.py",
     "redzone/supervisor.py",
+    "redzone/sync_edge.py",
     "redzone/tuners/tuners.py",
     "redzone/web/server.py",
     "scripts/eval_sports.py",
@@ -2376,6 +2377,21 @@
     "STK-04"
    ]
   },
+  "redzone/lab/primegrade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/syncgrade.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/sync_grade.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-800 Prime] Grade the diamond plan's Prime tests (docs/sync/2026-11-05-diamond-plan.md, 7f32aaa6) on the sticks' own media_session rows.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/reactgrade.py": {
    "contracts": [],
    "inputs": [
@@ -2517,6 +2533,7 @@
    "inputs": [],
    "kind": "module",
    "outputs": [
+    "redzone/lab/primegrade.py",
     "scripts/sync_grade.py"
    ],
    "owner": "unowned",
@@ -3824,10 +3841,26 @@
     "untagged"
    ]
   },
+  "redzone/sync_edge.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/channels.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/sync_probe.py"
+   ],
+   "owner": "unowned",
+   "role": "[SYNC program A, EXP-800/801] Where each stick is against its stream's live edge, read every second.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/sync_probe.py": {
    "contracts": [],
    "inputs": [
     "redzone/config.py",
+    "redzone/sync_edge.py",
     "redzone/tuners/adb.py"
    ],
    "kind": "module",
@@ -5489,6 +5522,17 @@
     "untagged"
    ]
   },
+  "scripts/sync_edge_report.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[SYNC A, EXP-800/801] data/sync_truth/edge/*.jsonl -> where each stick sat against its live edge, per app.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/sync_fit.py": {
    "contracts": [],
    "inputs": [
@@ -5506,6 +5550,7 @@
   "scripts/sync_grade.py": {
    "contracts": [],
    "inputs": [
+    "redzone/lab/primegrade.py",
     "redzone/lab/syncgrade.py"
    ],
    "kind": "entry",
@@ -5747,10 +5792,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 312,
+  "modules": 315,
   "orphans": 14,
-  "unowned": 152,
-  "untagged": 257
+  "unowned": 155,
+  "untagged": 260
  },
  "version": 1
 }

@@ -48,8 +48,8 @@ MIN_TUNES = 20
 # Any other app (Prime) compares E at landing until it has its own measurement.
 REF_BY_APP = {"youtubetv": "pos_s"}
 REF_DEFAULT = "E_land"
-LAND_WAIT = 25.0
-EPOCH_FLOOR = 1e12  # a media_session position at or above this is an epoch in ms (Prime), not a stream offset    # seconds after a tune command within which it must reach PLAYING to count as landed
+LAND_WAIT = 25.0    # seconds after a tune command within which it must reach PLAYING to count as landed
+EPOCH_FLOOR = 1e12  # a media_session position at or above this is an epoch in ms (Prime), not a stream offset
 
 
 def pos_now(ms: dict, uptime_ms: float | None) -> float | None:

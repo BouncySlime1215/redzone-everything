@@ -36,6 +36,7 @@ GRADERS = (
     "scripts/license_check.py",
     "scripts/label_leak_check.py",
     "redzone/lab/syncgrade.py",
+    "redzone/lab/primegrade.py",
     "redzone/lab/outcome_label.py",
     "scripts/sync_grade.py",
     "agent/distill/evaluate.py",

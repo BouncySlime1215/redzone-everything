@@ -784,3 +784,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   explicit OK first. Gates: per-stick delay error p95 <= 2 s, 0 entries mid-commercial, switch <= 3 s incl. Prime. Test
   only when Nick isn't watching. Rows EXP-800..804.
 - 2026-11-05 (Nick 2:10 AM + overseer 2:30 AM, sync program steps A + B, lane 2): new `sync.edge` block. **`sync.edge.enabled: true`** (shadow, read-only): every 1 s, one `cat /proc/uptime; dumpsys media_session` per stick measures how far it plays behind its live edge (the overseer's meter: pos_now = position + speed x (uptime - updated), E = wall - pos_now, behind = E - E at the tune's landing; a deep-link tune lands on the edge to ~0.5 s) into data/sync_truth/edge/<night>.jsonl and `Controller.behind_live`; the 5 s probe rows now carry uptime_ms and pos_now_s. **`force_live: false`, `force_live_visible: false`** (`force_live_s: 2.0`): when on, a stick > 2 s behind its edge beyond the app's own hold is re-linked to live (hidden stick: a refresh preload; the stick on screen: a fresh deep link, only on a dead ball), at most once per game per 60 s; off, rows say `would_force`. Why: Nick's 'know where each stick is' and 'auto re-link whenever behind > 2 s'. The read presses nothing, so it is shadow ON; a re-link changes tunes, so it ships OFF until Nick picks on the RC7 sync card.
+- 2026-11-05 (integrator, grader v20, before TNF): three grader changes from lane 3. (1) #284: reactgrade's WIN needs
+  big live % not down by more than CRUNCH_PTS (bootstrap lower bound), Nick's "% live": a reacting arm may not win by
+  trading live plays for late replays. Frozen only after EXP-209 closed (winner A on the resync read), so no open
+  experiment's verdict moved. (2) #285: a Prime media_session position >= 1e12 is an epoch, so E is the measured
+  absolute delay per stick (`absolute_by_stick`); a counter position never feeds it, and YTTV's ~20-30 s stays an
+  estimate. (3) #288: `redzone/lab/primegrade.py` pre-registers the diamond plan's Prime tests (A4 flat/pause/sticks/
+  landing, B1, B2 Key Moments) with sample floors: thin data reads PENDING, a conclusive FAIL still fires.
+  primegrade joins the freeze. Grader freeze v20.
