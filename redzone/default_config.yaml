@@ -240,6 +240,10 @@ decider:
   # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.89 s) + the 1 s settle.
   # Replaced by your own measured times as you use it (see switch_speed).
   switch_cost: {youtubetv: 5.5, prime: 27, espn: 7.5, hdmi_flip: 3}
+  break_fill:              # [EXP-029] fill long breaks with any live game (pre-registered arm B; off)
+    enabled: false
+    long_s: 120            # home's typical break length (BREAK_LEN_S) at or above which the visit bar drops
+    min: 0                 # the visit bar then (decider.break_destination_min otherwise)
   leave:
     dead_windows: []       # [whistle detection] also leave on the play-by-play's dead windows in these leagues
     tune_s: 6              # ...and the window must outlast this tune margin (a visit can't come back inside it)

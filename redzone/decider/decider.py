@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import time
+import dataclasses
 import math
 from collections import Counter, deque
 from dataclasses import dataclass, field, replace
@@ -2247,7 +2248,7 @@ class Decider:
         # [core] Worth leaving the commercial for: the core's visit ev (rate against the ad, bar
         # decider.break_destination_min); ranked by the core's window value, rate x seconds on screen.
         st = self._cstate(fits, now)
-        k = self.core.k
+        k = self._fill_knobs(anchor)
         worth = [g for g in pool if core.ev(st, "visit", g, k).gain >= 0]
         if worth:
             # Crunch first, then the user's team, and only then score x seconds on screen: a
@@ -2263,6 +2264,18 @@ class Decider:
         if REDZONE in watchable and exclude != REDZONE and REDZONE in fits:
             return REDZONE
         return None
+
+    def _fill_knobs(self, home: str | None):
+        """[EXP-029, decider.break_fill.enabled] During a long break at home (typical length >= long_s:
+        halftime, intermission, end of period, NBA TV timeouts) any live game beats the ad: the visit
+        bar drops to break_fill.min. Short breaks keep decider.break_destination_min."""
+        k, c = self.core.k, self.cfg
+        if not c.get("decider.break_fill.enabled") or not home:
+            return k
+        blen = self._break_len(home)
+        if blen is None or blen < float(c.get("decider.break_fill.long_s")):
+            return k
+        return dataclasses.replace(k, visit_min=float(c.get("decider.break_fill.min")))
 
     def _break_len(self, gid: str) -> float | None:
         """Typical (low side) on-screen length of the break this game is in now, by kind."""
