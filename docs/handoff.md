@@ -71,8 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- 20:45 overseer audit (docs/plans/2026-11-04-2045-overseer.md): ~87 merges since 2:50 PM, cycles 05-09 on the hourly clock, 90 experiments pre-registered, go-wide running. Live column still flat until RC7 Thu afternoon (EXP-203 NFL win: mid-play 0, big seen 89→94/88→99, dead air 35→30; league-scoped NBA/NHL; Prime pre-tune). RC6.1 switches after tonight's games.
-- Training: world model pilot proved the pipeline (NFL-only: next-event 0.432 vs 0.372, break MAE 46 vs 62 s); V8 watchdog 83% (gate FAIL); V8 reasoner on A100 ~3.5 h left. Blocker: Nick's A/B data decision (ESPN/NHL-api-derived vs green-only).
+Noggin training waits on watchdog out.zip report table (for overseer)
+V8 GR 1400/7862 ETA ~12:15 AM; RC6.1 deploy still waiting
+Usage 40%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
