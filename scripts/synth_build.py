@@ -99,7 +99,7 @@ def augment(a) -> dict:
 
 
 def teacher(a) -> dict:
-    rows, bad, skipped = {}, 0, 0
+    rows, bad, skipped, text_only = {}, 0, 0, {}
     a.out.mkdir(parents=True, exist_ok=True)
     (a.out / "teacher").mkdir(exist_ok=True)
     with open(a.answers) as f, open(a.out / "teacher" / "text.jsonl", "w") as tx:
@@ -112,7 +112,10 @@ def teacher(a) -> dict:
                 bad += "|jump" not in str(ans.get("id", ""))
                 skipped += "|jump" in str(ans.get("id", ""))
                 continue
-            rows.setdefault(r.league, []).append(r)
+            if S.informative(r):
+                rows.setdefault(r.league, []).append(r)
+            else:
+                text_only[r.league] = text_only.get(r.league, 0) + 1
             tx.write(json.dumps({"league": r.league, "game_id": r.game_id, "moment": r.moment,
                                  "hindsight": r.hindsight, "model": ans.get("model"), **r.text,
                                  "license": S.LICENSE, "synthetic": True}) + "\n")
@@ -124,6 +127,8 @@ def teacher(a) -> dict:
                             tokens=np.array([r.tokens for r in rs], np.uint16))
         per[lg] = {"answers": len(rs), "hindsight": sum(r.hindsight for r in rs),
                    "synthetic_tokens": len(rs) * S.TEACHER_TOKENS}
+    for lg, n in text_only.items():
+        per.setdefault(lg, {"answers": 0, "hindsight": 0, "synthetic_tokens": 0})["text_only"] = n
     man = {"kind": "teacher", "built": _now(), "license": S.LICENSE, "vocab": S.TEACHER_VOCAB_VERSION,
            "vocab_size": S.TEACHER_VOCAB, "source": str(a.answers.name), "unreadable": bad, "skipped_other_tasks": skipped,
            "use": "grounded (hindsight) and blind: auxiliary target only, never context; commentary (causal, mode 2): may be context", "per_league": per}

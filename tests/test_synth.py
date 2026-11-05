@@ -126,3 +126,13 @@ def test_causal_commentary_queue_and_tokens(tmp_path):
     assert r.tokens == (S.T_LEAGUE0 + V.BOS_LEAGUES.index("nba"), S.T_MODE0 + 2, S.T_LOCK0 + 1, S.T_IMP0 + 7,
                         S.T_NEXT0, S.T_CONF0 + 6)
     assert not r.hindsight and max(r.tokens) < S.TEACHER_VOCAB
+
+
+def test_text_only_answers_are_not_counted_as_tokens(tmp_path):
+    p = tmp_path / "t.jsonl"
+    p.write_text(json.dumps({"id": "nhl:5:1|grounded", "text": '{"storyline": "s", "why": "w", "next": "n"}'}) + "\n")
+    assert B.main(["teacher", "--answers", str(p), "--out", str(tmp_path / "syn")]) == 0
+    man = json.loads((tmp_path / "syn" / "manifest_teacher.json").read_text())
+    assert man["per_league"]["nhl"] == {"answers": 0, "hindsight": 0, "synthetic_tokens": 0, "text_only": 1}
+    assert not (tmp_path / "syn" / "teacher" / "nhl.npz").exists()
+    assert "storyline" in (tmp_path / "syn" / "teacher" / "text.jsonl").read_text()

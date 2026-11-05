@@ -132,6 +132,14 @@ class TeacherRow:
     text: dict = field(default_factory=dict)        # storyline / why / next, for the Mind (never tokenized)
 
 
+def informative(r: TeacherRow) -> bool:
+    """False when every labelled slot is "missing" (e.g. EXP-086 grounded answers carry only storyline / why /
+    next): such a row is text for the Mind, and its 6 ids would be filler that inflates the synthetic count."""
+    missing = {T_LOCK0 + len(LOCKS), T_SAFE0 + 2, T_CONF0 + CONF_BUCKETS, T_STAY0 + STAY_BUCKETS,
+               T_IMP0 + IMP_BUCKETS, T_NEXT0 + len(NEXTS)}
+    return any(t not in missing for t in r.tokens[2:])
+
+
 def teacher_tokens(answer: dict) -> TeacherRow | None:
     """One teacher_out.jsonl row -> its 6 teacher-v1 ids, or None if its id or JSON can't be read."""
     m = _ID.match(str(answer.get("id", "")))
