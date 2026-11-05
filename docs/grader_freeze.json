@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "frozen_at": "2026-11-05T00:30Z",
+  "by": "integrator",
+  "files": {
+    "redzone/grading.py": "cf4241d053ebab1f107f6ed91b47d9e618758d57a1abb210dfacf9acc3e3af2e",
+    "redzone/lab/backtest.py": "247be79467012b756d1e7839387543cafb9588dcc487728b6310990e89ce8c4c",
+    "redzone/lab/cutgrade.py": "e70321c8b73b17aca20783f4584a1c5e92a247167909ec37b0f5d235463c6b55",
+    "redzone/lab/sportsgrade.py": "bb5592638d91b72202d5c2ee9c97aac9cbe0fbbed7198a9bdb1e6211cfa802b1",
+    "redzone/lab/oracle.py": "9b19515d315310019186773fc8c344f1867ffc99ed382dba6113c5a1fef38faf",
+    "redzone/lab/leverage.py": "3e2401299fd26b3b29be19069b1443aa6ef3ef2a08a14d325cd83d90e1afa07b",
+    "redzone/lab/splits.py": "8ae7b10db3fa6121dd1acd8c6e86ec9b695749540f233aa815c40ca5644bd25b",
+    "redzone/lab/evaldata.py": "1cf176d25a22e168e705b5db793d4c00f114184244f87d60e564f67de8030451",
+    "scripts/northstar.py": "6d6dcf5b2bd9a78b3417ce76453f4c826b0a4a46f7332513c8c28f54cef0b087",
+    "scripts/release_gate.py": "26210acc934df3c5a1b72db86adbacb83ac71ac597ec618345644216b8247f74",
+    "scripts/eval.py": "99dc7b393e8790d18033caa1557bcf9bc728d7af4a7fbf835572e2bee782e55a",
+    "scripts/eval_sports.py": "e700d1bd47bcd2221cd1fb3a288043e9714dbcd23c4dbdb82d48db9e463e9660",
+    "scripts/ci_scorecard.py": "0cf746adc8cb6a79cf9dbe198aa1f070081e5381b19c3213c3df184ce64b6139",
+    "scripts/leak_check.py": "d49c81b30e114456f1e534f73ca672d2c2e062f6c747cb3d44b68ca963f71fb8",
+    "scripts/grading_check.py": "c50d1a00d94d40a0b0b9c4d51cb2b18e59b5bcf63d0df39a07087d5d416d29a6"
+  }
+}
