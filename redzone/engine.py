@@ -1967,8 +1967,11 @@ class Engine:
     def _tap_lands_dead(self, d: Decision, target: str | None) -> bool:
         """[EXP-741, decider.entry.user_timed; Nick Nov 4 10:55 PM: "one tap still waits for a dead ball"] A
         single tap's picture must come up on a dead ball in the game it joins, not only leave the old game
-        safely. The switch carries no rewind, so it waits for a landing that needs none. No timing evidence
-        (no timeline, RedZone, a reel) lets it go, as before. The second "Go now" tap never gets here."""
+        safely. It goes on a landing that needs no rewind. [EXP-741 B, decider.entry.user_rewind_after_s] once
+        the tap has waited that long, a landing that needs a rewind (YTTV: back to the last dead ball) is
+        taken too, armed on the switch at the cut; lane 3's grade showed a no-rewind tap waits > 180 s on
+        12 of 20 NBA taps (ESPN ~38 s behind the picture). No timing evidence (no timeline, RedZone, a reel)
+        lets it go, as before. The second "Go now" tap never gets here."""
         g = self.merger.games.get(d.target or "")
         lg = getattr(getattr(g, "league", None), "value", None)
         if d.action != "switch" or not for_league(self.cfg, "decider.entry.user_timed", lg, False):
@@ -1976,8 +1979,19 @@ class Engine:
         if d.target not in self.scored:
             return True
         cands1 = {d.target: Candidate(self.scored[d.target], target)}
-        plan = self.decider.entry_plan(d.target, cands1, time.time(), self.control.deadline_cost(target))
-        return plan is None or (plan.ok and not plan.rewind_s)
+        now = time.time()
+        plan = self.decider.entry_plan(d.target, cands1, now, self.control.deadline_cost(target))
+        if plan is None:
+            return True
+        if not plan.ok:
+            return False
+        after = for_league(self.cfg, "decider.entry.user_rewind_after_s", lg, None)
+        if plan.rewind_s and (after is None or now - d.at < float(after)):
+            return False
+        arm = getattr(self.control, "arm_entry_rewind", None)
+        if arm is not None and after is not None:
+            arm(plan.rewind_s)
+        return True
 
     def _forced_go(self, d: Decision) -> bool:
         """Your second "Go now" tap on the held game: it cuts at once, even mid-play (Nick, Nov 5)."""

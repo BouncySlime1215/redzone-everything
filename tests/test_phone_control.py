@@ -276,3 +276,35 @@ def test_tap_timed_off_changes_nothing_and_go_now_still_cuts_mid_play(engine, mo
     assert (cut, forced) == (True, True)
     first, cut, forced = _submit_one(engine, monkeypatch, force=False, dead_ball_after=True)
     assert (first, cut) == (False, False) and not forced                # leave is safe, landing isn't
+
+
+def test_tap_rewind_fallback_after_grace(engine, monkeypatch):
+    """[EXP-741 B] decider.entry.user_rewind_after_s: a tap that needs a rewind waits out the grace, then
+    goes with that rewind armed on the switch at the cut (lane 3: no-rewind taps waited > 180 s)."""
+    from redzone.config import default
+    assert default("decider.entry.user_rewind_after_s") is None        # ships off
+    engine.cfg.update({"decider": {"entry": {"user_timed": True, "user_rewind_after_s": 15}}})
+    a = _live(engine)[0]
+    engine.scored.setdefault(a, next(iter(engine.scored.values())))
+    armed = []
+    monkeypatch.setattr(engine.control, "arm_entry_rewind", lambda s: armed.append(s), raising=False)
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(True, 30.0))
+    fresh = Decision(time.time(), "switch", a, "you selected this game", State.PAUSED, kind="user")
+    assert engine._tap_lands_dead(fresh, "youtubetv:espn") is False and armed == []   # inside the grace
+    old = Decision(time.time() - 16, "switch", a, "you selected this game", State.PAUSED, kind="user")
+    assert engine._tap_lands_dead(old, "youtubetv:espn") is True and armed == [30.0]
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(False))   # no landing in reach
+    assert engine._tap_lands_dead(old, "youtubetv:espn") is False
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(True))    # dead now, no rewind
+    assert engine._tap_lands_dead(fresh, "youtubetv:espn") is True and armed[-1] == 0.0
+
+
+def test_arm_entry_rewind_sets_the_hidden_seek_only_on_the_hidden_cue():
+    from redzone.control import Controller
+    c = Controller.__new__(Controller)
+    c._entry_cue = "hidden"
+    c.arm_entry_rewind(30)
+    assert (c._entry_rewind, c._hidden_entry) == (30.0, 30.0)
+    c._entry_cue = "seek"
+    c.arm_entry_rewind(30)
+    assert (c._entry_rewind, c._hidden_entry) == (30.0, 0.0)
