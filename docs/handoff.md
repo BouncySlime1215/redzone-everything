@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-SYNC: Prime media_session position = epoch frame time; screen 6.4 s behind Amazon's clock (19 readings, Nov 4); YTTV ESPN ~20-30 s behind the real game from ad bursts vs plays.jsonl wall (1 break). Overnight harness + bitrate loggers running; diamond planners running. docs/sync (a9b1ab39).
-EXP-103 died at grading twice (runtime gone); waiting on lane 1's grader fix. Factory v2 running on Kaggle. Mac on battery 53% (unplugged). 2 unknown + v8_watchdog Colab sessions ~10.6 CU/h. Usage 56%.
+Overnight training ON (Nick to bed ~3:45 AM, laptop charging): Colab A100 #1 EXP-109 speedrun A/B (8 arms, ~2.5 h, ~32 CU); Colab A100 #2 crew E commentary EXP-1402 (~3.3 h, ~43 CU); Kaggle factory v2 (CPU). Kaggle TPU ladder notebook 'redzone-nfm-tpu-ladder' imported and ready, BLOCKED on Nick's one-time Kaggle identity check (Persona) for TPU v5e-8.
+Prime scorebug reads approved by Nick (3:30 AM). YTTV: 5-agent build of ~50 pre-made sync tests + runner (scratchpad sync/yttv_tests) running, for tonight's NBA games. Usage 58%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
