@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Ladder relaunch (ba227738/8b2ea86, fixes + smoke pass) on A100 High-RAM, 12 min in, past the smoke stage. Seed check EXP-109b on L4 1 h 27 min.
-Nick: considering the time-shift buffer (60-90 s behind live) as the main architecture; shadow test proposed for tonight. Usage 63%.
+EXP-109b seed check (L4, ~9 CU) produced no new grades (pre-fix pack ef13442); EXP-110 exit 1 again. INCONCLUSIVE; lane 1 asked to re-pin to 8b2ea86; L4 freed.
+Ladder (ba227738) A100 42 min in, healthy. Usage 63%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
