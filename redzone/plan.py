@@ -23,7 +23,7 @@ from typing import Callable, Iterable
 from zoneinfo import ZoneInfo
 
 from redzone.channels import PRETTY, describe
-from redzone.models import GameState, League, Phase
+from redzone.models import GameState, League, Phase, league_order
 
 log = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
@@ -34,7 +34,7 @@ STOP_S = 2 * 60           # ...and no new check starts this close to the start
 WINDOW_S = 15 * 60        # games starting within 15 minutes of the first form one window
 GAP_S = 20.0              # breathing room between two checks
 REBUILD_S = 60.0          # the plan follows the slate (new links, your corrections) every minute
-LEAGUE_ORDER = {League.NFL: 0, League.NBA: 1, League.NHL: 2, League.MLB: 3}
+LEAGUE_POS = {League(v): i for i, v in enumerate(league_order())}   # [one brain, step 1] models.LEAGUE_ORDER
 WARMUP_LEAD_S = 10 * 60   # [warmup.pregame] the first window's likely first game goes on the hidden stick this early
 WARMUP_LATE_S = 30 * 60   # ...and is kept until it goes live: listed starts run late (tip / kick ~5-15 min after)
 
@@ -143,7 +143,7 @@ def build_plan(games: Iterable[GameState], choose: Callable[[GameState], object]
             "gaps": gaps,
             "check": {"state": "pending" if status == "ready" else "n/a", "target": None, "at": None, "detail": ""},
         })
-    entries.sort(key=lambda e: (e["start"] or 0, not e["mine"], LEAGUE_ORDER.get(League(e["league"]), 9)))
+    entries.sort(key=lambda e: (e["start"] or 0, not e["mine"], LEAGUE_POS.get(League(e["league"]), 9)))
     return {"day": day.isoformat(), "built": now, "games": entries, "windows": windows(entries),
             "gaps": sorted({x for e in entries for x in e["gaps"]}), "note": ""}
 
@@ -217,7 +217,7 @@ def due(plan: dict, now: float, lead_s: float = LEAD_S) -> list[str]:
 def warmup_target(plan: dict, now: float, lead_s: float = WARMUP_LEAD_S) -> tuple[str, float] | None:
     """[warmup.pregame] (target, window start) to warm now: the night's FIRST start window, from lead_s
     before its listed start until a game goes live (at most WARMUP_LATE_S after the listed start). Its likeliest first pick: your team, then league
-    order (NFL > NBA > NHL > MLB), then the earliest start. None outside that time or with no tunable game."""
+    order (models.LEAGUE_ORDER: NFL > CFB > NBA > CBB > NHL > MLB), then the earliest start. None outside that time or with no tunable game."""
     if any(e["phase"] == Phase.LIVE.value for e in plan["games"]):
         return None
     first = next(iter(plan.get("windows") or []), None)
@@ -225,7 +225,7 @@ def warmup_target(plan: dict, now: float, lead_s: float = WARMUP_LEAD_S) -> tupl
         return None
     ids = set(first["games"])
     cands = [e for e in plan["games"] if e["game_id"] in ids and e["status"] == "ready" and _target(e)]
-    cands.sort(key=lambda e: (not e["mine"], LEAGUE_ORDER.get(League(e["league"]), 9), e["start"] or 0))
+    cands.sort(key=lambda e: (not e["mine"], LEAGUE_POS.get(League(e["league"]), 9), e["start"] or 0))
     return (_target(cands[0]), first["start"]) if cands else None
 
 
