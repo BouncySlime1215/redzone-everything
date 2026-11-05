@@ -90,12 +90,44 @@ def target(lg: str, feats: pd.DataFrame) -> pd.DataFrame:
         f["join"] = f.game_id
     t = f.merge(g.rename(columns={"game_id": "join"})[["join", "night", "excitement", "max_swing"]], on="join")
     t = t.groupby("night").filter(lambda d: len(d) >= 2)
-    t["y"] = t.groupby("night").excitement.rank(pct=True)
+    t["truth"] = t.excitement
+    t["y"] = t.groupby("night").truth.rank(pct=True)
     return t
 
 
+MKT = Path("/mnt/project-files/attention-g/mkt")   # crew D's per-game Polymarket volume (markets-attn-out/*)
+
+
+def target_volume(lg: str, feats: pd.DataFrame) -> pd.DataFrame:
+    """Human attention per game = prediction-market volume (Nick 9:05 AM named market VOLUME as a label; prices
+    stay inputs only). Within-night rank of log volume."""
+    m = pd.concat([pd.read_csv(f) for f in sorted(MKT.glob(f"{lg}-*_games.csv"))]).drop_duplicates("game_key")
+    k = m.game_key.str.split(":", expand=True)
+    m["date"], m["away"], m["home"] = k[1], k[2].str.split("@").str[0], k[2].str.split("@").str[1]
+    f = feats.reset_index()
+    f["date"] = f.start.dt.tz_convert("America/New_York").dt.strftime("%Y%m%d")
+    t = f.merge(m[["date", "home", "away", "volume_usd"]], on=["date", "home", "away"])
+    t = t[t.volume_usd > 0].rename(columns={"date": "night"})
+    t["join"] = t.game_id
+    t["truth"] = np.log1p(t.volume_usd)
+    t = t.groupby("night").filter(lambda d: len(d) >= 2)
+    t["y"] = t.groupby("night").truth.rank(pct=True)
+    return t
+
+
+LOCKED = Path("/mnt/project-files/attention-g/locked_nights.json")   # eval-data locked nights (league_split test)
+
+
+def drop_locked(lg: str, t: pd.DataFrame) -> pd.DataFrame:
+    """Locked nights never train or select anything, however recent (Nick; grading.md)."""
+    ln = set(json.loads(LOCKED.read_text()).get(lg, [])) if LOCKED.exists() else set()
+    if not LOCKED.exists():
+        raise SystemExit(f"{LOCKED} missing: refusing to train without the locked-night list")
+    return t[~t.night.astype(str).isin(ln)]
+
+
 def feat_cols(t: pd.DataFrame, drop_groups: tuple = ()) -> list[str]:
-    bad = {"game_id", "join", "night", "excitement", "max_swing", "y", "season", "home", "away", "start",
+    bad = {"game_id", "join", "night", "excitement", "max_swing", "y", "truth", "volume_usd", "date", "season", "home", "away", "start",
            "game_type", "nba_game_id"}
     gone = {c for g in drop_groups for c in GROUPS[g]}
     cols = [c for c in t.columns if c not in bad and pd.api.types.is_numeric_dtype(t[c])]
@@ -107,7 +139,7 @@ def pair_agree(t: pd.DataFrame, score: np.ndarray) -> float:
     t = t.assign(s=score)
     acc, n = 0.0, 0
     for _, d in t.groupby("night"):
-        y, s = d.excitement.to_numpy(), d.s.to_numpy()
+        y, s = d.truth.to_numpy(), d.s.to_numpy()
         i, j = np.triu_indices(len(d), 1)
         ok = y[i] != y[j]
         if not ok.any():
@@ -163,23 +195,25 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("leagues", nargs="+")
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--target", choices=("excitement", "volume"), default="excitement")
     a = ap.parse_args(argv)
     a.out.mkdir(parents=True, exist_ok=True)
     report = {"tag": TAG, "seed": SEED, "groups": GROUPS,
               "code_sha1": hashlib.sha1(Path(__file__).read_bytes()).hexdigest()[:12]}
     for lg in a.leagues:
-        t = target(lg, features(lg))
-        t.to_parquet(a.out / f"{lg}_games.parquet")
+        t = drop_locked(lg, (target_volume if a.target == "volume" else target)(lg, features(lg)))
+        t.to_parquet(a.out / f"{lg}_{a.target}_games.parquet")
         report[lg] = {"games": len(t), "nights": int(t.night.nunique()),
                       "data_sha1": hashlib.sha1(pd.util.hash_pandas_object(t[["join", "y"]]).values.tobytes())
                       .hexdigest()[:12]}
         m, rep = train(lg, t)
-        m.save_model(str(a.out / f"{lg}_model.txt"), num_iteration=m.best_iteration)
+        m.save_model(str(a.out / f"{lg}_{a.target}_model.txt"), num_iteration=m.best_iteration)
         report[lg]["full"] = rep
         for g in GROUPS:
             report[lg][f"minus_{g}"] = train(lg, t, (g,))[1]["valid_pair_agree"]
         print(lg, json.dumps(report[lg])[:1500], flush=True)
-    (a.out / "report.json").write_text(json.dumps(report, indent=1) + "\n")
+    report["target"] = a.target
+    (a.out / f"report_{a.target}.json").write_text(json.dumps(report, indent=1) + "\n")
     return 0
 
 
