@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Overnight training ON (Nick to bed ~3:45 AM, laptop charging): Colab A100 #1 EXP-109 speedrun A/B (8 arms, ~2.5 h, ~32 CU); Colab A100 #2 crew E commentary EXP-1402 (~3.3 h, ~43 CU); Kaggle factory v2 (CPU). Kaggle TPU ladder notebook 'redzone-nfm-tpu-ladder' imported and ready, BLOCKED on Nick's one-time Kaggle identity check (Persona) for TPU v5e-8.
-Prime scorebug reads approved by Nick (3:30 AM). YTTV: 5-agent build of ~50 pre-made sync tests + runner (scratchpad sync/yttv_tests) running, for tonight's NBA games. Usage 58%.
+YTTV sync test bank DONE: 58 tests + runner at docs/sync/yttv_tests (c846da6e), all pass dry-run. Tonight's only national NBA game on YTTV: MIA @ GSW on NBA TV 10 PM ET. Top order: ui_10 → ui_07 (Stats panel) → ads_02 → truth_10 → ui_08.
+Mistake caught: 0a470d25 included raw ESPN API caches (~15 MB) in the public repo; removed in c846da6e, still in history. Needs Nick's call on rewriting history. Colab A100 x2 training. Usage 59%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
