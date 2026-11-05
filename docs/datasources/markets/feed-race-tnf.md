@@ -16,7 +16,7 @@ The app's own source race (`recordings/*/race.jsonl`, A2) still ranks its feeds 
 ## Run
 
 1. About 8:00 PM ET, on Colab or Kaggle CPU (not the Mac): `bash scripts/markets/run_race.sh`
-2. After the game, with no Mac-side experiment and only a read-only copy: copy `data/sync.jsonl` off the Mac.
+2. After the game, read-only and with no Mac-side experiment: copy `data/sync.jsonl` off the Mac, plus `sync.jsonl.1` if it rotated (concatenate both).
 3. Grade:
    `python scripts/markets/feed_race.py grade --espn out/race/espn.jsonl --poly out/markets_live/polymarket/nfl/20261105.jsonl --sync sync.jsonl --game-key nfl:20261105:JAX@BAL --target prime --since 2026-11-06T01:00:00Z --out out/race/grades.json`
 
