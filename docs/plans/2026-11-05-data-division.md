@@ -37,6 +37,8 @@
 | **D. Markets** | `D, markets` | live odds and line jumps, prediction-market public prices | 1300-1399 |
 | **E. Synthetic and teacher** | `E, synthetic and teacher` | 32B Teacher commentary per play, and self-play (capped at ~3x real) | 1400-1499 |
 | **F. Broadcast formats** | `F, broadcast formats` | TV timeout and media-break rules per league and network | 1500-1599 |
+| **G. Attention and hype at scale** (Nick, 12:30 AM) | `G, attention and hype` | what people actually watched and cared about, tied to sports moments: learned labels for Watch Value and the reward model | 1700-1799 |
+| **H. Web-scale sports text** (Nick, 11:50 PM) | `H, web-scale text` | FineWeb / Common Crawl streamed and filtered to sports, Wikipedia dumps, GitHub open datasets (new data for A/D), open books (low priority) | 1800-1899 |
 | **Scout** | `Scout` | finding and ranking new sources (EXP-097, scout.json #247), and feeding A-F | 1600-1699 |
 | **Test writers** | `Test writers` | pre-registered experiments and grader proposals; the integrator freezes them | 700-799 |
 | Lane ① | lane 1 | the body: Reflex, Mind, Teacher runs, world model training (EXP-086, EXP-103, Saturday's world model) | 100-199 |
@@ -58,6 +60,22 @@ Each planner runs its crew in parallel, as workers or scheduled jobs. Each crew 
 | D | Polymarket public market data; Kalshi public market data; The Odds API free tier (Nick's key); the SBRO archive for history | public read endpoints, rate limits; never shown and never a betting prompt (decisions.md, 11:10 PM) |
 | E | Teacher 32B commentary per play from the EXP-086 run (A100 tonight); self-play from the factory | synthetic ≤ ~3x real, counted separately in the ledger |
 | F | public league rulebooks and media-timeout rules (NFL, NCAA football and basketball, NBA, NHL, MLB pace of play), measured break lengths from our own logs (EXP-019) and #181's BreakBook | public documents; tables only |
+| G | Twitch Helix API live viewer counts for sports streams (minute curves); YouTube view velocity on official highlights (from C); Wikipedia hourly pageviews (from B); Google Trends (official alpha only); public minute-by-minute TV ratings reports; watchability or excitement-index datasets whose terms allow use; prediction-market volume spikes (from D); sports-subreddit post and comment **volume** through the official API only where its terms allow; open-license academic datasets on suspense, arousal and engagement while watching | Twitch Helix needs a free app token that Nick adds himself. Reddit's official API terms bar ML training on user content without permission, so G stores counts only and skips Reddit if its terms forbid even that. Each source states **which label or feature it feeds** and its information per GB in the ledger ("real parameters that help"). Vision and antenna: skipped (Nick) |
+| H | FineWeb via Hugging Face streaming (ODC-By), filtered to sports pages by a cheap classifier (team, league and player names plus recap patterns); Wikipedia dumps (CC BY-SA: game, season, rivalry, player and notable-games articles); GitHub search for permissively licensed play-by-play, odds and tracking datasets (handed to A or D); open or public-domain sports books only if a use shows up | Kaggle CPU or HF only. Stream and filter, never mirror Common Crawl. Respect robots and terms; no paywalls or logins; personal-use tag. **The repo is public: commit only derived numbers, alignment indexes and code. Raw filtered text lives only in a private Kaggle dataset.** Each source states what it feeds: (a) recaps aligned to play-by-play by date and teams as hindsight importance labels for Watch Value, (b) rivalry, stakes and storyline features for game importance, (c) the Mind (3B) sports-language fine-tune |
+
+## G and the line (playbook §5)
+G's labels measure "how much people cared about this moment". They are crowd signals, never Nick's own taps, so
+the self-taught rule holds. The objective is still "worth it", not watch time:
+- a G label is judged only by its lift on % of oracle and the worth-it line;
+- a G label is never used to optimize minutes watched;
+- G labels are never shown as a nudge.
+- G data is labels and evaluation only, never a same-moment input (planner G). G reads B's, C's and D's outputs
+  and never re-pulls their sources.
+
+## H's first deliverable
+A pre-registered EXP in 1800-1899: do recap-aligned importance labels ("which plays people wrote about") raise % of
+oracle? Grade it on dev first. Locked is read once, at the next release read, under the frozen graders. If the labels
+don't lift % of oracle, H stays small.
 
 ## Pacing (usage 42% weekly at 12:05 AM Thu; hard stop 89%; target ≤ 85% at Mon 8 PM ET)
 - **The crews' 24/7 is jobs, not agents.**
@@ -74,7 +92,7 @@ Each planner runs its crew in parallel, as workers or scheduled jobs. Each crew 
   | Mon 8 PM ET | 85% |
 
 - **When a checkpoint is over:**
-  1. Crews C, D and F pause first.
+  1. Crews C, D, F, G and H pause first.
   2. Then crew B.
   3. A, E, the body lanes and the integrator keep running.
 - The hard stop at 89% still applies.
