@@ -10,15 +10,24 @@ from agent.kaggle import commentary_regrade as C
 FIX = Path(__file__).parent / "fixtures"
 
 
+@pytest.fixture
+def college_rules(monkeypatch):
+    """The moment builder patches sportsgrade's big/crunch globally; undo it so other tests see the originals."""
+    from agent.kaggle import build_moments_kaggle as B
+    from redzone.lab import sportsgrade
+    monkeypatch.setattr(sportsgrade, "is_big", sportsgrade.is_big)
+    monkeypatch.setattr(sportsgrade, "is_crunch", sportsgrade.is_crunch)
+    monkeypatch.setattr(B, "_PATCHED", False)
+    B._college_rules()
+
+
 @pytest.mark.parametrize("lg,gid", [("nba", "401909860"), ("nfl", "401772894"), ("cbb", "401820788")])
-def test_rebuilt_big_next_matches_the_moment_builder(lg, gid):
+def test_rebuilt_big_next_matches_the_moment_builder(lg, gid, college_rules):
     """The join check: our play index and big_next are the moment builder's (reasoner_data.game_rows)."""
-    from agent.kaggle.build_moments_kaggle import _college_rules
     from redzone.config import Config
     from redzone.lab import reasoner_data
     from redzone.lab.backtest import Replay
     from redzone.models import League
-    _college_rules()
     r = Replay.load(League(lg), FIX / f"espn_{lg}_summary_{gid}.json")
     lab = {x["id"]: x for x in C.label_replay(lg, r, "20260101")}
     assert len(lab) == len(r.plays)
