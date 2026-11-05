@@ -55,6 +55,10 @@ class CutCard:
     # picture came up (entry), until play restarted; mid-play landings are their own bucket
     leave_hist: dict = field(default_factory=dict)
     entry_hist: dict = field(default_factory=dict)
+    # [EXP-001] suspense at entry: S = mean (dWP)^2 over the next SUSPENSE_PLAYS plays after the picture
+    # came up, in WP points squared (ESPN's per-play win probability, hindsight). Entries with no WP: not counted.
+    suspense_sum: float = 0.0
+    suspense_n: int = 0
 
     def add(self, o: "CutCard") -> None:
         for k, v in vars(o).items():
@@ -93,8 +97,35 @@ class CutCard:
                 # [landing offsets] the gate line: >= 95 % of landings (both ends) in on-screen dead time
                 "landings_in_dead_pct": pct(self.leaves_in_dead + self.leaves_between_plays
                                             + self.entries - self.entries_mid_play, self.leaves + self.entries),
+                "suspense_at_entry": round(self.suspense_sum / self.suspense_n, 2) if self.suspense_n else None,
+                "suspense_entries": self.suspense_n,
                 "leave_to_restart_hist": _ordered(self.leave_hist),
                 "entry_to_restart_hist": _ordered(self.entry_hist)}
+
+
+SUSPENSE_PLAYS = 8   # [EXP-001] plays after the entry whose WP swings count (about one NFL drive, a minute of NBA)
+
+
+def win_probs(r) -> list[float | None]:
+    """ESPN's home win probability after each play of a Replay (None where the feed has none; NHL has none)."""
+    cache = getattr(r, "_cache", None)
+    if cache is not None and "wp" in cache:
+        return cache["wp"]
+    data = getattr(r, "data", None) or {}
+    by = {str(x.get("playId")): x.get("homeWinPercentage") for x in (data.get("winprobability") or [])
+          if isinstance(x, dict)}
+    wp = [by.get(str(p.get("id"))) for p in r.plays]
+    if cache is not None:
+        cache["wp"] = wp
+    return wp
+
+
+def suspense_at(r, st: float, k: int = SUSPENSE_PLAYS) -> float | None:
+    """S = E[(dWP)^2] over the k plays after screen time st, in WP points squared; None without WP."""
+    seq = [float(w) for w in win_probs(r)[max(0, _idx(r.wall, st)):][:k + 1] if w is not None]
+    if len(seq) < 2:
+        return None
+    return sum((100 * (b - a)) ** 2 for a, b in zip(seq, seq[1:])) / (len(seq) - 1)
 
 
 HIST_EDGES = (3, 10, 30, 60, 120)   # seconds of dead time left on screen until the restart
@@ -167,6 +198,10 @@ def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
             card.entries_mid_play += 1
             card.mid_entries.append((s.t, s.kind, f"{dst.matchup}"))
         card.entries_in_break += brk
+        sus = suspense_at(dst, st)
+        if sus is not None:
+            card.suspense_sum += sus
+            card.suspense_n += 1
         card.entry_wait_s += min(wait, max(0.0, nxt - arrive))
         # plays that started airing while the screen was black, or were under way when it came up
         plen = _plen(dst.league)

@@ -67,6 +67,8 @@ METRICS = [
     ("mid_play", "Mid-play entries (per 100 landings)", "0", -1, 0.0, 5.0),
     ("high_leverage_leaves", "High-leverage mid-play leaves (close + late or OT; per 100 landings)", "0", -1, 0.0, 5.0),
     ("low_leverage_leaves", "Low-leverage mid-play leaves (allowed; per 100 landings)", "info", -1, None, None),
+    # [EXP-001] suspense at entry: S = E[(dWP)^2] over the 8 plays after each entry (WP points^2), beside mid-play
+    ("suspense_entry", "Suspense at entry (mean dWP^2 over the next 8 plays, WP pts^2)", "info", 1, None, None),
     ("landings_dead", "Landings in dead time", ">= 98%", 1, 98.0, 100.0),
     ("possession_start", "Entries at a possession start (dead ball, no play missed)", ">= 95%", 1, 95.0, 100.0),
     # Nick, Nov 4 10:55 AM: gates are honest against the hindsight ceiling: >= 95% OF ORACLE VALUE where the
@@ -209,6 +211,20 @@ def _row(key, value, lo, hi, status, detail, n_nights=None) -> dict:
     return {"key": key, "value": value, "lo": lo, "hi": hi, "status": status, "detail": detail, "nights": n_nights}
 
 
+def suspense_row(per: dict, note: str = "") -> dict:
+    """[EXP-001] Suspense at entry, an INFO line beside mid-play entries: mean S over every graded entry with
+    ESPN win probability (NFL, NBA; NHL's feed has none, so it is left out until EXP-002's WP model)."""
+    s = {lg: (sum(float(x.get("suspense_sum") or 0) for x in per[lg]), sum(int(x.get("suspense_n") or 0) for x in per[lg]))
+         for lg in LEAGUES if per[lg]}
+    n = sum(k for _, k in s.values())
+    if not n:
+        return _row("suspense_entry", None, None, None, INFO, "no entry with feed win probability in this slice" + note)
+    by = ", ".join(f"{lg.upper()} {v / k:.1f} ({k})" for lg, (v, k) in s.items() if k)
+    return _row("suspense_entry", round(sum(v for v, _ in s.values()) / n, 2), None, None, INFO,
+                f"{n} entries [{by}]; higher = we entered games whose next plays swung the result more" + note,
+                sum(1 for lg in s for x in per[lg] if x.get("suspense_n")))
+
+
 def _rate(key, rows, bar, upper_bound_only=False, note="") -> dict:
     rows = [(g, n) for g, n in rows if n]
     if not rows:
@@ -263,6 +279,7 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
             hi = round(300.0 / n_land, 2)
         rows.append(_row("mid_play", round(point, 2), round(lo, 2), round(hi, 2), st, det + note, len(ev)))
     rows += leave_rows(per, every, n_land, note)
+    rows.append(suspense_row(per, note))
 
     # 2. landings (both ends of every switch) in on-screen dead time
     rows.append(_rate("landings_dead", [(int(x.get("landings_dead") or 0), int(x.get("landings") or 0)) for x in every],
@@ -596,6 +613,8 @@ def _fmt(key, v) -> str:
         return str(int(v))
     if key == "wv_calibration_err":
         return f"{v:.1f} pts"
+    if key == "suspense_entry":
+        return f"{v:.1f} pts²"
     return f"{v:.2f}" if key in ("mid_play", "high_leverage_leaves", "low_leverage_leaves") else f"{v:.1f}%"
 
 
