@@ -15,11 +15,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     env:
       # v2 (END 20261103) is published but its locked set reaches back over 3-4 v1 dev nights, so
       # leak_check now FAILs it. v3 waits for enough FRESH nights (>= 8 locked nights all at or after
-      # v1's locked start, Oct 29): the Nov 5 night, so build it Fri Nov 6 morning.
+      # v1's locked start, Oct 29): the Nov 5 night, so build it Fri Nov 6 morning. Old your-team nights
+      # come from Oct 2025 - Jan 2026 only (before the Noggin's Feb 1 locked start: backfill OLD_SEASON).
       TAG: eval-data-v3
       END: "20261105"
     steps:
@@ -34,7 +35,8 @@ jobs:
         # NOT READY (too few fresh locked nights yet) is an expected state, not a red build: the
         # remaining steps are skipped and nothing is published. Re-run once the nights are final.
         run: |
-          if python scripts/backfill_eval_v2.py --end "$END" --json /tmp/backfill.json; then
+          # EXP-735 (Nick 2:00 AM, NBA first): the whole 2025-26 NBA (and NHL, shared) stretch to Jan 31 as DEV nights
+          if python scripts/backfill_eval_v2.py --end "$END" --season nba nhl --json /tmp/backfill.json; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
@@ -44,7 +46,8 @@ jobs:
         if: steps.bf.outputs.ready == 'true'
         run: |
           python scripts/build_eval_data.py --tag "$TAG" --out /tmp/evaldata --lock "$TAG.lock.json" \
-            --window nfl:20250905:$END --window nba:20260101:$END --window nhl:20260101:$END --demo 20261101
+            --window nfl:20250905:$END --window nba:20251021:$END --window nhl:20251007:$END --demo 20261101 \
+            --dev-before nba:20261001 --dev-before nhl:20261001
           cp "$TAG.lock.json" /tmp/evaldata/
           cp /tmp/backfill.json /tmp/evaldata/backfill-report.json
       - name: leak check on v2

@@ -1,0 +1,30 @@
+{
+ "name": "reasoner_lock",
+ "league": "nhl",
+ "label": "y_out",
+ "kind": "lock",
+ "n": 10505,
+ "base_rate": 0.0802,
+ "single": {
+  "period": 0.5756,
+  "clock_s": 0.5084,
+  "abs_diff": 0.6783,
+  "in_break": 0.5109,
+  "crunch": 0.5562,
+  "garbage": 0.5354,
+  "late": 0.5266,
+  "mine": 0.5092
+ },
+ "joint_auc": 0.7707,
+ "max_auc": 0.7707,
+ "features": [
+  "period",
+  "clock_s",
+  "abs_diff",
+  "in_break",
+  "crunch",
+  "garbage",
+  "late",
+  "mine"
+ ]
+}

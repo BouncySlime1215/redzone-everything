@@ -31,12 +31,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-_IP = re.compile(r"\b(?:10|127|172\.(?:1[6-9]|2\d|3[01])|192\.168)(?:\.\d{1,3}){2,3}\b")
+_IP = re.compile(r"\b(?:10|127|172\.(?:1[6-9]|2\d|3[01])|192\.168|169\.254)(?:\.\d{1,3}){2,3}\b")
+# Tailscale / carrier-grade NAT (100.64.0.0/10): the sticks' and the Mac's tailnet addresses, plus
+# Tailscale's IPv6 ULA prefix (fd7a:115c:a1e0::/48). Masked like LAN addresses (#lane2 Nov 5 collection).
+_CGNAT = re.compile(r"\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}\b")
+_TS6 = re.compile(r"\bfd7a:115c:a1e0(?::[0-9A-Fa-f]{0,4}){1,5}\b", re.I)
 _MAC = re.compile(r"\b[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}\b")
 TS_KEYS = ("ts", "decided_at", "cut_at", "t", "at", "time")
 
 
 def redact(line: str) -> str:
+    line = _TS6.sub("ts6.x", line)
+    line = _CGNAT.sub(lambda m: "ts." + m.group(0).rsplit(".", 1)[-1], line)
     return _MAC.sub("xx:xx:xx:xx:xx:xx", _IP.sub(lambda m: "lan." + m.group(0).rsplit(".", 1)[-1], line))
 
 
@@ -204,7 +210,8 @@ def summarize(got: dict[str, list[dict]]) -> dict:
         "switch_samples": len(tv), "switch_p50_s": round(sorted(tv)[len(tv) // 2], 2) if tv else None,
         "switch_p95_s": p95(tv), "switch_max_s": round(max(tv), 2) if tv else None,
         "tv_unverified": sum(1 for r in got["tv_input.jsonl"] if not r.get("verified")),
-        "cuts_graded": len(cuts), "entries_mid_play": sum(1 for r in cuts if r.get("enter") == "play"),
+        "cuts_graded": len(cuts), "entries_mid_play": sum(1 for r in cuts if r.get("enter") == "play" and not r.get("forced")),
+        "entries_mid_play_forced": sum(1 for r in cuts if r.get("enter") == "play" and r.get("forced")),
         "leaves_mid_play": sum(1 for r in cuts if r.get("leave") == "play"),
         "picture_within_3s": f"{sum(1 for x in pics if x <= 3)}/{len(pics)}" if pics else None,
         "picture_p95_s": p95(pics),
@@ -294,7 +301,7 @@ def main(argv=None) -> int:
     md = [f"# Live test logs since {s['since']}", "",
           f"- Switches (TV-confirmed): {s['switch_samples']}, p95 {s['switch_p95_s']} s, max {s['switch_max_s']} s, "
           f"unverified {s['tv_unverified']}",
-          f"- Cuts graded: {s['cuts_graded']}; entries mid-play {s['entries_mid_play']}, leaves mid-play {s['leaves_mid_play']}",
+          f"- Cuts graded: {s['cuts_graded']}; entries mid-play {s['entries_mid_play']} (+{s.get('entries_mid_play_forced', 0)} on your double Go now), leaves mid-play {s['leaves_mid_play']}",
           f"- Picture within 3 s: {s['picture_within_3s']}; cut -> picture p95 {s['picture_p95_s']} s",
           f"- Phone presses (decided kind=user -> picture): {s['press_samples']}, press-to-TV p95 "
           f"{s['press_to_tv_p95_s']} s, {s['press_no_picture']} never reached a picture",

@@ -66,3 +66,16 @@ def test_real_presses_grade_press_to_tv_p95_once_there_are_enough(tmp_path):
     drill = {"runs": [{"go_now_s": [2.0, 2.1]}], "summary": {}}
     sim = ns.press_row(drill, warm)                                                  # too few real: the sim decides
     assert sim["status"] == ns.PENDING and "real presses on Nick's TV" in sim["detail"]
+
+
+def test_presses_are_tagged_by_app_and_can_be_limited_to_prime():
+    import press_probe as pp
+    assert (pp.app_of("prime:amzn1.dv.gti.x"), pp.app_of("youtubetv:espn"), pp.app_of(None)) == ("prime", "yttv", None)
+    st = {"now": {"game_id": "a"}, "standby": {"game_id": "b", "ready": True},
+          "games": [{"id": g, "phase": "live", "where": {"target": t}} for g, t in
+                    (("a", "youtubetv:fox"), ("b", "youtubetv:espn"), ("c", "prime:p1"))]}
+    assert pp.game_app(st, "c") == "prime"
+    assert pp.pick(st, "warm", None, "prime") is None
+    assert pp.pick(st, "any", None, "prime") == ("c", "cold")
+    assert pp.pick(st, "warm", None, "yttv") == ("b", "warm")
+

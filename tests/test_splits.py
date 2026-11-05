@@ -69,3 +69,27 @@ def test_pinned_archive_locked_test_set_does_not_leak(league):
             by_night.setdefault(start.strftime("%Y%m%d"), []).append(f.stem.split("_", 1)[1])
     s = splits.split_nights(by_night)
     assert s.test and splits.leaks(s, by_night) == []
+
+
+def test_dev_before_keeps_old_season_out_of_locked():
+    """EXP-735: a whole old season joins as dev; locked stays the newest 25 % of the CURRENT season."""
+    from redzone.lab import splits
+    old = [f"2025{m:02d}{d:02d}" for m in (11, 12) for d in range(1, 29)]          # 56 old nights
+    cur = [f"202610{d:02d}" for d in range(20, 32)] + ["20261101"]                # 13 current nights
+    plain = splits.split_nights(old + cur)
+    assert any(n < "20261001" for n in plain.test)                               # without the cut: old nights lock
+    s = splits.split_nights(old + cur, dev_before="20261001")
+    assert s.test == tuple(cur[-4:])                                             # ceil(13 * .25) = 4, as v1
+    assert set(old) <= set(s.train)
+    assert not splits.leaks(s) and s.valid and max(s.valid) < min(s.test)
+    assert splits.split_nights(cur, dev_before="20261001") == splits.split_nights(cur)  # v1 nights: unchanged
+    only_old = splits.split_nights(old, dev_before="20261001")
+    assert only_old.test == () and only_old.valid                                # nothing current: nothing locked
+
+
+def test_league_split_reads_the_pin(monkeypatch):
+    from redzone.lab import splits
+    monkeypatch.setattr(splits, "dev_before", lambda lg: "20261001" if lg == "nba" else None)
+    ns = ["20251101", "20251102", "20261020", "20261021", "20261022", "20261023"]
+    assert splits.league_split("nba", ns).test == ("20261023",)
+    assert splits.league_split("nfl", ns).test == splits.split_nights(ns).test

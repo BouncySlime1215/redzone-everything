@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 
 log = logging.getLogger("redzone.sync")
 
-SIGMA = {"flip": 3.0, "score": 2.0, "clock": 1.5, "tap": 4.0, "mic": 3.0, "break": 8.0}
+SIGMA = {"flip": 3.0, "score": 2.0, "clock": 1.5, "tap": 4.0, "mic": 3.0, "break": 8.0, "epoch": 0.5}
 DRIFT_ALARM_S = 5.0           # [SYNC 6] the delay moved this far from what it was when it synced: alarm
 Q_SCALE_MAX = 25.0            # [SYNC 4] worst network condition: the delay wanders this much faster
 POSITION_SIGMA_S = 0.5        # default doubt of one position read once the stick clock is pinned

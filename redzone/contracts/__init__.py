@@ -6,6 +6,7 @@ integration/next, list the callers, and update tests/test_contracts.py in the sa
 from redzone.contracts.breaks import BreakForecast, BreakKind, BreakModel
 from redzone.contracts.budget import BUDGET_MS, TickTimer
 from redzone.contracts.clock import Clock
+from redzone.contracts.events import Event, Primitive, from_play, primitive_of, tokens_v1
 from redzone.contracts.feeds import FeedSnapshot, GameFeed, Feeds
 from redzone.contracts.flags import DEGRADED, Flag, enabled
 from redzone.contracts.guard import HARD_RULES, traced
@@ -32,6 +33,11 @@ __all__ = [
     "BUDGET_MS",
     "TickTimer",
     "Clock",
+    "Event",
+    "Primitive",
+    "from_play",
+    "primitive_of",
+    "tokens_v1",
     "FeedSnapshot",
     "GameFeed",
     "Feeds",

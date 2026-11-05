@@ -32,7 +32,8 @@
    "kind": "module",
    "outputs": [
     "agent/kaggle/grade.py",
-    "scripts/distill.py"
+    "scripts/distill.py",
+    "scripts/label_leak_check.py"
    ],
    "owner": "LOCAL AI",
    "role": "Score reasoner answers against what actually happened, on held-out (test) nights.",
@@ -165,6 +166,17 @@
    "outputs": [],
    "owner": "LOCAL AI",
    "role": "Turn a ``# %%`` percent-format script into a Kaggle/Jupyter notebook.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "agent/kaggle/commentary_queue.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [],
+   "owner": "LOCAL AI",
+   "role": "[EXP-1402, Data planner E] Causal per-play commentary requests for the 32B Teacher, TRAIN nights only.",
    "serves": [
     "untagged"
    ]
@@ -460,6 +472,38 @@
     "untagged"
    ]
   },
+  "redzone/buffer_rc8.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py",
+    "scripts/rc8_flip.py",
+    "scripts/rc8_gate_report.py"
+   ],
+   "owner": "unowned",
+   "role": "[RC8] The time-shift buffer ON release, per league (Nick, Nov 5 2026 9:10 / 9:35 AM).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/buffer_shadow.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/decider/decider.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py"
+   ],
+   "owner": "unowned",
+   "role": "[time-shift buffer, SHADOW] Nick, 9:10 AM Nov 5: \"the time-shift buffer is now the main architecture\".",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/calibration.py": {
    "contracts": [
     "seek_model"
@@ -498,9 +542,11 @@
     "redzone/lab/night/run.py",
     "redzone/plan.py",
     "redzone/supervisor.py",
+    "redzone/sync_edge.py",
     "redzone/tuners/tuners.py",
     "redzone/web/server.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
     "scripts/hold_left_probe.py",
@@ -536,6 +582,7 @@
     "agent/kaggle/build_moments_kaggle.py",
     "redzone/__main__.py",
     "redzone/autonomy.py",
+    "redzone/buffer_rc8.py",
     "redzone/control.py",
     "redzone/crunch.py",
     "redzone/decider/decider.py",
@@ -548,6 +595,7 @@
     "redzone/lab/evaldata.py",
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
+    "redzone/lab/orient.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/tune.py",
@@ -562,12 +610,15 @@
     "scripts/eval.py",
     "scripts/eval_reasoner.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
     "scripts/hold_left_probe.py",
     "scripts/night_report.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
+    "scripts/rc8_flip.py",
+    "scripts/rc8_gate_report.py",
     "scripts/replay_check.py",
     "scripts/rz.py",
     "scripts/service.py",
@@ -580,6 +631,86 @@
     "untagged"
    ]
   },
+  "redzone/context/__init__.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "package",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Context & hype data (Data Planner B): injuries, refs, weather, standings, buzz.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/context/buzz.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/context/tokens.py",
+    "redzone/models.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "BUZZ core for Data Crew B: Wikipedia pageviews, Wikipedia edit rate and GDELT news volume/tone.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/context/nba.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/context/standings.py",
+    "redzone/context/tokens.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "NBA context (Data Crew B, worker B4): schedule + results, id crosswalk, rest/travel and L2M referee facts.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/context/schedules.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Schedule + results loaders shared by the context scripts (stakes, weather).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/context/standings.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/context/tokens.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/context/nba.py"
+   ],
+   "owner": "unowned",
+   "role": "Point-in-time standings, online Elo and a playoff-odds Monte Carlo, league-generic (Crew B, worker B3).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/context/tokens.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/context/buzz.py",
+    "redzone/context/nba.py",
+    "redzone/context/standings.py"
+   ],
+   "owner": "unowned",
+   "role": "Context fact shards for Data Planner B, in lane 1's vocab v2 hand-off format.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/contracts/__init__.py": {
    "contracts": [
     "BUDGET_MS",
@@ -588,6 +719,7 @@
     "BreakModel",
     "Clock",
     "DEGRADED",
+    "Event",
     "Expectation",
     "Fault",
     "FeedSnapshot",
@@ -603,6 +735,7 @@
     "MemoryTrace",
     "MomentModel",
     "MomentPrediction",
+    "Primitive",
     "Reasoner",
     "ReasonerView",
     "ReelJump",
@@ -623,15 +756,19 @@
     "deadline",
     "enabled",
     "freeze",
+    "from_play",
     "moment_view",
+    "primitive_of",
     "reel_option",
     "sync_view",
+    "tokens_v1",
     "traced"
    ],
    "inputs": [
     "redzone/contracts/breaks.py",
     "redzone/contracts/budget.py",
     "redzone/contracts/clock.py",
+    "redzone/contracts/events.py",
     "redzone/contracts/feeds.py",
     "redzone/contracts/flags.py",
     "redzone/contracts/guard.py",
@@ -651,6 +788,7 @@
     "uses:BreakModel",
     "uses:Clock",
     "uses:DEGRADED",
+    "uses:Event",
     "uses:Expectation",
     "uses:Fault",
     "uses:FeedSnapshot",
@@ -666,6 +804,7 @@
     "uses:MemoryTrace",
     "uses:MomentModel",
     "uses:MomentPrediction",
+    "uses:Primitive",
     "uses:Reasoner",
     "uses:ReasonerView",
     "uses:ReelJump",
@@ -686,9 +825,12 @@
     "uses:deadline",
     "uses:enabled",
     "uses:freeze",
+    "uses:from_play",
     "uses:moment_view",
+    "uses:primitive_of",
     "uses:reel_option",
     "uses:sync_view",
+    "uses:tokens_v1",
     "uses:traced"
    ],
    "kind": "package",
@@ -747,6 +889,24 @@
    ],
    "owner": "INTEGRATION",
    "role": "One clock: wall time, feed (data) time and per-channel screen time.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/contracts/events.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/contracts/__init__.py",
+    "redzone/noggin/synth.py",
+    "scripts/synth_build.py"
+   ],
+   "owner": "INTEGRATION",
+   "role": "[EXP-003] One event language for every sport: each play of any league becomes one typed Event built from a few shared primitives (what kind of thing happened...",
    "serves": [
     "untagged"
    ]
@@ -1116,6 +1276,25 @@
     "Your-team crunch live"
    ]
   },
+  "redzone/decider/break_tail.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/decider/decider.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-728 / EXP-736] Land late in a break, not early: the restart a break is predicted to end at.",
+   "serves": [
+    "Crunch live, NBA",
+    "Crunch live, NFL",
+    "Crunch live, NHL",
+    "Entries at a possession start (dead ball, no play missed)",
+    "Landings in dead time",
+    "Mid-play entries (per 100 landings)",
+    "Your-team crunch live"
+   ]
+  },
   "redzone/decider/core.py": {
    "contracts": [],
    "inputs": [
@@ -1174,6 +1353,7 @@
    "inputs": [
     "redzone/config.py",
     "redzone/contracts/switching.py",
+    "redzone/decider/break_tail.py",
     "redzone/decider/core.py",
     "redzone/decider/cuts.py",
     "redzone/decider/playbooks.py",
@@ -1189,6 +1369,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/buffer_shadow.py",
     "redzone/contracts/legacy.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
@@ -1304,6 +1485,7 @@
     "redzone/lab/replaycheck.py",
     "redzone/lab/sportsgrade.py",
     "redzone/lab/syncsim.py",
+    "redzone/noggin/belief.py",
     "redzone/supervisor.py",
     "scripts/delay_report.py"
    ],
@@ -1331,7 +1513,8 @@
    "outputs": [
     "redzone/decider/screen.py",
     "redzone/engine.py",
-    "redzone/screen/scorebug.py"
+    "redzone/screen/scorebug.py",
+    "redzone/sync_probe.py"
    ],
    "owner": "unowned",
    "role": "Automatic per-channel sync: each channel's screen delay tracked by a small Kalman filter, no taps.",
@@ -1553,6 +1736,8 @@
    ],
    "inputs": [
     "redzone/bets.py",
+    "redzone/buffer_rc8.py",
+    "redzone/buffer_shadow.py",
     "redzone/calibration.py",
     "redzone/channels.py",
     "redzone/commands.py",
@@ -1568,6 +1753,7 @@
     "redzone/grading.py",
     "redzone/models.py",
     "redzone/network.py",
+    "redzone/noggin/belief.py",
     "redzone/plan.py",
     "redzone/platform/agent_fix.py",
     "redzone/platform/wake.py",
@@ -1582,11 +1768,13 @@
     "redzone/screen/audio.py",
     "redzone/screen/boundary.py",
     "redzone/screen/scorebug.py",
+    "redzone/screen/tap_bug.py",
     "redzone/screen_ocr.py",
     "redzone/sources/espn.py",
     "redzone/sources/eventlinks.py",
     "redzone/sources/fastcast.py",
     "redzone/sources/fastcast_check.py",
+    "redzone/sources/fastfeeds.py",
     "redzone/sources/feeds.py",
     "redzone/sources/http.py",
     "redzone/sources/leagues.py",
@@ -1671,6 +1859,8 @@
     "redzone/lab/backtest.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/oracle_window.py",
+    "redzone/lab/reactgrade.py",
     "redzone/lab/sportsgrade.py",
     "redzone/lab/timing.py",
     "redzone/noggin/pick.py"
@@ -1704,6 +1894,21 @@
    "role": "no docstring",
    "serves": [
     "untagged"
+   ]
+  },
+  "redzone/lab/also_close.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/night_ab.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/also_close_line.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-039] Grade the \"Also close\" line: does showing other late, close games as text cut the curiosity switches (manual switches) without costing big plays?",
+   "serves": [
+    "Big plays live or replayed within 3 min"
    ]
   },
   "redzone/lab/backtest.py": {
@@ -1742,14 +1947,22 @@
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/oracle_window.py",
+    "redzone/lab/reactgrade.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/sportsgrade.py",
     "redzone/lab/tune.py",
     "scripts/backtest.py",
+    "scripts/buffer_shadow_grade.py",
+    "scripts/buffer_sweep.py",
+    "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/leak_check.py",
+    "scripts/measure_break_lengths.py",
+    "scripts/noggin_selfplay.py",
     "scripts/train_noggin_pick.py"
    ],
    "owner": "INTEGRATION",
@@ -1875,7 +2088,10 @@
     "redzone/lab/backtest.py",
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
+    "scripts/buffer_shadow_grade.py",
+    "scripts/entry_autopsy.py",
     "scripts/eval.py",
+    "scripts/measure_break_lengths.py",
     "scripts/northstar.py"
    ],
    "owner": "INTEGRATION",
@@ -1920,6 +2136,21 @@
     "Mid-play entries (per 100 landings)"
    ]
   },
+  "redzone/lab/delaygrade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/reactgrade.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/delay_grade.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-803] Delay precision grader, matching EXP-803's pre-registration exactly (#296, rescoped Cycle 19 #295).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/evaldata.py": {
    "contracts": [
     "ConfigSwitchPaths"
@@ -1932,11 +2163,14 @@
    "kind": "module",
    "outputs": [
     "redzone/demo/__main__.py",
+    "redzone/lab/splits.py",
     "scripts/backfill_eval_v2.py",
     "scripts/build_eval_data.py",
+    "scripts/data_landing_grade.py",
     "scripts/eval.py",
     "scripts/eval_break_blend.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fetch_eval_data.py",
     "scripts/leak_check.py"
    ],
@@ -1955,6 +2189,7 @@
    "kind": "module",
    "outputs": [
     "redzone/lab/backtest.py",
+    "redzone/lab/outcome_label.py",
     "redzone/lab/sportsgrade.py"
    ],
    "owner": "unowned",
@@ -2122,6 +2357,34 @@
     "untagged"
    ]
   },
+  "redzone/lab/night_ab.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/lab/also_close.py"
+   ],
+   "owner": "unowned",
+   "role": "Whole-night A/B for display experiments (lane 5): one number per night on each side, a bootstrap interval on mean(on) - mean(off), and a PASS / FAIL / PENDIN...",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/offpolicy.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/worth.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/offpolicy_score.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-005] Off-policy grading: how a NEW decider would have done on nights the live one already ran, from the live decisions' logged option sets and propensit...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/optimize.py": {
    "contracts": [],
    "inputs": [
@@ -2152,13 +2415,67 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/lab/oracle_window.py",
+    "redzone/lab/reactgrade.py",
+    "scripts/buffer_sweep.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
+    "scripts/noggin_selfplay.py",
     "scripts/train_noggin_pick.py",
     "scripts/train_noggin_pick_dagger.py"
    ],
    "owner": "unowned",
    "role": "Hindsight oracle: the best schedule anyone could have run on an archived night (offline only).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/oracle_window.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/grading.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/oracle.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/buffer_sweep.py"
+   ],
+   "owner": "unowned",
+   "role": "[time-shift buffer] The windowed-hindsight oracle (Nick 9:10 AM Nov 5): exact DP over only what the buffer reveals, past-only value beyond the window.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/orient.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/also_close_line.py",
+    "scripts/orient_line.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-038] Grade the orientation beat: do overrides right after an automatic switch drop when the phone shows a 2-3 s \"who, score, clock, one fact\" beat?",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/outcome_label.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/leverage.py",
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/lab/reasoner_data.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-302] The lock label from REAL outcomes, not from our own clock/crunch rule (Nick, Nov 5 1:50 AM ET).",
    "serves": [
     "untagged"
    ]
@@ -2180,11 +2497,46 @@
     "STK-04"
    ]
   },
+  "redzone/lab/primegrade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/syncgrade.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/sync_grade.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-800 Prime] Grade the diamond plan's Prime tests (docs/sync/2026-11-05-diamond-plan.md, 7f32aaa6) on the sticks' own media_session rows.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/reactgrade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/grading.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/oracle.py",
+    "redzone/lab/sportsgrade.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/lab/delaygrade.py",
+    "scripts/reactgrade.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-301] Grader for the delay-and-react test (Nick, Nov 5 12:25 AM and 12:28 AM ET).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/reasoner_data.py": {
    "contracts": [],
    "inputs": [
     "redzone/config.py",
     "redzone/lab/backtest.py",
+    "redzone/lab/outcome_label.py",
     "redzone/lab/sportsgrade.py",
     "redzone/models.py",
     "redzone/reasoner/brief.py",
@@ -2227,15 +2579,21 @@
   },
   "redzone/lab/splits.py": {
    "contracts": [],
-   "inputs": [],
+   "inputs": [
+    "redzone/lab/evaldata.py"
+   ],
    "kind": "module",
    "outputs": [
     "redzone/lab/breakblend.py",
     "redzone/lab/tune.py",
     "scripts/backfill_eval_v2.py",
+    "scripts/data_landing_grade.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
-    "scripts/leak_check.py"
+    "scripts/exp023_belief.py",
+    "scripts/leak_check.py",
+    "scripts/measure_break_lengths.py",
+    "scripts/switch_eval_pin.py"
    ],
    "owner": "unowned",
    "role": "Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03).",
@@ -2278,15 +2636,31 @@
    "outputs": [
     "agent/kaggle/build_moments_kaggle.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/reactgrade.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/tune.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/train_noggin_pick.py"
    ],
    "owner": "INTEGRATION",
    "role": "League-aware report card for backtests (NFL, NBA, NHL, MLB).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/syncgrade.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/lab/primegrade.py",
+    "scripts/sync_grade.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-800 / EXP-801] Grade the sync program on the sticks' own behind-live meter (overseer tests, Nov 5 2:30 AM).",
    "serves": [
     "untagged"
    ]
@@ -2315,6 +2689,7 @@
    "outputs": [
     "redzone/lab/backtest.py",
     "scripts/burst_align.py",
+    "scripts/exp023_belief.py",
     "scripts/timing_report.py"
    ],
    "owner": "unowned",
@@ -2349,6 +2724,7 @@
    "inputs": [],
    "kind": "module",
    "outputs": [
+    "redzone/lab/offpolicy.py",
     "scripts/worth_line.py"
    ],
    "owner": "unowned",
@@ -2381,7 +2757,9 @@
     "redzone/autonomy.py",
     "redzone/bets.py",
     "redzone/channels.py",
+    "redzone/context/buzz.py",
     "redzone/contracts/breaks.py",
+    "redzone/contracts/events.py",
     "redzone/contracts/feeds.py",
     "redzone/contracts/legacy.py",
     "redzone/contracts/moment.py",
@@ -2405,6 +2783,7 @@
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/outcome_label.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/sportsdata.py",
@@ -2430,6 +2809,7 @@
     "redzone/scoring/postseason.py",
     "redzone/sources/espn.py",
     "redzone/sources/fastcast.py",
+    "redzone/sources/fastfeeds.py",
     "redzone/sources/feeds.py",
     "redzone/sources/leagues.py",
     "redzone/sources/merge.py",
@@ -2438,13 +2818,20 @@
     "redzone/views.py",
     "redzone/web/phone_v2.py",
     "scripts/backtest.py",
+    "scripts/buffer_shadow_grade.py",
+    "scripts/buffer_sweep.py",
     "scripts/build_reasoner_data.py",
+    "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/leak_check.py",
+    "scripts/measure_break_lengths.py",
     "scripts/noggin_factory.py",
+    "scripts/noggin_tokens.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
+    "scripts/rc8_flip.py",
     "scripts/replay_check.py",
     "scripts/train_noggin_pick.py",
     "scripts/train_noggin_timing.py"
@@ -2512,6 +2899,22 @@
     "untagged"
    ]
   },
+  "redzone/noggin/belief.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/decider/screen.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py",
+    "scripts/exp023_belief.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-023] Belief tracker: a per-game particle filter for the TV lag and the feed lag, with an online Bayesian model of each broadcast's break rhythm.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/noggin/factory.py": {
    "contracts": [],
    "inputs": [
@@ -2521,8 +2924,15 @@
    ],
    "kind": "module",
    "outputs": [
+    "scripts/exp022_tpp.py",
+    "scripts/green_summaries.py",
+    "scripts/kaggle_noggin_factory.py",
+    "scripts/nhl_apiweb.py",
     "scripts/noggin_factory.py",
-    "scripts/train_noggin_pick.py"
+    "scripts/noggin_tokens.py",
+    "scripts/retrosheet_plays.py",
+    "scripts/train_noggin_pick.py",
+    "scripts/world_model_pilot.py"
    ],
    "owner": "unowned",
    "role": "Noggin data factory: labeled dead-ball moments from free public play-by-play with real wall clocks.",
@@ -2545,7 +2955,8 @@
     "redzone/noggin/predict.py",
     "redzone/noggin/predict_fit.py",
     "redzone/noggin/timing.py",
-    "redzone/noggin/timing_fit.py"
+    "redzone/noggin/timing_fit.py",
+    "scripts/exp022_tpp.py"
    ],
    "owner": "unowned",
    "role": "Noggin Timing features and window labels: numpy + stdlib only (the live app has no pandas).",
@@ -2598,7 +3009,9 @@
    "kind": "module",
    "outputs": [
     "redzone/decider/decider.py",
+    "scripts/buffer_sweep.py",
     "scripts/eval_sports.py",
+    "scripts/noggin_selfplay.py",
     "scripts/train_noggin_pick.py",
     "scripts/train_noggin_pick_dagger.py"
    ],
@@ -2675,6 +3088,21 @@
     "GAME-04"
    ]
   },
+  "redzone/noggin/synth.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/contracts/events.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/synth_build.py"
+   ],
+   "owner": "unowned",
+   "role": "[Data division E] Synthetic and teacher tokens for the NFM, with the 3x-real cap enforced in code.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/noggin/timing.py": {
    "contracts": [],
    "inputs": [
@@ -2688,6 +3116,7 @@
     "redzone/noggin/pick.py",
     "redzone/noggin/predict.py",
     "redzone/noggin/timing_fit.py",
+    "scripts/exp022_tpp.py",
     "scripts/train_noggin_timing.py"
    ],
    "owner": "unowned",
@@ -2705,6 +3134,7 @@
    "kind": "module",
    "outputs": [
     "redzone/noggin/predict_fit.py",
+    "scripts/exp022_tpp.py",
     "scripts/train_noggin_timing.py"
    ],
    "owner": "unowned",
@@ -3244,10 +3674,26 @@
    ],
    "kind": "module",
    "outputs": [
-    "redzone/engine.py"
+    "redzone/engine.py",
+    "redzone/screen/tap_bug.py"
    ],
    "owner": "SYNC",
    "role": "Stream delay measured from the broadcast's own score bug (no taps, no keys pressed).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/screen/tap_bug.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/screen/scorebug.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py"
+   ],
+   "owner": "SYNC",
+   "role": "[EXP-741 E, decider.entry.user_bug_gate] The Prime score bug's game clock as a tap's dead-ball signal.",
    "serves": [
     "untagged"
    ]
@@ -3297,6 +3743,7 @@
    "kind": "module",
    "outputs": [
     "agent/distill/jump.py",
+    "redzone/contracts/events.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
     "redzone/grading.py",
@@ -3308,6 +3755,7 @@
     "redzone/lab/leverage.py",
     "redzone/lab/night/run.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/outcome_label.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/sportsdata.py",
@@ -3317,10 +3765,16 @@
     "redzone/noggin/pick.py",
     "redzone/recorder.py",
     "redzone/sources/fastcast.py",
+    "redzone/sources/fastfeeds.py",
     "redzone/sources/leagues.py",
     "redzone/views.py",
+    "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
+    "scripts/green_summaries.py",
+    "scripts/measure_break_lengths.py",
     "scripts/noggin_factory.py",
+    "scripts/noggin_tokens.py",
     "scripts/plan_tonight.py",
     "scripts/train_noggin_pick.py"
    ],
@@ -3377,6 +3831,24 @@
     "untagged"
    ]
   },
+  "redzone/sources/fastfeeds.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/models.py",
+    "redzone/sources/espn.py",
+    "redzone/sources/http.py",
+    "redzone/sources/leagues.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py"
+   ],
+   "owner": "PLATFORM",
+   "role": "[tracker item 5, Nov 5] Fast league feeds in SHADOW: polled faster than ESPN, logged, never merged.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/sources/feeds.py": {
    "contracts": [
     "FeedSnapshot",
@@ -3408,6 +3880,7 @@
    "kind": "module",
    "outputs": [
     "redzone/engine.py",
+    "redzone/sources/fastfeeds.py",
     "redzone/sources/feeds.py",
     "scripts/fault_drill.py",
     "scripts/plan_tonight.py"
@@ -3427,7 +3900,8 @@
    "kind": "module",
    "outputs": [
     "redzone/engine.py",
-    "redzone/recorder.py"
+    "redzone/recorder.py",
+    "redzone/sources/fastfeeds.py"
    ],
    "owner": "PLATFORM",
    "role": "League feeds that are faster or richer than ESPN for some things.",
@@ -3534,10 +4008,27 @@
     "untagged"
    ]
   },
+  "redzone/sync_edge.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/channels.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/sync_probe.py"
+   ],
+   "owner": "unowned",
+   "role": "[SYNC program A, EXP-800/801] Where each stick is against its stream's live edge, read every second.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/sync_probe.py": {
    "contracts": [],
    "inputs": [
     "redzone/config.py",
+    "redzone/decider/sync.py",
+    "redzone/sync_edge.py",
     "redzone/tuners/adb.py"
    ],
    "kind": "module",
@@ -3958,7 +4449,9 @@
    ],
    "kind": "module",
    "outputs": [
-    "redzone/web/server.py"
+    "redzone/web/server.py",
+    "scripts/also_close_line.py",
+    "scripts/orient_line.py"
    ],
    "owner": "EXPERIENCE",
    "role": "Phone page v2 (flag `phone.v2`, default OFF): why each switch happened, rate it, \"I missed that\", and the Noggin Priority L2 sliders.",
@@ -3986,6 +4479,45 @@
    ],
    "owner": "PLATFORM",
    "role": "Phone control page + JSON API.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/also_close_line.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/also_close.py",
+    "redzone/lab/orient.py",
+    "redzone/web/phone_v2.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-039] Print the \"Also close\" line: manual-switch share on nights with phone.also_close on vs off.",
+   "serves": [
+    "Big plays live or replayed within 3 min"
+   ]
+  },
+  "scripts/attention_labels.py": {
+   "contracts": [],
+   "inputs": [
+    "scripts/wv_aux_label.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Data G: per-play human-attention labels for Watch Value (EXP-1704), plus the WP-only drama baseline.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/attention_pull.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Data Division G: attention at scale.",
    "serves": [
     "untagged"
    ]
@@ -4026,6 +4558,38 @@
    "outputs": [],
    "owner": "INTEGRATION",
    "role": "Replay a past NFL Sunday through the app and print the report card.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/buffer_shadow_grade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/models.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Time-shift buffer shadow log: schema + Rule #1 (test writers, Cycle 24).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/buffer_sweep.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/oracle.py",
+    "redzone/lab/oracle_window.py",
+    "redzone/models.py",
+    "redzone/noggin/pick.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[time-shift buffer] Oracle side of the buffer sweep (Nick 9:10 AM Nov 5, parts B + C).",
    "serves": [
     "untagged"
    ]
@@ -4112,6 +4676,17 @@
     "untagged"
    ]
   },
+  "scripts/catchup_ratchet.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[time to see, Nick Nov 5 2026 12:28 AM ET] The catch-up window ratchet (docs/catchup_ratchet.json).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/check_memory.py": {
    "contracts": [],
    "inputs": [],
@@ -4152,6 +4727,17 @@
    "outputs": [],
    "owner": "unowned",
    "role": "City map: one generated graph of every RedZone module (role, inputs -> outputs, owner, serves).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/clock_truth_grade.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Clock-truth re-grade of entries (PROPOSAL, test writers, EXP-744).",
    "serves": [
     "untagged"
    ]
@@ -4203,6 +4789,20 @@
     "untagged"
    ]
   },
+  "scripts/data_landing_grade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/evaldata.py",
+    "redzone/lab/splits.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Data landing grader (PROPOSAL, test writers, Nov 5 2026; EXP-705).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/data_ledger.py": {
    "contracts": [],
    "inputs": [
@@ -4214,6 +4814,19 @@
    "role": "Data ledger: fold a factory manifest into docs/data-ledger.json and print the cycle plan's table.",
    "serves": [
     "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)"
+   ]
+  },
+  "scripts/delay_grade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/delaygrade.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-803] Grade delay-precision arms against the base arm (redzone/lab/delaygrade.py).",
+   "serves": [
+    "untagged"
    ]
   },
   "scripts/delay_report.py": {
@@ -4301,6 +4914,22 @@
    "outputs": [],
    "owner": "PLATFORM",
    "role": "Download a past NFL regular season (scoreboards + play-by-play) for the training lab.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/entry_autopsy.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Entry autopsy (PROPOSAL, test writers; EXP-700 / EXP-727 / EXP-736).",
    "serves": [
     "untagged"
    ]
@@ -4404,6 +5033,44 @@
     "untagged"
    ]
   },
+  "scripts/exp022_tpp.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/noggin/factory.py",
+    "redzone/noggin/features.py",
+    "redzone/noggin/timing.py",
+    "redzone/noggin/timing_fit.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-022] The event-token world model read as a timing point process vs Noggin Timing v1's trees, on green data.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/exp023_belief.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/config.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/evaldata.py",
+    "redzone/lab/splits.py",
+    "redzone/lab/sportsgrade.py",
+    "redzone/lab/timing.py",
+    "redzone/models.py",
+    "redzone/noggin/belief.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-023] Belief tracker vs the DelayBook baseline, on DEV nights only (docs/prereg/exp-023.md).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/export_decision_records.py": {
    "contracts": [],
    "inputs": [
@@ -4428,6 +5095,28 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Export briefs + hindsight targets for the game-reasoner language model (LoRA on the shared base).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/family_holm.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Family-wise correction for experiments that share dev nights (PROPOSAL, test writers, EXP-722).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/fast_feed_race.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[tracker item 5] The feed lag race: fast league feeds (fast_feeds.jsonl) vs ESPN (plays.jsonl), per league.",
    "serves": [
     "untagged"
    ]
@@ -4505,6 +5194,17 @@
     "untagged"
    ]
   },
+  "scripts/gate_power.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "How many nights does a gate need?",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/grading_check.py": {
    "contracts": [],
    "inputs": [],
@@ -4512,6 +5212,20 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Grading rules in CI (docs/grading.md; Nick, Nov 4 2026 6:40 PM ET: \"grading even SHARPER\").",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/green_summaries.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/noggin/factory.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-102] Green moment source: nflverse NFL and NBA.com cdn NBA play-by-play -> ESPN-summary-shaped archives, so the reasoner moment builder (agent/kaggle/bu...",
    "serves": [
     "untagged"
    ]
@@ -4531,6 +5245,43 @@
     "STK-07"
    ]
   },
+  "scripts/kaggle_noggin_factory.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/noggin/factory.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "no docstring",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/kaggle_pbp_crew.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "no docstring",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/label_leak_check.py": {
+   "contracts": [],
+   "inputs": [
+    "agent/distill/evaluate.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Context-only label leak check (grader freeze v17; Nick, Nov 5 1:50 AM).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/leak_check.py": {
    "contracts": [],
    "inputs": [
@@ -4548,6 +5299,45 @@
     "untagged"
    ]
   },
+  "scripts/license_check.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "F8 license-tag check (Test Factory; Nick, Nov 4 2026 11:20 PM ET, data B).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/measure_break_lengths.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/lab/splits.py",
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[Data F] Measured break lengths by league x network x break kind, from the pinned archive.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/media_pull.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Media metadata workers (Data Division, type C): which plays got clipped, and how much people watched.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/multiview_probe.py": {
    "contracts": [],
    "inputs": [
@@ -4561,6 +5351,30 @@
    "outputs": [],
    "owner": "unowned",
    "role": "At home, ~5 minutes, before the games: measure YouTube TV multiview on a real stick.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/nba_cdn_plays.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "NBA.com's own action log (cdn liveData, packaged by shufinskiy/nba_data) -> hoopR-schema play rows (plan A NBA).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/nhl_apiweb.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/noggin/factory.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "NHL api-web play-by-play + shift charts -> the factory's compact ESPN-shaped game records (NFM tokens).",
    "serves": [
     "untagged"
    ]
@@ -4593,6 +5407,36 @@
     "untagged"
    ]
   },
+  "scripts/noggin_selfplay.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/oracle.py",
+    "redzone/noggin/pick.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Noggin self-play: PICK training rows from the hindsight oracle, on real AND synthetic nights.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/noggin_tokens.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/models.py",
+    "redzone/noggin/factory.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Noggin Foundation Model (NFM) event tokens: every play of every game as a short token group, per season.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/northstar.py": {
    "contracts": [],
    "inputs": [
@@ -4605,6 +5449,44 @@
    "role": "The North Star table: where we are against \"perfect\", in one place, with honest error bars.",
    "serves": [
     "STK-06"
+   ]
+  },
+  "scripts/offpolicy_score.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/offpolicy.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-005] Score a candidate decider off-policy on logged nights (redzone/lab/offpolicy.py).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/orient_line.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/orient.py",
+    "redzone/web/phone_v2.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-038] Print the orientation-beat line: override rates on nights with phone.orient on vs off.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/pack_factory_code.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Pack the code the Kaggle factory notebook needs into rz_factory_code.tar.gz (no data, no secrets).",
+   "serves": [
+    "untagged"
    ]
   },
   "scripts/perf_probe.py": {
@@ -4755,6 +5637,48 @@
     "STK-06"
    ]
   },
+  "scripts/rc8_flip.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/buffer_rc8.py",
+    "redzone/config.py",
+    "redzone/models.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[RC8] Turn the time-shift buffer ON (or back OFF) for ONE league.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/rc8_gate_report.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/buffer_rc8.py",
+    "redzone/config.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[RC8] Per-league report of the pre-registered buffer gate (docs/plans/2026-11-05-rc8-buffer-gate.md) for Nick.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/reactgrade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/reactgrade.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-301] Grade the delay-and-react arms (lane 2's EXP-209 rows) per league and condition.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/release_gate.py": {
    "contracts": [],
    "inputs": [],
@@ -4781,6 +5705,19 @@
     "untagged"
    ]
   },
+  "scripts/retrosheet_plays.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/noggin/factory.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Retrosheet event files -> the ESPN-format MLB play dicts the tokenizer reads (Wave 1, green).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/rz.py": {
    "contracts": [],
    "inputs": [
@@ -4794,6 +5731,28 @@
    "outputs": [],
    "owner": "PLATFORM",
    "role": "Hands-on stick tools for testing (Phase 2 and the Screen Lab).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/scout_ledger.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Data scout ledger: check docs/datasources/scout.json and render scout-ledger.md, ranked by new information per GB.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/scout_probe.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Data scout probe: for each scout.json source, read the host's robots.txt and fetch ONE probe URL.",
    "serves": [
     "untagged"
    ]
@@ -4854,6 +5813,30 @@
     "untagged"
    ]
   },
+  "scripts/switch_eval_pin.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/splits.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Switch the default eval-data pin to a newly published release (Fri Nov 6: eval-data-v3), in one go.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/sync_edge_report.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[SYNC A, EXP-800/801] data/sync_truth/edge/*.jsonl -> where each stick sat against its live edge, per app.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/sync_fit.py": {
    "contracts": [],
    "inputs": [
@@ -4864,6 +5847,45 @@
    "outputs": [],
    "owner": "unowned",
    "role": "[sync fit] EXP-084: one live night's sync calibration and delay error, from the app's own logs.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/sync_grade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/primegrade.py",
+    "redzone/lab/syncgrade.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-800 / EXP-801] Grade one night's sticks on their own behind-live meter (redzone/lab/syncgrade.py).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/sync_truth.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[RC7 req.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/synth_build.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/contracts/events.py",
+    "redzone/noggin/synth.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[Data division E] Build synthetic + teacher token shards for the NFM, inside the 3x-real cap.",
    "serves": [
     "untagged"
    ]
@@ -5043,6 +6065,19 @@
     "untagged"
    ]
   },
+  "scripts/world_model_pilot.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/noggin/factory.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/worth_line.py": {
    "contracts": [],
    "inputs": [
@@ -5055,16 +6090,29 @@
    "serves": [
     "untagged"
    ]
+  },
+  "scripts/wv_aux_label.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [
+    "scripts/attention_labels.py"
+   ],
+   "owner": "unowned",
+   "role": "Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804).",
+   "serves": [
+    "untagged"
+   ]
   }
  },
  "pages": {
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 266,
-  "orphans": 10,
-  "unowned": 108,
-  "untagged": 213
+  "modules": 334,
+  "orphans": 14,
+  "unowned": 172,
+  "untagged": 278
  },
  "version": 1
 }

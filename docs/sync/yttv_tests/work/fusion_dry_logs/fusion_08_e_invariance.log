@@ -1,0 +1,4 @@
+== fusion_08_e_invariance  mode=DRY-RUN (recorded files)
+   days=['2026-11-04', '2026-11-05'] rows=9718 samples=9154 sessions=71 plays=16451 anchors=1 families=['burst_pod_title'] boot={'hdmi2': 1793650371.76, 'hdmi1': 1793752328.89}
+   sessions=9 jitter_med=0.041 s  max|dE| p95=0.376 s  burst_jitter_med=0.002 s (n=7)  steps=1 over 19.26 h
+SUMMARY fusion_08_e_invariance: E invariant while playing -> PASS -> /private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/results/fusion_08_e_invariance.jsonl

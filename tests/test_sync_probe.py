@@ -25,11 +25,22 @@ def test_ui_hints():
 
 
 def test_stall_from_clock_vs_position():
-    a = {"pkg": "p", "position": 50_000, "updated": 90_000}
-    assert sp.stall_s(a, {"pkg": "p", "position": 54_000, "updated": 96_500}) == 2.5
+    a = {"pkg": "p", "position": 50_000, "updated": 90_000, "state": "playing", "speed": 1.0}
+    assert sp.stall_s(a, dict(a, position=54_000, updated=96_500)) == 2.5
     assert sp.stall_s(a, dict(a)) == 0.0
-    assert sp.stall_s(a, {"pkg": "q", "position": 1, "updated": 1}) is None
+    assert sp.stall_s(a, {"pkg": "q", "position": 1, "updated": 1, "state": "playing", "speed": 1.0}) is None
     assert sp.stall_s(None, a) is None
+
+
+def test_stall_ignores_pauses_seeks_and_stale_positions():
+    """Nov 4-5 probe rows read stalls of -44,000 s and +11,000 s: pauses, backgrounding and seeks."""
+    a = {"pkg": "p", "position": 50_000, "updated": 90_000, "state": "playing", "speed": 1.0}
+    assert sp.stall_s(dict(a, state="paused", speed=0.0), dict(a, updated=5_000_000)) is None   # paused
+    assert sp.stall_s(a, dict(a, state="paused", speed=0.0, updated=200_000)) is None
+    assert sp.stall_s(a, dict(a, position=200_000, updated=95_000)) is None    # seek forward / live jump
+    assert sp.stall_s(a, dict(a, position=50_500, updated=91_000)) == 0.5        # small buffer
+    assert sp.stall_s(a, dict(a, position=50_000 + 700_000, updated=90_000 + 701_000)) is None  # > 10 min apart
+    assert sp.stall_s(a, dict(a, position=51_600, updated=91_000)) == 0.0      # -0.6 s: report jitter, no stall
 
 
 class Stick:

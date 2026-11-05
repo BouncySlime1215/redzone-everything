@@ -1,0 +1,4 @@
+-r requirements.txt
+# CI test jobs only (never the Mac): parquet for the data-crew shard tests (Data A #259, context crew #255).
+pandas==3.0.5
+pyarrow==26.0.1

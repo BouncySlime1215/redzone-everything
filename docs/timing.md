@@ -224,6 +224,33 @@ Verification on the TV: the per-tune delay estimate (sync filter: boundary, scor
 should read about B s more than the same channel without the hold. Live landings are graded in
 `data/supervisor_cuts.jsonl` (leave / enter: dead, play or unknown) from each switch's trace.
 
+## RC8: the buffer ON per league (flag `timing.behind_live_s.rc8_on`, OFF everywhere; Nick flips it)
+
+Nick, Nov 5 9:10 AM: the time-shift buffer is the main architecture. RC8 is that release, built so Nick can turn
+it on one league at a time the moment the evidence is in, and back off the same way (`redzone/buffer_rc8.py`).
+
+- **Flag.** `timing.behind_live_s.rc8_on`, set only under `league_overrides.<league>` (a global true is reported by
+  `validate_scope` and ignored by `is_on`). For a flipped league the stream is held B s behind live by the existing
+  hold above (the controller's gate opens for it even where `enabled` is off), with B from the formula below or a
+  pin (`rc8_fixed_s`). It is separate from `enabled` (RC6.2's NBA/NFL hold), which RC8 leaves exactly as it is.
+- **Adaptive B** (Nick 9:35 AM; gate v28): feed-lag p95 + sync error + tune/seek + margin
+  (`timing.behind_live_s.adaptive`), minus a credited stream delay (0: Nick's formula as written). A league that
+  already holds its stream (RC6.2: NBA 90, NFL 60) never goes below that live B until a LOCKED read held
+  (`approved_min_s`), and then steps down at most `ratchet_step` (15 s) per release. Hard floor 15 s in RC8 (settings
+  refuse outside 10-15; 10 s is Nick's later call), cap 90 s (`max_s` limited to 90). The B that ships is
+  `ship_b` = max(sweep point, formula/ratchet, floor), and straight back to the cap after any mid-play night. Today:
+  NBA 83 -> 90 (live hold), NFL 75, NHL 88. The feed-lag terms are P90 PLACEHOLDERS (`noggin.pick.FEED_LAG_P90`)
+  until T6's per-league table gives real p95s.
+- **Gate report.** `python scripts/rc8_gate_report.py --shadow <buffer_shadow_grade.py --json>` reads lane 3's sweep
+  verdict (`/mnt/project-files/lane3/buffer-sweep/verdict.json`) and shows the five pre-registered items per league
+  (docs/plans/2026-11-05-rc8-buffer-gate.md) as PASS / FAIL / PENDING, Rule #1 at the B that would ship and across the
+  whole grid, the formula B with its parts, and the flip command for `ship_b` (plus `start_timed` only when the verdict's
+  arm needs it). It never loosens a bar: one shadow night can only veto.
+- **Flip.** `python scripts/rc8_flip.py <league> on [--seconds B] [--set key=value]` posts only that league's keys to
+  the running app (`/api/settings`, effective on the next fresh hidden-stick tune); `off` writes explicit
+  false / 0 (settings deep-merge, so a deleted key would stay on). `--dry-run` shows the change and the B; `--status`
+  lists every league. Rule #1 never changes, and only Nick runs it.
+
 ## A2. NBA liveData play-by-play (flag `sources.nba_primary`, OFF; shadow ON)
 
 `playbyplay_<gameId>.json` on the same S3 mirror as the scoreboard. The path is assumed from the

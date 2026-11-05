@@ -276,6 +276,14 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   candidate made 1 NHL mid-play entry on every seed (BUF @ WSH, an urgent landing after a game ended). After: 0 on
   all three seeds, NHL crunch 79.9 -> 81.3 (seed 0), every other line within 0.2, locked equal. The 6 s is
   syncsim's upper end until Thursday's probe refits it.
+- 2026-11-04 (Nick, 15:06 UTC scale order): the Noggin data factory runs on free Kaggle CPU
+  (`scripts/kaggle_noggin_factory.py`, resumable season shards + oracle self-play parts, all 4 loaded
+  leagues back to 2002 where wall clocks exist). The `noggin-factory.yml` push trigger is removed (manual
+  dispatch only), because the repo's GitHub Actions minutes are capped. Every lane 1 PR reports rows per league.
+- 2026-11-04 (Nick, 5:00 PM data-scale order; lane 1): the factory plan grows to **NFL 1999+ (tokens only before
+  2011), WCBB 2006+ (wehoop) and CFB 2004+ (ESPN's whole FBS board)**. CFB gets a scorecard cut,
+  `EVAL_FIRST_NIGHT["cfb"] = 20250801` (the whole 2025 season stays unseen, like NFL), and a test now fails if any
+  planned league has no cut. Sources and terms: docs/data-sources.md. CFBD waits on Nick's key; MLB Statcast on his OK.
 - 2026-11-04: **two_stick.tv_flip_prior_s = {median: 1.89, max: 2.58}** (was 1.98 / 2.2, 10 samples). Nick's live
   lab: 64/64 SmartThings flips confirmed, 0 retries, p50 1.89 s, p95 2.18 s, max 2.58 s, ack 0.31 s. The upper
   bound stays the measured max because landing deadlines guard rule #1; decider.switch_cost.hdmi_flip
@@ -472,6 +480,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   are self-contained: public inputs at a pinned commit, no Drive mount, no secrets, grades.json printed. The
   overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
   frozen, locked is read once (Sunday).
+- 2026-11-05 00:28 UTC (Nick 7:28 PM ET, via the coordinator): **betting closing lines approved as a HIDDEN check only**:
+  usable for win-probability calibration and evaluation (EXP-002), never as a model feature, never shown, never a
+  nudge toward betting. Live line moves as a switching signal stay excluded (EXP-077, playbook §5). Reason: the
+  calibration needs an outside reference, and the line forbids betting features.
 - 2026-11-04 (lane 3, Cycle 06 #1, Start Planner #162): new flag `buffer.hold_left` (default **off**), plus
   `buffer.hold_left_apps` [youtubetv] and `buffer.hold_left_slop_s` 3.0 (playbook STK-07). When on, the game we leave
   stays paused on the stick we left, at the dead ball we left it on, so going back is a flip plus a catch-up from there.
@@ -547,6 +559,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `evaldata.config_behind_live`. A tree whose defaults turn the buffer on is now graded with it. On 2 NBA nights,
   `--set timing.behind_live_s.enabled=true` and `--behind-live 90` give identical cards. With the shipped defaults (off),
   nothing changes. Grader freeze v8.
+- **2026-11-04 (Nick 7:55 PM, "TURN OFF WOMEN'S BASKETBALL"):** WCBB is out of the noggin factory plan, the training pack sources and therefore the data ledger (docs/data-sources.md row: dropped). Nick's leagues are NFL, CFB, NBA, CBB (men's), NHL, MLB only. Why: it isn't one of his leagues, so its tokens must not count toward his data scale. The live default (mode.leagues.wcbb=false) is lane 4's change.
+- 2026-11-05 (lane 1, #169, Wave 1 #3): **MLB gets a factory cut: `EVAL_FIRST_NIGHT["mlb"] = "20250301"`**, so all of 2025
+  is held out for a future MLB scorecard and locked set. Retrosheet event files (green, notice required) feed the
+  factory's MLB event tokens, 1974-2024, via scripts/retrosheet_plays.py. They carry no wall clocks, so time tokens are
+  UNK and never invented. Why: MLB had no cut (the `.get` default is no cut), and the first MLB pull must not be able
+  to reach a future eval night.
 - 2026-11-04 (lane 5, #185, EXP-035): new default `phone.why_tag_min: 70` (0-100). The phone's "Why we're here"
   label shows only when the game on screen is at or over it (learned watch value, else today's score), and
   lab/decision_records grades every switch over it for "alerted but nothing happened". Reason: the Start Planner
@@ -573,6 +591,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   95% night-bootstrap lower bound, at least 4 rated nights a side, and PENDING otherwise. Nick's ratings stay
   evaluation-only (`tests/test_worth.py` scans noggin/decider/scoring). Note: 4 nights is a thin minimum, so treat an early
   PASS as provisional until 8. Grader freeze v9.
+- 2026-11-05 (lane 1, #169): the Kaggle noggin factory gets a data-plan gate, `RZ_DATA_PLAN`. **Default "B"**
+  (Nick 11:20 PM ET Nov 4, logged on #241): every source, including hoopR NBA/CBB, ESPN NHL/CFB and NHL api-web for
+  old NHL seasons, with `manifest.json` `"license": "personal-use, not for commercial release"`. "A" = green only
+  (nflverse NFL, NBA.com cdn NBA, Retrosheet MLB) for a company version; a green run never copies in red shards.
 - 2026-11-05 (Nick, Nov 4 9:45 PM ET, RC7 scope; integrator writes the lines): RC7 ships only if three gates pass on
   locked nights plus real hardware. (1) `press_to_tv_p95` ≤ 3 s on real presses, with a Prime sub-gate: presses tagged
   `app: prime` need their own p95 ≤ 3 s over at least 5 presses, and any Prime press that never reaches the TV fails the
@@ -599,3 +621,307 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   decider's own NEXT and your focus game), so a tap back is a flip. Why: Nov 4 live, 16 phone presses to Prime ~2 min apart,
   11 cold (~30 s) because a planner guess took the hidden stick. Lab night ping-pong drill (32 presses, seeds 1-2): warm
   0/32 -> 31/32, Prime press 46 s -> ~3 s. 0 = off (instant rollback via /api/settings). Standby only: no switch timing change.
+- **2026-11-05 (Nick, 10:55 PM ET): no deploys and no Mac-side experiments while games are live and Nick is
+  watching; the Mac stays plugged in on game nights.** A standing rule for every lane. Why: tonight's mid-game deploys and
+  rollbacks. Same message: RC6.2 (1bf4150) deploys with the TV off, and a second Go now tap switches at once, even
+  mid-play (his explicit control; one tap still waits for a dead ball).
+- 2026-11-05 (Nick, Nov 4 10:55 PM ET): RC6.2 (1bf4150) approved and deployed with the TV off. A SECOND "Go now" tap
+  switches instantly, even mid-play: it's Nick's explicit control. One tap still waits for a dead ball. Graders count
+  that forced entry on its own (lane 3's forced go-now line), never as a decider mid-play entry, and never as a training
+  label. New standing rule: no deploys and no Mac-side experiments while games are live and Nick is watching. The Mac
+  stays plugged in on game nights.
+- **2026-11-05 (Nick, 11:10 PM ET): two 24/7 brain engines.** (1) A context and hype data engine (lane 1, cloud CPU
+  only, never the Mac): importance and buzz signals per game for all six leagues; an LLM reader stores derived numbers and
+  the URL, never article text, only from allowlisted sites whose terms allow it. **Betting lines and line moves become
+  inputs to importance** (market expectation, upset odds), widening the Nov 4 hidden-check-only rule; they are never
+  shown and never nudge betting. (2) A test factory (integrator): drafted experiments and graders, nightmare nights from
+  dev history, off-policy grading of every logged night. YouTube TV DVR/screens are out (DRM). Plans:
+  docs/plans/2026-11-05-brain-engines.md (EXP-090..093) and docs/plans/2026-11-05-test-factory.md (F1-F7).
+- **2026-11-05 (Nick, 11:20 PM ET): data = B, "and way more of these sources, since it's a personal project."** The brain
+  may train on ESPN-derived data (hoopR NBA/CBB, ESPN pbp), NHL api-web + shifts, Baseball Savant/Statcast and other
+  public sports APIs with restrictive terms. **Personal use only:** every dataset and model trained on them is tagged
+  "personal-use, not for commercial release"; a company version retrains on green data later. Guardrails that still hold:
+  public endpoints only; no logins, paywalls, CAPTCHAs or bot-block bypasses; respect rate limits and robots (cache, back
+  off); no pirated streams; articles read for derived numbers, never stored as full text; never touch Nick's credentials.
+  Replaces the "skip Savant" call (6:10 PM). Teacher EXP-086 runs on B; Saturday's world model is sized for B (~100M).
+- **2026-11-05 (Nick, 11:35 PM ET): a standing data scout loop**, "100x more unique data sources and data types, agents
+  hunting 24/7" (lane 1 + a dedicated scout thread). Find, license-check (B rules for personal use), rank by new
+  information per GB, add to the factory; the ledger in docs/datasources grows every cycle, to several billion tokens this
+  month (EXP-097). Synthetic self-play is capped at ~3x real. Paid feeds need Nick's OK. Broadcast video/audio is out
+  (company stage, licensing).
+- 2026-11-05 (lane 5, EXP-038): new defaults `phone.orient: false`, `phone.orient_beat_s: 3`,
+  `phone.orient_override_s: 30`. A 2-3 s orientation beat (score, clock, one situation fact, and the context line
+  when late and close) in a corner of the phone after each switch. The TV has no overlay path on this rig (the
+  sticks only switch inputs), so the beat is phone-only for now. Graded by redzone/lab/orient.py (override rate
+  within 30 s, whole nights alternated on/off; bar in docs/lanes/experience.md). Reason: Cycle 11 (#217), playbook P12.
+- 2026-11-05 (lane 5, EXP-039): new default `phone.also_close: false`. An "Also close" line under the phone's watch
+  strip lists up to 2 other live games that are late and within one score (the EXP-037 context line), in league
+  order, as plain text with no Watch button. Graded by redzone/lab/also_close.py (manual-switch share per night,
+  whole nights alternated; bar in docs/lanes/experience.md). Reason: Cycle 11 (#217), playbook P15.
+- 2026-11-05 (lane 5, EXP-026 display): new defaults `phone.catchup_view: false`, `phone.catchup_visible: 2`. With
+  the flag on, the phone's catch-up queue follows the decider's own queue order (what plays next, whatever order the
+  EXP-026 re-run picks), shows at most 2 at once ("+N more waiting"), and is spoiler-safe: "A play you missed", with
+  no names, play type or score until it plays. Reason: Cycle 11 (#217) item 3, playbook P9/P17 (spoiler control,
+  1-2 open threads visible).
+- 2026-11-05 (integrator, grader v11): two changes. (1) A live cut whose trace says `"forced": true` (Nick's second "Go
+  now" tap) is graded on its own line, `entries_mid_play_forced`, and never counts toward `entries_mid_play`. Its
+  producer is lane 3: set `forced` on the trace of a double-tap switch. `scripts/collect_live_test.py` joins the frozen
+  graders. (2) `PLAY_LEN` and `RESUME_LEAD` become `ByLeague` tables, so CFB and CBB read their pro league's row. That
+  fixes the KeyError in oracle.py on college replays (lane 1). Pro leagues are unchanged. Grader freeze v11.
+- **2026-11-05 (Nick, 12:05 AM ET): reorg, "THE BRAIN IS THE MAIN FOCUS".** A Data Division: one data planner per
+  type (A play-by-play, B context and hype, C media metadata with no video downloads ever, D markets, E synthetic and
+  teacher, F broadcast formats), each with a 24/7 crew that lands event tokens (vocab v2) in the factory and ledger.
+  Workers' outputs are trusted with no second review, except a license line per source (B rules). 1-2 test writers write
+  pre-registered experiments and graders. Lanes 1-4 keep the body. Pace to <= 85% weekly by Mon 8 PM ET (hard stop 89%).
+  Org, id blocks and checkpoints: docs/plans/2026-11-05-data-division.md.
+- **2026-11-05 (Nick, 12:30 AM ET): Data Division type G, attention and hype at scale** (ids 1700s): legal, public
+  signals of what people watched and cared about per moment (Twitch Helix viewer curves, highlight view velocity, hourly
+  pageviews, Trends, public minute ratings, excitement-index datasets, prediction-market volume, official-API subreddit
+  volume, open academic engagement datasets) as learned labels for Watch Value and the reward model. Each source names the
+  label or feature it feeds and its information per GB. Vision and antenna skipped. G labels are judged by lift on % of
+  oracle and worth-it, never used to optimize watch time.
+- **2026-11-05 (lane 2, EXP-023 wiring):** new key `noggin.belief.enabled` (default `false`). When it's on, the
+  engine uses the belief tracker (#223) as its delay sync in place of the Kalman filter, and it logs the
+  same data/sync.jsonl rows. It stays OFF: #223's dev bar failed on NBA and NHL (rule #1 clause, and NHL short
+  of 2 s), though it cut delay error p95 in every league. Why wire it now: Nick's RC7 requirement 2 (sync
+  p95 ≤ 2 s) gets graded from those logs.
+- 2026-11-05 (integrator, Test Factory F8, for Nick's Nov 4 11:20 PM data-B call): `scripts/license_check.py` runs in
+  CI (graders job). Any JSON ledger in docs/datasources, and any pack manifest or grades.json passed to it, must give
+  every source row a license line. A source classed `restrictive` in `docs/datasources/terms.json` (ESPN, hoopR, NHL
+  api-web and shifts, Statcast, StatsBomb) needs the tag "personal-use, not for commercial release". Unclassified sources
+  WARN until the scouts classify them (`--strict` fails them). Grader freeze v12.
+- **2026-11-05 (Nick, 10:55 PM ET): a second "Go now" tap switches at once, even mid-play.** It is his explicit
+  control; one tap ("Watch this") still waits for a dead ball. Why: with the hidden stick preloaded (#229/#233) a forced
+  press flips in ~2-3 s wherever the play is (ping-pong drill: forced mid-play cuts 2 -> 7, unexplained 2 -> 0). Rule #1
+  covers autopilot entries; forced presses are graded separately (presses.classify_mid_play "forced_go_now").
+- **2026-11-05 (lane 3, RC7 requirement 1, Nick 9:45 PM): `two_stick.pretune_on_open: true` for every league** (was on
+  for NBA/NFL only through #227's league overrides). Opening a live game on the phone tunes it on the hidden stick while
+  you read, so "Go now" is a flip. Controls drill (2 seeds, smartthings TV): open-then-go median 8.33 s -> 3.06 s, go-now
+  p50 8.25 -> 3.06 s; 0 mid-play cuts of any kind and 0 dropped presses either way. Rollback: set it false in settings.
+- 2026-11-05 (lane 5, EXP-043 display): new defaults `phone.follow: false` and `noggin.priority.prefs.followed_players: []`.
+  With the flag on, the phone edits the followed-players list and shows a text-only "Following" line naming the live
+  games they're in. Lane 1 owns the weight that reads the list (its own flag and grader). Reason: Cycle 12 (#236) item
+  2, playbook P22.
+- 2026-11-05 (lane 5, Last night card): new defaults `phone.last_night: false` and `phone.last_night_hours: 6`. With
+  the flag on, Now shows a morning card (6 AM to noon ET) with last night's worth-it, mid-play entries, high-leverage
+  leaves, dead air and which release ran, read from the night report, data/worth.jsonl and data/deploy/state.json.
+  Reason: Cycle 12 (#236) item 3.
+- 2026-11-05 (integrator, grader v13): `license_check.py` reads a top-level `"sources"` list of records as ledger rows.
+  Before, it read the whole file as one model card, which failed on the scouts' scout.json. A model card still names its
+  sources as strings. Grader freeze v13.
+- **2026-11-05 (Nick, 11:50 PM ET, relayed 04:51 UTC): Data Division type H, web-scale sports text** (ids 1800s):
+  FineWeb/Common Crawl streamed and filtered to sports (ODC-By), Wikipedia dumps (CC BY-SA), GitHub open datasets, open
+  books (low priority). Feeds recap-aligned hindsight importance labels, matchup storyline features and the Mind's
+  sports-language fine-tune. Kaggle CPU / HF only; stream, never mirror; personal-use tag; raw text only in a private
+  Kaggle dataset, never in the public repo. First deliverable: a pre-registered EXP on whether recap-aligned labels raise %
+  of oracle (dev first, locked once at the release read); if not, H stays small. H pauses first with C/D/F/G.
+- 2026-11-05 (Nick, 12:28 AM ET; gate change, integrator writes it): the catch-up window is a ratchet, not a fixed bar.
+  "Ideally 3 min comes down more and more as we get better." (1) Headline line per league `time_to_see_<lg>`: the
+  median and p90 seconds from a big play airing to it being on screen (0 = live, never seen = never), plus the shares
+  within 3 min, 90 s, 30 s and live. (2) Gate line per league `catchup_<lg>`: at least 99% of big plays seen within
+  the league's window in `docs/catchup_ratchet.json`, which starts at 180 s for every league. The ladder is 3 min,
+  90 s, 30 s, then live. After each release's locked read, `scripts/catchup_ratchet.py --record` steps a league down
+  once it has held the next window on locked nights for 2 releases in a row, and the window never loosens. (3) The
+  delay-and-react test (lane 2, arms A-D) reports these lines per arm. Grader freeze v14.
+- 2026-11-05 (lane 5, EXP-040 on): default `phone.worth: false` -> `true`. The one-tap "Was tonight worth it?" (1-5)
+  shows on the Slate complete card from tonight, so rated nights exist before Sunday's line. It stays EVALUATION ONLY
+  (data/worth.jsonl, graded by the frozen lab/worth.py; tests/test_worth.py fails if noggin, decider or scoring read it).
+  Reason: Cycle 14 (#261) item 2, Integrator's EXP-040 condition "phone.worth on in the next RC".
+- 2026-11-05 (integrator, grader review): #266 is accepted. EXP-301's delay-and-react grader (`redzone/lab/reactgrade.py`,
+  `scripts/reactgrade.py`, by lane 3) joins the frozen graders. It reads time to see through `backtest.time_to_see`
+  with the v14 encoding and takes each league's window from `docs/catchup_ratchet.json`. It zeroes an arm for any
+  honesty fault: a replay of an unheld play, a replay that starts too early, or a rewind with no buffer behind it.
+  The time-from-broadcast column is secondary and never decides a verdict. It imports nothing from
+  decider/noggin/scoring and reads no taps. Grader freeze v15.
+- 2026-11-05 (integrator, grader v16): `license_check.py` FAILs any row that names a source of class `red` in
+  docs/datasources/terms.json: its terms ban bots or AI use (scouts, #263: hockeytech/ahl/echl, the Sports-Reference
+  family, fbref, stats_ncaa_org). Never pull it, even with the personal-use tag. Grader freeze v16.
+- 2026-11-05 (integrator, grader review): #249 and #268 are accepted from the test writers. `scripts/data_landing_grade.py`
+  (EXP-705) grades a landed shard before anything trains on it. It checks the license and personal-use tag, as-of
+  leakage, dedupe ≤ 1%, splits that are disjoint and time-ordered with no locked night (read from
+  redzone/lab/splits.py), synthetic ≤ 3x, unmapped tokens < 1%, single-feature AUC ≤ .98, and D8: one canonical
+  game_key per game across sources. `scripts/family_holm.py` applies Holm correction over the families declared in
+  `docs/families.json`. Both scripts and the families file join the freeze, so no family can gain or drop an arm once
+  its results are in. Grader freeze v16, together with the red-source rule above.
+- 2026-11-05 (Nick, 1:50 AM; integrator, grader v17): **CBB lock numbers are out of every scorecard.** The CBB hindsight
+  lock label comes from the clock/crunch rule, and context alone predicts it (context-only AUC 0.960, full head 0.967),
+  so EXP-086's CBB "head beats Teacher" row measured the rule. Lane 3 found it is wider: the graded truth target.lock_in
+  is must_see whenever the current crunch flag holds (a fact the model sees), in every league (NHL in-window 0.976).
+  So `agent/distill/evaluate.LOCK_EXCLUDED` drops `lock_acc` in ALL leagues until truth_lock comes from real outcomes
+  (EXP-302 y_out, #278); EXP-086's lock rows (CBB, NHL +12.7, MLB) are not evidence. CBB Teacher tokens are aux-only. New CI check
+  `scripts/label_leak_check.py`: any label that context-only features (period, clock, score gap, crunch/late/garbage,
+  your team) predict with AUC ≥ 0.95 FAILs, cross-fitted by whole night; reports with derived numbers only live in
+  docs/label_checks/. Lane 3 relabels lock from real outcomes in the next N minutes, re-grades head vs Teacher in all
+  3 leagues on ≥ 600 blind moments per league with bootstrap CIs, and commits a report per league from dev nights only
+  (never locked); a league's lock_acc comes back only when its report PASSes. evaluate.py and gold.py (the label) join the freeze. Grader freeze v17.
+- 2026-11-05 (Nick, 2:00 AM): **priority is NBA first, then NFL.** Every queue re-ranks by NBA impact, then NFL; NHL,
+  MLB and CBB work continues only where it's shared code or data. NBA's graded set grows until every NBA gate has
+  ≥ 60 decisions (release_gate.MIN_DECISIONS = 60 already holds PASS back below that; locked NBA has 16 big plays
+  over 4 nights today).
+- 2026-11-05 (integrator, grader v18): #279 accepted from lane 3. `redzone/lab/syncgrade.py` + `scripts/sync_grade.py`
+  grade EXP-800/801 on the sticks' own behind-live meter (E = wall - extrapolated media_session position). EXP-800:
+  |belief - meter| p95 <= 2 s per stick on >= 200 rows; absolute latency PENDING per channel until an on-screen anchor
+  is measured, never filled from an assumed lag. EXP-801: tunes land within 3 s of the channel's live edge, with the
+  reference pinned per app (YTTV: landing position, measured constant by the overseer; others: E at landing), never
+  picked from the data. Sticks print as stick1, stick2 (public repo). Grader freeze v18.
+- 2026-11-05 (integrator, grader v19): **lock truth comes from real outcomes** (lane 3, EXP-302, #278/#283).
+  `evaluate.truth_lock` is must_see when y_out (a lead change/catch or a >= 0.20 win-probability swing within the
+  league's pre-registered horizon N: NBA/CBB 180 s, NFL/NHL 300 s, MLB 600 s), watch when y_out2 (2N), else none;
+  never the crunch/clock rule (gold.py stays the student's training target only). Context-only AUC on train/valid,
+  lock / watch: NBA 0.851 / 0.868, NFL 0.752 / 0.749, NHL 0.771 / 0.756, all < 0.95, so NBA, NFL and NHL lock_acc
+  returns; CFB, CBB and MLB stay out until their reports pass, and rows without y_out never count. A test fails if a
+  league is graded without PASSing lock and watch reports. `redzone/lab/outcome_label.py` joins the freeze.
+  Grader freeze v19.
+- **2026-11-05 (Nick, 2:00 AM ET): work priority is NBA first, then NFL** ("I really only care about NBA and NFL, mostly
+  NBA because that's what's on most right now"). Every queue is re-ranked by NBA impact, then NFL; NHL/MLB/CBB work
+  continues only where it is shared code or data. Grow the NBA graded set to >= 60 decisions per gate. This orders the
+  work; the decider's league order on the TV (CLAUDE.md north star) is unchanged.
+- **2026-11-05 (Nick, 2:10 AM ET): sync is the #1 priority, above everything except Rule #1.** One program: lane 2 owns,
+  lane 3 grades, lane 4 integrates. (A) per-stick offset = provider latency + distance behind the live edge from Fire TV
+  media_session (adb, every second), logged to data/sync_truth; (B) every tune forces and verifies the live edge, hidden
+  stick preloaded at the edge; (C) fastest feed per league wins; (D) belief tracker switches only when its band says dead
+  ball -> restart; (E) ground truth without HDCP capture; camera (scorebug OCR) and mic (audio fingerprint) need Nick's
+  explicit OK first. Gates: per-stick delay error p95 <= 2 s, 0 entries mid-commercial, switch <= 3 s incl. Prime. Test
+  only when Nick isn't watching. Rows EXP-800..804.
+- 2026-11-05 (Nick 2:10 AM + overseer 2:30 AM, sync program steps A + B, lane 2): new `sync.edge` block. **`sync.edge.enabled: true`** (shadow, read-only): every 1 s, one `cat /proc/uptime; dumpsys media_session` per stick measures how far it plays behind its live edge (the overseer's meter: pos_now = position + speed x (uptime - updated), E = wall - pos_now, behind = E - E at the tune's landing; a deep-link tune lands on the edge to ~0.5 s) into data/sync_truth/edge/<night>.jsonl and `Controller.behind_live`; the 5 s probe rows now carry uptime_ms and pos_now_s. **`force_live: false`, `force_live_visible: false`** (`force_live_s: 2.0`): when on, a stick > 2 s behind its edge beyond the app's own hold is re-linked to live (hidden stick: a refresh preload; the stick on screen: a fresh deep link, only on a dead ball), at most once per game per 60 s; off, rows say `would_force`. Why: Nick's 'know where each stick is' and 'auto re-link whenever behind > 2 s'. The read presses nothing, so it is shadow ON; a re-link changes tunes, so it ships OFF until Nick picks on the RC7 sync card.
+- 2026-11-05 (integrator, grader v20, before TNF): three grader changes from lane 3. (1) #284: reactgrade's WIN needs
+  big live % not down by more than CRUNCH_PTS (bootstrap lower bound), Nick's "% live": a reacting arm may not win by
+  trading live plays for late replays. Frozen only after EXP-209 closed (winner A on the resync read), so no open
+  experiment's verdict moved. (2) #285: a Prime media_session position >= 1e12 is an epoch, so E is the measured
+  absolute delay per stick (`absolute_by_stick`); a counter position never feeds it, and YTTV's ~20-30 s stays an
+  estimate. (3) #288: `redzone/lab/primegrade.py` pre-registers the diamond plan's Prime tests (A4 flat/pause/sticks/
+  landing, B1, B2 Key Moments) with sample floors: thin data reads PENDING, a conclusive FAIL still fires.
+  primegrade joins the freeze. Grader freeze v20.
+- 2026-11-05 (integrator, grader v21, EXP-735; Nick 2:00 AM "NBA first", >= 60 decisions per gate): **an older season
+  can join a pin as DEV nights only.** A pin may carry `dev_before` {league: YYYYMMDD}; `splits.league_split` keeps
+  nights before it in train/valid and locks the newest >= 25 % of the nights on or after it, so the locked set stays
+  current-season and never reaches back over the added nights. eval-data-v3 (eval-data-v2.yml) adds every final
+  2025-26 NBA game Oct 21 2025 - Jan 31 2026 (and NHL, shared; both end before the Noggin's Feb 1 locked start) with
+  dev_before 20261001. A --season league publishes once its locked set is at least the default pin's size; the
+  release gate's own floors (>= 8 nights, >= 60 decisions) are unchanged, so a thin locked set reads PENDING, never
+  PASS. A pin without dev_before (eval-data-v1) splits exactly as before. Grader freeze v21.
+- 2026-11-05 (Nick 3:30 AM, "Yes, read it", lane 2): code may screenshot the **Prime Video** picture to read the score bug (score + game clock) for sync. Only the numbers are kept, never frames. Prime isn't DRM-blanked in screencap; YouTube TV is, and we don't bypass that. New defaults: **`delay.scorebug_band: false`** (read only the score bug's lower third as raw pixels, skipping the stick's ~6.5 s PNG encode; falls back to a full screencap) and **`sync.edge.epoch_signal: false`** with `k_pair_s 30`, `k_min_reads 5`, `k_sd_max_s 0.5`, `epoch_every_s 10`: each score-bug delay sample paired with the Prime epoch read gives K = arena - frame clock (Nov 4: ~9.6 s), fused per target; rows log `k_s`, `k_sd_s`, `epoch_delay_s` = E + K always, and the filter gets an "epoch" sample (sigma 0.5) only with the flag. Why: Nick's sync order (1)-(3); both flags ship OFF until a live Prime night shows the band read works on HDMI1 and K holds (sd <= 0.5 after ~20 reads), then Nick turns them on.
+- 2026-11-05 (planner cycle 18 order, test writers' EXP-728/736 pre-registration on #277, lane 2): new `decider.entry.break_tail: []` (leagues; **off**), `break_tail_s: 10`, `break_tail_q: q25`, `break_tail_chain_s: 3`. When on for a league, a switch whose picture would come up early in the destination's break holds on the game on screen until it would land at most break_tail_s before the restart: the logged restart, else the break kind's q25 length from EXP-1500's table (redzone/scoring/broadcast/break_lengths.json), on the early side of the delay. Graded on NBA dev (fit, real lag, plain + resync, seeds 0-2): mid-commercial entries ~50 -> ~47 per 100 against a bar of <= 5, and big plays live -2.8 on resync seed 0 (big seen held; lane 3 reproduced all 12 runs). **EXP-728 FAILS; the flag ships OFF.** Why it barely moves: about two thirds of the mid-commercial entries are rewinds onto a dead ball or urgent entries, which the hold doesn't touch, and the held ones still land 20-30 s early (the delay's 2 sigma plus the 10 s decide tick). That is sync precision, so it goes to EXP-803.
+- 2026-11-05 (integrator, grader v22, before any EXP-803 arm runs): #297's `redzone/lab/delaygrade.py` +
+  `scripts/delay_grade.py` grade EXP-803 (delay precision, pre-registered in #296) exactly as registered: A4 PASS at
+  <= 10 mid-commercial entries per 100 with its night-bootstrap upper bound below A0's lower bound; guardrails per
+  seed and harness (0 added mid-play entries, plays missed up <= 5% relative, big seen live and crunch live down
+  <= 1.0, dead air up <= 0.5); a 2-sigma band covering < 95% of truth rows FAILs the arm; PENDING under 23 paired
+  NBA nights (needs eval-data-v3). A1-A3 are one Holm family, `nba-delay-precision` in docs/families.json, declared
+  now; A4 is unadjusted. #293's break_tail (EXP-728) FAILed (lane 2 and lane 3's own 12 runs) and ships OFF.
+  Grader freeze v22.
+- 2026-11-05 (planner cycle 19, EXP-803 arms pre-registered in #296, lane 2): new `decider.entry.break_tail_defer: false` (A1: a break tail due inside one decide tick is cut at its moment via `Decision.defer_s`, honored by the backtest's leave/arrive and the engine's may_cut), `break_tail_tv_split: false` with `break_tail_tv_timeout_s: 170` (A3: NBA full timeouts use an early-side TV-timeout length instead of the mixed "timeout" row; 170 = Data F's cdn q10, local 170.3 / national 176.7). A2 is a sim what-if (`league_overrides.nba.delay.sync.min_sigma_s=1`, `--sigma 1`) with no new key. Why: delay precision (EXP-728's failure trace). All off until EXP-803's one graded read on eval-data-v3 NBA dev.
+- 2026-11-05 (integrator, grader v23): #298 changes the frozen backtest for EXP-803 A1. `_apply_defer` moves a deferred
+  cut's `watching` entry together with leave_dt/arrive_dt, so every on-screen line keeps the old game on screen until
+  the cut; defer is capped at one sim step, so `watching` stays time-ordered (asserted). defer_s is 0 unless
+  `decider.entry.break_tail_defer` is on, so every grade is unchanged (A1 sanity run on v1 seed 0 identical).
+  Frozen before the v3 grade. Grader freeze v23.
+- 2026-11-05 (integrator, grader v24; lane 2's report): **`--set league_overrides.<lg>.a.b.c=v` now writes one flat
+  key**, `league_overrides[<lg>]["a.b.c"]`, the shape `config.for_league` reads (`evaldata.apply_set`, used by
+  eval.py and eval_sports.py). Before, the key nested and `flatten_league_overrides` then replaced the whole `a` group
+  with it, so every other setting in that group was lost for the run. Any league_overrides --set read before v24 is
+  void: EXP-803 A2's v1 smoke read (33 -> 30/61) was on a config with no delay group, so it is discarded and re-run.
+  A plain --set (no league_overrides) still nests as before. Grader freeze v24.
+- 2026-11-05 (planner cycle 21 #301: Rule #1 above sync; test writers' autopsy #302; lane 2): new `decider.entry.start_timed: false` (EXP-739). When on (per league via league_overrides), the night's first pick is timed like any entry, waiting for a whistle or rewinding, instead of going in live. Why: 6 of the 8 NHL dev mid-play entries are first picks that land 10-32 s after the opening faceoff. Exploratory read (v1 fit, real lag, plain, seed 0; lane 3 grades): NHL mid-play 8 -> 3 of 236/241, plays missed 2 -> 3, big live 41.6 -> 40.7, dead air 22.4 -> 22.8; NBA mid-play 0 -> 0, mid-commercial 33/64 -> 34/72, dead air 19.6 -> 19.9; NFL identical. Ships OFF until lane 3's grade. EXP-740 (NHL `decider.entry.crunch_now: wait`) needs no new key: NHL reads the global `decider.entry.crunch_now` (rewind) because league_overrides.nhl is {}, so the arm is `--set decider.entry.crunch_now=wait` on an NHL run. The default stays until Nick picks.
+- 2026-11-05 (planner on EXP-303 FAIL, lane 2): new `decider.entry.lag_floor_s: 0` (EXP-211, off). When set, an entry plan treats an open stoppage (no restart in the data yet) as dead only as far as a feed at least this slow would already show the restart. Why: all 3 NHL mid-play entries left with EXP-739+740 on came from the coverage guess. A first pick's lag reads the 10 s default until an action play measures it (MTL@CHI Oct 23: the whistle arrived 67 s late and the faceoff was at +28 s), and a faceoff arrived 87 s late against a measured 59 s (COL@PHI Oct 19). The graded value is NHL's measured feed lag q90, 71.3 s (redzone/lab/feed_lag_profile.json, from the profile, not tuned). q95 (91 s) also reached 0 but cost resync dead air +0.57, over the +0.5 bar. Lane 3 EXP-303 (#304), 739+740+71.3 on NHL: mid-play 0 on 6/6 runs, plays missed 6->0 plain and 3->0 resync, dead air -0.17 plain and +0.17 resync, big live -1.81 [-2.98, -0.57] plain and -0.63 resync; NBA identical; NFL no breach. This is the third arm graded on the same dev nights, so the locked read at release decides shipping. Exploratory read (v1 fit, real lag, plain, seed 0, with 739+740 on): NHL mid-play 2 -> 0, plays missed 2 -> 0, dead air 22.7 -> 23.0, crunch live 82.3 -> 79.5, big live 40.7 -> 40.2. Ships OFF until lane 3 grades it. EXP-739 is to be scoped to NHL only (league_overrides.nhl) when it ships, since with it on everywhere NBA resync seed 1 gains one mid-play entry.
+- 2026-11-05 (planner, restoring Nick's Nov 4 10:55 PM rule "one tap still waits for a dead ball"; test writers' EXP-741; lane 2): new `decider.entry.user_timed: false`. When on, a single phone tap waits until the joined game's picture would come up on a dead ball (decider.entry_plan, no rewind since the tap carries none), not only for a safe moment to leave the game on screen. The second "Go now" tap still cuts at once. Why: Wed Nov 4 live, 15 of 17 mid-play cuts were single taps the guard let through in 0.0 s (lane 3, live-1104). It ships OFF here; the planner wants it turned ON once lane 3 grades it, through the normal RC deploy (never while games are live).
+- 2026-11-05 (lane 3's EXP-741 grade FAILED the 180 s wait guardrail: no-rewind taps waited > 180 s on 12 of 20 NBA taps, p50 262 s, because ESPN ran ~38 s behind the ~16 s picture; planner ranks a rewind fallback 2nd after nba_cdn timing, EXP-802; lane 2): new `decider.entry.user_rewind_after_s: null`. With user_timed on, a tap that has waited this long also takes a landing that needs a rewind to the last dead ball (YTTV), armed on the switch at the cut (`Controller.arm_entry_rewind`). It never goes live mid-play; with no landing in reach it keeps waiting (Go now still cuts). Ships OFF; graded arm 15 s against lane 3's same PREREG.
+- 2026-11-05 (lane 3 arm D; lane 2): new `decider.entry.user_rewind_max_s: null`. A tap's rewind landing over this many seconds keeps waiting instead. Why: arm B rewound one YTTV tap 123 s behind live. Ships OFF; graded arm 60 s. Arm C (`sources.nba_primary` on, nba_cdn timing) is graded on an approximated feed; shipping it still needs the EXP-802 replay or a live night.
+- 2026-11-05 (lane 3's EXP-741 arms C/E: Prime taps landed on live play 1/20 at the 40 s prior and 4/15 at the measured 16 s, from entry_plan's "play may be live" (unknown) landings, which a Prime target (no rewind) accepts; planner: use the score bug; lane 2): with user_timed on, a tap never lands on an unknown landing, only on a known dead ball (EXP-741 F, no new flag; user_timed stays off). New `decider.entry.user_bug_gate: "off"` (off | shadow | on, EXP-741 E): a tap onto Prime lands when the hidden stick's score-bug clock reads the same twice >= 1.5 s apart (newest <= 5 s old), waits while it runs, and uses the feed plan only when the bug is unreadable; reads are numbers only (data/tap_bug.jsonl), per Nick's 3:30 AM OK. The rewind grace counts from the hold, not each 25 s re-submit. Ships OFF; E needs a live night to grade (no frames from Wednesday).
+- 2026-11-05 (planner, carrying out Nick's Nov 4 10:55 PM rule "one tap still waits for a dead ball" where the grade passes; lane 3's corrected EXP-741 re-run: YouTube TV taps with the rewind fallback 0 live landings, waits 0-63 s; Prime taps 0 live but p50 wait 199 s; lane 2): DEFAULTS CHANGED. `decider.entry.user_timed: true`, new `decider.entry.user_timed_targets: [youtubetv]` (Prime single taps go as before), `decider.entry.user_rewind_after_s: 15` (no cap, `user_rewind_max_s: null`), and `decider.entry.user_bug_gate: shadow` (every Prime score-bug clock read logged to data/tap_bug.jsonl as numbers, so lane 3 can grade arm E; taps never wait on it). The second "Go now" tap still cuts at once. Ships through lane 4's next RC under the normal deploy rules; only lane 3's grade turns E on.
+- 2026-11-05 (integrator, grader v25; lane 4 #308, lane 2's report): `collect_live_test.redact` also masks Tailscale /
+  CGNAT 100.64.0.0/10 (kept as ts.<last octet>), Tailscale IPv6 fd7a:115c:a1e0::/48 and link-local 169.254/16, so the
+  sticks' tailnet addresses never reach the shared live-test folder. Redaction only; no grading line changes.
+  Grader freeze v25.
+- 2026-11-05 (integrator, grader v26; test writers EXP-744, #302): **NBA/CBB Rule #1 gets a second, independent
+  grader.** `scripts/clock_truth_grade.py` labels each entry live/dead/ambiguous from the play-by-play game clock alone
+  (lane 3's EXP-741 thresholds; no code shared with redzone.grading, cutgrade, espn.stoppage_for or the decider),
+  because cutgrade and the brain share one definition of "dead". v1 NBA dev: 0 of 64 entries live on both (CI
+  [0, 0]); the instrument does see live play (landings shifted -15 s: 10 live); at random moments the shared grader
+  errs toward "live" (the safe side). An NBA "0 mid-play" claim now needs both graders at 0. It and
+  `scripts/entry_autopsy.py` (its input) join the freeze. Grader freeze v26.
+- 2026-11-05 (Nick, 9:10 AM ET): **the time-shift buffer is the main architecture.** "I approve this plan and I want it
+  all done and ready for tonight." The show runs 60-90 s behind live (cap 90 s) and the brain becomes the editor.
+  Tonight: shadow mode for every game, no screen change (lane 2); replay sim and per-league sweep 45/60/75/90 s
+  (lanes 3 + 1); windowed-hindsight oracle teacher (lane 1); seek reliability per app (lane 2/4). RC8 turns the buffer
+  ON only for leagues that pass the gate pre-registered in docs/plans/2026-11-05-rc8-buffer-gate.md (0 mid-play on
+  every run and both harnesses, beats live on big plays shown from the start, guardrails, tonight's shadow confirms,
+  locked once), and Nick flips it. Rule #1 never changes; hidden stick only while Nick watches.
+- 2026-11-05 (integrator, grader v27; Data G EXP-1704, #314, Nick 9:05 AM): Watch Value on real engagement labels is
+  pre-registered (docs/prereg/exp-1704.md) and its label (`scripts/attention_labels.py`) and harness
+  (`scripts/wv_aux_label.py`) are frozen before any label is joined. Sources S1-S5 are one Holm family,
+  `wv-attention-labels`; later sources (S6 Twitch) get their own row. Labels are training targets only, train nights
+  only, never features; the objective stays "worth it" (no engagement traps). Locked read once by the integrator at
+  the next release. Grader freeze v27.
+- 2026-11-05 (integrator, grader v28; lane 3 #316): **new scorecard line "big plays shown from the start"**
+  (big_from_start, crunch_from_start, my_crunch_from_start), the RC8 buffer gate's primary. A big play counts when the
+  screen had its game from the moment the ball went live after the last dead ball (grading.restart_before =
+  resume_after of the last stoppage or score) through the end of the play; football and baseball: the play's own snap
+  (= big live). Both of lane 3's calls accepted: a made basket is a dead ball for the restart (it is one under the
+  rules, and dead_at already treats it so), and the control is the same harness with `--behind-live 0`, not the old
+  43 s scorecard lag, with one run at the old default lag kept in the sweep for continuity. Additive only: no existing line,
+  default or bar changes. Frozen before any sweep or shadow number is read. Reason: Nick 9:10 AM "% big plays shown
+  FROM THE START". Grader freeze v28.
+- 2026-11-05 (Nick, 9:35 AM ET; integrator): **buffer size policy, adaptive per league, never 0.** "Make it adaptive
+  per league: buffer = feed-lag p95 + sync error + tune/seek time + safety margin; ratchet down only after
+  locked-night gates hold; set a hard floor (start ~10-15 s) so a play is always known before it's shown." Written
+  into docs/plans/2026-11-05-rc8-buffer-gate.md: inputs measured on train+valid only, hard floor 15 s in RC8 (10 s is
+  Nick's later call), down one step (<= 15 s) per release and only after a locked read held, straight back up on any
+  mid-play night, RC8 value = max(sweep point, formula, floor).
+- 2026-11-05 (Nick 9:05 AM order, faster feeds; lane 2): DEFAULTS CHANGED. `sources.nba_primary: true` (NBA liveData via the S3 mirror owns NBA stoppages for every game; Wednesday's tapped games: nba_cdn lag p50 12.2 s / p90 57.6 s vs ESPN 36.3 / 85 s, lane 3), `polling.nba_pbp_s: 1` with conditional GETs (ETag / If-Modified-Since, sources/http.py) on a new `polling.league_fast: true` loop (league pbp off the ~3 s poll loop, new plays straight to the timelines). nba_cdn plays stay logged to plays.jsonl while primary, so its lag keeps being measured. ESPN takes over NBA stoppages whenever the owner's copy is > 10 s stale (merge.py). Risk: nba_cdn's p99 was 226 s on Wednesday; decider.entry.lag_floor_s (EXP-211) is the lever if a long publish gap shows up as a mid-play entry.
+- 2026-11-05 (Nick 9:10 AM, buffer = main architecture, item A; planner cycle 24; lane 2): new `timing.behind_live_s.shadow: true`. While the buffer is off on screen, an editor decider (redzone/buffer_shadow.py) runs every decide tick on every game believing each picture runs B s further behind (by_league, max_s 90) and logs each decision to data/buffer_shadow.jsonl with picture_at / mu / sd / arena_at on entries. It presses no key and changes nothing on screen. Lane 3 grades it vs live for the RC8 gate.
+- 2026-11-05 (Nick 9:25 AM, TNF race: "the hidden Prime stick at the live edge reads the scorebug (score/clock/down via OCR, Nick-approved) as our fastest NFL 'feed'"; lane 2): `delay.scorebug_hidden: true` (was the code default false) and new `delay.scorebug_log: true`. Every bug read, numbers only (score, clock, period, and the new down & distance), goes to data/scorebug_reads.jsonl, so the race against espn_fastcast / summary and crew D's market first-seen is graded from first-seen score changes. Never frames.
+- 2026-11-05 (lane 5, tracker item 5 on Nick's 9:50 AM order): new config group `fast_feeds` (`enabled: false`,
+  `leagues: [nhl, mlb]`, `nba_s: 1`, `nhl_s: 2`, `mlb_s: 3`, `board_s: 15`, `max_games: 8`). With it on, NBA
+  liveData (1 s), NHL api-web and MLB statsapi are polled in SHADOW (own Fetcher, ETag/304, per-host backoff) and each
+  new event's first-seen time goes to data/recordings/<day>/fast_feeds.jsonl; nothing reaches the merger, decider or TV.
+  scripts/fast_feed_race.py measures the lag race against ESPN's plays.jsonl for crew A. Reason: tracker item 5.
+  Default `fast_feeds.leagues: [nhl, mlb]`: NBA's 1 s nba_cdn poll is lane 2's polling.league_fast (#326),
+  so the shadow does not hit the S3 mirror a second time; the race reads those nba_cdn rows from plays.jsonl.
+- 2026-11-05 (planner on EXP-303, lane 2): new `delay.feed_lag_prior_s: 10` (EXP-803 A5, default unchanged). It's the feed lag a game assumes until a play measures it, set per league through league_overrides. Before this it was a 10 s constant shared by every league (screen.LAG_EST_DEFAULT_S). Measured feed lag is far longer: q50 is 45 s for NBA, 44 s for NFL and 50 s for NHL. So an unmeasured game, typically the night's first pick, believes an open stoppage is dead long after play restarted (EXP-303's NHL first picks). The A5 arm sets the league's q90 (nba 69.7), is pre-registered in experiments.md, and is graded once on eval-data-v3.
+- 2026-11-05 (Nick, 9:50 AM ET "NHL is re-enabled", his answer to the NHL Rule #1 card; integrator): **the EXP-303
+  package is ON for NHL only** (league_overrides.nhl: `decider.entry.start_timed: true`, `decider.entry.crunch_now:
+  wait`, `decider.entry.lag_floor_s: 71.3`). Global defaults unchanged, so NBA, NFL and the rest are untouched. Dev
+  (lane 3, #304): NHL mid-play 0 on 6/6 runs, big live -1.8 [-3.0, -0.6] plain. Locked, read once at this release
+  (4 nights, 29 games, seeds 0-2, both harnesses): mid-play 18 -> 1 (resync seed 0, Oct 31), plays missed 13 -> 0,
+  your-team crunch 13/13, dead air within +0.5 on 5 of 6 runs (resync seed 1 +1.0), big live -1.9 to +1.0. Four
+  locked nights are under the 8-night floor, so the rate reads PENDING; it ships because it strictly lowers NHL
+  mid-play against tonight's live NHL behavior, and Nick chose it.
+- 2026-11-05 (integrator, grader v29): **the RC8 shadow and gate graders are frozen before tonight's shadow night.**
+  `scripts/buffer_shadow_grade.py` (#318, test writers: schema, hidden-stick-only, Rule #1 on every editor entry under
+  both cutgrade and clock truth) and `scripts/rc8_gate_report.py` (#331, T9: applies docs/plans/2026-11-05-rc8-buffer-gate.md
+  as written, shadow veto-only, < 8 nights PENDING, ship B = max(sweep, formula/ratchet, 15 s floor), cap 90) join the
+  freeze, so no bar moves once shadow rows exist. Grader freeze v29.
+- 2026-11-05 (T9, #331; Nick 9:10 / 9:35 AM, integrator gate v28, planner): **RC8 buffer-ON ships behind
+  `timing.behind_live_s.rc8_on`, false everywhere**, honored only under `league_overrides.<league>`; Nick flips one
+  league himself (`scripts/rc8_flip.py`, which also sets that league's hold key; `decider.entry.start_timed` ships only
+  when the sweep verdict's arm needs it, via `--set`; rollback writes explicit false/0 and restores both to shipped). New `timing.behind_live_s.adaptive` (floor 15 s limited to 10-15,
+  ratchet step 15 s limited to 0-15, feed-lag terms are p90 placeholders until T6) and `max_s` limited to 90 (Nick's
+  cap). Ship B = max(sweep point, formula/ratchet, floor), back to 90 after a mid-play night. RC6.2's
+  `timing.behind_live_s.enabled` (NBA/NFL hold) unchanged. `scripts/rc8_gate_report.py` reads the pre-registered gate
+  as written (shadow = veto only; missing first-pick line = PENDING). No decision changes with the shipped defaults.
+- 2026-11-05 (integrator, grader v30; T9 #331 0b08d96): `scripts/rc8_gate_report.py` refrozen after review. The
+  changes are reporting plus one arm choice: NBA's verdict is read on lane 3's `st` arm (start_timed on with RC8, the
+  planner's call after the autopsy). That choice came after the sweep was read; it changes no verdict tonight (NBA
+  fails switches 1.58x and your-team crunch on every arm), and it applies to RC8's next read from fresh nights. The
+  switch guardrail counts non-replay switches (integrator ruling on lane 3's sweep: NFL B=75 1.80x, LIVE). No bar
+  moved. Grader freeze v30.
+- 2026-11-05 (integrator, grader v31; lane 1 #322): the windowed-hindsight oracle `redzone/lab/oracle_window.py`
+  joins the freeze beside oracle.py (which it reuses unchanged): measured per-league feed lag (p90 default), reserves
+  grading.RESUME_LEAD, never plans without a revealed window, first pick on a dead ball. It is the RC8 report's
+  descriptive ceiling ("% of oracle"), never a gate. `scripts/buffer_sweep.py` stays lane 1's descriptive sweep
+  (lane 3's sweep is the graded one) and is not frozen. Grader freeze v31.
+- 2026-11-05 3:15 PM ET (overseer default, Nick can override; reason "Nick 3:10 PM: decide for him within the
+  rules"), logged by the integrator for the planner:
+  1. **T4 YTTV key tests are DEFERRED** (no YTTV game airs before 6 PM, and a stick session needs Nick's own words).
+     Auto-switching on Nick's screen is NOT paused; the read-only 10 PM tests run as planned.
+  2. **Chrome "Allow JavaScript from Apple Events" stays OFF** (Mac security setting); ui_12 stays skipped.
+  3. **fast_feeds.enabled: true for tonight, shadow polling only** (no screen change; tested in #323/#337). Lane 4
+     sets it at the stage; the shipped default stays false.
+  4. **NHL EXP-303 package stays ON as staged**; Nick's NHL card stays open as a veto.
+  5. **Crew H daily runs are triggered by hand** (twice a day), derived numbers only; raw text goes to the private
+     Kaggle dataset. A scheduled cron fires only from main, which we never merge to, so a cron on main needs Nick.
+  6. **Fan-sentiment Reddit hook stays OFF** until Nick adds an official API key.
+  7. **No prioritization model ships or gets a locked read tonight** (T8 stay/leave failed valid; WV attention arms
+     below A0; GI v2 not pre-registered until #345). A0 stays.
+  Still waiting on Nick only: keys, the Kaggle ID check, and the RC8 flip.

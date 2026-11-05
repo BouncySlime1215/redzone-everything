@@ -37,7 +37,7 @@ def _split(league: str):
     # Only nights inside the pin (window end), the same nights the scorecards grade: nights the live
     # recorder adds later are fresh, never part of the locked split.
     an = splits.archive_nights(ARCHIVE / league, evaldata.window_end(league, None))
-    return an, splits.split_nights(an)
+    return an, splits.league_split(league, an)
 
 
 def check_locked_nights() -> list[tuple[str, str, str]]:
@@ -93,7 +93,8 @@ def check_locked_unseen_by_previous_pin() -> list[tuple[str, str, str]]:
         if not w or not (ARCHIVE / lg).exists():
             continue
         an, s = _split(lg)
-        old = splits.split_nights([n for n in an if w["start"] <= n <= w["end"]])
+        old = splits.split_nights([n for n in an if w["start"] <= n <= w["end"]],
+                                  dev_before=(prev.get("dev_before") or {}).get(lg))
         seen = sorted(set(s.test) & set(old.train + old.valid))
         out.append(("FAIL" if seen else "PASS", f"locked_unseen_{lg}",
                     f"{len(seen)} locked nights were {prev['tag']} dev nights ({', '.join(seen[:5])})" if seen else

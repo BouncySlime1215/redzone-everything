@@ -149,12 +149,7 @@ def main():
         sys.exit(f"{pinned} has settings the app rejects ({cfg.rejected}): refusing to grade on a partial config")
     evaldata.use_shipped_switch_costs(cfg)   # one source of truth for switch costs (contracts/switching.py)
     for kv in a.set:
-        key, _, val = kv.partition("=")
-        node = cfg.data
-        *path, last = key.split(".")
-        for part in path:
-            node = node.setdefault(part, {})
-        node[last] = yaml.safe_load(val)
+        evaldata.apply_set(cfg, kv)
     evaldata.flatten_league_overrides(cfg, lg.value)   # [grader v7] league-scoped defaults, as the app runs them
     if getattr(a, "behind_live", None) is None:   # [grader v8] the buffer the config turns on
         a.behind_live = evaldata.config_behind_live(cfg, lg.value)
@@ -174,7 +169,7 @@ def main():
                           "cuts": len(card.cuts), "cuts_high": len(card.cuts_high), "big": card.big, "big_seen": card.big_seen,
                           "big_seen_10m": card.big_seen_10m, "my_big": card.my_big,
                           "my_big_seen_10m": card.my_big_seen_10m, "crunch_on_replay": card.crunch_on_replay,
-                          "big_seen_3m": card.big_seen_3m, "big_seen_2m": card.big_seen_2m,
+                          "big_seen_3m": card.big_seen_3m, "big_seen_2m": card.big_seen_2m, "big_see_s": [-1.0 if x == float("inf") else (None if x is None else round(x, 1)) for x in card.big_see_s],
                           "my_big_seen_3m": card.my_big_seen_3m,
                           # [north star] per-night counts so scripts/northstar.py can bootstrap every line
                           "big_live": card.big_live, "landings": card.cut.landings()[1],
@@ -183,6 +178,8 @@ def main():
                           "dead_s": round(card.dead, 1), "watched_s": round(card.watched, 1),
                           "crunch": card.crunch, "crunch_live": card.crunch_live,
                           "my_crunch": card.my_crunch, "my_crunch_live": card.my_crunch_live,
+                          "big_from_start": card.big_from_start, "crunch_from_start": card.crunch_from_start,
+                          "my_crunch_from_start": card.my_crunch_from_start,
                           "sync_honesty": rep.sync_honesty})
         # [replay and resume] how far the screen ran behind its usual place (rewinds, pauses)
         from redzone.lab.backtest import behind_extra, weighted_pct

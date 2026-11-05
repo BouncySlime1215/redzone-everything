@@ -29,6 +29,7 @@ from redzone.config import Config
 from redzone.decider.decider import REDZONE, Candidate, Decider, FocusMode
 from redzone.decider.screen import DelayBook
 from redzone.grading import Lags, SwitchLog, idx as _bisect, lag_of  # noqa: F401  [one brain] moved, step 3
+from redzone.grading import restart_before
 from redzone.models import REAL_BREAKS, League, Phase
 from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal
@@ -111,7 +112,11 @@ class Report:
     big_seen_3m: int = 0             # live or replayed within CATCHUP_3_S (the gate, Nick Nov 4 11:00 AM)
     big_seen_2m: int = 0             # ...within CATCHUP_2_S (stretch)
     my_big_seen_3m: int = 0          # your team's, within CATCHUP_3_S
+    big_see_s: list = field(default_factory=list)   # [time to see] per big play: time_to_see()
     crunch_on_replay: int = 0        # crunch plays that aired while a catch-up replay was on screen
+    big_from_start: int = 0          # [from the start] big plays on screen from the previous dead ball through the end
+    crunch_from_start: int = 0       # ...crunch plays the same way
+    my_crunch_from_start: int = 0    # ...your team's crunch plays
     drive_plays: int = 0             # NFL scrimmage plays on drives that scored or reached the red zone
     drive_plays_live: int = 0        # ...of those, watched live start to finish
     drive_plays_other_sport: int = 0  # ...of those, missed while another sport was on screen
@@ -152,6 +157,22 @@ CATCHUP_S = 600.0   # "seen" for the reel gate: live, or replayed within 10 min 
 # Nick, Nov 4 11:00 AM: the replay window is 2-3 MINUTES max. 3 min is the gate, 2 min the stretch row.
 CATCHUP_3_S = 180.0
 CATCHUP_2_S = 120.0
+
+
+# [time to see, Nick Nov 5 12:28 AM] the catch-up window ladder, seconds: 3 min now, then 90 s, 30 s, live. A league
+# steps down after holding the tighter window on locked nights for 2 releases in a row (scripts/catchup_ratchet.py).
+CATCHUP_LADDER = (180.0, 90.0, 30.0, 0.0)
+
+
+def time_to_see(on: bool, replayed, key, air: float) -> float | None:
+    """Seconds from a big play airing until it was on screen: 0 = live; the catch-up replay's finish less the
+    airing; inf = never seen; None = replayed at an unknown time (an old plain set)."""
+    if on:
+        return 0.0
+    if key not in replayed:
+        return float("inf")
+    at = replayed.get(key) if isinstance(replayed, dict) else None
+    return None if at is None else max(0.0, float(at) - air)
 
 
 def replayed_by(replayed, key, deadline: float) -> bool:
@@ -455,6 +476,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         decisions.append(decision)
         n_sw = len(switches)
         _record(decision, before, clock.t, switches, watching, replayed)
+        _apply_defer(decision, switches, watching, n_sw, step)
         if tune_jitter_s > 0 and len(switches) > n_sw and switches[-1].kind != "replay":
             j = jitter_rng.uniform(0.0, tune_jitter_s)
             switches[-1].offset += j
@@ -679,6 +701,22 @@ def seek_cue(sw: "SwitchLog", decision, cfg, rng) -> None:
     sw.flash = press * sent + keys if sent else 0.0
 
 
+def _apply_defer(decision, switches: list[SwitchLog], watching: list[tuple[float, str | None]], n_sw: int,
+                 step: float) -> None:
+    """[EXP-803 A1] A switch decided now but cut defer_s later: the OLD game stays on screen until then, for
+    every line (watching drives big/crunch live and dead air; leave_dt / arrive_dt drive cutgrade). Capped at
+    one step, so the next decision (a step later) always sorts after the deferred cut and watching stays in
+    time order."""
+    defer = min(float(getattr(decision, "defer_s", 0.0) or 0.0), step)
+    if defer <= 0 or len(switches) <= n_sw:
+        return
+    switches[-1].leave_dt += defer
+    switches[-1].arrive_dt += defer
+    at, what = watching[-1]
+    watching[-1] = (at + defer, what)
+    assert len(watching) < 2 or watching[-2][0] <= watching[-1][0], "watching out of time order"
+
+
 def _record(decision, before: str | None, t: float, switches: list[SwitchLog],
             watching: list[tuple[float, str | None]], replayed: set[tuple[str, int]]) -> None:
     """Log what the TV did. Any "switch" that survives decide() is a real tune — including one back
@@ -760,6 +798,14 @@ def watched_whole(watching: list[tuple[float, str | None]], gid: str, start: flo
     return False
 
 
+def from_start(watching: list[tuple[float, str | None]], r, i: int, lag: float, tune_s: float, horizon: float,
+               offsets: list[float] | None = None) -> bool:
+    """[from the start] Was game r on screen, offset-aware and with no retune away, from the moment the ball
+    went live after the last dead ball before play i (grading.restart_before) through the end of play i?"""
+    start = restart_before(r.league, r.wall, r.plays, i) + lag
+    return watched_whole(watching, r.gid, start, r.wall[i] + lag, tune_s, horizon, offsets)
+
+
 def on_screen(watching: list[tuple[float, str | None]], offsets: list[float] | None, t: float,
               tune_s: float) -> tuple[str | None, float]:
     """(what the screen shows at t, how far behind live that visit runs)."""
@@ -837,15 +883,18 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
 
     big = live = mine = mine_live = caught = missed_on_replay = seen10 = my_seen10 = crunch_on_replay = 0
     seen3 = seen2 = my_seen3 = 0
+    see_s: list = []
     missed = []
+    big_fs = crunch_fs = my_crunch_fs = 0
     for r in replays:
-        for w, p in zip(r.wall, r.plays):
+        for k, (w, p) in enumerate(zip(r.wall, r.plays)):
             if not _is_big(p):
                 continue
             big += 1
             air = w + lag_of(lag_total, r.gid)
             on = watched_whole(watching, r.gid, air - play_len, air, tune_s, t1, offs)
             live += on
+            big_fs += on and from_start(watching, r, k, lag_of(lag_total, r.gid), tune_s, t1, offs)
             rep_seen = (r.gid, round(w)) in replayed
             caught += on or rep_seen
             soon = on or replayed_by(replayed, (r.gid, round(w)), air + CATCHUP_S)
@@ -853,6 +902,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             soon3 = on or replayed_by(replayed, (r.gid, round(w)), air + CATCHUP_3_S)
             seen3 += soon3
             seen2 += on or replayed_by(replayed, (r.gid, round(w)), air + CATCHUP_2_S)
+            see_s.append(time_to_see(on, replayed, (r.gid, round(w)), air))
             ours = any(a in my_teams for a in r.matchup.replace("@", " ").split())
             if ours:
                 mine += 1
@@ -867,7 +917,7 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
     # Crunch time: final 2:00 of a one-score game (or OT). Did you see those plays live?
     crunch = crunch_live = my_crunch = my_crunch_live = 0
     for r in replays:
-        for w, p in zip(r.wall, r.plays):
+        for k, (w, p) in enumerate(zip(r.wall, r.plays)):
             per = espn._int(espn._get(p, "period", "number")) or 0
             clk = espn._clock_s(espn._get(p, "clock", "displayValue"))
             hs, as_ = espn._int(p.get("homeScore")), espn._int(p.get("awayScore"))
@@ -882,12 +932,15 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
             on = watched_whole(watching, r.gid, w + lag_of(lag_total, r.gid) - play_len,
                                w + lag_of(lag_total, r.gid), tune_s, t1, offs)
             crunch_live += on
+            fs = on and from_start(watching, r, k, lag_of(lag_total, r.gid), tune_s, t1, offs)
+            crunch_fs += fs
             if not on and (_on_screen_game(watching, w + lag_of(lag_total, r.gid) - play_len, tune_s)
                            or "").startswith("replay:"):
                 crunch_on_replay += 1   # a crunch play aired while we sat on old footage
             if any(a in my_teams for a in r.matchup.replace("@", " ").split()):
                 my_crunch += 1
                 my_crunch_live += on
+                my_crunch_fs += fs
 
     dead = watched = 0.0
     causes: dict[str, float] = {}
@@ -924,10 +977,12 @@ def _grade(replays, switches, watching, my_teams, lag_total, play_len, tune_s, t
     rep.big_missed_on_replay = missed_on_replay
     rep.big_seen_10m, rep.my_big_seen_10m, rep.crunch_on_replay = seen10, my_seen10, crunch_on_replay
     rep.big_seen_3m, rep.big_seen_2m, rep.my_big_seen_3m = seen3, seen2, my_seen3
+    rep.big_see_s = see_s
     rep.drive_plays, rep.drive_plays_live, rep.drive_plays_other_sport, rep.drive_plays_on_redzone = drive_coverage(
         replays, watching, lag_total, play_len, tune_s, t1)
     rep.big_plays_caught = caught
     rep.crunch, rep.crunch_live, rep.my_crunch, rep.my_crunch_live = crunch, crunch_live, my_crunch, my_crunch_live
+    rep.big_from_start, rep.crunch_from_start, rep.my_crunch_from_start = big_fs, crunch_fs, my_crunch_fs
     return rep
 
 

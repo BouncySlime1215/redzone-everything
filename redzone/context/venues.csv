@@ -1,0 +1,156 @@
+league,venue_id,name,team,lat,lon,tz,roof,first_season,last_season
+nfl,ATL97,Mercedes-Benz Stadium,ATL,33.7554,-84.4008,America/New_York,retractable,2017,
+nfl,BAL00,M&T Bank Stadium,BAL,39.2780,-76.6227,America/New_York,outdoors,1998,
+nfl,BOS00,Gillette Stadium,NE,42.0909,-71.2643,America/New_York,outdoors,2002,
+nfl,BOS99,Foxboro Stadium,NE,42.0917,-71.2650,America/New_York,outdoors,1971,2001
+nfl,BRG00,Tiger Stadium (LSU),NO,30.4120,-91.1838,America/Chicago,outdoors,2005,2005
+nfl,BUF00,Highmark Stadium,BUF,42.7738,-78.7870,America/New_York,outdoors,1973,
+nfl,CAR00,Bank of America Stadium,CAR,35.2258,-80.8528,America/New_York,outdoors,1996,
+nfl,CHI98,Soldier Field,CHI,41.8623,-87.6167,America/Chicago,outdoors,1971,
+nfl,CHI99,Memorial Stadium (Champaign),CHI,40.0992,-88.2360,America/Chicago,outdoors,2002,2002
+nfl,CIN00,Paycor Stadium,CIN,39.0955,-84.5161,America/New_York,outdoors,2000,
+nfl,CIN99,Cinergy Field,CIN,39.0975,-84.5070,America/New_York,outdoors,1970,1999
+nfl,CLE00,Huntington Bank Field,CLE,41.5061,-81.6995,America/New_York,outdoors,1999,
+nfl,DAL00,AT&T Stadium,DAL,32.7473,-97.0945,America/Chicago,retractable,2009,
+nfl,DAL99,Texas Stadium,DAL,32.8400,-96.9110,America/Chicago,outdoors,1971,2008
+nfl,DEN00,Empower Field at Mile High,DEN,39.7439,-105.0201,America/Denver,outdoors,2001,
+nfl,DEN99,Mile High Stadium,DEN,39.7461,-105.0214,America/Denver,outdoors,1960,2000
+nfl,FRA00,Deutsche Bank Park,,50.0686,8.6455,Europe/Berlin,outdoors,2023,
+nfl,GER00,Allianz Arena,,48.2188,11.6247,Europe/Berlin,outdoors,2022,
+nfl,GNB00,Lambeau Field,GB,44.5013,-88.0622,America/Chicago,outdoors,1957,
+nfl,HOU00,NRG Stadium,HOU,29.6847,-95.4107,America/Chicago,retractable,2002,
+nfl,IND00,Lucas Oil Stadium,IND,39.7601,-86.1639,America/Indiana/Indianapolis,retractable,2008,
+nfl,JAX00,EverBank Stadium,JAX,30.3239,-81.6373,America/New_York,outdoors,1995,
+nfl,KAN00,GEHA Field at Arrowhead Stadium,KC,39.0489,-94.4839,America/Chicago,outdoors,1972,
+nfl,LAX01,SoFi Stadium,LA/LAC,33.9535,-118.3392,America/Los_Angeles,dome,2020,
+nfl,LAX97,Dignity Health Sports Park,LAC,33.8644,-118.2611,America/Los_Angeles,outdoors,2017,2019
+nfl,LAX99,Los Angeles Memorial Coliseum,LA,34.0141,-118.2879,America/Los_Angeles,outdoors,2016,2019
+nfl,LON00,Wembley Stadium,,51.5560,-0.2796,Europe/London,outdoors,2007,
+nfl,LON01,Twickenham Stadium,,51.4560,-0.3415,Europe/London,outdoors,2016,2017
+nfl,LON02,Tottenham Hotspur Stadium,,51.6043,-0.0664,Europe/London,outdoors,2019,
+nfl,MAD01,Santiago Bernabeu,,40.4531,-3.6883,Europe/Madrid,retractable,2025,
+nfl,MEX00,Estadio Azteca (Banorte),,19.3029,-99.1505,America/Mexico_City,outdoors,2005,
+nfl,MIA00,Hard Rock Stadium,MIA,25.9580,-80.2389,America/New_York,outdoors,1987,
+nfl,MIN98,Huntington Bank Stadium (TCF Bank),MIN,44.9765,-93.2245,America/Chicago,outdoors,2010,2015
+nfl,MUN01,Allianz Arena,,48.2188,11.6247,Europe/Berlin,outdoors,2026,
+nfl,NAS00,Nissan Stadium,TEN,36.1665,-86.7713,America/Chicago,outdoors,1999,
+nfl,NYC00,Giants Stadium,NYG/NYJ,40.8128,-74.0742,America/New_York,outdoors,1976,2009
+nfl,NYC01,MetLife Stadium,NYG/NYJ,40.8135,-74.0745,America/New_York,outdoors,2010,
+nfl,OAK00,Oakland-Alameda County Coliseum,OAK,37.7516,-122.2005,America/Los_Angeles,outdoors,1966,2019
+nfl,PHI00,Lincoln Financial Field,PHI,39.9008,-75.1675,America/New_York,outdoors,2003,
+nfl,PHI99,Veterans Stadium,PHI,39.9070,-75.1710,America/New_York,outdoors,1971,2002
+nfl,PHO00,State Farm Stadium,ARI,33.5276,-112.2626,America/Phoenix,retractable,2006,
+nfl,PHO99,Sun Devil Stadium,ARI,33.4264,-111.9325,America/Phoenix,outdoors,1988,2005
+nfl,PIT00,Acrisure Stadium,PIT,40.4468,-80.0158,America/New_York,outdoors,2001,
+nfl,PIT99,Three Rivers Stadium,PIT,40.4467,-80.0128,America/New_York,outdoors,1970,2000
+nfl,RIO00,Estadio do Maracana,,-22.9121,-43.2302,America/Sao_Paulo,outdoors,2026,
+nfl,SAO00,Neo Quimica Arena (Corinthians),,-23.5453,-46.4742,America/Sao_Paulo,outdoors,2024,
+nfl,SDG00,Qualcomm Stadium,SD,32.7831,-117.1196,America/Los_Angeles,outdoors,1967,2016
+nfl,SEA00,Lumen Field,SEA,47.5952,-122.3316,America/Los_Angeles,outdoors,2002,
+nfl,SEA99,Husky Stadium,SEA,47.6503,-122.3016,America/Los_Angeles,outdoors,2000,2001
+nfl,SFO00,Candlestick Park,SF,37.7136,-122.3863,America/Los_Angeles,outdoors,1971,2013
+nfl,SFO01,Levi's Stadium,SF,37.4030,-121.9700,America/Los_Angeles,outdoors,2014,
+nfl,TAM00,Raymond James Stadium,TB,27.9759,-82.5033,America/New_York,outdoors,1998,
+nfl,WAS00,Northwest Stadium,WAS,38.9078,-76.8645,America/New_York,outdoors,1997,
+nfl,WAS99,Jack Kent Cooke Stadium,WAS,38.9078,-76.8645,America/New_York,outdoors,1997,1999
+mlb,ANA01,Angel Stadium,ANA,33.8003,-117.8827,America/Los_Angeles,outdoors,1966,
+mlb,ARL03,Globe Life Field,TEX,32.7473,-97.0842,America/Chicago,retractable,2020,
+mlb,ATL03,Truist Park,ATL,33.8908,-84.4678,America/New_York,outdoors,2017,
+mlb,BAL12,Oriole Park at Camden Yards,BAL,39.2838,-76.6217,America/New_York,outdoors,1992,
+mlb,BOS07,Fenway Park,BOS,42.3467,-71.0972,America/New_York,outdoors,1912,
+mlb,CHI11,Wrigley Field,CHN,41.9484,-87.6553,America/Chicago,outdoors,1914,
+mlb,CHI12,Rate Field,CHA,41.8299,-87.6338,America/Chicago,outdoors,1991,
+mlb,CIN09,Great American Ball Park,CIN,39.0979,-84.5082,America/New_York,outdoors,2003,
+mlb,CLE08,Progressive Field,CLE,41.4962,-81.6852,America/New_York,outdoors,1994,
+mlb,DEN02,Coors Field,COL,39.7559,-104.9942,America/Denver,outdoors,1995,
+mlb,DET05,Comerica Park,DET,42.3390,-83.0485,America/Detroit,outdoors,2000,
+mlb,HOU03,Daikin Park,HOU,29.7573,-95.3555,America/Chicago,retractable,2000,
+mlb,KAN06,Kauffman Stadium,KCA,39.0517,-94.4803,America/Chicago,outdoors,1973,
+mlb,LOS03,Dodger Stadium,LAN,34.0739,-118.2400,America/Los_Angeles,outdoors,1962,
+mlb,MIA02,loanDepot park,MIA,25.7781,-80.2196,America/New_York,retractable,2012,
+mlb,MIL06,American Family Field,MIL,43.0280,-87.9712,America/Chicago,retractable,2001,
+mlb,MIN04,Target Field,MIN,44.9817,-93.2776,America/Chicago,outdoors,2010,
+mlb,NYC20,Citi Field,NYN,40.7571,-73.8458,America/New_York,outdoors,2009,
+mlb,NYC21,Yankee Stadium,NYA,40.8296,-73.9262,America/New_York,outdoors,2009,
+mlb,OAK01,Oakland Coliseum,OAK,37.7516,-122.2005,America/Los_Angeles,outdoors,1968,2024
+mlb,PHI13,Citizens Bank Park,PHI,39.9061,-75.1665,America/New_York,outdoors,2004,
+mlb,PHO01,Chase Field,ARI,33.4455,-112.0667,America/Phoenix,retractable,1998,
+mlb,PIT08,PNC Park,PIT,40.4469,-80.0057,America/New_York,outdoors,2001,
+mlb,SAC01,Sutter Health Park,ATH,38.5804,-121.5135,America/Los_Angeles,outdoors,2025,
+mlb,SAN02,Petco Park,SDN,32.7073,-117.1566,America/Los_Angeles,outdoors,2004,
+mlb,SEA03,T-Mobile Park,SEA,47.5914,-122.3325,America/Los_Angeles,retractable,1999,
+mlb,SFO03,Oracle Park,SFN,37.7786,-122.3893,America/Los_Angeles,outdoors,2000,
+mlb,STL10,Busch Stadium,SLN,38.6226,-90.1928,America/Chicago,outdoors,2006,
+mlb,TAM02,George M. Steinbrenner Field,TBA,27.9803,-82.5067,America/New_York,outdoors,2025,2025
+mlb,TOR02,Rogers Centre,TOR,43.6414,-79.3894,America/Toronto,retractable,1989,
+mlb,WAS11,Nationals Park,WAS,38.8730,-77.0074,America/New_York,outdoors,2008,
+mlb,ARL02,Globe Life Park in Arlington,TEX,32.7513,-97.0829,America/Chicago,outdoors,1994,2019
+mlb,ATL02,Turner Field,ATL,33.7350,-84.3900,America/New_York,outdoors,1997,2016
+mlb,BIR01,Rickwood Field,,33.5007,-86.8550,America/Chicago,outdoors,2024,2024
+mlb,BST01,Bristol Motor Speedway,,36.5157,-82.2570,America/New_York,outdoors,2025,2025
+mlb,BUF05,Sahlen Field,TOR,42.8800,-78.8740,America/New_York,outdoors,2020,2021
+mlb,CIN08,Cinergy Field,CIN,39.0975,-84.5070,America/New_York,outdoors,1970,2002
+mlb,DUN01,TD Ballpark,TOR,28.0036,-82.7867,America/New_York,outdoors,2021,2021
+mlb,DYE01,Field of Dreams,,42.4983,-91.0550,America/Chicago,outdoors,2021,2022
+mlb,LON01,London Stadium,,51.5386,-0.0166,Europe/London,outdoors,2019,2023
+mlb,MEX02,Estadio Alfredo Harp Helu,,19.4040,-99.0870,America/Mexico_City,outdoors,2023,
+mlb,MIA01,Sun Life Stadium,FLO,25.9580,-80.2389,America/New_York,outdoors,1993,2011
+mlb,MIL05,County Stadium,MIL,43.0300,-87.9750,America/Chicago,outdoors,1970,2000
+mlb,MIN03,Metrodome,MIN,44.9738,-93.2581,America/Chicago,dome,1982,2009
+mlb,MON02,Olympic Stadium,MON,45.5580,-73.5519,America/Toronto,dome,1977,2004
+mlb,NYC16,Yankee Stadium (1923),NYA,40.8270,-73.9282,America/New_York,outdoors,1923,2008
+mlb,NYC17,Shea Stadium,NYN,40.7559,-73.8456,America/New_York,outdoors,1964,2008
+mlb,PHI12,Veterans Stadium,PHI,39.9070,-75.1710,America/New_York,outdoors,1971,2003
+mlb,PIT07,Three Rivers Stadium,PIT,40.4467,-80.0128,America/New_York,outdoors,1970,2000
+mlb,SAN01,Qualcomm Stadium,SDN,32.7831,-117.1196,America/Los_Angeles,outdoors,1969,2003
+mlb,SEO01,Gocheok Sky Dome,,37.4982,126.8671,Asia/Seoul,dome,2024,2024
+mlb,SJU01,Hiram Bithorn Stadium,,18.4180,-66.0620,America/Puerto_Rico,outdoors,2001,2018
+mlb,STL09,Busch Stadium II,SLN,38.6225,-90.1925,America/Chicago,outdoors,1966,2005
+mlb,STP01,Tropicana Field,TBA,27.7682,-82.6534,America/New_York,dome,1998,2024
+mlb,SYD01,Sydney Cricket Ground,,-33.8917,151.2247,Australia/Sydney,outdoors,2014,2014
+mlb,TOK01,Tokyo Dome,,35.7056,139.7519,Asia/Tokyo,dome,2000,
+mlb,WAS10,RFK Stadium,WAS,38.8898,-76.9719,America/New_York,outdoors,2005,2007
+mlb,WIL02,Bowman Field,,41.2440,-77.0158,America/New_York,outdoors,2017,
+nba,nba:Los Angeles,Crypto.com Arena (Staples Center),LAL,34.0430,-118.2673,America/Los_Angeles,dome,1999,
+nba,nba:Inglewood,Intuit Dome,LAC,33.9450,-118.3410,America/Los_Angeles,dome,2024,
+nba,nba:Boston,TD Garden,BOS,42.3662,-71.0621,America/New_York,dome,1995,
+nba,nba:Miami,Kaseya Center,MIA,25.7814,-80.1870,America/New_York,dome,1999,
+nba,nba:Cleveland,Rocket Mortgage FieldHouse,CLE,41.4965,-81.6882,America/New_York,dome,1994,
+nba,nba:San Antonio,Frost Bank Center,SA,29.4270,-98.4375,America/Chicago,dome,2002,
+nba,nba:Austin,Moody Center,,30.2820,-97.7323,America/Chicago,dome,2022,
+nba,nba:Denver,Ball Arena,DEN,39.7487,-105.0077,America/Denver,dome,1999,
+nba,nba:Dallas,American Airlines Center,DAL,32.7905,-96.8103,America/Chicago,dome,2001,
+nba,nba:Houston,Toyota Center,HOU,29.7508,-95.3621,America/Chicago,dome,2003,
+nba,nba:Atlanta,State Farm Arena,ATL,33.7573,-84.3963,America/New_York,dome,1999,
+nba,nba:Phoenix,PHX Arena (Footprint Center),PHX,33.4457,-112.0712,America/Phoenix,dome,1992,
+nba,nba:Indianapolis,Gainbridge Fieldhouse,IND,39.7640,-86.1555,America/Indiana/Indianapolis,dome,1999,
+nba,nba:Chicago,United Center,CHI,41.8807,-87.6742,America/Chicago,dome,1994,
+nba,nba:Detroit,Little Caesars Arena (Palace of Auburn Hills to 2017),DET,42.3411,-83.0553,America/Detroit,dome,1988,
+nba,nba:Memphis,FedExForum,MEM,35.1382,-90.0506,America/Chicago,dome,2004,
+nba,nba:Philadelphia,Xfinity Mobile Arena (Wells Fargo Center),PHI,39.9012,-75.1720,America/New_York,dome,1996,
+nba,nba:Milwaukee,Fiserv Forum (Bradley Center to 2018),MIL,43.0451,-87.9172,America/Chicago,dome,1988,
+nba,nba:Salt Lake City,Delta Center,UTAH,40.7683,-111.9011,America/Denver,dome,1991,
+nba,nba:New York,Madison Square Garden,NY,40.7505,-73.9934,America/New_York,dome,1968,
+nba,nba:Brooklyn,Barclays Center,BKN,40.6826,-73.9754,America/New_York,dome,2012,
+nba,nba:East Rutherford,IZOD Center,NJ,40.8116,-74.0675,America/New_York,dome,1981,2010
+nba,nba:Newark,Prudential Center,NJ,40.7334,-74.1711,America/New_York,dome,2010,2012
+nba,nba:Portland,Moda Center,POR,45.5316,-122.6668,America/Los_Angeles,dome,1995,
+nba,nba:Washington,Capital One Arena,WSH,38.8981,-77.0209,America/New_York,dome,1997,
+nba,nba:Orlando,Kia Center (Amway Arena to 2010),ORL,28.5392,-81.3839,America/New_York,dome,1989,
+nba,nba:Lake Buena Vista,ESPN Wide World of Sports (2020 bubble),,28.3378,-81.5560,America/New_York,dome,2020,2020
+nba,nba:Tampa,Amalie Arena,,27.9428,-82.4519,America/New_York,dome,2020,2021
+nba,nba:Minneapolis,Target Center,MIN,44.9795,-93.2761,America/Chicago,dome,1990,
+nba,nba:Toronto,Scotiabank Arena,TOR,43.6435,-79.3791,America/Toronto,dome,1999,
+nba,nba:Sacramento,Golden 1 Center (Sleep Train Arena to 2016),SAC,38.5802,-121.4997,America/Los_Angeles,dome,1988,
+nba,nba:Charlotte,Spectrum Center (Charlotte Coliseum to 2005),CHA,35.2251,-80.8392,America/New_York,dome,1988,
+nba,nba:Oklahoma City,Paycom Center,OKC,35.4634,-97.5151,America/Chicago,dome,2002,
+nba,nba:New Orleans,Smoothie King Center,NO,29.9490,-90.0821,America/Chicago,dome,1999,
+nba,nba:Oakland,Oracle Arena,GS,37.7503,-122.2030,America/Los_Angeles,dome,1966,2019
+nba,nba:San Francisco,Chase Center,GS,37.7680,-122.3877,America/Los_Angeles,dome,2019,
+nba,nba:Seattle,KeyArena,SEA,47.6221,-122.3540,America/Los_Angeles,dome,1962,2008
+nba,nba:Las Vegas,T-Mobile Arena,,36.1029,-115.1784,America/Los_Angeles,dome,2016,
+nba,nba:Mexico City,Arena CDMX,,19.4044,-99.0960,America/Mexico_City,dome,2012,
+nba,nba:London,The O2,,51.5030,0.0032,Europe/London,dome,2011,
+nba,nba:Manchester,Co-op Live,,53.4889,-2.2003,Europe/London,dome,2025,
+nba,nba:Paris,Accor Arena,,48.8386,2.3786,Europe/Paris,dome,2020,
+nba,nba:Berlin,Uber Arena,,52.5052,13.4436,Europe/Berlin,dome,2025,

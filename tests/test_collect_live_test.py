@@ -138,3 +138,15 @@ def test_a_live_night_keeps_each_switch_provenance_and_the_left_hold_rows(tmp_pa
     kept = [json.loads(x) for x in (tmp_path / "out" / "switches.jsonl").read_text().splitlines()]
     assert kept[0]["detail"]["trace"]["provenance"] == prov and len(kept) == 2
     assert c.copy_switches(tmp_path / "none.db", tmp_path / "x.jsonl", 0) == []
+
+
+def test_tailscale_and_link_local_addresses_are_masked_too():
+    """Nov 5: the sticks' 100.64/10 tailnet addresses leaked into the shared copies (only RFC1918 was masked)."""
+    from collect_live_test import redact
+    line = ('{"host": "100.101.7.42:5555", "mac": "100.64.0.9", "v6": "fd7a:115c:a1e0:ab12:4843:cd96:6258:b240", '
+            '"ll": "169.254.3.4", "lan": "192.168.1.150:5555", "public": "100.200.1.2", "espn": "8.8.8.8"}')
+    out = redact(line)
+    for leaked in ("100.101.7.42", "100.64.0.9", "fd7a:115c", "169.254.3.4", "192.168.1.150"):
+        assert leaked not in out, leaked
+    assert "ts.42:5555" in out and "lan.150:5555" in out
+    assert "100.200.1.2" in out and "8.8.8.8" in out      # public addresses outside 100.64/10 stay

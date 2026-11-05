@@ -1,0 +1,77 @@
+# Data crew D: TNF feed race (tracker item 4, Nick 9:50 AM Nov 5 2026). SHADOW ONLY, $0, public endpoints, no secrets,
+# never the Mac. Runs the Polymarket jump trigger + ESPN pollers on a free runner and uploads their logs.
+# GitHub fires `schedule` only from the default branch (main, which we never merge to), so the live start is a push
+# to markets-race-run/<YYYYMMDD> (crew D's session pushes it ~7:50 PM ET); workflow_dispatch is the manual backup.
+# A branch name containing "smoke" listens for 3 minutes only (reachability check).
+# Grade afterwards: scripts/markets/feed_race.py grade (docs/datasources/markets/feed-race-tnf.md).
+name: markets-race
+on:
+  push:
+    branches: ["markets-race-run/**"]
+  workflow_dispatch:
+    inputs:
+      date: {description: "game date, US Eastern (YYYY-MM-DD)", default: "2026-11-05"}
+      teams: {description: "ESPN abbreviations", default: "JAX,BAL"}
+      hours: {description: "how long to listen", default: "5"}
+concurrency:
+  group: markets-race-${{ github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  race:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: race
+        env:
+          DATE: ${{ inputs.date || '2026-11-05' }}
+          TEAMS: ${{ inputs.teams || 'JAX,BAL' }}
+          HOURS: ${{ contains(github.ref_name, 'smoke') && '0.05' || inputs.hours || '5' }}
+        run: bash scripts/markets/run_race.sh
+      - name: summary
+        if: always()
+        run: |
+          wc -l out/race/espn.jsonl out/markets_live/polymarket/nfl/*.jsonl 2>/dev/null || true
+          grep -c '"row": "trigger"' out/markets_live/polymarket/nfl/*.jsonl 2>/dev/null || true
+          tail -5 out/race/poly.log out/race/espn.log 2>/dev/null || true
+      - name: push DERIVED race numbers to markets-race-out/<date> (no raw prices or feed bodies; public repo rule)
+        if: always()
+        env:
+          D: ${{ inputs.date || '2026-11-05' }}
+        run: |
+          B="markets-race-out/${D//-/}-${{ github.run_id }}"
+          mkdir -p /tmp/o /tmp/d && cp -r out/race out/markets_live /tmp/o/ 2>/dev/null || true
+          # derived only: trigger times + size of the move (no price level), ESPN score-change times, clock offsets
+          python - <<'PY'
+          import glob, json
+          rows = []
+          for f in glob.glob("/tmp/o/markets_live/polymarket/nfl/*.jsonl"):
+              for line in open(f):
+                  r = json.loads(line)
+                  if r.get("row") == "trigger":
+                      rows.append({"source": "polymarket", "row": "trigger", "game_key": r["game_key"],
+                                   "recv_ts": r["recv_ts"], "delta": r["delta"], "window_s": r["window_s"]})
+          for f in glob.glob("/tmp/o/race/espn.jsonl"):
+              for line in open(f):
+                  r = json.loads(line)
+                  rows.append({k: r[k] for k in ("source", "matchup", "recv_ts", "score", "prev")})
+          for f in glob.glob("/tmp/o/race/clock.jsonl"):
+              rows += [{"source": "clock", **json.loads(x)} for x in open(f)]
+          with open("/tmp/d/race_derived.jsonl", "w") as fh:
+              fh.writelines(json.dumps(r) + "\n" for r in rows)
+          print(len(rows), "derived rows")
+          PY
+          git config user.name "redzone-markets-bot"; git config user.email "actions@users.noreply.github.com"
+          git checkout -q --orphan "$B" && git rm -rq --cached . && git clean -fdq
+          cp /tmp/d/race_derived.jsonl . && git add race_derived.jsonl
+          git commit -qm "markets race derived numbers ${D} (shadow; personal-use, not for commercial release)" && git push -q origin "$B" && echo "pushed $B"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: markets-race-${{ inputs.date || '2026-11-05' }}
+          path: |
+            /tmp/o/
+          retention-days: 30

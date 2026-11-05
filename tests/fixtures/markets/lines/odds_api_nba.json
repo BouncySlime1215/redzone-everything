@@ -1,0 +1,23 @@
+[
+ {"id": "abc123", "sport_key": "basketball_nba", "sport_title": "NBA",
+  "commence_time": "2026-11-06T00:30:00Z", "home_team": "Boston Celtics", "away_team": "Philadelphia 76ers",
+  "bookmakers": [
+   {"key": "book1", "title": "Book One", "last_update": "2026-11-05T22:00:00Z", "markets": [
+     {"key": "h2h", "last_update": "2026-11-05T22:00:00Z", "outcomes": [
+       {"name": "Boston Celtics", "price": -200}, {"name": "Philadelphia 76ers", "price": 170}]},
+     {"key": "spreads", "last_update": "2026-11-05T22:00:00Z", "outcomes": [
+       {"name": "Boston Celtics", "price": -110, "point": -5.5}, {"name": "Philadelphia 76ers", "price": -110, "point": 5.5}]},
+     {"key": "totals", "last_update": "2026-11-05T22:00:00Z", "outcomes": [
+       {"name": "Over", "price": -110, "point": 220.5}, {"name": "Under", "price": -110, "point": 220.5}]}]},
+   {"key": "book2", "title": "Book Two", "last_update": "2026-11-05T22:05:00Z", "markets": [
+     {"key": "h2h", "outcomes": [
+       {"name": "Boston Celtics", "price": -180}, {"name": "Philadelphia 76ers", "price": 155}]},
+     {"key": "spreads", "outcomes": [
+       {"name": "Boston Celtics", "price": -105, "point": -5.0}, {"name": "Philadelphia 76ers", "price": -115, "point": 5.0}]},
+     {"key": "totals", "outcomes": [
+       {"name": "Over", "price": -110, "point": 221.5}, {"name": "Under", "price": -110, "point": 221.5}]}]},
+   {"key": "book3", "title": "Book Three", "last_update": "2026-11-05T21:50:00Z", "markets": [
+     {"key": "h2h", "outcomes": [
+       {"name": "Boston Celtics", "price": -190}, {"name": "Philadelphia 76ers", "price": 160}]}]}
+  ]}
+]

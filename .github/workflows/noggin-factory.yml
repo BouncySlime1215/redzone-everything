@@ -5,12 +5,8 @@
 # cloud container can't download artifacts); a model still reaches integration/next only through a PR.
 name: noggin-factory
 on:
-  push:
-    # noggin-factory/<league> branches build that league (e.g. noggin-factory/nhl: ESPN summaries, which
-    # this cloud container can't reach); integration/next rebuilds the NBA table when the factory changes.
-    branches: [integration/next, "noggin-factory/**"]
-    paths: ["redzone/noggin/factory.py", "redzone/noggin/features.py", "redzone/noggin/timing*.py",
-            "scripts/noggin_factory.py", "scripts/train_noggin_timing.py", ".github/workflows/noggin-factory.yml"]
+  # No push trigger (Nick 2026-11-04): the billions-scale build runs on free Kaggle CPU
+  # (scripts/kaggle_noggin_factory.py); this stays for a manual one-league rebuild only.
   workflow_dispatch:
     inputs:
       league: {default: nba}

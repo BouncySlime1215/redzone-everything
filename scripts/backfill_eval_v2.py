@@ -36,8 +36,14 @@ from redzone.lab import splits  # noqa: E402
 
 ARCH = ROOT / "data" / "archive"
 LEAGUES = ("nfl", "nba", "nhl")
-# Last season's regular-season stretch to draw your-team nights from (newest first).
-OLD_SEASON = {"nba": ("20260101", "20260412"), "nhl": ("20260101", "20260416")}
+# Last season's regular-season stretch to draw your-team nights from (newest first). It ends BEFORE the
+# Noggin's locked start (agent/distill/split.py BIG_CUTS: nba/nhl locked from 20260201), so an old night
+# that lands in this pin's dev (tunable) slice is never one of the Noggin's locked nights. v2 drew from
+# Jan 1 - Apr 16 2026: its Feb-Apr nights were Noggin-locked (tests/test_eval_data_v2.py guards this now).
+# EXP-735: with --season, nights before this are dev only (the new pin carries it as dev_before).
+SEASON_DEV_BEFORE = {"nba": "20261001", "nhl": "20261001"}
+OLD_SEASON = {"nba": ("20251021", "20260131"), "nhl": ("20251007", "20260131")}
+WINDOW_START = {"nfl": "20250905", "nba": "20251021", "nhl": "20251007"}   # eval-data-v2.yml --window starts
 
 
 def _d(s: str) -> date:
@@ -67,6 +73,17 @@ def max_nights_clean(locked_ok: int) -> int:
     return n
 
 
+def default_locked(league: str) -> tuple[str, ...]:
+    """The default pin's (eval-data.lock.json) locked nights for this league."""
+    from redzone.lab import evaldata
+    lock = evaldata.load_lock(ROOT / "eval-data.lock.json")
+    w = (lock or {}).get("window", {}).get(league)
+    if not w:
+        return ()
+    an = splits.archive_nights(ARCH / league)
+    return splits.split_nights([n for n in an if w["start"] <= n <= w["end"]]).test
+
+
 def previous_locked_start(league: str) -> str | None:
     """First LOCKED night of the default pin (eval-data.lock.json) for this league: everything older
     was that pin's dev (tunable) data and must never become locked in a new pin."""
@@ -80,9 +97,9 @@ def previous_locked_start(league: str) -> str | None:
     return s.test[0] if s.test else None
 
 
-def split_report(league: str, end: str | None = None) -> dict:
+def split_report(league: str, end: str | None = None, dev_before: str | None = None) -> dict:
     an = splits.archive_nights(ARCH / league, end)
-    s = splits.split_nights(an)
+    s = splits.split_nights(an, dev_before=dev_before) if dev_before else splits.league_split(league, an)
     mine = my_teams().get(league, set())
 
     def yt(nights):
@@ -118,7 +135,26 @@ def _final_your_team(client, league: str, day: date, mine: set[str]) -> bool:
                for e in sb.get("events") or [])
 
 
-def backfill(new_end: str, min_locked: int, extra: int) -> list[dict]:
+def season_all(client, lg: str, start: str, stop: str, log: list[dict]) -> None:
+    """[EXP-735] Every final game of an old season stretch, all teams, as DEV nights (the pin's dev_before keeps
+    them out of the locked block). Nights already archived are skipped, so a re-run resumes."""
+    import download_recent as dr
+    have = set(splits.archive_nights(ARCH / lg))
+    day = _d(start)
+    while day <= _d(stop):
+        key = day.strftime("%Y%m%d")
+        if key not in have:
+            try:
+                m = dr.download_day(client, lg, day, ARCH / lg)
+                log.append({"league": lg, "date": key, "kind": "season", "status": m["status"],
+                            "events": len(m["events"]), "errors": m["errors"][:3]})
+            except Exception as e:   # one bad day never stops the backfill
+                log.append({"league": lg, "date": key, "kind": "season", "status": "error", "errors": [str(e)]})
+            time.sleep(0.25)
+        day += timedelta(days=1)
+
+
+def backfill(new_end: str, min_locked: int, extra: int, season: tuple[str, ...] = ()) -> list[dict]:
     import httpx
     import download_recent as dr
     log = []
@@ -133,6 +169,9 @@ def backfill(new_end: str, min_locked: int, extra: int) -> list[dict]:
                 log.append({"league": lg, "date": m["date"], "kind": "new", "status": m["status"],
                             "events": len(m["events"]), "errors": m["errors"][:3]})
                 day += timedelta(days=1)
+            if lg in season:                              # EXP-735: the whole old stretch, as dev
+                season_all(client, lg, *OLD_SEASON[lg], log)
+                continue
             if lg not in OLD_SEASON:
                 continue
             # Old nights only up to the count that keeps every locked night at or after the default
@@ -163,11 +202,15 @@ def main(argv=None) -> int:
     ap.add_argument("--end", default="20261103", help="last night to add (YYYYMMDD, Eastern)")
     ap.add_argument("--min-locked", type=int, default=8)
     ap.add_argument("--extra", type=int, default=4, help="old nights beyond the minimum (margin for empty nights)")
+    ap.add_argument("--season", nargs="*", default=[], choices=sorted(OLD_SEASON),
+                    help="EXP-735: add the WHOLE old-season stretch (all games) as dev nights; needs the pin's "
+                         "dev_before for that league (build_eval_data.py --dev-before)")
     ap.add_argument("--check", action="store_true", help="no network: only report the split")
     ap.add_argument("--json", type=Path, help="also write the report here")
     a = ap.parse_args(argv)
-    log = [] if a.check else backfill(a.end, a.min_locked, a.extra)
-    rep = {lg: split_report(lg, a.end) for lg in LEAGUES if (ARCH / lg).exists()}
+    log = [] if a.check else backfill(a.end, a.min_locked, a.extra, tuple(a.season))
+    rep = {lg: split_report(lg, a.end, SEASON_DEV_BEFORE.get(lg) if lg in a.season else None)
+           for lg in LEAGUES if (ARCH / lg).exists()}
     out = {"end": a.end, "min_locked": a.min_locked, "split": rep, "download_log": log}
     if a.json:
         a.json.write_text(json.dumps(out, indent=1))
@@ -179,7 +222,11 @@ def main(argv=None) -> int:
     errors = [x for x in log if x.get("errors")]
     if errors:
         print(f"{len(errors)} day(s) with download errors (see --json)")
-    short = [lg for lg, r in rep.items() if r["locked"] < a.min_locked or r["leaks"] or r["locked_were_dev"]]
+    # A --season league publishes once its locked set is no smaller than the default pin's (EXP-735: the point is a
+    # bigger DEV set; locked grows only with fresh nights, and the release gate keeps its own >= 8-night floor, so
+    # a thin locked set reads PENDING there, never PASS). Every other league keeps the >= --min-locked bar.
+    floor = {lg: min(a.min_locked, len(default_locked(lg))) if lg in a.season else a.min_locked for lg in rep}
+    short = [lg for lg, r in rep.items() if r["locked"] < floor[lg] or r["leaks"] or r["locked_were_dev"]]
     if short:
         print("NOT READY:", ", ".join(short))
     return 1 if short else 0

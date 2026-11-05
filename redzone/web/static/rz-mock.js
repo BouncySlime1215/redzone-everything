@@ -321,7 +321,23 @@ const V2_RULES = [["yours", "Your team", /your team|UNC|WSH|Commanders|Capitals|
   ["redzone", "Red zone", /red ?zone|goal[- ]to[- ]go/i], ["score", "Score", /touchdown|goal|scor/i], ["break", "Break elsewhere", /break|timeout|commercial/i],
   ["replay", "Catch-up", /replay|catch[- ]up|missed/i], ["manual", "You picked", /you (picked|asked)|manual/i]];
 function mockV2(path, b) {
-  if (path === "/api/v2/status") return { enabled: Q.has("v2"), commit: Q.has("v2"), worth: Q.has("v2") };
+  if (path === "/api/v2/status") return { enabled: Q.has("v2"), commit: Q.has("v2"), worth: Q.has("v2"), orient: Q.has("v2"), follow: Q.has("v2"), last_night: Q.has("v2") };
+  if (path === "/api/v2/lastnight") return { enabled: true, show: true, night: "2026-11-04", worth: 4, mid_play_entries: 0, high_leverage_leaves: 0, dead_air_pct: 3.4, rule1: true, measured: true,
+    release: { commit: "e8bbf8e", name: "RC5.1", changes: [{ result: "rolled_back", commit: "cf480a4", name: "RC6", from: "e8bbf8e", from_name: "RC5.1", at: Date.now() / 1000 - 50000 }] } };
+  if (path === "/api/v2/follow") {   // EXP-043 preview
+    if (Object.keys(b).length) {
+      const players = [...new Set(String(b.players || "").split(",").map((x) => x.trim()).filter((x) => x.length > 1))].slice(0, 12);
+      mockV2.follow = players;
+      return { ok: true, message: players.length ? "Saved" : "Cleared", players };
+    }
+    const players = mockV2.follow || ["Nikola Jokic", "Alex Ovechkin"];
+    return { enabled: true, players, max: 12, live: players.includes("Nikola Jokic") ? [{ game_id: "x3", matchup: "DEN @ LAL", league: "nba", on: false,
+      players: [{ player: "Nikola Jokic", where: "leader", text: "N. Jokic 31 PTS 12 REB" }] }] : [] };
+  }
+  if (path.startsWith("/api/v2/orient")) {   // EXP-038 preview: the mock's switches every few seconds trigger it
+    const g = (STATE.games || []).find((x) => x.id === new URLSearchParams(path.split("?")[1] || "").get("game")) || {};
+    return { enabled: true, beat_s: 3, beat: { game_id: g.id || "g", matchup: g.matchup || "KC @ BUF", score: g.matchup || "KC 20 · BUF 17", clock: "Q4 1:12", fact: "BUF ball, 2nd & 7 at the 34", context: "BUF down 3, 1:12 left, BUF ball, 2nd & 7 at the 34, 1 timeout" } };
+  }
   if (path === "/api/v2/worth") {   // EXP-040 preview: ?mock&v2&done shows the card; ?probe adds the weekly probes
     MW.night = MW.night || { night: "2026-11-08", complete: Q.has("done"), finished: 9, rating: null, agency: null, regret: null };
     if (Object.keys(b).length) { Object.assign(MW.night, b); return { ok: true, message: "Thanks, noted", row: { ...MW.night } }; }
@@ -382,8 +398,10 @@ function mockV2(path, b) {
     const why = ["Tied, 2:10 left in the 4th", "Red zone, 3rd & goal", "Power play, down one", "Blowout, starters sitting", "Commercial break"];
     const games = (STATE.games || []).filter((g) => g.phase === "live" || g.state === "live").slice(0, 6).map((g, i) => ({ game_id: g.id, matchup: g.matchup,
       league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, stakes_line: ["AFC 1-seed race, top-5 matchup", "Rivalry game", "", "Wild-card push"][i] || "", stakes_rough: i === 3, is_break: i === 4, context: ["BUF down 3, 1:12 left, BUF ball, 2nd & 7 at the 34, 1 timeout", "Tied, 0:48 left", "", "BOS down 1, 1:30 left, goalie pulled"][i] || null, source: "stub" }));
+    // EXP-039 preview: two other late, close games as text
+    const also_close = [{ game_id: "x1", matchup: "UNC @ DUKE", league: "cbb", context: "UNC down 2, 0:41 left, 1 timeout" }, { game_id: "x2", matchup: "NYR @ WSH", league: "nhl", context: "Tied, OT, 3:20 left" }];
     return { enabled: true, now: Date.now() / 1000, current: games[0] && games[0].game_id, games, source: games.length ? "stub" : null,
-      why_tag: games.length ? { text: why[0], value: games[0].wv, threshold: 70, source: "stub" } : null };
+      why_tag: games.length ? { text: why[0], value: games[0].wv, threshold: 70, source: "stub" } : null, also_close };
   }
   if (path.startsWith("/api/v2/scorecard")) {
     const nights = Array.from({ length: 10 }, (_, i) => new Date(Date.UTC(2026, 9, 26 + i)).toISOString().slice(0, 10));

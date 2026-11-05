@@ -260,6 +260,9 @@ class Controller:
         self.hidden_ready = False                # ...and it's confirmed playing
         self._hidden_entry = 0.0                 # [seek model] entry rewind to run on the hidden stick before the flip
         self._hidden_entry_done = False
+        self._entry_rewind = 0.0                 # [EXP-741 B] the running switch's entry rewind (arm_entry_rewind)
+        self._safe_waiting = False               # [EXP-741 E] a switch is waiting for its moment (tap_bug_frames)
+        self._entry_cue = ""
         self.seek_log_path = None                # [calib.auto] data/seeks.jsonl: one row per measured seek
         self._last_seek_sent = 0
         self.parked: Parked | None = None        # ...parked on a replay instead of live
@@ -282,6 +285,13 @@ class Controller:
         # stick plays it). A fresh tune clears it. behind_of(target) is the engine's B for a target
         # (0 = no hold); on_behind(target, new, old) tells the delay book (DelayBook.set_behind).
         self.held: dict[str, float] = {}
+        # [SYNC A] stick host -> wall time of its last tune command, and -> seconds it plays behind its live
+        # edge as MEASURED (sync_edge.py via the probe; `held` is what the app asked for)
+        self.tuned_at: dict[str, float] = {}
+        self.behind_live: dict[str, float] = {}
+        # ...and -> seconds its picture runs behind REAL LIFE, where the app stamps frames with the wall clock
+        # (Prime's epoch positions, overseer Nov 5 3:15 AM)
+        self.behind_real: dict[str, float] = {}
         self.behind_of: Callable[[str], float] = lambda target: 0.0
         self.dead_ball: Callable[[str], bool] = lambda target: True   # [STK-06] engine: is target's game dead now?
         self._buffer_bad: dict[str, float] = {}                      # target -> when its hold went bad
@@ -410,14 +420,38 @@ class Controller:
             out.append((h, ht, False))
         return out
 
-    async def scorebug_frames(self, hidden: bool = False) -> list[dict]:
+    async def tap_bug_frames(self, target: str, band_from: float | None = None) -> list[dict]:
+        """[EXP-741 E] One frame of the hidden stick while a switch to `target` (a live Prime game, already
+        playing there) waits for its moment: the tap's score-bug clock read. Never presses a key. Empty
+        unless the switch is in that wait, and dropped if a flip or retune started while capturing."""
+        h = self.hidden
+        if not (self._safe_waiting and self.live_control and not self._flipping and not self.input_unknown
+                and h is not None and target.startswith("prime:") and self.hidden_target == target
+                and (h.tuned or {}).get("target") == target and self._live_on_hidden(target)):
+            return []
+        gen, tune, t0 = self._flip_gen, h.tuned, time.time()
+        png = await h.screencap_band(band_from, timeout=15) if band_from is not None else b""
+        if not png:
+            png = await h.screencap(timeout=15)
+        t1 = time.time()
+        if not png or gen != self._flip_gen or self._flipping or h.tuned is not tune or not self._safe_waiting:
+            return []
+        return [{"stick": h, "target": target, "visible": False, "tune": tune, "png": png, "t0": t0, "t1": t1}]
+
+    async def scorebug_frames(self, hidden: bool = False, band_from: float | None = None) -> list[dict]:
         """One screenshot of each stick scorebug_sticks() names: {stick, target, visible, tune, png,
-        t0, t1}. Never presses a key. All dropped if a switch or flip started while capturing."""
+        t0, t1}. Never presses a key. All dropped if a switch or flip started while capturing.
+        [delay.scorebug_band] With band_from, only the rows from there down cross Wi-Fi as raw pixels
+        (no PNG encode on the stick); a full screencap when that fails."""
         gen, out = self._flip_gen, []
         for s, target, visible in self.scorebug_sticks(hidden):
             tune = s.tuned
             t0 = time.time()
-            png = await s.screencap(timeout=15)   # a 1080p frame from the 4K (2023) stick: ~6.5 s over Wi-Fi
+            png = b""
+            if band_from is not None:
+                png = await s.screencap_band(band_from, timeout=15)
+            if not png:
+                png = await s.screencap(timeout=15)   # a 1080p frame from the 4K (2023) stick: ~6.5 s over Wi-Fi
             t1 = time.time()
             if gen != self._flip_gen or self._flipping or self._busy() or s.tuned is not tune:
                 return []
@@ -1374,6 +1408,13 @@ class Controller:
             if on_done:
                 on_done(out)
 
+    def arm_entry_rewind(self, rewind_s: float) -> None:
+        """[EXP-741 B] Set the running switch's entry rewind from its may_cut, i.e. at the cut, not at submit:
+        a phone tap only learns it needs one when no dead ball has come without one. With the "hidden" cue
+        the hidden stick seeks before the flip; otherwise the visible stick rewinds right after it."""
+        self._entry_rewind = float(rewind_s or 0.0)
+        self._hidden_entry = self._entry_rewind if getattr(self, "_entry_cue", "") == "hidden" else 0.0
+
     def cancel_pending(self) -> None:
         """Stop queued/tuning work on Pause or dry-run. Let an input flip settle."""
         if self._task and not self._task.done() and not self._flipping:
@@ -1413,6 +1454,7 @@ class Controller:
             return TuneResult(False, target, 0.0, [], f"{STICK_HUNG}: {stick.host}, retry in {br.retry_in():.0f}s",
                               screen_changed=False)
         self._tuned_on = stick.host
+        self.tuned_at[stick.host] = time.time()
         res = await tuner.tune(stick, ref, target, **({"may_cut": may_cut} if may_cut is not None else {}))
         if not res.ok and br is not None and br.state != "closed" and not res.error.startswith(STICK_HUNG):
             # The tune died because the stick hung, not because of the channel: say so, so the
@@ -1684,8 +1726,15 @@ class Controller:
         "no safe moment" waits in a row."""
         t0 = time.monotonic()
         look_at = t0 + WAIT_SCREEN_LOOK_S
+        try:
+            return await self._wait_safe_loop(may_cut, t0, look_at)
+        finally:
+            self._safe_waiting = False
+
+    async def _wait_safe_loop(self, may_cut, t0: float, look_at: float) -> float | None:
         while may_cut is not None and not may_cut():
             mine = self._task is asyncio.current_task()
+            self._safe_waiting = mine
             if mine:
                 self.stage.update(stage="waiting_safe_exit", reason="waiting for the current screen's safe exit window")
             if time.monotonic() - t0 >= MAX_SAFE_WAIT_S:
@@ -1791,9 +1840,12 @@ class Controller:
         marks = self._marks = [("started", time.time())]
         self._hidden_entry = entry_rewind_s if (entry_cue == "hidden" and not replay_back_s) else 0.0
         self._hidden_entry_done = False
+        self._entry_cue = entry_cue
+        self._entry_rewind = entry_rewind_s if not replay_back_s else 0.0
         why = self._why = {}
         try:
             out = await self._execute(target, replay_back_s, may_cut, replay_id, issued_at)
+            entry_rewind_s = self._entry_rewind   # [EXP-741 B] a tap may arm its rewind at the cut (arm_entry_rewind)
             if self._hidden_entry_done and out.ok:
                 out.detail += f"; rewound {entry_rewind_s:.0f}s to the dead ball before the flip"
             elif entry_rewind_s and out.ok and not out.dry_run and not replay_back_s and self.main is not None:
@@ -1811,6 +1863,7 @@ class Controller:
         finally:
             self._marks = None
             self._hidden_entry = 0.0
+            self._entry_rewind = 0.0
             self._why = None
         marks.append(("done", time.time()))
         out.marks = marks
@@ -2817,7 +2870,8 @@ class Controller:
 
     def _buffer_for(self, stick: Stick, target: str, res: TuneResult) -> float:
         """Seconds to hold this fresh hidden-stick tune behind live (0 = none)."""
-        if not config.any_league(self.cfg, "timing.behind_live_s.enabled"):
+        if not (config.any_league(self.cfg, "timing.behind_live_s.enabled")
+                or config.any_league(self.cfg, "timing.behind_live_s.rc8_on")):
             return 0.0   # [league overrides] behind_of (the engine) says 0 for a league that doesn't run it
         app = self._ref(target)[0]
         if app not in (self.cfg.get("timing.behind_live_s.apps") or ("youtubetv", "primevideo")):
@@ -3066,6 +3120,35 @@ class Controller:
                                     "stick": self.hdmi.get(host), "behind_s": behind_s, "err_s": err, **kw}) + "\n")
         except OSError:
             log.exception("buffer log")
+
+    def force_live_hidden(self, target: str) -> bool:
+        """[SYNC B, EXP-801, flag sync.edge.force_live] The hidden stick plays `target` "live" (no hold the app
+        asked for) but the live-edge reader (sync_edge.py) measured it landed behind the edge: re-tune it at
+        the edge, as a refresh preload (any switch or the planner's own preload cancels it). The stick on
+        screen is never touched. False = not now (busy, parked, held on purpose, unknown input)."""
+        if not (self.live_control and self.two_stick) or self.input_unknown or self.hidden is None:
+            return False
+        if self.hidden_target != target or not self.hidden_ready or self.parked is not None \
+                or self.on_target == target or self.held.get(target, 0.0) > 0 or self._busy() \
+                or time.time() < self._asleep_until or not self.can_tune(target):
+            return False
+        log.info("sync: %s on the hidden stick landed behind its live edge: re-tuning it at the edge", target)
+        self._cancel_refresh()
+        self.hidden_ready = False
+        self._preloading, self._refreshing = (target, None), target
+        self._preload_task = asyncio.create_task(self._preload(target, None, None, time.time()))
+        return True
+
+    def relink_visible_live(self, target: str) -> bool:
+        """[SYNC B, flag sync.edge.force_live_visible] The stick on screen plays `target` behind its live edge
+        without a hold the app asked for (a stall, a pause): re-link it to live with a fresh deep link (2.5 s
+        on YouTube TV, overseer Nov 5). Only on a dead ball, so no play is cut; any switch cancels it."""
+        if not self.live_control or self.input_unknown or self._flipping or self.on_target != target \
+                or self.held.get(target, 0.0) > 0 or self._busy() or not self.dead_ball(target):
+            return False
+        log.info("sync: %s on screen plays behind its live edge: re-linking it to live", target)
+        asyncio.get_running_loop().create_task(self.restore_visible(target, relink=True, why="behind live edge"))
+        return True
 
     def verify_hidden(self, target: str | None) -> asyncio.Task | None:
         """Pre-game check (redzone/plan.py): tune `target` on the HIDDEN stick and report whether it

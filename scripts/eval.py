@@ -131,12 +131,7 @@ def main():
     if a.no_redzone:
         cfg.data["sunday_ticket"] = False
     for kv in a.set:
-        key, _, val = kv.partition("=")
-        node = cfg.data
-        *path, last = key.split(".")
-        for part in path:
-            node = node.setdefault(part, {})
-        node[last] = yaml.safe_load(val)
+        evaldata.apply_set(cfg, kv)
     evaldata.flatten_league_overrides(cfg, "nfl")   # [grader v7] league-scoped defaults, as the app runs them
     if a.behind_live is None and evaldata.config_behind_live(cfg, "nfl") is not None:   # [grader v8]
         knobs.update(feed_lag_knobs(a.feed_lag, evaldata.config_behind_live(cfg, "nfl")))
@@ -157,13 +152,15 @@ def main():
                           "cuts": len(r.mid_play_cuts), "cuts_high": len(r.mid_play_cuts_high), "big": r.big_plays, "big_seen": r.big_plays_caught,
                           "big_seen_10m": r.big_seen_10m, "my_big": r.my_big_plays,
                           "my_big_seen_10m": r.my_big_seen_10m, "crunch_on_replay": r.crunch_on_replay,
-                          "big_seen_3m": r.big_seen_3m, "big_seen_2m": r.big_seen_2m, "my_big_seen_3m": r.my_big_seen_3m,
+                          "big_seen_3m": r.big_seen_3m, "big_seen_2m": r.big_seen_2m, "big_see_s": [-1.0 if x == float("inf") else (None if x is None else round(x, 1)) for x in r.big_see_s], "my_big_seen_3m": r.my_big_seen_3m,
                           # [north star] per-night counts so scripts/northstar.py can bootstrap every line
                           "big_live": r.big_plays_live, "my_big_live": r.my_big_plays_live,
                           "landings": r.cut.landings()[1], "landings_dead": r.cut.landings()[0],
                           "dead_s": round(r.dead_air_s, 1), "watched_s": round(r.watched_s, 1),
                           "crunch": r.crunch, "crunch_live": r.crunch_live,
-                          "my_crunch": r.my_crunch, "my_crunch_live": r.my_crunch_live})
+                          "my_crunch": r.my_crunch, "my_crunch_live": r.my_crunch_live,
+                          "big_from_start": r.big_from_start, "crunch_from_start": r.crunch_from_start,
+                          "my_crunch_from_start": r.my_crunch_from_start})
         tot["big"] += r.big_plays; tot["seen"] += r.big_plays_caught; tot["live"] += r.big_plays_live
         tot["cuts"] += len(r.mid_play_cuts); tot["dead"] += r.dead_air_s; tot["watched"] += r.watched_s
         tot["crunch"] += r.crunch; tot["crunch_live"] += r.crunch_live
@@ -203,6 +200,8 @@ def main():
            "big_seen_10m_pct": pct(tot.get("seen10", 0), tot["big"]),
            "your_team_big_seen_10m": f"{tot.get('my_seen10', 0)}/{tot['my_big']}",
            "crunch_on_replay": tot.get("crunch_on_replay", 0),
+           "big_from_start_pct": pct(sum(x["big_from_start"] for x in per_night), tot["big"]),
+           "crunch_from_start_pct": pct(sum(x["crunch_from_start"] for x in per_night), tot["crunch"]),
            "big_plays": tot["big"], "crunch_plays": tot["crunch"], **cut.summary(),
            "seconds": round(time.time() - t0),
            "eval_data": evaldata.stamp(), "eval_end": evaldata.window_end("nfl", EVAL_END),
