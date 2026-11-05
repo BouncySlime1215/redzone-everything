@@ -480,6 +480,7 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   redzone_way: false       # catch-up the RedZone way (Nick, Nov 4; OFF until its gate passes): lull, "meanwhile",
                            # collision and end-of-night montage triggers (redzone/decider/decider.py)
   catchup_s: 600           # each missed big play replayed within this; its value halves every catchup_s
+  urgent_clears_top: false  # [EXP-026 arm B] past half its due time a missed play beats ordinary live play (off)
   collision_s: 180         # missed because another big play was on screen: replayed within this
   window_s: 0              # [replay window] Nick, Nov 4: a missed moment airs within this (180 = 3 min, the next
                            # dead moment) or is skipped / folded into the montage; 0 = off
