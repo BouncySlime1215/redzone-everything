@@ -471,7 +471,8 @@
    "owner": "unowned",
    "role": "[calib.auto] Self-calibration: values re-measured each night from live telemetry, with no one's input.",
    "serves": [
-    "untagged"
+    "BTN-02",
+    "STK-06"
    ]
   },
   "redzone/channels.py": {
@@ -528,6 +529,8 @@
     "agent/kaggle/build_moments_kaggle.py",
     "redzone/__main__.py",
     "redzone/autonomy.py",
+    "redzone/control.py",
+    "redzone/crunch.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
     "redzone/lab/backtest.py",
@@ -551,6 +554,7 @@
     "scripts/eval_sports.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
+    "scripts/night_report.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
     "scripts/replay_check.py",
@@ -894,6 +898,9 @@
    "outputs": [
     "redzone/contracts/__init__.py",
     "redzone/contracts/world.py",
+    "redzone/control.py",
+    "redzone/decider/decider.py",
+    "redzone/lab/backtest.py",
     "redzone/lab/evaldata.py"
    ],
    "owner": "INTEGRATION",
@@ -1015,13 +1022,20 @@
    ]
   },
   "redzone/control.py": {
-   "contracts": [],
+   "contracts": [
+    "flip_bound",
+    "seek_model"
+   ],
    "inputs": [
     "redzone/channels.py",
+    "redzone/config.py",
+    "redzone/contracts/switching.py",
     "redzone/tuners/adb.py",
     "redzone/tuners/prime_multiview.py",
     "redzone/tuners/tuners.py",
-    "redzone/tv.py"
+    "redzone/tv.py",
+    "uses:flip_bound",
+    "uses:seek_model"
    ],
    "kind": "module",
    "outputs": [
@@ -1037,6 +1051,7 @@
    "owner": "SWITCHING",
    "role": "Turns decisions into TV actions.",
    "serves": [
+    "APP-04",
     "BTN-05",
     "Flips PLAYING within 3 s",
     "Phone press to TV p95 (\"Watch this\" + \"Go now\" until the game plays)",
@@ -1047,6 +1062,25 @@
     "STK-06",
     "Switch time p95 (SmartThings input change)",
     "TV-04"
+   ]
+  },
+  "redzone/crunch.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/demo/engine.py",
+    "redzone/grading.py",
+    "redzone/scoring/drive.py",
+    "redzone/scoring/engine.py",
+    "redzone/standby.py"
+   ],
+   "owner": "unowned",
+   "role": "[one brain, step 2] One crunch table (docs/onebrain-migration.md).",
+   "serves": [
+    "untagged"
    ]
   },
   "redzone/decider/__init__.py": {
@@ -1062,13 +1096,15 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
   "redzone/decider/core.py": {
    "contracts": [],
-   "inputs": [],
+   "inputs": [
+    "redzone/models.py"
+   ],
    "kind": "module",
    "outputs": [
     "redzone/contracts/__init__.py",
@@ -1087,7 +1123,7 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
@@ -1111,13 +1147,16 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
   "redzone/decider/decider.py": {
-   "contracts": [],
+   "contracts": [
+    "seek_model"
+   ],
    "inputs": [
+    "redzone/contracts/switching.py",
     "redzone/decider/core.py",
     "redzone/decider/cuts.py",
     "redzone/decider/playbooks.py",
@@ -1128,7 +1167,8 @@
     "redzone/noggin/lookahead.py",
     "redzone/noggin/pick.py",
     "redzone/noggin/wire.py",
-    "redzone/scoring/engine.py"
+    "redzone/scoring/engine.py",
+    "uses:seek_model"
    ],
    "kind": "module",
    "outputs": [
@@ -1153,7 +1193,7 @@
     "GAME-05",
     "GAME-09",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "SAFE-01",
     "Your-team crunch live"
    ]
@@ -1173,7 +1213,7 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
@@ -1193,7 +1233,7 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "SAFE-01",
     "SAFE-02",
     "SAFE-03",
@@ -1223,7 +1263,7 @@
     "GAME-21",
     "GAME-22",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
@@ -1240,6 +1280,7 @@
     "redzone/decider/decider.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
+    "redzone/grading.py",
     "redzone/lab/backtest.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/replaycheck.py",
@@ -1256,7 +1297,7 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
@@ -1282,7 +1323,7 @@
     "Crunch live, NHL",
     "Entries at a possession start (dead ball, no play missed)",
     "Landings in dead time",
-    "Mid-play cuts + entries (per 100 landings)",
+    "Mid-play entries (per 100 landings)",
     "Your-team crunch live"
    ]
   },
@@ -1333,6 +1374,7 @@
     "redzone/channels.py",
     "redzone/config.py",
     "redzone/control.py",
+    "redzone/crunch.py",
     "redzone/decider/decider.py",
     "redzone/decider/screen.py",
     "redzone/engine.py",
@@ -1502,7 +1544,7 @@
     "redzone/discovery/runtime.py",
     "redzone/fantasy.py",
     "redzone/governor.py",
-    "redzone/lab/timing.py",
+    "redzone/grading.py",
     "redzone/models.py",
     "redzone/network.py",
     "redzone/plan.py",
@@ -1593,6 +1635,30 @@
     "untagged"
    ]
   },
+  "redzone/grading.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/crunch.py",
+    "redzone/decider/screen.py",
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/lab/oracle.py",
+    "redzone/lab/sportsgrade.py",
+    "redzone/lab/timing.py",
+    "redzone/noggin/pick.py"
+   ],
+   "owner": "unowned",
+   "role": "[one brain, step 3] The play-by-play predicates the live app and the grader share (docs/onebrain-migration.md).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/jsonfind.py": {
    "contracts": [],
    "inputs": [],
@@ -1619,18 +1685,32 @@
    ]
   },
   "redzone/lab/backtest.py": {
-   "contracts": [],
+   "contracts": [
+    "FLIP_PRIOR",
+    "PRETUNE_PRIOR_S",
+    "YTTV_SEEK",
+    "sample_prior",
+    "seek_model"
+   ],
    "inputs": [
     "redzone/channels.py",
     "redzone/config.py",
+    "redzone/contracts/switching.py",
     "redzone/decider/decider.py",
     "redzone/decider/screen.py",
+    "redzone/grading.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/leverage.py",
     "redzone/lab/timing.py",
     "redzone/models.py",
     "redzone/scoring/drive.py",
     "redzone/scoring/engine.py",
-    "redzone/sources/espn.py"
+    "redzone/sources/espn.py",
+    "uses:FLIP_PRIOR",
+    "uses:PRETUNE_PRIOR_S",
+    "uses:YTTV_SEEK",
+    "uses:sample_prior",
+    "uses:seek_model"
    ],
    "kind": "module",
    "outputs": [
@@ -1644,7 +1724,6 @@
     "redzone/lab/replaycheck.py",
     "redzone/lab/sportsgrade.py",
     "redzone/lab/tune.py",
-    "redzone/noggin/pick.py",
     "scripts/backtest.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
@@ -1764,8 +1843,8 @@
    "contracts": [],
    "inputs": [
     "redzone/decider/screen.py",
+    "redzone/grading.py",
     "redzone/lab/backtest.py",
-    "redzone/lab/sportsgrade.py",
     "redzone/models.py",
     "redzone/sources/espn.py"
    ],
@@ -1774,7 +1853,6 @@
     "redzone/lab/backtest.py",
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
-    "redzone/noggin/pick.py",
     "scripts/eval.py"
    ],
    "owner": "INTEGRATION",
@@ -1837,6 +1915,23 @@
    ],
    "owner": "unowned",
    "role": "One pinned eval dataset, so every thread, CI and the Mac grade on byte-identical nights.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/leverage.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/sportsgrade.py"
+   ],
+   "owner": "unowned",
+   "role": "Leverage floor for a mid-play LEAVE (Nick, Nov 4 3:15 PM ET).",
    "serves": [
     "untagged"
    ]
@@ -2021,6 +2116,7 @@
   "redzone/lab/oracle.py": {
    "contracts": [],
    "inputs": [
+    "redzone/grading.py",
     "redzone/lab/backtest.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/sportsgrade.py",
@@ -2029,7 +2125,6 @@
    ],
    "kind": "module",
    "outputs": [
-    "redzone/noggin/pick.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
     "scripts/train_noggin_pick.py",
@@ -2143,20 +2238,20 @@
    "contracts": [],
    "inputs": [
     "redzone/decider/screen.py",
+    "redzone/grading.py",
     "redzone/lab/backtest.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/leverage.py",
     "redzone/models.py",
     "redzone/sources/espn.py"
    ],
    "kind": "module",
    "outputs": [
     "agent/kaggle/build_moments_kaggle.py",
-    "redzone/lab/cutgrade.py",
     "redzone/lab/oracle.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/tune.py",
-    "redzone/noggin/pick.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
     "scripts/train_noggin_pick.py"
@@ -2184,10 +2279,11 @@
   },
   "redzone/lab/timing.py": {
    "contracts": [],
-   "inputs": [],
+   "inputs": [
+    "redzone/grading.py"
+   ],
    "kind": "module",
    "outputs": [
-    "redzone/engine.py",
     "redzone/lab/backtest.py",
     "scripts/timing_report.py"
    ],
@@ -2247,6 +2343,7 @@
     "redzone/contracts/legacy.py",
     "redzone/contracts/moment.py",
     "redzone/contracts/world.py",
+    "redzone/decider/core.py",
     "redzone/decider/cuts.py",
     "redzone/decider/decider.py",
     "redzone/decider/screen.py",
@@ -2254,11 +2351,13 @@
     "redzone/discovery/providers.py",
     "redzone/engine.py",
     "redzone/fantasy.py",
+    "redzone/grading.py",
     "redzone/lab/backtest.py",
     "redzone/lab/brain3fit.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/leverage.py",
     "redzone/lab/night/presses.py",
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
@@ -2272,6 +2371,7 @@
     "redzone/noggin/features.py",
     "redzone/noggin/live.py",
     "redzone/noggin/pick.py",
+    "redzone/noggin/priority.py",
     "redzone/plan.py",
     "redzone/platform/agent_fix.py",
     "redzone/platform/health.py",
@@ -2284,6 +2384,7 @@
     "redzone/scoring/drive.py",
     "redzone/scoring/engine.py",
     "redzone/scoring/garbage.py",
+    "redzone/scoring/postseason.py",
     "redzone/sources/espn.py",
     "redzone/sources/fastcast.py",
     "redzone/sources/feeds.py",
@@ -2307,6 +2408,35 @@
    ],
    "owner": "INTEGRATION",
    "role": "Source-agnostic game model.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/models_rt/__init__.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "package",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[one brain, step 4] Runtime model code shared by every tree model (forest.py).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/models_rt/forest.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/noggin/pick.py",
+    "redzone/noggin/predict.py",
+    "redzone/noggin/timing.py",
+    "redzone/reasoner/head.py",
+    "redzone/scoring/brain.py",
+    "redzone/scoring/brain3.py"
+   ],
+   "owner": "unowned",
+   "role": "[one brain, step 4] One tree walker and one model loader (docs/onebrain-migration.md).",
    "serves": [
     "untagged"
    ]
@@ -2414,11 +2544,9 @@
   "redzone/noggin/pick.py": {
    "contracts": [],
    "inputs": [
-    "redzone/lab/backtest.py",
-    "redzone/lab/cutgrade.py",
-    "redzone/lab/oracle.py",
-    "redzone/lab/sportsgrade.py",
+    "redzone/grading.py",
     "redzone/models.py",
+    "redzone/models_rt/forest.py",
     "redzone/noggin/features.py",
     "redzone/noggin/timing.py",
     "redzone/scoring/brain3.py",
@@ -2440,6 +2568,7 @@
   "redzone/noggin/predict.py": {
    "contracts": [],
    "inputs": [
+    "redzone/models_rt/forest.py",
     "redzone/noggin/features.py",
     "redzone/noggin/timing.py"
    ],
@@ -2475,7 +2604,9 @@
   },
   "redzone/noggin/priority.py": {
    "contracts": [],
-   "inputs": [],
+   "inputs": [
+    "redzone/models.py"
+   ],
    "kind": "module",
    "outputs": [
     "redzone/noggin/wire.py",
@@ -2504,6 +2635,7 @@
   "redzone/noggin/timing.py": {
    "contracts": [],
    "inputs": [
+    "redzone/models_rt/forest.py",
     "redzone/noggin/features.py",
     "redzone/scoring/brain3.py"
    ],
@@ -2733,6 +2865,7 @@
   "redzone/reasoner/head.py": {
    "contracts": [],
    "inputs": [
+    "redzone/models_rt/forest.py",
     "redzone/reasoner/brief.py",
     "redzone/scoring/brain.py"
    ],
@@ -2837,6 +2970,7 @@
    "contracts": [],
    "inputs": [
     "redzone/models.py",
+    "redzone/models_rt/forest.py",
     "redzone/scoring/brain3.py",
     "redzone/scoring/gameflow.py"
    ],
@@ -2879,6 +3013,7 @@
     "redzone/contracts/legacy.py",
     "redzone/contracts/moment.py",
     "redzone/models.py",
+    "redzone/models_rt/forest.py",
     "redzone/scoring/brain.py",
     "redzone/scoring/breaks.py",
     "uses:BreakForecast",
@@ -2932,6 +3067,7 @@
   "redzone/scoring/drive.py": {
    "contracts": [],
    "inputs": [
+    "redzone/crunch.py",
     "redzone/models.py",
     "redzone/scoring/breaks.py",
     "redzone/scoring/engine.py"
@@ -2951,11 +3087,13 @@
   "redzone/scoring/engine.py": {
    "contracts": [],
    "inputs": [
+    "redzone/crunch.py",
     "redzone/models.py",
     "redzone/reasoner/brief.py",
     "redzone/reasoner/reasoner.py",
     "redzone/scoring/brain.py",
-    "redzone/scoring/garbage.py"
+    "redzone/scoring/garbage.py",
+    "redzone/scoring/postseason.py"
    ],
    "kind": "module",
    "outputs": [
@@ -2997,6 +3135,22 @@
    ],
    "owner": "DECISION",
    "role": "Garbage time: the game is decided, so it stops competing for your TV — even your own team's.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/scoring/postseason.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/models.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/scoring/engine.py",
+    "redzone/sources/espn.py"
+   ],
+   "owner": "unowned",
+   "role": "Postseason stakes: elimination games, deciders and how close a game is to the title (default OFF).",
    "serves": [
     "untagged"
    ]
@@ -3092,18 +3246,21 @@
   "redzone/sources/espn.py": {
    "contracts": [],
    "inputs": [
-    "redzone/models.py"
+    "redzone/models.py",
+    "redzone/scoring/postseason.py"
    ],
    "kind": "module",
    "outputs": [
     "agent/distill/jump.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
+    "redzone/grading.py",
     "redzone/lab/backtest.py",
     "redzone/lab/brain3fit.py",
     "redzone/lab/brainfit.py",
     "redzone/lab/breakblend.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/leverage.py",
     "redzone/lab/night/run.py",
     "redzone/lab/oracle.py",
     "redzone/lab/reasoner_data.py",
@@ -3255,6 +3412,7 @@
    "contracts": [],
    "inputs": [
     "redzone/config.py",
+    "redzone/crunch.py",
     "redzone/models.py"
    ],
    "kind": "module",
@@ -4281,6 +4439,19 @@
     "untagged"
    ]
   },
+  "scripts/night_report.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Night health report: one page per night, written every morning to docs/nights/YYYY-MM-DD.md (cycle 04 build (a), lane 4).",
+   "serves": [
+    "STK-06"
+   ]
+  },
   "scripts/noggin_factory.py": {
    "contracts": [],
    "inputs": [
@@ -4439,7 +4610,7 @@
    "owner": "unowned",
    "role": "Publish live-night summaries into the repo so the North Star workflow grades real nights (cycle 04, lane 4: \"live nights into northstar\").",
    "serves": [
-    "untagged"
+    "STK-06"
    ]
   },
   "scripts/release_gate.py": {
@@ -4718,10 +4889,10 @@
   }
  },
  "summary": {
-  "modules": 250,
+  "modules": 257,
   "orphans": 10,
-  "unowned": 99,
-  "untagged": 210
+  "unowned": 106,
+  "untagged": 214
  },
  "version": 1
 }
