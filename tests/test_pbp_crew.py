@@ -46,3 +46,18 @@ def test_notebook_is_self_contained():
     plain = "\n".join(ln for ln in src.split("\n") if not ln.startswith("CODE_B64"))
     assert "KAGGLE_KEY" not in plain and "secret" not in plain.lower()
     json.dumps(nb)
+
+
+def test_espn_plays_line_up_with_factory_order():
+    from pbp import espn_plays
+    plays = [{"type": {"text": "Jump Ball"}, "period": {"number": 1}, "clock": {"displayValue": "12:00"},
+              "homeScore": 0, "awayScore": 0, "wallclock": "2024-01-10T00:10:00Z"},
+             {"type": {"text": "Made Shot"}, "period": {"number": 1}, "clock": {"displayValue": "11:40"},
+              "homeScore": 2, "awayScore": 0, "scoringPlay": True, "team": {"id": "1"}},
+             {"type": {"text": "Timeout"}, "period": {"number": 1}, "clock": {"displayValue": "11:30"},
+              "homeScore": 2, "awayScore": 0}]
+    rows = espn_plays.convert_game("nba", "401", "20240109", plays, "BOS", "NYK", season=2024, source="hoopr",
+                                   license="L", tag=schema.PERSONAL, home_id="1", away_id="2")
+    assert [r["seq"] for r in rows] == [0, 1, 2] and schema.validate(rows) == []
+    assert rows[1]["value"] == 2 and rows[1]["side"] == "home" and rows[1]["possession"] == "away"
+    assert rows[0]["clock_s"] == 720 and rows[0]["wall_ts"] and rows[2]["wall_ts"] is None
