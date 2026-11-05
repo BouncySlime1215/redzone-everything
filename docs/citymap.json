@@ -540,6 +540,7 @@
     "redzone/lab/evaldata.py",
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
+    "redzone/lab/orient.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/tune.py",
@@ -2138,6 +2139,21 @@
    ],
    "owner": "unowned",
    "role": "Hindsight oracle: the best schedule anyone could have run on an archived night (offline only).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/orient.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/orient_line.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-038] Grade the orientation beat: do overrides right after an automatic switch drop when the phone shows a 2-3 s \"who, score, clock, one fact\" beat?",
    "serves": [
     "untagged"
    ]
@@ -3931,7 +3947,8 @@
    ],
    "kind": "module",
    "outputs": [
-    "redzone/web/server.py"
+    "redzone/web/server.py",
+    "scripts/orient_line.py"
    ],
    "owner": "EXPERIENCE",
    "role": "Phone page v2 (flag `phone.v2`, default OFF): why each switch happened, rate it, \"I missed that\", and the Noggin Priority L2 sliders.",
@@ -4537,6 +4554,20 @@
     "STK-06"
    ]
   },
+  "scripts/orient_line.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/orient.py",
+    "redzone/web/phone_v2.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-038] Print the orientation-beat line: override rates on nights with phone.orient on vs off.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/perf_probe.py": {
    "contracts": [],
    "inputs": [
@@ -4966,10 +4997,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 261,
+  "modules": 263,
   "orphans": 10,
-  "unowned": 103,
-  "untagged": 210
+  "unowned": 105,
+  "untagged": 212
  },
  "version": 1
 }

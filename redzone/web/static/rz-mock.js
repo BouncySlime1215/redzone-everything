@@ -321,7 +321,11 @@ const V2_RULES = [["yours", "Your team", /your team|UNC|WSH|Commanders|Capitals|
   ["redzone", "Red zone", /red ?zone|goal[- ]to[- ]go/i], ["score", "Score", /touchdown|goal|scor/i], ["break", "Break elsewhere", /break|timeout|commercial/i],
   ["replay", "Catch-up", /replay|catch[- ]up|missed/i], ["manual", "You picked", /you (picked|asked)|manual/i]];
 function mockV2(path, b) {
-  if (path === "/api/v2/status") return { enabled: Q.has("v2"), commit: Q.has("v2"), worth: Q.has("v2") };
+  if (path === "/api/v2/status") return { enabled: Q.has("v2"), commit: Q.has("v2"), worth: Q.has("v2"), orient: Q.has("v2") };
+  if (path.startsWith("/api/v2/orient")) {   // EXP-038 preview: the mock's switches every few seconds trigger it
+    const g = (STATE.games || []).find((x) => x.id === new URLSearchParams(path.split("?")[1] || "").get("game")) || {};
+    return { enabled: true, beat_s: 3, beat: { game_id: g.id || "g", matchup: g.matchup || "KC @ BUF", score: g.matchup || "KC 20 · BUF 17", clock: "Q4 1:12", fact: "BUF ball, 2nd & 7 at the 34", context: "BUF down 3, 1:12 left, BUF ball, 2nd & 7 at the 34, 1 timeout" } };
+  }
   if (path === "/api/v2/worth") {   // EXP-040 preview: ?mock&v2&done shows the card; ?probe adds the weekly probes
     MW.night = MW.night || { night: "2026-11-08", complete: Q.has("done"), finished: 9, rating: null, agency: null, regret: null };
     if (Object.keys(b).length) { Object.assign(MW.night, b); return { ok: true, message: "Thanks, noted", row: { ...MW.night } }; }

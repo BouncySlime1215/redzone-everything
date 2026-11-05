@@ -14,7 +14,7 @@ function check() {
   if (!checking) {
     v2.checked = true;
     checking = (async () => {
-      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; v2.worth = !!st.worth; } catch { v2.on = false; }
+      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; v2.worth = !!st.worth; v2.orient = !!st.orient; } catch { v2.on = false; }
       if (v2.on) { hooks.render(); pollAlert(); pollStrip(); pollHeld(); }
       if (v2.worth) pollWorth();
     })();
@@ -80,11 +80,29 @@ function sync(S) {
   const log = arr(S && S.log);
   const head = log.length ? `${log[0].ts}|${log[0].to}` : "";
   if (!v2.on || v2.loading || head === v2.head) return;
+  if (v2.orient && v2.head && head && log[0].to) beat(log[0].to);   // EXP-038: a new switch, not the first load
   v2.loading = true;
   api("/api/v2/switches").then((r) => {
     v2.rows = new Map(arr(r && r.switches).map((x) => [`${x.ts}|${x.to}`, x]));
     v2.head = head;
   }).catch(() => {}).finally(() => { v2.loading = false; hooks.renderScreen("now"); });
+}
+
+/* EXP-038 orientation beat: right after a switch, a small corner card with who, the score, the clock and
+   one fact for phone.orient_beat_s (3 s), then it's gone. Plain facts, no sound, no animation beyond a fade,
+   never a button (it can't be mistaken for a control), and it sits in a corner so it never covers anything. */
+let beatTimer = null;
+async function beat(gid) {
+  let r;
+  try { r = await api(`/api/v2/orient?game=${encodeURIComponent(gid)}`); } catch { return; }
+  const b = r && r.beat;
+  if (!b) return;
+  let el = document.getElementById("v2-beat");
+  if (!el) { el = document.createElement("div"); el.id = "v2-beat"; el.className = "v2-beat"; el.setAttribute("role", "status"); el.setAttribute("aria-live", "polite"); document.body.appendChild(el); }
+  el.innerHTML = `<b>${esc(b.score)}</b><span>${esc([b.clock, b.fact].filter(Boolean).join(" · "))}</span>${b.context ? `<small>${esc(b.context)}</small>` : ""}`;
+  el.classList.add("on");
+  clearTimeout(beatTimer);
+  beatTimer = setTimeout(() => el.classList.remove("on"), 1000 * (num(r.beat_s) || 3));
 }
 
 export const v2On = () => v2.on;

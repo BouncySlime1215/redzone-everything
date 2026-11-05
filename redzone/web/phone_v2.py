@@ -637,6 +637,49 @@ def context_line(g) -> str | None:
     return ", ".join(bits)
 
 
+def _period_label(g) -> str:
+    """'Q4' / '2nd half' / 'P3' / 'OT' / 'Bot 9th'."""
+    reg, p = REGULATION.get(g.league, 4), g.period or 0
+    base = g.league.base
+    if base == League.MLB:
+        return f"{'Top' if (g.half or '').lower() == 'top' else 'Bot'} {_ord(p)}" if p else ""
+    if p > reg or (g.period_type or "").upper() in ("OT", "SO"):
+        return "SO" if (g.period_type or "").upper() == "SO" else ("OT" if p == reg + 1 else f"{p - reg}OT")
+    if reg == 2:
+        return f"{_ord(p)} half" if p else ""
+    return (f"P{p}" if base == League.NHL else f"Q{p}") if p else ""
+
+
+def orientation(g) -> dict | None:
+    """[EXP-038] The 2-3 s orientation beat after a switch: who, the score, the clock and one situation
+    fact, so the first seconds on a new game aren't spent working out what's going on. Plain facts only
+    (playbook "line" section: no hype, no loaded wording); None when the game isn't live."""
+    if g is None or g.phase != Phase.LIVE:
+        return None
+    sit, base = g.situation, g.league.base
+    score = (f"{g.away.abbr} {g.away.score} · {g.home.abbr} {g.home.score}"
+             if g.away.score is not None and g.home.score is not None else g.matchup)
+    clock = " ".join(x for x in (_period_label(g), _clock(g.clock_s) if g.clock_s is not None and base != League.MLB
+                                 else "") if x)
+    fact = ""
+    if base == League.NFL and sit.possession and sit.down:
+        fact = f"{sit.possession} ball, {_ord(sit.down)} & {'goal' if sit.goal_to_go else sit.distance}" + (
+            f" at the {sit.yards_to_goal}" if sit.yards_to_goal is not None else "")
+    elif base == League.NHL:
+        fact = (f"{sit.empty_net} net empty" if sit.empty_net else
+                f"{sit.power_play} power play" + (f" ({sit.strength})" if sit.strength else "") if sit.power_play else "")
+    elif base == League.MLB:
+        bits = []
+        if sit.outs is not None:
+            bits.append(f"{sit.outs} out" + ("" if sit.outs == 1 else "s"))
+        if sit.runners:
+            on = sum(1 for r in sit.runners if r)
+            bits.append("bases loaded" if on == 3 else f"{on} on" if on else "bases empty")
+        fact = ", ".join(bits)
+    return {"game_id": g.game_id, "league": g.league.value, "matchup": g.matchup, "score": score,
+            "clock": clock, "fact": fact, "context": context_line(g)}
+
+
 RISING_MIN = 1.0    # watch_rising (points per minute) at or above this shows an up arrow, at or below -this a down one
 
 
@@ -812,6 +855,7 @@ def router(engine) -> APIRouter:
     @r.get("/status")
     async def status():
         return {"enabled": _enabled(engine), "commit": _enabled(engine) and bool(engine.cfg.get("phone.commit")),
+                "orient": _enabled(engine) and bool(engine.cfg.get("phone.orient")),
                 "worth": bool(engine.cfg.get("phone.worth"))}
 
     def _worth_now():
@@ -945,6 +989,15 @@ def router(engine) -> APIRouter:
         return {"enabled": True, "now": time.time(), "current": cur,
                 "why_tag": why_tag(engine.scored.get(cur), float(engine.cfg.get("phone.why_tag_min"))) if cur else None,
                 **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}))}
+
+    @r.get("/orient")
+    async def orient(game: str = ""):
+        # [EXP-038] the phone asks right after it sees a new switch; flag phone.orient (off) on top of phone.v2
+        if not _enabled(engine) or not engine.cfg.get("phone.orient"):
+            return _off()
+        gid = game or engine.decider.current
+        return {"enabled": True, "beat_s": float(engine.cfg.get("phone.orient_beat_s")),
+                "beat": orientation(getattr(engine.merger, "games", {}).get(gid)) if gid else None}
 
     @r.get("/provenance")
     async def get_provenance(key: str = ""):

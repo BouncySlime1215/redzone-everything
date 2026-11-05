@@ -440,3 +440,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   data/worth.jsonl and are EVALUATION ONLY: redzone/lab/worth.py grades "worth it >= live" (pre-registered bar in
   docs/lanes/experience.md); tests/test_worth.py fails if noggin, decider or scoring code reads them. Reason:
   Start Planner Cycle 09 (#200), Sunday Nov 8 promotion bar includes "worth it >= live".
+- 2026-11-05 (lane 5, EXP-038): new defaults `phone.orient: false`, `phone.orient_beat_s: 3`,
+  `phone.orient_override_s: 30`. A 2-3 s orientation beat (score, clock, one situation fact, and the context line
+  when late and close) in a corner of the phone after each switch. The TV has no overlay path on this rig (the
+  sticks only switch inputs), so the beat is phone-only for now. Graded by redzone/lab/orient.py (override rate
+  within 30 s, whole nights alternated on/off; bar in docs/lanes/experience.md). Reason: Cycle 11 (#217), playbook P12.

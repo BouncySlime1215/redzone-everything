@@ -1233,6 +1233,14 @@ button.v2-held { width: 100%; text-align: left; font: inherit; font-size: 13px; 
 .v2-done { display: grid; gap: 4px; margin: 12px 0; padding: 18px 16px; border-radius: 14px; background: var(--surface-2); text-align: center; }
 .v2-done b { font: 700 18px/1.2 var(--font-display); }
 .v2-done span { color: var(--text-3); font-size: 13px; }
+.v2-beat { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 64px); right: 12px; z-index: 60; max-width: min(260px, calc(100vw - 24px));
+  display: grid; gap: 2px; padding: 8px 12px; border-radius: 12px; background: var(--glass); border: 1px solid var(--line-2);
+  box-shadow: var(--e-2); pointer-events: none; opacity: 0; transform: translateY(-4px); transition: opacity .2s, transform .2s; }
+.v2-beat.on { opacity: 1; transform: none; }
+.v2-beat b { font: 700 15px/1.2 var(--font-display); color: var(--text-1); }
+.v2-beat span { font-size: 12px; color: var(--text-2); }
+.v2-beat small { font-size: 11px; color: var(--text-3); }
+@media (prefers-reduced-motion: reduce) { .v2-beat { transition: none; transform: none; } }
 .v2-worth { display: grid; gap: 6px; margin-top: 12px; }
 .v2-worth p { margin: 6px 0 0; font-size: 14px; color: var(--text-2); }
 .v2-scale { display: flex; gap: 6px; justify-content: center; }
