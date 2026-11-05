@@ -9,6 +9,9 @@ archive (real wallclocks, the stream's real delay), per league:
   entry_wait_s         seconds of dead time watched after landing, until play resumed on screen
                        (huddle/line-up in football, the rest of a timeout, the faceoff wait)
   entries_in_break     landed inside a commercial break (timeout, score, period end...)
+  entries_mid_break    landed inside a break with more than BREAK_TAIL_BAR of dead time left before
+                       the restart: mid-commercial (Nick, Nov 4 9:45 PM: never join at a break; land
+                       just before the restart). Must be 0.
   plays_missed_entry   plays that began airing on the destination during the tune (black screen)
                        or were already under way when the picture came up
   possession_start_entry_pct  entries that came up on a dead ball with no play missed (the viewer
@@ -41,6 +44,7 @@ class CutCard:
     entries: int = 0
     entries_mid_play: int = 0
     entries_in_break: int = 0
+    entries_mid_break: int = 0
     entry_wait_s: float = 0.0
     plays_missed_entry: int = 0
     leaves: int = 0
@@ -82,6 +86,7 @@ class CutCard:
         return {"entries": self.entries, "entries_mid_play": self.entries_mid_play,
                 "landed_dead_pct": pct(self.entries - self.entries_mid_play, self.entries) if self.entries else 100.0,
                 "entries_in_break": self.entries_in_break,
+                "entries_mid_break": self.entries_mid_break,
                 "entry_wait_s": round(self.entry_wait_s / max(1, self.entries), 1),
                 "plays_missed_entry": self.plays_missed_entry,
                 "plays_missed_per_entry": round(self.plays_missed_entry / max(1, self.entries), 2),
@@ -97,6 +102,10 @@ class CutCard:
                 "entry_to_restart_hist": _ordered(self.entry_hist)}
 
 
+# [RC7 gate 3] a break landing with at most this much dead time left is "just before the restart"
+# (the network is back from commercial: the crowd shot, the line-up, the faceoff wait). More is mid-commercial.
+# Seconds. A frozen grader bar, not app timing, so it stays out of config.py (lanes tune config, not graders).
+BREAK_TAIL_BAR = 10.0
 HIST_EDGES = (3, 10, 30, 60, 120)   # seconds of dead time left on screen until the restart
 
 
@@ -167,6 +176,7 @@ def grade(replays, switches, lag_true: float, tune_s: float) -> CutCard:
             card.entries_mid_play += 1
             card.mid_entries.append((s.t, s.kind, f"{dst.matchup}"))
         card.entries_in_break += brk
+        card.entries_mid_break += bool(brk and wait > BREAK_TAIL_BAR)
         card.entry_wait_s += min(wait, max(0.0, nxt - arrive))
         # plays that started airing while the screen was black, or were under way when it came up
         plen = _plen(dst.league)

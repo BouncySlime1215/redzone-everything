@@ -16,11 +16,12 @@ from dataclasses import dataclass
 
 from redzone import crunch
 from redzone.decider.screen import CONTINUOUS, _is_marker
-from redzone.models import REAL_BREAKS, League, Stoppage
+from redzone.models import REAL_BREAKS, ByLeague, League, Stoppage
 from redzone.sources import espn
 
-PLAY_LEN = {League.NFL: 7.0, League.MLB: 6.0, League.NBA: 0.0, League.NHL: 0.0}
-RESUME_LEAD = {League.NBA: 26.0, League.NHL: 5.0}   # play can restart this long before the next logged action
+# ByLeague: a college league (CFB, CBB) reads its pro league's row (grader v11; oracle.py read PLAY_LEN[lg])
+PLAY_LEN = ByLeague({League.NFL: 7.0, League.MLB: 6.0, League.NBA: 0.0, League.NHL: 0.0})
+RESUME_LEAD = ByLeague({League.NBA: 26.0, League.NHL: 5.0})   # play can restart this long before the next logged action
 
 # Play types that mean the ball is dead (whistle, timeout, review, period end). Lower-case substrings.
 DEAD_WORDS = ("timeout", "foul", "free throw", "stoppage", "penalty", "end of", "end period", "review",

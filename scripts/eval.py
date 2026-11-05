@@ -153,7 +153,7 @@ def main():
         rc = r.cut.summary()
         if a.oracle:
             oracle_nights.append(_oracle_night(reps, set(cfg.get("teams.nfl")), r))
-        per_night.append({"night": reps[0].gid, "entries": rc["entries"], "entries_mid_play": rc["entries_mid_play"],
+        per_night.append({"night": reps[0].gid, "entries": rc["entries"], "entries_mid_play": rc["entries_mid_play"], "entries_mid_break": rc["entries_mid_break"],
                           "cuts": len(r.mid_play_cuts), "cuts_high": len(r.mid_play_cuts_high), "big": r.big_plays, "big_seen": r.big_plays_caught,
                           "big_seen_10m": r.big_seen_10m, "my_big": r.my_big_plays,
                           "my_big_seen_10m": r.my_big_seen_10m, "crunch_on_replay": r.crunch_on_replay,

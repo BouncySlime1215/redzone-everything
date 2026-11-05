@@ -2817,8 +2817,8 @@ class Controller:
 
     def _buffer_for(self, stick: Stick, target: str, res: TuneResult) -> float:
         """Seconds to hold this fresh hidden-stick tune behind live (0 = none)."""
-        if not self.cfg.get("timing.behind_live_s.enabled", False):
-            return 0.0
+        if not config.any_league(self.cfg, "timing.behind_live_s.enabled"):
+            return 0.0   # [league overrides] behind_of (the engine) says 0 for a league that doesn't run it
         app = self._ref(target)[0]
         if app not in (self.cfg.get("timing.behind_live_s.apps") or ("youtubetv", "primevideo")):
             return 0.0

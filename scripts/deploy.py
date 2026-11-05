@@ -388,6 +388,20 @@ def switch_failures(errors: Counter) -> int:
     return sum(n for sig, n in errors.items() if _SWITCH.search(sig))
 
 
+FRESH_S = 120.0   # a source that answered this recently is reachable (engine._source_health uses the same 120 s)
+
+
+def source_failing(s: dict) -> bool:
+    """Is this /api/state source really failing? A BENCHED source (merge.py: its copy regressed against a
+    faster feed for some game) still answers, so it isn't. The old engine (RC6.1 and before) reported a
+    bench as ok:false; the new one keeps ok = reachable + fresh and reports benched on its own. Both read
+    the same here, so a deploy compares like with like across versions (RC6.1 rolled back twice, Nov 4)."""
+    if s.get("ok"):
+        return False
+    age = s.get("age_s")
+    return not (s.get("benched") and isinstance(age, (int, float)) and age < FRESH_S)
+
+
 @dataclass
 class Health:
     api_ok: bool
@@ -400,7 +414,7 @@ class Health:
             return cls(api_ok=False)
         h = st.get("health") or {}
         return cls(api_ok=True,
-                   sources_bad=sum(1 for s in h.get("sources") or [] if not s.get("ok")),
+                   sources_bad=sum(1 for s in h.get("sources") or [] if source_failing(s)),
                    sticks_offline=sum(1 for s in h.get("sticks") or [] if s.get("state") == "offline"))
 
 

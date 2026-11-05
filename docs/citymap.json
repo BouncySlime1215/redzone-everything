@@ -501,6 +501,7 @@
     "redzone/tuners/tuners.py",
     "redzone/web/server.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
     "scripts/hold_left_probe.py",
@@ -538,6 +539,7 @@
     "redzone/autonomy.py",
     "redzone/control.py",
     "redzone/crunch.py",
+    "redzone/decider/decider.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
     "redzone/lab/backtest.py",
@@ -547,6 +549,7 @@
     "redzone/lab/evaldata.py",
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
+    "redzone/lab/orient.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/tune.py",
@@ -561,6 +564,7 @@
     "scripts/eval.py",
     "scripts/eval_reasoner.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
     "scripts/hold_left_probe.py",
@@ -587,6 +591,7 @@
     "BreakModel",
     "Clock",
     "DEGRADED",
+    "Event",
     "Expectation",
     "Fault",
     "FeedSnapshot",
@@ -602,6 +607,7 @@
     "MemoryTrace",
     "MomentModel",
     "MomentPrediction",
+    "Primitive",
     "Reasoner",
     "ReasonerView",
     "ReelJump",
@@ -622,15 +628,19 @@
     "deadline",
     "enabled",
     "freeze",
+    "from_play",
     "moment_view",
+    "primitive_of",
     "reel_option",
     "sync_view",
+    "tokens_v1",
     "traced"
    ],
    "inputs": [
     "redzone/contracts/breaks.py",
     "redzone/contracts/budget.py",
     "redzone/contracts/clock.py",
+    "redzone/contracts/events.py",
     "redzone/contracts/feeds.py",
     "redzone/contracts/flags.py",
     "redzone/contracts/guard.py",
@@ -650,6 +660,7 @@
     "uses:BreakModel",
     "uses:Clock",
     "uses:DEGRADED",
+    "uses:Event",
     "uses:Expectation",
     "uses:Fault",
     "uses:FeedSnapshot",
@@ -665,6 +676,7 @@
     "uses:MemoryTrace",
     "uses:MomentModel",
     "uses:MomentPrediction",
+    "uses:Primitive",
     "uses:Reasoner",
     "uses:ReasonerView",
     "uses:ReelJump",
@@ -685,9 +697,12 @@
     "uses:deadline",
     "uses:enabled",
     "uses:freeze",
+    "uses:from_play",
     "uses:moment_view",
+    "uses:primitive_of",
     "uses:reel_option",
     "uses:sync_view",
+    "uses:tokens_v1",
     "uses:traced"
    ],
    "kind": "package",
@@ -746,6 +761,22 @@
    ],
    "owner": "INTEGRATION",
    "role": "One clock: wall time, feed (data) time and per-channel screen time.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/contracts/events.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/contracts/__init__.py"
+   ],
+   "owner": "INTEGRATION",
+   "role": "[EXP-003] One event language for every sport: each play of any league becomes one typed Event built from a few shared primitives (what kind of thing happened...",
    "serves": [
     "untagged"
    ]
@@ -1171,6 +1202,7 @@
     "seek_model"
    ],
    "inputs": [
+    "redzone/config.py",
     "redzone/contracts/switching.py",
     "redzone/decider/core.py",
     "redzone/decider/cuts.py",
@@ -1302,6 +1334,7 @@
     "redzone/lab/replaycheck.py",
     "redzone/lab/sportsgrade.py",
     "redzone/lab/syncsim.py",
+    "redzone/noggin/belief.py",
     "redzone/supervisor.py",
     "scripts/delay_report.py"
    ],
@@ -1566,6 +1599,7 @@
     "redzone/grading.py",
     "redzone/models.py",
     "redzone/network.py",
+    "redzone/noggin/belief.py",
     "redzone/plan.py",
     "redzone/platform/agent_fix.py",
     "redzone/platform/wake.py",
@@ -1704,6 +1738,21 @@
     "untagged"
    ]
   },
+  "redzone/lab/also_close.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/night_ab.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/also_close_line.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-039] Grade the \"Also close\" line: does showing other late, close games as text cut the curiosity switches (manual switches) without costing big plays?",
+   "serves": [
+    "Big plays live or replayed within 3 min"
+   ]
+  },
   "redzone/lab/backtest.py": {
    "contracts": [
     "FLIP_PRIOR",
@@ -1747,6 +1796,7 @@
     "scripts/backtest.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/leak_check.py",
     "scripts/train_noggin_pick.py"
    ],
@@ -1873,7 +1923,8 @@
     "redzone/lab/backtest.py",
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
-    "scripts/eval.py"
+    "scripts/eval.py",
+    "scripts/northstar.py"
    ],
    "owner": "INTEGRATION",
    "role": "Cut-timing scorecard: WHERE in each game we left, and WHERE we landed.",
@@ -1934,6 +1985,7 @@
     "scripts/eval.py",
     "scripts/eval_break_blend.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fetch_eval_data.py",
     "scripts/leak_check.py"
    ],
@@ -2119,6 +2171,19 @@
     "untagged"
    ]
   },
+  "redzone/lab/night_ab.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/lab/also_close.py"
+   ],
+   "owner": "unowned",
+   "role": "Whole-night A/B for display experiments (lane 5): one number per night on each side, a bootstrap interval on mean(on) - mean(off), and a PASS / FAIL / PENDIN...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/optimize.py": {
    "contracts": [],
    "inputs": [
@@ -2156,6 +2221,22 @@
    ],
    "owner": "unowned",
    "role": "Hindsight oracle: the best schedule anyone could have run on an archived night (offline only).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/orient.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/also_close_line.py",
+    "scripts/orient_line.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-038] Grade the orientation beat: do overrides right after an automatic switch drop when the phone shows a 2-3 s \"who, score, clock, one fact\" beat?",
    "serves": [
     "untagged"
    ]
@@ -2232,6 +2313,7 @@
     "scripts/backfill_eval_v2.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/leak_check.py"
    ],
    "owner": "unowned",
@@ -2280,6 +2362,7 @@
     "redzone/lab/tune.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/train_noggin_pick.py"
    ],
    "owner": "INTEGRATION",
@@ -2312,6 +2395,7 @@
    "outputs": [
     "redzone/lab/backtest.py",
     "scripts/burst_align.py",
+    "scripts/exp023_belief.py",
     "scripts/timing_report.py"
    ],
    "owner": "unowned",
@@ -2379,6 +2463,7 @@
     "redzone/bets.py",
     "redzone/channels.py",
     "redzone/contracts/breaks.py",
+    "redzone/contracts/events.py",
     "redzone/contracts/feeds.py",
     "redzone/contracts/legacy.py",
     "redzone/contracts/moment.py",
@@ -2437,6 +2522,7 @@
     "scripts/backtest.py",
     "scripts/build_reasoner_data.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/leak_check.py",
     "scripts/noggin_factory.py",
@@ -2505,6 +2591,22 @@
    "outputs": [],
    "owner": "unowned",
    "role": "The Noggin: one decision brain (docs/noggin.md).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/noggin/belief.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/decider/screen.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py",
+    "scripts/exp023_belief.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-023] Belief tracker: a per-game particle filter for the TV lag and the feed lag, with an online Bayesian model of each broadcast's break rhythm.",
    "serves": [
     "untagged"
    ]
@@ -3132,6 +3234,7 @@
     "redzone/reasoner/brief.py",
     "redzone/reasoner/reasoner.py",
     "redzone/scoring/brain.py",
+    "redzone/scoring/gameflow.py",
     "redzone/scoring/garbage.py",
     "redzone/scoring/postseason.py"
    ],
@@ -3156,7 +3259,8 @@
    "kind": "module",
    "outputs": [
     "redzone/lab/sportsdata.py",
-    "redzone/scoring/brain.py"
+    "redzone/scoring/brain.py",
+    "redzone/scoring/engine.py"
    ],
    "owner": "DECISION",
    "role": "Game-flow math shared by the training-data builder and the live brain (numpy only, no pandas).",
@@ -3292,6 +3396,7 @@
    "kind": "module",
    "outputs": [
     "agent/distill/jump.py",
+    "redzone/contracts/events.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
     "redzone/grading.py",
@@ -3315,6 +3420,7 @@
     "redzone/sources/leagues.py",
     "redzone/views.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/noggin_factory.py",
     "scripts/plan_tonight.py",
     "scripts/train_noggin_pick.py"
@@ -3953,7 +4059,9 @@
    ],
    "kind": "module",
    "outputs": [
-    "redzone/web/server.py"
+    "redzone/web/server.py",
+    "scripts/also_close_line.py",
+    "scripts/orient_line.py"
    ],
    "owner": "EXPERIENCE",
    "role": "Phone page v2 (flag `phone.v2`, default OFF): why each switch happened, rate it, \"I missed that\", and the Noggin Priority L2 sliders.",
@@ -3983,6 +4091,21 @@
    "role": "Phone control page + JSON API.",
    "serves": [
     "untagged"
+   ]
+  },
+  "scripts/also_close_line.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/also_close.py",
+    "redzone/lab/orient.py",
+    "redzone/web/phone_v2.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-039] Print the \"Also close\" line: manual-switch share on nights with phone.also_close on vs off.",
+   "serves": [
+    "Big plays live or replayed within 3 min"
    ]
   },
   "scripts/autofix_guard.py": {
@@ -4399,6 +4522,28 @@
     "untagged"
    ]
   },
+  "scripts/exp023_belief.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/config.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/evaldata.py",
+    "redzone/lab/splits.py",
+    "redzone/lab/sportsgrade.py",
+    "redzone/lab/timing.py",
+    "redzone/models.py",
+    "redzone/noggin/belief.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-023] Belief tracker vs the DelayBook baseline, on DEV nights only (docs/prereg/exp-023.md).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/export_decision_records.py": {
    "contracts": [],
    "inputs": [
@@ -4591,6 +4736,7 @@
   "scripts/northstar.py": {
    "contracts": [],
    "inputs": [
+    "redzone/lab/cutgrade.py",
     "redzone/noggin/profile.py"
    ],
    "kind": "entry",
@@ -4599,6 +4745,20 @@
    "role": "The North Star table: where we are against \"perfect\", in one place, with honest error bars.",
    "serves": [
     "STK-06"
+   ]
+  },
+  "scripts/orient_line.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/orient.py",
+    "redzone/web/phone_v2.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-038] Print the orientation-beat line: override rates on nights with phone.orient on vs off.",
+   "serves": [
+    "untagged"
    ]
   },
   "scripts/perf_probe.py": {
@@ -4862,6 +5022,17 @@
     "untagged"
    ]
   },
+  "scripts/sync_truth.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[RC7 req.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/timing_report.py": {
    "contracts": [],
    "inputs": [
@@ -5055,10 +5226,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 266,
+  "modules": 275,
   "orphans": 10,
-  "unowned": 108,
-  "untagged": 213
+  "unowned": 116,
+  "untagged": 220
  },
  "version": 1
 }
