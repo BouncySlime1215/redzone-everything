@@ -20,7 +20,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from redzone.crunch import ONE_SCORE_NFL
-from redzone.models import PERIOD_S, REGULATION, League, Phase
+from redzone.models import PERIOD_S, REGULATION, League, Phase, league_order
 from redzone.noggin.priority import HardRules, Preferences
 from redzone.web import ledger as ledger_mod
 
@@ -327,8 +327,12 @@ def capture_view(night: str, switches: list[dict], summary: dict | None, buffer_
             "report": report, "checks": checks, "gold": all(c["ok"] for c in checks)}
 
 
+SPOILER_SAFE_LABEL = "A play you missed"   # [EXP-026 display] no names, no play type, no score until it plays
+
+
 def held_view(hidden_game: str | None, hidden_ready: bool, behind_s: float, home: str | None,
-              home_return_at: float | None, queue: list, current: str | None, name, now: float) -> dict | None:
+              home_return_at: float | None, queue: list, current: str | None, name, now: float,
+              spoiler_safe: bool = False) -> dict | None:
     """Crunch vs crunch, "held + coming back": the game the hidden stick holds, how far behind live it
     is held (the time-shift buffer), when we head back to the game we left for a break, and the next
     catch-up in line. Display only. None when the hidden stick holds nothing and nothing is queued."""
@@ -343,7 +347,8 @@ def held_view(hidden_game: str | None, hidden_ready: bool, behind_s: float, home
                                                    if home_return_at and home_return_at > now else " at its restart")}
     catch = None
     if nxt is not None:
-        catch = {"game_id": nxt.game_id, "matchup": name(nxt.game_id), "kind": nxt.kind, "label": nxt.label[:100],
+        catch = {"game_id": nxt.game_id, "matchup": name(nxt.game_id), "kind": "play" if spoiler_safe else nxt.kind,
+                 "label": SPOILER_SAFE_LABEL if spoiler_safe else nxt.label[:100],
                  "ago_s": max(0, round(now - nxt.t)), "mine": nxt.mine,
                  "due_in_s": max(0, round(nxt.t + nxt.due_s - now)) if nxt.due_s else None,
                  "text": "catch-up at the next dead moment"}
@@ -391,7 +396,7 @@ LEFT_END = {"left_resumed": "resumed", "left_expired": "expired", "left_lost": "
 
 
 def catchup_queue(buffer_rows: list[dict], target_game: dict, hidden_target: str | None, hidden_ready: bool,
-                  held: dict, queue: list, scored: dict, name, now: float) -> dict:
+                  held: dict, queue: list, scored: dict, name, now: float, view: dict | None = None) -> dict:
     """The catch-up queue (your-team catch-ups were the locked blocker: 73.5 vs 82.4): what the hidden stick
     holds now (control.held: seconds behind live), tonight's STK-07 left-game holds from data/buffer.jsonl
     (left_held -> left_resumed | left_expired | left_lost) with their age, and every catch-up waiting in the
@@ -415,18 +420,29 @@ def catchup_queue(buffer_rows: list[dict], target_game: dict, hidden_target: str
     hid = target_game.get(hidden_target) if hidden_target else None
     sc = scored or {}
     dead = lambda gid: bool(sc[gid].is_break) if gid in sc else None   # noqa: E731
-    waiting = sorted((m for m in queue if not m.replayed), key=lambda m: (not m.must, not m.mine, m.t))
-    items = [{"game_id": m.game_id, "matchup": name(m.game_id), "label": m.label[:100], "kind": m.kind,
+    # [EXP-026 display] `view` = {"visible": n} (phone.catchup_view): the decider's own queue order (what plays
+    # next, whatever order the planner picked), spoiler-safe labels, and only the first n shown
+    if view:
+        waiting = [m for m in queue if not m.replayed]
+    else:
+        waiting = sorted((m for m in queue if not m.replayed), key=lambda m: (not m.must, not m.mine, m.t))
+    safe = bool(view)
+    items = [{"game_id": m.game_id, "matchup": name(m.game_id), "label": SPOILER_SAFE_LABEL if safe else m.label[:100],
+              "kind": "play" if safe else m.kind,
               "mine": bool(m.mine), "must": bool(m.must), "ago_s": max(0, round(now - m.t)),
               "due_in_s": max(0, round(m.t + m.due_s - now)) if m.due_s else None, "dead_now": dead(m.game_id)}
              for m in waiting]
     ends = [h["end"] for h in holds]
-    return {"hidden": {"game_id": hid, "matchup": name(hid) if hid else (hidden_target or ""), "target": hidden_target,
+    total = len(items)
+    if view:
+        items = items[:max(1, int(view["visible"]))]
+    return {"spoiler_safe": safe, "more": total - len(items), "hidden": {"game_id": hid, "matchup": name(hid) if hid else (hidden_target or ""), "target": hidden_target,
                        "ready": bool(hidden_ready), "behind_s": round(float(held.get(hidden_target, 0.0)), 1),
                        "dead_now": dead(hid) if hid else None} if hidden_target else None,
             "holds": holds[::-1], "queue": items,
             "counts": {"held": len(holds), "resumed": ends.count("resumed"), "expired": ends.count("expired"),
-                       "lost": ends.count("lost"), "queued": len(items), "yours": sum(1 for i in items if i["mine"])}}
+                       "lost": ends.count("lost"), "queued": total,
+                       "yours": sum(1 for m in waiting if m.mine)}}
 
 
 CATCHUP_KINDS = {"replay"}                                # a catch-up replay of a missed play
@@ -678,6 +694,27 @@ def orientation(g) -> dict | None:
         fact = ", ".join(bits)
     return {"game_id": g.game_id, "league": g.league.value, "matchup": g.matchup, "score": score,
             "clock": clock, "fact": fact, "context": context_line(g)}
+
+
+ALSO_CLOSE_MAX = 2   # [EXP-039] at most this many: a quiet line, not a second scoreboard
+
+
+def also_close(games: dict, current: str | None, order: tuple[str, ...]) -> list[dict]:
+    """[EXP-039] Other live games that are late and within one score right now (context_line says so),
+    in league order, at most ALSO_CLOSE_MAX. It answers "is anything else close?" without a switch: the
+    phone shows it as text with no Watch button. The game on screen is never listed."""
+    rows = []
+    for gid, g in (games or {}).items():
+        if gid == current:
+            continue
+        ctx = context_line(g)
+        if ctx:
+            rows.append({"game_id": gid, "matchup": g.matchup, "league": g.league.value, "context": ctx,
+                         "rank": order.index(g.league.value) if g.league.value in order else len(order)})
+    rows.sort(key=lambda r: (r["rank"], r["matchup"]))
+    for r in rows:
+        r.pop("rank")
+    return rows[:ALSO_CLOSE_MAX]
 
 
 RISING_MIN = 1.0    # watch_rising (points per minute) at or above this shows an up arrow, at or below -this a down one
@@ -988,6 +1025,8 @@ def router(engine) -> APIRouter:
         cur = engine.decider.current
         return {"enabled": True, "now": time.time(), "current": cur,
                 "why_tag": why_tag(engine.scored.get(cur), float(engine.cfg.get("phone.why_tag_min"))) if cur else None,
+                "also_close": also_close(getattr(engine.merger, "games", {}), cur, league_order(engine.cfg))
+                if engine.cfg.get("phone.also_close") else [],
                 **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}))}
 
     @r.get("/orient")
@@ -1075,7 +1114,8 @@ def router(engine) -> APIRouter:
         tg = {t: g for g, w in engine.where.items() if (t := getattr(w, "target", None))}
         return {"enabled": True, "now": now, **catchup_queue(
             rows_between(BUFFER_LOG, t0, now + 1), tg, c.hidden_target if c.two_stick else None, c.hidden_ready,
-            dict(c.held), list(dec.queue), engine.scored, engine._name, now),
+            dict(c.held), list(dec.queue), engine.scored, engine._name, now,
+            {"visible": int(engine.cfg.get("phone.catchup_visible"))} if engine.cfg.get("phone.catchup_view") else None),
             "on_screen": {"game_id": dec.current, "matchup": engine._name(dec.current)} if dec.current else None}
 
     @r.get("/held")
@@ -1088,7 +1128,7 @@ def router(engine) -> APIRouter:
         return {"enabled": True, "now": now,
                 "view": held_view(gid, c.hidden_ready, float(c.held.get(t, 0.0)) if t else 0.0,
                                   dec.home_break_visit, dec.home_return_at, list(dec.queue), dec.current,
-                                  engine._name, now)}
+                                  engine._name, now, spoiler_safe=bool(engine.cfg.get("phone.catchup_view")))}
 
     @r.get("/ledger")
     async def ledger():

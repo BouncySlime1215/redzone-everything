@@ -701,3 +701,39 @@ def test_orient_route_needs_both_flags(client, engine):
     assert client.get("/api/v2/status").json()["orient"] is True
     r = client.get("/api/v2/orient?game=nope").json()
     assert r["enabled"] is True and r["beat"] is None and r["beat_s"] == 3
+
+
+def test_also_close_lists_other_late_close_games_in_league_order():
+    games = {"on": _late("nfl", 20, 17, 4, 60), "nhl": _late("nhl", 1, 1, 3, 90), "nba": _late("nba", 99, 100, 4, 30),
+             "blow": _late("nba", 130, 90, 4, 30), "early": _late("nfl", 7, 7, 1, 600)}
+    for gid, g in games.items():
+        g.game_id = gid
+    order = ("nfl", "cfb", "nba", "cbb", "wcbb", "nhl", "mlb")
+    rows = phone_v2.also_close(games, "on", order)
+    assert [r["game_id"] for r in rows] == ["nba", "nhl"]                     # NFL on screen; NBA before NHL
+    assert rows[0]["context"] == "HOM down 1, 0:30 left"
+    assert len(phone_v2.also_close({**games, "on": games["on"]}, None, order)) == phone_v2.ALSO_CLOSE_MAX
+
+
+def test_watch_also_close_behind_its_flag(client, engine):
+    _on(engine)
+    assert client.get("/api/v2/watch").json()["also_close"] == []
+    engine.cfg.update({"phone": {"v2": True, "also_close": True}})
+    assert client.get("/api/v2/watch").json()["also_close"] == []                # no late, close games in the fixture
+
+
+def test_catchup_view_spoiler_safe_decider_order_and_visible_cap():
+    from redzone.decider.decider import Missed
+    q = [Missed("b", "p1", "Ovechkin goal, WSH leads 3-2", "goal", 380.0, 50.0),
+         Missed("a", "p2", "Allen 34-yd TD to Diggs", "td", 390.0, 70.0, mine=True, due_s=180.0),
+         Missed("c", "p4", "Tucker 52-yd FG good", "fg", 395.0, 30.0, must=True)]
+    v = phone_v2.catchup_queue([], {}, None, False, {}, q, {}, str.upper, now=430.0, view={"visible": 2})
+    assert [i["game_id"] for i in v["queue"]] == ["b", "a"]                              # the decider's order, first 2
+    assert v["more"] == 1 and v["spoiler_safe"] is True and v["counts"]["queued"] == 3 and v["counts"]["yours"] == 1
+    text = json.dumps(v)
+    for leak in ("Ovechkin", "Allen", "Tucker", "goal", "td", "fg", "3-2"):
+        assert leak not in text, leak                                                   # nothing spoils the play
+    h = phone_v2.held_view(None, False, 0.0, None, None, q, None, str.upper, 430.0, spoiler_safe=True)
+    assert h["catchup"]["label"] == phone_v2.SPOILER_SAFE_LABEL and "Ovechkin" not in json.dumps(h)
+    off = phone_v2.catchup_queue([], {}, None, False, {}, q, {}, str.upper, now=430.0)
+    assert off["spoiler_safe"] is False and off["more"] == 0 and len(off["queue"]) == 3

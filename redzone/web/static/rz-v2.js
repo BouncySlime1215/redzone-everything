@@ -39,18 +39,25 @@ let strip = null;
 function pollStrip() {
   api("/api/v2/watch").then((r) => {
     const top = arr(r && r.games).slice(0, 3).map((g) => ({ ...g, on: g.game_id === r.current }));
-    const next = { top, src: r && r.source, tag: (r && r.why_tag) || null };
+    const next = { top, src: r && r.source, tag: (r && r.why_tag) || null, also: arr(r && r.also_close) };
     if (JSON.stringify(next) !== JSON.stringify(strip)) { strip = next; hooks.renderScreen("now"); }
   }).catch(() => {}).finally(() => setTimeout(pollStrip, 15000));
 }
+/* EXP-039: "Also close" — other live games that are late and within one score, as plain text. No Watch
+   button and no tap target: it answers "is anything else close?" so curiosity doesn't need a switch. */
+function alsoClose() {
+  const a = strip ? arr(strip.also) : [];
+  if (!a.length) return "";
+  return `<div class="v2-also" role="note"><b>Also close</b>${a.map((g) => `<span><span class="m">${esc(g.matchup)}</span> ${esc(g.context)}</span>`).join("")}</div>`;
+}
 function watchStrip() {
-  if (!strip || !strip.top.length) return "";
+  if (!strip || !strip.top.length) return alsoClose();
   // EXP-035: a plain label, only over a logged threshold; no banner, sting or animation (playbook §5)
   const t = strip.tag;
   const tag = t ? `<div class="v2-why" title="${attr(`Shown because it is ${t.value} on the 0-100 scale (threshold ${t.threshold})`)}"><b>Why we're here</b> ${esc(t.text)}</div>` : "";
   return `${tag}<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
     `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc([g.context || g.why, g.stakes_line].filter(Boolean).join(" · "))}</small></span></span>`).join("")}
-    ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>`;
+    ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>${alsoClose()}`;
 }
 
 /* Crunch vs crunch: what the hidden stick holds, how far behind, and what comes back when (display only). */
@@ -65,7 +72,7 @@ function heldLine() {
   const rows = [];
   if (v.held) rows.push(`<span><b>Holding</b> ${esc(v.held.matchup)}${v.held.behind_s ? ` · ${esc(fmtDur(v.held.behind_s))} behind live` : ""}${v.held.ready ? "" : " · loading"}</span>`);
   if (v.back) rows.push(`<span><b>Coming back</b> ${esc(v.back.text)}</span>`);
-  if (v.catchup) rows.push(`<span><b>Next catch-up</b> ${esc(v.catchup.matchup)}: ${esc(v.catchup.label || v.catchup.kind)}${v.queued > 1 ? ` (+${num(v.queued - 1)} more)` : ""}</span>`);
+  if (v.catchup) rows.push(`<span><b>Next catch-up</b> ${esc(v.catchup.matchup)}: ${esc(v.catchup.label || v.catchup.kind)}${v.catchup.due_in_s != null ? ` · within ${esc(fmtDur(v.catchup.due_in_s))}` : ""}${v.queued > 1 ? ` (+${num(v.queued - 1)} more)` : ""}</span>`);
   return `<button class="v2-held" data-key="v2-held" data-act="v2-catchup" aria-label="Catch-up queue">${icon("hourglass")}<div>${rows.join("")}</div></button>`;
 }
 
@@ -557,7 +564,8 @@ function catchupSheet() {
       <div class="stile"><b>${num(c.yours)}</b><span>Your team</span></div>
       <div class="stile"><b>${num(c.resumed)}/${num(c.held)}</b><span>Left-game holds resumed</span></div></div>
     ${hid}
-    <h4>Waiting to be caught up</h4>${q || `<p class="lead">Nothing waiting.</p>`}
+    <h4>${d.spoiler_safe ? "Next up, in the order they'll play" : "Waiting to be caught up"}</h4>${q || `<p class="lead">Nothing waiting.</p>`}
+    ${d.more ? `<p class="lead">+${num(d.more)} more waiting. Shown when they're next, so nothing is spoiled.</p>` : ""}
     <h4>Tonight's left-game holds</h4><div class="v2-mss">${holds || `<p class="lead">None yet (STK-07 holds the game we leave at its dead ball).</p>`}</div>`;
 }
 ACTIONS["v2-catchup"] = () => { cq.data = null; openSheet({ id: "v2-catchup", label: "Catch-up queue", full: true, render: catchupSheet }); loadCatchup(); };

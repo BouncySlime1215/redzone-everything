@@ -386,8 +386,10 @@ function mockV2(path, b) {
     const why = ["Tied, 2:10 left in the 4th", "Red zone, 3rd & goal", "Power play, down one", "Blowout, starters sitting", "Commercial break"];
     const games = (STATE.games || []).filter((g) => g.phase === "live" || g.state === "live").slice(0, 6).map((g, i) => ({ game_id: g.id, matchup: g.matchup,
       league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, stakes_line: ["AFC 1-seed race, top-5 matchup", "Rivalry game", "", "Wild-card push"][i] || "", stakes_rough: i === 3, is_break: i === 4, context: ["BUF down 3, 1:12 left, BUF ball, 2nd & 7 at the 34, 1 timeout", "Tied, 0:48 left", "", "BOS down 1, 1:30 left, goalie pulled"][i] || null, source: "stub" }));
+    // EXP-039 preview: two other late, close games as text
+    const also_close = [{ game_id: "x1", matchup: "UNC @ DUKE", league: "cbb", context: "UNC down 2, 0:41 left, 1 timeout" }, { game_id: "x2", matchup: "NYR @ WSH", league: "nhl", context: "Tied, OT, 3:20 left" }];
     return { enabled: true, now: Date.now() / 1000, current: games[0] && games[0].game_id, games, source: games.length ? "stub" : null,
-      why_tag: games.length ? { text: why[0], value: games[0].wv, threshold: 70, source: "stub" } : null };
+      why_tag: games.length ? { text: why[0], value: games[0].wv, threshold: 70, source: "stub" } : null, also_close };
   }
   if (path.startsWith("/api/v2/scorecard")) {
     const nights = Array.from({ length: 10 }, (_, i) => new Date(Date.UTC(2026, 9, 26 + i)).toISOString().slice(0, 10));

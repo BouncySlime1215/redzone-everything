@@ -32,6 +32,7 @@ EXPERIMENTS = "docs/experiments.md"
 # The graders: what turns a night into a number. Add a file here only with a re-freeze.
 GRADERS = (
     "redzone/grading.py",
+    "scripts/collect_live_test.py",
     "redzone/lab/backtest.py",
     "redzone/lab/cutgrade.py",
     "redzone/lab/sportsgrade.py",
