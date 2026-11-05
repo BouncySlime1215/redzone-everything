@@ -345,7 +345,9 @@ def grade_rows(model, games, base, ctx, dev, label: str = "", log_every: int = 2
     with torch.no_grad():
         for gi, g in enumerate(games):
             if log_every and gi and gi % log_every == 0:
-                mem = f", gpu {torch.cuda.memory_allocated() / 2**30:.1f} GB" if dev == "cuda" else ""
+                import resource
+                mem = f", host peak {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20:.1f} GB"
+                mem += f", gpu {torch.cuda.memory_allocated() / 2**30:.1f} GB" if dev == "cuda" else ""
                 print(f"  grade {label}: {gi}/{len(games)} games, {time.time() - t0:.0f} s{mem}", flush=True)
             t = g["tokens"].astype(np.int64)
             k, dpos, s = positions(t)
@@ -413,6 +415,10 @@ def main(argv=None) -> int:
     ap.add_argument("--minutes", type=float, default=60.0, help="training wall-clock budget")
     ap.add_argument("--eval-mem-frac", type=float, default=0.85,
                     help="cap this process's GPU memory while grading (fraction of the card; 0 = no cap)")
+    ap.add_argument("--grade-device", default="auto", choices=("auto", "cpu"),
+                    help="cpu = grade on the CPU (slow, but no GPU memory at all)")
+    ap.add_argument("--stop-before-grade", action="store_true",
+                    help="train, save best.pt + trained.json, exit; a second run (same --out) grades only")
     ap.add_argument("--exp", default="EXP-100", help="experiments.md id written to grades.json")
     ap.add_argument("--d", type=int, default=512)
     ap.add_argument("--layers", type=int, default=8)
@@ -467,6 +473,7 @@ def main(argv=None) -> int:
     print(f"model: {n_params / 1e6:.1f}M params on {dev}", flush=True)
     tr = windows(sp["train"], a.ctx, rng)
     va = windows(sp["valid"], a.ctx, rng)[:256]
+    n_tr, train_dev = len(tr), dev
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, betas=(0.9, 0.95), weight_decay=a.weight_decay)
     est_steps = max(50, int(a.minutes * 60 * 2))            # refined after the first 20 steps
     amp = dict(device_type=dev, dtype=torch.bfloat16, enabled=dev == "cuda")
@@ -495,6 +502,13 @@ def main(argv=None) -> int:
         step, ep, best, curve = st["step"], st["ep"], st["best"], st["curve"]
         print(f"resumed at step {step}", flush=True)
     t0, toks, stop = time.time(), 0, False
+    marker = a.out / "trained.json"              # training finished: a rerun goes straight to grading
+    if marker.exists() and best_path.exists():
+        m = json.loads(marker.read_text())
+        step, ep, best, curve = m["step"], m["ep"], m["best"], m["curve"]
+        toks, prev_train_s = m["toks"], m["train_s"]
+        stop = True
+        print(f"trained.json found (step {step}, best valid {best}): grading only", flush=True)
     model.train()
     while not stop:
         for i in range(0, len(tr) - a.batch + 1, a.batch):
@@ -534,17 +548,31 @@ def main(argv=None) -> int:
                 stop = True
                 break
         ep += 1
-    train_s = time.time() - t0
-    v = val_loss()
-    curve.append({"step": step, "epoch": ep, "train_loss": round(loss.item(), 4), "valid_loss": v})
-    if v < best or not best_path.exists():
-        torch.save(model.state_dict(), best_path)
-    model.load_state_dict(torch.load(best_path, map_location=dev))         # chosen on VALID
-    del opt                                                                 # free optimizer state before grading
+    if not marker.exists():
+        train_s = time.time() - t0
+        v = val_loss()
+        curve.append({"step": step, "epoch": ep, "train_loss": round(loss.item(), 4), "valid_loss": v})
+        if v < best or not best_path.exists():
+            torch.save(model.state_dict(), best_path)
+        best = min(best, v)
+        marker.write_text(json.dumps({"step": step, "ep": ep, "best": best, "curve": curve, "toks": toks,
+                                      "train_s": train_s}))
+        print(f"saved {best_path} and {marker} before grading", flush=True)
+    else:
+        train_s = prev_train_s
+    if a.stop_before_grade:
+        return 0
+    del opt, tr                                                             # free training state before grading
+    import gc
+    gc.collect()
     if dev == "cuda":
         torch.cuda.empty_cache()
-        if a.eval_mem_frac:
-            torch.cuda.set_per_process_memory_fraction(a.eval_mem_frac)
+    if a.grade_device == "cpu":
+        dev = "cpu"
+        model = model.to("cpu")
+    elif dev == "cuda" and a.eval_mem_frac:
+        torch.cuda.set_per_process_memory_fraction(a.eval_mem_frac)
+    model.load_state_dict(torch.load(best_path, map_location=dev))         # chosen on VALID
     ti = time.time()
     base = baselines(sp["train"])
     partial = {"exp": a.exp, "partial": True, "best_valid_loss": best, "learning_curve": curve}
@@ -580,7 +608,7 @@ def main(argv=None) -> int:
          "vocab_size": vocab, "leagues": a.leagues, "split": counts,
          "valid_first_night": starts, "extra_shards": extra_rep, "selection": "valid loss (early stop)",
          "recipe": {"d": a.d, "layers": a.layers, "heads": a.heads, "ctx": a.ctx, "batch": a.batch, "lr": a.lr, "dropout": a.dropout, "weight_decay": a.weight_decay,
-                    "params_m": round(n_params / 1e6, 1), "steps": step, "epochs_seen": round(step * a.batch / max(1, len(tr)), 2)},
+                    "params_m": round(n_params / 1e6, 1), "steps": step, "epochs_seen": round(step * a.batch / max(1, n_tr), 2)},
          "learning_curve": curve, "best_valid_loss": best,
          "test": test, "test_by_league": per_league, "train_slice": {k: trn[k] for k in ("next_kind_acc", "stop_ece", "break_dt_mae_s")},
          "gap": {"train_recent_200": {k: trn[k] for k in ("next_kind_acc", "break_dt_mae_s", "break_dt_mae_s_baseline")},
@@ -588,7 +616,8 @@ def main(argv=None) -> int:
                                                                 "break_dt_mae_s_baseline")},
                  "valid": {k: val[k] for k in ("next_kind_acc", "break_dt_mae_s", "break_dt_mae_s_baseline")},
                  "test_by_year": per_season},
-         "throughput": {"device": torch.cuda.get_device_name(0) if dev == "cuda" else "cpu",
+         "throughput": {"device": torch.cuda.get_device_name(0) if train_dev == "cuda" else "cpu",
+                        "grade_device": dev,
                         "train_tokens_per_s": round(toks / max(1e-9, train_s)),
                         "eval_tokens_per_s": round(inf_toks / max(1e-9, inf_s)),
                         "train_s": round(train_s), "total_s": round(time.time() - t_all)},

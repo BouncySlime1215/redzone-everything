@@ -2,6 +2,7 @@
 grader runs end to end on a tiny model (synthetic tokens, no download)."""
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -81,3 +82,29 @@ def test_extra_shards_join_train_only_before_valid_and_capped_at_3x():
     too_many = [{**g, "gid": f"{g['gid']}x{k}"} for k in range(4) for g in syn[:16]]
     with pytest.raises(SystemExit):
         W.add_extra(sp["train"], too_many, starts)
+
+
+def test_best_model_is_saved_before_grading_and_a_rerun_grades_only(tmp_path):
+    """EXP-103 died twice in grading and lost the trained model: now best.pt + trained.json land before grading,
+    --stop-before-grade exits there, and a rerun on the same --out grades without training (here on the CPU)."""
+    pytest.importorskip("torch")
+    root = tmp_path / "shards"
+    (root / "nba").mkdir(parents=True)
+    games = [_game(i, f"2025{m:02d}{d:02d}", 60) for i, (m, d) in enumerate((m, d) for m in (1, 2) for d in range(1, 21))]
+    arr = np.concatenate([g["tokens"] for g in games])
+    off, index = 0, []
+    for g in games:
+        index.append([g["gid"], g["night"], off, len(g["tokens"]), 0])
+        off += len(g["tokens"])
+    np.save(root / "nba" / "2025.npy", arr)
+    (root / "nba" / "2025.json").write_text(json.dumps({"complete": True, "games": len(games), "tokens": len(arr),
+                                                         "license": "open (test)", "index": index}))
+    out = tmp_path / "run"
+    args = ["--out", str(out), "--from-tokens", str(root), "--leagues", "nba", "--minutes", "0.05",
+            "--d", "32", "--layers", "1", "--heads", "2", "--ctx", "120", "--batch", "8"]
+    assert W.main(args + ["--stop-before-grade"]) == 0
+    assert (out / "best.pt").exists() and (out / "trained.json").exists() and not (out / "grades.json").exists()
+    assert W.main(args + ["--grade-device", "cpu"]) == 0
+    g = json.loads((out / "grades.json").read_text())
+    assert "partial" not in g and g["test"]["games"] > 0 and g["throughput"]["grade_device"] == "cpu"
+    assert g["recipe"]["steps"] == json.loads((out / "trained.json").read_text())["step"]
