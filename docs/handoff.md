@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-EXP-086 Teacher plan B DONE, bar PASS (4,050/4,050, valid JSON >=99.9%). Blind lock head vs Teacher: CBB 96.7/93.3 (head leak-suspect), MLB 56.7/57.0, NHL 57.3/70.0 (Teacher +12.7). Report docs/kaggle/exp-086-teacher-planb-grades.md (7250d78); teacher_out held locally (personal use, not published). A100 runtime deleted.
-EXP-103: stuck runtime deleted; fresh Run all allocating at 1:16 AM (~1.3 h, grades ~2:30 AM). 545 CU left. Usage 52%.
+EXP-103 rerun on L4, executing 27 min at 1:45 AM (data build), grades ~2:30 AM. teacher_out.jsonl handed to crew E as a private thread attachment (not published). Lane 3: CBB 'leak' is a false alarm (NCAA crunch rules make the game clock predict lock); CBB lock scores can't judge Teacher vs student.
+Coordinator: compute exchange built (#269: HF shards, checkpoints, SkyPilot + Kaggle/Colab adapters, ledger, DiLoCo trainer EXP-111), needs Nick's HF_TOKEN as a Colab/Kaggle secret. All 2,821 tests pass on next; RC7 has 1 failing gate (mid-commercial joins). Waiting on Nick: NBA card + RC7 sync card. Usage 53%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
