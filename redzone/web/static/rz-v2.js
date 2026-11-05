@@ -39,18 +39,25 @@ let strip = null;
 function pollStrip() {
   api("/api/v2/watch").then((r) => {
     const top = arr(r && r.games).slice(0, 3).map((g) => ({ ...g, on: g.game_id === r.current }));
-    const next = { top, src: r && r.source, tag: (r && r.why_tag) || null };
+    const next = { top, src: r && r.source, tag: (r && r.why_tag) || null, also: arr(r && r.also_close) };
     if (JSON.stringify(next) !== JSON.stringify(strip)) { strip = next; hooks.renderScreen("now"); }
   }).catch(() => {}).finally(() => setTimeout(pollStrip, 15000));
 }
+/* EXP-039: "Also close" — other live games that are late and within one score, as plain text. No Watch
+   button and no tap target: it answers "is anything else close?" so curiosity doesn't need a switch. */
+function alsoClose() {
+  const a = strip ? arr(strip.also) : [];
+  if (!a.length) return "";
+  return `<div class="v2-also" role="note"><b>Also close</b>${a.map((g) => `<span><span class="m">${esc(g.matchup)}</span> ${esc(g.context)}</span>`).join("")}</div>`;
+}
 function watchStrip() {
-  if (!strip || !strip.top.length) return "";
+  if (!strip || !strip.top.length) return alsoClose();
   // EXP-035: a plain label, only over a logged threshold; no banner, sting or animation (playbook §5)
   const t = strip.tag;
   const tag = t ? `<div class="v2-why" title="${attr(`Shown because it is ${t.value} on the 0-100 scale (threshold ${t.threshold})`)}"><b>Why we're here</b> ${esc(t.text)}</div>` : "";
   return `${tag}<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
     `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc([g.context || g.why, g.stakes_line].filter(Boolean).join(" · "))}</small></span></span>`).join("")}
-    ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>`;
+    ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>${alsoClose()}`;
 }
 
 /* Crunch vs crunch: what the hidden stick holds, how far behind, and what comes back when (display only). */

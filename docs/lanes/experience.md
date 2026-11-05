@@ -14,7 +14,7 @@ There's a mock preview at `/static/index.html?mock&v2` (data in `rz-mock.js`). O
 | `GET /api/v2/provenance?key=` | Switch trace: who contributed what | `switches.detail.trace` events + `trace.provenance` {decider, watch_value, crunch_state, importance, stakes, floors, planner, playbook, guard, control} |
 | `GET /api/v2/held` | the "Held + coming back" strip | `control.hidden_target/hidden_ready/held`, `decider.home_break_visit/home_return_at/queue` |
 | `GET /api/v2/catchup` | Catch-up queue + multiview stub (live tile, held tile) | `control.held`, `data/buffer.jsonl` (`left_held` then `left_resumed`, `left_expired` or `left_lost`, STK-07), `decider.queue` (`Missed`: `must`, `mine`, `due_s`), `Scored.is_break`, `decider.current` |
-| `GET /api/v2/watch` | Watch value strip and sheet, plus the EXP-035 "why we're here" tag (only when the game on screen is at or over config `phone.why_tag_min`, 70) | `Scored.watch_value`, `watch_why`, `factor`, `score`, `crunch_state`, `stakes_line` (#172; `None` = no stakes, then a "rough" line from `Scored.stakes`); EXP-037 `context` per row ("BUF down 3, 1:12 left, 1 timeout"), only late and within one score, from `GameState` clock, score and situation |
+| `GET /api/v2/watch` | Watch value strip and sheet, plus the EXP-035 "why we're here" tag (only when the game on screen is at or over config `phone.why_tag_min`, 70) | `Scored.watch_value`, `watch_why`, `factor`, `score`, `crunch_state`, `stakes_line` (#172; `None` = no stakes, then a "rough" line from `Scored.stakes`); EXP-037 `context` per row ("BUF down 3, 1:12 left, 1 timeout"), only late and within one score, from `GameState` clock, score and situation; EXP-039 `also_close` (flag `phone.also_close`): up to 2 other late, close games as text |
 | `GET /api/v2/slate` | Tonight ahead: crunch windows, clashes, WV per live game | board games, `HardRules`, `Scored.watch_value`, `watch_why`, `watch_rising` (hidden unless `scoring.watch_value`); `complete` = no games left and at least one finished, which shows the EXP-036 "Slate complete" card with nothing after it |
 | `GET /api/v2/status` | `enabled` (`phone.v2`) and `commit` (`phone.commit`, EXP-036) | config only. The commit sheet sends `act("commit", {mode: my_teams/stop_after/end_at, game_id, at})`; lanes 2/3 own the action and apply it only at a dead ball. Controls only, never a training signal |
 | `GET/POST /api/v2/worth` | EXP-040 "Was tonight worth it?" (1-5) on the Slate complete card, plus the weekly agency/regret probes. Own flag `phone.worth`; works with `phone.v2` off | `data/worth.jsonl` (evaluation only, graded by `redzone/lab/worth.py`) |
@@ -56,3 +56,14 @@ Set on Nov 5, 2026, before any beat night. It is graded by `python scripts/orien
 - **FAIL:** the lower bound is > 0.
 - **PENDING:** anything else (never counts as passing).
 - **Guardrail:** Right game agreement must not drop on beat nights.
+
+### EXP-039: "Also close" line (phone)
+
+Set on Nov 5, 2026, before any line night. It is graded by `python scripts/also_close_line.py --db <db> --on <nights> --off <nights>`.
+
+- **What it is:** under the watch strip, up to 2 other live games that are late and within one score, shown as text ("UNC @ DUKE UNC down 2, 0:41 left, 1 timeout") in league order. It has no Watch button and no tap target. It answers "is anything else close?" without a switch.
+- **Measure:** the manual-switch share per night (user switches / all switches that went through). Whole nights alternate on/off.
+- **PASS:** at least 6 nights per side, and the 95% bootstrap upper bound of share(on) − share(off) is < 0.
+- **FAIL:** the lower bound is > 0. That would mean the line pulls switches instead of informing.
+- **PENDING:** anything else.
+- **Guardrail:** "Big plays live or replayed within 3 min" must not drop on line nights.
