@@ -28,3 +28,13 @@ Pass: the position moves by the asked amount within 0.5 s, the stream keeps play
 show its own UI. Record settle time (until state is PLAYING again) and the landing error, per app. Prime's
 package is shown by `list` (com.amazon.firebat on Fire OS). If `list` fails with a security or hidden-API error,
 paste the stack trace (it has no secrets): the reflection path needs a different entry point on that Fire OS.
+
+## Tonight (B1, TNF on Prime): log both sticks once a second, then report
+
+    python tools/rzseek/prime_night.py log <stick A> <stick B> --out data/reports/b1_2026-11-05.jsonl
+    python tools/rzseek/prime_night.py report data/reports/b1_2026-11-05.jsonl
+
+Read-only (no key press), sticks written as stick1/stick2. The report says per stick x content whether the
+position is an epoch (> 1e12: the frame's wall clock, so E = seconds behind real life) or a counter, how flat E
+stays between state updates, unexplained jumps per hour (B1 pass: <= 2), and each pause's rise in E against
+its length.
