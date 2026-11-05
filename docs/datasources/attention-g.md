@@ -46,7 +46,7 @@ Mac; no spending; keys are made by Nick and added as Actions secrets, never past
 |---|---|---|---|
 | EXP-1700 | Bluesky minute counts land for a full evening slate (Thu Nov 5 ET, 23:00-04:45 UTC) | ≥ 95% of minutes present; 0 text or id fields (test); license line and B tag on every row; ledger row with feeds and tokens/GB | running |
 | EXP-1701 | Social attention carries moment signal, not noise | per game, a team's mention z-score over t..t+5 min after each play vs that play's realized \|ΔWP\|: Spearman ≥ 0.15 with a game-cluster bootstrap 95% CI above 0, AND above a clock-only baseline; valid nights only. Fail = G-a dropped from labels | queued (needs ≥ 8 nights) |
-| EXP-1702 | Attention labels improve the reward model | Watch Value trained with the attention label as an auxiliary target beats the WP-swing-only label on % of oracle and the worth-it line on valid (grader frozen by the integrator); never judged on watch time | queued (after 1701) |
+| EXP-1702 | Attention labels improve the reward model | Watch Value trained with the attention label as an auxiliary target beats the WP-swing-only label, and a within-game shuffled placebo of the same label, on % of oracle and the worth-it line on valid (shared harness `scripts/wv_aux_label.py` with crew H's EXP-1800, one label source per run, each graded separately) (grader frozen by the integrator); never judged on watch time | queued (after 1701) |
 | EXP-1703 | Twitch sports viewer curves land | ≥ 95% of minutes for one slate; aggregate only; license line and B tag | blocked on Nick's Twitch key |
 
 ## Running it
