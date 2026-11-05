@@ -43,6 +43,10 @@ Costs are planner estimates. Lanes correct them in their PRs.
 - Once it is `running`, its hypothesis, line, bar and nights are frozen. Change them by registering a new EXP id.
 - `set before running` means the owning lane writes the bar in its PR before the first run.
 
+**New ids** (to avoid clashes): ids up to EXP-099 are the planner's. Each lane registers new rows from its own
+block: ① EXP-100-199, ② EXP-200-299, ③ EXP-300-399, ④ EXP-400-499, ⑤ EXP-500-599, Integrator EXP-600-699. Ids
+already in use (EXP-088, EXP-089) keep their numbers.
+
 **Lanes:** ① Noggin training, ② logic/sync, ③ performance + controls, ④ app + CI, ⑤ features, Int = Integrator.
 
 ## Phase 0: foundations (now to Fri Nov 6)
