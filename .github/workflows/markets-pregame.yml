@@ -34,3 +34,9 @@ jobs:
           git checkout -q --orphan "$B" && git rm -rq --cached . && git clean -fdq
           cp /tmp/d/*.jsonl . && git add *.jsonl
           git commit -qm "pre-game lines ${D} (derived; personal-use, not for commercial release)" && git push -q origin "$B" && echo "pushed $B"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: markets-pregame-${{ env.D }}
+          path: out/pregame/
+          retention-days: 30
