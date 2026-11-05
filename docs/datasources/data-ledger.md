@@ -82,3 +82,19 @@ project files under data-a/pbp/statsbomb (135 MB).
 Nov 5 2026 06:05 UTC: SportVU NBA tracking 2015-16, 621 games (94 not in the dump, 4 dropped), 2.05M rows of 1 Hz
 wall-clock summaries (ball position, speed, handler, live/dead; side table: team speed, spacing, ball height). Counted
 as tracking, apart from events. Personal-use tag; derived numbers only, never re-uploaded. data-a/pbp/nba_sportvu + sportvu_extra (103 MB).
+
+### Cycle 14 (2026-11-05), crew B (context and hype): first landing (EXP-1100)
+
+Context facts in lane ①'s vocab v2 hand-off format ([context-tokens.md](context-tokens.md)). One fact = one token
+per game or team; `new` (external facts) and `derived` (computed from data we hold) are counted apart. Lines are crew
+D's and are not in these rows. Data is in the private project folder (`data-b/shards/`), not in this repo.
+
+| Source | Verdict | Status | Seasons held | Games | Facts (tokens) | New | Derived | License line |
+|---|---|---|---|---:|---:|---:|---:|---|
+| nflverse schedules, injuries, officials, team stats | yellow | done | NFL 1999-2026 | 7,548 | 163,413 | 96,398 | 67,015 | nflverse CC-BY-4.0, credit nflverse |
+| Retrosheet game logs + event-file `info` records | yellow | done | MLB 2000-2025 | 61,634 | 555,991 | 494,357 | 61,634 | Retrosheet: free with its required notice ("The information used here was obtained free of charge from and is copyrighted by Retrosheet...") |
+| Our standings, Elo and playoff-odds sims (stakes swing) | yellow (derived) | done | NFL 1999-2026 | 7,413 | 208,488 | 0 | 208,488 | derived from nflverse schedules (CC-BY-4.0) |
+| Our standings, Elo and playoff-odds sims (stakes swing) | yellow (derived) | done | MLB 2000-2025 | 61,634 | 1,787,386 | 0 | 1,787,386 | derived from Retrosheet game logs (Retrosheet notice) |
+| Open-Meteo archive weather (NFL, MLB outdoor) | yellow (CC BY 4.0, non-commercial) | planned (cloud run) | | | | | | Open-Meteo CC BY 4.0, credit Open-Meteo |
+| CFBD media, rankings, records, talent, games | yellow | blocked (Nick's CFBD key) | | | | | | CollegeFootballData.com free tier, credit CFBD |
+| **Crew B total** | | | | 69,182 | **2,715,278** | **590,755** | **2,124,523** | |

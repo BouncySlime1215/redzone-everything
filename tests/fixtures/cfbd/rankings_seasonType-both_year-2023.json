@@ -1,0 +1,79 @@
+[
+ {
+  "season": 2023,
+  "seasonType": "regular",
+  "week": 1,
+  "polls": [
+   {
+    "poll": "AP Top 25",
+    "ranks": [
+     {
+      "rank": 21,
+      "school": "North Carolina"
+     },
+     {
+      "rank": 5,
+      "school": "Florida State"
+     }
+    ]
+   },
+   {
+    "poll": "Coaches Poll",
+    "ranks": [
+     {
+      "rank": 20,
+      "school": "North Carolina"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "season": 2023,
+  "seasonType": "regular",
+  "week": 2,
+  "polls": [
+   {
+    "poll": "AP Top 25",
+    "ranks": [
+     {
+      "rank": 17,
+      "school": "North Carolina"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "season": 2023,
+  "seasonType": "regular",
+  "week": 3,
+  "polls": [
+   {
+    "poll": "AP Top 25",
+    "ranks": [
+     {
+      "rank": 15,
+      "school": "North Carolina"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "season": 2023,
+  "seasonType": "postseason",
+  "week": 1,
+  "polls": [
+   {
+    "poll": "AP Top 25",
+    "ranks": [
+     {
+      "rank": 2,
+      "school": "North Carolina"
+     }
+    ]
+   }
+  ]
+ }
+]

@@ -249,6 +249,17 @@ scripts/markets/tokens.py.
 |---:|---|---|---|---|---|---|---|---|---|
 | D1 | EXP-1300 | Data scale (market events) | Public Polymarket 1-minute price history for sports game markets (2024+) lands as vocab v2 market-block tokens in the factory with a license line, and it is new information (observed prices, not derived). | Data ledger: new-information tokens | 0 (Kaggle CPU) / ~3 | D | Ledger bar: >= 5M new-information market tokens landed (counts.json from scripts/markets/tokens.py, 6 per emitted event), >= 70% of events matched to a product game_key, 0 rows missing the B tag, 0 wallet or user fields stored, 0 ticks timestamped after the play they are joined to (time-split audit), license line `yellow-B` in scout.json | n/a (data) | pre-registered |
 | D2 | EXP-1301 | P4 (market expectation), crunch | A live market-volatility input (abs 5-minute change in market p_home, from EXP-1300 ticks, joined point-in-time) behind a flag (off) improves crunch detection over the WP-only crunch state. | Crunch live (NBA/NFL); % of oracle | ~1 / ~3 | D + 1 | On dev nights where a market tick exists, crunch live with the input beats without it by >= 1.0 pt (night-bootstrap lower bound > 0) in >= 1 league, no league worse beyond its CI, entries_mid_play 0; selected on valid only; locked read once by the integrator | dev nights with market coverage (2024+); >= 8 per league for PASS, else PENDING | queued (needs EXP-1300) |
+## Data Division B: context and hype (EXP-1100-1199; plan: brain engines on #241, Nick 12:05 AM Nov 5)
+
+Crew B lands context facts in lane ①'s vocab v2 hand-off format (`redzone/context/tokens.py`): one parquet per
+league-season, `kind` new or derived counted apart, a license line on every row, buckets fit on train games only.
+Lines and all other price series belong to crew D; B reads D's ticks for EXP-091. Data-scale rows only: any effect
+on the brain is graded through EXP-091/092 by the integrator's frozen graders.
+
+| rank | id | covers | hypothesis | North Star line | cost GPU-h / agent-h | lane | success bar | nights needed | status |
+|---:|---|---|---|---|---|---|---|---|---|
+| C14 | EXP-1100 | B (context), first landing | GitHub-hosted public sources (nflverse schedules, injuries, officials; Retrosheet game logs and event-file weather) plus our point-in-time standings and playoff-odds sims give pregame context facts for NFL 1999-2025 and MLB 2000-2025. | Data scale (context facts, new vs derived) | 0 / ~3 | B (Data Division) | ≥ 90% of NFL REG+POST games 2009-2025 have referee, roof, rest and a stakes swing row, and ≥ 90% have an injury row; ≥ 90% of MLB games have an HP umpire and park row; 0 rows with asof_utc at or after the fact applies (post-game fields flagged and excluded from pregame); license line on 100% of rows; ledger shows new and derived counts apart | n/a (one landing) | running |
+| C14 | EXP-1101 | B (context), buzz job | An hourly cloud job (GitHub Actions or Kaggle CPU, never the Mac) lands Wikipedia pageview and edit-rate z-scores and GDELT news volume and tone per team for every game in all six leagues. | Data scale (context facts) | 0 / ~2 | B (Data Division) | on 3 consecutive slates, ≥ 95% of team-games have a pregame buzz row timestamped before kickoff and ≥ 90% of live hours have a live row; 0 article text stored; 0 rate-limit violations (no 429 bans) | 3 slates | queued (needs the job scheduled: default-branch workflow or Kaggle scheduler) |
 
 ## Results log
 
