@@ -835,3 +835,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   [0, 0]); the instrument does see live play (landings shifted -15 s: 10 live); at random moments the shared grader
   errs toward "live" (the safe side). An NBA "0 mid-play" claim now needs both graders at 0. It and
   `scripts/entry_autopsy.py` (its input) join the freeze. Grader freeze v26.
+- 2026-11-05 (Nick, 9:10 AM ET): **the time-shift buffer is the main architecture.** "I approve this plan and I want it
+  all done and ready for tonight." The show runs 60-90 s behind live (cap 90 s) and the brain becomes the editor.
+  Tonight: shadow mode for every game, no screen change (lane 2); replay sim and per-league sweep 45/60/75/90 s
+  (lanes 3 + 1); windowed-hindsight oracle teacher (lane 1); seek reliability per app (lane 2/4). RC8 turns the buffer
+  ON only for leagues that pass the gate pre-registered in docs/plans/2026-11-05-rc8-buffer-gate.md (0 mid-play on
+  every run and both harnesses, beats live on big plays shown from the start, guardrails, tonight's shadow confirms,
+  locked once), and Nick flips it. Rule #1 never changes; hidden stick only while Nick watches.
