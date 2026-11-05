@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Usage flat at 73% (~2:40 PM), 8 threads. 3 PM readiness table due; 84% safety net armed.
+3:10 PM: work had STALLED ('10 threads waiting on you'; usage flat at 73% for 1 h). Ordered threads to take safe defaults under Nick's 9:50 AM autonomy grant (logged as overseer defaults) and resume all 8; only Nick-only items (keys, Kaggle ID, RC8 flip) wait.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
