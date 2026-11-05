@@ -51,7 +51,7 @@ latency or Wi-Fi.
 | NBA | Big plays seen live | 78.9% | Only 71 graded plays over 9 nights. **Grow the graded set to ≥ 60 decisions per gate** |
 | NFL | Big plays live | 40.3% | |
 | NFL | Catch-up within 3 min | 64.9% | |
-| NFL | Entries landed in a break | 196 of 196 | The never-join-at-a-break rule fails hardest here |
+| NFL | Entries that landed in a break with > 10 s left | 196 of the 196 in-break entries (~300 entries total) | The never-join-at-a-break rule fails hardest here |
 | NFL | Crunch live | 66.9% | |
 
 **Power check (test writers, EXP-726, NBA dev, 9 nights, real lag).** No NBA rate line can PASS or FAIL on its CI
@@ -66,7 +66,13 @@ with 9 nights.
 
 - **EXP-735** adds the 2025-26 NBA season (NBA cdn, green) as dev nights before the locked start, until every NBA gate
   has at least 60 decisions.
-- **EXP-732** checks whether NFL's 196/196 "in a break" counts the normal gap between plays as a break.
+- **EXP-732 answered (integrator).** NFL's "196/196" is not a grader artifact.
+  - It means that of the 196 NFL entries that landed in a break (out of ~300 dev entries), all 196 had more than
+    10 s of break left.
+  - Plain between-play gaps are not counted as breaks.
+  - The cause is the entry policy: the decider enters at the start of a break, and EXP-205 targets exactly that.
+  - Caveat: reviews and injuries count as breaks. A per-stoppage split comes as grader v18.
+- The 60-decision floor is enforced in code (`release_gate.MIN_DECISIONS = 60`). Below it, a gate stays PENDING.
 
 ## RC7 (integrator's read: FAIL / PENDING / PENDING)
 | Requirement | Owner | Status |
