@@ -66,5 +66,5 @@ then ~5-10k new tokens/day. Measured numbers replace this after the first run.
 - Google Video Intelligence, AWS Rekognition: need the file uploaded (= we download). **Red.**
 - Twelve Labs: indexes and stores the video; URL input unverified. **Yellow-red.**
 
-Proposed (not started): EXP-1203 free-tier Gemini pilot on <=50 official YouTube highlight links/day, output
+Proposed (not started): EXP-1204 free-tier Gemini pilot on <=50 official YouTube highlight links/day, output
 numbers only (play type, players, crowd-noise 0-3), only if Nick says yes.
