@@ -127,3 +127,11 @@ outputs to a public branch. The hold in `context-nba.yml` stays. The pull runs o
 `context-features` dataset, still checking robots.txt first. Command for the overseer:
 `python scripts/context/nba_injuries.py injuries --from 2018-12-01 --to <today> --out /kaggle/working/nba-inj` (add `--player-box` hoopR player_box parquet files for star_out)
 (see the script's `--help`). The license line credits NBA.com.
+
+### Kaggle queue (crew B, NBA)
+
+1. `nba_injuries.py injuries` (above), private dataset only.
+2. nbadb (Kaggle `wyattowalsh/basketball`, terms id `nbadb`, restrictive, so personal-use): attach as a notebook input,
+   read the dataset's licence field first, then take `officials` per game (fills referee history beyond L2M; crew ids
+   kind new, prior-only tendency z derived) and `game_info.game_time` as `game_length_postgame` (post-game, asof next
+   day; a cross-check on summed break lengths for Data A and crew F).
