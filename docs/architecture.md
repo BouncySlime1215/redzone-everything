@@ -239,6 +239,7 @@ interface change. Tests belong to the owner of the module they test.
 | LOCAL AI | `agent/*` (incl. `agent/llm_server.py`, `agent/train/*`, `agent/com.redzone.agent.plist`), reasoner modules |
 | SWITCHING | `redzone/control.py` (all of it, flips and CEC included), `redzone/standby.py`, `redzone/tv.py`, `redzone/tvsetup.py`, `redzone/tuners/*`, `redzone/discovery/*`, `redzone/channels.py`, `scripts/{tv_setup,stick_cec,tv_practice,prime_flip_probe,prime_search_trial,find_yttv_code,providers_check,screen_lab}.py`, `tools/hdmi-cec-probe`, `docs/instant-switching.md` |
 | SYNC | `redzone/screen/*` (audio, boundary, scorebug), `redzone/screen_ocr.py`, `scripts/vision_ocr.swift`, new `redzone/sync/*` |
+| EXPERIENCE | `redzone/web/{phone_v2,ledger}.py`, `redzone/web/static/rz-v2.js`, `redzone/lab/{decision_records,prime_mv_fake}.py`, `scripts/{export_decision_records,data_ledger,prime_multiview_probe,prime_multiview_grade}.py`, `docs/{decision-records,prime-multiview-calibration}.md` (lane 5: phone v2, replay viewer, slate, multiview; read only, behind `phone.v2`) |
 | PLATFORM | `redzone/sources/*`, `redzone/supervisor.py`, `redzone/autonomy.py`, `redzone/store.py`, `redzone/recorder.py`, `redzone/recorded.py`, `redzone/views.py`, `redzone/web/*`, `redzone/__main__.py`, `redzone/platform/*`, `scripts/{service,service_runtime,doctor,rz,download_recent,download_season,deploy}.py`, `scripts/install_service.sh`, `deploy/*`, `docs/service-operation.md` |
 
 Notes:

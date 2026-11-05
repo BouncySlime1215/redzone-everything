@@ -221,6 +221,45 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
     return rows
 
 
+
+# [per-league promotion] Nick, Nov 5 2026 8:20 PM ET: "the gains are big; the gates are goals and targets, keep
+# working to them, but take the wins along the way." A candidate change may go live PER LEAGUE when, in THAT
+# league, it has 0 mid-play entries on dev AND locked and beats live on both: no line worse, at least one better.
+# Never-join-mid-play stays absolute. The full gates above still define "done".
+PROMOTE_HIGHER = ("big_live_pct", "crunch_live_pct", "big_seen_10m_pct", "your_team_crunch_live_pct")
+PROMOTE_LOWER = ("dead_air_pct", "plays_missed_entry")
+
+
+def league_promotion(live: dict, cand: dict, league: str) -> tuple[str, str]:
+    """(status, detail) for promoting `cand` over `live` in one league. live / cand: {"dev": cards, "locked": cards}
+    (scorecards graded with the EXACT settings set that would go live). PASS = promote in this league."""
+    notes, better, worse = [], 0, []
+    for split in ("dev", "locked"):
+        lm, cm = _m((live.get(split) or {}).get(league, {})), _m((cand.get(split) or {}).get(league, {}))
+        if not lm or not cm:
+            return PENDING, f"{split}: no {league} scorecard for both profiles"
+        mid = cm.get("entries_mid_play")
+        if mid is None:
+            return PENDING, f"{split}: candidate card has no entries_mid_play"
+        if mid != 0:
+            return FAIL, f"{split}: candidate joins mid-play {mid} times in {league} (never-join-mid-play is absolute)"
+        for k in PROMOTE_HIGHER + PROMOTE_LOWER:
+            a, b = _pct(lm.get(k)), _pct(cm.get(k))
+            if a is None or b is None:
+                continue
+            d = (b - a) if k in PROMOTE_HIGHER else (a - b)
+            if d < -1e-9:
+                worse.append(f"{split} {k} {a:g} -> {b:g}")
+            elif d > 1e-9:
+                better += 1
+            notes.append(f"{split} {k} {a:g}->{b:g}")
+    if worse:
+        return FAIL, "worse than live: " + "; ".join(worse)
+    if not better:
+        return FAIL, "no line better than live"
+    return PASS, f"0 mid-play entries on dev + locked; {better} lines better, none worse ({'; '.join(notes)})"
+
+
 def markdown(rows) -> str:
     icon = {PASS: "✅ PASS", FAIL: "❌ FAIL", PENDING: "⏳ PENDING"}
     out = ["| gate | scope | status | value |", "|---|---|---|---|"]

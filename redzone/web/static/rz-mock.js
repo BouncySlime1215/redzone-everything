@@ -350,11 +350,54 @@ function mockV2(path, b) {
     const alert = first ? { t0: now + 1260, t1: now + 2400, in_s: 1260, on_tv: first.on_tv, second: first.second, why: first.why, now: false } : null;
     return { enabled: true, now, games: gs, clashes, yours: gs.filter((g) => g.yours).length, alert };
   }
+  if (path.startsWith("/api/v2/provenance")) {
+    const now = Date.now() / 1000 - 3600;
+    return { ok: true, enabled: true, key: "k", ts: now, from: "KC @ DAL", to: "CHI @ WSH", kind: "crunch", ok: true, dry_run: false,
+      chips: [{ key: "yours", label: "Your team" }, { key: "crunch", label: "Crunch time" }], source: "trace", has_trace: true,
+      parts: [{ module: "watch_value", value: { to: 88, from: 41, why: "Tied, 2:10 left in the 4th" } }, { module: "crunch_state", value: "in" },
+        { module: "importance", value: 0.82 }, { module: "floors", value: ["your-team crunch floor"] }, { module: "planner", value: "crunch-overlap" },
+        { module: "guard", value: { rule: "no mid-play cut", safe_wait_s: 3.1 } }],
+      chain: [{ stage: "decided", at: now, component: "decider", detail: { kind: "crunch" } }, { stage: "guarded", at: now + 3.1, component: "guard", detail: { rule: "no mid-play cut" } },
+        { stage: "command", at: now + 3.4, component: "control", detail: { path: "flip", stick: "HDMI2" } }, { stage: "picture", at: now + 5.6, component: "control", detail: { to_picture_s: 5.6 } }] };
+  }
+  if (path === "/api/v2/held") {
+    const gs = (STATE.games || []).slice(0, 3);
+    return { enabled: true, now: Date.now() / 1000, view: gs.length < 2 ? null : {
+      held: { game_id: gs[1].id, matchup: gs[1].matchup, ready: true, behind_s: 84 },
+      back: { game_id: gs[1].id, matchup: gs[1].matchup, kind: "return", in_s: 240, text: `back to ${gs[1].matchup} within 4 min` },
+      catchup: { game_id: gs[2] ? gs[2].id : gs[1].id, matchup: (gs[2] || gs[1]).matchup, kind: "goal", label: "Ovechkin power-play one-timer", ago_s: 95, mine: true, due_in_s: 85, text: "catch-up at the next dead moment" },
+      queued: 2 } };
+  }
   if (path === "/api/v2/watch") {
     const why = ["Tied, 2:10 left in the 4th", "Red zone, 3rd & goal", "Power play, down one", "Blowout, starters sitting", "Commercial break"];
     const games = (STATE.games || []).filter((g) => g.phase === "live" || g.state === "live").slice(0, 6).map((g, i) => ({ game_id: g.id, matchup: g.matchup,
-      league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, stakes_line: ["AFC 1-seed race, top-5 matchup", "Rivalry game", "", "Wild-card push"][i] || "", is_break: i === 4, source: "stub" }));
+      league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, stakes_line: ["AFC 1-seed race, top-5 matchup", "Rivalry game", "", "Wild-card push"][i] || "", stakes_pending: i === 2 || i > 3, is_break: i === 4, source: "stub" }));
     return { enabled: true, now: Date.now() / 1000, current: games[0] && games[0].game_id, games, source: games.length ? "stub" : null };
+  }
+  if (path.startsWith("/api/v2/capture/report")) {
+    return { ok: true, day: "2026-11-04", text: "# RedZone night report: 2026-11-04\n\n**41 switches (1 failed); key moments seen 37/40; 2 auto-fixes.**\n\n- Mid-play entries: 0\n- Held buffer rebuilt twice (drift)" };
+  }
+  if (path.startsWith("/api/v2/capture")) {
+    const day = (path.match(/day=([0-9-]+)/) || [])[1] || "2026-11-04";
+    return { enabled: true, night: day, switches: 41, with_trace: 41, with_provenance: 38,
+      provenance_keys: [["decider", 38], ["crunch_state", 38], ["importance", 38], ["stakes", 21], ["planner", 9], ["guard", 38], ["control", 38], ["playbook", 14]].map(([module, n]) => ({ module, n })),
+      autolog: { rows: { "traces.jsonl": 41, "tv_input.jsonl": 44, "supervisor_cuts.jsonl": 39, "sync.jsonl": 212, "buffer.jsonl": 3 }, cuts_graded: 39, entries_mid_play: 0, leaves_mid_play: 1, switch_p95_s: 2.2, picture_within_3s: "38/41", press_to_tv_p95_s: 4.1 },
+      held: { now: { HDMI2: 62.5 }, log: { drift: 2, recovered: 2 } }, report: `${day}.md`,
+      checks: [{ key: "autolog", label: "Auto-log collected", ok: true }, { key: "provenance", label: "Switches with provenance", ok: false }, { key: "report", label: "Night report written", ok: true }], gold: false };
+  }
+  if (path === "/api/v2/ledger") {
+    const R = [["nfl", "nflverse pbp", "CC-BY 4.0", 212e6, 80e6, 41000, 0.14, "1999-2025"], ["cfb", "cfbfastR", "MIT", 105e6, 0, 30500, 0.11, "2004-2025"],
+      ["nba", "nba_api pbp", "", 160e6, 120e6, 25000, 0.17, "2015-2025"], ["nhl", "api-web.nhle.com", "", 58e6, 40e6, 9800, 0.13, "2010-2025"]];
+    const rows = ["nfl", "cfb", "nba", "cbb", "wcbb", "nhl", "mlb", "live"].map((lg) => {
+      const r = R.find((x) => x[0] === lg);
+      return r ? { league: lg, source: r[1], license: r[2], real_tokens: r[3], synthetic_tokens: r[4], windows: r[5], games: Math.round(r[5] / 9), nights: Math.round(r[5] / 40), seasons: r[7], crunch_share: r[6], ot_share: 0.04, comeback_share: 0.08, blowout_share: 0.21, pending: false }
+        : { league: lg, source: "", license: "", real_tokens: null, synthetic_tokens: null, windows: null, games: null, nights: null, seasons: "", crunch_share: null, ot_share: null, comeback_share: null, blowout_share: null, pending: true };
+    });
+    const real = R.reduce((a, r) => a + r[3], 0), syn = R.reduce((a, r) => a + r[4], 0);
+    const st = ["done", "running", "next", "next", "next"];
+    const names = ["Event tokens from the factory (~1B, real + self-play)", "Pretrain: next event, its time, next stoppage", "Heads: watch value, crunch enter/exit, breaks, big-play-next, importance", "Distill to the Reflex (< 5 ms) + Mind tier on the Mac (<= 2 GB)", "Gates: locked nights, oracle rank agreement, calibration"];
+    return { enabled: true, updated: "2026-11-04T22:00Z", rows, totals: { real_tokens: real, synthetic_tokens: syn, tokens_target: 1e9, pct_of_target: +((100 * (real + syn)) / 1e9).toFixed(1) },
+      nfm: { params: null, milestones: names.map((name, i) => ({ name, status: st[i], at: i === 0 ? "Nov 4" : "", note: i === 1 ? "Kaggle T4, epoch 2/6" : "" })), done: 1 }, pending: false };
   }
   if (path.startsWith("/api/v2/trend")) {
     const L = [["mid_play", "Mid-play cuts per 100 landings", 0, -1, 2.4, 1.75], ["landings_dead", "Landings in dead time %", 98, 1, 96.1, 98.25],
@@ -379,7 +422,7 @@ function mockV2(path, b) {
       const len = 300 + ((i * 937) % 1500);
       segs.push({ t0: t, t1: Math.min(now, t + len), game: g.id, matchup: g.matchup });
       const reason = reasons[i % reasons.length];
-      events.push({ ts: t, type: "switch", kind: "better", game: g.id, matchup: g.matchup, reason, ok: i % 9 !== 4, dry_run: false,
+      events.push({ ts: t, type: "switch", kind: "better", game: g.id, matchup: g.matchup, reason, ok: i % 9 !== 4, dry_run: false, key: `${t.toFixed(3)}|${g.id}`,
         chips: V2_RULES.filter(([, , rx]) => rx.test(reason)).slice(0, 3).map(([key, label]) => ({ key, label })), playbooks: (reason.match(/playbook=([A-Z]+-\d+)/) || []).slice(1) });
       if (i % 4 === 1) events.push({ ts: t + 60, type: "decision", kind: "hold", game: g.id, matchup: g.matchup, reason: "wait for the whistle playbook=SAFE-07", chips: [], playbooks: ["SAFE-07"] });
       if (i % 5 === 2) events.push({ ts: t + 120, type: "tap", kind: i % 2 ? "up" : "down", game: g.id, matchup: g.matchup, reason });
@@ -398,6 +441,13 @@ function mockV2(path, b) {
       plan_marks: segs.flatMap((x, i) => i % 3 === 0 ? [{ ts: x.t0 + 90, type: "catchup", kind: "replay", game: x.game, matchup: x.matchup, reason: "catch-up", plan: null, ok: true }]
         : i % 3 === 2 ? [{ ts: x.t0 + 30, type: "interleave", kind: "break_visit", game: x.game, matchup: x.matchup, reason: "break", plan: "crunch-overlap", ok: true }] : []),
       plan_counts: { catchup: 5, interleave: 4 },
+      crunch: (() => {
+        const g = live.slice(0, 3).map((x, i) => {
+          const o0 = now - 3000 + i * 600, o1 = o0 + 900, de = [20, 140, -95][i], dx = [35, -30, 260][i];
+          return { game: x.id, matchup: x.matchup, learned: [[o0 + de, o1 + dx]], oracle: [[o0, o1]], points: [], entry_s: de, exit_s: dx, entry_ok: Math.abs(de) <= 60, exit_ok: Math.abs(dx) <= 60 };
+        }).sort((p, q) => p.exit_ok - q.exit_ok);
+        return { source: "graded", tol_s: 60, games: g, exits: g.length, exits_ok: g.filter((x) => x.exit_ok).length, entries_ok: g.filter((x) => x.entry_ok).length };
+      })(),
       big: { plays: markers.length, seen: markers.filter((m) => m.seen).length, missed: markers.filter((m) => !m.seen).length },
       summary: { switches: segs.length, failed: 1, games: Object.keys(air).length, taps: { up: 2, down: 1, missed: 1 },
         on_air: Object.entries(air).map(([matchup, s]) => ({ matchup, s: Math.round(s) })).sort((a, b) => b.s - a.s), playbooks: pb } };
