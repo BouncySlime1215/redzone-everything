@@ -842,3 +842,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   ON only for leagues that pass the gate pre-registered in docs/plans/2026-11-05-rc8-buffer-gate.md (0 mid-play on
   every run and both harnesses, beats live on big plays shown from the start, guardrails, tonight's shadow confirms,
   locked once), and Nick flips it. Rule #1 never changes; hidden stick only while Nick watches.
+- 2026-11-05 (lane 5, tracker item 5 on Nick's 9:50 AM order): new config group `fast_feeds` (`enabled: false`,
+  `leagues: [nba, nhl, mlb]`, `nba_s: 1`, `nhl_s: 2`, `mlb_s: 3`, `board_s: 15`, `max_games: 8`). With it on, NBA
+  liveData (1 s), NHL api-web and MLB statsapi are polled in SHADOW (own Fetcher, ETag/304, per-host backoff) and each
+  new event's first-seen time goes to data/recordings/<day>/fast_feeds.jsonl; nothing reaches the merger, decider or TV.
+  scripts/fast_feed_race.py measures the lag race against ESPN's plays.jsonl for crew A. Reason: tracker item 5.

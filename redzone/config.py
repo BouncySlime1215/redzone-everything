@@ -91,7 +91,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "phone.worth_probe_days": (1, 60),
     "phone.orient_beat_s": (1, 10),
     "phone.catchup_visible": (1, 5),
-    "phone.orient_override_s": (5, 300), "phone.last_night_hours": (1, 18),
+    "phone.orient_override_s": (5, 300), "fast_feeds.nba_s": (1, 30), "fast_feeds.nhl_s": (1, 30), "fast_feeds.mlb_s": (1, 30), "fast_feeds.board_s": (5, 120), "fast_feeds.max_games": (1, 15), "phone.last_night_hours": (1, 18),
     "demo": (0, 60),   # replay simulator timings (redzone/demo/engine.py)
 }
 
