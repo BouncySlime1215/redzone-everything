@@ -1927,9 +1927,16 @@ class Autonomy:
             r = await stick.shell(f"monkey -p {pkg} -c {cat} 1", timeout=10)
             if "No activities found" not in r.out:
                 break
-        await self._sleep(6)
-        if pkg not in await stick.foreground():
-            return AppCheck(False, "didn't open", version)
+        # A cold start can sit on a splash or the launcher for a while (ESPN on the 4K Plus, Nov 4: "didn't
+        # open" at a fixed 6 s). Poll up to autonomy.launch_wait_s, and say what was in front if it never came.
+        wait, front = float(self._opt("launch_wait_s", None)), ""
+        for _ in range(max(1, int(wait))):
+            await self._sleep(1)
+            front = await stick.foreground()
+            if pkg in front:
+                break
+        else:
+            return AppCheck(False, f"didn't open in {wait:.0f}s ({front.split('/')[0] or 'nothing'} in front)", version)
         text = (await stick.screen_text()).lower()
         if any(w in text for w in SIGNED_OUT):
             return AppCheck(False, "is showing a sign-in screen", version)

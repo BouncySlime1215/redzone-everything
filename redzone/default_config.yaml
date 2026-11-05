@@ -347,6 +347,7 @@ autonomy:
   busy_score: 75          # postpone maintenance during an important game
   selftest_may_wake: false
   test_targets: {youtubetv: "", prime: "", espn: ""}
+  launch_wait_s: 15       # selftest open-the-app check: how long a cold start may take to come to the front
 
 supervisor:                # watches the live system and fixes what it can on its own (redzone/supervisor.py)
   enabled: true

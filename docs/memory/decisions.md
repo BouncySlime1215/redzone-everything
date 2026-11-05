@@ -438,3 +438,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   are self-contained: public inputs at a pinned commit, no Drive mount, no secrets, grades.json printed. The
   overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
   frozen, locked is read once (Sunday).
+- 2026-11-05 (lane 3, Nick's live finding 3): new key `autonomy.launch_wait_s: 15`. The nightly selftest's
+  open-the-app check polls up to it (was a fixed 6 s) and, on a miss, names the package that was in front.
+  Reason: "ESPN didn't open on the 4K Plus" tonight; a cold start on a splash or the launcher fails a 6 s check,
+  and the old message said nothing about why. The real cause gets confirmed on the rig.
