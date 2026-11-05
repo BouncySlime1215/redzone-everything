@@ -197,6 +197,18 @@ on locked.
 | EXP-081 | M62 | The guardrail is now the binding line (§5) and the metrics (§6). | Applied to every row above. | n/a | n/a | standing |
 | EXP-082 | Mind 3B | Explains choices and handles odd cases; it is not the core timing. | Stays shadow-first and flag-off (≤ 2 GB). | n/a | n/a | standing |
 
+## Data Division B: context and hype (EXP-1100-1199; plan: brain engines on #241, Nick 12:05 AM Nov 5)
+
+Crew B lands context facts in lane ①'s vocab v2 hand-off format (`redzone/context/tokens.py`): one parquet per
+league-season, `kind` new or derived counted apart, a license line on every row, buckets fit on train games only.
+Lines and all other price series belong to crew D; B reads D's ticks for EXP-091. Data-scale rows only: any effect
+on the brain is graded through EXP-091/092 by the integrator's frozen graders.
+
+| rank | id | covers | hypothesis | North Star line | cost GPU-h / agent-h | lane | success bar | nights needed | status |
+|---:|---|---|---|---|---|---|---|---|---|
+| C14 | EXP-1100 | B (context), first landing | GitHub-hosted public sources (nflverse schedules, injuries, officials; Retrosheet game logs and event-file weather) plus our point-in-time standings and playoff-odds sims give pregame context facts for NFL 1999-2025 and MLB 2000-2025. | Data scale (context facts, new vs derived) | 0 / ~3 | B (Data Division) | ≥ 90% of NFL REG+POST games 2009-2025 have referee, roof, rest and a stakes swing row, and ≥ 90% have an injury row; ≥ 90% of MLB games have an HP umpire and park row; 0 rows with asof_utc at or after the fact applies (post-game fields flagged and excluded from pregame); license line on 100% of rows; ledger shows new and derived counts apart | n/a (one landing) | running |
+| C14 | EXP-1101 | B (context), buzz job | An hourly cloud job (GitHub Actions or Kaggle CPU, never the Mac) lands Wikipedia pageview and edit-rate z-scores and GDELT news volume and tone per team for every game in all six leagues. | Data scale (context facts) | 0 / ~2 | B (Data Division) | on 3 consecutive slates, ≥ 95% of team-games have a pregame buzz row timestamped before kickoff and ≥ 90% of live hours have a live row; 0 article text stored; 0 rate-limit violations (no 429 bans) | 3 slates | queued (needs the job scheduled: default-branch workflow or Kaggle scheduler) |
+
 ## Results log
 
 - **EXP-018** (Nov 4, 23:40 UTC, value = score, because WV isn't wired yet). The bar was pre-registered at

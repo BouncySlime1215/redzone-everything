@@ -43,3 +43,15 @@ Copy this block, set the cycle number and date, and fill every column.
 - Waiting on Nick (keys, Rules tabs, sign-offs), with the date asked:
 - Decisions logged in docs/memory/decisions.md this cycle:
 - License changes spotted (re-check any source whose terms changed):
+
+### Cycle 14 (2026-11-05), crew B (context and hype): first landing (EXP-1100)
+
+Context facts in lane ①'s vocab v2 hand-off format ([context-tokens.md](context-tokens.md)). One fact = one token
+per game or team; `new` (external facts) and `derived` (computed from data we hold) are counted apart. Lines are crew
+D's and are not in these rows. Data is in the private project folder (`data-b/shards/`), not in this repo.
+
+| Source | Verdict | Status | Seasons held | Games | Facts (tokens) | New | Derived | License line |
+|---|---|---|---|---:|---:|---:|---:|---|
+| nflverse schedules, injuries, officials, team stats | yellow | done | NFL 1999-2026 | 7,548 | 163,413 | 96,398 | 67,015 | nflverse CC-BY-4.0, credit nflverse |
+| Retrosheet game logs + event-file `info` records | yellow | done | MLB 2000-2025 | 61,634 | 555,991 | 494,357 | 61,634 | Retrosheet: free with its required notice ("The information used here was obtained free of charge from and is copyrighted by Retrosheet...") |
+| **Crew B total** | | | | 69,182 | **719,404** | **590,755** | **128,649** | |
