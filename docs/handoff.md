@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick 11:50 AM: GO on 4 key-free Watch Value sources; crew H builds a GAME-CONTEXT CORPUS: every NFL game since 1999 + NBA archive (previews, recaps, stakes, weekly + offseason team reports) from Wikipedia dumps + filtered FineWeb/CC; derived features feed Game Importance + stay/leave; raw text private only. Usage 69%.
+Nick 12:00 PM: UVP = which game to watch when. Ordered: daily pre-game report for every upcoming game (stakes, storylines, rookies + draft capital + hype, own-fan sentiment, injuries, line moves, milestones...) + historical backfill; train the prioritization model fast (first graded version tonight, bigger this weekend).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
