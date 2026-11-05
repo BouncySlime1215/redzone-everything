@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-EXP-103 world model v2 (18.6M, L4): training done at step 5000, valid loss 1.03 -> 0.334 and still creeping down (not saturated). Grading now. Teacher EXP-086 plan B: 28k games built; fast heads CBB AUC 0.967 (leak_suspect: lift over context only 0.007), NHL 0.719; Teacher asks running. Usage 51%.
-Open for Nick: RC7 ship call in lane 2 (ship Thu afternoon + grade sync live on TNF, recommended); CFL key; AHL/ECHL marked red (bot terms). Commentary notebook (43 CU) waits for the Teacher A100.
+Colab drop at 12:27 AM: both runs lost their kernels mid-job (disks kept). Teacher EXP-086 relaunched 12:45 via Run all (resumes built games; MLB head AUC 0.872, lift 0.104 = honest; CBB leak_suspect stands). EXP-103 runtime stuck 'Resuming execution' after training finished (valid 0.334); re-check 1:07, rerun on L4 (~7 CU) if still stuck. 552 CU left; 2 'Unknown notebook' GPU sessions left alone (likely V8 background runs). Usage 52%.
+Research: 'Noggin training advances 2026' report done (reports/). Top 5: time/stoppage hazard heads, Muon vs tuned AdamW, mid-play shield, regularize+ensemble+distill, planner on averaged sampled futures. Sweet-spot ETA: 250M shadow ~Nov 14, 1B live ~Dec 1 with a grant / ~Dec 12 free.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
