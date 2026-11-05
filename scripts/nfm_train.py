@@ -414,6 +414,11 @@ def main(argv=None) -> int:
     ap.add_argument("--grade-games", type=int, default=400, help="test games graded per league (CPU/GPU pass)")
     ap.add_argument("--device", default="auto", choices=("auto", "xla", "cuda", "cpu"))
     ap.add_argument("--exp", default="EXP-106")
+    ap.add_argument("--micro-batch", type=int, default=0, help="sequences per forward/backward (grad accumulation "
+                    "up to --batch); 0 = the whole batch. EXP-107 run 1: 60m/150m OOM on a 40 GB A100 at 32 x 2048")
+    ap.add_argument("--max-epochs", type=float, default=0.0, help="cap the token budget at this many passes over the "
+                    "unique train tokens (EXP-107 run 1 memorized at 5.5 epochs); 0 = no cap")
+    ap.add_argument("--max-steps", type=int, default=0, help="stop after this many steps (notebook smoke test)")
     ap.add_argument("--seed", type=int, default=SEED, help="init + batch order (EXP-109 seed check); split is unchanged")
     ap.add_argument("--throughput-only", action="store_true", help="EXP-106: time steps, no grading")
     # EXP-109 speedrun recipe (each piece ablated; adopt only what helps)
@@ -463,8 +468,13 @@ def main(argv=None) -> int:
     cfg = PRESETS[a.preset]
     np_ = count_params(vocab, **cfg)
     budget = int(a.train_tokens or 20 * np_["active"])
+    if a.max_epochs:
+        budget = min(budget, int(a.max_epochs * len(train)))
     tok_per_step = a.batch * a.ctx
     total = max(1, budget // tok_per_step)
+    if a.max_steps:
+        total = min(total, a.max_steps)
+    mb = a.micro_batch if 0 < a.micro_batch < a.batch else a.batch
     print(f"{kind} x{chips} | preset {a.preset} {np_['total'] / 1e6:.1f}M total / {np_['active'] / 1e6:.1f}M active | "
           f"train {len(train):,} tokens, budget {budget:,} = {total} steps", flush=True)
 
@@ -484,13 +494,13 @@ def main(argv=None) -> int:
         shard = lambda t: xs.mark_sharding(t, mesh, ("data", None))   # noqa: E731 - batch split across chips
     step, best, curve, t_train = 0, float("inf"), [], 0.0
     ck = ck_dir / "ckpt.pt"
-    sync = None
+    xsync = None                                                   # exchange checkpoints (None = off)
     if a.exchange:
         sys.path.insert(0, str(ROOT / "scripts" / "exchange"))
         from ckpt import CkptSync
-        sync = CkptSync(a.exchange, a.run or f"{a.exp}-{a.preset}")
+        xsync = CkptSync(a.exchange, a.run or f"{a.exp}-{a.preset}")
         local = torch.load(ck, map_location="cpu", weights_only=False)["step"] if ck.exists() else -1
-        sync.pull(ck, local)                                       # a newer checkpoint from any site wins
+        xsync.pull(ck, local)                                       # a newer checkpoint from any site wins
     if ck.exists():                                                # resume
         st = torch.load(ck, map_location="cpu", weights_only=False)
         model.load_state_dict(st["model"])
@@ -527,7 +537,7 @@ def main(argv=None) -> int:
                 x = torch.from_numpy(vd.get(i)).to(dev)
                 if shard:
                     shard(x)
-                tot += float(loss_of(x)[0])
+                tot += sum(float(loss_of(x[j:j + mb])[0]) * len(x[j:j + mb]) for j in range(0, len(x), mb)) / len(x)
         model.train()
         return tot / n
 
@@ -549,9 +559,14 @@ def main(argv=None) -> int:
         if shard:
             shard(x)
         ts = time.time()
-        _, loss = loss_of(x)
         opt.zero_grad(set_to_none=True)
-        scaler.scale(loss).backward()
+        loss = 0.0
+        for j in range(0, a.batch, mb):                            # grad accumulation over micro-batches
+            xj = x[j:j + mb]
+            _, lj = loss_of(xj)
+            lj = lj * (len(xj) / a.batch)
+            scaler.scale(lj).backward()
+            loss = loss + lj.detach()
         for o in opt.opts:
             scaler.unscale_(o)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -581,13 +596,13 @@ def main(argv=None) -> int:
         t_train = t_prev + time.time() - t0
         if time.time() - last_ck > a.ckpt_min * 60:
             save(ck)
-            if sync:
-                sync.push(ck, step, None if best == float("inf") else best, ck_dir / "best.pt")
+            if xsync is not None:
+                xsync.push(ck, step, None if best == float("inf") else best, ck_dir / "best.pt")
             last_ck = time.time()
     t_train = t_prev + time.time() - t0
     save(ck)
-    if sync:
-        sync.push(ck, step, None if best == float("inf") else best, ck_dir / "best.pt")
+    if xsync is not None:
+        xsync.push(ck, step, None if best == float("inf") else best, ck_dir / "best.pt")
     valid_by_league = {}
     if (ck_dir / "best.pt").exists():                               # per-league valid loss of the selected model
         model.load_state_dict(torch.load(ck_dir / "best.pt", map_location="cpu", weights_only=False)["model"])
@@ -614,6 +629,10 @@ def main(argv=None) -> int:
          "data_sha256_16": W.data_hash(games), "split": {k: len(v) for k, v in sp.items()}}
     if not a.throughput_only and (ck_dir / "best.pt").exists():
         st = torch.load(ck_dir / "best.pt", map_location="cpu", weights_only=False)
+        del opt                                                    # free the training state before grading
+        model.to("cpu")
+        if kind == "cuda":
+            torch.cuda.empty_cache()
         gdev = "cuda" if torch.cuda.is_available() else "cpu"      # grade off the TPU (dynamic shapes)
         gm = build_model(vocab, **mk).to(gdev)
         gm.load_state_dict(st["model"])

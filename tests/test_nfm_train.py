@@ -88,3 +88,52 @@ def test_wsd_schedule_flat_then_linear_to_zero():
     assert N.lr_at(500, 1000, 1.0, 100, "wsd") == 1.0
     assert N.lr_at(900, 1000, 1.0, 100, "wsd") == pytest.approx(0.5)
     assert N.lr_at(1000, 1000, 1.0, 100, "wsd") == 0.0
+
+
+def _shards(root: Path, n_nights: int = 30):
+    """Fake v1 shards (nba), 2 games a night: enough for a split, grading and the per-league valid loss."""
+    import json
+
+    import noggin_tokens as T
+    (root / "nba").mkdir(parents=True)
+    parts, index, off = [], [], 0
+    for d in range(n_nights):
+        for g in range(2):
+            rng = np.random.default_rng(d * 2 + g)
+            ev = []
+            for _ in range(40):
+                stop = T.STOP0 + (T.STOPS.index("timeout") if rng.random() < 0.2 else 0)
+                ev += [T.KIND0 + int(rng.integers(0, 4)), T.DT0 + int(rng.integers(0, 12)), T.CLOCK0, T.MARGIN0,
+                       T.PTS0, stop]
+            t = np.array([T.BOS0, T.TEAM0, T.TEAM0 + 1] + ev + [T.EOS], dtype=np.uint16)
+            parts.append(t)
+            index.append([f"g{d}_{g}", f"2025{1 + d // 28:02d}{1 + d % 28:02d}", off, len(t), 0])
+            off += len(t)
+    np.save(root / "nba" / "2025.npy", np.concatenate(parts))
+    (root / "nba" / "2025.json").write_text(json.dumps({"complete": True, "games": len(index), "tokens": off,
+                                                         "license": "open (test)", "index": index}))
+
+
+@pytest.mark.parametrize("exchange", [False, True])
+def test_main_end_to_end_with_checkpoints_micro_batches_and_epoch_cap(tmp_path, exchange):
+    """EXP-107 run 1 crashed at its first 30-min checkpoint (the exchange sync object was shadowed by the XLA sync
+    function): run main for real, checkpoint every step, with and without an exchange store, micro-batched, with the
+    epoch cap and a grading pass."""
+    import json
+    _shards(tmp_path / "shards")
+    out = tmp_path / "run"
+    args = ["--tokens", str(tmp_path / "shards"), "--leagues", "nba", "--out", str(out), "--preset", "tiny",
+            "--ctx", "64", "--batch", "4", "--micro-batch", "2", "--max-epochs", "0.5", "--ckpt-min", "0",
+            "--eval-every", "5", "--grade-games", "3", "--device", "cpu", "--warmup", "2", "--dropout", "0.1",
+            "--exp", "EXP-test"]
+    if exchange:
+        args += ["--exchange", str(tmp_path / "store"), "--run", "t1"]
+    assert N.main(args) == 0
+    g = json.loads((out / "grades.json").read_text())
+    assert g["epochs"] <= 0.5 + 1e-6 and g["steps"] == g["planned_steps"] and g["test_by_league"]["nba"]["games"] > 0
+    assert (out / "ckpt.pt").exists()
+    if exchange:
+        assert (tmp_path / "store" / "runs" / "t1" / "ckpt.pt").exists()
+    assert N.main(args[:-2] + ["--max-steps", "3", "--out", str(tmp_path / "smoke")] if exchange else
+                  args + ["--max-steps", "3", "--out", str(tmp_path / "smoke")]) == 0
+    assert json.loads((tmp_path / "smoke" / "grades.json").read_text())["steps"] == 3
