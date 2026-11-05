@@ -622,3 +622,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   public endpoints only; no logins, paywalls, CAPTCHAs or bot-block bypasses; respect rate limits and robots (cache, back
   off); no pirated streams; articles read for derived numbers, never stored as full text; never touch Nick's credentials.
   Replaces the "skip Savant" call (6:10 PM). Teacher EXP-086 runs on B; Saturday's world model is sized for B (~100M).
+- **2026-11-05 (Nick, 11:35 PM ET): a standing data scout loop**, "100x more unique data sources and data types, agents
+  hunting 24/7" (lane 1 + a dedicated scout thread). Find, license-check (B rules for personal use), rank by new
+  information per GB, add to the factory; the ledger in docs/datasources grows every cycle, to several billion tokens this
+  month (EXP-097). Synthetic self-play is capped at ~3x real. Paid feeds need Nick's OK. Broadcast video/audio is out
+  (company stage, licensing).

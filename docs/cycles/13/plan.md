@@ -31,6 +31,28 @@ nights needed before it starts (grading rule 2). Use your own id block (planner 
   landed mid-commercial.
 - **The real-TV Prime press run is tomorrow afternoon, before games.** Nick OKs it in the Mac session then.
 
+## Data scout loop (Nick, 11:35 PM, standing): "100x more unique data sources and data types, agents hunting 24/7"
+- **Owners:** lane ① and a dedicated scout thread, which the coordinator is opening.
+- **The loop, every cycle:**
+  1. find a source;
+  2. license-check it: green, yellow or red, with the B rules for personal use;
+  3. rank it by **new** information per GB;
+  4. add it to the factory;
+  5. add its tokens to the ledger.
+- **Priority order:**
+  1. other leagues and levels: MiLB pitch-by-pitch (MLB Stats API), G League, AHL/ECHL, WNBA, every college
+     division plus college baseball, soccer open event data (StatsBomb open data and others), EuroLeague/FIBA,
+     NPB/KBO. These are world-model pretraining data, because all sports share clocks, momentum and breaks;
+  2. tracking: the NFL Big Data Bowl releases, NHL EDGE, public Next Gen Stats aggregates;
+  3. odds history and live line moves, free tiers first. Any paid feed needs Nick's OK;
+  4. the hype layer (EXP-090..093);
+  5. our own live-night logs as gold, every night;
+  6. synthetic self-play, capped at about 3x real.
+- **Target:** the ledger in docs/datasources grows every cycle, to several billion tokens this month (EXP-097).
+- **Out:** broadcast video and audio. They need licensing, so they wait for the company stage.
+- **Tonight (the overseer):** Teacher EXP-086 (A100, plan B) and EXP-103 world model v2 (A100) are running. The
+  all-sources factory relaunches at about 2:37 AM ET.
+
 ## Status
 - **RC6.2:** deploying (1bf4150). RC6.1 9322c28 is the rollback target.
 - **Gold capture since 9:40 PM:** the overseer posts the check. Lane 3 confirms it in the morning (EXP-008).
