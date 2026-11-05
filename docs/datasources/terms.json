@@ -113,6 +113,8 @@
     "acb": "restrictive",
     "statsbomb_amf_lft": "restrictive",
     "nba_cdn_wallclock": "restrictive",
-    "nba_cdn_nightly": "restrictive"
+    "nba_cdn_nightly": "restrictive",
+    "nba_stats_pbp": "restrictive",
+    "nba_cdn_plays": "restrictive"
   }
 }
