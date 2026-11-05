@@ -36,13 +36,15 @@ def beyond_value(R: np.ndarray, k: int, horizon: int, memory: int = 120) -> np.n
 
 
 def solve_window(n: Night, feed_lag: float, objective: str = "combined", tab: dict | None = None,
-                 horizon_s: float = 120.0) -> list[SwitchLog]:
+                 horizon_s: float = 120.0, value_fn=None) -> list[SwitchLog]:
     """[time-shift buffer] The windowed-hindsight oracle: at every 5 s step it plans with exact DP over only
     what the buffer has revealed (W = window_steps(lag, feed_lag, tune_s) steps of the screen's future, plays
     the feed has delivered), values the end of the window with `beyond_value` (the past only), takes the first
     move and replans. Same moves, rules and grader as `solve` (switch on a clean leave, land on a dead ball,
     black for tune_s): the ceiling a real buffered app could reach with a perfect in-window optimizer.
-    `solve` (full hindsight) is the ceiling of everything; % oracle = this / that."""
+    `solve` (full hindsight) is the ceiling of everything; % oracle = this / that.
+    `value_fn(k, e)` -> per-game value past the window's end e, from what is revealed by then (T3's learned value,
+    `oracle_teacher.value_fn`); default `beyond_value`, the past-mean placeholder. 0 after the night ends."""
     wb, wc, wm, wd, ws = OBJECTIVES[objective]
     steps = np.arange(n.t0, n.t1, STEP_S)
     tab = tab or tables(n, steps)
@@ -69,7 +71,7 @@ def solve_window(n: Night, feed_lag: float, objective: str = "combined", tab: di
     def plan(k: int) -> np.ndarray:
         """V[j, g]: the best value from step k + j on game g (deciding then), known steps only."""
         e = min(K, k + W)                          # steps k .. e-1 are known
-        Vn = beyond_value(R, k, hz) if e < K else np.zeros(G)     # nothing after the night ends
+        Vn = (value_fn(k, e) if value_fn else beyond_value(R, k, hz)) if e < K else np.zeros(G)  # 0 after the night
         V = np.zeros((e - k + blk + 1, G))
         V[e - k:] = Vn                             # past the window: the beyond value (also while black)
         for j in range(e - k - 1, -1, -1):         # backward DP over the window, j = step k + j
