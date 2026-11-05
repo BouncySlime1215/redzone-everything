@@ -1,0 +1,17 @@
+{
+  "_doc": "Experiment families graded together by scripts/family_holm.py (EXP-722, Holm). Each family lists every arm, declared before any arm's result is read. Frozen by the integrator with the grader: an arm is never added or removed after a result is in; register a new family instead. Arm ids are EXP ids, with ':<arm>' for arms of one row.",
+  "families": [
+    {
+      "name": "wv-aux-labels",
+      "declared": "2026-11-05",
+      "by": "test writers (EXP-722)",
+      "arms": ["EXP-1702:g-a", "EXP-1702:g-b", "EXP-1702:b-wiki", "EXP-1702:c-velocity", "EXP-1800", "EXP-713"]
+    },
+    {
+      "name": "wv-importance-inputs",
+      "declared": "2026-11-05",
+      "by": "test writers (EXP-722)",
+      "arms": ["EXP-091", "EXP-092", "EXP-1301", "EXP-1802", "EXP-715"]
+    }
+  ]
+}
