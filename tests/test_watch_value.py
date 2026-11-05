@@ -173,3 +173,52 @@ def test_crunch_night_files_for_the_replay_viewer(tmp_path):
     TW.write_crunch_files({"20261021": {"g2": {"learned": [], "oracle": [[1.0, 2.0]]}}}, tmp_path)
     d = json.loads((tmp_path / "20261021.json").read_text())
     assert d["tol_s"] == TW.EXIT_TOL_S and set(d["games"]) == {"g1", "g2"}        # leagues merge per night
+
+
+def _aux_rows():
+    rows = []
+    for g, matchup in enumerate(["LAL @ SAC", "BOS @ NYK"]):
+        for i in range(30):
+            rows.append({"gid": f"g{g}", "night": f"2025110{g}", "matchup": matchup, "wall": 1000.0 + 60 * i,
+                         "wp_home": 0.5 + 0.3 * np.sin(i / 4 + g), "facts": {"period": 1 + i // 10, "clock_s": 600 - 20 * (i % 10),
+                                                                            "abs_diff": i % 7}})
+    return rows
+
+
+def test_aux_arms_change_only_the_target_never_the_features():
+    """EXP-1704 (lane 1's ask): the feature matrix is byte-identical across arms; rows are never mutated."""
+    import copy
+
+    import attention_labels as AL
+    import train_watch_value as TW
+    rows = _aux_rows()
+    snapshot = copy.deepcopy(rows)
+    by_game = {}
+    for k, r in enumerate(rows):
+        by_game.setdefault(r["gid"], []).append(k)
+    wv = np.concatenate([TW.labels([rows[k] for k in ks], 120.0)[0] for ks in by_game.values()])
+    train = np.array([r["gid"] == "g0" for r in rows])
+    s = AL.Series("bsky")
+    for t in range(1000, 3000, 60):
+        s.add("LAL", t, float(t % 7))
+        s.add("NYK", t, float(t % 5))
+    s.finish()
+    feats = ["period", "clock_s", "abs_diff"]
+    X0 = TW.matrix(rows, feats).tobytes()
+    ys = {}
+    for arm in TW.ARMS:
+        ys[arm], info = TW.aux_targets(rows, by_game, wv, train, arm, [s], seed=1)
+        assert TW.matrix(rows, feats).tobytes() == X0, arm
+        assert rows == snapshot, arm
+        assert ys[arm].shape == wv.shape and (ys[arm] >= 0).all() and (ys[arm] <= 1).all()
+    assert np.array_equal(ys["A0"], wv)
+    assert not np.array_equal(ys["A1"], wv) and not np.array_equal(ys["A1"], ys["A2"])
+    for arm in TW.ARMS:   # T8 tester finding 1: valid/locked rows keep the swing label in every arm
+        assert np.array_equal(ys[arm][~train], wv[~train]), arm
+    with pytest.raises(ValueError):
+        TW.aux_targets(rows, by_game, wv, train, "A1", None)
+
+
+def test_aux_teams_parse_matchup():
+    import train_watch_value as TW
+    assert TW._teams("LAL @ SAC") == ("LAL", "SAC") and TW._teams("") == ()
