@@ -715,4 +715,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   sports-language fine-tune. Kaggle CPU / HF only; stream, never mirror; personal-use tag; raw text only in a private
   Kaggle dataset, never in the public repo. First deliverable: a pre-registered EXP on whether recap-aligned labels raise %
   of oracle (dev first, locked once at the release read); if not, H stays small. H pauses first with C/D/F/G.
-- 2026-11-05 00:28 ET (Nick): the 3-minute catch-up window is a ratchet, not a fixed bar: 3 min now, then 90 s, 30 s, live; a league that holds the tighter window on locked nights for 2 consecutive releases tightens and never loosens. Headline metric: time-to-see per big play (0 = live), median and p90 per league, plus the share live / ≤30 s / ≤90 s / ≤3 min. Why: "ideally 3 min comes down more and more as we get better." The EXP-301 grader (reactgrade.py) reports the full ladder per arm now; wiring the ratchet into northstar.py / release_gate.py is the integrator's (frozen graders).
+- 2026-11-05 (Nick, 12:28 AM ET; gate change, integrator writes it): the catch-up window is a ratchet, not a fixed bar.
+  "Ideally 3 min comes down more and more as we get better." (1) Headline line per league `time_to_see_<lg>`: the
+  median and p90 seconds from a big play airing to it being on screen (0 = live, never seen = never), plus the shares
+  within 3 min, 90 s, 30 s and live. (2) Gate line per league `catchup_<lg>`: at least 99% of big plays seen within
+  the league's window in `docs/catchup_ratchet.json`, which starts at 180 s for every league. The ladder is 3 min,
+  90 s, 30 s, then live. After each release's locked read, `scripts/catchup_ratchet.py --record` steps a league down
+  once it has held the next window on locked nights for 2 releases in a row, and the window never loosens. (3) The
+  delay-and-react test (lane 2, arms A-D) reports these lines per arm. Grader freeze v14.

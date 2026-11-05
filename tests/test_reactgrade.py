@@ -31,7 +31,7 @@ def test_live_play_is_zero_and_unseen_is_never():
     # On g1 all night: its touchdown (play 10) is live, g2's (play 30) is never seen.
     r = row("A", [SwitchLog(900.0, None, "g1", "manual", "")], holds=[(900.0, "s1", "g1")])
     assert r["big"] == 2 and r["big_live"] == 1
-    assert sorted(r["tts"], key=lambda x: math.inf if x is None else x) == [0.0, None]
+    assert sorted(r["tts"]) == [-1.0, 0.0]            # grader v14's encoding: -1 = never
     assert sum(r["faults"].values()) == 0
 
 
@@ -42,8 +42,8 @@ def test_a_replay_counts_from_live_end_to_clip_end_when_a_stick_held_it():
           SwitchLog(end, "g2", "g1", "return", "")]
     r = row("B", sw, windows=[("g2", td, start, end)], holds=[(900.0, "s1", "g1"), (900.0, "s2", "g2")])
     assert sum(r["faults"].values()) == 0
-    seen = sorted(x for x in r["tts"] if x is not None)
-    assert seen[0] == 0.0 and math.isclose(seen[1], end - (td + LAG))
+    seen = sorted(x for x in r["tts"] if x >= 0)
+    assert seen[0] == 0.0 and math.isclose(seen[1], end - (td + LAG), abs_tol=0.05)
     # Nobody held g2 and it isn't on YouTube TV: there was nothing to rewind.
     r = row("B", sw, windows=[("g2", td, start, end)], holds=[(900.0, "s1", "g1")])
     assert r["faults"]["replay_unheld"] == 1
@@ -55,11 +55,12 @@ def test_a_replay_counts_from_live_end_to_clip_end_when_a_stick_held_it():
     assert r["faults"]["replay_early"] == 1
 
 
-def test_a_buffered_arm_is_measured_from_the_broadcast_not_its_own_edge():
+def test_a_buffered_arm_is_live_on_the_north_star_ruler_and_late_on_the_broadcast_one():
     sw = [SwitchLog(900.0, None, "g1", "manual", "")]
     r = row("A", sw, holds=[(900.0, "s1", "g1")], buffer_s=90.0)
-    assert r["big_live"] == 1                          # live on its own screen (the North Star's big live)
-    assert 90.0 in r["tts"]                            # ...but 90 s after the broadcast showed it
+    assert r["big_live"] == 1 and 0.0 in r["tts"]      # live on its own screen: backtest.time_to_see, grader v14
+    m = R.metrics([r])
+    assert m["broadcast_le_90_pct"] == 50.0 and m["broadcast_le_30_pct"] == 0.0 and m["seen_le_0_pct"] == 50.0
     assert min(r["behind"]) == 90.0                    # and the whole night runs 90 s behind (spoiler line)
 
 
@@ -73,7 +74,7 @@ def test_a_rewind_needs_a_buffer():
 
 def _fake(arm, night, seen, entries=0, faults=0, sw=4, crunch_live=5, dead=100.0):
     return {"arm": arm, "night": night, "split": "fit", "league": "nfl", "cond": "", "big": 5,
-            "big_live": seen, "tts": [0.0] * seen + [None] * (5 - seen), "crunch": 5, "crunch_live": crunch_live,
+            "big_live": seen, "tts": [0.0] * seen + [-1.0] * (5 - seen), "crunch": 5, "crunch_live": crunch_live,
             "my_crunch": 0, "my_crunch_live": 0, "entries_mid_play": entries, "mid_play_cuts_high": 0,
             "dead_s": dead, "watched_s": 3600.0, "switches": sw, "replays": 0, "hours": 1.0, "behind": [0.0] * 10,
             "faults": {"replay_unheld": faults}, "oracle_big_live": 5, "buffer_s": 0.0}
@@ -113,4 +114,8 @@ def test_seeds_of_one_night_are_one_cluster():
 def test_ratchet_ladder_is_reported():
     m = R.metrics([_fake("A", "n", 3)])
     assert m["seen_le_0_pct"] == 60.0 and m["seen_le_180_pct"] == 60.0 and math.isinf(m["tts_p90"])
-    assert R.RATCHET == (180.0, 90.0, 30.0, 0.0)
+    assert R.ratchet()["ladder_s"] == [180, 90, 30, 0] and m["window_s"] == 180.0
+    r = _fake("A", "n", 3)
+    r["tts"] = [0.0, None, -1.0, 40.0, 200.0]          # None = replayed at an unknown time: never counted as seen
+    m = R.metrics([r])
+    assert m["tts_unknown"] == 1 and m["seen_le_90_pct"] == 40.0 and m["seen_le_180_pct"] == 40.0

@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**291 modules**, 236 untagged, 132 unowned, 10 orphans (no importer).
+**292 modules**, 237 untagged, 133 unowned, 10 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -210,7 +210,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (132)
+## unowned (133)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -287,6 +287,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/build_training3.py` (entry) | Build the Brain v3 training tables (run in the cloud, never on the Mac: ~6M events, a few GB RAM). | lab.brain3data -> - | untagged |
 | `scripts/burst_align.py` (entry) | [burst anchor] Do YouTube TV's MediaSession bursts line up with the feed's TV timeouts? | lab.timing, sync_probe -> - | untagged |
 | `scripts/calibrate_brain3.py` (entry) | Calibrate Brain v3's cautious restart bound per break type (redzone/lab/brain3cal.py). | lab.brain3cal -> - | untagged |
+| `scripts/catchup_ratchet.py` (entry) | [time to see, Nick Nov 5 2026 12:28 AM ET] The catch-up window ratchet (docs/catchup_ratchet.json). | - -> - | untagged |
 | `scripts/check_memory.py` (entry) | Keep the AI memory honest. | - -> - | untagged |
 | `scripts/ci_report.py` (entry) | Turn CI results into the PR comment: tests, lint, and the scorecard smoke run, PR vs base. | - -> - | untagged |
 | `scripts/ci_scorecard.py` (entry) | Fast scorecard smoke run for CI: a small, fixed slice of every scorecard, as one JSON file. | - -> - | untagged |
@@ -347,7 +348,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/world_model_pilot.py` (entry) | World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end. | noggin.factory -> - | untagged |
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 
-## Untagged (236)
+## Untagged (237)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -512,6 +513,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/build_training3.py`
 - `scripts/burst_align.py`
 - `scripts/calibrate_brain3.py`
+- `scripts/catchup_ratchet.py`
 - `scripts/check_memory.py`
 - `scripts/ci_report.py`
 - `scripts/ci_scorecard.py`

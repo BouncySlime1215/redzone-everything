@@ -10,18 +10,18 @@ never sees an arm's code):
 The arm writes one row per (arm, night, league) with `night_row`; `report` turns the rows into the table.
 
 Per league and per arm:
-  big_live_pct       big plays watched whole at the SCREEN's edge (the North Star's "big live": the arm's
-                     time-shift buffer included; a rewound visit is not live, it counts in time-to-see)
-  time-to-see        per big play, the seconds from the end of the play on the BROADCAST's live edge (no
-                     time-shift buffer) to the end of the viewer seeing all of it: the arm's buffer for a
-                     play watched at the screen's edge, plus o for a visit o s behind that, or (clip end -
-                     live end) for a catch-up replay; never if not seen. Measured from the broadcast so an
-                     arm held 90 s behind (shipped NBA) and one 20 s behind (D) are on one ruler. Median, p90, and the share seen live,
-                     within 30 s, 90 s and 180 s (Nick's ratchet: 3 min now, then 90 s, 30 s, live)
+  big_live_pct       big plays watched whole on screen (sportsgrade's big live, the North Star's)
+  time-to-see        per big play, `backtest.time_to_see` exactly as the North Star reads it (grader v14):
+                     0 live, the catch-up replay's finish less the airing, never if unseen. Stored in the
+                     v14 encoding (-1 = never, null = unknown time). Median, p90, and the share live and
+                     within 30 s, 90 s and 180 s (Nick's ratchet, docs/catchup_ratchet.json).
+  ...from broadcast  the same plus the arm's time-shift buffer (`buffer_s`), a SECONDARY column: shipped
+                     NBA/NFL hold the stream 60-90 s behind its edge and D holds it B s behind, and the v14
+                     ruler counts both as live. Reported beside the verdict, never instead of it.
   hard zeros         mid-play entries; mid-play leaves at high leverage; honesty faults (below)
   guardrails         dead air %, switches per hour, crunch live %, your-team crunch live, spoiler
                      (share of screen time behind live, p95 seconds behind)
-  oracle             strict big live as a share of the live-only oracle (`oracle.solve(.., "big_live")`);
+  oracle             big live as a share of the live-only oracle (`oracle.solve(.., "big_live")`);
                      an arm that replays can see more than that ceiling within a window, never more live
 
 Honesty faults (any one zeroes the arm for that league):
@@ -34,6 +34,7 @@ resampled nights for every arm): see `verdict`. PENDING below REACT_MIN_NIGHTS n
 """
 from __future__ import annotations
 
+import functools
 import json
 import math
 import random
@@ -41,13 +42,13 @@ from pathlib import Path
 
 import numpy as np
 
-from redzone.grading import PLAY_LEN, is_big, lag_of
+from redzone.grading import PLAY_LEN, lag_of
 from redzone.lab import oracle as _oracle
 from redzone.lab import sportsgrade
 from redzone.lab.backtest import offsets_of, on_screen
 
 BASE_ARM = "A"
-RATCHET = (180.0, 90.0, 30.0, 0.0)   # seconds: the catch-up bar now, then each tightening (Nick 12:28 AM)
+RATCHET_FILE = Path(__file__).resolve().parents[2] / "docs/catchup_ratchet.json"   # the ladder + each league's window
 LIVE_EPS = 1.0                       # seconds behind live that still count as live (seek rounding)
 STEP = 10.0                          # seconds between samples of the screen for the spoiler line
 REACT_MIN_NIGHTS = 8
@@ -99,18 +100,6 @@ def _visits(switches, offs, t1: float):
     return out
 
 
-def time_to_see(start: float, end: float, gid: str, key, visits, done, tune_s: float, t1: float) -> float:
-    """Seconds from the live-edge end of a play to the viewer having seen all of it (UNSEEN if not)."""
-    best = UNSEEN
-    for at, g, o, until in visits:
-        if g == gid and at + tune_s <= start + o and end + o < until and end + o <= t1:
-            best = min(best, max(0.0, o))
-    if key in done:
-        s, e = done[key]
-        best = min(best, max(0.0, e - end))
-    return best
-
-
 def oracle_big_live(replays, my_teams, lag_total, tune_s: float, t0: float, t1: float) -> int:
     """The live-only ceiling on big plays watched whole (shared by every arm on the night)."""
     n = _oracle.Night(replays, set(my_teams), lag_total, tune_s, t0, t1)
@@ -150,20 +139,6 @@ def night_row(arm: str, night: str, split: str, replays, switches, my_teams, lag
         if o > LIVE_EPS and g not in dvr and not _held(iv, g, at - o, at):
             faults["rewind_unbuffered"] += 1
 
-    tts, live = [], 0
-    for r in replays:
-        lag = lag_of(lag_total, r.gid)
-        prev = None
-        for w, p in zip(r.wall, r.plays):
-            if is_big(league, p, prev):
-                end = w + lag
-                x = time_to_see(end - PLAY_LEN[league], end, r.gid, (r.gid, int(round(w))), visits, done, tune_s, t1)
-                tts.append(x + buffer_s)
-                live += x <= LIVE_EPS and any(
-                    g == r.gid and o <= LIVE_EPS and at + tune_s <= end - PLAY_LEN[league] and end < u
-                    for at, g, o, u in visits)
-            prev = p
-
     behind = []
     clips = sorted(done.items(), key=lambda kv: kv[1][0])
     t = t0
@@ -178,7 +153,7 @@ def night_row(arm: str, night: str, split: str, replays, switches, my_teams, lag
 
     cs = card.cut.summary()
     return {"arm": arm, "night": night, "split": split, "league": league.value, "cond": cond,
-            "big": card.big, "big_live": live, "buffer_s": buffer_s, "tts": [None if math.isinf(x) else round(x, 1) for x in tts],
+            "big": card.big, "big_live": card.big_live, "buffer_s": buffer_s, "tts": [_enc(x) for x in card.big_see_s],
             "crunch": card.crunch, "crunch_live": card.crunch_live,
             "my_crunch": card.my_crunch, "my_crunch_live": card.my_crunch_live,
             "entries_mid_play": cs["entries_mid_play"], "mid_play_cuts_high": len(card.cuts_high),
@@ -188,25 +163,43 @@ def night_row(arm: str, night: str, split: str, replays, switches, my_teams, lag
             "oracle_big_live": oracle_big}
 
 
-def _tts(rows) -> np.ndarray:
-    return np.array([UNSEEN if x is None else x for r in rows for x in r["tts"]], float)
+def _enc(x: float | None) -> float | None:
+    """grader v14's stored form: -1 = never, None = unknown time."""
+    return None if x is None else (-1.0 if math.isinf(x) else round(float(x), 1))
+
+
+def _tts(rows, broadcast: bool = False) -> np.ndarray:
+    """Known times to see (never = inf); unknown times are left out and counted apart."""
+    return np.array([UNSEEN if x < 0 else x + (r.get("buffer_s", 0.0) if broadcast else 0.0)
+                     for r in rows for x in r["tts"] if x is not None], float)
 
 
 def _q(a: np.ndarray, q: float) -> float:
     return float(np.quantile(a, q, method="inverted_cdf")) if len(a) else UNSEEN
 
 
-def metrics(rows: list[dict], window: float = RATCHET[0]) -> dict:
-    """Pooled metrics of one arm's rows (one league)."""
+@functools.lru_cache(maxsize=1)
+def ratchet() -> dict:
+    """The ladder and each league's current window (owned by scripts/catchup_ratchet.py)."""
+    return json.loads(RATCHET_FILE.read_text())
+
+
+def metrics(rows: list[dict], window: float | None = None) -> dict:
+    """Pooled metrics of one arm's rows (one league). window: seconds; None = the league's ratchet window."""
+    rt = ratchet()
+    if window is None:
+        window = float(rt["window_s"].get(rows[0]["league"], rt["ladder_s"][0])) if rows else float(rt["ladder_s"][0])
     def s(k):
         return sum(r[k] for r in rows)
 
-    big, tts = s("big"), _tts(rows)
+    big, tts, bc = s("big"), _tts(rows), _tts(rows, broadcast=True)
     beh = np.array([b for r in rows for b in r["behind"]], float)
     ob = [r["oracle_big_live"] for r in rows]
     out = {"nights": len({r["night"] for r in rows}), "big": big,
            "big_live_pct": 100 * s("big_live") / max(1, big),
            "tts_median": _q(tts, 0.5), "tts_p90": _q(tts, 0.9),
+           "tts_unknown": sum(1 for r in rows for x in r["tts"] if x is None),
+           "broadcast_tts_median": _q(bc, 0.5), "broadcast_tts_p90": _q(bc, 0.9),
            "seen_window_pct": 100 * float((tts <= window).sum()) / max(1, big),
            "entries_mid_play": s("entries_mid_play"), "mid_play_cuts_high": s("mid_play_cuts_high"),
            "faults": sum(sum(r["faults"].values()) for r in rows),
@@ -217,8 +210,10 @@ def metrics(rows: list[dict], window: float = RATCHET[0]) -> dict:
            "behind_share_pct": 100 * float((beh > LIVE_EPS).sum()) / max(1, len(beh)),
            "behind_p95": _q(beh, 0.95) if len(beh) else 0.0,
            "oracle_pct": (100 * s("big_live") / max(1, sum(ob))) if all(x is not None for x in ob) else None}
-    for w in RATCHET:
+    for w in rt["ladder_s"]:
         out[f"seen_le_{int(w)}_pct"] = 100 * float((tts <= max(w, LIVE_EPS)).sum()) / max(1, big)
+        out[f"broadcast_le_{int(w)}_pct"] = 100 * float((bc <= max(w, LIVE_EPS)).sum()) / max(1, big)
+    out["window_s"] = window
     return out
 
 
@@ -257,7 +252,7 @@ def verdict(arm: str, m: dict, base: dict, ci: dict) -> str:
     return "NO_WIN"
 
 
-def report(rows: list[dict], split: str, window: float = RATCHET[0]) -> dict:
+def report(rows: list[dict], split: str, window: float | None = None) -> dict:
     """"league|cond" -> {arms: {arm: metrics + verdict}, winner}. Only nights every arm ran are compared;
     a night is one bootstrap cluster whatever the number of seeds run on it."""
     out: dict = {}
@@ -273,14 +268,14 @@ def report(rows: list[dict], split: str, window: float = RATCHET[0]) -> dict:
         nights = sorted(set.intersection(*(set(v) for v in by_arm.values())))
         paired = _paired(by_arm, nights)
         ms = {a: metrics(rs, window) for a, rs in paired.items()}
-        ci = bootstrap(by_arm, window) if len(nights) >= 2 else {}
+        ci = bootstrap(by_arm, ms[BASE_ARM]["window_s"]) if len(nights) >= 2 else {}
         arms, winner, best = {}, BASE_ARM, ms[BASE_ARM]["seen_window_pct"]
         for a, m in ms.items():
             v = "BASE_ARM" if a == BASE_ARM else (verdict(a, m, ms[BASE_ARM], ci) if ci else "PENDING")
             arms[a] = {**m, "verdict": v, **({"ci_vs_A": {k: ci[(a, k)] for (x, k) in ci if x == a}} if a != BASE_ARM and ci else {})}
             if v == "WIN" and m["seen_window_pct"] > best:
                 winner, best = a, m["seen_window_pct"]
-        out[lg] = {"nights": len(nights), "window_s": window, "arms": arms, "winner": winner}
+        out[lg] = {"nights": len(nights), "window_s": ms[BASE_ARM]["window_s"], "arms": arms, "winner": winner}
     return out
 
 
@@ -295,7 +290,7 @@ def markdown(rep: dict) -> str:
         return f"{x:.1f}" if isinstance(x, float) else str(x)
 
     cols = ("big_live_pct", "tts_median", "tts_p90", "seen_le_0_pct", "seen_le_30_pct", "seen_le_90_pct",
-            "seen_le_180_pct", "entries_mid_play", "mid_play_cuts_high", "faults", "dead_air_pct",
+            "seen_le_180_pct", "broadcast_tts_median", "broadcast_tts_p90", "broadcast_le_30_pct", "tts_unknown", "entries_mid_play", "mid_play_cuts_high", "faults", "dead_air_pct",
             "switches_per_hour", "crunch_live_pct", "your_team_crunch_live", "behind_share_pct", "behind_p95",
             "oracle_pct", "verdict")
     lines = []

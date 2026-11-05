@@ -174,7 +174,7 @@ def main():
                           "cuts": len(card.cuts), "cuts_high": len(card.cuts_high), "big": card.big, "big_seen": card.big_seen,
                           "big_seen_10m": card.big_seen_10m, "my_big": card.my_big,
                           "my_big_seen_10m": card.my_big_seen_10m, "crunch_on_replay": card.crunch_on_replay,
-                          "big_seen_3m": card.big_seen_3m, "big_seen_2m": card.big_seen_2m,
+                          "big_seen_3m": card.big_seen_3m, "big_seen_2m": card.big_seen_2m, "big_see_s": [-1.0 if x == float("inf") else (None if x is None else round(x, 1)) for x in card.big_see_s],
                           "my_big_seen_3m": card.my_big_seen_3m,
                           # [north star] per-night counts so scripts/northstar.py can bootstrap every line
                           "big_live": card.big_live, "landings": card.cut.landings()[1],
