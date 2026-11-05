@@ -485,3 +485,24 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   per-TUNE clock, as the live lab measured: every fresh tune starts near 46,790 s. `grading.SwitchLog.pos_true0` records
   the true delay at the start of each tune. Before this the sim handed the filter each tune's unknown landing for free.
   It only affects `--positions` runs; NHL over 6 nights is identical. Grader freeze v5.
+- 2026-11-05 (Nick via overseer, 8:30 PM ET): **rule #1 wins the NHL trade.** The RC6.1 candidate set,
+  `/mnt/project-files/lane2/nba-candidate-settings.json`, is promoted for **NBA and NHL** under the per-league rule.
+  - **NBA:** a clean PASS. Mid-play entries drop to 0 from 42 (dev) and 21 (locked), and every line is better.
+  - **NHL:** a PASS by Nick's call. Mid-play joins drop 28 → 0 on dev and 8 → 0 on locked. Big live improves, from 41 to 46 on dev
+    and from 42 to 53 on locked. The cost is about 1 point of crunch live (dev 81.2 → 80.3, locked 82.7 → 81.6) and
+    0.6-0.8 more dead air.
+  - **NFL:** FAILS. Big seen drops from 89.3 to 77.6 on dev and from 88.2 to 82.9 on locked. The keys are global, so before the first NFL or CFB
+    game the set must be rolled back, or replaced by an NFL-passing set (EXP-200).
+  - **Ungraded leagues:** CBB and MLB get the global keys without a grade.
+  - **Deploy:** through `/api/settings` by the overseer only, with an instant rollback to the saved live settings.
+  - **Follow-ups:** win back NHL's crunch point and dead air with no mid-play join, for example with an earlier pre-tune or
+    better intermission timing.
+- 2026-11-05 (integrator, 8:40 PM ET, grading EXP-203): the EXP-203 set (`/mnt/project-files/lane2/exp203-settings.json`,
+  17 keys) is the promoted set minus its NFL-scoped keys. It was graded with `league_promotion`, plus big_seen_pct, on
+  seed sums for dev and the one locked read:
+  - **NBA: PASS.**
+  - **NFL: PASS.** Mid-play entries go 4 → 0 and 1 → 0, big seen 89 → 94 and 88 → 99, dead air 35 → 30. Nothing is worse.
+  - **NHL:** the same as the promoted set, so it FAILs only on the trade Nick accepted (rule #1 wins).
+
+  It replaces the NFL rollback before Thursday Night Football. Removing a key through `/api/settings` must SET it back to its
+  live default, not just leave it out. CFB, CBB and MLB stay ungraded under the global keys.
