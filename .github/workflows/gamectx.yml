@@ -38,19 +38,26 @@ jobs:
           git -c user.name=gamectx -c user.email=gamectx@users.noreply.github.com commit -qm "gamectx wiki $1 from ${GITHUB_SHA} (run ${GITHUB_RUN_ID}); numbers only; personal-use, not for commercial release"
           git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:refs/heads/gamectx-out/wiki
           SH
+      - name: rivalries only (branch gamectx-run/rivalries-*)
+        if: contains(github.ref_name, 'rivalries')
+        run: |
+          python scripts/gamectx/wiki_context.py pull --league nba --first 2027 --last 2026 --out out
+          python scripts/gamectx/wiki_context.py pull --league nfl --first 2027 --last 2026 --out out
+          bash publish.sh rivalries
       - name: slice 1 - this season + last
+        if: ${{ !contains(github.ref_name, 'rivalries') }}
         run: |
           python scripts/gamectx/wiki_context.py pull --league nba --first 2025 --last 2026 --out out
           python scripts/gamectx/wiki_context.py pull --league nfl --first 2025 --last 2026 --out out
           bash publish.sh slice-1
       - name: slice 2 - 2023-2024
-        if: always()
+        if: ${{ always() && !contains(github.ref_name, 'rivalries') }}
         run: |
           python scripts/gamectx/wiki_context.py pull --league nba --first 2023 --last 2024 --no-rivalries --out out
           python scripts/gamectx/wiki_context.py pull --league nfl --first 2023 --last 2024 --no-rivalries --out out
           bash publish.sh slice-2
       - name: slice 3 - older (low weight)
-        if: always()
+        if: ${{ always() && !contains(github.ref_name, 'rivalries') }}
         run: |
           python scripts/gamectx/wiki_context.py pull --league nba --first 2001 --last 2022 --no-rivalries --out out
           python scripts/gamectx/wiki_context.py pull --league nfl --first 1999 --last 2022 --no-rivalries --out out

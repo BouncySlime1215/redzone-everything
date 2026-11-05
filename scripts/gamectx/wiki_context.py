@@ -548,6 +548,9 @@ def pull(league: str, first: int, last: int, out: Path, wiki: Wiki | None = None
                 r = rivalry_row(league, m["title"], html, m["pageid"], rev)
                 if r:
                     new.append(r)
+                else:
+                    print(f"  rivalry not mapped to 2 teams: pageid {m['pageid']}", flush=True)
+        print(f"{league} rivalries: {len(new)} pairs", flush=True)
         rivals = new or rivals
         led = flush()
     return led
