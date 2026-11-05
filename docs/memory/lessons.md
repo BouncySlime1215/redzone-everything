@@ -289,3 +289,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   once; without a mark, every forced press counted against never-join-mid-play. Only the switch whose `may_cut` went
   through on `Engine._forced_go` (held game, `hold.force`) carries `trace.forced`; a single tap that waits for the
   dead ball, and every autopilot switch, never does.
+- 2026-11-05 (lane 2, EXP-208): the low-leverage leave gate (`decider.leave.low_leverage`) promised "never your
+  team's game" but checked `personal >= hold_personal`, and garbage time zeroes your team's personal boost, so a
+  decided WSH game could be left mid-play. It also keyed on `league.base`, so "nba" switched it on for CBB. Fixed with
+  explicit `Scored.mine` / `Scored.high_leverage` flags (the grader's CLOSE_LATE table, kept equal by a test) and
+  the full league. Lesson: a floor must be checked by what it protects (team membership, leverage), never by a
+  score that other features can lower.

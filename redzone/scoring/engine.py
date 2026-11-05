@@ -43,6 +43,30 @@ def is_late(g: GameState) -> bool:
     return {League.NFL: p >= 4, League.NBA: p >= 4, League.NHL: p >= 3, League.MLB: p >= 7}[g.league.base]
 
 
+# [leave floor, EXP-208] close + late (final period, seconds left in it, max margin); overtime always counts.
+# The decider's copy of the grader's frozen table (redzone/lab/leverage.CLOSE_LATE); tests/test_leave_floor.py
+# fails loudly if either side moves.
+LEAVE_CLOSE_LATE = {League.NFL: (4, 300, 8), League.NBA: (4, 360, 6), League.NHL: (3, 300, 1)}
+
+
+def high_leverage(g: GameState) -> bool:
+    """Is this game at a high-leverage moment (close and late, or overtime), where the screen may never
+    leave it mid-play? Pro leagues by the grader's rule; MLB 7th+ within 2. College: its pro base."""
+    d = g.score_diff
+    if d is None or g.period is None:
+        return False
+    if g.league.base == League.MLB:
+        return g.period >= 7 and abs(d) <= 2
+    rule = LEAVE_CLOSE_LATE.get(g.league.base)
+    if rule is None:
+        return False
+    last, secs, margin = rule
+    p = _q(g)
+    if p > last:
+        return True
+    return p == last and g.clock_s is not None and g.clock_s <= secs and abs(d) <= margin
+
+
 def closeness(g: GameState) -> float:
     d = g.score_diff
     if d is None:
@@ -192,6 +216,8 @@ class Scored:
     crunch: bool = False    # crunch time (see crunch_time); unlike lock, kept through breaks
     crunch_now: bool = False  # inside the graded crunch window itself (NHL: last 2:00, not the 3:00 run-up)
     imminent: bool = False  # [nhl chase] a goal chance was imminent here within the last ~half minute
+    mine: bool = False      # [leave floor] your team plays in this game (teams.<league>)
+    high_leverage: bool = False   # [leave floor] close and late, or overtime (high_leverage)
     factor: str = ""        # short human reason for the single biggest factor right now
     factors: dict[str, float] = field(default_factory=dict)  # context points by name (debug/UI)
     brain: dict = field(default_factory=dict)  # learned brain's reading (hotness, key/break odds, reasons)
@@ -332,6 +358,7 @@ class Scorer:
                       late=is_late(g), lead_wp=lead_wp(g),
                       factor="garbage time" if h.garbage else factor, factors=factors,
                       crunch_now=crunch_window(g),
+                      mine=g.involves(set(me.my_teams.get(g.league, set()))), high_leverage=high_leverage(g),
                       imminent=h.imminent_at is not None
                       and now - h.imminent_at <= c.get("score.nhl.imminent_hold_s", -1),
                       brain=reading.as_dict() if reading is not None and reading.hotness is not None else {},

@@ -123,7 +123,7 @@ def test_low_leverage_leave_rules_and_sticky_floors():
             return super().get(k, default)
 
     def cand(**kw):
-        base = dict(league=NS(base=NS(value="nba")), crunch=False, crunch_now=False, lock=None, imminent=False,
+        base = dict(game_id="g", league=League.NBA, crunch=False, crunch_now=False, lock=None, imminent=False,
                     pre_moment=None, personal=0.0, late=False, garbage=False, closeness=0.9)
         base.update(kw)
         return NS(target="youtubetv:a", stale=False, scored=NS(**base))
@@ -134,6 +134,6 @@ def test_low_leverage_leave_rules_and_sticky_floors():
     assert not dec._leavable(cand(late=True, closeness=0.9, garbage=False, crunch=True))
     assert not dec._leavable(cand(lock="red zone"))
     assert not dec._leavable(cand(personal=5.0))                       # your team's game
-    assert not dec._leavable(cand(league=NS(base=NS(value="nhl"))))    # hockey: off (dev: 1-3 mid-play entries)
+    assert not dec._leavable(cand(league=League.NHL))    # hockey: off (dev: 1-3 mid-play entries)
     dec.cfg = Cfg({})
     assert not dec._leavable(cand())                                   # off by default
