@@ -911,3 +911,17 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   grading.RESUME_LEAD, never plans without a revealed window, first pick on a dead ball. It is the RC8 report's
   descriptive ceiling ("% of oracle"), never a gate. `scripts/buffer_sweep.py` stays lane 1's descriptive sweep
   (lane 3's sweep is the graded one) and is not frozen. Grader freeze v31.
+- 2026-11-05 3:15 PM ET (overseer default, Nick can override; reason "Nick 3:10 PM: decide for him within the
+  rules"), logged by the integrator for the planner:
+  1. **T4 YTTV key tests:** auto-switching on Nick's screen is NOT paused; key tests run on the hidden stick only,
+     before 6 PM (no disruptive tests while he watches).
+  2. **Chrome "Allow JavaScript from Apple Events" stays OFF** (Mac security setting); ui_12 stays skipped.
+  3. **fast_feeds.enabled: true for tonight, shadow polling only** (no screen change; tested in #323/#337). Lane 4
+     sets it at the stage; the shipped default stays false.
+  4. **NHL EXP-303 package stays ON as staged**; Nick's NHL card stays open as a veto.
+  5. **Crew H daily pre-game schedule** runs as a GitHub Actions cron in the repo, derived numbers only; raw text goes
+     to the private Kaggle dataset.
+  6. **Fan-sentiment Reddit hook stays OFF** until Nick adds an official API key.
+  7. **No prioritization model ships or gets a locked read tonight** (T8 stay/leave failed valid; WV attention arms
+     below A0; GI v2 not pre-registered until #345). A0 stays.
+  Still waiting on Nick only: keys, the Kaggle ID check, and the RC8 flip.
