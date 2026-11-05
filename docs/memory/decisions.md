@@ -411,3 +411,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   report (scripts/night_report.py, northstar.yml's 10:00 UTC run) writes docs/nights/YYYY-MM-DD.md from the published
   live-night summary. Its gates pass in tests/test_night_report.py: matches the live log through publish, PENDING with
   no night or no games, no private strings published. Report only: nothing on the TV changes. Off again: set it false.
+- 2026-11-05 (lane 3, EXP-084, #140 brought up to integration/next): `calib.sigma_floor_s: 2.0` replaces the
+  module constant CALIB_SIGMA_FLOOR_S in decider/screen.py (value unchanged; calibration.sync_prior applies it).
+  Reason: the contract kernel flagged it as a new K2 timing literal on merge; timings live in config.
+- 2026-11-05 (lane 3, EXP-084, #146 brought up to integration/next): the burst detector's timings move from
+  sync_probe constants to config, values unchanged: `sync.probe.burst_gap_s: 300`, `burst_after_tune_s: 30`,
+  `burst_confirm_s: 60`, `burst_sd_s: 0.3`. The sims' YTTV position origin is 0 instead of 46,790 s (any shared
+  per-tune origin gives the same filter result). Reason: K2 flagged them as new timing literals on merge.

@@ -77,10 +77,7 @@ _EPOCH = re.compile(r"^\s*(\d{9,11}\.\d{1,6})\s")
 # sticks and exactly one hold later on a held stick). The onset is the content anchor. A tune, seek
 # or pause also fires the line, with a stopped state or speed 0 first: those are not bursts.
 _PSC = re.compile(r"onPlaybackStateChanged.*?state=(\d+), position=(-?\d+).*?speed=(-?[\d.]+)")
-BURST_GAP_S = 300.0        # a quiet gap this long before an update makes it a new burst's onset
-BURST_AFTER_TUNE_S = 30.0  # updates this soon after a tune, seek or pause are the player settling
-BURST_CONFIRM_S = 60.0     # ...and a second update within this confirms it (a burst has 4-8)
-BURST_SD_S = 0.3           # the onset's doubt on the stick's own clock (burst vs position: 0.1-0.4 s)
+# Timings: sync.probe.burst_* in default_config.yaml.
 
 
 def playback_updates(lines: list[str]) -> list[tuple[float, int, int, float]]:
@@ -93,12 +90,23 @@ def playback_updates(lines: list[str]) -> list[tuple[float, int, int, float]]:
     return sorted(out)
 
 
+def burst_watch(cfg=None) -> "BurstWatch":
+    """A BurstWatch with the configured timings (sync.probe.burst_gap_s / burst_after_tune_s / burst_confirm_s);
+    no cfg = default_config.yaml's (scripts, tests)."""
+    from redzone.config import default
+    get = cfg.get if cfg is not None else default
+    return BurstWatch(*(float(get(f"sync.probe.burst_{k}_s")) for k in ("gap", "after_tune", "confirm")))
+
+
 class BurstWatch:
     """One stick's burst onsets from its MediaSession log lines, fed in order across reads. An onset is
-    confirmed by a second playing update within BURST_CONFIRM_S (a lone update is a key press or the
-    player settling, not a burst), and reported then with the FIRST update's time and position."""
+    confirmed by a second playing update within confirm_s (a lone update is a key press or the
+    player settling, not a burst), and reported then with the FIRST update's time and position.
+    gap_s: a quiet gap this long before an update makes it a new burst's onset; after_tune_s: updates this
+    soon after a tune, seek or pause are the player settling (sync.probe.burst_*)."""
 
-    def __init__(self) -> None:
+    def __init__(self, gap_s: float, after_tune_s: float, confirm_s: float) -> None:
+        self.gap_s, self.after_tune_s, self.confirm_s = gap_s, after_tune_s, confirm_s
         self.last_update: float | None = None     # last playing update that belonged to a burst
         self.settle_until = float("-inf")         # a tune / seek / pause: ignore updates until then
         self.playing = True                       # the last update was a playing one
@@ -109,16 +117,16 @@ class BurstWatch:
         onsets = []
         for t, state, pos, speed in playback_updates(lines):
             if state != 3 or speed <= 0 or pos <= 0:
-                self.settle_until, self.last_update, self.pending, self.playing = t + BURST_AFTER_TUNE_S, None, None, False
+                self.settle_until, self.last_update, self.pending, self.playing = t + self.after_tune_s, None, None, False
                 continue
             if not self.playing:                  # the PLAY after a pause, seek or tune
-                self.settle_until, self.playing = max(self.settle_until, t + BURST_AFTER_TUNE_S), True
+                self.settle_until, self.playing = max(self.settle_until, t + self.after_tune_s), True
             if t < self.settle_until:
                 continue
-            if self.pending is not None and t - self.pending[0] <= BURST_CONFIRM_S:
+            if self.pending is not None and t - self.pending[0] <= self.confirm_s:
                 onsets.append(self.pending)
                 self.pending = None
-            elif self.last_update is None or t - self.last_update >= BURST_GAP_S:
+            elif self.last_update is None or t - self.last_update >= self.gap_s:
                 self.pending = (t, pos / 1000.0)
             self.last_update = t
         return onsets
@@ -317,7 +325,9 @@ class SyncProbe:
         """[burst anchor] Content-tied MediaSession bursts on this stick: logged in the probe row, and
         handed to the engine as a "burst" screen event (it logs the feed's dead ball it lines up with;
         the filter gets it only with sync.burst_anchor.enabled)."""
-        w = self._bursts.setdefault(host, BurstWatch())
+        w = self._bursts.get(host)
+        if w is None:
+            w = self._bursts[host] = burst_watch(self.cfg)
         if target is None:
             w.settle_until = float("inf")     # not a channel we tuned: nothing to anchor
             return []
@@ -327,7 +337,7 @@ class SyncProbe:
         if out and self.on_screen_event is not None and self.cfg.get("sync.probe.bursts", True):
             for t, _pos in out:
                 try:
-                    self.on_screen_event(target, host, visible, "burst", t, BURST_SD_S)
+                    self.on_screen_event(target, host, visible, "burst", t, float(self.cfg.get("sync.probe.burst_sd_s")))
                 except Exception:
                     log.exception("burst hand-off failed")
         return [[round(t, 3), round(p, 3)] for t, p in out]

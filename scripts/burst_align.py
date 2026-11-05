@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from redzone.lab.timing import is_dead_ball  # noqa: E402
-from redzone.sync_probe import BurstWatch  # noqa: E402
+from redzone.sync_probe import burst_watch  # noqa: E402
 
 BREAKISH = ("timeout", "end of", "end period", "period end", "halftime", "two-minute", "end quarter")
 
@@ -52,7 +52,7 @@ def onsets(lines_by_host: dict[str, list[str]]) -> list[tuple[int, float]]:
     """(stick index, onset epoch) over all sticks; the index stands in for the address."""
     out = []
     for i, host in enumerate(sorted(lines_by_host)):
-        w = BurstWatch()
+        w = burst_watch()
         out += [(i, t) for t, _ in w.feed(lines_by_host[host])]
     return sorted(out, key=lambda x: x[1])
 

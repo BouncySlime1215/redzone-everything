@@ -253,5 +253,7 @@ def sync_prior(cfg, root: Path) -> dict:
                           stall_lo=max(0.0, st - half), stall_hi=st + half, late_ok=base.late_ok)
         log.info("calib.auto: seek %.1f s a press, %d wake, stall %.1f-%.1f s (%s)", seek.step, seek.swallowed,
                  seek.stall_lo, seek.stall_hi, step["night"])
-    delays = {k.split(":", 1)[1]: (v["value"], v.get("sd", 3.0)) for k, v in got.items() if k.startswith("delay_s:")}
+    floor = float(cfg.get("calib.sigma_floor_s"))   # a calibrated channel's prior is never surer than this
+    delays = {k.split(":", 1)[1]: (v["value"], max(float(v.get("sd", floor)), floor))
+              for k, v in got.items() if k.startswith("delay_s:")}
     return {"seek": seek, "delays": delays}

@@ -45,7 +45,6 @@ LAG_SAMPLE_CAP_S = 180.0
 # (reaction time, the feed's wallclock rounding): stated 2 s, a real 6 s error cut 3 plays mid-play
 # (eval.py --sigma 2 --true-delay 41); 4 s held 0 cuts out to 8 s of error for ~0.3 pt dead air.
 MIN_TAP_SIGMA_S = 4.0
-CALIB_SIGMA_FLOOR_S = 2.0   # [calib.auto] a calibrated channel's prior is never surer than this
 STALE_DATA_S = 20.0        # older than this, "no play in the data" no longer means "no play on screen"
 # Conservative break durations used by the model (stoppage entry -> next snap). From 270 archived
 # NFL games: end of quarter p1 171 s, halftime p1 816 s, two-minute warning p1 55 s. Timeouts and
@@ -239,7 +238,8 @@ class DelayBook:
         if cal is not None:
             # [calib.auto] last nights' measured fresh-tune delay for this channel, plus what this tune is held
             # / rewound behind live. A fresh tune's edge still varies ~4 s between sticks (live lab, Nov 4).
-            return cal[0] + d.behind, max(float(cal[1]), CALIB_SIGMA_FLOOR_S)
+            # The sd arrives floored at calib.sigma_floor_s (calibration.sync_prior).
+            return cal[0] + d.behind, float(cal[1])
         mu, sigma = (d.base[0], d.base[1]) if d.base is not None else (d.mu, d.sigma)
         return mu, sigma
 

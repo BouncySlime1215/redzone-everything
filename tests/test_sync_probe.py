@@ -116,13 +116,13 @@ def test_log_pattern_keeps_youtube_tv_state_bursts_not_the_ifa_timer():
 def test_burst_onsets_are_the_content_anchor_not_tunes_or_lone_updates():
     """[burst anchor] Live lab Nov 4 (adwatch.jsonl, shapes copied): a tune, a pause/resume and a lone
     update are not bursts; a burst's onset is its first update, confirmed by a second within 60 s."""
-    from redzone.sync_probe import BurstWatch
+    from redzone.sync_probe import burst_watch
 
     def line(t, state, pos, speed):
         return (f"  {T0 + t:.3f}  2066  2066 I whad-MediaSession: onPlaybackStateChanged: starboard_x, "
                 f"state=PlaybackState {{state={state}, position={pos}, buffered position=0, speed={speed}, updated=1,")
     T0 = 1_793_800_000.0
-    w = BurstWatch()
+    w = burst_watch()
     lines = [line(7790.37, 3, 0, 0.0), line(7792.09, 3, 46790137, 1.0),          # a tune settling
              line(7802.56, 2, 46796456, 0.0), line(7893.83, 3, 46796636, 1.0),   # a pause, then PLAY
              line(7894.03, 3, 46796738, 1.0),

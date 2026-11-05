@@ -51,6 +51,10 @@ sync:
     log_ad_end: ""         # ... and an ad-end line ("" = sync_probe.LOG_AD_END)
     bursts: true           # [burst anchor] YTTV MediaSession bursts (content-tied, live lab Nov 4) -> logged as
                            # "burst" rows in sync_anchors.jsonl with the feed's dead ball they follow
+    burst_gap_s: 300.0     # a quiet gap this long before an update makes it a new burst's onset
+    burst_after_tune_s: 30.0   # updates this soon after a tune, seek or pause are the player settling
+    burst_confirm_s: 60.0  # ...and a second update within this confirms it (a burst has 4-8)
+    burst_sd_s: 0.3        # the onset's doubt on the stick's own clock (burst vs position: 0.1-0.4 s)
     log_edge_sd_s: 1.0     # an ad edge read from the player's own log line: the player logs it as it renders it
   break_anchor:            # [auto-anchors] ad break on screen <-> the feed's dead ball -> a delay sample
     enabled: false         # logged always (recordings/<day>/sync_anchors.jsonl); fed to the filter only when on.
@@ -609,6 +613,7 @@ buffer:                    # [buffer.watchdog] playbook STK-06 (redzone/control.
   watchdog: false          # rebuild a lost / drifting (> 2 s) hidden-stick hold at that game's next dead ball
 calib:                     # [calib.auto] values re-measured each night from live logs (data/calib/<night>.json)
   auto: false              # read last nights' accepted flip time back at start (OFF until it's proven on live nights)
+  sigma_floor_s: 2.0       # a calibrated channel's delay prior is never surer than this (a fresh tune's edge varies ~4 s between sticks)
 
 report:                    # [night health] scripts/night_report.py -> docs/nights/YYYY-MM-DD.md every morning (northstar.yml)
   nightly: true            # ON (cycle 07): its gates pass in tests/test_night_report.py (matches the live log, PENDING with no night, nothing private)
