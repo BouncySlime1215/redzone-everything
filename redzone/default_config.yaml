@@ -656,27 +656,13 @@ report:                    # [night health] scripts/night_report.py -> docs/nigh
   nightly: true            # ON (cycle 07): its gates pass in tests/test_night_report.py (matches the live log, PENDING with no night, nothing private)
 
 league_overrides:          # [league overrides, Nick Nov 4 8:20/8:40 PM] per-league promotion: a league runs its graded set,
-                           # every other league keeps live behavior. Flat dotted keys (config.for_league). RC7: NBA runs
-                           # the promoted candidate set, NHL stays live (below), NFL runs EXP-203 (dev + locked
+                           # every other league keeps live behavior. Flat dotted keys (config.for_league). RC6.3: NBA runs
+                           # live behavior + EXP-204 only, NHL stays live (below), NFL runs EXP-203 (dev + locked
                            # passed); CBB, CFB, WCBB and MLB stay on live behavior until graded.
-  nba:
-    timing.behind_live_s.enabled: true
-    noggin.priority.enabled: true
-    replay.redzone_way: true
-    noggin.timing.leagues: ["nba"]
-    sources.nhl_primary: true
-    decider.entry.crunch_now: "wait"
-    decider.entry.max_wait_s: {}
-    decider.entry.landing_lag_s: 6
-    decider.entry.ended_strict: true
-    decider.entry.possession_start: "crunch"
-    decider.entry.confirmed_dead_only: true
-    sync.break_anchor.enabled: true
-    delay.sync.min_sigma_s: 3
-    decider.crunch.instant_replays: false
-    decider.entry.cue: "hidden"
-    two_stick.pretune_on_open: true
-    replay.crunch_block: true
+  nba:                     # RC6.3 (lane 2, Nov 5): the 17-key promoted set is OFF for NBA. Under the live-resync
+                           # harness (--resync) it cost your-team crunch live 31/31 -> 17/31 (leave-one-out: the
+                           # time-shift buffer timing.behind_live_s; without it big seen and crunch live still trail
+                           # live). NBA runs live behavior plus the EXP-204 late-and-close fix only.
     decider.mine_late_max_lead_wp: 0.95   # [EXP-204] ATL up 12 with 9:09 left (WP ~0.99) is not close; 6 pts / 6 min (~0.91) is
   nhl: {}                  # RC7 fast track (integrator, Nov 5): NHL stays on live behavior until Nick OKs its trade
                            # (locked: mid-play 8 -> 0, crunch live 82.7 -> 78.6, dead air +0.8). The graded set is

@@ -623,3 +623,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   producer is lane 3: set `forced` on the trace of a double-tap switch. `scripts/collect_live_test.py` joins the frozen
   graders. (2) `PLAY_LEN` and `RESUME_LEAD` become `ByLeague` tables, so CFB and CBB read their pro league's row. That
   fixes the KeyError in oracle.py on college replays (lane 1). Pro leagues are unchanged. Grader freeze v11.
+- 2026-11-05 (integrator + lane 2, RC6.3 candidate; deploy waits on Nick's OK): `league_overrides.nba` drops the 17-key
+  promoted set and keeps only EXP-204 (`decider.mine_late_max_lead_wp: 0.95`). Reason: under the live-resync harness
+  (`eval_sports nba --resync`) the set took your-team crunch live 31/31 -> 17/31 (a 100% gate); leave-one-out pins it on
+  the time-shift buffer (`timing.behind_live_s.enabled`), and without the buffer big seen / crunch live still trail live.
+  From now on every league set is graded on both harnesses (honest and --resync).
