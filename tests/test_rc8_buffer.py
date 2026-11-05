@@ -93,12 +93,14 @@ def test_flip_touches_one_league_and_rollback_survives_a_merge(cfg):
     src = {"league_overrides": {"nba": {"decider.entry.landing_lag_s": 7}}}
     new = R.flip(src, "nba", 60)
     assert src == {"league_overrides": {"nba": {"decider.entry.landing_lag_s": 7}}}   # pure
-    assert new["nba"] == {"decider.entry.landing_lag_s": 7, R.RC8_FLAG: True, R.RC8_FIXED: 60.0}
+    assert new["nba"] == {"decider.entry.landing_lag_s": 7, R.RC8_FLAG: True, R.RC8_FIXED: 60.0,
+                          "decider.entry.start_timed": True}   # RC8 ships start_timed for the flipped league
     cfg.update({"league_overrides": R.flip(cfg.overrides, "nba")})
     assert R.is_on(cfg, "nba") and not R.is_on(cfg, "nfl") and not R.is_on(cfg, "nhl")
     assert cfg.get(R.RC8_FLAG) is False                                         # never a global key
     cfg.update({"league_overrides": R.rollback(cfg.overrides, "nba")})      # deep merge: explicit false wins
     assert not R.is_on(cfg, "nba")
+    assert config.for_league(cfg, "decider.entry.start_timed", "nba") is False   # restored to shipped
     after = cfg.data["league_overrides"]
     for lg, blk in before.items():
         for k, v in blk.items():
@@ -213,7 +215,7 @@ def test_gate_report_runs_with_and_without_inputs(tmp_path, cfg):
     assert nba["grid_mid_play_total"] == 6 + 2                    # the whole grid is still shown
     # gate v28: B = max(sweep 75, formula/ratchet/floor 90)
     assert nba["ship_b"] == 90.0
-    assert nba["flip_cmd"] == "python scripts/rc8_flip.py nba on --seconds 90 --set decider.entry.start_timed=true"
+    assert nba["flip_cmd"] == "python scripts/rc8_flip.py nba on --seconds 90"   # start_timed rides the flip
     assert nba["state"] == R.PENDING                            # locked + one-night shadow still pending
     bad = dict(shadow, S2="FAIL")
     assert m.report(cfg, sweep, bad)["leagues"]["nba"]["state"] == R.FAIL
@@ -227,3 +229,9 @@ def test_ship_b_max_rule_and_back_up_after_mid_play(cfg):
     assert R.ship_b(cfg, "nhl", None)[0] == 88.0
     with pytest.raises(ConfigError):
         cfg.update({"timing": {"behind_live_s": {"adaptive": {"ratchet_step": 30}}}})
+
+
+def test_first_picks_are_their_own_rule1_line():
+    runs = [dict(r, first_pick_mid_play=1 if i == 0 else 0) for i, r in enumerate(_runs())]
+    st, d = R.gate_league("nba", runs, [{"league": "nba", "label": "dead"}])
+    assert st == R.FAIL and d["items"]["1_rule1"]["first_pick_mid_play"] == 1

@@ -28,6 +28,9 @@ FLOOR_RANGE = config.LIMITS["timing.behind_live_s.adaptive.floor_s"]      # Nick
 RATCHET_STEP = float(config.default("timing.behind_live_s.adaptive.ratchet_step", 15))   # gate v28 (s)
 GATE_MIN_NIGHTS = 8              # the gate's floor per league per harness
 HARNESSES = ("honest", "resync")
+# Turned on with RC8 for the flipped league (planner, Nov 5): the editor runs with start_timed on; without it an
+# NBA first pick joins mid-play (#318). Rollback restores the shipped value for that league.
+COMPANIONS = {"decider.entry.start_timed": True}
 SYNC_BAR = float(config.default("timing.behind_live_s.adaptive.sync_err_s", 2.0))   # gate item 5 (EXP-800, s)
 PASS, FAIL, PENDING = "PASS", "FAIL", "PENDING"
 
@@ -139,15 +142,18 @@ def gate_league(league: str, sim_runs: list[dict] | None, shadow_rows: list[dict
     mid = sum(int(r.get("entries_mid_play") or 0) for r in runs)
     ct = sum(int(r.get("clock_truth_live") or 0) for r in runs)
     sh_live = sum(1 for r in sh if r.get("label") == "live" or r.get("clock_truth") == "live")
+    first = sum(int(r.get("first_pick_mid_play") or 0) for r in runs)   # first picks (and after restarts): own line
+    sh_first = sum(1 for r in sh if r.get("first_pick") and (r.get("label") == "live" or r.get("clock_truth") == "live"))
     harn = {h: sum(1 for r in runs if r.get("harness") == h) for h in HARNESSES}
-    if mid or ct or sh_live:
+    if mid or ct or sh_live or first:
         s1 = FAIL
     elif not runs or not all(harn.values()) or not sh:
         s1 = PENDING
     else:
         s1 = PASS
     items["1_rule1"] = {"state": s1, "sim_runs": len(runs), "runs_per_harness": harn, "sim_mid_play": mid,
-                        "clock_truth_live": ct, "shadow_entries": len(sh), "shadow_live": sh_live}
+                        "clock_truth_live": ct, "first_pick_mid_play": first, "shadow_first_pick_live": sh_first,
+                        "shadow_entries": len(sh), "shadow_live": sh_live}
 
     # 2. Beats live on the sweep (lane 3's pre-registered bars; >= 8 fit nights).
     if not sweep:
@@ -196,6 +202,7 @@ def flip(cfg_data: dict, league: str, seconds: float | None = None) -> dict:
     over = copy.deepcopy((cfg_data or {}).get("league_overrides") or {})
     blk = dict(over.get(league) or {})
     blk[RC8_FLAG] = True
+    blk.update(COMPANIONS)
     if seconds is not None:
         s = _num("seconds", seconds)
         if not 0 < s <= CAP:
@@ -205,6 +212,12 @@ def flip(cfg_data: dict, league: str, seconds: float | None = None) -> dict:
         blk[RC8_FIXED] = 0   # explicit: Config.update deep-merges, so a stale pin would otherwise survive
     over[league] = blk
     return over
+
+
+def _shipped(league: str, key: str):
+    """The shipped default of a key for a league (its league_overrides block, else the global default)."""
+    over = (config.default("league_overrides", {}) or {}).get(league) or {}
+    return over[key] if key in over else config.default(key)
 
 
 def rollback(cfg_data: dict, league: str) -> dict:
@@ -217,5 +230,7 @@ def rollback(cfg_data: dict, league: str) -> dict:
     blk = dict(over.get(league) or {})
     blk[RC8_FLAG] = False
     blk[RC8_FIXED] = 0
+    for k in COMPANIONS:
+        blk[k] = _shipped(league, k)
     over[league] = blk
     return over

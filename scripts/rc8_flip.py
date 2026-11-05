@@ -66,7 +66,7 @@ def change_for(cfg_overrides: dict, league: str, on: bool, seconds: float | None
     """The league_overrides delta to send: only this league's RC8 keys (+ any graded companion key, on only)."""
     new = R.flip(cfg_overrides, league, seconds) if on else R.rollback(cfg_overrides, league)
     blk = new[league]
-    delta = {R.RC8_FLAG: blk[R.RC8_FLAG], R.RC8_FIXED: blk[R.RC8_FIXED]}
+    delta = {R.RC8_FLAG: blk[R.RC8_FLAG], R.RC8_FIXED: blk[R.RC8_FIXED], **{k: blk[k] for k in R.COMPANIONS}}
     if on:
         delta.update(extra or {})
     return {"league_overrides": {league: delta}}
