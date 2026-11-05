@@ -37,6 +37,20 @@
       ],
       "control": "EXP-803:A0",
       "note": "A4 (A1+A2+A3 combined) is the single PASS arm, graded unadjusted"
+    },
+    {
+      "name": "wv-attention-labels",
+      "declared": "2026-11-05",
+      "by": "integrator (EXP-1704, Data G, #314; before any label is joined)",
+      "arms": [
+        "EXP-1704:S1",
+        "EXP-1704:S2",
+        "EXP-1704:S3",
+        "EXP-1704:S4",
+        "EXP-1704:S5"
+      ],
+      "control": "EXP-1704:A0",
+      "note": "S6 (Twitch) and later sources get their own row and family"
     }
   ]
 }

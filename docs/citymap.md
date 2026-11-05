@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**322 modules**, 266 untagged, 162 unowned, 14 orphans (no importer).
+**324 modules**, 268 untagged, 164 unowned, 14 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -211,7 +211,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (162)
+## unowned (164)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -295,6 +295,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/sync_probe.py` | [SYNC probe] What the sticks expose for auto-anchors and network features: read-only, automatic. | config, decider.sync, sync_edge, tuners.adb -> engine, scripts.burst_align, scripts.sync_fit | untagged |
 | `redzone/trace.py` | One trace per switch: decision -> command -> picture confirmed, with the time each step took. | contracts.trace, store, supervisor, uses:MemoryTrace, uses:Stage, uses:TraceEvent +1 -> engine, observability, supervisor, web.phone_v2 | untagged |
 | `scripts/also_close_line.py` (entry) | [EXP-039] Print the "Also close" line: manual-switch share on nights with phone.also_close on vs off. | lab.also_close, lab.orient, web.phone_v2 -> - | Big plays live or replayed within 3 min |
+| `scripts/attention_labels.py` (entry) | Data G: per-play human-attention labels for Watch Value (EXP-1704), plus the WP-only drama baseline. | scripts.wv_aux_label -> - | untagged |
 | `scripts/attention_pull.py` (entry) | Data Division G: attention at scale. | - -> - | untagged |
 | `scripts/autofix_guard.py` (entry) | Guard for Claude's auto-fix changes (.github/workflows/auto-fix.yml), run on the diff before any commit is pushed. | - -> - | untagged |
 | `scripts/backfill_eval_v2.py` (entry) | Backfill the archive for eval-data-v2 (cycle 01 plan, task 4 / EVAL2): at least 8 LOCKED nights in every league, and more your-team nights in the dev (train... | lab.evaldata, lab.splits -> - | untagged |
@@ -377,8 +378,9 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/tv_local_probe.py` (entry) | Time the TV's local input keys against SmartThings, on Nick's TV (~1 minute, Nick at the TV). | tv -> - | untagged |
 | `scripts/world_model_pilot.py` (entry) | World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end. | noggin.factory -> - | untagged |
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
+| `scripts/wv_aux_label.py` (entry) | Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804). | - -> scripts.attention_labels | untagged |
 
-## Untagged (266)
+## Untagged (268)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -548,6 +550,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/views.py`
 - `redzone/web/__init__.py`
 - `redzone/web/server.py`
+- `scripts/attention_labels.py`
 - `scripts/attention_pull.py`
 - `scripts/autofix_guard.py`
 - `scripts/backfill_eval_v2.py`
@@ -646,6 +649,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/tv_setup.py`
 - `scripts/world_model_pilot.py`
 - `scripts/worth_line.py`
+- `scripts/wv_aux_label.py`
 
 ## Orphans (no importer) (14)
 
