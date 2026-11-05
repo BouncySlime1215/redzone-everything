@@ -1,5 +1,5 @@
 {
- "copyright": "hand-written test fixture in the shape of the MLB Stats API GUMBO feed (no real data)",
+ "copyright": "",
  "gamePk": 745000,
  "link": "/api/v1.1/game/745000/feed/live",
  "gameData": {
@@ -99,16 +99,16 @@
        "details": {
         "call": {
          "code": "B",
-         "description": "Ball"
+         "description": ""
         },
-        "description": "Ball",
+        "description": "",
         "code": "B",
         "isInPlay": false,
         "isStrike": false,
         "isBall": true,
         "type": {
          "code": "FF",
-         "description": "FF"
+         "description": ""
         }
        },
        "count": {
@@ -135,16 +135,16 @@
        "details": {
         "call": {
          "code": "C",
-         "description": "Called Strike"
+         "description": ""
         },
-        "description": "Called Strike",
+        "description": "",
         "code": "C",
         "isInPlay": false,
         "isStrike": true,
         "isBall": false,
         "type": {
          "code": "SL",
-         "description": "SL"
+         "description": ""
         }
        },
        "count": {
@@ -171,16 +171,16 @@
        "details": {
         "call": {
          "code": "D",
-         "description": "In play, no out"
+         "description": ""
         },
-        "description": "In play, no out",
+        "description": "",
         "code": "D",
         "isInPlay": true,
         "isStrike": false,
         "isBall": false,
         "type": {
          "code": "FF",
-         "description": "FF"
+         "description": ""
         }
        },
        "count": {
@@ -301,7 +301,7 @@
        "startTime": "2024-04-12T23:11:33.000Z",
        "endTime": "2024-04-12T23:11:33.000Z",
        "details": {
-        "description": "Pickoff Attempt 1B",
+        "description": "",
         "code": "1"
        },
        "count": {}
@@ -317,16 +317,16 @@
        "details": {
         "call": {
          "code": "B",
-         "description": "Ball"
+         "description": ""
         },
-        "description": "Ball",
+        "description": "",
         "code": "B",
         "isInPlay": false,
         "isStrike": false,
         "isBall": true,
         "type": {
          "code": "SI",
-         "description": "SI"
+         "description": ""
         }
        },
        "count": {
@@ -349,7 +349,7 @@
        "startTime": "2024-04-12T23:12:17.000Z",
        "endTime": "2024-04-12T23:12:17.000Z",
        "details": {
-        "description": "Stolen Base 2B: Runner 1 steals 2nd base.",
+        "description": "",
         "eventType": "stolen_base_2b",
         "event": "Stolen Base 2B"
        },
@@ -366,16 +366,16 @@
        "details": {
         "call": {
          "code": "S",
-         "description": "Swinging Strike"
+         "description": ""
         },
-        "description": "Swinging Strike",
+        "description": "",
         "code": "S",
         "isInPlay": false,
         "isStrike": true,
         "isBall": false,
         "type": {
          "code": "CH",
-         "description": "CH"
+         "description": ""
         }
        },
        "count": {
@@ -402,16 +402,16 @@
        "details": {
         "call": {
          "code": "E",
-         "description": "In play, run(s)"
+         "description": ""
         },
-        "description": "In play, run(s)",
+        "description": "",
         "code": "E",
         "isInPlay": true,
         "isStrike": false,
         "isBall": false,
         "type": {
          "code": "FF",
-         "description": "FF"
+         "description": ""
         }
        },
        "count": {
@@ -517,16 +517,16 @@
        "details": {
         "call": {
          "code": "X",
-         "description": "In play, out(s)"
+         "description": ""
         },
-        "description": "In play, out(s)",
+        "description": "",
         "code": "X",
         "isInPlay": true,
         "isStrike": false,
         "isBall": false,
         "type": {
          "code": "SL",
-         "description": "SL"
+         "description": ""
         }
        },
        "count": {
@@ -609,7 +609,7 @@
        "startTime": "2024-04-12T23:13:45.000Z",
        "endTime": "2024-04-12T23:13:45.000Z",
        "details": {
-        "description": "Pitching Change: 901 replaces 900.",
+        "description": "",
         "eventType": "pitching_substitution",
         "event": "Pitching Change"
        },
@@ -630,16 +630,16 @@
        "details": {
         "call": {
          "code": "C",
-         "description": "Called Strike"
+         "description": ""
         },
-        "description": "Called Strike",
+        "description": "",
         "code": "C",
         "isInPlay": false,
         "isStrike": true,
         "isBall": false,
         "type": {
          "code": "FC",
-         "description": "FC"
+         "description": ""
         }
        },
        "count": {
@@ -666,16 +666,16 @@
        "details": {
         "call": {
          "code": "S",
-         "description": "Swinging Strike"
+         "description": ""
         },
-        "description": "Swinging Strike",
+        "description": "",
         "code": "S",
         "isInPlay": false,
         "isStrike": true,
         "isBall": false,
         "type": {
          "code": "SL",
-         "description": "SL"
+         "description": ""
         }
        },
        "count": {
@@ -702,16 +702,16 @@
        "details": {
         "call": {
          "code": "S",
-         "description": "Swinging Strike"
+         "description": ""
         },
-        "description": "Swinging Strike",
+        "description": "",
         "code": "S",
         "isInPlay": false,
         "isStrike": true,
         "isBall": false,
         "type": {
          "code": "SL",
-         "description": "SL"
+         "description": ""
         }
        },
        "count": {
@@ -798,16 +798,16 @@
        "details": {
         "call": {
          "code": "X",
-         "description": "In play, out(s)"
+         "description": ""
         },
-        "description": "In play, out(s)",
+        "description": "",
         "code": "X",
         "isInPlay": true,
         "isStrike": false,
         "isBall": false,
         "type": {
          "code": "FC",
-         "description": "FC"
+         "description": ""
         }
        },
        "count": {
@@ -891,16 +891,16 @@
        "details": {
         "call": {
          "code": "B",
-         "description": "Ball"
+         "description": ""
         },
-        "description": "Ball",
+        "description": "",
         "code": "B",
         "isInPlay": false,
         "isStrike": false,
         "isBall": true,
         "type": {
          "code": "FF",
-         "description": "FF"
+         "description": ""
         }
        },
        "count": {
@@ -927,16 +927,16 @@
        "details": {
         "call": {
          "code": "E",
-         "description": "In play, run(s)"
+         "description": ""
         },
-        "description": "In play, run(s)",
+        "description": "",
         "code": "E",
         "isInPlay": true,
         "isStrike": false,
         "isBall": false,
         "type": {
          "code": "FF",
-         "description": "FF"
+         "description": ""
         }
        },
        "count": {
@@ -1020,16 +1020,16 @@
        "details": {
         "call": {
          "code": "X",
-         "description": "In play, out(s)"
+         "description": ""
         },
-        "description": "In play, out(s)",
+        "description": "",
         "code": "X",
         "isInPlay": true,
         "isStrike": false,
         "isBall": false,
         "type": {
          "code": "CU",
-         "description": "CU"
+         "description": ""
         }
        },
        "count": {
@@ -1113,16 +1113,16 @@
        "details": {
         "call": {
          "code": "X",
-         "description": "In play, out(s)"
+         "description": ""
         },
-        "description": "In play, out(s)",
+        "description": "",
         "code": "X",
         "isInPlay": true,
         "isStrike": false,
         "isBall": false,
         "type": {
          "code": "FF",
-         "description": "FF"
+         "description": ""
         }
        },
        "count": {
@@ -1206,16 +1206,16 @@
        "details": {
         "call": {
          "code": "C",
-         "description": "Called Strike"
+         "description": ""
         },
-        "description": "Called Strike",
+        "description": "",
         "code": "C",
         "isInPlay": false,
         "isStrike": true,
         "isBall": false,
         "type": {
          "code": "FF",
-         "description": "FF"
+         "description": ""
         }
        },
        "count": {
@@ -1242,16 +1242,16 @@
        "details": {
         "call": {
          "code": "S",
-         "description": "Swinging Strike"
+         "description": ""
         },
-        "description": "Swinging Strike",
+        "description": "",
         "code": "S",
         "isInPlay": false,
         "isStrike": true,
         "isBall": false,
         "type": {
          "code": "SL",
-         "description": "SL"
+         "description": ""
         }
        },
        "count": {
@@ -1278,16 +1278,16 @@
        "details": {
         "call": {
          "code": "S",
-         "description": "Swinging Strike"
+         "description": ""
         },
-        "description": "Swinging Strike",
+        "description": "",
         "code": "S",
         "isInPlay": false,
         "isStrike": true,
         "isBall": false,
         "type": {
          "code": "CU",
-         "description": "CU"
+         "description": ""
         }
        },
        "count": {
