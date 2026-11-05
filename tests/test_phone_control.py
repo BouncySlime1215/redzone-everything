@@ -133,3 +133,96 @@ def test_redzone_button_only_when_on_the_air(client, engine):
     assert r["ok"], r
     assert engine.hold["game_id"] == REDZONE and engine.decider.current == REDZONE
     assert client.get("/api/state").json()["mode"]["redzone_on"] is True
+
+
+def _submit_one(engine, monkeypatch, force: bool, dead_ball_after: bool = False):
+    """A held switch to a live game while the game on screen is mid-play: (may_cut, the trace's forced)."""
+    import redzone.engine as eng
+    from redzone.control import Outcome
+    a, b = _live(engine)[:2]
+    engine.decider.current = b
+    engine.cfg.update({"mode": {"dry_run": False}})
+    got, built = {}, {}
+    monkeypatch.setattr(engine.control, "submit",
+                        lambda target, back, done, may_cut=None, **kw: got.update(done=done, may_cut=may_cut, target=target))
+    monkeypatch.setattr(engine, "safe_to_leave", lambda *x, **k: False)   # a play is on screen
+    real = eng.trace.build
+    monkeypatch.setattr(eng.trace, "build", lambda *x, **k: built.update(k) or real(*x, **k))
+    engine.hold = {"game_id": a, "force": False, "since": time.time(), "auto_resume": True, "resume_at": None, "why": ""}
+    d = Decision(time.time(), "switch", a, "you selected this game", State.PAUSED, kind="user")
+    engine._pending_decision = None
+    engine._act(d, b, {})
+    first = got["may_cut"]()
+    if force:
+        engine.hold["force"] = True   # the second "Go now" tap
+    if dead_ball_after:
+        monkeypatch.setattr(engine, "safe_to_leave", lambda *x, **k: True)   # the dead ball comes
+    cut = got["may_cut"]()
+    if cut:
+        got["done"](Outcome(True, got["target"], 2.0, "ok", False, confirmed_at=time.time(), path="preloaded"))
+    return first, cut, built.get("forced")
+
+
+def test_only_the_second_go_now_tap_is_traced_as_forced(engine, monkeypatch):
+    # [Nick, Nov 5] a second "Go now" cuts at once, even mid-play, and its trace says forced (graded apart)
+    first, cut, forced = _submit_one(engine, monkeypatch, force=True)
+    assert (first, cut, forced) == (False, True, True)
+
+
+def test_a_single_tap_waits_for_the_dead_ball_and_is_never_forced(engine, monkeypatch):
+    first, cut, forced = _submit_one(engine, monkeypatch, force=False, dead_ball_after=True)
+    assert (first, cut, forced) == (False, True, False)
+
+
+def test_autopilot_switches_are_never_forced(engine, monkeypatch):
+    engine.hold = None
+    a = _live(engine)[0]
+    d = Decision(time.time(), "switch", a, "x", State.PAUSED, kind="auto")
+    assert not engine._forced_go(d)
+
+
+def test_trace_events_carry_forced_only_when_set():
+    from redzone import trace
+    class D: target, action, kind, reason, at = "g", "switch", "user", "x", 100.0
+    class O: ok, dry_run, confirmed_at, path, detail = True, False, 102.0, "preloaded", ""
+    for f in (True, False):
+        t = trace.build(D(), "h", "youtubetv:x", O(), 100.0, now=103.0, forced=f)
+        dec = [e for e in trace.events(t) if e.stage.value == "decided"][0]
+        assert t["forced"] is f and dec.detail.get("forced") == (True if f else None)
+
+
+def test_forced_reaches_the_grader_through_the_stored_row_and_clears_after(engine, monkeypatch):
+    """The grader's path: store switch row -> trace.of_row -> ["forced"] (Supervisor.grade_cut). And a
+    later switch to the same held game, once _hold_check cleared hold.force, isn't forced."""
+    from redzone import trace
+    from redzone.control import Outcome
+    a, b = _live(engine)[:2]
+    engine.cfg.update({"mode": {"dry_run": False}})
+    got = {}
+    monkeypatch.setattr(engine.control, "submit",
+                        lambda target, back, done, may_cut=None, **kw: got.update(done=done, may_cut=may_cut, target=target))
+    safe = [False]
+    monkeypatch.setattr(engine, "safe_to_leave", lambda *x, **k: safe[0])
+
+    def switch(force: bool) -> dict:
+        engine.decider.current = b
+        engine._pending_decision = None
+        d = Decision(time.time(), "switch", a, "you selected this game", State.PAUSED, kind="user")
+        engine._act(d, b, {})
+        if force:
+            engine.hold["force"] = True
+        else:
+            safe[0] = True   # a single tap: the dead ball comes
+        assert got["may_cut"]()
+        got["done"](Outcome(True, got["target"], 2.0, "ok", False, confirmed_at=time.time(), path="preloaded"))
+        safe[0] = False
+        return trace.of_row(engine.store.recent_switches(1)[0])
+
+    engine.hold = {"game_id": a, "force": False, "since": time.time(), "auto_resume": True, "resume_at": None, "why": ""}
+    engine.decider.user.locked_game = a
+    assert switch(force=True)["forced"] is True
+    engine.decider.current = a
+    engine._pending_decision = None
+    engine._hold_check()                       # on the held game: the second tap's force is spent
+    assert engine.hold is not None and engine.hold["force"] is False
+    assert switch(force=False)["forced"] is False

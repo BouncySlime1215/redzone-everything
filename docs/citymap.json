@@ -501,6 +501,7 @@
     "redzone/tuners/tuners.py",
     "redzone/web/server.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
     "scripts/hold_left_probe.py",
@@ -563,6 +564,7 @@
     "scripts/eval.py",
     "scripts/eval_reasoner.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
     "scripts/hold_left_probe.py",
@@ -1332,6 +1334,7 @@
     "redzone/lab/replaycheck.py",
     "redzone/lab/sportsgrade.py",
     "redzone/lab/syncsim.py",
+    "redzone/noggin/belief.py",
     "redzone/supervisor.py",
     "scripts/delay_report.py"
    ],
@@ -1596,6 +1599,7 @@
     "redzone/grading.py",
     "redzone/models.py",
     "redzone/network.py",
+    "redzone/noggin/belief.py",
     "redzone/plan.py",
     "redzone/platform/agent_fix.py",
     "redzone/platform/wake.py",
@@ -1792,7 +1796,9 @@
     "scripts/backtest.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/leak_check.py",
+    "scripts/noggin_selfplay.py",
     "scripts/train_noggin_pick.py"
    ],
    "owner": "INTEGRATION",
@@ -1980,6 +1986,7 @@
     "scripts/eval.py",
     "scripts/eval_break_blend.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fetch_eval_data.py",
     "scripts/leak_check.py"
    ],
@@ -2178,6 +2185,21 @@
     "untagged"
    ]
   },
+  "redzone/lab/offpolicy.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/worth.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/offpolicy_score.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-005] Off-policy grading: how a NEW decider would have done on nights the live one already ran, from the live decisions' logged option sets and propensit...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/optimize.py": {
    "contracts": [],
    "inputs": [
@@ -2210,6 +2232,7 @@
    "outputs": [
     "scripts/eval.py",
     "scripts/eval_sports.py",
+    "scripts/noggin_selfplay.py",
     "scripts/train_noggin_pick.py",
     "scripts/train_noggin_pick_dagger.py"
    ],
@@ -2307,7 +2330,9 @@
     "scripts/backfill_eval_v2.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
-    "scripts/leak_check.py"
+    "scripts/exp023_belief.py",
+    "scripts/leak_check.py",
+    "scripts/switch_eval_pin.py"
    ],
    "owner": "unowned",
    "role": "Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03).",
@@ -2355,6 +2380,7 @@
     "redzone/lab/tune.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/train_noggin_pick.py"
    ],
    "owner": "INTEGRATION",
@@ -2387,6 +2413,7 @@
    "outputs": [
     "redzone/lab/backtest.py",
     "scripts/burst_align.py",
+    "scripts/exp023_belief.py",
     "scripts/timing_report.py"
    ],
    "owner": "unowned",
@@ -2421,6 +2448,7 @@
    "inputs": [],
    "kind": "module",
    "outputs": [
+    "redzone/lab/offpolicy.py",
     "scripts/worth_line.py"
    ],
    "owner": "unowned",
@@ -2513,9 +2541,11 @@
     "scripts/backtest.py",
     "scripts/build_reasoner_data.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
     "scripts/leak_check.py",
     "scripts/noggin_factory.py",
+    "scripts/noggin_tokens.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
     "scripts/replay_check.py",
@@ -2585,6 +2615,22 @@
     "untagged"
    ]
   },
+  "redzone/noggin/belief.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/decider/screen.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py",
+    "scripts/exp023_belief.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-023] Belief tracker: a per-game particle filter for the TV lag and the feed lag, with an online Bayesian model of each broadcast's break rhythm.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/noggin/factory.py": {
    "contracts": [],
    "inputs": [
@@ -2594,8 +2640,15 @@
    ],
    "kind": "module",
    "outputs": [
+    "scripts/exp022_tpp.py",
+    "scripts/green_summaries.py",
+    "scripts/kaggle_noggin_factory.py",
+    "scripts/nhl_apiweb.py",
     "scripts/noggin_factory.py",
-    "scripts/train_noggin_pick.py"
+    "scripts/noggin_tokens.py",
+    "scripts/retrosheet_plays.py",
+    "scripts/train_noggin_pick.py",
+    "scripts/world_model_pilot.py"
    ],
    "owner": "unowned",
    "role": "Noggin data factory: labeled dead-ball moments from free public play-by-play with real wall clocks.",
@@ -2618,7 +2671,8 @@
     "redzone/noggin/predict.py",
     "redzone/noggin/predict_fit.py",
     "redzone/noggin/timing.py",
-    "redzone/noggin/timing_fit.py"
+    "redzone/noggin/timing_fit.py",
+    "scripts/exp022_tpp.py"
    ],
    "owner": "unowned",
    "role": "Noggin Timing features and window labels: numpy + stdlib only (the live app has no pandas).",
@@ -2672,6 +2726,7 @@
    "outputs": [
     "redzone/decider/decider.py",
     "scripts/eval_sports.py",
+    "scripts/noggin_selfplay.py",
     "scripts/train_noggin_pick.py",
     "scripts/train_noggin_pick_dagger.py"
    ],
@@ -2761,6 +2816,7 @@
     "redzone/noggin/pick.py",
     "redzone/noggin/predict.py",
     "redzone/noggin/timing_fit.py",
+    "scripts/exp022_tpp.py",
     "scripts/train_noggin_timing.py"
    ],
    "owner": "unowned",
@@ -2778,6 +2834,7 @@
    "kind": "module",
    "outputs": [
     "redzone/noggin/predict_fit.py",
+    "scripts/exp022_tpp.py",
     "scripts/train_noggin_timing.py"
    ],
    "owner": "unowned",
@@ -3394,7 +3451,10 @@
     "redzone/sources/leagues.py",
     "redzone/views.py",
     "scripts/eval_sports.py",
+    "scripts/exp023_belief.py",
+    "scripts/green_summaries.py",
     "scripts/noggin_factory.py",
+    "scripts/noggin_tokens.py",
     "scripts/plan_tonight.py",
     "scripts/train_noggin_pick.py"
    ],
@@ -4495,6 +4555,44 @@
     "untagged"
    ]
   },
+  "scripts/exp022_tpp.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/noggin/factory.py",
+    "redzone/noggin/features.py",
+    "redzone/noggin/timing.py",
+    "redzone/noggin/timing_fit.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-022] The event-token world model read as a timing point process vs Noggin Timing v1's trees, on green data.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/exp023_belief.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/config.py",
+    "redzone/lab/backtest.py",
+    "redzone/lab/evaldata.py",
+    "redzone/lab/splits.py",
+    "redzone/lab/sportsgrade.py",
+    "redzone/lab/timing.py",
+    "redzone/models.py",
+    "redzone/noggin/belief.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-023] Belief tracker vs the DelayBook baseline, on DEV nights only (docs/prereg/exp-023.md).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/export_decision_records.py": {
    "contracts": [],
    "inputs": [
@@ -4607,6 +4705,20 @@
     "untagged"
    ]
   },
+  "scripts/green_summaries.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/noggin/factory.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-102] Green moment source: nflverse NFL and NBA.com cdn NBA play-by-play -> ESPN-summary-shaped archives, so the reasoner moment builder (agent/kaggle/bu...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/hold_left_probe.py": {
    "contracts": [],
    "inputs": [
@@ -4620,6 +4732,19 @@
    "role": "[STK-07 rig check] Hold the left game, then go back to it: does it play on from the dead ball we left?",
    "serves": [
     "STK-07"
+   ]
+  },
+  "scripts/kaggle_noggin_factory.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/noggin/factory.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "no docstring",
+   "serves": [
+    "untagged"
    ]
   },
   "scripts/leak_check.py": {
@@ -4639,6 +4764,17 @@
     "untagged"
    ]
   },
+  "scripts/license_check.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "F8 license-tag check (Test Factory; Nick, Nov 4 2026 11:20 PM ET, data B).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/multiview_probe.py": {
    "contracts": [],
    "inputs": [
@@ -4652,6 +4788,30 @@
    "outputs": [],
    "owner": "unowned",
    "role": "At home, ~5 minutes, before the games: measure YouTube TV multiview on a real stick.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/nba_cdn_plays.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "NBA.com's own action log (cdn liveData, packaged by shufinskiy/nba_data) -> hoopR-schema play rows (plan A NBA).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/nhl_apiweb.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/noggin/factory.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "NHL api-web play-by-play + shift charts -> the factory's compact ESPN-shaped game records (NFM tokens).",
    "serves": [
     "untagged"
    ]
@@ -4684,6 +4844,36 @@
     "untagged"
    ]
   },
+  "scripts/noggin_selfplay.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/oracle.py",
+    "redzone/noggin/pick.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Noggin self-play: PICK training rows from the hindsight oracle, on real AND synthetic nights.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/noggin_tokens.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/models.py",
+    "redzone/noggin/factory.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Noggin Foundation Model (NFM) event tokens: every play of every game as a short token group, per season.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/northstar.py": {
    "contracts": [],
    "inputs": [
@@ -4698,6 +4888,19 @@
     "STK-06"
    ]
   },
+  "scripts/offpolicy_score.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/offpolicy.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-005] Score a candidate decider off-policy on logged nights (redzone/lab/offpolicy.py).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/orient_line.py": {
    "contracts": [],
    "inputs": [
@@ -4708,6 +4911,17 @@
    "outputs": [],
    "owner": "unowned",
    "role": "[EXP-038] Print the orientation-beat line: override rates on nights with phone.orient on vs off.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/pack_factory_code.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Pack the code the Kaggle factory notebook needs into rz_factory_code.tar.gz (no data, no secrets).",
    "serves": [
     "untagged"
    ]
@@ -4886,6 +5100,19 @@
     "untagged"
    ]
   },
+  "scripts/retrosheet_plays.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/noggin/factory.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Retrosheet event files -> the ESPN-format MLB play dicts the tokenizer reads (Wave 1, green).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/rz.py": {
    "contracts": [],
    "inputs": [
@@ -4959,6 +5186,19 @@
     "untagged"
    ]
   },
+  "scripts/switch_eval_pin.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/splits.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Switch the default eval-data pin to a newly published release (Fri Nov 6: eval-data-v3), in one go.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/sync_fit.py": {
    "contracts": [],
    "inputs": [
@@ -4969,6 +5209,17 @@
    "outputs": [],
    "owner": "unowned",
    "role": "[sync fit] EXP-084: one live night's sync calibration and delay error, from the app's own logs.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/sync_truth.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[RC7 req.",
    "serves": [
     "untagged"
    ]
@@ -5148,6 +5399,19 @@
     "untagged"
    ]
   },
+  "scripts/world_model_pilot.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/noggin/factory.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/worth_line.py": {
    "contracts": [],
    "inputs": [
@@ -5166,10 +5430,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 272,
+  "modules": 289,
   "orphans": 10,
-  "unowned": 113,
-  "untagged": 217
+  "unowned": 130,
+  "untagged": 234
  },
  "version": 1
 }

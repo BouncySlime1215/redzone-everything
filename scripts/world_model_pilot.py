@@ -387,7 +387,6 @@ def grade(model, games, base, ctx, dev) -> dict:
 
 # ---------------------------------------------------------------------------------------------- train
 def main(argv=None) -> int:
-    import torch
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--leagues", default="nfl,nba,mlb", help="plan A default; add nba_espn only with Nick's yes")
@@ -412,13 +411,14 @@ def main(argv=None) -> int:
     if a.smoke:
         a.d, a.layers, a.heads, a.ctx, a.batch, a.minutes = 64, 2, 2, 120, 8, 0.3
     t_all = time.time()
-    torch.manual_seed(SEED)
     rng = np.random.default_rng(SEED)
+    blocked = ESPN_DERIVED & set(a.leagues.split(",")) if not a.allow_espn_derived else set()
+    if blocked:   # before torch, so the guard holds (and is tested) on a machine without it
+        raise SystemExit(f"{sorted(blocked)}: ESPN-derived release; pass --allow-espn-derived (plan B, personal use)")
+    import torch
+    torch.manual_seed(SEED)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     a.out.mkdir(parents=True, exist_ok=True)
-    blocked = ESPN_DERIVED & set(a.leagues.split(",")) if not a.allow_espn_derived else set()
-    if blocked:
-        raise SystemExit(f"{sorted(blocked)}: ESPN-derived release; pass --allow-espn-derived (plan B, personal use)")
     if a.from_tokens:
         games, licenses = load_shards(a.from_tokens, a.leagues.split(","))
     else:

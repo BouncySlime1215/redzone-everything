@@ -43,8 +43,8 @@ Phases 0-2 into ~4 days.
 | Fri | Event-token shards from the factory | Kaggle CPU (Colab CPU fallback) | ~5 | 0-5 | ① | EXP-007 |
 | Fri | Point-process timing model (breaks, scores, crunch entry/exit); a small model, T4 is enough | T4 or L4 | 2-4 | 5-20 | ① | EXP-022 |
 | Fri | Belief tracker + conformal floor | CPU | n/a | 0 | ②③ | EXP-023/024 |
-| Sat | **World model v1, plan A (catalog-OK sources only)**: nflverse NFL 1999-2024 (~7M tokens), Retrosheet MLB 1974-2024 (~70M est.), shufinskiy cdnnba NBA 2019-25 (~26M est., converter by lane ① Thu-Fri) ≈ **~100M tokens**. Sized to the data: **~18M params** (d 384, 8 layers), ~4 epochs ≈ 0.4B tokens seen, dropout 0.1; plus a 5M / 10M size check on the same shards. Measured basis: EXP-100 ran 386k tok/s at 31M on an A100 | A100 | ~0.5-1 | ~7-13 | ① | EXP-047 |
-| Sat | **World model v1, plan B (+ the red/gated sources, only if Nick says yes)**: plan A + hoopR NBA 2002-26 (~100M est.) + hoopR MBB CBB (~150M est.) + ESPN NHL 2019+ / CFB + NHL api-web 2011-19 (~35M est.) ≈ **~400M tokens**. Sized **~60-100M params**, ~4 epochs ≈ 1.6B tokens ≈ 3.7 A100-h at 100M (2.31 h per 1B measured); 25M / 50M size check first | A100 | ~3-4 | ~40-52 | ① | EXP-047 |
+| Sat | (not chosen: Nick picked B, 11:20 PM) **World model v1, plan A (catalog-OK sources only)**: nflverse NFL 1999-2024 (~7M tokens), Retrosheet MLB 1974-2024 (~70M est.), shufinskiy cdnnba NBA 2019-25 (~26M est., converter by lane ① Thu-Fri) ≈ **~100M tokens**. Sized to the data: **~18M params** (d 384, 8 layers), ~4 epochs ≈ 0.4B tokens seen, dropout 0.1; plus a 5M / 10M size check on the same shards. Measured basis: EXP-100 ran 386k tok/s at 31M on an A100 | A100 | ~0.5-1 | ~7-13 | ① | EXP-047 |
+| Sat | **World model v1, plan B (CHOSEN, Nick 11:20 PM; personal-use tags)**: plan A + hoopR NBA 2002-26 (~100M est.) + hoopR MBB CBB (~150M est.) + ESPN NHL 2019+ / CFB + NHL api-web 2011-19 (~35M est.) ≈ **~400M tokens**. Sized **~60-100M params**, ~4 epochs ≈ 1.6B tokens ≈ 3.7 A100-h at 100M (2.31 h per 1B measured); 25M / 50M size check first | A100 | ~3-4 | ~40-52 | ① | EXP-047 |
 | Sat | (superseded by the A / B rows above) **World model v1 pretrain** (~0.5B real event tokens in the ledger estimate; 100M params × 3 epochs ≈ 9e17 FLOPs ≈ 2 h A100 at 40%) plus heads and evals | A100 | ~3-4 | ~40-52 | ① | EXP-047 |
 | Sat | Size check first: 25M and 50M runs on the same shards (compute-optimal for ~0.5B tokens is ~25M) | L4 | 2 | 10 | ① | EXP-047 |
 | Sun | **Planner v1** (search over the world model + conservative offline RL on real nights) | L4 | 3-6 | 15-30 | ①② | EXP-056/057 |
@@ -119,6 +119,10 @@ from what passed.
   locked read.
 
 ## Risks
+- **Worth it ≥ live can't be read on Sunday.** A shadow candidate never drives the TV, so its nights can't be
+  rated, and the line stays PENDING (EXP-040, #204). Sunday's live nights build the live baseline (that needs
+  `phone.worth: true` on the Mac through the normal deploy). The candidate side needs whole nights where it
+  drives the TV, after it passes everything else.
 - **Locked evidence:** NBA/NHL have only 4 locked nights until v3 lands Friday. A Sunday PASS depends on v3
   landing on time.
 - **Friday is the most crowded day** (three timing components). If one slips, the planner uses the trees for

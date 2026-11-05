@@ -1,0 +1,12 @@
+{
+  "_doc": "Release names by 7-character commit, read by the phone's morning Last night card (redzone/web/phone_v2.py RELEASE_NAMES). Lane 4 adds a line when it cuts an RC.",
+  "9e859b7": "RC1",
+  "5c7727e": "RC2",
+  "3a36e51": "RC3",
+  "8a47053": "RC4",
+  "4602c63": "RC5",
+  "e8bbf8e": "RC5.1",
+  "cf480a4": "RC6",
+  "9322c28": "RC6.1",
+  "1bf4150": "RC6.2"
+}

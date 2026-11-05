@@ -52,6 +52,8 @@ REPORTS = (DATA / "reports", DATA.parent / "docs" / "nights")   # <night>.md: ni
 BUFFER_LOG = DATA / "buffer.jsonl"        # STK-06 holds that went bad and their rebuilds (control._buffer_log)
 CRUNCH_DIR = DATA / "crunch"              # <night>.json: learned crunch spans vs the oracle's (lane 1 grader)
 WORTH_LOG = DATA / "worth.jsonl"          # [EXP-040] "worth it?" per night: EVALUATION ONLY, never a training label
+DEPLOY_STATE = DATA / "deploy" / "state.json"   # scripts/deploy.py: good commit + deploy / rollback history
+RELEASE_NAMES = DATA.parent / "docs" / "releases.json"   # {"<7-char commit>": "RC6.1", ...} (lane 4 keeps it)
 REEL_REQUESTS = DATA / "reel_requests.jsonl"   # "I missed that" -> a catch-up request (record only)
 REPLAY_DUE_S = 180.0    # Nick, Nov 4 11:00 AM: a missed key moment airs within 3 min, at the next dead moment
 MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min, a phone convenience; the graded window is big_seen_3min
@@ -392,6 +394,50 @@ def night_scorecard(nights: list[tuple[str, dict | None, dict | None]]) -> dict:
             "gate": None if not hard_ok else all(hard_ok)}
 
 
+def _short(c) -> str | None:
+    return str(c)[:7] if c else None
+
+
+def release_that_ran(state: dict, t0: float, t1: float, names: dict) -> dict | None:
+    """Which release drove the TV at the end of the night [t0, t1), from scripts/deploy.py's state.json:
+    the last history entry before t1 ("deployed" or "manual_rollback" -> its commit; "rolled_back" -> the
+    commit it went back to), else the last good commit. `changes` lists every deploy / rollback inside the
+    night, so "RC6 rolled back to RC5.1" shows. None when there's no deploy record at all."""
+    state = state if isinstance(state, dict) else {}
+    hist = sorted((h for h in state.get("history") or [] if isinstance(h, dict)
+                   and isinstance(h.get("at"), (int, float))), key=lambda h: h["at"])
+    nm = lambda c: names.get(_short(c)) if c else None   # noqa: E731
+    before = [h for h in hist if h["at"] < t1]
+    if before:
+        last = before[-1]
+        res = last.get("result")
+        ran = last.get("from") if res == "rolled_back" else None if res == "rollback_failed" else last.get("commit")
+    else:
+        ran = (state.get("good") or {}).get("commit")
+    changes = [{"result": h.get("result"), "commit": _short(h.get("commit")), "name": nm(h.get("commit")),
+                "from": _short(h.get("from")), "from_name": nm(h.get("from")), "at": h["at"]}
+               for h in hist if t0 <= h["at"] < t1]
+    if not ran and not changes:
+        return None
+    return {"commit": _short(ran), "name": nm(ran), "changes": changes}
+
+
+LAST_NIGHT_LINES = ("mid_play_entries", "high_leverage_leaves", "dead_air_pct")
+
+
+def last_night_card(night: str, metrics: dict | None, summary: dict | None, worth: dict | None,
+                    release: dict | None) -> dict:
+    """The morning "Last night" card: worth it (EXP-040, evaluation only), mid-play entries and high-leverage
+    leaves (hard, bar 0), dead air %, and which release ran. A line nobody measured is None (pending), never 0."""
+    m, s = metrics or {}, summary or {}
+    lines = {k: _night_line(k, m, s) for k in LAST_NIGHT_LINES}
+    hard = [lines[k] for k in ("mid_play_entries", "high_leverage_leaves") if lines[k] is not None]
+    r = (worth or {}).get("rating")
+    return {"night": night, "worth": r if isinstance(r, int) and 1 <= r <= 5 else None, **lines,
+            "rule1": None if not hard else all(v <= 0 for v in hard), "release": release,
+            "measured": any(v is not None for v in lines.values())}
+
+
 LEFT_END = {"left_resumed": "resumed", "left_expired": "expired", "left_lost": "lost"}   # STK-07 (#171)
 
 
@@ -717,6 +763,87 @@ def also_close(games: dict, current: str | None, order: tuple[str, ...]) -> list
     return rows[:ALSO_CLOSE_MAX]
 
 
+FOLLOW_MAX = 12        # [EXP-043] followed players kept at most (a short list, not a fantasy roster)
+FOLLOW_NAME_MAX = 40   # characters per name
+
+
+def follow_names(raw) -> list[str] | None:
+    """[EXP-043] Clean a followed-players list from the phone: trimmed, 2-40 characters, letters and
+    . ' - and spaces only, case-insensitive duplicates dropped, at most FOLLOW_MAX. None when it isn't a list."""
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    if not isinstance(raw, list):
+        return None
+    out, seen = [], set()
+    for x in raw:
+        if not isinstance(x, str):
+            continue
+        n = " ".join(x.split())[:FOLLOW_NAME_MAX]
+        if len(n) < 2 or not re.fullmatch(r"[A-Za-z\u00C0-\u024F.'\- ]+", n) or n.lower() in seen:
+            continue
+        seen.add(n.lower())
+        out.append(n)
+    return out[:FOLLOW_MAX]
+
+
+def _surname(name: str) -> str:
+    parts = [p for p in name.lower().replace(".", " ").split() if p not in ("jr", "sr", "ii", "iii", "iv")]
+    return parts[-1] if parts else ""
+
+
+def followed_in(g, players: list[str]) -> list[dict]:
+    """[EXP-043] Which followed players show up in this game right now, and where: "spotlight" (the
+    latest big play), "leader" (a top performer) or "flag" (a going-off line like "Jokic 38 pts").
+    Full names match leaders and the spotlight exactly (case-insensitive); the short forms ("N. Jokic",
+    flag lines) match on the surname as a whole word. One row per player, the most specific place wins."""
+    if g is None or not players:
+        return []
+    out = []
+    for name in players:
+        full, sur = name.lower(), _surname(name)
+        if not sur:
+            continue
+        word = re.compile(rf"(?<![a-z]){re.escape(sur)}(?![a-z])")
+
+        def hit(d) -> bool:
+            n, sh = str((d or {}).get("name") or "").lower(), str((d or {}).get("short") or "").lower()
+            if n:   # a full name on the row is decisive: "Keenan Allen" never matches Josh Allen's row
+                return n == full or (" " not in full and _surname(n) == sur)
+            if not (sh and word.search(sh)):
+                return False
+            # "J. Allen": the initial must agree with the followed first name when both exist
+            return " " not in full or " " not in sh.strip() or sh.strip()[0] == full[0]
+
+        sp = g.spotlight if isinstance(getattr(g, "spotlight", None), dict) else None
+        if sp and hit(sp):
+            out.append({"player": name, "where": "spotlight", "text": str(sp.get("text") or "")[:80]})
+            continue
+        lead = next((d for d in (getattr(g, "leaders", None) or []) if isinstance(d, dict) and hit(d)), None)
+        if lead:
+            out.append({"player": name, "where": "leader",
+                        "text": " ".join(str(lead.get(k) or "") for k in ("short", "stat")).strip()[:80]})
+            continue
+        flag = next((f for f in (getattr(g, "player_flags", None) or []) if word.search(str(f).lower())), None)
+        if flag:
+            out.append({"player": name, "where": "flag", "text": str(flag)[:80]})
+    return out
+
+
+def follow_view(games: dict, players: list[str], current: str | None) -> list[dict]:
+    """[EXP-043] Live games with a followed player in them, the game on screen first, then by matchup.
+    Display only: no score, rank or switch reads it (lane 1 owns any weight)."""
+    rows = []
+    for gid, g in (games or {}).items():
+        if getattr(g, "phase", None) != Phase.LIVE:
+            continue
+        hits = followed_in(g, players)
+        if hits:
+            rows.append({"game_id": gid, "matchup": g.matchup, "league": g.league.value,
+                         "on": gid == current, "players": hits})
+    rows.sort(key=lambda r: (not r["on"], r["matchup"]))
+    return rows
+
+
 RISING_MIN = 1.0    # watch_rising (points per minute) at or above this shows an up arrow, at or below -this a down one
 
 
@@ -893,7 +1020,9 @@ def router(engine) -> APIRouter:
     async def status():
         return {"enabled": _enabled(engine), "commit": _enabled(engine) and bool(engine.cfg.get("phone.commit")),
                 "orient": _enabled(engine) and bool(engine.cfg.get("phone.orient")),
-                "worth": bool(engine.cfg.get("phone.worth"))}
+                "worth": bool(engine.cfg.get("phone.worth")),
+                "follow": _enabled(engine) and bool(engine.cfg.get("phone.follow")),
+                "last_night": _enabled(engine) and bool(engine.cfg.get("phone.last_night"))}
 
     def _worth_now():
         now = time.time()
@@ -1029,6 +1158,30 @@ def router(engine) -> APIRouter:
                 if engine.cfg.get("phone.also_close") else [],
                 **watch_values(getattr(engine, "scored", {}), getattr(engine.merger, "games", {}))}
 
+    @r.get("/follow")
+    async def get_follow():
+        # [EXP-043] followed players: the list and where they are live now; flag phone.follow (off) on top of phone.v2
+        if not _enabled(engine) or not engine.cfg.get("phone.follow"):
+            return _off()
+        players = follow_names(engine.cfg.get("noggin.priority.prefs.followed_players") or []) or []
+        return {"enabled": True, "players": players, "max": FOLLOW_MAX,
+                "live": follow_view(getattr(engine.merger, "games", {}), players, engine.decider.current)}
+
+    @r.post("/follow")
+    async def set_follow(body: dict):
+        if not _enabled(engine) or not engine.cfg.get("phone.follow"):
+            return _off()
+        players = follow_names((body or {}).get("players"))
+        if players is None:
+            return {"ok": False, "message": "players must be a list of names"}
+        from redzone.config import ConfigError
+        try:
+            engine.cfg.update({"noggin": {"priority": {"prefs": {"followed_players": players}}}})
+        except ConfigError as e:
+            return {"ok": False, "message": str(e)}
+        engine.broadcast()
+        return {"ok": True, "message": "Saved" if players else "Cleared", "players": players}
+
     @r.get("/orient")
     async def orient(game: str = ""):
         # [EXP-038] the phone asks right after it sees a new switch; flag phone.orient (off) on top of phone.v2
@@ -1102,6 +1255,30 @@ def router(engine) -> APIRouter:
         nights = [(d, next((m for m in (load(b / f"{d}.json") for b in REPORTS) if m), None),
                    load(LIVE_NIGHTS / d / "summary.json")) for d in days]
         return {"enabled": True, **night_scorecard(nights)}
+
+    @r.get("/lastnight")
+    async def lastnight():
+        # the morning "Last night" card; flag phone.last_night (off) on top of phone.v2. Read only
+        if not _enabled(engine) or not engine.cfg.get("phone.last_night"):
+            return _off()
+        now = time.time()
+        today = night_of(now)
+        night = (today - timedelta(days=1)).isoformat()
+        hours = (now - night_window(today)[0]) / 3600.0
+        show = hours < float(engine.cfg.get("phone.last_night_hours"))
+
+        def load(p: Path):
+            try:
+                return json.loads(p.read_text())
+            except (OSError, ValueError):
+                return None
+        metrics = next((m for m in (load(b / f"{night}.json") for b in REPORTS) if isinstance(m, dict)), None)
+        names = load(RELEASE_NAMES)
+        t0, t1 = night_window(date.fromisoformat(night))
+        rel = release_that_ran(load(DEPLOY_STATE) or {}, t0, t1, names if isinstance(names, dict) else {})
+        return {"enabled": True, "show": show,
+                **last_night_card(night, metrics, load(LIVE_NIGHTS / night / "summary.json"),
+                                  worth_rows().get(night), rel)}
 
     @r.get("/catchup")
     async def catchup():

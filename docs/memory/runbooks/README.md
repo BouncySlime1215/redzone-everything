@@ -5,6 +5,7 @@ Short, do-this-now steps. Each one links to the full doc. Run everything from th
 
 | Situation | Runbook |
 |---|---|
+| Cut a release candidate (lane 4) | [rc-cut.md](rc-cut.md) |
 | Ship new code to the Mac | [deploy.md](deploy.md) |
 | A deploy made things worse | [rollback.md](rollback.md) |
 | Start or check a Kaggle training run | [kaggle-run.md](kaggle-run.md) |
