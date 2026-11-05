@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**309 modules**, 254 untagged, 149 unowned, 14 orphans (no importer).
+**311 modules**, 256 untagged, 151 unowned, 14 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -211,7 +211,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (149)
+## unowned (151)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -255,6 +255,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/reactgrade.py` | [EXP-301] Grader for the delay-and-react test (Nick, Nov 5 12:25 AM and 12:28 AM ET). | grading, lab.backtest, lab.oracle, lab.sportsgrade -> scripts.reactgrade | untagged |
 | `redzone/lab/reasoner_data.py` | Training rows for the live game reasoner, distilled from the archive (no paid APIs). | config, lab.backtest, lab.sportsgrade, models, reasoner.brief, scoring.engine +1 -> agent.kaggle.build_moments_kaggle, scripts.build_reasoner_data, scripts.eval_reasoner, scripts.export_reasoner_llm, scripts.train_reasoner | untagged |
 | `redzone/lab/splits.py` | Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03). | - -> lab.breakblend, lab.tune, scripts.backfill_eval_v2, scripts.data_landing_grade, scripts.eval, scripts.eval_sports +4 | untagged |
+| `redzone/lab/syncgrade.py` | [EXP-800 / EXP-801] Grade the sync program on the sticks' own behind-live meter (overseer tests, Nov 5 2:30 AM). | - -> scripts.sync_grade | untagged |
 | `redzone/lab/syncsim.py` | [auto sync] Sync-error scorecard: how far the delay the app uses is from the screen's real delay. | decider.screen -> scripts.eval_sync | untagged |
 | `redzone/lab/timing.py` | [switch timing] How late we learn about a dead ball, and what that leaves before it airs on screen. | grading -> lab.backtest, scripts.burst_align, scripts.exp023_belief, scripts.timing_report | untagged |
 | `redzone/lab/worth.py` | [EXP-040] The end-of-night "worth it?" rating as an evaluation line (watch-science playbook §6). | - -> lab.offpolicy, scripts.worth_line | untagged |
@@ -351,6 +352,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/scout_probe.py` (entry) | Data scout probe: for each scout.json source, read the host's robots.txt and fetch ONE probe URL. | - -> - | untagged |
 | `scripts/switch_eval_pin.py` (entry) | Switch the default eval-data pin to a newly published release (Fri Nov 6: eval-data-v3), in one go. | lab.splits -> - | untagged |
 | `scripts/sync_fit.py` (entry) | [sync fit] EXP-084: one live night's sync calibration and delay error, from the app's own logs. | calibration, sync_probe -> - | untagged |
+| `scripts/sync_grade.py` (entry) | [EXP-800 / EXP-801] Grade one night's sticks on their own behind-live meter (redzone/lab/syncgrade.py). | lab.syncgrade -> - | untagged |
 | `scripts/sync_truth.py` (entry) | [RC7 req. | - -> - | untagged |
 | `scripts/synth_build.py` (entry) | [Data division E] Build synthetic + teacher token shards for the NFM, inside the 3x-real cap. | contracts.events, noggin.synth -> - | untagged |
 | `scripts/timing_report.py` (entry) | [switch timing] Dead-ball detection lag per source and league, and the on-screen lead it leaves. | lab.timing -> - | untagged |
@@ -365,7 +367,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/world_model_pilot.py` (entry) | World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end. | noggin.factory -> - | untagged |
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 
-## Untagged (254)
+## Untagged (256)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -465,6 +467,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/lab/splits.py`
 - `redzone/lab/sportsdata.py`
 - `redzone/lab/sportsgrade.py`
+- `redzone/lab/syncgrade.py`
 - `redzone/lab/syncsim.py`
 - `redzone/lab/timing.py`
 - `redzone/lab/tune.py`
@@ -605,6 +608,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/stick_cec.py`
 - `scripts/switch_eval_pin.py`
 - `scripts/sync_fit.py`
+- `scripts/sync_grade.py`
 - `scripts/sync_truth.py`
 - `scripts/synth_build.py`
 - `scripts/timing_report.py`

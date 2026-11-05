@@ -35,6 +35,8 @@ GRADERS = (
     "scripts/collect_live_test.py",
     "scripts/license_check.py",
     "scripts/label_leak_check.py",
+    "redzone/lab/syncgrade.py",
+    "scripts/sync_grade.py",
     "agent/distill/evaluate.py",
     "agent/distill/gold.py",
     "scripts/catchup_ratchet.py",
