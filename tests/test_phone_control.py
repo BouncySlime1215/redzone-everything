@@ -236,3 +236,43 @@ def test_watch_this_refuses_a_game_with_no_channel_instead_of_retrying(engine):
     engine.where[a] = Where(None, "no channel", "unknown", False)
     ok, msg = engine.action("hold", a)
     assert not ok and "No channel" in msg and engine.hold is None and engine.decider.user.locked_game is None
+
+
+def _plan(ok, rewind=0.0):
+    from redzone.decider.cuts import EntryPlan
+    return EntryPlan(ok=ok, rewind_s=rewind, landing=None, why="test")
+
+
+def test_tap_timed_flag_ships_off():
+    """[EXP-741] decider.entry.user_timed is off until lane 3's grade turns it on."""
+    from redzone.config import default
+    assert default("decider.entry.user_timed") is False
+
+
+def test_tap_timed_waits_for_a_dead_ball_in_the_game_it_joins(engine, monkeypatch):
+    """[EXP-741, Nick Nov 4 10:55 PM] one tap: a safe leave is not enough, the joined game's picture must
+    come up on a dead ball; a landing that needs a rewind waits too (the tap carries none)."""
+    engine.cfg.update({"decider": {"entry": {"user_timed": True}}})
+    a = _live(engine)[0]
+    d = Decision(time.time(), "switch", a, "you selected this game", State.PAUSED, kind="user")
+    engine.scored.setdefault(a, next(iter(engine.scored.values())))
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(False))
+    assert engine._tap_lands_dead(d, "youtubetv:espn") is False
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(True, 12.0))
+    assert engine._tap_lands_dead(d, "youtubetv:espn") is False
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(True))
+    assert engine._tap_lands_dead(d, "youtubetv:espn") is True
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: None)   # no timing evidence: as before
+    assert engine._tap_lands_dead(d, "youtubetv:espn") is True
+
+
+def test_tap_timed_off_changes_nothing_and_go_now_still_cuts_mid_play(engine, monkeypatch):
+    monkeypatch.setattr(engine.decider, "entry_plan", lambda *x, **k: _plan(False))   # play live in the target
+    a = _live(engine)[0]
+    d = Decision(time.time(), "switch", a, "you selected this game", State.PAUSED, kind="user")
+    assert engine._tap_lands_dead(d, "youtubetv:espn") is True          # flag off
+    engine.cfg.update({"decider": {"entry": {"user_timed": True}}})
+    first, cut, forced = _submit_one(engine, monkeypatch, force=True)   # the second "Go now" tap
+    assert (cut, forced) == (True, True)
+    first, cut, forced = _submit_one(engine, monkeypatch, force=False, dead_ball_after=True)
+    assert (first, cut) == (False, False) and not forced                # leave is safe, landing isn't

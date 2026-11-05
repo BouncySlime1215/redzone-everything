@@ -267,6 +267,9 @@ decider:
     crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
+    user_timed: false        # [EXP-741] one phone tap also waits until the joined game's picture would come up on a dead
+                             # ball (Nick Nov 4 10:55 PM); the second "Go now" tap still cuts at once. Off: a tap only
+                             # waits for a safe moment to leave the game on screen (Wed Nov 4 live: 15 taps landed mid-play)
     start_timed: false       # [EXP-739] the night's first pick waits for a whistle / rewinds like any entry (off: goes in
                              # live, which landed 6 NHL first picks 10-32 s after the opening faceoff, autopsy #302)
     lag_floor_s: 0           # [EXP-211] an open stoppage counts as dead only as far as a feed at least this slow would

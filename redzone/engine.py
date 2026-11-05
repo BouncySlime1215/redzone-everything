@@ -1417,7 +1417,8 @@ class Engine:
                     forced[0] = True   # the cut goes through on your second tap, not on a safe moment
                     return True
                 forced[0] = False
-                return not self._hold_waits(d) or self.safe_to_leave(before, required_s=8.0)
+                return (not self._hold_waits(d) or self.safe_to_leave(before, required_s=8.0)) \
+                    and self._tap_lands_dead(d, target)
             if time.time() < d.at + float(getattr(d, "defer_s", 0.0) or 0.0):
                 return False   # [EXP-803 A1] the break's tail: cut at the planned moment, not before
             return self._entry_valid(d, target) and (time.time() >= replay_exit if replay_exit is not None
@@ -1962,6 +1963,21 @@ class Engine:
             self.peek = None
             return False
         return True
+
+    def _tap_lands_dead(self, d: Decision, target: str | None) -> bool:
+        """[EXP-741, decider.entry.user_timed; Nick Nov 4 10:55 PM: "one tap still waits for a dead ball"] A
+        single tap's picture must come up on a dead ball in the game it joins, not only leave the old game
+        safely. The switch carries no rewind, so it waits for a landing that needs none. No timing evidence
+        (no timeline, RedZone, a reel) lets it go, as before. The second "Go now" tap never gets here."""
+        g = self.merger.games.get(d.target or "")
+        lg = getattr(getattr(g, "league", None), "value", None)
+        if d.action != "switch" or not for_league(self.cfg, "decider.entry.user_timed", lg, False):
+            return True
+        if d.target not in self.scored:
+            return True
+        cands1 = {d.target: Candidate(self.scored[d.target], target)}
+        plan = self.decider.entry_plan(d.target, cands1, time.time(), self.control.deadline_cost(target))
+        return plan is None or (plan.ok and not plan.rewind_s)
 
     def _forced_go(self, d: Decision) -> bool:
         """Your second "Go now" tap on the held game: it cuts at once, even mid-play (Nick, Nov 5)."""
