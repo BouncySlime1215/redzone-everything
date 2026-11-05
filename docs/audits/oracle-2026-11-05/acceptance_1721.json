@@ -1,0 +1,42 @@
+{
+ "nba": {
+  "nights": 9,
+  "highlight_plays": 92,
+  "recall_v1": 52.2,
+  "recall_v2": 58.7,
+  "diff": 6.5,
+  "ci95": [
+   -4.9,
+   18.1
+  ],
+  "strict_match5": {
+   "recall_v1": 50.8,
+   "recall_v2": 54.1
+  },
+  "games_zero_value_pct": {
+   "v1": 54.4,
+   "v2": 1.5
+  }
+ },
+ "nfl": {
+  "nights": 20,
+  "highlight_plays": 525,
+  "recall_v1": 82.7,
+  "recall_v2": 67.4,
+  "diff": -15.2,
+  "ci95": [
+   -19.3,
+   -10.6
+  ],
+  "strict_match5": {
+   "recall_v1": 87.4,
+   "recall_v2": 69.7
+  },
+  "games_zero_value_pct": {
+   "v1": 0.0,
+   "v2": 0.6
+  }
+ },
+ "tag": "personal-use, not for commercial release",
+ "split": "fit (train+valid) of eval-data-v1; locked never read"
+}
