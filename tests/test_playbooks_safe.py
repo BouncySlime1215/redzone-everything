@@ -152,3 +152,16 @@ def test_safe05_backward_jump_waits_for_a_fresh_poll(clk):
     for tl in dec.timelines.values():
         tl.fresh_at = clk.wall
     assert s.check(dec, switch(), cands, clk.wall) is None
+
+
+@pytest.mark.playbook("NET-01")
+def test_net01_offline_holds_every_cut_replays_too(clk):
+    s = safety()
+    dec, cands = world(clk, fresh_age=40.0)
+    dec.timelines["A"] = NS(fresh_at=clk.wall - 40.0)       # the game on screen is stale too: offline
+    replay = NS(action="replay", target="B", kind="replay", reason="x")
+    assert s.check(dec, replay, cands, clk.wall)[0] == "NET-01"
+    assert s.check(dec, switch(), cands, clk.wall)[0] == "NET-01"
+    dec.timelines["A"] = NS(fresh_at=clk.wall)               # on screen fresh: a replay is not this rule's
+    assert s.check(dec, replay, cands, clk.wall) is None
+    assert s.check(dec, switch(), cands, clk.wall)[0] == "SAFE-01"   # ...and the stale target is still SAFE-01

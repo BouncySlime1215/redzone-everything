@@ -4,6 +4,7 @@ connection re-proves itself at once (fakes only):
 - recover() reconnects sticks, probes breakers, drops the TV socket, resyncs the input, restarts
   FastCast and clears HTTP backoffs, and never presses a key;
 - the engine runs it only with hardening.mac on, on a wake or a home/away change (not from "unknown")."""
+import pytest
 from types import SimpleNamespace
 
 from redzone.engine import Engine
@@ -66,6 +67,7 @@ def fake_engine():
     return e, stopped
 
 
+@pytest.mark.playbook("MAC-01")
 def test_recover_resets_every_connection_and_presses_nothing():
     e, stopped = fake_engine()
     did = recover(e, "woke after 3600s")
@@ -103,6 +105,7 @@ def engine_like(on, where="home"):
     return e, c
 
 
+@pytest.mark.playbook("MAC-01")
 async def test_engine_recovers_after_sleep_only_when_on():
     for on in (False, True):
         e, c = engine_like(on)
@@ -114,6 +117,7 @@ async def test_engine_recovers_after_sleep_only_when_on():
         assert e.network.forced == (1 if on else 0)
 
 
+@pytest.mark.playbook("NET-01")
 async def test_engine_recovers_on_a_network_change_but_not_from_unknown():
     e, c = engine_like(True, where="unknown")
     assert await Engine._after_wake(e) is None

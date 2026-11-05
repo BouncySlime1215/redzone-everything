@@ -336,6 +336,7 @@ def test_engine_holds_a_governor_and_shows_it_on_the_phone(tmp_path):
     assert h["level"] == "eco" and "reel" in h["paused"] and "on battery" in h["why"]
 
 
+@pytest.mark.playbook("MAC-08")
 def test_no_reel_work_while_the_mac_needs_a_break(tmp_path, monkeypatch):
     e = _engine(tmp_path)
     monkeypatch.setattr(e.reeler, "enabled", lambda: True)

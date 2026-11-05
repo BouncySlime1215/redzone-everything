@@ -56,7 +56,7 @@ def test_playbook_plug_puts_one_of_each_inside_live_time():
     w, _, _ = _world()
     got = F.playbook(w, random.Random(3))
     names = [x.name for x in got]
-    assert len(set(names)) == len(names) == 5 and set(names) <= set(F.PLAYBOOK)
+    assert len(set(names)) == len(names) == 6 and set(names) <= set(F.PLAYBOOK)
     assert all(300 <= x.at <= 4 * 3600 - 600 for x in got)
 
 

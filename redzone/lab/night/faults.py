@@ -230,10 +230,50 @@ class CecSteal(Fault):
         h._switch_to(d)
 
 
+class MacOffline(Fault):
+    """playbook=NET-01: the Mac's internet is down (the LAN, sticks and TV still answer): every score
+    source fails for `dur` seconds. Response: keep playing the game on screen, no cuts until it's back."""
+    def start(self, world):
+        world.feed.outage = True
+        world.house.event("fault", "-", "mac offline")
+
+    def stop(self, world):
+        world.feed.outage = False
+
+
+class GameMissing(Fault):
+    """playbook=FEED-07: one live game (not the one on screen) drops off the scoreboard for `dur`
+    seconds. Response: keep its last known state (no switch into it on data we no longer get), and it
+    is still on the slate when it comes back."""
+    def start(self, world):
+        e = world.engine
+        cur = e.decider.current
+        live = [r.gid for _, r in world.feed.games if r.gid != cur and r.gid in e.merger.games
+                and getattr(e.merger.games[r.gid].phase, "value", "") == "live"]
+        if not live:
+            return
+        gid = sorted(live)[0]
+        world.feed.stale_games = set(world.feed.stale_games) | {gid}
+        self._engine = id(e)
+        self.info["game"] = gid
+        self.info["target"] = next((spec.target for spec, r in world.feed.games if r.gid == gid), None)
+        world.house.event("fault", "-", f"game {gid} missing from the scoreboard")
+
+    def stop(self, world):
+        gid = self.info.get("game")
+        if gid:
+            world.feed.stale_games = set(world.feed.stale_games) - {gid}
+            if id(world.engine) != getattr(self, "_engine", None):
+                self.info["restarted"] = True     # a restart rebuilt the merger meanwhile: nothing to judge
+            else:
+                self.info["kept"] = gid in world.engine.merger.games
+
+
 PLAYBOOK = {"feed_frozen": "FEED-02", "rate_limit": "FEED-06", "slow_poll": "MAC-05", "wifi_degrade": "SAFE-03",
             "buffering": "NET-02", "stick_drop": "STK-01/02", "stick_wedge": "STK-03", "flip_ignored": "TV-01",
             "st_down": "TV-02", "tv_other_input": "TV-03", "cec_steal": "TV-04",
-            "stick_paused": "STK-05", "buffer_lost": "STK-06"}   # fault kind -> docs/playbooks.md entry
+            "stick_paused": "STK-05", "mac_offline": "NET-01", "game_missing": "FEED-07",
+            "buffer_lost": "STK-06"}   # fault kind -> docs/playbooks.md entry
 
 
 class FeedStale(Fault):
@@ -326,7 +366,8 @@ KINDS = {"stick_drop": StickDrop, "stick_wedge": StickWedge, "still_watching": S
          "feed_frozen": FeedFrozen, "rate_limit": RateLimit, "slow_poll": SlowPoll, "wifi_degrade": WifiDegrade,
          "buffering": Buffering, "st_down": StDown, "tv_other_input": TvOtherInput, "cec_steal": CecSteal,
          "feed_stale": FeedStale, "sync_wide": SyncWide,
-         "stick_paused": StickPaused, "buffer_lost": BufferLost}
+         "stick_paused": StickPaused, "mac_offline": MacOffline, "game_missing": GameMissing,
+         "buffer_lost": BufferLost}
 
 
 def from_spec(spec: dict) -> Fault:
@@ -364,7 +405,7 @@ def default(rng: random.Random, live_windows: list[tuple[float, float]]) -> list
 
 
 def safety(world, rng: random.Random) -> list[Fault]:
-    """[playbooks SAFE-01/02/03/05] One fault per safety playbook, while games are live:
+    """[playbooks SAFE-01/02/03/05, NET-01] One fault per safety playbook, while games are live:
     `python -m redzone.lab.night --faults redzone.lab.night.faults:safety --set playbooks.safe.enabled=true`."""
     lw = world.live_windows
     a, b = lw[0][0], max(hi for _, hi in lw)
@@ -378,7 +419,8 @@ def safety(world, rng: random.Random) -> list[Fault]:
     return [FeedStale("feed_stale", when(0.10, 0.20), 900.0),
             SyncWide("sync_wide", when(0.30, 0.40), 600.0, info={"sd": 12.0}),
             WifiDegrade("wifi_degrade", when(0.50, 0.60), 900.0, info={"q": 13.0}),
-            ClockSkew("clock_skew", when(0.70, 0.80), 1800.0, info={"seconds": 30.0})]
+            ClockSkew("clock_skew", when(0.70, 0.80), 1800.0, info={"seconds": 30.0}),
+            MacOffline("mac_offline", when(0.85, 0.95), rng.uniform(90, 240))]
 
 
 def playbook(world, rng: random.Random) -> list[Fault]:
@@ -398,7 +440,8 @@ def playbook(world, rng: random.Random) -> list[Fault]:
            RateLimit("rate_limit", when(0.25, 0.35), rng.uniform(60, 180)),
            SlowPoll("slow_poll", when(0.40, 0.50), rng.uniform(300, 600), info={"seconds": rng.uniform(4, 9)}),
            WifiDegrade("wifi_degrade", when(0.55, 0.65), rng.uniform(300, 600), info={"scale": rng.choice([4.0, 8.0, 15.0])}),
-           Buffering("buffering", when(0.70, 0.80), rng.uniform(8, 40), rng.choice(["visible", "hidden"]))]
+           Buffering("buffering", when(0.70, 0.80), rng.uniform(8, 40), rng.choice(["visible", "hidden"])),
+           GameMissing("game_missing", when(0.82, 0.88), rng.uniform(60, 180))]
     return sorted(out, key=lambda f: f.at)
 
 

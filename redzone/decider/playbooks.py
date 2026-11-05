@@ -12,6 +12,8 @@ cause a cut. Nick's own buttons (kind "user") and the night's first pick are nev
                                                               "urgent" shortcut, no going in live)
   SAFE-03  Wi-Fi drop / buffering > 2 per minute on a stick   safe mode: cut only into a long break
                                                               (TV timeout, period end, halftime...)
+  NET-01   every feed stale (the Mac is offline)             no cut of any kind, catch-up replays too:
+                                                              keep the game on screen until a feed is back
   SAFE-05  the wall clock jumped (> 5 s vs monotonic)         no cut until re-anchored: every live
                                                               timeline has heard from its feed since,
                                                               or 90 s have passed
@@ -116,6 +118,11 @@ class Safety:
         self.checked += 1
         if self._reanchoring(dec, now):
             return "SAFE-05", f"wall clock jumped {self.skew_s:+.0f} s; re-anchoring"
+        # NET-01: every feed is stale (the Mac is offline): the leave can't be judged either, so no cut of
+        # any kind, a catch-up replay included (it's off a game whose state we no longer get).
+        cur_stale = self._stale(dec.current, cands.get(dec.current), dec.timelines.get(dec.current), now)
+        if cur_stale and d.target and self._stale(d.target, cands.get(d.target), dec.timelines.get(d.target), now):
+            return "NET-01", f"every feed stale (on screen: {cur_stale}); offline, keeping the game on screen"
         if d.action != "switch" or not d.target:
             return None
         x = cands.get(d.target)
