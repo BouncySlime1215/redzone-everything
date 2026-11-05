@@ -92,8 +92,17 @@ def count_params(vocab: int, d: int, layers: int, heads: int = 0, experts: int =
             "non_embedding_active": layers * (attn + ffn_active + norms)}
 
 
+RECIPE_KEYS = ("qk_norm", "relu2", "untie", "softcap", "value_emb", "doc_mask")
+
+
 def build_model(vocab: int, d: int, layers: int, heads: int, experts: int = 0, top_k: int = 2,
-                ffn_mult: float = 4.0, dropout: float = 0.0, capacity: float = 1.25):
+                ffn_mult: float = 4.0, dropout: float = 0.0, capacity: float = 1.25, qk_norm: bool = False,
+                relu2: bool = False, untie: bool = False, softcap: float = 0.0, value_emb: bool = False,
+                doc_mask: bool = False, bos_ids=None):
+    """Dense or MoE NFM. The speedrun flags (EXP-109, modded-nanoGPT bundle): qk_norm (RMSNorm on q and k), relu2
+    (ReLU^2 MLP at 4x), untie (separate zero-init head), softcap (cap * tanh(logits / cap)), value_emb (a value
+    embedding table mixed into every layer's v with a learned weight), doc_mask (no attention across games inside a
+    packed window: FlexAttention on CUDA when available, else an explicit SDPA mask; bos_ids = the BOS token ids)."""
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
@@ -158,20 +167,67 @@ def build_model(vocab: int, d: int, layers: int, heads: int, experts: int = 0, t
             self.aux = experts * (frac * probs.mean(0)).sum()
             return y.reshape(b, t, d)
 
+    class ReLU2(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.up, self.down = nn.Linear(d, 4 * d, bias=False), nn.Linear(4 * d, d, bias=False)
+
+        def forward(self, x):
+            return self.down(F.relu(self.up(x)).square())
+
+    hd = d // heads
+
     class Block(nn.Module):
         def __init__(self):
             super().__init__()
             self.n1, self.n2 = RMSNorm(d), RMSNorm(d)
             self.qkv, self.proj = nn.Linear(d, 3 * d, bias=False), nn.Linear(d, d, bias=False)
-            self.ffn = MoE() if experts else SwiGLU(ffn_hidden(d, ffn_mult))
+            self.ffn = MoE() if experts else ReLU2() if relu2 else SwiGLU(ffn_hidden(d, ffn_mult))
             self.drop = nn.Dropout(dropout)
+            if qk_norm:
+                self.qn, self.kn = RMSNorm(hd), RMSNorm(hd)
+            if value_emb:
+                self.ve_w = nn.Parameter(torch.zeros(()))
 
-        def forward(self, x):
+        def forward(self, x, ve=None, mask=None):
             b, t, _ = x.shape
-            q, k, v = self.qkv(self.n1(x)).view(b, t, 3, heads, d // heads).permute(2, 0, 3, 1, 4)
-            a = F.scaled_dot_product_attention(rope(q), rope(k), v, is_causal=True)   # flash kernel on GPU
+            q, k, v = self.qkv(self.n1(x)).view(b, t, 3, heads, hd).permute(2, 0, 3, 1, 4)
+            if qk_norm:
+                q, k = self.qn(q), self.kn(k)
+            if ve is not None:
+                v = v + self.ve_w * ve.view(b, t, heads, hd).transpose(1, 2)
+            q, k = rope(q), rope(k)
+            if mask is None:
+                a = F.scaled_dot_product_attention(q, k, v, is_causal=True)   # flash kernel on GPU
+            elif callable(getattr(mask, "as_tuple", None)) or type(mask).__name__ == "BlockMask":
+                from torch.nn.attention.flex_attention import flex_attention
+                a = flex_attention(q, k, v, block_mask=mask)
+            else:
+                a = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)
             x = x + self.drop(self.proj(a.transpose(1, 2).reshape(b, t, d)))
             return x + self.drop(self.ffn(self.n2(x)))
+
+    is_bos = torch.zeros(vocab, dtype=torch.bool)
+    if bos_ids is not None:
+        is_bos[torch.as_tensor(list(bos_ids), dtype=torch.long)] = True
+
+    def doc_ids(idx):
+        return torch.cumsum(is_bos.to(idx.device)[idx].int(), -1)          # b t: game number inside the window
+
+    def make_mask(idx):
+        b, t = idx.shape
+        doc = doc_ids(idx)
+        if idx.is_cuda:
+            try:
+                from torch.nn.attention.flex_attention import create_block_mask
+
+                def mod(bb, h, qi, ki):
+                    return (qi >= ki) & (doc[bb, qi] == doc[bb, ki])
+                return create_block_mask(mod, b, None, t, t, device=idx.device)
+            except Exception:  # noqa: BLE001 - older torch: explicit mask
+                pass
+        causal = torch.ones(t, t, dtype=torch.bool, device=idx.device).tril()
+        return (causal[None] & (doc[:, :, None] == doc[:, None, :]))[:, None]
 
     class NFM(nn.Module):
         def __init__(self):
@@ -180,12 +236,24 @@ def build_model(vocab: int, d: int, layers: int, heads: int, experts: int = 0, t
             self.blocks = nn.ModuleList(Block() for _ in range(layers))
             self.norm = RMSNorm(d)
             nn.init.normal_(self.tok.weight, std=0.02)
+            if untie:
+                self.head = nn.Linear(d, vocab, bias=False)
+                nn.init.zeros_(self.head.weight)
+            if value_emb:
+                self.ve = nn.Embedding(vocab, d)
+                nn.init.normal_(self.ve.weight, std=0.02)
 
         def forward(self, idx):
             x = self.tok(idx)
+            ve = self.ve(idx) if value_emb else None
+            mask = make_mask(idx) if doc_mask and bos_ids is not None else None
             for blk in self.blocks:
-                x = blk(x)
-            return self.norm(x) @ self.tok.weight.T           # tied head
+                x = blk(x, ve, mask)
+            x = self.norm(x)
+            logits = self.head(x) if untie else x @ self.tok.weight.T     # tied head by default
+            if softcap:
+                logits = softcap * torch.tanh(logits / softcap)
+            return logits
 
         def aux_loss(self):
             return sum(b.ffn.aux for b in self.blocks) / len(self.blocks) if experts else 0.0
@@ -213,11 +281,95 @@ class Batches:
         return np.stack([self.s[i:i + self.ctx + 1] for i in st]).astype(np.int64)
 
 
-def lr_at(step: int, total: int, peak: float, warmup: int) -> float:
+def lr_at(step: int, total: int, peak: float, warmup: int, sched: str = "cosine", decay_frac: float = 0.2) -> float:
+    """cosine: warmup then cosine to 10%. wsd (warmup-stable-decay): warmup, flat, then linear to 0 over the last
+    decay_frac of the steps (EXP-109)."""
     if step < warmup:
         return peak * (step + 1) / warmup
+    if sched == "wsd":
+        start = int(total * (1 - decay_frac))
+        return peak if step < start else peak * max(0.0, (total - step) / max(1, total - start))
     p = min(1.0, (step - warmup) / max(1, total - warmup))
     return peak * (0.1 + 0.9 * 0.5 * (1 + math.cos(math.pi * p)))
+
+
+def newton_schulz(g, steps: int = 5):
+    """Muon's orthogonalization (quintic Newton-Schulz, Keller Jordan's coefficients), batched over leading dims."""
+    a, b, c = 3.4445, -4.7750, 2.0315
+    x = g.bfloat16()
+    tr = x.size(-2) > x.size(-1)
+    if tr:
+        x = x.mT
+    x = x / (x.norm(dim=(-2, -1), keepdim=True) + 1e-7)
+    for _ in range(steps):
+        m = x @ x.mT
+        x = a * x + (b * m + c * m @ m) @ x
+    return (x.mT if tr else x).to(g.dtype)
+
+
+def make_muon(params, lr: float = 0.02, momentum: float = 0.95, weight_decay: float = 0.0):
+    import torch
+
+    class Muon(torch.optim.Optimizer):
+        """Momentum (Nesterov) then an orthogonalized update for hidden matrices; AdamW keeps the rest."""
+
+        def __init__(self, ps):
+            super().__init__(ps, dict(lr=lr, momentum=momentum, weight_decay=weight_decay))
+
+        @torch.no_grad()
+        def step(self):
+            for gr in self.param_groups:
+                for p in gr["params"]:
+                    if p.grad is None:
+                        continue
+                    buf = self.state[p].setdefault("buf", torch.zeros_like(p.grad))
+                    buf.mul_(gr["momentum"]).add_(p.grad)
+                    u = newton_schulz(p.grad.add(buf, alpha=gr["momentum"]))
+                    if gr["weight_decay"]:
+                        p.mul_(1 - gr["lr"] * gr["weight_decay"])
+                    p.add_(u, alpha=-gr["lr"] * max(1.0, p.size(-2) / p.size(-1)) ** 0.5)
+
+    return Muon(params)
+
+
+class Optims:
+    """AdamW alone, or Muon (hidden matrices inside the blocks) + AdamW (embeddings, head, norms, scalars)."""
+
+    def __init__(self, model, lr: float, muon: bool, muon_lr: float = 0.02):
+        import torch
+        hidden = [p for n, p in model.named_parameters() if n.startswith("blocks.") and p.ndim >= 2] if muon else []
+        ids = {id(p) for p in hidden}
+        rest = [p for p in model.parameters() if id(p) not in ids]
+        self.opts = [torch.optim.AdamW(rest, lr=lr, betas=(0.9, 0.95), weight_decay=0.1)]
+        if hidden:
+            self.opts.append(make_muon(hidden, lr=muon_lr))
+        for o in self.opts:
+            for g in o.param_groups:
+                g["base_lr"] = g["lr"]
+
+    def set_factor(self, f: float):
+        for o in self.opts:
+            for g in o.param_groups:
+                g["lr"] = g["base_lr"] * f
+
+    def zero_grad(self, set_to_none=True):
+        for o in self.opts:
+            o.zero_grad(set_to_none=set_to_none)
+
+    def step(self):
+        for o in self.opts:
+            o.step()
+
+    def state_dict(self):
+        return [o.state_dict() for o in self.opts]
+
+    def load_state_dict(self, sd):
+        for o, s in zip(self.opts, sd if isinstance(sd, list) else [sd]):
+            o.load_state_dict(s)
+
+    @property
+    def param_groups(self):
+        return self.opts[0].param_groups
 
 
 # ---------------------------------------------------------------------------------------------- train
@@ -246,6 +398,18 @@ def main(argv=None) -> int:
     ap.add_argument("--device", default="auto", choices=("auto", "xla", "cuda", "cpu"))
     ap.add_argument("--exp", default="EXP-106")
     ap.add_argument("--throughput-only", action="store_true", help="EXP-106: time steps, no grading")
+    # EXP-109 speedrun recipe (each piece ablated; adopt only what helps)
+    ap.add_argument("--muon", action="store_true", help="Muon for hidden matrices, AdamW for the rest")
+    ap.add_argument("--muon-lr", type=float, default=0.02)
+    ap.add_argument("--sched", default="cosine", choices=("cosine", "wsd"))
+    ap.add_argument("--qk-norm", action="store_true")
+    ap.add_argument("--relu2", action="store_true")
+    ap.add_argument("--untie", action="store_true")
+    ap.add_argument("--softcap", type=float, default=0.0)
+    ap.add_argument("--value-emb", action="store_true")
+    ap.add_argument("--doc-mask", action="store_true", help="no attention across games inside a packed window")
+    ap.add_argument("--compile", action="store_true", help="torch.compile (CUDA); XLA is always traced")
+    ap.add_argument("--target-loss", type=float, default=0.0, help="record tokens + hours to reach this valid loss")
     a = ap.parse_args(argv)
     import torch
     torch.manual_seed(SEED)
@@ -275,8 +439,15 @@ def main(argv=None) -> int:
     print(f"{kind} x{chips} | preset {a.preset} {np_['total'] / 1e6:.1f}M total / {np_['active'] / 1e6:.1f}M active | "
           f"train {len(train):,} tokens, budget {budget:,} = {total} steps", flush=True)
 
-    model = build_model(vocab, dropout=a.dropout, **cfg).to(dev)
-    opt = torch.optim.AdamW(model.parameters(), lr=a.lr, betas=(0.9, 0.95), weight_decay=0.1)
+    import noggin_tokens as V1
+    import noggin_tokens_v2 as V2
+    bos = list(range(V1.BOS0, V1.BOS0 + len(V1.LEAGUES))) + list(range(V2.BOS2_0, V2.BOS2_0 + V2.LEAGUE_SLOTS))
+    recipe = dict(qk_norm=a.qk_norm, relu2=a.relu2, untie=a.untie, softcap=a.softcap, value_emb=a.value_emb,
+                  doc_mask=a.doc_mask)
+    mk = dict(**cfg, **recipe, bos_ids=[b for b in bos if b < vocab])
+    model = build_model(vocab, dropout=a.dropout, **mk).to(dev)
+    opt = Optims(model, a.lr, a.muon, a.muon_lr)
+    fwd = torch.compile(model) if a.compile and kind == "cuda" else model
     shard = None
     if kind == "xla":
         import torch_xla.distributed.spmd as xs
@@ -302,18 +473,19 @@ def main(argv=None) -> int:
 
     def loss_of(x):
         with torch.autocast(**amp):
-            logits = model(x[:, :-1])
+            logits = fwd(x[:, :-1])
         lo = torch.nn.functional.cross_entropy(logits.float().reshape(-1, vocab), x[:, 1:].reshape(-1))
         return lo, lo + 0.01 * model.aux_loss()
 
-    def evaluate(n=8):
-        if vdata is None:
+    def evaluate(n=8, vd=None):
+        vd = vd or vdata
+        if vd is None:
             return None
         model.eval()
         tot = 0.0
         with torch.no_grad():
             for i in range(n):
-                x = torch.from_numpy(vdata.get(i)).to(dev)
+                x = torch.from_numpy(vd.get(i)).to(dev)
                 if shard:
                     shard(x)
                 tot += float(loss_of(x)[0])
@@ -330,11 +502,10 @@ def main(argv=None) -> int:
 
     t_prev, t0 = t_train, time.time()
     last_ck = t0
-    tp_tok, tp_t, warm = 0, 0.0, None
+    tp_tok, tp_t, warm, hit = 0, 0.0, None, None
     model.train()
     while step < total and t_prev + time.time() - t0 < a.minutes * 60:
-        for g in opt.param_groups:
-            g["lr"] = lr_at(step, total, a.lr, a.warmup)
+        opt.set_factor(lr_at(step, total, 1.0, a.warmup, a.sched))
         x = torch.from_numpy(data.get(step)).to(dev)
         if shard:
             shard(x)
@@ -361,28 +532,42 @@ def main(argv=None) -> int:
             if v is not None and v < best:
                 best = v
                 save(ck_dir / "best.pt")
+            if a.target_loss and hit is None and v is not None and v <= a.target_loss:
+                hit = {"step": step, "tokens": step * tok_per_step, "train_hours": round(t_train / 3600, 4)}
+                print("target reached:", hit, flush=True)
         t_train = t_prev + time.time() - t0
         if time.time() - last_ck > a.ckpt_min * 60:
             save(ck)
             last_ck = time.time()
     t_train = t_prev + time.time() - t0
     save(ck)
+    valid_by_league = {}
+    if (ck_dir / "best.pt").exists():                               # per-league valid loss of the selected model
+        model.load_state_dict(torch.load(ck_dir / "best.pt", map_location="cpu", weights_only=False)["model"])
+        for lg in sorted({x["league"] for x in sp["valid"]}):
+            s_lg = pack([x for x in sp["valid"] if x["league"] == lg])
+            if len(s_lg) > a.ctx + 1:
+                valid_by_league[lg] = round(evaluate(16, Batches(s_lg, a.ctx, a.batch, seed=SEED + 2)), 4)
     tps = tp_tok / max(tp_t, 1e-9)
     flops_tok = 6 * np_["non_embedding_active"] + 12 * cfg["layers"] * a.ctx * cfg["d"]
     g = {"exp": a.exp, "seed": SEED, "preset": a.preset, "params": np_, "vocab_size": vocab, "ctx": a.ctx,
          "batch": a.batch, "steps": step, "planned_steps": total, "tokens_seen": step * tok_per_step,
          "train_tokens_unique": int(len(train)), "epochs": round(step * tok_per_step / max(1, len(train)), 2),
          "best_valid_loss": None if best == float("inf") else round(best, 4), "learning_curve": curve,
+         "valid_loss_by_league": valid_by_league,
          "throughput": {"device": kind, "chips": chips, "tokens_per_s": round(tps),
                         "tokens_per_s_per_chip": round(tps / chips), "train_flops_per_token": flops_tok,
                         "achieved_tflops": round(tps * flops_tok / 1e12, 2), "warmup_steps_excluded": 20 if warm else 0},
          "train_minutes": round(t_train / 60, 1), "selection": "valid loss (best.pt)",
+         "recipe": {**recipe, "muon": a.muon, "muon_lr": a.muon_lr if a.muon else None, "sched": a.sched,
+                    "compile": a.compile, "lr": a.lr, "warmup": a.warmup},
+         "target": {"loss": a.target_loss, "reached": hit} if a.target_loss else None,
          "license": PERSONAL if any(x != "open" and not str(x).startswith("open") for x in licenses) else "open",
          "data_sha256_16": W.data_hash(games), "split": {k: len(v) for k, v in sp.items()}}
     if not a.throughput_only and (ck_dir / "best.pt").exists():
         st = torch.load(ck_dir / "best.pt", map_location="cpu", weights_only=False)
         gdev = "cuda" if torch.cuda.is_available() else "cpu"      # grade off the TPU (dynamic shapes)
-        gm = build_model(vocab, **cfg).to(gdev)
+        gm = build_model(vocab, **mk).to(gdev)
         gm.load_state_dict(st["model"])
         base = W.baselines(sp["train"])
         g["test_by_league"] = {}
