@@ -236,8 +236,8 @@ split.
 predicted values of staying and of the best alternative, the band, whether the floor held). Tomorrow's grade
 replays those rows against the hindsight oracle (regret, crunch-exit accuracy, high-leverage leaves).
 
-**5.5 First results.** See the EXP-1712 row in docs/experiments.md and
-`docs/reports/exp-1712-stay-leave-v1.md`.
+**5.5 First results.** EXP-1712 FAILED on valid (70.1 % vs the v1 placeholder's 86.3 %, floors held). Fix
+pre-registered as EXP-1714. See [the report](../reports/exp-1712-stay-leave-v1.md).
 
 ## 6. Teacher and synthetic data (Data E)
 

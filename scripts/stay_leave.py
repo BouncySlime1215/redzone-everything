@@ -68,10 +68,11 @@ def load(leagues, split, cache: Path | None):
     return out
 
 
-def xy(data):
+def xy(data, target: str = "reward"):
     Xs, ys = [], []
     for _lg, _d, _n, tab, F, _HL in data:
-        X, y = SL.rows(F, SL.label(SL.reward(tab)))
+        lab = {"reward": SL.reward, "nomine": SL.reward_nomine, "crunch": lambda t: t["crunch"]}[target](tab)
+        X, y = SL.rows(F, SL.label(lab))
         Xs.append(X)
         ys.append(y)
     return np.concatenate(Xs), np.concatenate(ys)
@@ -124,7 +125,7 @@ def summarize(arms: dict) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("fit", "grade"))
+    ap.add_argument("cmd", choices=("fit", "grade", "fit1714", "grade1714"))
     ap.add_argument("--leagues", default="nba,nfl,nhl")
     ap.add_argument("--split", default="valid", choices=("valid", "test", "train"))
     ap.add_argument("--out", type=Path, required=True)
@@ -134,6 +135,41 @@ def main(argv=None) -> int:
     leagues = [League(x) for x in a.leagues.split(",")]
     a.out.mkdir(parents=True, exist_ok=True)
     sp = league_splits(leagues)
+    if a.cmd == "fit1714":
+        tr, va = load(leagues, "train", a.cache), load(leagues, "valid", a.cache)
+        heads, info = {}, {"exp": "EXP-1714", "features": SL.FEATURES, "hp": SL.HP, "manifest": SL.manifest(sp)}
+        for tgt in ("nomine", "crunch"):
+            Xt, yt = xy(tr, tgt)
+            Xv, yv = xy(va, tgt)
+            sel = {mi: float(np.mean((SL.fit(Xt, yt, mi).predict(Xv) - yv) ** 2)) for mi in SL.MAX_ITER_GRID}
+            best = min(sel, key=sel.get)
+            heads[tgt] = {"all": SL.fit(Xt, yt, best), "no_state": SL.fit(Xt, yt, best, drop=("state",))}
+            info[tgt] = {"valid_mse": sel, "max_iter": best}
+            print(tgt, sel, best, flush=True)
+        blob = {k: SL.TwoHead(heads["nomine"][k], heads["crunch"][k]) for k in ("all", "no_state")}
+        (a.out / "model1714.pkl").write_bytes(pickle.dumps(blob))
+        (a.out / "fit1714.json").write_text(json.dumps(info, indent=1, default=float))
+        return 0
+    if a.cmd == "grade1714":
+        blob = pickle.loads((a.out / "model1714.pkl").read_bytes())
+        arms = {k: {} for k in ("full", "full_floored", "A0_past120", "B1_two_heads", "B2_no_state")}
+        for lg, day, n, tab, F, HL in load(leagues, a.split, a.cache):
+            sch = {"full": O.solve(n, "combined", tab), "full_floored": O.solve(n, "combined", SL.floored(tab, HL)),
+                   "A0_past120": SL.solve_policy(n, FEED_LAG_S, tab, F, HL, None, horizon_s=120.0),
+                   "B1_two_heads": SL.solve_policy(n, FEED_LAG_S, tab, F, HL, blob["all"]),
+                   "B2_no_state": SL.solve_policy(n, FEED_LAG_S, tab, F, HL, blob["no_state"])}
+            for k, sw in sch.items():
+                arms[k].setdefault(lg, []).append({"night": day, **SL.night_metrics(n, tab, HL, sw)})
+            print(f"  {lg} {day}", flush=True)
+        out = {}
+        for ceil in ("full_floored", "full"):
+            sub = {"full": arms[ceil], **{k: v for k, v in arms.items() if k not in ("full", "full_floored")}}
+            sub["A1_learned"] = sub["B1_two_heads"]          # summarize() deltas: B1 vs A0
+            out[ceil] = summarize(sub)
+        (a.out / f"grade1714_{a.split}.json").write_text(json.dumps({"summary": out, "nights": arms}, indent=1,
+                                                                    default=float))
+        print(json.dumps(out, indent=1, default=float))
+        return 0
     if a.cmd == "fit":
         tr, va = load(leagues, "train", a.cache), load(leagues, "valid", a.cache)
         Xt, yt = xy(tr)
@@ -181,8 +217,8 @@ def main(argv=None) -> int:
             rs = [{"night": d, **SL.night_metrics(n, tab, HL, SL.solve_policy(n, FEED_LAG_S, tab, F, HL, m))}
                   for _lg, d, n, tab, F, HL in data]
             summ.setdefault("ablation_pooled", {})[f"drop_{g}"] = SL.pct_ci(rs, full, base)
-    (a.out / f"grade_{a.split}.json").write_text(json.dumps({"summary": summ, "nights": arms}, indent=1))
-    print(json.dumps(summ, indent=1))
+    (a.out / f"grade_{a.split}.json").write_text(json.dumps({"summary": summ, "nights": arms}, indent=1, default=float))
+    print(json.dumps(summ, indent=1, default=float))
     return 0
 
 

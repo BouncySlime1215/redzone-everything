@@ -234,6 +234,28 @@ class Model:
         return np.mean([r.predict(X2) for r in self.regs], axis=0).reshape(sh)
 
 
+@dataclass
+class TwoHead:
+    """[EXP-1714] value = head 1 (reward without the your-team term) + 100 x your-team x head 2 (crunch count)."""
+    base: Model
+    crunch: Model
+    w_mine: float = O.OBJECTIVES["combined"][2]
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        mine = X[..., FEATURES.index("mine")]
+        return self.base.predict(X) + self.w_mine * mine * np.maximum(0.0, self.crunch.predict(X))
+
+
+def reward_nomine(tab: dict, objective: str = "combined") -> np.ndarray:
+    wb, wc, _wm, wd, _ = O.OBJECTIVES[objective]
+    return wb * tab["big"] + wc * tab["crunch"] - wd * tab["dead"]
+
+
+def floored(tab: dict, HL: np.ndarray) -> dict:
+    """The oracle's tables with the no-leave floor applied: `oracle.solve` on it is the floored ceiling."""
+    return {**tab, "leave": tab["leave"] & ~HL}
+
+
 def fit(X: np.ndarray, y: np.ndarray, max_iter: int, seeds=(0, 1, 2), drop: tuple = ()) -> Model:
     from sklearn.ensemble import HistGradientBoostingRegressor
     m = Model(drop=drop)
@@ -336,7 +358,7 @@ def night_metrics(n: O.Night, tab: dict, HL: np.ndarray, switches, objective: st
         hl_leaves += bool(HL[g, k])
         if hot[g, k]:
             exits += 1
-            exits_ok += pay[g, min(K - 1, k + 1)] == 0
+            exits_ok += int(pay[g, min(K - 1, k + 1)] == 0)
     hours = max(1e-9, (n.t1 - n.t0) / 3600)
     return {"value": O.schedule_value(n, tab, objective, switches), "hl_leaves": hl_leaves,
             "crunch_exits": exits, "crunch_exits_ok": exits_ok, "switches": c["switches"],
