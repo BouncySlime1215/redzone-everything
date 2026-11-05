@@ -1,0 +1,50 @@
+{
+ "nba": {
+  "games": 4770,
+  "plays": 2211899,
+  "games_zero_oracle_value_pct": 57.5,
+  "top1pct_swing_plays_counted_big_or_crunch_pct": 26.3,
+  "top1pct_swing_plays_before_last_2min_pct": 73.9,
+  "big_plays_below_median_swing_pct": 4.1,
+  "pair_agree_vs_excitement": {
+   "oracle_value": 73.9,
+   "top_swings": 82.8,
+   "closeness_final": 77.3
+  },
+  "pair_agree_oracle_value_vs_closeness": 77.9,
+  "spearman_oracle_value_vs_final_margin": -0.825,
+  "oracle_value_share_by_final_margin": {
+   "(-1, 5]": 0.732,
+   "(5, 10]": 0.251,
+   "(10, 20]": 0.017,
+   "(20, 80]": 0.0
+  },
+  "excitement_share_by_final_margin": {
+   "(-1, 5]": 0.365,
+   "(5, 10]": 0.3,
+   "(10, 20]": 0.247,
+   "(20, 80]": 0.087
+  },
+  "games_share_by_final_margin": {
+   "(-1, 5]": 0.259,
+   "(5, 10]": 0.272,
+   "(10, 20]": 0.308,
+   "(20, 80]": 0.161
+  }
+ },
+ "nfl": {
+  "games": 1087,
+  "plays": 189481,
+  "games_zero_oracle_value_pct": 63.3,
+  "top1pct_swing_plays_counted_big_or_crunch_pct": 17.7,
+  "top1pct_swing_plays_before_last_2min_pct": 82.3,
+  "big_plays_below_median_swing_pct": null,
+  "pair_agree_vs_excitement": {
+   "oracle_value": 73.6,
+   "top_swings": 78.9
+  },
+  "top1pct_swing_plays_in_garbage_pct": 1.5
+ },
+ "tag": "personal-use, not for commercial release",
+ "seasons": "2021-2024 regular season, locked nights excluded"
+}
