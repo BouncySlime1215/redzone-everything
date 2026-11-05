@@ -125,7 +125,7 @@ def summarize(arms: dict) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("fit", "grade", "fit1714", "grade1714"))
+    ap.add_argument("cmd", choices=("fit", "grade", "fit1714", "grade1714", "grade125"))
     ap.add_argument("--leagues", default="nba,nfl,nhl")
     ap.add_argument("--split", default="valid", choices=("valid", "test", "train"))
     ap.add_argument("--out", type=Path, required=True)
@@ -169,6 +169,22 @@ def main(argv=None) -> int:
         (a.out / f"grade1714_{a.split}.json").write_text(json.dumps({"summary": out, "nights": arms}, indent=1,
                                                                     default=float))
         print(json.dumps(out, indent=1, default=float))
+        return 0
+    if a.cmd == "grade125":
+        blob = pickle.loads((a.out / "model1714.pkl").read_bytes())
+        arms = {k: {} for k in ("full", "A0_past120", *[f"C_m{m:g}" for m in SL.MARGIN_GRID])}
+        for lg, day, n, tab, F, HL in load(leagues, a.split, a.cache):
+            sch = {"full": O.solve(n, "combined", SL.floored(tab, HL)),
+                   "A0_past120": SL.solve_policy(n, FEED_LAG_S, tab, F, HL, None, horizon_s=120.0)}
+            for m in SL.MARGIN_GRID:
+                sch[f"C_m{m:g}"] = SL.solve_policy(n, FEED_LAG_S, tab, F, HL, blob["all"], margin=m)
+            for k, sw in sch.items():
+                arms[k].setdefault(lg, []).append({"night": day, **SL.night_metrics(n, tab, HL, sw)})
+            print(f"  {lg} {day}", flush=True)
+        summ = summarize(arms)
+        (a.out / f"grade125_{a.split}.json").write_text(json.dumps({"summary": summ, "nights": arms}, indent=1,
+                                                                   default=float))
+        print(json.dumps(summ, indent=1, default=float))
         return 0
     if a.cmd == "fit":
         tr, va = load(leagues, "train", a.cache), load(leagues, "valid", a.cache)
