@@ -71,9 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-NHL rule#1 trade question waiting on Nick (review thread)
-L4 watchdog trained, grading test rows; A100 GR step 958/7862
-Usage 39%
+Colab: L4 watchdog answered 686/686, grading; A100 GR 1100/7862. Both tabs showing Connecting.
+Integrator logged NBA/NHL set (bd3c88f); warns global keys fail NFL big-plays, roll back before TNF.
+Usage 39%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
