@@ -894,12 +894,12 @@
   "file": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/ui/ui_13_stats_for_nerds.py",
   "title": "YTTV TV app 'Stats for nerds' overlay on the hidden stick: live latency / ingest time?",
   "mode": "hidden-stick-keys",
-  "measures": "OCR of the Stats for nerds overlay every 1 s (latency, buffer health, any epoch/clock), with the stick's E beside each frame",
+  "measures": "Broadcast delay value of this stick (read only, from the \u22ee menu tile), then OCR of the Stats for nerds overlay every 1 s (latency, buffer health, any epoch/clock) with the stick's E beside each frame",
   "needs": "YTTV playing on the hidden stick; auto-switching paused or --allow-app-active",
   "pass_rule": "overlay opens and >= 10 frames carry a latency or ingest number (informational: reports shows_latency / shows_ingest)",
   "needs_game": false,
   "dry_run_ok": true,
-  "notes": "CENTER only on a focused label that matches more/options, then 'Stats for nerds'; BACK x3 and re-tune at the end. Saves recipes.json stats_for_nerds.",
+  "notes": "Menu (overseer 8:10 AM): \u22ee -> Audio options | Auto-pause | Broadcast delay | Send feedback | Stats for nerds. Never LEFT/RIGHT on the scrubber (it seeks): DOWN until focus is on a known button. Picks Nick on 'Who's watching?'. Never touches Broadcast delay. Turns Stats for nerds back off, BACK x3, re-tune. Run once per stick (hidden each time) to read both sticks' Broadcast delay.",
   "dry_run_verdict_2026_11_04": "PASS (parser)"
  },
  {
