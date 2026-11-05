@@ -96,13 +96,14 @@ class BufferShadow:
 
     def tick(self, cands: dict) -> object | None:
         self.editor.entry_cost = getattr(self.live, "entry_cost", None)   # the engine's measured switch costs
+        before = self.editor.current   # decide(commit=True) moves it: the stay/leave call is about this game
         try:
             d = self.editor.decide(cands, None, commit=True)
         except Exception:
             log.exception("buffer shadow decide failed")
             return None
         try:
-            self._stay_leave(d, cands, self._clock())
+            self._stay_leave(d, cands, self._clock(), before)
         except Exception:
             log.exception("buffer shadow stay/leave log failed")
         key = (d.action, d.target, d.reason)
@@ -185,10 +186,9 @@ class BufferShadow:
                 "score": [getattr(getattr(g, "home", None), "score", None), getattr(getattr(g, "away", None), "score", None)]
                 if g is not None else None, "spread": getattr(g, "spread", None), "situation": sit or None}
 
-    def _stay_leave(self, d, cands: dict, now: float) -> None:
+    def _stay_leave(self, d, cands: dict, now: float, on: str | None) -> None:
         """[Nick 9:45 AM] every stay/leave call with the full game context and the predicted value of staying
         vs the best alternative (the decider's own value; Watch Value when lane 1 sets it). Log only."""
-        on = self.editor.current
         if not on or on not in cands:
             return
         leave = d.action == "switch" and d.target != on
