@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-BUDGET 12:40 PM: weekly usage 71% (+2 in 30 min, ~4%/h); coordinator capped at ~2%/h, <=6 threads, target <=76% by 6:30 PM so tonight can run and be graded.
+Usage flat at 71% over 30 min: the ~2%/h cap is working. Tonight-critical + prioritization model v1 threads running; 3 PM readiness table next.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
