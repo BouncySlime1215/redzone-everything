@@ -17,7 +17,7 @@ Derived rows are listed after the ranking and never count toward new information
 |---:|---|---|---:|---|---|---:|---:|---:|---|---|---|---|
 | 1 | nba | v2 context: live line state (in-game price moves) | 0 | context-new | yellow-B (personal-use, not for commercial release) | 18 | 0.5 | 54.0 | ready | crew D | none | Polymarket documented API, plan B personal use; never shown or used to nudge |
 | 2 | nba | NBA.com liveData pbp with wall clocks (timeActual), 2019-20 to 2025-26 | 0 | events | yellow-B (personal-use, not for commercial release) | 26 | 2 | 19.5 | ready | crew A | none | NBA.com ToS §1/§9 personal non-commercial; catalog #202 yellow (private, credit NBA.com); personal use under plan B |
-| 3 | nba | NBA.com liveData forward collection (every finished game, nightly) | 0 | events | yellow-B (personal-use, not for commercial release) | 3.3 | 0.3 | 16.5 | ready | crew A | none | NBA.com ToS personal non-commercial; catalog #202 yellow; personal use under plan B |
+| 3 | nba | NBA.com liveData forward collection (every finished game, nightly) | 0 | events | yellow-B (personal-use, not for commercial release) | 3.3 | 0.3 | 16.5 | probe | crew A | none | NBA.com ToS personal non-commercial; catalog #202 yellow; personal use under plan B |
 | 4 | nba | v2 context: injury report status at game time | 0 | context-new | yellow-B (personal-use, not for commercial release) | 2.1 | 0.2 | 10.5 | ready | crew B | none | nflverse CC-BY-4.0; NBA archive release licence unverified; ESPN-derived only under plan B for personal use |
 | 5 | nba | v2 context: national TV slot / network per game | 0 | context-new | yellow | 0.4 | 0.05 | 8.0 | ready | crew B | none | CC-BY-4.0 / CC BY-SA 4.0 (facts only, credit Wikipedia) |
 | 6 | nba | NBA Last Two Minute reports (atlhawksfanatic/L2M) | 0 | context-new | green | 0.35 | 0.05 | 7.0 | ready | crew B | none | MIT repo over public NBA reports; credit both |
@@ -74,9 +74,9 @@ Derived rows are listed after the ranking and never count toward new information
 
 | Bucket | Sources | Est. tokens (M) |
 |---|---:|---:|
-| Ready for a crew | 19 | 891.75 |
+| Ready for a crew | 18 | 888.45 |
 | Pulling or done (real) | 4 | 101.9 |
-| Probe / hold (scout) | 6 | 222 |
+| Probe / hold (scout) | 7 | 225.3 |
 | Needs Nick | 4 | 76.5 |
 | Parked | 6 | 66.6 |
 | Verdict green | 4 | 76.25 |
@@ -96,8 +96,8 @@ Derived rows are listed after the ranking and never count toward new information
 ## Why each source
 
 - **v2 context: live line state (in-game price moves)** (all six, 2024+ dense): the only free in-game line source; ~6k games 2024+ x ~500 minute ticks x 6 tokens. Gap: nothing free before 2024 Access: Polymarket clob /prices-history at 1-minute fidelity per game market (row polymarket-history); The Odds API free tier forward (key pending).
-- **NBA.com liveData pbp with wall clocks (timeActual), 2019-20 to 2025-26** (NBA, 2019-2026): the NBA fix: real wall-clock time on every event, so timeouts, reviews and quarter breaks (where 21% of NBA entries land mid-commercial) have measured lengths per game. Lane 1 already parses these files (#181) Access: shufinskiy/nba_data cdnnba tar.xz (GitHub/Kaggle mirror) for history; never touches stats.nba.com.
-- **NBA.com liveData forward collection (every finished game, nightly)** (NBA, 2026-27 on): this season's nights with wall clocks, so the NBA graded set grows past 60 decisions per gate and matches the live feed exactly Access: one polite fetch per finished game (~10 a night) from cdn.nba.com liveData on a GitHub Actions schedule; robots first.
+- **NBA.com liveData pbp with wall clocks (timeActual), 2019-20 to 2025-26** (NBA, 2019-2026): the NBA fix: real wall-clock time on every event, so timeouts, reviews and quarter breaks (where 21% of NBA entries land mid-commercial) have measured lengths per game. Lane 1 already parses these files (#181). History comes from the GitHub/Kaggle tar.xz, so it never calls NBA.com and the stats.nba.com 403 (#275) does not apply Access: shufinskiy/nba_data cdnnba tar.xz (GitHub/Kaggle mirror) for history; never touches stats.nba.com.
+- **NBA.com liveData forward collection (every finished game, nightly)** (NBA, 2026-27 on): this season's nights with wall clocks, so the NBA graded set grows past 60 decisions per gate and matches the live feed exactly. The media crew saw stats.nba.com 403 an honest client (#275); the CDN is a different host, so probe it, don't assume Access: cdn.nba.com liveData (static JSON on the CDN, not stats.nba.com). GATE before any run: scripts/scout_probe.py --only nba-cdn-nightly from the job runner must show robots OK and HTTP 200 with the honest User-Agent; any 403/429 = stop, never work around it. FALLBACK if blocked: ESPN game summaries (plan B, restrictive; the live app already records them for eval-data) for the same nights.
 - **v2 context: injury report status at game time** (NFL, NBA (+NHL/MLB via plan B), NFL 2009+, NBA 2018-12+): ~20 tokens per game (who is out or questionable, by role and star rank); must be the report as of tip/kick time, never later (leakage) Access: nflverse load_injuries(); NBA official injury report archive (sportsdataverse-data release); ESPN injuries in sportsdataverse releases for NHL/MLB/CBB (plan B).
 - **v2 context: national TV slot / network per game** (all six, NFL 1999+; others patchy): national window = importance prior; 2 tokens per game Access: nflverse schedules; Wikipedia season broadcast tables (CC BY-SA, facts only); Nick's own stick logs for 2026+.
 - **NBA Last Two Minute reports (atlhawksfanatic/L2M)** (NBA, 2014-15 to 2024-25): 4,479 crunch games the league itself picked, with reviewed calls = long safe stoppages in NBA crunch time (crunch live 90.1%) Access: bulk CSV from GitHub.
