@@ -71,8 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick 9:50 AM: "done directing, get it done by tonight." Coordinator given full autonomy + 6:30 PM deadline, 8 items with owners, readiness tables at 12/3/6 PM. Checklist: scratchpad tonight.md.
-NHL re-enabled. Ladder kernel died 9:15; resume on reconnect. Usage 63%.
+Nick 10:00 AM: unlimited lanes, ALL done today. 10 dedicated threads T1-T10 ordered (buffer shadow, replay sim, oracle teacher, YTTV tests, TNF scorebug feed, faster feeds, SEEK_TO helper, Watch Value v2 + stay/leave, RC8 buffer-ON candidate, models). 6:30 PM deadline. Usage 63%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
