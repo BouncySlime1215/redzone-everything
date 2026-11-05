@@ -1,0 +1,16 @@
+{
+ "updated": "2026-11-05T15:45Z",
+ "sources": {
+  "yt": {
+   "clips": 30,
+   "linked": 0,
+   "tokens_new": 150,
+   "tokens_derived": 60,
+   "bytes": 2096,
+   "license": "YouTube Data API v3 (Nick's key), API Services ToS; stats refreshed <=30 days; yellow-B personal use",
+   "tag": "personal-use, not for commercial release"
+  }
+ },
+ "total_new": 150,
+ "total_derived": 60
+}
