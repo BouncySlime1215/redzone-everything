@@ -71,9 +71,13 @@ jobs:
           fi
       - name: buzz
         run: |
+          # committed schedule CSVs (redzone/context/schedules/*.csv.gz; ids = the play table's) for history;
+          # NFL already comes from nflverse, so only the non-NFL ones are passed
+          SCHED=""; for f in redzone/context/schedules/*.csv.gz; do
+            case "$f" in *nfl.csv.gz) ;; *) [ -f "$f" ] && SCHED="$SCHED --schedule $f";; esac; done
           if [ "$MODE" = backfill ]; then
             python scripts/context/run_buzz.py backfill --from "$FROM" --to "$TO" --max-files "$MAXF" \
-              --stride "$STRIDE" --leagues "$LEAGUES" --max-minutes 95
+              --stride "$STRIDE" --leagues "$LEAGUES" --max-minutes 95 $SCHED
           else
             python scripts/context/run_buzz.py live --leagues "$LEAGUES"
           fi

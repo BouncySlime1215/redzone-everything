@@ -1,0 +1,46 @@
+# Data crew B: kickoff weather for outdoor games from the Open-Meteo historical archive (CC BY 4.0, credit
+# Open-Meteo; free non-commercial tier, <= 10k calls/day: one call per venue-season). Runs on a free GitHub runner,
+# never on the Mac. Push a branch data-b-weather/<league> (nfl or mlb) to run it; derived fact shards only are
+# pushed to data-b-out/weather-<league>. Spec: docs/datasources/context-stakes-weather.md.
+name: context-weather
+on:
+  push:
+    branches: ["data-b-weather/**"]
+  workflow_dispatch:
+    inputs:
+      league: {default: nfl}
+jobs:
+  weather:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements-ci.txt requests
+      - name: league
+        run: |
+          L="${{ inputs.league }}"
+          case "$GITHUB_REF_NAME" in data-b-weather/*) L="${L:-${GITHUB_REF_NAME#data-b-weather/}}";; esac
+          echo "LEAGUE=${L:-nfl}" >> "$GITHUB_ENV"
+      - name: inputs
+        run: |
+          mkdir -p /tmp/in
+          curl -sSL -o /tmp/in/games.csv https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv
+          if [ "$LEAGUE" = mlb ]; then
+            git clone -q --depth 1 https://github.com/chadwickbureau/retrosheet /tmp/in/retrosheet
+          fi
+      - name: weather archive
+        run: |
+          ARGS="--games /tmp/in/games.csv"
+          [ "$LEAGUE" = mlb ] && ARGS="--retro-dir /tmp/in/retrosheet"
+          python scripts/context/weather.py archive --league "$LEAGUE" $ARGS --out /tmp/out --cache /tmp/cache --max-calls 9000
+      - name: push derived shards to data-b-out/weather-<league>
+        if: always()
+        run: |
+          mkdir -p /tmp/out && cd /tmp/out && ls -la
+          git init -q -b "data-b-out/weather-$LEAGUE" && git add -A
+          git -c user.name=context-weather -c user.email=context-weather@users.noreply.github.com \
+            commit -qm "context-weather $LEAGUE from $GITHUB_SHA (run $GITHUB_RUN_ID)" || exit 0
+          git push -f "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY" "HEAD:refs/heads/data-b-out/weather-$LEAGUE"

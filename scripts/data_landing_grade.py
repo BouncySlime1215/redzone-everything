@@ -92,7 +92,7 @@ def locked_nights(archive: Path = ARCHIVE, leagues=None) -> dict[str, set[str]]:
     for lg in leagues or sorted(p.name for p in Path(archive).glob("*") if p.is_dir()):
         d = Path(archive) / lg
         if d.is_dir():
-            out[lg] = set(splits.split_nights(splits.archive_nights(d, end(lg, None))).test)
+            out[lg] = set(splits.league_split(lg, splits.archive_nights(d, end(lg, None))).test)
     return out
 
 

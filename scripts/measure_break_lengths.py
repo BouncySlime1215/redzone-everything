@@ -45,7 +45,7 @@ def network(event: dict) -> str:
 
 def rows(league: League, which: str) -> list[dict]:
     arch = ROOT / "data" / "archive" / league.value
-    sp = splits.split_nights(splits.archive_nights(arch))
+    sp = splits.league_split(league.value, splits.archive_nights(arch))
     want = set(sp.train) if which == "train" else set(sp.valid)
     out = []
     for sb in sorted(arch.glob("scoreboard_*.json")):

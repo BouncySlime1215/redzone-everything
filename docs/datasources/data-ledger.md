@@ -98,3 +98,15 @@ D's and are not in these rows. Data is in the private project folder (`data-b/sh
 | Open-Meteo archive weather (NFL, MLB outdoor) | yellow (CC BY 4.0, non-commercial) | planned (cloud run) | | | | | | Open-Meteo CC BY 4.0, credit Open-Meteo |
 | CFBD media, rankings, records, talent, games | yellow | blocked (Nick's CFBD key) | | | | | | CollegeFootballData.com free tier, credit CFBD |
 | **Crew B total** | | | | 69,182 | **2,715,278** | **590,755** | **2,124,523** | |
+
+### Cycle 16 (2026-11-05), crew B: NBA first (Nick 2:00 AM)
+
+| Source | Verdict | Status | Seasons held | Games | Facts (tokens) | New | Derived | License line |
+|---|---|---|---|---:|---:|---:|---:|---|
+| Our NBA standings, Elo, playoff/play-in odds sims (stakes swing) | derived (hoopR schedules, plan B) | done | 2004-05 to 2026-27 | 28,542 | 832,494 | 0 | 832,494 | derived from hoopR ESPN schedules; personal-use, not for commercial release |
+| NBA rest, back-to-back, travel, time-zone shift | derived | done | 2004-05 to 2026-27 | 29,649 | 411,630 | 0 | 411,630 | same |
+| NBA national TV (hoopR ESPN broadcast fields) | yellow-B | done | 2019-20 to 2026-27 | 7,621 | 10,526 | 10,526 | 0 | hoopR/ESPN schedules; personal-use, not for commercial release |
+| NBA Last Two Minute reports (atlhawksfanatic/L2M) | green | done | 2014-15 to 2024-25 | 4,484 | 35,698 | 26,804 | 8,894 | L2M MIT over public NBA reports; credit L2M and the NBA |
+| NBA official injury report archive | yellow-B | code ready (Actions run) | | | | | | NBA official injury report, public; personal-use, not for commercial release |
+| Wikipedia pageviews + edits (buzz, test run) | green | done (test) | NFL Oct 5-8 2025 | 13 | 1,352 | 1,352 | 0 | Wikimedia CC0 |
+| **Cycle 16 total** | | | | | **1,291,700** | **38,682** | **1,253,018** | |

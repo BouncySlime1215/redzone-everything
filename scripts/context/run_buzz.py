@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import io
 import json
 import logging
@@ -83,8 +84,8 @@ def espn_rows(league: str, data: dict) -> list[dict]:
 
 def load_schedules(http: Http, idx: TeamIndex, leagues, csvs=(), nflverse=True, espn_dates=()) -> list[dict]:
     rows: list[dict] = []
-    for p in csvs:
-        with open(p, newline="") as f:
+    for p in csvs:   # plain or .csv.gz (the committed redzone/context/schedules/*.csv.gz)
+        with (gzip.open(p, "rt", newline="") if str(p).endswith(".gz") else open(p, newline="")) as f:
             rows += list(csv.DictReader(f))
     if nflverse and "nfl" in leagues:
         r = http.get(NFLVERSE_GAMES)

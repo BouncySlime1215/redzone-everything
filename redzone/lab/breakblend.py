@@ -104,7 +104,7 @@ def collect(league: str, archive: Path | None = None, root: Path | None = None, 
 def eligible_nights(league: str, archive: Path | None = None, end: str | None = None) -> list[str]:
     """Archive nights that are neither LOCKED test nights nor nights the brain saw."""
     archive = archive or (datasets.ROOT / "data" / "archive" / league)
-    s = splits.split_nights(splits.archive_nights(archive, end))
+    s = splits.league_split(Path(archive).name, splits.archive_nights(archive, end))
     seen = BRAIN_SEEN_THROUGH.get(league, "99999999")
     return [n for n in s.train + s.valid if n > seen]
 

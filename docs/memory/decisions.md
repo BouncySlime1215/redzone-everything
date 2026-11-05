@@ -758,3 +758,45 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   MLB and CBB work continues only where it's shared code or data. NBA's graded set grows until every NBA gate has
   ≥ 60 decisions (release_gate.MIN_DECISIONS = 60 already holds PASS back below that; locked NBA has 16 big plays
   over 4 nights today).
+- 2026-11-05 (integrator, grader v18): #279 accepted from lane 3. `redzone/lab/syncgrade.py` + `scripts/sync_grade.py`
+  grade EXP-800/801 on the sticks' own behind-live meter (E = wall - extrapolated media_session position). EXP-800:
+  |belief - meter| p95 <= 2 s per stick on >= 200 rows; absolute latency PENDING per channel until an on-screen anchor
+  is measured, never filled from an assumed lag. EXP-801: tunes land within 3 s of the channel's live edge, with the
+  reference pinned per app (YTTV: landing position, measured constant by the overseer; others: E at landing), never
+  picked from the data. Sticks print as stick1, stick2 (public repo). Grader freeze v18.
+- 2026-11-05 (integrator, grader v19): **lock truth comes from real outcomes** (lane 3, EXP-302, #278/#283).
+  `evaluate.truth_lock` is must_see when y_out (a lead change/catch or a >= 0.20 win-probability swing within the
+  league's pre-registered horizon N: NBA/CBB 180 s, NFL/NHL 300 s, MLB 600 s), watch when y_out2 (2N), else none;
+  never the crunch/clock rule (gold.py stays the student's training target only). Context-only AUC on train/valid,
+  lock / watch: NBA 0.851 / 0.868, NFL 0.752 / 0.749, NHL 0.771 / 0.756, all < 0.95, so NBA, NFL and NHL lock_acc
+  returns; CFB, CBB and MLB stay out until their reports pass, and rows without y_out never count. A test fails if a
+  league is graded without PASSing lock and watch reports. `redzone/lab/outcome_label.py` joins the freeze.
+  Grader freeze v19.
+- **2026-11-05 (Nick, 2:00 AM ET): work priority is NBA first, then NFL** ("I really only care about NBA and NFL, mostly
+  NBA because that's what's on most right now"). Every queue is re-ranked by NBA impact, then NFL; NHL/MLB/CBB work
+  continues only where it is shared code or data. Grow the NBA graded set to >= 60 decisions per gate. This orders the
+  work; the decider's league order on the TV (CLAUDE.md north star) is unchanged.
+- **2026-11-05 (Nick, 2:10 AM ET): sync is the #1 priority, above everything except Rule #1.** One program: lane 2 owns,
+  lane 3 grades, lane 4 integrates. (A) per-stick offset = provider latency + distance behind the live edge from Fire TV
+  media_session (adb, every second), logged to data/sync_truth; (B) every tune forces and verifies the live edge, hidden
+  stick preloaded at the edge; (C) fastest feed per league wins; (D) belief tracker switches only when its band says dead
+  ball -> restart; (E) ground truth without HDCP capture; camera (scorebug OCR) and mic (audio fingerprint) need Nick's
+  explicit OK first. Gates: per-stick delay error p95 <= 2 s, 0 entries mid-commercial, switch <= 3 s incl. Prime. Test
+  only when Nick isn't watching. Rows EXP-800..804.
+- 2026-11-05 (Nick 2:10 AM + overseer 2:30 AM, sync program steps A + B, lane 2): new `sync.edge` block. **`sync.edge.enabled: true`** (shadow, read-only): every 1 s, one `cat /proc/uptime; dumpsys media_session` per stick measures how far it plays behind its live edge (the overseer's meter: pos_now = position + speed x (uptime - updated), E = wall - pos_now, behind = E - E at the tune's landing; a deep-link tune lands on the edge to ~0.5 s) into data/sync_truth/edge/<night>.jsonl and `Controller.behind_live`; the 5 s probe rows now carry uptime_ms and pos_now_s. **`force_live: false`, `force_live_visible: false`** (`force_live_s: 2.0`): when on, a stick > 2 s behind its edge beyond the app's own hold is re-linked to live (hidden stick: a refresh preload; the stick on screen: a fresh deep link, only on a dead ball), at most once per game per 60 s; off, rows say `would_force`. Why: Nick's 'know where each stick is' and 'auto re-link whenever behind > 2 s'. The read presses nothing, so it is shadow ON; a re-link changes tunes, so it ships OFF until Nick picks on the RC7 sync card.
+- 2026-11-05 (integrator, grader v20, before TNF): three grader changes from lane 3. (1) #284: reactgrade's WIN needs
+  big live % not down by more than CRUNCH_PTS (bootstrap lower bound), Nick's "% live": a reacting arm may not win by
+  trading live plays for late replays. Frozen only after EXP-209 closed (winner A on the resync read), so no open
+  experiment's verdict moved. (2) #285: a Prime media_session position >= 1e12 is an epoch, so E is the measured
+  absolute delay per stick (`absolute_by_stick`); a counter position never feeds it, and YTTV's ~20-30 s stays an
+  estimate. (3) #288: `redzone/lab/primegrade.py` pre-registers the diamond plan's Prime tests (A4 flat/pause/sticks/
+  landing, B1, B2 Key Moments) with sample floors: thin data reads PENDING, a conclusive FAIL still fires.
+  primegrade joins the freeze. Grader freeze v20.
+- 2026-11-05 (integrator, grader v21, EXP-735; Nick 2:00 AM "NBA first", >= 60 decisions per gate): **an older season
+  can join a pin as DEV nights only.** A pin may carry `dev_before` {league: YYYYMMDD}; `splits.league_split` keeps
+  nights before it in train/valid and locks the newest >= 25 % of the nights on or after it, so the locked set stays
+  current-season and never reaches back over the added nights. eval-data-v3 (eval-data-v2.yml) adds every final
+  2025-26 NBA game Oct 21 2025 - Jan 31 2026 (and NHL, shared; both end before the Noggin's Feb 1 locked start) with
+  dev_before 20261001. A --season league publishes once its locked set is at least the default pin's size; the
+  release gate's own floors (>= 8 nights, >= 60 decisions) are unchanged, so a thin locked set reads PENDING, never
+  PASS. A pin without dev_before (eval-data-v1) splits exactly as before. Grader freeze v21.
