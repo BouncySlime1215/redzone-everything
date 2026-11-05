@@ -7,7 +7,7 @@ spec = importlib.util.spec_from_file_location("sync_truth", Path(__file__).paren
 st = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(st)
 
-T = 1762310400.0   # 2026-11-05 02:40 UTC: Nov 4 evening in New York
+T = 1793846400.0   # 2026-11-05 02:40 UTC: Nov 4 evening in New York
 
 
 def test_anchors_become_rows_and_taps_never_do(tmp_path):
