@@ -78,6 +78,8 @@ class Row:
     matchup: str
     league: str
     in_break: bool
+    wall: float | None = None       # [watch value] wall clock of this play (labels look ahead on it)
+    wp_home: float | None = None    # [watch value] the brain track's home win probability here
 
     def as_dict(self) -> dict:
         return dict(self.__dict__)
@@ -136,7 +138,7 @@ def game_rows(lg: League, r: Replay, night: str, cfg: Config, my_teams: set[str]
                         nxt_big[i + 1] - w if i + 1 <= n else math.inf,
                         nxt_brk[i + 1] - w if i + 1 <= n else math.inf, nt,
                         ctx.mine, s.garbage, s.crunch, s.late, g.matchup, lg.value,
-                        g.stoppage in REAL_BREAKS))
+                        g.stoppage in REAL_BREAKS, w, (tr.row or {}).get("wp_home") if tr else None))
     return rows
 
 

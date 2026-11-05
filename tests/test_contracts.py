@@ -40,7 +40,7 @@ def test_contract_dataclasses_are_frozen():
     for cls in (c.SyncEstimate, c.MomentPrediction, c.BreakForecast, c.ReasonerView,
                 c.ReelOffer, c.ReelJump, c.Fault, c.Fix, c.HealthReport, c.TraceEvent,
                 c.WorldState, c.GameView, c.Screen, c.GameFeed, c.Clock,
-                c.MomentView, c.BreakView, c.SyncView, c.ReelView, c.Option, c.CoreState):
+                c.MomentView, c.BreakView, c.SyncView, c.ReelView, c.Option, c.CoreState, c.WatchReading):
         assert dataclasses.is_dataclass(cls) and cls.__dataclass_params__.frozen, cls
 
 

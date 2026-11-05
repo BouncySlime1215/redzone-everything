@@ -18,6 +18,7 @@ from redzone.contracts.sync import SyncEstimate, SyncModel
 from redzone.contracts.trace import MemoryTrace, Stage, TraceEvent, TraceSink
 from redzone.contracts.world import GameView, Screen, WorldState, freeze
 from redzone.contracts.views import break_view, moment_view, reel_option, sync_view
+from redzone.contracts.watch import WatchModel, WatchReading
 # The decision core's types are canonical: redzone/decider/core.py (re-exported, never redefined).
 from redzone.decider.core import (Action, BreakView, CoreState, DecisionCore, EntryView, Knobs, MomentView, Option,
                                   Priority, ReelView, SwitchPath, SyncView, guarded)
@@ -26,6 +27,8 @@ CONTRACT_VERSION = 1
 
 
 __all__ = [
+    "WatchModel",
+    "WatchReading",
     "BreakForecast",
     "BreakKind",
     "BreakModel",

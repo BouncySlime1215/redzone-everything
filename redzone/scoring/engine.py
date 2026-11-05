@@ -164,11 +164,13 @@ class Scored:
     factors: dict[str, float] = field(default_factory=dict)  # context points by name (debug/UI)
     brain: dict = field(default_factory=dict)  # learned brain's reading (hotness, key/break odds, reasons)
     reasoner: dict = field(default_factory=dict)  # live game reasoner: lock_in, odds, the model's storyline
-    # [HEAT 2.0, lane 1 sets these; the phone's Watch value surface reads them (phone_v2.watch_values)]
-    watch_value: float | None = None   # learned 0-100 watch value; None = not computed yet (phone shows a stub)
-    watch_why: str = ""                # one line: why that value
-    crunch_state: str | None = None    # crunch model: "entering" | "in" | "leaving"; None = not computed
-    stakes_line: str | None = None     # e.g. "AFC 1-seed race, top-5 matchup"; None = not computed
+    # HEAT 2.0 (redzone/contracts/watch.py), behind scoring.watch_value: None = off / no model (use score)
+    watch_value: float | None = None   # 0..100 calibrated: 50 = league-median live moment, 90 = top 5%
+    watch_why: str = ""                # one line for the UI
+    watch_terms: dict = field(default_factory=dict)   # p_big, impact, leverage, stakes_mult, story, garbage
+    watch_rising: float | None = None  # d(watch_value)/dt, points per minute
+    crunch_state: str | None = None    # learned crunch STATE: "entering" | "in" | "leaving" | None (contracts/watch.py)
+    stakes_line: str | None = None     # e.g. "World Series - Game 7 · winner takes it"; None = not computed
 
     @property
     def display(self) -> int:
@@ -199,6 +201,32 @@ class Scorer:
         # The live game reasoner (redzone/reasoner): bounded lock_in points while reasoner.enabled is on.
         self.reasoner = reasoner if reasoner is not None else Reasoner(cfg, clock=clock)
         self._mine_live: dict[str, float] = {}   # your team's live, not-decided games -> last seen
+        self.watch = None                          # HEAT 2.0 WatchValue, loaded on first use (flag on)
+
+    def _watch(self, g: GameState, me: Personal, reading, is_garbage: bool, now: float):
+        """HEAT 2.0: the learned watch value. The brain TRACK feeds it (win probability, swings, runs), so it
+        is observed here even with the brain's score points off. Stakes are a preference multiplier, never a label."""
+        from redzone.noggin.watch import WatchValue
+        if self.watch is None:
+            self.watch = WatchValue()
+        if not self.watch.available(g.league.value):
+            return None
+        if reading is None:
+            self.brain.read(g)          # keeps the tracker current; its score points stay off
+        tr = self.brain._track.get(g.game_id)
+        ctx = rbrief.Context(mine=g.involves(set(me.my_teams.get(g.league, set()))), garbage=is_garbage,
+                             crunch=crunch_time(g), late=is_late(g))
+        f = rbrief.facts(g, tr.row if tr is not None else None, None, ctx)
+        c = self.cfg
+        mult = 1.0
+        if ctx.mine:
+            mult *= float(c.get("scoring.watch_stakes.your_team", 1.25))
+        if me.bet_sweat.get(g.game_id):
+            mult *= 1.0 + float(c.get("scoring.watch_stakes.bet", 0.15)) * float(me.bet_sweat[g.game_id])
+        if g.game_id in me.fantasy:
+            mult *= float(c.get("scoring.watch_stakes.fantasy", 1.1))
+        mult *= 1.0 + postseason.stakes_bonus(g, c)      # #163: elimination / decider / round (0 unless its flag)
+        return self.watch.read(g.game_id, g.league.value, f, now, mult)
 
     def brain_on(self) -> bool:
         return bool(self.cfg.get("brain.enabled", False))
@@ -292,8 +320,12 @@ class Scorer:
         if h.garbage:
             reason = f"garbage time — {reason}"
             tags = tags + ["garbage time"]
+        wr = self._watch(g, me, reading, h.garbage, now) if c.get("scoring.watch_value", False) else None
         return Scored(g.game_id, g.league, shown, raw, m, s, p, reason, tags,
                       is_break, None if is_break else lock, pre, k, garbage=h.garbage, crunch=crunch_time(g),
+                      watch_value=wr.watch_value if wr else None, watch_why=wr.watch_why if wr else "",
+                      watch_terms=dict(wr.watch_terms) if wr else {}, watch_rising=wr.watch_rising if wr else None,
+                      crunch_state=wr.crunch_state if wr else None,
                       late=is_late(g),
                       factor="garbage time" if h.garbage else factor, factors=factors,
                       crunch_now=crunch_window(g),

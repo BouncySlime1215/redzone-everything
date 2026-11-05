@@ -604,5 +604,18 @@ buffer:                    # [buffer.watchdog] playbook STK-06 (redzone/control.
 calib:                     # [calib.auto] values re-measured each night from live logs (data/calib/<night>.json)
   auto: false              # read last nights' accepted flip time back at start (OFF until it's proven on live nights)
 
+# HEAT 2.0 (Nick Nov 4 3:30 PM): the learned watch value per game (redzone/noggin/watch.py, contract
+# redzone/contracts/watch.py). Off: Scored.watch_value stays None and nothing changes. On: every live game
+# gets watch_value 0-100 (50 = league-median live moment, 90 = top 5%), watch_why and watch_terms; the
+# decider reads them behind its own flag (lane 2). Stakes are preference multipliers, never labels.
+scoring:
+  watch_value: false
+  # WV's training label horizon: the realized WP swing over the next this-many seconds (a label
+  # definition, read by scripts/train_watch_value.py; the shipped models record it as horizon_s)
+  watch_horizon_s: {nfl: 180, nba: 180, nhl: 180, mlb: 300}
+  watch_stakes:
+    your_team: 1.25
+    bet: 0.15            # x (1 + bet * sweat 0..1)
+    fantasy: 1.1
 report:                    # [night health] scripts/night_report.py -> docs/nights/YYYY-MM-DD.md every morning (northstar.yml)
   nightly: true            # ON (cycle 07): its gates pass in tests/test_night_report.py (matches the live log, PENDING with no night, nothing private)
