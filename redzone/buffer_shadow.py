@@ -63,9 +63,7 @@ def _p95_table() -> dict:
 class BufferShadow:
     # [Nick 9:35 AM] buffer = feed-lag p95 + sync error + tune/seek + margin, floor ~10-15 s, cap max_s.
     # Tonight only LOGGED next to the fixed by_league B (planner: fit Friday, ratchet after locked gates).
-    FLOOR_S = 12.0
-    MARGIN_S = 5.0
-    STAY_LEAVE_EVERY_S = 15.0
+    # Terms read from timing.behind_live_s.adaptive (floor_s, margin_s; the same keys as RC8's buffer_rc8.py).
 
     def __init__(self, cfg, live_decider, behind_of, log_path: Path | None = None, clock=time.time,
                  games=None):
@@ -143,13 +141,15 @@ class BufferShadow:
             except Exception:
                 tune = None
         cap = float(self.cfg.get("timing.behind_live_s.max_s", 90.0))
+        floor = float(self.cfg.get("timing.behind_live_s.adaptive.floor_s", 12.0) or 12.0)
+        margin = float(self.cfg.get("timing.behind_live_s.adaptive.margin_s", 5.0) or 5.0)
         parts = [p95, 2 * sd if sd is not None else None, tune]
-        total = sum(x for x in parts if x is not None) + self.MARGIN_S if p95 is not None else None
+        total = sum(x for x in parts if x is not None) + margin if p95 is not None else None
         return {"feed_lag_p95_s": round(p95, 2) if p95 is not None else None, "feed_lag_source": src,
                 "sync_err_s": round(2 * sd, 2) if sd is not None else None,
                 "tune_s": round(tune, 2) if tune is not None and tune == tune and tune < 1e6 else None,
-                "margin_s": self.MARGIN_S, "floor_s": self.FLOOR_S, "cap_s": cap,
-                "behind_adaptive_s": round(min(cap, max(self.FLOOR_S, total)), 2) if total is not None else None}
+                "margin_s": margin, "floor_s": floor, "cap_s": cap,
+                "behind_adaptive_s": round(min(cap, max(floor, total)), 2) if total is not None else None}
 
     def _context(self, gid: str | None, cands: dict) -> dict | None:
         x = cands.get(gid or "")
@@ -180,7 +180,8 @@ class BufferShadow:
         alts = [(float(x.scored.score), gid) for gid, x in cands.items() if gid != on and x.target]
         best = max(alts) if alts else None
         key = (on, leave, d.target if leave else None, best[1] if best else None)
-        if not leave and key == self._sl_key and now - self._sl_at < self.STAY_LEAVE_EVERY_S:
+        every = float(self.cfg.get("timing.behind_live_s.shadow_stay_leave_every_s", 15.0) or 15.0)
+        if not leave and key == self._sl_key and now - self._sl_at < every:
             return
         self._sl_key, self._sl_at = key, now
         here = self._context(on, cands)
