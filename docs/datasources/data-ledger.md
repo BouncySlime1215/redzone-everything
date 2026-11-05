@@ -43,3 +43,10 @@ Copy this block, set the cycle number and date, and fill every column.
 - Waiting on Nick (keys, Rules tabs, sign-offs), with the date asked:
 - Decisions logged in docs/memory/decisions.md this cycle:
 - License changes spotted (re-check any source whose terms changed):
+
+### Cycle 14 (2026-11-05), Data F: broadcast formats
+
+| Source | Wave | Verdict | Status (planned / pulling / done / blocked) | Seasons held | Rows | Fields | Values added this cycle | Values held (cumulative) | Stored GB | Kaggle shard / version | HF backup (yes / no, not allowed) | Attribution in README + model card (yes / no) | Nick action needed | Notes |
+|---|---|---|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|
+| League rulebooks + ops pages (NBA Rule 5, NCAA MBB/FB, MLB pace of play; Wikipedia for gaps) | 1 | green (facts, paraphrased) | done (v1) | 2025-26 / 2026 rules | 27 | 10 | 270 | 270 | 0.00 | repo `redzone/scoring/broadcast/break_rules.yaml` | yes | yes (source_url per row) | none | NFL and CFB TV formats mostly unverified; NHL marks from secondary sources |
+| Measured break lengths (eval-data-v1 archive, ESPN summaries, train nights) | 1 | yellow (ESPN-derived, plan B personal-use) | done (v1) | NFL 2025, NBA/NHL Oct 2026 | 14,169 breaks → 120 cells | 7 | 840 | 840 | 0.00 | repo `redzone/scoring/broadcast/break_lengths.json` | no, not allowed | yes | none | Derived numbers only; locked nights never read |
