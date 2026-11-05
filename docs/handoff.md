@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Colab A100s healthy: EXP-109 speedrun 57 min, commentary EXP-1402 51 min. Lanes active (coordinator 6 min ago); lane 2 Working on sync.
-Needs Nick: Kaggle TPU ID check; ESPN-cache history purge; keys (YouTube API, Twitch, HF_TOKEN, CFBD). Usage 59%.
+Colab: EXP-109 speedrun 1 h 27 min (arms training); commentary EXP-1402 moved past the moment build into the Teacher stage. Kaggle factory v2 running.
+No failures. Usage 60%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
