@@ -71,7 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick 11:30 AM: source + train MASSIVE Watch Value attention data today before games (highlight views, Wikipedia pageviews dumps, Reddit volume, Twitch, ratings, market volume, WP swings for millions of plays) via Kaggle/Actions scripts; train WV v1; grade on locked nights. Usage 68%.
+Usage 69% (throttle holding ~2%/h). Lane 1 host-RAM fix landed (kaggle-inputs 811688b2); ladder relaunch queued behind Watch Value v1 training for the A100.
+Nick asked the overseer to create accounts/get API keys: declined (hard rule); he has 2-min YouTube key steps; key-free attention sources (Wikipedia dumps, WP swings, market history, ratings) proceeding.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
