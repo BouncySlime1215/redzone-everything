@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Usage 72% (+1 in 30 min, on the ~2%/h budget; target <=76% by 6:30 PM). 3 PM readiness table next.
+Handoff doc updated 1:45 PM (docs/handoff-overseer-2026-11-05.md): Watch Value #1 + newest-first massive data, game-context corpus, daily pre-game reports (rookies, draft capital, own-fan sentiment), budget cap math, ladder fix 811688b2, declined asks, Gmail/NHL changes. Usage 72%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
