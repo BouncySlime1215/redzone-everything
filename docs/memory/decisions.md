@@ -919,8 +919,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   3. **fast_feeds.enabled: true for tonight, shadow polling only** (no screen change; tested in #323/#337). Lane 4
      sets it at the stage; the shipped default stays false.
   4. **NHL EXP-303 package stays ON as staged**; Nick's NHL card stays open as a veto.
-  5. **Crew H daily pre-game schedule** runs as a GitHub Actions cron in the repo, derived numbers only; raw text goes
-     to the private Kaggle dataset.
+  5. **Crew H daily runs are triggered by hand** (twice a day), derived numbers only; raw text goes to the private
+     Kaggle dataset. A scheduled cron fires only from main, which we never merge to, so a cron on main needs Nick.
   6. **Fan-sentiment Reddit hook stays OFF** until Nick adds an official API key.
   7. **No prioritization model ships or gets a locked read tonight** (T8 stay/leave failed valid; WV attention arms
      below A0; GI v2 not pre-registered until #345). A0 stays.
