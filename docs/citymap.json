@@ -2178,21 +2178,6 @@
     "untagged"
    ]
   },
-  "redzone/lab/offpolicy.py": {
-   "contracts": [],
-   "inputs": [
-    "redzone/lab/worth.py"
-   ],
-   "kind": "module",
-   "outputs": [
-    "scripts/offpolicy_score.py"
-   ],
-   "owner": "unowned",
-   "role": "[EXP-005] Off-policy grading: how a NEW decider would have done on nights the live one already ran, from the live decisions' logged option sets and propensit...",
-   "serves": [
-    "untagged"
-   ]
-  },
   "redzone/lab/optimize.py": {
    "contracts": [],
    "inputs": [
@@ -2322,7 +2307,8 @@
     "scripts/backfill_eval_v2.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
-    "scripts/leak_check.py"
+    "scripts/leak_check.py",
+    "scripts/switch_eval_pin.py"
    ],
    "owner": "unowned",
    "role": "Time splits for every model and every tuned knob (the user's no-overfitting rule, 2026-11-03).",
@@ -2436,7 +2422,6 @@
    "inputs": [],
    "kind": "module",
    "outputs": [
-    "redzone/lab/offpolicy.py",
     "scripts/worth_line.py"
    ],
    "owner": "unowned",
@@ -4714,19 +4699,6 @@
     "STK-06"
    ]
   },
-  "scripts/offpolicy_score.py": {
-   "contracts": [],
-   "inputs": [
-    "redzone/lab/offpolicy.py"
-   ],
-   "kind": "entry",
-   "outputs": [],
-   "owner": "unowned",
-   "role": "[EXP-005] Score a candidate decider off-policy on logged nights (redzone/lab/offpolicy.py).",
-   "serves": [
-    "untagged"
-   ]
-  },
   "scripts/orient_line.py": {
    "contracts": [],
    "inputs": [
@@ -4988,6 +4960,19 @@
     "untagged"
    ]
   },
+  "scripts/switch_eval_pin.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/splits.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Switch the default eval-data pin to a newly published release (Fri Nov 6: eval-data-v3), in one go.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/sync_fit.py": {
    "contracts": [],
    "inputs": [
@@ -5195,10 +5180,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 274,
+  "modules": 273,
   "orphans": 10,
-  "unowned": 115,
-  "untagged": 219
+  "unowned": 114,
+  "untagged": 218
  },
  "version": 1
 }
