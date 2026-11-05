@@ -179,6 +179,22 @@ def resume_after(league: League, wall: list[float], plays: list[dict], i: int) -
     return max(wall[i], wall[j] - RESUME_LEAD[League.NBA])
 
 
+def restart_before(league: League, wall: list[float], plays: list[dict], i: int) -> float:
+    """[time-shift buffer, from the start] Real time the ball went live after the last dead ball before
+    play i: the start of the run of live action play i belongs to (Nick, Nov 5 9:10 AM: a big play is shown
+    "from the start" when the screen had it from the previous dead ball). Football and baseball: every play
+    starts from a dead ball, so this is the play's own start. Basketball and hockey: resume_after of the
+    last whistle, score or break before i, never later than play i's own start."""
+    own = wall[i] - plen(league)
+    if league not in CONTINUOUS and league.base != League.NBA:
+        return own
+    j = next((k for k in range(i - 1, -1, -1)
+              if espn.stoppage_for(league, plays[k]) != Stoppage.NONE or plays[k].get("scoringPlay")), None)
+    if j is None:
+        return min(wall[0], own)
+    return min(resume_after(league, wall, plays, j), own)
+
+
 def dead_at(league: League, wall: list[float], plays: list[dict], st: float) -> tuple[bool, bool, float]:
     """(dead ball on screen, inside a commercial break, seconds until play resumes) at screen time st."""
     i = idx(wall, st)

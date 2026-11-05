@@ -4392,6 +4392,19 @@
     "Big plays live or replayed within 3 min"
    ]
   },
+  "scripts/attention_labels.py": {
+   "contracts": [],
+   "inputs": [
+    "scripts/wv_aux_label.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Data G: per-play human-attention labels for Watch Value (EXP-1704), plus the WP-only drama baseline.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/attention_pull.py": {
    "contracts": [],
    "inputs": [],
@@ -4576,6 +4589,17 @@
    "outputs": [],
    "owner": "unowned",
    "role": "City map: one generated graph of every RedZone module (role, inputs -> outputs, owner, serves).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/clock_truth_grade.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Clock-truth re-grade of entries (PROPOSAL, test writers, EXP-744).",
    "serves": [
     "untagged"
    ]
@@ -5888,16 +5912,29 @@
    "serves": [
     "untagged"
    ]
+  },
+  "scripts/wv_aux_label.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [
+    "scripts/attention_labels.py"
+   ],
+   "owner": "unowned",
+   "role": "Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804).",
+   "serves": [
+    "untagged"
+   ]
   }
  },
  "pages": {
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 321,
+  "modules": 324,
   "orphans": 14,
-  "unowned": 161,
-  "untagged": 265
+  "unowned": 164,
+  "untagged": 268
  },
  "version": 1
 }

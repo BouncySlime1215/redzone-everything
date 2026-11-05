@@ -31,12 +31,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-_IP = re.compile(r"\b(?:10|127|172\.(?:1[6-9]|2\d|3[01])|192\.168)(?:\.\d{1,3}){2,3}\b")
+_IP = re.compile(r"\b(?:10|127|172\.(?:1[6-9]|2\d|3[01])|192\.168|169\.254)(?:\.\d{1,3}){2,3}\b")
+# Tailscale / carrier-grade NAT (100.64.0.0/10): the sticks' and the Mac's tailnet addresses, plus
+# Tailscale's IPv6 ULA prefix (fd7a:115c:a1e0::/48). Masked like LAN addresses (#lane2 Nov 5 collection).
+_CGNAT = re.compile(r"\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}\b")
+_TS6 = re.compile(r"\bfd7a:115c:a1e0(?::[0-9A-Fa-f]{0,4}){1,5}\b", re.I)
 _MAC = re.compile(r"\b[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}\b")
 TS_KEYS = ("ts", "decided_at", "cut_at", "t", "at", "time")
 
 
 def redact(line: str) -> str:
+    line = _TS6.sub("ts6.x", line)
+    line = _CGNAT.sub(lambda m: "ts." + m.group(0).rsplit(".", 1)[-1], line)
     return _MAC.sub("xx:xx:xx:xx:xx:xx", _IP.sub(lambda m: "lan." + m.group(0).rsplit(".", 1)[-1], line))
 
 

@@ -318,3 +318,5 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   is appended at the decision time. Anything that delays the cut (the pause cue today, EXP-803's defer) must move
   both, or big live / crunch live / dead air credit the destination before the TV shows it. The pause cue's gap is
   pre-existing (seconds, not tens of seconds); fix it under a grader freeze with a before/after.
+
+- **Nov 5 2026 (lane 4, live-log collection):** `collect_live_test.py` masked RFC1918 LAN addresses but not the sticks' Tailscale 100.64.0.0/10 addresses, so the shared copies leaked them (lane 2 masked them by hand). Fix: the redactor also masks 100.64/10 (`ts.<last octet>`), Tailscale's fd7a:115c:a1e0::/48 IPv6 and 169.254/16 link-local; public addresses stay.

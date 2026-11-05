@@ -55,3 +55,21 @@ def test_defer_keeps_the_old_game_on_screen_until_the_cut():
     s3 = [SwitchLog(t, "old", "new", "ended", "x", 0.0)]
     bt_._apply_defer(SimpleNamespace(defer_s=0.0), s3, w3, 0, step=10.0)
     assert w3 == [(t, "new")] and s3[0].leave_dt == 0.0
+
+
+def test_exp739_start_timed_ships_off():
+    assert config.default("decider.entry.start_timed") is False
+
+
+def test_lag_floor_off_by_default_and_narrows_coverage():
+    """[EXP-211] decider.entry.lag_floor_s ships 0 (off); when set, an open stoppage counts as covered
+    only as far as a feed at least that slow would show the restart."""
+    from redzone.config import default
+    from redzone.decider.cuts import DeadTracker
+    from redzone.models import League
+    assert default("decider.entry.lag_floor_s") == 0
+    t = DeadTracker(League.NHL)
+    t.seen(1000.0, 10.0)
+    base = t._covered()
+    t.lag_floor = 91.0
+    assert t._covered() == base - 81.0
