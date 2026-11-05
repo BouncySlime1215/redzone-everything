@@ -281,3 +281,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **2026-11-05: a phone pick's way back lost the hidden stick to a guess.** The standby planner ranked the game you just
   left as "best" (+10), so any "moment" guess outranked it by class and took the hidden stick; Prime then cost a ~30 s
   re-tune on the tap back (11 of 16 live presses, Nov 4). Fix: `two_stick.hand_back_s`. Drill: `redzone.lab.night.presses:pingpong`.
+- 2026-11-05 (integrator): RC6.2's NBA league set passed on the honest harness but lost your-team crunch live 31/31 → 17/31
+  on the live-sync harness (`eval_sports --resync`, which models the Kalman sync filter that live runs). The cause was
+  the time-shift buffer key, `timing.behind_live_s.enabled`. The rule now: grade every league set on BOTH harnesses
+  before it ships (Test Factory F4), and a set that is worse on either one doesn't promote.

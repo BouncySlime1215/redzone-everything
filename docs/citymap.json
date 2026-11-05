@@ -548,6 +548,7 @@
     "redzone/lab/evaldata.py",
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
+    "redzone/lab/orient.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/tune.py",
@@ -588,6 +589,7 @@
     "BreakModel",
     "Clock",
     "DEGRADED",
+    "Event",
     "Expectation",
     "Fault",
     "FeedSnapshot",
@@ -603,6 +605,7 @@
     "MemoryTrace",
     "MomentModel",
     "MomentPrediction",
+    "Primitive",
     "Reasoner",
     "ReasonerView",
     "ReelJump",
@@ -623,15 +626,19 @@
     "deadline",
     "enabled",
     "freeze",
+    "from_play",
     "moment_view",
+    "primitive_of",
     "reel_option",
     "sync_view",
+    "tokens_v1",
     "traced"
    ],
    "inputs": [
     "redzone/contracts/breaks.py",
     "redzone/contracts/budget.py",
     "redzone/contracts/clock.py",
+    "redzone/contracts/events.py",
     "redzone/contracts/feeds.py",
     "redzone/contracts/flags.py",
     "redzone/contracts/guard.py",
@@ -651,6 +658,7 @@
     "uses:BreakModel",
     "uses:Clock",
     "uses:DEGRADED",
+    "uses:Event",
     "uses:Expectation",
     "uses:Fault",
     "uses:FeedSnapshot",
@@ -666,6 +674,7 @@
     "uses:MemoryTrace",
     "uses:MomentModel",
     "uses:MomentPrediction",
+    "uses:Primitive",
     "uses:Reasoner",
     "uses:ReasonerView",
     "uses:ReelJump",
@@ -686,9 +695,12 @@
     "uses:deadline",
     "uses:enabled",
     "uses:freeze",
+    "uses:from_play",
     "uses:moment_view",
+    "uses:primitive_of",
     "uses:reel_option",
     "uses:sync_view",
+    "uses:tokens_v1",
     "uses:traced"
    ],
    "kind": "package",
@@ -747,6 +759,22 @@
    ],
    "owner": "INTEGRATION",
    "role": "One clock: wall time, feed (data) time and per-channel screen time.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/contracts/events.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/contracts/__init__.py"
+   ],
+   "owner": "INTEGRATION",
+   "role": "[EXP-003] One event language for every sport: each play of any league becomes one typed Event built from a few shared primitives (what kind of thing happened...",
    "serves": [
     "untagged"
    ]
@@ -1706,6 +1734,21 @@
     "untagged"
    ]
   },
+  "redzone/lab/also_close.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/night_ab.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/also_close_line.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-039] Grade the \"Also close\" line: does showing other late, close games as text cut the curiosity switches (manual switches) without costing big plays?",
+   "serves": [
+    "Big plays live or replayed within 3 min"
+   ]
+  },
   "redzone/lab/backtest.py": {
    "contracts": [
     "FLIP_PRIOR",
@@ -2122,6 +2165,19 @@
     "untagged"
    ]
   },
+  "redzone/lab/night_ab.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/lab/also_close.py"
+   ],
+   "owner": "unowned",
+   "role": "Whole-night A/B for display experiments (lane 5): one number per night on each side, a bootstrap interval on mean(on) - mean(off), and a PASS / FAIL / PENDIN...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/optimize.py": {
    "contracts": [],
    "inputs": [
@@ -2159,6 +2215,22 @@
    ],
    "owner": "unowned",
    "role": "Hindsight oracle: the best schedule anyone could have run on an archived night (offline only).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/orient.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/also_close_line.py",
+    "scripts/orient_line.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-038] Grade the orientation beat: do overrides right after an automatic switch drop when the phone shows a 2-3 s \"who, score, clock, one fact\" beat?",
    "serves": [
     "untagged"
    ]
@@ -2383,6 +2455,7 @@
     "redzone/bets.py",
     "redzone/channels.py",
     "redzone/contracts/breaks.py",
+    "redzone/contracts/events.py",
     "redzone/contracts/feeds.py",
     "redzone/contracts/legacy.py",
     "redzone/contracts/moment.py",
@@ -3298,6 +3371,7 @@
    "kind": "module",
    "outputs": [
     "agent/distill/jump.py",
+    "redzone/contracts/events.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
     "redzone/grading.py",
@@ -3959,7 +4033,9 @@
    ],
    "kind": "module",
    "outputs": [
-    "redzone/web/server.py"
+    "redzone/web/server.py",
+    "scripts/also_close_line.py",
+    "scripts/orient_line.py"
    ],
    "owner": "EXPERIENCE",
    "role": "Phone page v2 (flag `phone.v2`, default OFF): why each switch happened, rate it, \"I missed that\", and the Noggin Priority L2 sliders.",
@@ -3989,6 +4065,21 @@
    "role": "Phone control page + JSON API.",
    "serves": [
     "untagged"
+   ]
+  },
+  "scripts/also_close_line.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/also_close.py",
+    "redzone/lab/orient.py",
+    "redzone/web/phone_v2.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-039] Print the \"Also close\" line: manual-switch share on nights with phone.also_close on vs off.",
+   "serves": [
+    "Big plays live or replayed within 3 min"
    ]
   },
   "scripts/autofix_guard.py": {
@@ -4608,6 +4699,20 @@
     "STK-06"
    ]
   },
+  "scripts/orient_line.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/orient.py",
+    "redzone/web/phone_v2.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-038] Print the orientation-beat line: override rates on nights with phone.orient on vs off.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/perf_probe.py": {
    "contracts": [],
    "inputs": [
@@ -5075,10 +5180,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 267,
+  "modules": 273,
   "orphans": 10,
-  "unowned": 109,
-  "untagged": 214
+  "unowned": 114,
+  "untagged": 218
  },
  "version": 1
 }
