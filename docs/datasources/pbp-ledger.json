@@ -261,6 +261,19 @@
    "kind": "events"
   },
   {
+   "source": "nfl_ftn_charting",
+   "league": "nfl",
+   "seasons": "2022-2024",
+   "shards": 3,
+   "games": 854,
+   "events": 137899,
+   "v1_tokens": 827394,
+   "bytes": 672689,
+   "license": "FTN Data via nflverse (CC BY-SA 4.0, share-alike); plan B personal use; credit FTN Data via nflverse",
+   "tag": "personal-use, not for commercial release",
+   "kind": "charting"
+  },
+  {
    "source": "statsbomb",
    "league": "copa_america",
    "seasons": "2024-2024",
@@ -391,5 +404,12 @@
   "events": 2054040,
   "v1_tokens": 12326724,
   "bytes": 106738832
+ },
+ "charting": {
+  "shards": 3,
+  "games": 854,
+  "events": 137899,
+  "v1_tokens": 827394,
+  "bytes": 672689
  }
 }

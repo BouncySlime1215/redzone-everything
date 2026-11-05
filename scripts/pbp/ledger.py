@@ -59,8 +59,9 @@ def summarize(rows: list[dict]) -> dict:
             b[k] += int(m.get(k) or 0)
         b["seasons"].add(int(m["season"]))
         b["license"], b["tag"] = m.get("license", ""), m.get("tag", "")
-        b["kind"] = ("tracking" if "tracking" in str(m.get("rows_are", "")) or str(m.get("source", "")).endswith("_extra")
-                     else "events")
+        ra = str(m.get("rows_are", ""))
+        b["kind"] = ("tracking" if "tracking" in ra or str(m.get("source", "")).endswith("_extra")
+                     else "charting" if "charting" in ra else "events")
     out = []
     for (src, lg), b in sorted(by.items(), key=lambda kv: -kv[1]["v1_tokens"]):
         s = sorted(b.pop("seasons"))
@@ -68,7 +69,8 @@ def summarize(rows: list[dict]) -> dict:
     keys = ("shards", "games", "events", "v1_tokens", "bytes")
     tot = {k: sum(r[k] for r in out if r["kind"] == "events") for k in keys}
     trk = {k: sum(r[k] for r in out if r["kind"] == "tracking") for k in keys}
-    return {"rows": out, "total": tot, "tracking": trk}
+    cht = {k: sum(r[k] for r in out if r["kind"] == "charting") for k in keys}
+    return {"rows": out, "total": tot, "tracking": trk, "charting": cht}
 
 
 def render(s: dict) -> str:
@@ -89,6 +91,10 @@ def render(s: dict) -> str:
     if k.get("shards"):
         lines += [f"| **Total tracking** | | | | {k['games']:,} | {k['events']:,} | {k['v1_tokens'] / 1e6:.1f} | "
                   f"{k['bytes'] / 1e9:.2f} | | |"]
+    c = s.get("charting") or {}
+    if c.get("shards"):
+        lines += [f"| **Total charting (per-play side tables)** | | | | {c['games']:,} | {c['events']:,} | "
+                  f"{c['v1_tokens'] / 1e6:.1f} | {c['bytes'] / 1e9:.2f} | | |"]
     lines.append("")
     return "\n".join(lines)
 

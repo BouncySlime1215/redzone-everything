@@ -26,6 +26,7 @@ Only shards that landed in the private Kaggle dataset count. Every token here is
 | statsbomb | 1_bundesliga | 2016-2024 | 68 | 253,005 | 1.5 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | uefa_women_s_euro | 2022-2025 | 62 | 210,799 | 1.3 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | african_cup_of_nations | 2023-2023 | 52 | 162,903 | 1.0 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
+| nfl_ftn_charting | nfl | 2022-2024 | 854 | 137,899 | 0.8 | 0.00 | personal-use, not for commercial release | FTN Data via nflverse (CC BY-SA 4.0, share-alike); plan B personal use; credit FTN Data via nflverse |
 | statsbomb | copa_america | 2024-2024 | 32 | 100,324 | 0.6 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | champions_league | 1971-2019 | 18 | 65,634 | 0.4 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | major_league_soccer | 2023-2023 | 6 | 21,786 | 0.1 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
@@ -37,3 +38,4 @@ Only shards that landed in the private Kaggle dataset count. Every token here is
 | sportvu_extra | nba | 2016-2016 | 0 | 0 | 0.0 | 0.07 | personal-use, not for commercial release | SportVU 2015-16 (NBA/STATS LLC content, mirror has no licence); plan B personal use, private training only, never re-upload; credit NBA / STATS LLC |
 | **Total events** | | | | 41,358 | 31,627,260 | 189.9 | 0.26 | | |
 | **Total tracking** | | | | 621 | 2,054,040 | 12.3 | 0.11 | | |
+| **Total charting (per-play side tables)** | | | | 854 | 137,899 | 0.8 | 0.00 | | |
