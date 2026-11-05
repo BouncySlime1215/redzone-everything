@@ -165,7 +165,7 @@ class BoundaryWatcher:
     # [auto sync] every playing read with the stick clock pinned: (target, wall, stream position s, sd);
     # and a new tune or a seek on a stick: (target, wall). Both feed the per-channel filter (sync.py).
     on_position: Callable[[str, float, float, float], None] = lambda t, w, p, sd: None
-    on_tune: Callable[[str, float], None] = lambda t, w: None
+    on_tune: Callable[..., None] = lambda t, w, new=True: None
     clock: Callable[[], float] = time.time
     mono: Callable[[], float] = time.monotonic
     last: dict = field(default_factory=dict)        # stick key -> last Read
@@ -243,9 +243,9 @@ class BoundaryWatcher:
         if not cur.playing:
             return
         try:
-            if prev is None or prev.tune is not cur.tune or prev.target != cur.target or (
-                    prev.playing and not _continuous(prev, cur)):
-                self.on_tune(cur.target, cur.wall_hi)
+            new = prev is None or prev.tune is not cur.tune or prev.target != cur.target
+            if new or (prev.playing and not _continuous(prev, cur)):
+                self.on_tune(cur.target, cur.wall_hi, new)     # new = a new tune: its position clock is new
             off = clk.offset_ms()
             pos = cur.position_at(cur.wall_hi, off)
             if pos is None:
