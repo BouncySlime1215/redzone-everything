@@ -38,7 +38,7 @@ def test_rc8_leaves_the_rc6_hold_alone(cfg):
 # ------------------------------------------------------------------------------------------ the formula
 def test_formula_sum_floor_cap():
     assert R.adaptive_buffer_s("nba", 40, 2, 6, 5) == 53.0
-    assert R.adaptive_buffer_s("nba", 0, 0, 0, 0) == 12.0                       # never 0: hard floor
+    assert R.adaptive_buffer_s("nba", 0, 0, 0, 0) == 15.0                       # never 0: hard floor (v28: 15)
     assert R.adaptive_buffer_s("nba", 0, 0, 0, 0, floor_s=10) == 10.0
     assert R.adaptive_buffer_s("nba", 200, 2, 6, 5) == 90.0                     # Nick's cap
     assert R.adaptive_buffer_s("nba", 200, 2, 6, 5, cap_s=500) == 90.0          # the cap can't be raised
@@ -65,13 +65,17 @@ def test_floor_outside_10_15_is_refused(floor, cfg):
 
 
 def test_buffer_for_reads_config_and_ratchets_on_by_league(cfg):
+    assert cfg.get("timing.behind_live_s.adaptive.floor_s") == 15
     b, p = R.buffer_for(cfg, "nfl")
-    assert p["formula_s"] == 75.0 and b == 75.0 and p["ratchet_source"] == "by_league"
-    b, p = R.buffer_for(cfg, "nba")          # formula 83 < today's fixed 90: no ratchet down without a locked gate
+    assert p["formula_s"] == 75.0 and b == 75.0 and p["ratchet_source"] == "live_hold"
+    b, p = R.buffer_for(cfg, "nhl")          # NHL holds nothing today: no ratchet base, the formula
+    assert b == 88.0 and p["ratchet_source"] == "none"
+    b, p = R.buffer_for(cfg, "nba")          # formula 83 < the live hold 90: no ratchet down without a locked gate
     assert p["formula_s"] == 83.0 and b == 90.0
-    cfg.update({"timing": {"behind_live_s": {"adaptive": {"approved_min_s": {"nba": 60}}}}})
-    b, p = R.buffer_for(cfg, "nba")
-    assert b == 83.0 and p["ratchet_source"] == "locked_gate"
+    cfg.update({"timing": {"behind_live_s": {"adaptive": {"approved_min_s": {"nba": 60},
+                                                          "feed_lag_p95_s": {"nba": 40}}}}})
+    b, p = R.buffer_for(cfg, "nba")          # approved 60, but one release steps down at most 15 s: 90 -> 75
+    assert p["formula_s"] == 53.0 and b == 75.0 and p["ratchet_source"] == "locked_gate"
     for lg in League:
         b, _ = R.buffer_for(cfg, lg.value)
         assert 10.0 <= b <= 90.0, lg
@@ -116,7 +120,7 @@ def test_flip_cli_dry_run_sends_only_league_keys(tmp_path, capsys):
     assert m.main(["nhl", "on", "--dry-run", "--config", str(tmp_path / "c.yaml")]) == 0
     out = json.loads(capsys.readouterr().out)
     assert set(out["change"]) == {"league_overrides"} and set(out["change"]["league_overrides"]) == {"nhl"}
-    assert out["buffer_s"] == 90.0
+    assert out["buffer_s"] == 88.0
     assert m.main(["nhl", "on", "--offline", "--config", str(tmp_path / "c.yaml")]) == 0
     capsys.readouterr()
     assert R.is_on(Config(tmp_path / "c.yaml", tmp_path / "h"), "nhl")
@@ -207,8 +211,19 @@ def test_gate_report_runs_with_and_without_inputs(tmp_path, cfg):
     nba = r["leagues"]["nba"]
     assert nba["items"]["1_rule1"]["state"] == R.PASS          # 0 at the shipped B (75, st arm it needs)
     assert nba["grid_mid_play_total"] == 6 + 2                    # the whole grid is still shown
-    assert nba["flip_cmd"] == "python scripts/rc8_flip.py nba on --seconds 75 --set decider.entry.start_timed=true"
+    # gate v28: B = max(sweep 75, formula/ratchet/floor 90)
+    assert nba["ship_b"] == 90.0
+    assert nba["flip_cmd"] == "python scripts/rc8_flip.py nba on --seconds 90 --set decider.entry.start_timed=true"
     assert nba["state"] == R.PENDING                            # locked + one-night shadow still pending
     bad = dict(shadow, S2="FAIL")
     assert m.report(cfg, sweep, bad)["leagues"]["nba"]["state"] == R.FAIL
     assert "| NBA |" in m.to_md(r)
+
+
+def test_ship_b_max_rule_and_back_up_after_mid_play(cfg):
+    assert R.ship_b(cfg, "nfl", 90)[0] == 90.0      # sweep above the formula
+    assert R.ship_b(cfg, "nfl", 45)[0] == 75.0      # formula above the sweep
+    assert R.ship_b(cfg, "nhl", 60, mid_play_night=True)[0] == 90.0
+    assert R.ship_b(cfg, "nhl", None)[0] == 88.0
+    with pytest.raises(ConfigError):
+        cfg.update({"timing": {"behind_live_s": {"adaptive": {"ratchet_step": 30}}}})

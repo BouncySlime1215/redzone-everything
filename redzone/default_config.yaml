@@ -591,16 +591,18 @@ timing:
                            # by scripts/rc8_gate_report.py. Ships false everywhere. Code: redzone/buffer_rc8.py
     rc8_fixed_s: 0         # a league pinned to this B instead of the formula (0 = the formula)
     adaptive:              # [Nick 9:35 AM] B = feed-lag p95 + sync error + tune/seek + margin, never 0
-      floor_s: 12          # hard floor: a play is always known before it's shown (Nick: ~10-15 s)
+      floor_s: 15          # hard floor: a play is always known before it's shown (Nick: ~10-15 s; gate v28: 15 in RC8,
+                           # 10 s is Nick's later call)
+      ratchet_step: 15     # gate v28: B ratchets down at most this much per release, only after a locked read held
       margin_s: 5
       sync_err_s: 2        # RC7 bar: per-stick sync p95 <= 2 s
       tune_seek_s: 6       # a fresh tune or a seek on the hidden stick (scorecard tune 5 s + settle)
       stream_delay_credit_s: 0   # s of the app's own stream delay credited against feed lag (0 = Nick's formula
                                  # as written; only lowered after a locked gate holds)
-      feed_lag_p95_s: {nfl: 62, cfb: 62, nba: 70, cbb: 46, wcbb: 46, nhl: 75, mlb: 60}   # noggin.pick.FEED_LAG_P90
-                                 # until lane 2's per-league feed-lag table (T6) gives real p95s
+      feed_lag_p95_s: {nfl: 62, cfb: 62, nba: 70, cbb: 46, wcbb: 46, nhl: 75, mlb: 60}   # P90 PLACEHOLDERS
+                                 # (noggin.pick.FEED_LAG_P90) until T6's per-league feed-lag table gives real p95s
       approved_min_s: {nfl: 0, cfb: 0, nba: 0, cbb: 0, wcbb: 0, nhl: 0, mlb: 0}   # the lowest B a LOCKED gate
-                                 # approved per league (ratchet); 0 = none yet, so B never goes below by_league
+                                 # approved per league; 0 = none yet, so a held league never goes below its live B
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback

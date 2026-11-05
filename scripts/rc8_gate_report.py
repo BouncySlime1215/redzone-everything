@@ -60,12 +60,12 @@ def sweep_runs(lg_verdict: dict | None, chosen_only: bool = False) -> list[dict]
     return runs
 
 
-def flip_cmd(lg: str, v: dict | None) -> str | None:
-    """The exact command that ships what the sweep graded (its B, plus any flag the verdict needs)."""
-    if not v or not v.get("chosen_b"):
+def flip_cmd(lg: str, v: dict | None, b: float | None) -> str | None:
+    """The command that ships B (gate v28's max rule) with any flag the verdict needs."""
+    if not v or not v.get("chosen_b") or b is None:
         return None
     extra = "".join(f" --set {NEEDS[n]}" for n in (v.get("needs") or []) if n in NEEDS)
-    return f"python scripts/rc8_flip.py {lg} on --seconds {float(v['chosen_b']):g}{extra}"
+    return f"python scripts/rc8_flip.py {lg} on --seconds {float(b):g}{extra}"
 
 
 def report(cfg, sweep: dict | None, shadow: dict | None, card: dict | None = None, sync: dict | None = None,
@@ -90,8 +90,11 @@ def report(cfg, sweep: dict | None, shadow: dict | None, card: dict | None = Non
         detail.update({"state": state, "rc8_on_now": R.is_on(cfg, lg), "adaptive": parts,
                        "grid_mid_play_total": sum(int(r.get("entries_mid_play") or 0) for r in grid),
                        "grid_runs": len(grid), "shadow_card": (card or {}).get(lg),
-                       "ship_b": (v or {}).get("chosen_b"),
-                       "flip_cmd": flip_cmd(lg, v)})
+                       "sweep_b": (v or {}).get("chosen_b"), "guardrails": (v or {}).get("guardrails")})
+        sb, why = R.ship_b(cfg, lg, (v or {}).get("chosen_b"),
+                           mid_play_night=detail["items"]["1_rule1"]["shadow_live"] > 0)
+        detail.update({"ship_b": sb if (v or {}).get("chosen_b") else None, "ship_why": why,
+                       "flip_cmd": flip_cmd(lg, v, sb)})
         out["leagues"][lg] = detail
     return out
 
@@ -103,12 +106,13 @@ def to_md(r: dict) -> str:
          f"(S1 {r.get('shadow_S1') or '-'}, S2 {r.get('shadow_S2') or '-'}).", "",
          "The gate is applied as pre-registered (docs/plans/2026-11-05-rc8-buffer-gate.md). PENDING never counts as "
          "PASS. One shadow night can only veto. Flipping a league is Nick's call (scripts/rc8_flip.py).", "",
-         "| League | Gate | " + " | ".join(ITEM_NAMES[k].split(" (")[0] for k in ITEM_NAMES) + " | Sweep B | Adaptive B |",
-         "|---|---|" + "---|" * len(ITEM_NAMES) + "---|---|"]
+         "| League | Gate | " + " | ".join(ITEM_NAMES[k].split(" (")[0] for k in ITEM_NAMES) + " | Sweep B | Ship B | Formula B |",
+         "|---|---|" + "---|" * len(ITEM_NAMES) + "---|---|---|"]
     for lg, d in r["leagues"].items():
         it = d["items"]
         a = d["adaptive"]
         L.append(f"| {lg.upper()} | **{d['state']}** | " + " | ".join(it[k]["state"] for k in ITEM_NAMES)
+                 + f" | {d['sweep_b'] if d['sweep_b'] is not None else '-'}"
                  + f" | {d['ship_b'] if d['ship_b'] is not None else '-'} | {a['buffer_s']:g} s |")
     L.append("")
     for lg, d in r["leagues"].items():
@@ -122,6 +126,8 @@ def to_md(r: dict) -> str:
               f"- Sweep: verdict {i2.get('verdict') or 'not in yet'}, B {i2.get('chosen_b')}, needs "
               f"{i2.get('needs') or 'nothing'}, {i2.get('fit_nights') or 0} fit nights, primary "
               f"{json.dumps(i2.get('primary')) if i2.get('primary') else 'n/a'}.",
+              "- Guardrails: " + (", ".join(f"{k} {'ok' if g.get('ok') else 'MISS'} ({g.get('value')})"
+                                             for k, g in (d.get("guardrails") or {}).items()) or "n/a") + ".",
               f"- Shadow vs live tonight: {json.dumps(d['shadow_card']) if d['shadow_card'] else 'not graded yet'}.",
               f"- Locked: {it['4_locked']['state']}. Sync: {it['5_sync']['state']}"
               + (f" (p95 {it['5_sync'].get('p95_err_s')} s over {it['5_sync'].get('n')})"
@@ -130,6 +136,7 @@ def to_md(r: dict) -> str:
               f"{a['tune_seek_s']:g} + margin {a['margin_s']:g} - credit {a['stream_delay_credit_s']:g} = "
               f"{a['formula_s']:g} s; ratchet floor {a['ratchet_min_s']:g} s ({a['ratchet_source']}); hard floor "
               f"{a['floor_s']:g} s, cap {a['cap_s']:g} s -> **{a['buffer_s']:g} s**.",
+              f"- Ship B: {d['ship_b'] if d['ship_b'] is not None else 'n/a'} ({d['ship_why']}).",
               f"- RC8 on now: {'yes' if d['rc8_on_now'] else 'no'}."
               + (f" To flip: `{d['flip_cmd']}` (rollback: `python scripts/rc8_flip.py {lg} off`)."
                  if d["flip_cmd"] else ""), ""]

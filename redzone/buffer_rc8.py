@@ -25,6 +25,7 @@ RC8_FLAG = "timing.behind_live_s.rc8_on"
 RC8_FIXED = "timing.behind_live_s.rc8_fixed_s"
 CAP = float(config.LIMITS["timing.behind_live_s.max_s"][1])              # Nick's cap (s), enforced on settings too
 FLOOR_RANGE = config.LIMITS["timing.behind_live_s.adaptive.floor_s"]      # Nick: "a hard floor (start ~10-15 s)"
+RATCHET_STEP = float(config.default("timing.behind_live_s.adaptive.ratchet_step", 15))   # gate v28 (s)
 GATE_MIN_NIGHTS = 8              # the gate's floor per league per harness
 HARNESSES = ("honest", "resync")
 SYNC_BAR = float(config.default("timing.behind_live_s.adaptive.sync_err_s", 2.0))   # gate item 5 (EXP-800, s)
@@ -42,7 +43,7 @@ def _num(name: str, v: Any) -> float:
 
 
 def adaptive_buffer_s(league: str, feed_lag_p95_s: float, sync_err_s: float, tune_seek_s: float,
-                      margin_s: float, *, floor_s: float = 12.0, cap_s: float = CAP,
+                      margin_s: float, *, floor_s: float = 15.0, cap_s: float = CAP,
                       stream_delay_credit_s: float = 0.0, approved_min_s: float | None = None) -> float:
     """Seconds to hold this league's stream behind live. See the module doc for the formula."""
     fl, sy, tu, ma, cr = (_num(n, v) for n, v in (("feed_lag_p95_s", feed_lag_p95_s), ("sync_err_s", sync_err_s),
@@ -56,6 +57,18 @@ def adaptive_buffer_s(league: str, feed_lag_p95_s: float, sync_err_s: float, tun
     if approved_min_s is not None:
         b = max(b, _num("approved_min_s", approved_min_s))   # ratchet: never below what a locked gate approved
     return round(max(floor_s, min(cap_s, b)), 1)
+
+
+def ship_b(cfg, league: str, sweep_b: float | None, mid_play_night: bool = False) -> tuple[float, str]:
+    """Gate v28: RC8 B = max(sweep point, formula, floor), capped at 90; straight back to the cap after any
+    mid-play night. Returns (B, why)."""
+    b, parts = buffer_for(cfg, league)
+    if mid_play_night:
+        return parts["cap_s"], "a mid-play night: straight back up to the cap"
+    if sweep_b is None:
+        return b, "no sweep point yet: formula/floor only"
+    out = round(min(parts["cap_s"], max(float(sweep_b), b)), 1)
+    return out, f"max(sweep {float(sweep_b):g}, formula/ratchet/floor {b:g})"
 
 
 def is_on(cfg, league: str | None) -> bool:
@@ -74,14 +87,19 @@ def buffer_for(cfg, league: str) -> tuple[float, dict]:
     fixed_live = float(by.get(league, cfg.get("timing.behind_live_s.default", 60)) or 0.0)
     lags = a("feed_lag_p95_s", {}) or {}
     approved = float((a("approved_min_s", {}) or {}).get(league, 0) or 0)
+    # the league's live B today: only a league that already holds its stream (RC6.2 NBA/NFL) has one
+    live_b = fixed_live if config.for_league(cfg, "timing.behind_live_s.enabled", league, False) else 0.0
+    # gate v28: ratchet down one step of at most RATCHET_STEP per release, and only after a locked read held
+    if approved > 0:
+        ratchet, src = max(approved, live_b - RATCHET_STEP), "locked_gate"
+    else:
+        ratchet, src = live_b, ("live_hold" if live_b > 0 else "none")
     parts = {"league": league,
              "feed_lag_p95_s": float(lags.get(league, max(lags.values()) if lags else 75.0)),
              "sync_err_s": float(a("sync_err_s", 2.0)), "tune_seek_s": float(a("tune_seek_s", 6.0)),
              "margin_s": float(a("margin_s", 5.0)), "stream_delay_credit_s": float(a("stream_delay_credit_s", 0.0)),
-             "floor_s": float(a("floor_s", 12.0)), "cap_s": cap,
-             # ratchet: with no locked approval, never below today's fixed per-league value
-             "ratchet_min_s": approved if approved > 0 else fixed_live,
-             "ratchet_source": "locked_gate" if approved > 0 else "by_league"}
+             "floor_s": float(a("floor_s", 15.0)), "cap_s": cap,
+             "ratchet_min_s": ratchet, "ratchet_source": src}
     parts["formula_s"] = round(parts["feed_lag_p95_s"] + parts["sync_err_s"] + parts["tune_seek_s"]
                                + parts["margin_s"] - parts["stream_delay_credit_s"], 1)
     b = adaptive_buffer_s(league, parts["feed_lag_p95_s"], parts["sync_err_s"], parts["tune_seek_s"],
