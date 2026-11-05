@@ -599,3 +599,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   decider's own NEXT and your focus game), so a tap back is a flip. Why: Nov 4 live, 16 phone presses to Prime ~2 min apart,
   11 cold (~30 s) because a planner guess took the hidden stick. Lab night ping-pong drill (32 presses, seeds 1-2): warm
   0/32 -> 31/32, Prime press 46 s -> ~3 s. 0 = off (instant rollback via /api/settings). Standby only: no switch timing change.
+- 2026-11-05 (Nick, Nov 4 10:55 PM ET): RC6.2 (1bf4150) approved and deployed with the TV off. A SECOND "Go now" tap
+  switches instantly, even mid-play: it's Nick's explicit control. One tap still waits for a dead ball. Graders count
+  that forced entry on its own (lane 3's forced go-now line), never as a decider mid-play entry, and never as a training
+  label. New standing rule: no deploys and no Mac-side experiments while games are live and Nick is watching. The Mac
+  stays plugged in on game nights.
