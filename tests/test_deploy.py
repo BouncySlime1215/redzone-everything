@@ -642,3 +642,28 @@ def test_edited_tracked_files_still_refuse_with_untracked_around(world):
     (w.mac / "app.txt").write_text("local edit\n")
     with pytest.raises(D.DeployError, match="app.txt"):
         w.deployer().deploy(skip_tests=True)
+
+
+def test_busy_at_break_lets_a_halftime_through():
+    """[Nick, Nov 4] --at-break: the game on screen at halftime/intermission lets the restart through."""
+    half = {"matchup": "A @ B", "phase": "live", "on_now": True, "league": "nba", "status_text": "Halftime"}
+    other = {"matchup": "C @ D", "phase": "live", "league": "nhl", "status_text": "2nd 10:00"}
+    assert D.busy({"games": [half, other]}, T0, 900, at_break=True) == ""
+    assert "live" in D.busy({"games": [half, other]}, T0, 900)                     # default unchanged
+    nhl = {**other, "on_now": True, "status_text": "End of 2nd"}
+    assert D.busy({"games": [nhl]}, T0, 900, at_break=True) == ""
+    assert D.busy({"games": [{**nhl, "status_text": "2nd Intermission"}]}, T0, 900, at_break=True) == ""
+    q1 = {**half, "status_text": "End of 1st"}                                     # NBA quarter break: short
+    assert "not in halftime" in D.busy({"games": [q1]}, T0, 900, at_break=True)
+    assert "not in halftime" in D.busy({"games": [{**half, "status_text": "2nd 4:12"}]}, T0, 900, at_break=True)
+    assert "none is on screen" in D.busy({"games": [other]}, T0, 900, at_break=True)
+    assert D.busy({"games": [{"phase": "pre", "start_time": T0 + 60}]}, T0, 900, at_break=True) == ""
+
+
+def test_deploy_cli_at_break_flag(monkeypatch, tmp_path):
+    seen = {}
+    monkeypatch.setattr(D.Deployer, "deploy",
+                        lambda self, **kw: seen.update(at=self.s.at_break, poll=self.s.live_poll_s) or 0)
+    assert D.main(["deploy", "--at-break", "--wait", "60"], system=FakeMac(tmp_path), root=tmp_path) == 0
+    assert seen == {"at": True, "poll": 30.0}
+    assert D.main(["deploy"], system=FakeMac(tmp_path), root=tmp_path) == 0 and seen["at"] is False

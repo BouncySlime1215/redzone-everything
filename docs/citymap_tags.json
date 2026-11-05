@@ -1,6 +1,6 @@
 {
  "redzone/decider/*": [
-  "Mid-play cuts + entries (per 100 landings)",
+  "Mid-play entries (per 100 landings)",
   "Landings in dead time",
   "Entries at a possession start (dead ball, no play missed)",
   "Crunch live, NFL",
