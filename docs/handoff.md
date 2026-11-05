@@ -71,7 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-ACCOUNT SWITCH TODAY: full overseer handoff at docs/handoff-overseer-2026-11-05.md (tonight's 10-item plan + 20-30 threads, Nick decisions, sync findings, training state, open asks, rules). Read it first.
+BUDGET ALERT 10:45 AM: weekly usage 63% -> 67% in ~35 min after the 20-30-thread scale-up; coordinator throttled to ~8 threads (T1 buffer shadow, T4 YTTV tests, T5 TNF scorebug, T6 feeds, T9 RC8 + integrator), target <=2%/h. Usage 67%.
+Ladder tab stuck 'Resuming execution' since 9:15 (check Manage sessions; Run all to resume from checkpoint).
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
