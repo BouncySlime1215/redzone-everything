@@ -1205,6 +1205,9 @@ def grade_cut(t: dict, timelines: dict) -> dict | None:
         return None
     rec = {"ts": cut, "id": t.get("id"), "from": t.get("from"), "from_label": t.get("from_label"),
            "to": t.get("to"), "to_label": t.get("to_label"), "kind": t.get("kind"), "path": t.get("path"),
+           # Nick, Nov 4 10:55 PM: a second "Go now" tap switches at once, even mid-play. It is his explicit
+           # control, so the graders count it on its own line, never as the decider joining mid-play.
+           "forced": bool(t.get("forced")),
            "leave": None, "leave_why": "", "enter": None, "enter_why": ""}
 
     def land(gid, at, delay, offsets: bool = False):
