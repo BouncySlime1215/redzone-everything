@@ -38,3 +38,22 @@ Read-only (no key press), sticks written as stickA/stickB. The report says per s
 position is an epoch (> 1e12: the frame's wall clock, so E = seconds behind real life) or a counter, how flat E
 stays between state updates, unexplained jumps per hour (B1 pass: <= 2), and each pause's rise in E against
 its length.
+
+## T7: the SEEK_TO helper and the rewind bench (Nov 5)
+
+`list` now also prints each session's `title`, `subtitle` and `duration` (MediaMetadata), the ad evidence.
+`redzone/seek_to.py` drives `list` + `seekrel` from the app: behind `replay.seek_to.enabled` (OFF),
+Controller._rewind seeks by the exact amount, re-measures on the stick's clock, corrects once, and presses
+keys only for what is still short (priced per app). It pushes `rzseek.dex` to a stick by itself the first time.
+
+Hidden-stick run, before games, while Nick watches (about 15 minutes per app/channel):
+
+    sh tools/rzseek/build.sh                                       # once, after pulling (D8=... or DX_JAR=...)
+    python scripts/seek_bench.py preflight <hidden>                # read-only: SEEK_TO bit, title, hidden?
+    # tune the hidden stick to the channel in the app as usual, then:
+    python scripts/seek_bench.py run <hidden> --channel nbatv --reps 2    # 8 SEEK_TO + 8 key trials
+    python scripts/seek_bench.py report data/reports/seek_bench_<date>.jsonl data/seeks.jsonl
+
+`run` refuses unless the app's /api/state says the stick is hidden (`--tv-off` only when Nick says the TV is
+off) and never runs on Peacock. Rows name the stick by `--alias` (stickA), never by address. Turn
+`replay.seek_to.enabled` on for an app only when its rows PASS: p90 |err| <= 1 s, settle p50 <= 3 s, 0 ads.

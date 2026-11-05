@@ -11,3 +11,4 @@ data/training/
 .rz_tmp/
 .claude-xfer/
 .rz.bundle
+tools/rzseek/rzseek.dex

@@ -848,3 +848,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `wv-attention-labels`; later sources (S6 Twitch) get their own row. Labels are training targets only, train nights
   only, never features; the objective stays "worth it" (no engagement traps). Locked read once by the integrator at
   the next release. Grader freeze v27.
+- **2026-11-05 (T7, Nick's 10:00 AM order: SEEK_TO helper + rewind/ads reliability, key fallback):** new
+  `replay.seek_to.*` group, **enabled false**. With it on, Controller._rewind seeks by an exact amount through
+  MediaSession SEEK_TO (redzone/seek_to.py over tools/rzseek), measured on the stick's clock, one correction
+  seek, presses only for any remaining shortfall (priced per app: YouTube TV 15 s + swallowed press, Prime
+  `prime_key_step_s` 10 s), and nothing more once the position can't be told (adb hang, ad after the seek). Turn
+  it on per app only after `scripts/seek_bench.py` on the hidden stick shows p90 |err| <= 1 s, settle p50 <= 3 s
+  and 0 forced ads over >= 3 trials per channel. Also fixed: key rewinds never wrote a data/seeks.jsonl row
+  (the presses cleared stick.tuned before _seek_sample read its anchor).
