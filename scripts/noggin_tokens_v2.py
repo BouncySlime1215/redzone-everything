@@ -394,9 +394,38 @@ def table_game(g, sport: str, league: str, fields: dict, edges: dict) -> tuple[n
     return np.asarray(out, np.uint16), cnt
 
 
-def build_table(src: Path, out: Path, train_before: str | None = None, track: Path | None = None) -> dict:
+# Sports whose play-table x runs along an absolute, home-defined axis, so a side swap flips it (x -> 1 - x). Empty on
+# purpose: NBA shot x/y (crew A nba_stats) and SportVU court x are court coordinates, not home-relative; nflverse
+# yardline and StatsBomb x are already relative to the team in possession, so a side swap leaves them unchanged.
+MIRROR_X_SPORTS: frozenset[str] = frozenset()
+_FLIP = {"home": "away", "away": "home"}
+
+
+def mirror_table(df):
+    """[Data E, EXP-1401] Home <-> away on a crew A play table, BEFORE tokenizing: the teams, the scores, and the
+    side / possession tags swap. Player and team ids stay (DET's rebound is still DET's; it is now the home side's).
+    x only flips for MIRROR_X_SPORTS. The result is synthetic: build_table(mirror=True) tags it and keeps it out of
+    real counts."""
+    d = df.copy()
+    d["home"], d["away"] = df["away"], df["home"]
+    if "home_score" in d and "away_score" in d:
+        d["home_score"], d["away_score"] = df["away_score"], df["home_score"]
+    for c in ("side", "possession"):
+        if c in d:
+            d[c] = df[c].map(lambda v: _FLIP.get(v, v) if isinstance(v, str) else v)
+    if "x" in d and "sport" in d:
+        flip = d["sport"].isin(MIRROR_X_SPORTS)
+        d.loc[flip, "x"] = 1.0 - d.loc[flip, "x"]
+    d["game_id"] = d["game_id"].astype(str) + "~mirror"
+    return d
+
+
+def build_table(src: Path, out: Path, train_before: str | None = None, track: Path | None = None,
+                mirror: bool = False, real_dir: Path | None = None) -> dict:
     """One crew A shard (<root>/<source>/<league>/<season>.parquet) -> <out>/<league>/<season>.npy + .json.
-    track: a tracking shard on the same game ids (SportVU), joined per event (join_track)."""
+    track: a tracking shard on the same game ids (SportVU), joined per event (join_track).
+    mirror: write <season>.mirror.npy/.json instead: home <-> away (mirror_table) on TRAIN nights only, with the
+    real shard's bucket edges (from real_dir, default out), tagged synthetic (counts toward the 3x cap)."""
     import pandas as pd
     df = pd.read_parquet(src)
     season = src.stem
@@ -404,7 +433,8 @@ def build_table(src: Path, out: Path, train_before: str | None = None, track: Pa
     if track is not None:
         df = join_track(df, track)
     d = Path(out) / league
-    js = d / f"{season}.json"
+    stem = f"{season}.mirror" if mirror else season
+    js = d / f"{stem}.json"
     if js.exists() and json.loads(js.read_text()).get("complete"):
         return json.loads(js.read_text())
     d.mkdir(parents=True, exist_ok=True)
@@ -415,7 +445,10 @@ def build_table(src: Path, out: Path, train_before: str | None = None, track: Pa
         nights = sorted(df.night.unique())
         train_before = nights[int(len(nights) * 0.8)]
     tr = df[df.night < train_before]
-    edges = fit_edges(tr, fields)
+    real_js = (Path(real_dir) / league if real_dir else d) / f"{season}.json"
+    edges = (json.loads(real_js.read_text())["edges"] if mirror and real_js.exists() else fit_edges(tr, fields))
+    if mirror:                                  # train nights only: no valid / test / locked game gets a copy
+        df = mirror_table(tr)
     df = df.sort_values(["game_id", "seq"], kind="stable")
     parts, games, off = [], [], 0
     led = {"base": 0, "new": 0, "derived": 0, "ctx_new": 0, "ctx_derived": 0}
@@ -430,8 +463,8 @@ def build_table(src: Path, out: Path, train_before: str | None = None, track: Pa
         games.append([str(gid), str(g.night.iloc[0]), off, int(len(t)), 0])
         off += len(t)
     arr = np.concatenate(parts) if parts else np.zeros(0, np.uint16)
-    np.save(d / f"{season}.npy.tmp", arr)
-    os.replace(d / f"{season}.npy.tmp.npy", d / f"{season}.npy")
+    np.save(d / f"{stem}.npy.tmp", arr)
+    os.replace(d / f"{stem}.npy.tmp.npy", d / f"{stem}.npy")
     lic = str(df.license.iloc[0]) if len(df) and "license" in df else ""
     events = int(sum(is_event_start(arr)))
     info = {"league": league, "sport": sport, "season": season, "tokens": int(len(arr)), "games": len(games),
@@ -440,6 +473,9 @@ def build_table(src: Path, out: Path, train_before: str | None = None, track: Pa
             "source": str(df.source.iloc[0]) if len(df) else "?", "source_license": lic,
             "license": lic if lic.startswith("open") else PERSONAL, "ledger": led, "edges": edges,
             "train_before": train_before, "complete": True, "index": games}
+    if mirror:
+        info.update(real=False, synthetic=True, aug="mirror", tags=["synthetic", "mirror"], license=PERSONAL,
+                    source_shard=f"{league}/{season}.json")
     js.write_text(json.dumps(info))
     return info
 
@@ -462,8 +498,10 @@ def main(argv=None) -> int:
         tp.add_argument("--out", type=Path, required=True)
         tp.add_argument("--train-before", default=None)
         tp.add_argument("--track", type=Path, default=None, help="tracking shard joined per event (one src only)")
+        tp.add_argument("--mirror", action="store_true", help="home <-> away synthetic copy of train nights (Data E)")
+        tp.add_argument("--real-dir", type=Path, default=None, help="--mirror: the real shards' dir (bucket edges)")
         b = tp.parse_args(argv)
-        infos = [build_table(p, b.out, b.train_before, b.track) for p in b.srcs]
+        infos = [build_table(p, b.out, b.train_before, b.track, b.mirror, b.real_dir) for p in b.srcs]
         print(ledger_line(infos))
         return 0
     ap = argparse.ArgumentParser()
