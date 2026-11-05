@@ -22,7 +22,7 @@ rules:
     per_period: 1
     official_len_s: {local: 165, national: 195}
     measured: {league: nba, kind: timeout_long}
-    measured_note: "1st/2nd timeout of a quarter, train q50: local 187 s, NBC 217, ESPN 217, Prime 218 (n 286/21/29/15); earlier read on all timeouts: local 182 s, ESPN 213, NBC 212 (n 38/30): the +30 s national rule shows up in the data."
+    measured_note: "1st/2nd timeout of a quarter, train q50: local 187 s, NBC 217, ESPN 217, Prime 218 (n 286/21/29/15); cross-check: Data A cdn table (#259, docs/datasources/nba-stoppage-lengths.json, 7,230 games 2020-26, no network) 2024-25 Q1-Q3 q50 180-185 s, q10 ~170; earlier read on all timeouts: local 182 s, ESPN 213, NBC 212 (n 38/30): the +30 s national rule shows up in the data."
     exceptions: ["Any team timeout before the mark stands in for it (the first two timeouts of a quarter are the long ones)."]
     since: "2017-18"
     confidence: verified
