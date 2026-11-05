@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-RC6.1 deploy deferred: ATL @ WSH live, switches after games
-V8 watchdog 1050/1436, GR 500/7862, NFL-only pilot running; usage 38%
+NFL-only world model pilot done (exit 0): next-event acc 43.2% vs bigram 37.2%, break-time MAE 46s vs 62s baseline.
+V8 watchdog 1200/1436, game-reasoner 650/7862; RC6.1 deploy still waiting on live games. Usage 38%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
