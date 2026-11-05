@@ -10,7 +10,8 @@ text), and label it from what actually happened next on the wall clock:
   t_big      seconds to the next big play (inf if none before the game ends)
   t_break    seconds to the next real break (timeout, end of period, ...), for "how long to stay"
   y_out      [EXP-302] the lock label from REAL outcomes (outcome_label: a lead change/catch or a win
-             probability swing in the next few minutes), plus its parts flip, wp_swing, close_finish.
+             probability swing in the next few minutes), plus its parts flip, wp_swing, close_finish;
+  y_out2     the same over twice the horizon (the outcome truth's "watch" level).
              `y` is defined by the clock and margin the model sees (NBA clock-only AUC 0.996), so grade
              lock calls on y_out (Nick, Nov 5 1:50 AM).
 
@@ -86,6 +87,7 @@ class Row:
     flip: int = 0
     wp_swing: int = 0
     close_finish: int = 0
+    y_out2: int = 0          # y_out over twice the horizon: the "watch" level of the outcome lock truth
 
     def as_dict(self) -> dict:
         return dict(self.__dict__)
@@ -110,6 +112,7 @@ def game_rows(lg: League, r: Replay, night: str, cfg: Config, my_teams: set[str]
     me = Personal(my_teams={x: set(my_teams) for x in League})
     big, crunch, brk = _plays_meta(lg, r)
     out = outcome_label.label_game(lg, r.plays, r.wall)
+    out2 = outcome_label.label_game(lg, r.plays, r.wall, horizon=2 * outcome_label.HORIZON[lg])
     H = HORIZON_S[lg.base.value]
     n = len(r.plays)
     rows: list[Row] = []
@@ -145,7 +148,7 @@ def game_rows(lg: League, r: Replay, night: str, cfg: Config, my_teams: set[str]
                         nxt_big[i + 1] - w if i + 1 <= n else math.inf,
                         nxt_brk[i + 1] - w if i + 1 <= n else math.inf, nt,
                         ctx.mine, s.garbage, s.crunch, s.late, g.matchup, lg.value,
-                        g.stoppage in REAL_BREAKS, **out[i]))
+                        g.stoppage in REAL_BREAKS, **out[i], y_out2=out2[i]["y_out"]))
     return rows
 
 
