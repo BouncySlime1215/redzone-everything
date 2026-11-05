@@ -64,3 +64,16 @@ the probe must also log `/proc/uptime` (or the extrapolated value).**
   `burst_align.py`, and average over many breaks per channel/stick.
 - Background loggers now running: decoder bitrate every 5 s per stick (`codec_logger.sh`) and an overnight
   live-edge/pause/twin harness on the hidden stick (`overnight.py`).
+
+## Update ~3:15 AM: PRIME REPORTS REAL CLOCK TIME (the big one)
+
+- On stick .150 during the Nov 4 Prime NBA window (19:12-21:56), Prime's media_session `position` is a **Unix
+  epoch in ms**: the wall-clock time stamped on the frame on screen (encoder/packager time).
+- `behind = wall_at_update - position/1000` = **6.3-7.0 s, median 6.4 s, across 19 readings over 3 h.** Exact, continuous,
+  no ads or guessing. (Extrapolate between updates with /proc/uptime exactly like YTTV.)
+- Remaining unknown for Prime: the constant gap between Amazon's frame clock and the arena (contribution delay).
+  Measure it from NBA cdn `wall` times of breaks/period starts vs Prime frame times; expected a few seconds.
+- Stick .181 on Prime reported a non-epoch position (~86,368 s and rising in real time, a 24 h counter). Likely a
+  different content type (Prime Video Channels / linear) or player path. Test on TNF tonight on both sticks.
+- **Code change (lane 2):** in the probe/controller, if the Prime position > 1e12 ms, treat it as an epoch and expose
+  `prime_behind_s = now - pos_now` per stick. This alone gives Prime sync to well under a second vs Amazon's clock.
