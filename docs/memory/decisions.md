@@ -656,3 +656,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Workers' outputs are trusted with no second review, except a license line per source (B rules). 1-2 test writers write
   pre-registered experiments and graders. Lanes 1-4 keep the body. Pace to <= 85% weekly by Mon 8 PM ET (hard stop 89%).
   Org, id blocks and checkpoints: docs/plans/2026-11-05-data-division.md.
+- **2026-11-05 (lane 2, EXP-023 wiring):** new key `noggin.belief.enabled` (default `false`). When it's on, the
+  engine uses the belief tracker (#223) as its delay sync in place of the Kalman filter, and it logs the
+  same data/sync.jsonl rows. It stays OFF: #223's dev bar failed on NBA and NHL (rule #1 clause, and NHL short
+  of 2 s), though it cut delay error p95 in every league. Why wire it now: Nick's RC7 requirement 2 (sync
+  p95 ≤ 2 s) gets graded from those logs.
