@@ -202,6 +202,16 @@ on locked.
 | EXP-081 | M62 | The guardrail is now the binding line (§5) and the metrics (§6). | Applied to every row above. | n/a | n/a | standing |
 | EXP-082 | Mind 3B | Explains choices and handles odd cases; it is not the core timing. | Stays shadow-first and flag-off (≤ 2 GB). | n/a | n/a | standing |
 
+## Data Division C: media metadata (EXP-1200..1299, planner C)
+
+Plan: [media-metadata.md](datasources/media-metadata.md). No video is ever downloaded. Personal-use (plan B).
+
+| rank | id | covers | hypothesis | North Star line | cost GPU-h / agent-h | lane | success bar | nights needed | status |
+|---:|---|---|---|---|---|---|---|---|---|
+| 1200 | EXP-1200 | data C | Land clip tags for MLB (2023-2025) and NHL (2023-24 to now) from public JSON, no key. | Data ledger new-info tokens | 0 / ~2 | C | `media-out/mlb` and `media-out/nhl` hold rows with a licence line + personal-use tag on 100%; >=80% of MLB clips and >=95% of NHL goal clips link to a game event id; ledger.json reports new vs derived tokens; 0 duplicate clip ids | n/a (data) | running |
+| 1201 | EXP-1201 | data C, importance head | "Was clipped" is a hindsight importance label: among MLB plays, P(clipped) rises with WPA leverage, and a leverage model's top-decile plays are clipped >=3x as often as the median decile. | Lift over context-only baseline (label quality) | ~0.5 / ~3 | C + ① | On the time-split valid seasons only (2025 locked, untouched): Spearman(leverage decile, clip rate) >=0.6 with cluster-bootstrap CI by game excluding 0; report per kind. Fail = label is noise, keep it out of training | n/a (data) | queued (after 1200) |
+| 1202 | EXP-1202 | data C | YouTube official-channel snapshots every 6 h give view velocity and a daily Top-10 per league. | Data ledger | 0 / ~1 | C | 7 days of snapshots for all 6 channels, stats refreshed <=30 days, velocity on >=90% of videos after the 2nd snapshot | n/a | blocked (Nick: YOUTUBE_API_KEY secret) |
+
 ## Results log
 
 - **EXP-018** (Nov 4, 23:40 UTC, value = score, because WV isn't wired yet). The bar was pre-registered at
