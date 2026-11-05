@@ -267,6 +267,20 @@ decider:
     crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
     hold_crunch_runup: true  # ...including into NHL crunch's 3:00-2:00 run-up (a whistle comes before 2:00)
+    user_timed: true         # [EXP-741] one phone tap also waits until the joined game's picture would come up on a dead
+                             # ball (Nick Nov 4 10:55 PM); the second "Go now" tap still cuts at once. Off: a tap only
+                             # waits for a safe moment to leave the game on screen (Wed Nov 4 live: 15 taps landed mid-play)
+    user_rewind_after_s: 15  # [EXP-741 B] with user_timed: after this many seconds a tap also takes a landing that needs
+                             # a rewind to the last dead ball (YTTV), armed at the cut; null = never (no-rewind taps waited
+                             # > 180 s on 12/20 NBA taps, lane 3). Graded arm: 15
+    user_timed_targets: [youtubetv]  # [EXP-741 scope] targets (app prefixes) a timed tap applies to; [] = all. Prime
+                             # taps go as before: lane 3 graded YTTV+rewind 0 live, waits 0-63 s; Prime p50 199 s
+    user_rewind_max_s: null  # [EXP-741 D] a tap never rewinds further than this (a longer one keeps waiting); null = no cap.
+                             # Graded arm: 60 (arm B rewound one tap 123 s behind live)
+    user_bug_gate: shadow    # [EXP-741 E] off | shadow | on: a tap onto Prime lands when the score bug's clock on the hidden
+                             # stick has stopped (two equal reads >= 1.5 s apart, newest <= 5 s old), waits while it runs,
+                             # and uses the feed plan only when unreadable; shadow only logs every Prime bug clock read to
+                             # data/tap_bug.jsonl (taps never wait for it; gradable with user_timed off)
     start_timed: false       # [EXP-739] the night's first pick waits for a whistle / rewinds like any entry (off: goes in
                              # live, which landed 6 NHL first picks 10-32 s after the opening faceoff, autopsy #302)
     lag_floor_s: 0           # [EXP-211] an open stoppage counts as dead only as far as a feed at least this slow would
