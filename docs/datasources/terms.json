@@ -129,7 +129,12 @@
     "nflverse_pfr": "red",
     "nfl_depth_charts": "open",
     "nba_cup_stakes": "open",
-    "gabriel1200_site_data": "red"
+    "gabriel1200_site_data": "red",
+    "nba_summer_cdn": "restrictive",
+    "wnba_cdn": "restrictive",
+    "nfl_espn_qbr": "restrictive",
+    "nfl_gamebooks": "red",
+    "kyleskom_odds": "red"
   },
   "nba_terms_review": "private-only (read 2026-11-05 by data crew B): nba.com terms of use have no clause on automated access or AI; they allow downloading for personal, noncommercial use (s.1), forbid republishing Basketball Content (s.1), and limit NBA Statistics to private noncommercial use with NBA.com credit and no comprehensive public database (s.9). So: run on Kaggle into the private dataset only; never push outputs to a public branch or artifact."
 }

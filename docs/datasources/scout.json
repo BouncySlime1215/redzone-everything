@@ -1197,6 +1197,72 @@
       "owner": "crew B",
       "needs_nick": "none",
       "probe": ""
+    },
+    {
+      "id": "nba-summer-cdn",
+      "kind": "events",
+      "cycle": 20,
+      "priority": 1,
+      "focus": "nba",
+      "name": "NBA Summer League liveData pbp with wall clocks (cdn.nba.com, same route as nba-cdn-wallclock)",
+      "sports": "NBA Summer League",
+      "years": "2021 forward (what the cdn still serves)",
+      "access": "cdn.nba.com liveData playbyplay per game id, Las Vegas/Salt Lake/California Classic schedules; honest client, 1 req/2 s, stop on 403/429",
+      "verdict": "yellow-B",
+      "license": "NBA.com/WNBA.com terms; plan B personal use, not for commercial release; private Kaggle only; RED if the site terms bar bots (Sports-Reference rule)",
+      "est_events_m": 0.2,
+      "est_tokens_m": 1.2,
+      "novelty": 1.5,
+      "raw_gb": 0.1,
+      "why": "NBA rules, NBA broadcast breaks and real wall clocks, so it is extra NBA break timing in the offseason; rides lane 1's cdn collector with a different id range",
+      "status": "probe",
+      "owner": "crew A",
+      "needs_nick": "none",
+      "probe": "https://cdn.nba.com/robots.txt"
+    },
+    {
+      "id": "wnba-cdn-wallclock",
+      "kind": "events",
+      "cycle": 20,
+      "priority": 1,
+      "focus": "shared-basketball",
+      "name": "WNBA liveData pbp with wall clocks (cdn.wnba.com)",
+      "sports": "WNBA",
+      "years": "2021 forward",
+      "access": "cdn.wnba.com liveData playbyplay per game id (if served); honest client, 1 req/2 s, stop on 403/429",
+      "verdict": "yellow-B",
+      "license": "NBA.com/WNBA.com terms; plan B personal use, not for commercial release; private Kaggle only; RED if the site terms bar bots (Sports-Reference rule)",
+      "est_events_m": 0.6,
+      "est_tokens_m": 3.6,
+      "novelty": 1.5,
+      "raw_gb": 0.3,
+      "why": "wehoop gives WNBA events without dependable wall clocks; the cdn adds real timestamps, so it is break-length data on shared basketball code",
+      "status": "probe",
+      "owner": "crew A",
+      "needs_nick": "none",
+      "probe": "https://cdn.wnba.com/robots.txt"
+    },
+    {
+      "id": "nfl-espn-qbr",
+      "kind": "context-new",
+      "cycle": 20,
+      "priority": 2,
+      "focus": "nfl",
+      "name": "ESPN QBR weekly via nflverse espn_data release",
+      "sports": "NFL",
+      "years": "2006-2025",
+      "access": "nflreadpy load_espn_qbr() (nflverse release parquet)",
+      "verdict": "yellow-B",
+      "license": "ESPN class under plan B, personal use, not for commercial release; nflverse mirror (terms.json nflverse open)",
+      "est_events_m": 0.02,
+      "est_tokens_m": 0.12,
+      "novelty": 1.0,
+      "raw_gb": 0.01,
+      "why": "a QB form number before kickoff that goes back to 2006 (NGS starts in 2016); small but cheap",
+      "status": "ready",
+      "owner": "crew B",
+      "needs_nick": "none",
+      "probe": ""
     }
   ],
   "red_found": [
@@ -1239,6 +1305,14 @@
     {
       "name": "gabriel1200/site_Data NBA tracking/hustle CSVs",
       "why": "mixes Basketball-Reference tables (Sports-Reference rule) with NBA.com season totals, and has no stated license; season totals add little per GB anyway. Skipped."
+    },
+    {
+      "name": "NFL gamebooks and other NFL.com pages (static.nfl.com PDFs, nfl.com game pages)",
+      "why": "NFL.com terms s.1.3 ban systematic retrieval to build a database without written consent; same rule as Sports-Reference. NFL numbers keep coming from nflverse."
+    },
+    {
+      "name": "kyleskom/NBA-Machine-Learning-Sports-Betting odds data",
+      "why": "no license, and its odds are scraped from sportsbooks (FanDuel/DraftKings terms bar bots). Crew D keeps SBRO and the Odds API free tier."
     }
   ]
 }
