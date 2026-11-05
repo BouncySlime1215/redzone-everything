@@ -54,6 +54,9 @@ def test_team_abbr():
     assert W.team_abbr("Portland Trail Blazers", "nba") == "POR"
     assert W.team_of_title("2023–24 Washington Wizards season", "nba") == "WAS"
     assert W.team_of_title("2009 Pittsburgh Steelers season", "nfl") == "PIT"
+    assert W.team_abbr("@ L.A. Lakers", "nba") == "LAL" and W.team_abbr("Golden State", "nba") == "GSW"
+    assert W.parse_date("Wed, Oct 22", 2026) == "2026-10-22" and W.parse_date("Sun, Jan 4", 2026) == "2027-01-04"
+    assert W.nfl_team_name("WAS", 2021) == "Washington Football Team" and W.nfl_team_name("HOU", 2001) is None
 
 
 def test_article_features_and_tables():
@@ -82,6 +85,9 @@ class FakeWiki:
         if "rivalries" in cat:
             return [{"pageid": 9, "title": "Cowboys–Commanders rivalry"}]
         return [{"pageid": 1, "title": "2024 Washington Commanders season"}]
+
+    def resolve(self, titles):
+        return self.members("x") if any("Washington Commanders" in t for t in titles) else []
 
     def html(self, pageid):
         if pageid == 9:
@@ -161,14 +167,15 @@ def test_nflverse_event_and_divisions():
 def test_pull_newest_first_and_merges(tmp_path):
     class Two(FakeWiki):
         def members(self, cat):
-            if "rivalries" in cat:
-                return []
-            y = cat.split(":")[1][:4]
-            return [{"pageid": int(y), "title": f"{y} Washington Commanders season"}]
+            return []
+
+        def resolve(self, titles):
+            t = next(t for t in titles if "Washington" in t)
+            return [{"pageid": int(t[:4]), "title": t}]
     w = Two()
     order = []
-    orig = w.members
-    w.members = lambda cat: (order.append(cat), orig(cat))[1]
+    orig = w.resolve
+    w.resolve = lambda titles: (order.append(titles[0]), orig(titles))[1]
     W.pull("nfl", 2023, 2024, tmp_path, wiki=w)
     assert "2024" in order[0] and "2023" in order[1]                         # newest first
     led = W.pull("nfl", 2022, 2022, tmp_path, wiki=Two())                    # a later slice merges, not replaces

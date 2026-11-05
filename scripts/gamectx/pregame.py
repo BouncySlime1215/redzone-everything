@@ -276,6 +276,7 @@ def fetch(league: str, d0: str, d1: str) -> dict:
 
 def fetch_range(league: str, d0: datetime, d1: datetime) -> list[dict]:
     """Season events in <= 28-day windows (the endpoint caps a call at 1000 events), de-duplicated."""
+    d0, d1 = d0.replace(tzinfo=None), d1.replace(tzinfo=None)
     out, seen, a = [], set(), d0
     while a <= d1:
         b = min(a + timedelta(days=27), d1)

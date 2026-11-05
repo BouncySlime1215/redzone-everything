@@ -61,6 +61,41 @@ NBA = {"Hawks": "ATL", "Celtics": "BOS", "Nets": "BKN", "Bobcats": "CHA", "Bulls
        "Wizards": "WAS", "Hornets": "CHA"}
 
 
+# NBA game logs name the opponent by city ("@ Boston", "L.A. Lakers")
+NBA_CITY = {"Atlanta": "ATL", "Boston": "BOS", "Brooklyn": "BKN", "New Jersey": "BKN", "Charlotte": "CHA",
+            "Chicago": "CHI", "Cleveland": "CLE", "Dallas": "DAL", "Denver": "DEN", "Detroit": "DET",
+            "Golden State": "GSW", "Houston": "HOU", "Indiana": "IND", "L.A. Clippers": "LAC", "LA Clippers": "LAC",
+            "Los Angeles Clippers": "LAC", "L.A. Lakers": "LAL", "LA Lakers": "LAL", "Los Angeles Lakers": "LAL",
+            "Memphis": "MEM", "Vancouver": "MEM", "Miami": "MIA", "Milwaukee": "MIL", "Minnesota": "MIN",
+            "New Orleans": "NOP", "New York": "NYK", "Oklahoma City": "OKC", "Seattle": "OKC", "Orlando": "ORL",
+            "Philadelphia": "PHI", "Phoenix": "PHX", "Portland": "POR", "Sacramento": "SAC", "San Antonio": "SAS",
+            "Toronto": "TOR", "Utah": "UTA", "Washington": "WAS"}
+# NFL franchise -> article team name by season (titles are built directly; the "by team" categories are not reliable)
+NFL_NAMES = {"ARI": "Arizona Cardinals", "ATL": "Atlanta Falcons", "BAL": "Baltimore Ravens", "BUF": "Buffalo Bills",
+             "CAR": "Carolina Panthers", "CHI": "Chicago Bears", "CIN": "Cincinnati Bengals", "CLE": "Cleveland Browns",
+             "DAL": "Dallas Cowboys", "DEN": "Denver Broncos", "DET": "Detroit Lions", "GB": "Green Bay Packers",
+             "HOU": "Houston Texans", "IND": "Indianapolis Colts", "JAX": "Jacksonville Jaguars",
+             "KC": "Kansas City Chiefs", "MIA": "Miami Dolphins", "MIN": "Minnesota Vikings",
+             "NE": "New England Patriots", "NO": "New Orleans Saints", "NYG": "New York Giants", "NYJ": "New York Jets",
+             "PHI": "Philadelphia Eagles", "PIT": "Pittsburgh Steelers", "SEA": "Seattle Seahawks",
+             "SF": "San Francisco 49ers", "TB": "Tampa Bay Buccaneers", "TEN": "Tennessee Titans"}
+
+
+def nfl_team_name(abbr: str, season: int) -> str | None:
+    if abbr == "HOU" and season < 2002:
+        return None
+    if abbr == "LA":
+        return "St. Louis Rams" if season < 2016 else "Los Angeles Rams"
+    if abbr == "LAC":
+        return "San Diego Chargers" if season < 2017 else "Los Angeles Chargers"
+    if abbr == "LV":
+        return "Oakland Raiders" if season < 2020 else "Las Vegas Raiders"
+    if abbr == "WAS":
+        return "Washington Redskins" if season < 2020 else ("Washington Football Team" if season < 2022
+                                                            else "Washington Commanders")
+    return NFL_NAMES.get(abbr)
+
+
 def team_abbr(name: str, league: str) -> str | None:
     """'at Dallas Cowboys' / '@ New Orleans Hornets' / 'Washington Football Team' -> abbreviation (franchise)."""
     n = re.sub(r"\[.*?\]|\(.*?\)|[*†‡#^]", "", name or "").strip()
@@ -71,6 +106,10 @@ def team_abbr(name: str, league: str) -> str | None:
     for nick in sorted(table, key=len, reverse=True):
         if re.search(rf"\b{re.escape(nick)}\b", n):
             return table[nick]
+    if league == "nba":
+        for city in sorted(NBA_CITY, key=len, reverse=True):
+            if n.startswith(city):
+                return NBA_CITY[city]
     return None
 
 
@@ -165,7 +204,7 @@ def walk(html: str) -> dict:
             # collapsible outer table). Duplicate game rows are dropped later by (date, opp).
             try:
                 secs[-1]["tables"] += pd.read_html(io.StringIO(lxml.html.tostring(el, encoding="unicode")))
-            except (ValueError, IndexError):
+            except (ValueError, IndexError, ImportError):
                 pass
     return {"sections": secs, "infobox": infobox}
 
@@ -192,11 +231,11 @@ MONTHS = {m: i for i, m in enumerate(["january", "february", "march", "april", "
 
 
 def parse_date(s: str, season: int) -> str | None:
-    m = re.search(r"(january|february|march|april|may|june|july|august|september|october|november|december)\.?\s+"
+    m = re.search(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+"
                   r"(\d{1,2})(?:,\s*(\d{4}))?", str(s), re.I)
     if not m:
         return None
-    mo, d = MONTHS[m.group(1).lower()], int(m.group(2))
+    mo, d = MONTHS3[m.group(1).lower()], int(m.group(2))
     y = int(m.group(3)) if m.group(3) else (season + 1 if mo <= 7 else season)
     try:
         return date(y, mo, d).isoformat()
@@ -204,6 +243,7 @@ def parse_date(s: str, season: int) -> str | None:
         return None
 
 
+MONTHS3 = {k[:3]: v for k, v in MONTHS.items()}
 RESULT = re.compile(r"\b([WLT])\s*[\s,]*(\d{1,3})\s*[–\-−]\s*(\d{1,3})")
 
 
@@ -315,6 +355,15 @@ class Wiki:
             if "continue" not in js:
                 return out
             cont = {"cmcontinue": js["continue"]["cmcontinue"]}
+
+    def resolve(self, titles: list[str]) -> list[dict]:
+        """Titles -> [{pageid, title}] for the ones that exist (redirects followed), 50 per call."""
+        out = []
+        for i in range(0, len(titles), 50):
+            js = self.get(action="query", titles="|".join(titles[i:i + 50]), redirects="1")
+            out += [{"pageid": p["pageid"], "title": p["title"]} for p in js.get("query", {}).get("pages", [])
+                    if "pageid" in p and not p.get("missing")]
+        return out
 
     def html(self, pageid: int) -> tuple[str, int]:
         js = self.get(action="parse", pageid=str(pageid), prop="text|revid", disablelimitreport="1",
@@ -456,8 +505,13 @@ def pull(league: str, first: int, last: int, out: Path, wiki: Wiki | None = None
 
     led = {}
     for season, cat in sorted(season_titles(league, first, last), reverse=True):
-        mem = wiki.members(cat)
-        print(f"{league} {season}: {len(mem)} articles in {cat}", flush=True)
+        if league == "nfl":
+            names = [n for n in (nfl_team_name(a, season) for a in sorted(set(NFL_NAMES) | {"LA", "LAC", "LV", "WAS"}))
+                     if n]
+            mem = wiki.resolve([f"{season} {n} season" for n in names])
+        else:
+            mem = wiki.members(cat)
+        print(f"{league} {season}: {len(mem)} articles", flush=True)
         g_s, w_s, t_s = [], [], []
         for m in mem:
             team = team_of_title(m["title"], league)
@@ -474,6 +528,7 @@ def pull(league: str, first: int, last: int, out: Path, wiki: Wiki | None = None
             t_s.append(ts)
             if limit and articles >= limit:
                 break
+        print(f"{league} {season}: {len(t_s)} team-seasons, {len(g_s)} games parsed", flush=True)
         keep = (lambda rows: [r for r in rows if int(r["season"]) != season])
         games, weeks, seasons = keep(games) + g_s, keep(weeks) + w_s, keep(seasons) + t_s
         done_seasons.add(season)
