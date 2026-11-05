@@ -36,6 +36,7 @@ FIRST = 2020
 CREDIT = "Play-by-play data (c) NBA.com, via shufinskiy/nba_data (Apache-2.0 packaging); private, non-commercial use."
 COLS = ["actionNumber", "orderNumber", "clock", "timeActual", "period", "actionType", "subType", "qualifiers",
         "personId", "scoreHome", "scoreAway", "description", "teamTricode", "gameId"]
+EXTRA = ["x", "y", "shotDistance", "shotResult", "possession", "descriptor", "area", "assistPersonId"]   # vocab v2
 DROP = {"steal", "block", "memo", "heave"}
 
 
@@ -103,7 +104,8 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
                         "wallclock": str(r.timeActual)[:19] + "Z" if isinstance(r.timeActual, str) else None,
                         "scoring_play": pts > 0, "score_value": pts, "home_score": int(hs[i]), "away_score": int(as_[i]),
                         "game_id": str(gid), "home_team_abbrev": home, "away_team_abbrev": away,
-                        "game_date": str(r.timeActual)[:10] if isinstance(r.timeActual, str) else None})
+                        "game_date": str(r.timeActual)[:10] if isinstance(r.timeActual, str) else None,
+                        **{f"x_{c}": getattr(r, c, None) for c in ["subType", "personId", "teamTricode"] + EXTRA}})
     return pd.DataFrame(out)
 
 
@@ -121,7 +123,8 @@ def fetch_season(year: int, out: Path) -> Path | None:
         return None
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:xz") as t:
         m = next(x for x in t.getmembers() if x.name.endswith(".csv"))
-        df = pd.read_csv(t.extractfile(m), usecols=COLS, low_memory=False)
+        df = pd.read_csv(t.extractfile(m), usecols=lambda c: c in COLS or c in EXTRA,
+                         low_memory=False)
     rows = convert(df)
     dst.parent.mkdir(parents=True, exist_ok=True)
     rows.to_parquet(dst.with_suffix(".tmp"), index=False)
