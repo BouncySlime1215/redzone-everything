@@ -43,7 +43,11 @@ import release_gate as rg  # noqa: E402
 
 PASS, FAIL, PENDING, INFO = rg.PASS, rg.FAIL, rg.PENDING, "INFO"
 SPLITS = {"dev": "fit", "locked": "test"}
+# Nick's leagues (Nick, Nov 4 2026 7:55 PM ET: "TURN OFF WOMEN'S BASKETBALL"). The North Star never scores a league
+# outside this set; WCBB is out of every scorecard, gate and ledger line.
+NICKS_LEAGUES = ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")
 LEAGUES = ("nfl", "nba", "nhl")
+assert set(LEAGUES) <= set(NICKS_LEAGUES), "North Star scores only Nick's leagues"
 MD = ROOT / "docs/northstar.md"
 HISTORY = ROOT / "docs/northstar-history.jsonl"
 ROADMAP_SRC = ROOT / "docs/roadmap.json"

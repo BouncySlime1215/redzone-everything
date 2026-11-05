@@ -49,3 +49,12 @@ def test_a_running_experiment_cannot_move_its_bar():
     status_only = HEAD + "| 1 | EXP-001 | h | Crunch live | +2 | 8 | 1 | done: failed bar |\n"
     assert gc.g3_goalposts(moved, base)[0][0] == "FAIL"
     assert gc.g3_goalposts(status_only, base)[0][0] == "PASS"
+
+
+def test_north_star_scores_only_nicks_leagues_no_wcbb():
+    """Nick, Nov 4 7:55 PM ET: women's basketball is off; it never appears in a scorecard or gate."""
+    spec2 = importlib.util.spec_from_file_location("northstar_l", ROOT / "scripts" / "northstar.py")
+    ns = importlib.util.module_from_spec(spec2)
+    spec2.loader.exec_module(ns)
+    assert "wcbb" not in ns.NICKS_LEAGUES and "wcbb" not in ns.LEAGUES and "wcbb" not in ns.ORACLE_LEAGUES
+    assert set(ns.LEAGUES) <= set(ns.NICKS_LEAGUES)

@@ -415,3 +415,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   report (scripts/night_report.py, northstar.yml's 10:00 UTC run) writes docs/nights/YYYY-MM-DD.md from the published
   live-night summary. Its gates pass in tests/test_night_report.py: matches the live log through publish, PENDING with
   no night or no games, no private strings published. Report only: nothing on the TV changes. Off again: set it false.
+- 2026-11-04 (Nick, 7:55 PM ET): women's basketball is OFF. Nick's leagues are NFL, CFB, NBA, CBB (men's), NHL and MLB
+  only. The North Star and release gate never score WCBB: `scripts/northstar.py NICKS_LEAGUES`, with a test. The grader
+  freeze was re-stamped. The default_config change (wcbb false, out of league_priority) is a separate PR.
