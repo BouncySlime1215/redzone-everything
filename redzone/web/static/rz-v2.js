@@ -72,7 +72,7 @@ function heldLine() {
   const rows = [];
   if (v.held) rows.push(`<span><b>Holding</b> ${esc(v.held.matchup)}${v.held.behind_s ? ` · ${esc(fmtDur(v.held.behind_s))} behind live` : ""}${v.held.ready ? "" : " · loading"}</span>`);
   if (v.back) rows.push(`<span><b>Coming back</b> ${esc(v.back.text)}</span>`);
-  if (v.catchup) rows.push(`<span><b>Next catch-up</b> ${esc(v.catchup.matchup)}: ${esc(v.catchup.label || v.catchup.kind)}${v.queued > 1 ? ` (+${num(v.queued - 1)} more)` : ""}</span>`);
+  if (v.catchup) rows.push(`<span><b>Next catch-up</b> ${esc(v.catchup.matchup)}: ${esc(v.catchup.label || v.catchup.kind)}${v.catchup.due_in_s != null ? ` · within ${esc(fmtDur(v.catchup.due_in_s))}` : ""}${v.queued > 1 ? ` (+${num(v.queued - 1)} more)` : ""}</span>`);
   return `<button class="v2-held" data-key="v2-held" data-act="v2-catchup" aria-label="Catch-up queue">${icon("hourglass")}<div>${rows.join("")}</div></button>`;
 }
 
@@ -564,7 +564,8 @@ function catchupSheet() {
       <div class="stile"><b>${num(c.yours)}</b><span>Your team</span></div>
       <div class="stile"><b>${num(c.resumed)}/${num(c.held)}</b><span>Left-game holds resumed</span></div></div>
     ${hid}
-    <h4>Waiting to be caught up</h4>${q || `<p class="lead">Nothing waiting.</p>`}
+    <h4>${d.spoiler_safe ? "Next up, in the order they'll play" : "Waiting to be caught up"}</h4>${q || `<p class="lead">Nothing waiting.</p>`}
+    ${d.more ? `<p class="lead">+${num(d.more)} more waiting. Shown when they're next, so nothing is spoiled.</p>` : ""}
     <h4>Tonight's left-game holds</h4><div class="v2-mss">${holds || `<p class="lead">None yet (STK-07 holds the game we leave at its dead ball).</p>`}</div>`;
 }
 ACTIONS["v2-catchup"] = () => { cq.data = null; openSheet({ id: "v2-catchup", label: "Catch-up queue", full: true, render: catchupSheet }); loadCatchup(); };

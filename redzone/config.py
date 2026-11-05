@@ -90,6 +90,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "phone.why_tag_min": (0, 100),
     "phone.worth_probe_days": (1, 60),
     "phone.orient_beat_s": (1, 10),
+    "phone.catchup_visible": (1, 5),
     "phone.orient_override_s": (5, 300),
     "demo": (0, 60),   # replay simulator timings (redzone/demo/engine.py)
 }
