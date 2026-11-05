@@ -30,7 +30,7 @@ def collect(dirs: list[Path]) -> list[dict]:
     for d in dirs:
         for p in sorted(d.rglob("*.parquet.json")):
             m = json.loads(p.read_text())
-            key = (m.get("source"), m.get("league"), str(m.get("season")))
+            key = (m.get("source"), m.get("league"), str(m.get("season")), bool(m.get("playoffs")))
             if key in seen:      # the same shard from two runs counts once
                 continue
             seen.add(key)
