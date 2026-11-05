@@ -573,3 +573,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   95% night-bootstrap lower bound, at least 4 rated nights a side, and PENDING otherwise. Nick's ratings stay
   evaluation-only (`tests/test_worth.py` scans noggin/decider/scoring). Note: 4 nights is a thin minimum, so treat an early
   PASS as provisional until 8. Grader freeze v9.
+- **2026-11-05 (lane 2, EXP-056 interface):** new key `noggin.planner.mode` (default `"off"`). In `"shadow"` mode the
+  decider asks a planner (redzone/noggin/planner.py) every tick and logs the plan next to its own decision, but
+  the TV never follows the planner. Why: planner v1 is due Sunday (compressed 4-day plan), and lane 1 needs a fixed
+  contract to build against. Any move from shadow to acting goes through the normal promotion step only.
