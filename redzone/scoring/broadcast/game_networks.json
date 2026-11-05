@@ -1,0 +1,3161 @@
+{
+"source": "eval-data-v1 archive ESPN scoreboards (broadcasts field)",
+"license": "derived from ESPN scoreboards; personal-use (plan B), not for commercial release",
+"games": {
+"nba": {
+"401909088": {
+"national": true,
+"networks": [
+"NBC"
+]
+},
+"401909089": {
+"national": true,
+"networks": [
+"NBC",
+"ERADM"
+]
+},
+"401909090": {
+"national": true,
+"networks": [
+"NBC"
+]
+},
+"401909834": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909835": {
+"national": false,
+"networks": [
+"MNMT",
+"NBA League Pass",
+"MyMi",
+"Bucks App"
+]
+},
+"401909091": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401909836": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN (YES)"
+]
+},
+"401909837": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909838": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"KJZZ-TV",
+"Jazz+",
+"DAZN MEM"
+]
+},
+"401909839": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN IND",
+"GCSEN",
+"Pelicans.com"
+]
+},
+"401909840": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"KFAA-TV",
+"MavsTV"
+]
+},
+"401909092": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401909841": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"Suns Live",
+"Arizona's Family 3TV",
+"KUNP 16",
+"BlazerVision"
+]
+},
+"401909842": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"KTLA",
+"ClipperVision"
+]
+},
+"401909093": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401909094": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401909848": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"MyMi",
+"Bucks App"
+]
+},
+"401909095": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401909843": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909844": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"KFAA-TV",
+"MavsTV"
+]
+},
+"401909845": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN MIN"
+]
+},
+"401909846": {
+"national": false,
+"networks": [
+"MNMT",
+"NBA League Pass"
+]
+},
+"401909847": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909096": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401909849": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"GCSEN",
+"Pelicans.com",
+"KJZZ-TV",
+"Jazz+"
+]
+},
+"401909850": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909851": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"ClipperVision",
+"Spectrum Sports Net",
+"Spectrum Sports Net +"
+]
+},
+"401909852": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"KUNP 16",
+"BlazerVision"
+]
+},
+"401909853": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909854": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN (YES)",
+"DAZN CLE"
+]
+},
+"401909855": {
+"national": true,
+"networks": [
+"NBA TV",
+"MyMi",
+"Bucks App"
+]
+},
+"401909857": {
+"national": false,
+"networks": [
+"MNMT",
+"NBA League Pass"
+]
+},
+"401909858": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN SAS",
+"KFAA-TV",
+"MavsTV"
+]
+},
+"401909856": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909859": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"GCSEN",
+"Pelicans.com"
+]
+},
+"401909860": {
+"national": true,
+"networks": [
+"NBA TV",
+"Suns Live",
+"Arizona's Family CBS5"
+]
+},
+"401909861": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"Spectrum Sports Net",
+"Spectrum Sports Net +",
+"KJZZ-TV",
+"Jazz+"
+]
+},
+"401909862": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN IND",
+"DAZN (YES)"
+]
+},
+"401909863": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909864": {
+"national": true,
+"networks": [
+"NBA TV",
+"DAZN MIN"
+]
+},
+"401909865": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"ClipperVision",
+"KSBI",
+"Thunder App"
+]
+},
+"401909866": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909867": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN MEM"
+]
+},
+"401909868": {
+"national": false,
+"networks": [
+"MNMT",
+"NBA League Pass"
+]
+},
+"401909869": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN MIN"
+]
+},
+"401909870": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909871": {
+"national": true,
+"networks": [
+"NBA TV",
+"KFAA-TV",
+"MavsTV"
+]
+},
+"401909872": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN IND",
+"MyMi",
+"Bucks App"
+]
+},
+"401909873": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"Suns Live",
+"Arizona's Family 3TV",
+"KSBI",
+"Thunder App"
+]
+},
+"401909874": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909875": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN MEM",
+"KJZZ-TV",
+"Jazz+"
+]
+},
+"401909876": {
+"national": true,
+"networks": [
+"NBCSN"
+]
+},
+"401909877": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN (YES)"
+]
+},
+"401909878": {
+"national": true,
+"networks": [
+"NBC"
+]
+},
+"401909879": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909880": {
+"national": true,
+"networks": [
+"Peacock",
+"NBC",
+"Spectrum Sports Net",
+"Spectrum Sports Net +"
+]
+},
+"401909881": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909882": {
+"national": false,
+"networks": [
+"MNMT",
+"NBA League Pass",
+"DAZN CLE"
+]
+},
+"401909883": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909884": {
+"national": true,
+"networks": [
+"ESPN",
+"DAZN IND"
+]
+},
+"401909885": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909886": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909887": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"MyMi",
+"Bucks App"
+]
+},
+"401909888": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909889": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"GCSEN",
+"Pelicans.com"
+]
+},
+"401909890": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN SAS",
+"KJZZ-TV",
+"Jazz+"
+]
+},
+"401909891": {
+"national": true,
+"networks": [
+"ESPN",
+"KSBI",
+"Thunder App",
+"KFAA-TV",
+"MavsTV"
+]
+},
+"401909892": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"Spectrum Sports Net",
+"Spectrum Sports Net +",
+"KTLA",
+"ClipperVision"
+]
+},
+"401909893": {
+"national": true,
+"networks": [
+"NBA TV"
+]
+},
+"401909894": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"GCSEN",
+"Pelicans.com"
+]
+},
+"401909895": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN MEM",
+"KUNP 16",
+"BlazerVision"
+]
+},
+"401909277": {
+"national": false,
+"networks": [
+"MNMT",
+"NBA League Pass"
+]
+},
+"401909278": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909279": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN (YES)"
+]
+},
+"401909280": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401909281": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909282": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN IND"
+]
+},
+"401909283": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"KFAA-TV",
+"MavsTV"
+]
+},
+"401909284": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"ClipperVision"
+]
+},
+"401909285": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401909286": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"Suns Live",
+"Arizona's Family 3TV"
+]
+},
+"401909896": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"KUNP 16",
+"BlazerVision",
+"KJZZ-TV",
+"Jazz+"
+]
+},
+"401909897": {
+"national": true,
+"networks": [
+"NBA TV"
+]
+},
+"401909898": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"GCSEN",
+"Pelicans.com"
+]
+},
+"401909899": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN MEM"
+]
+},
+"401909900": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN CLE",
+"MyMi",
+"Bucks App"
+]
+},
+"401909901": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN MIN",
+"DAZN SAS"
+]
+},
+"401909902": {
+"national": true,
+"networks": [
+"NBA TV",
+"Thunder App"
+]
+},
+"401909903": {
+"national": false,
+"networks": [
+"NBA League Pass"
+]
+},
+"401909904": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"DAZN (YES)",
+"DAZN IND"
+]
+},
+"401909905": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"ClipperVision"
+]
+},
+"401909906": {
+"national": false,
+"networks": [
+"NBA League Pass",
+"Spectrum Sports Net",
+"Spectrum Sports Net +"
+]
+}
+},
+"nfl": {
+"401772510": {
+"national": true,
+"networks": [
+"NBC",
+"Peacock"
+]
+},
+"401772714": {
+"national": true,
+"networks": [
+"YouTube"
+]
+},
+"401772830": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772829": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772719": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772720": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772718": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772721": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772827": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772828": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772832": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772831": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772722": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772723": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772918": {
+"national": true,
+"networks": [
+"NBC"
+]
+},
+"401772810": {
+"national": true,
+"networks": [
+"ABC",
+"ESPN"
+]
+},
+"401772936": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772725": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772834": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772835": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772724": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772728": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772833": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772727": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772836": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772726": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772729": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772730": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772837": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772919": {
+"national": true,
+"networks": [
+"NBC"
+]
+},
+"401772715": {
+"national": true,
+"networks": [
+"ABC",
+"ESPN"
+]
+},
+"401772811": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401772937": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772842": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772733": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772731": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772732": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772839": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772840": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772841": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772838": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772734": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772735": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772736": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772844": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772843": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772920": {
+"national": true,
+"networks": [
+"NBC"
+]
+},
+"401772812": {
+"national": true,
+"networks": [
+"ABC",
+"ESPN"
+]
+},
+"401772938": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772632": {
+"national": true,
+"networks": [
+"NFL Net",
+"NFL+"
+]
+},
+"401772739": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772740": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772846": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772847": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772737": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772845": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772738": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772849": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772848": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772741": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772742": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772921": {
+"national": true,
+"networks": [
+"NBC"
+]
+},
+"401772813": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401772716": {
+"national": true,
+"networks": [
+"ABC"
+]
+},
+"401772939": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772633": {
+"national": true,
+"networks": [
+"NFL Net",
+"NFL+"
+]
+},
+"401772851": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772744": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772850": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772745": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772852": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772743": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772747": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772746": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772854": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772853": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772922": {
+"national": true,
+"networks": [
+"NBC"
+]
+},
+"401772814": {
+"national": true,
+"networks": [
+"ABC",
+"ESPN"
+]
+},
+"401772940": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772634": {
+"national": true,
+"networks": [
+"NFL Net",
+"NFL+"
+]
+},
+"401772856": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772750": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772751": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772748": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772858": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772857": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772855": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772859": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772752": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772749": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772923": {
+"national": true,
+"networks": [
+"NBC"
+]
+},
+"401772815": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401772717": {
+"national": true,
+"networks": [
+"ABC"
+]
+},
+"401772941": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772635": {
+"national": true,
+"networks": [
+"NFL Net",
+"NFL+"
+]
+},
+"401772861": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772754": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772755": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772753": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772862": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772860": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772757": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772756": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772864": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772863": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772924": {
+"national": true,
+"networks": [
+"NBC"
+]
+},
+"401772816": {
+"national": true,
+"networks": [
+"ABC",
+"ESPN"
+]
+},
+"401772826": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401772942": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772760": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772758": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772868": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772867": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772865": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772759": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772866": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772869": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772762": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772761": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772925": {
+"national": true,
+"networks": [
+"NBC"
+]
+},
+"401772817": {
+"national": true,
+"networks": [
+"ABC",
+"ESPN"
+]
+},
+"401772943": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772765": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772871": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772872": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772764": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772763": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772767": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772766": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772870": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772873": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772874": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772768": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772926": {
+"national": true,
+"networks": [
+"NBC",
+"Peacock"
+]
+},
+"401772818": {
+"national": true,
+"networks": [
+"ABC",
+"ESPN"
+]
+},
+"401772944": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772636": {
+"national": true,
+"networks": [
+"NFL Net",
+"NFL+"
+]
+},
+"401772875": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772771": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772876": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772769": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772772": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772877": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772770": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772773": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772879": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772878": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772927": {
+"national": true,
+"networks": [
+"NBC",
+"Peacock"
+]
+},
+"401772630": {
+"national": true,
+"networks": [
+"ABC",
+"ESPN"
+]
+},
+"401772945": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772631": {
+"national": true,
+"networks": [
+"NFL Net",
+"NFL+"
+]
+},
+"401772882": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772776": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772881": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772880": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772883": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772774": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772775": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772884": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772885": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772777": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772778": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772928": {
+"national": true,
+"networks": [
+"NBC",
+"Peacock"
+]
+},
+"401772819": {
+"national": true,
+"networks": [
+"ABC",
+"ESPN"
+]
+},
+"401772946": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772780": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772781": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772888": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772887": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772886": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772779": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772782": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772784": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772783": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772890": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772889": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772929": {
+"national": true,
+"networks": [
+"NBC",
+"Peacock"
+]
+},
+"401772820": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401772891": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772694": {
+"national": true,
+"networks": [
+"CBS",
+"Paramount+"
+]
+},
+"401772930": {
+"national": true,
+"networks": [
+"NBC",
+"Peacock"
+]
+},
+"401772621": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772785": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772786": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772787": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772892": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772893": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772895": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772894": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772896": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772789": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772788": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772931": {
+"national": true,
+"networks": [
+"NBC",
+"Peacock"
+]
+},
+"401772821": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401772947": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772900": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772902": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772898": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772899": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772790": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772792": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772793": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772791": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772794": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772897": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772901": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772932": {
+"national": true,
+"networks": [
+"NBC",
+"Peacock"
+]
+},
+"401772822": {
+"national": true,
+"networks": [
+"ABC",
+"ESPN"
+]
+},
+"401772948": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772904": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772796": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772798": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772795": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772905": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772906": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772797": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772903": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772800": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772909": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772908": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772907": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772799": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772933": {
+"national": true,
+"networks": [
+"NBC",
+"Peacock"
+]
+},
+"401772823": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401772949": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772612": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772613": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772802": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772910": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772803": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772934": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772801": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772911": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772912": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772913": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772914": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772806": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772805": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772804": {
+"national": true,
+"networks": [
+"NBC",
+"Peacock"
+]
+},
+"401772824": {
+"national": true,
+"networks": [
+"ESPN",
+"ABC"
+]
+},
+"401772710": {
+"national": true,
+"networks": [
+"Netflix"
+]
+},
+"401772711": {
+"national": true,
+"networks": [
+"Netflix"
+]
+},
+"401772622": {
+"national": true,
+"networks": [
+"Prime Video"
+]
+},
+"401772951": {
+"national": true,
+"networks": [
+"NFL Net"
+]
+},
+"401772953": {
+"national": true,
+"networks": [
+"Peacock"
+]
+},
+"401772954": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772807": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772809": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772915": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772916": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772808": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772952": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772950": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772917": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772935": {
+"national": true,
+"networks": [
+"NBC",
+"Peacock"
+]
+},
+"401772825": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401772969": {
+"national": true,
+"networks": [
+"ABC",
+"ESPN"
+]
+},
+"401772961": {
+"national": true,
+"networks": [
+"ABC",
+"ESPN"
+]
+},
+"401772966": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772964": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772968": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772963": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772970": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772962": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772967": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772965": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772956": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772957": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772955": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772958": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401772959": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401772960": {
+"national": true,
+"networks": [
+"NBC",
+"Peacock"
+]
+},
+"401873026": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401873031": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401873024": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401873030": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401873029": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401873027": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401873025": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401873028": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401873032": {
+"national": true,
+"networks": [
+"Fox"
+]
+},
+"401873033": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401873034": {
+"national": true,
+"networks": [
+"CBS"
+]
+},
+"401873035": {
+"national": true,
+"networks": [
+"NBC"
+]
+}
+},
+"nhl": {
+"401892535": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSG",
+"KCOP",
+"Prime Video (Local)",
+"Fox 11 Plus"
+]
+},
+"401892536": {
+"national": true,
+"networks": [
+"ESPN+",
+"NBC Sports Phil",
+"Altitude Sports"
+]
+},
+"401892537": {
+"national": true,
+"networks": [
+"ESPN+",
+"NBC Sports BA"
+]
+},
+"401892538": {
+"national": true,
+"networks": [
+"ESPN+",
+"Utah 16",
+"Mammoth+"
+]
+},
+"401892539": {
+"national": true,
+"networks": [
+"ESPN+",
+"NBC Sports BA"
+]
+},
+"401892540": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSG",
+"MSG2",
+"Altitude Sports",
+"KTVD-TV (My20)"
+]
+},
+"401892541": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSGSN",
+"KCOP",
+"Prime Video (Local)",
+"Fox 11 Plus"
+]
+},
+"401892542": {
+"national": true,
+"networks": [
+"ESPN+",
+"MNMT",
+"ABTV"
+]
+},
+"401892543": {
+"national": true,
+"networks": [
+"ESPN+",
+"CBJNHL"
+]
+},
+"401892544": {
+"national": true,
+"networks": [
+"ESPN+",
+"Blues App",
+"BN+"
+]
+},
+"401892545": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401892546": {
+"national": true,
+"networks": [
+"ESPN+",
+"MINNHL"
+]
+},
+"401892547": {
+"national": true,
+"networks": [
+"ESPN+",
+"Delmarva Sports Network",
+"KONG",
+"KHN",
+"Prime Video (Local)"
+]
+},
+"401892548": {
+"national": true,
+"networks": [
+"ESPN+",
+"CARNHL"
+]
+},
+"401892549": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401892550": {
+"national": true,
+"networks": [
+"TNT",
+"truTV"
+]
+},
+"401892551": {
+"national": true,
+"networks": [
+"ESPN+",
+"Scripps Sports"
+]
+},
+"401892552": {
+"national": true,
+"networks": [
+"ESPN+",
+"Scripps Sports",
+"NESN"
+]
+},
+"401892553": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSG"
+]
+},
+"401892554": {
+"national": true,
+"networks": [
+"ESPN+",
+"NBC Sports BA"
+]
+},
+"401892555": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSGSN",
+"KCOP",
+"Prime Video (Local)",
+"Fox 11 Plus"
+]
+},
+"401892556": {
+"national": true,
+"networks": [
+"ESPN+",
+"Scripps Sports"
+]
+},
+"401892557": {
+"national": true,
+"networks": [
+"Disney+",
+"ESPN+",
+"Hulu"
+]
+},
+"401892558": {
+"national": true,
+"networks": [
+"ESPN+",
+"Scripps Sports",
+"Blues App",
+"BN+",
+"ABC32"
+]
+},
+"401892559": {
+"national": true,
+"networks": [
+"ESPN+",
+"KDFW 4",
+"Prime Video (Local)"
+]
+},
+"401892560": {
+"national": true,
+"networks": [
+"ESPN+",
+"MINNHL"
+]
+},
+"401892561": {
+"national": true,
+"networks": [
+"ESPN+",
+"CARNHL"
+]
+},
+"401892562": {
+"national": true,
+"networks": [
+"Disney+",
+"ESPN+",
+"Hulu"
+]
+},
+"401892563": {
+"national": true,
+"networks": [
+"ESPN+",
+"DSN"
+]
+},
+"401892564": {
+"national": true,
+"networks": [
+"NHL Net",
+"CHSN"
+]
+},
+"401892565": {
+"national": true,
+"networks": [
+"ESPN+",
+"The Spot - MTN",
+"Altitude Sports"
+]
+},
+"401892566": {
+"national": true,
+"networks": [
+"NHL Net",
+"NBC Sports Phil",
+"KCOP",
+"Prime Video (Local)",
+"Fox 11 Plus"
+]
+},
+"401892567": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSGSN",
+"ABTV"
+]
+},
+"401892568": {
+"national": true,
+"networks": [
+"ESPN+",
+"NBC Sports BA",
+"NESN"
+]
+},
+"401892569": {
+"national": true,
+"networks": [
+"NHL Net",
+"MSG"
+]
+},
+"401892570": {
+"national": true,
+"networks": [
+"ESPN+",
+"Scripps Sports"
+]
+},
+"401892571": {
+"national": true,
+"networks": [
+"ESPN+",
+"MNMT",
+"MSGB"
+]
+},
+"401892572": {
+"national": true,
+"networks": [
+"ESPN+",
+"Scripps Sports",
+"CBJNHL"
+]
+},
+"401892573": {
+"national": true,
+"networks": [
+"ESPN+",
+"CARNHL",
+"Blues App",
+"BN+"
+]
+},
+"401892574": {
+"national": true,
+"networks": [
+"ESPN+"
+]
+},
+"401892575": {
+"national": true,
+"networks": [
+"ESPN+",
+"Utah 16",
+"Mammoth+",
+"The Spot - MTN"
+]
+},
+"401892576": {
+"national": true,
+"networks": [
+"ESPN+",
+"DSN"
+]
+},
+"401892577": {
+"national": true,
+"networks": [
+"ESPN+",
+"MINNHL",
+"KONG",
+"KHN",
+"Prime Video (Local)"
+]
+},
+"401892578": {
+"national": true,
+"networks": [
+"ESPN+",
+"Scripps Sports",
+"CHSN"
+]
+},
+"401892579": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSGSN",
+"Prime Video (Local)"
+]
+},
+"401891807": {
+"national": true,
+"networks": [
+"TNT",
+"truTV"
+]
+},
+"401892580": {
+"national": true,
+"networks": [
+"ESPN+",
+"Scripps Sports",
+"Altitude Sports"
+]
+},
+"401892581": {
+"national": true,
+"networks": [
+"ESPN+",
+"MINNHL"
+]
+},
+"401892582": {
+"national": true,
+"networks": [
+"NHL Net",
+"MSG",
+"ABTV"
+]
+},
+"401892583": {
+"national": true,
+"networks": [
+"ESPN+"
+]
+},
+"401892584": {
+"national": true,
+"networks": [
+"ESPN+",
+"DSN"
+]
+},
+"401892585": {
+"national": true,
+"networks": [
+"ESPN+",
+"NBC Sports Phil",
+"CBJNHL"
+]
+},
+"401892586": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401892587": {
+"national": true,
+"networks": [
+"ESPN+",
+"CHSN",
+"ABTV"
+]
+},
+"401892588": {
+"national": true,
+"networks": [
+"ESPN+",
+"Blues App",
+"BN+"
+]
+},
+"401892589": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSG2",
+"Scripps Sports"
+]
+},
+"401892590": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSGSN",
+"Prime Video (Local)"
+]
+},
+"401892591": {
+"national": true,
+"networks": [
+"ESPN+",
+"Scripps Sports"
+]
+},
+"401892592": {
+"national": true,
+"networks": [
+"ESPN+",
+"MINNHL",
+"Utah 16",
+"Mammoth+"
+]
+},
+"401892593": {
+"national": true,
+"networks": [
+"ESPN+",
+"Scripps Sports"
+]
+},
+"401892594": {
+"national": true,
+"networks": [
+"ESPN+",
+"KCOP",
+"Prime Video (Local)",
+"Fox 11 Plus"
+]
+},
+"401892595": {
+"national": true,
+"networks": [
+"ESPN"
+]
+},
+"401892596": {
+"national": true,
+"networks": [
+"TNT",
+"truTV",
+"NBC Sports Phil +"
+]
+},
+"401892597": {
+"national": true,
+"networks": [
+"ESPN+"
+]
+},
+"401892598": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSGSN",
+"Altitude Sports"
+]
+},
+"401892599": {
+"national": true,
+"networks": [
+"ESPN+",
+"KONG",
+"KING 5",
+"KHN",
+"Prime Video (Local)"
+]
+},
+"401892601": {
+"national": true,
+"networks": [
+"ESPN+",
+"The Spot - MTN"
+]
+},
+"401892602": {
+"national": true,
+"networks": [
+"ESPN+",
+"Utah 16",
+"Mammoth+"
+]
+},
+"401892603": {
+"national": true,
+"networks": [
+"ESPN+",
+"CBJNHL",
+"CARNHL"
+]
+},
+"401892600": {
+"national": true,
+"networks": [
+"Disney+",
+"ESPN+",
+"Hulu"
+]
+},
+"401892604": {
+"national": true,
+"networks": [
+"ESPN+",
+"Blues App",
+"BN+",
+"NESN"
+]
+},
+"401892605": {
+"national": true,
+"networks": [
+"ESPN+",
+"MNMT",
+"Scripps Sports"
+]
+},
+"401892606": {
+"national": true,
+"networks": [
+"ESPN+",
+"Prime Video (Local)"
+]
+},
+"401892607": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSGSN",
+"MINNHL"
+]
+},
+"401892608": {
+"national": true,
+"networks": [
+"Disney+",
+"ESPN+",
+"Hulu"
+]
+},
+"401892609": {
+"national": true,
+"networks": [
+"ESPN+",
+"ABTV"
+]
+},
+"401892610": {
+"national": true,
+"networks": [
+"ESPN+",
+"NBC Sports BA"
+]
+},
+"401892611": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSGSN",
+"Scripps Sports"
+]
+},
+"401892612": {
+"national": true,
+"networks": [
+"ESPN+",
+"Scripps Sports"
+]
+},
+"401892613": {
+"national": true,
+"networks": [
+"ESPN+",
+"KONG",
+"KHN",
+"Prime Video (Local)"
+]
+},
+"401892614": {
+"national": true,
+"networks": [
+"ESPN+",
+"CHSN",
+"NESN"
+]
+},
+"401892615": {
+"national": true,
+"networks": [
+"ESPN+",
+"Blues App",
+"BN+",
+"DSN"
+]
+},
+"401892616": {
+"national": true,
+"networks": [
+"ESPN+",
+"Scripps Sports",
+"The Spot - MTN"
+]
+},
+"401892617": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSGSN"
+]
+},
+"401892618": {
+"national": true,
+"networks": [
+"ESPN+",
+"MSGB",
+"ABTV"
+]
+},
+"401892619": {
+"national": true,
+"networks": [
+"ESPN+",
+"NBC Sports BA"
+]
+},
+"401892620": {
+"national": true,
+"networks": [
+"ESPN+"
+]
+},
+"401892621": {
+"national": true,
+"networks": [
+"ESPN+"
+]
+},
+"401892622": {
+"national": true,
+"networks": [
+"ESPN+",
+"CBJNHL",
+"Prime Video (Local)"
+]
+},
+"401892623": {
+"national": true,
+"networks": [
+"ESPN+",
+"Altitude Sports"
+]
+},
+"401892624": {
+"national": true,
+"networks": [
+"NHL Net",
+"CARNHL"
+]
+},
+"401892625": {
+"national": true,
+"networks": [
+"ESPN+",
+"MNMT",
+"MINNHL"
+]
+},
+"401892626": {
+"national": true,
+"networks": [
+"ESPN+",
+"NBC Sports Phil",
+"Utah 16",
+"Mammoth+"
+]
+},
+"401892627": {
+"national": true,
+"networks": [
+"NHL Net",
+"MSG"
+]
+},
+"401892628": {
+"national": true,
+"networks": [
+"ESPN+",
+"KTTV",
+"Prime Video (Local)"
+]
+}
+}
+},
+"note": "NBA national flag is meaningful (23/92 games national: ESPN/ABC, NBC/Peacock, Prime, NBA TV). ESPN marks every NFL and NHL game national (CBS/FOX regional windows, ESPN+), so use the network NAME there, not the flag."
+}
