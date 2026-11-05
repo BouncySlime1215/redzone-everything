@@ -604,3 +604,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   that forced entry on its own (lane 3's forced go-now line), never as a decider mid-play entry, and never as a training
   label. New standing rule: no deploys and no Mac-side experiments while games are live and Nick is watching. The Mac
   stays plugged in on game nights.
+- **2026-11-05 (Nick, 10:55 PM ET): a second "Go now" tap switches at once, even mid-play.** It is his explicit
+  control; one tap ("Watch this") still waits for a dead ball. Why: with the hidden stick preloaded (#229/#233) a forced
+  press flips in ~2-3 s wherever the play is (ping-pong drill: forced mid-play cuts 2 -> 7, unexplained 2 -> 0). Rule #1
+  covers autopilot entries; forced presses are graded separately (presses.classify_mid_play "forced_go_now").
