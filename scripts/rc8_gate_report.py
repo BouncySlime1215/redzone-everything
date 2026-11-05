@@ -6,6 +6,7 @@ r"""[RC8] Per-league report of the pre-registered buffer gate (docs/plans/2026-1
         --shadow shadow_grade.json \        # scripts/buffer_shadow_grade.py data/buffer_shadow.jsonl --json (1, 3)
         [--shadow-card card.json]           # shadow vs live lines on the night's pbp (descriptive, item 3)
         [--sync sync.json]                  # {league: {p95_err_s, n}} real behind-live vs assumed B (item 5)
+        [--oracle summary.json ...]         # lane 1 windowed-oracle ceilings (descriptive, never a bar)
         [--locked locked.json]              # {league: {entries_mid_play, nights, decisions}} at the cut (item 4)
         [--md report.md] [--json report.json]
 
@@ -68,8 +69,21 @@ def flip_cmd(lg: str, v: dict | None, b: float | None) -> str | None:
     return f"python scripts/rc8_flip.py {lg} on --seconds {float(b):g}{extra}"
 
 
+def oracle_line(oracles: dict | None, lg: str) -> str:
+    """'p90: 45 21%, 90 70% | primary: ...' from lane 1 summary.json files (window % of full-hindsight big live)."""
+    parts = []
+    for name, summ in (oracles or {}).items():
+        rows = (summ or {}).get(lg) or {}
+        cells = [f"{k} {v.get('window_pct_of_full_big_live')}%" for k, v in rows.items()
+                 if k.isdigit() and int(k) > 0 and v.get("window_pct_of_full_big_live") is not None]
+        if cells:
+            lag = next((v.get("feed_lag_s") for v in rows.values() if v.get("feed_lag_s") is not None), None)
+            parts.append(f"{name} (lag {lag:g} s): " + ", ".join(cells) if lag is not None else f"{name}: " + ", ".join(cells))
+    return " | ".join(parts)
+
+
 def report(cfg, sweep: dict | None, shadow: dict | None, card: dict | None = None, sync: dict | None = None,
-           locked: dict | None = None, leagues=LEAGUES) -> dict:
+           locked: dict | None = None, leagues=LEAGUES, oracles: dict | None = None) -> dict:
     sv = (sweep or {}).get("leagues") or {}
     rows = shadow_rows(shadow)
     shadow_ok_struct = not shadow or (shadow.get("S1") != "FAIL" and shadow.get("S2") != "FAIL")
@@ -90,6 +104,7 @@ def report(cfg, sweep: dict | None, shadow: dict | None, card: dict | None = Non
         detail.update({"state": state, "rc8_on_now": R.is_on(cfg, lg), "adaptive": parts,
                        "grid_mid_play_total": sum(int(r.get("entries_mid_play") or 0) for r in grid),
                        "grid_runs": len(grid), "shadow_card": (card or {}).get(lg),
+                       "oracle": oracle_line(oracles, lg),
                        "sweep_b": (v or {}).get("chosen_b"), "guardrails": (v or {}).get("guardrails")})
         sb, why = R.ship_b(cfg, lg, (v or {}).get("chosen_b"),
                            mid_play_night=detail["items"]["1_rule1"]["shadow_live"] > 0)
@@ -129,6 +144,7 @@ def to_md(r: dict) -> str:
               f"{json.dumps(i2.get('primary')) if i2.get('primary') else 'n/a'}.",
               "- Guardrails: " + (", ".join(f"{k} {'ok' if g.get('ok') else 'MISS'} ({g.get('value')})"
                                              for k, g in (d.get("guardrails") or {}).items()) or "n/a") + ".",
+              f"- Oracle ceiling by B (lane 1, % of hindsight big plays, descriptive): {d['oracle'] or 'n/a'}.",
               f"- Shadow vs live tonight: {json.dumps(d['shadow_card']) if d['shadow_card'] else 'not graded yet'}.",
               f"- Locked: {it['4_locked']['state']}. Sync: {it['5_sync']['state']}"
               + (f" (p95 {it['5_sync'].get('p95_err_s')} s over {it['5_sync'].get('n')})"
@@ -151,6 +167,8 @@ def main(argv=None) -> int:
     ap.add_argument("--shadow-card", type=Path, default=None)
     ap.add_argument("--sync", type=Path, default=None)
     ap.add_argument("--locked", type=Path, default=None)
+    ap.add_argument("--oracle", type=Path, nargs="*", default=[Path("/mnt/project-files/lane1/oracle/summary.json"),
+                                                               Path("/mnt/project-files/lane1/oracle/primary/summary.json")])
     ap.add_argument("--leagues", default=",".join(LEAGUES))
     ap.add_argument("--config", type=Path, default=None)
     ap.add_argument("--md", type=Path, default=None)
@@ -162,8 +180,13 @@ def main(argv=None) -> int:
         print(f"unreadable input: {e}", file=sys.stderr)
         return 2
     cfg = Config(a.config) if a.config else Config()
+    try:
+        oracles = {("primary feed" if p.parent.name == "primary" else "p90 feed"): _load(p) for p in a.oracle}
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"unreadable oracle summary: {e}", file=sys.stderr)
+        return 2
     r = report(cfg, ins["sweep"], ins["shadow"], ins["shadow_card"], ins["sync"], ins["locked"],
-               tuple(x for x in a.leagues.split(",") if x))
+               tuple(x for x in a.leagues.split(",") if x), oracles)
     md = to_md(r)
     if a.md:
         a.md.write_text(md)
