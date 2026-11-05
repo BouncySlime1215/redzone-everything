@@ -842,3 +842,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   ON only for leagues that pass the gate pre-registered in docs/plans/2026-11-05-rc8-buffer-gate.md (0 mid-play on
   every run and both harnesses, beats live on big plays shown from the start, guardrails, tonight's shadow confirms,
   locked once), and Nick flips it. Rule #1 never changes; hidden stick only while Nick watches.
+- 2026-11-05 (integrator, grader v27; Data G EXP-1704, #314, Nick 9:05 AM): Watch Value on real engagement labels is
+  pre-registered (docs/prereg/exp-1704.md) and its label (`scripts/attention_labels.py`) and harness
+  (`scripts/wv_aux_label.py`) are frozen before any label is joined. Sources S1-S5 are one Holm family,
+  `wv-attention-labels`; later sources (S6 Twitch) get their own row. Labels are training targets only, train nights
+  only, never features; the objective stays "worth it" (no engagement traps). Locked read once by the integrator at
+  the next release. Grader freeze v27.
