@@ -419,3 +419,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   report (scripts/night_report.py, northstar.yml's 10:00 UTC run) writes docs/nights/YYYY-MM-DD.md from the published
   live-night summary. Its gates pass in tests/test_night_report.py: matches the live log through publish, PENDING with
   no night or no games, no private strings published. Report only: nothing on the TV changes. Off again: set it false.
+- 2026-11-05 00:21 UTC (Nick 7:30 PM ET Nov 4, via the coordinator): **Colab Pro+ bought by Nick** (~$50/mo, ~500 CU,
+  A100/L4, background runs). This is Nick's own spend; the $0 rule still binds every agent (no other spending
+  without asking). **Master plan v2 Phases 0-2 are compressed to finish by Sun Nov 8**:
+  docs/plans/2026-11-05-compressed-4day.md, planned ~256-261 CU, keeping ≥ 100 CU in reserve. Colab notebooks
+  are self-contained: public inputs at a pinned commit, no Drive mount, no secrets, grades.json printed. The
+  overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
+  frozen, locked is read once (Sunday).
