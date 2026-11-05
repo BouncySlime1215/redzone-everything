@@ -3,7 +3,8 @@
 Every dataset row, pack manifest and model card (grades.json) names its source(s) and a license. A row whose
 source has restrictive terms (docs/datasources/terms.json) must carry the tag
 "personal-use, not for commercial release", in "tag", "tags" or "license". An unknown source is flagged
-until the scouts classify it. Never PASSes a row with no license at all.
+until the scouts classify it. A "red" source (terms ban bots or AI use) always fails. Never PASSes a row with
+no license at all.
 
   python scripts/license_check.py                     # the repo's JSON ledgers (docs/datasources/**/*.json)
   python scripts/license_check.py out/manifest.json   # a pack, a shard index or a grades.json (Kaggle/Colab)
@@ -79,6 +80,8 @@ def check(paths: list[Path], terms: dict) -> list[tuple[str, str, str]]:
                 c = cls.get(_norm(s))
                 if c is None:
                     out.append(("WARN", where, f"{s}: not classified in docs/datasources/terms.json"))
+                elif c == "red":
+                    out.append(("FAIL", where, f"{s} is red (its terms ban bots or AI use): never pull it"))
                 elif c == "restrictive" and not _tagged(r, tag):
                     out.append(("FAIL", where, f"{s} has restrictive terms: needs the tag '{tag}'"))
     return out

@@ -733,3 +733,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   honesty fault: a replay of an unheld play, a replay that starts too early, or a rewind with no buffer behind it.
   The time-from-broadcast column is secondary and never decides a verdict. It imports nothing from
   decider/noggin/scoring and reads no taps. Grader freeze v15.
+- 2026-11-05 (integrator, grader v16): `license_check.py` FAILs any row that names a source of class `red` in
+  docs/datasources/terms.json: its terms ban bots or AI use (scouts, #263: hockeytech/ahl/echl, the Sports-Reference
+  family, fbref, stats_ncaa_org). Never pull it, even with the personal-use tag. Grader freeze v16.

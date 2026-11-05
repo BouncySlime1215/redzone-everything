@@ -47,3 +47,10 @@ def test_a_ledger_listing_records_under_sources_is_read_row_by_row(tmp_path):
     p = _f(tmp_path, {"sources": [{"source": "retrosheet", "license": "notice"},
                                   {"source": "espn", "license": "ESPN terms", "tag": TERMS["tag"]}]})
     assert lc.check([p], TERMS) == []
+
+
+def test_a_red_source_always_fails(tmp_path):
+    terms = {**TERMS, "sources": {**TERMS["sources"], "fbref": "red"}}
+    p = _f(tmp_path, {"rows": [{"source": "fbref", "license": "x", "tag": TERMS["tag"]}]})
+    got = lc.check([p], terms)
+    assert got and got[0][0] == "FAIL" and "never pull" in got[0][2]
