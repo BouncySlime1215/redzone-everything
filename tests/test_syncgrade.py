@@ -1,0 +1,56 @@
+"""[EXP-800/801] The sync grader reads the sticks' own behind-live meter (overseer tests, Nov 5 2:30 AM)."""
+from redzone.lab import syncgrade as S
+
+UP0 = 5_000_000.0          # the stick's uptime (ms) at wall 0
+
+
+def row(t, upd_t, pos_s, state="playing", tune_t=None, pred=None, stick="s1", ch="espn", app="youtubetv"):
+    """A probe row at wall t whose media_session was last refreshed at wall upd_t at stream position pos_s."""
+    return {"t": t, "stick": stick, "app": app, "channel": ch, "uptime_ms": UP0 + t * 1000,
+            "ms": {"state": state, "position": pos_s * 1000, "updated": UP0 + upd_t * 1000, "speed": 1.0},
+            "tune_t": tune_t, "pred_behind_s": pred}
+
+
+def night(pred_after_pause=30.0):
+    L = 46803.0
+    rows = [row(90, 50, 46000, tune_t=None)]                         # before the tune: another stream
+    rows.append(row(102.4, 102.4, L, tune_t=100, pred=0.0))          # landed at the live edge
+    rows += [row(110 + k, 102.4, L, tune_t=100, pred=0.0) for k in range(5)]   # extrapolated: E holds
+    rows.append(row(200, 200, L + (200 - 102.4), state="paused", tune_t=100, pred=0.0))
+    rows.append(row(231, 230, L + (200 - 102.4), tune_t=100, pred=pred_after_pause))  # resumed 30 s behind
+    return rows
+
+
+def test_extrapolation_keeps_E_flat_and_a_30_s_pause_reads_30_s_behind():
+    graded, lands = S.meter(night())
+    playing = [r for r in graded if r["behind_s"] is not None]
+    assert len(lands) == 1 and abs(lands[0]["tune_s"] - 2.4) < 1e-6
+    assert all(abs(r["behind_s"]) < 1e-6 for r in playing[:-1])
+    assert abs(playing[-1]["behind_s"] - 30.0) < 1e-6
+    # Without the uptime extrapolation the raw position would drift 1 s per second.
+    r = night()[3]
+    assert abs(S.origin(r) - S.origin(night()[1])) < 1e-6
+
+
+def test_exp800_grades_the_controllers_belief_and_never_invents_absolute_latency():
+    out = S.exp800(night(pred_after_pause=0.0))                  # the controller missed the pause
+    assert out["s1|youtubetv"]["behind_err_p95_s"] == 30.0 and out["s1|youtubetv"]["verdict"] == "PENDING"
+    assert out["absolute_latency"]["espn"].startswith("PENDING")
+    assert S.exp800(night(), anchors={"espn": 31.5})["absolute_latency"]["espn"] == 31.5
+
+
+def test_exp801_lands_live_only_near_the_other_tunes_of_that_channel():
+    rows = []
+    for k in range(22):
+        t0 = 1000.0 * (k + 1)
+        land = 46803.0 + (8.0 if k in (0, 1) else 0.2 * (k % 3))  # tunes 0 and 1 landed 8 s off the edge
+        rows += [row(t0 + 2.0, t0 + 2.0, land, tune_t=t0, stick=f"s{k % 2}")]
+    out = S.exp801(rows)
+    assert out["graded"] == 22 and out["live_share"] == round(20 / 22, 3) and out["verdict"] == "FAIL"
+    assert out["per_app"]["youtubetv"]["tune_to_playing_p50_s"] == 2.0
+
+
+def test_a_tune_that_never_plays_is_not_a_landing():
+    rows = [row(100, 50, 46000), row(105, 50, 46000, state="buffering", tune_t=101), row(140, 140, 46803, tune_t=101)]
+    _, lands = S.meter(rows)
+    assert lands == []                                            # PLAYING came 39 s later: past LAND_WAIT
