@@ -75,20 +75,38 @@ class IsoMap:
         self.y.append(np.asarray(y, float))
 
     def refit(self) -> None:
-        from sklearn.isotonic import IsotonicRegression
         x, y = np.concatenate(self.x) if self.x else np.zeros(0), np.concatenate(self.y) if self.y else np.zeros(0)
         if len(x) < 20:
             self.f = None
             return
-        self.f = IsotonicRegression(increasing=True, out_of_bounds="clip").fit(x, y)
+        self.f = pava(x, y)
 
     def __call__(self, wv: np.ndarray) -> np.ndarray:
         v = np.asarray(wv, float)
         out = np.zeros_like(v)
         ok = np.isfinite(v)
         if self.f is not None and ok.any():
-            out[ok] = self.f.predict(v[ok])
+            xs, ys = self.f
+            out[ok] = np.interp(v[ok], xs, ys)          # linear between knots, clipped outside (like sklearn's clip)
         return out
+
+
+def pava(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Isotonic (non-decreasing) least-squares fit by pool-adjacent-violators, numpy only (CI has no sklearn).
+    Returns knots (x per unique value, fitted y)."""
+    o = np.argsort(x, kind="stable")
+    xs, inv = np.unique(x[o], return_inverse=True)
+    w = np.bincount(inv).astype(float)
+    m = np.bincount(inv, weights=y[o]) / w
+    val, wt, cnt = [], [], []
+    for mi, wi in zip(m, w):
+        val.append(mi); wt.append(wi); cnt.append(1)
+        while len(val) > 1 and val[-2] > val[-1]:
+            v2, w2, c2 = val.pop(), wt.pop(), cnt.pop()
+            val[-1] = (val[-1] * wt[-1] + v2 * w2) / (wt[-1] + w2)
+            wt[-1] += w2
+            cnt[-1] += c2
+    return xs, np.repeat(val, cnt)
 
 
 def window_of(n, feed_lag: float) -> int:
