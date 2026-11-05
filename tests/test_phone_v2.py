@@ -26,7 +26,7 @@ def _switch(engine, to, reason="Crunch time: UNC down 2, red zone"):
 
 
 def test_off_by_default_and_every_route_refuses(client, engine):
-    assert client.get("/api/v2/status").json() == {"enabled": False, "commit": False, "worth": False}
+    assert client.get("/api/v2/status").json() == {"enabled": False, "commit": False, "orient": False, "worth": False}
     assert client.get("/api/v2/worth").status_code == 404 and client.post("/api/v2/worth", json={"rating": 4}).status_code == 404
     assert client.get("/api/v2/switches").status_code == 404
     assert client.post("/api/v2/vote", json={"key": "x", "vote": 1}).status_code == 404
@@ -592,7 +592,7 @@ def test_why_tag_only_over_the_threshold():
 
 def test_status_says_whether_commit_controls_are_on(client, engine):
     _on(engine)
-    assert client.get("/api/v2/status").json() == {"enabled": True, "commit": False, "worth": False}   # phone.commit default off
+    assert client.get("/api/v2/status").json() == {"enabled": True, "commit": False, "orient": False, "worth": False}   # phone.commit default off
     engine.cfg.update({"phone": {"commit": True}})
     assert client.get("/api/v2/status").json()["commit"] is True
 
@@ -674,3 +674,30 @@ def test_worth_routes_own_flag_works_with_v2_off(client, engine, tmp_path, monke
     assert client.post("/api/v2/worth", json={"agency": 3}).json()["row"]["rating"] == 5
     assert client.get("/api/v2/worth").json()["rating"] == 5
     assert len(phone_v2.WORTH_LOG.read_text().splitlines()) == 2
+
+
+def test_orientation_beat_per_league():
+    from redzone.models import Phase as P
+    ob = phone_v2.orientation
+    b = ob(_late("nfl", 17, 20, 4, 72, possession="HOM", down=2, distance=7, yards_to_goal=34))
+    assert b["score"] == "AWY 20 · HOM 17" and b["clock"] == "Q4 1:12" and b["fact"] == "HOM ball, 2nd & 7 at the 34"
+    assert b["context"].startswith("HOM down 3")
+    assert ob(_late("nhl", 1, 1, 2, 600, power_play="AWY", strength="5v4"))["fact"] == "AWY power play (5v4)"
+    assert ob(_late("nhl", 1, 1, 4, 200))["clock"] == "OT 3:20"
+    assert ob(_late("cbb", 30, 28, 1, 300))["clock"] == "1st half 5:00"
+    m = ob(_late("mlb", 2, 2, 7, None, half="top", outs=1, runners=(False, False, False)))
+    assert m["clock"] == "Top 7th" and m["fact"] == "1 out, bases empty" and m["context"] is None
+    early = ob(_late("nba", 10, 8, 1, 500))
+    assert early["context"] is None and early["fact"] == ""                 # early: facts only, no question
+    g = _late("nba", 1, 1, 1, 1)
+    g.phase = P.POST
+    assert ob(g) is None and ob(None) is None
+
+
+def test_orient_route_needs_both_flags(client, engine):
+    _on(engine)
+    assert client.get("/api/v2/orient").status_code == 404                  # phone.orient off
+    engine.cfg.update({"phone": {"v2": True, "orient": True}})
+    assert client.get("/api/v2/status").json()["orient"] is True
+    r = client.get("/api/v2/orient?game=nope").json()
+    assert r["enabled"] is True and r["beat"] is None and r["beat_s"] == 3

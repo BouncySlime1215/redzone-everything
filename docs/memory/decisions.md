@@ -604,3 +604,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   that forced entry on its own (lane 3's forced go-now line), never as a decider mid-play entry, and never as a training
   label. New standing rule: no deploys and no Mac-side experiments while games are live and Nick is watching. The Mac
   stays plugged in on game nights.
+- 2026-11-05 (lane 5, EXP-038): new defaults `phone.orient: false`, `phone.orient_beat_s: 3`,
+  `phone.orient_override_s: 30`. A 2-3 s orientation beat (score, clock, one situation fact, and the context line
+  when late and close) in a corner of the phone after each switch. The TV has no overlay path on this rig (the
+  sticks only switch inputs), so the beat is phone-only for now. Graded by redzone/lab/orient.py (override rate
+  within 30 s, whole nights alternated on/off; bar in docs/lanes/experience.md). Reason: Cycle 11 (#217), playbook P12.

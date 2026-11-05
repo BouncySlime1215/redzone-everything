@@ -629,6 +629,9 @@ noggin:                    # docs/noggin.md
 phone:                     # the phone page (redzone/web)
   v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it
   commit: false            # [EXP-036] commitment controls (stay here, only my teams, stop after this game, end at a time), each at a dead ball; OFF until lanes 2/3 ship the "commit" action
+  orient: false            # [EXP-038] a 2-3 s orientation beat on the phone after each switch (teams, score, clock, one fact); OFF until EXP-038 is graded
+  orient_beat_s: 3         # [EXP-038] how long the beat stays up (the playbook's 2-3 s)
+  orient_override_s: 30    # [EXP-038] a user switch this soon after an automatic one counts as an override (lab/orient.py)
   worth: false             # [EXP-040] one-tap end-of-night "worth it?" (1-5) on the Slate complete card, works with v2 off. EVALUATION ONLY, never a training label
   worth_probe_days: 7      # [EXP-040] the agency / regret probes show at most once per this many nights
   why_tag_min: 70          # [EXP-035] "Why we're here" shows only at or over this 0-100 value; lab/decision_records grades the same number
