@@ -1,0 +1,32 @@
+{
+ "mode": "backfill",
+ "ran_at": "2026-11-05T15:52:10Z",
+ "from": "2026-10-01",
+ "to": "2026-11-05",
+ "games": 73,
+ "facts_this_run": 6738,
+ "by_field": {
+  "edit_rate_live_z": 5840,
+  "pageviews_live_z": 606,
+  "pageviews_z": 146,
+  "edit_rate_z": 146
+ },
+ "shards": {
+  "nfl_2026": {
+   "facts": 6738,
+   "new": 6738,
+   "derived": 0,
+   "games": 73,
+   "fields": [
+    "edit_rate_live_z",
+    "edit_rate_z",
+    "pageviews_live_z",
+    "pageviews_z"
+   ],
+   "sources": [
+    "wikimedia-edits",
+    "wikimedia-pageviews"
+   ]
+  }
+ }
+}
