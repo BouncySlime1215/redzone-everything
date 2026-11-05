@@ -887,3 +887,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   your-team crunch 13/13, dead air within +0.5 on 5 of 6 runs (resync seed 1 +1.0), big live -1.9 to +1.0. Four
   locked nights are under the 8-night floor, so the rate reads PENDING; it ships because it strictly lowers NHL
   mid-play against tonight's live NHL behavior, and Nick chose it.
+- 2026-11-05 (integrator, grader v29): **the RC8 shadow and gate graders are frozen before tonight's shadow night.**
+  `scripts/buffer_shadow_grade.py` (#318, test writers: schema, hidden-stick-only, Rule #1 on every editor entry under
+  both cutgrade and clock truth) and `scripts/rc8_gate_report.py` (#331, T9: applies docs/plans/2026-11-05-rc8-buffer-gate.md
+  as written, shadow veto-only, < 8 nights PENDING, ship B = max(sweep, formula/ratchet, 15 s floor), cap 90) join the
+  freeze, so no bar moves once shadow rows exist. Grader freeze v29.

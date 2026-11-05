@@ -1,4 +1,4 @@
-"""Time-shift buffer shadow log: schema + Rule #1 (PROPOSAL, test writers, Cycle 24). Not frozen; the integrator freezes it.
+"""Time-shift buffer shadow log: schema + Rule #1 (test writers, Cycle 24). Frozen by the integrator, grader v29.
 
 Reads data/buffer_shadow.jsonl (lane 2's redzone/buffer_shadow.py: `timing.behind_live_s.shadow: true` while
 `timing.behind_live_s.enabled` is off; a second "editor" Decider runs B s behind live in memory) and checks:

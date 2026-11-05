@@ -40,6 +40,8 @@ GRADERS = (
     "redzone/lab/delaygrade.py",
     "scripts/delay_grade.py",
     "scripts/clock_truth_grade.py",
+    "scripts/buffer_shadow_grade.py",
+    "scripts/rc8_gate_report.py",
     "scripts/entry_autopsy.py",
     "scripts/attention_labels.py",
     "scripts/wv_aux_label.py",
