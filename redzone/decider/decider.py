@@ -891,8 +891,10 @@ class Decider:
         scorecards Nov 3: mid-play entries 165 -> 15, crunch live 87.5 -> 88.3%, big plays seen
         99.7 -> 99.5%. The rest of cut timing (holding for a big play, stretching a stoppage) cost
         hockey crunch time, so it stays football-only."""
-        if x is None or d.kind == "start":
+        if x is None:
             return False
+        if d.kind == "start" and not self._lc("decider.entry.start_timed", x, False):
+            return False   # [EXP-739] off: the night's first pick goes in live (6 of 8 NHL mid-play entries, #302)
         if x.scored.crunch_now and self._crunch_entry_mode(x) == "live":
             return False
         if x.scored.crunch and not x.scored.crunch_now and \

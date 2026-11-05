@@ -55,3 +55,7 @@ def test_defer_keeps_the_old_game_on_screen_until_the_cut():
     s3 = [SwitchLog(t, "old", "new", "ended", "x", 0.0)]
     bt_._apply_defer(SimpleNamespace(defer_s=0.0), s3, w3, 0, step=10.0)
     assert w3 == [(t, "new")] and s3[0].leave_dt == 0.0
+
+
+def test_exp739_start_timed_ships_off():
+    assert config.default("decider.entry.start_timed") is False
