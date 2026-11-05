@@ -9,6 +9,32 @@
 - The integrator's [cycles 09-15 review](../14/review.md).
 - Nick, 2:00 AM ET.
 
+## Sync is the #1 priority, above everything except Rule #1 (Nick, 2:10 AM)
+The goal: join any game on Prime or YouTube TV and never be behind, every time, whatever the jumping around, TV
+latency or Wi-Fi.
+- **One program.** Lane ② owns it, lane ③ grades it, and lane ④ integrates it. The rest help:
+  - crews A and F measure the per-league feed lag;
+  - C works on "fastest feed wins".
+- **Rows (pre-registered, sync section of experiments.md):**
+
+  | Part | Row | What |
+  |---|---|---|
+  | A | EXP-800 | Know where each stick is: provider latency plus distance behind the live edge, from media_session every second, logged to data/sync_truth |
+  | B | EXP-801 | Always join at the live edge, verified, with the hidden stick preloaded at the edge |
+  | C | EXP-802 | The fastest feed wins, per league |
+  | D | EXP-803 | The belief tracker switches only when its band says dead ball, then restart |
+  | E | EXP-804 | Ground truth. The camera and mic options are **held for Nick's OK** |
+
+- **Gates:**
+  - per-stick delay error p95 ≤ 2 s;
+  - 0 entries mid-commercial;
+  - switches ≤ 3 s, including Prime.
+- **First deliverable today:** the media_session live-edge reader, per-app offset logging, and "force live edge" on
+  every tune, shadow-logged tonight.
+  - It ships in the afternoon deploy window, before TNF at 8:15 PM ET.
+  - Tonight it only logs. There are no Mac-side experiments while Nick watches.
+- This also answers the RC7 sync card: the telemetry ships in RC7 and is graded on TNF night.
+
 ## Nick's 2:00 AM priority (binding for every lane, crew and planner)
 "I really only care about NBA and NFL, mostly NBA because that's what's on most right now."
 - **Every queue is re-ranked by NBA impact first, then NFL.**
@@ -52,8 +78,8 @@ with 9 nights.
 ## Next ranked work (NBA → NFL)
 | unit | 1st | 2nd | 3rd |
 |---|---|---|---|
-| ② | **EXP-205, NBA first:** never land mid-commercial, using crew F's NBA TV-timeout tables (two mandatory timeouts per quarter, under 6:59 and under 2:59) | EXP-205 on NFL (196/196 in a break), then NFL catch-up within 3 min | NBA dead air and crunch live: the EXP-209 arms (react / hybrid / chase) on NBA nights first |
-| ③ | The real-TV press run this afternoon, NBA apps first (requirement 1), daytime only | The EXP-084 delay fit on NBA and NFL streams, handed to ② | EXP-301 grader on NBA nights |
+| ② | **The sync program (EXP-800..803), first deliverable today** (the live-edge reader, per-app offsets, force live edge, shadow-logged tonight). Then **EXP-205, NBA first:** never land mid-commercial, using crew F's NBA TV-timeout tables (two mandatory timeouts per quarter, under 6:59 and under 2:59) | EXP-205 on NFL (196/196 in a break), then NFL catch-up within 3 min | NBA dead air and crunch live: the EXP-209 arms (react / hybrid / chase) on NBA nights first |
+| ③ | **Grade the sync program:** EXP-800's truth rows (media_session), and the real-TV press run this afternoon, YTTV and Prime (requirement 1), daytime only | The EXP-084 delay fit on NBA and NFL streams, handed to ② | EXP-301 grader on NBA nights |
 | ① body | Teacher EXP-086 and EXP-103: grades.json and CU spent, with NBA and NFL heads reported first | Saturday's B-sized world model: NBA and NFL held-out losses as the headline numbers | An NBA possession-start / break head from SportVU + nba_stats events |
 | ④ | The RC7 cut, staged on Nick's sync answer | EXP-017 v3 locked, **with NBA nights first** so the NBA gates reach ≥ 60 decisions | NFL locked nights next |
 | ⑤ | EXP-040 is done: `phone.worth` is on by default, checked end to end, and its decisions line has landed. The worth line reads PENDING until Sunday | EXP-043 follow-ups with NBA players first, once lane ① lands its weight | — |

@@ -747,3 +747,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   NBA because that's what's on most right now"). Every queue is re-ranked by NBA impact, then NFL; NHL/MLB/CBB work
   continues only where it is shared code or data. Grow the NBA graded set to >= 60 decisions per gate. This orders the
   work; the decider's league order on the TV (CLAUDE.md north star) is unchanged.
+- **2026-11-05 (Nick, 2:10 AM ET): sync is the #1 priority, above everything except Rule #1.** One program: lane 2 owns,
+  lane 3 grades, lane 4 integrates. (A) per-stick offset = provider latency + distance behind the live edge from Fire TV
+  media_session (adb, every second), logged to data/sync_truth; (B) every tune forces and verifies the live edge, hidden
+  stick preloaded at the edge; (C) fastest feed per league wins; (D) belief tracker switches only when its band says dead
+  ball -> restart; (E) ground truth without HDCP capture; camera (scorebug OCR) and mic (audio fingerprint) need Nick's
+  explicit OK first. Gates: per-stick delay error p95 <= 2 s, 0 entries mid-commercial, switch <= 3 s incl. Prime. Test
+  only when Nick isn't watching. Rows EXP-800..804.
