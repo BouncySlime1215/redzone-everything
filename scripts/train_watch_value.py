@@ -216,7 +216,55 @@ def fit(X, y, Xv, yv, feats, objective):
     return b, max(20, b.best_iteration)
 
 
-def league(lg: str, archive: Path, cfg, out_dir: Path, crunch_dir: Path = ROOT / "data" / "crunch") -> dict:
+ARMS = ("A0", "A1", "A2", "A3")
+AUX_MIX = 0.3   # EXP-1704 / EXP-1800, fixed in the pre-registrations, never tuned
+
+
+def _teams(matchup: str) -> tuple[str, ...]:
+    import re
+    return tuple(dict.fromkeys(re.findall(r"\b[A-Z][A-Z0-9]{1,3}\b", matchup or "")))
+
+
+def aux_targets(rows: list[dict], by_game: dict, wv: np.ndarray, train_mask: np.ndarray, arm: str,
+                series: list | None, seed: int = 0) -> tuple[np.ndarray, dict]:
+    """The Watch Value TRAINING target for one arm (EXP-1704; harness scripts/wv_aux_label.py). Only the target
+    changes: features and rows are never touched, so an engagement label can't leak in as an input.
+    A0 = wv; A1 = 0.7 wv + 0.3 engagement rank; A2 = A1 with the rank shuffled within each game;
+    A3 = 0.7 wv + 0.3 WP-only drama math (suspense table fit on train games only)."""
+    import attention_labels as AL
+    import wv_aux_label as WX
+    if arm not in ARMS:
+        raise ValueError(f"arm must be one of {ARMS}")
+    y = np.asarray(wv, np.float64).copy()
+    info = {"arm": arm, "mix": AUX_MIX, "covered_train": 0, "rows_train": int(train_mask.sum())}
+    if arm == "A0":
+        return y, info
+    games = list(by_game.values())
+
+    def game_rows(ks):
+        n = len(ks)
+        return [{"wall": rows[k].get("wall"), "wp_home": rows[k].get("wp_home"),
+                 "left_frac": 1.0 - j / max(1, n - 1)} for j, k in enumerate(ks)]   # copies: rows stay untouched
+    table = None
+    if arm == "A3":
+        table = AL.fit_suspense([game_rows(ks) for ks in games if train_mask[ks[0]]])
+    for g, ks in enumerate(games):
+        gr = game_rows(ks)
+        if arm == "A3":
+            aux = AL.drama_label(gr, table)
+        else:
+            if not series:
+                raise ValueError("arms A1/A2 need --aux-source")
+            aux = AL.attention_label(gr, _teams(rows[ks[0]].get("matchup", "")), series)
+            if arm == "A2":
+                aux = WX.placebo(aux, seed * 100003 + g)
+        y[ks] = WX.mix(wv[ks], aux, AUX_MIX)
+        info["covered_train"] += int((np.isfinite(aux) & train_mask[ks]).sum())
+    return y, info
+
+
+def league(lg: str, archive: Path, cfg, out_dir: Path, crunch_dir: Path = ROOT / "data" / "crunch",
+           arm: str = "A0", series: list | None = None, seed: int = 0) -> dict:
     from redzone.lab import reasoner_data as RD
     from redzone.lab import splits
     from redzone.models import League
@@ -238,7 +286,9 @@ def league(lg: str, archive: Path, cfg, out_dir: Path, crunch_dir: Path = ROOT /
     feats = features_for(League(lg).base.value)
     X = matrix(rows, feats)
     tr, va, te = split == "train", split == "valid", split == "test"
-    m_wv, n_wv = fit(X[tr], wv[tr], X[va], wv[va], feats, "regression")
+    # EXP-1704: the arm changes only the fit target; grading below stays against the realized swing `wv`
+    y, aux_info = aux_targets(rows, by_game, wv, tr, arm, series, seed)
+    m_wv, n_wv = fit(X[tr], y[tr], X[va], y[va], feats, "regression")
     m_pb, n_pb = fit(X[tr], pb[tr], X[va], pb[va], feats, "binary")
     m_cr, n_cr = fit(X[tr], cr[tr], X[va], cr[va], feats, "binary")
     pcts = list(np.linspace(0, 100, 101))
@@ -250,7 +300,7 @@ def league(lg: str, archive: Path, cfg, out_dir: Path, crunch_dir: Path = ROOT /
     cal_cx = (list(np.percentile(m_cx.predict(X[tr][:, ci], num_iteration=n_cx), pcts)), pcts)
     rep = {"league": lg, "rows": {s: int((split == s).sum()) for s in ("train", "valid", "test")},
            "nights": {s: len(getattr(sp, s)) for s in ("train", "valid", "test")}, "features": len(feats),
-           "trees": {"wv": n_wv, "pb": n_pb, "cr": n_cr}, "crunch_label_rate": round(float(cr.mean()), 4)}
+           "trees": {"wv": n_wv, "pb": n_pb, "cr": n_cr}, "crunch_label_rate": round(float(cr.mean()), 4), "aux": aux_info}
     for name, m in (("dev", va), ("locked", te)):            # locked: graded once, never tuned on
         sub = [rows[k] for k in np.where(m)[0]]
         rep[name] = card(sub, m_wv.predict(X[m], num_iteration=n_wv), wv[m], cal, realize)
@@ -266,7 +316,7 @@ def league(lg: str, archive: Path, cfg, out_dir: Path, crunch_dir: Path = ROOT /
         a, b = np.isin([r["night"] for r in rows], fit_n), np.isin([r["night"] for r in rows], chk_n)
         if a.sum() < 200 or b.sum() < 50:
             continue
-        mf, nf = fit(X[a], wv[a], X[b], wv[b], feats, "regression")
+        mf, nf = fit(X[a], y[a], X[b], y[b], feats, "regression")
         cf = (list(np.percentile(mf.predict(X[a], num_iteration=nf), pcts)), pcts)
         folds.append(card([rows[k] for k in np.where(b)[0]], mf.predict(X[b], num_iteration=nf), wv[b], cf,
                           realized_scale(wv[a]))["watch_value"])
@@ -301,7 +351,16 @@ def main(argv=None) -> int:
     ap.add_argument("--crunch-dir", type=Path, default=ROOT / "data" / "crunch",
                     help="per-night crunch spans for the replay viewer (lane 5 #177)")
     ap.add_argument("--report", type=Path, default=ROOT / "data" / "training" / "watch_value_report.json")
+    ap.add_argument("--aux-arm", choices=ARMS, default="A0",
+                    help="EXP-1704 arm (A0 = #166 as is). Use a separate --out per arm")
+    ap.add_argument("--aux-source", type=Path, default=None,
+                    help="JSON spec {source, paths[, terms]} for the engagement label (arms A1/A2)")
+    ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args(argv)
+    series = None
+    if a.aux_source is not None:
+        import attention_labels as AL
+        series = AL.load_spec(json.loads(a.aux_source.read_text()))
     # the brain TRACK (win probability, swings, runs) is what WV reads: rows need it on. Its learned outputs
     # (brain_key / brain_break / brain_hot) are NOT features: those models saw the graded seasons.
     import tempfile
@@ -309,7 +368,7 @@ def main(argv=None) -> int:
     tmp = Path(tempfile.mkdtemp()) / "watch_value_config.yaml"
     tmp.write_text(text)
     cfg = Config(user_path=tmp)
-    rep = {lg: league(lg, a.archive, cfg, a.out, a.crunch_dir) for lg in a.leagues}
+    rep = {lg: league(lg, a.archive, cfg, a.out, a.crunch_dir, a.aux_arm, series, a.seed) for lg in a.leagues}
     a.report.parent.mkdir(parents=True, exist_ok=True)
     a.report.write_text(json.dumps(rep, indent=1))
     print(json.dumps(rep, indent=1))
