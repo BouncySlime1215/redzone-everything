@@ -14,6 +14,21 @@
 
 NHL, MLB and CBB go ahead only through shared code or data.
 
+## Overnight is a full work block (overseer, 3:50 AM ET: "lock in on everything, don't stop")
+Every unit works its next ranked items: sync first, then NBA, then NFL.
+
+**Running now:**
+
+| Where | Run | Detail |
+|---|---|---|
+| Colab A100 | EXP-109 speedrun | `nfm_speedrun_a100` @ bd1f807, 8 arms, ~2.5 h |
+| Colab A100 | Crew E commentary EXP-1402 | `teacher32b_commentary_a100`, ~3.3 h |
+| Kaggle CPU | Factory v2 | |
+
+The Kaggle TPU ladder (`redzone-nfm-tpu-ladder`) is waiting on Nick's one-time Kaggle identity check. Until then,
+lane ① posts a Kaggle-GPU (T4x2 / P100) version of the ladder's 18 M and 60 M points for the overseer to launch,
+along with the EXP-103 grader fix.
+
 ## Waiting on Nick
 - **The RC7 sync card.** Ship the live-edge reader, offsets and force-live-edge before TNF, with logging only tonight?
   - My recommendation is yes.
@@ -21,7 +36,7 @@ NHL, MLB and CBB go ahead only through shared code or data.
 - **RC6.3 (NBA):** the integrator's card for #258.
 - **Tonight's Kaggle feed-lag probe for EXP-802.** It's cloud only, built by crew A at
   `/mnt/project-files/data-a/notebooks/rz_feed_lag_probe.ipynb`, and needs a start before tip-off.
-- **Joining the BDB competitions on Kaggle** (8 of them).
+- **Joining the BDB competitions on Kaggle** (8 of them), and the one-time Kaggle identity check for TPU v5e-8.
 - **Keys:** CFBD, the Odds API, YouTube, a Twitch app token, CFL.
 - **The camera and mic truth options** (EXP-804) stay on hold until he OKs them.
 
