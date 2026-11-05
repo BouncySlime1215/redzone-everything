@@ -30,7 +30,8 @@ jobs:
       - name: inputs
         run: |
           mkdir -p /tmp/in
-          curl -sSL -o /tmp/in/games.csv https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv
+          curl -fsSL --retry 4 --retry-delay 10 -o /tmp/in/games.csv https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv
+          head -1 /tmp/in/games.csv | grep -q gametime || { echo "::error::games.csv download is not the nflverse schedule"; head -c 300 /tmp/in/games.csv; exit 1; }
           if [ "$LEAGUE" = mlb ]; then
             git clone -q --depth 1 https://github.com/chadwickbureau/retrosheet /tmp/in/retrosheet
           fi
