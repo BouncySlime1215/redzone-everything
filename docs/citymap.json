@@ -548,6 +548,7 @@
     "redzone/lab/evaldata.py",
     "redzone/lab/night/run.py",
     "redzone/lab/optimize.py",
+    "redzone/lab/orient.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
     "redzone/lab/tune.py",
@@ -1733,6 +1734,21 @@
     "untagged"
    ]
   },
+  "redzone/lab/also_close.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/night_ab.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/also_close_line.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-039] Grade the \"Also close\" line: does showing other late, close games as text cut the curiosity switches (manual switches) without costing big plays?",
+   "serves": [
+    "Big plays live or replayed within 3 min"
+   ]
+  },
   "redzone/lab/backtest.py": {
    "contracts": [
     "FLIP_PRIOR",
@@ -2149,6 +2165,19 @@
     "untagged"
    ]
   },
+  "redzone/lab/night_ab.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "redzone/lab/also_close.py"
+   ],
+   "owner": "unowned",
+   "role": "Whole-night A/B for display experiments (lane 5): one number per night on each side, a bootstrap interval on mean(on) - mean(off), and a PASS / FAIL / PENDIN...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/optimize.py": {
    "contracts": [],
    "inputs": [
@@ -2186,6 +2215,22 @@
    ],
    "owner": "unowned",
    "role": "Hindsight oracle: the best schedule anyone could have run on an archived night (offline only).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/orient.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/config.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "scripts/also_close_line.py",
+    "scripts/orient_line.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-038] Grade the orientation beat: do overrides right after an automatic switch drop when the phone shows a 2-3 s \"who, score, clock, one fact\" beat?",
    "serves": [
     "untagged"
    ]
@@ -3987,7 +4032,9 @@
    ],
    "kind": "module",
    "outputs": [
-    "redzone/web/server.py"
+    "redzone/web/server.py",
+    "scripts/also_close_line.py",
+    "scripts/orient_line.py"
    ],
    "owner": "EXPERIENCE",
    "role": "Phone page v2 (flag `phone.v2`, default OFF): why each switch happened, rate it, \"I missed that\", and the Noggin Priority L2 sliders.",
@@ -4017,6 +4064,21 @@
    "role": "Phone control page + JSON API.",
    "serves": [
     "untagged"
+   ]
+  },
+  "scripts/also_close_line.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/also_close.py",
+    "redzone/lab/orient.py",
+    "redzone/web/phone_v2.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-039] Print the \"Also close\" line: manual-switch share on nights with phone.also_close on vs off.",
+   "serves": [
+    "Big plays live or replayed within 3 min"
    ]
   },
   "scripts/autofix_guard.py": {
@@ -4636,6 +4698,20 @@
     "STK-06"
    ]
   },
+  "scripts/orient_line.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/orient.py",
+    "redzone/web/phone_v2.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-038] Print the orientation-beat line: override rates on nights with phone.orient on vs off.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/perf_probe.py": {
    "contracts": [],
    "inputs": [
@@ -5090,10 +5166,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 267,
+  "modules": 272,
   "orphans": 10,
-  "unowned": 108,
-  "untagged": 214
+  "unowned": 113,
+  "untagged": 217
  },
  "version": 1
 }

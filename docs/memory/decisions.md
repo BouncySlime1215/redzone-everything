@@ -472,6 +472,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   are self-contained: public inputs at a pinned commit, no Drive mount, no secrets, grades.json printed. The
   overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
   frozen, locked is read once (Sunday).
+- 2026-11-05 00:28 UTC (Nick 7:28 PM ET, via the coordinator): **betting closing lines approved as a HIDDEN check only**:
+  usable for win-probability calibration and evaluation (EXP-002), never as a model feature, never shown, never a
+  nudge toward betting. Live line moves as a switching signal stay excluded (EXP-077, playbook §5). Reason: the
+  calibration needs an outside reference, and the line forbids betting features.
 - 2026-11-04 (lane 3, Cycle 06 #1, Start Planner #162): new flag `buffer.hold_left` (default **off**), plus
   `buffer.hold_left_apps` [youtubetv] and `buffer.hold_left_slop_s` 3.0 (playbook STK-07). When on, the game we leave
   stays paused on the stick we left, at the dead ball we left it on, so going back is a flip plus a catch-up from there.
@@ -599,8 +603,56 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   decider's own NEXT and your focus game), so a tap back is a flip. Why: Nov 4 live, 16 phone presses to Prime ~2 min apart,
   11 cold (~30 s) because a planner guess took the hidden stick. Lab night ping-pong drill (32 presses, seeds 1-2): warm
   0/32 -> 31/32, Prime press 46 s -> ~3 s. 0 = off (instant rollback via /api/settings). Standby only: no switch timing change.
+- **2026-11-05 (Nick, 10:55 PM ET): no deploys and no Mac-side experiments while games are live and Nick is
+  watching; the Mac stays plugged in on game nights.** A standing rule for every lane. Why: tonight's mid-game deploys and
+  rollbacks. Same message: RC6.2 (1bf4150) deploys with the TV off, and a second Go now tap switches at once, even
+  mid-play (his explicit control; one tap still waits for a dead ball).
 - 2026-11-05 (Nick, Nov 4 10:55 PM ET): RC6.2 (1bf4150) approved and deployed with the TV off. A SECOND "Go now" tap
   switches instantly, even mid-play: it's Nick's explicit control. One tap still waits for a dead ball. Graders count
   that forced entry on its own (lane 3's forced go-now line), never as a decider mid-play entry, and never as a training
   label. New standing rule: no deploys and no Mac-side experiments while games are live and Nick is watching. The Mac
   stays plugged in on game nights.
+- **2026-11-05 (Nick, 11:10 PM ET): two 24/7 brain engines.** (1) A context and hype data engine (lane 1, cloud CPU
+  only, never the Mac): importance and buzz signals per game for all six leagues; an LLM reader stores derived numbers and
+  the URL, never article text, only from allowlisted sites whose terms allow it. **Betting lines and line moves become
+  inputs to importance** (market expectation, upset odds), widening the Nov 4 hidden-check-only rule; they are never
+  shown and never nudge betting. (2) A test factory (integrator): drafted experiments and graders, nightmare nights from
+  dev history, off-policy grading of every logged night. YouTube TV DVR/screens are out (DRM). Plans:
+  docs/plans/2026-11-05-brain-engines.md (EXP-090..093) and docs/plans/2026-11-05-test-factory.md (F1-F7).
+- **2026-11-05 (Nick, 11:20 PM ET): data = B, "and way more of these sources, since it's a personal project."** The brain
+  may train on ESPN-derived data (hoopR NBA/CBB, ESPN pbp), NHL api-web + shifts, Baseball Savant/Statcast and other
+  public sports APIs with restrictive terms. **Personal use only:** every dataset and model trained on them is tagged
+  "personal-use, not for commercial release"; a company version retrains on green data later. Guardrails that still hold:
+  public endpoints only; no logins, paywalls, CAPTCHAs or bot-block bypasses; respect rate limits and robots (cache, back
+  off); no pirated streams; articles read for derived numbers, never stored as full text; never touch Nick's credentials.
+  Replaces the "skip Savant" call (6:10 PM). Teacher EXP-086 runs on B; Saturday's world model is sized for B (~100M).
+- **2026-11-05 (Nick, 11:35 PM ET): a standing data scout loop**, "100x more unique data sources and data types, agents
+  hunting 24/7" (lane 1 + a dedicated scout thread). Find, license-check (B rules for personal use), rank by new
+  information per GB, add to the factory; the ledger in docs/datasources grows every cycle, to several billion tokens this
+  month (EXP-097). Synthetic self-play is capped at ~3x real. Paid feeds need Nick's OK. Broadcast video/audio is out
+  (company stage, licensing).
+- 2026-11-05 (lane 5, EXP-038): new defaults `phone.orient: false`, `phone.orient_beat_s: 3`,
+  `phone.orient_override_s: 30`. A 2-3 s orientation beat (score, clock, one situation fact, and the context line
+  when late and close) in a corner of the phone after each switch. The TV has no overlay path on this rig (the
+  sticks only switch inputs), so the beat is phone-only for now. Graded by redzone/lab/orient.py (override rate
+  within 30 s, whole nights alternated on/off; bar in docs/lanes/experience.md). Reason: Cycle 11 (#217), playbook P12.
+- 2026-11-05 (lane 5, EXP-039): new default `phone.also_close: false`. An "Also close" line under the phone's watch
+  strip lists up to 2 other live games that are late and within one score (the EXP-037 context line), in league
+  order, as plain text with no Watch button. Graded by redzone/lab/also_close.py (manual-switch share per night,
+  whole nights alternated; bar in docs/lanes/experience.md). Reason: Cycle 11 (#217), playbook P15.
+- 2026-11-05 (lane 5, EXP-026 display): new defaults `phone.catchup_view: false`, `phone.catchup_visible: 2`. With
+  the flag on, the phone's catch-up queue follows the decider's own queue order (what plays next, whatever order the
+  EXP-026 re-run picks), shows at most 2 at once ("+N more waiting"), and is spoiler-safe: "A play you missed", with
+  no names, play type or score until it plays. Reason: Cycle 11 (#217) item 3, playbook P9/P17 (spoiler control,
+  1-2 open threads visible).
+- 2026-11-05 (integrator, grader v11): two changes. (1) A live cut whose trace says `"forced": true` (Nick's second "Go
+  now" tap) is graded on its own line, `entries_mid_play_forced`, and never counts toward `entries_mid_play`. Its
+  producer is lane 3: set `forced` on the trace of a double-tap switch. `scripts/collect_live_test.py` joins the frozen
+  graders. (2) `PLAY_LEN` and `RESUME_LEAD` become `ByLeague` tables, so CFB and CBB read their pro league's row. That
+  fixes the KeyError in oracle.py on college replays (lane 1). Pro leagues are unchanged. Grader freeze v11.
+- **2026-11-05 (Nick, 12:05 AM ET): reorg, "THE BRAIN IS THE MAIN FOCUS".** A Data Division: one data planner per
+  type (A play-by-play, B context and hype, C media metadata with no video downloads ever, D markets, E synthetic and
+  teacher, F broadcast formats), each with a 24/7 crew that lands event tokens (vocab v2) in the factory and ledger.
+  Workers' outputs are trusted with no second review, except a license line per source (B rules). 1-2 test writers write
+  pre-registered experiments and graders. Lanes 1-4 keep the body. Pace to <= 85% weekly by Mon 8 PM ET (hard stop 89%).
+  Org, id blocks and checkpoints: docs/plans/2026-11-05-data-division.md.

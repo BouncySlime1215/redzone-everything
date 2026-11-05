@@ -26,7 +26,7 @@ def _switch(engine, to, reason="Crunch time: UNC down 2, red zone"):
 
 
 def test_off_by_default_and_every_route_refuses(client, engine):
-    assert client.get("/api/v2/status").json() == {"enabled": False, "commit": False, "worth": False}
+    assert client.get("/api/v2/status").json() == {"enabled": False, "commit": False, "orient": False, "worth": False}
     assert client.get("/api/v2/worth").status_code == 404 and client.post("/api/v2/worth", json={"rating": 4}).status_code == 404
     assert client.get("/api/v2/switches").status_code == 404
     assert client.post("/api/v2/vote", json={"key": "x", "vote": 1}).status_code == 404
@@ -592,7 +592,7 @@ def test_why_tag_only_over_the_threshold():
 
 def test_status_says_whether_commit_controls_are_on(client, engine):
     _on(engine)
-    assert client.get("/api/v2/status").json() == {"enabled": True, "commit": False, "worth": False}   # phone.commit default off
+    assert client.get("/api/v2/status").json() == {"enabled": True, "commit": False, "orient": False, "worth": False}   # phone.commit default off
     engine.cfg.update({"phone": {"commit": True}})
     assert client.get("/api/v2/status").json()["commit"] is True
 
@@ -674,3 +674,66 @@ def test_worth_routes_own_flag_works_with_v2_off(client, engine, tmp_path, monke
     assert client.post("/api/v2/worth", json={"agency": 3}).json()["row"]["rating"] == 5
     assert client.get("/api/v2/worth").json()["rating"] == 5
     assert len(phone_v2.WORTH_LOG.read_text().splitlines()) == 2
+
+
+def test_orientation_beat_per_league():
+    from redzone.models import Phase as P
+    ob = phone_v2.orientation
+    b = ob(_late("nfl", 17, 20, 4, 72, possession="HOM", down=2, distance=7, yards_to_goal=34))
+    assert b["score"] == "AWY 20 · HOM 17" and b["clock"] == "Q4 1:12" and b["fact"] == "HOM ball, 2nd & 7 at the 34"
+    assert b["context"].startswith("HOM down 3")
+    assert ob(_late("nhl", 1, 1, 2, 600, power_play="AWY", strength="5v4"))["fact"] == "AWY power play (5v4)"
+    assert ob(_late("nhl", 1, 1, 4, 200))["clock"] == "OT 3:20"
+    assert ob(_late("cbb", 30, 28, 1, 300))["clock"] == "1st half 5:00"
+    m = ob(_late("mlb", 2, 2, 7, None, half="top", outs=1, runners=(False, False, False)))
+    assert m["clock"] == "Top 7th" and m["fact"] == "1 out, bases empty" and m["context"] is None
+    early = ob(_late("nba", 10, 8, 1, 500))
+    assert early["context"] is None and early["fact"] == ""                 # early: facts only, no question
+    g = _late("nba", 1, 1, 1, 1)
+    g.phase = P.POST
+    assert ob(g) is None and ob(None) is None
+
+
+def test_orient_route_needs_both_flags(client, engine):
+    _on(engine)
+    assert client.get("/api/v2/orient").status_code == 404                  # phone.orient off
+    engine.cfg.update({"phone": {"v2": True, "orient": True}})
+    assert client.get("/api/v2/status").json()["orient"] is True
+    r = client.get("/api/v2/orient?game=nope").json()
+    assert r["enabled"] is True and r["beat"] is None and r["beat_s"] == 3
+
+
+def test_also_close_lists_other_late_close_games_in_league_order():
+    games = {"on": _late("nfl", 20, 17, 4, 60), "nhl": _late("nhl", 1, 1, 3, 90), "nba": _late("nba", 99, 100, 4, 30),
+             "blow": _late("nba", 130, 90, 4, 30), "early": _late("nfl", 7, 7, 1, 600)}
+    for gid, g in games.items():
+        g.game_id = gid
+    order = ("nfl", "cfb", "nba", "cbb", "wcbb", "nhl", "mlb")
+    rows = phone_v2.also_close(games, "on", order)
+    assert [r["game_id"] for r in rows] == ["nba", "nhl"]                     # NFL on screen; NBA before NHL
+    assert rows[0]["context"] == "HOM down 1, 0:30 left"
+    assert len(phone_v2.also_close({**games, "on": games["on"]}, None, order)) == phone_v2.ALSO_CLOSE_MAX
+
+
+def test_watch_also_close_behind_its_flag(client, engine):
+    _on(engine)
+    assert client.get("/api/v2/watch").json()["also_close"] == []
+    engine.cfg.update({"phone": {"v2": True, "also_close": True}})
+    assert client.get("/api/v2/watch").json()["also_close"] == []                # no late, close games in the fixture
+
+
+def test_catchup_view_spoiler_safe_decider_order_and_visible_cap():
+    from redzone.decider.decider import Missed
+    q = [Missed("b", "p1", "Ovechkin goal, WSH leads 3-2", "goal", 380.0, 50.0),
+         Missed("a", "p2", "Allen 34-yd TD to Diggs", "td", 390.0, 70.0, mine=True, due_s=180.0),
+         Missed("c", "p4", "Tucker 52-yd FG good", "fg", 395.0, 30.0, must=True)]
+    v = phone_v2.catchup_queue([], {}, None, False, {}, q, {}, str.upper, now=430.0, view={"visible": 2})
+    assert [i["game_id"] for i in v["queue"]] == ["b", "a"]                              # the decider's order, first 2
+    assert v["more"] == 1 and v["spoiler_safe"] is True and v["counts"]["queued"] == 3 and v["counts"]["yours"] == 1
+    text = json.dumps(v)
+    for leak in ("Ovechkin", "Allen", "Tucker", "goal", "td", "fg", "3-2"):
+        assert leak not in text, leak                                                   # nothing spoils the play
+    h = phone_v2.held_view(None, False, 0.0, None, None, q, None, str.upper, 430.0, spoiler_safe=True)
+    assert h["catchup"]["label"] == phone_v2.SPOILER_SAFE_LABEL and "Ovechkin" not in json.dumps(h)
+    off = phone_v2.catchup_queue([], {}, None, False, {}, q, {}, str.upper, now=430.0)
+    assert off["spoiler_safe"] is False and off["more"] == 0 and len(off["queue"]) == 3
