@@ -26,7 +26,7 @@ def _switch(engine, to, reason="Crunch time: UNC down 2, red zone"):
 
 
 def test_off_by_default_and_every_route_refuses(client, engine):
-    assert client.get("/api/v2/status").json() == {"enabled": False}
+    assert client.get("/api/v2/status").json() == {"enabled": False, "commit": False}
     assert client.get("/api/v2/switches").status_code == 404
     assert client.post("/api/v2/vote", json={"key": "x", "vote": 1}).status_code == 404
     assert client.post("/api/v2/missed", json={}).status_code == 404
@@ -256,14 +256,15 @@ def test_slate_route_carries_the_alert(client, engine):
 
 
 def test_watch_values_learned_field_or_stub():
-    from types import SimpleNamespace as NS
-    from redzone.models import League, Phase as P
+    from redzone.models import GameState, League, Phase as P, Team
     from redzone.scoring.engine import Scored
 
     def sc(gid, lg, score, factor="", reason="", crunch=False, is_break=False):
         return Scored(gid, League(lg), score, score, 0.0, 0.0, 0.0, reason, [], is_break, None, None, 0.0,
                       crunch=crunch, factor=factor)
-    games = {"a": NS(matchup="A @ B", phase=P.LIVE), "b": NS(matchup="C @ D", phase=P.LIVE), "z": NS(matchup="done", phase=P.POST)}
+    def gs(gid, a, h, ph):
+        return GameState(league=League.NBA, game_id=gid, home=Team(h), away=Team(a), phase=ph)
+    games = {"a": gs("a", "A", "B", P.LIVE), "b": gs("b", "C", "D", P.LIVE), "z": gs("z", "Y", "Z", P.POST)}
     old = {"a": sc("a", "nba", 140.0, factor="Tied late", reason="r", crunch=True),
            "b": sc("b", "nhl", -3.0, reason="Break", is_break=True), "z": sc("z", "nhl", 50.0)}
     v = phone_v2.watch_values(old, games)
@@ -274,7 +275,7 @@ def test_watch_values_learned_field_or_stub():
     assert v["source"] == "learned" and v["games"][0] == {"game_id": "a", "matchup": "A @ B", "league": "nba", "wv": 63,
                                                          "why": "Comeback brewing", "crunch_state": "entering", "stakes_line": "",
                                                          "stakes_rough": False,
-                                                         "crunch": True, "is_break": False, "source": "learned"}
+                                                         "crunch": True, "is_break": False, "source": "learned", "context": None}
     assert v["games"][1]["why"] == "Break"                                             # no watch_why: the reason
     assert phone_v2.watch_values({}, {}) == {"games": [], "source": None}
     old["a"].crunch_now = True
@@ -586,3 +587,51 @@ def test_why_tag_only_over_the_threshold():
     assert phone_v2.why_tag(s, 70.0) is None
     s.watch_value = 88.0
     assert phone_v2.why_tag(s, 70.0)["text"] == "Quiet stretch" and phone_v2.why_tag(s, 70.0)["source"] == "learned"
+
+
+def test_status_says_whether_commit_controls_are_on(client, engine):
+    _on(engine)
+    assert client.get("/api/v2/status").json() == {"enabled": True, "commit": False}     # phone.commit default off
+    engine.cfg.update({"phone": {"commit": True}})
+    assert client.get("/api/v2/status").json()["commit"] is True
+
+
+def test_slate_complete_only_when_nothing_live_or_left():
+    from types import SimpleNamespace as NS
+    from redzone.models import League, Phase as P
+    rules = phone_v2.HardRules()
+    post = NS(phase=P.POST, league=League.NBA)
+    assert phone_v2.slate_preview({"a": post}, rules, 0.0)["complete"] is True
+    assert phone_v2.slate_preview({}, rules, 0.0)["complete"] is False                     # no games tonight at all
+    live = NS(phase=P.LIVE, league=League.NBA, start_time=0.0, period=4, clock_s=60.0, matchup="X",
+              home=NS(abbr="A"), away=NS(abbr="B"))
+    v = phone_v2.slate_preview({"a": post, "b": live}, rules, 0.0)
+    assert v["complete"] is False and v["finished"] == 1
+
+
+def _late(league, home, away, period, clock, **sit):
+    from redzone.models import GameState, League, Phase, Situation, Team
+    return GameState(league=League(league), game_id="g", home=Team("HOM", score=home), away=Team("AWY", score=away),
+                     phase=Phase.LIVE, period=period, clock_s=clock, half=sit.pop("half", None), situation=Situation(**sit))
+
+
+def test_context_line_late_and_close_per_league():
+    cl = phone_v2.context_line
+    assert cl(_late("nfl", 20, 17, 4, 72, possession="AWY", down=2, distance=7, yards_to_goal=34,
+                    timeouts_away=0)) == "AWY down 3, 1:12 left, AWY ball, 2nd & 7 at the 34, no timeouts"
+    assert cl(_late("nba", 100, 100, 4, 48)) == "Tied, 0:48 left"
+    assert cl(_late("nba", 98, 101, 4, 30, timeouts_home=2)) == "HOM down 3, 0:30 left, 2 timeouts"
+    assert cl(_late("nhl", 2, 3, 3, 90, empty_net="HOM")) == "HOM down 1, 1:30 left, goalie pulled"
+    assert cl(_late("mlb", 4, 3, 9, None, half="Bottom", outs=2, runners=(True, False, True))) == \
+        "AWY down 1, bottom 9th, 2 outs, 2 on"
+    assert cl(_late("cbb", 60, 62, 2, 40, timeouts_home=1)) == "HOM down 2, 0:40 left, 1 timeout"
+
+
+def test_context_line_none_when_not_late_or_not_close():
+    cl = phone_v2.context_line
+    assert cl(None) is None
+    assert cl(_late("nfl", 30, 10, 4, 60)) is None        # two scores up
+    assert cl(_late("nba", 100, 99, 2, 30)) is None       # first half
+    assert cl(_late("nba", 100, 99, 4, 600)) is None      # 10:00 left, not late yet
+    assert cl(_late("mlb", 1, 0, 5, None)) is None        # middle innings
+    assert "OT" in cl(_late("nhl", 1, 1, 4, 200))

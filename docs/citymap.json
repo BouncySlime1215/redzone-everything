@@ -1089,7 +1089,8 @@
     "redzone/grading.py",
     "redzone/scoring/drive.py",
     "redzone/scoring/engine.py",
-    "redzone/standby.py"
+    "redzone/standby.py",
+    "redzone/web/phone_v2.py"
    ],
    "owner": "unowned",
    "role": "[one brain, step 2] One crunch table (docs/onebrain-migration.md).",
@@ -3928,6 +3929,7 @@
    "contracts": [],
    "inputs": [
     "redzone/config.py",
+    "redzone/crunch.py",
     "redzone/lab/decision_records.py",
     "redzone/models.py",
     "redzone/noggin/priority.py",

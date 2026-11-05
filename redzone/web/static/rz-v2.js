@@ -4,17 +4,17 @@
 
 import { app, ACTIONS, CHANGES, INPUTS, hooks, attr, esc, num, arr, fmtTime, fmtDur } from "./rz-core.js?v=41";
 import { icon, sec } from "./rz-ui.js?v=40";
-import { api } from "./rz-api.js?v=43";
+import { api, act } from "./rz-api.js?v=43";
 import { toast, openSheet, closeSheet, sheetById } from "./rz-sheet.js?v=40";
 
-const v2 = { on: false, checked: false, rows: new Map(), head: "", loading: false, prio: null, missed: null };
+const v2 = { on: false, commit: false, checked: false, rows: new Map(), head: "", loading: false, prio: null, missed: null };
 
 let checking = null;
 function check() {
   if (!checking) {
     v2.checked = true;
     checking = (async () => {
-      try { v2.on = !!(await api("/api/v2/status")).enabled; } catch { v2.on = false; }
+      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; } catch { v2.on = false; }
       if (v2.on) { hooks.render(); pollAlert(); pollStrip(); pollHeld(); }
     })();
   }
@@ -24,8 +24,13 @@ check();
 
 /* A your-team crunch clash coming up in the next 30 min: one line above the bar (display only). */
 let alert = null;
+let slateDone = null;   // EXP-036: {finished} once nothing is live or still to start tonight
 function pollAlert() {
-  api("/api/v2/slate").then((r) => { const a = (r && r.alert) || null; const was = JSON.stringify(alert); alert = a; if (JSON.stringify(a) !== was) hooks.renderScreen("now"); })
+  api("/api/v2/slate").then((r) => {
+    const a = (r && r.alert) || null, done = r && r.complete ? { finished: r.finished } : null;
+    const was = JSON.stringify([alert, slateDone]); alert = a; slateDone = done;
+    if (JSON.stringify([a, done]) !== was) hooks.renderScreen("now");
+  })
     .catch(() => {}).finally(() => setTimeout(pollAlert, 60000));
 }
 /* Top 3 watch values on the Now screen, refreshed every 15 s (read only; tap for the full sheet). */
@@ -43,7 +48,7 @@ function watchStrip() {
   const t = strip.tag;
   const tag = t ? `<div class="v2-why" title="${attr(`Shown because it is ${t.value} on the 0-100 scale (threshold ${t.threshold})`)}"><b>Why we're here</b> ${esc(t.text)}</div>` : "";
   return `${tag}<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
-    `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc([g.why, g.stakes_line].filter(Boolean).join(" · "))}</small></span></span>`).join("")}
+    `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc([g.context || g.why, g.stakes_line].filter(Boolean).join(" · "))}</small></span></span>`).join("")}
     ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>`;
 }
 
@@ -106,9 +111,42 @@ ACTIONS["v2-vote"] = async (el) => {
 };
 
 /** The "I missed that" bar above Recent switches. */
+/* EXP-036: "Slate complete" ends the night; nothing comes after it (no autoplay, no "up next", no counters). */
+function slateCompleteCard() {
+  return `<div class="v2-done" data-key="v2-done"><b>Slate complete</b><span>0 live games · ${num(slateDone.finished)} finished tonight</span></div>`;
+}
+/* EXP-036 commitment controls: each one is a request the decider honours at the next dead ball. */
+// the engine snapshot's mode.commit {mode, game_id, at} once lanes 2/3 ship the action (contract: Cycle 08 #183)
+function commitState() { return (app.S && app.S.mode && app.S.mode.commit) || null; }
+const curGame = () => (app.S && app.S.now && app.S.now.game_id) || null;
+const COMMIT_TXT = { my_teams: "Only my teams", stop_after: "Stop after this game", end_at: "End at" };
+function commitSheet() {
+  const c = commitState(), cur = curGame(), on = (m) => c && c.mode === m;
+  const at = (c && c.mode === "end_at" && c.at) ? new Date(c.at * 1000) : null;
+  return `<h3>Commit</h3><p class="lead">Each one waits for a dead ball. Nothing here changes the TV mid-play.</p>
+    <div class="pick-list">
+      <button class="pick" data-act="v2-commit-hold" aria-pressed="false">${icon("lock")}Stay here<small>Keep this game until you tap Resume auto</small></button>
+      <button class="pick" data-act="v2-commit" data-mode="my_teams" aria-pressed="${!!on("my_teams")}">${icon("star")}Only my teams<small>Switch only between your teams' games</small></button>
+      <button class="pick" data-act="v2-commit" data-mode="stop_after" aria-pressed="${!!on("stop_after")}"${cur ? "" : " disabled"}>${icon("octagon")}Stop after this game<small>When it ends, stop switching</small></button>
+      <label class="pick">${icon("moon")}End at <input type="time" data-act-input="v2-commit-at" value="${at ? `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}` : "23:30"}"><button class="btn btn--ghost" data-act="v2-commit-end">Set</button></label>
+    </div>
+    ${c ? `<p class="lead">Now: <b>${esc(COMMIT_TXT[c.mode] || c.mode)}${at ? " " + esc(fmtTime(c.at)) : ""}</b> <button class="btn btn--ghost" data-act="v2-commit-clear">Clear</button></p>` : ""}`;
+}
+ACTIONS["v2-commit-open"] = () => openSheet({ id: "v2-commit", label: "Commit", render: commitSheet });
+ACTIONS["v2-commit-hold"] = (el) => act("hold", {}, el);
+ACTIONS["v2-commit"] = (el) => act("commit", { value: el.dataset.mode === "stop_after" ? { mode: "stop_after", game_id: curGame() } : { mode: el.dataset.mode } }, el);
+ACTIONS["v2-commit-end"] = (el) => {
+  const inp = document.querySelector('[data-act-input="v2-commit-at"]'), [h, m] = String((inp && inp.value) || "23:30").split(":").map(Number);
+  const t = new Date(); t.setHours(h, m, 0, 0); if (t.getTime() < Date.now() - 3600e3) t.setDate(t.getDate() + 1);
+  return act("commit", { value: { mode: "end_at", at: Math.round(t.getTime() / 1000) } }, el);
+};
+ACTIONS["v2-commit-clear"] = (el) => act("commit", { value: "off" }, el);  // #194: "off" clears it
+
 export function missedBar() {
   if (!v2.on) return "";
+  if (slateDone) return slateCompleteCard();
   return `${alertLine()}${heldLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
+    ${v2.commit ? `<button class="btn btn--ghost" data-act="v2-commit-open">${icon("lock")}Commit${commitState() ? ": " + esc(COMMIT_TXT[commitState().mode] || "on") : ""}</button>` : ""}
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
     <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>
@@ -347,7 +385,7 @@ function watchSheet() {
     <div class="v2-wv">${gs.map((g) => `<div class="v2-wv-row${g.game_id === d.current ? " on" : ""}">
       <div class="v2-wv-top"><span class="m ell">${esc(g.matchup)}</span>${g.game_id === d.current ? `<span class="tag tag--kind">On TV</span>` : ""}${g.crunch_state ? `<span class="tag tag--fail">${esc(CRUNCH_TXT[g.crunch_state] || "Crunch")}</span>` : ""}${g.is_break ? `<span class="tag">Break</span>` : ""}<b>${num(g.wv)}</b></div>
       <div class="v2-wv-bar"><i style="width:${Math.max(2, Math.min(100, g.wv))}%"></i></div>
-      ${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}${g.stakes_line ? `<div class="v2-stakes${g.stakes_rough ? " v2-stakes--pending" : ""}">${icon("target")}${esc(g.stakes_line)}${g.stakes_rough ? " <small>(rough)</small>" : ""}</div>` : ""}</div>`).join("")}</div>`;
+      ${g.context ? `<div class="v2-ev-why v2-ctx">${esc(g.context)}</div>` : ""}${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}${g.stakes_line ? `<div class="v2-stakes${g.stakes_rough ? " v2-stakes--pending" : ""}">${icon("target")}${esc(g.stakes_line)}${g.stakes_rough ? " <small>(rough)</small>" : ""}</div>` : ""}</div>`).join("")}</div>`;
 }
 ACTIONS["v2-watch"] = () => { watchS.data = null; openSheet({ id: "v2-watch", label: "Watch value", full: true, render: watchSheet, onClose: () => clearTimeout(watchS.timer) }); loadWatch(); };
 
