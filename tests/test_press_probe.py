@@ -55,7 +55,10 @@ def test_real_presses_grade_press_to_tv_p95_once_there_are_enough(tmp_path):
     row = ns.press_row(None, got)
     assert row["status"] == ns.PENDING and row["value"] == 2.4 and "flip 1.90" in row["detail"]
     (d / "b.json").write_text(json.dumps({"presses": [{"kind": "cold", "tap_to_tv_s": 2.9}]}))
-    assert ns.press_row(None, ns.press_samples([d]))["status"] == ns.PASS            # 20 real, p95 <= 3 s
+    row = ns.press_row(None, ns.press_samples([d]))
+    assert row["status"] == ns.PENDING and "Prime" in row["detail"]                # 20 real, but no Prime press yet
+    (d / "p.json").write_text(json.dumps({"presses": [{"kind": "warm", "tap_to_tv_s": 2.7, "app": "prime"}] * 5}))
+    assert ns.press_row(None, ns.press_samples([d]))["status"] == ns.PASS            # 25 real incl. 5 Prime, p95 <= 3 s
     (d / "c.json").write_text(json.dumps({"presses": [{"kind": "cold", "tap_to_tv_s": 8.5}] * 3}))
     assert ns.press_row(None, ns.press_samples([d]))["status"] == ns.FAIL            # p95 8.5 s
     (d / "c.json").write_text(json.dumps({"presses": [{"kind": "cold", "tap_to_tv_s": None}]}))

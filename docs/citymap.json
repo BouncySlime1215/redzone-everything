@@ -538,6 +538,7 @@
     "redzone/autonomy.py",
     "redzone/control.py",
     "redzone/crunch.py",
+    "redzone/decider/decider.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
     "redzone/lab/backtest.py",
@@ -1171,6 +1172,7 @@
     "seek_model"
    ],
    "inputs": [
+    "redzone/config.py",
     "redzone/contracts/switching.py",
     "redzone/decider/core.py",
     "redzone/decider/cuts.py",
@@ -1873,7 +1875,8 @@
     "redzone/lab/backtest.py",
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
-    "scripts/eval.py"
+    "scripts/eval.py",
+    "scripts/northstar.py"
    ],
    "owner": "INTEGRATION",
    "role": "Cut-timing scorecard: WHERE in each game we left, and WHERE we landed.",
@@ -3132,6 +3135,7 @@
     "redzone/reasoner/brief.py",
     "redzone/reasoner/reasoner.py",
     "redzone/scoring/brain.py",
+    "redzone/scoring/gameflow.py",
     "redzone/scoring/garbage.py",
     "redzone/scoring/postseason.py"
    ],
@@ -3156,7 +3160,8 @@
    "kind": "module",
    "outputs": [
     "redzone/lab/sportsdata.py",
-    "redzone/scoring/brain.py"
+    "redzone/scoring/brain.py",
+    "redzone/scoring/engine.py"
    ],
    "owner": "DECISION",
    "role": "Game-flow math shared by the training-data builder and the live brain (numpy only, no pandas).",
@@ -4591,6 +4596,7 @@
   "scripts/northstar.py": {
    "contracts": [],
    "inputs": [
+    "redzone/lab/cutgrade.py",
     "redzone/noggin/profile.py"
    ],
    "kind": "entry",
