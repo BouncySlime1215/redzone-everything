@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-YTTV sync test bank DONE: 58 tests + runner at docs/sync/yttv_tests (c846da6e), all pass dry-run. Tonight's only national NBA game on YTTV: MIA @ GSW on NBA TV 10 PM ET. Top order: ui_10 → ui_07 (Stats panel) → ads_02 → truth_10 → ui_08.
-Mistake caught: 0a470d25 included raw ESPN API caches (~15 MB) in the public repo; removed in c846da6e, still in history. Needs Nick's call on rewriting history. Colab A100 x2 training. Usage 59%.
+Colab A100s healthy: EXP-109 speedrun 27 min in (data build), commentary EXP-1402 21 min in. Kaggle factory v2 running. YTTV test bank ready for MIA@GSW NBA TV 10 PM.
+Waiting on Nick: Kaggle TPU ID check, ESPN-cache history purge decision. Usage 59%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
