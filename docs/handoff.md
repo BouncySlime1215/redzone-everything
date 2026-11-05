@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-BUDGET ALERT 10:45 AM: weekly usage 63% -> 67% in ~35 min after the 20-30-thread scale-up; coordinator throttled to ~8 threads (T1 buffer shadow, T4 YTTV tests, T5 TNF scorebug, T6 feeds, T9 RC8 + integrator), target <=2%/h. Usage 67%.
-Ladder tab stuck 'Resuming execution' since 9:15 (check Manage sessions; Run all to resume from checkpoint).
+Throttle holding: weekly usage 67% -> 68% in 30 min (~2%/h). Tonight-critical threads (T1,T4,T5,T6,T9) running; readiness table due 12 PM.
+Ladder paused (tab stuck since 9:15); resume after tonight.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
