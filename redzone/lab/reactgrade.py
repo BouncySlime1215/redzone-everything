@@ -19,7 +19,8 @@ Per league and per arm:
                      NBA/NFL hold the stream 60-90 s behind its edge and D holds it B s behind, and the v14
                      ruler counts both as live. Reported beside the verdict, never instead of it.
   hard zeros         mid-play entries; mid-play leaves at high leverage; honesty faults (below)
-  guardrails         dead air %, switches per hour, crunch live %, your-team crunch live, spoiler
+  guardrails         dead air %, switches per hour, crunch live %, big live % (Nick's "% live": a reacting arm
+                     may not win by trading live plays for late replays), your-team crunch live, spoiler
                      (share of screen time behind live, p95 seconds behind)
   oracle             big live as a share of the live-only oracle (`oracle.solve(.., "big_live")`);
                      an arm that replays can see more than that ceiling within a window, never more live
@@ -55,7 +56,7 @@ REACT_MIN_NIGHTS = 8
 MIN_BIG = 30
 DRAWS = 2000
 BOOT_SEED = 301
-CRUNCH_PTS = 5.0       # crunch live % may not be down by more than this (bootstrap lower bound)
+CRUNCH_PTS = 5.0       # crunch live % and big live % may not be down by more than this (bootstrap lower bound)
 DEAD_PTS = 2.0         # dead air % may not be up by more than this (bootstrap upper bound)
 SWITCH_X = 1.5         # switches per hour at most this times A
 SPOILER_P95 = 180.0    # seconds behind live, p95 of screen time
@@ -243,7 +244,8 @@ def verdict(arm: str, m: dict, base: dict, ci: dict) -> str:
     if m["faults"] or m["entries_mid_play"] or m["mid_play_cuts_high"]:
         return "FAIL"
     lo, hi = ci[(arm, "seen_window_pct")]
-    guard = (ci[(arm, "crunch_live_pct")][0] >= -CRUNCH_PTS and ci[(arm, "dead_air_pct")][1] <= DEAD_PTS
+    guard = (ci[(arm, "crunch_live_pct")][0] >= -CRUNCH_PTS and ci[(arm, "big_live_pct")][0] >= -CRUNCH_PTS
+             and ci[(arm, "dead_air_pct")][1] <= DEAD_PTS
              and m["switches_per_hour"] <= SWITCH_X * base["switches_per_hour"] and m["behind_p95"] <= SPOILER_P95)
     if lo > 0 and guard:
         return "WIN"
