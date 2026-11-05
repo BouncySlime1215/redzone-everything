@@ -74,9 +74,11 @@ def fit_wv(X: np.ndarray, y: np.ndarray, w: np.ndarray, night_of: np.ndarray, se
 
 def info_pool(rows: list[dict]) -> dict:
     """Information only (WV loop thread): the pool with full > 0 alone, your-team crunch nights kept."""
-    full = np.array([r["v_full"] for r in rows])
-    return {"nights": len(rows), **{k: WB.pooled_pct(np.array([r[f"v_{k}"] for r in rows]), full)["pct"]
-                                    for k in ("app", "B0", "B1", "B2")}}
+    out = {"nights": len(rows)}
+    for k in ("app", "B0", "B1", "B2"):
+        rr = [r for r in rows if r[f"v_{k}"] is not None]
+        out[k] = WB.pooled_pct(np.array([r[f"v_{k}"] for r in rr]), np.array([r["v_full"] for r in rr]))["pct"] if rr else None
+    return out
 
 
 def main(argv=None) -> int:
@@ -152,14 +154,22 @@ def main(argv=None) -> int:
                 g = WB.wv_grid(gids, st[f"plays_{arm}"], steps, n.lag)
                 sched[arm] = WB.solve_with(n, fl, tab, WB.beyond_from_wv(g, iso, W))
         b1, b2 = sched["B1"], sched["B2"]
+        # the app can tune a non-game target (NFL: the RedZone channel itself); the oracle grid has no row for it,
+        # so such a night has no app value and no ledger (B2 weights stay 1 there)
+        app_ok = all(sw_.to in set(gids) for sw_ in rep.switches)
         val = {k: O.schedule_value(n, tab, "combined", s) for k, s in
-               (("full", full), ("app", rep.switches), ("B0", b0), ("B1", b1), ("B2", b2))}
+               (("full", full), ("app", rep.switches), ("B0", b0), ("B1", b1), ("B2", b2)) if k != "app" or app_ok}
         row = {"night": day, "games": len(reps), "W_steps": W, "your_team_crunch": bool(tab["mine"].sum() > 0),
                "b1_fallback": b1 is b0, "b2_fallback": b2 is b0, "seen_before": len(st["seen"]),
                "b2_rows_weighted": int((st["w_row"] > 1.0).sum()),
+               "app_gradable": app_ok, "v_app": None,
                **{f"v_{k}": round(float(v), 3) for k, v in val.items()},
                **{f"switches_{k}": len(s) for k, s in (("app", rep.switches), ("B0", b0), ("B1", b1), ("B2", b2))}}
         per_night.append(row)
+        seen_data[day] = (gids, steps, n.lag, R)
+        if not app_ok:
+            seen_led[day] = ([], len(steps), n.t0, {})
+            return row
         # ledger (app vs full hindsight), AFTER the first pass
         blk = max(1, int(math.ceil(n.tune_s / O.STEP_S)))
         gi = {g: i for i, g in enumerate(gids)}
@@ -170,7 +180,6 @@ def main(argv=None) -> int:
                         app_switch_steps=sw(rep.switches), oracle_switch_steps=sw(full), blk=blk)
         ledgers.extend(led)
         seen_led[day] = (led, len(steps), n.t0, {gid: float(O.lag_of(n.lag, gid)) for gid in gids})
-        seen_data[day] = (gids, steps, n.lag, R)
         return row
 
     def reweight() -> None:
@@ -218,21 +227,28 @@ def main(argv=None) -> int:
     # cycle-2 ledger read "6/6 positive nights" the same way)
     ok = [r for r in per_night if not r["your_team_crunch"] and r["v_full"] > 0]
     full = np.array([r["v_full"] for r in ok])
-    arms = {k: np.array([r[f"v_{k}"] for r in ok]) for k in ("app", "B0", "B1", "B2")}
+    arms = {k: np.array([r[f"v_{k}"] for r in ok]) for k in ("B0", "B1", "B2")}
+    oka = [r for r in ok if r["app_gradable"]]               # nights where the app's schedule is gradable
+    full_a = np.array([r["v_full"] for r in oka])
+    arms_a = {k: np.array([r[f"v_{k}"] for r in oka]) for k in ("app", "B1", "B2")}
     summ = {"exp": "EXP-1723", "league": lg, "buffer_s": a.buffer, "feed_lag_s": fl, "horizon_steps": HORIZON_STEPS,
             "nights_chain": len(per_night), "nights_pooled": len(ok),
             "nights_excluded": {"your_team_crunch": sum(r["your_team_crunch"] for r in per_night),
                                 "full_value_not_positive": sum((not r["your_team_crunch"]) and r["v_full"] <= 0 for r in per_night)},
-            "pct_of_full": {k: WB.pooled_pct(v, full) for k, v in arms.items()},
+            "pct_of_full": {**{k: WB.pooled_pct(v, full) for k, v in arms.items()},
+                            "app": WB.pooled_pct(arms_a["app"], full_a) if oka else None},
+            "app_gradable_nights": len(oka),
+            "pct_of_full_on_app_nights": {k: WB.pooled_pct(v, full_a)["pct"] for k, v in arms_a.items()} if oka else None,
             "info_pool_full_positive_only": info_pool([r for r in per_night if r["v_full"] > 0]),
             "B1_minus_B0": WB.delta_ci(arms["B1"], arms["B0"], full), "B2_minus_B0": WB.delta_ci(arms["B2"], arms["B0"], full),
-            "B1_minus_app": WB.delta_ci(arms["B1"], arms["app"], full), "B2_minus_app": WB.delta_ci(arms["B2"], arms["app"], full),
+            "B1_minus_app": WB.delta_ci(arms_a["B1"], arms_a["app"], full_a) if oka else None,
+            "B2_minus_app": WB.delta_ci(arms_a["B2"], arms_a["app"], full_a) if oka else None,
             "ledger_causes_app_vs_full": ML.summarize(ledgers), "locked_nights_read": 0,
-            "evidence": "dev history only (eval-data-v1 fit nights; WV A0 trained on this pin's train nights)",
+            "evidence": "dev history only (eval-data-v1 fit nights); counting nights = v3 new + live",
             "seconds": round(time.time() - t_start), "tag": "personal-use, not for commercial release"}
     for arm in ("B1", "B2"):
-        d, app = summ[f"{arm}_minus_B0"], summ["pct_of_full"]
-        summ[f"{arm}_bar"] = bool(d["delta"] >= 5.0 and d["ci"][0] > 0 and app[arm]["pct"] >= app["app"]["pct"])
+        d, pa = summ[f"{arm}_minus_B0"], summ["pct_of_full_on_app_nights"]
+        summ[f"{arm}_bar"] = bool(d["delta"] >= 5.0 and d["ci"][0] > 0 and pa is not None and pa[arm] >= pa["app"])
     (a.out / f"first_pass_{lg}.jsonl").write_text(ch.jsonl())
     (a.out / f"nights_{lg}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in per_night))
     (a.out / f"summary_{lg}.json").write_text(json.dumps(summ, indent=1))
