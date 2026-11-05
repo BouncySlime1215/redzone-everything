@@ -1,0 +1,258 @@
+{
+ "exp": "EXP-1714",
+ "arm": "B1_two_heads",
+ "model": "stay_leave.TwoHead (head1 reward_nomine 300 s, head2 crunch count 300 s)",
+ "model_id": "sha256:6d283515768f78df39158a8cbb6bd4e48d5bb766c7fba1c14f65724a799b0144",
+ "model_file": "/mnt/project-files/lane1/stay_leave/model1714.pkl (private, project files)",
+ "data_hash": {
+  "pin": "eval-data-v1",
+  "tree_sha256": "b0d5c00a7877c27bf3301da3419fd65b1e496d21f370961d026601a7235947b9"
+ },
+ "code_pack": "BouncySlime1215/redzone-everything@claude/lane1-stay-leave (commit of this file)",
+ "seeds": [
+  0,
+  1,
+  2
+ ],
+ "max_iter": {
+  "nomine": 200,
+  "crunch": 100
+ },
+ "label_sources": [
+  "espn_play_by_play",
+  "oracle_combined_reward"
+ ],
+ "train_valid_nights": {
+  "nba": {
+   "train_nights": [
+    "20261020",
+    "20261021",
+    "20261022",
+    "20261023",
+    "20261024",
+    "20261025",
+    "20261026"
+   ],
+   "valid_nights": [
+    "20261027",
+    "20261028"
+   ]
+  },
+  "nfl": {
+   "train_nights": [
+    "20250905",
+    "20250906",
+    "20250907",
+    "20250908",
+    "20250909",
+    "20250912",
+    "20250914",
+    "20250915",
+    "20250916",
+    "20250919",
+    "20250921",
+    "20250922",
+    "20250923",
+    "20250926",
+    "20250928",
+    "20250929",
+    "20250930",
+    "20251003",
+    "20251005",
+    "20251006",
+    "20251007",
+    "20251010",
+    "20251012",
+    "20251013",
+    "20251014",
+    "20251017",
+    "20251019",
+    "20251020",
+    "20251021",
+    "20251024",
+    "20251026",
+    "20251027",
+    "20251028",
+    "20251031",
+    "20251102",
+    "20251103",
+    "20251104",
+    "20251107",
+    "20251109",
+    "20251110",
+    "20251111",
+    "20251114",
+    "20251116",
+    "20251117",
+    "20251118"
+   ],
+   "valid_nights": [
+    "20251121",
+    "20251123",
+    "20251124",
+    "20251125",
+    "20251127",
+    "20251128",
+    "20251130",
+    "20251202",
+    "20251205",
+    "20251207",
+    "20251208"
+   ]
+  },
+  "nhl": {
+   "train_nights": [
+    "20261019",
+    "20261020",
+    "20261021",
+    "20261022",
+    "20261023",
+    "20261024",
+    "20261025",
+    "20261026"
+   ],
+   "valid_nights": [
+    "20261027",
+    "20261028"
+   ]
+  }
+ },
+ "chosen_on": "valid only; no locked night read by lane 1",
+ "grade_cmd": "python scripts/stay_leave.py grade1714 --split test --out <dir with model1714.pkl> (feed lag 8 s, as pre-registered); report also: grade125 --split test --feed-lag p90 (B1 = arm B1_m0)",
+ "ceiling": "floored full-hindsight oracle (oracle.solve on stay_leave.floored), unfloored beside it",
+ "oracle_version": "#322 @ 52c03c6 (feed lag 8 s assumption; measured p90 62-75 s)",
+ "bar": "docs/prereg/exp-1714.md",
+ "valid_grade_feed_lag_8s": {
+  "nba": {
+   "pct": 100.0,
+   "ci": [
+    96.47,
+    100.0
+   ],
+   "delta_vs_base": 11.76,
+   "delta_ci": [
+    5.54,
+    14.66
+   ],
+   "hl_leaves": 0,
+   "entries_mid_play": 0,
+   "switches_per_h": 1.58
+  },
+  "nfl": {
+   "pct": 93.66,
+   "ci": [
+    88.0,
+    97.39
+   ],
+   "delta_vs_base": 11.04,
+   "delta_ci": [
+    4.6,
+    15.96
+   ],
+   "hl_leaves": 0,
+   "entries_mid_play": 0,
+   "switches_per_h": 8.74
+  },
+  "nhl": {
+   "pct": 73.24,
+   "ci": [
+    0.0,
+    75.56
+   ],
+   "delta_vs_base": -5.63,
+   "delta_ci": [
+    -84.62,
+    0.0
+   ],
+   "hl_leaves": 0,
+   "entries_mid_play": 0,
+   "switches_per_h": 5.17
+  },
+  "pooled": {
+   "pct": 91.53,
+   "ci": [
+    84.21,
+    94.93
+   ],
+   "delta_vs_base": 4.51,
+   "delta_ci": [
+    -3.96,
+    10.85
+   ],
+   "hl_leaves": 0,
+   "entries_mid_play": 0,
+   "switches_per_h": 6.35
+  }
+ },
+ "valid_grade_feed_lag_p90": {
+  "nba": {
+   "pct": 81.89,
+   "ci": [
+    63.49,
+    100.0
+   ],
+   "delta_vs_base": -6.35,
+   "delta_ci": [
+    -18.25,
+    7.8
+   ],
+   "hl_leaves": 0,
+   "entries_mid_play": 0,
+   "switches_per_h": 1.33
+  },
+  "nfl": {
+   "pct": 84.23,
+   "ci": [
+    32.2,
+    97.26
+   ],
+   "delta_vs_base": 9.8,
+   "delta_ci": [
+    -43.47,
+    20.03
+   ],
+   "hl_leaves": 0,
+   "entries_mid_play": 0,
+   "switches_per_h": 8.59
+  },
+  "nhl": {
+   "pct": 33.8,
+   "ci": [
+    0.0,
+    35.56
+   ],
+   "delta_vs_base": -9.86,
+   "delta_ci": [
+    -42.31,
+    -8.89
+   ],
+   "hl_leaves": 0,
+   "entries_mid_play": 0,
+   "switches_per_h": 2.11
+  },
+  "pooled": {
+   "pct": 75.71,
+   "ci": [
+    56.05,
+    88.58
+   ],
+   "delta_vs_base": -5.5,
+   "delta_ci": [
+    -19.21,
+    10.94
+   ],
+   "hl_leaves": 0,
+   "entries_mid_play": 0,
+   "switches_per_h": 5.53
+  }
+ },
+ "valid_verdict": "FAIL at both feed lags (pooled CI includes 0; NHL below A0; switches +27 % at 8 s). Floors 0 everywhere.",
+ "rows_tried_on_these_valid_nights": [
+  "EXP-1712",
+  "EXP-1713",
+  "EXP-1714",
+  "EXP-125",
+  "EXP-126"
+ ],
+ "note": "EXP-126 R1 ranker FAILED its own valid bar (75.2 vs 81.2 at p90) and is NOT nominated."
+}
