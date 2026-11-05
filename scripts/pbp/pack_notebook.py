@@ -16,7 +16,8 @@ import tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MODULES = ("__init__.py", "schema.py", "mlb_statsapi.py", "wehoop.py", "statsbomb.py", "wyscout.py", "cricsheet.py")
+MODULES = ("__init__.py", "schema.py", "mlb_statsapi.py", "wehoop.py", "statsbomb.py", "wyscout.py", "cricsheet.py",
+           "tennis.py")
 
 
 def code_b64() -> str:

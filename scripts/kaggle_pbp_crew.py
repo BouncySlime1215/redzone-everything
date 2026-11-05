@@ -58,7 +58,7 @@ if CODE_B64 and not (CODE / "pbp").exists():
             tar.extractall(CODE)
 sys.path.insert(0, str(CODE))
 sys.path.insert(0, str(Path.cwd() / "scripts"))
-from pbp import cricsheet, mlb_statsapi, statsbomb, wehoop, wyscout  # noqa: E402
+from pbp import cricsheet, mlb_statsapi, statsbomb, tennis, wehoop, wyscout  # noqa: E402
 from pbp.schema import PERSONAL  # noqa: E402
 
 # resume: copy finished shards (and their sidecars) from a previous version's output
@@ -103,6 +103,7 @@ if "files" in JOBS:
     run("cricsheet", cricsheet.pull_all, OUT)
     run("statsbomb", statsbomb.pull_all, OUT, competitions=None)
     run("wyscout", wyscout.pull_all, OUT)
+    run("tennis", tennis.pull_all, OUT)
 
 # %%
 if "baseball" in JOBS:
