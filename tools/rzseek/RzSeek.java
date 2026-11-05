@@ -47,6 +47,26 @@ public class RzSeek {
         return s == null ? "null" : "\"" + s.toString().replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
+    // [T7 SEEK_TO] title / subtitle / duration from the session's MediaMetadata: an ad pod usually shows up as a
+    // title or duration change, which is how redzone/seek_to.py and seek_bench tell whether a rewind forced an ad. Never throws.
+    static String meta(Object mc) {
+        try {
+            Object md = call(mc, "getMetadata");
+            if (md == null) {
+                return ",\"title\":null,\"subtitle\":null,\"duration\":-1";
+            }
+            Object title = call(md, "getString", "android.media.metadata.TITLE");
+            Object sub = call(md, "getString", "android.media.metadata.DISPLAY_SUBTITLE");
+            if (sub == null) {
+                sub = call(md, "getString", "android.media.metadata.ARTIST");
+            }
+            long dur = (Long) call(md, "getLong", "android.media.metadata.DURATION");
+            return ",\"title\":" + esc(title) + ",\"subtitle\":" + esc(sub) + ",\"duration\":" + dur;
+        } catch (Exception e) {
+            return ",\"title\":null,\"subtitle\":null,\"duration\":-1";
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
             System.out.println("{\"error\":\"usage: list | seek <pkg> <ms> | seekrel <pkg> <delta_ms>\"}");
@@ -78,7 +98,7 @@ public class RzSeek {
                 System.out.println("{\"pkg\":" + esc(pkg) + ",\"state\":" + state + ",\"position\":" + pos
                         + ",\"updated\":" + upd + ",\"speed\":" + speed + ",\"actions\":" + actions
                         + ",\"elapsed\":" + now + ",\"pos_now\":" + posNow
-                        + ",\"wall_ms\":" + (wall0 + wall1) / 2 + "}");
+                        + ",\"wall_ms\":" + (wall0 + wall1) / 2 + meta(mc) + "}");
             } else if ((cmd.equals("seek") || cmd.equals("seekrel")) && args.length >= 3 && pkg.equals(args[1])) {
                 if ((actions & 256L) == 0) {
                     System.out.println("{\"pkg\":" + esc(pkg) + ",\"error\":\"no SEEK_TO in actions\",\"actions\":"

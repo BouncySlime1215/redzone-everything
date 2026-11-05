@@ -262,6 +262,8 @@ class Controller:
         self._hidden_entry_done = False
         self.seek_log_path = None                # [calib.auto] data/seeks.jsonl: one row per measured seek
         self._last_seek_sent = 0
+        self._seek_anchor: dict[str, dict] = {}   # stick host -> stick.tuned right before a rewind (keys clear it)
+        self._last_seek = None                    # [T7 SEEK_TO] (target, SeekResult) of the last SEEK_TO rewind
         self.parked: Parked | None = None        # ...parked on a replay instead of live
         self.two_stick_ok = True                 # flips to False if an input flip ever fails
         self.latency = LatencyBook()
@@ -1530,7 +1532,21 @@ class Controller:
         """[calib.auto] How far one seek really moved the picture: the stick's clock against its position since
         the stream's anchor (as the live lab measured it by hand), with the presses sent. Appended to
         data/seeks.jsonl for calibration.seek_fit. Never raises; None when it can't be told."""
-        t = stick.tuned or {}
+        last, self._last_seek = self._last_seek, None
+        if last is not None and last[0] == target and last[1].landed_s is not None:
+            # [T7 SEEK_TO] measured on the stick's own clock by the seek itself. "sent" stays 0 so
+            # calibration.seek_fit (the key-press fit) never mixes these rows in.
+            res = last[1]
+            self._append_seek_row({"t": round(time.time(), 3), "host": stick.host,
+                                   "model": getattr(stick, "model", ""), "target": target, "sent": 0,
+                                   "asked_s": round(float(asked_s), 2), "landed_s": round(res.landed_s, 2),
+                                   "method": res.method, "err_s": round(res.err_s or 0.0, 2),
+                                   "attempts": res.attempts, "settle_s": res.settle_s, "presses": res.presses,
+                                   "timed_out": res.timed_out, "ad_suspect": res.ad_suspect})
+            return res.landed_s
+        # Key presses clear stick.tuned (Stick.shell: any "input" command), so before T7 this anchor was always
+        # gone by now and no row was ever written. _rewind keeps a copy taken right before it pressed.
+        t = stick.tuned or self._seek_anchor.pop(stick.host, None) or {}
         a = (t.get("report") or {}) if t.get("target") == target else {}
         pa, ua, pn, un = a.get("position"), a.get("updated"), pb.get("position"), pb.get("updated")
         if None in (pa, ua, pn, un) or pa <= 0 or pn <= 0 or un < ua:
@@ -1539,13 +1555,22 @@ class Controller:
         if self.seek_log_path is not None:
             row = {"t": round(time.time(), 3), "host": stick.host, "model": getattr(stick, "model", ""),
                    "target": target, "sent": int(self._last_seek_sent), "asked_s": round(float(asked_s), 2),
-                   "landed_s": round(landed, 2)}
+                   "landed_s": round(landed, 2), "method": "keys"}
             try:
                 with open(self.seek_log_path, "a") as fh:
                     fh.write(json.dumps(row) + "\n")
             except OSError:
                 log.debug("could not append to %s", self.seek_log_path)
         return landed
+
+    def _append_seek_row(self, row: dict) -> None:
+        if self.seek_log_path is None:
+            return
+        try:
+            with open(self.seek_log_path, "a") as fh:
+                fh.write(json.dumps(row) + "\n")
+        except OSError:
+            log.debug("could not append to %s", self.seek_log_path)
 
     def _held_for(self, stick: Stick, target: str, pb: dict, span_s: float) -> float:
         """[hold calibration] How far behind live a hold really left the stream. Best: the stick's own
@@ -1565,14 +1590,44 @@ class Controller:
         over = float(self.cfg.get("timing.behind_live_s.hold_overreport_s", 0.0) or 0.0)
         return round(max(0.0, span_s - over), 1)
 
-    async def _rewind(self, stick: Stick, back_s: float) -> bool:
+    async def _rewind(self, stick: Stick, back_s: float, target: str | None = None) -> bool:
         """Rewind about back_s and play. Whole presses, rounded UP: landing a few seconds early shows
         the snap; landing late misses it (the decider pads the replay's end for this). Up to
         SEEK_LATE_OK_S late is fine, because the target already starts 3s before the snap — so
-        30.2s doesn't cost a whole extra press (10s more pre-roll)."""
+        30.2s doesn't cost a whole extra press (10s more pre-roll).
+
+        [T7 SEEK_TO] With replay.seek_to.enabled and the target known, the rewind is one exact MediaSession
+        seek (redzone/seek_to.py) measured on the stick's clock; short landings are topped up with presses
+        and anything SEEK_TO can't do falls back to the presses below."""
         from redzone.contracts.switching import seek_model
         if self._task is asyncio.current_task():
             self.stage["stage"] = "rewinding"
+        if stick.tuned:
+            self._seek_anchor[stick.host] = dict(stick.tuned)
+        else:
+            self._seek_anchor.pop(stick.host, None)
+        self._last_seek = None
+        if target and self.cfg.get("replay.seek_to.enabled", False):
+            from redzone.seek_to import describe, seek_to
+            t0 = time.monotonic()
+            res = await seek_to(stick, back_s, app=target.split(":", 1)[0], cfg=self.cfg,
+                                pkg=self._package(stick, target))
+            log.info("rewind %s %.1fs: %s", target, back_s, describe(res))
+            self._last_seek_sent = res.presses
+            if res.method != "keys":
+                self._last_seek = (target, res)
+            stick.tuned = None   # a seek breaks still_on's clock, just like a key press
+            # Landed further back than asked (measured, no ad): more pre-roll before the snap, still safe.
+            long_ok = (back_s > 0 and res.method == "seek_to" and res.err_s is not None and res.err_s > 0
+                       and not res.ad_suspect)
+            if not (res.ok or long_ok):
+                return False
+            sent = await stick.key("KEYCODE_MEDIA_PLAY")
+            if not sent or not sent.ok:
+                return False
+            if back_s > 0:
+                self.latency.record("seek", time.monotonic() - t0)
+            return True
         # [seek model] live lab, Nov 4: a 15 s step, the batch's first press swallowed (one extra is
         # sent), and a 2-4 s stall that itself puts the picture further behind (seek_model).
         presses = seek_model(self.cfg).sent(back_s)
@@ -1594,7 +1649,7 @@ class Controller:
     async def _park(self, stick: Stick, target: str, back_s: float, replay_id: str) -> bool:
         """Rewind to just before the play and hold it there, so the replay starts the instant we flip."""
         self._set_hidden(target, False)   # mid-rewind it's neither live nor parked
-        if not await self._rewind(stick, back_s):
+        if not await self._rewind(stick, back_s, target):
             return False
         sent = await stick.key("KEYCODE_MEDIA_PAUSE")
         if not sent or not sent.ok:
@@ -1610,7 +1665,7 @@ class Controller:
         p = self.parked
         step = float(self.cfg.get("replay.seek_step_s", 10))
         if p is not None and not p.paused and time.time() - p.at >= step / 2:
-            return await self._rewind(stick, time.time() - p.at)   # ends with PLAY
+            return await self._rewind(stick, time.time() - p.at, p.target)   # ends with PLAY
         sent = await stick.key("KEYCODE_MEDIA_PLAY")
         return bool(sent and sent.ok)
 
@@ -1811,7 +1866,7 @@ class Controller:
             if self._hidden_entry_done and out.ok:
                 out.detail += f"; rewound {entry_rewind_s:.0f}s to the dead ball before the flip"
             elif entry_rewind_s and out.ok and not out.dry_run and not replay_back_s and self.main is not None:
-                if not await self._rewind(self.main, entry_rewind_s):
+                if not await self._rewind(self.main, entry_rewind_s, target):
                     out = Outcome(False, target, out.took, "entry rewind failed; position unknown", False,
                                   path=out.path)
                 else:
@@ -1929,7 +1984,7 @@ class Controller:
                            path="single", screen_unchanged=getattr(res, "screen_changed", None) is False)
         if replay_back_s:
             # The live edge moved on while we tuned: rewind that much further to land before the snap.
-            if not await self._rewind(main, replay_back_s + (time.time() - (back_at or t0))):
+            if not await self._rewind(main, replay_back_s + (time.time() - (back_at or t0)), target):
                 return Outcome(False, target, time.time() - t0, "replay seek failed; position unknown", False,
                                path="single")
         self.on_target = None if replay_back_s else target
@@ -2025,7 +2080,7 @@ class Controller:
                 if back:
                     # [seek model] rewind the hidden stick to the dead ball before the flip, then take
                     # its position as the stream's new anchor (a seek breaks still_on's clock).
-                    if not await self._rewind(hid, back):
+                    if not await self._rewind(hid, back, target):
                         self._set_hidden(None, False)
                         return Outcome(False, target, time.time() - t0, "entry rewind failed; kept current game",
                                        False, path=path, screen_unchanged=visible_untouched)

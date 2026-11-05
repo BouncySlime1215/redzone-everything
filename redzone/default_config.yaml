@@ -539,6 +539,16 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   pause_err_s: 0.25        # a pause cue's landing error, calibrated (the lab's pause hold: well under 0.5 s)
   pause_cue_grain_s: 0.5   # a pause cue's landing grain (the lab's pause hold: +1.66 s raw, under 0.5 s calibrated)
   hidden_seek_keys_s: 1.5  # a hidden-stick seek's presses + PLAY before the flip (the stall comes on top)
+  seek_to:                 # [T7 SEEK_TO] rewind by an exact amount with MediaSession SEEK_TO (tools/rzseek), measured on
+                           # the stick's clock; the key presses above stay the fallback. OFF until the hidden-stick bench
+                           # (scripts/seek_bench.py) passes per app: p90 |err| <= 1 s, settle <= 3 s, no forced ads.
+    enabled: false
+    timeout_s: 4.0         # wait this long on the stick for PLAYING again after the seek
+    retries: 1             # correction seeks while the landing is off by more than tolerance_s
+    tolerance_s: 1.0       # landing error accepted; short by more than this is topped up with presses
+    dex_path: tools/rzseek/rzseek.dex   # built on the Mac with tools/rzseek/build.sh, pushed once per stick
+    prime_key_step_s: 10   # the key fallback on Prime: a REWIND press steps 10 s (docs/timing.md)...
+    prime_key_swallowed: 0 # ...and none is swallowed (YouTube TV uses seek_step_s / seek_wake_presses above)
   redzone_way: false       # catch-up the RedZone way (Nick, Nov 4; OFF until its gate passes): lull, "meanwhile",
                            # collision and end-of-night montage triggers (redzone/decider/decider.py)
   catchup_s: 600           # each missed big play replayed within this; its value halves every catchup_s
