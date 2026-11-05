@@ -41,3 +41,9 @@ def test_tags_list_counts(tmp_path):
 
 def test_the_repo_ledgers_pass():
     assert lc.main([]) == 0
+
+
+def test_a_ledger_listing_records_under_sources_is_read_row_by_row(tmp_path):
+    p = _f(tmp_path, {"sources": [{"source": "retrosheet", "license": "notice"},
+                                  {"source": "espn", "license": "ESPN terms", "tag": TERMS["tag"]}]})
+    assert lc.check([p], TERMS) == []

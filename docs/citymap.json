@@ -4263,6 +4263,17 @@
     "untagged"
    ]
   },
+  "scripts/catchup_ratchet.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[time to see, Nick Nov 5 2026 12:28 AM ET] The catch-up window ratchet (docs/catchup_ratchet.json).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/check_memory.py": {
    "contracts": [],
    "inputs": [],
@@ -5130,6 +5141,28 @@
     "untagged"
    ]
   },
+  "scripts/scout_ledger.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Data scout ledger: check docs/datasources/scout.json and render scout-ledger.md, ranked by new information per GB.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/scout_probe.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Data scout probe: for each scout.json source, read the host's robots.txt and fetch ONE probe URL.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/screen_lab.py": {
    "contracts": [],
    "inputs": [
@@ -5430,10 +5463,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 289,
+  "modules": 292,
   "orphans": 10,
-  "unowned": 130,
-  "untagged": 234
+  "unowned": 133,
+  "untagged": 237
  },
  "version": 1
 }

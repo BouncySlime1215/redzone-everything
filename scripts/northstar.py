@@ -92,6 +92,12 @@ METRICS = [
     # Nick, Nov 4 11:00 AM: a missed key moment must air within 2-3 min (the next dead moment), never 10.
     ("big_seen_3min", "Big plays live or replayed within 3 min", ">= 99%", 1, 99.0, 100.0),
     ("big_seen_2min", "Big plays live or replayed within 2 min (stretch)", ">= 99%", 1, 99.0, 100.0),
+    # Nick, Nov 5 12:28 AM: time to see each big play is a headline line, and the catch-up window is a per-league
+    # ratchet (docs/catchup_ratchet.json: 3 min -> 90 s -> 30 s -> live, never back up)
+    *[(f"time_to_see_{lg}", f"Time to see a big play, {lg.upper()} (median s; 0 = live)", "info", -1, None, None)
+      for lg in LEAGUES],
+    *[(f"catchup_{lg}", f"Big plays seen within the catch-up window, {lg.upper()} (ratchet)", ">= 99% within the window",
+       1, 99.0, 100.0) for lg in LEAGUES],
     ("switch_p95", "Switch time p95 (SmartThings input change)", "<= 3 s", -1, 3.0, 3.0),
     ("flips_settled", "Flips PLAYING within 3 s", ">= 99%", 1, 99.0, 100.0),
     ("delay_err_p95", "Per-stick delay error p95", "<= 2 s", -1, 2.0, 2.0),
@@ -317,6 +323,7 @@ def table(cards: dict, nights: list[dict] | None = None, switch_s: list[float] |
                         for lg in LEAGUES if per[lg])
         rows.append(_rate(key, [(int(x.get(fld) or 0), int(x.get("big") or 0)) for x in every], 99.0,
                           upper_bound_only=not graded, note=f" [{sub}]" + note))
+    rows += see_rows(per)
     # 6. switch time p95: real TV samples if there are any, else the Nov 3 measurement (too few to prove p95)
     rows.append(switch_row(switch_s or []))
     # 6b. [sync plan, TIMING] flips that reach PLAYING within 3 s: Controller.settle_book {n, ok} as the
@@ -546,6 +553,47 @@ def settle_row(nights: list[dict] | None) -> dict:
     r = _rate("flips_settled", per, 99.0)
     r["detail"] += "; e2e fault nights (fake TV), picture-checked flips only"
     return r
+RATCHET = Path(__file__).resolve().parent.parent / "docs/catchup_ratchet.json"
+
+
+def see_rows(per: dict) -> list[dict]:
+    """[time to see] per league: the median and p90 seconds from a big play airing to it being on screen (0 = live;
+    never seen counts as never), the shares within 3 min / 90 s / 30 s / live, and the ratchet line: >= 99% within
+    the league's current window (docs/catchup_ratchet.json)."""
+    try:
+        win = json.loads(RATCHET.read_text()).get("window_s", {})
+    except (OSError, ValueError):
+        win = {}
+    out = []
+    for lg in LEAGUES:
+        nights = per.get(lg) or []
+        lists = [x.get("big_see_s") for x in nights]
+        if not nights or any(not isinstance(v, list) for v in lists):
+            why = "no per-play time to see on this scorecard"
+            out += [_row(f"time_to_see_{lg}", None, None, None, PENDING, why),
+                    _row(f"catchup_{lg}", None, None, None, PENDING, why)]
+            continue
+        xs = [x for v in lists for x in v]
+        unknown = sum(1 for x in xs if x is None)
+        t = sorted(float("inf") if x == -1 else float(x) for x in xs if x is not None)
+        q = lambda f: t[min(len(t) - 1, math.ceil(f * len(t)) - 1)] if t else None  # noqa: E731
+        fmt = lambda v: "never" if v == float("inf") else f"{v:.0f} s"  # noqa: E731
+        share = lambda w: 100.0 * sum(1 for v in t if v <= w) / max(1, len(xs))  # noqa: E731
+        det = (f"{len(xs)} big plays: median {fmt(q(0.5)) if t else 'n/a'}, p90 {fmt(q(0.9)) if t else 'n/a'}; "
+               f"within 3 min {share(180):.1f}%, 90 s {share(90):.1f}%, 30 s {share(30):.1f}%, live {share(0):.1f}%")
+        if unknown:
+            det += f"; {unknown} replayed at an unknown time"
+        med = q(0.5)
+        out.append(_row(f"time_to_see_{lg}", None if med is None or med == float("inf") else round(med, 1),
+                        None, None, INFO, det, len(nights)))
+        w = float(win.get(lg, 180))
+        r = _rate(f"catchup_{lg}", [(sum(1 for x in v if x is not None and 0 <= x <= w), len(v)) for v in lists],
+                  99.0, upper_bound_only=bool(unknown))
+        r["detail"] = f"window {w:.0f} s (ratchet); " + r["detail"]
+        out.append(r)
+    return out
+
+
 def break_row(cards: dict, every: list[dict], note: str = "") -> dict:
     """[RC7 gate 3, Nick Nov 4 9:45 PM] entries that landed mid-commercial: inside a break with more than
     cutgrade.BREAK_TAIL_BAR of dead time left before the restart. Hard 0, like mid-play. PENDING on a card
@@ -748,6 +796,8 @@ def _fmt(key, v) -> str:
         return "n/a"
     if key in ("switch_p95", "press_to_tv_p95", "delay_err_p95") or key.startswith("feed_lag"):
         return f"{v:.2f} s" if key in ("switch_p95", "press_to_tv_p95", "delay_err_p95") else f"{v:.1f} s"
+    if key.startswith("time_to_see"):
+        return f"{v:.0f} s"
     if key == "contract_violations":
         return str(int(v))
     if key == "wv_calibration_err":
