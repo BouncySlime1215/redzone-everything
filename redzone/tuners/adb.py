@@ -24,6 +24,8 @@ import re
 import secrets
 import shlex
 import shutil
+import struct
+import zlib
 import time
 from dataclasses import dataclass, field
 
@@ -105,6 +107,8 @@ class Stick:
     _session: AdbShell | None = field(default=None, repr=False, compare=False)
     # Sees every playback report this stick gives (the boundary watcher times show changes with them).
     observer: Callable[["Stick", dict], None] | None = field(default=None, repr=False, compare=False)
+    # [scorebug band] (width, height) of the raw screencap frame, read once from its header
+    _raw_geom: tuple[int, int] | None = field(default=None, repr=False, compare=False)
     # Where the last screen_text() came from: "ui" (uiautomator) or "ocr" (a screenshot: the app
     # draws its own UI, so its controls can only be read and driven from pixels).
     screen_source: str = field(default="", repr=False, compare=False)
@@ -339,6 +343,40 @@ class Stick:
         if proc.returncode or not png.startswith(b"\x89PNG\r\n\x1a\n"):
             return b""
         return png
+
+    async def _exec_out(self, cmd: str, timeout: float) -> bytes:
+        proc = await asyncio.create_subprocess_exec(
+            ADB, "-s", self.host, "exec-out", cmd,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout)
+        except BaseException:
+            _close_proc(proc)
+            raise
+        return b"" if proc.returncode else out
+
+    async def screencap_band(self, from_frac: float, timeout: float = 8.0) -> bytes:
+        """[scorebug, Nick Nov 5 3:30 AM] A PNG of the screen with only the rows from `from_frac` down (the
+        score bug's lower third) read off the stick; the rows above are black. The stick sends raw pixels
+        (no PNG encode there: a 1080p `screencap -p` takes ~6.5 s on the 4K (2023) stick), only the band's
+        bytes cross Wi-Fi, and the PNG is rebuilt here at full size so OCR boxes keep their positions.
+        b'' when the frame isn't 8-bit RGBA or anything fails (the caller falls back to screencap)."""
+        if self._raw_geom is None:
+            head = await self._exec_out("screencap | head -c 12", timeout)
+            if len(head) < 12:
+                return b""
+            w, h, fmt = struct.unpack("<III", head[:12])
+            if fmt != 1 or not (0 < w <= 8192 and 0 < h <= 8192):   # 1 = RGBA_8888
+                return b""
+            self._raw_geom = (w, h)
+        w, h = self._raw_geom
+        rows = h - int(h * from_frac)
+        n = rows * w * 4
+        band = await self._exec_out(f"screencap | tail -c {n}", timeout)
+        if len(band) != n:
+            self._raw_geom = None   # the frame size changed (or a short read): re-read the header next time
+            return b""
+        return rgba_png(w, h, band, h - rows)
 
     async def screenshot(self, path: str) -> bool:
         """Save a PNG of the screen to `path` (read-only: screencap never changes the screen)."""
@@ -649,6 +687,20 @@ def _adb_problem(text: str) -> str | None:
 # [SYNC A] the live-edge reader's one read per stick: the boot clock MediaSession's `updated` counts in, and
 # the session itself, in one shell call so the two are read together (redzone/sync_edge.py).
 EDGE_READ = "cat /proc/uptime; dumpsys media_session"
+
+
+def rgba_png(w: int, h: int, band: bytes, top: int) -> bytes:
+    """A w x h RGBA PNG: rows [0, top) black, then `band` (raw RGBA rows to the bottom)."""
+    stride = w * 4
+    black = b"\x00" + b"\x00\x00\x00\xff" * w
+    raw = bytearray(black * top)
+    for i in range(0, len(band), stride):
+        raw += b"\x00" + band[i:i + stride]
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(bytes(raw), 1)) + chunk(b"IEND", b""))
 
 
 def parse_playback(text: str, package: str | None = None) -> dict:

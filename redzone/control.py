@@ -417,14 +417,20 @@ class Controller:
             out.append((h, ht, False))
         return out
 
-    async def scorebug_frames(self, hidden: bool = False) -> list[dict]:
+    async def scorebug_frames(self, hidden: bool = False, band_from: float | None = None) -> list[dict]:
         """One screenshot of each stick scorebug_sticks() names: {stick, target, visible, tune, png,
-        t0, t1}. Never presses a key. All dropped if a switch or flip started while capturing."""
+        t0, t1}. Never presses a key. All dropped if a switch or flip started while capturing.
+        [delay.scorebug_band] With band_from, only the rows from there down cross Wi-Fi as raw pixels
+        (no PNG encode on the stick); a full screencap when that fails."""
         gen, out = self._flip_gen, []
         for s, target, visible in self.scorebug_sticks(hidden):
             tune = s.tuned
             t0 = time.time()
-            png = await s.screencap(timeout=15)   # a 1080p frame from the 4K (2023) stick: ~6.5 s over Wi-Fi
+            png = b""
+            if band_from is not None:
+                png = await s.screencap_band(band_from, timeout=15)
+            if not png:
+                png = await s.screencap(timeout=15)   # a 1080p frame from the 4K (2023) stick: ~6.5 s over Wi-Fi
             t1 = time.time()
             if gen != self._flip_gen or self._flipping or self._busy() or s.tuned is not tune:
                 return []

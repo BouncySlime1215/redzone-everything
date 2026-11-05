@@ -247,3 +247,90 @@ def test_prime_epoch_position_is_absolute_behind_real_life():
     # a 24 h counter (the other stick's Prime content) is not an epoch
     r = tr.read("hdmi1", "visible", "prime:tnf", ms(86368.0, 900.0), 902.0, wall, tune_t=wall - 30)
     assert "epoch" not in r and "abs_behind_s" not in r
+
+
+def test_k_fuses_arena_minus_frame_clock_and_gates_outliers():
+    """[Nick 3:30 AM] K = score-bug delay (behind the arena) - E (behind the frame clock), inverse-variance."""
+    tr = se.EdgeTracker()
+    tgt = "prime:tnf"
+    wall = 1_762_330_000.0
+    assert tr.frame_k(tgt, 16.0, wall, 1.5, pair_s=30.0) is None          # no epoch read yet: nothing to pair
+    tr.read("hdmi2", "hidden", tgt, ms(wall - 6.4, 900.0), 900.0, wall, tune_t=wall - 30)
+    assert tr.frame_k(tgt, 16.0, wall + 31, 1.5, pair_s=30.0) is None     # too old to pair
+    samples = [15.8, 16.2, 14.9, 17.1, 16.0, 15.5, 16.6, 15.9, 16.3, 15.7] * 2
+    for i, d in enumerate(samples):
+        assert abs(tr.frame_k(tgt, d, wall + 1, 1.5, pair_s=30.0) - (d - 6.4)) < 1e-6, i
+    k, sd, n = tr.k_of(tgt)
+    assert n == 20 and abs(k - 9.6) < 0.05 and sd <= 0.5                   # Nick's target: sd <= 0.5 after ~20
+    assert tr.frame_k(tgt, 40.0, wall + 1, 1.5, pair_s=30.0) is None and tr.k_out[tgt] == 1   # a misread
+    r = tr.read("hdmi2", "hidden", tgt, ms(wall + 4 - 6.4, 904.0), 904.0, wall + 4, tune_t=wall - 30)
+    assert r["k_n"] == 20 and abs(r["epoch_delay_s"] - 16.0) < 0.06
+
+
+def epoch_probe(tmp_path, **flags):
+    p = probe(tmp_path, **flags)
+    c = p.control
+    c.two_stick, c.on_target = False, "prime:tnf"
+    c.main.pos = T0 - 6.4                           # Prime: the position is the frame's wall clock
+    return p, c
+
+
+def test_epoch_signal_feeds_the_filter_only_with_its_flag_and_a_tight_k(tmp_path):
+    fed = []
+    for flags, want in (({}, 0), ({"epoch_signal": True}, 1)):
+        p, c = epoch_probe(tmp_path, **flags)
+        p.on_epoch = lambda target, z, t, sd: fed.append((target, z, sd))
+        fed.clear()
+        rows = asyncio.run(p.edge_tick(now=T0))
+        assert rows[0]["epoch"] and "k_s" not in rows[0]
+        for _ in range(4):                          # 4 reads: K exists but isn't trusted yet (k_min_reads 5)
+            p.frame_k("prime:tnf", 16.0, T0, 1.5)
+        later(c, 1.0, 1.0)
+        rows = asyncio.run(p.edge_tick(now=T0 + 1))
+        assert rows[0]["k_n"] == 4 and not rows[0].get("epoch_ready") and fed == []
+        for _ in range(16):
+            p.frame_k("prime:tnf", 16.0, T0 + 1, 1.5)
+        later(c, 1.0, 1.0)
+        rows = asyncio.run(p.edge_tick(now=T0 + 2))
+        assert rows[0]["epoch_ready"] and rows[0]["k_sd_s"] <= 0.5
+        later(c, 1.0, 1.0)
+        asyncio.run(p.edge_tick(now=T0 + 3))       # inside epoch_every_s: not fed twice
+        assert len(fed) == want, flags
+    target, z, sd = fed[0]
+    assert target == "prime:tnf" and abs(z - 16.0) < 0.05 and 0.5 <= sd < 0.65
+
+
+def test_screencap_band_rebuilds_a_full_size_png_from_raw_rows():
+    import struct
+    import zlib
+
+    from redzone.tuners import adb
+    w, h = 8, 6
+    frame = bytes((x * 10, y * 10, 7, 255)[i] for y in range(h) for x in range(w) for i in range(4))
+    header = struct.pack("<III", w, h, 1)
+    s = adb.Stick("dev")
+    seen = []
+
+    async def exec_out(cmd, timeout):
+        seen.append(cmd)
+        if "head -c 12" in cmd:
+            return header
+        n = int(cmd.rsplit(" ", 1)[1])
+        return (header + frame)[-n:]
+    s._exec_out = exec_out
+    png = asyncio.run(s.screencap_band(2 / 3, timeout=1))
+    assert png.startswith(b"\x89PNG\r\n\x1a\n") and struct.unpack(">II", png[16:24]) == (w, h)
+    raw = zlib.decompress(png[png.index(b"IDAT") + 4:png.index(b"IEND") - 8])
+    rows = [raw[i * (w * 4 + 1) + 1:(i + 1) * (w * 4 + 1)] for i in range(h)]
+    assert rows[0] == b"\x00\x00\x00\xff" * w and rows[3] == b"\x00\x00\x00\xff" * w   # above the band: black
+    assert rows[4] == frame[4 * w * 4:5 * w * 4] and rows[5] == frame[5 * w * 4:]      # the band, in place
+    assert seen == ["screencap | head -c 12", f"screencap | tail -c {2 * w * 4}"]
+    asyncio.run(s.screencap_band(2 / 3, timeout=1))
+    assert len(seen) == 3                            # the frame's size is read once
+
+    async def short(cmd, timeout):
+        return b"" if "tail" in cmd else header
+    s._exec_out = short
+    assert asyncio.run(s.screencap_band(2 / 3, timeout=1)) == b"" and s._raw_geom is None
+    s._raw_geom, s._exec_out = None, lambda cmd, timeout: asyncio.sleep(0, struct.pack("<III", w, h, 5))
+    assert asyncio.run(s.screencap_band(2 / 3, timeout=1)) == b""   # not RGBA_8888: the caller falls back

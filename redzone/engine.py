@@ -182,6 +182,8 @@ class Engine:
         # [SYNC A] the sync filter's (mu, sd) for a target, logged beside each live-edge read
         self.sync_probe.delay_of = lambda target: (self.sync.estimate(target) if self.sync is not None
                                                    and hasattr(self.sync, "estimate") else None)
+        # [SYNC, Nick 3:30 AM] a Prime epoch read + K -> a delay sample (sync.edge.epoch_signal, off)
+        self.sync_probe.on_epoch = lambda target, z, t, sd: self._sync_measure(target, z, "epoch", t, sd)
         self.sync_probe.on_force_live = lambda target, row: (   # [SYNC B] re-link to live (flags off)
             self.control.force_live_hidden(target) if row["role"] == "hidden" else self.control.relink_visible_live(target))
         self._alarmed: dict[str, float] = {}   # [SYNC 6] target -> last drift alarm
@@ -312,7 +314,9 @@ class Engine:
                 log.exception("sync: could not re-sync %s", target)
 
     def _sync_clock(self, target: str, wall: float, delay_s: float) -> None:
+        from redzone.decider.sync import SIGMA
         self._sync_measure(target, delay_s, "clock", wall)
+        self.sync_probe.frame_k(target, delay_s, wall, SIGMA["clock"])   # [SYNC, Nick 3:30 AM] K = arena - frame clock
 
     def _boundary_sample(self, s) -> None:
         from redzone.decider.sync import SIGMA
@@ -326,6 +330,7 @@ class Engine:
     def _scorebug_sample(self, s) -> None:
         from redzone.decider.sync import SIGMA
         self._sync_measure(s.target, s.sample, "score", s.onset, max(SIGMA["score"], s.error_s))
+        self.sync_probe.frame_k(s.target, s.sample, s.onset, max(SIGMA["score"], s.error_s))
         d = self.delays.screen(s.target, s.sample, s.onset)
         try:
             self.store.calibration(s.target, s.sample, d.mu, d.sigma, kind="screen")
@@ -467,7 +472,9 @@ class Engine:
                         await asyncio.sleep(10.0)
                         continue
                     wait = scorebug.EVERY_S * self.governor.scale("ocr")
-                    frames = await self.control.scorebug_frames(bool(self.cfg.get("delay.scorebug_hidden", False)))
+                    frames = await self.control.scorebug_frames(
+                        bool(self.cfg.get("delay.scorebug_hidden", False)),
+                        band_from=scorebug.LOWER_FROM if self.cfg.get("delay.scorebug_band") else None)
                     if not frames:
                         self.scorebug.reset()
                 for f in frames:

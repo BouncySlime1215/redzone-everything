@@ -205,6 +205,8 @@ class SyncProbe:
         # re-links it to live (flags sync.edge.force_live / force_live_visible, off)
         self.on_force_live: Callable[[str, dict], bool] | None = None
         self._forced: dict[str, float] = {}   # target -> last re-link (one per force_gap_s)
+        self.on_epoch: Callable[[str, float, float, float], None] | None = None   # (target, delay, t, sd)
+        self._epoch_fed: dict[str, float] = {}   # target -> last epoch sample fed (one per epoch_every_s)
         self._full_at = 0.0
 
     def enabled(self) -> bool:
@@ -436,6 +438,8 @@ class SyncProbe:
             real = getattr(c, "behind_real", None)
             if isinstance(real, dict) and row.get("abs_behind_s") is not None:
                 real[stick.host] = row["abs_behind_s"]
+            if row.get("epoch_delay_s") is not None:
+                self._epoch(target, row, wall)
             if row.get("behind_live_s") is None or row.get("played_s", 0.0) < float(self._edge_cfg("settle_s")):
                 continue
             # [SYNC B] behind its live edge by more than the app asked for (a stall, a pause it forgot, a bad landing)
@@ -447,6 +451,34 @@ class SyncProbe:
             sync_edge.write_rows(rows, root)
             self.edge_rows += len(rows)
         return rows
+
+    def frame_k(self, target: str, delay_s: float, t: float, sd: float) -> None:
+        """[SYNC, Nick 3:30 AM] A score-bug delay sample -> a K = arena - frame clock sample for a Prime target."""
+        if not self.edge_enabled():
+            return
+        try:
+            self.edge.frame_k(target, float(delay_s), float(t), float(sd), float(self._edge_cfg("k_pair_s")))
+        except Exception:
+            log.exception("edge: could not pair a score-bug sample with %s's frame clock", target)
+
+    def _epoch(self, target: str, row: dict, now: float) -> None:
+        """[SYNC, Nick 3:30 AM] E + K is the screen's delay: marked epoch_ready once K is tight enough, fed to
+        the sync filter only with sync.edge.epoch_signal, at most once per epoch_every_s per target."""
+        if row["k_n"] < int(self._edge_cfg("k_min_reads")) or row["k_sd_s"] > float(self._edge_cfg("k_sd_max_s")):
+            return
+        row["epoch_ready"] = True
+        if not self.cfg.get("sync.edge.epoch_signal") or self.on_epoch is None:
+            return
+        if now - self._epoch_fed.get(target, float("-inf")) < float(self._edge_cfg("epoch_every_s")):
+            return
+        from redzone.decider.sync import SIGMA
+        sd = (row["k_sd_s"] ** 2 + SIGMA["epoch"] ** 2) ** 0.5
+        try:
+            self.on_epoch(target, row["epoch_delay_s"], now, sd)
+            self._epoch_fed[target] = now
+            row["epoch_fed"] = True
+        except Exception:
+            log.exception("edge: could not feed an epoch sample for %s", target)
 
     def _force(self, target: str, row: dict, now: float) -> bool:
         """[SYNC B] Re-link to live: the hidden stick with sync.edge.force_live, the one on screen with

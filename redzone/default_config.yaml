@@ -66,6 +66,14 @@ sync:
     force_live: false      # [step B, EXP-801] re-link the HIDDEN stick to live (never one held on purpose)
     force_live_visible: false   # ...and the stick on screen, only on a dead ball (restore_visible relink, ~2.5 s)
     force_gap_s: 60.0      # at most one re-link per game per this long
+    # [Prime epoch, Nick Nov 5 3:30 AM] Prime's position is the frame's wall clock: E = screen behind the frame clock
+    # (~6.4 s, sd ~0.1). Each score-bug clock/score delay sample read while a fresh epoch row exists gives
+    # K = arena - frame clock = delay - E; K is fused per target (inverse variance). Rows log k_s and epoch_delay_s.
+    epoch_signal: false    # feed E + K to the sync filter as an "epoch" sample (off until tonight's rows grade it)
+    k_pair_s: 30.0         # an epoch row this recent pairs with a score-bug sample
+    k_min_reads: 5         # K counts once this many samples are fused ...
+    k_sd_max_s: 0.5        # ... and its doubt (1 sd) is under this (Nick's target: <= 0.5 s after ~20 reads)
+    epoch_every_s: 10.0    # at most one epoch sample per target this often (K's error is shared by all of them)
   break_anchor:            # [auto-anchors] ad break on screen <-> the feed's dead ball -> a delay sample
     enabled: false         # logged always (recordings/<day>/sync_anchors.jsonl); fed to the filter only when on.
     start_bias_s: 15       # whistle -> ad on screen, a PRIOR until the Wednesday probe data refits it
@@ -569,6 +577,8 @@ delay:                     # seconds your screen runs behind real life, per app;
   default: {youtubetv: 45, prime: 40, espn: 40}  # espn (ESPN+) unmeasured: same as the code fallback
   sigma_default: 15
   model: channel           # channel: predict each channel (channels of one app differ, truTV 22 s vs FS1 42 s); legacy: one figure per app
+  scorebug_band: false     # [Nick Nov 5 3:30 AM, "Yes, read it"] Prime score bug: read only the lower third as raw
+                           # pixels (no PNG encode on the stick, ~6.5 s a frame now); numbers kept, never frames
   sync:                    # every channel's delay found automatically (redzone/decider/sync.py), no taps
     enabled: true          # Kalman filter per channel: show flips, score bug (score + clock), stick position, taps
     min_sigma_s: 4         # a synced channel's stated doubt never goes below this (the gates' tested floor)
