@@ -1892,6 +1892,7 @@
     "redzone/lab/sportsgrade.py",
     "redzone/lab/tune.py",
     "scripts/backtest.py",
+    "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
@@ -2023,6 +2024,7 @@
     "redzone/lab/backtest.py",
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
+    "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/measure_break_lengths.py",
     "scripts/northstar.py"
@@ -2716,6 +2718,7 @@
     "redzone/web/phone_v2.py",
     "scripts/backtest.py",
     "scripts/build_reasoner_data.py",
+    "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/fault_drill.py",
@@ -3643,6 +3646,7 @@
     "redzone/sources/fastcast.py",
     "redzone/sources/leagues.py",
     "redzone/views.py",
+    "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
     "scripts/green_summaries.py",
@@ -4703,6 +4707,22 @@
     "untagged"
    ]
   },
+  "scripts/entry_autopsy.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/models.py",
+    "redzone/sources/espn.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Entry autopsy (PROPOSAL, test writers; EXP-700 / EXP-727 / EXP-736).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/eval.py": {
    "contracts": [],
    "inputs": [
@@ -4948,6 +4968,17 @@
    "outputs": [],
    "owner": "SWITCHING",
    "role": "Find the YouTube TV watch code (tv.youtube.com/watch/<code>) of a channel we lack, on a SPARE stick.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/gate_power.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "How many nights does a gate need?",
    "serves": [
     "untagged"
    ]
@@ -5814,10 +5845,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 316,
+  "modules": 318,
   "orphans": 14,
-  "unowned": 156,
-  "untagged": 261
+  "unowned": 158,
+  "untagged": 263
  },
  "version": 1
 }
