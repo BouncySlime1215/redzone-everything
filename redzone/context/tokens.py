@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 PERSONAL_USE = "personal-use, not for commercial release"
 COLUMNS = ["game_id", "team", "asof_utc", "field", "value", "value_str", "bucket", "kind", "source", "license"]
-KINDS = ("new", "derived")
+FACT_KINDS = ("new", "derived")
 N_BUCKETS = 16
 
 
@@ -34,8 +34,8 @@ class Fact:
     license: str                 # license line; B rows must contain PERSONAL_USE
 
     def row(self) -> dict:
-        if self.kind not in KINDS:
-            raise ValueError(f"kind must be one of {KINDS}: {self.kind!r}")
+        if self.kind not in FACT_KINDS:
+            raise ValueError(f"kind must be one of {FACT_KINDS}: {self.kind!r}")
         if not self.license:
             raise ValueError(f"missing license line for {self.source}")
         num, cat = _split(self.value)

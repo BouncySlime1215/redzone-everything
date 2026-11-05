@@ -31,11 +31,11 @@ from redzone.context.tokens import PERSONAL_USE, Fact
 log = logging.getLogger("buzz")
 
 UA = "redzone-research/0.1 (personal project; github.com/BouncySlime1215/redzone-everything)"
-ROOT = Path(__file__).resolve().parents[2]
+BUZZ_REPO = Path(__file__).resolve().parents[2]
 SEED_CSV = Path(__file__).with_name("teams_seed.csv")
-TEAMS_CSV = ROOT / "data/context/teams.csv"
-BUZZ_DIR = ROOT / "data/context/buzz"
-LEAGUES = ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")
+TEAMS_CSV = BUZZ_REPO / "data/context/teams.csv"
+BUZZ_DIR = BUZZ_REPO / "data/context/buzz"
+BUZZ_LEAGUES = ("nfl", "cfb", "nba", "cbb", "nhl", "mlb")
 
 SRC_PV, SRC_ED, SRC_GD = "wikimedia-pageviews", "wikimedia-edits", "gdelt-gkg"
 LICENSE = {
@@ -145,7 +145,7 @@ def _split(v) -> list[str]:
     return [x.strip() for x in str(v or "").split("|") if x.strip() and str(x).strip().lower() != "nan"]
 
 
-def load_teams(path: Path | None = None, leagues=LEAGUES) -> list[dict]:
+def load_teams(path: Path | None = None, leagues=BUZZ_LEAGUES) -> list[dict]:
     """teams.csv (Wikidata step) if present, else the hand-checked seed (pro leagues only). Seed rows fill any
     pro team missing from teams.csv."""
     rows: list[dict] = []
@@ -319,7 +319,7 @@ class Cum:
         return np.where(hi > lo, self.cum[np.maximum(hi, lo)] - self.cum[lo], 0.0)
 
 
-EMPTY = Cum([])
+NO_BINS = Cum([])
 
 
 def zscore(x: float, base: np.ndarray, min_n: int) -> float:
@@ -372,10 +372,10 @@ class Signals:
         return cls(sig, cov)
 
     def _cov(self, source, league, team, bin_s) -> Cum:
-        return self.cov.get((source, ckey(league, team), bin_s)) or self.cov.get((source, "*", bin_s), EMPTY)
+        return self.cov.get((source, ckey(league, team), bin_s)) or self.cov.get((source, "*", bin_s), NO_BINS)
 
     def get(self, source, metric, league, team, bin_s) -> tuple[Cum, Cum]:
-        return self.sig.get((source, metric, league, team, bin_s), EMPTY), self._cov(source, league, team, bin_s)
+        return self.sig.get((source, metric, league, team, bin_s), NO_BINS), self._cov(source, league, team, bin_s)
 
     def covered_ends(self, source, league, team, bin_s, t0, t1) -> np.ndarray:
         cov = self._cov(source, league, team, bin_s)

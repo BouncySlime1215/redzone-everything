@@ -372,4 +372,4 @@ NFL = LeagueConfig("nfl", nfl_divisions, nfl_playoff, NFL_LICENSE, elo_k=20.0, e
                    sims=1000, snapshot="kickoff")
 MLB = LeagueConfig("mlb", mlb_divisions, mlb_playoff, MLB_LICENSE, elo_k=4.0, elo_hfa=24.0, elo_mov=False,
                    sims=500, snapshot="day")
-LEAGUES = {"nfl": NFL, "mlb": MLB}
+STAKES_LEAGUES = {"nfl": NFL, "mlb": MLB}

@@ -25,7 +25,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from redzone.context.schedules import load_nfl, load_retrosheet  # noqa: E402
-from redzone.context.standings import LEAGUES, compute_league  # noqa: E402
+from redzone.context.standings import STAKES_LEAGUES, compute_league  # noqa: E402
 from redzone.context.tokens import apply_edges, fit_edges, ledger_counts, to_frame  # noqa: E402
 
 TRAIN_CUTOFF = {"nfl": "2022-09-01", "mlb": "2022-03-01"}
@@ -55,7 +55,7 @@ def write_shards(league: str, games: pd.DataFrame, by_season: dict, out: Path, l
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--league", choices=sorted(LEAGUES), required=True)
+    ap.add_argument("--league", choices=sorted(STAKES_LEAGUES), required=True)
     ap.add_argument("--games", help="nflverse games.csv (nfl)")
     ap.add_argument("--retro-dir", help="folder of Retrosheet GL<year>.TXT (mlb)")
     ap.add_argument("--out", required=True)
@@ -66,7 +66,7 @@ def main(argv=None):
     t0 = time.time()
     games = load_nfl(a.games) if a.league == "nfl" else load_retrosheet(a.retro_dir)
     games = games[games["season"] >= a.first]
-    by = compute_league(games, LEAGUES[a.league], now_utc=pd.Timestamp.now(tz="UTC"), sims=a.sims)
+    by = compute_league(games, STAKES_LEAGUES[a.league], now_utc=pd.Timestamp.now(tz="UTC"), sims=a.sims)
     counts = write_shards(a.league, games, by, Path(a.out))
     counts["runtime_s"] = round(time.time() - t0, 1)
     print(json.dumps({k: v for k, v in counts.items() if k != "per_season_facts"}))

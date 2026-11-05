@@ -37,7 +37,7 @@ import wiki_edits  # noqa: E402
 import wiki_pageviews  # noqa: E402
 
 from redzone.context.buzz import (  # noqa: E402
-    BUZZ_DIR, DAY, GAME_S, HOUR, LEAGUES, Q15, SRC_PV, Http, Signals, Store, TeamIndex, ckey, floor_to, iso,
+    BUZZ_DIR, DAY, GAME_S, HOUR, BUZZ_LEAGUES, Q15, SRC_PV, Http, Signals, Store, TeamIndex, ckey, floor_to, iso,
     live_facts, load_teams, normalize_schedule, parse_utc, pregame_facts, write_shards,
 )
 from redzone.context.tokens import to_frame  # noqa: E402
@@ -164,7 +164,7 @@ def main(argv=None):
     ap.add_argument("--hour-files", type=int, default=40, help="pageview dump hours per run (backfill)")
     ap.add_argument("--gdelt-files", type=int, default=4, help="newest GDELT files per live run")
     ap.add_argument("--max-minutes", type=float, default=95)
-    ap.add_argument("--leagues", default=",".join(LEAGUES))
+    ap.add_argument("--leagues", default=",".join(BUZZ_LEAGUES))
     ap.add_argument("--schedule", action="append", default=[], help="schedule CSV (repeatable)")
     ap.add_argument("--no-nflverse", action="store_true")
     ap.add_argument("--teams", default=None)
