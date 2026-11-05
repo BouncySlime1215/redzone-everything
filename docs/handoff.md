@@ -71,9 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Colab: A100 GR step 2050/7862 (~3.1h left); L4 V8.1 WD step 150/1688 (~1h)
-Phone lane needs Nick card approval (read-only Mac folder); NHL green/red data call open
-Usage 41%, battery 38%
+STATUS: phone lane asks overseer for 2 read-only Mac pulls (per-stick delay-error script; Prime press context + 6 failures/1 abort)
+STATUS: A100 GR step 2200/7862 eta ~181m; L4 V8.1 WD step 300/1688 eta ~49m; factory running 6.4h; usage 41%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
