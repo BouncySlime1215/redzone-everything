@@ -72,16 +72,26 @@ def queue(moments: Path, leagues: list[str], system: str, per_league: int = PER_
     the rest of the sampled rows (never asked blind) fit "today"'s per-league cuts, as valid rows do in compare."""
     from agent.distill.teacher import reasoner_requests
     rng = random.Random(SEED)
-    reqs, blind_rows, fit_rows = [], [], []
+    blind_rows, fit_rows, per = [], [], []
     for lg in leagues:
         rows = [r for r in read_rows(moments, lg, "train") if r.get("split") == "train"]
         rng.shuffle(rows)
         rows = rows[:per_league]
         for i, r in enumerate(rows):
             (blind_rows if i % BLIND_EVERY == 0 else fit_rows).append(r)
-        reqs += reasoner_requests(rows, system, grounded_splits=("train",), blind_splits=())
-        reqs += reasoner_requests([{**r, "split": "test"} for r in rows[::BLIND_EVERY]], system,
-                                  grounded_splits=(), blind_splits=("test",))
+        g = reasoner_requests(rows, system, grounded_splits=("train",), blind_splits=())
+        b = reasoner_requests([{**r, "split": "test"} for r in rows[::BLIND_EVERY]], system,
+                              grounded_splits=(), blind_splits=("test",))
+        mine = []                                     # each blind call right after its 8 grounded ones
+        for i in range(max(len(g), len(b) * BLIND_EVERY)):
+            if i < len(g):
+                mine.append(g[i])
+            if i % BLIND_EVERY == BLIND_EVERY - 1 and i // BLIND_EVERY < len(b):
+                mine.append(b[i // BLIND_EVERY])
+        mine += b[len(mine) - len(g):] if len(mine) < len(g) + len(b) else []
+        per.append(mine)
+    # leagues round-robin: a budget stop leaves every league about equally answered, blind grades included
+    reqs = [m[k] for k in range(max((len(m) for m in per), default=0)) for m in per if k < len(m)]
     assert all(r.get("split") == "train" for r in blind_rows), "only train nights are ever asked"
     return reqs, blind_rows, fit_rows
 

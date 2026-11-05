@@ -18,6 +18,9 @@ REPO = "BouncySlime1215/redzone-everything"
 DATA_PLAN = ""                  # "A" or "B" only after Nick picks it; "" stops before any download
 LEAGUES = {"A": "nfl nba", "B": "cbb nhl mlb"}.get(DATA_PLAN, "")
 EXP = {"A": "EXP-102", "B": "EXP-086"}.get(DATA_PLAN, "")
+# grounded rows per league, sized so the whole queue (+1/8 blind) fits TEACHER_H at ~30 answers/min (~4,050 asks):
+# the >= 90% answered bar is then reachable; leagues are asked round-robin, so a short run stays balanced
+PER_LEAGUE = {"A": 1800, "B": 1200}.get(DATA_PLAN, 0)
 BUILD_H = 1.0                   # moment downloads (CPU) before the Teacher starts
 TEACHER_H = 2.3                 # Teacher budget; it stops early when the queue is empty
 CU_PER_H = {"A100": 13.0, "L4": 5.0, "T4": 2.0}
@@ -82,6 +85,7 @@ with open(log_path, "w") as log:
     p = subprocess.Popen([sys.executable, "-u", f"{CODE}/code/agent/kaggle/teacher_only.py", "--out", f"{RUN}/out",
                           "--leagues", *LEAGUES.split(), "--build-h", str(BUILD_H), "--budget-h", str(TEACHER_H),
                           "--system", f"{PACK}/data/reasoner/system.txt", "--exp", EXP,
+                          "--per-league", str(PER_LEAGUE),
                           "--source", "green" if DATA_PLAN == "A" else "espn"],
                          cwd=f"{CODE}/code", env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                          bufsize=1)
