@@ -743,3 +743,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   game_key per game across sources. `scripts/family_holm.py` applies Holm correction over the families declared in
   `docs/families.json`. Both scripts and the families file join the freeze, so no family can gain or drop an arm once
   its results are in. Grader freeze v16, together with the red-source rule above.
+- **2026-11-05 (Nick, 2:00 AM ET): work priority is NBA first, then NFL** ("I really only care about NBA and NFL, mostly
+  NBA because that's what's on most right now"). Every queue is re-ranked by NBA impact, then NFL; NHL/MLB/CBB work
+  continues only where it is shared code or data. Grow the NBA graded set to >= 60 decisions per gate. This orders the
+  work; the decider's league order on the TV (CLAUDE.md north star) is unchanged.
