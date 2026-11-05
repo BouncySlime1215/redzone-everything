@@ -183,6 +183,19 @@
    "kind": "events"
   },
   {
+   "source": "nba_stats_events",
+   "league": "nba",
+   "seasons": "2016-2016",
+   "shards": 1,
+   "games": 621,
+   "events": 287183,
+   "v1_tokens": 1725582,
+   "bytes": 1621825,
+   "license": "NBA.com stats play-by-play (NBA/STATS LLC content via a mirror with no licence); plan B personal use, private training only, never re-upload; credit NBA",
+   "tag": "personal-use, not for commercial release",
+   "kind": "events"
+  },
+  {
    "source": "statsbomb",
    "league": "1_bundesliga",
    "seasons": "2016-2024",
@@ -340,11 +353,11 @@
   }
  ],
  "total": {
-  "shards": 80,
-  "games": 3961,
-  "events": 13911986,
-  "v1_tokens": 83487760,
-  "bytes": 140347155
+  "shards": 81,
+  "games": 4582,
+  "events": 14199169,
+  "v1_tokens": 85213342,
+  "bytes": 141968980
  },
  "tracking": {
   "shards": 2,

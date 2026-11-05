@@ -20,6 +20,7 @@ Only shards that landed in the private Kaggle dataset count. Every token here is
 | statsbomb | women_s_world_cup | 2019-2023 | 116 | 402,560 | 2.4 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | uefa_euro | 2020-2024 | 102 | 380,588 | 2.3 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | indian_super_league | 2022-2022 | 115 | 344,667 | 2.1 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
+| nba_stats_events | nba | 2016-2016 | 621 | 287,183 | 1.7 | 0.00 | personal-use, not for commercial release | NBA.com stats play-by-play (NBA/STATS LLC content via a mirror with no licence); plan B personal use, private training only, never re-upload; credit NBA |
 | statsbomb | 1_bundesliga | 2016-2024 | 68 | 253,005 | 1.5 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | uefa_women_s_euro | 2022-2025 | 62 | 210,799 | 1.3 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | african_cup_of_nations | 2023-2023 | 52 | 162,903 | 1.0 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
@@ -32,5 +33,5 @@ Only shards that landed in the private Kaggle dataset count. Every token here is
 | statsbomb | fifa_u20_world_cup | 1979-1979 | 1 | 3,245 | 0.0 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | statsbomb | north_american_league | 1977-1977 | 1 | 3,205 | 0.0 | 0.00 | personal-use, not for commercial release | StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published) |
 | sportvu_extra | nba | 2016-2016 | 0 | 0 | 0.0 | 0.07 | personal-use, not for commercial release | SportVU 2015-16 (NBA/STATS LLC content, mirror has no licence); plan B personal use, private training only, never re-upload; credit NBA / STATS LLC |
-| **Total events** | | | | 3,961 | 13,911,986 | 83.5 | 0.14 | | |
+| **Total events** | | | | 4,582 | 14,199,169 | 85.2 | 0.14 | | |
 | **Total tracking** | | | | 621 | 2,054,040 | 12.3 | 0.11 | | |
