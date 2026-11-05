@@ -10,7 +10,8 @@ One JSONL file per night (6 AM to 6 AM ET, the supervisor's night). Every line i
      "outcome": {"window_s": 300, "big_plays": n, "big_on_target": n, "big_seen": n, "big_missed": n,
                  "missed": [{"ts", "game", "kind"}]}}
     {"type": "switch", "ts", "frm", "to_game", "kind", "reason", "playbooks", "ok", "dry_run",
-     "timing": {"decide_to_picture_s", "dead_air_s", "path"}, "landing": {"leave", "leave_why", "enter", "enter_why"}}
+     "timing": {"decide_to_picture_s", "dead_air_s", "path"}, "landing": {"leave", "leave_why", "enter", "enter_why"},
+     "alert": {"value", "threshold", "fired", "nothing_happened"} | null}   # EXP-035 why-tag grading
     {"type": "moment", "ts", "game", "league", "kind", "seen", "on_screen"}
 
 Sources are objective only: the `decisions`, `switches` and `snapshots` tables, the supervisor's cut grades
@@ -104,8 +105,13 @@ def _trace(row: dict) -> dict:
 
 
 def build(night: str, t0: float, t1: float, decisions: list[dict], switches: list[dict],
-          snapshots: Iterable[tuple] = (), cuts: list[dict] = (), moments: list[dict] = ()) -> list[dict]:
-    """All of one night's records, header first. Pure: every input is already read."""
+          snapshots: Iterable[tuple] = (), cuts: list[dict] = (), moments: list[dict] = (),
+          alert_min: float | None = None) -> list[dict]:
+    """All of one night's records, header first. Pure: every input is already read. alert_min is the
+    EXP-035 why-tag threshold (config phone.why_tag_min; the shipped default when not given)."""
+    if alert_min is None:
+        from redzone.config import default
+        alert_min = float(default("phone.why_tag_min"))
     decisions = sorted(decisions, key=lambda r: float(r["ts"]))
     switches = sorted(switches, key=lambda r: float(r["ts"]))
     moments = sorted(moments, key=lambda r: float(r["ts"]))
@@ -130,16 +136,32 @@ def build(night: str, t0: float, t1: float, decisions: list[dict], switches: lis
                         "big_seen": len(after) - len(missed), "big_missed": len(missed),
                         "missed": [{"ts": _f(m["ts"]), "game": m.get("game"), "kind": m.get("kind")}
                                    for m in missed]}})
+    alerts = 0
+    nothing = 0
     for s in switches:
         t = _trace(s)
         c = cut_by_id.get(t.get("id")) or {}
+        # EXP-035: the switch's value as the decision saw it (provenance: learned watch value, else importance)
+        prov = t.get("provenance") if isinstance(t.get("provenance"), dict) else {}
+        wv, imp = prov.get("watch_value"), prov.get("importance")
+        val = _f(wv.get("to") if isinstance(wv, dict) else wv)
+        if val is None and isinstance(imp, dict):
+            val = _f(imp.get("to"))
+        fired = val is not None and val >= alert_min and not s.get("dry_run")
+        ts0 = float(s["ts"])
+        hit = any(m.get("game") == s.get("to_game") for m in
+                  moments[bisect.bisect_left(mts, ts0):bisect.bisect_left(mts, ts0 + OUTCOME_WINDOW_S)])
+        alerts += fired
+        nothing += fired and not hit
         out.append({
             "type": "switch", "ts": round(float(s["ts"]), 3), "frm": s.get("frm"), "to_game": s.get("to_game"),
             "kind": s.get("kind") or "", "reason": s.get("reason") or "", "playbooks": playbooks(s.get("reason")),
             "ok": bool(s.get("ok")), "dry_run": bool(s.get("dry_run")),
             "timing": {"decide_to_picture_s": _f((t.get("spans") or {}).get("to_picture")),
                        "dead_air_s": _f((t.get("spans") or {}).get("dead_air")), "path": t.get("path")},
-            "landing": {k: c.get(k) for k in ("leave", "leave_why", "enter", "enter_why")} if c else None})
+            "landing": {k: c.get(k) for k in ("leave", "leave_why", "enter", "enter_why")} if c else None,
+            "alert": {"value": val, "threshold": alert_min, "fired": fired,
+                      "nothing_happened": fired and not hit} if val is not None else None})
     for m in moments:
         out.append({"type": "moment", "ts": _f(m["ts"]), "game": m.get("game"), "league": m.get("league"),
                     "kind": m.get("kind"), "seen": bool(m.get("seen")), "on_screen": m.get("on_screen")})
@@ -151,7 +173,9 @@ def build(night: str, t0: float, t1: float, decisions: list[dict], switches: lis
                        "big_seen": sum(1 for m in moments if m.get("seen")),
                        "landings_graded": len(landed),
                        "entries_mid_play": sum(1 for g in landed if g.get("enter") == "play"),
-                       "leaves_mid_play": sum(1 for g in landed if g.get("leave") == "play")},
+                       "leaves_mid_play": sum(1 for g in landed if g.get("leave") == "play"),
+                       "alerts": alerts, "alerts_nothing_happened": nothing,
+                       "alerts_nothing_pct": round(100.0 * nothing / alerts, 1) if alerts else None},
             "sources": ["decisions", "switches", "snapshots", "supervisor_cuts.jsonl", "supervisor_moments.jsonl"],
             "never": NEVER}
     return [head] + out
