@@ -140,5 +140,12 @@ novelty.
 ## Risks
 - **Merge load.** Fourteen new crew PRs landed in one hour. Docs-only and data-only PRs should merge first. The
   integrator should not let them delay the RC7 gate read.
-- **Sync is still the RC7 critical path.** If requirement 2 misses, requirement 3 misses with it.
+- **Sync can't be measured before RC7 (lane ②, 05:02 UTC).**
+  - #235 on tonight's sync.jsonl gives 2 truth rows. v10's minimum is 200 per stick, and the 2 rows have an error of
+    about 24 s.
+  - The cause: RC6.1 predates the #140/#146 telemetry, so it logs no seeks, no behind and no sync_probe.
+  - So requirement 2 needs a night on RC7's telemetry. It can't gate RC7 on data that only RC7 produces.
+  - Nick decides how to handle this. Requirement 3 rides on requirement 2.
+  - EXP-207 (sync carry) is inconclusive in the sim because the harness starts at the true delay. It needs a
+    biased-prior knob.
 - **Usage.** Each crew wakes on its job results, not continuously. The overseer reads the checkpoints.
