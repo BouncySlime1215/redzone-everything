@@ -237,7 +237,7 @@ From Data E's section (Nov 5):
   suspense, surprise, and shock. *Economic Inquiry*, 58(2), 881-896.
 - Burges, C., et al. (2005). Learning to rank using gradient descent. *ICML*.
 - Candia, C., Jara-Figueroa, C., Rodriguez-Sickert, C., Barabási, A.-L., & Hidalgo, C. A. (2019). The universal
-  decay of collective memory and attention. *Nature Human Behaviour*, 3, 82-91.
+  decay of collective memory and attention. *Nature Human Behaviour*, 3(1), 82-91. doi:10.1038/s41562-018-0474-5
 - Charnov, E. L. (1976). Optimal foraging, the marginal value theorem. *Theoretical Population Biology*, 9(2),
   129-136.
 - Covington, P., Adams, J., & Sargin, E. (2016). Deep neural networks for YouTube recommendations. *RecSys*.
@@ -245,7 +245,7 @@ From Data E's section (Nov 5):
   social system. *PNAS*, 105(41), 15649-15653.
 - Dixit, A. (1989). Entry and exit decisions under uncertainty. *Journal of Political Economy*, 97(3), 620-638.
 - Ely, J., Frankel, A., & Kamenica, E. (2015). Suspense and surprise. *Journal of Political Economy*, 123(1),
-  215-260.
+  215-260. doi:10.1086/677350
 - Fredrickson, B. L., & Kahneman, D. (1993). Duration neglect in retrospective evaluations of affective episodes.
   *Journal of Personality and Social Psychology*, 65(1), 45-55.
 - Gilovich, T., Vallone, R., & Tversky, A. (1985). The hot hand in basketball: On the misperception of random
@@ -262,17 +262,19 @@ From Data E's section (Nov 5):
 - Lehmann, J., Gonçalves, B., Ramasco, J. J., & Cattuto, C. (2012). Dynamical classes of collective attention in
   Twitter. *WWW*.
 - Lock, D., & Nettleton, D. (2014). Using random forests to estimate win probability before each play of an NFL
-  game. *Journal of Quantitative Analysis in Sports*, 10(2), 197-205.
+  game. *Journal of Quantitative Analysis in Sports*, 10(2), 197-205. doi:10.1515/jqas-2013-0100
 - Loewenstein, G. (1987). Anticipation and the valuation of delayed consumption. *The Economic Journal*, 97,
   666-684.
-- Mathur, A., et al. (2019). Dark patterns at scale: Findings from a crawl of 11K shopping websites. *CSCW*.
+- Mathur, A., et al. (2019). Dark patterns at scale: Findings from a crawl of 11K shopping websites. *Proceedings of
+  the ACM on Human-Computer Interaction*, 3(CSCW), 81. doi:10.1145/3359183
 - Miller, J. B., & Sanjurjo, A. (2018). Surprised by the hot hand fallacy? A truth in the law of small numbers.
   *Econometrica*, 86(6), 2019-2047.
 - Ng, A. Y., & Russell, S. (2000). Algorithms for inverse reinforcement learning. *ICML*.
 - Pirolli, P., & Card, S. (1999). Information foraging. *Psychological Review*, 106(4), 643-675.
-- Rankin, C. H., et al. (2009). Habituation revisited. *Neurobiology of Learning and Memory*, 92(2), 135-138.
+- Rankin, C. H., et al. (2009). Habituation revisited: An updated and revised description of the behavioral
+  characteristics of habituation. *Neurobiology of Learning and Memory*, 92(2), 135-138.
 - Schultz, W., Dayan, P., & Montague, P. R. (1997). A neural substrate of prediction and reward. *Science*, 275,
-  1593-1599.
+  1593-1599. doi:10.1126/science.275.5306.1593
 - Thompson, R. F., & Spencer, W. A. (1966). Habituation: A model phenomenon for the study of neuronal substrates
   of behavior. *Psychological Review*, 73(1), 16-43.
 - van der Meij, L., et al. (2012). Testosterone and cortisol release among Spanish soccer fans watching the 2010
@@ -286,7 +288,8 @@ From Data E's section (Nov 5):
 - Zillmann, D. (1971). Excitation transfer in communication-mediated aggressive behavior. *Journal of Experimental
   Social Psychology*, 7, 419-434.
 - Zillmann, D. (1988). Mood management through communication choices. *American Behavioral Scientist*, 31(3),
-  327-340.
+  327-340. doi:10.1177/000276488031003005
 
-Citations are given from the authors' knowledge of the literature. Before the spec is cited outside this repo,
-G3 checks each one against its DOI.
+**Citation check (Nov 5 2026, 14:40 UTC):** all 34 references were checked against a publisher, DOI, PubMed,
+RePEc or proceedings page before this spec left draft. Two were corrected (Rankin et al.'s full title; Mathur et
+al.'s venue). None is unverified.
