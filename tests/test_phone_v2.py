@@ -26,7 +26,8 @@ def _switch(engine, to, reason="Crunch time: UNC down 2, red zone"):
 
 
 def test_off_by_default_and_every_route_refuses(client, engine):
-    assert client.get("/api/v2/status").json() == {"enabled": False, "commit": False}
+    assert client.get("/api/v2/status").json() == {"enabled": False, "commit": False, "worth": False}
+    assert client.get("/api/v2/worth").status_code == 404 and client.post("/api/v2/worth", json={"rating": 4}).status_code == 404
     assert client.get("/api/v2/switches").status_code == 404
     assert client.post("/api/v2/vote", json={"key": "x", "vote": 1}).status_code == 404
     assert client.post("/api/v2/missed", json={}).status_code == 404
@@ -591,7 +592,7 @@ def test_why_tag_only_over_the_threshold():
 
 def test_status_says_whether_commit_controls_are_on(client, engine):
     _on(engine)
-    assert client.get("/api/v2/status").json() == {"enabled": True, "commit": False}     # phone.commit default off
+    assert client.get("/api/v2/status").json() == {"enabled": True, "commit": False, "worth": False}   # phone.commit default off
     engine.cfg.update({"phone": {"commit": True}})
     assert client.get("/api/v2/status").json()["commit"] is True
 
@@ -635,3 +636,41 @@ def test_context_line_none_when_not_late_or_not_close():
     assert cl(_late("nba", 100, 99, 4, 600)) is None      # 10:00 left, not late yet
     assert cl(_late("mlb", 1, 0, 5, None)) is None        # middle innings
     assert "OT" in cl(_late("nhl", 1, 1, 4, 200))
+
+
+def test_worth_view_asks_only_after_slate_complete_and_probes_weekly():
+    d = phone_v2.date(2026, 11, 8)
+    v = phone_v2.worth_view({}, d, False, 3, 7)
+    assert v["complete"] is False and v["probe_due"] is False and v["rating"] is None
+    assert phone_v2.worth_view({}, d, True, 3, 7)["probe_due"] is True                  # never probed yet
+    rows = {"2026-11-04": {"night": "2026-11-04", "rating": 4, "agency": 4, "regret": False}}
+    assert phone_v2.worth_view(rows, d, True, 3, 7)["probe_due"] is False               # probed 4 nights ago
+    assert phone_v2.worth_view(rows, phone_v2.date(2026, 11, 11), True, 3, 7)["probe_due"] is True
+    rows["2026-11-08"] = {"night": "2026-11-08", "rating": 2}
+    assert phone_v2.worth_view(rows, d, True, 3, 7)["rating"] == 2
+
+
+def test_worth_row_validates_and_keeps_earlier_fields():
+    d = phone_v2.date(2026, 11, 8)
+    assert phone_v2.worth_row({"rating": 6}, d, 1.0, None) is None
+    assert phone_v2.worth_row({"rating": True}, d, 1.0, None) is None
+    assert phone_v2.worth_row({"regret": "yes"}, d, 1.0, None) is None
+    assert phone_v2.worth_row({}, d, 1.0, None) is None
+    r = phone_v2.worth_row({"rating": 4}, d, 1.0, None)
+    assert r == {"night": "2026-11-08", "ts": 1.0, "rating": 4}
+    assert phone_v2.worth_row({"agency": 5, "regret": False}, d, 2.0, r) == {
+        "night": "2026-11-08", "ts": 2.0, "rating": 4, "agency": 5, "regret": False}
+
+
+def test_worth_routes_own_flag_works_with_v2_off(client, engine, tmp_path, monkeypatch):
+    monkeypatch.setattr(phone_v2, "WORTH_LOG", tmp_path / "worth.jsonl")
+    engine.cfg.update({"phone": {"worth": True}})
+    assert client.get("/api/v2/status").json()["worth"] is True
+    assert client.get("/api/v2/slate").status_code == 404                                # v2 still off
+    v = client.get("/api/v2/worth").json()
+    assert v["enabled"] is True and "complete" in v and v["rating"] is None
+    assert client.post("/api/v2/worth", json={"rating": 0}).status_code == 400
+    assert client.post("/api/v2/worth", json={"rating": 5}).json()["ok"] is True
+    assert client.post("/api/v2/worth", json={"agency": 3}).json()["row"]["rating"] == 5
+    assert client.get("/api/v2/worth").json()["rating"] == 5
+    assert len(phone_v2.WORTH_LOG.read_text().splitlines()) == 2

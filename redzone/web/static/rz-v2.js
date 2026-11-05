@@ -14,8 +14,9 @@ function check() {
   if (!checking) {
     v2.checked = true;
     checking = (async () => {
-      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; } catch { v2.on = false; }
+      try { const st = await api("/api/v2/status"); v2.on = !!st.enabled; v2.commit = !!st.commit; v2.worth = !!st.worth; } catch { v2.on = false; }
       if (v2.on) { hooks.render(); pollAlert(); pollStrip(); pollHeld(); }
+      if (v2.worth) pollWorth();
     })();
   }
   return checking;
@@ -112,8 +113,38 @@ ACTIONS["v2-vote"] = async (el) => {
 
 /** The "I missed that" bar above Recent switches. */
 /* EXP-036: "Slate complete" ends the night; nothing comes after it (no autoplay, no "up next", no counters). */
+/* EXP-040: one tap "worth it?" on the Slate complete card (its own flag phone.worth, works with v2 off).
+   EVALUATION ONLY: data/worth.jsonl grades releases and is never a training label. Plain wording, no
+   streaks, no counters, nothing after it (playbook §5 / §6). The agency / regret probes come at most once
+   a week, only after the rating. */
+let worth = null;
+function pollWorth() {
+  api("/api/v2/worth").then((r) => { const was = JSON.stringify(worth); worth = r && r.enabled ? r : null; if (JSON.stringify(worth) !== was) hooks.renderScreen("now"); })
+    .catch(() => {}).finally(() => setTimeout(pollWorth, 60000));
+}
+function scale(k, on, lo, hi) {
+  return `<div class="v2-scale" role="group">${[1, 2, 3, 4, 5].map((n) =>
+    `<button class="v2-sc${on === n ? " on" : ""}" data-act="v2-worth" data-k="${k}" data-v="${n}" aria-pressed="${on === n}" aria-label="${n} of 5">${n}</button>`).join("")}</div>
+    <div class="v2-scale-ends"><span>${esc(lo)}</span><span>${esc(hi)}</span></div>`;
+}
+function worthBlock() {
+  if (!v2.worth || !worth || !worth.complete) return "";
+  const probes = worth.rating && worth.probe_due ? `<p>I chose what I watched tonight</p>${scale("agency", worth.agency, "Not really", "Fully")}
+    <p>I watched longer than I meant to</p><div class="v2-scale v2-scale--yn">${[["yes", true], ["no", false]].map(([t, b]) =>
+      `<button class="v2-sc${worth.regret === b ? " on" : ""}" data-act="v2-worth" data-k="regret" data-v="${t}" aria-pressed="${worth.regret === b}">${t === "yes" ? "Yes" : "No"}</button>`).join("")}</div>` : "";
+  return `<div class="v2-worth"><p>Was tonight worth it?</p>${scale("rating", worth.rating, "Not worth it", "Worth it")}${probes}</div>`;
+}
+ACTIONS["v2-worth"] = async (el) => {
+  const k = el.dataset.k, v = k === "regret" ? el.dataset.v === "yes" : Number(el.dataset.v);
+  try {
+    const r = await api("/api/v2/worth", { body: { [k]: v } });
+    if (r && r.row && worth) { worth = { ...worth, ...r.row }; hooks.renderScreen("now"); }
+  } catch (e) { toast(e.message || "Couldn't save that"); }
+};
+
 function slateCompleteCard() {
-  return `<div class="v2-done" data-key="v2-done"><b>Slate complete</b><span>0 live games · ${num(slateDone.finished)} finished tonight</span></div>`;
+  const fin = slateDone ? slateDone.finished : worth ? worth.finished : 0;
+  return `<div class="v2-done" data-key="v2-done"><b>Slate complete</b><span>0 live games · ${num(fin)} finished tonight</span>${worthBlock()}</div>`;
 }
 /* EXP-036 commitment controls: each one is a request the decider honours at the next dead ball. */
 // the engine snapshot's mode.commit {mode, game_id, at} once lanes 2/3 ship the action (contract: Cycle 08 #183)
@@ -143,6 +174,7 @@ ACTIONS["v2-commit-end"] = (el) => {
 ACTIONS["v2-commit-clear"] = (el) => act("commit", { value: "off" }, el);  // #194: "off" clears it
 
 export function missedBar() {
+  if (v2.worth && worth && worth.complete) return slateCompleteCard();   // EXP-040: shows even with v2 off
   if (!v2.on) return "";
   if (slateDone) return slateCompleteCard();
   return `${alertLine()}${heldLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>

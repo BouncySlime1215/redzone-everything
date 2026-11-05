@@ -51,6 +51,7 @@ LIVE_NIGHTS = DATA / "live_nights"         # <night>/summary.json: the superviso
 REPORTS = (DATA / "reports", DATA.parent / "docs" / "nights")   # <night>.md: night report (supervisor, lane 4 #137)
 BUFFER_LOG = DATA / "buffer.jsonl"        # STK-06 holds that went bad and their rebuilds (control._buffer_log)
 CRUNCH_DIR = DATA / "crunch"              # <night>.json: learned crunch spans vs the oracle's (lane 1 grader)
+WORTH_LOG = DATA / "worth.jsonl"          # [EXP-040] "worth it?" per night: EVALUATION ONLY, never a training label
 REEL_REQUESTS = DATA / "reel_requests.jsonl"   # "I missed that" -> a catch-up request (record only)
 REPLAY_DUE_S = 180.0    # Nick, Nov 4 11:00 AM: a missed key moment airs within 3 min, at the next dead moment
 MISS_WINDOW_S = 600.0   # "I missed that" looks back 10 min, a phone convenience; the graded window is big_seen_3min
@@ -700,6 +701,58 @@ def slate_preview(games, rules: HardRules, now: float) -> dict:
             "yours": sum(1 for r in rows if r["yours"]), "complete": not rows and done > 0, "finished": done}
 
 
+def worth_rows(path: Path | None = None) -> dict[str, dict]:
+    """[EXP-040] night -> its last "worth it?" row. Evaluation only (redzone/lab/worth.py grades it)."""
+    out: dict[str, dict] = {}
+    try:
+        lines = (path or WORTH_LOG).read_text().splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("night"):
+            out[str(row["night"])] = row
+    return out
+
+
+def worth_view(rows: dict[str, dict], night: date, complete: bool, finished: int, probe_days: int) -> dict:
+    """What the Slate complete card asks: the rating (once a night) and, at most once every `probe_days`
+    nights, the agency / regret probes. Nothing is asked before the slate is complete."""
+    key = night.isoformat()
+    last_probe = max((n for n, r in rows.items() if r.get("agency") is not None and n < key), default=None)
+    gap = (night - date.fromisoformat(last_probe)).days if last_probe else None
+    mine = rows.get(key) or {}
+    return {"night": key, "complete": complete, "finished": finished, "rating": mine.get("rating"),
+            "probe_due": complete and mine.get("agency") is None and (gap is None or gap >= probe_days),
+            "agency": mine.get("agency"), "regret": mine.get("regret")}
+
+
+def worth_row(body: dict, night: date, now: float, prev: dict | None) -> dict | None:
+    """Validate one tap: rating 1-5, optional agency 1-5 and regret yes/no. Later taps fill in or replace
+    fields on tonight's row (the last row per night wins), so a probe after the rating keeps the rating."""
+    row = {"night": night.isoformat(), "ts": round(now, 1)}
+    for k in ("rating", "agency", "regret"):
+        if k in (prev or {}):
+            row[k] = prev[k]
+    r, a, g = body.get("rating"), body.get("agency"), body.get("regret")
+    if r is not None:
+        if not isinstance(r, int) or isinstance(r, bool) or not 1 <= r <= 5:
+            return None
+        row["rating"] = r
+    if a is not None:
+        if not isinstance(a, int) or isinstance(a, bool) or not 1 <= a <= 5:
+            return None
+        row["agency"] = a
+    if g is not None:
+        if not isinstance(g, bool):
+            return None
+        row["regret"] = g
+    return row if any(k in row for k in ("rating", "agency", "regret")) else None
+
+
 CRUNCH_STATES = ("entering", "in", "leaving")
 STAKES_BIG, STAKES_SOME = 0.6, 0.3     # stub only: Scored.stakes (0..1) until lane 1 sets stakes_line
 
@@ -758,7 +811,37 @@ def router(engine) -> APIRouter:
 
     @r.get("/status")
     async def status():
-        return {"enabled": _enabled(engine), "commit": _enabled(engine) and bool(engine.cfg.get("phone.commit"))}
+        return {"enabled": _enabled(engine), "commit": _enabled(engine) and bool(engine.cfg.get("phone.commit")),
+                "worth": bool(engine.cfg.get("phone.worth"))}
+
+    def _worth_now():
+        now = time.time()
+        v = slate_preview(getattr(engine.merger, "games", {}), HardRules.from_config(engine.cfg), now)
+        return now, night_of(now), v
+
+    @r.get("/worth")
+    async def worth_get():
+        # [EXP-040] its own flag: the rating card works with phone.v2 off
+        if not engine.cfg.get("phone.worth"):
+            return _off()
+        _, night, v = _worth_now()
+        return {"enabled": True, **worth_view(worth_rows(), night, v["complete"], v["finished"],
+                                              int(engine.cfg.get("phone.worth_probe_days")))}
+
+    @r.post("/worth")
+    async def worth_post(body: dict):
+        if not engine.cfg.get("phone.worth"):
+            return _off()
+        now, night, _ = _worth_now()
+        row = worth_row(body or {}, night, now, worth_rows().get(night.isoformat()))
+        if row is None:
+            return JSONResponse({"ok": False, "message": "Pick 1 to 5"}, status_code=400)
+        try:
+            with WORTH_LOG.open("a") as f:
+                f.write(json.dumps(row) + "\n")
+        except OSError:
+            return {"ok": False, "message": "Couldn't save that"}
+        return {"ok": True, "message": "Thanks, noted", "row": row}
 
     @r.get("/switches")
     async def switches():

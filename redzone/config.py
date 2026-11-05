@@ -88,6 +88,7 @@ LIMITS: dict[str, tuple[float, float]] = {
     "supervisor.budget.dead_air_pct": (0, 100),
     "supervisor.budget.safe_mode_min": (0, 1440),
     "phone.why_tag_min": (0, 100),
+    "phone.worth_probe_days": (1, 60),
     "demo": (0, 60),   # replay simulator timings (redzone/demo/engine.py)
 }
 
