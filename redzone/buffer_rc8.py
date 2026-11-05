@@ -30,7 +30,8 @@ GATE_MIN_NIGHTS = 8              # the gate's floor per league per harness
 HARNESSES = ("honest", "resync")
 # Turned on with RC8 for the flipped league (planner, Nov 5): the editor runs with start_timed on; without it an
 # NBA first pick joins mid-play (#318). Rollback restores the shipped value for that league.
-COMPANIONS = {"decider.entry.start_timed": True}
+# The hold key is set too (rc8_on already implies it in the engine/controller), so the league's state reads plainly.
+COMPANIONS = {"decider.entry.start_timed": True, "timing.behind_live_s.enabled": True}
 SYNC_BAR = float(config.default("timing.behind_live_s.adaptive.sync_err_s", 2.0))   # gate item 5 (EXP-800, s)
 PASS, FAIL, PENDING = "PASS", "FAIL", "PENDING"
 
@@ -91,7 +92,8 @@ def buffer_for(cfg, league: str) -> tuple[float, dict]:
     lags = a("feed_lag_p95_s", {}) or {}
     approved = float((a("approved_min_s", {}) or {}).get(league, 0) or 0)
     # the league's live B today: only a league that already holds its stream (RC6.2 NBA/NFL) has one
-    live_b = fixed_live if config.for_league(cfg, "timing.behind_live_s.enabled", league, False) else 0.0
+    # (read from the SHIPPED defaults: the flip itself sets the hold key, which must not raise its own ratchet)
+    live_b = fixed_live if _shipped(league, "timing.behind_live_s.enabled") else 0.0
     # gate v28: ratchet down one step of at most RATCHET_STEP per release, and only after a locked read held
     if approved > 0:
         ratchet, src = max(approved, live_b - RATCHET_STEP), "locked_gate"
