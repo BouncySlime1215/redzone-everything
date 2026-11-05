@@ -235,7 +235,7 @@ Plan: [media-metadata.md](datasources/media-metadata.md). No video is ever downl
 
 | rank | id | covers | hypothesis | North Star line | cost GPU-h / agent-h | lane | success bar | nights needed | status |
 |---:|---|---|---|---|---|---|---|---|---|
-| 1200 | EXP-1200 | data C | Land clip tags for MLB (2023-2025) and NHL (2023-24 to now) from public JSON, no key. | Data ledger new-info tokens | 0 / ~2 | C | `media-out/mlb` and `media-out/nhl` hold rows with a licence line + personal-use tag on 100%; >=80% of MLB clips and >=95% of NHL goal clips link to a game event id; ledger.json reports new vs derived tokens; 0 duplicate clip ids | n/a (data) | running |
+| 1200 | EXP-1200 | data C | Land clip tags for MLB (2023-2025) and NHL (2023-24 to now) from public JSON, no key. | Data ledger new-info tokens | 0 / ~2 | C | `media-out/mlb` and `media-out/nhl` hold rows with a licence line + personal-use tag on 100%; >=80% of MLB clips and >=95% of NHL goal clips link to a game event id; ledger.json reports new vs derived tokens; 0 duplicate clip ids | n/a (data) | done: NHL pass, MLB linkage fail (56% < 80%) |
 | 1201 | EXP-1201 | data C, importance head | "Was clipped" is a hindsight importance label: among MLB plays, P(clipped) rises with WPA leverage, and a leverage model's top-decile plays are clipped >=3x as often as the median decile. | Lift over context-only baseline (label quality) | ~0.5 / ~3 | C + ① | On the time-split valid seasons only (2025 locked, untouched): Spearman(leverage decile, clip rate) >=0.6 with cluster-bootstrap CI by game excluding 0; report per kind. Fail = label is noise, keep it out of training | n/a (data) | queued (after 1200) |
 | 1203 | EXP-1203 | data C, NBA + NFL first (Nick 2:00 AM) | ESPN game-summary clips cover NBA and NFL games with no key. | Data ledger new-info tokens; big plays seen/live label | 0 / ~1 | C | `media-out/espn` holds NBA 2024-25 + 2025-26 and NFL 2024 + 2025 rows, licence line + personal-use tag on 100%, >=90% of completed games with >=1 clip, 0 duplicate clip ids; share with a play id reported per league | n/a (data) | running |
 | 1202 | EXP-1202 | data C | YouTube official-channel snapshots every 6 h give view velocity and a daily Top-10 per league. | Data ledger | 0 / ~1 | C | 7 days of snapshots for all 6 channels, stats refreshed <=30 days, velocity on >=90% of videos after the 2nd snapshot | n/a | blocked (Nick: YOUTUBE_API_KEY secret) |
@@ -328,6 +328,11 @@ causal Teacher commentary, and how often dev has been read.
 | TW26 | EXP-725 | rules 2 + 11, F6 | **A dev-read ledger.** EXP-1500 disclosed that an exploratory dev read spent its dev nights. Hypothesis: logging every dev read per (line, league, night set) shows that several lines are already over-read, so their next bars need fresh seeds or the next v3 nights. | Process (all dev lines) | 0 / ~2 | Int (proposal) | A `dev_reads.jsonl` appended by `northstar.py` / `eval_sports.py` per run (line, league, night-set hash, PR); the cycle review lists every line read more than 10 times on the same night set since its last fresh nights; rows graded on such a line state it beside their bar | n/a (process) | planned |
 
 ## Results log
+
+- **EXP-1200** (Nov 5, 07:40 UTC, media C). Bar pre-registered in #248. Licence + tag 100%: PASS. 0 duplicate clip
+  ids: PASS. NHL goal clips linked to an event id 21,945/21,945 (100%, bar 95%): PASS. MLB clips linked
+  88,431/157,247 (56%, bar 80%): **FAIL**. MLB rows stay in the factory, but EXP-1201 may use only linked rows.
+  New-information tokens 0.75M, derived 0.38M.
 
 - **EXP-018** (Nov 4, 23:40 UTC, value = score, because WV isn't wired yet). The bar was pre-registered at
   4b7aecd. (a) PASS. (b) FAIL:

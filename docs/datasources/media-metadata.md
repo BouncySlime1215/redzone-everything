@@ -42,6 +42,18 @@ importance head. It does not fix NBA mid-commercial entries or dead air; those a
 
 Quota: YouTube snapshot of 6 channels x 1,000 videos = ~130 units (10k/day free). MLB/NHL at 1 request/s.
 
+## Measured (first backfills, Nov 5 2026)
+
+| Source | Window | Clips | Linked to a play | New tokens | Derived tokens | Stored | Notes |
+|---|---|---:|---:|---:|---:|---:|---|
+| C1 MLB | 2023-2025 seasons | 157,247 | 88,431 (56%) | 629k | 314k | 12.1 MB | unlinked are mostly features/interviews ("other" 34k), condensed 7.4k, recaps 6.3k, plus 8.8k HR clips without a play guid |
+| C2 NHL | 2023-10-10 to 2026-04-11 | 30,831 | goals 21,945 of 21,945 (100%) | 123k | 62k | 0.7 MB | + 5.6k recaps, 3.3k condensed games. Run was cancelled at 07:04 UTC mid-window (not the timeout); torn gzip tails repaired with 0 rows lost; resuming 2026-04-11 to now |
+| C3 NBA direct | n/a | 0 | n/a | 0 | 0 | 0 | blocked: 403 |
+
+0 duplicate clip ids; licence line + personal-use tag on 100% of rows. Total so far: ~0.75M new-information
+tokens, ~0.38M derived, 12.8 MB. Workers now close their gzip files after every game, so a killed run keeps
+every finished game.
+
 ## Tokens (lane 1 maps to vocab v2 ids)
 
 One row per clip, `tokens` = field:bucket strings. **New-information** fields: `clipped`, `kind`, `dur`,

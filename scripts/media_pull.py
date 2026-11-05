@@ -180,14 +180,27 @@ class Sink:
         self.dir = out / src
         self.dir.mkdir(parents=True, exist_ok=True)
         self.seen: set[str] = set()
-        for f in self.dir.glob("*.jsonl.gz"):           # incremental: never write a row twice across runs
+        for f in sorted(self.dir.glob("*.jsonl.gz")):   # incremental: never write a row twice across runs
+            rows, broken = [], False
             try:
                 with gzip.open(f, "rt") as fh:
                     for line in fh:
-                        r = json.loads(line)
-                        self.seen.add(f"{r['clip_id']}|{r.get('snap_utc') or ''}")
+                        rows.append(line)
             except (OSError, ValueError, EOFError):
-                pass
+                broken = True                           # a killed run left a truncated gzip member
+            good = []
+            for line in rows:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    broken = True
+                    continue
+                good.append(line if line.endswith("\n") else line + "\n")
+                self.seen.add(f"{r['clip_id']}|{r.get('snap_utc') or ''}")
+            if broken:                                  # repair: keep every whole row, drop the torn tail
+                with gzip.open(f, "wt") as fh:
+                    fh.writelines(good)
+                print(f"repaired {f.name}: kept {len(good)} rows", flush=True)
         self.n = 0
         self.fh: dict[str, gzip.GzipFile] = {}
 
@@ -207,6 +220,9 @@ class Sink:
     def close(self) -> None:
         for f in self.fh.values():
             f.close()
+        self.fh = {}
+
+    flush = close          # call after each game: closed gzip members survive a killed run
 
 
 # ---------------------------------------------------------------- C1: MLB Stats API game content
@@ -232,6 +248,7 @@ def pull_mlb(http: Http, sink: Sink, start: str, end: str, max_games: int) -> No
             sink.add(dict(src="mlb", league="mlb", game_id=str(pk), event_id=play, clip_id=str(it.get("id")),
                           published=it.get("date"), event_time=None, duration_s=_hms(it.get("duration")),
                           kind=kind_of(text), tags=tags, title_kw=_kw(it.get("headline"))), day[:7])
+        sink.flush()
         if i % 50 == 0:
             print(f"mlb {day} game {i + 1}/{len(games)} rows {sink.n} calls {http.calls}", flush=True)
 
@@ -271,6 +288,7 @@ def pull_nhl(http: Http, sink: Sink, start: str, end: str, max_games: int) -> No
                                   published=None, event_time=None, duration_s=None,
                                   kind="condensed" if "condensed" in k.lower() else "game_recap",
                                   tags=[f"video:{k}"], title_kw=[]), day[:7])
+            sink.flush()
             n += 1
             if max_games and n >= max_games:
                 return
@@ -317,6 +335,7 @@ def pull_nba(http: Http, sink: Sink, start: str, end: str, max_games: int) -> No
                           tags=[f"period:{a_.get('period')}", f"clock:{a_.get('clock')}",
                                 f"type:{a_.get('actionType')}", f"player_id:{a_.get('personId')}"],
                           title_kw=[]), f"{dt[:4]}-{dt[4:6]}")
+        sink.flush()
         print(f"nba {dt} game {i + 1}/{len(gids)} rows {sink.n}", flush=True)
 
 
@@ -354,6 +373,7 @@ def pull_espn(http: Http, sink: Sink, start: str, end: str, max_games: int, leag
                                   published=pub, event_time=start_t, duration_s=v.get("duration"),
                                   kind=kind_of(text), tags=ath + [f"kw:{k.lower()}" for k in kws[:8]],
                                   title_kw=_kw(v.get("headline"))), f"{ymd[:4]}-{ymd[4:6]}")
+                sink.flush()
                 n += 1
                 if max_games and n >= max_games:
                     return
