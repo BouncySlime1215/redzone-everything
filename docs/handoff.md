@@ -71,8 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Throttle holding: weekly usage 67% -> 68% in 30 min (~2%/h). Tonight-critical threads (T1,T4,T5,T6,T9) running; readiness table due 12 PM.
-Ladder paused (tab stuck since 9:15); resume after tonight.
+Nick 11:20 AM: WATCH VALUE TRAINING is #1 (most threads) within the ~2-3%/h budget; tonight minimum kept (T1 buffer shadow, T4 YTTV tests, T5 TNF scorebug, T9 RC8); T6 small; T10 + T2/T3 extras paused. Usage 68%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
