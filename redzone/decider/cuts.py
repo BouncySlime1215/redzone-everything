@@ -474,7 +474,8 @@ class DeadTracker:
 def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: float, *,
                can_rewind: bool, step: float = 10.0, max_back: float = 60.0,
                relaxed: float | None = None, cost_lo: float | None = None,
-               urgent: float | None = None, lag: float = 0.0, possession: bool = False) -> EntryPlan:
+               urgent: float | None = None, lag: float = 0.0, possession: bool = False,
+               stall: tuple[float, float] = (0.0, 0.0)) -> EntryPlan:
     """How to come into this game: as is (the picture lands on a dead ball), with a short rewind so
     it lands on the dead ball just before the restart we'd otherwise join mid-play, or not yet.
 
@@ -490,7 +491,10 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
 
     possession: [possession start] never wait for the next dead ball while one is in reach behind the
     picture: after the urgent pass, cue to the last dead ball before the current possession with no
-    doubt beyond the landing lag (the hidden stick is positioned there before the flip)."""
+    doubt beyond the landing lag (the hidden stick is positioned there before the flip).
+
+    stall: [seek model] the picture lands k + stall behind for a rewind of k (whole steps); a pause cue
+    on the hidden stick passes step ~0.5 and no stall (it plays up to the dead ball and pauses there)."""
     x1 = now + cost - mu
     x00 = now + min(cost, cost if cost_lo is None else cost_lo) - mu
 
@@ -501,12 +505,12 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
     if here.state == "dead" or (here.state == "unknown" and not can_rewind):
         # Football/baseball with no play known to be on screen: the leave gate's own rule.
         return EntryPlan(True, 0.0, here, here.why)
-    strict = _rewind(dt, x0, x1, margin, step, max_back) if can_rewind else None
+    strict = _rewind(dt, x0, x1, margin, step, max_back, stall) if can_rewind else None
     if relaxed is not None and relaxed < margin:
         soft = dt.landing(lo(relaxed) - relaxed, x1 + relaxed)
-        if soft.state == "dead" and (strict is None or strict.rewind_s > step):
+        if soft.state == "dead" and (strict is None or strict.rewind_s > step + stall[1]):
             return EntryPlan(True, 0.0, soft, soft.why + " (centred)")
-        loose = _rewind(dt, lo(relaxed), x1, relaxed, step, max_back) if can_rewind else None
+        loose = _rewind(dt, lo(relaxed), x1, relaxed, step, max_back, stall) if can_rewind else None
         # The full margin wins unless it costs more than one extra seek step.
         if loose is not None and (strict is None or strict.rewind_s > loose.rewind_s + step):
             loose.why += " (centred)"
@@ -519,12 +523,12 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
         last = dt.landing(lo(urgent) - urgent, x1 + urgent)
         if last.state == "dead":
             return EntryPlan(True, 0.0, last, last.why + " (urgent)")
-        quick = _rewind(dt, lo(urgent), x1, urgent, step, max_back) if can_rewind else None
+        quick = _rewind(dt, lo(urgent), x1, urgent, step, max_back, stall) if can_rewind else None
         if quick is not None:
             quick.why += " (urgent)"
             return quick
     if possession and can_rewind:
-        cue = _rewind(dt, lo(0.0), x1, 0.0, step, max_back)
+        cue = _rewind(dt, lo(0.0), x1, 0.0, step, max_back, stall)
         if cue is not None:
             cue.why += " (possession start)"
             return cue
@@ -533,8 +537,12 @@ def plan_entry(dt: DeadTracker, mu: float, margin: float, now: float, cost: floa
     return EntryPlan(False, 0.0, here, f"waiting for a dead ball to come in ({here.why})")
 
 
-def _rewind(dt: DeadTracker, x0: float, x1: float, m: float, step: float, max_back: float) -> EntryPlan | None:
-    """The shortest rewind k (whole seek steps) that puts all of [x0 - k, x1 - k] on a dead ball, doubt m."""
+def _rewind(dt: DeadTracker, x0: float, x1: float, m: float, step: float, max_back: float,
+            stall: tuple[float, float] = (0.0, 0.0)) -> EntryPlan | None:
+    """The shortest rewind k (whole seek steps) that puts all of [x0 - k - stall, x1 - k - stall] on a
+    dead ball, doubt m. [seek model] each seek also stalls the picture stall[0]..stall[1] s, which lands
+    it that much further behind: the plan holds the whole range and rewind_s is k + the mid stall."""
+    slo, shi = stall
     if max_back < step:
         return None
     for w in reversed(dt.windows()):
@@ -544,13 +552,14 @@ def _rewind(dt: DeadTracker, x0: float, x1: float, m: float, step: float, max_ba
         if x0 - until > max_back + m:
             break
         # The latest landing in the window: the picture comes up just before the restart.
-        k = max(step, math.ceil((x1 + m - until) / step) * step)
+        k = max(step, math.ceil((x1 + m - slo - until) / step - 1e-9) * step)
         if k > max_back:
             break
-        if x0 - k - m < w.start:
+        if x0 - k - shi - m < w.start:
             continue
-        land = dt.landing(x0 - k - m, x1 - k + m)
+        land = dt.landing(x0 - k - shi - m, x1 - k - slo + m)
         if land.state != "dead":
             continue
-        return EntryPlan(True, k, land, f"rewinding {k:.0f}s to the dead ball before the play")
+        back = k + (slo + shi) / 2
+        return EntryPlan(True, back, land, f"rewinding {back:.0f}s to the dead ball before the play")
     return None

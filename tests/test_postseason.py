@@ -121,3 +121,31 @@ def test_merge_fills_stakes_from_espn():
     other.stakes = None
     other.phase = Phase.LIVE
     assert _fill_gaps(other, g).stakes is g.stakes
+
+
+def test_the_scorer_reads_playoff_stakes_only_with_the_flag(tmp_path):
+    """[#163 wiring, lane 2] Scorer._stakes adds postseason.stakes_bonus: nothing with the flag off."""
+    from types import SimpleNamespace as NS
+
+    from redzone.config import Config
+    from redzone.scoring import engine, postseason
+    cfg = Config(tmp_path / "c.yaml")
+    sc = engine.Scorer.__new__(engine.Scorer)
+    sc.cfg = cfg
+    st = postseason.Stakes(postseason=True, rounds_left=0, elimination=True, decider=True)
+    g = NS(home=NS(win_pct=None), away=NS(win_pct=None), spread=None, national_tv=False, stakes=st)
+    off = sc._stakes(g)
+    cfg.data.setdefault("score", {}).setdefault("postseason", {})["enabled"] = True
+    on = sc._stakes(g)
+    assert on > off and on - off <= postseason.bonus(st, cfg) + 1e-9
+
+
+def test_the_scorer_fills_the_phone_stakes_line(tmp_path):
+    """[#163 wiring, lane 2] Scored.stakes_line carries postseason.reason (phone_v2's stakes line)."""
+    from redzone.config import Config
+    from redzone.scoring import engine, postseason
+    g = espn.parse_scoreboard(League.MLB, _board("espn_mlb_scoreboard_2025-11-01.json"))[0]
+    g.phase = Phase.LIVE
+    s = engine.Scorer(Config(tmp_path / "c.yaml")).score(g)
+    assert s.stakes_line == (postseason.reason(g) or None)
+    assert s.stakes_line   # a World Series game has words
