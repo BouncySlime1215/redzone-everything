@@ -19,8 +19,8 @@ Derived rows are listed after the ranking and never count toward new information
 | 2 | Cricsheet ball-by-ball (23,241 matches) | 1 | events | green | 54 | 0.6 | 90.0 | ready-for-lane1 | crew A | none | Open Data Commons Attribution (ODC-BY 1.0), credit Cricsheet; verify the licence page on first pull |
 | 3 | The Odds API free tier (forward line snapshots) | 3 | events | yellow | 3 | 0.05 | 60.0 | needs-nick | crew D | free Odds API key (already on the pending list) | terms allow storage and ML training; no resale; historical is paid (never) |
 | 4 | v2 context: live line state (in-game price moves) | 0 | context-new | yellow-B (personal-use, not for commercial release) | 18 | 0.5 | 54.0 | ready-for-lane1 | crew D | none | Polymarket documented API, plan B personal use; never shown or used to nudge |
-| 5 | Tennis Match Charting Project (shot by shot) + slam point-by-point | 1 | events | yellow | 25 | 0.5 | 50.0 | ready-for-lane1 | crew A | none | CC BY-NC-SA 4.0 (credit Jeff Sackmann, link the original repos, non-commercial, share-alike on any published derivative). A CC licence cannot be revoked for copies already released, so the mirror is usable; the author pulled the repos, so treat slam pbp as low-priority and drop it if he asks. Rechecked Nov 5 04:45 UTC |
-| 6 | EuroLeague + EuroCup live API (pbp, shots, box) | 1 | events | yellow-B (personal-use, not for commercial release) | 34 | 1 | 34.0 | probe | scout | none | Euroleague Basketball site terms not yet read; public JSON, no login; personal use under plan B |
+| 5 | EuroLeague + EuroCup live API (pbp, shots, box) | 1 | events | yellow-B (personal-use, not for commercial release) | 34 | 1 | 34.0 | probe | scout | none | Euroleague Basketball site terms not yet read; public JSON, no login; personal use under plan B |
+| 6 | Tennis Match Charting Project (shot by shot) | 1 | events | yellow | 15 | 0.5 | 30.0 | ready-for-lane1 | crew A | none | CC BY-NC-SA 4.0 (credit Jeff Sackmann, link the original repos, non-commercial, share-alike on any published derivative). A CC licence cannot be revoked for copies already released, so the mirror is usable; the author pulled the repos, so treat slam pbp as low-priority and drop it if he asks. Rechecked Nov 5 04:45 UTC |
 | 7 | Polymarket prices-history + trades (free, no key) | 3 | events | yellow-B (personal-use, not for commercial release) | 30 | 1 | 30.0 | ready-for-lane1 | crew D | none | catalog had Nick sign-off pending; plan B covers personal use. Lines are importance inputs only, never shown or used to nudge |
 | 8 | HockeyTech feeds: AHL, ECHL, OHL, WHL, QMJHL, USHL | 1 | events | yellow-B (personal-use, not for commercial release) | 58 | 2.4 | 24.2 | hold | scout | none | HOLD: league terms not read, and the feed needs the client key embedded in the league sites. That is not a login, but it is a key we did not get. Scout reads the AHL/ECHL terms before anyone pulls; personal use under plan B only |
 | 9 | CollegeFootballData API (plays, drives, lines, games) | 1 | events | yellow | 24 | 1 | 24.0 | needs-nick | crew A | register the free CFBD key and add it as a Kaggle secret | CFBD terms: free key, attribution; already in catalog #202 (Nick 12:15 AM confirms) |
@@ -36,14 +36,15 @@ Derived rows are listed after the ranking and never count toward new information
 | 19 | NFL Big Data Bowl 2027 (combine + in-game tracking, 10 Hz) | 2 | events | yellow | 48 | 8 | 6.0 | needs-nick | crew A | join the Big Data Bowl 2027 competition on Kaggle and accept its rules | competition rules (non-commercial research); Nick joins and accepts the rules tab himself on his Kaggle account |
 | 20 | v2 context: referee / umpire crew per game | 0 | context-new | yellow-B (personal-use, not for commercial release) | 0.6 | 0.1 | 6.0 | ready-for-lane1 | crew B | none | nflverse CC-BY-4.0; nbadb per dataset licence field; Retrosheet notice (green); NHL api-web only under plan B for personal use |
 | 21 | Wyscout public soccer events (Pappalardo et al. 2019) | 1 | events | green | 20 | 2 | 5.0 | ready-for-lane1 | crew A | none | CC BY 4.0 (metadata CC0); cite Pappalardo et al., Scientific Data 2019 |
-| 22 | Statcast pitch-level 2015-2020 (extends the 2021-25 scoped row) | 2 | events | yellow-B (personal-use, not for commercial release) | 26 | 3 | 4.3 | ready-for-lane1 | crew A | none | MLBAM notice; the full range is only OK under plan B for personal use |
-| 23 | MLB GUMBO live feed 2008-2025 (wall clocks on every pitch) | 1 | events | yellow-B (personal-use, not for commercial release) | 84 | 30 | 4.2 | ready-for-lane1 | crew A | none | MLBAM notice, bulk only under plan B for personal use (catalog row moved from red to yellow-B by the data-B decision) |
-| 24 | NPB game text (npb.jp) | 1 | events | yellow-B (personal-use, not for commercial release) | 23 | 3 | 3.8 | probe | scout | none | npb.jp terms not read; HTML only, store derived numbers, never page text; Yahoo pitch-by-pitch is RED (terms); personal use under plan B only |
-| 25 | v2 context: pregame line + total per game (all six leagues) | 0 | context-new | yellow-B (personal-use, not for commercial release) | 1.1 | 0.3 | 3.7 | ready-for-lane1 | crew B | none | nflverse CC-BY-4.0; SBRO no licence (Nick logs it); ESPN-derived only under plan B for personal use. Lines are importance inputs only, never shown, never a nudge |
-| 26 | KBO game relay (koreabaseball.com) | 1 | events | yellow-B (personal-use, not for commercial release) | 13 | 2 | 3.2 | probe | scout | none | KBO site terms not read; derived numbers only; personal use under plan B only |
-| 27 | v2 context: game-time weather for outdoor NFL, CFB, MLB | 0 | context-new | green | 1.9 | 1.2 | 2.4 | ready-for-lane1 | crew B | none | NOAA public domain / CC0 (Open-Meteo CC BY 4.0, non-commercial free tier) |
-| 28 | Open soccer tracking: IDSSE Bundesliga (7 matches, 25 fps), Metrica samples (3), SkillCorner (10, 10 fps) | 2 | events | yellow | 1 | 4 | 0.2 | parked | scout | none | IDSSE CC BY 4.0 (green); Metrica sample terms on repo; SkillCorner asks for credit, no named licence |
-| 29 | Creative Commons sports video, features on the fly only (YouTube Data API videoLicense=creativeCommon, Vimeo CC filter) | 4 | context-new | yellow | 0 | 0.05 | 0.0 | parked | crew C | none | CC BY (YouTube's only CC option) per video, credit the uploader; YouTube API policy: refresh or delete stored metadata within 30 days. Low priority (Nick 12:15 AM): only if a use emerges, e.g. dead-ball vision labels |
+| 22 | NBA SportVU tracking 2015-16 (linouk23 / sealneaward mirrors, same ~631 games) | 2 | events | yellow-B (personal-use, not for commercial release) | 48 | 10 | 4.8 | ready-for-lane1 | crew A | none | no repo licence; NBA/STATS LLC content; catalog #202 needed Nick's sign-off, now covered by plan B for personal use; private, credit NBA/STATS, never re-upload raw |
+| 23 | Statcast pitch-level 2015-2020 (extends the 2021-25 scoped row) | 2 | events | yellow-B (personal-use, not for commercial release) | 26 | 3 | 4.3 | ready-for-lane1 | crew A | none | MLBAM notice; the full range is only OK under plan B for personal use |
+| 24 | MLB GUMBO live feed 2008-2025 (wall clocks on every pitch) | 1 | events | yellow-B (personal-use, not for commercial release) | 84 | 30 | 4.2 | ready-for-lane1 | crew A | none | MLBAM notice, bulk only under plan B for personal use (catalog row moved from red to yellow-B by the data-B decision) |
+| 25 | NPB game text (npb.jp) | 1 | events | yellow-B (personal-use, not for commercial release) | 23 | 3 | 3.8 | probe | scout | none | npb.jp terms not read; HTML only, store derived numbers, never page text; Yahoo pitch-by-pitch is RED (terms); personal use under plan B only |
+| 26 | v2 context: pregame line + total per game (all six leagues) | 0 | context-new | yellow-B (personal-use, not for commercial release) | 1.1 | 0.3 | 3.7 | ready-for-lane1 | crew B | none | nflverse CC-BY-4.0; SBRO no licence (Nick logs it); ESPN-derived only under plan B for personal use. Lines are importance inputs only, never shown, never a nudge |
+| 27 | KBO game relay (koreabaseball.com) | 1 | events | yellow-B (personal-use, not for commercial release) | 13 | 2 | 3.2 | probe | scout | none | KBO site terms not read; derived numbers only; personal use under plan B only |
+| 28 | v2 context: game-time weather for outdoor NFL, CFB, MLB | 0 | context-new | green | 1.9 | 1.2 | 2.4 | ready-for-lane1 | crew B | none | NOAA public domain / CC0 (Open-Meteo CC BY 4.0, non-commercial free tier) |
+| 29 | Open soccer tracking: IDSSE Bundesliga (7 matches, 25 fps), Metrica samples (3), SkillCorner (10, 10 fps) | 2 | events | yellow | 1 | 4 | 0.2 | parked | scout | none | IDSSE CC BY 4.0 (green); Metrica sample terms on repo; SkillCorner asks for credit, no named licence |
+| 30 | Creative Commons sports video, features on the fly only (YouTube Data API videoLicense=creativeCommon, Vimeo CC filter) | 4 | context-new | yellow | 0 | 0.05 | 0.0 | parked | crew C | none | CC BY (YouTube's only CC option) per video, credit the uploader; YouTube API policy: refresh or delete stored metadata within 30 days. Low priority (Nick 12:15 AM): only if a use emerges, e.g. dead-ball vision labels |
 
 ## Derived (no new knowledge)
 
@@ -55,30 +56,31 @@ Derived rows are listed after the ranking and never count toward new information
 
 | Kind | Sources | Est. tokens (M) |
 |---|---:|---:|
-| events | 22 | 1321 |
+| events | 23 | 1359 |
 | context-new | 7 | 24.1 |
 | derived | 1 | 5700 |
-| **New information (events + context-new)** | 29 | 1345.1 |
+| **New information (events + context-new)** | 30 | 1383.1 |
 
 ## New-information totals by status and verdict
 
 | Bucket | Sources | Est. tokens (M) |
 |---|---:|---:|
-| Ready for lane 1 | 16 | 909.1 |
+| Ready for lane 1 | 17 | 947.1 |
 | Pulling or done (real) | 0 | 0 |
 | Probe / hold (scout) | 7 | 357 |
 | Needs Nick | 3 | 75 |
 | Parked | 3 | 4 |
 | Verdict green | 3 | 75.9 |
-| Verdict yellow | 8 | 172.4 |
-| Verdict yellow-B | 18 | 1096.8 |
-| **All new-information candidates** | 29 | 1345.1 |
+| Verdict yellow | 8 | 162.4 |
+| Verdict yellow-B | 19 | 1144.8 |
+| **All new-information candidates** | 30 | 1383.1 |
 
 ## Growth by cycle (candidates added, cumulative)
 
 | Cycle | Added | Est. tokens added (M) | Cumulative (M) |
 |---|---:|---:|---:|
-| 13 | 29 | 1345.1 | 1345.1 |
+| 13 | 29 | 1335.1 | 1335.1 |
+| 14 | 1 | 48 | 1383.1 |
 
 ## Why each source
 
@@ -86,8 +88,8 @@ Derived rows are listed after the ranking and never count toward new information
 - **Cricsheet ball-by-ball (23,241 matches)** (cricket, 2001+ (men), 2003+ (women)): the densest momentum-and-breaks sequence data per GB we found: overs, wickets, drinks and innings breaks; T20 has a broadcast-length shape Access: one zip download (all_json.zip), weekly updates.
 - **The Odds API free tier (forward line snapshots)** (all six, forward): daily slate prior Access: free key Nick adds as a secret.
 - **v2 context: live line state (in-game price moves)** (all six, 2024+ dense): the only free in-game line source; ~6k games 2024+ x ~500 minute ticks x 6 tokens. Gap: nothing free before 2024 Access: Polymarket clob /prices-history at 1-minute fidelity per game market (row polymarket-history); The Odds API free tier forward (key pending).
-- **Tennis Match Charting Project (shot by shot) + slam point-by-point** (tennis, MCP 1970s-2026; slams 2011+): momentum without a game clock: points, changeovers and set breaks, with elapsed time in the slam files Access: MCP: GitHub JeffSackmann/tennis_MatchChartingProject (still public, the only repo left on his profile). Slam point-by-point 2011-2024: GitHub repos tennis_slam_pointbypoint and tennis_atp now 404 (withdrawn ~Nov 2026); use the CC BY-NC-SA mirror huggingface.co/datasets/Aneeshers/tennis-sackmann-archive (slam_pointbypoint/, 166 CSVs, 797 MB total).
 - **EuroLeague + EuroCup live API (pbp, shots, box)** (basketball (Europe), 2007-08 to 2025-26): FIBA rules (10-minute quarters, different timeout rules) give the clock model a second basketball rulebook Access: api-live.euroleague.net v1/v2 (Swagger), no key; euroleague-api python package (GPLv3, code only).
+- **Tennis Match Charting Project (shot by shot)** (tennis, MCP 1970s-2026; slams 2011+): momentum without a game clock: points, changeovers and set breaks. Slam point-by-point mirror dropped by crew A (author withdrew the repos) Access: MCP: GitHub JeffSackmann/tennis_MatchChartingProject (still public, the only repo left on his profile). Slam point-by-point 2011-2024: GitHub repos tennis_slam_pointbypoint and tennis_atp now 404 (withdrawn ~Nov 2026); use the CC BY-NC-SA mirror huggingface.co/datasets/Aneeshers/tennis-sackmann-archive (slam_pointbypoint/, 166 CSVs, 797 MB total).
 - **Polymarket prices-history + trades (free, no key)** (all six, 2022+ (dense 2024+)): the only free source of minute-level live line moves for US games Access: gamma-api + clob /prices-history; back off on 429.
 - **HockeyTech feeds: AHL, ECHL, OHL, WHL, QMJHL, USHL** (hockey (minors, junior), probe (about 2017+)): ~6k games a year of pro and junior hockey: shot, faceoff and penalty sequences with stoppages Access: lscluster.hockeytech.com/feed/index.php, which the league sites call with a public client key.
 - **CollegeFootballData API (plays, drives, lines, games)** (CFB, 2001-2026): the only non-ESPN CFB play-by-play; lines feed crew B's v2-lines for CFB Access: REST v2, free key Nick adds as a Kaggle secret; Academic tier 3,000 calls/month (unc.edu).
@@ -103,6 +105,7 @@ Derived rows are listed after the ranking and never count toward new information
 - **NFL Big Data Bowl 2027 (combine + in-game tracking, 10 Hz)** (NFL, 2023-2025): TOP priority for tracking (Nick 12:15 AM). newest in-game tracking (opened Oct 8 2026); adds to the 2019-2026 BDB rows already in the catalog Access: Kaggle competition attach; data stays in Kaggle.
 - **v2 context: referee / umpire crew per game** (NFL, NBA, MLB, NHL, NFL 2015+, NBA 1996+, MLB 1898+, NHL 2010+): crew ids per game; tendencies (flags per game, review rate, whistle pace) are DERIVED from those ids, see v2-derived Access: nflverse load_officials(); nbadb officials table; Retrosheet umpire fields; NHL api-web gamecenter right-rail officials (plan B). CBB/CFB: no free source found yet.
 - **Wyscout public soccer events (Pappalardo et al. 2019)** (soccer, 2017-18 top-5 leagues, WC 2018, Euro 2016): 1,941 full matches with event times; overlaps StatsBomb only a little Access: figshare collection 4415000 (zips).
+- **NBA SportVU tracking 2015-16 (linouk23 / sealneaward mirrors, same ~631 games)** (NBA, Oct 2015 - Jan 2016): 25 Hz player+ball tracking: ball-in-play vs dead-ball labels for the timing brain Access: GitHub 7z JSON; one mirror only, count once.
 - **Statcast pitch-level 2015-2020 (extends the 2021-25 scoped row)** (MLB, 2015-2020): pitch physics for six more seasons; overlaps GUMBO events, so novelty is low at vocab v1 Access: pybaseball.statcast() one day per call with sleeps, on Kaggle.
 - **MLB GUMBO live feed 2008-2025 (wall clocks on every pitch)** (MLB, 2008-2025): Retrosheet has the events but no wall clocks; this adds real pitch-to-pitch and between-inning timing for MLB Access: same API as MiLB, sportId=1; ~40k games; <=1 request/s.
 - **NPB game text (npb.jp)** (baseball (Japan), probe): different pace rules; Japanese parser is real work, so it ranks low Access: npb.jp per-game pages; parse to numbers only; robots.txt first; <=1 request/2 s.
