@@ -201,7 +201,7 @@ def read_oracle(path: Path) -> dict | None:
 def read_crunch(path: Path) -> dict | None:
     try:
         d = json.loads(Path(path).read_text())
-        games = {str(g): {k: sorted([float(a), float(b)] for a, b in (v.get(k) or []) if float(b) > float(a))
+        games = {str(g): {k: sorted([float(a), float(b)] for a, b in (v.get(k) or []) if float(b) >= float(a))   # t0 == t1: one row
                           for k in ("learned", "oracle")} for g, v in (d.get("games") or {}).items()}
         tol = float(d["tol_s"])      # the grader's tolerance (train_watch_value.EXIT_TOL_S); required
     except (OSError, ValueError, TypeError, AttributeError, KeyError):
@@ -350,6 +350,83 @@ def held_view(hidden_game: str | None, hidden_ready: bool, behind_s: float, home
             "back": back, "catchup": catch, "queued": sum(1 for m in queue if not m.replayed)}
 
 
+# Night scorecard: the release gate's per-night lines, so each morning shows last night at a glance.
+# (key, label, bar, hard): hard lines must sit at the bar every night; the rest must not regress.
+SCORE_LINES = (("mid_play_entries", "Mid-play entries", 0, True),
+               ("high_leverage_leaves", "High-leverage mid-play leaves", 0, True),
+               ("plays_missed_entry", "Plays missed on entry", 0, False),
+               ("dead_air_pct", "Dead air %", 0, False))
+
+
+def _night_line(key: str, metrics: dict, summary: dict):
+    """One gate line for one night: the night report's metrics sidecar (data/reports/<night>.json) first,
+    then the supervisor's auto-log summary; None (pending) when neither measures it."""
+    v = metrics.get(key)
+    if v is None and key == "mid_play_entries":
+        v = metrics.get("landed_mid_play", summary.get("entries_mid_play"))
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def night_scorecard(nights: list[tuple[str, dict | None, dict | None]]) -> dict:
+    """Per-night release-gate lines (oldest first) and each line's trend; `nights` is (night, metrics,
+    auto-log summary). Read only."""
+    rows = [(n, m or {}, s or {}) for n, m, s in sorted(nights) if m or s]
+    lines = []
+    for key, label, bar, hard in SCORE_LINES:
+        pts = [{"night": n, "v": _night_line(key, m, s)} for n, m, s in rows]
+        vals = [p["v"] for p in pts if p["v"] is not None]
+        latest = pts[-1]["v"] if pts else None
+        lines.append({"key": key, "label": label, "bar": bar, "hard": hard, "points": pts, "latest": latest,
+                      "status": None if latest is None else ("PASS" if latest <= bar else ("FAIL" if hard else "OVER")),
+                      "nights_at_bar": sum(1 for v in vals if v <= bar), "measured": len(vals)})
+    last = rows[-1][0] if rows else None
+    hard_ok = [ln["status"] == "PASS" for ln in lines if ln["hard"] and ln["latest"] is not None]
+    return {"nights": [n for n, _, _ in rows], "last": last, "lines": lines,
+            "gate": None if not hard_ok else all(hard_ok)}
+
+
+LEFT_END = {"left_resumed": "resumed", "left_expired": "expired", "left_lost": "lost"}   # STK-07 (#171)
+
+
+def catchup_queue(buffer_rows: list[dict], target_game: dict, hidden_target: str | None, hidden_ready: bool,
+                  held: dict, queue: list, scored: dict, name, now: float) -> dict:
+    """The catch-up queue (your-team catch-ups were the locked blocker: 73.5 vs 82.4): what the hidden stick
+    holds now (control.held: seconds behind live), tonight's STK-07 left-game holds from data/buffer.jsonl
+    (left_held -> left_resumed | left_expired | left_lost) with their age, and every catch-up waiting in the
+    decider's queue, your team first, each with whether its game is in a dead window right now
+    (Scored.is_break). Display only."""
+    holds: list[dict] = []
+    open_: dict = {}
+    for r in sorted(buffer_rows, key=lambda r: float(r.get("ts") or 0)):
+        k, t = r.get("kind"), r.get("target")
+        if k == "left_held":
+            open_[t] = {"target": t, "game_id": target_game.get(t), "held_at": float(r["ts"]),
+                        "base_s": float(r.get("behind_s") or 0.0), "end": None, "ended_at": None}
+            holds.append(open_[t])
+        elif k in LEFT_END and t in open_:
+            h = open_.pop(t)
+            h["end"], h["ended_at"] = LEFT_END[k], float(r["ts"])
+    for h in holds:
+        h["matchup"] = name(h["game_id"]) if h["game_id"] else str(h["target"])
+        h["age_s"] = round((h["ended_at"] or now) - h["held_at"] + h["base_s"], 1)
+        h["open"] = h["end"] is None and h["target"] == hidden_target
+    hid = target_game.get(hidden_target) if hidden_target else None
+    sc = scored or {}
+    dead = lambda gid: bool(sc[gid].is_break) if gid in sc else None   # noqa: E731
+    waiting = sorted((m for m in queue if not m.replayed), key=lambda m: (not m.must, not m.mine, m.t))
+    items = [{"game_id": m.game_id, "matchup": name(m.game_id), "label": m.label[:100], "kind": m.kind,
+              "mine": bool(m.mine), "must": bool(m.must), "ago_s": max(0, round(now - m.t)),
+              "due_in_s": max(0, round(m.t + m.due_s - now)) if m.due_s else None, "dead_now": dead(m.game_id)}
+             for m in waiting]
+    ends = [h["end"] for h in holds]
+    return {"hidden": {"game_id": hid, "matchup": name(hid) if hid else (hidden_target or ""), "target": hidden_target,
+                       "ready": bool(hidden_ready), "behind_s": round(float(held.get(hidden_target, 0.0)), 1),
+                       "dead_now": dead(hid) if hid else None} if hidden_target else None,
+            "holds": holds[::-1], "queue": items,
+            "counts": {"held": len(holds), "resumed": ends.count("resumed"), "expired": ends.count("expired"),
+                       "lost": ends.count("lost"), "queued": len(items), "yours": sum(1 for i in items if i["mine"])}}
+
+
 CATCHUP_KINDS = {"replay"}                                # a catch-up replay of a missed play
 INTERLEAVE_KINDS = {"break_visit", "return"}             # visit another game in a break, then come back
 PLAN = re.compile(r"\bplan=([A-Za-z0-9_-]+)")
@@ -479,6 +556,24 @@ def progress(g) -> float:
     return min(1.0, ((p - 1) * per + (per - left)) / (reg * per))
 
 
+RISING_MIN = 1.0    # watch_rising (points per minute) at or above this shows an up arrow, at or below -this a down one
+
+
+def slate_watch(rows: list[dict], scored: dict, on: bool) -> list[dict]:
+    """HEAT 2.0 on the slate: each live game's learned watch value (0-100), its why line and a rising /
+    falling arrow, from Scored.watch_value / watch_why / watch_rising (#166 contract). Hidden (no "wv" key)
+    when scoring.watch_value is off or the game has no learned value yet. Display only."""
+    for r in rows:
+        s = (scored or {}).get(r["game_id"]) if on and r.get("live") else None
+        if s is None or s.watch_value is None:
+            continue
+        rise = s.watch_rising
+        r["wv"] = {"value": int(round(max(0.0, min(100.0, float(s.watch_value))))), "why": (s.watch_why or "")[:120],
+                   "rising": None if rise is None else round(float(rise), 1),
+                   "arrow": "" if rise is None or abs(rise) < RISING_MIN else ("up" if rise > 0 else "down")}
+    return rows
+
+
 def slate_preview(games, rules: HardRules, now: float) -> dict:
     """Tonight ahead, as a pure function of the board: each live or upcoming game's expected window
     and crunch window, and every stretch where two or more crunch windows overlap, with who gets the
@@ -547,11 +642,11 @@ def watch_values(scored: dict, games: dict) -> dict:
         if cs not in CRUNCH_STATES:
             cs = "in" if s.crunch_now else ("entering" if s.crunch else None)
         sl = s.stakes_line                            # lane 1: e.g. "AFC 1-seed race, top-5 matchup"
-        stakes_pending = sl is None                   # the phone says "pending" until the model writes it
+        stakes_rough = sl is None                     # #172 writes it (None = no stakes); the stub is "rough"
         if sl is None:
             sl = "Big stakes" if s.stakes >= STAKES_BIG else ("Some stakes" if s.stakes >= STAKES_SOME else "")
         rows.append({"game_id": gid, "matchup": g.matchup if g is not None else gid,
-                     "crunch_state": cs, "stakes_line": sl[:100], "stakes_pending": stakes_pending,
+                     "crunch_state": cs, "stakes_line": sl[:100], "stakes_rough": stakes_rough and bool(sl),
                      "league": s.league.value, "wv": int(round(max(0.0, min(100.0, val)))),
                      "why": str(why or "")[:120], "crunch": bool(s.crunch),
                      "is_break": bool(s.is_break), "source": "learned" if learned else "stub"})
@@ -729,6 +824,39 @@ def router(engine) -> APIRouter:
         rep = next((p for p in (base / f"{d.isoformat()}.md" for base in REPORTS) if p.exists()), None)
         return {"ok": rep is not None, "day": d.isoformat(), "text": rep.read_text(errors="replace")[:60000] if rep else ""}
 
+    @r.get("/scorecard")
+    async def scorecard(n: int = 14):
+        if not _enabled(engine):
+            return _off()
+        found = {p.stem for base in REPORTS if base.is_dir() for p in base.glob("20??-??-??.json")}
+        if LIVE_NIGHTS.is_dir():
+            found |= {p.name for p in LIVE_NIGHTS.glob("20??-??-??") if p.is_dir()}
+        days = sorted(found)[-max(1, min(n, 60)):]
+
+        def load(p: Path) -> dict | None:
+            try:
+                d = json.loads(p.read_text())
+            except (OSError, ValueError):
+                return None
+            return d if isinstance(d, dict) else None
+        nights = [(d, next((m for m in (load(b / f"{d}.json") for b in REPORTS) if m), None),
+                   load(LIVE_NIGHTS / d / "summary.json")) for d in days]
+        return {"enabled": True, **night_scorecard(nights)}
+
+    @r.get("/catchup")
+    async def catchup():
+        if not _enabled(engine):
+            return _off()
+        from redzone.supervisor import read_jsonl as rows_between
+        now = time.time()
+        c, dec = engine.control, engine.decider
+        t0, _ = night_window(night_of(now))
+        tg = {t: g for g, w in engine.where.items() if (t := getattr(w, "target", None))}
+        return {"enabled": True, "now": now, **catchup_queue(
+            rows_between(BUFFER_LOG, t0, now + 1), tg, c.hidden_target if c.two_stick else None, c.hidden_ready,
+            dict(c.held), list(dec.queue), engine.scored, engine._name, now),
+            "on_screen": {"game_id": dec.current, "matchup": engine._name(dec.current)} if dec.current else None}
+
     @r.get("/held")
     async def held():
         if not _enabled(engine):
@@ -753,7 +881,9 @@ def router(engine) -> APIRouter:
             return _off()
         now = time.time()
         v = slate_preview(getattr(engine.merger, "games", {}), HardRules.from_config(engine.cfg), now)
-        return {"enabled": True, "now": now, **v, "alert": clash_alert(v, now)}
+        wv_on = bool(engine.cfg.get("scoring.watch_value", False))
+        slate_watch(v["games"], engine.scored, wv_on)
+        return {"enabled": True, "now": now, **v, "alert": clash_alert(v, now), "watch_value": wv_on}
 
     @r.get("/priority")
     async def get_priority():

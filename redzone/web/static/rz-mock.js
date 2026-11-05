@@ -338,7 +338,8 @@ function mockV2(path, b) {
       const [d, c] = L[g.league] || [150, 30];
       const start = g.phase === "live" ? now - 3600 + i * 600 : now + 1800 + i * 1500;
       const end = start + d * 60;
-      return { game_id: g.id, league: g.league, matchup: g.matchup, live: g.phase === "live", start, end, crunch: [end - c * 60, end], yours: !!g.mine };
+      const wv = g.phase === "live" ? { value: Math.max(8, 88 - i * 19), why: ["Tied, 2:10 left in the 4th", "Comeback brewing: 10-0 run", "Power play, down one", "Blowout, starters sitting"][i % 4], rising: [3.4, 6.1, -0.4, -2.2][i % 4], arrow: ["up", "up", "", "down"][i % 4] } : undefined;
+      return { game_id: g.id, league: g.league, matchup: g.matchup, live: g.phase === "live", start, end, crunch: [end - c * 60, end], yours: !!g.mine, ...(wv ? { wv } : {}) };
     });
     const cl = [];
     for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++) {
@@ -371,8 +372,30 @@ function mockV2(path, b) {
   if (path === "/api/v2/watch") {
     const why = ["Tied, 2:10 left in the 4th", "Red zone, 3rd & goal", "Power play, down one", "Blowout, starters sitting", "Commercial break"];
     const games = (STATE.games || []).filter((g) => g.phase === "live" || g.state === "live").slice(0, 6).map((g, i) => ({ game_id: g.id, matchup: g.matchup,
-      league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, stakes_line: ["AFC 1-seed race, top-5 matchup", "Rivalry game", "", "Wild-card push"][i] || "", stakes_pending: i === 2 || i > 3, is_break: i === 4, source: "stub" }));
+      league: g.league, wv: Math.max(4, 92 - i * 17), why: why[i % why.length], crunch: i === 0, crunch_state: ["in", "entering", null, "leaving"][i] || null, stakes_line: ["AFC 1-seed race, top-5 matchup", "Rivalry game", "", "Wild-card push"][i] || "", stakes_rough: i === 3, is_break: i === 4, source: "stub" }));
     return { enabled: true, now: Date.now() / 1000, current: games[0] && games[0].game_id, games, source: games.length ? "stub" : null };
+  }
+  if (path.startsWith("/api/v2/scorecard")) {
+    const nights = Array.from({ length: 10 }, (_, i) => new Date(Date.UTC(2026, 9, 26 + i)).toISOString().slice(0, 10));
+    const L = [["mid_play_entries", "Mid-play entries", true, [2, 1, 1, 0, 1, 0, 0, 0, 0, 0]], ["high_leverage_leaves", "High-leverage mid-play leaves", true, [null, null, null, null, null, null, 0, 0, 1, 0]],
+      ["plays_missed_entry", "Plays missed on entry", false, [null, null, null, null, null, null, null, null, null, null]], ["dead_air_pct", "Dead air %", false, [29, 27, 28, 26, 25, 24, 26, 23, 22.5, 21.8]]];
+    const lines = L.map(([key, label, hard, vs]) => {
+      const vals = vs.filter((v) => v != null), latest = vs[vs.length - 1];
+      return { key, label, bar: 0, hard, points: vs.map((v, i) => ({ night: nights[i], v })), latest, measured: vals.length, nights_at_bar: vals.filter((v) => v <= 0).length,
+        status: latest == null ? null : latest <= 0 ? "PASS" : hard ? "FAIL" : "OVER" };
+    });
+    return { enabled: true, nights, last: nights[9], lines, gate: true };
+  }
+  if (path === "/api/v2/catchup") {
+    const now = Date.now() / 1000, g = (STATE.games || []).filter((x) => x.phase === "live");
+    const m = (i) => (g[i] || { id: "g" + i, matchup: "Game " + i });
+    return { enabled: true, now, hidden: { game_id: m(1).id, matchup: m(1).matchup, target: "HDMI2", ready: true, behind_s: 74.2, dead_now: false },
+      holds: [{ target: "HDMI2", game_id: m(1).id, matchup: m(1).matchup, held_at: now - 74, base_s: 0, end: null, ended_at: null, age_s: 74.2, open: true },
+        { target: "HDMI1", game_id: m(2).id, matchup: m(2).matchup, held_at: now - 1900, base_s: 0, end: "resumed", ended_at: now - 1810, age_s: 90, open: false },
+        { target: "HDMI2", game_id: m(3).id, matchup: m(3).matchup, held_at: now - 3600, base_s: 12, end: "expired", ended_at: now - 3400, age_s: 212, open: false }],
+      queue: [{ game_id: m(1).id, matchup: m(1).matchup, label: "Touchdown: 12-yd pass", kind: "td", mine: true, must: true, ago_s: 95, due_in_s: 85, dead_now: false },
+        { game_id: m(2).id, matchup: m(2).matchup, label: "Goal: power play", kind: "goal", mine: false, must: false, ago_s: 240, due_in_s: null, dead_now: true }],
+      counts: { held: 3, resumed: 1, expired: 1, lost: 0, queued: 2, yours: 1 }, on_screen: { game_id: m(0).id, matchup: m(0).matchup } };
   }
   if (path.startsWith("/api/v2/capture/report")) {
     return { ok: true, day: "2026-11-04", text: "# RedZone night report: 2026-11-04\n\n**41 switches (1 failed); key moments seen 37/40; 2 auto-fixes.**\n\n- Mid-play entries: 0\n- Held buffer rebuilt twice (drift)" };

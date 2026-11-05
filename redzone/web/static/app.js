@@ -11,11 +11,11 @@ import { patch, flash } from "./rz-dom.js?v=40";
 import { icon } from "./rz-ui.js?v=40";
 import { startStream, act } from "./rz-api.js?v=43";
 import { updateSheets, topSheet, closeSheet } from "./rz-sheet.js?v=40";
-import { renderNow, countdown } from "./rz-now.js?v=61";
+import { renderNow, countdown } from "./rz-now.js?v=62";
 import { renderGames } from "./rz-games.js?v=41";
 import { renderBets } from "./rz-bets.js?v=40";
 import { renderLab, loadLab } from "./rz-lab.js?v=40";
-import { renderSettings, announce } from "./rz-settings.js?v=61";
+import { renderSettings, announce } from "./rz-settings.js?v=62";
 import { loadTeams } from "./rz-detail.js?v=42";
 
 const TABS = ["now", "games", "bets", "lab", "settings"];

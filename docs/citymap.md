@@ -118,6 +118,8 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 
 ## EXPERIENCE (8)
 
+Lane page: [lanes/experience.md](lanes/experience.md)
+
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
 | `redzone/lab/decision_records.py` | Decision records for the Teacher's nightly review (backlog lane 5 item 2, E23 under the self-taught rule). | - -> web.phone_v2, scripts.export_decision_records | % of hindsight-oracle value achieved (mean of NFL, NBA, NHL), Landings in dead time, Mid-play entries (per 100 landings) |

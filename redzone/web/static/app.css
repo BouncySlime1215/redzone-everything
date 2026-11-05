@@ -1216,6 +1216,18 @@ details.adv[open] > summary .ico { transform: rotate(180deg); }
 .v2-cr-l { background: #e5484d; }
 .v2-cr-o { background: var(--text-2); }
 .v2-cr-track > i { position: absolute; top: 1px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #e5484d; }
+.v2-g { position: relative; }
+.v2-g-name:has(.v2-g-wv) { padding-right: 46px; }
+.v2-g-wv { position: absolute; right: 0; top: 0; display: inline-flex; align-items: baseline; gap: 2px; font-size: 13px; }
+.v2-g-wv i { font-style: normal; font-size: 10px; }
+.v2-g-wv--up { color: var(--live); }
+.v2-g-wv--down { color: var(--text-3); }
+.v2-g-why { font-size: 12px; color: var(--text-3); }
+button.v2-held { width: 100%; text-align: left; font: inherit; font-size: 13px; color: inherit; cursor: pointer; }
+.v2-mv { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0 12px; }
+.v2-mv-tile { aspect-ratio: 16 / 9; border-radius: 10px; padding: 8px; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; background: var(--surface-3); font-size: 13px; overflow: hidden; }
+.v2-mv-tile small { color: var(--text-3); font-size: 11px; }
+.v2-mv-tile--live { background: color-mix(in srgb, var(--live) 18%, var(--surface-2)); outline: 2px solid var(--live); }
 .v2-trend { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
 .v2-trend-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .v2-trend-top .m { font-size: 14px; }

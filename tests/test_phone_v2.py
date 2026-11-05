@@ -273,7 +273,7 @@ def test_watch_values_learned_field_or_stub():
     v = phone_v2.watch_values(old, games)
     assert v["source"] == "learned" and v["games"][0] == {"game_id": "a", "matchup": "A @ B", "league": "nba", "wv": 63,
                                                          "why": "Comeback brewing", "crunch_state": "entering", "stakes_line": "",
-                                                         "stakes_pending": True,
+                                                         "stakes_rough": False,
                                                          "crunch": True, "is_break": False, "source": "learned"}
     assert v["games"][1]["why"] == "Break"                                             # no watch_why: the reason
     assert phone_v2.watch_values({}, {}) == {"games": [], "source": None}
@@ -282,10 +282,11 @@ def test_watch_values_learned_field_or_stub():
     old["a"].crunch_state = "leaving"                                                  # lane 1's model wins
     assert phone_v2.watch_values(old, games)["games"][0]["crunch_state"] == "leaving"
     old["a"].stakes = 0.7
-    assert phone_v2.watch_values(old, games)["games"][0]["stakes_line"] == "Big stakes"           # stub
+    g0 = phone_v2.watch_values(old, games)["games"][0]
+    assert g0["stakes_line"] == "Big stakes" and g0["stakes_rough"] is True                       # stub
     old["a"].stakes_line = "AFC 1-seed race, top-5 matchup"                                       # lane 1 wins
     g0 = phone_v2.watch_values(old, games)["games"][0]
-    assert g0["stakes_line"] == "AFC 1-seed race, top-5 matchup" and g0["stakes_pending"] is False
+    assert g0["stakes_line"] == "AFC 1-seed race, top-5 matchup" and g0["stakes_rough"] is False
     old["b"].crunch_state = "bogus"
     assert phone_v2.watch_values(old, games)["games"][1]["crunch_state"] is None
 
@@ -470,14 +471,16 @@ def test_crunch_timeline_graded_and_from_provenance(tmp_path):
     f.write_text(json.dumps({"tol_s": 60, "games": {
         "a": {"learned": [[100, 400], [500, 900]], "oracle": [[130, 950]]},       # entry -30 ok, exit -50 ok
         "b": {"learned": [[100, 200]], "oracle": [[100, 500]]},                    # exit -300: a miss
-        "c": {"learned": [], "oracle": [[0, 10]]}, "d": {"learned": [[5, 1]]}}}))  # never on; a bad span drops
+        "c": {"learned": [], "oracle": [[0, 10]]}, "d": {"learned": [[5, 1]]},    # never on; a bad span drops
+        "e": {"learned": [[7, 7]], "oracle": [[7, 7]]}}}))                          # one-row span (t0 == t1) stays
     c = phone_v2.read_crunch(f)
     assert c["games"]["d"]["learned"] == [] and phone_v2.read_crunch(tmp_path / "none.json") is None
+    assert c["games"]["e"]["learned"] == [[7.0, 7.0]]
     v = phone_v2.crunch_timeline(c, [], str.upper)
     by = {g["game"]: g for g in v["games"]}
     assert (by["a"]["entry_s"], by["a"]["exit_s"], by["a"]["exit_ok"]) == (-30.0, -50.0, True)
     assert by["b"]["exit_ok"] is False and by["c"]["exit_ok"] is False and "exit_ok" not in by["d"]
-    assert (v["source"], v["exits"], v["exits_ok"], v["entries_ok"]) == ("graded", 3, 1, 2)
+    assert (v["source"], v["exits"], v["exits_ok"], v["entries_ok"]) == ("graded", 4, 2, 3)
     assert v["games"][0]["game"] in ("b", "c")                                     # misses first
     sw = [{"ts": 10.0, "to_game": "x", "frm": "y",
            "detail": json.dumps({"trace": {"id": "t", "provenance": {"crunch_state": {"to": "in", "from": "leaving"}}}})},
@@ -488,3 +491,84 @@ def test_crunch_timeline_graded_and_from_provenance(tmp_path):
     assert v["source"] == "provenance" and pts == {"x": [{"ts": 10.0, "state": "in"}],
                                                    "y": [{"ts": 10.0, "state": "leaving"}, {"ts": 20.0, "state": "entering"}]}
     assert phone_v2.crunch_timeline(None, [], str)["source"] is None
+
+
+def test_slate_watch_values_only_when_on_and_learned():
+    from redzone.scoring.engine import Scored
+    from redzone.models import League
+    def sc(gid, wv=None, why="", rise=None):
+        s = Scored(gid, League.NBA, 50.0, 50.0, 0.0, 0.0, 0.0, "", [], False, None, None, 0.0)
+        s.watch_value, s.watch_why, s.watch_rising = wv, why, rise
+        return s
+    rows = lambda: [{"game_id": "a", "live": True}, {"game_id": "b", "live": True}, {"game_id": "c", "live": False},
+                    {"game_id": "d", "live": True}]
+    scored = {"a": sc("a", 71.6, "Tied late", 3.44), "b": sc("b", 40.0, "", -0.5), "c": sc("c", 90.0), "d": sc("d")}
+    assert all("wv" not in r for r in phone_v2.slate_watch(rows(), scored, on=False))     # flag off: hidden
+    by = {r["game_id"]: r for r in phone_v2.slate_watch(rows(), scored, on=True)}
+    assert by["a"]["wv"] == {"value": 72, "why": "Tied late", "rising": 3.4, "arrow": "up"}
+    assert by["b"]["wv"]["arrow"] == "" and "wv" not in by["c"] and "wv" not in by["d"]   # not live / no model
+    scored["b"].watch_rising = -2.0
+    assert phone_v2.slate_watch(rows(), scored, on=True)[1]["wv"]["arrow"] == "down"
+
+
+def test_catchup_queue_holds_and_waiting():
+    from types import SimpleNamespace as NS
+    from redzone.decider.decider import Missed
+    rows = [{"ts": 100.0, "kind": "left_held", "target": "H2", "behind_s": 0.0},
+            {"ts": 160.0, "kind": "left_resumed", "target": "H2", "behind_s": 60.0},
+            {"ts": 200.0, "kind": "lost", "target": "H1"},                               # STK-06 row: not a left hold
+            {"ts": 300.0, "kind": "left_expired", "target": "H9"},                       # never held: ignored
+            {"ts": 400.0, "kind": "left_held", "target": "H2", "behind_s": 5.0}]
+    q = [Missed("b", "p1", "Goal", "goal", 380.0, 50.0), Missed("a", "p2", "TD", "td", 390.0, 70.0, mine=True, due_s=180.0),
+         Missed("a", "p3", "old", "td", 10.0, 70.0, replayed=True), Missed("c", "p4", "FG", "fg", 395.0, 30.0, must=True)]
+    sc = {"a": NS(is_break=True), "b": NS(is_break=False)}
+    v = phone_v2.catchup_queue(rows, {"H2": "a"}, "H2", True, {"H2": 30.04}, q, sc, str.upper, now=430.0)
+    assert v["hidden"] == {"game_id": "a", "matchup": "A", "target": "H2", "ready": True, "behind_s": 30.0, "dead_now": True}
+    first, second = v["holds"]                                                             # newest first
+    assert (first["open"], first["age_s"], first["end"]) == (True, 35.0, None)
+    assert (second["end"], second["age_s"], second["open"]) == ("resumed", 60.0, False)
+    assert [i["game_id"] for i in v["queue"]] == ["c", "a", "b"]                          # must, then yours, then oldest
+    assert v["queue"][1]["due_in_s"] == 140 and v["queue"][0]["dead_now"] is None and v["queue"][2]["dead_now"] is False
+    assert v["counts"] == {"held": 2, "resumed": 1, "expired": 0, "lost": 0, "queued": 3, "yours": 1}
+    assert phone_v2.catchup_queue([], {}, None, False, {}, [], {}, str, 0.0)["hidden"] is None
+
+
+def test_catchup_route(client, engine, tmp_path, monkeypatch):
+    assert client.get("/api/v2/catchup").status_code == 404
+    _on(engine)
+    monkeypatch.setattr(phone_v2, "BUFFER_LOG", tmp_path / "none.jsonl")
+    r = client.get("/api/v2/catchup").json()
+    assert r["enabled"] and r["counts"]["held"] == 0 and isinstance(r["queue"], list) and "on_screen" in r
+
+
+def test_night_scorecard_lines_and_gate():
+    nights = [("2026-11-04", {"landed_mid_play": 0, "high_leverage_leaves": 0, "dead_air_pct": 22.5}, {"entries_mid_play": 3}),
+              ("2026-11-02", None, {"entries_mid_play": 2}),
+              ("2026-11-03", {"mid_play_entries": 1, "plays_missed_entry": 4}, None),
+              ("2026-11-01", None, None)]                                                  # nothing measured: dropped
+    v = phone_v2.night_scorecard(nights)
+    assert v["nights"] == ["2026-11-02", "2026-11-03", "2026-11-04"] and v["last"] == "2026-11-04"
+    by = {ln["key"]: ln for ln in v["lines"]}
+    assert [p["v"] for p in by["mid_play_entries"]["points"]] == [2.0, 1.0, 0.0]          # report wins over auto-log
+    assert by["mid_play_entries"]["status"] == "PASS" and by["mid_play_entries"]["nights_at_bar"] == 1
+    assert by["plays_missed_entry"]["latest"] is None and by["plays_missed_entry"]["status"] is None
+    assert by["dead_air_pct"]["status"] == "OVER" and by["high_leverage_leaves"]["measured"] == 1
+    assert v["gate"] is True
+    nights[0][1]["high_leverage_leaves"] = 1
+    assert phone_v2.night_scorecard(nights)["gate"] is False
+    assert phone_v2.night_scorecard([])["gate"] is None
+
+
+def test_scorecard_route(client, engine, tmp_path, monkeypatch):
+    import json
+    assert client.get("/api/v2/scorecard").status_code == 404
+    _on(engine)
+    monkeypatch.setattr(phone_v2, "REPORTS", (tmp_path / "rep",))
+    monkeypatch.setattr(phone_v2, "LIVE_NIGHTS", tmp_path / "ln")
+    assert client.get("/api/v2/scorecard").json()["nights"] == []
+    (tmp_path / "rep").mkdir()
+    (tmp_path / "rep" / "2026-11-03.json").write_text(json.dumps({"landed_mid_play": 1}))
+    (tmp_path / "ln" / "2026-11-04").mkdir(parents=True)
+    (tmp_path / "ln" / "2026-11-04" / "summary.json").write_text(json.dumps({"entries_mid_play": 0}))
+    r = client.get("/api/v2/scorecard?n=5").json()
+    assert r["nights"] == ["2026-11-03", "2026-11-04"] and r["gate"] is True
