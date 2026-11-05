@@ -274,7 +274,9 @@ decider:
   # time holds). Crunch time always holds. Nick, Nov 4: ATL up 12 with 9:09 left held WSH all night.
   mine_late_max_lead_wp: 1.0
   leave:                   # [cut rules, Nick Nov 4 3:15 PM] never JOIN mid-play; LEAVING mid-play only at low leverage
-    low_leverage: []       # leagues where a low-leverage moment may be left mid-play ([] = never: today's rule)
+    low_leverage: ["nba"]  # leagues where a low-leverage moment may be left mid-play ([] = never). RC6.3: NBA ONLY. The gate
+                           # keys on the FULL league (EXP-208, #257), so "nba" does not reach CBB; it never leaves your
+                           # team's game or a close-and-late / OT moment that can still be on screen.
     sticky_closeness: 0.5  # down the stretch is sticky: a late game at least this close is never left mid-play
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
     floor: true            # [SAFE-09] in a crunch window: no overlay or model leaves it for a non-crunch game, and

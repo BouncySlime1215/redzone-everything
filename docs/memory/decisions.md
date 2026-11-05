@@ -623,3 +623,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   producer is lane 3: set `forced` on the trace of a double-tap switch. `scripts/collect_live_test.py` joins the frozen
   graders. (2) `PLAY_LEN` and `RESUME_LEAD` become `ByLeague` tables, so CFB and CBB read their pro league's row. That
   fixes the KeyError in oracle.py on college replays (lane 1). Pro leagues are unchanged. Grader freeze v11.
+- 2026-11-05 (RC6.3, integrator recommendation; ships only on Nick's pick): `decider.leave.low_leverage: ["nba"]` (was []).
+  NBA may leave a LOW-leverage game mid-play (never your team's game, never close-and-late / OT still on screen: the
+  EXP-208 floor, #257). Reason: under precise sync the NBA set waited 11 min on a Q1 game while WSH was in crunch
+  (your-team crunch 17/31). Dev with the gate: your-team 93/93 honest and 31/31 resync, 0 mid-play entries, 0
+  high-leverage leaves; locked: no line worse than the set, dead air +0.7, 6 allowed low-leverage leaves.

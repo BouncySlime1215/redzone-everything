@@ -48,10 +48,13 @@ def test_nba_does_not_switch_it_on_for_college(cfg, clock):
     assert _gate(cfg, clock, g, lgs=("cbb",))
 
 
-def test_off_by_default(cfg, clock):
+def test_shipped_gate_is_nba_only(cfg, clock):
+    """RC6.3: the gate ships for NBA only (full league: never CBB, NFL or NHL)."""
     dec = Decider(cfg, DelayBook({}, 3.0))
-    assert cfg.get("decider.leave.low_leverage") == []
-    assert not dec._leavable(Candidate(Scorer(cfg, clock=clock).score(nba("o", "GSW", "PHX", 15, 14, 1, 323), ME), "yt:x"))
+    sc = Scorer(cfg, clock=clock)
+    assert cfg.get("decider.leave.low_leverage") == ["nba"]
+    assert dec._leavable(Candidate(sc.score(nba("o", "GSW", "PHX", 15, 14, 1, 323), ME), "yt:x"))
+    assert not dec._leavable(Candidate(sc.score(nba("c", "DUKE", "UVA", 20, 18, 1, 900, league=League.CBB), ME), "yt:x"))
 
 
 def test_the_decider_floor_matches_the_graders():
