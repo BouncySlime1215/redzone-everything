@@ -99,3 +99,30 @@ def test_teacher_answers_become_side_channel_tokens(tmp_path):
     assert max(t) < S.TEACHER_VOCAB and bool(z["hindsight"][0])
     n = np.load(tmp_path / "syn" / "teacher" / "nhl.npz")
     assert [int(x) for x in n["tokens"][0]][4] == S.T_CONF0 + S.CONF_BUCKETS         # missing confidence
+
+
+def test_augment_index_has_reader_fields(tmp_path):
+    _write_shards(tmp_path / "tok", ["20230101"] * 3)
+    B.main(["augment", "--shards", str(tmp_path / "tok"), "--out", str(tmp_path / "syn"), "--train-before", "20240101"])
+    meta = json.loads((tmp_path / "syn" / "nba" / "2023.mirror.json").read_text())
+    assert meta["complete"] is True and "synthetic" in meta["tags"] and meta["license"]
+
+
+def test_causal_commentary_queue_and_tokens(tmp_path):
+    import gzip
+
+    from agent.kaggle import commentary_queue as Q
+    (tmp_path / "rows").mkdir()
+    rows = [{"id": f"nba:9:{i}", "split": "train", "brief": f"NBA brief {i}", "crunch": i == 3, "mine": i == 5,
+             "big_next": True, "next_text": "SECRET FUTURE", "t_big": 12.0} for i in range(8)]
+    rows.append({"id": "nba:9:99", "split": "valid", "brief": "held out"})
+    with gzip.open(tmp_path / "rows" / "nba_train.jsonl.gz", "wt") as f:
+        f.write("\n".join(json.dumps(r) for r in rows))
+    reqs = Q.build(tmp_path, ["nba", "nhl"])
+    assert [r["id"] for r in reqs[:2]] == ["nba:9:5|commentary", "nba:9:3|commentary"]
+    assert len(reqs) == 8 and "SECRET" not in json.dumps(reqs) and "held out" not in json.dumps(reqs)
+    r = S.teacher_tokens({"id": "nba:9:5|commentary", "text": '{"importance": 7, "lock_in": "watch", "next": '
+                                                              '"score", "confidence": 0.6, "commentary": "c"}'})
+    assert r.tokens == (S.T_LEAGUE0 + V.BOS_LEAGUES.index("nba"), S.T_MODE0 + 2, S.T_LOCK0 + 1, S.T_IMP0 + 7,
+                        S.T_NEXT0, S.T_CONF0 + 6)
+    assert not r.hindsight and max(r.tokens) < S.TEACHER_VOCAB

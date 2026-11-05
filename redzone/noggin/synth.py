@@ -14,7 +14,8 @@ Three products, all tagged synthetic and "personal-use, not for commercial relea
 * **Teacher tokens** (`teacher_tokens`): the EXP-086 Teacher's JSON answer for one moment as 6 ids in a SEPARATE
   vocab (`TEACHER_VOCAB`), keyed by (league, game id, moment). This is a side channel: train it as an auxiliary
   target, never feed it as context. Grounded answers were written with hindsight (they saw what came next), so
-  as context they would leak the future; the MODE token says which kind each one is.
+  as context they would leak the future; the MODE token says which kind each one is. E4's causal per-play
+  commentary (`agent/kaggle/commentary_queue.py`, mode 2) saw only the brief at that play, so it may be context.
 
 Only nights before `train_before` are ever augmented, so no valid, test, scorecard or locked night gets a copy.
 """
@@ -84,14 +85,18 @@ TEACHER_VOCAB_VERSION = "teacher-v1"
 LOCKS = ("none", "watch", "must_see")
 CONF_BUCKETS, STAY_BUCKETS = 10, 16
 T_PAD, T_BOS, T_EOS = 0, 1, 2
-T_MODE0 = 3                                 # 0 grounded (hindsight: aux target only), 1 blind
-T_LOCK0 = T_MODE0 + 2
+T_MODE0 = 3                                 # 0 grounded (hindsight: aux target only), 1 blind, 2 causal commentary
+T_LOCK0 = T_MODE0 + 3
 T_SAFE0 = T_LOCK0 + len(LOCKS) + 1           # yes, no, missing
 T_CONF0 = T_SAFE0 + 3
 T_STAY0 = T_CONF0 + CONF_BUCKETS + 1         # +1 = missing
 T_LEAGUE0 = T_STAY0 + STAY_BUCKETS + 1
-TEACHER_VOCAB = T_LEAGUE0 + len(V.BOS_LEAGUES)
-TEACHER_TOKENS = 6                           # LEAGUE MODE LOCK SAFE CONF STAY
+NEXTS = ("score", "turnover", "stoppage", "big_play", "routine")
+IMP_BUCKETS = 11                             # importance 0..10
+T_IMP0 = T_LEAGUE0 + len(V.BOS_LEAGUES)
+T_NEXT0 = T_IMP0 + IMP_BUCKETS + 1           # +1 = missing
+TEACHER_VOCAB = T_NEXT0 + len(NEXTS) + 1
+TEACHER_TOKENS = 6                           # reasoner: LEAGUE MODE LOCK SAFE CONF STAY; commentary: LEAGUE MODE LOCK IMP NEXT CONF
 _ID = re.compile(r"^(?P<lg>[a-z]+):(?P<gid>[^:|]+):(?P<m>[^|]+)\|?(?P<mode>.*)$")
 
 
@@ -130,12 +135,13 @@ class TeacherRow:
 def teacher_tokens(answer: dict) -> TeacherRow | None:
     """One teacher_out.jsonl row -> its 6 teacher-v1 ids, or None if its id or JSON can't be read."""
     m = _ID.match(str(answer.get("id", "")))
-    if not m or m["lg"] not in V.BOS_LEAGUES or m["mode"] not in ("blind", "grounded", ""):
+    if not m or m["lg"] not in V.BOS_LEAGUES or m["mode"] not in ("blind", "grounded", "commentary", ""):
         return None                                 # jump answers etc. have another schema
     j = _json(answer.get("text") or "")
     if j is None:
         return None
     blind = m["mode"] == "blind" or answer.get("task") == "reasoner_blind"
+    causal = m["mode"] == "commentary"
     lock = str(j.get("lock_in", "")).strip().lower()
     safe = str(j.get("safe_to_leave", "")).strip().lower()
     try:
@@ -147,9 +153,20 @@ def teacher_tokens(answer: dict) -> TeacherRow | None:
         stay_t = T_STAY0 + stay_bucket(float(j.get("stay_s")))
     except (TypeError, ValueError):
         stay_t = T_STAY0 + STAY_BUCKETS
-    toks = (T_LEAGUE0 + V.BOS_LEAGUES.index(m["lg"]), T_MODE0 + (1 if blind else 0),
-            T_LOCK0 + (LOCKS.index(lock) if lock in LOCKS else len(LOCKS)),
-            T_SAFE0 + {"yes": 0, "no": 1}.get(safe, 2), conf_t, stay_t)
+    league_t, lock_t = T_LEAGUE0 + V.BOS_LEAGUES.index(m["lg"]), T_LOCK0 + (LOCKS.index(lock) if lock in LOCKS
+                                                                             else len(LOCKS))
+    if causal:                                  # E4: saw only the plays up to this one, so usable as context
+        try:
+            imp_t = T_IMP0 + int(max(0, min(10, round(float(j.get("importance"))))))
+        except (TypeError, ValueError):
+            imp_t = T_IMP0 + IMP_BUCKETS
+        nxt = str(j.get("next", "")).strip().lower()
+        toks = (league_t, T_MODE0 + 2, lock_t, imp_t, T_NEXT0 + (NEXTS.index(nxt) if nxt in NEXTS else len(NEXTS)),
+                conf_t)
+        text = {"commentary": str(j.get("commentary", ""))[:200]}
+        return TeacherRow(m["lg"], m["gid"], m["m"], False, toks, text)
+    toks = (league_t, T_MODE0 + (1 if blind else 0), lock_t, T_SAFE0 + {"yes": 0, "no": 1}.get(safe, 2), conf_t,
+            stay_t)
     text = {k: str(j[k])[:200] for k in ("storyline", "why", "next") if k in j}
     return TeacherRow(m["lg"], m["gid"], m["m"], not blind, toks, text)
 

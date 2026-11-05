@@ -85,7 +85,7 @@ def augment(a) -> dict:
                 dst.mkdir(parents=True, exist_ok=True)
                 np.save(dst / f"{meta.stem}.{aug}.npy", np.concatenate(out).astype(np.uint16))
                 (dst / f"{meta.stem}.{aug}.json").write_text(json.dumps({
-                    "synthetic": True, "aug": aug, "source_shard": f"{lg}/{meta.name}", "license": S.LICENSE,
+                    "synthetic": True, "complete": True, "tags": ["synthetic", aug], "aug": aug, "source_shard": f"{lg}/{meta.name}", "license": S.LICENSE,
                     "vocab": V.VOCAB_VERSION, "train_before": a.train_before, "seed": a.seed,
                     "jitter": a.jitter if aug == "retime" else None, "tokens": off, "games": games}) + "\n")
         per[lg] = {"real_tokens": real[lg], "synthetic_tokens": prior.get(lg, 0) + sum(made.values()),
@@ -126,7 +126,7 @@ def teacher(a) -> dict:
                    "synthetic_tokens": len(rs) * S.TEACHER_TOKENS}
     man = {"kind": "teacher", "built": _now(), "license": S.LICENSE, "vocab": S.TEACHER_VOCAB_VERSION,
            "vocab_size": S.TEACHER_VOCAB, "source": str(a.answers.name), "unreadable": bad, "skipped_other_tasks": skipped,
-           "use": "auxiliary target only, never context (grounded answers saw the future)", "per_league": per}
+           "use": "grounded (hindsight) and blind: auxiliary target only, never context; commentary (causal, mode 2): may be context", "per_league": per}
     (a.out / "manifest_teacher.json").write_text(json.dumps(man, indent=1) + "\n")
     return man
 
