@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**315 modules**, 260 untagged, 155 unowned, 14 orphans (no importer).
+**316 modules**, 261 untagged, 156 unowned, 14 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -211,7 +211,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.splits +4 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (155)
+## unowned (156)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -220,9 +220,10 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/commands.py` | Phone commands that land exactly once: an id, an ack, a status, and safe retries. | - -> engine | BTN-03 |
 | `redzone/context/__init__.py` (package) | Context & hype data (Data Planner B): injuries, refs, weather, standings, buzz. | - -> - | untagged |
 | `redzone/context/buzz.py` | BUZZ core for Data Crew B: Wikipedia pageviews, Wikipedia edit rate and GDELT news volume/tone. | context.tokens, models -> - | untagged |
+| `redzone/context/nba.py` | NBA context (Data Crew B, worker B4): schedule + results, id crosswalk, rest/travel and L2M referee facts. | context.standings, context.tokens -> - | untagged |
 | `redzone/context/schedules.py` | Schedule + results loaders shared by the context scripts (stakes, weather). | - -> - | untagged |
-| `redzone/context/standings.py` | Point-in-time standings, online Elo and a playoff-odds Monte Carlo, league-generic (Crew B, worker B3). | context.tokens -> - | untagged |
-| `redzone/context/tokens.py` | Context fact shards for Data Planner B, in lane 1's vocab v2 hand-off format. | - -> context.buzz, context.standings | untagged |
+| `redzone/context/standings.py` | Point-in-time standings, online Elo and a playoff-odds Monte Carlo, league-generic (Crew B, worker B3). | context.tokens -> context.nba | untagged |
+| `redzone/context/tokens.py` | Context fact shards for Data Planner B, in lane 1's vocab v2 hand-off format. | - -> context.buzz, context.nba, context.standings | untagged |
 | `redzone/crunch.py` | [one brain, step 2] One crunch table (docs/onebrain-migration.md). | config -> demo.engine, grading, scoring.drive, scoring.engine, standby, web.phone_v2 | untagged |
 | `redzone/decider/__init__.py` (package) | no docstring | - -> - | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
 | `redzone/decider/delaymodel.py` | Per-channel stream-delay predictor: how far each channel's picture runs behind real life. | - -> decider.screen | Crunch live, NBA, Crunch live, NFL, Crunch live, NHL, Entries at a possession start (dead ball, no play missed), Landings in dead time, Mid-play entries (per 100 landings), Your-team crunch live |
@@ -371,7 +372,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/world_model_pilot.py` (entry) | World model pilot (EXP-100): event tokens -> a small transformer -> held-out-night grades, end to end. | noggin.factory -> - | untagged |
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 
-## Untagged (260)
+## Untagged (261)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -408,6 +409,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/config.py`
 - `redzone/context/__init__.py`
 - `redzone/context/buzz.py`
+- `redzone/context/nba.py`
 - `redzone/context/schedules.py`
 - `redzone/context/standings.py`
 - `redzone/context/tokens.py`
@@ -646,7 +648,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `agent/train/evaluate.py`
 - `agent/train/make_data.py`
 - `redzone/context/buzz.py`
+- `redzone/context/nba.py`
 - `redzone/context/schedules.py`
-- `redzone/context/standings.py`
 - `redzone/lab/night/presses.py`
 - `redzone/tuners/identity.py`

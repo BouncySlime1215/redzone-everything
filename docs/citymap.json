@@ -621,6 +621,20 @@
     "untagged"
    ]
   },
+  "redzone/context/nba.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/context/standings.py",
+    "redzone/context/tokens.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "NBA context (Data Crew B, worker B4): schedule + results, id crosswalk, rest/travel and L2M referee facts.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/context/schedules.py": {
    "contracts": [],
    "inputs": [],
@@ -638,7 +652,9 @@
     "redzone/context/tokens.py"
    ],
    "kind": "module",
-   "outputs": [],
+   "outputs": [
+    "redzone/context/nba.py"
+   ],
    "owner": "unowned",
    "role": "Point-in-time standings, online Elo and a playoff-odds Monte Carlo, league-generic (Crew B, worker B3).",
    "serves": [
@@ -651,6 +667,7 @@
    "kind": "module",
    "outputs": [
     "redzone/context/buzz.py",
+    "redzone/context/nba.py",
     "redzone/context/standings.py"
    ],
    "owner": "unowned",
@@ -5795,10 +5812,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 315,
+  "modules": 316,
   "orphans": 14,
-  "unowned": 155,
-  "untagged": 260
+  "unowned": 156,
+  "untagged": 261
  },
  "version": 1
 }
