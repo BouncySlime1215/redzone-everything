@@ -4764,6 +4764,17 @@
     "untagged"
    ]
   },
+  "scripts/license_check.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "F8 license-tag check (Test Factory; Nick, Nov 4 2026 11:20 PM ET, data B).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/multiview_probe.py": {
    "contracts": [],
    "inputs": [
@@ -5419,10 +5430,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 288,
+  "modules": 289,
   "orphans": 10,
-  "unowned": 129,
-  "untagged": 233
+  "unowned": 130,
+  "untagged": 234
  },
  "version": 1
 }
