@@ -282,6 +282,10 @@ class Controller:
         # stick plays it). A fresh tune clears it. behind_of(target) is the engine's B for a target
         # (0 = no hold); on_behind(target, new, old) tells the delay book (DelayBook.set_behind).
         self.held: dict[str, float] = {}
+        # [SYNC A] stick host -> wall time of its last tune command, and -> seconds it plays behind its live
+        # edge as MEASURED (sync_edge.py via the probe; `held` is what the app asked for)
+        self.tuned_at: dict[str, float] = {}
+        self.behind_live: dict[str, float] = {}
         self.behind_of: Callable[[str], float] = lambda target: 0.0
         self.dead_ball: Callable[[str], bool] = lambda target: True   # [STK-06] engine: is target's game dead now?
         self._buffer_bad: dict[str, float] = {}                      # target -> when its hold went bad
@@ -1413,6 +1417,7 @@ class Controller:
             return TuneResult(False, target, 0.0, [], f"{STICK_HUNG}: {stick.host}, retry in {br.retry_in():.0f}s",
                               screen_changed=False)
         self._tuned_on = stick.host
+        self.tuned_at[stick.host] = time.time()
         res = await tuner.tune(stick, ref, target, **({"may_cut": may_cut} if may_cut is not None else {}))
         if not res.ok and br is not None and br.state != "closed" and not res.error.startswith(STICK_HUNG):
             # The tune died because the stick hung, not because of the channel: say so, so the
@@ -3066,6 +3071,35 @@ class Controller:
                                     "stick": self.hdmi.get(host), "behind_s": behind_s, "err_s": err, **kw}) + "\n")
         except OSError:
             log.exception("buffer log")
+
+    def force_live_hidden(self, target: str) -> bool:
+        """[SYNC B, EXP-801, flag sync.edge.force_live] The hidden stick plays `target` "live" (no hold the app
+        asked for) but the live-edge reader (sync_edge.py) measured it landed behind the edge: re-tune it at
+        the edge, as a refresh preload (any switch or the planner's own preload cancels it). The stick on
+        screen is never touched. False = not now (busy, parked, held on purpose, unknown input)."""
+        if not (self.live_control and self.two_stick) or self.input_unknown or self.hidden is None:
+            return False
+        if self.hidden_target != target or not self.hidden_ready or self.parked is not None \
+                or self.on_target == target or self.held.get(target, 0.0) > 0 or self._busy() \
+                or time.time() < self._asleep_until or not self.can_tune(target):
+            return False
+        log.info("sync: %s on the hidden stick landed behind its live edge: re-tuning it at the edge", target)
+        self._cancel_refresh()
+        self.hidden_ready = False
+        self._preloading, self._refreshing = (target, None), target
+        self._preload_task = asyncio.create_task(self._preload(target, None, None, time.time()))
+        return True
+
+    def relink_visible_live(self, target: str) -> bool:
+        """[SYNC B, flag sync.edge.force_live_visible] The stick on screen plays `target` behind its live edge
+        without a hold the app asked for (a stall, a pause): re-link it to live with a fresh deep link (2.5 s
+        on YouTube TV, overseer Nov 5). Only on a dead ball, so no play is cut; any switch cancels it."""
+        if not self.live_control or self.input_unknown or self._flipping or self.on_target != target \
+                or self.held.get(target, 0.0) > 0 or self._busy() or not self.dead_ball(target):
+            return False
+        log.info("sync: %s on screen plays behind its live edge: re-linking it to live", target)
+        asyncio.get_running_loop().create_task(self.restore_visible(target, relink=True, why="behind live edge"))
+        return True
 
     def verify_hidden(self, target: str | None) -> asyncio.Task | None:
         """Pre-game check (redzone/plan.py): tune `target` on the HIDDEN stick and report whether it

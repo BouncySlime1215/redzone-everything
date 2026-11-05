@@ -179,6 +179,11 @@ class Engine:
         self.sync_probe = SyncProbe(self.cfg, self.control, lambda: self.recorder.root)   # [SYNC] read-only stick probe
         self.sync_probe.on_condition = self._sync_condition
         self.sync_probe.on_screen_event = self._break_event
+        # [SYNC A] the sync filter's (mu, sd) for a target, logged beside each live-edge read
+        self.sync_probe.delay_of = lambda target: (self.sync.estimate(target) if self.sync is not None
+                                                   and hasattr(self.sync, "estimate") else None)
+        self.sync_probe.on_force_live = lambda target, row: (   # [SYNC B] re-link to live (flags off)
+            self.control.force_live_hidden(target) if row["role"] == "hidden" else self.control.relink_visible_live(target))
         self._alarmed: dict[str, float] = {}   # [SYNC 6] target -> last drift alarm
         self._last_snapshot = 0.0
         self.mic = None
