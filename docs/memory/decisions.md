@@ -661,3 +661,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   same data/sync.jsonl rows. It stays OFF: #223's dev bar failed on NBA and NHL (rule #1 clause, and NHL short
   of 2 s), though it cut delay error p95 in every league. Why wire it now: Nick's RC7 requirement 2 (sync
   p95 ≤ 2 s) gets graded from those logs.
+- **2026-11-05 (Nick, 10:55 PM ET): a second "Go now" tap switches at once, even mid-play.** It is his explicit
+  control; one tap ("Watch this") still waits for a dead ball. Why: with the hidden stick preloaded (#229/#233) a forced
+  press flips in ~2-3 s wherever the play is (ping-pong drill: forced mid-play cuts 2 -> 7, unexplained 2 -> 0). Rule #1
+  covers autopilot entries; forced presses are graded separately (presses.classify_mid_play "forced_go_now").
