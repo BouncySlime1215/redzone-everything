@@ -611,8 +611,11 @@ class Decider:
             # Your team's missed big play clears the bar against ordinary live play (crunch and locked
             # moments never reach here: a replay is only considered between plays of a normal stretch).
             yours = yours and self.cfg.get("replay.yours_first", True)
+            # [EXP-026, replay.urgent_clears_top] past half its due time, a missed play clears the bar like
+            # a collision does (Nick: a missed key moment airs within 2-3 min)
+            due = rw and self.cfg.get("replay.urgent_clears_top")
             pool = [m for m in pool if self._replay_value(m, now) >= top + margin or (yours and m.mine)
-                    or (rw and (m.must or meanwhile(m)))]
+                    or (rw and (m.must or meanwhile(m))) or (due and m.due_s and self._urgency(m, now) > 0)]
 
         yours_first = self.cfg.get("replay.yours_first", True)
 

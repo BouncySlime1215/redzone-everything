@@ -376,3 +376,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   decisions, and never in crunch, down the stretch, your-team moments or the catch-up queue. Every decision logs its
   propensity so the doubly robust estimator is valid. Promotion goes through the normal bar (worth it ≥ live).
   Reason: grade new brains on logged nights without running them live.
+- 2026-11-05 (lane 2, EXP-026, pre-registered at 40f4639): **`replay.urgent_clears_top`** (default `false`) ships OFF,
+  and `replay.catchup_s` stays 600. Neither arm (catchup 180; catchup 180 + urgent clears the bar) lifted big plays
+  live or replayed within 3 min by more than +0.6 (bar +3.0). **Why:** catch-ups wait on the leave gate (σ 9 s), not on
+  their queue order; see the experiments.md results log.
