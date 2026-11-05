@@ -59,6 +59,19 @@ release (that is why the Nov 4 candidate shipped as RC6.2: mid-commercial joins 
 - [ ] `mid_break` = 0: no entry lands in a commercial break with > 10 s of dead time left (`cutgrade.BREAK_TAIL_BAR`).
       Mid-play entries stay a separate hard 0.
 
+**Sync program** (Nick, Nov 5 2:10 AM ET: sync is the #1 priority after Rule #1; lane 2 owns, lane 3 grades, lane 4
+integrates). RC7's sync part is lane 2's #281, and it ships only if Nick picks it on the RC7 sync card:
+
+- [ ] `sync.edge.enabled: true` (shadow, read-only): one `cat /proc/uptime; dumpsys media_session` per stick per
+      second through `tuners/adb.EDGE_READ`. It never sends a keyevent. Check that K3 holds at the baseline, and that
+      the CI RAM/CPU row (tick p99, RSS, CPU) is not worse than RC6.2 with it on.
+- [ ] `sync.edge.force_live` and `sync.edge.force_live_visible` ship **false** (they re-tune). Turning them on is a
+      separate decision with its own decisions.md line.
+- [ ] Rows land in `data/sync_truth/edge/<night>.jsonl` (the edge half only; outside the v10 `*.jsonl` glob), and
+      lane 3's syncgrade (#279) reads them. After the first night, check that both sticks logged rows.
+- [ ] `tests/conftest.py _no_real_devices` is on the tree, so the Mac deploy's test step can't run the real adb
+      next to the live sticks.
+
 RC7 also checks:
 
 - [ ] **Second "Go now" tap** (Nick, Nov 4 10:55 PM ET): one tap waits for a dead ball; a second tap switches at
