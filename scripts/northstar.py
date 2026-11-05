@@ -105,8 +105,8 @@ METRICS = [
     ("dead_air", "Dead air (commercials/breaks on screen)", "0%", -1, 0.0, 100.0),
     # Nick, Nov 4 3:30 PM: Heat 2.0, one learned Watch Value per game (0-100, 50 = league-median live moment,
     # 90+ = top 5%), self-taught from what happened next. Gates TBD; PENDING until a card carries `watch_value`.
-    ("wv_calibration_err", "Watch Value calibration error (reliability curve, locked; points)", "gate TBD", -1, None, None),
-    ("wv_rank_agree", "Watch Value rank agreement with the oracle (pairwise, %)", "gate TBD", 1, None, None),
+    ("wv_calibration_err", "Watch Value calibration error (reliability curve, locked; points)", "<= 6 pts", -1, 6.0, 0.0),
+    ("wv_rank_agree", "Watch Value rank agreement with the oracle (pairwise, %)", ">= 65% worst league", 1, 65.0, 100.0),
     # Nick, Nov 4 3:40 PM: the city map's contract checker (lane 4). PENDING until it writes docs/citymap.json.
     ("contract_violations", "Contract violations (city map checker)", "0", -1, 0.0, 10.0),
     ("recovery", "Faults recovered without Nick (e2e night)", ">= 95%", 1, 95.0, 100.0),
@@ -389,7 +389,11 @@ def system_rows(cards: dict, contracts: dict | None = None) -> list[dict]:
             out.append(_row(key, None, None, None, PENDING, "no card carries watch_value yet (Heat 2.0, lanes 1+2)"))
             continue
         worst = max(vals.values()) if META[key]["dir"] < 0 else min(vals.values())
-        out.append(_row(key, round(worst, 2), None, None, INFO,
+        if key == "wv_calibration_err" and worst <= 1.0:
+            worst *= 100.0                       # cards report 0-1; the gate is in points of 0-100
+        bar = META[key].get("bar")
+        st = INFO if bar is None else (PASS if (worst <= bar if META[key]["dir"] < 0 else worst >= bar) else FAIL)
+        out.append(_row(key, round(worst, 2), None, None, st,
                         "worst league; " + ", ".join(f"{lg.upper()} {v:.1f}" for lg, v in vals.items()) + f" ({lbl})"))
     if all("crunch_exits" in x for lg in LEAGUES for x in _per(cards, lg)) and any(_per(cards, lg) for lg in LEAGUES):
         out.append(_rate("crunch_exit_acc", [(int(x.get("crunch_exits_ok") or 0), int(x.get("crunch_exits") or 0))
