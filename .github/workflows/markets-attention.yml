@@ -17,10 +17,10 @@ jobs:
     timeout-minutes: 340
     strategy:
       fail-fast: false
-      max-parallel: 2          # stay polite: ~2 req/s per job
+      max-parallel: 3          # stay polite: ~2 req/s per job
       matrix:
         league: [nba, nfl]     # Nick 2:00 AM: NBA first, then NFL
-        window: ["2024-07-01:2025-06-30", "2025-07-01:2026-11-05"]
+        window: ["2024-07-01:2025-06-30", "2025-07-01:2026-06-30", "2026-07-01:2026-11-05"]   # one season each
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

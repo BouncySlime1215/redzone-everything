@@ -24,3 +24,10 @@ def test_minutes_and_games(tmp_path):
     g = list(csv.DictReader(open(tmp_path / "out" / "market_games.csv")))[0]
     assert g["volume_usd"] == "12345.0" and g["swings_3pt"] == "2" and g["live_range"] == "0.16"
     assert "p_home" not in m[0]                      # derived only: no price level written
+
+
+def test_p_home_pre_takes_last_price_ten_minutes_before_start():
+    ticks = [{"ts": 1000.0, "p_home": 0.40}, {"ts": 1300.0, "p_home": 0.45}, {"ts": 1500.0, "p_home": 0.60}]
+    assert A.p_pre(ticks, 1900.0) == 0.45          # 1500 is only 400 s before the start
+    assert A.p_pre(ticks, None) is None
+    assert A.p_pre(ticks, 1000.0 + 25 * 3600) is None   # nothing within 24 h

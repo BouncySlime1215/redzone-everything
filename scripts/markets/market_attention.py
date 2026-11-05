@@ -7,7 +7,8 @@ wallets. Kalshi is not used (red). Personal-use, not for commercial release.
 
     python scripts/markets/market_attention.py --in out/markets --out out/attention
       -> out/attention/market_minutes.csv  (game_key, minute_ts, live, min_from_start, abs_dp_1m, abs_dp_5m)
-         out/attention/market_games.csv    (game_key, league, start_ts, volume_usd, live_minutes, swings_3pt, live_range)
+         out/attention/market_games.csv    (game_key, league, start_ts, volume_usd, live_minutes, swings_3pt, live_range,
+                                              p_home_pre = last price >= 10 min before the start)
 """
 from __future__ import annotations
 
@@ -20,6 +21,16 @@ from pathlib import Path
 
 TAG = "personal-use, not for commercial release"
 SWING = 0.03
+PRE_GAP_S = 600          # p_home_pre: last price at least 10 min before the start (planner, Nick 4:50 PM Nov 5)
+PRE_MAX_S = 24 * 3600    # ... and no older than 24 h, else empty
+
+
+def p_pre(ticks: list[dict], start: float | None) -> float | None:
+    """Last Polymarket home price in [start - 24 h, start - 10 min]: a Game Importance input only."""
+    if start is None:
+        return None
+    pre = [r for r in ticks if start - PRE_MAX_S <= r["ts"] <= start - PRE_GAP_S]
+    return round(max(pre, key=lambda r: r["ts"])["p_home"], 4) if pre else None
 
 
 def minutes(ticks: list[dict]) -> list[dict]:
@@ -56,7 +67,7 @@ def run(inp: Path, out: Path) -> dict:
         wm = csv.writer(fm)
         wg = csv.writer(fg)
         wm.writerow(["game_key", "minute_ts", "live", "min_from_start", "abs_dp_1m", "abs_dp_5m", "tag"])
-        wg.writerow(["game_key", "league", "start_ts", "volume_usd", "live_minutes", "swings_3pt", "live_range", "tag"])
+        wg.writerow(["game_key", "league", "start_ts", "volume_usd", "live_minutes", "swings_3pt", "live_range", "p_home_pre", "tag"])
         for (lg, gk, mid), ticks in sorted(by_mkt.items()):
             rows = minutes(ticks)
             v = vol.get(mid, {})
@@ -67,7 +78,7 @@ def run(inp: Path, out: Path) -> dict:
             live = [t["p_home"] for t in ticks if t.get("phase") == "live"]
             swings = sum(1 for m in rows if m["live"] and (m["abs_dp_1m"] or 0) >= SWING)
             wg.writerow([gk, lg, start, v.get("volume_usd"), len(live), swings,
-                         round(max(live) - min(live), 4) if live else None, TAG])
+                         round(max(live) - min(live), 4) if live else None, p_pre(ticks, start), TAG])
             n_min += len(rows)
             n_games += 1
     counts = {"games": n_games, "labeled_minutes": n_min, "with_volume": sum(1 for k in by_mkt if k[2] in vol),
