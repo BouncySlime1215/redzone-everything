@@ -835,3 +835,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   [0, 0]); the instrument does see live play (landings shifted -15 s: 10 live); at random moments the shared grader
   errs toward "live" (the safe side). An NBA "0 mid-play" claim now needs both graders at 0. It and
   `scripts/entry_autopsy.py` (its input) join the freeze. Grader freeze v26.
+- 2026-11-05 (Nick, 9:10 AM ET): **The time-shift buffer is now the main architecture.** "I approve this plan and I want it
+  all done and ready for tonight." Run the show 60-90 s behind live (cap 90 s, `timing.behind_live_s.max_s`); the brain becomes
+  the editor. Tonight `timing.behind_live_s` runs in SHADOW for every game (no screen change; hold a stick via pause/seek only
+  on the hidden stick while Nick watches), logging every decision on exact sync signals (Prime epoch position, YTTV behind-live
+  meter + per-channel landing, the web-player ingest clock as the YTTV reference). The replay sim grades buffered vs live on
+  every recorded night (from-the-start %, mid-play = 0, dead air, switches/h, % of oracle; sweep 45/60/75/90 s per league). A
+  windowed-hindsight oracle teacher is built (exact optimizer in-window; learned parts beyond it). Seek reliability is measured
+  per app/channel (SEEK_TO helper if keys aren't precise). Gate: if tonight's shadow beats live on the scorecard with 0 mid-play
+  entries, the integrator prepares RC8 with the buffer ON per league and Nick flips it. Rule #1 never changes.
