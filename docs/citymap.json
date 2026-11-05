@@ -1735,6 +1735,7 @@
     "redzone/sources/eventlinks.py",
     "redzone/sources/fastcast.py",
     "redzone/sources/fastcast_check.py",
+    "redzone/sources/fastfeeds.py",
     "redzone/sources/feeds.py",
     "redzone/sources/http.py",
     "redzone/sources/leagues.py",
@@ -2745,6 +2746,7 @@
     "redzone/scoring/postseason.py",
     "redzone/sources/espn.py",
     "redzone/sources/fastcast.py",
+    "redzone/sources/fastfeeds.py",
     "redzone/sources/feeds.py",
     "redzone/sources/leagues.py",
     "redzone/sources/merge.py",
@@ -3680,6 +3682,7 @@
     "redzone/noggin/pick.py",
     "redzone/recorder.py",
     "redzone/sources/fastcast.py",
+    "redzone/sources/fastfeeds.py",
     "redzone/sources/leagues.py",
     "redzone/views.py",
     "scripts/entry_autopsy.py",
@@ -3745,6 +3748,24 @@
     "untagged"
    ]
   },
+  "redzone/sources/fastfeeds.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/models.py",
+    "redzone/sources/espn.py",
+    "redzone/sources/http.py",
+    "redzone/sources/leagues.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py"
+   ],
+   "owner": "PLATFORM",
+   "role": "[tracker item 5, Nov 5] Fast league feeds in SHADOW: polled faster than ESPN, logged, never merged.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/sources/feeds.py": {
    "contracts": [
     "FeedSnapshot",
@@ -3776,6 +3797,7 @@
    "kind": "module",
    "outputs": [
     "redzone/engine.py",
+    "redzone/sources/fastfeeds.py",
     "redzone/sources/feeds.py",
     "scripts/fault_drill.py",
     "scripts/plan_tonight.py"
@@ -3795,7 +3817,8 @@
    "kind": "module",
    "outputs": [
     "redzone/engine.py",
-    "redzone/recorder.py"
+    "redzone/recorder.py",
+    "redzone/sources/fastfeeds.py"
    ],
    "owner": "PLATFORM",
    "role": "League feeds that are faster or richer than ESPN for some things.",
@@ -4392,19 +4415,6 @@
     "Big plays live or replayed within 3 min"
    ]
   },
-  "scripts/attention_labels.py": {
-   "contracts": [],
-   "inputs": [
-    "scripts/wv_aux_label.py"
-   ],
-   "kind": "entry",
-   "outputs": [],
-   "owner": "unowned",
-   "role": "Data G: per-play human-attention labels for Watch Value (EXP-1704), plus the WP-only drama baseline.",
-   "serves": [
-    "untagged"
-   ]
-  },
   "scripts/attention_pull.py": {
    "contracts": [],
    "inputs": [],
@@ -4968,6 +4978,17 @@
    "outputs": [],
    "owner": "unowned",
    "role": "Family-wise correction for experiments that share dev nights (PROPOSAL, test writers, EXP-722).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/fast_feed_race.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[tracker item 5] The feed lag race: fast league feeds (fast_feeds.jsonl) vs ESPN (plays.jsonl), per league.",
    "serves": [
     "untagged"
    ]
@@ -5912,19 +5933,6 @@
    "serves": [
     "untagged"
    ]
-  },
-  "scripts/wv_aux_label.py": {
-   "contracts": [],
-   "inputs": [],
-   "kind": "entry",
-   "outputs": [
-    "scripts/attention_labels.py"
-   ],
-   "owner": "unowned",
-   "role": "Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804).",
-   "serves": [
-    "untagged"
-   ]
   }
  },
  "pages": {
@@ -5933,7 +5941,7 @@
  "summary": {
   "modules": 324,
   "orphans": 14,
-  "unowned": 164,
+  "unowned": 163,
   "untagged": 268
  },
  "version": 1

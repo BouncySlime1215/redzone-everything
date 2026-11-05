@@ -28,7 +28,7 @@ from redzone.plan import Tonight
 from redzone.scoring import breaks
 from redzone.scoring.drive import DriveScorer
 from redzone.scoring.engine import Personal, Scored, Scorer
-from redzone.sources import espn, fastcast, fastcast_check, leagues
+from redzone.sources import espn, fastcast, fastcast_check, fastfeeds, leagues
 from redzone.sources.http import Fetcher
 from redzone.sources.feeds import FeedBook
 from redzone.sources.merge import Merger
@@ -184,6 +184,8 @@ class Engine:
         self.reeler = reel.Reeler(self.cfg)   # catch-up reel kept ready from the summaries' clips
         self._reel_task: asyncio.Task | None = None
         self.recorder = Recorder()
+        # [tracker item 5] NBA 1 s / NHL / MLB league feeds in SHADOW (logged only; flag fast_feeds.enabled, off)
+        self.fast_feeds = fastfeeds.FastFeeds(self.cfg, lambda: self.merger.games, self.recorder.fast_feed)
         from redzone.sync_probe import SyncProbe
         self.sync_probe = SyncProbe(self.cfg, self.control, lambda: self.recorder.root)   # [SYNC] read-only stick probe
         self.sync_probe.on_condition = self._sync_condition
@@ -283,7 +285,7 @@ class Engine:
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
                              self._boundary_loop(), self._scorebug_loop(), self._league_fast_loop(), self.tonight.run(),
                              self.supervisor.run(), self.network.run(), self.governor.run(),
-                             self.sync_probe.run())
+                             self.sync_probe.run(), self.fast_feeds.run())
 
     def _delay_estimate(self, target: str) -> tuple[float, float]:
         d = self.delays.get(target)
