@@ -45,3 +45,19 @@ release rights, `gh release create eval-data-v2 eval-archive.tgz eval-archive.tg
 Commit the rewritten `eval-data.lock.json` in its own PR with the new baseline numbers. The build is
 deterministic (same files give the same sha256). Never replace an existing tag's asset: older branches pin it.
 `providers.profiles` is stripped from `eval_config.yaml` before publishing (grading never reads it).
+
+## Friday Nov 6: switch the default pin to eval-data-v3
+
+eval-data-v2 is published but its locked set reaches back over v1 dev nights (leak_check FAILs it), so it is
+never the default. v3 waits for the Nov 5 night: then every league has >= 8 locked nights, all at or after v1's
+locked start (Oct 29). Its old your-team nights (NBA/NHL) come from Oct 2025 - Jan 2026 only, before the
+Noggin's own locked start (agent/distill/split.py BIG_CUTS, Feb 1), so no pin-dev night is a Noggin-locked one.
+
+1. Build (GitHub runner, ~11 UTC Fri): `git checkout -B claude/eval-data-v2 origin/integration/next` and push it.
+   `.github/workflows/eval-data-v2.yml` backfills to 20261105, builds, leak-checks and publishes `eval-data-v3`
+   with `eval-data-v3.lock.json` (only if the tag is new). NOT READY = a skipped build: re-run later.
+2. Switch (cloud session): `python scripts/switch_eval_pin.py --tag eval-data-v3`: rewrites eval-data.lock.json
+   (the v1 pin is kept as eval-data-v1.lock.json), points ci.yml / northstar.yml / CLAUDE.md at v3, fetches,
+   runs leak_check, writes agent/kaggle/assets/locked_v3.json, and lists what's left by hand.
+3. One PR: the decisions.md line, the docs row, the Kaggle `--locked` default, and the new baseline
+   (`scripts/northstar.py --split both`; locked read once).

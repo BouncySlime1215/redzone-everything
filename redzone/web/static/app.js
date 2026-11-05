@@ -11,11 +11,11 @@ import { patch, flash } from "./rz-dom.js?v=40";
 import { icon } from "./rz-ui.js?v=40";
 import { startStream, act } from "./rz-api.js?v=43";
 import { updateSheets, topSheet, closeSheet } from "./rz-sheet.js?v=40";
-import { renderNow, countdown } from "./rz-now.js?v=68";
+import { renderNow, countdown } from "./rz-now.js?v=71";
 import { renderGames } from "./rz-games.js?v=41";
 import { renderBets } from "./rz-bets.js?v=40";
 import { renderLab, loadLab } from "./rz-lab.js?v=40";
-import { renderSettings, announce } from "./rz-settings.js?v=68";
+import { renderSettings, announce } from "./rz-settings.js?v=71";
 import { loadTeams } from "./rz-detail.js?v=42";
 
 const TABS = ["now", "games", "bets", "lab", "settings"];
@@ -61,7 +61,7 @@ function banners(S, m) {
   if (S) {
     const h = m.hold;
     if (h) {
-      const body = h.waiting ? "Never mid-play: it cuts over at the next safe moment. Go now cuts immediately."
+      const body = h.waiting ? "One tap waits for the next safe moment, so it never cuts in mid-play. Tap Go now to switch right away, even mid-play: your call."
         : h.resume_at ? `${esc(h.matchup)} ${esc(h.why)} — autopilot back in <span data-clockdown="${num(h.resume_at)}" data-own>${esc(countdown(h.resume_at))}</span>.`
         : h.auto_resume ? "Autopilot won't switch away. It takes back over when this game ends or turns into a blowout."
         : "Autopilot won't switch away until you tap Resume auto.";

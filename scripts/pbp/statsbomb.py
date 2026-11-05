@@ -28,7 +28,7 @@ BASE = "https://raw.githubusercontent.com/statsbomb/open-data/master/data/"
 LICENSE = "StatsBomb Open Data user agreement: research and personal interest; credit StatsBomb (logo if published)"
 CREDIT = "Data: StatsBomb Open Data (https://github.com/statsbomb/open-data)"
 # Measured 2026-11-05: 80 competition-seasons, 3961 matches; 10 sampled matches averaged 3642 events.
-SOURCE = {"id": "statsbomb", "leagues": "many", "license": LICENSE, "tag": "", "est_events_per_game": 3640,
+SOURCE = {"id": "statsbomb", "leagues": "many", "license": LICENSE, "tag": schema.PERSONAL, "est_events_per_game": 3640,
           "matches": 3961, "competition_seasons": 80}
 WHISTLE = {"Foul Committed", "Offside"}
 
@@ -67,7 +67,7 @@ def convert_match(match: dict, events: list[dict], competition: dict | None = No
     base = dict(source="statsbomb", sport="soccer", league=league, level=level, season=season,
                 game_id=str(match["match_id"]), night=match["match_date"].replace("-", ""),
                 home=slug(match["home_team"]["home_team_name"]), away=slug(match["away_team"]["away_team_name"]),
-                license=LICENSE, tag="")
+                license=LICENSE, tag=schema.PERSONAL)
     evs = sorted(events, key=lambda e: e.get("index", 0))
     side_of = {hid: "home", aid: "away"}
     score = {"home": 0, "away": 0}
@@ -154,7 +154,7 @@ def pull_all(out_dir, rps: float = 4, competitions=None, session=None, keep_raw:
         metas.append(schema.write_shard(rows, shard, {
             "source": "statsbomb", "league": league, "season": season_year(comp["season_name"]),
             "competition_id": comp["competition_id"], "season_id": comp["season_id"], "data_plan": "A/B",
-            "license": LICENSE, "tag": "", "credit": CREDIT, "gender": comp.get("competition_gender"),
+            "license": LICENSE, "tag": schema.PERSONAL, "credit": CREDIT, "gender": comp.get("competition_gender"),
             "dropped_games": dropped}))
         if not keep_raw:      # events files are ~3.5 MB each; the shard holds everything we use
             for mid in ids:

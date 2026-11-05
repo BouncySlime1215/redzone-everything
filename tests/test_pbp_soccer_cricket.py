@@ -67,7 +67,7 @@ def test_statsbomb_convert():
     assert p2["kind"] == "half_start" and p2["elapsed_s"] == 0.0  # timestamp resets per period
     passes = [r for r in rows if r["kind"] == "pass" and r["actor2_id"]]
     assert passes and all(0 <= r["x"] <= 1 and 0 <= r["y"] <= 1 for r in passes)
-    assert {r["possession"] for r in rows} <= {"home", "away"} and r0["license"] == S.LICENSE and r0["tag"] == ""
+    assert {r["possession"] for r in rows} <= {"home", "away"} and r0["license"] == S.LICENSE and r0["tag"] == schema.PERSONAL
 
 
 def test_statsbomb_pull_all_and_shard(tmp_path):
@@ -216,4 +216,4 @@ def test_cricsheet_pull_all(tmp_path):
 
 def test_sources():
     for m in (S, W, C):
-        assert set(m.SOURCE) >= {"id", "leagues", "license", "tag", "est_events_per_game"} and m.SOURCE["tag"] == ""
+        assert set(m.SOURCE) >= {"id", "leagues", "license", "tag", "est_events_per_game"} and m.SOURCE["tag"] == (schema.PERSONAL if m is S else "")
