@@ -273,6 +273,7 @@ def test_watch_values_learned_field_or_stub():
     v = phone_v2.watch_values(old, games)
     assert v["source"] == "learned" and v["games"][0] == {"game_id": "a", "matchup": "A @ B", "league": "nba", "wv": 63,
                                                          "why": "Comeback brewing", "crunch_state": "entering", "stakes_line": "",
+                                                         "stakes_pending": True,
                                                          "crunch": True, "is_break": False, "source": "learned"}
     assert v["games"][1]["why"] == "Break"                                             # no watch_why: the reason
     assert phone_v2.watch_values({}, {}) == {"games": [], "source": None}
@@ -283,7 +284,8 @@ def test_watch_values_learned_field_or_stub():
     old["a"].stakes = 0.7
     assert phone_v2.watch_values(old, games)["games"][0]["stakes_line"] == "Big stakes"           # stub
     old["a"].stakes_line = "AFC 1-seed race, top-5 matchup"                                       # lane 1 wins
-    assert phone_v2.watch_values(old, games)["games"][0]["stakes_line"] == "AFC 1-seed race, top-5 matchup"
+    g0 = phone_v2.watch_values(old, games)["games"][0]
+    assert g0["stakes_line"] == "AFC 1-seed race, top-5 matchup" and g0["stakes_pending"] is False
     old["b"].crunch_state = "bogus"
     assert phone_v2.watch_values(old, games)["games"][1]["crunch_state"] is None
 
@@ -313,3 +315,111 @@ def test_night_route_carries_plan_marks(client, engine):
                     "VALUES (?,?,?,?,?,?,?,?,?)", (time.time(), None, gid, "a", "replay", "catch-up", 0, 1, "{}"))
     r = client.get("/api/v2/night").json()
     assert r["plan_counts"]["catchup"] >= 1 and r["plan_marks"][-1]["type"] == "catchup"
+
+
+def test_provenance_from_trace_fields_or_stub():
+    trace = {"trace": {"id": "s1", "decided_at": 100.0, "kind": "crunch", "steps": [["safe_done", 3.0], ["flip_start", 3.2]],
+                       "spans": {"safe_wait": 3.0}, "path": "flip", "picture_confirmed": True, "picture_at": 105.0,
+                       "enter_delay": {"mu": 44.0, "sigma": 2.0}}}
+    row = {"ts": 100.0, "frm": "a", "to_game": "b", "kind": "crunch", "reason": "Crunch time playbook=CRUNCH-02 plan=overlap",
+           "ok": 1, "dry_run": 0, "detail": json.dumps(trace)}
+    v = phone_v2.provenance_view(row, lambda g: g.upper())
+    assert v["source"] == "stub" and v["key"] == "100.000|b" and v["to"] == "B"
+    assert [c["stage"] for c in v["chain"]] == ["decided", "guarded", "command", "picture"]
+    assert [p["module"] for p in v["parts"]] == ["decider", "playbook", "planner", "sync", "guard"]
+    trace["trace"]["provenance"] = {"planner": "overlap", "watch_value": {"to": 88}, "extra": 1}
+    row["detail"] = json.dumps(trace)
+    v = phone_v2.provenance_view(row, str)
+    assert v["source"] == "trace" and [p["module"] for p in v["parts"]] == ["watch_value", "planner", "extra"]
+    row["detail"] = "{}"
+    assert phone_v2.provenance_view(row, str)["chain"] == [] and phone_v2.provenance_view(row, str)["has_trace"] is False
+
+
+def test_provenance_route(client, engine):
+    assert client.get("/api/v2/provenance?key=1|a").status_code == 404
+    _on(engine)
+    gid = next(iter(engine.merger.games))
+    _switch(engine, gid)
+    sw = client.get("/api/v2/switches").json()["switches"][0]
+    r = client.get(f"/api/v2/provenance?key={sw['key']}").json()
+    assert r["ok"] and r["source"] == "stub" and r["parts"][0]["module"] == "decider"
+    assert client.get("/api/v2/provenance?key=nope").json()["ok"] is False
+    assert client.get("/api/v2/provenance?key=1.0|zzz").json()["ok"] is False
+
+
+def test_held_view_holding_coming_back_and_catchup():
+    from redzone.decider.decider import Missed
+    q = [Missed("c", "p1", "Goal", "goal", t=900.0, value=80, replayed=True),
+         Missed("c", "p2", "Ovechkin one-timer", "goal", t=950.0, value=90, mine=True, due_s=180.0)]
+    v = phone_v2.held_view("b", True, 84.04, "b", 1240.0, q, "a", str.upper, now=1000.0)
+    assert v["held"] == {"game_id": "b", "matchup": "B", "ready": True, "behind_s": 84.0}
+    assert v["back"]["in_s"] == 240 and v["back"]["text"] == "back to B within 4 min"
+    assert v["catchup"]["label"] == "Ovechkin one-timer" and v["catchup"]["due_in_s"] == 130 and v["queued"] == 1
+    assert phone_v2.held_view(None, False, 0.0, None, None, [], "a", str, 0.0) is None
+    assert phone_v2.held_view(None, False, 0.0, "a", None, [], "a", str, 0.0)["back"] is None   # already home
+
+
+def test_held_route(client, engine):
+    assert client.get("/api/v2/held").status_code == 404
+    _on(engine)
+    r = client.get("/api/v2/held").json()
+    assert r["enabled"] and "view" in r
+
+
+def test_ledger_view_pending_then_folded(tmp_path):
+    from redzone.web import ledger as DL
+    v = DL.view(DL.read(tmp_path / "missing.json"))
+    assert v["pending"] and [r["league"] for r in v["rows"]][:3] == ["nfl", "cfb", "nba"]
+    assert v["totals"]["pct_of_target"] == 0.0 and len(v["nfm"]["milestones"]) == len(DL.DEFAULT_MILESTONES)
+    assert "PENDING" in DL.table(v)
+    man = {"nfl": {"source": "nflverse", "license": "CC-BY", "seasons": "2002-2025", "windows": 1200,
+                   "splits": {"train": {"games": 90, "nights": 30}, "test": {"games": 10, "nights": 4}}}, "bad": 3}
+    led = DL.fold_manifest({"leagues": {"nfl": {"real_tokens": 4e8}}}, man, "2026-11-04T22:00Z")
+    nfl = led["leagues"]["nfl"]
+    assert (nfl["games"], nfl["nights"], nfl["windows"], nfl["real_tokens"]) == (100, 34, 1200, 4e8)
+    led["leagues"]["xfl"] = {"synthetic_tokens": 1e8}
+    led["nfm"] = {"milestones": [{"name": "pretrain", "status": "running"}, {"name": "x", "status": "weird"}, {"bad": 1}]}
+    v = DL.view(led)
+    assert not v["pending"] and v["rows"][-1]["league"] == "xfl" and v["totals"]["pct_of_target"] == 50.0
+    assert [m["status"] for m in v["nfm"]["milestones"]] == ["running", "next"] and v["updated"] == "2026-11-04T22:00Z"
+    assert "| NFL | nflverse (CC-BY) | 400.0M |" in DL.table(v)
+
+
+def test_ledger_script_folds_a_manifest(tmp_path, capsys):
+    import json
+    import scripts.data_ledger as cli
+    led, man = tmp_path / "led.json", tmp_path / "manifest.json"
+    man.write_text(json.dumps({"nba": {"source": "nba_api", "windows": 7, "splits": {}}}))
+    assert cli.main(["--ledger", str(led), "--manifest", str(man)]) == 0
+    assert json.loads(led.read_text())["leagues"]["nba"]["windows"] == 7 and "| NBA | nba_api |" in capsys.readouterr().out
+    assert cli.main(["--ledger", str(led), "--manifest", str(tmp_path / "nope.json")]) == 2
+
+
+def test_ledger_route(client, engine, tmp_path, monkeypatch):
+    assert client.get("/api/v2/ledger").status_code == 404
+    _on(engine)
+    monkeypatch.setattr(phone_v2.ledger_mod, "LEDGER_FILE", tmp_path / "none.json")
+    r = client.get("/api/v2/ledger").json()
+    assert r["enabled"] and r["pending"] and r["nfm"]["done"] == 0
+
+
+def test_provenance_orders_lane3_control_last():
+    assert phone_v2.PROV_ORDER[0] == "decider" and phone_v2.PROV_ORDER[-1] == "control"   # lane 3 #173 keys
+
+
+def test_ledger_folds_the_kaggle_factory_manifest():
+    from redzone.web import ledger as DL
+    man = {"total_tokens": 3_000_000,
+           "leagues": {"nba": {"seasons": {"2023": {"tokens": {"games": 60}}, "2024": {"tokens": {"games": 40}}}}},
+           "ledger": {"nba": {"tokens_real": 3_000_000, "sources": {"nba_cdn": 1_000_000, "nba_api": 2_000_000},
+                              "selfplay_rows_synthetic": 500, "moments_rows_real": 9000, "crunch_event_share_pct": 12.5,
+                              "ot_games": 5, "comeback_games": 10, "blowout_games": 25, "no_wall_games": 0}}}
+    keep = {"nfm": {"milestones": [{"name": "pretrain", "status": "running"}]}}
+    led = DL.fold_manifest(keep, man, "t")
+    nba = led["leagues"]["nba"]
+    assert nba["source"] == "nba_api, nba_cdn" and nba["seasons"] == "2023-2024" and nba["games"] == 100
+    assert (nba["real_tokens"], nba["synthetic_tokens"], nba["windows"]) == (3e6, 0, 9000)
+    assert (nba["crunch_share"], nba["ot_share"], nba["comeback_share"], nba["blowout_share"]) == (0.125, 0.05, 0.1, 0.25)
+    assert led["nfm"] == keep["nfm"] and led["total_tokens"] == 3_000_000
+    row = next(r for r in DL.view(led)["rows"] if r["league"] == "nba")
+    assert not row["pending"] and "| NBA | nba_api, nba_cdn | 3.0M | 0 | 9,000 | 12% | 5% / 10% / 25% |" in DL.table(DL.view(led))

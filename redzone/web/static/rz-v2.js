@@ -15,7 +15,7 @@ function check() {
     v2.checked = true;
     checking = (async () => {
       try { v2.on = !!(await api("/api/v2/status")).enabled; } catch { v2.on = false; }
-      if (v2.on) { hooks.render(); pollAlert(); pollStrip(); }
+      if (v2.on) { hooks.render(); pollAlert(); pollStrip(); pollHeld(); }
     })();
   }
   return checking;
@@ -42,6 +42,22 @@ function watchStrip() {
   return `<button class="v2-strip" data-act="v2-watch" aria-label="Watch value, top 3 live games">${strip.top.map((g) =>
     `<span class="v2-strip-g${g.on ? " on" : ""}"><b>${num(g.wv)}</b><span class="ell"><span class="m">${g.crunch_state ? `<i class="v2-cs v2-cs--${attr(g.crunch_state)}">${esc(CRUNCH_TXT[g.crunch_state])}</i>` : ""}${esc(g.matchup)}</span><small>${esc([g.why, g.stakes_line].filter(Boolean).join(" · "))}</small></span></span>`).join("")}
     ${strip.src === "stub" ? `<em>preview</em>` : ""}</button>`;
+}
+
+/* Crunch vs crunch: what the hidden stick holds, how far behind, and what comes back when (display only). */
+let heldV = null;
+function pollHeld() {
+  api("/api/v2/held").then((r) => { const v = (r && r.view) || null; if (JSON.stringify(v) !== JSON.stringify(heldV)) { heldV = v; hooks.renderScreen("now"); } })
+    .catch(() => {}).finally(() => setTimeout(pollHeld, 10000));
+}
+function heldLine() {
+  const v = heldV;
+  if (!v || (!v.held && !v.back && !v.catchup)) return "";
+  const rows = [];
+  if (v.held) rows.push(`<span><b>Holding</b> ${esc(v.held.matchup)}${v.held.behind_s ? ` · ${esc(fmtDur(v.held.behind_s))} behind live` : ""}${v.held.ready ? "" : " · loading"}</span>`);
+  if (v.back) rows.push(`<span><b>Coming back</b> ${esc(v.back.text)}</span>`);
+  if (v.catchup) rows.push(`<span><b>Next catch-up</b> ${esc(v.catchup.matchup)}: ${esc(v.catchup.label || v.catchup.kind)}${v.queued > 1 ? ` (+${num(v.queued - 1)} more)` : ""}</span>`);
+  return `<div class="v2-held" data-key="v2-held">${icon("hourglass")}<div>${rows.join("")}</div></div>`;
 }
 
 function alertLine() {
@@ -89,11 +105,12 @@ ACTIONS["v2-vote"] = async (el) => {
 /** The "I missed that" bar above Recent switches. */
 export function missedBar() {
   if (!v2.on) return "";
-  return `${alertLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
+  return `${alertLine()}${heldLine()}${watchStrip()}<div class="v2-bar" data-key="v2-bar"><button class="btn v2-missed" data-act="v2-missed">${icon("eye")}I missed that</button>
     <button class="btn btn--ghost" data-act="v2-night">${icon("replay")}Whole night</button>
     <button class="btn btn--ghost v2-span" data-act="v2-slate">${icon("calendar")}Tonight ahead: overlaps and crunch times</button>
     <button class="btn btn--ghost v2-span" data-act="v2-watch">${icon("flame")}Watch value: every live game, 0-100, and why</button>
-    <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button></div>`;
+    <button class="btn btn--ghost v2-span" data-act="v2-trend">${icon("trend")}How close to perfect: North Star trend</button>
+    <button class="btn btn--ghost v2-span" data-act="v2-ledger">${icon("activity")}Data + NFM: what the Noggin learns from</button></div>`;
 }
 
 function missedSheet() {
@@ -244,6 +261,7 @@ function nightSheet() {
       ...arr(e.playbooks).map((p) => `<span class="tag tag--kind">${esc(p)}</span>`),
       e.type === "switch" && e.dry_run ? `<span class="tag tag--would">Would switch</span>` : "",
       e.type === "switch" && !e.ok && !e.dry_run ? `<span class="tag tag--fail">Failed</span>` : "",
+      e.type === "switch" && e.key ? `<button class="v2-trace-btn" data-act="v2-prov" data-key="${attr(e.key)}">${icon("activity")}Trace</button>` : "",
     ].join("");
     const hit = night.at && Math.abs(num(e.ts) - night.at) <= 120 ? " v2-ev--hit" : "";
     return `<div class="v2-ev v2-ev--${attr(e.type)}${hit}"><span class="v2-ev-ic">${icon(ic)}</span><div style="min-width:0">
@@ -311,9 +329,34 @@ function watchSheet() {
     <div class="v2-wv">${gs.map((g) => `<div class="v2-wv-row${g.game_id === d.current ? " on" : ""}">
       <div class="v2-wv-top"><span class="m ell">${esc(g.matchup)}</span>${g.game_id === d.current ? `<span class="tag tag--kind">On TV</span>` : ""}${g.crunch_state ? `<span class="tag tag--fail">${esc(CRUNCH_TXT[g.crunch_state] || "Crunch")}</span>` : ""}${g.is_break ? `<span class="tag">Break</span>` : ""}<b>${num(g.wv)}</b></div>
       <div class="v2-wv-bar"><i style="width:${Math.max(2, Math.min(100, g.wv))}%"></i></div>
-      ${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}${g.stakes_line ? `<div class="v2-stakes">${icon("target")}${esc(g.stakes_line)}</div>` : ""}</div>`).join("")}</div>`;
+      ${g.why ? `<div class="v2-ev-why">${esc(g.why)}</div>` : ""}${g.stakes_line || g.stakes_pending ? `<div class="v2-stakes${g.stakes_pending ? " v2-stakes--pending" : ""}">${icon("target")}${esc(g.stakes_line || "Stakes")}${g.stakes_pending ? " <small>(model pending)</small>" : ""}</div>` : ""}</div>`).join("")}</div>`;
 }
 ACTIONS["v2-watch"] = () => { watchS.data = null; openSheet({ id: "v2-watch", label: "Watch value", full: true, render: watchSheet, onClose: () => clearTimeout(watchS.timer) }); loadWatch(); };
+
+/* ---------- Provenance: which module contributed what to one switch (from its trace) ---------- */
+const prov = { data: null };
+const STAGE_TXT = { decided: "Decided", guarded: "Guard checked", rechecked: "Re-checked", command: "Command sent", picture: "Picture on TV", aborted: "Held back", failed: "Failed" };
+const MOD_TXT = { watch_value: "Watch value", crunch_state: "Crunch state", importance: "Importance", stakes: "Stakes", floors: "Floors", planner: "Planner", playbook: "Playbook", guard: "Guard", control: "Control", decider: "Decider", sync: "Sync (delays)" };
+const short = (v) => (v == null ? "–" : typeof v === "object" ? Object.entries(Array.isArray(v) ? { ...v } : v).filter(([, x]) => x != null && x !== "")
+  .map(([k, x]) => (Array.isArray(v) ? String(typeof x === "object" ? JSON.stringify(x) : x) : `${k}: ${typeof x === "object" ? JSON.stringify(x) : x}`)).join(" · ") : String(v));
+function provSheet() {
+  const d = prov.data;
+  if (!d) return `<h3>Switch trace</h3><p class="lead">Loading…</p>`;
+  if (d.error || d.ok === false) return `<h3>Switch trace</h3><p class="lead">${esc(d.error || d.message || "Not found")}</p>`;
+  const t0 = arr(d.chain).length ? d.chain[0].at : d.ts;
+  return `<h3>Switch trace</h3>
+    <p class="lead">${esc(d.from ? `${d.from} → ${d.to}` : d.to)} · ${esc(fmtTime(d.ts))}${d.source === "stub" ? " · rebuilt from the switch log (no provenance fields yet)" : ""}</p>
+    <div class="v2-why">${arr(d.chips).map((c) => `<span class="v2-chip v2-chip--${attr(c.key)}">${esc(c.label)}</span>`).join("")}</div>
+    <div class="sheet-sec"><h4>Who contributed</h4></div>
+    <div class="v2-prov">${arr(d.parts).map((p) => `<div class="v2-prov-row"><b>${esc(MOD_TXT[p.module] || p.module)}</b><span>${esc(short(p.value))}</span></div>`).join("")}</div>
+    <div class="sheet-sec"><h4>Timeline</h4>${d.has_trace ? "" : "<small>no trace stored</small>"}</div>
+    <div class="v2-prov">${arr(d.chain).map((c) => `<div class="v2-prov-row"><b>${esc(STAGE_TXT[c.stage] || c.stage)} <small>+${(c.at - t0).toFixed(1)} s</small></b><span>${esc(c.component)}${Object.keys(c.detail || {}).length ? " · " + esc(short(c.detail)) : ""}</span></div>`).join("")}</div>`;
+}
+ACTIONS["v2-prov"] = async (el) => {
+  prov.data = null; openSheet({ id: "v2-prov", label: "Switch trace", full: true, render: provSheet });
+  try { prov.data = await api(`/api/v2/provenance?key=${encodeURIComponent(el.dataset.key)}`); } catch (e) { prov.data = { error: e.message }; }
+  const s = sheetById("v2-prov"); if (s) s.update();
+};
 
 /* ---------- North Star trend: each headline line over the harness runs, read-only ---------- */
 const trendS = { data: null, split: "dev" };
@@ -353,6 +396,38 @@ function trendSheet() {
 }
 ACTIONS["v2-trend"] = () => { trendS.data = null; openSheet({ id: "v2-trend", label: "How close to perfect", full: true, render: trendSheet }); loadTrend(); };
 ACTIONS["v2-trend-split"] = (el) => { trendS.split = el.dataset.f; trendS.data = null; const s = sheetById("v2-trend"); if (s) s.update(); loadTrend(); };
+
+/* ---------- Data ledger + NFM status: tokens per league, real vs synthetic, and the model's milestones ---------- */
+const ledgerS = { data: null };
+const MS_TAG = { done: "pass", running: "kind", next: "kind", blocked: "fail" };
+function ledgerSheet() {
+  const d = ledgerS.data;
+  if (!d) return `<h3>Data + NFM</h3><p class="lead">Loading…</p>`;
+  if (d.error) return `<h3>Data + NFM</h3><p class="lead">${esc(d.error)}</p>`;
+  const big = (v) => (typeof v !== "number" ? "PENDING" : v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e5 ? `${(v / 1e6).toFixed(1)}M` : Math.round(v).toLocaleString());
+  const pct = (v) => (typeof v === "number" ? `${Math.round(v * 100)}%` : "–");
+  const t = d.totals || {}, nfm = d.nfm || {};
+  const rows = arr(d.rows).filter((r) => !r.pending || r.source).map((r) => `<div class="v2-led">
+      <div class="v2-led-top"><b>${esc(String(r.league).toUpperCase())}</b><span class="m">${esc(r.source || "source pending")}${r.license ? ` · ${esc(r.license)}` : ""}</span></div>
+      <div class="v2-led-nums"><span><b>${big(r.real_tokens)}</b> real</span><span><b>${big(r.synthetic_tokens)}</b> synthetic</span>
+        <span><b>${big(r.windows)}</b> windows</span><span><b>${pct(r.crunch_share)}</b> crunch</span></div>
+      ${r.seasons || r.games ? `<small>${esc(r.seasons || "")}${r.games ? ` · ${big(r.games)} games` : ""}${r.nights ? ` · ${big(r.nights)} nights` : ""}</small>` : ""}</div>`).join("");
+  const ms = arr(nfm.milestones).map((m) => `<div class="v2-ms"><span class="tag tag--${MS_TAG[m.status] || "kind"}">${esc(m.status)}</span>
+      <span>${esc(m.name)}${m.at ? ` <small>${esc(m.at)}</small>` : ""}${m.note ? `<small>${esc(m.note)}</small>` : ""}</span></div>`).join("");
+  return `<h3>Data + NFM</h3>
+    <p class="lead">${d.pending ? "Waiting on the first factory run: every number below is PENDING until lane 1 writes the ledger." : `Ledger updated ${esc(d.updated || "–")}.`}</p>
+    <div class="v2-tiles"><div class="stile"><b>${big(t.real_tokens)}</b><span>Real tokens</span></div>
+      <div class="stile"><b>${big(t.synthetic_tokens)}</b><span>Synthetic (self-play)</span></div>
+      <div class="stile"><b>${typeof t.pct_of_target === "number" ? `${t.pct_of_target}%` : "–"}</b><span>of ${big(t.tokens_target)} target</span></div></div>
+    <div class="v2-leds">${rows || `<p class="lead">No league has data yet.</p>`}</div>
+    <h4>NFM milestones · ${num(nfm.done)}/${num(arr(nfm.milestones).length)} done</h4>
+    <div class="v2-mss">${ms}</div>`;
+}
+ACTIONS["v2-ledger"] = async () => {
+  ledgerS.data = null; openSheet({ id: "v2-ledger", label: "Data + NFM", full: true, render: ledgerSheet });
+  try { ledgerS.data = await api("/api/v2/ledger"); } catch (e) { ledgerS.data = { error: e.message }; }
+  const s = sheetById("v2-ledger"); if (s) s.update();
+};
 
 /* ---------- Slate preview: tonight ahead, crunch windows and who gets the TV when they collide ---------- */
 const slate = { data: null };
