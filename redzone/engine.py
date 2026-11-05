@@ -147,6 +147,12 @@ class Engine:
         # [EXP-741 E] a waiting tap's Prime score-bug clock reads, numbers only: data/tap_bug.jsonl
         from redzone.screen.tap_bug import TapBug
         self.tap_bug = TapBug(data_dir.parent / "tap_bug.jsonl" if data_dir else None)
+        # [time-shift buffer SHADOW, Nick 9:10 AM Nov 5] an editor decider B s behind live, logged only
+        self._bug_log_path = data_dir.parent / "scorebug_reads.jsonl" if data_dir else None
+        from redzone.buffer_shadow import BufferShadow
+        self.buffer_shadow = BufferShadow(self.cfg, self.decider, self._shadow_behind,
+                                          data_dir.parent / "buffer_shadow.jsonl" if data_dir else None,
+                                          games=self.merger.games.get)
         self.decider.return_cost = lambda t: (self.control.flip_estimate() if self.control.two_stick
                                               else self.control.deadline_cost(t))
         # Stream delay measured from YouTube TV show changes on the quarter hour (no taps needed).
@@ -275,7 +281,7 @@ class Engine:
             self.set_mic(True)
         await asyncio.gather(self._poll_loop(), self._decide_loop(), self._house_loop(), self._links_loop(),
                              self._fantasy_loop(), self._fastcast_loop(), self.discovery.run(),
-                             self._boundary_loop(), self._scorebug_loop(), self.tonight.run(),
+                             self._boundary_loop(), self._scorebug_loop(), self._league_fast_loop(), self.tonight.run(),
                              self.supervisor.run(), self.network.run(), self.governor.run(),
                              self.sync_probe.run())
 
@@ -348,6 +354,21 @@ class Engine:
             return 0.0
         if not for_league(self.cfg, "timing.behind_live_s.enabled", g.league.value, False):
             return 0.0   # [league overrides] the buffer runs per league
+        by = self.cfg.get("timing.behind_live_s.by_league") or {}
+        b = by.get(g.league.value, by.get(g.league.base.value, self.cfg.get("timing.behind_live_s.default", 0)))
+        return max(0.0, min(float(b or 0.0), float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
+
+    def _shadow_buffer_on(self) -> bool:
+        """[buffer shadow] timing.behind_live_s.shadow while the buffer itself is off on screen."""
+        tb = self.cfg.get("timing.behind_live_s") or {}
+        return bool(tb.get("shadow", False)) and not bool(tb.get("enabled", False))
+
+    def _shadow_behind(self, target: str | None) -> float:
+        """[buffer shadow] B for the game on this target, by league, whether or not the buffer is on."""
+        gid = self._game_on(target, False) if target else None
+        g = self.merger.games.get(gid or "")
+        if g is None:
+            return 0.0
         by = self.cfg.get("timing.behind_live_s.by_league") or {}
         b = by.get(g.league.value, by.get(g.league.base.value, self.cfg.get("timing.behind_live_s.default", 0)))
         return max(0.0, min(float(b or 0.0), float(self.cfg.get("timing.behind_live_s.max_s", 90.0))))
@@ -506,6 +527,10 @@ class Engine:
                         # [EXP-741 E shadow] every Prime bug read logged as clock numbers: lane 3 grades
                         # stopped/running against the play-by-play with no tap ever waiting
                         self.tap_bug.add(f["target"], f["t0"], bug, visible=f["visible"], why="watch")
+                    if self.cfg.get("delay.scorebug_log", True) and bug is not None and g is not None:
+                        # [Nick 9:25 AM Nov 5] every bug read as numbers (data/scorebug_reads.jsonl): the TNF race
+                        # (bug vs espn_fastcast / summary / markets) is graded from first-seen score changes
+                        self._log_bug_read(g, f, bug)
             except Exception:
                 log.exception("score bug read failed")
                 self.scorebug.reset()
@@ -535,6 +560,18 @@ class Engine:
             bug = await asyncio.to_thread(scorebug.read_png, f["png"], g.home, g.away, recognize)
             if self._pending_decision is d:
                 self.tap_bug.add(target, f["t0"], bug, why="tap")
+    def _log_bug_read(self, g, f: dict, bug) -> None:
+        path = getattr(self, "_bug_log_path", None)
+        if path is None:
+            return
+        rec = {"t0": round(f["t0"], 2), "t1": round(f.get("t1", f["t0"]), 2), "league": g.league.value,
+               "game": g.game_id, "target": f["target"], "visible": bool(f["visible"]), "home": bug.home,
+               "away": bug.away, "period": bug.period, "clock": bug.clock, "down": getattr(bug, "down", "")}
+        try:
+            with path.open("a") as fh:
+                fh.write(json.dumps(rec) + "\n")
+        except OSError:
+            pass
 
     async def _boundary_loop(self) -> None:
         """Read the YouTube TV sticks every ~0.5 s for 3 minutes either side of each quarter hour (as it
@@ -851,7 +888,8 @@ class Engine:
                 self.summaries[s.game_id] = data
                 self.merger.update("espn_summary", s)
         await asyncio.gather(*(one(g) for g in live))
-        await self._league_feeds(live)
+        if not (self.cfg.get("polling.league_fast", True) and getattr(self, "_fast_loop_on", False)):
+            await self._league_feeds(live)   # else the running _league_fast_loop owns them: one caller, no duplicates
         self._source_health()
         self.recorder.race(self.merger)
         await self._archive_finished()
@@ -937,6 +975,29 @@ class Engine:
                 out.add(gid)
         return out
 
+    async def _league_fast_loop(self) -> None:
+        """[Nick 9:05 AM Nov 5: nba_cdn primary, polled every 1 s with ETag / If-Modified-Since] The league
+        play-by-play feeds on their own cadence (polling.nba_pbp_s / nhl_pbp_s), not the ~3 s poll loop's.
+        Each fetch is conditional (sources/http.py), so an unchanged feed costs a 304. New plays go straight
+        to the timelines the decider reads."""
+        self._fast_loop_on = True
+        while True:
+            every = max(1.0, min(float(self.cfg.get("polling.nba_pbp_s", 3)), float(self.cfg.get("polling.nhl_pbp_s", 3))))
+            t0 = time.time()
+            try:
+                live = [g for g in self.merger.games.values()
+                        if g.phase == Phase.LIVE and g.league in (League.NBA, League.NHL)
+                        and g.league in self._leagues()]
+                if live and self.cfg.get("polling.league_fast", True):
+                    await self._league_feeds(live)
+                    for g in live:
+                        cur = self.merger.games.get(g.game_id)
+                        if cur is not None:
+                            self.decider.timeline(cur.game_id, cur.league).observe(cur)
+            except Exception:
+                log.exception("league fast poll failed")
+            await asyncio.sleep(max(0.2, every - (time.time() - t0)))
+
     def _pbp_every(self, gid: str, base: float) -> float:
         """League pbp cadence for one game: the burst rate while it's a burst game."""
         return min(base, self._burst_s()) if gid in self._burst else base
@@ -1011,7 +1072,7 @@ class Engine:
                         self._nba_ids[g.game_id] = str(gm["gameId"])
                         pbp = await self.fetcher.get_json(leagues.NBA_PBP.format(id=gm["gameId"]),
                                                           min_interval=self._pbp_every(g.game_id, every) - 0.5)
-                    if self._nba_shadow and pbp:
+                    if (self._nba_shadow or self._nba_primary) and pbp:   # primary too: its lag stays measured
                         try:
                             self.recorder.feed_plays(g, leagues.nba_plays(pbp, self._nba_logged.setdefault(g.game_id, {})))
                         except Exception:
@@ -1269,6 +1330,8 @@ class Engine:
         self._reasoner_narrate()
         self._garbage_focus()
         self._hold_check()
+        if self._shadow_buffer_on():
+            self.buffer_shadow.tick(cands)   # never acts: what the buffered show would do right now
         if self._pending_decision is not None:
             return False  # score/feed updates continue; don't race a tune in flight
         if not dry and self.control.input_unknown and getattr(self.control, "live_control", False):
