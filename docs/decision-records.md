@@ -67,3 +67,13 @@ When there's no file, the learned side is sampled from each switch's `trace.prov
   `/api/v2/capture/report`.
 
 It's read only and makes no writes.
+
+## EXP-035: "why we're here" alerts, graded
+
+The phone labels the game on screen "Why we're here: <why>" only when its value is at or over a fixed
+threshold (config `phone.why_tag_min`, default 70, on the 0-100 scale: the learned watch value when there is one,
+otherwise today's score). Each switch record carries `alert: {value, threshold, fired, nothing_happened}`.
+The value is the one the decision saw, from `trace.provenance` (`watch_value.to`, otherwise `importance.to`).
+A fired alert "did nothing" when its game had no big play in the outcome window (`OUTCOME_WINDOW_S`).
+Dry runs never alert. The night header counts `alerts`, `alerts_nothing_happened` and `alerts_nothing_pct`.
+That last number is the honesty check: a label that often promises more than happens should get stricter.

@@ -399,13 +399,14 @@ class Decider:
                 self.replaying = None
                 self.after_replay = True
         home_before = (self.home_break_visit, self.home_return_at)
-        d = self._decide(cands, now)
+        d0 = d = self._decide(cands, now)
         d = self._scenario(d, cands, now, home_before)
         d = self._clairvoyant(d, cands, now, home_before)
         d = self._crunch_guard(d, cands, now, home_before)
         d = self._pick(d, cands, now)
         d = self._hold_for_big(d, cands, now, home_before)
         d = self._time_entry(d, cands, now, home_before)
+        d = self._crunch_floor(d, d0, cands, now, home_before)
         d = self._safe(d, cands, now, home_before)
         if not commit and d.action in ("switch", "replay"):
             # The simulator can commit synchronously. A real TV must confirm
@@ -836,6 +837,12 @@ class Decider:
         sk = seek_model(c)
         cue = self._lc("decider.entry.cue", x, "seek")
         pause = cue == "pause"
+        # [EXP-089] these leagues never enter on a landing the data can't call (rule #1)
+        unknown_ok = x.scored.league.base.value not in (c.get("decider.entry.unknown_wait_leagues") or [])
+        # [EXP-024 conformal floor] no landing on less doubt than tau sigmas (tau calibrated per league on dev)
+        floor = 0.0
+        if c.get("decider.entry.conformal.enabled"):
+            floor = float(c.get(f"decider.entry.conformal.tau.{x.scored.league.base.value}") or 0.0) * d.current_sigma(now)
         lo_cost = min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S)))
         if cue == "hidden" and can:
             # [seek model] seek on the hidden stick, then flip: the stall passes before the flip and
@@ -846,7 +853,8 @@ class Decider:
                               relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
                               cost_lo=lo_cost + float(self.cfg.get("replay.hidden_seek_keys_s")),
                               urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
-                              lag=float(self._lc("decider.entry.landing_lag_s", x, 0.0)), possession=possession)
+                              lag=float(self._lc("decider.entry.landing_lag_s", x, 0.0)), possession=possession,
+                              unknown_ok=unknown_ok, floor=floor)
             if plan.ok and plan.rewind_s:
                 plan.rewind_s += sk.stall_mid
             return plan
@@ -858,7 +866,8 @@ class Decider:
                           relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
                           cost_lo=min(cost, float(c.get("decider.entry.fastest_s", ENTRY_FASTEST_S))),
                           urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
-                          lag=float(self._lc("decider.entry.landing_lag_s", x, 0.0)), possession=possession)
+                          lag=float(self._lc("decider.entry.landing_lag_s", x, 0.0)), possession=possession,
+                          unknown_ok=unknown_ok, floor=floor)
 
     def _cut_timed(self, gid: str | None, cands) -> bool:
         """Cut timing is on for this game's league (decider.entry.leagues). Scorecards, Nov 3: NFL
@@ -1044,6 +1053,47 @@ class Decider:
         self.lookahead_why["crunch_guard"] = self.lookahead_why.get("crunch_guard", 0) + 1
         self.home_break_visit, self.home_return_at = home_before
         return Decision(now, "stay", self.current, f"crunch time here: catch-up waits ({d.reason})", d.state, d.gate)
+
+    def _crunch_floor(self, d: Decision, d0: Decision, cands, now: float, home_before) -> Decision:
+        """[crunch floor, SAFE-09] Crunch is a learned state and crunch vs crunch is decided by value (Nick,
+        Nov 4 4:15 PM), but two floors hold while the game on screen is inside its crunch window:
+        (1) no overlay or model (scenario, clairvoyance, PICK, later the Mind and watch value) turns the app's
+            own decision into a leave for a game that isn't in crunch: models choose between crunches;
+        (2) a LOW-value game never pulls us out, not even by the app's own switch or a catch-up reel: below
+            decider.crunch.floor_low_value (watch value once it ships, else today's score; 0 = off until
+            watch value: at 50 on today's score it cost locked NFL crunch live, Nov 4). An ad-break round trip (kind break_visit) and your own press are not leaves.
+        Off only with decider.crunch.floor: false."""
+        if not self.cfg.get("decider.crunch.floor", True) or d.action not in ("switch", "replay") \
+                or d.kind in ("user", "break_visit") or self.replaying or not self.current:
+            return d
+        cur = cands.get(self.current)
+        if cur is None or not cur.scored.crunch_now or getattr(cur.scored, "garbage", False):
+            return d
+        if d.action == "replay":
+            if d.replay is None or d.replay.game_id == self.current:
+                return d                   # this game's own instant replay
+            x, value = None, float(d.replay.value)
+        else:
+            x = cands.get(d.target)
+            if d.target == self.current or x is None:
+                return d
+            if x.scored.crunch or x.scored.crunch_now:
+                return d                   # crunch vs crunch: decided by value, not by this floor
+            value = self._floor_value(x.scored)
+        overlay = (d.action, d.target, d.kind) != (d0.action, d0.target, d0.kind)
+        low = value < float(self.cfg.get("decider.crunch.floor_low_value", 0) or 0)
+        if not (overlay or low):
+            return d
+        why = "an overlay can't leave crunch for a non-crunch game" if overlay else f"{value:.0f} is a low-value game"
+        self.lookahead_why["crunch_floor"] = self.lookahead_why.get("crunch_floor", 0) + 1
+        self.home_break_visit, self.home_return_at = home_before
+        return Decision(now, "stay", self.current, f"crunch floor: {why} ({d.reason})", d.state, d.gate)
+
+    @staticmethod
+    def _floor_value(s) -> float:
+        """Lane 1's Scored.watch_value once it ships, else today's score."""
+        wv = getattr(s, "watch_value", None)
+        return float(wv) if wv is not None else float(s.score)
 
     def _clairvoyant(self, d: Decision, cands, now: float, home_before) -> Decision:
         """[GAME-04 clairvoyance, noggin.lookahead.enabled] The feed already knows a big play in game X
@@ -2106,7 +2156,27 @@ class Decider:
             until = tl.dead.dead_until(now - d.mu - m)
             if until is not None and until >= now - d.mu + m + float(self.cfg.get("decider.leave.tune_s")):
                 return Gate(True, "dead ball on screen (play-by-play)")
+        if not g.safe and getattr(tl, "events", None) and self._leavable(cur):
+            # [cut rules, Nick Nov 4 3:15 PM] Leaving mid-play is fine at LOW leverage (Q1-Q3, a game
+            # that isn't close, right after a score): you lose the end of an ordinary play, never an entry.
+            return Gate(True, "low-leverage moment: leaving mid-play is OK")
         return g
+
+    def _leavable(self, cur: Candidate) -> bool:
+        """[cut rules, decider.leave.low_leverage] May the screen leave this game mid-play? Only at low
+        leverage: never in crunch time or its run-up, a locked moment (red zone, power play, OT...), your
+        team's game, or a close game late (decider.leave.sticky_*: down the stretch is sticky)."""
+        lgs = self.cfg.get("decider.leave.low_leverage") or []
+        s = cur.scored
+        if s.league.base.value not in lgs:
+            return False
+        if s.crunch or s.crunch_now or s.lock or s.imminent or s.pre_moment:
+            return False
+        if s.personal >= float(self.cfg.get("decider.crunch.hold_personal", 5)):
+            return False
+        if s.late and not s.garbage and s.closeness >= float(self.cfg.get("decider.leave.sticky_closeness", 0.5)):
+            return False
+        return True
 
     def _mark_screen_breaks(self, watchable: dict[str, Candidate], now: float) -> None:
         """A game whose break is still showing on screen is a bad destination even if the data
@@ -2491,7 +2561,7 @@ class Decider:
                 and s.closeness >= self.cfg.get("decider.mine_late_closeness", 0.2)):
             return False
         cap = float(_config.for_league(self.cfg, "decider.mine_late_max_lead_wp",
-                                       getattr(getattr(s, "league", None), "value", None)))
+                                       getattr(getattr(s, "league", None), "value", None), 1.0) or 1.0)
         wp = getattr(s, "lead_wp", None)
         return bool(getattr(s, "crunch", False) or cap >= 1.0 or wp is None or wp <= cap)
 

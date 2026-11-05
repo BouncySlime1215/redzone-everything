@@ -200,6 +200,8 @@ class Scored:
     watch_value: float | None = None   # learned 0-100 watch value; None = not computed yet (phone shows a stub)
     watch_why: str = ""                # one line: why that value
     lead_wp: float | None = None       # [EXP-204] the leader's win probability (0.5..1); None = unknown
+    watch_terms: dict = field(default_factory=dict)   # p_big, impact, leverage, stakes_mult, story, garbage
+    watch_rising: float | None = None  # d(watch_value)/dt, points per minute
     crunch_state: str | None = None    # crunch model: "entering" | "in" | "leaving"; None = not computed
     stakes_line: str | None = None     # e.g. "AFC 1-seed race, top-5 matchup"; None = not computed
 

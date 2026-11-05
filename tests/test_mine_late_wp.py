@@ -38,3 +38,12 @@ def test_cap_is_off_by_default_and_league_scoped(cfg):
     assert dec._mine_late(_s("nfl", 0.999, crunch=True))         # crunch time always holds
     assert dec._mine_late(_s("nfl", None))                       # unknown WP: live behavior
     assert dec._mine_late(_s("cfb", 0.99))                       # CFB keeps live behavior
+
+
+def test_rc7_defaults_release_atl_up_12_but_hold_one_score(cfg):
+    """RC7 ships the cap for NFL and NBA (EXP-204, 0.95); NHL and college stay on live behavior."""
+    dec = Decider(cfg, DelayBook(40.0, 3.0))
+    atl = lead_wp(_g(League.NFL, 4, 549, 10, 22))
+    assert not dec._mine_late(_s("nfl", atl))
+    assert dec._mine_late(_s("nfl", lead_wp(_g(League.NFL, 4, 360, 20, 14))))
+    assert dec._mine_late(_s("nhl", 0.99)) and dec._mine_late(_s("cbb", 0.99))

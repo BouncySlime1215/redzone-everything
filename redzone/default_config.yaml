@@ -241,6 +241,10 @@ decider:
                              # pause: on the HIDDEN stick seek past the dead ball, play up to it, pause, flip, play
     possession_start: "off"  # [possession start] off | crunch | all: cue to the last dead ball before the possession, never wait while one is in reach
     confirmed_dead_only: false  # [data gap] a dead window opens only on a logged stoppage (a lone substitution means the stoppage is missing)
+    unknown_wait_leagues: []  # [EXP-089] never enter on a landing the data can't call ("play may be live"): rewind to a known dead ball or wait. Off ([]) until its gate passes
+    conformal:               # [EXP-024] conformal floor on entries: no landing on less doubt than tau x sigma (off until its gate passes)
+      enabled: false
+      tau: {nfl: 0, nba: 0, nhl: 0}   # per league, from conformal risk control on dev (alpha 0.005 a timed entry); 0 = no floor
     ended_strict: false  # [landing lag] a switch off a finished game never takes the urgent (thin-margin) landing
     crunch_now: rewind       # NHL entries inside crunch's last 2:00 / OT: live | rewind (land on a whistle if a rewind fits) | wait
     max_wait_s: {nba: 180} # per league: a whistle wait into a final period / off a finished game goes live after this
@@ -269,7 +273,13 @@ decider:
   # (ESPN's WP when the feed has it, else a margin model). 1.0 = off (live: any Q4 that isn't garbage
   # time holds). Crunch time always holds. Nick, Nov 4: ATL up 12 with 9:09 left held WSH all night.
   mine_late_max_lead_wp: 1.0
+  leave:                   # [cut rules, Nick Nov 4 3:15 PM] never JOIN mid-play; LEAVING mid-play only at low leverage
+    low_leverage: []       # leagues where a low-leverage moment may be left mid-play ([] = never: today's rule)
+    sticky_closeness: 0.5  # down the stretch is sticky: a late game at least this close is never left mid-play
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
+    floor: true            # [SAFE-09] in a crunch window: no overlay or model leaves it for a non-crunch game, and
+    floor_low_value: 0     # ...no game below this value (watch value, else score) pulls us out. 0 = off: at 50 it
+                           # held dev but cost locked NFL crunch live -0.6/-3.9/0 (Nov 4); waits for watch value
     by_value: false        # [TREE-6 Mac half] crunch vs crunch by value (watch value, else score) with priors:
     value_league_prior: 5  # ...points per league-order step (NFL = CFB > NBA > NHL, MLB)
     value_mine_prior: 30   # ...points for your team / bet
@@ -615,6 +625,10 @@ noggin:                    # docs/noggin.md
 
 phone:                     # the phone page (redzone/web)
   v2: false                # phone v2: reason chips + 👍/👎 per switch, "I missed that", Priority L2 sliders. OFF until Nick tries it
+  commit: false            # [EXP-036] commitment controls (stay here, only my teams, stop after this game, end at a time), each at a dead ball; OFF until lanes 2/3 ship the "commit" action
+  worth: false             # [EXP-040] one-tap end-of-night "worth it?" (1-5) on the Slate complete card, works with v2 off. EVALUATION ONLY, never a training label
+  worth_probe_days: 7      # [EXP-040] the agency / regret probes show at most once per this many nights
+  why_tag_min: 70          # [EXP-035] "Why we're here" shows only at or over this 0-100 value; lab/decision_records grades the same number
 warmup:                    # [warmup.pregame] before the night's first game (redzone/plan.py Tonight._warmup)
   pregame: false           # put the likeliest first game on the HIDDEN stick before the first start (never the one on screen)
   lead_min: 10             # ...this many minutes before it
@@ -633,8 +647,8 @@ report:                    # [night health] scripts/night_report.py -> docs/nigh
   nightly: true            # ON (cycle 07): its gates pass in tests/test_night_report.py (matches the live log, PENDING with no night, nothing private)
 
 league_overrides:          # [league overrides, Nick Nov 4 8:20/8:40 PM] per-league promotion: a league runs its graded set,
-                           # every other league keeps live behavior. Flat dotted keys (config.for_league). RC7: NBA + NHL
-                           # run the promoted candidate set (rule #1 wins the NHL trade), NFL runs EXP-203 (dev + locked
+                           # every other league keeps live behavior. Flat dotted keys (config.for_league). RC7: NBA runs
+                           # the promoted candidate set, NHL stays live (below), NFL runs EXP-203 (dev + locked
                            # passed); CBB, CFB, WCBB and MLB stay on live behavior until graded.
   nba:
     timing.behind_live_s.enabled: true
@@ -654,24 +668,10 @@ league_overrides:          # [league overrides, Nick Nov 4 8:20/8:40 PM] per-lea
     decider.entry.cue: "hidden"
     two_stick.pretune_on_open: true
     replay.crunch_block: true
-  nhl:
-    timing.behind_live_s.enabled: true
-    noggin.priority.enabled: true
-    replay.redzone_way: true
-    noggin.timing.leagues: ["nba"]
-    sources.nhl_primary: true
-    decider.entry.crunch_now: "wait"
-    decider.entry.max_wait_s: {}
-    decider.entry.landing_lag_s: 6
-    decider.entry.ended_strict: true
-    decider.entry.possession_start: "crunch"
-    decider.entry.confirmed_dead_only: true
-    sync.break_anchor.enabled: true
-    delay.sync.min_sigma_s: 3
-    decider.crunch.instant_replays: false
-    decider.entry.cue: "hidden"
-    two_stick.pretune_on_open: true
-    replay.crunch_block: true
+    decider.mine_late_max_lead_wp: 0.95   # [EXP-204] ATL up 12 with 9:09 left (WP ~0.99) is not close; 6 pts / 6 min (~0.91) is
+  nhl: {}                  # RC7 fast track (integrator, Nov 5): NHL stays on live behavior until Nick OKs its trade
+                           # (locked: mid-play 8 -> 0, crunch live 82.7 -> 78.6, dead air +0.8). The graded set is
+                           # NBA's block above; /mnt/project-files/lane2/rc7-nhl-confirm-pr227.json has its grades.
   nfl:
     timing.behind_live_s.enabled: true
     noggin.priority.enabled: true
@@ -690,3 +690,4 @@ league_overrides:          # [league overrides, Nick Nov 4 8:20/8:40 PM] per-lea
     decider.entry.cue: "hidden"
     two_stick.pretune_on_open: true
     replay.crunch_block: true
+    decider.mine_late_max_lead_wp: 0.95   # [EXP-204] ATL up 12 with 9:09 left (WP ~0.99) is not close; 6 pts / 6 min (~0.91) is
