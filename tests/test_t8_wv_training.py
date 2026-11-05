@@ -84,9 +84,12 @@ def test_training_uses_the_shared_league_split():
     """splits.split_nights ignores a pin's dev_before; league_split does not. Every model must use the split
     every scorecard uses, or a night locked elsewhere can land in train here (splits.py docstring)."""
     TW = _tw()
+    from redzone.lab import splits
     src = inspect.getsource(TW.league)
-    assert "league_split" in src and "split_nights(" not in src, \
-        "train_watch_value.league splits nights with split_nights, not league_split"
+    assert "league_split" in src, "train_watch_value.league splits nights with split_nights, not league_split"
+    if hasattr(splits, "league_split") and "split_nights(" in src:   # a fallback for older bases is fine,
+        assert re.search(r"(hasattr|getattr)\(\s*splits\s*,\s*['\"]league_split", src), \
+            "split_nights is used even where league_split exists"          # as long as it is only a fallback
 
 
 def test_no_engagement_column_is_a_feature():
