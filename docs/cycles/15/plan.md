@@ -35,13 +35,13 @@
 ## Data ledger (scout, cycle 14)
 | item | tokens |
 |---|---:|
-| New-information tokens found | **1.41 B** (1.39 B events + 24 M context-new) |
+| New-information tokens found | **1.35 B** (after HockeyTech went red) |
 | Landed so far (StatsBomb, crew A count) | 87 M |
 | Ready this cycle: EuroLeague (34 M), SportVU 2015-16 (48 M, yellow-B) | 82 M |
 | Probe: Liiga 7 M. Waits on Nick's key: CFL 1.5 M | 8.5 M |
 | Derived state (zero novelty, counted separately) | 5.7 B |
 
-- **Red this cycle:** the Sports-Reference family (its terms §5 ban bots and AI use), and HockeyTech AHL/ECHL (the
+- **Red this cycle:** the Sports-Reference family (its terms §5 ban bots and AI use), stats.ncaa.org, and HockeyTech AHL/ECHL (the
   AHL's terms bar bots, the same precedent). HockeyTech stays out unless Nick overrides.
 - **Parked:**
   - F1 timing;
