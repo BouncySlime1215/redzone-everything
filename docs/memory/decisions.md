@@ -758,3 +758,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   MLB and CBB work continues only where it's shared code or data. NBA's graded set grows until every NBA gate has
   ≥ 60 decisions (release_gate.MIN_DECISIONS = 60 already holds PASS back below that; locked NBA has 16 big plays
   over 4 nights today).
+- 2026-11-05 (integrator, grader v18): #279 accepted from lane 3. `redzone/lab/syncgrade.py` + `scripts/sync_grade.py`
+  grade EXP-800/801 on the sticks' own behind-live meter (E = wall - extrapolated media_session position). EXP-800:
+  |belief - meter| p95 <= 2 s per stick on >= 200 rows; absolute latency PENDING per channel until an on-screen anchor
+  is measured, never filled from an assumed lag. EXP-801: tunes land within 3 s of the channel's live edge, with the
+  reference pinned per app (YTTV: landing position, measured constant by the overseer; others: E at landing), never
+  picked from the data. Sticks print as stick1, stick2 (public repo). Grader freeze v18.

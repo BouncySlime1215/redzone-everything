@@ -2493,6 +2493,19 @@
     "untagged"
    ]
   },
+  "redzone/lab/syncgrade.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "module",
+   "outputs": [
+    "scripts/sync_grade.py"
+   ],
+   "owner": "unowned",
+   "role": "[EXP-800 / EXP-801] Grade the sync program on the sticks' own behind-live meter (overseer tests, Nov 5 2:30 AM).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/lab/syncsim.py": {
    "contracts": [],
    "inputs": [
@@ -5469,6 +5482,19 @@
     "untagged"
    ]
   },
+  "scripts/sync_grade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/syncgrade.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[EXP-800 / EXP-801] Grade one night's sticks on their own behind-live meter (redzone/lab/syncgrade.py).",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/sync_truth.py": {
    "contracts": [],
    "inputs": [],
@@ -5700,10 +5726,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 309,
+  "modules": 311,
   "orphans": 14,
-  "unowned": 149,
-  "untagged": 254
+  "unowned": 151,
+  "untagged": 256
  },
  "version": 1
 }
