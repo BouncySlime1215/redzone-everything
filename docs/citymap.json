@@ -472,6 +472,21 @@
     "untagged"
    ]
   },
+  "redzone/buffer_shadow.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/decider/decider.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py"
+   ],
+   "owner": "unowned",
+   "role": "[time-shift buffer, SHADOW] Nick, 9:10 AM Nov 5: \"the time-shift buffer is now the main architecture\".",
+   "serves": [
+    "untagged"
+   ]
+  },
   "redzone/calibration.py": {
    "contracts": [
     "seek_model"
@@ -1334,6 +1349,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/buffer_shadow.py",
     "redzone/contracts/legacy.py",
     "redzone/demo/engine.py",
     "redzone/engine.py",
@@ -1700,6 +1716,7 @@
    ],
    "inputs": [
     "redzone/bets.py",
+    "redzone/buffer_shadow.py",
     "redzone/calibration.py",
     "redzone/channels.py",
     "redzone/commands.py",
@@ -1730,6 +1747,7 @@
     "redzone/screen/audio.py",
     "redzone/screen/boundary.py",
     "redzone/screen/scorebug.py",
+    "redzone/screen/tap_bug.py",
     "redzone/screen_ocr.py",
     "redzone/sources/espn.py",
     "redzone/sources/eventlinks.py",
@@ -1913,6 +1931,7 @@
     "redzone/lab/sportsgrade.py",
     "redzone/lab/tune.py",
     "scripts/backtest.py",
+    "scripts/buffer_shadow_grade.py",
     "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
@@ -2045,6 +2064,7 @@
     "redzone/lab/backtest.py",
     "redzone/lab/oracle.py",
     "redzone/lab/sportsgrade.py",
+    "scripts/buffer_shadow_grade.py",
     "scripts/entry_autopsy.py",
     "scripts/eval.py",
     "scripts/measure_break_lengths.py",
@@ -2755,6 +2775,7 @@
     "redzone/views.py",
     "redzone/web/phone_v2.py",
     "scripts/backtest.py",
+    "scripts/buffer_shadow_grade.py",
     "scripts/build_reasoner_data.py",
     "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
@@ -3607,10 +3628,26 @@
    ],
    "kind": "module",
    "outputs": [
-    "redzone/engine.py"
+    "redzone/engine.py",
+    "redzone/screen/tap_bug.py"
    ],
    "owner": "SYNC",
    "role": "Stream delay measured from the broadcast's own score bug (no taps, no keys pressed).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/screen/tap_bug.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/screen/scorebug.py"
+   ],
+   "kind": "module",
+   "outputs": [
+    "redzone/engine.py"
+   ],
+   "owner": "SYNC",
+   "role": "[EXP-741 E, decider.entry.user_bug_gate] The Prime score bug's game clock as a tap's dead-ball signal.",
    "serves": [
     "untagged"
    ]
@@ -4415,6 +4452,19 @@
     "Big plays live or replayed within 3 min"
    ]
   },
+  "scripts/attention_labels.py": {
+   "contracts": [],
+   "inputs": [
+    "scripts/wv_aux_label.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Data G: per-play human-attention labels for Watch Value (EXP-1704), plus the WP-only drama baseline.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/attention_pull.py": {
    "contracts": [],
    "inputs": [],
@@ -4462,6 +4512,21 @@
    "outputs": [],
    "owner": "INTEGRATION",
    "role": "Replay a past NFL Sunday through the app and print the report card.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/buffer_shadow_grade.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/backtest.py",
+    "redzone/lab/cutgrade.py",
+    "redzone/models.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Time-shift buffer shadow log: schema + Rule #1 (PROPOSAL, test writers, Cycle 24).",
    "serves": [
     "untagged"
    ]
@@ -5933,16 +5998,29 @@
    "serves": [
     "untagged"
    ]
+  },
+  "scripts/wv_aux_label.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [
+    "scripts/attention_labels.py"
+   ],
+   "owner": "unowned",
+   "role": "Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804).",
+   "serves": [
+    "untagged"
+   ]
   }
  },
  "pages": {
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 324,
+  "modules": 329,
   "orphans": 14,
-  "unowned": 163,
-  "untagged": 268
+  "unowned": 167,
+  "untagged": 273
  },
  "version": 1
 }

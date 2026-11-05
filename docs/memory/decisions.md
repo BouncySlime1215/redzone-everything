@@ -879,3 +879,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Default `fast_feeds.leagues: [nhl, mlb]`: NBA's 1 s nba_cdn poll is lane 2's polling.league_fast (#326),
   so the shadow does not hit the S3 mirror a second time; the race reads those nba_cdn rows from plays.jsonl.
 - 2026-11-05 (planner on EXP-303, lane 2): new `delay.feed_lag_prior_s: 10` (EXP-803 A5, default unchanged). It's the feed lag a game assumes until a play measures it, set per league through league_overrides. Before this it was a 10 s constant shared by every league (screen.LAG_EST_DEFAULT_S). Measured feed lag is far longer: q50 is 45 s for NBA, 44 s for NFL and 50 s for NHL. So an unmeasured game, typically the night's first pick, believes an open stoppage is dead long after play restarted (EXP-303's NHL first picks). The A5 arm sets the league's q90 (nba 69.7), is pre-registered in experiments.md, and is graded once on eval-data-v3.
+- 2026-11-05 (Nick, 9:50 AM ET "NHL is re-enabled", his answer to the NHL Rule #1 card; integrator): **the EXP-303
+  package is ON for NHL only** (league_overrides.nhl: `decider.entry.start_timed: true`, `decider.entry.crunch_now:
+  wait`, `decider.entry.lag_floor_s: 71.3`). Global defaults unchanged, so NBA, NFL and the rest are untouched. Dev
+  (lane 3, #304): NHL mid-play 0 on 6/6 runs, big live -1.8 [-3.0, -0.6] plain. Locked, read once at this release
+  (4 nights, 29 games, seeds 0-2, both harnesses): mid-play 18 -> 1 (resync seed 0, Oct 31), plays missed 13 -> 0,
+  your-team crunch 13/13, dead air within +0.5 on 5 of 6 runs (resync seed 1 +1.0), big live -1.9 to +1.0. Four
+  locked nights are under the 8-night floor, so the rate reads PENDING; it ships because it strictly lowers NHL
+  mid-play against tonight's live NHL behavior, and Nick chose it.

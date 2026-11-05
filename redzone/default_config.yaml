@@ -752,9 +752,13 @@ league_overrides:          # [league overrides, Nick Nov 4 8:20/8:40 PM] per-lea
     two_stick.pretune_on_open: true
     replay.crunch_block: true
     decider.mine_late_max_lead_wp: 0.95   # [EXP-204] ATL up 12 with 9:09 left (WP ~0.99) is not close; 6 pts / 6 min (~0.91) is
-  nhl: {}                  # RC7 fast track (integrator, Nov 5): NHL stays on live behavior until Nick OKs its trade
-                           # (locked: mid-play 8 -> 0, crunch live 82.7 -> 78.6, dead air +0.8). The graded set is
-                           # NBA's block above; /mnt/project-files/lane2/rc7-nhl-confirm-pr227.json has its grades.
+  nhl:                     # [EXP-303 package, Nick Nov 5 9:50 AM "NHL is re-enabled"] Rule #1 fix for NHL only; every
+                           # other NHL setting stays on live behavior. Dev (lane 3, 6 runs): mid-play 8 -> 0; locked once
+                           # (integrator, 4 nights, 6 runs): mid-play 18 -> 1, missed 13 -> 0, your-team crunch 13/13
+                           # (/mnt/project-files/integrator/nhl-exp303-locked/README.md).
+    decider.entry.start_timed: true    # [EXP-739] the night's first pick waits for a whistle / rewinds
+    decider.entry.crunch_now: "wait"   # [EXP-740]
+    decider.entry.lag_floor_s: 71.3    # [EXP-211] NHL measured feed lag q90 (redzone/lab/feed_lag_profile.json)
   nfl:
     timing.behind_live_s.enabled: true
     noggin.priority.enabled: true
