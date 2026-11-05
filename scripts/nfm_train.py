@@ -279,6 +279,16 @@ def build_model(vocab: int, d: int, layers: int, heads: int, experts: int = 0, t
 
 
 # ---------------------------------------------------------------------------------------------- data
+def _rss_gb() -> float:
+    """This process's resident host memory now (Colab kernel deaths: host-RAM OOM shows up here first)."""
+    try:
+        with open("/proc/self/statm") as f:
+            return int(f.read().split()[1]) * os.sysconf("SC_PAGE_SIZE") / 2**30
+    except (OSError, ValueError):
+        import resource
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20
+
+
 def pack(games: list[dict]) -> np.ndarray:
     """Games back to back (each already BOS ... EOS): the packed train stream, no padding."""
     return np.concatenate([g["tokens"].astype(np.int32) for g in games]) if games else np.zeros(0, np.int32)
@@ -465,6 +475,12 @@ def main(argv=None) -> int:
     vocab = max(1 + max(int(g["tokens"].max()) for g in games if len(g["tokens"])), 64)
     vocab = int(math.ceil(vocab / 128) * 128)                      # pad for the MXU / tensor cores
     train, valid = pack(sp["train"]), pack(sp["valid"])
+    data_hash = W.data_hash(games)
+    base = W.baselines(sp["train"])                                # grading baselines, before the train games go
+    split_n = {k: len(v) for k, v in sp.items()}
+    del games                                                      # host RAM: keep the packed stream, not two copies
+    sp["train"] = []
+    print(f"host RSS after packing: {_rss_gb():.1f} GB", flush=True)
     cfg = PRESETS[a.preset]
     np_ = count_params(vocab, **cfg)
     budget = int(a.train_tokens or 20 * np_["active"])
@@ -585,8 +601,9 @@ def main(argv=None) -> int:
         if step % a.eval_every == 0 or step == total:
             v = evaluate()
             curve.append([step, round(float(loss), 4), None if v is None else round(v, 4)])
+            gpu = f" gpu peak {torch.cuda.max_memory_allocated() / 2**30:.1f} GB" if kind == "cuda" else ""
             print(f"step {step}/{total} loss {float(loss):.4f} valid {v} lr {opt.param_groups[0]['lr']:.2e} "
-                  f"{tp_tok / max(tp_t, 1e-9):,.0f} tok/s", flush=True)
+                  f"{tp_tok / max(tp_t, 1e-9):,.0f} tok/s | host RSS {_rss_gb():.1f} GB{gpu}", flush=True)
             if v is not None and v < best:
                 best = v
                 save(ck_dir / "best.pt")
@@ -626,7 +643,7 @@ def main(argv=None) -> int:
                     "amp": "fp16+scaler" if fp16 else "bf16" if kind != "cpu" else "fp32"},
          "target": {"loss": a.target_loss, "reached": hit} if a.target_loss else None,
          "license": PERSONAL if any(x != "open" and not str(x).startswith("open") for x in licenses) else "open",
-         "data_sha256_16": W.data_hash(games), "split": {k: len(v) for k, v in sp.items()}}
+         "data_sha256_16": data_hash, "split": split_n}
     if not a.throughput_only and (ck_dir / "best.pt").exists():
         st = torch.load(ck_dir / "best.pt", map_location="cpu", weights_only=False)
         del opt                                                    # free the training state before grading
@@ -636,7 +653,6 @@ def main(argv=None) -> int:
         gdev = "cuda" if torch.cuda.is_available() else "cpu"      # grade off the TPU (dynamic shapes)
         gm = build_model(vocab, **mk).to(gdev)
         gm.load_state_dict(st["model"])
-        base = W.baselines(sp["train"])
         g["test_by_league"] = {}
         for lg in sorted({x["league"] for x in sp["test"]}):
             mine = [x for x in sp["test"] if x["league"] == lg][: a.grade_games]
