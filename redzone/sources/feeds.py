@@ -62,7 +62,13 @@ class FeedBook:
         return max(times) if times else None
 
     def _backing_off(self, g: GameState) -> bool:
-        return any(self.fetcher.backing_off(u) for u in self.urls_of(g))
+        """Is the URL holding the freshest copy backing off? Only that one can stop new data: a
+        second feed going dark (a backing-off nba_cdn next to a fresh ESPN summary) must not make the
+        game read stale at every poll boundary (T6-5)."""
+        urls = [(t, u) for u in self.urls_of(g) if (t := self.fetcher.fetched_at(u)) is not None]
+        if not urls:
+            return any(self.fetcher.backing_off(u) for u in self.urls_of(g))
+        return self.fetcher.backing_off(max(urls)[1])
 
     def stale(self, gid: str, now: float | None = None) -> bool:
         g = self.merger.games.get(gid)
