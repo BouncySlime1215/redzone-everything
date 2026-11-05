@@ -51,6 +51,15 @@ SKIP_S = 300.0        # a skipped game stays off the TV this long after the TV l
 HOLD_RESUME_S = 45.0  # a held game turned garbage time: autopilot takes back over after this   # decision tick (cheap: re-scores ~40 games and runs the decider)
 
 
+def _fastcast_ended(task: asyncio.Task) -> None:
+    """[fastcast mac] The client's loop never returns while it's wanted: say so if it dies."""
+    if task.cancelled():
+        return
+    e = task.exception()
+    if e is not None:
+        log.error("Fastcast client stopped: %r (polling carries on)", e, exc_info=e)
+
+
 class Engine:
     def __init__(self, cfg: Config | None = None, store: Store | None = None):
         self.cfg = cfg or Config()
@@ -107,6 +116,9 @@ class Engine:
         self.control = Controller(self.cfg, self.channels,
                                   latency_path=data_dir.parent / "switch_times.json" if data_dir else None)
         self.decider.deadline_cost = self.control.deadline_cost
+        if data_dir:
+            from redzone import calibration
+            self.control.calibrated_flip = calibration.flip_prior(self.cfg, data_dir.parent)
         self.decider.safety.feed_age = self._feed_age   # [playbooks SAFE-01]
         # Break visits: the game we leave keeps playing on the other stick, so the trip back is one
         # flip; with one stick it's a full tune of that game.
@@ -115,6 +127,9 @@ class Engine:
         self.delays.held = self.control.held
         self.control.behind_of = self._behind_of
         self.control.on_behind = self._on_behind
+        # [buffer.watchdog STK-06] a lost hold is rebuilt only while that game is in a dead ball
+        self.control.dead_ball = self._target_dead
+        self.control.buffer_log_path = data_dir.parent / "buffer.jsonl" if data_dir else None
         self.decider.return_cost = lambda t: (self.control.flip_estimate() if self.control.two_stick
                                               else self.control.deadline_cost(t))
         # Stream delay measured from YouTube TV show changes on the quarter hour (no taps needed).
@@ -248,9 +263,19 @@ class Engine:
         if self.sync is None:
             return
         try:
-            self.sync.measure(target, z, kind, t=t, sd=sd)
+            self.sync.measure(target, z, kind, t=t, sd=sd, stick=self._stick_of(target))
         except Exception:
             log.exception("sync: could not use a %s sample on %s", kind, target)
+
+    def _stick_of(self, target: str) -> str | None:
+        """[live nights] The input (HDMI1/HDMI2) of the stick showing `target`, for the per-stick sync
+        error; the input, not the address, so the uploaded log carries no LAN address."""
+        c = getattr(self, "control", None)
+        try:
+            stick = c.main if c.on_target == target else c.hidden if c.hidden_target == target else None
+            return c.hdmi.get(stick.host) if stick is not None else None
+        except Exception:
+            return None
 
     def _sync_position(self, target: str, wall: float, position_s: float, sd: float) -> None:
         if self.sync is not None:
@@ -328,7 +353,7 @@ class Engine:
         whistle-to-break gap (sync.break_anchor.start_bias_s, a prior until the Wednesday probe data
         refits it). Every edge is logged with the feed event it matched (the Noggin's delay labels);
         only with sync.break_anchor.enabled does it reach the filter."""
-        from redzone.lab.timing import is_dead_ball
+        from redzone.grading import is_dead_ball
         gid = self._game_on(target, visible)
         g = self.merger.games.get(gid or "")
         row = {"ts": round(t, 2), "target": target, "stick": host, "sample_kind": kind, "game": gid,
@@ -344,7 +369,7 @@ class Engine:
                 z = t - w - bias
                 row.update(feed_wall=round(w, 2), z=round(z, 2))
                 if self.cfg.get("sync.break_anchor.enabled", False):
-                    row["used"] = bool(self.sync is not None and self.sync.measure(
+                    row["used"] = bool(self.sync is not None and self.delays.anchor(
                         target, z, "break", t, (sd * sd + bias_sd * bias_sd) ** 0.5))
         try:
             self.recorder.sync_anchor(row)
@@ -970,7 +995,9 @@ class Engine:
                 mode, self._on_fastcast_shadow)
             self.fastcast = fastcast.FastcastClient(cb, http=self.fetcher._client)
             self._fastcast_task = asyncio.get_running_loop().create_task(self.fastcast.run())
+            self._fastcast_task.add_done_callback(_fastcast_ended)
             self._fastcast_mode = mode
+            log.info("Fastcast: started (%s)", mode)
         lgs = self._leagues()
         live = [g for g in self.merger.games.values() if g.phase == Phase.LIVE and g.league in lgs]
         if mode == "fallback":
@@ -984,7 +1011,19 @@ class Engine:
         self._fastcast_games = {
             fastcast.game_topic(g.league, g.game_id, self.summaries.get(g.game_id)): (g.league, g.game_id)
             for g in live}
+        if bool(self._fastcast_games) != bool(getattr(self.fastcast, "wanted", None)):
+            log.info("Fastcast (%s): %d live games to watch", mode, len(self._fastcast_games))
         self.fastcast.set_topics(self._fastcast_games)
+        if mode == "shadow":
+            # [fastcast mac] the 4 h budget counts only time with live games, and the file carries the
+            # client's own status, so a night with no FastCast rows says why
+            self.fc_check.watching(bool(self._fastcast_games))
+            st = dict(self.fastcast.status()) if hasattr(self.fastcast, "status") else {}
+            t = self._fastcast_task
+            st["task"] = "running" if t is not None and not t.done() else (
+                "none" if t is None else ("cancelled" if t.cancelled() else f"died: {t.exception()!r}"[:200]))
+            st["wanted"] = len(getattr(self.fastcast, "wanted", ()) or ())
+            self.fc_check.client = st
         if mode == "shadow" and time.time() - self._fc_graded >= 60:
             self._grade_fastcast()
 
@@ -1205,6 +1244,30 @@ class Engine:
         except Exception:  # noqa: BLE001 - the phone text is never worth a failed poll
             log.exception("reasoner: narration step failed")
 
+    def _provenance(self, d, before: str | None, target: str | None, cands: dict) -> dict:
+        """[provenance] Which module contributed what to this decision, as the decider saw it: its own
+        call, the scoring of the game it goes to and the one it leaves (importance, stakes, crunch
+        state) and, two sticks, why the hidden stick already had the target (the standby planner).
+        The controller adds its part (Outcome.provenance). Saved in switches.detail.trace.provenance.
+        Serves: provenance traces (Cycle 06 #2). Owner: lane 3."""
+        def scored(gid: str | None):
+            c = cands.get(gid) if gid else None
+            return c.scored if c is not None else None
+        to, frm = scored(d.target), scored(before)
+        out: dict = {"decider": {"action": d.action, "kind": d.kind, "gate": d.gate, "state": State(d.state).value,
+                                 "reason": str(d.reason)[:160]}}
+        if to is not None or frm is not None:
+            out["importance"] = {"to": round(to.score, 1) if to else None, "from": round(frm.score, 1) if frm else None,
+                                 "moment": round(to.moment, 1) if to else None, "factor": to.factor if to else ""}
+            out["stakes"] = {"to": round(to.stakes, 1) if to else None, "personal": round(to.personal, 1) if to else None,
+                             "closeness": round(to.closeness, 2) if to else None}
+            out["crunch_state"] = {side: {"crunch": s.crunch, "crunch_now": s.crunch_now, "late": s.late, "lock": s.lock}
+                                   for side, s in (("to", to), ("from", frm)) if s is not None}
+        sb = self._standby_view()
+        if sb is not None and target and self.control.hidden_target == target:
+            out["planner"] = {"kind": sb["kind"], "why": sb["why"], "ready": sb["ready"]}
+        return out
+
     def _reel_target(self) -> tuple[str, float] | None:
         """(tuner target, seconds) of the ready catch-up reel, when reels may go on the TV."""
         r = self.reeler.current
@@ -1229,6 +1292,11 @@ class Engine:
             delay = self.delays.get(target or "unknown")
             back = d.replay.back_s(time.time(), delay.mu, PLAY_LEN_S.get(self.merger.games[d.target].league, 8))
         cmd_ts = time.time()
+        try:
+            prov = self._provenance(d, before, target, cands)   # as the decision saw it, before the switch runs
+        except Exception:   # provenance must never cost the switch
+            log.exception("switch provenance failed")
+            prov = {}
         event_ts = d.replay.t if d.replay else None
         deferred = not self.cfg.get("mode.dry_run", True)
         replay_exit = max(self.decider.replay_until, self.decider.replay_exit_after) \
@@ -1270,9 +1338,12 @@ class Engine:
                 self._fail_cool[target] = time.time() + self.cfg.get("decider.fail_cooldown_s", 90)
             detail = {"took": out.took, "detail": out.detail, "path": out.path, "waited": round(out.waited, 1)}
             try:
+                prov["guard"] = {"rule": "no mid-play cut", "waited_s": round(out.waited, 1),
+                                 "let_through": out.ok and not out.screen_unchanged}
                 detail["trace"] = trace.build(d, before, target, out, cmd_ts, delays=self.delays,
                                               before_target=before_target, labels=self._trace_labels(before, d.target),
-                                              from_replay=replay_exit is not None)
+                                              from_replay=replay_exit is not None,
+                                              provenance={**prov, **out.provenance})
                 trace.emit(self.trace_sink, detail["trace"])
             except Exception:   # a trace must never cost the switch its row
                 log.exception("switch trace failed")
@@ -1298,7 +1369,8 @@ class Engine:
                                  and (time.time() >= replay_exit if replay_exit is not None
                                       else self.safe_to_leave(before, required_s=8.0))))),
                             replay_id=d.replay.pid if d.replay else None,
-                            entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0)
+                            entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0,
+                            entry_cue=getattr(d, "cue", "") if d.action == "switch" else "")
 
     def pending_age(self, now: float) -> float:
         """Seconds the pending switch has been running, as of wall-clock `now`. If the wall clock
@@ -1459,6 +1531,11 @@ class Engine:
                 for t in (g.home, g.away):
                     out += [t.abbr, t.name, (t.name or "").split()[-1] if t.name else ""]
         return [x for x in out if x]
+
+    def _target_dead(self, target: str) -> bool:
+        """[STK-06] Is the game on `target` in a dead ball on screen right now? No game known: no."""
+        gid = next((g for g, w in self.where.items() if getattr(w, "target", None) == target), None)
+        return bool(gid) and self.safe_to_leave(gid)
 
     def safe_to_leave(self, gid: str | None, required_s: float = 0.0) -> bool:
         """Re-checked right before a two-stick input flip: is a play on screen in the game we're leaving?"""
