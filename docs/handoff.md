@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-RC6.3 at risk: dry-run tests are 50 min in on a loaded Mac and hit the 60-min timeout about 5:26 PM. The real deploy reruns them, which may miss the 6:30 window. RC6.2 stays live; nothing changed.
-Waiting on Nick: TV off, and OK to skip the rerun if the dry-run passes on the same commit (39597ea5). Usage 75%.
+RC6.3 NOT deployed; RC6.2 (1bf41504) still running. Mac is on battery at 23% and keeps sleeping, so dry-run tests reached only ~6% in 89 min. Overseer stopped them (exit 3 is from that stop, not a test failure).
+URGENT: Mac needs wall power before tonight's games or the live app may stall. Recommended RC6.2 tonight, RC6.3 at the next no-game window. Usage 75%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
