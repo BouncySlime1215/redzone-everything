@@ -1,0 +1,50 @@
+# Media metadata workers (Data Division C) on a free GitHub runner: never the Mac, never GPU quota, never video.
+# Push a media-factory/<src> branch (mlb | nhl | nba | yt) to run that worker. Outputs (gzipped JSONL rows +
+# ledger.json) are pushed to media-out/<src>, which is also read back first so runs are incremental and the
+# YouTube worker can compute view velocity between snapshots. Data reaches integration/next only via a PR.
+name: media-factory
+on:
+  push:
+    branches: ["media-factory/**"]
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: source + window
+        run: |
+          S="${GITHUB_REF_NAME#media-factory/}"; S="${S%%-*}"
+          echo "SRC=$S" >> "$GITHUB_ENV"
+          # Window file on the run branch wins (one "START END" per line); else the defaults below.
+          if [ -f scripts/media_window.txt ]; then cp scripts/media_window.txt /tmp/win; else
+            case "$S" in
+              mlb) printf "2023-03-30 2023-11-05\n2024-03-20 2024-10-31\n2025-03-18 2025-11-02\n" > /tmp/win;;
+              nhl) printf "2023-10-10 2024-06-25\n2024-10-04 2025-06-25\n2025-10-07 $(date -u -d yesterday +%F)\n" > /tmp/win;;
+              nba) printf "$(date -u -d '14 days ago' +%F) $(date -u -d yesterday +%F)\n" > /tmp/win;;
+              *)   echo "- -" > /tmp/win;;
+            esac; fi
+          cat /tmp/win
+      - name: restore previous outputs (incremental)
+        run: |
+          mkdir -p data/media
+          git fetch --depth 1 origin "media-out/$SRC" 2>/dev/null && git --work-tree=data/media checkout FETCH_HEAD -- . 2>/dev/null || true
+          ls -la data/media || true
+      - name: pull
+        env: {YOUTUBE_API_KEY: "${{ secrets.YOUTUBE_API_KEY }}"}
+        run: |
+          while read -r A B; do
+            if [ "$SRC" = yt ]; then python scripts/media_pull.py yt --out data/media --pages 20
+            else python scripts/media_pull.py "$SRC" --start "$A" --end "$B" --out data/media; fi
+          done < /tmp/win
+          python scripts/media_pull.py ledger --out data/media
+      - name: push outputs to media-out/<src>
+        if: always()
+        run: |
+          cd data/media && rm -rf .git && git init -q -b "media-out/$SRC" && git add -A
+          git -c user.name=media-factory -c user.email=media-factory@users.noreply.github.com \
+            commit -qm "media-factory $SRC outputs from $GITHUB_SHA (run $GITHUB_RUN_ID); personal-use, not for commercial release"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY" "HEAD:refs/heads/media-out/$SRC"
