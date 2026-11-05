@@ -54,7 +54,7 @@ rules:
     trigger: "End of Q1 and Q3 (and before each OT)."
     official_len_s: {local: 150, national: 210}
     measured: {league: nba, kind: end_period}
-    measured_note: "Train q50 local 162 s."
+    measured_note: "Data A cdn 2023-26 pooled q50: national 210 s, local 162 s (+48 s national; nba_cdn in break_lengths.json)."
     confidence: verified
     source_url: "https://official.nba.com/rule-no-5-scoring-and-timing"
   - id: nba_halftime

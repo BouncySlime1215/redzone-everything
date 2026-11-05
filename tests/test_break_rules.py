@@ -61,13 +61,20 @@ def _nba_timeout(national, nets):
 
 
 def test_network_offset_nba_national_vs_local():
-    tab = LENGTHS["table"]["nba"]["timeout"]
-    if "ESPN" not in tab:
-        return
+    """NBA reads Data A's 5-season cdn cells (national / local), long timeouts by default."""
+    cdn = LENGTHS["nba_cdn"]["table"]["timeout_long"]
     g = _nba_timeout(True, ["ESPN"])
-    assert breaks.network_offset(g) == tab["ESPN"]["q50"] - tab["*"]["q50"] > 15
-    assert breaks.network_offset(_nba_timeout(False, ["NBCS-WSH"])) == tab["local"]["q50"] - tab["*"]["q50"]
-    assert breaks.network_offset(_nba_timeout(True, ["NOSUCHNET"])) == 0.0
+    assert breaks.network_offset(g) == cdn["national"]["q50"] - cdn["*"]["q50"] > 15
+    assert breaks.network_offset(_nba_timeout(False, ["NBCS-WSH"])) == cdn["local"]["q50"] - cdn["*"]["q50"] < 0
+    assert "personal-use" in LENGTHS["nba_cdn"]["license"] or "personal" in LENGTHS["nba_cdn"]["license"]
+
+
+def test_network_offset_other_leagues_use_named_networks():
+    from redzone.models import GameState, League, Phase, Stoppage, Team
+    tab = LENGTHS["table"]["nfl"]["score_break"]
+    g = GameState(game_id="n", league=League.NFL, home=Team("H"), away=Team("A"), phase=Phase.LIVE)
+    g.stoppage, g.national_tv, g.broadcasts = Stoppage.SCORE_BREAK, True, ["NBC"]
+    assert breaks.network_offset(g) == tab["NBC"]["q50"] - tab["*"]["q50"]
 
 
 def test_with_network_is_off_by_default_and_skips_short_breaks():

@@ -3,6 +3,7 @@
     python scripts/fetch_eval_data.py                     # once
     python scripts/measure_break_lengths.py               # writes redzone/scoring/broadcast/break_lengths.json
     python scripts/measure_break_lengths.py --split valid # the EXP-1500 read (dev only, never test)
+    python scripts/measure_break_lengths.py --cdn nba-stoppage-lengths.json   # + Data A's NBA cdn cells (#259)
 
 A break row = a feed stoppage (espn.stoppage_for) to the real restart (cutgrade.resume_after),
 the same definition as breaks.LEN. Network = the game's national broadcast if it has one, else
@@ -105,10 +106,38 @@ def predict(tab: dict, league: str, kind: str, net: str, per_network: bool = Tru
     return cell["q50"] if cell else None
 
 
+CDN_TYPES = {"timeout_long": "timeout_long", "timeout_short": "timeout_short", "period_break": "end_period",
+             "halftime": "halftime", "review": "review"}
+
+
+def cdn_cells(path: Path, seasons=(2023, 2024, 2025)) -> dict:
+    """Data A's NBA cdn table (#259, docs/datasources/nba-stoppage-lengths.json), pooled over the
+    given seasons, periods and clock buckets into {kind: {national|local|*: quantiles}}. Pooling is the
+    n-weighted mean of each cell's quantile (an approximation of the pooled quantile). "timeout" is
+    long + short together, matching DeadTracker's single timeout window kind."""
+    d = json.loads(path.read_text())
+    acc: dict = defaultdict(lambda: defaultdict(list))
+    for r in d["rows"]:
+        k = CDN_TYPES.get(r["type"])
+        if not k or r["season"] not in seasons or r["network"] not in ("national", "local"):
+            continue
+        for kind in (k, "timeout") if k.startswith("timeout_") else (k,):
+            for net in (r["network"], "*"):
+                acc[kind][net].append(r)
+    out: dict = {}
+    for kind, nets in acc.items():
+        for net, rs in nets.items():
+            n = sum(r["n"] for r in rs)
+            out.setdefault(kind, {})[net] = {"n": n, **{q: round(sum(r[q] * r["n"] for r in rs) / n, 1)
+                                                        for q in ("q05", "q10", "q25", "q50", "q75", "q90")}}
+    return {"source": d["source"], "license": d["license"], "seasons": list(seasons), "table": out}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("leagues", nargs="*", default=["nfl", "nba", "nhl"])
     ap.add_argument("--split", choices=["train", "valid"], default="train")
+    ap.add_argument("--cdn", type=Path, default=None, help="Data A's nba-stoppage-lengths.json (#259) to merge")
     a = ap.parse_args()
     train = [x for lg in a.leagues for x in rows(League(lg), "train")]
     tab = table(train)
@@ -118,7 +147,8 @@ def main() -> int:
         OUT.write_text(json.dumps({"source": "eval-data-v1 archive, train nights only (redzone.lab.splits)",
                                    "license": "derived from ESPN summaries; personal-use (plan B), not for commercial release",
                                    "definition": "feed stoppage to real restart (cutgrade.resume_after), seconds",
-                                   "min_n_per_network": MIN_N, "table": tab}, indent=1))
+                                   "min_n_per_network": MIN_N, "table": tab,
+                                   **({"nba_cdn": cdn_cells(a.cdn)} if a.cdn else {})}, indent=1))
         print(f"wrote {OUT} from {len(train)} train breaks")
         return 0
     # EXP-1500 read: per-network median vs league-only median on valid nights

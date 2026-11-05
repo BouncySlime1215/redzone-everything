@@ -83,13 +83,29 @@ _KIND = {Stoppage.TIMEOUT: "timeout", Stoppage.SCORE_BREAK: "score_break", Stopp
 
 
 def _net_table() -> dict:
+    """{league: {kind: {network: quantiles}}}. NBA uses Data A's 5-season cdn cells (national / local,
+    "nba_cdn" in the file) when present: far more rows than the per-network-name ESPN cells."""
     global _NET
     if _NET is None:
         try:
-            _NET = json.loads(NET_PATH.read_text()).get("table", {})
+            d = json.loads(NET_PATH.read_text())
+            _NET = dict(d.get("table", {}))
+            if d.get("nba_cdn"):
+                _NET["nba_cdn"] = d["nba_cdn"]["table"]
         except (OSError, ValueError):
             _NET = {}
     return _NET
+
+
+def _cells(g: GameState, kind: str) -> tuple[dict | None, dict | None]:
+    """(this game's network cell, the league cell) for a break kind."""
+    tab = _net_table()
+    lg = g.league.base.value
+    if lg == "nba" and kind in tab.get("nba_cdn", {}):
+        c = tab["nba_cdn"][kind]
+        return c.get("national" if getattr(g, "national_tv", False) else "local"), c.get("*")
+    c = tab.get(lg, {}).get(kind, {})
+    return c.get(network_of(g)), c.get("*")
 
 
 def network_of(g: GameState) -> str:
@@ -101,12 +117,13 @@ def network_of(g: GameState) -> str:
     return "national"
 
 
-def network_offset(g: GameState) -> float:
+def network_offset(g: GameState, long: bool = True) -> float:
     """Seconds this game's network adds to (or takes from) the league median for the break now in
     the data; 0 when there is no cell for it (fewer than the table's min rows)."""
-    kind = _KIND.get(g.stoppage)
-    cells = _net_table().get(g.league.value, {}).get(kind or "", {})
-    net, lg = cells.get(network_of(g)), cells.get("*")
+    kind = _KIND.get(g.stoppage) or ""
+    if kind == "timeout" and g.league.base == League.NBA and long:
+        kind = "timeout_long"
+    net, lg = _cells(g, kind)
     if not net or not lg:
         return 0.0
     return float(net["q50"]) - float(lg["q50"])
@@ -123,13 +140,11 @@ CUT_KINDS = {
 
 def network_kind_offsets(g: GameState) -> dict[str, float]:
     """{DeadTracker window kind: seconds this game's network adds to the league median}."""
-    lg = g.league.base.value
-    tab, net = _net_table().get(lg, {}), network_of(g)
     out = {}
-    for ck, bk in CUT_KINDS.get(lg, {}).items():
-        cells = tab.get(bk, {})
-        if net in cells and "*" in cells:
-            d = float(cells[net]["q50"]) - float(cells["*"]["q50"])
+    for ck, bk in CUT_KINDS.get(g.league.base.value, {}).items():
+        net, lg = _cells(g, bk)
+        if net and lg:
+            d = float(net["q50"]) - float(lg["q50"])
             if d:
                 out[ck] = d
     return out
@@ -139,7 +154,7 @@ def with_network(f: Forecast, g: GameState, leagues) -> Forecast:
     """f with the network offset applied, for a long break in the data in one of `leagues`."""
     if not f.now or not f.visit or not _league_in(leagues or [], g):
         return f
-    d = network_offset(g)
+    d = network_offset(g, long=f.expect_s >= LEN["nba_long"] - 1)
     return Forecast(f.p, max(VISIT_MIN_S, f.expect_s + d), f.why, True) if d else f
 
 # What a learned-only forecast expects a break to last (median long break, per pro league).
