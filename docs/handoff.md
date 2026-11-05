@@ -71,7 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-- 19:10 V8 Mind (students-only, pack PIN 7ef4a3f) is TRAINING on Google Colab (free T4, Nick's account) with V7's 23,296 teacher answers. Drive mount was declined (Colab demands Photos/contacts/messages scopes), so state lives in the Colab session only: a disconnect means a re-run. ETA ~3.6 h, so grades come in around 10:45 PM. The 5-min sweep reads the tab and keeps it active.
+V8 Colab training started (watchdog job first, 192 min budget)
+RC6.1 Mac tests still running; RC5.1 live
+Usage 34%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
