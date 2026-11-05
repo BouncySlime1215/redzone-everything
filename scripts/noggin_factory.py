@@ -73,7 +73,8 @@ def fetch_espn_season(league: str, year: int, dest: Path, jobs: int = 4, max_gam
     sess = requests.Session()
     sess.headers["User-Agent"] = "redzone-noggin-factory"
     with ThreadPoolExecutor(jobs) as ex:
-        boards = list(ex.map(lambda d: _get_json(sess, espn.scoreboard_url(lg, d)), days))
+        board = F.SOURCES.get(league, {}).get("board", "")      # college: the whole division, not the featured games
+        boards = list(ex.map(lambda d: _get_json(sess, espn.scoreboard_url(lg, d) + board), days))
     ids = []
     for b in boards:
         for e in (b or {}).get("events", []):
