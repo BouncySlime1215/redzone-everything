@@ -320,6 +320,8 @@ class Decider:
             tl = self.timelines[game_id] = Timeline(league, clock=self._clock)
             from redzone.noggin.live import hook_for   # [noggin] Timing v1, off unless noggin.timing.leagues
             tl.dead.noggin = hook_for(self.cfg, league)
+            nets = self.cfg.get("breaks.network_lengths") or []
+            tl.network_lengths = league.value in nets or league.base.value in nets
             if self._pick_on(league):
                 from redzone.noggin.pick import LiveGame
                 tl.live = LiveGame(league, game_id, "")

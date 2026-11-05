@@ -278,6 +278,9 @@ class DeadTracker:
         # it has been dead (and when it restarted) is unknown (NBA GS @ DEN, Nov 4: a 70 s rewind
         # into such a gap landed mid-play). Set from decider.entry.confirmed_dead_only.
         self.confirmed_only = False
+        # [Data F, breaks.network_lengths] seconds this game's network adds to MEDIAN_S per window kind
+        # (scoring/breaks.py: network_kind_offsets). Empty = today's tables (the flag is off).
+        self.net_offset: dict[str, float] = {}
 
     # ---- input
     def add(self, pid: str, lo: float, hi: float, kind: str, text: str, type_text: str,
@@ -439,7 +442,7 @@ class DeadTracker:
                 continue
             if w.end is not None:
                 return max(x, w.end)
-            table = w.start + MEDIAN_S.get(_lg(self.league), {}).get(w.kind, 30.0)
+            table = w.start + MEDIAN_S.get(_lg(self.league), {}).get(w.kind, 30.0) + self.net_offset.get(w.kind, 0.0)
             if self.noggin is not None:
                 med = self.noggin.median_until(self, w, self._proven(w, self._covered()))
                 if med is not None:

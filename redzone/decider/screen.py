@@ -618,6 +618,8 @@ class Timeline:
         self.break_kind = ""                  # ESPN kind of the play that started the current break
         self.period_timeouts: int | None = None  # timeouts this period so far; None = joined mid-period
         self.live = None                      # [noggin PICK] pick.LiveGame when noggin.pick is on (or shadow)
+        self.network_lengths = False          # [Data F] breaks.network_lengths on for this league (Decider sets it)
+        self._net_done = False
 
     def lag_est(self) -> float:
         """How far behind real life this game's feed runs (recent worst case)."""
@@ -635,6 +637,9 @@ class Timeline:
 
     def observe(self, g: GameState) -> None:
         now = self._clock()
+        if self.network_lengths and not self._net_done and g.broadcasts:
+            from redzone.scoring.breaks import network_kind_offsets
+            self.dead.net_offset, self._net_done = network_kind_offsets(g), True
         prev_fresh = self.fresh_at
         self.fresh_at = g.updated_at or now
         score = (g.home.score, g.away.score)

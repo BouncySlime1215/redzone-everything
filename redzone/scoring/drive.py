@@ -180,7 +180,7 @@ class DriveScorer(Scorer):
         # The break forecast for each NFL game (scoring/breaks.py), so the decider can tell a drive
         # it's about to tune to from one about to go to commercial. Its hold keeps a break that has
         # left the data (the kickoff after the TD's ads) forecast until it has reached the screen.
-        self.breaks = breaks.BreakBook(clock=clock)
+        self.breaks = breaks.BreakBook(clock=clock, network=lambda: cfg.get("breaks.network_lengths") or [])
 
     def score(self, g: GameState, me: Personal | None = None) -> Scored:
         s = super().score(g, me)

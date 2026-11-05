@@ -157,7 +157,8 @@ class Engine:
         self.planner = standby.Planner(self.cfg)   # what the hidden stick holds between switches
         self._hand_left: tuple[str, float] | None = None   # (game you left by hand, when): standby.options hand_back
         # owed TV timeouts per game: when a break is coming (+ the learned brain, when brain.enabled)
-        self.breaks = breaks.BreakBook(brain=self._break_brain)
+        self.breaks = breaks.BreakBook(brain=self._break_brain,
+                                       network=lambda: self.cfg.get("breaks.network_lengths") or [])
         self._cost_mode: bool | None = None         # two-stick mode when switch costs were last synced
         self._cost_synced = 0.0
         self.boosted: set[str] = set()

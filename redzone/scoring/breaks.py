@@ -28,8 +28,10 @@ is never second-guessed.
 """
 from __future__ import annotations
 
+import json
 import math
 import time
+from pathlib import Path
 from dataclasses import dataclass
 
 from redzone.models import REAL_BREAKS, GameState, League, Phase, Stoppage, pro_period
@@ -66,6 +68,79 @@ class Forecast:
 
 
 NONE = Forecast(0.0, 0.0, "")
+
+
+# [Data F, EXP-205 input] per-network break lengths (redzone/scoring/broadcast/break_lengths.json,
+# measured on train nights by scripts/measure_break_lengths.py). breaks.network_lengths (a list of
+# leagues, default []) turns it on: a long break already in the data keeps its LEN-table length plus
+# the network's offset from the league median for that break kind (q50 network - q50 league). NBA
+# national timeouts measure ~30 s over local (rulebook: 165 s local, 195 s national).
+NET_PATH = Path(__file__).with_name("broadcast") / "break_lengths.json"
+_NET: dict | None = None
+_KIND = {Stoppage.TIMEOUT: "timeout", Stoppage.SCORE_BREAK: "score_break", Stoppage.END_PERIOD: "end_period",
+         Stoppage.TWO_MINUTE_WARNING: "two_minute_warning", Stoppage.HALFTIME: "halftime",
+         Stoppage.INTERMISSION: "intermission"}
+
+
+def _net_table() -> dict:
+    global _NET
+    if _NET is None:
+        try:
+            _NET = json.loads(NET_PATH.read_text()).get("table", {})
+        except (OSError, ValueError):
+            _NET = {}
+    return _NET
+
+
+def network_of(g: GameState) -> str:
+    """The same key scripts/measure_break_lengths.py uses: the first national network, else 'local'."""
+    if not getattr(g, "national_tv", False):
+        return "local"
+    for n in getattr(g, "broadcasts", None) or []:
+        return n.upper().replace(" ", "")
+    return "national"
+
+
+def network_offset(g: GameState) -> float:
+    """Seconds this game's network adds to (or takes from) the league median for the break now in
+    the data; 0 when there is no cell for it (fewer than the table's min rows)."""
+    kind = _KIND.get(g.stoppage)
+    cells = _net_table().get(g.league.value, {}).get(kind or "", {})
+    net, lg = cells.get(network_of(g)), cells.get("*")
+    if not net or not lg:
+        return 0.0
+    return float(net["q50"]) - float(lg["q50"])
+
+
+# DeadTracker window kinds (decider/cuts.py MEDIAN_S) -> break_lengths.json kinds. Long breaks only.
+CUT_KINDS = {
+    "nfl": {"score": "score_break", "tv_timeout": "timeout", "end_period": "end_period",
+            "two_minute": "two_minute_warning", "halftime": "halftime", "review": "review"},
+    "nba": {"timeout": "timeout", "end_period": "end_period", "halftime": "halftime", "review": "review"},
+    "nhl": {"tv_timeout": "timeout", "goal": "score_break", "intermission": "intermission"},
+}
+
+
+def network_kind_offsets(g: GameState) -> dict[str, float]:
+    """{DeadTracker window kind: seconds this game's network adds to the league median}."""
+    lg = g.league.base.value
+    tab, net = _net_table().get(lg, {}), network_of(g)
+    out = {}
+    for ck, bk in CUT_KINDS.get(lg, {}).items():
+        cells = tab.get(bk, {})
+        if net in cells and "*" in cells:
+            d = float(cells[net]["q50"]) - float(cells["*"]["q50"])
+            if d:
+                out[ck] = d
+    return out
+
+
+def with_network(f: Forecast, g: GameState, leagues) -> Forecast:
+    """f with the network offset applied, for a long break in the data in one of `leagues`."""
+    if not f.now or not f.visit or not _league_in(leagues or [], g):
+        return f
+    d = network_offset(g)
+    return Forecast(f.p, max(VISIT_MIN_S, f.expect_s + d), f.why, True) if d else f
 
 # What a learned-only forecast expects a break to last (median long break, per pro league).
 BRAIN_LEN = {League.NFL: 150.0, League.NBA: 180.0, League.NHL: LEN["nhl_tv"], League.MLB: LEN["mlb_inning"]}
@@ -302,10 +377,12 @@ class BreakBook:
     (the kickoff after the TD's ads is already logged) is still on its way to the screen: a
     forecast holds for HOLD_S unless a stronger one replaces it."""
 
-    def __init__(self, clock=None, brain=None):
-        """brain: a callable returning (brain, weight) to blend in, or (None, 0) when off."""
+    def __init__(self, clock=None, brain=None, network=None):
+        """brain: a callable returning (brain, weight) to blend in, or (None, 0) when off.
+        network: a callable returning breaks.network_lengths (leagues that use per-network lengths)."""
         self._clock = clock or (lambda: time.time())
         self._brain = brain
+        self._network = network
         self._last: dict[str, tuple[float, Forecast]] = {}
         self._seen: dict[str, set[str]] = {}
         self._period: dict[str, int | None] = {}
@@ -332,6 +409,8 @@ class BreakBook:
         if g is None:
             return NONE
         f, now = forecast(g, self.clocks(g.game_id, g.period)), self._clock()
+        if self._network is not None and f.now:
+            f = with_network(f, g, self._network())
         if self._brain is not None and g.phase == Phase.LIVE:
             got = self._brain()
             b, w = got[0], got[1]

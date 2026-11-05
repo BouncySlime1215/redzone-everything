@@ -50,3 +50,54 @@ def test_measured_runs_over_official():
         off = r["official_len_s"]
         off = min(off.values()) if isinstance(off, dict) else off
         assert tab[r["measured"]["league"]][r["measured"]["kind"]]["*"]["q50"] >= off
+
+
+# ---- breaks.network_lengths (default off) ---------------------------------------------------
+def _nba_timeout(national, nets):
+    from redzone.models import GameState, League, Phase, Stoppage, Team
+    g = GameState(game_id="g", league=League.NBA, home=Team("H"), away=Team("A"), phase=Phase.LIVE)
+    g.stoppage, g.national_tv, g.broadcasts = Stoppage.TIMEOUT, national, nets
+    return g
+
+
+def test_network_offset_nba_national_vs_local():
+    tab = LENGTHS["table"]["nba"]["timeout"]
+    if "ESPN" not in tab:
+        return
+    g = _nba_timeout(True, ["ESPN"])
+    assert breaks.network_offset(g) == tab["ESPN"]["q50"] - tab["*"]["q50"] > 15
+    assert breaks.network_offset(_nba_timeout(False, ["NBCS-WSH"])) == tab["local"]["q50"] - tab["*"]["q50"]
+    assert breaks.network_offset(_nba_timeout(True, ["NOSUCHNET"])) == 0.0
+
+
+def test_with_network_is_off_by_default_and_skips_short_breaks():
+    g = _nba_timeout(True, ["ESPN"])
+    f = breaks.Forecast(1.0, breaks.LEN["nba_long"], "long timeout", True)
+    assert breaks.with_network(f, g, []) is f                         # flag off: unchanged
+    on = breaks.with_network(f, g, ["nba"])
+    assert on.expect_s == f.expect_s + breaks.network_offset(g)
+    short = breaks.Forecast(0.15, 50.0, "team timeout", True)         # not a visit: never stretched
+    assert breaks.with_network(short, g, ["nba"]) is short
+    book = breaks.BreakBook(clock=lambda: 0.0, network=lambda: [])
+    assert book.forecast(g).expect_s == breaks.forecast(g).expect_s
+
+
+def test_default_config_ships_flag_off():
+    cfg = yaml.safe_load((Path(breaks.__file__).parents[1] / "default_config.yaml").read_text())
+    assert cfg["breaks"]["network_lengths"] == []
+
+
+def test_dead_tracker_takes_network_offset_only_when_set():
+    from redzone.decider.cuts import MEDIAN_S, DeadTracker, Window
+    from redzone.models import League
+    off = breaks.network_kind_offsets(_nba_timeout(True, ["ESPN"]))
+    if "timeout" not in off:
+        return
+    dt = DeadTracker(League.NBA)
+    w = Window(start=100.0, end=None, kind="timeout")
+    dt._windows = [w]
+    dt.windows = lambda: [w]
+    base = dt.resume_eta(100.0)
+    assert base == 100.0 + MEDIAN_S[League.NBA]["timeout"]
+    dt.net_offset = off
+    assert dt.resume_eta(100.0) == base + off["timeout"]
