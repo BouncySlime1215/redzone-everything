@@ -71,9 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-V8 watchdog advancing: step 250/1436, eta 89 min; Colab UI still says Connecting but output moves
-RC6.1 Mac tests still running (since 7:24); RC5.1 live
-Usage 35%
+V8 watchdog hit its time cap at step 291/1436 (val_loss 0.067), now answering 686 test rows; game-reasoner next.
+Coordinator asks Nick to launch colab/v8_watchdog_l4.ipynb (L4, ~1.5 h, ~8 CU). RC6.1 Mac tests still running; usage 35%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
