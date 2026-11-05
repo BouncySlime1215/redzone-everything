@@ -1,0 +1,101 @@
+# Data Crew B / BUZZ (worker B2): Wikipedia pageviews + edit rate + GDELT news -> context fact shards.
+# Runs on a free GitHub runner, never on the Mac. Spec: docs/datasources/context-buzz.md.
+#   schedule (hourly, :07)        -> live      -> pushes to data-b-out/live
+#   push to data-b-run/<from>_<to> -> backfill  -> pushes to data-b-out/backfill-<from>_<to>
+#     (or put scripts/context/buzz_chunk.json {"from","to","max_files","stride","leagues"} on the branch)
+#   workflow_dispatch              -> either mode
+# Note: `schedule` only fires from the default branch, so hourly live starts once Nick merges this there.
+# Each run first restores the previous state (signals + coverage + facts) from its out branch, so re-runs resume.
+# Only derived numbers are pushed: fact shards, per-team count signals, coverage, teams.csv. No raw files.
+name: context-buzz
+on:
+  push:
+    branches: ["data-b-run/**"]
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode: {description: "live | backfill", default: live}
+      from: {description: "backfill start (YYYY-MM-DD)", default: ""}
+      to: {description: "backfill end, exclusive (YYYY-MM-DD)", default: ""}
+      max_files: {description: "GDELT files per run", default: "600"}
+      stride: {description: "GDELT: every Nth 15-min file", default: "4"}
+      leagues: {default: "nfl,cfb,nba,cbb,nhl,mlb"}
+concurrency:
+  group: context-buzz-${{ github.ref_name }}-${{ github.event_name == 'schedule' && 'live' || inputs.mode || 'backfill' }}
+  cancel-in-progress: false
+jobs:
+  buzz:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install pandas pyarrow requests
+      - name: parameters
+        run: |
+          MODE=live; FROM=""; TO=""; MAXF="${{ inputs.max_files }}"; STRIDE="${{ inputs.stride }}"
+          LEAGUES="${{ inputs.leagues }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MODE="${{ inputs.mode }}"; FROM="${{ inputs.from }}"; TO="${{ inputs.to }}"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            MODE=backfill
+            if [ -f scripts/context/buzz_chunk.json ]; then
+              eval "$(python -c 'import json;c=json.load(open("scripts/context/buzz_chunk.json"));print("\n".join(f"{k.upper()}={v}" for k,v in {"from":c["from"],"to":c["to"],"maxf":c.get("max_files",600),"stride":c.get("stride",4),"leagues":c.get("leagues","nfl,cfb,nba,cbb,nhl,mlb")}.items()))')"
+            else
+              CHUNK="${GITHUB_REF_NAME#data-b-run/}"; FROM="${CHUNK%_*}"; TO="${CHUNK#*_}"
+            fi
+          fi
+          OUTBR="data-b-out/live"
+          [ "$MODE" = backfill ] && OUTBR="data-b-out/backfill-${FROM}_${TO}"
+          {
+            echo "MODE=$MODE"; echo "FROM=$FROM"; echo "TO=$TO"; echo "OUTBR=$OUTBR"
+            echo "MAXF=${MAXF:-600}"; echo "STRIDE=${STRIDE:-4}"; echo "LEAGUES=${LEAGUES:-nfl,cfb,nba,cbb,nhl,mlb}"
+          } >> "$GITHUB_ENV"
+      - name: restore previous state from the out branch
+        run: |
+          mkdir -p data/context/buzz
+          if git fetch -q --depth 1 origin "refs/heads/$OUTBR"; then
+            git archive FETCH_HEAD | tar -x -C data/context/buzz
+            [ -f data/context/buzz/meta/teams.csv ] && cp data/context/buzz/meta/*.csv data/context/
+          fi
+          du -sh data/context/buzz || true
+      - name: teams (Wikipedia + Wikidata; falls back to the pro seed)
+        continue-on-error: true
+        run: |
+          if [ ! -f data/context/teams.csv ] || [ "$MODE" = backfill ]; then
+            python scripts/context/wikidata_teams.py --out data/context --leagues "$LEAGUES"
+          fi
+      - name: buzz
+        run: |
+          if [ "$MODE" = backfill ]; then
+            python scripts/context/run_buzz.py backfill --from "$FROM" --to "$TO" --max-files "$MAXF" \
+              --stride "$STRIDE" --leagues "$LEAGUES" --max-minutes 95
+          else
+            python scripts/context/run_buzz.py live --leagues "$LEAGUES"
+          fi
+      - name: push derived outputs to the out branch
+        if: always()
+        run: |
+          mkdir -p /tmp/out/meta
+          cd data/context/buzz
+          cp -r facts signals coverage /tmp/out/ 2>/dev/null || true
+          cp manifest_*.json /tmp/out/ 2>/dev/null || true
+          cp ../teams.csv ../rivalries.csv /tmp/out/meta/ 2>/dev/null || true
+          cd /tmp/out && find . -type f | sort | head -50 && du -sh .
+          git init -q -b "$OUTBR" && git add -A
+          git -c user.name=context-buzz -c user.email=context-buzz@users.noreply.github.com \
+            commit -qm "context-buzz $MODE ${FROM}..${TO} from $GITHUB_SHA (run $GITHUB_RUN_ID)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY" "HEAD:refs/heads/$OUTBR"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: context-buzz-${{ env.MODE }}-${{ github.run_id }}
+          path: |
+            data/context/buzz/facts/*.parquet
+            data/context/buzz/manifest_*.json
+            data/context/teams.csv
+            data/context/rivalries.csv
+          retention-days: 30
