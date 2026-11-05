@@ -461,12 +461,18 @@
    ]
   },
   "redzone/calibration.py": {
-   "contracts": [],
-   "inputs": [],
+   "contracts": [
+    "seek_model"
+   ],
+   "inputs": [
+    "redzone/contracts/switching.py",
+    "uses:seek_model"
+   ],
    "kind": "module",
    "outputs": [
     "redzone/engine.py",
-    "redzone/supervisor.py"
+    "redzone/supervisor.py",
+    "scripts/sync_fit.py"
    ],
    "owner": "unowned",
    "role": "[calib.auto] Self-calibration: values re-measured each night from live telemetry, with no one's input.",
@@ -497,6 +503,7 @@
     "scripts/eval_sports.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
+    "scripts/hold_left_probe.py",
     "scripts/multiview_probe.py",
     "scripts/plan_tonight.py",
     "scripts/rz.py",
@@ -546,6 +553,7 @@
     "redzone/lab/tune.py",
     "redzone/standby.py",
     "redzone/supervisor.py",
+    "redzone/sync_probe.py",
     "redzone/web/phone_v2.py",
     "redzone/web/server.py",
     "scripts/backtest.py",
@@ -556,6 +564,7 @@
     "scripts/eval_sports.py",
     "scripts/fault_drill.py",
     "scripts/find_yttv_code.py",
+    "scripts/hold_left_probe.py",
     "scripts/night_report.py",
     "scripts/perf_probe.py",
     "scripts/plan_tonight.py",
@@ -898,10 +907,12 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/calibration.py",
     "redzone/contracts/__init__.py",
     "redzone/contracts/world.py",
     "redzone/control.py",
     "redzone/decider/decider.py",
+    "redzone/engine.py",
     "redzone/lab/backtest.py",
     "redzone/lab/evaldata.py"
    ],
@@ -1047,6 +1058,7 @@
     "redzone/lab/night/run.py",
     "redzone/supervisor.py",
     "scripts/fault_drill.py",
+    "scripts/hold_left_probe.py",
     "scripts/rz.py",
     "scripts/tv_practice.py"
    ],
@@ -1062,6 +1074,7 @@
     "STK-02",
     "STK-05",
     "STK-06",
+    "STK-07",
     "Switch time p95 (SmartThings input change)",
     "TV-04"
    ]
@@ -1198,6 +1211,7 @@
     "Landings in dead time",
     "Mid-play entries (per 100 landings)",
     "SAFE-01",
+    "SAFE-09",
     "Your-team crunch live"
    ]
   },
@@ -1533,13 +1547,16 @@
    ]
   },
   "redzone/engine.py": {
-   "contracts": [],
+   "contracts": [
+    "set_calibrated_seek"
+   ],
    "inputs": [
     "redzone/bets.py",
     "redzone/calibration.py",
     "redzone/channels.py",
     "redzone/commands.py",
     "redzone/config.py",
+    "redzone/contracts/switching.py",
     "redzone/control.py",
     "redzone/decider/decider.py",
     "redzone/decider/screen.py",
@@ -1580,7 +1597,8 @@
     "redzone/trace.py",
     "redzone/tuners/prime_multiview.py",
     "redzone/userstate.py",
-    "redzone/views.py"
+    "redzone/views.py",
+    "uses:set_calibrated_seek"
    ],
    "kind": "module",
    "outputs": [
@@ -2309,6 +2327,7 @@
    "kind": "module",
    "outputs": [
     "redzone/lab/backtest.py",
+    "scripts/burst_align.py",
     "scripts/timing_report.py"
    ],
    "owner": "unowned",
@@ -3529,11 +3548,14 @@
   "redzone/sync_probe.py": {
    "contracts": [],
    "inputs": [
+    "redzone/config.py",
     "redzone/tuners/adb.py"
    ],
    "kind": "module",
    "outputs": [
-    "redzone/engine.py"
+    "redzone/engine.py",
+    "scripts/burst_align.py",
+    "scripts/sync_fit.py"
    ],
    "owner": "unowned",
    "role": "[SYNC probe] What the sticks expose for auto-anchors and network features: read-only, automatic.",
@@ -3956,6 +3978,7 @@
     "% of hindsight-oracle value achieved (mean of NFL, NBA, NHL)",
     "Big plays live or replayed within 3 min",
     "STK-06",
+    "STK-07",
     "Your-team big plays seen (live or within 3 min)"
    ]
   },
@@ -4074,6 +4097,20 @@
     "untagged"
    ]
   },
+  "scripts/burst_align.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/timing.py",
+    "redzone/sync_probe.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[burst anchor] Do YouTube TV's MediaSession bursts line up with the feed's TV timeouts?",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/calibrate_brain3.py": {
    "contracts": [],
    "inputs": [
@@ -4139,7 +4176,8 @@
    "owner": "unowned",
    "role": "Collect a live test's logs into one folder, with a summary the North Star harness reads (cycle 01 plan, task 4: \"the sync-probe log and data/tv_input.jsonl u...",
    "serves": [
-    "STK-06"
+    "STK-06",
+    "STK-07"
    ]
   },
   "scripts/context_pack.py": {
@@ -4479,6 +4517,32 @@
     "untagged"
    ]
   },
+  "scripts/grading_check.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "Grading rules in CI (docs/grading.md; Nick, Nov 4 2026 6:40 PM ET: \"grading even SHARPER\").",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/hold_left_probe.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/channels.py",
+    "redzone/config.py",
+    "redzone/control.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[STK-07 rig check] Hold the left game, then go back to it: does it play on from the dead ball we left?",
+   "serves": [
+    "STK-07"
+   ]
+  },
   "scripts/leak_check.py": {
    "contracts": [],
    "inputs": [
@@ -4613,6 +4677,17 @@
    "role": "Playbook coverage (docs/playbooks.md): which entries have a night-lab / unit test that RAN and passed.",
    "serves": [
     "SAFE-01"
+   ]
+  },
+  "scripts/press_probe.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[press-to-TV, real hardware] Press GO NOW on the running app the way the phone does, and time each press from the tap to the game playing on the TV.",
+   "serves": [
+    "BTN-01"
    ]
   },
   "scripts/prime_flip_probe.py": {
@@ -4800,6 +4875,20 @@
    "outputs": [],
    "owner": "SWITCHING",
    "role": "HDMI-CEC on the Fire TV sticks: read it, or turn it off / on, over adb.",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "scripts/sync_fit.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/calibration.py",
+    "redzone/sync_probe.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[sync fit] EXP-084: one live night's sync calibration and delay error, from the app's own logs.",
    "serves": [
     "untagged"
    ]
@@ -4997,10 +5086,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 263,
+  "modules": 268,
   "orphans": 10,
-  "unowned": 105,
-  "untagged": 212
+  "unowned": 110,
+  "untagged": 215
  },
  "version": 1
 }
