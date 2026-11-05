@@ -66,6 +66,8 @@ What Nick wants from RedZone Everything (as of 2026-11-03):
 
 - PROMOTION, take wins along the way (Nick, Nov 4 8:20 PM): the gates are goals and targets, not blockers for every gain. A change can go live PER LEAGUE when it beats live there and passes 0 mid-play entries. Never-join-mid-play stays absolute. The full targets still define 'done'.
 
+- DATA = B (Nick, Nov 4 11:20 PM): personal project, so the brain may train on ESPN-derived, NHL api-web, Statcast and other restrictive public sports APIs. Tag all such data and models 'personal-use, not for commercial release'; a company version retrains on green data. Guardrails stay: public endpoints only; no logins, paywalls or bot-block bypass; rate limits respected; no pirated streams; articles kept as derived numbers, not full text.
+
 **Why:** These were stated across the Nov 2-4 sessions; this is the consolidated spec.
 
 **How to apply:** Check every coordinator thread and PR against this list. Keep ADHD-style replies.

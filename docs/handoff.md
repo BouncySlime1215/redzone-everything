@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-RC6.1 health watch FAILED: 2 feeds failing vs 1, errors 2->9; auto-rollback to e8bbf8ebe (RC5.1) at 9:25 PM
-Colab GR 2550/7862, V8.1 WD 600/1688; factory running; usage 42%
+Colab: EXP-103 world model v2 on L4 (18.6M params, 74M train tokens), step ~2600/5044, valid loss 0.343 and falling. Teacher EXP-086 (plan B) building moments 22k/28k games, then ~2.3 h of asks. Usage 50%.
+Queue: crew E commentary notebook (#251, ~43 CU A100) launches after the Teacher A100 frees. Factory relaunch at 2:37 uses 5c5db9e. Nick keys pending: YOUTUBE_API_KEY, TWITCH_CLIENT_ID/SECRET, CFBD.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
