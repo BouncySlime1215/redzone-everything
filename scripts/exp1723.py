@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""EXP-1723 (prereg docs/prereg/exp-1723.md, WV loop cycle 3): Watch Value as the windowed oracle's beyond value.
+
+    python scripts/exp1723.py --league nba --out out/exp1723        # one league; run nba then nfl
+
+Arms, per night, inside the forward chain (redzone/lab/forward_chain.Chain over FIT nights, oldest first):
+  B0  oracle_window.solve_window with the v1 past-mean beyond value (control)
+  B1  beyond value = IsoMap(WV A0) (redzone/noggin/models/watch_<lg>.v1.npz, no reweighting)
+  B2  B1 with WV retrained on mistake_ledger.sample_weights of the nights already seen
+  plus the app (backtest.run) and full hindsight (oracle.solve) as 100 %.
+Each night is graded FIRST with maps / models fit on earlier nights only; then its ledger (app vs full hindsight)
+is written; then it joins the iso fits and B2's weights. Locked nights never enter (Chain raises).
+
+Caveat written into the output: WV A0 itself was trained on this pin's train nights, so on v1 history B1/B2's WV
+is in-sample there; only v3's new nights (Friday) and live nights are counting evidence (prereg).
+Runs where the pinned eval archive lives (cloud box / Kaggle), never on the Mac. Output: derived numbers only.
+personal-use, not for commercial release.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT / "scripts"))
+
+from redzone.config import Config  # noqa: E402
+from redzone.lab import forward_chain as FC, mistake_ledger as ML, oracle as O, oracle_window as OW  # noqa: E402
+from redzone.lab import splits, wv_beyond as WB  # noqa: E402
+from redzone.lab.backtest import feed_lag_knobs, run  # noqa: E402
+from redzone.models import League  # noqa: E402
+
+HORIZON_STEPS = int(120.0 // O.STEP_S)      # solve_window's default horizon_s (120 s): the beyond value's span
+
+
+def wv_rows(lg: str, cfg_path: Path) -> tuple[list[dict], list[str]]:
+    """Play rows with WV's facts. As in train_watch_value.main, the brain TRACK (win probability, swings) must be
+    on for the facts WV reads; its learned outputs are not WV features. The replay/backtest config is untouched."""
+    import tempfile
+    from redzone.contracts.watch import features_for
+    from redzone.lab import reasoner_data as RD
+    tmp = Path(tempfile.mkdtemp()) / "wv_rows_config.yaml"
+    tmp.write_text((cfg_path.read_text() if cfg_path.exists() else "") + "\nbrain:\n  enabled: true\n")
+    cfg = Config(user_path=tmp)
+    rows = [r.as_dict() for r in RD.league_rows(League(lg), ROOT / "data/archive" / lg, cfg, {"WSH", "UNC"}, every=1)]
+    return rows, features_for(League(lg).base.value)
+
+
+def a0_raw(lg: str, X: np.ndarray) -> tuple[np.ndarray, int]:
+    from redzone.noggin import watch as W
+    from redzone.scoring.brain import load
+    trees, info = load(W.WV_MODEL_DIR / f"watch_{lg}.v1.npz")
+    wv = trees["wv"]
+    return np.array([wv.raw(x)[0] for x in X]), len(wv.roots)
+
+
+def main(argv=None) -> int:
+    import buffer_sweep as BS
+    import eval_sports as ES
+    import train_watch_value as TW
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--league", default="nba")
+    ap.add_argument("--buffer", type=float, default=90.0)
+    ap.add_argument("--feed-lag", type=float, default=None, help="s; default p90 via buffer_sweep (prereg)")
+    ap.add_argument("--max-nights", type=int, default=0)
+    ap.add_argument("--out", type=Path, required=True)
+    a = ap.parse_args(argv)
+    lg = a.league
+    t_start = time.time()
+    fl = a.feed_lag if a.feed_lag is not None else BS.feed_lag_for(lg, "p90")
+    cfg = Config(user_path=ROOT / "data/eval_config.yaml")
+    sp = splits.league_split(lg, splits.archive_nights(ROOT / "data/archive" / lg, None))
+    locked = set(sp.test)
+    a.out.mkdir(parents=True, exist_ok=True)
+
+    # ---- WV per play (A0 file; B2 retrains the same head with ledger weights) ----
+    rows, feats = wv_rows(lg, ROOT / "data/eval_config.yaml")
+    if not any(r.get("wp_home") is not None for r in rows):
+        raise SystemExit("no win probability on the WV rows: WV facts would be empty")
+    rows = [r for r in rows if r["night"] not in locked]              # locked plays never even get a WV here
+    X = TW.matrix(rows, feats).astype(np.float64)
+    raw_a0, n_trees = a0_raw(lg, X)
+    HZ = float(cfg.get("scoring.watch_horizon_s")[lg])               # noqa: N806
+    by_game: dict[str, list[int]] = {}
+    for k, r in enumerate(rows):
+        by_game.setdefault(r["gid"], []).append(k)
+    y_wv = np.zeros(len(rows))
+    for ks in by_game.values():
+        y_wv[ks] = TW.labels([rows[k] for k in ks], HZ)[0]
+    night_of = np.array([r["night"] for r in rows])
+    wall = np.array([r["wall"] if r.get("wall") is not None else np.nan for r in rows], float)
+    train_mask = np.isin(night_of, list(sp.train))                  # A0's own training rows (pin train nights)
+
+    def plays_of(pred: np.ndarray) -> dict:
+        out = {}
+        for gid, ks in by_game.items():
+            ks = [k for k in ks if np.isfinite(wall[k])]
+            o = np.argsort(wall[ks], kind="stable")
+            ks = np.asarray(ks)[o]
+            out[gid] = (wall[ks], pred[ks])
+        return out
+
+    plays_a0 = plays_of(raw_a0)
+    st = {"pred_b2": None, "plays_b2": None, "w_row": np.ones(len(rows))}
+    iso1, iso2 = WB.IsoMap(), WB.IsoMap()
+    seen_data: dict[str, tuple] = {}     # night -> (gids, steps, lag, R, t0) for refitting iso2 after a retrain
+    per_night: list[dict] = []
+    ledgers: list = []
+
+    def retrain_b2() -> None:
+        import lightgbm as lgb
+        p = dict(TW.PARAMS, objective="regression")
+        d = lgb.Dataset(X[train_mask], y_wv[train_mask], weight=st["w_row"][train_mask], feature_name=feats)
+        b = lgb.train(p, d, n_trees)                                   # A0's own tree count: no valid peek
+        st["pred_b2"] = b.predict(X)
+        st["plays_b2"] = plays_of(st["pred_b2"])
+
+    def first_pass(day: str, reps, targets) -> dict:
+        rep = run(reps, cfg, {"WSH", "UNC"}, targets=targets, **feed_lag_knobs(fl, a.buffer))
+        n = O.Night(reps, {"WSH", "UNC"}, rep.lag_true, 5.0, rep.t0, rep.t1)
+        steps = np.arange(n.t0, n.t1, O.STEP_S)
+        tab = O.tables(n, steps)
+        wb, wc, wm, wd, _ = O.OBJECTIVES["combined"]
+        R = wb * tab["big"] + wc * tab["crunch"] + wm * tab["mine"] - wd * tab["dead"]
+        gids = [r.gid for r in reps]
+        W = WB.window_of(n, fl)
+        full = O.solve(n, "combined", tab)
+        b0 = OW.solve_window(n, fl, "combined", tab)
+        g1 = WB.wv_grid(gids, plays_a0, steps, n.lag)
+        b1 = WB.solve_with(n, fl, tab, WB.beyond_from_wv(g1, iso1, W)) if iso1.f is not None else b0
+        b2 = b0
+        if iso2.f is not None and st["plays_b2"] is not None:
+            g2 = WB.wv_grid(gids, st["plays_b2"], steps, n.lag)
+            b2 = WB.solve_with(n, fl, tab, WB.beyond_from_wv(g2, iso2, W))
+        val = {k: O.schedule_value(n, tab, "combined", s) for k, s in
+               (("full", full), ("app", rep.switches), ("B0", b0), ("B1", b1), ("B2", b2))}
+        row = {"night": day, "games": len(reps), "W_steps": W, "your_team_crunch": bool(tab["mine"].sum() > 0),
+               "b1_fallback": iso1.f is None, "b2_fallback": iso2.f is None or st["plays_b2"] is None,
+               **{f"v_{k}": round(float(v), 3) for k, v in val.items()},
+               **{f"switches_{k}": len(s) for k, s in (("app", rep.switches), ("B0", b0), ("B1", b1), ("B2", b2))}}
+        per_night.append(row)
+        # ledger (app vs full hindsight), AFTER the first pass
+        blk = max(1, int(math.ceil(n.tune_s / O.STEP_S)))
+        gi = {g: i for i, g in enumerate(gids)}
+        app_on = ML.on_screen(len(steps), n.t0, O.STEP_S, rep.switches, gi, blk)
+        orc_on = ML.on_screen(len(steps), n.t0, O.STEP_S, full, gi, blk)
+        sw = lambda ss: {int(round((s.t - n.t0) / O.STEP_S)) for s in ss if s.frm is not None}  # noqa: E731
+        led = ML.ledger(day, lg, R, tab, gids, app_on, orc_on, n.t0, O.STEP_S, locked=locked,
+                        app_switch_steps=sw(rep.switches), oracle_switch_steps=sw(full), blk=blk)
+        ledgers.extend(led)
+        lw = ML.sample_weights(led, len(steps))
+        for gid in gids:                                   # this night's plays get the ledger weight of their step
+            ks = by_game.get(gid, [])
+            if ks:
+                ks = np.asarray(ks)
+                st["w_row"][ks] = WB.step_weights(lw, n.t0, O.STEP_S, wall[ks] + float(O.lag_of(n.lag, gid)))
+        iso1.add(*WB.iso_pairs(g1, R, HORIZON_STEPS))
+        seen_data[day] = (gids, steps, n.lag, R)
+        return row
+
+    def refit(_seen) -> None:
+        iso1.refit()
+        retrain_b2()
+        iso2.x, iso2.y = [], []
+        for gids, steps, lag, R in seen_data.values():
+            iso2.add(*WB.iso_pairs(WB.wv_grid(gids, st["plays_b2"], steps, lag), R, HORIZON_STEPS))
+        iso2.refit()
+
+    ch = FC.Chain(locked=locked)
+    fit_nights = set(sp.train + sp.valid)
+    done = 0
+    for day, reps, targets in ES.nights(League(lg), 10_000, None, "fit"):
+        day = str(day)
+        if day not in fit_nights:
+            continue
+        if a.max_nights and done >= a.max_nights:
+            break
+        ch.step(day, lambda d, r=reps, t=targets: first_pass(d, r, t), lambda d: None, refit)
+        done += 1
+        print(json.dumps(per_night[-1]), flush=True)
+
+    # pooled over nights without a your-team crunch (prereg) and with full-hindsight value > 0: the combined
+    # objective's dead-air term makes some nights' totals negative, where a % of full is undefined (the
+    # cycle-2 ledger read "6/6 positive nights" the same way)
+    ok = [r for r in per_night if not r["your_team_crunch"] and r["v_full"] > 0]
+    full = np.array([r["v_full"] for r in ok])
+    arms = {k: np.array([r[f"v_{k}"] for r in ok]) for k in ("app", "B0", "B1", "B2")}
+    summ = {"exp": "EXP-1723", "league": lg, "buffer_s": a.buffer, "feed_lag_s": fl, "horizon_steps": HORIZON_STEPS,
+            "nights_chain": len(per_night), "nights_pooled": len(ok),
+            "nights_excluded": {"your_team_crunch": sum(r["your_team_crunch"] for r in per_night),
+                                "full_value_not_positive": sum((not r["your_team_crunch"]) and r["v_full"] <= 0 for r in per_night)},
+            "pct_of_full": {k: WB.pooled_pct(v, full) for k, v in arms.items()},
+            "B1_minus_B0": WB.delta_ci(arms["B1"], arms["B0"], full), "B2_minus_B0": WB.delta_ci(arms["B2"], arms["B0"], full),
+            "B1_minus_app": WB.delta_ci(arms["B1"], arms["app"], full), "B2_minus_app": WB.delta_ci(arms["B2"], arms["app"], full),
+            "ledger_causes_app_vs_full": ML.summarize(ledgers), "locked_nights_read": 0,
+            "evidence": "dev history only (eval-data-v1 fit nights; WV A0 trained on this pin's train nights)",
+            "seconds": round(time.time() - t_start), "tag": "personal-use, not for commercial release"}
+    for arm in ("B1", "B2"):
+        d, app = summ[f"{arm}_minus_B0"], summ["pct_of_full"]
+        summ[f"{arm}_bar"] = bool(d["delta"] >= 5.0 and d["ci"][0] > 0 and app[arm]["pct"] >= app["app"]["pct"])
+    (a.out / f"first_pass_{lg}.jsonl").write_text(ch.jsonl())
+    (a.out / f"nights_{lg}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in per_night))
+    (a.out / f"summary_{lg}.json").write_text(json.dumps(summ, indent=1))
+    print(json.dumps(summ, indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
