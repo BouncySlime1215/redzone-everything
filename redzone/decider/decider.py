@@ -268,6 +268,10 @@ class Decider:
         self.user = UserState()
         self.current: str | None = None
         self.pick_log: deque = deque(maxlen=2000)   # [noggin PICK] (t, on, pick, app action, app target)
+        # [noggin PICK] every row also goes here (the engine writes recordings/<day>/pick_shadow.jsonl), so a
+        # shadow night is readable after the fact. Live lab Nov 4: shadow on a live Mac was invisible (memory only).
+        self.on_pick: Callable[[dict], None] | None = None
+        self._pick_gated_at: float = 0.0
         self.since: float = 0.0
         self._arrival_until: float = 0.0   # simulated transport work, not a viewing-time quota
         self.stack: deque[str] = deque(maxlen=3)   # where we came from, for "go back"
@@ -1297,6 +1301,14 @@ class Decider:
         self.possession_log.append((now, cur, d.target, say))
         return say if on else "jump"
 
+    def _emit_pick(self, row: dict) -> None:
+        if self.on_pick is None:
+            return
+        try:
+            self.on_pick(row)
+        except Exception:   # logging must never change a decision
+            log.exception("pick shadow log failed")
+
     def _pick(self, d: Decision, cands, now: float) -> Decision:
         """[noggin PICK] Reflex PICK (redzone/noggin/pick.py): the game the hindsight-oracle imitation wants on
         screen. Shadow logs it beside the app's own decision. Enabled, mode "breaks" (the default) only lets
@@ -1324,11 +1336,21 @@ class Decider:
         model = PK.model_for(league.value, name=str(self.cfg.get("noggin.pick.model", "v1")))
         tune = float(self.cfg.get("noggin.pick.tune_s", 5.0))
         if model is None or min(lags.values()) < PK.FEED_LAG_P90.get(league, 70.0) + tune:
+            if self.on_pick is not None and now - self._pick_gated_at >= 60:   # say why it's silent, once a minute
+                self._pick_gated_at = now
+                self._emit_pick({"t": round(now, 2), "gated": "no model" if model is None else
+                                 f"screen lag {min(lags.values()):.0f}s < feed p90 + tune "
+                                 f"{PK.FEED_LAG_P90.get(league, 70.0) + tune:.0f}s (time-shift buffer off?)",
+                                 "league": league.value})
             return d
         mine = {t for g in games if g.gid in self._yours for t in g.matchup.split(" @ ")}
         cur = self.current if self.current in lags else None
         target, scores = PK.live_choice(games, cur, now, lags, mine, tune, model, model.meta.get("info", {}).get("cue_s"))
         self.pick_log.append((now, cur, target, d.action, d.target))
+        self._emit_pick({"t": round(now, 2), "on": cur, "pick": target, "app_action": d.action, "app_target": d.target,
+                         "agree": (target == (d.target if d.action == "switch" else cur)),
+                         "enabled": bool(self.cfg.get("noggin.pick.enabled", False)), "league": league.value,
+                         "lags": {g: round(v, 1) for g, v in lags.items()}})
         if shadow and not self.cfg.get("noggin.pick.enabled", False):
             return d
         if (d.action == "switch" and d.target in self._yours) or (d.action == "stay" and self.current in self._yours):

@@ -175,6 +175,7 @@ class Engine:
         self.reeler = reel.Reeler(self.cfg)   # catch-up reel kept ready from the summaries' clips
         self._reel_task: asyncio.Task | None = None
         self.recorder = Recorder()
+        self.decider.on_pick = lambda row: self.recorder.pick(row)   # [noggin PICK] -> recordings/<day>/pick_shadow.jsonl
         from redzone.sync_probe import SyncProbe
         self.sync_probe = SyncProbe(self.cfg, self.control, lambda: self.recorder.root)   # [SYNC] read-only stick probe
         self.sync_probe.on_condition = self._sync_condition
