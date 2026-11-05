@@ -47,6 +47,8 @@ jobs:
           path: lint*.txt
       - name: fail on lint errors
         run: test "$(cat lint-status.txt)" = 0
+      - name: contract kernel (new violations fail; baseline in docs/contract_baseline.json)
+        run: python scripts/contract_check.py
 
   memory:
     # CLAUDE.md and docs/memory/ links resolve; a PR that changes a default or a gate also adds a
@@ -68,6 +70,28 @@ jobs:
             python scripts/check_memory.py --base "origin/$BASE_REF"
           else
             python scripts/check_memory.py
+          fi
+
+  graders:
+    # docs/grading.md: graders are frozen by the integrator (G1), experiments are pre-registered (G2)
+    # and a running experiment keeps its goalposts (G3). scripts/grading_check.py.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: grader freeze, pre-registration, goalposts
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            python scripts/grading_check.py --base "origin/$BASE_REF"
+          else
+            python scripts/grading_check.py
           fi
 
   data:

@@ -25,6 +25,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field, replace
 
+from redzone import crunch
 from redzone.models import GameState, League, Phase
 from redzone.scoring import breaks
 from redzone.scoring.engine import Personal, Scored, Scorer
@@ -148,7 +149,7 @@ def _heat(g: GameState, dr: Drive, empty: int, now: float) -> tuple[float, float
         h += 0.10
     if sit.down == 4 and ytg < 40:
         h += 0.15     # going for it, or a long field goal: either way, watch the snap
-    drill = clk is not None and clk <= 120 and (q == 2 or (q >= 4 and off_diff is not None and -8 <= off_diff <= 0))
+    drill = (q == 2 and clk is not None and clk <= 120) or crunch.trailing_drill(q, clk, off_diff)
     if drill and ytg <= 75:
         h += 0.15
     h = max(0.0, min(1.0, h))

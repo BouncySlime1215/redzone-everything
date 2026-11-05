@@ -38,6 +38,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Callable, Iterable, Protocol
 
+from redzone.models import LEAGUE_ORDER, league_index, league_order
+
 # --------------------------------------------------------------------------- views (inputs)
 
 VERBS = ("stay", "switch", "visit", "reel", "replay", "return")
@@ -232,7 +234,7 @@ class Knobs:
     break_value_frac: float = 1.0      # how much of an on-break game's value still counts
     return_tolerance: float = 5.0      # decider.return_tolerance: go back if within this many points
     # Nick, Nov 3: when crunch times overlap, NFL > CFB > NBA > the rest. Your team / bet still comes first.
-    league_priority: tuple = ("nfl", "cfb", "nba", "cbb", "wcbb", "nhl", "mlb")
+    league_priority: tuple = tuple(lg.value for lg in LEAGUE_ORDER)   # one definition: models.LEAGUE_ORDER
 
     @classmethod
     def from_cfg(cls, cfg) -> "Knobs":
@@ -250,7 +252,7 @@ class Knobs:
                    reel_margin_s=float(g("core.reel_margin_s", d.reel_margin_s)),
                    break_value_frac=float(g("core.break_value_frac", d.break_value_frac)),
                    return_tolerance=float(g("decider.return_tolerance", d.return_tolerance)),
-                   league_priority=tuple(g("core.league_priority", None) or d.league_priority))
+                   league_priority=league_order(cfg))
 
 
 def rate(o: Option, k: Knobs) -> float:
@@ -271,8 +273,8 @@ def rate(o: Option, k: Knobs) -> float:
 
 def league_rank(league: str, k: Knobs) -> int:
     """Higher = shown first when crunch times overlap. Unlisted leagues rank below every listed one."""
-    lp = [x.lower() for x in k.league_priority]
-    return len(lp) - lp.index(league) if league in lp else 0
+    lp = tuple(x.lower() for x in k.league_priority)
+    return len(lp) - league_index(league, order=lp)
 
 
 def window_value(o: Option, k: Knobs, seconds: float) -> float:
