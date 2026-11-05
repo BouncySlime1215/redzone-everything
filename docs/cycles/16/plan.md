@@ -31,9 +31,9 @@ latency or Wi-Fi.
   - switches ≤ 3 s, including Prime.
 - **First deliverable today:** the media_session live-edge reader, per-app offset logging, and "force live edge" on
   every tune, shadow-logged tonight.
-  - It ships in the afternoon deploy window, before TNF at 8:15 PM ET.
+  - Once Nick OKs it, it ships in the afternoon deploy window, before TNF at 8:15 PM ET.
   - Tonight it only logs. There are no Mac-side experiments while Nick watches.
-- This also answers the RC7 sync card: the telemetry ships in RC7 and is graded on TNF night.
+- **The RC7 sync card is still Nick's call.** Lane ④ stages the work and doesn't ship it until he decides.
 
 ## Nick's 2:00 AM priority (binding for every lane, crew and planner)
 "I really only care about NBA and NFL, mostly NBA because that's what's on most right now."
