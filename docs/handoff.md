@@ -71,7 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-STATUS: V8.1 watchdog notebook posted (colab/v81_watchdog_l4.ipynb, L4); GR A100 step 1750/7862; usage 40%
+Cycle 10 plan #213 merged; 5 lanes working on next experiments; Cycle 11 plan PR #217 open
+V8 GR step 1900/7862; V8.1 watchdog (EXP-101) running on L4
+Usage 41%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
