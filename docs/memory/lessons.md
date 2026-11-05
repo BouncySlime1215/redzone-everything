@@ -300,3 +300,6 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   explicit `Scored.mine` / `Scored.high_leverage` flags (the grader's CLOSE_LATE table, kept equal by a test) and
   the full league. Lesson: a floor must be checked by what it protects (team membership, leverage), never by a
   score that other features can lower.
+- **2026-11-05: "Watch this" on a game with no channel retried every 0.5 s.** Live Nov 4 (RC6.1, 10:04 PM ET): 13
+  failed "you locked this game" switches in 6 s ("no channel for this game") until another tap. The fail cooldown is
+  keyed by tuner target, and there was none. `_hold` now refuses a game whose channel is known to be untunable, once.

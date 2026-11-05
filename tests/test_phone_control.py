@@ -226,3 +226,13 @@ def test_forced_reaches_the_grader_through_the_stored_row_and_clears_after(engin
     engine._hold_check()                       # on the held game: the second tap's force is spent
     assert engine.hold is not None and engine.hold["force"] is False
     assert switch(force=False)["forced"] is False
+
+
+def test_watch_this_refuses_a_game_with_no_channel_instead_of_retrying(engine):
+    # Nov 4 live: a hold on a game with no channel failed "no channel for this game" 13 times in 6 s
+    from redzone.channels import Where
+    a = _live(engine)[0]
+    engine.cfg.update({"mode": {"dry_run": False}})
+    engine.where[a] = Where(None, "no channel", "unknown", False)
+    ok, msg = engine.action("hold", a)
+    assert not ok and "No channel" in msg and engine.hold is None and engine.decider.user.locked_game is None
