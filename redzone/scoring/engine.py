@@ -44,8 +44,9 @@ def is_late(g: GameState) -> bool:
 
 
 # [leave floor, EXP-208] close + late (final period, seconds left in it, max margin); overtime always counts.
-# The grader's floor too: redzone/lab/leverage.py imports this table.
-CLOSE_LATE = {League.NFL: (4, 300, 8), League.NBA: (4, 360, 6), League.NHL: (3, 300, 1)}
+# The decider's copy of the grader's frozen table (redzone/lab/leverage.CLOSE_LATE); tests/test_leave_floor.py
+# fails loudly if either side moves.
+LEAVE_CLOSE_LATE = {League.NFL: (4, 300, 8), League.NBA: (4, 360, 6), League.NHL: (3, 300, 1)}
 
 
 def high_leverage(g: GameState) -> bool:
@@ -56,7 +57,7 @@ def high_leverage(g: GameState) -> bool:
         return False
     if g.league.base == League.MLB:
         return g.period >= 7 and abs(d) <= 2
-    rule = CLOSE_LATE.get(g.league.base)
+    rule = LEAVE_CLOSE_LATE.get(g.league.base)
     if rule is None:
         return False
     last, secs, margin = rule

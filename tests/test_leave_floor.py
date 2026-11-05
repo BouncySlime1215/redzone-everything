@@ -55,7 +55,7 @@ def test_off_by_default(cfg, clock):
 
 
 def test_the_decider_floor_matches_the_graders():
-    assert engine.CLOSE_LATE == leverage.CLOSE_LATE
+    assert engine.LEAVE_CLOSE_LATE == leverage.CLOSE_LATE
 
 
 def test_close_and_late_still_on_screen_is_never_left(cfg, clock):
