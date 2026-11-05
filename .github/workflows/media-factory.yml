@@ -22,6 +22,7 @@ jobs:
           # Window file on the run branch wins (one "START END" per line); else the defaults below.
           if [ -f scripts/media_window.txt ]; then cp scripts/media_window.txt /tmp/win; else
             case "$S" in
+              espn) printf "2024-09-05 2025-06-23\n2025-09-04 $(date -u -d yesterday +%F)\n" > /tmp/win;;
               mlb) printf "2023-03-30 2023-11-05\n2024-03-20 2024-10-31\n2025-03-18 2025-11-02\n" > /tmp/win;;
               nhl) printf "2023-10-10 2024-06-25\n2024-10-04 2025-06-25\n2025-10-07 $(date -u -d yesterday +%F)\n" > /tmp/win;;
               nba) printf "$(date -u -d '14 days ago' +%F) $(date -u -d yesterday +%F)\n" > /tmp/win;;
@@ -38,6 +39,7 @@ jobs:
         run: |
           while read -r A B; do
             if [ "$SRC" = yt ]; then python scripts/media_pull.py yt --out data/media --pages 20
+            elif [ "$SRC" = espn ]; then python scripts/media_pull.py espn --leagues nba,nfl --start "$A" --end "$B" --out data/media
             else python scripts/media_pull.py "$SRC" --start "$A" --end "$B" --out data/media; fi
           done < /tmp/win
           python scripts/media_pull.py ledger --out data/media

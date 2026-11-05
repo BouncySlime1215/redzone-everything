@@ -6,6 +6,7 @@ publish times, durations, view counts. Runs on a GitHub cloud runner or Kaggle/C
 Stdlib only. Polite: an honest User-Agent, one request per --gap seconds (default 1.0), no cookies, no
 logins, and a 401/403/429 is a STOP for that source (a bot block is never a puzzle to solve).
 
+    python scripts/media_pull.py espn --leagues nba,nfl --start 2024-10-22 --end 2025-06-22 --out data/media
     python scripts/media_pull.py mlb --start 2024-03-28 --end 2024-09-29 --out data/media
     python scripts/media_pull.py nhl --start 2024-10-04 --end 2025-04-17 --out data/media
     python scripts/media_pull.py nba --start 2024-10-22 --end 2024-11-05 --out data/media --max-games 50
@@ -44,6 +45,7 @@ from pathlib import Path
 UA = "redzone-media/0.1 (personal research; metadata only, no video; 1 request per second)"
 TAG = "personal-use, not for commercial release"
 LICENSE = {
+    "espn": "ESPN public site API (game summary videos), personal non-commercial use; plan B personal use",
     "mlb": "MLB Stats API, MLBAM non-commercial individual use; plan B personal use",
     "nhl": "NHL api-web, NHL.com terms; plan B personal use",
     "nba": "NBA.com public JSON, personal non-commercial use; plan B personal use",
@@ -178,14 +180,27 @@ class Sink:
         self.dir = out / src
         self.dir.mkdir(parents=True, exist_ok=True)
         self.seen: set[str] = set()
-        for f in self.dir.glob("*.jsonl.gz"):           # incremental: never write a row twice across runs
+        for f in sorted(self.dir.glob("*.jsonl.gz")):   # incremental: never write a row twice across runs
+            rows, broken = [], False
             try:
                 with gzip.open(f, "rt") as fh:
                     for line in fh:
-                        r = json.loads(line)
-                        self.seen.add(f"{r['clip_id']}|{r.get('snap_utc') or ''}")
+                        rows.append(line)
             except (OSError, ValueError, EOFError):
-                pass
+                broken = True                           # a killed run left a truncated gzip member
+            good = []
+            for line in rows:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    broken = True
+                    continue
+                good.append(line if line.endswith("\n") else line + "\n")
+                self.seen.add(f"{r['clip_id']}|{r.get('snap_utc') or ''}")
+            if broken:                                  # repair: keep every whole row, drop the torn tail
+                with gzip.open(f, "wt") as fh:
+                    fh.writelines(good)
+                print(f"repaired {f.name}: kept {len(good)} rows", flush=True)
         self.n = 0
         self.fh: dict[str, gzip.GzipFile] = {}
 
@@ -205,6 +220,9 @@ class Sink:
     def close(self) -> None:
         for f in self.fh.values():
             f.close()
+        self.fh = {}
+
+    flush = close          # call after each game: closed gzip members survive a killed run
 
 
 # ---------------------------------------------------------------- C1: MLB Stats API game content
@@ -230,6 +248,7 @@ def pull_mlb(http: Http, sink: Sink, start: str, end: str, max_games: int) -> No
             sink.add(dict(src="mlb", league="mlb", game_id=str(pk), event_id=play, clip_id=str(it.get("id")),
                           published=it.get("date"), event_time=None, duration_s=_hms(it.get("duration")),
                           kind=kind_of(text), tags=tags, title_kw=_kw(it.get("headline"))), day[:7])
+        sink.flush()
         if i % 50 == 0:
             print(f"mlb {day} game {i + 1}/{len(games)} rows {sink.n} calls {http.calls}", flush=True)
 
@@ -269,6 +288,7 @@ def pull_nhl(http: Http, sink: Sink, start: str, end: str, max_games: int) -> No
                                   published=None, event_time=None, duration_s=None,
                                   kind="condensed" if "condensed" in k.lower() else "game_recap",
                                   tags=[f"video:{k}"], title_kw=[]), day[:7])
+            sink.flush()
             n += 1
             if max_games and n >= max_games:
                 return
@@ -315,7 +335,64 @@ def pull_nba(http: Http, sink: Sink, start: str, end: str, max_games: int) -> No
                           tags=[f"period:{a_.get('period')}", f"clock:{a_.get('clock')}",
                                 f"type:{a_.get('actionType')}", f"player_id:{a_.get('personId')}"],
                           title_kw=[]), f"{dt[:4]}-{dt[4:6]}")
+        sink.flush()
         print(f"nba {dt} game {i + 1}/{len(gids)} rows {sink.n}", flush=True)
+
+
+# ---------------------------------------------------------------- C7: ESPN game-summary videos (NBA, NFL first)
+ESPN = "https://site.api.espn.com/apis/site/v2/sports"
+ESPN_PATH = {"nba": "basketball/nba", "nfl": "football/nfl", "cbb": "basketball/mens-college-basketball",
+             "cfb": "football/college-football"}
+
+
+def _shape(x, depth=0):
+    """Key structure of one clip record (key names and value types only, no URLs or text), to fix the parser."""
+    if isinstance(x, dict) and depth < 4:
+        return {k: _shape(v, depth + 1) for k, v in x.items() if "url" not in k.lower() and k != "links"}
+    if isinstance(x, list) and x and depth < 4:
+        return [_shape(x[0], depth + 1)]
+    return type(x).__name__ if not isinstance(x, (int, float)) and not (isinstance(x, str) and len(x) < 24 and x.isidentifier()) else x
+
+
+def _shape_once(path: Path, v: dict) -> None:
+    if not path.exists():
+        path.write_text(json.dumps(_shape(v), indent=1) + "\n")
+
+
+def pull_espn(http: Http, sink: Sink, start: str, end: str, max_games: int, leagues: list[str]) -> None:
+    """Per game: the clips ESPN attached to the game summary (headline, duration, publish time, linked
+    athletes/plays where present). Metadata only; video URLs are never fetched or stored."""
+    n = 0
+    for d in _days(start, end):
+        ymd = d.strftime("%Y%m%d")
+        for lg in leagues:
+            sb = http.get(f"{ESPN}/{ESPN_PATH[lg]}/scoreboard?dates={ymd}" +
+                          ("&groups=50&limit=400" if lg == "cbb" else "&groups=80" if lg == "cfb" else "")) or {}
+            for ev in sb.get("events", []):
+                st = ((ev.get("status") or {}).get("type") or {})
+                if not st.get("completed"):
+                    continue
+                gid = str(ev.get("id"))
+                summ = http.get(f"{ESPN}/{ESPN_PATH[lg]}/summary?event={gid}") or {}
+                start_t = ev.get("date")
+                for v in summ.get("videos") or []:
+                    _shape_once(sink.dir / "video_shape.json", v)
+                    kws = [k for k in (v.get("keywords") or []) if isinstance(k, str)]
+                    ath = [f"athlete:{c.get('athleteId') or (c.get('athlete') or {}).get('id') or c.get('id')}"
+                           for c in (v.get("categories") or []) if c.get("type") == "athlete" or c.get("athlete")]
+                    play = next((str(c.get("playId") or c.get("id")) for c in (v.get("categories") or [])
+                                 if c.get("type") in ("play", "event") and (c.get("playId") or c.get("id"))), None)
+                    pub = v.get("originalPublishDate") or v.get("lastModified")
+                    text = f"{v.get('headline') or ''} {v.get('description') or ''} {' '.join(kws)}"
+                    sink.add(dict(src="espn", league=lg, game_id=gid, event_id=play, clip_id=f"espn:{v.get('id')}",
+                                  published=pub, event_time=start_t, duration_s=v.get("duration"),
+                                  kind=kind_of(text), tags=ath + [f"kw:{k.lower()}" for k in kws[:8]],
+                                  title_kw=_kw(v.get("headline"))), f"{ymd[:4]}-{ymd[4:6]}")
+                sink.flush()
+                n += 1
+                if max_games and n >= max_games:
+                    return
+        print(f"espn {ymd} games {n} rows {sink.n} calls {http.calls}", flush=True)
 
 
 # ---------------------------------------------------------------- C4: YouTube official channels
@@ -422,7 +499,8 @@ def ledger(out: Path) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("source", choices=["mlb", "nhl", "nba", "yt", "ledger"])
+    ap.add_argument("source", choices=["espn", "mlb", "nhl", "nba", "yt", "ledger"])
+    ap.add_argument("--leagues", default="nba,nfl", help="espn: comma list of nba,nfl,cbb,cfb")
     ap.add_argument("--start", default=(date.today() - timedelta(days=2)).isoformat())
     ap.add_argument("--end", default=(date.today() - timedelta(days=1)).isoformat())
     ap.add_argument("--out", type=Path, default=Path("data/media"))
@@ -439,6 +517,8 @@ def main(argv: list[str] | None = None) -> int:
             pull_mlb(http, sink, a.start, a.end, a.max_games)
         elif a.source == "nhl":
             pull_nhl(http, sink, a.start, a.end, a.max_games)
+        elif a.source == "espn":
+            pull_espn(http, sink, a.start, a.end, a.max_games, a.leagues.split(","))
         elif a.source == "nba":
             pull_nba(http, sink, a.start, a.end, a.max_games)
         else:
