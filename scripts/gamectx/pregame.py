@@ -98,8 +98,12 @@ def _start(e):
 class Book:
     """Season-to-date state per team, advanced game by game in start order."""
 
-    def __init__(self, league: str):
+    def __init__(self, league: str, season_games: int | None = None, playoff_line: int | None = None,
+                 div: dict | None = None):
         self.lg = league
+        self.n_games = season_games or SEASON_GAMES[league]
+        self.line = playoff_line or PLAYOFF_LINE[league]
+        self.div = div or DIV[league]
         self.res = defaultdict(list)          # team -> [(start, 'W'/'L'/'T', home, opp)]
         self.last_meet = {}                   # (team, opp) -> 'W'/'L'
 
@@ -139,10 +143,10 @@ class Book:
         last10 = sum(1 for x in r[-10:] if x[1] == "W")
         split = [x for x in r if x[2] == home]
         rest = (when - r[-1][0]).total_seconds() / 86400 if r else None
-        conf, div = DIV[self.lg].get(team, ("", ""))
-        teams = [k for k in DIV[self.lg]]
-        div_teams = sorted((k for k in teams if DIV[self.lg][k][1] == div), key=self.pct, reverse=True)
-        conf_teams = sorted((k for k in teams if DIV[self.lg][k][0] == conf), key=self.pct, reverse=True)
+        conf, div = self.div.get(team, ("", ""))
+        teams = list(self.div)
+        div_teams = sorted((k for k in teams if div and self.div[k][1] == div), key=self.pct, reverse=True)
+        conf_teams = sorted((k for k in teams if self.div[k][0] == conf), key=self.pct, reverse=True)
 
         def wins(k):
             ww, _, tt = self.wl(k)
@@ -152,21 +156,21 @@ class Book:
             (w1, l1, _), (w2, l2, _) = self.wl(ref), self.wl(k)
             return ((w1 - w2) + (l2 - l1)) / 2
         seed = conf_teams.index(team) + 1 if team in conf_teams else None
-        left = SEASON_GAMES[self.lg] - n
-        pl = PLAYOFF_LINE[self.lg]
+        left = self.n_games - n
+        pl = self.line
         line_team = conf_teams[pl - 1] if len(conf_teams) >= pl else None
         first_out = conf_teams[pl] if len(conf_teams) > pl else None
         max_w = wins(team) + left
         elim = int(line_team is not None and team not in conf_teams[:pl] and max_w < wins(line_team))
-        clinch = int(first_out is not None and wins(team) > wins(first_out) + (SEASON_GAMES[self.lg] - sum(self.wl(first_out))))
+        clinch = int(first_out is not None and wins(team) > wins(first_out) + (self.n_games - sum(self.wl(first_out))))
         return {"w": w, "l": l_, "t": t, "win_pct": round(self.pct(team), 4) if n else "", "streak": streak,
                 "last10_w": last10 if n else "", "split_pct": round(sum(1 for x in split if x[1] == "W") / len(split), 4)
                 if split else "", "rest_days": round(rest, 2) if rest is not None else "",
                 "b2b": int(rest is not None and rest < 1.6), "div_rank": div_teams.index(team) + 1 if team in div_teams else "",
                 "div_gb": gb(team, div_teams[0]) if div_teams else "", "conf_seed": seed or "",
                 "gap_playoff_line": gb(team, line_team) if line_team else "",
-                "gap_playin_line": gb(team, conf_teams[PLAYIN_LINE[self.lg] - 1])
-                if len(conf_teams) >= PLAYIN_LINE[self.lg] else "", "games_left": left, "clinched_approx": clinch,
+                "gap_playin_line": gb(team, conf_teams[max(pl, PLAYIN_LINE[self.lg]) - 1])
+                if len(conf_teams) >= max(pl, PLAYIN_LINE[self.lg]) else "", "games_left": left, "clinched_approx": clinch,
                 "eliminated_approx": elim, "revenge": int(self.last_meet.get((team, opp)) == "L")}
 
 
@@ -174,9 +178,10 @@ def national(league: str, nets: list[str]) -> list[str]:
     return [n for n in nets if not (league == "nfl" and n in NFL_REGIONAL)]
 
 
-def report(league: str, season_events: list[dict], targets: list[dict], ctx: Path | None, built: str) -> list[dict]:
+def report(league: str, season_events: list[dict], targets: list[dict], ctx: Path | None, built: str,
+           book: Book | None = None) -> list[dict]:
     """season_events: every event of the season so far (any order); targets: the games to report on."""
-    book = Book(league)
+    book = book or Book(league)
     evs = sorted(season_events, key=_start)
     tg = sorted(targets, key=_start)
     games, weeks, riv = AJ.load(ctx, league) if ctx else ({}, {}, {})
@@ -193,8 +198,11 @@ def report(league: str, season_events: list[dict], targets: list[dict], ctx: Pat
         hc, ac = DIV[league].get(h, ("", "")), DIV[league].get(a, ("", ""))
         r = riv.get(tuple(sorted((m.get(h, h), m.get(a, a)))))
         nets = national(league, e["national"])
+        hc, ac = book.div.get(h, ("", "")), book.div.get(a, ("", ""))
+        dg = e.get("div_game")
         row = {"league": league, "night": night, "gid": e["gid"], "home": h, "away": a, "start_utc": e["start"],
-               "built_utc": built, "season_type": e["season_type"], "div_game": int(bool(hc[1]) and hc[1] == ac[1]),
+               "built_utc": built, "season_type": e["season_type"],
+               "div_game": int(dg) if dg is not None else int(bool(hc[1]) and hc[1] == ac[1]),
                "conf_game": int(bool(hc[0]) and hc[0] == ac[0]), "national_tv": int(bool(nets)),
                "national_nets": "|".join(nets), "prime_slot": int(bool(nets) and
                                                                          loc.hour * 60 + loc.minute >= 19 * 60 + 30),

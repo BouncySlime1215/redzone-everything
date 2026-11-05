@@ -145,3 +145,14 @@ def test_pregame_report_is_pregame():
                                                       nets=["Fox"])]}), P.events_of(
         {"events": [_ev("9", "2026-10-25T17:00Z", "WSH", "DAL", done=False, nets=["Fox"])]}), None, "t")
     assert nfl[0]["national_tv"] == 0 and nfl[0]["div_game"] == 1                  # Sunday Fox = regional
+
+
+def test_nflverse_event_and_divisions():
+    from gamectx import nflverse_backfill as N
+    g = {"game_id": "2023_17_SF_WAS", "season": "2023", "game_type": "REG", "week": "17", "gameday": "2023-12-31",
+         "weekday": "Sunday", "gametime": "13:00", "away_team": "SF", "home_team": "WAS", "away_score": "27",
+         "home_score": "10", "espn": "401547600", "div_game": "0"}
+    e = N.to_event(g)
+    assert e["gid"] == "401547600" and e["home"] == "WSH" and e["start"] == "2023-12-31T18:00Z"
+    assert e["national"] == [] and e["done"]
+    assert N.div_map(2001)["SEA"] == ("AFC", "") and "HOU" not in N.div_map(2001)
