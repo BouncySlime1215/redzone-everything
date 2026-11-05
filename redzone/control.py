@@ -56,6 +56,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from redzone import config
 from redzone.channels import ChannelMap
 from redzone.tuners.adb import STICK_HUNG, Stick, adb_available, playback_ready, same_stream
 from redzone.tuners import prime_multiview as pmv
@@ -68,7 +69,7 @@ MAX_SAFE_WAIT_S = 25.0     # how long a flip may wait for a safe moment before g
 SAFE_POLL_S = 0.2          # re-check for that moment this often (a cheap local computation)
 PRELOAD_BACKOFF_S = 120.0  # a preload that failed isn't retried for this long
 STANDBY_REPAUSE_N = 3      # [APP-04] the same standby paused off screen this many times...
-STANDBY_REPAUSE_S = 600.0  # ...within this long is not CEC: the app is blocked there (a forced update)
+STANDBY_REPAUSE_S = float(config.default("two_stick.standby_repause_s", 600))  # ...within this long is not CEC: the app is blocked there (a forced update)
 MIN_PRELOAD_GAP_S = 5.0    # never start preloads back to back faster than this
 CEC_RETRY_S = 600.0        # a stick whose CEC flip failed goes straight to the TV remote this long
 CEC_SYNC_S = 30.0          # re-ask the sticks which one is on screen this often (when idle)
@@ -157,6 +158,7 @@ class Outcome:
     stall_s: float | None = None    # [SYNC 1] buffering booked into that target's delay at this flip
     stick: str | None = None        # host of the stick that tuned (None = no tune ran)
     marks: list = field(default_factory=list)  # [(step, wallclock)] for the switch trace (redzone/trace.py)
+    provenance: dict = field(default_factory=dict)  # [provenance] what the controller contributed: {module: value}
 
 
 @dataclass
@@ -325,6 +327,7 @@ class Controller:
         self.tv.corroborate = self._cec_corroborate
         self.tv.hardening = self._st_hardening
         self._flip_how = ""                      # "tv:local" | "tv:smartthings" | "home" | "" (last flip)
+        self._why: dict | None = None            # [provenance] the switch now running: how each step went
         self._cec_on: dict[str, bool | None] = {}   # stick host -> its HDMI-CEC setting (None = unread)
         self._cec_read_at = 0.0
         self._cec_restore: dict[str, asyncio.Task] = {}   # host -> "turn CEC off again" after a HOME fallback
@@ -1689,6 +1692,7 @@ class Controller:
         marks = self._marks = [("started", time.time())]
         self._hidden_entry = entry_rewind_s if (entry_cue == "hidden" and not replay_back_s) else 0.0
         self._hidden_entry_done = False
+        why = self._why = {}
         try:
             out = await self._execute(target, replay_back_s, may_cut, replay_id, issued_at)
             if self._hidden_entry_done and out.ok:
@@ -1708,9 +1712,24 @@ class Controller:
         finally:
             self._marks = None
             self._hidden_entry = 0.0
+            self._why = None
         marks.append(("done", time.time()))
         out.marks = marks
+        out.provenance = self._provenance(out, marks, why)
         return out
+
+    def _provenance(self, out: Outcome, marks: list, why: dict) -> dict:
+        """[provenance] The controller's part of a switch's provenance (redzone/trace.py): which path
+        and stick carried it, how the TV input changed and the game came back, and every playbook
+        that fired on the way ("playbook:<id>" marks). Serves: provenance traces (Cycle 06 #2). Owner: lane 3."""
+        control = {"path": out.path, **why}
+        return {"control": control,
+                "playbook": [n.split(":", 1)[1] for n, _ in marks if n.startswith("playbook:")]}
+
+    def _note(self, key: str, value) -> None:
+        """[provenance] Record how one step of the switch now running went. Preloads don't note."""
+        if self._why is not None:
+            self._why[key] = value
 
     def _mark(self, step: str) -> None:
         """Stamp one step of the switch now running (the trace). Preloads and the watchdogs don't mark."""
@@ -1909,6 +1928,7 @@ class Controller:
                 if not hid.still_on(target, pb):
                     # playbook=SAFE-08: not steady PLAYING right before the flip. Skip it and stay on the
                     # current game; the next decision re-tunes it and tries again at the next dead ball.
+                    self._mark("playbook:SAFE-08")
                     log.info("playbook=SAFE-08 %s on %s isn't steady playing (%s): flip skipped, kept the current game",
                              target, hid.host, pb.get("state"))
                     self._set_hidden(None, False)
@@ -2009,6 +2029,10 @@ class Controller:
             elif how != "auto":
                 detail += f"; resumed by {how.replace('_', ' ')}"
         settled = self._book_flip(hid, target, flip_s, resume_s, how)
+        self._note("stick", self.hdmi.get(hid.host))
+        self._note("flip", self._flip_how or None)
+        self._note("resume", how)
+        self._note("settled", settled)
         if stall:
             detail += f"; {stall:.1f}s of buffering added to its delay"
         if old_target and not replay:

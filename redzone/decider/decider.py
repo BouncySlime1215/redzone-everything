@@ -105,9 +105,6 @@ START_RETRY_MAX_S = 60.0
 # switch you made by hand goes straight in.
 ENTRY_EXEMPT = {"user", "resume", "skip"}   # resume/skip land on a planned frame of the same tune
 PICK_KEEPS = {"user", "crunch", "home", "must_see", "live"}   # [noggin PICK] app-only switch kinds
-LEAVE_TUNE_S = 6.0
-HIDDEN_SEEK_KEYS_S = 1.5  # [seek model] a hidden-stick seek's presses + PLAY before the flip (the stall comes on top)
-PAUSE_CUE_GRAIN_S = 0.5   # [seek model] a pause cue's landing grain (the lab's pause hold: +1.66 s raw, under 0.5 s calibrated)        # leave_gate's own tune margin: a visit can't come back inside the window
 ENTRY_SLACK_S = 2.0       # the tune's own timing doubt, on top of the delay's 2 sigma
 # Once the delay's doubt grows (sigma drifts up between calibrations) no landing fits a 30 s huddle
 # with the full margin: then centre it in the dead window with this much doubt. A miss here joins a
@@ -250,6 +247,7 @@ class Decider:
         # [replay and resume] the game paused for a catch-up replay: (game, when, its extra behind-live then)
         self.paused_for: tuple[str, float, float] | None = None
         self.resume_log: list[tuple[float, str, str, float]] = []   # (when, "replay"|"resume"|"skip", game, extra s)
+        self._crunch_tail: dict[str, tuple[float, str | None]] = {}   # gid -> (last seen in crunch, target)
         self.scenarios = Scenarios(cfg)   # [scenario tree] GAME-01..03, 21, 22 seeds, flag playbooks.game.enabled (off)
         self.safety = Safety(cfg)   # [playbooks] SAFE-01/02/03/05, flag playbooks.safe.enabled (off)
         # The live controller knows whether THIS target is already ready. App-wide
@@ -379,6 +377,11 @@ class Decider:
         now = self._clock()
         self.core.k = Knobs.from_cfg(self.cfg)   # config can change between ticks (tuner, phone)
         self._known.update({gid: x for gid, x in cands.items() if x.target})
+        if self.cfg.get("replay.crunch_block_tail", False):
+            now_t = self._clock()
+            for gid, x in cands.items():
+                if (x.scored.crunch or x.scored.crunch_now) and not getattr(x.scored, "garbage", False):
+                    self._crunch_tail[gid] = (now_t, x.target)
         hold = self.cfg.get("decider.crunch.hold_personal", 5)
         self._yours.update(gid for gid, x in cands.items() if x.scored.personal >= hold)
         cands = self._with_redzone(cands, redzone)
@@ -696,7 +699,23 @@ class Decider:
         if not self.cfg.get("replay.crunch_block", False):
             return False
         return any((x.scored.crunch or x.scored.crunch_now) and not getattr(x.scored, "garbage", False)
-                   for x in cands.values())
+                   for x in cands.values()) or self._crunch_still_airing(cands, self._clock())
+
+    def _crunch_still_airing(self, cands, now: float) -> bool:
+        """[crunch block, replay.crunch_block_tail] A game the feed has already ended in crunch time (an
+        OT winner) is still airing for a whole stream delay: its last plays reach the screen up to
+        delay mu + 2 sigma after the feed dropped it. Keep the block until then, else a catch-up reel
+        starts over the OT goal (NHL dev 20261027: 6 crunch plays aired under the reel)."""
+        if not self.cfg.get("replay.crunch_block_tail", False):
+            return False
+        for gid, (seen, target) in list(self._crunch_tail.items()):
+            if gid in cands:
+                continue
+            d = self.delays.get(target or "unknown")
+            if now - seen <= d.mu + 2 * d.current_sigma(now) + float(self.cfg.get("polling.live_s", 10)):
+                return True
+            del self._crunch_tail[gid]
+        return False
 
     def _break_remaining(self, gid: str, cands, now: float) -> float:
         """Conservative break budget, never a typical ad length treated as a deadline."""
@@ -807,11 +826,11 @@ class Decider:
         if cue == "hidden" and can:
             # [seek model] seek on the hidden stick, then flip: the stall passes before the flip and
             # puts the stream just as far behind, so the picture's content doesn't depend on it (no
-            # stall doubt); the flip waits for the presses (HIDDEN_SEEK_KEYS_S) and the stall (mid).
-            plan = plan_entry(tl.dead, base_mu, margin, now, cost + HIDDEN_SEEK_KEYS_S, can_rewind=can,
+            # stall doubt); the flip waits for the presses (replay.hidden_seek_keys_s) and the stall (mid).
+            plan = plan_entry(tl.dead, base_mu, margin, now, cost + float(self.cfg.get("replay.hidden_seek_keys_s")), can_rewind=can,
                               step=sk.step, max_back=float(c.get("decider.entry.max_rewind_s", ENTRY_MAX_REWIND_S)),
                               relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
-                              cost_lo=lo_cost + HIDDEN_SEEK_KEYS_S,
+                              cost_lo=lo_cost + float(self.cfg.get("replay.hidden_seek_keys_s")),
                               urgent=float(c.get("decider.entry.urgent_margin_s", ENTRY_URGENT_S)) if urgent else None,
                               lag=float(c.get("decider.entry.landing_lag_s", 0.0)), possession=possession)
             if plan.ok and plan.rewind_s:
@@ -819,7 +838,7 @@ class Decider:
             return plan
         return plan_entry(tl.dead, base_mu, margin, now, cost, can_rewind=can,
                           # [seek model] a pause cue lands where it pauses (half-second grain, no stall)
-                          step=PAUSE_CUE_GRAIN_S if pause else sk.step,
+                          step=float(self.cfg.get("replay.pause_cue_grain_s")) if pause else sk.step,
                           stall=(0.0, 0.0) if pause else (sk.stall_lo, sk.stall_hi),
                           max_back=float(c.get("decider.entry.max_rewind_s", ENTRY_MAX_REWIND_S)),
                           relaxed=float(c.get("decider.entry.relaxed_margin_s", ENTRY_RELAXED_S)),
@@ -2033,7 +2052,7 @@ class Decider:
             # poll) is still a dead ball. Safe only if the whole doubt band on screen is inside it.
             m = 2 * d.current_sigma(now)
             until = tl.dead.dead_until(now - d.mu - m)
-            if until is not None and until >= now - d.mu + m + LEAVE_TUNE_S:
+            if until is not None and until >= now - d.mu + m + float(self.cfg.get("decider.leave.tune_s")):
                 return Gate(True, "dead ball on screen (play-by-play)")
         return g
 

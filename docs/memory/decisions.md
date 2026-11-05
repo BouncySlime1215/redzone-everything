@@ -282,6 +282,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (half-step of median + settle) is unchanged at its shipped value. The night lab's SmartThings TV draws from
   the same quantiles. Also STK-05 (no flag: a stale or paused standby was never a usable one): media_session must
   read active and speed>0, and verify_standby re-tunes a paused / stale hidden stick at once.
+- 2026-11-04 3:05 PM: **report.nightly (default OFF): the night health report** (Nick's build (a), lane 4).
+  scripts/night_report.py writes docs/nights/YYYY-MM-DD.md each morning from the night's published live
+  summary (docs/live-nights/): the North Star lines one live night can grade (mid-play, landings in dead time
+  >= 98%, press-to-TV p95 <= 3 s), every miss (ET time, game, end, reason), sync error per stick, switch and
+  press latency, faults fixed. PENDING with no night. Off until it passes its gates; northstar.yml runs it.
 - 2026-11-04 3:30 PM (lane 2, Nick's crunch_now decision): **new key `decider.entry.possession_start` ships
   `off`** (off | crunch | all). Why: on dev with tune jitter (3 seeds) `crunch` is identical to the candidate's
   `wait` (which already rewinds to the last dead ball when one is in reach) and `all` costs NBA big live
@@ -381,3 +386,28 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `noggin.pick.model` (default `v1`). All are off or unchanged by default. Why off: on NBA dev the veto leaves the rule
   default unchanged (77.5 / 90.0) and the `all` scope adds a mid-play cut. The pure rollout beats the rule (85.9 / 91.9),
   but the decider path doesn't carry that gain yet. docs/noggin.md §13.
+- 2026-11-04: **two_stick.shadow.* and demo.* (new keys, values unchanged).** ShadowStick flip/tune/keep and demo
+  feed-lag/play-length/tune/sigma timings moved into default_config.yaml (two_stick.shadow.*, demo.*), values
+  unchanged; reason: one source of truth for timing (Nick, one connected system). Moving to measured values is a
+  separate decision.
+- 2026-11-04 (lane 4, #168, one brain merge with integration/next): `control.STANDBY_REPAUSE_S` (APP-04, #164) moves
+  to `two_stick.standby_repause_s: 600` in default_config.yaml, value unchanged; postseason.py's ROUNDS / DEFAULTS /
+  _rank renamed ROUNDS_LEFT / WEIGHTS / _poll_rank (no behavior change). Reason: the contract kernel (K1/K2/K4)
+  flagged them as new on merge; one definition per fact, timings in config (Nick, one connected system).
+- **2026-11-04 (lane 2, #132): seek-model timings moved into config, values unchanged** (onebrain K2: no timing
+  literals in code). `replay.seek_press_s` 0.25, `replay.pause_keys_s` 0.5, `replay.pause_err_s` 0.25,
+  `replay.pause_cue_grain_s` 0.5, `replay.hidden_seek_keys_s` 1.5, `decider.leave.tune_s` 6,
+  `sync.probe.log_edge_sd_s` 1.0; the sim reads `two_stick.input_settle_s`. Unused `LIVELAB_FLIPS_S` dropped
+  (samples stay in docs/livelab); the sim's position origin is 0 (any constant works).
+- 2026-11-04 (Nick, 6:50 PM ET): RC6 may switch DURING games, but only at halftime/intermission of the game on
+  screen. `scripts/deploy.py deploy --at-break` allows live games while the on-screen game's status is Halftime /
+  Intermission (NHL "End of 1st/2nd"), polls every 30 s, and keeps the 10-min health watch + auto-rollback. The
+  default (no flag) is unchanged: any live game defers. Reason: get RC6 on tonight without cutting into play.
+- **2026-11-04 (lane 2, #174): `replay.crunch_block_tail`** (default `false`, candidate `true`). The crunch block also
+  holds until a game the feed ended in crunch time (an OT winner) has aired. Why: the OT winner reached the screen ~2 min
+  after the feed dropped the game, and a catch-up reel ran over it. NHL locked crunch live +2.5..2.6 on 3 seeds,
+  0 mid-play; dev big seen in 10 min −5..6 (catch-ups wait out the OT tail).
+- 2026-11-04 (lane 4, cycle 07 plan #176 "night report live tonight"): `report.nightly` default ON. The night health
+  report (scripts/night_report.py, northstar.yml's 10:00 UTC run) writes docs/nights/YYYY-MM-DD.md from the published
+  live-night summary. Its gates pass in tests/test_night_report.py: matches the live log through publish, PENDING with
+  no night or no games, no private strings published. Report only: nothing on the TV changes. Off again: set it false.

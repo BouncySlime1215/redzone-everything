@@ -19,7 +19,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Iterable, Mapping
 
-DEFAULT_LEAGUE_ORDER = ("nfl", "cfb", "nba", "cbb", "wcbb", "nhl", "mlb")
+from redzone.models import league_index, league_order
+
+DEFAULT_LEAGUE_ORDER = league_order()     # one definition: redzone.models.LEAGUE_ORDER
 DEFAULT_BANNED_APPS = ("peacock",)
 
 TIER_YOUR_TEAM = 0   # your team in a big moment or crunch time
@@ -40,17 +42,13 @@ class HardRules:
     @classmethod
     def from_config(cls, cfg) -> "HardRules":
         teams = cfg.get("teams") or {}
-        order = cfg.get("core.league_priority") \
-            or DEFAULT_LEAGUE_ORDER
+        order = league_order(cfg)
         banned = set(DEFAULT_BANNED_APPS) | {str(a).lower() for a in (cfg.get("noggin.priority.banned_apps") or [])}
         return cls({str(k): frozenset(str(t).upper() for t in (v or [])) for k, v in teams.items()},
                    tuple(str(x) for x in order), frozenset(banned))
 
     def league_rank(self, league: str) -> int:
-        try:
-            return self.league_order.index(league)
-        except ValueError:
-            return len(self.league_order)
+        return league_index(league, order=self.league_order)
 
     def is_yours(self, league: str, teams: Iterable[str]) -> bool:
         mine = self.your_teams.get(league, frozenset())

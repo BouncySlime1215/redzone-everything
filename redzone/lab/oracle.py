@@ -20,6 +20,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from redzone.lab import cutgrade, sportsgrade
+from redzone.grading import clean_leave as _clean_leave  # noqa: F401  [one brain] moved, step 3
 from redzone.lab.backtest import SwitchLog, lag_of
 from redzone.models import League
 from redzone.sources import espn
@@ -47,31 +48,6 @@ class Night:
     tune_s: float
     t0: float
     t1: float
-
-
-def _clean_leave(league: League, wall: list[float], plays: list[dict], st: float) -> bool:
-    """sportsgrade._clean_cut with a binary search (same rule)."""
-    i = cutgrade._idx(wall, st)
-    if i == len(wall) - 1 or (i >= 0 and st > wall[-1]):
-        return True
-    if league in sportsgrade.CONTINUOUS:
-        if i < 0:
-            return True
-        last = plays[i]
-        nxt = next((wall[j] for j in range(i + 1, len(wall))
-                    if espn.stoppage_for(league, plays[j]) == Stoppage.NONE
-                    and not sportsgrade._is_marker(espn._kind(league, plays[j]), league)), math.inf)
-        dead = espn.stoppage_for(league, last) != Stoppage.NONE or (
-            bool(last.get("scoringPlay")) and st - wall[i] <= 4.0)
-        return bool(dead and st < nxt - sportsgrade.RESUME_LEAD[league])
-    plen = sportsgrade.PLAY_LEN[league]
-    lo = max(0, i - 3)
-    for w, p in zip(wall[lo:i + 4], plays[lo:i + 4]):
-        if sportsgrade._marker(sportsgrade._type(p)) and not p.get("scoringPlay"):
-            continue
-        if w - plen <= st <= w:
-            return False
-    return True
 
 
 def tables(n: Night, steps: np.ndarray) -> dict:

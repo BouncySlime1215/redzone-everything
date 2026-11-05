@@ -27,7 +27,7 @@ from redzone.models import GameState, League
 
 # How many rounds are left after this one, from the round's name in ESPN's note headline. 0 = the title
 # game or series. Checked in order, first match wins, so the specific names sit above the generic ones.
-ROUNDS: dict[League, tuple[tuple[str, int], ...]] = {
+ROUNDS_LEFT: dict[League, tuple[tuple[str, int], ...]] = {
     League.MLB: (("world series", 0), ("championship series", 1), ("alcs", 1), ("nlcs", 1),
                  ("division series", 2), ("alds", 2), ("nlds", 2), ("wild card", 3)),
     League.NBA: (("nba finals", 0), ("conference finals", 1), ("east finals", 1), ("west finals", 1),
@@ -41,14 +41,14 @@ ROUNDS: dict[League, tuple[tuple[str, int], ...]] = {
                  ("sweet 16", 3), ("sweet sixteen", 3), ("2nd round", 4), ("second round", 4),
                  ("1st round", 5), ("first round", 5), ("first four", 6)),
 }
-ROUNDS[League.WCBB] = ROUNDS[League.CBB]
+ROUNDS_LEFT[League.WCBB] = ROUNDS_LEFT[League.CBB]
 
 # Postseason games that are one-and-done when ESPN sends no series (a CFB bowl outside the playoff isn't).
 SINGLE_ELIM = {League.NFL, League.CBB, League.WCBB}
 CFB_PLAYOFF_WORDS = ("playoff", "national championship", "cfp")
 
 # Default weights (stakes multiplier deltas). Overridable under score.postseason.*; the sum is capped.
-DEFAULTS = dict(base=0.02, elimination=0.05, decider=0.05, round_step=0.02, max_round_bonus=0.08,
+WEIGHTS = dict(base=0.02, elimination=0.05, decider=0.05, round_step=0.02, max_round_bonus=0.08,
                 ranked_both=0.03, ranked_top10_both=0.02, cap=0.15)
 
 
@@ -71,13 +71,13 @@ class Stakes:
         return self.rank_home is not None and self.rank_away is not None
 
 
-def _rank(r) -> int | None:
+def _poll_rank(r) -> int | None:
     return r if isinstance(r, int) and 0 < r <= 25 else None
 
 
 def round_of(league: League, headline: str) -> int | None:
     h = (headline or "").lower()
-    for words, left in ROUNDS.get(league, ()):
+    for words, left in ROUNDS_LEFT.get(league, ()):
         if words in h:
             return left
     return None
@@ -93,7 +93,7 @@ def parse(league: League, ev: dict, home_id: str = "", away_id: str = "",
     post = season.get("type") == 3
     notes = comp.get("notes") if isinstance(comp.get("notes"), list) else []
     label = next((n.get("headline") for n in notes if isinstance(n, dict) and n.get("headline")), "") or ""
-    rh, ra = _rank(rank_home), _rank(rank_away)
+    rh, ra = _poll_rank(rank_home), _poll_rank(rank_away)
     if not post:
         return Stakes(rank_home=rh, rank_away=ra) if (rh or ra) else None
 
@@ -138,16 +138,16 @@ def enabled(cfg) -> bool:
 
 def _w(cfg, name: str) -> float:
     try:
-        return float(cfg.get(f"score.postseason.{name}", DEFAULTS[name]))
+        return float(cfg.get(f"score.postseason.{name}", WEIGHTS[name]))
     except (TypeError, ValueError):
-        return DEFAULTS[name]
+        return WEIGHTS[name]
 
 
 def bonus(st: Stakes | None, cfg=None) -> float:
     """Stakes multiplier delta for these stakes (no flag check: the caller decides)."""
     if st is None:
         return 0.0
-    w = (lambda n: DEFAULTS[n]) if cfg is None else (lambda n: _w(cfg, n))
+    w = (lambda n: WEIGHTS[n]) if cfg is None else (lambda n: _w(cfg, n))
     b = 0.0
     if st.postseason:
         b += w("base")

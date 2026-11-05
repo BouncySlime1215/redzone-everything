@@ -36,7 +36,6 @@ WIFI_EVERY_S = 15.0
 LOG_EVERY_S = 15.0
 UI_EVERY_S = 20.0         # uiautomator dump on the hidden stick
 UI_KEEP_CHARS = 600
-LOG_EDGE_SD_S = 1.0       # [yttv anchors] an ad edge read from the player's own log line
 COND_WINDOW_S = 300.0     # [SYNC 4] stalls per minute over this window
 RSSI_WEAK = -65           # below this every dB widens the delay's error bar
 RSSI_DROP_DB = 10         # a drop this big within RSSI_DROP_WINDOW_S: predicted drift
@@ -310,7 +309,7 @@ class SyncProbe:
         for t, kind in log_ad_edges(lines, str(self.cfg.get("sync.probe.log_ad_start") or LOG_AD_START),
                                     str(self.cfg.get("sync.probe.log_ad_end") or LOG_AD_END)):
             try:
-                self.on_screen_event(target, host, visible, kind, t, LOG_EDGE_SD_S)
+                self.on_screen_event(target, host, visible, kind, t, float(self.cfg.get("sync.probe.log_edge_sd_s")))
             except Exception:
                 log.exception("log edge hand-off failed")
 

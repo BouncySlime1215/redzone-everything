@@ -10,7 +10,7 @@ def _dec(monkeypatch, league="nhl", until=1000.0):
     monkeypatch.setattr(D, "leave_gate", lambda *a, **k: Gate(False, "play is live (only leave at a stoppage)"))
     dec = D.Decider.__new__(D.Decider)
     dec.current = "g"
-    dec.cfg = {"decider.leave.dead_windows": ["nhl"]}
+    dec.cfg = {"decider.leave.dead_windows": ["nhl"], "decider.leave.tune_s": 6}
     dec.timelines = {"g": NS(dead=NS(marks=[1], dead_until=lambda x0: until if x0 < until else None))}
     dec.delays = NS(get=lambda t: NS(mu=100.0, current_sigma=lambda now: 2.0))
     cur = NS(target="yt:g", scored=NS(league=NS(base=NS(value=league))))
