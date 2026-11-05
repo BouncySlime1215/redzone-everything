@@ -1,0 +1,31 @@
+league,abbr,name,enwiki,former_titles,former_abbrs,aliases,active,qid,venue_qid,venue_lat,venue_lon
+nba,ATL,Atlanta Hawks,Atlanta_Hawks,,,,1,Q159893,Q1123297,33.757222222,-84.396388888
+nba,BKN,Brooklyn Nets,Brooklyn_Nets,,BRK|NJN|NJ,,1,Q572134,Q807966,40.68265,-73.974689
+nba,BOS,Boston Celtics,Boston_Celtics,,,,1,Q131371,Q432105,42.366388888,-71.062222222
+nba,CHA,Charlotte Hornets,Charlotte_Hornets,,CHO,,1,Q163480,Q983870,35.225,-80.839166666
+nba,CHI,Chicago Bulls,Chicago_Bulls,,,,1,Q128109,Q639975,41.880555555,-87.674166666
+nba,CLE,Cleveland Cavaliers,Cleveland_Cavaliers,,,,1,Q162990,Q387157,41.496388888,-81.688055555
+nba,DAL,Dallas Mavericks,Dallas_Mavericks,,,,1,Q132893,Q463345,32.790555555,-96.810277777
+nba,DEN,Denver Nuggets,Denver_Nuggets,,,,1,Q162954,Q795470,39.748611111,-105.0075
+nba,DET,Detroit Pistons,Detroit_Pistons,,,,1,Q169661,Q18154984,42.3412,-83.0549
+nba,GSW,Golden State Warriors,Golden_State_Warriors,,GS,,1,Q157376,Q15262098,37.767833333,-122.387388888
+nba,HOU,Houston Rockets,Houston_Rockets,,,,1,Q161345,Q1166157,29.750833333,-95.362222222
+nba,IND,Indiana Pacers,Indiana_Pacers,,,,1,Q170329,Q545007,39.763888888,-86.155555555
+nba,LAC,Los Angeles Clippers,Los_Angeles_Clippers,,,,1,Q976396,Q186080,34.043055555,-118.267222222
+nba,LAL,Los Angeles Lakers,Los_Angeles_Lakers,,,,1,Q121783,Q186080,34.043055555,-118.267222222
+nba,MEM,Memphis Grizzlies,Memphis_Grizzlies,,,,1,Q165529,Q641212,35.138333333,-90.050555555
+nba,MIA,Miami Heat,Miami_Heat,,,,1,Q169138,Q420129,25.781388888,-80.188055555
+nba,MIL,Milwaukee Bucks,Milwaukee_Bucks,,,,1,Q169637,Q20372160,43.0451,-87.9182
+nba,MIN,Minnesota Timberwolves,Minnesota_Timberwolves,,,,1,Q170558,Q282675,44.979444444,-93.276111111
+nba,NOP,New Orleans Pelicans,New_Orleans_Pelicans,,NO|NOR,,1,Q172339,Q1515840,29.948888888,-90.081944444
+nba,NYK,New York Knicks,New_York_Knicks,,NY,,1,Q131364,Q186125,40.750501,-73.993453
+nba,OKC,Oklahoma City Thunder,Oklahoma_City_Thunder,,,,1,Q180950,Q665434,35.463333,-97.515
+nba,ORL,Orlando Magic,Orlando_Magic,,,,1,Q161337,Q481795,28.539167,-81.383611
+nba,PHI,Philadelphia 76ers,Philadelphia_76ers,,,,1,Q138089,Q818735,39.90115,-75.17197
+nba,PHX,Phoenix Suns,Phoenix_Suns,,PHO,,1,Q164177,Q1538690,33.445833333,-112.071388888
+nba,POR,Portland Trail Blazers,Portland_Trail_Blazers,,,,1,Q167253,Q1347442,45.531666666,-122.666666666
+nba,SAC,Sacramento Kings,Sacramento_Kings,,,,1,Q166105,Q7011384,38.58,-121.5
+nba,SAS,San Antonio Spurs,San_Antonio_Spurs,,SA,,1,Q159729,Q298573,29.426944444,-98.4375
+nba,TOR,Toronto Raptors,Toronto_Raptors,,,,1,Q132880,Q406972,43.643333333,-79.379166666
+nba,UTA,Utah Jazz,Utah_Jazz,,UTAH,,1,Q170649,Q82294,40.768333,-111.901111
+nba,WAS,Washington Wizards,Washington_Wizards,,WSH,,1,Q169165,Q223240,38.898055555,-77.020833333

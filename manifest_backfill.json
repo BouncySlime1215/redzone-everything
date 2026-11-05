@@ -1,0 +1,32 @@
+{
+ "mode": "backfill",
+ "ran_at": "2026-11-05T15:58:21Z",
+ "from": "2026-10-29",
+ "to": "2026-11-05",
+ "games": 46,
+ "facts_this_run": 4324,
+ "by_field": {
+  "edit_rate_live_z": 3312,
+  "pageviews_live_z": 828,
+  "pageviews_z": 92,
+  "edit_rate_z": 92
+ },
+ "shards": {
+  "nba_2026": {
+   "facts": 4324,
+   "new": 4324,
+   "derived": 0,
+   "games": 46,
+   "fields": [
+    "edit_rate_live_z",
+    "edit_rate_z",
+    "pageviews_live_z",
+    "pageviews_z"
+   ],
+   "sources": [
+    "wikimedia-edits",
+    "wikimedia-pageviews"
+   ]
+  }
+ }
+}
