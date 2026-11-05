@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Colab: EXP-109 speedrun 1 h 27 min (arms training); commentary EXP-1402 moved past the moment build into the Teacher stage. Kaggle factory v2 running.
+Colab: EXP-109 speedrun 1 h 57 min (should finish ~6 AM); commentary EXP-1402 Teacher stage since 4:29 AM (10.2M-play queue, 2 h budget, priority plays first), done ~6:45 AM.
 No failures. Usage 60%.
 <!-- STATUS:END -->
 
