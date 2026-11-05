@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-EXP-107 ladder run 1 FAILED (14.8 CU): 18m crashed at the checkpoint sync (sync.push AttributeError), 60m/150m CUDA OOM; 18m was memorizing (train 0.28 vs valid 0.50, 5.5 epochs). Report 25977819; lane 1 fixing; A100 freed.
-YTTV web player gives an ingest clock (23.2 s behind, steady to 0.1 s), 9376769b. Seed check on L4 running. Usage 62%.
+Ladder relaunch (ba227738/8b2ea86, fixes + smoke pass) on A100 High-RAM, 12 min in, past the smoke stage. Seed check EXP-109b on L4 1 h 27 min.
+Nick: considering the time-shift buffer (60-90 s behind live) as the main architecture; shadow test proposed for tonight. Usage 63%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
