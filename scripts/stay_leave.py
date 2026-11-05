@@ -68,6 +68,40 @@ def load(leagues, split, cache: Path | None):
     return out
 
 
+def load_extra(leagues, root: Path, before: dict, cache: Path | None):
+    """[EXP-128] Older nights from another pinned archive (eval-data-v2 last season), TRAIN only, before `before`."""
+    import json as _j
+
+    from redzone.lab.backtest import Replay
+    p = cache / "nights_extra.pkl" if cache else None
+    if p and p.exists():
+        out = pickle.loads(p.read_bytes())
+        return [(lg, d, n, tab, F, SL.floor_table(n, F.shape[1])) for lg, d, n, tab, F, _HL in out]
+    out = []
+    for lg in leagues:
+        cut = before.get(lg.value)
+        if not cut:
+            continue
+        arch = root / "data/archive" / lg.value
+        for sb in sorted(arch.glob("scoreboard_*.json")):
+            day = sb.stem.split("_")[-1]
+            if day >= cut:
+                continue
+            reps = [r for e in _j.loads(sb.read_text()).get("events", [])
+                    if (f := arch / f"summary_{e['id']}.json").exists() and (r := Replay.load(lg, f))]
+            if len(reps) < 2:
+                continue
+            t0, t1 = min(r.wall[0] for r in reps) - 600.0, max(r.wall[-1] for r in reps) + 600.0
+            n = O.Night(reps, SL.MINE, STREAM_DELAY_S + BUFFER_S, TUNE_S, t0, t1)
+            tab = O.tables(n, np.arange(n.t0, n.t1, O.STEP_S))
+            F, _hl = SL.context(n, tab)
+            out.append((lg.value, day, n, tab, F, SL.floor_table(n, F.shape[1])))
+        print(f"extra {lg.value}: {sum(1 for o in out if o[0] == lg.value)} nights", flush=True)
+    if p:
+        p.write_bytes(pickle.dumps(out))
+    return out
+
+
 def xy(data, target: str = "reward"):
     Xs, ys = [], []
     for _lg, _d, _n, tab, F, _HL in data:
@@ -125,7 +159,8 @@ def summarize(arms: dict) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("fit", "grade", "fit1714", "grade1714", "grade125", "exp126"))
+    ap.add_argument("cmd", choices=("fit", "grade", "fit1714", "grade1714", "grade125", "exp126", "exp128"))
+    ap.add_argument("--extra-root", type=Path, default=None, help="exp128: root holding data/archive of eval-data-v2")
     ap.add_argument("--leagues", default="nba,nfl,nhl")
     ap.add_argument("--split", default="valid", choices=("valid", "test", "train"))
     ap.add_argument("--out", type=Path, required=True)
@@ -170,6 +205,41 @@ def main(argv=None) -> int:
         (a.out / f"grade1714_{a.split}.json").write_text(json.dumps({"summary": out, "nights": arms}, indent=1,
                                                                     default=float))
         print(json.dumps(out, indent=1, default=float))
+        return 0
+    if a.cmd == "exp128":
+        from redzone.noggin import pick as PK
+        tr, va = load(leagues, "train", a.cache), load(leagues, "valid", a.cache)
+        ex = load_extra(leagues, a.extra_root, {"nba": "20261020", "nhl": "20261019"}, a.cache)
+        heads, sel_all = {}, {}
+        for tgt in ("nomine", "crunch"):
+            Xa, ya = xy(tr, tgt)
+            Xe, ye = xy(ex, tgt)
+            Xt, yt = np.concatenate([Xa, Xe]), np.concatenate([ya, ye])
+            w = np.concatenate([np.ones(len(ya)), np.full(len(ye), 0.5)])
+            Xv, yv = xy(va, tgt)
+            sel = {mi: float(np.mean((SL.fit(Xt, yt, mi, weight=w).predict(Xv) - yv) ** 2)) for mi in SL.MAX_ITER_GRID}
+            best = min(sel, key=sel.get)
+            heads[tgt], sel_all[tgt] = SL.fit(Xt, yt, best, weight=w), sel
+            print(tgt, "rows", len(ya), "+", len(ye), sel, best, flush=True)
+        n1 = SL.TwoHead(heads["nomine"], heads["crunch"])
+        b1 = pickle.loads((a.out / "model1714.pkl").read_bytes())["all"]
+        (a.out / "model128.pkl").write_bytes(pickle.dumps(n1))
+        res = {}
+        for fl_mode in ("p90", "8"):
+            arms = {k: {} for k in ("full", "A0_past120", "B1_two_heads", "N1_last_season")}
+            for lg, day, n, tab, F, HL in va:
+                fl = PK.FEED_LAG_P90.get(League(lg), 60.0) if fl_mode == "p90" else 8.0
+                sch = {"full": O.solve(n, "combined", SL.floored(tab, HL)),
+                       "A0_past120": SL.solve_policy(n, fl, tab, F, HL, None, horizon_s=120.0),
+                       "B1_two_heads": SL.solve_policy(n, fl, tab, F, HL, b1),
+                       "N1_last_season": SL.solve_policy(n, fl, tab, F, HL, n1)}
+                for k, sw in sch.items():
+                    arms[k].setdefault(lg, []).append({"night": day, **SL.night_metrics(n, tab, HL, sw)})
+            res[fl_mode] = {"summary": summarize(arms), "nights": arms}
+        res["extra_nights"] = sorted({f"{lg}:{d}" for lg, d, *_ in ex})
+        res["max_iter"] = sel_all
+        (a.out / "exp128_valid.json").write_text(json.dumps(res, indent=1, default=float))
+        print("done", flush=True)
         return 0
     if a.cmd == "exp126":
         from redzone.noggin import pick as PK

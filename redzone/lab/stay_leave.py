@@ -255,13 +255,13 @@ def floored(tab: dict, HL: np.ndarray) -> dict:
     return {**tab, "leave": tab["leave"] & ~HL}
 
 
-def fit(X: np.ndarray, y: np.ndarray, max_iter: int, seeds=(0, 1, 2), drop: tuple = ()) -> Model:
+def fit(X: np.ndarray, y: np.ndarray, max_iter: int, seeds=(0, 1, 2), drop: tuple = (), weight=None) -> Model:
     from sklearn.ensemble import HistGradientBoostingRegressor
     m = Model(drop=drop)
     Xd = m._x(X)
     for s in seeds:
         m.regs.append(HistGradientBoostingRegressor(max_iter=max_iter, random_state=s, early_stopping=False,
-                                                    **HP).fit(Xd, y))
+                                                    **HP).fit(Xd, y, sample_weight=weight))
     return m
 
 
