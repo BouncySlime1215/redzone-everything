@@ -1,0 +1,2 @@
+{"markets": 1, "games": ["nfl:20261106:JAX@BAL"], "check": [{"question": "Jaguars vs. Ravens", "outcomes": "[\"Jaguars\", \"Ravens\"]", "outcomePrices": "[\"0.815\", \"0.185\"]", "slug": "nfl-jax-bal-2026-11-06", "invert": false}]}
+{"ticks": 241, "triggers": 0, "reconnects": 0, "file": "out/markets_live/polymarket/nfl/20261105.jsonl", "clock": "recv_ts is this host's UTC clock; keep NTP on", "started": "2026-11-05T14:56:03.212659+00:00"}
