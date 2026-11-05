@@ -313,11 +313,43 @@ def build(league: str, raw: Path, year: int, out: Path, facts_dir: Path | None =
 # ---------------------------------------------------------------------------------------- crew A play table (#259)
 TABLE_PERIOD_S = {"soccer": 2700.0, "basketball": 600.0, "hockey": 1200.0, "football": 900.0, "cricket": 0.0,
                   "baseball": 0.0}
+PERIOD_BY_LEAGUE = {"nba": 720.0, "wnba": 600.0, "cbb": 1200.0, "wcbb": 600.0, "nfl": 900.0, "nhl": 1200.0}
 TABLE_FIELDS = {  # play-table column -> (num|cat, new|derived): scripts/pbp/schema.py FIELD_META minus what v1 carries
     "side": ("cat", "new"), "possession": ("cat", "derived"), "sub_kind": ("cat", "new"), "actor_id": ("cat", "new"),
     "actor2_id": ("cat", "new"), "x": ("num", "new"), "y": ("num", "new"), "value": ("num", "new"),
     "outs": ("cat", "derived"), "balls": ("cat", "derived"), "strikes": ("cat", "derived"), "bases": ("cat", "derived"),
+    # tracking joined at the event's game-clock second (crew A SportVU, --track): ball x/y, ball speed, live/dead,
+    # shot-clock bucket. New information (the play table has none of it); counted under "new" in the ledger.
+    "trk_x": ("num", "new"), "trk_y": ("num", "new"), "trk_speed": ("num", "new"), "trk_state": ("cat", "new"),
+    "trk_shot_clock": ("cat", "new"),
 }
+
+
+def join_track(df, track_path: Path, tol_s: float = 1.5):
+    """Each event row gets the tracking second nearest its game clock (same game and period, within tol_s): ball
+    x/y, speed, live/dead and shot-clock bucket, plus the tracking wall clock where the event has none."""
+    import pandas as pd
+    t = pd.read_parquet(track_path, columns=["game_id", "period", "clock_s", "wall_ts", "kind", "sub_kind", "x", "y",
+                                             "value"])
+    t = t.rename(columns={"wall_ts": "trk_wall", "kind": "trk_state", "sub_kind": "trk_shot_clock", "x": "trk_x",
+                          "y": "trk_y", "value": "trk_speed"})
+    t["period"] = t.period.astype("int64")
+    t["clock_s"] = t.clock_s.astype("float64")
+    d = df.copy()
+    d["_row"] = np.arange(len(d))
+    d["period"] = d.period.astype("int64")
+    d["clock_s"] = d.clock_s.astype("float64")
+    m = pd.merge_asof(d.dropna(subset=["clock_s"]).sort_values("clock_s"), t.sort_values("clock_s"), on="clock_s",
+                      by=["game_id", "period"], direction="nearest", tolerance=tol_s)
+    m = m.sort_values("_row")
+    out = df.copy()
+    for c in ("trk_x", "trk_y", "trk_speed", "trk_state", "trk_shot_clock", "trk_wall"):
+        out[c] = pd.Series(m[c].to_numpy(), index=df.index[m["_row"].to_numpy()]).reindex(df.index)
+    if "wall_ts" in out:
+        out["wall_ts"] = out.wall_ts.astype("float64").fillna(out.trk_wall.astype("float64"))
+    else:
+        out["wall_ts"] = out.trk_wall
+    return out.drop(columns=["trk_wall"])
 
 
 def table_game(g, sport: str, league: str, fields: dict, edges: dict) -> tuple[np.ndarray, dict]:
@@ -328,7 +360,8 @@ def table_game(g, sport: str, league: str, fields: dict, edges: dict) -> tuple[n
     out = [BOS2_0 + _slot(f"{sport}:{league}", LEAGUE_SLOTS),
            V1.TEAM0 + _slot(f"{league}:{g.home.iloc[0]}", len(V1.BASES) * V1.TEAM_SLOTS),
            V1.TEAM0 + _slot(f"{league}:{g.away.iloc[0]}", len(V1.BASES) * V1.TEAM_SLOTS)]
-    per_s = TABLE_PERIOD_S.get(sport) or float(pd.to_numeric(g.elapsed_s, errors="coerce").max() or 0) or None
+    per_s = PERIOD_BY_LEAGUE.get(league) or TABLE_PERIOD_S.get(sport) or float(
+        pd.to_numeric(g.elapsed_s, errors="coerce").max() or 0) or None
     cnt = {"base": 4, "new": 0, "derived": 0, "ctx_new": 0, "ctx_derived": 0}
     last_w = last_e = last_p = None
     ph = pa = 0
@@ -336,6 +369,8 @@ def table_game(g, sport: str, league: str, fields: dict, edges: dict) -> tuple[n
         w = None if _missing(r.get("wall_ts")) else float(r["wall_ts"])
         per = 1 if _missing(r.get("period")) else int(r["period"])
         e = None if _missing(r.get("elapsed_s")) else float(r["elapsed_s"])
+        if e is None and per_s and not _missing(r.get("clock_s")):     # countdown clock -> seconds into the period
+            e = per_s - float(r["clock_s"])
         dt = (w - last_w) if w is not None and last_w is not None else (
             e - last_e if e is not None and last_e is not None and per == last_p else None)
         last_w, last_e, last_p = w if w is not None else last_w, e if e is not None else last_e, per
@@ -359,11 +394,15 @@ def table_game(g, sport: str, league: str, fields: dict, edges: dict) -> tuple[n
     return np.asarray(out, np.uint16), cnt
 
 
-def build_table(src: Path, out: Path, train_before: str | None = None) -> dict:
-    """One crew A shard (<root>/<source>/<league>/<season>.parquet) -> <out>/<league>/<season>.npy + .json."""
+def build_table(src: Path, out: Path, train_before: str | None = None, track: Path | None = None) -> dict:
+    """One crew A shard (<root>/<source>/<league>/<season>.parquet) -> <out>/<league>/<season>.npy + .json.
+    track: a tracking shard on the same game ids (SportVU), joined per event (join_track)."""
     import pandas as pd
     df = pd.read_parquet(src)
-    league, season = src.parent.name, src.stem
+    season = src.stem
+    league = str(df.league.iloc[0]) if "league" in df and len(df) and df.league.iloc[0] else src.parent.name
+    if track is not None:
+        df = join_track(df, track)
     d = Path(out) / league
     js = d / f"{season}.json"
     if js.exists() and json.loads(js.read_text()).get("complete"):
@@ -422,8 +461,9 @@ def main(argv=None) -> int:
         tp.add_argument("srcs", nargs="+", type=Path)
         tp.add_argument("--out", type=Path, required=True)
         tp.add_argument("--train-before", default=None)
+        tp.add_argument("--track", type=Path, default=None, help="tracking shard joined per event (one src only)")
         b = tp.parse_args(argv)
-        infos = [build_table(p, b.out, b.train_before) for p in b.srcs]
+        infos = [build_table(p, b.out, b.train_before, b.track) for p in b.srcs]
         print(ledger_line(infos))
         return 0
     ap = argparse.ArgumentParser()

@@ -89,3 +89,16 @@ def test_play_table_shard_tokenizes_with_train_only_edges(tmp_path):
     assert info["license"] == V2.PERSONAL and info["ledger"]["base"] == 10 * (4 + 72)
     arr = np.load(tmp_path / "out" / "x_league" / "2024.npy")
     assert arr.max() < V2.VOCAB_SIZE and V2.BOS2_0 <= arr[0] < V2.VOCAB_SIZE
+
+
+def test_tracking_joins_on_game_period_and_nearest_clock(tmp_path):
+    ev = pd.DataFrame({"game_id": ["g1", "g1", "g1"], "period": [1, 1, 2], "clock_s": [700.0, 650.2, 700.0],
+                       "wall_ts": [None, None, None]})
+    trk = pd.DataFrame({"game_id": ["g1"] * 3, "period": [1, 1, 1], "clock_s": [700.1, 650.0, 600.0],
+                        "wall_ts": [1000.0, 1050.0, 1100.0], "kind": ["track_live"] * 3, "sub_kind": ["sc18-24"] * 3,
+                        "x": [0.1, 0.2, 0.3], "y": [0.5] * 3, "value": [3.0, 9.0, 1.0]})
+    p = tmp_path / "trk.parquet"
+    trk.to_parquet(p)
+    out = V2.join_track(ev, p)
+    assert list(out.trk_x[:2]) == [0.1, 0.2] and pd.isna(out.trk_x[2])          # period 2 has no tracking
+    assert list(out.wall_ts[:2]) == [1000.0, 1050.0]
