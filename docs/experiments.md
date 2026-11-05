@@ -197,6 +197,18 @@ on locked.
 | EXP-081 | M62 | The guardrail is now the binding line (§5) and the metrics (§6). | Applied to every row above. | n/a | n/a | standing |
 | EXP-082 | Mind 3B | Explains choices and handles odd cases; it is not the core timing. | Stays shadow-first and flag-off (≤ 2 GB). | n/a | n/a | standing |
 
+## Data Division D: markets (EXP-1300-1399, planner D)
+
+Market prices are model **inputs only** (importance, closeness, volatility): never shown, never a nudge, never a
+betting hook, never a training label (Nick 11:10 PM Nov 4; decisions.md). Plan B tag on every row and model:
+`personal-use, not for commercial release`. Contract and tokens: docs/datasources/markets/contract.md,
+scripts/markets/tokens.py.
+
+| rank | id | covers | hypothesis | North Star line | cost GPU-h / agent-h | lane | success bar | nights needed | status |
+|---:|---|---|---|---|---|---|---|---|---|
+| D1 | EXP-1300 | Data scale (market events) | Public Polymarket 1-minute price history for sports game markets (2024+) lands as vocab v2 market-block tokens in the factory with a license line, and it is new information (observed prices, not derived). | Data ledger: new-information tokens | 0 (Kaggle CPU) / ~3 | D | Ledger bar: >= 5M new-information market tokens landed (counts.json from scripts/markets/tokens.py, 6 per emitted event), >= 70% of events matched to a product game_key, 0 rows missing the B tag, 0 wallet or user fields stored, 0 ticks timestamped after the play they are joined to (time-split audit), license line `yellow-B` in scout.json | n/a (data) | pre-registered |
+| D2 | EXP-1301 | P4 (market expectation), crunch | A live market-volatility input (abs 5-minute change in market p_home, from EXP-1300 ticks, joined point-in-time) behind a flag (off) improves crunch detection over the WP-only crunch state. | Crunch live (NBA/NFL); % of oracle | ~1 / ~3 | D + 1 | On dev nights where a market tick exists, crunch live with the input beats without it by >= 1.0 pt (night-bootstrap lower bound > 0) in >= 1 league, no league worse beyond its CI, entries_mid_play 0; selected on valid only; locked read once by the integrator | dev nights with market coverage (2024+); >= 8 per league for PASS, else PENDING | queued (needs EXP-1300) |
+
 ## Results log
 
 - **EXP-018** (Nov 4, 23:40 UTC, value = score, because WV isn't wired yet). The bar was pre-registered at

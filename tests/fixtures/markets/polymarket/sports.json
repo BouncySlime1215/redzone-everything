@@ -1,0 +1,34 @@
+[
+ {
+  "sport": "nba",
+  "image": "https://example.invalid/nba.png",
+  "resolution": "https://www.nba.com/",
+  "ordering": "away",
+  "tags": "1,745,100639",
+  "series": "10345"
+ },
+ {
+  "sport": "ncaab",
+  "image": "https://example.invalid/ncaab.png",
+  "resolution": "https://www.ncaa.com/",
+  "ordering": "away",
+  "tags": "1,100149,100639",
+  "series": "10470"
+ },
+ {
+  "sport": "epl",
+  "image": "https://example.invalid/epl.png",
+  "resolution": "https://www.premierleague.com/",
+  "ordering": "home",
+  "tags": "1,100639,100350,82",
+  "series": "10188"
+ },
+ {
+  "sport": "elc",
+  "image": "https://example.invalid/elc.png",
+  "resolution": "https://www.efl.com/",
+  "ordering": "home",
+  "tags": "1,100639,100350,102643",
+  "series": "10230"
+ }
+]
