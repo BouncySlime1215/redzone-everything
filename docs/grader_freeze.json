@@ -1,10 +1,10 @@
 {
-  "version": 24,
-  "frozen_at": "2026-11-05T12:11Z",
+  "version": 25,
+  "frozen_at": "2026-11-05T13:07Z",
   "by": "integrator",
   "files": {
     "redzone/grading.py": "7d42683f7d7acea9241108fd6279d4fb8b3d48db61fa3222f5a5bf81f890ab4e",
-    "scripts/collect_live_test.py": "b7e198b23866a56cfb902d9fd63868fac219843cae84b139ab09761c11073e65",
+    "scripts/collect_live_test.py": "1c478f1990aa59e236f6cd64d78977e37246c1c794f4aebf658e6398d4f7f77c",
     "scripts/license_check.py": "f7c573a4b72e43d74be8796fa09a264724cfe8af5f1938c01a51520e040a2885",
     "scripts/label_leak_check.py": "ce4e4f2bf4048e567025168e8ae855099e4e91386278d07cd9b3e616e20a2f7a",
     "redzone/lab/syncgrade.py": "a2b3dc7ad26227c36b5e60ed09b259e7681db46aa052cbee54570c5ab961e0c4",
