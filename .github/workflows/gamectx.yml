@@ -1,0 +1,36 @@
+# Data H game-context corpus on a free GitHub runner: never the Mac, never GPU quota, NUMBERS ONLY.
+# Push gamectx-run/<anything> to run the Wikipedia pass, NBA first then NFL (scripts/gamectx/wiki_context.py).
+# Outputs (games / team_week / team_season / rivalries csv + ledger.json per league) go to branch gamectx-out/wiki.
+# Article text is parsed in memory and dropped; nothing textual is written. Personal-use, not for commercial release.
+name: gamectx
+on:
+  push:
+    branches: ["gamectx-run/**"]
+concurrency:
+  group: gamectx-${{ github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  wiki:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -q pandas==2.2.3 lxml==5.3.0
+      - name: NBA (2001-02 .. 2026-27)
+        run: python scripts/gamectx/wiki_context.py pull --league nba --out out
+      - name: NFL (1999 .. 2026)
+        if: always()
+        run: python scripts/gamectx/wiki_context.py pull --league nfl --out out
+      - name: coverage
+        if: always()
+        run: python scripts/gamectx/wiki_context.py coverage --out out | tee out/coverage.txt
+      - name: push outputs to gamectx-out/wiki
+        if: always()
+        run: |
+          cd out && rm -rf .git && git init -q -b gamectx-out/wiki && git add -A
+          git -c user.name=gamectx -c user.email=gamectx@users.noreply.github.com \
+            commit -qm "gamectx wiki outputs from $GITHUB_SHA (run $GITHUB_RUN_ID); numbers only; personal-use, not for commercial release"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY" "HEAD:refs/heads/gamectx-out/wiki"
