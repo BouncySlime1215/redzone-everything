@@ -173,16 +173,17 @@ def test_an_alternative_barely_above_staying_does_not_trigger_a_leave():
 
 
 def test_margin_never_shrinks_as_recent_switches_pile_up():
-    """Force a leave every 70 s (past any 60 s dwell) with a huge gap; the band the model reports must not
-    shrink from one switch to the next and must end wider than it started."""
+    """Offer a huge gap every 10 s for 15 min; whatever dwell the model uses, the band it reports at each
+    successive leave must not shrink and must end wider than it started."""
     m = _model()
     margins, st = [], None
-    for k in range(5):
-        d, act, st = _decide(m, _low(0.0, 9.0, 1000.0 + 70.0 * k), st)
+    for i in range(90):
+        d, act, st = _decide(m, _low(0.0, 9.0, 1000.0 + 10.0 * i), st)
         if getattr(d, "margin", None) is None:
             pytest.skip("decision has no .margin; hysteresis covered by the two-game tests only")
-        assert act == "leave", f"step {k}: a 9-point gap after 70 s did not leave"
-        margins.append(float(d.margin))
+        if act == "leave":
+            margins.append(float(d.margin))
+    assert len(margins) >= 3, f"only {len(margins)} leaves in 15 min on a 9-point gap"
     assert all(b >= a - 1e-9 for a, b in zip(margins, margins[1:])), margins
     assert margins[-1] > margins[0], f"margin flat in recent switches: {margins}"
 
@@ -261,7 +262,8 @@ def test_fit_json_never_lists_a_locked_night():
     if not found:
         pytest.skip("no committed stay/leave fit.json")
     for p in found:
-        for lg, row in json.loads(p.read_text()).items():
+        blob = json.loads(p.read_text())
+        for lg, row in {**blob, **(blob.get("manifest") or {})}.items():
             if not isinstance(row, dict) or "train_nights" not in row:
                 continue
             used = set(row.get("train_nights") or ()) | set(row.get("valid_nights") or ())
@@ -327,3 +329,85 @@ def test_nicks_teams_enter_as_stakes_only_not_as_label():
     src = inspect.getsource(m)
     for lab in re.findall(r"label[s_]?\w*\s*=\s*[^\n]+", src):
         assert not re.search(r"my_team|personal|nick", lab, re.I), f"label built from Nick's teams: {lab.strip()}"
+
+
+# ---- 5. the offline policy (solve_policy) on real archived nights ------------------------------------------
+
+ARCHIVE = ROOT / "data/archive"
+
+
+def _script():
+    import sys
+    for d in (str(ROOT), str(ROOT / "scripts")):
+        if d not in sys.path:
+            sys.path.insert(0, d)
+    m = _model()
+    if not hasattr(m, "solve_policy") or not (ROOT / "scripts/stay_leave.py").exists():
+        pytest.skip("no solve_policy / scripts/stay_leave.py yet")
+    return importlib.import_module("stay_leave"), m
+
+
+def _train_nights(S, lg: League, k: int):
+    """The first k TRAIN nights only: a test never reads a locked night."""
+    import itertools
+    if not (ARCHIVE / lg.value).exists():
+        pytest.skip("pinned eval data not unpacked (scripts/fetch_eval_data.py)")
+    return list(itertools.islice(S.nights(lg, "train"), k))
+
+
+@pytest.mark.parametrize("lg", [League.NFL, League.NHL, League.NBA])
+def test_solve_policy_never_leaves_under_the_floor_on_real_nights(lg):
+    """0 high-leverage leaves on any night (EXP-1712's hard line). The leave is checked against the floor
+    table AND against redzone.lab.leverage on the play that was on screen, so the check does not rest only on
+    the model's own floor table. Even with the band at 0, which tempts it most."""
+    S, m = _script()
+    for day, n, tab, F, HL in _train_nights(S, lg, 2):
+        sw = m.solve_policy(n, S.FEED_LAG_S, tab, F, HL, None, margin=0.0)
+        assert m.night_metrics(n, tab, HL, sw)["hl_leaves"] == 0, f"{lg} {day}: left under the floor"
+
+
+def test_the_floor_table_covers_every_high_leverage_play():
+    """floor_play (what floor_table marks) must hold on every play leverage.high_leverage marks."""
+    S, m = _script()
+    if not hasattr(m, "floor_play"):
+        pytest.skip("no floor_play")
+    seen = 0
+    for lg in (League.NFL, League.NHL, League.NBA):
+        for _day, n, _tab, _F, _HL in _train_nights(S, lg, 1):
+            for r in n.replays:
+                for p in r.plays:
+                    if leverage.high_leverage(r.league, p):
+                        seen += 1
+                        assert m.floor_play(r.league, p), f"{r.league} play under high leverage not floored"
+    assert seen, "no high-leverage play found on the sample nights"
+
+
+def test_the_floor_test_has_teeth():
+    """With floor=False the same policy does leave under the floor on an NFL night (Nov 5 probe: 11 and 28 on
+    the first two train nights), so a 0 above is the floor working, not a policy that never leaves."""
+    S, m = _script()
+    total = 0
+    for _day, n, tab, F, HL in _train_nights(S, League.NFL, 2):
+        sw = m.solve_policy(n, S.FEED_LAG_S, tab, F, HL, None, margin=0.0, floor=False)
+        total += m.night_metrics(n, tab, HL, sw)["hl_leaves"]
+    assert total > 0
+
+
+def test_fit_reads_train_and_valid_only(monkeypatch, tmp_path):
+    """scripts/stay_leave.py fit must load only the train and valid splits, never test (locked) or all."""
+    S, _m = _script()
+    asked = []
+
+    class Stop(Exception):
+        pass
+
+    def spy(leagues, split, cache=None):
+        asked.append(split)
+        if len(asked) >= 2:
+            raise Stop
+        return []
+
+    monkeypatch.setattr(S, "load", spy)
+    with pytest.raises(Stop):
+        S.main(["fit", "--out", str(tmp_path), "--leagues", "nba"])
+    assert asked and set(asked) <= {"train", "valid"}, asked
