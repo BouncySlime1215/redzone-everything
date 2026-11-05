@@ -327,6 +327,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   likeliest first pick of that window (your team, then league order) is preloaded on the HIDDEN stick, so the
   first switch is a flip. Never the stick on screen, never while paused / dry run / a switch is in flight;
   the pre-game checks stand aside meanwhile. Night lab seed 1: first switch 7.52 s cold tune -> 1.92 s flip.
+- 2026-11-04: **sync.probe.bursts true (new, logging only), sync.burst_anchor.enabled false (new), gap_s 15 /
+  gap_sd_s 10 (priors).** YTTV MediaSession bursts are content-tied (live lab); their onsets are logged with the
+  feed's last dead ball so a night can show whether they follow TV timeouts (scripts/burst_align.py). Off as an
+  anchor until then. Also: the sync filter's origin is per TUNE (YTTV position restarts near 46,790 s at every
+  tune), and `--positions` in the sims is now that per-tune clock (honest NFL big live ~5 points lower).
 - 2026-11-04: **buffer.watchdog (new, default OFF); timing.behind_live_s.hold_cal_s -1.5.** Overseer queue item (e),
   playbook STK-06: a hidden-stick hold more than 2 s off its target (read off the stick's own clock since the
   hold re-anchored it) is rebuilt at its game's next dead ball, or after 90 s without one (the stick is off
@@ -371,11 +376,32 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   not walls; Nick's press is a control. Tests: `tests/test_crunch_floor.py` (floor: a low-value game never pulls
   us out, live or at a break except an ad-break round trip; priors, the press and value-based crunch vs crunch).
   The strict-xfail tests that forced an absolute stay are removed.
+- 2026-11-04 3:47 PM ET (Nick, via the overseer): **crunch = stay is ABSOLUTE**, over every score-based switch
+  including the app's own. The only ways out of a game in crunch: (1) a higher-priority crunch by league order
+  (NFL = CFB > NBA > NHL, MLB) or Nick's team (WSH/UNC) in crunch; (2) Nick's own button press (a control, not
+  training). Two same-league crunches: the higher Watch Value / leverage one wins, and the other gets a replay
+  within 3 min. Tests: `tests/test_crunch_floor.py`, one per exception. Lane 2 makes the default change. Two
+  strict-xfail tests mark what it must fix: the core's own score-based leave (99 vs 55), and a neutral crunch
+  timeout's break visit to a lower-league game. They turn red (XPASS) when it lands, so the marks come off with
+  it. The same-league "replay within 3 min" for the losing crunch is not built yet.
+- 2026-11-04 (lane 2, #160): **crunch floors (SAFE-09)** per Nick's 4:15 PM correction. `decider.crunch.floor: true`:
+  while the screen is in a crunch window, no overlay or model (scenario, clairvoyance, PICK, later the Mind and
+  watch value) turns the app's own decision into a leave for a non-crunch game; crunch vs crunch and ad-break
+  round trips stay the app's (and later the value model's) call. Live default identical on dev and locked;
+  candidate identical on dev (3 seeds, all leagues). The low-value floor `decider.crunch.floor_low_value`
+  ships at 0 (off): at 50 on today's score it helped dev NFL (crunch live +0.3..1.2, mid-play entries 10 -> 8,
+  crunch under a replay 70 -> 49) but cost locked NFL crunch live 64.2/61.2/64.2 -> 63.6/57.3/64.2 (locked read
+  once). It waits for watch value, which is the value the floor should read.
 - 2026-11-04: **replay.crunch_block (new, default OFF; candidate ON), crunch_block_mine_leagues [] (candidate
   [nfl]), crunch_block_mine_after_s 90.** Cycle 04 review's promotion blocker: on locked, NHL crunch plays aired
   under a catch-up 2 -> 10. No catch-up starts while any live game is in crunch time or its run-up; your team's
   missed play waits too, except in NFL after 90 s (its 3-min window can't wait out crunch). Locked, 3 seeds,
   honest sims: crunch plays under a replay NFL 7-13 -> 0-1, NHL 0/10/9 -> 3/3/3; your-team plays = or better.
+- 2026-11-04: **decider.leave.low_leverage (new, default [] = today's rule; candidate [nfl, nba]),
+  decider.leave.sticky_closeness 0.5.** Nick 3:15 PM cut rules: never JOIN mid-play; LEAVING mid-play is OK at
+  low leverage; down the stretch is sticky. The floor: never crunch or its run-up, a locked moment, your team's
+  game, or a late game at closeness >= 0.5. NHL stays off (dev: 1-3 mid-play entries, big live -5). The learned
+  leverage score comes next and may only make this stricter.
 - 2026-11-04 (lane 1, cycle 04): new config keys `noggin.possession.{enabled,shadow,leagues,model}` (the learned
   jump / stay policy for lane 2's possession-start hook, PICK-cue trained on `oracle.solve_cue`) and
   `noggin.pick.model` (default `v1`). All are off or unchanged by default. Why off: on NBA dev the veto leaves the rule
@@ -466,3 +492,84 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   - It doesn't wait for every league. Never-join-mid-play stays absolute, and the full gates still define "done".
   - The code is `scripts/release_gate.py league_promotion` (grader freeze v4).
   - It replaces bar (B)'s all-leagues requirement for per-league go-lives.
+- 2026-11-05 (lane 3, EXP-084, #140 brought up to integration/next): `calib.sigma_floor_s: 2.0` replaces the
+  module constant CALIB_SIGMA_FLOOR_S in decider/screen.py (value unchanged; calibration.sync_prior applies it).
+  Reason: the contract kernel flagged it as a new K2 timing literal on merge; timings live in config.
+- 2026-11-05 (lane 3, EXP-084, #140 brought up to integration/next): `calib.sigma_floor_s: 2.0` replaces the
+  module constant CALIB_SIGMA_FLOOR_S in decider/screen.py (value unchanged; calibration.sync_prior applies it).
+  Reason: the contract kernel flagged it as a new K2 timing literal on merge; timings live in config.
+- 2026-11-05 (lane 3, EXP-084, #146 brought up to integration/next): the burst detector's timings move from
+  sync_probe constants to config, values unchanged: `sync.probe.burst_gap_s: 300`, `burst_after_tune_s: 30`,
+  `burst_confirm_s: 60`, `burst_sd_s: 0.3`. The sims' YTTV position origin is 0 instead of 46,790 s (any shared
+  per-tune origin gives the same filter result). Reason: K2 flagged them as new timing literals on merge.
+- 2026-11-05 (integrator, grader review): #146 is accepted. `backtest._position_tick` treats YouTube TV's position as a
+  per-TUNE clock, as the live lab measured: every fresh tune starts near 46,790 s. `grading.SwitchLog.pos_true0` records
+  the true delay at the start of each tune. Before this the sim handed the filter each tune's unknown landing for free.
+  It only affects `--positions` runs; NHL over 6 nights is identical. Grader freeze v5.
+- 2026-11-05 (Nick via overseer, 8:30 PM ET): **rule #1 wins the NHL trade.** The RC6.1 candidate set,
+  `/mnt/project-files/lane2/nba-candidate-settings.json`, is promoted for **NBA and NHL** under the per-league rule.
+  - **NBA:** a clean PASS. Mid-play entries drop to 0 from 42 (dev) and 21 (locked), and every line is better.
+  - **NHL:** a PASS by Nick's call. Mid-play joins drop 28 → 0 on dev and 8 → 0 on locked. Big live improves, from 41 to 46 on dev
+    and from 42 to 53 on locked. The cost is about 1 point of crunch live (dev 81.2 → 80.3, locked 82.7 → 81.6) and
+    0.6-0.8 more dead air.
+  - **NFL:** FAILS. Big seen drops from 89.3 to 77.6 on dev and from 88.2 to 82.9 on locked. The keys are global, so before the first NFL or CFB
+    game the set must be rolled back, or replaced by an NFL-passing set (EXP-200).
+  - **Ungraded leagues:** CBB and MLB get the global keys without a grade.
+  - **Deploy:** through `/api/settings` by the overseer only, with an instant rollback to the saved live settings.
+  - **Follow-ups:** win back NHL's crunch point and dead air with no mid-play join, for example with an earlier pre-tune or
+    better intermission timing.
+- 2026-11-05 (integrator, 8:40 PM ET, grading EXP-203): the EXP-203 set (`/mnt/project-files/lane2/exp203-settings.json`,
+  17 keys) is the promoted set minus its NFL-scoped keys. It was graded with `league_promotion`, plus big_seen_pct, on
+  seed sums for dev and the one locked read:
+  - **NBA: PASS.**
+  - **NFL: PASS.** Mid-play entries go 4 → 0 and 1 → 0, big seen 89 → 94 and 88 → 99, dead air 35 → 30. Nothing is worse.
+  - **NHL:** the same as the promoted set, so it FAILs only on the trade Nick accepted (rule #1 wins).
+
+  It replaces the NFL rollback before Thursday Night Football. Removing a key through `/api/settings` must SET it back to its
+  live default, not just leave it out. CFB, CBB and MLB stay ungraded under the global keys.
+- 2026-11-05 (integrator): `league_promotion` now also compares `big_seen_pct`, after lane 2 caught NFL big seen falling
+  89 → 78 on a set the old line list would have passed. Grader freeze v6.
+- 2026-11-05 (overseer, 8:40 PM ET), **this replaces the two lines above about the bd3c88f set and EXP-203's live post.** No
+  global settings set goes live through `/api/settings`. Per-league promotion ships as **league-scoped defaults in an RC**,
+  through deploy.py (tests, health watch, rollback):
+  - **RC7**, cut and deployed Thursday afternoon before TNF at 8:15 PM ET, carries:
+    - EXP-203 for NFL only (NFL-scoped keys);
+    - lane 2's league-scoped NBA/NHL set, graded on NBA and NHL;
+    - the Prime pre-tune fix, if it's ready.
+  - CFB, CBB and MLB keep live behavior until they're graded.
+  - Every league-scoped set is graded with `league_promotion` on that league's dev cards and its one locked read.
+- 2026-11-05 (integrator, grader v7): `scripts/eval_sports.py` and `scripts/eval.py` flatten
+  `league_overrides[<graded league>]` onto the run's config, after `--set`
+  (`redzone/lab/evaldata.flatten_league_overrides`). A single-league scorecard therefore grades exactly the
+  league-scoped defaults RC7 ships. With no `league_overrides` nothing changes. Grader freeze v7.
+- 2026-11-05 (integrator, grader v8, lane 2's catch): when no `--behind-live` is given, scorecards take the time-shift buffer
+  from the flattened config (`timing.behind_live_s`: enabled, by_league, default), through
+  `evaldata.config_behind_live`. A tree whose defaults turn the buffer on is now graded with it. On 2 NBA nights,
+  `--set timing.behind_live_s.enabled=true` and `--behind-live 90` give identical cards. With the shipped defaults (off),
+  nothing changes. Grader freeze v8.
+- 2026-11-04 (lane 5, #185, EXP-035): new default `phone.why_tag_min: 70` (0-100). The phone's "Why we're here"
+  label shows only when the game on screen is at or over it (learned watch value, else today's score), and
+  lab/decision_records grades every switch over it for "alerted but nothing happened". Reason: the Start Planner
+  (Cycle 08, #183) asked for one source for numbers; 70 is a starting point, to move only with an EXP result.
+- 2026-11-04 (lane 5, EXP-036): new default `phone.commit: false`. Commitment controls on the phone (stay here, only
+  my teams, stop after this game, end at a time) send the agreed `commit {mode, game_id?, at?}` action, which every
+  mode applies at a dead ball, and a "Slate complete, 0 live games" state ends the night with nothing after it.
+  OFF until lanes 2/3 ship the action. Reason: Start Planner Cycle 08 (#183), playbook §5.
+- **2026-11-05 (lane 2, #212): `decider.entry.unknown_wait_leagues`** (default `[]`, off; EXP-089). In a listed
+  league an entry never takes a landing the data can't call ("play may be live"): it rewinds to a known dead ball
+  or waits. Why: RC6.1's 3 NFL live mid-play entries on the North Star card were all this case; dev 3 -> 0 and
+  fresh seeds 8 -> 1 with plays missed on entry down. Off until the release read.
+- **2026-11-05 (lane 2, #214): `decider.entry.conformal`** (enabled `false`, tau 0 for NFL/NBA/NHL; EXP-024). The
+  conformal floor: no entry lands on less doubt than tau x sigma. Why: dev calibration put NFL's bound at 0.0012
+  mid-play per timed entry with tau 0 (no floor needed); NBA and NHL are underpowered. Off; tau stays 0.
+- 2026-11-05 (lane 5, EXP-040): new defaults `phone.worth: false` and `phone.worth_probe_days: 7`. One tap
+  "Was tonight worth it?" (1-5) on the Slate complete card, its own flag so it can run with phone.v2 off; the
+  agency / regret probes (playbook §6) at most once per 7 nights, only after the rating. Rows go to
+  data/worth.jsonl and are EVALUATION ONLY: redzone/lab/worth.py grades "worth it >= live" (pre-registered bar in
+  docs/lanes/experience.md); tests/test_worth.py fails if noggin, decider or scoring code reads them. Reason:
+  Start Planner Cycle 09 (#200), Sunday Nov 8 promotion bar includes "worth it >= live".
+- 2026-11-05 (integrator, grader review): #205 is accepted. The EXP-040 "worth it ≥ live" line (`redzone/lab/worth.py`,
+  `scripts/worth_line.py`) joins the frozen graders. The bar is non-inferior by at most 0.25 on the 1-5 scale, with the
+  95% night-bootstrap lower bound, at least 4 rated nights a side, and PENDING otherwise. Nick's ratings stay
+  evaluation-only (`tests/test_worth.py` scans noggin/decider/scoring). Note: 4 nights is a thin minimum, so treat an early
+  PASS as provisional until 8. Grader freeze v9.

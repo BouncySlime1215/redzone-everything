@@ -598,8 +598,11 @@ def _anchor_tick(delays: DelayBook, sync, decision, switches: list, tgt_of: dict
 def _position_tick(sync, switches: list, tgt_of: dict, lag_true, delays: DelayBook, tune_s: float,
                    now: float) -> None:
     """[yttv position] The stick on screen reports its playback position each tick (YouTube TV on the
-    4K Plus, live lab Nov 4): position = wall - origin - true screen delay. Exact here; the live read's
-    doubt is the clock pin (sync.POSITION_SIGMA_S). Only YouTube TV channels report it."""
+    4K Plus, live lab Nov 4). It is a per-TUNE clock: every fresh tune starts near the same position
+    (46,790 s) whatever the hour, so a read says nothing about how far behind live the tune landed. It
+    only moves the delay when the stream itself moves under the same tune (a hold, a stall). Before
+    Nov 4 the sim read position = wall - channel origin - true delay, which handed the filter each
+    tune's unknown landing (tune_jitter) for free. Only YouTube TV channels report it."""
     last = switches[-1] if switches else None
     if last is None or last.kind == "replay" or last.to not in tgt_of or now - last.t < tune_s:
         return
@@ -607,7 +610,10 @@ def _position_tick(sync, switches: list, tgt_of: dict, lag_true, delays: DelayBo
     if not str(target).startswith("youtubetv"):
         return
     true = lag_of(lag_true, last.to) + delays.get(target).behind + last.jitter
-    sync.position(target, now - true, t=now)   # stream origin 0: any constant works
+    if last.pos_true0 is None:
+        last.pos_true0 = true
+    # Every fresh tune starts at the same position (46,790 s in the lab); any shared origin works, so 0.
+    sync.position(target, (now - last.t) - (true - last.pos_true0), t=now)
 
 
 def _honesty_tick(delays: DelayBook, switches: list, targets, lag_true, tune_s: float, now: float,

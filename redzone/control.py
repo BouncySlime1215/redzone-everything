@@ -260,6 +260,8 @@ class Controller:
         self.hidden_ready = False                # ...and it's confirmed playing
         self._hidden_entry = 0.0                 # [seek model] entry rewind to run on the hidden stick before the flip
         self._hidden_entry_done = False
+        self.seek_log_path = None                # [calib.auto] data/seeks.jsonl: one row per measured seek
+        self._last_seek_sent = 0
         self.parked: Parked | None = None        # ...parked on a replay instead of live
         self.two_stick_ok = True                 # flips to False if an input flip ever fails
         self.latency = LatencyBook()
@@ -1510,6 +1512,27 @@ class Controller:
             if h is not None and h[2] is token:
                 self._holding = None
 
+    def _seek_sample(self, stick: Stick, target: str, asked_s: float, pb: dict) -> float | None:
+        """[calib.auto] How far one seek really moved the picture: the stick's clock against its position since
+        the stream's anchor (as the live lab measured it by hand), with the presses sent. Appended to
+        data/seeks.jsonl for calibration.seek_fit. Never raises; None when it can't be told."""
+        t = stick.tuned or {}
+        a = (t.get("report") or {}) if t.get("target") == target else {}
+        pa, ua, pn, un = a.get("position"), a.get("updated"), pb.get("position"), pb.get("updated")
+        if None in (pa, ua, pn, un) or pa <= 0 or pn <= 0 or un < ua:
+            return None
+        landed = ((un - ua) - (pn - pa)) / 1000.0
+        if self.seek_log_path is not None:
+            row = {"t": round(time.time(), 3), "host": stick.host, "model": getattr(stick, "model", ""),
+                   "target": target, "sent": int(self._last_seek_sent), "asked_s": round(float(asked_s), 2),
+                   "landed_s": round(landed, 2)}
+            try:
+                with open(self.seek_log_path, "a") as fh:
+                    fh.write(json.dumps(row) + "\n")
+            except OSError:
+                log.debug("could not append to %s", self.seek_log_path)
+        return landed
+
     def _held_for(self, stick: Stick, target: str, pb: dict, span_s: float) -> float:
         """[hold calibration] How far behind live a hold really left the stream. Best: the stick's own
         clock against its position since the last anchor (clock elapsed - position elapsed: what the
@@ -1539,6 +1562,7 @@ class Controller:
         # [seek model] live lab, Nov 4: a 15 s step, the batch's first press swallowed (one extra is
         # sent), and a 2-4 s stall that itself puts the picture further behind (seek_model).
         presses = seek_model(self.cfg).sent(back_s)
+        self._last_seek_sent = presses
         t0 = time.monotonic()
         if presses:
             key = self.cfg.get("replay.seek_key", "KEYCODE_MEDIA_REWIND")
@@ -1779,6 +1803,11 @@ class Controller:
                 else:
                     self._mark("rewind_done")
                     out.detail += f"; rewound {entry_rewind_s:.0f}s to the dead ball"
+                    if self.seek_log_path is not None and target:
+                        pb = await self.main.playback(self._package(self.main, target))
+                        self._seek_sample(self.main, target, entry_rewind_s, pb)
+                        if playback_ready(pb):
+                            self.main.remember(target, pb)
         finally:
             self._marks = None
             self._hidden_entry = 0.0
@@ -1988,6 +2017,7 @@ class Controller:
                                        False, path=path, screen_unchanged=visible_untouched)
                     self._mark("rewind_done")
                     pb0 = await hid.playback(self._package(hid, target))
+                    self._seek_sample(hid, target, back, pb0)
                     if playback_ready(pb0):
                         hid.remember(target, pb0)
                     self._hidden_entry_done = True

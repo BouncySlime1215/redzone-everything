@@ -44,10 +44,12 @@ PROFILES: dict[str, dict] = {
             # [noggin logic, rule #1] A lone substitution (its stoppage missing from the data) opens no
             # dead window: the last candidate mid-play entry (NBA GS @ DEN) rewound 70 s into one.
             "decider.entry.confirmed_dead_only=true",
-            # [noggin logic, live lab Nov 4] YouTube TV's playback position (4K Plus) pins each channel's
-            # delay once its origin is known (title flips, ad-break anchors): the filter's floor drops to
-            # 3 s. Honest sims (jitter, flip spread, anchors, positions), 3 seeds: 2-sigma coverage
-            # >= 98%, sigma p50 9 -> 3 s, 0 mid-play, NFL big live +4-5, NHL +2-3.
+            # [noggin logic, live lab Nov 4] Ad-break anchors feed the filter and its floor is 3 s. NOT a
+            # position gain: YouTube TV's position is a per-tune clock (every tune starts near 46,790 s),
+            # so it carries no landing information. The old "+4-5 NFL big live, sigma p50 3 s" came from
+            # a sim that read positions off a channel origin (fixed in #146). Honest sims, 3 seeds:
+            # sigma p50 9 s, 2-sigma coverage >= 95%. YTTV shows no ad text on the Mac, so live break
+            # anchors wait on the burst anchor (sync.burst_anchor, scripts/burst_align.py).
             "sync.break_anchor.enabled=true",
             "delay.sync.min_sigma_s=3",
             # [noggin logic, Nick Nov 4 11:00 AM] a missed moment airs within 3 min or not singly: NFL
@@ -80,6 +82,11 @@ PROFILES: dict[str, dict] = {
             # 20/21/20, crunch =, 0 mid-play, dead air +0..0.4; NFL/NBA and locked unchanged.
             "replay.when_alone=true",
             "replay.crunch_block_mine_leagues=[nfl]",
+            # [noggin logic, Nick Nov 4 3:15 PM cut rules] Leaving mid-play is OK at low leverage (never
+            # crunch / its run-up, a locked moment, your team's game, or close-and-late: sticky). NFL + NBA:
+            # locked NFL big live +1.3..3.7, seen within 10 min +4..5, your-team 40-41 -> 41-43 of 43; NBA
+            # equal. 0 mid-play entries. NHL off: dev 1-3 mid-play entries and big live -5.
+            "decider.leave.low_leverage=[nfl,nba]",
         ],
     },
 }

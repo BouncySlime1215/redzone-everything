@@ -226,7 +226,7 @@ def gates(cards: dict, baseline: dict | None = None) -> list[tuple[str, str, str
 # working to them, but take the wins along the way." A candidate change may go live PER LEAGUE when, in THAT
 # league, it has 0 mid-play entries on dev AND locked and beats live on both: no line worse, at least one better.
 # Never-join-mid-play stays absolute. The full gates above still define "done".
-PROMOTE_HIGHER = ("big_live_pct", "crunch_live_pct", "big_seen_10m_pct", "your_team_crunch_live_pct")
+PROMOTE_HIGHER = ("big_live_pct", "crunch_live_pct", "big_seen_pct", "big_seen_10m_pct", "your_team_crunch_live_pct")
 PROMOTE_LOWER = ("dead_air_pct", "plays_missed_entry")
 
 

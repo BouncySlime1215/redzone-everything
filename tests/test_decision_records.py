@@ -36,7 +36,8 @@ def test_export_joins_objective_sources(tmp_path):
     head, rest = recs[0], recs[1:]
     assert head["type"] == "night" and head["schema"] == dr.SCHEMA
     assert head["counts"] == {"decisions": 2, "switches": 1, "moments": 3, "big_seen": 1,
-                              "landings_graded": 1, "entries_mid_play": 1, "leaves_mid_play": 0}
+                              "landings_graded": 1, "entries_mid_play": 1, "leaves_mid_play": 0,
+                              "alerts": 0, "alerts_nothing_happened": 0, "alerts_nothing_pct": None}
     assert [r["ts"] for r in rest] == sorted(r["ts"] for r in rest)
     d = next(r for r in rest if r["type"] == "decision")
     assert d["playbooks"] == ["CRUNCH-02"] and d["on_screen"] is None
@@ -76,3 +77,27 @@ def test_cli_writes_one_jsonl_and_leaves_the_db_alone(tmp_path):
 def test_empty_night_still_has_a_header():
     recs = dr.build("2026-11-05", 0.0, 1.0, [], [])
     assert len(recs) == 1 and recs[0]["counts"]["decisions"] == 0
+
+
+def test_alerts_graded_against_big_plays():
+    """EXP-035: a switch whose value crossed the why-tag threshold is an alert; it 'did nothing' when its game
+    had no big play in the outcome window. The threshold is the phone's (one number, two places)."""
+    from redzone.config import default
+    assert default("phone.why_tag_min") == 70
+
+    def sw(ts, to, prov, dry=False):
+        return {"ts": ts, "frm": None, "to_game": to, "kind": "better", "reason": "", "ok": 1, "dry_run": dry,
+                "detail": json.dumps({"trace": {"id": str(ts), "provenance": prov}})}
+    sws = [sw(100.0, "a", {"importance": {"to": 81.0}}),                  # fired, big play at 200: a hit
+           sw(1000.0, "b", {"watch_value": {"to": 90}, "importance": {"to": 10}}),   # learned wins: fired, nothing
+           sw(2000.0, "c", {"importance": {"to": 40.0}}),                 # under the threshold
+           sw(3000.0, "d", {"importance": {"to": 95.0}}, dry=True),       # a dry run never alerts
+           sw(4000.0, "e", {})]                                           # no provenance: no alert record
+    moments = [{"ts": 200.0, "game": "a", "kind": "td", "seen": True}, {"ts": 1100.0, "game": "z", "kind": "td"}]
+    recs = dr.build("n", 0.0, 9e9, [], sws, (), [], moments)                 # the shipped default, 70
+    c = recs[0]["counts"]
+    assert (c["alerts"], c["alerts_nothing_happened"], c["alerts_nothing_pct"]) == (2, 1, 50.0)
+    al = {r["to_game"]: r["alert"] for r in recs if r["type"] == "switch"}
+    assert al["a"] == {"value": 81.0, "threshold": 70.0, "fired": True, "nothing_happened": False}
+    assert al["b"]["value"] == 90.0 and al["b"]["nothing_happened"] is True
+    assert al["c"]["fired"] is False and al["d"]["fired"] is False and al["e"] is None

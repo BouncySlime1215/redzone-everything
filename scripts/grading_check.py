@@ -46,6 +46,8 @@ GRADERS = (
     "scripts/ci_scorecard.py",
     "scripts/leak_check.py",
     "scripts/grading_check.py",
+    "redzone/lab/worth.py",       # EXP-040 worth line (#205), integrator-frozen Nov 5
+    "scripts/worth_line.py",
 )
 FROZEN_COLS = ("hypothesis", "north star line", "success bar", "nights needed")
 LIVE_STATUS = re.compile(r"^\s*(running|done)\b", re.I)
