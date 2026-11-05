@@ -599,3 +599,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   decider's own NEXT and your focus game), so a tap back is a flip. Why: Nov 4 live, 16 phone presses to Prime ~2 min apart,
   11 cold (~30 s) because a planner guess took the hidden stick. Lab night ping-pong drill (32 presses, seeds 1-2): warm
   0/32 -> 31/32, Prime press 46 s -> ~3 s. 0 = off (instant rollback via /api/settings). Standby only: no switch timing change.
+- **2026-11-05 (Nick, 10:55 PM ET): no deploys and no Mac-side experiments while games are live and Nick is
+  watching; the Mac stays plugged in on game nights.** A standing rule for every lane. Why: tonight's mid-game deploys and
+  rollbacks. Same message: RC6.2 (1bf4150) deploys with the TV off, and a second Go now tap switches at once, even
+  mid-play (his explicit control; one tap still waits for a dead ball).
