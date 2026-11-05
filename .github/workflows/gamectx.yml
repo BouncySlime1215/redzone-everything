@@ -29,6 +29,9 @@ jobs:
         run: |
           python scripts/fetch_eval_data.py
           python scripts/gamectx/archive_join.py --ctx out --archive data/archive --out out | tee out/join.txt
+      - name: pre-game report for every archive game (season state from the public scoreboard)
+        if: always()
+        run: python scripts/gamectx/pregame.py history --full --archive data/archive --ctx out --out out
       - name: coverage
         if: always()
         run: python scripts/gamectx/wiki_context.py coverage --out out | tee out/coverage.txt

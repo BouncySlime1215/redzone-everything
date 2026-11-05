@@ -117,3 +117,31 @@ def test_archive_join_pregame_only(tmp_path):
     assert r["gid"] == "401" and r["night"] == "20240929" and r["ctx_found_away"] == 1 and r["ctx_found_home"] == 0
     assert r["away_win_pct_in"] == 0.5 and r["away_streak_in"] == -1 and r["away_off_signings"] == 2
     assert not any("postgame" in k or k.endswith("result") or "margin" in k for k in r)
+
+
+def _ev(gid, start, home, away, hs=None, as_=None, done=True, nets=()):
+    return {"id": gid, "date": start, "season": {"type": 2}, "competitions": [{
+        "status": {"type": {"completed": done}},
+        "broadcasts": [{"market": "national", "names": list(nets)}],
+        "competitors": [{"homeAway": "home", "team": {"abbreviation": home}, "score": str(hs) if hs is not None else None},
+                        {"homeAway": "away", "team": {"abbreviation": away}, "score": str(as_) if as_ is not None else None}]}]}
+
+
+def test_pregame_report_is_pregame():
+    from gamectx import pregame as P
+    sb = {"events": [_ev("1", "2026-10-21T23:00Z", "WSH", "BOS", 100, 90),
+                     _ev("2", "2026-10-22T23:30Z", "BOS", "WSH", 110, 100),
+                     _ev("3", "2026-10-23T23:00Z", "WSH", "ATL", 99, 101),
+                     _ev("4", "2026-10-25T00:30Z", "BOS", "WSH", done=False, nets=["ESPN"])]}
+    evs = P.events_of(sb)
+    rows = P.report("nba", evs, [e for e in evs if e["gid"] == "4"], None, "t")
+    r = rows[0]
+    assert r["away_w"] == 1 and r["away_l"] == 2 and r["away_streak"] == -2       # games before tip only
+    assert r["away_revenge"] == 1 and r["home_revenge"] == 0                        # WSH lost the last meeting
+    assert r["div_game"] == 0 and r["conf_game"] == 1 and r["national_tv"] == 1 and r["prime_slot"] == 1
+    assert 1.0 < r["away_rest_days"] < 1.1 and r["away_b2b"] == 1
+    assert r["night"] == "20261024"
+    nfl = P.report("nfl", P.events_of({"events": [_ev("9", "2026-10-25T17:00Z", "WSH", "DAL", done=False,
+                                                      nets=["Fox"])]}), P.events_of(
+        {"events": [_ev("9", "2026-10-25T17:00Z", "WSH", "DAL", done=False, nets=["Fox"])]}), None, "t")
+    assert nfl[0]["national_tv"] == 0 and nfl[0]["div_game"] == 1                  # Sunday Fox = regional
