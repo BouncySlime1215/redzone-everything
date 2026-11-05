@@ -1,0 +1,16 @@
+{
+ "updated": "2026-11-05T06:37Z",
+ "sources": {
+  "mlb": {
+   "clips": 157247,
+   "linked": 88431,
+   "tokens_new": 628988,
+   "tokens_derived": 314494,
+   "bytes": 12092246,
+   "license": "MLB Stats API, MLBAM non-commercial individual use; plan B personal use",
+   "tag": "personal-use, not for commercial release"
+  }
+ },
+ "total_new": 628988,
+ "total_derived": 314494
+}
