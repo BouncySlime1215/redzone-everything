@@ -71,9 +71,9 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Colab: L4 watchdog answered 686/686, grading; A100 GR 1100/7862. Both tabs showing Connecting.
-Integrator logged NBA/NHL set (bd3c88f); warns global keys fail NFL big-plays, roll back before TNF.
-Usage 39%.
+L4 watchdog V8 done: student 83.1% vs base 22.6%, gate FAIL, ~5.2 CU
+EXP-203 passed NBA+NFL grading; integrator proposes /api/settings swap before TNF
+usage 39%
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
