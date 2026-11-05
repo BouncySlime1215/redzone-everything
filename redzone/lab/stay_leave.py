@@ -274,6 +274,18 @@ def rows(F: np.ndarray, Y: np.ndarray, every: int = 6) -> tuple[np.ndarray, np.n
     return X[live], y[live]
 
 
+def rows_relative(F: np.ndarray, Y: np.ndarray, every: int = 6) -> tuple[np.ndarray, np.ndarray]:
+    """[EXP-126] Rows as `rows`, target demeaned across the games live at the same step (relative value)."""
+    G, K, _ = F.shape
+    ks = np.arange(0, K - HZ, every)
+    Xk, Yk = F[:, ks], Y[:, ks]                                     # [G, S, f], [G, S]
+    live = (Xk[..., CONTEXT_FEATURES.index("started")] > 0) & (Xk[..., CONTEXT_FEATURES.index("over")] == 0)
+    cnt = live.sum(0)
+    mean = np.where(cnt > 0, (Yk * live).sum(0) / np.maximum(1, cnt), 0.0)
+    keep = live & (cnt >= 2)[None]
+    return Xk[keep], (Yk - mean[None])[keep]
+
+
 # ---------------------------------------------------------------------------------------------- policy
 def solve_policy(n: O.Night, feed_lag: float, tab: dict, F: np.ndarray, HL: np.ndarray, model: Model | None,
                  objective: str = "combined", margin: float = 0.0, floor: bool = True,

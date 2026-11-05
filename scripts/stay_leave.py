@@ -125,7 +125,7 @@ def summarize(arms: dict) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("fit", "grade", "fit1714", "grade1714", "grade125"))
+    ap.add_argument("cmd", choices=("fit", "grade", "fit1714", "grade1714", "grade125", "exp126"))
     ap.add_argument("--leagues", default="nba,nfl,nhl")
     ap.add_argument("--split", default="valid", choices=("valid", "test", "train"))
     ap.add_argument("--out", type=Path, required=True)
@@ -170,6 +170,41 @@ def main(argv=None) -> int:
         (a.out / f"grade1714_{a.split}.json").write_text(json.dumps({"summary": out, "nights": arms}, indent=1,
                                                                     default=float))
         print(json.dumps(out, indent=1, default=float))
+        return 0
+    if a.cmd == "exp126":
+        from redzone.noggin import pick as PK
+        tr, va = load(leagues, "train", a.cache), load(leagues, "valid", a.cache)
+
+        def rel(data):
+            Xs, ys = [], []
+            for _lg, _d, _n, tab, F, _HL in data:
+                Y = SL.label(SL.reward_nomine(tab))
+                X, y = SL.rows_relative(F, Y)
+                Xs.append(X)
+                ys.append(y)
+            return np.concatenate(Xs), np.concatenate(ys)
+        Xt, yt = rel(tr)
+        Xv, yv = rel(va)
+        sel = {mi: float(np.mean((SL.fit(Xt, yt, mi).predict(Xv) - yv) ** 2)) for mi in SL.MAX_ITER_GRID}
+        best = min(sel, key=sel.get)
+        b1 = pickle.loads((a.out / "model1714.pkl").read_bytes())["all"]
+        r1 = SL.TwoHead(SL.fit(Xt, yt, best), b1.crunch)
+        (a.out / "model126.pkl").write_bytes(pickle.dumps(r1))
+        print("max_iter", sel, best, flush=True)
+        arms = {k: {} for k in ("full", "A0_past120", "B1_two_heads", "R1_ranker")}
+        for lg, day, n, tab, F, HL in va if a.split == "valid" else load(leagues, a.split, a.cache):
+            fl = PK.FEED_LAG_P90.get(League(lg), 60.0)
+            sch = {"full": O.solve(n, "combined", SL.floored(tab, HL)),
+                   "A0_past120": SL.solve_policy(n, fl, tab, F, HL, None, horizon_s=120.0),
+                   "B1_two_heads": SL.solve_policy(n, fl, tab, F, HL, b1),
+                   "R1_ranker": SL.solve_policy(n, fl, tab, F, HL, r1)}
+            for k, sw in sch.items():
+                arms[k].setdefault(lg, []).append({"night": day, **SL.night_metrics(n, tab, HL, sw)})
+            print(f"  {lg} {day}", flush=True)
+        summ = summarize(arms)
+        (a.out / f"exp126_{a.split}.json").write_text(json.dumps({"summary": summ, "nights": arms, "max_iter": sel},
+                                                                 indent=1, default=float))
+        print(json.dumps(summ["pooled"], indent=1, default=float))
         return 0
     if a.cmd == "grade125":
         blob = pickle.loads((a.out / "model1714.pkl").read_bytes())
