@@ -78,7 +78,7 @@ def _wrapped(replays, switches, lag_true, tune_s):
             sd, sb, sw = cutgrade._dead_at(src.league, src.wall, src.plays, ss)
             src_state = "break" if sb else ("dead" if sd else "live")
         import datetime as _dt
-        ROWS.append({"gid": dst.gid, "league": dst.league.value, "t": round(s.t, 1),
+        ROWS.append({"gid": dst.gid, "league": dst.league.value, "t": round(s.t, 1), "screen_wall": round(st, 1),
                      "night_et": _dt.datetime.fromtimestamp(st - 5 * 3600, _dt.timezone.utc).strftime("%Y%m%d"),
                      "jitter": round(getattr(s, "jitter", 0.0) or 0.0, 1), "flash": round(getattr(s, "flash", 0.0) or 0.0, 1),
                      "arrive_dt": round(getattr(s, "arrive_dt", 0.0) or 0.0, 1),
