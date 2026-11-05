@@ -82,6 +82,19 @@ shadow mode has run one night, and off-policy grading reads one logged night.
 | 17 | EXP-017 | W (bar B evidence) | The v3 locked set (#149) brings NBA and NHL to 8 locked nights each, so bars (b) and (c) can read PASS. | Release gate (locked) | 0 / ~2 | ④ | set before running | set before running | next (Fri) |
 | 18 | EXP-018 | W (TREE-6), M31 | Scenario-tree planning 5-10 min ahead: jump / stay / interleave / catch-up-on-return looked up by WV. Marked test: Bills / Bears. | % of oracle; Crunch live | ~2 / ~8 | ①② | (a) The marked Bills/Bears test passes (jump to the 1-minute drive, catch the left game up from the buffer on return). (b) All dev (`fit`) nights, 3 seeds, honest knobs (`--real-lag --tune-jitter 6 --break-anchors`), candidate vs candidate + TREE-6, frozen grader: mid-play entries 0 and high-leverage leaves 0 on every seed; crunch live NFL, NBA and NHL each ≥ baseline in the seed mean, and no seed worse by more than 1.0; your-team big ≤3 min and crunch-in-replay not worse. (c) Only then, locked read once. Failing (a) or (b) ships it off behind its flag. Pre-registered by lane 2, Nov 4 23:20 UTC, before any run. | dev all fit nights × 3 seeds; then locked once | failed (value = score); retry with WV registered as a new row when #166 lands |
 
+## Brain engines, 24/7 (Nick, 11:10 PM Nov 4; plan: [brain engines](plans/2026-11-05-brain-engines.md))
+
+Lane ① owns the context and hype data engine (cloud CPU only). The integrator owns the test factory, planned in
+[test factory](plans/2026-11-05-test-factory.md) (F1-F7); it registers its own rows in its 600s block. Betting
+lines are inputs to importance only: never shown and never a betting prompt.
+
+| rank | id | covers | hypothesis | North Star line | cost GPU-h / agent-h | lane | success bar | nights needed | status |
+|---:|---|---|---|---|---|---|---|---|---|
+| C13 | EXP-090 | W (context engine) | A 24/7 cloud-CPU job collects first-wave context sources 1-6 (nflverse lines and injuries, Wikimedia pageviews, EventStreams, GDELT, Wikidata, our playoff-odds sims) for every game in all six leagues, with a license line for each source. | Data scale (context rows) | 0 / ~4 | ① | ≥ 95% of the next 3 slates' games have a full pregame row (all 6 sources or a logged reason), 0 rows timestamped after the decision they feed, 0 terms violations in the license review | 3 slates | queued |
+| C13 | EXP-091 | W (context engine), P4 | `pregame_importance` (stakes + market expectation + upset odds + interest) as a WV input behind `wv.context.enabled` (off) beats WV without it on rank agreement and % of oracle. | % of oracle; WV rank agreement | ~1 / ~3 | ① | WV rank agreement on dev beats #166's (NBA 74.2, NFL 58.6) in ≥ 2 leagues, cluster-bootstrap CI over nights excludes 0; % of oracle not worse on dev; mid-play entries 0 | dev, then locked once | queued |
+| C13 | EXP-092 | W (context engine) | Live buzz (pageview and edit velocity, GDELT volume and tone spikes) adds lift over the pregame value for in-night switching value. | % of oracle; Big plays seen live | ~1 / ~3 | ① | lift over the context-only baseline on dev ≥ +1.0 pt % of oracle with the CI excluding 0; no line worse; mid-play entries 0 | dev, then locked once | queued |
+| C13 | EXP-093 | W (context engine) | An LLM reader on allowlisted RSS and official feeds extracts hype 0-1, storyline tags and key players (numbers and URL only, never article text) that agree with a hand-checked dev sample. | Data scale; WV inputs | ~2 / ~3 | ① | allowlist PR merged with a license line per domain; on 100 dev articles, tag F1 ≥ 0.8 and hype rank correlation ≥ 0.6 against the integrator's frozen hand labels (not Nick's); 0 article text stored | 100 articles | queued |
+
 ## Phase 1: timing brain (to ~Wed Nov 11)
 
 **Done when:** mid-play entries are 0 with a stated guarantee, and live-or-replayed within 3 min beats live
@@ -172,8 +185,8 @@ on locked.
 
 | id | covers | why | allowed remainder | success bar | nights needed | status |
 |---|---|---|---|---|---|---|
-| EXP-077 | M55 | Betting-line movement as a live news sensor is wager-driven switching, which §5.1 excludes. | Pre-game lines as a hidden data prior only (EXP-031). | n/a | n/a | line |
-| EXP-078 | M19 (market part) | Same: live market odds are not a ranking input. | WP from our own models; pre-game line as prior. | n/a | n/a | line |
+| EXP-077 | M55 | Betting lines as a switching trigger on their own, or anything shown or nudging betting, stays excluded (§5.1). | **Widened by Nick, 11:10 PM Nov 4:** lines and line moves are inputs to game importance and buzz (EXP-091/092), never shown, never a betting prompt. | n/a | n/a | line |
+| EXP-078 | M19 (market part) | Our WP stays our own model; market odds never replace it. | Market expectation is an importance input (EXP-091) and a hidden WP calibration check. | n/a | n/a | line |
 | EXP-079 | M23 | Inverse RL from producers' choices needs licensed video or producer logs, and there is no $0, terms-compliant source. | Revisit if a licensed source appears. | n/a | n/a | hold |
 | EXP-080 | M40 + "Company (later)" | Federated personalization, Drama API, shared cloud brain, licensed audio/video: company stage, which needs money and Nick's OK. | None now. | n/a | n/a | hold |
 | EXP-081 | M62 | The guardrail is now the binding line (§5) and the metrics (§6). | Applied to every row above. | n/a | n/a | standing |

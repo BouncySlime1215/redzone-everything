@@ -608,3 +608,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   that forced entry on its own (lane 3's forced go-now line), never as a decider mid-play entry, and never as a training
   label. New standing rule: no deploys and no Mac-side experiments while games are live and Nick is watching. The Mac
   stays plugged in on game nights.
+- **2026-11-05 (Nick, 11:10 PM ET): two 24/7 brain engines.** (1) A context and hype data engine (lane 1, cloud CPU
+  only, never the Mac): importance and buzz signals per game for all six leagues; an LLM reader stores derived numbers and
+  the URL, never article text, only from allowlisted sites whose terms allow it. **Betting lines and line moves become
+  inputs to importance** (market expectation, upset odds), widening the Nov 4 hidden-check-only rule; they are never
+  shown and never nudge betting. (2) A test factory (integrator): drafted experiments and graders, nightmare nights from
+  dev history, off-policy grading of every logged night. YouTube TV DVR/screens are out (DRM). Plans:
+  docs/plans/2026-11-05-brain-engines.md (EXP-090..093) and docs/plans/2026-11-05-test-factory.md (F1-F7).
