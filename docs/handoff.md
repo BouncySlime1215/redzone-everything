@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Launched EXP-107 scaling ladder (nfm_a100, recipe E, 18m/60m/150m) on Colab A100 6:10 AM, ~4.5 h / ~60 CU. Next: speedrun2 seed check when the commentary A100 frees (~6:45).
-Commentary EXP-1402 Teacher running. ~390 CU after these. Usage 61%.
+EXP-1402 commentary DONE 6:31 AM (41.9 CU): 66,048 causal per-play answers; importance AUC NBA 0.955 / CBB 0.957 (SUSPECT: same clock-label leak pattern), NFL 0.581, CFB 0.588, MLB 0.585, NHL 0.539. Report a5e37664; output handed privately to crew E; A100 freed.
+Running: EXP-107 ladder (recipe E) A100; EXP-109b seed check launched ~6:50 AM. Usage 61%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
