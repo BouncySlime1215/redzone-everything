@@ -825,6 +825,7 @@ def _held(c, target, held, want):
 @pytest.mark.playbook("STK-06")
 def test_buffer_error_reads_a_jump_to_live_and_a_drift_off_the_sticks_own_clock(two):
     c, _ = two
+    c.cfg.defaults["league_overrides"] = c.cfg.data["league_overrides"] = {}   # live behavior: the buffer is off for every league
     _held(c, "youtubetv:fox", 90.0, 90.0)
     pb = lambda pos, upd: {"state": "playing", "pkg": "yttv.pkg", "position": pos, "updated": upd}
     assert c.buffer_error(c.hidden, "youtubetv:fox", pb(130_000, 530_000)) == (90.0, 0.0)          # on target

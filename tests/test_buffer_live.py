@@ -69,6 +69,7 @@ def test_not_flippable_while_held_and_lock_is_free(held):
 
 def test_off_by_default_and_a_fresh_tune_clears_the_hold(held):
     c, tuner, stick, calls = held
+    c.cfg.defaults["league_overrides"] = c.cfg.data["league_overrides"] = {}   # live behavior: no league holds
     c.cfg.update({"timing": {"behind_live_s": {"enabled": False}}})
     asyncio.run(_preload_and_wait(c, "youtubetv:fox"))
     assert "KEYCODE_MEDIA_PAUSE" not in stick.log and not c.held
