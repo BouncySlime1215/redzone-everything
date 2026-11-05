@@ -1,5 +1,5 @@
 {
-  "_about": "F8 (docs/plans/2026-11-05-test-factory.md): each data source's terms class. 'restrictive' = public data whose terms limit use (Nick, Nov 4 11:20 PM ET: allowed for this personal project, but every dataset and model built on it is tagged personal-use). 'open' = a license that allows reuse. The data scouts own this table; scripts/license_check.py reads it. A source not listed here is flagged until it's classified. Scout rule (Nov 5 05:10 UTC): 'open' = public domain, CC0, CC BY, ODC-BY or our own output; anything non-commercial (NC), ToU-limited, competition-rules-bound or ESPN/league-API derived is 'restrictive'. scout.json candidates carry the full license line.",
+  "_about": "F8 (docs/plans/2026-11-05-test-factory.md): each data source's terms class. 'restrictive' = public data whose terms limit use (Nick, Nov 4 11:20 PM ET: allowed for this personal project, but every dataset and model built on it is tagged personal-use). 'open' = a license that allows reuse. The data scouts own this table; scripts/license_check.py reads it. A source not listed here is flagged until it's classified. Scout rule (Nov 5 05:10 UTC): 'open' = public domain, CC0, CC BY, ODC-BY or our own output; anything non-commercial (NC), ToU-limited, competition-rules-bound or ESPN/league-API derived is 'restrictive'. scout.json candidates carry the full license line. 'red' = terms ban bots/automated pulls or AI use (Sports-Reference, AHL/HockeyTech precedent): never pull; any row naming it should FAIL.",
   "tag": "personal-use, not for commercial release",
   "sources": {
     "espn": "restrictive",
@@ -44,7 +44,7 @@
     "ncaa_casablanca": "restrictive",
     "euroleague": "restrictive",
     "gleague": "restrictive",
-    "hockeytech": "restrictive",
+    "hockeytech": "red",
     "fiba_livestats": "restrictive",
     "npb": "restrictive",
     "kbo": "restrictive",
@@ -98,6 +98,15 @@
     "cfl": "restrictive",
     "f1_timing": "restrictive",
     "fastf1": "restrictive",
-    "afl": "restrictive"
+    "afl": "restrictive",
+    "ahl": "red",
+    "echl": "red",
+    "sports_reference": "red",
+    "pro_football_reference": "red",
+    "basketball_reference": "red",
+    "hockey_reference": "red",
+    "baseball_reference": "red",
+    "fbref": "red",
+    "stats_ncaa_org": "red"
   }
 }
