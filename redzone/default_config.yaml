@@ -272,6 +272,9 @@ decider:
     break_tail_s: 10         # cutgrade's BREAK_TAIL_BAR: landing with more than this left is "mid-commercial"
     break_tail_q: q25        # the break-length quantile the restart is predicted with (low: errs early)
     break_tail_chain_s: 3    # dead windows this close together are one stretch (foul, free throws, timeout)
+    break_tail_defer: false  # [EXP-803 A1] a tail due inside one decide tick: cut then (defer_s), not a tick later
+    break_tail_tv_split: false   # [EXP-803 A3] NBA full timeouts use break_tail_tv_timeout_s, not the mixed row
+    break_tail_tv_timeout_s: 170 # early side of an NBA full (TV) timeout: Data F's cdn q10, local 170.3 / national 176.7
   # Seconds to the new picture, MEASURED (the one source of truth; contracts/switching.ConfigSwitchPaths):
   # tunes = the Mac's LatencyBook medians (switch_speed.learn; pinned in eval-data-v1's eval_config.yaml);
   # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.89 s) + the 1 s settle.

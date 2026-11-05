@@ -188,6 +188,7 @@ class Decision:
     want: str | None = None   # the game it wants to switch to while it waits for a safe moment
     rewind_s: float = 0.0     # [cut timing] land this far behind live (whole seek steps) on a dead ball
     cue: str = ""             # [seek model] "pause": the hidden stick cues the rewind before the flip
+    defer_s: float = 0.0      # [EXP-803 A1] cut this long after the decision (a break's tail inside one tick)
 
 
 @dataclass
@@ -953,6 +954,9 @@ class Decider:
             return d
         if plan.ok and not plan.rewind_s and not (urgent or pos):
             wait = self._break_tail_wait(d.target, x, cands, now)
+            if 0 < wait <= float(self.cfg.get("polling.live_s", 10)) and self.cfg.get("decider.entry.break_tail_defer"):
+                d.defer_s = round(wait, 1)   # [EXP-803 A1] the tail comes inside this tick: cut then, not a tick late
+                wait = 0.0
             if wait > 0:
                 # [EXP-728/736] the picture would come up early in the break: hold on what's on screen
                 self.home_break_visit, self.home_return_at = home_before
@@ -1032,6 +1036,11 @@ class Decider:
         else:
             n = break_tail.length(x.scored.league.base.value, kind, x.target,
                                   str(self.cfg.get("decider.entry.break_tail_q")))
+            if w.kind == "timeout_long" and x.scored.league.base == League.NBA \
+                    and self.cfg.get("decider.entry.break_tail_tv_split"):
+                # [EXP-803 A3] a full NBA timeout carries the TV break: its own early-side length, not the
+                # "timeout" row that mixes in short timeouts (q25 126 s vs ~170-210 s, Data F's cdn rows)
+                n = float(self.cfg.get("decider.entry.break_tail_tv_timeout_s"))
             if n is None:
                 return 0.0
             restart = w.start + n
