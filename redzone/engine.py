@@ -1244,6 +1244,30 @@ class Engine:
         except Exception:  # noqa: BLE001 - the phone text is never worth a failed poll
             log.exception("reasoner: narration step failed")
 
+    def _provenance(self, d, before: str | None, target: str | None, cands: dict) -> dict:
+        """[provenance] Which module contributed what to this decision, as the decider saw it: its own
+        call, the scoring of the game it goes to and the one it leaves (importance, stakes, crunch
+        state) and, two sticks, why the hidden stick already had the target (the standby planner).
+        The controller adds its part (Outcome.provenance). Saved in switches.detail.trace.provenance.
+        Serves: provenance traces (Cycle 06 #2). Owner: lane 3."""
+        def scored(gid: str | None):
+            c = cands.get(gid) if gid else None
+            return c.scored if c is not None else None
+        to, frm = scored(d.target), scored(before)
+        out: dict = {"decider": {"action": d.action, "kind": d.kind, "gate": d.gate, "state": State(d.state).value,
+                                 "reason": str(d.reason)[:160]}}
+        if to is not None or frm is not None:
+            out["importance"] = {"to": round(to.score, 1) if to else None, "from": round(frm.score, 1) if frm else None,
+                                 "moment": round(to.moment, 1) if to else None, "factor": to.factor if to else ""}
+            out["stakes"] = {"to": round(to.stakes, 1) if to else None, "personal": round(to.personal, 1) if to else None,
+                             "closeness": round(to.closeness, 2) if to else None}
+            out["crunch_state"] = {side: {"crunch": s.crunch, "crunch_now": s.crunch_now, "late": s.late, "lock": s.lock}
+                                   for side, s in (("to", to), ("from", frm)) if s is not None}
+        sb = self._standby_view()
+        if sb is not None and target and self.control.hidden_target == target:
+            out["planner"] = {"kind": sb["kind"], "why": sb["why"], "ready": sb["ready"]}
+        return out
+
     def _reel_target(self) -> tuple[str, float] | None:
         """(tuner target, seconds) of the ready catch-up reel, when reels may go on the TV."""
         r = self.reeler.current
@@ -1268,6 +1292,11 @@ class Engine:
             delay = self.delays.get(target or "unknown")
             back = d.replay.back_s(time.time(), delay.mu, PLAY_LEN_S.get(self.merger.games[d.target].league, 8))
         cmd_ts = time.time()
+        try:
+            prov = self._provenance(d, before, target, cands)   # as the decision saw it, before the switch runs
+        except Exception:   # provenance must never cost the switch
+            log.exception("switch provenance failed")
+            prov = {}
         event_ts = d.replay.t if d.replay else None
         deferred = not self.cfg.get("mode.dry_run", True)
         replay_exit = max(self.decider.replay_until, self.decider.replay_exit_after) \
@@ -1309,9 +1338,12 @@ class Engine:
                 self._fail_cool[target] = time.time() + self.cfg.get("decider.fail_cooldown_s", 90)
             detail = {"took": out.took, "detail": out.detail, "path": out.path, "waited": round(out.waited, 1)}
             try:
+                prov["guard"] = {"rule": "no mid-play cut", "waited_s": round(out.waited, 1),
+                                 "let_through": out.ok and not out.screen_unchanged}
                 detail["trace"] = trace.build(d, before, target, out, cmd_ts, delays=self.delays,
                                               before_target=before_target, labels=self._trace_labels(before, d.target),
-                                              from_replay=replay_exit is not None)
+                                              from_replay=replay_exit is not None,
+                                              provenance={**prov, **out.provenance})
                 trace.emit(self.trace_sink, detail["trace"])
             except Exception:   # a trace must never cost the switch its row
                 log.exception("switch trace failed")
@@ -1337,7 +1369,8 @@ class Engine:
                                  and (time.time() >= replay_exit if replay_exit is not None
                                       else self.safe_to_leave(before, required_s=8.0))))),
                             replay_id=d.replay.pid if d.replay else None,
-                            entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0)
+                            entry_rewind_s=getattr(d, "rewind_s", 0.0) if d.action == "switch" else 0.0,
+                            entry_cue=getattr(d, "cue", "") if d.action == "switch" else "")
 
     def pending_age(self, now: float) -> float:
         """Seconds the pending switch has been running, as of wall-clock `now`. If the wall clock
