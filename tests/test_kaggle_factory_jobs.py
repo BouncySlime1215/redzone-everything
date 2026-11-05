@@ -150,10 +150,26 @@ def test_season_job_runs_for_every_league_in_plan(tmp_path, monkeypatch):
     monkeypatch.setattr(NF, "fetch_espn_season", lambda league, year, dest, **k: _write_espn(league, year, Path(dest)))
     monkeypatch.setattr(NF, "_fetch", lambda url, dest: _write_pbp(Path(dest).parent.name,
                                                                   int(Path(dest).stem.split("_")[-1]), Path(dest)))
-    assert set(plan) >= {"nba", "nfl", "nhl", "cbb", "cfb"} and "wcbb" not in plan   # Nick 7:55 PM: no WCBB
+    import retrosheet_plays as RS
+    from tests.test_retrosheet_plays import EVN
+
+    def _retro(year, out):                    # 6 Retrosheet games, no network
+        import gzip
+        dst = Path(out) / "mlb" / f"retro_{year}.jsonl.gz"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        g = RS.parse(EVN)[0]
+        with gzip.open(dst, "wt") as f:
+            for i in range(6):
+                f.write(json.dumps(dict(g, id=f"{g['id']}{i}", date=f"{year}-04-0{i + 1}")) + "\n")
+        return dst
+    monkeypatch.setattr(RS, "fetch_season", _retro)
+    assert set(plan) >= {"nba", "nfl", "nhl", "cbb", "cfb", "mlb"} and "wcbb" not in plan   # Nick 7:55 PM: no WCBB
     for league, (years, synthetic) in plan.items():
         res = ns["season_job"](league, years[0] - 3, min(synthetic, 1), time.time() + 600)
         assert "error" not in res, (league, res)
+        if league == "mlb":                   # Retrosheet: event tokens only (no wall clocks, no moments)
+            assert res["tokens"] > 0 and not glob.glob(f"{ns['RAW']}/mlb/*"), res
+            continue
         assert res["moments"] > 0, (league, res)
         if synthetic:
             assert res.get("selfplay_complete") is True and res["selfplay"] > 0, (league, res)

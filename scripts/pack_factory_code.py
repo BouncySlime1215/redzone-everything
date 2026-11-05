@@ -12,7 +12,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ("noggin_factory.py", "noggin_selfplay.py", "train_noggin_pick.py", "kaggle_noggin_factory.py",
-           "noggin_tokens.py", "nhl_apiweb.py", "world_model_pilot.py")
+           "noggin_tokens.py", "nhl_apiweb.py", "world_model_pilot.py",
+           "retrosheet_plays.py")
 SKIP = ("__pycache__", ".pyc", ".db", ".sqlite", ".env", ".log")
 
 

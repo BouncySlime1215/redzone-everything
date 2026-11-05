@@ -447,3 +447,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
   frozen, locked is read once (Sunday).
 - **2026-11-04 (Nick 7:55 PM, "TURN OFF WOMEN'S BASKETBALL"):** WCBB is out of the noggin factory plan, the training pack sources and therefore the data ledger (docs/data-sources.md row: dropped). Nick's leagues are NFL, CFB, NBA, CBB (men's), NHL, MLB only. Why: it isn't one of his leagues, so its tokens must not count toward his data scale. The live default (mode.leagues.wcbb=false) is lane 4's change.
+- 2026-11-05 (lane 1, #169, Wave 1 #3): **MLB gets a factory cut: `EVAL_FIRST_NIGHT["mlb"] = "20250301"`**, so all of 2025
+  is held out for a future MLB scorecard and locked set. Retrosheet event files (green, notice required) feed the
+  factory's MLB event tokens, 1974-2024, via scripts/retrosheet_plays.py. They carry no wall clocks, so time tokens are
+  UNK and never invented. Why: MLB had no cut (the `.get` default is no cut), and the first MLB pull must not be able
+  to reach a future eval night.

@@ -44,6 +44,7 @@ PLAN = {
     "cbb": (list(range(2026, 2005, -1)), 4),
     # wcbb dropped (Nick Nov 4 7:55 PM): not one of Nick's leagues, out of every pack and the ledger
     "cfb": (list(range(2025, 2003, -1)), 0),   # ESPN FBS board (Kaggle only; ESPN is blocked from the cloud)
+    "mlb": (list(range(2024, 1973, -1)), 0),   # Retrosheet (green, Wave 1): tokens only, no wall clocks; 2025+ held out
 }
 APIWEB_BEFORE = 2020   # NHL seasons before 2019-20 tokenize from api-web (docs/data-sources.md)
 if os.environ.get("RZ_LEAGUES"):
@@ -94,6 +95,21 @@ def season_job(league, year, synthetic, deadline):
     from redzone.noggin import factory as F
     t0 = time.time()
     res = {"league": league, "season": year}
+    if league == "mlb":                         # Retrosheet: no moments or self-play (no clocks), event tokens only
+        import noggin_tokens as NT
+        import retrosheet_plays as RS
+        P = __import__("pathlib").Path
+        tkj = f"{OUT}/tokens/mlb/{year}.json"
+        if os.path.exists(tkj) and json.load(open(tkj)).get("complete"):
+            return dict(res, tokens=json.load(open(tkj))["tokens"], s=round(time.time() - t0))
+        if time.time() > deadline:
+            return dict(res, skipped="session deadline")
+        raw = RS.fetch_season(year, P(RAW))
+        if raw is None:
+            return dict(res, tokens=0, note="no Retrosheet event files")
+        res["tokens"] = NT.build("mlb", raw, year, P(f"{OUT}/tokens"))["tokens"]
+        os.remove(raw)
+        return dict(res, s=round(time.time() - t0))
     mo = f"{OUT}/moments/{league}/{year}.parquet"
     if not os.path.exists(mo[:-8] + ".json"):
         if time.time() > deadline:
