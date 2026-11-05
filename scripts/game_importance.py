@@ -107,7 +107,8 @@ def target_volume(lg: str, feats: pd.DataFrame) -> pd.DataFrame:
     f = feats.reset_index()
     f["date"] = f.start.dt.tz_convert("America/New_York").dt.strftime("%Y%m%d")
     t = f.merge(m[["date", "home", "away", "volume_usd"]], on=["date", "home", "away"])
-    t = t[t.volume_usd > 0].rename(columns={"date": "night"})
+    t = t[(t.volume_usd > 0) & (t.game_type.fillna("REG") != "PRE")]   # crew D: NBA counts may include preseason
+    t = t.rename(columns={"date": "night"})
     t["join"] = t.game_id
     t["truth"] = np.log1p(t.volume_usd)
     t = t.groupby("night").filter(lambda d: len(d) >= 2)
