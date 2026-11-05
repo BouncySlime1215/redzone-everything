@@ -389,6 +389,19 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   to `two_stick.standby_repause_s: 600` in default_config.yaml, value unchanged; postseason.py's ROUNDS / DEFAULTS /
   _rank renamed ROUNDS_LEFT / WEIGHTS / _poll_rank (no behavior change). Reason: the contract kernel (K1/K2/K4)
   flagged them as new on merge; one definition per fact, timings in config (Nick, one connected system).
+- 2026-11-04 (Nick 6:10 PM, via the overseer): **official direction** = docs/plans/2026-11-04-noggin-master-plan.md +
+  docs/research/watch-science-playbook.md (copied from codex/resume-redzone 51908ba). All ideas live in ONE ranked
+  queue, docs/experiments.md; Phase 0 starts now (suspense S = E[(ΔWP)^2] line + WV input, one event language,
+  nightly shadow, off-policy grading). The playbook's §5 line is binding: the objective is "worth it", not watch
+  time; **RedZone never adds betting features** (pre-game lines only as a hidden data prior); no artificial
+  suspense, autoplay or pull-back nudges, streaks or viewer sensors. Nick's taps and ratings stay evaluation-only
+  (self-taught rule). Baseball Savant skipped for now (terms unclear; MLB last and out of season). RC6 = #132 + #173.
+- 2026-11-04 (Nick 7:21 PM ET, via the overseer): **off-policy exploration approved with limits** (EXP-005). New flag
+  `decider.explore.enabled`, off by default, and not started until Friday's v3 locked set lands. It may only pick
+  between options that are both already safe (dead ball, no mid-play) and within a small value margin, on at most 5% of
+  decisions, and never in crunch, down the stretch, your-team moments or the catch-up queue. Every decision logs its
+  propensity so the doubly robust estimator is valid. Promotion goes through the normal bar (worth it ≥ live).
+  Reason: grade new brains on logged nights without running them live.
 - **2026-11-04 (lane 2, #132): seek-model timings moved into config, values unchanged** (onebrain K2: no timing
   literals in code). `replay.seek_press_s` 0.25, `replay.pause_keys_s` 0.5, `replay.pause_err_s` 0.25,
   `replay.pause_cue_grain_s` 0.5, `replay.hidden_seek_keys_s` 1.5, `decider.leave.tune_s` 6,
@@ -418,3 +431,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
 - 2026-11-04 (Nick, 7:55 PM ET): women's basketball is OFF. Nick's leagues are NFL, CFB, NBA, CBB (men's), NHL and MLB
   only. The North Star and release gate never score WCBB: `scripts/northstar.py NICKS_LEAGUES`, with a test. The grader
   freeze was re-stamped. The default_config change (wcbb false, out of league_priority) is a separate PR.
+- 2026-11-05 00:21 UTC (Nick 7:30 PM ET Nov 4, via the coordinator): **Colab Pro+ bought by Nick** (~$50/mo, ~500 CU,
+  A100/L4, background runs). This is Nick's own spend; the $0 rule still binds every agent (no other spending
+  without asking). **Master plan v2 Phases 0-2 are compressed to finish by Sun Nov 8**:
+  docs/plans/2026-11-05-compressed-4day.md, planned ~256-261 CU, keeping ≥ 100 CU in reserve. Colab notebooks
+  are self-contained: public inputs at a pinned commit, no Drive mount, no secrets, grades.json printed. The
+  overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
+  frozen, locked is read once (Sunday).
