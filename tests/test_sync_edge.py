@@ -235,3 +235,15 @@ def test_report_per_stick_and_app():
             for k in range(3)]
     rep = m.report(rows)["hdmi1/youtubetv"]
     assert rep["rows"] == 3 and rep["tunes"] == 1 and rep["err_abs_p95"] == 0.0 and rep["behind_p95"] == 0.0
+
+
+def test_prime_epoch_position_is_absolute_behind_real_life():
+    tr = se.EdgeTracker()
+    wall = 1_762_330_000.0
+    frame_ms = (wall - 6.4 - 2.0) * 1000          # stamped 2 s before the read, 6.4 s behind real life then
+    r = tr.read("hdmi2", "hidden", "prime:nba", ms(frame_ms / 1000, 900.0), 902.0, wall, tune_t=wall - 30,
+                delay=(7.0, 1.0))
+    assert r["epoch"] is True and abs(r["abs_behind_s"] - 6.4) < 0.01 and abs(r["abs_err_s"] - 0.6) < 0.01
+    # a 24 h counter (the other stick's Prime content) is not an epoch
+    r = tr.read("hdmi1", "visible", "prime:tnf", ms(86368.0, 900.0), 902.0, wall, tune_t=wall - 30)
+    assert "epoch" not in r and "abs_behind_s" not in r

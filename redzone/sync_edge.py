@@ -19,7 +19,11 @@ The meter (overseer's real-stick tests, docs/sync/2026-11-05-yttv-live-edge-test
   * The app's belief is the controller's `held[target]`: the time-shift buffer's hold (0 = "a fresh tune
     plays from the live edge"). pred_behind_s - behind_live_s is EXP-800's error.
 
-Absolute latency (live edge vs real life) is NOT measured here: it needs one on-screen anchor per channel.
+Prime Video (overseer, 3:15 AM): on some content the position is an EPOCH in ms, the clock time stamped on the
+frame on screen (Nov 4 Prime NBA, one stick: wall - position = 6.3-7.0 s, median 6.4 s, 19 reads over 3 h). Then
+E = wall - pos_now IS how far the picture runs behind real life: `abs_behind_s`, and `abs_err_s` = the sync
+filter's delay belief minus it. The other stick's Prime position was a 24 h counter (a different content type?):
+only positions above EPOCH_MS count. YouTube TV's absolute latency still needs an on-screen anchor per channel.
 
 Rows (lane 3's syncgrade, #279) go to data/sync_truth/edge/<night>.jsonl, a subfolder, so the v10 grader's
 data/sync_truth/*.jsonl glob never mixes them with its anchor rows. Sticks are named by HDMI input, never
@@ -42,6 +46,7 @@ log = logging.getLogger(__name__)
 _UPTIME = re.compile(r"^\s*(\d+\.\d+)\s+\d+\.\d+\s*$", re.M)
 LANDINGS_KEPT = 20      # per channel, for the leave-one-out landing median
 LANDINGS_MIN = 3
+EPOCH_MS = 1e12         # [Prime] a position above this is the wall clock stamped on the frame (ms since 1970)
 
 
 def night_of(t: float) -> str:
@@ -105,6 +110,10 @@ class EdgeTracker:
             return row
         e = wall - p
         row["pos_now_s"], row["E_s"] = round(p, 3), round(e, 3)
+        if (ms.get("position") or 0) > EPOCH_MS:
+            row["epoch"], row["abs_behind_s"] = True, round(e, 3)
+            if delay is not None:
+                row["abs_err_s"] = round(delay[0] - e, 2)
         if tu.e_land is None and playing:
             tu.e_land, tu.first_play_t = e, wall
             tu.land_pos = (ms.get("position") or 0) / 1000.0

@@ -433,6 +433,9 @@ class SyncProbe:
             rows.append(row)
             if isinstance(live, dict) and row.get("behind_live_s") is not None:
                 live[stick.host] = row["behind_live_s"]
+            real = getattr(c, "behind_real", None)
+            if isinstance(real, dict) and row.get("abs_behind_s") is not None:
+                real[stick.host] = row["abs_behind_s"]
             if row.get("behind_live_s") is None or row.get("played_s", 0.0) < float(self._edge_cfg("settle_s")):
                 continue
             # [SYNC B] behind its live edge by more than the app asked for (a stall, a pause it forgot, a bad landing)

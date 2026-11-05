@@ -286,6 +286,9 @@ class Controller:
         # edge as MEASURED (sync_edge.py via the probe; `held` is what the app asked for)
         self.tuned_at: dict[str, float] = {}
         self.behind_live: dict[str, float] = {}
+        # ...and -> seconds its picture runs behind REAL LIFE, where the app stamps frames with the wall clock
+        # (Prime's epoch positions, overseer Nov 5 3:15 AM)
+        self.behind_real: dict[str, float] = {}
         self.behind_of: Callable[[str], float] = lambda target: 0.0
         self.dead_ball: Callable[[str], bool] = lambda target: True   # [STK-06] engine: is target's game dead now?
         self._buffer_bad: dict[str, float] = {}                      # target -> when its hold went bad
