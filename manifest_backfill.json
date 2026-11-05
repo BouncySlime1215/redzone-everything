@@ -1,0 +1,62 @@
+{
+ "mode": "backfill",
+ "ran_at": "2026-11-05T09:20:07Z",
+ "from": "2025-11-02",
+ "to": "2025-11-04",
+ "games": 22,
+ "facts_this_run": 2894,
+ "by_field": {
+  "edit_rate_live_z": 1680,
+  "pageviews_live_z": 420,
+  "news_volume_live_z": 420,
+  "news_tone_live": 200,
+  "pageviews_z": 44,
+  "edit_rate_z": 44,
+  "news_volume_z": 44,
+  "news_tone": 42
+ },
+ "shards": {
+  "nba_2025": {
+   "facts": 1220,
+   "new": 1220,
+   "derived": 0,
+   "games": 10,
+   "fields": [
+    "edit_rate_live_z",
+    "edit_rate_z",
+    "news_tone",
+    "news_tone_live",
+    "news_volume_live_z",
+    "news_volume_z",
+    "pageviews_live_z",
+    "pageviews_z"
+   ],
+   "sources": [
+    "gdelt-gkg",
+    "wikimedia-edits",
+    "wikimedia-pageviews"
+   ]
+  },
+  "nfl_2025": {
+   "facts": 1674,
+   "new": 1674,
+   "derived": 0,
+   "games": 12,
+   "fields": [
+    "edit_rate_live_z",
+    "edit_rate_z",
+    "news_tone",
+    "news_tone_live",
+    "news_volume_live_z",
+    "news_volume_z",
+    "pageviews_live_z",
+    "pageviews_z"
+   ],
+   "sources": [
+    "gdelt-gkg",
+    "wikimedia-edits",
+    "wikimedia-pageviews"
+   ]
+  }
+ }
+}
