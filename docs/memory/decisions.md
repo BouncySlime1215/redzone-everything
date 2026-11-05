@@ -943,3 +943,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   52.2 -> 58.7, CI -4.9..+18.1, short of the +10 bar (92 plays over 9 nights); NFL recall 82.7 -> 67.4, CI -19..-11
   (recaps name nearly every score, as v1 does). `redzone/lab/oracle.py` v1 stays the frozen reference; no tuning on
   these nights. Next: EXP-1722 (NBA-only big_v2, NFL unchanged), pre-registered before eval-data-v3's new NBA nights.
+- 2026-11-05 (integrator, grader v33; WV loop #350, Nick ~5 PM oracle-audit items 4-6; overseer default, Nick can
+  override): **(4)** the nightly North Star runs `--oracle`, so pct_of_oracle stops reading n/a. **(5)** a buffered
+  card also reports the windowed oracle as `<obj>_window`, INFORMATION ONLY; full hindsight stays the gate ceiling
+  until the window's beyond-window value is a real model (its v1 placeholder scores below the app on NBA fit nights).
+  **(6)** Watch Value gates set before any WV read: calibration error <= 6 pts (locked, reliability curve) and rank
+  agreement with the oracle >= 65% in the worst league; PENDING until a card carries watch_value. A 0-1 calibration
+  value is read as a fraction and scaled to points (errs toward FAIL). `scripts/sync_truth_wv.py` (#353, lane 2) is an
+  offline ledger input, not a gate, and is not frozen. Grader freeze v33.
