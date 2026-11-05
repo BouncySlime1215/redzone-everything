@@ -792,3 +792,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   estimate. (3) #288: `redzone/lab/primegrade.py` pre-registers the diamond plan's Prime tests (A4 flat/pause/sticks/
   landing, B1, B2 Key Moments) with sample floors: thin data reads PENDING, a conclusive FAIL still fires.
   primegrade joins the freeze. Grader freeze v20.
+- 2026-11-05 (integrator, grader v21, EXP-735; Nick 2:00 AM "NBA first", >= 60 decisions per gate): **an older season
+  can join a pin as DEV nights only.** A pin may carry `dev_before` {league: YYYYMMDD}; `splits.league_split` keeps
+  nights before it in train/valid and locks the newest >= 25 % of the nights on or after it, so the locked set stays
+  current-season and never reaches back over the added nights. eval-data-v3 (eval-data-v2.yml) adds every final
+  2025-26 NBA game Oct 21 2025 - Jan 31 2026 (and NHL, shared; both end before the Noggin's Feb 1 locked start) with
+  dev_before 20261001. A --season league publishes once its locked set is at least the default pin's size; the
+  release gate's own floors (>= 8 nights, >= 60 decisions) are unchanged, so a thin locked set reads PENDING, never
+  PASS. A pin without dev_before (eval-data-v1) splits exactly as before. Grader freeze v21.

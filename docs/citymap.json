@@ -2063,6 +2063,7 @@
    "kind": "module",
    "outputs": [
     "redzone/demo/__main__.py",
+    "redzone/lab/splits.py",
     "scripts/backfill_eval_v2.py",
     "scripts/build_eval_data.py",
     "scripts/data_landing_grade.py",
@@ -2458,7 +2459,9 @@
   },
   "redzone/lab/splits.py": {
    "contracts": [],
-   "inputs": [],
+   "inputs": [
+    "redzone/lab/evaldata.py"
+   ],
    "kind": "module",
    "outputs": [
     "redzone/lab/breakblend.py",

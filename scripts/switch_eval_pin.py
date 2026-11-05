@@ -70,7 +70,7 @@ def locked_assets(lock: dict) -> dict:
     for lg, w in sorted((lock.get("window") or {}).items()):
         an = {n: g for n, g in splits.archive_nights(ROOT / "data" / "archive" / lg).items()
               if w["start"] <= n <= w["end"]}
-        s = splits.split_nights(an)
+        s = splits.split_nights(an, dev_before=(lock.get("dev_before") or {}).get(lg))
         out["nights"][lg] = list(s.test)
         out["games"][lg] = sorted(g for n in s.test for g in an[n])
     return out
