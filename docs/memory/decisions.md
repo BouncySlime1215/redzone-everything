@@ -665,3 +665,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   control; one tap ("Watch this") still waits for a dead ball. Why: with the hidden stick preloaded (#229/#233) a forced
   press flips in ~2-3 s wherever the play is (ping-pong drill: forced mid-play cuts 2 -> 7, unexplained 2 -> 0). Rule #1
   covers autopilot entries; forced presses are graded separately (presses.classify_mid_play "forced_go_now").
+- **2026-11-05 (lane 3, RC7 requirement 1, Nick 9:45 PM): `two_stick.pretune_on_open: true` for every league** (was on
+  for NBA/NFL only through #227's league overrides). Opening a live game on the phone tunes it on the hidden stick while
+  you read, so "Go now" is a flip. Controls drill (2 seeds, smartthings TV): open-then-go median 8.33 s -> 3.06 s, go-now
+  p50 8.25 -> 3.06 s; 0 mid-play cuts of any kind and 0 dropped presses either way. Rollback: set it false in settings.
