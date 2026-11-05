@@ -57,6 +57,17 @@ time. Key tests run one at a time on the hidden stick.
 6. **After the game (about 1 minute):** truth checks and the report.
    `python3 run_all.py --only truth_02,truth_04,truth_07,fusion --game 401909937`
 
+### Added for tonight (overseer 7:35 AM): the web player's reference clock
+
+The YTTV web player in Chrome on the Mac reports the epoch of the frame it plays (`getMediaReferenceTime()`, steady to 0.1 s at the live head: ESPN 23.1-23.2 s behind). That gives a third clock with no picture capture. Three tests use it:
+
+- **ui_12 web reference** (read-only, the whole night). Open tv.youtube.com in Chrome on the Mac, muted, on the channel under test. Chrome's View > Developer > "Allow JavaScript from Apple Events" must be on; the test prints that hint and stops if it's off, and never changes it. Run it next to ui_05 so program boundaries line up:
+  `python3 run_all.py --only ui_12,ui_05 --channel nbatv --minutes 120`
+- **ui_13 Stats for nerds** (hidden stick, keys, about 5 minutes, at a dead ball). Checks whether the TV app's overlay prints a live latency or ingest time:
+  `python3 run_all.py --only ui_13 --channel nbatv --minutes 5`
+- **fusion_13 web align** (after the above, files only). Matches each stick's title flip to the web's ingest epoch at the same boundary, giving each stick's offset to the ingest clock and the gap between the two sticks. A ~10 s gap would point at YTTV's per-device Broadcast Delay setting. The test only measures it; changing the setting is Nick's call.
+  `python3 run_all.py --only fusion_13`
+
 Every run ends with `fusion_12_report`: one row per channel and stick with D, sd, n anchors, the
 families that agree, and PASS (sd ≤ 1 s), MARGINAL (≤ 2 s), FAIL, or INSUFFICIENT (n < 3).
 It is saved to `results/fusion_12_report.md`. Each test's log is in `results/logs/<run>/`, plus `summary.json`.

@@ -871,5 +871,50 @@
   "dry_run_ok": true,
   "notes": "run_all calls it last",
   "dry_run_verdict_2026_11_04": "FAIL"
+ },
+ {
+  "id": "ui_12",
+  "rank": 59,
+  "family": "ui",
+  "file": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/ui/ui_12_web_reference.py",
+  "title": "YTTV web player reference clock: getMediaReferenceTime() in a muted Mac Chrome tab (overseer 7:35 AM Nov 5)",
+  "mode": "read-only",
+  "measures": "lag = wall - mediaReferenceTime every 1 s at the live head, plus program-boundary title flips with their ingest epoch (web_flip rows for fusion_13)",
+  "needs": "Chrome on the Mac with tv.youtube.com open, muted, on the --channel being tested; Chrome 'Allow JavaScript from Apple Events' ON (ask Nick; the test never changes it)",
+  "pass_rule": ">= 60 live-head samples and lag MAD <= 0.25 s",
+  "needs_game": false,
+  "dry_run_ok": true,
+  "notes": "no picture capture, no DRM; never navigates, mutes or changes the tab. Run it for the whole night alongside ui_05 so boundaries match.",
+  "dry_run_verdict_2026_11_04": "PASS (synthetic)"
+ },
+ {
+  "id": "ui_13",
+  "rank": 60,
+  "family": "ui",
+  "file": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/ui/ui_13_stats_for_nerds.py",
+  "title": "YTTV TV app 'Stats for nerds' overlay on the hidden stick: live latency / ingest time?",
+  "mode": "hidden-stick-keys",
+  "measures": "OCR of the Stats for nerds overlay every 1 s (latency, buffer health, any epoch/clock), with the stick's E beside each frame",
+  "needs": "YTTV playing on the hidden stick; auto-switching paused or --allow-app-active",
+  "pass_rule": "overlay opens and >= 10 frames carry a latency or ingest number (informational: reports shows_latency / shows_ingest)",
+  "needs_game": false,
+  "dry_run_ok": true,
+  "notes": "CENTER only on a focused label that matches more/options, then 'Stats for nerds'; BACK x3 and re-tune at the end. Saves recipes.json stats_for_nerds.",
+  "dry_run_verdict_2026_11_04": "PASS (parser)"
+ },
+ {
+  "id": "fusion_13",
+  "rank": 61,
+  "family": "fusion",
+  "file": "/private/tmp/claude-501/-Users-nick-matta-Documents-Codex-2026-11-02-task-2-redzone/db4845a1-e6cf-4448-8874-21dc8f52883f/scratchpad/sync/yttv_tests/fusion/fusion_13_web_align.py",
+  "title": "Web vs stick alignment: each stick's offset to the ingest clock from shared program boundaries",
+  "mode": "read-only",
+  "measures": "O_stick = stick title flip (ui_05) - web ingest epoch at the same boundary (ui_12), per channel and stick; the stick-to-stick gap (Broadcast Delay setting?); ui_13 latency if shown",
+  "needs": "ui_12 and ui_05 run on the same channel across at least two :00/:30 boundaries",
+  "pass_rule": "some stick has >= 2 matched boundaries within 1.0 s",
+  "needs_game": false,
+  "dry_run_ok": true,
+  "notes": "files only; measures the ~10 s stick gap but never changes either stick's Broadcast Delay (Nick's call)",
+  "dry_run_verdict_2026_11_04": "PASS (synthetic)"
  }
 ]
