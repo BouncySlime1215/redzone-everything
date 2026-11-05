@@ -7,8 +7,8 @@
 - Nick's 10:55 PM ET decisions.
 
 **Queue:** [docs/experiments.md](../../experiments.md). Every run is pre-registered with its success bar and
-nights needed before it starts (grading rule 2). Use your own id block (planner ≤099, ① 100s, ② 200s, ③ 300s,
-④ 400s, ⑤ 500s, integrator 600s). Before starting a go-wide id, check for a `claude/exp-<id>` branch.
+nights needed before it starts (grading rule 2). Use your own id block (planner ≤099 then 800s, ① 100s, ② 200s, ③ 300s,
+④ 400s, ⑤ 500s, integrator 600s, test writers 700s, Data Division A-F 1000s-1500s, scout 1600s). Before starting a go-wide id, check for a `claude/exp-<id>` branch.
 
 ## Nick's 10:55 PM decisions (binding)
 - **RC6.2 (1bf4150) is deploying now from the overseer session.**
@@ -30,6 +30,21 @@ nights needed before it starts (grading rule 2). Use your own id block (planner 
 - **Lane 2's top priority for RC7 is the sync fix.** It unblocks "never join at a break": 35% of today's entries
   landed mid-commercial.
 - **The real-TV Prime press run is tomorrow afternoon, before games.** Nick OKs it in the Mac session then.
+
+## Data Division (Nick, 12:05 AM reorg: "THE BRAIN IS THE MAIN FOCUS")
+The org chart, id blocks, first sources per type and pacing are in
+[data division](../../plans/2026-11-05-data-division.md).
+- **Planners:** one data planner per type, A-F (play-by-play, context and hype, media metadata, markets,
+  synthetic and teacher, broadcast formats). They work with the scout.
+- **Test writers:** EXP-700-799.
+- **Lanes 1-4 keep the body.**
+- **Pacing:** at or below 85% weekly usage by Mon 8 PM ET. The overseer reads the checkpoints.
+
+| Checkpoint | Usage at or below |
+|---|---|
+| Fri 8 PM ET | 58% |
+| Sat 8 PM ET | 67% |
+| Sun 8 PM ET | 76% |
 
 ## Data scout loop (Nick, 11:35 PM, standing): "100x more unique data sources and data types, agents hunting 24/7"
 - **Owners:** lane ① and a dedicated scout thread, which the coordinator is opening.

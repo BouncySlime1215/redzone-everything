@@ -59,6 +59,8 @@ def test_no_other_runtime_module_keeps_its_own_copy():
     for p in (ROOT / "redzone").rglob("*.py"):
         if "lab" in p.parts:
             continue
+        if p.relative_to(ROOT).as_posix() == "redzone/contracts/events.py":
+            continue    # vocab v1's BOS slot table (EXP-003): token ids, fixed forever, not a priority order
         for n in ast.walk(ast.parse(p.read_text())):
             if isinstance(n, ast.Tuple) and len(n.elts) >= 5 and all(
                     isinstance(e, ast.Constant) and e.value in OLD for e in n.elts):
