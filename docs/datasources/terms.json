@@ -107,6 +107,7 @@
     "hockey_reference": "red",
     "baseball_reference": "red",
     "fbref": "red",
-    "stats_ncaa_org": "red"
+    "stats_ncaa_org": "red",
+    "nba_stats_events": "restrictive"
   }
 }
