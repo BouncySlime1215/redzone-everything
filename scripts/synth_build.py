@@ -174,7 +174,8 @@ def main(argv=None) -> int:
         r = e["synthetic_tokens"] / e["real_tokens"] if e["real_tokens"] else float("nan")
         print(f"{lg}: real {e['real_tokens']:,}  synthetic {e['synthetic_tokens']:,}  ratio {r:.2f}x")
     for b in bad:
-        print("OVER CAP:", b, file=sys.stderr)
+        if a.cmd == "check" or " x real 0" not in b:      # teacher-only runs don't know real tokens yet
+            print("OVER CAP:", b, file=sys.stderr)
     return 1 if bad and a.cmd == "check" else 0
 
 
