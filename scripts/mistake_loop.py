@@ -32,6 +32,9 @@ def main(argv=None) -> int:
     ap.add_argument("--buffer", type=float, default=90.0)
     ap.add_argument("--feed-lag", type=float, default=None, help="s; default PK.FEED_LAG_P90 via buffer_sweep")
     ap.add_argument("--max-nights", type=int, default=0)
+    ap.add_argument("--oracle", choices=("window", "full"), default="window",
+                    help="target: the windowed oracle (buffered shows) or full hindsight. With the v1 past-mean beyond value the "
+                         "windowed oracle can score BELOW the app (Nov 5 run), so it is not yet a ceiling")
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args(argv)
     lg = League(a.league)
@@ -58,12 +61,12 @@ def main(argv=None) -> int:
 
     def score(day):
         reps, rep, n, steps, tab = night_data(day)
-        orc = OW.solve_window(n, fl, "combined", tab)
+        orc = OW.solve_window(n, fl, "combined", tab) if a.oracle == "window" else O.solve(n, "combined", tab)
         v_app = O.schedule_value(n, tab, "combined", rep.switches)
         v_orc = O.schedule_value(n, tab, "combined", orc)
         cache[day] += (orc,)
-        return {"app_value": round(v_app, 3), "oracle_window_value": round(v_orc, 3),
-                "pct_of_oracle_window": round(100 * v_app / v_orc, 1) if v_orc > 0 else None, "games": len(reps)}
+        return {"app_value": round(v_app, 3), "oracle_value": round(v_orc, 3),
+                "oracle": a.oracle, "pct_of_oracle": round(100 * v_app / v_orc, 1) if v_orc > 0 else None, "games": len(reps)}
 
     def analyze(day):
         reps, rep, n, steps, tab, orc = cache[day]
@@ -77,7 +80,7 @@ def main(argv=None) -> int:
         sw = lambda ss: {int(round((s.t - n.t0) / O.STEP_S)) for s in ss if s.frm is not None}
         rows = ML.ledger(day, a.league, R, tab, gids, app_on, orc_on, n.t0, O.STEP_S, locked=locked,
                          app_switch_steps=sw(rep.switches), oracle_switch_steps=sw(orc), blk=blk)
-        (a.out / f"ledger_{a.league}_{day}.jsonl").write_text(ML.to_jsonl(rows))
+        (a.out / f"ledger_{a.league}_{a.oracle}_{day}.jsonl").write_text(ML.to_jsonl(rows))
         all_rows.extend(rows)
         cache.pop(day, None)
 
@@ -86,11 +89,11 @@ def main(argv=None) -> int:
     if a.max_nights:
         fit_nights = fit_nights[:a.max_nights]
     ch.run(fit_nights, score, analyze, lambda seen: None)   # arm hook: the next arm trains on seen + ledger weights
-    (a.out / f"first_pass_{a.league}.jsonl").write_text(ch.jsonl())
-    summ = {"league": a.league, "buffer_s": a.buffer, "feed_lag_s": fl, "nights": len(ch.log),
+    (a.out / f"first_pass_{a.league}_{a.oracle}.jsonl").write_text(ch.jsonl())
+    summ = {"league": a.league, "oracle": a.oracle, "buffer_s": a.buffer, "feed_lag_s": fl, "nights": len(ch.log),
             "causes": ML.summarize(all_rows), "locked_nights_read": 0,
             "tag": "personal-use, not for commercial release"}
-    (a.out / f"summary_{a.league}.json").write_text(json.dumps(summ, indent=1))
+    (a.out / f"summary_{a.league}_{a.oracle}.json").write_text(json.dumps(summ, indent=1))
     print(json.dumps(summ, indent=1))
     return 0
 
