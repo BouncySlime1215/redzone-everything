@@ -64,8 +64,19 @@ def _runs(mid=None, nights=8):
             for h in ("honest", "resync") for s in (0, 1, 2)]
 
 
-def _shadow(mid_at=None, n=40):
-    return [{"league": "nba", "night": "2026-11-05", "entry": i, "mid_play": i == mid_at} for i in range(n)]
+def _shadow(mid_at=None, n=40, by="label"):
+    """Shadow entries as scripts/buffer_shadow_grade.py grades them: label dead|live, clock_truth (NBA/CBB)."""
+    rows = [{"league": "nba", "label": "dead", "clock_truth": "dead"} for _ in range(n)]
+    if mid_at is not None:
+        rows[mid_at][by] = "live"
+    return rows
+
+
+def _all_clean():
+    """Every other item at its passing input: sweep ON on >= 8 fit nights, locked clean, sync within 2 s."""
+    return dict(sweep={"verdict": "ON", "chosen_b": 75, "fit_nights": 10},
+                locked={"entries_mid_play": 0, "nights": 8, "decisions": 120},
+                sync={"p95_err_s": 1.2, "n": 300})
 
 
 @pytest.mark.parametrize("harness", ["honest", "resync"])
@@ -76,17 +87,42 @@ def test_one_mid_play_entry_in_any_sim_run_fails_the_league(harness, seed):
     assert state == "FAIL", detail
 
 
-def test_one_mid_play_entry_in_shadow_fails_the_league():
+@pytest.mark.parametrize("by", ["label", "clock_truth"])
+def test_one_mid_play_entry_in_shadow_fails_the_league(by):
     m = _rc8()
-    state, detail = m.gate_league("nba", _runs(), _shadow(mid_at=17))
+    state, detail = m.gate_league("nba", _runs(), _shadow(mid_at=17, by=by), **_all_clean())
     assert state == "FAIL", detail
+
+
+def test_clock_truth_mid_play_in_the_sim_fails_the_league():
+    """NBA/CBB need 0 on both graders: a clock-truth live entry vetoes even with cutgrade at 0."""
+    m = _rc8()
+    runs = _runs()
+    runs[4]["clock_truth_live"] = 1
+    assert m.gate_league("nba", runs, _shadow(), **_all_clean())[0] == "FAIL"
+
+
+def test_a_mid_play_locked_read_fails_the_league():
+    m = _rc8()
+    kw = _all_clean()
+    kw["locked"]["entries_mid_play"] = 1
+    assert m.gate_league("nba", _runs(), _shadow(), **kw)[0] == "FAIL"
+
+
+def test_a_clean_league_can_pass():
+    """Rule #1 clean on every run + one clean shadow night + sweep ON + locked + sync: the league is ready for
+    Nick's flip. Gate doc item 3: a shadow night can only VETO, so a clean one must not block PASS forever."""
+    m = _rc8()
+    state, detail = m.gate_league("nba", _runs(), _shadow(), **_all_clean())
+    assert state == "PASS", detail
 
 
 def test_mid_play_fails_even_when_the_sample_is_thin():
     """A veto never waits for power: 1 mid-play on 2 nights is FAIL, not PENDING."""
     m = _rc8()
     assert m.gate_league("nhl", _runs({("honest", 0): 1}, nights=2), [])[0] == "FAIL"
-    assert m.gate_league("nhl", _runs(nights=2), _shadow(mid_at=0))[0] == "FAIL"
+    sh = [dict(r, league="nhl") for r in _shadow(mid_at=0)]
+    assert m.gate_league("nhl", _runs(nights=2), sh)[0] == "FAIL"
 
 
 def test_clean_but_thin_is_pending_never_pass():
@@ -223,8 +259,8 @@ def test_adaptive_buffer_floor_holds_against_a_big_stream_delay_credit():
 
 def test_approved_min_can_raise_but_never_breaks_the_cap():
     m = _rc8()
-    assert m.adaptive_buffer_s("nba", 5, 1, 1, 1, approved_min_s={"nba": 45}) == pytest.approx(45)
-    assert m.adaptive_buffer_s("nba", 5, 1, 1, 1, approved_min_s={"nba": 200}) <= CAP
+    assert m.adaptive_buffer_s("nba", 5, 1, 1, 1, approved_min_s=45) == pytest.approx(45)
+    assert m.adaptive_buffer_s("nba", 5, 1, 1, 1, approved_min_s=200) <= CAP
 
 
 @pytest.mark.parametrize("floor", [0.0, 5.0, 9.99, 15.01, 30.0, 95.0])
@@ -247,7 +283,7 @@ def test_buffer_for_reads_config_and_respects_floor_and_cap(tmp_path):
     for lg in ("nba", "nhl", "nfl", "cbb", "mlb"):
         s, parts = m.buffer_for(c, lg)
         assert FLOOR_LO <= s <= CAP, (lg, s, parts)
-    c.update({"timing": {"behind_live_s": {"adaptive": {"feed_lag_p95_s": {"nhl": 400}}}}})
+    c.update({"timing": {"behind_live_s": {"adaptive": {"feed_lag_p95_s": {"nhl": 180}}}}})
     assert m.buffer_for(c, "nhl")[0] == pytest.approx(CAP)
     c.update({"timing": {"behind_live_s": {"adaptive": {"feed_lag_p95_s": {"nhl": 0}, "margin_s": 0,
                                                          "sync_err_s": 0, "tune_seek_s": 0}}}})
@@ -317,3 +353,48 @@ def test_every_configured_league_hold_sits_inside_floor_and_cap(cfg):
     by = cfg.get("timing.behind_live_s.by_league") or {}
     for lg, b in list(by.items()) + [("default", cfg.get("timing.behind_live_s.default"))]:
         assert FLOOR_LO <= float(b) <= CAP, (lg, b)
+
+
+# --------------------------------------------------------------------------------------------- 6. RC8 in the engine
+def test_rc8_flip_moves_only_that_leagues_engine_hold_and_rollback_restores_it(tmp_path):
+    m = _rc8()
+    c = config.Config(user_path=tmp_path / "c.yaml", history_dir=tmp_path / "h")
+    before = {lg: _hold(c, lg) for lg in LEAGUES}
+    c.update({"league_overrides": m.flip(copy.deepcopy(c.data), "nhl")})
+    after = {lg: _hold(c, lg) for lg in LEAGUES}
+    assert after["nhl"] == pytest.approx(m.buffer_for(c, "nhl")[0]) and FLOOR_LO <= after["nhl"] <= CAP
+    assert {k: v for k, v in after.items() if k != "nhl"} == {k: v for k, v in before.items() if k != "nhl"}
+    c.update({"league_overrides": m.rollback(copy.deepcopy(c.data), "nhl")})
+    assert {lg: _hold(c, lg) for lg in LEAGUES} == before
+
+
+@pytest.mark.parametrize("pin", [1, 5, 9.9])
+def test_a_pin_under_the_floor_is_held_at_the_floor(tmp_path, pin):
+    m = _rc8()
+    c = config.Config(user_path=tmp_path / "c.yaml", history_dir=tmp_path / "h")
+    c.update({"league_overrides": m.flip(copy.deepcopy(c.data), "nhl", pin)})
+    floor = float(c.get("timing.behind_live_s.adaptive.floor_s"))
+    assert FLOOR_LO <= floor <= FLOOR_HI
+    assert _hold(c, "nhl") == pytest.approx(floor)
+
+
+def test_a_global_rc8_on_is_refused_or_ignored(tmp_path):
+    """Global keys leak into ungraded leagues (Nick, Nov 4 8:40 PM): RC8 is per league only."""
+    m = _rc8()
+    c = config.Config(user_path=tmp_path / "c.yaml", history_dir=tmp_path / "h")
+    try:
+        c.update({"timing": {"behind_live_s": {"rc8_on": True}}})
+    except config.ConfigError:
+        return
+    assert m.validate_scope(c)
+    for lg in LEAGUES:
+        assert not m.is_on(c, lg), lg
+
+
+def test_ship_b_stays_inside_floor_and_cap_and_goes_to_cap_after_a_mid_play_night(cfg):
+    m = _rc8()
+    for lg in ("nba", "nfl", "nhl", "cbb"):
+        for sweep in (None, 0, 45, 60, 75, 90, 120):
+            b, why = m.ship_b(cfg, lg, sweep)
+            assert FLOOR_LO <= b <= CAP, (lg, sweep, b, why)
+        assert m.ship_b(cfg, lg, 45, mid_play_night=True)[0] == pytest.approx(CAP)
