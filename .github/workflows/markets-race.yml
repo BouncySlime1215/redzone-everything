@@ -37,18 +37,37 @@ jobs:
           wc -l out/race/espn.jsonl out/markets_live/polymarket/nfl/*.jsonl 2>/dev/null || true
           grep -c '"row": "trigger"' out/markets_live/polymarket/nfl/*.jsonl 2>/dev/null || true
           tail -5 out/race/poly.log out/race/espn.log 2>/dev/null || true
-      - name: push logs to markets-race-out/<date> (so crew D can grade without artifact access)
+      - name: push DERIVED race numbers to markets-race-out/<date> (no raw prices or feed bodies; public repo rule)
         if: always()
         env:
           D: ${{ inputs.date || '2026-11-05' }}
         run: |
           B="markets-race-out/${D//-/}-${{ github.run_id }}"
-          mkdir -p /tmp/o && cp -r out/race out/markets_live /tmp/o/ 2>/dev/null || true
+          mkdir -p /tmp/o /tmp/d && cp -r out/race out/markets_live /tmp/o/ 2>/dev/null || true
+          # derived only: trigger times + size of the move (no price level), ESPN score-change times, clock offsets
+          python - <<'PY'
+          import glob, json
+          rows = []
+          for f in glob.glob("/tmp/o/markets_live/polymarket/nfl/*.jsonl"):
+              for line in open(f):
+                  r = json.loads(line)
+                  if r.get("row") == "trigger":
+                      rows.append({"source": "polymarket", "row": "trigger", "game_key": r["game_key"],
+                                   "recv_ts": r["recv_ts"], "delta": r["delta"], "window_s": r["window_s"]})
+          for f in glob.glob("/tmp/o/race/espn.jsonl"):
+              for line in open(f):
+                  r = json.loads(line)
+                  rows.append({k: r[k] for k in ("source", "matchup", "recv_ts", "score", "prev")})
+          for f in glob.glob("/tmp/o/race/clock.jsonl"):
+              rows += [{"source": "clock", **json.loads(x)} for x in open(f)]
+          with open("/tmp/d/race_derived.jsonl", "w") as fh:
+              fh.writelines(json.dumps(r) + "\n" for r in rows)
+          print(len(rows), "derived rows")
+          PY
           git config user.name "redzone-markets-bot"; git config user.email "actions@users.noreply.github.com"
-          git checkout --orphan "$B" && git rm -rq --cached . && git clean -fdq -e /tmp
-          cp -r /tmp/o/* . 2>/dev/null || true
-          git add race markets_live 2>/dev/null || true
-          git commit -qm "markets race logs ${D} (shadow; personal-use, not for commercial release)" && git push -q origin "$B" && echo "pushed $B"
+          git checkout -q --orphan "$B" && git rm -rq --cached . && git clean -fdq
+          cp /tmp/d/race_derived.jsonl . && git add race_derived.jsonl
+          git commit -qm "markets race derived numbers ${D} (shadow; personal-use, not for commercial release)" && git push -q origin "$B" && echo "pushed $B"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
