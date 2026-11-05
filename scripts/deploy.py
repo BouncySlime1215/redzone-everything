@@ -79,6 +79,7 @@ class Settings:
     deselect: list[str] = field(default_factory=list)   # known Mac/hardware-only tests to skip
     live_wait_s: float = 0.0          # 0: defer at once if a game is live; else poll this long
     live_poll_s: float = 300.0
+    at_break: bool = False            # --at-break: allow live games while the one on screen is at halftime
     soon_s: float = 900.0             # a game starting this soon counts as live
     error_ratio: float = 2.0          # watch errors > baseline*ratio + slack -> worse
     error_slack: int = 5
@@ -403,10 +404,37 @@ class Health:
                    sticks_offline=sum(1 for s in h.get("sticks") or [] if s.get("state") == "offline"))
 
 
-def busy(st: dict | None, now: float, soon_s: float) -> str:
+# A long break: halftime, or an NHL intermission. Timeouts and short quarter breaks don't count
+# (the ~1-2 min restart must land inside the break).
+LONG_BREAK = re.compile(r"halftime|intermission|^end of (the )?(1st|2nd)( period)?$", re.I)
+
+
+def long_break(g: dict) -> bool:
+    """Is this live game in a long break, by its status line ("Halftime", "End of 2nd", ...)?"""
+    text = str(g.get("status_text") or "").strip()
+    if not LONG_BREAK.search(text):
+        return False
+    return "end of" not in text.lower() or g.get("league") == "nhl"
+
+
+def busy(st: dict | None, now: float, soon_s: float, at_break: bool = False) -> str:
     """Why a restart now would hurt, or "" if it wouldn't. A down API means nothing is on screen
-    under our control, so it doesn't block (that is when a fix is most wanted)."""
+    under our control, so it doesn't block (that is when a fix is most wanted).
+
+    at_break (Nick, Nov 4 6:50 PM: RC6 at halftime): live games are allowed while the game on screen
+    is in a long break (halftime / intermission); games starting soon don't block. Off screen, a live
+    game loses only feed polling for the ~1-2 min restart."""
     if st is None:
+        return ""
+    if at_break:
+        live = [g for g in st.get("games") or [] if g.get("phase") == "live"]
+        on = [g for g in live if g.get("on_now")]
+        if live and not on:
+            return "games are live and none is on screen; can't tell the TV is in a break"
+        for g in on:
+            if not long_break(g):
+                name = g.get("matchup") or g.get("id") or "a game"
+                return f"{name} is on screen and not in halftime/intermission ({g.get('status_text') or '?'})"
         return ""
     for g in st.get("games") or []:
         name = g.get("matchup") or g.get("id") or "a game"
@@ -558,7 +586,8 @@ class Deployer:
         """"" when it's safe to restart; otherwise why not (after waiting up to live_wait_s)."""
         deadline = self.sys.now() + self.s.live_wait_s
         while True:
-            why = busy(self.sys.fetch_state(self.s.api), self.sys.now(), max(self.s.soon_s, self.s.watch_s))
+            why = busy(self.sys.fetch_state(self.s.api), self.sys.now(), max(self.s.soon_s, self.s.watch_s),
+                       self.s.at_break)
             if not why or self.sys.now() >= deadline:
                 return why
             self.journal("waiting", msg=why)
@@ -851,6 +880,8 @@ def main(argv: list[str] | None = None, system: System | None = None, root: Path
     d.add_argument("--dry-run", action="store_true", help="fetch, test and check for live games; change nothing")
     d.add_argument("--branch", help="default from deploy/deploy.yaml, else integration/release")
     d.add_argument("--wait", type=float, metavar="MIN", help="wait up to MIN minutes for live games to end")
+    d.add_argument("--at-break", action="store_true",
+                   help="switch while games are live if the game on screen is at halftime/intermission")
     d.add_argument("--deps-ok", action="store_true", help="requirements.txt changed and you installed them")
     d.add_argument("--skip-tests", action="store_true", help=argparse.SUPPRESS)
     r = sub.add_parser("rollback")
@@ -868,6 +899,9 @@ def main(argv: list[str] | None = None, system: System | None = None, root: Path
             s.branch = a.branch
         if getattr(a, "wait", None) is not None:
             s.live_wait_s = max(0.0, a.wait * 60)
+        if getattr(a, "at_break", False):
+            s.at_break = True
+            s.live_poll_s = min(s.live_poll_s, 30.0)   # a halftime is short: look every 30 s
         dep = Deployer(s, system or System(root), root)
         if a.cmd == "deploy":
             return dep.deploy(dry_run=a.dry_run, skip_tests=a.skip_tests, deps_ok=a.deps_ok)

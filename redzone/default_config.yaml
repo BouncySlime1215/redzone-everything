@@ -45,6 +45,11 @@ sync:
     enabled: true          # [SYNC] read-only log of what the sticks expose (media_session, Wi-Fi, UI tree, logcat)
                            # -> recordings/<day>/sync_probe.jsonl. Presses nothing; skips during switches.
     visible_ui: false      # also dump the VISIBLE stick's UI tree (off: unmeasured whether a dump stutters video)
+    logcat_anchors: false  # [yttv anchors] ad edges from the player's logcat lines (YouTube TV has no UI text);
+                           # off until the probe's logged lines show YTTV's real ad strings
+    log_ad_start: ""       # regex override for an ad-start log line ("" = sync_probe.LOG_AD_START)
+    log_ad_end: ""         # ... and an ad-end line ("" = sync_probe.LOG_AD_END)
+    log_edge_sd_s: 1.0     # an ad edge read from the player's own log line: the player logs it as it renders it
   break_anchor:            # [auto-anchors] ad break on screen <-> the feed's dead ball -> a delay sample
     enabled: false         # logged always (recordings/<day>/sync_anchors.jsonl); fed to the filter only when on.
     start_bias_s: 15       # whistle -> ad on screen, a PRIOR until the Wednesday probe data refits it
@@ -222,6 +227,8 @@ decider:
     hold_only: [nhl, nba]     # switches IN wait for a whistle (never inside crunch's last 2:00); [] turns it off
     rewind_only: []      # leagues whose entries land on a dead ball with a rewind when one fits, never wait
     landing_lag_s: 0     # [landing lag] a fresh tune comes up up to this much later than the live edge (one-sided)
+    cue: seek                # [seek model] seek: rewind on screen after the flip (whole 15 s presses + a 2-4 s stall) |
+                             # pause: on the HIDDEN stick seek past the dead ball, play up to it, pause, flip, play
     possession_start: "off"  # [possession start] off | crunch | all: cue to the last dead ball before the possession, never wait while one is in reach
     confirmed_dead_only: false  # [data gap] a dead window opens only on a logged stoppage (a lone substitution means the stoppage is missing)
     ended_strict: false  # [landing lag] a switch off a finished game never takes the urgent (thin-margin) landing
@@ -233,6 +240,9 @@ decider:
   # hdmi_flip = the TV input change (two_stick.tv_flip_prior_s, SmartThings median 1.89 s) + the 1 s settle.
   # Replaced by your own measured times as you use it (see switch_speed).
   switch_cost: {youtubetv: 5.5, prime: 27, espn: 7.5, hdmi_flip: 3}
+  leave:
+    dead_windows: []       # [whistle detection] also leave on the play-by-play's dead windows in these leagues
+    tune_s: 6              # ...and the window must outlast this tune margin (a visit can't come back inside it)
   return_tolerance: 5      # go back to the previous game if it's within this many points
   break_destination_min: 25   # anything at least this good beats watching a commercial
   chase_max_deficit: 15
@@ -255,6 +265,7 @@ decider:
     personal_lead: 5       # your team / bet wins an overlap when its boost is this much bigger
     hop_min_break_s: 20    # hop to another live crunch only if this one's stoppage has this much left
     replays: true          # replays from other games during crunch stoppages, if surely back for the snap
+    instant_replays: true  # ...including instant replays of plays you saw (false: only plays you missed)
     shortest_break_s:      # ~10th pct, stoppage -> next scrimmage play logged, late Q4/OT, 2025 games
       {timeout: 30, injury: 27, review: 80, score_break: 110, two_minute_warning: 150, end_period: 180}
 
@@ -403,8 +414,9 @@ two_stick:
   pretune_on_open: false   # opening a live game on the phone pre-tunes it on the hidden stick (90 s), so
                            # "Watch this" / "Go now" is a ~3 s flip instead of a ~8 s tune + flip
   input_settle_s: 1.0      # your TV's picture takes this long after an input flip (time it once)
-  tv_flip_prior_s: {median: 1.89, max: 2.58}  # the TV's own input change (SmartThings) before we've timed 5:
-                           # measured on your TV Nov 4 (64/64 confirmed, p50 1.89, p95 2.18). The decider plans flips with it.
+  tv_flip_prior_s: {median: 1.89, p95: 1.98, max: 2.02}  # the TV's own input change (SmartThings) before
+                           # we've timed 5: the live lab on your TV, Nov 4, CEC off (30/30; with CEC on it was
+                           # p95 2.18, max 2.58). The decider plans flips with the median, bounds them with the max.
   keep_cec_off: true       # a stick whose HDMI-CEC you turned off (scripts/stick_cec.py) gets it back on only
                            # for a HOME fallback onto it, then off again (so losing the input never pauses it)
   park_max_s: 240          # a replay waiting on the hidden stick is re-cued after this long
@@ -454,16 +466,38 @@ replay:                    # catch-up replays of big plays you missed (YouTube T
   crunch_block: false      # [crunch block] no catch-up starts while any live game is in crunch time / its run-up
   crunch_block_mine_leagues: []   # ...your team's missed play still goes in these leagues (its game's league)
   crunch_block_mine_after_s: 90    # ...once this long after it aired
+  crunch_block_tail: false # ...and until a game the feed ended in crunch (an OT winner) has finished airing
   urgent_s: 1200           # in its last N seconds a missed play jumps the queue and beats dull live play
   clip_s: 15               # how long each replay plays
   seek_s: 6                # time spent rewinding to the play
   instant_window_s: 900    # when everything's on a break, re-show great plays from the last 15 min
   seek_key: KEYCODE_MEDIA_REWIND
-  seek_step_s: 10          # seconds per rewind press (measure on your stick in the Screen Lab)
+  seek_step_s: 15          # seconds per rewind press: YouTube TV steps 15 s (live lab, Nov 4; was 10)
+  seek_wake_presses: 1  # the first press of each batch does nothing (live lab, Nov 4): one extra is sent
+  seek_stall_min_s: 2      # each seek stalls the picture 2-4 s (live lab, Nov 4), which lands it that much
+  seek_stall_max_s: 4      # further behind
+  seek_press_s: 0.25       # [seek model] the stick takes seek presses at about this pace
+  pause_keys_s: 0.5        # ...then the pause / play keys
+  pause_err_s: 0.25        # a pause cue's landing error, calibrated (the lab's pause hold: well under 0.5 s)
+  pause_cue_grain_s: 0.5   # a pause cue's landing grain (the lab's pause hold: +1.66 s raw, under 0.5 s calibrated)
+  hidden_seek_keys_s: 1.5  # a hidden-stick seek's presses + PLAY before the flip (the stall comes on top)
   redzone_way: false       # catch-up the RedZone way (Nick, Nov 4; OFF until its gate passes): lull, "meanwhile",
                            # collision and end-of-night montage triggers (redzone/decider/decider.py)
   catchup_s: 600           # each missed big play replayed within this; its value halves every catchup_s
   collision_s: 180         # missed because another big play was on screen: replayed within this
+  window_s: 0              # [replay window] Nick, Nov 4: a missed moment airs within this (180 = 3 min, the next
+                           # dead moment) or is skipped / folded into the montage; 0 = off
+  window_leagues: []       # ...only these leagues' plays ([] = every league)
+  window_fill: false       # ...past the window a play may still fill dead time (never displacing live play)
+  resume: false            # [replay and resume] a missed play airs at the screen game's dead ball: pause it, show
+                           # the catch-up, resume on the same frame (costs buffer, not live play); repaid by
+                           # skipping ahead in its next break. Hardware gate: pause/resume on the same frame.
+  resume_leagues: []       # only these leagues' screen games pause ([] = every league)
+  resume_window_s: 180     # only plays that aired within this long (Nick: 3 minutes)
+  resume_cap_s: 60         # never run more than this far behind the usual buffer
+  resume_crunch_share: 0.0 # in crunch time only this share of the cap (0 = never pause crunch time)
+  resume_min_skip_s: 10    # skip ahead in a break only if it wins back at least this much
+  resume_pause_s: 1.0      # the pause command's ack: a stoppage on screen this much longer is enough to pause
   lull_score: 45           # no live game at this score or above (and no crunch / lock): a replay takes the dead ball
   meanwhile_s: 120         # the screen's game just scored: plays elsewhere within this of it go first
   montage_age_s: 14400     # nothing live: every missed big play still on the DVR, however old
@@ -488,6 +522,9 @@ timing:
     default: 60
     max_s: 90              # Nick's cap (~1 min behind live accepted, 90 s at most)
     apps: [youtubetv, primevideo]   # apps whose player pauses and resumes on the hidden stick
+    hold_overreport_s: 0   # [hold calibration] fallback only (no stick positions): the wall span less this. 0 =
+                           # the span as is. At 1.5 it fought hold_cal_s (a rebuild's pause is already short by
+                           # 1.5 s), so the STK-06 watchdog rebuilt a 2.9 s gap forever on the night lab (Nov 4)
     hold_cal_s: -1.5       # a rebuild's pause is this much off the gap it closes (Nick's live hold calibration)
 
 delay:                     # seconds your screen runs behind real life, per app; "I just saw it" measures it
@@ -554,6 +591,7 @@ noggin:                    # docs/noggin.md
     enabled: false         # flip to a game whose big play is visible ahead, landing on its last dead ball first
     max_sigma_s: 10        # no lookahead when the screen's position is this unsure (SAFE-02)
     lead_s: 45             # land at most this long before the play airs (a later dead ball is closer)
+    leagues: []            # only these leagues' games are chased or guarded ([] = every league)
   timing:
     leagues: []            # Noggin Timing v1: calibrated dead-window bounds in place of cuts.FLOOR_S / MEDIAN_S
   predict:
@@ -569,3 +607,6 @@ buffer:                    # [buffer.watchdog] playbook STK-06 (redzone/control.
   watchdog: false          # rebuild a lost / drifting (> 2 s) hidden-stick hold at that game's next dead ball
 calib:                     # [calib.auto] values re-measured each night from live logs (data/calib/<night>.json)
   auto: false              # read last nights' accepted flip time back at start (OFF until it's proven on live nights)
+
+report:                    # [night health] scripts/night_report.py -> docs/nights/YYYY-MM-DD.md every morning (northstar.yml)
+  nightly: true            # ON (cycle 07): its gates pass in tests/test_night_report.py (matches the live log, PENDING with no night, nothing private)

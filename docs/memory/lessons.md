@@ -211,6 +211,10 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
 - **Fix:** `decider.entry.confirmed_dead_only` (candidate on): a lone substitution opens no window, so a rewind falls back to an earlier logged stoppage or the entry waits.
 - **Signals:** a rewind of 50 s or more into NBA; a window of kind `substitution` with no stronger kind.
 
+- 2026-11-04 **Replay window measured from the wrong clock.** `Missed.t` is when the feed had the play; Nick's "within 3 minutes" runs from when it aired on the TV, a whole stream delay later (~2 min with the time-shift buffer). The window filter and its urgency ramp used `t`, so they allowed ~1 minute. Now `Missed.aired` (feed time + screen delay) drives both. Check which clock a deadline means before tuning it.
+- 2026-11-04 **NBA technicals without "foul" in the type were live play.** ESPN types like "Defensive 3-Seconds Technical" or "Coach Technical" mapped to Stoppage.NONE, so the grader called a leave 72 s into a timeout a mid-play cut (DET @ NY, Oct 27, found by lane 1). `espn.stoppage_for` now maps technical/flagrant to WHISTLE; the app's screen model already treated them as dead.
+
+- 2026-11-04 **The sims trusted the rewind to land where the plan said.** `backtest` set an entry's offset to `rewind_s` exactly, so 0 mid-play entries looked proven while the stick stepped 15 s (not 10), swallowed the first press and stalled 2-4 s. With the real seek, today's code made 32-37 mid-play entries per dev seed in NFL and NHL. Model the hardware's actual response (`--real-seek`, `contracts.switching.YTTV_SEEK`) and grade from the commands the app really sends, not from what it meant.
 - 2026-11-04: **Two sticks are not one tune speed.** Live lab: hidden-stick tune to PLAYING p50 2.33 s / p95 3.06 s on
   the 4K Plus vs 3.74 / 5.50 s on the 4K 2023, but every tune went into one shared median. The roles swap on every
   flip, so there is no free "use the fast stick" choice; what we can do is price the stick that will tune. Tunes now
@@ -236,6 +240,12 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   so a 60 s hold came out 81.7 s (90 -> 111.6 s) in the night lab. Fix: the resume waits at most
   HOLD_RESUME_LOCK_S (1 s), then plays a stick nobody touched since the pause (a token that any _tune on
   that stick clears); `held` is only written if the token survived. Timed waits must not sit behind locks.
+- 2026-11-04: `_held_for` added `self.held` and the caller added `base_s` too, so a watchdog top-up (STK-06)
+  booked the earlier hold twice. `_held_for` now returns only this pause; the caller adds what the stream
+  already ran behind.
+- 2026-11-04: `hold_overreport_s` 1.5 (book a hold as the wall span less 1.5 s) fought `hold_cal_s` -1.5 (a
+  rebuild pauses 1.5 s short): the STK-06 watchdog booked every short rebuild as ~0 s and rebuilt the same
+  2.9 s gap forever on the night lab. The fallback now books the span as is (0); the stick-clock path measures.
 - 2026-11-04 (lane 2, #132): **A standby that a failed switch tuned was never held.** A switch that tunes the
   hidden stick itself (path "tuned") and then finds no safe moment leaves it at the live edge with held=0;
   only preloads hold, and the STK-06 watchdog skipped held=0 by design. Now buffer_error reads an unheld
@@ -250,3 +260,10 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   prompt-only check (CENTER only on a prompt read from a screenshot): cleared at 46 s, 2/2 reruns pass.
   Seed 1 alone (CI) never showed it; run a second seed before calling a night clean.
 - 2026-11-04 (one brain step 2, #168): `from redzone import crunch` in demo/engine.py was shadowed by a local `def crunch(r)` in the same function scope, so the demo card crashed with "'function' object has no attribute 'row'". Unit tests never reach the demo summary; only CI's scorecard job did. Fix: import the module under a name no local uses (`crunch as crunch_table`), and run `python -m redzone.demo 20261101 --summary --json` before pushing anything that touches demo/.
+- **Nov 4, crunch block lifted under an OT winner (lane 2).** A game the feed ends in OT drops out of the candidates while its last plays are still a stream delay from the screen, so `replay.crunch_block` saw no crunch and a catch-up reel ran over the OT goal (NHL dev night 20261027: 6 crunch plays on replay). Fix: `replay.crunch_block_tail` keeps the block until mu + 2 sigma + a poll after the game was last seen in crunch.
+- 2026-11-04 (RC6): the Mac deploy's test step failed on tests/test_citymap.py: docs/citymap_tags.json still tagged
+  modules "Mid-play cuts + entries (per 100 landings)", but the nightly northstar table (700e4d4, `[skip ci]`)
+  regenerated docs/northstar.md with northstar.py's renamed line "Mid-play entries (per 100 landings)". The rename
+  had landed earlier, and the tags only broke once the table was regenerated. A `[skip ci]` commit can still break
+  the suite, so run the full suite on the exact tree you cut, not on the PRs before the nightly merge.
+- 2026-11-04 (RC6 cut): after merging a base commit that was only docs (the [skip ci] nightly table) I ran only the targeted tests. That base commit renamed a North Star line, and `test_citymap` failed on the Mac's deploy test step. The deploy stopped there and nothing switched. **Fix:** after any base merge, run the full suite again before handing an RC SHA to lane 4. A docs-only commit can still break a test that reads docs.
