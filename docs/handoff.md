@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-RC6.3 NOT deployed; RC6.2 (1bf41504) still running. Mac is on battery at 23% and keeps sleeping, so dry-run tests reached only ~6% in 89 min. Overseer stopped them (exit 3 is from that stop, not a test failure).
-URGENT: Mac needs wall power before tonight's games or the live app may stall. Recommended RC6.2 tonight, RC6.3 at the next no-game window. Usage 75%.
+Mac still on battery at 6:20 PM; phone alert sent to Nick. RC6.3 not deployed, RC6.2 live.
+Watch Value cycle 5 first clear win: NBA slate ranker with pre-game market price 65.5% vs closest-game 56.3% (+9.2, range +5.4 to +12.8), draft PR 354. Caveat: price and grading volume both come from markets; real test is Friday's fresh nights. Usage 75%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
