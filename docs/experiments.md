@@ -222,6 +222,17 @@ Plan: [media-metadata.md](datasources/media-metadata.md). No video is ever downl
 | 1200 | EXP-1200 | data C | Land clip tags for MLB (2023-2025) and NHL (2023-24 to now) from public JSON, no key. | Data ledger new-info tokens | 0 / ~2 | C | `media-out/mlb` and `media-out/nhl` hold rows with a licence line + personal-use tag on 100%; >=80% of MLB clips and >=95% of NHL goal clips link to a game event id; ledger.json reports new vs derived tokens; 0 duplicate clip ids | n/a (data) | running |
 | 1201 | EXP-1201 | data C, importance head | "Was clipped" is a hindsight importance label: among MLB plays, P(clipped) rises with WPA leverage, and a leverage model's top-decile plays are clipped >=3x as often as the median decile. | Lift over context-only baseline (label quality) | ~0.5 / ~3 | C + ① | On the time-split valid seasons only (2025 locked, untouched): Spearman(leverage decile, clip rate) >=0.6 with cluster-bootstrap CI by game excluding 0; report per kind. Fail = label is noise, keep it out of training | n/a (data) | queued (after 1200) |
 | 1202 | EXP-1202 | data C | YouTube official-channel snapshots every 6 h give view velocity and a daily Top-10 per league. | Data ledger | 0 / ~1 | C | 7 days of snapshots for all 6 channels, stats refreshed <=30 days, velocity on >=90% of videos after the 2nd snapshot | n/a | blocked (Nick: YOUTUBE_API_KEY secret) |
+## Data Division D: markets (EXP-1300-1399, planner D)
+
+Market prices are model **inputs only** (importance, closeness, volatility): never shown, never a nudge, never a
+betting hook, never a training label (Nick 11:10 PM Nov 4; decisions.md). Plan B tag on every row and model:
+`personal-use, not for commercial release`. Contract and tokens: docs/datasources/markets/contract.md,
+scripts/markets/tokens.py.
+
+| rank | id | covers | hypothesis | North Star line | cost GPU-h / agent-h | lane | success bar | nights needed | status |
+|---:|---|---|---|---|---|---|---|---|---|
+| D1 | EXP-1300 | Data scale (market events) | Public Polymarket 1-minute price history for sports game markets (2024+) lands as vocab v2 market-block tokens in the factory with a license line, and it is new information (observed prices, not derived). | Data ledger: new-information tokens | 0 (Kaggle CPU) / ~3 | D | Ledger bar: >= 5M new-information market tokens landed (counts.json from scripts/markets/tokens.py, 6 per emitted event), >= 70% of events matched to a product game_key, 0 rows missing the B tag, 0 wallet or user fields stored, 0 ticks timestamped after the play they are joined to (time-split audit), license line `yellow-B` in scout.json | n/a (data) | pre-registered |
+| D2 | EXP-1301 | P4 (market expectation), crunch | A live market-volatility input (abs 5-minute change in market p_home, from EXP-1300 ticks, joined point-in-time) behind a flag (off) improves crunch detection over the WP-only crunch state. | Crunch live (NBA/NFL); % of oracle | ~1 / ~3 | D + 1 | On dev nights where a market tick exists, crunch live with the input beats without it by >= 1.0 pt (night-bootstrap lower bound > 0) in >= 1 league, no league worse beyond its CI, entries_mid_play 0; selected on valid only; locked read once by the integrator | dev nights with market coverage (2024+); >= 8 per league for PASS, else PENDING | queued (needs EXP-1300) |
 
 ## Results log
 
