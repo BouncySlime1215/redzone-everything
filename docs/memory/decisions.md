@@ -426,3 +426,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   are self-contained: public inputs at a pinned commit, no Drive mount, no secrets, grades.json printed. The
   overseer launches them in Nick's browser. docs/grading.md still binds: each run is pre-registered, graders are
   frozen, locked is read once (Sunday).
+- 2026-11-04 (Nick, 7:55 PM ET): women's college basketball OFF. `mode.leagues.wcbb: false` by default and WCBB
+  taken out of `core.league_priority` / `models.LEAGUE_ORDER`, so it ranks after every listed league. Nick's leagues
+  are NFL, CFB, NBA, CBB (men's), NHL, MLB. Already set on the live Mac via /api/settings. Scorecards and the
+  North Star never graded WCBB. Lane 1 drops it from the packs and the data ledger.
