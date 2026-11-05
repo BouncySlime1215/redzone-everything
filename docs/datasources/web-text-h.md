@@ -54,12 +54,12 @@ the data's terms before landing.
   "power play"). Output: private shards + public counts.
 - **H2 aligner:** per recap, parse date + teams → game_id via our schedules; split sentences; match each
   sentence to one play by the numbers it carries. Output: the public alignment index
-  (game_id, play_index, recap hash, match score, matched fields) and per-play `mention` counts.
+  (source, game_id, seq, recap hash, match score, matched fields; seq = A's play-table order, so an MLB plate appearance spans several seqs) and per-play `mention` counts.
   Refuses any date inside valid, locked or fresh splits.
 - **H3 Wikipedia:** one pass over the en dump: game, season, rivalry, player, notable-games articles →
   per-matchup numbers for (b) as B's fact-shard format (`kind = new | derived`, `_postgame` suffix for
   after-the-fact facts), handed to B for game importance.
-- **H4 GitHub scout:** the search above each cycle; finds go to A or D with a terms note.
+- **H4 GitHub scout:** the search above each cycle; finds go to A or D with a terms note. A (Nov 5): SportVU sent to the scout for terms; hockeyR-data skipped (overlaps api-web); openplay, OpenF1 low priority.
 
 ## Experiments (EXP-1800..1899)
 
