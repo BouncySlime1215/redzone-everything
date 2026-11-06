@@ -129,7 +129,7 @@ def nfl(gid="1", home="WSH", away="DAL", hs=0, as_=0, q=1, clock=900.0, pos=None
 
 def assert_speed(per_s: float, budget_s: float, what: str = "per call") -> None:
     """A wall-clock speed budget. Skipped (only this assert) when the suite runs at background
-    priority, as `scripts/deploy.py` does on the Mac (taskpolicy -b, efficiency cores): there a
+    priority, as `scripts/deploy.py` does on the Mac (nice 10, or taskpolicy -b on efficiency cores): there a
     budget measures the scheduler, not the code. CI and normal runs still enforce it."""
     import os
     if os.environ.get("RZ_TESTS_LOW_PRIORITY") == "1":

@@ -36,10 +36,7 @@ def extra(ap):
 
 
 def open_list(g):
-    rec = U.load_recipes().get("key_plays")
-    if rec and rec.get("keys"):
-        g.key(*rec["keys"])
-        return dict(found=True, keys=rec["keys"], via="recipe")
+    # saved key lists are not replayed blind (a LEFT/RIGHT on the scrubber seeks): always navigate by focus
     nav = U.navigate_to(g, PAT)
     if nav["found"]:
         g.key("DPAD_CENTER")
