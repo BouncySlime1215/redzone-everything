@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-CORRECTION: the 10:12 PM resume went through before Nick stopped the command. RedZone auto-switching is ON, showing MIA@GS, .181 on screen and .150 standby. Nick has not yet said whether to leave it on.
-The 10 PM read-only sync test lost its hidden stick, so tonight's YouTube TV delay number may be partial or missing.
+YTTV live tests tally: 15 of 58 touched a live stick, 0 passed, 43 never ran. Ad-based tests had no in-game pods on NBA TV; overlay recipes failed and block most UI tests. No delay number yet; one title flip read about 21 s (single sample).
+RedZone auto-switching on, showing MIA@GS. Usage 76%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
