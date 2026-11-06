@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Minimal sweep: auto-switching on, wall power. Usage near the 88% stop; Nick asked whether to stop threads.
+Minimal sweep: auto-switching on, wall power. Scrub preview read planned for 7 PM on the hidden stick.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
