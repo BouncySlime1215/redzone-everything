@@ -6,6 +6,9 @@ import math
 from types import SimpleNamespace
 
 import pytest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
 
 from redzone import buffer_rc8 as R
 from redzone import config
@@ -253,3 +256,17 @@ def test_flip_sets_the_hold_and_rollback_restores_shipped(cfg):
     assert config.for_league(cfg, "timing.behind_live_s.enabled", "nhl") is True
     cfg.update({"league_overrides": R.rollback(cfg.overrides, "nhl")})
     assert config.for_league(cfg, "timing.behind_live_s.enabled", "nhl", False) == shipped
+
+
+def test_gate_report_lists_exp_arms():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("rgr", ROOT / "scripts" / "rc8_gate_report.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    sweep = {"exp601": {"prereg": "docs/prereg/exp-601.md", "grader_freeze": "v38", "verdict_arm": "live_edge",
+                        "result": {"nfl-B75-le": {"holds": False, "breaches": ["a", "b"]},
+                                   "nba-B90-le": {"holds": True, "breaches": []}}}}
+    nfl = m.exp_lines(sweep, "nfl")
+    assert len(nfl) == 1 and "EXP601 nfl-B75-le" in nfl[0] and "FAILS; a; b" in nfl[0]
+    assert "HOLDS" in m.exp_lines(sweep, "nba")[0]
+    assert m.exp_lines(sweep, "nhl") == [] and m.exp_lines(None, "nfl") == []
