@@ -1035,3 +1035,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   --hidden-stick unless --split is train, valid or fit. **Locked exposure on record:** the builder's pre-freeze smoke
   ran v1 NBA's last 3 nights (locked) at B90: mid-play 0 -> 7 in both arms, 18/23 switches to Prime (B = 0). Not a
   gated read; nothing is tuned on it; NBA B and dwell stay where #363 put them until EXP-601 reads train+valid.
+- 2026-11-06 (integrator, EXP-601 read): **EXP-601 FAILS for NFL B75 dw35 and NBA B90; RC8 stays OFF for every league,
+  and the earlier NFL "ON" (sweep addendum 5) is withdrawn.** With the hidden stick's real tune + hold, only ~15% of
+  NFL switches air buffered, and the unbuffered ones carry every added mid-play entry (48/37/49 -> 107/103/90 shipped).
+  Known pessimisms, as registered: on an unbuffered switch the sim's app still believes B (live, the delay book says
+  held 0), and the cut is graded at the tuned time without control's 25 s safe-moment re-check; the B0 controls with
+  the model on also rise (NFL 37-49, NBA 10-11). Lifting them needs a new EXP id, registered before it runs. Nothing on
+  Nick's screen changes: RC6.2's NBA/NFL hold stays as it is.
