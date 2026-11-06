@@ -449,6 +449,7 @@ multiview:                 # YouTube TV multiview as a switch path (redzone/tune
   must_have: 2             # reopen only when one of the top this-many YTTV games isn't a tile
   costs: {mv_open: 15.0, mv_expand: 1.5, mv_collapse: 1.0, mv_step: 0.35}   # seconds, until measured
 tuners:                    # per-app switch paths
+  espn_links: false        # ESPN app event links count as tunable. Off: 0/15 opened on the Fire TV ESPN app (Nov 2-5)
   prime_multiview: false   # Prime NBA multiview (redzone/tuners/prime_multiview.py): a switch between its
                            # tiles is ~1 s of remote navigation, no relaunch. Off until a live Prime NBA
                            # night passes the gate (>= 95% right tile under 2 s, 0 mid-play entries)

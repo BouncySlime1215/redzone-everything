@@ -37,3 +37,14 @@ def test_college_football_on_broadcast_goes_to_local_channel(tmp_path):
     cm = _ch(tmp_path)
     assert cm.where(_g("g4", "ABC", lg=League.CFB)).target == "youtubetv:abc"     # never Sunday Ticket
     assert cm.where(_g("g5", "CW", lg=League.CFB)).target == "youtubetv:cw"
+
+
+def test_espn_app_links_are_not_tunable_unless_turned_on(tmp_path):
+    """Nov 2-5: 0 of 15 ESPN app links opened on the Fire TV ESPN app ("unable to resolve Intent"),
+    and each cost a failed 3-21 s tune (Nov 5 10:12 PM: the night's first pick). tuners.espn_links."""
+    cm = _ch(tmp_path)
+    g = _g("g2", "ACCNX")
+    cm.espn_ids["g2"] = "abc123"
+    assert cm.where(g).target == "espn:abc123" and not cm.where(g).tunable
+    cm.espn_links = True
+    assert cm.where(g).tunable
