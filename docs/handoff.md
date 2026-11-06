@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-CORRECTION to the last status: the Colab tabs did NOT close; all are still open. The app recovered after Nick plugged in the Mac, cause unproven. All logs live again at 8:13 PM (plays, race, sync probe); API 0.02 s.
-Swap still ~10 GB on the 8 GB Mac, so memory remains a risk. Possible Chrome 'Leave site?' dialog needs Nick.
+8:15 PM: Mac on wall power, app API 0.05 s, plays/race/sync logs all live, usage 75%. Swap still ~10 GB; Colab tabs still open pending Nick.
+Tonight on RC6.2: TNF feed race runs on Actions (source order only, no lead over the screen); sync probe runs in-app; YTTV 10 PM read-only tests skipped by default; buffer shadow not running.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
