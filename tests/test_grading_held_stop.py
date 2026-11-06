@@ -58,3 +58,13 @@ def test_hou_sa_oct23_challenge_turnover_is_dead():
     i = next(k for k, x in enumerate(r.plays) if x["period"]["number"] == 4 and x["clock"]["displayValue"] == "8:17"
              and x["type"]["text"] == "Lost Ball Turnover")
     assert grading.dead_at(r.league, r.wall, r.plays, r.wall[i] + 60.0)[0]
+
+
+@pytest.mark.parametrize("order", [("Substitution", "Challenge"), ("Challenge", "Substitution")])
+def test_nhl_shaped_batch_with_sub_and_review(order):
+    # NHL subs classify NONE in stoppage_for; the batch must still hold the stoppage whichever row comes first
+    plays = [_p("Shot", per=2, clk="12:10"), _p(order[0], per=2, clk="12:14"), _p(order[1], per=2, clk="12:14"),
+             _p("Takeaway", per=2, clk="12:14"), _p("Face Off", per=2, clk="12:14"), _p("Shot", per=2, clk="12:30")]
+    wall = [0.0, 30.0, 30.0, 30.0, 150.0, 166.0]
+    assert grading.held_stop(League.NHL, wall, plays, 3) in (grading.Stoppage.REVIEW, grading.Stoppage.WHISTLE)
+    assert grading.dead_at(League.NHL, wall, plays, 90.0)[0]

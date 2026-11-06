@@ -21,7 +21,6 @@ from redzone.sources import espn
 
 # ByLeague: a college league (CFB, CBB) reads its pro league's row (grader v11; oracle.py read PLAY_LEN[lg])
 PLAY_LEN = ByLeague({League.NFL: 7.0, League.MLB: 6.0, League.NBA: 0.0, League.NHL: 0.0})
-BATCH_S = 1.0   # held_stop R1: rows this close in wallclock are one logging batch
 RESUME_LEAD = ByLeague({League.NBA: 26.0, League.NHL: 5.0})   # play can restart this long before the next logged action
 
 # Play types that mean the ball is dead (whistle, timeout, review, period end). Lower-case substrings.
@@ -208,11 +207,12 @@ def held_stop(league: League, wall: list[float], plays: list[dict], i: int) -> S
         return Stoppage.WHISTLE
     per, clk = espn._get(plays[i], "period", "number"), espn._get(plays[i], "clock", "displayValue")
     k = i - 1
-    while k >= 0 and wall[k + 1] - wall[k] <= BATCH_S and espn._get(plays[k], "period", "number") == per \
+    while k >= 0 and int(wall[k]) == int(wall[i]) and espn._get(plays[k], "period", "number") == per \
             and espn._get(plays[k], "clock", "displayValue") == clk:
-        s = espn.stoppage_for(league, plays[k])
-        if s == Stoppage.REVIEW or raw_type(plays[k]) == "substitution":
-            return s
+        if espn.stoppage_for(league, plays[k]) == Stoppage.REVIEW:
+            return Stoppage.REVIEW
+        if raw_type(plays[k]) == "substitution":   # NHL subs classify NONE: a batch sub is still a whistle
+            return Stoppage.WHISTLE
         k -= 1
     return Stoppage.NONE
 
