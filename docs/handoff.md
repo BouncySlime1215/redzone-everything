@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick: RedZone did not switch all night. Cause 1 confirmed: overseer left auto-switching paused after overnight tests, until 10:12 PM, so all of TNF was missed. Sweeps now must report mode.paused.
-Cause 2 suspected: since resume, 0 switches; command lock held 150 s four times while the leave gate stayed closed and delay estimates reset. Overseer stopped its sync tests at 11:20. Needs lane 2 review.
+NEW #1 (Nick): make RedZone switch on YouTube TV, above Watch Value. Lead suspect, unproven: NBA TV delay 42 s with sigma 15-21 and 0 accepted samples keeps leave_gate shut; delay_doubt resets may stop it settling.
+Design under test: delay = per-channel edge constant + exact behind-live from E. Anchors tonight cluster near 21-25 s, not 42. No live config change without Nick.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
