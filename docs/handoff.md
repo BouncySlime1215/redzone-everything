@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-App recovered at 7:45 PM (API 200 in 4.7 s, plays current) but Mac is still on battery at 20%. Stick .150 adb reconnect failed (offline) at 7:44; sync probe and race logs still stopped.
-Overseer has not restarted anything. Usage 75%. RC6.2 live.
+Mac on wall power. App API was timing out; swap was 10.5 GB on the 8 GB Mac. After closing stale Colab tabs, API answers in 0.02 s and the stick_hung warning on .150 cleared.
+Lesson: memory pressure, not only sleep, stalled the app. Keep Chrome light on game nights. Race log is back; sync probe log last wrote 7:46 PM.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
