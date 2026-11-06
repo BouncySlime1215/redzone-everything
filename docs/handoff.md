@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Scrub tests: CENTER or PLAY_PAUSE commit moves the stick back (30 or 120 s), but reported position then crawls; can't yet tell if the picture truly plays. My check for that failed (it backed out to Home). .150 relinked.
-Stick buffer still unproven. Next truth check needs eyes on HDMI1 or a safer overlay read. Threads told 3 max at 83% usage.
+Sweep: RC6.2 live, auto-switching on, wall power. Waiting on Nick to watch HDMI1 for the scrub check.
+RC6.3 still waits on Nick; no shadow data tonight without it.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
