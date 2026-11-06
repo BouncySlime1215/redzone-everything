@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Hidden-stick YTTV tests ran on .181: no delay number yet. NBA TV landings cluster at 46,790.14 s (about 0.01 s spread) but the test scored FAIL on bad zero reads, needs a filter; overlay recipes failed for real, which blocks overlay-based tests.
-.181 parked on NBA TV. Read-only MIA@GSW test starts 9:57 PM. TNF scorebug check waits on Nick. Usage 75%.
+Sweep: Mac on wall power, logs writing, usage 75%. .181 parked on NBA TV; read-only MIA@GSW test armed for 9:57 PM.
+TNF scorebug check still waits on Nick. App responsiveness and swap being watched.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
