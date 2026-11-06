@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep 11:44 PM: mode not paused, wall power, usage 76%. Still 0 switches since 10:12 PM with 3 live games; leave gate reports 'play is live'. Matches the lead suspect, not proven.
-Lane 2 replay of tonight's logs is the top job; awaiting root cause. No live config changes.
+ROOT CAUSE confirmed by lane 2 replay: the leave gate blocked every switch, not the command lock. NBA TV delay 42 s +-15 plus no NBA break minimums meant only halftime could open it; ESPN links also failed for ANA@EDM and NSH@COL; stale ESPN corrections closed halftime at 11:18 PM.
+Fix: draft PR 357 (NBA quarter-break floor, gate logging, halftime test), flag OFF until replayed on recorded YTTV nights. Per-channel delay model next. PR 356 fixes test bank.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
