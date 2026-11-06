@@ -287,8 +287,56 @@ def ocr(path: Path) -> dict:
     obs = [dict(text=o.text, conf=round(o.confidence, 2), x=o.x, y=o.y, w=o.width, h=o.height)
            for o in r.observations]
     foc = [dict(x=f.x, y=f.y, w=f.width, h=f.height, text=f.text) for f in r.focus_boxes]
+    status = r.focus_status
+    if not foc and r.status in ("ok", "empty"):
+        # The app's parser keeps a filled-button focus only when its text is a playback action
+        # (Resume, Watch key plays...). The YTTV player row (HD, CC, Networks, Multiview, Stats...)
+        # is all filled buttons, so ui_10 saw no focus (Nov 5 night). Re-read the helper's raw
+        # candidates here, test-only; the app's own gate is unchanged.
+        foc, status = bank_focus(path, obs)
     return dict(status=r.status, W=r.width or 1920, H=r.height or 1080, obs=obs, focus=foc,
-                focus_status=r.focus_status)
+                focus_status=status)
+
+
+def pick_focus(cands: list[dict], obs: list[dict]) -> tuple[list[dict], str]:
+    """From raw helper focus candidates, the one focused element: a rectangle border wins (YTTV draws it
+    around the focused control); else the single most confident filled button. Text = OCR rows inside it."""
+    out = []
+    for c in cands or []:
+        try:
+            x, y, w, h, cf, src = (float(c["x"]), float(c["y"]), float(c["width"]), float(c["height"]),
+                                   float(c["confidence"]), c["source"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        floor = 0.9 if src == "neutral_rectangle_border" else 0.68 if src == "neutral_filled_button" else None
+        if floor is None or cf < floor or not (0 < w <= 1 and 0 < h <= 1):
+            continue
+        txt = "\n".join(t["text"] for t in obs if t["x"] >= x - 0.005 and t["y"] >= y - 0.005
+                        and t["x"] + t["w"] <= x + w + 0.005 and t["y"] + t["h"] <= y + h + 0.005)
+        txt = "\n".join(ln for ln in txt.splitlines() if ln.strip() not in {"•", "▶", "►", "▸", "●", ">"})
+        out.append(dict(x=x, y=y, w=w, h=h, text=txt, conf=cf, src=src))
+    if not out:
+        return [], "none"
+    rect = [f for f in out if f["src"] == "neutral_rectangle_border"]
+    pool = rect or out
+    best = max(pool, key=lambda f: f["conf"])
+    tie = [f for f in pool if f is not best and f["conf"] >= best["conf"] - 0.02]
+    return [best], ("bank_unique" if not tie else "bank_best_of_%d" % (len(tie) + 1))
+
+
+def bank_focus(path: Path, obs: list[dict]) -> tuple[list[dict], str]:
+    """Raw focus candidates from the same Vision helper the app uses (macOS only)."""
+    import json as _json
+    import platform
+    if platform.system() != "Darwin":
+        return [], "none"
+    try:
+        from redzone.screen_ocr import _helper
+        proc = subprocess.run([str(_helper(45.0)), str(path)], capture_output=True, text=True, timeout=15)
+        cands = _json.loads(proc.stdout).get("focus_candidates", [])
+    except Exception:  # noqa: BLE001
+        return [], "none"
+    return pick_focus(cands, obs)
 
 
 # ------------------------------------------------------------------------------------------ pixels

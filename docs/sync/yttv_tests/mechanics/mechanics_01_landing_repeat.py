@@ -33,7 +33,20 @@ def mad(xs):
     return round(1.4826 * st.median([abs(x - m) for x in xs]), 3)
 
 
+def drop_zero(groups: dict) -> tuple[dict, int]:
+    """Landings below M.MIN_LANDING_S are placeholder reads (position 0), never landings."""
+    kept, n = {}, 0
+    for k, Ls in groups.items():
+        good = [x for x in Ls if x is not None and x >= M.MIN_LANDING_S]
+        n += len(Ls) - len(good)
+        if good:
+            kept[k] = good
+    return kept, n
+
+
 def judge(out, groups: dict, min_n: int = 5):
+    groups, dropped = drop_zero(groups)
+    out("zero_reads_dropped", n=dropped)
     for (h, ch), Ls in sorted(groups.items()):
         s = M.summary(Ls)
         out("group", host=h, ch=ch, L=s, L_mad=mad(Ls), L_minus_46800=s.get("p50") and round(s["p50"] - 46800, 3))
