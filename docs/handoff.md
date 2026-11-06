@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep: RC6.2 live, no games, not paused, wall power. RC6.3 waits on Nick; needed for buffer shadow data before tonight's games.
-Path to working switching is RC8 buffer-on, gated on real shadow data.
+Sweep: RC6.2 live, no games, not paused, wall power, usage checked.
+RC6.3 waits on Nick; RC8 buffer-on remains the path to working switching.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
