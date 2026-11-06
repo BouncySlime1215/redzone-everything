@@ -1022,3 +1022,6 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   seed 0 473 -> 521/537, mid-play 10 -> 10, crunch live 87.0 -> 86.3, dead air 21.6 = ; plain B0 unchanged. v1
   pinned scorecards (all six): no change except NHL crunch live -0.2 / -0.8 (resync). Left: 20251231 (2 plays at
   arrival, never left) and 20261024 (NBA leave gate; decider.leave.low_leverage, awaiting Nick's RC6.3 pick).
+  Integrator ruling: ships ON below the 100% bar set for it because neither left miss is on a path the flag touches
+  and mid-play entries / plays missed are identical on every harness; crunch live -0.3/-0.7 overall is the price of
+  never leaving your team for a neutral crunch (north star: his teams first). v1 locked read once at the next release.
