@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-8:15 PM: Mac on wall power, app API 0.05 s, plays/race/sync logs all live, usage 75%. Swap still ~10 GB; Colab tabs still open pending Nick.
-Tonight on RC6.2: TNF feed race runs on Actions (source order only, no lead over the screen); sync probe runs in-app; YTTV 10 PM read-only tests skipped by default; buffer shadow not running.
+Hidden-stick YTTV tests ran on .181: no delay number yet. NBA TV landings cluster at 46,790.14 s (about 0.01 s spread) but the test scored FAIL on bad zero reads, needs a filter; overlay recipes failed for real, which blocks overlay-based tests.
+.181 parked on NBA TV. Read-only MIA@GSW test starts 9:57 PM. TNF scorebug check waits on Nick. Usage 75%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
