@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep: RC6.2 live, auto-switching on, wall power. Waiting on Nick to watch HDMI1 for the scrub check.
-RC6.3 still waits on Nick; no shadow data tonight without it.
+Sweep: RC6.2 live, auto-switching on, wall power. Scrub preview read planned on hidden stick for the 7 PM NBA games, numbers only.
+HDMI1 eyes check and RC6.3 wait on Nick.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
