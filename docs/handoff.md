@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep 7:45 AM: RC6.2 live, no games, not paused, wall power.
-Draft fixes off by default. RC6.3 waits on Nick; needs deploying before tonight's games for shadow data.
+Sweep 8:15 AM: RC6.2 live, no games, not paused, wall power.
+RC6.3 waits on Nick; 9:15 AM new-night read due from the Watch Value loop.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
