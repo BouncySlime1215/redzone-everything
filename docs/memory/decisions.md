@@ -1042,3 +1042,5 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   held 0), and the cut is graded at the tuned time without control's 25 s safe-moment re-check; the B0 controls with
   the model on also rise (NFL 37-49, NBA 10-11). Lifting them needs a new EXP id, registered before it runs. Nothing on
   Nick's screen changes: RC6.2's NBA/NFL hold stays as it is.
+- 2026-11-06 (integrator): **Grader freeze v39: rc8_gate_report.py prints one line per follow-up EXP arm (#373).**
+  Report-only: EXP-601's holds / fails, prereg, grader and verdict arm appear under each league; no gate changes.
