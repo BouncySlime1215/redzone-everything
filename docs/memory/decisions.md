@@ -961,3 +961,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `{end_period: 120}` (fit min 148 s over 103 breaks, valid min 148 over 34). Why: on Nov 5, NBA timeouts and quarter
   breaks could never open the leave gate with a wide delay and the measured feed lag. It stays OFF until it's graded
   in replay on recorded YTTV nights; Nick flips it.
+- 2026-11-06 (YTTV switching owner thread; Nick's 6:14 AM item 3, NBA buffer on the fast feed, step 1): new defaults, off.
+  `decider.lag_from_fastest_feed: false`: when on (per league), the timeline's feed lag is the fastest fresh source's
+  own recent worst case, not the max over every source. On Nov 4-5, ESPN's copies of plays nba_cdn had already
+  delivered read 37-170 s late and set lag_est. `decider.lag_source_fresh_s: 120`: a source whose last sample is
+  older than this no longer counts. Plan: /mnt/project-files/yttv-switch/nba-fast-feed-buffer-plan.md.

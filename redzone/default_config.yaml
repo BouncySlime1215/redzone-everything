@@ -321,6 +321,8 @@ decider:
   locked_override_lead: 20
   manual_pause_s: 60
   uncalibrated_sigma_s: 8  # above this delay uncertainty, only leave at official stoppages
+  lag_source_fresh_s: 120     # ...a source counts only if its last lag sample is this recent
+  lag_from_fastest_feed: false  # feed lag = the fastest fresh source's recent worst case, not every source's (ESPN copies of nba_cdn plays)
   sticky_visit_needs_calibration: true  # your game's break: only visit games whose delay is calibrated (else no way back until their own break)
   wait_for_my_team_s: 1800  # your team tips within this: don't start on a basketball/hockey game we can't leave (uncalibrated)
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
