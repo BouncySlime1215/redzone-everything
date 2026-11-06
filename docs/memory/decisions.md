@@ -961,3 +961,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `{end_period: 120}` (fit min 148 s over 103 breaks, valid min 148 over 34). Why: on Nov 5, NBA timeouts and quarter
   breaks could never open the leave gate with a wide delay and the measured feed lag. It stays OFF until it's graded
   in replay on recorded YTTV nights; Nick flips it.
+- **2026-11-06 (lane 2, RC8 switch count, coordinator):** new flags `decider.dwell.min_s` (0) and
+  `decider.dwell.long_visit_min_score` (0), EXP-213, both OFF (no behavior change). They are for the RC8 sweep:
+  with the buffer on, NBA B=90 and NFL B=75 switch 1.58x / 1.80x as often as live (bar 1.5x). Fit nights, seed 0,
+  dev only: NBA B=90 resync `long_visit_min_score: 20` gives 73 -> 61 switches (B=0: 46, so 1.33x) with big plays
+  from start, crunch and mid-play unchanged, dead air +2.1 pt. NFL B=75 `min_s: 30` gives 1078 -> 908 non-replay
+  (B=0: 679, so 1.34x), big from start 47.8 -> 47.0, crunch unchanged, dead air +1.7 pt. Lane 3 re-sweeps them on
+  all seeds and harnesses; Nick flips them with RC8 per league.
