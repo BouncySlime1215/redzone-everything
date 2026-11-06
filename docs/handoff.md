@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-RC6.3 deploy stopped: tests timed out at 60 min, nothing changed, RC6.2 live. Timeout, not a test failure; the suite now outgrows the deploy limit at background priority.
-Overseer is running the full suite off to the side with no limit. If it passes, Nick's OK is needed to deploy that exact commit without the rerun.
+Sweep: RC6.3 side test run in progress on the exact release commit; RC6.2 live, no games, usage 77%.
+Kaggle factory one-shot due 2:37 AM. YTTV switching remains the top job.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
