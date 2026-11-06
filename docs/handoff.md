@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep: RC6.2 live, no games, not paused, usage checked. RC6.3 waits on Nick's OK.
-Threads nudged on replay of PRs 357 and 358, per-channel delay model and ESPN links.
+BIG: exact YTTV delay does NOT fix live switching in replay: 0.6 to 0.8 switches/h and 3-4 of 12 entries mid-play, because NBA feed lag (14-109 s) exceeds YTTV delay (26-42 s). Only the 90 s buffer reaches 0 mid-play, so the path is RC8 buffer-on.
+PRs 357/358 showed no replay change (unit-test evidence only). ESPN app links opened 0 of 15; PR 360 turns them off.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
