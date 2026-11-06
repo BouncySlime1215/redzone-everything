@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Finer pause test died with the session restart and left .150 paused; relinked. Its partial data shows the behind-live meter glitches (position resets, stale reads), so 'snapped to live' is not proven. Raw-logging rerun plus rewind tests running on hidden .150.
-Nick: solve YouTube TV before anything else. Chrome closed, swap down to 0.6 GB.
+CORRECTION: the 20-min hold at 79.7 s is suspect. The meter stays constant if the player stops reporting, and raw reruns show 30/60/75/90 s pauses back near live 20-30 s after resume. Stick buffer NOT proven.
+Rewind keys did nothing. Now testing overlay scrub seek and pause hold with forced fresh reads on hidden .150.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
