@@ -456,6 +456,9 @@ def note_overnight_running() -> str | None:
 
 
 # ----------------------------------------------------------------------------------------------- live helpers 2
+MIN_LANDING_S = 1.0   # a landing position below this is a placeholder read (position 0), never a landing
+
+
 def tune_measure(g: Guard, ch: str, timeout: float = 25.0) -> dict:
     """Deep-link tune with precise timing. play_s_poll = Mac poll at first PLAYING on the new channel;
     play_s_upd = (boot + updated/1000) - t_cmd, i.e. the stick's own timestamp of the PLAYING update.
@@ -468,18 +471,27 @@ def tune_measure(g: Guard, ch: str, timeout: float = 25.0) -> dict:
     t_cmd = time.time()
     g.out("action", host=g.host, tune=ch)
     T.sh(g.host, f"am start -a android.intent.action.VIEW -d https://tv.youtube.com/watch/{T.CODES[ch]} {PKG}")
+    zero = 0
     while time.time() - t_cmd < timeout:
         r = read(g.host)
         if r and r["st"] == "playing" and chan_key(r["sub"]) in (ch, ch.replace("network", "")) \
                 and (before is None or r["upd"] != before["upd"]):
+            if r["pos"] < MIN_LANDING_S:
+                # YTTV posts a PLAYING update at position 0 while the stream attaches (Nov 5 night):
+                # a placeholder, not the landing. Keep polling for the real one; same rule as the
+                # recorded extractor (tune_events: position > 1000 ms).
+                zero += 1
+                time.sleep(0.5)
+                continue
             boot = clk.get("boot_epoch")
             return dict(ch=ch, ok=True, t_cmd=round(t_cmd, 3), play_s_poll=round(r["t"] - t_cmd, 2),
                         play_s_upd=None if boot is None else round(boot + r["upd"] / 1000 - t_cmd, 3),
                         L=round(r["pos"], 3), E_land=round(r["E"], 3), title=r["title"][:30],
-                        boot_epoch=boot, rtt=r["rtt"])
+                        boot_epoch=boot, rtt=r["rtt"], zero_reads_skipped=zero)
         time.sleep(0.5)
     r = read(g.host)
-    return dict(ch=ch, ok=False, t_cmd=round(t_cmd, 3), sub=r and r["sub"], st=r and r["st"])
+    return dict(ch=ch, ok=False, t_cmd=round(t_cmd, 3), sub=r and r["sub"], st=r and r["st"],
+                zero_reads_skipped=zero)
 
 
 def codec_lines_since(host: str, epoch: float, n: int = 400) -> list[tuple[float, str]]:

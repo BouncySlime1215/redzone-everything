@@ -10,7 +10,9 @@ the overlay. None of these moves the playhead. If so, ui_02/06/07/08 can use exa
 PROCEDURE (hidden stick only; never DPAD_CENTER except with --open-safe on the whitelist):
   1. deep-link tune --channel; wait 5 s; E0 = media_session E
   2. DPAD_DOWN -> screencap/OCR: which label holds focus (focus rectangle from the OCR helper)
-  3. DPAD_LEFT x9 (to the row start), then DPAD_RIGHT x9 one at a time, screencap each: map index->label
+  3. DPAD_DOWN (max 3) until a known row button holds focus; then LEFT one guarded step at a time to the
+     row start and RIGHT one step at a time, screencap each: map index->label. Never LEFT/RIGHT while
+     the focus is unknown or on the scrubber (there they SEEK: Nov 5 night, LEFT x9 cost 60 s).
   4. DPAD_UP -> screencap: scrub label present? (bar focus) ; DPAD_UP again -> screencap ; DPAD_DOWN x2
   5. --open-safe: for label in ('More to watch','Episodes','Stats','Key plays'): go there, CENTER,
      screencap + OCR the panel text, BACK, screencap (overlay still up? player still playing?)
@@ -61,22 +63,43 @@ def live(args, g, out):
     E0 = U.ms_raw(g.host).get("E")
     g.key("DPAD_DOWN"); _, _, o = U.snap(g, f"{ID}_reveal")
     first = U.focused_text(o)
-    out.write("reveal", focused=first, row=row_from_ocr(o), focus_boxes=o["focus"])
-    if U.parse_overlay(o, time.time())["scrub_label"]:   # bar has focus: LEFT would SEEK -> go down first
-        g.key("DPAD_DOWN")
-        out.write("note", msg="overlay opened with the bar focused; moved down to the row")
-    g.key(*(["DPAD_LEFT"] * 9), gap=0.6)
+    out.write("reveal", focused=first, row=row_from_ocr(o), focus_boxes=o["focus"],
+              focus_status=o.get("focus_status"))
+    # Nov 5 night: focus was unknown here and LEFT x9 SEEKED the stick ~60 s back. Now: DOWN (never
+    # LEFT/RIGHT) until a known row button holds focus; if none does, stop without mapping.
+    ft, down_keys = U.reach_row(g, reveal=())
+    out.write("reach_row", focused=ft, keys=down_keys)
     rowmap = []
-    for i in range(10):
-        _, _, o = U.snap(g, f"{ID}_row{i}")
-        ft = U.focused_text(o)
-        fb = o["focus"][0] if o["focus"] else None
-        rowmap.append(dict(i=i, focused=ft, x=fb and round(fb["x"], 3)))
-        out.write("row_step", i=i, focused=ft, focus=fb)
-        if i < 9:
+    if ft:
+        # walk LEFT to the row start, one guarded step at a time
+        lefts = 0
+        while lefts < 9:
+            g.key("DPAD_LEFT"); lefts += 1
+            _, _, o = U.snap(g, f"{ID}_left{lefts}")
+            nxt = U.focused_text(o).strip()
+            if not U.is_row_button(nxt):
+                # focus left the row (unknown counts as the scrubber): press nothing more sideways
+                out.write("row_stop", i=0, focused=nxt, why="LEFT left the button row: stopped")
+                ft = ""
+                break
+            if nxt == ft:              # focus did not move: row start
+                break
+            ft = nxt
+        for i in range(10 if ft else 0):
+            _, _, o = U.snap(g, f"{ID}_row{i}")
+            cur = U.focused_text(o).strip()
+            fb = o["focus"][0] if o["focus"] else None
+            if not U.is_row_button(cur):
+                out.write("row_stop", i=i, focused=cur, why="not a row button: no more LEFT/RIGHT")
+                break
+            if rowmap and cur == rowmap[-1]["focused"]:
+                break                  # row end
+            rowmap.append(dict(i=i, focused=cur, x=fb and round(fb["x"], 3)))
+            out.write("row_step", i=i, focused=cur, focus=fb)
             g.key("DPAD_RIGHT")
-    # back to the start of the row, then up to the bar
-    g.key(*(["DPAD_LEFT"] * 9), gap=0.6)
+    else:
+        out.write("row_stop", i=0, focused=first, why="no row button reached after DOWN x3: no LEFT/RIGHT pressed")
+    # up to the bar (UP does not seek), read the scrub label, then hide
     g.key("DPAD_UP"); _, wU, oU = U.snap(g, f"{ID}_up1")
     ov1 = U.parse_overlay(oU, wU)
     g.key("DPAD_UP"); _, wU2, oU2 = U.snap(g, f"{ID}_up2")
@@ -87,14 +110,13 @@ def live(args, g, out):
         scrub_keys = ["DPAD_UP"]
     elif ov2["scrub_label"]:
         scrub_keys = ["DPAD_UP", "DPAD_UP"]
-    g.key("DPAD_DOWN", "DPAD_DOWN")
     labels = [r["focused"] for r in rowmap]
-    for name, rx in (("cc_button", r"^\s*c\s*c\s*$"), ("stats_panel", r"stats|scores|box ?score"),
+    for name, rx in (("cc_button", r"^\W*c\s*c\W*$"), ("stats_panel", r"stats|scores|box ?score"),
                      ("key_plays", r"key ?plays|highlights")):
         idx = next((i for i, l in enumerate(labels) if l and re.search(rx, l, re.I)), None)
         if idx is not None:
-            keys = ["DPAD_DOWN"] + ["DPAD_LEFT"] * 9 + ["DPAD_RIGHT"] * idx + ["DPAD_CENTER"]
-            U.save_recipe(name, dict(keys=keys, label=labels[idx], from_="no overlay"))
+            # label only: consumers navigate by focus (navigate_to), never by a blind key list
+            U.save_recipe(name, dict(label=labels[idx], index=idx, from_="row start"))
     if scrub_keys:
         U.save_recipe("scrub_focus", dict(keys=scrub_keys, from_="overlay just revealed"))
     U.save_recipe("row", dict(labels=labels))
@@ -102,10 +124,9 @@ def live(args, g, out):
         for i, l in enumerate(labels):
             if l and any(s.lower() == l.lower().strip("():[]=E ").strip() or s.lower() in l.lower() for s in SAFE_OPEN):
                 hide_overlay(g)
-                g.key("DPAD_DOWN", *(["DPAD_LEFT"] * 9), *(["DPAD_RIGHT"] * i), gap=0.6)
-                _, _, oF = U.snap(g, f"{ID}_pre{i}")
-                if U.focused_text(oF).strip().lower() != l.strip().lower():
-                    out.write("skip_open", label=l, focused=U.focused_text(oF), why="focus not where expected")
+                nav = U.navigate_to(g, "^" + re.escape(l.strip()) + "$")
+                if not nav["found"]:
+                    out.write("skip_open", label=l, focused=nav.get("text"), why=nav.get("why") or "not reached")
                     continue
                 g.key("DPAD_CENTER"); time.sleep(1.5)
                 _, _, oP = U.snap(g, f"{ID}_open{i}")

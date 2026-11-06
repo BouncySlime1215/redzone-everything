@@ -54,10 +54,7 @@ def caption_lines(o: dict) -> list[str]:
 
 
 def toggle_cc(g):
-    rec = U.load_recipes().get("cc_button")
-    if rec and rec.get("keys"):
-        g.key(*rec["keys"])
-        return dict(found=True, keys=rec["keys"], via="recipe")
+    # saved key lists are not replayed blind (a LEFT/RIGHT on the scrubber seeks): always navigate by focus
     nav = U.navigate_to(g, r"^\s*c\s*c\s*$", row_key="DPAD_LEFT", max_steps=8)
     if not nav["found"]:
         nav = U.navigate_to(g, r"^\s*c\s*c\s*$", row_key="DPAD_RIGHT", max_steps=8, reveal=())
