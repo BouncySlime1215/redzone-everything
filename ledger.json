@@ -1,0 +1,18 @@
+{
+  "bsky": {
+    "rows_minutes": 362,
+    "term_minutes": 6156,
+    "tokens_new_info_label": 13036,
+    "tokens_derived": 0,
+    "stored_bytes": 90114,
+    "days": [
+      "2026-11-05",
+      "2026-11-06"
+    ],
+    "tokens_per_gb": 144661207,
+    "feeds": "label: attention_minute (per-team mention spike, z vs team's own baseline, lag 0-5 min) -> Watch Value / reward-model eval",
+    "use": "label/eval only, never a same-moment input",
+    "license": "Bluesky public firehose via Jetstream: public AT Protocol data, no auth; counts only, no text, no DIDs stored; plan B, personal use, not for commercial release",
+    "tag": "personal-use, not for commercial release"
+  }
+}
