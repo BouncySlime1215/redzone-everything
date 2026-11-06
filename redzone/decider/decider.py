@@ -416,6 +416,7 @@ class Decider:
         d = self._pick(d, cands, now)
         d = self._hold_for_big(d, cands, now, home_before)
         d = self._time_entry(d, cands, now, home_before)
+        d = self._dwell(d, cands, now, home_before)
         d = self._crunch_floor(d, d0, cands, now, home_before)
         d = self._safe(d, cands, now, home_before)
         if not commit and d.action in ("switch", "replay"):
@@ -945,6 +946,26 @@ class Decider:
         "rewind" (land on the last whistle with a rewind when one fits, else go now), or "wait"
         (rewind or wait for a whistle, like any entry)."""
         return str(self._lc("decider.entry.crunch_now", x, "live"))
+
+    def _dwell(self, d: Decision, cands, now: float, home_before) -> Decision:
+        """[EXP-213, RC8 switch count] Stay at least decider.dwell.min_s on a game before an optional switch
+        (decider.dwell.kinds: a break visit, a chase, a better game...). With the time-shift buffer the decider
+        sees every break coming and hops more (NBA B=90 1.58x, NFL B=75 1.80x the live switch rate against a
+        1.5x bar). Never holds crunch time, a game that ended, the way home, your taps or a first pick, and
+        only ever turns a switch into a stay, so Rule #1 is untouched. 0 = off."""
+        if d.action != "switch" or not self.current or self.current in PSEUDO:
+            return d
+        x = cands.get(self.current)
+        min_s = float(self._lc("decider.dwell.min_s", x, 0) or 0)
+        if min_s <= 0 or d.kind not in set(self._lc("decider.dwell.kinds", x, None) or ()):
+            return d
+        left = self.since + min_s - now
+        if left <= 0:
+            return d
+        self.home_break_visit, self.home_return_at = home_before
+        state = State.REPLAY if self.after_replay else d.state
+        return Decision(now, "stay", self.current, f"just got here: {left:.0f}s before an optional switch: {d.reason}",
+                        state, d.gate, want=d.target)
 
     def _time_entry(self, d: Decision, cands, now: float, home_before) -> Decision:
         """Hold a switch until its picture would come up on a dead ball, or land it with a rewind."""
@@ -2624,8 +2645,10 @@ class Decider:
         left = self._long_break_left(home, now)
         if left is None or left < LONG_VISIT_MIN_S:
             return None
+        # [EXP-213] a halftime trip has to be worth two switches: below this score, the ads win (0 = any game)
+        floor = float(self._lc("decider.dwell.long_visit_min_score", home, 0) or 0)
         options = {gid: x for gid, x in watchable.items() if gid != home and not x.scored.is_break
-                   and gid not in self._screen_break}
+                   and gid not in self._screen_break and (gid in PSEUDO or x.scored.score >= floor)}
         if self._visit_needs_exit(home, watchable):
             # [return trip] Uncalibrated, a visited game's gate opens only at its own long breaks:
             # a WSH halftime visit to an NBA game stranded us through WSH's 3rd quarter and crunch.

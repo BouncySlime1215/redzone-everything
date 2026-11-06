@@ -967,3 +967,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   clean unread 2025-26 nights (v3 dev North Star already read every added 2025-26 night, and T8's EXP-128 trained on
   NBA/NHL Mar-Jun 2026), and the >= 25% locked rule. The v1 -> v3 dev jump (NHL mid-play 0 -> 344/3340, NBA 0 -> 9/784,
   all on 2025-26 nights) goes to the test writers for an autopsy before any v3 dev number is used for a gate.
+- **2026-11-06 (lane 2, RC8 switch count, coordinator):** new flags `decider.dwell.min_s` (0) and
+  `decider.dwell.long_visit_min_score` (0), EXP-213, both OFF (no behavior change). They are for the RC8 sweep:
+  with the buffer on, NBA B=90 and NFL B=75 switch 1.58x / 1.80x as often as live (bar 1.5x). Fit nights, seed 0,
+  dev only: NBA B=90 resync `long_visit_min_score: 20` gives 73 -> 61 switches (B=0: 46, so 1.33x) with big plays
+  from start, crunch and mid-play unchanged, dead air +2.1 pt. NFL B=75 `min_s: 30` gives 1078 -> 908 non-replay
+  (B=0: 679, so 1.34x), big from start 47.8 -> 47.0, crunch unchanged, dead air +1.7 pt. Lane 3 re-sweeps them on
+  all seeds and harnesses; Nick flips them with RC8 per league.

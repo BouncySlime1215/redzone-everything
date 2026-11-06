@@ -337,6 +337,10 @@ decider:
     # can only be left while start + floor + delay hasn't passed. NBA end of a quarter, fit nights: min 148 s
     # (103 breaks, 7 nights; valid 34 breaks, min 148). Candidate {end_period: 120}, OFF until graded.
     break_floor_s: {}
+  dwell:                   # [EXP-213, RC8 switch count] stay at least min_s on a game before an OPTIONAL switch
+    min_s: 0               # 0 = off. Only these kinds wait; crunch, ended, home, return, start, user never do
+    kinds: [break_visit, chase, better, drive, live]
+    long_visit_min_score: 0   # a halftime / intermission visit only to a game at least this good (0 = any game)
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
     floor: true            # [SAFE-09] in a crunch window: no overlay or model leaves it for a non-crunch game, and
     floor_low_value: 0     # ...no game below this value (watch value, else score) pulls us out. 0 = off: at 50 it
