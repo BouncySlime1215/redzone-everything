@@ -974,3 +974,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   from start, crunch and mid-play unchanged, dead air +2.1 pt. NFL B=75 `min_s: 30` gives 1078 -> 908 non-replay
   (B=0: 679, so 1.34x), big from start 47.8 -> 47.0, crunch unchanged, dead air +1.7 pt. Lane 3 re-sweeps them on
   all seeds and harnesses; Nick flips them with RC8 per league.
+- 2026-11-06 (integrator, grader v34; T9 #366 after EXP-213 #363): `scripts/rc8_gate_report.py` refrozen. Report-only:
+  it prints lane 3's verdict_caveat next to any ON verdict and maps the NFL need `dwell_min_s_35` to
+  `--set decider.dwell.min_s=35` in the flip command. No gate logic or bar moved. NFL's ON at B=75 + dwell 35 s is
+  dev-tuned (35 s chosen after 30 s missed the 1.5x switch bar on the same train+valid nights, which the gate allows
+  for picking a setting), so it carries the caveat and only the locked read at the RC8 cut plus the shadow veto decide;
+  Nick flips. Grader freeze v34.
