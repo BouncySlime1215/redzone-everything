@@ -1927,12 +1927,14 @@
     "redzone/decider/screen.py",
     "redzone/grading.py",
     "redzone/lab/cutgrade.py",
+    "redzone/lab/evaldata.py",
     "redzone/lab/leverage.py",
     "redzone/lab/timing.py",
     "redzone/models.py",
     "redzone/scoring/drive.py",
     "redzone/scoring/engine.py",
     "redzone/sources/espn.py",
+    "redzone/standby.py",
     "uses:FLIP_PRIOR",
     "uses:PRETUNE_PRIOR_S",
     "uses:YTTV_SEEK",
@@ -2163,6 +2165,7 @@
    "kind": "module",
    "outputs": [
     "redzone/demo/__main__.py",
+    "redzone/lab/backtest.py",
     "redzone/lab/splits.py",
     "scripts/backfill_eval_v2.py",
     "scripts/build_eval_data.py",
@@ -3959,7 +3962,8 @@
    "kind": "module",
    "outputs": [
     "redzone/demo/engine.py",
-    "redzone/engine.py"
+    "redzone/engine.py",
+    "redzone/lab/backtest.py"
    ],
    "owner": "SWITCHING",
    "role": "Hot standby: what the hidden stick should be playing, so the next switch is a 1-2s input flip.",
