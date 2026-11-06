@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick said 'turn it on' (auto-switching), then stopped the command mid-run; overseer is waiting for his word and changing nothing. State read only this sweep.
-Read-only MIA@GSW test status logged in tonight.md. Usage checked.
+CORRECTION: the 10:12 PM resume went through before Nick stopped the command. RedZone auto-switching is ON, showing MIA@GS, .181 on screen and .150 standby. Nick has not yet said whether to leave it on.
+The 10 PM read-only sync test lost its hidden stick, so tonight's YouTube TV delay number may be partial or missing.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
