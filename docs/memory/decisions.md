@@ -951,3 +951,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   agreement with the oracle >= 65% in the worst league; PENDING until a card carries watch_value. A 0-1 calibration
   value is read as a fraction and scaled to points (errs toward FAIL). `scripts/sync_truth_wv.py` (#353, lane 2) is an
   offline ledger input, not a gate, and is not frozen. Grader freeze v33.
+- 2026-11-06 (YTTV switching owner thread, Nick 11:33 PM Nov 5 order items 2 and 5; #358): new defaults, all off.
+  `decider.stale_correction_guard: false`: when on, a feed entry timed before the open stoppage began can't end it.
+  On Nov 5, a 32-minute-old ESPN correction closed MIA@GS halftime. `health.push_switch_alerts: false`: when on,
+  paused_in_games and no_switch go to the phone. Those two invariants are always logged. `health.no_switch_s: 1200`
+  and `health.no_switch_min_games: 2` follow Nick's "no switch for 20+ min with multiple live games". Nick flips them.

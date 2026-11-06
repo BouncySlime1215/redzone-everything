@@ -53,8 +53,6 @@ PUSH = {"tv_auth"}
 # ...and these too, only with health.push_switch_alerts on (Nick, Nov 5: alert when paused during games
 # or when nothing switches for 20+ min with several live games).
 SWITCH_ALERTS = {"paused_in_games", "no_switch"}
-NO_SWITCH_S = 1200.0
-NO_SWITCH_MIN_GAMES = 2
 
 
 def _alive(task: Any) -> bool:
@@ -149,9 +147,11 @@ class PlatformHealth:
             return []
         if getattr(getattr(dec, "user", None), "paused", False):
             return [("paused_in_games", "decider", f"auto-switching is paused with {len(live)} live game(s) on")]
+        from redzone import config as _config
         cfg = getattr(e, "cfg", None)
-        limit = float(cfg.get("health.no_switch_s", NO_SWITCH_S)) if cfg is not None else NO_SWITCH_S
-        need = int(cfg.get("health.no_switch_min_games", NO_SWITCH_MIN_GAMES)) if cfg is not None else NO_SWITCH_MIN_GAMES
+        get = cfg.get if cfg is not None else (lambda k, d=None: d)
+        limit = float(get("health.no_switch_s", _config.default("health.no_switch_s")))
+        need = int(get("health.no_switch_min_games", _config.default("health.no_switch_min_games")))
         since = float(getattr(dec, "since", 0.0) or 0.0)
         if len(live) < need or not since or getattr(e, "_pending_decision", None) is not None:
             return []
