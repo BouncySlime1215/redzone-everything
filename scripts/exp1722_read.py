@@ -1,13 +1,13 @@
-"""EXP-1722 read (NBA only, v3 NEW fit nights, judge = crew H v3 recap set; harness = acceptance_1721 unchanged except data paths). Was: EXP-1721 acceptance (graded once, FIT nights of eval-data-v1; locked never read): does the v2 oracle reward show
+"""EXP-1722 read (NBA only, v3 NEW fit nights, judge = crew H v3 recap set; harness = acceptance_1721 with data paths changed; the v2 reward now comes from redzone/lab/oracle_v2.py). Was: EXP-1721 acceptance (graded once, FIT nights of eval-data-v1; locked never read): does the v2 oracle reward show
 more of the human highlight set (crew H recap plays) than v1? Criteria 1-3 of docs/prereg/exp-1721.md.
 v2 thresholds as frozen in the prereg: NBA p99 0.127, NFL p99 = nflverse 2023-24 REG |wpa| p99 = 0.1533.
 WP per play: crew G attention table (wp_home, keyed gid + play index). personal-use, not for commercial release."""
-import json, sys
+import json, os, sys
 from pathlib import Path
 import numpy as np, pandas as pd
 ROOT = Path(__file__).resolve().parents[1]; sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 import eval_sports as ES  # noqa: E402
-from redzone.lab import oracle as O, sportsgrade  # noqa: E402
+from redzone.lab import oracle as O, oracle_v2 as V, sportsgrade  # noqa: E402
 
 
 def on_screen(K, t0, step_s, switches, gid_index, blk):
@@ -19,8 +19,7 @@ def on_screen(K, t0, step_s, switches, gid_index, blk):
             on[max(0, k0):max(0, min(K, k1))] = gid_index[s.to]
     return on
 from redzone.models import League  # noqa: E402
-P99 = {"nba": 0.127, "nfl": 0.1533}
-O.OBJECTIVES["v2"] = (1.0, 0.05, 100.0, 0.002, 0.02)        # prereg interim weights (runtime only, file untouched)
+V.register()                                               # OBJECTIVE_V2 (runtime only, oracle.py untouched)
 HL = Path("/mnt/project-files/wv-loop/highlights")
 mine, LAG, TUNE = {"WSH", "UNC"}, 35.0, 5.0
 out = {}
@@ -38,33 +37,20 @@ for lg in ("nba",):
         if day not in KEEP:
             continue
         for r in reps:
-            d_ = json.loads((ROOT / "data/archive" / lg / f"summary_{r.gid}.json").read_text())
-            wpid[str(r.gid)] = {str(w.get("playId")): w.get("homeWinPercentage") for w in d_.get("winprobability") or []}
+            wpid[str(r.gid)] = V.wp_by_play(json.loads((ROOT / "data/archive" / lg / f"summary_{r.gid}.json").read_text()))
         t0 = min(r.wall[0] for r in reps) - 600.0; t1 = max(r.wall[-1] for r in reps) + 600.0
         n = O.Night(reps, mine, LAG, TUNE, t0, t1)
         steps = np.arange(t0, t1, O.STEP_S); K = len(steps)
+        tab2 = V.tables(n, steps, wpid, LAG)                     # the frozen module produces the v2 reward
         tab1 = O.tables(n, steps)
-        big2 = np.zeros_like(tab1["big"])
+        big2 = tab2["big"]
         where = []                                               # (game, step, key) of every play
         for g, r in enumerate(reps):
-            prev, prev_wp = None, None
             plen = sportsgrade.PLAY_LEN[r.league]
-            for i, (w, p) in enumerate(zip(r.wall, r.plays)):
+            for w, p in zip(r.wall, r.plays):
                 k = int((w + LAG - plen - t0) // O.STEP_S)
-                key = (str(r.gid), int(p.get("sequenceNumber") or -1))
-                cur = wpid.get(str(r.gid), {}).get(str(p.get("id")))
-                cur = float(cur) if cur is not None else None
-                d = abs(cur - prev_wp) if cur is not None and prev_wp is not None else 0.0
-                live = prev_wp is not None and 0.05 <= prev_wp <= 0.95
-                v1 = sportsgrade.is_big(r.league, p, prev)
-                scoring = bool(p.get("scoringPlay"))
-                b = live and (d >= P99[lg] or ((scoring or v1) and d >= 0.02) or (lg == "nba" and v1))
                 if 0 <= k < K:
-                    where.append((g, k, key))
-                    if b:
-                        big2[g, k] += max(d, 0.02)
-                prev, prev_wp = p, (cur if cur is not None else prev_wp)
-        tab2 = dict(tab1, big=big2)
+                    where.append((g, k, (str(r.gid), int(p.get("sequenceNumber") or -1))))
         for g in range(len(reps)):
             zero["games"] += 1
             zero["v1"] += (3 * tab1["big"][g].sum() + tab1["crunch"][g].sum()) == 0
@@ -96,4 +82,4 @@ out["criterion3_your_team_crunch_plays_on_screen"] = MC
 out["criterion3_mid_play_entries"] = "0 for both: the oracle lands only at land_ok (dead-ball) steps, same tables"
 out["tag"] = "personal-use, not for commercial release"; out["split"] = "eval-data-v3 fit nights not in v1 (2025-10-21..2026-01-31 + 2026-10-29..31); locked (>=20261101) never read"
 print(json.dumps(out, indent=1))
-Path("/mnt/project-files/wv-loop/exp1722/exp1722_read_c3.json").write_text(json.dumps(out, indent=1))
+Path(os.environ.get("EXP1722_OUT", "/mnt/project-files/wv-loop/exp1722/exp1722_read_module.json")).write_text(json.dumps(out, indent=1))
