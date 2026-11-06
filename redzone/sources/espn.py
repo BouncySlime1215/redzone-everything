@@ -351,6 +351,26 @@ def _kind(league: League, p: dict) -> str:
     return t.replace(" ", "_")[:30]
 
 
+# [v3 autopsy, Nov 6] ESPN's NHL penalty rows: 2025-26 summaries type every one "Penalty" (no Stoppage row before it in
+# ~9 of 10), 2026-27 types the infraction ("Tripping", "Cross checking", "High sticking", "Delaying Game - Puck over
+# Glass", "Too Many Men on the Ice"...). Every one is a whistle.
+_NHL_PENALTIES = ("penalty", "hooking", "holding", "tripping", "roughing", "interference", "slashing", "high sticking",
+                  "fighting", "unsportsmanlike conduct", "cross checking", "delay of game", "delaying game",
+                  "too many men", "boarding", "elbowing", "kneeing", "charging", "misconduct", "instigator",
+                  "embellishment", "spearing", "butt ending", "clipping", "abuse of official", "head butting",
+                  "checking from behind", "illegal check", "game misconduct", "match penalty", "goalkeeper interference",
+                  "holding the stick", "closing hand on puck", "throwing equipment", "face off violation", "delay game",
+                  "removing opponent", "broken stick", "leaving crease", "aggressor", "throwing object",
+                  "thowing object")
+
+
+def _nhl_penalty(t: str) -> bool:
+    t = re.sub(r"[-_]+", " ", t)
+    if t.startswith("penalty shot"):   # integrator, Nov 6: a penalty shot is live play and a big moment, never a whistle
+        return False
+    return any(t == k or t.startswith(k + " ") for k in _NHL_PENALTIES) or "penalty" in t
+
+
 def stoppage_for(league: League, p: dict) -> Stoppage:
     """What the game is doing right AFTER this play."""
     t = (_get(p, "type", "text") or "").lower()
@@ -406,8 +426,7 @@ def stoppage_for(league: League, p: dict) -> Stoppage:
             return Stoppage.INTERMISSION if t == "period end" and per in (1, 2) else Stoppage.END_PERIOD
         if t == "goal":
             return Stoppage.SCORE_BREAK
-        if t in ("hooking", "holding", "tripping", "roughing", "interference", "slashing", "high-sticking",
-                 "fighting", "unsportsmanlike conduct", "cross-checking", "delay of game", "too many men"):
+        if _nhl_penalty(t):
             return Stoppage.WHISTLE
         return Stoppage.NONE
     if league == League.MLB:
