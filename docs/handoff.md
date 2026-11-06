@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep: Mac on wall power, logs writing, usage 75%. .181 parked on NBA TV; read-only MIA@GSW test armed for 9:57 PM.
-TNF scorebug check still waits on Nick. App responsiveness and swap being watched.
+Sweep: Mac on wall power, logs writing, usage 75%. .181 on NBA TV; read-only MIA@GSW test armed for 9:57 PM.
+TNF scorebug check still waits on Nick; RC6.3 waits for the next no-game window.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
