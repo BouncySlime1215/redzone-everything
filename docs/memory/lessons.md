@@ -342,3 +342,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   end-of-quarter floor behind `decider.leave.break_floor_s` (EXP-212, off), and log every gate change. Lesson: a
   safety gate that is shut for a structural reason looks exactly like a game that's live, so log the gate itself.
   Autopsy: /mnt/project-files/lane2/yttv-no-switch-autopsy-2026-11-05.md.
+- **2026-11-06 Last season's NHL penalties read as live hockey (v3 autopsy).** eval-data-v3 jumped NHL dev mid-play
+  0 -> 344/3340, all on 2025-26 nights. ESPN typed every 2025-26 NHL penalty "Penalty", which the hardcoded list of
+  infractions in `espn.stoppage_for` didn't hold, and 2026-27 spellings ("Cross checking", "Delaying Game - ...")
+  slipped past it too. Fix: match any penalty type (344 -> 3; v1 stays 0). Lesson: when a new season or window jumps
+  a metric, diff the feed's type vocabulary first. Report: /mnt/project-files/test-writers/v3-autopsy.md.
