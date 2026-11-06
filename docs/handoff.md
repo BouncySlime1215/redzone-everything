@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Mac on wall power. App API was timing out; swap was 10.5 GB on the 8 GB Mac. After closing stale Colab tabs, API answers in 0.02 s and the stick_hung warning on .150 cleared.
-Lesson: memory pressure, not only sleep, stalled the app. Keep Chrome light on game nights. Race log is back; sync probe log last wrote 7:46 PM.
+CORRECTION to the last status: the Colab tabs did NOT close; all are still open. The app recovered after Nick plugged in the Mac, cause unproven. All logs live again at 8:13 PM (plays, race, sync probe); API 0.02 s.
+Swap still ~10 GB on the 8 GB Mac, so memory remains a risk. Possible Chrome 'Leave site?' dialog needs Nick.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
