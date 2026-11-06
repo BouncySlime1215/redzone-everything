@@ -1029,3 +1029,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   time-shift buffer as free; live, the hidden stick needs tune (Nov 4 p50 21.6 s, p95 44.7 s) + B before a switch is
   buffered, and NFL dw35 switches every ~131 s (resync median). EXP-601 (docs/prereg/exp-601.md) adds a hidden-stick
   readiness model behind a flag (off = today's grader), frozen before lane 3 re-sweeps NFL B75 dw35 and NBA B90.
+- 2026-11-06 (integrator): **Grader freeze v38: EXP-601 hidden-stick readiness (#372) in backtest.py / eval_sports.py,
+  verdict arm B (live edge).** Flag off = byte-identical scorecards. Integrator additions at merge: the stick we leave
+  must re-hold before it is ready again if its game was airing at the live edge, and eval_sports refuses
+  --hidden-stick unless --split is train, valid or fit. **Locked exposure on record:** the builder's pre-freeze smoke
+  ran v1 NBA's last 3 nights (locked) at B90: mid-play 0 -> 7 in both arms, 18/23 switches to Prime (B = 0). Not a
+  gated read; nothing is tuned on it; NBA B and dwell stay where #363 put them until EXP-601 reads train+valid.

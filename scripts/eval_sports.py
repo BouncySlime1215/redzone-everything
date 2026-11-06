@@ -174,6 +174,9 @@ def main():
     end = a.end or evaldata.window_end(lg.value, EVAL_END)
     behind_all: list = []
     per_night = []   # the unit of evidence for the release gate's night bootstrap (scripts/release_gate.py)
+    if getattr(a, "hidden_stick", None) and a.split not in ("train", "valid", "fit"):
+        # [EXP-601] pre-registered on train+valid only: never read the locked nights (or a window that holds them)
+        sys.exit("--hidden-stick needs --split train, valid or fit (EXP-601 never reads locked)")
     for day, reps, targets in nights(lg, a.nights, end, a.split):
         rep = run(reps, cfg, mine, targets=targets, step=a.step, **knobs(a))
         # [xleague] Grade against what the screen REALLY showed (true delay), not the app's belief.

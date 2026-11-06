@@ -108,6 +108,19 @@ def test_the_stick_we_left_holds_the_game_we_left_ready_at_once():
         assert (back.arrive_dt, back.offset) == (0.0, 0.0)
 
 
+def test_the_stick_we_left_must_hold_first_if_that_game_aired_at_the_live_edge():
+    s = _stick("live_edge")
+    s.load("other", "youtubetv:other", 0.0)
+    first, _ = _switch(s, "g1", frm="g0", t=100.0)          # g1 airs at the live edge
+    assert first.offset == -90.0
+    cut = s.ready_at + 50
+    _switch(s, "g2", frm="g1", t=cut)                      # leave g1: its stick is tuned, not held
+    assert s.gid == "g1" and s.ready_at > s.tuned_at
+    assert s.ready_at - s.tuned_at == pytest.approx(90.0 + 1.0)
+    early, _ = _switch(s, "g1", frm="g2", t=s.tuned_at + 10)   # back before the hold: live edge again
+    assert early.offset == -90.0
+
+
 def test_replay_switches_need_no_buffer():
     s = _stick("live_edge")
     sw = SwitchLog(100.0, "g0", "g1", "replay", "test")
@@ -170,15 +183,20 @@ def test_eval_sports_reports_the_arm(tmp_path, monkeypatch, capsys):
     arch = tmp_path / "data" / "archive" / "nba"
     arch.mkdir(parents=True)
     shutil.copy(FIX / "eval_config.yaml", tmp_path / "data" / "eval_config.yaml")
-    shutil.copy(FIX / f"espn_nba_scoreboard_{NIGHT}.json", arch / f"scoreboard_{NIGHT}.json")
-    for e in json.loads((FIX / f"espn_nba_scoreboard_{NIGHT}.json").read_text())["events"]:
-        shutil.copy(FIX / f"espn_nba_summary_{e['id']}.json", arch / f"summary_{e['id']}.json")
+    for night in ("20251110", NIGHT):   # two nights: the later one is the locked split, --split fit reads only the first
+        shutil.copy(FIX / f"espn_nba_scoreboard_{night}.json", arch / f"scoreboard_{night}.json")
+        for e in json.loads((FIX / f"espn_nba_scoreboard_{night}.json").read_text())["events"]:
+            shutil.copy(FIX / f"espn_nba_summary_{e['id']}.json", arch / f"summary_{e['id']}.json")
     monkeypatch.setattr(es, "ROOT", tmp_path)
+    base = ["eval_sports.py", "nba", "--end", NIGHT, "--nights", "1", "--behind-live", "90", "--feed-lag", "70"]
+    # [EXP-601] train+valid only: a hidden-stick run that could read the locked nights is refused
+    for split in ([], ["--split", "all"], ["--split", "test"]):
+        monkeypatch.setattr(sys, "argv", base + split + ["--hidden-stick", "live_edge"])
+        with pytest.raises(SystemExit, match="never reads locked"):
+            es.main()
     out = {}
     for arm in (None, "live_edge"):
-        monkeypatch.setattr(sys, "argv", ["eval_sports.py", "nba", "--end", NIGHT, "--nights", "1",
-                                          "--behind-live", "90", "--feed-lag", "70"]
-                            + (["--hidden-stick", arm] if arm else []))
+        monkeypatch.setattr(sys, "argv", base + ["--split", "fit"] + (["--hidden-stick", arm] if arm else []))
         capsys.readouterr()
         es.main()
         out[arm] = json.loads(capsys.readouterr().out)["per_night"][0]

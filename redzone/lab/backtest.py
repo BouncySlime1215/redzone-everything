@@ -346,6 +346,7 @@ class HiddenStick:
         self.tuned_at = self.ready_at = 0.0
         self.n = self.buffered = self.prime = self.preloads = self.retunes = 0
         self.waits: list[float] = []
+        self.at_edge: set[str] = set()      # games last aired unbuffered (live edge): the stick we leave must hold first
         self.prime_t: list[float] = []      # decision times of switches to Prime (B = 0)
         self.unbuffered_t: list[float] = []  # decision times of every switch that aired at the live edge
 
@@ -415,12 +416,17 @@ class HiddenStick:
         if live_edge:
             sw.offset -= self.B
             self.unbuffered_t.append(sw.t)
+            self.at_edge.add(sw.to)
         else:
             self.buffered += 1
-        # the stick we left holds the game we left, ready at once
+            self.at_edge.discard(sw.to)
+        # the stick we left holds the game we left, ready at once -- unless that game was airing at the live edge:
+        # then it is tuned but must hold B first (control._buffer_watch rebuilds the hold off screen)
         left = sw.frm
         self.gid, self.target = left, ((targets or {}).get(left, f"youtubetv:{left}") if left else None)
         self.tuned_at = self.ready_at = cut + wait
+        if left in self.at_edge:
+            self.ready_at += self.hold_of(self.target) + HS_PREREG["resume"]
 
     def card(self) -> dict:
         return {"arm": self.arm, "behind_live_s": self.B, "hold_overrun": self.overrun, "switches": self.n,
