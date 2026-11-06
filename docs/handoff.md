@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep: RC6.2 live, no games, not paused, wall power.
-RC6.3 waits on Nick; RC8 buffer-on remains the path to working switching.
+Sweep 6:15 AM: threads nudged onto the RC8 path: per-league gate, YTTV seek reliability for a 60-90 s buffer, fast NBA feed planning, Watch Value loop.
+RC6.2 live, not paused. RC6.3 waits on Nick.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
