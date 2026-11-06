@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep 1:15 PM: RC6.2 live, not paused, wall power.
+Sweep 1:45 PM: RC6.2 live, wall power. Wizards crunch fix draft PR 370: 493 to 535 of 537 on new test nights, replay only. Sharper delay estimate EXP-803 failed.
 RC6.3 waits on Nick before tonight's games.
 <!-- STATUS:END -->
 
