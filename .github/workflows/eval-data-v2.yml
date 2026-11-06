@@ -21,6 +21,7 @@ jobs:
       # leak_check now FAILs it. v3 waits for enough FRESH nights (>= 8 locked nights all at or after
       # v1's locked start, Oct 29): the Nov 5 night, so build it Fri Nov 6 morning. Old your-team nights
       # come from Oct 2025 - Jan 2026 only (before the Noggin's Feb 1 locked start: backfill OLD_SEASON).
+      # v3 run: Fri Nov 6 11 UTC, after the Nov 5 night went final.
       TAG: eval-data-v3
       END: "20261105"
     steps:
