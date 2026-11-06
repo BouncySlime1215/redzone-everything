@@ -1,9 +1,9 @@
 {
-  "version": 34,
-  "frozen_at": "2026-11-06T11:48Z",
+  "version": 35,
+  "frozen_at": "2026-11-06T12:45Z",
   "by": "integrator",
   "files": {
-    "redzone/grading.py": "6e21906a6a952a6f8fa9b1e594dbf7ab5d595cfea3925627c6ad2be65c2c84a7",
+    "redzone/grading.py": "21a8eb98d3ea01ecb9002e4718cab69d4db38024b9cf7c97ed03a32d471cb7ad",
     "scripts/collect_live_test.py": "1c478f1990aa59e236f6cd64d78977e37246c1c794f4aebf658e6398d4f7f77c",
     "scripts/license_check.py": "f7c573a4b72e43d74be8796fa09a264724cfe8af5f1938c01a51520e040a2885",
     "scripts/label_leak_check.py": "ce4e4f2bf4048e567025168e8ae855099e4e91386278d07cd9b3e616e20a2f7a",

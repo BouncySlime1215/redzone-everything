@@ -995,3 +995,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   dead_air_pct 22.8 -> 22.6; v3 entries 3340 -> 3300, entries_mid_play 344 -> 3, plays_missed_entry 0 -> 0,
   dead_air_pct 20.3 -> 20.5 (+0.2: the decider now holds through 2025-26 penalties it used to treat as live).
   The 3 residual v3 rows are "Period Start" (shootout start x2, pre-face-off x1), a later grader freeze item.
+- 2026-11-06 (integrator, grader v35; test writers #368, EXP-746/747, from the v3 autopsy and #365's trace):
+  `redzone/grading.py` gains `held_stop` for a row the classifier calls NONE. R1: a row in the same wallclock second
+  and at the same game clock as a review or substitution row (one logging batch) doesn't end the stoppage (HOU@SA
+  Oct 23 Q4 8:17: a challenge-result turnover logged with subs while the clock never ran). R2: "Period Start" is dead
+  until the next action (NHL shootouts and opening face-offs). Before/after on fixed autopsy rows: v1 NBA 0->0, NHL
+  0->0; v3 NBA 9->5 (all 4 flips clock-truth dead), v3 NHL (with #367) 3->0; cutgrade-dead/clock-truth-live stays 0
+  everywhere. The decider never calls dead_at, so no runtime change. Frozen before #365's sim-input change is read.
+  Grader freeze v35. Note on #365: its nba_cdn lag profile is measured on Nov 4-6 recordings, some inside v3's
+  Nov 1+ locked block; it is a sim input (lag distribution), never a label, and B is still picked on train+valid.
