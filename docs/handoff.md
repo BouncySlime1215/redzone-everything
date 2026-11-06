@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-ROOT CAUSE confirmed by lane 2 replay: the leave gate blocked every switch, not the command lock. NBA TV delay 42 s +-15 plus no NBA break minimums meant only halftime could open it; ESPN links also failed for ANA@EDM and NSH@COL; stale ESPN corrections closed halftime at 11:18 PM.
-Fix: draft PR 357 (NBA quarter-break floor, gate logging, halftime test), flag OFF until replayed on recorded YTTV nights. Per-channel delay model next. PR 356 fixes test bank.
+Sweep 12:15 AM: RedZone not paused, on MIA@GS, wall power, usage 76%. Raw mechanics_01 and ui_10 results sent to the test-bank thread for PR 356 (stick addresses redacted).
+Top job stays YTTV switching: PR 357 flag-off fix awaits replay on recorded nights; per-channel delay model next.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
