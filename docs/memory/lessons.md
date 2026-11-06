@@ -342,3 +342,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   end-of-quarter floor behind `decider.leave.break_floor_s` (EXP-212, off), and log every gate change. Lesson: a
   safety gate that is shut for a structural reason looks exactly like a game that's live, so log the gate itself.
   Autopsy: /mnt/project-files/lane2/yttv-no-switch-autopsy-2026-11-05.md.
+- 2026-11-06: NBA real-lag replays had drawn ESPN's feed lag (p50 45 s) since nba_cdn became NBA's primary, because
+  `LagSampler` quietly falls back to ESPN when a source has no profile. That made every NBA buffer read pessimistic
+  (B60 big seen 12.8 % instead of 66.7 %). Fix: the measured nba_cdn profile. Lesson: when a sim falls back to a
+  default input, say so in the output; a silent fallback reads as a real result.
