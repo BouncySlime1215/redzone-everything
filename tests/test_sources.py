@@ -175,3 +175,8 @@ def test_nhl_penalty_types_are_whistles(t):
 @pytest.mark.parametrize("t", ["Face Off", "Shot", "Hit", "Blocked Shot", "Giveaway", "Takeaway", "Missed Shot"])
 def test_nhl_live_types_are_not_whistles(t):
     assert espn.stoppage_for(League.NHL, {"type": {"text": t}, "text": ""}) != Stoppage.WHISTLE
+
+
+@pytest.mark.parametrize("t", ["Penalty Shot", "Penalty Shot Infraction", "penalty-shot"])
+def test_nhl_penalty_shot_is_not_a_whistle(t):
+    assert espn.stoppage_for(League.NHL, {"type": {"text": t}, "text": ""}) != Stoppage.WHISTLE

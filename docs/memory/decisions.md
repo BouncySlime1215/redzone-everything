@@ -967,3 +967,11 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   clean unread 2025-26 nights (v3 dev North Star already read every added 2025-26 night, and T8's EXP-128 trained on
   NBA/NHL Mar-Jun 2026), and the >= 25% locked rule. The v1 -> v3 dev jump (NHL mid-play 0 -> 344/3340, NBA 0 -> 9/784,
   all on 2025-26 nights) goes to the test writers for an autopsy before any v3 dev number is used for a gate.
+- **2026-11-06 (integrator, test writers #367): every NHL penalty type is a whistle in `espn.stoppage_for`.**
+  The classifier is shared by the decider and the cut grader, so this changes the live NHL decider. Reason: ESPN typed
+  every 2025-26 NHL penalty "Penalty", and 200 of 983 2026-27 penalty rows use spellings the old list missed
+  ("Cross checking", "Delaying Game - ..."). "Penalty shot*" is excluded (live play). NHL dev, `eval_sports.py nhl
+  --split fit --real-lag`, base -> this PR: v1 entries 246 -> 251, entries_mid_play 0 -> 0, plays_missed_entry 0 -> 0,
+  dead_air_pct 22.8 -> 22.6; v3 entries 3340 -> 3300, entries_mid_play 344 -> 3, plays_missed_entry 0 -> 0,
+  dead_air_pct 20.3 -> 20.5 (+0.2: the decider now holds through 2025-26 penalties it used to treat as live).
+  The 3 residual v3 rows are "Period Start" (shootout start x2, pre-face-off x1), a later grader freeze item.

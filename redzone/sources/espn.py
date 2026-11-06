@@ -366,6 +366,8 @@ _NHL_PENALTIES = ("penalty", "hooking", "holding", "tripping", "roughing", "inte
 
 def _nhl_penalty(t: str) -> bool:
     t = re.sub(r"[-_]+", " ", t)
+    if t.startswith("penalty shot"):   # integrator, Nov 6: a penalty shot is live play and a big moment, never a whistle
+        return False
     return any(t == k or t.startswith(k + " ") for k in _NHL_PENALTIES) or "penalty" in t
 
 
