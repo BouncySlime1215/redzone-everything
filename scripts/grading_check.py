@@ -60,6 +60,8 @@ GRADERS = (
     "redzone/lab/sportsgrade.py",
     "redzone/lab/oracle.py",
     "redzone/lab/oracle_window.py",
+    "redzone/lab/oracle_v2.py",
+    "docs/prereg/v3-reads/exp1722_read.py",
     "scripts/gi_v3_nba.py",
     "redzone/lab/leverage.py",
     "redzone/lab/splits.py",

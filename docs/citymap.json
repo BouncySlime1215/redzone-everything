@@ -2415,6 +2415,7 @@
    ],
    "kind": "module",
    "outputs": [
+    "redzone/lab/oracle_v2.py",
     "redzone/lab/oracle_window.py",
     "redzone/lab/reactgrade.py",
     "scripts/buffer_sweep.py",
@@ -2426,6 +2427,20 @@
    ],
    "owner": "unowned",
    "role": "Hindsight oracle: the best schedule anyone could have run on an archived night (offline only).",
+   "serves": [
+    "untagged"
+   ]
+  },
+  "redzone/lab/oracle_v2.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/oracle.py",
+    "redzone/lab/sportsgrade.py"
+   ],
+   "kind": "module",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "NBA hindsight oracle v2 (EXP-1722 PASS, Nov 6 2026; prereg docs/prereg/exp-1722.md, read docs/prereg/v3-reads/).",
    "serves": [
     "untagged"
    ]
@@ -2637,6 +2652,7 @@
    "outputs": [
     "agent/kaggle/build_moments_kaggle.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/oracle_v2.py",
     "redzone/lab/reactgrade.py",
     "redzone/lab/reasoner_data.py",
     "redzone/lab/replaycheck.py",
@@ -6133,10 +6149,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 336,
-  "orphans": 14,
-  "unowned": 174,
-  "untagged": 280
+  "modules": 337,
+  "orphans": 15,
+  "unowned": 175,
+  "untagged": 281
  },
  "version": 1
 }

@@ -1004,3 +1004,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   everywhere. The decider never calls dead_at, so no runtime change. Frozen before #365's sim-input change is read.
   Grader freeze v35. Note on #365: its nba_cdn lag profile is measured on Nov 4-6 recordings, some inside v3's
   Nov 1+ locked block; it is a sim input (lag distribution), never a label, and B is still picked on train+valid.
+- 2026-11-06 (integrator, grader v36; WV loop #351): **EXP-1722 (NBA-only oracle big_v2) PASSES as pre-registered**
+  on 101 new v3 NBA fit nights (zero-value games 59.2% -> 1.2%; highlight recall 52.0 -> 58.8, +6.8, CI 3.5..9.8;
+  your-team crunch 506/506 and mid-play 0 under both). `redzone/lab/oracle_v2.py` and its read harness join the
+  freeze as INFORMATION reported beside v1; oracle.py v1 stays the gate reference until Nick says otherwise (card to
+  follow). `oracle_v2.register()` adds "v2" to oracle.OBJECTIVES at runtime and must never be called on a gate path.
+  EXP-1723 and EXP-1724 (Watch Value as the windowed oracle's beyond-window value, at p90 and primary feed lag) FAIL;
+  the windowed oracle stays information only. Grader freeze v36.
