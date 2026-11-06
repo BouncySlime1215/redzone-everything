@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep: RC6.2 live, no games, not paused, usage 77%. RC6.3 passed its side tests and waits on Nick's OK to skip the rerun.
-YTTV switching fixes stay flagged off pending replay on recorded nights.
+Sweep: RC6.2 live, no games, not paused, usage checked. RC6.3 waits on Nick's OK.
+Threads nudged on replay of PRs 357 and 358, per-channel delay model and ESPN links.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
