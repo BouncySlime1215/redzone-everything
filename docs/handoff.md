@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep: RC6.2 live, no games, not paused, wall power, usage checked.
+Sweep: RC6.2 live, no games, not paused, wall power.
 RC6.3 waits on Nick; RC8 buffer-on remains the path to working switching.
 <!-- STATUS:END -->
 
