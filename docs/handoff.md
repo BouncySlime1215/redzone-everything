@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-BIG: on hidden .150 a 75 s pause held about 79.7 s behind live, within 0.15 s, for a full 20 min. Shorter pauses (10-60 s) snapped back to live within 30 s; cause unknown.
-Finer pause test running now to find what makes it hold. One channel, one stick, off-air programming so far.
+Finer pause test died with the session restart and left .150 paused; relinked. Its partial data shows the behind-live meter glitches (position resets, stale reads), so 'snapped to live' is not proven. Raw-logging rerun plus rewind tests running on hidden .150.
+Nick: solve YouTube TV before anything else. Chrome closed, swap down to 0.6 GB.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
