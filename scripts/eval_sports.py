@@ -97,6 +97,11 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--feed-lag", type=float, default=None, metavar="S",
                     help="[switch timing] every play reaches the app S s after it happened (default 8). The "
                          "screen stays 43 s behind real life, so only the warning before it airs changes")
+    ap.add_argument("--hidden-stick", choices=("wait", "live_edge"), default=None,
+                    help="[EXP-601] model the hidden stick's readiness: wait (arm A, report only) or live_edge "
+                         "(arm B, the verdict arm); off = today's scorecard")
+    ap.add_argument("--hold-overrun", type=float, default=1.0,
+                    help="[EXP-601] the B s hold takes this many times B (S1: 1.36), with --hidden-stick")
     ap.add_argument("--behind-live", type=float, default=None, metavar="S",
                     help="[time-shift buffer] hold every stream S s behind its live edge: the screen runs "
                          "26 s (a YouTube TV channel) + S behind real life, so the feed arrives S s earlier "
@@ -112,6 +117,9 @@ def knobs(a: argparse.Namespace) -> dict:
                 flip_dist=getattr(a, "flip_dist", False), positions=getattr(a, "positions", False),
                 pretune_dist=getattr(a, "pretune_dist", False), real_seek=getattr(a, "real_seek", False),
                 feed_lag_model="measured" if getattr(a, "real_lag", False) else None,
+                **({"hidden_stick": a.hidden_stick, "hold_overrun": a.hold_overrun,
+                    "behind_live_s": float(getattr(a, "behind_live", None) or 0.0)}
+                   if getattr(a, "hidden_stick", None) else {}),
                 **feed_lag_knobs(getattr(a, "feed_lag", None), getattr(a, "behind_live", None)))
 
 
@@ -200,6 +208,14 @@ def main():
         per_night[-1]["rewinds"] = card.cut.rewinds
         per_night[-1]["flash_mid_play"] = card.cut.flash_mid_play
         per_night[-1]["plays_missed_entry"] = card.cut.plays_missed_entry
+        hs = getattr(rep, "hidden_stick", None)
+        if hs is not None:   # [EXP-601] report only when the flag is on: off, the output stays byte for byte
+            mid_t = {t for t, *_ in card.cut.mid_entries}
+            per_night[-1]["hidden_stick"] = {
+                **{k: v for k, v in hs.items() if k not in ("prime_t", "unbuffered_t")},
+                "non_replay_switches": sum(s.kind not in ("replay", "resume", "skip") for s in rep.switches),
+                "prime_mid_play_entries": sum(t in mid_t for t in hs["prime_t"]),
+                "unbuffered_mid_play_entries": sum(t in mid_t for t in hs["unbuffered_t"])}
         if a.oracle:
             from redzone.lab import oracle as O
             n = O.Night(reps, mine, rep.lag_true, 5.0, rep.t0, rep.t1)

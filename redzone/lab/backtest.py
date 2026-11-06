@@ -313,6 +313,124 @@ def _deliver(r: Replay, f: _Feed, i: int, now: float):
     return g
 
 
+# [EXP-601] pre-registered (docs/prereg/exp-601.md): the Nov 4 live press span "tune" (p50 21.61 s, p95 44.74 s) as a
+# lognormal clipped to [5, 120] s, and the 1 s resume after the hold. Not tunable: a new value needs a new EXP id.
+HS_PREREG = {"tune_mu": math.log(21.61), "tune_sigma": 0.4424, "tune_clip": (5.0, 120.0), "resume": 1.0}
+HS_NO_BUFFER = ("replay", "resume", "skip")   # catch-up footage needs no hold (as live)
+
+
+class HiddenStick:
+    """[EXP-601] The hidden stick's readiness, as pre-registered in docs/prereg/exp-601.md (grader, frozen by the
+    integrator). One preload at a time, its target picked by the real standby planner from sim state. A new
+    target is tuned after a lognormal tune draw and held (ready) B * hold_overrun + resume s later; Prime holds
+    nothing (B = 0). After a switch the stick we left holds the game we left, ready at once.
+
+    A switch to a target that isn't held:
+      wait       (arm A, report only) the cut waits until it is (a preload started now if it's another
+                 target); the old game stays on screen; the picture airs buffered.
+      live_edge  (arm B, the verdict arm) a target already tuned airs now; otherwise the hidden stick tunes
+                 it (a fresh tune draw) with the old game on screen. Either way it airs at the live edge:
+                 offset -= B, so Rule #1 is graded where the picture really is."""
+
+    def __init__(self, arm: str, behind: float, hold_overrun: float, cfg, clock, seed: int, my_teams: dict):
+        if arm not in ("wait", "live_edge"):
+            raise ValueError(f"hidden_stick must be None, 'wait' or 'live_edge', not {arm!r}")
+        from redzone import standby
+        self.arm, self.B, self.overrun, self.cfg, self.my_teams = arm, behind, hold_overrun, cfg, my_teams
+        self.rng = random.Random(seed * 7_000_003 + 601)
+        self.planner = standby.Planner(cfg, clock=clock)
+        self._standby = standby
+        self.clock = clock
+        self.gid: str | None = None
+        self.target: str | None = None
+        self.tuned_at = self.ready_at = 0.0
+        self.n = self.buffered = self.prime = self.preloads = self.retunes = 0
+        self.waits: list[float] = []
+        self.prime_t: list[float] = []      # decision times of switches to Prime (B = 0)
+        self.unbuffered_t: list[float] = []  # decision times of every switch that aired at the live edge
+
+    def tune(self) -> float:
+        lo, hi = HS_PREREG["tune_clip"]
+        return min(hi, max(lo, self.rng.lognormvariate(HS_PREREG["tune_mu"], HS_PREREG["tune_sigma"])))
+
+    def hold_of(self, target: str | None) -> float:
+        return 0.0 if (target or "").startswith("prime:") else self.B * self.overrun
+
+    def load(self, gid: str, target: str, now: float) -> None:
+        self.gid, self.target = gid, target
+        self.tuned_at = now + self.tune()
+        self.ready_at = self.tuned_at + self.hold_of(target) + HS_PREREG["resume"]
+        self.preloads += 1
+
+    def plan(self, cands: dict, dec, decision, states: dict) -> None:
+        home = dec.home_break_visit if dec.home_break_visit != dec.current else None
+        opts = self._standby.options(cands, current=dec.current, home=home,
+                                     back_to=dec.stack[-1] if dec.stack else None, games=states,
+                                     my_teams=self.my_teams, want=getattr(decision, "want", None),
+                                     return_bonus=float(self.cfg.get("decider.switch_margin", 10)))
+        pick = self.planner.plan(opts, (self.target, None))
+        if pick is not None and pick.target != self.target:
+            self.load(pick.game_id, pick.target, self.clock.t)
+
+    @staticmethod
+    def keep_order(switches: list, watching: list, n_sw: int) -> None:
+        """A cut can't air before the one still waiting ahead of it: it waits behind it."""
+        if len(switches) > n_sw and len(watching) >= 2 and watching[-1][0] < watching[-2][0]:
+            d = watching[-2][0] - watching[-1][0]
+            switches[-1].leave_dt += d
+            switches[-1].arrive_dt += d
+            watching[-1] = (watching[-2][0], watching[-1][1])
+
+    def on_switch(self, sw, watching: list, targets: dict | None) -> None:
+        if sw.kind in HS_NO_BUFFER:
+            return
+        to = (targets or {}).get(sw.to, f"youtubetv:{sw.to}")
+        cut = sw.t + (sw.leave_dt or 0.0)
+        self.n += 1
+        prime = to.startswith("prime:")
+        self.prime += prime
+        if prime:
+            self.prime_t.append(sw.t)
+        same = sw.to == self.gid
+        ready = same and cut >= self.ready_at
+        wait = 0.0
+        live_edge = prime
+        if not ready:
+            if self.arm == "wait":
+                if not same:
+                    self.load(sw.to, to, cut)
+                    self.retunes += 1
+                wait = max(0.0, self.ready_at - cut)
+            else:
+                live_edge = True
+                if not (same and cut >= self.tuned_at):
+                    wait = self.tune()   # the hidden stick tunes it at the live edge now
+                    self.retunes += 1
+        if wait > 0:
+            sw.leave_dt += wait
+            sw.arrive_dt += wait
+            at, what = watching[-1]
+            watching[-1] = (at + wait, what)
+            self.waits.append(wait)
+        if live_edge:
+            sw.offset -= self.B
+            self.unbuffered_t.append(sw.t)
+        else:
+            self.buffered += 1
+        # the stick we left holds the game we left, ready at once
+        left = sw.frm
+        self.gid, self.target = left, ((targets or {}).get(left, f"youtubetv:{left}") if left else None)
+        self.tuned_at = self.ready_at = cut + wait
+
+    def card(self) -> dict:
+        return {"arm": self.arm, "behind_live_s": self.B, "hold_overrun": self.overrun, "switches": self.n,
+                "buffered": self.buffered, "buffered_pct": round(100.0 * self.buffered / self.n, 1) if self.n else None,
+                "waits": len(self.waits), "wait_s": round(sum(self.waits), 1),
+                "wait_p50_s": round(sorted(self.waits)[len(self.waits) // 2], 1) if self.waits else 0.0,
+                "prime_switches": self.prime, "prime_t": self.prime_t, "unbuffered_t": self.unbuffered_t,
+                "preloads": self.preloads, "retunes": self.retunes}
+
+
 def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: float = 8.0,
         delay: float = 35.0, play_len: float = 7.0, tune_s: float = 5.0, step: float | None = None,
         focus: str | None = None, start: float | None = None, end: float | None = None,
@@ -324,6 +442,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         pretune_dist: bool = False, real_seek: bool = False,
         feed_lag_model: str | None = None,
         calibrate_targets: bool = False,
+        hidden_stick: str | None = None, hold_overrun: float = 1.0, behind_live_s: float | None = None,
         on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
@@ -365,6 +484,10 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
                     league's MEASURED detection lag (redzone/lab/feed_lag_profile.json, the flight
                     recorder's espn_summary rows; seeded, in order), instead of the fixed feed_lag.
                     The app still believes feed_lag + delay is real life -> screen.
+      hidden_stick  [EXP-601] model the hidden stick's readiness (HiddenStick below; docs/prereg/exp-601.md):
+                    None = off (today's grader, byte for byte), "wait" (arm A, report only) or "live_edge"
+                    (arm B, the verdict arm). hold_overrun scales the B s hold; behind_live_s is B for this
+                    run (default: the config's timing.behind_live_s for the league, else 0)
       on_tick       optional read-only lab observer (historical time, decider), before selection
     """
     step = step or cfg.get("polling.live_s", 10)
@@ -421,6 +544,13 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     flip_rng = random.Random(seed * 5_000_011 + 7)   # its own stream: the tune jitter draws stay the same
     seek_rng = random.Random(seed * 5_000_011 + 13)  # [seek model] stalls and pause errors, own stream
     honesty: list[tuple[float, float]] = []   # (error of the delay used, its sigma), each on-screen tick
+    stick = None
+    if hidden_stick is not None:
+        if behind_live_s is None and replays:
+            from redzone.lab.evaldata import config_behind_live
+            behind_live_s = config_behind_live(cfg, replays[0].league.value)
+        stick = HiddenStick(hidden_stick, float(behind_live_s or 0.0), hold_overrun, cfg, clock, seed,
+                            {lg: set(my_teams) for lg in League})
     sampler = None
     if feed_lag_model == "measured":
         from redzone.lab.timing import LagSampler, sources_in_use
@@ -476,7 +606,13 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         decisions.append(decision)
         n_sw = len(switches)
         _record(decision, before, clock.t, switches, watching, replayed)
+        if stick is not None:
+            stick.keep_order(switches, watching, n_sw)
         _apply_defer(decision, switches, watching, n_sw, step)
+        if stick is not None:
+            if len(switches) > n_sw:
+                stick.on_switch(switches[-1], watching, targets)
+            stick.plan(cands, dec, decision, states)
         if tune_jitter_s > 0 and len(switches) > n_sw and switches[-1].kind != "replay":
             j = jitter_rng.uniform(0.0, tune_jitter_s)
             switches[-1].offset += j
@@ -512,6 +648,8 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
     rep.replayed, rep.t0, rep.t1, rep.lag_total = replayed, t0, t1, lag_total
     rep.lag_true = lag_true
     rep.sync_honesty = honesty_summary(honesty)
+    if stick is not None:
+        rep.hidden_stick = stick.card()
     return rep
 
 
