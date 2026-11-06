@@ -11,3 +11,8 @@ Nights: v3 fit nights not in v1. That is 2025-10-21..2026-01-31 plus 2026-10-29.
 
 Your-team crunch misses (hard rule, both arms): see your_team_crunch_misses.md.
 1723/1724 summaries say "evidence: dev history only"; that is stale script text. These runs are the counting read on v3 new nights.
+
+## Frozen-file candidate (EXP-1722)
+`redzone/lab/oracle_v2.py` holds NBA big_v2, `OBJECTIVE_V2` and `tables(n, steps, wp, lag)`. It reads oracle.py and never changes it; `register()` adds "v2" at runtime.
+On 3 read nights (20251110, 20251214, 20260115) its big table matches the read harness (`exp1722_read.py`) element for element.
+Tests: `tests/test_oracle_v2.py`. It reports beside v1 as information only. v1 stays the gate until Nick decides.
