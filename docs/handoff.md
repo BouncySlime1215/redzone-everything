@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick: 'way more people' on YouTube TV research. All 8 thread slots ordered onto it: buffer hold on sticks, absolute delay bridge, public knowledge, Cobalt internals, faster feeds, on-screen truth, other delay methods, red team.
-Each ends in a verified vs claimed report plus one hidden-stick test. Limits unchanged: 8 threads, 84%/88%, no DRM bypass.
+Sweep: RC6.2 live, wall power. YTTV research running across thread slots; reports pending.
+RC6.3 waits on Nick before tonight's games.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
