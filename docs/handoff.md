@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-RC6.3 not deployed; 6:30 cutoff passed with no answer from Nick, so RC6.2 stays live tonight. RC6.2 lacks buffer shadow and stay/leave logging. Watch Value cycle 5: NBA slate ranker with market price 65.5% vs closest-game 56.3%, draft PR 354, real test Friday.
-Mac power status checked this sweep; usage 75-76%. RC6.3 waits for the next no-game window on wall power.
+APP STALL during games: recording files gap 7:10-7:28 PM, stick sync probe stopped at 7:08, supervisor shows adb limited on both sticks. Likely cause: Mac on battery at 20% and sleeping. Second phone alert sent.
+Overseer did not restart the app during games. Nick must plug in the Mac. RC6.2 live, usage 75%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
