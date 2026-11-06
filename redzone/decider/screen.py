@@ -41,6 +41,9 @@ LAG_EST_DEFAULT_S = 10.0   # feed lag assumed until we've measured some
 # at 45 s, under the measured NHL median (50 s, docs/timing.md), so the gate believed its data covered a
 # 43 s stream: 5 NHL mid-play cuts on the scorecard graded with the measured feed lag (--real-lag).
 LAG_SAMPLE_CAP_S = 180.0
+# [fast feed lag] a source counts toward lag_est only with this many samples (and its last one no older
+# than decider.lag_source_fresh_s, Timeline.lag_source_fresh_s)
+SOURCE_MIN_SAMPLES = 6
 # The least doubt "I just saw it" taps can earn. Taps that agree to the second still share a bias
 # (reaction time, the feed's wallclock rounding): stated 2 s, a real 6 s error cut 3 plays mid-play
 # (eval.py --sigma 2 --true-delay 41); 4 s held 0 cuts out to 8 s of error for ~0.3 pt dead air.
@@ -617,6 +620,12 @@ class Timeline:
         # [mid-play guard] freshness, measured feed lag, and the final whistle
         self.fresh_at: float | None = None    # when this game's data was last fresh
         self._lags: deque[float] = deque(maxlen=12)
+        # [fast feed lag] decider.lag_from_fastest_feed (set by the decider): the same samples kept per
+        # source, (when sampled, lag). ESPN's copies of plays nba_cdn already delivered read 37-170 s
+        # "late" (Nov 4-5) and set lag_est even while the fast feed owned the game.
+        self.lag_by_source = False
+        self.lag_source_fresh_s = 0.0   # set by the decider (decider.lag_source_fresh_s); 0 = no source counts
+        self._src_lags: dict[str, deque] = {}
         self.final_at: float | None = None    # when we first saw it Final
         self.dead = DeadTracker(league)       # [cut timing] dead windows: where to leave, where to land
         self.end_t: float | None = None       # latest real time the game could have ended
@@ -627,6 +636,15 @@ class Timeline:
 
     def lag_est(self) -> float:
         """How far behind real life this game's feed runs (recent worst case)."""
+        if self.lag_by_source and self._src_lags:
+            now = self._clock()
+            # Sources heard from recently enough to still be a live feed for this game: each one's own
+            # recent worst case. The fastest such feed is how late a play can reach us; a feed that
+            # went quiet drops out, so its silence can never make the estimate smaller.
+            fresh = [max(x for _, x in q) for q in self._src_lags.values()
+                     if q and now - q[-1][0] <= self.lag_source_fresh_s and len(q) >= SOURCE_MIN_SAMPLES]
+            if fresh:
+                return min(fresh)
         return max(self._lags) if self._lags else self.lag_prior
 
     def _nba_clutch(self, p, g: GameState) -> bool:
@@ -667,7 +685,9 @@ class Timeline:
             self.events.append(Event(hi, "play", (p.text or p.kind)[:80], big, p.id, p.kind, hi - lo))
             if p.wallclock and prev_fresh is not None and not first_poll:
                 # It wasn't in the data at the last fresh poll, so the feed ran at least this far behind.
-                self._lags.append(min(LAG_SAMPLE_CAP_S, max(0.0, prev_fresh - p.wallclock)))
+                lag = min(LAG_SAMPLE_CAP_S, max(0.0, prev_fresh - p.wallclock))
+                self._lags.append(lag)
+                self._src_lags.setdefault(getattr(p, "source", "") or "?", deque(maxlen=12)).append((now, lag))
         for p in scorers:
             # Every score change with its feed time, free throws included (they're dead-ball markers
             # above), for timing the broadcast's score bug (redzone/screen/scorebug.py).
