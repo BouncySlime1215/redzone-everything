@@ -602,6 +602,9 @@ class Timeline:
         # [EXP-803 A5] the feed lag assumed until this game's lag is measured (delay.feed_lag_prior_s,
         # set per league by the decider)
         self.lag_prior = LAG_EST_DEFAULT_S
+        # [EXP-212] break floors added on top of MIN_BREAK_S for this game (decider.leave.break_floor_s,
+        # set per league by the decider): {Stoppage: s}. Empty = MIN_BREAK_S only.
+        self.extra_floors: dict = {}
         self.events: deque[Event] = deque(maxlen=200)
         self.scores: deque[Event] = deque(maxlen=60)   # score changes (kind "score"), oldest first
         # [auto sync] (wallclock, period, game clock s left) of timed plays: the score bug's clock is
@@ -818,7 +821,9 @@ def leave_gate(tl: Timeline, delay: Delay, now: float, uncalibrated_sigma: float
         else:
             # No resume in the data: trust that only if the data covers your screen, or this kind
             # of break always runs long enough that it can't have ended on screen yet.
-            floor = MIN_BREAK_S.get(tl.league, {}).get(_stoppage(start.label), 0.0)
+            kind = _stoppage(start.label)
+            floor = max(MIN_BREAK_S.get(tl.league, {}).get(kind, 0.0),
+                        float(getattr(tl, "extra_floors", {}).get(kind, 0.0)))
             not_ended = covered or now <= start.lo + floor + mu - margin - tune_s
         in_break = aired_start and not_ended
     if in_break:
