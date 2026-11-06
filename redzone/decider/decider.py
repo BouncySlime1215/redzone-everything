@@ -1587,6 +1587,8 @@ class Decider:
         if crunch:
             return crunch
         chase = self._chase(watchable, s_cur, now) if gate_ok and not s_cur.lock else None
+        if chase and self._mine_first(s_cur) and cands[chase[0]].scored.personal < s_cur.personal:
+            chase = None   # [EXP-214] a big play elsewhere doesn't pull the TV off your team late and close
         # [chained visit] Already away from home on a break visit: the game we're visiting can hit its
         # own break. Never let that become the new "home" — a WSH halftime visit to MIN@CLE chained
         # into an OKC visit at CLE's halftime and lost the way back to WSH for 2 hours (Oct 26 replay).
@@ -1675,7 +1677,7 @@ class Decider:
             return Decision(now, "stay", self.current, f"your team, late and close — {s_cur.reason}", state, gate_txt)
 
         # Go back to where we were if this moment is over and that game is about as good.
-        if self.stack and not s_cur.lock and gate_ok:
+        if self.stack and not s_cur.lock and gate_ok and not self._mine_first(s_cur, late_only=True):
             prev = self.stack[-1]
             if prev in watchable and not cands[prev].scored.is_break and prev not in self._screen_break:
                 st = self._cstate(cands, now)
@@ -2003,9 +2005,13 @@ class Decider:
 
     def _crunch_go(self, cands, pick: str, s_cur: Scored, on_break: bool, now: float) -> bool:
         """Should we leave what's on for crunch time at `pick` (at the next safe gap)?"""
-        if not s_cur.crunch:
-            return True   # get there before its first crunch snap
         p = cands[pick].scored
+        if not s_cur.crunch:
+            if self._mine_first(s_cur) and p.personal < s_cur.personal:
+                # [EXP-214, your-team crunch first] your team late and close is never left for someone else's
+                # crunch: it may be about to become its own (CLE @ WSH, Dec 12: left for CHI 0:39, missed 19)
+                return False
+            return True   # get there before its first crunch snap
         if self.cfg.get("decider.crunch.by_value", False):
             # [crunch by value] jump when the other crunch is worth clearly more (the Bills' last 3 min vs a
             # Bears 1-minute drive); otherwise only the stoppage hop below
@@ -2672,6 +2678,18 @@ class Decider:
         self.home_return_at = now + left - buffer - back
         return Decision(now, "switch", dest, self._why(options[dest], f"{_short(cands[home].scored)} at the break → "),
                         state, gate_txt, kind="break_visit")
+
+    def _mine_first(self, s, late_only: bool = False) -> bool:
+        """[EXP-214, decider.crunch.mine_first] Your team's game holds the TV: never left by a catch-up return in
+        its final period (late_only, unless garbage time; WSH @ DET, Nov 10 2025: a return to a Q1 visit's origin
+        at 8:37 left, back at 0:01 of OT), nor for another game's crunch or a big-play chase while it is late and close."""
+        if not _config.for_league(self.cfg, "decider.crunch.mine_first", getattr(getattr(s, "league", None), "value", None),
+                                  False):
+            return False
+        if late_only:
+            return bool(getattr(s, "late", False) and not s.garbage
+                        and s.personal >= self.cfg.get("decider.crunch.hold_personal", 5))
+        return self._mine_late(s)
 
     def _mine_late(self, s) -> bool:
         """Your team (or your bet) in its final period, not decided and still competitive. [EXP-204]

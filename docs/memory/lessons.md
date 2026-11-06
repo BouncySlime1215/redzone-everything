@@ -351,3 +351,8 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   `LagSampler` quietly falls back to ESPN when a source has no profile. That made every NBA buffer read pessimistic
   (B60 big seen 12.8 % instead of 66.7 %). Fix: the measured nba_cdn profile. Lesson: when a sim falls back to a
   default input, say so in the output; a silent fallback reads as a real result.
+- 2026-11-06 (EXP-214): the catch-up return stack outlived its moment. A Q1 break visit onto WSH left LAL on the stack
+  for two hours, and the generic "moment's over, back to" return fired from WSH's Q4 (up 13, so not "late and
+  close"). Separately `_crunch_go` returned True whenever the current game wasn't in crunch, so your team late and
+  close lost to any neutral crunch. Lesson: every path that leaves a game (return, crunch hop, chase) has to ask the
+  same "is this your team's endgame?" question; guarding only the "better game" path left three doors open.
