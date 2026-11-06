@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-YTTV research 8/8 done. Honest delay about 25 s +-3 on ESPN and NBA TV (app used 42). Stick likely holds a buffer but a pause may snap to live; hidden-stick pause ladder settles it. Red team: replay treated the buffer as instant; real switches cost 97-120 s, early check shows mid-play 0 to 7 (PR 372).
-Nick decisions pending: hidden-stick tests, Library DVR test, FastCast and Polymarket logging, RC6.3. RC8 Monday no longer firm.
+Nick approved hidden-stick testing today. Roles flipped: .181 HDMI2 is on screen, so tests run on hidden .150. Pause ladder (5-90 s) and 20-min hold started; aborts if the stick stops being hidden.
+Auto-switching stays on. RC6.3 still waits on Nick.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
