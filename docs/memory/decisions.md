@@ -1044,3 +1044,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Nick's screen changes: RC6.2's NBA/NFL hold stays as it is.
 - 2026-11-06 (integrator): **Grader freeze v39: rc8_gate_report.py prints one line per follow-up EXP arm (#373).**
   Report-only: EXP-601's holds / fails, prereg, grader and verdict arm appear under each league; no gate changes.
+- 2026-11-06 (Nick 20:38 UTC, "update #372 grader assumptions only with measured values"): **EXP-602 registered:
+  hold_overrun 1.062 (75 s held 79.66 s, stick .150) replaces 1.0 and S1's 1.36; nothing else moves.** The 10-60 s
+  snap to live is not a stick value (STK-05 re-tunes a paused standby with no app hold), and the two EXP-601
+  pessimisms stay until Nick OKs a separate EXP.
