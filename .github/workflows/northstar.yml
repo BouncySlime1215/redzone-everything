@@ -54,8 +54,9 @@ jobs:
         # The runner has no data/live_nights, so without this the section is PENDING forever.
         run: |
           LIVE=""
+          # [oracle, Nick Nov 5 ~5 PM] --oracle every night so pct_of_oracle stops reading n/a
           if python scripts/northstar.py --help | grep -q -- --live-dir; then LIVE="--live-dir docs/live-nights"; fi
-          python scripts/northstar.py --night-seeds 8 --controls-json controls.json --json northstar-raw.json $LIVE
+          python scripts/northstar.py --night-seeds 8 --controls-json controls.json --json northstar-raw.json --oracle $LIVE
           cat docs/northstar.md >> "$GITHUB_STEP_SUMMARY"
       - name: night health report (report.nightly; writes nothing while the flag is off)
         run: python scripts/night_report.py

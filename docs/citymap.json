@@ -2439,7 +2439,8 @@
    ],
    "kind": "module",
    "outputs": [
-    "scripts/buffer_sweep.py"
+    "scripts/buffer_sweep.py",
+    "scripts/eval_sports.py"
    ],
    "owner": "unowned",
    "role": "[time-shift buffer] The windowed-hindsight oracle (Nick 9:10 AM Nov 5): exact DP over only what the buffer reveals, past-only value beyond the window.",
@@ -5006,6 +5007,7 @@
     "redzone/lab/backtest.py",
     "redzone/lab/evaldata.py",
     "redzone/lab/oracle.py",
+    "redzone/lab/oracle_window.py",
     "redzone/lab/splits.py",
     "redzone/lab/sportsgrade.py",
     "redzone/models.py",
@@ -5887,6 +5889,17 @@
     "untagged"
    ]
   },
+  "scripts/sync_truth_wv.py": {
+   "contracts": [],
+   "inputs": [],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "[WV loop, Nick's oracle-audit item 7] Per-stick delay error at each switch landing, for the mistake ledger.",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/synth_build.py": {
    "contracts": [],
    "inputs": [
@@ -6120,10 +6133,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 335,
+  "modules": 336,
   "orphans": 14,
-  "unowned": 173,
-  "untagged": 279
+  "unowned": 174,
+  "untagged": 280
  },
  "version": 1
 }
