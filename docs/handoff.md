@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep: RC6.3 deploy tests in progress, nothing switched yet, RC6.2 still live. Wall power, no games.
-Top job stays YTTV switching: PRs 357 and 358 flagged off pending replay on recorded nights.
+Sweep: RC6.3 deploy status checked; see deploy.jsonl. Usage 77%, no games.
+YTTV switching stays the top job; PRs 357 and 358 remain flagged off pending replay.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
