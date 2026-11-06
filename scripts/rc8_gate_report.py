@@ -28,7 +28,8 @@ from redzone import buffer_rc8 as R  # noqa: E402
 from redzone.config import Config  # noqa: E402
 
 LEAGUE_NEEDS = {"nba": ["start_timed"]}   # planner, after lane 3's autopsy (Nov 5): NBA ships start_timed with RC8
-NEEDS = {"start_timed": "decider.entry.start_timed=true"}   # lane 3's st arm: shipped only when the verdict needs it
+NEEDS = {"start_timed": "decider.entry.start_timed=true",
+         "dwell_min_s_35": "decider.dwell.min_s=35"}   # EXP-213 (#363); the key exists only once #363 merges   # lane 3's st arm: shipped only when the verdict needs it
 LEAGUES = ("nba", "nfl", "nhl")   # graded tonight (NBA first, then NFL); others stay live
 ITEM_NAMES = {"1_rule1": "Rule #1 (0 mid-play, every run + shadow)", "2_beats_live": "Beats live (sweep, >= 8 nights)",
               "3_shadow": "Tonight's shadow (veto only)", "4_locked": "Locked read at the cut",
@@ -119,6 +120,8 @@ def report(cfg, sweep: dict | None, shadow: dict | None, card: dict | None = Non
         detail.update({"state": state, "rc8_on_now": R.is_on(cfg, lg), "adaptive": parts,
                        "grid_mid_play_total": sum(int(r.get("entries_mid_play") or 0) for r in grid),
                        "grid_runs": len(grid), "shadow_card": (card or {}).get(lg),
+                       "caveat": (v or {}).get("verdict_caveat") or (sweep or {}).get("verdict_caveat")
+                       if (v or {}).get("verdict") == "ON" else None,
                        "oracle": oracle_line(oracles, lg), "grid": grid_line(v),
                        "breaches": (v or {}).get("breaches_by_arm"),
                        "sweep_b": (v or {}).get("chosen_b"), "guardrails": (v or {}).get("guardrails")})
@@ -155,6 +158,7 @@ def to_md(r: dict) -> str:
               f"{d['grid_mid_play_total']} mid-play over {d['grid_runs']} runs. First picks (own line): "
               f"{'MISSING (PENDING)' if i1['first_pick_mid_play'] is None else i1['first_pick_mid_play']} mid-play in the sweep, {i1['shadow_first_pick_live']} live in the shadow. Shadow: {i1['shadow_entries']} "
               f"entries, {i1['shadow_live']} live.",
+              *([f"- **Caveat (lane 3):** {d['caveat']}."] if d.get("caveat") else []),
               f"- Sweep: verdict {i2.get('verdict') or 'not in yet'}, B {i2.get('chosen_b')}, needs "
               f"{i2.get('needs') or 'nothing'}, {i2.get('fit_nights') or 0} fit nights, primary "
               f"{json.dumps(i2.get('primary')) if i2.get('primary') else 'n/a'}.",
