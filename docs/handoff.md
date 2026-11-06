@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-YTTV live tests tally: 15 of 58 touched a live stick, 0 passed, 43 never ran. Ad-based tests had no in-game pods on NBA TV; overlay recipes failed and block most UI tests. No delay number yet; one title flip read about 21 s (single sample).
-RedZone auto-switching on, showing MIA@GS. Usage 76%.
+Nick: RedZone did not switch all night. Cause 1 confirmed: overseer left auto-switching paused after overnight tests, until 10:12 PM, so all of TNF was missed. Sweeps now must report mode.paused.
+Cause 2 suspected: since resume, 0 switches; command lock held 150 s four times while the leave gate stayed closed and delay estimates reset. Overseer stopped its sync tests at 11:20. Needs lane 2 review.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
