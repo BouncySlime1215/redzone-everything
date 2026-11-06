@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-RC6.3 side test run on 39597ea5: 3139 passed, 25 skipped, 1 failed in 30 min. The one failure came from running under a /tmp path, not the code; recheck outside /tmp logged in tonight.md.
-Deploy waits for Nick's OK to skip the rerun. Deploy time limit needs raising or tests need a normal-priority path.
+Sweep: RC6.2 live, no games, not paused, usage 77%. RC6.3 passed its side tests and waits on Nick's OK to skip the rerun.
+YTTV switching fixes stay flagged off pending replay on recorded nights.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
