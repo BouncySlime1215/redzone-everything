@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Isolation: with auto-switching off, a 60 s pause still returned near live about 24 s after resume, so YouTube TV does it, not RedZone. Auto-switching back on, confirmed. Scrub seek moves -120 s but the player then stalls, then returns to live.
-NEW LEAD: the scrub preview thumbnail is readable by screenshot, including scorebug and time label. May give absolute delay on a hidden stick. To test on a live game tonight, numbers only, no frames kept.
+Sweep: auto-switching on, wall power. Testing scrub commit variants on hidden .150 to find a seek that keeps playing behind live.
+RC6.3 waits on Nick. Chrome closed, so coordinator can't be reached from here until a tab is open.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
