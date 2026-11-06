@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-NEW #1 (Nick): make RedZone switch on YouTube TV, above Watch Value. Lead suspect, unproven: NBA TV delay 42 s with sigma 15-21 and 0 accepted samples keeps leave_gate shut; delay_doubt resets may stop it settling.
-Design under test: delay = per-channel edge constant + exact behind-live from E. Anchors tonight cluster near 21-25 s, not 42. No live config change without Nick.
+Sweep 11:44 PM: mode not paused, wall power, usage 76%. Still 0 switches since 10:12 PM with 3 live games; leave gate reports 'play is live'. Matches the lead suspect, not proven.
+Lane 2 replay of tonight's logs is the top job; awaiting root cause. No live config changes.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
