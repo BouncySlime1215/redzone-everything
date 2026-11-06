@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep 12:15 AM: RedZone not paused, on MIA@GS, wall power, usage 76%. Raw mechanics_01 and ui_10 results sent to the test-bank thread for PR 356 (stick addresses redacted).
-Top job stays YTTV switching: PR 357 flag-off fix awaits replay on recorded nights; per-channel delay model next.
+Sweep 12:45 AM: mode and wall power checked, usage 76%. YTTV switching stays the top job.
+PR 356 and 357 status checked on GitHub; both stay off live until replayed on recorded nights.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
