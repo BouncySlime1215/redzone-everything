@@ -93,3 +93,56 @@ def test_pick_focus_rejects_weak_or_bad(ui):
            dict(x=0.33, y=0.85, width=0.10, height=0.05, confidence=0.99, source="other"),
            dict(x="?", source="neutral_filled_button")]
     assert ui.pick_focus(bad, obs) == ([], "none")
+
+
+def test_nov5_mechanics01_landings_regrade(mech):
+    """Nov 5 night, hidden stick, nbatv x6: three landings read L = 0.0 (placeholders) and the group
+    'failed' with MAD 34,685 s. Without them the three real landings agree to 0.01 s."""
+    _, m01 = mech
+    Ls = [0.0, 0.0, 46790.147, 46790.135, 0.0, 46790.134]
+    kept, n = m01.drop_zero({("STICK_HDMI2", "nbatv"): Ls})
+    assert n == 3
+    assert m01.mad(kept[("STICK_HDMI2", "nbatv")]) <= 0.02
+
+
+class _FakeGuard:
+    """Replays a scripted focus sequence; records every key."""
+
+    def __init__(self, labels):
+        self.labels, self.keys = list(labels), []
+
+    def key(self, *codes, gap=0.7):
+        self.keys += codes
+        return True
+
+
+def _patch_focus(ui, monkeypatch, g):
+    monkeypatch.setattr(ui, "snap", lambda g_, tag: (None, 0.0, {"_ft": g.labels.pop(0) if g.labels else ""}))
+    monkeypatch.setattr(ui, "focused_text", lambda o: o.get("_ft", ""))
+
+
+def test_nov5_ui10_unknown_focus_presses_no_left_right(ui, monkeypatch):
+    """Nov 5 night: overlay revealed with no focus box; LEFT x9 then seeked the stick 60 s. Now an unknown
+    focus after DOWN x3 must end navigation with no LEFT/RIGHT pressed."""
+    g = _FakeGuard(["", "", "", ""])
+    _patch_focus(ui, monkeypatch, g)
+    nav = ui.navigate_to(g, "stats")
+    assert not nav["found"]
+    assert "DPAD_LEFT" not in g.keys and "DPAD_RIGHT" not in g.keys
+    assert g.keys == ["DPAD_DOWN", "DPAD_DOWN", "DPAD_DOWN", "DPAD_DOWN"]
+
+
+def test_navigate_scrubber_then_row(ui, monkeypatch):
+    # bar focused ('23:36' scrub label) -> DOWN -> HD -> RIGHT -> CC -> RIGHT -> Stats
+    g = _FakeGuard(["23:36", "HD", "CC", "Stats"])
+    _patch_focus(ui, monkeypatch, g)
+    nav = ui.navigate_to(g, "stats")
+    assert nav["found"] and nav["text"] == "Stats"
+    assert g.keys == ["DPAD_DOWN", "DPAD_DOWN", "DPAD_RIGHT", "DPAD_RIGHT"]
+
+
+def test_navigate_stops_when_focus_leaves_row(ui, monkeypatch):
+    g = _FakeGuard(["HD", "", "Stats"])
+    _patch_focus(ui, monkeypatch, g)
+    nav = ui.navigate_to(g, "stats")
+    assert not nav["found"] and g.keys == ["DPAD_DOWN", "DPAD_RIGHT"]
