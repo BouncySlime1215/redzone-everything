@@ -153,17 +153,28 @@ def match(league: str, plays: list[dict], ids: list[str], names: list[str], a: d
     return best, bs, bf
 
 
-def build(archive: Path, league: str) -> tuple[list[dict], dict]:
+def build(archive: Path, league: str, lock: dict | None = None, only: set | None = None,
+          suffix: str = "") -> tuple[list[dict], dict]:
+    """lock: an eval-data lock (window + dev_before) to split by instead of the active pin.
+    only: restrict to these nights; any of them in the locked block is refused."""
     from redzone.lab import splits
     try:
         from redzone.lab import evaldata
         end = evaldata.window_end(league, None)
+        if lock:
+            end = (lock.get("window") or {}).get(league, {}).get("end")
     except Exception:  # noqa: BLE001
         end = None
     d = archive / league
     an = splits.archive_nights(d, end)
-    s = splits.league_split(league, an)
+    s = (splits.split_nights(an, dev_before=(lock.get("dev_before") or {}).get(league)) if lock
+         else splits.league_split(league, an))
     fit = set(s.train + s.valid)
+    if only is not None:
+        bad = only & set(s.test)
+        if bad:
+            raise SystemExit(f"refusing locked nights: {sorted(bad)[:5]}")
+        fit &= only
     rows, stats = [], {"fit_nights": len(fit), "locked_nights_skipped": len(s.test), "games": 0,
                        "games_with_recap": 0, "sentences": 0, "matched": 0}
     for night in sorted(fit):
@@ -204,19 +215,24 @@ def main(argv=None) -> int:
     ap.add_argument("--archive", type=Path, default=Path("data/archive"))
     ap.add_argument("--out", type=Path, default=Path("out/highlights"))
     ap.add_argument("--league", nargs="+", default=["nba", "nfl"])
+    ap.add_argument("--lock", type=Path, default=None, help="eval-data lock json to split by (e.g. v3)")
+    ap.add_argument("--nights", type=Path, default=None, help="file of YYYYMMDD nights to restrict to")
+    ap.add_argument("--suffix", default="", help="output name suffix, e.g. _v3")
     a = ap.parse_args(argv)
     a.out.mkdir(parents=True, exist_ok=True)
     cov = {"note": "plays only, no text; fit (train+valid) nights only; personal-use, not for commercial release"}
     for lg in a.league:
-        rows, st = build(a.archive, lg)
+        lock = json.loads(a.lock.read_text()) if a.lock else None
+        only = set(a.nights.read_text().split()) if a.nights else None
+        rows, st = build(a.archive, lg, lock, only)
         cov[lg] = st
-        with (a.out / f"{lg}_recap_highlights.csv").open("w", newline="") as fh:
+        with (a.out / f"{lg}_recap_highlights{a.suffix}.csv").open("w", newline="") as fh:
             w = csv.DictWriter(fh, fieldnames=list(rows[0]) if rows else ["league"])
             w.writeheader()
             w.writerows(rows)
         print(f"{lg}: {st['matched']} highlight plays in {st['games_with_highlight']}/{st['games_with_recap']} "
               f"recapped games, {st['fit_nights']} fit nights ({st['locked_nights_skipped']} locked skipped)")
-    (a.out / "coverage.json").write_text(json.dumps(cov, indent=1))
+    (a.out / f"coverage{a.suffix}.json").write_text(json.dumps(cov, indent=1))
     return 0
 
 
