@@ -1,0 +1,34 @@
+{
+ "stay_leave_timing": {
+  "big": 162.0,
+  "crunch": 406.0,
+  "mine": 2500.0,
+  "dead": 279.98
+ },
+ "wrong_game_value": {
+  "big": 192.0,
+  "crunch": 368.0,
+  "mine": 1200.0,
+  "dead": 357.9
+ },
+ "break_estimate": {
+  "big": 66.0,
+  "crunch": 106.0,
+  "mine": 500.0,
+  "dead": 156.26
+ },
+ "switch_cost": {
+  "big": 3.0,
+  "crunch": 3.0,
+  "mine": 0.0,
+  "dead": 0.0
+ },
+ "_all": {
+  "big": 423.0,
+  "crunch": 883.0,
+  "mine": 4200.0,
+  "dead": 794.14
+ },
+ "_nights": 101,
+ "_tag": "personal-use, not for commercial release"
+}
