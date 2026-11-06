@@ -98,6 +98,23 @@ def grid_line(v: dict | None) -> str:
     return ", ".join(f"{k} {c.get('honest', '-')}/{c.get('resync', '-')}" for k, c in cells.items())
 
 
+def exp_lines(sweep: dict | None, lg: str) -> list[str]:
+    """Follow-up experiments lane 3 graded into verdict.json (e.g. exp601: the hidden-stick readiness model),
+    one line per arm of this league: whether it held, the verdict arm, and the first breaches."""
+    out = []
+    for name, e in sorted((sweep or {}).items()):
+        if not (name.startswith("exp") and isinstance(e, dict) and isinstance(e.get("result"), dict)):
+            continue
+        for arm, res in sorted(e["result"].items()):
+            if not arm.startswith(f"{lg}-") or not isinstance(res, dict):
+                continue
+            br = res.get("breaches") or []
+            out.append(f"{name.upper()} {arm} ({e.get('prereg') or 'no prereg'}, grader {e.get('grader_freeze') or '?'}, "
+                       f"verdict arm {e.get('verdict_arm') or '?'}): {'HOLDS' if res.get('holds') else 'FAILS'}"
+                       + (f"; {'; '.join(br[:4])}{' ...' if len(br) > 4 else ''}" if br else ""))
+    return out
+
+
 def report(cfg, sweep: dict | None, shadow: dict | None, card: dict | None = None, sync: dict | None = None,
            locked: dict | None = None, leagues=LEAGUES, oracles: dict | None = None) -> dict:
     sv = (sweep or {}).get("leagues") or {}
@@ -124,7 +141,8 @@ def report(cfg, sweep: dict | None, shadow: dict | None, card: dict | None = Non
                        if (v or {}).get("verdict") == "ON" else None,
                        "oracle": oracle_line(oracles, lg), "grid": grid_line(v),
                        "breaches": (v or {}).get("breaches_by_arm"),
-                       "sweep_b": (v or {}).get("chosen_b"), "guardrails": (v or {}).get("guardrails")})
+                       "sweep_b": (v or {}).get("chosen_b"), "guardrails": (v or {}).get("guardrails"),
+                       "exps": exp_lines(sweep, lg)})
         sb, why = R.ship_b(cfg, lg, (v or {}).get("chosen_b"),
                            mid_play_night=detail["items"]["1_rule1"]["shadow_live"] > 0)
         detail.update({"ship_b": sb if (v or {}).get("chosen_b") else None, "ship_why": why,
@@ -159,6 +177,7 @@ def to_md(r: dict) -> str:
               f"{'MISSING (PENDING)' if i1['first_pick_mid_play'] is None else i1['first_pick_mid_play']} mid-play in the sweep, {i1['shadow_first_pick_live']} live in the shadow. Shadow: {i1['shadow_entries']} "
               f"entries, {i1['shadow_live']} live.",
               *([f"- **Caveat (lane 3):** {d['caveat']}."] if d.get("caveat") else []),
+              *[f"- {x}." for x in d.get("exps") or []],
               f"- Sweep: verdict {i2.get('verdict') or 'not in yet'}, B {i2.get('chosen_b')}, needs "
               f"{i2.get('needs') or 'nothing'}, {i2.get('fit_nights') or 0} fit nights, primary "
               f"{json.dumps(i2.get('primary')) if i2.get('primary') else 'n/a'}.",
