@@ -1025,3 +1025,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Integrator ruling: ships ON below the 100% bar set for it because neither left miss is on a path the flag touches
   and mid-play entries / plays missed are identical on every harness; crunch live -0.3/-0.7 overall is the price of
   never leaving your team for a neutral crunch (north star: his teams first). v1 locked read once at the next release.
+- 2026-11-06 (integrator, T9 + red team item 1): **No RC8 flip card until EXP-601 is read.** The replay treats the
+  time-shift buffer as free; live, the hidden stick needs tune (Nov 4 p50 21.6 s, p95 44.7 s) + B before a switch is
+  buffered, and NFL dw35 switches every ~131 s (resync median). EXP-601 (docs/prereg/exp-601.md) adds a hidden-stick
+  readiness model behind a flag (off = today's grader), frozen before lane 3 re-sweeps NFL B75 dw35 and NBA B90.
