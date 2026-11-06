@@ -951,3 +951,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   agreement with the oracle >= 65% in the worst league; PENDING until a card carries watch_value. A 0-1 calibration
   value is read as a fraction and scaled to points (errs toward FAIL). `scripts/sync_truth_wv.py` (#353, lane 2) is an
   offline ledger input, not a gate, and is not frozen. Grader freeze v33.
+- 2026-11-06 (lane 4, Nick via the overseer 3:14 AM ET: "fix deploy test timing"): `scripts/deploy.py` runs its test step at
+  `nice -n 10` by default instead of `taskpolicy -b`. Reason: on the Mac the suite took 30 min at nice 10 but timed out at
+  60 min under taskpolicy -b (efficiency cores). `test_priority: background` in deploy/deploy.yaml restores taskpolicy -b;
+  `deploy --test-timeout MIN` overrides the 60 min limit. The live app (nice 0) still wins the cores, and deploys stay in
+  no-game windows.

@@ -14,7 +14,8 @@ Deploy steps, in order. Nothing on the running checkout changes before step 5.
  3. Refuse if tracked files are edited, or requirements.txt changed (install deps by hand first).
     Untracked files (data/, agent/model/, .venv-agent/, local docs) never block a deploy.
  4. Run the test suite on the new commit in a separate worktree (data/deploy/stage), at background
-    priority (`taskpolicy -b` on the Mac, `nice` elsewhere). Fail -> stop, nothing touched.
+    priority (`nice -n 10`; `test_priority: background` uses `taskpolicy -b` on the Mac, which is about
+    2x slower: it timed out at 60 min where nice 10 took 30 min, Nov 5). Fail -> stop, nothing touched.
  5. Wait until no game is live and none starts inside the watch window (or give up, exit 2).
  6. Save config + models (content-addressed, deduplicated), check out the new commit (detached),
     restart the launchd service, then the watchdog so it runs the new code too. A local untracked
@@ -74,7 +75,8 @@ class Settings:
     sample_s: float = 30.0            # health sample period
     startup_grace_s: float = 120.0    # the API must answer within this after the restart
     baseline_s: float = 600.0         # old version's log window to compare against
-    test_timeout_s: float = 3600.0   # background priority on the Mac's efficiency cores: ~25 min
+    test_timeout_s: float = 3600.0   # nice 10 on the Mac: ~30 min (Nov 5); --test-timeout MIN overrides
+    test_priority: str = "nice"       # "nice": nice -n 10; "background": taskpolicy -b (efficiency cores, ~2x slower)
     test_args: list[str] = field(default_factory=lambda: ["-q", "-x", "-p", "no:cacheprovider"])
     deselect: list[str] = field(default_factory=list)   # known Mac/hardware-only tests to skip
     live_wait_s: float = 0.0          # 0: defer at once if a game is live; else poll this long
@@ -144,10 +146,13 @@ class System:
             check: bool = True) -> subprocess.CompletedProcess:
         return self.run(["git", *args], cwd=cwd, timeout=timeout, check=check)
 
-    def low_priority(self, args: list[str]) -> list[str]:
-        if sys.platform == "darwin" and shutil.which("taskpolicy"):
+    def low_priority(self, args: list[str], mode: str = "nice") -> list[str]:
+        """The deploy's test command at low priority. `nice -n 10` by default: the live app (nice 0) still
+        wins every core, but the suite is not pinned to the Mac's efficiency cores the way `taskpolicy -b`
+        pins it (Nick, Nov 6: 30 min at nice 10, a 60 min timeout under taskpolicy -b)."""
+        if mode == "background" and sys.platform == "darwin" and shutil.which("taskpolicy"):
             return ["taskpolicy", "-b", *args]
-        return ["nice", "-n", "15", *args] if shutil.which("nice") else args
+        return ["nice", "-n", "10", *args] if shutil.which("nice") else args
 
     def fetch_state(self, api: str, timeout: float = 6.0) -> dict | None:
         try:
@@ -582,14 +587,15 @@ class Deployer:
             cmd = [str(py) if py.exists() else sys.executable, "-m", "pytest", *self.s.test_args]
             for d in self.s.deselect:
                 cmd += ["--deselect", d]
-            self.journal("tests", msg=f"running on {commit[:9]} at background priority")
+            self.journal("tests", msg=f"running on {commit[:9]} at low priority ({self.s.test_priority})")
             try:
                 # Background priority (efficiency cores) makes wall-clock speed budgets meaningless,
                 # so tests skip their speed asserts (tests/conftest.py assert_speed) but keep the rest.
-                r = self.sys.run(self.sys.low_priority(cmd), cwd=stage, timeout=self.s.test_timeout_s, check=False,
+                r = self.sys.run(self.sys.low_priority(cmd, self.s.test_priority), cwd=stage, timeout=self.s.test_timeout_s, check=False,
                                  env={"RZ_TESTS_LOW_PRIORITY": "1"})
             except subprocess.TimeoutExpired:
-                return False, f"tests timed out after {int(self.s.test_timeout_s)} s"
+                return False, (f"tests timed out after {int(self.s.test_timeout_s)} s at {self.s.test_priority} "
+                               "priority; rerun with --test-timeout MIN (nothing was touched)")
             tail = "\n".join((r.stdout or r.stderr).strip().splitlines()[-15:])
             return r.returncode == 0, tail
         finally:
@@ -896,6 +902,7 @@ def main(argv: list[str] | None = None, system: System | None = None, root: Path
     d.add_argument("--wait", type=float, metavar="MIN", help="wait up to MIN minutes for live games to end")
     d.add_argument("--at-break", action="store_true",
                    help="switch while games are live if the game on screen is at halftime/intermission")
+    d.add_argument("--test-timeout", type=float, metavar="MIN", help="test step timeout in minutes (default 60)")
     d.add_argument("--deps-ok", action="store_true", help="requirements.txt changed and you installed them")
     d.add_argument("--skip-tests", action="store_true", help=argparse.SUPPRESS)
     r = sub.add_parser("rollback")
@@ -913,6 +920,8 @@ def main(argv: list[str] | None = None, system: System | None = None, root: Path
             s.branch = a.branch
         if getattr(a, "wait", None) is not None:
             s.live_wait_s = max(0.0, a.wait * 60)
+        if getattr(a, "test_timeout", None) is not None:
+            s.test_timeout_s = max(60.0, a.test_timeout * 60)
         if getattr(a, "at_break", False):
             s.at_break = True
             s.live_poll_s = min(s.live_poll_s, 30.0)   # a halftime is short: look every 30 s
