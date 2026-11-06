@@ -195,6 +195,28 @@ def restart_before(league: League, wall: list[float], plays: list[dict], i: int)
     return min(resume_after(league, wall, plays, j), own)
 
 
+def held_stop(league: League, wall: list[float], plays: list[dict], i: int) -> Stoppage:
+    """The stoppage that play i (classified NONE) leaves open anyway (grader v35 proposal, test writers EXP-746/747).
+
+    R1 review batch: ESPN re-logs the play a challenge or review ruled on, and subs, in the same wallclock second and at
+       the same game clock as the review row. A row in that batch doesn't end the stoppage: the game clock hasn't moved.
+    R2 period start (NHL): "Period Start" is logged before the opening face-off or the first shootout attempt; the
+       puck isn't live until the next action.
+    """
+    if raw_type(plays[i]) == "period start":
+        return Stoppage.WHISTLE
+    per, clk = espn._get(plays[i], "period", "number"), espn._get(plays[i], "clock", "displayValue")
+    k = i - 1
+    while k >= 0 and int(wall[k]) == int(wall[i]) and espn._get(plays[k], "period", "number") == per \
+            and espn._get(plays[k], "clock", "displayValue") == clk:
+        if espn.stoppage_for(league, plays[k]) == Stoppage.REVIEW:
+            return Stoppage.REVIEW
+        if raw_type(plays[k]) == "substitution":   # NHL subs classify NONE: a batch sub is still a whistle
+            return Stoppage.WHISTLE
+        k -= 1
+    return Stoppage.NONE
+
+
 def dead_at(league: League, wall: list[float], plays: list[dict], st: float) -> tuple[bool, bool, float]:
     """(dead ball on screen, inside a commercial break, seconds until play resumes) at screen time st."""
     i = idx(wall, st)
@@ -210,6 +232,8 @@ def dead_at(league: League, wall: list[float], plays: list[dict], st: float) -> 
         return True, brk, max(0.0, min(res, 900.0 + st) - st)
     last = plays[i]
     stop = espn.stoppage_for(league, last)
+    if stop == Stoppage.NONE:
+        stop = held_stop(league, wall, plays, i)
     res = resume_after(league, wall, plays, i)
     dead = stop != Stoppage.NONE or (bool(last.get("scoringPlay")) and st - wall[i] <= 4.0)
     if dead and st < res:
