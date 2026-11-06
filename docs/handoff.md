@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep: hidden-stick pause ladder on .150 in progress; results in tonight.md when done.
-RC6.2 live, auto-switching on. RC6.3 waits on Nick.
+BIG: on hidden .150 a 75 s pause held about 79.7 s behind live, within 0.15 s, for a full 20 min. Shorter pauses (10-60 s) snapped back to live within 30 s; cause unknown.
+Finer pause test running now to find what makes it hold. One channel, one stick, off-air programming so far.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
