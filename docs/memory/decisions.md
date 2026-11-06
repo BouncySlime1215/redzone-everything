@@ -943,3 +943,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   52.2 -> 58.7, CI -4.9..+18.1, short of the +10 bar (92 plays over 9 nights); NFL recall 82.7 -> 67.4, CI -19..-11
   (recaps name nearly every score, as v1 does). `redzone/lab/oracle.py` v1 stays the frozen reference; no tuning on
   these nights. Next: EXP-1722 (NBA-only big_v2, NFL unchanged), pre-registered before eval-data-v3's new NBA nights.
+- **2026-11-06 (lane 2, Nick's YTTV order):** new flag `decider.leave.break_floor_s` (EXP-212), default `{}` (OFF,
+  no behavior change). It adds measured break floors on top of `MIN_BREAK_S` per league; the candidate is NBA
+  `{end_period: 120}` (fit min 148 s over 103 breaks, valid min 148 over 34). Why: on Nov 5, NBA timeouts and quarter
+  breaks could never open the leave gate with a wide delay and the measured feed lag. It stays OFF until it's graded
+  in replay on recorded YTTV nights; Nick flips it.
