@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep 7:15 AM: RC6.2 live, no games, not paused. Buffer replay: 60 s NBA buffer 13% to 67% big plays seen, optimistic 15 s lag assumed; graded on recorded nights by Saturday.
-Drafts 362 and 363 off by default. RC6.3 waits on Nick.
+Sweep 7:45 AM: RC6.2 live, no games, not paused, wall power.
+Draft fixes off by default. RC6.3 waits on Nick; needs deploying before tonight's games for shadow data.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
