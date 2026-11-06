@@ -1,0 +1,42 @@
+{"source": "polymarket", "row": "trigger", "game_key": "nfl:20261106:JAX@BAL", "recv_ts": 1793927895.2148135, "delta": -0.03, "window_s": 7.338}
+{"source": "polymarket", "row": "trigger", "game_key": "nfl:20261106:JAX@BAL", "recv_ts": 1793927988.4691, "delta": -0.03, "window_s": 29.963}
+{"source": "polymarket", "row": "trigger", "game_key": "nfl:20261106:JAX@BAL", "recv_ts": 1793928550.048705, "delta": 0.03, "window_s": 29.391}
+{"source": "polymarket", "row": "trigger", "game_key": "nfl:20261106:JAX@BAL", "recv_ts": 1793928733.5445967, "delta": 0.04, "window_s": 7.491}
+{"source": "polymarket", "row": "trigger", "game_key": "nfl:20261106:JAX@BAL", "recv_ts": 1793928753.611405, "delta": -0.05, "window_s": 20.067}
+{"source": "polymarket", "row": "trigger", "game_key": "nfl:20261106:JAX@BAL", "recv_ts": 1793929453.94255, "delta": 0.03, "window_s": 4.607}
+{"source": "polymarket", "row": "trigger", "game_key": "nfl:20261106:JAX@BAL", "recv_ts": 1793931232.2850232, "delta": 0.03, "window_s": 28.183}
+{"source": "polymarket", "row": "trigger", "game_key": "nfl:20261106:JAX@BAL", "recv_ts": 1793931364.8046932, "delta": 0.035, "window_s": 1.553}
+{"source": "polymarket", "row": "trigger", "game_key": "nfl:20261106:JAX@BAL", "recv_ts": 1793931506.0742285, "delta": -0.03, "window_s": 29.776}
+{"source": "polymarket", "row": "trigger", "game_key": "nfl:20261106:JAX@BAL", "recv_ts": 1793931903.5745173, "delta": -0.03, "window_s": 29.812}
+{"source": "polymarket", "row": "trigger", "game_key": "nfl:20261106:JAX@BAL", "recv_ts": 1793931923.612533, "delta": -0.03, "window_s": 20.038}
+{"source": "polymarket", "row": "trigger", "game_key": "nfl:20261106:JAX@BAL", "recv_ts": 1793938974.8987288, "delta": 0.4995, "window_s": 25.819}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793926101.7796943, "score": [0, 0], "prev": null}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793926103.5069714, "score": [0, 0], "prev": null}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793928146.9882045, "score": [6, 0], "prev": [0, 0]}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793928147.963178, "score": [6, 0], "prev": [0, 0]}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793928247.00527, "score": [7, 0], "prev": [6, 0]}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793928247.997525, "score": [7, 0], "prev": [6, 0]}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793928839.8860867, "score": [7, 3], "prev": [7, 0]}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793928849.0586731, "score": [7, 3], "prev": [7, 0]}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793929502.1577253, "score": [10, 3], "prev": [7, 3]}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793929512.9799628, "score": [10, 3], "prev": [7, 3]}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793931942.498335, "score": [16, 3], "prev": [10, 3]}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793931943.4494994, "score": [16, 3], "prev": [10, 3]}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793931972.516408, "score": [17, 3], "prev": [16, 3]}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793931973.4758062, "score": [17, 3], "prev": [16, 3]}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793933690.52679, "score": [20, 3], "prev": [17, 3]}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793933699.742145, "score": [20, 3], "prev": [17, 3]}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793935767.7275722, "score": [23, 3], "prev": [20, 3]}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793935776.86165, "score": [23, 3], "prev": [20, 3]}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793936159.8805501, "score": [26, 3], "prev": [23, 3]}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793936166.9013748, "score": [26, 3], "prev": [23, 3]}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793937023.8120599, "score": [32, 3], "prev": [26, 3]}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793937031.0128734, "score": [32, 3], "prev": [26, 3]}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793937083.8138587, "score": [33, 3], "prev": [32, 3]}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793937090.9991612, "score": [33, 3], "prev": [32, 3]}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793937244.0089257, "score": [33, 9], "prev": [33, 3]}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793937251.0143337, "score": [33, 9], "prev": [33, 3]}
+{"source": "espn_scoreboard", "matchup": "JAX@BAL", "recv_ts": 1793937266.0099268, "score": [33, 10], "prev": [33, 9]}
+{"source": "espn_summary", "matchup": "JAX@BAL", "recv_ts": 1793937271.0251598, "score": [33, 10], "prev": [33, 9]}
+{"source": "clock", "when": "start", "t": 1793926101.336067, "ntp_offset_s": -0.0102}
+{"source": "clock", "when": "end", "t": 1793944104.8966627, "ntp_offset_s": -0.0112}
