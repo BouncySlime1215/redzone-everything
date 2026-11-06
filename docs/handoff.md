@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Nick approved hidden-stick testing today. Roles flipped: .181 HDMI2 is on screen, so tests run on hidden .150. Pause ladder (5-90 s) and 20-min hold started; aborts if the stick stops being hidden.
-Auto-switching stays on. RC6.3 still waits on Nick.
+Sweep: hidden-stick pause ladder on .150 in progress; results in tonight.md when done.
+RC6.2 live, auto-switching on. RC6.3 waits on Nick.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
