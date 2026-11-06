@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-CORRECTION: the 20-min hold at 79.7 s is suspect. The meter stays constant if the player stops reporting, and raw reruns show 30/60/75/90 s pauses back near live 20-30 s after resume. Stick buffer NOT proven.
-Rewind keys did nothing. Now testing overlay scrub seek and pause hold with forced fresh reads on hidden .150.
+Isolation: with auto-switching off, a 60 s pause still returned near live about 24 s after resume, so YouTube TV does it, not RedZone. Auto-switching back on, confirmed. Scrub seek moves -120 s but the player then stalls, then returns to live.
+NEW LEAD: the scrub preview thumbnail is readable by screenshot, including scorebug and time label. May give absolute delay on a hidden stick. To test on a live game tonight, numbers only, no frames kept.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
