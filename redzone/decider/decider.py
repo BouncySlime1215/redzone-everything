@@ -321,6 +321,8 @@ class Decider:
             tl = self.timelines[game_id] = Timeline(league, clock=self._clock)
             tl.lag_prior = float(_config.for_league(self.cfg, "delay.feed_lag_prior_s", league.value,
                                                     _config.default("delay.feed_lag_prior_s")))
+            floors = _config.for_league(self.cfg, "decider.leave.break_floor_s", league.value, None) or {}
+            tl.extra_floors = {Stoppage(k): float(v) for k, v in floors.items() if v}
             from redzone.noggin.live import hook_for   # [noggin] Timing v1, off unless noggin.timing.leagues
             tl.dead.noggin = hook_for(self.cfg, league)
             if self._pick_on(league):

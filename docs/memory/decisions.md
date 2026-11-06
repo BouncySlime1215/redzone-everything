@@ -956,3 +956,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   60 min under taskpolicy -b (efficiency cores). `test_priority: background` in deploy/deploy.yaml restores taskpolicy -b;
   `deploy --test-timeout MIN` overrides the 60 min limit. The live app (nice 0) still wins the cores, and deploys stay in
   no-game windows.
+- **2026-11-06 (lane 2, Nick's YTTV order):** new flag `decider.leave.break_floor_s` (EXP-212), default `{}` (OFF,
+  no behavior change). It adds measured break floors on top of `MIN_BREAK_S` per league; the candidate is NBA
+  `{end_period: 120}` (fit min 148 s over 103 breaks, valid min 148 over 34). Why: on Nov 5, NBA timeouts and quarter
+  breaks could never open the leave gate with a wide delay and the measured feed lag. It stays OFF until it's graded
+  in replay on recorded YTTV nights; Nick flips it.

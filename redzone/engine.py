@@ -179,6 +179,7 @@ class Engine:
         self.source_status: dict[str, dict] = {}
         self._caffeinate: subprocess.Popen | None = None
         self._last_logged_reason = ""
+        self._last_logged_gate = ""
         self._tick = 0
         self.started = time.time()
         self.summaries: dict[str, dict] = {}  # latest raw summary per live game (for the detail sheet)
@@ -1354,10 +1355,14 @@ class Engine:
         redzone = self._redzone_target(st, dry)
         d = self.decider.decide(cands, redzone, commit=dry, reel=self._reel_target())
         self.last_decision = d
-        changed = d.reason != self._last_logged_reason or d.action != "stay"
+        # [autopsy Nov 5] the gate is logged when it changes too: a halftime that never opened the gate
+        # was invisible in the DB because the reason text stayed the same.
+        gate = str(getattr(d, "gate", "") or "")
+        changed = d.reason != self._last_logged_reason or d.action != "stay" or gate != self._last_logged_gate
         if changed:
             self.store.decision(d)
             self._last_logged_reason = d.reason
+            self._last_logged_gate = gate
         if d.action in ("switch", "replay") and d.target:
             self._act(d, before, cands)
         else:
