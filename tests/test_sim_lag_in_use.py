@@ -22,5 +22,10 @@ def test_nhl_wsc_profile_is_faster_and_others_keep_espn():
     a = sorted(espn.draw("nhl", rng) for _ in range(2000))
     b = sorted(wsc.draw("nhl", rng) for _ in range(2000))
     assert 14.0 < b[1000] < 19.5 and a[1000] > 40.0          # p50 near Nick's 16.7 s vs ESPN's ~50 s
-    assert "nba" not in wsc.use                                # no nba_cdn profile yet: NBA stays on ESPN's
-    assert wsc._q("nba") == espn._q("nba")
+    assert wsc._q("cbb") == espn._q("cbb")                     # leagues without their own feed keep ESPN's
+    # [NBA buffer plan, Nov 6] nba_cdn's measured dead-ball profile (Nov 4-6 recordings) replaces ESPN's
+    assert wsc.use["nba"] == "nba_cdn"
+    c = sorted(wsc.draw("nba", rng) for _ in range(2000))
+    e = sorted(espn.draw("nba", rng) for _ in range(2000))
+    assert 8.0 < c[1000] < 15.0 and e[1000] > 35.0           # p50 ~11 s vs ESPN's ~45 s
+    assert c[-1] <= 35.0                                       # draws stop at the p95 (~31 s)

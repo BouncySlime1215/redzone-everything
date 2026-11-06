@@ -347,3 +347,7 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   infractions in `espn.stoppage_for` didn't hold, and 2026-27 spellings ("Cross checking", "Delaying Game - ...")
   slipped past it too. Fix: match any penalty type (344 -> 3; v1 stays 0). Lesson: when a new season or window jumps
   a metric, diff the feed's type vocabulary first. Report: /mnt/project-files/test-writers/v3-autopsy.md.
+- 2026-11-06: NBA real-lag replays had drawn ESPN's feed lag (p50 45 s) since nba_cdn became NBA's primary, because
+  `LagSampler` quietly falls back to ESPN when a source has no profile. That made every NBA buffer read pessimistic
+  (B60 big seen 12.8 % instead of 66.7 %). Fix: the measured nba_cdn profile. Lesson: when a sim falls back to a
+  default input, say so in the output; a silent fallback reads as a real result.

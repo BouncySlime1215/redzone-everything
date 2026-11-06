@@ -961,6 +961,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   `{end_period: 120}` (fit min 148 s over 103 breaks, valid min 148 over 34). Why: on Nov 5, NBA timeouts and quarter
   breaks could never open the leave gate with a wide delay and the measured feed lag. It stays OFF until it's graded
   in replay on recorded YTTV nights; Nick flips it.
+- 2026-11-06 (YTTV switching owner thread, Nick's 6:14 AM nudge, item 3 "plan buffer on the fast NBA feed"): the sim's
+  `--real-lag` model gets a measured `sources.nba_cdn.nba` profile in redzone/lab/feed_lag_profile.json (dead-ball
+  detection lag, Nov 4-6 recordings, n 1359: p50 11 s, p90 21 s, p95 31 s; ESPN's same nights p50 44 s, p95 92 s).
+  Before this, every NBA real-lag replay drew ESPN's lag although `sources.nba_primary` is on. Sim input only; no
+  live default changes, and the CI scorecards are unchanged (their pinned NBA nights are already at 100% big seen).
+  On Nov 2-5 (31 games, seeds 0-2): 0 mid-play entries at every B; B60 matches B90 on value when sigma <= 8, B90 is
+  needed at sigma 15. RC8 owns the per-league B; this is evidence for it, not a flip.
 - 2026-11-06 (overseer default (Nick 3:10 PM Nov 5), Nick can override; planner + integrator, EXP-735/EXP-017):
   **eval-data-v3 carries no release locked read until its Nov 1+ locked block reaches >= 8 nights per league and
   >= 25% of nights (about Nov 20); until then releases use v1's locked set, and every gate stays on v1.** Reason: no
