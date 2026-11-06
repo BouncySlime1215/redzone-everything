@@ -342,6 +342,10 @@ decider:
     kinds: [break_visit, chase, better, drive, live]
     long_visit_min_score: 0   # a halftime / intermission visit only to a game at least this good (0 = any game)
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
+    # [EXP-214] your team first: in its final period a catch-up return never leaves it, and late and close it is
+    # never left for another game's crunch or a big-play chase (v3 NBA fit, 90 s buffer: your-team crunch live
+    # 493 -> 535/537, resync 473 -> 521/537, 0 added mid-play entries). Overseer default ON (Nick can override).
+    mine_first: true
     floor: true            # [SAFE-09] in a crunch window: no overlay or model leaves it for a non-crunch game, and
     floor_low_value: 0     # ...no game below this value (watch value, else score) pulls us out. 0 = off: at 50 it
                            # held dev but cost locked NFL crunch live -0.6/-3.9/0 (Nov 4); waits for watch value

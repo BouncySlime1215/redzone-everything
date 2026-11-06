@@ -1012,3 +1012,13 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   EXP-1723 and EXP-1724 (Watch Value as the windowed oracle's beyond-window value, at p90 and primary feed lag) FAIL;
   the windowed oracle stays information only. Grader freeze v36, then v37 once the harness moved to scripts/ and
   was re-run through the frozen module (identical JSON).
+- 2026-11-06 (integrator request, lane 2, EXP-214): **`decider.crunch.mine_first: true` (new; overseer default ON, Nick
+  can override).** Your team holds the TV: in its final period a catch-up return never leaves it (unless garbage
+  time), and while it is late and close it is never left for another game's crunch or a big-play chase with less
+  personal stake. Why: eval-data-v3 NBA fit nights showed the hard rule "your-team crunch live" at 91.3%: WSH @ DET
+  Nov 10 2025 (a return to a Q1 visit's origin at 8:37 left, back at 0:01 of OT) and CLE @ WSH Dec 12 2025 (left
+  late and close for a CHI crunch; resync: a chase). v3 fit (111 nights), off -> on: shipped harness (B90, feed lag
+  70) 493 -> 535/537, entries mid-play 4 -> 4, crunch live 86.8 -> 86.5, dead air 22.0 = ; real-lag resync B90
+  seed 0 473 -> 521/537, mid-play 10 -> 10, crunch live 87.0 -> 86.3, dead air 21.6 = ; plain B0 unchanged. v1
+  pinned scorecards (all six): no change except NHL crunch live -0.2 / -0.8 (resync). Left: 20251231 (2 plays at
+  arrival, never left) and 20261024 (NBA leave gate; decider.leave.low_leverage, awaiting Nick's RC6.3 pick).
