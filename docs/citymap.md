@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**337 modules**, 281 untagged, 175 unowned, 15 orphans (no importer).
+**338 modules**, 282 untagged, 176 unowned, 14 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -205,15 +205,15 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/optimize.py` | Training lab: search decider settings against real past slates. | config, lab.backtest, models -> lab.tune, scripts.eval | untagged |
 | `redzone/lab/replaycheck.py` | Exact-date replay diagnostics. | config, decider.screen, lab.backtest, lab.sportsgrade, models, sources.espn -> scripts.replay_check | untagged |
 | `redzone/lab/sportsdata.py` | Turn free public play-by-play releases into labeled game-state snapshots. | lab.datasets, models, scoring.gameflow, sources.espn -> agent.distill.jump, lab.brain3data, scripts.build_training | untagged |
-| `redzone/lab/sportsgrade.py` | League-aware report card for backtests (NFL, NBA, NHL, MLB). | decider.screen, grading, lab.backtest, lab.cutgrade, lab.leverage, models +1 -> agent.kaggle.build_moments_kaggle, lab.oracle, lab.oracle_v2, lab.reactgrade, lab.reasoner_data, lab.replaycheck +5 | untagged |
+| `redzone/lab/sportsgrade.py` | League-aware report card for backtests (NFL, NBA, NHL, MLB). | decider.screen, grading, lab.backtest, lab.cutgrade, lab.leverage, models +1 -> agent.kaggle.build_moments_kaggle, lab.oracle, lab.oracle_v2, lab.reactgrade, lab.reasoner_data, lab.replaycheck +6 | untagged |
 | `redzone/lab/tune.py` | Auto-tune the decider's hand-picked knobs against the scorecards (CMA-ES, numpy only). | config, decider.decider, lab.backtest, lab.optimize, lab.splits, lab.sportsgrade +1 -> scripts.tune | untagged |
-| `redzone/models.py` | Source-agnostic game model. | - -> agent.distill.jump, agent.kaggle.build_moments_kaggle, autonomy, bets, channels, context.buzz +77 | untagged |
+| `redzone/models.py` | Source-agnostic game model. | - -> agent.distill.jump, agent.kaggle.build_moments_kaggle, autonomy, bets, channels, context.buzz +78 | untagged |
 | `scripts/backtest.py` (entry) | Replay a past NFL Sunday through the app and print the report card. | config, lab.backtest, models -> - | untagged |
 | `scripts/eval.py` (entry) | The scorecard every change is judged by. | config, lab.backtest, lab.cutgrade, lab.evaldata, lab.optimize, lab.oracle +2 -> - | untagged |
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (175)
+## unowned (176)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -257,8 +257,8 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/lab/night/vclock.py` | Virtual time for the end-to-end night: hours of a real night run in minutes. | - -> lab.night.__main__, lab.night.run | untagged |
 | `redzone/lab/night_ab.py` | Whole-night A/B for display experiments (lane 5): one number per night on each side, a bootstrap interval on mean(on) - mean(off), and a PASS / FAIL / PENDIN... | - -> lab.also_close | untagged |
 | `redzone/lab/offpolicy.py` | [EXP-005] Off-policy grading: how a NEW decider would have done on nights the live one already ran, from the live decisions' logged option sets and propensit... | lab.worth -> scripts.offpolicy_score | untagged |
-| `redzone/lab/oracle.py` | Hindsight oracle: the best schedule anyone could have run on an archived night (offline only). | grading, lab.backtest, lab.cutgrade, lab.sportsgrade, models, sources.espn -> lab.oracle_v2, lab.oracle_window, lab.reactgrade, scripts.buffer_sweep, scripts.eval, scripts.eval_sports +3 | untagged |
-| `redzone/lab/oracle_v2.py` | NBA hindsight oracle v2 (EXP-1722 PASS, Nov 6 2026; prereg docs/prereg/exp-1722.md, read docs/prereg/v3-reads/). | lab.oracle, lab.sportsgrade -> - | untagged |
+| `redzone/lab/oracle.py` | Hindsight oracle: the best schedule anyone could have run on an archived night (offline only). | grading, lab.backtest, lab.cutgrade, lab.sportsgrade, models, sources.espn -> lab.oracle_v2, lab.oracle_window, lab.reactgrade, scripts.buffer_sweep, scripts.eval, scripts.eval_sports +4 | untagged |
+| `redzone/lab/oracle_v2.py` | NBA hindsight oracle v2 (EXP-1722 PASS, Nov 6 2026; prereg docs/prereg/exp-1722.md, read docs/prereg/v3-reads/). | lab.oracle, lab.sportsgrade -> scripts.exp1722_read | untagged |
 | `redzone/lab/oracle_window.py` | [time-shift buffer] The windowed-hindsight oracle (Nick 9:10 AM Nov 5): exact DP over only what the buffer reveals, past-only value beyond the window. | grading, lab.backtest, lab.oracle -> scripts.buffer_sweep, scripts.eval_sports | untagged |
 | `redzone/lab/orient.py` | [EXP-038] Grade the orientation beat: do overrides right after an automatic switch drop when the phone shows a 2-3 s "who, score, clock, one fact" beat? | config -> scripts.also_close_line, scripts.orient_line | untagged |
 | `redzone/lab/outcome_label.py` | [EXP-302] The lock label from REAL outcomes, not from our own clock/crunch rule (Nick, Nov 5 1:50 AM ET). | lab.leverage, models, sources.espn -> lab.reasoner_data | untagged |
@@ -333,6 +333,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sync.py` (entry) | [auto sync] Sync-error scorecard: the delay the app uses vs the screen's real delay. | lab.syncsim -> - | untagged |
 | `scripts/exp022_tpp.py` (entry) | [EXP-022] The event-token world model read as a timing point process vs Noggin Timing v1's trees, on green data. | noggin.factory, noggin.features, noggin.timing, noggin.timing_fit -> - | untagged |
 | `scripts/exp023_belief.py` (entry) | [EXP-023] Belief tracker vs the DelayBook baseline, on DEV nights only (docs/prereg/exp-023.md). | channels, config, lab.backtest, lab.evaldata, lab.splits, lab.sportsgrade +4 -> - | untagged |
+| `scripts/exp1722_read.py` (entry) | EXP-1722 read (NBA only, v3 NEW fit nights, judge = crew H v3 recap set; harness = acceptance_1721 with data paths changed; the v2 reward now comes from redz... | lab.oracle, lab.oracle_v2, lab.sportsgrade, models -> - | untagged |
 | `scripts/export_reasoner_llm.py` (entry) | Export briefs + hindsight targets for the game-reasoner language model (LoRA on the shared base). | lab.reasoner_data, reasoner.reasoner -> - | untagged |
 | `scripts/family_holm.py` (entry) | Family-wise correction for experiments that share dev nights (PROPOSAL, test writers, EXP-722). | - -> - | untagged |
 | `scripts/fast_feed_race.py` (entry) | [tracker item 5] The feed lag race: fast league feeds (fast_feeds.jsonl) vs ESPN (plays.jsonl), per league. | - -> - | untagged |
@@ -393,7 +394,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/worth_line.py` (entry) | [EXP-040] Print the "worth it >= live" evaluation line from data/worth.jsonl. | lab.worth -> - | untagged |
 | `scripts/wv_aux_label.py` (entry) | Shared harness for auxiliary Watch Value labels (Data G EXP-1704, Data H EXP-1800/1804). | - -> scripts.attention_labels | untagged |
 
-## Untagged (281)
+## Untagged (282)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -609,6 +610,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/eval_sync.py`
 - `scripts/exp022_tpp.py`
 - `scripts/exp023_belief.py`
+- `scripts/exp1722_read.py`
 - `scripts/export_reasoner_llm.py`
 - `scripts/family_holm.py`
 - `scripts/fast_feed_race.py`
@@ -677,7 +679,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/worth_line.py`
 - `scripts/wv_aux_label.py`
 
-## Orphans (no importer) (15)
+## Orphans (no importer) (14)
 
 - `agent/kaggle/build_moments_kaggle.py`
 - `agent/kaggle/build_notebook.py`
@@ -692,5 +694,4 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `redzone/context/nba.py`
 - `redzone/context/schedules.py`
 - `redzone/lab/night/presses.py`
-- `redzone/lab/oracle_v2.py`
 - `redzone/tuners/identity.py`

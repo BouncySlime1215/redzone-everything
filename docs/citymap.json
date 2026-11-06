@@ -2421,6 +2421,7 @@
     "scripts/buffer_sweep.py",
     "scripts/eval.py",
     "scripts/eval_sports.py",
+    "scripts/exp1722_read.py",
     "scripts/noggin_selfplay.py",
     "scripts/train_noggin_pick.py",
     "scripts/train_noggin_pick_dagger.py"
@@ -2438,7 +2439,9 @@
     "redzone/lab/sportsgrade.py"
    ],
    "kind": "module",
-   "outputs": [],
+   "outputs": [
+    "scripts/exp1722_read.py"
+   ],
    "owner": "unowned",
    "role": "NBA hindsight oracle v2 (EXP-1722 PASS, Nov 6 2026; prereg docs/prereg/exp-1722.md, read docs/prereg/v3-reads/).",
    "serves": [
@@ -2660,6 +2663,7 @@
     "scripts/eval.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
+    "scripts/exp1722_read.py",
     "scripts/train_noggin_pick.py"
    ],
    "owner": "INTEGRATION",
@@ -2841,6 +2845,7 @@
     "scripts/entry_autopsy.py",
     "scripts/eval_sports.py",
     "scripts/exp023_belief.py",
+    "scripts/exp1722_read.py",
     "scripts/fault_drill.py",
     "scripts/leak_check.py",
     "scripts/measure_break_lengths.py",
@@ -5089,6 +5094,22 @@
     "untagged"
    ]
   },
+  "scripts/exp1722_read.py": {
+   "contracts": [],
+   "inputs": [
+    "redzone/lab/oracle.py",
+    "redzone/lab/oracle_v2.py",
+    "redzone/lab/sportsgrade.py",
+    "redzone/models.py"
+   ],
+   "kind": "entry",
+   "outputs": [],
+   "owner": "unowned",
+   "role": "EXP-1722 read (NBA only, v3 NEW fit nights, judge = crew H v3 recap set; harness = acceptance_1721 with data paths changed; the v2 reward now comes from redz...",
+   "serves": [
+    "untagged"
+   ]
+  },
   "scripts/export_decision_records.py": {
    "contracts": [],
    "inputs": [
@@ -6149,10 +6170,10 @@
   "EXPERIENCE": "lanes/experience.md"
  },
  "summary": {
-  "modules": 337,
-  "orphans": 15,
-  "unowned": 175,
-  "untagged": 281
+  "modules": 338,
+  "orphans": 14,
+  "unowned": 176,
+  "untagged": 282
  },
  "version": 1
 }
