@@ -602,6 +602,10 @@ class Timeline:
         # [EXP-803 A5] the feed lag assumed until this game's lag is measured (delay.feed_lag_prior_s,
         # set per league by the decider)
         self.lag_prior = LAG_EST_DEFAULT_S
+        # [stale correction guard] decider.stale_correction_guard (set by the decider): a feed entry
+        # whose LATEST possible time is before the open stoppage started (an ESPN correction of an old
+        # play, Nov 5 MIA@GS halftime: wallclock 32 min old) can't prove play resumed.
+        self.stale_guard = False
         self.events: deque[Event] = deque(maxlen=200)
         self.scores: deque[Event] = deque(maxlen=60)   # score changes (kind "score"), oldest first
         # [auto sync] (wallclock, period, game clock s left) of timed plays: the score bug's clock is
@@ -692,10 +696,13 @@ class Timeline:
         last_start = self.last("stop_start")
         # Real action after a stoppage means the stoppage ended, even if a new one started since
         # (timeout -> touchdown -> break). Missing this once caused a mid-play cut in backtests.
-        if self._stopped and action and not first_poll:
+        resumers = action
+        if self.stale_guard and last_start is not None:
+            resumers = [p for p in action if _bounds(p, now, prev_fresh)[1] >= last_start.lo]
+        if self._stopped and resumers and not first_poll:
             # [mid-play guard] earliest of the new plays (they can land out of order), never before the
             # stoppage it ends: an "end" older than its start reads as a break that never ended.
-            t_end = min(_bounds(p, now, prev_fresh)[0] for p in action) - lead
+            t_end = min(_bounds(p, now, prev_fresh)[0] for p in resumers) - lead
             self.events.append(Event(max(t_end, last_start.lo) if last_start else t_end, "stop_end"))
             self._stopped = False
         lp = g.last_play
