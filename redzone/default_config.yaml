@@ -321,6 +321,7 @@ decider:
   locked_override_lead: 20
   manual_pause_s: 60
   uncalibrated_sigma_s: 8  # above this delay uncertainty, only leave at official stoppages
+  stale_correction_guard: false  # a feed entry timed before the open stoppage began can't end it (Nov 5 MIA@GS halftime)
   sticky_visit_needs_calibration: true  # your game's break: only visit games whose delay is calibrated (else no way back until their own break)
   wait_for_my_team_s: 1800  # your team tips within this: don't start on a basketball/hockey game we can't leave (uncalibrated)
   redzone_channel: true    # treat NFL RedZone as a candidate on Sunday afternoons
@@ -437,6 +438,10 @@ autonomy:
   selftest_may_wake: false
   test_targets: {youtubetv: "", prime: "", espn: ""}
 
+health:                    # runtime invariants (redzone/platform/health.py)
+  push_switch_alerts: false  # push paused_in_games / no_switch to the phone (Nick, Nov 5)
+  no_switch_s: 1200          # no_switch: screen unchanged this long...
+  no_switch_min_games: 2     # ...with at least this many tunable live games
 supervisor:                # watches the live system and fixes what it can on its own (redzone/supervisor.py)
   enabled: true
   ntfy_topic: ""           # optional: push the nightly report to the free ntfy app (pick a hard-to-guess topic)

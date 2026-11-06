@@ -61,7 +61,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from redzone import observability as obs
-from redzone.platform.health import PUSH as PUSH_FAULTS
+from redzone.platform.health import PUSH as PUSH_FAULTS, SWITCH_ALERTS
 from redzone import trace
 
 log = logging.getLogger(__name__)
@@ -1060,7 +1060,8 @@ class Supervisor:
                               "component": f.component, "detail": f.detail})
                 if f.severity.value in ("error", "critical"):
                     log.warning("invariant broken: %s (%s): %s", f.code, f.component, f.detail)
-                if f.code in PUSH_FAULTS:
+                if f.code in PUSH_FAULTS or (f.code in SWITCH_ALERTS
+                                             and self.e.cfg.get("health.push_switch_alerts", False)):
                     # Only faults a person has to fix (a refused sign-in); once per appearance.
                     try:
                         await self.send_push(f"RedZone: {f.code}", f.detail, priority="high", tags="warning,tv")

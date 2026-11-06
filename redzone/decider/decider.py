@@ -319,6 +319,7 @@ class Decider:
     def timeline(self, game_id: str, league: League) -> Timeline:
         if game_id not in self.timelines:
             tl = self.timelines[game_id] = Timeline(league, clock=self._clock)
+            tl.stale_guard = bool(self.cfg.get("decider.stale_correction_guard", False))
             tl.lag_prior = float(_config.for_league(self.cfg, "delay.feed_lag_prior_s", league.value,
                                                     _config.default("delay.feed_lag_prior_s")))
             floors = _config.for_league(self.cfg, "decider.leave.break_floor_s", league.value, None) or {}

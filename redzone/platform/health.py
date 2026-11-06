@@ -16,6 +16,11 @@ Invariants (code: what must always hold):
   tv_auth                 SmartThings sign-in refused (or its refresh was): flips use HOME/CEC until
                           scripts/tv_setup.py --smartthings is run again (pushed to the phone once)
   tv_cloud_down           SmartThings breaker open (5xx, timeouts, 429): flips use HOME/CEC meanwhile
+  paused_in_games         auto-switching is paused while games are live on a channel we can tune
+                          (Nov 5: left paused until 10:12 PM after overnight tests)
+  no_switch               not paused, 2+ tunable games live, and the screen hasn't changed for
+                          health.no_switch_s (20 min): the leave gate or the tuner may be stuck shut
+                          (Nov 5: 0 switches for 70+ min). Pushed only with health.push_switch_alerts.
 
 Each condition must hold for its grace period before it is a fault (`since` = first seen), so a
 switch in its first seconds or a one-tick race never shows up.
@@ -34,16 +39,20 @@ from redzone.contracts.health import Fault, Fix, HealthReport, Severity
 GRACE_S = {
     "orphan_switch": 10.0, "lost_switch_callback": 10.0, "screen_unknown": 0.0, "screen_unknown_silent": 30.0,
     "stuck_lock": 0.0, "stuck_flip": 60.0, "stick_offline": 30.0, "stick_hung": 0.0, "stale_feed": 0.0,
-    "tv_auth": 0.0, "tv_cloud_down": 0.0,
+    "tv_auth": 0.0, "tv_cloud_down": 0.0, "paused_in_games": 120.0, "no_switch": 0.0,
 }
 SEVERITY = {
     "orphan_switch": Severity.ERROR, "lost_switch_callback": Severity.ERROR, "screen_unknown": Severity.WARN,
     "screen_unknown_silent": Severity.ERROR, "stuck_lock": Severity.CRITICAL, "stuck_flip": Severity.CRITICAL,
     "stick_offline": Severity.WARN, "stick_hung": Severity.WARN, "stale_feed": Severity.WARN,
-    "tv_auth": Severity.ERROR, "tv_cloud_down": Severity.WARN,
+    "tv_auth": Severity.ERROR, "tv_cloud_down": Severity.WARN, "paused_in_games": Severity.ERROR,
+    "no_switch": Severity.ERROR,
 }
 # Faults the supervisor pushes to the phone (once each time they appear): only ones a person must fix.
 PUSH = {"tv_auth"}
+# ...and these too, only with health.push_switch_alerts on (Nick, Nov 5: alert when paused during games
+# or when nothing switches for 20+ min with several live games).
+SWITCH_ALERTS = {"paused_in_games", "no_switch"}
 
 
 def _alive(task: Any) -> bool:
@@ -117,7 +126,42 @@ class PlatformHealth:
             if dark:
                 out.append(("stale_feed", "feed:espn", f"{len(dark)} live game(s) with no fresh data: "
                             + ", ".join(sorted(dark)[:5])))
+        out += self._switch_conditions(ctl, merger)
         return out
+
+    def _switch_conditions(self, ctl: Any, merger: Any) -> list[tuple[str, str, str]]:
+        """paused_in_games / no_switch: the TV should be switching and isn't. Only with live control
+        (not dry run) and live games on a channel we know how to tune."""
+        e = self.e
+        dec = getattr(e, "decider", None)
+        if dec is None or merger is None or ctl is None or not getattr(ctl, "live_control", False):
+            return []
+        try:
+            from redzone.models import Phase
+            where = getattr(e, "where", {}) or {}
+            live = [gid for gid, g in merger.games.items()
+                    if g.phase == Phase.LIVE and getattr(where.get(gid), "target", None)]
+        except Exception:
+            return []
+        if not live:
+            return []
+        if getattr(getattr(dec, "user", None), "paused", False):
+            return [("paused_in_games", "decider", f"auto-switching is paused with {len(live)} live game(s) on")]
+        from redzone import config as _config
+        cfg = getattr(e, "cfg", None)
+        get = cfg.get if cfg is not None else (lambda k, d=None: d)
+        limit = float(get("health.no_switch_s", _config.default("health.no_switch_s")))
+        need = int(get("health.no_switch_min_games", _config.default("health.no_switch_min_games")))
+        since = float(getattr(dec, "since", 0.0) or 0.0)
+        if len(live) < need or not since or getattr(e, "_pending_decision", None) is not None:
+            return []
+        quiet = time.time() - since
+        if quiet < limit:
+            return []
+        last = getattr(e, "last_decision", None)
+        why = (getattr(last, "reason", "") or "")[:120]
+        return [("no_switch", "decider", f"no switch for {quiet / 60:.0f} min with {len(live)} live games"
+                 + (f"; last: {why}" if why else ""))]
 
     @staticmethod
     def _tv_conditions(tv: Any) -> list[tuple[str, str, str]]:
