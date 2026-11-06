@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-APP STALL during games: recording files gap 7:10-7:28 PM, stick sync probe stopped at 7:08, supervisor shows adb limited on both sticks. Likely cause: Mac on battery at 20% and sleeping. Second phone alert sent.
-Overseer did not restart the app during games. Nick must plug in the Mac. RC6.2 live, usage 75%.
+App recovered at 7:45 PM (API 200 in 4.7 s, plays current) but Mac is still on battery at 20%. Stick .150 adb reconnect failed (offline) at 7:44; sync probe and race logs still stopped.
+Overseer has not restarted anything. Usage 75%. RC6.2 live.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
