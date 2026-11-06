@@ -1,0 +1,35 @@
+{
+ "asset": "eval-archive.tgz",
+ "bytes": 86692903,
+ "demo_days": [
+  "20261101"
+ ],
+ "dev_before": {
+  "nba": "20261001",
+  "nhl": "20261001"
+ },
+ "files": 2501,
+ "games": {
+  "nba": 857,
+  "nfl": 286,
+  "nhl": 997
+ },
+ "repo": "BouncySlime1215/redzone-everything",
+ "sha256": "d93a0409bf8f30ca899741236d0f0b034a362ccb4950e068af7ad1ab2195fd98",
+ "tag": "eval-data-v3",
+ "tree_sha256": "34986c64169fab2588d82680406be515c2976847a96b9a0094e0d16d3171038e",
+ "window": {
+  "nba": {
+   "end": "20261105",
+   "start": "20251021"
+  },
+  "nfl": {
+   "end": "20261105",
+   "start": "20250905"
+  },
+  "nhl": {
+   "end": "20261105",
+   "start": "20251007"
+  }
+ }
+}

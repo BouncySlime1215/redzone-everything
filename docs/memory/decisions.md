@@ -968,3 +968,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   live default changes, and the CI scorecards are unchanged (their pinned NBA nights are already at 100% big seen).
   On Nov 2-5 (31 games, seeds 0-2): 0 mid-play entries at every B; B60 matches B90 on value when sigma <= 8, B90 is
   needed at sigma 15. RC8 owns the per-league B; this is evidence for it, not a flip.
+- 2026-11-06 (overseer default (Nick 3:10 PM Nov 5), Nick can override; planner + integrator, EXP-735/EXP-017):
+  **eval-data-v3 carries no release locked read until its Nov 1+ locked block reaches >= 8 nights per league and
+  >= 25% of nights (about Nov 20); until then releases use v1's locked set, and every gate stays on v1.** Reason: no
+  clean unread 2025-26 nights (v3 dev North Star already read every added 2025-26 night, and T8's EXP-128 trained on
+  NBA/NHL Mar-Jun 2026), and the >= 25% locked rule. The v1 -> v3 dev jump (NHL mid-play 0 -> 344/3340, NBA 0 -> 9/784,
+  all on 2025-26 nights) goes to the test writers for an autopsy before any v3 dev number is used for a gate.
