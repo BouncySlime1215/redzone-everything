@@ -71,8 +71,8 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-Sweep 12:45 AM: mode and wall power checked, usage 76%. YTTV switching stays the top job.
-PR 356 and 357 status checked on GitHub; both stay off live until replayed on recorded nights.
+1:15 AM: no live games, Mac on wall power at 100%. Started the RC6.3 deploy Nick approved at 3:55 PM: full tests, then switch, then 10-minute health watch with auto-rollback.
+After it lands: fast_feeds shadow on per staging notes, confirm RC8 off. Usage 77%.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
