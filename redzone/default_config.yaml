@@ -332,6 +332,11 @@ decider:
   leave:                   # [cut rules, Nick Nov 4 3:15 PM] never JOIN mid-play; LEAVING mid-play only at low leverage
     low_leverage: []       # leagues where a low-leverage moment may be left mid-play ([] = never: today's rule)
     sticky_closeness: 0.5  # down the stretch is sticky: a late game at least this close is never left mid-play
+    # [EXP-212] break floors on top of screen.MIN_BREAK_S, per league ({stoppage: s}; {} = off). With the
+    # measured feed lag the data never covers the screen, so a basketball break with no restart in the data
+    # can only be left while start + floor + delay hasn't passed. NBA end of a quarter, fit nights: min 148 s
+    # (103 breaks, 7 nights; valid 34 breaks, min 148). Candidate {end_period: 120}, OFF until graded.
+    break_floor_s: {}
   crunch:                  # final 2:00 of a one-score game, or OT: get there early, stay, hop only at gaps
     floor: true            # [SAFE-09] in a crunch window: no overlay or model leaves it for a non-crunch game, and
     floor_low_value: 0     # ...no game below this value (watch value, else score) pulls us out. 0 = off: at 50 it

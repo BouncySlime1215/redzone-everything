@@ -131,7 +131,8 @@ Do not claim unattended hardware readiness from the software tests alone.
 
 `scripts/deploy.py deploy` updates the checkout the login service runs from, without a
 person watching. It fetches `integration/release`, runs the test suite on that commit in a
-separate worktree (`data/deploy/stage`) at background priority (`taskpolicy -b`), and only
+separate worktree (`data/deploy/stage`) at low priority (`nice -n 10`; `test_priority: background` in
+deploy/deploy.yaml uses `taskpolicy -b`, about 2x slower; `--test-timeout MIN` overrides the 60 min limit), and only
 then waits for a quiet moment: no game live and none starting within 15 minutes. It saves
 `data/config.yaml` and `agent/model/` (content-addressed under `data/deploy/store`), checks
 out the new commit detached, restarts this job and the watchdog, and watches health for

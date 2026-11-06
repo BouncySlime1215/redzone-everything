@@ -537,9 +537,27 @@ def test_watchdog_leaves_restarts_to_a_running_deploy(tmp_path, monkeypatch):
     assert calls
 
 
-@pytest.mark.skipif(sys.platform != "darwin", reason="taskpolicy is macOS-only")
-def test_tests_run_under_taskpolicy_on_the_mac():
-    assert D.System().low_priority(["x"])[:2] == ["taskpolicy", "-b"]
+def test_deploy_tests_run_at_nice_10_by_default_even_on_the_mac(monkeypatch):
+    """taskpolicy -b pinned the suite to the efficiency cores: it timed out at 60 min where nice 10 took
+    30 min (Nick, Nov 6). nice 10 is the default; taskpolicy -b is opt-in (test_priority: background)."""
+    monkeypatch.setattr(D.sys, "platform", "darwin")
+    monkeypatch.setattr(D.shutil, "which", lambda name: f"/usr/bin/{name}")
+    assert D.System().low_priority(["x"]) == ["nice", "-n", "10", "x"]
+    assert D.System().low_priority(["x"], "background") == ["taskpolicy", "-b", "x"]
+    assert D.Settings().test_priority == "nice"
+    monkeypatch.setattr(D.sys, "platform", "linux")
+    assert D.System().low_priority(["x"], "background") == ["nice", "-n", "10", "x"]
+
+
+def test_deploy_settings_take_test_priority_and_the_cli_takes_a_test_timeout(monkeypatch, tmp_path):
+    (tmp_path / "deploy.yaml").write_text("test_priority: background\ntest_timeout_s: 5400\n")
+    s = D.Settings.load(tmp_path / "deploy.yaml")
+    assert (s.test_priority, s.test_timeout_s) == ("background", 5400)
+    seen = {}
+    monkeypatch.setattr(D.Deployer, "deploy", lambda self, **kw: seen.update(t=self.s.test_timeout_s) or 0)
+    assert D.main(["deploy", "--test-timeout", "90"], system=FakeMac(tmp_path), root=tmp_path) == 0
+    assert seen == {"t": 5400.0}
+    assert D.main(["deploy"], system=FakeMac(tmp_path), root=tmp_path) == 0 and seen == {"t": 3600.0}
 
 
 def test_warm_up_warnings_right_after_the_restart_are_not_a_regression(world):

@@ -335,3 +335,10 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   switches without a revealed window, first pick waits for a dead ball, night-bootstrap CIs, and the oracle moved
   out of the frozen grader file into redzone/lab/oracle_window.py. Lesson: an oracle's information set must come
   from measured numbers and from everything the grader itself reads, and a second tester should re-derive both.
+- **2026-11-05, YTTV night with no switches (RC6.2):** for 70+ minutes the leave gate on an NBA game read "play
+  is live", even at timeouts and the quarter break. With a wide delay (42 ± 15 s) and the measured feed lag,
+  `covered` can never be true for basketball, and NBA had no break floor except halftime. Separately, the DB couldn't
+  show the gate at halftime, because decisions were logged only when the reason text changed. Fix: a measured NBA
+  end-of-quarter floor behind `decider.leave.break_floor_s` (EXP-212, off), and log every gate change. Lesson: a
+  safety gate that is shut for a structural reason looks exactly like a game that's live, so log the gate itself.
+  Autopsy: /mnt/project-files/lane2/yttv-no-switch-autopsy-2026-11-05.md.
