@@ -1,0 +1,31 @@
+{
+ "league": "nba",
+ "oracle": "full",
+ "buffer_s": 90.0,
+ "feed_lag_s": 70.0,
+ "nights": 102,
+ "causes": {
+  "stay_leave_timing": {
+   "episodes": 346,
+   "value_lost": 3347.98,
+   "share": 0.531
+  },
+  "wrong_game_value": {
+   "episodes": 176,
+   "value_lost": 2117.9,
+   "share": 0.336
+  },
+  "break_estimate": {
+   "episodes": 75,
+   "value_lost": 828.26,
+   "share": 0.131
+  },
+  "switch_cost": {
+   "episodes": 3,
+   "value_lost": 6.0,
+   "share": 0.001
+  }
+ },
+ "locked_nights_read": 0,
+ "tag": "personal-use, not for commercial release"
+}
