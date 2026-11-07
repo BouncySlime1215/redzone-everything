@@ -8,7 +8,9 @@ Reads only numbers the app already writes under data/ (no frames, no addresses):
                     step one of buffered | live | other_stick | hold. Rows in joins.jsonl with
                     "kind": "fallback" count too.
   drift.jsonl       one row per drift read (item 3): {"ts", "stick", "channel", "drift_s", "read_cost_s",
-                    "action"} with action ok | reenter | live. Rows in joins.jsonl with "kind": "drift" count too.
+                    "action"} with action ok | reenter | live | snapped | unknown (snapped and unknown count as
+                    back to live). Rows in joins.jsonl with "kind": "drift" (#395) count too.
+  joins.jsonl rows with "kind": "watchdog" (#395): state buffered | live | unknown, attempts, fallback.
   supervisor.jsonl  invariant faults (stuck_lock, stick_hung, stale_feed, ...), fixes that didn't work, and
                     Mac health alerts (redzone/platform/mac_health.py).
 A file that isn't there yet is simply "none" in the report: the sections fill in as items 1-3 land.
@@ -98,13 +100,18 @@ def summarize(root: Path, t0: float, t1: float, margin: float = DEFAULTS["join_m
     joins = [r for r in jrows if r.get("kind") in (None, "join")]
     falls = _rows(root / "fallbacks.jsonl", t0, t1) + [r for r in jrows if r.get("kind") == "fallback"]
     drift = _rows(root / "drift.jsonl", t0, t1) + [r for r in jrows if r.get("kind") == "drift"]
+    wd = [r for r in jrows if r.get("kind") == "watchdog"]
+    wd_state = Counter(str(r.get("state") or "unknown") for r in wd)
+    wd_fall = Counter(str(r.get("fallback")) for r in wd if r.get("fallback"))
     sup = _rows(root / "supervisor.jsonl", t0, t1)
 
     steps = Counter(str(r.get("step") or "?") for r in falls)
     why = Counter(str(r.get("why") or "?")[:60] for r in falls)
     d = [abs(x) for x in (_num(r.get("drift_s")) for r in drift) if x is not None]
     cost = [c for c in (_num(r.get("read_cost_s")) for r in drift) if c is not None]
-    actions = Counter(str(r.get("action") or "ok") for r in drift)
+    # #395: "snapped" (the app jumped back to live) and "unknown" (couldn't read) both end on live, not buffered
+    actions = Counter({"snapped": "live", "unknown": "live"}.get(str(r.get("action") or "ok"), str(r.get("action") or "ok"))
+                      for r in drift)
     faults = Counter(str(r.get("code")) for r in sup if r.get("kind") == "invariant")
     broken = Counter(str(r.get("rule")) for r in sup if r.get("kind") == "fix" and r.get("ok") is False)
     mac = [r for r in sup if r.get("kind") == "mac_health" and not r.get("cleared")]
@@ -119,6 +126,9 @@ def summarize(root: Path, t0: float, t1: float, margin: float = DEFAULTS["join_m
                   "abs_drift_p50": round(statistics.median(d), 2) if d else None,
                   "abs_drift_max": round(max(d), 2) if d else None,
                   "reentries": actions["reenter"], "to_live": actions["live"]},
+        "watchdog": {"joins": len(wd), "buffered": wd_state["buffered"], "live": wd_state["live"],
+                     "unknown": wd_state["unknown"], "reseeks": sum(1 for r in wd if int(r.get("attempts") or 1) > 1),
+                     "fallbacks": dict(wd_fall.most_common())},
         "errors": {"faults": dict(faults.most_common()), "fixes_failed": dict(broken.most_common())},
         "mac": dict(Counter(str(r.get("code")) for r in mac).most_common()),
         "mac_last": {str(r.get("code")): str(r.get("text") or "") for r in mac},
@@ -150,6 +160,11 @@ def lines(s: dict) -> list[str]:
             out.append("")
             out.append("Join failures: " + "; ".join(f"{k} ({n})" for k, n in fails.most_common(3)))
         out.append("")
+    wd = s["watchdog"]
+    out.append("Join watchdog: " + ("none" if not wd["joins"] else
+               f"{wd['joins']} joins checked: {wd['buffered']} buffered, {wd['live']} live, {wd['unknown']} unknown; "
+               f"{wd['reseeks']} re-seeked" + ("; fallbacks " + ", ".join(f"{k} {n}" for k, n in wd["fallbacks"].items())
+                                               if wd["fallbacks"] else "")))
     fb = s["fallbacks"]
     out.append("Fallbacks: " + ("none" if not fb["total"] else
                f"{fb['total']} (" + ", ".join(f"{k.replace('_', ' ')} {n}" for k, n in fb["steps"].items()) + ")"
@@ -177,6 +192,9 @@ def phone_line(s: dict) -> str:
         read = sum(j["measured"] for j in s["joins"].values())
         within = sum(j["within_margin"] for j in s["joins"].values())
         parts.append(f"Joins {n} ({within}/{read} within {s['margin_s']:g}s)")
+    if s["watchdog"]["joins"]:
+        w = s["watchdog"]
+        parts.append(f"watchdog {w['buffered']}/{w['joins']} buffered")
     if s["fallbacks"]["total"]:
         parts.append(f"fallbacks {s['fallbacks']['total']}")
     if s["drift"]["reads"]:

@@ -209,6 +209,9 @@ def test_night_ops_summarizes_joins_fallbacks_drift_errors_and_mac(tmp_path):
          "measured_s": 61.0, "error_s": 1.0, "pred_error_s": 1.0, "took_s": 61.5},
         {"ts": t + 4, "kind": "fallback", "stick": "hidden", "step": "live", "why": "off target 18.7s"},
         {"ts": t + 5, "kind": "drift", "stick": "a", "drift_s": 4.0, "read_cost_s": 7.5, "action": "ok"},
+        {"ts": t + 7, "kind": "drift", "stick": "HDMI2", "drift_s": None, "read_cost_s": 7.5, "action": "snapped"},
+        {"ts": t + 8, "kind": "watchdog", "stick": "HDMI2", "state": "buffered", "attempts": 2, "fallback": None},
+        {"ts": t + 9, "kind": "watchdog", "stick": "HDMI1", "state": "live", "attempts": 2, "fallback": "live"},
     ])
     _write(tmp_path / "drift.jsonl", [{"ts": t + 6, "drift_s": -12.0, "read_cost_s": 7.5, "action": "reenter"}])
     _write(tmp_path / "supervisor.jsonl", [
@@ -224,12 +227,15 @@ def test_night_ops_summarizes_joins_fallbacks_drift_errors_and_mac(tmp_path):
     assert y["abs_err_max"] == 18.7 and y["failures"] == {"overlay label not read": 1}
     assert s["joins"]["prime"]["within_margin"] == 1
     assert s["fallbacks"]["steps"] == {"live": 1}
-    assert s["drift"] == {"reads": 2, "read_cost_s": 15.0, "abs_drift_p50": 8.0, "abs_drift_max": 12.0,
-                          "reentries": 1, "to_live": 0}
+    assert s["drift"] == {"reads": 3, "read_cost_s": 22.5, "abs_drift_p50": 8.0, "abs_drift_max": 12.0,
+                          "reentries": 1, "to_live": 1}
+    assert s["watchdog"] == {"joins": 2, "buffered": 1, "live": 1, "unknown": 0, "reseeks": 2,
+                             "fallbacks": {"live": 1}}
     assert s["errors"] == {"faults": {"stuck_lock": 2}, "fixes_failed": {"adb": 1}}
     assert s["mac"] == {"no_switches": 1}
     text = "\n".join(night_ops.lines(s))
     assert "## Sync and health" in text and "| youtubetv | 3 | 2 | 2 | 1/2 |" in text
+    assert "Join watchdog: 2 joins checked: 1 buffered, 1 live" in text
     assert night_ops.phone_line(s).startswith("Sync: Joins 4 (2/3 within 10s)")
 
 

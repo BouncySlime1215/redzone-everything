@@ -25,4 +25,5 @@ that didn't work, and the Mac alerts. By hand, read-only, any night:
 
 Inputs it reads (numbers only, no addresses): `data/joins.jsonl` (PR #393), `data/fallbacks.jsonl` (ladder
 steps buffered / live / other_stick / hold), `data/drift.jsonl` (drift_s, read_cost_s, action ok / reenter /
-live), `data/supervisor.jsonl`. A file that isn't written yet shows as "none".
+live), `data/supervisor.jsonl`. Rows in joins.jsonl with kind "drift" or "watchdog" (#395) count too; drift "snapped" / "unknown" count as
+back to live. A file that isn't written yet shows as "none".
