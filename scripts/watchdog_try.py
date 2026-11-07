@@ -10,6 +10,8 @@ YouTube TV: start with the stick PLAYING <channel> at the live edge (tune anothe
 LabelProbe is armed there, so the read after the commit is MEASURED. A re-seek / fallback relinks by deep link
 through --reset (default: any other channel in data/channels.json) and back to <channel> (#391: a same-channel link
 does not reset a stick that is behind).
+--reprobe: on an unmeasured committed join, read the label once more before falling back (join.watchdog.
+reprobe_unmeasured; adds ~7.5 s behind).
 --drift-min=M: after a verified join, keep the drift monitor running M minutes (reads only when due: first after
 --first-s, default 300, then x2; each read costs ~7.5 s and pushes the picture ~7.5 s back).
 Prime: the timecode measures the pause; no relink is wired (on a fallback, re-tune it by hand).
@@ -23,7 +25,8 @@ from redzone.tuners import join_watchdog as jw
 from redzone.tuners.adb import Stick
 
 
-async def main(host: str, app: str, target: float, channel: str, reset: str, drift_min: float, first_s: float):
+async def main(host: str, app: str, target: float, channel: str, reset: str, drift_min: float, first_s: float,
+               reprobe: bool = False):
     stick = Stick(host=host)
     if not await stick.connect():
         print(json.dumps({"error": "stick not connected", "state": stick.state}))
@@ -70,10 +73,12 @@ async def main(host: str, app: str, target: float, channel: str, reset: str, dri
         if not probe.arm(stick):
             print(json.dumps({"label": "not armed (stick marked behind): the join will be unmeasured -> fallback"}))
         kw = {"read_overlay": probe.overlay_reader, "read_behind": probe}
-    out = await jw.watched_join(stick, app, target, relink=relink, still_hidden=lambda: True, label="hidden",
+    wcfg = {"join.watchdog.reprobe_unmeasured": True} if reprobe else None
+    out = await jw.watched_join(stick, app, target, relink=relink, still_hidden=lambda: True, label="hidden", cfg=wcfg,
                                 channel=channel, **kw)
     print(json.dumps({"state": out.state, "behind_s": out.behind_s, "attempts": out.attempts,
-                      "fallback": out.fallback, "verdicts": out.verdicts, "took_s": out.took_s}, indent=1))
+                      "fallback": out.fallback, "reprobes": out.reprobes, "verdicts": out.verdicts,
+                      "took_s": out.took_s}, indent=1))
     if not (out.buffered and probe and drift_min > 0):
         return
     dm = jw.DriftMonitor({"join.drift.first_s": first_s})
@@ -97,4 +102,4 @@ if __name__ == "__main__":
     a = [x for x in sys.argv[1:] if not x.startswith("--")]
     opt = {x.split("=", 1)[0][2:]: x.split("=", 1)[1] for x in sys.argv[1:] if x.startswith("--") and "=" in x}
     asyncio.run(main(a[0], a[1], float(a[2]), a[3] if len(a) > 3 else "", opt.get("reset", ""),
-                     float(opt.get("drift-min", 0)), float(opt.get("first-s", 300))))
+                     float(opt.get("drift-min", 0)), float(opt.get("first-s", 300)), "--reprobe" in sys.argv))

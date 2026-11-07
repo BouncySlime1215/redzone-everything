@@ -184,20 +184,42 @@ def test_never_reads_the_visible_stick_and_waits_first_s():
     assert not dm.due("b|espn", hidden=False) and dm.due("b|espn", hidden=True)
 
 
-def test_the_31_minute_espn_soak_reenters_once_the_reads_push_it_past_the_band():
+def test_the_31_minute_espn_soak_reenters_once_the_reads_push_it_past_the_depth_band():
     """Nick's Nov 7 soak: 82, 89, ... 119 s at 5-min reads: no snap, but every read added 7.5 s. With backoff the
-    reads come at 5, 15, 35 min; the third would be 104.5 > 90 + 10.5 -> re-enter (the soak itself never would)."""
+    reads come at 5, 15, 35, 55 min; the fourth reads 112 > 90 + max_over_s 20 -> re-enter (the soak never would)."""
     c = Clock()
     dm = jw.DriftMonitor(clock=c, log_path="")
     dm.anchor("k", "youtubetv", 90, 82.0)
     seen, b = [], 82.0
-    for _ in range(3):
+    for _ in range(4):
         while not dm.due("k", hidden=True):
             c.t += 10
         b += 7.5
         seen.append((round(c.t / 60), dm.record("k", b).action))
-    assert seen == [(5, "ok"), (15, "ok"), (35, "reenter")]
-    assert dm.report()["reads"] == 3 and dm.report()["read_cost_s"] == 22.5 and dm.believed("k") is None
+    assert seen == [(5, "ok"), (15, "ok"), (35, "ok"), (55, "reenter")]
+    assert dm.report()["reads"] == 4 and dm.report()["read_cost_s"] == 30.0 and dm.believed("k") is None
+
+
+def test_nicks_drift_run_holds_after_a_plus_six_landing():
+    """Nick 13:53Z, ESPN target 60: buffered at 66.14, first read at 2.2 min 74.98 (expected 73.64, drift +1.34, cost
+    9.8 s). The old target band (60 +- 10.5) re-entered a stick that held; judged on drift + depth it holds."""
+    c = Clock()
+    dm = jw.DriftMonitor({"join.drift.first_s": 120}, clock=c, log_path="")
+    dm.anchor("k", "youtubetv", 60, 66.14)
+    c.t = 132
+    v = dm.record("k", 74.98, cost_s=9.8)
+    assert (v.action, v.expected_s, v.drift_s) == ("ok", 73.64, 1.34)
+    assert dm.believed("k") == 74.98
+    c.t = 400
+    assert dm.record("k", 82.6).action == "reenter"       # 82.6 > 60 + 20: too deep now, re-enter
+
+
+def test_a_drift_read_shallower_than_the_target_band_reenters():
+    c = Clock()
+    dm = jw.DriftMonitor(clock=c, log_path="")
+    dm.anchor("k", "youtubetv", 60, 64.0)
+    c.t = 400
+    assert dm.record("k", 45.0).action == "reenter"       # < 60 - 10.5: crept toward live
 
 
 def test_plain_pause_snap_to_live_is_snapped():
@@ -427,3 +449,85 @@ def test_calibration_keeps_an_off_target_read_as_a_measurement_not_a_failure():
            "channel": "espn", "stick": "stickB", "target_s": 60, "error_s": -7.88}
     st = jc.JoinCalib([row]).stats("youtubetv")
     assert st.failed == 0 and st.gross == 1          # counted as gross (|err| > 12), never used, not a failed join
+
+
+# ------------------------------------- Nick's cross-channel run, Nov 7 13:02Z: ESPN2 run 2, the post-commit read was empty
+def _unread_then(*reads):
+    """A committed join whose own label read returned nothing; later reads of the same probe return `reads`."""
+    seq = iter(reads)
+    n = []
+
+    async def reader(_stick):
+        n.append(1)
+        return next(seq)
+
+    async def join_fn(stick, app, target_s, *, behind_before_s=0.0, read_behind=None, **kw):
+        plan = jn.plan_join(app, target_s, behind_before_s)
+        return NS(ok=True, measured_s=None, plan=plan, verdict="")
+    return join_fn, reader, n
+
+
+def test_reprobe_is_off_by_default_and_falls_back_as_before():
+    jf, reader, n = _unread_then(71.0)
+    rl, relinks = _relinker()
+    out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, read_behind=reader, log_path=""))
+    assert out.state == "live" and out.reprobes == 0 and not n and len(relinks) == 1
+
+
+@pytest.mark.parametrize("reading", [65.83, 55.44, 70.5])
+def test_reprobe_judges_on_the_target_band_only(reading):
+    """Nick's #404 run (Nov 7 13:19Z): ESPN 65.83 and ESPN2 55.44 after an empty first read (55.44 was thrown away
+    against the plan's 64.2 and re-seeked, 35 s lost). The empty read may not have frozen the picture, so the plan is
+    unknown: the target band (60 + half a read, +- 10.5) judges it. A double freeze (~71.7) still passes."""
+    jf, reader, n = _unread_then(reading)
+    rl, relinks = _relinker()
+    out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, read_behind=reader, log_path="",
+                              cfg={"join.watchdog.reprobe_unmeasured": True}))
+    assert out.state == "buffered" and out.behind_s == reading and out.reprobes == 1 and len(n) == 1 and not relinks
+    assert [v["status"] for v in out.verdicts] == ["unmeasured", "verified"]
+    assert out.verdicts[-1]["reason"].startswith("re-probe")
+
+
+def test_reprobe_reads_only_once_then_falls_back():
+    jf, reader, n = _unread_then(None, 70.0)
+    rl, relinks = _relinker()
+    out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, read_behind=reader, log_path="",
+                              cfg={"join.watchdog.reprobe_unmeasured": True}))
+    assert out.state == "live" and out.reprobes == 1 and len(n) == 1 and len(relinks) == 1
+
+
+def test_reprobe_off_target_still_reseeks():
+    jf, reader, n = _unread_then(78.0)      # past 60 + 3.75 + 10.5
+    rl, relinks = _relinker()
+    out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, read_behind=reader, log_path="",
+                              cfg={"join.watchdog.reprobe_unmeasured": True}))
+    assert out.verdicts[1]["status"] == "off_target" and out.verdicts[1]["action"] == "reseek" and len(relinks) >= 1
+
+
+def test_no_reprobe_on_a_failed_join_or_a_visible_stick():
+    async def failed(stick, app, target_s, *, behind_before_s=0.0, read_behind=None, **kw):
+        return NS(ok=False, measured_s=None, plan=jn.plan_join(app, target_s), verdict="")
+    _, reader, n = _unread_then(70.5)
+    rl, _ = _relinker()
+    cfg = {"join.watchdog.reprobe_unmeasured": True}
+    run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=failed, read_behind=reader, log_path="",
+                        cfg=cfg))
+    jf, reader2, n2 = _unread_then(70.5)
+    run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=jf, read_behind=reader2, log_path="", cfg=cfg,
+                        still_hidden=lambda: False))
+    assert not n and not n2
+
+
+@pytest.mark.parametrize("target,predicted,measured", [(120, 112.5, 113.6), (120, 112.5, 112.0), (120, 112.5, 106.7),
+                                                       (30, 45.3, 46.1), (90, 95.7, 95.5)])
+def test_nicks_168_sweep_verifies_on_the_plan_not_the_target(target, predicted, measured):
+    """Nick 14:03Z (#405, 16.8 s per LEFT): T120 plans k=5 -> 112.5 and landed there; the old target check
+    (|read - target - read_s| <= 10.5) re-seeked both runs to live. With a plan, the margin is around predicted and
+    the target only catches gross misses (T30's one-LEFT floor ~46 s still passes)."""
+    v = jw.verify("youtubetv", target, measured, predicted, read_adds_s=7.5)
+    assert v.buffered, v.reason
+
+
+def test_a_gross_miss_of_the_target_is_still_off_target_even_on_plan():
+    assert jw.verify("youtubetv", 60, 85.0, 85.0, read_adds_s=7.5).status == "off_target"   # plan itself 25 s off
+    assert jw.verify("youtubetv", 120, 104.0, 112.5, read_adds_s=7.5).status == "off_target"  # 8.5 s short of plan

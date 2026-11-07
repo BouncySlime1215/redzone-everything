@@ -11,11 +11,11 @@ verified reading writes.
 
 | Seen | Where it shows | What happens |
 |---|---|---|
-| read within 6 s (YTTV) / 4 s (Prime) of the plan and 10.5 / 5 s of the target | buffer.jsonl `watchdog` status verified | buffered at the READ value |
+| read within 6 s (YTTV) / 4 s (Prime) of the plan and 20 / 8 s of the target (`target_gross_s`; no plan: 10.5 / 5 s of target + read) | buffer.jsonl `watchdog` status verified | buffered at the READ value |
 | read off target (Nov 7: asked 90 -> 130.8; #391 asked 90 -> 23) | `watchdog` status off_target, action reseek | re-tune through another channel, scrub once more |
 | still off, or no reading, or <= 5 s, or > max_s + 15 | `watchdog` ... action fallback; `scrub_failed` | fresh live tune; ready only with scrub_fallback live |
-| drift read in band | joins.jsonl kind drift, action ok | held = the reading; next read later (x2, max 20 min) |
-| drift read past the band (soak: +7.5 s per read) | action reenter, buffer.jsonl `drift_reenter` | not buffered; re-entered off screen (label_stale) |
+| drift read inside the depth band (drift_s = read - (landing + reads so far)) | joins.jsonl kind drift, action ok | held = the reading; next read later (x2, max 20 min) |
+| drift read deeper than target + `join.drift.max_over_s` (20 s YTTV, 10 s Prime) or shallower than target - band (soak: +7.5-10 s per read) | action reenter, buffer.jsonl `drift_reenter` | not buffered; re-entered off screen (label_stale) |
 | drift read at the live edge (plain-pause snap, Nov 6) | action snapped | same |
 | no drift read (program boundary label reset, banner) | action unknown | same |
 
