@@ -44,7 +44,7 @@ log = logging.getLogger("redzone.yttv_seek")
 
 YTTV_PKG_HINT = "youtube.tv"
 SCRUB_DEFAULTS = {"enabled": False, "step_s": 15.0, "max_back_s": 150.0, "step_tol_s": 4.0,
-                  "key_gap_s": 0.35, "open_tries": 4, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 1.3}
+                  "key_gap_s": 0.35, "open_tries": 4, "boundary_retries": 1, "reopen_wait_s": 1.5, "settle_s": 4.0, "poll_s": 0.25, "overlay_wait_s": 1.3}
 
 # The player row under the bar (#356 ROW_BUTTON labels seen so far). Focus on any of these = NOT the bar.
 ROW_BUTTONS = ("hd", "cc", "networks", "multiview", "episodes", "more to watch", "stats", "key plays", "scores",
@@ -161,6 +161,7 @@ class BufferResult:
     reason: str = ""
     steps: list[str] = field(default_factory=list)
     took_s: float = 0.0
+    retries: int = 0                    # program-boundary retries from the live edge (boundary_retries)
 
     @property
     def behind_s(self) -> float | None:
@@ -191,6 +192,19 @@ async def enter_buffer(stick, seconds: float, *, cfg=None, pkg: str | None = Non
     try:
         await _enter(stick, float(seconds), cfg, pkg, still_hidden, read_overlay, read_behind, relink,
                      float(behind_before_s), res, clock)
+        # [program boundary, Nick Nov 7 ~1:00 AM] the overlay label resets at a new program, so the knob check can read
+        # "moved 39s, not 60s" with nothing wrong. That already failed closed; once the stick is re-linked to the live
+        # edge (a known position, nothing committed), try the scrub again from the edge, at most boundary_retries times.
+        tries = int(_cfg(cfg, "boundary_retries"))
+        while (tries > 0 and not res.ok and not res.committed and res.relinked is True
+               and res.reason.startswith("knob moved") and still_hidden()):
+            tries -= 1
+            res.retries += 1
+            prior = list(res.steps)
+            res.ok, res.reason, res.presses, res.relinked, res.steps = False, "", 0, None, []
+            await _enter(stick, float(seconds), cfg, pkg, still_hidden, read_overlay, read_behind, relink,
+                         0.0, res, clock)
+            res.steps = prior + ["retry from the live edge (program boundary?)"] + res.steps
     except Exception as e:   # never raise into the switch path: report, and leave the stick re-linked if we can
         log.warning("enter_buffer failed: %r", e)
         res.ok, res.reason = False, f"exception: {e!r}"[:160]

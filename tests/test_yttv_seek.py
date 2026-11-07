@@ -67,7 +67,8 @@ def reader(stick):
 
 def run(stick, seconds=60.0, **kw):
     kw.setdefault("read_overlay", reader(stick))
-    return asyncio.run(ys.enter_buffer(stick, seconds, cfg=CFG, pkg=YT, **kw))
+    kw.setdefault("cfg", CFG)
+    return asyncio.run(ys.enter_buffer(stick, seconds, pkg=YT, **kw))
 
 
 def relinker(log):
@@ -130,9 +131,44 @@ def test_unreadable_overlay_fails_closed():
 
 def test_knob_that_moved_the_wrong_amount_is_not_committed():
     s, log = FakeYTTV(step=10.0), []                      # an app that steps 10 s, not 15
-    r = run(s, 60.0, relink=relinker(log))
+    r = run(s, 60.0, relink=relinker(log), cfg=Cfg({**CFG, "yttv_seek.boundary_retries": 0}))
     assert not r.ok and "knob moved 30s" in r.reason
     assert s.keys.count("KEYCODE_DPAD_CENTER") == 1 and not r.committed and log == ["relink"]
+
+
+class Boundary(FakeYTTV):
+    """A new program starts mid-scrub on the first try: the label resets, so the knob looks like it moved 39 s
+    (Nick's stick, Nov 7 ~1:00 AM). The re-link closes the overlay at the live edge; the second try is normal."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.lefts = 0
+
+    async def shell(self, cmd, timeout=8.0):
+        out = await super().shell(cmd, timeout)
+        if cmd.split()[-1] == "KEYCODE_DPAD_LEFT":
+            self.lefts += 1
+            if self.lefts == 2:          # the second LEFT of the first try: the program boundary
+                self.knob = self.label0 - 15.0 - 39.0 + 15.0
+        return out
+
+
+def test_program_boundary_retries_once_from_the_live_edge():
+    s, log = Boundary(), []
+
+    async def relink():
+        log.append("relink")
+        s.overlay, s.knob = False, s.label0      # back at the live edge, nothing committed
+        return True
+    r = asyncio.run(ys.enter_buffer(s, 60.0, cfg=CFG, pkg=YT, read_overlay=reader(s), relink=relink))
+    assert r.ok and r.committed and r.retries == 1 and log == ["relink"]
+    assert any("retry from the live edge" in x for x in r.steps)
+
+
+def test_boundary_retry_needs_a_relink():
+    s = Boundary()
+    r = run(s, 60.0)                               # no relink: position unknown, never retried
+    assert not r.ok and "knob moved" in r.reason and r.retries == 0 and not r.committed
 
 
 def test_visible_mid_scrub_is_never_pressed_or_relinked():

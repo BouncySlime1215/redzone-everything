@@ -1790,6 +1790,7 @@
     "redzone/sync_probe.py",
     "redzone/trace.py",
     "redzone/tuners/prime_multiview.py",
+    "redzone/tuners/yttv_label.py",
     "redzone/userstate.py",
     "redzone/views.py",
     "uses:set_calibrated_seek"
@@ -4354,10 +4355,14 @@
    "contracts": [],
    "inputs": [
     "redzone/screen_ocr.py",
-    "redzone/tuners/adb.py"
+    "redzone/tuners/adb.py",
+    "redzone/tuners/yttv_seek.py"
    ],
    "kind": "module",
-   "outputs": [],
+   "outputs": [
+    "redzone/engine.py",
+    "scripts/yttv_scrub_try.py"
+   ],
    "owner": "SWITCHING",
    "role": "[YTTV scrub buffer, item 2] Read YouTube TV's overlay time label -> numbers only.",
    "serves": [
@@ -4401,6 +4406,7 @@
    "kind": "module",
    "outputs": [
     "redzone/control.py",
+    "redzone/tuners/yttv_label.py",
     "scripts/yttv_scrub_try.py"
    ],
    "owner": "SWITCHING",
@@ -6248,6 +6254,7 @@
    "contracts": [],
    "inputs": [
     "redzone/tuners/adb.py",
+    "redzone/tuners/yttv_label.py",
     "redzone/tuners/yttv_seek.py"
    ],
    "kind": "entry",
@@ -6264,7 +6271,7 @@
  },
  "summary": {
   "modules": 343,
-  "orphans": 15,
+  "orphans": 14,
   "unowned": 179,
   "untagged": 285
  },
