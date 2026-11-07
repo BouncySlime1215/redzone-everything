@@ -8,7 +8,7 @@ from redzone.channels import LOCAL_SEARCH_QUERY, ChannelMap
 from redzone.config import Config
 from redzone.discovery.yttv import load_table
 from redzone.tuners.prime_search import CapturedScreen
-from redzone.tuners.yttv_search import hunt_channel, loose_codes_in, yttv_lines
+from redzone.tuners.yttv_search import hunt_channel, loose_codes_in, near_program_change, yttv_lines
 from scripts import find_yttv_code as tool
 
 BOXES = ([["Home", .05, .04, .04, .03], ["Live", .11, .04, .04, .03], ["Library", .17, .04, .06, .03],
@@ -26,7 +26,12 @@ FX = {"start_scene": "channel_page", "playing": "ferg3lVdMOg",
                  "on_now": {"boxes": BOXES, "keys": {"KEYCODE_DPAD_CENTER": "play:Abc11Live01"}}}}
 
 
-async def hunt(fx, *, channel_page=True):
+import time as _time
+
+MID = _time.mktime((2026, 11, 7, 11, 15, 0, 0, 0, -1))        # 11:15 local: no program change near
+
+
+async def hunt(fx, *, channel_page=True, wall=MID):
     now = [1000.0]
 
     async def sleep(s):
@@ -41,7 +46,8 @@ async def hunt(fx, *, channel_page=True):
         return CapturedScreen(tool._ocr(fx["scenes"].get(stick.scene, {"boxes": []})), seq[0], now[0])
 
     h = await hunt_channel(stick, observe, key="abc", table=load_table(), query=LOCAL_SEARCH_QUERY["abc"],
-                           sleep=sleep, clock=lambda: now[0], collect_codes=False, channel_page=channel_page)
+                           sleep=sleep, clock=lambda: now[0], wall=lambda: wall,
+                           collect_codes=False, channel_page=channel_page)
     return stick, h
 
 
@@ -155,3 +161,24 @@ async def test_tuner_local_ref_uses_station_query_and_channel_page(monkeypatch):
     for ref, key, query, page in (("search:local:fox", "fox", "FOX 50", True), ("search:nbc", "nbc", "NBC", False)):
         r = await YouTubeTVTuner().tune(S(), ref, f"youtubetv:{key}")
         assert not r.ok and (seen["key"], seen["query"], seen["channel_page"]) == (key, query, page)
+
+
+def test_near_program_change_window():
+    at = lambda h, m, sec: _time.mktime((2026, 11, 7, h, m, sec, 0, 0, -1))  # noqa: E731
+    assert near_program_change(at(10, 59, 30)) and near_program_change(at(11, 0, 0))
+    assert near_program_change(at(11, 1, 29)) and near_program_change(at(11, 29, 0))
+    assert not near_program_change(at(11, 15, 0)) and not near_program_change(at(11, 2, 0))
+
+
+async def test_settles_longer_at_a_program_change_and_still_checks_the_station():
+    t_mid = [s["at_s"] for s in (await hunt(copy.deepcopy(FX)))[1].steps if s["action"] == "key"]
+    stick, h = await hunt(copy.deepcopy(FX), wall=_time.mktime((2026, 11, 7, 11, 0, 0, 0, 0, -1)))
+    t_edge = [s["at_s"] for s in h.steps if s["action"] == "key"]
+    assert h.status == "confirmed" and keys(stick) == ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER"]
+    assert t_edge[0] >= 6.0 and t_edge[0] - t_mid[0] >= 2.9
+    assert any("program change" in s["detail"] for s in h.steps)
+    fx = copy.deepcopy(FX)                                     # the tile shifted: NFL Network plays
+    fx["watch"]["Abc11Live01"] = "Jaguars at Ravens, NFL Network"
+    fx["positions"]["Abc11Live01"] = 51200000
+    stick, h = await hunt(fx, wall=_time.mktime((2026, 11, 7, 11, 0, 0, 0, 0, -1)))
+    assert h.status == "stopped" and keys(stick)[-1] == "KEYCODE_BACK"
