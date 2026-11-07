@@ -4292,6 +4292,7 @@
    "inputs": [
     "redzone/config.py",
     "redzone/tuners/join_calib.py",
+    "redzone/tuners/join_watchdog.py",
     "redzone/tuners/prime_pause.py",
     "redzone/tuners/yttv_seek.py"
    ],
@@ -4300,7 +4301,8 @@
     "redzone/canary.py",
     "redzone/tuners/join_calib.py",
     "redzone/tuners/join_watchdog.py",
-    "scripts/join_try.py"
+    "scripts/join_try.py",
+    "scripts/watchdog_try.py"
    ],
    "owner": "SWITCHING",
    "role": "[Join API] Put a HIDDEN stick a chosen time behind live, say where it should land, measure where it did, log both.",
@@ -4339,6 +4341,7 @@
    "kind": "module",
    "outputs": [
     "redzone/control.py",
+    "redzone/tuners/join.py",
     "scripts/watchdog_try.py"
    ],
    "owner": "SWITCHING",
@@ -6503,6 +6506,7 @@
    "inputs": [
     "redzone/channels.py",
     "redzone/tuners/adb.py",
+    "redzone/tuners/join.py",
     "redzone/tuners/join_watchdog.py",
     "redzone/tuners/tuners.py",
     "redzone/tuners/yttv_label.py"
