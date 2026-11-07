@@ -37,6 +37,19 @@ def _tv_files_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(tv, "INPUT_LOG", tmp_path / "tv_input.jsonl")
 
 
+@pytest.fixture(autouse=True)
+def _repo_data_in_tmp(tmp_path, monkeypatch):
+    """A bare `Store()`, `Config()` or `Engine()` writes nothing into the repo's data/: the database,
+    config history and data/sync.jsonl (beside the config) go to tmp. ~19 tests did, which broke
+    test_e2e_night's "data untouched" check once deploy.py ran the suite on parallel workers (Nov 7),
+    and on a dev checkout they mixed test rows into the real redzone.db."""
+    from redzone import config as rz_config
+    from redzone import store as rz_store
+    d = tmp_path / "_repo_data"
+    monkeypatch.setattr(rz_store.Store.__init__, "__defaults__", (d / "redzone.db",))
+    monkeypatch.setattr(rz_config.Config.__init__, "__defaults__", (d / "config.yaml", d / "config_history"))
+
+
 def _is_real_adb(prog) -> bool:
     """The real adb binary (Homebrew, PATH), not a tests/fake_adb.py script under a tmp dir."""
     import os

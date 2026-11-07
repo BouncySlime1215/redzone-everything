@@ -956,6 +956,12 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   60 min under taskpolicy -b (efficiency cores). `test_priority: background` in deploy/deploy.yaml restores taskpolicy -b;
   `deploy --test-timeout MIN` overrides the 60 min limit. The live app (nice 0) still wins the cores, and deploys stay in
   no-game windows.
+- 2026-11-07 (Nick's order, item 7 "deploy test timeout"): the deploy test step runs on pytest-xdist workers
+  (`--dist loadfile`, `test_workers: 0` = auto, half the cores, at most 4) at nice 10. Measured on 4 cores: whole suite
+  7 min 13 s vs ~33 min serial in CI. A timeout now kills the whole process group (subprocess.run's timeout left xdist
+  workers and test children running) and reports tests finished; output in data/deploy/tests.log. pytest-xdist==3.8.0 is
+  added to requirements.txt, so the next deploy needs `pip install -r requirements.txt` + `--deps-ok`; without it the
+  suite runs serially. A night test that read all of data/ as its own was made parallel-safe.
 - **2026-11-06 (lane 2, Nick's YTTV order):** new flag `decider.leave.break_floor_s` (EXP-212), default `{}` (OFF,
   no behavior change). It adds measured break floors on top of `MIN_BREAK_S` per league; the candidate is NBA
   `{end_period: 120}` (fit min 148 s over 103 breaks, valid min 148 over 34). Why: on Nov 5, NBA timeouts and quarter
