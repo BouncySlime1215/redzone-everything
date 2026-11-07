@@ -183,7 +183,7 @@ def test_deadline_prices_the_scrub_until_the_standby_is_scrubbed(scrub):
     c, tuner, hid, calls, result, behind = scrub
     plain = c.deadline_cost("youtubetv:fox")
     c.cfg.update({"timing": {"behind_live_s": {"scrub_entry": False}}})
-    assert plain - c.deadline_cost("youtubetv:fox") == pytest.approx(18.0)
+    assert plain - c.deadline_cost("youtubetv:fox") == pytest.approx(28.0)
     c.cfg.update({"timing": {"behind_live_s": {"scrub_entry": True}}})
     run(_preload(c, "youtubetv:fox"))
     assert c.deadline_cost("youtubetv:fox") == pytest.approx(c._flip_upper())

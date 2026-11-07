@@ -2975,7 +2975,7 @@ class Controller:
             return 0.0
         samples = sorted(self.latency.samples.get("yttv_scrub") or ())
         p90 = samples[min(len(samples) - 1, math.ceil(len(samples) * .9) - 1)] if samples else 0.0
-        return max(float(self.cfg.get("timing.behind_live_s.scrub_cost_s", 18.0)), p90)
+        return max(float(self.cfg.get("timing.behind_live_s.scrub_cost_s", 28.0)), p90)
 
     async def _scrub_into(self, stick: Stick, target: str, seconds: float) -> bool:
         """[scrub entry] Put the hidden stick's fresh tune of `target` about `seconds` behind live by the overlay

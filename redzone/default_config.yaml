@@ -642,7 +642,7 @@ timing:
                            # yttv_seek.enabled. OFF until a stick flip onto a scrubbed stream is proven
     scrub_fallback: keep   # a failed scrub: keep = keep the current game (no flip to an unread offset); live = flip at
                            # the live edge as today
-    scrub_cost_s: 18       # seconds the scrub adds before a flip (deadline_cost): ~10 s presses + ~8 s label read;
+    scrub_cost_s: 28       # seconds the scrub adds before a flip (deadline_cost): ~15-20 s presses with the tune banner + ~8 s read;
                            # the measured p90 (latency key yttv_scrub) wins once it's larger
     scrub_read_s: 8        # one label read adds this much delay: ask B - this so the picture lands near B
     scrub_over_s: 15       # a label reading above max_s + this fails closed (ACC Network stopped near 150 s)
