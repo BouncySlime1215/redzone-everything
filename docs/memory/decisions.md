@@ -1288,3 +1288,16 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   Select alone from the search page 0/4): **new flag `tuners.yttv_local_search: false`**. On: abc/cbs/fox/nbc tune by search (ABC 11 / CBS 17 /
   FOX 50 / WRAL), accepted only on a media-session subtitle naming the station AND a live playhead (>= 30 min),
   else BACK; fox/cbs ST mirror codes skipped except on Sundays. Off: routing unchanged. Nick flips it.
+- **2026-11-07 12:40 ET HOTFIX (Nick's live "no switches": CBSSN sigma 15 > decider.uncalibrated_sigma_s 8 kept the leave
+  gate shut, "delay not calibrated yet"): new setting `delay.edge_prior.enabled`, default false; Nick turns it on
+  at runtime (/api/settings, undoable).** On: every YouTube TV channel without its own tap / score-bug sample tonight
+  starts at `delay.edge_prior.prior.youtubetv` (34.9 s; Nick's hidden-stick probe, 28 reads on 11 channels, 34.3-35.5,
+  reruns 34.96 / 35.09) with stated doubt 4 s growing at most `drift_cap_s` 2 s (stays under 8 all night). Prior only;
+  the probe refresh is PR #408 (integration/next, off).
+- 2026-11-07 (Nick, 1:02 PM ET: the catch-up rewind landed on the big play but he SAW it, and the app logged 'replay
+  seek failed' 3x and left the menu up; the MEDIA_REWIND batch ran in one shell call with a 20 s timeout):
+  **`replay.yttv_seek: scrub`** (new default; `replay.enabled` stays as Nick set it). A YouTube TV catch-up is seeked
+  only on the HIDDEN stick by yttv_seek.enter_buffer (k = ceil((back - 3 + 1.5 + 4) / 15) LEFTs), its landing READ
+  by the label probe, then it plays to `park_lead_s` 1.5 s before the snap and pauses; the flip un-pauses it.
+  Never rewound on screen (a single-stick replay is refused). No label probe / no read / past the snap -> kept the
+  current game. "keys" = old path.

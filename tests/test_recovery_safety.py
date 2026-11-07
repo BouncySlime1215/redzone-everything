@@ -81,6 +81,14 @@ async def test_unknown_hidden_power_never_preloads(cfg, tmp_path, monkeypatch):
     assert not tuner.calls
 
 
+
+@pytest.fixture(autouse=True)
+def _replay_keys(request):
+    """These cases cover the KEY rewind mechanics (seek_key presses, wake press, drift re-seek). YouTube TV catch-up
+    now seeks by the overlay scrub (replay.yttv_seek: scrub, Nick Nov 7); tests/test_replay_scrub.py covers that."""
+    if "cfg" in request.fixturenames:
+        request.getfixturevalue("cfg").update({"replay": {"yttv_seek": "keys"}})
+
 def test_unconfirmed_plan_does_not_become_watched_game(cfg, clock):
     dec = Decider(cfg, DelayBook(cfg.get("delay.default"), cfg.get("delay.sigma_default")), clock=clock)
     game = nfl()
