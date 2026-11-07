@@ -71,8 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-BREAKTHROUGH, one run: overlay scrub seek on hidden .181 (TNT, live game) went 60 s behind in about 5 s and stayed behind for 5 min, proven by YouTube TV's own time label (67, 74, 83 s; growth from my reads), decoder running. media_session position is wrong after seeks; the overlay label is the truth meter.
-Needs repeats, longer hold, ads, other channels, eyes on picture. 20-min hold running now.
+Nick: ignore the usage limit for this push (88% stop off, his call). 20-min scrub hold running on hidden .181; auto-resume armed.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
