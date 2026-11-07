@@ -395,6 +395,8 @@
   {"rule": "K2", "path": "redzone/tuners/tuners.py", "key": "sleep@PrimeTuner.resume_from_page"},
   {"rule": "K2", "path": "redzone/tuners/yttv_label.py", "key": "MAX_BEHIND_S"},
   {"rule": "K2", "path": "redzone/tuners/yttv_label.py", "key": "WINDOW_SLACK_S"},
+  {"rule": "K2", "path": "redzone/tuners/yttv_search.py", "key": "CHANNEL_PAGE_BOUNDARY_SETTLE_S"},
+  {"rule": "K2", "path": "redzone/tuners/yttv_search.py", "key": "CHANNEL_PAGE_BOUNDARY_WINDOW_S"},
   {"rule": "K2", "path": "redzone/tuners/yttv_search.py", "key": "CHANNEL_PAGE_DOWN_S"},
   {"rule": "K2", "path": "redzone/tuners/yttv_search.py", "key": "CHANNEL_PAGE_SELECT_S"},
   {"rule": "K2", "path": "redzone/tuners/yttv_search.py", "key": "CHANNEL_PAGE_WAIT_S"},

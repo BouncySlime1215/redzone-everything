@@ -5,7 +5,7 @@ docs/playbooks.md, docs/northstar.md and docs/citymap_tags.json (serves tags).
 Do not edit by hand: rerun the script (`--check` exits 1 when this file is stale).
 Machine-readable twin: [citymap.json](citymap.json).
 
-**360 modules**, 296 untagged, 189 unowned, 14 orphans (no importer).
+**362 modules**, 297 untagged, 190 unowned, 14 orphans (no importer).
 
 inputs = repo modules it imports + `uses:` contract names; outputs = modules that import it + `implements:` contract Protocols. Long edge lists show the first 6 (full lists in the JSON).
 
@@ -71,11 +71,11 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `agent/train/peft_to_mlx.py` | Turn a PEFT LoRA adapter (agent/train/train_peft.py) into mlx_lm's adapter format, the one the Mac loads: adapters.safetensors + adapter_config.json. | - -> agent.kaggle.run_students | untagged |
 | `agent/watchdog.py` | RedZone watchdog: a separate, always-on process that keeps the app healthy without a person. | agent.llm, agent.policy, governor, memory, platform.autofix -> lab.night.run | untagged |
 
-## SWITCHING (38)
+## SWITCHING (39)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/channels.py` | Where can you actually watch a game? | models -> autonomy, canary, control, demo.engine, discovery.providers, discovery.yttv +19 | untagged |
+| `redzone/channels.py` | Where can you actually watch a game? | models -> autonomy, canary, control, demo.engine, discovery.providers, discovery.yttv +20 | untagged |
 | `redzone/control.py` | Turns decisions into TV actions. | channels, config, contracts.switching, fallback_ladder, tuners.adb, tuners.join_watchdog +7 -> autonomy, demo.engine, engine, lab.night.run, supervisor, scripts.fault_drill +3 | APP-04, BTN-05, Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), SAFE-08, STK-01, STK-02, STK-05, STK-06, STK-07, Switch time p95 (SmartThings input change), TV-04 |
 | `redzone/discovery/__init__.py` (package) | Finding where things are watchable, by itself. | - -> - | untagged |
 | `redzone/discovery/lounge.py` | Ask the YouTube TV app on a stick which video id it is playing, over the network, no login. | - -> discovery.yttv, scripts.find_yttv_code | untagged |
@@ -86,7 +86,7 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/discovery/yttv.py` | YouTube TV channel codes with zero pasting: a researched default table, self-verification on a Fire TV stick, and an in-app search fallback. | channels, discovery.lounge, discovery.search, discovery.stickio, sources.eventlinks, tuners.adb -> autonomy, discovery.search, lab.night.run, tuners.tuners, tuners.yttv_search, scripts.find_yttv_code | untagged |
 | `redzone/standby.py` | Hot standby: what the hidden stick should be playing, so the next switch is a 1-2s input flip. | config, crunch, models -> demo.engine, engine, lab.backtest | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-05, STK-06 |
 | `redzone/tuners/__init__.py` (package) | no docstring | - -> - | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tuners/adb.py` | Talk to a Fire TV stick over the network with the adb command-line tool. | config, platform.breaker, screen_ocr -> autonomy, canary, control, discovery.stickio, discovery.yttv, lab.night.house +27 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04, STK-05 |
+| `redzone/tuners/adb.py` | Talk to a Fire TV stick over the network with the adb command-line tool. | config, platform.breaker, screen_ocr -> autonomy, canary, control, discovery.stickio, discovery.yttv, lab.night.house +28 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04, STK-05 |
 | `redzone/tuners/identity.py` | Conservative matchup evidence from fresh provider metadata. | - -> - | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/join.py` | [Join API] Put a HIDDEN stick a chosen time behind live, say where it should land, measure where it did, log both. | config, tuners.join_calib, tuners.join_watchdog, tuners.prime_pause, tuners.yttv_seek -> canary, tuners.join_calib, tuners.join_watchdog, scripts.join_try, scripts.watchdog_try | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/join_calib.py` | [Join self-calibration, Nick's Nov 7 order item 5] Per channel and stick: join-error and delay stats, and a bias that updates itself from data/joins.jsonl, i... | config, tuners.join -> canary, tuners.join | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
@@ -99,8 +99,9 @@ inputs = repo modules it imports + `uses:` contract names; outputs = modules tha
 | `redzone/tuners/providers.py` | Tuners for the other streaming apps: Peacock, Fubo, Paramount+, HBO Max, Netflix, NFL, NBA, Apple TV and DAZN. | discovery.providers, tuners.adb, tuners.profiles, tuners.tuners -> discovery.runtime, supervisor, scripts.providers_check | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/screen_prompts.py` | Clear YouTube TV's own prompts from a screenshot: "Who's watching?" and "Still watching?". | discovery.providers, screen_ocr, tuners.adb, tuners.profiles -> lab.night.run, supervisor, tuners.session_guard, tuners.tuners | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/session_guard.py` | [sync hardening, item 4] Session safety: what is this stick's session doing, is its buffer still true, and what is the ONE safe thing to do about it. | discovery.providers, tuners.adb, tuners.screen_prompts -> control, scripts.session_drill | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tuners/tuners.py` | Tuners: one class per streaming app. | channels, discovery.providers, discovery.yttv, screen_ocr, tuners.adb, tuners.prime_multiview +4 -> autonomy, canary, control, discovery.runtime, platform.faults, tuners.providers +8 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
-| `redzone/tuners/yttv_label.py` | [YTTV scrub buffer, item 2] Read YouTube TV's overlay time label -> numbers only. | screen_ocr, tuners.adb, tuners.yttv_seek -> canary, engine, scripts.watchdog_try, scripts.yttv_scrub_try | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
+| `redzone/tuners/tuners.py` | Tuners: one class per streaming app. | channels, discovery.providers, discovery.yttv, screen_ocr, tuners.adb, tuners.prime_multiview +4 -> autonomy, canary, control, discovery.runtime, platform.faults, tuners.providers +9 | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
+| `redzone/tuners/yttv_edge_probe.py` | [edge prior, Nick Nov 7] Measure YouTube TV's live-edge delay on the HIDDEN stick, numbers only. | config, tuners.yttv_label -> engine, scripts.edge_probe_try | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
+| `redzone/tuners/yttv_label.py` | [YTTV scrub buffer, item 2] Read YouTube TV's overlay time label -> numbers only. | screen_ocr, tuners.adb, tuners.yttv_seek -> canary, engine, tuners.yttv_edge_probe, scripts.watchdog_try, scripts.yttv_scrub_try | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_search.py` | Bounded YouTube TV library inspection using observed menu geometry. | discovery.providers, discovery.stickio, discovery.yttv, screen_ocr, tuners.adb, tuners.prime_search +2 -> tuners.tuners, scripts.find_yttv_code | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tuners/yttv_seek.py` | [YTTV scrub buffer, item 1] Put a YouTube TV stick a set time behind live by scrubbing the player overlay. | screen_ocr -> control, tuners.join, tuners.prime_pause, tuners.yttv_label, scripts.session_drill, scripts.yttv_scrub_try | Flips PLAYING within 3 s, Phone press to TV p95 ("Watch this" + "Go now" until the game plays), STK-03, STK-04 |
 | `redzone/tv.py` | Samsung TV: switch HDMI inputs (two-stick mode) and duck the volume (announcer). | platform.breaker -> control, fantasy, lab.night.run, tvsetup, scripts.fault_drill, scripts.tv_local_probe | Switch time p95 (SmartThings input change), TV-01, TV-02 |
@@ -184,7 +185,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
-| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, buffer_rc8, control, crunch +44 | untagged |
+| `redzone/config.py` | Config: defaults + user overrides, validated, versioned, and undoable. | - -> agent.kaggle.build_moments_kaggle, __main__, autonomy, buffer_rc8, control, crunch +45 | untagged |
 | `redzone/contracts/__init__.py` (package) | Interfaces every thread codes against. | contracts.breaks, contracts.budget, contracts.clock, contracts.events, contracts.feeds, contracts.flags +61 -> - | untagged |
 | `redzone/contracts/breaks.py` | BreakModel contract: when a stoppage starts, what kind it is, how long it runs, when play restarts. | models -> contracts, contracts.legacy, contracts.views, contracts.world, scoring.brain3 | untagged |
 | `redzone/contracts/budget.py` | Per-tick latency budget, split across modules. | - -> contracts | untagged |
@@ -207,7 +208,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `redzone/demo/__main__.py` | Replay demo: watch how the app WOULD have switched during a past day's real games. | __main__, demo.download, demo.engine, lab.evaldata, web.server -> - | untagged |
 | `redzone/demo/download.py` | Fetch one day's finished games (scoreboard + play-by-play) into data/demo/<day>/<league>/. | - -> demo.__main__ | untagged |
 | `redzone/demo/engine.py` | The real Engine, replaying a past day on a simulated clock. | channels, config, control, crunch, decider.decider, decider.screen +10 -> demo.__main__ | untagged |
-| `redzone/engine.py` | The producer loop: poll every feed -> merge -> score -> decide -> act -> tell the phone. | bets, buffer_rc8, buffer_shadow, calibration, channels, commands +49 -> __main__, demo.engine, lab.night.run, web.server, scripts.fault_drill, scripts.perf_probe | BTN-04, BTN-05, FEED-01, SAFE-01, SAFE-03, STK-06 |
+| `redzone/engine.py` | The producer loop: poll every feed -> merge -> score -> decide -> act -> tell the phone. | bets, buffer_rc8, buffer_shadow, calibration, channels, commands +50 -> __main__, demo.engine, lab.night.run, web.server, scripts.fault_drill, scripts.perf_probe | BTN-04, BTN-05, FEED-01, SAFE-01, SAFE-03, STK-06 |
 | `redzone/lab/backtest.py` | Replay a real slate of past games through the scorer and decider, then grade it. | channels, config, contracts.switching, decider.decider, decider.screen, decider.whistle +15 -> agent.kaggle.build_moments_kaggle, demo.engine, lab.cutgrade, lab.night.run, lab.optimize, lab.oracle +20 | untagged |
 | `redzone/lab/cutgrade.py` | Cut-timing scorecard: WHERE in each game we left, and WHERE we landed. | decider.screen, grading, lab.backtest, models, sources.espn -> lab.backtest, lab.oracle, lab.sportsgrade, scripts.buffer_shadow_grade, scripts.entry_autopsy, scripts.eval +2 | untagged |
 | `redzone/lab/datasets.py` | Training datasets: per-league game-state snapshots with break / key-moment / hotness labels. | - -> lab.brain3data, lab.brainfit, lab.breakblend, lab.sportsdata, scripts.build_training, scripts.train_brain | untagged |
@@ -222,7 +223,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/eval_sports.py` (entry) | Scorecard for NBA / NHL (and NFL/MLB) using real archived nights. | channels, config, lab.backtest, lab.evaldata, lab.oracle, lab.oracle_window +5 -> - | untagged |
 | `scripts/replay_check.py` (entry) | Replay one exact archived sports date without connecting to feeds or devices. | config, lab.replaycheck, models -> - | untagged |
 
-## unowned (189)
+## unowned (190)
 
 | module | role | inputs -> outputs | serves |
 |---|---|---|---|
@@ -340,6 +341,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/delay_report.py` (entry) | How well each channel's stream delay is predicted, from the delay samples the app has stored. | config, decider.screen -> - | untagged |
 | `scripts/disk_guard.py` (entry) | Disk guard for the Mac (~5 GB free): what is using space in this checkout, and a safe cleanup of the transfer folders that cloud build threads leave behind. | governor -> - | untagged |
 | `scripts/distill.py` (entry) | Big teacher -> small student, end to end. | agent.distill.evaluate, agent.distill.student, agent.distill.teacher -> - | untagged |
+| `scripts/edge_probe_try.py` (entry) | [edge prior, Nick Nov 7] Measure YouTube TV's live-edge delay on the HIDDEN stick, Nick's way, and print JSON rows. | channels, tuners.adb, tuners.tuners, tuners.yttv_edge_probe -> - | untagged |
 | `scripts/entry_autopsy.py` (entry) | Entry autopsy (PROPOSAL, test writers; EXP-700 / EXP-727 / EXP-736). | lab.backtest, lab.cutgrade, models, sources.espn -> - | untagged |
 | `scripts/eval_break_blend.py` (entry) | Held-out calibration of the break forecast's rules + brain blend (breaks.blend). | lab.breakblend, lab.evaldata -> - | untagged |
 | `scripts/eval_reasoner.py` (entry) | Scorecards with the live game reasoner on, cross-fitted: each night is scored by a head that never saw that night (data/training/reasoner_folds, from scripts... | config, lab.reasoner_data, reasoner.head, reasoner.reasoner -> - | untagged |
@@ -416,7 +418,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 | `scripts/yttv_scrub_try.py` (entry) | Run yttv_seek.enter_buffer once on the HIDDEN YouTube TV stick and print the result row (item 1, #377). | tuners.adb, tuners.yttv_label, tuners.yttv_seek -> - | untagged |
 | `scripts/yttv_search_tune_try.py` (entry) | Tune the LOCAL stations by YouTube TV search on the HIDDEN stick, through the app's own routing and tuner as if tuners.yttv_local_search were on (ChannelMap.... | channels, tuners.adb, tuners.tuners -> - | untagged |
 
-## Untagged (296)
+## Untagged (297)
 
 - `agent/__init__.py`
 - `agent/distill/__init__.py`
@@ -628,6 +630,7 @@ Lane page: [lanes/experience.md](lanes/experience.md)
 - `scripts/doctor.py`
 - `scripts/download_recent.py`
 - `scripts/download_season.py`
+- `scripts/edge_probe_try.py`
 - `scripts/entry_autopsy.py`
 - `scripts/eval.py`
 - `scripts/eval_brain.py`

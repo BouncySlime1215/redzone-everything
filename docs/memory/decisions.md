@@ -1298,3 +1298,19 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   (fresh live edge through another channel, CENTER, RIGHT, one label read, BACK; delay = (capture - EPG start) - label,
   start = the :00/:30 boundary) on the HIDDEN stick at the live edge only, at most every 30 min; empty reads and reads
   further than 10 s from the prior are skipped; median of the newest 6 reads, back to the prior after 3 h.
+- 2026-11-07 (Nick 12:08 PM ET: "You can deploy whatever" / "You can do whatever you want"; overseer deployed 12:11:34):
+  **RC6.3.1 = a8bf14f on integration/release** (tree claude/live-b490-locals 8841ebd0 = the live dev build b490ab86 +
+  #406), live on the Mac, with `tuners.yttv_local_search` ON through the Mac's settings API (undo history; the
+  shipped default stays false). Reason: 8 of 16 CFB games on ABC/CBS/FOX/NBC locals today; the smallest change on top
+  of what was live (an RC6.3-based point release would have rolled back boundary_retries). The deploy's live-game gate
+  was bypassed once, with auto-switching paused.
+- 2026-11-07 ~12:40 PM ET (Nick live, RC6.3.1: "havent seen any switches / i want more switches", "do whatever you
+  want"; stuck on UNC@CONN through the Q1-end ads): the overseer changed **runtime config on the Mac only** via
+  /api/settings (undo history); **the tree defaults are unchanged**: `decider.switch_margin` 10 -> 4,
+  `decider.return_tolerance` 5 -> 2, `decider.break_destination_min` 25 -> 10, `score.personal.my_team` 25 -> 10,
+  `decider.uncalibrated_sigma_s` 8 -> 25, `decider.sticky_visit_needs_calibration` true -> false. Causes: FOX didn't tune
+  (UCLA@MINN, best game), the leave gate waited on an uncalibrated CBSSN delay (sigma 15 > 8), and the stale-data guard
+  ("no fresh data 103-128 s") blocked leaving during the commercial with the quarter end never flagged as a break.
+  Rule #1 note: the last two loosen calibration guards (more switches land on a less certain delay); they are Nick's
+  call for today and are not graded. Code follow-ups (hotfix/local-search-joinlive): YouTube TV edge prior 34.9 s on,
+  stale data after a period end / 0:00 / scoring play counts as a break, the FOX fix.
