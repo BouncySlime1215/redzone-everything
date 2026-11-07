@@ -360,3 +360,4 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   behind live). On a stick scrubbed 60 s back that turns the believed delay 60 s too short: every cut would plan the
   dead ball a minute early. Lesson: a "reset to safe defaults" must keep what was MEASURED about this tune (its
   behind_live), and only throw away what was guessed.
+- 2026-11-07 (Mac health): on Nov 5-6 the app went 66-145 min without a single switch row while up to 10 games were live; the supervisor logged stuck command locks and stale feeds every few minutes but nothing reached the phone, because each fault on its own was 'only a warning'. Lesson: alert on the OUTCOME (no switch in 20 min with games on autopilot), not only on each cause. Signals: no_switches, stuck_lock, stale_feed.

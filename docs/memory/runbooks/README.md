@@ -12,6 +12,7 @@ Short, do-this-now steps. Each one links to the full doc. Run everything from th
 | Set up TV-side input switching | [tv-setup.md](tv-setup.md) |
 | A stick looks offline | [stick-offline.md](stick-offline.md) |
 | Weekly usage is near the cap | [usage-pause.md](usage-pause.md) |
+| The phone says the Mac is the problem (battery, sleep, memory, paused, no switches) | [mac-health.md](mac-health.md) |
 
 ## Memory hook
 
