@@ -71,7 +71,7 @@ games, and the app switches between them at dead balls. The owner is Nick Matta 
 ## 5. Current state (updated by the director)
 
 <!-- STATUS:START -->
-integration/next seek passes live 2/2. EXP-603 regrade FAILED NBA and NFL, RC8 stays off; EXP-604 pending. Key plays availability varies: ESPN unavailable, BTN hidden-spoiler mode, ACC Network rows; list about 12 min late in one read. Auto-switching paused for dev by Nick's OK; must resume at the end.
+Prime POR@LAL would not start on .181: app switch aborted 'playback not confirmed', Watch press did nothing. Prime seek untested. Sticks back on YouTube TV. Auto-switching paused for dev.
 <!-- STATUS:END -->
 
 ## 6. Next steps, in order
