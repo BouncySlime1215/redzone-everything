@@ -1146,3 +1146,7 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   checks the destination's delayed picture for a dead ball (NBA isn't cut-timed; the whistle wait runs before the
   22.5 s+ scrub), so live would land later than the sim's already-lenient re-check. EXP-610 pairs the live fix
   (clock-stopped dead ball on the delayed picture, behind the scrub flag) with the same rule in the replay.
+- 2026-11-07 (integrator, EXP-609 read): **EXP-609 (Prime pause at the measured B + 4.3 s) FAILS both leagues, as
+  EXP-608; RC8 stays OFF.** NBA's blockers are clock-truth entries the re-check's lenient dead ball lets through, plays
+  missed ~2.3x and (resync) your-team crunch 54.8%; EXP-610 addresses the first. NFL's are switches 1.72x and plays
+  missed ~3x.
