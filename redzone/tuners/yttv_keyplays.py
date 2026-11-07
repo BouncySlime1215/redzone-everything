@@ -8,6 +8,12 @@ Measured (overseer, Nov 6-7, real stick; not yet seen by this code):
     CENTER is pressed on the prompt only while the focus box reads 'Ask later'. Anything else: no CENTER.
   * After a tune a LIVE/title banner can sit up 25+ s and keys do nothing there (#377): an open that shows no
     panel is retried after a wait, a panel we can't read fails closed.
+  * Nov 7 live: the panel opens with a card focused and OCR can't see focus on the tabs, so the Key plays tab is
+    recognised by its CONTENT. Three states: 'Key plays currently unavailable' (ESPN) = fail closed; spoiler mode
+    'Catch up via key plays' + 'N hidden key plays', no rows (Big Ten Network) = only Want(from_start=True), the reel
+    from 1 of N; rows with the game clock (ACC Network) = pick by period + clock.
+  * CATCH-UP, NOT A LIVE JUMP: the newest row was ~12 min behind live on ESPN (one read, Nov 7). The reel is old
+    footage; the caller deep-links back to live afterwards and never treats it as the live picture.
 
 What it does (each call never raises; it returns a KeyPlaysResult with steps and timings):
   read_key_plays(stick, ...)   open the panel, reach the Key plays tab, read the rows, return to live
@@ -56,6 +62,10 @@ _PERIOD = re.compile(r"\b(?:Q([1-4])|([1-4])(?:st|nd|rd|th)(?:\s+(?:qtr|quarter|
                      re.IGNORECASE)
 _REEL = re.compile(r"(\d{1,3})\s+of\s+(\d{1,3})\s+key\s+plays", re.IGNORECASE)
 _PROMPT = re.compile(r"auto[- ]?play\s+key\s+plays", re.IGNORECASE)
+# Key plays tab states seen live (Nov 7): ESPN 'Key plays currently unavailable, Try again later'; Big Ten Network
+# spoiler mode 'Catch up via key plays' + '8 hidden key plays' with no rows; ACC Network rows with the game clock.
+_KP_UNAVAILABLE = re.compile(r"key\s+plays\s+(?:are\s+)?(?:currently\s+)?(?:not\s+available|unavailable)", re.IGNORECASE)
+_KP_HIDDEN = re.compile(r"(\d{1,3})\s+hidden\s+key\s+plays", re.IGNORECASE)
 
 Reader = Callable[[Any], Awaitable["PanelRead | None"]]
 
@@ -122,20 +132,37 @@ class PanelRead:
     focus_kind: str = ""       # "" none/ambiguous | tab | row | prompt | catch_up | other
     focus_row: int | None = None
     n_text: int = 0
+    unavailable: bool = False  # 'Key plays currently unavailable' (ESPN, Nov 7)
+    hidden_n: int | None = None  # 'N hidden key plays' (spoiler mode, Big Ten Network, Nov 7): no rows to pick
 
     @property
     def panel(self) -> bool:
         return "key plays" in self.tabs and len(self.tabs) >= 2
 
     @property
+    def mode(self) -> str:
+        """What the Key plays tab shows, from its CONTENT (OCR can't see focus on the tabs, Nov 7):
+        unavailable | hidden (spoiler mode: only Catch up) | rows | "" (not the Key plays tab, or unreadable).
+        Rows count only next to a key-plays-only sign (Catch up button, or the focused Key plays tab): the Scores
+        tab carries game clocks too."""
+        if not self.panel:
+            return ""
+        if self.unavailable:
+            return "unavailable"
+        if self.hidden_n is not None and self.catch_up:
+            return "hidden"
+        if self.rows and (self.catch_up or (self.focus_kind == "tab" and self.focus_text == "key plays")):
+            return "rows"
+        return ""
+
+    @property
     def on_key_plays(self) -> bool:
-        return self.panel and (self.focus_kind == "tab" and self.focus_text == "key plays"
-                               or (self.catch_up and bool(self.rows)))
+        return self.mode != ""
 
     def brief(self) -> dict:
         return {"panel": self.panel, "tabs": self.tabs, "rows": len(self.rows), "catch_up": self.catch_up,
                 "prompt": self.prompt, "reel": self.reel, "focus": self.focus_text[:60], "kind": self.focus_kind,
-                "focus_row": self.focus_row, "n_text": self.n_text}
+                "focus_row": self.focus_row, "n_text": self.n_text, "mode": self.mode, "hidden_n": self.hidden_n}
 
 
 def parse_panel(obs: list[dict], focus: list[dict] | None = None) -> PanelRead:
@@ -158,6 +185,11 @@ def parse_panel(obs: list[dict], focus: list[dict] | None = None) -> PanelRead:
         m = _REEL.search(o["text"])
         if m:
             r.reel = (int(m.group(1)), int(m.group(2)))
+        if _KP_UNAVAILABLE.search(o["text"]):
+            r.unavailable = True
+        h = _KP_HIDDEN.search(o["text"])
+        if h:
+            r.hidden_n = int(h.group(1))
     if r.prompt:
         r.prompt_buttons = [_norm(o["text"]) for o in items
                             if _norm(o["text"]) in (ASK_LATER, "not now", "no thanks", "turn on", "yes", "no", "on", "off")]
@@ -255,6 +287,7 @@ class Want:
     period: int | None = None
     clock_s: float | None = None
     index: int | None = None   # or a row number as read (probe use)
+    from_start: bool = False   # select 'Catch up via key plays' (the reel from 1 of N); the only pick in spoiler mode
 
 
 @dataclass
@@ -268,6 +301,8 @@ class KeyPlaysResult:
     prompt_seen: bool = False
     prompt_answer: str | None = None    # only ever "ask later"
     reel: tuple[int, int] | None = None
+    mode: str = ""              # unavailable | hidden | rows (what the Key plays tab showed)
+    hidden_n: int | None = None
     playing: bool = False
     relinked: bool | None = None
     timings: dict = field(default_factory=dict)
@@ -375,9 +410,8 @@ class _Run:
         self.res.stage = "tab"
         up_used, rights = False, 0
         for _ in range(int(_cfg(self.cfg, "tab_tries"))):
-            if r.on_key_plays and r.rows:
-                self.mark("tab_s")
-                return r
+            if r.on_key_plays:
+                return self._on_tab(r)
             if r.focus_kind == "tab" and r.focus_text == "key plays":
                 await self.key("DPAD_CENTER")       # the tab is focused: selecting it is safe
             elif r.focus_kind == "tab":
@@ -397,10 +431,38 @@ class _Run:
             if nr is None or not nr.panel:
                 raise _Closed("panel lost while moving to Key plays")
             r = nr
-        if r.on_key_plays and r.rows:
-            self.mark("tab_s")
-            return r
-        raise _Closed("Key plays tab not reached (or it has no rows)")
+        if r.on_key_plays:
+            return self._on_tab(r)
+        raise _Closed("Key plays tab not reached (no Key plays content read)")
+
+    def _on_tab(self, r: PanelRead) -> PanelRead:
+        self.mark("tab_s")
+        self.res.mode, self.res.hidden_n = r.mode, r.hidden_n
+        self.res.rows = [k.brief() for k in r.rows]
+        self.res.steps.append(f"key plays: {r.mode}" + (f" ({r.hidden_n} hidden)" if r.hidden_n is not None else ""))
+        if r.mode == "unavailable":
+            raise _Closed("key plays unavailable on this channel (nothing selected)")
+        return r
+
+    async def focus_catch_up(self, r: PanelRead) -> PanelRead:
+        """Focus 'Catch up via key plays': DOWN off the tab bar, verified by the focus box. Nothing else is selected."""
+        self.res.stage = "focus"
+        for _ in range(int(_cfg(self.cfg, "row_fix_tries")) + 1):
+            if r.focus_kind == "catch_up":
+                self.mark("focus_s")
+                self.res.chosen = {"catch_up": True, "hidden_n": r.hidden_n}
+                return r
+            if r.focus_kind in ("", "tab"):
+                await self.key("DPAD_DOWN")      # off the tab bar: moves focus, selects nothing
+            elif r.focus_kind == "row":
+                await self.key("DPAD_UP")
+            else:
+                raise _Closed(f"focus unknown near Catch up ({r.focus_kind}: {r.focus_text[:30]!r})")
+            nr = await self.read()
+            if nr is None or not nr.panel:
+                raise _Closed("panel lost while focusing Catch up")
+            r = nr
+        raise _Closed("could not see focus on 'Catch up via key plays' (nothing selected)")
 
     async def focus_row(self, r: PanelRead, want: Want) -> tuple[PanelRead, KeyPlay]:
         """Focus the wanted row, scrolling down while it isn't on screen. Verified by the focus box before return."""
@@ -429,7 +491,22 @@ class _Run:
             r = nr
             target = locate(r)
         self.res.stage = "focus"
-        for _ in range(int(_cfg(self.cfg, "row_fix_tries")) + 1):
+        blind_down = False
+        for _ in range(int(_cfg(self.cfg, "row_fix_tries")) + 2):
+            if r.focus_kind == "" and not blind_down:
+                # Nov 7: focus on the tabs is invisible to OCR. One DOWN leaves the tab bar (selects nothing); the read
+                # after it must then show focus on Catch up or a row.
+                blind_down = True
+                await self.key("DPAD_DOWN")
+                nr = await self.read()
+                if nr is None or not nr.panel:
+                    raise _Closed("panel lost while focusing the row")
+                r = nr
+                t2 = locate(r)
+                if t2 is None:
+                    raise _Closed("wanted play scrolled out of view")
+                target = t2
+                continue
             if r.focus_kind == "row" and r.focus_row is not None:
                 cur = r.rows[r.focus_row]
                 if cur.clock_s == target.clock_s and cur.period == target.period:
@@ -521,9 +598,8 @@ async def read_key_plays(stick, *, cfg=None, pkg: str | None = None, still_hidde
                          relink: Callable[[], Awaitable[bool]] | None = None, clock=None) -> KeyPlaysResult:
     """Open the panel, reach Key plays, read the visible rows, then return to live with relink()."""
     async def body(run: _Run):
-        r = await run.to_tab(await run.open())
+        await run.to_tab(await run.open())
         run.res.stage = "list"
-        run.res.rows = [k.brief() for k in r.rows]
         run.mark("list_s")
         if relink is not None:
             t = run.clock()
@@ -537,16 +613,22 @@ async def read_key_plays(stick, *, cfg=None, pkg: str | None = None, still_hidde
 async def catch_up(stick, want: Want, *, cfg=None, pkg: str | None = None, still_hidden=None,
                    read: Reader | None = None, relink: Callable[[], Awaitable[bool]] | None = None,
                    clock=None) -> KeyPlaysResult:
-    """Start the Key plays reel at the wanted play on a HIDDEN stick. The caller flips at a dead ball, and calls
+    """Start the Key plays reel at the wanted play (or from 1 of N with want.from_start) on a HIDDEN stick. The caller flips at a dead ball, and calls
     return_to_live() when the clip(s) are done (~10 s per play). Fails closed (re-linked to live) on any doubt."""
-    if want.index is None and want.clock_s is None:
+    if want.index is None and want.clock_s is None and not want.from_start:
         return KeyPlaysResult(reason="nothing wanted")
 
     async def body(run: _Run):
         r = await run.to_tab(await run.open())
-        run.res.rows = [k.brief() for k in r.rows]
         run.mark("list_s")
-        r, _ = await run.focus_row(r, want)
+        if want.from_start:
+            if not r.catch_up:
+                raise _Closed("no 'Catch up via key plays' button")
+            await run.focus_catch_up(r)
+        elif r.mode == "hidden":
+            raise _Closed("spoiler mode: key plays are hidden, no rows to pick (only Catch up from 1 of N)")
+        else:
+            r, _ = await run.focus_row(r, want)
         await run.play()
     return await _drive(stick, body, cfg=cfg, pkg=pkg, still_hidden=still_hidden, read=read, relink=relink,
                         clock=clock)

@@ -4,6 +4,8 @@
     python scripts/yttv_keyplays_probe.py --host <hidden stick ip:port> --channel <yttv code> --read
     # play the row at index 0 (as read), let it roll 25 s, then deep link back to live
     python scripts/yttv_keyplays_probe.py --host ... --channel ... --play-index 0 --roll-s 25
+    # spoiler mode (no rows): select 'Catch up via key plays', reel from 1 of N
+    python scripts/yttv_keyplays_probe.py --host ... --channel ... --catch-up --roll-s 25
     # play the row matching a game clock, e.g. 4th quarter 2:31
     python scripts/yttv_keyplays_probe.py --host ... --channel ... --period 4 --clock 2:31 --roll-s 25
 
@@ -74,6 +76,8 @@ def main() -> int:
     g.add_argument("--read", action="store_true", help="read the list only, then back to live")
     g.add_argument("--play-index", type=int, help="play the row at this index (as read, top = 0)")
     g.add_argument("--clock", help="play the row with this game clock MM:SS (with --period)")
+    g.add_argument("--catch-up", action="store_true", help="select 'Catch up via key plays' (reel from 1 of N; "
+                                                            "the only pick in spoiler mode)")
     ap.add_argument("--period", type=int, default=None, help="quarter/half; OT = 5")
     ap.add_argument("--roll-s", type=float, default=25.0, help="let the reel play this long before going live")
     ap.add_argument("--assume-hidden", action="store_true", help="skip the app's hidden check (see above)")
@@ -109,8 +113,12 @@ def main() -> int:
             res = await kp.read_key_plays(stick, cfg=cfg, pkg=pkg, still_hidden=still_hidden, relink=relink)
             out["read"] = res.row()
             return out
-        want = kp.Want(index=a.play_index) if a.play_index is not None else \
-            kp.Want(period=a.period, clock_s=kp.parse_clock(a.clock)[1])
+        if a.catch_up:
+            want = kp.Want(from_start=True)
+        elif a.play_index is not None:
+            want = kp.Want(index=a.play_index)
+        else:
+            want = kp.Want(period=a.period, clock_s=kp.parse_clock(a.clock)[1])
         res = await kp.catch_up(stick, want, cfg=cfg, pkg=pkg, still_hidden=still_hidden, relink=relink)
         out["catch_up"] = res.row()
         if res.ok:

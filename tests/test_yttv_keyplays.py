@@ -37,7 +37,7 @@ class FakePanel:
     raises the auto-play prompt (buttons stacked vertically). `setting_changed` must never become True."""
 
     def __init__(self, plays=PLAYS, banner=0, prompt_buttons=("Turn on", "Ask later"), first_use=True,
-                 front=YT, window=5):
+                 front=YT, window=5, kp_mode="rows", tab_focus=True, open_on_card=False, hidden_n=8):
         self.plays, self.banner, self.front, self.window = plays, banner, front, window
         self.prompt_buttons, self.first_use = list(prompt_buttons), first_use
         self.state = "player"     # player | up | panel | prompt | reel
@@ -47,6 +47,8 @@ class FakePanel:
         self.reel_at = None
         self.keys, self.relinks = [], 0
         self.focus_visible = True
+        self.card_selected = False
+        self.kp_mode, self.tab_focus, self.open_on_card, self.hidden_n = kp_mode, tab_focus, open_on_card, hidden_n
 
     async def key(self, *codes):
         for c in codes:
@@ -63,23 +65,28 @@ class FakePanel:
                 self.state = "up"
         elif self.state == "up":
             if k == "DPAD_CENTER":
-                self.state, self.tab, self.pos = "panel", 0, "tab"
+                self.state, self.tab, self.pos = "panel", 0, ("card" if self.open_on_card else "tab")
         elif self.state == "panel":
-            if self.pos == "tab":
+            if self.pos == "card":
+                if k == "DPAD_UP":
+                    self.pos = "tab"
+                elif k == "DPAD_CENTER":
+                    self.card_selected = True
+            elif self.pos == "tab":
                 if k == "DPAD_RIGHT":
                     self.tab = min(2, self.tab + 1)
                 elif k == "DPAD_LEFT":
                     self.tab = max(0, self.tab - 1)
-                elif k == "DPAD_DOWN" and self.tab == 2:
+                elif k == "DPAD_DOWN" and self.tab == 2 and self.kp_mode in ("rows", "hidden"):
                     self.pos = "catch"
             elif self.pos == "catch":
-                if k == "DPAD_DOWN":
+                if k == "DPAD_DOWN" and self.kp_mode == "rows":
                     self.pos = 0
                 elif k == "DPAD_UP":
                     self.pos = "tab"
                 elif k == "DPAD_CENTER":
                     self._select(0)
-            else:
+            elif isinstance(self.pos, int):
                 if k == "DPAD_DOWN":
                     self.pos = min(len(self.plays) - 1, self.pos + 1)
                 elif k == "DPAD_UP":
@@ -120,9 +127,23 @@ class FakePanel:
         if self.state in ("panel",):
             for i, t in enumerate(TABS):
                 obs.append({"text": t, "x": .1 + .15 * i, "y": .15, "w": .1, "h": .03})
-            if self.pos == "tab":
+            if self.pos == "tab" and self.tab_focus:
                 focus.append({"text": TABS[self.tab], "x": .1 + .15 * self.tab - .01, "y": .14, "w": .12, "h": .05})
-            if self.tab == 2:
+            if self.pos == "card":
+                focus.append({"text": "MIA @ GSW", "x": .1, "y": .5, "w": .3, "h": .2})
+            if self.tab == 0:
+                # the Scores tab carries game clocks too: they must never be read as key plays
+                obs.append({"text": "Q4 2:31 MIA 98 GSW 101", "x": .1, "y": .3, "w": .3, "h": .03})
+                obs.append({"text": "MIA @ GSW", "x": .1, "y": .5, "w": .3, "h": .03})
+            if self.tab == 2 and self.kp_mode == "unavailable":
+                obs.append({"text": "Key plays currently unavailable", "x": .1, "y": .3, "w": .4, "h": .03})
+                obs.append({"text": "Try again later", "x": .1, "y": .35, "w": .3, "h": .03})
+            if self.tab == 2 and self.kp_mode == "hidden":
+                obs.append({"text": "Catch up via key plays", "x": .1, "y": .22, "w": .3, "h": .03})
+                obs.append({"text": f"{self.hidden_n} hidden key plays", "x": .1, "y": .3, "w": .3, "h": .03})
+                if self.pos == "catch":
+                    focus.append({"text": "Catch up via key plays", "x": .09, "y": .21, "w": .32, "h": .05})
+            if self.tab == 2 and self.kp_mode == "rows":
                 obs.append({"text": "Catch up via key plays", "x": .1, "y": .22, "w": .3, "h": .03})
                 if self.pos == "catch":
                     focus.append({"text": "Catch up via key plays", "x": .09, "y": .21, "w": .32, "h": .05})
@@ -140,7 +161,8 @@ class FakePanel:
             b = self.prompt_buttons[self.pfocus]
             focus.append({"text": b, "x": .41, "y": .49 + .07 * self.pfocus, "w": .18, "h": .06})
         elif self.state == "reel":
-            obs.append({"text": f"{self.reel_at + 1} of {len(self.plays)} key plays", "x": .05, "y": .85,
+            n = self.hidden_n if self.kp_mode == "hidden" else len(self.plays)
+            obs.append({"text": f"{self.reel_at + 1} of {n} key plays", "x": .05, "y": .85,
                         "w": .2, "h": .03})
         if not self.focus_visible:
             focus = []
@@ -317,3 +339,54 @@ def test_screen_ocr_focus_labels_is_opt_in():
     assert screen_ocr.parse_result(_raw("Ask later")).focus_status == "none"      # unchanged default
     r = screen_ocr.parse_result(_raw("Ask later"), kp.FOCUS_LABELS)
     assert r.focus_status == "unique" and r.focus_boxes[0].text == "Ask later"
+
+
+# --- live layouts (Nov 7): tabs focus invisible, card focused on open, unavailable / spoiler mode ---------------------
+LIVE = dict(tab_focus=False, open_on_card=True)
+
+
+def test_live_layout_rows_reaches_tab_by_content_and_picks_row():
+    s = FakePanel(**LIVE)
+    res = go(kp.catch_up(s, kp.Want(period=4, clock_s=250), cfg=cfg(), read=reader(s), relink=relinker(s)))
+    assert res.ok, res.steps
+    assert res.mode == "rows" and s.reel_at == 1 and not s.card_selected and not s.setting_changed
+
+
+def test_scores_tab_clocks_are_not_key_plays():
+    s = FakePanel(**LIVE)
+    s.state, s.pos, s.tab = "panel", "tab", 0
+    r = kp.parse_panel(*s.render())
+    assert r.panel and r.mode == "" and not r.on_key_plays
+
+
+def test_unavailable_fails_closed_and_selects_nothing():
+    s = FakePanel(kp_mode="unavailable", **LIVE)
+    res = go(kp.read_key_plays(s, cfg=cfg(), read=reader(s), relink=relinker(s)))
+    assert not res.ok and res.mode == "unavailable" and "unavailable" in res.reason
+    assert s.relinks == 1 and s.reel_at is None and "DPAD_CENTER" not in s.keys[2:]
+
+
+def test_spoiler_mode_read_reports_hidden_count():
+    s = FakePanel(kp_mode="hidden", **LIVE)
+    res = go(kp.read_key_plays(s, cfg=cfg(), read=reader(s), relink=relinker(s)))
+    assert res.ok and res.mode == "hidden" and res.hidden_n == 8 and res.rows == [] and s.relinks == 1
+
+
+def test_spoiler_mode_refuses_a_row_pick():
+    s = FakePanel(kp_mode="hidden", **LIVE)
+    res = go(kp.catch_up(s, kp.Want(period=4, clock_s=151), cfg=cfg(), read=reader(s), relink=relinker(s)))
+    assert not res.ok and "spoiler" in res.reason and s.reel_at is None and s.relinks == 1
+
+
+def test_spoiler_mode_catch_up_from_start():
+    s = FakePanel(kp_mode="hidden", **LIVE)
+    res = go(kp.catch_up(s, kp.Want(from_start=True), cfg=cfg(), read=reader(s), relink=relinker(s)))
+    assert res.ok, res.steps
+    assert s.reel_at == 0 and res.reel == (1, 8) and res.prompt_answer == "ask later" and not s.setting_changed
+
+
+def test_catch_up_needs_visible_focus_on_the_button():
+    s = FakePanel(kp_mode="hidden", **LIVE)
+    s.focus_visible = False
+    res = go(kp.catch_up(s, kp.Want(from_start=True), cfg=cfg(), read=reader(s), relink=relinker(s)))
+    assert not res.ok and s.reel_at is None and s.relinks == 1
