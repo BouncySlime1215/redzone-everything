@@ -316,6 +316,12 @@ def _deliver(r: Replay, f: _Feed, i: int, now: float):
 # [EXP-601] pre-registered (docs/prereg/exp-601.md): the Nov 4 live press span "tune" (p50 21.61 s, p95 44.74 s) as a
 # lognormal clipped to [5, 120] s, and the 1 s resume after the hold. Not tunable: a new value needs a new EXP id.
 HS_PREREG = {"tune_mu": math.log(21.61), "tune_sigma": 0.4424, "tune_clip": (5.0, 120.0), "resume": 1.0}
+# [EXP-603] pre-registered (docs/prereg/exp-603.md): the Nov 6 overlay scrub (docs/sync/2026-11-06-yttv-scrub-buffer-spec.md,
+# codex/resume-redzone a60c9cbd). CENTER, N x LEFT (15 s each), CENTER takes ~10 s over adb; one label read (CENTER,
+# LEFT, RIGHT, CENTER) takes ~8 s and adds ~8 s of delay. Measured TNT: N=4 read 67 s behind, 75 s after that read.
+# So a scrub with one read airs 15 N + 15 s behind (N=4 -> 75, N=5 -> 90) and is ready keys + read after the tune.
+HS_SCRUB = {"keys_s": 10.0, "read_s": 8.0, "step_s": 15.0, "land_s": 15.0}
+HS_ENTRIES = ("hold", "scrub")
 HS_NO_BUFFER = ("replay", "resume", "skip")   # catch-up footage needs no hold (as live)
 
 
@@ -332,9 +338,20 @@ class HiddenStick:
                  it (a fresh tune draw) with the old game on screen. Either way it airs at the live edge:
                  offset -= B, so Rule #1 is graded where the picture really is."""
 
-    def __init__(self, arm: str, behind: float, hold_overrun: float, cfg, clock, seed: int, my_teams: dict):
+    def __init__(self, arm: str, behind: float, hold_overrun: float, cfg, clock, seed: int, my_teams: dict,
+                 entry: str = "hold"):
         if arm not in ("wait", "live_edge"):
             raise ValueError(f"hidden_stick must be None, 'wait' or 'live_edge', not {arm!r}")
+        if entry not in HS_ENTRIES:
+            raise ValueError(f"hidden-stick entry must be one of {HS_ENTRIES}, not {entry!r}")
+        if entry == "scrub":
+            n = (behind - HS_SCRUB["land_s"]) / HS_SCRUB["step_s"]
+            if n < 1 or abs(n - round(n)) > 1e-9:
+                raise ValueError(f"[EXP-603] a scrub lands at 15 N + 15 s behind live (75, 90, ...), not {behind:g}")
+        self.entry = entry
+        self.recheck = None            # [EXP-604] (by_id, lag_belief, feed_lag, tune_s) when the re-check is on
+        self.rechecked = self.recheck_late = self.recheck_none = 0
+        self.recheck_s: list[float] = []
         from redzone import standby
         self.arm, self.B, self.overrun, self.cfg, self.my_teams = arm, behind, hold_overrun, cfg, my_teams
         self.rng = random.Random(seed * 7_000_003 + 601)
@@ -355,12 +372,17 @@ class HiddenStick:
         return min(hi, max(lo, self.rng.lognormvariate(HS_PREREG["tune_mu"], HS_PREREG["tune_sigma"])))
 
     def hold_of(self, target: str | None) -> float:
-        return 0.0 if (target or "").startswith("prime:") else self.B * self.overrun
+        """Seconds from tuned to ready: Prime holds nothing; a hold pauses B * overrun s (+ resume); a scrub
+        [EXP-603] costs its keys plus one label read, whatever B."""
+        prime = (target or "").startswith("prime:")
+        if self.entry == "scrub":
+            return 0.0 if prime else HS_SCRUB["keys_s"] + HS_SCRUB["read_s"]
+        return (0.0 if prime else self.B * self.overrun) + HS_PREREG["resume"]   # EXP-601 exactly as frozen
 
     def load(self, gid: str, target: str, now: float) -> None:
         self.gid, self.target = gid, target
         self.tuned_at = now + self.tune()
-        self.ready_at = self.tuned_at + self.hold_of(target) + HS_PREREG["resume"]
+        self.ready_at = self.tuned_at + self.hold_of(target)
         self.preloads += 1
 
     def plan(self, cands: dict, dec, decision, states: dict) -> None:
@@ -413,6 +435,14 @@ class HiddenStick:
             at, what = watching[-1]
             watching[-1] = (at + wait, what)
             self.waits.append(wait)
+            if self.recheck is not None and not live_edge:
+                more = self.safe_after(sw, cut + wait)
+                if more > 0:
+                    sw.leave_dt += more
+                    sw.arrive_dt += more
+                    at, what = watching[-1]
+                    watching[-1] = (at + more, what)
+                    wait += more
         if live_edge:
             sw.offset -= self.B
             self.unbuffered_t.append(sw.t)
@@ -426,15 +456,48 @@ class HiddenStick:
         self.gid, self.target = left, ((targets or {}).get(left, f"youtubetv:{left}") if left else None)
         self.tuned_at = self.ready_at = cut + wait
         if left in self.at_edge:
-            self.ready_at += self.hold_of(self.target) + HS_PREREG["resume"]
+            self.ready_at += self.hold_of(self.target)
+
+    def safe_after(self, sw, cut: float) -> float:
+        """[EXP-604] The live path (#378) scrubs with the old game on screen, then waits for a safe moment
+        (_wait_safe, may_cut) before the flip. Re-check from `cut` in 1 s steps: the first moment the target's
+        delayed picture is at a dead ball, judged as the app sees it (only plays its feed delivered by then; the
+        believed lag, not the true one). Extra seconds to that moment; past 25 s (MAX_SAFE_WAIT_S) live drops the
+        switch and the decider picks again, modelled as waiting on (counted late); none within 145 s -> 0."""
+        from redzone.grading import dead_at
+        by_id, lag_belief, feed_lag, tune_s = self.recheck
+        dst = by_id.get(sw.to or "")
+        if dst is None or not dst.wall:
+            return 0.0
+        off = getattr(sw, "offset", 0.0) or 0.0
+        base = sw.t + tune_s + (sw.arrive_dt or 0.0) - lag_of(lag_belief, dst.gid) - off
+        for e in range(0, 146):
+            now = cut + e
+            n = sum(1 for w in dst.wall if w <= now - feed_lag)   # plays the app has by now
+            st = base + e
+            if st < dst.wall[0]:
+                return float(e)   # before the game started on screen: nothing to judge
+            if n < len(dst.wall) and (n == 0 or st >= dst.wall[n - 1]):
+                continue   # the app hasn't seen what's on screen yet: no safe call (conservative)
+            if dead_at(dst.league, dst.wall[:n], dst.plays[:n], st)[0]:
+                self.rechecked += 1
+                self.recheck_late += e > 25
+                if e:
+                    self.recheck_s.append(float(e))
+                return float(e)
+        self.recheck_none += 1
+        return 0.0
 
     def card(self) -> dict:
-        return {"arm": self.arm, "behind_live_s": self.B, "hold_overrun": self.overrun, "switches": self.n,
+        return {"arm": self.arm, "entry": self.entry, "behind_live_s": self.B, "hold_overrun": self.overrun, "switches": self.n,
                 "buffered": self.buffered, "buffered_pct": round(100.0 * self.buffered / self.n, 1) if self.n else None,
                 "waits": len(self.waits), "wait_s": round(sum(self.waits), 1),
                 "wait_p50_s": round(sorted(self.waits)[len(self.waits) // 2], 1) if self.waits else 0.0,
                 "prime_switches": self.prime, "prime_t": self.prime_t, "unbuffered_t": self.unbuffered_t,
-                "preloads": self.preloads, "retunes": self.retunes}
+                "preloads": self.preloads, "retunes": self.retunes,
+                **({"recheck": {"checked": self.rechecked, "moved": len(self.recheck_s),
+                                "moved_s": round(sum(self.recheck_s), 1), "late_over_25s": self.recheck_late,
+                                "none_in_145s": self.recheck_none}} if self.recheck else {})}
 
 
 def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: float = 8.0,
@@ -449,6 +512,7 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
         feed_lag_model: str | None = None,
         calibrate_targets: bool = False,
         hidden_stick: str | None = None, hold_overrun: float = 1.0, behind_live_s: float | None = None,
+        hs_entry: str = "hold", hs_recheck: bool = False,
         on_tick: Callable | None = None) -> Report:
     """Realism knobs (all off by default, so the scorecard is unchanged):
       targets       game_id -> tuner target (default youtubetv:<id>), e.g. Prime for League Pass
@@ -556,7 +620,15 @@ def run(replays: list[Replay], cfg: Config, my_teams: set[str], *, feed_lag: flo
             from redzone.lab.evaldata import config_behind_live
             behind_live_s = config_behind_live(cfg, replays[0].league.value)
         stick = HiddenStick(hidden_stick, float(behind_live_s or 0.0), hold_overrun, cfg, clock, seed,
-                            {lg: set(my_teams) for lg in League})
+                            {lg: set(my_teams) for lg in League}, entry=hs_entry)
+        if hs_recheck:
+            if hidden_stick != "wait":
+                raise ValueError("[EXP-604] hs_recheck models the wait arm's post-scrub re-check only")
+            known = feed_lag
+            if feed_lag_model == "measured" and replays:   # plays reach the app late: judge on the league's p95
+                known = max(feed_lag, float((cfg.get("timing.behind_live_s.adaptive.feed_lag_p95_s") or {})
+                                            .get(replays[0].league.value, feed_lag)))
+            stick.recheck = ({r.gid: r for r in replays}, lag_total, known, tune_s)
     sampler = None
     if feed_lag_model == "measured":
         from redzone.lab.timing import LagSampler, sources_in_use

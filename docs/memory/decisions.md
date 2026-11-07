@@ -1052,6 +1052,14 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   30-90 s pauses were back near live 20-30 s after resume, 120 s reset to 0, also with auto-switching OFF (so not
   STK-05). No seek path works yet. The EXP-601 grader keeps its registered defaults; no refreeze, no runs. EXP-601
   itself assumed a held stick stays held, which is now unproven, so its FAIL is if anything optimistic for RC8.
+- 2026-11-07 (integrator, Nick's Nov 6 10:15 PM order item 5): **Grader freeze v40: EXP-603 overlay-scrub entry in the
+  hidden-stick model (#374).** Measured only (a60c9cbd scrub spec): ready keys 10 s + read 8 s after the tune, lands
+  15 N + 15 s behind live (B75 measured, B90 extrapolated). Both arms must pass. A pass is not a flip card: RC8 waits on
+  a live stick test of a held scrub, per Nick.
+- 2026-11-07 (integrator): **Grader freeze v41: EXP-604 post-scrub re-check (#380), verdict arm wait + re-check.**
+  Registered after EXP-603's interim NBA FAIL and a fit-night smoke (disclosed in the prereg). Known optimism: the
+  re-check judges dead balls with the grader's dead_at on delivered plays, not the engine's may_cut, and skips the
+  leave check; so a pass is a model pass that the shadow run must confirm before any card.
 - 2026-11-07 (PR #381, item 6 of Nick's Nov 6 order): new default `decider.lock_wait` {enabled: false, retry_s: 20,
   max_s: 90}. A locked/held game we can't reach (no channel, or a tune that failed) says why, retries after retry_s,
   and after max_s the lock and hold are dropped with a toast. Off by default: Nick flips it. Nov 6: a hold on the ACC
