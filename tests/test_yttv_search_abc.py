@@ -23,7 +23,35 @@ FX = {"start_scene": "channel_page", "playing": "ferg3lVdMOg",
       "positions": {"ferg3lVdMOg": 46800000, "Abc11Live01": 51200000, "Abc11Rec001": 4000},
       "scenes": {"channel_page": {"boxes": BOXES, "keys": {"KEYCODE_DPAD_CENTER": "play:Abc11Live01",
                                                            "KEYCODE_DPAD_DOWN": "on_now"}},
-                 "on_now": {"boxes": BOXES, "keys": {"KEYCODE_DPAD_CENTER": "play:Abc11Live01"}}}}
+                 "on_now": {"boxes": BOXES, "keys": {"KEYCODE_DPAD_CENTER": "play:Abc11Live01",
+                                                     "KEYCODE_DPAD_DOWN": "below"}},
+                 "below": {"boxes": BOXES, "keys": {"KEYCODE_DPAD_CENTER": "keyboard"}},
+                 "keyboard": {"boxes": [["Search", .4, .2, .2, .05]]}}}
+MORNING_KEYS = ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER"]
+
+# Nov 7 12:23, live game on FOX 50 (Nick's 3 standby-stick frames, text only; positions guessed): focus on the
+# header search icon, DOWN 1 = Top picks (a recorded newscast), DOWN 2 = 'On now & upcoming' with the LIVE game,
+# Select -> 'How would you like to begin watching?' sheet, Join live focused -> the game, position 0.
+FOX_BOXES = ([["Home", .05, .04, .04, .03], ["Live", .11, .04, .04, .03], ["FOX 50", .05, .2, .08, .04],
+              ["Top picks", .05, .32, .08, .03], ["WRAL News Saturday Morning on Fox 50", .05, .45, .2, .03],
+              ["On now & upcoming", .05, .6, .15, .03], ["UCLA at Minnesota", .05, .7, .15, .03],
+              ["LIVE", .05, .74, .03, .02], ["FOX 50", .1, .74, .04, .02], ["Today 12:06 PM - 3:30 PM", .15, .74, .12, .02]])
+SHEET = [["How would you like to begin watching?", .6, .3, .3, .04], ["Join live", .62, .4, .1, .03],
+         ["Watch in multiview", .62, .48, .14, .03]]
+LIVE_GAME = {"start_scene": "header", "playing": "ferg3lVdMOg",
+             "watch": {"ferg3lVdMOg": "SportsCenter, ESPN, null",
+                       "Fox50Rec001": "WRAL News Saturday Morning on Fox 50, FOX 50",
+                       "Fox50Game01": "UCLA at Minnesota, FOX 50"},
+             "positions": {"ferg3lVdMOg": 46800000, "Fox50Rec001": 4000, "Fox50Game01": 0},
+             "scenes": {"header": {"boxes": FOX_BOXES, "keys": {"KEYCODE_DPAD_DOWN": "top_picks",
+                                                                "KEYCODE_DPAD_CENTER": "keyboard"}},
+                        "top_picks": {"boxes": FOX_BOXES, "keys": {"KEYCODE_DPAD_DOWN": "on_now",
+                                                                   "KEYCODE_DPAD_CENTER": "play:Fox50Rec001"}},
+                        "on_now": {"boxes": FOX_BOXES, "keys": {"KEYCODE_DPAD_CENTER": "sheet",
+                                                                "KEYCODE_DPAD_DOWN": "below"}},
+                        "below": {"boxes": FOX_BOXES, "keys": {"KEYCODE_DPAD_CENTER": "keyboard"}},
+                        "sheet": {"boxes": FOX_BOXES + SHEET, "keys": {"KEYCODE_DPAD_CENTER": "play:Fox50Game01"}},
+                        "keyboard": {"boxes": [["Search", .4, .2, .2, .05]]}}}
 
 
 import time as _time
@@ -31,7 +59,7 @@ import time as _time
 MID = _time.mktime((2026, 11, 7, 11, 15, 0, 0, 0, -1))        # 11:15 local: no program change near
 
 
-async def hunt(fx, *, channel_page=True, wall=MID):
+async def hunt(fx, *, channel_page=True, wall=MID, key="abc"):
     now = [1000.0]
 
     async def sleep(s):
@@ -45,7 +73,7 @@ async def hunt(fx, *, channel_page=True, wall=MID):
         now[0] += .3
         return CapturedScreen(tool._ocr(fx["scenes"].get(stick.scene, {"boxes": []})), seq[0], now[0])
 
-    h = await hunt_channel(stick, observe, key="abc", table=load_table(), query=LOCAL_SEARCH_QUERY["abc"],
+    h = await hunt_channel(stick, observe, key=key, table=load_table(), query=LOCAL_SEARCH_QUERY[key],
                            sleep=sleep, clock=lambda: now[0], wall=lambda: wall,
                            collect_codes=False, channel_page=channel_page)
     return stick, h
@@ -62,10 +90,10 @@ def key_times(h):
 async def test_down_select_confirmed_by_subtitle_and_live_playhead():
     stick, h = await hunt(copy.deepcopy(FX))
     assert h.status == "confirmed", h.reason
-    assert keys(stick) == ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER"]
+    assert keys(stick) == MORNING_KEYS
     assert "ABC 11" in h.description
     t = [s["at_s"] for s in h.steps if s["action"] == "key"]
-    assert t[0] >= 3.0 and t[1] - t[0] >= 1.5          # >= 3 s after the link, >= 1.5 s after DOWN
+    assert t[0] >= 3.0 and t[-1] - t[-2] >= 1.5        # >= 3 s after the link, >= 1.5 s after DOWN
 
 
 async def test_recording_after_down_backs_out_then_select_at_start():
@@ -73,8 +101,8 @@ async def test_recording_after_down_backs_out_then_select_at_start():
     fx["scenes"]["on_now"]["keys"]["KEYCODE_DPAD_CENTER"] = "play:Abc11Rec001"
     stick, h = await hunt(fx)
     assert h.status == "confirmed", h.reason
-    assert keys(stick) == ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER", "KEYCODE_BACK", "KEYCODE_DPAD_CENTER"]
-    assert sum(c.startswith("view ") and "/search" in c for c in stick.calls) == 2
+    assert keys(stick)[-1] == "KEYCODE_DPAD_CENTER" and keys(stick).count("KEYCODE_BACK") == 3
+    assert sum(c.startswith("view ") and "/search" in c for c in stick.calls) == 4
 
 
 async def test_title_only_mention_is_refused_and_backs_out():
@@ -82,7 +110,7 @@ async def test_title_only_mention_is_refused_and_backs_out():
     fx["watch"]["Abc11Live01"] = "ABC 11 Eyewitness News at 9AM, null, null"   # station only in the title
     stick, h = await hunt(fx)
     assert h.status == "stopped" and "no live session" in h.reason
-    assert keys(stick)[-1] == "KEYCODE_BACK" and keys(stick).count("KEYCODE_BACK") == 2
+    assert keys(stick)[-1] == "KEYCODE_BACK" and keys(stick).count("KEYCODE_BACK") == 4
 
 
 async def test_other_abc_channel_subtitle_is_refused():
@@ -174,7 +202,7 @@ async def test_settles_longer_at_a_program_change_and_still_checks_the_station()
     t_mid = [s["at_s"] for s in (await hunt(copy.deepcopy(FX)))[1].steps if s["action"] == "key"]
     stick, h = await hunt(copy.deepcopy(FX), wall=_time.mktime((2026, 11, 7, 11, 0, 0, 0, 0, -1)))
     t_edge = [s["at_s"] for s in h.steps if s["action"] == "key"]
-    assert h.status == "confirmed" and keys(stick) == ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER"]
+    assert h.status == "confirmed" and keys(stick) == MORNING_KEYS
     assert t_edge[0] >= 6.0 and t_edge[0] - t_mid[0] >= 2.9
     assert any("program change" in s["detail"] for s in h.steps)
     fx = copy.deepcopy(FX)                                     # the tile shifted: NFL Network plays
@@ -182,3 +210,37 @@ async def test_settles_longer_at_a_program_change_and_still_checks_the_station()
     fx["positions"]["Abc11Live01"] = 51200000
     stick, h = await hunt(fx, wall=_time.mktime((2026, 11, 7, 11, 0, 0, 0, 0, -1)))
     assert h.status == "stopped" and keys(stick)[-1] == "KEYCODE_BACK"
+
+
+async def test_live_game_two_downs_then_join_live_accepted_at_position_zero():
+    stick, h = await hunt(copy.deepcopy(LIVE_GAME), key="fox")
+    assert h.status == "confirmed", h.reason
+    # 1 DOWN = a Top picks recording (dropped fast), BACK, then 2 DOWNs -> Join live sheet -> CENTER
+    assert keys(stick) == ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER", "KEYCODE_BACK",
+                           "KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER", "KEYCODE_DPAD_CENTER"]
+    assert "UCLA at Minnesota" in h.description and "Join live" in h.tile
+    assert h.elapsed_s < 40
+
+
+async def test_top_picks_recording_is_dropped_fast_without_join_live():
+    fx = copy.deepcopy(LIVE_GAME)
+    fx["scenes"]["top_picks"]["keys"].pop("KEYCODE_DPAD_DOWN")   # 2 DOWNs stop on Top picks (a recording)
+    fx["scenes"]["header"]["keys"]["KEYCODE_DPAD_CENTER"] = "keyboard"
+    stick, h = await hunt(fx, key="fox")
+    assert h.status == "stopped" and "recording" in h.reason
+    assert "KEYCODE_DPAD_CENTER" in keys(stick) and keys(stick)[-1] == "KEYCODE_BACK"
+
+
+async def test_position_zero_without_join_live_is_not_live():
+    fx = copy.deepcopy(LIVE_GAME)
+    fx["scenes"]["on_now"]["keys"]["KEYCODE_DPAD_CENTER"] = "play:Fox50Game01"   # no sheet shown
+    stick, h = await hunt(fx, key="fox")
+    assert h.status == "stopped"
+
+
+async def test_multiview_focused_on_the_sheet_is_never_pressed():
+    fx = copy.deepcopy(LIVE_GAME)
+    fx["scenes"]["sheet"]["focus"] = [.6, .47, .2, .05, "neutral_filled_button", "Watch in multiview"]
+    stick, h = await hunt(fx, key="fox")
+    assert h.status == "stopped" and "multiview" in h.reason
+    assert keys(stick)[-3:] == ["KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_DOWN", "KEYCODE_DPAD_CENTER"]
