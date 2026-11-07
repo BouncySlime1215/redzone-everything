@@ -320,6 +320,10 @@ decider:
   must_see_lead: 20
   locked_override_lead: 20
   manual_pause_s: 60
+  lock_wait:               # a locked/held game we can't reach (no channel, tune failed): say why, retry, give up
+    enabled: false         # off = old behavior (re-tries every tick, forever)
+    retry_s: 20            # after a failed tune to the locked game, wait this long before the next try
+    max_s: 90              # unreachable this long: drop the lock, tell you why, back to autopilot
   uncalibrated_sigma_s: 8  # above this delay uncertainty, only leave at official stoppages
   sticky_visit_needs_calibration: true  # your game's break: only visit games whose delay is calibrated (else no way back until their own break)
   wait_for_my_team_s: 1800  # your team tips within this: don't start on a basketball/hockey game we can't leave (uncalibrated)
