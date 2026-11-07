@@ -1294,6 +1294,16 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   shipped default stays false). Reason: 8 of 16 CFB games on ABC/CBS/FOX/NBC locals today; the smallest change on top
   of what was live (an RC6.3-based point release would have rolled back boundary_retries). The deploy's live-game gate
   was bypassed once, with auto-switching paused.
+- 2026-11-07 ~12:40 PM ET (Nick live, RC6.3.1: "havent seen any switches / i want more switches", "do whatever you
+  want"; stuck on UNC@CONN through the Q1-end ads): the overseer changed **runtime config on the Mac only** via
+  /api/settings (undo history); **the tree defaults are unchanged**: `decider.switch_margin` 10 -> 4,
+  `decider.return_tolerance` 5 -> 2, `decider.break_destination_min` 25 -> 10, `score.personal.my_team` 25 -> 10,
+  `decider.uncalibrated_sigma_s` 8 -> 25, `decider.sticky_visit_needs_calibration` true -> false. Causes: FOX didn't tune
+  (UCLA@MINN, best game), the leave gate waited on an uncalibrated CBSSN delay (sigma 15 > 8), and the stale-data guard
+  ("no fresh data 103-128 s") blocked leaving during the commercial with the quarter end never flagged as a break.
+  Rule #1 note: the last two loosen calibration guards (more switches land on a less certain delay); they are Nick's
+  call for today and are not graded. Code follow-ups (hotfix/local-search-joinlive): YouTube TV edge prior 34.9 s on,
+  stale data after a period end / 0:00 / scoring play counts as a break, the FOX fix.
 - **2026-11-07** New gate `tuners.yttv_local_search_live` (default **false**; `tuners.yttv_local_search` default
   unchanged, false). On: the engine re-reads `tuners.yttv_local_search` every decide tick, so a POST /api/settings
   change or Undo applies within ~0.5 s with no service restart (a tune in flight keeps its ref). Reason: turning the
