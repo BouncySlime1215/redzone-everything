@@ -154,6 +154,9 @@ class Engine:
         # controller's held offset alone moves the delay book, as today), and a stale label -> redo the hidden stick
         if hasattr(self, "label_behind"):
             self.control.on_label = self.label_behind
+        if self.cfg.get("timing.behind_live_s.label_reader", False):
+            from redzone.tuners.yttv_label import LabelProbe
+            self.control.label_probe = LabelProbe(self.cfg)   # [label reader] off by default
         if hasattr(self.delays, "on_label_stale"):
             self.delays.on_label_stale = self.control.label_stale
         self.control.on_behind = self._on_behind

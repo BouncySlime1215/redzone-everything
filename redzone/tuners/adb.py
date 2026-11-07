@@ -117,6 +117,10 @@ class Stick:
     screen_source: str = field(default="", repr=False, compare=False)
     # Fails commands at once while this stick keeps hanging (redzone/platform/breaker.py).
     breaker: Breaker | None = field(default=None, repr=False, compare=False)
+    # [Nick's 90 s run, Nov 7] A target this stick may be playing BEHIND live (a scrub pressed keys on it). A deep
+    # link to the SAME channel does not bring a stick that is behind back to live, so the next tune of that target
+    # must go through another channel first (Controller._tune). Cleared by a tune of a different target.
+    behind_on: str | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.breaker is None:
