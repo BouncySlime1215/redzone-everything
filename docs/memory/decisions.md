@@ -1128,6 +1128,10 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   two seeds and the primary CI touches 0. On resync, Prime entries double (54 vs 23 over 3 seeds) for a reason not yet
   shown; T9's guess is the re-sync prior pulling Prime's belief back to the buffered lag. A diagnosis is info-only;
   any grader change from it is a new EXP, registered before it runs. No card until a live stick holds a scrub.
+- 2026-11-07 (overseer's stick numbers): `yttv_seek.step_tol_s` 4 -> 6. Scrub entry went 47 of 48 at 60 s across ESPN,
+  TNT, NBA TV, BTN, ACCN, FS1, ESPN2 and TBS (about 15 s each); the one failure failed closed on "knob moved 40s, not
+  45s", one second outside the old tolerance. 6 is still well under one 15 s step, so a missed or extra LEFT is caught.
+  Flag stays off.
 - 2026-11-07 (Nick's 12:26 AM order 2): new `prime_pause.*` group, **enabled false**. `redzone/tuners/prime_pause`
   puts a HIDDEN Prime stick behind live with MEDIA_PAUSE, a hold, then MEDIA_PLAY, because on Prime pause holds
   (overseer: 60 s pause, timecode 02:20:54 -> 02:24:44 over 230 s wall, no snap in 4 min). It never uses

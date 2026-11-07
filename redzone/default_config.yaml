@@ -567,7 +567,7 @@ yttv_seek:                 # [YTTV scrub buffer, item 1] enter the time-shift bu
   enabled: false
   step_s: 15               # one LEFT on the focused bar moves the knob this far back (measured Nov 6)
   max_back_s: 150          # never scrub further (ACC Network stopped near 2.5 min behind)
-  step_tol_s: 4            # the knob label must move N x step_s within this, or the scrub isn't committed
+  step_tol_s: 6            # the knob label must move N x step_s within this, or no commit (4 -> 6: 47/48 live, 1 fail at 40 vs 45)
   boundary_retries: 1      # a failed knob check (the label resets at a new program) retries once from the live
                            # edge, only after a re-link to live with nothing committed; then fail closed
   key_gap_s: 0.35          # between LEFT presses
