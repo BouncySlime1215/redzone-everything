@@ -111,11 +111,13 @@ class JoinResult:
     reason: str = ""
     took_s: float = 0.0
     steps: list[str] = field(default_factory=list)
+    verdict: str = ""                  # join_watchdog.verify status of the READ landing ("" = nothing read)
 
     def row(self, **extra) -> dict:
         d = {"ts": round(time.time(), 1), **{k: v for k, v in asdict(self.plan).items()},
              "ok": self.ok, "measured_s": self.measured_s, "estimate_s": self.estimate_s, "error_s": self.error_s,
-             "pred_error_s": self.pred_error_s, "reason": self.reason[:160], "took_s": round(self.took_s, 2)}
+             "pred_error_s": self.pred_error_s, "reason": self.reason[:160], "took_s": round(self.took_s, 2),
+             "verdict": self.verdict}
         d.update(extra)
         return d
 
@@ -198,6 +200,20 @@ async def join(stick, app: str, target_s: float, *, cfg=None, pkg: str | None = 
         res.error_s = round(res.measured_s - plan.target_s, 2)
         if plan.predicted_s is not None:
             res.pred_error_s = round(res.measured_s - plan.predicted_s, 2)
+        # [Nick's canary, Nov 7 11:50Z] a LOST PRESS landed one 15 s step short (52.12 vs 64.2) and the row still said
+        # ok: true. ok now means "landed where the plan said", as read: off by more than the watchdog margin -> False.
+        try:
+            from redzone.tuners import join_watchdog as jw
+            v = jw.verify(app, plan.target_s, res.measured_s, plan.predicted_s, read_adds_s=plan.read_s, cfg=cfg)
+            res.verdict = v.status
+            if res.ok and not v.buffered:
+                short = plan.method == "scrub" and res.pred_error_s is not None and res.pred_error_s <= -float(
+                    _cfg(cfg, "yttv_step_s")) + float(jw.wcfg(cfg, "margin_s", app))
+                res.ok = False
+                res.reason = (f"{v.status}: {v.reason}" + (" -- about one 15 s step short: a lost press?" if short
+                                                           else ""))[:160]
+        except Exception as e:   # the verdict never breaks a join; ok stays as the keys said
+            log.warning("join verdict: %r", e)
     res.took_s = clock() - t0
     extra = {"source": source} if source else {}
     log_join(res, log_path, stick=label, channel=channel, **extra)

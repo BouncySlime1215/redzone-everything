@@ -214,7 +214,10 @@ async def watched_join(stick, app: str, target_s: float, *, relink: Callable[[],
             # the TARGET is moved by it here
             v = verify(a, target_s, getattr(r, "measured_s", None), getattr(plan, "predicted_s", None),
                        read_adds_s=float(getattr(plan, "read_s", 0.0) or 0.0),
-                       join_ok=bool(getattr(r, "ok", False)), visible=not still_hidden(),
+                       # a join that READ an off-target landing is ok=False (join.py) but measured: re-seek it
+                       join_ok=bool(getattr(r, "ok", False)) or getattr(r, "verdict", "") in ("off_target",
+                                                                                            "out_of_range"),
+                       visible=not still_hidden(),
                        reseeks_left=max_re - (out.attempts - 1), cfg=cfg)
             out.verdicts.append(asdict(v))
             if v.action == "accept":

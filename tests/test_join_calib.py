@@ -139,7 +139,7 @@ def test_join_uses_the_calibration_and_logs_what_it_used(tmp_path):
     s = FakeYTTV(label0=3600.0)
 
     async def label(_s):
-        return 57.4
+        return 64.9   # landed 57.4 + the label read's own 7.5 s
     cfg = Cfg({**CFG, "join.calib.enabled": True})
     r = asyncio.run(jn.join(s, "youtubetv", 60, cfg=cfg, pkg=YT, read_overlay=reader(s), read_behind=label,
                             log_path=log, label="stickB", channel="espn", source="canary"))

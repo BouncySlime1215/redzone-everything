@@ -1236,3 +1236,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   own ~7.5 s frozen overlay (Nick's 4 runs: measured - predicted +5.9, +6.5, +6.5, +7.8 without it). join_calib takes it
   off youtubetv rows logged without read_s. The watchdog moves only the TARGET by read_s. Margins stay 6 s. Flags off.
   Open: landings run ~+4.7 s over the target (Nick's 3 reruns) -> a later lead trim.
+- 2026-11-07 (Nick's canary run 1, 11:50Z: 3 presses, landed 52.12 vs predicted 64.2, row said ok: true): a join
+  row's `ok` now means the READ landing passed the watchdog verdict (join_watchdog.verify, same 6 s margin either
+  way); a new `verdict` field says why. Off target -> ok false, reason names "a lost press?" when one 15 s step short.
+  The watchdog still re-seeks such a READ landing once (it is a measurement, not a failed join), and join_calib keeps
+  it as a measurement (its gross filter decides). The pre-commit knob guard is the seek thread's. Flags off.

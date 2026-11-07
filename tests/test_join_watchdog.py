@@ -373,3 +373,57 @@ def test_joins_log_follows_rz_joins_log(monkeypatch, tmp_path):
     monkeypatch.setenv("RZ_JOINS_LOG", str(tmp_path / "j.jsonl"))
     jw.log_row({"kind": "watchdog", "state": "live"})
     assert json.loads((tmp_path / "j.jsonl").read_text())["state"] == "live"
+
+
+# --------------------------------------------------- Nick's canary run 1, Nov 7 11:50Z: a LOST PRESS (52.12 vs 64.2)
+def test_a_lost_press_is_not_ok_in_the_join_row(tmp_path):
+    """3 presses sent, one lost: landed a 15 s step short and the row said ok: true. Now ok is the READ verdict."""
+    from tests.test_yttv_seek import CFG, YT, FakeYTTV, reader
+    s = FakeYTTV(label0=3600.0)
+
+    async def label(_s):
+        return 52.12
+    log = tmp_path / "joins.jsonl"
+    r = run(jn.join(s, "youtubetv", 60, cfg=CFG, pkg=YT, read_overlay=reader(s), read_behind=label, log_path=log))
+    assert not r.ok and r.verdict == "off_target" and "lost press" in r.reason and r.measured_s == 52.12
+    row = json.loads(log.read_text().splitlines()[-1])
+    assert row["ok"] is False and row["verdict"] == "off_target" and row["pred_error_s"] == pytest.approx(-12.08)
+
+
+def test_a_good_join_row_is_still_ok_and_verified(tmp_path):
+    from tests.test_yttv_seek import CFG, YT, FakeYTTV, reader
+    s = FakeYTTV(label0=3600.0)
+
+    async def label(_s):
+        return 63.21
+    r = run(jn.join(s, "youtubetv", 60, cfg=CFG, pkg=YT, read_overlay=reader(s), read_behind=label,
+                    log_path=tmp_path / "j"))
+    assert r.ok and r.verdict == "verified"
+
+
+def test_the_watchdog_reseeks_a_lost_press_then_accepts():
+    """The join reports ok=False (verdict off_target) for 52.12; the watchdog still treats it as READ and re-seeks
+    from the live edge once, instead of falling straight back to live."""
+    seq = iter([52.12, 63.21])
+    calls = []
+
+    async def join_fn(stick, app, target_s, *, behind_before_s=0.0, **kw):
+        calls.append(behind_before_s)
+        m = next(seq)
+        plan = jn.plan_join(app, target_s, behind_before_s)
+        v = jw.verify(app, target_s, m, plan.predicted_s, read_adds_s=plan.read_s)
+        return NS(ok=v.buffered, measured_s=m, plan=plan, verdict=v.status)
+    rl, n = _relinker()
+    out = run(jw.watched_join(object(), "youtubetv", 60, relink=rl, join_fn=join_fn, log_path=""))
+    assert out.state == "buffered" and out.behind_s == 63.21 and out.attempts == 2 and len(n) == 1
+    assert [v["status"] for v in out.verdicts] == ["off_target", "verified"]
+
+
+def test_calibration_keeps_an_off_target_read_as_a_measurement_not_a_failure():
+    from redzone.tuners import join_calib as jc
+    p = jn.plan_join("youtubetv", 60)
+    row = {"app": "youtubetv", "method": "scrub", "ok": False, "verdict": "off_target", "measured_s": 52.12,
+           "predicted_s": p.predicted_s, "pred_error_s": -12.08, "bias_used_s": 11.7, "read_s": 7.5,
+           "channel": "espn", "stick": "stickB", "target_s": 60, "error_s": -7.88}
+    st = jc.JoinCalib([row]).stats("youtubetv")
+    assert st.failed == 0 and st.gross == 1          # counted as gross (|err| > 12), never used, not a failed join

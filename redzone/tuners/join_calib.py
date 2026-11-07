@@ -90,7 +90,10 @@ def safe_name(s) -> str:
 def observation(row: dict, cfg=None) -> float | None:
     """The lead (YouTube TV) / bias (Prime) a measured row saw, or None when the row measured nothing."""
     app = str(row.get("app") or "").split(":", 1)[0]
-    if app not in SHIPPED or not row.get("ok") or row.get("measured_s") is None or row.get("pred_error_s") is None:
+    # an off-target READ landing is ok=False since #401 (lost press guard) but still a measurement: the gross filter
+    # below decides whether it is used
+    read_ok = row.get("ok") or row.get("verdict") in ("off_target", "out_of_range")
+    if app not in SHIPPED or not read_ok or row.get("measured_s") is None or row.get("pred_error_s") is None:
         return None
     if row.get("method") not in ("scrub", "pause"):
         return None
@@ -195,7 +198,7 @@ class JoinCalib:
         rows = self._by.get(key, [])
         meas, errs, abs_pred = [], [], []
         for r in rows:
-            if not r.get("ok"):
+            if not r.get("ok") and r.get("verdict") not in ("off_target", "out_of_range"):
                 ks.failed += 1
                 continue
             o = observation(r, self.cfg)
