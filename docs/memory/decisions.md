@@ -1063,3 +1063,8 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   not media_session; the flip still waits for a dead ball on the delayed picture. A failed scrub re-tunes at the live
   edge and keeps the current game. Ships OFF: a flip onto a scrubbed stick with a person watching is not yet proven
   (spec "Still to prove"). No live config change. Rule #1 unchanged.
+- **2026-11-07 (item 4 follow-up, Nick's live stick notes 04:07Z):** a scrubbed hidden stick is protected from
+  planner/refresh preloads until its flip (only a game opened on the phone replaces it), under `scrub_entry`. New
+  `two_stick.unavailable_backoff_s` (default 0 = the usual 120 s): a standby tune stopped at an account/payment/
+  UNAVAILABLE screen keeps that game off the standby that long (Nick saw the standby pick a Prime game showing
+  UNAVAILABLE). Both off by default.

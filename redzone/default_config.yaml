@@ -496,6 +496,8 @@ hardening:                 # error handling (PLATFORM). Each switch is off until
   tv: false                # the TV jumped by itself to a stick on its home screen (a reboot's HDMI-CEC): flip it back
 
 two_stick:
+  unavailable_backoff_s: 0  # [Nick live test Nov 7] a standby tune that stopped at an account/payment/UNAVAILABLE screen keeps
+                            # that game off the standby this long (0 = the usual 120 s retry). Suggested 900
   standby_repause_s: 600     # [APP-04] the same standby pausing again within this long is a blocked app (a forced update)
   cec_flip: true           # HOME -> HDMI-CEC Active Source as the last-resort flip (the TV's own input change,
                            # set up by scripts/tv_setup.py, goes first when it's proven)

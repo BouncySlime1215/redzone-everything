@@ -236,3 +236,40 @@ def test_a_measured_read_goes_to_the_delay_model_and_a_stale_one_redoes_the_hidd
     run(stale())
     assert len(calls) == 2 and c.hidden_ready and tuner.calls[-1] == ("b:5555", "youtubetv:fox")
     assert not c.label_stale("youtubetv:espn")   # not the hidden stick's target: nothing pressed
+
+
+def test_a_scrubbed_standby_is_protected_from_preloads_until_the_flip(scrub):
+    """Nick's live test, Nov 7: the app's preload overwrote a scrubbed hidden stick."""
+    c, tuner, hid, calls, result, behind = scrub
+    run(_preload(c, "youtubetv:fox"))
+    c._last_preload = 0.0
+    assert not c.preload("youtubetv:espn")                       # the planner's pick waits
+    assert not c.preload("youtubetv:espn", refresh=True)
+    assert c.hidden_target == "youtubetv:fox" and c.hidden_ready
+    out = run(c.execute("youtubetv:fox", may_cut=lambda: True))   # the flip uses it
+    assert out.ok and len(calls) == 1
+    # flag off: no protection (today's behavior)
+    c2_flag = {"timing": {"behind_live_s": {"scrub_entry": False}}}
+    c.cfg.update(c2_flag)
+    assert not c._scrub_protected("youtubetv:espn")
+
+
+def test_a_game_opened_on_the_phone_still_replaces_it(scrub):
+    c, tuner, hid, calls, result, behind = scrub
+    run(_preload(c, "youtubetv:fox"))
+
+    async def peek():
+        assert c.preload("youtubetv:espn", user=True)
+        await c._preload_task
+    run(peek())
+    assert c.hidden_target == "youtubetv:espn"
+
+
+def test_unavailable_screen_backoff(scrub):
+    from redzone.tuners.tuners import TuneResult
+    c, *_ = scrub
+    res = TuneResult(False, "prime:x", 1.0, ["stopped at an account, payment, or unavailable-content screen"], "")
+    assert c._preload_backoff(res) == ctl.PRELOAD_BACKOFF_S          # off by default
+    c.cfg.update({"two_stick": {"unavailable_backoff_s": 900}})
+    assert c._preload_backoff(res) == 900
+    assert c._preload_backoff(TuneResult(False, "prime:x", 1.0, [], "video never started")) == ctl.PRELOAD_BACKOFF_S
