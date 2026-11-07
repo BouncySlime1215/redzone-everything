@@ -1,4 +1,5 @@
-"""[Join API] redzone/tuners/join: plan (YouTube TV steps of 15 s with Nick's n = round((T-10)/15); Prime any target),
+"""[Join API] redzone/tuners/join: plan (YouTube TV 16.8 s per real LEFT, k = round((T - 28.5) / 16.8) >= 1, Nick's
+depth sweep Nov 7; Prime any target),
 predicted vs measured landing, the error logged. Offline: the fake sticks of the scrub and Prime pause tests."""
 import asyncio
 import json
@@ -11,14 +12,37 @@ from tests.test_prime_pause import Clock, FakePrime
 from tests.test_yttv_seek import CFG, YT, FakeYTTV, reader
 
 
-@pytest.mark.parametrize("t,n,pred", [(60, 3, 64.2), (75, 4, 79.2), (90, 5, 94.2), (30, 1, 34.2)])
-def test_yttv_plan_is_nicks_n_and_the_measured_lead(t, n, pred):
+# Nick's depth sweep (Nov 7 13:48Z, ESPN, retuned before each join): k real LEFTs -> landed (label read included)
+SWEEP = {1: [45.1, 45.8, 44.9], 2: [63.0, 62.1], 4: [94.1, 94.2, 96.5], 6: [128.5, 128.1, 131.6]}
+
+
+@pytest.mark.parametrize("t,k,pred", [(45, 1, 45.3), (60, 2, 62.1), (75, 3, 78.9), (90, 4, 95.7), (120, 5, 112.5),
+                                      (130, 6, 129.3)])
+def test_yttv_plan_is_the_depth_fit(t, k, pred):
     p = jn.plan_join("youtubetv:espn", t)
-    assert p.method == "scrub" and p.presses == n and p.predicted_s == pytest.approx(pred) and p.expected_err_s == 3
+    assert p.method == "scrub" and p.lefts == k and p.presses == k + 1 and p.predicted_s == pytest.approx(pred)
+    assert p.expected_err_s == 3
+
+
+@pytest.mark.parametrize("k,landed", [(k, m) for k, ms in SWEEP.items() for m in ms])
+def test_every_sweep_landing_verifies_on_the_depth_fit(k, landed):
+    """15 n + 19.2 drifted -3.9 at 45 .. +4.9 at 120 (the 131.6 was off_target). 16.8 k + 28.5 holds them all."""
+    from redzone.tuners import join_watchdog as jw
+    pred = 16.8 * k + 28.5
+    assert abs(landed - pred) < 2.5
+    v = jw.verify("youtubetv", pred, landed, pred, read_adds_s=7.5)
+    assert v.status == "verified" and v.buffered
+
+
+def test_a_shallow_target_scrubs_one_left_never_zero():
+    """T30 planned zero LEFTs: a scrub that seeks nothing, landed 10-14 s, off_target twice. Now one LEFT, ~45 s."""
+    p = jn.plan_join("youtubetv", 30)
+    assert p.lefts == 1 and p.presses == 2 and p.predicted_s == pytest.approx(45.3) and "shallowest" in p.reason
+    assert jn.achievable("youtubetv", 30) == pytest.approx(45.3) == jn.achievable("youtubetv", 10)
 
 
 def test_yttv_plan_counts_where_the_stick_already_is():
-    assert jn.plan_join("youtubetv", 90, behind_before_s=25).presses == round((90 - 25 - 10) / 15)
+    assert jn.plan_join("youtubetv", 90, behind_before_s=25).lefts == round((90 - 25 - 28.5) / 16.8)
 
 
 def test_prime_plan_holds_the_gap_at_any_target():
@@ -29,23 +53,23 @@ def test_prime_plan_holds_the_gap_at_any_target():
 def test_no_method_and_past_the_cap():
     assert jn.plan_join("espn:x", 60).method == "none"
     assert jn.plan_join("youtubetv", 400).method == "none"
-    assert jn.achievable("youtubetv", 80) == pytest.approx(94.2) and jn.achievable("prime", 80) == 80
+    assert jn.achievable("youtubetv", 80) == pytest.approx(78.9) and jn.achievable("prime", 80) == 80
 
 
 def test_yttv_join_sends_the_planned_presses_and_logs_the_error(tmp_path):
     s = FakeYTTV(label0=3600.0)
 
     async def label(_s):
-        return 64.9   # landed 57.4, + the label read's own 7.5 s (join.yttv_read_s)
+        return 64.9   # landed 57.4, + the label read's own 7.5 s (join.yttv_read_s); predicted 62.1
     log = tmp_path / "joins.jsonl"
     r = asyncio.run(jn.join(s, "youtubetv", 60, cfg=CFG, pkg=YT, read_overlay=reader(s), read_behind=label,
                             log_path=log, label="stickB", channel="espn"))
     # the RIGHT probe (default) leaves the knob at live, then n - 1 = 2 LEFTs: 30 s (Nick, 12f405ab, Nov 7)
     assert r.ok and s.keys.count("KEYCODE_DPAD_RIGHT") == 1 and s.keys.count("KEYCODE_DPAD_LEFT") == 2
     assert s.committed_back == 30.0
-    assert r.measured_s == 64.9 and r.error_s == pytest.approx(4.9) and r.pred_error_s == pytest.approx(0.7)
+    assert r.measured_s == 64.9 and r.error_s == pytest.approx(4.9) and r.pred_error_s == pytest.approx(2.8)
     row = json.loads(log.read_text().splitlines()[-1])
-    assert row["stick"] == "stickB" and row["channel"] == "espn" and row["presses"] == 3 and row["error_s"] == 4.9 and row["read_s"] == 7.5
+    assert row["stick"] == "stickB" and row["channel"] == "espn" and row["presses"] == 3 and row["lefts"] == 2 and row["error_s"] == 4.9 and row["read_s"] == 7.5
     assert not any(":" in str(v) and "." in str(v) for v in row.values() if isinstance(v, str))   # no address
 
 

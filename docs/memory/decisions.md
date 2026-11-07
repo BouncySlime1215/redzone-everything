@@ -1258,3 +1258,9 @@ Format: `- YYYY-MM-DD: **decision.** Why.`
   NEITHER probe moves the knob (the LEFT only reveals the label), so a fixed count n moves n-1 steps on both and the
   join predictor (yttv_lead_s 11.7 + yttv_read_s 7.5) is unchanged. Behind live a LEFT probe is still assumed to
   move one step (unmeasured). Rig note in runbooks/join-watchdog.md: retune before every run.
+- 2026-11-07 (overseer's depth sweep, ESPN, #403 RIGHT probe, retuned before each join: k = 1, 2, 4, 6 real LEFTs
+  landed 45.3, 62.1, 95.7, 129.3 on average; T30 sent zero LEFTs and landed 10-14 s): **YouTube TV join model is
+  16.8 s per real LEFT** (`join.yttv_left_s: 16.8`, `join.yttv_lead_s` 11.7 -> 21.0, `yttv_n_offset_s` removed;
+  `join.enabled` still off). predicted = before + 16.8 k + 21.0 + 7.5 read; k = round((T - before - 28.5) / 16.8),
+  at least 1, so the shallowest scrub join is ~45 s and achievable() says so. Each LEFT also keeps the frozen overlay
+  up ~1.4-1.8 s; 15 n + 19.2 drifted -3.9 .. +4.9 s with depth (the T120 off_target). Calibration converts old rows.

@@ -343,9 +343,8 @@ async def _enter(stick, seconds, cfg, pkg, still_hidden, read_overlay, read_behi
         return await _fail(res, "stick became visible before the scrub", relink, still_hidden, pressed=True)
     rest = n - probe_moved
     if fixed_n is not None:
-        # A fixed count is the join plan's n = round((T - 10) / 15), fit (yttv_lead_s) to the old LEFT probe, which
-        # moved the knob (n - 1) steps: keep that motion for both probes (Nick, Nov 7: RIGHT 2 LEFTs -> 63.0 mean,
-        # LEFT probe + 2 -> 62.1, predicted 64.2).
+        # A fixed count n is the join plan's presses = k + 1 (k = JoinPlan.lefts, fit on real LEFTs after the probe,
+        # Nick's depth sweep Nov 7): (n - 1) LEFTs whichever probe ran (at live neither probe moves the knob).
         rest = max(0, n - 1)
     if rest > 0 and not await _keys(stick, "KEYCODE_DPAD_LEFT", rest, gap):
         res.presses = rest + int(left_probe)

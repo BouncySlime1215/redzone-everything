@@ -333,16 +333,16 @@ def test_nicks_nbatv_run_counts_the_reads_own_seven_and_a_half_seconds():
     old = jw.verify("youtubetv", 75, 79.52, 71.7)
     assert old.status == "off_target"                                   # what the stick test hit
     p = jn.plan_join("youtubetv", 75)
-    assert p.read_s == 7.5 and p.predicted_s == pytest.approx(79.2)     # the read now lives in the plan
+    assert p.read_s == 7.5 and p.predicted_s == pytest.approx(78.9)     # the read now lives in the plan (3 LEFTs)
     v = jw.verify("youtubetv", 75, 79.52, p.predicted_s, read_adds_s=p.read_s)
-    assert v.buffered and v.off_pred_s == 0.32 and v.off_target_s == -2.98 and v.measured_s == 79.52
+    assert v.buffered and v.off_pred_s == 0.62 and v.off_target_s == -2.98 and v.measured_s == 79.52
 
 
 @pytest.mark.parametrize("measured", [62.63, 63.15, 63.18])
 def test_nicks_three_canary_joins_verify_with_the_read_in_the_plan(measured):
     """Canary, espn, target 60 (Nov 7 11:40Z): 62.63 / 63.15 / 63.18 vs 56.7 without the read (+5.9..+6.5)."""
     p = jn.plan_join("youtubetv", 60)
-    assert p.predicted_s == pytest.approx(64.2)
+    assert p.predicted_s == pytest.approx(62.1)   # 2 LEFTs x 16.8 + 28.5 (Nick's depth sweep)
     v = jw.verify("youtubetv", 60, measured, p.predicted_s, read_adds_s=p.read_s)
     assert v.buffered and abs(v.off_pred_s) < 2
 
@@ -387,7 +387,7 @@ def test_a_lost_press_is_not_ok_in_the_join_row(tmp_path):
     r = run(jn.join(s, "youtubetv", 60, cfg=CFG, pkg=YT, read_overlay=reader(s), read_behind=label, log_path=log))
     assert not r.ok and r.verdict == "off_target" and "lost press" in r.reason and r.measured_s == 52.12
     row = json.loads(log.read_text().splitlines()[-1])
-    assert row["ok"] is False and row["verdict"] == "off_target" and row["pred_error_s"] == pytest.approx(-12.08)
+    assert row["ok"] is False and row["verdict"] == "off_target" and row["pred_error_s"] == pytest.approx(-9.98)
 
 
 def test_a_good_join_row_is_still_ok_and_verified(tmp_path):
