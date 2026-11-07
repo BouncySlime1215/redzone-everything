@@ -360,3 +360,9 @@ Each lesson is a `## ` heading plus four lines. `Signals:` holds the log words t
   behind live). On a stick scrubbed 60 s back that turns the believed delay 60 s too short: every cut would plan the
   dead ball a minute early. Lesson: a "reset to safe defaults" must keep what was MEASURED about this tune (its
   behind_live), and only throw away what was guessed.
+
+## A join that "worked" was not where we said (Nov 5-7)
+- **Symptom:** six different buffer entries reported success while the stick was somewhere else (2026-11-07 join watchdog).
+- **Cause:** media_session read flat after a seek (75 s "hold" VOID), a plain pause snapped back to live 20-30 s after resume, the overlay held open for 37.6 s turned an asked 90 into 130.8, a same-channel deep link left a stick behind (asked 90, read 23), a blind CENTER committed an uncounted step, and the label reset at a program boundary.
+- **Fix:** a position is only what the label / Prime timecode READ after the entry; anything else is "unknown", never "buffered", and a re-read is rare, budgeted and only on the hidden stick (each YouTube TV read adds 7.5 s). Runbook: [join-watchdog.md](runbooks/join-watchdog.md).
+- **Signals:** watchdog off_target, drift_reenter, drift_snapped, drift_unknown

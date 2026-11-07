@@ -59,6 +59,7 @@ from typing import Any, Callable
 from redzone import config
 from redzone.channels import ChannelMap
 from redzone.tuners.adb import STICK_HUNG, Stick, adb_available, playback_ready, same_stream
+from redzone.tuners import join_watchdog as jw
 from redzone.tuners import prime_multiview as pmv
 from redzone.tuners.tuners import TUNERS, PrimeMultiviewTuner, TuneResult, channel_matcher
 from redzone.tv import SamsungTV
@@ -302,6 +303,7 @@ class Controller:
         self.read_behind: Callable[..., Any] | None = None
         # [label reader] redzone.tuners.yttv_label.LabelProbe when timing.behind_live_s.label_reader is on (engine)
         self.label_probe: Any = None
+        self.drift: Any = None   # [drift monitor] join_watchdog.DriftMonitor, made on first use (join.drift.enabled)
         self.on_label: Callable[[str, float, float | None, float], None] | None = None
         self.dead_ball: Callable[[str], bool] = lambda target: True   # [STK-06] engine: is target's game dead now?
         self._buffer_bad: dict[str, float] = {}                      # target -> when its hold went bad
@@ -719,6 +721,10 @@ class Controller:
         await self.verify_standby()
         await self._watch_visible()
         self._maybe_reseek()
+        try:
+            await self._drift_tick()
+        except Exception:   # the drift check must never break keepalive
+            log.exception("drift tick")
 
     async def _maybe_reassert(self) -> None:
         """The TV input is unknown (a flip that wasn't confirmed, someone's remote, CEC lost).
@@ -3007,7 +3013,7 @@ class Controller:
         p90 = samples[min(len(samples) - 1, math.ceil(len(samples) * .9) - 1)] if samples else 0.0
         return max(float(self.cfg.get("timing.behind_live_s.scrub_cost_s", 28.0)), p90)
 
-    async def _scrub_into(self, stick: Stick, target: str, seconds: float) -> bool:
+    async def _scrub_into(self, stick: Stick, target: str, seconds: float, _attempt: int = 0) -> bool:
         """[scrub entry] Put the hidden stick's fresh tune of `target` about `seconds` behind live by the overlay
         scrub (CENTER, N x LEFT, CENTER), off screen. Called with the control lock held. True = playing that far
         behind live as READ off the overlay's time label: `held` and the delay book get the measured value
@@ -3061,6 +3067,22 @@ class Controller:
         if behind is not None and not (0.0 < float(behind) <= cap + float(
                 self.cfg.get("timing.behind_live_s.scrub_over_s", 15.0))):
             why, behind = f"label read {float(behind):.0f}s behind live, outside (0, max_s]", None
+        if behind is not None and jw.enabled(self.cfg):
+            # [join watchdog, Nick Nov 7 item 1] the READ landing must be near the target, or re-seek once from the
+            # live edge (_tune resets through another channel: behind_on is set), then fail closed as below.
+            v = jw.verify(target, float(seconds), float(behind), None, cfg=self.cfg,
+                          reseeks_left=int(jw.wcfg(self.cfg, "max_reseeks")) - _attempt)
+            self._buffer_log("watchdog", target, stick.host, float(behind), v.off_target_s, status=v.status,
+                             action=v.action, attempt=_attempt)
+            self._ladder_record(stick, target, v.buffered, f"watchdog {v.status}: {v.reason}",
+                                float(behind) if v.buffered else None)
+            if v.action == "reseek" and still_hidden():
+                again = await self._tune(stick, target)
+                if again.ok and still_hidden():
+                    return await self._scrub_into(stick, target, seconds, _attempt + 1)
+                why, behind = f"watchdog: re-seek tune failed ({v.reason})", None
+            elif not v.buffered:
+                why, behind = f"watchdog: {v.status}: {v.reason}", None
         if behind is not None and still_hidden():
             pb = await stick.playback(pkg)
             if pb.get("state") == "playing" and playback_ready(pb) and still_hidden():
@@ -3076,6 +3098,8 @@ class Controller:
                         log.exception("scrub: on_label(%s)", target)
                 self._buffer_log("scrubbed", target, stick.host, behind, round(behind - float(seconds), 1), took=took,
                                  asked_s=round(ask, 1))
+                if jw.dcfg(self.cfg, "enabled"):
+                    self._drift().anchor(self._drift_key(stick, target), target, float(seconds), behind)
                 log.info("scrub: %s on %s is %.1fs behind live by the overlay label (%.1fs)", target, stick.host,
                          behind, took)
                 return True
@@ -3097,6 +3121,80 @@ class Controller:
                 return False
         self._set_hidden(target, self._scrub_fallback_live())
         return False
+
+    def _ladder_record(self, stick: Stick, target: str, ok: bool, why: str, behind_s: float | None) -> None:
+        """[fallback ladder seam, item 2 thread] log this join's "buffered" rung on control.ladder when that branch
+        is in (duck-typed: absent = nothing). The ladder's own descend takes the control lock, so the watchdog never
+        calls it from here (we hold the lock): a failed join already falls back to a fresh live tune below, which
+        is the ladder's hidden-stick "live" rung."""
+        lad = getattr(self, "ladder", None)
+        if lad is None or not hasattr(lad, "record"):
+            return
+        try:
+            lad.record(stick.host, target, "buffered", bool(ok), why[:120], behind_s, behind_s is not None)
+        except Exception:
+            log.exception("ladder record")
+
+    # --- [drift monitor, Nick Nov 7 item 3] rare, budgeted label reads of the HIDDEN scrubbed stick ----------------
+
+    def _drift(self) -> "jw.DriftMonitor":
+        if self.drift is None:
+            path = (self.buffer_log_path.parent / "joins.jsonl") if self.buffer_log_path is not None else ""
+            self.drift = jw.DriftMonitor(self.cfg, log_path=path)
+        return self.drift
+
+    @staticmethod
+    def _drift_key(stick: Stick, target: str) -> str:
+        return f"{stick.host}|{target}"   # in memory only: rows carry the HDMI name, never the address
+
+    async def _drift_tick(self) -> None:
+        """From keepalive: if the hidden stick's verified buffer is due a check (join.drift: interval, budget), read
+        its label once (LabelProbe.probe: ~7.5 s, adds ~7.5 s behind). ok -> held = the reading; anything else ->
+        not buffered (held 0, not ready) and re-entered off screen (label_stale), or re-tuned on the next preload.
+        The stick on screen is never read: the overlay would show and freeze Nick's picture."""
+        if not jw.dcfg(self.cfg, "enabled") or self.label_probe is None or not self.two_stick:
+            return
+        hid, t = self.hidden, self.hidden_target
+        if hid is None or not t or hid.scrubbed(t) is None or self._busy() or self._flipping:
+            return
+        dm, key = self._drift(), self._drift_key(hid, t)
+        if not dm.due(key, hidden=True):
+            return
+        verdict = None
+        async with self._lock:
+            if self.hidden is not hid or self.hidden_target != t or hid.scrubbed(t) is None:
+                return
+            self._set_hidden(t, False)   # not ready while the overlay is up: nothing flips to it mid-read
+
+            def still_hidden() -> bool:
+                return self.hidden is hid and self.hidden_target == t and not self._flipping
+            try:
+                pr = await self.label_probe.probe(hid, still_hidden=still_hidden)
+                got = pr.behind_live_s
+            except Exception:
+                log.exception("drift: probe on %s", t)
+                got = None
+            verdict = dm.record(key, got, channel=t, label=str(self.hdmi.get(hid.host, "")))
+            if verdict.action == "ok" and still_hidden():
+                pb = await hid.playback(self._package(hid, t))
+                if pb.get("state") == "playing" and playback_ready(pb):
+                    hid.remember(t, pb, scrubbed_s=float(got))
+                    self._set_held(t, round(float(got), 1))
+                    if self.on_label is not None:
+                        try:
+                            self.on_label(t, round(float(got), 1), None, time.time())
+                        except Exception:
+                            log.exception("drift: on_label(%s)", t)
+                    self._set_hidden(t, True)
+                    return
+                verdict.action = "unknown"
+                dm.forget(key)
+            hid.behind_on = t            # keys moved it: the next tune of t resets through another channel
+            self._set_held(t, 0.0)       # never shown as buffered on a failed / missing check
+        self._buffer_log("drift_" + verdict.action, t, hid.host, 0.0, verdict.drift_s, measured_s=verdict.measured_s)
+        if not (still_hidden() and self.label_stale(t)):
+            if self.hidden is hid and self.hidden_target == t:
+                self._set_hidden(None, False)   # the next preload re-tunes it (at the live edge, then re-enters)
 
     def label_stale(self, target: str) -> bool:
         """[scrub entry] The delay model says this target's label reading went stale (stalls widened it, #376
