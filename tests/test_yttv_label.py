@@ -201,3 +201,23 @@ def test_pair_with_no_program_window_and_left_probe():
     # 4 LEFTs committed (60 s back), 100 s later the probe shows the playhead -15 s
     later = L.parse_label([o("34:50", 0.214, 0.444)], t0 + 100, knob_offset_s=15)
     assert L.behind_from_pair(live, later) == 55.0
+
+
+def test_cli_pair_roundtrip(tmp_path, monkeypatch):
+    t = {"now": 1794024000.0}
+    rows = {"label": "34:05"}
+
+    async def fake_read(stick, **kw):
+        return L.parse_label([o(rows["label"], 0.214, 0.444)], t["now"], knob_offset_s=kw["knob_offset_s"])
+    monkeypatch.setattr(L, "read_label", fake_read)
+    import redzone.tuners.adb as adb
+    monkeypatch.setattr(adb, "Stick", lambda host: None)
+    saved = tmp_path / "live.json"
+    assert L.main(["--stick", "x", "--knob-offset", "15", "--save", str(saved)]) == 0
+    t["now"] += 100
+    rows["label"] = "34:50"
+    import io, contextlib, json
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        assert L.main(["--stick", "x", "--knob-offset", "15", "--since", str(saved)]) == 0
+    assert json.loads(buf.getvalue())["behind_live_s"] == 55.0

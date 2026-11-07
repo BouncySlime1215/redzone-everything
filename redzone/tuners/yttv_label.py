@@ -323,12 +323,21 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Manual, read-only: one overlay label read (no keys pressed). "
                                              "Open the overlay with the scrubber focused first.")
     ap.add_argument("--stick", required=True, help="adb host:port of the HIDDEN stick")
-    ap.add_argument("--knob-offset", type=float, default=0.0)
+    ap.add_argument("--knob-offset", type=float, default=0.0,
+                    help="seconds the knob sits before the playhead (15 = one uncommitted LEFT probe)")
+    ap.add_argument("--save", type=Path, help="write this read (numbers only) here: the at-live read")
+    ap.add_argument("--since", type=Path, help="an at-live read saved by --save: also print behind_live_s")
     args = ap.parse_args(argv)
     from redzone.tuners.adb import Stick
     stick = Stick(args.stick)
     r = asyncio.run(read_label(stick, enabled=True, knob_offset_s=args.knob_offset))
-    print(json.dumps(r.numbers()))
+    out = r.numbers()
+    if args.since:
+        live = LabelRead(**json.loads(args.since.read_text()))
+        out["behind_live_s"] = behind_from_pair(live, r)
+    if args.save and r.ok:
+        args.save.write_text(json.dumps(r.numbers()))
+    print(json.dumps(out))
     return 0 if r.ok else 1
 
 
