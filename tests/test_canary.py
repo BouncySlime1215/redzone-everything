@@ -247,3 +247,38 @@ def test_the_launchd_job_is_daily_and_never_at_load():
 def test_phone_text_names_the_check_and_runbook(status):
     r = cn.CanaryResult(status=status, stick="stickB", checks=[cn.Check("adb", False, "adb connect failed")])
     assert "adb" in r.phone_text() and "canary.md" in r.phone_text()
+
+
+def _with_codes(world, tmp_path, miss):
+    env = world.env(tmp_path)
+    env.missing_codes = lambda chans: miss
+    return env
+
+
+@pytest.mark.parametrize("dry", [False, True])
+def test_missing_channels_json_fails_before_any_key(tmp_path, dry):
+    """Nick's rig note, Nov 7: a scratch worktree has no data/channels.json (gitignored) -> 'no watch code for fs1'.
+    The preflight says so up front, in the dry run too, and never touches the stick."""
+    w = World([state()], join=join_result())
+    miss = "data/channels.json is missing (gitignored): run from the Mac repo, or symlink its data/ into this checkout"
+    r = asyncio.run(cn.Canary(Cfg(CFG), _with_codes(w, tmp_path, miss)).run(dry_run=dry))
+    assert r.status == "FAIL" and r.first_fail.name == "channels" and "channels.json" in r.first_fail.detail
+    assert w.made == 0 and w.tunes == []
+
+
+def test_codes_present_passes_the_preflight(tmp_path):
+    w = World([state()], join=join_result())
+    r = asyncio.run(cn.Canary(Cfg(CFG), _with_codes(w, tmp_path, "")).run())
+    assert r.status == "PASS" and any(c.name == "channels" and c.ok for c in r.checks)
+
+
+def test_real_preflight_names_the_missing_file_and_codes(tmp_path, monkeypatch):
+    import redzone.channels as ch
+    cfgp = tmp_path / "data" / "channels.json"
+    monkeypatch.setattr(ch.ChannelMap.__init__, "__defaults__", (cfgp,))
+    env = cn.real_env(Cfg({}), tmp_path, "http://127.0.0.1:1")
+    assert "channels.json is missing" in env.missing_codes(["fs1", "espn"])
+    cfgp.parent.mkdir()
+    cfgp.write_text(json.dumps({"codes": {"espn": "abc"}}))
+    env = cn.real_env(Cfg({}), tmp_path, "http://127.0.0.1:1")
+    assert env.missing_codes(["fs1", "espn"]) == "no YouTube TV watch code for fs1 in data/channels.json"
