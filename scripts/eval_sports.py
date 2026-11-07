@@ -104,6 +104,9 @@ def stress_args(ap: argparse.ArgumentParser) -> None:
                     help="[EXP-601] the B s hold takes this many times B (S1: 1.36), with --hidden-stick")
     ap.add_argument("--hs-resync-prime-edge", action="store_true",
                     help="[EXP-607] with --hs-prime-edge --resync: the re-sync prior pins Prime at its live edge too")
+    ap.add_argument("--hs-prime-pause", action="store_true",
+                    help="[EXP-608] with --hidden-stick: Prime gets behind live by pause (B s + resume), like "
+                         "Nick's Nov 7 stick run; not with --hs-prime-edge")
     ap.add_argument("--hs-prime-edge", action="store_true",
                     help="[EXP-605] with --hidden-stick: the app plans Prime targets at their live edge (no buffer)")
     ap.add_argument("--hs-entry", choices=("hold", "scrub", "scrub_measured"), default="hold",
@@ -131,6 +134,7 @@ def knobs(a: argparse.Namespace) -> dict:
                     "hs_entry": getattr(a, "hs_entry", "hold"), "hs_recheck": getattr(a, "hs_recheck", False),
                     "hs_prime_edge": getattr(a, "hs_prime_edge", False),
                     "hs_resync_prime_edge": getattr(a, "hs_resync_prime_edge", False),
+                    "hs_prime_pause": getattr(a, "hs_prime_pause", False),
                     "behind_live_s": float(getattr(a, "behind_live", None) or 0.0)}
                    if getattr(a, "hidden_stick", None) else {}),
                 **feed_lag_knobs(getattr(a, "feed_lag", None), getattr(a, "behind_live", None)))
